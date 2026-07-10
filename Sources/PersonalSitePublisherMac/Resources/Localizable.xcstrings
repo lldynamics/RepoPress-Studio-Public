@@ -1,0 +1,23 @@
+{
+  "sourceLanguage" : "zh-Hans",
+  "strings" : {
+    "app.name" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Personal Site Publishing Console" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "个人网站发布控制台" } } } },
+    "releaseGate.appStore" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "App Store Checklist" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "上架清单" } } } },
+    "releaseGate.localization" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Localization" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本地化" } } } },
+    "releaseGate.productReadiness" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Product Readiness" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "产品边界" } } } },
+    "releaseGate.runtime" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "UI Runtime" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "UI 运行时" } } } },
+    "releaseGate.screenshots" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Screenshot Gate" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "截图门禁" } } } },
+    "releaseGate.title" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Release Gate" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "上架门禁" } } } },
+    "workspace.ai" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "AI" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "AI" } } } },
+    "workspace.contentHealth" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Content Health" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "内容健康" } } } },
+    "workspace.generalDrafts" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Material Library" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "素材库" } } } },
+    "workspace.images" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Images" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "图片" } } } },
+    "workspace.maintenance" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Maintenance" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "维护" } } } },
+    "workspace.releaseHistory" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Release History" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "发布记录" } } } },
+    "workspace.releaseReadiness" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Release Gate" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "上架门禁" } } } },
+    "workspace.siteStarter" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Site Starter" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "建站" } } } },
+    "workspace.sync" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Sync" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "同步" } } } },
+    "workspace.writing" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Writing" } }, "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "写作" } } } }
+  },
+  "version" : "1.0"
+}
