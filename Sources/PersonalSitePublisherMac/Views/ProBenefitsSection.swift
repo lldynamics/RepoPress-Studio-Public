@@ -1,0 +1,12 @@
+import PublishingWorkbenchCore
+import SwiftUI
+
+struct ProBenefitsSection: View {
+  var body: some View {
+    Section("Pro 权益") {
+      ForEach(Array(PremiumFeature.allCases), id: \.id) { feature in
+        Label(feature.proBenefit, systemImage: feature.systemImage)
+      }
+    }
+  }
+}

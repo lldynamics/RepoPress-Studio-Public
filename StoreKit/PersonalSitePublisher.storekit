@@ -1,0 +1,32 @@
+{
+  "identifier": "com.chengjinfang.personal-site-publisher.storekit",
+  "nonConsumables": [
+    {
+      "description": "Unlock GitHub/GitLab online publishing, expanded AI requests, and batch publishing.",
+      "displayPrice": "29.99",
+      "familyShareable": false,
+      "internalID": "personal-site-publisher-pro-lifetime",
+      "localizations": [
+        {
+          "description": "Unlock GitHub/GitLab online publishing, expanded AI requests, and batch publishing.",
+          "displayName": "Personal Site Publisher Pro",
+          "locale": "en_US"
+        },
+        {
+          "description": "解锁 GitHub/GitLab 线上发布、更多 AI 请求和批量发布能力。",
+          "displayName": "个人网站发布控制台 Pro",
+          "locale": "zh_Hans"
+        }
+      ],
+      "productID": "personal.site.publisher.pro",
+      "referenceName": "Personal Site Publisher Pro"
+    }
+  ],
+  "settings": {
+    "_applicationInternalID": "personal-site-publisher-mac"
+  },
+  "version": {
+    "major": 3,
+    "minor": 0
+  }
+}

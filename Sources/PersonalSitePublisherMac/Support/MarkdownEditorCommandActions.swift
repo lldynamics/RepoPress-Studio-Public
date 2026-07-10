@@ -1,0 +1,33 @@
+import SwiftUI
+
+struct MarkdownEditorCommandActions {
+  var draftID: UUID
+  var canRewriteSelection: Bool
+  var canUseFindReplace: Bool
+  var canUndoRevision: Bool
+  var canRedoRevision: Bool
+  var showFindReplace: () -> Void
+  var showKeyboardShortcuts: () -> Void
+  var showRevisionHistory: () -> Void
+  var findNext: () -> Void
+  var replaceCurrentOrNext: () -> Void
+  var replaceAll: () -> Void
+  var insertImages: () -> Void
+  var undoRevision: () -> Void
+  var redoRevision: () -> Void
+  var runPreflight: () -> Void
+  var rewriteSelection: () -> Void
+  var openAIAssistant: () -> Void
+  var copyAIPrompt: () -> Void
+}
+
+private struct MarkdownEditorCommandActionsKey: FocusedValueKey {
+  typealias Value = MarkdownEditorCommandActions
+}
+
+extension FocusedValues {
+  var markdownEditorCommandActions: MarkdownEditorCommandActions? {
+    get { self[MarkdownEditorCommandActionsKey.self] }
+    set { self[MarkdownEditorCommandActionsKey.self] = newValue }
+  }
+}

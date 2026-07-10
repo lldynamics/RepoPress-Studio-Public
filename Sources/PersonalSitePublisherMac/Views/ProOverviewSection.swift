@@ -1,0 +1,52 @@
+import PublishingWorkbenchCore
+import SwiftUI
+
+struct ProOverviewSection: View {
+  let summary: ProStatusSummary
+  let latestBlockNotice: ProFeatureBlockNotice?
+  let onCopyStatusSummary: () -> Void
+
+  var body: some View {
+    Section("Pro 概览") {
+      Label(summary.title, systemImage: summary.systemImage)
+        .font(.headline)
+        .foregroundStyle(summaryForeground(summary))
+
+      Text(summary.message)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+
+      Text(summary.nextStep)
+        .font(.caption)
+        .foregroundStyle(summary.isActionRequired ? .orange : .secondary)
+
+      if let notice = latestBlockNotice {
+        ProBlockNoticeRow(notice: notice)
+      }
+
+      HStack {
+        Label("\(summary.availableRequirements.count) 项可用", systemImage: "checkmark.circle")
+          .foregroundStyle(.green)
+        Label("\(summary.blockedRequirements.count) 项受限", systemImage: "lock.fill")
+          .foregroundStyle(summary.blockedRequirements.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
+      }
+      .font(.caption)
+
+      Button {
+        onCopyStatusSummary()
+      } label: {
+        Label("复制 Pro 状态摘要", systemImage: "doc.on.doc")
+      }
+    }
+  }
+
+  private func summaryForeground(_ summary: ProStatusSummary) -> AnyShapeStyle {
+    if summary.entitlement.isUnlocked {
+      return AnyShapeStyle(.yellow)
+    }
+    if summary.isActionRequired {
+      return AnyShapeStyle(.orange)
+    }
+    return AnyShapeStyle(.secondary)
+  }
+}

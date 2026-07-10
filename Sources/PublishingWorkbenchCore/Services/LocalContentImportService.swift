@@ -1,0 +1,647 @@
+import Foundation
+
+public struct LocalContentImportResult: Codable, Hashable, Sendable {
+  public var importedDrafts: [ArticleDraft]
+  public var skippedPaths: [String]
+
+  public init(importedDrafts: [ArticleDraft], skippedPaths: [String]) {
+    self.importedDrafts = importedDrafts
+    self.skippedPaths = skippedPaths
+  }
+}
+
+public struct LocalContentImportMergeSummary: Codable, Hashable, Sendable {
+  public var insertedCount: Int
+  public var updatedCount: Int
+  public var skippedCount: Int
+
+  public init(insertedCount: Int, updatedCount: Int, skippedCount: Int) {
+    self.insertedCount = insertedCount
+    self.updatedCount = updatedCount
+    self.skippedCount = skippedCount
+  }
+
+  public var changedCount: Int {
+    insertedCount + updatedCount
+  }
+}
+
+public struct LocalContentImportService {
+  private let fileManager: FileManager
+
+  public init(fileManager: FileManager = .default) {
+    self.fileManager = fileManager
+  }
+
+  public func importDrafts(profile: SiteProfile) -> LocalContentImportResult {
+    guard let result = profile.withLocalRepositoryRootAccess({ rootURL in
+      importDrafts(rootURL: rootURL, profile: profile)
+    }) else {
+      return LocalContentImportResult(importedDrafts: [], skippedPaths: [])
+    }
+
+    return result
+  }
+
+  public func importDraft(profile: SiteProfile, repositoryPath: String) -> LocalContentImportResult {
+    guard let result = profile.withLocalRepositoryRootAccess({ rootURL in
+      importDraft(rootURL: rootURL, repositoryPath: repositoryPath, profile: profile)
+    }) else {
+      return LocalContentImportResult(importedDrafts: [], skippedPaths: [repositoryPath])
+    }
+
+    return result
+  }
+
+  public func importDraft(
+    document: String,
+    repositoryPath: String,
+    profile: SiteProfile,
+    repositorySHA: String? = nil
+  ) -> LocalContentImportResult {
+    guard let result = profile.withLocalRepositoryRootAccess({ rootURL in
+      importDraft(
+        document: document,
+        rootURL: rootURL,
+        repositoryPath: repositoryPath,
+        profile: profile,
+        repositorySHA: repositorySHA
+      )
+    }) else {
+      return LocalContentImportResult(importedDrafts: [], skippedPaths: [repositoryPath])
+    }
+
+    return result
+  }
+
+  func importDrafts(rootURL: URL, profile: SiteProfile) -> LocalContentImportResult {
+    let contentRoot = profile.contentRoot.normalizedRelativePath()
+    let contentRootURL = rootURL.appendingPathComponent(contentRoot, isDirectory: true)
+    guard let enumerator = fileManager.enumerator(
+      at: contentRootURL,
+      includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+      options: [.skipsHiddenFiles, .skipsPackageDescendants]
+    ) else {
+      return LocalContentImportResult(importedDrafts: [], skippedPaths: [])
+    }
+
+    var importedDrafts: [ArticleDraft] = []
+    var skippedPaths: [String] = []
+
+    for case let fileURL as URL in enumerator {
+      guard ["md", "markdown", "mdx"].contains(fileURL.pathExtension.lowercased()) else {
+        continue
+      }
+
+      guard let repositoryPath = repositoryRelativePath(rootURL: rootURL, fileURL: fileURL) else {
+        skippedPaths.append(fileURL.path)
+        continue
+      }
+
+      do {
+        let document = try String(contentsOf: fileURL, encoding: .utf8)
+        importedDrafts.append(
+          draft(from: document, rootURL: rootURL, fileURL: fileURL, repositoryPath: repositoryPath, profile: profile)
+        )
+      } catch {
+        skippedPaths.append(repositoryPath)
+      }
+    }
+
+    return LocalContentImportResult(
+      importedDrafts: importedDrafts.sorted {
+        if $0.date == $1.date {
+          return ($0.repositoryPath ?? "").localizedCaseInsensitiveCompare($1.repositoryPath ?? "") == .orderedAscending
+        }
+        return $0.date > $1.date
+      },
+      skippedPaths: skippedPaths.sorted()
+    )
+  }
+
+  func importDraft(rootURL: URL, repositoryPath: String, profile: SiteProfile) -> LocalContentImportResult {
+    guard let safePath = safeMarkdownRepositoryPath(repositoryPath, profile: profile) else {
+      return LocalContentImportResult(importedDrafts: [], skippedPaths: [repositoryPath])
+    }
+
+    let fileURL = rootURL.appendingPathComponent(safePath)
+    guard isRegularFile(at: fileURL) else {
+      return LocalContentImportResult(importedDrafts: [], skippedPaths: [safePath])
+    }
+
+    do {
+      let document = try String(contentsOf: fileURL, encoding: .utf8)
+      return LocalContentImportResult(
+        importedDrafts: [draft(from: document, rootURL: rootURL, fileURL: fileURL, repositoryPath: safePath, profile: profile)],
+        skippedPaths: []
+      )
+    } catch {
+      return LocalContentImportResult(importedDrafts: [], skippedPaths: [safePath])
+    }
+  }
+
+  func importDraft(
+    document: String,
+    rootURL: URL,
+    repositoryPath: String,
+    profile: SiteProfile,
+    repositorySHA: String? = nil
+  ) -> LocalContentImportResult {
+    guard let safePath = safeMarkdownRepositoryPath(repositoryPath, profile: profile) else {
+      return LocalContentImportResult(importedDrafts: [], skippedPaths: [repositoryPath])
+    }
+
+    let fileURL = rootURL.appendingPathComponent(safePath)
+    return LocalContentImportResult(
+      importedDrafts: [
+        draft(
+          from: document,
+          rootURL: rootURL,
+          fileURL: fileURL,
+          repositoryPath: safePath,
+          profile: profile,
+          repositorySHA: repositorySHA
+        )
+      ],
+      skippedPaths: []
+    )
+  }
+
+  private func draft(
+    from document: String,
+    rootURL: URL,
+    fileURL: URL,
+    repositoryPath: String,
+    profile: SiteProfile,
+    repositorySHA: String? = nil
+  ) -> ArticleDraft {
+    let parsed = parseFrontMatter(document)
+    let values = parsed.values
+    let fileModificationDate = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
+    let date = parsedDate(values["date"]?.first, profile: profile) ?? dateFromPath(repositoryPath) ?? fileModificationDate
+    let title = values["title"]?.first?.nilIfEmpty ?? humanizedTitle(from: repositoryPath)
+    let slug = values["slug"]?.first?.nilIfEmpty ?? slugFromPath(repositoryPath) ?? SlugService.slug(from: title)
+    let summary = values["description"]?.first?.nilIfEmpty
+      ?? values["summary"]?.first?.nilIfEmpty
+      ?? values["excerpt"]?.first?.nilIfEmpty
+      ?? ""
+    let draftFlag = parsedBool(values["draft"]?.first) ?? false
+    let authors = values["authors"] ?? values["author"] ?? profile.defaultAuthor.nilIfEmpty.map { [$0] } ?? []
+    let attachments = importedAttachments(
+      values: values,
+      body: parsed.body,
+      rootURL: rootURL,
+      articleRepositoryPath: repositoryPath,
+      profile: profile
+    )
+
+    return ArticleDraft(
+      siteProfileID: profile.id,
+      title: title,
+      date: date,
+      slug: slug,
+      tags: values["tags"] ?? [],
+      categories: values["categories"] ?? [],
+      authors: authors,
+      draft: draftFlag,
+      summary: summary,
+      coverAttachmentID: attachments.coverAttachmentID,
+      bodyMarkdown: parsed.body.trimmingCharacters(in: .whitespacesAndNewlines),
+      attachments: attachments.attachments,
+      status: draftFlag ? .draft : .published,
+      createdAt: date,
+      updatedAt: fileModificationDate,
+      repositoryPath: repositoryPath,
+      repositorySHA: repositorySHA?.trimmedForPublishing.nilIfEmpty
+    )
+  }
+
+  private func importedAttachments(
+    values: [String: [String]],
+    body: String,
+    rootURL: URL,
+    articleRepositoryPath: String,
+    profile: SiteProfile
+  ) -> (attachments: [DraftAttachment], coverAttachmentID: UUID?) {
+    var attachments: [DraftAttachment] = []
+    var indexesByPublishPath: [String: Int] = [:]
+
+    for reference in markdownImageReferences(in: body) {
+      guard let metadata = attachmentMetadata(
+        imagePath: reference.path,
+        altText: reference.altText,
+        rootURL: rootURL,
+        articleRepositoryPath: articleRepositoryPath,
+        profile: profile
+      ) else {
+        continue
+      }
+      append(metadata, attachments: &attachments, indexesByPublishPath: &indexesByPublishPath)
+    }
+
+    var coverAttachmentID: UUID?
+    if let coverPath = importedCoverPath(values) {
+      if let existingIndex = indexesByPublishPath[coverPath] {
+        coverAttachmentID = attachments[existingIndex].id
+      } else if let metadata = attachmentMetadata(
+        imagePath: coverPath,
+        altText: "",
+        rootURL: rootURL,
+        articleRepositoryPath: articleRepositoryPath,
+        profile: profile
+      ) {
+        let index = append(metadata, attachments: &attachments, indexesByPublishPath: &indexesByPublishPath)
+        coverAttachmentID = attachments[index].id
+      }
+    }
+
+    return (attachments, coverAttachmentID)
+  }
+
+  @discardableResult
+  private func append(
+    _ attachment: DraftAttachment,
+    attachments: inout [DraftAttachment],
+    indexesByPublishPath: inout [String: Int]
+  ) -> Int {
+    let key = attachment.relativePublishPath
+    if let existingIndex = indexesByPublishPath[key] {
+      return existingIndex
+    }
+
+    let index = attachments.count
+    attachments.append(attachment)
+    indexesByPublishPath[key] = index
+    return index
+  }
+
+  private func parseFrontMatter(_ document: String) -> (values: [String: [String]], body: String) {
+    let lines = document.components(separatedBy: .newlines)
+    guard let firstLine = lines.first else {
+      return ([:], "")
+    }
+
+    if firstLine == "---" {
+      return parseDelimitedFrontMatter(lines: lines, delimiter: "---", style: .yaml)
+    }
+
+    if firstLine == "+++" {
+      return parseDelimitedFrontMatter(lines: lines, delimiter: "+++", style: .toml)
+    }
+
+    return ([:], document)
+  }
+
+  private enum FrontMatterImportStyle {
+    case yaml
+    case toml
+  }
+
+  private func parseDelimitedFrontMatter(
+    lines: [String],
+    delimiter: String,
+    style: FrontMatterImportStyle
+  ) -> (values: [String: [String]], body: String) {
+    guard let endIndex = lines.dropFirst().firstIndex(of: delimiter) else {
+      return ([:], lines.joined(separator: "\n"))
+    }
+
+    let frontMatterLines = Array(lines[1..<endIndex])
+    let body = Array(lines[(endIndex + 1)...]).joined(separator: "\n")
+    let values: [String: [String]]
+    switch style {
+    case .yaml:
+      values = parseYAMLFrontMatter(frontMatterLines)
+    case .toml:
+      values = parseTOMLFrontMatter(frontMatterLines)
+    }
+    return (values, body)
+  }
+
+  private func parseYAMLFrontMatter(_ lines: [String]) -> [String: [String]] {
+    var values: [String: [String]] = [:]
+    var index = 0
+
+    while index < lines.count {
+      let line = lines[index]
+      let trimmed = line.trimmedForPublishing
+      guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else {
+        index += 1
+        continue
+      }
+
+      guard let separator = trimmed.firstIndex(of: ":") else {
+        index += 1
+        continue
+      }
+
+      let key = String(trimmed[..<separator]).trimmedForPublishing.lowercased()
+      let rawValue = String(trimmed[trimmed.index(after: separator)...]).trimmedForPublishing
+
+      if rawValue.isEmpty {
+        var listValues: [String] = []
+        var lookahead = index + 1
+        while lookahead < lines.count {
+          let item = lines[lookahead].trimmedForPublishing
+          guard item.hasPrefix("- ") else { break }
+          listValues.append(cleanScalar(String(item.dropFirst(2))))
+          lookahead += 1
+        }
+        if !listValues.isEmpty {
+          values[key] = listValues
+          index = lookahead
+          continue
+        }
+      } else {
+        values[key] = parseScalarOrArray(rawValue)
+      }
+
+      index += 1
+    }
+
+    return values
+  }
+
+  private func parseTOMLFrontMatter(_ lines: [String]) -> [String: [String]] {
+    var values: [String: [String]] = [:]
+
+    for line in lines {
+      let trimmed = line.trimmedForPublishing
+      guard !trimmed.isEmpty, !trimmed.hasPrefix("#"), let separator = trimmed.firstIndex(of: "=") else {
+        continue
+      }
+
+      let key = String(trimmed[..<separator]).trimmedForPublishing.lowercased()
+      let rawValue = String(trimmed[trimmed.index(after: separator)...]).trimmedForPublishing
+      values[key] = parseScalarOrArray(rawValue)
+    }
+
+    return values
+  }
+
+  private func parseScalarOrArray(_ rawValue: String) -> [String] {
+    let value = rawValue.trimmedForPublishing
+    if value.hasPrefix("["), value.hasSuffix("]") {
+      let inner = String(value.dropFirst().dropLast())
+      return inner
+        .split(separator: ",")
+        .map { cleanScalar(String($0)) }
+        .filter { !$0.isEmpty }
+    }
+    return [cleanScalar(value)].filter { !$0.isEmpty }
+  }
+
+  private func cleanScalar(_ value: String) -> String {
+    value
+      .trimmedForPublishing
+      .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+      .trimmedForPublishing
+  }
+
+  private func parsedBool(_ value: String?) -> Bool? {
+    switch value?.trimmedForPublishing.lowercased() {
+    case "true", "yes", "1":
+      return true
+    case "false", "no", "0":
+      return false
+    default:
+      return nil
+    }
+  }
+
+  private func parsedDate(_ value: String?, profile: SiteProfile) -> Date? {
+    guard let value = value?.nilIfEmpty else {
+      return nil
+    }
+
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+
+    for format in [profile.dateFormat, "yyyy-MM-dd", "yyyy-MM-dd HH:mm:ss Z", "yyyy-MM-dd'T'HH:mm:ssZ"] {
+      formatter.dateFormat = format
+      if let date = formatter.date(from: value) {
+        return date
+      }
+    }
+
+    return ISO8601DateFormatter().date(from: value)
+  }
+
+  private func repositoryRelativePath(rootURL: URL, fileURL: URL) -> String? {
+    let rootPath = rootURL.standardizedFileURL.path
+    let filePath = fileURL.standardizedFileURL.path
+    guard filePath.hasPrefix(rootPath + "/") else {
+      return nil
+    }
+    return String(filePath.dropFirst(rootPath.count + 1)).normalizedRelativePath()
+  }
+
+  private func safeMarkdownRepositoryPath(_ repositoryPath: String, profile: SiteProfile) -> String? {
+    let displayPath = repositoryPath.components(separatedBy: " -> ").last?.trimmedForPublishing ?? repositoryPath.trimmedForPublishing
+    guard !displayPath.isEmpty,
+          !displayPath.hasPrefix("/"),
+          !displayPath.contains("\\"),
+          !displayPath.contains("://") else {
+      return nil
+    }
+
+    let normalizedPath = displayPath.normalizedRelativePath()
+    let pathComponents = normalizedPath.split(separator: "/")
+    let pathExtension = (normalizedPath as NSString).pathExtension.lowercased()
+    guard !normalizedPath.isEmpty,
+          !pathComponents.contains(".."),
+          ["md", "markdown", "mdx"].contains(pathExtension) else {
+      return nil
+    }
+
+    let contentRoot = profile.contentRoot.normalizedRelativePath()
+    if contentRoot.isEmpty || normalizedPath.hasPrefix(contentRoot + "/") {
+      return normalizedPath
+    }
+
+    return nil
+  }
+
+  private func isRegularFile(at url: URL) -> Bool {
+    (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+  }
+
+  private struct ImportedMarkdownImageReference {
+    var altText: String
+    var path: String
+  }
+
+  private func markdownImageReferences(in markdown: String) -> [ImportedMarkdownImageReference] {
+    let pattern = #"!\[([^\]]*)\]\(([^)]+)\)"#
+    guard let regex = try? NSRegularExpression(pattern: pattern) else {
+      return []
+    }
+
+    let range = NSRange(markdown.startIndex..<markdown.endIndex, in: markdown)
+    return regex.matches(in: markdown, range: range).compactMap { match in
+      guard
+        let altRange = Range(match.range(at: 1), in: markdown),
+        let pathRange = Range(match.range(at: 2), in: markdown),
+        let imagePath = markdownImagePath(String(markdown[pathRange]))
+      else {
+        return nil
+      }
+
+      return ImportedMarkdownImageReference(
+        altText: cleanScalar(String(markdown[altRange])),
+        path: imagePath
+      )
+    }
+  }
+
+  private func markdownImagePath(_ rawValue: String) -> String? {
+    var value = rawValue.trimmedForPublishing
+    if value.hasPrefix("<"), let closingIndex = value.firstIndex(of: ">") {
+      value = String(value[value.index(after: value.startIndex)..<closingIndex])
+    } else if let firstToken = value.split(whereSeparator: \.isWhitespace).first {
+      value = String(firstToken)
+    }
+
+    value = value.trimmedForPublishing
+    guard !value.isEmpty,
+          !value.hasPrefix("http://"),
+          !value.hasPrefix("https://"),
+          !value.hasPrefix("data:") else {
+      return nil
+    }
+    return value
+  }
+
+  private func importedCoverPath(_ values: [String: [String]]) -> String? {
+    values["cover"]?.first?.nilIfEmpty
+      ?? values["image"]?.first?.nilIfEmpty
+      ?? values["og_preview_img"]?.first?.nilIfEmpty
+  }
+
+  private func attachmentMetadata(
+    imagePath: String,
+    altText: String,
+    rootURL: URL,
+    articleRepositoryPath: String,
+    profile: SiteProfile
+  ) -> DraftAttachment? {
+    let publishPath = imagePath.trimmedForPublishing
+    guard !publishPath.isEmpty else {
+      return nil
+    }
+
+    let repositoryPath = imageRepositoryPath(
+      publishPath: publishPath,
+      rootURL: rootURL,
+      articleRepositoryPath: articleRepositoryPath,
+      profile: profile
+    )
+    let sourceURL = rootURL.appendingPathComponent(repositoryPath)
+    let sourceFilePath = fileManager.fileExists(atPath: sourceURL.path) ? sourceURL.path : nil
+    let byteSize = sourceFilePath.map { fileByteSize(at: URL(fileURLWithPath: $0)) } ?? 0
+    let filename = filenameFromImagePath(repositoryPath) ?? filenameFromImagePath(publishPath) ?? "image"
+
+    return DraftAttachment(
+      originalFilename: filename,
+      relativePublishPath: publishPath,
+      repositoryPath: repositoryPath,
+      altText: altText,
+      byteSize: byteSize,
+      sourceFilePath: sourceFilePath
+    )
+  }
+
+  private func imageRepositoryPath(
+    publishPath: String,
+    rootURL: URL,
+    articleRepositoryPath: String,
+    profile: SiteProfile
+  ) -> String {
+    let filePath = imageFilePathComponent(publishPath)
+    let assetRoot = profile.assetRoot.normalizedRelativePath()
+    var candidates: [String] = []
+
+    if publishPath.hasPrefix("/") {
+      let absolutePath = filePath.trimmingCharacters(in: CharacterSet(charactersIn: "/")).normalizedRelativePath()
+      if !assetRoot.isEmpty, absolutePath == assetRoot || absolutePath.hasPrefix(assetRoot + "/") {
+        candidates.append(absolutePath)
+      } else if !assetRoot.isEmpty {
+        candidates.append((assetRoot + "/" + absolutePath).normalizedRelativePath())
+      }
+      candidates.append(absolutePath)
+    } else {
+      let normalized = filePath.normalizedRelativePath()
+      candidates.append(normalized)
+
+      let articleDirectory = articleRepositoryPath
+        .normalizedRelativePath()
+        .split(separator: "/")
+        .dropLast()
+        .map(String.init)
+        .joined(separator: "/")
+      if !articleDirectory.isEmpty {
+        candidates.append((articleDirectory + "/" + normalized).normalizedRelativePath())
+      }
+    }
+
+    return candidates.first { candidate in
+      fileManager.fileExists(atPath: rootURL.appendingPathComponent(candidate).path)
+    } ?? candidates.first ?? filePath.normalizedRelativePath()
+  }
+
+  private func imageFilePathComponent(_ path: String) -> String {
+    let withoutFragment = path.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? path
+    return withoutFragment.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? withoutFragment
+  }
+
+  private func filenameFromImagePath(_ path: String) -> String? {
+    URL(fileURLWithPath: imageFilePathComponent(path)).lastPathComponent.nilIfEmpty
+  }
+
+  private func fileByteSize(at url: URL) -> Int64 {
+    let attributes = try? fileManager.attributesOfItem(atPath: url.path)
+    return (attributes?[.size] as? NSNumber)?.int64Value ?? 0
+  }
+
+  private func slugFromPath(_ path: String) -> String? {
+    let stem = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+    let pattern = #"^\d{4}-\d{2}-\d{2}-(.+)$"#
+    if let regex = try? NSRegularExpression(pattern: pattern),
+       let match = regex.firstMatch(in: stem, range: NSRange(stem.startIndex..<stem.endIndex, in: stem)),
+       let range = Range(match.range(at: 1), in: stem) {
+      return String(stem[range]).nilIfEmpty
+    }
+    return stem.nilIfEmpty
+  }
+
+  private func dateFromPath(_ path: String) -> Date? {
+    let stem = URL(fileURLWithPath: path).lastPathComponent
+    let pattern = #"^(\d{4})-(\d{2})-(\d{2})-"#
+    guard let regex = try? NSRegularExpression(pattern: pattern),
+          let match = regex.firstMatch(in: stem, range: NSRange(stem.startIndex..<stem.endIndex, in: stem)),
+          match.numberOfRanges == 4,
+          let yearRange = Range(match.range(at: 1), in: stem),
+          let monthRange = Range(match.range(at: 2), in: stem),
+          let dayRange = Range(match.range(at: 3), in: stem)
+    else {
+      return nil
+    }
+
+    var components = DateComponents()
+    components.calendar = Calendar(identifier: .gregorian)
+    components.timeZone = TimeZone(secondsFromGMT: 0)
+    components.year = Int(stem[yearRange])
+    components.month = Int(stem[monthRange])
+    components.day = Int(stem[dayRange])
+    return components.date
+  }
+
+  private func humanizedTitle(from path: String) -> String {
+    let stem = slugFromPath(path) ?? "未命名文章"
+    return stem
+      .replacingOccurrences(of: "-", with: " ")
+      .replacingOccurrences(of: "_", with: " ")
+      .nilIfEmpty ?? "未命名文章"
+  }
+}
