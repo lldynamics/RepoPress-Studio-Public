@@ -10,6 +10,8 @@ DETAIL_CONTAINER = "Sources/PersonalSitePublisherMac/Views/DetailContainerView.s
 SETTINGS_VIEW = "Sources/PersonalSitePublisherMac/Views/SettingsView.swift"
 RELEASE_QUALITY_GATE_SERVICE = "Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateService.swift"
 AI_CHAT_WORKSPACE_VIEW = "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift"
+WORKBENCH_STORE = "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore.swift"
+WORKBENCH_PROFILE_TESTS = "Tests/PublishingWorkbenchCoreTests/WorkbenchStoreProfileTests.swift"
 
 
 DETAIL_MARKER_PATHS = {
@@ -79,6 +81,43 @@ DETAIL_MARKER_PATHS = {
         "Sources/PublishingWorkbenchCore/Services/GeneralDraftLibraryService.swift",
         DETAIL_CONTAINER,
     ],
+    "copyRecoveryEvidence": [
+        "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift",
+        "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryRecordCardSection.swift",
+        DETAIL_CONTAINER,
+    ],
+}
+
+
+SETTINGS_MARKER_PATHS = {
+    "copyProSandboxEvidence": [
+        "Sources/PersonalSitePublisherMac/Views/SettingsStoreActions.swift",
+        "Sources/PersonalSitePublisherMac/Views/SettingsProTabFactory.swift",
+        "Sources/PersonalSitePublisherMac/Views/ProSettingsView.swift",
+        SETTINGS_VIEW,
+    ],
+}
+
+
+WORKBENCH_STORE_MARKER_PATHS = {
+    "refreshDeploymentStatus": [
+        "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+DeploymentCommands.swift",
+        "Sources/PublishingWorkbenchCore/Stores/DeploymentStore.swift",
+        WORKBENCH_STORE,
+    ],
+    "deploymentPollingState": [
+        "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+ForwardedState.swift",
+        "Sources/PublishingWorkbenchCore/Stores/DeploymentStore.swift",
+        WORKBENCH_STORE,
+    ],
+}
+
+
+WORKBENCH_PROFILE_TEST_MARKER_PATHS = {
+    "testOnlineDirectPublishBlocksRemoteSamePathConflictBeforeCallingAPI": [
+        "Tests/PublishingWorkbenchCoreTests/WorkbenchStoreRemotePublishingTests.swift",
+        WORKBENCH_PROFILE_TESTS,
+    ],
 }
 
 
@@ -128,6 +167,8 @@ def expanded_source_paths(relative_path: str, marker: str) -> list[str]:
         )
 
     if relative_path == SETTINGS_VIEW:
+        if marker in SETTINGS_MARKER_PATHS:
+            return unique(SETTINGS_MARKER_PATHS[marker])
         return unique(
             [
                 relative_path,
@@ -158,6 +199,12 @@ def expanded_source_paths(relative_path: str, marker: str) -> list[str]:
                 "Sources/PersonalSitePublisherMac/Views/AIChatPromptLibraryComponents.swift",
             ]
         )
+
+    if relative_path == WORKBENCH_STORE:
+        return unique(WORKBENCH_STORE_MARKER_PATHS.get(marker, [relative_path]))
+
+    if relative_path == WORKBENCH_PROFILE_TESTS:
+        return unique(WORKBENCH_PROFILE_TEST_MARKER_PATHS.get(marker, [relative_path]))
 
     return [relative_path]
 

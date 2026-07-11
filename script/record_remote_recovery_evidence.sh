@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SOURCE_MANIFEST_HELPER="$ROOT_DIR/script/release_evidence_source_manifest.py"
 EVIDENCE_FILE="${EXTERNAL_VERIFY_EVIDENCE_FILE:-$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md}"
 REMOTE_CONFLICT_PREVIEW=""
 PENDING_OFFLINE_STATE=""
@@ -120,25 +121,39 @@ require_source_pattern_any_file() {
   fail "missing local capability surface: $label"
 }
 
+require_source_pattern_source_manifest() {
+  local relative_path="$1"
+  local pattern="$2"
+  local label="$3"
+  local expanded_paths=()
+  local expanded_path
+  while IFS= read -r expanded_path; do
+    expanded_paths+=("$expanded_path")
+  done < <(python3 "$SOURCE_MANIFEST_HELPER" "$relative_path" "$pattern")
+  require_source_pattern_any_file "$pattern" "$label" "${expanded_paths[@]}"
+}
+
 require_source_pattern "Sources/PersonalSitePublisherMac/Views" "remoteConflictPaths" "remote conflict preview UI"
 require_source_pattern "Sources/PublishingWorkbenchCore/Services/ReleaseLedgerService.swift" "pendingRetry" "pending retry release ledger state"
 require_source_pattern "Sources/PublishingWorkbenchCore/Services/ReleaseLedgerService.swift" "retryDeploymentCheck" "deployment retry action"
 require_source_pattern "Sources/PublishingWorkbenchCore/Services/ReleaseLedgerService.swift" "ReleaseRollbackDraft" "rollback package generation"
 require_source_pattern "Sources/PublishingWorkbenchCore/Services/ReleaseLedgerService.swift" "externalVerificationEvidenceMarkdown" "structured recovery evidence export"
-require_source_pattern_any_file "copyRecoveryEvidence" "structured recovery evidence copy UI" \
+require_source_pattern_source_manifest \
   "Sources/PersonalSitePublisherMac/Views/DetailContainerView.swift" \
-  "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift"
-require_source_pattern_any_file "refreshDeploymentStatus" "manual deployment status refresh" \
+  "copyRecoveryEvidence" \
+  "structured recovery evidence copy UI"
+require_source_pattern_source_manifest \
   "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore.swift" \
-  "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+DeploymentCommands.swift" \
-  "Sources/PublishingWorkbenchCore/Stores/DeploymentStore.swift"
-require_source_pattern_any_file "deploymentPollingState" "deployment polling state" \
+  "refreshDeploymentStatus" \
+  "manual deployment status refresh"
+require_source_pattern_source_manifest \
   "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore.swift" \
-  "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+ForwardedState.swift" \
-  "Sources/PublishingWorkbenchCore/Stores/DeploymentStore.swift"
-require_source_pattern_any_file "testOnlineDirectPublishBlocksRemoteSamePathConflictBeforeCallingAPI" "remote same-path conflict regression test" \
+  "deploymentPollingState" \
+  "deployment polling state"
+require_source_pattern_source_manifest \
   "Tests/PublishingWorkbenchCoreTests/WorkbenchStoreProfileTests.swift" \
-  "Tests/PublishingWorkbenchCoreTests/WorkbenchStoreRemotePublishingTests.swift"
+  "testOnlineDirectPublishBlocksRemoteSamePathConflictBeforeCallingAPI" \
+  "remote same-path conflict regression test"
 require_source_pattern "Tests/PublishingWorkbenchCoreTests/DeploymentStatusServiceTests.swift" "testDeploymentPollingChecksPendingDeploymentRecordsAndCachesSnapshots" "deployment polling regression test"
 require_source_pattern "Tests/PublishingWorkbenchCoreTests/DeploymentStatusServiceTests.swift" "testDeploymentPollingSummarizesSuccessRunningAndFailedRecords" "deployment polling summary regression test"
 require_source_pattern "Tests/PublishingWorkbenchCoreTests/ReleaseLedgerServiceTests.swift" "testUnknownDeploymentCheckBecomesRetryablePendingState" "pending retry ledger regression test"

@@ -18,6 +18,13 @@ fail() {
 
 cp "$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md" "$EVIDENCE_FILE"
 [[ -f "$ENV_TEMPLATE" ]] || fail "StoreKit sandbox env template is missing"
+grep -q "release_evidence_source_manifest.py" "$ROOT_DIR/script/record_storekit_sandbox_evidence.sh" \
+  || fail "StoreKit recorder does not use the shared source manifest"
+manifest_paths="$(python3 "$ROOT_DIR/script/release_evidence_source_manifest.py" \
+  "Sources/PersonalSitePublisherMac/Views/SettingsView.swift" \
+  "copyProSandboxEvidence")"
+grep -q "SettingsStoreActions.swift" <<<"$manifest_paths" \
+  || fail "shared source manifest omits split StoreKit settings actions"
 
 template_text="$(cat "$ENV_TEMPLATE")"
 template_required_markers=(

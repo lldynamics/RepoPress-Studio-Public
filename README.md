@@ -29,9 +29,11 @@
 ./script/check_release_gate.sh --strict
 ```
 
+GitHub Actions 会在 push、pull request 和手动触发时运行同一套精简门禁，包括 Swift 6 严格并发零警告编译和完整 Swift 测试。
+
 定位单项失败时，可重复传入检查 ID，例如：
 
 ```bash
-./script/check_release_gate.sh --check localization --check swift-tests
+./script/check_release_gate.sh --check localization --check swift-strict-build --check swift-tests
 ./script/check_release_gate.sh --list
 ```
