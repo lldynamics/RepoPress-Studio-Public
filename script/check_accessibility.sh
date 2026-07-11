@@ -117,17 +117,17 @@ require_literal \
   "settings scene must show the privacy lock overlay"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift" \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
   ".accessibilityLabel(\"工作台状态\")" \
   "workbench status control must expose an accessibility label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift" \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
   ".accessibilityValue(\"仓库、当前文章和部署历史\")" \
   "workbench status control must expose a concise accessibility value"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift" \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
   ".help(\"查看仓库、当前文章和部署历史的独立状态\")" \
   "workbench status control must keep long status detail out of the VoiceOver hint"
 
@@ -188,7 +188,7 @@ require_literal \
   "publish drawer flow must expose an accessibility label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/PublishDrawerView.swift" \
+  "Sources/PersonalSitePublisherMac/Views/PublishDrawerComponents.swift" \
   ".accessibilityValue(value)" \
   "publish drawer stats and rows must expose current values"
 
@@ -283,7 +283,7 @@ require_literal \
   "draft search field must expose an accessibility label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift" \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
   ".accessibilityLabel(\"当前站点 Profile\")" \
   "profile picker must expose an accessibility label"
 

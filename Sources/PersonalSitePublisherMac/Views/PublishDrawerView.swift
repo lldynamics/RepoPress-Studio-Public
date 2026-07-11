@@ -166,7 +166,7 @@ struct PublishDrawerView: View {
       if isFinalStep {
         Label(finalAction.summary, systemImage: finalAction.systemImage)
           .font(.caption)
-          .foregroundStyle(finalAction.isDeploymentSuccessful ? .green : .secondary)
+          .foregroundStyle(finalAction.isDeploymentSuccessful ? WorkbenchTheme.success : .secondary)
           .accessibilityLabel("发布结果摘要")
           .accessibilityValue(finalAction.summary)
       }
@@ -398,8 +398,8 @@ struct PublishDrawerView: View {
 
     return PublishDrawerCard(title: "检查结果", systemImage: "checklist") {
       HStack(spacing: 8) {
-        PublishDrawerStat(title: "阻断", value: "\(blocking.count)", systemImage: "xmark.octagon", color: blocking.isEmpty ? .secondary : .red)
-        PublishDrawerStat(title: "警告", value: "\(warnings.count)", systemImage: "exclamationmark.triangle", color: warnings.isEmpty ? .secondary : .orange)
+        PublishDrawerStat(title: "阻断", value: "\(blocking.count)", systemImage: "xmark.octagon", color: blocking.isEmpty ? .secondary : WorkbenchTheme.risk)
+        PublishDrawerStat(title: "警告", value: "\(warnings.count)", systemImage: "exclamationmark.triangle", color: warnings.isEmpty ? .secondary : WorkbenchTheme.warning)
       }
 
       if issues.isEmpty {
@@ -436,7 +436,7 @@ struct PublishDrawerView: View {
     return PublishDrawerCard(title: "Diff", systemImage: "doc.text.magnifyingglass") {
       HStack(spacing: 8) {
         PublishDrawerStat(title: "文件", value: preview.map { "\($0.fileDiffs.count)" } ?? "—", systemImage: "doc.on.doc", color: .secondary)
-        PublishDrawerStat(title: "变化", value: "\(changedDiffs.count)", systemImage: "arrow.left.arrow.right", color: changedDiffs.isEmpty ? .secondary : .orange)
+        PublishDrawerStat(title: "变化", value: "\(changedDiffs.count)", systemImage: "arrow.left.arrow.right", color: changedDiffs.isEmpty ? .secondary : WorkbenchTheme.warning)
       }
 
       if preview == nil {
@@ -681,7 +681,7 @@ struct PublishDrawerView: View {
       if let issue = (preview.blockingIssues + preview.warningIssues).first {
         Label(issue.title, systemImage: issue.severity == .error ? "xmark.octagon" : "exclamationmark.triangle")
           .font(.caption)
-          .foregroundStyle(issue.severity == .error ? .red : .orange)
+          .foregroundStyle(issue.severity == .error ? WorkbenchTheme.risk : WorkbenchTheme.warning)
           .lineLimit(1)
         Text(issue.message)
           .font(.caption2)
@@ -920,232 +920,5 @@ struct PublishDrawerView: View {
 
   private func copy(_ value: String, message: String) {
     ClipboardWriter.copy(value, successMessage: message) { store.setPublishActionMessage($0) }
-  }
-}
-
-private struct PublishDrawerCard<Content: View>: View {
-  let title: String
-  let systemImage: String
-  let content: Content
-
-  init(
-    title: String,
-    systemImage: String,
-    @ViewBuilder content: () -> Content
-  ) {
-    self.title = title
-    self.systemImage = systemImage
-    self.content = content()
-  }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Label(title, systemImage: systemImage)
-        .font(.callout.weight(.semibold))
-
-      content
-
-      Spacer(minLength: 0)
-    }
-    .padding(12)
-    .frame(maxWidth: .infinity, alignment: .topLeading)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel(title)
-    .accessibilityHint("发布流程步骤内容")
-  }
-}
-
-private struct PublishDrawerStat: View {
-  let title: String
-  let value: String
-  let systemImage: String
-  let color: Color
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      Label(title, systemImage: systemImage)
-        .font(.caption2)
-        .foregroundStyle(.secondary)
-      Text(value)
-        .font(.title3.weight(.semibold))
-        .foregroundStyle(color)
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel(title)
-    .accessibilityValue(value)
-  }
-}
-
-private struct PublishDrawerInfoRow: View {
-  let title: String
-  let value: String
-  let systemImage: String
-
-  var body: some View {
-    HStack(spacing: 6) {
-      Image(systemName: systemImage)
-        .foregroundStyle(.secondary)
-        .frame(width: 16)
-      Text(title)
-        .foregroundStyle(.secondary)
-      Spacer(minLength: 6)
-      Text(value)
-        .lineLimit(1)
-    }
-    .font(.caption)
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel(title)
-    .accessibilityValue(value)
-  }
-}
-
-private extension PreflightSeverity {
-  var publishDrawerSystemImage: String {
-    switch self {
-    case .error:
-      return "xmark.octagon"
-    case .warning:
-      return "exclamationmark.triangle"
-    case .info:
-      return "checkmark.circle"
-    }
-  }
-
-  var publishDrawerColor: Color {
-    switch self {
-    case .error:
-      return .red
-    case .warning:
-      return .orange
-    case .info:
-      return .green
-    }
-  }
-}
-
-private extension PublishFileDiffStatus {
-  var publishDrawerSystemImage: String {
-    switch self {
-    case .added:
-      return "plus.circle"
-    case .modified:
-      return "pencil.circle"
-    case .unchanged:
-      return "equal.circle"
-    case .missingSource:
-      return "photo.badge.exclamationmark"
-    case .unsafePath:
-      return "xmark.octagon"
-    }
-  }
-
-  var publishDrawerColor: Color {
-    switch self {
-    case .added:
-      return .green
-    case .modified:
-      return .orange
-    case .unchanged:
-      return .secondary
-    case .missingSource, .unsafePath:
-      return .red
-    }
-  }
-}
-
-private struct PublishDrawerFlowStep: Identifiable {
-  let id = UUID()
-  let title: String
-  let detail: String
-  let systemImage: String
-  let state: PublishDrawerFlowStepState
-}
-
-private struct PublishDrawerFinalAction {
-  let title: String
-  let summary: String
-  let systemImage: String
-  let isDeploymentSuccessful: Bool
-}
-
-private enum PublishDrawerFlowCard: CaseIterable, Hashable, Identifiable {
-  case checks
-  case diff
-  case write
-  case remote
-  case deployment
-
-  var id: Self { self }
-
-  var title: String {
-    switch self {
-    case .checks:
-      return "检查"
-    case .diff:
-      return "Diff"
-    case .write:
-      return "写入"
-    case .remote:
-      return "远端"
-    case .deployment:
-      return "部署"
-    }
-  }
-}
-
-private enum PublishDrawerFlowStepState: Equatable {
-  case complete
-  case active
-  case blocked
-  case pending
-
-  var color: Color {
-    switch self {
-    case .complete:
-      return .green
-    case .active:
-      return .accentColor
-    case .blocked:
-      return .red
-    case .pending:
-      return .secondary
-    }
-  }
-
-  var connectorColor: Color {
-    switch self {
-    case .complete, .active:
-      return color.opacity(0.75)
-    case .blocked, .pending:
-      return Color(nsColor: .separatorColor)
-    }
-  }
-
-  var backgroundColor: Color {
-    switch self {
-    case .complete:
-      return .green.opacity(0.10)
-    case .active:
-      return .accentColor.opacity(0.12)
-    case .blocked:
-      return .red.opacity(0.10)
-    case .pending:
-      return Color(nsColor: .controlBackgroundColor).opacity(0.65)
-    }
-  }
-
-  var borderColor: Color {
-    switch self {
-    case .active:
-      return .accentColor.opacity(0.55)
-    case .blocked:
-      return .red.opacity(0.45)
-    case .complete:
-      return .green.opacity(0.35)
-    case .pending:
-      return Color(nsColor: .separatorColor).opacity(0.45)
-    }
   }
 }
