@@ -497,8 +497,12 @@ struct PublishDrawerView: View {
         PublishDrawerInfoRow(title: "上游", value: "未配置", systemImage: "link")
       }
 
+      Text("切换或新建分支前，工作区必须没有未提交变更；成功后会同步更新发布目标。")
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+
       if hasBranches {
-        Text("可切换分支")
+        Text("本地工作分支")
           .font(.caption2)
           .foregroundStyle(.secondary)
         VStack(alignment: .leading, spacing: 5) {
@@ -514,9 +518,12 @@ struct PublishDrawerView: View {
                   .foregroundStyle(WorkbenchTheme.success)
               } else {
                 Button("切换") {
-                  store.switchActiveProfileRepositoryBranch(to: branch.name)
+                  Task {
+                    await store.switchActiveProfileRepositoryBranch(to: branch.name)
+                  }
                 }
                 .controlSize(.small)
+                .disabled(store.isLocalRepositoryBranchOperationRunning)
               }
             }
           }
@@ -534,11 +541,22 @@ struct PublishDrawerView: View {
           .textFieldStyle(.roundedBorder)
           .accessibilityLabel("新建分支名")
           .accessibilityValue(newBranchName.isEmpty ? "未填写" : newBranchName)
-        Button("创建并切换") {
-          createAndSwitchBranch()
+        Button {
+          Task {
+            await createAndSwitchBranch()
+          }
+        } label: {
+          if store.isLocalRepositoryBranchOperationRunning {
+            Label("处理中", systemImage: "hourglass")
+          } else {
+            Text("创建并切换")
+          }
         }
         .controlSize(.small)
-        .disabled(newBranchName.trimmedForPublishing.isEmpty)
+        .disabled(
+          newBranchName.trimmedForPublishing.isEmpty
+            || store.isLocalRepositoryBranchOperationRunning
+        )
         .accessibilityLabel("创建并切换到新分支")
       }
     }
@@ -894,9 +912,13 @@ struct PublishDrawerView: View {
     }
   }
 
-  private func createAndSwitchBranch() {
-    store.createAndSwitchActiveProfileRepositoryBranch(name: newBranchName)
-    newBranchName = ""
+  @MainActor
+  private func createAndSwitchBranch() async {
+    let branchName = newBranchName
+    await store.createAndSwitchActiveProfileRepositoryBranch(name: branchName)
+    if store.activeProfile.branch == branchName.trimmedForPublishing {
+      newBranchName = ""
+    }
   }
 
   @MainActor
