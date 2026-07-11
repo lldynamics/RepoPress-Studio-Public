@@ -108,7 +108,7 @@ extension RepositoryWorkspaceView {
           ForEach(preview.issues) { issue in
             Label(issue.title, systemImage: "exclamationmark.triangle")
               .font(.caption)
-              .foregroundStyle(.orange)
+              .foregroundStyle(WorkbenchTheme.warning)
           }
         }
 
@@ -205,7 +205,7 @@ extension RepositoryWorkspaceView {
         } else if !readiness.warningIssues.isEmpty {
           Label("\(readiness.warningIssues.count) 项警告，执行前建议确认。", systemImage: "exclamationmark.triangle")
             .font(.caption)
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
         }
       }
       .padding(10)

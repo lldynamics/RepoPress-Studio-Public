@@ -94,7 +94,7 @@ struct SiteStarterInspectorView: View {
         ForEach(risks, id: \.self) { risk in
           Label(risk, systemImage: "exclamationmark.triangle")
             .font(.caption)
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
             .lineLimit(3)
         }
       }

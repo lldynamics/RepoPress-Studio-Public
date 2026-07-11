@@ -207,7 +207,7 @@ struct SiteMaintenanceCalendarSection: View {
             .font(.caption2)
             .lineLimit(1)
             .truncationMode(.tail)
-            .foregroundStyle(.blue)
+            .foregroundStyle(WorkbenchTheme.document)
         }
         .buttonStyle(.plain)
       }
@@ -234,7 +234,7 @@ struct SiteMaintenanceCalendarSection: View {
 
   private func maintenanceCalendarDayBackground(_ cell: MaintenanceCalendarCell) -> AnyShapeStyle {
     if cell.isToday {
-      return AnyShapeStyle(Color.blue.opacity(WorkbenchOpacity.selectionBackground))
+      return AnyShapeStyle(WorkbenchTheme.document.opacity(WorkbenchOpacity.selectionBackground))
     }
     if cell.isInDisplayedMonth {
       return WorkbenchBackgroundStyle.codeBlock
@@ -324,7 +324,7 @@ private struct MaintenanceCalendarBucketChart: View {
           GeometryReader { proxy in
             let width = proxy.size.width * CGFloat(bucket.articleCount) / CGFloat(maxArticleCount)
             RoundedRectangle(cornerRadius: WorkbenchCornerRadius.chartBar)
-              .fill(bucket.readyCount > 0 ? Color.blue.opacity(WorkbenchOpacity.badgeBackground) : Color.secondary.opacity(WorkbenchOpacity.chartSecondary))
+              .fill(bucket.readyCount > 0 ? WorkbenchTheme.document.opacity(WorkbenchOpacity.badgeBackground) : Color.secondary.opacity(WorkbenchOpacity.chartSecondary))
               .frame(width: max(width, bucket.articleCount == 0 ? 0 : 4))
               .frame(maxWidth: .infinity, alignment: .leading)
           }

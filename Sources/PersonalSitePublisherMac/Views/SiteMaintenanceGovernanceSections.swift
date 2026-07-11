@@ -44,7 +44,7 @@ struct SiteMaintenanceTaxonomySection: View {
         if !summary.overloadedEntries.isEmpty {
           Label("高频\(summary.title)：\(summary.overloadedEntries.map(\.name).joined(separator: ", "))", systemImage: "exclamationmark.triangle")
             .font(.caption)
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
         }
       }
     }
@@ -85,7 +85,7 @@ private struct TaxonomyDistributionChart: View {
           GeometryReader { proxy in
             let width = proxy.size.width * CGFloat(entry.count) / CGFloat(maxCount)
             RoundedRectangle(cornerRadius: WorkbenchCornerRadius.chartBar)
-              .fill(entry.count == 1 ? Color.orange.opacity(WorkbenchOpacity.chartEmphasis) : Color.green.opacity(WorkbenchOpacity.chartPrimary))
+              .fill(entry.count == 1 ? WorkbenchTheme.warning.opacity(WorkbenchOpacity.chartEmphasis) : WorkbenchTheme.success.opacity(WorkbenchOpacity.chartPrimary))
               .frame(width: max(width, 4))
               .frame(maxWidth: .infinity, alignment: .leading)
           }
@@ -135,7 +135,7 @@ struct SiteMaintenanceStaleArticleSection: View {
                 Spacer()
                 Text("\(item.daysSinceUpdate) 天未更新")
                   .font(.caption)
-                  .foregroundStyle(.orange)
+                  .foregroundStyle(WorkbenchTheme.warning)
               }
               Text(item.markdownPath)
                 .font(.caption.monospaced())

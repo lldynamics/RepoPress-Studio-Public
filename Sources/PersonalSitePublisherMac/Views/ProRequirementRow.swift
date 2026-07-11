@@ -17,7 +17,7 @@ struct ProRequirementRow: View {
           systemImage: requirement.isBlocking ? "lock.fill" : "checkmark.circle"
         )
         .font(.caption.weight(.semibold))
-        .foregroundStyle(requirement.isBlocking ? Color.orange : Color.green)
+        .foregroundStyle(requirement.isBlocking ? WorkbenchTheme.warning : WorkbenchTheme.success)
       }
 
       Text(requirement.quotaSummary)
@@ -30,7 +30,7 @@ struct ProRequirementRow: View {
 
       Text(requirement.nextStep)
         .font(.caption)
-        .foregroundStyle(requirement.isBlocking ? Color.orange : Color.secondary)
+        .foregroundStyle(requirement.isBlocking ? WorkbenchTheme.warning : Color.secondary)
     }
     .padding(.vertical, 4)
   }

@@ -198,7 +198,7 @@ struct MarkdownRevisionHistoryPanel: View {
             } else {
               Text("当前会话快照")
                 .font(.caption2.weight(.medium))
-                .foregroundStyle(.green)
+                .foregroundStyle(WorkbenchTheme.success)
             }
           }
           .padding(.vertical, 4)

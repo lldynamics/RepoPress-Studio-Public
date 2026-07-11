@@ -714,7 +714,7 @@ private struct ImageWorkbenchRow: View {
             if isCover {
               Label("封面", systemImage: "star.fill")
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .foregroundStyle(WorkbenchTheme.warning)
             }
           }
 

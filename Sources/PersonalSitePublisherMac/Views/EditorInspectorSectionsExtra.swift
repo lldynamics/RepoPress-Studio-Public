@@ -44,7 +44,7 @@ struct EditorPreflightSection: View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 8) {
         Image(systemName: summary.isClear ? "lock.open" : "lock.shield")
-          .foregroundStyle(summary.isClear ? Color.secondary : (summary.errorCount > 0 ? Color.red : Color.orange))
+          .foregroundStyle(summary.isClear ? Color.secondary : (summary.errorCount > 0 ? WorkbenchTheme.risk : WorkbenchTheme.warning))
           .frame(width: 16)
         VStack(alignment: .leading, spacing: 2) {
           Text(summary.statusTitle)

@@ -667,7 +667,7 @@ struct ReleaseQualityGateDetailView: View {
           HStack {
             Label("已记录证据", systemImage: "checkmark.circle")
               .font(.caption.weight(.semibold))
-              .foregroundStyle(.green)
+              .foregroundStyle(WorkbenchTheme.success)
             Spacer()
             Text(latest.recordedAt, style: .time)
               .font(.caption2)
@@ -741,7 +741,7 @@ struct ReleaseQualityGateDetailView: View {
               systemImage: "exclamationmark.triangle"
             )
               .font(.caption2)
-              .foregroundStyle(.orange)
+              .foregroundStyle(WorkbenchTheme.warning)
           }
 
           Button {
@@ -835,7 +835,7 @@ struct ReleaseQualityGateDetailView: View {
           ForEach(coverage.evidenceBackedTasks.prefix(6)) { item in
             HStack(alignment: .top, spacing: 8) {
               Image(systemName: "checkmark.circle")
-                .foregroundStyle(.green)
+                .foregroundStyle(WorkbenchTheme.success)
                 .frame(width: 16)
               VStack(alignment: .leading, spacing: 2) {
                 Text(item.task.title)
@@ -859,7 +859,7 @@ struct ReleaseQualityGateDetailView: View {
           ForEach(coverage.missingTasks.prefix(6)) { task in
             HStack(alignment: .top, spacing: 8) {
               Image(systemName: "circle")
-                .foregroundStyle(.orange)
+                .foregroundStyle(WorkbenchTheme.warning)
                 .frame(width: 16)
               VStack(alignment: .leading, spacing: 2) {
                 Text(task.title)

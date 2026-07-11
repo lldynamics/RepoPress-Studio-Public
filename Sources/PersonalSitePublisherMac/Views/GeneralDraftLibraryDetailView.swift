@@ -431,7 +431,7 @@ struct GeneralDraftLibraryDetailView: View {
             if asset.isMissingAltText {
               Label("缺 alt", systemImage: "text.quote")
                 .font(.caption2)
-                .foregroundStyle(.orange)
+                .foregroundStyle(WorkbenchTheme.warning)
             }
             if asset.isMissingCaption {
               Label("缺 caption", systemImage: "captions.bubble")

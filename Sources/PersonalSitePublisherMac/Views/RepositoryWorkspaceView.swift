@@ -127,7 +127,7 @@ struct RepositoryWorkspaceView: View {
         title: "尚未选择本地仓库",
         detail: "先选择静态站点仓库，才能扫描变更、写入文章或启动预览。",
         systemImage: "externaldrive.badge.questionmark",
-        tint: .orange,
+        tint: WorkbenchTheme.warning,
         actionTitle: "选择仓库",
         action: chooseRepository
       )
@@ -146,7 +146,7 @@ struct RepositoryWorkspaceView: View {
         title: "仓库配置阻断：\(issue.title)",
         detail: issue.message,
         systemImage: "xmark.octagon",
-        tint: .red,
+        tint: WorkbenchTheme.risk,
         actionTitle: "查看概览",
         action: { stage = .overview }
       )
@@ -155,7 +155,7 @@ struct RepositoryWorkspaceView: View {
         title: "远端有 \(report.remoteChangedFiles.count) 个变更",
         detail: "先审阅远端 diff，确认是否导入或合并后再写入与发布。",
         systemImage: "arrow.down.doc",
-        tint: .orange,
+        tint: WorkbenchTheme.warning,
         actionTitle: "审阅变更",
         action: { stage = .changes }
       )
@@ -164,7 +164,7 @@ struct RepositoryWorkspaceView: View {
         title: "本地有 \(report.changedFiles.count) 个变更",
         detail: "先确认文章、图片和配置 diff，再进入写入与发布。",
         systemImage: "arrow.triangle.2.circlepath",
-        tint: .orange,
+        tint: WorkbenchTheme.warning,
         actionTitle: "审阅变更",
         action: { stage = .changes }
       )
@@ -184,7 +184,7 @@ struct RepositoryWorkspaceView: View {
         title: "当前文章存在 \(readiness.blockingIssueCount) 个发布阻断项",
         detail: "先处理文章检查结果，再写入或线上发布。",
         systemImage: "checklist",
-        tint: .red,
+        tint: WorkbenchTheme.risk,
         actionTitle: "查看检查",
         action: { _ = store.focusDraft(draft.id, section: .contentHealth) }
       )
@@ -193,7 +193,7 @@ struct RepositoryWorkspaceView: View {
         title: "已具备继续发布的仓库上下文",
         detail: "下一步确认发布包、写入策略和线上发布方式。",
         systemImage: "paperplane",
-        tint: .green,
+        tint: WorkbenchTheme.success,
         actionTitle: "写入与发布",
         action: { stage = .publishing }
       )
@@ -455,7 +455,7 @@ struct RepositoryWorkspaceView: View {
         if blockingIssues.isEmpty && warningIssues.isEmpty {
           Label("线上 API 发布准备就绪。", systemImage: "checkmark.seal")
             .font(.caption)
-            .foregroundStyle(.green)
+            .foregroundStyle(WorkbenchTheme.success)
         } else {
           ForEach((blockingIssues + warningIssues).prefix(5)) { issue in
             HStack(alignment: .top, spacing: 8) {
@@ -673,7 +673,7 @@ struct RepositoryWorkspaceView: View {
       HStack(alignment: .firstTextBaseline) {
         Label("远端仓库已创建", systemImage: "checkmark.circle")
           .font(.caption.weight(.semibold))
-          .foregroundStyle(.green)
+          .foregroundStyle(WorkbenchTheme.success)
         Spacer()
         if let urlText = result.htmlURL ?? result.cloneURL, let url = URL(string: urlText) {
           Button {
@@ -767,7 +767,7 @@ struct RepositoryWorkspaceView: View {
       if issues.isEmpty {
         Label("批量线上 API 发布准备就绪。", systemImage: "checkmark.seal")
           .font(.caption)
-          .foregroundStyle(.green)
+          .foregroundStyle(WorkbenchTheme.success)
       } else {
         ForEach(issues.prefix(4)) { issue in
           HStack(alignment: .top, spacing: 8) {
@@ -822,7 +822,7 @@ struct RepositoryWorkspaceView: View {
     }
     .padding(8)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background((isDirectCommit ? Color.red : Color.orange).opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background((isDirectCommit ? WorkbenchTheme.risk : WorkbenchTheme.warning).opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   @ViewBuilder

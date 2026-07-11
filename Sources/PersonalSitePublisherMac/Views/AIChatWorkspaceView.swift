@@ -484,7 +484,7 @@ struct AIChatWorkspaceView: View {
     HStack(alignment: .center, spacing: 10) {
       Label(message, systemImage: "exclamationmark.triangle.fill")
         .font(.caption)
-        .foregroundStyle(.orange)
+        .foregroundStyle(WorkbenchTheme.warning)
         .lineLimit(2)
         .frame(maxWidth: .infinity, alignment: .leading)
 

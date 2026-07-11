@@ -405,7 +405,7 @@ struct PublishDrawerView: View {
       if issues.isEmpty {
         Label("当前检查通过。", systemImage: "checkmark.circle")
           .font(.caption)
-          .foregroundStyle(.green)
+          .foregroundStyle(WorkbenchTheme.success)
       } else {
         VStack(alignment: .leading, spacing: 6) {
           ForEach(issues.prefix(4)) { issue in
@@ -511,7 +511,7 @@ struct PublishDrawerView: View {
               if branch.isCurrent {
                 Label("当前", systemImage: "checkmark.circle.fill")
                   .font(.caption2)
-                  .foregroundStyle(.green)
+                  .foregroundStyle(WorkbenchTheme.success)
               } else {
                 Button("切换") {
                   store.switchActiveProfileRepositoryBranch(to: branch.name)
@@ -590,7 +590,7 @@ struct PublishDrawerView: View {
             }
             .buttonStyle(.borderless)
             .font(.caption2)
-            .foregroundStyle(.blue)
+            .foregroundStyle(WorkbenchTheme.document)
             .padding(.top, 4)
             .accessibilityLabel(showAllCommits ? "收起提交历史" : "显示更多提交历史")
           }
@@ -773,11 +773,11 @@ struct PublishDrawerView: View {
         if progress.stage == .completed {
           Text("已完成")
             .font(.caption2)
-            .foregroundStyle(.green)
+            .foregroundStyle(WorkbenchTheme.success)
         } else if progress.stage == .failed {
           Text("已失败")
             .font(.caption2)
-            .foregroundStyle(.red)
+            .foregroundStyle(WorkbenchTheme.risk)
         }
       }
     } else {

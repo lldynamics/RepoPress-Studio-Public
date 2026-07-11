@@ -746,11 +746,11 @@ struct WorkspaceRail: View {
         } label: {
           Image(systemName: section.systemImage)
             .frame(width: 30, height: 30)
-            .foregroundStyle(store.selectedSection == section ? Color.accentColor : Color.secondary)
+            .foregroundStyle(store.selectedSection == section ? WorkbenchTheme.primary : Color.secondary)
             .background {
               if store.selectedSection == section {
                 RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-                  .fill(Color.accentColor.opacity(WorkbenchOpacity.accentBackground))
+                  .fill(WorkbenchTheme.primary.opacity(WorkbenchOpacity.accentBackground))
               }
             }
         }
@@ -865,12 +865,12 @@ struct WorkspaceContextSidebar: View {
         .background {
           if isSelected {
             RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-              .fill(Color.accentColor.opacity(WorkbenchOpacity.accentBackground))
+              .fill(WorkbenchTheme.primary.opacity(WorkbenchOpacity.accentBackground))
           }
         }
     }
     .buttonStyle(.plain)
-    .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+    .foregroundStyle(isSelected ? WorkbenchTheme.primary : Color.primary)
     .padding(.horizontal, 8)
   }
 }
@@ -959,7 +959,7 @@ struct WorkspaceContextSidebar: View {
                 .foregroundStyle(delta > 0 ? .green : .red)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background((delta > 0 ? Color.green : Color.red).opacity(WorkbenchOpacity.accentBackground), in: Capsule())
+                .background((delta > 0 ? WorkbenchTheme.success : WorkbenchTheme.risk).opacity(WorkbenchOpacity.accentBackground), in: Capsule())
                 .scaleEffect(isDraftCountPunching ? 1.06 : 1)
                 .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isDraftCountPunching)
                 .transition(.scale.combined(with: .opacity))
@@ -1461,13 +1461,13 @@ struct WorkspaceContextSidebar: View {
         if store.hasUnsavedChanges {
           Image(systemName: "circle.fill")
             .font(.system(size: 5))
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
             .accessibilityHidden(true)
         }
         if store.hasUnsavedChanges {
           Text(store.lastSaveStatus)
             .font(.caption2)
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
             .lineLimit(1)
         } else {
           Text(store.lastSaveStatus)

@@ -24,7 +24,7 @@ struct SiteMaintenanceSnapshotHeader: View {
       if isStale {
         Label("报告可能已过期", systemImage: "exclamationmark.triangle")
           .font(.caption)
-          .foregroundStyle(.orange)
+          .foregroundStyle(WorkbenchTheme.warning)
       }
 
       Button {

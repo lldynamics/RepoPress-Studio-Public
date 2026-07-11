@@ -49,13 +49,13 @@ struct MacMarkdownEditorToolbar: View {
         if hasUnsavedChanges {
           Image(systemName: "circle.fill")
             .font(.system(size: 6))
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
             .accessibilityHidden(true)
         }
         if hasUnsavedChanges {
           Text(lastSaveStatus)
             .font(.caption)
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
             .lineLimit(1)
         } else {
           Text(lastSaveStatus)
@@ -172,10 +172,10 @@ struct MacMarkdownEditorToolbar: View {
             .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(editorDisplayMode == mode ? Color.accentColor : Color.secondary)
+        .foregroundStyle(editorDisplayMode == mode ? WorkbenchTheme.primary : Color.secondary)
         .background(
           RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-            .fill(editorDisplayMode == mode ? Color.accentColor.opacity(WorkbenchOpacity.accentBackground) : Color.clear)
+            .fill(editorDisplayMode == mode ? WorkbenchTheme.primary.opacity(WorkbenchOpacity.accentBackground) : Color.clear)
         )
         .accessibilityLabel("编辑器模式：\(mode.displayName)")
         .accessibilityValue(editorDisplayMode == mode ? "已选择" : "未选择")

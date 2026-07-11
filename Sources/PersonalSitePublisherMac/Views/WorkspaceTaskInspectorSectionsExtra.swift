@@ -323,7 +323,7 @@ struct ReleaseQualityGateInspectorView: View {
         VStack(alignment: .leading, spacing: 4) {
           Label("待采集截图", systemImage: "camera.viewfinder")
             .font(.caption.weight(.semibold))
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
           ForEach(Array(missingScreenshots.prefix(4)), id: \.id) { requirement in
             Text("\(requirement.screenTitle.nilIfEmpty ?? requirement.id) · \(requirement.targetFileName.nilIfEmpty ?? "未配置目标文件")")
               .font(.caption)
@@ -338,7 +338,7 @@ struct ReleaseQualityGateInspectorView: View {
         VStack(alignment: .leading, spacing: 4) {
           Label(item.title, systemImage: item.status.systemImage)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(.red)
+            .foregroundStyle(WorkbenchTheme.risk)
           Text(item.message)
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -584,7 +584,7 @@ struct MaintenanceTaskInspector: View {
         if store.isSiteMaintenanceSnapshotStale {
           Label("维护报告可能已过期，建议刷新。", systemImage: "exclamationmark.triangle")
             .font(.caption)
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
         }
 
         Button {

@@ -186,7 +186,7 @@ struct EditorSocialPreviewSection: View {
         if cachePresentation.needsManualRefresh {
           Label(cachePresentation.state.displayName, systemImage: cachePresentation.state.systemImage)
             .font(.caption)
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
         }
         Button {
           store.refreshSEOSocialPreview(for: draft)
@@ -445,7 +445,7 @@ struct EditorSocialPreviewSection: View {
       ForEach(Array(sitemap.entries.prefix(5))) { entry in
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Image(systemName: entry.isSelectedDraft ? "checkmark.circle.fill" : "circle")
-            .foregroundStyle(entry.isSelectedDraft ? Color.green : Color.secondary)
+            .foregroundStyle(entry.isSelectedDraft ? WorkbenchTheme.success : Color.secondary)
             .frame(width: 16)
           VStack(alignment: .leading, spacing: 2) {
             Text(entry.title)
@@ -566,7 +566,7 @@ struct EditorSocialPreviewSection: View {
   ) -> some View {
     Label("\(title) \(value)", systemImage: isWithinBudget ? "checkmark.circle" : "exclamationmark.triangle")
       .font(.caption2)
-      .foregroundStyle(isWithinBudget ? Color.secondary : Color.orange)
+      .foregroundStyle(isWithinBudget ? Color.secondary : WorkbenchTheme.warning)
   }
 
   private func socialShareCopySection(_ items: [SEOSocialShareCopyItem]) -> some View {

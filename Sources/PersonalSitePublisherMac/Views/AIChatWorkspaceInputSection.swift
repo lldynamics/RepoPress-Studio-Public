@@ -310,7 +310,7 @@ struct AIChatComposerView: View {
       if let imageIssue = presentation.sendReadiness.imageAttachmentIssue {
         Label(imageIssue, systemImage: "exclamationmark.triangle")
         .font(.caption)
-        .foregroundStyle(.orange)
+        .foregroundStyle(WorkbenchTheme.warning)
       }
     }
   }
