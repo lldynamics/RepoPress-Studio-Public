@@ -315,10 +315,30 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift" \
   "Sources/PersonalSitePublisherMac/Views/EditorInspectorSections.swift"
 
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/FirstRunSetupView.swift" \
+  ".accessibilityLabel(\"首次设置\")" \
+  "first-run setup must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/FirstRunSetupView.swift" \
+  ".accessibilityLabel(\"设置进度\")" \
+  "first-run setup must expose accessible progress"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/FirstRunSetupView.swift" \
+  ".accessibilityHint(\"选择当前网站使用的静态站点生成器\")" \
+  "first-run generator picker must expose an accessibility hint"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/FirstRunSetupView.swift" \
+  ".keyboardShortcut(.defaultAction)" \
+  "first-run setup must provide a default keyboard action"
+
 textfield_gaps="$(
   perl -0ne 'while(/TextField\([^\n]*(?:\n[^\n]*){0,8}/g){$m=$&; if($m !~ /accessibilityLabel/){$prefix=substr($_,0,pos($_)); $line=1+($prefix=~tr/\n//); print "$ARGV:$line\n"}}' \
     "$ROOT_DIR"/Sources/PersonalSitePublisherMac/Views/*.swift
 )"
 [[ -z "$textfield_gaps" ]] || fail "text fields missing accessibility labels: $textfield_gaps"
 
-echo "accessibility gate: labels, values, hints, keyboard shortcuts, command routing, status light, settings, editor, site starter, diff review, and publish recovery verified"
+echo "accessibility gate: labels, values, hints, keyboard shortcuts, command routing, first-run setup, status light, settings, editor, site starter, diff review, and publish recovery verified"
