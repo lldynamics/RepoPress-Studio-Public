@@ -50,6 +50,11 @@ final class WorkspaceModelsTests: XCTestCase {
       WorkspaceNavigationPresentation.productReadinessSections,
       WorkspaceSection.allCases
     )
+    XCTAssertEqual(
+      WorkspaceVisibilityPolicy.productionRailSections,
+      WorkspaceSection.allCases.filter { $0 != .releaseReadiness }
+    )
+    XCTAssertEqual(WorkspaceVisibilityPolicy.developerDiagnosticsSections, [.releaseReadiness])
     XCTAssertTrue(WorkspaceNavigationPresentation.sections(for: .sidebarList).isEmpty)
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuItems.map(\.keyboardShortcutLabel),

@@ -314,11 +314,19 @@ struct ReleaseQualityGateScreenshotGate {
     }
 
   private func relativePath(_ url: URL, from root: URL) -> String {
-    let rootPath = root.standardizedFileURL.path
-    let path = url.standardizedFileURL.path
-    guard path.hasPrefix(rootPath) else {
-      return path
+    let rootPath = root.path
+    let path = url.path
+    if path == rootPath || path.hasPrefix(rootPath + "/") {
+      return String(path.dropFirst(rootPath.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
-    return String(path.dropFirst(rootPath.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+    let normalizedRootPath = root.standardizedFileURL.path
+    let normalizedPath = url.standardizedFileURL.path
+    guard normalizedPath == normalizedRootPath
+      || normalizedPath.hasPrefix(normalizedRootPath + "/") else {
+      return normalizedPath
+    }
+    return String(normalizedPath.dropFirst(normalizedRootPath.count))
+      .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
   }
 }

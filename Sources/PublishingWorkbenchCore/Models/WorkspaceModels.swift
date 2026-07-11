@@ -165,6 +165,10 @@ public enum WorkspaceVisibilityPolicy {
     .releaseReadiness
   ]
 
+  public static let productionRailSections = WorkspaceSection.allCases.filter { section in
+    !developerDiagnosticsSections.contains(section)
+  }
+
   public static let productReadinessSections = WorkspaceSection.allCases
 }
 

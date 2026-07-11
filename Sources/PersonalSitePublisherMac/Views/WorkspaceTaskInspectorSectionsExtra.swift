@@ -309,8 +309,12 @@ struct ReleaseQualityGateInspectorView: View {
       Button {
         store.refreshReleaseQualityGate()
       } label: {
-        Label("刷新门禁", systemImage: "arrow.clockwise")
+        Label(
+          store.isReleaseQualityGateRefreshing ? "刷新中" : "刷新门禁",
+          systemImage: store.isReleaseQualityGateRefreshing ? "hourglass" : "arrow.clockwise"
+        )
       }
+      .disabled(store.isReleaseQualityGateRefreshing)
 
       if let message = store.releaseQualityGateMessage {
         Text(message)
@@ -346,9 +350,6 @@ struct ReleaseQualityGateInspectorView: View {
         }
         .padding(.vertical, 3)
       }
-    }
-    .onAppear {
-      store.refreshReleaseQualityGate()
     }
   }
 }

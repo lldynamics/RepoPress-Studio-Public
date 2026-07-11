@@ -39,6 +39,7 @@ extension WorkbenchStore {
   public var latestGeneralDraftBackupWriteResult: GeneralDraftBackupWriteResult? { publishingStore.latestGeneralDraftBackupWriteResult }
   public var releaseQualityGateReport: ReleaseQualityGateReport { publishingStore.releaseQualityGateReport }
   public var releaseQualityGateMessage: String? { publishingStore.releaseQualityGateMessage }
+  public var isReleaseQualityGateRefreshing: Bool { publishingStore.isReleaseQualityGateRefreshing }
   public var externalVerificationEvidenceRecords: [ReleaseExternalVerificationEvidenceRecord] { publishingStore.externalVerificationEvidenceRecords }
 }
 
