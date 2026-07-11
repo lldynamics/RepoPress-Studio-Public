@@ -17,7 +17,7 @@ struct DraftEditorWindowView: View {
             store.drafts.first(where: { $0.id == draftID }) ?? fallbackDraft
           },
           set: { updatedDraft in
-            store.updateDraft(updatedDraft)
+            store.updateDraftFromEditor(updatedDraft)
           }
         )
 

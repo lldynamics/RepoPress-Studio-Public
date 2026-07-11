@@ -941,7 +941,7 @@ struct EditorCenterColumn: View {
       } else if let fallbackDraft = publishingState.selectedDraft {
         let draft = Binding<ArticleDraft>(
           get: { publishingState.selectedDraft ?? fallbackDraft },
-          set: { store.updateDraft($0) }
+          set: { store.updateDraftFromEditor($0) }
         )
 
         MacMarkdownComposerView(draft: draft, store: store)
@@ -996,7 +996,7 @@ struct MetadataColumn: View {
     } else if let fallbackDraft = store.selectedDraft {
       let draft = Binding<ArticleDraft>(
         get: { store.selectedDraft ?? fallbackDraft },
-        set: { store.updateDraft($0) }
+        set: { store.updateDraftFromEditor($0) }
       )
       WorkspaceTaskInspector(
         section: store.selectedSection,

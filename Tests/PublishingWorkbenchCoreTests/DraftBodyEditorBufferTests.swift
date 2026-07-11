@@ -3,6 +3,44 @@ import XCTest
 
 @MainActor
 final class DraftBodyEditorBufferTests: XCTestCase {
+  func testStaleEditorMetadataIsRejectedInsteadOfOverwritingNewerWindow() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let original = try XCTUnwrap(store.selectedDraft)
+    var firstWindow = original
+    var staleWindow = original
+
+    firstWindow.title = "主窗口的新标题"
+    XCTAssertTrue(store.updateDraftFromEditor(firstWindow))
+
+    staleWindow.summary = "独立窗口的陈旧摘要"
+    XCTAssertFalse(store.updateDraftFromEditor(staleWindow))
+
+    let current = try XCTUnwrap(store.drafts.first(where: { $0.id == original.id }))
+    XCTAssertEqual(current.title, "主窗口的新标题")
+    XCTAssertEqual(current.summary, original.summary)
+    XCTAssertTrue(store.publishActionMessage?.contains("陈旧元数据未写入") == true)
+    XCTAssertTrue(store.lastSaveStatus.contains("编辑冲突"))
+  }
+
+  func testRefreshedEditorMetadataCanSaveAfterConflict() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let original = try XCTUnwrap(store.selectedDraft)
+    var firstWindow = original
+    var staleWindow = original
+    firstWindow.title = "另一窗口的新标题"
+    XCTAssertTrue(store.updateDraftFromEditor(firstWindow))
+    staleWindow.summary = "第一次尝试"
+    XCTAssertFalse(store.updateDraftFromEditor(staleWindow))
+
+    var refreshed = try XCTUnwrap(store.drafts.first(where: { $0.id == original.id }))
+    refreshed.summary = "同步后的摘要"
+    XCTAssertTrue(store.updateDraftFromEditor(refreshed))
+
+    let current = try XCTUnwrap(store.drafts.first(where: { $0.id == original.id }))
+    XCTAssertEqual(current.title, "另一窗口的新标题")
+    XCTAssertEqual(current.summary, "同步后的摘要")
+  }
+
   func testImmediateSaveFlushesStagedBody() throws {
     let persistenceURL = try temporaryPersistenceURL(prefix: "DraftBodyBufferSave")
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))

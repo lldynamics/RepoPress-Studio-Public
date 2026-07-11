@@ -190,6 +190,27 @@ extension WorkbenchStore {
     }
   }
 
+  /// Applies a draft value originating from a live editor binding.
+  ///
+  /// Independent windows can retain an older value while another window edits
+  /// the same article. The timestamp is the editor's optimistic-lock token: a
+  /// stale metadata write is rejected instead of replacing newer fields. Body
+  /// text has its own revisioned buffer and remains protected there.
+  @discardableResult
+  public func updateDraftFromEditor(_ draft: ArticleDraft) -> Bool {
+    guard let current = drafts.first(where: { $0.id == draft.id }) else {
+      updateDraft(draft)
+      return true
+    }
+    guard draft.updatedAt == current.updatedAt else {
+      setPublishActionMessage("另一窗口已更新这篇文章，刚才的陈旧元数据未写入；编辑器已同步到最新版本。")
+      persistenceStore.markStatus("编辑冲突：已保留另一窗口的最新版本")
+      return false
+    }
+    updateDraft(draft)
+    return true
+  }
+
   public func deleteSelectedDraft() {
     publishingStore.deleteSelectedDraft(store: self)
     invalidateDraftDerivedCaches()
