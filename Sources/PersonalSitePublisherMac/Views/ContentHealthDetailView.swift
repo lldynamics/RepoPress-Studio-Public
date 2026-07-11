@@ -75,7 +75,7 @@ struct ContentHealthDetailView: View {
       ) {
         MetricTile(title: "错误", value: "\(snapshot.errorCount)", semantic: .blocking)
         MetricTile(title: "警告", value: "\(snapshot.warningCount)", semantic: .warning)
-        MetricTile(title: "AI 可修复", value: "\(snapshot.aiFixQueueItems.count)", systemImage: "sparkles", tint: .purple)
+        MetricTile(title: "AI 可修复", value: "\(snapshot.aiFixQueueItems.count)", systemImage: "sparkles", tint: WorkbenchTheme.inventory)
         MetricTile(title: "通过文章", value: "\(snapshot.passingDraftCount)", semantic: .passed)
       }
 
@@ -213,7 +213,7 @@ struct ContentHealthDetailView: View {
         .foregroundStyle(warningCount > 0 ? .orange : .secondary)
       if isSelected {
         Image(systemName: "chevron.right")
-          .foregroundStyle(Color.accentColor)
+          .foregroundStyle(WorkbenchTheme.primary)
           .font(.caption.weight(.semibold))
       } else {
         Image(systemName: "chevron.right")
@@ -225,7 +225,7 @@ struct ContentHealthDetailView: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .background {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-        .fill(isSelected ? AnyShapeStyle(Color.accentColor.opacity(WorkbenchOpacity.accentBackground)) : WorkbenchBackgroundStyle.subtle)
+        .fill(isSelected ? AnyShapeStyle(WorkbenchTheme.primary.opacity(WorkbenchOpacity.accentBackground)) : WorkbenchBackgroundStyle.subtle)
     }
   }
 

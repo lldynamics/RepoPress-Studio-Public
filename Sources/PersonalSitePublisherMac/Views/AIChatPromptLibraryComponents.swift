@@ -186,7 +186,7 @@ struct AIChatPromptLibraryEditorActionRow: View {
   var body: some View {
     HStack(alignment: .top, spacing: 10) {
       Image(systemName: action.promptLibrarySystemImage)
-        .foregroundStyle(Color.accentColor)
+        .foregroundStyle(WorkbenchTheme.primary)
         .frame(width: 20)
       VStack(alignment: .leading, spacing: 4) {
         Text(action.displayName)
@@ -212,7 +212,7 @@ struct AIChatPromptLibraryWorkflowRow: View {
   var body: some View {
     HStack(alignment: .top, spacing: 10) {
       Image(systemName: guide.systemImage)
-        .foregroundStyle(Color.accentColor)
+        .foregroundStyle(WorkbenchTheme.primary)
         .frame(width: 20)
       VStack(alignment: .leading, spacing: 4) {
         Text(guide.title)

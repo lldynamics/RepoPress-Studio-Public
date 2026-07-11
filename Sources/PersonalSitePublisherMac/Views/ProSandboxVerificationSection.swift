@@ -45,9 +45,9 @@ struct ProSandboxVerificationPlainContent: View {
 
       HStack(spacing: 12) {
         Label("\(sandboxSummary.verifiedItems.count) 项已有证据", systemImage: "checkmark.circle")
-          .foregroundStyle(.green)
+          .foregroundStyle(WorkbenchTheme.success)
         Label("\(sandboxSummary.remainingItems.count) 项待核验", systemImage: sandboxSummary.remainingItems.isEmpty ? "checkmark.seal" : "testtube.2")
-          .foregroundStyle(sandboxSummary.remainingItems.isEmpty ? Color.green : Color.orange)
+          .foregroundStyle(sandboxSummary.remainingItems.isEmpty ? WorkbenchTheme.success : WorkbenchTheme.warning)
       }
       .font(.caption)
 

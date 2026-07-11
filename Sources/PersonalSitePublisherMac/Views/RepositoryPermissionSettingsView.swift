@@ -91,7 +91,7 @@ struct RepositoryPermissionSettingsView: View {
               "权限检查来自其它仓库，请重新检查当前仓库",
               systemImage: "exclamationmark.triangle"
             )
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
           } else {
             Text("保存 Token 后在这里检查当前仓库是否具备写入权限，并复制上架或发布排查需要的证据包。")
               .font(.caption)

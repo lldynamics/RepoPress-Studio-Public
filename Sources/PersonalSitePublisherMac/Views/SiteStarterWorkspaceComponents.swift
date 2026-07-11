@@ -284,7 +284,7 @@ struct SiteStarterLocalDirectoryStep: View {
       if let path = siteStarterResultProfilePath {
         Divider()
         Label("已生成到 \(path)", systemImage: "checkmark.circle")
-          .foregroundStyle(.green)
+          .foregroundStyle(WorkbenchTheme.success)
           .font(.caption)
           .lineLimit(2)
       }
@@ -292,7 +292,7 @@ struct SiteStarterLocalDirectoryStep: View {
       if let importPath = siteStarterImportProfilePath {
         Divider()
         Label("已导入 \(importPath)", systemImage: "checkmark.circle")
-          .foregroundStyle(.green)
+          .foregroundStyle(WorkbenchTheme.success)
           .font(.caption)
           .lineLimit(2)
         if let importedDraftCount {
@@ -386,7 +386,7 @@ struct SiteStarterGitHubStep: View {
       if let repositoryName = remoteRepositoryName {
         Divider()
         Label(repositoryName, systemImage: "checkmark.circle")
-          .foregroundStyle(.green)
+          .foregroundStyle(WorkbenchTheme.success)
         Text(remoteRepositoryHTMLURL ?? remoteRepositoryURL ?? repositoryName)
           .font(.caption.monospaced())
           .foregroundStyle(.secondary)
@@ -429,7 +429,7 @@ struct SiteStarterGenerateStep: View {
       if let createdProfileText, let createdProfileKindText {
         Divider()
         Label("\(createdProfileText) · \(createdProfileKindText)", systemImage: "checkmark.circle")
-          .foregroundStyle(.green)
+          .foregroundStyle(WorkbenchTheme.success)
         if let fileCount = createdFileCount {
           InspectorStatRow(title: "创建文件", value: "\(fileCount)", systemImage: "doc.badge.plus")
         }
@@ -444,7 +444,7 @@ struct SiteStarterGenerateStep: View {
       if let importedArticleCount {
         Divider()
         Label("\(createdProfileText ?? "仓库") · \(createdProfileKindText ?? "站点")", systemImage: "checkmark.circle")
-          .foregroundStyle(.green)
+          .foregroundStyle(WorkbenchTheme.success)
         InspectorStatRow(title: "导入文章", value: "\(importedArticleCount)", systemImage: "doc.text")
         if let skippedPathCount {
           InspectorStatRow(title: "跳过文件", value: "\(skippedPathCount)", systemImage: "exclamationmark.triangle")
@@ -479,7 +479,7 @@ struct SiteStarterFirstPushStep: View {
       if let pushBranch, let pushSHA {
         Divider()
         Label("\(pushBranch) · \(pushSHA.prefix(8))", systemImage: "checkmark.circle")
-          .foregroundStyle(.green)
+          .foregroundStyle(WorkbenchTheme.success)
         if let committedPathCount {
           InspectorStatRow(title: "文件", value: "\(committedPathCount)", systemImage: "shippingbox")
         }

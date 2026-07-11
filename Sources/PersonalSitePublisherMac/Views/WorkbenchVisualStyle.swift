@@ -35,6 +35,13 @@ enum WorkbenchTheme {
 
   static let `default` = jiangnanSpring
 
+  static var primary: Color { `default`.primary }
+  static var success: Color { `default`.success }
+  static var warning: Color { `default`.warning }
+  static var risk: Color { `default`.risk }
+  static var document: Color { `default`.document }
+  static var inventory: Color { `default`.inventory }
+
   private static func adaptive(
     light: (red: CGFloat, green: CGFloat, blue: CGFloat),
     dark: (red: CGFloat, green: CGFloat, blue: CGFloat)

@@ -170,9 +170,9 @@ struct WorkspaceTaskSEOSection: View {
                 .foregroundStyle(.secondary)
               HStack(spacing: 8) {
                 Label(card.titleBudgetText, systemImage: card.isTitleWithinBudget ? "checkmark.circle" : "exclamationmark.triangle")
-                  .foregroundStyle(card.isTitleWithinBudget ? Color.secondary : Color.orange)
+                  .foregroundStyle(card.isTitleWithinBudget ? Color.secondary : WorkbenchTheme.warning)
                 Label(card.descriptionBudgetText, systemImage: card.isDescriptionWithinBudget ? "checkmark.circle" : "exclamationmark.triangle")
-                  .foregroundStyle(card.isDescriptionWithinBudget ? Color.secondary : Color.orange)
+                  .foregroundStyle(card.isDescriptionWithinBudget ? Color.secondary : WorkbenchTheme.warning)
                 if let imageAspectRatio = card.imageAspectRatio {
                   Label(imageAspectRatio, systemImage: "aspectratio")
                     .foregroundStyle(.secondary)
@@ -534,7 +534,7 @@ struct WorkspaceTaskChecksSection: View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 8) {
         Image(systemName: summary.isClear ? "lock.open" : "lock.shield")
-          .foregroundStyle(summary.isClear ? Color.secondary : (summary.errorCount > 0 ? Color.red : Color.orange))
+          .foregroundStyle(summary.isClear ? Color.secondary : (summary.errorCount > 0 ? WorkbenchTheme.risk : WorkbenchTheme.warning))
           .frame(width: 16)
         VStack(alignment: .leading, spacing: 2) {
           Text(summary.statusTitle)

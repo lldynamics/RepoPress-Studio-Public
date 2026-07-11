@@ -566,7 +566,7 @@ struct ReleaseHistoryDetailView: View {
       if !readiness.missingRequirements.isEmpty {
         Text("待补齐：\(readiness.missingRequirements.joined(separator: "、"))")
           .font(.caption)
-          .foregroundStyle(.orange)
+          .foregroundStyle(WorkbenchTheme.warning)
       }
 
       if store.isDeploymentStatusChecking {

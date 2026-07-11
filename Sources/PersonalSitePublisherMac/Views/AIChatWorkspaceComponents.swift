@@ -389,7 +389,7 @@ struct AIChatMessageRow: View {
 
   private var backgroundStyle: AnyShapeStyle {
     if message.role == .user {
-      return AnyShapeStyle(Color.accentColor.opacity(WorkbenchOpacity.selectionBackground))
+      return AnyShapeStyle(WorkbenchTheme.primary.opacity(WorkbenchOpacity.selectionBackground))
     }
     return AnyShapeStyle(Color.secondary.opacity(WorkbenchOpacity.noticeBackground))
   }

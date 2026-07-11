@@ -8,7 +8,7 @@ struct ProBlockNoticeRow: View {
     VStack(alignment: .leading, spacing: 6) {
       Label("刚才受限：\(notice.feature.displayName)", systemImage: notice.feature.systemImage)
         .font(.caption.weight(.semibold))
-        .foregroundStyle(.orange)
+        .foregroundStyle(WorkbenchTheme.warning)
 
       Text(notice.message)
         .font(.caption)
@@ -17,7 +17,7 @@ struct ProBlockNoticeRow: View {
 
       Text(notice.nextStep)
         .font(.caption)
-        .foregroundStyle(.orange)
+        .foregroundStyle(WorkbenchTheme.warning)
     }
     .padding(8)
     .frame(maxWidth: .infinity, alignment: .leading)

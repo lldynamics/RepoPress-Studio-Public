@@ -260,7 +260,7 @@ struct ContentMigrationAssistantView: View {
         ForEach(plan.warnings, id: \.self) { warning in
           Label(warning, systemImage: "exclamationmark.triangle")
             .font(.caption)
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
         }
       }
     }
