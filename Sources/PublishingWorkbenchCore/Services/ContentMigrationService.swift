@@ -93,13 +93,15 @@ public enum ContentMigrationError: LocalizedError {
   }
 }
 
-public struct ContentMigrationService {
+public struct ContentMigrationService: Sendable {
   private static let maximumSourceFileBytes = 100 * 1_024 * 1_024
   private static let maximumMarkdownFileCount = 10_000
-  private let fileManager: FileManager
+  private let fileSystem: SendableFileManager
+
+  private var fileManager: FileManager { fileSystem.value }
 
   public init(fileManager: FileManager = .default) {
-    self.fileManager = fileManager
+    self.fileSystem = SendableFileManager(fileManager)
   }
 
   public func makePlanAsync(sourceURL: URL, profile: SiteProfile) async throws -> ContentMigrationPlan {

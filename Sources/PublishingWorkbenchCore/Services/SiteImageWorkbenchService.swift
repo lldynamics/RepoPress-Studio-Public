@@ -5,11 +5,13 @@ import UniformTypeIdentifiers
 #if canImport(Darwin)
 import Darwin
 #endif
-public struct SiteImageWorkbenchService {
-  private let fileManager: FileManager
+public struct SiteImageWorkbenchService: Sendable {
+  private let fileSystem: SendableFileManager
   private let cwebPExecutableOverride: URL?
   private let cwebPTimeout: TimeInterval
   private let prefersCWebP: Bool
+
+  private var fileManager: FileManager { fileSystem.value }
 
   public static var supportsWebPEncoding: Bool {
     supportsImageIOWebPEncoding || cwebPExecutableURL != nil
@@ -61,7 +63,7 @@ public struct SiteImageWorkbenchService {
     cwebPTimeout: TimeInterval = 30,
     prefersCWebP: Bool = false
   ) {
-    self.fileManager = fileManager
+    self.fileSystem = SendableFileManager(fileManager)
     self.cwebPExecutableOverride = cwebPExecutableURL
     self.cwebPTimeout = max(0.1, cwebPTimeout)
     self.prefersCWebP = prefersCWebP

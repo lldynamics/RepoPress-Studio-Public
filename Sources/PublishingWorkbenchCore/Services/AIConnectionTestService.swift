@@ -125,7 +125,7 @@ public enum AIConnectionTestError: LocalizedError, Equatable {
   }
 }
 
-public struct AIConnectionTestService {
+public struct AIConnectionTestService: Sendable {
   private let client: AIChatCompletionClient
 
   public init(client: AIChatCompletionClient = AIChatCompletionClient()) {

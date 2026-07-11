@@ -1,14 +1,16 @@
 import Foundation
 
-public struct SiteStarterService {
-  private let fileManager: FileManager
+public struct SiteStarterService: Sendable {
+  private let fileSystem: SendableFileManager
   private let gitCommandRunner: GitCommandRunner
+
+  private var fileManager: FileManager { fileSystem.value }
 
   public init(
     fileManager: FileManager = .default,
     gitCommandRunner: GitCommandRunner = GitCommandRunner(timeout: 60)
   ) {
-    self.fileManager = fileManager
+    self.fileSystem = SendableFileManager(fileManager)
     self.gitCommandRunner = gitCommandRunner
   }
 
