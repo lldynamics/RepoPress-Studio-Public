@@ -2065,18 +2065,50 @@
         }
       }
     },
-    "可切换分支": {
+    "本地工作分支": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Available Branches"
+            "value": "Local Working Branches"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "可切换分支"
+            "value": "本地工作分支"
+          }
+        }
+      }
+    },
+    "创建并切换": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create and Switch"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建并切换"
+          }
+        }
+      }
+    },
+    "切换或新建分支前，工作区必须没有未提交变更；成功后会同步更新发布目标。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Before switching or creating a branch, commit or discard all working tree changes. The publish target is updated after a successful switch."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换或新建分支前，工作区必须没有未提交变更；成功后会同步更新发布目标。"
           }
         }
       }

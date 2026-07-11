@@ -45,15 +45,15 @@ extension WorkbenchStore {
     await repositoryStore.createRemoteRepositoryForActiveProfile(privateRepository: privateRepository, store: self)
   }
 
-  public func switchActiveProfileRepositoryBranch(to branchName: String) {
-    repositoryStore.switchActiveProfileRepositoryBranch(to: branchName, store: self)
+  public func switchActiveProfileRepositoryBranch(to branchName: String) async {
+    await repositoryStore.switchActiveProfileRepositoryBranch(to: branchName, store: self)
   }
 
   public func createAndSwitchActiveProfileRepositoryBranch(
     name branchName: String,
     from sourceBranch: String? = nil
-  ) {
-    repositoryStore.createAndSwitchActiveProfileRepositoryBranch(
+  ) async {
+    await repositoryStore.createAndSwitchActiveProfileRepositoryBranch(
       name: branchName,
       from: sourceBranch,
       store: self

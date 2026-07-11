@@ -57,6 +57,9 @@ extension WorkbenchStore {
   public var remoteRepositoryReviewWithdrawalResult: RemoteRepositoryReviewWithdrawalResult? { repositoryStore.remoteRepositoryReviewWithdrawalResult }
   public var isRemoteRepositoryChecking: Bool { repositoryStore.isRemoteRepositoryChecking }
   public var isRemoteRepositoryPublishing: Bool { repositoryStore.isRemoteRepositoryPublishing }
+  public var isLocalRepositoryBranchOperationRunning: Bool {
+    repositoryStore.isLocalRepositoryBranchOperationRunning
+  }
   public var repositoryAutoSyncSettings: RepositoryAutoSyncSettings { repositoryStore.repositoryAutoSyncSettings }
   public var repositoryAutoSyncState: RepositoryAutoSyncState { repositoryStore.repositoryAutoSyncState }
 }

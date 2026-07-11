@@ -290,6 +290,7 @@ public struct RepositoryCommitInfo: Identifiable, Codable, Hashable, Sendable {
 public enum LocalRepositoryServiceError: Error, LocalizedError, Sendable {
   case repositoryUnavailable
   case invalidBranchName
+  case workingTreeHasChanges
   case commandFailed(terminated: Int32, output: String)
 
   public var errorDescription: String? {
@@ -298,6 +299,8 @@ public enum LocalRepositoryServiceError: Error, LocalizedError, Sendable {
       return "未找到可用的本地仓库路径。"
     case .invalidBranchName:
       return "分支名无效。"
+    case .workingTreeHasChanges:
+      return "工作区存在未提交变更。请先提交、暂存处理或还原这些变更，再切换分支。"
     case .commandFailed(let terminated, let output):
       let normalizedOutput = output.isEmpty ? "请检查分支与权限设置。" : output
       return "Git 命令执行失败（退出码：\(terminated)）：\(normalizedOutput)"
@@ -605,12 +608,13 @@ public struct LocalRepositoryService: @unchecked Sendable {
 
   public func switchLocalBranch(profile: SiteProfile, to branchName: String) throws {
     let branchName = branchName.trimmedForPublishing
-    guard !branchName.isEmpty else {
+    guard isValidBranchName(branchName) else {
       throw LocalRepositoryServiceError.invalidBranchName
     }
 
-    guard let result = profile.withLocalRepositoryRootAccess({ rootURL in
-      self.runGitCommand(["switch", branchName], rootURL: rootURL)
+    guard let result = try profile.withLocalRepositoryRootAccess({ rootURL in
+      try self.requireCleanWorkingTree(rootURL: rootURL)
+      return self.runGitCommand(["switch", "--", branchName], rootURL: rootURL)
     }) else {
       throw LocalRepositoryServiceError.repositoryUnavailable
     }
@@ -621,11 +625,14 @@ public struct LocalRepositoryService: @unchecked Sendable {
 
   public func createLocalBranch(profile: SiteProfile, branchName: String, from sourceBranch: String?) throws {
     let branchName = branchName.trimmedForPublishing
-    guard !branchName.isEmpty else {
+    guard isValidBranchName(branchName) else {
       throw LocalRepositoryServiceError.invalidBranchName
     }
 
     let sourceBranch = sourceBranch?.trimmedForPublishing.nilIfEmpty
+    if let sourceBranch, !isValidBranchName(sourceBranch) {
+      throw LocalRepositoryServiceError.invalidBranchName
+    }
     guard let result = profile.withLocalRepositoryRootAccess({ rootURL in
       var arguments = ["branch", branchName]
       if let sourceBranch {
@@ -639,6 +646,64 @@ public struct LocalRepositoryService: @unchecked Sendable {
     guard result.terminationStatus == 0 else {
       throw LocalRepositoryServiceError.commandFailed(terminated: result.terminationStatus, output: result.output)
     }
+  }
+
+  public func createAndSwitchLocalBranch(
+    profile: SiteProfile,
+    branchName: String,
+    from sourceBranch: String?
+  ) throws {
+    let branchName = branchName.trimmedForPublishing
+    guard isValidBranchName(branchName) else {
+      throw LocalRepositoryServiceError.invalidBranchName
+    }
+    let sourceBranch = sourceBranch?.trimmedForPublishing.nilIfEmpty
+    if let sourceBranch, !isValidBranchName(sourceBranch) {
+      throw LocalRepositoryServiceError.invalidBranchName
+    }
+
+    guard let result = try profile.withLocalRepositoryRootAccess({ rootURL in
+      try self.requireCleanWorkingTree(rootURL: rootURL)
+      var arguments = ["switch", "-c", branchName]
+      if let sourceBranch {
+        arguments.append(sourceBranch)
+      }
+      return self.runGitCommand(arguments, rootURL: rootURL)
+    }) else {
+      throw LocalRepositoryServiceError.repositoryUnavailable
+    }
+    guard result.terminationStatus == 0 else {
+      throw LocalRepositoryServiceError.commandFailed(terminated: result.terminationStatus, output: result.output)
+    }
+  }
+
+  private func requireCleanWorkingTree(rootURL: URL) throws {
+    let result = runGitCommand(
+      ["status", "--porcelain", "--untracked-files=normal"],
+      rootURL: rootURL
+    )
+    guard result.terminationStatus == 0 else {
+      throw LocalRepositoryServiceError.commandFailed(
+        terminated: result.terminationStatus,
+        output: result.output
+      )
+    }
+    guard result.output.trimmedForPublishing.isEmpty else {
+      throw LocalRepositoryServiceError.workingTreeHasChanges
+    }
+  }
+
+  private func isValidBranchName(_ name: String) -> Bool {
+    !name.isEmpty
+      && !name.hasPrefix("-")
+      && !name.hasSuffix(".")
+      && !name.hasSuffix("/")
+      && !name.contains("..")
+      && !name.contains("@{")
+      && !name.unicodeScalars.contains(where: { scalar in
+        scalar.value < 0x20 || scalar.value == 0x7F
+      })
+      && name.rangeOfCharacter(from: CharacterSet(charactersIn: " ~^:?*[\\")) == nil
   }
 
   public func recentCommits(profile: SiteProfile, limit: Int = 20) -> [RepositoryCommitInfo] {

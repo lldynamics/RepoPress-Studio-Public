@@ -1,6 +1,12 @@
 import Combine
 import Foundation
 
+private struct RepositoryScanSnapshot: Sendable {
+  var report: RepositoryScanReport
+  var branches: [RepositoryBranch]
+  var recentCommits: [RepositoryCommitInfo]
+}
+
 @MainActor
 public final class RepositoryStore: ObservableObject {
   private let repositoryService: LocalRepositoryService
@@ -22,10 +28,11 @@ public final class RepositoryStore: ObservableObject {
   @Published public internal(set) var remoteRepositoryReviewWithdrawalResult: RemoteRepositoryReviewWithdrawalResult?
   @Published public internal(set) var isRemoteRepositoryChecking: Bool
   @Published public internal(set) var isRemoteRepositoryPublishing: Bool
+  @Published public internal(set) var isLocalRepositoryBranchOperationRunning: Bool
   @Published public internal(set) var repositoryAutoSyncSettings: RepositoryAutoSyncSettings
   @Published public internal(set) var repositoryAutoSyncState: RepositoryAutoSyncState
   private var repositoryScanTask: Task<Void, Never>?
-  private var repositoryScanWorkTask: Task<RepositoryScanReport, Never>?
+  private var repositoryScanWorkTask: Task<RepositoryScanSnapshot, Never>?
   private var repositoryScanWorkGeneration: UInt64 = 0
   private var repositoryScanGeneration: UInt64 = 0
   private var repositoryAutoSyncTask: Task<Bool, Never>?
@@ -47,6 +54,7 @@ public final class RepositoryStore: ObservableObject {
     remoteRepositoryReviewWithdrawalResult: RemoteRepositoryReviewWithdrawalResult? = nil,
     isRemoteRepositoryChecking: Bool = false,
     isRemoteRepositoryPublishing: Bool = false,
+    isLocalRepositoryBranchOperationRunning: Bool = false,
     repositoryAutoSyncSettings: RepositoryAutoSyncSettings = .default,
     repositoryAutoSyncState: RepositoryAutoSyncState = .idle,
     repositoryService: LocalRepositoryService = LocalRepositoryService(),
@@ -72,6 +80,7 @@ public final class RepositoryStore: ObservableObject {
     self.remoteRepositoryReviewWithdrawalResult = remoteRepositoryReviewWithdrawalResult
     self.isRemoteRepositoryChecking = isRemoteRepositoryChecking
     self.isRemoteRepositoryPublishing = isRemoteRepositoryPublishing
+    self.isLocalRepositoryBranchOperationRunning = isLocalRepositoryBranchOperationRunning
     self.repositoryAutoSyncSettings = repositoryAutoSyncSettings
     self.repositoryAutoSyncState = repositoryAutoSyncState
   }
@@ -111,11 +120,15 @@ public final class RepositoryStore: ObservableObject {
       if let previousScanWork {
         _ = await previousScanWork.value
       }
-      return repositoryService.scan(profile: profile)
+      return RepositoryScanSnapshot(
+        report: repositoryService.scan(profile: profile),
+        branches: repositoryService.localBranches(profile: profile),
+        recentCommits: repositoryService.recentCommits(profile: profile)
+      )
     }
     repositoryScanWorkTask = scanWork
     let scanTask = Task { @MainActor [weak self] in
-      let report = await scanWork.value
+      let snapshot = await scanWork.value
       guard let self else { return }
       self.finishRepositoryScanWorkIfCurrent(generation: scanWorkGeneration)
       guard self.isCurrentRepositoryScan(
@@ -127,8 +140,10 @@ public final class RepositoryStore: ObservableObject {
         self.finishStaleRepositoryScanIfNeeded(generation: scanGeneration, operation: operation, store: store)
         return
       }
-      repositoryReport = report
-      repositoryScanState = .finished(report: report)
+      repositoryReport = snapshot.report
+      localRepositoryBranches = snapshot.branches
+      localRepositoryRecentCommits = snapshot.recentCommits
+      repositoryScanState = .finished(report: snapshot.report)
       store.runPreflight()
       store.refreshPublishPreview(for: store.selectedDraft)
       repositoryScanTask = nil
@@ -254,19 +269,96 @@ public final class RepositoryStore: ObservableObject {
     store.save()
   }
 
-  public func switchActiveProfileRepositoryBranch(to branchName: String, store: WorkbenchStore) {
-    var profile = store.activeProfile
-    profile.branch = branchName
-    store.updateActiveProfile(profile)
-    store.save()
+  public func switchActiveProfileRepositoryBranch(to branchName: String, store: WorkbenchStore) async {
+    guard !isLocalRepositoryBranchOperationRunning else { return }
+    let branchName = branchName.trimmedForPublishing
+    let profile = store.activeProfile
+    let operation = LocalRepositoryOperationContext(profile: profile)
+    isLocalRepositoryBranchOperationRunning = true
+    defer { isLocalRepositoryBranchOperationRunning = false }
+
+    let result: Result<Void, LocalRepositoryServiceError> = await Task.detached(
+      priority: .userInitiated
+    ) { [repositoryService] in
+      do {
+        try repositoryService.switchLocalBranch(profile: profile, to: branchName)
+        return .success(())
+      } catch let error as LocalRepositoryServiceError {
+        return .failure(error)
+      } catch {
+        return .failure(.commandFailed(terminated: -1, output: error.localizedDescription))
+      }
+    }.value
+    switch result {
+    case .success:
+      if alignPublishTarget(profileID: profile.id, branchName: branchName, store: store) {
+        await scanRepositoryAsync(store: store)
+        store.setPublishActionMessage("已切换本地工作分支并将发布目标设为 \(branchName)。")
+      } else {
+        store.setPublishActionMessage("原站点仓库已切换到 \(branchName)；当前站点已变化，未覆盖当前界面状态。")
+      }
+    case .failure(let error):
+      let prefix = operation.stillMatches(store.activeProfile) ? "切换分支失败" : "原站点切换分支失败"
+      store.setPublishActionMessage("\(prefix)：\(error.localizedDescription)")
+    }
   }
 
   public func createAndSwitchActiveProfileRepositoryBranch(
     name branchName: String,
     from sourceBranch: String? = nil,
     store: WorkbenchStore
-  ) {
-    switchActiveProfileRepositoryBranch(to: branchName, store: store)
+  ) async {
+    guard !isLocalRepositoryBranchOperationRunning else { return }
+    let branchName = branchName.trimmedForPublishing
+    let profile = store.activeProfile
+    let operation = LocalRepositoryOperationContext(profile: profile)
+    isLocalRepositoryBranchOperationRunning = true
+    defer { isLocalRepositoryBranchOperationRunning = false }
+
+    let result: Result<Void, LocalRepositoryServiceError> = await Task.detached(
+      priority: .userInitiated
+    ) { [repositoryService] in
+      do {
+        try repositoryService.createAndSwitchLocalBranch(
+          profile: profile,
+          branchName: branchName,
+          from: sourceBranch
+        )
+        return .success(())
+      } catch let error as LocalRepositoryServiceError {
+        return .failure(error)
+      } catch {
+        return .failure(.commandFailed(terminated: -1, output: error.localizedDescription))
+      }
+    }.value
+    switch result {
+    case .success:
+      if alignPublishTarget(profileID: profile.id, branchName: branchName, store: store) {
+        await scanRepositoryAsync(store: store)
+        store.setPublishActionMessage("已创建并切换本地工作分支：\(branchName)。")
+      } else {
+        store.setPublishActionMessage("原站点仓库已创建并切换到 \(branchName)；当前站点已变化，未覆盖当前界面状态。")
+      }
+    case .failure(let error):
+      let prefix = operation.stillMatches(store.activeProfile) ? "创建分支失败" : "原站点创建分支失败"
+      store.setPublishActionMessage("\(prefix)：\(error.localizedDescription)")
+    }
+  }
+
+  @discardableResult
+  private func alignPublishTarget(
+    profileID: UUID,
+    branchName: String,
+    store: WorkbenchStore
+  ) -> Bool {
+    var profiles = store.profiles
+    guard let index = profiles.firstIndex(where: { $0.id == profileID }) else {
+      return false
+    }
+    profiles[index].branch = branchName
+    store.setProfiles(profiles)
+    store.save()
+    return store.activeProfileID == profileID
   }
 
   public func updateRepositoryAutoSyncSettings(_ settings: RepositoryAutoSyncSettings, store: WorkbenchStore) {

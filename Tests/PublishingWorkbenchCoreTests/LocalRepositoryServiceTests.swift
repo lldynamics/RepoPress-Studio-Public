@@ -2,6 +2,51 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class LocalRepositoryServiceTests: XCTestCase {
+  func testSwitchLocalBranchChangesTheCheckedOutBranch() throws {
+    let (rootURL, profile) = try makeBranchOperationRepository()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try git(["branch", "release"], rootURL: rootURL)
+
+    try LocalRepositoryService().switchLocalBranch(profile: profile, to: "release")
+
+    XCTAssertEqual(try git(["branch", "--show-current"], rootURL: rootURL), "release")
+  }
+
+  func testSwitchLocalBranchRejectsDirtyWorkingTree() throws {
+    let (rootURL, profile) = try makeBranchOperationRepository()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try git(["branch", "release"], rootURL: rootURL)
+    try "changed\n".write(
+      to: rootURL.appendingPathComponent("README.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    XCTAssertThrowsError(
+      try LocalRepositoryService().switchLocalBranch(profile: profile, to: "release")
+    ) { error in
+      guard let serviceError = error as? LocalRepositoryServiceError,
+            case .workingTreeHasChanges = serviceError else {
+        return XCTFail("Expected workingTreeHasChanges, got \(error)")
+      }
+    }
+    XCTAssertEqual(try git(["branch", "--show-current"], rootURL: rootURL), "main")
+  }
+
+  func testCreateAndSwitchLocalBranchIsAtomic() throws {
+    let (rootURL, profile) = try makeBranchOperationRepository()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    try LocalRepositoryService().createAndSwitchLocalBranch(
+      profile: profile,
+      branchName: "review/article",
+      from: "main"
+    )
+
+    XCTAssertEqual(try git(["branch", "--show-current"], rootURL: rootURL), "review/article")
+    XCTAssertEqual(try git(["rev-parse", "review/article"], rootURL: rootURL), try git(["rev-parse", "main"], rootURL: rootURL))
+  }
+
   func testDetectsZolaRepositoryShapeAndCountsFiles() throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacTests-\(UUID().uuidString)", isDirectory: true)
@@ -514,5 +559,30 @@ final class LocalRepositoryServiceTests: XCTestCase {
       )
     }
     return output.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private func makeBranchOperationRepository() throws -> (URL, SiteProfile) {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMacBranchOperationTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    do {
+      try git(["init", "-b", "main"], rootURL: rootURL)
+      try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
+      try git(["config", "user.name", "Tests"], rootURL: rootURL)
+      try "initial\n".write(
+        to: rootURL.appendingPathComponent("README.md"),
+        atomically: true,
+        encoding: .utf8
+      )
+      try git(["add", "README.md"], rootURL: rootURL)
+      try git(["commit", "-m", "Initial"], rootURL: rootURL)
+    } catch {
+      try? FileManager.default.removeItem(at: rootURL)
+      throw error
+    }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    return (rootURL, profile)
   }
 }
