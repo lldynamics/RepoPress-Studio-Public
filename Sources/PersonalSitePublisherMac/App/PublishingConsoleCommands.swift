@@ -231,11 +231,13 @@ struct PublishingConsoleCommands: Commands {
 
       Button("批量写入可发布文章") {
         focusCommandDraft(section: .sync)
-        store.writeBatchReadyDraftsToLocalRepository()
+        Task {
+          await store.writeBatchReadyDraftsToLocalRepository()
+        }
         store.selectSection(.sync)
       }
       .keyboardShortcut("b", modifiers: [.command, .shift])
-      .disabled(!canUseProtectedWorkbench)
+      .disabled(!canUseProtectedWorkbench || store.isLocalRepositoryMutationRunning)
 
       Button("打开批量 PR/MR 创建页") {
         focusCommandDraft(section: .sync)

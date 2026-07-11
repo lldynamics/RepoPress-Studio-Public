@@ -86,6 +86,33 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     XCTAssertTrue(content.contains("title = \"New Draft\""))
   }
 
+  func testWritePackageAsyncCreatesMarkdownFileInsideRepository() async throws {
+    let rootURL = try makeRepositoryFixture()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Async Draft",
+      slug: "async-draft",
+      draft: false,
+      bodyMarkdown: "New body that should be written outside the main actor."
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+
+    let written = try await LocalPublishPreviewService().writeAsync(package: package, profile: profile)
+    let targetURL = rootURL.appendingPathComponent("content/posts/async-draft.md")
+    let content = try String(contentsOf: targetURL, encoding: .utf8)
+
+    XCTAssertEqual(written, ["content/posts/async-draft.md"])
+    XCTAssertTrue(content.contains("title = \"Async Draft\""))
+  }
+
   func testPreviewRejectsUnsafeImageAttachmentPath() throws {
     let rootURL = try makeRepositoryFixture()
     defer {
