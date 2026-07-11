@@ -15,6 +15,8 @@ struct SiteMaintenanceReportSections: View {
   let sendToAI: (MaintenanceActionItem) -> Void
   let applySuggestedSchedule: () -> Void
   let recordPerformanceSnapshot: (ArticleDraft) -> Void
+  let importCSV: () -> Void
+  let importNotice: ContentPerformanceImportNotice?
 
   var body: some View {
     SiteMaintenancePlanningSections(
@@ -33,7 +35,9 @@ struct SiteMaintenanceReportSections: View {
       performanceVisitors: $performanceVisitors,
       performanceSourceName: $performanceSourceName,
       openDraft: openDraft,
-      recordPerformanceSnapshot: recordPerformanceSnapshot
+      recordPerformanceSnapshot: recordPerformanceSnapshot,
+      importCSV: importCSV,
+      importNotice: importNotice
     )
   }
 }

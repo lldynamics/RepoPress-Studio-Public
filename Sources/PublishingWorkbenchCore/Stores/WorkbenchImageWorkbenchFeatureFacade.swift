@@ -1,11 +1,16 @@
+import Combine
 import Foundation
 
 @MainActor
-public final class WorkbenchImageWorkbenchFeatureFacade {
+public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
+  private var cancellables = Set<AnyCancellable>()
 
   init(store: WorkbenchStore) {
     self.store = store
+    observe(store.imageStore.objectWillChange)
+    observe(store.publishingStore.objectWillChange)
+    observe(store.aiStore.objectWillChange)
   }
 
   public var report: ImageWorkbenchReport? {
@@ -26,6 +31,14 @@ public final class WorkbenchImageWorkbenchFeatureFacade {
 
   public var isGeneratingSuggestions: Bool {
     get { store.isAIImageTextRunning }
+  }
+
+  public var isProcessingBatch: Bool {
+    store.imageStore.isImageBatchProcessing
+  }
+
+  public var batchProgress: ImageBatchProgress? {
+    store.imageStore.imageBatchProgress
   }
 
   public func setActionMessage(_ message: String?) {
@@ -84,6 +97,10 @@ public final class WorkbenchImageWorkbenchFeatureFacade {
     store.resizeVisibleDraftLargeImages()
   }
 
+  public func cancelBatchProcessing() {
+    store.imageStore.cancelImageBatchProcessing()
+  }
+
   public func cropSelectedDraftCoverImageForSocialPreview() {
     store.cropSelectedDraftCoverImageForSocialPreview()
   }
@@ -111,5 +128,11 @@ public final class WorkbenchImageWorkbenchFeatureFacade {
 
   public func clearAISuggestions() {
     store.aiClearImageTextSuggestions()
+  }
+
+  private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {
+    publisher
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
   }
 }

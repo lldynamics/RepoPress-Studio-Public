@@ -2095,7 +2095,7 @@ extension ReleaseQualityGateServiceTests {
       """
     )
     try write(
-      "Sources/PublishingWorkbenchCore/Services/ScreenshotDemoDataService.swift",
+      "Sources/PublishingWorkbenchScreenshotSupport/ScreenshotDemoDataService.swift",
       in: root,
       content: """
       enum ScreenshotDemoSurface {

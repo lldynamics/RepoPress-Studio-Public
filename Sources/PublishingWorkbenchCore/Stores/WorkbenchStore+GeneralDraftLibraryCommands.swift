@@ -9,24 +9,12 @@ extension WorkbenchStore {
     publishingStore.generalDraftLibraryReport(store: self)
   }
 
-  public var materialLibraryReport: MaterialLibraryReport {
-    generalDraftLibraryReport
-  }
-
   public var generalDraftLibraryPackagePlan: GeneralDraftLibraryPackagePlan {
     publishingStore.generalDraftLibraryPackagePlan()
   }
 
-  public var materialLibraryPackagePlan: MaterialLibraryPackagePlan {
-    generalDraftLibraryPackagePlan
-  }
-
   public var generalDraftBackupPlan: GeneralDraftBackupPlan {
     publishingStore.generalDraftBackupPlan()
-  }
-
-  public var materialLibraryBackupPlan: MaterialLibraryBackupPlan {
-    generalDraftBackupPlan
   }
 
   @discardableResult
@@ -35,18 +23,8 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func writeMaterialLibraryBackupToRepository() -> MaterialLibraryBackupWriteResult? {
-    writeGeneralDraftBackupToRepository()
-  }
-
-  @discardableResult
   public func ensureGeneralDraftProfile() -> SiteProfile {
     publishingStore.ensureGeneralDraftProfile(store: self)
-  }
-
-  @discardableResult
-  public func ensureMaterialLibraryProfile() -> SiteProfile {
-    ensureGeneralDraftProfile()
   }
 
   @discardableResult
@@ -55,18 +33,8 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func createMaterial() -> ArticleDraft {
-    createGeneralDraft()
-  }
-
-  @discardableResult
   public func copyDraftToGeneralLibrary(_ draftID: UUID) -> ArticleDraft? {
     publishingStore.copyDraftToGeneralLibrary(draftID, store: self)
-  }
-
-  @discardableResult
-  public func copyDraftToMaterialLibrary(_ draftID: UUID) -> ArticleDraft? {
-    copyDraftToGeneralLibrary(draftID)
   }
 
   @discardableResult
@@ -79,8 +47,4 @@ extension WorkbenchStore {
     publishingStore.importGeneralDraftLibraryPackage(from: packageText, store: self)
   }
 
-  @discardableResult
-  public func importMaterialLibraryPackage(from packageText: String) -> LocalContentImportMergeSummary {
-    importGeneralDraftLibraryPackage(from: packageText)
-  }
 }

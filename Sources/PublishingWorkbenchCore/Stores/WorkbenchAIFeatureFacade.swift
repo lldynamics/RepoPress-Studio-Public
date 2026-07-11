@@ -1,11 +1,22 @@
+import Combine
 import Foundation
 
 @MainActor
-public final class WorkbenchAIFeatureFacade {
+public final class WorkbenchAIFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
+  private var cancellables = Set<AnyCancellable>()
 
   init(store: WorkbenchStore) {
     self.store = store
+    store.publishingStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+    store.aiWorkspaceStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+    store.aiStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
   }
 
   public var tokenAvailability: KeychainTokenAvailability {

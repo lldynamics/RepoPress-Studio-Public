@@ -20,9 +20,14 @@ struct DeploymentStatusTrendChart: View {
             .fill(color(for: snapshot.level))
             .frame(width: 18, height: height(for: snapshot.level))
             .help("\(snapshot.checkedAt.workbenchShortText) · \(snapshot.level.displayName) · \(snapshot.message)")
+            .accessibilityLabel("\(snapshot.checkedAt.workbenchShortText) 的部署状态")
+            .accessibilityValue("\(snapshot.level.displayName)：\(snapshot.message)")
         }
       }
       .frame(height: 42, alignment: .bottom)
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel("部署趋势")
+      .accessibilityValue("共 \(orderedHistory.count) 条部署状态记录")
 
       HStack(spacing: 10) {
         trendLegend("正常", color: .green)

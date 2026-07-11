@@ -21,11 +21,16 @@ extension RepositoryWorkspaceView {
         }
         .accessibilityLabel("复制自动同步摘要")
         Button {
-          store.runRepositoryAutoSync()
+          Task {
+            await store.runRepositoryAutoSync()
+          }
         } label: {
-          Label("立即扫描", systemImage: "arrow.clockwise")
+          Label(
+            store.repositoryScanState.isScanning ? "扫描中" : "立即扫描",
+            systemImage: "arrow.clockwise"
+          )
         }
-        .disabled(!store.repositoryAutoSyncSettings.isEnabled)
+        .disabled(!store.repositoryAutoSyncSettings.isEnabled || store.repositoryScanState.isScanning)
         .accessibilityLabel("立即扫描自动同步")
       }
 

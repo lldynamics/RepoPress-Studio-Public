@@ -34,6 +34,7 @@ struct PrivacySettingsView: View {
         masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent)
       )
 
+#if DEBUG
       PrivacyAdvancedDiagnosticsSection(
         audit: audit,
         events: events,
@@ -47,6 +48,7 @@ struct PrivacySettingsView: View {
           onCopyEvidence()
         }
       )
+#endif
     }
     .formStyle(.grouped)
     .padding()

@@ -4,7 +4,12 @@ import SwiftUI
 
 struct MacMarkdownComposerView: View {
   @Binding var draft: ArticleDraft
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var publishingState: WorkbenchPublishingFeatureFacade
+  @ObservedObject private var aiState: WorkbenchAIFeatureFacade
+  @ObservedObject private var persistenceState: WorkbenchPersistenceFeatureFacade
+  @State private var editorBody: String
+  @State private var editorStatistics = MarkdownEditorStatistics.empty
   @State private var selectedRange = NSRange(location: 0, length: 0)
   @State private var activeSelectionAIAction: AIPublishingActionKind?
   @State private var isFindReplacePresented = false
@@ -19,17 +24,31 @@ struct MacMarkdownComposerView: View {
   @State private var revisionHistory: [MarkdownEditorRevisionSnapshot] = []
   @State private var revisionCursor = -1
   @State private var isRestoringRevision = false
+  @State private var editorBodyRevision: UInt64
+  @State private var revisionSnapshotTask: Task<Void, Never>?
   private let findReplaceService = MarkdownFindReplaceService()
-  private let maxRevisionHistoryCount = 120
+  private let maxRevisionHistoryCount = 40
+  private let maxRevisionHistoryBytes = 2_000_000
+
+  init(draft: Binding<ArticleDraft>, store: WorkbenchStore) {
+    _draft = draft
+    let buffer = store.draftBodyEditorBuffer(for: draft.wrappedValue.id)
+    _editorBody = State(initialValue: buffer.bodyMarkdown)
+    _editorBodyRevision = State(initialValue: buffer.revision)
+    self.store = store
+    _publishingState = ObservedObject(wrappedValue: store.publishing)
+    _aiState = ObservedObject(wrappedValue: store.ai)
+    _persistenceState = ObservedObject(wrappedValue: store.persistenceStatus)
+  }
 
   var body: some View {
     VStack(spacing: 0) {
       MacMarkdownEditorToolbar(
         title: $draft.title,
         markdownPath: store.profile(for: draft).markdownPath(for: draft),
-        lastSaveStatus: store.lastSaveStatus,
-        hasUnsavedChanges: store.hasUnsavedChanges,
-        editorDisplayMode: store.editorDisplayMode,
+        lastSaveStatus: persistenceState.lastSaveStatus,
+        hasUnsavedChanges: persistenceState.hasUnsavedChanges,
+        editorDisplayMode: publishingState.editorDisplayMode,
         isSelectionAIActionRunning: isSelectionAIActionRunning,
         onSetEditorDisplayMode: { store.setEditorDisplayMode($0) },
         onShowFindReplace: showFindReplace,
@@ -108,20 +127,30 @@ struct MacMarkdownComposerView: View {
     }
     .focusedSceneValue(\.markdownEditorCommandActions, commandActions)
     .onAppear {
+      syncEditorBodyFromStore()
       setupRevisionHistory()
       syncActiveEditorSelection()
     }
-    .onChange(of: store.editorFocusRequest?.id) { _, _ in
+    .onChange(of: publishingState.editorFocusRequest?.id) { _, _ in
       applyEditorFocusRequest()
     }
     .onChange(of: selectedRange) { _, _ in
       syncActiveEditorSelection()
     }
-    .onChange(of: draft.bodyMarkdown) { _, _ in
+    .onChange(of: editorBody) { _, _ in
       syncActiveEditorSelection()
-      appendRevisionIfNeeded()
+      stageEditorBody()
+      scheduleRevisionSnapshot()
     }
-    .onChange(of: draft.id) { _, _ in
+    .onChange(of: draft.bodyMarkdown) { _, _ in
+      syncEditorBodyFromStore()
+    }
+    .onChange(of: editorBufferRevision) { _, _ in
+      syncEditorBodyFromStore()
+    }
+    .onChange(of: draft.id) { oldDraftID, _ in
+      store.flushDraftBodyEditorBuffer(for: oldDraftID)
+      syncEditorBodyFromStore()
       syncActiveEditorSelection()
       setupRevisionHistory()
     }
@@ -150,22 +179,25 @@ struct MacMarkdownComposerView: View {
       )
     }
     .onDisappear {
+      store.flushDraftBodyEditorBuffer(for: draft.id)
+      revisionSnapshotTask?.cancel()
+      revisionSnapshotTask = nil
       store.clearActiveEditorSelection(for: draft.id)
     }
   }
 
   private var editorSurface: some View {
     Group {
-      switch store.editorDisplayMode {
+      switch publishingState.editorDisplayMode {
       case .edit:
         markdownEditor
       case .preview:
-        MarkdownPreviewPane(draft: draft, profile: store.profile(for: draft))
+        MarkdownPreviewPane(draft: previewDraft, profile: store.profile(for: draft))
       case .split:
         HSplitView {
           markdownEditor
             .frame(minWidth: 320)
-          MarkdownPreviewPane(draft: draft, profile: store.profile(for: draft))
+          MarkdownPreviewPane(draft: previewDraft, profile: store.profile(for: draft))
             .frame(minWidth: 320)
         }
       }
@@ -173,13 +205,75 @@ struct MacMarkdownComposerView: View {
     .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
   }
 
+  private var previewDraft: ArticleDraft {
+    var updated = draft
+    updated.bodyMarkdown = editorBody
+    return updated
+  }
+
+  private var editorBufferRevision: UInt64 {
+    publishingState.draftBodyEditorBuffer(for: draft.id).revision
+  }
+
+  private func stageEditorBody() {
+    guard let result = store.stageDraftBody(
+      editorBody,
+      for: draft.id,
+      baseRevision: editorBodyRevision
+    ) else {
+      return
+    }
+
+    editorBodyRevision = result.buffer.revision
+    guard !result.wasAccepted else { return }
+
+    editorBody = result.buffer.bodyMarkdown
+    selectionActionMessage = "另一窗口已更新正文，刚才的陈旧修改未写入；已同步到最新版本。"
+  }
+
+  private func syncEditorBodyFromStore() {
+    let buffer = publishingState.draftBodyEditorBuffer(for: draft.id)
+    guard buffer.revision != editorBodyRevision else { return }
+    editorBody = buffer.bodyMarkdown
+    editorBodyRevision = buffer.revision
+  }
+
+  private func applyDraftUpdate(_ updated: ArticleDraft) {
+    guard let result = store.replaceDraftBody(
+      updated.bodyMarkdown,
+      for: updated.id,
+      expectedRevision: editorBodyRevision
+    ) else { return }
+    editorBody = result.buffer.bodyMarkdown
+    editorBodyRevision = result.buffer.revision
+    guard result.wasAccepted else {
+      selectionActionMessage = "另一窗口已更新正文，刚才的编辑命令未应用；已同步到最新版本。"
+      return
+    }
+    draft = updated
+  }
+
+  private func scheduleRevisionSnapshot() {
+    revisionSnapshotTask?.cancel()
+    revisionSnapshotTask = Task { @MainActor in
+      do {
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+      } catch {
+        return
+      }
+      guard !Task.isCancelled else { return }
+      appendRevisionIfNeeded()
+      revisionSnapshotTask = nil
+    }
+  }
+
   private var markdownEditor: some View {
     VStack(spacing: 0) {
       MacMarkdownFormattingToolbar(
-        characterCount: characterCount,
-        wordCount: wordCount,
-        lineCount: lineCount,
-        readingMinutes: readingMinutes,
+        characterCount: editorStatistics.characterCount,
+        wordCount: editorStatistics.wordCount,
+        lineCount: editorStatistics.lineCount,
+        readingMinutes: editorStatistics.readingMinutes,
         onApplyHeading: applyHeading,
         onWrapSelection: { prefix, suffix, placeholder in
           wrapSelection(prefix: prefix, suffix: suffix, placeholder: placeholder)
@@ -199,14 +293,15 @@ struct MacMarkdownComposerView: View {
         Color(nsColor: .textBackgroundColor)
 
         MacMarkdownTextView(
-          text: $draft.bodyMarkdown,
-          selectedRange: $selectedRange
+          text: $editorBody,
+          selectedRange: $selectedRange,
+          onStatisticsChanged: { editorStatistics = $0 }
         ) { urls in
           insertImageReferences(urls)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-        if draft.bodyMarkdown.trimmedForPublishing.isEmpty {
+        if editorBody.trimmedForPublishing.isEmpty {
           Text("Markdown 正文")
             .font(.body)
             .foregroundStyle(.tertiary)
@@ -235,27 +330,6 @@ struct MacMarkdownComposerView: View {
     )
   }
 
-  private var characterCount: Int {
-    (draft.bodyMarkdown as NSString).length
-  }
-
-  private var wordCount: Int {
-    let sanitized = draft.bodyMarkdown
-      .components(separatedBy: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters).union(.symbols))
-      .filter { !$0.isEmpty }
-    return sanitized.count
-  }
-
-  private var lineCount: Int {
-    let trimmed = draft.bodyMarkdown.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? 0 : draft.bodyMarkdown.components(separatedBy: "\n").count
-  }
-
-  private var readingMinutes: Int {
-    guard wordCount > 0 else { return 0 }
-    return Int(ceil(Double(wordCount) / 250.0))
-  }
-
   private var canUndoRevision: Bool {
     revisionCursor > 0
   }
@@ -265,7 +339,9 @@ struct MacMarkdownComposerView: View {
   }
 
   private func setupRevisionHistory() {
-    let selection = clamped(selectedRange, length: (draft.bodyMarkdown as NSString).length)
+    revisionSnapshotTask?.cancel()
+    revisionSnapshotTask = nil
+    let selection = clamped(selectedRange, length: (editorBody as NSString).length)
     selectedRange = selection
     revisionHistory.removeAll()
     revisionHistory.append(currentRevisionSnapshot(label: "本次会话初始快照"))
@@ -299,6 +375,13 @@ struct MacMarkdownComposerView: View {
         revisionCursor = 0
       }
     }
+
+    var totalBytes = revisionHistory.reduce(0) { $0 + $1.body.utf8.count }
+    while revisionHistory.count > 1, totalBytes > maxRevisionHistoryBytes {
+      totalBytes -= revisionHistory[0].body.utf8.count
+      revisionHistory.removeFirst()
+      revisionCursor = max(0, revisionCursor - 1)
+    }
   }
 
   private func currentRevisionSnapshot(label: String?) -> MarkdownEditorRevisionSnapshot {
@@ -306,11 +389,11 @@ struct MacMarkdownComposerView: View {
       id: UUID(),
       createdAt: Date(),
       label: label,
-      body: draft.bodyMarkdown,
+      body: editorBody,
       selectedRange: selectedRange,
-      characterCount: characterCount,
-      wordCount: wordCount,
-      lineCount: lineCount
+      characterCount: editorStatistics.characterCount,
+      wordCount: editorStatistics.wordCount,
+      lineCount: editorStatistics.lineCount
     )
   }
 
@@ -335,11 +418,11 @@ struct MacMarkdownComposerView: View {
 
     isRestoringRevision = true
     let snapshot = revisionHistory[index]
-    var restored = draft
+    var restored = previewDraft
     restored.bodyMarkdown = snapshot.body
     let clampedRange = clamped(snapshot.selectedRange, length: (snapshot.body as NSString).length)
     selectedRange = clampedRange
-    draft = restored
+    applyDraftUpdate(restored)
     revisionCursor = index
   }
 
@@ -368,23 +451,23 @@ struct MacMarkdownComposerView: View {
   }
 
   private var hasSelectedText: Bool {
-    !selectedText(in: draft.bodyMarkdown).trimmedForPublishing.isEmpty
+    !selectedText(in: editorBody).trimmedForPublishing.isEmpty
   }
 
   private var latestAssistantMessageForCurrentDraft: AIPublishingChatMessage? {
-    guard store.ai.chatDraftID == draft.id else {
+    guard aiState.chatDraftID == draft.id else {
       return nil
     }
-    return store.ai.chatMessages.last { $0.role == .assistant }
+    return aiState.chatMessages.last { $0.role == .assistant }
   }
 
   private var isSelectionAIActionRunning: Bool {
-    activeSelectionAIAction != nil || store.ai.isActionRunning
+    activeSelectionAIAction != nil || aiState.isActionRunning
   }
 
   private var isAIEnabledForDraft: Bool {
     let profile = store.publishing.profile(for: draft)
-    return !profile.aiProviderConfig.requiresAPIKey || store.ai.tokenAvailability.hasToken
+    return !profile.aiProviderConfig.requiresAPIKey || aiState.tokenAvailability.hasToken
   }
 
   private func articleAIActionAvailability(
@@ -393,7 +476,7 @@ struct MacMarkdownComposerView: View {
   ) -> AIPublishingActionAvailabilityPresentation {
     AIPublishingActionAvailabilityService.presentation(
       for: kind,
-      draft: draft,
+      draft: previewDraft,
       isAIEnabled: isAIEnabledForDraft,
       activeAction: respectActiveAction ? activeAIActionForAvailability(fallback: kind) : nil
     )
@@ -405,15 +488,15 @@ struct MacMarkdownComposerView: View {
   ) -> AIPublishingActionAvailabilityPresentation {
     AIPublishingActionAvailabilityService.presentation(
       for: kind,
-      selectedText: selectedText(in: draft.bodyMarkdown),
-      draft: draft,
+      selectedText: selectedText(in: editorBody),
+      draft: previewDraft,
       isAIEnabled: isAIEnabledForDraft,
       activeAction: respectActiveAction ? activeAIActionForAvailability(fallback: kind) : nil
     )
   }
 
   private func activeAIActionForAvailability(fallback kind: AIPublishingActionKind) -> AIPublishingActionKind? {
-    activeSelectionAIAction ?? (store.ai.isActionRunning ? kind : nil)
+    activeSelectionAIAction ?? (aiState.isActionRunning ? kind : nil)
   }
 
   private var selectionAIActionMenuItems: [AIPublishingActionMenuItem] {
@@ -444,7 +527,7 @@ struct MacMarkdownComposerView: View {
     let imageURLs = urls.filter(ImageFileSupport.isSupportedImageURL)
     guard !imageURLs.isEmpty else { return }
 
-    var updated = draft
+    var updated = previewDraft
     var markdownBlocks: [String] = []
     for url in imageURLs {
       let selectedAlt = selectedText(in: updated.bodyMarkdown).trimmedForPublishing
@@ -456,14 +539,14 @@ struct MacMarkdownComposerView: View {
       markdownBlocks.append("![\(attachment.altText)](\(attachment.relativePublishPath))")
     }
 
-    draft = replacingSelection(in: updated, with: markdownBlocks.joined(separator: "\n"))
+    applyDraftUpdate(replacingSelection(in: updated, with: markdownBlocks.joined(separator: "\n")))
     store.refreshImageWorkbenchReport()
   }
 
   private var commandActions: MarkdownEditorCommandActions {
     MarkdownEditorCommandActions(
       draftID: draft.id,
-      canRewriteSelection: !selectedText(in: draft.bodyMarkdown).trimmedForPublishing.isEmpty,
+      canRewriteSelection: !selectedText(in: editorBody).trimmedForPublishing.isEmpty,
       canUseFindReplace: canUseFindReplace,
       canUndoRevision: canUndoRevision,
       canRedoRevision: canRedoRevision,
@@ -494,7 +577,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func showFindReplace() {
-    let selected = selectedText(in: draft.bodyMarkdown).trimmedForPublishing
+    let selected = selectedText(in: editorBody).trimmedForPublishing
     if !selected.isEmpty, !selected.contains("\n") {
       findQuery = selected
     }
@@ -510,7 +593,7 @@ struct MacMarkdownComposerView: View {
     }
 
     guard let result = findReplaceService.findNext(
-      in: draft.bodyMarkdown,
+      in: editorBody,
       query: findQuery,
       selectedRange: selectedRange,
       caseSensitive: isFindCaseSensitive
@@ -531,7 +614,7 @@ struct MacMarkdownComposerView: View {
     }
 
     let mutation = findReplaceService.replaceCurrentOrNext(
-      in: draft.bodyMarkdown,
+      in: editorBody,
       query: findQuery,
       replacement: replacementText,
       selectedRange: selectedRange,
@@ -543,9 +626,9 @@ struct MacMarkdownComposerView: View {
       return
     }
 
-    var updated = draft
+    var updated = previewDraft
     updated.bodyMarkdown = mutation.text
-    draft = updated
+    applyDraftUpdate(updated)
     selectedRange = mutation.selectedRange
     findReplaceMessage = "已替换 1 处。"
   }
@@ -558,7 +641,7 @@ struct MacMarkdownComposerView: View {
     }
 
     let mutation = findReplaceService.replaceAll(
-      in: draft.bodyMarkdown,
+      in: editorBody,
       query: findQuery,
       replacement: replacementText,
       caseSensitive: isFindCaseSensitive
@@ -569,9 +652,9 @@ struct MacMarkdownComposerView: View {
       return
     }
 
-    var updated = draft
+    var updated = previewDraft
     updated.bodyMarkdown = mutation.text
-    draft = updated
+    applyDraftUpdate(updated)
     selectedRange = mutation.selectedRange
     findReplaceMessage = "已替换 \(mutation.replacementCount) 处。"
   }
@@ -611,14 +694,14 @@ struct MacMarkdownComposerView: View {
   }
 
   private func wrapSelection(prefix: String, suffix: String, placeholder: String) {
-    var updated = draft
+    var updated = previewDraft
     let source = updated.bodyMarkdown as NSString
     let range = editingRange(in: source)
     let selected = range.length > 0 ? source.substring(with: range) : placeholder
     let replacement = prefix + selected + suffix
 
     updated.bodyMarkdown = source.replacingCharacters(in: range, with: replacement)
-    draft = updated
+    applyDraftUpdate(updated)
 
     let prefixLength = (prefix as NSString).length
     selectedRange = NSRange(location: range.location + prefixLength, length: (selected as NSString).length)
@@ -631,7 +714,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func replaceCurrentLines(_ transform: (String) -> String) {
-    var updated = draft
+    var updated = previewDraft
     let source = updated.bodyMarkdown as NSString
     let range = editingRange(in: source)
     let effectiveRange = NSRange(location: range.location, length: max(range.length, 0))
@@ -647,7 +730,7 @@ struct MacMarkdownComposerView: View {
     .joined(separator: "\n")
 
     updated.bodyMarkdown = source.replacingCharacters(in: lineRange, with: transformed)
-    draft = updated
+    applyDraftUpdate(updated)
     selectedRange = NSRange(
       location: min(range.location, (updated.bodyMarkdown as NSString).length),
       length: range.length
@@ -655,9 +738,9 @@ struct MacMarkdownComposerView: View {
   }
 
   private func insertCodeBlock() {
-    let selected = selectedText(in: draft.bodyMarkdown).trimmedForPublishing
+    let selected = selectedText(in: editorBody).trimmedForPublishing
     let body = selected.isEmpty ? "code" : selected
-    draft = replacingSelection(in: draft, with: "```\n\(body)\n```")
+    applyDraftUpdate(replacingSelection(in: previewDraft, with: "```\n\(body)\n```"))
   }
 
   private func insertTable() {
@@ -666,15 +749,15 @@ struct MacMarkdownComposerView: View {
     | --- | --- |
     | 内容 | 内容 |
     """
-    draft = replacingSelection(in: draft, with: table)
+    applyDraftUpdate(replacingSelection(in: previewDraft, with: table))
   }
 
   private func insertHorizontalRule() {
-    draft = replacingSelection(in: draft, with: "---")
+    applyDraftUpdate(replacingSelection(in: previewDraft, with: "---"))
   }
 
   private func insertLink() {
-    var updated = draft
+    var updated = previewDraft
     let source = updated.bodyMarkdown as NSString
     let range = editingRange(in: source)
     let selected = range.length > 0 ? source.substring(with: range) : "链接文本"
@@ -682,7 +765,7 @@ struct MacMarkdownComposerView: View {
     let replacement = "[\(selected)](\(url))"
 
     updated.bodyMarkdown = source.replacingCharacters(in: range, with: replacement)
-    draft = updated
+    applyDraftUpdate(updated)
 
     let urlLocation = range.location
       + ("[\(selected)](" as NSString).length
@@ -697,7 +780,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func moveSelectionToDocumentEndIfNeeded() {
-    let bodyLength = (draft.bodyMarkdown as NSString).length
+    let bodyLength = (editorBody as NSString).length
     if selectedRange.location > bodyLength || selectedRange.length > 0 {
       selectedRange = NSRange(location: bodyLength, length: 0)
     }
@@ -712,7 +795,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func syncActiveEditorSelection() {
-    let source = draft.bodyMarkdown as NSString
+    let source = editorBody as NSString
     let range = clamped(selectedRange, length: source.length)
     let selectedText = range.length > 0 ? source.substring(with: range) : ""
     store.updateActiveEditorSelection(
@@ -731,7 +814,7 @@ struct MacMarkdownComposerView: View {
 
   private func pasteAIPromptToClipboard() {
     ClipboardWriter.copy(
-      store.publishingAIPrompt(for: draft),
+      store.publishingAIPrompt(for: previewDraft),
       successMessage: "已复制 AI Prompt。"
     ) { store.setPublishActionMessage($0) }
   }
@@ -746,7 +829,7 @@ struct MacMarkdownComposerView: View {
       return
     }
 
-    let text = draft.bodyMarkdown as NSString
+    let text = editorBody as NSString
     if let query = request.query?.trimmedForPublishing, !query.isEmpty {
       let range = text.range(of: query, options: [.caseInsensitive])
       if range.location != NSNotFound {
@@ -761,7 +844,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func runPreflightForCurrentDraft() {
-    store.focusDraft(draft.id, section: .contentHealth)
+    _ = store.focusDraft(draft.id, section: .contentHealth)
   }
 
   private func rewriteSelectedText() {
@@ -769,7 +852,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func performSelectionAIAction(_ kind: AIPublishingActionKind) {
-    let rawSelectedText = selectedText(in: draft.bodyMarkdown)
+    let rawSelectedText = selectedText(in: editorBody)
     let promptSelectedText = rawSelectedText.trimmedForPublishing
     let availability = selectionAIActionAvailability(kind, respectActiveAction: false)
     guard availability.isEnabled else {
@@ -779,10 +862,10 @@ struct MacMarkdownComposerView: View {
 
     activeSelectionAIAction = kind
     selectionActionMessage = "\(kind.displayName)处理中..."
-    let previewRange = clamped(selectedRange, length: (draft.bodyMarkdown as NSString).length)
+    let previewRange = clamped(selectedRange, length: (editorBody as NSString).length)
     selectionEditPreview = nil
     Task {
-      let result = await store.ai.performAction(kind, draft: draft, selectedText: promptSelectedText)
+      let result = await aiState.performAction(kind, draft: previewDraft, selectedText: promptSelectedText)
       await MainActor.run {
         if let result {
           selectionEditPreview = AIPublishingSelectionEditPreview(
@@ -815,10 +898,10 @@ struct MacMarkdownComposerView: View {
     let previewRange = articleInsertionRange(for: kind)
     selectionEditPreview = nil
     Task {
-      let result = await store.ai.performAction(kind, draft: draft)
+      let result = await aiState.performAction(kind, draft: previewDraft)
       await MainActor.run {
         if let result {
-          if result.kind.producesMetadataSuggestion, store.ai.metadataSuggestion != nil {
+          if result.kind.producesMetadataSuggestion, aiState.metadataSuggestion != nil {
             selectionActionMessage = result.kind.displayName + "已生成，可在元数据建议中应用。"
           } else {
             selectionEditPreview = AIPublishingSelectionEditPreview(
@@ -841,7 +924,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func articleInsertionRange(for kind: AIPublishingActionKind) -> NSRange {
-    let bodyLength = (draft.bodyMarkdown as NSString).length
+    let bodyLength = (editorBody as NSString).length
     switch kind {
     case .continueArticle, .draftArticleFAQ, .draftTroubleshootingSection, .draftReferencesSection:
       return NSRange(location: bodyLength, length: 0)
@@ -863,12 +946,12 @@ struct MacMarkdownComposerView: View {
   }
 
   private func checkSelectedPublicRisk() {
-    let selectedText = selectedText(in: draft.bodyMarkdown).trimmedForPublishing
+    let selectedText = selectedText(in: editorBody).trimmedForPublishing
     guard !selectedText.isEmpty else {
       return
     }
 
-    var probeDraft = draft
+    var probeDraft = previewDraft
     probeDraft.bodyMarkdown = selectedText
     let summary = PublicRiskSummary(issues: PublicRiskScanner().scan(draft: probeDraft))
     let content: String
@@ -882,8 +965,8 @@ struct MacMarkdownComposerView: View {
       content = "选中文本公开风险：\n\(issueLines.joined(separator: "\n"))"
       selectionActionMessage = "选区有 \(summary.issueCount) 项公开风险。"
     }
-    store.ai.setActionResult(AIPublishingActionResult(kind: .privacyReview, content: content))
-    store.ai.setActionMessage(selectionActionMessage)
+    aiState.setActionResult(AIPublishingActionResult(kind: .privacyReview, content: content))
+    aiState.setActionMessage(selectionActionMessage)
   }
 
   private func applyLatestAIReplyToSelection() {
@@ -892,7 +975,7 @@ struct MacMarkdownComposerView: View {
       return
     }
 
-    let range = clamped(selectedRange, length: (draft.bodyMarkdown as NSString).length)
+    let range = clamped(selectedRange, length: (editorBody as NSString).length)
     guard range.length > 0 else {
       selectionActionMessage = "请先选择要替换的正文。"
       return
@@ -900,7 +983,7 @@ struct MacMarkdownComposerView: View {
 
     guard let result = AIPublishingChatDraftApplicationService.applyAssistantContent(
       message.content,
-      to: draft,
+      to: previewDraft,
       mode: .replaceSelection,
       selectionRange: range
     ) else {
@@ -909,19 +992,19 @@ struct MacMarkdownComposerView: View {
     }
 
     let replacementLength = (message.content.trimmedForPublishing as NSString).length
-    draft = result.draft
+    applyDraftUpdate(result.draft)
     selectedRange = NSRange(location: range.location + replacementLength, length: 0)
     selectionActionMessage = result.action.statusMessage
   }
 
   private func showAIContextInspector() {
-    store.ai.openChatWorkspace(for: draft.id)
+    aiState.openChatWorkspace(for: draft.id)
   }
 
   private func applySelectionEditPreview(_ preview: AIPublishingSelectionEditPreview) {
     do {
-      let originalLength = (draft.bodyMarkdown as NSString).length
-      let updated = try AIPublishingSelectionEditPreviewService.apply(preview, to: draft)
+      let originalLength = (editorBody as NSString).length
+      let updated = try AIPublishingSelectionEditPreviewService.apply(preview, to: previewDraft)
       let updatedLength = (updated.bodyMarkdown as NSString).length
       let insertedLength = max(0, updatedLength - originalLength)
       let newSelectionLocation: Int
@@ -933,7 +1016,7 @@ struct MacMarkdownComposerView: View {
       case .insertAtRange:
         newSelectionLocation = preview.range.location + insertedLength
       }
-      draft = updated
+      applyDraftUpdate(updated)
       selectedRange = NSRange(location: newSelectionLocation, length: 0)
       selectionEditPreview = nil
       selectionActionMessage = "\(preview.kind.displayName)已应用。"

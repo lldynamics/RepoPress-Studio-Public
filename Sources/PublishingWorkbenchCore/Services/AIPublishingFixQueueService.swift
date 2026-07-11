@@ -72,7 +72,7 @@ public struct AIPublishingFixQueueItem: Identifiable, Codable, Hashable, Sendabl
   }
 }
 
-public struct AIPublishingFixQueueService {
+public struct AIPublishingFixQueueService: Sendable {
   public init() {}
 
   public func items(

@@ -569,7 +569,7 @@ final class SiteMaintenanceServiceTests: XCTestCase {
   func testStoreRecordsMaintenanceOperationAndPersistsItAcrossReloads() throws {
     let url = try temporaryPersistenceURL()
     let profile = SiteProfile.defaultProfile
-    try WorkbenchPersistence(fileURL: url).save(
+    _ = try WorkbenchPersistence(fileURL: url).save(
       WorkbenchSnapshot(
         profiles: [profile],
         activeProfileID: profile.id,
@@ -621,7 +621,7 @@ final class SiteMaintenanceServiceTests: XCTestCase {
       bodyMarkdown: "正文",
       status: .published
     )
-    try WorkbenchPersistence(fileURL: url).save(
+    _ = try WorkbenchPersistence(fileURL: url).save(
       WorkbenchSnapshot(
         profiles: [profile],
         activeProfileID: profile.id,
@@ -669,7 +669,7 @@ final class SiteMaintenanceServiceTests: XCTestCase {
       status: .ready,
       updatedAt: oldDate
     )
-    try WorkbenchPersistence(fileURL: url).save(
+    _ = try WorkbenchPersistence(fileURL: url).save(
       WorkbenchSnapshot(
         profiles: [profile],
         activeProfileID: profile.id,

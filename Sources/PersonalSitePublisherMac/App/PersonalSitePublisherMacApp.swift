@@ -1,6 +1,9 @@
 import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
+#if DEBUG
+import PublishingWorkbenchScreenshotSupport
+#endif
 
 @main
 struct PersonalSitePublisherMacApp: App {
@@ -10,9 +13,13 @@ struct PersonalSitePublisherMacApp: App {
 
   init() {
     WindowRestorationPolicy.disableAutomaticRestoration()
+#if DEBUG
     let workbenchStore = WorkbenchStore(
       persistence: ScreenshotDemoDataService.preparePersistenceIfEnabled()
     )
+#else
+    let workbenchStore = WorkbenchStore()
+#endif
     _store = StateObject(
       wrappedValue: workbenchStore
     )
@@ -23,6 +30,7 @@ struct PersonalSitePublisherMacApp: App {
     Window("个人网站发布控制台", id: "main-workbench") {
       ContentView(store: store)
         .frame(minWidth: 980, minHeight: 720)
+        .tint(WorkbenchTheme.default.primary)
         .task {
           storeKitProEntitlementCoordinator.start(store: store)
         }
@@ -34,6 +42,7 @@ struct PersonalSitePublisherMacApp: App {
     WindowGroup("文章编辑", for: UUID.self) { $draftID in
       DraftEditorWindowView(store: store, draftID: draftID)
         .frame(minWidth: 980, minHeight: 680)
+        .tint(WorkbenchTheme.default.primary)
     }
 
     Settings {
@@ -41,13 +50,14 @@ struct PersonalSitePublisherMacApp: App {
         store: store,
         storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator
       )
+      .tint(WorkbenchTheme.default.primary)
     }
   }
 }
 
+@MainActor
 final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate {
   weak var workbenchStore: WorkbenchStore?
-  private var windowVisibilityObserver: NSObjectProtocol?
 
   func applicationWillFinishLaunching(_ notification: Notification) {
     WindowRestorationPolicy.disableAutomaticRestoration()
@@ -56,20 +66,16 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   func applicationDidFinishLaunching(_ notification: Notification) {
     WindowRestorationPolicy.disableAutomaticRestoration()
     disableRestorationForVisibleWindows()
-    windowVisibilityObserver = NotificationCenter.default.addObserver(
-      forName: NSWindow.didBecomeKeyNotification,
-      object: nil,
-      queue: .main
-    ) { notification in
-      guard let window = notification.object as? NSWindow else {
-        return
-      }
-      window.isRestorable = false
-    }
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(windowDidBecomeKey(_:)),
+      name: NSWindow.didBecomeKeyNotification,
+      object: nil
+    )
 
     NSApp.setActivationPolicy(.regular)
-    DispatchQueue.main.async {
-      self.disableRestorationForVisibleWindows()
+    Task { @MainActor [weak self] in
+      self?.disableRestorationForVisibleWindows()
       NSApp.activate(ignoringOtherApps: true)
     }
   }
@@ -93,13 +99,13 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    workbenchStore?.stopLocalSitePreviewImmediately()
     _ = workbenchStore?.flushPendingChanges()
   }
 
-  deinit {
-    if let windowVisibilityObserver {
-      NotificationCenter.default.removeObserver(windowVisibilityObserver)
-    }
+  @objc private func windowDidBecomeKey(_ notification: Notification) {
+    guard let window = notification.object as? NSWindow else { return }
+    window.isRestorable = false
   }
 
   private func disableRestorationForVisibleWindows() {

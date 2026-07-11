@@ -111,7 +111,7 @@ struct GeneralDraftLibraryDetailView: View {
         }
         Spacer()
         Button {
-          store.focusDraft(plan.targetDraftID, section: .writing)
+          _ = store.focusDraft(plan.targetDraftID, section: .writing)
         } label: {
           Label("打开复用草稿", systemImage: "arrow.right.circle")
         }
@@ -332,7 +332,7 @@ struct GeneralDraftLibraryDetailView: View {
             }
 
             Button {
-              store.focusDraft(item.draftID, section: .writing)
+              _ = store.focusDraft(item.draftID, section: .writing)
             } label: {
               Label("打开", systemImage: "arrow.right.circle")
             }

@@ -79,11 +79,14 @@ struct FindReplaceBar: View {
   let onReplaceAll: () -> Void
   let onDismiss: () -> Void
 
+  @FocusState private var isFindFieldFocused: Bool
+
   var body: some View {
     HStack(spacing: 8) {
       TextField("查找", text: $findQuery)
         .textFieldStyle(.roundedBorder)
         .frame(width: 180)
+        .focused($isFindFieldFocused)
         .accessibilityLabel("查找文本")
         .accessibilityValue(findQuery.nilIfEmpty ?? "未输入")
 
@@ -147,6 +150,9 @@ struct FindReplaceBar: View {
     .padding(.horizontal, 14)
     .padding(.vertical, 7)
     .background(.bar)
+    .onAppear {
+      isFindFieldFocused = true
+    }
   }
 }
 

@@ -8,8 +8,8 @@ extension RemoteRepositoryPublishService {
     token: String,
     queryItems: [URLQueryItem]? = nil,
     body: Body
-  ) -> URLRequest {
-    var request = jsonRequest(
+  ) throws -> URLRequest {
+    var request = try jsonRequest(
       baseURL: repository.apiBaseURL,
       method: method,
       path: path,
@@ -29,8 +29,8 @@ extension RemoteRepositoryPublishService {
     token: String,
     queryItems: [URLQueryItem]? = nil,
     body: Body
-  ) -> URLRequest {
-    var request = jsonRequest(
+  ) throws -> URLRequest {
+    var request = try jsonRequest(
       baseURL: baseURL,
       method: method,
       path: path,
@@ -88,8 +88,8 @@ extension RemoteRepositoryPublishService {
     token: String,
     queryItems: [URLQueryItem]? = nil,
     body: Body
-  ) -> URLRequest {
-    var request = jsonRequest(
+  ) throws -> URLRequest {
+    var request = try jsonRequest(
       baseURL: repository.apiBaseURL,
       method: method,
       path: path,
@@ -108,8 +108,8 @@ extension RemoteRepositoryPublishService {
     token: String,
     queryItems: [URLQueryItem]? = nil,
     body: Body
-  ) -> URLRequest {
-    var request = jsonRequest(
+  ) throws -> URLRequest {
+    var request = try jsonRequest(
       baseURL: baseURL,
       method: method,
       path: path,
@@ -163,11 +163,11 @@ extension RemoteRepositoryPublishService {
     path: String,
     queryItems: [URLQueryItem]?,
     body: Body
-  ) -> URLRequest {
+  ) throws -> URLRequest {
     var request = URLRequest(url: requestURL(baseURL: baseURL, path: path, queryItems: queryItems))
     request.httpMethod = method
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.httpBody = try? encoder.encode(body)
+    request.httpBody = try encoder.encode(body)
     return request
   }
 

@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import PublishingWorkbenchCore
 
@@ -60,5 +61,67 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertEqual(store.selectedDraft?.id, draft.id)
     XCTAssertTrue(store.repositoryTokenAvailability.hasToken)
     XCTAssertEqual(store.repositoryTokenAvailability.updatedAt, updatedAt)
+  }
+
+  func testShellFacadeIgnoresDraftBodyEditsButPublishingFacadeObservesThem() {
+    let store = WorkbenchStore()
+    let draft = ArticleDraft.empty(profile: store.activeProfile)
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+
+    var shellChanges = 0
+    var publishingChanges = 0
+    let shellCancellable = store.shell.objectWillChange.sink { shellChanges += 1 }
+    let publishingCancellable = store.publishing.objectWillChange.sink { publishingChanges += 1 }
+
+    var updated = draft
+    updated.bodyMarkdown = "debounced editor body"
+    store.updateDraft(updated)
+
+    XCTAssertEqual(shellChanges, 0)
+    XCTAssertGreaterThan(publishingChanges, 0)
+
+    withExtendedLifetime([shellCancellable, publishingCancellable]) {}
+  }
+
+  func testAIWorkspaceChangesStayOnAIFacadeInsteadOfRebroadcastingRootStore() {
+    let store = WorkbenchStore()
+    let ai = store.ai
+    var rootChanges = 0
+    var aiChanges = 0
+    let rootCancellable = store.objectWillChange.sink { rootChanges += 1 }
+    let aiCancellable = ai.objectWillChange.sink { aiChanges += 1 }
+
+    store.setAIChatMessages([AIPublishingChatMessage(role: .assistant, content: "streamed")])
+
+    XCTAssertEqual(rootChanges, 0)
+    XCTAssertGreaterThan(aiChanges, 0)
+
+    withExtendedLifetime([rootCancellable, aiCancellable]) {}
+  }
+
+  func testRepeatedBodyBufferTypingOnlyInvalidatesPublishingFacade() throws {
+    let store = WorkbenchStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let initialRevision = store.draftBodyEditorBuffer(for: draft.id).revision
+    let first = try XCTUnwrap(
+      store.stageDraftBody("first keystroke", for: draft.id, baseRevision: initialRevision)
+    )
+
+    var rootChanges = 0
+    var publishingChanges = 0
+    let rootCancellable = store.objectWillChange.sink { rootChanges += 1 }
+    let publishingCancellable = store.publishing.objectWillChange.sink { publishingChanges += 1 }
+
+    _ = store.stageDraftBody(
+      "second keystroke",
+      for: draft.id,
+      baseRevision: first.buffer.revision
+    )
+
+    XCTAssertEqual(rootChanges, 0)
+    XCTAssertGreaterThan(publishingChanges, 0)
+    store.discardDraftBodyEditorBuffer(for: draft.id)
+    withExtendedLifetime([rootCancellable, publishingCancellable]) {}
   }
 }

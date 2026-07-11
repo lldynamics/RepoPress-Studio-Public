@@ -59,12 +59,24 @@ public final class KeychainTokenStore: @unchecked Sendable {
     try token(forAccount: account(for: profile, scope: scope))
   }
 
+  public func repositoryToken(for profile: SiteProfile) throws -> String? {
+    let scope = KeychainTokenScope.repository(profile.repositoryProvider)
+    _ = try migrateLegacyToken(for: profile, to: scope, deleteLegacyToken: false)
+    return try token(for: profile, scope: scope)
+  }
+
   public func availability(for profile: SiteProfile) throws -> KeychainTokenAvailability {
     try availability(forAccount: account(for: profile))
   }
 
   public func availability(for profile: SiteProfile, scope: KeychainTokenScope) throws -> KeychainTokenAvailability {
     try availability(forAccount: account(for: profile, scope: scope))
+  }
+
+  public func repositoryTokenAvailability(for profile: SiteProfile) throws -> KeychainTokenAvailability {
+    let scope = KeychainTokenScope.repository(profile.repositoryProvider)
+    _ = try migrateLegacyToken(for: profile, to: scope, deleteLegacyToken: false)
+    return try availability(for: profile, scope: scope)
   }
 
   public func saveToken(_ token: String, for profile: SiteProfile) throws {

@@ -18,54 +18,12 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
     "workspace.\(rawValue)"
   }
 
-  public var displayName: String {
-    switch self {
-    case .writing:
-      return "写作"
-    case .siteStarter:
-      return "建站"
-    case .ai:
-      return "AI 对话"
-    case .sync:
-      return "同步"
-    case .contentHealth:
-      return "内容健康"
-    case .generalDrafts:
-      return "素材库"
-    case .maintenance:
-      return "维护"
-    case .images:
-      return "图片"
-    case .releaseHistory:
-      return "发布记录"
-    case .releaseReadiness:
-      return "上架门禁"
-    }
+  public var displayNameLocalizationKey: String {
+    localizationKey
   }
 
-  public var detail: String {
-    switch self {
-    case .writing:
-      return "草稿、正文、Front Matter"
-    case .siteStarter:
-      return "模板、本地仓库、首次部署"
-    case .ai:
-      return "文章对话、快捷提示、上下文"
-    case .sync:
-      return "远端变更、本地 diff、路径规则"
-    case .contentHealth:
-      return "发布前检查和公开风险"
-    case .generalDrafts:
-      return "跨文章复用素材"
-    case .maintenance:
-      return "日历、标签、旧文、链接"
-    case .images:
-      return "附件、封面、alt/caption"
-    case .releaseHistory:
-      return "提交、PR/MR、部署记录"
-    case .releaseReadiness:
-      return "本地化、截图、Runtime、App Store"
-    }
+  public var detailLocalizationKey: String {
+    "\(localizationKey).detail"
   }
 
   public var systemImage: String {
@@ -130,15 +88,39 @@ public enum WorkspaceNavigationSurface: String, CaseIterable, Sendable {
   case productReadiness
 }
 
-public enum WorkspaceSidebarPresentationMode: String, Sendable {
-  case writingDraftColumn
+public enum WorkspaceContextSidebarMode: String, Sendable {
+  case writingDrafts
+  case contentHealthFilters
+  case repositoryStages
+  case none
+}
+
+public extension WorkspaceSection {
+  var contextSidebarMode: WorkspaceContextSidebarMode {
+    switch self {
+    case .writing:
+      return .writingDrafts
+    case .contentHealth:
+      return .contentHealthFilters
+    case .sync:
+      return .repositoryStages
+    case .siteStarter,
+         .images,
+         .ai,
+         .generalDrafts,
+         .maintenance,
+         .releaseHistory,
+         .releaseReadiness:
+      return .none
+    }
+  }
 }
 
 public struct WorkspaceNavigationItem: Identifiable, Hashable, Sendable {
   public var id: WorkspaceSection { section }
   public let section: WorkspaceSection
-  public let displayName: String
-  public let detail: String
+  public let displayNameLocalizationKey: String
+  public let detailLocalizationKey: String
   public let systemImage: String
   public let keyboardShortcutKey: Character
 
@@ -148,8 +130,8 @@ public struct WorkspaceNavigationItem: Identifiable, Hashable, Sendable {
 
   public init(section: WorkspaceSection) {
     self.section = section
-    self.displayName = section.displayName
-    self.detail = section.detail
+    self.displayNameLocalizationKey = section.displayNameLocalizationKey
+    self.detailLocalizationKey = section.detailLocalizationKey
     self.systemImage = section.systemImage
     self.keyboardShortcutKey = section.keyboardShortcutKey
   }
@@ -188,7 +170,6 @@ public enum WorkspaceVisibilityPolicy {
 
 public enum WorkspaceNavigationPresentation {
   public static let defaultSection: WorkspaceSection = .writing
-  public static let sidebarMode: WorkspaceSidebarPresentationMode = .writingDraftColumn
   public static let topBarItems = items(for: .topBar)
   public static let commandMenuItems = items(for: .commandMenu)
   public static let secondaryEntryItems = WorkspaceVisibilityPolicy.secondaryEntrySections.map(WorkspaceNavigationItem.init(section:))

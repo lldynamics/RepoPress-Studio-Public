@@ -153,28 +153,80 @@ public struct LocalPublishPreviewService {
   }
 
   func write(package: PublishPackage, rootURL: URL) throws -> [String] {
-    var writtenPaths: [String] = []
-    for file in package.files {
-      let destinationURL = try safeDestinationURLForWrite(
+    var seenDestinationPaths = Set<String>()
+    let preparedWrites = try package.files.map { file -> PreparedLocalPublishWrite in
+      let destinationURL = try validatedDestinationURLForWrite(
         rootURL: rootURL,
         repositoryPath: file.repositoryPath
       )
+      guard seenDestinationPaths.insert(destinationURL.path).inserted else {
+        throw LocalPublishPreviewError.unsafePath(file.repositoryPath)
+      }
 
+      let sourceURL: URL?
       switch file.kind {
       case .markdown:
-        try (file.content ?? "").write(to: destinationURL, atomically: true, encoding: .utf8)
+        sourceURL = nil
       case .image:
         guard let sourceFilePath = file.sourceFilePath else {
           throw LocalPublishPreviewError.missingSource(file.repositoryPath)
         }
-        let sourceURL = URL(fileURLWithPath: sourceFilePath)
-        if fileManager.fileExists(atPath: destinationURL.path) {
-          try fileManager.removeItem(at: destinationURL)
+        let candidate = URL(fileURLWithPath: sourceFilePath)
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
+              !isDirectory.boolValue else {
+          throw LocalPublishPreviewError.missingSource(file.repositoryPath)
         }
-        try fileManager.copyItem(at: sourceURL, to: destinationURL)
+        sourceURL = candidate
       }
+      return PreparedLocalPublishWrite(file: file, destinationURL: destinationURL, sourceURL: sourceURL)
+    }
 
-      writtenPaths.append(file.repositoryPath)
+    let rollbackDirectory = fileManager.temporaryDirectory
+      .appendingPathComponent("personal-site-publisher-write-\(UUID().uuidString)", isDirectory: true)
+    try fileManager.createDirectory(at: rollbackDirectory, withIntermediateDirectories: true)
+    defer { try? fileManager.removeItem(at: rollbackDirectory) }
+
+    var writtenPaths: [String] = []
+    var rollbackEntries: [LocalPublishRollbackEntry] = []
+    do {
+      for (index, prepared) in preparedWrites.enumerated() {
+        let destinationURL = try safeDestinationURLForWrite(
+          rootURL: rootURL,
+          repositoryPath: prepared.file.repositoryPath
+        )
+        let backupURL: URL?
+        if fileManager.fileExists(atPath: destinationURL.path) {
+          let candidate = rollbackDirectory.appendingPathComponent("\(index)-backup")
+          try fileManager.copyItem(at: destinationURL, to: candidate)
+          backupURL = candidate
+        } else {
+          backupURL = nil
+        }
+
+        rollbackEntries.append(LocalPublishRollbackEntry(destinationURL: destinationURL, backupURL: backupURL))
+        switch prepared.file.kind {
+        case .markdown:
+          try (prepared.file.content ?? "").write(to: destinationURL, atomically: true, encoding: .utf8)
+        case .image:
+          guard let sourceURL = prepared.sourceURL else {
+            throw LocalPublishPreviewError.missingSource(prepared.file.repositoryPath)
+          }
+          try replaceImageAtomically(sourceURL: sourceURL, destinationURL: destinationURL)
+        }
+
+        writtenPaths.append(prepared.file.repositoryPath)
+      }
+    } catch {
+      do {
+        try rollbackLocalPublishWrites(rollbackEntries)
+      } catch let rollbackError {
+        throw LocalPublishPreviewError.rollbackFailed(
+          original: error.localizedDescription,
+          rollback: rollbackError.localizedDescription
+        )
+      }
+      throw error
     }
     return writtenPaths
   }
@@ -265,6 +317,57 @@ public struct LocalPublishPreviewService {
     return destinationURL
   }
 
+  private func validatedDestinationURLForWrite(rootURL: URL, repositoryPath: String) throws -> URL {
+    guard let destinationURL = destinationURL(rootURL: rootURL, repositoryPath: repositoryPath) else {
+      throw LocalPublishPreviewError.unsafePath(repositoryPath)
+    }
+
+    let rootURL = rootURL.standardizedFileURL
+    let relativeComponents = repositoryPath.normalizedRelativePath().split(separator: "/").map(String.init)
+    var parentURL = rootURL
+    for component in relativeComponents.dropLast() {
+      parentURL.appendPathComponent(component, isDirectory: true)
+      guard !isSymbolicLink(parentURL) else {
+        throw LocalPublishPreviewError.unsafePath(repositoryPath)
+      }
+      var isDirectory: ObjCBool = false
+      if fileManager.fileExists(atPath: parentURL.path, isDirectory: &isDirectory), !isDirectory.boolValue {
+        throw LocalPublishPreviewError.unsafePath(repositoryPath)
+      }
+    }
+
+    var destinationIsDirectory: ObjCBool = false
+    if fileManager.fileExists(atPath: destinationURL.path, isDirectory: &destinationIsDirectory),
+       destinationIsDirectory.boolValue {
+      throw LocalPublishPreviewError.unsafePath(repositoryPath)
+    }
+    return destinationURL
+  }
+
+  private func replaceImageAtomically(sourceURL: URL, destinationURL: URL) throws {
+    let stagingURL = destinationURL
+      .deletingLastPathComponent()
+      .appendingPathComponent(".\(destinationURL.lastPathComponent).publisher-stage-\(UUID().uuidString)")
+    defer { try? fileManager.removeItem(at: stagingURL) }
+    try fileManager.copyItem(at: sourceURL, to: stagingURL)
+    if fileManager.fileExists(atPath: destinationURL.path) {
+      _ = try fileManager.replaceItemAt(destinationURL, withItemAt: stagingURL)
+    } else {
+      try fileManager.moveItem(at: stagingURL, to: destinationURL)
+    }
+  }
+
+  private func rollbackLocalPublishWrites(_ entries: [LocalPublishRollbackEntry]) throws {
+    for entry in entries.reversed() {
+      if fileManager.fileExists(atPath: entry.destinationURL.path) {
+        try fileManager.removeItem(at: entry.destinationURL)
+      }
+      if let backupURL = entry.backupURL {
+        try fileManager.copyItem(at: backupURL, to: entry.destinationURL)
+      }
+    }
+  }
+
   private func isSymbolicLink(_ url: URL) -> Bool {
     // destinationOfSymbolicLink catches dangling links too, unlike fileExists.
     (try? fileManager.destinationOfSymbolicLink(atPath: url.path)) != nil
@@ -301,6 +404,7 @@ public enum LocalPublishPreviewError: LocalizedError {
   case missingRepositoryRoot
   case unsafePath(String)
   case missingSource(String)
+  case rollbackFailed(original: String, rollback: String)
 
   public var errorDescription: String? {
     switch self {
@@ -310,6 +414,19 @@ public enum LocalPublishPreviewError: LocalizedError {
       return "发布路径不安全：\(path)"
     case .missingSource(let path):
       return "源文件缺失：\(path)"
+    case .rollbackFailed(let original, let rollback):
+      return "本地写入失败，且自动恢复未完整完成：\(original)；恢复错误：\(rollback)"
     }
   }
+}
+
+private struct PreparedLocalPublishWrite {
+  let file: PublishPackageFile
+  let destinationURL: URL
+  let sourceURL: URL?
+}
+
+private struct LocalPublishRollbackEntry {
+  let destinationURL: URL
+  let backupURL: URL?
 }

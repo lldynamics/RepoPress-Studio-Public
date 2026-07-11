@@ -38,6 +38,14 @@ struct SiteMaintenanceDetailContent: View {
   let sendToAI: (MaintenanceActionItem) -> Void
   let applySuggestedSchedule: () -> Void
   let recordPerformanceSnapshot: (ArticleDraft) -> Void
+  let importCSV: () -> Void
+  let importNotice: ContentPerformanceImportNotice?
+  let latestRelease: ReleaseRecord?
+  let deploymentSnapshot: DeploymentStatusSnapshot?
+  let canCheckDeployment: Bool
+  let isDeploymentChecking: Bool
+  let onlineInspectionMessage: String?
+  let runOnlineInspection: () -> Void
 
   private var report: SiteMaintenanceReport {
     snapshot.report
@@ -57,6 +65,15 @@ struct SiteMaintenanceDetailContent: View {
           copyChecklist(report)
         }
       )
+      OnlineSiteInspectionSection(
+        report: report,
+        latestRelease: latestRelease,
+        deploymentSnapshot: deploymentSnapshot,
+        canCheckDeployment: canCheckDeployment,
+        isChecking: isDeploymentChecking,
+        message: onlineInspectionMessage,
+        runInspection: runOnlineInspection
+      )
       SiteMaintenanceReportSections(
         report: report,
         isAIChatRunning: isAIChatRunning,
@@ -69,7 +86,9 @@ struct SiteMaintenanceDetailContent: View {
         recordItem: recordItem,
         sendToAI: sendToAI,
         applySuggestedSchedule: applySuggestedSchedule,
-        recordPerformanceSnapshot: recordPerformanceSnapshot
+        recordPerformanceSnapshot: recordPerformanceSnapshot,
+        importCSV: importCSV,
+        importNotice: importNotice
       )
     }
   }

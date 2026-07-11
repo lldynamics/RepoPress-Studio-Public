@@ -46,7 +46,7 @@ extension RepositoryWorkspaceView {
           MetricTile(title: "无变化", value: "\(plan.unchangedCount)", systemImage: "equal.circle")
         }
 
-        if let preview = store.remoteRepositoryPublishPreview(for: plan) {
+        if let preview = store.batchRemotePublishPreviewSnapshot {
           batchOnlinePublishPreview(preview)
         }
 

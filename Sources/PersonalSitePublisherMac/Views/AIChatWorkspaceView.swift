@@ -5,7 +5,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct AIChatWorkspaceView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var ai: WorkbenchAIFeatureFacade
   @State private var inputText = ""
   @State private var applyMessage: String?
   @State private var isPromptLibraryPresented = false
@@ -17,11 +18,16 @@ struct AIChatWorkspaceView: View {
   @State private var chatTaskID: UUID?
   @FocusState private var isComposerFocused: Bool
 
+  init(store: WorkbenchStore) {
+    self.store = store
+    _ai = ObservedObject(wrappedValue: store.ai)
+  }
+
   var body: some View {
-    if let fallbackDraft = store.ai.selectedChatDraft {
+    if let fallbackDraft = ai.selectedChatDraft {
       let draft = Binding<ArticleDraft>(
-        get: { store.ai.selectedChatDraft ?? fallbackDraft },
-        set: { store.ai.updateChatDraft($0) }
+        get: { ai.selectedChatDraft ?? fallbackDraft },
+        set: { ai.updateChatDraft($0) }
       )
 
       VStack(spacing: 0) {
@@ -79,7 +85,7 @@ struct AIChatWorkspaceView: View {
             applyMessage = nil
             isComposerFocused = true
           },
-          customPrompts: store.ai.chatCustomPrompts,
+          customPrompts: ai.chatCustomPrompts,
           onApplyCustomPrompt: { prompt in
             inputText = prompt.prompt
             applyMessage = nil
@@ -105,14 +111,14 @@ struct AIChatWorkspaceView: View {
         syncConversationTitleDraft(for: draft.wrappedValue)
         applyPendingQuickPromptIfNeeded()
       }
-      .onChange(of: store.ai.chatConversationTitle) { _, _ in
+      .onChange(of: ai.chatConversationTitle) { _, _ in
         syncConversationTitleDraft(for: draft.wrappedValue)
       }
-      .onChange(of: store.ai.chatMessages.count) { _, _ in
-        guard store.ai.chatConversationTitle?.nilIfEmpty == nil else { return }
+      .onChange(of: ai.chatMessages.count) { _, _ in
+        guard ai.chatConversationTitle?.nilIfEmpty == nil else { return }
         syncConversationTitleDraft(for: draft.wrappedValue)
       }
-      .onChange(of: store.ai.pendingQuickPrompt?.id) { _, _ in
+      .onChange(of: ai.pendingQuickPrompt?.id) { _, _ in
         applyPendingQuickPromptIfNeeded()
       }
       .onDisappear {

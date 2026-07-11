@@ -28,9 +28,13 @@ final class WorkbenchPersistenceStore: ObservableObject {
   }
 
   func markStatus(_ value: String) {
-    status = value
+    if status != value {
+      status = value
+    }
     if value == "有未保存修改" {
-      hasUnsavedChanges = true
+      if !hasUnsavedChanges {
+        hasUnsavedChanges = true
+      }
     }
   }
 
@@ -53,8 +57,12 @@ final class WorkbenchPersistenceStore: ObservableObject {
 
   func scheduleAutosave(snapshot: @escaping @MainActor () -> WorkbenchSnapshot?) {
     autosaveTask?.cancel()
-    hasUnsavedChanges = true
-    status = "有未保存修改"
+    if !hasUnsavedChanges {
+      hasUnsavedChanges = true
+    }
+    if status != "有未保存修改" {
+      status = "有未保存修改"
+    }
     autosaveTask = Task { [weak self] in
       do {
         try await Task.sleep(nanoseconds: 750_000_000)

@@ -810,11 +810,17 @@ struct EditorPathSection: View {
           .foregroundStyle(.secondary)
       }
 
-      Label("\(store.publishingPackage(for: draft).files.count) 个发布文件", systemImage: "shippingbox")
+      Label(
+        store.cachedPublishingPackage(for: draft).map { "\($0.files.count) 个发布文件" } ?? "发布快照待刷新",
+        systemImage: "shippingbox"
+      )
         .font(.caption)
         .foregroundStyle(.secondary)
 
-      Label("\(store.localPublishPreview(for: draft).changedFileDiffs.count) 个待写入变化", systemImage: "arrow.left.arrow.right")
+      Label(
+        store.cachedLocalPublishPreview(for: draft).map { "\($0.changedFileDiffs.count) 个待写入变化" } ?? "Diff 快照待刷新",
+        systemImage: "arrow.left.arrow.right"
+      )
         .font(.caption)
         .foregroundStyle(.secondary)
 
@@ -825,10 +831,12 @@ struct EditorPathSection: View {
           .lineLimit(1)
       }
 
-      Label(store.remoteReviewDraft(for: draft).branchName, systemImage: "arrow.triangle.branch")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
+      if let review = store.cachedRemoteReviewDraft(for: draft) {
+        Label(review.branchName, systemImage: "arrow.triangle.branch")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+      }
     }
   }
 }
@@ -847,7 +855,7 @@ struct EditorImageSection: View {
           .font(.headline)
         Spacer()
         Button {
-          store.focusDraft(draft.id, section: .images)
+          _ = store.focusDraft(draft.id, section: .images)
         } label: {
           Image(systemName: "photo.on.rectangle.angled")
         }
@@ -887,7 +895,7 @@ struct EditorImageSection: View {
 
         if draft.attachments.count > 3 {
           Button {
-            store.focusDraft(draft.id, section: .images)
+            _ = store.focusDraft(draft.id, section: .images)
           } label: {
             Label("还有 \(draft.attachments.count - 3) 张，去图片工作台", systemImage: "arrow.right.circle")
           }

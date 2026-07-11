@@ -562,7 +562,7 @@ final class GeneralDraftLibraryServiceTests: XCTestCase {
     XCTAssertEqual(store.selectedSection, .generalDrafts)
     XCTAssertTrue(store.drafts.contains { $0.id == source.id && $0.siteProfileID == publishingProfileID })
     XCTAssertTrue(store.generalDraftLibraryReport.items.contains { $0.draftID == copied.id && $0.reuseStatus == .libraryDraft })
-    XCTAssertEqual(store.publishActionMessage, "已收进通用草稿库：跨站点选题")
+    XCTAssertEqual(store.publishActionMessage, "已收进素材库：跨站点选题")
   }
 
   func testStoreImportGeneralDraftLibraryPackageUpdatesExistingAndInsertsNew() throws {
@@ -643,7 +643,7 @@ final class GeneralDraftLibraryServiceTests: XCTestCase {
     XCTAssertEqual(store.drafts.count, 1)
     XCTAssertEqual(store.selectedDraftID, source.id)
     XCTAssertEqual(store.selectedSection, .generalDrafts)
-    XCTAssertEqual(store.publishActionMessage, "这篇已经在通用草稿库中。")
+    XCTAssertEqual(store.publishActionMessage, "这篇已经在素材库中。")
   }
 
   func testBackupPlanExportsOnlyGeneralDraftsWithManifestAndCommands() throws {

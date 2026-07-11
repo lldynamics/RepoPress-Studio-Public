@@ -10,6 +10,8 @@ struct SettingsContext {
   let autoRunPreflightBinding: Binding<Bool>
   let scanRepositoryOnLaunch: Binding<Bool>
   let siteKindBinding: Binding<SiteKind>
+  let healthDestination: SettingsConfigurationHealthDestination?
+  let healthNavigationRequestID: UUID
 
   var actions: SettingsStoreActions {
     SettingsStoreActions(

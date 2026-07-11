@@ -2,6 +2,7 @@ import Foundation
 
 extension WorkbenchStore {
   public func runPreflight() {
+    flushDraftBodyEditorBuffers()
     preflightRefreshTask?.cancel()
     preflightRefreshTask = nil
     publishingStore.runPreflight(store: self)
@@ -25,23 +26,53 @@ extension WorkbenchStore {
   }
 
   public func refreshPublishPreview(for draft: ArticleDraft? = nil) {
+    flushDraftBodyEditorBuffers()
     publishingStore.refreshPublishPreview(for: draft, store: self)
   }
 
   public func refreshBatchPublishPlan() {
+    flushDraftBodyEditorBuffers()
     publishingStore.refreshBatchPublishPlan(store: self)
   }
 
   public func publishingPackage(for draft: ArticleDraft) -> PublishPackage {
-    publishingStore.publishingPackage(for: draft, store: self)
+    flushDraftBodyEditorBuffer(for: draft.id)
+    let currentDraft = drafts.first(where: { $0.id == draft.id }) ?? draft
+    return publishingStore.publishingPackage(for: currentDraft, store: self)
   }
 
   public func localPublishPreview(for draft: ArticleDraft) -> LocalPublishPreview {
-    publishingStore.localPublishPreview(for: draft, store: self)
+    flushDraftBodyEditorBuffer(for: draft.id)
+    let currentDraft = drafts.first(where: { $0.id == draft.id }) ?? draft
+    return publishingStore.localPublishPreview(for: currentDraft, store: self)
+  }
+
+  public func cachedPublishingPackage(for draft: ArticleDraft) -> PublishPackage? {
+    guard publishPackage?.draftID == draft.id else { return nil }
+    return publishPackage
+  }
+
+  public func cachedLocalPublishPreview(for draft: ArticleDraft) -> LocalPublishPreview? {
+    guard publishPackage?.draftID == draft.id else { return nil }
+    return localPublishPreview
+  }
+
+  public func cachedRemotePublishPreview(for draft: ArticleDraft) -> RemoteRepositoryPublishPreview? {
+    guard publishPackage?.draftID == draft.id else { return nil }
+    return remotePublishPreviewSnapshot
+  }
+
+  public func cachedRemoteReviewDraft(for draft: ArticleDraft) -> RemoteReviewDraft? {
+    guard publishPackage?.draftID == draft.id else { return nil }
+    return remoteReviewDraft
   }
 
   public func localSitePreviewPlan(for draft: ArticleDraft) -> LocalSitePreviewPlan? {
     publishingStore.localSitePreviewPlan(for: draft, store: self)
+  }
+
+  public func localSitePreviewURL(for draft: ArticleDraft) -> URL? {
+    publishingStore.localSitePreviewURL(for: draft, store: self)
   }
 
   public func repositoryReport(for draft: ArticleDraft) -> RepositoryScanReport? {
@@ -53,7 +84,9 @@ extension WorkbenchStore {
   }
 
   public func remoteReviewDraft(for draft: ArticleDraft) -> RemoteReviewDraft {
-    publishingStore.remoteReviewDraft(for: draft, store: self)
+    flushDraftBodyEditorBuffer(for: draft.id)
+    let currentDraft = drafts.first(where: { $0.id == draft.id }) ?? draft
+    return publishingStore.remoteReviewDraft(for: currentDraft, store: self)
   }
 
   public func draftComparisonContent(for draft: ArticleDraft) -> DraftComparisonContent {
@@ -65,6 +98,7 @@ extension WorkbenchStore {
   }
 
   public func selectDraft(_ id: UUID?) {
+    flushDraftBodyEditorBuffers()
     publishingStore.selectDraft(id, store: self)
   }
 
@@ -133,15 +167,24 @@ extension WorkbenchStore {
   }
 
   public func updateDraft(_ draft: ArticleDraft) {
-    let previousDraft = drafts.first { $0.id == draft.id }
+    let buffer = draftBodyEditorBuffer(for: draft.id)
+    var bufferedDraft = draft
+    if buffer.isDirty {
+      bufferedDraft.bodyMarkdown = buffer.bodyMarkdown
+    }
+
+    let previousDraft = drafts.first { $0.id == bufferedDraft.id }
     var previousWithoutBody = previousDraft
     previousWithoutBody?.bodyMarkdown = ""
-    var updatedWithoutBody = draft
+    var updatedWithoutBody = bufferedDraft
     updatedWithoutBody.bodyMarkdown = ""
     let isBodyOnlyEdit = previousDraft != nil && previousWithoutBody == updatedWithoutBody
-    publishingStore.updateDraft(draft, store: self)
+    publishingStore.updateDraft(bufferedDraft, store: self)
+    if !buffer.isDirty, previousDraft?.bodyMarkdown != bufferedDraft.bodyMarkdown {
+      synchronizeDraftBodyEditorBuffer(with: bufferedDraft)
+    }
     if isBodyOnlyEdit {
-      invalidateBodyEditingDerivedCaches(for: draft.id)
+      invalidateBodyEditingDerivedCaches(for: bufferedDraft.id)
     } else {
       invalidateDraftDerivedCaches()
     }
@@ -153,12 +196,14 @@ extension WorkbenchStore {
   }
 
   public func deleteDraft(id draftID: UUID) {
+    discardDraftBodyEditorBuffer(for: draftID)
     publishingStore.deleteDraft(id: draftID, store: self)
     invalidateDraftDerivedCaches()
   }
 
   public func focusDraft(_ id: UUID, section: WorkspaceSection? = nil) -> Bool {
-    publishingStore.focusDraft(id, section: section, store: self)
+    flushDraftBodyEditorBuffers()
+    return publishingStore.focusDraft(id, section: section, store: self)
   }
 
   public func restoreSEOSocialPreviewSnapshotForCurrentSelection() {
@@ -182,6 +227,14 @@ extension WorkbenchStore {
 
   public var contentHealthSummaries: [DraftPreflightSummary] {
     publishingStore.contentHealthSummaries(store: self)
+  }
+
+  public var contentHealthReport: ContentHealthReport {
+    publishingStore.contentHealthReport(store: self)
+  }
+
+  public func contentHealthReportAsync() async -> ContentHealthReport {
+    await publishingStore.contentHealthReportAsync(store: self)
   }
 
   public var publicRiskSummary: PublicRiskSummary {

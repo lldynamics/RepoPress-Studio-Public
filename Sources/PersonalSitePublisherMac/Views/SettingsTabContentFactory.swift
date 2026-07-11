@@ -7,7 +7,15 @@ struct SettingsTabContentFactory {
   static func makeContent(for tab: SettingsTab, context: SettingsContext) -> some View {
     switch tab {
     case .defaultRules:
-      SettingsDefaultRulesTabFactory.make(context: context)
+      DefaultRuleSettingsView(
+        defaultShowsInspector: context.defaultShowsInspector,
+        autoRunPreflightBinding: context.autoRunPreflightBinding,
+        scanRepositoryOnLaunch: context.scanRepositoryOnLaunch,
+        activeProfileBinding: context.activeProfileBinding,
+        siteKindBinding: context.siteKindBinding,
+        healthDestination: context.healthDestination,
+        healthNavigationRequestID: context.healthNavigationRequestID
+      )
     case .token:
       SettingsTokenTabFactory.make(context: context)
     case .ai:

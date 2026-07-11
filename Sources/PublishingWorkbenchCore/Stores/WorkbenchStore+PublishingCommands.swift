@@ -2,34 +2,41 @@ import Foundation
 
 extension WorkbenchStore {
   public func writeSelectedDraftToLocalRepository() {
+    refreshSelectedDraftPublishingState()
     publishingStore.writeSelectedDraftToLocalRepository(store: self)
   }
 
   @discardableResult
   public func writeBatchReadyDraftsToLocalRepository() -> BatchLocalWriteResult {
-    publishingStore.writeBatchReadyDraftsToLocalRepository(store: self)
+    refreshBatchPublishPlan()
+    return publishingStore.writeBatchReadyDraftsToLocalRepository(store: self)
   }
 
   @discardableResult
   public func publishBatchReadyDraftsOnlineUsingPreferredStrategy() async -> RemoteRepositoryPublishResult? {
-    await publishingStore.publishBatchReadyDraftsOnlineUsingPreferredStrategy(store: self)
+    refreshBatchPublishPlan()
+    return await publishingStore.publishBatchReadyDraftsOnlineUsingPreferredStrategy(store: self)
   }
 
-  public func commitSelectedDraftDirectly() {
-    publishingStore.commitSelectedDraftDirectly(store: self)
+  public func commitSelectedDraftDirectly() async {
+    refreshSelectedDraftPublishingState()
+    await publishingStore.commitSelectedDraftDirectly(store: self)
   }
 
-  public func commitSelectedDraftToReviewBranch() {
-    publishingStore.commitSelectedDraftToReviewBranch(store: self)
+  public func commitSelectedDraftToReviewBranch() async {
+    refreshSelectedDraftPublishingState()
+    await publishingStore.commitSelectedDraftToReviewBranch(store: self)
   }
 
-  public func commitSelectedDraftUsingPreferredStrategy() {
-    publishingStore.commitSelectedDraftUsingPreferredStrategy(store: self)
+  public func commitSelectedDraftUsingPreferredStrategy() async {
+    refreshSelectedDraftPublishingState()
+    await publishingStore.commitSelectedDraftUsingPreferredStrategy(store: self)
   }
 
   @discardableResult
   public func publishSelectedDraftOnlineUsingPreferredStrategy() async -> RemoteRepositoryPublishResult? {
-    await publishingStore.publishSelectedDraftOnlineUsingPreferredStrategy(store: self)
+    refreshSelectedDraftPublishingState()
+    return await publishingStore.publishSelectedDraftOnlineUsingPreferredStrategy(store: self)
   }
 
   @discardableResult
@@ -43,19 +50,23 @@ extension WorkbenchStore {
   }
 
   public func localCommitCommandForSelectedDraft() -> String? {
-    publishingStore.localCommitCommandForSelectedDraft(store: self)
+    refreshSelectedDraftPublishingState()
+    return publishingStore.localCommitCommandForSelectedDraft(store: self)
   }
 
   public func reviewBranchCommandsForSelectedDraft() -> [String] {
-    publishingStore.reviewBranchCommandsForSelectedDraft(store: self)
+    refreshSelectedDraftPublishingState()
+    return publishingStore.reviewBranchCommandsForSelectedDraft(store: self)
   }
 
   public func batchLocalCommitCommandForWritableDrafts() -> String? {
-    publishingStore.batchLocalCommitCommandForWritableDrafts(store: self)
+    refreshBatchPublishPlan()
+    return publishingStore.batchLocalCommitCommandForWritableDrafts(store: self)
   }
 
   public func batchReviewBranchCommandsForWritableDrafts() -> [String] {
-    publishingStore.batchReviewBranchCommandsForWritableDrafts(store: self)
+    refreshBatchPublishPlan()
+    return publishingStore.batchReviewBranchCommandsForWritableDrafts(store: self)
   }
 
   public func preferredLocalGitPublishMode(for profile: SiteProfile) -> LocalGitPublishMode {
@@ -67,11 +78,22 @@ extension WorkbenchStore {
   }
 
   public func remoteRepositoryPublishPreview(for draft: ArticleDraft) -> RemoteRepositoryPublishPreview {
-    publishingStore.remoteRepositoryPublishPreview(for: draft, store: self)
+    flushDraftBodyEditorBuffer(for: draft.id)
+    return publishingStore.remoteRepositoryPublishPreview(for: draft, store: self)
   }
 
   public func remoteRepositoryPublishPreview(for plan: BatchPublishPlan) -> RemoteRepositoryPublishPreview? {
-    publishingStore.remoteRepositoryPublishPreview(for: plan, store: self)
+    flushDraftBodyEditorBuffers()
+    return publishingStore.remoteRepositoryPublishPreview(for: plan, store: self)
+  }
+
+  private func refreshSelectedDraftPublishingState() {
+    let targetDraftID = publishingStore.publishPackage?.draftID ?? selectedDraft?.id
+    flushDraftBodyEditorBuffers()
+    if let targetDraftID,
+       let draft = drafts.first(where: { $0.id == targetDraftID }) {
+      refreshPublishPreview(for: draft)
+    }
   }
 
   public func blockingLocalPublishIssues(
@@ -114,13 +136,15 @@ extension WorkbenchStore {
     package: PublishPackage,
     profile: SiteProfile,
     mode: RemoteRepositoryPublishMode,
-    extraWarningIssues: [PreflightIssue] = []
+    extraWarningIssues: [PreflightIssue] = [],
+    localPreview: LocalPublishPreview? = nil
   ) -> RemoteRepositoryPublishPreview {
     publishingStore.remoteRepositoryPublishPreview(
       package: package,
       profile: profile,
       mode: mode,
       extraWarningIssues: extraWarningIssues,
+      localPreview: localPreview,
       store: self
     )
   }

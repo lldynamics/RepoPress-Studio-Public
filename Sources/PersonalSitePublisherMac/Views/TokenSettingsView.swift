@@ -8,6 +8,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
   let hasDeploymentToken: Bool
   let publishActionMessage: String?
   let deploymentStatusMessage: String?
+  let shouldFocusRepositoryToken: Bool
+  let navigationRequestID: UUID
   let setRepositoryProvider: (RepositoryProvider) -> Void
   let saveRepositoryAccessToken: (String) -> Void
   let deleteRepositoryAccessToken: () -> Void
@@ -55,6 +57,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
 
       TokenRepositoryTokenSection(
         repositoryTokenInput: $repositoryTokenInput,
+        shouldFocusInput: shouldFocusRepositoryToken,
+        navigationRequestID: navigationRequestID,
         hasRepositoryToken: hasRepositoryToken,
         onSaveToken: {
           saveRepositoryAccessToken(repositoryTokenInput)

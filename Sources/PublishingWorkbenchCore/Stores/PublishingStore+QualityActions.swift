@@ -55,6 +55,54 @@ extension PublishingStore {
   }
 
   @discardableResult
+  public func importContentPerformanceCSV(
+    _ data: Data,
+    sourceName: String = "CSV 导入",
+    store: WorkbenchStore
+  ) throws -> ContentPerformanceCSVImportReport {
+    let profile = activeProfile
+    let report = try contentPerformanceCSVImportService.import(
+      data: data,
+      profile: profile,
+      drafts: drafts.filter { $0.siteProfileID == profile.id },
+      sourceName: sourceName
+    )
+    contentPerformanceSnapshots.removeAll {
+      $0.profileID == profile.id && $0.sourceName == report.sourceName
+    }
+    contentPerformanceSnapshots.insert(contentsOf: report.importedSnapshots, at: 0)
+    publishActionMessage = report.statusMessage
+    store.save()
+    return report
+  }
+
+  @discardableResult
+  public func importContentPerformanceCSV(
+    from sourceURL: URL,
+    sourceName: String = "CSV 导入",
+    store: WorkbenchStore
+  ) async throws -> ContentPerformanceCSVImportReport {
+    let profile = activeProfile
+    let profileDrafts = drafts.filter { $0.siteProfileID == profile.id }
+    let report = try await contentPerformanceCSVImportService.importFile(
+      at: sourceURL,
+      profile: profile,
+      drafts: profileDrafts,
+      sourceName: sourceName
+    )
+    guard activeProfileID == profile.id else {
+      throw ContentPerformanceCSVImportError.profileChanged
+    }
+    contentPerformanceSnapshots.removeAll {
+      $0.profileID == profile.id && $0.sourceName == report.sourceName
+    }
+    contentPerformanceSnapshots.insert(contentsOf: report.importedSnapshots, at: 0)
+    publishActionMessage = report.statusMessage
+    store.save()
+    return report
+  }
+
+  @discardableResult
   public func applySuggestedMaintenanceSchedule(store: WorkbenchStore) -> Int {
     let report = makeSiteMaintenanceSnapshotReport(store: store)
     let suggestedDates = Dictionary(
@@ -418,21 +466,21 @@ extension PublishingStore {
     )
   }
 
-  public func commitSelectedDraftDirectly(store: WorkbenchStore) {
-    publishSelectedDraft(mode: .directCommit, store: store)
+  public func commitSelectedDraftDirectly(store: WorkbenchStore) async {
+    await publishSelectedDraft(mode: .directCommit, store: store)
   }
 
-  public func commitSelectedDraftToReviewBranch(store: WorkbenchStore) {
-    publishSelectedDraft(mode: .reviewBranch, store: store)
+  public func commitSelectedDraftToReviewBranch(store: WorkbenchStore) async {
+    await publishSelectedDraft(mode: .reviewBranch, store: store)
   }
 
-  public func commitSelectedDraftUsingPreferredStrategy(store: WorkbenchStore) {
+  public func commitSelectedDraftUsingPreferredStrategy(store: WorkbenchStore) async {
     guard let package = publishPackage else {
       publishActionMessage = "没有可提交的发布包。"
       return
     }
 
-    publishSelectedDraft(
+    await publishSelectedDraft(
       mode: preferredLocalGitPublishMode(for: store.profile(for: package)),
       store: store
     )

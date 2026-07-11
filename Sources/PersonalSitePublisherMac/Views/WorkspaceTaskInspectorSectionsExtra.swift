@@ -98,6 +98,9 @@ struct ArticleInspectorTabs: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
       }
+
+      Divider()
+      actionFooter
     }
     .background(.bar)
     .onAppear {
@@ -108,9 +111,6 @@ struct ArticleInspectorTabs: View {
     }
     .onChange(of: selectedTab) { _, _ in
       prepareSelectedTab()
-    }
-    .onReceive(NotificationCenter.default.publisher(for: .showArticleAIInspector)) { _ in
-      store.ai.openChatWorkspace(for: draft.id)
     }
   }
 
@@ -148,6 +148,39 @@ struct ArticleInspectorTabs: View {
     .padding(10)
     .accessibilityLabel("文章 Inspector 标签")
     .accessibilityValue(selectedTab.title)
+  }
+
+  private var actionFooter: some View {
+    HStack(spacing: 10) {
+      Button {
+        store.save()
+      } label: {
+        Label("保存", systemImage: "tray.and.arrow.down")
+      }
+
+      Button {
+        selectedTab = .checks
+        store.runPreflight()
+      } label: {
+        Label(selectedTab == .checks ? "重新检查" : "检查", systemImage: "checklist")
+      }
+
+      Spacer(minLength: 0)
+
+      if selectedTab == .publish {
+        Button {
+          store.selectSection(.sync)
+        } label: {
+          Label("前往同步", systemImage: "arrow.right.circle")
+        }
+      }
+    }
+    .controlSize(.small)
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(.bar)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("文章 Inspector 主要操作")
   }
 
   @ViewBuilder
@@ -196,7 +229,7 @@ struct ArticleInspectorTabs: View {
           store.optimizeSelectedDraftJPEGImages()
         },
         openImageWorkbench: {
-          store.focusDraft(draft.id, section: .images)
+          _ = store.focusDraft(draft.id, section: .images)
         },
         refreshReport: {
           store.refreshImageWorkbenchReport()

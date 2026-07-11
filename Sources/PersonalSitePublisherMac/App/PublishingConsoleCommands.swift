@@ -50,7 +50,7 @@ struct PublishingConsoleCommands: Commands {
 
       Menu("切换工作区") {
         ForEach(WorkspaceNavigationPresentation.commandMenuItems) { item in
-          Button(item.displayName) {
+          Button(workspaceNavigationLocalizedKey(item.displayNameLocalizationKey)) {
             store.selectSection(item.section)
           }
           .keyboardShortcut(KeyEquivalent(item.keyboardShortcutKey), modifiers: [.command])
@@ -61,7 +61,7 @@ struct PublishingConsoleCommands: Commands {
 
         Menu("站点工具") {
           ForEach(WorkspaceNavigationPresentation.secondaryEntryItems) { item in
-            Button(item.displayName) {
+            Button(workspaceNavigationLocalizedKey(item.displayNameLocalizationKey)) {
               store.selectSection(item.section)
             }
             .disabled(!canUseProtectedWorkbench)
@@ -69,24 +69,26 @@ struct PublishingConsoleCommands: Commands {
         }
       }
 
-      Menu("诊断") {
+#if DEBUG
+      Menu("开发者诊断") {
         Button("上架门禁") {
           store.selectSection(.releaseReadiness)
         }
         .disabled(!canUseProtectedWorkbench)
       }
+#endif
 
       Divider()
 
-      Button(store.selectedSection == .writing ? "搜索草稿" : "查找/替换当前文章") {
-        if store.selectedSection == .writing {
-          writingDraftCommands?.focusSearch()
+      Button(markdownEditorCommands == nil ? "搜索草稿" : "查找/替换当前文章") {
+        if let markdownEditorCommands {
+          markdownEditorCommands.showFindReplace()
         } else {
-          markdownEditorCommands?.showFindReplace()
+          writingDraftCommands?.focusSearch()
         }
       }
       .keyboardShortcut("f")
-      .disabled(!canUseProtectedWorkbench || (store.selectedSection == .writing && writingDraftCommands == nil) || (store.selectedSection != .writing && markdownEditorCommands == nil))
+      .disabled(!canUseProtectedWorkbench || (markdownEditorCommands == nil && writingDraftCommands == nil))
 
       if let writingDraftCommands {
         Button("上一个草稿") {
@@ -208,7 +210,9 @@ struct PublishingConsoleCommands: Commands {
 
       Button("从本地仓库导入文章") {
         focusCommandDraft(section: .sync)
-        store.importDraftsFromLocalRepository()
+        Task {
+          await store.importDraftsFromLocalRepositoryAsync()
+        }
       }
       .disabled(!canUseProtectedWorkbench)
 
@@ -289,7 +293,7 @@ struct PublishingConsoleCommands: Commands {
     guard let draftID = commandDraftID else {
       return
     }
-    store.focusDraft(draftID, section: section)
+    _ = store.focusDraft(draftID, section: section)
   }
 
   private func runPreflightForCommandDraft() {

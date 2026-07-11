@@ -48,11 +48,9 @@ final class ReleaseQualityGateServiceTests: XCTestCase {
       plutil -lint Sources/App/Resources/en.lproj/InfoPlist.strings
       grep -q CFBundleDisplayName Sources/App/Resources/zh-Hans.lproj/InfoPlist.strings
       grep -q CFBundleDisplayName Sources/App/Resources/en.lproj/InfoPlist.strings
-      uniq -d /tmp/zh-Hans.keys
-      comm -23 /tmp/zh-Hans.keys /tmp/en.keys
-      comm -13 /tmp/zh-Hans.keys /tmp/en.keys
       test -f Sources/App/Resources/Localizable.xcstrings
-      raw_ui_literal_count=0
+      xcrun xcstringstool compile Sources/App/Resources/Localizable.xcstrings --output-directory /tmp/compiled
+      python3 script/sync_ui_localizations.py --check
       """
     )
     try write(
@@ -483,7 +481,7 @@ final class ReleaseQualityGateServiceTests: XCTestCase {
     XCTAssertTrue(automation.evidence?.contains("Localizable.strings") == true)
   }
 
-  func testLocalizationAutomationBlocksWhenScriptDoesNotCompareStringKeys() throws {
+  func testLocalizationAutomationBlocksWhenScriptDoesNotCompileCatalogOrCheckCoverage() throws {
     let root = try temporaryProjectRoot()
     try write(
       "script/check_localization_gate.sh",
@@ -506,9 +504,9 @@ final class ReleaseQualityGateServiceTests: XCTestCase {
 
     let automation = try XCTUnwrap(report.items.first { $0.id == "localization-automation" })
     XCTAssertEqual(automation.status, .blocked)
-    XCTAssertTrue(automation.message.contains("中英 key 一致性"))
-    XCTAssertTrue(automation.message.contains("重复 key"))
+    XCTAssertTrue(automation.message.contains("字符串目录编译"))
     XCTAssertTrue(automation.message.contains("App 显示名"))
+    XCTAssertTrue(automation.message.contains("源码 key / xcstrings 覆盖"))
     XCTAssertEqual(automation.evidence, "script/check_localization_gate.sh")
   }
 
@@ -2266,8 +2264,8 @@ final class ReleaseQualityGateServiceTests: XCTestCase {
 
     let workspaceCoverage = try XCTUnwrap(report.items.first { $0.id == "workspace-coverage" })
     XCTAssertEqual(workspaceCoverage.status, .blocked)
-    XCTAssertTrue(workspaceCoverage.message.contains("素材库"))
-    XCTAssertTrue(workspaceCoverage.message.contains("上架门禁"))
+    XCTAssertTrue(workspaceCoverage.message.contains("workspace.generalDrafts"))
+    XCTAssertTrue(workspaceCoverage.message.contains("workspace.releaseReadiness"))
     XCTAssertTrue(report.blockingItems.contains { $0.id == "workspace-coverage" })
   }
 

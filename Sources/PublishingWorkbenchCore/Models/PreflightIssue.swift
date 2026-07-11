@@ -169,3 +169,35 @@ public struct DraftPreflightSummary: Identifiable, Codable, Hashable, Sendable {
     errorCount == 0 && warningCount == 0
   }
 }
+
+public struct ContentHealthReport: Sendable {
+  public var sitePreflightIssues: [PreflightIssue]
+  public var draftSummaries: [DraftPreflightSummary]
+  public var publicRiskSummary: PublicRiskSummary
+  public var publicRiskDraftSummaries: [DraftPreflightSummary]
+  public var aiFixQueueItems: [AIPublishingFixQueueItem]
+
+  public init(
+    sitePreflightIssues: [PreflightIssue],
+    draftSummaries: [DraftPreflightSummary],
+    publicRiskSummary: PublicRiskSummary,
+    publicRiskDraftSummaries: [DraftPreflightSummary],
+    aiFixQueueItems: [AIPublishingFixQueueItem]
+  ) {
+    self.sitePreflightIssues = sitePreflightIssues
+    self.draftSummaries = draftSummaries
+    self.publicRiskSummary = publicRiskSummary
+    self.publicRiskDraftSummaries = publicRiskDraftSummaries
+    self.aiFixQueueItems = aiFixQueueItems
+  }
+}
+
+public struct ContentHealthDraftPresentation: Hashable, Sendable {
+  public var title: String
+  public var markdownPath: String
+
+  public init(title: String, markdownPath: String) {
+    self.title = title
+    self.markdownPath = markdownPath
+  }
+}

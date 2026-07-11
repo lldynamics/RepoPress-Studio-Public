@@ -24,11 +24,13 @@ extension RepositoryWorkspaceView {
           .disabled(review.webURL == nil)
 
           Button {
-            store.commitSelectedDraftToReviewBranch()
+            Task {
+              await store.commitSelectedDraftToReviewBranch()
+            }
           } label: {
             Label("创建分支提交", systemImage: "arrow.triangle.branch")
           }
-          .disabled(store.localPublishReadiness?.canCommit != true)
+          .disabled(store.localPublishReadiness?.canCommit != true || store.isLocalRepositoryMutationRunning)
 
           Button {
             copyReviewCommands()

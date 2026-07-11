@@ -1,11 +1,19 @@
+import Combine
 import Foundation
 
 @MainActor
-public final class WorkbenchPublishingFeatureFacade {
+public final class WorkbenchPublishingFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
+  private var cancellables = Set<AnyCancellable>()
 
   init(store: WorkbenchStore) {
     self.store = store
+    store.publishingStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+    store.publishingStore.draftBodyEditorBufferWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
   }
 
   public var profiles: [SiteProfile] {
@@ -34,6 +42,18 @@ public final class WorkbenchPublishingFeatureFacade {
 
   public var selectedDraft: ArticleDraft? {
     store.selectedDraft
+  }
+
+  public var editorDisplayMode: EditorDisplayMode {
+    store.editorDisplayMode
+  }
+
+  public var editorFocusRequest: EditorFocusRequest? {
+    store.editorFocusRequest
+  }
+
+  public func draftBodyEditorBuffer(for draftID: UUID) -> DraftBodyEditorBuffer {
+    store.draftBodyEditorBuffer(for: draftID)
   }
 
   public var visibleDrafts: [ArticleDraft] {

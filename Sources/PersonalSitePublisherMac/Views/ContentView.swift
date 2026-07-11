@@ -1,8 +1,13 @@
+import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
+#if DEBUG
+import PublishingWorkbenchScreenshotSupport
+#endif
 
 struct ContentView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var shellState: WorkbenchShellFeatureFacade
   @Environment(\.openWindow) private var openWindow
   @Environment(\.scenePhase) private var scenePhase
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
@@ -12,11 +17,18 @@ struct ContentView: View {
   @State private var isPublishDrawerPresented = false
   @State private var isCompactLayout = false
   @State private var isCompactInspectorPresented = false
+  @State private var contentHealthFilter: ContentHealthContextFilter = .overview
+  @State private var repositoryContextStage: RepositoryContextStage = .overview
   private let repositoryAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+
+  init(store: WorkbenchStore) {
+    self.store = store
+    _shellState = ObservedObject(wrappedValue: store.shell)
+  }
 
   var body: some View {
     GeometryReader { geometry in
-      let compactLayout = geometry.size.width < 1180
+      let compactLayout = WorkbenchLayoutMode.isCompact(width: geometry.size.width)
 
       ZStack {
       VStack(spacing: 0) {
@@ -25,29 +37,19 @@ struct ContentView: View {
           isCompact: compactLayout
         )
         Divider()
-        HSplitView {
-          WorkspaceSidebarColumn(store: store, isCompact: compactLayout)
-            .frame(
-              minWidth: compactLayout ? 220 : 260,
-              idealWidth: compactLayout ? 240 : 300,
-              maxWidth: compactLayout ? 300 : 380,
-              maxHeight: .infinity
-            )
-
-          EditorCenterColumn(store: store)
-            .frame(minWidth: compactLayout ? 460 : 560, maxWidth: .infinity, maxHeight: .infinity)
-
-          if store.isInspectorPresented && !compactLayout {
-            MetadataColumn(store: store)
-              .frame(minWidth: 320, idealWidth: 360, maxWidth: 460, maxHeight: .infinity)
-          }
-        }
+        WorkspaceShellSplitLayout(
+          store: store,
+          isCompact: compactLayout,
+          isInspectorPresented: shellState.isInspectorPresented,
+          contentHealthFilter: $contentHealthFilter,
+          repositoryContextStage: $repositoryContextStage
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
-      .disabled(store.isPrivacyLocked)
-      .accessibilityHidden(store.isPrivacyLocked)
+      .disabled(shellState.isPrivacyLocked)
+      .accessibilityHidden(shellState.isPrivacyLocked)
 
-      if store.isPrivacyLocked {
+      if shellState.isPrivacyLocked {
         PrivacyLockOverlay(store: store)
           .zIndex(2)
       }
@@ -59,7 +61,8 @@ struct ContentView: View {
         updateCompactLayout(for: width)
       }
     }
-    .navigationTitle(store.activeProfile.name)
+    .navigationTitle(shellState.activeProfileName)
+    .background(WorkbenchAccessibilityStatusAnnouncer(store: store))
     .focusedSceneValue(
       \.publishDrawerCommandAction,
       PublishDrawerCommandAction { message in
@@ -73,14 +76,14 @@ struct ContentView: View {
         } label: {
           Label("新建", systemImage: "square.and.pencil")
         }
-        .disabled(!store.canUseProtectedWorkbench)
+        .disabled(!shellState.canUseProtectedWorkbench)
 
         Button {
           store.save()
         } label: {
           Label("保存", systemImage: "tray.and.arrow.down")
         }
-        .disabled(!store.canUseProtectedWorkbench)
+        .disabled(!shellState.canUseProtectedWorkbench)
 
         Button {
           store.runPreflight()
@@ -88,47 +91,44 @@ struct ContentView: View {
         } label: {
           Label("检查", systemImage: "checklist")
         }
-        .disabled(!store.canUseProtectedWorkbench)
+        .disabled(!shellState.canUseProtectedWorkbench)
 
         Button {
           openPublishDrawer(message: nil)
         } label: {
           Label("发布", systemImage: "paperplane")
         }
-        .disabled(!store.canUseProtectedWorkbench || store.selectedDraft == nil)
+        .disabled(!shellState.canUseProtectedWorkbench || shellState.selectedDraftID == nil)
 
         Button {
           if isCompactLayout {
             isCompactInspectorPresented = true
           } else {
-            store.setInspectorPresented(!store.isInspectorPresented)
+            store.setInspectorPresented(!shellState.isInspectorPresented)
           }
         } label: {
           Label("Inspector", systemImage: "sidebar.right")
         }
-        .disabled(!store.canUseProtectedWorkbench)
+        .disabled(!shellState.canUseProtectedWorkbench)
       }
 
       ToolbarItem(placement: .secondaryAction) {
         Menu {
           Button {
-            if let draftID = store.selectedDraftID {
+            if let draftID = shellState.selectedDraftID {
               openWindow(value: draftID)
             }
           } label: {
             Label("在新窗口编辑", systemImage: "macwindow.badge.plus")
           }
-          .disabled(store.selectedDraftID == nil)
+          .disabled(shellState.selectedDraftID == nil)
 
           Button {
-            store.selectSection(.sync)
-            Task {
-              await store.repository.scanAsync()
-            }
+            openRepositoryScan()
           } label: {
             Label("扫描仓库", systemImage: "externaldrive")
           }
-          .disabled(store.repository.scanState.isScanning)
+          .disabled(shellState.isRepositoryScanning)
 
           Divider()
 
@@ -137,7 +137,7 @@ struct ContentView: View {
           } label: {
             Label("显示隐私遮罩", systemImage: "eye.slash")
           }
-          .disabled(store.isPrivacyLocked)
+          .disabled(shellState.isPrivacyLocked)
         } label: {
           Label("更多", systemImage: "ellipsis.circle")
         }
@@ -154,23 +154,16 @@ struct ContentView: View {
         store.lockPrivacyIfNeededForInactiveScene()
       }
     }
-    .onChange(of: store.isPrivacyLocked) { _, isLocked in
+    .onChange(of: shellState.isPrivacyLocked) { _, isLocked in
       if isLocked {
         isPublishDrawerPresented = false
       }
     }
-    .onReceive(repositoryAutoSyncTimer) { date in
-      guard scenePhase == .active else {
-        return
-      }
-      Task {
-        await store.tickRepositoryAndDeploymentPolling(now: date)
-      }
-    }
+    .onReceive(repositoryAutoSyncTimer, perform: handleRepositoryAutoSyncTick)
     .alert(
       "工作台数据恢复",
       isPresented: Binding(
-        get: { store.persistenceRecoveryMessage != nil },
+        get: { shellState.persistenceRecoveryMessage != nil },
         set: { if !$0 { store.dismissPersistenceRecoveryMessage() } }
       )
     ) {
@@ -181,8 +174,8 @@ struct ContentView: View {
       Text(persistenceRecoveryMessage)
     }
     .sheet(isPresented: $isCompactInspectorPresented) {
-      MetadataColumn(store: store)
-        .frame(minWidth: 360, idealWidth: 440, minHeight: 520, idealHeight: 680)
+      MetadataColumn(store: store, prioritizesChecks: true)
+        .frame(minWidth: 520, idealWidth: 560, maxWidth: 620, minHeight: 520, idealHeight: 620)
         .toolbar {
           ToolbarItem(placement: .cancellationAction) {
             Button("完成") {
@@ -197,6 +190,20 @@ struct ContentView: View {
     }
   }
 
+  private func handleRepositoryAutoSyncTick(_ date: Date) {
+    guard scenePhase == .active else { return }
+    Task {
+      await store.tickRepositoryAndDeploymentPolling(now: date)
+    }
+  }
+
+  private func openRepositoryScan() {
+    store.selectSection(.sync)
+    Task {
+      await store.repository.scanAsync()
+    }
+  }
+
   private func applyWorkbenchPreferences() {
     if !didApplyInitialWorkbenchPreferences {
       if scanRepositoryOnLaunch {
@@ -207,15 +214,17 @@ struct ContentView: View {
       didApplyInitialWorkbenchPreferences = true
     }
     if !didApplyScreenshotDemoSurface {
+#if DEBUG
       ScreenshotDemoDataService.applyRequestedSurfaceIfEnabled(to: store)
       ScreenshotDemoSettingsPresenter.openSettingsIfNeeded()
+#endif
       didApplyScreenshotDemoSurface = true
     }
     store.setAutomaticallyRefreshPreflightOnEdit(autoRunPreflight)
   }
 
   private var persistenceRecoveryMessage: String {
-    store.persistenceRecoveryMessage ?? ""
+    shellState.persistenceRecoveryMessage ?? ""
   }
 
   private func openPublishDrawer(message: String?) {
@@ -226,14 +235,73 @@ struct ContentView: View {
   }
 
   private func updateCompactLayout(for width: CGFloat) {
-    let isNowCompact = width < 1180
+    let isNowCompact = WorkbenchLayoutMode.isCompact(width: width)
     guard isNowCompact != isCompactLayout else { return }
-    let wasInspectorVisible = store.isInspectorPresented
+    let wasInspectorVisible = shellState.isInspectorPresented
     isCompactLayout = isNowCompact
     if isNowCompact, wasInspectorVisible {
       isCompactInspectorPresented = true
     } else if !isNowCompact {
       isCompactInspectorPresented = false
+    }
+  }
+}
+
+private struct WorkbenchAccessibilityStatusAnnouncer: View {
+  @ObservedObject var store: WorkbenchStore
+  @State private var announcedStatus: WorkbenchAccessibilityStatus?
+
+  var body: some View {
+    Color.clear
+      .frame(width: 1, height: 1)
+      .allowsHitTesting(false)
+      .onAppear {
+        announcedStatus = status
+      }
+      .onChange(of: status) { _, updatedStatus in
+        guard announcedStatus != updatedStatus else { return }
+        announcedStatus = updatedStatus
+        guard let application = NSApp else { return }
+        NSAccessibility.post(
+          element: application,
+          notification: .announcementRequested,
+          userInfo: [
+            .announcement: updatedStatus.message,
+            .priority: NSAccessibilityPriorityLevel.low.rawValue,
+          ]
+        )
+      }
+  }
+
+  private var status: WorkbenchAccessibilityStatus {
+    if store.isPrivacyLocked { return .privacyLocked }
+    if store.repositoryScanState.isScanning { return .repositoryScanning(store.repositoryScanState.message) }
+    if store.isRemoteRepositoryPublishing { return .remotePublishing }
+    if store.isAIChatRunning { return .aiReplying }
+    if store.isDeploymentStatusChecking { return .deploymentChecking }
+    if let error = store.lastSaveError?.nilIfEmpty { return .saveFailed(error) }
+    return .saveStatus(store.lastSaveStatus)
+  }
+}
+
+private enum WorkbenchAccessibilityStatus: Equatable {
+  case privacyLocked
+  case repositoryScanning(String)
+  case remotePublishing
+  case aiReplying
+  case deploymentChecking
+  case saveFailed(String)
+  case saveStatus(String)
+
+  var message: String {
+    switch self {
+    case .privacyLocked: return "隐私界面遮罩已启用。"
+    case let .repositoryScanning(message): return "仓库状态更新：\(message)"
+    case .remotePublishing: return "正在执行线上发布。"
+    case .aiReplying: return "AI 正在回复。"
+    case .deploymentChecking: return "正在检查部署状态。"
+    case let .saveFailed(error): return "保存失败：\(error)"
+    case let .saveStatus(status): return "保存状态：\(status)"
     }
   }
 }

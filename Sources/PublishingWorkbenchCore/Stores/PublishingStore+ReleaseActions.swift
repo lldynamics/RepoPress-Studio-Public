@@ -20,17 +20,22 @@ extension PublishingStore {
       return nil
     }
 
+    guard remoteRepositoryMutationContext == nil else {
+      publishActionMessage = "已有远端仓库操作正在运行，请等待完成。"
+      return nil
+    }
     let access = store.consumeFeatureUse(.onlinePublishing)
     guard access.isAllowed else {
       publishActionMessage = access.message
       return nil
     }
 
-    store.setRemoteRepositoryPublishing(true)
-    publishActionMessage = "正在通过 \(profile.repositoryProvider.displayName) 撤回 Review #\(draft.reviewNumber)..."
-    defer {
-      store.setRemoteRepositoryPublishing(false)
+    guard let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
+      publishActionMessage = "已有远端仓库操作正在运行，请等待完成。"
+      return nil
     }
+    publishActionMessage = "正在通过 \(profile.repositoryProvider.displayName) 撤回 Review #\(draft.reviewNumber)..."
+    defer { finishRemoteRepositoryMutation(operation, store: store) }
 
     do {
       let token = try repositoryAccessToken(for: profile)
@@ -39,6 +44,7 @@ extension PublishingStore {
         profile: profile,
         token: token
       )
+      guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       store.setRemoteRepositoryReviewWithdrawalResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
       releaseRecords.insert(
@@ -49,15 +55,16 @@ extension PublishingStore {
       store.save()
       return result
     } catch {
+      guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       publishActionMessage = "线上 Review 撤回失败：\(error.localizedDescription)"
       store.save()
       return nil
     }
   }
 
-  func publishSelectedDraft(mode: LocalGitPublishMode, store: WorkbenchStore) {
+  func publishSelectedDraft(mode: LocalGitPublishMode, store: WorkbenchStore) async {
     if let draftID = publishPackage?.draftID {
-      store.focusDraft(draftID, section: .sync)
+      _ = store.focusDraft(draftID, section: .sync)
     }
 
     guard let package = publishPackage else {
@@ -81,8 +88,18 @@ extension PublishingStore {
       return
     }
 
+    guard let operation = beginLocalRepositoryMutation(profile: profile) else {
+      publishActionMessage = "已有本地仓库写入或提交任务正在运行，请等待完成。"
+      return
+    }
+    defer { finishLocalRepositoryMutation(operation) }
+    publishActionMessage = "正在执行\(mode.displayName)…"
+
     do {
-      let result = try localGitPublishService.publish(package: package, profile: profile, mode: mode)
+      let result = try await localGitPublishService.publishAsync(package: package, profile: profile, mode: mode)
+      guard localRepositoryMutationContext == operation, operation.stillMatches(store.profile(for: package)) else {
+        return
+      }
       let reviewDraft = remoteReviewDraftBuilder.build(package: package, profile: profile)
       store.setLocalGitPublishResult(result)
       publishActionMessage = "\(mode.displayName)完成：\(result.commitSHA.prefix(8))"
@@ -95,9 +112,12 @@ extension PublishingStore {
         ),
         at: 0
       )
-      store.scanRepository()
+      store.requestRepositoryScan()
       store.save()
     } catch {
+      guard localRepositoryMutationContext == operation, operation.stillMatches(store.profile(for: package)) else {
+        return
+      }
       publishActionMessage = "\(mode.displayName)失败：\(error.localizedDescription)"
     }
   }
@@ -135,7 +155,7 @@ extension PublishingStore {
       return nil
     }
 
-    store.focusDraft(package.draftID, section: .sync)
+    _ = store.focusDraft(package.draftID, section: .sync)
 
     let profile = store.profile(for: package)
     let mode = preferredRemoteRepositoryPublishMode(for: profile)
@@ -157,24 +177,31 @@ extension PublishingStore {
       return nil
     }
 
+    guard remoteRepositoryMutationContext == nil else {
+      publishActionMessage = "已有远端仓库操作正在运行，请等待完成。"
+      return nil
+    }
     let access = store.consumeFeatureUse(.onlinePublishing)
     guard access.isAllowed else {
       publishActionMessage = access.message
       return nil
     }
 
-    store.setRemoteRepositoryPublishing(true)
+    guard let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
+      publishActionMessage = "已有远端仓库操作正在运行，请等待完成。"
+      return nil
+    }
     store.setRemoteRepositoryPublishProgress(nil)
     publishActionMessage = "正在通过 \(profile.repositoryProvider.displayName) 执行\(mode.displayName)..."
-    defer {
-      store.setRemoteRepositoryPublishing(false)
-    }
+    defer { finishRemoteRepositoryMutation(operation, store: store) }
 
     do {
       let token = try repositoryAccessToken(for: profile)
-      let progressHandler: @Sendable (RemoteRepositoryPublishProgress) -> Void = { [weak store] progress in
+      let progressHandler: @Sendable (RemoteRepositoryPublishProgress) -> Void = { [weak self, weak store] progress in
         Task { @MainActor in
-          store?.setRemoteRepositoryPublishProgress(progress)
+          guard let self, let store,
+                self.remoteRepositoryMutationIsCurrent(operation, store: store) else { return }
+          store.setRemoteRepositoryPublishProgress(progress)
         }
       }
       let result = try await remoteRepositoryPublishService.publish(
@@ -184,6 +211,7 @@ extension PublishingStore {
         token: token,
         onProgress: progressHandler
       )
+      guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       store.setRemoteRepositoryPublishResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
       let releaseRecord = ReleaseRecord.remotePublish(package: package, profile: profile, result: result)
@@ -193,6 +221,7 @@ extension PublishingStore {
       publishActionMessage = "\(mode.displayName)完成：\(result.commitSHA.map { String($0.prefix(8)) } ?? "无 commit")"
       if store.shouldRefreshDeploymentStatusAfterRemoteOperation(releaseRecord) {
         await store.refreshDeploymentStatus(for: releaseRecord, updatesMessage: false)
+        guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       }
       store.save()
       if store.remoteRepositoryPublishProgress?.stage != .completed {
@@ -205,6 +234,7 @@ extension PublishingStore {
       }
       return result
     } catch {
+      guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       let message = "\(mode.displayName)失败：\(error.localizedDescription)"
       let partialFailure = partialRemoteRepositoryPublishFailure(from: error)
       store.setRemoteRepositoryPublishProgress(.init(
@@ -255,17 +285,22 @@ extension PublishingStore {
       return nil
     }
 
+    guard remoteRepositoryMutationContext == nil else {
+      publishActionMessage = "已有远端仓库操作正在运行，请等待完成。"
+      return nil
+    }
     let access = store.consumeFeatureUse(.onlinePublishing)
     guard access.isAllowed else {
       publishActionMessage = access.message
       return nil
     }
 
-    store.setRemoteRepositoryPublishing(true)
-    publishActionMessage = "正在通过 \(profile.repositoryProvider.displayName) 回滚 \(String(draft.commitSHA.prefix(8)))..."
-    defer {
-      store.setRemoteRepositoryPublishing(false)
+    guard let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
+      publishActionMessage = "已有远端仓库操作正在运行，请等待完成。"
+      return nil
     }
+    publishActionMessage = "正在通过 \(profile.repositoryProvider.displayName) 回滚 \(String(draft.commitSHA.prefix(8)))..."
+    defer { finishRemoteRepositoryMutation(operation, store: store) }
 
     do {
       let token = try repositoryAccessToken(for: profile)
@@ -274,6 +309,7 @@ extension PublishingStore {
         profile: profile,
         token: token
       )
+      guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       store.setRemoteRepositoryRollbackResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
       let rollbackRecord = ReleaseRecord.remoteRollback(original: record, profile: profile, result: result)
@@ -281,10 +317,12 @@ extension PublishingStore {
       publishActionMessage = "线上回滚完成：\(result.shortRollbackCommitSHA)"
       if store.shouldRefreshDeploymentStatusAfterRemoteOperation(rollbackRecord) {
         await store.refreshDeploymentStatus(for: rollbackRecord, updatesMessage: false)
+        guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       }
       store.save()
       return result
     } catch {
+      guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       publishActionMessage = "线上回滚失败：\(error.localizedDescription)"
       store.save()
       return nil

@@ -224,7 +224,7 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
     XCTAssertTrue(store.imageActionMessage?.contains("已批量补全 2 个 alt") ?? false)
   }
 
-  func testBatchOptimizeJPEGUpdatesOnlyVisibleProfileDrafts() throws {
+  func testBatchOptimizeJPEGUpdatesOnlyVisibleProfileDrafts() async throws {
     let directory = try temporaryDirectory()
     let firstURL = directory.appendingPathComponent("first.jpg")
     let otherURL = directory.appendingPathComponent("other.jpg")
@@ -273,12 +273,56 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
 
     store.optimizeVisibleDraftJPEGImages()
 
+    XCTAssertTrue(store.imageWorkbench.isProcessingBatch)
+    for _ in 0..<100 where store.imageWorkbench.isProcessingBatch {
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    XCTAssertFalse(store.imageWorkbench.isProcessingBatch)
+
     let updatedFirst = try XCTUnwrap(store.drafts.first { $0.id == firstDraft.id })
     let untouchedOther = try XCTUnwrap(store.drafts.first { $0.id == otherDraft.id })
 
     XCTAssertNotEqual(updatedFirst.attachments.first?.sourceFilePath, firstURL.path)
     XCTAssertEqual(untouchedOther.attachments.first?.sourceFilePath, otherURL.path)
     XCTAssertTrue(store.imageActionMessage?.contains("已批量生成") ?? false)
+  }
+
+  func testCropCoverRunsThroughBackgroundBatchAndAppliesResult() async throws {
+    let directory = try temporaryDirectory()
+    let sourceURL = directory.appendingPathComponent("cover.jpg")
+    try writeTestImage(at: sourceURL, width: 360, height: 360, quality: 1.0)
+
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let attachment = DraftAttachment(
+      originalFilename: "cover.jpg",
+      relativePublishPath: "/images/2026/cover.jpg",
+      repositoryPath: "static/images/2026/cover.jpg",
+      byteSize: Int64((try Data(contentsOf: sourceURL)).count),
+      sourceFilePath: sourceURL.path
+    )
+    let draft = ArticleDraft(
+      id: UUID(),
+      siteProfileID: store.activeProfile.id,
+      title: "Cover",
+      slug: "cover",
+      coverAttachmentID: attachment.id,
+      bodyMarkdown: "![Cover](/images/2026/cover.jpg)",
+      attachments: [attachment]
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+
+    store.cropSelectedDraftCoverImageForSocialPreview()
+
+    XCTAssertTrue(store.imageWorkbench.isProcessingBatch)
+    for _ in 0..<100 where store.imageWorkbench.isProcessingBatch {
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    XCTAssertFalse(store.imageWorkbench.isProcessingBatch)
+
+    let updatedDraft = try XCTUnwrap(store.drafts.first { $0.id == draft.id })
+    XCTAssertNotEqual(updatedDraft.attachments.first?.sourceFilePath, sourceURL.path)
+    XCTAssertTrue(store.imageActionMessage?.contains("已裁剪封面图为 16:9") ?? false)
   }
 
   private func temporaryPersistenceURL() throws -> URL {

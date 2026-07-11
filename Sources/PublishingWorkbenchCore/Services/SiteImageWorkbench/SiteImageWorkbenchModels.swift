@@ -433,6 +433,7 @@ public struct ImageTextSuggestionApplyResult: Sendable {
 public enum ImageWorkbenchError: LocalizedError {
   case cannotCreateOptimizedImage(String)
   case cannotFinalizeOptimizedImage(String)
+  case externalToolTimedOut(String)
 
   public var errorDescription: String? {
     switch self {
@@ -440,7 +441,8 @@ public enum ImageWorkbenchError: LocalizedError {
       return "无法创建优化图片：\(filename)"
     case .cannotFinalizeOptimizedImage(let filename):
       return "无法写入优化图片：\(filename)"
+    case .externalToolTimedOut(let tool):
+      return "\(tool) 执行超时，已停止。"
     }
   }
 }
-

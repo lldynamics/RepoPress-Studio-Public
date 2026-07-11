@@ -61,12 +61,12 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func tickRepositoryAutoSync(now: Date = Date()) -> Bool {
-    repositoryStore.tickRepositoryAutoSync(store: self, now: now)
+  public func tickRepositoryAutoSync(now: Date = Date()) async -> Bool {
+    await repositoryStore.tickRepositoryAutoSync(store: self, now: now)
   }
 
   @discardableResult
-  public func runRepositoryAutoSync(now: Date = Date()) -> Bool {
-    repositoryStore.runRepositoryAutoSync(store: self, now: now)
+  public func runRepositoryAutoSync(now: Date = Date()) async -> Bool {
+    await repositoryStore.runRepositoryAutoSync(store: self, now: now)
   }
 }

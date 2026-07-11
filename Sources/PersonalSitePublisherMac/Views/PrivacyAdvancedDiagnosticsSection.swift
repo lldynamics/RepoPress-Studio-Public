@@ -1,3 +1,4 @@
+#if DEBUG
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -46,3 +47,4 @@ struct PrivacyAdvancedDiagnosticsSection: View {
     }
   }
 }
+#endif

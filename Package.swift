@@ -22,9 +22,16 @@ let package = Package(
     .target(
       name: "PublishingWorkbenchCore"
     ),
+    .target(
+      name: "PublishingWorkbenchScreenshotSupport",
+      dependencies: ["PublishingWorkbenchCore"]
+    ),
     .executableTarget(
       name: "PersonalSitePublisherMac",
-      dependencies: ["PublishingWorkbenchCore"],
+      dependencies: [
+        "PublishingWorkbenchCore",
+        "PublishingWorkbenchScreenshotSupport",
+      ],
       exclude: [
         "AppStore.entitlements"
       ],
@@ -34,7 +41,10 @@ let package = Package(
     ),
     .testTarget(
       name: "PublishingWorkbenchCoreTests",
-      dependencies: ["PublishingWorkbenchCore"]
+      dependencies: [
+        "PublishingWorkbenchCore",
+        "PublishingWorkbenchScreenshotSupport",
+      ]
     ),
   ]
 )

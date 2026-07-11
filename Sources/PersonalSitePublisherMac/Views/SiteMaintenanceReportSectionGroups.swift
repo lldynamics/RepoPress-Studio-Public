@@ -38,6 +38,8 @@ struct SiteMaintenanceGovernanceReportSections: View {
   @Binding var performanceSourceName: String
   let openDraft: (UUID) -> Void
   let recordPerformanceSnapshot: (ArticleDraft) -> Void
+  let importCSV: () -> Void
+  let importNotice: ContentPerformanceImportNotice?
 
   var body: some View {
     SiteMaintenanceContentPerformanceSection(
@@ -47,7 +49,9 @@ struct SiteMaintenanceGovernanceReportSections: View {
       performanceVisitors: $performanceVisitors,
       performanceSourceName: $performanceSourceName,
       openDraft: openDraft,
-      recordPerformanceSnapshot: recordPerformanceSnapshot
+      recordPerformanceSnapshot: recordPerformanceSnapshot,
+      importCSV: importCSV,
+      importNotice: importNotice
     )
     SiteMaintenanceTaxonomySection(title: "标签治理", summary: report.tagSummary, systemImage: "tag")
     SiteMaintenanceTaxonomySection(title: "分类治理", summary: report.categorySummary, systemImage: "folder")

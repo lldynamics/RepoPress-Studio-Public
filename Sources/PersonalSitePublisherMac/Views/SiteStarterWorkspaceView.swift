@@ -195,8 +195,11 @@ struct SiteStarterWorkspaceView: View {
       SiteStarterFirstPushStep(
         canPushStarterSite: canPushStarterSite,
         pushAction: {
-          store.commitAndPushStarterSite()
-          selectedStep = .deployment
+          Task {
+            if await store.commitAndPushStarterSite() != nil {
+              selectedStep = .deployment
+            }
+          }
         },
         pushBranch: store.siteStarterPushResult?.branch,
         pushSHA: store.siteStarterPushResult?.commitSHA,
@@ -261,6 +264,7 @@ struct SiteStarterWorkspaceView: View {
   private var canPushStarterSite: Bool {
     store.siteStarterResult?.initializedGit == true
       && store.siteStarterResult?.configuredRemoteURL != nil
+      && !store.isLocalRepositoryMutationRunning
   }
 
   private func status(for step: SiteStarterWizardStep) -> SiteStarterWizardStepStatus {

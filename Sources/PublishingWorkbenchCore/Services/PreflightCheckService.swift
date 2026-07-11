@@ -1,6 +1,6 @@
 import Foundation
 
-public struct PreflightCheckService {
+public struct PreflightCheckService: Sendable {
   private let publicRiskScanner: PublicRiskScanner
 
   public init(publicRiskScanner: PublicRiskScanner = PublicRiskScanner()) {

@@ -1,22 +1,19 @@
 import Foundation
 
 extension WorkbenchStore {
-  @available(*, deprecated, message: "Use scanRepositoryAsync() or store.repository.scanAsync() so repository scanning stays off the main actor.")
-  public func scanRepository() {
-    repositoryStore.scanRepository(store: self)
-  }
-
   public func scanRepositoryAsync() async {
     await repositoryStore.scanRepositoryAsync(store: self)
   }
 
-  public func cancelRepositoryScan() {
-    repositoryStore.cancelRepositoryScan()
+  public func requestRepositoryScan() {
+    Task { [weak self] in
+      guard let self else { return }
+      await self.scanRepositoryAsync()
+    }
   }
 
-  @available(*, deprecated, message: "Use rememberRepositoryRootAsync(_:) or store.repository.rememberRootAsync(_:) so repository scanning stays off the main actor.")
-  public func rememberRepositoryRoot(_ url: URL) {
-    repositoryStore.rememberRepositoryRoot(url, store: self)
+  public func cancelRepositoryScan() {
+    repositoryStore.cancelRepositoryScan()
   }
 
   public func rememberRepositoryRootAsync(_ url: URL) async {
@@ -43,8 +40,26 @@ extension WorkbenchStore {
   }
 
   @discardableResult
+  public func importDraftsFromLocalRepositoryAsync() async -> LocalContentImportMergeSummary {
+    let summary = await publishingStore.importDraftsFromLocalRepositoryAsync(store: self)
+    invalidateDraftDerivedCaches()
+    return summary
+  }
+
+  @discardableResult
   public func importDraftFromLocalRepository(repositoryPath: String) -> LocalContentImportMergeSummary {
     let summary = publishingStore.importDraftFromLocalRepository(repositoryPath: repositoryPath, store: self)
+    invalidateDraftDerivedCaches()
+    return summary
+  }
+
+  public func makeContentMigrationPlan(sourceURL: URL) async throws -> ContentMigrationPlan {
+    try await publishingStore.makeContentMigrationPlan(sourceURL: sourceURL, store: self)
+  }
+
+  @discardableResult
+  public func applyContentMigration(_ plan: ContentMigrationPlan) throws -> LocalContentImportMergeSummary {
+    let summary = try publishingStore.applyContentMigration(plan, store: self)
     invalidateDraftDerivedCaches()
     return summary
   }

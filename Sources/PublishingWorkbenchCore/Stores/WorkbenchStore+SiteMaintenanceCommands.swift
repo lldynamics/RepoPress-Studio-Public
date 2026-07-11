@@ -39,6 +39,30 @@ extension WorkbenchStore {
   }
 
   @discardableResult
+  public func importContentPerformanceCSV(
+    _ data: Data,
+    sourceName: String = "CSV 导入"
+  ) throws -> ContentPerformanceCSVImportReport {
+    let report = try publishingStore.importContentPerformanceCSV(data, sourceName: sourceName, store: self)
+    invalidateSiteMaintenanceSnapshot()
+    return report
+  }
+
+  @discardableResult
+  public func importContentPerformanceCSV(
+    from sourceURL: URL,
+    sourceName: String = "CSV 导入"
+  ) async throws -> ContentPerformanceCSVImportReport {
+    let report = try await publishingStore.importContentPerformanceCSV(
+      from: sourceURL,
+      sourceName: sourceName,
+      store: self
+    )
+    invalidateSiteMaintenanceSnapshot()
+    return report
+  }
+
+  @discardableResult
   public func applySuggestedMaintenanceSchedule() -> Int {
     let appliedCount = publishingStore.applySuggestedMaintenanceSchedule(store: self)
     invalidateSiteMaintenanceSnapshot()

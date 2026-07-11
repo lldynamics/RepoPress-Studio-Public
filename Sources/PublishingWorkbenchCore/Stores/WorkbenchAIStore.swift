@@ -13,6 +13,7 @@ public final class WorkbenchAIStore: ObservableObject {
   private let seoSocialPreviewService: SEOSocialPreviewService
   private var aiChatSessionsByDraftID: [UUID: AIPublishingChatSessionState] = [:]
   private var isAIChatCancellationRequested = false
+  private let aiChatStreamPublishInterval: Duration = .milliseconds(50)
 
   init(
     store: WorkbenchStore,
@@ -940,6 +941,28 @@ public final class WorkbenchAIStore: ObservableObject {
     updateAIChatSession(for: draftID) { messages in
       messages.append(assistantMessage)
     }
+    let clock = ContinuousClock()
+    var pendingContent = ""
+    var pendingTokenUsage: AIChatTokenUsage?
+    var nextPublishAt = clock.now.advanced(by: aiChatStreamPublishInterval)
+
+    func flushPendingStreamUpdate(force: Bool = false) {
+      guard !pendingContent.isEmpty || pendingTokenUsage != nil else { return }
+      guard force || clock.now >= nextPublishAt else { return }
+
+      assistantMessage.content += pendingContent
+      pendingContent = ""
+      if let tokenUsage = pendingTokenUsage {
+        assistantMessage.tokenUsage = tokenUsage
+        pendingTokenUsage = nil
+      }
+      updateAIChatSession(for: draftID) { messages in
+        if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+          messages[index] = assistantMessage
+        }
+      }
+      nextPublishAt = clock.now.advanced(by: aiChatStreamPublishInterval)
+    }
 
     do {
       for try await update in replyStream.updates {
@@ -948,16 +971,12 @@ public final class WorkbenchAIStore: ObservableObject {
           throw CancellationError()
         }
         if !update.contentDelta.isEmpty {
-          assistantMessage.content += update.contentDelta
+          pendingContent += update.contentDelta
         }
         if let tokenUsage = update.tokenUsage {
-          assistantMessage.tokenUsage = tokenUsage
+          pendingTokenUsage = tokenUsage
         }
-        updateAIChatSession(for: draftID) { messages in
-          if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
-            messages[index] = assistantMessage
-          }
-        }
+        flushPendingStreamUpdate(force: update.isFinished)
         if update.isFinished {
           break
         }
@@ -967,6 +986,7 @@ public final class WorkbenchAIStore: ObservableObject {
         throw CancellationError()
       }
 
+      flushPendingStreamUpdate(force: true)
       let finalContent = assistantMessage.content.trimmedForPublishing
       guard !finalContent.isEmpty else {
         throw AIChatCompletionClientError.emptyContent
@@ -980,6 +1000,7 @@ public final class WorkbenchAIStore: ObservableObject {
       store.setAIChatMessage("AI 已回复。")
       return assistantMessage
     } catch is CancellationError {
+      flushPendingStreamUpdate(force: true)
       let finalContent = assistantMessage.content.trimmedForPublishing
       guard !finalContent.isEmpty else {
         updateAIChatSession(for: draftID) { messages in

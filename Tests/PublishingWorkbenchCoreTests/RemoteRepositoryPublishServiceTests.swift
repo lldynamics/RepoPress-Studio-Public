@@ -1310,6 +1310,22 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     XCTAssertEqual(body["state_event"] as? String, "close")
   }
 
+  func testJSONRequestPropagatesBodyEncodingFailure() {
+    let service = RemoteRepositoryPublishService()
+
+    XCTAssertThrowsError(
+      try service.jsonRequest(
+        baseURL: URL(string: "https://api.example.com")!,
+        method: "POST",
+        path: "/publish",
+        queryItems: nil,
+        body: ThrowingRemoteRequestBody()
+      )
+    ) { error in
+      XCTAssertTrue(error is ThrowingRemoteRequestBody.EncodingFailure)
+    }
+  }
+
   private func fixedDate() -> Date {
     Date(timeIntervalSince1970: 1_787_961_600)
   }
@@ -1322,6 +1338,14 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
   private func percentEncodedPath(_ url: URL?) -> String? {
     guard let url else { return nil }
     return URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath
+  }
+}
+
+private struct ThrowingRemoteRequestBody: Encodable {
+  struct EncodingFailure: Error {}
+
+  func encode(to encoder: Encoder) throws {
+    throw EncodingFailure()
   }
 }
 

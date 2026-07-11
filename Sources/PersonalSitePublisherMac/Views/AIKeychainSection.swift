@@ -4,6 +4,8 @@ import SwiftUI
 
 struct AIKeychainSection: View {
   let aiAPIKeyInput: Binding<String>
+  let shouldFocusInput: Bool
+  let navigationRequestID: UUID
   let config: AIProviderConfig
   let tokenAvailability: KeychainTokenAvailability
   let connectionReport: AIConnectionTestReport?
@@ -13,10 +15,12 @@ struct AIKeychainSection: View {
   let onDeleteAPIKey: () -> Void
   let onRefreshState: () -> Void
   let onTestConnection: () -> Void
+  @FocusState private var isAPIKeyFocused: Bool
 
   var body: some View {
     Section("Keychain") {
       SecureField("API Key", text: aiAPIKeyInput)
+        .focused($isAPIKeyFocused)
         .accessibilityLabel("AI API Key")
         .accessibilityHint("输入后可保存到钥匙串")
 
@@ -62,6 +66,10 @@ struct AIKeychainSection: View {
           .font(.caption)
           .foregroundStyle(.secondary)
       }
+    }
+    .task(id: navigationRequestID) {
+      guard shouldFocusInput else { return }
+      isAPIKeyFocused = true
     }
   }
 }

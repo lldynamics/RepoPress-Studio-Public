@@ -2,6 +2,17 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
+enum ContentPerformanceImportNotice {
+  case importing
+  case imported(sourceName: String, imported: Int, skipped: Int, unmatched: Int)
+  case unsupportedEncoding
+  case missingHeader
+  case missingMetrics
+  case profileChanged
+  case fileTooLarge
+  case failure(String)
+}
+
 struct SiteMaintenanceContentPerformanceSection: View {
   let report: SiteMaintenanceReport
   let selectedDraft: ArticleDraft?
@@ -10,6 +21,8 @@ struct SiteMaintenanceContentPerformanceSection: View {
   @Binding var performanceSourceName: String
   let openDraft: (UUID) -> Void
   let recordPerformanceSnapshot: (ArticleDraft) -> Void
+  let importCSV: () -> Void
+  let importNotice: ContentPerformanceImportNotice?
 
   var body: some View {
     let summary = report.contentPerformanceSummary
@@ -19,6 +32,12 @@ struct SiteMaintenanceContentPerformanceSection: View {
         Label("内容表现分析", systemImage: "chart.xyaxis.line")
           .font(.headline)
         Spacer()
+        Button {
+          importCSV()
+        } label: {
+          Label("导入 CSV", systemImage: "square.and.arrow.down")
+        }
+        .controlSize(.small)
         Text(summary.hasData ? "已记录 \(summary.trackedArticleCount) 篇" : "未接入分析服务")
           .font(.caption.weight(.medium))
           .foregroundStyle(.secondary)
@@ -29,6 +48,12 @@ struct SiteMaintenanceContentPerformanceSection: View {
         : "当前工作台还没有外部分析服务；可以先手动记录当前文章的阅读量和访客。")
         .font(.callout)
         .foregroundStyle(.secondary)
+
+      if let importNotice {
+        importNoticeLabel(importNotice)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
 
       LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
         MetricTile(title: "阅读量", value: summary.hasData ? "\(summary.totalPageViews)" : "未接入", systemImage: summary.hasData ? "eye" : "eye.slash")
@@ -111,7 +136,7 @@ struct SiteMaintenanceContentPerformanceSection: View {
         }
       }
 
-      Label("接入分析服务后，可用导入快照替代手动记录，继续复用这里的表现排行和旧文判断。", systemImage: "plugs.connected")
+      Label("CSV 会替换同一来源的缓存快照；导入后点击刷新报告，继续复用表现排行和旧文判断。", systemImage: "plugs.connected")
         .font(.caption)
         .foregroundStyle(.tertiary)
     }
@@ -122,5 +147,43 @@ struct SiteMaintenanceContentPerformanceSection: View {
   private var canRecordPerformanceSnapshot: Bool {
     (Int(performancePageViews.trimmedForPublishing) ?? -1) >= 0
       && (Int(performanceVisitors.trimmedForPublishing) ?? -1) >= 0
+  }
+
+  @ViewBuilder
+  private func importNoticeLabel(_ notice: ContentPerformanceImportNotice) -> some View {
+    switch notice {
+    case .importing:
+      noticeLabel(Text("正在导入 CSV…"), systemImage: "hourglass")
+    case let .imported(sourceName, imported, skipped, unmatched):
+      if skipped > 0, unmatched > 0 {
+        noticeLabel(Text("\(sourceName)：已导入 \(imported) 条内容表现快照，跳过 \(skipped) 行，有 \(unmatched) 行未匹配到现有文章。"), systemImage: "tray.and.arrow.down")
+      } else if skipped > 0 {
+        noticeLabel(Text("\(sourceName)：已导入 \(imported) 条内容表现快照，跳过 \(skipped) 行。"), systemImage: "tray.and.arrow.down")
+      } else if unmatched > 0 {
+        noticeLabel(Text("\(sourceName)：已导入 \(imported) 条内容表现快照，有 \(unmatched) 行未匹配到现有文章。"), systemImage: "tray.and.arrow.down")
+      } else {
+        noticeLabel(Text("\(sourceName)：已导入 \(imported) 条内容表现快照。"), systemImage: "tray.and.arrow.down")
+      }
+    case .unsupportedEncoding:
+      noticeLabel(Text("导入 CSV 失败：CSV 必须是 UTF-8 编码。"), systemImage: "exclamationmark.triangle")
+    case .missingHeader:
+      noticeLabel(Text("导入 CSV 失败：CSV 缺少表头。"), systemImage: "exclamationmark.triangle")
+    case .missingMetrics:
+      noticeLabel(Text("导入 CSV 失败：CSV 需要 pageviews/views 和 visitors/users 两列。"), systemImage: "exclamationmark.triangle")
+    case .profileChanged:
+      noticeLabel(Text("导入 CSV 失败：导入期间站点配置已切换，请重新选择 CSV。"), systemImage: "exclamationmark.triangle")
+    case .fileTooLarge:
+      noticeLabel(Text("导入 CSV 失败：CSV 文件超过 100 MB，请拆分后分批导入。"), systemImage: "exclamationmark.triangle")
+    case let .failure(details):
+      noticeLabel(Text("导入 CSV 失败：\(details)"), systemImage: "exclamationmark.triangle")
+    }
+  }
+
+  private func noticeLabel(_ title: Text, systemImage: String) -> some View {
+    Label {
+      title
+    } icon: {
+      Image(systemName: systemImage)
+    }
   }
 }

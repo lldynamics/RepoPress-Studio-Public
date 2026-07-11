@@ -1,16 +1,6 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
-struct ProRecentAccessSection: View {
-  let events: [MonetizationAccessEvent]
-
-  var body: some View {
-    Section("最近使用记录") {
-      ProRecentAccessPlainContent(events: events, showsHeading: false)
-    }
-  }
-}
-
 struct ProRecentAccessPlainContent: View {
   let events: [MonetizationAccessEvent]
   var showsHeading = true

@@ -4,24 +4,48 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ImageWorkbenchView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade
   @State private var isImageDropTarget = false
+
+  init(store: WorkbenchStore) {
+    self.store = store
+    _imageWorkbench = ObservedObject(wrappedValue: store.imageWorkbench)
+  }
 
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
         header
 
-        if let message = store.imageWorkbench.actionMessage {
+        if let message = imageWorkbench.actionMessage {
           Label(message, systemImage: "info.circle")
             .font(.caption)
             .foregroundStyle(.secondary)
         }
 
+        if let progress = imageWorkbench.batchProgress {
+          HStack(spacing: 10) {
+            ProgressView(value: progress.fractionCompleted)
+              .frame(maxWidth: 180)
+            Text(progress.operation.progressTitle)
+            Text("\(progress.completedDraftCount)/\(progress.totalDraftCount)")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            Button("取消") {
+              store.imageWorkbench.cancelBatchProcessing()
+            }
+            .disabled(!imageWorkbench.isProcessingBatch)
+          }
+          .accessibilityElement(children: .combine)
+          .accessibilityLabel("图片处理进度")
+          .accessibilityValue("\(progress.completedDraftCount)/\(progress.totalDraftCount)")
+        }
+
         siteWideSummary(store.imageWorkbenchSiteSummary)
 
         if let draft = store.selectedDraft {
-          selectedDraftSection(draft, report: store.imageWorkbench.report)
+          selectedDraftSection(draft, report: imageWorkbench.report)
         } else {
           EmptyStateView(
             title: "还没有选择文章",
@@ -200,7 +224,7 @@ struct ImageWorkbenchView: View {
         } label: {
           Label("批量处理", systemImage: "slider.horizontal.3")
         }
-        .disabled(store.selectedDraft == nil)
+        .disabled(store.selectedDraft == nil || store.imageWorkbench.isProcessingBatch)
         .accessibilityLabel("批量处理图片")
       }
     }
@@ -299,6 +323,7 @@ struct ImageWorkbenchView: View {
         }
         .accessibilityLabel("批量缩放大图")
       }
+      .disabled(store.imageWorkbench.isProcessingBatch)
 
       LazyVGrid(
         columns: [
@@ -609,32 +634,28 @@ struct ImageWorkbenchView: View {
     guard !acceptedProviders.isEmpty else { return false }
 
     let dispatchGroup = DispatchGroup()
-    var droppedURLs: [(index: Int, url: URL)] = []
-    let lock = NSLock()
+    let droppedURLs = ImageDropURLCollector()
 
     for (index, provider) in acceptedProviders.enumerated() {
       dispatchGroup.enter()
       provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-        if let url = fileURL(from: item)?.standardizedFileURL {
-          lock.lock()
-          droppedURLs.append((index: index, url: url))
-          lock.unlock()
+        if let url = ImageDropURLDecoder.fileURL(from: item)?.standardizedFileURL {
+          droppedURLs.append(url, at: index)
         }
         dispatchGroup.leave()
       }
     }
 
     dispatchGroup.notify(queue: .main) {
-      let orderedURLs = droppedURLs
-        .sorted { $0.index < $1.index }
-        .map(\.url)
-      insertImages(orderedURLs)
+      insertImages(droppedURLs.orderedURLs())
     }
 
     return true
   }
+}
 
-  private func fileURL(from item: NSSecureCoding?) -> URL? {
+private enum ImageDropURLDecoder {
+  static func fileURL(from item: NSSecureCoding?) -> URL? {
     if let url = item as? URL {
       return url
     }
@@ -651,6 +672,25 @@ struct ImageWorkbenchView: View {
     }
 
     return nil
+  }
+}
+
+private final class ImageDropURLCollector: @unchecked Sendable {
+  private let lock = NSLock()
+  private var indexedURLs: [(index: Int, url: URL)] = []
+
+  func append(_ url: URL, at index: Int) {
+    lock.lock()
+    indexedURLs.append((index: index, url: url))
+    lock.unlock()
+  }
+
+  func orderedURLs() -> [URL] {
+    lock.lock()
+    defer { lock.unlock() }
+    return indexedURLs
+      .sorted { $0.index < $1.index }
+      .map(\.url)
   }
 }
 

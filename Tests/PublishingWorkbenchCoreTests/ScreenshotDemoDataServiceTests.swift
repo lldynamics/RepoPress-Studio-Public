@@ -1,6 +1,7 @@
 import Darwin
 import XCTest
 @testable import PublishingWorkbenchCore
+@testable import PublishingWorkbenchScreenshotSupport
 
 final class ScreenshotDemoDataServiceTests: XCTestCase {
   func testScreenshotDemoSnapshotCoversReleaseScreenshotSurfacesWithoutSensitiveValues() throws {
@@ -82,7 +83,7 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
       try? FileManager.default.removeItem(at: directory)
     }
     let persistence = WorkbenchPersistence(fileURL: directory.appendingPathComponent("workbench.json"))
-    try persistence.save(ScreenshotDemoDataService().makeSnapshot())
+    _ = try persistence.save(ScreenshotDemoDataService().makeSnapshot())
 
     let store = WorkbenchStore(persistence: persistence)
 
@@ -123,7 +124,7 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
       .appendingPathComponent("PersonalSitePublisherMacScreenshotDemoTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let persistence = WorkbenchPersistence(fileURL: directory.appendingPathComponent("workbench.json"))
-    try persistence.save(ScreenshotDemoDataService().makeSnapshot())
+    _ = try persistence.save(ScreenshotDemoDataService().makeSnapshot())
     return WorkbenchStore(persistence: persistence)
   }
 }

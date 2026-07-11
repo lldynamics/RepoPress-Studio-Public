@@ -7,6 +7,8 @@ struct DefaultRuleSettingsView: View {
   @Binding var scanRepositoryOnLaunch: Bool
   let activeProfileBinding: Binding<SiteProfile>
   let siteKindBinding: Binding<SiteKind>
+  let healthDestination: SettingsConfigurationHealthDestination?
+  let healthNavigationRequestID: UUID
 
   var body: some View {
     Form {
@@ -22,7 +24,9 @@ struct DefaultRuleSettingsView: View {
       )
 
       DefaultRulePathSection(
-        activeProfileBinding: activeProfileBinding
+        activeProfileBinding: activeProfileBinding,
+        shouldFocusPaths: healthDestination == .defaultRules,
+        navigationRequestID: healthNavigationRequestID
       )
     }
     .formStyle(.grouped)

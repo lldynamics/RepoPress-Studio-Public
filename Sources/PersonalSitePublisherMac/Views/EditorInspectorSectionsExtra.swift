@@ -14,7 +14,7 @@ struct EditorPreflightSection: View {
           .font(.headline)
         Spacer()
         Button {
-          store.focusDraft(draft.id, section: .contentHealth)
+          _ = store.focusDraft(draft.id, section: .contentHealth)
         } label: {
           Image(systemName: "arrow.clockwise")
         }

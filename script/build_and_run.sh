@@ -19,6 +19,7 @@ APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_ICON_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources/AppIcon.icns"
 LOCALIZATION_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources"
+LOCALIZATION_CATALOG="$LOCALIZATION_SOURCE/Localizable.xcstrings"
 LAUNCHED_PID=""
 
 SWIFT_BUILD_HOME="${SWIFT_BUILD_HOME:-/private/tmp/personal-site-publisher-swift-home}"
@@ -124,7 +125,11 @@ if [[ "$MODE" == "screenshot-demo" ]] && ! contains_screenshot_surface "$SCREENS
   exit 2
 fi
 
-pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+case "$MODE" in
+  run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify|screenshot-demo)
+    pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+    ;;
+esac
 
 swift build --disable-sandbox --product "$APP_NAME"
 BUILD_BINARY="$(swift build --disable-sandbox --show-bin-path)/$APP_NAME"
@@ -135,6 +140,7 @@ cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
 cp "$APP_ICON_SOURCE" "$APP_RESOURCES/AppIcon.icns"
 cp -R "$LOCALIZATION_SOURCE"/*.lproj "$APP_RESOURCES"/
+xcrun xcstringstool compile "$LOCALIZATION_CATALOG" --output-directory "$APP_RESOURCES"
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
