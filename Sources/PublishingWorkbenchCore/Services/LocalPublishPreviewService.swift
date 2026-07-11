@@ -154,6 +154,21 @@ public struct LocalPublishPreviewService: Sendable {
     return writtenPaths
   }
 
+  public func writeAsync(package: PublishPackage, profile: SiteProfile) async throws -> [String] {
+    guard let rootURL = profile.localRepositoryRootURL else {
+      throw LocalPublishPreviewError.missingRepositoryRoot
+    }
+    let didStartAccessing = rootURL.startAccessingSecurityScopedResource()
+    defer {
+      if didStartAccessing {
+        rootURL.stopAccessingSecurityScopedResource()
+      }
+    }
+    return try await Task.detached(priority: .userInitiated) {
+      try write(package: package, rootURL: rootURL)
+    }.value
+  }
+
   func write(package: PublishPackage, rootURL: URL) throws -> [String] {
     var seenDestinationPaths = Set<String>()
     let preparedWrites = try package.files.map { file -> PreparedLocalPublishWrite in

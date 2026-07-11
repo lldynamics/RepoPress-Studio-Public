@@ -21,11 +21,13 @@ extension RepositoryWorkspaceView {
             Label("刷新队列", systemImage: "arrow.clockwise")
           }
           Button {
-            store.writeBatchReadyDraftsToLocalRepository()
+            Task {
+              await store.writeBatchReadyDraftsToLocalRepository()
+            }
           } label: {
             Label("批量写入可发布", systemImage: "square.stack.3d.down.right")
           }
-          .disabled(plan.writableItems.isEmpty)
+          .disabled(plan.writableItems.isEmpty || store.isLocalRepositoryMutationRunning)
           Button {
             Task {
               await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy()

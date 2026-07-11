@@ -26,7 +26,9 @@ extension RepositoryWorkspaceView {
           }
           .disabled(store.localPublishReadiness?.canCommit != true || store.isLocalRepositoryMutationRunning)
           Button {
-            store.writeSelectedDraftToLocalRepository()
+            Task {
+              await store.writeSelectedDraftToLocalRepository()
+            }
           } label: {
             Label("写入仓库", systemImage: "square.and.arrow.down")
           }

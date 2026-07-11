@@ -476,7 +476,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.localPublishReadiness?.commitReadiness, .blocked)
     XCTAssertTrue(store.localPublishReadiness?.commitBlockingIssues.contains { $0.title == "未发现 .git" } == true)
 
-    store.writeSelectedDraftToLocalRepository()
+    await store.writeSelectedDraftToLocalRepository()
 
     let writtenURL = astroRoot.appendingPathComponent("src/content/blog/astro-write.mdx")
     XCTAssertEqual(store.activeProfileID, astroProfile.id)
@@ -687,7 +687,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(try git(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL), result.branchName)
   }
 
-  func testWritingPackageBlocksPreflightErrorsBeforeRepositoryWrite() throws {
+  func testWritingPackageBlocksPreflightErrorsBeforeRepositoryWrite() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let rootURL = try temporaryDirectoryURL()
     defer {
@@ -711,7 +711,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertTrue(store.localPublishReadiness?.writeBlockingIssues.contains { $0.title == "标题为空" } == true)
 
     let initialRecordCount = store.releaseRecords.count
-    store.writeSelectedDraftToLocalRepository()
+    await store.writeSelectedDraftToLocalRepository()
 
     let writtenURL = rootURL.appendingPathComponent("content/posts/blocked-write.md")
     XCTAssertFalse(FileManager.default.fileExists(atPath: writtenURL.path))
@@ -720,7 +720,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertTrue(store.publishActionMessage?.contains("标题为空") == true)
   }
 
-  func testWritingPackageBlocksMissingImageSourceBeforePartialMarkdownWrite() throws {
+  func testWritingPackageBlocksMissingImageSourceBeforePartialMarkdownWrite() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let rootURL = try temporaryDirectoryURL()
     defer {
@@ -759,7 +759,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertTrue(store.localPublishReadiness?.writeBlockingIssues.contains { $0.title == "图片源文件缺失" } == true)
 
     let initialRecordCount = store.releaseRecords.count
-    store.writeSelectedDraftToLocalRepository()
+    await store.writeSelectedDraftToLocalRepository()
 
     let markdownURL = rootURL.appendingPathComponent("content/posts/missing-image-source.md")
     let imageURL = rootURL.appendingPathComponent("static/images/2026/missing-cover.jpg")

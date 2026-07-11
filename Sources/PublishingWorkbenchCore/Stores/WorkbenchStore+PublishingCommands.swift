@@ -1,15 +1,15 @@
 import Foundation
 
 extension WorkbenchStore {
-  public func writeSelectedDraftToLocalRepository() {
+  public func writeSelectedDraftToLocalRepository() async {
     refreshSelectedDraftPublishingState()
-    publishingStore.writeSelectedDraftToLocalRepository(store: self)
+    await publishingStore.writeSelectedDraftToLocalRepository(store: self)
   }
 
   @discardableResult
-  public func writeBatchReadyDraftsToLocalRepository() -> BatchLocalWriteResult {
+  public func writeBatchReadyDraftsToLocalRepository() async -> BatchLocalWriteResult {
     refreshBatchPublishPlan()
-    return publishingStore.writeBatchReadyDraftsToLocalRepository(store: self)
+    return await publishingStore.writeBatchReadyDraftsToLocalRepository(store: self)
   }
 
   @discardableResult

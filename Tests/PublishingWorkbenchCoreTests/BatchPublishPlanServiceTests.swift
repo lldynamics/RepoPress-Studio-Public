@@ -225,7 +225,7 @@ final class BatchPublishCommandBuilderTests: XCTestCase {
 
 @MainActor
 final class WorkbenchStoreBatchPublishTests: XCTestCase {
-  func testBatchWriteOnlyWritesWritableDraftsAndRecordsRelease() throws {
+  func testBatchWriteOnlyWritesWritableDraftsAndRecordsRelease() async throws {
     let rootURL = try makeRepositoryRoot()
     defer {
       try? FileManager.default.removeItem(at: rootURL)
@@ -252,7 +252,7 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
     store.setSelectedDraftID(readyDraft.id)
     store.runPreflight()
 
-    let result = store.writeBatchReadyDraftsToLocalRepository()
+    let result = await store.writeBatchReadyDraftsToLocalRepository()
 
     XCTAssertEqual(result.writtenDraftCount, 1)
     XCTAssertEqual(result.skippedCount, 2)
@@ -267,6 +267,7 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
     )
     XCTAssertEqual(store.releaseRecords.first?.kind, .batchLocalWrite)
     XCTAssertTrue(store.publishActionMessage?.contains("已批量写入 1 篇") == true)
+    XCTAssertFalse(store.isLocalRepositoryMutationRunning)
   }
 
   private func temporaryPersistenceURL() throws -> URL {

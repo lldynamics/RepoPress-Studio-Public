@@ -1135,7 +1135,7 @@ extension PublishingStore {
     return formatter.string(from: Date())
   }
 
-  public func writeSelectedDraftToLocalRepository(store: WorkbenchStore) {
+  public func writeSelectedDraftToLocalRepository(store: WorkbenchStore) async {
     if let draftID = publishPackage?.draftID {
       _ = store.focusDraft(draftID, section: .sync)
     }
@@ -1166,23 +1166,35 @@ extension PublishingStore {
       return
     }
     defer { finishLocalRepositoryMutation(operation) }
+    publishActionMessage = "正在后台写入本地仓库…"
 
     do {
-      let writtenPaths = try localPublishPreviewService.write(package: package, profile: profile)
-      publishActionMessage = "已写入 \(writtenPaths.count) 个文件到本地仓库。"
+      let writtenPaths = try await localPublishPreviewService.writeAsync(
+        package: package,
+        profile: profile
+      )
       releaseRecords.insert(
         .localWrite(package: package, profile: profile, writtenPaths: writtenPaths),
         at: 0
       )
-      store.requestRepositoryScan()
+      let stillCurrent = localRepositoryMutationContext == operation
+        && store.profiles.first(where: { $0.id == profile.id }).map(operation.stillMatches) == true
+        && store.activeProfileID == profile.id
+      if stillCurrent {
+        publishActionMessage = "已写入 \(writtenPaths.count) 个文件到本地仓库。"
+        store.requestRepositoryScan()
+      } else {
+        publishActionMessage = "原站点已写入 \(writtenPaths.count) 个文件；当前站点已变化，未刷新当前仓库状态。"
+      }
       store.save()
     } catch {
-      publishActionMessage = "写入失败：\(error.localizedDescription)"
+      let prefix = store.activeProfileID == profile.id ? "写入失败" : "原站点写入失败"
+      publishActionMessage = "\(prefix)：\(error.localizedDescription)"
     }
   }
 
   @discardableResult
-  public func writeBatchReadyDraftsToLocalRepository(store: WorkbenchStore) -> BatchLocalWriteResult {
+  public func writeBatchReadyDraftsToLocalRepository(store: WorkbenchStore) async -> BatchLocalWriteResult {
     store.refreshBatchPublishPlan()
 
     guard let batchPublishPlan else {
@@ -1206,7 +1218,8 @@ extension PublishingStore {
       return BatchLocalWriteResult(writtenDraftCount: 0, writtenPaths: [], skippedCount: batchPublishPlan.items.count)
     }
 
-    guard let operation = beginLocalRepositoryMutation(profile: store.activeProfile) else {
+    let profile = store.activeProfile
+    guard let operation = beginLocalRepositoryMutation(profile: profile) else {
       publishActionMessage = "已有本地仓库写入或提交任务正在运行，请等待完成。"
       return BatchLocalWriteResult(
         writtenDraftCount: 0,
@@ -1215,6 +1228,7 @@ extension PublishingStore {
       )
     }
     defer { finishLocalRepositoryMutation(operation) }
+    publishActionMessage = "正在后台批量写入本地仓库…"
 
     var writtenItems: [BatchPublishPlanItem] = []
     var writtenPaths: [String] = []
@@ -1222,7 +1236,10 @@ extension PublishingStore {
 
     for item in writableItems {
       do {
-        let paths = try localPublishPreviewService.write(package: item.package, profile: store.activeProfile)
+        let paths = try await localPublishPreviewService.writeAsync(
+          package: item.package,
+          profile: profile
+        )
         writtenItems.append(item)
         writtenPaths.append(contentsOf: paths)
       } catch {
@@ -1232,12 +1249,15 @@ extension PublishingStore {
 
     if !writtenItems.isEmpty {
       releaseRecords.insert(
-        .batchLocalWrite(profile: store.activeProfile, items: writtenItems, writtenPaths: writtenPaths),
+        .batchLocalWrite(profile: profile, items: writtenItems, writtenPaths: writtenPaths),
         at: 0
       )
-      store.requestRepositoryScan()
       store.save()
-    } else {
+    }
+    let stillCurrent = localRepositoryMutationContext == operation
+      && store.profiles.first(where: { $0.id == profile.id }).map(operation.stillMatches) == true
+      && store.activeProfileID == profile.id
+    if stillCurrent {
       store.requestRepositoryScan()
     }
 
@@ -1248,7 +1268,9 @@ extension PublishingStore {
       skippedCount: batchPublishPlan.items.count - writableItems.count
     )
 
-    if failedTitles.isEmpty {
+    if !stillCurrent {
+      publishActionMessage = "原站点批量写入完成：成功 \(result.writtenDraftCount) 篇、失败 \(failedTitles.count) 篇；当前站点已变化。"
+    } else if failedTitles.isEmpty {
       publishActionMessage = "已批量写入 \(result.writtenDraftCount) 篇、\(result.writtenPaths.count) 个文件。"
     } else {
       publishActionMessage = "已写入 \(result.writtenDraftCount) 篇，\(failedTitles.count) 篇失败：\(failedTitles.joined(separator: "；"))"

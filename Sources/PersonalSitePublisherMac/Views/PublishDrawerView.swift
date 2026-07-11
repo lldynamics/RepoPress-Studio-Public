@@ -885,9 +885,11 @@ struct PublishDrawerView: View {
     let currentSection = store.selectedSection
     _ = store.focusDraft(draft.id)
     store.refreshPublishPreview(for: draft)
-    store.writeSelectedDraftToLocalRepository()
-    store.selectSection(currentSection)
-    store.refreshPublishPreview(for: draft)
+    Task {
+      await store.writeSelectedDraftToLocalRepository()
+      store.selectSection(currentSection)
+      store.refreshPublishPreview(for: draft)
+    }
   }
 
   private func commitDraftUsingPreferredStrategy(_ draft: ArticleDraft) {
