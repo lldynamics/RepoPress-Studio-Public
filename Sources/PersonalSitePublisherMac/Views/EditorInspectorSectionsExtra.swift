@@ -6,7 +6,8 @@ struct EditorPreflightSection: View {
   @ObservedObject var store: WorkbenchStore
 
   var body: some View {
-    let publicRiskSummary = store.publicRiskSummary(for: draft)
+    let issues = store.preflightIssues(for: draft)
+    let publicRiskSummary = PublicRiskSummary(issues: issues)
 
     return VStack(alignment: .leading, spacing: 10) {
       HStack {
@@ -25,7 +26,7 @@ struct EditorPreflightSection: View {
 
       publicRiskSummaryBlock(publicRiskSummary)
 
-      ForEach(store.preflightIssues(for: draft).prefix(6)) { issue in
+      ForEach(issues.prefix(6)) { issue in
         VStack(alignment: .leading, spacing: 4) {
           SeverityBadge(severity: issue.severity)
           Text(issue.title)

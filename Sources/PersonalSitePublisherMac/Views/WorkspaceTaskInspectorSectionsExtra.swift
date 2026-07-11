@@ -239,10 +239,11 @@ struct ArticleInspectorTabs: View {
   }
 
   private var checkContent: some View {
-    WorkspaceTaskChecksSection(
+    let issues = store.preflightIssues(for: draft)
+    return WorkspaceTaskChecksSection(
       state: WorkspaceTaskChecksState(
-        issues: store.preflightIssues(for: draft),
-        publicRisk: store.publicRiskSummary(for: draft)
+        issues: issues,
+        publicRisk: PublicRiskSummary(issues: issues)
       ),
       actions: WorkspaceTaskChecksActions(
         rerunPreflight: {
