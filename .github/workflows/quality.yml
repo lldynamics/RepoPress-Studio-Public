@@ -1,0 +1,27 @@
+name: Quality Gate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-swift-home
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Show toolchain
+        run: swift --version
+      - name: Run quick quality gate
+        run: ./script/check_release_gate.sh --quick

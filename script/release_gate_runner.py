@@ -14,12 +14,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "script" / "release_checks.json"
 QUICK_CHECK_IDS = {
+    "ci-quality",
     "localization",
     "app-store-metadata",
     "ui-runtime",
     "privacy-copy",
     "storekit",
     "screenshot-privacy",
+    "swift-strict-build",
+    "swift-strict-build-tests",
     "swift-tests",
 }
 

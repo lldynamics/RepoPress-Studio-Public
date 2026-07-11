@@ -67,6 +67,9 @@ stub_scripts=(
   test_screenshot_privacy.sh
   test_app_store_checklist_sync_evidence.sh
   test_release_gate_strict_reporting.sh
+  check_ci_quality_workflow.sh
+  check_swift_strict_build.sh
+  test_swift_strict_build_gate.sh
   sync_screenshot_manifest_status.sh
   sync_app_store_checklist.sh
   check_screenshot_privacy.sh
