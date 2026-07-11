@@ -409,15 +409,64 @@ extension PublishingStore {
   }
 
   public func refreshReleaseQualityGate(projectRoot: URL? = nil, store: WorkbenchStore) {
-    releaseQualityGateReport = releaseQualityGateService.report(
-      projectRoot: projectRoot ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath),
-      hasPrivacyProtection: true,
-      hasProBoundary: true,
-      proUpgradeRequirements: store.proUpgradeRequirements,
-      hasDeploymentStatusPanel: true,
-      hasAIChatWorkspace: true
-    )
-    releaseQualityGateMessage = "发布质量门已刷新。"
+    let resolver = ReleaseQualityGateProjectRootResolver()
+    guard let resolvedRoot = resolver.resolve(explicitRoot: projectRoot) else {
+      releaseQualityGateRefreshTask?.cancel()
+      releaseQualityGateRefreshTask = nil
+      isReleaseQualityGateRefreshing = false
+      releaseQualityGateReport = ReleaseQualityGateReport(
+        projectRootPath: "",
+        items: [
+          ReleaseQualityGateItem(
+            id: "project-root",
+            category: .runtime,
+            title: "开发项目根目录",
+            status: .blocked,
+            message: "未找到包含 Package.swift、Sources 和发布门禁清单的开发项目目录。正式版不会扫描当前工作目录或整个磁盘。"
+          )
+        ]
+      )
+      releaseQualityGateMessage = "未找到开发项目根目录，已停止刷新。"
+      return
+    }
+
+    if projectRoot != nil {
+      releaseQualityGateRefreshTask?.cancel()
+      releaseQualityGateRefreshTask = nil
+      isReleaseQualityGateRefreshing = false
+      releaseQualityGateReport = releaseQualityGateService.report(
+        projectRoot: resolvedRoot,
+        hasPrivacyProtection: true,
+        hasProBoundary: true,
+        proUpgradeRequirements: store.proUpgradeRequirements,
+        hasDeploymentStatusPanel: true,
+        hasAIChatWorkspace: true
+      )
+      releaseQualityGateMessage = "发布质量门已刷新。"
+      return
+    }
+
+    guard !isReleaseQualityGateRefreshing else { return }
+    isReleaseQualityGateRefreshing = true
+    releaseQualityGateMessage = "正在后台刷新发布质量门…"
+    let proUpgradeRequirements = store.proUpgradeRequirements
+    releaseQualityGateRefreshTask = Task { @MainActor [weak self] in
+      let report = await Task.detached(priority: .userInitiated) {
+        ReleaseQualityGateService().report(
+          projectRoot: resolvedRoot,
+          hasPrivacyProtection: true,
+          hasProBoundary: true,
+          proUpgradeRequirements: proUpgradeRequirements,
+          hasDeploymentStatusPanel: true,
+          hasAIChatWorkspace: true
+        )
+      }.value
+      guard let self, !Task.isCancelled else { return }
+      self.releaseQualityGateReport = report
+      self.releaseQualityGateMessage = "发布质量门已刷新。"
+      self.isReleaseQualityGateRefreshing = false
+      self.releaseQualityGateRefreshTask = nil
+    }
   }
 
   public func localCommitCommandForSelectedDraft(store: WorkbenchStore) -> String? {

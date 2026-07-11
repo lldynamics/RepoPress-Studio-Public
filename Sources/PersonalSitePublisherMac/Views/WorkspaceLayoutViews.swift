@@ -69,9 +69,17 @@ struct WorkspaceShellSplitLayout: View {
 struct WorkspaceRail: View {
   @ObservedObject var store: WorkbenchStore
 
+  private var visibleSections: [WorkspaceSection] {
+#if DEBUG
+    WorkspaceSection.allCases
+#else
+    WorkspaceVisibilityPolicy.productionRailSections
+#endif
+  }
+
   var body: some View {
     VStack(spacing: 6) {
-      ForEach(WorkspaceSection.allCases) { section in
+      ForEach(visibleSections) { section in
         Button {
           store.selectSection(section)
         } label: {

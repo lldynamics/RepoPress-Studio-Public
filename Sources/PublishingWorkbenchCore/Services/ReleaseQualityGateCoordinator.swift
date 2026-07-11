@@ -40,6 +40,9 @@ struct ReleaseQualityGateCoordinator {
     hasAIChatWorkspace: Bool,
     productCapabilities: ReleaseProductCapabilityCoverage?
   ) -> ReleaseQualityGateReport {
+    // Resolving symlinks for an ancestor outside an App Sandbox container can
+    // collapse the URL to `/`. Keep the verified project root lexical here;
+    // relative-path normalization handles /var versus /private/var separately.
     let root = projectRoot.standardizedFileURL
     let files = allFiles(under: root)
     let screenshotResult = screenshotGate.evaluate(
@@ -280,7 +283,7 @@ struct ReleaseQualityGateCoordinator {
   private func allFiles(under root: URL) -> [URL] {
     guard let enumerator = fileManager.enumerator(
       at: root,
-      includingPropertiesForKeys: [.isRegularFileKey],
+      includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey],
       options: [.skipsHiddenFiles, .skipsPackageDescendants]
     ) else {
       return []
@@ -288,21 +291,41 @@ struct ReleaseQualityGateCoordinator {
 
     return enumerator.compactMap { element in
       guard let url = element as? URL else { return nil }
-      let path = relativePath(url, from: root)
-      if path.hasPrefix(".build/") || path.hasPrefix(".git/") {
+      let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
+      if values?.isDirectory == true,
+         Self.excludedDirectoryNames.contains(url.lastPathComponent) {
+        enumerator.skipDescendants()
         return nil
       }
-      let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
       return values?.isRegularFile == true ? url : nil
     }
   }
 
+  private static let excludedDirectoryNames: Set<String> = [
+    ".build",
+    ".git",
+    ".swiftpm",
+    "DerivedData",
+    "dist",
+    "node_modules",
+  ]
+
   private func relativePath(_ url: URL, from root: URL) -> String {
-    let rootPath = root.standardizedFileURL.path
-    let path = url.standardizedFileURL.path
-    guard path.hasPrefix(rootPath) else {
-      return path
+    let rootPath = root.path
+    let path = url.path
+    if path == rootPath || path.hasPrefix(rootPath + "/") {
+      return String(path.dropFirst(rootPath.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
-    return String(path.dropFirst(rootPath.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+    // FileManager can return /private/var URLs for a /var fixture. Only pay the
+    // filesystem-backed normalization cost when the fast lexical path misses.
+    let normalizedRootPath = root.standardizedFileURL.path
+    let normalizedPath = url.standardizedFileURL.path
+    guard normalizedPath == normalizedRootPath
+      || normalizedPath.hasPrefix(normalizedRootPath + "/") else {
+      return normalizedPath
+    }
+    return String(normalizedPath.dropFirst(normalizedRootPath.count))
+      .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
   }
 }

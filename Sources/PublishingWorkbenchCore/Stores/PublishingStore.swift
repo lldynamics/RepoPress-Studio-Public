@@ -78,6 +78,7 @@ public final class PublishingStore: ObservableObject {
   var localSitePreviewStopTask: Task<Void, Never>?
   var localSitePreviewStopOperationID: UUID?
   var localSitePreviewGeneration: UInt64 = 0
+  var releaseQualityGateRefreshTask: Task<Void, Never>?
 
   @Published public internal(set) var profiles: [SiteProfile]
   @Published public internal(set) var activeProfileID: UUID
@@ -105,6 +106,7 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var preflightIssues: [PreflightIssue]
   @Published public internal(set) var releaseQualityGateReport: ReleaseQualityGateReport
   @Published public internal(set) var releaseQualityGateMessage: String?
+  @Published public internal(set) var isReleaseQualityGateRefreshing = false
   @Published public internal(set) var externalVerificationEvidenceRecords: [ReleaseExternalVerificationEvidenceRecord]
   @Published public internal(set) var isInspectorPresented: Bool
   @Published public internal(set) var editorDisplayMode: EditorDisplayMode

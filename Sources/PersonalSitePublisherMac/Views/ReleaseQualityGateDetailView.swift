@@ -84,8 +84,12 @@ struct ReleaseQualityGateDetailView: View {
           Button {
             store.refreshReleaseQualityGate()
           } label: {
-            Label("刷新", systemImage: "arrow.clockwise")
+            Label(
+              store.isReleaseQualityGateRefreshing ? "刷新中" : "刷新",
+              systemImage: store.isReleaseQualityGateRefreshing ? "hourglass" : "arrow.clockwise"
+            )
           }
+          .disabled(store.isReleaseQualityGateRefreshing)
         }
 
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
