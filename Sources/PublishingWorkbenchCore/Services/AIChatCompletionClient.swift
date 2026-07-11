@@ -308,10 +308,10 @@ public struct URLSessionAIChatTransport: AIChatTransport, AIChatStreamingTranspo
   }
 }
 
-public struct AIChatCompletionClient {
+public struct AIChatCompletionClient: Sendable {
   private let transport: AIChatTransport
-  private let encoder: JSONEncoder
-  private let decoder: JSONDecoder
+  private let encoder: SerializedJSONEncoder
+  private let decoder: SerializedJSONDecoder
 
   public init(
     transport: AIChatTransport = URLSessionAIChatTransport(),
@@ -319,8 +319,8 @@ public struct AIChatCompletionClient {
     decoder: JSONDecoder = JSONDecoder()
   ) {
     self.transport = transport
-    self.encoder = encoder
-    self.decoder = decoder
+    self.encoder = SerializedJSONEncoder(encoder)
+    self.decoder = SerializedJSONDecoder(decoder)
   }
 
   public func complete(

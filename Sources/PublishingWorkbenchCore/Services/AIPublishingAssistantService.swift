@@ -1,5 +1,5 @@
 import Foundation
-public struct AIPublishingAssistantService {
+public struct AIPublishingAssistantService: Sendable {
   private let client: AIChatCompletionClient
 
   public init(client: AIChatCompletionClient = AIChatCompletionClient()) {

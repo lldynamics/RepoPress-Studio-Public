@@ -69,11 +69,13 @@ public struct LocalPublishPreview: Codable, Hashable, Sendable {
   }
 }
 
-public struct LocalPublishPreviewService {
-  private let fileManager: FileManager
+public struct LocalPublishPreviewService: Sendable {
+  private let fileSystem: SendableFileManager
+
+  private var fileManager: FileManager { fileSystem.value }
 
   public init(fileManager: FileManager = .default) {
-    self.fileManager = fileManager
+    self.fileSystem = SendableFileManager(fileManager)
   }
 
   public func preview(package: PublishPackage, profile: SiteProfile) -> LocalPublishPreview {

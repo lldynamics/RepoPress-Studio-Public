@@ -39,10 +39,12 @@ public struct LocalGitPublishResult: Codable, Hashable, Sendable {
   }
 }
 
-public struct LocalGitPublishService {
-  private let fileManager: FileManager
+public struct LocalGitPublishService: Sendable {
+  private let fileSystem: SendableFileManager
   private let previewService: LocalPublishPreviewService
   private let gitCommandRunner: GitCommandRunner
+
+  private var fileManager: FileManager { fileSystem.value }
 
   public init(
     fileManager: FileManager = .default,
@@ -50,7 +52,7 @@ public struct LocalGitPublishService {
     gitExecutablePath: String = "/usr/bin/git",
     gitCommandRunner: GitCommandRunner? = nil
   ) {
-    self.fileManager = fileManager
+    self.fileSystem = SendableFileManager(fileManager)
     self.previewService = previewService
     self.gitCommandRunner = gitCommandRunner ?? GitCommandRunner(executableURL: URL(fileURLWithPath: gitExecutablePath))
   }
