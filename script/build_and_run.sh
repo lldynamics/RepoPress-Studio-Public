@@ -60,6 +60,7 @@ Modes:
   --logs | logs             Build, open, then stream process logs.
   --telemetry | telemetry   Build, open, then stream app telemetry logs.
   --verify | verify         Build, open, and verify the process starts.
+  --launch-baseline        Build, then measure bundle-open to visible-window time.
   --package-only | package  Build the .app bundle and print its path.
   --screenshot-demo [id]    Build and launch screenshot demo data for a surface.
 
@@ -85,7 +86,7 @@ list_screenshot_surfaces() {
 
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
-    run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify|--package-only|package)
+    run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify|--launch-baseline|launch-baseline|--package-only|package)
       MODE="$1"
       shift
       ;;
@@ -126,7 +127,7 @@ if [[ "$MODE" == "screenshot-demo" ]] && ! contains_screenshot_surface "$SCREENS
 fi
 
 case "$MODE" in
-  run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify|screenshot-demo)
+  run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify|--launch-baseline|launch-baseline|screenshot-demo)
     pkill -x "$APP_NAME" >/dev/null 2>&1 || true
     ;;
 esac
@@ -174,14 +175,23 @@ PLIST
 wait_for_main_window() {
   local attempts=20
   local count=""
+  local app_pid=""
   while [[ "$attempts" -gt 0 ]]; do
-    count="$(osascript <<OSA 2>/dev/null || true
+    app_pid="$(pgrep -x "$APP_NAME" | head -n 1 || true)"
+    if [[ -z "$app_pid" ]]; then
+      sleep 0.5
+      attempts="$((attempts - 1))"
+      continue
+    fi
+    count="$(osascript - "$app_pid" <<'OSA' 2>/dev/null || true
+on run argv
+  set targetPID to (item 1 of argv) as integer
 tell application "System Events"
-  if not (exists process "$APP_NAME") then return "0"
-  tell process "$APP_NAME"
-    return count of windows
-  end tell
+  set matchingProcesses to every process whose unix id is targetPID
+  if (count of matchingProcesses) is 0 then return "0"
+  tell item 1 of matchingProcesses to return count of windows
 end tell
+end run
 OSA
 )"
     count="$(printf "%s" "$count" | tr -d '[:space:]')"
@@ -192,6 +202,28 @@ OSA
     attempts="$((attempts - 1))"
   done
   echo "$APP_NAME launched but no visible main window was detected" >&2
+  return 1
+}
+
+can_query_main_window() {
+  local enabled=""
+  enabled="$(osascript -e 'tell application "System Events" to return UI elements enabled' 2>/dev/null || true)"
+  [[ "$enabled" == "true" ]]
+}
+
+is_console_session_locked() {
+  ioreg -n Root -d1 2>/dev/null | grep -F '"CGSSessionScreenIsLocked"=Yes' >/dev/null
+}
+
+wait_for_running_process() {
+  local attempts=50
+  while [[ "$attempts" -gt 0 ]]; do
+    if pgrep -x "$APP_NAME" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+    attempts="$((attempts - 1))"
+  done
   return 1
 }
 
@@ -249,6 +281,34 @@ case "$MODE" in
 
     echo "启动校验失败：未检测到运行中的进程（请确认运行环境）" >&2
     exit 1
+    ;;
+  --launch-baseline|launch-baseline)
+    max_launch_seconds="${LAUNCH_BASELINE_MAX_SECONDS:-5.0}"
+    launch_started_at="$(perl -MTime::HiRes=time -e 'printf "%.6f", time')"
+    run_bundle
+    wait_for_running_process || {
+      echo "launch performance gate: process did not become ready" >&2
+      exit 1
+    }
+    launch_readiness="running process"
+    if is_console_session_locked; then
+      echo "launch performance gate: console session is locked; measuring process readiness" >&2
+    elif can_query_main_window; then
+      wait_for_main_window || {
+        echo "launch performance gate: visible window was not detected" >&2
+        exit 1
+      }
+      launch_readiness="visible window"
+    else
+      echo "launch performance gate: System Events window query unavailable; measuring process readiness" >&2
+    fi
+    launch_finished_at="$(perl -MTime::HiRes=time -e 'printf "%.6f", time')"
+    launch_elapsed="$(awk -v start="$launch_started_at" -v finish="$launch_finished_at" 'BEGIN { printf "%.3f", finish - start }')"
+    if ! awk -v elapsed="$launch_elapsed" -v maximum="$max_launch_seconds" 'BEGIN { exit !(elapsed <= maximum) }'; then
+      echo "launch performance gate: ${launch_elapsed}s exceeded ${max_launch_seconds}s baseline" >&2
+      exit 1
+    fi
+    echo "launch performance gate: ${launch_readiness} in ${launch_elapsed}s (baseline <= ${max_launch_seconds}s)"
     ;;
   --package-only|package)
     echo "$APP_BUNDLE"

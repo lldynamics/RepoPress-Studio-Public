@@ -38,9 +38,13 @@ grep -q "wait_for_main_window" "$ROOT_DIR/script/build_and_run.sh" \
   || fail "build_and_run --verify must wait for a visible main window"
 grep -q "count of windows" "$ROOT_DIR/script/build_and_run.sh" \
   || fail "build_and_run --verify must query the app window count"
+grep -q -- "--launch-baseline" "$ROOT_DIR/script/build_and_run.sh" \
+  || fail "build_and_run must expose a launch performance baseline mode"
+[[ -x "$ROOT_DIR/script/check_launch_performance.sh" ]] \
+  || fail "launch performance gate is missing or not executable"
 
 if [[ "${RUN_UI_APP:-0}" == "1" ]]; then
-  bash "$ROOT_DIR/script/build_and_run.sh" --verify
+  bash "$ROOT_DIR/script/check_launch_performance.sh"
 fi
 
-echo "ui runtime gate: bundle, plist, executable, core UI files, accessibility contract, and window verification contract verified"
+echo "ui runtime gate: bundle, plist, executable, core UI files, accessibility contract, window verification, and launch baseline contract verified"

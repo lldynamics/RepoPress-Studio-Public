@@ -13,6 +13,7 @@
 - 部署和维护：发布台账、部署状态检查、站点维护工作台、素材库、隐私锁、私密内容遮挡、免费版 / Pro 边界。
 - 图片工作台：拖拽插图、批量补 alt/caption、检查封面路径和源图状态、批量压缩 JPEG。
 - 上架门禁：本地化、UI runtime/accessibility、截图证据、App Store checklist 和产品边界集中检查。
+- 启动性能基线：`script/check_launch_performance.sh` 默认要求从打开应用包到主窗口可见不超过 5 秒，可用 `LAUNCH_BASELINE_MAX_SECONDS` 调整。
 
 运行：
 
