@@ -1525,29 +1525,53 @@ public final class WorkbenchAIStore: ObservableObject {
     return await sendAIChatMessage(prompt, draft: draft)
   }
 
-  public func aiChatImageAttachments(for draft: ArticleDraft, attachmentIDs: Set<UUID>) -> [AIChatImageAttachment] {
+  public func aiChatImageAttachments(
+    for draft: ArticleDraft,
+    attachmentIDs: Set<UUID>
+  ) async -> [AIChatImageAttachment] {
     let selectedAttachments = Array(
       draft.attachments
       .filter { attachmentIDs.contains($0.id) }
       .prefix(AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount)
     )
-    let images: [AIChatImageAttachment] = selectedAttachments.compactMap { attachment in
-        guard let path = attachment.sourceFilePath?.nilIfEmpty else { return nil }
-        let url = URL(fileURLWithPath: path)
-        guard let data = try? Data(contentsOf: url),
-              AIPublishingChatImageAttachmentPresentation.isWithinAttachmentSizeLimit(Int64(data.count)) else {
-          return nil
-        }
-        return AIChatImageAttachment(filename: attachment.originalFilename, mimeType: Self.mimeType(for: url), data: data)
-      }
-    let skippedCount = selectedAttachments.count - images.count
-    if skippedCount > 0 {
-      aiChatMessage = "已跳过 \(skippedCount) 个无法读取、格式不支持或超过 \(AIPublishingChatImageAttachmentPresentation.attachmentSizeLimitText()) 的图片附件。"
+    let result = await Task.detached(priority: .userInitiated) {
+      Self.loadAIChatImageAttachments(selectedAttachments)
+    }.value
+    guard !Task.isCancelled else { return [] }
+    if result.skippedCount > 0 {
+      aiChatMessage = "已跳过 \(result.skippedCount) 个无法读取、格式不支持或超过 \(AIPublishingChatImageAttachmentPresentation.attachmentSizeLimitText()) 的图片附件。"
     }
-    return images
+    return result.images
   }
 
-  private static func mimeType(for url: URL) -> String {
+  private nonisolated static func loadAIChatImageAttachments(
+    _ attachments: [DraftAttachment]
+  ) -> (images: [AIChatImageAttachment], skippedCount: Int) {
+    var images: [AIChatImageAttachment] = []
+    images.reserveCapacity(attachments.count)
+    for attachment in attachments {
+      guard let path = attachment.sourceFilePath?.nilIfEmpty else { continue }
+      let url = URL(fileURLWithPath: path)
+      guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
+            values.isRegularFile == true,
+            let fileSize = values.fileSize,
+            AIPublishingChatImageAttachmentPresentation.isWithinAttachmentSizeLimit(Int64(fileSize)),
+            let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+            AIPublishingChatImageAttachmentPresentation.isWithinAttachmentSizeLimit(Int64(data.count)) else {
+        continue
+      }
+      images.append(
+        AIChatImageAttachment(
+          filename: attachment.originalFilename,
+          mimeType: mimeType(for: url),
+          data: data
+        )
+      )
+    }
+    return (images, attachments.count - images.count)
+  }
+
+  private nonisolated static func mimeType(for url: URL) -> String {
     switch url.pathExtension.lowercased() {
     case "jpg", "jpeg": return "image/jpeg"
     case "png": return "image/png"

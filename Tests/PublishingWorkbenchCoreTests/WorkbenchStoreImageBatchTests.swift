@@ -6,7 +6,7 @@ import XCTest
 
 @MainActor
 final class WorkbenchStoreImageBatchTests: XCTestCase {
-  func testAIChatImageAttachmentsLoadsSelectedDraftImages() throws {
+  func testAIChatImageAttachmentsLoadsSelectedDraftImages() async throws {
     let directory = try temporaryDirectory()
     let imageURL = directory.appendingPathComponent("cover.png")
     let imageData = Data([137, 80, 78, 71, 1, 2, 3])
@@ -29,7 +29,7 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
       attachments: [attachment]
     )
 
-    let images = store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
+    let images = await store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
 
     XCTAssertEqual(images.count, 1)
     XCTAssertEqual(images[0].filename, "cover.png")
@@ -37,7 +37,7 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
     XCTAssertEqual(images[0].data, imageData)
   }
 
-  func testAIChatImageAttachmentsUsesMobileEightMegabyteLimit() throws {
+  func testAIChatImageAttachmentsUsesMobileEightMegabyteLimit() async throws {
     let directory = try temporaryDirectory()
     let imageURL = directory.appendingPathComponent("mobile-limit.png")
     let imageData = Data(repeating: 7, count: 5 * 1_024 * 1_024)
@@ -59,14 +59,14 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
       attachments: [attachment]
     )
 
-    let images = store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
+    let images = await store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
 
     XCTAssertEqual(images.count, 1)
     XCTAssertEqual(images[0].data.count, 5 * 1_024 * 1_024)
     XCTAssertNil(store.aiChatMessage)
   }
 
-  func testAIChatImageAttachmentsSkipsImagesAboveMobileEightMegabyteLimit() throws {
+  func testAIChatImageAttachmentsSkipsImagesAboveMobileEightMegabyteLimit() async throws {
     let directory = try temporaryDirectory()
     let imageURL = directory.appendingPathComponent("too-large.png")
     let imageData = Data(
@@ -80,7 +80,7 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
       originalFilename: "too-large.png",
       relativePublishPath: "/images/too-large.png",
       repositoryPath: "static/images/too-large.png",
-      byteSize: Int64(imageData.count),
+      byteSize: 1,
       sourceFilePath: imageURL.path
     )
     let draft = ArticleDraft(
@@ -91,7 +91,7 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
       attachments: [attachment]
     )
 
-    let images = store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
+    let images = await store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
 
     XCTAssertTrue(images.isEmpty)
     XCTAssertEqual(
