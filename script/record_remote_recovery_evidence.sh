@@ -128,9 +128,17 @@ require_source_pattern "Sources/PublishingWorkbenchCore/Services/ReleaseLedgerSe
 require_source_pattern_any_file "copyRecoveryEvidence" "structured recovery evidence copy UI" \
   "Sources/PersonalSitePublisherMac/Views/DetailContainerView.swift" \
   "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift"
-require_source_pattern "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore.swift" "refreshDeploymentStatus" "manual deployment status refresh"
-require_source_pattern "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore.swift" "deploymentPollingState" "deployment polling state"
-require_source_pattern "Tests/PublishingWorkbenchCoreTests/WorkbenchStoreProfileTests.swift" "testOnlineDirectPublishBlocksRemoteSamePathConflictBeforeCallingAPI" "remote same-path conflict regression test"
+require_source_pattern_any_file "refreshDeploymentStatus" "manual deployment status refresh" \
+  "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore.swift" \
+  "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+DeploymentCommands.swift" \
+  "Sources/PublishingWorkbenchCore/Stores/DeploymentStore.swift"
+require_source_pattern_any_file "deploymentPollingState" "deployment polling state" \
+  "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore.swift" \
+  "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+ForwardedState.swift" \
+  "Sources/PublishingWorkbenchCore/Stores/DeploymentStore.swift"
+require_source_pattern_any_file "testOnlineDirectPublishBlocksRemoteSamePathConflictBeforeCallingAPI" "remote same-path conflict regression test" \
+  "Tests/PublishingWorkbenchCoreTests/WorkbenchStoreProfileTests.swift" \
+  "Tests/PublishingWorkbenchCoreTests/WorkbenchStoreRemotePublishingTests.swift"
 require_source_pattern "Tests/PublishingWorkbenchCoreTests/DeploymentStatusServiceTests.swift" "testDeploymentPollingChecksPendingDeploymentRecordsAndCachesSnapshots" "deployment polling regression test"
 require_source_pattern "Tests/PublishingWorkbenchCoreTests/DeploymentStatusServiceTests.swift" "testDeploymentPollingSummarizesSuccessRunningAndFailedRecords" "deployment polling summary regression test"
 require_source_pattern "Tests/PublishingWorkbenchCoreTests/ReleaseLedgerServiceTests.swift" "testUnknownDeploymentCheckBecomesRetryablePendingState" "pending retry ledger regression test"
