@@ -34,6 +34,33 @@ final class GitCommandRunnerTests: XCTestCase {
     XCTAssertTrue(result.output.contains("'line\nbreak'"))
   }
 
+  func testAsyncRunnerTimesOutWithoutBlockingCaller() async throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+
+    let result = await GitCommandRunner(executableURL: scriptURL, timeout: 0.05).runAsync(
+      ["sleep"],
+      rootURL: FileManager.default.temporaryDirectory
+    )
+
+    XCTAssertEqual(result.terminationStatus, 124)
+    XCTAssertTrue(result.didTimeOut)
+  }
+
+  func testAsyncRunnerCancelsChildProcess() async throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+
+    let runner = GitCommandRunner(executableURL: scriptURL, timeout: 5)
+    let task = Task { await runner.runAsync(["sleep"], rootURL: FileManager.default.temporaryDirectory) }
+    try await Task.sleep(nanoseconds: 50_000_000)
+    task.cancel()
+    let result = await task.value
+
+    XCTAssertEqual(result.terminationStatus, 130)
+    XCTAssertFalse(result.didTimeOut)
+  }
+
   private func makeFakeGitExecutable() throws -> URL {
     let directoryURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacGitRunnerTests-\(UUID().uuidString)", isDirectory: true)

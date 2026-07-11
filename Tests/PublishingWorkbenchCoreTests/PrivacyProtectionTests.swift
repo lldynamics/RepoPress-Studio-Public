@@ -44,7 +44,7 @@ final class PrivacyProtectionTests: XCTestCase {
         masksPrivateContent: true
       )
     )
-    try WorkbenchPersistence(fileURL: url).save(snapshot)
+    _ = try WorkbenchPersistence(fileURL: url).save(snapshot)
 
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 
@@ -69,7 +69,7 @@ final class PrivacyProtectionTests: XCTestCase {
         masksPrivateContent: true
       )
     )
-    try WorkbenchPersistence(fileURL: url).save(snapshot)
+    _ = try WorkbenchPersistence(fileURL: url).save(snapshot)
 
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 
@@ -92,7 +92,7 @@ final class PrivacyProtectionTests: XCTestCase {
         masksPrivateContent: true
       )
     )
-    try WorkbenchPersistence(fileURL: url).save(snapshot)
+    _ = try WorkbenchPersistence(fileURL: url).save(snapshot)
 
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 

@@ -4,6 +4,9 @@ import SwiftUI
 
 struct RepositoryWorkspaceView: View {
   @ObservedObject var store: WorkbenchStore
+  @Binding var stage: RepositoryContextStage
+  @State var isLocalPreviewPresented = false
+  @State var isContentMigrationPresented = false
 
   var body: some View {
     ScrollView {
@@ -16,58 +19,257 @@ struct RepositoryWorkspaceView: View {
               .foregroundStyle(.secondary)
           }
           Spacer()
-          Button {
-            if let url = RepositorySelectionPanel.chooseDirectory() {
-              Task {
-                await store.repository.rememberRootAsync(url)
-              }
-            }
-          } label: {
-            Label("选择仓库", systemImage: "folder")
+          if hasSelectedRepository {
+            repositoryActionsMenu
           }
-          .disabled(store.repository.scanState.isScanning)
-          .accessibilityLabel("选择本地仓库")
-          .accessibilityHint("选择静态站点仓库目录")
-          if store.repository.scanState.isScanning {
-            Button {
-              store.repository.cancelScan()
-            } label: {
-              Label("取消扫描", systemImage: "xmark.circle")
-            }
-            .accessibilityLabel("取消仓库扫描")
-          } else {
-            Button {
-              Task {
-                await store.repository.scanAsync()
-              }
-            } label: {
-              Label("重新扫描", systemImage: "arrow.clockwise")
-            }
-            .accessibilityLabel("重新扫描仓库")
-          }
-          Button {
-            store.importDraftsFromLocalRepository()
-          } label: {
-            Label("导入文章", systemImage: "tray.and.arrow.down")
-          }
-          .accessibilityLabel("从本地仓库导入文章")
         }
 
-        repositorySummary
-        repositoryScanProgress
-        repositoryAutoSyncSection
-        onlinePublishCenterSection
-        repositorySyncPlan
-        remoteChangedFiles
-        pathRules
-        batchPublishQueueSection
-        localPreviewSection
-        publishPackageSummary
-        reviewRequestSection
-        publishDiffPreview
-        changedFiles
+        repositoryWorkflowBanner
+
+        if hasSelectedRepository {
+          if store.repositoryReport != nil || stage == .overview {
+            repositoryStageContent
+          } else {
+            repositoryScanRequiredState
+          }
+        } else {
+          repositorySelectionEmptyState
+        }
       }
       .padding(20)
+    }
+    .sheet(isPresented: $isLocalPreviewPresented) {
+      LocalSitePreviewSheet(
+        previewURL: store.localSitePreviewRuntimeStatus.previewURL ?? store.localSitePreviewPlan?.previewURL
+      )
+    }
+    .sheet(isPresented: $isContentMigrationPresented) {
+      ContentMigrationAssistantView(store: store)
+    }
+  }
+
+  @ViewBuilder
+  private var repositoryStageContent: some View {
+    switch stage {
+    case .overview:
+      repositorySummary
+      repositoryScanProgress
+      repositorySyncPlan
+    case .changes:
+      remoteChangedFiles
+      changedFiles
+      pathRules
+    case .publishing:
+      publishPackageSummary
+      publishDiffPreview
+      batchPublishQueueSection
+      onlinePublishCenterSection
+      reviewRequestSection
+    case .automation:
+      repositoryAutoSyncSection
+    case .preview:
+      localPreviewSection
+    }
+  }
+
+  private var hasSelectedRepository: Bool {
+    !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty
+  }
+
+  private var repositoryActionsMenu: some View {
+    Menu {
+      Button {
+        chooseRepository()
+      } label: {
+        Label("更换仓库", systemImage: "folder")
+      }
+      .disabled(store.repository.scanState.isScanning)
+
+      if store.repository.scanState.isScanning {
+        Button {
+          store.repository.cancelScan()
+        } label: {
+          Label("取消扫描", systemImage: "xmark.circle")
+        }
+      } else {
+        Button {
+          scanRepository()
+        } label: {
+          Label("重新扫描", systemImage: "arrow.clockwise")
+        }
+      }
+
+      Divider()
+
+      Button {
+        Task {
+          await store.importDraftsFromLocalRepositoryAsync()
+        }
+      } label: {
+        Label("导入文章", systemImage: "tray.and.arrow.down")
+      }
+
+      Button {
+        isContentMigrationPresented = true
+      } label: {
+        Label("内容迁移", systemImage: "arrow.triangle.2.circlepath.doc.on.clipboard")
+      }
+    } label: {
+      Label("仓库操作", systemImage: "ellipsis.circle")
+    }
+    .accessibilityLabel("仓库操作")
+  }
+
+  @ViewBuilder
+  private var repositoryWorkflowBanner: some View {
+    if !hasSelectedRepository {
+      workflowBanner(
+        title: "尚未选择本地仓库",
+        detail: "先选择静态站点仓库，才能扫描变更、写入文章或启动预览。",
+        systemImage: "externaldrive.badge.questionmark",
+        tint: .orange,
+        actionTitle: "选择仓库",
+        action: chooseRepository
+      )
+    } else if store.repository.scanState.isScanning {
+      workflowBanner(
+        title: "正在扫描仓库",
+        detail: store.repository.scanState.message,
+        systemImage: "arrow.clockwise",
+        tint: .secondary,
+        actionTitle: "取消扫描",
+        action: store.repository.cancelScan
+      )
+    } else if let report = store.repositoryReport,
+              let issue = report.preflightIssues.first(where: { $0.severity == .error }) {
+      workflowBanner(
+        title: "仓库配置阻断：\(issue.title)",
+        detail: issue.message,
+        systemImage: "xmark.octagon",
+        tint: .red,
+        actionTitle: "查看概览",
+        action: { stage = .overview }
+      )
+    } else if let report = store.repositoryReport, !report.remoteChangedFiles.isEmpty {
+      workflowBanner(
+        title: "远端有 \(report.remoteChangedFiles.count) 个变更",
+        detail: "先审阅远端 diff，确认是否导入或合并后再写入与发布。",
+        systemImage: "arrow.down.doc",
+        tint: .orange,
+        actionTitle: "审阅变更",
+        action: { stage = .changes }
+      )
+    } else if let report = store.repositoryReport, !report.changedFiles.isEmpty {
+      workflowBanner(
+        title: "本地有 \(report.changedFiles.count) 个变更",
+        detail: "先确认文章、图片和配置 diff，再进入写入与发布。",
+        systemImage: "arrow.triangle.2.circlepath",
+        tint: .orange,
+        actionTitle: "审阅变更",
+        action: { stage = .changes }
+      )
+    } else if store.repositoryReport == nil {
+      workflowBanner(
+        title: "仓库尚未扫描",
+        detail: "扫描会识别站点结构、Git 状态和本地变更。",
+        systemImage: "arrow.clockwise",
+        tint: .secondary,
+        actionTitle: "开始扫描",
+        action: scanRepository
+      )
+    } else if let draft = store.selectedDraft,
+              let readiness = store.localPublishReadiness,
+              readiness.blockingIssueCount > 0 {
+      workflowBanner(
+        title: "当前文章存在 \(readiness.blockingIssueCount) 个发布阻断项",
+        detail: "先处理文章检查结果，再写入或线上发布。",
+        systemImage: "checklist",
+        tint: .red,
+        actionTitle: "查看检查",
+        action: { _ = store.focusDraft(draft.id, section: .contentHealth) }
+      )
+    } else if store.selectedDraft != nil {
+      workflowBanner(
+        title: "已具备继续发布的仓库上下文",
+        detail: "下一步确认发布包、写入策略和线上发布方式。",
+        systemImage: "paperplane",
+        tint: .green,
+        actionTitle: "写入与发布",
+        action: { stage = .publishing }
+      )
+    } else {
+      workflowBanner(
+        title: "请选择一篇文章",
+        detail: "选择文章后可生成发布包、审阅 diff 并执行发布。",
+        systemImage: "doc.badge.questionmark",
+        tint: .secondary,
+        actionTitle: "前往写作",
+        action: { store.selectSection(.writing) }
+      )
+    }
+  }
+
+  private var repositorySelectionEmptyState: some View {
+    EmptyStateView(
+      title: "选择仓库后继续",
+      message: "变更、写入与发布、自动化和本地预览会在仓库选定后按需显示。",
+      systemImage: "externaldrive.badge.plus"
+    )
+    .frame(maxWidth: .infinity, minHeight: 280)
+  }
+
+  private var repositoryScanRequiredState: some View {
+    EmptyStateView(
+      title: "扫描仓库后继续",
+      message: "先完成一次仓库扫描，才会显示变更、写入与发布、自动化和本地预览模块。",
+      systemImage: "arrow.clockwise.circle"
+    )
+    .frame(maxWidth: .infinity, minHeight: 280)
+  }
+
+  private func workflowBanner(
+    title: String,
+    detail: String,
+    systemImage: String,
+    tint: Color,
+    actionTitle: String,
+    action: @escaping () -> Void
+  ) -> some View {
+    HStack(alignment: .center, spacing: 12) {
+      Image(systemName: systemImage)
+        .foregroundStyle(tint)
+        .font(.title3)
+        .frame(width: 24)
+      VStack(alignment: .leading, spacing: 3) {
+        Text(title)
+          .font(.callout.weight(.semibold))
+        Text(detail)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+      }
+      Spacer(minLength: 12)
+      Button(action: action) {
+        Text(actionTitle)
+      }
+      .buttonStyle(.borderedProminent)
+    }
+    .padding(12)
+    .background(tint.opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("当前同步阻断与下一步")
+  }
+
+  private func chooseRepository() {
+    guard let url = RepositorySelectionPanel.chooseDirectory() else { return }
+    Task {
+      await store.repository.rememberRootAsync(url)
+    }
+  }
+
+  private func scanRepository() {
+    Task {
+      await store.repository.scanAsync()
     }
   }
 
@@ -150,8 +352,7 @@ struct RepositoryWorkspaceView: View {
 
   @ViewBuilder
   private var onlinePublishCenterSection: some View {
-    if let draft = store.selectedDraft {
-      let preview = store.remoteRepositoryPublishPreview(for: draft)
+    if store.selectedDraft != nil, let preview = store.remotePublishPreviewSnapshot {
       let latestEntry = store.activeProfileReleaseLedger.entries.first
 
       VStack(alignment: .leading, spacing: 12) {
@@ -165,8 +366,16 @@ struct RepositoryWorkspaceView: View {
           }
           Spacer()
           Button {
+            store.refreshPublishPreview()
+          } label: {
+            Label("刷新发布快照", systemImage: "arrow.clockwise")
+          }
+          .disabled(store.isRemoteRepositoryChecking || store.isRemoteRepositoryPublishing)
+
+          Button {
             Task {
               await store.checkRepositoryTokenAccess()
+              store.refreshPublishPreview()
             }
           } label: {
             Label("检查权限", systemImage: "person.badge.key")
@@ -176,6 +385,7 @@ struct RepositoryWorkspaceView: View {
           Button {
             Task {
               await store.createRemoteRepositoryForActiveProfile(privateRepository: false)
+              store.refreshPublishPreview()
             }
           } label: {
             Label("创建仓库", systemImage: "plus.circle")

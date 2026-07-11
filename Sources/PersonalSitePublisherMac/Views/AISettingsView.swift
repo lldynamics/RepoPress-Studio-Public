@@ -6,6 +6,8 @@ struct AISettingsView: View {
   let tokenAvailability: KeychainTokenAvailability
   let isActionRunning: Bool
   let actionMessage: String?
+  let shouldFocusAPIKey: Bool
+  let navigationRequestID: UUID
   let saveAPIKey: (String) -> Void
   let deleteAPIKey: () -> Void
   let refreshKeyAvailability: () -> Void
@@ -46,6 +48,8 @@ struct AISettingsView: View {
 
       AIKeychainSection(
         aiAPIKeyInput: $aiAPIKeyInput,
+        shouldFocusInput: shouldFocusAPIKey,
+        navigationRequestID: navigationRequestID,
         config: activeProfile.aiProviderConfig,
         tokenAvailability: tokenAvailability,
         connectionReport: aiConnectionReport,

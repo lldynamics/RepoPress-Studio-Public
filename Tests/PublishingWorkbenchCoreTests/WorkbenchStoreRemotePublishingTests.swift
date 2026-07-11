@@ -61,6 +61,10 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(store.publishActionMessage?.contains("已停止线上发布") == true)
     XCTAssertTrue(store.publishActionMessage?.contains("远端同路径变更") == true)
     XCTAssertTrue(store.publishActionMessage?.contains("content/posts/online-direct-conflict.md") == true)
+
+    let cachedPreview = try XCTUnwrap(store.remotePublishPreviewSnapshot)
+    XCTAssertEqual(cachedPreview.changedPaths, preview.changedPaths)
+    XCTAssertEqual(cachedPreview.remoteConflictPaths, preview.remoteConflictPaths)
   }
 
   func testOnlineDirectPublishMarksDraftPublishedAndRecordsDeploymentStatus() async throws {
@@ -638,6 +642,41 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(preview.accessSummary, "Token 可写")
   }
 
+  func testRepositoryPermissionCheckDiscardsResultAfterRepositoryConfigurationChanges() async throws {
+    let transport = SuspendedWorkbenchRemoteRepositoryTransport(
+      response: workbenchRemoteResponse(
+        json: #"{"full_name":"owner/site","default_branch":"main","permissions":{"push":true}}"#
+      )
+    )
+    let tokenStore = repositoryTokenStoreForTest()
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+    var profile = store.activeProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    store.updateActiveProfile(profile)
+    defer { try? tokenStore.deleteToken(for: profile) }
+    try tokenStore.saveToken("github-token", for: profile)
+
+    let checkTask = Task { await store.checkRepositoryTokenAccess() }
+    await transport.waitUntilRequestArrives()
+    var changedProfile = store.activeProfile
+    changedProfile.repoName = "different-site"
+    store.updateActiveProfile(changedProfile)
+    await transport.resume()
+    let check = await checkTask.value
+
+    XCTAssertNil(check)
+    XCTAssertNil(store.remoteRepositoryAccessCheck)
+    XCTAssertFalse(store.isRemoteRepositoryChecking)
+  }
+
   func testRemoteRepositoryPublishPreviewRejectsAccessCheckFromDifferentOwner() throws {
     let store = try TestWorkbenchFactory.makeStore()
 
@@ -832,6 +871,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(plan.remotePublishableItems.map(\.draftID), [draft.id])
 
     let preview = try XCTUnwrap(store.remoteRepositoryPublishPreview(for: plan))
+    let cachedPreview = try XCTUnwrap(store.batchRemotePublishPreviewSnapshot)
 
     XCTAssertEqual(preview.provider, .github)
     XCTAssertEqual(preview.repositoryName, "owner/site")
@@ -845,6 +885,8 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(preview.canPublish)
     XCTAssertTrue(preview.warningIssues.contains { $0.title == "远端同路径变更" })
     XCTAssertTrue(preview.blockingIssues.isEmpty)
+    XCTAssertEqual(cachedPreview.changedPaths, preview.changedPaths)
+    XCTAssertEqual(cachedPreview.remoteConflictPaths, preview.remoteConflictPaths)
   }
 
   func testBatchRemoteRepositoryPublishPreviewIncludesWarningsFromEveryPublishableDraft() throws {
@@ -1416,7 +1458,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(store.publishActionMessage?.contains("请先检查 GitHub Token 权限") == true)
   }
 
-  func testImportsRemoteArticleDraftFromUpstreamSnapshot() throws {
+  func testImportsRemoteArticleDraftFromUpstreamSnapshot() async throws {
     let rootURL = try temporaryDirectoryURL()
     defer {
       try? FileManager.default.removeItem(at: rootURL)
@@ -1464,7 +1506,7 @@ extension WorkbenchStoreProfileTests {
     profile.rememberLocalRepositoryRoot(rootURL)
     profile.contentRoot = "content"
     store.updateActiveProfile(profile)
-    store.scanRepository()
+    await store.scanRepositoryAsync()
 
     let summary = store.importRemoteDraftFromRepository(repositoryPath: "content/posts/remote.md")
 
@@ -1480,7 +1522,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(store.publishActionMessage, "已从 origin/main 导入远端文章 content/posts/remote.md。")
   }
 
-  func testImportsRemoteChangedArticleDraftsFromUpstreamQueue() throws {
+  func testImportsRemoteChangedArticleDraftsFromUpstreamQueue() async throws {
     let rootURL = try temporaryDirectoryURL()
     defer {
       try? FileManager.default.removeItem(at: rootURL)
@@ -1526,11 +1568,11 @@ extension WorkbenchStoreProfileTests {
     profile.rememberLocalRepositoryRoot(rootURL)
     profile.contentRoot = "content"
     store.updateActiveProfile(profile)
-    store.scanRepository()
+    await store.scanRepositoryAsync()
     store.updateRepositoryAutoSyncSettings(
-      RepositoryAutoSyncSettings(isEnabled: true, intervalMinutes: 5)
+      RepositoryAutoSyncSettings(isEnabled: true, intervalMinutes: 5, fetchBeforeScan: false)
     )
-    store.runRepositoryAutoSync(now: Date(timeIntervalSince1970: 1_800_000_000))
+    await store.runRepositoryAutoSync(now: Date(timeIntervalSince1970: 1_800_000_000))
 
     XCTAssertEqual(store.repositoryAutoSyncState.remoteChangedFileCount, 3)
     XCTAssertEqual(store.repositoryAutoSyncState.importableRemoteArticleCount, 2)
@@ -1588,6 +1630,42 @@ private actor SequencedWorkbenchRemoteRepositoryTransport: RemoteRepositoryHTTPT
 
   func capturedRequests() -> [URLRequest] {
     requests
+  }
+}
+
+private actor SuspendedWorkbenchRemoteRepositoryTransport: RemoteRepositoryHTTPTransport {
+  private let response: WorkbenchRemoteRepositoryTransportResponse
+  private var responseContinuation: CheckedContinuation<Void, Never>?
+  private var requestWaiters: [CheckedContinuation<Void, Never>] = []
+  private var requestArrived = false
+
+  init(response: WorkbenchRemoteRepositoryTransportResponse) {
+    self.response = response
+  }
+
+  func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+    requestArrived = true
+    requestWaiters.forEach { $0.resume() }
+    requestWaiters.removeAll()
+    await withCheckedContinuation { continuation in
+      responseContinuation = continuation
+    }
+    return (
+      response.data,
+      HTTPURLResponse(url: request.url!, statusCode: response.statusCode, httpVersion: nil, headerFields: nil)!
+    )
+  }
+
+  func waitUntilRequestArrives() async {
+    guard !requestArrived else { return }
+    await withCheckedContinuation { continuation in
+      requestWaiters.append(continuation)
+    }
+  }
+
+  func resume() {
+    responseContinuation?.resume()
+    responseContinuation = nil
   }
 }
 

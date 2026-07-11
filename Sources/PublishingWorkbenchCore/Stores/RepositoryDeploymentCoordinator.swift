@@ -12,14 +12,20 @@ final class RepositoryDeploymentCoordinator {
     self.deploymentStore = deploymentStore
   }
 
-  func refreshTokenAvailability(store: WorkbenchStore) {
+  func refreshTokenAvailability(
+    store: WorkbenchStore,
+    migrateLegacyDeploymentToken: Bool = false
+  ) {
     repositoryStore.refreshRepositoryTokenAvailability(store: store)
-    deploymentStore.refreshDeploymentTokenAvailability(store: store)
+    deploymentStore.refreshDeploymentTokenAvailability(
+      store: store,
+      migrateLegacyToken: migrateLegacyDeploymentToken
+    )
   }
 
   @discardableResult
   func tickOperationalPolling(store: WorkbenchStore, now: Date) async -> Bool {
-    let repositoryDidRun = repositoryStore.tickRepositoryAutoSync(store: store, now: now)
+    let repositoryDidRun = await repositoryStore.tickRepositoryAutoSync(store: store, now: now)
     let deploymentDidRun = await deploymentStore.tickDeploymentPolling(store: store, now: now)
     return repositoryDidRun || deploymentDidRun
   }

@@ -1,9 +1,9 @@
 # Local Release Evidence Bundle
 
-This file is an index for generated local release evidence snapshots. It is not proof that the current tree passes release gates.
+This file documents how to generate local release evidence. Generated snapshots are local historical artifacts, not proof that the current tree still passes release gates.
 
-- Latest generated snapshot: `docs/release-evidence/snapshots/LOCAL_RELEASE_EVIDENCE-2026-07-07T074857Z.md`
-- Snapshot generated at: 2026-07-07T07:48:57Z
-- Refresh command: `script/export_release_evidence_bundle.sh`
+- Generate a timestamped snapshot: `script/export_release_evidence_bundle.sh`
+- Default output directory: `docs/release-evidence/snapshots/`
+- Generate at a custom path: `script/export_release_evidence_bundle.sh --output <path>`
 
-Generated snapshots include each local gate command and its exit code. If a gate fails, the snapshot records that failure instead of preserving stale pass text.
+The snapshot directory is intentionally ignored by Git. Generated bundles include every local gate command and its exit code; failed gates remain visible instead of being replaced by stale pass text.

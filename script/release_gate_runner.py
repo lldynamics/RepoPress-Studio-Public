@@ -13,6 +13,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "script" / "release_checks.json"
+QUICK_CHECK_IDS = {
+    "localization",
+    "app-store-metadata",
+    "ui-runtime",
+    "privacy-copy",
+    "storekit",
+    "screenshot-privacy",
+    "swift-tests",
+}
 
 
 def load_manifest() -> list[dict[str, object]]:
@@ -87,11 +96,34 @@ def configure_swift_environment() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the manifest-driven release gate")
     parser.add_argument("--strict", action="store_true", help="also require external Release evidence")
+    parser.add_argument("--quick", action="store_true", help="run the core development checks only")
+    parser.add_argument(
+        "--check",
+        action="append",
+        default=[],
+        metavar="ID",
+        help="run one manifest check by ID; repeat to select multiple checks",
+    )
     parser.add_argument("--list", action="store_true", help="print manifest entries without running them")
     args = parser.parse_args()
+    if args.strict and (args.quick or args.check):
+        parser.error("--strict cannot be combined with --quick or --check")
+    if args.quick and args.check:
+        parser.error("--quick cannot be combined with --check")
+
     checks = load_manifest()
     for check in checks:
         validate_check(check)
+    known_ids = {str(check["id"]) for check in checks}
+    unknown_ids = sorted(set(args.check) - known_ids)
+    if unknown_ids:
+        parser.error(f"unknown check ID(s): {', '.join(unknown_ids)}")
+    if args.quick:
+        checks = [check for check in checks if check["id"] in QUICK_CHECK_IDS]
+    elif args.check:
+        selected_ids = set(args.check)
+        checks = [check for check in checks if check["id"] in selected_ids]
+
     if args.list:
         for check in checks:
             print(f"{check['id']}\t{check['strictness']}\t{check['title']}")
@@ -112,6 +144,11 @@ def main() -> int:
             strict_failures.append(str(check["title"]))
             continue
         return 1
+
+    if args.quick or args.check:
+        mode = "quick" if args.quick else "selected"
+        print(f"release gate: {mode} checks passed ({len(checks)} checks)")
+        return 0
 
     unchecked = unchecked_checklist_count()
     if args.strict and unchecked:

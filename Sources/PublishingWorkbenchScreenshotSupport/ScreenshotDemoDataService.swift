@@ -1,4 +1,6 @@
+#if DEBUG
 import Foundation
+import PublishingWorkbenchCore
 
 public struct ScreenshotDemoDataService {
   public static let environmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"
@@ -355,7 +357,7 @@ public struct ScreenshotDemoDataService {
       return WorkbenchPersistence()
     }
     let persistence = WorkbenchPersistence(fileURL: defaultPersistenceURL)
-    try? persistence.save(ScreenshotDemoDataService().makeSnapshot())
+    _ = try? persistence.save(ScreenshotDemoDataService().makeSnapshot())
     return persistence
   }
 
@@ -436,3 +438,4 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
       ?? store.visibleDrafts.first
   }
 }
+#endif

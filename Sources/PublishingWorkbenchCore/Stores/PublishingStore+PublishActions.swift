@@ -73,10 +73,22 @@ extension PublishingStore {
       includeRepositoryReadiness: true,
       store: store
     )
-    if profile.purpose.requiresRepositoryReadiness,
-       let missingGitIssue = store.repositoryReport(for: profile)?.preflightIssues.first(where: { $0.title == "未发现 .git" }),
-       !commitBlockingIssues.contains(where: { $0.title == missingGitIssue.title }) {
-      commitBlockingIssues.append(missingGitIssue)
+    if profile.purpose.requiresRepositoryReadiness {
+      if let repositoryReport = store.repositoryReport(for: profile) {
+        if let missingGitIssue = repositoryReport.preflightIssues.first(where: { $0.title == "未发现 .git" }),
+           !commitBlockingIssues.contains(where: { $0.title == missingGitIssue.title }) {
+          commitBlockingIssues.append(missingGitIssue)
+        }
+      } else {
+        commitBlockingIssues.append(
+          PreflightIssue(
+            severity: .error,
+            title: "仓库尚未扫描",
+            message: "请先刷新仓库状态，再执行提交或推送。",
+            field: "repository"
+          )
+        )
+      }
     }
     let remoteWarningIssues = remotePublishRiskService.issues(
       package: package,
@@ -126,19 +138,29 @@ extension PublishingStore {
   }
 
   public func refreshPublishPreview(for draft: ArticleDraft? = nil, store: WorkbenchStore) {
-    guard let draft = draft ?? store.selectedDraft else {
+    let selectedDraft = draft ?? store.selectedDraft
+    let profile = selectedDraft.map { store.profile(for: $0) } ?? store.activeProfile
+    refreshLocalSitePreviewPlan(for: profile)
+
+    guard let selectedDraft else {
       publishPackage = nil
       localPublishPreview = nil
       localPublishReadiness = nil
+      remotePublishPreviewSnapshot = nil
       return
     }
-    let profile = store.profile(for: draft)
-    let package = publishingPackage(for: draft, store: store)
+    let package = publishingPackage(for: selectedDraft, store: store)
     let preview = localPublishPreviewService.preview(package: package, profile: profile)
     publishPackage = package
     localPublishPreview = preview
     localPublishReadiness = makeLocalPublishReadiness(package: package, profile: profile, preview: preview, store: store)
-    refreshLocalSitePreviewPlan(for: profile)
+    remotePublishPreviewSnapshot = remoteRepositoryPublishPreview(
+      package: package,
+      profile: profile,
+      mode: preferredRemoteRepositoryPublishMode(for: profile),
+      localPreview: preview,
+      store: store
+    )
     remoteReviewDraft = remoteReviewDraftBuilder.build(package: package, profile: profile)
   }
 
@@ -149,6 +171,7 @@ extension PublishingStore {
       repositoryReport: store.repositoryReport
     )
     batchPublishPlan = plan
+    batchRemotePublishPreviewSnapshot = remoteRepositoryPublishPreview(for: plan, store: store)
     batchRemoteReviewDraft = remoteReviewDraftBuilder.buildBatch(plan: plan, profile: store.activeProfile)
   }
 
@@ -263,6 +286,38 @@ extension PublishingStore {
     }
   }
 
+  public func contentHealthReport(store: WorkbenchStore) -> ContentHealthReport {
+    ContentHealthReportService().report(
+      drafts: store.visibleDrafts,
+      profile: store.activeProfile,
+      sitePreflightIssues: sitePreflightIssues(store: store),
+      presentations: contentHealthPresentations(store: store)
+    )
+  }
+
+  public func contentHealthReportAsync(store: WorkbenchStore) async -> ContentHealthReport {
+    let drafts = store.visibleDrafts
+    let profile = store.activeProfile
+    let siteIssues = sitePreflightIssues(store: store)
+    let presentations = contentHealthPresentations(store: store)
+    return await ContentHealthReportService().reportAsync(
+      drafts: drafts,
+      profile: profile,
+      sitePreflightIssues: siteIssues,
+      presentations: presentations
+    )
+  }
+
+  private func contentHealthPresentations(store: WorkbenchStore) -> [UUID: ContentHealthDraftPresentation] {
+    Dictionary(uniqueKeysWithValues: store.visibleDrafts.map { draft in
+      let display = store.privateContentDisplay(for: draft)
+      let markdownPath = display.isMasked
+        ? "内容已遮挡，打开文章或关闭私密遮挡后查看。"
+        : store.profile(for: draft).markdownPath(for: draft)
+      return (draft.id, ContentHealthDraftPresentation(title: display.title, markdownPath: markdownPath))
+    })
+  }
+
   public func publicRiskSummary(store: WorkbenchStore) -> PublicRiskSummary {
     PublicRiskSummary(
       issues: store.visibleDrafts.flatMap {
@@ -342,10 +397,11 @@ extension PublishingStore {
     profile: SiteProfile,
     mode: RemoteRepositoryPublishMode,
     extraWarningIssues: [PreflightIssue] = [],
+    localPreview: LocalPublishPreview? = nil,
     store: WorkbenchStore
   ) -> RemoteRepositoryPublishPreview {
     let repositoryName = profile.repositoryDisplayName
-    let preview = localPublishPreviewService.preview(package: package, profile: profile)
+    let preview = localPreview ?? localPublishPreviewService.preview(package: package, profile: profile)
     let blockingIssues = blockingLocalPublishIssues(
       package: package,
       profile: profile,
@@ -445,6 +501,39 @@ extension PublishingStore {
   }
 
   @discardableResult
+  public func importDraftsFromLocalRepositoryAsync(store: WorkbenchStore) async -> LocalContentImportMergeSummary {
+    store.flushDraftBodyEditorBuffers()
+    let profile = store.activeProfile
+    guard !profile.localRepositoryRootPath.trimmedForPublishing.isEmpty else {
+      publishActionMessage = "选择本地仓库后才能导入文章。"
+      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+    }
+
+    var draftBaselinesByRepositoryPath: [String: DraftOperationBaseline] = [:]
+    for draft in drafts where draft.siteProfileID == profile.id {
+      guard let repositoryPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty,
+            let baseline = store.draftOperationBaseline(for: draft.id) else { continue }
+      draftBaselinesByRepositoryPath[repositoryPath] = baseline
+    }
+
+    let operation = LocalRepositoryOperationContext(profile: profile)
+    localImportOperationContext = operation
+    publishActionMessage = "正在从本地仓库导入文章…"
+    let result = await Task.detached(priority: .userInitiated) {
+      LocalContentImportService().importDrafts(profile: profile)
+    }.value
+    guard localImportOperationContext == operation, operation.stillMatches(store.activeProfile) else {
+      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+    }
+    localImportOperationContext = nil
+    return mergeImportedDrafts(
+      result,
+      expectedBaselinesByRepositoryPath: draftBaselinesByRepositoryPath,
+      store: store
+    )
+  }
+
+  @discardableResult
   public func importDraftFromLocalRepository(
     repositoryPath: String,
     store: WorkbenchStore
@@ -458,6 +547,33 @@ extension PublishingStore {
       selectedDraftID = imported.id
     }
     selectedSection = .writing
+    store.save()
+    return summary
+  }
+
+  public func makeContentMigrationPlan(sourceURL: URL, store: WorkbenchStore) async throws -> ContentMigrationPlan {
+    let profile = store.activeProfile
+    return try await contentMigrationService.makePlanAsync(sourceURL: sourceURL, profile: profile)
+  }
+
+  @discardableResult
+  public func applyContentMigration(
+    _ plan: ContentMigrationPlan,
+    store: WorkbenchStore
+  ) throws -> LocalContentImportMergeSummary {
+    guard plan.profileID == store.activeProfileID else {
+      throw ContentMigrationError.profileChanged
+    }
+    let summary = mergeImportedDrafts(
+      LocalContentImportResult(importedDrafts: plan.drafts, skippedPaths: []),
+      store: store
+    )
+    if let firstImported = plan.drafts.first,
+       let imported = drafts.first(where: { $0.siteProfileID == firstImported.siteProfileID && $0.repositoryPath == firstImported.repositoryPath }) {
+      selectedDraftID = imported.id
+    }
+    selectedSection = .writing
+    publishActionMessage = "已导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇；已生成 \(plan.imageMappings.count) 条图片路径映射和 \(plan.redirects.count) 条重定向候选。"
     store.save()
     return summary
   }
@@ -617,15 +733,27 @@ extension PublishingStore {
   }
 
   @discardableResult
-  public func commitAndPushStarterSite(store: WorkbenchStore) -> SiteStarterPushResult? {
+  public func commitAndPushStarterSite(store: WorkbenchStore) async -> SiteStarterPushResult? {
+    let profile = siteStarterResult?.profile ?? store.activeProfile
+    guard let operation = beginLocalRepositoryMutation(profile: profile) else {
+      publishActionMessage = "已有本地仓库写入或提交任务正在运行，请等待完成。"
+      return nil
+    }
+    defer { finishLocalRepositoryMutation(operation) }
+    publishActionMessage = "正在提交并推送 Starter…"
     do {
-      let profile = siteStarterResult?.profile ?? store.activeProfile
-      let result = try siteStarterService.commitAndPushStarterSite(profile: profile)
+      let result = try await siteStarterService.commitAndPushStarterSiteAsync(profile: profile)
+      guard localRepositoryMutationContext == operation, operation.stillMatches(store.activeProfile) else {
+        return nil
+      }
       siteStarterPushResult = result
       publishActionMessage = "Starter 已提交并推送：\(result.commitSHA.prefix(8))。"
       store.save()
       return result
     } catch {
+      guard localRepositoryMutationContext == operation, operation.stillMatches(store.activeProfile) else {
+        return nil
+      }
       publishActionMessage = "Starter 提交推送失败：\(error.localizedDescription)"
       return nil
     }
@@ -639,10 +767,6 @@ extension PublishingStore {
     )
   }
 
-  public func materialLibraryReport(store: WorkbenchStore) -> MaterialLibraryReport {
-    generalDraftLibraryReport(store: store)
-  }
-
   public func generalDraftSourceFieldDiffs(for draft: ArticleDraft) -> [String] {
     guard let source = draft.reusedFromSourceSnapshot else { return [] }
     return generalDraftLibraryService.sourceFieldDiffs(from: source, to: draft)
@@ -652,17 +776,151 @@ extension PublishingStore {
     localSitePreviewService.plan(profile: store.profile(for: draft))
   }
 
+  public func localSitePreviewURL(for draft: ArticleDraft, store: WorkbenchStore) -> URL? {
+    localSitePreviewService.previewURL(for: draft, profile: store.profile(for: draft))
+  }
+
   public func refreshLocalSitePreviewPlan(for profile: SiteProfile) {
-    localSitePreviewPlan = localSitePreviewService.plan(profile: profile)
+    let updatedPlan = localSitePreviewService.plan(profile: profile)
+    guard updatedPlan != localSitePreviewPlan else { return }
+
+    if localSitePreviewRuntimeStatus.isRunning {
+      requestLocalSitePreviewStop(message: "站点预览配置已变更，正在停止原来的本地预览。")
+    }
+
+    localSitePreviewPlan = updatedPlan
   }
 
   public func stopLocalSitePreview() {
+    requestLocalSitePreviewStop(message: "正在停止本地预览。")
+  }
+
+  public func stopLocalSitePreviewImmediately() {
+    localSitePreviewGeneration &+= 1
     localSitePreviewProcessService.stop()
+    localSitePreviewStopTask = nil
+    localSitePreviewStopOperationID = nil
     localSitePreviewRuntimeStatus = .stopped
   }
 
+  public func refreshLocalSitePreviewRuntimeStatus() {
+    localSitePreviewRuntimeStatus = localSitePreviewProcessService.status
+  }
+
+  public func verifyLocalSitePreviewReachability() async {
+    guard let previewURL = localSitePreviewRuntimeStatus.previewURL ?? localSitePreviewPlan?.previewURL else {
+      return
+    }
+
+    guard localSitePreviewRuntimeStatus.isRunning else {
+      refreshLocalSitePreviewRuntimeStatus()
+      return
+    }
+
+    var request = URLRequest(url: previewURL)
+    request.timeoutInterval = 1.5
+    request.cachePolicy = .reloadIgnoringLocalCacheData
+
+    do {
+      let (_, response) = try await URLSession.shared.data(for: request)
+      let responseCode = (response as? HTTPURLResponse)?.statusCode
+      localSitePreviewRuntimeStatus = LocalSitePreviewRuntimeStatus(
+        isRunning: true,
+        isReachable: true,
+        processIdentifier: localSitePreviewRuntimeStatus.processIdentifier,
+        previewURL: previewURL,
+        message: responseCode.map { "本地预览可访问（HTTP \($0)）。" } ?? "本地预览端口可访问。",
+        startedAt: localSitePreviewRuntimeStatus.startedAt,
+        recentLogLines: localSitePreviewProcessService.status.recentLogLines
+      )
+    } catch {
+      localSitePreviewRuntimeStatus = LocalSitePreviewRuntimeStatus(
+        isRunning: localSitePreviewProcessService.status.isRunning,
+        isReachable: false,
+        processIdentifier: localSitePreviewProcessService.status.processIdentifier,
+        previewURL: previewURL,
+        message: "尚未检测到本地预览端口：\(error.localizedDescription)",
+        startedAt: localSitePreviewProcessService.status.startedAt,
+        recentLogLines: localSitePreviewProcessService.status.recentLogLines
+      )
+    }
+  }
+
   public func startLocalSitePreview() {
-    publishActionMessage = "本地预览暂不可用。"
+    guard let plan = localSitePreviewPlan else {
+      localSitePreviewRuntimeStatus = .stopped
+      publishActionMessage = "请先为当前站点选择本地仓库，才能启动本地预览。"
+      return
+    }
+
+    localSitePreviewGeneration &+= 1
+    let generation = localSitePreviewGeneration
+    if let stopTask = localSitePreviewStopTask {
+      localSitePreviewRuntimeStatus = LocalSitePreviewRuntimeStatus(
+        isRunning: false,
+        previewURL: plan.previewURL,
+        message: "正在等待原来的本地预览停止。"
+      )
+      publishActionMessage = localSitePreviewRuntimeStatus.message
+      Task { [weak self] in
+        await stopTask.value
+        guard let self, self.localSitePreviewGeneration == generation else { return }
+        self.startLocalSitePreview(plan: plan, generation: generation)
+      }
+      return
+    }
+
+    startLocalSitePreview(plan: plan, generation: generation)
+  }
+
+  private func startLocalSitePreview(plan: LocalSitePreviewPlan, generation: UInt64) {
+    do {
+      localSitePreviewRuntimeStatus = try localSitePreviewProcessService.start(plan: plan)
+      publishActionMessage = localSitePreviewRuntimeStatus.message
+      Task { [weak self] in
+        for _ in 0 ..< 5 {
+          try? await Task.sleep(for: .seconds(1))
+          guard let self,
+                self.localSitePreviewGeneration == generation,
+                self.localSitePreviewRuntimeStatus.isRunning else { return }
+          await self.verifyLocalSitePreviewReachability()
+          if self.localSitePreviewRuntimeStatus.isReachable { return }
+        }
+      }
+    } catch {
+      localSitePreviewRuntimeStatus = .stopped
+      publishActionMessage = "本地预览启动失败：\(error.localizedDescription)"
+    }
+  }
+
+  private func requestLocalSitePreviewStop(message: String) {
+    guard localSitePreviewStopTask == nil else {
+      publishActionMessage = message
+      return
+    }
+
+    localSitePreviewGeneration &+= 1
+    let generation = localSitePreviewGeneration
+    let operationID = UUID()
+    let previewURL = localSitePreviewRuntimeStatus.previewURL ?? localSitePreviewPlan?.previewURL
+    localSitePreviewStopOperationID = operationID
+    localSitePreviewRuntimeStatus = LocalSitePreviewRuntimeStatus(
+      isRunning: false,
+      previewURL: previewURL,
+      message: "正在停止本地预览。"
+    )
+    publishActionMessage = message
+
+    let processService = localSitePreviewProcessService
+    localSitePreviewStopTask = Task { [weak self] in
+      await processService.stopAsync()
+      guard let self, self.localSitePreviewStopOperationID == operationID else { return }
+      self.localSitePreviewStopTask = nil
+      self.localSitePreviewStopOperationID = nil
+      if self.localSitePreviewGeneration == generation {
+        self.localSitePreviewRuntimeStatus = .stopped
+      }
+    }
   }
 
   public func generalDraftLibraryPackagePlan() -> GeneralDraftLibraryPackagePlan {
@@ -670,17 +928,9 @@ extension PublishingStore {
     return generalDraftLibraryService.packagePlan(drafts: drafts, profile: profile)
   }
 
-  public func materialLibraryPackagePlan() -> MaterialLibraryPackagePlan {
-    generalDraftLibraryPackagePlan()
-  }
-
   public func generalDraftBackupPlan() -> GeneralDraftBackupPlan {
     let profile = profiles.first { $0.purpose == .generalDraftBackup }
     return generalDraftLibraryService.backupPlan(drafts: drafts, profile: profile)
-  }
-
-  public func materialLibraryBackupPlan() -> MaterialLibraryBackupPlan {
-    generalDraftBackupPlan()
   }
 
   @discardableResult
@@ -697,11 +947,6 @@ extension PublishingStore {
       publishActionMessage = "素材备份写入失败：\(error.localizedDescription)"
       return nil
     }
-  }
-
-  @discardableResult
-  public func writeMaterialLibraryBackupToRepository(store: WorkbenchStore) -> MaterialLibraryBackupWriteResult? {
-    writeGeneralDraftBackupToRepository(store: store)
   }
 
   @discardableResult
@@ -725,11 +970,6 @@ extension PublishingStore {
   }
 
   @discardableResult
-  public func ensureMaterialLibraryProfile(store: WorkbenchStore) -> SiteProfile {
-    ensureGeneralDraftProfile(store: store)
-  }
-
-  @discardableResult
   public func createGeneralDraft(store: WorkbenchStore) -> ArticleDraft {
     let profile = ensureGeneralDraftProfile(store: store)
     var draft = ArticleDraft.empty(profile: profile)
@@ -742,18 +982,13 @@ extension PublishingStore {
   }
 
   @discardableResult
-  public func createMaterial(store: WorkbenchStore) -> ArticleDraft {
-    createGeneralDraft(store: store)
-  }
-
-  @discardableResult
   public func copyDraftToGeneralLibrary(_ draftID: UUID, store: WorkbenchStore) -> ArticleDraft? {
     guard let source = drafts.first(where: { $0.id == draftID }) else { return nil }
     if profiles.first(where: { $0.id == source.siteProfileID })?.purpose == .generalDraftBackup {
       activeProfileID = source.siteProfileID
       selectedDraftID = source.id
       selectedSection = .generalDrafts
-      publishActionMessage = "这篇已经在通用草稿库中。"
+      publishActionMessage = "这篇已经在素材库中。"
       return source
     }
     let profile = ensureGeneralDraftProfile(store: store)
@@ -769,14 +1004,9 @@ extension PublishingStore {
     drafts.insert(copied, at: 0)
     selectedDraftID = copied.id
     selectedSection = .generalDrafts
-    publishActionMessage = "已收进通用草稿库：\(copied.title)"
+    publishActionMessage = "已收进素材库：\(copied.title)"
     store.save()
     return copied
-  }
-
-  @discardableResult
-  public func copyDraftToMaterialLibrary(_ draftID: UUID, store: WorkbenchStore) -> ArticleDraft? {
-    copyDraftToGeneralLibrary(draftID, store: store)
   }
 
   @discardableResult
@@ -850,24 +1080,49 @@ extension PublishingStore {
 
   private func mergeImportedDrafts(
     _ result: LocalContentImportResult,
+    expectedBaselinesByRepositoryPath: [String: DraftOperationBaseline]? = nil,
     store: WorkbenchStore
   ) -> LocalContentImportMergeSummary {
     var insertedCount = 0
     var updatedCount = 0
+    var conflictCount = 0
     for imported in result.importedDrafts {
+      let repositoryPath = imported.repositoryPath?.normalizedRelativePath() ?? ""
       if let index = drafts.firstIndex(where: { $0.siteProfileID == imported.siteProfileID && $0.repositoryPath == imported.repositoryPath }) {
+        if let expectedBaselinesByRepositoryPath {
+          guard let baseline = expectedBaselinesByRepositoryPath[repositoryPath],
+                baseline.draft.id == drafts[index].id,
+                store.draftStillMatchesOperationBaseline(baseline) else {
+            conflictCount += 1
+            continue
+          }
+        }
         var updated = imported
         updated.id = drafts[index].id
         updated.createdAt = drafts[index].createdAt
-        drafts[index] = updated
+        store.updateDraft(updated)
         updatedCount += 1
       } else {
+        if let expectedBaselinesByRepositoryPath,
+           expectedBaselinesByRepositoryPath[repositoryPath] != nil {
+          conflictCount += 1
+          continue
+        }
         drafts.append(imported)
         insertedCount += 1
       }
     }
-    let summary = LocalContentImportMergeSummary(insertedCount: insertedCount, updatedCount: updatedCount, skippedCount: result.skippedPaths.count)
-    publishActionMessage = "导入完成：新增 \(insertedCount) 篇、更新 \(updatedCount) 篇、跳过 \(result.skippedPaths.count) 个文件。"
+    let skippedCount = result.skippedPaths.count + conflictCount
+    let summary = LocalContentImportMergeSummary(
+      insertedCount: insertedCount,
+      updatedCount: updatedCount,
+      skippedCount: skippedCount
+    )
+    if conflictCount > 0 {
+      publishActionMessage = "导入完成：新增 \(insertedCount) 篇、更新 \(updatedCount) 篇；\(conflictCount) 篇在导入期间被本地修改，已保留本地版本。"
+    } else {
+      publishActionMessage = "导入完成：新增 \(insertedCount) 篇、更新 \(updatedCount) 篇、跳过 \(result.skippedPaths.count) 个文件。"
+    }
     store.save()
     return summary
   }
@@ -882,7 +1137,7 @@ extension PublishingStore {
 
   public func writeSelectedDraftToLocalRepository(store: WorkbenchStore) {
     if let draftID = publishPackage?.draftID {
-      store.focusDraft(draftID, section: .sync)
+      _ = store.focusDraft(draftID, section: .sync)
     }
 
     guard let package = publishPackage else {
@@ -906,6 +1161,12 @@ extension PublishingStore {
       return
     }
 
+    guard let operation = beginLocalRepositoryMutation(profile: profile) else {
+      publishActionMessage = "已有本地仓库写入或提交任务正在运行，请等待完成。"
+      return
+    }
+    defer { finishLocalRepositoryMutation(operation) }
+
     do {
       let writtenPaths = try localPublishPreviewService.write(package: package, profile: profile)
       publishActionMessage = "已写入 \(writtenPaths.count) 个文件到本地仓库。"
@@ -913,7 +1174,7 @@ extension PublishingStore {
         .localWrite(package: package, profile: profile, writtenPaths: writtenPaths),
         at: 0
       )
-      store.scanRepository()
+      store.requestRepositoryScan()
       store.save()
     } catch {
       publishActionMessage = "写入失败：\(error.localizedDescription)"
@@ -945,6 +1206,16 @@ extension PublishingStore {
       return BatchLocalWriteResult(writtenDraftCount: 0, writtenPaths: [], skippedCount: batchPublishPlan.items.count)
     }
 
+    guard let operation = beginLocalRepositoryMutation(profile: store.activeProfile) else {
+      publishActionMessage = "已有本地仓库写入或提交任务正在运行，请等待完成。"
+      return BatchLocalWriteResult(
+        writtenDraftCount: 0,
+        writtenPaths: [],
+        skippedCount: batchPublishPlan.items.count
+      )
+    }
+    defer { finishLocalRepositoryMutation(operation) }
+
     var writtenItems: [BatchPublishPlanItem] = []
     var writtenPaths: [String] = []
     var failedTitles: [String] = []
@@ -964,10 +1235,10 @@ extension PublishingStore {
         .batchLocalWrite(profile: store.activeProfile, items: writtenItems, writtenPaths: writtenPaths),
         at: 0
       )
-      store.scanRepository()
+      store.requestRepositoryScan()
       store.save()
     } else {
-      store.scanRepository()
+      store.requestRepositoryScan()
     }
 
     let result = BatchLocalWriteResult(
@@ -1050,6 +1321,10 @@ extension PublishingStore {
       return nil
     }
 
+    guard remoteRepositoryMutationContext == nil else {
+      publishActionMessage = "已有远端仓库操作正在运行，请等待完成。"
+      return nil
+    }
     let consumedBatchAccess = store.consumeFeatureUse(.batchPublishing)
     guard consumedBatchAccess.isAllowed else {
       publishActionMessage = consumedBatchAccess.message
@@ -1062,18 +1337,21 @@ extension PublishingStore {
     }
 
     selectedSection = .sync
-    store.setRemoteRepositoryPublishing(true)
+    guard let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
+      publishActionMessage = "已有远端仓库操作正在运行，请等待完成。"
+      return nil
+    }
     store.setRemoteRepositoryPublishProgress(nil)
     publishActionMessage = "正在通过 \(profile.repositoryProvider.displayName) 批量执行\(mode.displayName)..."
-    defer {
-      store.setRemoteRepositoryPublishing(false)
-    }
+    defer { finishRemoteRepositoryMutation(operation, store: store) }
 
     do {
       let token = try repositoryAccessToken(for: profile)
-      let progressHandler: @Sendable (RemoteRepositoryPublishProgress) -> Void = { [weak store] progress in
+      let progressHandler: @Sendable (RemoteRepositoryPublishProgress) -> Void = { [weak self, weak store] progress in
         Task { @MainActor in
-          store?.setRemoteRepositoryPublishProgress(progress)
+          guard let self, let store,
+                self.remoteRepositoryMutationIsCurrent(operation, store: store) else { return }
+          store.setRemoteRepositoryPublishProgress(progress)
         }
       }
       let result = try await remoteRepositoryPublishService.publish(
@@ -1083,6 +1361,7 @@ extension PublishingStore {
         token: token,
         onProgress: progressHandler
       )
+      guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       store.setRemoteRepositoryPublishResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
       let releaseRecord = ReleaseRecord.batchRemotePublish(
@@ -1099,6 +1378,7 @@ extension PublishingStore {
       publishActionMessage = "批量\(mode.displayName)完成：\(publishableItems.count) 篇、\(result.changedPaths.count) 个文件。"
       if store.shouldRefreshDeploymentStatusAfterRemoteOperation(releaseRecord) {
         await store.refreshDeploymentStatus(for: releaseRecord, updatesMessage: false)
+        guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       }
       store.save()
       if store.remoteRepositoryPublishProgress?.stage != .completed {
@@ -1111,6 +1391,7 @@ extension PublishingStore {
       }
       return result
     } catch {
+      guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       let message = "批量\(mode.displayName)失败：\(error.localizedDescription)"
       let partialFailure = partialRemoteRepositoryPublishFailure(from: error)
       store.setRemoteRepositoryPublishProgress(.init(

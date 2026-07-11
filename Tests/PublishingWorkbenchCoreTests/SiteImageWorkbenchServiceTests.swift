@@ -459,6 +459,97 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertTrue(result.draft.bodyMarkdown.contains("![Titled](/images/2026/diagram.webp \"diagram title\")"))
   }
 
+  func testCWebPTimeoutStopsProcessAndCleansPartialOutput() throws {
+    let directory = try makeTemporaryDirectory()
+    let sourceURL = directory.appendingPathComponent("diagram.png")
+    let optimizedDirectory = directory.appendingPathComponent("optimized", isDirectory: true)
+    let executableURL = directory.appendingPathComponent("slow-cwebp")
+    try writeTestImage(at: sourceURL, width: 32, height: 24, type: .png)
+    try "#!/bin/sh\nsleep 3\n".write(to: executableURL, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+
+    let attachment = DraftAttachment(
+      originalFilename: "diagram.png",
+      relativePublishPath: "/images/2026/diagram.png",
+      repositoryPath: "static/images/2026/diagram.png",
+      sourceFilePath: sourceURL.path
+    )
+    let draft = ArticleDraft(
+      siteProfileID: SiteProfile.defaultProfile.id,
+      title: "Timeout",
+      slug: "timeout",
+      bodyMarkdown: "![Diagram](/images/2026/diagram.png)",
+      attachments: [attachment]
+    )
+    let service = SiteImageWorkbenchService(
+      cwebPExecutableURL: executableURL,
+      cwebPTimeout: 0.1,
+      prefersCWebP: true
+    )
+
+    let startedAt = Date()
+    XCTAssertThrowsError(
+      try service.convertAttachmentsToWebP(draft: draft, destinationDirectory: optimizedDirectory)
+    ) { error in
+      XCTAssertEqual((error as? ImageWorkbenchError)?.errorDescription, "cwebp 执行超时，已停止。")
+    }
+    XCTAssertLessThan(Date().timeIntervalSince(startedAt), 1.8)
+    let remainingFiles = try FileManager.default.contentsOfDirectory(atPath: optimizedDirectory.path)
+    XCTAssertTrue(remainingFiles.isEmpty)
+  }
+
+  func testImageBatchCancellationStopsCWebPAndCleansStagingDirectory() async throws {
+    let directory = try makeTemporaryDirectory()
+    let sourceURL = directory.appendingPathComponent("diagram.png")
+    let executableURL = directory.appendingPathComponent("slow-cwebp")
+    try writeTestImage(at: sourceURL, width: 32, height: 24, type: .png)
+    try "#!/bin/sh\nsleep 3\n".write(to: executableURL, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+
+    let attachment = DraftAttachment(
+      originalFilename: "diagram.png",
+      relativePublishPath: "/images/2026/diagram.png",
+      repositoryPath: "static/images/2026/diagram.png",
+      sourceFilePath: sourceURL.path
+    )
+    let draft = ArticleDraft(
+      siteProfileID: SiteProfile.defaultProfile.id,
+      title: "Cancellation",
+      slug: "cancellation",
+      bodyMarkdown: "![Diagram](/images/2026/diagram.png)",
+      attachments: [attachment]
+    )
+    let processor = ImageBatchProcessingActor(
+      service: SiteImageWorkbenchService(
+        cwebPExecutableURL: executableURL,
+        cwebPTimeout: 3,
+        prefersCWebP: true
+      )
+    )
+    let cancellationToken = ImageProcessingCancellationToken()
+    let task = Task {
+      try await processor.process(
+        operation: .convertWebP,
+        drafts: [draft],
+        destinationRoot: directory,
+        cancellationToken: cancellationToken,
+        progress: { _ in }
+      )
+    }
+
+    try await Task.sleep(for: .milliseconds(100))
+    cancellationToken.cancel()
+    do {
+      _ = try await task.value
+      XCTFail("Expected cancellation")
+    } catch is CancellationError {
+      // Expected: the token is observed while cwebp is running.
+    }
+
+    let remainingFiles = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+    XCTAssertFalse(remainingFiles.contains { $0.hasPrefix(".image-batch-") })
+  }
+
   func testOptimizeSVGCreatesSmallerCopyWithoutChangingPublishPath() throws {
     let directory = try makeTemporaryDirectory()
     let sourceURL = directory.appendingPathComponent("diagram.svg")

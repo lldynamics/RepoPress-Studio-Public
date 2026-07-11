@@ -11,6 +11,8 @@ struct SettingsTokenTabFactory {
       hasDeploymentToken: context.store.deploymentTokenAvailability.hasToken,
       publishActionMessage: context.store.publishActionMessage,
       deploymentStatusMessage: context.store.deploymentStatusMessage,
+      shouldFocusRepositoryToken: context.healthDestination == .repositoryToken,
+      navigationRequestID: context.healthNavigationRequestID,
       setRepositoryProvider: { provider in
         context.store.setRepositoryProvider(provider)
       },

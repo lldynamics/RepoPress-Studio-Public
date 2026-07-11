@@ -50,14 +50,14 @@ struct DraftEditorWindowView: View {
             .disabled(!store.canUseProtectedWorkbench)
 
             Button {
-              store.focusDraft(draftID, section: .writing)
+              _ = store.focusDraft(draftID, section: .writing)
             } label: {
               Label("在工作台显示", systemImage: "sidebar.left")
             }
             .disabled(!store.canUseProtectedWorkbench)
 
             Button {
-              store.focusDraft(draftID, section: .contentHealth)
+              _ = store.focusDraft(draftID, section: .contentHealth)
             } label: {
               Label("发布检查", systemImage: "checklist")
             }

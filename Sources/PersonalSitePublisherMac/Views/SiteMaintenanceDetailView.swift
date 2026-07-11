@@ -7,6 +7,9 @@ struct SiteMaintenanceDetailView: View {
   @State private var performancePageViews = ""
   @State private var performanceVisitors = ""
   @State private var performanceSourceName = "手动记录"
+  @State private var contentPerformanceImportNotice: ContentPerformanceImportNotice?
+  @State private var isImportingContentPerformance = false
+  @State private var onlineInspectionMessage: String?
 
   var body: some View {
     if isEmbedded {
@@ -42,7 +45,15 @@ struct SiteMaintenanceDetailView: View {
         applySuggestedSchedule: {
           store.applySuggestedMaintenanceSchedule()
         },
-        recordPerformanceSnapshot: recordPerformanceSnapshot
+        recordPerformanceSnapshot: recordPerformanceSnapshot,
+        importCSV: importContentPerformanceCSV,
+        importNotice: contentPerformanceImportNotice,
+        latestRelease: store.activeProfileReleaseRecords.first,
+        deploymentSnapshot: store.activeProfileReleaseRecords.first.flatMap(store.deploymentStatusSnapshot),
+        canCheckDeployment: store.activeProfileReleaseRecords.first.map(store.canCheckDeploymentStatus) ?? false,
+        isDeploymentChecking: store.isDeploymentStatusChecking,
+        onlineInspectionMessage: onlineInspectionMessage,
+        runOnlineInspection: runOnlineInspection
       )
     } else {
       SiteMaintenanceSnapshotPlaceholder {
@@ -93,6 +104,72 @@ struct SiteMaintenanceDetailView: View {
     )
     performancePageViews = ""
     performanceVisitors = ""
+  }
+
+  private func importContentPerformanceCSV() {
+    guard let url = ContentPerformanceCSVSelectionPanel.chooseCSV() else { return }
+    guard !isImportingContentPerformance else { return }
+    isImportingContentPerformance = true
+    contentPerformanceImportNotice = .importing
+    Task {
+      let accessed = url.startAccessingSecurityScopedResource()
+      defer {
+        if accessed {
+          url.stopAccessingSecurityScopedResource()
+        }
+        isImportingContentPerformance = false
+      }
+      do {
+        let report = try await store.importContentPerformanceCSV(from: url, sourceName: "CSV 导入")
+        contentPerformanceImportNotice = .imported(
+          sourceName: report.sourceName,
+          imported: report.importedSnapshots.count,
+          skipped: report.skippedRowCount,
+          unmatched: report.unmatchedRows.count
+        )
+        store.refreshSiteMaintenanceSnapshot()
+      } catch {
+        contentPerformanceImportNotice = contentPerformanceImportErrorNotice(error)
+      }
+    }
+  }
+
+  private func contentPerformanceImportErrorNotice(_ error: Error) -> ContentPerformanceImportNotice {
+    guard let importError = error as? ContentPerformanceCSVImportError else {
+      return .failure(error.localizedDescription)
+    }
+    switch importError {
+    case .unsupportedEncoding:
+      return .unsupportedEncoding
+    case .missingHeader:
+      return .missingHeader
+    case .missingMetrics:
+      return .missingMetrics
+    case .profileChanged:
+      return .profileChanged
+    case .fileTooLarge:
+      return .fileTooLarge
+    }
+  }
+
+  private func runOnlineInspection() {
+    guard let release = store.activeProfileReleaseRecords.first else {
+      onlineInspectionMessage = "尚无发布记录。"
+      return
+    }
+    guard store.canCheckDeploymentStatus(for: release) else {
+      onlineInspectionMessage = store.deploymentStatusReadiness(for: release).nextStep
+      return
+    }
+
+    Task {
+      store.refreshSiteMaintenanceSnapshot()
+      if let snapshot = await store.refreshDeploymentStatus(for: release) {
+        onlineInspectionMessage = "巡检完成：\(snapshot.provider.displayName) \(snapshot.level.displayName)。"
+      } else {
+        onlineInspectionMessage = store.deploymentStatusMessage ?? "线上巡检未获得结果。"
+      }
+    }
   }
 
   private func copy(_ value: String, message: String) {

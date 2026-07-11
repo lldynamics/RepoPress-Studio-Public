@@ -69,7 +69,7 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertFalse(reloaded.repositoryAutoSyncSettings.fetchBeforeScan)
   }
 
-  func testStorePersistsAutoSyncRunState() throws {
+  func testStorePersistsAutoSyncRunState() async throws {
     let url = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     let now = Date(timeIntervalSince1970: 1_800_000_222)
@@ -77,7 +77,8 @@ final class RepositoryAutoSyncTests: XCTestCase {
       RepositoryAutoSyncSettings(isEnabled: true, intervalMinutes: 5)
     )
 
-    XCTAssertTrue(store.runRepositoryAutoSync(now: now))
+    let didRun = await store.runRepositoryAutoSync(now: now)
+    XCTAssertTrue(didRun)
 
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     XCTAssertTrue(reloaded.repositoryAutoSyncSettings.isEnabled)
@@ -87,7 +88,7 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertEqual(reloaded.repositoryAutoSyncState.message, "自动同步等待本地仓库路径。")
   }
 
-  func testAutoSyncTickRunsOnlyWhenDue() throws {
+  func testAutoSyncTickRunsOnlyWhenDue() async throws {
     let persistenceURL = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     store.updateRepositoryAutoSyncSettings(
@@ -95,15 +96,18 @@ final class RepositoryAutoSyncTests: XCTestCase {
     )
     let start = Date(timeIntervalSince1970: 1_800_000_000)
 
-    XCTAssertTrue(store.tickRepositoryAutoSync(now: start))
+    let didRunAtStart = await store.tickRepositoryAutoSync(now: start)
+    XCTAssertTrue(didRunAtStart)
     XCTAssertEqual(store.repositoryAutoSyncState.status, .waitingForRepository)
     XCTAssertEqual(store.repositoryAutoSyncState.lastRunAt, start)
 
-    XCTAssertFalse(store.tickRepositoryAutoSync(now: start.addingTimeInterval(60)))
+    let didRunBeforeDue = await store.tickRepositoryAutoSync(now: start.addingTimeInterval(60))
+    XCTAssertFalse(didRunBeforeDue)
     XCTAssertEqual(store.repositoryAutoSyncState.lastRunAt, start)
 
     let due = start.addingTimeInterval(TimeInterval(RepositoryAutoSyncSettings.minimumIntervalMinutes * 60))
-    XCTAssertTrue(store.tickRepositoryAutoSync(now: due))
+    let didRunWhenDue = await store.tickRepositoryAutoSync(now: due)
+    XCTAssertTrue(didRunWhenDue)
     XCTAssertEqual(store.repositoryAutoSyncState.lastRunAt, due)
   }
 
@@ -225,7 +229,7 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertTrue(markdown.contains("- 修改：config.toml"))
   }
 
-  func testAutoSyncFetchesUpstreamBeforeScanningRemoteChanges() throws {
+  func testAutoSyncFetchesUpstreamBeforeScanningRemoteChanges() async throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("RepositoryAutoSyncGitTests-\(UUID().uuidString)", isDirectory: true)
     defer {
@@ -269,13 +273,14 @@ final class RepositoryAutoSyncTests: XCTestCase {
 
     let persistenceURL = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
-    store.rememberRepositoryRoot(localURL)
+    await store.rememberRepositoryRootAsync(localURL)
     store.updateRepositoryAutoSyncSettings(
       RepositoryAutoSyncSettings(isEnabled: true, intervalMinutes: 5, fetchBeforeScan: true)
     )
     let now = Date(timeIntervalSince1970: 1_800_000_456)
 
-    XCTAssertTrue(store.runRepositoryAutoSync(now: now))
+    let didRun = await store.runRepositoryAutoSync(now: now)
+    XCTAssertTrue(didRun)
 
     XCTAssertEqual(store.repositoryAutoSyncState.status, .scanned)
     XCTAssertEqual(store.repositoryAutoSyncState.fetchSucceeded, true)
@@ -290,6 +295,37 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertEqual(reloaded.repositoryAutoSyncState.lastFetchAt, now)
     XCTAssertEqual(reloaded.repositoryAutoSyncState.remoteChangedPaths, ["content/posts/remote.md"])
     XCTAssertEqual(reloaded.repositoryAutoSyncState.importableRemoteArticleCount, 1)
+  }
+
+  func testAutoSyncReportsFetchFailureInsteadOfClaimingScanCompleted() async throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("RepositoryAutoSyncFetchFailure-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    try git(["init", "--initial-branch=main"], rootURL: rootURL)
+    try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
+    try git(["config", "user.name", "Tests"], rootURL: rootURL)
+    try "initial\n".write(to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+    try git(["add", "README.md"], rootURL: rootURL)
+    try git(["commit", "-m", "Initial"], rootURL: rootURL)
+    try git(["remote", "add", "origin", rootURL.appendingPathComponent("missing.git").path], rootURL: rootURL)
+    try git(["config", "branch.main.remote", "origin"], rootURL: rootURL)
+    try git(["config", "branch.main.merge", "refs/heads/main"], rootURL: rootURL)
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    await store.rememberRepositoryRootAsync(rootURL)
+    store.updateRepositoryAutoSyncSettings(
+      RepositoryAutoSyncSettings(isEnabled: true, intervalMinutes: 5, fetchBeforeScan: true)
+    )
+    let now = Date(timeIntervalSince1970: 1_800_000_789)
+
+    let didRun = await store.runRepositoryAutoSync(now: now)
+
+    XCTAssertTrue(didRun)
+    XCTAssertEqual(store.repositoryAutoSyncState.status, .fetchFailed)
+    XCTAssertEqual(store.repositoryAutoSyncState.fetchSucceeded, false)
+    XCTAssertEqual(store.repositoryAutoSyncState.lastRunAt, now)
+    XCTAssertTrue(store.repositoryAutoSyncState.message.contains("Fetch 失败"))
+    XCTAssertFalse(store.repositoryAutoSyncState.message.contains("自动同步完成"))
   }
 
   private func temporaryPersistenceURL() throws -> URL {

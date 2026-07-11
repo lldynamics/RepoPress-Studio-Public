@@ -8,6 +8,8 @@ struct SettingsConfigurationHealthCard: View {
   let privacySettings: PrivacyProtectionSettings
   let isProUnlocked: Bool
   let proSource: String
+  let selectDestination: (SettingsConfigurationHealthDestination) -> Void
+  @State private var isExpanded = false
 
   private var requiredItems: [SettingsConfigurationHealthItem] {
     [
@@ -23,17 +25,21 @@ struct SettingsConfigurationHealthCard: View {
     requiredItems + [proItem]
   }
 
+  private var unresolvedItems: [SettingsConfigurationHealthItem] {
+    requiredItems.filter { !$0.isReady }
+  }
+
   private var readyRequiredCount: Int {
     requiredItems.filter(\.isReady).count
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .firstTextBaseline) {
+      HStack(alignment: .firstTextBaseline, spacing: 10) {
         VStack(alignment: .leading, spacing: 2) {
           Text("配置健康度")
             .font(.headline)
-          Text("\(profile.name) · \(readyRequiredCount)/\(requiredItems.count) 项发布配置已就绪")
+          Text(summaryText)
             .font(.caption)
             .foregroundStyle(.secondary)
         }
@@ -46,11 +52,29 @@ struct SettingsConfigurationHealthCard: View {
           .padding(.horizontal, 10)
           .padding(.vertical, 5)
           .background(overallStatusColor.opacity(0.12), in: Capsule())
+
+        if isComplete {
+          Button {
+            isExpanded.toggle()
+          } label: {
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+          }
+          .buttonStyle(.borderless)
+          .accessibilityLabel(isExpanded ? "收起配置详情" : "展开配置详情")
+        }
       }
 
-      LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
-        ForEach(allItems) { item in
-          SettingsConfigurationHealthTile(item: item)
+      if !isComplete || isExpanded {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
+          ForEach(isComplete ? allItems : unresolvedItems) { item in
+            Button {
+              selectDestination(item.destination)
+            } label: {
+              SettingsConfigurationHealthTile(item: item, showsActionIndicator: true)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(item.actionTitle)
+          }
         }
       }
     }
@@ -72,7 +96,9 @@ struct SettingsConfigurationHealthCard: View {
       title: "仓库路径",
       detail: isReady ? path : "未选择本地仓库",
       systemImage: "folder",
-      state: isReady ? .ready : .warning
+      state: isReady ? .ready : .warning,
+      destination: .repository,
+      actionTitle: "选择本地仓库"
     )
   }
 
@@ -81,7 +107,9 @@ struct SettingsConfigurationHealthCard: View {
       title: "仓库 Token",
       detail: repositoryTokenAvailability.hasToken ? "已保存，可用于线上发布" : "未保存，线上发布会受限",
       systemImage: "key",
-      state: repositoryTokenAvailability.hasToken ? .ready : .warning
+      state: repositoryTokenAvailability.hasToken ? .ready : .warning,
+      destination: .repositoryToken,
+      actionTitle: "打开 Token 设置"
     )
   }
 
@@ -92,7 +120,9 @@ struct SettingsConfigurationHealthCard: View {
       title: "AI Key",
       detail: isReady ? (requiresKey ? "已保存，可生成建议" : "当前配置无需 API Key") : "未保存，AI 功能会受限",
       systemImage: "sparkles",
-      state: isReady ? .ready : .warning
+      state: isReady ? .ready : .warning,
+      destination: .aiKey,
+      actionTitle: "打开 AI 设置"
     )
   }
 
@@ -105,7 +135,9 @@ struct SettingsConfigurationHealthCard: View {
       title: "默认规则",
       detail: hasPublishingPaths ? "\(profile.siteKind.displayName) · 路径规则已配置" : "路径或日期规则缺失",
       systemImage: "gearshape.2",
-      state: hasPublishingPaths ? .ready : .warning
+      state: hasPublishingPaths ? .ready : .warning,
+      destination: .defaultRules,
+      actionTitle: "打开默认规则"
     )
   }
 
@@ -119,7 +151,9 @@ struct SettingsConfigurationHealthCard: View {
       title: "隐私锁",
       detail: enabled > 0 ? "\(enabled) 项保护已开启" : "未开启隐私保护",
       systemImage: "hand.raised",
-      state: enabled > 0 ? .ready : .warning
+      state: enabled > 0 ? .ready : .warning,
+      destination: .privacy,
+      actionTitle: "打开隐私设置"
     )
   }
 
@@ -128,7 +162,9 @@ struct SettingsConfigurationHealthCard: View {
       title: "Pro 状态",
       detail: isProUnlocked ? "\(proSource) 权益已生效" : "免费版，可按需升级",
       systemImage: isProUnlocked ? "crown.fill" : "crown",
-      state: isProUnlocked ? .ready : .info
+      state: isProUnlocked ? .ready : .info,
+      destination: .pro,
+      actionTitle: "打开 Pro 设置"
     )
   }
 
@@ -143,10 +179,21 @@ struct SettingsConfigurationHealthCard: View {
   private var overallStatusColor: Color {
     readyRequiredCount == requiredItems.count ? .green : .orange
   }
+
+  private var isComplete: Bool {
+    readyRequiredCount == requiredItems.count
+  }
+
+  private var summaryText: String {
+    isComplete
+      ? "\(profile.name) · 发布配置已全部就绪"
+      : "\(profile.name) · \(unresolvedItems.count) 项需要处理"
+  }
 }
 
 private struct SettingsConfigurationHealthTile: View {
   let item: SettingsConfigurationHealthItem
+  let showsActionIndicator: Bool
 
   var body: some View {
     HStack(alignment: .top, spacing: 8) {
@@ -172,6 +219,13 @@ private struct SettingsConfigurationHealthTile: View {
         .padding(5)
         .background(item.state.color.opacity(0.12), in: Circle())
         .accessibilityHidden(true)
+
+      if showsActionIndicator {
+        Image(systemName: "chevron.right")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.tertiary)
+          .accessibilityHidden(true)
+      }
     }
     .padding(8)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -183,15 +237,43 @@ private struct SettingsConfigurationHealthTile: View {
 }
 
 private struct SettingsConfigurationHealthItem: Identifiable {
-  let id = UUID()
+  let id: String
   let title: String
   let detail: String
   let systemImage: String
   let state: SettingsConfigurationHealthState
+  let destination: SettingsConfigurationHealthDestination
+  let actionTitle: String
+
+  init(
+    title: String,
+    detail: String,
+    systemImage: String,
+    state: SettingsConfigurationHealthState,
+    destination: SettingsConfigurationHealthDestination,
+    actionTitle: String
+  ) {
+    id = title
+    self.title = title
+    self.detail = detail
+    self.systemImage = systemImage
+    self.state = state
+    self.destination = destination
+    self.actionTitle = actionTitle
+  }
 
   var isReady: Bool {
     state == .ready
   }
+}
+
+enum SettingsConfigurationHealthDestination: Hashable {
+  case repository
+  case repositoryToken
+  case aiKey
+  case defaultRules
+  case privacy
+  case pro
 }
 
 private enum SettingsConfigurationHealthState {

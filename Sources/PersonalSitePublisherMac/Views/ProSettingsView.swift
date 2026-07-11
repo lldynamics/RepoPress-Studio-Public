@@ -74,6 +74,7 @@ struct ProSettingsView: View {
         message: state.monetizationMessage
       )
 
+#if DEBUG
       ProDeveloperDiagnosticsSection(
         sandboxSummary: state.sandboxSummary,
         recentAccessEvents: state.recentAccessEvents,
@@ -94,6 +95,7 @@ struct ProSettingsView: View {
           actions.copySandboxRecordCommand()
         }
       )
+#endif
     }
     .formStyle(.grouped)
     .padding()

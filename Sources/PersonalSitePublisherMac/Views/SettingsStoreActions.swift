@@ -100,13 +100,13 @@ struct SettingsStoreActions {
   }
 
   private func copyToPublishMessage(_ value: String, successMessage: String) {
-    SettingsClipboardActions.copy(value, successMessage: successMessage) { message in
+    ClipboardWriter.copy(value, successMessage: successMessage) { message in
       store.setPublishActionMessage(message)
     }
   }
 
   private func copyToMonetizationMessage(_ value: String, successMessage: String) {
-    SettingsClipboardActions.copy(value, successMessage: successMessage) { message in
+    ClipboardWriter.copy(value, successMessage: successMessage) { message in
       store.setMonetizationMessage(message)
     }
   }

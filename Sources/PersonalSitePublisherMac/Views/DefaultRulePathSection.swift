@@ -3,10 +3,14 @@ import SwiftUI
 
 struct DefaultRulePathSection: View {
   let activeProfileBinding: Binding<SiteProfile>
+  let shouldFocusPaths: Bool
+  let navigationRequestID: UUID
+  @FocusState private var focusedPathField: DefaultRulePathField?
 
   var body: some View {
     Section("路径规则") {
       TextField("Content root", text: activeProfileBinding.contentRoot)
+        .focused($focusedPathField, equals: .contentRoot)
         .accessibilityLabel("Content root")
         .accessibilityValue(activeProfile.contentRoot)
 
@@ -26,9 +30,17 @@ struct DefaultRulePathSection: View {
         .accessibilityLabel("Public image path pattern")
         .accessibilityValue(activeProfile.publicImagePathPattern)
     }
+    .task(id: navigationRequestID) {
+      guard shouldFocusPaths else { return }
+      focusedPathField = .contentRoot
+    }
   }
 
   private var activeProfile: SiteProfile {
     activeProfileBinding.wrappedValue
   }
+}
+
+private enum DefaultRulePathField: Hashable {
+  case contentRoot
 }

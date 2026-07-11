@@ -50,41 +50,14 @@ struct WorkspaceTopBar: View {
       }
       .frame(width: isCompact ? 210 : 280, alignment: .leading)
 
-      if isCompact {
-        compactSectionMenu
-      } else {
-        ScrollView(.horizontal, showsIndicators: false) {
-          HStack(spacing: 6) {
-            ForEach(WorkspaceNavigationPresentation.topBarItems) { item in
-              Button {
-                store.selectSection(item.section)
-              } label: {
-                Label(item.displayName, systemImage: item.systemImage)
-                  .font(.callout)
-                  .labelStyle(.titleAndIcon)
-                  .lineLimit(1)
-                  .padding(.horizontal, 10)
-                  .padding(.vertical, 6)
-                  .frame(minHeight: 30)
-                  .background {
-                    if store.selectedSection == item.section {
-                      Capsule()
-                        .fill(Color.accentColor.opacity(WorkbenchOpacity.accentBackground))
-                    }
-                  }
-                  .foregroundStyle(store.selectedSection == item.section ? Color.accentColor : Color.primary)
-                  .contentShape(Capsule())
-                  .help("\(item.displayName) \(item.keyboardShortcutLabel)")
-              }
-              .buttonStyle(.plain)
-              .accessibilityLabel(item.displayName)
-            }
-          }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+      Spacer(minLength: 12)
 
-        siteToolsMenu
-      }
+      Label(compactSectionTitleKey, systemImage: compactSectionSystemImage)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+
+      Spacer(minLength: 12)
 
       Spacer(minLength: isCompact ? 6 : 12)
     }
@@ -99,7 +72,7 @@ struct WorkspaceTopBar: View {
         Button {
           store.selectSection(item.section)
         } label: {
-          Label(item.displayName, systemImage: item.systemImage)
+          Label(workspaceNavigationLocalizedKey(item.displayNameLocalizationKey), systemImage: item.systemImage)
         }
       }
 
@@ -107,11 +80,11 @@ struct WorkspaceTopBar: View {
 
       siteToolsMenu
     } label: {
-      Label(compactSectionTitle, systemImage: compactSectionSystemImage)
+      Label(compactSectionTitleKey, systemImage: compactSectionSystemImage)
         .lineLimit(1)
     }
     .accessibilityLabel("工作区导航")
-    .accessibilityValue(compactSectionTitle)
+    .accessibilityValue(workspaceNavigationLocalizedString(compactSectionTitleKeyString))
     .help("窗口较窄时，将工作区导航收进菜单。")
   }
 
@@ -121,19 +94,23 @@ struct WorkspaceTopBar: View {
         Button {
           store.selectSection(item.section)
         } label: {
-          Label(item.displayName, systemImage: item.systemImage)
+          Label(workspaceNavigationLocalizedKey(item.displayNameLocalizationKey), systemImage: item.systemImage)
         }
       }
     } label: {
       Label("站点工具", systemImage: "wrench.and.screwdriver")
     }
     .accessibilityLabel("站点工具")
-    .accessibilityValue(WorkspaceNavigationPresentation.secondaryEntryItems.map(\.displayName).joined(separator: "、"))
+    .accessibilityValue(WorkspaceNavigationPresentation.secondaryEntryItems.map { workspaceNavigationLocalizedString($0.displayNameLocalizationKey) }.joined(separator: "、"))
     .help("建站、素材库和维护")
   }
 
-  private var compactSectionTitle: String {
-    WorkspaceNavigationItem(section: store.selectedSection).displayName
+  private var compactSectionTitleKey: LocalizedStringKey {
+    workspaceNavigationLocalizedKey(compactSectionTitleKeyString)
+  }
+
+  private var compactSectionTitleKeyString: String {
+    WorkspaceNavigationItem(section: store.selectedSection).displayNameLocalizationKey
   }
 
   private var compactSectionSystemImage: String {
@@ -386,29 +363,6 @@ private enum PublishingStatusLight {
     case .deploying, .online:
       return "打开发布记录"
     }
-  }
-}
-
-private struct PublishingStatusLightView: View {
-  let status: PublishingStatusLight
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      Label(status.title, systemImage: status.systemImage)
-        .font(.caption2.weight(.semibold))
-        .foregroundStyle(status.color)
-        .lineLimit(1)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(status.color.opacity(WorkbenchOpacity.selectionBackground), in: Capsule())
-        .contentShape(Capsule())
-    }
-    .buttonStyle(.plain)
-    .help(status.tooltipText)
-    .accessibilityLabel("发布状态")
-    .accessibilityValue("\(status.title)，\(status.accessibilityValue)")
-    .accessibilityHint(status.actionHelpText)
   }
 }
 
@@ -732,15 +686,192 @@ private extension ReleaseLedgerEntry {
   }
 }
 
-struct WorkspaceSidebarColumn: View {
+struct WorkspaceShellSplitLayout: View {
   @ObservedObject var store: WorkbenchStore
   let isCompact: Bool
+  let isInspectorPresented: Bool
+  @Binding var contentHealthFilter: ContentHealthContextFilter
+  @Binding var repositoryContextStage: RepositoryContextStage
 
   var body: some View {
-    switch WorkspaceNavigationPresentation.sidebarMode {
-    case .writingDraftColumn:
-      WritingDraftColumn(store: store, isCompact: isCompact)
+    HStack(spacing: 0) {
+      WorkspaceRail(store: store)
+        .frame(minWidth: 52, maxWidth: 52, maxHeight: .infinity)
+
+      Divider()
+
+      if store.selectedSection.contextSidebarMode != .none {
+        WorkspaceContextSidebar(
+          store: store,
+          isCompact: isCompact,
+          contentHealthFilter: $contentHealthFilter,
+          repositoryContextStage: $repositoryContextStage
+        )
+        .frame(
+          minWidth: isCompact ? 220 : 260,
+          idealWidth: isCompact ? 240 : 300,
+          maxWidth: isCompact ? 300 : 380,
+          maxHeight: .infinity
+        )
+
+        Divider()
+      }
+
+      HSplitView {
+        EditorCenterColumn(
+          store: store,
+          contentHealthFilter: contentHealthFilter,
+          repositoryContextStage: $repositoryContextStage
+        )
+        .frame(minWidth: isCompact ? 460 : 560, maxWidth: .infinity, maxHeight: .infinity)
+
+        if isInspectorPresented && !isCompact {
+          MetadataColumn(store: store)
+            .frame(minWidth: 320, idealWidth: 360, maxWidth: 460, maxHeight: .infinity)
+        }
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+  }
+}
+
+struct WorkspaceRail: View {
+  @ObservedObject var store: WorkbenchStore
+
+  var body: some View {
+    VStack(spacing: 6) {
+      ForEach(WorkspaceSection.allCases) { section in
+        Button {
+          store.selectSection(section)
+        } label: {
+          Image(systemName: section.systemImage)
+            .frame(width: 30, height: 30)
+            .foregroundStyle(store.selectedSection == section ? Color.accentColor : Color.secondary)
+            .background {
+              if store.selectedSection == section {
+                RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+                  .fill(Color.accentColor.opacity(WorkbenchOpacity.accentBackground))
+              }
+            }
+        }
+        .buttonStyle(.plain)
+        .help(workspaceNavigationLocalizedString(section.displayNameLocalizationKey))
+        .accessibilityLabel(workspaceNavigationLocalizedString(section.displayNameLocalizationKey))
+        .accessibilityValue(store.selectedSection == section ? "当前工作区" : "")
+      }
+
+      Spacer(minLength: 0)
+    }
+    .padding(.vertical, 10)
+    .background(.bar)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("工作区导航")
+  }
+}
+
+struct WorkspaceContextSidebar: View {
+  @ObservedObject var store: WorkbenchStore
+  let isCompact: Bool
+  @Binding var contentHealthFilter: ContentHealthContextFilter
+  @Binding var repositoryContextStage: RepositoryContextStage
+
+  var body: some View {
+    switch store.selectedSection.contextSidebarMode {
+    case .writingDrafts:
+      WritingDraftColumn(store: store, isCompact: isCompact)
+    case .contentHealthFilters:
+      contentHealthFilters
+    case .repositoryStages:
+      repositoryStages
+    case .none:
+      EmptyView()
+    }
+  }
+
+  private var contentHealthFilters: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text(workspaceNavigationLocalizedKey("workspace.contentHealth"))
+        .font(.headline)
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+
+      contextButton("全站发布检查", systemImage: "checklist", isSelected: contentHealthFilter == .overview) {
+        contentHealthFilter = .overview
+      }
+      contextButton("公开风险", systemImage: "exclamationmark.shield", isSelected: contentHealthFilter == .publicRisks) {
+        contentHealthFilter = .publicRisks
+      }
+      contextButton("AI 修复队列", systemImage: "sparkles", isSelected: contentHealthFilter == .aiFixes) {
+        contentHealthFilter = .aiFixes
+      }
+      contextButton("站点级问题", systemImage: "globe.badge.chevron.backward", isSelected: contentHealthFilter == .siteIssues) {
+        contentHealthFilter = .siteIssues
+      }
+      contextButton("文章级问题", systemImage: "doc.badge.gearshape", isSelected: contentHealthFilter == .draftIssues) {
+        contentHealthFilter = .draftIssues
+      }
+      contextButton("站点维护", systemImage: "wrench.and.screwdriver", isSelected: contentHealthFilter == .maintenance) {
+        contentHealthFilter = .maintenance
+      }
+
+      Spacer()
+    }
+    .background(.bar)
+    .accessibilityLabel("内容健康筛选")
+  }
+
+  private var repositoryStages: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text(workspaceNavigationLocalizedKey("workspace.sync"))
+        .font(.headline)
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+
+      contextButton("本地仓库", systemImage: "externaldrive", isSelected: repositoryContextStage == .overview) {
+        repositoryContextStage = .overview
+      }
+      if !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty {
+        contextButton("变更", systemImage: "arrow.left.arrow.right", isSelected: repositoryContextStage == .changes) {
+          repositoryContextStage = .changes
+        }
+        contextButton("写入与发布", systemImage: "paperplane", isSelected: repositoryContextStage == .publishing) {
+          repositoryContextStage = .publishing
+        }
+        contextButton("自动化", systemImage: "arrow.triangle.2.circlepath", isSelected: repositoryContextStage == .automation) {
+          repositoryContextStage = .automation
+        }
+        contextButton("本地预览", systemImage: "play.rectangle", isSelected: repositoryContextStage == .preview) {
+          repositoryContextStage = .preview
+        }
+      }
+
+      Spacer()
+    }
+    .background(.bar)
+    .accessibilityLabel("同步阶段导航")
+  }
+
+  private func contextButton(
+    _ title: LocalizedStringKey,
+    systemImage: String,
+    isSelected: Bool,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(action: action) {
+      Label(title, systemImage: systemImage)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background {
+          if isSelected {
+            RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+              .fill(Color.accentColor.opacity(WorkbenchOpacity.accentBackground))
+          }
+        }
+    }
+    .buttonStyle(.plain)
+    .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+    .padding(.horizontal, 8)
   }
 }
 
@@ -992,12 +1123,14 @@ struct WorkspaceSidebarColumn: View {
         }
       }
     }
-    .listStyle(.sidebar)
+    .listStyle(.plain)
+    .scrollContentBackground(.hidden)
+    .background(Color.clear)
     .safeAreaInset(edge: .top, spacing: 0) {
       draftListToolbar
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(.bar)
+        .background(Color.clear)
         .overlay(alignment: .bottom) {
           Divider()
         }
@@ -1083,6 +1216,8 @@ struct WorkspaceSidebarColumn: View {
     )
     .tag(draft.id)
     .listRowInsets(listRowInsets)
+    .listRowSeparator(.hidden)
+    .listRowBackground(Color.clear)
     .contextMenu {
       draftContextMenu(for: draft)
     }
@@ -1091,19 +1226,19 @@ struct WorkspaceSidebarColumn: View {
   @ViewBuilder
   private func draftContextMenu(for draft: ArticleDraft) -> some View {
     Button {
-      store.focusDraft(draft.id, section: .writing)
+      _ = store.focusDraft(draft.id, section: .writing)
     } label: {
       Label("编辑文章", systemImage: "square.and.pencil")
     }
 
     Button {
-      store.focusDraft(draft.id, section: .contentHealth)
+      _ = store.focusDraft(draft.id, section: .contentHealth)
     } label: {
       Label("查看发布检查", systemImage: "checklist")
     }
 
     Button {
-      store.focusDraft(draft.id, section: .images)
+      _ = store.focusDraft(draft.id, section: .images)
     } label: {
       Label("查看图片元数据", systemImage: "photo.on.rectangle")
     }
@@ -1428,31 +1563,45 @@ struct WorkspaceSidebarColumn: View {
 }
 
 struct EditorCenterColumn: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  let contentHealthFilter: ContentHealthContextFilter
+  @Binding var repositoryContextStage: RepositoryContextStage
+  @ObservedObject private var publishingState: WorkbenchPublishingFeatureFacade
+
+  init(
+    store: WorkbenchStore,
+    contentHealthFilter: ContentHealthContextFilter,
+    repositoryContextStage: Binding<RepositoryContextStage>
+  ) {
+    self.store = store
+    self.contentHealthFilter = contentHealthFilter
+    _repositoryContextStage = repositoryContextStage
+    _publishingState = ObservedObject(wrappedValue: store.publishing)
+  }
 
   var body: some View {
     Group {
-      if store.selectedSection == .ai {
+      if publishingState.selectedSection == .ai {
         AIChatWorkspaceView(store: store)
-      } else if store.selectedSection == .sync {
-        RepositoryWorkspaceView(store: store)
-      } else if store.selectedSection == .images {
+      } else if publishingState.selectedSection == .sync {
+        RepositoryWorkspaceView(store: store, stage: $repositoryContextStage)
+      } else if publishingState.selectedSection == .images {
         ImageWorkbenchView(store: store)
-      } else if store.selectedSection == .contentHealth {
-        ContentHealthDetailView(store: store)
-      } else if store.selectedSection == .releaseHistory {
+      } else if publishingState.selectedSection == .contentHealth {
+        ContentHealthDetailView(store: store, filter: contentHealthFilter)
+      } else if publishingState.selectedSection == .releaseHistory {
         ReleaseHistoryDetailView(store: store)
-      } else if store.selectedSection == .siteStarter {
+      } else if publishingState.selectedSection == .siteStarter {
         SiteStarterWorkspaceView(store: store)
-      } else if store.selectedSection == .generalDrafts {
+      } else if publishingState.selectedSection == .generalDrafts {
         GeneralDraftLibraryDetailView(store: store)
-      } else if store.selectedSection == .maintenance {
+      } else if publishingState.selectedSection == .maintenance {
         SiteMaintenanceDetailView(store: store)
-      } else if store.selectedSection == .releaseReadiness {
+      } else if publishingState.selectedSection == .releaseReadiness {
         ReleaseQualityGateDetailView(store: store)
-      } else if let fallbackDraft = store.selectedDraft {
+      } else if let fallbackDraft = publishingState.selectedDraft {
         let draft = Binding<ArticleDraft>(
-          get: { store.selectedDraft ?? fallbackDraft },
+          get: { publishingState.selectedDraft ?? fallbackDraft },
           set: { store.updateDraft($0) }
         )
 
@@ -1469,16 +1618,16 @@ struct EditorCenterColumn: View {
     .onAppear {
       ensureDraftIfNeeded()
     }
-    .onChange(of: store.activeProfileID) { _, _ in
+    .onChange(of: publishingState.activeProfileID) { _, _ in
       ensureDraftIfNeeded()
     }
-    .onChange(of: store.selectedSection) { _, _ in
+    .onChange(of: publishingState.selectedSection) { _, _ in
       ensureDraftIfNeeded()
     }
   }
 
   private func ensureDraftIfNeeded() {
-    switch store.selectedSection {
+    switch publishingState.selectedSection {
     case .siteStarter, .ai, .generalDrafts, .maintenance, .releaseReadiness:
       return
     case .writing, .sync, .contentHealth, .images, .releaseHistory:
@@ -1489,6 +1638,12 @@ struct EditorCenterColumn: View {
 
 struct MetadataColumn: View {
   @ObservedObject var store: WorkbenchStore
+  let prioritizesChecks: Bool
+
+  init(store: WorkbenchStore, prioritizesChecks: Bool = false) {
+    self.store = store
+    self.prioritizesChecks = prioritizesChecks
+  }
 
   var body: some View {
     if store.selectedSection == .ai {
@@ -1504,7 +1659,12 @@ struct MetadataColumn: View {
         get: { store.selectedDraft ?? fallbackDraft },
         set: { store.updateDraft($0) }
       )
-      WorkspaceTaskInspector(section: store.selectedSection, draft: draft, store: store)
+      WorkspaceTaskInspector(
+        section: store.selectedSection,
+        draft: draft,
+        store: store,
+        prioritizesChecks: prioritizesChecks
+      )
     } else {
       EmptyStateView(
         title: "没有元数据",
@@ -1695,7 +1855,6 @@ private struct WritingDraftSkeletonRow: View {
     .padding(.vertical, density.rowVerticalPadding)
     .redacted(reason: .placeholder)
     .foregroundStyle(.secondary)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 }
 

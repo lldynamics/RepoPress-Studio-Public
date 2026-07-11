@@ -59,6 +59,42 @@ final class ContentHealthSummaryTests: XCTestCase {
     XCTAssertTrue(brokenSummary.issues.contains { $0.field == "slug" })
   }
 
+  func testContentHealthReportDerivesRiskAndAIFixQueuesFromOneSummarySet() throws {
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "Needs review",
+      slug: "needs-review",
+      bodyMarkdown: "正文足够长，包含一个本机路径 /Users/example/site/content/posts/review.md。"
+    )
+    store.updateDraft(draft)
+
+    let report = store.contentHealthReport
+    let summary = try XCTUnwrap(report.draftSummaries.first { $0.draftID == draft.id })
+
+    XCTAssertEqual(report.draftSummaries.count, store.visibleDrafts.count)
+    XCTAssertEqual(report.publicRiskSummary, PublicRiskSummary(issues: report.draftSummaries.flatMap(\.issues)))
+    XCTAssertEqual(report.publicRiskDraftSummaries.map(\.draftID), report.draftSummaries.filter { !$0.publicRiskIssues.isEmpty }.map(\.draftID))
+    XCTAssertTrue(report.aiFixQueueItems.contains { $0.draftID == draft.id })
+    XCTAssertFalse(summary.issues.isEmpty)
+  }
+
+  func testContentHealthReportAsyncMatchesCurrentProfileSnapshot() async throws {
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "Async health",
+      slug: "async-health",
+      bodyMarkdown: "正文足够长，可以在后台单次扫描中生成内容健康报告并派生所有结果。"
+    )
+    store.updateDraft(draft)
+
+    let report = await store.contentHealthReportAsync()
+
+    XCTAssertEqual(Set(report.draftSummaries.map(\.draftID)), Set(store.visibleDrafts.map(\.id)))
+    XCTAssertEqual(report.publicRiskSummary, PublicRiskSummary(issues: report.draftSummaries.flatMap(\.issues)))
+  }
+
   func testCanSuppressRepositoryReadinessForDraftOnlyChecks() {
     let profile = SiteProfile.defaultProfile
     let draft = ArticleDraft(

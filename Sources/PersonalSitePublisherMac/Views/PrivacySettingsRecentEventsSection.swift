@@ -2,16 +2,6 @@ import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
-struct PrivacySettingsRecentEventsSection: View {
-  let events: [PrivacyProtectionEvent]
-
-  var body: some View {
-    Section("最近隐私事件") {
-      PrivacySettingsRecentEventsPlainContent(events: events, showsHeading: false)
-    }
-  }
-}
-
 struct PrivacySettingsRecentEventsPlainContent: View {
   let events: [PrivacyProtectionEvent]
   var showsHeading = true

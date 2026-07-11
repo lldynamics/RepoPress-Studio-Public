@@ -33,7 +33,7 @@ private enum ReleaseEvidenceSourceManifest {
         "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+DeploymentCommands.swift",
         "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+ForwardedState.swift",
         "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+ImageWorkbenchCommands.swift",
-        "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+MaterialLibraryCommands.swift",
+        "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+GeneralDraftLibraryCommands.swift",
         "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+OperationalCommands.swift",
         "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+PrivacyMonetizationCommands.swift",
         "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+ProfileSiteCommands.swift",
@@ -201,12 +201,10 @@ private enum ReleaseEvidenceSourceManifest {
     return unique([
       fallback,
       "Sources/PersonalSitePublisherMac/Views/SettingsTabContentFactory.swift",
-      "Sources/PersonalSitePublisherMac/Views/SettingsDefaultRulesTabFactory.swift",
       "Sources/PersonalSitePublisherMac/Views/SettingsTokenTabFactory.swift",
       "Sources/PersonalSitePublisherMac/Views/SettingsAITabFactory.swift",
       "Sources/PersonalSitePublisherMac/Views/SettingsPrivacyTabFactory.swift",
       "Sources/PersonalSitePublisherMac/Views/SettingsProTabFactory.swift",
-      "Sources/PersonalSitePublisherMac/Views/SettingsClipboardActions.swift",
       "Sources/PersonalSitePublisherMac/Views/SettingsStoreActions.swift",
       "Sources/PersonalSitePublisherMac/Views/SettingsConfigurationHealthCard.swift",
     ])
@@ -271,15 +269,15 @@ struct ReleaseQualityGateProductReadinessGate {
       let required = Set(WorkspaceNavigationPresentation.productReadinessSections)
       let current = Set(sections)
       let missing = required.subtracting(current)
-      let dailyEntries = WorkspaceVisibilityPolicy.dailyTopBarSections.map(\.displayName).joined(separator: "、")
-      let secondaryEntries = WorkspaceVisibilityPolicy.secondaryEntrySections.map(\.displayName).joined(separator: "、")
-      let diagnosticsEntries = WorkspaceVisibilityPolicy.developerDiagnosticsSections.map(\.displayName).joined(separator: "、")
+      let dailyEntries = WorkspaceVisibilityPolicy.dailyTopBarSections.map(\.localizationKey).joined(separator: ", ")
+      let secondaryEntries = WorkspaceVisibilityPolicy.secondaryEntrySections.map(\.localizationKey).joined(separator: ", ")
+      let diagnosticsEntries = WorkspaceVisibilityPolicy.developerDiagnosticsSections.map(\.localizationKey).joined(separator: ", ")
       return ReleaseQualityGateItem(
         id: "workspace-coverage",
         category: .productReadiness,
         title: "产品工作区覆盖",
         status: missing.isEmpty ? .passed : .blocked,
-        message: missing.isEmpty ? "工作区已按日常导航、二级入口和开发者诊断入口完成覆盖。" : "缺少 \(missing.map(\.displayName).sorted().joined(separator: ", ")) 工作区。",
+        message: missing.isEmpty ? "工作区已按日常导航、二级入口和开发者诊断入口完成覆盖。" : "缺少 \(missing.map(\.localizationKey).sorted().joined(separator: ", ")) 工作区。",
         evidence: "日常导航：\(dailyEntries)；二级入口：\(secondaryEntries)；开发者诊断：\(diagnosticsEntries)"
       )
     }
@@ -1139,7 +1137,7 @@ struct ReleaseQualityGateProductReadinessGate {
         ("Sources/PersonalSitePublisherMac/Views/SettingsStoreActions.swift", "privacyProtectionAudit.checklistMarkdown", "隐私体检复制"),
         ("Sources/PublishingWorkbenchCore/Services/AIPublishingFixQueueService.swift", "guard !draft.isPrivate", "私密文章不进入 AI 修复队列"),
         ("Sources/PublishingWorkbenchCore/Services/SEOSocialPreviewService.swift", "draft.isPrivate ? nil", "私密文章不输出社交图"),
-        ("Sources/PublishingWorkbenchCore/Services/ScreenshotDemoDataService.swift", "case privacyLock", "隐私锁截图演示面"),
+        ("Sources/PublishingWorkbenchScreenshotSupport/ScreenshotDemoDataService.swift", "case privacyLock", "隐私锁截图演示面"),
         ("script/check_privacy_support_copy.sh", "masksPrivateContent", "隐私文案门禁脚本"),
         ("Tests/PublishingWorkbenchCoreTests/PrivacyProtectionTests.swift", "testStoreLocksOnLaunchAndInactiveWhenConfigured", "启动/后台锁定测试"),
         ("Tests/PublishingWorkbenchCoreTests/PrivacyProtectionTests.swift", "testProtectedWorkbenchAvailabilityFollowsPrivacyLockState", "受保护工作台测试"),

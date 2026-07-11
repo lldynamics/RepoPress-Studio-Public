@@ -98,8 +98,9 @@ public struct DeploymentWebhookHTTPRequest: Equatable, Sendable {
   }
 }
 
-public final class DeploymentWebhookHTTPReceiver {
+public final class DeploymentWebhookHTTPReceiver: @unchecked Sendable {
   private var listener: NWListener?
+  private let listenerLock = NSLock()
   private let queue = DispatchQueue(label: "PersonalSitePublisherMac.DeploymentWebhookHTTPReceiver")
 
   public init() {}
@@ -125,47 +126,57 @@ public final class DeploymentWebhookHTTPReceiver {
       self?.handle(connection: connection, handler: handler)
     }
     listener.start(queue: queue)
+    listenerLock.lock()
     self.listener = listener
+    listenerLock.unlock()
     return "http://127.0.0.1:\(port)/deployment-webhook/{provider}"
 #endif
   }
 
   public func stop() {
-    listener?.cancel()
+    listenerLock.lock()
+    let activeListener = listener
     listener = nil
+    listenerLock.unlock()
+    activeListener?.cancel()
   }
 
   private func handle(
     connection: NWConnection,
     handler: @escaping @Sendable (DeploymentProvider, String) async -> Bool
   ) {
-    var received = Data()
+    let state = DeploymentWebhookConnectionState()
     connection.start(queue: queue)
+    receiveMore(connection: connection, state: state, handler: handler)
+  }
 
-    func receiveMore() {
-      connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, isComplete, error in
-        if let data {
-          received.append(data)
-        }
-
-        if let request = DeploymentWebhookHTTPRequest.parse(received) {
-          Task {
-            let accepted = await handler(request.provider, request.payloadText)
-            self.sendResponse(accepted ? 200 : 400, connection: connection)
-          }
-          return
-        }
-
-        if isComplete || error != nil || received.count > 1_048_576 {
-          self.sendResponse(400, connection: connection)
-          return
-        }
-
-        receiveMore()
+  private func receiveMore(
+    connection: NWConnection,
+    state: DeploymentWebhookConnectionState,
+    handler: @escaping @Sendable (DeploymentProvider, String) async -> Bool
+  ) {
+    connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
+      guard let self else { return }
+      if let data {
+        state.append(data)
       }
-    }
+      let received = state.snapshot()
 
-    receiveMore()
+      if let request = DeploymentWebhookHTTPRequest.parse(received) {
+        Task {
+          let accepted = await handler(request.provider, request.payloadText)
+          self.sendResponse(accepted ? 200 : 400, connection: connection)
+        }
+        return
+      }
+
+      if isComplete || error != nil || received.count > 1_048_576 {
+        self.sendResponse(400, connection: connection)
+        return
+      }
+
+      self.receiveMore(connection: connection, state: state, handler: handler)
+    }
   }
 
   private func sendResponse(_ statusCode: Int, connection: NWConnection) {
@@ -182,6 +193,23 @@ public final class DeploymentWebhookHTTPReceiver {
     connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in
       connection.cancel()
     })
+  }
+}
+
+private final class DeploymentWebhookConnectionState: @unchecked Sendable {
+  private let lock = NSLock()
+  private var received = Data()
+
+  func append(_ data: Data) {
+    lock.lock()
+    received.append(data)
+    lock.unlock()
+  }
+
+  func snapshot() -> Data {
+    lock.lock()
+    defer { lock.unlock() }
+    return received
   }
 }
 

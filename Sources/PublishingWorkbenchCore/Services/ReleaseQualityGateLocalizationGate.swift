@@ -133,19 +133,15 @@ struct ReleaseQualityGateLocalizationGate {
       if !scriptText.contains("defaultLocalization") {
         missing.append("默认语言")
       }
-      if !scriptText.contains("plutil -lint") {
-        missing.append("strings 语法")
-      }
-      if !scriptText.contains("comm -23") || !scriptText.contains("comm -13") {
-        missing.append("中英 key 一致性")
-      }
-      if !scriptText.contains("uniq -d") {
-        missing.append("重复 key")
+      if !scriptText.contains("plutil -lint") || !scriptText.contains("xcstringstool compile") {
+        missing.append("字符串目录编译")
       }
       if !scriptText.contains("InfoPlist.strings") || !scriptText.contains("CFBundleDisplayName") {
         missing.append("App 显示名")
       }
-      if !scriptText.contains("Localizable.xcstrings") || !scriptText.contains("raw_ui_literal_count") {
+      if !scriptText.contains("Localizable.xcstrings")
+        || !scriptText.contains("sync_ui_localizations.py")
+        || !scriptText.contains("--check") {
         missing.append("源码 key / xcstrings 覆盖")
       }
       return missing

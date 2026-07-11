@@ -1,5 +1,7 @@
+#if DEBUG
 import AppKit
 import PublishingWorkbenchCore
+import PublishingWorkbenchScreenshotSupport
 
 enum ScreenshotDemoSettingsPresenter {
   static func openSettingsIfNeeded() {
@@ -15,3 +17,4 @@ enum ScreenshotDemoSettingsPresenter {
     }
   }
 }
+#endif

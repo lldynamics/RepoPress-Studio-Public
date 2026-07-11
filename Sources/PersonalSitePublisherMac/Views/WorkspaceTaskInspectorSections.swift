@@ -15,6 +15,7 @@ struct WorkspaceTaskMetadataState {
 struct WorkspaceTaskMetadataSection: View {
   @Binding var draft: ArticleDraft
   let state: WorkspaceTaskMetadataState
+  @State private var isSupplementaryMetadataExpanded = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -29,20 +30,6 @@ struct WorkspaceTaskMetadataSection: View {
           .lineLimit(2...5)
           .accessibilityLabel("文章摘要")
           .accessibilityValue(draft.summary.isEmpty ? "未填写" : draft.summary)
-        DatePicker("Date", selection: $draft.date, displayedComponents: [.date, .hourAndMinute])
-          .accessibilityLabel("文章日期")
-          .accessibilityValue(draft.date.formatted(date: .abbreviated, time: .shortened))
-        Picker("Visibility", selection: $draft.visibility) {
-          ForEach(ArticleVisibility.allCases) { visibility in
-            Label(visibility.displayName, systemImage: visibility.systemImage)
-              .tag(visibility)
-          }
-        }
-        .accessibilityLabel("文章可见性")
-        .accessibilityValue(draft.visibility.displayName)
-        Toggle("Draft", isOn: $draft.draft)
-          .accessibilityLabel("草稿状态")
-          .accessibilityValue(draft.draft ? "草稿" : "非草稿")
       }
 
       InspectorSection("分类") {
@@ -52,19 +39,47 @@ struct WorkspaceTaskMetadataSection: View {
         TextField("Categories", text: categoriesBinding)
           .accessibilityLabel("文章分类")
           .accessibilityValue(draft.categories.isEmpty ? "未填写" : draft.categories.joined(separator: "，"))
-        TextField("Authors", text: authorsBinding)
-          .accessibilityLabel("文章作者")
-          .accessibilityValue(draft.authors.isEmpty ? "未填写" : draft.authors.joined(separator: "，"))
       }
 
-      InspectorSection("发布路径") {
-        InspectorStatRow(title: "站点", value: state.siteName, systemImage: "globe")
-        InspectorStatRow(title: "状态", value: draft.status.displayName, systemImage: draft.status.systemImage)
-        Text(state.markdownPath)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-          .lineLimit(3)
-          .textSelection(.enabled)
+      DisclosureGroup(isExpanded: $isSupplementaryMetadataExpanded) {
+        VStack(alignment: .leading, spacing: 14) {
+          InspectorSection("发布时间与可见性") {
+            DatePicker("Date", selection: $draft.date, displayedComponents: [.date, .hourAndMinute])
+              .accessibilityLabel("文章日期")
+              .accessibilityValue(draft.date.formatted(date: .abbreviated, time: .shortened))
+            Picker("Visibility", selection: $draft.visibility) {
+              ForEach(ArticleVisibility.allCases) { visibility in
+                Label(visibility.displayName, systemImage: visibility.systemImage)
+                  .tag(visibility)
+              }
+            }
+            .accessibilityLabel("文章可见性")
+            .accessibilityValue(draft.visibility.displayName)
+            Toggle("Draft", isOn: $draft.draft)
+              .accessibilityLabel("草稿状态")
+              .accessibilityValue(draft.draft ? "草稿" : "非草稿")
+          }
+
+          InspectorSection("作者") {
+            TextField("Authors", text: authorsBinding)
+              .accessibilityLabel("文章作者")
+              .accessibilityValue(draft.authors.isEmpty ? "未填写" : draft.authors.joined(separator: "，"))
+          }
+
+          InspectorSection("发布路径") {
+            InspectorStatRow(title: "站点", value: state.siteName, systemImage: "globe")
+            InspectorStatRow(title: "状态", value: draft.status.displayName, systemImage: draft.status.systemImage)
+            Text(state.markdownPath)
+              .font(.caption.monospaced())
+              .foregroundStyle(.secondary)
+              .lineLimit(3)
+              .textSelection(.enabled)
+          }
+        }
+        .padding(.top, 2)
+      } label: {
+        Label("补充元数据", systemImage: "ellipsis.circle")
+          .font(.callout.weight(.medium))
       }
     }
   }
@@ -559,20 +574,20 @@ struct WorkspaceTaskPublishSection: View {
   @ObservedObject var store: WorkbenchStore
 
   var body: some View {
-    let package = store.publishingPackage(for: draft)
-    let preview = store.localPublishPreview(for: draft)
+    let package = store.cachedPublishingPackage(for: draft)
+    let preview = store.cachedLocalPublishPreview(for: draft)
     let readiness = store.localPublishReadiness
     let profile = store.profile(for: draft)
     let mode = store.preferredRemoteRepositoryPublishMode(for: profile)
-    let remotePreview = store.remoteRepositoryPublishPreview(for: draft)
-    let review = store.remoteReviewDraft(for: draft)
+    let remotePreview = store.cachedRemotePublishPreview(for: draft)
+    let review = store.cachedRemoteReviewDraft(for: draft)
     let ledger = store.activeProfileReleaseLedger
     let latestEntry = ledger.entries.first
 
     return VStack(alignment: .leading, spacing: 14) {
       InspectorSection("发布包") {
-        InspectorStatRow(title: "文件", value: "\(package.files.count)", systemImage: "shippingbox")
-        InspectorStatRow(title: "变化", value: "\(preview.changedFileDiffs.count)", systemImage: "arrow.left.arrow.right")
+        InspectorStatRow(title: "文件", value: package.map { "\($0.files.count)" } ?? "待刷新", systemImage: "shippingbox")
+        InspectorStatRow(title: "变化", value: preview.map { "\($0.changedFileDiffs.count)" } ?? "待刷新", systemImage: "arrow.left.arrow.right")
         InspectorStatRow(title: "本地策略", value: profile.repositoryPublishStrategy.displayName, systemImage: profile.repositoryPublishStrategy == .direct ? "checkmark.seal" : "arrow.triangle.branch")
         InspectorStatRow(title: "线上策略", value: mode.displayName, systemImage: "network")
 
@@ -594,11 +609,11 @@ struct WorkspaceTaskPublishSection: View {
       }
 
       InspectorSection("Diff") {
-        if preview.changedFileDiffs.isEmpty {
+        if let preview, preview.changedFileDiffs.isEmpty {
           Label("没有待写入变化", systemImage: "equal.circle")
             .font(.caption)
             .foregroundStyle(.secondary)
-        } else {
+        } else if let preview {
           ForEach(preview.changedFileDiffs.prefix(5)) { diff in
             VStack(alignment: .leading, spacing: 4) {
               HStack {
@@ -617,6 +632,10 @@ struct WorkspaceTaskPublishSection: View {
             }
             .padding(.vertical, 4)
           }
+        } else {
+          Label("发布快照待刷新", systemImage: "clock.arrow.circlepath")
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
       }
 
@@ -631,42 +650,54 @@ struct WorkspaceTaskPublishSection: View {
       }
 
       InspectorSection("线上发布预览") {
-        InspectorStatRow(title: "状态", value: remotePreview.readiness.displayName, systemImage: remotePreview.readiness.systemImage)
-        InspectorStatRow(title: "远端", value: remotePreview.repositoryName, systemImage: remotePreview.provider == .github ? "point.3.connected.trianglepath.dotted" : "point.3.filled.connected.trianglepath.dotted")
-        InspectorStatRow(title: "权限", value: remotePreview.accessSummary, systemImage: remotePreview.hasToken ? "person.badge.key" : "key")
-        InspectorStatRow(title: "目标", value: remotePreview.targetBranch, systemImage: "arrow.down.to.line")
-        InspectorStatRow(title: "分支", value: remotePreview.branchName, systemImage: "arrow.triangle.branch")
+        if let remotePreview {
+          InspectorStatRow(title: "状态", value: remotePreview.readiness.displayName, systemImage: remotePreview.readiness.systemImage)
+          InspectorStatRow(title: "远端", value: remotePreview.repositoryName, systemImage: remotePreview.provider == .github ? "point.3.connected.trianglepath.dotted" : "point.3.filled.connected.trianglepath.dotted")
+          InspectorStatRow(title: "权限", value: remotePreview.accessSummary, systemImage: remotePreview.hasToken ? "person.badge.key" : "key")
+          InspectorStatRow(title: "目标", value: remotePreview.targetBranch, systemImage: "arrow.down.to.line")
+          InspectorStatRow(title: "分支", value: remotePreview.branchName, systemImage: "arrow.triangle.branch")
 
-        ForEach((remotePreview.blockingIssues + remotePreview.warningIssues).prefix(4)) { issue in
-          IssueCompactRow(issue: issue)
-        }
+          ForEach((remotePreview.blockingIssues + remotePreview.warningIssues).prefix(4)) { issue in
+            IssueCompactRow(issue: issue)
+          }
 
-        if remotePreview.blockingIssues.isEmpty && remotePreview.warningIssues.isEmpty {
-          Text(remotePreview.changedPaths.prefix(5).joined(separator: "\n"))
-            .font(.caption.monospaced())
+          if remotePreview.blockingIssues.isEmpty && remotePreview.warningIssues.isEmpty {
+            Text(remotePreview.changedPaths.prefix(5).joined(separator: "\n"))
+              .font(.caption.monospaced())
+              .foregroundStyle(.secondary)
+              .lineLimit(5)
+              .textSelection(.enabled)
+          }
+        } else {
+          Label("发布快照待刷新", systemImage: "clock.arrow.circlepath")
+            .font(.caption)
             .foregroundStyle(.secondary)
-            .lineLimit(5)
-            .textSelection(.enabled)
         }
       }
 
       InspectorSection("PR/MR 描述") {
-        InspectorStatRow(title: "分支", value: review.branchName, systemImage: "arrow.triangle.branch")
-        InspectorStatRow(title: "目标", value: review.targetBranch, systemImage: "arrow.down.to.line")
-        Text(review.title)
-          .font(.callout.weight(.medium))
-          .lineLimit(2)
-        Text(review.body)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(8)
-          .textSelection(.enabled)
-        Button {
-          copy(review.body, message: "已复制 PR/MR 描述。")
-        } label: {
-          Label("复制描述", systemImage: "doc.on.doc")
+        if let review {
+          InspectorStatRow(title: "分支", value: review.branchName, systemImage: "arrow.triangle.branch")
+          InspectorStatRow(title: "目标", value: review.targetBranch, systemImage: "arrow.down.to.line")
+          Text(review.title)
+            .font(.callout.weight(.medium))
+            .lineLimit(2)
+          Text(review.body)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(8)
+            .textSelection(.enabled)
+          Button {
+            copy(review.body, message: "已复制 PR/MR 描述。")
+          } label: {
+            Label("复制描述", systemImage: "doc.on.doc")
+          }
+          .controlSize(.small)
+        } else {
+          Label("发布快照待刷新", systemImage: "clock.arrow.circlepath")
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
-        .controlSize(.small)
       }
 
       InspectorSection("部署状态") {

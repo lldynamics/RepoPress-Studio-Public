@@ -382,7 +382,7 @@ public final class DeploymentStore: ObservableObject {
         for: store.activeProfile,
         scope: deploymentTokenScope(for: store.activeProfile)
       )
-      refreshDeploymentTokenAvailability(store: store)
+      refreshDeploymentTokenAvailability(store: store, migrateLegacyToken: false)
       deploymentStatusMessage = "\(deploymentProvider(for: store.activeProfile).displayName) 部署 Token 已保存。"
     } catch {
       deploymentStatusMessage = "部署 Token 保存失败：\(error.localizedDescription)"
@@ -395,16 +395,20 @@ public final class DeploymentStore: ObservableObject {
         for: store.activeProfile,
         scope: deploymentTokenScope(for: store.activeProfile)
       )
-      refreshDeploymentTokenAvailability(store: store)
+      refreshDeploymentTokenAvailability(store: store, migrateLegacyToken: false)
       deploymentStatusMessage = "\(deploymentProvider(for: store.activeProfile).displayName) 部署 Token 已删除。"
     } catch {
       deploymentStatusMessage = "部署 Token 删除失败：\(error.localizedDescription)"
     }
   }
 
-  public func refreshDeploymentTokenAvailability(store: WorkbenchStore) {
+  public func refreshDeploymentTokenAvailability(
+    store: WorkbenchStore,
+    migrateLegacyToken: Bool = true
+  ) {
     let profile = store.activeProfile
-    let didMigrate = (try? migrateLegacyDeploymentTokenIfCompatible(for: profile)) == true
+    let didMigrate = migrateLegacyToken
+      && (try? migrateLegacyDeploymentTokenIfCompatible(for: profile)) == true
     deploymentTokenAvailability = (try? deploymentTokenStore.availability(
       for: profile,
       scope: deploymentTokenScope(for: profile)

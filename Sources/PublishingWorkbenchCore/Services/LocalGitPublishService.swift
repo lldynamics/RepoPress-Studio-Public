@@ -69,6 +69,23 @@ public struct LocalGitPublishService {
     return result
   }
 
+  public func publishAsync(
+    package: PublishPackage,
+    profile: SiteProfile,
+    mode: LocalGitPublishMode
+  ) async throws -> LocalGitPublishResult {
+    guard let rootURL = profile.localRepositoryRootURL else {
+      throw LocalGitPublishError.missingRepositoryRoot
+    }
+    let didStartAccessing = rootURL.startAccessingSecurityScopedResource()
+    defer {
+      if didStartAccessing {
+        rootURL.stopAccessingSecurityScopedResource()
+      }
+    }
+    return try await publishAsync(package: package, profile: profile, rootURL: rootURL, mode: mode)
+  }
+
   private func publish(
     package: PublishPackage,
     profile: SiteProfile,
@@ -117,6 +134,53 @@ public struct LocalGitPublishService {
     )
   }
 
+  private func publishAsync(
+    package: PublishPackage,
+    profile: SiteProfile,
+    rootURL: URL,
+    mode: LocalGitPublishMode
+  ) async throws -> LocalGitPublishResult {
+    guard directoryExists(rootURL.appendingPathComponent(".git", isDirectory: true)) else {
+      throw LocalGitPublishError.notGitRepository(rootURL.path)
+    }
+
+    let currentBranch = try trimmedOutput(await runGitAsync(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL))
+    var commandLog: [String] = []
+    var outputChunks: [String] = []
+
+    if mode == .reviewBranch {
+      try await ensureBranchDoesNotExistAsync(package.reviewBranchName, rootURL: rootURL)
+      let switchResult = try await runGitAsync(["switch", "-c", package.reviewBranchName], rootURL: rootURL)
+      commandLog.append("git switch -c \(posixShellQuote(package.reviewBranchName))")
+      outputChunks.append(switchResult.output)
+    }
+
+    let writtenPaths = try previewService.write(package: package, rootURL: rootURL)
+    let addResult = try await runGitAsync(["add"] + package.files.map(\.repositoryPath), rootURL: rootURL)
+    commandLog.append("git add \(package.files.map(\.repositoryPath).map(posixShellQuote).joined(separator: " "))")
+    outputChunks.append(addResult.output)
+
+    let diffResult = try await runGitAsync(["diff", "--cached", "--quiet"], rootURL: rootURL, allowsExitCodes: [0, 1])
+    if diffResult.terminationStatus == 0 {
+      throw LocalGitPublishError.noStagedChanges
+    }
+
+    let commitResult = try await runGitAsync(["commit", "-m", package.commitMessage], rootURL: rootURL)
+    commandLog.append("git commit -m \(posixShellQuote(package.commitMessage))")
+    outputChunks.append(commitResult.output)
+
+    let commitSHA = try trimmedOutput(await runGitAsync(["rev-parse", "HEAD"], rootURL: rootURL))
+    let branchName = mode == .reviewBranch ? package.reviewBranchName : currentBranch
+    return LocalGitPublishResult(
+      mode: mode,
+      branchName: branchName,
+      committedPaths: writtenPaths,
+      commitSHA: commitSHA,
+      commandLog: commandLog,
+      output: outputChunks.map { $0.trimmedForPublishing }.filter { !$0.isEmpty }.joined(separator: "\n")
+    )
+  }
+
   private func ensureBranchDoesNotExist(_ branchName: String, rootURL: URL) throws {
     let result = try runGit(
       ["rev-parse", "--verify", "--quiet", branchName],
@@ -124,6 +188,17 @@ public struct LocalGitPublishService {
       allowsExitCodes: [0, 1]
     )
 
+    if result.terminationStatus == 0 {
+      throw LocalGitPublishError.branchAlreadyExists(branchName)
+    }
+  }
+
+  private func ensureBranchDoesNotExistAsync(_ branchName: String, rootURL: URL) async throws {
+    let result = try await runGitAsync(
+      ["rev-parse", "--verify", "--quiet", branchName],
+      rootURL: rootURL,
+      allowsExitCodes: [0, 1]
+    )
     if result.terminationStatus == 0 {
       throw LocalGitPublishError.branchAlreadyExists(branchName)
     }
@@ -155,6 +230,24 @@ public struct LocalGitPublishService {
       )
     }
 
+    return result
+  }
+
+  private func runGitAsync(
+    _ arguments: [String],
+    rootURL: URL,
+    allowsExitCodes: Set<Int32> = [0]
+  ) async throws -> GitCommandResult {
+    let result = await gitCommandRunner.runAsync(arguments, rootURL: rootURL)
+    if result.terminationStatus == 127 {
+      throw LocalGitPublishError.processLaunchFailed(result.output)
+    }
+    guard allowsExitCodes.contains(result.terminationStatus) else {
+      throw LocalGitPublishError.gitCommandFailed(
+        command: (["git", "-C", rootURL.path] + arguments).map(posixShellQuote).joined(separator: " "),
+        output: result.output
+      )
+    }
     return result
   }
 }

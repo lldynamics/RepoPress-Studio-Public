@@ -18,23 +18,27 @@ extension RepositoryWorkspaceView {
           }
           Spacer()
           Button {
-            store.commitSelectedDraftUsingPreferredStrategy()
+            Task {
+              await store.commitSelectedDraftUsingPreferredStrategy()
+            }
           } label: {
             Label(preferredPublishActionTitle, systemImage: preferredPublishActionSystemImage)
           }
-          .disabled(store.localPublishReadiness?.canCommit != true)
+          .disabled(store.localPublishReadiness?.canCommit != true || store.isLocalRepositoryMutationRunning)
           Button {
             store.writeSelectedDraftToLocalRepository()
           } label: {
             Label("写入仓库", systemImage: "square.and.arrow.down")
           }
-          .disabled(store.localPublishReadiness?.canWrite != true)
+          .disabled(store.localPublishReadiness?.canWrite != true || store.isLocalRepositoryMutationRunning)
           Button {
-            store.commitSelectedDraftDirectly()
+            Task {
+              await store.commitSelectedDraftDirectly()
+            }
           } label: {
             Label("直接提交", systemImage: "checkmark.seal")
           }
-          .disabled(store.localPublishReadiness?.canCommit != true)
+          .disabled(store.localPublishReadiness?.canCommit != true || store.isLocalRepositoryMutationRunning)
           Button {
             copyCommitCommand()
           } label: {

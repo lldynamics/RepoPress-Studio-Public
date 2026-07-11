@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import XCTest
 @testable import PublishingWorkbenchCore
@@ -53,6 +54,49 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let body = try XCTUnwrap(capturedRequest.httpBody)
     let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
     XCTAssertEqual(payload["stream"] as? Bool, true)
+  }
+
+  func testStoreBatchesRapidStreamingMessagePublications() async throws {
+    let streamLines = (0..<80).flatMap { _ in
+      [#"data: {"choices":[{"delta":{"content":"a"}}]}"#, ""]
+    } + [
+      #"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+      "",
+    ]
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200, streamLines: streamLines)
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("json")
+    defer {
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    var profile = store.activeProfile
+    profile.aiProviderConfig = AIProviderConfig(
+      preset: .openAICompatible,
+      baseURL: "https://api.openai.example/v1",
+      model: "gpt-4.1",
+      requiresAPIKey: false
+    )
+    store.updateActiveProfile(profile)
+    let draft = try XCTUnwrap(store.selectedDraft)
+    var messagePublications = 0
+    let observation = store.aiWorkspaceStore.$aiChatMessages
+      .dropFirst()
+      .sink { _ in messagePublications += 1 }
+    defer { observation.cancel() }
+
+    let reply = await store.sendAIChatMessage("快速流式回复。", draft: draft)
+
+    XCTAssertEqual(reply?.content, String(repeating: "a", count: 80))
+    XCTAssertEqual(store.aiChatMessages.last?.content, String(repeating: "a", count: 80))
+    XCTAssertLessThan(messagePublications, 12, "分片应合并后再发布聊天消息状态")
   }
 
   func testStoreSendsMaintenanceActionIntoAIChatWorkspace() async throws {

@@ -14,7 +14,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertFalse(store.isAIPublishingAssistantPresented)
     store.setInspectorPresented(false)
 
-    store.openAIChatWorkspace(for: draft.id)
+    _ = store.openAIChatWorkspace(for: draft.id)
 
     XCTAssertFalse(store.isAIPublishingAssistantPresented)
     XCTAssertTrue(store.isInspectorPresented)
@@ -41,7 +41,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     )
     let draft = try XCTUnwrap(store.selectedDraft)
 
-    store.openAIChatWorkspace(for: draft.id, quickPrompt: .frontMatterPack)
+    _ = store.openAIChatWorkspace(for: draft.id, quickPrompt: .frontMatterPack)
 
     XCTAssertEqual(store.selectedSection, .ai)
     XCTAssertEqual(store.selectedDraftID, draft.id)
@@ -106,7 +106,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     )
     let draft = try XCTUnwrap(store.selectedDraft)
 
-    store.openAIChatWorkspace(for: draft.id)
+    _ = store.openAIChatWorkspace(for: draft.id)
     store.setAIChatModelGrade(.highQuality)
 
     XCTAssertEqual(store.aiChatModelGrade, .highQuality)

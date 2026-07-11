@@ -1,6 +1,10 @@
 .DS_Store
+.codex/
+.codex-audit/
+.vscode/
 .build/
 .swiftpm/
 dist/
 DerivedData/
+docs/release-evidence/snapshots/
 *.xcuserstate

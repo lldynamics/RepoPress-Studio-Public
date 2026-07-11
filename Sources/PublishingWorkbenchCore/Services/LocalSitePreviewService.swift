@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#endif
 
 public struct LocalSitePreviewPlan: Codable, Hashable, Sendable {
   public var siteKind: SiteKind
@@ -30,23 +33,29 @@ public struct LocalSitePreviewPlan: Codable, Hashable, Sendable {
 
 public struct LocalSitePreviewRuntimeStatus: Codable, Hashable, Sendable {
   public var isRunning: Bool
+  public var isReachable: Bool
   public var processIdentifier: Int32?
   public var previewURL: URL?
   public var message: String
   public var startedAt: Date?
+  public var recentLogLines: [String]
 
   public init(
     isRunning: Bool,
+    isReachable: Bool = false,
     processIdentifier: Int32? = nil,
     previewURL: URL? = nil,
     message: String,
-    startedAt: Date? = nil
+    startedAt: Date? = nil,
+    recentLogLines: [String] = []
   ) {
     self.isRunning = isRunning
+    self.isReachable = isReachable
     self.processIdentifier = processIdentifier
     self.previewURL = previewURL
     self.message = message
     self.startedAt = startedAt
+    self.recentLogLines = recentLogLines
   }
 
   public static let stopped = LocalSitePreviewRuntimeStatus(
@@ -55,12 +64,14 @@ public struct LocalSitePreviewRuntimeStatus: Codable, Hashable, Sendable {
   )
 }
 
-public final class LocalSitePreviewProcessService {
+public final class LocalSitePreviewProcessService: @unchecked Sendable {
   private var process: Process?
   private var outputPipe: Pipe?
   private var errorPipe: Pipe?
   private var activePlan: LocalSitePreviewPlan?
   private var startedAt: Date?
+  private let processLock = NSLock()
+  private let logCollector = LocalSitePreviewLogCollector(maximumLineCount: 80)
 
   public init() {}
 
@@ -85,8 +96,25 @@ public final class LocalSitePreviewProcessService {
   }
 
   public var status: LocalSitePreviewRuntimeStatus {
-    guard let process, process.isRunning, let activePlan else {
+    processLock.lock()
+    defer { processLock.unlock() }
+    return statusLocked()
+  }
+
+  private func statusLocked() -> LocalSitePreviewRuntimeStatus {
+    guard let activePlan else {
       return .stopped
+    }
+
+    let logLines = capturedLogLines()
+    guard let process, process.isRunning else {
+      return LocalSitePreviewRuntimeStatus(
+        isRunning: false,
+        previewURL: activePlan.previewURL,
+        message: "本地预览进程已退出。",
+        startedAt: startedAt,
+        recentLogLines: logLines
+      )
     }
 
     return LocalSitePreviewRuntimeStatus(
@@ -94,14 +122,17 @@ public final class LocalSitePreviewProcessService {
       processIdentifier: process.processIdentifier,
       previewURL: activePlan.previewURL,
       message: "本地预览运行中：\(activePlan.previewURL.absoluteString)",
-      startedAt: startedAt
+      startedAt: startedAt,
+      recentLogLines: logLines
     )
   }
 
   @discardableResult
   public func start(plan: LocalSitePreviewPlan) throws -> LocalSitePreviewRuntimeStatus {
+    processLock.lock()
+    defer { processLock.unlock() }
     if let process, process.isRunning {
-      return status
+      return statusLocked()
     }
 
     let process = Process()
@@ -112,14 +143,17 @@ public final class LocalSitePreviewProcessService {
 
     let outputPipe = Pipe()
     let errorPipe = Pipe()
+    let logCollector = logCollector
     outputPipe.fileHandleForReading.readabilityHandler = { handle in
-      _ = handle.availableData
+      logCollector.append(handle.availableData)
     }
     errorPipe.fileHandleForReading.readabilityHandler = { handle in
-      _ = handle.availableData
+      logCollector.append(handle.availableData)
     }
     process.standardOutput = outputPipe
     process.standardError = errorPipe
+
+    logCollector.reset()
 
     try process.run()
 
@@ -129,23 +163,51 @@ public final class LocalSitePreviewProcessService {
     activePlan = plan
     startedAt = Date()
 
-    return status
+    return statusLocked()
   }
 
   public func stop() {
+    processLock.lock()
+    defer { processLock.unlock() }
+    stopLocked()
+  }
+
+  public func stopAsync() async {
+    await withCheckedContinuation { continuation in
+      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        self?.stop()
+        continuation.resume()
+      }
+    }
+  }
+
+  private func stopLocked() {
     guard let process else {
-      clearProcess()
+      clearProcessLocked()
       return
     }
 
     if process.isRunning {
       process.terminate()
+      let gracefulExitDeadline = Date().addingTimeInterval(1)
+      while process.isRunning, Date() < gracefulExitDeadline {
+        Thread.sleep(forTimeInterval: 0.02)
+      }
+      if process.isRunning {
+#if canImport(Darwin)
+        Darwin.kill(process.processIdentifier, SIGKILL)
+#endif
+      }
     }
 
-    clearProcess()
+    if process.isRunning {
+      process.waitUntilExit()
+    }
+
+    clearProcessLocked()
   }
 
-  private func clearProcess() {
+  private func clearProcessLocked() {
     outputPipe?.fileHandleForReading.readabilityHandler = nil
     errorPipe?.fileHandleForReading.readabilityHandler = nil
     outputPipe = nil
@@ -154,10 +216,64 @@ public final class LocalSitePreviewProcessService {
     activePlan = nil
     startedAt = nil
   }
+
+  private func capturedLogLines() -> [String] {
+    logCollector.lines()
+  }
+}
+
+private final class LocalSitePreviewLogCollector: @unchecked Sendable {
+  private let lock = NSLock()
+  private let maximumLineCount: Int
+  private var recentLogLines: [String] = []
+
+  init(maximumLineCount: Int) {
+    self.maximumLineCount = maximumLineCount
+  }
+
+  func append(_ data: Data) {
+    guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else {
+      return
+    }
+
+    let lines = output
+      .split(whereSeparator: \.isNewline)
+      .map(String.init)
+      .filter { !$0.isEmpty }
+    guard !lines.isEmpty else { return }
+
+    lock.lock()
+    recentLogLines.append(contentsOf: lines)
+    if recentLogLines.count > maximumLineCount {
+      recentLogLines.removeFirst(recentLogLines.count - maximumLineCount)
+    }
+    lock.unlock()
+  }
+
+  func reset() {
+    lock.lock()
+    recentLogLines = []
+    lock.unlock()
+  }
+
+  func lines() -> [String] {
+    lock.lock()
+    defer { lock.unlock() }
+    return recentLogLines
+  }
 }
 
 public struct LocalSitePreviewService {
   public init() {}
+
+  public func previewURL(for draft: ArticleDraft, profile: SiteProfile) -> URL? {
+    guard let plan = plan(profile: profile) else { return nil }
+    return SiteArticleURLResolver().url(
+      baseURL: plan.previewURL,
+      markdownPath: profile.markdownPath(for: draft),
+      siteKind: profile.siteKind
+    )
+  }
 
   public func plan(profile: SiteProfile) -> LocalSitePreviewPlan? {
     guard let rootPath = profile.localRepositoryRootURL?.path else {

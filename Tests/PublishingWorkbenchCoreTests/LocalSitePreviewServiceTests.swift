@@ -1,4 +1,7 @@
 import XCTest
+#if canImport(Darwin)
+import Darwin
+#endif
 @testable import PublishingWorkbenchCore
 
 final class LocalSitePreviewServiceTests: XCTestCase {
@@ -80,6 +83,18 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     XCTAssertEqual(plan.command, "cd '/tmp/My Site' && 'zola' 'serve' '--drafts'")
   }
 
+  func testCurrentArticlePreviewUsesSharedSitePathRules() throws {
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .astro
+    profile.localRepositoryRootPath = "/tmp/astro-site"
+    profile.markdownPathPattern = "src/content/blog/{slug}.md"
+    let draft = ArticleDraft(siteProfileID: profile.id, title: "预览文章", slug: "preview-post")
+
+    let previewURL = try XCTUnwrap(LocalSitePreviewService().previewURL(for: draft, profile: profile))
+
+    XCTAssertEqual(previewURL.absoluteString, "http://127.0.0.1:4321/preview-post")
+  }
+
   func testPreviewProcessServiceStartsAndStopsControlledProcess() throws {
     let service = LocalSitePreviewProcessService()
     let plan = LocalSitePreviewPlan(
@@ -99,6 +114,32 @@ final class LocalSitePreviewServiceTests: XCTestCase {
 
     service.stop()
     XCTAssertFalse(service.status.isRunning)
+#if canImport(Darwin)
+    XCTAssertEqual(Darwin.kill(try XCTUnwrap(started.processIdentifier), 0), -1)
+    XCTAssertEqual(errno, ESRCH)
+#endif
+  }
+
+  func testPreviewProcessServiceStopsAsynchronously() async throws {
+    let service = LocalSitePreviewProcessService()
+    let plan = LocalSitePreviewPlan(
+      siteKind: .zola,
+      rootPath: FileManager.default.temporaryDirectory.path,
+      executablePath: "/bin/sleep",
+      arguments: ["5"],
+      command: "sleep 5",
+      previewURL: try XCTUnwrap(URL(string: "http://127.0.0.1:1111")),
+      notes: []
+    )
+
+    let started = try service.start(plan: plan)
+    await service.stopAsync()
+
+    XCTAssertFalse(service.status.isRunning)
+#if canImport(Darwin)
+    XCTAssertEqual(Darwin.kill(try XCTUnwrap(started.processIdentifier), 0), -1)
+    XCTAssertEqual(errno, ESRCH)
+#endif
   }
 
   func testPreviewProcessEnvironmentAddsCommonMacToolPaths() {

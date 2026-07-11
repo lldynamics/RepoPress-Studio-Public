@@ -118,18 +118,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift" \
-  ".accessibilityLabel(\"发布状态\")" \
-  "publishing status light must expose an accessibility label"
+  ".accessibilityLabel(\"工作台状态\")" \
+  "workbench status control must expose an accessibility label"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift" \
-  ".accessibilityValue(\"\\(status.title)，\\(status.accessibilityValue)\")" \
-  "publishing status light must expose a concise accessibility value"
+  ".accessibilityValue(\"仓库、当前文章和部署历史\")" \
+  "workbench status control must expose a concise accessibility value"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift" \
-  ".help(status.tooltipText)" \
-  "publishing status light must keep long status detail out of the VoiceOver hint"
+  ".help(\"查看仓库、当前文章和部署历史的独立状态\")" \
+  "workbench status control must keep long status detail out of the VoiceOver hint"
 
 require_literal_source_manifest \
   "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" \

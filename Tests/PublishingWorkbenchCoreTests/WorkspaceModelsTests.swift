@@ -4,8 +4,8 @@ import XCTest
 final class WorkspaceModelsTests: XCTestCase {
   func testWorkspaceSectionsExposeStableCommandNumberShortcuts() {
     XCTAssertEqual(
-      WorkspaceSection.allCases.map(\.displayName),
-      ["写作", "建站", "同步", "图片", "内容健康", "AI 对话", "素材库", "维护", "发布记录", "上架门禁"]
+      WorkspaceSection.allCases.map(\.displayNameLocalizationKey),
+      ["workspace.writing", "workspace.siteStarter", "workspace.sync", "workspace.images", "workspace.contentHealth", "workspace.ai", "workspace.generalDrafts", "workspace.maintenance", "workspace.releaseHistory", "workspace.releaseReadiness"]
     )
     XCTAssertEqual(WorkspaceSection.allCases.map { String($0.keyboardShortcutKey) }, ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"])
     XCTAssertEqual(WorkspaceSection.allCases.map(\.keyboardShortcutLabel), ["⌘1", "⌘2", "⌘3", "⌘4", "⌘5", "⌘6", "⌘7", "⌘8", "⌘9", "⌘0"])
@@ -25,11 +25,19 @@ final class WorkspaceModelsTests: XCTestCase {
       ]
     )
     XCTAssertEqual(Set(WorkspaceSection.allCases.map(\.keyboardShortcutKey)).count, WorkspaceSection.allCases.count)
+    XCTAssertEqual(
+      WorkspaceSection.allCases.map(\.detailLocalizationKey),
+      ["workspace.writing.detail", "workspace.siteStarter.detail", "workspace.sync.detail", "workspace.images.detail", "workspace.contentHealth.detail", "workspace.ai.detail", "workspace.generalDrafts.detail", "workspace.maintenance.detail", "workspace.releaseHistory.detail", "workspace.releaseReadiness.detail"]
+    )
+    XCTAssertEqual(WorkspaceSection.writing.contextSidebarMode, .writingDrafts)
+    XCTAssertEqual(WorkspaceSection.contentHealth.contextSidebarMode, .contentHealthFilters)
+    XCTAssertEqual(WorkspaceSection.sync.contextSidebarMode, .repositoryStages)
+    XCTAssertEqual(WorkspaceSection.siteStarter.contextSidebarMode, .none)
+    XCTAssertEqual(WorkspaceSection.releaseReadiness.contextSidebarMode, .none)
   }
 
   func testWorkspaceNavigationPresentationCentralizesSurfacePolicies() {
     XCTAssertEqual(WorkspaceNavigationPresentation.defaultSection, .writing)
-    XCTAssertEqual(WorkspaceNavigationPresentation.sidebarMode, .writingDraftColumn)
     XCTAssertEqual(
       WorkspaceNavigationPresentation.topBarItems.map(\.section),
       [.sync, .images, .contentHealth, .releaseHistory]

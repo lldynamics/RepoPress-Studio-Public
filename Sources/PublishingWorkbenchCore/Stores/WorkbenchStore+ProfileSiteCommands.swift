@@ -5,8 +5,21 @@ extension WorkbenchStore {
     publishingStore.stopLocalSitePreview()
   }
 
+  public func stopLocalSitePreviewImmediately() {
+    publishingStore.stopLocalSitePreviewImmediately()
+  }
+
   public func startLocalSitePreview() {
+    publishingStore.refreshLocalSitePreviewPlan(for: activeProfile)
     publishingStore.startLocalSitePreview()
+  }
+
+  public func refreshLocalSitePreviewRuntimeStatus() {
+    publishingStore.refreshLocalSitePreviewRuntimeStatus()
+  }
+
+  public func verifyLocalSitePreviewReachability() async {
+    await publishingStore.verifyLocalSitePreviewReachability()
   }
 
   public func updateActiveProfile(_ update: (inout SiteProfile) -> Void) {
@@ -30,8 +43,8 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func commitAndPushStarterSite() -> SiteStarterPushResult? {
-    publishingStore.commitAndPushStarterSite(store: self)
+  public func commitAndPushStarterSite() async -> SiteStarterPushResult? {
+    await publishingStore.commitAndPushStarterSite(store: self)
   }
 
   @discardableResult

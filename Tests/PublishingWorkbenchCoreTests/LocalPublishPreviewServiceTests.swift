@@ -175,6 +175,51 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     XCTAssertEqual(try String(contentsOf: outsideImageURL, encoding: .utf8), "outside original")
   }
 
+  func testWritePrevalidatesEveryDestinationBeforeChangingEarlierFiles() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let existingURL = rootURL.appendingPathComponent("content/posts/existing.md")
+    let sourceURL = rootURL.appendingPathComponent("source.jpg")
+    try "replacement image".write(to: sourceURL, atomically: true, encoding: .utf8)
+    try "not a directory".write(
+      to: rootURL.appendingPathComponent("blocked"),
+      atomically: true,
+      encoding: .utf8
+    )
+    let package = publishPackage(
+      files: [
+        .init(kind: .markdown, repositoryPath: "content/posts/existing.md", content: "new content"),
+        .init(kind: .image, repositoryPath: "blocked/image.jpg", sourceFilePath: sourceURL.path),
+      ]
+    )
+
+    XCTAssertThrowsError(try LocalPublishPreviewService().write(package: package, rootURL: rootURL))
+    XCTAssertEqual(try String(contentsOf: existingURL, encoding: .utf8), "old content\n")
+  }
+
+  func testWriteAtomicallyReplacesExistingImage() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let imagesURL = rootURL.appendingPathComponent("images", isDirectory: true)
+    try FileManager.default.createDirectory(at: imagesURL, withIntermediateDirectories: true)
+    let destinationURL = imagesURL.appendingPathComponent("cover.jpg")
+    let sourceURL = rootURL.appendingPathComponent("replacement.jpg")
+    try Data("old image".utf8).write(to: destinationURL)
+    try Data("new image".utf8).write(to: sourceURL)
+    let package = publishPackage(
+      files: [.init(kind: .image, repositoryPath: "images/cover.jpg", sourceFilePath: sourceURL.path)]
+    )
+
+    let written = try LocalPublishPreviewService().write(package: package, rootURL: rootURL)
+
+    XCTAssertEqual(written, ["images/cover.jpg"])
+    XCTAssertEqual(try Data(contentsOf: destinationURL), Data("new image".utf8))
+    XCTAssertFalse(
+      try FileManager.default.contentsOfDirectory(atPath: imagesURL.path)
+        .contains(where: { $0.contains("publisher-stage") })
+    )
+  }
+
   private func publishPackage(files: [PublishPackageFile]) -> PublishPackage {
     PublishPackage(
       draftID: UUID(),

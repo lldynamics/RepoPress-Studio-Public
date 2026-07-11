@@ -6,6 +6,14 @@ public final class ImageWorkbenchStore: ObservableObject {
   private unowned let store: WorkbenchStore
   private let imageWorkbenchService: SiteImageWorkbenchService
   private let persistence: WorkbenchPersistence
+  private let batchProcessor: ImageBatchProcessingActor
+  private var imageBatchTask: Task<Void, Never>?
+  private var imageBatchCancellationToken: ImageProcessingCancellationToken?
+  private var imageBatchOperationID: UUID?
+  private var imageBatchDraftBaselines: [UUID: DraftOperationBaseline] = [:]
+
+  @Published public private(set) var imageBatchProgress: ImageBatchProgress?
+  @Published public private(set) var isImageBatchProcessing = false
 
   init(
     store: WorkbenchStore,
@@ -15,6 +23,7 @@ public final class ImageWorkbenchStore: ObservableObject {
     self.store = store
     self.imageWorkbenchService = imageWorkbenchService
     self.persistence = persistence
+    self.batchProcessor = ImageBatchProcessingActor(service: imageWorkbenchService)
   }
 
   private var selectedDraft: ArticleDraft? {
@@ -54,6 +63,145 @@ public final class ImageWorkbenchStore: ObservableObject {
 
   private func save() {
     store.save()
+  }
+
+  public func cancelImageBatchProcessing() {
+    guard isImageBatchProcessing else { return }
+    imageActionMessage = "正在取消图片处理…"
+    imageBatchCancellationToken?.cancel()
+    imageBatchTask?.cancel()
+  }
+
+  private func startImageBatch(_ operation: ImageBatchOperation, drafts: [ArticleDraft]) {
+    guard !isImageBatchProcessing else {
+      imageActionMessage = "已有图片处理任务正在运行，请先等待或取消。"
+      return
+    }
+    guard !drafts.isEmpty else {
+      imageActionMessage = "没有可处理的文章。"
+      return
+    }
+
+    store.flushDraftBodyEditorBuffers()
+    let requestedDraftIDs = Set(drafts.map(\.id))
+    let currentDrafts = store.drafts.filter { requestedDraftIDs.contains($0.id) }
+    guard !currentDrafts.isEmpty else {
+      imageActionMessage = "没有可处理的文章。"
+      return
+    }
+
+    let operationID = UUID()
+    let cancellationToken = ImageProcessingCancellationToken()
+    let batchProcessor = batchProcessor
+    let destinationRoot = persistence.imageOptimizationDirectoryURL
+    imageBatchOperationID = operationID
+    imageBatchDraftBaselines = Dictionary(
+      uniqueKeysWithValues: currentDrafts.compactMap { draft in
+        store.draftOperationBaseline(for: draft.id).map { (draft.id, $0) }
+      }
+    )
+    imageBatchCancellationToken = cancellationToken
+    imageBatchProgress = ImageBatchProgress(
+      operation: operation,
+      completedDraftCount: 0,
+      totalDraftCount: currentDrafts.count
+    )
+    isImageBatchProcessing = true
+    imageActionMessage = "正在\(operation.progressTitle)：0/\(currentDrafts.count) 篇文章。"
+
+    imageBatchTask = Task { [weak self] in
+      do {
+        let result = try await batchProcessor.process(
+          operation: operation,
+          drafts: currentDrafts,
+          destinationRoot: destinationRoot,
+          cancellationToken: cancellationToken,
+          progress: { [weak self] progress in
+            guard self?.imageBatchOperationID == operationID else { return }
+            self?.imageBatchProgress = progress
+            self?.imageActionMessage = "正在\(progress.operation.progressTitle)：\(progress.completedDraftCount)/\(progress.totalDraftCount) 篇文章。"
+          }
+        )
+        guard self?.imageBatchOperationID == operationID else {
+          try? FileManager.default.removeItem(at: result.outputDirectory)
+          return
+        }
+        self?.applyImageBatch(result, operation: operation)
+      } catch is CancellationError {
+        self?.finishImageBatch(
+          operationID: operationID,
+          message: "已取消\(operation.progressTitle)，临时文件已清理。"
+        )
+      } catch {
+        self?.finishImageBatch(
+          operationID: operationID,
+          message: "\(operation.progressTitle)失败：\(error.localizedDescription)"
+        )
+      }
+    }
+  }
+
+  private func applyImageBatch(_ result: ImageBatchProcessingResult, operation: ImageBatchOperation) {
+    guard imageBatchOperationID != nil else {
+      try? FileManager.default.removeItem(at: result.outputDirectory)
+      return
+    }
+
+    let conflictingDraftIDs = result.updatedDraftsByID.keys.filter { draftID in
+      guard let baseline = imageBatchDraftBaselines[draftID] else { return true }
+      return !store.draftStillMatchesOperationBaseline(baseline)
+    }
+    guard conflictingDraftIDs.isEmpty else {
+      try? FileManager.default.removeItem(at: result.outputDirectory)
+      finishImageBatch(
+        operationID: imageBatchOperationID,
+        message: "有 \(conflictingDraftIDs.count) 篇文章在图片处理期间被修改，本次结果未应用；请确认编辑内容后重新运行。"
+      )
+      return
+    }
+
+    if !result.updatedDraftsByID.isEmpty {
+      for updatedDraft in result.updatedDraftsByID.values {
+        store.updateDraft(updatedDraft)
+      }
+      store.invalidateDraftDerivedCaches()
+      runPreflight()
+      save()
+    } else {
+      try? FileManager.default.removeItem(at: result.outputDirectory)
+    }
+    refreshImageWorkbenchReport()
+
+    let message: String
+    if result.optimizedCount == 0 {
+      message = result.firstMessage ?? "没有可\(operation.progressTitle)的图片。"
+    } else {
+      let saved = ByteCountFormatter.string(fromByteCount: result.savedBytes, countStyle: .file)
+      switch operation {
+      case .optimizeJPEG:
+        message = "已批量生成 \(result.optimizedCount) 个 JPEG 优化副本，预计减少 \(saved)。"
+      case .convertWebP:
+        message = "已批量转换 \(result.optimizedCount) 张 WebP 图片，预计减少 \(saved)。"
+      case .optimizeSVG:
+        message = "已批量优化 \(result.optimizedCount) 个 SVG 副本，预计减少 \(saved)。"
+      case .resizeLargeImages:
+        message = "已批量缩放 \(result.optimizedCount) 张大图，预计减少 \(saved)。"
+      case .cropCover16By9:
+        message = "已裁剪封面图为 16:9，预计减少 \(saved)。"
+      }
+    }
+    finishImageBatch(operationID: imageBatchOperationID, message: message)
+  }
+
+  private func finishImageBatch(operationID: UUID?, message: String) {
+    guard operationID == imageBatchOperationID else { return }
+    imageBatchTask = nil
+    imageBatchCancellationToken = nil
+    imageBatchOperationID = nil
+    imageBatchDraftBaselines = [:]
+    imageBatchProgress = nil
+    isImageBatchProcessing = false
+    imageActionMessage = message
   }
 
   public func refreshImageWorkbenchReport() {
@@ -140,71 +288,11 @@ public final class ImageWorkbenchStore: ObservableObject {
       imageActionMessage = "请先选择一篇文章。"
       return
     }
-
-    do {
-      let result = try imageWorkbenchService.optimizeJPEGAttachments(
-        draft: selectedDraft,
-        destinationDirectory: persistence.imageOptimizationDirectoryURL
-      )
-
-      if result.optimizedCount > 0 {
-        updateDraft(result.draft)
-        save()
-      }
-
-      refreshImageWorkbenchReport()
-
-      if result.optimizedCount == 0 {
-        imageActionMessage = result.messages.first ?? "没有可压缩的 JPEG 图片。"
-      } else {
-        let saved = ByteCountFormatter.string(fromByteCount: result.savedBytes, countStyle: .file)
-        imageActionMessage = "已生成 \(result.optimizedCount) 个优化副本，预计减少 \(saved)。"
-      }
-    } catch {
-      imageActionMessage = "图片压缩失败：\(error.localizedDescription)"
-    }
+    startImageBatch(.optimizeJPEG, drafts: [selectedDraft])
   }
 
   public func optimizeVisibleDraftJPEGImages() {
-    var updatedDraftsByID: [UUID: ArticleDraft] = [:]
-    var optimizedCount = 0
-    var savedBytes: Int64 = 0
-    var firstMessage: String?
-
-    do {
-      for draft in visibleDrafts {
-        let result = try imageWorkbenchService.optimizeJPEGAttachments(
-          draft: draft,
-          destinationDirectory: persistence.imageOptimizationDirectoryURL
-        )
-
-        if result.optimizedCount > 0 {
-          updatedDraftsByID[draft.id] = result.draft
-          optimizedCount += result.optimizedCount
-          savedBytes += result.savedBytes
-        } else if firstMessage == nil {
-          firstMessage = result.messages.first
-        }
-      }
-
-      if !updatedDraftsByID.isEmpty {
-        drafts = drafts.map { updatedDraftsByID[$0.id] ?? $0 }
-        runPreflight()
-        refreshImageWorkbenchReport()
-        save()
-      } else {
-        refreshImageWorkbenchReport()
-      }
-
-      if optimizedCount == 0 {
-        imageActionMessage = firstMessage ?? "当前 Profile 没有可压缩的 JPEG 图片。"
-      } else {
-        let saved = ByteCountFormatter.string(fromByteCount: savedBytes, countStyle: .file)
-        imageActionMessage = "已批量生成 \(optimizedCount) 个优化副本，预计减少 \(saved)。"
-      }
-    } catch {
-      imageActionMessage = "批量图片压缩失败：\(error.localizedDescription)"
-    }
+    startImageBatch(.optimizeJPEG, drafts: visibleDrafts)
   }
 
   public func convertSelectedDraftImagesToWebP() {
@@ -213,70 +301,11 @@ public final class ImageWorkbenchStore: ObservableObject {
       return
     }
 
-    do {
-      let result = try imageWorkbenchService.convertAttachmentsToWebP(
-        draft: selectedDraft,
-        destinationDirectory: persistence.imageOptimizationDirectoryURL
-      )
-
-      if result.optimizedCount > 0 {
-        updateDraft(result.draft)
-        save()
-      }
-
-      refreshImageWorkbenchReport()
-
-      if result.optimizedCount == 0 {
-        imageActionMessage = result.messages.first ?? "没有可转换为 WebP 的图片。"
-      } else {
-        let saved = ByteCountFormatter.string(fromByteCount: result.savedBytes, countStyle: .file)
-        imageActionMessage = "已转换 \(result.optimizedCount) 张 WebP 图片，预计减少 \(saved)。"
-      }
-    } catch {
-      imageActionMessage = "WebP 转换失败：\(error.localizedDescription)"
-    }
+    startImageBatch(.convertWebP, drafts: [selectedDraft])
   }
 
   public func convertVisibleDraftImagesToWebP() {
-    var updatedDraftsByID: [UUID: ArticleDraft] = [:]
-    var convertedCount = 0
-    var savedBytes: Int64 = 0
-    var firstMessage: String?
-
-    do {
-      for draft in visibleDrafts {
-        let result = try imageWorkbenchService.convertAttachmentsToWebP(
-          draft: draft,
-          destinationDirectory: persistence.imageOptimizationDirectoryURL
-        )
-
-        if result.optimizedCount > 0 {
-          updatedDraftsByID[draft.id] = result.draft
-          convertedCount += result.optimizedCount
-          savedBytes += result.savedBytes
-        } else if firstMessage == nil {
-          firstMessage = result.messages.first
-        }
-      }
-
-      if !updatedDraftsByID.isEmpty {
-        drafts = drafts.map { updatedDraftsByID[$0.id] ?? $0 }
-        runPreflight()
-        refreshImageWorkbenchReport()
-        save()
-      } else {
-        refreshImageWorkbenchReport()
-      }
-
-      if convertedCount == 0 {
-        imageActionMessage = firstMessage ?? "当前 Profile 没有可转换为 WebP 的图片。"
-      } else {
-        let saved = ByteCountFormatter.string(fromByteCount: savedBytes, countStyle: .file)
-        imageActionMessage = "已批量转换 \(convertedCount) 张 WebP 图片，预计减少 \(saved)。"
-      }
-    } catch {
-      imageActionMessage = "批量 WebP 转换失败：\(error.localizedDescription)"
-    }
+    startImageBatch(.convertWebP, drafts: visibleDrafts)
   }
 
   public func optimizeSelectedDraftSVGImages() {
@@ -285,70 +314,11 @@ public final class ImageWorkbenchStore: ObservableObject {
       return
     }
 
-    do {
-      let result = try imageWorkbenchService.optimizeSVGAttachments(
-        draft: selectedDraft,
-        destinationDirectory: persistence.imageOptimizationDirectoryURL
-      )
-
-      if result.optimizedCount > 0 {
-        updateDraft(result.draft)
-        save()
-      }
-
-      refreshImageWorkbenchReport()
-
-      if result.optimizedCount == 0 {
-        imageActionMessage = result.messages.first ?? "没有可优化的 SVG 图片。"
-      } else {
-        let saved = ByteCountFormatter.string(fromByteCount: result.savedBytes, countStyle: .file)
-        imageActionMessage = "已优化 \(result.optimizedCount) 个 SVG 副本，预计减少 \(saved)。"
-      }
-    } catch {
-      imageActionMessage = "SVG 优化失败：\(error.localizedDescription)"
-    }
+    startImageBatch(.optimizeSVG, drafts: [selectedDraft])
   }
 
   public func optimizeVisibleDraftSVGImages() {
-    var updatedDraftsByID: [UUID: ArticleDraft] = [:]
-    var optimizedCount = 0
-    var savedBytes: Int64 = 0
-    var firstMessage: String?
-
-    do {
-      for draft in visibleDrafts {
-        let result = try imageWorkbenchService.optimizeSVGAttachments(
-          draft: draft,
-          destinationDirectory: persistence.imageOptimizationDirectoryURL
-        )
-
-        if result.optimizedCount > 0 {
-          updatedDraftsByID[draft.id] = result.draft
-          optimizedCount += result.optimizedCount
-          savedBytes += result.savedBytes
-        } else if firstMessage == nil {
-          firstMessage = result.messages.first
-        }
-      }
-
-      if !updatedDraftsByID.isEmpty {
-        drafts = drafts.map { updatedDraftsByID[$0.id] ?? $0 }
-        runPreflight()
-        refreshImageWorkbenchReport()
-        save()
-      } else {
-        refreshImageWorkbenchReport()
-      }
-
-      if optimizedCount == 0 {
-        imageActionMessage = firstMessage ?? "当前 Profile 没有可优化的 SVG 图片。"
-      } else {
-        let saved = ByteCountFormatter.string(fromByteCount: savedBytes, countStyle: .file)
-        imageActionMessage = "已批量优化 \(optimizedCount) 个 SVG 副本，预计减少 \(saved)。"
-      }
-    } catch {
-      imageActionMessage = "批量 SVG 优化失败：\(error.localizedDescription)"
-    }
+    startImageBatch(.optimizeSVG, drafts: visibleDrafts)
   }
 
   public func resizeSelectedDraftLargeImages() {
@@ -357,70 +327,11 @@ public final class ImageWorkbenchStore: ObservableObject {
       return
     }
 
-    do {
-      let result = try imageWorkbenchService.resizeLargeAttachments(
-        draft: selectedDraft,
-        destinationDirectory: persistence.imageOptimizationDirectoryURL
-      )
-
-      if result.optimizedCount > 0 {
-        updateDraft(result.draft)
-        save()
-      }
-
-      refreshImageWorkbenchReport()
-
-      if result.optimizedCount == 0 {
-        imageActionMessage = result.messages.first ?? "没有需要缩放的大图。"
-      } else {
-        let saved = ByteCountFormatter.string(fromByteCount: result.savedBytes, countStyle: .file)
-        imageActionMessage = "已缩放 \(result.optimizedCount) 张大图，预计减少 \(saved)。"
-      }
-    } catch {
-      imageActionMessage = "图片缩放失败：\(error.localizedDescription)"
-    }
+    startImageBatch(.resizeLargeImages, drafts: [selectedDraft])
   }
 
   public func resizeVisibleDraftLargeImages() {
-    var updatedDraftsByID: [UUID: ArticleDraft] = [:]
-    var resizedCount = 0
-    var savedBytes: Int64 = 0
-    var firstMessage: String?
-
-    do {
-      for draft in visibleDrafts {
-        let result = try imageWorkbenchService.resizeLargeAttachments(
-          draft: draft,
-          destinationDirectory: persistence.imageOptimizationDirectoryURL
-        )
-
-        if result.optimizedCount > 0 {
-          updatedDraftsByID[draft.id] = result.draft
-          resizedCount += result.optimizedCount
-          savedBytes += result.savedBytes
-        } else if firstMessage == nil {
-          firstMessage = result.messages.first
-        }
-      }
-
-      if !updatedDraftsByID.isEmpty {
-        drafts = drafts.map { updatedDraftsByID[$0.id] ?? $0 }
-        runPreflight()
-        refreshImageWorkbenchReport()
-        save()
-      } else {
-        refreshImageWorkbenchReport()
-      }
-
-      if resizedCount == 0 {
-        imageActionMessage = firstMessage ?? "当前 Profile 没有需要缩放的大图。"
-      } else {
-        let saved = ByteCountFormatter.string(fromByteCount: savedBytes, countStyle: .file)
-        imageActionMessage = "已批量缩放 \(resizedCount) 张大图，预计减少 \(saved)。"
-      }
-    } catch {
-      imageActionMessage = "批量图片缩放失败：\(error.localizedDescription)"
-    }
+    startImageBatch(.resizeLargeImages, drafts: visibleDrafts)
   }
 
   public func cropSelectedDraftCoverImageForSocialPreview() {
@@ -429,36 +340,12 @@ public final class ImageWorkbenchStore: ObservableObject {
       return
     }
 
-    guard let coverAttachmentID = selectedDraft.coverAttachmentID else {
+    guard selectedDraft.coverAttachmentID != nil else {
       imageActionMessage = "请先设置封面图，再裁剪 16:9 封面。"
       return
     }
 
-    do {
-      let result = try imageWorkbenchService.cropAttachmentToAspectRatio(
-        draft: selectedDraft,
-        attachmentID: coverAttachmentID,
-        destinationDirectory: persistence.imageOptimizationDirectoryURL,
-        aspectWidth: 16,
-        aspectHeight: 9
-      )
-
-      if result.optimizedCount > 0 {
-        updateDraft(result.draft)
-        save()
-      }
-
-      refreshImageWorkbenchReport()
-
-      if result.optimizedCount == 0 {
-        imageActionMessage = result.messages.first ?? "封面图不需要裁剪。"
-      } else {
-        let saved = ByteCountFormatter.string(fromByteCount: result.savedBytes, countStyle: .file)
-        imageActionMessage = "已裁剪封面图为 16:9，预计减少 \(saved)。"
-      }
-    } catch {
-      imageActionMessage = "封面图裁剪失败：\(error.localizedDescription)"
-    }
+    startImageBatch(.cropCover16By9, drafts: [selectedDraft])
   }
 
   public func makeAttachment(from url: URL, draft: ArticleDraft) -> DraftAttachment {

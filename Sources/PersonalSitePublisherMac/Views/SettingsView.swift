@@ -1,5 +1,8 @@
 import PublishingWorkbenchCore
 import SwiftUI
+#if DEBUG
+import PublishingWorkbenchScreenshotSupport
+#endif
 
 struct SettingsView: View {
   @ObservedObject var store: WorkbenchStore
@@ -8,6 +11,8 @@ struct SettingsView: View {
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
   @State private var selectedSettingsTab: SettingsTab
+  @State private var healthDestination: SettingsConfigurationHealthDestination?
+  @State private var healthNavigationRequestID = UUID()
 
   init(
     store: WorkbenchStore,
@@ -26,10 +31,10 @@ struct SettingsView: View {
         activeProfileIDBinding: activeProfileIDBinding,
         activeProfileBinding: activeProfileBinding,
         createProfile: {
-          store.createProfile()
+          _ = store.createProfile()
         },
         duplicateActiveProfile: {
-          store.duplicateActiveProfile()
+          _ = store.duplicateActiveProfile()
         },
         deleteActiveProfile: {
           _ = store.deleteActiveProfile()
@@ -50,7 +55,8 @@ struct SettingsView: View {
         aiTokenAvailability: store.ai.tokenAvailability,
         privacySettings: store.privacySettings,
         isProUnlocked: store.monetizationState.entitlement.isUnlocked,
-        proSource: store.monetizationState.entitlement.source.displayName
+        proSource: store.monetizationState.entitlement.source.displayName,
+        selectDestination: openConfigurationHealthDestination
       )
       .padding(.horizontal, 18)
       .padding(.bottom, 10)
@@ -67,7 +73,9 @@ struct SettingsView: View {
               defaultShowsInspector: $defaultShowsInspector,
               autoRunPreflightBinding: autoRunPreflightBinding,
               scanRepositoryOnLaunch: $scanRepositoryOnLaunch,
-              siteKindBinding: siteKindBinding
+              siteKindBinding: siteKindBinding,
+              healthDestination: healthDestination,
+              healthNavigationRequestID: healthNavigationRequestID
             )
           )
           .tag(tab)
@@ -88,7 +96,11 @@ struct SettingsView: View {
   }
 
   private static func initialSettingsTab() -> SettingsTab {
+#if DEBUG
     ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .proSettings ? .pro : .defaultRules
+#else
+    .defaultRules
+#endif
   }
 
   private var activeProfileBinding: Binding<SiteProfile> {
@@ -125,5 +137,27 @@ struct SettingsView: View {
         store.applySiteKindDefaults(kind)
       }
     )
+  }
+
+  private func openConfigurationHealthDestination(_ destination: SettingsConfigurationHealthDestination) {
+    healthDestination = destination
+    healthNavigationRequestID = UUID()
+    switch destination {
+    case .repository:
+      guard let url = RepositorySelectionPanel.chooseDirectory() else { return }
+      Task {
+        await store.repository.rememberRootAsync(url)
+      }
+    case .defaultRules:
+      selectedSettingsTab = .defaultRules
+    case .repositoryToken:
+      selectedSettingsTab = .token
+    case .aiKey:
+      selectedSettingsTab = .ai
+    case .privacy:
+      selectedSettingsTab = .privacy
+    case .pro:
+      selectedSettingsTab = .pro
+    }
   }
 }

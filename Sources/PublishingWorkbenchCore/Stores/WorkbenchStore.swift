@@ -22,10 +22,9 @@ public final class WorkbenchStore: ObservableObject {
   public lazy var ai: WorkbenchAIFeatureFacade = WorkbenchAIFeatureFacade(store: self)
   public lazy var repository: WorkbenchRepositoryFeatureFacade = WorkbenchRepositoryFeatureFacade(store: self)
   public lazy var publishing: WorkbenchPublishingFeatureFacade = WorkbenchPublishingFeatureFacade(store: self)
-  public lazy var writing: WorkbenchWritingFeatureFacade = WorkbenchWritingFeatureFacade(store: self)
   public lazy var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade = WorkbenchImageWorkbenchFeatureFacade(store: self)
-  public lazy var releaseHistory: WorkbenchReleaseHistoryFeatureFacade = WorkbenchReleaseHistoryFeatureFacade(store: self)
-  public lazy var settingsHealth: WorkbenchSettingsHealthFeatureFacade = WorkbenchSettingsHealthFeatureFacade(store: self)
+  public lazy var persistenceStatus: WorkbenchPersistenceFeatureFacade = WorkbenchPersistenceFeatureFacade(store: self)
+  public lazy var shell: WorkbenchShellFeatureFacade = WorkbenchShellFeatureFacade(store: self)
   @Published public private(set) var contentHealthSnapshotVersion = 0
   @Published public private(set) var draftTaskQueueStateVersion = 0
   private var draftTaskQueueStateCache: [UUID: DraftTaskQueueState] = [:]
@@ -33,6 +32,7 @@ public final class WorkbenchStore: ObservableObject {
   private var imageWorkbenchSiteSummaryCache: (version: Int, summary: ImageWorkbenchSiteSummary)?
   private var childStoreCancellables = Set<AnyCancellable>()
   var preflightRefreshTask: Task<Void, Never>?
+  var draftBodyCommitTasks: [UUID: Task<Void, Never>] = [:]
 
   lazy var aiStore: WorkbenchAIStore = WorkbenchAIStore(
     store: self,
@@ -69,6 +69,7 @@ public final class WorkbenchStore: ObservableObject {
     repositorySyncCommandBuilder: RepositorySyncCommandBuilder = RepositorySyncCommandBuilder(),
     localSitePreviewService: LocalSitePreviewService = LocalSitePreviewService(),
     localSitePreviewProcessService: LocalSitePreviewProcessService = LocalSitePreviewProcessService(),
+    contentPerformanceCSVImportService: ContentPerformanceCSVImportService = ContentPerformanceCSVImportService(),
     remoteReviewDraftBuilder: RemoteReviewDraftBuilder = RemoteReviewDraftBuilder(),
     localGitPublishService: LocalGitPublishService = LocalGitPublishService(),
     remoteRepositoryPublishService: RemoteRepositoryPublishService = RemoteRepositoryPublishService(),
@@ -176,12 +177,10 @@ public final class WorkbenchStore: ObservableObject {
       generalDraftLibraryService: generalDraftLibraryService,
       localSitePreviewService: localSitePreviewService,
       localSitePreviewProcessService: localSitePreviewProcessService,
+      contentPerformanceCSVImportService: contentPerformanceCSVImportService,
       siteMaintenanceService: siteMaintenanceService,
       releaseQualityGateService: releaseQualityGateService
     )
-    aiWorkspaceStore.objectWillChange
-      .sink { [weak self] _ in self?.objectWillChange.send() }
-      .store(in: &childStoreCancellables)
     publishingStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStoreCancellables)
@@ -230,13 +229,15 @@ public final class WorkbenchStore: ObservableObject {
   func profile(for package: PublishPackage) -> SiteProfile { publishingStore.profile(for: package) }
 
   public func save() {
+    flushDraftBodyEditorBuffers()
     persistenceStore.saveImmediately(snapshot: persistenceStore.persistence.snapshot(from: self))
   }
 
   /// Saves immediately and reports whether it is safe to let the process exit.
   @discardableResult
   public func flushPendingChanges() -> Bool {
-    persistenceStore.flush(snapshot: persistenceStore.persistence.snapshot(from: self))
+    flushDraftBodyEditorBuffers()
+    return persistenceStore.flush(snapshot: persistenceStore.persistence.snapshot(from: self))
   }
 
   func scheduleAutosave() {

@@ -2,15 +2,19 @@ import SwiftUI
 
 struct TokenRepositoryTokenSection: View {
   let repositoryTokenInput: Binding<String>
+  let shouldFocusInput: Bool
+  let navigationRequestID: UUID
   let hasRepositoryToken: Bool
   let onSaveToken: () -> Void
   let onDeleteToken: () -> Void
   let onRefreshTokenState: () -> Void
   let onOpenRepositoryPermission: () -> Void
+  @FocusState private var isRepositoryTokenFocused: Bool
 
   var body: some View {
     Section("仓库访问 Token") {
       SecureField("\u{7AD9}\u{5E93} Provider Token（GitHub / GitLab）", text: repositoryTokenInput)
+        .focused($isRepositoryTokenFocused)
         .accessibilityLabel("仓库访问 Token")
         .accessibilityHint("仅用于仓库创建、权限检查、提交、PR/MR 和回滚")
 
@@ -40,6 +44,10 @@ struct TokenRepositoryTokenSection: View {
         Label("打开仓库权限", systemImage: "lock.shield")
       }
       .accessibilityLabel("打开仓库权限设置")
+    }
+    .task(id: navigationRequestID) {
+      guard shouldFocusInput else { return }
+      isRepositoryTokenFocused = true
     }
   }
 }

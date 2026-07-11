@@ -19,6 +19,26 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertNil(store.localPublishPreview)
   }
 
+  func testEmptyProfileWithRepositoryStillCreatesLocalPreviewPlan() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let rootURL = try temporaryDirectoryURL()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    let profile = store.createProfile(named: "工程站")
+    store.updateActiveProfile { profile in
+      profile.siteKind = .astro
+      profile.localRepositoryRootPath = rootURL.path
+    }
+
+    store.refreshPublishPreview()
+
+    let plan = try XCTUnwrap(store.localSitePreviewPlan)
+    XCTAssertEqual(store.activeProfileID, profile.id)
+    XCTAssertEqual(plan.rootPath, rootURL.path)
+    XCTAssertEqual(plan.arguments, ["npm", "run", "dev"])
+    XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:4321")
+  }
+
   func testEnsureEditableDraftSelectedCreatesDraftForEmptyProfile() throws {
     let store = try TestWorkbenchFactory.makeStore()
     let profile = store.createProfile(named: "工程站")
@@ -423,7 +443,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.publishPackage?.markdownPath, "_posts/2026-08-29-jekyll-article.md")
   }
 
-  func testWritingPackageFocusesDraftProfileAndUsesItsRepositoryRoot() throws {
+  func testWritingPackageFocusesDraftProfileAndUsesItsRepositoryRoot() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let originalProfileID = store.activeProfileID
     let astroRoot = try temporaryDirectoryURL()
@@ -446,6 +466,9 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     )
     store.setDrafts(store.drafts + [draft])
     store.selectProfile(originalProfileID)
+    _ = store.focusDraft(draft.id)
+    await store.scanRepositoryAsync()
+    store.selectProfile(originalProfileID)
     store.refreshPublishPreview(for: draft)
 
     XCTAssertEqual(store.localPublishReadiness?.writeReadiness, .needsReview)
@@ -462,7 +485,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertTrue(store.releaseRecords.first?.changedPaths.contains("src/content/blog/astro-write.mdx") == true)
   }
 
-  func testSingleDraftPublishCommandsRequireCommitReadiness() throws {
+  func testSingleDraftPublishCommandsRequireCommitReadiness() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let rootURL = try temporaryDirectoryURL()
     defer {
@@ -499,7 +522,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertTrue(store.reviewBranchCommandsForSelectedDraft().isEmpty)
 
     try git(["init", "-b", "main"], rootURL: rootURL)
-    store.scanRepository()
+    await store.scanRepositoryAsync()
 
     XCTAssertEqual(store.localPublishReadiness?.canCommit, true)
     XCTAssertTrue(store.localCommitCommandForSelectedDraft()?.contains("git add 'content/posts/command-ready.md'") == true)
@@ -518,7 +541,39 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.localPublishReadiness?.commitReadiness, .unchanged)
   }
 
-  func testRepositoryBackupPurposeDoesNotBlockCommitReadinessOnMissingStaticSiteRoots() throws {
+  func testRepositoryReportAccessorDoesNotTriggerImplicitScan() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let rootURL = try temporaryDirectoryURL()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    store.updateActiveProfile(profile)
+
+    XCTAssertNil(store.repositoryReport(for: profile))
+    XCTAssertNil(store.repositoryReport)
+  }
+
+  func testLocalRepositoryMutationsAreSingleFlight() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let first = try XCTUnwrap(
+      store.publishingStore.beginLocalRepositoryMutation(profile: store.activeProfile)
+    )
+
+    XCTAssertTrue(store.isLocalRepositoryMutationRunning)
+    XCTAssertNil(store.publishingStore.beginLocalRepositoryMutation(profile: store.activeProfile))
+
+    store.publishingStore.finishLocalRepositoryMutation(first)
+    XCTAssertFalse(store.isLocalRepositoryMutationRunning)
+    let second = try XCTUnwrap(
+      store.publishingStore.beginLocalRepositoryMutation(profile: store.activeProfile)
+    )
+    store.publishingStore.finishLocalRepositoryMutation(second)
+    XCTAssertFalse(store.isLocalRepositoryMutationRunning)
+  }
+
+  func testRepositoryBackupPurposeDoesNotBlockCommitReadinessOnMissingStaticSiteRoots() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let rootURL = try temporaryDirectoryURL()
     defer {
@@ -547,20 +602,20 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
-    store.scanRepository()
+    await store.scanRepositoryAsync()
 
     XCTAssertEqual(store.localPublishReadiness?.commitReadiness, .blocked)
     XCTAssertTrue(store.localPublishReadiness?.commitBlockingIssues.contains { $0.title == "内容目录不存在" } == true)
 
     profile.purpose = .repositoryBackup
     store.updateActiveProfile(profile)
-    store.scanRepository()
+    await store.scanRepositoryAsync()
 
     XCTAssertEqual(store.localPublishReadiness?.commitReadiness, .ready)
     XCTAssertFalse(store.localPublishReadiness?.commitBlockingIssues.contains { $0.title == "内容目录不存在" } == true)
   }
 
-  func testPreferredPublishStrategyDirectCommitsOnCurrentBranch() throws {
+  func testPreferredPublishStrategyDirectCommitsOnCurrentBranch() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let rootURL = try preparedGitRepositoryRoot()
     defer {
@@ -583,9 +638,10 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
+    await store.scanRepositoryAsync()
     store.refreshPublishPreview(for: draft)
 
-    store.commitSelectedDraftUsingPreferredStrategy()
+    await store.commitSelectedDraftUsingPreferredStrategy()
 
     XCTAssertEqual(store.localGitPublishResult?.mode, .directCommit)
     XCTAssertEqual(store.localGitPublishResult?.branchName, "main")
@@ -593,7 +649,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(try git(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL), "main")
   }
 
-  func testPreferredPublishStrategyCreatesReviewBranch() throws {
+  func testPreferredPublishStrategyCreatesReviewBranch() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let rootURL = try preparedGitRepositoryRoot()
     defer {
@@ -616,11 +672,15 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
+    await store.scanRepositoryAsync()
     store.refreshPublishPreview(for: draft)
 
-    store.commitSelectedDraftUsingPreferredStrategy()
+    await store.commitSelectedDraftUsingPreferredStrategy()
 
-    let result = try XCTUnwrap(store.localGitPublishResult)
+    let result = try XCTUnwrap(
+      store.localGitPublishResult,
+      store.publishActionMessage ?? "本地 Review 提交未返回结果"
+    )
     XCTAssertEqual(result.mode, .reviewBranch)
     XCTAssertEqual(result.branchName, "publish/preferred-review-20260829")
     XCTAssertEqual(store.releaseRecords.first?.kind, .reviewBranch)

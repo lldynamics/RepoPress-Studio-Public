@@ -8,7 +8,9 @@ extension WorkbenchStore {
   public var publishPackage: PublishPackage? { publishingStore.publishPackage }
   public var localPublishPreview: LocalPublishPreview? { publishingStore.localPublishPreview }
   public var localPublishReadiness: LocalPublishReadiness? { publishingStore.localPublishReadiness }
+  public var remotePublishPreviewSnapshot: RemoteRepositoryPublishPreview? { publishingStore.remotePublishPreviewSnapshot }
   public var batchPublishPlan: BatchPublishPlan? { publishingStore.batchPublishPlan }
+  public var batchRemotePublishPreviewSnapshot: RemoteRepositoryPublishPreview? { publishingStore.batchRemotePublishPreviewSnapshot }
   public var localSitePreviewPlan: LocalSitePreviewPlan? { publishingStore.localSitePreviewPlan }
   public var localSitePreviewRuntimeStatus: LocalSitePreviewRuntimeStatus { publishingStore.localSitePreviewRuntimeStatus }
   public var remoteReviewDraft: RemoteReviewDraft? { publishingStore.remoteReviewDraft }
@@ -27,6 +29,7 @@ extension WorkbenchStore {
   public var lastSaveError: String? { persistenceStore.lastSaveError }
   public var persistenceRecoveryMessage: String? { persistenceStore.recoveryMessage }
   public var publishActionMessage: String? { publishingStore.publishActionMessage }
+  public var isLocalRepositoryMutationRunning: Bool { publishingStore.isLocalRepositoryMutationRunning }
   public var imageActionMessage: String? { publishingStore.imageActionMessage }
   public var maintenanceOperationRecords: [MaintenanceOperationRecord] { publishingStore.maintenanceOperationRecords }
   public var contentPerformanceSnapshots: [ContentPerformanceSnapshot] { publishingStore.contentPerformanceSnapshots }

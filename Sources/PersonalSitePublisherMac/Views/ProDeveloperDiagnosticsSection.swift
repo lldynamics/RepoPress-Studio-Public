@@ -1,3 +1,4 @@
+#if DEBUG
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -53,3 +54,4 @@ struct ProDeveloperDiagnosticsSection: View {
     }
   }
 }
+#endif

@@ -65,6 +65,7 @@ public enum RepositoryAutoSyncStatus: String, Codable, Hashable, Sendable {
   case idle
   case disabled
   case waitingForRepository
+  case fetchFailed
   case scanned
 
   public var displayName: String {
@@ -75,6 +76,8 @@ public enum RepositoryAutoSyncStatus: String, Codable, Hashable, Sendable {
       return "已关闭"
     case .waitingForRepository:
       return "等待仓库"
+    case .fetchFailed:
+      return "Fetch 失败"
     case .scanned:
       return "已扫描"
     }
@@ -88,6 +91,8 @@ public enum RepositoryAutoSyncStatus: String, Codable, Hashable, Sendable {
       return "pause.circle"
     case .waitingForRepository:
       return "externaldrive.badge.questionmark"
+    case .fetchFailed:
+      return "exclamationmark.arrow.triangle.2.circlepath"
     case .scanned:
       return "arrow.triangle.2.circlepath.circle"
     }

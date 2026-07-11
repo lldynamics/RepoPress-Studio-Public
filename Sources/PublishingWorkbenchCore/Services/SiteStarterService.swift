@@ -182,6 +182,53 @@ public struct SiteStarterService {
     )
   }
 
+  public func commitAndPushStarterSiteAsync(
+    profile: SiteProfile,
+    commitMessage: String = "Initial site"
+  ) async throws -> SiteStarterPushResult {
+    guard let rootURL = profile.localRepositoryRootURL else {
+      throw SiteStarterError.missingRepositoryRoot
+    }
+    let didStartAccessing = rootURL.startAccessingSecurityScopedResource()
+    defer {
+      if didStartAccessing {
+        rootURL.stopAccessingSecurityScopedResource()
+      }
+    }
+    guard fileManager.fileExists(atPath: rootURL.appendingPathComponent(".git", isDirectory: true).path) else {
+      throw SiteStarterError.notGitRepository(rootURL.path)
+    }
+
+    let branch = profile.branch.trimmedForPublishing.nilIfEmpty ?? "main"
+    let remoteURL = try (await runGitOutputAsync(["remote", "get-url", "origin"], at: rootURL)).trimmedForPublishing
+    guard !remoteURL.isEmpty else {
+      throw SiteStarterError.missingOriginRemote
+    }
+
+    var outputChunks: [String] = []
+    outputChunks.append(try await runGitOutputAsync(["add", "."], at: rootURL))
+    let committedPaths = try await runGitOutputAsync(["diff", "--cached", "--name-only"], at: rootURL)
+      .split(separator: "\n")
+      .map { String($0).trimmedForPublishing }
+      .filter { !$0.isEmpty }
+    guard !committedPaths.isEmpty else {
+      throw SiteStarterError.noStarterChanges
+    }
+
+    outputChunks.append(try await runGitOutputAsync(["commit", "-m", commitMessage], at: rootURL))
+    let commitSHA = try (await runGitOutputAsync(["rev-parse", "HEAD"], at: rootURL)).trimmedForPublishing
+    outputChunks.append(try await runGitOutputAsync(["push", "-u", "origin", branch], at: rootURL))
+
+    return SiteStarterPushResult(
+      rootPath: rootURL.path,
+      branch: branch,
+      remoteURL: remoteURL,
+      commitSHA: commitSHA,
+      committedPaths: committedPaths,
+      output: outputChunks.map { $0.trimmedForPublishing }.filter { !$0.isEmpty }.joined(separator: "\n")
+    )
+  }
+
   private func template(for id: SiteStarterTemplateID) throws -> SiteStarterTemplate {
     guard let template = SiteStarterTemplate.builtIn.first(where: { $0.id == id }) else {
       throw SiteStarterError.unknownTemplate(id.rawValue)
@@ -523,6 +570,14 @@ public struct SiteStarterService {
 
   private func runGitOutput(_ arguments: [String], at rootURL: URL) throws -> String {
     let result = gitCommandRunner.run(arguments, rootURL: rootURL)
+    guard result.terminationStatus == 0 else {
+      throw SiteStarterError.gitFailed(result.output)
+    }
+    return result.output
+  }
+
+  private func runGitOutputAsync(_ arguments: [String], at rootURL: URL) async throws -> String {
+    let result = await gitCommandRunner.runAsync(arguments, rootURL: rootURL)
     guard result.terminationStatus == 0 else {
       throw SiteStarterError.gitFailed(result.output)
     }

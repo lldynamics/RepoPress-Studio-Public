@@ -2,21 +2,6 @@ import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
-struct PrivacySettingsAuditSection: View {
-  let audit: PrivacyProtectionAudit
-  let onCopyAuditReport: () -> Void
-
-  var body: some View {
-    Section("隐私体检") {
-      PrivacySettingsAuditPlainContent(
-        audit: audit,
-        showsHeading: false,
-        onCopyAuditReport: onCopyAuditReport
-      )
-    }
-  }
-}
-
 struct PrivacySettingsAuditPlainContent: View {
   let audit: PrivacyProtectionAudit
   var showsHeading = true
