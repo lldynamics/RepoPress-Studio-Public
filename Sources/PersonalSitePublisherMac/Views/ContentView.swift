@@ -12,9 +12,11 @@ struct ContentView: View {
   @Environment(\.scenePhase) private var scenePhase
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
+  @AppStorage("didCompleteFirstRunSetup") private var didCompleteFirstRunSetup = false
   @State private var didApplyInitialWorkbenchPreferences = false
   @State private var didApplyScreenshotDemoSurface = false
   @State private var isPublishDrawerPresented = false
+  @State private var isFirstRunSetupPresented = false
   @State private var isCompactLayout = false
   @State private var isCompactInspectorPresented = false
   @State private var contentHealthFilter: ContentHealthContextFilter = .overview
@@ -138,6 +140,14 @@ struct ContentView: View {
             Label("显示隐私遮罩", systemImage: "eye.slash")
           }
           .disabled(shellState.isPrivacyLocked)
+
+          Divider()
+
+          Button {
+            isFirstRunSetupPresented = true
+          } label: {
+            Label("首次设置…", systemImage: "wand.and.stars")
+          }
         } label: {
           Label("更多", systemImage: "ellipsis.circle")
         }
@@ -188,6 +198,13 @@ struct ContentView: View {
       PublishDrawerView(store: store, isPresented: $isPublishDrawerPresented)
         .frame(minWidth: 680, idealWidth: 780, minHeight: 600, idealHeight: 720)
     }
+    .sheet(isPresented: $isFirstRunSetupPresented) {
+      FirstRunSetupView(
+        store: store,
+        finish: finishFirstRunSetup,
+        skip: skipFirstRunSetup
+      )
+    }
   }
 
   private func handleRepositoryAutoSyncTick(_ date: Date) {
@@ -221,6 +238,38 @@ struct ContentView: View {
       didApplyScreenshotDemoSurface = true
     }
     store.setAutomaticallyRefreshPreflightOnEdit(autoRunPreflight)
+    presentFirstRunSetupIfNeeded()
+  }
+
+  private func presentFirstRunSetupIfNeeded() {
+#if DEBUG
+    let isScreenshotDemo = ScreenshotDemoDataService.isEnabledFromEnvironment
+#else
+    let isScreenshotDemo = false
+#endif
+    if !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty {
+      didCompleteFirstRunSetup = true
+    }
+    guard WorkbenchFirstRunSetupPolicy.shouldPresent(
+      didCompleteSetup: didCompleteFirstRunSetup,
+      profile: store.activeProfile,
+      isScreenshotDemo: isScreenshotDemo
+    ) else { return }
+    isFirstRunSetupPresented = true
+  }
+
+  private func finishFirstRunSetup() {
+    didCompleteFirstRunSetup = true
+    isFirstRunSetupPresented = false
+    store.selectSection(.sync)
+    Task {
+      await store.repository.scanAsync()
+    }
+  }
+
+  private func skipFirstRunSetup() {
+    didCompleteFirstRunSetup = true
+    isFirstRunSetupPresented = false
   }
 
   private var persistenceRecoveryMessage: String {

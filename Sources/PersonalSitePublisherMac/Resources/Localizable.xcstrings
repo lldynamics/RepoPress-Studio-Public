@@ -1473,6 +1473,22 @@
         }
       }
     },
+    "三步连接站点，之后可以随时在设置中修改。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect your site in three steps. You can change these settings at any time."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "三步连接站点，之后可以随时在设置中修改。"
+          }
+        }
+      }
+    },
     "上架门禁": {
       "localizations": {
         "en": {
@@ -4173,6 +4189,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "设置 upstream 后，这里会审阅远端待拉取的文章、图片和配置变化。"
+          }
+        }
+      }
+    },
+    "设置个人网站发布流程": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set Up Your Website Publishing Workflow"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置个人网站发布流程"
           }
         }
       }
