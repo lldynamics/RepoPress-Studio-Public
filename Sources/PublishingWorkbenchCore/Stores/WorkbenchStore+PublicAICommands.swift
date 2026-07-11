@@ -205,8 +205,8 @@ extension WorkbenchStore {
   public func aiChatImageAttachments(
     for draft: ArticleDraft,
     attachmentIDs: Set<UUID>
-  ) -> [AIChatImageAttachment] {
-    aiStore.aiChatImageAttachments(for: draft, attachmentIDs: attachmentIDs)
+  ) async -> [AIChatImageAttachment] {
+    await aiStore.aiChatImageAttachments(for: draft, attachmentIDs: attachmentIDs)
   }
 
   public func makeAttachment(from url: URL, draft: ArticleDraft) -> DraftAttachment {

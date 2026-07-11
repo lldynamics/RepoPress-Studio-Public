@@ -777,20 +777,29 @@ private func send(draft: ArticleDraft) {
     return
   }
   let message = sendReadiness.trimmedInput
-  let imageAttachments = store.ai.chatImageAttachments(
-    for: draft,
-    attachmentIDs: selectedImageAttachmentIDs
-  )
-  guard message.nilIfEmpty != nil || !imageAttachments.isEmpty else {
-    return
-  }
-  inputText = ""
-  selectedImageAttachmentIDs = []
-  applyMessage = nil
+  let originalInputText = inputText
+  let requestedAttachmentIDs = selectedImageAttachmentIDs
   chatTask?.cancel()
   let taskID = UUID()
   chatTaskID = taskID
   chatTask = Task { @MainActor in
+    let imageAttachments = await store.ai.chatImageAttachments(
+      for: draft,
+      attachmentIDs: requestedAttachmentIDs
+    )
+    guard !Task.isCancelled, chatTaskID == taskID else { return }
+    guard message.nilIfEmpty != nil || !imageAttachments.isEmpty else {
+      chatTask = nil
+      chatTaskID = nil
+      return
+    }
+    if inputText == originalInputText {
+      inputText = ""
+    }
+    if selectedImageAttachmentIDs == requestedAttachmentIDs {
+      selectedImageAttachmentIDs = []
+    }
+    applyMessage = nil
     await store.ai.sendChatMessage(message, draft: draft, imageAttachments: imageAttachments)
     if chatTaskID == taskID {
       chatTask = nil

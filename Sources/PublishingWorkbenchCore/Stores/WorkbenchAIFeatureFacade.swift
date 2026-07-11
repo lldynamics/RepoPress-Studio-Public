@@ -283,8 +283,8 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
   public func chatImageAttachments(
     for draft: ArticleDraft,
     attachmentIDs: Set<UUID>
-  ) -> [AIChatImageAttachment] {
-    store.aiChatImageAttachments(for: draft, attachmentIDs: attachmentIDs)
+  ) async -> [AIChatImageAttachment] {
+    await store.aiChatImageAttachments(for: draft, attachmentIDs: attachmentIDs)
   }
 
   public func makeImageAttachment(from url: URL, draft: ArticleDraft) -> DraftAttachment {
