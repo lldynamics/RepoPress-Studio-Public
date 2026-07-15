@@ -37,7 +37,7 @@ struct SettingsTokenTabFactory {
       repositoryPermissionContent: { isPresented in
         RepositoryPermissionSettingsView(
           state: RepositoryPermissionSettingsState(
-            repositoryProviderDisplayName: context.store.activeProfile.repositoryProvider.displayName,
+            repositoryProviderDisplayName: context.store.activeProfile.repositoryProvider.localizedDisplayName,
             repoOwner: context.store.activeProfile.repoOwner,
             repoName: context.store.activeProfile.repoName,
             branch: context.store.activeProfile.branch,

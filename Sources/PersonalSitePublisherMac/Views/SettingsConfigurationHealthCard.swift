@@ -133,7 +133,7 @@ struct SettingsConfigurationHealthCard: View {
       && !profile.dateFormat.trimmedForPublishing.isEmpty
     return SettingsConfigurationHealthItem(
       title: "默认规则",
-      detail: hasPublishingPaths ? "\(profile.siteKind.displayName) · 路径规则已配置" : "路径或日期规则缺失",
+      detail: hasPublishingPaths ? "\(profile.siteKind.localizedDisplayName) · 路径规则已配置" : "路径或日期规则缺失",
       systemImage: "gearshape.2",
       state: hasPublishingPaths ? .ready : .warning,
       destination: .defaultRules,
@@ -142,16 +142,11 @@ struct SettingsConfigurationHealthCard: View {
   }
 
   private var privacyItem: SettingsConfigurationHealthItem {
-    let enabled = [
-      privacySettings.requiresUnlockOnLaunch,
-      privacySettings.locksWhenInactive,
-      privacySettings.masksPrivateContent
-    ].filter { $0 }.count
     return SettingsConfigurationHealthItem(
-      title: "隐私锁",
-      detail: enabled > 0 ? "\(enabled) 项保护已开启" : "未开启隐私保护",
+      title: "内容遮挡",
+      detail: privacySettings.masksPrivateContent ? "私密内容遮挡已开启" : "私密内容遮挡未开启",
       systemImage: "hand.raised",
-      state: enabled > 0 ? .ready : .warning,
+      state: privacySettings.masksPrivateContent ? .ready : .warning,
       destination: .privacy,
       actionTitle: "打开隐私设置"
     )

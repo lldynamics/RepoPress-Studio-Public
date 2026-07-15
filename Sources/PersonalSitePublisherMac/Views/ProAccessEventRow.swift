@@ -7,12 +7,12 @@ struct ProAccessEventRow: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
       HStack(alignment: .firstTextBaseline) {
-        Label(event.feature.displayName, systemImage: event.outcome.systemImage)
+        Label(event.feature.localizedDisplayName, systemImage: event.outcome.systemImage)
           .font(.callout.weight(.medium))
 
         Spacer()
 
-        Text(event.outcome.displayName)
+        Text(event.outcome.localizedDisplayName)
           .font(.caption.weight(.semibold))
           .foregroundStyle(foreground)
       }

@@ -20,4 +20,8 @@ public enum ImageFileSupport {
   public static func isSupportedImageURL(_ url: URL) -> Bool {
     isSupportedImagePath(url.path)
   }
+
+  public static func supportedImageURLs(in urls: [URL]) -> [URL] {
+    urls.filter(isSupportedImageURL)
+  }
 }

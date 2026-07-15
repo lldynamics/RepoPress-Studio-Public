@@ -6,10 +6,15 @@ import UniformTypeIdentifiers
 import Darwin
 #endif
 public struct SiteImageWorkbenchService: Sendable {
+  public typealias AsyncReportOperation = @Sendable (ArticleDraft, SiteProfile) async throws -> ImageWorkbenchReport
+  public typealias AsyncSiteSummaryOperation = @Sendable ([ArticleDraft], SiteProfile) async throws -> ImageWorkbenchSiteSummary
+
   private let fileSystem: SendableFileManager
   private let cwebPExecutableOverride: URL?
   private let cwebPTimeout: TimeInterval
   private let prefersCWebP: Bool
+  private let asyncReportOperation: AsyncReportOperation?
+  private let asyncSiteSummaryOperation: AsyncSiteSummaryOperation?
 
   private var fileManager: FileManager { fileSystem.value }
 
@@ -61,15 +66,76 @@ public struct SiteImageWorkbenchService: Sendable {
     fileManager: FileManager = .default,
     cwebPExecutableURL: URL? = nil,
     cwebPTimeout: TimeInterval = 30,
-    prefersCWebP: Bool = false
+    prefersCWebP: Bool = false,
+    asyncReportOperation: AsyncReportOperation? = nil,
+    asyncSiteSummaryOperation: AsyncSiteSummaryOperation? = nil
   ) {
     self.fileSystem = SendableFileManager(fileManager)
     self.cwebPExecutableOverride = cwebPExecutableURL
     self.cwebPTimeout = max(0.1, cwebPTimeout)
     self.prefersCWebP = prefersCWebP
+    self.asyncReportOperation = asyncReportOperation
+    self.asyncSiteSummaryOperation = asyncSiteSummaryOperation
+  }
+
+  /// Performs file-backed image inspection away from the caller's actor.
+  /// The synchronous API remains available for explicit publishing and AI actions.
+  public func reportAsync(draft: ArticleDraft, profile: SiteProfile) async throws -> ImageWorkbenchReport {
+    if let asyncReportOperation {
+      return try await asyncReportOperation(draft, profile)
+    }
+
+    let task = Task.detached(priority: .userInitiated) {
+      try makeReport(
+        draft: draft,
+        profile: profile,
+        cancellationCheck: { try Task.checkCancellation() }
+      )
+    }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
+  }
+
+  /// Builds the site-wide image summary away from the caller's actor.
+  public func siteSummaryAsync(
+    drafts: [ArticleDraft],
+    profile: SiteProfile
+  ) async throws -> ImageWorkbenchSiteSummary {
+    if let asyncSiteSummaryOperation {
+      return try await asyncSiteSummaryOperation(drafts, profile)
+    }
+
+    let task = Task.detached(priority: .utility) {
+      try makeSiteSummary(
+        drafts: drafts,
+        profile: profile,
+        cancellationCheck: { try Task.checkCancellation() }
+      )
+    }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
   }
 
   public func report(draft: ArticleDraft, profile: SiteProfile) -> ImageWorkbenchReport {
+    do {
+      return try makeReport(draft: draft, profile: profile, cancellationCheck: {})
+    } catch {
+      preconditionFailure("A non-cancellable image report unexpectedly failed: \(error)")
+    }
+  }
+
+  private func makeReport(
+    draft: ArticleDraft,
+    profile: SiteProfile,
+    cancellationCheck: () throws -> Void
+  ) throws -> ImageWorkbenchReport {
+    try cancellationCheck()
     let markdownImagePathCounts = localMarkdownImagePathCounts(in: draft.bodyMarkdown)
     let markdownImagePaths = Set(markdownImagePathCounts.keys)
     let registeredPublishPaths = Set(draft.attachments.map(\.relativePublishPath))
@@ -81,7 +147,8 @@ public struct SiteImageWorkbenchService: Sendable {
     )
     var issues: [ImageWorkbenchIssue] = []
 
-    let items = draft.attachments.map { attachment in
+    let items = try draft.attachments.map { attachment in
+      try cancellationCheck()
       let sourceURL = attachment.sourceFilePath.map { URL(fileURLWithPath: $0) }
       let fileExists = sourceURL.map { fileManager.fileExists(atPath: $0.path) } ?? false
       let actualByteSize = sourceURL.flatMap { fileByteSize(at: $0) } ?? attachment.byteSize
@@ -262,6 +329,7 @@ public struct SiteImageWorkbenchService: Sendable {
       }
     }
 
+    try cancellationCheck()
     for markdownPath in markdownImagePaths where !registeredPublishPaths.contains(markdownPath) {
       issues.append(
         ImageWorkbenchIssue(
@@ -391,8 +459,29 @@ public struct SiteImageWorkbenchService: Sendable {
   }
 
   public func siteSummary(drafts: [ArticleDraft], profile: SiteProfile) -> ImageWorkbenchSiteSummary {
-    let reports = drafts.map { draft in
-      (draft: draft, report: report(draft: draft, profile: profile))
+    do {
+      return try makeSiteSummary(drafts: drafts, profile: profile, cancellationCheck: {})
+    } catch {
+      preconditionFailure("A non-cancellable image summary unexpectedly failed: \(error)")
+    }
+  }
+
+  private func makeSiteSummary(
+    drafts: [ArticleDraft],
+    profile: SiteProfile,
+    cancellationCheck: () throws -> Void
+  ) throws -> ImageWorkbenchSiteSummary {
+    try cancellationCheck()
+    let reports = try drafts.map { draft in
+      try cancellationCheck()
+      return (
+        draft: draft,
+        report: try makeReport(
+          draft: draft,
+          profile: profile,
+          cancellationCheck: cancellationCheck
+        )
+      )
     }
     let draftSummaries = reports.map { draft, report in
       ImageWorkbenchDraftSummary(

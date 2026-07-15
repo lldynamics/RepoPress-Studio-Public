@@ -98,6 +98,14 @@ public final class WorkbenchPublishingFeatureFacade: ObservableObject {
     store.refreshPublishPreview(for: draft)
   }
 
+  public func refreshPublishPreviewInBackground(for draft: ArticleDraft? = nil) {
+    store.refreshPublishPreviewInBackground(for: draft)
+  }
+
+  public var isPublishPreviewRefreshing: Bool {
+    store.publishingStore.isPublishPreviewRefreshing
+  }
+
   public func save() {
     store.save()
   }

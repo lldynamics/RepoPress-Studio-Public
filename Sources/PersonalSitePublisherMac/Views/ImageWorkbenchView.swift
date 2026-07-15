@@ -42,10 +42,14 @@ struct ImageWorkbenchView: View {
           .accessibilityValue("\(progress.completedDraftCount)/\(progress.totalDraftCount)")
         }
 
-        siteWideSummary(store.imageWorkbenchSiteSummary)
+        if let summary = store.cachedImageWorkbenchSiteSummary {
+          siteWideSummary(summary)
+        } else {
+          loadingCard(String(localized: "正在统计站点图片…"))
+        }
 
         if let draft = store.selectedDraft {
-          selectedDraftSection(draft, report: imageWorkbench.report)
+          selectedDraftSection(draft, report: imageWorkbench.cachedReport(for: draft))
         } else {
           EmptyStateView(
             title: "还没有选择文章",
@@ -70,10 +74,12 @@ struct ImageWorkbenchView: View {
     )
     .accessibilityLabel("图片工作台")
     .accessibilityHint("拖入图片文件到此处")
-    .onAppear {
-      store.imageWorkbench.refreshReport()
+    .task(id: imageWorkbenchRefreshInput) {
       if let draft = store.selectedDraft {
+        await store.refreshImageWorkbenchCachesInBackground(for: draft)
         store.imageWorkbench.prepareAISuggestions(for: draft)
+      } else {
+        await store.refreshImageWorkbenchSiteSummaryInBackground()
       }
     }
     .onChange(of: store.selectedDraftID) { _, _ in
@@ -87,6 +93,13 @@ struct ImageWorkbenchView: View {
   private func selectedDraftSection(_ draft: ArticleDraft, report: ImageWorkbenchReport?) -> some View {
     Text("当前文章")
       .font(.headline)
+    if imageWorkbench.isReportLoading(for: draft), report == nil {
+      ProgressView {
+        Text("正在读取当前文章图片…")
+      }
+        .controlSize(.small)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
     metrics(report: report)
     coverStatus(report?.coverStatus)
     issues(report: report)
@@ -146,7 +159,13 @@ struct ImageWorkbenchView: View {
 
       HStack(spacing: 8) {
         Button {
-          store.imageWorkbench.refreshReport()
+          Task { @MainActor in
+            if let draft = store.selectedDraft {
+              await store.refreshImageWorkbenchCachesInBackground(for: draft, force: true)
+            } else {
+              await store.refreshImageWorkbenchSiteSummaryInBackground(force: true)
+            }
+          }
         } label: {
           Label("刷新", systemImage: "arrow.clockwise")
         }
@@ -165,14 +184,14 @@ struct ImageWorkbenchView: View {
             return
           }
           Task {
-            await store.ai.generateImageTextSuggestions(draft: draft)
+            await imageWorkbench.generateAISuggestions(draft: draft)
           }
         } label: {
-          Label(store.ai.isImageTextRunning ? "AI 生成中" : "AI 补 alt/caption", systemImage: "sparkles")
+          Label(imageWorkbench.isGeneratingSuggestions ? "AI 生成中" : "AI 补 alt/caption", systemImage: "sparkles")
         }
         .disabled(!aiImageTextGenerationAvailability.isEnabled)
         .help(aiImageTextGenerationAvailability.unavailableReason ?? "根据当前文章和图片上下文生成 alt/caption")
-        .accessibilityLabel(store.ai.isImageTextRunning ? "AI 正在生成图片文案" : "AI 补全图片文案")
+        .accessibilityLabel(imageWorkbench.isGeneratingSuggestions ? "AI 正在生成图片文案" : "AI 补全图片文案")
         .accessibilityHint(aiImageTextGenerationAvailability.unavailableReason ?? "根据当前文章和图片上下文生成 alt 和 caption")
 
         Menu {
@@ -241,13 +260,13 @@ struct ImageWorkbenchView: View {
     let profile = store.profile(for: draft)
     let targetCount = store.imageWorkbench.imageTextTargetCount(
       for: draft,
-      report: store.imageWorkbench.report
+      report: store.imageWorkbench.cachedReport(for: draft)
     )
     return AIImageTextGenerationAvailabilityService.presentation(
       targetCount: targetCount,
-      isGenerating: store.ai.isImageTextRunning,
+      isGenerating: imageWorkbench.isGeneratingSuggestions,
       aiProviderConfig: profile.aiProviderConfig,
-      aiTokenAvailability: store.ai.tokenAvailability
+      aiTokenAvailability: imageWorkbench.aiTokenAvailability
     )
   }
 
@@ -275,6 +294,33 @@ struct ImageWorkbenchView: View {
       .accessibilityHint("拖入图片文件到此处")
   }
 
+  private var imageWorkbenchRefreshInput: ImageWorkbenchRefreshInput {
+    ImageWorkbenchRefreshInput(
+      report: store.selectedDraft.map { draft in
+        ImageWorkbenchReportInputSignature(
+          draft: draft,
+          profile: store.profile(for: draft)
+        )
+      },
+      siteSummary: ImageWorkbenchSiteSummaryInputSignature(
+        drafts: store.visibleDrafts,
+        profile: store.activeProfile
+      )
+    )
+  }
+
+  private func loadingCard(_ title: String) -> some View {
+    HStack(spacing: 10) {
+      ProgressView()
+        .controlSize(.small)
+      Text(title)
+        .foregroundStyle(.secondary)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(14)
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+  }
+
   private func siteWideSummary(_ summary: ImageWorkbenchSiteSummary) -> some View {
     VStack(alignment: .leading, spacing: 12) {
       HStack(alignment: .firstTextBaseline) {
@@ -288,40 +334,40 @@ struct ImageWorkbenchView: View {
 
         Spacer()
 
-        Button {
-          store.imageWorkbench.fillMissingMetadataForVisibleDrafts()
-        } label: {
-          Label("全部补 alt/caption", systemImage: "text.badge.checkmark")
-        }
-        .accessibilityLabel("为全部文章补全图片 alt 和 caption")
+        Menu {
+          Button {
+            store.imageWorkbench.fillMissingMetadataForVisibleDrafts()
+          } label: {
+            Label("补全 alt/caption", systemImage: "text.badge.checkmark")
+          }
 
-        Button {
-          store.imageWorkbench.optimizeVisibleDraftJPEGImages()
-        } label: {
-          Label("批量压缩 JPEG", systemImage: "photo.stack")
-        }
-        .accessibilityLabel("批量压缩 JPEG 图片")
+          Button {
+            store.imageWorkbench.optimizeVisibleDraftJPEGImages()
+          } label: {
+            Label("压缩 JPEG", systemImage: "photo.stack")
+          }
 
-        Button {
-          store.imageWorkbench.convertVisibleDraftImagesToWebP()
-        } label: {
-          Label("批量转 WebP", systemImage: "arrow.triangle.2.circlepath")
-        }
-        .accessibilityLabel("批量转换图片为 WebP")
+          Button {
+            store.imageWorkbench.convertVisibleDraftImagesToWebP()
+          } label: {
+            Label("转换为 WebP", systemImage: "arrow.triangle.2.circlepath")
+          }
 
-        Button {
-          store.imageWorkbench.optimizeVisibleDraftSVGImages()
-        } label: {
-          Label("批量优化 SVG", systemImage: "wand.and.stars")
-        }
-        .accessibilityLabel("批量优化 SVG 图片")
+          Button {
+            store.imageWorkbench.optimizeVisibleDraftSVGImages()
+          } label: {
+            Label("优化 SVG", systemImage: "wand.and.stars")
+          }
 
-        Button {
-          store.imageWorkbench.resizeVisibleDraftLargeImages()
+          Button {
+            store.imageWorkbench.resizeVisibleDraftLargeImages()
+          } label: {
+            Label("缩放大图", systemImage: "arrow.down.right.and.arrow.up.left")
+          }
         } label: {
-          Label("批量缩放大图", systemImage: "arrow.down.right.and.arrow.up.left")
+          Label("批量处理", systemImage: "slider.horizontal.3")
         }
-        .accessibilityLabel("批量缩放大图")
+        .accessibilityLabel("批量处理站点图片")
       }
       .disabled(store.imageWorkbench.isProcessingBatch)
 
@@ -522,7 +568,7 @@ struct ImageWorkbenchView: View {
     if let status {
       VStack(alignment: .leading, spacing: 10) {
         HStack(alignment: .firstTextBaseline) {
-          Label(status.state.displayName, systemImage: status.state.systemImage)
+          Label(status.state.localizedDisplayName, systemImage: status.state.systemImage)
             .font(.headline)
             .foregroundStyle(status.state.color)
           Spacer()
@@ -598,7 +644,9 @@ struct ImageWorkbenchView: View {
         }
         draft.attachments[index][keyPath: keyPath] = value
         store.updateDraft(draft)
-        store.imageWorkbench.refreshReport()
+        Task { @MainActor in
+          await store.refreshImageWorkbenchCachesInBackground(for: draft, force: true)
+        }
       }
     )
   }
@@ -623,7 +671,9 @@ struct ImageWorkbenchView: View {
     }
     draft.bodyMarkdown += "\n\n" + markdownBlocks.joined(separator: "\n")
     store.updateDraft(draft)
-    store.imageWorkbench.refreshReport()
+    Task { @MainActor in
+      await store.refreshImageWorkbenchCachesInBackground(for: draft, force: true)
+    }
     store.imageWorkbench.setActionMessage("已添加 \(imageURLs.count) 张图片。")
   }
 
@@ -652,6 +702,11 @@ struct ImageWorkbenchView: View {
 
     return true
   }
+}
+
+private struct ImageWorkbenchRefreshInput: Hashable {
+  let report: ImageWorkbenchReportInputSignature?
+  let siteSummary: ImageWorkbenchSiteSummaryInputSignature
 }
 
 private enum ImageDropURLDecoder {
@@ -730,7 +785,7 @@ private struct ImageWorkbenchRow: View {
           Text(ByteCountFormatter.string(fromByteCount: item?.byteSize ?? attachment.byteSize, countStyle: .file))
             .font(.caption)
             .foregroundStyle(.secondary)
-          Text(item?.dimensions?.displayName ?? "未知尺寸")
+          Text(item?.dimensions?.workbenchDimensionText ?? "未知尺寸")
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
         }

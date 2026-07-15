@@ -17,7 +17,7 @@ struct SettingsStoreActions {
   }
 
   func lockPrivacyFromSettings() {
-    store.lockPrivacy(reason: "已从隐私设置锁定工作台。")
+    store.lockPrivacy(reason: "已从隐私设置快速隐藏工作台内容。")
   }
 
   func unlockPrivacyFromSettings() {
@@ -45,7 +45,7 @@ struct SettingsStoreActions {
   func copyPrivacyEvidencePackage() {
     copyToPublishMessage(
       store.privacyProtectionEvidencePackage.checklistMarkdown,
-      successMessage: "已复制隐私锁证据包。"
+      successMessage: "已复制隐私保护证据包。"
     )
   }
 

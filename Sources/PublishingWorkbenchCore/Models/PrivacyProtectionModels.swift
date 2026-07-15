@@ -1,17 +1,11 @@
 import Foundation
 
 public struct PrivacyProtectionSettings: Codable, Hashable, Sendable {
-  public var requiresUnlockOnLaunch: Bool
-  public var locksWhenInactive: Bool
   public var masksPrivateContent: Bool
 
   public init(
-    requiresUnlockOnLaunch: Bool = false,
-    locksWhenInactive: Bool = false,
     masksPrivateContent: Bool = true
   ) {
-    self.requiresUnlockOnLaunch = requiresUnlockOnLaunch
-    self.locksWhenInactive = locksWhenInactive
     self.masksPrivateContent = masksPrivateContent
   }
 
@@ -117,29 +111,23 @@ public struct PrivacyProtectionStatus: Hashable, Sendable {
     reason: String?
   ) -> PrivacyProtectionStatus {
     var protections: [String] = []
-    if settings.requiresUnlockOnLaunch {
-      protections.append("启动解锁")
-    }
-    if settings.locksWhenInactive {
-      protections.append("后台自动锁定")
-    }
     if settings.masksPrivateContent {
       protections.append("私密内容遮挡")
     }
 
     return PrivacyProtectionStatus(
       isLocked: isLocked,
-      title: isLocked ? "工作台已锁定" : "工作台未锁定",
+      title: isLocked ? "工作台内容已隐藏" : "工作台内容可见",
       detail: isLocked
-        ? (reason?.nilIfEmpty ?? "移除遮罩后继续查看文章、仓库和发布信息。")
-        : "当前可查看工作台内容；可随时手动锁定或切到后台自动锁定。",
+        ? (reason?.nilIfEmpty ?? "返回工作台后可继续查看文章、仓库和发布信息。")
+        : "当前可查看工作台内容；需要离席或共享屏幕时可手动快速隐藏。",
       activeProtections: protections
     )
   }
 
   public var checklistMarkdown: String {
     var lines: [String] = [
-      "# 隐私锁和私密内容保护",
+      "# 快速隐藏和私密内容保护",
       "",
       "- 当前状态：\(title)",
       "- 说明：\(detail)",
@@ -148,11 +136,8 @@ public struct PrivacyProtectionStatus: Hashable, Sendable {
       "## 行为确认"
     ]
 
-    lines.append("- [ ] 启动保护开启时，应用打开后先显示隐私锁遮罩。")
-    lines.append("- [ ] 切到后台自动锁定开启时，应用进入非活跃状态会遮挡工作台。")
-    lines.append("- [ ] 工作台锁定后，主窗口、文章窗口和设置窗口都显示隐私锁遮罩。")
-    lines.append("- [ ] 设置窗口锁定时禁用设置项，只保留隐私锁遮罩的解锁入口。")
-    lines.append("- [ ] 工作台锁定后，写作、AI、同步、发布和设置里的敏感操作不可用。")
+    lines.append("- [ ] 手动快速隐藏后，主窗口和设置窗口都遮挡工作台内容。")
+    lines.append("- [ ] 工作台隐藏时，设置项以及写作、AI、同步和发布操作不可用。")
     lines.append("- [ ] 私密内容遮挡开启时，列表、搜索和概览不暴露私密文章标题、摘要或路径。")
     lines.append("- [ ] 截图、支持页和隐私政策文案不得包含本地路径、Token、授权头或私密正文。")
 
@@ -227,23 +212,17 @@ public struct PrivacyProtectionAudit: Hashable, Sendable {
     let visibleCount = settings.masksPrivateContent ? 0 : privateDraftCount
     var recommendations: [String] = []
 
-    if !settings.requiresUnlockOnLaunch {
-      recommendations.append("开启启动时要求解锁，避免重启后直接显示工作台。")
-    }
-    if !settings.locksWhenInactive {
-      recommendations.append("开启切到后台自动锁定，减少屏幕共享或离席时暴露。")
-    }
     if !settings.masksPrivateContent && privateDraftCount > 0 {
       recommendations.append("开启私密内容遮挡，列表、搜索和概览不显示私密标题或路径。")
     }
     if !status.isLocked {
-      recommendations.append("处理敏感文章前可手动锁定，确认遮罩和快捷键可用。")
+      recommendations.append("离席或共享屏幕前可手动快速隐藏工作台。")
     }
 
     let level: PrivacyProtectionRiskLevel
-    if visibleCount > 0 || (!settings.locksWhenInactive && !settings.requiresUnlockOnLaunch) {
+    if visibleCount > 0 {
       level = .exposed
-    } else if !recommendations.isEmpty {
+    } else if !settings.masksPrivateContent {
       level = .watch
     } else {
       level = .protected
@@ -256,15 +235,15 @@ public struct PrivacyProtectionAudit: Hashable, Sendable {
       title = "隐私保护已覆盖"
       message = privateDraftCount > 0
         ? "\(maskedCount) 篇私密文章已在列表、搜索和概览中遮挡。"
-        : "当前 Profile 没有私密文章，隐私锁策略已就绪。"
+        : "当前 Profile 没有私密文章，内容遮挡策略已就绪。"
     case .watch:
       title = "隐私保护需要关注"
-      message = "\(maskedCount) 篇私密文章已遮挡，但仍有保护开关或锁定状态建议确认。"
+      message = "当前没有私密文章，但私密内容遮挡尚未开启。"
     case .exposed:
       title = "私密内容有暴露风险"
       message = visibleCount > 0
         ? "\(visibleCount) 篇私密文章可能在列表、搜索或概览中显示。"
-        : "启动保护和后台自动锁定都未开启，离席或重启后可能暴露工作台。"
+        : "私密内容遮挡未开启，私密文章可能在工作台中显示。"
     }
 
     return PrivacyProtectionAudit(
@@ -320,7 +299,7 @@ public struct PrivacyProtectionEvidencePackage: Hashable, Sendable {
 
   public var checklistMarkdown: String {
     var lines: [String] = [
-      "# 隐私锁证据包",
+      "# 隐私保护证据包",
       "",
       "## 当前状态",
       "- 状态：\(status.title)",
@@ -339,16 +318,14 @@ public struct PrivacyProtectionEvidencePackage: Hashable, Sendable {
     ]
 
     if recentEvents.isEmpty {
-      lines.append("- 暂无隐私锁事件记录。")
+      lines.append("- 暂无隐私保护事件记录。")
     } else {
       lines.append(contentsOf: recentEvents.prefix(8).map(\.checklistLine))
     }
 
     lines.append("")
     lines.append("## 建议验证")
-    lines.append("- [ ] 启动保护开启时，重新打开应用后先出现隐私锁遮罩。")
-    lines.append("- [ ] 切到后台自动锁定开启时，应用进入非活跃状态后记录“后台自动锁定”。")
-    lines.append("- [ ] 工作台锁定后，AI、同步、发布和设置里的敏感操作不可用。")
+    lines.append("- [ ] 手动快速隐藏后，AI、同步、发布和设置里的敏感操作不可用。")
     lines.append("- [ ] 私密内容遮挡开启时，列表、搜索、概览、AI 上下文和复制包不暴露私密标题、路径或正文。")
     lines.append("")
     lines.append("## 本地检查命令")

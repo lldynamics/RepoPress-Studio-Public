@@ -98,8 +98,6 @@ struct ContentHealthDetailView: View {
       siteIssuesSection(snapshot)
     case .maintenance:
       maintenanceReportSection
-    case .draftIssues:
-      articleHealthFlow(snapshot)
     }
   }
 
@@ -174,12 +172,14 @@ struct ContentHealthDetailView: View {
           .padding(.vertical, 12)
       } else {
         ForEach(summaries) { summary in
+          let isSelected = selectedSummary(in: snapshot)?.draftID == summary.draftID
           Button {
             selectedDraftID = summary.draftID
           } label: {
-            articleSummaryRow(summary, isSelected: selectedSummary(in: snapshot)?.draftID == summary.draftID)
+            articleSummaryRow(summary, isSelected: isSelected)
           }
           .buttonStyle(.plain)
+          .accessibilityAddTraits(isSelected ? .isSelected : [])
         }
       }
 
@@ -255,7 +255,7 @@ struct ContentHealthDetailView: View {
     let aiFixDraftIDs = Set(snapshot.aiFixQueueItems.map(\.draftID))
     let summaries: [DraftPreflightSummary]
     switch filter {
-    case .overview, .draftIssues:
+    case .overview:
       summaries = snapshot.contentHealthSummaries
     case .publicRisks:
       summaries = snapshot.contentHealthSummaries.filter { !$0.publicRiskIssues.isEmpty }
@@ -277,7 +277,7 @@ struct ContentHealthDetailView: View {
     switch filter {
     case .publicRisks:
       issues = summary.publicRiskIssues
-    case .overview, .aiFixes, .draftIssues, .siteIssues, .maintenance:
+    case .overview, .aiFixes, .siteIssues, .maintenance:
       issues = summary.blockingIssues
     }
     return severityFilter.filter(issues)
@@ -334,7 +334,9 @@ struct ContentHealthDetailView: View {
 
           Button {
             if store.siteMaintenanceSnapshot == nil {
-              store.refreshSiteMaintenanceSnapshot()
+              Task {
+                await store.refreshSiteMaintenanceSnapshot()
+              }
             }
             isMaintenanceReportLoaded = true
           } label: {

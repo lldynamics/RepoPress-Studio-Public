@@ -81,7 +81,7 @@ struct SeverityBadge: View {
   let severity: PreflightSeverity
 
   var body: some View {
-    Label(severity.displayName, systemImage: systemImage)
+    Label(severity.localizedDisplayName, systemImage: systemImage)
       .font(.caption)
       .foregroundStyle(color)
       .labelStyle(.titleAndIcon)
@@ -169,7 +169,7 @@ struct PrivacyLockOverlay: View {
       Button {
         store.unlockPrivacy()
       } label: {
-        Label("移除隐私遮罩", systemImage: "eye")
+        Label("返回工作台", systemImage: "eye")
       }
       .keyboardShortcut(.return, modifiers: [])
       .focused($isUnlockButtonFocused)

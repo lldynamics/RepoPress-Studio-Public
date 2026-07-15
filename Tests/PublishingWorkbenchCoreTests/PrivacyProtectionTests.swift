@@ -12,11 +12,7 @@ final class PrivacyProtectionTests: XCTestCase {
         activeProfileID: profile.id,
         drafts: [draft],
         releaseRecords: [],
-        privacySettings: PrivacyProtectionSettings(
-          requiresUnlockOnLaunch: true,
-          locksWhenInactive: false,
-          masksPrivateContent: false
-        )
+        privacySettings: PrivacyProtectionSettings(masksPrivateContent: false)
       )
     )
     var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
@@ -25,101 +21,65 @@ final class PrivacyProtectionTests: XCTestCase {
 
     let snapshot = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: json)
 
-    XCTAssertFalse(snapshot.privacySettings.requiresUnlockOnLaunch)
-    XCTAssertFalse(snapshot.privacySettings.locksWhenInactive)
     XCTAssertTrue(snapshot.privacySettings.masksPrivateContent)
   }
 
-  func testStoreLocksOnLaunchAndInactiveWhenConfigured() throws {
+  func testLegacyAutomaticLockSettingsAreIgnored() throws {
     let url = try temporaryPersistenceURL()
     let profile = SiteProfile.defaultProfile
-    let snapshot = WorkbenchSnapshot(
+    let encoded = try JSONEncoder.workbench.encode(WorkbenchSnapshot(
       profiles: [profile],
       activeProfileID: profile.id,
       drafts: [ArticleDraft(siteProfileID: profile.id, title: "Private", slug: "private")],
       releaseRecords: [],
-      privacySettings: PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: true,
-        locksWhenInactive: true,
-        masksPrivateContent: true
-      )
-    )
-    _ = try WorkbenchPersistence(fileURL: url).save(snapshot)
+      privacySettings: PrivacyProtectionSettings(masksPrivateContent: true)
+    ))
+    var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+    var privacySettings = try XCTUnwrap(object["privacySettings"] as? [String: Any])
+    privacySettings["requiresUnlockOnLaunch"] = true
+    privacySettings["locksWhenInactive"] = true
+    object["privacySettings"] = privacySettings
+    let legacyData = try JSONSerialization.data(withJSONObject: object)
+    try legacyData.write(to: url, options: .atomic)
 
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 
+    XCTAssertFalse(store.isPrivacyLocked)
+    XCTAssertTrue(store.privacySettings.masksPrivateContent)
+  }
+
+  func testManualQuickHideAndReturnToWorkbench() throws {
+    let url = try temporaryPersistenceURL()
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
+
+    XCTAssertFalse(store.isPrivacyLocked)
+    store.lockPrivacy(reason: "Manual review")
     XCTAssertTrue(store.isPrivacyLocked)
     store.unlockPrivacy()
     XCTAssertFalse(store.isPrivacyLocked)
-    store.lockPrivacyIfNeededForInactiveScene()
-    XCTAssertTrue(store.isPrivacyLocked)
   }
 
-  func testInactiveSceneDoesNotLockWhenSettingIsDisabled() throws {
+  func testPrivacyProtectionEventsRecordManualHideReturnAndSettings() throws {
     let url = try temporaryPersistenceURL()
-    let profile = SiteProfile.defaultProfile
-    let snapshot = WorkbenchSnapshot(
-      profiles: [profile],
-      activeProfileID: profile.id,
-      drafts: [ArticleDraft(siteProfileID: profile.id, title: "Public", slug: "public")],
-      releaseRecords: [],
-      privacySettings: PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: false,
-        locksWhenInactive: false,
-        masksPrivateContent: true
-      )
-    )
-    _ = try WorkbenchPersistence(fileURL: url).save(snapshot)
-
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 
-    XCTAssertFalse(store.isPrivacyLocked)
-    store.lockPrivacyIfNeededForInactiveScene()
-    XCTAssertFalse(store.isPrivacyLocked)
-  }
-
-  func testPrivacyProtectionEventsRecordLaunchInactiveManualUnlockAndSettings() throws {
-    let url = try temporaryPersistenceURL()
-    let profile = SiteProfile.defaultProfile
-    let snapshot = WorkbenchSnapshot(
-      profiles: [profile],
-      activeProfileID: profile.id,
-      drafts: [ArticleDraft(siteProfileID: profile.id, title: "Private", slug: "private")],
-      releaseRecords: [],
-      privacySettings: PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: true,
-        locksWhenInactive: true,
-        masksPrivateContent: true
-      )
-    )
-    _ = try WorkbenchPersistence(fileURL: url).save(snapshot)
-
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
-
-    XCTAssertEqual(store.privacyProtectionEvents.first?.kind, .lockedOnLaunch)
-    store.unlockPrivacy()
-    XCTAssertEqual(store.privacyProtectionEvents.first?.kind, .unlocked)
-    store.lockPrivacyIfNeededForInactiveScene()
-    XCTAssertEqual(store.privacyProtectionEvents.first?.kind, .lockedWhenInactive)
-    store.unlockPrivacy()
     store.lockPrivacy(reason: "Manual review")
     XCTAssertEqual(store.privacyProtectionEvents.first?.kind, .manualLock)
+    store.unlockPrivacy()
+    XCTAssertEqual(store.privacyProtectionEvents.first?.kind, .unlocked)
     store.updatePrivacySettings(
-      PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: true,
-        locksWhenInactive: false,
-        masksPrivateContent: true
-      )
+      PrivacyProtectionSettings(masksPrivateContent: true)
     )
     XCTAssertEqual(store.privacyProtectionEvents.first?.kind, .settingsUpdated)
   }
 
-  func testPrivacyProtectionEventsPersistAcrossReloads() throws {
+  func testPrivacyProtectionEventsPersistAcrossReloads() async throws {
     let url = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     store.lockPrivacy(reason: "Manual review")
     store.unlockPrivacy()
 
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 
     XCTAssertTrue(reloaded.privacyProtectionEvents.contains { $0.kind == .manualLock })
@@ -159,13 +119,13 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertTrue(store.isPrivacyLocked)
     XCTAssertFalse(store.canUseProtectedWorkbench)
     XCTAssertFalse(store.isAIPublishingAssistantPresented)
-    XCTAssertEqual(store.privacyProtectionStatus.title, "工作台已锁定")
+    XCTAssertEqual(store.privacyProtectionStatus.title, "工作台内容已隐藏")
     XCTAssertEqual(store.privacyProtectionStatus.detail, "Manual")
 
     store.unlockPrivacy()
     XCTAssertFalse(store.isPrivacyLocked)
     XCTAssertTrue(store.canUseProtectedWorkbench)
-    XCTAssertEqual(store.privacyProtectionStatus.title, "工作台未锁定")
+    XCTAssertEqual(store.privacyProtectionStatus.title, "工作台内容可见")
   }
 
   func testPrivacyLockBlocksRemotePublishingBeforeQuotaOrAPIUse() async throws {
@@ -181,7 +141,7 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertNil(batchResult)
     XCTAssertNil(accessCheck)
     XCTAssertNil(creationResult)
-    XCTAssertEqual(store.publishActionMessage, "工作台已锁定，请先解锁后再继续。")
+    XCTAssertEqual(store.publishActionMessage, "工作台内容已隐藏，请返回工作台后再继续。")
     XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 0)
     XCTAssertEqual(store.monetizationState.freeUsage.batchPublishCount, 0)
     XCTAssertFalse(store.isRemoteRepositoryPublishing)
@@ -208,17 +168,15 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertFalse(store.isAIMetadataSuggestionRunning)
     XCTAssertFalse(store.isAIChatRunning)
     XCTAssertFalse(store.isAIImageTextRunning)
-    XCTAssertEqual(store.aiActionMessage, "工作台已锁定，请先解锁后再继续。")
-    XCTAssertEqual(store.aiChatMessage, "工作台已锁定，请先解锁后再继续。")
-    XCTAssertEqual(store.imageActionMessage, "工作台已锁定，请先解锁后再继续。")
+    XCTAssertEqual(store.aiActionMessage, "工作台内容已隐藏，请返回工作台后再继续。")
+    XCTAssertEqual(store.aiChatMessage, "工作台内容已隐藏，请返回工作台后再继续。")
+    XCTAssertEqual(store.imageActionMessage, "工作台内容已隐藏，请返回工作台后再继续。")
   }
 
   func testPrivacyProtectionStatusSummarizesEnabledProtections() throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: true,
-        locksWhenInactive: false,
         masksPrivateContent: true
       )
     )
@@ -226,30 +184,27 @@ final class PrivacyProtectionTests: XCTestCase {
     let status = store.privacyProtectionStatus
 
     XCTAssertFalse(status.isLocked)
-    XCTAssertEqual(status.activeProtections, ["启动解锁", "私密内容遮挡"])
-    XCTAssertTrue(status.detail.contains("可随时手动锁定"))
+    XCTAssertEqual(status.activeProtections, ["私密内容遮挡"])
+    XCTAssertTrue(status.detail.contains("手动快速隐藏"))
   }
 
   func testPrivacyProtectionStatusChecklistSummarizesReviewableBehavior() throws {
     let status = PrivacyProtectionStatus.make(
       settings: PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: true,
-        locksWhenInactive: true,
         masksPrivateContent: true
       ),
       isLocked: true,
-      reason: "启动保护已启用。"
+      reason: "已手动快速隐藏。"
     )
 
     let markdown = status.checklistMarkdown
 
-    XCTAssertTrue(markdown.contains("# 隐私锁和私密内容保护"))
-    XCTAssertTrue(markdown.contains("- 当前状态：工作台已锁定"))
-    XCTAssertTrue(markdown.contains("启动解锁、后台自动锁定、私密内容遮挡"))
-    XCTAssertTrue(markdown.contains("启动保护开启时"))
-    XCTAssertTrue(markdown.contains("敏感操作不可用"))
-    XCTAssertTrue(markdown.contains("主窗口、文章窗口和设置窗口都显示隐私锁遮罩"))
-    XCTAssertTrue(markdown.contains("设置窗口锁定时禁用设置项"))
+    XCTAssertTrue(markdown.contains("# 快速隐藏和私密内容保护"))
+    XCTAssertTrue(markdown.contains("- 当前状态：工作台内容已隐藏"))
+    XCTAssertTrue(markdown.contains("私密内容遮挡"))
+    XCTAssertTrue(markdown.contains("手动快速隐藏后"))
+    XCTAssertTrue(markdown.contains("写作、AI、同步和发布操作不可用"))
+    XCTAssertTrue(markdown.contains("主窗口和设置窗口都遮挡工作台内容"))
     XCTAssertTrue(markdown.contains("不暴露私密文章标题、摘要或路径"))
     XCTAssertTrue(markdown.contains("不得包含本地路径、Token、授权头或私密正文"))
   }
@@ -258,8 +213,6 @@ final class PrivacyProtectionTests: XCTestCase {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: true,
-        locksWhenInactive: true,
         masksPrivateContent: true
       )
     )
@@ -272,13 +225,13 @@ final class PrivacyProtectionTests: XCTestCase {
       bodyMarkdown: "Private body"
     )
     store.setDrafts([privateDraft])
-    store.lockPrivacyIfNeededForInactiveScene()
+    store.lockPrivacy(reason: "Manual privacy review")
 
     let markdown = store.privacyProtectionEvidencePackage.checklistMarkdown
 
-    XCTAssertTrue(markdown.contains("# 隐私锁证据包"))
+    XCTAssertTrue(markdown.contains("# 隐私保护证据包"))
     XCTAssertTrue(markdown.contains("## 最近隐私事件"))
-    XCTAssertTrue(markdown.contains("后台自动锁定"))
+    XCTAssertTrue(markdown.contains("Manual privacy review"))
     XCTAssertTrue(markdown.contains("swift test --filter PrivacyProtectionTests"))
     XCTAssertTrue(markdown.contains("bash script/check_privacy_support_copy.sh"))
     XCTAssertTrue(markdown.contains("bash script/check_screenshot_privacy.sh"))
@@ -322,8 +275,6 @@ final class PrivacyProtectionTests: XCTestCase {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: false,
-        locksWhenInactive: true,
         masksPrivateContent: true
       )
     )
@@ -363,8 +314,6 @@ final class PrivacyProtectionTests: XCTestCase {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: false,
-        locksWhenInactive: true,
         masksPrivateContent: false
       )
     )
@@ -397,8 +346,6 @@ final class PrivacyProtectionTests: XCTestCase {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: false,
-        locksWhenInactive: true,
         masksPrivateContent: true
       )
     )
@@ -424,8 +371,6 @@ final class PrivacyProtectionTests: XCTestCase {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: false,
-        locksWhenInactive: true,
         masksPrivateContent: false
       )
     )
@@ -445,12 +390,10 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertTrue(summary.markdownPath.contains("secret-launch-plan"))
   }
 
-  func testSEOSocialPublishPackageMasksPrivateDraftWhenProtectionEnabled() throws {
+  func testSEOSocialPublishPackageMasksPrivateDraftWhenProtectionEnabled() async throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: false,
-        locksWhenInactive: true,
         masksPrivateContent: true
       )
     )
@@ -465,7 +408,8 @@ final class PrivacyProtectionTests: XCTestCase {
     store.setDrafts([privateDraft])
     store.prepareSEOSocialPreview(for: privateDraft)
 
-    let markdown = try XCTUnwrap(store.seoSocialPublishPackageMarkdown(for: privateDraft))
+    let generatedMarkdown = await store.seoSocialPublishPackageMarkdown(for: privateDraft)
+    let markdown = try XCTUnwrap(generatedMarkdown)
 
     XCTAssertTrue(markdown.contains("# SEO / Social 发布包已遮挡"))
     XCTAssertTrue(markdown.contains("- 文章：私密文章"))
@@ -480,8 +424,6 @@ final class PrivacyProtectionTests: XCTestCase {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: false,
-        locksWhenInactive: true,
         masksPrivateContent: true
       )
     )
@@ -542,8 +484,6 @@ final class PrivacyProtectionTests: XCTestCase {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: false,
-        locksWhenInactive: true,
         masksPrivateContent: false
       )
     )
@@ -578,8 +518,6 @@ final class PrivacyProtectionTests: XCTestCase {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: false,
-        locksWhenInactive: true,
         masksPrivateContent: false
       )
     )
@@ -609,8 +547,6 @@ final class PrivacyProtectionTests: XCTestCase {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: true,
-        locksWhenInactive: true,
         masksPrivateContent: true
       )
     )

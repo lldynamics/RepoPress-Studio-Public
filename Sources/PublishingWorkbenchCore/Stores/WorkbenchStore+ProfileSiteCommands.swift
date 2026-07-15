@@ -33,13 +33,13 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func createSiteFromStarter(_ request: SiteStarterRequest) -> SiteStarterResult? {
-    publishingStore.createSiteFromStarter(request, store: self)
+  public func createSiteFromStarter(_ request: SiteStarterRequest) async -> SiteStarterResult? {
+    await publishingStore.createSiteFromStarter(request, store: self)
   }
 
   @discardableResult
-  public func importExistingSiteFromStarter(_ request: SiteStarterImportRequest) -> SiteStarterImportResult? {
-    publishingStore.importExistingSiteFromStarter(request, store: self)
+  public func importExistingSiteFromStarter(_ request: SiteStarterImportRequest) async -> SiteStarterImportResult? {
+    await publishingStore.importExistingSiteFromStarter(request, store: self)
   }
 
   @discardableResult

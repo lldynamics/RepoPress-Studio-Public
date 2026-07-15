@@ -72,7 +72,7 @@ struct SiteMaintenanceCalendarSection: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                   Text(insight.title)
                     .font(.caption.weight(.semibold))
-                  Text(insight.priority.displayName)
+                  Text(insight.priority.localizedDisplayName)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(actionPriorityForeground(insight.priority))
                   Spacer()
@@ -145,7 +145,9 @@ struct SiteMaintenanceCalendarSection: View {
   }
 
   private var maintenanceCalendarGrid: some View {
-    let calendar = Calendar(identifier: .gregorian)
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.locale = .autoupdatingCurrent
+    calendar.timeZone = .autoupdatingCurrent
     let anchorDate = report.calendarScheduleItems.first?.scheduledDate ?? report.generatedAt
     let startOfMonth = calendar.dateInterval(of: .month, for: anchorDate)?.start ?? anchorDate
     let monthTitle = maintenanceMonthTitle(startOfMonth)
@@ -267,10 +269,12 @@ struct SiteMaintenanceCalendarSection: View {
   }
 
   private func maintenanceMonthTitle(_ date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "zh_Hans_CN")
-    formatter.dateFormat = "yyyy 年 M 月"
-    return formatter.string(from: date)
+    date.formatted(
+      .dateTime
+        .year()
+        .month(.wide)
+        .locale(.autoupdatingCurrent)
+    )
   }
 
   private func actionPriorityForeground(_ priority: MaintenanceActionPriority) -> AnyShapeStyle {

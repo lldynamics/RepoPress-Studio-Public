@@ -99,6 +99,9 @@ extension DeploymentStatusService {
     guard let url = URL(string: baseURLText), url.scheme != nil, url.host != nil else {
       throw DeploymentStatusError.invalidURL(baseURLText)
     }
+    guard CredentialedEndpointPolicy.isSecureAPIBaseURL(url) else {
+      throw DeploymentStatusError.insecureCredentialURL
+    }
     return url
   }
 
@@ -106,6 +109,9 @@ extension DeploymentStatusService {
     let baseURLText = profile.repositoryBaseURL.nilIfEmpty ?? RepositoryProvider.gitlab.defaultBaseURL
     guard let url = URL(string: baseURLText), url.scheme != nil, url.host != nil else {
       throw DeploymentStatusError.invalidURL(baseURLText)
+    }
+    guard CredentialedEndpointPolicy.isSecureAPIBaseURL(url) else {
+      throw DeploymentStatusError.insecureCredentialURL
     }
     if url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).hasSuffix("api/v4") {
       return url

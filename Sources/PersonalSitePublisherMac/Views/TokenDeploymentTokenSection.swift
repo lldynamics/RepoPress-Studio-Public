@@ -11,9 +11,13 @@ struct TokenDeploymentTokenSection: View {
 
   var body: some View {
     Section("部署 Token") {
-      SecureField("\(deploymentProvider.displayName) Deployment Token", text: deploymentTokenInput)
-        .accessibilityLabel("\(deploymentProvider.displayName) 部署 Token")
-        .accessibilityHint("仅用于部署状态 API 和开启授权的状态端点")
+      SecureField("\(deploymentProvider.localizedDisplayName) Deployment Token", text: deploymentTokenInput)
+        .accessibilityLabel("\(deploymentProvider.localizedDisplayName) 部署 Token")
+        .accessibilityHint(
+          deploymentProvider == .custom
+            ? "仅用于自定义 HTTPS 状态端点"
+            : "仅用于当前部署平台的官方 API"
+        )
 
       HStack {
         Button("保存部署 Token", action: onSaveToken)
@@ -22,7 +26,7 @@ struct TokenDeploymentTokenSection: View {
       }
 
       Label(
-        hasDeploymentToken ? "已保存 \(deploymentProvider.displayName) 部署 Token" : "未保存 \(deploymentProvider.displayName) 部署 Token",
+        hasDeploymentToken ? "已保存 \(deploymentProvider.localizedDisplayName) 部署 Token" : "未保存 \(deploymentProvider.localizedDisplayName) 部署 Token",
         systemImage: hasDeploymentToken ? "checkmark.seal" : "key"
       )
       .foregroundStyle(hasDeploymentToken ? .green : .secondary)

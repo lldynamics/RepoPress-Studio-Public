@@ -41,7 +41,7 @@ final class DraftBodyEditorBufferTests: XCTestCase {
     XCTAssertEqual(current.summary, "同步后的摘要")
   }
 
-  func testImmediateSaveFlushesStagedBody() throws {
+  func testImmediateSaveFlushesStagedBody() async throws {
     let persistenceURL = try temporaryPersistenceURL(prefix: "DraftBodyBufferSave")
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     let draft = try XCTUnwrap(store.selectedDraft)
@@ -54,6 +54,7 @@ final class DraftBodyEditorBufferTests: XCTestCase {
     XCTAssertTrue(result.buffer.isDirty)
 
     store.save()
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.drafts.first(where: { $0.id == draft.id })?.bodyMarkdown, stagedBody)
@@ -98,6 +99,48 @@ final class DraftBodyEditorBufferTests: XCTestCase {
     XCTAssertEqual(stale.buffer.revision, first.buffer.revision)
     XCTAssertEqual(stale.buffer.bodyMarkdown, "来自主窗口的正文")
     XCTAssertEqual(store.draftBodyEditorBuffer(for: draft.id).bodyMarkdown, "来自主窗口的正文")
+  }
+
+  func testStaleRevisionRebasesWhenDisplayedBaseBodyIsStillCurrent() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    var draft = try XCTUnwrap(store.selectedDraft)
+    draft.bodyMarkdown = "同步后的正文"
+    store.updateDraft(draft)
+
+    let result = try XCTUnwrap(
+      store.stageDraftBody(
+        "同步后的正文，继续输入。",
+        for: draft.id,
+        baseRevision: 0,
+        replacingBaseBody: "同步后的正文"
+      )
+    )
+
+    XCTAssertTrue(result.wasAccepted)
+    XCTAssertEqual(result.buffer.revision, 2)
+    XCTAssertEqual(result.buffer.bodyMarkdown, "同步后的正文，继续输入。")
+  }
+
+  func testStaleRevisionStillRejectsWhenDisplayedBaseBodyIsNoLongerCurrent() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let first = try XCTUnwrap(
+      store.stageDraftBody("另一窗口的新正文", for: draft.id, baseRevision: 0)
+    )
+
+    let stale = try XCTUnwrap(
+      store.stageDraftBody(
+        "陈旧窗口继续输入",
+        for: draft.id,
+        baseRevision: 0,
+        replacingBaseBody: draft.bodyMarkdown
+      )
+    )
+
+    XCTAssertTrue(first.wasAccepted)
+    XCTAssertFalse(stale.wasAccepted)
+    XCTAssertEqual(stale.buffer.bodyMarkdown, "另一窗口的新正文")
+    XCTAssertEqual(stale.buffer.revision, first.buffer.revision)
   }
 
   func testStaleEditorCommandIsRejectedInsteadOfReplacingNewerBuffer() throws {

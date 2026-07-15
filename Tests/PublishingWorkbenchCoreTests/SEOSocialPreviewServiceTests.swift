@@ -724,7 +724,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
 	    XCTAssertFalse(store.isSEOSocialPreviewStale(for: restored))
 	  }
 	
-  func testStoreCachesSocialPreviewSnapshotsPerDraftAndPersistsThem() throws {
+  func testStoreCachesSocialPreviewSnapshotsPerDraftAndPersistsThem() async throws {
     let url = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     var firstDraft = try XCTUnwrap(store.selectedDraft)
@@ -759,6 +759,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     XCTAssertFalse(store.isSEOSocialPreviewStale(for: secondDraft))
 
     store.save()
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     XCTAssertEqual(reloaded.seoSocialPreviewSnapshots.count, 2)
@@ -776,7 +777,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     XCTAssertNil(reloaded.seoSocialPreviewSnapshot)
   }
 
-  func testStoreSEOSocialPublishPackageIncludesRelatedArticleSuggestions() throws {
+  func testStoreSEOSocialPublishPackageIncludesRelatedArticleSuggestions() async throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     let profile = store.activeProfile
     let sourceID = UUID(uuidString: "8E76D4C3-1573-4246-9E1F-9C744420C7C1")!
@@ -819,7 +820,8 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
 
     store.prepareSEOSocialPreview(for: source)
 
-    let package = try XCTUnwrap(store.seoSocialPublishPackageMarkdown(for: source))
+    let generatedPackage = await store.seoSocialPublishPackageMarkdown(for: source)
+    let package = try XCTUnwrap(generatedPackage)
     XCTAssertTrue(package.contains("## 关联文章建议"))
     XCTAssertTrue(package.contains("SEO 发布包 -> Mac SEO 预览"))
     XCTAssertTrue(package.contains("/mac-seo-preview/"))

@@ -16,7 +16,7 @@ struct AIWritingStyleSection: View {
     Section("写作风格") {
       Picker("预设", selection: presetBinding) {
         ForEach(AIWritingStylePreset.allCases) { preset in
-          Text(preset.displayName).tag(preset)
+          Text(preset.localizedDisplayName).tag(preset)
         }
       }
       .accessibilityLabel("AI 写作风格预设")

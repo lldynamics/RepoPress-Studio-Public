@@ -278,6 +278,166 @@ final class AIChatCompletionClientTests: XCTestCase {
     }
   }
 
+  func testCompleteRejectsHTTPBeforeSendingAPIKey() async {
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let client = AIChatCompletionClient(transport: transport)
+    let config = AIProviderConfig(
+      preset: .local,
+      baseURL: "http://127.0.0.1:11434/v1",
+      model: "model",
+      requiresAPIKey: false
+    )
+
+    await XCTAssertThrowsErrorAsync(
+      try await client.complete(
+        request: AIChatCompletionRequest(model: "model", messages: []),
+        config: config,
+        apiKey: "must-not-be-sent"
+      )
+    ) { error in
+      XCTAssertEqual(error as? AIChatCompletionClientError, .insecureCredentialURL)
+    }
+    let capturedRequest = await transport.capturedRequest()
+    XCTAssertNil(capturedRequest)
+  }
+
+  func testStreamRejectsHTTPBeforeSendingAPIKey() async {
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let client = AIChatCompletionClient(transport: transport)
+    let config = AIProviderConfig(
+      preset: .local,
+      baseURL: "http://127.0.0.1:11434/v1",
+      model: "model",
+      requiresAPIKey: false
+    )
+
+    await XCTAssertThrowsErrorAsync(
+      try await client.stream(
+        request: AIChatCompletionRequest(model: "model", messages: []),
+        config: config,
+        apiKey: "must-not-be-sent"
+      )
+    ) { error in
+      XCTAssertEqual(error as? AIChatCompletionClientError, .insecureCredentialURL)
+    }
+    let capturedRequest = await transport.capturedRequest()
+    XCTAssertNil(capturedRequest)
+  }
+
+  func testCompleteRejectsRemoteHTTPWithoutAPIKeyBeforeSendingBody() async {
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let client = AIChatCompletionClient(transport: transport)
+    let config = AIProviderConfig(
+      preset: .openAICompatible,
+      baseURL: "http://192.0.2.10:8080/v1",
+      model: "model",
+      requiresAPIKey: false
+    )
+
+    await XCTAssertThrowsErrorAsync(
+      try await client.complete(
+        request: AIChatCompletionRequest(
+          model: "model",
+          messages: [AIChatMessage(role: "user", content: "private prompt")]
+        ),
+        config: config,
+        apiKey: nil
+      )
+    ) { error in
+      XCTAssertEqual(error as? AIChatCompletionClientError, .insecureCredentialURL)
+    }
+    let capturedRequest = await transport.capturedRequest()
+    XCTAssertNil(capturedRequest)
+  }
+
+  func testStreamRejectsRemoteHTTPWithoutAPIKeyBeforeSendingBody() async {
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let client = AIChatCompletionClient(transport: transport)
+    let config = AIProviderConfig(
+      preset: .openAICompatible,
+      baseURL: "http://ai.internal.example/v1",
+      model: "model",
+      requiresAPIKey: false
+    )
+
+    await XCTAssertThrowsErrorAsync(
+      try await client.stream(
+        request: AIChatCompletionRequest(
+          model: "model",
+          messages: [AIChatMessage(role: "user", content: "private prompt")]
+        ),
+        config: config,
+        apiKey: nil
+      )
+    ) { error in
+      XCTAssertEqual(error as? AIChatCompletionClientError, .insecureCredentialURL)
+    }
+    let capturedRequest = await transport.capturedRequest()
+    XCTAssertNil(capturedRequest)
+  }
+
+  func testStreamAllowsLoopbackHTTPWithoutAPIKey() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200,
+      streamLines: [
+        #"data: {"choices":[{"delta":{"content":"local"},"finish_reason":"stop"}]}"#,
+        "",
+      ]
+    )
+    let client = AIChatCompletionClient(transport: transport)
+    let config = AIProviderConfig(
+      preset: .local,
+      baseURL: "http://localhost:11434/v1",
+      model: "model",
+      requiresAPIKey: false
+    )
+
+    let stream = try await client.stream(
+      request: AIChatCompletionRequest(model: "model", messages: []),
+      config: config,
+      apiKey: nil
+    )
+    var content = ""
+    for try await update in stream {
+      content += update.contentDelta
+    }
+
+    XCTAssertEqual(content, "local")
+    let capturedRequest = await transport.capturedRequest()
+    XCTAssertEqual(capturedRequest?.url?.host, "localhost")
+    XCTAssertNil(capturedRequest?.value(forHTTPHeaderField: "Authorization"))
+  }
+
+  func testAIRequestPolicyUsesStrictLoopbackHostAllowlist() throws {
+    let allowed = [
+      "http://localhost:11434/v1/chat/completions",
+      "http://127.0.0.1:11434/v1/chat/completions",
+      "http://127.42.7.9:11434/v1/chat/completions",
+      "http://[::1]:11434/v1/chat/completions",
+    ]
+    for value in allowed {
+      XCTAssertTrue(
+        CredentialedEndpointPolicy.isAllowedAIRequestURL(try XCTUnwrap(URL(string: value)), hasCredential: false),
+        value
+      )
+    }
+
+    let rejected = [
+      "http://localhost.example:11434/v1/chat/completions",
+      "http://127.example:11434/v1/chat/completions",
+      "http://126.255.255.255:11434/v1/chat/completions",
+      "http://[::2]:11434/v1/chat/completions",
+      "http://user@localhost:11434/v1/chat/completions",
+    ]
+    for value in rejected {
+      XCTAssertFalse(
+        CredentialedEndpointPolicy.isAllowedAIRequestURL(try XCTUnwrap(URL(string: value)), hasCredential: false),
+        value
+      )
+    }
+  }
+
   private func responseData(content: String, usage: String? = nil) -> Data {
     let usageFragment = usage.map { #","usage":"# + $0 } ?? ""
     return Data("""

@@ -5,10 +5,10 @@ final class WorkspaceModelsTests: XCTestCase {
   func testWorkspaceSectionsExposeStableCommandNumberShortcuts() {
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.displayNameLocalizationKey),
-      ["workspace.writing", "workspace.siteStarter", "workspace.sync", "workspace.images", "workspace.contentHealth", "workspace.ai", "workspace.generalDrafts", "workspace.maintenance", "workspace.releaseHistory", "workspace.releaseReadiness"]
+      ["workspace.writing", "workspace.siteStarter", "workspace.sync", "workspace.images", "workspace.contentHealth", "workspace.ai", "workspace.generalDrafts", "workspace.maintenance", "workspace.releaseHistory"]
     )
-    XCTAssertEqual(WorkspaceSection.allCases.map { String($0.keyboardShortcutKey) }, ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"])
-    XCTAssertEqual(WorkspaceSection.allCases.map(\.keyboardShortcutLabel), ["⌘1", "⌘2", "⌘3", "⌘4", "⌘5", "⌘6", "⌘7", "⌘8", "⌘9", "⌘0"])
+    XCTAssertEqual(WorkspaceSection.allCases.map { String($0.keyboardShortcutKey) }, ["1", "2", "3", "4", "5", "6", "7", "8", "9"])
+    XCTAssertEqual(WorkspaceSection.allCases.map(\.keyboardShortcutLabel), ["⌘1", "⌘2", "⌘3", "⌘4", "⌘5", "⌘6", "⌘7", "⌘8", "⌘9"])
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.localizationKey),
       [
@@ -21,45 +21,80 @@ final class WorkspaceModelsTests: XCTestCase {
         "workspace.generalDrafts",
         "workspace.maintenance",
         "workspace.releaseHistory",
-        "workspace.releaseReadiness",
       ]
     )
     XCTAssertEqual(Set(WorkspaceSection.allCases.map(\.keyboardShortcutKey)).count, WorkspaceSection.allCases.count)
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.detailLocalizationKey),
-      ["workspace.writing.detail", "workspace.siteStarter.detail", "workspace.sync.detail", "workspace.images.detail", "workspace.contentHealth.detail", "workspace.ai.detail", "workspace.generalDrafts.detail", "workspace.maintenance.detail", "workspace.releaseHistory.detail", "workspace.releaseReadiness.detail"]
+      ["workspace.writing.detail", "workspace.siteStarter.detail", "workspace.sync.detail", "workspace.images.detail", "workspace.contentHealth.detail", "workspace.ai.detail", "workspace.generalDrafts.detail", "workspace.maintenance.detail", "workspace.releaseHistory.detail"]
     )
     XCTAssertEqual(WorkspaceSection.writing.contextSidebarMode, .writingDrafts)
     XCTAssertEqual(WorkspaceSection.contentHealth.contextSidebarMode, .contentHealthFilters)
     XCTAssertEqual(WorkspaceSection.sync.contextSidebarMode, .repositoryStages)
     XCTAssertEqual(WorkspaceSection.siteStarter.contextSidebarMode, .none)
-    XCTAssertEqual(WorkspaceSection.releaseReadiness.contextSidebarMode, .none)
   }
 
   func testWorkspaceNavigationPresentationCentralizesSurfacePolicies() {
     XCTAssertEqual(WorkspaceNavigationPresentation.defaultSection, .writing)
     XCTAssertEqual(
       WorkspaceNavigationPresentation.topBarItems.map(\.section),
-      [.sync, .images, .contentHealth, .releaseHistory]
+      [.sync, .images, .contentHealth]
     )
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuItems.map(\.section),
-      [.writing, .sync, .images, .contentHealth, .releaseHistory]
+      [.writing, .sync, .images, .contentHealth]
+    )
+    XCTAssertEqual(WorkspaceNavigationPresentation.primaryAreas, [.writing, .publishing])
+    XCTAssertEqual(
+      WorkspaceNavigationPresentation.primarySections(in: .writing),
+      [.writing, .ai, .images]
     )
     XCTAssertEqual(
-      WorkspaceNavigationPresentation.productReadinessSections,
-      WorkspaceSection.allCases
+      WorkspaceNavigationPresentation.primarySections(in: .publishing),
+      [.sync, .contentHealth]
+    )
+    XCTAssertTrue(WorkspaceNavigationPresentation.primarySections(in: .site).isEmpty)
+    XCTAssertEqual(
+      WorkspaceNavigationPresentation.secondaryEntryItems.map(\.section),
+      [.siteStarter, .generalDrafts]
     )
     XCTAssertEqual(
-      WorkspaceVisibilityPolicy.productionRailSections,
-      WorkspaceSection.allCases.filter { $0 != .releaseReadiness }
+      WorkspaceNavigationPresentation.secondaryEntryItems.map(\.keyboardShortcutLabel),
+      ["⌘2", "⌘7"]
     )
-    XCTAssertEqual(WorkspaceVisibilityPolicy.developerDiagnosticsSections, [.releaseReadiness])
+    XCTAssertEqual(WorkspaceVisibilityPolicy.hiddenNavigationSections, [.maintenance, .releaseHistory])
     XCTAssertTrue(WorkspaceNavigationPresentation.sections(for: .sidebarList).isEmpty)
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuItems.map(\.keyboardShortcutLabel),
-      ["⌘1", "⌘3", "⌘4", "⌘5", "⌘9"]
+      ["⌘1", "⌘3", "⌘4", "⌘5"]
     )
+  }
+
+  func testWorkspaceAreasGroupEverySectionExactlyOnce() {
+    XCTAssertEqual(
+      WorkspaceArea.allCases.flatMap(\.sections),
+      [.writing, .ai, .images, .generalDrafts, .sync, .contentHealth, .releaseHistory, .siteStarter, .maintenance]
+    )
+    XCTAssertEqual(
+      Set(WorkspaceArea.allCases.flatMap(\.sections)),
+      Set(WorkspaceSection.allCases)
+    )
+    XCTAssertEqual(WorkspaceSection.writing.area, .writing)
+    XCTAssertEqual(WorkspaceSection.releaseHistory.area, .publishing)
+    XCTAssertEqual(WorkspaceSection.maintenance.area, .site)
+    XCTAssertTrue(WorkspaceArea.allCases.allSatisfy { $0.sections.contains($0.defaultSection) })
+  }
+
+  func testEveryWorkspaceSectionHasAnExplicitCenterSurfaceRoute() {
+    XCTAssertEqual(
+      WorkspaceSection.allCases.map(\.centerSurface),
+      [.editor, .siteStarter, .repository, .images, .contentHealth, .aiChat, .generalDrafts, .maintenance, .releaseHistory]
+    )
+    XCTAssertEqual(
+      WorkspaceSection.allCases.filter(\.requiresEditableDraftForCenterSurface),
+      [.writing, .sync, .images, .contentHealth, .releaseHistory]
+    )
+    XCTAssertEqual(Set(WorkspaceSection.allCases.map(\.centerSurface)), Set(WorkspaceCenterSurface.allCases))
   }
 
   func testSiteProfileDecodesMissingAIWritingStyleWithDefault() throws {

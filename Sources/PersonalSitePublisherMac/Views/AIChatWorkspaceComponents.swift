@@ -113,7 +113,7 @@ struct QuickPromptGrid: View {
 
       ForEach(snapshot.promptSections) { section in
         VStack(alignment: .leading, spacing: 8) {
-          Label(section.group.displayName, systemImage: section.group.systemImage)
+          Label(section.group.localizedDisplayName, systemImage: section.group.systemImage)
             .font(.headline)
           Text(section.group.detail)
             .font(.caption)
@@ -124,7 +124,7 @@ struct QuickPromptGrid: View {
               Button {
                 onPromptSelected(prompt.prompt)
               } label: {
-                Label(prompt.displayName, systemImage: prompt.systemImage)
+                Label(prompt.localizedDisplayName, systemImage: prompt.systemImage)
                   .frame(maxWidth: .infinity, alignment: .leading)
               }
               .buttonStyle(.bordered)
@@ -144,14 +144,14 @@ struct QuickPromptGrid: View {
     VStack(alignment: .leading, spacing: 6) {
       Picker("AI 能力范围", selection: $capabilityMode) {
         ForEach(AIPublishingCapabilityCenterMode.allCases) { mode in
-          Text(mode.displayName).tag(mode)
+          Text(mode.localizedDisplayName).tag(mode)
         }
       }
       .pickerStyle(.segmented)
       .labelsHidden()
       .frame(maxWidth: 280)
       .accessibilityLabel("AI 能力范围")
-      .accessibilityValue(capabilityMode.displayName)
+      .accessibilityValue(capabilityMode.localizedDisplayName)
 
       Text(capabilityMode.detail)
         .font(.caption)
@@ -174,7 +174,7 @@ struct QuickPromptGrid: View {
               Button {
                 onPromptSelected(AIPublishingChatPromptTemplateService.editorActionPrompt(for: action))
               } label: {
-                Label(action.displayName, systemImage: action.promptLibrarySystemImage)
+                Label(action.localizedDisplayName, systemImage: action.promptLibrarySystemImage)
                   .frame(maxWidth: .infinity, alignment: .leading)
               }
               .buttonStyle(.bordered)
@@ -183,7 +183,7 @@ struct QuickPromptGrid: View {
           }
           .padding(.top, 6)
         } label: {
-          Label(section.group.displayName, systemImage: section.group.systemImage)
+          Label(section.group.localizedDisplayName, systemImage: section.group.systemImage)
             .font(.callout.weight(.semibold))
         }
       }
@@ -255,7 +255,7 @@ struct AIChatMessageRow: View {
 
       VStack(alignment: .leading, spacing: 8) {
         HStack(spacing: 8) {
-          Label(message.role.displayName, systemImage: message.role == .user ? "person.crop.circle" : "sparkles")
+          Label(message.role.localizedDisplayName, systemImage: message.role == .user ? "person.crop.circle" : "sparkles")
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
           Text(message.createdAt.workbenchShortText)
@@ -353,7 +353,7 @@ struct AIChatMessageRow: View {
             Label("\(message.imageAttachments.count) 张图片附件", systemImage: "photo.on.rectangle")
               .font(.caption.weight(.medium))
               .foregroundStyle(.secondary)
-            ForEach(message.imageAttachments, id: \.self) { attachment in
+            ForEach(Array(message.imageAttachments.enumerated()), id: \.offset) { _, attachment in
               Text(attachment.filename)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)

@@ -52,7 +52,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertNil(store.consumePendingAIQuickPrompt())
   }
 
-  func testAIChatCustomPromptsPersistAndCanBeDeleted() throws {
+  func testAIChatCustomPromptsPersistAndCanBeDeleted() async throws {
     let persistenceURL = try temporaryPersistenceURL()
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL)
@@ -67,6 +67,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
 
     XCTAssertEqual(store.aiChatCustomPrompts.map(\.id), [saved.id])
     XCTAssertEqual(store.aiChatCustomPrompts.first?.title, "发布前检查")
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL)
@@ -946,7 +947,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     )
   }
 
-  func testAIMetadataApplicationRecordPersistsAndRollsBackChangedFields() throws {
+  func testAIMetadataApplicationRecordPersistsAndRollsBackChangedFields() async throws {
     let persistenceURL = try temporaryPersistenceURL()
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL)
@@ -974,6 +975,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertEqual(record.newSummary, "可回滚摘要")
     XCTAssertEqual(record.previousTags, draft.tags)
     XCTAssertEqual(record.newTags, ["AI", "回滚"])
+    await store.waitForPendingSave()
 
     let reloadedStore = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL)

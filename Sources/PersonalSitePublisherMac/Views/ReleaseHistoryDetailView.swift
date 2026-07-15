@@ -4,8 +4,10 @@ import SwiftUI
 
 struct ReleaseHistoryDetailView: View {
   @ObservedObject var store: WorkbenchStore
+#if DEBUG
   @State var webhookProvider: DeploymentProvider = .netlify
   @State var webhookPayloadText = ""
+#endif
   @State var pendingDangerousReleaseAction: DangerousReleaseAction?
 
   var body: some View {
@@ -53,7 +55,9 @@ struct ReleaseHistoryDetailView: View {
         releaseActionQueueSection(ledger)
         deploymentPollingSummary
         deploymentStatusSummary
+#if DEBUG
         deploymentAdvancedDebugSection
+#endif
 
         if ledger.entries.isEmpty {
           EmptyStateView(
@@ -135,14 +139,14 @@ struct ReleaseHistoryDetailView: View {
             Text(item.title)
               .font(.callout.weight(.medium))
               .lineLimit(1)
-            Text(item.kind.displayName)
+            Text(item.kind.localizedDisplayName)
               .font(.caption2)
               .foregroundStyle(.secondary)
               .padding(.horizontal, 6)
               .padding(.vertical, 2)
               .background(WorkbenchBackgroundStyle.badge, in: Capsule())
             Spacer()
-            Text(item.priority.displayName)
+            Text(item.priority.localizedDisplayName)
               .font(.caption2.weight(.semibold))
               .foregroundStyle(releaseActionPriorityForeground(item.priority))
           }
@@ -203,11 +207,6 @@ struct ReleaseHistoryDetailView: View {
             Label("复制验证摘要", systemImage: "checklist.checked")
           }
 
-          Button {
-            store.recordReleaseRecoveryExternalVerificationEvidence(from: entry.recoveryPackage)
-          } label: {
-            Label("记录证据", systemImage: "checkmark.seal")
-          }
         }
 
         if let remoteURL = item.remoteURL.flatMap(URL.init(string:)) {
@@ -240,7 +239,7 @@ struct ReleaseHistoryDetailView: View {
             .font(.caption2.monospacedDigit())
             .foregroundStyle(.secondary)
             .frame(width: 74, alignment: .leading)
-          Text(snapshot.level.displayName)
+          Text(snapshot.level.localizedDisplayName)
             .font(.caption.weight(.medium))
             .foregroundStyle(statusForeground(snapshot.level))
           Text(snapshot.message)
@@ -398,7 +397,7 @@ struct ReleaseHistoryDetailView: View {
       LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
         MetricTile(
           title: "状态",
-          value: store.deploymentPollingSettings.isEnabled ? store.deploymentPollingState.status.displayName : "已关闭",
+          value: store.deploymentPollingSettings.isEnabled ? store.deploymentPollingState.status.localizedDisplayName : "已关闭",
           systemImage: store.deploymentPollingState.status.systemImage
         )
         MetricTile(
@@ -455,10 +454,10 @@ struct ReleaseHistoryDetailView: View {
                   Text(checkedRecord.title)
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
-                  Text(checkedRecord.provider.displayName)
+                  Text(checkedRecord.provider.localizedDisplayName)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                  Text(checkedRecord.level.displayName)
+                  Text(checkedRecord.level.localizedDisplayName)
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(statusForeground(checkedRecord.level))
                 }

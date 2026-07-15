@@ -105,8 +105,9 @@ public struct ContentMigrationService: Sendable {
   }
 
   public func makePlanAsync(sourceURL: URL, profile: SiteProfile) async throws -> ContentMigrationPlan {
-    try await Task.detached(priority: .userInitiated) {
-      try ContentMigrationService().makePlan(sourceURL: sourceURL, profile: profile)
+    let service = self
+    return try await Task.detached(priority: .userInitiated) {
+      try service.makePlan(sourceURL: sourceURL, profile: profile)
     }.value
   }
 

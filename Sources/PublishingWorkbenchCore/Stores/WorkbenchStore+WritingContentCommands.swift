@@ -30,6 +30,11 @@ extension WorkbenchStore {
     publishingStore.refreshPublishPreview(for: draft, store: self)
   }
 
+  public func refreshPublishPreviewInBackground(for draft: ArticleDraft? = nil) {
+    flushDraftBodyEditorBuffers()
+    publishingStore.schedulePublishPreviewRefresh(for: draft, store: self)
+  }
+
   public func refreshBatchPublishPlan() {
     flushDraftBodyEditorBuffers()
     publishingStore.refreshBatchPublishPlan(store: self)
@@ -220,6 +225,58 @@ extension WorkbenchStore {
     discardDraftBodyEditorBuffer(for: draftID)
     publishingStore.deleteDraft(id: draftID, store: self)
     invalidateDraftDerivedCaches()
+  }
+
+  public func versions(for draftID: UUID) -> [DraftVersionSnapshot] {
+    publishingStore.versions(for: draftID)
+  }
+
+  @discardableResult
+  public func createManualVersion(for draftID: UUID) -> Bool {
+    flushDraftBodyEditorBuffer(for: draftID)
+    return publishingStore.createManualVersion(for: draftID, store: self)
+  }
+
+  @discardableResult
+  public func restoreDraftVersion(_ versionID: UUID) -> Bool {
+    flushDraftBodyEditorBuffers()
+    let restored = publishingStore.restoreDraftVersion(versionID, store: self)
+    if restored {
+      invalidateDraftDerivedCaches()
+    }
+    return restored
+  }
+
+  @discardableResult
+  public func restoreRecycledDraft(_ draftID: UUID) -> Bool {
+    let restored = publishingStore.restoreRecycledDraft(draftID, store: self)
+    if restored {
+      invalidateDraftDerivedCaches()
+    }
+    return restored
+  }
+
+  @discardableResult
+  public func permanentlyDeleteRecycledDraft(_ draftID: UUID) -> Bool {
+    publishingStore.permanentlyDeleteRecycledDraft(draftID, store: self)
+  }
+
+  public var pendingRepositoryCleanupRequests: [DraftRepositoryCleanupRequest] {
+    publishingStore.pendingRepositoryCleanupRequests()
+  }
+
+  public func repositoryCleanupPreview(for requestID: UUID) -> LocalPublishPreview? {
+    publishingStore.repositoryCleanupPreview(for: requestID)
+  }
+
+  @discardableResult
+  public func performLocalRepositoryCleanup(_ requestID: UUID) -> Bool {
+    publishingStore.performLocalRepositoryCleanup(requestID, store: self)
+  }
+
+  @discardableResult
+  public func keepRepositoryFile(_ requestID: UUID) -> Bool {
+    publishingStore.keepRepositoryFile(requestID, store: self)
   }
 
   public func focusDraft(_ id: UUID, section: WorkspaceSection? = nil) -> Bool {

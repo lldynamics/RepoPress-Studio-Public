@@ -238,8 +238,9 @@ extension WorkbenchStore {
     aiStore.seoSitemapPreview(for: draft)
   }
 
-  public func seoSocialPublishPackageMarkdown(for draft: ArticleDraft) -> String? {
-    aiStore.seoSocialPublishPackageMarkdown(for: draft)
+  public func seoSocialPublishPackageMarkdown(for draft: ArticleDraft) async -> String? {
+    await refreshSiteMaintenanceSnapshot()
+    return aiStore.seoSocialPublishPackageMarkdown(for: draft)
   }
 
   @discardableResult

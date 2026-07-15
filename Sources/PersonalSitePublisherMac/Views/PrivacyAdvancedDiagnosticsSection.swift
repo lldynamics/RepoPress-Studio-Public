@@ -39,7 +39,7 @@ struct PrivacyAdvancedDiagnosticsSection: View {
         VStack(alignment: .leading, spacing: 3) {
           Label("体检、证据与事件记录", systemImage: "checklist.checked")
             .font(.callout.weight(.semibold))
-          Text("用于上架材料、隐私审计和调试；日常只需要上方锁定和遮挡开关。")
+          Text("用于上架材料、隐私审计和调试；日常只需要上方快速隐藏和内容遮挡。")
             .font(.caption)
             .foregroundStyle(.secondary)
         }

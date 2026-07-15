@@ -70,7 +70,7 @@ extension WorkbenchStoreProfileTests {
   func testOnlineDirectPublishMarksDraftPublishedAndRecordsDeploymentStatus() async throws {
     let publishTransport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
       workbenchRemoteResponse(statusCode: 404, json: #"{"message":"not found"}"#),
-      workbenchRemoteResponse(json: #"{"content":{"path":"content/posts/online-direct-success.md"},"commit":{"sha":"online-direct-commit"}}"#),
+      workbenchRemoteResponse(json: #"{"content":{"path":"content/posts/online-direct-success.md","sha":"online-direct-content-sha"},"commit":{"sha":"online-direct-commit"}}"#),
     ])
     let deploymentTransport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
       workbenchRemoteResponse(statusCode: 200, json: #"{"status":"ok","message":"Site is live"}"#),
@@ -108,7 +108,7 @@ extension WorkbenchStoreProfileTests {
       canWrite: true,
       message: "GitHub Token 具备仓库写入权限。"
     ))
-    store.applyProEntitlement(source: .localOverride)
+    store.applyUnlockedTestEntitlement()
 
     let draft = ArticleDraft(
       siteProfileID: profile.id,
@@ -142,6 +142,8 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(result?.commitSHA, "online-direct-commit")
     XCTAssertEqual(store.drafts.first?.status, .published)
     XCTAssertFalse(store.drafts.first?.draft ?? true)
+    XCTAssertEqual(store.drafts.first?.repositoryPath, "content/posts/online-direct-success.md")
+    XCTAssertEqual(store.drafts.first?.repositorySHA, "online-direct-content-sha")
     let record = try XCTUnwrap(store.releaseRecords.first)
     XCTAssertEqual(record.kind, .remoteDirectCommit)
     XCTAssertEqual(store.deploymentStatusSnapshot(for: record)?.level, .success)
@@ -207,7 +209,7 @@ extension WorkbenchStoreProfileTests {
       canWrite: true,
       message: "GitHub Token 具备仓库写入权限。"
     ))
-    store.applyProEntitlement(source: .localOverride)
+    store.applyUnlockedTestEntitlement()
 
     let draft = ArticleDraft(
       siteProfileID: profile.id,
@@ -272,7 +274,7 @@ extension WorkbenchStoreProfileTests {
     }
     try tokenStore.saveToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.applyProEntitlement(source: .localOverride)
+    store.applyUnlockedTestEntitlement()
 
     let original = ReleaseRecord(
       kind: .remoteDirectCommit,
@@ -341,7 +343,7 @@ extension WorkbenchStoreProfileTests {
     }
     try tokenStore.saveToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.applyProEntitlement(source: .localOverride)
+    store.applyUnlockedTestEntitlement()
 
     let original = ReleaseRecord(
       kind: .remoteReviewRequest,
@@ -628,6 +630,7 @@ extension WorkbenchStoreProfileTests {
 
     XCTAssertEqual(check?.repositoryName, "owner/site")
     XCTAssertTrue(check?.canWrite == true)
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
       repositoryTokenStore: tokenStore
@@ -788,7 +791,7 @@ extension WorkbenchStoreProfileTests {
     }
     try tokenStore.saveToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.applyProEntitlement(source: .localOverride)
+    store.applyUnlockedTestEntitlement()
 
     let draft = ArticleDraft(
       siteProfileID: profile.id,
@@ -1027,7 +1030,7 @@ extension WorkbenchStoreProfileTests {
     }
     try tokenStore.saveToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.applyProEntitlement(productID: "test.pro", source: .storeKit)
+    store.applyVerifiedStoreKitEntitlement(productID: "test.pro")
 
     let result = await store.createGitHubRepositoryForActiveProfile(privateRepository: false)
 
@@ -1069,7 +1072,7 @@ extension WorkbenchStoreProfileTests {
     }
     try tokenStore.saveToken("gitlab-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.applyProEntitlement(productID: "test.pro", source: .storeKit)
+    store.applyVerifiedStoreKitEntitlement(productID: "test.pro")
 
     let result = await store.createRemoteRepositoryForActiveProfile(privateRepository: true)
 
@@ -1138,7 +1141,7 @@ extension WorkbenchStoreProfileTests {
       canWrite: true,
       message: "GitHub Token 具备仓库写入权限。"
     ))
-    store.applyProEntitlement(source: .localOverride)
+    store.applyUnlockedTestEntitlement()
 
     let attachment = DraftAttachment(
       originalFilename: "partial-cover.png",
@@ -1221,7 +1224,7 @@ extension WorkbenchStoreProfileTests {
       canWrite: true,
       message: "GitHub Token 具备仓库写入权限。"
     ))
-    store.applyProEntitlement(source: .localOverride)
+    store.applyUnlockedTestEntitlement()
 
     let firstDraft = ArticleDraft(
       siteProfileID: profile.id,
@@ -1347,7 +1350,7 @@ extension WorkbenchStoreProfileTests {
       canWrite: true,
       message: "GitHub Token 具备仓库写入权限。"
     ))
-    store.applyProEntitlement(source: .localOverride)
+    store.applyUnlockedTestEntitlement()
 
     let firstDraft = ArticleDraft(
       siteProfileID: profile.id,
@@ -1428,7 +1431,7 @@ extension WorkbenchStoreProfileTests {
     }
     try tokenStore.saveToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.applyProEntitlement(source: .localOverride)
+    store.applyUnlockedTestEntitlement()
 
     let firstDraft = ArticleDraft(
       siteProfileID: profile.id,

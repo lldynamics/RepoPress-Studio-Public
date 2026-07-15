@@ -101,7 +101,10 @@ public struct RemoteReviewDraftBuilder {
       .map { "- [ ] \($0)" }
       .joined(separator: "\n")
     let files = package.files
-      .map { "- \($0.kind.displayName): `\($0.repositoryPath)`" }
+      .map { file in
+        let action = file.operation == .delete ? file.operation.displayName : file.kind.displayName
+        return "- \(action): `\(file.repositoryPath)`"
+      }
       .joined(separator: "\n")
 
     return """
@@ -128,7 +131,12 @@ public struct RemoteReviewDraftBuilder {
       .map { "- \($0.draftTitle): `\($0.markdownPath)`（\($0.changedFileCount) 个变化）" }
       .joined(separator: "\n")
     let files = items
-      .flatMap { $0.package.files.map { "- \($0.kind.displayName): `\($0.repositoryPath)`" } }
+      .flatMap { item in
+        item.package.files.map { file in
+          let action = file.operation == .delete ? file.operation.displayName : file.kind.displayName
+          return "- \(action): `\(file.repositoryPath)`"
+        }
+      }
       .joined(separator: "\n")
 
     return """

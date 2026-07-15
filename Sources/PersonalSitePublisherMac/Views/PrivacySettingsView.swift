@@ -25,11 +25,6 @@ struct PrivacySettingsView: View {
         }
       )
 
-      PrivacySettingsLockSection(
-        requiresUnlockOnLaunch: privacySettingBinding(keyPath: \.requiresUnlockOnLaunch),
-        locksWhenInactive: privacySettingBinding(keyPath: \.locksWhenInactive)
-      )
-
       PrivacySettingsVisibilitySection(
         masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent)
       )

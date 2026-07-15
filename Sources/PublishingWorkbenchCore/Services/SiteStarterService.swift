@@ -1,8 +1,13 @@
 import Foundation
 
 public struct SiteStarterService: Sendable {
+  typealias CreateSiteOperation = @Sendable (SiteStarterRequest) throws -> SiteStarterResult
+  typealias ImportExistingSiteOperation = @Sendable (SiteStarterImportRequest) throws -> SiteStarterImportResult
+
   private let fileSystem: SendableFileManager
   private let gitCommandRunner: GitCommandRunner
+  private let createSiteOperation: CreateSiteOperation?
+  private let importExistingSiteOperation: ImportExistingSiteOperation?
 
   private var fileManager: FileManager { fileSystem.value }
 
@@ -12,9 +17,28 @@ public struct SiteStarterService: Sendable {
   ) {
     self.fileSystem = SendableFileManager(fileManager)
     self.gitCommandRunner = gitCommandRunner
+    self.createSiteOperation = nil
+    self.importExistingSiteOperation = nil
+  }
+
+  /// Test seam for deterministic scheduling checks. Production callers use
+  /// the public initializer above and execute the real file-system workflow.
+  init(
+    fileManager: FileManager = .default,
+    gitCommandRunner: GitCommandRunner = GitCommandRunner(timeout: 60),
+    createSiteOperation: @escaping CreateSiteOperation,
+    importExistingSiteOperation: ImportExistingSiteOperation? = nil
+  ) {
+    self.fileSystem = SendableFileManager(fileManager)
+    self.gitCommandRunner = gitCommandRunner
+    self.createSiteOperation = createSiteOperation
+    self.importExistingSiteOperation = importExistingSiteOperation
   }
 
   public func createSite(request: SiteStarterRequest) throws -> SiteStarterResult {
+    if let createSiteOperation {
+      return try createSiteOperation(request)
+    }
     let template = try template(for: request.templateID)
     let rootURL = URL(fileURLWithPath: request.rootPath, isDirectory: true).standardizedFileURL
     let siteName = request.siteName.trimmedForPublishing.nilIfEmpty ?? "我的网站"
@@ -91,6 +115,9 @@ public struct SiteStarterService: Sendable {
   }
 
   public func importExistingSite(request: SiteStarterImportRequest) throws -> SiteStarterImportResult {
+    if let importExistingSiteOperation {
+      return try importExistingSiteOperation(request)
+    }
     let rootURL = URL(fileURLWithPath: request.rootPath, isDirectory: true).standardizedFileURL
     try validateExistingRootDirectory(rootURL)
 
@@ -140,6 +167,27 @@ public struct SiteStarterService: Sendable {
       detectedRemoteURL: detectedRemoteURL,
       nextCommands: importedRepositoryNextCommands(rootURL: rootURL, branch: branch, owner: owner, repoName: repoName)
     )
+  }
+
+  /// Runs template generation, file writes, and optional Git initialization
+  /// away from the main actor. The returned value is immutable and Sendable,
+  /// so a store can safely decide on the main actor whether it is still current.
+  public func createSiteAsync(request: SiteStarterRequest) async throws -> SiteStarterResult {
+    let service = self
+    return try await Task.detached(priority: .userInitiated) {
+      try service.createSite(request: request)
+    }.value
+  }
+
+  /// Runs directory validation and Git metadata detection away from the main
+  /// actor. Article discovery is also dispatched separately by the store.
+  public func importExistingSiteAsync(
+    request: SiteStarterImportRequest
+  ) async throws -> SiteStarterImportResult {
+    let service = self
+    return try await Task.detached(priority: .userInitiated) {
+      try service.importExistingSite(request: request)
+    }.value
   }
 
   public func commitAndPushStarterSite(

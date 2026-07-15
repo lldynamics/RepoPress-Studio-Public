@@ -204,6 +204,7 @@ extension RemoteRepositoryPublishService {
     }
 
     var changedPaths: [String] = []
+    var remoteVersionsByPath: [String: String] = [:]
     var lastCommitSHA: String?
     var reviewURL: String?
     let totalFiles = max(1, package.files.count)
@@ -231,6 +232,30 @@ extension RemoteRepositoryPublishService {
             actual: existingSHA
           )
         }
+
+        if file.operation == .delete {
+          guard let existingSHA else {
+            continue
+          }
+          let response: GitHubContentMutationResponse = try await send(
+            githubRequest(
+              repository: repository,
+              method: "DELETE",
+              path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/contents/\(encodedRepositoryPath(file.repositoryPath))",
+              token: token,
+              queryItems: nil,
+              body: GitHubDeleteContentsBody(
+                message: package.commitMessage,
+                branch: branchName,
+                sha: existingSHA
+              )
+            )
+          )
+          changedPaths.append(file.repositoryPath)
+          lastCommitSHA = response.commit.sha
+          continue
+        }
+
         let data = try contentData(for: file)
         let response: GitHubContentMutationResponse = try await send(
           githubRequest(
@@ -249,6 +274,9 @@ extension RemoteRepositoryPublishService {
         )
         changedPaths.append(file.repositoryPath)
         lastCommitSHA = response.commit.sha
+        if let contentSHA = response.content?.sha?.trimmedForPublishing.nilIfEmpty {
+          remoteVersionsByPath[file.repositoryPath.normalizedRelativePath()] = contentSHA
+        }
       }
 
       if mode == .reviewRequest {
@@ -332,6 +360,7 @@ extension RemoteRepositoryPublishService {
       targetBranch: targetBranch,
       changedPaths: changedPaths,
       commitSHA: lastCommitSHA,
+      remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
       reviewURL: reviewURL,
       reviewTitle: mode == .reviewRequest ? reviewDraft.title : nil
     )
@@ -371,6 +400,7 @@ extension RemoteRepositoryPublishService {
     let existenceRef = mode == .reviewRequest && reviewBranchExists ? branchName : targetBranch
 
     var actions: [GitLabCommitAction] = []
+    var changedPaths: [String] = []
     let totalFiles = max(1, package.files.count)
     for (index, file) in package.files.enumerated() {
       onProgress?(
@@ -395,6 +425,24 @@ extension RemoteRepositoryPublishService {
           actual: remoteState.lastCommitID
         )
       }
+
+      if file.operation == .delete {
+        guard remoteState.exists else {
+          continue
+        }
+        actions.append(
+          GitLabCommitAction(
+            action: "delete",
+            filePath: file.repositoryPath,
+            content: nil,
+            encoding: nil,
+            lastCommitID: remoteState.lastCommitID
+          )
+        )
+        changedPaths.append(file.repositoryPath)
+        continue
+      }
+
       let data = try contentData(for: file)
       actions.append(
         GitLabCommitAction(
@@ -405,6 +453,7 @@ extension RemoteRepositoryPublishService {
           lastCommitID: remoteState.lastCommitID
         )
       )
+      changedPaths.append(file.repositoryPath)
     }
 
     onProgress?(
@@ -432,7 +481,10 @@ extension RemoteRepositoryPublishService {
       )
     )
 
-    let changedPaths = package.files.map(\.repositoryPath)
+    var remoteVersionsByPath: [String: String] = [:]
+    for file in package.files where file.operation == .upsert && changedPaths.contains(file.repositoryPath) {
+      remoteVersionsByPath[file.repositoryPath.normalizedRelativePath()] = commit.id
+    }
     var reviewURL: String?
     if mode == .reviewRequest {
       onProgress?(
@@ -526,6 +578,7 @@ extension RemoteRepositoryPublishService {
       targetBranch: targetBranch,
       changedPaths: changedPaths,
       commitSHA: commit.id,
+      remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
       reviewURL: reviewURL,
       reviewTitle: mode == .reviewRequest ? reviewDraft.title : nil
     )

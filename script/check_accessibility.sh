@@ -68,8 +68,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  "WorkspaceNavigationPresentation.secondaryEntryItems" \
+  "advanced workspace tools must remain available from the command menu"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/AdvancedWorkspaceMenu.swift" \
+  ".accessibilityLabel(\"高级工具\")" \
+  "advanced workspace menu must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
   ".keyboardShortcut(\"l\", modifiers: [.command, .control])" \
-  "privacy lock must have a keyboard shortcut"
+  "quick hide must have a keyboard shortcut"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
@@ -84,22 +94,22 @@ require_literal \
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
   ".keyboardShortcut(.return, modifiers: [])" \
-  "privacy lock overlay must support return-key unlock"
+  "quick-hide overlay must support return-key return"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
   ".accessibilityIdentifier(\"privacy-lock-overlay\")" \
-  "privacy lock overlay must expose an accessibility identifier"
+  "quick-hide overlay must expose an accessibility identifier"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
   ".accessibilityLabel(status.title)" \
-  "privacy lock overlay must expose an accessibility label"
+  "quick-hide overlay must expose an accessibility label"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
   ".accessibilityHint(status.detail)" \
-  "privacy lock overlay must expose an accessibility hint"
+  "quick-hide overlay must expose an accessibility hint"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
@@ -109,27 +119,27 @@ require_literal \
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
   ".disabled(!store.canUseProtectedWorkbench)" \
-  "settings scene must disable controls while privacy locked"
+  "settings scene must disable controls while workbench content is hidden"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
   "PrivacyLockOverlay(store: store)" \
-  "settings scene must show the privacy lock overlay"
+  "settings scene must show the quick-hide overlay"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
-  ".accessibilityLabel(\"工作台状态\")" \
-  "workbench status control must expose an accessibility label"
+  ".accessibilityLabel(\"发布状态\")" \
+  "publishing status control must expose an accessibility label"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
-  ".accessibilityValue(\"仓库、当前文章和部署历史\")" \
-  "workbench status control must expose a concise accessibility value"
+  ".accessibilityValue(\"\(toolbarStatus.area.title)：\(toolbarStatus.value)\")" \
+  "publishing status control must expose its current priority status"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
-  ".help(\"查看仓库、当前文章和部署历史的独立状态\")" \
-  "workbench status control must keep long status detail out of the VoiceOver hint"
+  "点击查看状态和发布操作。" \
+  "publishing status control must explain the merged status and publishing entry"
 
 require_literal_source_manifest \
   "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" \
@@ -210,10 +220,10 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/AIKeychainSection.swift"
 
 require_literal_any_file \
-  ".accessibilityLabel(\"启动时显示隐私界面遮罩\")" \
-  "settings privacy toggle must expose an accessibility label" \
+  ".accessibilityLabel(\"在列表和概览中遮挡私密文章\")" \
+  "settings private-content masking toggle must expose an accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/PrivacySettingsView.swift" \
-  "Sources/PersonalSitePublisherMac/Views/PrivacySettingsLockSection.swift"
+  "Sources/PersonalSitePublisherMac/Views/PrivacySettingsVisibilitySection.swift"
 
 require_literal_any_file \
   ".accessibilityLabel(\"文章标题\")" \
@@ -277,7 +287,7 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift" \
   "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryRecordCardSection.swift"
 
-require_literal \
+require_literal_source_manifest \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift" \
   ".accessibilityLabel(\"搜索草稿\")" \
   "draft search field must expose an accessibility label"
@@ -287,21 +297,20 @@ require_literal \
   ".accessibilityLabel(\"当前站点 Profile\")" \
   "profile picker must expose an accessibility label"
 
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/LocalSitePreviewToolbarControl.swift" \
+  ".accessibilityLabel(\"本地预览\")" \
+  "local preview toolbar control must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/LocalSitePreviewToolbarControl.swift" \
+  ".accessibilityValue(statusTitle)" \
+  "local preview toolbar control must expose its current runtime status"
+
 require_literal_source_manifest \
   "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" \
   ".accessibilityLabel(\"AI 模型名称\")" \
   "AI custom model field must expose an accessibility label"
-
-require_literal_any_file \
-  ".accessibilityLabel(\"当前文章阅读量\")" \
-  "content performance page view field must expose an accessibility label" \
-  "Sources/PersonalSitePublisherMac/Views/SiteMaintenanceDetailView.swift" \
-  "Sources/PersonalSitePublisherMac/Views/SiteMaintenanceContentPerformanceSection.swift"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/ReleaseQualityGateDetailView.swift" \
-  ".accessibilityLabel(\"外部验收证据链接\")" \
-  "external evidence URL field must expose an accessibility label"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift" \
@@ -335,10 +344,36 @@ require_literal \
   ".keyboardShortcut(.defaultAction)" \
   "first-run setup must provide a default keyboard action"
 
+require_literal_source_manifest \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift" \
+  ".accessibilityAddTraits(" \
+  "workspace navigation and filters must expose selected accessibility traits"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  ".accessibilityAddTraits(editorDisplayMode == mode ? .isSelected : [])" \
+  "editor display modes must expose selected accessibility traits"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInputSection.swift" \
+  ".accessibilityAddTraits(isSelected ? .isSelected : [])" \
+  "AI image attachments must expose selected accessibility traits"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/ContentHealthDetailView.swift" \
+  ".accessibilityAddTraits(isSelected ? .isSelected : [])" \
+  "content health article selection must expose selected accessibility traits"
+
 textfield_gaps="$(
   perl -0ne 'while(/TextField\([^\n]*(?:\n[^\n]*){0,8}/g){$m=$&; if($m !~ /accessibilityLabel/){$prefix=substr($_,0,pos($_)); $line=1+($prefix=~tr/\n//); print "$ARGV:$line\n"}}' \
     "$ROOT_DIR"/Sources/PersonalSitePublisherMac/Views/*.swift
 )"
 [[ -z "$textfield_gaps" ]] || fail "text fields missing accessibility labels: $textfield_gaps"
 
-echo "accessibility gate: labels, values, hints, keyboard shortcuts, command routing, first-run setup, status light, settings, editor, site starter, diff review, and publish recovery verified"
+texteditor_gaps="$(
+  perl -0ne 'while(/TextEditor\([^\n]*(?:\n[^\n]*){0,14}/g){$m=$&; if($m !~ /accessibilityLabel/){$prefix=substr($_,0,pos($_)); $line=1+($prefix=~tr/\n//); print "$ARGV:$line\n"}}' \
+    "$ROOT_DIR"/Sources/PersonalSitePublisherMac/Views/*.swift
+)"
+[[ -z "$texteditor_gaps" ]] || fail "text editors missing accessibility labels: $texteditor_gaps"
+
+echo "accessibility gate: labels, values, hints, text editors, selection traits, keyboard shortcuts, command routing, first-run setup, status light, settings, editor, site starter, diff review, and publish recovery verified"

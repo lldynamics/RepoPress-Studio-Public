@@ -273,11 +273,11 @@ final class MonetizationTests: XCTestCase {
     XCTAssertTrue(summary.checklistMarkdown.contains("## 免费版 / Pro 边界事件"))
   }
 
-  func testProSandboxVerificationSummaryRejectsLocalOverrideAsSandboxEvidence() {
+  func testProSandboxVerificationSummaryRejectsUnlockedStateWithoutVerifiedSource() {
     let state = MonetizationState(
       entitlement: ProEntitlementState(
         isUnlocked: true,
-        source: .localOverride,
+        source: .none,
         productID: MonetizationProductCatalog.proLifetimeProductID,
         lastCheckedAt: Date()
       )
@@ -289,7 +289,7 @@ final class MonetizationTests: XCTestCase {
     )
 
     XCTAssertEqual(summary.level, .needsAttention)
-    XCTAssertTrue(summary.remainingItems.contains { $0.contains("本机解锁只能用于调试") })
+    XCTAssertTrue(summary.remainingItems.contains { $0.contains("权益状态已解锁但来源为空") })
     XCTAssertTrue(summary.checklistMarkdown.contains("- 状态：需要处理"))
   }
 
@@ -475,18 +475,19 @@ final class MonetizationTests: XCTestCase {
     XCTAssertEqual(service.consuming(.aiRequest, state: state).freeUsage.aiRequestCount, 10)
   }
 
-	  func testStorePersistsProEntitlementAndUsage() throws {
+	  func testStorePersistsUsageButRequiresStoreKitToReverifyEntitlementAfterRelaunch() async throws {
 	    let url = try temporaryPersistenceURL()
 	    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 
     _ = store.consumeFeatureUse(.aiRequest)
-    store.applyProEntitlement(productID: "test.pro", source: .storeKit)
+    store.applyVerifiedStoreKitEntitlement(productID: "test.pro")
 
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 
     XCTAssertEqual(reloaded.monetizationState.freeUsage.aiRequestCount, 1)
-	    XCTAssertTrue(reloaded.monetizationState.entitlement.isUnlocked)
-	    XCTAssertEqual(reloaded.monetizationState.entitlement.productID, "test.pro")
+	    XCTAssertFalse(reloaded.monetizationState.entitlement.isUnlocked)
+	    XCTAssertNil(reloaded.monetizationState.entitlement.productID)
 	  }
 
 	  func testBlockedPremiumFeatureRecordsUpgradeNoticeAndUnlockClearsIt() throws {
@@ -504,7 +505,7 @@ final class MonetizationTests: XCTestCase {
 	    XCTAssertEqual(store.latestProFeatureBlockNotice?.message, decision.message)
 	    XCTAssertTrue(store.latestProFeatureBlockNotice?.nextStep.contains("Pro 设置") == true)
 
-	    store.applyProEntitlement(productID: "test.pro", source: .storeKit)
+	    store.applyVerifiedStoreKitEntitlement(productID: "test.pro")
 
 	    XCTAssertNil(store.latestProFeatureBlockNotice)
 	    XCTAssertTrue(store.monetizationState.entitlement.isUnlocked)
@@ -520,7 +521,7 @@ final class MonetizationTests: XCTestCase {
 
     _ = store.consumeFeatureUse(.aiRequest)
     _ = store.consumeFeatureUse(.onlinePublishing)
-    store.applyProEntitlement(productID: MonetizationProductCatalog.proLifetimeProductID, source: .storeKit)
+    store.applyVerifiedStoreKitEntitlement(productID: MonetizationProductCatalog.proLifetimeProductID)
     _ = store.consumeFeatureUse(.onlinePublishing)
 
     let events = store.monetizationState.recentAccessEvents

@@ -18,6 +18,7 @@ public struct ContentHealthReportService: Sendable {
     sitePreflightIssues: [PreflightIssue],
     presentations: [UUID: ContentHealthDraftPresentation]
   ) -> ContentHealthReport {
+    let duplicateIndex = PreflightDuplicateIndex(drafts: drafts, profile: profile)
     let draftSummaries = drafts.map { draft in
       let presentation = presentations[draft.id] ?? ContentHealthDraftPresentation(
         title: draft.title,
@@ -31,7 +32,8 @@ public struct ContentHealthReportService: Sendable {
           draft: draft,
           allDrafts: drafts,
           profile: profile,
-          includeRepositoryReadiness: false
+          includeRepositoryReadiness: false,
+          duplicateIndex: duplicateIndex
         )
       )
     }

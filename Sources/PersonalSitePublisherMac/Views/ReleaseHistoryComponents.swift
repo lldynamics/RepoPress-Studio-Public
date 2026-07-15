@@ -19,9 +19,9 @@ struct DeploymentStatusTrendChart: View {
           RoundedRectangle(cornerRadius: WorkbenchCornerRadius.chartBar)
             .fill(color(for: snapshot.level))
             .frame(width: 18, height: height(for: snapshot.level))
-            .help("\(snapshot.checkedAt.workbenchShortText) · \(snapshot.level.displayName) · \(snapshot.message)")
+            .help("\(snapshot.checkedAt.workbenchShortText) · \(snapshot.level.localizedDisplayName) · \(snapshot.message)")
             .accessibilityLabel("\(snapshot.checkedAt.workbenchShortText) 的部署状态")
-            .accessibilityValue("\(snapshot.level.displayName)：\(snapshot.message)")
+            .accessibilityValue("\(snapshot.level.localizedDisplayName)：\(snapshot.message)")
         }
       }
       .frame(height: 42, alignment: .bottom)

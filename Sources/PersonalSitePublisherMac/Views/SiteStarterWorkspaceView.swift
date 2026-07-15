@@ -52,6 +52,7 @@ struct SiteStarterWorkspaceView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
+      .disabled(store.isSiteStarterOperationRunning)
     }
     .background(Color(nsColor: .textBackgroundColor))
     .onAppear {
@@ -71,6 +72,12 @@ struct SiteStarterWorkspaceView: View {
       }
 
       Spacer()
+
+      if store.isSiteStarterOperationRunning {
+        ProgressView()
+          .controlSize(.small)
+          .accessibilityLabel("建站操作正在后台运行")
+      }
 
       if let message = store.publishActionMessage {
         Text(message)
@@ -184,9 +191,10 @@ struct SiteStarterWorkspaceView: View {
           }
         },
         disabled: !canCreateStarterSite,
+        isRunning: store.isSiteStarterOperationRunning,
         createdFileCount: store.siteStarterResult?.createdFilePaths.count,
         createdProfileText: store.siteStarterResult?.profile.name,
-        createdProfileKindText: store.siteStarterResult?.profile.siteKind.displayName,
+        createdProfileKindText: store.siteStarterResult?.profile.siteKind.localizedDisplayName,
         guideText: store.siteStarterResult?.deploymentGuidePath,
         importedArticleCount: store.siteStarterImportResult?.importedDraftCount,
         skippedPathCount: store.siteStarterImportResult?.skippedPathCount
@@ -307,7 +315,7 @@ struct SiteStarterWorkspaceView: View {
   private func detail(for step: SiteStarterWizardStep) -> String {
     switch step {
     case .template:
-      return selectedTemplate.map { "\($0.name) · \($0.siteKind.displayName)" } ?? "选择 Starter 模板"
+      return selectedTemplate.map { "\($0.name) · \($0.siteKind.localizedDisplayName)" } ?? "选择 Starter 模板"
     case .localDirectory:
       return store.siteStarterResult?.profile.localRepositoryRootPath.nilIfEmpty
         ?? rootPath.nilIfEmpty
@@ -331,7 +339,7 @@ struct SiteStarterWorkspaceView: View {
     case .firstPush:
       return store.siteStarterPushResult.map { "\($0.branch) · \($0.commitSHA.prefix(8))" } ?? "提交并推送 Starter"
     case .deployment:
-      return deploymentTarget == .none ? "未启用部署" : deploymentTarget.displayName
+      return deploymentTarget == .none ? "未启用部署" : deploymentTarget.localizedDisplayName
     }
   }
 
@@ -374,9 +382,11 @@ struct SiteStarterWorkspaceView: View {
       initializeGit: initializesGit,
       configureOriginRemote: configuresOrigin
     )
-    if store.createSiteFromStarter(request) != nil {
-      store.selectSection(.siteStarter)
-      selectedStep = deploymentTarget == .none ? .deployment : .github
+    Task { @MainActor in
+      if await store.createSiteFromStarter(request) != nil {
+        store.selectSection(.siteStarter)
+        selectedStep = deploymentTarget == .none ? .deployment : .github
+      }
     }
   }
 
@@ -394,9 +404,11 @@ struct SiteStarterWorkspaceView: View {
       deploymentProjectID: deploymentProjectID,
       deploymentAccountID: deploymentAccountID
     )
-    if store.importExistingSiteFromStarter(request) != nil {
-      store.selectSection(.siteStarter)
-      selectedStep = .deployment
+    Task { @MainActor in
+      if await store.importExistingSiteFromStarter(request) != nil {
+        store.selectSection(.siteStarter)
+        selectedStep = .deployment
+      }
     }
   }
 

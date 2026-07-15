@@ -28,12 +28,12 @@ struct EditorFrontMatterSection: View {
 
       Picker("Visibility", selection: $draft.visibility) {
         ForEach(ArticleVisibility.allCases) { visibility in
-          Label(visibility.displayName, systemImage: visibility.systemImage)
+          Label(visibility.localizedDisplayName, systemImage: visibility.systemImage)
             .tag(visibility)
         }
       }
       .accessibilityLabel("文章可见性")
-      .accessibilityValue(draft.visibility.displayName)
+      .accessibilityValue(draft.visibility.localizedDisplayName)
 
       Toggle("Draft", isOn: $draft.draft)
         .accessibilityLabel("草稿状态")
@@ -184,7 +184,7 @@ struct EditorSocialPreviewSection: View {
           .font(.headline)
         Spacer()
         if cachePresentation.needsManualRefresh {
-          Label(cachePresentation.state.displayName, systemImage: cachePresentation.state.systemImage)
+          Label(cachePresentation.state.localizedDisplayName, systemImage: cachePresentation.state.systemImage)
             .font(.caption)
             .foregroundStyle(WorkbenchTheme.warning)
         }
@@ -206,7 +206,7 @@ struct EditorSocialPreviewSection: View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
           MetricTile(title: "标题", value: "\(snapshot.titleCharacterCount) 字", systemImage: "textformat.size")
           MetricTile(title: "描述", value: "\(snapshot.descriptionCharacterCount) 字", systemImage: "text.alignleft")
-          MetricTile(title: "图片", value: snapshot.imageDimensions?.displayName ?? (snapshot.imagePath == nil ? "未设置" : "已设置"), systemImage: "photo")
+          MetricTile(title: "图片", value: snapshot.imageDimensions?.workbenchDimensionText ?? (snapshot.imagePath == nil ? "未设置" : "已设置"), systemImage: "photo")
           MetricTile(title: "快照", value: snapshot.generatedAt.workbenchShortText, systemImage: "clock")
         }
 
@@ -266,9 +266,11 @@ struct EditorSocialPreviewSection: View {
         }
 
         Button {
-          if let package = store.seoSocialPublishPackageMarkdown(for: draft) {
-            copy(package)
-            store.setSEOSocialPreviewMessage("已复制 SEO / Social 发布包。")
+          Task {
+            if let package = await store.seoSocialPublishPackageMarkdown(for: draft) {
+              copy(package)
+              store.setSEOSocialPreviewMessage("已复制 SEO / Social 发布包。")
+            }
           }
         } label: {
           Label("复制发布包", systemImage: "doc.on.doc")
@@ -287,7 +289,7 @@ struct EditorSocialPreviewSection: View {
 
   private func socialPreviewCard(_ card: SEOSocialPreviewCard) -> some View {
     VStack(alignment: .leading, spacing: 8) {
-      Label(card.kind.displayName, systemImage: card.kind.systemImage)
+      Label(card.kind.localizedDisplayName, systemImage: card.kind.systemImage)
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
 
@@ -308,7 +310,7 @@ struct EditorSocialPreviewSection: View {
             .foregroundStyle(.secondary)
         }
         if let imageDimensions = card.imageDimensions {
-          Label(imageDimensions.displayName, systemImage: "ruler")
+          Label(imageDimensions.workbenchDimensionText, systemImage: "ruler")
             .font(.caption2)
             .foregroundStyle(.secondary)
         }
@@ -578,12 +580,12 @@ struct EditorSocialPreviewSection: View {
       ForEach(items) { item in
         VStack(alignment: .leading, spacing: 5) {
           HStack(alignment: .firstTextBaseline) {
-            Label(item.kind.displayName, systemImage: item.kind.systemImage)
+            Label(item.kind.localizedDisplayName, systemImage: item.kind.systemImage)
               .font(.caption.weight(.semibold))
             Spacer()
             Button {
               copy(item.clipboardText)
-              store.setSEOSocialPreviewMessage("已复制 \(item.kind.displayName) 分享文案。")
+              store.setSEOSocialPreviewMessage("已复制 \(item.kind.localizedDisplayName) 分享文案。")
             } label: {
               Label("复制", systemImage: "doc.on.doc")
             }
@@ -705,9 +707,9 @@ struct EditorSocialPreviewSection: View {
             .frame(width: 16)
           VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
-              Text(item.kind.displayName)
+              Text(item.kind.localizedDisplayName)
                 .font(.caption.weight(.semibold))
-              Text(item.status.displayName)
+              Text(item.status.localizedDisplayName)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(socialPreviewReadinessForeground(item.status))
             }
@@ -757,7 +759,7 @@ struct EditorSocialPreviewSection: View {
         let scopedTags = tags.filter { $0.scope == kind }
         if !scopedTags.isEmpty {
           VStack(alignment: .leading, spacing: 5) {
-            Label(kind.displayName, systemImage: kind.systemImage)
+            Label(kind.localizedDisplayName, systemImage: kind.systemImage)
               .font(.caption2.weight(.semibold))
               .foregroundStyle(.tertiary)
             ForEach(scopedTags.prefix(5)) { tag in
@@ -846,8 +848,8 @@ struct EditorImageSection: View {
   @ObservedObject var store: WorkbenchStore
 
   var body: some View {
-    let report = store.imageWorkbenchReport(for: draft)
-    let visibleIssues = report.issues.filter { $0.title != "还没有图片" }
+    let report = store.cachedImageWorkbenchReport(for: draft)
+    let visibleIssues = report?.issues.filter { $0.title != "还没有图片" } ?? []
 
     return VStack(alignment: .leading, spacing: 10) {
       HStack {
@@ -864,21 +866,28 @@ struct EditorImageSection: View {
         .accessibilityLabel("打开图片工作台")
       }
 
-      LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-        MetricTile(title: "图片", value: "\(report.items.count)", systemImage: "photo")
-        MetricTile(title: "缺 alt", value: "\(report.missingAltTextCount)", systemImage: "text.quote")
-      }
+      if let report {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+          MetricTile(title: "图片", value: "\(report.items.count)", systemImage: "photo")
+          MetricTile(title: "缺 alt", value: "\(report.missingAltTextCount)", systemImage: "text.quote")
+        }
 
-      Label(report.coverStatus.state.displayName, systemImage: report.coverStatus.state.systemImage)
-        .font(.caption)
-        .foregroundStyle(report.coverStatus.state.color)
+        Label(report.coverStatus.state.localizedDisplayName, systemImage: report.coverStatus.state.systemImage)
+          .font(.caption)
+          .foregroundStyle(report.coverStatus.state.color)
 
-      if let field = report.coverStatus.frontMatterFieldPath {
-        Text(field)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
-          .lineLimit(2)
+        if let field = report.coverStatus.frontMatterFieldPath {
+          Text(field)
+            .font(.caption.monospaced())
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+            .lineLimit(2)
+        }
+      } else {
+        ProgressView {
+          Text("正在读取图片信息…")
+        }
+          .controlSize(.small)
       }
 
       if draft.attachments.isEmpty {
@@ -889,7 +898,7 @@ struct EditorImageSection: View {
         ForEach(Array(draft.attachments.prefix(3))) { attachment in
           imageAttachmentRow(
             attachment,
-            item: report.items.first { $0.attachmentID == attachment.id }
+            item: report?.items.first { $0.attachmentID == attachment.id }
           )
         }
 
@@ -917,6 +926,9 @@ struct EditorImageSection: View {
         }
       }
     }
+    .task(id: EditorImageReportRefreshID(draft: draft, profile: store.profile(for: draft))) {
+      await store.refreshImageWorkbenchReportInBackground(for: draft)
+    }
   }
 
   private func attachmentStringBinding(
@@ -932,7 +944,6 @@ struct EditorImageSection: View {
           return
         }
         draft.attachments[index][keyPath: keyPath] = value
-        store.refreshImageWorkbenchReport()
       }
     )
   }
@@ -977,4 +988,9 @@ struct EditorImageSection: View {
     .accessibilityLabel("图片元数据 \(attachment.originalFilename)")
     .accessibilityValue(item?.fileExists == false ? "源图缺失" : "源图可用")
   }
+}
+
+private struct EditorImageReportRefreshID: Hashable {
+  let draft: ArticleDraft
+  let profile: SiteProfile
 }

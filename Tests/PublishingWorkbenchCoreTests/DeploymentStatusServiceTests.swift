@@ -179,6 +179,102 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertNil(publicRequests.first?.value(forHTTPHeaderField: "Authorization"))
   }
 
+  func testDeploymentEndpointRejectsHTTPBeforeSendingBearerToken() async throws {
+    let transport = SequencedDeploymentTransport(responses: [])
+    var profile = SiteProfile.defaultProfile
+    profile.deploymentProvider = .custom
+    profile.deploymentStatusEndpointURL = "http://status.example.com/private"
+    profile.deploymentStatusEndpointUsesToken = true
+
+    let snapshot = await DeploymentStatusService(transport: transport)
+      .check(profile: profile, token: "deploy-token")
+
+    XCTAssertEqual(snapshot.level, .failed)
+    let signal = try XCTUnwrap(snapshot.signals.first)
+    XCTAssertTrue(signal.message.contains("HTTPS"))
+    XCTAssertTrue(signal.message.contains("未发送 Token"))
+    let requests = await transport.capturedRequests()
+    XCTAssertTrue(requests.isEmpty)
+  }
+
+  func testDeploymentEndpointMarkedForTokenRejectsHTTPEvenWhenTokenIsMissing() async {
+    let transport = SequencedDeploymentTransport(responses: [])
+    var profile = SiteProfile.defaultProfile
+    profile.deploymentProvider = .custom
+    profile.deploymentStatusEndpointURL = "http://status.example.com/private"
+    profile.deploymentStatusEndpointUsesToken = true
+
+    let snapshot = await DeploymentStatusService(transport: transport)
+      .check(profile: profile, token: nil)
+
+    XCTAssertEqual(snapshot.level, .failed)
+    XCTAssertTrue(snapshot.signals.first?.message.contains("HTTPS") == true)
+    let requests = await transport.capturedRequests()
+    XCTAssertTrue(requests.isEmpty)
+  }
+
+  func testProtectedHTTPSEndpointDoesNotFallBackToAnonymousRequestWhenTokenIsMissing() async {
+    let transport = SequencedDeploymentTransport(responses: [])
+    var profile = SiteProfile.defaultProfile
+    profile.deploymentProvider = .custom
+    profile.deploymentStatusEndpointURL = "https://status.example.com/private"
+    profile.deploymentStatusEndpointUsesToken = true
+
+    let snapshot = await DeploymentStatusService(transport: transport)
+      .check(profile: profile, token: nil)
+
+    XCTAssertEqual(snapshot.level, .unknown)
+    XCTAssertTrue(snapshot.signals.first?.message.contains("未发起请求") == true)
+    let requests = await transport.capturedRequests()
+    XCTAssertTrue(requests.isEmpty)
+  }
+
+  func testPublicDeploymentEndpointStillAllowsHTTPWithoutAuthorization() async {
+    let transport = SequencedDeploymentTransport(responses: [
+      deploymentResponse(statusCode: 200, json: #"{"ok":true}"#),
+    ])
+    var profile = SiteProfile.defaultProfile
+    profile.deploymentProvider = .custom
+    profile.deploymentStatusEndpointURL = "http://status.example.com/public"
+    profile.deploymentStatusEndpointUsesToken = false
+
+    let snapshot = await DeploymentStatusService(transport: transport)
+      .check(profile: profile, token: "must-not-be-sent")
+
+    XCTAssertEqual(snapshot.level, .success)
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.count, 1)
+    XCTAssertNil(requests[0].value(forHTTPHeaderField: "Authorization"))
+  }
+
+  func testGitHubDeploymentAPIRejectsHTTPBeforeBuildingTokenRequest() {
+    let service = DeploymentStatusService()
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "http://api.github.example"
+
+    XCTAssertThrowsError(
+      try service.githubRequest(profile: profile, path: "/repos/owner/site/pages", token: "github-token")
+    ) { error in
+      XCTAssertEqual(error as? DeploymentStatusError, .insecureCredentialURL)
+      XCTAssertTrue(error.localizedDescription.contains("HTTPS"))
+    }
+  }
+
+  func testGitLabDeploymentAPIRejectsHTTPBeforeBuildingTokenRequest() {
+    let service = DeploymentStatusService()
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .gitlab
+    profile.repositoryBaseURL = "http://gitlab.example"
+
+    XCTAssertThrowsError(
+      try service.gitLabRequest(profile: profile, path: "/projects/group%2Fsite/pipelines", token: "gitlab-token")
+    ) { error in
+      XCTAssertEqual(error as? DeploymentStatusError, .insecureCredentialURL)
+      XCTAssertTrue(error.localizedDescription.contains("HTTPS"))
+    }
+  }
+
   func testDeploymentSiteURLFallbackNeverReceivesEndpointBearerToken() async throws {
     let transport = SequencedDeploymentTransport(responses: [
       deploymentResponse(statusCode: 200, json: #"{"ok":true,"message":"Site is reachable"}"#),
@@ -196,6 +292,25 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.first?.url?.absoluteString, "https://example.com")
     XCTAssertNil(requests.first?.value(forHTTPHeaderField: "Authorization"))
+  }
+
+  func testProviderDeploymentTokenIsNeverForwardedToThirdPartyStatusEndpoint() async {
+    let transport = SequencedDeploymentTransport(responses: [
+      deploymentResponse(statusCode: 200, json: #"{"ok":true}"#),
+    ])
+    var profile = SiteProfile.defaultProfile
+    profile.deploymentProvider = .githubPages
+    profile.repoOwner = ""
+    profile.repoName = ""
+    profile.deploymentStatusEndpointURL = "https://status.third-party.example/private"
+    profile.deploymentStatusEndpointUsesToken = true
+
+    _ = await DeploymentStatusService(transport: transport)
+      .check(profile: profile, token: "github-platform-token")
+
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.count, 1)
+    XCTAssertNil(requests[0].value(forHTTPHeaderField: "Authorization"))
   }
 
   func testDeploymentCheckVerifiesPublishedArticlePageContainsTitle() async throws {
@@ -764,14 +879,46 @@ final class DeploymentStatusServiceTests: XCTestCase {
 
     let missingToken = service.readiness(profile: profile, hasToken: false)
 
+    XCTAssertFalse(missingToken.isAPIReady)
     XCTAssertTrue(missingToken.canCheckAnyStatus)
     XCTAssertTrue(missingToken.missingRequirements.contains("状态端点 Bearer Token"))
     XCTAssertTrue(missingToken.fallbackMessage.contains("Bearer 授权"))
 
     let ready = service.readiness(profile: profile, hasToken: true)
 
+    XCTAssertTrue(ready.isAPIReady)
     XCTAssertTrue(ready.configuredSignals.contains("状态端点 Bearer Token"))
     XCTAssertFalse(ready.missingRequirements.contains("状态端点 Bearer Token"))
+  }
+
+  func testDeploymentReadinessRejectsProtectedHTTPStatusEndpoint() {
+    let service = DeploymentStatusService()
+    var profile = SiteProfile.defaultProfile
+    profile.deploymentProvider = .custom
+    profile.deploymentStatusEndpointURL = "http://status.example.com/private"
+    profile.deploymentStatusEndpointUsesToken = true
+
+    let readiness = service.readiness(profile: profile, hasToken: true)
+
+    XCTAssertFalse(readiness.isAPIReady)
+    XCTAssertFalse(readiness.canCheckAnyStatus)
+    XCTAssertTrue(readiness.missingRequirements.contains("状态端点 HTTPS URL"))
+    XCTAssertTrue(readiness.fallbackMessage.contains("不会发送 Bearer Token"))
+  }
+
+  func testDeploymentReadinessRejectsHTTPRepositoryAPIWithToken() {
+    let service = DeploymentStatusService()
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "http://api.github.example"
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.deploymentProvider = .githubPages
+
+    let readiness = service.readiness(profile: profile, hasToken: true)
+
+    XCTAssertFalse(readiness.isAPIReady)
+    XCTAssertTrue(readiness.missingRequirements.contains("仓库 API HTTPS URL"))
   }
 
   func testDeploymentReadinessPassesCloudflareWhenAccountProjectAndTokenExist() {
@@ -863,6 +1010,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(store.deploymentStatusSnapshot(for: record)?.provider, .custom)
     XCTAssertEqual(store.deploymentStatusMessage, "自定义端点：正常")
 
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.deploymentStatusSnapshot(for: record)?.level, .success)
     XCTAssertEqual(reloaded.releaseLedger.entries.first?.status, .succeeded)
@@ -899,6 +1047,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(store.deploymentStatusSnapshot(for: record)?.level, .success)
     XCTAssertEqual(store.deploymentStatusHistory(for: record).map(\.level), [.success, .failed])
 
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.deploymentStatusSnapshot(for: record)?.level, .success)
     XCTAssertEqual(reloaded.deploymentStatusHistory(for: record).map(\.level), [.success, .failed])
@@ -993,6 +1142,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let skippedRequests = await transport.capturedRequests()
     XCTAssertEqual(skippedRequests.count, 0)
 
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     XCTAssertTrue(reloaded.deploymentPollingSettings.isEnabled)
     XCTAssertEqual(reloaded.deploymentPollingSettings.normalizedIntervalMinutes, 15)
@@ -1055,6 +1205,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let checkedRequests = await transport.capturedRequests()
     XCTAssertEqual(checkedRequests.count, 1)
 
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.deploymentPollingSettings.normalizedIntervalMinutes, 5)
     XCTAssertTrue(reloaded.deploymentPollingSettings.isEnabled)
@@ -1110,6 +1261,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let checkedRequests = await transport.capturedRequests()
     XCTAssertEqual(checkedRequests.count, 1)
 
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.deploymentPollingState.checkedRecords.first?.releaseStatus, .pendingRemoteRecovery)
     XCTAssertEqual(reloaded.deploymentPollingState.successCount, 0)

@@ -212,7 +212,7 @@ struct AIChatWorkspaceView: View {
     return AIChatContextOverviewState(
       draftTitle: draft.title.nilIfEmpty ?? "未命名文章",
       markdownPath: profile.markdownPath(for: draft),
-      contextModeDisplayName: store.ai.chatContextMode.displayName,
+      contextModeDisplayName: store.ai.chatContextMode.localizedDisplayName,
       contextModeSystemImage: store.ai.chatContextMode.systemImage,
       modelText: AIPublishingChatConversationPresentation.modelSummary(
         grade: store.ai.chatModelGrade,
@@ -254,7 +254,7 @@ struct AIChatWorkspaceView: View {
       chatContextModeBinding: chatContextModeBinding,
       chatModelGrades: chatModelGrades,
       chatModelHelpText: chatModelHelpText(draft: draft),
-      chatContextModeDisplayName: store.ai.chatContextMode.displayName
+      chatContextModeDisplayName: store.ai.chatContextMode.localizedDisplayName
     )
   }
 
@@ -848,7 +848,9 @@ private func importImageAttachments(for draft: ArticleDraft) {
   }
 
   store.ai.updateChatDraft(updatedDraft)
-  store.ai.refreshChatImageWorkbenchReport()
+  Task { @MainActor in
+    await store.ai.refreshChatImageWorkbenchReportInBackground(for: updatedDraft)
+  }
   let importPresentation = AIPublishingChatImageAttachmentPresentation.importPresentation(
     importedCount: imageURLs.count,
     selectableImportedCount: selectableImportedIDs.count,
@@ -978,7 +980,7 @@ private func saveCustomPrompt() {
     panel.canCreateDirectories = true
     panel.nameFieldStringValue = "\(sanitizedFilename(conversationTitle(for: draft))).\(format.fileExtension)"
     panel.prompt = "导出"
-    panel.message = "将当前 AI 对话保存为 \(format.displayName)。"
+    panel.message = "将当前 AI 对话保存为 \(format.localizedDisplayName)。"
     guard panel.runModal() == .OK, let url = panel.url else {
       return
     }
@@ -1045,7 +1047,7 @@ private func saveCustomPrompt() {
   }
 }
 
-private enum AIChatTranscriptExportFormat {
+enum AIChatTranscriptExportFormat {
   case markdown
   case pdf
 

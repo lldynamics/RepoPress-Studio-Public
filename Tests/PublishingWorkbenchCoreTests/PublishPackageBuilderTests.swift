@@ -62,6 +62,21 @@ final class PublishPackageBuilderTests: XCTestCase {
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
 
     XCTAssertNil(package.markdownFile?.expectedRemoteSHA)
+    XCTAssertEqual(package.files.count, 2)
+    XCTAssertEqual(package.files[0].operation, .upsert)
+    XCTAssertEqual(package.files[0].repositoryPath, "content/posts/moved-draft.md")
+    XCTAssertEqual(package.files[1].operation, .delete)
+    XCTAssertEqual(package.files[1].repositoryPath, "content/posts/old-path.md")
+    XCTAssertEqual(package.files[1].expectedRemoteSHA, "old-remote-sha")
+  }
+
+  func testPublishPackageFileDecodesLegacyPayloadAsUpsert() throws {
+    let data = #"{"kind":"markdown","repositoryPath":"content/posts/legacy.md","content":"legacy","byteSize":0}"#
+      .data(using: .utf8)!
+
+    let file = try JSONDecoder().decode(PublishPackageFile.self, from: data)
+
+    XCTAssertEqual(file.operation, .upsert)
   }
 
   func testBuildsYAMLFrontMatter() throws {

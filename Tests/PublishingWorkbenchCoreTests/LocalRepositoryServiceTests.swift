@@ -383,6 +383,45 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertEqual(report.originRemote?.displayName, "GitHub jinfang/site")
   }
 
+  func testScanRedactsHTTPSOriginCredentialsAndQuerySecrets() throws {
+    let rootURL = try makeRemoteDetectionRepository(
+      remoteURL: "https://oauth-user:super-secret@github.com/owner/site.git?access_token=query-secret#fragment"
+    )
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+
+    let remote = try XCTUnwrap(LocalRepositoryService().scan(profile: profile).originRemote)
+
+    XCTAssertEqual(remote.provider, .github)
+    XCTAssertEqual(remote.owner, "owner")
+    XCTAssertEqual(remote.name, "site")
+    XCTAssertEqual(remote.remoteURL, "https://github.com/owner/site.git")
+    XCTAssertFalse(remote.remoteURL.contains("oauth-user"))
+    XCTAssertFalse(remote.remoteURL.contains("super-secret"))
+    XCTAssertFalse(remote.remoteURL.contains("query-secret"))
+  }
+
+  func testScanRedactsSCPOriginCredentialPrefix() throws {
+    let rootURL = try makeRemoteDetectionRepository(
+      remoteURL: "oauth2:super-secret@gitlab.com:group/site.git"
+    )
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+
+    let remote = try XCTUnwrap(LocalRepositoryService().scan(profile: profile).originRemote)
+
+    XCTAssertEqual(remote.provider, .gitlab)
+    XCTAssertEqual(remote.owner, "group")
+    XCTAssertEqual(remote.name, "site")
+    XCTAssertEqual(remote.remoteURL, "gitlab.com:group/site.git")
+    XCTAssertFalse(remote.remoteURL.contains("oauth2"))
+    XCTAssertFalse(remote.remoteURL.contains("super-secret"))
+  }
+
   func testReportsDetachedHeadAsRepositoryPreflightError() throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacDetachedTests-\(UUID().uuidString)", isDirectory: true)
@@ -584,5 +623,19 @@ final class LocalRepositoryServiceTests: XCTestCase {
     var profile = SiteProfile.defaultProfile
     profile.rememberLocalRepositoryRoot(rootURL)
     return (rootURL, profile)
+  }
+
+  private func makeRemoteDetectionRepository(remoteURL: String) throws -> URL {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMacRemoteRedactionTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    do {
+      try git(["init", "-b", "main"], rootURL: rootURL)
+      try git(["remote", "add", "origin", remoteURL], rootURL: rootURL)
+      return rootURL
+    } catch {
+      try? FileManager.default.removeItem(at: rootURL)
+      throw error
+    }
   }
 }

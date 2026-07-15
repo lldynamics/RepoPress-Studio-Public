@@ -128,7 +128,7 @@ struct ContentMigrationAssistantView: View {
         migrationMetric("文章", value: "\(plan.drafts.count)", image: "doc.text")
         migrationMetric("图片路径", value: "\(plan.imageMappings.count)", image: "photo")
         migrationMetric("重定向", value: "\(plan.redirects.count)", image: "arrow.triangle.branch")
-        migrationMetric("来源", value: plan.sourceKind.displayName, image: "archivebox")
+        migrationMetric("来源", value: plan.sourceKind.localizedDisplayName, image: "archivebox")
       }
       Text("来源：\(plan.sourceName) · 将导入到「\(store.activeProfile.name)」。")
         .font(.caption)

@@ -9,19 +9,19 @@ struct DefaultRuleSiteSection: View {
     Section("站点规则") {
       Picker("站点类型", selection: siteKindBinding) {
         ForEach(SiteKind.allCases) { kind in
-          Text(kind.displayName).tag(kind)
+          Text(kind.localizedDisplayName).tag(kind)
         }
       }
       .accessibilityLabel("站点类型")
-      .accessibilityValue(activeProfile.siteKind.displayName)
+      .accessibilityValue(activeProfile.siteKind.localizedDisplayName)
 
       Picker("Front Matter", selection: activeProfileBinding.frontMatterStyle) {
         ForEach(FrontMatterStyle.allCases) { style in
-          Text(style.displayName).tag(style)
+          Text(style.localizedDisplayName).tag(style)
         }
       }
       .accessibilityLabel("Front Matter 格式")
-      .accessibilityValue(activeProfile.frontMatterStyle.displayName)
+      .accessibilityValue(activeProfile.frontMatterStyle.localizedDisplayName)
 
       TextField("默认作者", text: activeProfileBinding.defaultAuthor)
         .accessibilityLabel("默认作者")
@@ -41,11 +41,11 @@ struct DefaultRuleSiteSection: View {
 
       Picker("Slug 规则", selection: activeProfileBinding.slugValidationRule) {
         ForEach(SiteSlugValidationRule.allCases) { rule in
-          Text(rule.displayName).tag(rule)
+          Text(rule.localizedDisplayName).tag(rule)
         }
       }
       .accessibilityLabel("Slug 规则")
-      .accessibilityValue(activeProfile.slugValidationRule.displayName)
+      .accessibilityValue(activeProfile.slugValidationRule.localizedDisplayName)
 
       Text(activeProfile.slugValidationRule.detail)
         .font(.caption)

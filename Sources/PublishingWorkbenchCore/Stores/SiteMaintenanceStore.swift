@@ -7,7 +7,9 @@ import Foundation
 final class SiteMaintenanceStore: ObservableObject {
   @Published private(set) var snapshot: SiteMaintenanceSnapshot?
   @Published private(set) var snapshotVersion = 0
+  @Published private(set) var isRefreshing = false
   private var sourceVersion = 0
+  private var inputSignature: SiteMaintenanceReportInputSignature?
 
   func invalidate() {
     sourceVersion += 1
@@ -19,11 +21,29 @@ final class SiteMaintenanceStore: ObservableObject {
     return snapshot.sourceVersion != sourceVersion
   }
 
+  func hasCurrentSnapshot(for signature: SiteMaintenanceReportInputSignature) -> Bool {
+    snapshot != nil && !isStale() && inputSignature == signature
+  }
+
+  func setRefreshing(_ value: Bool) {
+    isRefreshing = value
+  }
+
+  func relatedArticleSuggestions(
+    for draftID: UUID,
+    profileID: UUID,
+    limit: Int
+  ) -> [SiteRelationSuggestion] {
+    guard !isStale(), snapshot?.profileID == profileID else { return [] }
+    return snapshot?.relatedArticleSuggestions(for: draftID, limit: limit) ?? []
+  }
+
   func replaceSnapshot(
     report: SiteMaintenanceReport,
     profileID: UUID,
     profileName: String,
-    draftCount: Int
+    draftCount: Int,
+    inputSignature: SiteMaintenanceReportInputSignature
   ) {
     snapshot = SiteMaintenanceSnapshot(
       report: report,
@@ -32,6 +52,7 @@ final class SiteMaintenanceStore: ObservableObject {
       draftCount: draftCount,
       sourceVersion: sourceVersion
     )
+    self.inputSignature = inputSignature
     snapshotVersion += 1
   }
 }

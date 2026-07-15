@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCREENSHOT_DIR="$ROOT_DIR/docs/app-store-screenshots"
+MANIFEST_FILE="${SCREENSHOT_MANIFEST_FILE:-$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md}"
 APP_PRODUCT="PersonalSitePublisherMac"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_PRODUCT.app"
 SKIP_BUILD=0
@@ -12,19 +13,9 @@ AUTO_WINDOW=0
 CAPTURE_DELAY=4
 ONLY_ID=""
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_PRODUCT"
+CAPTURE_PROVENANCE_SCRIPT="$ROOT_DIR/script/screenshot_capture_provenance.py"
 
-required_ids=(
-  writing
-  ai-chat
-  sync-api-publish
-  seo-social-preview
-  deployment-status
-  maintenance
-  general-drafts
-  pro-settings
-  privacy-lock
-  release-readiness
-)
+required_ids=()
 
 usage() {
   cat <<'USAGE'
@@ -54,6 +45,15 @@ fail() {
   exit 1
 }
 
+load_required_ids() {
+  local id
+  [[ -f "$MANIFEST_FILE" ]] || fail "SCREENSHOT_MANIFEST.md is missing"
+  while IFS= read -r id; do
+    [[ -n "$id" ]] && required_ids+=("$id")
+  done < <(sed -nE 's/^\| `([^`]+)` \|.*/\1/p' "$MANIFEST_FILE")
+  [[ "${#required_ids[@]}" -gt 0 ]] || fail "screenshot manifest contains no required screenshot IDs"
+}
+
 screen_title() {
   case "$1" in
     writing) echo "Writing workspace" ;;
@@ -64,8 +64,7 @@ screen_title() {
     maintenance) echo "Site maintenance" ;;
     general-drafts) echo "General drafts" ;;
     pro-settings) echo "Pro settings" ;;
-    privacy-lock) echo "Privacy lock" ;;
-    release-readiness) echo "Release readiness gate" ;;
+    privacy-lock) echo "Quick hide" ;;
     *) echo "$1" ;;
   esac
 }
@@ -80,8 +79,7 @@ screen_guidance() {
     maintenance) echo "Show content calendar, taxonomy governance, stale articles, links, and operation log." ;;
     general-drafts) echo "Show cross-site drafts, reusable material package, backup repository, and reuse checklist." ;;
     pro-settings) echo "Show free quota, Pro unlock, purchase, and restore state without real payment or account secrets." ;;
-    privacy-lock) echo "Show the locked workbench and private-content masking state." ;;
-    release-readiness) echo "Show localization, UI runtime, screenshot, checklist, and product-readiness gates." ;;
+    privacy-lock) echo "Show the manually hidden workbench and private-content masking state." ;;
     *) echo "Arrange the app for this required App Store screenshot." ;;
   esac
 }
@@ -96,6 +94,8 @@ contains_required_id() {
   done
   return 1
 }
+
+load_required_ids
 
 launch_app() {
   local surface_id="${1:-writing}"
@@ -225,7 +225,6 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 mkdir -p "$SCREENSHOT_DIR"
-[[ -f "$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" ]] || fail "SCREENSHOT_MANIFEST.md is missing"
 command -v screencapture >/dev/null 2>&1 || fail "screencapture is not available"
 
 if [[ "$SKIP_BUILD" == "0" ]]; then
@@ -272,6 +271,12 @@ for id in "${required_ids[@]}"; do
   fi
 
   echo "screenshot capture: saved $output"
+  python3 "$CAPTURE_PROVENANCE_SCRIPT" record \
+    --root "$ROOT_DIR" \
+    --manifest "$MANIFEST_FILE" \
+    --screenshot-dir "$SCREENSHOT_DIR" \
+    --id "$id" \
+    --image "$output" >/dev/null
 done
 
 bash "$ROOT_DIR/script/sync_screenshot_manifest_status.sh"

@@ -1,10 +1,12 @@
 import AppKit
+import PublishingWorkbenchCore
 import SwiftUI
 
 struct MacMarkdownTextView: NSViewRepresentable {
   @Binding var text: String
   @Binding var selectedRange: NSRange
   var onStatisticsChanged: (MarkdownEditorStatistics) -> Void
+  var onFileDropTargetChanged: (Bool) -> Void
   var onDroppedFiles: ([URL]) -> Void
 
   func makeCoordinator() -> Coordinator {
@@ -25,8 +27,23 @@ struct MacMarkdownTextView: NSViewRepresentable {
     scrollView.drawsBackground = true
     scrollView.backgroundColor = NSColor.textBackgroundColor
 
-    let textView = DroppableMarkdownTextView(frame: .zero, textContainer: nil)
+    let textStorage = NSTextStorage()
+    let layoutManager = NSLayoutManager()
+    let textContainer = NSTextContainer(
+      containerSize: NSSize(
+        width: max(scrollView.contentSize.width, 1),
+        height: CGFloat.greatestFiniteMagnitude
+      )
+    )
+    textStorage.addLayoutManager(layoutManager)
+    layoutManager.addTextContainer(textContainer)
+    textContainer.widthTracksTextView = true
+    textContainer.heightTracksTextView = false
+
+    let textView = DroppableMarkdownTextView(frame: .zero, textContainer: textContainer)
+    precondition(textView.layoutManager != nil, "Markdown editor requires a complete TextKit stack")
     textView.delegate = context.coordinator
+    textView.fileDropTargetChangedHandler = onFileDropTargetChanged
     textView.fileDropHandler = { urls, dropRange in
       context.coordinator.selectedRange = dropRange
       context.coordinator.onDroppedFiles(urls)
@@ -72,6 +89,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
     guard let textView = nsView.documentView as? NSTextView else { return }
     textView.isEditable = true
     textView.isSelectable = true
+    if let droppableTextView = textView as? DroppableMarkdownTextView {
+      droppableTextView.fileDropTargetChangedHandler = onFileDropTargetChanged
+    }
 
     if textView.string != text {
       let currentRange = textView.selectedRange()
@@ -295,14 +315,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
 }
 
 private final class MarkdownEditorScrollView: NSScrollView {
-  override var acceptsFirstResponder: Bool { true }
-
-  override func mouseDown(with event: NSEvent) {
-    if let documentView {
-      window?.makeFirstResponder(documentView)
-    }
-    super.mouseDown(with: event)
-  }
+  override var acceptsFirstResponder: Bool { false }
 
   override func layout() {
     super.layout()
@@ -327,7 +340,9 @@ private final class MarkdownEditorScrollView: NSScrollView {
 }
 
 private final class DroppableMarkdownTextView: NSTextView {
+  var fileDropTargetChangedHandler: ((Bool) -> Void)?
   var fileDropHandler: (([URL], NSRange) -> Void)?
+  private var isFileDropTargeted = false
 
   override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
     super.init(frame: frameRect, textContainer: container)
@@ -341,26 +356,47 @@ private final class DroppableMarkdownTextView: NSTextView {
 
   override var acceptsFirstResponder: Bool { true }
 
+  override var canBecomeKeyView: Bool { true }
+
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
     true
   }
 
   override func mouseDown(with event: NSEvent) {
-    window?.makeFirstResponder(self)
     super.mouseDown(with: event)
+    if window?.firstResponder !== self {
+      window?.makeFirstResponder(self)
+    }
   }
 
   override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-    fileURLs(from: sender.draggingPasteboard).isEmpty ? [] : .copy
+    updateFileDropTarget(using: sender)
+  }
+
+  override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+    updateFileDropTarget(using: sender)
+  }
+
+  override func draggingExited(_ sender: NSDraggingInfo?) {
+    setFileDropTargeted(false)
+  }
+
+  override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+    !imageFileURLs(from: sender.draggingPasteboard).isEmpty
   }
 
   override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-    let urls = fileURLs(from: sender.draggingPasteboard)
+    defer { setFileDropTargeted(false) }
+    let urls = imageFileURLs(from: sender.draggingPasteboard)
     guard !urls.isEmpty else { return false }
     let dropRange = insertionRange(for: sender)
     setSelectedRange(dropRange)
     fileDropHandler?(urls, dropRange)
     return true
+  }
+
+  override func concludeDragOperation(_ sender: NSDraggingInfo?) {
+    setFileDropTargeted(false)
   }
 
   private func insertionRange(for sender: NSDraggingInfo) -> NSRange {
@@ -370,10 +406,23 @@ private final class DroppableMarkdownTextView: NSTextView {
     return NSRange(location: min(max(insertionIndex, 0), maxLength), length: 0)
   }
 
-  private func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
-    pasteboard.readObjects(forClasses: [NSURL.self], options: nil)?
+  private func updateFileDropTarget(using sender: NSDraggingInfo) -> NSDragOperation {
+    let acceptsImages = !imageFileURLs(from: sender.draggingPasteboard).isEmpty
+    setFileDropTargeted(acceptsImages)
+    return acceptsImages ? .copy : []
+  }
+
+  private func setFileDropTargeted(_ isTargeted: Bool) {
+    guard isFileDropTargeted != isTargeted else { return }
+    isFileDropTargeted = isTargeted
+    fileDropTargetChangedHandler?(isTargeted)
+  }
+
+  private func imageFileURLs(from pasteboard: NSPasteboard) -> [URL] {
+    let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: nil)?
       .compactMap { ($0 as? URL)?.standardizedFileURL }
       ?? []
+    return ImageFileSupport.supportedImageURLs(in: fileURLs)
   }
 }
 

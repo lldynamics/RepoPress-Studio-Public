@@ -42,8 +42,6 @@ struct WorkspaceTaskInspector: View {
       GeneralDraftLibraryInspectorView(store: store)
     case .maintenance:
       MaintenanceTaskInspector(store: store)
-    case .releaseReadiness:
-      ReleaseQualityGateInspectorView(store: store)
     }
   }
 

@@ -33,13 +33,12 @@ create_fixture() {
 | `maintenance` | `maintenance.png` | Site maintenance | Calendar, taxonomy governance, stale articles, links, and operation log. | Pending capture |
 | `general-drafts` | `general-drafts.png` | General drafts | Cross-site drafts, reusable material package, backup repository, and reuse checklist. | Pending capture |
 | `pro-settings` | `pro-settings.png` | Pro settings | Free quota, Pro unlock, purchase, and restore state. | Pending capture |
-| `privacy-lock` | `privacy-lock.png` | Privacy lock | Locked workbench and private-content masking. | Pending capture |
-| `release-readiness` | `release-readiness.png` | Release gate | Localization, UI runtime, screenshot, checklist, and product-readiness gates. | Pending capture |
+| `privacy-lock` | `privacy-lock.png` | Quick hide | Manually hidden workbench and private-content masking. | Pending capture |
 EOF_MANIFEST
 
   write_file "$root/script/capture_app_screenshots.sh" <<'EOF_CAPTURE'
 #!/usr/bin/env bash
-required_ids=(writing ai-chat sync-api-publish seo-social-preview deployment-status maintenance general-drafts pro-settings privacy-lock release-readiness)
+required_ids=(writing ai-chat sync-api-publish seo-social-preview deployment-status maintenance general-drafts pro-settings privacy-lock)
 FORCE_RELAUNCH=0
 --force-relaunch
 --auto-window
@@ -61,15 +60,14 @@ screen_guidance() {
     maintenance) echo "Show content calendar, taxonomy governance, stale articles, links, and operation log." ;;
     general-drafts) echo "Show cross-site drafts, reusable material package, backup repository, and reuse checklist." ;;
     pro-settings) echo "Show free quota, Pro unlock, purchase, and restore state without real payment or account secrets." ;;
-    privacy-lock) echo "Show the locked workbench and private-content masking state." ;;
-    release-readiness) echo "Show localization, UI runtime, screenshot, checklist, and product-readiness gates." ;;
+    privacy-lock) echo "Show the manually hidden workbench and private-content masking state." ;;
   esac
 }
 EOF_CAPTURE
 
   write_file "$root/script/build_and_run.sh" <<'EOF_BUILD'
 #!/usr/bin/env bash
-required_screenshot_surfaces=(writing ai-chat sync-api-publish seo-social-preview deployment-status maintenance general-drafts pro-settings privacy-lock release-readiness)
+required_screenshot_surfaces=(writing ai-chat sync-api-publish seo-social-preview deployment-status maintenance general-drafts pro-settings privacy-lock)
 --screenshot-demo [id]
 --screenshot-surface <id>
 --list-screenshot-surfaces
@@ -114,7 +112,10 @@ EOF_SWIFT
 let generalDrafts = "GeneralDraftLibraryDetailView backupSection reusePlanSection crossSiteMaterialPackageMarkdown"
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceView.swift" <<'EOF_SWIFT'
-let repository = "onlinePublishCenterSection remoteConflictPreview PR/MR"
+let repository = "RepositoryWorkspaceView"
+EOF_SWIFT
+  write_file "$root/Sources/PersonalSitePublisherMac/Views/RepositoryWorkspacePublishingSections.swift" <<'EOF_SWIFT'
+let repositoryPublishing = "onlinePublishCenterSection remoteConflictPreview PR/MR"
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift" <<'EOF_SWIFT'
 let releaseHistory = "deploymentPollingSummary refreshDeploymentStatus GitHub Pages / Actions Netlify Vercel Cloudflare Pages"
@@ -146,25 +147,7 @@ EOF_SWIFT
 let privacy = "PrivacyLockOverlay privacy-lock-overlay"
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/ContentView.swift" <<'EOF_SWIFT'
-let privacyState = "isPrivacyLocked lockPrivacyIfNeededForInactiveScene canUseProtectedWorkbench"
-EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspector.swift" <<'EOF_SWIFT'
-let releaseGate = "ReleaseQualityGateInspectorView"
-EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSectionsExtra.swift" <<'EOF_SWIFT'
-let releaseGateInspector = "refreshReleaseQualityGate"
-EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/ReleaseQualityGateDetailView.swift" <<'EOF_SWIFT'
-let releaseGateDetail = "releaseGateSection releaseGateItemCard"
-EOF_SWIFT
-  write_file "$root/Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateService.swift" <<'EOF_SWIFT'
-let releaseQualityGateService = "ReleaseQualityGateService"
-EOF_SWIFT
-  write_file "$root/Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateReport.swift" <<'EOF_SWIFT'
-struct ReleaseQualityGateReport {}
-EOF_SWIFT
-  write_file "$root/Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateAppStoreChecklistReport.swift" <<'EOF_SWIFT'
-let strictReadinessSummary = ""
+let privacyState = "isPrivacyLocked lockPrivacy(reason canUseProtectedWorkbench"
 EOF_SWIFT
 }
 

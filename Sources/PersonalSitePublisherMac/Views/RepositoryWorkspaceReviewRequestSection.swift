@@ -8,7 +8,7 @@ extension RepositoryWorkspaceView {
       VStack(alignment: .leading, spacing: 12) {
         HStack {
           VStack(alignment: .leading, spacing: 3) {
-            Text("\(review.provider.displayName) Review")
+            Text("\(review.provider.localizedDisplayName) Review")
               .font(.headline)
             Text("\(review.branchName) -> \(review.targetBranch)")
               .font(.callout.monospaced())

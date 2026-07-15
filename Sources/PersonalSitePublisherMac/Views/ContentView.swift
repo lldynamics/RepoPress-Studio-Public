@@ -8,7 +8,6 @@ import PublishingWorkbenchScreenshotSupport
 struct ContentView: View {
   let store: WorkbenchStore
   @ObservedObject private var shellState: WorkbenchShellFeatureFacade
-  @Environment(\.openWindow) private var openWindow
   @Environment(\.scenePhase) private var scenePhase
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
@@ -33,12 +32,6 @@ struct ContentView: View {
       let compactLayout = WorkbenchLayoutMode.isCompact(width: geometry.size.width)
 
       ZStack {
-      VStack(spacing: 0) {
-        WorkspaceTopBar(
-          store: store,
-          isCompact: compactLayout
-        )
-        Divider()
         WorkspaceShellSplitLayout(
           store: store,
           isCompact: compactLayout,
@@ -47,14 +40,13 @@ struct ContentView: View {
           repositoryContextStage: $repositoryContextStage
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-      }
-      .disabled(shellState.isPrivacyLocked)
-      .accessibilityHidden(shellState.isPrivacyLocked)
+        .disabled(shellState.isPrivacyLocked)
+        .accessibilityHidden(shellState.isPrivacyLocked)
 
-      if shellState.isPrivacyLocked {
-        PrivacyLockOverlay(store: store)
-          .zIndex(2)
-      }
+        if shellState.isPrivacyLocked {
+          PrivacyLockOverlay(store: store)
+            .zIndex(2)
+        }
       }
       .onAppear {
         updateCompactLayout(for: geometry.size.width)
@@ -72,82 +64,84 @@ struct ContentView: View {
       }
     )
     .toolbar {
-      ToolbarItemGroup(placement: .primaryAction) {
-        Button {
-          store.createDraft()
-        } label: {
-          Label("新建", systemImage: "square.and.pencil")
-        }
+      ToolbarItemGroup(placement: .navigation) {
+        WorkspaceToolbarLeadingContent(
+          store: store,
+          isCompact: isCompactLayout
+        )
         .disabled(!shellState.canUseProtectedWorkbench)
+        .accessibilityHidden(shellState.isPrivacyLocked)
+      }
 
-        Button {
-          store.save()
-        } label: {
-          Label("保存", systemImage: "tray.and.arrow.down")
-        }
-        .disabled(!shellState.canUseProtectedWorkbench)
+      ToolbarItem(placement: .principal) {
+        HStack(spacing: 10) {
+          WorkspaceToolbarTitle(store: store)
 
-        Button {
-          store.runPreflight()
-          store.selectSection(.contentHealth)
-        } label: {
-          Label("检查", systemImage: "checklist")
-        }
-        .disabled(!shellState.canUseProtectedWorkbench)
+          if showsDraftEditingToolbar {
+            Divider()
+              .frame(height: 18)
 
-        Button {
-          openPublishDrawer(message: nil)
-        } label: {
-          Label("发布", systemImage: "paperplane")
-        }
-        .disabled(!shellState.canUseProtectedWorkbench || shellState.selectedDraftID == nil)
+            Button {
+              store.createDraft()
+            } label: {
+              Label("新建", systemImage: "square.and.pencil")
+            }
+            .disabled(!shellState.canUseProtectedWorkbench)
 
-        Button {
-          if isCompactLayout {
-            isCompactInspectorPresented = true
-          } else {
-            store.setInspectorPresented(!shellState.isInspectorPresented)
+            Button {
+              store.save()
+            } label: {
+              Label("保存", systemImage: "tray.and.arrow.down")
+            }
+            .disabled(!shellState.canUseProtectedWorkbench)
+
+            PublishingStatusToolbarControl(
+              store: store,
+              canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
+              selectedDraftID: shellState.selectedDraftID,
+              openPublishFlow: { openPublishDrawer(message: nil) },
+              openReleaseHistory: {
+                repositoryContextStage = .history
+                store.selectSection(.sync)
+              }
+            )
           }
-        } label: {
-          Label("Inspector", systemImage: "sidebar.right")
         }
-        .disabled(!shellState.canUseProtectedWorkbench)
+        .accessibilityHidden(shellState.isPrivacyLocked)
+      }
+
+      ToolbarItemGroup(placement: .primaryAction) {
+        if supportsInspector {
+          Button {
+            if isCompactLayout {
+              isCompactInspectorPresented = true
+            } else {
+              store.setInspectorPresented(!shellState.isInspectorPresented)
+            }
+          } label: {
+            Label("Inspector", systemImage: "sidebar.right")
+          }
+          .disabled(!shellState.canUseProtectedWorkbench)
+        }
       }
 
       ToolbarItem(placement: .secondaryAction) {
         Menu {
           Button {
-            if let draftID = shellState.selectedDraftID {
-              openWindow(value: draftID)
-            }
+            store.lockPrivacy(reason: "已手动快速隐藏工作台内容。")
           } label: {
-            Label("在新窗口编辑", systemImage: "macwindow.badge.plus")
-          }
-          .disabled(shellState.selectedDraftID == nil)
-
-          Button {
-            openRepositoryScan()
-          } label: {
-            Label("扫描仓库", systemImage: "externaldrive")
-          }
-          .disabled(shellState.isRepositoryScanning)
-
-          Divider()
-
-          Button {
-            store.lockPrivacy(reason: "已手动显示隐私界面遮罩。")
-          } label: {
-            Label("显示隐私遮罩", systemImage: "eye.slash")
+            Label("快速隐藏", systemImage: "eye.slash")
           }
           .disabled(shellState.isPrivacyLocked)
 
           Divider()
 
-          Button {
-            isFirstRunSetupPresented = true
-          } label: {
-            Label("首次设置…", systemImage: "wand.and.stars")
-          }
+          AdvancedWorkspaceMenu(
+            store: store,
+            canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
+            showsFirstRunSetup: !didCompleteFirstRunSetup,
+            presentFirstRunSetup: { isFirstRunSetupPresented = true }
+          )
         } label: {
           Label("更多", systemImage: "ellipsis.circle")
         }
@@ -159,14 +153,22 @@ struct ContentView: View {
     .onChange(of: autoRunPreflight) { _, newValue in
       store.setAutomaticallyRefreshPreflightOnEdit(newValue)
     }
-    .onChange(of: scenePhase) { _, newValue in
-      if newValue != .active {
-        store.lockPrivacyIfNeededForInactiveScene()
-      }
-    }
     .onChange(of: shellState.isPrivacyLocked) { _, isLocked in
       if isLocked {
         isPublishDrawerPresented = false
+      }
+    }
+    .onChange(of: shellState.selectedSection) { _, section in
+      normalizeWorkspacePresentation(for: section)
+    }
+    .onChange(of: repositoryContextStage) { _, stage in
+      if stage == .history {
+        hideInspectorIfNeeded()
+      }
+    }
+    .onChange(of: contentHealthFilter) { _, filter in
+      if filter == .maintenance {
+        hideInspectorIfNeeded()
       }
     }
     .onReceive(repositoryAutoSyncTimer, perform: handleRepositoryAutoSyncTick)
@@ -174,11 +176,31 @@ struct ContentView: View {
       "工作台数据恢复",
       isPresented: Binding(
         get: { shellState.persistenceRecoveryMessage != nil },
-        set: { if !$0 { store.dismissPersistenceRecoveryMessage() } }
+        set: {
+          if !$0 && !shellState.isPersistenceRecoveryWriteProtected {
+            store.dismissPersistenceRecoveryMessage()
+          }
+        }
       )
     ) {
-      Button("继续") {
-        store.dismissPersistenceRecoveryMessage()
+      if shellState.isPersistenceRecoveryWriteProtected {
+        Button(String(localized: "恢复其他备份…")) {
+          guard let sourceURL = WorkbenchRecoverySelectionPanel.chooseSnapshot() else { return }
+          if store.installPersistenceRecoverySnapshot(from: sourceURL) {
+            NSApp.terminate(nil)
+          }
+        }
+        Button(String(localized: "导出故障文件…")) {
+          guard let directoryURL = WorkbenchRecoverySelectionPanel.chooseExportDirectory() else { return }
+          _ = store.exportPersistenceRecoveryFiles(to: directoryURL)
+        }
+        Button(String(localized: "重置为空白工作台"), role: .destructive) {
+          _ = store.resetPersistenceAfterUnrecoverableSnapshot()
+        }
+      } else {
+        Button("继续") {
+          store.dismissPersistenceRecoveryMessage()
+        }
       }
     } message: {
       Text(persistenceRecoveryMessage)
@@ -214,13 +236,6 @@ struct ContentView: View {
     }
   }
 
-  private func openRepositoryScan() {
-    store.selectSection(.sync)
-    Task {
-      await store.repository.scanAsync()
-    }
-  }
-
   private func applyWorkbenchPreferences() {
     if !didApplyInitialWorkbenchPreferences {
       if scanRepositoryOnLaunch {
@@ -238,6 +253,7 @@ struct ContentView: View {
       didApplyScreenshotDemoSurface = true
     }
     store.setAutomaticallyRefreshPreflightOnEdit(autoRunPreflight)
+    normalizeWorkspacePresentation(for: shellState.selectedSection)
     presentFirstRunSetupIfNeeded()
   }
 
@@ -276,6 +292,47 @@ struct ContentView: View {
     shellState.persistenceRecoveryMessage ?? ""
   }
 
+  private var showsDraftEditingToolbar: Bool {
+    shellState.selectedSection == .writing
+  }
+
+  private var supportsInspector: Bool {
+    switch shellState.selectedSection {
+    case .writing, .images, .ai:
+      return true
+    case .sync:
+      return repositoryContextStage != .history
+    case .contentHealth:
+      return contentHealthFilter != .maintenance
+    case .siteStarter, .generalDrafts, .maintenance, .releaseHistory:
+      return false
+    }
+  }
+
+  private func normalizeWorkspacePresentation(for section: WorkspaceSection) {
+    switch section {
+    case .maintenance:
+      contentHealthFilter = .maintenance
+      hideInspectorIfNeeded()
+      store.selectSection(.contentHealth)
+    case .releaseHistory:
+      repositoryContextStage = .history
+      hideInspectorIfNeeded()
+      store.selectSection(.sync)
+    case .siteStarter, .generalDrafts:
+      hideInspectorIfNeeded()
+    case .writing, .sync, .images, .contentHealth, .ai:
+      break
+    }
+  }
+
+  private func hideInspectorIfNeeded() {
+    if shellState.isInspectorPresented {
+      store.setInspectorPresented(false)
+    }
+    isCompactInspectorPresented = false
+  }
+
   private func openPublishDrawer(message: String?) {
     store.ensureEditableDraftSelected()
     store.runPreflight()
@@ -297,8 +354,12 @@ struct ContentView: View {
 }
 
 private struct WorkbenchAccessibilityStatusAnnouncer: View {
-  @ObservedObject var store: WorkbenchStore
+  @ObservedObject private var activityStatus: WorkbenchActivityStatusFacade
   @State private var announcedStatus: WorkbenchAccessibilityStatus?
+
+  init(store: WorkbenchStore) {
+    _activityStatus = ObservedObject(wrappedValue: store.activityStatus)
+  }
 
   var body: some View {
     Color.clear
@@ -323,13 +384,15 @@ private struct WorkbenchAccessibilityStatusAnnouncer: View {
   }
 
   private var status: WorkbenchAccessibilityStatus {
-    if store.isPrivacyLocked { return .privacyLocked }
-    if store.repositoryScanState.isScanning { return .repositoryScanning(store.repositoryScanState.message) }
-    if store.isRemoteRepositoryPublishing { return .remotePublishing }
-    if store.isAIChatRunning { return .aiReplying }
-    if store.isDeploymentStatusChecking { return .deploymentChecking }
-    if let error = store.lastSaveError?.nilIfEmpty { return .saveFailed(error) }
-    return .saveStatus(store.lastSaveStatus)
+    if activityStatus.isPrivacyLocked { return .privacyLocked }
+    if activityStatus.repositoryScanState.isScanning {
+      return .repositoryScanning(activityStatus.repositoryScanState.message)
+    }
+    if activityStatus.isRemoteRepositoryPublishing { return .remotePublishing }
+    if activityStatus.isAIChatRunning { return .aiReplying }
+    if activityStatus.isDeploymentStatusChecking { return .deploymentChecking }
+    if let error = activityStatus.lastSaveError?.nilIfEmpty { return .saveFailed(error) }
+    return .saveStatus(activityStatus.lastSaveStatus)
   }
 }
 

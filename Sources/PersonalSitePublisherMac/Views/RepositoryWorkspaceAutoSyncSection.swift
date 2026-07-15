@@ -62,7 +62,7 @@ extension RepositoryWorkspaceView {
       LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
         MetricTile(
           title: "状态",
-          value: store.repositoryAutoSyncSettings.isEnabled ? store.repositoryAutoSyncState.status.displayName : "已关闭",
+          value: store.repositoryAutoSyncSettings.isEnabled ? store.repositoryAutoSyncState.status.localizedDisplayName : "已关闭",
           systemImage: store.repositoryAutoSyncState.status.systemImage
         )
         MetricTile(

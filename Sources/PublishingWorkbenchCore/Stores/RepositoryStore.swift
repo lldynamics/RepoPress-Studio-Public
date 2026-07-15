@@ -145,7 +145,8 @@ public final class RepositoryStore: ObservableObject {
       localRepositoryRecentCommits = snapshot.recentCommits
       repositoryScanState = .finished(report: snapshot.report)
       store.runPreflight()
-      store.refreshPublishPreview(for: store.selectedDraft)
+      store.refreshPublishPreviewInBackground(for: store.selectedDraft)
+      await store.publishingStore.waitForPublishPreviewRefresh()
       repositoryScanTask = nil
     }
     repositoryScanTask = scanTask
@@ -495,10 +496,9 @@ public final class RepositoryStore: ObservableObject {
 
   public func saveRepositoryAccessToken(_ token: String, store: WorkbenchStore) {
     do {
-      try repositoryTokenStore.saveToken(
+      try repositoryTokenStore.saveRepositoryToken(
         token.trimmedForPublishing,
-        for: store.activeProfile,
-        scope: repositoryTokenScope(for: store.activeProfile)
+        for: store.activeProfile
       )
       remoteRepositoryAccessCheck = nil
       repositoryTokenAvailability = try repositoryTokenAvailability(for: store.activeProfile)
@@ -522,10 +522,7 @@ public final class RepositoryStore: ObservableObject {
 
   public func deleteRepositoryAccessToken(store: WorkbenchStore) {
     do {
-      try repositoryTokenStore.deleteToken(
-        for: store.activeProfile,
-        scope: repositoryTokenScope(for: store.activeProfile)
-      )
+      try repositoryTokenStore.deleteRepositoryToken(for: store.activeProfile)
       remoteRepositoryAccessCheck = nil
       refreshRepositoryTokenAvailability(store: store)
       store.setPublishActionMessage("仓库 Token 已删除。")

@@ -6,6 +6,11 @@ RESOURCE_DIR="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources"
 PACKAGE_FILE="$ROOT_DIR/Package.swift"
 CATALOG_FILE="$RESOURCE_DIR/Localizable.xcstrings"
 
+# Scope: app-target SwiftUI/literal localization calls plus the semantic model
+# keys explicitly extracted by sync_ui_localizations.py. User-facing copy built
+# inside PublishingWorkbenchCore services is tracked separately in the release
+# checklist and is not asserted complete by this gate.
+
 fail() {
   echo "localization gate: $*" >&2
   exit 1
@@ -17,6 +22,19 @@ grep -q 'defaultLocalization: "zh-Hans"' "$PACKAGE_FILE" || fail "Package.swift 
 # String catalogs are JSON. `plutil -lint` rejects valid `.xcstrings` JSON on
 # some macOS toolchain versions, so validate the catalog with the JSON parser.
 python3 -m json.tool "$CATALOG_FILE" >/dev/null || fail "Localizable.xcstrings is invalid"
+
+if grep -R -Fq 'Locale(identifier: "zh_Hans_CN")' "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views"; then
+  fail "user-facing dates must follow the current locale instead of forcing zh_Hans_CN"
+fi
+grep -Fq '.locale(.autoupdatingCurrent)' \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceMessageFlowSection.swift" \
+  || fail "AI message day titles must use the current locale"
+grep -Fq '.locale(.autoupdatingCurrent)' \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/SiteMaintenanceCalendarSection.swift" \
+  || fail "maintenance calendar titles must use the current locale"
+grep -Fq 'calendar.locale = .autoupdatingCurrent' \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/SiteMaintenanceCalendarSection.swift" \
+  || fail "maintenance calendar weekdays must use the current locale"
 
 required_info_plist_keys=(CFBundleDisplayName CFBundleName)
 required_localizable_keys=(
@@ -30,13 +48,6 @@ required_localizable_keys=(
   workspace.generalDrafts
   workspace.maintenance
   workspace.releaseHistory
-  workspace.releaseReadiness
-  releaseGate.title
-  releaseGate.localization
-  releaseGate.runtime
-  releaseGate.screenshots
-  releaseGate.appStore
-  releaseGate.productReadiness
 )
 
 for language in zh-Hans en; do
@@ -85,6 +96,7 @@ for language in zh-Hans en; do
 done
 
 python3 "$ROOT_DIR/script/sync_ui_localizations.py" --check \
-  || fail "SwiftUI strings are missing complete zh-Hans/en catalog coverage"
+  || fail "declared UI-scope keys are missing complete zh-Hans/en catalog coverage"
 
-echo "localization gate: xcstrings has $catalog_key_count translated source keys and compiles for zh-Hans/en; InfoPlist metadata is valid"
+echo "localization gate: UI scope has $catalog_key_count translated catalog keys and compiles for zh-Hans/en; InfoPlist metadata is valid"
+echo "localization gate: PublishingWorkbenchCore service-generated presentation strings are outside this gate and remain a separate checklist item"

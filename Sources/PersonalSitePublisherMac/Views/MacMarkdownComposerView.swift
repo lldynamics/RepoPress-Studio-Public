@@ -11,6 +11,7 @@ struct MacMarkdownComposerView: View {
   @State private var editorBody: String
   @State private var editorStatistics = MarkdownEditorStatistics.empty
   @State private var selectedRange = NSRange(location: 0, length: 0)
+  @State private var isImageDropTargeted = false
   @State private var activeSelectionAIAction: AIPublishingActionKind?
   @State private var isFindReplacePresented = false
   @State private var findQuery = ""
@@ -20,15 +21,8 @@ struct MacMarkdownComposerView: View {
   @State private var selectionActionMessage = ""
   @State private var selectionEditPreview: AIPublishingSelectionEditPreview?
   @State private var isShortcutHelpPresented = false
-  @State private var isRevisionHistoryPresented = false
-  @State private var revisionHistory: [MarkdownEditorRevisionSnapshot] = []
-  @State private var revisionCursor = -1
-  @State private var isRestoringRevision = false
   @State private var editorBodyRevision: UInt64
-  @State private var revisionSnapshotTask: Task<Void, Never>?
   private let findReplaceService = MarkdownFindReplaceService()
-  private let maxRevisionHistoryCount = 40
-  private let maxRevisionHistoryBytes = 2_000_000
 
   init(draft: Binding<ArticleDraft>, store: WorkbenchStore) {
     _draft = draft
@@ -54,9 +48,6 @@ struct MacMarkdownComposerView: View {
         onShowFindReplace: showFindReplace,
         onShowShortcutHelp: {
           isShortcutHelpPresented = true
-        },
-        onShowRevisionHistory: {
-          isRevisionHistoryPresented = true
         },
         onOpenAIContextInspector: showAIContextInspector,
         writingAIActionMenuItems: writingAIActionMenuItems,
@@ -98,7 +89,7 @@ struct MacMarkdownComposerView: View {
           SelectionActionBar(
             selectionAIActionMenuItems: selectionAIActionMenuItems,
             isSelectionAIActionRunning: isSelectionAIActionRunning,
-            activeSelectionActionName: activeSelectionAIAction?.displayName,
+            activeSelectionActionName: activeSelectionAIAction?.localizedDisplayName,
             hasLatestAssistantMessage: latestAssistantMessageForCurrentDraft != nil,
             selectionActionMessage: selectionActionMessage,
             onSelectSelectionAction: performSelectionAIAction,
@@ -128,7 +119,6 @@ struct MacMarkdownComposerView: View {
     .focusedSceneValue(\.markdownEditorCommandActions, commandActions)
     .onAppear {
       syncEditorBodyFromStore()
-      setupRevisionHistory()
       syncActiveEditorSelection()
     }
     .onChange(of: publishingState.editorFocusRequest?.id) { _, _ in
@@ -137,10 +127,9 @@ struct MacMarkdownComposerView: View {
     .onChange(of: selectedRange) { _, _ in
       syncActiveEditorSelection()
     }
-    .onChange(of: editorBody) { _, _ in
+    .onChange(of: editorBody) { previousBody, _ in
       syncActiveEditorSelection()
-      stageEditorBody()
-      scheduleRevisionSnapshot()
+      stageEditorBody(replacingBaseBody: previousBody)
     }
     .onChange(of: draft.bodyMarkdown) { _, _ in
       syncEditorBodyFromStore()
@@ -152,36 +141,12 @@ struct MacMarkdownComposerView: View {
       store.flushDraftBodyEditorBuffer(for: oldDraftID)
       syncEditorBodyFromStore()
       syncActiveEditorSelection()
-      setupRevisionHistory()
     }
     .sheet(isPresented: $isShortcutHelpPresented) {
       MarkdownShortcutHelpPanel()
     }
-    .sheet(isPresented: $isRevisionHistoryPresented) {
-      MarkdownRevisionHistoryPanel(
-        revisions: revisionHistory,
-        currentIndex: revisionCursor,
-        onRestore: { index in
-          restoreRevision(at: index)
-          if index >= 0, index < revisionHistory.count {
-            let revision = revisionHistory[index]
-            let indexText = "#\(revisionHistory.count - index)"
-            selectionActionMessage = "已恢复到会话快照 \(indexText)（\(revision.label ?? "会话快照")）。"
-          } else {
-            selectionActionMessage = "已恢复到会话快照。"
-          }
-          isRevisionHistoryPresented = false
-        },
-        onResetToCurrent: {
-          resetRevisionHistoryToCurrent()
-          isRevisionHistoryPresented = false
-        }
-      )
-    }
     .onDisappear {
       store.flushDraftBodyEditorBuffer(for: draft.id)
-      revisionSnapshotTask?.cancel()
-      revisionSnapshotTask = nil
       store.clearActiveEditorSelection(for: draft.id)
     }
   }
@@ -215,11 +180,12 @@ struct MacMarkdownComposerView: View {
     publishingState.draftBodyEditorBuffer(for: draft.id).revision
   }
 
-  private func stageEditorBody() {
+  private func stageEditorBody(replacingBaseBody baseBodyMarkdown: String) {
     guard let result = store.stageDraftBody(
       editorBody,
       for: draft.id,
-      baseRevision: editorBodyRevision
+      baseRevision: editorBodyRevision,
+      replacingBaseBody: baseBodyMarkdown
     ) else {
       return
     }
@@ -253,20 +219,6 @@ struct MacMarkdownComposerView: View {
     draft = updated
   }
 
-  private func scheduleRevisionSnapshot() {
-    revisionSnapshotTask?.cancel()
-    revisionSnapshotTask = Task { @MainActor in
-      do {
-        try await Task.sleep(nanoseconds: 2_000_000_000)
-      } catch {
-        return
-      }
-      guard !Task.isCancelled else { return }
-      appendRevisionIfNeeded()
-      revisionSnapshotTask = nil
-    }
-  }
-
   private var markdownEditor: some View {
     VStack(spacing: 0) {
       MacMarkdownFormattingToolbar(
@@ -295,7 +247,8 @@ struct MacMarkdownComposerView: View {
         MacMarkdownTextView(
           text: $editorBody,
           selectedRange: $selectedRange,
-          onStatisticsChanged: { editorStatistics = $0 }
+          onStatisticsChanged: { editorStatistics = $0 },
+          onFileDropTargetChanged: { isImageDropTargeted = $0 }
         ) { urls in
           insertImageReferences(urls)
         }
@@ -309,6 +262,26 @@ struct MacMarkdownComposerView: View {
             .padding(.vertical, 18)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .allowsHitTesting(false)
+        }
+
+        if isImageDropTargeted {
+          ZStack {
+            Color.accentColor.opacity(0.10)
+            VStack(spacing: 8) {
+              Image(systemName: "photo.badge.plus")
+                .font(.system(size: 30, weight: .semibold))
+              Text("拖入图片到当前文章")
+                .font(.headline)
+            }
+            .foregroundStyle(.tint)
+          }
+          .overlay {
+            RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+              .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [7, 5]))
+          }
+          .allowsHitTesting(false)
+          .accessibilityHidden(true)
+          .transition(.opacity)
         }
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -328,126 +301,6 @@ struct MacMarkdownComposerView: View {
       isSelectionAIActionRunning: isSelectionAIActionRunning,
       selectionActionMessage: selectionActionMessage
     )
-  }
-
-  private var canUndoRevision: Bool {
-    revisionCursor > 0
-  }
-
-  private var canRedoRevision: Bool {
-    revisionCursor >= 0 && revisionCursor < revisionHistory.count - 1
-  }
-
-  private func setupRevisionHistory() {
-    revisionSnapshotTask?.cancel()
-    revisionSnapshotTask = nil
-    let selection = clamped(selectedRange, length: (editorBody as NSString).length)
-    selectedRange = selection
-    revisionHistory.removeAll()
-    revisionHistory.append(currentRevisionSnapshot(label: "本次会话初始快照"))
-    revisionCursor = 0
-    isRestoringRevision = false
-  }
-
-  private func appendRevisionIfNeeded() {
-    if isRestoringRevision {
-      isRestoringRevision = false
-      return
-    }
-
-    let latest = currentRevisionSnapshot(label: nil)
-    if revisionHistory.last?.body == latest.body {
-      return
-    }
-
-    if revisionCursor < revisionHistory.count - 1 {
-      revisionHistory = Array(revisionHistory.prefix(revisionCursor + 1))
-    }
-
-    revisionHistory.append(latest)
-    revisionCursor = revisionHistory.count - 1
-
-    if revisionHistory.count > maxRevisionHistoryCount {
-      let removeCount = revisionHistory.count - maxRevisionHistoryCount
-      revisionHistory.removeFirst(removeCount)
-      revisionCursor -= removeCount
-      if revisionCursor < 0 {
-        revisionCursor = 0
-      }
-    }
-
-    var totalBytes = revisionHistory.reduce(0) { $0 + $1.body.utf8.count }
-    while revisionHistory.count > 1, totalBytes > maxRevisionHistoryBytes {
-      totalBytes -= revisionHistory[0].body.utf8.count
-      revisionHistory.removeFirst()
-      revisionCursor = max(0, revisionCursor - 1)
-    }
-  }
-
-  private func currentRevisionSnapshot(label: String?) -> MarkdownEditorRevisionSnapshot {
-    MarkdownEditorRevisionSnapshot(
-      id: UUID(),
-      createdAt: Date(),
-      label: label,
-      body: editorBody,
-      selectedRange: selectedRange,
-      characterCount: editorStatistics.characterCount,
-      wordCount: editorStatistics.wordCount,
-      lineCount: editorStatistics.lineCount
-    )
-  }
-
-  private func undoRevision() {
-    guard canUndoRevision else {
-      return
-    }
-    applyRevision(at: revisionCursor - 1)
-  }
-
-  private func redoRevision() {
-    guard canRedoRevision else {
-      return
-    }
-    applyRevision(at: revisionCursor + 1)
-  }
-
-  private func restoreRevision(at index: Int) {
-    guard index >= 0, index < revisionHistory.count else {
-      return
-    }
-
-    isRestoringRevision = true
-    let snapshot = revisionHistory[index]
-    var restored = previewDraft
-    restored.bodyMarkdown = snapshot.body
-    let clampedRange = clamped(snapshot.selectedRange, length: (snapshot.body as NSString).length)
-    selectedRange = clampedRange
-    applyDraftUpdate(restored)
-    revisionCursor = index
-  }
-
-  private func applyRevision(at index: Int) {
-    let currentCursor = revisionCursor
-    restoreRevision(at: index)
-    let direction = index < currentCursor ? "回退" : (index > currentCursor ? "前进" : "")
-    if direction.isEmpty {
-      selectionActionMessage = "已恢复到当前会话快照。"
-    } else {
-      selectionActionMessage = "已\(direction)会话快照。"
-    }
-  }
-
-  private func resetRevisionHistoryToCurrent() {
-    guard revisionHistory.indices.contains(revisionCursor) else {
-      setupRevisionHistory()
-      return
-    }
-
-    let current = revisionHistory[revisionCursor]
-    revisionHistory.removeAll()
-    revisionHistory.append(current)
-    revisionCursor = 0
-    selectionActionMessage = "会话历史已清空，仅保留当前内存快照。"
   }
 
   private var hasSelectedText: Bool {
@@ -524,8 +377,11 @@ struct MacMarkdownComposerView: View {
   }
 
   private func insertImageReferences(_ urls: [URL]) {
-    let imageURLs = urls.filter(ImageFileSupport.isSupportedImageURL)
-    guard !imageURLs.isEmpty else { return }
+    let imageURLs = ImageFileSupport.supportedImageURLs(in: urls)
+    guard !imageURLs.isEmpty else {
+      selectionActionMessage = "没有可插入的图片文件。"
+      return
+    }
 
     var updated = previewDraft
     var markdownBlocks: [String] = []
@@ -540,7 +396,8 @@ struct MacMarkdownComposerView: View {
     }
 
     applyDraftUpdate(replacingSelection(in: updated, with: markdownBlocks.joined(separator: "\n")))
-    store.refreshImageWorkbenchReport()
+    store.scheduleImageWorkbenchCachesRefresh(for: updated)
+    selectionActionMessage = "已在光标位置插入 \(imageURLs.count) 张图片。"
   }
 
   private var commandActions: MarkdownEditorCommandActions {
@@ -548,14 +405,9 @@ struct MacMarkdownComposerView: View {
       draftID: draft.id,
       canRewriteSelection: !selectedText(in: editorBody).trimmedForPublishing.isEmpty,
       canUseFindReplace: canUseFindReplace,
-      canUndoRevision: canUndoRevision,
-      canRedoRevision: canRedoRevision,
       showFindReplace: showFindReplace,
       showKeyboardShortcuts: {
         isShortcutHelpPresented = true
-      },
-      showRevisionHistory: {
-        isRevisionHistoryPresented = true
       },
       findNext: findNext,
       replaceCurrentOrNext: replaceCurrentOrNext,
@@ -563,8 +415,6 @@ struct MacMarkdownComposerView: View {
       insertImages: {
         insertImageReferences(ImageSelectionPanel.chooseImages())
       },
-      undoRevision: undoRevision,
-      redoRevision: redoRevision,
       runPreflight: runPreflightForCurrentDraft,
       rewriteSelection: rewriteSelectedText,
       openAIAssistant: showAIContextInspector,
@@ -856,12 +706,12 @@ struct MacMarkdownComposerView: View {
     let promptSelectedText = rawSelectedText.trimmedForPublishing
     let availability = selectionAIActionAvailability(kind, respectActiveAction: false)
     guard availability.isEnabled else {
-      selectionActionMessage = "\(kind.displayName)：\(availability.unavailableReason ?? "需要更多上下文")"
+      selectionActionMessage = "\(kind.localizedDisplayName)：\(availability.unavailableReason ?? "需要更多上下文")"
       return
     }
 
     activeSelectionAIAction = kind
-    selectionActionMessage = "\(kind.displayName)处理中..."
+    selectionActionMessage = "\(kind.localizedDisplayName)处理中..."
     let previewRange = clamped(selectedRange, length: (editorBody as NSString).length)
     selectionEditPreview = nil
     Task {
@@ -877,9 +727,9 @@ struct MacMarkdownComposerView: View {
             providerName: result.providerName,
             model: result.model
           )
-          selectionActionMessage = result.kind.displayName + "预览已生成。"
+          selectionActionMessage = result.kind.localizedDisplayName + "预览已生成。"
         } else {
-          selectionActionMessage = kind.displayName + "失败。"
+          selectionActionMessage = kind.localizedDisplayName + "失败。"
         }
         activeSelectionAIAction = nil
       }
@@ -889,12 +739,12 @@ struct MacMarkdownComposerView: View {
   private func performArticleAIAction(_ kind: AIPublishingActionKind) {
     let availability = articleAIActionAvailability(kind, respectActiveAction: false)
     guard availability.isEnabled else {
-      selectionActionMessage = "\(kind.displayName)：\(availability.unavailableReason ?? "需要更多文章内容")"
+      selectionActionMessage = "\(kind.localizedDisplayName)：\(availability.unavailableReason ?? "需要更多文章内容")"
       return
     }
 
     activeSelectionAIAction = kind
-    selectionActionMessage = "\(kind.displayName)处理中..."
+    selectionActionMessage = "\(kind.localizedDisplayName)处理中..."
     let previewRange = articleInsertionRange(for: kind)
     selectionEditPreview = nil
     Task {
@@ -902,7 +752,7 @@ struct MacMarkdownComposerView: View {
       await MainActor.run {
         if let result {
           if result.kind.producesMetadataSuggestion, aiState.metadataSuggestion != nil {
-            selectionActionMessage = result.kind.displayName + "已生成，可在元数据建议中应用。"
+            selectionActionMessage = result.kind.localizedDisplayName + "已生成，可在元数据建议中应用。"
           } else {
             selectionEditPreview = AIPublishingSelectionEditPreview(
               kind: result.kind,
@@ -913,10 +763,10 @@ struct MacMarkdownComposerView: View {
               providerName: result.providerName,
               model: result.model
             )
-            selectionActionMessage = result.kind.displayName + "预览已生成。"
+            selectionActionMessage = result.kind.localizedDisplayName + "预览已生成。"
           }
         } else {
-          selectionActionMessage = kind.displayName + "失败。"
+          selectionActionMessage = kind.localizedDisplayName + "失败。"
         }
         activeSelectionAIAction = nil
       }
@@ -960,7 +810,7 @@ struct MacMarkdownComposerView: View {
       selectionActionMessage = "选区未发现公开风险。"
     } else {
       let issueLines = summary.issues.map {
-        "- \($0.severity.displayName)：\($0.title) - \($0.message)"
+        "- \($0.severity.localizedDisplayName)：\($0.title) - \($0.message)"
       }
       content = "选中文本公开风险：\n\(issueLines.joined(separator: "\n"))"
       selectionActionMessage = "选区有 \(summary.issueCount) 项公开风险。"
@@ -1019,7 +869,7 @@ struct MacMarkdownComposerView: View {
       applyDraftUpdate(updated)
       selectedRange = NSRange(location: newSelectionLocation, length: 0)
       selectionEditPreview = nil
-      selectionActionMessage = "\(preview.kind.displayName)已应用。"
+      selectionActionMessage = "\(preview.kind.localizedDisplayName)已应用。"
     } catch {
       selectionActionMessage = error.localizedDescription
     }

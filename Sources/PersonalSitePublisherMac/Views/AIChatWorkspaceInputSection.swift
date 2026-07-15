@@ -99,7 +99,7 @@ struct AIChatComposerView: View {
     HStack {
       Picker("上下文", selection: presentation.chatContextModeBinding) {
         ForEach(AIPublishingChatContextMode.allCases) { mode in
-          Label(mode.displayName, systemImage: mode.systemImage)
+          Label(mode.localizedDisplayName, systemImage: mode.systemImage)
             .tag(mode)
         }
       }
@@ -212,14 +212,16 @@ struct AIChatComposerView: View {
         Text("当前文章没有图片附件")
       } else {
         ForEach(draft.attachments) { attachment in
+          let isSelected = selectedImageAttachmentIDs.contains(attachment.id)
           Button {
             actions.toggleImageAttachment(attachment.id)
           } label: {
             Label(
               actions.attachmentLabel(attachment),
-              systemImage: selectedImageAttachmentIDs.contains(attachment.id) ? "checkmark.circle.fill" : "circle"
+              systemImage: isSelected ? "checkmark.circle.fill" : "circle"
             )
           }
+          .accessibilityAddTraits(isSelected ? .isSelected : [])
         }
       }
     } label: {

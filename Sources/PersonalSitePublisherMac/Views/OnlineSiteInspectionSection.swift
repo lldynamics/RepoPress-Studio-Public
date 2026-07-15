@@ -40,7 +40,7 @@ struct OnlineSiteInspectionSection: View {
       LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 10)], spacing: 10) {
         MetricTile(
           title: "线上状态",
-          value: deploymentSnapshot?.level.displayName ?? "未检查",
+          value: deploymentSnapshot?.level.localizedDisplayName ?? "未检查",
           systemImage: deploymentSnapshot?.level.systemImage ?? "checkmark.icloud"
         )
         MetricTile(
@@ -54,7 +54,7 @@ struct OnlineSiteInspectionSection: View {
 
       if let deploymentSnapshot {
         Label(
-          "\(deploymentSnapshot.provider.displayName)：\(deploymentSnapshot.message)",
+          "\(deploymentSnapshot.provider.localizedDisplayName)：\(deploymentSnapshot.message)",
           systemImage: deploymentSnapshot.level.systemImage
         )
         .font(.caption)

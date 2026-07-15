@@ -1,0 +1,326 @@
+import AppKit
+import PublishingWorkbenchCore
+import SwiftUI
+
+extension RepositoryWorkspaceView {
+  @ViewBuilder
+  var repositoryStageContent: some View {
+    switch stage {
+    case .overview:
+      repositorySummary
+      repositoryScanProgress
+      repositorySyncPlan
+    case .changes:
+      remoteChangedFiles
+      changedFiles
+      pathRules
+    case .publishing:
+      publishPackageSummary
+      publishDiffPreview
+      batchPublishQueueSection
+      onlinePublishCenterSection
+      reviewRequestSection
+    case .automation:
+      repositoryAutoSyncSection
+    case .preview:
+      localPreviewSection
+    case .history:
+      ReleaseHistoryDetailView(store: store)
+    }
+  }
+
+  var hasSelectedRepository: Bool {
+    !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty
+  }
+
+  var repositoryActionsMenu: some View {
+    Menu {
+      Button {
+        chooseRepository()
+      } label: {
+        Label("更换仓库", systemImage: "folder")
+      }
+      .disabled(store.repository.scanState.isScanning)
+
+      if store.repository.scanState.isScanning {
+        Button {
+          store.repository.cancelScan()
+        } label: {
+          Label("取消扫描", systemImage: "xmark.circle")
+        }
+      } else {
+        Button {
+          scanRepository()
+        } label: {
+          Label("重新扫描", systemImage: "arrow.clockwise")
+        }
+      }
+
+      Divider()
+
+      Button {
+        Task {
+          await store.importDraftsFromLocalRepositoryAsync()
+        }
+      } label: {
+        Label("导入文章", systemImage: "tray.and.arrow.down")
+      }
+
+      Button {
+        isContentMigrationPresented = true
+      } label: {
+        Label("内容迁移", systemImage: "arrow.triangle.2.circlepath.doc.on.clipboard")
+      }
+
+      Divider()
+
+      Button {
+        stage = .automation
+      } label: {
+        Label("自动化设置", systemImage: "arrow.triangle.2.circlepath")
+      }
+    } label: {
+      Label("仓库操作", systemImage: "ellipsis.circle")
+    }
+    .accessibilityLabel("仓库操作")
+  }
+
+  @ViewBuilder
+  var repositoryWorkflowBanner: some View {
+    if !hasSelectedRepository {
+      workflowBanner(
+        title: "尚未选择本地仓库",
+        detail: "先选择静态站点仓库，才能扫描变更、写入文章或启动预览。",
+        systemImage: "externaldrive.badge.questionmark",
+        tint: WorkbenchTheme.warning,
+        actionTitle: "选择仓库",
+        action: chooseRepository
+      )
+    } else if store.repository.scanState.isScanning {
+      workflowBanner(
+        title: "正在扫描仓库",
+        detail: store.repository.scanState.message,
+        systemImage: "arrow.clockwise",
+        tint: .secondary,
+        actionTitle: "取消扫描",
+        action: store.repository.cancelScan
+      )
+    } else if let report = store.repositoryReport,
+              let issue = report.preflightIssues.first(where: { $0.severity == .error }) {
+      workflowBanner(
+        title: "仓库配置阻断：\(issue.title)",
+        detail: issue.message,
+        systemImage: "xmark.octagon",
+        tint: WorkbenchTheme.risk,
+        actionTitle: "查看概览",
+        action: { stage = .overview }
+      )
+    } else if let report = store.repositoryReport, !report.remoteChangedFiles.isEmpty {
+      workflowBanner(
+        title: "远端有 \(report.remoteChangedFiles.count) 个变更",
+        detail: "先审阅远端 diff，确认是否导入或合并后再写入与发布。",
+        systemImage: "arrow.down.doc",
+        tint: WorkbenchTheme.warning,
+        actionTitle: "审阅变更",
+        action: { stage = .changes }
+      )
+    } else if let report = store.repositoryReport, !report.changedFiles.isEmpty {
+      workflowBanner(
+        title: "本地有 \(report.changedFiles.count) 个变更",
+        detail: "先确认文章、图片和配置 diff，再进入写入与发布。",
+        systemImage: "arrow.triangle.2.circlepath",
+        tint: WorkbenchTheme.warning,
+        actionTitle: "审阅变更",
+        action: { stage = .changes }
+      )
+    } else if store.repositoryReport == nil {
+      workflowBanner(
+        title: "仓库尚未扫描",
+        detail: "扫描会识别站点结构、Git 状态和本地变更。",
+        systemImage: "arrow.clockwise",
+        tint: .secondary,
+        actionTitle: "开始扫描",
+        action: scanRepository
+      )
+    } else if let draft = store.selectedDraft,
+              let readiness = store.localPublishReadiness,
+              readiness.blockingIssueCount > 0 {
+      workflowBanner(
+        title: "当前文章存在 \(readiness.blockingIssueCount) 个发布阻断项",
+        detail: "先处理文章检查结果，再写入或线上发布。",
+        systemImage: "checklist",
+        tint: WorkbenchTheme.risk,
+        actionTitle: "查看检查",
+        action: { _ = store.focusDraft(draft.id, section: .contentHealth) }
+      )
+    } else if store.selectedDraft != nil {
+      workflowBanner(
+        title: "已具备继续发布的仓库上下文",
+        detail: "下一步确认发布包、写入策略和线上发布方式。",
+        systemImage: "paperplane",
+        tint: WorkbenchTheme.success,
+        actionTitle: "写入与发布",
+        action: { stage = .publishing }
+      )
+    } else {
+      workflowBanner(
+        title: "请选择一篇文章",
+        detail: "选择文章后可生成发布包、审阅 diff 并执行发布。",
+        systemImage: "doc.badge.questionmark",
+        tint: .secondary,
+        actionTitle: "前往写作",
+        action: { store.selectSection(.writing) }
+      )
+    }
+  }
+
+  var repositorySelectionEmptyState: some View {
+    EmptyStateView(
+      title: "选择仓库后继续",
+      message: "变更、写入与发布、自动化和本地预览会在仓库选定后按需显示。",
+      systemImage: "externaldrive.badge.plus"
+    )
+    .frame(maxWidth: .infinity, minHeight: 280)
+  }
+
+  var repositoryScanRequiredState: some View {
+    EmptyStateView(
+      title: "扫描仓库后继续",
+      message: "先完成一次仓库扫描，才会显示变更、写入与发布、自动化和本地预览模块。",
+      systemImage: "arrow.clockwise.circle"
+    )
+    .frame(maxWidth: .infinity, minHeight: 280)
+  }
+
+  func workflowBanner(
+    title: String,
+    detail: String,
+    systemImage: String,
+    tint: Color,
+    actionTitle: String,
+    action: @escaping () -> Void
+  ) -> some View {
+    HStack(alignment: .center, spacing: 12) {
+      Image(systemName: systemImage)
+        .foregroundStyle(tint)
+        .font(.title3)
+        .frame(width: 24)
+      VStack(alignment: .leading, spacing: 3) {
+        Text(title)
+          .font(.callout.weight(.semibold))
+        Text(detail)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+      }
+      Spacer(minLength: 12)
+      Button(action: action) {
+        Text(actionTitle)
+      }
+      .buttonStyle(.borderedProminent)
+    }
+    .padding(12)
+    .background(tint.opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("当前同步阻断与下一步")
+  }
+
+  func chooseRepository() {
+    guard let url = RepositorySelectionPanel.chooseDirectory() else { return }
+    Task {
+      await store.repository.rememberRootAsync(url)
+    }
+  }
+
+  func scanRepository() {
+    Task {
+      await store.repository.scanAsync()
+    }
+  }
+
+  @ViewBuilder
+  var repositoryScanProgress: some View {
+    if store.repository.scanState.isScanning {
+      HStack(spacing: 10) {
+        ProgressView()
+          .controlSize(.small)
+        Text(store.repository.scanState.message)
+          .font(.callout)
+          .foregroundStyle(.secondary)
+        Spacer()
+        Button {
+          store.repository.cancelScan()
+        } label: {
+          Label("取消", systemImage: "xmark.circle")
+        }
+        .controlSize(.small)
+      }
+      .padding(12)
+      .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    } else if store.repository.scanState.finishedAt != nil {
+      Label(store.repository.scanState.message, systemImage: "checkmark.circle")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+  }
+
+  @ViewBuilder
+  var repositorySummary: some View {
+    if let report = store.repositoryReport {
+      LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+        MetricTile(title: "仓库状态", value: report.statusTitle, systemImage: "externaldrive")
+        MetricTile(title: "同步", value: report.syncStatusTitle, systemImage: "arrow.up.arrow.down")
+        MetricTile(title: "Markdown", value: "\(report.markdownFileCount)", systemImage: "doc.text")
+        MetricTile(title: "图片", value: "\(report.imageFileCount)", systemImage: "photo")
+      }
+
+      VStack(alignment: .leading, spacing: 8) {
+        Text(report.rootPath.isEmpty ? "未选择仓库" : report.rootPath)
+          .font(.callout.monospaced())
+          .textSelection(.enabled)
+        Label(report.detectedKind?.localizedDisplayName ?? "未识别", systemImage: "globe")
+          .foregroundStyle(.secondary)
+        if let branchStatus = report.branchStatus {
+          Label(
+            branchStatus.isDetached
+              ? "Detached HEAD"
+              : (branchStatus.branchName ?? String(localized: "未识别分支")),
+            systemImage: "arrow.triangle.branch"
+          )
+            .foregroundStyle(.secondary)
+          Label(branchStatus.upstreamName ?? "未设置 upstream", systemImage: "arrow.up.arrow.down")
+            .foregroundStyle(.secondary)
+        }
+        if let remote = report.originRemote {
+          HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Label(
+              "\(remote.provider.localizedDisplayName) \(remote.owner)/\(remote.name)",
+              systemImage: "point.3.connected.trianglepath.dotted"
+            )
+              .foregroundStyle(.secondary)
+            Text(remote.remoteURL)
+              .font(.caption.monospaced())
+              .foregroundStyle(.tertiary)
+              .lineLimit(1)
+              .truncationMode(.middle)
+              .textSelection(.enabled)
+            Spacer()
+            Button {
+              store.applyDetectedRepositoryRemote()
+            } label: {
+              Label("用于 PR/MR", systemImage: "arrow.triangle.pull")
+            }
+          }
+        }
+      }
+    } else {
+      EmptyStateView(
+        title: "还没有扫描结果",
+        message: "选择仓库后会检查站点类型、内容目录、图片目录和 Git 状态。",
+        systemImage: "externaldrive.badge.plus"
+      )
+      .frame(height: 240)
+    }
+  }
+
+}

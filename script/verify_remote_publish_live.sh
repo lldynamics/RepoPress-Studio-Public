@@ -124,6 +124,24 @@ validate_disposable_review_branch() {
   fi
 }
 
+validate_https_base_url() {
+  python3 - "$1" <<'PY'
+from urllib.parse import urlsplit
+import sys
+
+value = urlsplit(sys.argv[1])
+valid = (
+    value.scheme.lower() == "https"
+    and bool(value.hostname)
+    and value.username is None
+    and value.password is None
+    and not value.query
+    and not value.fragment
+)
+raise SystemExit(0 if valid else 1)
+PY
+}
+
 validate_disposable_path "$TEST_PATH"
 if [[ "$MODE" == "review" ]]; then
   validate_disposable_review_branch "$REVIEW_BRANCH"
@@ -134,6 +152,14 @@ fi
 if [[ "$MODE" != "review" && "$REVIEW_CLEANUP" == "1" ]]; then
   fail "REMOTE_VERIFY_REVIEW_CLEANUP=1 is only valid with review mode"
 fi
+
+if [[ "$PROVIDER" == "github" ]]; then
+  BASE_URL="${REMOTE_VERIFY_BASE_URL:-https://api.github.com}"
+else
+  BASE_URL="${REMOTE_VERIFY_BASE_URL:-https://gitlab.com}"
+fi
+validate_https_base_url "$BASE_URL" \
+  || fail "REMOTE_VERIFY_BASE_URL must use HTTPS and must not contain credentials, a query, or a fragment"
 
 generated_review_rollback_draft() {
   echo "Generated review can be rolled back by closing the PR/MR, deleting review branch $REVIEW_BRANCH, and removing disposable verification file $TEST_PATH if it was merged into $TARGET_BRANCH."
@@ -382,7 +408,6 @@ content_json="$(printf "%s" "$content" | json_quote)"
 
 case "$PROVIDER" in
   github)
-    BASE_URL="${REMOTE_VERIFY_BASE_URL:-https://api.github.com}"
     CURL_HEADERS=(-H "Accept: application/vnd.github+json" -H "Authorization: Bearer $TOKEN" -H "X-GitHub-Api-Version: 2022-11-28")
     repo_json="$(curl_json GET "$BASE_URL/repos/$(url_encode "$OWNER")/$(url_encode "$REPO")")"
     can_push="$(printf "%s" "$repo_json" | json_get permissions.push || true)"
@@ -430,7 +455,6 @@ case "$PROVIDER" in
     fi
     ;;
   gitlab)
-    BASE_URL="${REMOTE_VERIFY_BASE_URL:-https://gitlab.com}"
     API_URL="${BASE_URL%/}/api/v4"
     CURL_HEADERS=(-H "PRIVATE-TOKEN: $TOKEN")
     project_path="$OWNER/$REPO"

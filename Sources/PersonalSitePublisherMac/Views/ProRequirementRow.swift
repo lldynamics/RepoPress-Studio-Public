@@ -7,7 +7,7 @@ struct ProRequirementRow: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(alignment: .firstTextBaseline) {
-        Label(requirement.feature.displayName, systemImage: requirement.feature.systemImage)
+        Label(requirement.feature.localizedDisplayName, systemImage: requirement.feature.systemImage)
           .font(.callout.weight(.medium))
 
         Spacer()

@@ -29,7 +29,6 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertTrue(snapshot.repositoryAutoSyncSettings.fetchBeforeScan)
     XCTAssertTrue(snapshot.deploymentPollingSettings.isEnabled)
     XCTAssertTrue(snapshot.privacySettings.masksPrivateContent)
-    XCTAssertTrue(snapshot.privacySettings.locksWhenInactive)
     XCTAssertFalse(snapshot.monetizationState.entitlement.isUnlocked)
     XCTAssertEqual(snapshot.monetizationState.freeUsage.aiRequestCount, 9)
 
@@ -51,7 +50,6 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
       "general-drafts",
       "pro-settings",
       "privacy-lock",
-      "release-readiness",
     ]
 
     XCTAssertEqual(Set(ScreenshotDemoSurface.allCases.map(\.rawValue)), requiredIDs)

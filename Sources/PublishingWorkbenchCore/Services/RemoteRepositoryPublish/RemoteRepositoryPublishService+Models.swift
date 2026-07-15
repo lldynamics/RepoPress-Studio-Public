@@ -131,8 +131,19 @@ struct GitHubPutContentsBody: Encodable {
   var sha: String?
 }
 
+struct GitHubDeleteContentsBody: Encodable {
+  var message: String
+  var branch: String
+  var sha: String
+}
+
 struct GitHubContentMutationResponse: Decodable {
+  var content: Content?
   var commit: Commit
+
+  struct Content: Decodable {
+    var sha: String?
+  }
 
   struct Commit: Decodable {
     var sha: String
@@ -265,7 +276,7 @@ struct GitLabRevertCommitBody: Encodable {
 struct GitLabCommitAction: Encodable {
   var action: String
   var filePath: String
-  var content: String
+  var content: String?
   var encoding: String?
   var lastCommitID: String?
 
@@ -347,6 +358,7 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
   case invalidReviewURL(String)
   case unsupportedRepositoryCreationProvider(String)
   case invalidBaseURL(String)
+  case insecureBaseURL
   case invalidResponse
   case httpStatus(Int, String)
   case missingSourceFile(String)
@@ -382,6 +394,8 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
       return "\(provider) 暂不支持在 App 内创建仓库。"
     case .invalidBaseURL(let value):
       return "仓库 API Base URL 无效：\(value)"
+    case .insecureBaseURL:
+      return "仓库 API Base URL 必须使用 HTTPS；已阻止向不安全端点发送 Token。"
     case .invalidResponse:
       return "仓库 API 返回了无效响应。"
     case .httpStatus(let status, let body):

@@ -29,18 +29,11 @@ image_dimensions() {
   printf "%s %s" "$width" "$height"
 }
 
-required_ids=(
-  writing
-  ai-chat
-  sync-api-publish
-  seo-social-preview
-  deployment-status
-  maintenance
-  general-drafts
-  pro-settings
-  privacy-lock
-  release-readiness
-)
+required_ids=()
+while IFS= read -r id; do
+  [[ -n "$id" ]] && required_ids+=("$id")
+done < <(sed -nE 's/^\| `([^`]+)` \|.*/\1/p' "$MANIFEST")
+[[ "${#required_ids[@]}" -gt 0 ]] || fail "screenshot manifest contains no required screenshot IDs"
 
 for id in "${required_ids[@]}"; do
   grep -q "\`$id\`" "$MANIFEST" || fail "manifest is missing required screen id: $id"

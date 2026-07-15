@@ -6,7 +6,6 @@ enum ContentHealthContextFilter: String, CaseIterable, Identifiable {
   case aiFixes
   case siteIssues
   case maintenance
-  case draftIssues
 
   var id: String { rawValue }
 }
@@ -17,6 +16,7 @@ enum RepositoryContextStage: String, CaseIterable, Identifiable {
   case publishing
   case automation
   case preview
+  case history
 
   var id: String { rawValue }
 }

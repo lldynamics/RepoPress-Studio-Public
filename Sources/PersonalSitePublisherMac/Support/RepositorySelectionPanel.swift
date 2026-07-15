@@ -29,20 +29,6 @@ enum ImageSelectionPanel {
   }
 }
 
-enum ContentPerformanceCSVSelectionPanel {
-  @MainActor
-  static func chooseCSV() -> URL? {
-    let panel = NSOpenPanel()
-    panel.title = "导入内容表现 CSV"
-    panel.prompt = "导入"
-    panel.canChooseFiles = true
-    panel.canChooseDirectories = false
-    panel.allowsMultipleSelection = false
-    panel.allowedContentTypes = [.commaSeparatedText]
-    return panel.runModal() == .OK ? panel.url : nil
-  }
-}
-
 enum ContentMigrationSelectionPanel {
   @MainActor
   static func chooseSource() -> URL? {

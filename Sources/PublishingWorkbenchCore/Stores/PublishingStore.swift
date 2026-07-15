@@ -69,26 +69,33 @@ public final class PublishingStore: ObservableObject {
   let generalDraftLibraryService: GeneralDraftLibraryService
   let localSitePreviewService: LocalSitePreviewService
   let localSitePreviewProcessService: LocalSitePreviewProcessService
-  let contentPerformanceCSVImportService: ContentPerformanceCSVImportService
   let siteMaintenanceService: SiteMaintenanceService
-  let releaseQualityGateService: ReleaseQualityGateService
+  let draftLifecycleService: DraftLifecycleService
+  let contentHealthReportService: ContentHealthReportService
+  let aiFixQueueService: AIPublishingFixQueueService
   var localRepositoryMutationContext: LocalRepositoryOperationContext?
   var remoteRepositoryMutationContext: RemoteRepositoryOperationContext?
   var localImportOperationContext: LocalRepositoryOperationContext?
   var localSitePreviewStopTask: Task<Void, Never>?
   var localSitePreviewStopOperationID: UUID?
   var localSitePreviewGeneration: UInt64 = 0
-  var releaseQualityGateRefreshTask: Task<Void, Never>?
+  var publishPreviewRefreshTask: Task<Void, Never>?
+  var publishPreviewRefreshGeneration: UInt64 = 0
+  var siteStarterOperationGeneration: UInt64 = 0
 
   @Published public internal(set) var profiles: [SiteProfile]
   @Published public internal(set) var activeProfileID: UUID
   @Published public internal(set) var drafts: [ArticleDraft]
+  @Published public internal(set) var draftVersions: [DraftVersionSnapshot]
+  @Published public internal(set) var recycledDrafts: [RecycledDraft]
+  @Published public internal(set) var draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest]
   @Published public internal(set) var releaseRecords: [ReleaseRecord]
   @Published public internal(set) var selectedSection: WorkspaceSection
   @Published public internal(set) var selectedDraftID: UUID?
   @Published public internal(set) var publishPackage: PublishPackage?
   @Published public internal(set) var localPublishPreview: LocalPublishPreview?
   @Published public internal(set) var localPublishReadiness: LocalPublishReadiness?
+  @Published public internal(set) var isPublishPreviewRefreshing = false
   /// The last explicitly refreshed remote preview for the selected article.
   /// Views render this snapshot instead of rebuilding a package and diff from `body`.
   @Published public internal(set) var remotePublishPreviewSnapshot: RemoteRepositoryPublishPreview?
@@ -102,12 +109,9 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var siteStarterResult: SiteStarterResult?
   @Published public internal(set) var siteStarterImportResult: SiteStarterImportResult?
   @Published public internal(set) var siteStarterPushResult: SiteStarterPushResult?
+  @Published public internal(set) var isSiteStarterOperationRunning = false
   @Published public internal(set) var imageWorkbenchReport: ImageWorkbenchReport?
   @Published public internal(set) var preflightIssues: [PreflightIssue]
-  @Published public internal(set) var releaseQualityGateReport: ReleaseQualityGateReport
-  @Published public internal(set) var releaseQualityGateMessage: String?
-  @Published public internal(set) var isReleaseQualityGateRefreshing = false
-  @Published public internal(set) var externalVerificationEvidenceRecords: [ReleaseExternalVerificationEvidenceRecord]
   @Published public internal(set) var isInspectorPresented: Bool
   @Published public internal(set) var editorDisplayMode: EditorDisplayMode
   @Published public internal(set) var editorFocusRequest: EditorFocusRequest?
@@ -120,7 +124,6 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var isLocalRepositoryMutationRunning = false
   @Published public internal(set) var imageActionMessage: String?
   @Published public internal(set) var maintenanceOperationRecords: [MaintenanceOperationRecord]
-  @Published public internal(set) var contentPerformanceSnapshots: [ContentPerformanceSnapshot]
   @Published public internal(set) var latestGeneralDraftReusePlan: GeneralDraftReusePlan?
   @Published public internal(set) var latestGeneralDraftBackupWriteResult: GeneralDraftBackupWriteResult?
   @Published public internal(set) var recentlyDeletedProfile: RecentlyDeletedProfile?
@@ -141,6 +144,9 @@ public final class PublishingStore: ObservableObject {
     profiles: [SiteProfile],
     activeProfileID: UUID,
     drafts: [ArticleDraft],
+    draftVersions: [DraftVersionSnapshot] = [],
+    recycledDrafts: [RecycledDraft] = [],
+    draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest] = [],
     releaseRecords: [ReleaseRecord],
     selectedSection: WorkspaceSection = .writing,
     selectedDraftID: UUID? = nil,
@@ -159,9 +165,6 @@ public final class PublishingStore: ObservableObject {
     siteStarterPushResult: SiteStarterPushResult? = nil,
     imageWorkbenchReport: ImageWorkbenchReport? = nil,
     preflightIssues: [PreflightIssue] = [],
-    releaseQualityGateReport: ReleaseQualityGateReport = .empty,
-    releaseQualityGateMessage: String? = nil,
-    externalVerificationEvidenceRecords: [ReleaseExternalVerificationEvidenceRecord] = [],
     isInspectorPresented: Bool = true,
     editorDisplayMode: EditorDisplayMode = .edit,
     editorFocusRequest: EditorFocusRequest? = nil,
@@ -171,7 +174,6 @@ public final class PublishingStore: ObservableObject {
     publishActionMessage: String? = nil,
     imageActionMessage: String? = nil,
     maintenanceOperationRecords: [MaintenanceOperationRecord] = [],
-    contentPerformanceSnapshots: [ContentPerformanceSnapshot] = [],
     latestGeneralDraftReusePlan: GeneralDraftReusePlan? = nil,
     latestGeneralDraftBackupWriteResult: GeneralDraftBackupWriteResult? = nil,
     recentlyDeletedProfile: RecentlyDeletedProfile? = nil,
@@ -191,9 +193,8 @@ public final class PublishingStore: ObservableObject {
     generalDraftLibraryService: GeneralDraftLibraryService = GeneralDraftLibraryService(),
     localSitePreviewService: LocalSitePreviewService = LocalSitePreviewService(),
     localSitePreviewProcessService: LocalSitePreviewProcessService = LocalSitePreviewProcessService(),
-    contentPerformanceCSVImportService: ContentPerformanceCSVImportService = ContentPerformanceCSVImportService(),
     siteMaintenanceService: SiteMaintenanceService = SiteMaintenanceService(),
-    releaseQualityGateService: ReleaseQualityGateService = ReleaseQualityGateService()
+    draftLifecycleService: DraftLifecycleService = DraftLifecycleService()
   ) {
     self.preflightService = preflightService
     self.publishPackageBuilder = publishPackageBuilder
@@ -211,12 +212,16 @@ public final class PublishingStore: ObservableObject {
     self.generalDraftLibraryService = generalDraftLibraryService
     self.localSitePreviewService = localSitePreviewService
     self.localSitePreviewProcessService = localSitePreviewProcessService
-    self.contentPerformanceCSVImportService = contentPerformanceCSVImportService
     self.siteMaintenanceService = siteMaintenanceService
-    self.releaseQualityGateService = releaseQualityGateService
+    self.draftLifecycleService = draftLifecycleService
+    self.contentHealthReportService = ContentHealthReportService(preflightService: preflightService)
+    self.aiFixQueueService = AIPublishingFixQueueService()
     self.profiles = profiles
     self.activeProfileID = activeProfileID
     self.drafts = drafts
+    self.draftVersions = draftVersions
+    self.recycledDrafts = recycledDrafts
+    self.draftRepositoryCleanupRequests = draftRepositoryCleanupRequests
     self.releaseRecords = releaseRecords
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
@@ -235,9 +240,6 @@ public final class PublishingStore: ObservableObject {
     self.siteStarterPushResult = siteStarterPushResult
     self.imageWorkbenchReport = imageWorkbenchReport
     self.preflightIssues = preflightIssues
-    self.releaseQualityGateReport = releaseQualityGateReport
-    self.releaseQualityGateMessage = releaseQualityGateMessage
-    self.externalVerificationEvidenceRecords = externalVerificationEvidenceRecords
     self.isInspectorPresented = isInspectorPresented
     self.editorDisplayMode = editorDisplayMode
     self.editorFocusRequest = editorFocusRequest
@@ -247,7 +249,6 @@ public final class PublishingStore: ObservableObject {
     self.publishActionMessage = publishActionMessage
     self.imageActionMessage = imageActionMessage
     self.maintenanceOperationRecords = maintenanceOperationRecords
-    self.contentPerformanceSnapshots = contentPerformanceSnapshots
     self.latestGeneralDraftReusePlan = latestGeneralDraftReusePlan
     self.latestGeneralDraftBackupWriteResult = latestGeneralDraftBackupWriteResult
     self.recentlyDeletedProfile = recentlyDeletedProfile

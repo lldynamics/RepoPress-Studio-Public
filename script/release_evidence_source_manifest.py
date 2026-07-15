@@ -8,8 +8,9 @@ import sys
 
 DETAIL_CONTAINER = "Sources/PersonalSitePublisherMac/Views/DetailContainerView.swift"
 SETTINGS_VIEW = "Sources/PersonalSitePublisherMac/Views/SettingsView.swift"
-RELEASE_QUALITY_GATE_SERVICE = "Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateService.swift"
 AI_CHAT_WORKSPACE_VIEW = "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift"
+REPOSITORY_WORKSPACE_VIEW = "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceView.swift"
+WORKSPACE_LAYOUT_VIEWS = "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift"
 WORKBENCH_STORE = "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore.swift"
 WORKBENCH_PROFILE_TESTS = "Tests/PublishingWorkbenchCoreTests/WorkbenchStoreProfileTests.swift"
 
@@ -99,6 +100,22 @@ SETTINGS_MARKER_PATHS = {
 }
 
 
+REPOSITORY_WORKSPACE_MARKER_PATHS = {
+    "onlinePublishCenterSection": [
+        "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspacePublishingSections.swift",
+        REPOSITORY_WORKSPACE_VIEW,
+    ],
+    "remoteConflictPreview": [
+        "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspacePublishingSections.swift",
+        REPOSITORY_WORKSPACE_VIEW,
+    ],
+    "PR/MR": [
+        "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspacePublishingSections.swift",
+        REPOSITORY_WORKSPACE_VIEW,
+    ],
+}
+
+
 WORKBENCH_STORE_MARKER_PATHS = {
     "refreshDeploymentStatus": [
         "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+DeploymentCommands.swift",
@@ -117,24 +134,6 @@ WORKBENCH_PROFILE_TEST_MARKER_PATHS = {
     "testOnlineDirectPublishBlocksRemoteSamePathConflictBeforeCallingAPI": [
         "Tests/PublishingWorkbenchCoreTests/WorkbenchStoreRemotePublishingTests.swift",
         WORKBENCH_PROFILE_TESTS,
-    ],
-}
-
-
-RELEASE_QUALITY_GATE_SERVICE_MARKER_PATHS = {
-    "ReleaseQualityGateReport": [
-        RELEASE_QUALITY_GATE_SERVICE,
-        "Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateReport.swift",
-    ],
-    "strictReadinessSummary": [
-        "Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateAppStoreChecklistReport.swift",
-        "Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateExternalVerificationReport.swift",
-        "Sources/PublishingWorkbenchCore/Stores/PublishingStore+QualityActions.swift",
-        RELEASE_QUALITY_GATE_SERVICE,
-    ],
-    "localReleaseEvidenceBundleMarkdown": [
-        "Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateExternalVerificationReport.swift",
-        RELEASE_QUALITY_GATE_SERVICE,
     ],
 }
 
@@ -162,7 +161,6 @@ def expanded_source_paths(relative_path: str, marker: str) -> list[str]:
                 "Sources/PersonalSitePublisherMac/Views/EditorInspectorSections.swift",
                 "Sources/PersonalSitePublisherMac/Views/SiteMaintenanceDetailView.swift",
                 "Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift",
-                "Sources/PersonalSitePublisherMac/Views/ReleaseQualityGateDetailView.swift",
             ]
         )
 
@@ -181,13 +179,9 @@ def expanded_source_paths(relative_path: str, marker: str) -> list[str]:
                 "Sources/PersonalSitePublisherMac/Views/TokenRepositoryTokenSection.swift",
                 "Sources/PersonalSitePublisherMac/Views/RepositoryPermissionSettingsView.swift",
                 "Sources/PersonalSitePublisherMac/Views/PrivacySettingsView.swift",
-                "Sources/PersonalSitePublisherMac/Views/PrivacySettingsLockSection.swift",
                 "Sources/PersonalSitePublisherMac/Views/PrivacySettingsVisibilitySection.swift",
             ]
         )
-
-    if relative_path == RELEASE_QUALITY_GATE_SERVICE:
-        return unique(RELEASE_QUALITY_GATE_SERVICE_MARKER_PATHS.get(marker, [relative_path]))
 
     if relative_path == AI_CHAT_WORKSPACE_VIEW:
         return unique(
@@ -197,6 +191,28 @@ def expanded_source_paths(relative_path: str, marker: str) -> list[str]:
                 "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceComponents.swift",
                 "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift",
                 "Sources/PersonalSitePublisherMac/Views/AIChatPromptLibraryComponents.swift",
+            ]
+        )
+
+    if relative_path == REPOSITORY_WORKSPACE_VIEW:
+        if marker in REPOSITORY_WORKSPACE_MARKER_PATHS:
+            return unique(REPOSITORY_WORKSPACE_MARKER_PATHS[marker])
+        return unique(
+            [
+                relative_path,
+                "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift",
+                "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspacePublishingSections.swift",
+            ]
+        )
+
+    if relative_path == WORKSPACE_LAYOUT_VIEWS:
+        return unique(
+            [
+                relative_path,
+                "Sources/PersonalSitePublisherMac/Views/WorkspaceRailView.swift",
+                "Sources/PersonalSitePublisherMac/Views/WorkspaceContextSidebarView.swift",
+                "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift",
+                "Sources/PersonalSitePublisherMac/Views/WritingDraftListComponents.swift",
             ]
         )
 

@@ -14,9 +14,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "script" / "release_checks.json"
 QUICK_CHECK_IDS = {
+    "repository-source-boundary",
+    "repository-source-boundary-tests",
+    "build-version",
+    "build-version-tests",
     "ci-quality",
     "localization",
-    "app-store-metadata",
     "ui-runtime",
     "privacy-copy",
     "storekit",
@@ -133,7 +136,7 @@ def main() -> int:
         return 0
 
     configure_swift_environment()
-    strict_failures: list[str] = []
+    failures: list[str] = []
     for check in checks:
         strictness = check["strictness"]
         if strictness == "standard" and args.strict:
@@ -143,26 +146,31 @@ def main() -> int:
         passed = run(check)
         if passed:
             continue
-        if strictness == "strict":
-            strict_failures.append(str(check["title"]))
-            continue
-        return 1
+        failures.append(str(check["title"]))
 
     if args.quick or args.check:
         mode = "quick" if args.quick else "selected"
+        if failures:
+            print(f"release gate: {mode} mode has {len(failures)} failure(s):", file=sys.stderr)
+            for failure in failures:
+                print(f"  - {failure}", file=sys.stderr)
+            return 1
         print(f"release gate: {mode} checks passed ({len(checks)} checks)")
         return 0
 
     unchecked = unchecked_checklist_count()
     if args.strict and unchecked:
-        strict_failures.append(f"APP_STORE_CHECKLIST.md ({unchecked} unchecked items)")
-    if args.strict and strict_failures:
-        print(f"release gate: strict mode has {len(strict_failures)} blocker(s):", file=sys.stderr)
-        for failure in strict_failures:
+        failures.append(f"APP_STORE_CHECKLIST.md ({unchecked} unchecked items)")
+    if failures:
+        mode = "strict" if args.strict else "standard"
+        label = "blocker(s)" if args.strict else "failure(s)"
+        print(f"release gate: {mode} mode has {len(failures)} {label}:", file=sys.stderr)
+        for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
-        print("\nrelease gate: remaining external verification targets:", file=sys.stderr)
-        subprocess.run(["bash", str(ROOT / "script" / "print_remaining_external_verification.sh")], cwd=ROOT)
-        print("\nrelease gate: rerun after recording evidence:\n  ./script/check_release_gate.sh --strict", file=sys.stderr)
+        if args.strict:
+            print("\nrelease gate: remaining external verification targets:", file=sys.stderr)
+            subprocess.run(["bash", str(ROOT / "script" / "print_remaining_external_verification.sh")], cwd=ROOT)
+            print("\nrelease gate: rerun after recording evidence:\n  ./script/check_release_gate.sh --strict", file=sys.stderr)
         return 1
     print(f"release gate: automated checks passed; unchecked checklist items: {unchecked}")
     return 0

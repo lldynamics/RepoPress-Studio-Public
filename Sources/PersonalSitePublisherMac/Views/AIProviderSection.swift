@@ -15,7 +15,7 @@ struct AIProviderSection: View {
   var body: some View {
     Picker("Preset", selection: presetBinding) {
       ForEach(AIProviderPreset.allCases) { preset in
-        Text(preset.displayName).tag(preset)
+        Text(preset.localizedDisplayName).tag(preset)
       }
     }
     .accessibilityLabel("AI 服务预设")

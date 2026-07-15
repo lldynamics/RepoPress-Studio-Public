@@ -27,7 +27,11 @@ struct AIChatContextOverviewInspectorSection: View {
 
       AIChatInspectorStatRow(title: "发布文件", value: "\(context.publishFileCount)", systemImage: "shippingbox")
       AIChatInspectorStatRow(title: "发布检查", value: "\(context.preflightIssueCount)", systemImage: "checklist")
-      AIChatInspectorStatRow(title: "图片", value: "\(context.imageCount)", systemImage: "photo")
+      AIChatInspectorStatRow(
+        title: "图片",
+        value: context.imageCount.map(String.init) ?? String(localized: "正在读取…"),
+        systemImage: "photo"
+      )
 
       if let paragraphTitle = context.selectedParagraphTitle,
          let paragraphPreview = context.selectedParagraphPreview {
@@ -134,7 +138,7 @@ struct AIChatQuickPromptsInspectorSection: View {
     AIChatInspectorSection("快捷提示") {
       ForEach(AIPublishingQuickPrompt.featuredCapabilitySections) { section in
         VStack(alignment: .leading, spacing: 6) {
-          Label(section.group.displayName, systemImage: section.group.systemImage)
+          Label(section.group.localizedDisplayName, systemImage: section.group.systemImage)
             .font(.caption2.weight(.semibold))
             .foregroundStyle(.secondary)
 
@@ -142,7 +146,7 @@ struct AIChatQuickPromptsInspectorSection: View {
             Button {
               actions.sendMessage(prompt.prompt, context.draft)
             } label: {
-              Label(prompt.displayName, systemImage: prompt.systemImage)
+              Label(prompt.localizedDisplayName, systemImage: prompt.systemImage)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .disabled(context.isChatRunning)

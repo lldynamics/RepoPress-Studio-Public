@@ -102,6 +102,7 @@ extension PublishingStore {
       }
       let reviewDraft = remoteReviewDraftBuilder.build(package: package, profile: profile)
       store.setLocalGitPublishResult(result)
+      confirmLocalGitPublishLifecycle(package: package, mode: mode)
       publishActionMessage = "\(mode.displayName)完成：\(result.commitSHA.prefix(8))"
       releaseRecords.insert(
         .gitPublish(
@@ -217,6 +218,7 @@ extension PublishingStore {
       let releaseRecord = ReleaseRecord.remotePublish(package: package, profile: profile, result: result)
       releaseRecords.insert(releaseRecord, at: 0)
       markDraftsAsPublishedIfDirectRemoteCommit(mode: mode, draftIDs: [package.draftID])
+      confirmDirectRemotePublishLifecycle(packages: [package], result: result)
       store.recordRemoteRepositoryPublishInAutoSync(result)
       publishActionMessage = "\(mode.displayName)完成：\(result.commitSHA.map { String($0.prefix(8)) } ?? "无 commit")"
       if store.shouldRefreshDeploymentStatusAfterRemoteOperation(releaseRecord) {

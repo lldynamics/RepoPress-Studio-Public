@@ -67,7 +67,7 @@ struct EditorPreflightSection: View {
         .font(.caption2)
 
         ForEach(summary.issues.prefix(3)) { issue in
-          Text("\(issue.severity.displayName) · \(issue.title)")
+          Text("\(issue.severity.localizedDisplayName) · \(issue.title)")
             .font(.caption2)
             .foregroundStyle(.tertiary)
             .lineLimit(1)

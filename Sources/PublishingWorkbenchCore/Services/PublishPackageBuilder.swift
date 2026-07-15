@@ -14,9 +14,24 @@ public enum PublishFileKind: String, Codable, Sendable {
   }
 }
 
+public enum PublishFileOperation: String, Codable, Sendable {
+  case upsert
+  case delete
+
+  public var displayName: String {
+    switch self {
+    case .upsert:
+      return "写入"
+    case .delete:
+      return "删除"
+    }
+  }
+}
+
 public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
   public var id: String { repositoryPath }
   public var kind: PublishFileKind
+  public var operation: PublishFileOperation
   public var repositoryPath: String
   public var content: String?
   public var sourceFilePath: String?
@@ -25,6 +40,7 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
 
   public init(
     kind: PublishFileKind,
+    operation: PublishFileOperation = .upsert,
     repositoryPath: String,
     content: String? = nil,
     sourceFilePath: String? = nil,
@@ -32,11 +48,33 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
     expectedRemoteSHA: String? = nil
   ) {
     self.kind = kind
+    self.operation = operation
     self.repositoryPath = repositoryPath
     self.content = content
     self.sourceFilePath = sourceFilePath
     self.byteSize = byteSize
     self.expectedRemoteSHA = expectedRemoteSHA
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case kind
+    case operation
+    case repositoryPath
+    case content
+    case sourceFilePath
+    case byteSize
+    case expectedRemoteSHA
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    kind = try container.decode(PublishFileKind.self, forKey: .kind)
+    operation = try container.decodeIfPresent(PublishFileOperation.self, forKey: .operation) ?? .upsert
+    repositoryPath = try container.decode(String.self, forKey: .repositoryPath)
+    content = try container.decodeIfPresent(String.self, forKey: .content)
+    sourceFilePath = try container.decodeIfPresent(String.self, forKey: .sourceFilePath)
+    byteSize = try container.decodeIfPresent(Int64.self, forKey: .byteSize) ?? 0
+    expectedRemoteSHA = try container.decodeIfPresent(String.self, forKey: .expectedRemoteSHA)
   }
 }
 
@@ -116,6 +154,17 @@ public struct PublishPackageBuilder {
       }
     )
 
+    if let previousMarkdownPath = previousMarkdownPath(for: draft, currentPath: markdownPath) {
+      files.append(
+        PublishPackageFile(
+          kind: .markdown,
+          operation: .delete,
+          repositoryPath: previousMarkdownPath,
+          expectedRemoteSHA: draft.repositorySHA?.trimmedForPublishing.nilIfEmpty
+        )
+      )
+    }
+
     return PublishPackage(
       draftID: draft.id,
       title: draft.title,
@@ -150,6 +199,14 @@ public struct PublishPackageBuilder {
       return nil
     }
     return draft.repositorySHA?.trimmedForPublishing.nilIfEmpty
+  }
+
+  private func previousMarkdownPath(for draft: ArticleDraft, currentPath: String) -> String? {
+    guard let previousPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty,
+          previousPath != currentPath.normalizedRelativePath() else {
+      return nil
+    }
+    return previousPath
   }
 
   private func coverAltText(for draft: ArticleDraft) -> String? {

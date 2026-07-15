@@ -110,6 +110,8 @@ extension PublishFileDiffStatus {
       return "plus.circle"
     case .modified:
       return "pencil.circle"
+    case .deleted:
+      return "trash.circle"
     case .unchanged:
       return "equal.circle"
     case .missingSource:
@@ -125,6 +127,8 @@ extension PublishFileDiffStatus {
       return WorkbenchTheme.success
     case .modified:
       return WorkbenchTheme.warning
+    case .deleted:
+      return WorkbenchTheme.risk
     case .unchanged:
       return .secondary
     case .missingSource, .unsafePath:

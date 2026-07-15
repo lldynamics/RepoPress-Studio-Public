@@ -19,7 +19,7 @@ struct TokenRepositoryDefaultsSection: View {
     Section("仓库默认") {
       Picker("平台", selection: repositoryProviderBinding) {
         ForEach(RepositoryProvider.allCases) { provider in
-          Text(provider.displayName).tag(provider)
+          Text(provider.localizedDisplayName).tag(provider)
         }
       }
       .accessibilityLabel("仓库平台")
@@ -28,6 +28,10 @@ struct TokenRepositoryDefaultsSection: View {
       TextField("Base URL", text: repositoryBaseURL)
         .accessibilityLabel("仓库 Base URL")
         .accessibilityValue(repositoryBaseURL.wrappedValue)
+
+      Text("仓库 API Base URL 必须使用 HTTPS，且不能包含用户名、密码、Query 或 Fragment；不安全配置不会发送 Token。")
+        .font(.caption)
+        .foregroundStyle(.secondary)
 
       TextField("Owner / Namespace", text: ownerOrNamespace)
         .accessibilityLabel("仓库 Owner 或 Namespace")
@@ -43,7 +47,7 @@ struct TokenRepositoryDefaultsSection: View {
 
       Picker("发布策略", selection: publishStrategyBinding) {
         ForEach(RepositoryPublishStrategy.allCases) { strategy in
-          Text(strategy.displayName).tag(strategy)
+          Text(strategy.localizedDisplayName).tag(strategy)
         }
       }
       .accessibilityLabel("仓库发布策略")

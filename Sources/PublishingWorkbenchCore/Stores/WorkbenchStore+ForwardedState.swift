@@ -8,6 +8,7 @@ extension WorkbenchStore {
   public var publishPackage: PublishPackage? { publishingStore.publishPackage }
   public var localPublishPreview: LocalPublishPreview? { publishingStore.localPublishPreview }
   public var localPublishReadiness: LocalPublishReadiness? { publishingStore.localPublishReadiness }
+  public var isPublishPreviewRefreshing: Bool { publishingStore.isPublishPreviewRefreshing }
   public var remotePublishPreviewSnapshot: RemoteRepositoryPublishPreview? { publishingStore.remotePublishPreviewSnapshot }
   public var batchPublishPlan: BatchPublishPlan? { publishingStore.batchPublishPlan }
   public var batchRemotePublishPreviewSnapshot: RemoteRepositoryPublishPreview? { publishingStore.batchRemotePublishPreviewSnapshot }
@@ -18,6 +19,7 @@ extension WorkbenchStore {
   public var siteStarterResult: SiteStarterResult? { publishingStore.siteStarterResult }
   public var siteStarterImportResult: SiteStarterImportResult? { publishingStore.siteStarterImportResult }
   public var siteStarterPushResult: SiteStarterPushResult? { publishingStore.siteStarterPushResult }
+  public var isSiteStarterOperationRunning: Bool { publishingStore.isSiteStarterOperationRunning }
   public var preflightIssues: [PreflightIssue] { publishingStore.preflightIssues }
   public var isInspectorPresented: Bool { publishingStore.isInspectorPresented }
   public var editorDisplayMode: EditorDisplayMode { publishingStore.editorDisplayMode }
@@ -28,19 +30,15 @@ extension WorkbenchStore {
   public var hasUnsavedChanges: Bool { persistenceStore.hasUnsavedChanges }
   public var lastSaveError: String? { persistenceStore.lastSaveError }
   public var persistenceRecoveryMessage: String? { persistenceStore.recoveryMessage }
+  public var isPersistenceRecoveryWriteProtected: Bool { persistenceStore.isRecoveryWriteProtected }
   public var publishActionMessage: String? { publishingStore.publishActionMessage }
   public var isLocalRepositoryMutationRunning: Bool { publishingStore.isLocalRepositoryMutationRunning }
   public var imageActionMessage: String? { publishingStore.imageActionMessage }
   public var maintenanceOperationRecords: [MaintenanceOperationRecord] { publishingStore.maintenanceOperationRecords }
-  public var contentPerformanceSnapshots: [ContentPerformanceSnapshot] { publishingStore.contentPerformanceSnapshots }
   public var siteMaintenanceSnapshot: SiteMaintenanceSnapshot? { siteMaintenanceStore.snapshot }
   public var siteMaintenanceSnapshotVersion: Int { siteMaintenanceStore.snapshotVersion }
   public var latestGeneralDraftReusePlan: GeneralDraftReusePlan? { publishingStore.latestGeneralDraftReusePlan }
   public var latestGeneralDraftBackupWriteResult: GeneralDraftBackupWriteResult? { publishingStore.latestGeneralDraftBackupWriteResult }
-  public var releaseQualityGateReport: ReleaseQualityGateReport { publishingStore.releaseQualityGateReport }
-  public var releaseQualityGateMessage: String? { publishingStore.releaseQualityGateMessage }
-  public var isReleaseQualityGateRefreshing: Bool { publishingStore.isReleaseQualityGateRefreshing }
-  public var externalVerificationEvidenceRecords: [ReleaseExternalVerificationEvidenceRecord] { publishingStore.externalVerificationEvidenceRecords }
 }
 
 extension WorkbenchStore {

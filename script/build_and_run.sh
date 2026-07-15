@@ -2,14 +2,20 @@
 set -euo pipefail
 
 MODE="run"
+BUILD_CONFIGURATION="debug"
 APP_NAME="PersonalSitePublisherMac"
 BUNDLE_ID="com.jinfang.PersonalSitePublisherMac"
 MIN_SYSTEM_VERSION="14.0"
-MARKETING_VERSION="1.0"
-BUILD_NUMBER="1"
 SCREENSHOT_SURFACE="writing"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VERSION_CONFIG="${BUILD_VERSION_CONFIG:-$ROOT_DIR/Packaging/BuildVersion.xcconfig}"
+VERSION_VALUES="$(
+  bash "$ROOT_DIR/script/check_build_version.sh" \
+    --config "$VERSION_CONFIG" \
+    --print-values
+)"
+IFS=$'\t' read -r MARKETING_VERSION BUILD_NUMBER <<<"$VERSION_VALUES"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
@@ -47,7 +53,6 @@ required_screenshot_surfaces=(
   general-drafts
   pro-settings
   privacy-lock
-  release-readiness
 )
 
 usage() {
@@ -65,6 +70,8 @@ Modes:
   --screenshot-demo [id]    Build and launch screenshot demo data for a surface.
 
 Options:
+  --release                 Build with SwiftPM's Release configuration.
+  --configuration <name>   Select debug or release (default: debug).
   --screenshot-surface <id> Select a screenshot demo surface and imply --screenshot-demo.
   --list-screenshot-surfaces
                             Print screenshot surface ids and exit.
@@ -86,6 +93,15 @@ list_screenshot_surfaces() {
 
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
+    --release)
+      BUILD_CONFIGURATION="release"
+      shift
+      ;;
+    --configuration)
+      [[ "$#" -ge 2 ]] || { usage; exit 2; }
+      BUILD_CONFIGURATION="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
+      shift 2
+      ;;
     run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify|--launch-baseline|launch-baseline|--package-only|package)
       MODE="$1"
       shift
@@ -119,6 +135,19 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 
+case "$BUILD_CONFIGURATION" in
+  debug)
+    BUILD_CONFIGURATION_DISPLAY_NAME="Debug"
+    ;;
+  release)
+    BUILD_CONFIGURATION_DISPLAY_NAME="Release"
+    ;;
+  *)
+    echo "unsupported build configuration: $BUILD_CONFIGURATION (expected debug or release)" >&2
+    exit 2
+    ;;
+esac
+
 if [[ "$MODE" == "screenshot-demo" ]] && ! contains_screenshot_surface "$SCREENSHOT_SURFACE"; then
   echo "unknown screenshot surface: $SCREENSHOT_SURFACE" >&2
   echo "known screenshot surfaces:" >&2
@@ -132,8 +161,20 @@ case "$MODE" in
     ;;
 esac
 
-swift build --disable-sandbox --product "$APP_NAME"
-BUILD_BINARY="$(swift build --disable-sandbox --show-bin-path)/$APP_NAME"
+swift build -c "$BUILD_CONFIGURATION" --disable-sandbox --disable-index-store --product "$APP_NAME"
+BUILD_BIN_DIR="$(swift build -c "$BUILD_CONFIGURATION" --disable-sandbox --show-bin-path)"
+case "$BUILD_BIN_DIR" in
+  */"$BUILD_CONFIGURATION") ;;
+  *)
+    echo "SwiftPM returned a non-$BUILD_CONFIGURATION binary directory: $BUILD_BIN_DIR" >&2
+    exit 1
+    ;;
+esac
+BUILD_BINARY="$BUILD_BIN_DIR/$APP_NAME"
+[[ -x "$BUILD_BINARY" ]] || {
+  echo "$BUILD_CONFIGURATION app executable is missing or not executable: $BUILD_BINARY" >&2
+  exit 1
+}
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
@@ -164,6 +205,8 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$MARKETING_VERSION</string>
   <key>CFBundleVersion</key>
   <string>$BUILD_NUMBER</string>
+  <key>PersonalSitePublisherBuildConfiguration</key>
+  <string>$BUILD_CONFIGURATION_DISPLAY_NAME</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>NSPrincipalClass</key>

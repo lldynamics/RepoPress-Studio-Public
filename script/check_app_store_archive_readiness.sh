@@ -3,9 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="PersonalSitePublisherMac"
-APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
-INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
-APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+APP_BUNDLE="${APP_STORE_APP_BUNDLE_PATH:-}"
+ARCHIVE_PATH="${APP_STORE_ARCHIVE_PATH:-}"
+INFO_PLIST=""
+APP_BINARY=""
 ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
 ARCHIVE_EVIDENCE="${APP_STORE_ARCHIVE_EVIDENCE_FILE:-$ROOT_DIR/docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md}"
 STRICT=0
@@ -14,6 +15,7 @@ DRY_RUN=0
 usage() {
   cat <<'USAGE'
 Usage: script/check_app_store_archive_readiness.sh [--strict] [--dry-run]
+       [--archive <path.xcarchive> | --app-bundle <path.app>]
 
 Checks local App Store archive readiness without pretending that local package
 checks prove App Store Connect upload readiness. Default mode verifies the
@@ -22,8 +24,14 @@ Transporter/App Store Connect evidence status. Strict mode also requires
 signed/hardened-runtime evidence and completed archive-validation evidence.
 
 Options:
-  --strict    Fail unless signing/runtime and external archive validation are recorded.
-  --dry-run   Validate that required scripts/evidence templates exist only.
+  --strict             Require an explicit signed archive/app artifact plus completed evidence.
+  --archive <path>     Validate Products/Applications/PersonalSitePublisherMac.app in this archive.
+  --app-bundle <path>  Validate this exact app bundle without rebuilding it.
+  --dry-run            Validate that required scripts/evidence templates exist only.
+
+The paths may also be provided through APP_STORE_ARCHIVE_PATH or
+APP_STORE_APP_BUNDLE_PATH. Without an explicit artifact, non-strict mode builds
+a fresh local unsigned Release package for local-only readiness checks.
 USAGE
 }
 
@@ -118,6 +126,18 @@ while [[ "$#" -gt 0 ]]; do
       DRY_RUN=1
       shift
       ;;
+    --archive)
+      [[ "$#" -ge 2 ]] || fail "--archive requires a path"
+      [[ -z "$APP_BUNDLE" ]] || fail "--archive cannot be combined with --app-bundle"
+      ARCHIVE_PATH="$2"
+      shift 2
+      ;;
+    --app-bundle)
+      [[ "$#" -ge 2 ]] || fail "--app-bundle requires a path"
+      [[ -z "$ARCHIVE_PATH" ]] || fail "--app-bundle cannot be combined with --archive"
+      APP_BUNDLE="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -129,9 +149,11 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 [[ -f "$ROOT_DIR/script/build_and_run.sh" ]] || fail "missing script/build_and_run.sh"
+[[ -f "$ROOT_DIR/script/check_build_version.sh" ]] || fail "missing script/check_build_version.sh"
 [[ -f "$ROOT_DIR/script/check_app_store_metadata.sh" ]] || fail "missing script/check_app_store_metadata.sh"
 [[ -f "$ENTITLEMENTS" ]] || fail "missing Sources/PersonalSitePublisherMac/AppStore.entitlements"
 [[ -f "$ARCHIVE_EVIDENCE" ]] || fail "missing docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md"
+bash "$ROOT_DIR/script/check_build_version.sh" >/dev/null
 
 if [[ "$DRY_RUN" == "1" ]]; then
   validate_archive_evidence "${STRICT_ARCHIVE_EVIDENCE_ONLY:-0}"
@@ -139,11 +161,23 @@ if [[ "$DRY_RUN" == "1" ]]; then
   exit 0
 fi
 
-# A readiness run must never reuse an old local bundle. This still creates a
-# development package only; --strict below is the release/archive boundary.
-bash "$ROOT_DIR/script/build_and_run.sh" --package-only >/dev/null
+if [[ -n "$ARCHIVE_PATH" ]]; then
+  [[ "$ARCHIVE_PATH" == *.xcarchive ]] || fail "--archive must point to a .xcarchive"
+  [[ -d "$ARCHIVE_PATH" ]] || fail "archive does not exist: $ARCHIVE_PATH"
+  APP_BUNDLE="$ARCHIVE_PATH/Products/Applications/$APP_NAME.app"
+elif [[ -z "$APP_BUNDLE" ]]; then
+  [[ "$STRICT" == "0" ]] \
+    || fail "strict mode requires --archive/APP_STORE_ARCHIVE_PATH or --app-bundle/APP_STORE_APP_BUNDLE_PATH"
+  # Local readiness may build a fresh unsigned Release package. It is never
+  # treated as evidence for the signed distribution archive boundary.
+  bash "$ROOT_DIR/script/build_and_run.sh" --package-only --release >/dev/null
+  APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
+fi
 
-[[ -d "$APP_BUNDLE" ]] || fail "app bundle was not created"
+INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+
+[[ -d "$APP_BUNDLE" ]] || fail "app bundle does not exist: $APP_BUNDLE"
 [[ -f "$INFO_PLIST" ]] || fail "Info.plist is missing from app bundle"
 [[ -x "$APP_BINARY" ]] || fail "app executable is missing or not executable"
 plutil -lint "$INFO_PLIST" >/dev/null || fail "Info.plist is invalid"
@@ -152,10 +186,13 @@ plutil -lint "$ENTITLEMENTS" >/dev/null || fail "AppStore.entitlements is invali
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST")"
 marketing_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST")"
 build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST")"
+build_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' "$INFO_PLIST" 2>/dev/null || true)"
 
 [[ "$bundle_id" == "com.jinfang.PersonalSitePublisherMac" ]] || fail "unexpected bundle identifier: $bundle_id"
 [[ "$marketing_version" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || fail "invalid marketing version: $marketing_version"
 [[ "$build_number" =~ ^[0-9]+$ ]] || fail "invalid build number: $build_number"
+[[ "$build_configuration" == "Release" ]] || fail "archive readiness requires a Release bundle, got: ${build_configuration:-missing configuration evidence}"
+bash "$ROOT_DIR/script/check_build_version.sh" --info-plist "$INFO_PLIST" >/dev/null
 
 codesign_log="$(mktemp "${TMPDIR:-/tmp}/app-store-codesign.XXXXXX")"
 trap 'rm -f "$codesign_log"' EXIT
@@ -209,11 +246,17 @@ if [[ "$STRICT" == "1" ]]; then
   actual_bookmarks="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.files.bookmarks.app-scope' "$actual_entitlements" 2>/dev/null || true)"
   [[ "$actual_sandbox" == "true" ]] || fail "signed app is missing App Sandbox entitlement"
   [[ "$actual_network" == "true" ]] || fail "signed app is missing Network Client entitlement"
-  [[ "$actual_file_access" == "true" ]] || fail "signed app is missing app-scope bookmark entitlement"
+  [[ "$actual_file_access" == "true" ]] || fail "signed app is missing user-selected read/write entitlement"
   [[ "$actual_bookmarks" == "true" ]] || fail "signed app is missing app-scope bookmark entitlement"
   validate_archive_evidence 1
   [[ "$unchecked_archive_items" -eq 0 && "$checked_archive_items" -gt 0 ]] \
     || fail "strict mode requires completed docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md"
 fi
 
-echo "app store archive readiness: fresh local development package checks passed for bundle id $bundle_id, version $marketing_version ($build_number); this is not Release archive validation"
+if [[ -n "$ARCHIVE_PATH" ]]; then
+  echo "app store archive readiness: validated explicit xcarchive app for bundle id $bundle_id, version $marketing_version ($build_number)"
+elif [[ "$APP_BUNDLE" != "$ROOT_DIR/dist/$APP_NAME.app" ]]; then
+  echo "app store archive readiness: validated explicit app bundle for bundle id $bundle_id, version $marketing_version ($build_number)"
+else
+  echo "app store archive readiness: fresh local Release package checks passed for bundle id $bundle_id, version $marketing_version ($build_number); this is not signed Release archive validation"
+fi

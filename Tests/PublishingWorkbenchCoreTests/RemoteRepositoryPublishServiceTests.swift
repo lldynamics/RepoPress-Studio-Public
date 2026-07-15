@@ -22,7 +22,7 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     XCTAssertEqual(
       check.accessVerificationCommands,
       [
-        "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \"https://api.github.com/repos/owner/site\""
+        "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" 'https://api.github.com/repos/owner/site'"
       ]
     )
     XCTAssertTrue(markdown.contains("# GitHub Token 权限证据包"))
@@ -53,7 +53,7 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     XCTAssertEqual(
       check.accessVerificationCommands,
       [
-        "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \"https://gitlab.example.com/api/v4/projects/group%2Fsub%2Fsite\""
+        "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" 'https://gitlab.example.com/api/v4/projects/group%2Fsub%2Fsite'"
       ]
     )
     XCTAssertTrue(markdown.contains("# GitLab Token 权限证据包"))
@@ -88,8 +88,8 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
 
     let verification = result.remoteVerificationMarkdown
     XCTAssertTrue(verification.contains("# GitLab 线上发布实测包"))
-    XCTAssertTrue(verification.contains("curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \"https://gitlab.example.com/api/v4/projects/group%2Fsite/repository/commits/1234567890abcdef\""))
-    XCTAssertTrue(verification.contains("curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \"https://gitlab.example.com/api/v4/projects/group%2Fsite/merge_requests/5\""))
+    XCTAssertTrue(verification.contains("curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" 'https://gitlab.example.com/api/v4/projects/group%2Fsite/repository/commits/1234567890abcdef'"))
+    XCTAssertTrue(verification.contains("curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" 'https://gitlab.example.com/api/v4/projects/group%2Fsite/merge_requests/5'"))
     XCTAssertTrue(verification.contains("repository/files/content%2Fposts%2Fpost.md?ref=publish%2Fpost"))
     XCTAssertTrue(verification.contains("- [ ] 部署状态面板已刷新到最新记录。"))
   }
@@ -112,6 +112,58 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     XCTAssertNil(result.apiBaseURL)
     XCTAssertTrue(result.remoteVerificationCommands.isEmpty)
     XCTAssertTrue(result.remoteVerificationMarkdown.contains("缺少仓库名或 commit"))
+  }
+
+  func testAccessEvidenceRefusesCredentialCommandForInsecureDecodedBaseURL() {
+    let check = RemoteRepositoryAccessCheck(
+      provider: .github,
+      repositoryName: "owner/site",
+      apiBaseURL: "http://api.example.com",
+      defaultBranch: nil,
+      canRead: true,
+      canWrite: true,
+      permissionSummary: "write=true",
+      minimumWritePermission: "write",
+      message: "checked"
+    )
+
+    XCTAssertTrue(check.accessVerificationCommands.isEmpty)
+    XCTAssertTrue(check.accessEvidenceMarkdown.contains("未生成含 Token 的命令"))
+  }
+
+  func testRemoteVerificationRefusesCredentialCommandForInsecureDecodedBaseURL() {
+    let result = RemoteRepositoryPublishResult(
+      provider: .gitlab,
+      repositoryName: "group/site",
+      apiBaseURL: "http://gitlab.example/api/v4",
+      mode: .directCommit,
+      branchName: "main",
+      targetBranch: "main",
+      changedPaths: ["content/post.md"],
+      commitSHA: "abc123"
+    )
+
+    XCTAssertTrue(result.remoteVerificationCommands.isEmpty)
+    XCTAssertTrue(result.remoteVerificationMarkdown.contains("未生成含 Token 的命令"))
+  }
+
+  func testAccessEvidenceShellQuotesUserControlledURLComponents() throws {
+    let check = RemoteRepositoryAccessCheck(
+      provider: .github,
+      repositoryName: "owner/$(touch injected)'repo`id`",
+      apiBaseURL: "https://api.example.com",
+      defaultBranch: nil,
+      canRead: true,
+      canWrite: true,
+      permissionSummary: "write=true",
+      minimumWritePermission: "write",
+      message: "checked"
+    )
+
+    let command = try XCTUnwrap(check.accessVerificationCommands.first)
+    XCTAssertTrue(command.contains("'https://api.example.com/repos/"))
+    XCTAssertTrue(command.contains("'\"'\"'"))
+    XCTAssertFalse(command.contains("\"https://api.example.com"))
   }
 
   func testGitHubReviewPublishCreatesBranchWritesContentsAndPullRequest() async throws {
@@ -340,6 +392,51 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     XCTAssertNotNil(putBody["content"] as? String)
   }
 
+  func testGitHubDirectPublishMigratesPathWithVersionProtectedDelete() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(statusCode: 404, json: #"{"message":"not found"}"#),
+      response(json: #"{"content":{"path":"content/posts/new-path.md","sha":"new-content-sha"},"commit":{"sha":"create-commit-sha"}}"#),
+      response(json: #"{"sha":"old-content-sha"}"#),
+      response(json: #"{"content":null,"commit":{"sha":"delete-commit-sha"}}"#),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "https://api.github.com"
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "New Path",
+      date: fixedDate(),
+      slug: "new-path",
+      draft: false,
+      bodyMarkdown: "This body is intentionally long enough for GitHub path migration coverage.",
+      repositoryPath: "content/posts/old-path.md",
+      repositorySHA: "old-content-sha"
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+
+    let result = try await service.publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit,
+      token: "secret-token"
+    )
+
+    XCTAssertEqual(result.changedPaths, ["content/posts/new-path.md", "content/posts/old-path.md"])
+    XCTAssertEqual(result.commitSHA, "delete-commit-sha")
+    XCTAssertEqual(result.remoteVersion(for: "content/posts/new-path.md"), "new-content-sha")
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "PUT", "GET", "DELETE"])
+    XCTAssertEqual(requests[3].url?.path, "/repos/owner/site/contents/content/posts/old-path.md")
+    let deleteBody = try jsonBody(requests[3])
+    XCTAssertEqual(deleteBody["branch"] as? String, "main")
+    XCTAssertEqual(deleteBody["sha"] as? String, "old-content-sha")
+  }
+
   func testGitHubPublishReportsPartialFailureAfterSomeFilesWereWritten() async throws {
     let imageURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("github-partial-\(UUID().uuidString).png")
@@ -502,6 +599,52 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map(\.httpMethod), ["GET"])
     XCTAssertEqual(requests[0].url?.path, "/repos/owner/site/contents/content/posts/github-unknown-remote.md")
+  }
+
+  func testGitLabDirectPublishMigratesPathInSingleCommit() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(statusCode: 404, json: #"{"message":"not found"}"#),
+      response(json: #"{"file_path":"content/posts/old-path.md","last_commit_id":"old-commit-sha"}"#),
+      response(json: #"{"id":"migration-commit-sha"}"#),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .gitlab
+    profile.repositoryBaseURL = "https://gitlab.com"
+    profile.repoOwner = "group"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "New Path",
+      date: fixedDate(),
+      slug: "new-path",
+      draft: false,
+      bodyMarkdown: "This body is intentionally long enough for GitLab path migration coverage.",
+      repositoryPath: "content/posts/old-path.md",
+      repositorySHA: "old-commit-sha"
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+
+    let result = try await service.publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit,
+      token: "gitlab-token"
+    )
+
+    XCTAssertEqual(result.changedPaths, ["content/posts/new-path.md", "content/posts/old-path.md"])
+    XCTAssertEqual(result.remoteVersion(for: "content/posts/new-path.md"), "migration-commit-sha")
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "POST"])
+    let commitBody = try jsonBody(requests[2])
+    let actions = try XCTUnwrap(commitBody["actions"] as? [[String: Any]])
+    XCTAssertEqual(actions.map { $0["action"] as? String }, ["create", "delete"])
+    XCTAssertEqual(actions[0]["file_path"] as? String, "content/posts/new-path.md")
+    XCTAssertEqual(actions[1]["file_path"] as? String, "content/posts/old-path.md")
+    XCTAssertEqual(actions[1]["last_commit_id"] as? String, "old-commit-sha")
+    XCTAssertNil(actions[1]["content"])
   }
 
   func testGitLabReviewPublishCreatesCommitActionsAndMergeRequest() async throws {
@@ -924,6 +1067,81 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     )
     XCTAssertNil(check.tokenScopeSummary)
     XCTAssertTrue(check.minimumWritePermission.contains("Developer(30)"))
+  }
+
+  func testAccessCheckRejectsHTTPBaseURLBeforeSendingGitHubToken() async {
+    let transport = SequencedRemoteRepositoryTransport(responses: [])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "http://api.github.example"
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+
+    do {
+      _ = try await service.checkAccess(profile: profile, token: "secret-token")
+      XCTFail("Expected an insecure base URL error")
+    } catch {
+      XCTAssertEqual(
+        error as? RemoteRepositoryPublishError,
+        .insecureBaseURL
+      )
+      XCTAssertTrue(error.localizedDescription.contains("HTTPS"))
+    }
+
+    let requests = await transport.capturedRequests()
+    XCTAssertTrue(requests.isEmpty)
+  }
+
+  func testAccessCheckRejectsHTTPBaseURLBeforeSendingGitLabToken() async {
+    let transport = SequencedRemoteRepositoryTransport(responses: [])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .gitlab
+    profile.repositoryBaseURL = "http://gitlab.example"
+    profile.repoOwner = "group"
+    profile.repoName = "site"
+
+    do {
+      _ = try await service.checkAccess(profile: profile, token: "secret-token")
+      XCTFail("Expected an insecure base URL error")
+    } catch {
+      XCTAssertEqual(
+        error as? RemoteRepositoryPublishError,
+        .insecureBaseURL
+      )
+      XCTAssertTrue(error.localizedDescription.contains("发送 Token"))
+    }
+
+    let requests = await transport.capturedRequests()
+    XCTAssertTrue(requests.isEmpty)
+  }
+
+  func testAccessCheckRejectsCredentialedQueryAndFragmentBaseURLs() async {
+    let transport = SequencedRemoteRepositoryTransport(responses: [])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    let insecureURLs = [
+      "https://user:password@api.example.com",
+      "https://api.example.com?redirect=https://other.example",
+      "https://api.example.com#fragment",
+    ]
+
+    for baseURL in insecureURLs {
+      var profile = SiteProfile.defaultProfile
+      profile.repositoryBaseURL = baseURL
+      profile.repoOwner = "owner"
+      profile.repoName = "site"
+      do {
+        _ = try await service.checkAccess(profile: profile, token: "secret-token")
+        XCTFail("Expected insecure base URL rejection")
+      } catch {
+        XCTAssertEqual(error as? RemoteRepositoryPublishError, .insecureBaseURL)
+        XCTAssertFalse(error.localizedDescription.contains("password"))
+      }
+    }
+
+    let requests = await transport.capturedRequests()
+    XCTAssertTrue(requests.isEmpty)
   }
 
   func testAccessCheckDecodesLegacyPayloadWithoutPermissionDiagnostics() throws {

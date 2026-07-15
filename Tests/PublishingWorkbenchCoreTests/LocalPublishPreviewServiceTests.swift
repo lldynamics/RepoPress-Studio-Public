@@ -59,6 +59,76 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     XCTAssertEqual(preview.fileDiffs.first(where: { $0.kind == .markdown })?.status, .modified)
   }
 
+  func testPreviewAsyncMatchesSynchronousPreview() async throws {
+    let rootURL = try makeRepositoryFixture()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Async Preview",
+      slug: "existing",
+      draft: false,
+      bodyMarkdown: "Updated body that should produce the same preview off the caller's executor."
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let service = LocalPublishPreviewService()
+
+    let synchronousPreview = service.preview(package: package, profile: profile)
+    let asynchronousPreview = await service.previewAsync(package: package, profile: profile)
+
+    assertEquivalentPreview(asynchronousPreview, synchronousPreview)
+  }
+
+  func testPreviewAsyncMatchesSynchronousPreviewForUnsafeAndMissingFiles() async throws {
+    let rootURL = try makeRepositoryFixture()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    let package = publishPackage(
+      files: [
+        .init(kind: .markdown, repositoryPath: "../outside.md", content: "must not escape"),
+        .init(
+          kind: .image,
+          repositoryPath: "images/missing.jpg",
+          sourceFilePath: rootURL.appendingPathComponent("does-not-exist.jpg").path
+        ),
+      ]
+    )
+    let service = LocalPublishPreviewService()
+
+    let synchronousPreview = service.preview(package: package, profile: profile)
+    let asynchronousPreview = await service.previewAsync(package: package, profile: profile)
+
+    assertEquivalentPreview(asynchronousPreview, synchronousPreview)
+    XCTAssertEqual(asynchronousPreview.fileDiffs.map(\.status), [.unsafePath, .missingSource])
+  }
+
+  func testPreviewAsyncMatchesSynchronousPreviewWhenRepositoryIsMissing() async {
+    var profile = SiteProfile.defaultProfile
+    profile.localRepositoryRootPath = ""
+    profile.localRepositoryBookmarkData = nil
+    let package = publishPackage(
+      files: [.init(kind: .markdown, repositoryPath: "content/posts/test.md", content: "test")]
+    )
+    let service = LocalPublishPreviewService()
+
+    let synchronousPreview = service.preview(package: package, profile: profile)
+    let asynchronousPreview = await service.previewAsync(package: package, profile: profile)
+
+    assertEquivalentPreview(asynchronousPreview, synchronousPreview)
+    XCTAssertEqual(asynchronousPreview.fileDiffs.first?.status, .unsafePath)
+    XCTAssertEqual(asynchronousPreview.issues.first?.field, "repository")
+  }
+
   func testWritePackageCreatesMarkdownFileInsideRepository() throws {
     let rootURL = try makeRepositoryFixture()
     defer {
@@ -111,6 +181,61 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
 
     XCTAssertEqual(written, ["content/posts/async-draft.md"])
     XCTAssertTrue(content.contains("title = \"Async Draft\""))
+  }
+
+  func testPathMigrationPreviewAndWriteCreateNewFileAndDeleteOldFile() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Moved Draft",
+      slug: "moved-draft",
+      draft: false,
+      bodyMarkdown: "Updated body for the moved draft lifecycle test.",
+      repositoryPath: "content/posts/existing.md",
+      repositorySHA: "old-remote-sha"
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let service = LocalPublishPreviewService()
+
+    let preview = service.preview(package: package, profile: profile)
+
+    XCTAssertEqual(preview.fileDiffs.map(\.status), [.added, .deleted])
+    XCTAssertTrue(preview.fileDiffs[1].lineDiff?.contains("-old content") == true)
+
+    let changedPaths = try service.write(package: package, profile: profile)
+
+    XCTAssertEqual(changedPaths, ["content/posts/moved-draft.md", "content/posts/existing.md"])
+    XCTAssertTrue(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("content/posts/moved-draft.md").path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("content/posts/existing.md").path))
+  }
+
+  func testDeleteOperationRejectsRepositorySymlink() throws {
+    let rootURL = try makeRepositoryFixture()
+    let outsideURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMacDeleteOutside-\(UUID().uuidString).md")
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+      try? FileManager.default.removeItem(at: outsideURL)
+    }
+    try "outside content".write(to: outsideURL, atomically: true, encoding: .utf8)
+    let linkURL = rootURL.appendingPathComponent("content/posts/delete-link.md")
+    try FileManager.default.createSymbolicLink(at: linkURL, withDestinationURL: outsideURL)
+    let package = publishPackage(
+      files: [
+        .init(kind: .markdown, operation: .delete, repositoryPath: "content/posts/delete-link.md")
+      ]
+    )
+
+    let preview = LocalPublishPreviewService().preview(package: package, rootURL: rootURL)
+
+    XCTAssertEqual(preview.fileDiffs.first?.status, .unsafePath)
+    XCTAssertThrowsError(try LocalPublishPreviewService().write(package: package, rootURL: rootURL))
+    XCTAssertEqual(try String(contentsOf: outsideURL, encoding: .utf8), "outside content")
   }
 
   func testPreviewRejectsUnsafeImageAttachmentPath() throws {
@@ -258,6 +383,25 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
       reviewTitle: "test",
       reviewChecklist: []
     )
+  }
+
+  private func assertEquivalentPreview(
+    _ actual: LocalPublishPreview,
+    _ expected: LocalPublishPreview,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    // Each independently generated preview records its own wall-clock time.
+    // Independently constructed issues also receive fresh identity values.
+    // Normalize only those generated metadata fields; every semantic field
+    // must otherwise match exactly.
+    XCTAssertEqual(actual.issues.count, expected.issues.count, file: file, line: line)
+    var normalizedActual = actual
+    normalizedActual.generatedAt = expected.generatedAt
+    for index in normalizedActual.issues.indices where expected.issues.indices.contains(index) {
+      normalizedActual.issues[index].id = expected.issues[index].id
+    }
+    XCTAssertEqual(normalizedActual, expected, file: file, line: line)
   }
 
   private func makeRepositoryFixture() throws -> URL {

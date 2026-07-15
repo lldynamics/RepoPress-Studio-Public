@@ -26,7 +26,7 @@ struct AIChatPromptLibrarySheet: View {
   var body: some View {
     NavigationSplitView {
       List(AIPublishingPromptLibraryScope.allCases, selection: $selectedScope) { scope in
-        Label(scope.displayName, systemImage: scope.systemImage)
+        Label(scope.localizedDisplayName, systemImage: scope.systemImage)
           .tag(scope)
       }
       .navigationTitle("AI 场景")
@@ -105,7 +105,7 @@ struct AIChatPromptLibrarySheet: View {
         }
 
         ForEach(snapshot.spotlightActionSections) { section in
-          Section("\(section.group.displayName) · 常用动作") {
+          Section("\(section.group.localizedDisplayName) · 常用动作") {
             ForEach(section.actions) { action in
               Button {
                 onApplyEditorAction(action)
@@ -133,20 +133,20 @@ struct AIChatPromptLibrarySheet: View {
         }
 
         ForEach(snapshot.promptSections) { section in
-          Section(section.group.displayName) {
+          Section(section.group.localizedDisplayName) {
             ForEach(section.prompts) { prompt in
               Button {
                 onApplyPrompt(prompt)
                 dismiss()
               } label: {
-                Label(prompt.displayName, systemImage: prompt.systemImage)
+                Label(prompt.localizedDisplayName, systemImage: prompt.systemImage)
               }
             }
           }
         }
 
         ForEach(snapshot.editorActionSections) { section in
-          Section("\(section.group.displayName) · 编辑器动作") {
+          Section("\(section.group.localizedDisplayName) · 编辑器动作") {
             ForEach(section.actions) { action in
               Button {
                 onApplyEditorAction(action)
@@ -189,7 +189,7 @@ struct AIChatPromptLibraryEditorActionRow: View {
         .foregroundStyle(WorkbenchTheme.primary)
         .frame(width: 20)
       VStack(alignment: .leading, spacing: 4) {
-        Text(action.displayName)
+        Text(action.localizedDisplayName)
           .font(.callout.weight(.medium))
           .foregroundStyle(.primary)
         Text(action.promptLibraryDescription)
