@@ -26,7 +26,8 @@ minimum_system="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$I
 
 for file in \
   "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
   "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspector.swift" \
   "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/SettingsView.swift"; do
   [[ -f "$file" ]] || fail "expected UI file is missing: ${file#$ROOT_DIR/}"

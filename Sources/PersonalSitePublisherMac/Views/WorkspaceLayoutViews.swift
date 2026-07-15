@@ -5,32 +5,31 @@ struct WorkspaceShellSplitLayout: View {
   @ObservedObject var store: WorkbenchStore
   let isCompact: Bool
   let isInspectorPresented: Bool
+  let isAIInspectorSelected: Bool
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var repositoryContextStage: RepositoryContextStage
+  let onSelectSection: (WorkspaceSection) -> Void
+  let onOpenAIInspector: () -> Void
 
   var body: some View {
     HStack(spacing: 0) {
-      WorkspaceRail(store: store)
-        .frame(minWidth: 52, maxWidth: 52, maxHeight: .infinity)
+      WorkspaceUnifiedSidebar(
+        store: store,
+        isCompact: isCompact,
+        isAIInspectorSelected: isAIInspectorSelected,
+        contentHealthFilter: $contentHealthFilter,
+        repositoryContextStage: $repositoryContextStage,
+        onSelectSection: onSelectSection,
+        onOpenAIInspector: onOpenAIInspector
+      )
+      .frame(
+        minWidth: isCompact ? 230 : 260,
+        idealWidth: isCompact ? 240 : 290,
+        maxWidth: isCompact ? 280 : 320,
+        maxHeight: .infinity
+      )
 
       Divider()
-
-      if store.selectedSection.contextSidebarMode != .none {
-        WorkspaceContextSidebar(
-          store: store,
-          isCompact: isCompact,
-          contentHealthFilter: $contentHealthFilter,
-          repositoryContextStage: $repositoryContextStage
-        )
-        .frame(
-          minWidth: isCompact ? 220 : 260,
-          idealWidth: isCompact ? 240 : 300,
-          maxWidth: isCompact ? 300 : 380,
-          maxHeight: .infinity
-        )
-
-        Divider()
-      }
 
       HSplitView {
         EditorCenterColumn(

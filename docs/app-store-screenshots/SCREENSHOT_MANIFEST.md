@@ -5,7 +5,7 @@ Required Mac App Store screenshot set for the current product surface.
 | ID | Target file | Screen | Purpose | Status |
 | --- | --- | --- | --- | --- |
 | `writing` | `writing.png` | Writing workspace | Markdown editing, preview, metadata, and contextual writing actions. | Captured 1880x809 |
-| `ai-chat` | `ai-chat.png` | AI workspace | Independent AI conversation, quick prompts, context article, regenerate, and apply actions. | Captured 1880x809 |
+| `ai-chat` | `ai-chat.png` | AI assistant Inspector | Keep the article editor visible while showing conversation, context, quick prompts, and apply actions. | Captured 1342x906 |
 | `sync-api-publish` | `sync-api-publish.png` | Sync workspace | GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR flow. | Captured 1880x809 |
 | `seo-social-preview` | `seo-social-preview.png` | SEO/social preview | Search, Open Graph, Twitter card, cache state, and manual refresh. | Captured 1880x809 |
 | `deployment-status` | `deployment-status.png` | Deployment status | GitHub Pages/Actions, Netlify, Vercel, Cloudflare Pages, or custom endpoint validation. | Captured 1880x809 |

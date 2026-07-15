@@ -57,7 +57,7 @@ load_required_ids() {
 screen_title() {
   case "$1" in
     writing) echo "Writing workspace" ;;
-    ai-chat) echo "AI workspace" ;;
+    ai-chat) echo "AI assistant Inspector" ;;
     sync-api-publish) echo "Sync/API publishing workspace" ;;
     seo-social-preview) echo "SEO and social preview" ;;
     deployment-status) echo "Deployment status" ;;
@@ -72,7 +72,7 @@ screen_title() {
 screen_guidance() {
   case "$1" in
     writing) echo "Show the writing workspace with editor, preview, metadata, and contextual writing actions." ;;
-    ai-chat) echo "Show the independent AI conversation page with quick prompts, context article, attachments, regenerate, and apply actions." ;;
+    ai-chat) echo "Keep the article editor visible while showing the AI assistant Inspector with conversation, context, quick prompts, and apply actions." ;;
     sync-api-publish) echo "Show GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR controls." ;;
     seo-social-preview) echo "Show search/Open Graph/Twitter card previews, cache state, manual refresh, and external debug links." ;;
     deployment-status) echo "Show GitHub Pages/Actions, Netlify, Vercel, Cloudflare Pages, or custom endpoint validation status." ;;

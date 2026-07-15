@@ -81,6 +81,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.pendingAIQuickPrompt
   }
 
+  public var isAssistantPresented: Bool {
+    store.isAIPublishingAssistantPresented
+  }
+
   public var selectedChatDraft: ArticleDraft? {
     store.selectedDraft
   }
@@ -127,6 +131,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     quickPrompt: AIPublishingQuickPrompt? = nil
   ) -> Bool {
     store.aiOpenChatWorkspace(for: draftID, quickPrompt: quickPrompt)
+  }
+
+  public func hideAssistant() {
+    store.hideAIPublishingAssistant()
   }
 
   public func prepareChat(for draft: ArticleDraft) {

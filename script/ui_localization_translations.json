@@ -603,6 +603,17 @@
   "导出工作台故障文件": "Export Workbench Recovery Files",
   "导出": "Export",
   "应用会创建独立恢复文件夹，并复制主文件和上次有效备份；原文件不会改变。": "The app will create a separate recovery folder and copy the primary file and last-known-good backup without changing the originals.",
+  "在下方输入问题，AI 会结合当前文章回答。": "Ask a question below. AI will answer using the current article.",
+  "文章": "Articles",
+  "仅显示最近 %@ 条，共 %@ 条消息。": "Showing the latest %1$@ of %2$@ messages.",
+  "AI 助手": "AI Assistant",
+  "关闭 AI 助手": "Close AI Assistant",
+  "AI 助手选项": "AI Assistant Options",
+  "AI 状态": "AI Status",
+  "AI 消息": "AI Message",
+  "工作区侧边栏": "Workspace Sidebar",
+  "主任务导航": "Primary Task Navigation",
+  "打开 AI 助手": "Open AI Assistant",
   "workspace.area.writing": {
     "zh-Hans": "写作",
     "en": "Writing"

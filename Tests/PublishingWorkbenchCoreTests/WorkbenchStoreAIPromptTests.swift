@@ -5,7 +5,7 @@ import XCTest
 
 @MainActor
 final class WorkbenchStoreAIPromptTests: XCTestCase {
-  func testAIEntryOpensDedicatedChatWorkspaceWithoutMetadataAssistant() throws {
+  func testAIEntryOpensInspectorAssistantBesideWritingWorkspace() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
     )
@@ -16,9 +16,9 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
 
     _ = store.openAIChatWorkspace(for: draft.id)
 
-    XCTAssertFalse(store.isAIPublishingAssistantPresented)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
     XCTAssertTrue(store.isInspectorPresented)
-    XCTAssertEqual(store.selectedSection, .ai)
+    XCTAssertEqual(store.selectedSection, .writing)
     XCTAssertEqual(store.selectedDraftID, draft.id)
     XCTAssertEqual(store.aiChatDraftID, draft.id)
 
@@ -27,15 +27,20 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertFalse(store.isAIPublishingAssistantPresented)
 
     store.showAIPublishingAssistant(for: draft.id)
-    XCTAssertFalse(store.isAIPublishingAssistantPresented)
-    XCTAssertEqual(store.selectedSection, .ai)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
+    XCTAssertEqual(store.selectedSection, .writing)
 
     store.selectDraft(nil)
 
     XCTAssertFalse(store.isAIPublishingAssistantPresented)
+
+    store.selectSection(.ai)
+
+    XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
   }
 
-  func testAIEntryCanCarryQuickPromptIntoDedicatedChatWorkspace() throws {
+  func testAIEntryCanCarryQuickPromptIntoInspectorAssistant() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
     )
@@ -43,7 +48,8 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
 
     _ = store.openAIChatWorkspace(for: draft.id, quickPrompt: .frontMatterPack)
 
-    XCTAssertEqual(store.selectedSection, .ai)
+    XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
     XCTAssertEqual(store.selectedDraftID, draft.id)
     XCTAssertEqual(store.aiChatDraftID, draft.id)
     XCTAssertEqual(store.pendingAIQuickPrompt, .frontMatterPack)

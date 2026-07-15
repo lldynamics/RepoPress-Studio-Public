@@ -3,15 +3,18 @@ import SwiftUI
 
 struct MetadataColumn: View {
   @ObservedObject var store: WorkbenchStore
+  @ObservedObject private var ai: WorkbenchAIFeatureFacade
   let prioritizesChecks: Bool
 
   init(store: WorkbenchStore, prioritizesChecks: Bool = false) {
     self.store = store
+    _ai = ObservedObject(wrappedValue: store.ai)
     self.prioritizesChecks = prioritizesChecks
   }
 
   var body: some View {
-    if store.selectedSection == .ai {
+    if (ai.isAssistantPresented && store.selectedSection == .writing)
+      || store.selectedSection == .ai {
       AIChatContextInspectorView(store: store)
     } else if store.selectedSection == .siteStarter {
       SiteStarterInspectorView(state: SiteStarterInspectorState(store: store))

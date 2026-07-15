@@ -8,6 +8,7 @@ import PublishingWorkbenchScreenshotSupport
 struct ContentView: View {
   let store: WorkbenchStore
   @ObservedObject private var shellState: WorkbenchShellFeatureFacade
+  @ObservedObject private var aiState: WorkbenchAIFeatureFacade
   @Environment(\.scenePhase) private var scenePhase
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
@@ -25,6 +26,7 @@ struct ContentView: View {
   init(store: WorkbenchStore) {
     self.store = store
     _shellState = ObservedObject(wrappedValue: store.shell)
+    _aiState = ObservedObject(wrappedValue: store.ai)
   }
 
   var body: some View {
@@ -36,8 +38,11 @@ struct ContentView: View {
           store: store,
           isCompact: compactLayout,
           isInspectorPresented: shellState.isInspectorPresented,
+          isAIInspectorSelected: aiState.isAssistantPresented,
           contentHealthFilter: $contentHealthFilter,
-          repositoryContextStage: $repositoryContextStage
+          repositoryContextStage: $repositoryContextStage,
+          onSelectSection: { store.selectSection($0) },
+          onOpenAIInspector: openAIInspector
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .disabled(shellState.isPrivacyLocked)
@@ -112,13 +117,7 @@ struct ContentView: View {
 
       ToolbarItemGroup(placement: .primaryAction) {
         if supportsInspector {
-          Button {
-            if isCompactLayout {
-              isCompactInspectorPresented = true
-            } else {
-              store.setInspectorPresented(!shellState.isInspectorPresented)
-            }
-          } label: {
+          Button(action: toggleArticleInspector) {
             Label("Inspector", systemImage: "sidebar.right")
           }
           .disabled(!shellState.canUseProtectedWorkbench)
@@ -205,7 +204,10 @@ struct ContentView: View {
     } message: {
       Text(persistenceRecoveryMessage)
     }
-    .sheet(isPresented: $isCompactInspectorPresented) {
+    .sheet(
+      isPresented: $isCompactInspectorPresented,
+      onDismiss: dismissCompactInspector
+    ) {
       MetadataColumn(store: store, prioritizesChecks: true)
         .frame(minWidth: 520, idealWidth: 560, maxWidth: 620, minHeight: 520, idealHeight: 620)
         .toolbar {
@@ -310,6 +312,10 @@ struct ContentView: View {
   }
 
   private func normalizeWorkspacePresentation(for section: WorkspaceSection) {
+    if section != .writing && section != .ai && aiState.isAssistantPresented {
+      aiState.hideAssistant()
+    }
+
     switch section {
     case .maintenance:
       contentHealthFilter = .maintenance
@@ -321,12 +327,43 @@ struct ContentView: View {
       store.selectSection(.sync)
     case .siteStarter, .generalDrafts:
       hideInspectorIfNeeded()
-    case .writing, .sync, .images, .contentHealth, .ai:
+    case .ai:
+      openAIInspector()
+    case .writing, .sync, .images, .contentHealth:
       break
     }
   }
 
+  private func openAIInspector() {
+    guard let draft = store.ensureEditableDraftSelected() else { return }
+    guard store.openAIChatWorkspace(for: draft.id) else { return }
+    if isCompactLayout {
+      isCompactInspectorPresented = true
+    }
+  }
+
+  private func toggleArticleInspector() {
+    if aiState.isAssistantPresented {
+      aiState.hideAssistant()
+      if isCompactLayout {
+        isCompactInspectorPresented = true
+      } else if !shellState.isInspectorPresented {
+        store.setInspectorPresented(true)
+      }
+      return
+    }
+
+    if isCompactLayout {
+      isCompactInspectorPresented = true
+    } else {
+      store.setInspectorPresented(!shellState.isInspectorPresented)
+    }
+  }
+
   private func hideInspectorIfNeeded() {
+    if aiState.isAssistantPresented {
+      aiState.hideAssistant()
+    }
     if shellState.isInspectorPresented {
       store.setInspectorPresented(false)
     }
@@ -343,12 +380,16 @@ struct ContentView: View {
   private func updateCompactLayout(for width: CGFloat) {
     let isNowCompact = WorkbenchLayoutMode.isCompact(width: width)
     guard isNowCompact != isCompactLayout else { return }
-    let wasInspectorVisible = shellState.isInspectorPresented
     isCompactLayout = isNowCompact
-    if isNowCompact, wasInspectorVisible {
-      isCompactInspectorPresented = true
-    } else if !isNowCompact {
-      isCompactInspectorPresented = false
+    isCompactInspectorPresented = false
+    if isNowCompact && aiState.isAssistantPresented {
+      aiState.hideAssistant()
+    }
+  }
+
+  private func dismissCompactInspector() {
+    if aiState.isAssistantPresented {
+      aiState.hideAssistant()
     }
   }
 }

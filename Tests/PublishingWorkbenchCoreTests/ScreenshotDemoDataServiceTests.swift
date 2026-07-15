@@ -101,7 +101,8 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     let store = try makeScreenshotStore()
 
     ScreenshotDemoSurface.aiChat.apply(to: store)
-    XCTAssertEqual(store.selectedSection, .ai)
+    XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
     XCTAssertFalse(store.aiChatMessages.isEmpty)
     XCTAssertFalse(store.isPrivacyLocked)
 

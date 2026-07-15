@@ -396,7 +396,7 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
       store.setPublishActionMessage("截图模式：写作工作区已载入演示文章。")
     case .aiChat:
       _ = store.openAIChatWorkspace(for: preferredDraft(in: store)?.id)
-      store.setPublishActionMessage("截图模式：完整 AI 对话页已载入。")
+      store.setPublishActionMessage("截图模式：AI 助手 Inspector 已载入。")
     case .syncAPIPublish:
       store.selectSection(.sync)
       store.setPublishActionMessage("截图模式：同步/API 发布工作区已载入。")

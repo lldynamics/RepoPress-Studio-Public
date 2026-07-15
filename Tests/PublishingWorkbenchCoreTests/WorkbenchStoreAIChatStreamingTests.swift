@@ -147,7 +147,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let reply = await store.sendMaintenanceActionToAI(item)
 
     XCTAssertEqual(reply?.content, "维护建议已生成。")
-    XCTAssertEqual(store.selectedSection, .ai)
+    XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
     XCTAssertEqual(store.aiChatDraftID, draft.id)
     XCTAssertEqual(store.aiChatMessages.count, 2)
     XCTAssertTrue(store.aiChatMessages.first?.content.contains("[维护行动项]") == true)
@@ -216,7 +217,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let reply = await store.sendReleaseRecoveryPackageToAI(for: entry)
 
     XCTAssertEqual(reply?.content, "恢复判断已生成。")
-    XCTAssertEqual(store.selectedSection, .ai)
+    XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
     XCTAssertEqual(store.aiChatDraftID, draft.id)
     XCTAssertEqual(store.aiChatMessages.count, 2)
     XCTAssertTrue(store.aiChatMessages.first?.content.contains("[恢复包]") == true)
@@ -264,7 +266,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     var draft = try XCTUnwrap(store.selectedDraft)
     draft.title = "SEO 社交预览"
     draft.slug = "seo-social-preview"
-    draft.summary = "这篇文章用于验证 SEO 社交预览可以发送到完整 AI 对话页。"
+    draft.summary = "这篇文章用于验证 SEO 社交预览可以发送到 AI 助手 Inspector。"
     draft.tags = ["SEO", "Mac"]
     store.updateDraft(draft)
 
@@ -272,7 +274,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let reply = await store.sendSEOSocialPreviewToAI(for: draft)
 
     XCTAssertEqual(reply?.content, "SEO 建议已生成。")
-    XCTAssertEqual(store.selectedSection, .ai)
+    XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
     XCTAssertEqual(store.aiChatDraftID, draft.id)
     XCTAssertEqual(store.aiChatMessages.count, 2)
     XCTAssertTrue(store.aiChatMessages.first?.content.contains("[平台就绪度]") == true)
@@ -1030,6 +1033,13 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(store.aiChatMessages.map(\.role), [.user, .assistant])
     XCTAssertEqual(store.aiChatMessages[0].content, "检查第一篇。")
     XCTAssertEqual(store.aiChatMessages[1].content, "原文章回复")
+
+    let requestFromTransport = await transport.capturedRequest()
+    let capturedRequest = try XCTUnwrap(requestFromTransport)
+    let requestBody = try XCTUnwrap(capturedRequest.httpBody)
+    let requestText = try XCTUnwrap(String(data: requestBody, encoding: .utf8))
+    XCTAssertTrue(requestText.contains("检查第一篇。"))
+    XCTAssertFalse(requestText.contains("第二篇还在编辑"))
   }
 
   private func aiTokenStoreForTest() -> KeychainTokenStore {

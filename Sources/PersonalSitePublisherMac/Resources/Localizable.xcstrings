@@ -817,6 +817,38 @@
         }
       }
     },
+    "AI 助手": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Assistant"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 助手"
+          }
+        }
+      }
+    },
+    "AI 助手选项": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Assistant Options"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 助手选项"
+          }
+        }
+      }
+    },
     "AI 对话上下文": {
       "localizations": {
         "en": {
@@ -957,6 +989,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "AI 正在回复..."
+          }
+        }
+      }
+    },
+    "AI 消息": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Message"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 消息"
+          }
+        }
+      }
+    },
+    "AI 状态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Status"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 状态"
           }
         }
       }
@@ -7761,6 +7825,22 @@
         }
       }
     },
+    "主任务导航": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Primary Task Navigation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主任务导航"
+          }
+        }
+      }
+    },
     "二级标题": {
       "localizations": {
         "en": {
@@ -7805,6 +7885,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "仅支持打开不含凭据的 HTTP 或 HTTPS 链接。"
+          }
+        }
+      }
+    },
+    "仅显示最近 %@ 条，共 %@ 条消息。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing the latest %1$@ of %2$@ messages."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅显示最近 %1$@ 条，共 %2$@ 条消息。"
           }
         }
       }
@@ -8317,6 +8413,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "公开风险"
+          }
+        }
+      }
+    },
+    "关闭 AI 助手": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close AI Assistant"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭 AI 助手"
           }
         }
       }
@@ -9617,6 +9729,22 @@
         }
       }
     },
+    "在下方输入问题，AI 会结合当前文章回答。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask a question below. AI will answer using the current article."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在下方输入问题，AI 会结合当前文章回答。"
+          }
+        }
+      }
+    },
     "在列表和概览中遮挡私密文章": {
       "localizations": {
         "en": {
@@ -10481,6 +10609,22 @@
         }
       }
     },
+    "工作区侧边栏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Workspace Sidebar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作区侧边栏"
+          }
+        }
+      }
+    },
     "工作区导航": {
       "localizations": {
         "en": {
@@ -11233,6 +11377,22 @@
         }
       }
     },
+    "打开 AI 助手": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open AI Assistant"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 AI 助手"
+          }
+        }
+      }
+    },
     "打开 AI 对话": {
       "localizations": {
         "en": {
@@ -11805,6 +11965,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "文件"
+          }
+        }
+      }
+    },
+    "文章": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Articles"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文章"
           }
         }
       }

@@ -1,6 +1,63 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+struct AIChatConversationInspectorSection: View {
+  let context: AIChatInspectorDraftContext
+  let actions: AIChatContextInspectorActions
+
+  var body: some View {
+    AIChatInspectorSection("对话") {
+      if context.messages.isEmpty {
+        ContentUnavailableView(
+          "开始对话",
+          systemImage: "bubble.left.and.text.bubble.right",
+          description: Text("在下方输入问题，AI 会结合当前文章回答。")
+        )
+        .frame(minHeight: 130)
+      } else {
+        if context.totalMessageCount > context.messages.count {
+          Text("仅显示最近 \(context.messages.count) 条，共 \(context.totalMessageCount) 条消息。")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+
+        ForEach(context.messages) { message in
+          VStack(alignment: .leading, spacing: 6) {
+            Text(message.role.localizedDisplayNameKey)
+              .font(.caption2.weight(.semibold))
+              .foregroundStyle(message.role == .assistant ? WorkbenchTheme.primary : .secondary)
+
+            Text(AIPublishingChatMessageCompositionService.displayContent(for: message))
+              .font(.callout)
+              .textSelection(.enabled)
+              .fixedSize(horizontal: false, vertical: true)
+
+            if message.id == latestAssistantMessageID {
+              Button {
+                actions.appendReply(message, context.draft)
+              } label: {
+                Label("追加到文章", systemImage: "text.append")
+              }
+              .controlSize(.small)
+            }
+          }
+          .padding(10)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(
+            RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+              .fill(message.role == .assistant ? WorkbenchTheme.primary.opacity(0.08) : Color.secondary.opacity(0.08))
+          )
+          .id(message.id)
+        }
+      }
+    }
+  }
+
+  private var latestAssistantMessageID: AIPublishingChatMessage.ID? {
+    context.messages.last(where: { $0.role == .assistant })?.id
+  }
+}
+
 struct AIChatContextOverviewInspectorSection: View {
   let context: AIChatInspectorDraftContext
 
