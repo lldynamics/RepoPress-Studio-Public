@@ -42,18 +42,20 @@ required = {
     },
     "ai-chat": {
         "target": "ai-chat.png",
-        "capture": ["ai-chat", "quick prompts", "context article", "regenerate"],
+        "capture": ["AI assistant Inspector", "conversation", "context", "quick prompts"],
         "source": {
-            "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift": [
-                "ai-chat-workspace",
-                "AIChatPromptLibrarySheet",
-            ],
-            "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInputSection.swift": [
-                "ai-chat-composer",
+            "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift": [
+                "ai-assistant-inspector",
+                "ai-assistant-composer",
                 ".keyboardShortcut(.return, modifiers: [.command])",
             ],
-            "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+PublicAICommands.swift": [
-                "regenerateLastAIChatReply",
+            "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorSections.swift": [
+                "AIChatConversationInspectorSection",
+                "AIChatContextOverviewInspectorSection",
+            ],
+            "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore.swift": [
+                "openAIChatWorkspace",
+                "isAIPublishingAssistantPresented = true",
             ],
         },
     },

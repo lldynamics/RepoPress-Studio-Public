@@ -75,7 +75,7 @@ SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREE
 create_png "$SCREENSHOT_DIR/ai-chat.png" 10 10
 SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
   bash "$ROOT_DIR/script/sync_screenshot_manifest_status.sh" >/dev/null
-grep -q '| `ai-chat` | `ai-chat.png` | AI workspace | Independent AI conversation, quick prompts, context article, regenerate, and apply actions. | Invalid: 10x10 below 800x500 |' \
+grep -q '| `ai-chat` | `ai-chat.png` | AI assistant Inspector | Keep the article editor visible while showing conversation, context, quick prompts, and apply actions. | Invalid: 10x10 below 800x500 |' \
   "$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" || fail "invalid screenshot status was not written"
 
 create_png "$SCREENSHOT_DIR/sync-api-publish.png" 900 600

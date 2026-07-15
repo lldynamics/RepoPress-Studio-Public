@@ -26,7 +26,7 @@ create_fixture() {
 | ID | Target file | Screen | Purpose | Status |
 | --- | --- | --- | --- | --- |
 | `writing` | `writing.png` | Writing workspace | Markdown editing, preview, metadata, and contextual writing actions. | Pending capture |
-| `ai-chat` | `ai-chat.png` | AI workspace | Independent AI conversation, quick prompts, context article, regenerate, and apply actions. | Pending capture |
+| `ai-chat` | `ai-chat.png` | AI assistant Inspector | Keep the article editor visible while showing conversation, context, quick prompts, and apply actions. | Pending capture |
 | `sync-api-publish` | `sync-api-publish.png` | Sync workspace | GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR flow. | Pending capture |
 | `seo-social-preview` | `seo-social-preview.png` | SEO/social preview | Search, Open Graph, Twitter card, cache state, and manual refresh. | Pending capture |
 | `deployment-status` | `deployment-status.png` | Deployment status | GitHub Pages/Actions, Netlify, Vercel, Cloudflare Pages, or custom endpoint validation. | Pending capture |
@@ -53,7 +53,7 @@ PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO=1 PERSONAL_SITE_PUBLISHER_SCREENSHOT_SUR
 screen_guidance() {
   case "$1" in
     writing) echo "Show the writing workspace with editor, preview, metadata, and contextual writing actions." ;;
-    ai-chat) echo "Show the independent AI conversation page with quick prompts, context article, attachments, regenerate, and apply actions." ;;
+    ai-chat) echo "Keep the article editor visible while showing the AI assistant Inspector with conversation, context, quick prompts, and apply actions." ;;
     sync-api-publish) echo "Show GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR controls." ;;
     seo-social-preview) echo "Show search/Open Graph/Twitter card previews, cache state, manual refresh, and external debug links." ;;
     deployment-status) echo "Show GitHub Pages/Actions, Netlify, Vercel, Cloudflare Pages, or custom endpoint validation status." ;;
@@ -84,17 +84,14 @@ EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/EditorInspectorSections.swift" <<'EOF_SWIFT'
 let socialPreviewSection = "EditorSocialPreviewSection Open Graph Twitter/X refreshSEOSocialPreview relatedArticleSuggestionSection"
 EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" <<'EOF_SWIFT'
-let aiChatWorkspace = "ai-chat-workspace AIChatPromptLibrarySheet"
-EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInputSection.swift" <<'EOF_SWIFT'
-let aiChatComposer = "ai-chat-composer .keyboardShortcut(.return, modifiers: [.command])"
-EOF_SWIFT
-  write_file "$root/Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+PublicAICommands.swift" <<'EOF_SWIFT'
-func regenerateLastAIChatReply() {}
-EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" <<'EOF_SWIFT'
-let aiChatInspector = "AIChatContextInspectorView quickPrompts"
+let aiChatInspector = "ai-assistant-inspector ai-assistant-composer .keyboardShortcut(.return, modifiers: [.command])"
+EOF_SWIFT
+  write_file "$root/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorSections.swift" <<'EOF_SWIFT'
+let aiChatSections = "AIChatConversationInspectorSection AIChatContextOverviewInspectorSection"
+EOF_SWIFT
+  write_file "$root/Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore.swift" <<'EOF_SWIFT'
+let aiChatRoute = "openAIChatWorkspace isAIPublishingAssistantPresented = true"
 EOF_SWIFT
   write_file "$root/Sources/PublishingWorkbenchCore/Services/GeneralDraftLibraryService.swift" <<'EOF_SWIFT'
 let generalDraftService = "GeneralDraftBackupPlan reusePlan backupPlan general-drafts/MANIFEST.md"
@@ -169,7 +166,7 @@ fi
 
 missing_source_marker="$TMP_DIR/missing-source-marker"
 create_fixture "$missing_source_marker"
-perl -0pi -e 's/ai-chat-composer//' "$missing_source_marker/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInputSection.swift"
+perl -0pi -e 's/ai-assistant-composer//' "$missing_source_marker/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift"
 if run_gate "$missing_source_marker" 2>/dev/null; then
   fail "missing source marker should fail"
 fi

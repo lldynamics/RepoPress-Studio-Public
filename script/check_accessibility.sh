@@ -142,29 +142,29 @@ require_literal \
   "publishing status control must explain the merged status and publishing entry"
 
 require_literal_source_manifest \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
   ".keyboardShortcut(.return, modifiers: [.command])" \
-  "AI chat send action must keep a keyboard shortcut"
+  "AI assistant send action must keep a keyboard shortcut"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" \
-  ".accessibilityIdentifier(\"ai-chat-workspace\")" \
-  "AI chat workspace must expose a stable accessibility identifier"
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  ".accessibilityIdentifier(\"ai-assistant-inspector\")" \
+  "AI assistant inspector must expose a stable accessibility identifier"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" \
-  ".accessibilityLabel(\"AI 对话工作区\")" \
-  "AI chat workspace must expose an accessibility label"
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  ".accessibilityLabel(\"AI 助手\")" \
+  "AI assistant inspector must expose an accessibility label"
 
-require_literal_source_manifest \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" \
-  ".accessibilityIdentifier(\"ai-chat-composer\")" \
-  "AI chat composer must expose a stable accessibility identifier"
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  ".accessibilityLabel(\"AI 消息\")" \
+  "AI assistant composer must expose an accessibility label"
 
-require_literal_source_manifest \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" \
-  ".accessibilityLabel(\"AI 对话输入\")" \
-  "AI chat composer must expose an accessibility label"
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  ".accessibilityIdentifier(\"ai-assistant-composer\")" \
+  "AI assistant composer must expose a stable accessibility identifier"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" \
@@ -344,10 +344,25 @@ require_literal \
   ".keyboardShortcut(.defaultAction)" \
   "first-run setup must provide a default keyboard action"
 
-require_literal_source_manifest \
-  "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift" \
-  ".accessibilityAddTraits(" \
-  "workspace navigation and filters must expose selected accessibility traits"
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceContextSidebarView.swift" \
+  ".accessibilityIdentifier(\"workspace-sidebar\")" \
+  "unified workspace sidebar must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceRailView.swift" \
+  ".accessibilityIdentifier(\"workspace-task-navigation\")" \
+  "workspace task navigation must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceRailView.swift" \
+  ".accessibilityAddTraits(isSelected ? .isSelected : [])" \
+  "workspace task navigation must expose exact selected accessibility traits"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceRailView.swift" \
+  ".accessibilityRemoveTraits(.isSelected)" \
+  "AI assistant must remain an auxiliary open state instead of a selected main task"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \

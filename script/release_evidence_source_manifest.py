@@ -9,6 +9,7 @@ import sys
 DETAIL_CONTAINER = "Sources/PersonalSitePublisherMac/Views/DetailContainerView.swift"
 SETTINGS_VIEW = "Sources/PersonalSitePublisherMac/Views/SettingsView.swift"
 AI_CHAT_WORKSPACE_VIEW = "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift"
+AI_CHAT_INSPECTOR_VIEW = "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift"
 REPOSITORY_WORKSPACE_VIEW = "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceView.swift"
 WORKSPACE_LAYOUT_VIEWS = "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift"
 WORKBENCH_STORE = "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore.swift"
@@ -191,6 +192,16 @@ def expanded_source_paths(relative_path: str, marker: str) -> list[str]:
                 "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceComponents.swift",
                 "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift",
                 "Sources/PersonalSitePublisherMac/Views/AIChatPromptLibraryComponents.swift",
+            ]
+        )
+
+    if relative_path == AI_CHAT_INSPECTOR_VIEW:
+        return unique(
+            [
+                relative_path,
+                "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorModels.swift",
+                "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorSections.swift",
+                "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore.swift",
             ]
         )
 

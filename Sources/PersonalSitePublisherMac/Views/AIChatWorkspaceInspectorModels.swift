@@ -21,6 +21,8 @@ struct AIChatInspectorDraftContext {
   let selectedParagraphTitle: String?
   let selectedParagraphPreview: String?
   let chatMessage: String?
+  let messages: [AIPublishingChatMessage]
+  let totalMessageCount: Int
   let relatedSuggestions: [AIChatRelatedSuggestionPresentation]
   let isChatRunning: Bool
   let latestReply: AIPublishingChatMessage?

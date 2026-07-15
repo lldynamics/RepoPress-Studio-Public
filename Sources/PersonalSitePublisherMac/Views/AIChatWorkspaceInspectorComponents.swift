@@ -4,21 +4,163 @@ import SwiftUI
 
 struct AIChatContextInspectorView: View {
   @ObservedObject private var ai: WorkbenchAIFeatureFacade
+  @State private var inputText = ""
+  @State private var isSubmitting = false
+  @State private var sendTask: Task<Void, Never>?
 
   init(store: WorkbenchStore) {
     _ai = ObservedObject(wrappedValue: store.ai)
   }
 
   var body: some View {
-    ScrollView {
-      AIChatContextInspectorContent(state: state, actions: actions)
-        .padding(16)
+    VStack(spacing: 0) {
+      inspectorHeader
+
+      Divider()
+
+      ScrollViewReader { proxy in
+        ScrollView {
+          AIChatContextInspectorContent(state: state, actions: actions)
+            .padding(16)
+        }
+        .onAppear {
+          scrollToLatestMessage(using: proxy, animated: false)
+        }
+        .onChange(of: latestMessageID) { _, _ in
+          scrollToLatestMessage(using: proxy)
+        }
+        .onChange(of: latestMessageContent) { _, _ in
+          scrollToLatestMessage(using: proxy)
+        }
+      }
+
+      Divider()
+
+      messageComposer
     }
     .background(.bar)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("AI 助手")
+    .accessibilityIdentifier("ai-assistant-inspector")
     .task(id: imageReportRefreshID) {
       guard let draft = ai.selectedChatDraft else { return }
       await ai.refreshChatImageWorkbenchReportInBackground(for: draft)
     }
+    .onAppear(perform: applyPendingQuickPrompt)
+    .onChange(of: ai.pendingQuickPrompt?.id) { _, _ in
+      applyPendingQuickPrompt()
+    }
+    .onDisappear(perform: stopSending)
+  }
+
+  private var inspectorHeader: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "sparkles")
+        .foregroundStyle(WorkbenchTheme.primary)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text("AI 助手")
+          .font(.headline)
+        if let modelSummary = state.draft?.modelSummary {
+          Text(modelSummary)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+      }
+
+      Spacer(minLength: 8)
+
+      assistantOptionsMenu
+
+      Button {
+        ai.hideAssistant()
+      } label: {
+        Image(systemName: "xmark")
+      }
+      .buttonStyle(.plain)
+      .help("关闭 AI 助手")
+      .accessibilityLabel("关闭 AI 助手")
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 11)
+  }
+
+  private var assistantOptionsMenu: some View {
+    Menu {
+      Picker("模型档位", selection: modelGradeBinding) {
+        ForEach(AIChatModelGrade.allCases) { grade in
+          Text(grade.title).tag(grade)
+        }
+      }
+
+      Picker("上下文", selection: contextModeBinding) {
+        ForEach(AIPublishingChatContextMode.allCases) { mode in
+          Text(mode.localizedDisplayNameKey).tag(mode)
+        }
+      }
+
+      Divider()
+
+      Button {
+        ai.startNewChatConversation(draft: ai.selectedChatDraft)
+      } label: {
+        Label("新对话", systemImage: "square.and.pencil")
+      }
+      .disabled(isSending)
+
+      if !ai.archivedConversations.isEmpty {
+        Menu("历史对话") {
+          ForEach(ai.archivedConversations.prefix(8)) { conversation in
+            Button(conversation.title) {
+              ai.restoreArchivedChatConversation(
+                conversation.id,
+                draft: ai.selectedChatDraft
+              )
+            }
+          }
+        }
+        .disabled(isSending)
+      }
+    } label: {
+      Image(systemName: "slider.horizontal.3")
+    }
+    .menuIndicator(.hidden)
+    .help("模型、上下文与对话历史")
+    .accessibilityLabel("AI 助手选项")
+  }
+
+  private var messageComposer: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      if let status = ai.chatMessage?.nilIfEmpty {
+        Text(status)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(3)
+          .accessibilityLabel("AI 状态")
+      }
+
+      HStack(alignment: .bottom, spacing: 8) {
+        TextField("询问当前文章…", text: $inputText, axis: .vertical)
+          .textFieldStyle(.roundedBorder)
+          .lineLimit(2...6)
+          .disabled(ai.selectedChatDraft == nil || isSending)
+          .accessibilityLabel("AI 消息")
+
+        Button(action: handleSendButton) {
+          Image(systemName: isSending ? "stop.circle.fill" : "arrow.up.circle.fill")
+            .foregroundStyle(isSending ? WorkbenchTheme.risk : WorkbenchTheme.primary)
+        }
+        .buttonStyle(.borderless)
+        .keyboardShortcut(.return, modifiers: [.command])
+        .disabled(!isSending && (trimmedInput.isEmpty || ai.selectedChatDraft == nil))
+        .help(isSending ? "停止生成" : "发送（⌘Return）")
+        .accessibilityLabel(isSending ? "停止 AI 回复" : "发送 AI 消息")
+      }
+    }
+    .padding(12)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("ai-assistant-composer")
   }
 
   private var state: AIChatContextInspectorState {
@@ -70,6 +212,8 @@ struct AIChatContextInspectorView: View {
         selectedParagraphTitle: contextDetails.selectedParagraphTitle,
         selectedParagraphPreview: contextDetails.selectedParagraphPreview,
         chatMessage: ai.chatMessage,
+        messages: ai.chatDraftID == draft.id ? Array(ai.chatMessages.suffix(8)) : [],
+        totalMessageCount: ai.chatDraftID == draft.id ? ai.chatMessages.count : 0,
         relatedSuggestions: relationSuggestions.prefix(4).map { suggestion in
           AIChatRelatedSuggestionPresentation(
             id: suggestion.id,
@@ -112,8 +256,108 @@ struct AIChatContextInspectorView: View {
   }
 
   private func sendMessage(_ message: String, draft: ArticleDraft) {
-    Task {
-      await ai.sendChatMessage(message, draft: draft)
+    startSending(message, draft: draft, clearsComposerOnAccept: false)
+  }
+
+  private var trimmedInput: String {
+    inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private func submitMessage() {
+    guard let draft = ai.selectedChatDraft else { return }
+    let message = trimmedInput
+    guard !message.isEmpty, !isSending else { return }
+    startSending(message, draft: draft, clearsComposerOnAccept: true)
+  }
+
+  private var isSending: Bool {
+    isSubmitting || ai.isChatRunning
+  }
+
+  private var modelGradeBinding: Binding<AIChatModelGrade> {
+    Binding(
+      get: { ai.chatModelGrade },
+      set: { ai.setChatModelGrade($0) }
+    )
+  }
+
+  private var contextModeBinding: Binding<AIPublishingChatContextMode> {
+    Binding(
+      get: { ai.chatContextMode },
+      set: { ai.setChatContextMode($0) }
+    )
+  }
+
+  private var latestMessageID: AIPublishingChatMessage.ID? {
+    state.draft?.messages.last?.id
+  }
+
+  private var latestMessageContent: String {
+    state.draft?.messages.last?.content ?? ""
+  }
+
+  private func handleSendButton() {
+    if isSending {
+      stopSending()
+    } else {
+      submitMessage()
+    }
+  }
+
+  private func startSending(
+    _ message: String,
+    draft: ArticleDraft,
+    clearsComposerOnAccept: Bool
+  ) {
+    guard !isSending else { return }
+    let existingMessageIDs = Set(ai.chatMessages.map(\.id))
+    isSubmitting = true
+    sendTask = Task {
+      let reply = await ai.sendChatMessage(message, draft: draft)
+      let didAcceptUserMessage = ai.chatMessages.contains {
+        !existingMessageIDs.contains($0.id) && $0.role == .user
+      }
+      if clearsComposerOnAccept,
+         (reply != nil || didAcceptUserMessage),
+         trimmedInput == message {
+        inputText = ""
+      }
+      isSubmitting = false
+      sendTask = nil
+    }
+  }
+
+  private func stopSending() {
+    sendTask?.cancel()
+    sendTask = nil
+    if ai.isChatRunning {
+      ai.cancelChatReply()
+    }
+    isSubmitting = false
+  }
+
+  private func applyPendingQuickPrompt() {
+    guard let prompt = ai.consumePendingQuickPrompt() else { return }
+    if trimmedInput.isEmpty {
+      inputText = prompt.prompt
+    } else if trimmedInput != prompt.prompt {
+      inputText += "\n\n\(prompt.prompt)"
+    }
+  }
+
+  private func scrollToLatestMessage(
+    using proxy: ScrollViewProxy,
+    animated: Bool = true
+  ) {
+    guard let latestMessageID else { return }
+    DispatchQueue.main.async {
+      if animated {
+        withAnimation(.easeOut(duration: 0.18)) {
+          proxy.scrollTo(latestMessageID, anchor: .bottom)
+        }
+      } else {
+        proxy.scrollTo(latestMessageID, anchor: .bottom)
+      }
     }
   }
 
@@ -141,15 +385,27 @@ private struct AIChatImageReportRefreshID: Hashable {
 struct AIChatContextInspectorContent: View {
   let state: AIChatContextInspectorState
   let actions: AIChatContextInspectorActions
+  @State private var isContextExpanded = false
+  @State private var isToolsExpanded = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       if let draftContext = state.draft {
-        AIChatContextOverviewInspectorSection(context: draftContext)
+        AIChatConversationInspectorSection(context: draftContext, actions: actions)
         AIChatRelatedSuggestionsInspectorSection(context: draftContext, actions: actions)
-        AIChatWorkflowGuidesInspectorSection(context: draftContext, actions: actions)
-        AIChatQuickPromptsInspectorSection(context: draftContext, actions: actions)
-        AIChatLatestReplyInspectorSection(context: draftContext, actions: actions)
+
+        DisclosureGroup("文章上下文", isExpanded: $isContextExpanded) {
+          AIChatContextOverviewInspectorSection(context: draftContext)
+            .padding(.top, 10)
+        }
+
+        DisclosureGroup("更多 AI 工具", isExpanded: $isToolsExpanded) {
+          VStack(alignment: .leading, spacing: 16) {
+            AIChatWorkflowGuidesInspectorSection(context: draftContext, actions: actions)
+            AIChatQuickPromptsInspectorSection(context: draftContext, actions: actions)
+          }
+          .padding(.top, 10)
+        }
       } else {
         EmptyStateView(
           title: "没有上下文",

@@ -94,7 +94,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .firstTextBaseline) {
         VStack(alignment: .leading, spacing: 2) {
-          Text("写作")
+          Text("文章")
             .font(.headline)
           HStack(spacing: 6) {
             Text("\(filteredDraftCount) / \(visibleDraftCount) 篇")

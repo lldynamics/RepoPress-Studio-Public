@@ -904,6 +904,7 @@ public final class WorkbenchAIStore: ObservableObject {
       store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
       return nil
     }
+    let request = aiChatRequest(for: chatDraft)
     await store.refreshSiteMaintenanceSnapshot()
     guard !Task.isCancelled else {
       store.setAIChatMessage("AI 回复已停止。")
@@ -925,7 +926,6 @@ public final class WorkbenchAIStore: ObservableObject {
     }
 
     do {
-      let request = aiChatRequest(for: chatDraft)
       do {
         return try await generateStreamingAIChatReply(
           request: request,
@@ -1072,16 +1072,16 @@ public final class WorkbenchAIStore: ObservableObject {
     quickPrompt: AIPublishingQuickPrompt? = nil
   ) -> Bool {
     if let draftID {
-      guard store.focusDraft(draftID, section: .ai) else {
+      guard store.focusDraft(draftID, section: .writing) else {
         return false
       }
     } else if store.selectedDraftID == nil {
       _ = store.ensureEditableDraftSelected()
     }
 
-    store.selectSection(.ai)
+    store.selectSection(.writing)
     store.setInspectorPresented(true)
-    isAIPublishingAssistantPresented = false
+    isAIPublishingAssistantPresented = true
 
     if let draft = store.selectedDraft {
       pendingAIQuickPrompt = quickPrompt

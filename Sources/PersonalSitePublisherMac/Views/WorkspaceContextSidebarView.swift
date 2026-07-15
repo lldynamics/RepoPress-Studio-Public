@@ -1,6 +1,41 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+struct WorkspaceUnifiedSidebar: View {
+  @ObservedObject var store: WorkbenchStore
+  let isCompact: Bool
+  let isAIInspectorSelected: Bool
+  @Binding var contentHealthFilter: ContentHealthContextFilter
+  @Binding var repositoryContextStage: RepositoryContextStage
+  let onSelectSection: (WorkspaceSection) -> Void
+  let onOpenAIInspector: () -> Void
+
+  var body: some View {
+    VStack(spacing: 0) {
+      WorkspaceTaskNavigation(
+        store: store,
+        isAIInspectorSelected: isAIInspectorSelected,
+        onSelectSection: onSelectSection,
+        onOpenAIInspector: onOpenAIInspector
+      )
+
+      Divider()
+
+      WorkspaceContextSidebar(
+        store: store,
+        isCompact: isCompact,
+        contentHealthFilter: $contentHealthFilter,
+        repositoryContextStage: $repositoryContextStage
+      )
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    .background(.bar)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("工作区侧边栏")
+    .accessibilityIdentifier("workspace-sidebar")
+  }
+}
+
 struct WorkspaceContextSidebar: View {
   @ObservedObject var store: WorkbenchStore
   let isCompact: Bool
@@ -16,7 +51,8 @@ struct WorkspaceContextSidebar: View {
     case .repositoryStages:
       repositoryStages
     case .none:
-      EmptyView()
+      Color.clear
+        .accessibilityHidden(true)
     }
   }
 

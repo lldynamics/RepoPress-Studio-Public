@@ -43,7 +43,8 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
 
     XCTAssertTrue(didOpen)
     XCTAssertEqual(store.ai.chatDraftID, draft.id)
-    XCTAssertEqual(store.publishing.selectedSection, .ai)
+    XCTAssertEqual(store.publishing.selectedSection, .writing)
+    XCTAssertTrue(store.ai.isAssistantPresented)
     XCTAssertEqual(store.ai.consumePendingQuickPrompt()?.id, AIPublishingQuickPrompt.frontMatterPack.id)
     XCTAssertEqual(store.ai.actionResult?.content, "公开风险检查")
     XCTAssertEqual(store.ai.actionMessage, "AI 动作已完成。")
