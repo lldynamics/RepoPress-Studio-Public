@@ -93,8 +93,12 @@ extension WorkbenchStore {
     privacyMonetizationStore.remainingFreeUses(for: feature)
   }
 
-  public func applyProEntitlement(productID: String? = nil, source: ProEntitlementSource) {
-    privacyMonetizationStore.applyProEntitlement(productID: productID, source: source, store: self)
+  public func applyVerifiedStoreKitEntitlement(productID: String) {
+    privacyMonetizationStore.applyVerifiedStoreKitEntitlement(productID: productID, store: self)
+  }
+
+  func applyProEntitlement(from provider: any ProEntitlementProviding) {
+    privacyMonetizationStore.applyEntitlement(from: provider, store: self)
   }
 
   public func markProEntitlementCheckCompleted(

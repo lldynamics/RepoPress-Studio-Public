@@ -29,14 +29,14 @@ struct PrivacySettingsCurrentStatusSection: View {
         Button {
           onLock()
         } label: {
-          Label("显示遮罩", systemImage: "eye.slash")
+          Label("快速隐藏", systemImage: "eye.slash")
         }
         .disabled(status.isLocked)
 
         Button {
           onUnlock()
         } label: {
-          Label("移除遮罩", systemImage: "eye")
+          Label("返回工作台", systemImage: "eye")
         }
         .disabled(!status.isLocked)
       }

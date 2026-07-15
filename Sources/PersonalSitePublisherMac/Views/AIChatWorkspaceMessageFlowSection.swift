@@ -149,7 +149,7 @@ struct AIChatMessageFlowView<ContextOverviewContent: View>: View {
           Button {
             actions.promptSelected(prompt.prompt)
           } label: {
-            Label(prompt.displayName, systemImage: prompt.systemImage)
+            Label(prompt.localizedDisplayName, systemImage: prompt.systemImage)
           }
           .buttonStyle(.bordered)
           .disabled(state.isRunning)
@@ -192,16 +192,20 @@ struct AIChatMessageFlowView<ContextOverviewContent: View>: View {
 
   private func messageDayTitle(for day: Date, calendar: Calendar) -> String {
     if calendar.isDateInToday(day) {
-      return "今天"
+      return String(localized: "今天")
     }
     if calendar.isDateInYesterday(day) {
-      return "昨天"
+      return String(localized: "昨天")
     }
 
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "zh_Hans_CN")
-    formatter.dateFormat = "yyyy年M月d日 EEEE"
-    return formatter.string(from: day)
+    return day.formatted(
+      .dateTime
+        .year()
+        .month(.wide)
+        .day()
+        .weekday(.wide)
+        .locale(.autoupdatingCurrent)
+    )
   }
 
   private func messageDaySeparator(_ title: String) -> some View {

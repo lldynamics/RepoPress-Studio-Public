@@ -8,6 +8,7 @@ public struct SiteMaintenanceSnapshot {
   public let generatedAt: Date
   public let sourceVersion: Int
   public let refreshedAt: Date
+  private let relationSuggestionsByDraftID: [UUID: [SiteRelationSuggestion]]
 
   public init(
     report: SiteMaintenanceReport,
@@ -25,5 +26,17 @@ public struct SiteMaintenanceSnapshot {
     self.generatedAt = generatedAt ?? report.generatedAt
     self.sourceVersion = sourceVersion
     self.refreshedAt = refreshedAt
+    self.relationSuggestionsByDraftID = Dictionary(
+      grouping: report.relationSuggestions,
+      by: \.sourceDraftID
+    )
+  }
+
+  public func relatedArticleSuggestions(
+    for draftID: UUID,
+    limit: Int = 5
+  ) -> [SiteRelationSuggestion] {
+    guard limit > 0 else { return [] }
+    return Array(relationSuggestionsByDraftID[draftID, default: []].prefix(limit))
   }
 }

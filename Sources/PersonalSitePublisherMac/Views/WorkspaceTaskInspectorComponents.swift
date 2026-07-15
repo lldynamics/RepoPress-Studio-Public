@@ -101,6 +101,8 @@ extension PublishFileDiffStatus {
       return "plus.circle"
     case .modified:
       return "pencil.circle"
+    case .deleted:
+      return "trash.circle"
     case .unchanged:
       return "equal.circle"
     case .missingSource:
@@ -116,6 +118,8 @@ extension PublishFileDiffStatus {
       return .green
     case .modified:
       return .orange
+    case .deleted:
+      return .red
     case .unchanged:
       return .secondary
     case .missingSource, .unsafePath:

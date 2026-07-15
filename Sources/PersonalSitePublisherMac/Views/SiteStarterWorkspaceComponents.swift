@@ -201,7 +201,7 @@ struct SiteStarterTemplateStep: View {
 
       Picker("站点模板", selection: templateID) {
         ForEach(SiteStarterTemplate.builtIn) { template in
-          Text("\(template.name) · \(template.siteKind.displayName)").tag(template.id)
+          Text("\(template.name) · \(template.siteKind.localizedDisplayName)").tag(template.id)
         }
       }
       .accessibilityLabel("站点模板")
@@ -335,11 +335,11 @@ struct SiteStarterGitHubStep: View {
 
       Picker("部署", selection: deploymentTarget) {
         ForEach(SiteStarterDeploymentTarget.allCases) { target in
-          Text(target.displayName).tag(target)
+          Text(target.localizedDisplayName).tag(target)
         }
       }
       .accessibilityLabel("部署平台")
-      .accessibilityValue(deploymentTarget.wrappedValue.displayName)
+      .accessibilityValue(deploymentTarget.wrappedValue.localizedDisplayName)
 
       if deploymentTarget.wrappedValue == .netlify {
         TextField("Netlify Site ID（可稍后补）", text: deploymentProjectID)
@@ -401,6 +401,7 @@ struct SiteStarterGenerateStep: View {
   let isCreateMode: Bool
   let createAction: () -> Void
   let disabled: Bool
+  let isRunning: Bool
   let createdFileCount: Int?
   let createdProfileText: String?
   let createdProfileKindText: String?
@@ -421,10 +422,18 @@ struct SiteStarterGenerateStep: View {
       Button {
         createAction()
       } label: {
-        Label(isCreateMode ? "生成站点" : "导入已有仓库", systemImage: isCreateMode ? "wand.and.stars" : "tray.and.arrow.down")
+        if isRunning {
+          HStack(spacing: 8) {
+            ProgressView()
+              .controlSize(.small)
+            Text(isCreateMode ? "正在生成站点…" : "正在导入已有仓库…")
+          }
+        } else {
+          Label(isCreateMode ? "生成站点" : "导入已有仓库", systemImage: isCreateMode ? "wand.and.stars" : "tray.and.arrow.down")
+        }
       }
       .buttonStyle(.borderedProminent)
-      .disabled(disabled)
+      .disabled(disabled || isRunning)
 
       if let createdProfileText, let createdProfileKindText {
         Divider()

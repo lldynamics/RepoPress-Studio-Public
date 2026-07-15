@@ -7,7 +7,7 @@ struct PrivacyProtectionEventRow: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
       HStack(alignment: .firstTextBaseline) {
-        Label(event.kind.displayName, systemImage: event.kind.systemImage)
+        Label(event.kind.localizedDisplayName, systemImage: event.kind.systemImage)
           .font(.callout.weight(.medium))
         Spacer()
         Text(event.createdAt.formatted(date: .omitted, time: .shortened))

@@ -1,6 +1,7 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+#if DEBUG
 extension ReleaseHistoryDetailView {
   var deploymentAdvancedDebugSection: some View {
     DisclosureGroup {
@@ -32,12 +33,12 @@ extension ReleaseHistoryDetailView {
         Spacer()
         Picker("平台", selection: $webhookProvider) {
           ForEach(DeploymentProvider.allCases) { provider in
-            Text(provider.displayName).tag(provider)
+            Text(provider.localizedDisplayName).tag(provider)
           }
         }
         .frame(width: 230)
         .accessibilityLabel("Webhook 平台")
-        .accessibilityValue(webhookProvider.displayName)
+        .accessibilityValue(webhookProvider.localizedDisplayName)
       }
 
       HStack(spacing: 8) {
@@ -84,6 +85,8 @@ extension ReleaseHistoryDetailView {
           RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
             .stroke(.quaternary, lineWidth: 1)
         )
+        .accessibilityLabel("Webhook JSON 载荷")
+        .accessibilityHint("粘贴平台回调内容后接收")
 
       HStack {
         Button {
@@ -133,3 +136,4 @@ extension ReleaseHistoryDetailView {
   }
 
 }
+#endif

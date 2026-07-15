@@ -16,7 +16,9 @@ Synchronizes APP_STORE_CHECKLIST.md with evidence-backed local gates and
 external verification records. By default it previews the changes and does not
 write. It never marks clean runtime, archive/upload, StoreKit sandbox,
 GitHub/GitLab live publishing, or screenshot capture items complete unless the
-matching evidence is already recorded.
+matching evidence is already recorded. The localization gate covers the app UI
+and selected semantic model keys; it does not prove that Core-generated
+presentation strings have been migrated or translated.
 USAGE
 }
 
@@ -99,7 +101,7 @@ clean_runtime_validation_complete() {
     bash "$ROOT_DIR/script/check_clean_runtime_evidence.sh" --strict >/dev/null 2>&1 || return 1
   local required_checked=(
     'App launched from `script/build_and_run.sh --verify` on a clean macOS account or equivalent test user.'
-    "First launch, privacy lock, settings, and workspace switching were verified without exposing private content."
+    "Quick hide, private-content masking, settings, and workspace switching were verified without exposing private content."
     "Keyboard navigation, focus visibility, VoiceOver labels, and primary commands were smoke checked in the running app."
   )
   for title in "${required_checked[@]}"; do
@@ -112,6 +114,13 @@ clean_runtime_validation_complete() {
 
 evidence_for_title() {
   local title_lc="$1"
+  # The current localization gate intentionally does not extract user-facing
+  # presentation copy assembled by PublishingWorkbenchCore services. Keep the
+  # two full-coverage checklist items manual until that migration is complete.
+  if [[ "$title_lc" == *"publishingworkbenchcore"* ||
+        "$title_lc" == *"core-generated presentation"* ]]; then
+    return 1
+  fi
   if [[ "$title_lc" == *"signing team"* ||
         "$title_lc" == *"hardened runtime"* ]]; then
     archive_validation_complete && {
@@ -145,18 +154,13 @@ evidence_for_title() {
     }
     return 1
   fi
-  if [[ "$title_lc" == *"localization catalog"* ||
-        "$title_lc" == *"localizable.strings"* ]]; then
-    echo "本地化资源门禁已通过。"
+  if [[ "$title_lc" == *"app-target swiftui literals"* &&
+        "$title_lc" == *"semantic display names"* ]]; then
+    echo "UI-scope 本地化门禁已验证其声明范围内的中英文键。"
     return 0
   fi
-  if [[ "$title_lc" == *"simplified chinese"* ||
-        "$title_lc" == *"english copy"* ]]; then
-    echo "中英语言覆盖门禁已通过。"
-    return 0
-  fi
-  if [[ "$title_lc" == *"localization gate"* ]]; then
-    echo "本地化自动门禁已通过。"
+  if [[ "$title_lc" == *"ui-scoped localization gate"* ]]; then
+    echo "UI-scope 本地化门禁已通过；未将 Core 生成的展示文案计入覆盖结论。"
     return 0
   fi
   if [[ "$title_lc" == *"script/build_and_run.sh"* ||
@@ -191,7 +195,7 @@ evidence_for_title() {
   if [[ "$title_lc" == *"privacy policy"* ||
         "$title_lc" == *"support copy"* ||
         "$title_lc" == *"private-content behavior"* ]]; then
-    echo "隐私/支持文案门禁已通过，已覆盖隐私锁、私密内容遮挡和敏感信息 redaction 规则。"
+    echo "隐私/支持文案门禁已通过，已覆盖快速隐藏、私密内容遮挡和敏感信息 redaction 规则。"
     return 0
   fi
   if [[ "$title_lc" == *"storekit"* ||
@@ -227,6 +231,7 @@ evidence_for_title() {
     return 1
   fi
   if [[ "$title_lc" == *"capture writing"* ||
+        "$title_lc" == *"nine manifest screens"* ||
         "$title_lc" == *"release gate screens"* ]]; then
     has_external_id "app-store-screenshots" && {
       echo "已记录 App Store 截图外部验收证据。"

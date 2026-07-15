@@ -239,7 +239,7 @@ PLAN
   env: app-store-screenshots.env
   evidence: docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md
   records: app-store-screenshots
-  checklist: Capture writing, AI chat, sync/API publish, SEO/social preview, deployment status, maintenance, general drafts, Pro, privacy lock, and release gate screens; Verify screenshots contain no private content, local tokens, or personal paths.
+  checklist: Capture the nine screens listed in the screenshot manifest; Verify screenshots contain no private content, local tokens, or personal paths.
 PLAN
       ;;
     *)

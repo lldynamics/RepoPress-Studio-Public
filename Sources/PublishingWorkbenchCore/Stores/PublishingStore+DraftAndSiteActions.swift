@@ -9,7 +9,7 @@ extension PublishingStore {
     }
     store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
     store.runPreflight()
-    store.refreshImageWorkbenchReport()
+    store.scheduleImageWorkbenchReportRefresh()
   }
 
   @discardableResult
@@ -23,7 +23,7 @@ extension PublishingStore {
       selectedDraftID = draft.id
       store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
       store.runPreflight()
-      store.refreshImageWorkbenchReport()
+      store.scheduleImageWorkbenchReportRefresh(for: draft)
       return draft
     }
 
@@ -34,7 +34,7 @@ extension PublishingStore {
     selectedSection = previousSection
     store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
     store.runPreflight()
-    store.refreshImageWorkbenchReport()
+    store.scheduleImageWorkbenchReportRefresh(for: draft)
     store.save()
     return draft
   }
@@ -90,16 +90,19 @@ extension PublishingStore {
     store.setAIPublishingAssistantPresented(false)
     store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
     store.runPreflight()
-    store.refreshImageWorkbenchReport()
+    store.scheduleImageWorkbenchReportRefresh(for: draft)
     store.save()
   }
 
   public func updateDraft(_ draft: ArticleDraft, store: WorkbenchStore) {
-    let previousDraft = drafts.first { $0.id == draft.id }
-    let hasUnsavedDraftChange = previousDraft.map { $0 != draft } ?? true
+    let existingIndex = drafts.firstIndex { $0.id == draft.id }
+    let hasUnsavedDraftChange = existingIndex.map { drafts[$0] != draft } ?? true
     var updated = draft
     updated.touch()
-    if let index = drafts.firstIndex(where: { $0.id == updated.id }) {
+    if let index = existingIndex {
+      if hasUnsavedDraftChange {
+        recordAutomaticVersionIfNeeded(for: drafts[index])
+      }
       drafts[index] = updated
     } else {
       drafts.insert(updated, at: 0)
@@ -120,14 +123,21 @@ extension PublishingStore {
   }
 
   public func deleteDraft(id draftID: UUID, store: WorkbenchStore) {
+    guard let draft = drafts.first(where: { $0.id == draftID }) else { return }
     let deletedSelectedDraft = selectedDraftID == draftID
+    moveDraftToRecycleBin(draft)
     drafts.removeAll { $0.id == draftID }
     if deletedSelectedDraft || !drafts.contains(where: { $0.id == selectedDraftID }) {
       selectedDraftID = store.visibleDrafts.first?.id
     }
     store.runPreflight()
-    store.refreshImageWorkbenchReport()
-    store.refreshPublishPreview(for: store.selectedDraft)
+    store.scheduleImageWorkbenchReportRefresh()
+    store.refreshPublishPreviewInBackground(for: store.selectedDraft)
+    store.setPublishActionMessage(
+      draft.repositoryPath?.trimmedForPublishing.nilIfEmpty == nil
+        ? "已将文章移到回收站。"
+        : "已将文章移到回收站，并加入仓库待清理队列。"
+    )
     store.save()
   }
 
@@ -139,8 +149,8 @@ extension PublishingStore {
     if let section { selectedSection = section }
     store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
     store.runPreflight()
-    store.refreshImageWorkbenchReport()
-    store.refreshPublishPreview(for: draft)
+    store.scheduleImageWorkbenchReportRefresh(for: draft)
+    store.refreshPublishPreviewInBackground(for: draft)
     return true
   }
 
@@ -178,7 +188,8 @@ extension PublishingStore {
     activeProfileID = id
     selectedDraftID = store.visibleDrafts.first?.id
     store.runPreflight()
-    store.refreshPublishPreview(for: store.selectedDraft)
+    store.scheduleImageWorkbenchReportRefresh()
+    store.refreshPublishPreviewInBackground(for: store.selectedDraft)
   }
 
   public func selectSection(_ section: WorkspaceSection) {
@@ -193,7 +204,7 @@ extension PublishingStore {
     activeProfileID = profile.id
     selectedDraftID = nil
     store.runPreflight()
-    store.refreshPublishPreview(for: nil)
+    store.refreshPublishPreviewInBackground(for: nil)
     store.save()
     return profile
   }
@@ -206,7 +217,7 @@ extension PublishingStore {
     activeProfileID = profile.id
     selectedDraftID = nil
     store.runPreflight()
-    store.refreshPublishPreview(for: nil)
+    store.refreshPublishPreviewInBackground(for: nil)
     store.save()
     return profile
   }
@@ -234,7 +245,8 @@ extension PublishingStore {
     activeProfileID = profiles[0].id
     selectedDraftID = store.visibleDrafts.first?.id
     store.runPreflight()
-    store.refreshPublishPreview(for: store.selectedDraft)
+    store.scheduleImageWorkbenchReportRefresh()
+    store.refreshPublishPreviewInBackground(for: store.selectedDraft)
     store.save()
     return recentlyDeletedProfile
   }

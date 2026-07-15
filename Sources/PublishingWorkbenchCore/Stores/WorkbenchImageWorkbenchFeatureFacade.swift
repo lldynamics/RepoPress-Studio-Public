@@ -10,7 +10,10 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     self.store = store
     observe(store.imageStore.objectWillChange)
     observe(store.publishingStore.objectWillChange)
-    observe(store.aiStore.objectWillChange)
+    observeValue(store.aiWorkspaceStore.$aiTokenAvailability)
+    observeValue(store.aiWorkspaceStore.$aiImageTextSuggestionDraftID)
+    observeValue(store.aiWorkspaceStore.$aiImageTextSuggestions)
+    observeValue(store.aiWorkspaceStore.$isAIImageTextRunning)
   }
 
   public var report: ImageWorkbenchReport? {
@@ -33,6 +36,10 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     get { store.isAIImageTextRunning }
   }
 
+  public var aiTokenAvailability: KeychainTokenAvailability {
+    store.aiTokenAvailability
+  }
+
   public var isProcessingBatch: Bool {
     store.imageStore.isImageBatchProcessing
   }
@@ -51,6 +58,18 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
 
   public func report(for draft: ArticleDraft) -> ImageWorkbenchReport {
     store.imageWorkbenchReport(for: draft)
+  }
+
+  public func cachedReport(for draft: ArticleDraft) -> ImageWorkbenchReport? {
+    store.cachedImageWorkbenchReport(for: draft)
+  }
+
+  public func isReportLoading(for draft: ArticleDraft) -> Bool {
+    store.isImageWorkbenchReportLoading(for: draft)
+  }
+
+  public func refreshReportInBackground(for draft: ArticleDraft, force: Bool = false) async {
+    await store.refreshImageWorkbenchReportInBackground(for: draft, force: force)
   }
 
   public func imageTextTargetCount(for draft: ArticleDraft, report: ImageWorkbenchReport?) -> Int {
@@ -132,6 +151,13 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
 
   private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {
     publisher
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+  }
+
+  private func observeValue<P: Publisher>(_ publisher: P) where P.Failure == Never {
+    publisher
+      .dropFirst()
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &cancellables)
   }

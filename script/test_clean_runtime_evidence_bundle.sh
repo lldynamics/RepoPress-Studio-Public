@@ -26,7 +26,7 @@ text, or screenshots containing private content.
 
 - [ ] App launched from `script/build_and_run.sh --verify` on a clean macOS account or equivalent test user.
   Evidence:
-- [ ] First launch, privacy lock, settings, and workspace switching were verified without exposing private content.
+- [ ] Quick hide, private-content masking, settings, and workspace switching were verified without exposing private content.
   Evidence:
 - [ ] Keyboard navigation, focus visibility, VoiceOver labels, and primary commands were smoke checked in the running app.
   Evidence:
@@ -44,7 +44,7 @@ fi
 
 if CLEAN_RUNTIME_EVIDENCE_FILE="$EVIDENCE_FILE" bash "$BUNDLE" \
   --clean-launch "Launched from /Users/example/private workspace." \
-  --privacy-settings-workspace "Privacy lock and settings were smoke checked." \
+  --privacy-settings-workspace "Quick hide, private-content masking, and settings were smoke checked." \
   --accessibility-keyboard-smoke "Keyboard navigation was smoke checked." \
   --execute >/dev/null 2>&1; then
   fail "--execute accepted a private local path in evidence"
@@ -52,13 +52,13 @@ fi
 
 CLEAN_RUNTIME_EVIDENCE_FILE="$EVIDENCE_FILE" bash "$BUNDLE" \
   --clean-launch "Clean test user launched the app through build_and_run --verify and reached the main workspace without migration or permission failures." \
-  --privacy-settings-workspace "First launch, privacy lock, settings, and workspace switching were verified with sample data and redacted screenshots only." \
+  --privacy-settings-workspace "Quick hide, private-content masking, settings, and workspace switching were verified with sample data and redacted screenshots only." \
   --accessibility-keyboard-smoke "Keyboard navigation, visible focus, VoiceOver labels, and primary menu commands were smoke checked in the running app." \
   --execute >/dev/null
 
 grep -q '^- \[x\] App launched from `script/build_and_run.sh --verify` on a clean macOS account or equivalent test user.' "$EVIDENCE_FILE" \
   || fail "clean launch item was not completed"
-grep -q "^- \\[x\\] First launch, privacy lock, settings, and workspace switching were verified without exposing private content." "$EVIDENCE_FILE" \
+grep -q "^- \\[x\\] Quick hide, private-content masking, settings, and workspace switching were verified without exposing private content." "$EVIDENCE_FILE" \
   || fail "privacy/settings/workspace item was not completed"
 grep -q "^- \\[x\\] Keyboard navigation, focus visibility, VoiceOver labels, and primary commands were smoke checked in the running app." "$EVIDENCE_FILE" \
   || fail "accessibility/keyboard smoke item was not completed"

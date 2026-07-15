@@ -58,17 +58,8 @@ extension WorkbenchStore {
     publishingStore.publishActionMessage = message
   }
 
-  public func setReleaseQualityGateMessage(_ message: String?) {
-    publishingStore.releaseQualityGateMessage = message
-  }
-
   func setMaintenanceOperationRecords(_ records: [MaintenanceOperationRecord]) {
     publishingStore.maintenanceOperationRecords = records
-    invalidateSiteMaintenanceSnapshot()
-  }
-
-  func setContentPerformanceSnapshots(_ snapshots: [ContentPerformanceSnapshot]) {
-    publishingStore.contentPerformanceSnapshots = snapshots
     invalidateSiteMaintenanceSnapshot()
   }
 
@@ -80,11 +71,4 @@ extension WorkbenchStore {
     publishingStore.latestGeneralDraftBackupWriteResult = result
   }
 
-  func setReleaseQualityGateReport(_ report: ReleaseQualityGateReport) {
-    publishingStore.releaseQualityGateReport = report
-  }
-
-  func setExternalVerificationEvidenceRecords(_ records: [ReleaseExternalVerificationEvidenceRecord]) {
-    publishingStore.externalVerificationEvidenceRecords = records
-  }
 }

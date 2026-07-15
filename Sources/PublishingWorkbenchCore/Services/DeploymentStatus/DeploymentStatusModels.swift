@@ -440,6 +440,7 @@ public extension DeploymentStatusSnapshot {
 public enum DeploymentStatusError: LocalizedError, Equatable {
   case invalidResponse
   case invalidURL(String)
+  case insecureCredentialURL
   case httpStatus(Int)
 
   public var errorDescription: String? {
@@ -448,6 +449,8 @@ public enum DeploymentStatusError: LocalizedError, Equatable {
       return "部署状态响应无效。"
     case .invalidURL(let url):
       return "部署状态 URL 无效：\(url)"
+    case .insecureCredentialURL:
+      return "部署 API URL 必须使用 HTTPS；已阻止向不安全端点发送 Token。"
     case .httpStatus(let statusCode):
       return "部署状态 API 返回 HTTP \(statusCode)。"
     }

@@ -11,10 +11,10 @@ extension ReleaseHistoryDetailView {
 
     return VStack(alignment: .leading, spacing: 12) {
       HStack(alignment: .firstTextBaseline) {
-        Label(record.kind.displayName, systemImage: record.kind.systemImage)
+        Label(record.kind.localizedDisplayName, systemImage: record.kind.systemImage)
           .font(.caption.weight(.medium))
           .foregroundStyle(.secondary)
-        Label(entry.status.displayName, systemImage: entry.status.systemImage)
+        Label(entry.status.localizedDisplayName, systemImage: entry.status.systemImage)
           .font(.caption.weight(.medium))
           .foregroundStyle(ledgerStatusForeground(entry.status))
         Spacer()
@@ -246,13 +246,6 @@ extension ReleaseHistoryDetailView {
           Label("复制验证摘要", systemImage: "checklist.checked")
         }
         .accessibilityLabel("复制发布恢复验证摘要")
-
-        Button {
-          store.recordReleaseRecoveryExternalVerificationEvidence(from: recoveryPackage)
-        } label: {
-          Label("记录证据", systemImage: "checkmark.seal")
-        }
-        .accessibilityLabel("记录发布恢复证据")
 
         Button {
           Task {

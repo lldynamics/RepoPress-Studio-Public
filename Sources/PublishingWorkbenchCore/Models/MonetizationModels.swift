@@ -3,7 +3,6 @@ import Foundation
 public enum ProEntitlementSource: String, Codable, CaseIterable, Identifiable, Sendable {
   case none
   case storeKit
-  case localOverride
 
   public var id: String { rawValue }
 
@@ -13,9 +12,28 @@ public enum ProEntitlementSource: String, Codable, CaseIterable, Identifiable, S
       return "未解锁"
     case .storeKit:
       return "StoreKit"
-    case .localOverride:
-      return "本机解锁"
     }
+  }
+
+  public init(from decoder: Decoder) throws {
+    let value = try decoder.singleValueContainer().decode(String.self)
+    self = ProEntitlementSource(rawValue: value) ?? .none
+  }
+}
+
+public protocol ProEntitlementProviding: Sendable {
+  func entitlement(restoring persistedEntitlement: ProEntitlementState) -> ProEntitlementState
+}
+
+/// Production persistence never restores an unlocked flag by itself. StoreKit must
+/// re-verify the current transaction after launch before Pro features are enabled.
+public struct VerifiedStoreKitEntitlementProvider: ProEntitlementProviding {
+  public init() {}
+
+  public func entitlement(restoring persistedEntitlement: ProEntitlementState) -> ProEntitlementState {
+    var locked = ProEntitlementState.locked
+    locked.lastCheckedAt = persistedEntitlement.lastCheckedAt
+    return locked
   }
 }
 
@@ -664,8 +682,6 @@ public struct ProSandboxVerificationSummary: Hashable, Sendable {
           let currentProduct = state.entitlement.productID?.nilIfEmpty ?? "未记录"
           remainingItems.append("StoreKit 权益 product ID 为 \(currentProduct)，需要匹配 \(productID)。")
         }
-      case .localOverride:
-        remainingItems.append("本机解锁只能用于调试，不能替代 StoreKit sandbox 购买验收。")
       case .none:
         remainingItems.append("权益状态已解锁但来源为空，需要重新检查 StoreKit 权益来源。")
       }
@@ -688,8 +704,7 @@ public struct ProSandboxVerificationSummary: Hashable, Sendable {
        state.entitlement.lastCheckedAt != nil,
        remainingItems.isEmpty {
       level = .verified
-    } else if state.entitlement.source == .localOverride
-      || (state.entitlement.isUnlocked && state.entitlement.source == .none)
+    } else if (state.entitlement.isUnlocked && state.entitlement.source == .none)
       || (state.entitlement.isUnlocked && state.entitlement.source == .storeKit && !entitlementProductMatches) {
       level = .needsAttention
     } else {

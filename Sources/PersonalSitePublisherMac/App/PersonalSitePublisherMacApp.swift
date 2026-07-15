@@ -39,12 +39,6 @@ struct PersonalSitePublisherMacApp: App {
       PublishingConsoleCommands(store: store)
     }
 
-    WindowGroup("文章编辑", for: UUID.self) { $draftID in
-      DraftEditorWindowView(store: store, draftID: draftID)
-        .frame(minWidth: 980, minHeight: 680)
-        .tint(WorkbenchTheme.default.primary)
-    }
-
     Settings {
       ProtectedSettingsView(
         store: store,
@@ -126,7 +120,6 @@ private enum WindowRestorationPolicy {
 private struct ProtectedSettingsView: View {
   @ObservedObject var store: WorkbenchStore
   @ObservedObject var storeKitProEntitlementCoordinator: StoreKitProEntitlementCoordinator
-  @Environment(\.scenePhase) private var scenePhase
 
   var body: some View {
     ZStack {
@@ -139,11 +132,6 @@ private struct ProtectedSettingsView: View {
 
       if store.isPrivacyLocked {
         PrivacyLockOverlay(store: store)
-      }
-    }
-    .onChange(of: scenePhase) { _, newValue in
-      if newValue != .active {
-        store.lockPrivacyIfNeededForInactiveScene()
       }
     }
   }

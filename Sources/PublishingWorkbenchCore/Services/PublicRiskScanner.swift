@@ -1,12 +1,24 @@
 import Foundation
 
 public struct PublicRiskScanner: Sendable {
-  private struct Rule: Sendable {
+  private struct Rule: @unchecked Sendable {
     var title: String
     var message: String
     var severity: PreflightSeverity
-    var pattern: String
-    var options: NSRegularExpression.Options
+    var regex: NSRegularExpression?
+
+    init(
+      title: String,
+      message: String,
+      severity: PreflightSeverity,
+      pattern: String,
+      options: NSRegularExpression.Options
+    ) {
+      self.title = title
+      self.message = message
+      self.severity = severity
+      regex = try? NSRegularExpression(pattern: pattern, options: options)
+    }
   }
 
   private struct ScannedField {
@@ -92,7 +104,7 @@ public struct PublicRiskScanner: Sendable {
   }
 
   private func matches(rule: Rule, in value: String) -> Bool {
-    guard let regex = try? NSRegularExpression(pattern: rule.pattern, options: rule.options) else {
+    guard let regex = rule.regex else {
       return false
     }
     let range = NSRange(value.startIndex..<value.endIndex, in: value)

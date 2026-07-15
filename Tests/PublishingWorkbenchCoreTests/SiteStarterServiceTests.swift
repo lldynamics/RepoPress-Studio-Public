@@ -191,7 +191,7 @@ final class SiteStarterServiceTests: XCTestCase {
   }
 
   @MainActor
-  func testStoreImportsExistingRepositoryProfileAndDrafts() throws {
+  func testStoreImportsExistingRepositoryProfileAndDrafts() async throws {
     let rootURL = try temporaryDirectoryURL()
     defer {
       try? FileManager.default.removeItem(at: rootURL)
@@ -216,16 +216,15 @@ final class SiteStarterServiceTests: XCTestCase {
     try git(["remote", "add", "origin", "git@github.com:lldynamics/imported-site.git"], rootURL: rootURL)
 
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
-    let result = try XCTUnwrap(
-      store.importExistingSiteFromStarter(
-        SiteStarterImportRequest(
-          rootPath: rootURL.path,
-          siteName: "Imported Site",
-          siteKind: .zola,
-          deploymentTarget: .githubPages
-        )
+    let importedResult = await store.importExistingSiteFromStarter(
+      SiteStarterImportRequest(
+        rootPath: rootURL.path,
+        siteName: "Imported Site",
+        siteKind: .zola,
+        deploymentTarget: .githubPages
       )
     )
+    let result = try XCTUnwrap(importedResult)
 
     XCTAssertEqual(result.profile.name, "Imported Site")
     XCTAssertEqual(result.profile.repoOwner, "lldynamics")
@@ -236,6 +235,115 @@ final class SiteStarterServiceTests: XCTestCase {
     XCTAssertEqual(store.activeProfileID, result.profile.id)
     XCTAssertEqual(store.visibleDrafts.map(\.title), ["Imported Starter"])
     XCTAssertEqual(store.siteStarterImportResult?.importedDraftCount, 1)
+  }
+
+  @MainActor
+  func testBackgroundCreateKeepsMainActorResponsiveAndOlderResultCannotReplaceNewerState() async throws {
+    let blocker = SiteStarterBlockingGate()
+    let mainActorProbe = SiteStarterBlockingGate()
+    let service = SiteStarterService(createSiteOperation: { request in
+      if request.siteName == "Older Site" {
+        blocker.startAndBlock()
+      }
+      return stubSiteStarterResult(for: request)
+    })
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      siteStarterService: service
+    )
+    let olderRequest = SiteStarterRequest(
+      rootPath: "/tmp/older-site",
+      siteName: "Older Site",
+      initializeGit: false,
+      configureOriginRemote: false
+    )
+    let newerRequest = SiteStarterRequest(
+      rootPath: "/tmp/newer-site",
+      siteName: "Newer Site",
+      initializeGit: false,
+      configureOriginRemote: false
+    )
+
+    let olderTask = Task { @MainActor in
+      await store.createSiteFromStarter(olderRequest)
+    }
+    let probeScheduler = Task.detached {
+      guard blocker.waitUntilStarted(timeout: 2) else { return }
+      await MainActor.run {
+        mainActorProbe.signal()
+      }
+    }
+    let watchdog = Task.detached {
+      try? await Task.sleep(for: .seconds(3))
+      guard !Task.isCancelled else { return }
+      blocker.signal()
+    }
+
+    let mainActorResponded = await Task.detached {
+      mainActorProbe.waitUntilStarted(timeout: 0.5)
+    }.value
+    XCTAssertTrue(mainActorResponded, "Starter file work must not block the main actor")
+    XCTAssertTrue(store.isSiteStarterOperationRunning)
+
+    let newerResult = await store.createSiteFromStarter(newerRequest)
+    XCTAssertEqual(newerResult?.profile.name, "Newer Site")
+    XCTAssertEqual(store.activeProfile.name, "Newer Site")
+
+    blocker.signal()
+    watchdog.cancel()
+    await probeScheduler.value
+    let olderResult = await olderTask.value
+
+    XCTAssertNil(olderResult)
+    XCTAssertEqual(store.activeProfile.name, "Newer Site")
+    XCTAssertEqual(store.siteStarterResult?.profile.name, "Newer Site")
+    XCTAssertFalse(store.profiles.contains { $0.name == "Older Site" })
+    XCTAssertFalse(store.isSiteStarterOperationRunning)
+  }
+
+  @MainActor
+  func testBackgroundCreatePreservesWorkspaceChangesMadeAfterOperationStarts() async throws {
+    let blocker = SiteStarterBlockingGate()
+    let service = SiteStarterService(createSiteOperation: { request in
+      blocker.startAndBlock()
+      return stubSiteStarterResult(for: request)
+    })
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      siteStarterService: service
+    )
+    let initialProfileCount = store.profiles.count
+    let operation = Task { @MainActor in
+      await store.createSiteFromStarter(
+        SiteStarterRequest(
+          rootPath: "/tmp/baseline-site",
+          siteName: "Baseline Site",
+          initializeGit: false,
+          configureOriginRemote: false
+        )
+      )
+    }
+
+    let didStart = await Task.detached {
+      blocker.waitUntilStarted(timeout: 2)
+    }.value
+    XCTAssertTrue(didStart)
+    var editedProfile = store.activeProfile
+    editedProfile.name = "User Edited Profile"
+    store.updateActiveProfile(editedProfile)
+
+    blocker.signal()
+    let result = await operation.value
+
+    XCTAssertNil(result)
+    XCTAssertEqual(store.activeProfile.name, "User Edited Profile")
+    XCTAssertEqual(store.profiles.count, initialProfileCount)
+    XCTAssertNil(store.siteStarterResult)
+    XCTAssertFalse(store.isSiteStarterOperationRunning)
+    XCTAssertEqual(
+      store.publishActionMessage,
+      "Starter 文件已生成，但工作台内容在操作期间发生变化，未覆盖当前状态。"
+    )
   }
 
   func testRejectsNonEmptyTargetDirectory() throws {
@@ -347,5 +455,60 @@ final class SiteStarterServiceTests: XCTestCase {
       )
     }
     return output.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+}
+
+private func stubSiteStarterResult(for request: SiteStarterRequest) -> SiteStarterResult {
+  let profile = SiteProfile(
+    name: request.siteName,
+    localRepositoryRootPath: request.rootPath,
+    branch: request.branch
+  )
+  let draft = ArticleDraft(
+    siteProfileID: profile.id,
+    title: "\(request.siteName) Draft",
+    slug: request.siteName.lowercased().replacingOccurrences(of: " ", with: "-")
+  )
+  return SiteStarterResult(
+    profile: profile,
+    initialDraft: draft,
+    createdFilePaths: ["config.toml"],
+    initializedGit: request.initializeGit,
+    configuredRemoteURL: nil,
+    deploymentGuidePath: nil,
+    nextCommands: []
+  )
+}
+
+private final class SiteStarterBlockingGate: @unchecked Sendable {
+  private let condition = NSCondition()
+  private var started = false
+  private var released = false
+
+  func startAndBlock() {
+    condition.lock()
+    started = true
+    condition.broadcast()
+    let deadline = Date().addingTimeInterval(5)
+    while !released, condition.wait(until: deadline) {}
+    condition.unlock()
+  }
+
+  func signal() {
+    condition.lock()
+    started = true
+    released = true
+    condition.broadcast()
+    condition.unlock()
+  }
+
+  func waitUntilStarted(timeout: TimeInterval) -> Bool {
+    condition.lock()
+    defer { condition.unlock() }
+    let deadline = Date().addingTimeInterval(timeout)
+    while !started {
+      guard condition.wait(until: deadline) else { return started }
+    }
+    return true
   }
 }

@@ -1,16 +1,19 @@
+import CryptoKit
 import Foundation
 
 public struct WorkbenchSnapshot: Codable, Sendable {
   /// Bump this only together with a backwards-compatible decode migration.
-  public static let currentFormatVersion = 2
+  public static let currentFormatVersion = 6
 
   public var formatVersion: Int
   public var profiles: [SiteProfile]
   public var activeProfileID: UUID
   public var drafts: [ArticleDraft]
+  public var draftVersions: [DraftVersionSnapshot]
+  public var recycledDrafts: [RecycledDraft]
+  public var draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest]
   public var releaseRecords: [ReleaseRecord]
   public var maintenanceOperationRecords: [MaintenanceOperationRecord]
-  public var contentPerformanceSnapshots: [ContentPerformanceSnapshot]
   public var aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord]
   public var aiChatSessionsByDraftID: [UUID: AIPublishingChatSessionState]
   public var aiChatCustomPrompts: [AIPublishingCustomPrompt]
@@ -25,15 +28,16 @@ public struct WorkbenchSnapshot: Codable, Sendable {
   public var deploymentPollingState: DeploymentPollingState
   public var deploymentStatusSnapshots: [DeploymentStatusSnapshot]
   public var deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]]
-  public var externalVerificationEvidenceRecords: [ReleaseExternalVerificationEvidenceRecord]
 
   public init(
     profiles: [SiteProfile],
     activeProfileID: UUID,
     drafts: [ArticleDraft],
+    draftVersions: [DraftVersionSnapshot] = [],
+    recycledDrafts: [RecycledDraft] = [],
+    draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest] = [],
     releaseRecords: [ReleaseRecord],
     maintenanceOperationRecords: [MaintenanceOperationRecord] = [],
-    contentPerformanceSnapshots: [ContentPerformanceSnapshot] = [],
     aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord] = [],
     aiChatSessionsByDraftID: [UUID: AIPublishingChatSessionState] = [:],
     aiChatCustomPrompts: [AIPublishingCustomPrompt] = [],
@@ -47,16 +51,23 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     deploymentPollingSettings: DeploymentPollingSettings = .default,
     deploymentPollingState: DeploymentPollingState = .idle,
     deploymentStatusSnapshots: [DeploymentStatusSnapshot] = [],
-    deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]] = [:],
-    externalVerificationEvidenceRecords: [ReleaseExternalVerificationEvidenceRecord] = []
+    deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]] = [:]
   ) {
     self.formatVersion = Self.currentFormatVersion
     self.profiles = profiles
     self.activeProfileID = activeProfileID
     self.drafts = drafts
+    self.draftVersions = Self.limitedDraftVersions(draftVersions)
+    self.recycledDrafts = Array(
+      recycledDrafts.sorted { $0.deletedAt > $1.deletedAt }.prefix(DraftLifecycleService.maximumRecycledDrafts)
+    )
+    self.draftRepositoryCleanupRequests = Array(
+      draftRepositoryCleanupRequests
+        .sorted { $0.requestedAt > $1.requestedAt }
+        .prefix(DraftLifecycleService.maximumRepositoryCleanupRequests)
+    )
     self.releaseRecords = releaseRecords
     self.maintenanceOperationRecords = Self.limitedMaintenanceOperationRecords(maintenanceOperationRecords)
-    self.contentPerformanceSnapshots = Self.limitedContentPerformanceSnapshots(contentPerformanceSnapshots)
     self.aiMetadataApplicationRecords = Self.limitedMetadataApplicationRecords(aiMetadataApplicationRecords)
     self.aiChatSessionsByDraftID = aiChatSessionsByDraftID
     self.aiChatCustomPrompts = Self.limitedCustomPrompts(aiChatCustomPrompts)
@@ -71,9 +82,6 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     self.deploymentPollingState = deploymentPollingState
     self.deploymentStatusSnapshots = Self.limitedDeploymentStatusSnapshots(deploymentStatusSnapshots)
     self.deploymentStatusHistory = Self.limitedDeploymentStatusHistory(deploymentStatusHistory)
-    self.externalVerificationEvidenceRecords = Self.limitedExternalVerificationEvidenceRecords(
-      externalVerificationEvidenceRecords
-    )
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -81,9 +89,11 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     case profiles
     case activeProfileID
     case drafts
+    case draftVersions
+    case recycledDrafts
+    case draftRepositoryCleanupRequests
     case releaseRecords
     case maintenanceOperationRecords
-    case contentPerformanceSnapshots
     case aiMetadataApplicationRecords
     case aiChatSessionsByDraftID
     case aiChatCustomPrompts
@@ -98,7 +108,6 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     case deploymentPollingState
     case deploymentStatusSnapshots
     case deploymentStatusHistory
-    case externalVerificationEvidenceRecords
   }
 
   public init(from decoder: Decoder) throws {
@@ -112,23 +121,33 @@ public struct WorkbenchSnapshot: Codable, Sendable {
       )
     }
 
-    // Version 1 had no explicit format marker. Its optional fields are migrated
-    // below through stable defaults; all newly persisted snapshots use v2.
+    // Version 1 had no explicit format marker. Optional fields migrate through
+    // stable defaults; retired feature data is archived before the next save.
     formatVersion = Self.currentFormatVersion
     profiles = try container.decode([SiteProfile].self, forKey: .profiles)
     activeProfileID = try container.decode(UUID.self, forKey: .activeProfileID)
     drafts = try container.decode([ArticleDraft].self, forKey: .drafts)
+    draftVersions = Self.limitedDraftVersions(
+      try container.decodeIfPresent([DraftVersionSnapshot].self, forKey: .draftVersions) ?? []
+    )
+    recycledDrafts = Array(
+      (try container.decodeIfPresent([RecycledDraft].self, forKey: .recycledDrafts) ?? [])
+        .sorted { $0.deletedAt > $1.deletedAt }
+        .prefix(DraftLifecycleService.maximumRecycledDrafts)
+    )
+    draftRepositoryCleanupRequests = Array(
+      (try container.decodeIfPresent(
+        [DraftRepositoryCleanupRequest].self,
+        forKey: .draftRepositoryCleanupRequests
+      ) ?? [])
+        .sorted { $0.requestedAt > $1.requestedAt }
+        .prefix(DraftLifecycleService.maximumRepositoryCleanupRequests)
+    )
     releaseRecords = try container.decode([ReleaseRecord].self, forKey: .releaseRecords)
     maintenanceOperationRecords = Self.limitedMaintenanceOperationRecords(
       try container.decodeIfPresent(
         [MaintenanceOperationRecord].self,
         forKey: .maintenanceOperationRecords
-      ) ?? []
-    )
-    contentPerformanceSnapshots = Self.limitedContentPerformanceSnapshots(
-      try container.decodeIfPresent(
-        [ContentPerformanceSnapshot].self,
-        forKey: .contentPerformanceSnapshots
       ) ?? []
     )
     aiMetadataApplicationRecords = Self.limitedMetadataApplicationRecords(
@@ -191,12 +210,6 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         forKey: .deploymentStatusHistory
       ) ?? [:]
     )
-    externalVerificationEvidenceRecords = Self.limitedExternalVerificationEvidenceRecords(
-      try container.decodeIfPresent(
-        [ReleaseExternalVerificationEvidenceRecord].self,
-        forKey: .externalVerificationEvidenceRecords
-      ) ?? []
-    )
   }
 
   private static func limitedMetadataApplicationRecords(
@@ -205,16 +218,25 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     Array(records.sorted { $0.createdAt > $1.createdAt }.prefix(120))
   }
 
+  private static func limitedDraftVersions(
+    _ versions: [DraftVersionSnapshot]
+  ) -> [DraftVersionSnapshot] {
+    let grouped = Dictionary(grouping: versions, by: \.draftID)
+    return Array(
+      grouped.values
+        .flatMap { entries in
+          entries.sorted { $0.capturedAt > $1.capturedAt }
+            .prefix(DraftLifecycleService.maximumVersionsPerDraft)
+        }
+        .sorted { $0.capturedAt > $1.capturedAt }
+        .prefix(DraftLifecycleService.maximumTotalVersions)
+    )
+  }
+
   private static func limitedMaintenanceOperationRecords(
     _ records: [MaintenanceOperationRecord]
   ) -> [MaintenanceOperationRecord] {
     Array(records.sorted { $0.createdAt > $1.createdAt }.prefix(120))
-  }
-
-  private static func limitedContentPerformanceSnapshots(
-    _ snapshots: [ContentPerformanceSnapshot]
-  ) -> [ContentPerformanceSnapshot] {
-    Array(snapshots.sorted { $0.capturedAt > $1.capturedAt }.prefix(500))
   }
 
   private static func limitedCustomPrompts(
@@ -226,12 +248,6 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         .sorted { $0.updatedAt > $1.updatedAt }
         .prefix(80)
     )
-  }
-
-  private static func limitedExternalVerificationEvidenceRecords(
-    _ records: [ReleaseExternalVerificationEvidenceRecord]
-  ) -> [ReleaseExternalVerificationEvidenceRecord] {
-    Array(records.sorted { $0.recordedAt > $1.recordedAt }.prefix(120))
   }
 
   private static func limitedPrivacyProtectionEvents(
@@ -271,17 +287,36 @@ public enum WorkbenchPersistenceSaveResult: Sendable, Equatable {
 }
 
 /// A fully encoded snapshot that is ready for the short, atomic disk commit.
-/// Construct this off the main actor; commit it on the main actor after checking
-/// that no newer editor state superseded it.
+/// Construct and commit this off the main actor. The persistence store checks
+/// revisions before and after its serialized commit so newer editor state is
+/// never marked as saved by an older snapshot.
 public struct WorkbenchPreparedPersistenceSave: Sendable {
   fileprivate let data: Data
+  fileprivate let retiredFeatureArchives: [WorkbenchRetiredFeatureArchive]
+}
+
+private struct WorkbenchRetiredFeatureArchive: Sendable {
+  var fileName: String
+  var data: Data
 }
 
 public enum WorkbenchPersistenceError: LocalizedError, Sendable {
   case unrecoverableSnapshot(primary: String, backup: String?)
+  case retiredFeatureArchiveConflict(String)
+  case recoveryFilesUnavailable
+  case invalidRecoverySnapshot(String)
 
   public var errorDescription: String? {
-    "工作台数据无法读取，原始文件未被覆盖。"
+    switch self {
+    case .unrecoverableSnapshot:
+      return "工作台数据无法读取，原始文件未被覆盖。"
+    case .retiredFeatureArchiveConflict(let fileName):
+      return "退役功能数据归档冲突：\(fileName)。原始文件未被覆盖。"
+    case .recoveryFilesUnavailable:
+      return "没有可归档或导出的工作台故障文件。"
+    case .invalidRecoverySnapshot(let message):
+      return "所选恢复文件不是有效的工作台快照：\(message)"
+    }
   }
 }
 
@@ -343,7 +378,10 @@ public struct WorkbenchPersistence: Sendable {
       snapshot.aiChatSessionsByDraftID,
       reclaimUnreferencedFiles: reclaimUnreferencedAttachments
     )
-    return WorkbenchPreparedPersistenceSave(data: try JSONEncoder.workbench.encode(persistedSnapshot))
+    return WorkbenchPreparedPersistenceSave(
+      data: try JSONEncoder.workbench.encode(persistedSnapshot),
+      retiredFeatureArchives: try retiredFeatureArchivesFromPersistedSnapshots()
+    )
   }
 
   public func commit(_ preparedSave: WorkbenchPreparedPersistenceSave) throws -> WorkbenchPersistenceSaveResult {
@@ -351,6 +389,7 @@ public struct WorkbenchPersistence: Sendable {
       at: fileURL.deletingLastPathComponent(),
       withIntermediateDirectories: true
     )
+    try persistRetiredFeatureArchives(preparedSave.retiredFeatureArchives)
     let data = preparedSave.data
     try data.write(to: fileURL, options: [.atomic])
 
@@ -372,6 +411,72 @@ public struct WorkbenchPersistence: Sendable {
     fileURL
       .deletingPathExtension()
       .appendingPathExtension("last-known-good.json")
+  }
+
+  public var recoveryArchiveDirectoryURL: URL {
+    fileURL
+      .deletingLastPathComponent()
+      .appendingPathComponent("RecoveryArchives", isDirectory: true)
+  }
+
+  /// Copies the current primary and last-known-good files into a user-selected
+  /// directory without mutating either source file.
+  @discardableResult
+  public func exportRecoveryFiles(to directoryURL: URL) throws -> URL {
+    let didStartAccessing = directoryURL.startAccessingSecurityScopedResource()
+    defer {
+      if didStartAccessing {
+        directoryURL.stopAccessingSecurityScopedResource()
+      }
+    }
+    return try archiveRecoveryFiles(
+      in: directoryURL,
+      folderPrefix: "PersonalSitePublisher-Recovery"
+    )
+  }
+
+  /// Validates a chosen snapshot before archiving the unreadable files and
+  /// replacing both persistence copies. The live store should restart before it
+  /// uses this file so no state from the temporary blank workbench is merged in.
+  @discardableResult
+  public func installRecoverySnapshot(from sourceURL: URL) throws -> URL {
+    let didStartAccessing = sourceURL.startAccessingSecurityScopedResource()
+    defer {
+      if didStartAccessing {
+        sourceURL.stopAccessingSecurityScopedResource()
+      }
+    }
+
+    let data = try Data(contentsOf: sourceURL)
+    do {
+      _ = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: data)
+    } catch {
+      throw WorkbenchPersistenceError.invalidRecoverySnapshot(error.localizedDescription)
+    }
+
+    let archiveURL = try archiveUnrecoverableSnapshotFiles()
+    try FileManager.default.createDirectory(
+      at: fileURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try data.write(to: fileURL, options: .atomic)
+    try data.write(to: lastKnownGoodURL, options: .atomic)
+    return archiveURL
+  }
+
+  /// Preserves both unreadable persistence copies before an explicit reset.
+  @discardableResult
+  public func archiveUnrecoverableSnapshotFiles() throws -> URL {
+    try archiveRecoveryFiles(
+      in: recoveryArchiveDirectoryURL,
+      folderPrefix: "UnrecoverableWorkbench"
+    )
+  }
+
+  public var retiredFeatureArchiveDirectoryURL: URL {
+    fileURL
+      .deletingLastPathComponent()
+      .appendingPathComponent("RetiredFeatureArchives", isDirectory: true)
   }
 
   public var imageOptimizationDirectoryURL: URL {
@@ -401,6 +506,137 @@ public struct WorkbenchPersistence: Sendable {
   ) -> [UUID: AIPublishingChatSessionState] {
     AIChatAttachmentStore(directoryURL: aiChatAttachmentDirectoryURL).hydratedSessions(sessions)
   }
+
+  func hydratedAIChatSession(
+    _ session: AIPublishingChatSessionState
+  ) -> AIPublishingChatSessionState {
+    AIChatAttachmentStore(directoryURL: aiChatAttachmentDirectoryURL)
+      .hydratedSessions([UUID(): session])
+      .values
+      .first ?? session
+  }
+
+  private func archiveRecoveryFiles(in parentDirectoryURL: URL, folderPrefix: String) throws -> URL {
+    let fileManager = FileManager.default
+    let sourceURLs = [fileURL, lastKnownGoodURL].filter { fileManager.fileExists(atPath: $0.path) }
+    guard !sourceURLs.isEmpty else {
+      throw WorkbenchPersistenceError.recoveryFilesUnavailable
+    }
+
+    try fileManager.createDirectory(at: parentDirectoryURL, withIntermediateDirectories: true)
+    let archiveURL = parentDirectoryURL.appendingPathComponent(
+      "\(folderPrefix)-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    try fileManager.createDirectory(at: archiveURL, withIntermediateDirectories: false)
+    do {
+      for sourceURL in sourceURLs {
+        try fileManager.copyItem(
+          at: sourceURL,
+          to: archiveURL.appendingPathComponent(sourceURL.lastPathComponent)
+        )
+      }
+    } catch {
+      try? fileManager.removeItem(at: archiveURL)
+      throw error
+    }
+    return archiveURL
+  }
+
+  private func retiredFeatureArchivesFromPersistedSnapshots() throws -> [WorkbenchRetiredFeatureArchive] {
+    let sourceURLs = [fileURL, lastKnownGoodURL]
+    var archivesByFileName: [String: WorkbenchRetiredFeatureArchive] = [:]
+
+    for sourceURL in sourceURLs where FileManager.default.fileExists(atPath: sourceURL.path) {
+      let sourceData = try Data(contentsOf: sourceURL)
+      guard let archive = retiredFeatureArchive(from: sourceData) else { continue }
+      archivesByFileName[archive.fileName] = archive
+    }
+
+    return archivesByFileName.values.sorted { $0.fileName < $1.fileName }
+  }
+
+  private func retiredFeatureArchive(from sourceData: Data) -> WorkbenchRetiredFeatureArchive? {
+    guard var source = try? JSONSerialization.jsonObject(with: sourceData) as? [String: Any] else {
+      return nil
+    }
+
+    let retiredKeys = [
+      "contentPerformanceSnapshots",
+      "externalVerificationEvidenceRecords",
+      "scheduledPublishJobs",
+    ]
+    let retiredFields = Dictionary(uniqueKeysWithValues: retiredKeys.compactMap { key -> (String, Any)? in
+      guard let value = source.removeValue(forKey: key), retiredFieldContainsData(value) else { return nil }
+      return (key, value)
+    })
+    guard !retiredFields.isEmpty else { return nil }
+
+    let sourceFormatVersion = source["formatVersion"] as? Int ?? 1
+    let archiveObject: [String: Any] = [
+      "archiveFormatVersion": 1,
+      "sourceFormatVersion": sourceFormatVersion,
+      "retiredFields": retiredFields,
+    ]
+    guard let archiveData = try? JSONSerialization.data(
+      withJSONObject: archiveObject,
+      options: [.prettyPrinted, .sortedKeys]
+    ) else {
+      return nil
+    }
+    let digest = SHA256.hash(data: archiveData).map { String(format: "%02x", $0) }.joined()
+    return WorkbenchRetiredFeatureArchive(
+      fileName: "workbench-v\(sourceFormatVersion)-\(digest).json",
+      data: archiveData
+    )
+  }
+
+  private func retiredFieldContainsData(_ value: Any) -> Bool {
+    if let array = value as? [Any] {
+      return !array.isEmpty
+    }
+    if let dictionary = value as? [String: Any] {
+      return !dictionary.isEmpty
+    }
+    return !(value is NSNull)
+  }
+
+  private func persistRetiredFeatureArchives(_ archives: [WorkbenchRetiredFeatureArchive]) throws {
+    guard !archives.isEmpty else { return }
+    try FileManager.default.createDirectory(
+      at: retiredFeatureArchiveDirectoryURL,
+      withIntermediateDirectories: true
+    )
+
+    for archive in archives {
+      let archiveURL = retiredFeatureArchiveDirectoryURL.appendingPathComponent(archive.fileName)
+      if FileManager.default.fileExists(atPath: archiveURL.path) {
+        guard try Data(contentsOf: archiveURL) == archive.data else {
+          throw WorkbenchPersistenceError.retiredFeatureArchiveConflict(archive.fileName)
+        }
+        continue
+      }
+      let temporaryURL = retiredFeatureArchiveDirectoryURL.appendingPathComponent(
+        ".\(archive.fileName).\(UUID().uuidString).tmp"
+      )
+      do {
+        try archive.data.write(to: temporaryURL, options: .atomic)
+        do {
+          try FileManager.default.moveItem(at: temporaryURL, to: archiveURL)
+        } catch {
+          if FileManager.default.fileExists(atPath: archiveURL.path),
+             try Data(contentsOf: archiveURL) == archive.data {
+            try? FileManager.default.removeItem(at: temporaryURL)
+            continue
+          }
+          throw error
+        }
+      } catch {
+        try? FileManager.default.removeItem(at: temporaryURL)
+        throw error
+      }
+    }
+  }
 }
 
 @MainActor
@@ -410,9 +646,11 @@ extension WorkbenchPersistence {
       profiles: store.profiles,
       activeProfileID: store.activeProfileID,
       drafts: store.drafts,
+      draftVersions: store.draftVersions,
+      recycledDrafts: store.recycledDrafts,
+      draftRepositoryCleanupRequests: store.draftRepositoryCleanupRequests,
       releaseRecords: store.releaseRecords,
       maintenanceOperationRecords: store.maintenanceOperationRecords,
-      contentPerformanceSnapshots: store.contentPerformanceSnapshots,
       aiMetadataApplicationRecords: store.aiMetadataApplicationRecords,
       aiChatSessionsByDraftID: store.aiChatSessionsForPersistence(),
       aiChatCustomPrompts: store.aiChatCustomPrompts,
@@ -426,8 +664,7 @@ extension WorkbenchPersistence {
       deploymentPollingSettings: store.deploymentPollingSettings,
       deploymentPollingState: store.deploymentPollingState,
       deploymentStatusSnapshots: Array(store.deploymentStatusSnapshots.values),
-      deploymentStatusHistory: store.deploymentStatusHistory,
-      externalVerificationEvidenceRecords: store.externalVerificationEvidenceRecords
+      deploymentStatusHistory: store.deploymentStatusHistory
     )
   }
 

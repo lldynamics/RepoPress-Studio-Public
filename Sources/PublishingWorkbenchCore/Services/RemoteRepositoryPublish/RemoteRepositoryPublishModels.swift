@@ -167,7 +167,7 @@ public extension RemoteRepositoryAccessCheck {
     lines.append("## API 校验命令")
     let commands = accessVerificationCommands
     if commands.isEmpty {
-      lines.append("当前权限检查缺少仓库名，无法生成 API 校验命令。")
+      lines.append("当前权限检查缺少仓库名，或 API 端点不符合 HTTPS 安全要求；未生成含 Token 的命令。")
     } else {
       lines.append("```bash")
       lines.append(contentsOf: commands)
@@ -184,15 +184,23 @@ public extension RemoteRepositoryAccessCheck {
 
     switch provider {
     case .github:
-      let base = apiBaseURL?.trimmedForPublishing.nilIfEmpty ?? "https://api.github.com"
+      guard let base = secureVerificationAPIBaseURL(
+        apiBaseURL,
+        fallback: "https://api.github.com"
+      ) else { return [] }
+      let url = "\(base)/repos/\(encodedRepositoryPath(repositoryName, separator: "/"))"
       return [
-        "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \"\(base)/repos/\(encodedRepositoryPath(repositoryName, separator: "/"))\""
+        "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted(url))"
       ]
 
     case .gitlab:
-      let base = apiBaseURL?.trimmedForPublishing.nilIfEmpty ?? "https://gitlab.com/api/v4"
+      guard let base = secureVerificationAPIBaseURL(
+        apiBaseURL,
+        fallback: "https://gitlab.com/api/v4"
+      ) else { return [] }
+      let url = "\(base)/projects/\(encodedRepositoryPath(repositoryName, separator: "%2F"))"
       return [
-        "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \"\(base)/projects/\(encodedRepositoryPath(repositoryName, separator: "%2F"))\""
+        "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted(url))"
       ]
     }
   }
@@ -244,6 +252,7 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
   public var targetBranch: String
   public var changedPaths: [String]
   public var commitSHA: String?
+  public var remoteVersionsByPath: [String: String]?
   public var reviewURL: String?
   public var reviewTitle: String?
 
@@ -256,6 +265,7 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
     targetBranch: String,
     changedPaths: [String],
     commitSHA: String?,
+    remoteVersionsByPath: [String: String]? = nil,
     reviewURL: String? = nil,
     reviewTitle: String? = nil
   ) {
@@ -267,8 +277,13 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
     self.targetBranch = targetBranch
     self.changedPaths = changedPaths
     self.commitSHA = commitSHA
+    self.remoteVersionsByPath = remoteVersionsByPath
     self.reviewURL = reviewURL
     self.reviewTitle = reviewTitle
+  }
+
+  public func remoteVersion(for repositoryPath: String) -> String? {
+    remoteVersionsByPath?[repositoryPath.normalizedRelativePath()]?.trimmedForPublishing.nilIfEmpty
   }
 }
 
@@ -454,7 +469,7 @@ public extension RemoteRepositoryPublishResult {
     lines.append("")
     lines.append("## API 实测命令")
     if commands.isEmpty {
-      lines.append("当前结果缺少仓库名或 commit，无法生成可直接运行的 API 校验命令。")
+      lines.append("当前结果缺少仓库名或 commit，或 API 端点不符合 HTTPS 安全要求；未生成含 Token 的命令。")
     } else {
       lines.append("```bash")
       lines.append(contentsOf: commands)
@@ -479,31 +494,39 @@ public extension RemoteRepositoryPublishResult {
     let ref = mode == .reviewRequest ? branchName : targetBranch
     switch provider {
     case .github:
-      let base = apiBaseURL?.trimmedForPublishing.nilIfEmpty ?? "https://api.github.com"
+      guard let base = secureVerificationAPIBaseURL(
+        apiBaseURL,
+        fallback: "https://api.github.com"
+      ) else { return [] }
       var commands: [String] = []
       if let commitSHA = commitSHA?.trimmedForPublishing.nilIfEmpty {
-        commands.append("curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \"\(base)/repos/\(repositoryName)/commits/\(commitSHA)\"")
+        commands.append("curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted("\(base)/repos/\(repositoryName)/commits/\(commitSHA)"))")
       }
       if let reviewNumber = reviewNumber(from: reviewURL) {
-        commands.append("curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \"\(base)/repos/\(repositoryName)/pulls/\(reviewNumber)\"")
+        commands.append("curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted("\(base)/repos/\(repositoryName)/pulls/\(reviewNumber)"))")
       }
       commands.append(contentsOf: changedPaths.prefix(6).map { path in
-        "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \"\(base)/repos/\(repositoryName)/contents/\(encodedVerificationRepositoryPath(path))?ref=\(encodedVerificationPath(ref))\""
+        let url = "\(base)/repos/\(repositoryName)/contents/\(encodedVerificationRepositoryPath(path))?ref=\(encodedVerificationPath(ref))"
+        return "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted(url))"
       })
       return commands
 
     case .gitlab:
-      let base = apiBaseURL?.trimmedForPublishing.nilIfEmpty ?? "https://gitlab.com/api/v4"
+      guard let base = secureVerificationAPIBaseURL(
+        apiBaseURL,
+        fallback: "https://gitlab.com/api/v4"
+      ) else { return [] }
       let project = encodedVerificationPath(repositoryName)
       var commands: [String] = []
       if let commitSHA = commitSHA?.trimmedForPublishing.nilIfEmpty {
-        commands.append("curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \"\(base)/projects/\(project)/repository/commits/\(encodedVerificationPath(commitSHA))\"")
+        commands.append("curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted("\(base)/projects/\(project)/repository/commits/\(encodedVerificationPath(commitSHA))"))")
       }
       if let reviewNumber = reviewNumber(from: reviewURL) {
-        commands.append("curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \"\(base)/projects/\(project)/merge_requests/\(reviewNumber)\"")
+        commands.append("curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted("\(base)/projects/\(project)/merge_requests/\(reviewNumber)"))")
       }
       commands.append(contentsOf: changedPaths.prefix(6).map { path in
-        "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \"\(base)/projects/\(project)/repository/files/\(encodedVerificationPath(path))?ref=\(encodedVerificationPath(ref))\""
+        let url = "\(base)/projects/\(project)/repository/files/\(encodedVerificationPath(path))?ref=\(encodedVerificationPath(ref))"
+        return "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted(url))"
       })
       return commands
     }
@@ -545,6 +568,19 @@ public extension RemoteRepositoryPublishResult {
       }
       .joined(separator: "/")
   }
+}
+
+private func secureVerificationAPIBaseURL(_ candidate: String?, fallback: String) -> String? {
+  let text = candidate?.trimmedForPublishing.nilIfEmpty ?? fallback
+  guard let url = URL(string: text),
+        CredentialedEndpointPolicy.isSecureAPIBaseURL(url) else {
+    return nil
+  }
+  return url.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+}
+
+private func shellSingleQuoted(_ value: String) -> String {
+  "'" + value.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
 }
 
 public extension RemoteRepositoryRollbackDraft {
@@ -603,4 +639,3 @@ public extension RemoteRepositoryReviewWithdrawalDraft {
     return nil
   }
 }
-

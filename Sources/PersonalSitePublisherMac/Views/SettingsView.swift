@@ -55,7 +55,7 @@ struct SettingsView: View {
         aiTokenAvailability: store.ai.tokenAvailability,
         privacySettings: store.privacySettings,
         isProUnlocked: store.monetizationState.entitlement.isUnlocked,
-        proSource: store.monetizationState.entitlement.source.displayName,
+        proSource: store.monetizationState.entitlement.source.localizedDisplayName,
         selectDestination: openConfigurationHealthDestination
       )
       .padding(.horizontal, 18)

@@ -15,7 +15,23 @@ extension DeploymentStatusService {
     var request = URLRequest(url: url)
     request.httpMethod = "GET"
     request.setValue("PersonalSitePublisherMac/DeploymentStatus", forHTTPHeaderField: "User-Agent")
-    if usesToken, let token = token?.trimmedForPublishing, !token.isEmpty {
+    if usesToken {
+      guard CredentialedEndpointPolicy.isSecureRequestURL(url) else {
+        return DeploymentStatusSignal(
+          level: .failed,
+          title: "状态端点",
+          message: "使用 Bearer Token 的状态端点必须使用 HTTPS；本次未发送 Token。",
+          urlText: nil
+        )
+      }
+      guard let token = token?.trimmedForPublishing, !token.isEmpty else {
+        return DeploymentStatusSignal(
+          level: .unknown,
+          title: "状态端点未检查",
+          message: "该端点要求 Bearer Token，但当前未保存 Token；本次未发起请求。",
+          urlText: urlText
+        )
+      }
       request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
 

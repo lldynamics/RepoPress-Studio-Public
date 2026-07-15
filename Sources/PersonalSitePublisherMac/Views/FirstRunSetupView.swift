@@ -84,7 +84,7 @@ struct FirstRunSetupView: View {
 
       Picker("站点生成器", selection: siteKindBinding) {
         ForEach(SiteKind.allCases) { kind in
-          Text(kind.displayName).tag(kind)
+          Text(kind.localizedDisplayName).tag(kind)
         }
       }
       .pickerStyle(.radioGroup)
@@ -92,7 +92,7 @@ struct FirstRunSetupView: View {
 
       setupSummary(
         systemImage: "doc.text",
-        title: store.activeProfile.siteKind.displayName,
+        title: store.activeProfile.siteKind.localizedDisplayName,
         detail: "内容目录：\(store.activeProfile.contentRoot)"
       )
     }
@@ -133,14 +133,14 @@ struct FirstRunSetupView: View {
 
       Picker("远端平台", selection: repositoryProviderBinding) {
         ForEach(RepositoryProvider.allCases) { provider in
-          Text(provider.displayName).tag(provider)
+          Text(provider.localizedDisplayName).tag(provider)
         }
       }
       .pickerStyle(.segmented)
 
       Picker("发布策略", selection: publishStrategyBinding) {
         ForEach(RepositoryPublishStrategy.allCases) { strategy in
-          Text(strategy.displayName).tag(strategy)
+          Text(strategy.localizedDisplayName).tag(strategy)
         }
       }
       .pickerStyle(.radioGroup)

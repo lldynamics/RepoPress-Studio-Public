@@ -68,11 +68,12 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.selectedDraftID, fallbackDraftID)
   }
 
-  func testUpdateDraftMarksWorkbenchUnsavedUntilExplicitSave() throws {
+  func testUpdateDraftMarksWorkbenchUnsavedUntilExplicitSave() async throws {
     let persistenceURL = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     let draft = try XCTUnwrap(store.ensureEditableDraftSelected())
     store.save()
+    await store.waitForPendingSave()
 
     var updated = draft
     updated.bodyMarkdown += "\nabc123"
@@ -81,11 +82,12 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.lastSaveStatus, "有未保存修改")
 
     store.save()
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertTrue(reloaded.drafts.first { $0.id == draft.id }?.bodyMarkdown.contains("abc123") == true)
   }
 
-  func testDeleteDraftByIDRemovesTargetDraftAndPreservesValidSelection() throws {
+  func testDeleteDraftByIDRemovesTargetDraftAndPreservesValidSelection() async throws {
     let persistenceURL = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     let profile = store.activeProfile
@@ -104,6 +106,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
 
     XCTAssertEqual(store.drafts.map(\.id), [third.id])
     XCTAssertEqual(store.selectedDraftID, third.id)
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.drafts.map(\.id), [third.id])
@@ -131,7 +134,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertNil(store.recentlyDeletedProfile)
   }
 
-  func testRelatedArticleSuggestionsReturnCurrentDraftOutgoingLinksOnly() throws {
+  func testRelatedArticleSuggestionsReturnCurrentDraftOutgoingLinksOnly() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let profile = store.activeProfile
     let sourceID = UUID()
@@ -168,6 +171,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
       status: .published
     )
     store.setDrafts([source, target, unrelated])
+    await store.refreshSiteMaintenanceSnapshot(force: true)
 
     let suggestions = store.relatedArticleSuggestions(for: source)
 
@@ -416,7 +420,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertTrue(prompt.contains("发布路径：src/content/blog/astro-article.mdx"))
   }
 
-  func testFocusDraftSwitchesProfileAndRefreshesPublishingContext() throws {
+  func testFocusDraftSwitchesProfileAndRefreshesPublishingContext() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let originalProfileID = store.activeProfileID
 
@@ -435,6 +439,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     store.selectProfile(originalProfileID)
 
     let didFocus = store.focusDraft(draft.id, section: .contentHealth)
+    await store.publishingStore.waitForPublishPreviewRefresh()
 
     XCTAssertTrue(didFocus)
     XCTAssertEqual(store.activeProfileID, jekyllProfileID)
@@ -646,6 +651,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.localGitPublishResult?.mode, .directCommit)
     XCTAssertEqual(store.localGitPublishResult?.branchName, "main")
     XCTAssertEqual(store.releaseRecords.first?.kind, .directCommit)
+    XCTAssertEqual(store.drafts.first?.repositoryPath, "content/posts/preferred-direct.md")
     XCTAssertEqual(try git(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL), "main")
   }
 
@@ -684,6 +690,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(result.mode, .reviewBranch)
     XCTAssertEqual(result.branchName, "publish/preferred-review-20260829")
     XCTAssertEqual(store.releaseRecords.first?.kind, .reviewBranch)
+    XCTAssertNil(store.drafts.first?.repositoryPath)
     XCTAssertEqual(try git(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL), result.branchName)
   }
 

@@ -10,7 +10,6 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
   case generalDrafts
   case maintenance
   case releaseHistory
-  case releaseReadiness
 
   public var id: String { rawValue }
 
@@ -46,8 +45,6 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
       return "photo.on.rectangle"
     case .releaseHistory:
       return "clock.arrow.circlepath"
-    case .releaseReadiness:
-      return "checklist.checked"
     }
   }
 
@@ -71,8 +68,6 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
       return "8"
     case .releaseHistory:
       return "9"
-    case .releaseReadiness:
-      return "0"
     }
   }
 
@@ -81,11 +76,68 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
   }
 }
 
+public enum WorkspaceArea: String, CaseIterable, Identifiable, Sendable {
+  case writing
+  case publishing
+  case site
+
+  public var id: String { rawValue }
+
+  public var localizationKey: String {
+    "workspace.area.\(rawValue)"
+  }
+
+  public var systemImage: String {
+    switch self {
+    case .writing:
+      return "square.and.pencil"
+    case .publishing:
+      return "paperplane"
+    case .site:
+      return "globe"
+    }
+  }
+
+  public var sections: [WorkspaceSection] {
+    switch self {
+    case .writing:
+      return [.writing, .ai, .images, .generalDrafts]
+    case .publishing:
+      return [.sync, .contentHealth, .releaseHistory]
+    case .site:
+      return [.siteStarter, .maintenance]
+    }
+  }
+
+  public var defaultSection: WorkspaceSection {
+    switch self {
+    case .writing:
+      return .writing
+    case .publishing:
+      return .sync
+    case .site:
+      return .siteStarter
+    }
+  }
+}
+
+public extension WorkspaceSection {
+  var area: WorkspaceArea {
+    switch self {
+    case .writing, .ai, .images, .generalDrafts:
+      return .writing
+    case .sync, .contentHealth, .releaseHistory:
+      return .publishing
+    case .siteStarter, .maintenance:
+      return .site
+    }
+  }
+}
+
 public enum WorkspaceNavigationSurface: String, CaseIterable, Sendable {
   case topBar
   case commandMenu
   case sidebarList
-  case productReadiness
 }
 
 public enum WorkspaceContextSidebarMode: String, Sendable {
@@ -93,6 +145,43 @@ public enum WorkspaceContextSidebarMode: String, Sendable {
   case contentHealthFilters
   case repositoryStages
   case none
+}
+
+public enum WorkspaceCenterSurface: String, CaseIterable, Sendable {
+  case editor
+  case siteStarter
+  case repository
+  case images
+  case contentHealth
+  case aiChat
+  case generalDrafts
+  case maintenance
+  case releaseHistory
+}
+
+public extension WorkspaceSection {
+  var centerSurface: WorkspaceCenterSurface {
+    switch self {
+    case .writing: .editor
+    case .siteStarter: .siteStarter
+    case .sync: .repository
+    case .images: .images
+    case .contentHealth: .contentHealth
+    case .ai: .aiChat
+    case .generalDrafts: .generalDrafts
+    case .maintenance: .maintenance
+    case .releaseHistory: .releaseHistory
+    }
+  }
+
+  var requiresEditableDraftForCenterSurface: Bool {
+    switch centerSurface {
+    case .siteStarter, .aiChat, .generalDrafts, .maintenance:
+      false
+    case .editor, .repository, .images, .contentHealth, .releaseHistory:
+      true
+    }
+  }
 }
 
 public extension WorkspaceSection {
@@ -109,8 +198,7 @@ public extension WorkspaceSection {
          .ai,
          .generalDrafts,
          .maintenance,
-         .releaseHistory,
-         .releaseReadiness:
+         .releaseHistory:
       return .none
     }
   }
@@ -138,46 +226,46 @@ public struct WorkspaceNavigationItem: Identifiable, Hashable, Sendable {
 }
 
 public enum WorkspaceVisibilityPolicy {
+  public static let hiddenNavigationSections: [WorkspaceSection] = [
+    .maintenance,
+    .releaseHistory,
+  ]
+
   public static let dailyTopBarSections = WorkspaceSection.allCases.filter { section in
     section != .writing
       && section != .ai
       && section != .siteStarter
       && section != .generalDrafts
-      && section != .maintenance
-      && section != .releaseReadiness
+      && !hiddenNavigationSections.contains(section)
   }
 
   public static let commandMenuPrimarySections = WorkspaceSection.allCases.filter { section in
     section != .ai
       && section != .siteStarter
       && section != .generalDrafts
-      && section != .maintenance
-      && section != .releaseReadiness
+      && !hiddenNavigationSections.contains(section)
   }
 
   public static let secondaryEntrySections: [WorkspaceSection] = [
     .siteStarter,
     .generalDrafts,
-    .maintenance
   ]
 
-  public static let developerDiagnosticsSections: [WorkspaceSection] = [
-    .releaseReadiness
-  ]
-
-  public static let productionRailSections = WorkspaceSection.allCases.filter { section in
-    !developerDiagnosticsSections.contains(section)
-  }
-
-  public static let productReadinessSections = WorkspaceSection.allCases
 }
 
 public enum WorkspaceNavigationPresentation {
   public static let defaultSection: WorkspaceSection = .writing
+  public static let primaryAreas = WorkspaceArea.allCases.filter { !primarySections(in: $0).isEmpty }
   public static let topBarItems = items(for: .topBar)
   public static let commandMenuItems = items(for: .commandMenu)
   public static let secondaryEntryItems = WorkspaceVisibilityPolicy.secondaryEntrySections.map(WorkspaceNavigationItem.init(section:))
-  public static let productReadinessSections = WorkspaceVisibilityPolicy.productReadinessSections
+
+  public static func primarySections(in area: WorkspaceArea) -> [WorkspaceSection] {
+    area.sections.filter {
+      !WorkspaceVisibilityPolicy.secondaryEntrySections.contains($0)
+        && !WorkspaceVisibilityPolicy.hiddenNavigationSections.contains($0)
+    }
+  }
 
   public static func sections(for surface: WorkspaceNavigationSurface) -> [WorkspaceSection] {
     switch surface {
@@ -185,8 +273,6 @@ public enum WorkspaceNavigationPresentation {
       return WorkspaceVisibilityPolicy.dailyTopBarSections
     case .commandMenu:
       return WorkspaceVisibilityPolicy.commandMenuPrimarySections
-    case .productReadiness:
-      return WorkspaceVisibilityPolicy.productReadinessSections
     case .sidebarList:
       return []
     }

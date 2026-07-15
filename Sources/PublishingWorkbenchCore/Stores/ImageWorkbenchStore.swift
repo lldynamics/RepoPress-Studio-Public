@@ -11,9 +11,19 @@ public final class ImageWorkbenchStore: ObservableObject {
   private var imageBatchCancellationToken: ImageProcessingCancellationToken?
   private var imageBatchOperationID: UUID?
   private var imageBatchDraftBaselines: [UUID: DraftOperationBaseline] = [:]
+  private var imageReportTask: Task<ImageWorkbenchReport, Error>?
+  private var imageReportGeneration: UInt64 = 0
+  private var imageReportBaseline: ImageWorkbenchReportInputSignature?
+  private var siteSummaryTask: Task<ImageWorkbenchSiteSummary, Error>?
+  private var siteSummaryGeneration: UInt64 = 0
+  private var siteSummaryBaseline: ImageWorkbenchSiteSummaryInputSignature?
 
   @Published public private(set) var imageBatchProgress: ImageBatchProgress?
   @Published public private(set) var isImageBatchProcessing = false
+  @Published public private(set) var backgroundImageReport: ImageWorkbenchReport?
+  @Published public private(set) var imageReportLoadingDraftID: UUID?
+  @Published public private(set) var backgroundSiteSummary: ImageWorkbenchSiteSummary?
+  @Published public private(set) var isSiteSummaryLoading = false
 
   init(
     store: WorkbenchStore,
@@ -170,7 +180,7 @@ public final class ImageWorkbenchStore: ObservableObject {
     } else {
       try? FileManager.default.removeItem(at: result.outputDirectory)
     }
-    refreshImageWorkbenchReport()
+    scheduleImageWorkbenchCachesRefresh(force: true)
 
     let message: String
     if result.optimizedCount == 0 {
@@ -207,17 +217,181 @@ public final class ImageWorkbenchStore: ObservableObject {
   public func refreshImageWorkbenchReport() {
     guard let selectedDraft else {
       imageWorkbenchReport = nil
+      backgroundImageReport = nil
+      imageReportBaseline = nil
       return
     }
 
-    imageWorkbenchReport = imageWorkbenchService.report(
+    let profile = profile(for: selectedDraft)
+    let report = imageWorkbenchService.report(
       draft: selectedDraft,
-      profile: profile(for: selectedDraft)
+      profile: profile
+    )
+    imageWorkbenchReport = report
+    backgroundImageReport = report
+    imageReportBaseline = ImageWorkbenchReportInputSignature(
+      draft: selectedDraft,
+      profile: profile
     )
   }
 
   public func imageWorkbenchReport(for draft: ArticleDraft) -> ImageWorkbenchReport {
     imageWorkbenchService.report(draft: draft, profile: profile(for: draft))
+  }
+
+  public func cachedImageWorkbenchReport(for draft: ArticleDraft) -> ImageWorkbenchReport? {
+    let signature = ImageWorkbenchReportInputSignature(
+      draft: draft,
+      profile: profile(for: draft)
+    )
+    guard imageReportBaseline == signature,
+          backgroundImageReport?.draftID == draft.id else {
+      return nil
+    }
+    return backgroundImageReport
+  }
+
+  public func isImageWorkbenchReportLoading(for draft: ArticleDraft) -> Bool {
+    imageReportLoadingDraftID == draft.id
+  }
+
+  public func refreshImageWorkbenchReportInBackground(
+    for draft: ArticleDraft,
+    force: Bool = false
+  ) async {
+    // The async operation keeps ImageWorkbenchStore alive. Keep its root owner
+    // alive for the same lifetime as well; otherwise the unowned back-reference
+    // can become dangling while the file-backed report is suspended.
+    let owningStore = store
+    let profile = owningStore.profile(for: draft)
+    let signature = ImageWorkbenchReportInputSignature(draft: draft, profile: profile)
+    if !force, cachedImageWorkbenchReport(for: draft) != nil {
+      return
+    }
+
+    imageReportTask?.cancel()
+    imageReportGeneration &+= 1
+    let generation = imageReportGeneration
+    imageReportLoadingDraftID = draft.id
+    owningStore.imageWorkbenchBackgroundStateDidChange()
+
+    let service = imageWorkbenchService
+    let task = Task {
+      try await service.reportAsync(draft: draft, profile: profile)
+    }
+    imageReportTask = task
+    let result = await withTaskCancellationHandler {
+      await task.result
+    } onCancel: {
+      task.cancel()
+    }
+
+    guard generation == imageReportGeneration else { return }
+    imageReportTask = nil
+    imageReportLoadingDraftID = nil
+
+    guard let currentDraft = owningStore.drafts.first(where: { $0.id == draft.id }),
+          ImageWorkbenchReportInputSignature(
+            draft: currentDraft,
+            profile: owningStore.profile(for: currentDraft)
+          ) == signature,
+          case .success(let report) = result else {
+      owningStore.imageWorkbenchBackgroundStateDidChange()
+      return
+    }
+
+    imageReportBaseline = signature
+    backgroundImageReport = report
+    if owningStore.selectedDraft?.id == draft.id {
+      imageWorkbenchReport = report
+    }
+    owningStore.imageWorkbenchBackgroundStateDidChange()
+  }
+
+  public func cachedImageWorkbenchSiteSummary() -> ImageWorkbenchSiteSummary? {
+    let signature = ImageWorkbenchSiteSummaryInputSignature(
+      drafts: visibleDrafts,
+      profile: store.activeProfile
+    )
+    guard siteSummaryBaseline == signature else {
+      return nil
+    }
+    return backgroundSiteSummary
+  }
+
+  public func refreshImageWorkbenchSiteSummaryInBackground(force: Bool = false) async {
+    // See the per-draft refresh above. The site-summary child task may outlive
+    // the view/root that scheduled it, so retain the owner across every await.
+    let owningStore = store
+    let drafts = owningStore.visibleDrafts
+    let profile = owningStore.activeProfile
+    let signature = ImageWorkbenchSiteSummaryInputSignature(drafts: drafts, profile: profile)
+    if !force, cachedImageWorkbenchSiteSummary() != nil {
+      return
+    }
+
+    siteSummaryTask?.cancel()
+    siteSummaryGeneration &+= 1
+    let generation = siteSummaryGeneration
+    isSiteSummaryLoading = true
+    owningStore.imageWorkbenchBackgroundStateDidChange()
+
+    let service = imageWorkbenchService
+    let task = Task {
+      try await service.siteSummaryAsync(drafts: drafts, profile: profile)
+    }
+    siteSummaryTask = task
+    let result = await withTaskCancellationHandler {
+      await task.result
+    } onCancel: {
+      task.cancel()
+    }
+
+    guard generation == siteSummaryGeneration else { return }
+    siteSummaryTask = nil
+    isSiteSummaryLoading = false
+
+    guard ImageWorkbenchSiteSummaryInputSignature(
+      drafts: owningStore.visibleDrafts,
+      profile: owningStore.activeProfile
+    ) == signature,
+      case .success(let summary) = result else {
+      owningStore.imageWorkbenchBackgroundStateDidChange()
+      return
+    }
+
+    siteSummaryBaseline = signature
+    backgroundSiteSummary = summary
+    owningStore.imageWorkbenchBackgroundStateDidChange()
+  }
+
+  public func refreshImageWorkbenchCachesInBackground(
+    for draft: ArticleDraft,
+    force: Bool = false
+  ) async {
+    // async-let children start independently. Retain the owner in the parent
+    // task until both have completed so neither child can begin with a dangling
+    // unowned back-reference.
+    let owningStore = store
+    async let reportRefresh: Void = refreshImageWorkbenchReportInBackground(
+      for: draft,
+      force: force
+    )
+    async let summaryRefresh: Void = refreshImageWorkbenchSiteSummaryInBackground(force: force)
+    _ = await (reportRefresh, summaryRefresh)
+    withExtendedLifetime(owningStore) {}
+  }
+
+  private func scheduleImageWorkbenchCachesRefresh(force: Bool = false) {
+    let draft = selectedDraft
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      if let draft {
+        await refreshImageWorkbenchCachesInBackground(for: draft, force: force)
+      } else {
+        await refreshImageWorkbenchSiteSummaryInBackground(force: force)
+      }
+    }
   }
 
   public func imageTextTargetCount(for draft: ArticleDraft, report: ImageWorkbenchReport?) -> Int {
@@ -241,12 +415,12 @@ public final class ImageWorkbenchStore: ObservableObject {
 
     guard changedCount > 0 else {
       imageActionMessage = "没有需要补全的图片元数据。"
-      refreshImageWorkbenchReport()
+      scheduleImageWorkbenchCachesRefresh(force: true)
       return
     }
 
     updateDraft(result.draft)
-    refreshImageWorkbenchReport()
+    scheduleImageWorkbenchCachesRefresh()
     save()
     imageActionMessage = "已补全 \(result.filledAltTextCount) 个 alt、\(result.filledCaptionCount) 个 caption，更新 \(result.updatedMarkdownReferenceCount) 处正文引用。"
   }
@@ -272,13 +446,13 @@ public final class ImageWorkbenchStore: ObservableObject {
 
     guard !updatedDraftsByID.isEmpty else {
       imageActionMessage = "当前 Profile 没有需要补全的图片元数据。"
-      refreshImageWorkbenchReport()
+      scheduleImageWorkbenchCachesRefresh(force: true)
       return
     }
 
     drafts = drafts.map { updatedDraftsByID[$0.id] ?? $0 }
     runPreflight()
-    refreshImageWorkbenchReport()
+    scheduleImageWorkbenchCachesRefresh()
     save()
     imageActionMessage = "已批量补全 \(filledAltTextCount) 个 alt、\(filledCaptionCount) 个 caption，更新 \(updatedMarkdownReferenceCount) 处正文引用。"
   }

@@ -21,14 +21,19 @@ public final class PrivacyMonetizationStore: ObservableObject {
     monetizationState: MonetizationState = .default,
     monetizationMessage: String? = nil,
     latestProFeatureBlockNotice: ProFeatureBlockNotice? = nil,
-    monetizationService: MonetizationService = MonetizationService()
+    monetizationService: MonetizationService = MonetizationService(),
+    entitlementProvider: any ProEntitlementProviding = VerifiedStoreKitEntitlementProvider()
   ) {
     self.monetizationService = monetizationService
     self.privacySettings = privacySettings
     self.isPrivacyLocked = isPrivacyLocked
     self.privacyProtectionEvents = privacyProtectionEvents
     self.privacyLockReason = privacyLockReason
-    self.monetizationState = monetizationState
+    var restoredMonetizationState = monetizationState
+    restoredMonetizationState.entitlement = entitlementProvider.entitlement(
+      restoring: monetizationState.entitlement
+    )
+    self.monetizationState = restoredMonetizationState
     self.monetizationMessage = monetizationMessage
     self.latestProFeatureBlockNotice = latestProFeatureBlockNotice
   }
@@ -38,7 +43,7 @@ public final class PrivacyMonetizationStore: ObservableObject {
   }
 
   public var privacyLockedOperationMessage: String {
-    "工作台已锁定，请先解锁后再继续。"
+    "工作台内容已隐藏，请返回工作台后再继续。"
   }
 
   public var privacyProtectionStatus: PrivacyProtectionStatus {
@@ -188,17 +193,23 @@ public final class PrivacyMonetizationStore: ObservableObject {
     max(0, accessDecision(for: feature).remainingFreeUses ?? 0)
   }
 
-  public func applyProEntitlement(productID: String? = nil, source: ProEntitlementSource, store: WorkbenchStore) {
+  public func applyVerifiedStoreKitEntitlement(productID: String, store: WorkbenchStore) {
     let now = Date()
     monetizationState.entitlement = ProEntitlementState(
       isUnlocked: true,
-      source: source,
+      source: .storeKit,
       productID: productID,
       unlockedAt: monetizationState.entitlement.unlockedAt ?? now,
       lastCheckedAt: now
     )
     latestProFeatureBlockNotice = nil
-    monetizationMessage = source == .storeKit ? "Pro 已通过 App Store 解锁。" : "Pro 已解锁。"
+    monetizationMessage = "Pro 已通过 App Store 解锁。"
+    store.save()
+  }
+
+  func applyEntitlement(from provider: any ProEntitlementProviding, store: WorkbenchStore) {
+    monetizationState.entitlement = provider.entitlement(restoring: monetizationState.entitlement)
+    latestProFeatureBlockNotice = nil
     store.save()
   }
 
@@ -234,30 +245,12 @@ public final class PrivacyMonetizationStore: ObservableObject {
     privacyLockReason = nil
   }
 
-  public func lockPrivacyIfNeededForInactiveScene() {
-    if privacySettings.locksWhenInactive {
-      lockPrivacy(reason: "应用进入非活跃状态，已显示隐私界面遮罩。")
-    }
-  }
-
-  public func showPrivacyMaskIfNeededOnLaunch() {
-    guard privacySettings.requiresUnlockOnLaunch else {
-      return
-    }
-    lockPrivacy(reason: "启动时已显示隐私界面遮罩。")
-    recordPrivacyEvent(.lockedOnLaunch, message: "启动时已显示隐私界面遮罩。")
-  }
-
   public func recordManualPrivacyMaskShown(reason: String?) {
     recordPrivacyEvent(.manualLock, message: reason?.nilIfEmpty ?? "已手动显示隐私界面遮罩。")
   }
 
   public func recordPrivacyMaskRemoved() {
     recordPrivacyEvent(.unlocked, message: "已移除隐私界面遮罩。")
-  }
-
-  public func recordInactivePrivacyMaskShown() {
-    recordPrivacyEvent(.lockedWhenInactive, message: "应用进入非活跃状态，已显示隐私界面遮罩。")
   }
 
   private func recordPrivacyEvent(_ kind: PrivacyProtectionEventKind, message: String) {

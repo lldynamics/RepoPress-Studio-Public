@@ -7,8 +7,8 @@ public protocol RemoteRepositoryHTTPTransport: Sendable {
 public struct URLSessionRemoteRepositoryHTTPTransport: RemoteRepositoryHTTPTransport {
   private let session: URLSession
 
-  public init(session: URLSession = .shared) {
-    self.session = session
+  public init(session: URLSession? = nil) {
+    self.session = session ?? CredentialSafeURLSession.make()
   }
 
   public func data(for request: URLRequest) async throws -> (Data, URLResponse) {

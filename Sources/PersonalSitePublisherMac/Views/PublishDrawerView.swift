@@ -16,8 +16,8 @@ struct PublishDrawerView: View {
       store.ensureEditableDraftSelected()
       store.runPreflight()
       if let draft = store.selectedDraft {
-        store.refreshPublishPreview(for: draft)
-        selectedStep = recommendedStep(for: publishFlowSteps(draft: draft))
+        store.refreshPublishPreviewInBackground(for: draft)
+        selectedStep = recommendedStep(for: publishFlowSteps(draft: draft, issues: store.preflightIssues))
       }
     }
   }
@@ -25,14 +25,15 @@ struct PublishDrawerView: View {
   @ViewBuilder
   private var drawerContent: some View {
     if let draft = store.selectedDraft {
+      let issues = store.preflightIssues
       VStack(spacing: 0) {
         header(draft: draft)
         Divider()
-        publishFlowStepper(draft: draft)
+        publishFlowStepper(draft: draft, issues: issues)
         Divider()
-        publishStepContent(draft: draft)
+        publishStepContent(draft: draft, issues: issues)
         Divider()
-        stepNavigation(draft: draft)
+        stepNavigation(draft: draft, issues: issues)
       }
     } else {
       VStack(spacing: 12) {
@@ -66,6 +67,12 @@ struct PublishDrawerView: View {
 
       Spacer()
 
+      if store.isPublishPreviewRefreshing {
+        ProgressView()
+          .controlSize(.small)
+          .accessibilityLabel("正在刷新发布预览")
+      }
+
       if let message = store.publishActionMessage {
         Text(message)
           .font(.caption)
@@ -75,7 +82,7 @@ struct PublishDrawerView: View {
 
       Button {
         store.runPreflight()
-        store.refreshPublishPreview(for: draft)
+        store.refreshPublishPreviewInBackground(for: draft)
       } label: {
         Label("刷新", systemImage: "arrow.clockwise")
       }
@@ -98,9 +105,10 @@ struct PublishDrawerView: View {
   }
 
   private func publishFlowStepper(
-    draft: ArticleDraft
+    draft: ArticleDraft,
+    issues: [PreflightIssue]
   ) -> some View {
-    let steps = publishFlowSteps(draft: draft)
+    let steps = publishFlowSteps(draft: draft, issues: issues)
 
     return VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .firstTextBaseline) {
@@ -132,12 +140,12 @@ struct PublishDrawerView: View {
   }
 
   @ViewBuilder
-  private func publishStepContent(draft: ArticleDraft) -> some View {
+  private func publishStepContent(draft: ArticleDraft, issues: [PreflightIssue]) -> some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 12) {
         switch selectedStep {
         case .checks:
-          checkResultsCard(draft: draft)
+          checkResultsCard(draft: draft, issues: issues)
         case .diff:
           diffCard(draft: draft)
         case .write:
@@ -158,9 +166,9 @@ struct PublishDrawerView: View {
     .accessibilityLabel("\(selectedStep.title)步骤内容")
   }
 
-  private func stepNavigation(draft: ArticleDraft) -> some View {
+  private func stepNavigation(draft: ArticleDraft, issues: [PreflightIssue]) -> some View {
     let isFinalStep = selectedStep == PublishDrawerFlowCard.allCases.last
-    let finalAction = publishFinalAction(for: draft)
+    let finalAction = publishFinalAction(for: draft, issues: issues)
 
     return VStack(alignment: .leading, spacing: 8) {
       if isFinalStep {
@@ -212,8 +220,10 @@ struct PublishDrawerView: View {
     selectedStep = PublishDrawerFlowCard.allCases[target]
   }
 
-  private func publishFlowSteps(draft: ArticleDraft) -> [PublishDrawerFlowStep] {
-    let issues = store.preflightIssues(for: draft)
+  private func publishFlowSteps(
+    draft: ArticleDraft,
+    issues: [PreflightIssue]
+  ) -> [PublishDrawerFlowStep] {
     let blockingCount = issues.filter { $0.severity == .error }.count
     let warningCount = issues.filter { $0.severity == .warning }.count
     guard let preview = store.cachedLocalPublishPreview(for: draft) else {
@@ -334,8 +344,11 @@ struct PublishDrawerView: View {
     return publishFlowDestination(for: currentStep)
   }
 
-  private func publishFinalAction(for draft: ArticleDraft) -> PublishDrawerFinalAction {
-    let steps = publishFlowSteps(draft: draft)
+  private func publishFinalAction(
+    for draft: ArticleDraft,
+    issues: [PreflightIssue]
+  ) -> PublishDrawerFinalAction {
+    let steps = publishFlowSteps(draft: draft, issues: issues)
     let latestEntry = latestReleaseRecord(for: draft).map { store.releaseLedgerEntry(for: $0) }
 
     if let blocked = steps.first(where: { $0.state == .blocked }) {
@@ -368,7 +381,7 @@ struct PublishDrawerView: View {
     if let latestEntry {
       return PublishDrawerFinalAction(
         title: "稍后继续",
-        summary: "未完成：部署\(latestEntry.status.displayName)。\(latestEntry.statusMessage)",
+        summary: "未完成：部署\(latestEntry.status.localizedDisplayName)。\(latestEntry.statusMessage)",
         systemImage: latestEntry.status.systemImage,
         isDeploymentSuccessful: false
       )
@@ -391,8 +404,10 @@ struct PublishDrawerView: View {
     )
   }
 
-  private func checkResultsCard(draft: ArticleDraft) -> some View {
-    let issues = store.preflightIssues(for: draft)
+  private func checkResultsCard(
+    draft: ArticleDraft,
+    issues: [PreflightIssue]
+  ) -> some View {
     let blocking = issues.filter { $0.severity == .error }
     let warnings = issues.filter { $0.severity == .warning }
 
@@ -458,7 +473,7 @@ struct PublishDrawerView: View {
                 Text(diff.path)
                   .font(.caption.monospaced())
                   .lineLimit(1)
-                Text("\(diff.kind.displayName) · \(diff.status.displayName)")
+                Text("\(diff.kind.localizedDisplayName) · \(diff.status.localizedDisplayName)")
                   .font(.caption2)
                   .foregroundStyle(.secondary)
               }
@@ -623,10 +638,10 @@ struct PublishDrawerView: View {
     let readiness = store.localPublishReadiness
 
     return PublishDrawerCard(title: "提交方式", systemImage: "arrow.triangle.branch") {
-      PublishDrawerInfoRow(title: "本地策略", value: profile.repositoryPublishStrategy.displayName, systemImage: profile.repositoryPublishStrategy == .direct ? "checkmark.seal" : "arrow.triangle.branch")
-      PublishDrawerInfoRow(title: "线上策略", value: mode.displayName, systemImage: "network")
-      PublishDrawerInfoRow(title: "写入", value: readiness?.writeReadiness.displayName ?? "待刷新", systemImage: readiness?.writeReadiness.systemImage ?? "clock")
-      PublishDrawerInfoRow(title: "提交", value: readiness?.commitReadiness.displayName ?? "待刷新", systemImage: readiness?.commitReadiness.systemImage ?? "clock")
+      PublishDrawerInfoRow(title: "本地策略", value: profile.repositoryPublishStrategy.localizedDisplayName, systemImage: profile.repositoryPublishStrategy == .direct ? "checkmark.seal" : "arrow.triangle.branch")
+      PublishDrawerInfoRow(title: "线上策略", value: mode.localizedDisplayName, systemImage: "network")
+      PublishDrawerInfoRow(title: "写入", value: readiness?.writeReadiness.localizedDisplayName ?? "待刷新", systemImage: readiness?.writeReadiness.systemImage ?? "clock")
+      PublishDrawerInfoRow(title: "提交", value: readiness?.commitReadiness.localizedDisplayName ?? "待刷新", systemImage: readiness?.commitReadiness.systemImage ?? "clock")
 
       HStack(spacing: 8) {
         Button {
@@ -641,10 +656,10 @@ struct PublishDrawerView: View {
         Button {
           commitDraftUsingPreferredStrategy(draft)
         } label: {
-          Label(profile.repositoryPublishStrategy.displayName, systemImage: profile.repositoryPublishStrategy == .direct ? "checkmark.seal" : "arrow.triangle.branch")
+          Label(profile.repositoryPublishStrategy.localizedDisplayName, systemImage: profile.repositoryPublishStrategy == .direct ? "checkmark.seal" : "arrow.triangle.branch")
         }
         .disabled(readiness?.canCommit != true || store.isLocalRepositoryMutationRunning)
-        .accessibilityLabel("提交方式：\(profile.repositoryPublishStrategy.displayName)")
+        .accessibilityLabel("提交方式：\(profile.repositoryPublishStrategy.localizedDisplayName)")
         .accessibilityHint(readiness?.canCommit == true ? "按当前策略提交文章" : "当前不能提交")
       }
       .controlSize(.small)
@@ -689,9 +704,9 @@ struct PublishDrawerView: View {
 
     return PublishDrawerCard(title: "线上发布预览", systemImage: "network") {
       if let preview {
-      PublishDrawerInfoRow(title: "状态", value: preview.readiness.displayName, systemImage: preview.readiness.systemImage)
+      PublishDrawerInfoRow(title: "状态", value: preview.readiness.localizedDisplayName, systemImage: preview.readiness.systemImage)
       PublishDrawerInfoRow(title: "远端", value: preview.repositoryName, systemImage: preview.provider == .github ? "point.3.connected.trianglepath.dotted" : "point.3.filled.connected.trianglepath.dotted")
-      PublishDrawerInfoRow(title: "模式", value: preview.mode.displayName, systemImage: preview.mode == .directCommit ? "arrow.up.circle" : "arrow.triangle.pull")
+      PublishDrawerInfoRow(title: "模式", value: preview.mode.localizedDisplayName, systemImage: preview.mode == .directCommit ? "arrow.up.circle" : "arrow.triangle.pull")
       PublishDrawerInfoRow(title: "目标", value: preview.targetBranch, systemImage: "arrow.down.to.line")
       PublishDrawerInfoRow(title: "分支", value: preview.branchName, systemImage: "arrow.triangle.branch")
       PublishDrawerInfoRow(title: "权限", value: preview.accessSummary, systemImage: preview.hasToken ? "person.badge.key" : "key")
@@ -727,10 +742,10 @@ struct PublishDrawerView: View {
         Button {
           publishDraftOnline(draft)
         } label: {
-          Label(preview.mode.displayName, systemImage: preview.mode == .directCommit ? "arrow.up.circle" : "arrow.triangle.pull")
+          Label(preview.mode.localizedDisplayName, systemImage: preview.mode == .directCommit ? "arrow.up.circle" : "arrow.triangle.pull")
         }
         .disabled(!preview.canPublish || store.isRemoteRepositoryPublishing)
-        .accessibilityLabel("线上发布：\(preview.mode.displayName)")
+        .accessibilityLabel("线上发布：\(preview.mode.localizedDisplayName)")
         .accessibilityHint(preview.canPublish ? "执行线上发布确认流程" : "当前线上发布预览未通过")
 
         Button {
@@ -755,7 +770,7 @@ struct PublishDrawerView: View {
       PublishDrawerCard(title: "发布进度", systemImage: "chart.bar") {
         PublishDrawerInfoRow(
           title: "阶段",
-          value: progress.stage.displayName,
+          value: progress.stage.localizedDisplayName,
           systemImage: progress.stage == .failed ? "xmark.octagon" : "flag.checkered"
         )
         PublishDrawerInfoRow(
@@ -832,7 +847,7 @@ struct PublishDrawerView: View {
       .accessibilityLabel("复制部署轮询清单")
 
       if let entry {
-        PublishDrawerInfoRow(title: "最近记录", value: entry.status.displayName, systemImage: entry.status.systemImage)
+        PublishDrawerInfoRow(title: "最近记录", value: entry.status.localizedDisplayName, systemImage: entry.status.systemImage)
         Text(entry.record.title)
           .font(.caption.weight(.medium))
           .lineLimit(1)
@@ -844,7 +859,7 @@ struct PublishDrawerView: View {
         if let deploymentStatus = entry.deploymentStatus {
           PublishDrawerInfoRow(
             title: "校验",
-            value: deploymentStatus.level.displayName,
+            value: deploymentStatus.level.localizedDisplayName,
             systemImage: deploymentStatus.level.systemImage
           )
           PublishDrawerInfoRow(
@@ -884,33 +899,33 @@ struct PublishDrawerView: View {
   private func writeDraftToRepository(_ draft: ArticleDraft) {
     let currentSection = store.selectedSection
     _ = store.focusDraft(draft.id)
-    store.refreshPublishPreview(for: draft)
+    store.refreshPublishPreviewInBackground(for: draft)
     Task {
       await store.writeSelectedDraftToLocalRepository()
       store.selectSection(currentSection)
-      store.refreshPublishPreview(for: draft)
+      store.refreshPublishPreviewInBackground(for: draft)
     }
   }
 
   private func commitDraftUsingPreferredStrategy(_ draft: ArticleDraft) {
     let currentSection = store.selectedSection
     _ = store.focusDraft(draft.id)
-    store.refreshPublishPreview(for: draft)
+    store.refreshPublishPreviewInBackground(for: draft)
     Task {
       await store.commitSelectedDraftUsingPreferredStrategy()
     }
     store.selectSection(currentSection)
-    store.refreshPublishPreview(for: draft)
+    store.refreshPublishPreviewInBackground(for: draft)
   }
 
   private func publishDraftOnline(_ draft: ArticleDraft) {
     let currentSection = store.selectedSection
     _ = store.focusDraft(draft.id)
-    store.refreshPublishPreview(for: draft)
+    store.refreshPublishPreviewInBackground(for: draft)
     Task {
       await store.publishSelectedDraftOnlineUsingPreferredStrategy()
       store.selectSection(currentSection)
-      store.refreshPublishPreview(for: draft)
+      store.refreshPublishPreviewInBackground(for: draft)
     }
   }
 

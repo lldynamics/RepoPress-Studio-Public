@@ -25,17 +25,15 @@ make_fixture() {
   cat >"$TMP_DIR/docs/privacy-support-copy.md" <<'DOC'
 # Privacy And Support Copy Review
 
-The privacy lock covers launch protection and background auto lock before showing workbench content.
+Manual quick hide covers workbench content until the user returns.
 Private-content masking hides private article titles from list and release surfaces.
 Do not include local paths, access tokens, authorization headers, or private article body text in support requests.
 Use redacted screenshots for support. Online publishing, AI requests, deployment checks, and StoreKit may contact external services.
 DOC
 
   cat >"$TMP_DIR/Sources/PublishingWorkbenchCore/Models/PrivacyProtectionModels.swift" <<'SWIFT'
-let requiresUnlockOnLaunch = true
-let locksWhenInactive = true
 let masksPrivateContent = true
-let checklist = "设置窗口锁定时禁用设置项"
+let checklist = "工作台隐藏时禁用设置项"
 SWIFT
 
   cat >"$TMP_DIR/Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" <<'SWIFT'
@@ -46,13 +44,8 @@ struct ProtectedSettingsView {
 SWIFT
 
   cat >"$TMP_DIR/Sources/PersonalSitePublisherMac/Views/ContentView.swift" <<'SWIFT'
-func lockPrivacyIfNeededForInactiveScene() {}
 let overlay = "PrivacyLockOverlay(store: store)"
-SWIFT
-
-  cat >"$TMP_DIR/Sources/PersonalSitePublisherMac/Views/DraftEditorWindowView.swift" <<'SWIFT'
-func lockPrivacyIfNeededForInactiveScene() {}
-let overlay = "PrivacyLockOverlay(store: store)"
+let command = "快速隐藏"
 SWIFT
 
   cat >"$TMP_DIR/Sources/PersonalSitePublisherMac/Views/SharedViews.swift" <<'SWIFT'

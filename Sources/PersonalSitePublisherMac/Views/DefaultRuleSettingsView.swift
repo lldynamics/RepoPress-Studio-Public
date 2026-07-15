@@ -18,16 +18,20 @@ struct DefaultRuleSettingsView: View {
         scanRepositoryOnLaunch: $scanRepositoryOnLaunch
       )
 
-      DefaultRuleSiteSection(
-        activeProfileBinding: activeProfileBinding,
-        siteKindBinding: siteKindBinding
-      )
+      DisclosureGroup {
+        DefaultRuleSiteSection(
+          activeProfileBinding: activeProfileBinding,
+          siteKindBinding: siteKindBinding
+        )
 
-      DefaultRulePathSection(
-        activeProfileBinding: activeProfileBinding,
-        shouldFocusPaths: healthDestination == .defaultRules,
-        navigationRequestID: healthNavigationRequestID
-      )
+        DefaultRulePathSection(
+          activeProfileBinding: activeProfileBinding,
+          shouldFocusPaths: healthDestination == .defaultRules,
+          navigationRequestID: healthNavigationRequestID
+        )
+      } label: {
+        Label("站点高级规则", systemImage: "gearshape.2")
+      }
     }
     .formStyle(.grouped)
     .padding()

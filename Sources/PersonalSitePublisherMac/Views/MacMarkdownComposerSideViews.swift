@@ -10,10 +10,10 @@ struct SelectionEditPreviewPanel: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
-        Label("\(preview.kind.displayName)预览", systemImage: "doc.text.magnifyingglass")
+        Label("\(preview.kind.localizedDisplayName)预览", systemImage: "doc.text.magnifyingglass")
           .font(.caption.weight(.semibold))
           .foregroundStyle(.secondary)
-        Text(preview.application.displayName)
+        Text(preview.application.localizedDisplayName)
           .font(.caption2.weight(.medium))
           .foregroundStyle(.secondary)
           .padding(.horizontal, 6)
@@ -111,14 +111,6 @@ struct MarkdownShortcutHelpPanel: View {
         ("打开 AI 对话", "通过发布控制台菜单进入"),
         ("复制上下文 Prompt", "通过发布控制台菜单进入")
       ]
-    ),
-    (
-      "会话历史（仅内存）",
-      [
-        ("查看会话历史", "⌥⌘Z"),
-        ("撤销会话快照", "⇧⌥⌘Z"),
-        ("恢复会话快照", "⌃⇧⌥⌘Z")
-      ]
     )
   ]
 
@@ -153,95 +145,5 @@ struct MarkdownShortcutHelpPanel: View {
       }
     }
     .frame(width: 430, height: 360)
-  }
-}
-
-struct MarkdownRevisionHistoryPanel: View {
-  let revisions: [MarkdownEditorRevisionSnapshot]
-  let currentIndex: Int
-  let onRestore: (Int) -> Void
-  let onResetToCurrent: () -> Void
-
-  @Environment(\.dismiss) private var dismiss
-
-  var body: some View {
-    NavigationStack {
-      List {
-        ForEach(Array(revisions.enumerated()), id: \.element.id) { index, revision in
-          VStack(alignment: .leading, spacing: 6) {
-            HStack {
-              Text("#\(revisions.count - index)")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-              Spacer()
-              Text(revision.createdAt.workbenchShortText)
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
-            }
-
-            Text(revision.previewTitle)
-              .font(.caption)
-              .lineLimit(1)
-
-            Text("\(revision.characterCount) 字符 · \(revision.wordCount) 词 · \(revision.lineCount) 行")
-              .font(.caption2)
-              .foregroundStyle(.secondary)
-
-            if index != currentIndex {
-              Button("恢复") {
-                onRestore(index)
-                dismiss()
-              }
-              .buttonStyle(.bordered)
-              .font(.caption)
-              .padding(.top, 2)
-            } else {
-              Text("当前会话快照")
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(WorkbenchTheme.success)
-            }
-          }
-          .padding(.vertical, 4)
-        }
-      }
-      .navigationTitle("会话历史（仅本次打开）")
-      .toolbar {
-        ToolbarItem(placement: .primaryAction) {
-          Button("仅保留当前会话快照") {
-            onResetToCurrent()
-          }
-          .disabled(revisions.count <= 1)
-          .help("清空本次会话的内存快照；不会影响已保存的数据")
-        }
-
-        ToolbarItem(placement: .cancellationAction) {
-          Button("关闭") {
-            dismiss()
-          }
-        }
-      }
-    }
-    .frame(width: 520, height: 420)
-  }
-}
-
-struct MarkdownEditorRevisionSnapshot: Identifiable {
-  let id: UUID
-  let createdAt: Date
-  let label: String?
-  let body: String
-  let selectedRange: NSRange
-  let characterCount: Int
-  let wordCount: Int
-  let lineCount: Int
-
-  var previewTitle: String {
-    let prefix = label ?? "会话快照"
-    let preview = body.trimmingCharacters(in: .whitespacesAndNewlines)
-      .prefix(50)
-    if preview.isEmpty {
-      return "\(prefix)：空内容"
-    }
-    return "\(prefix)：\(preview)"
   }
 }

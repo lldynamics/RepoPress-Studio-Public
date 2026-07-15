@@ -5,9 +5,67 @@ extension WorkbenchStore {
     isSiteMaintenanceSnapshotStaleState()
   }
 
-  public func refreshSiteMaintenanceSnapshot() {
-    let report = publishingStore.makeSiteMaintenanceSnapshotReport(store: self)
-    replaceSiteMaintenanceSnapshot(report: report)
+  public var isSiteMaintenanceSnapshotRefreshing: Bool {
+    siteMaintenanceStore.isRefreshing
+  }
+
+  public func refreshSiteMaintenanceSnapshot(force: Bool = false) async {
+    siteMaintenanceRefreshScheduleTask?.cancel()
+    siteMaintenanceRefreshScheduleTask = nil
+
+    let input = publishingStore.siteMaintenanceReportInput(store: self)
+    let signature = input.signature
+    if !force, siteMaintenanceStore.hasCurrentSnapshot(for: signature) {
+      return
+    }
+
+    siteMaintenanceRefreshTask?.cancel()
+    siteMaintenanceRefreshGeneration &+= 1
+    let generation = siteMaintenanceRefreshGeneration
+    siteMaintenanceStore.setRefreshing(true)
+
+    let service = publishingStore.siteMaintenanceService
+    let task = Task {
+      try await service.reportAsync(
+        drafts: input.drafts,
+        profile: input.profile,
+        releaseRecords: input.releaseRecords,
+        maintenanceOperationRecords: input.maintenanceOperationRecords,
+        now: input.now
+      )
+    }
+    siteMaintenanceRefreshTask = task
+    let result = await withTaskCancellationHandler {
+      await task.result
+    } onCancel: {
+      task.cancel()
+    }
+
+    guard generation == siteMaintenanceRefreshGeneration else { return }
+    siteMaintenanceRefreshTask = nil
+    siteMaintenanceStore.setRefreshing(false)
+
+    let currentInput = publishingStore.siteMaintenanceReportInput(store: self)
+    guard currentInput.signature == signature else {
+      scheduleSiteMaintenanceSnapshotRefresh()
+      return
+    }
+    guard case .success(let report) = result else { return }
+    replaceSiteMaintenanceSnapshot(report: report, inputSignature: signature)
+  }
+
+  func scheduleSiteMaintenanceSnapshotRefresh() {
+    siteMaintenanceRefreshScheduleTask?.cancel()
+    siteMaintenanceRefreshScheduleTask = Task { @MainActor [weak self] in
+      do {
+        try await Task.sleep(for: .milliseconds(250))
+      } catch {
+        return
+      }
+      guard let self, !Task.isCancelled else { return }
+      self.siteMaintenanceRefreshScheduleTask = nil
+      await self.refreshSiteMaintenanceSnapshot()
+    }
   }
 
   @discardableResult
@@ -21,55 +79,22 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func recordContentPerformanceSnapshot(
-    for draft: ArticleDraft,
-    pageViews: Int,
-    visitors: Int,
-    sourceName: String = "手动记录"
-  ) -> ContentPerformanceSnapshot {
-    let snapshot = publishingStore.recordContentPerformanceSnapshot(
-      for: draft,
-      pageViews: pageViews,
-      visitors: visitors,
-      sourceName: sourceName,
+  public func applySuggestedMaintenanceSchedule() async -> Int {
+    await refreshSiteMaintenanceSnapshot()
+    guard let report = siteMaintenanceSnapshot?.report else { return 0 }
+    let appliedCount = publishingStore.applySuggestedMaintenanceSchedule(
+      report: report,
       store: self
     )
-    invalidateSiteMaintenanceSnapshot()
-    return snapshot
-  }
-
-  @discardableResult
-  public func importContentPerformanceCSV(
-    _ data: Data,
-    sourceName: String = "CSV 导入"
-  ) throws -> ContentPerformanceCSVImportReport {
-    let report = try publishingStore.importContentPerformanceCSV(data, sourceName: sourceName, store: self)
-    invalidateSiteMaintenanceSnapshot()
-    return report
-  }
-
-  @discardableResult
-  public func importContentPerformanceCSV(
-    from sourceURL: URL,
-    sourceName: String = "CSV 导入"
-  ) async throws -> ContentPerformanceCSVImportReport {
-    let report = try await publishingStore.importContentPerformanceCSV(
-      from: sourceURL,
-      sourceName: sourceName,
-      store: self
-    )
-    invalidateSiteMaintenanceSnapshot()
-    return report
-  }
-
-  @discardableResult
-  public func applySuggestedMaintenanceSchedule() -> Int {
-    let appliedCount = publishingStore.applySuggestedMaintenanceSchedule(store: self)
     invalidateSiteMaintenanceSnapshot()
     return appliedCount
   }
 
   public func relatedArticleSuggestions(for draft: ArticleDraft, limit: Int = 5) -> [SiteRelationSuggestion] {
-    publishingStore.relatedArticleSuggestions(for: draft, limit: limit)
+    siteMaintenanceStore.relatedArticleSuggestions(
+      for: draft.id,
+      profileID: profile(for: draft).id,
+      limit: limit
+    )
   }
 }

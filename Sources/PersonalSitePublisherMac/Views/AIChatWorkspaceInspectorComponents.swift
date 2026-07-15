@@ -3,7 +3,11 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct AIChatContextInspectorView: View {
-  @ObservedObject var store: WorkbenchStore
+  @ObservedObject private var ai: WorkbenchAIFeatureFacade
+
+  init(store: WorkbenchStore) {
+    _ai = ObservedObject(wrappedValue: store.ai)
+  }
 
   var body: some View {
     ScrollView {
@@ -11,24 +15,28 @@ struct AIChatContextInspectorView: View {
         .padding(16)
     }
     .background(.bar)
+    .task(id: imageReportRefreshID) {
+      guard let draft = ai.selectedChatDraft else { return }
+      await ai.refreshChatImageWorkbenchReportInBackground(for: draft)
+    }
   }
 
   private var state: AIChatContextInspectorState {
-    guard let draft = store.ai.selectedChatDraft else {
+    guard let draft = ai.selectedChatDraft else {
       return AIChatContextInspectorState(draft: nil)
     }
 
-    let profile = store.ai.chatProfile(for: draft)
-    let issues = store.ai.chatPreflightIssues(for: draft)
-    let imageReport = store.ai.chatImageWorkbenchReport(for: draft)
-    let package = store.ai.chatPublishingPackage(for: draft)
-    let focusedParagraph = store.ai.focusedChatParagraph(for: draft)
-    let relationSuggestions = store.ai.relatedChatArticleSuggestions(for: draft, limit: 5)
+    let profile = ai.chatProfile(for: draft)
+    let issues = ai.chatPreflightIssues(for: draft)
+    let imageReport = ai.cachedChatImageWorkbenchReport(for: draft)
+    let package = ai.chatPublishingPackage(for: draft)
+    let focusedParagraph = ai.focusedChatParagraph(for: draft)
+    let relationSuggestions = ai.relatedChatArticleSuggestions(for: draft, limit: 5)
     let contextDetails = AIPublishingChatConversationPresentation.contextDetails(
       profile: profile,
       draft: draft,
-      visibleDrafts: store.ai.chatVisibleDrafts,
-      contextMode: store.ai.chatContextMode,
+      visibleDrafts: ai.chatVisibleDrafts,
+      contextMode: ai.chatContextMode,
       selectedParagraph: focusedParagraph,
       relatedSuggestionCount: relationSuggestions.count
     )
@@ -37,31 +45,31 @@ struct AIChatContextInspectorView: View {
       draft: AIChatInspectorDraftContext(
         draft: draft,
         conversationTitle: AIPublishingChatConversationPresentation.displayTitle(
-          conversationTitle: store.ai.chatConversationTitle,
-          messages: store.ai.chatMessages,
+          conversationTitle: ai.chatConversationTitle,
+          messages: ai.chatMessages,
           draft: draft
         ),
         contextSummary: AIPublishingChatConversationPresentation.contextSummary(
           profile: profile,
           draft: draft,
-          contextMode: store.ai.chatContextMode
+          contextMode: ai.chatContextMode
         ),
-        contextSystemImage: store.ai.chatContextMode.systemImage,
+        contextSystemImage: ai.chatContextMode.systemImage,
         retrievalBasis: contextDetails.retrievalBasis,
         publicCandidateCount: contextDetails.publicCandidateCount,
         relatedSuggestionCount: contextDetails.relatedSuggestionCount,
         modelSummary: AIPublishingChatConversationPresentation.modelSummary(
-          grade: store.ai.chatModelGrade,
+          grade: ai.chatModelGrade,
           config: profile.aiProviderConfig,
-          selectedModel: store.ai.chatSelectedModel
+          selectedModel: ai.chatSelectedModel
         ),
         markdownPath: profile.markdownPath(for: draft),
         publishFileCount: package.files.count,
         preflightIssueCount: issues.count,
-        imageCount: imageReport.items.count,
+        imageCount: imageReport?.items.count,
         selectedParagraphTitle: contextDetails.selectedParagraphTitle,
         selectedParagraphPreview: contextDetails.selectedParagraphPreview,
-        chatMessage: store.ai.chatMessage,
+        chatMessage: ai.chatMessage,
         relatedSuggestions: relationSuggestions.prefix(4).map { suggestion in
           AIChatRelatedSuggestionPresentation(
             id: suggestion.id,
@@ -76,12 +84,17 @@ struct AIChatContextInspectorView: View {
             )
           )
         },
-        isChatRunning: store.ai.isChatRunning,
-        latestReply: store.ai.chatDraftID == draft.id
-          ? store.ai.chatMessages.last(where: { $0.role == .assistant })
+        isChatRunning: ai.isChatRunning,
+        latestReply: ai.chatDraftID == draft.id
+          ? ai.chatMessages.last(where: { $0.role == .assistant })
           : nil
       )
     )
+  }
+
+  private var imageReportRefreshID: AIChatImageReportRefreshID? {
+    guard let draft = ai.selectedChatDraft else { return nil }
+    return AIChatImageReportRefreshID(draft: draft, profile: ai.chatProfile(for: draft))
   }
 
   private var actions: AIChatContextInspectorActions {
@@ -90,7 +103,7 @@ struct AIChatContextInspectorView: View {
         sendMessage(message, draft: draft)
       },
       selectDraft: { draftID in
-        store.ai.selectChatDraft(draftID)
+        ai.selectChatDraft(draftID)
       },
       appendReply: { message, draft in
         append(message, to: draft)
@@ -100,7 +113,7 @@ struct AIChatContextInspectorView: View {
 
   private func sendMessage(_ message: String, draft: ArticleDraft) {
     Task {
-      await store.ai.sendChatMessage(message, draft: draft)
+      await ai.sendChatMessage(message, draft: draft)
     }
   }
 
@@ -110,14 +123,19 @@ struct AIChatContextInspectorView: View {
       to: draft,
       mode: .appendToBody
     ) else {
-      store.ai.setChatMessage("AI 回复为空，未应用。")
+      ai.setChatMessage("AI 回复为空，未应用。")
       return
     }
 
-    store.ai.updateChatDraft(result.draft)
-    store.ai.saveChatDraftChanges()
-    store.ai.setChatMessage(result.action.statusMessage)
+    ai.updateChatDraft(result.draft)
+    ai.saveChatDraftChanges()
+    ai.setChatMessage(result.action.statusMessage)
   }
+}
+
+private struct AIChatImageReportRefreshID: Hashable {
+  let draft: ArticleDraft
+  let profile: SiteProfile
 }
 
 struct AIChatContextInspectorContent: View {

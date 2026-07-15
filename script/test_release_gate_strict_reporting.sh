@@ -22,6 +22,10 @@ cp "$ROOT_DIR/script/release_checks.json" "$FIXTURE_ROOT/script/release_checks.j
 
 stub_scripts=(
   check_localization_gate.sh
+  check_repository_source_boundary.sh
+  test_repository_source_boundary.sh
+  check_build_version.sh
+  test_build_version_gate.sh
   check_app_store_metadata.sh
   record_app_store_build_metadata_evidence.sh
   test_app_store_build_metadata_evidence.sh
@@ -29,6 +33,7 @@ stub_scripts=(
   record_app_store_archive_validation_bundle.sh
   test_app_store_archive_validation_evidence.sh
   test_app_store_archive_validation_bundle.sh
+  test_app_store_archive_artifact_selection.sh
   check_ui_runtime.sh
   check_clean_runtime_evidence.sh
   record_clean_runtime_evidence.sh
@@ -70,6 +75,8 @@ stub_scripts=(
   check_ci_quality_workflow.sh
   check_swift_strict_build.sh
   test_swift_strict_build_gate.sh
+  check_swift_release_build.sh
+  test_swift_release_build_gate.sh
   sync_screenshot_manifest_status.sh
   sync_app_store_checklist.sh
   check_screenshot_privacy.sh
@@ -126,8 +133,17 @@ STUB
 cat >"$FIXTURE_ROOT/bin/swift" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "${1:-}" == "test" ]] || exit 1
-echo "swift test: ok"
+case "${1:-}" in
+  test)
+    echo "swift test: ok"
+    ;;
+  run)
+    echo "swift release tooling: ok"
+    ;;
+  *)
+    exit 1
+    ;;
+esac
 STUB
 chmod +x "$FIXTURE_ROOT/bin/swift"
 
@@ -164,5 +180,24 @@ grep -q "./script/check_release_gate.sh --strict" <<<"$output" \
   || fail "strict output omitted strict rerun command"
 grep -q "swift test: ok" <<<"$output" \
   || fail "strict gate did not continue through Swift tests before reporting blockers"
+
+for script_name in check_localization_gate.sh check_build_version.sh; do
+  cat >"$FIXTURE_ROOT/script/$script_name" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "${0##*/}: intentional failure" >&2
+exit 1
+STUB
+done
+if selected_output="$(PATH="$FIXTURE_ROOT/bin:$PATH" bash "$FIXTURE_ROOT/script/check_release_gate.sh" \
+  --check localization --check build-version 2>&1)"; then
+  fail "selected release gate fixture unexpectedly passed"
+fi
+grep -q "release gate: selected mode has 2 failure(s):" <<<"$selected_output" \
+  || fail "selected output did not aggregate both failures"
+grep -q "Localization coverage" <<<"$selected_output" \
+  || fail "selected output omitted localization failure"
+grep -q "Single-source build version" <<<"$selected_output" \
+  || fail "selected output omitted build-version failure"
 
 echo "release gate strict reporting test: passed"

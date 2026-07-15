@@ -16,13 +16,13 @@ struct ProBoundaryEvidenceRow: View {
         .lineLimit(3)
 
       if let blocked = summary.latestBlockedUse {
-        Label("阻断：\(blocked.feature.displayName) · \(blocked.quotaSummary)", systemImage: blocked.outcome.systemImage)
+        Label("阻断：\(blocked.feature.localizedDisplayName) · \(blocked.quotaSummary)", systemImage: blocked.outcome.systemImage)
           .font(.caption2)
           .foregroundStyle(.secondary)
       }
 
       if let pro = summary.latestProUse {
-        Label("Pro：\(pro.feature.displayName) · \(pro.quotaSummary)", systemImage: pro.outcome.systemImage)
+        Label("Pro：\(pro.feature.localizedDisplayName) · \(pro.quotaSummary)", systemImage: pro.outcome.systemImage)
           .font(.caption2)
           .foregroundStyle(.secondary)
       }

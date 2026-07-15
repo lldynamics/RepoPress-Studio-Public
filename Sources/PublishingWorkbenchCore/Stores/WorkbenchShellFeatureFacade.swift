@@ -11,10 +11,12 @@ public final class WorkbenchShellFeatureFacade: ObservableObject {
     observe(store.publishingStore.$profiles)
     observe(store.publishingStore.$activeProfileID)
     observe(store.publishingStore.$selectedDraftID)
+    observe(store.publishingStore.$selectedSection)
     observe(store.publishingStore.$isInspectorPresented)
     observe(store.privacyMonetizationStore.$isPrivacyLocked)
     observe(store.repositoryStore.$repositoryScanState)
     observe(store.persistenceStore.$recoveryMessage)
+    observe(store.persistenceStore.$isRecoveryWriteProtected)
   }
 
   public var activeProfileName: String {
@@ -23,6 +25,10 @@ public final class WorkbenchShellFeatureFacade: ObservableObject {
 
   public var selectedDraftID: UUID? {
     store.selectedDraftID
+  }
+
+  public var selectedSection: WorkspaceSection {
+    store.selectedSection
   }
 
   public var isInspectorPresented: Bool {
@@ -43,6 +49,10 @@ public final class WorkbenchShellFeatureFacade: ObservableObject {
 
   public var persistenceRecoveryMessage: String? {
     store.persistenceRecoveryMessage
+  }
+
+  public var isPersistenceRecoveryWriteProtected: Bool {
+    store.isPersistenceRecoveryWriteProtected
   }
 
   private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {

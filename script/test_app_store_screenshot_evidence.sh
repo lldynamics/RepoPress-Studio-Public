@@ -16,18 +16,11 @@ fail() {
   exit 1
 }
 
-required_ids=(
-  writing
-  ai-chat
-  sync-api-publish
-  seo-social-preview
-  deployment-status
-  maintenance
-  general-drafts
-  pro-settings
-  privacy-lock
-  release-readiness
-)
+required_ids=()
+while IFS= read -r id; do
+  [[ -n "$id" ]] && required_ids+=("$id")
+done < <(sed -nE 's/^\| `([^`]+)` \|.*/\1/p' "$ROOT_DIR/docs/app-store-screenshots/SCREENSHOT_MANIFEST.md")
+[[ "${#required_ids[@]}" -gt 0 ]] || fail "source screenshot manifest contains no IDs"
 
 create_png() {
   local path="$1"
@@ -69,6 +62,19 @@ reset_fixture() {
   cp "$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md" "$EVIDENCE_FILE"
 }
 
+stamp_captures() {
+  local id image
+  for id in "${required_ids[@]}"; do
+    image="$SCREENSHOT_DIR/$id.png"
+    python3 "$ROOT_DIR/script/screenshot_capture_provenance.py" record \
+      --root "$ROOT_DIR" \
+      --manifest "$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
+      --screenshot-dir "$SCREENSHOT_DIR" \
+      --id "$id" \
+      --image "$image" >/dev/null
+  done
+}
+
 run_recorder() {
   SCREENSHOT_DIR="$SCREENSHOT_DIR" \
   SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
@@ -78,7 +84,7 @@ run_recorder() {
 
 reset_fixture
 dry_run_output="$(run_recorder --dry-run)"
-grep -q "captured screenshots: 0/10" <<<"$dry_run_output" || fail "dry-run did not report missing screenshots"
+grep -q "captured screenshots: 0/${#required_ids[@]}" <<<"$dry_run_output" || fail "dry-run did not report missing screenshots"
 grep -q "missing screenshots:" <<<"$dry_run_output" || fail "dry-run did not list missing screenshots"
 
 if run_recorder --execute >/dev/null 2>&1; then
@@ -98,7 +104,7 @@ cp "$EVIDENCE_FILE" "$PENDING_EVIDENCE_FILE"
 cat >>"$PENDING_EVIDENCE_FILE" <<'MD'
 
 ### App Store 截图和严格门禁
-- Screenshot set: Captured writing, AI chat, sync/API publish, SEO/social preview, deployment, maintenance, general drafts, Pro, privacy lock, and release readiness screens.
+- Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
 - Screenshot privacy gate: Pending privacy gate review.
 - Screenshot strict gate: TODO run STRICT_SCREENSHOTS=1 check_screenshots.sh.
 MD
@@ -110,6 +116,7 @@ fi
 
 SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
   bash "$ROOT_DIR/script/sync_screenshot_manifest_status.sh" >/dev/null
+stamp_captures
 
 ready_output="$(run_recorder --dry-run)"
 grep -q "strict screenshot gate: ready" <<<"$ready_output" || fail "dry-run did not verify strict screenshot gate readiness"
@@ -117,10 +124,18 @@ grep -q "screenshot privacy gate: ready" <<<"$ready_output" || fail "dry-run did
 
 run_recorder --execute >/dev/null
 grep -q '^- \[x\] `app-store-screenshots`' "$EVIDENCE_FILE" || fail "screenshot evidence was not marked complete"
-grep -q 'Screenshot set: Captured writing, AI chat, sync/API publish, SEO/social preview, deployment, maintenance, general drafts, Pro, privacy lock, and release readiness screens.' "$EVIDENCE_FILE" \
+grep -q 'Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.' "$EVIDENCE_FILE" \
   || fail "structured screenshot set evidence missing"
 STRICT_EXTERNAL_STRUCTURE_ONLY=1 EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" \
+  SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
+  SCREENSHOT_DIR="$SCREENSHOT_DIR" \
   bash "$ROOT_DIR/script/check_external_verification_evidence.sh" >/dev/null 2>&1 || fail "strict external evidence gate rejected recorded screenshot evidence"
+
+printf 'replaced-after-capture' >>"$SCREENSHOT_DIR/writing.png"
+if run_recorder --execute >/dev/null 2>&1; then
+  fail "recorder accepted a screenshot changed after capture provenance was recorded"
+fi
+stamp_captures
 
 reset_fixture
 for id in "${required_ids[@]}"; do
@@ -129,6 +144,7 @@ done
 printf '/Users/example/private-site/content/post.md' >>"$SCREENSHOT_DIR/privacy-lock.png"
 SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
   bash "$ROOT_DIR/script/sync_screenshot_manifest_status.sh" >/dev/null
+stamp_captures
 if run_recorder --execute >/dev/null 2>&1; then
   fail "recorder accepted screenshot with local path"
 fi

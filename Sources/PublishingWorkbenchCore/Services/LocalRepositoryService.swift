@@ -1316,7 +1316,11 @@ public struct LocalRepositoryService: @unchecked Sendable {
     }
 
     return RepositoryRemote(
-      remoteURL: trimmed,
+      remoteURL: sanitizedRepositoryRemoteURL(
+        trimmed,
+        host: remotePath.host,
+        path: remotePath.path
+      ),
       provider: provider,
       repositoryBaseURL: repositoryBaseURL(provider: provider, host: remotePath.host),
       owner: owner,
@@ -1326,7 +1330,7 @@ public struct LocalRepositoryService: @unchecked Sendable {
 
   private func remotePathComponents(from remoteURL: String) -> (host: String, path: String)? {
     if !remoteURL.contains("://"),
-       let colonIndex = remoteURL.firstIndex(of: ":") {
+       let colonIndex = scpHostPathSeparator(in: remoteURL) {
       let hostPart = String(remoteURL[..<colonIndex])
       let host = hostPart.components(separatedBy: "@").last ?? hostPart
       let pathStart = remoteURL.index(after: colonIndex)
@@ -1338,6 +1342,33 @@ public struct LocalRepositoryService: @unchecked Sendable {
       return nil
     }
     return (host: host, path: url.path)
+  }
+
+  private func scpHostPathSeparator(in remoteURL: String) -> String.Index? {
+    let searchStart = remoteURL.lastIndex(of: "@").map { remoteURL.index(after: $0) }
+      ?? remoteURL.startIndex
+    return remoteURL[searchStart...].firstIndex(of: ":")
+  }
+
+  private func sanitizedRepositoryRemoteURL(
+    _ remoteURL: String,
+    host: String,
+    path: String
+  ) -> String {
+    if remoteURL.contains("://"), var components = URLComponents(string: remoteURL) {
+      components.user = nil
+      components.password = nil
+      components.query = nil
+      components.fragment = nil
+      if let sanitized = components.string?.nilIfEmpty {
+        return sanitized
+      }
+    }
+
+    // SCP-style remotes have no standard URL representation. Retain only the
+    // host and repository path so usernames, passwords, and token-like user
+    // fields can never reach the model or selectable UI text.
+    return "\(host):\(path)"
   }
 
   private func repositoryProvider(forHost host: String) -> RepositoryProvider? {

@@ -69,8 +69,7 @@ final class GeneralDraftLibraryServiceTests: XCTestCase {
     XCTAssertEqual(generalDraft.siteProfileID, generalProfile.id)
     XCTAssertEqual(store.generalDraftLibraryReport.generalDraftCount, 1)
 
-    store.selectProfile(publishingProfileID)
-    let copied = try XCTUnwrap(store.copyDraftToActiveProfile(generalDraft.id))
+    let copied = try XCTUnwrap(store.copyDraft(generalDraft.id, toProfileID: publishingProfileID))
 
     XCTAssertEqual(copied.siteProfileID, publishingProfileID)
     XCTAssertEqual(copied.status, .draft)
@@ -86,6 +85,31 @@ final class GeneralDraftLibraryServiceTests: XCTestCase {
     XCTAssertEqual(reusePlan.targetProfileName, store.activeProfile.name)
     XCTAssertEqual(reusePlan.targetMarkdownPath, store.activeProfile.markdownPath(for: copied))
     XCTAssertTrue(store.publishActionMessage?.contains(reusePlan.targetMarkdownPath) == true)
+  }
+
+  func testCopyingGeneralDraftRejectsLibraryAndSourceProfileTargets() throws {
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let publishingProfileID = store.activeProfileID
+    let publishingDraftID = try XCTUnwrap(store.selectedDraftID)
+    let generalProfile = store.ensureGeneralDraftProfile()
+    let generalDraft = store.createGeneralDraft()
+
+    XCTAssertNil(store.copyDraft(generalDraft.id, toProfileID: generalProfile.id))
+    XCTAssertEqual(store.publishActionMessage, "素材必须复制到发布站点，不能复制回素材库。")
+    XCTAssertNil(store.copyDraft(publishingDraftID, toProfileID: publishingProfileID))
+    XCTAssertEqual(store.publishActionMessage, "来源文章已经属于所选站点。")
+    XCTAssertEqual(store.drafts.filter { $0.id != generalDraft.id }.count, 1)
+  }
+
+  func testLegacyCopyToActiveProfileCannotDuplicateInsideLibrary() throws {
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let generalProfile = store.ensureGeneralDraftProfile()
+    let generalDraft = store.createGeneralDraft()
+
+    XCTAssertEqual(store.activeProfileID, generalProfile.id)
+    XCTAssertNil(store.copyDraftToActiveProfile(generalDraft.id))
+    XCTAssertEqual(store.publishActionMessage, "素材必须复制到发布站点，不能复制回素材库。")
+    XCTAssertEqual(store.drafts.filter { $0.siteProfileID == generalProfile.id }.count, 1)
   }
 
   func testReusePlanSummarizesTargetPathAndAttachmentFollowups() throws {

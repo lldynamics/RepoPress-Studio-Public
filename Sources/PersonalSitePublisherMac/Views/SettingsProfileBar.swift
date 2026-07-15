@@ -32,7 +32,7 @@ struct SettingsProfileBar: View {
       .accessibilityLabel("当前 Profile")
       .accessibilityValue(activeProfile.name)
 
-      Text(activeProfile.purpose.displayName)
+      Text(activeProfile.purpose.localizedDisplayName)
         .font(.caption)
         .foregroundStyle(.secondary)
         .lineLimit(1)
@@ -60,11 +60,11 @@ struct SettingsProfileBar: View {
 
         Picker("用途", selection: activeProfileBinding.purpose) {
           ForEach(SiteProfilePurpose.allCases) { purpose in
-            Text(purpose.displayName).tag(purpose)
+            Text(purpose.localizedDisplayName).tag(purpose)
           }
         }
         .accessibilityLabel("Profile 用途")
-        .accessibilityValue(activeProfile.purpose.displayName)
+        .accessibilityValue(activeProfile.purpose.localizedDisplayName)
 
         Text(activeProfile.purpose.detail)
           .font(.caption)

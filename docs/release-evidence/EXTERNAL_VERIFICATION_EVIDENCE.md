@@ -10,7 +10,7 @@ Record only redacted evidence. Do not paste tokens, authorization headers, local
 - [ ] `gitlab-review-publish` - GitLab MR evidence: MR URL, provider API MR iid/state, source branch, target branch, file changes, deployment status, and rollback draft.
 - [ ] `remote-conflict-deployment-rollback` - Remote conflict, pending/offline deployment, retry, and rollback evidence.
 - [ ] `storekit-sandbox` - StoreKit sandbox purchase, restore, entitlement source, free quota, and Pro boundary event evidence.
-- [x] `app-store-screenshots` - App Store 截图和严格门禁: Ten App Store screenshots captured, screenshot privacy gate passed, and strict release gate output reviewed.
+- [ ] `app-store-screenshots` - App Store 截图和严格门禁: source-visible UI changed; recapture and record a fresh source fingerprint.
 
 ## Evidence Notes
 
@@ -144,10 +144,11 @@ script/record_remote_recovery_evidence.sh \
 
 script/record_external_verification_evidence.sh \
   --item app-store-screenshots \
-  --summary "Ten App Store screenshots captured, screenshot privacy gate passed, and strict release gate output reviewed." \
-  --screenshot-set "Captured writing, AI chat, sync/API publish, SEO/social preview, deployment, maintenance, general drafts, Pro, privacy lock, and release readiness screens." \
+  --summary "Nine manifest screenshots captured; screenshot privacy and strict screenshot gates passed." \
+  --screenshot-set "Captured manifest screenshot IDs: writing, ai-chat, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock." \
   --screenshot-privacy-gate "check_screenshot_privacy.sh passed with no local paths, tokens, or private article text." \
   --screenshot-strict-gate "STRICT_SCREENSHOTS=1 check_screenshots.sh and strict release gate output were reviewed." \
+  --screenshot-source-fingerprint "$(script/screenshot_evidence_fingerprint.py)" \
   --execute
 
 # Preferred shortcut after all screenshot files are captured:
@@ -155,7 +156,8 @@ script/record_app_store_screenshot_evidence.sh --execute
 ```
 
 ### App Store 截图和严格门禁
-- Ten App Store screenshots captured, screenshot privacy gate passed, and strict release gate output reviewed.
-- Screenshot set: Captured writing, AI chat, sync/API publish, SEO/social preview, deployment, maintenance, general drafts, Pro, privacy lock, and release readiness screens.
+- Nine manifest screenshots captured; screenshot privacy and strict screenshot gates passed.
+- Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
 - Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
 - Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
+- Screenshot source fingerprint: stale legacy evidence; recapture required.

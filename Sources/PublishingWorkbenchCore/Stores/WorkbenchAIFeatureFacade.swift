@@ -17,6 +17,12 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &cancellables)
+    store.imageStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+    store.siteMaintenanceStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
   }
 
   public var tokenAvailability: KeychainTokenAvailability {
@@ -181,6 +187,17 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func chatImageWorkbenchReport(for draft: ArticleDraft) -> ImageWorkbenchReport {
     store.imageWorkbenchReport(for: draft)
+  }
+
+  public func cachedChatImageWorkbenchReport(for draft: ArticleDraft) -> ImageWorkbenchReport? {
+    store.cachedImageWorkbenchReport(for: draft)
+  }
+
+  public func refreshChatImageWorkbenchReportInBackground(
+    for draft: ArticleDraft,
+    force: Bool = false
+  ) async {
+    await store.refreshImageWorkbenchReportInBackground(for: draft, force: force)
   }
 
   public func refreshChatImageWorkbenchReport() {

@@ -2,6 +2,49 @@ import Foundation
 import LocalAuthentication
 import Security
 
+private final class KeychainTokenMutationCoordinator: @unchecked Sendable {
+  static let shared = KeychainTokenMutationCoordinator()
+
+  private let lock = NSRecursiveLock()
+
+  private init() {}
+
+  func synchronized<T>(_ operation: () throws -> T) rethrows -> T {
+    lock.lock()
+    defer { lock.unlock() }
+    return try operation()
+  }
+}
+
+private final class InMemoryTokenBackend: @unchecked Sendable {
+  private let lock = NSLock()
+  private var tokens: [String: String] = [:]
+
+  func token(for account: String) -> String? {
+    lock.lock()
+    defer { lock.unlock() }
+    return tokens[account]
+  }
+
+  func containsToken(for account: String) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return tokens[account] != nil
+  }
+
+  func saveToken(_ token: String, for account: String) {
+    lock.lock()
+    defer { lock.unlock() }
+    tokens[account] = token
+  }
+
+  func deleteToken(for account: String) {
+    lock.lock()
+    defer { lock.unlock() }
+    tokens.removeValue(forKey: account)
+  }
+}
+
 public struct KeychainTokenAvailability: Codable, Hashable, Sendable {
   public var hasToken: Bool
   public var updatedAt: Date?
@@ -30,7 +73,7 @@ public final class KeychainTokenStore: @unchecked Sendable {
   private let service: String
   private let accountPrefix: String
   private let allowsAuthenticationInteraction: Bool
-  private var inMemoryTokens: [String: String]?
+  private let inMemoryBackend: InMemoryTokenBackend?
 
   public convenience init(
     service: String = "PersonalSitePublisherMac.AIProvider",
@@ -48,7 +91,7 @@ public final class KeychainTokenStore: @unchecked Sendable {
     self.service = service
     self.accountPrefix = accountPrefix
     self.allowsAuthenticationInteraction = allowsAuthenticationInteraction
-    self.inMemoryTokens = inMemory ? [:] : nil
+    self.inMemoryBackend = inMemory ? InMemoryTokenBackend() : nil
   }
 
   public func token(for profile: SiteProfile) throws -> String? {
@@ -61,7 +104,7 @@ public final class KeychainTokenStore: @unchecked Sendable {
 
   public func repositoryToken(for profile: SiteProfile) throws -> String? {
     let scope = KeychainTokenScope.repository(profile.repositoryProvider)
-    _ = try migrateLegacyToken(for: profile, to: scope, deleteLegacyToken: false)
+    _ = try migrateLegacyToken(for: profile, to: scope)
     return try token(for: profile, scope: scope)
   }
 
@@ -75,8 +118,25 @@ public final class KeychainTokenStore: @unchecked Sendable {
 
   public func repositoryTokenAvailability(for profile: SiteProfile) throws -> KeychainTokenAvailability {
     let scope = KeychainTokenScope.repository(profile.repositoryProvider)
-    _ = try migrateLegacyToken(for: profile, to: scope, deleteLegacyToken: false)
+    _ = try migrateLegacyToken(for: profile, to: scope)
     return try availability(for: profile, scope: scope)
+  }
+
+  public func saveRepositoryToken(_ token: String, for profile: SiteProfile) throws {
+    try KeychainTokenMutationCoordinator.shared.synchronized {
+      try saveToken(token, for: profile, scope: .repository(profile.repositoryProvider))
+      try deleteToken(for: profile)
+    }
+  }
+
+  public func deleteRepositoryToken(for profile: SiteProfile) throws {
+    try KeychainTokenMutationCoordinator.shared.synchronized {
+      try deleteToken(for: profile, scope: .repository(profile.repositoryProvider))
+      // Older releases left this unscoped credential behind after migration.
+      // Remove it in the same critical section so availability refresh cannot
+      // recreate the scoped credential that the user just deleted.
+      try deleteToken(for: profile)
+    }
   }
 
   public func saveToken(_ token: String, for profile: SiteProfile) throws {
@@ -101,20 +161,27 @@ public final class KeychainTokenStore: @unchecked Sendable {
     to scope: KeychainTokenScope,
     deleteLegacyToken: Bool = true
   ) throws -> Bool {
-    guard try token(for: profile, scope: scope) == nil,
-          let legacyToken = try token(for: profile) else {
-      return false
+    try KeychainTokenMutationCoordinator.shared.synchronized {
+      if try token(for: profile, scope: scope) != nil {
+        if deleteLegacyToken, try token(for: profile) != nil {
+          try deleteToken(for: profile)
+        }
+        return false
+      }
+      guard let legacyToken = try token(for: profile) else {
+        return false
+      }
+      try saveToken(legacyToken, for: profile, scope: scope)
+      if deleteLegacyToken {
+        try deleteToken(for: profile)
+      }
+      return true
     }
-    try saveToken(legacyToken, for: profile, scope: scope)
-    if deleteLegacyToken {
-      try deleteToken(for: profile)
-    }
-    return true
   }
 
   private func token(forAccount account: String) throws -> String? {
-    if let inMemoryTokens {
-      return inMemoryTokens[account]
+    if let inMemoryBackend {
+      return inMemoryBackend.token(for: account)
     }
 
     var query = baseQuery(account: account)
@@ -136,8 +203,8 @@ public final class KeychainTokenStore: @unchecked Sendable {
   }
 
   private func availability(forAccount account: String) throws -> KeychainTokenAvailability {
-    if let inMemoryTokens {
-      return KeychainTokenAvailability(hasToken: inMemoryTokens[account] != nil)
+    if let inMemoryBackend {
+      return KeychainTokenAvailability(hasToken: inMemoryBackend.containsToken(for: account))
     }
 
     var query = baseQuery(account: account)
@@ -161,44 +228,54 @@ public final class KeychainTokenStore: @unchecked Sendable {
   }
 
   private func saveToken(_ token: String, forAccount account: String) throws {
-    if inMemoryTokens != nil {
-      inMemoryTokens?[account] = token
-      return
-    }
+    try KeychainTokenMutationCoordinator.shared.synchronized {
+      if let inMemoryBackend {
+        inMemoryBackend.saveToken(token, for: account)
+        return
+      }
 
-    let data = Data(token.utf8)
-    var query = baseQuery(account: account)
+      let data = Data(token.utf8)
+      var query = baseQuery(account: account)
+      let attributes = [kSecValueData as String: data] as CFDictionary
 
-    let updateStatus = SecItemUpdate(
-      query as CFDictionary,
-      [kSecValueData as String: data] as CFDictionary
-    )
-    if updateStatus == errSecSuccess {
-      return
-    }
-    guard updateStatus == errSecItemNotFound else {
-      throw KeychainTokenStoreError.unhandledStatus(updateStatus)
-    }
+      let updateStatus = SecItemUpdate(query as CFDictionary, attributes)
+      if updateStatus == errSecSuccess {
+        return
+      }
+      guard updateStatus == errSecItemNotFound else {
+        throw KeychainTokenStoreError.unhandledStatus(updateStatus)
+      }
 
-    query[kSecValueData as String] = data
-    #if os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
-    query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-    #endif
-    let addStatus = SecItemAdd(query as CFDictionary, nil)
-    guard addStatus == errSecSuccess else {
+      query[kSecValueData as String] = data
+      #if os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
+      query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+      #endif
+      let addStatus = SecItemAdd(query as CFDictionary, nil)
+      if addStatus == errSecSuccess {
+        return
+      }
+      if addStatus == errSecDuplicateItem {
+        let retryStatus = SecItemUpdate(baseQuery(account: account) as CFDictionary, attributes)
+        guard retryStatus == errSecSuccess else {
+          throw KeychainTokenStoreError.unhandledStatus(retryStatus)
+        }
+        return
+      }
       throw KeychainTokenStoreError.unhandledStatus(addStatus)
     }
   }
 
   private func deleteToken(forAccount account: String) throws {
-    if inMemoryTokens != nil {
-      inMemoryTokens?.removeValue(forKey: account)
-      return
-    }
+    try KeychainTokenMutationCoordinator.shared.synchronized {
+      if let inMemoryBackend {
+        inMemoryBackend.deleteToken(for: account)
+        return
+      }
 
-    let status = SecItemDelete(baseQuery(account: account) as CFDictionary)
-    guard status == errSecSuccess || status == errSecItemNotFound else {
-      throw KeychainTokenStoreError.unhandledStatus(status)
+      let status = SecItemDelete(baseQuery(account: account) as CFDictionary)
+      guard status == errSecSuccess || status == errSecItemNotFound else {
+        throw KeychainTokenStoreError.unhandledStatus(status)
+      }
     }
   }
 

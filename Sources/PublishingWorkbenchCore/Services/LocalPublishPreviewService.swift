@@ -3,6 +3,7 @@ import Foundation
 public enum PublishFileDiffStatus: String, Codable, Sendable {
   case added
   case modified
+  case deleted
   case unchanged
   case missingSource
   case unsafePath
@@ -13,6 +14,8 @@ public enum PublishFileDiffStatus: String, Codable, Sendable {
       return "新增"
     case .modified:
       return "修改"
+    case .deleted:
+      return "删除"
     case .unchanged:
       return "未变化"
     case .missingSource:
@@ -88,6 +91,18 @@ public struct LocalPublishPreviewService: Sendable {
     return preview
   }
 
+  /// Generates the same preview as ``preview(package:profile:)`` without
+  /// performing repository traversal or file reads on the caller's executor.
+  ///
+  /// The synchronous implementation is invoked entirely inside the detached
+  /// task so security-scoped repository access starts, is used, and stops on
+  /// the same detached operation.
+  public func previewAsync(package: PublishPackage, profile: SiteProfile) async -> LocalPublishPreview {
+    await Task.detached(priority: .userInitiated) {
+      preview(package: package, profile: profile)
+    }.value
+  }
+
   func preview(package: PublishPackage, rootURL: URL) -> LocalPublishPreview {
     var diffs: [PublishFileDiff] = []
     var issues: [PreflightIssue] = []
@@ -98,6 +113,40 @@ public struct LocalPublishPreviewService: Sendable {
           PublishFileDiff(path: file.repositoryPath, kind: file.kind, status: .unsafePath, byteSize: file.byteSize)
         )
         issues.append(.init(severity: .error, title: "发布路径不安全", message: file.repositoryPath, field: "repositoryPath"))
+        continue
+      }
+
+      if file.operation == .delete {
+        var isDirectory: ObjCBool = false
+        let exists = fileManager.fileExists(atPath: destinationURL.path, isDirectory: &isDirectory)
+        guard !exists || !isDirectory.boolValue else {
+          diffs.append(
+            PublishFileDiff(path: file.repositoryPath, kind: file.kind, status: .unsafePath)
+          )
+          issues.append(
+            .init(
+              severity: .error,
+              title: "删除目标不是文件",
+              message: file.repositoryPath,
+              field: "repositoryPath"
+            )
+          )
+          continue
+        }
+
+        let existingContent = file.kind == .markdown
+          ? (try? String(contentsOf: destinationURL, encoding: .utf8)) ?? ""
+          : ""
+        diffs.append(
+          PublishFileDiff(
+            path: file.repositoryPath,
+            kind: file.kind,
+            status: exists ? .deleted : .unchanged,
+            lineDiff: exists && file.kind == .markdown
+              ? unifiedDiff(old: existingContent, new: "")
+              : nil
+          )
+        )
         continue
       }
 
@@ -180,6 +229,10 @@ public struct LocalPublishPreviewService: Sendable {
         throw LocalPublishPreviewError.unsafePath(file.repositoryPath)
       }
 
+      if file.operation == .delete {
+        return PreparedLocalPublishWrite(file: file, destinationURL: destinationURL, sourceURL: nil)
+      }
+
       let sourceURL: URL?
       switch file.kind {
       case .markdown:
@@ -208,10 +261,12 @@ public struct LocalPublishPreviewService: Sendable {
     var rollbackEntries: [LocalPublishRollbackEntry] = []
     do {
       for (index, prepared) in preparedWrites.enumerated() {
-        let destinationURL = try safeDestinationURLForWrite(
-          rootURL: rootURL,
-          repositoryPath: prepared.file.repositoryPath
-        )
+        let destinationURL = prepared.file.operation == .delete
+          ? prepared.destinationURL
+          : try safeDestinationURLForWrite(
+            rootURL: rootURL,
+            repositoryPath: prepared.file.repositoryPath
+          )
         let backupURL: URL?
         if fileManager.fileExists(atPath: destinationURL.path) {
           let candidate = rollbackDirectory.appendingPathComponent("\(index)-backup")
@@ -222,14 +277,21 @@ public struct LocalPublishPreviewService: Sendable {
         }
 
         rollbackEntries.append(LocalPublishRollbackEntry(destinationURL: destinationURL, backupURL: backupURL))
-        switch prepared.file.kind {
-        case .markdown:
-          try (prepared.file.content ?? "").write(to: destinationURL, atomically: true, encoding: .utf8)
-        case .image:
-          guard let sourceURL = prepared.sourceURL else {
-            throw LocalPublishPreviewError.missingSource(prepared.file.repositoryPath)
+        switch prepared.file.operation {
+        case .delete:
+          if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
           }
-          try replaceImageAtomically(sourceURL: sourceURL, destinationURL: destinationURL)
+        case .upsert:
+          switch prepared.file.kind {
+          case .markdown:
+            try (prepared.file.content ?? "").write(to: destinationURL, atomically: true, encoding: .utf8)
+          case .image:
+            guard let sourceURL = prepared.sourceURL else {
+              throw LocalPublishPreviewError.missingSource(prepared.file.repositoryPath)
+            }
+            try replaceImageAtomically(sourceURL: sourceURL, destinationURL: destinationURL)
+          }
         }
 
         writtenPaths.append(prepared.file.repositoryPath)

@@ -11,7 +11,9 @@ public final class WorkbenchAIStore: ObservableObject {
   private let imageWorkbenchService: SiteImageWorkbenchService
   private let seoAuditService: SEOAuditService
   private let seoSocialPreviewService: SEOSocialPreviewService
+  private let aiChatSessionHydrator: (AIPublishingChatSessionState) -> AIPublishingChatSessionState
   private var aiChatSessionsByDraftID: [UUID: AIPublishingChatSessionState] = [:]
+  private var hydratedAIChatSessionIDs: Set<UUID> = []
   private var isAIChatCancellationRequested = false
   private let aiChatStreamPublishInterval: Duration = .milliseconds(50)
 
@@ -23,7 +25,8 @@ public final class WorkbenchAIStore: ObservableObject {
     aiConnectionTestService: AIConnectionTestService = AIConnectionTestService(),
     imageWorkbenchService: SiteImageWorkbenchService = SiteImageWorkbenchService(),
     seoAuditService: SEOAuditService = SEOAuditService(),
-    seoSocialPreviewService: SEOSocialPreviewService = SEOSocialPreviewService()
+    seoSocialPreviewService: SEOSocialPreviewService = SEOSocialPreviewService(),
+    aiChatSessionHydrator: @escaping (AIPublishingChatSessionState) -> AIPublishingChatSessionState = { $0 }
   ) {
     self.store = store
     self.workspace = workspace
@@ -33,6 +36,7 @@ public final class WorkbenchAIStore: ObservableObject {
     self.imageWorkbenchService = imageWorkbenchService
     self.seoAuditService = seoAuditService
     self.seoSocialPreviewService = seoSocialPreviewService
+    self.aiChatSessionHydrator = aiChatSessionHydrator
   }
 
   public var aiTokenAvailability: KeychainTokenAvailability {
@@ -274,6 +278,7 @@ public final class WorkbenchAIStore: ObservableObject {
 
   func replaceAIChatSessions(_ sessions: [UUID: AIPublishingChatSessionState]) {
     aiChatSessionsByDraftID = sessions
+    hydratedAIChatSessionIDs.removeAll()
   }
 
   func aiChatSessionsForPersistence() -> [UUID: AIPublishingChatSessionState] {
@@ -290,7 +295,19 @@ public final class WorkbenchAIStore: ObservableObject {
     if let currentDraftID = aiChatDraftID {
       persistCurrentAIChatSession(for: currentDraftID)
     }
-    let state = aiChatSessionsByDraftID[draft.id] ?? AIPublishingChatSessionState()
+    let state: AIPublishingChatSessionState
+    if let stored = aiChatSessionsByDraftID[draft.id] {
+      if hydratedAIChatSessionIDs.insert(draft.id).inserted {
+        let hydrated = aiChatSessionHydrator(stored)
+        aiChatSessionsByDraftID[draft.id] = hydrated
+        state = hydrated
+      } else {
+        state = stored
+      }
+    } else {
+      hydratedAIChatSessionIDs.insert(draft.id)
+      state = AIPublishingChatSessionState()
+    }
     aiChatDraftID = draft.id
     aiChatConversationTitle = state.conversationTitle
     aiChatMessages = state.messages
@@ -308,6 +325,7 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   func setAIChatSessionState(_ state: AIPublishingChatSessionState, for draftID: UUID) {
+    hydratedAIChatSessionIDs.insert(draftID)
     let prepared = state.prepared()
     if prepared.shouldPersist {
       aiChatSessionsByDraftID[draftID] = prepared
@@ -326,6 +344,7 @@ public final class WorkbenchAIStore: ObservableObject {
 
   func removeAIChatSessionState(for draftID: UUID) {
     aiChatSessionsByDraftID.removeValue(forKey: draftID)
+    hydratedAIChatSessionIDs.remove(draftID)
     if aiChatDraftID == draftID {
       aiChatConversationTitle = nil
       aiChatMessages = []
@@ -883,6 +902,11 @@ public final class WorkbenchAIStore: ObservableObject {
       token = try aiChatAvailableAPIKey(for: profile)
     } catch {
       store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
+      return nil
+    }
+    await store.refreshSiteMaintenanceSnapshot()
+    guard !Task.isCancelled else {
+      store.setAIChatMessage("AI 回复已停止。")
       return nil
     }
     let access = aiChatConsumeFeatureUse(.aiRequest)
@@ -1511,6 +1535,7 @@ public final class WorkbenchAIStore: ObservableObject {
       aiChatMessage = "请先选择一篇文章。"
       return nil
     }
+    await store.refreshSiteMaintenanceSnapshot()
     prepareSEOSocialPreview(for: draft)
     guard let snapshot = seoSocialPreviewSnapshot(for: draft),
           openAIChatWorkspace(for: draft.id) else {

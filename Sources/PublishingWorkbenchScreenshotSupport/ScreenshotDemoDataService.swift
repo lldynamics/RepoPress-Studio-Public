@@ -294,8 +294,6 @@ public struct ScreenshotDemoDataService {
       aiChatSessionsByDraftID: [articleID: chatState],
       seoSocialPreviewSnapshots: [seoSnapshot],
       privacySettings: PrivacyProtectionSettings(
-        requiresUnlockOnLaunch: false,
-        locksWhenInactive: true,
         masksPrivateContent: true
       ),
       monetizationState: MonetizationState(
@@ -380,7 +378,6 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
   case generalDrafts = "general-drafts"
   case proSettings = "pro-settings"
   case privacyLock = "privacy-lock"
-  case releaseReadiness = "release-readiness"
 
   public var id: String { rawValue }
 
@@ -419,15 +416,12 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
       store.selectSection(.generalDrafts)
       store.setPublishActionMessage("截图模式：素材库已载入。")
     case .proSettings:
-      store.selectSection(.releaseReadiness)
+      store.selectSection(.writing)
       store.setMonetizationMessage("截图模式：请打开 Settings > Pro 捕获免费额度、StoreKit 购买和恢复状态。")
     case .privacyLock:
       store.selectSection(.writing)
       store.setInspectorPresented(true)
       store.lockPrivacy(reason: "截图模式：隐私锁已启用，工作台内容已遮挡。")
-    case .releaseReadiness:
-      store.selectSection(.releaseReadiness)
-      store.refreshReleaseQualityGate()
     }
   }
 

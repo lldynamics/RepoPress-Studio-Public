@@ -10,7 +10,7 @@ struct PublishReadinessTile: View {
       Label(title, systemImage: readiness.systemImage)
         .font(.caption)
         .foregroundStyle(.secondary)
-      Text(readiness.displayName)
+      Text(readiness.localizedDisplayName)
         .font(.callout.weight(.semibold))
         .foregroundStyle(readiness.color)
         .lineLimit(1)
@@ -27,7 +27,7 @@ struct BatchPublishPlanRow: View {
 
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 12) {
-      Label(item.readiness.displayName, systemImage: item.readiness.systemImage)
+      Label(item.readiness.localizedDisplayName, systemImage: item.readiness.systemImage)
         .font(.caption.weight(.semibold))
         .foregroundStyle(readinessColor)
         .frame(width: 78, alignment: .leading)

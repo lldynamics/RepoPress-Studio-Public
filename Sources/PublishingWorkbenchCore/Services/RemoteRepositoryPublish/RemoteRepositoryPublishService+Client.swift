@@ -243,6 +243,9 @@ extension RemoteRepositoryPublishService {
     guard let baseURL = URL(string: baseURLText), baseURL.scheme != nil, baseURL.host != nil else {
       throw RemoteRepositoryPublishError.invalidBaseURL(baseURLText)
     }
+    guard CredentialedEndpointPolicy.isSecureAPIBaseURL(baseURL) else {
+      throw RemoteRepositoryPublishError.insecureBaseURL
+    }
 
     switch profile.repositoryProvider {
     case .github:

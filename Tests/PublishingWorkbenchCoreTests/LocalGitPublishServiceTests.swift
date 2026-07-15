@@ -59,6 +59,39 @@ final class LocalGitPublishServiceTests: XCTestCase {
     XCTAssertEqual(try git(["status", "--porcelain"], rootURL: rootURL), "")
   }
 
+  func testDirectCommitStagesPathMigrationAsAddAndDelete() throws {
+    let rootURL = try makeGitRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let oldURL = rootURL.appendingPathComponent("content/posts/old-name.md")
+    try "old article\n".write(to: oldURL, atomically: true, encoding: .utf8)
+    try git(["add", "content/posts/old-name.md"], rootURL: rootURL)
+    try git(["commit", "-m", "Seed old article"], rootURL: rootURL)
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "New Name",
+      slug: "new-name",
+      draft: false,
+      bodyMarkdown: "Updated article body after renaming the repository path.",
+      repositoryPath: "content/posts/old-name.md"
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+
+    let result = try LocalGitPublishService().publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit
+    )
+
+    XCTAssertEqual(result.committedPaths, ["content/posts/new-name.md", "content/posts/old-name.md"])
+    let nameStatus = try git(["show", "--no-renames", "--name-status", "--format="], rootURL: rootURL)
+    XCTAssertTrue(nameStatus.contains("A\tcontent/posts/new-name.md"))
+    XCTAssertTrue(nameStatus.contains("D\tcontent/posts/old-name.md"))
+  }
+
   func testFailsOutsideGitRepository() throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacNoGit-\(UUID().uuidString)", isDirectory: true)

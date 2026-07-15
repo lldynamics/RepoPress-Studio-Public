@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d /private/tmp/mac-editor-external-evidence.XXXXXX)"
 EVIDENCE_FILE="$TMP_DIR/EXTERNAL_VERIFICATION_EVIDENCE.md"
+SCREENSHOT_FINGERPRINT="$(python3 "$ROOT_DIR/script/screenshot_evidence_fingerprint.py")"
+SCREENSHOT_DIR="$TMP_DIR/app-store-screenshots"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -16,6 +18,17 @@ fail() {
 }
 
 cp "$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md" "$EVIDENCE_FILE"
+mkdir -p "$SCREENSHOT_DIR"
+while IFS= read -r id; do
+  [[ -n "$id" ]] || continue
+  printf 'fixture image for %s\n' "$id" >"$SCREENSHOT_DIR/$id.png"
+  python3 "$ROOT_DIR/script/screenshot_capture_provenance.py" record \
+    --root "$ROOT_DIR" \
+    --manifest "$ROOT_DIR/docs/app-store-screenshots/SCREENSHOT_MANIFEST.md" \
+    --screenshot-dir "$SCREENSHOT_DIR" \
+    --id "$id" \
+    --image "$SCREENSHOT_DIR/$id.png" >/dev/null
+done < <(sed -nE 's/^\| `([^`]+)` \|.*/\1/p' "$ROOT_DIR/docs/app-store-screenshots/SCREENSHOT_MANIFEST.md")
 
 assert_strict_rejects_legacy_item() {
   local item_id="$1"
@@ -159,13 +172,13 @@ if EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" bash "$ROOT_DIR/script/record_
 fi
 if EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" bash "$ROOT_DIR/script/record_external_verification_evidence.sh" \
   --item app-store-screenshots \
-  --summary "Ten App Store screenshots captured, screenshot privacy gate passed, and strict release gate output reviewed." \
+  --summary "Nine manifest screenshots captured; screenshot privacy and strict screenshot gates passed." \
   --dry-run >/dev/null 2>&1; then
   fail "screenshot evidence accepted without structured fields"
 fi
 if EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" bash "$ROOT_DIR/script/record_external_verification_evidence.sh" \
   --item app-store-screenshots \
-  --summary "Ten App Store screenshots captured, screenshot privacy gate passed, and strict release gate output reviewed." \
+  --summary "Nine manifest screenshots captured; screenshot privacy and strict screenshot gates passed." \
   --screenshot-set "Captured writing and AI chat screens." \
   --screenshot-privacy-gate "check_screenshot_privacy.sh passed with no local paths or tokens." \
   --screenshot-strict-gate "STRICT_SCREENSHOTS=1 check_screenshots.sh passed." \
@@ -289,7 +302,7 @@ text = re.sub(
 text = text.rstrip() + """
 
 ### App Store 截图和严格门禁
-- Ten App Store screenshots captured, screenshot privacy gate passed, and strict release gate output reviewed.
+- Nine manifest screenshots captured; screenshot privacy and strict screenshot gates passed.
 - Screenshot set: Captured writing and AI chat screens.
 - Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths or tokens.
 - Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh passed.
@@ -300,6 +313,50 @@ if STRICT_EXTERNAL_VERIFICATION=1 EXTERNAL_VERIFY_EVIDENCE_FILE="$incomplete_scr
   bash "$ROOT_DIR/script/check_external_verification_evidence.sh" >/dev/null 2>&1; then
   fail "strict gate accepted app-store-screenshots evidence with an incomplete screenshot set"
 fi
+
+custom_manifest="$TMP_DIR/custom-screenshot-manifest.md"
+cat >"$custom_manifest" <<'MD'
+| ID | Target file | Screen | Purpose | Status |
+| --- | --- | --- | --- | --- |
+| `writing` | `writing.png` | Writing | Test | Captured |
+| `custom-screen` | `custom-screen.png` | Custom | Test | Captured |
+MD
+if SCREENSHOT_MANIFEST_FILE="$custom_manifest" EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" \
+  bash "$ROOT_DIR/script/record_external_verification_evidence.sh" \
+    --item app-store-screenshots \
+    --summary "All manifest screenshots captured and gates passed." \
+    --screenshot-set "Captured manifest screenshot IDs: writing." \
+    --screenshot-privacy-gate "Screenshot privacy gate passed." \
+    --screenshot-strict-gate "Strict screenshot gate passed." \
+    --dry-run >/dev/null 2>&1; then
+  fail "screenshot evidence recorder ignored a required ID added to the manifest"
+fi
+SCREENSHOT_MANIFEST_FILE="$custom_manifest" EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" \
+  bash "$ROOT_DIR/script/record_external_verification_evidence.sh" \
+    --item app-store-screenshots \
+    --summary "All manifest screenshots captured and gates passed." \
+    --screenshot-set "Captured manifest screenshot IDs: writing, custom-screen." \
+    --screenshot-privacy-gate "Screenshot privacy gate passed." \
+    --screenshot-strict-gate "Strict screenshot gate passed." \
+    --screenshot-source-fingerprint "$(python3 "$ROOT_DIR/script/screenshot_evidence_fingerprint.py" --manifest "$custom_manifest")" \
+    --dry-run >/dev/null 2>&1 \
+  || fail "screenshot evidence recorder rejected all IDs from a custom manifest"
+
+custom_check_file="$TMP_DIR/custom-screenshot-check.md"
+cp "$EVIDENCE_FILE" "$custom_check_file"
+perl -0pi -e 's/- \[ \] `app-store-screenshots`/- [x] `app-store-screenshots`/' "$custom_check_file"
+if SCREENSHOT_MANIFEST_FILE="$custom_manifest" STRICT_EXTERNAL_STRUCTURE_ONLY=1 \
+  EXTERNAL_VERIFY_EVIDENCE_FILE="$custom_check_file" \
+  bash "$ROOT_DIR/script/check_external_verification_evidence.sh" >/dev/null 2>&1; then
+  fail "strict evidence checker ignored a required ID added to the manifest"
+fi
+custom_evidence="$TMP_DIR/custom-screenshot-evidence.md"
+cp "$EVIDENCE_FILE" "$custom_evidence"
+perl -0pi -e 's/(Screenshot set: .*privacy-lock)\./$1, custom-screen./' "$custom_evidence"
+SCREENSHOT_MANIFEST_FILE="$custom_manifest" STRICT_EXTERNAL_STRUCTURE_ONLY=1 \
+  EXTERNAL_VERIFY_EVIDENCE_FILE="$custom_evidence" \
+  bash "$ROOT_DIR/script/check_external_verification_evidence.sh" >/dev/null 2>&1 \
+  || fail "strict evidence checker rejected all IDs from a custom manifest"
 
 record() {
   EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" bash "$ROOT_DIR/script/record_external_verification_evidence.sh" "$@" --execute >/dev/null
@@ -353,12 +410,13 @@ record --item storekit-sandbox \
   --storekit-free-quota "Free quota boundary showed upgrade copy before purchase and no quota consumption after Pro unlock." \
   --storekit-boundary-events "Recent Pro boundary events showed free-plan block before purchase and Pro no-quota allow after unlock."
 record --item app-store-screenshots \
-  --summary "Ten App Store screenshots captured, screenshot privacy gate passed, and strict release gate output reviewed." \
-  --screenshot-set "Captured writing, AI chat, sync/API publish, SEO/social preview, deployment, maintenance, general drafts, Pro, privacy lock, and release readiness screens." \
+  --summary "Nine manifest screenshots captured; screenshot privacy and strict screenshot gates passed." \
+  --screenshot-set "Captured manifest screenshot IDs: writing, ai-chat, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock." \
   --screenshot-privacy-gate "check_screenshot_privacy.sh passed with no local paths, tokens, or private article text." \
-  --screenshot-strict-gate "STRICT_SCREENSHOTS=1 check_screenshots.sh and strict release gate output were reviewed."
+  --screenshot-strict-gate "STRICT_SCREENSHOTS=1 check_screenshots.sh and strict release gate output were reviewed." \
+  --screenshot-source-fingerprint "$SCREENSHOT_FINGERPRINT"
 
-STRICT_EXTERNAL_VERIFICATION=1 EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" \
+STRICT_EXTERNAL_VERIFICATION=1 EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" SCREENSHOT_DIR="$SCREENSHOT_DIR" \
   bash "$ROOT_DIR/script/check_external_verification_evidence.sh" >/dev/null
 
 grep -q 'Evidence URL: https://github.com/example/test-site/commit/abc123' "$EVIDENCE_FILE" \

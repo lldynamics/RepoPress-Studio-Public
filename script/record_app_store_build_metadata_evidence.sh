@@ -64,7 +64,7 @@ if [[ ! -d "$APP_BUNDLE" ]]; then
   if [[ "${APP_STORE_BUILD_METADATA_SKIP_BUILD:-0}" == "1" ]]; then
     fail "app bundle is missing: ${APP_BUNDLE#$ROOT_DIR/}"
   fi
-  bash "$ROOT_DIR/script/build_and_run.sh" --package-only >/dev/null
+  bash "$ROOT_DIR/script/build_and_run.sh" --package-only --release >/dev/null
 fi
 
 [[ -d "$APP_BUNDLE" ]] || fail "app bundle is missing: ${APP_BUNDLE#$ROOT_DIR/}"
@@ -81,12 +81,15 @@ marketing_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionStri
 build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST")"
 minimum_system="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$INFO_PLIST")"
 package_type="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$INFO_PLIST")"
+build_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' "$INFO_PLIST" 2>/dev/null || true)"
 
 [[ "$bundle_id" == "com.jinfang.PersonalSitePublisherMac" ]] || fail "unexpected bundle identifier: $bundle_id"
 [[ "$marketing_version" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || fail "invalid marketing version: $marketing_version"
 [[ "$build_number" =~ ^[0-9]+$ ]] || fail "invalid build number: $build_number"
 [[ "$minimum_system" == "14.0" ]] || fail "unexpected minimum macOS version: $minimum_system"
 [[ "$package_type" == "APPL" ]] || fail "unexpected package type: $package_type"
+[[ "$build_configuration" == "Release" ]] || fail "metadata evidence requires a Release bundle, got: ${build_configuration:-missing configuration evidence}"
+bash "$ROOT_DIR/script/check_build_version.sh" --info-plist "$INFO_PLIST" >/dev/null
 
 localized_languages=()
 for language in zh-Hans en; do
@@ -120,11 +123,13 @@ or Transporter/App Store Connect validation evidence in
 ## Latest Local Metadata Check
 
 - Status: Local build metadata verified.
+- Version source: \`Packaging/BuildVersion.xcconfig\`.
 - Bundle identifier: \`$bundle_id\`
 - Marketing version: \`$marketing_version\`
 - Build number: \`$build_number\`
 - Minimum macOS: \`$minimum_system\`
 - App package type: \`$package_type\`
+- Build configuration: \`$build_configuration\`
 - App icon: bundled AppIcon.icns verified.
 - Localized InfoPlist strings: ${localized_languages[*]} verified.
 - App Sandbox entitlement: enabled.
@@ -153,6 +158,7 @@ else
   echo "- marketing version: $marketing_version"
   echo "- build number: $build_number"
   echo "- minimum macOS: $minimum_system"
+  echo "- build configuration: $build_configuration"
   echo "- entitlements: sandbox, network client, user-selected read/write"
   echo "- output: ${OUTPUT#$ROOT_DIR/}"
 fi

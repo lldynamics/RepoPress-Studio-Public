@@ -20,7 +20,7 @@ struct AISettingsView: View {
     Form {
       AIProviderSection(
         presetBinding: aiPresetBinding,
-        presetDisplayName: activeProfile.aiProviderConfig.preset.displayName,
+        presetDisplayName: activeProfile.aiProviderConfig.preset.localizedDisplayName,
         baseURL: activeProfileBinding.aiProviderConfig.baseURL,
         baseURLDisplayValue: activeProfile.aiProviderConfig.baseURL,
         model: activeProfileBinding.aiProviderConfig.model,
@@ -34,7 +34,7 @@ struct AISettingsView: View {
 
       AIWritingStyleSection(
         presetBinding: aiWritingStylePresetBinding,
-        presetDisplayName: activeProfile.resolvedAIWritingStyle.preset.displayName,
+        presetDisplayName: activeProfile.resolvedAIWritingStyle.preset.localizedDisplayName,
         applyPresetTemplate: {
           applySelectedAIWritingStylePreset()
         },

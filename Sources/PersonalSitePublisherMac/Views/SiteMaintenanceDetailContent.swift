@@ -25,10 +25,6 @@ struct SiteMaintenanceDetailContent: View {
   let snapshot: SiteMaintenanceSnapshot
   let isStale: Bool
   let isAIChatRunning: Bool
-  let selectedDraft: ArticleDraft?
-  @Binding var performancePageViews: String
-  @Binding var performanceVisitors: String
-  @Binding var performanceSourceName: String
   let refresh: () -> Void
   let copySprintPlan: (SiteMaintenanceReport) -> Void
   let copyChecklist: (SiteMaintenanceReport) -> Void
@@ -37,9 +33,6 @@ struct SiteMaintenanceDetailContent: View {
   let recordItem: (MaintenanceActionItem) -> Void
   let sendToAI: (MaintenanceActionItem) -> Void
   let applySuggestedSchedule: () -> Void
-  let recordPerformanceSnapshot: (ArticleDraft) -> Void
-  let importCSV: () -> Void
-  let importNotice: ContentPerformanceImportNotice?
   let latestRelease: ReleaseRecord?
   let deploymentSnapshot: DeploymentStatusSnapshot?
   let canCheckDeployment: Bool
@@ -77,18 +70,11 @@ struct SiteMaintenanceDetailContent: View {
       SiteMaintenanceReportSections(
         report: report,
         isAIChatRunning: isAIChatRunning,
-        selectedDraft: selectedDraft,
-        performancePageViews: $performancePageViews,
-        performanceVisitors: $performanceVisitors,
-        performanceSourceName: $performanceSourceName,
         openDraft: openDraft,
         copyItem: copyItem,
         recordItem: recordItem,
         sendToAI: sendToAI,
-        applySuggestedSchedule: applySuggestedSchedule,
-        recordPerformanceSnapshot: recordPerformanceSnapshot,
-        importCSV: importCSV,
-        importNotice: importNotice
+        applySuggestedSchedule: applySuggestedSchedule
       )
     }
   }

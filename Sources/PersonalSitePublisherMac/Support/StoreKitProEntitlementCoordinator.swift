@@ -49,7 +49,7 @@ final class StoreKitProEntitlementCoordinator: ObservableObject {
           store.setMonetizationMessage("购买完成，但返回的产品不是当前 Pro 项目。")
           return
         }
-        store.applyProEntitlement(productID: transaction.productID, source: .storeKit)
+        store.applyVerifiedStoreKitEntitlement(productID: transaction.productID)
         await transaction.finish()
       case .pending:
         store.setMonetizationMessage("购买仍在等待 App Store 确认。")
@@ -88,7 +88,7 @@ final class StoreKitProEntitlementCoordinator: ObservableObject {
         guard let transaction = try verifiedProTransaction(from: entitlement) else {
           continue
         }
-        store.applyProEntitlement(productID: transaction.productID, source: .storeKit)
+        store.applyVerifiedStoreKitEntitlement(productID: transaction.productID)
         foundProEntitlement = true
         break
       } catch {
@@ -110,7 +110,7 @@ final class StoreKitProEntitlementCoordinator: ObservableObject {
         guard let transaction = try verifiedProTransaction(from: update) else {
           continue
         }
-        store.applyProEntitlement(productID: transaction.productID, source: .storeKit)
+        store.applyVerifiedStoreKitEntitlement(productID: transaction.productID)
         await transaction.finish()
       } catch {
         store.setMonetizationMessage("StoreKit 交易更新验证失败：\(error.localizedDescription)")

@@ -60,7 +60,7 @@ extension RepositoryWorkspaceView {
 
         if let result = store.localGitPublishResult {
           HStack(spacing: 10) {
-            Label(result.mode.displayName, systemImage: "checkmark.circle")
+            Label(result.mode.localizedDisplayName, systemImage: "checkmark.circle")
             Text(result.branchName)
               .font(.caption.monospaced())
             Text(result.commitSHA.prefix(8))
@@ -72,7 +72,11 @@ extension RepositoryWorkspaceView {
 
         ForEach(package.files) { file in
           HStack {
-            Text(file.kind.displayName)
+            Text(
+              file.operation == .delete
+                ? file.operation.localizedDisplayName
+                : file.kind.localizedDisplayName
+            )
               .font(.caption)
               .frame(width: 70, alignment: .leading)
               .foregroundStyle(.secondary)
@@ -117,7 +121,7 @@ extension RepositoryWorkspaceView {
         ForEach(preview.fileDiffs) { diff in
           VStack(alignment: .leading, spacing: 8) {
             HStack {
-              Text(diff.status.displayName)
+              Text(diff.status.localizedDisplayName)
                 .font(.caption)
                 .frame(width: 70, alignment: .leading)
                 .foregroundStyle(diff.status == .unchanged ? .secondary : .primary)
@@ -125,7 +129,7 @@ extension RepositoryWorkspaceView {
                 .font(.callout.monospaced())
                 .lineLimit(1)
               Spacer()
-              Text(diff.kind.displayName)
+              Text(diff.kind.localizedDisplayName)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
@@ -168,7 +172,7 @@ extension RepositoryWorkspaceView {
 
   private var preferredPublishStrategyNote: some View {
     Label(
-      "当前策略：\(store.activeProfile.repositoryPublishStrategy.displayName)。\(store.activeProfile.repositoryPublishStrategy.detail)",
+      "当前策略：\(store.activeProfile.repositoryPublishStrategy.localizedDisplayName)。\(store.activeProfile.repositoryPublishStrategy.detail)",
       systemImage: "slider.horizontal.3"
     )
     .font(.caption)

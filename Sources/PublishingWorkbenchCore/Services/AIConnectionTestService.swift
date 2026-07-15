@@ -97,9 +97,7 @@ public enum AISettingsConnectionPresentationService {
   private static func providerHelpText(_ config: AIProviderConfig) -> String {
     switch config.preset {
     case .deepSeek:
-      return "DeepSeek 默认 base_url：https://api.deepseek.com，模型 deepseek-v4-flash；聊天请求会发送 thinking 与 reasoning_effort。"
-    case .deepSeekPro:
-      return "DeepSeek Pro 使用 https://api.deepseek.com，模型 deepseek-v4-pro；聊天请求会发送 thinking 与 reasoning_effort。"
+      return "DeepSeek 默认 base_url：https://api.deepseek.com；快速/标准档使用 deepseek-v4-flash，高质量档使用 deepseek-v4-pro。"
     case .local:
       return "本地模型默认不需要 API Key，测试连接会请求本机 OpenAI-compatible /chat/completions 接口。"
     default:

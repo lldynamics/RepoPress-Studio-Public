@@ -19,7 +19,7 @@ struct TokenDeploymentDefaultsSection: View {
     Section("部署状态默认") {
       Picker("平台", selection: deploymentProviderBinding) {
         ForEach(DeploymentProvider.allCases) { provider in
-          Text(provider.displayName).tag(provider)
+          Text(provider.localizedDisplayName).tag(provider)
         }
       }
       .accessibilityLabel("部署状态平台")
@@ -36,6 +36,13 @@ struct TokenDeploymentDefaultsSection: View {
       Toggle("状态端点使用部署 Token", isOn: deploymentStatusEndpointUsesTokenBinding)
         .accessibilityLabel("状态端点使用部署 Token")
         .accessibilityValue(deploymentStatusEndpointUsesTokenBinding.wrappedValue ? "开启" : "关闭")
+        .disabled(deploymentProviderBinding.wrappedValue != .custom)
+
+      if deploymentProviderBinding.wrappedValue != .custom {
+        Text("平台部署 Token 只发送到平台官方 API；如需向状态端点发送 Bearer Token，请选择“自定义端点”平台并使用 HTTPS。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
 
       TextField("部署项目 / Site ID", text: deploymentProjectID)
         .accessibilityLabel("部署项目或 Site ID")
@@ -45,7 +52,7 @@ struct TokenDeploymentDefaultsSection: View {
         .accessibilityLabel("部署账号、Team 或 Account ID")
         .accessibilityValue(deploymentAccountIDDisplayValue)
 
-      Text("GitHub/GitLab 会优先读取 Pages 与构建状态；Netlify 填写 Site ID 和 Token 后会读取最近 Deploy；Vercel、Cloudflare Pages 和自定义平台使用这里的状态端点或站点 URL 做发布后校验。只有开启状态端点授权时，才会向状态端点发送 Bearer Token。")
+      Text("GitHub/GitLab 会优先读取 Pages 与构建状态；Netlify 填写 Site ID 和 Token 后会读取最近 Deploy；Vercel、Cloudflare Pages 和自定义平台使用这里的状态端点或站点 URL 做发布后校验。只有自定义平台的 HTTPS 状态端点可使用 Bearer Token。")
         .font(.caption)
         .foregroundStyle(.secondary)
 

@@ -93,7 +93,7 @@ summary_for() {
 }
 
 clean_launch_summary="$(summary_for "$CLEAN_LAUNCH" "Clean test user launched the app through build_and_run --verify and reached the main workspace without migration or permission failures.")"
-privacy_summary="$(summary_for "$PRIVACY_SETTINGS_WORKSPACE" "First launch, privacy lock, settings, and workspace switching were verified with sample data and redacted screenshots only.")"
+privacy_summary="$(summary_for "$PRIVACY_SETTINGS_WORKSPACE" "Quick hide, private-content masking, settings, and workspace switching were verified with sample data and redacted screenshots only.")"
 accessibility_summary="$(summary_for "$ACCESSIBILITY_KEYBOARD_SMOKE" "Keyboard navigation, visible focus, VoiceOver labels, and primary menu commands were smoke checked in the running app.")"
 
 record_item() {

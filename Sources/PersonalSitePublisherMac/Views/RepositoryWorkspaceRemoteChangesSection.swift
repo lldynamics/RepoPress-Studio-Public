@@ -59,14 +59,14 @@ extension RepositoryWorkspaceView {
 
             if !files.isEmpty {
               VStack(alignment: .leading, spacing: 8) {
-                Text("远端\(role.displayName)变更")
+                Text("远端\(role.localizedDisplayName)变更")
                   .font(.caption.weight(.semibold))
                   .foregroundStyle(.secondary)
 
                 ForEach(files, id: \.id) { (file: RepositoryChangedFile) in
                   VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 10) {
-                      Text(file.kind.displayName)
+                      Text(file.kind.localizedDisplayName)
                         .font(.caption)
                         .frame(width: 58, alignment: .leading)
                         .foregroundStyle(.secondary)

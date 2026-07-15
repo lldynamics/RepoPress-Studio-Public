@@ -19,19 +19,6 @@ extension WorkbenchStore {
     save()
   }
 
-  public func lockPrivacyIfNeededForInactiveScene() {
-    let wasLocked = privacyMonetizationStore.isPrivacyLocked
-    privacyMonetizationStore.lockPrivacyIfNeededForInactiveScene()
-    if !wasLocked && privacyMonetizationStore.isPrivacyLocked {
-      privacyMonetizationStore.recordInactivePrivacyMaskShown()
-      save()
-    }
-  }
-
-  public func refreshReleaseQualityGate(projectRoot: URL? = nil) {
-    publishingStore.refreshReleaseQualityGate(projectRoot: projectRoot, store: self)
-  }
-
   public var activeDeploymentStatusReadiness: DeploymentStatusProviderReadiness {
     deploymentStore.activeDeploymentStatusReadiness(store: self)
   }

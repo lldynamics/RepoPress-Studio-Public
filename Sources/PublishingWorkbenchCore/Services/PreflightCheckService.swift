@@ -1,6 +1,66 @@
 import Foundation
 
+struct PreflightDuplicateIndex: Sendable {
+  private let indexedDraftIDs: Set<UUID>
+  private let duplicateTitleDraftIDs: Set<UUID>
+  private let duplicatePathDraftIDs: Set<UUID>
+
+  init(drafts: [ArticleDraft], profile: SiteProfile) {
+    let uniqueDrafts = Array(
+      Dictionary(drafts.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest }).values
+    )
+    indexedDraftIDs = Set(uniqueDrafts.map(\.id))
+
+    let titledDrafts = uniqueDrafts
+      .filter { !$0.title.isEmpty }
+      .sorted { lhs, rhs in
+        let comparison = lhs.title.caseInsensitiveCompare(rhs.title)
+        if comparison == .orderedSame {
+          return lhs.id.uuidString < rhs.id.uuidString
+        }
+        return comparison == .orderedAscending
+      }
+    var duplicateTitleIDs = Set<UUID>()
+    var groupStart = titledDrafts.startIndex
+    while groupStart < titledDrafts.endIndex {
+      var groupEnd = titledDrafts.index(after: groupStart)
+      while groupEnd < titledDrafts.endIndex,
+            titledDrafts[groupStart].title.caseInsensitiveCompare(titledDrafts[groupEnd].title) == .orderedSame {
+        groupEnd = titledDrafts.index(after: groupEnd)
+      }
+      if titledDrafts.distance(from: groupStart, to: groupEnd) > 1 {
+        duplicateTitleIDs.formUnion(titledDrafts[groupStart..<groupEnd].map(\.id))
+      }
+      groupStart = groupEnd
+    }
+    duplicateTitleDraftIDs = duplicateTitleIDs
+
+    var draftIDsByPath: [String: Set<UUID>] = [:]
+    for draft in uniqueDrafts {
+      draftIDsByPath[profile.markdownPath(for: draft), default: []].insert(draft.id)
+    }
+    duplicatePathDraftIDs = draftIDsByPath.values.reduce(into: Set<UUID>()) { result, draftIDs in
+      if draftIDs.count > 1 {
+        result.formUnion(draftIDs)
+      }
+    }
+  }
+
+  func hasDuplicateTitle(for draftID: UUID) -> Bool? {
+    guard indexedDraftIDs.contains(draftID) else { return nil }
+    return duplicateTitleDraftIDs.contains(draftID)
+  }
+
+  func hasDuplicatePath(for draftID: UUID) -> Bool? {
+    guard indexedDraftIDs.contains(draftID) else { return nil }
+    return duplicatePathDraftIDs.contains(draftID)
+  }
+}
+
 public struct PreflightCheckService: Sendable {
+  private static let markdownImageRegex = try? NSRegularExpression(
+    pattern: #"!\[[^\]]*\]\(([^)]+)\)"#
+  )
   private let publicRiskScanner: PublicRiskScanner
 
   public init(publicRiskScanner: PublicRiskScanner = PublicRiskScanner()) {
@@ -13,6 +73,24 @@ public struct PreflightCheckService: Sendable {
     profile: SiteProfile,
     repositoryReport: RepositoryScanReport? = nil,
     includeRepositoryReadiness: Bool = true
+  ) -> [PreflightIssue] {
+    run(
+      draft: draft,
+      allDrafts: allDrafts,
+      profile: profile,
+      repositoryReport: repositoryReport,
+      includeRepositoryReadiness: includeRepositoryReadiness,
+      duplicateIndex: nil
+    )
+  }
+
+  func run(
+    draft: ArticleDraft,
+    allDrafts: [ArticleDraft],
+    profile: SiteProfile,
+    repositoryReport: RepositoryScanReport? = nil,
+    includeRepositoryReadiness: Bool = true,
+    duplicateIndex: PreflightDuplicateIndex?
   ) -> [PreflightIssue] {
     var issues: [PreflightIssue] = []
     let title = draft.title.trimmedForPublishing
@@ -33,7 +111,7 @@ public struct PreflightCheckService: Sendable {
     }
 
     if draft.date > Date().addingTimeInterval(60) {
-      issues.append(.init(severity: .warning, title: "日期在未来", message: "确认这是一篇计划发布文章。", field: "date"))
+      issues.append(.init(severity: .warning, title: "日期在未来", message: "确认文章发布日期是否正确。", field: "date"))
     }
 
     if draft.bodyMarkdown.trimmedForPublishing.count < 80 {
@@ -62,17 +140,17 @@ public struct PreflightCheckService: Sendable {
     issues.append(contentsOf: rootPathIssues(label: "内容目录", path: profile.contentRoot, field: "contentRoot"))
     issues.append(contentsOf: rootPathIssues(label: "图片目录", path: profile.assetRoot, field: "assetRoot"))
 
-    let duplicateTitles = allDrafts.filter {
+    let hasDuplicateTitle = duplicateIndex?.hasDuplicateTitle(for: draft.id) ?? allDrafts.contains {
       $0.id != draft.id && !$0.title.isEmpty && $0.title.caseInsensitiveCompare(draft.title) == .orderedSame
     }
-    if !duplicateTitles.isEmpty {
+    if hasDuplicateTitle {
       issues.append(.init(severity: .error, title: "标题重复", message: "本地已有同名文章，发布前需要区分标题。", field: "title"))
     }
 
-    let duplicatePaths = allDrafts.filter {
+    let hasDuplicatePath = duplicateIndex?.hasDuplicatePath(for: draft.id) ?? allDrafts.contains {
       $0.id != draft.id && profile.markdownPath(for: $0) == markdownPath
     }
-    if !duplicatePaths.isEmpty {
+    if hasDuplicatePath {
       issues.append(.init(severity: .error, title: "发布路径重复", message: "\(markdownPath) 已被另一篇草稿占用。", field: "slug"))
     }
 
@@ -238,8 +316,7 @@ public struct PreflightCheckService: Sendable {
 
   private func missingMarkdownImagePaths(in draft: ArticleDraft) -> [String] {
     let registered = Set(draft.attachments.map(\.relativePublishPath))
-    let pattern = #"!\[[^\]]*\]\(([^)]+)\)"#
-    guard let regex = try? NSRegularExpression(pattern: pattern) else {
+    guard let regex = Self.markdownImageRegex else {
       return []
     }
 

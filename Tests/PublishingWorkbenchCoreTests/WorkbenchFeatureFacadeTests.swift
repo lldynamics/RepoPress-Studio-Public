@@ -10,6 +10,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertTrue(store.ai === store.ai)
     XCTAssertTrue(store.repository === store.repository)
     XCTAssertTrue(store.publishing === store.publishing)
+    XCTAssertTrue(store.activityStatus === store.activityStatus)
   }
 
   func testAIFacadeUsesNarrowActionsAndReadsAIWorkspaceState() {
@@ -87,17 +88,72 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   func testAIWorkspaceChangesStayOnAIFacadeInsteadOfRebroadcastingRootStore() {
     let store = WorkbenchStore()
     let ai = store.ai
+    let activityStatus = store.activityStatus
     var rootChanges = 0
     var aiChanges = 0
+    var activityChanges = 0
     let rootCancellable = store.objectWillChange.sink { rootChanges += 1 }
     let aiCancellable = ai.objectWillChange.sink { aiChanges += 1 }
+    let activityCancellable = activityStatus.objectWillChange.sink { activityChanges += 1 }
 
     store.setAIChatMessages([AIPublishingChatMessage(role: .assistant, content: "streamed")])
+    store.setAIChatMessage("stream status")
 
     XCTAssertEqual(rootChanges, 0)
     XCTAssertGreaterThan(aiChanges, 0)
+    XCTAssertEqual(activityChanges, 0)
 
-    withExtendedLifetime([rootCancellable, aiCancellable]) {}
+    withExtendedLifetime([rootCancellable, aiCancellable, activityCancellable]) {}
+  }
+
+  func testActivityStatusFacadeObservesAIWithoutRebroadcastingRootStore() {
+    let store = WorkbenchStore()
+    let activityStatus = store.activityStatus
+    var rootChanges = 0
+    var activityChanges = 0
+    let rootCancellable = store.objectWillChange.sink { rootChanges += 1 }
+    let activityCancellable = activityStatus.objectWillChange.sink { activityChanges += 1 }
+
+    store.setAIChatRunning(true)
+
+    XCTAssertTrue(activityStatus.isAIChatRunning)
+    XCTAssertEqual(rootChanges, 0)
+    XCTAssertGreaterThan(activityChanges, 0)
+    withExtendedLifetime([rootCancellable, activityCancellable]) {}
+  }
+
+  func testImageWorkbenchFacadeObservesOnlyItsAIImageState() {
+    let store = WorkbenchStore()
+    let imageWorkbench = store.imageWorkbench
+    let draftID = UUID()
+    let attachmentID = UUID()
+    let suggestion = AIPublishingImageTextSuggestion(
+      id: attachmentID.uuidString,
+      draftID: draftID,
+      attachmentID: attachmentID,
+      filename: "hero.png",
+      imagePath: "/images/hero.png",
+      altText: "Hero",
+      caption: "Caption",
+      reason: "Context"
+    )
+    var rootChanges = 0
+    var imageChanges = 0
+    let rootCancellable = store.objectWillChange.sink { rootChanges += 1 }
+    let imageCancellable = imageWorkbench.objectWillChange.sink { imageChanges += 1 }
+
+    store.setAITokenAvailability(KeychainTokenAvailability(hasToken: true))
+    store.setAIImageTextSuggestionDraftID(draftID)
+    store.setAIImageTextSuggestions([suggestion])
+    store.setAIImageTextRunning(true)
+
+    XCTAssertTrue(imageWorkbench.aiTokenAvailability.hasToken)
+    XCTAssertEqual(imageWorkbench.suggestionDraftID, draftID)
+    XCTAssertEqual(imageWorkbench.suggestions, [suggestion])
+    XCTAssertTrue(imageWorkbench.isGeneratingSuggestions)
+    XCTAssertEqual(rootChanges, 0)
+    XCTAssertGreaterThanOrEqual(imageChanges, 4)
+    withExtendedLifetime([rootCancellable, imageCancellable]) {}
   }
 
   func testRepeatedBodyBufferTypingOnlyInvalidatesPublishingFacade() throws {

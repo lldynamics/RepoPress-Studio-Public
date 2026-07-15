@@ -59,7 +59,7 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
       return .checks
     case .images:
       return .images
-    case .siteStarter, .ai, .generalDrafts, .maintenance, .releaseReadiness:
+    case .siteStarter, .ai, .generalDrafts, .maintenance:
       return .metadata
     }
   }
@@ -111,6 +111,10 @@ struct ArticleInspectorTabs: View {
     }
     .onChange(of: selectedTab) { _, _ in
       prepareSelectedTab()
+    }
+    .task(id: imageRefreshID) {
+      guard selectedTab == .images else { return }
+      await store.refreshImageWorkbenchCachesInBackground(for: draft)
     }
   }
 
@@ -217,8 +221,8 @@ struct ArticleInspectorTabs: View {
     WorkspaceTaskImageSection(
       draft: $draft,
       state: WorkspaceTaskImageState(
-        report: store.imageWorkbenchReport(for: draft),
-        siteSummary: store.imageWorkbenchSiteSummary,
+        report: store.cachedImageWorkbenchReport(for: draft),
+        siteSummary: store.cachedImageWorkbenchSiteSummary,
         actionMessage: store.imageActionMessage
       ),
       actions: WorkspaceTaskImageActions(
@@ -232,14 +236,18 @@ struct ArticleInspectorTabs: View {
           _ = store.focusDraft(draft.id, section: .images)
         },
         refreshReport: {
-          store.refreshImageWorkbenchReport()
+          Task { @MainActor in
+            await store.refreshImageWorkbenchCachesInBackground(for: draft, force: true)
+          }
         }
       )
     )
   }
 
   private var checkContent: some View {
-    let issues = store.preflightIssues(for: draft)
+    let issues = draft.id == store.selectedDraftID
+      ? store.preflightIssues
+      : store.preflightIssues(for: draft)
     return WorkspaceTaskChecksSection(
       state: WorkspaceTaskChecksState(
         issues: issues,
@@ -276,83 +284,25 @@ struct ArticleInspectorTabs: View {
     case .seo:
       store.prepareSEOSocialPreview(for: draft)
     case .images:
-      store.refreshImageWorkbenchReport()
+      break
     case .checks:
       store.runPreflight()
     case .publish:
-      store.refreshPublishPreview(for: draft)
+      store.refreshPublishPreviewInBackground(for: draft)
     case .metadata:
       break
     }
   }
+
+  private var imageRefreshID: WorkspaceTaskImageRefreshID? {
+    guard selectedTab == .images else { return nil }
+    return WorkspaceTaskImageRefreshID(draft: draft, profile: store.profile(for: draft))
+  }
 }
 
-struct ReleaseQualityGateInspectorView: View {
-  @ObservedObject var store: WorkbenchStore
-
-  var body: some View {
-    let report = store.releaseQualityGateReport
-
-    InspectorScaffold(
-      title: "上架门禁",
-      subtitle: report.isReadyForAppStore ? "当前未发现阻断项" : "仍需补齐发布证据",
-      systemImage: WorkspaceSection.releaseReadiness.systemImage
-    ) {
-      InspectorStatRow(title: "阻断", value: "\(report.blockingItems.count)", systemImage: ReleaseQualityGateStatus.blocked.systemImage)
-      InspectorStatRow(title: "需确认", value: "\(report.warningItems.count)", systemImage: ReleaseQualityGateStatus.warning.systemImage)
-      InspectorStatRow(title: "通过", value: "\(report.passedItems.count)", systemImage: ReleaseQualityGateStatus.passed.systemImage)
-      InspectorStatRow(
-        title: "截图",
-        value: "\(report.capturedScreenshotRequirements.count)/\(report.screenshotRequirements.count)",
-        systemImage: "camera.viewfinder"
-      )
-
-      Button {
-        store.refreshReleaseQualityGate()
-      } label: {
-        Label(
-          store.isReleaseQualityGateRefreshing ? "刷新中" : "刷新门禁",
-          systemImage: store.isReleaseQualityGateRefreshing ? "hourglass" : "arrow.clockwise"
-        )
-      }
-      .disabled(store.isReleaseQualityGateRefreshing)
-
-      if let message = store.releaseQualityGateMessage {
-        Text(message)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-
-      let missingScreenshots = report.missingScreenshotRequirements
-      if !missingScreenshots.isEmpty {
-        VStack(alignment: .leading, spacing: 4) {
-          Label("待采集截图", systemImage: "camera.viewfinder")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(WorkbenchTheme.warning)
-          ForEach(Array(missingScreenshots.prefix(4)), id: \.id) { requirement in
-            Text("\(requirement.screenTitle.nilIfEmpty ?? requirement.id) · \(requirement.targetFileName.nilIfEmpty ?? "未配置目标文件")")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .lineLimit(1)
-          }
-        }
-        .padding(.vertical, 3)
-      }
-
-      ForEach(report.blockingItems.prefix(5)) { item in
-        VStack(alignment: .leading, spacing: 4) {
-          Label(item.title, systemImage: item.status.systemImage)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(WorkbenchTheme.risk)
-          Text(item.message)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(3)
-        }
-        .padding(.vertical, 3)
-      }
-    }
-  }
+private struct WorkspaceTaskImageRefreshID: Hashable {
+  let draft: ArticleDraft
+  let profile: SiteProfile
 }
 
 struct GeneralDraftLibraryInspectorView: View {
@@ -361,7 +311,6 @@ struct GeneralDraftLibraryInspectorView: View {
   var body: some View {
     let report = store.generalDraftLibraryReport
     let backupPlan = store.generalDraftBackupPlan
-    let packagePlan = store.generalDraftLibraryPackagePlan
 
     InspectorScaffold(
       title: "素材库",
@@ -374,26 +323,6 @@ struct GeneralDraftLibraryInspectorView: View {
       InspectorStatRow(title: "分类维度", value: "\(report.categorySummaries.count)", systemImage: "folder")
       InspectorStatRow(title: "附件素材", value: "\(report.attachmentCount)", systemImage: "paperclip")
       InspectorStatRow(title: "素材库 Profile", value: "\(report.generalProfileCount)", systemImage: SiteProfilePurpose.generalDraftBackup.systemImage)
-
-      Button {
-        copy(report.crossSiteMaterialPackageMarkdown, message: "已复制跨站点素材包。")
-      } label: {
-        Label("复制素材包", systemImage: "shippingbox")
-      }
-      .disabled(report.items.isEmpty && report.assets.isEmpty)
-
-      Button {
-        copy(packagePlan.packageText, message: "已复制素材包。")
-      } label: {
-        Label("复制素材包", systemImage: "shippingbox.fill")
-      }
-      .disabled(packagePlan.files.isEmpty)
-
-      Button {
-        importPackageFromClipboard()
-      } label: {
-        Label("导入素材包", systemImage: "tray.and.arrow.down")
-      }
 
       if !report.tagSummaries.isEmpty || !report.categorySummaries.isEmpty {
         InspectorSection("素材标签/分类") {
@@ -484,61 +413,11 @@ struct GeneralDraftLibraryInspectorView: View {
           }
         }
 
-        Button {
-          store.writeGeneralDraftBackupToRepository()
-        } label: {
-          Label("写入备份", systemImage: "square.and.arrow.down")
-        }
-        .disabled(!backupPlan.isReady)
-
-        Button {
-          copy(backupPlan.manifestMarkdown, message: "已复制素材备份清单。")
-        } label: {
-          Label("复制备份清单", systemImage: "doc.on.doc")
-        }
-        .disabled(backupPlan.files.isEmpty)
-
-        Button {
-          copy(backupPlan.packageText, message: "已复制素材备份文件。")
-        } label: {
-          Label("复制文件包", systemImage: "shippingbox")
-        }
-        .disabled(backupPlan.files.isEmpty)
-
-        Button {
-          copy(backupPlan.commandText, message: "已复制素材备份命令。")
-        } label: {
-          Label("复制备份命令", systemImage: "terminal")
-        }
-        .disabled(backupPlan.commandLines.isEmpty)
-      }
-
-      Button {
-        store.createGeneralDraft()
-      } label: {
-        Label("新建素材", systemImage: "plus")
-      }
-
-      Button {
-        let profile = store.ensureGeneralDraftProfile()
-        store.selectProfile(profile.id)
-      } label: {
-        Label("切换到素材库 Profile", systemImage: "shippingbox")
+        Text("备份写入、导入和导出操作已集中到素材库主页面。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
     }
-  }
-
-  private func copy(_ value: String, message: String) {
-    ClipboardWriter.copy(value, successMessage: message) { store.setPublishActionMessage($0) }
-  }
-
-  private func importPackageFromClipboard() {
-    guard let packageText = ClipboardReader.string(),
-          !packageText.trimmedForPublishing.isEmpty else {
-      store.setPublishActionMessage("剪贴板中没有可识别的草稿包。")
-      return
-    }
-    _ = store.importGeneralDraftLibraryPackage(from: packageText)
   }
 
   private func sendReusePlanToAI(_ plan: GeneralDraftReusePlan) {
@@ -590,14 +469,16 @@ struct MaintenanceTaskInspector: View {
         }
 
         Button {
-          store.refreshSiteMaintenanceSnapshot()
+          Task {
+            await store.refreshSiteMaintenanceSnapshot(force: true)
+          }
         } label: {
           Label("刷新维护报告", systemImage: "arrow.clockwise")
         }
 
         if let insight = report.calendarInsights.first {
           InspectorSection("内容节奏") {
-            Label("\(insight.priority.displayName) · \(insight.title)", systemImage: insight.systemImage)
+            Label("\(insight.priority.localizedDisplayName) · \(insight.title)", systemImage: insight.systemImage)
               .font(.caption.weight(.semibold))
               .foregroundStyle(.secondary)
             Text(insight.summary)
@@ -610,7 +491,9 @@ struct MaintenanceTaskInspector: View {
           .font(.caption)
           .foregroundStyle(.secondary)
         Button {
-          store.refreshSiteMaintenanceSnapshot()
+          Task {
+            await store.refreshSiteMaintenanceSnapshot(force: true)
+          }
         } label: {
           Label("生成维护报告", systemImage: "arrow.clockwise")
         }

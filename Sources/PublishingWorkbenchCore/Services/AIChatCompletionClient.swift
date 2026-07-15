@@ -277,8 +277,8 @@ public protocol AIChatStreamingTransport: AIChatTransport {
 public struct URLSessionAIChatTransport: AIChatTransport, AIChatStreamingTransport {
   private let session: URLSession
 
-  public init(session: URLSession = .shared) {
-    self.session = session
+  public init(session: URLSession? = nil) {
+    self.session = session ?? CredentialSafeURLSession.make()
   }
 
   public func data(for request: URLRequest) async throws -> (Data, URLResponse) {
@@ -329,9 +329,7 @@ public struct AIChatCompletionClient: Sendable {
     apiKey: String?,
     purpose: AIProviderRequestPurpose = .utilityTask
   ) async throws -> AIChatCompletionResult {
-    guard let url = config.chatCompletionsURL else {
-      throw AIChatCompletionClientError.invalidBaseURL(config.normalizedBaseURL)
-    }
+    let url = try validatedRequestURL(config: config, apiKey: apiKey)
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -369,11 +367,9 @@ public struct AIChatCompletionClient: Sendable {
     apiKey: String?,
     purpose: AIProviderRequestPurpose = .interactiveChat
   ) async throws -> AsyncThrowingStream<AIChatStreamUpdate, Error> {
+    let url = try validatedRequestURL(config: config, apiKey: apiKey)
     guard let streamingTransport = transport as? AIChatStreamingTransport else {
       throw AIChatCompletionClientError.streamingUnsupported
-    }
-    guard let url = config.chatCompletionsURL else {
-      throw AIChatCompletionClientError.invalidBaseURL(config.normalizedBaseURL)
     }
 
     var request = URLRequest(url: url)
@@ -397,6 +393,19 @@ public struct AIChatCompletionClient: Sendable {
     }
 
     return streamUpdates(from: lines)
+  }
+
+  private func validatedRequestURL(config: AIProviderConfig, apiKey: String?) throws -> URL {
+    guard let url = config.chatCompletionsURL else {
+      throw AIChatCompletionClientError.invalidBaseURL(config.normalizedBaseURL)
+    }
+    guard CredentialedEndpointPolicy.isAllowedAIRequestURL(
+      url,
+      hasCredential: apiKey?.nilIfEmpty != nil
+    ) else {
+      throw AIChatCompletionClientError.insecureCredentialURL
+    }
+    return url
   }
 
   private func normalizedRequest(
@@ -558,6 +567,7 @@ public struct AIChatCompletionClient: Sendable {
 
 public enum AIChatCompletionClientError: LocalizedError, Equatable {
   case invalidBaseURL(String)
+  case insecureCredentialURL
   case invalidResponse
   case streamingUnsupported
   case httpStatus(Int, String)
@@ -567,6 +577,8 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable {
     switch self {
     case .invalidBaseURL(let value):
       return "AI Base URL 无效：\(value)"
+    case .insecureCredentialURL:
+      return "AI 请求仅允许 HTTPS，或无 API Key 时的本机回环 HTTP 端点；本次未发起请求。"
     case .invalidResponse:
       return "AI 服务返回了无效响应。"
     case .streamingUnsupported:

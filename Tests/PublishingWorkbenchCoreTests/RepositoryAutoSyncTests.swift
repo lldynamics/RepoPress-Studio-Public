@@ -55,13 +55,14 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertTrue(snapshot.aiChatSessionsByDraftID.isEmpty)
   }
 
-  func testStorePersistsAutoSyncSettings() throws {
+  func testStorePersistsAutoSyncSettings() async throws {
     let url = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 
     store.updateRepositoryAutoSyncSettings(
       RepositoryAutoSyncSettings(isEnabled: true, intervalMinutes: 25, fetchBeforeScan: false)
     )
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     XCTAssertTrue(reloaded.repositoryAutoSyncSettings.isEnabled)
@@ -79,6 +80,7 @@ final class RepositoryAutoSyncTests: XCTestCase {
 
     let didRun = await store.runRepositoryAutoSync(now: now)
     XCTAssertTrue(didRun)
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     XCTAssertTrue(reloaded.repositoryAutoSyncSettings.isEnabled)
@@ -288,6 +290,7 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertTrue(store.repositoryAutoSyncState.fetchMessage?.contains("已 fetch origin") == true)
     XCTAssertEqual(store.repositoryAutoSyncState.remoteChangedPaths, ["content/posts/remote.md"])
     XCTAssertEqual(store.repositoryAutoSyncState.importableRemoteArticleCount, 1)
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.repositoryAutoSyncState.status, .scanned)

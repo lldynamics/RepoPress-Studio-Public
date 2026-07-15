@@ -17,7 +17,7 @@ struct AIChatInspectorDraftContext {
   let markdownPath: String
   let publishFileCount: Int
   let preflightIssueCount: Int
-  let imageCount: Int
+  let imageCount: Int?
   let selectedParagraphTitle: String?
   let selectedParagraphPreview: String?
   let chatMessage: String?

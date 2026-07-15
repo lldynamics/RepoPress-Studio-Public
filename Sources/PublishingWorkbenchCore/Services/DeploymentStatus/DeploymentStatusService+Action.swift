@@ -12,7 +12,8 @@ public extension DeploymentStatusService {
       ?? inferredSiteURL(profile: profile, provider: provider)
     let explicitEndpointURLText = normalizedURLText(profile.deploymentStatusEndpointURL)
     let endpointURLText = explicitEndpointURLText ?? siteURLText
-    let canUseEndpointToken = explicitEndpointURLText != nil
+    let canUseEndpointToken = provider == .custom
+      && explicitEndpointURLText != nil
       && profile.deploymentStatusEndpointUsesToken == true
     var signals: [DeploymentStatusSignal] = []
 
@@ -82,9 +83,18 @@ public extension DeploymentStatusService {
     let hasAccountID = profile.deploymentAccountID?.trimmedForPublishing.nilIfEmpty != nil
     let hasSiteURL = normalizedURLText(profile.deploymentSiteURL) != nil
       || inferredSiteURL(profile: profile, provider: provider) != nil
-    let hasStatusEndpoint = normalizedURLText(profile.deploymentStatusEndpointURL) != nil
-    let endpointUsesToken = profile.deploymentStatusEndpointUsesToken == true
-    let hasReachabilityFallback = hasSiteURL || hasStatusEndpoint
+    let statusEndpointURL = normalizedURLText(profile.deploymentStatusEndpointURL).flatMap(URL.init(string:))
+    let hasStatusEndpoint = statusEndpointURL != nil
+    let endpointTokenRequested = profile.deploymentStatusEndpointUsesToken == true
+    let endpointUsesToken = endpointTokenRequested && provider == .custom
+    let hasSecureProtectedEndpoint = !endpointUsesToken
+      || statusEndpointURL.map(CredentialedEndpointPolicy.isSecureRequestURL) == true
+    let hasUsableStatusEndpoint = hasStatusEndpoint && hasSecureProtectedEndpoint
+    let hasReachabilityFallback = hasSiteURL || hasUsableStatusEndpoint
+    let repositoryAPIBaseURLText = profile.repositoryBaseURL.nilIfEmpty
+      ?? profile.repositoryProvider.defaultBaseURL
+    let hasSecureRepositoryAPI = URL(string: repositoryAPIBaseURLText)
+      .map(CredentialedEndpointPolicy.isSecureAPIBaseURL) == true
     var configured: [String] = []
     var missing: [String] = []
     var apiReady = false
@@ -101,7 +111,9 @@ public extension DeploymentStatusService {
     if hasStatusEndpoint {
       configured.append("状态端点 URL")
       if endpointUsesToken {
-        if hasToken {
+        if !hasSecureProtectedEndpoint {
+          missing.append("状态端点 HTTPS URL")
+        } else if hasToken {
           configured.append("状态端点 Bearer Token")
         } else {
           missing.append("状态端点 Bearer Token")
@@ -116,14 +128,20 @@ public extension DeploymentStatusService {
       } else {
         missing.append("GitHub owner/repository")
       }
-      apiReady = hasRepository && hasToken
+      if !hasSecureRepositoryAPI {
+        missing.append("仓库 API HTTPS URL")
+      }
+      apiReady = hasRepository && hasToken && hasSecureRepositoryAPI
     case .gitlabPages:
       if hasRepository {
         configured.append("GitLab namespace/project")
       } else {
         missing.append("GitLab namespace/project")
       }
-      apiReady = hasRepository && hasToken
+      if !hasSecureRepositoryAPI {
+        missing.append("仓库 API HTTPS URL")
+      }
+      apiReady = hasRepository && hasToken && hasSecureRepositoryAPI
     case .netlify:
       if hasProjectID {
         configured.append("Netlify Site ID")
@@ -158,6 +176,7 @@ public extension DeploymentStatusService {
         missing.append("站点 URL 或状态端点 URL")
       }
       apiReady = hasReachabilityFallback
+        && (!endpointUsesToken || (hasSecureProtectedEndpoint && hasToken))
     }
 
     let hasProviderConfiguration: Bool
@@ -172,9 +191,16 @@ public extension DeploymentStatusService {
       hasProviderConfiguration = hasReachabilityFallback
     }
 
-    let fallbackMessage = hasReachabilityFallback
-      ? "已配置站点 URL 或状态端点；即使 API 未就绪，也能检查 HTTP 可达性和文章页面内容。\(hasStatusEndpoint && endpointUsesToken ? " 状态端点会在保存 Token 后使用 Bearer 授权。" : "")"
-      : "未配置站点 URL 或状态端点；API 未就绪时无法做发布后降级校验。"
+    let fallbackMessage: String
+    if hasStatusEndpoint && endpointTokenRequested && provider != .custom {
+      fallbackMessage = "只有自定义平台可向状态端点发送部署 Token；当前平台的端点将按无授权方式检查，避免将平台 Token 发送到第三方域名。"
+    } else if hasStatusEndpoint && endpointUsesToken && !hasSecureProtectedEndpoint {
+      fallbackMessage = "受保护状态端点必须使用 HTTPS；当前端点已禁用，不会发送 Bearer Token。"
+    } else if hasReachabilityFallback {
+      fallbackMessage = "已配置站点 URL 或状态端点；即使 API 未就绪，也能检查 HTTP 可达性和文章页面内容。\(hasStatusEndpoint && endpointUsesToken ? " 状态端点会在保存 Token 后使用 Bearer 授权。" : "")"
+    } else {
+      fallbackMessage = "未配置可用的站点 URL 或状态端点；API 未就绪时无法做发布后降级校验。"
+    }
     let nextStep: String
     if apiReady {
       nextStep = "可以读取 \(provider.displayName) 的部署状态，并继续保留站点 URL 做发布后页面校验。"

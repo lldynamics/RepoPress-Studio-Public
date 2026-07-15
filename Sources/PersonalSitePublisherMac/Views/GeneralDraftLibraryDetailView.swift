@@ -20,31 +20,37 @@ struct GeneralDraftLibraryDetailView: View {
               .foregroundStyle(.secondary)
           }
           Spacer()
-          Button {
-            copy(report.distributionChecklistMarkdown, message: "已复制素材分发清单。")
-          } label: {
-            Label("复制分发清单", systemImage: "checklist")
-          }
-          .disabled(report.items.isEmpty && report.assets.isEmpty)
+          Menu {
+            Button {
+              copy(report.distributionChecklistMarkdown, message: "已复制素材分发清单。")
+            } label: {
+              Label("复制分发清单", systemImage: "checklist")
+            }
+            .disabled(report.items.isEmpty && report.assets.isEmpty)
 
-          Button {
-            copy(report.crossSiteMaterialPackageMarkdown, message: "已复制跨站点素材包。")
-          } label: {
-            Label("复制素材包", systemImage: "shippingbox")
-          }
-          .disabled(report.items.isEmpty && report.assets.isEmpty)
+            Button {
+              copy(report.crossSiteMaterialPackageMarkdown, message: "已复制跨站点素材摘要。")
+            } label: {
+              Label("复制跨站点摘要", systemImage: "doc.on.doc")
+            }
+            .disabled(report.items.isEmpty && report.assets.isEmpty)
 
-          Button {
-            copy(packagePlan.packageText, message: "已复制素材包。")
-          } label: {
-            Label("复制素材包", systemImage: "shippingbox.fill")
-          }
-          .disabled(packagePlan.files.isEmpty)
+            Button {
+              copy(packagePlan.packageText, message: "已复制可导入素材包。")
+            } label: {
+              Label("复制可导入素材包", systemImage: "shippingbox.fill")
+            }
+            .disabled(packagePlan.files.isEmpty)
 
-          Button {
-            importPackageFromClipboard()
+            Divider()
+
+            Button {
+              importPackageFromClipboard()
+            } label: {
+              Label("从剪贴板导入", systemImage: "tray.and.arrow.down")
+            }
           } label: {
-            Label("导入素材包", systemImage: "tray.and.arrow.down")
+            Label("导入/导出", systemImage: "arrow.up.arrow.down")
           }
 
           Button {
@@ -90,7 +96,15 @@ struct GeneralDraftLibraryDetailView: View {
           reusePlanSection(reusePlan)
         }
 
-        backupSection(backupPlan)
+        DisclosureGroup {
+          backupSection(backupPlan)
+            .padding(.top, 8)
+        } label: {
+          Label("素材备份与迁移", systemImage: "archivebox")
+            .font(.headline)
+        }
+        .padding(12)
+        .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
         librarySection(report)
         assetSection(report)
       }
@@ -137,7 +151,7 @@ struct GeneralDraftLibraryDetailView: View {
           value: plan.hasAttachmentWarnings ? "alt \(plan.missingAltTextCount) / caption \(plan.missingCaptionCount)" : "已就绪",
           systemImage: plan.hasAttachmentWarnings ? "exclamationmark.triangle" : "checkmark.circle"
         )
-        MetricTile(title: "复用风险", value: plan.riskLevel.displayName, systemImage: plan.riskLevel.systemImage)
+        MetricTile(title: "复用风险", value: plan.riskLevel.localizedDisplayName, systemImage: plan.riskLevel.systemImage)
       }
 
       if !plan.sourceFieldDiffs.isEmpty {
@@ -314,7 +328,7 @@ struct GeneralDraftLibraryDetailView: View {
                 Text(item.title)
                   .font(.callout.weight(.medium))
                   .lineLimit(1)
-                Text(item.reuseStatus.displayName)
+                Text(item.reuseStatus.localizedDisplayName)
                   .font(.caption2.weight(.semibold))
                   .foregroundStyle(reuseStatusColor(item.reuseStatus))
                 Spacer()
@@ -345,12 +359,25 @@ struct GeneralDraftLibraryDetailView: View {
             }
             .controlSize(.small)
 
-            Button {
-              store.copyDraftToActiveProfile(item.draftID)
+            Menu {
+              ForEach(publishingProfiles) { profile in
+                Button {
+                  store.copyDraft(item.draftID, toProfileID: profile.id)
+                } label: {
+                  Label(profile.name, systemImage: "globe")
+                }
+                .disabled(profile.id == item.profileID)
+              }
             } label: {
-              Label("复制到当前站点", systemImage: "doc.on.doc")
+              Label(String(localized: "复制到站点"), systemImage: "doc.on.doc")
             }
             .controlSize(.small)
+            .disabled(publishingProfiles.allSatisfy { $0.id == item.profileID })
+            .help(
+              publishingProfiles.isEmpty
+                ? String(localized: "请先新建发布站点配置")
+                : String(localized: "选择明确的目标站点")
+            )
 
             if item.reuseStatus != .libraryDraft {
               Button {
@@ -366,6 +393,10 @@ struct GeneralDraftLibraryDetailView: View {
         }
       }
     }
+  }
+
+  private var publishingProfiles: [SiteProfile] {
+    store.profiles.filter { $0.purpose != .generalDraftBackup }
   }
 
   private func libraryItemMetadataRow(_ item: GeneralDraftLibraryItem) -> some View {

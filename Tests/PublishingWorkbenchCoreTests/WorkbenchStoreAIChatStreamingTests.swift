@@ -593,7 +593,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertTrue(store.aiChatMessages.isEmpty)
   }
 
-  func testDeletingAIChatMessageRemovesOnlySelectedMessageAndPersists() throws {
+  func testDeletingAIChatMessageRemovesOnlySelectedMessageAndPersists() async throws {
     let persistenceURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
       .appendingPathExtension("json")
@@ -614,6 +614,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
 
     XCTAssertEqual(store.aiChatMessages.map(\.content), ["保留的问题", "后续问题"])
     XCTAssertEqual(store.aiChatMessage, "已删除 1 条 AI 消息。")
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: persistence)
     let reloadedDraft = try XCTUnwrap(reloaded.drafts.first { $0.id == draft.id })
@@ -796,7 +797,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertFalse(prepared.archivedConversations.contains { $0.title == "空对话" })
   }
 
-  func testStorePersistsCurrentDraftAIChatSessionAcrossReloads() throws {
+  func testStorePersistsCurrentDraftAIChatSessionAcrossReloads() async throws {
     let persistenceURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
       .appendingPathExtension("json")
@@ -834,6 +835,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     store.setAIChatSelectedModelState("deepseek-v4-pro")
     store.setAIChatFocusedParagraph(focusedParagraph.id, draft: draft)
     store.save()
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: persistence)
     let reloadedDraft = try XCTUnwrap(reloaded.drafts.first { $0.id == draft.id })
@@ -848,7 +850,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(reloaded.aiChatFocusedParagraphID, focusedParagraph.id)
   }
 
-  func testStoreArchivesAndRestoresAIChatConversations() throws {
+  func testStoreArchivesAndRestoresAIChatConversations() async throws {
     let persistenceURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
       .appendingPathExtension("json")
@@ -877,6 +879,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let archivedConversation = try XCTUnwrap(store.aiChatArchivedConversations.first)
     XCTAssertEqual(archivedConversation.title, "发布前最终审稿")
     XCTAssertEqual(archivedConversation.messages.map(\.content), ["第一轮问题", "第一轮回答"])
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: persistence)
     let reloadedDraft = try XCTUnwrap(reloaded.drafts.first { $0.id == draft.id })
@@ -896,7 +899,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(reloaded.aiChatMessage, "已恢复历史对话：发布前最终审稿")
   }
 
-  func testStoreArchivesImageOnlyAIChatConversationWithAttachmentTitle() throws {
+  func testStoreArchivesImageOnlyAIChatConversationWithAttachmentTitle() async throws {
     let persistenceURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
       .appendingPathExtension("json")
@@ -922,6 +925,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
 
     let archivedConversation = try XCTUnwrap(store.aiChatArchivedConversations.first)
     XCTAssertEqual(archivedConversation.title, "已附加图片：cover.png")
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: persistence)
     let reloadedDraft = try XCTUnwrap(reloaded.drafts.first { $0.id == draft.id })
@@ -931,7 +935,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(reloadedArchive.title, "已附加图片：cover.png")
   }
 
-  func testStoreDeletesArchivedAIChatConversationAcrossReloads() throws {
+  func testStoreDeletesArchivedAIChatConversationAcrossReloads() async throws {
     let persistenceURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
       .appendingPathExtension("json")
@@ -958,6 +962,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertTrue(store.aiChatArchivedConversations.isEmpty)
     XCTAssertEqual(store.aiChatMessages.map(\.content), ["当前对话"])
     XCTAssertEqual(store.aiChatMessage, "已删除历史对话：要删除的历史")
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: persistence)
     let reloadedDraft = try XCTUnwrap(reloaded.drafts.first { $0.id == draft.id })

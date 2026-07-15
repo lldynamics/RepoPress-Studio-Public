@@ -25,14 +25,16 @@ public final class WorkbenchStore: ObservableObject {
   public lazy var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade = WorkbenchImageWorkbenchFeatureFacade(store: self)
   public lazy var persistenceStatus: WorkbenchPersistenceFeatureFacade = WorkbenchPersistenceFeatureFacade(store: self)
   public lazy var shell: WorkbenchShellFeatureFacade = WorkbenchShellFeatureFacade(store: self)
+  public lazy var activityStatus: WorkbenchActivityStatusFacade = WorkbenchActivityStatusFacade(store: self)
   @Published public private(set) var contentHealthSnapshotVersion = 0
   @Published public private(set) var draftTaskQueueStateVersion = 0
   private var draftTaskQueueStateCache: [UUID: DraftTaskQueueState] = [:]
-  private var imageWorkbenchSiteSummaryVersion = 0
-  private var imageWorkbenchSiteSummaryCache: (version: Int, summary: ImageWorkbenchSiteSummary)?
   private var childStoreCancellables = Set<AnyCancellable>()
   var preflightRefreshTask: Task<Void, Never>?
   var draftBodyCommitTasks: [UUID: Task<Void, Never>] = [:]
+  var siteMaintenanceRefreshTask: Task<SiteMaintenanceReport, Error>?
+  var siteMaintenanceRefreshScheduleTask: Task<Void, Never>?
+  var siteMaintenanceRefreshGeneration: UInt64 = 0
 
   lazy var aiStore: WorkbenchAIStore = WorkbenchAIStore(
     store: self,
@@ -42,7 +44,10 @@ public final class WorkbenchStore: ObservableObject {
     aiConnectionTestService: aiConnectionTestService,
     imageWorkbenchService: imageWorkbenchService,
     seoAuditService: seoAuditService,
-    seoSocialPreviewService: seoSocialPreviewService
+    seoSocialPreviewService: seoSocialPreviewService,
+    aiChatSessionHydrator: { [persistence = persistenceStore.persistence] state in
+      persistence.hydratedAIChatSession(state)
+    }
   )
   lazy var imageStore: ImageWorkbenchStore = ImageWorkbenchStore(
     store: self,
@@ -53,6 +58,11 @@ public final class WorkbenchStore: ObservableObject {
   public var profiles: [SiteProfile] { publishingStore.profiles }
   public var activeProfileID: UUID { publishingStore.activeProfileID }
   public var drafts: [ArticleDraft] { publishingStore.drafts }
+  public var draftVersions: [DraftVersionSnapshot] { publishingStore.draftVersions }
+  public var recycledDrafts: [RecycledDraft] { publishingStore.recycledDrafts }
+  public var draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest] {
+    publishingStore.draftRepositoryCleanupRequests
+  }
   public var repositoryReport: RepositoryScanReport? { repositoryStore.repositoryReport }
   public var imageWorkbenchReport: ImageWorkbenchReport? { publishingStore.imageWorkbenchReport }
 
@@ -69,7 +79,6 @@ public final class WorkbenchStore: ObservableObject {
     repositorySyncCommandBuilder: RepositorySyncCommandBuilder = RepositorySyncCommandBuilder(),
     localSitePreviewService: LocalSitePreviewService = LocalSitePreviewService(),
     localSitePreviewProcessService: LocalSitePreviewProcessService = LocalSitePreviewProcessService(),
-    contentPerformanceCSVImportService: ContentPerformanceCSVImportService = ContentPerformanceCSVImportService(),
     remoteReviewDraftBuilder: RemoteReviewDraftBuilder = RemoteReviewDraftBuilder(),
     localGitPublishService: LocalGitPublishService = LocalGitPublishService(),
     remoteRepositoryPublishService: RemoteRepositoryPublishService = RemoteRepositoryPublishService(),
@@ -83,7 +92,7 @@ public final class WorkbenchStore: ObservableObject {
     releaseLedgerService: ReleaseLedgerService = ReleaseLedgerService(),
     generalDraftLibraryService: GeneralDraftLibraryService = GeneralDraftLibraryService(),
     monetizationService: MonetizationService = MonetizationService(),
-    releaseQualityGateService: ReleaseQualityGateService = ReleaseQualityGateService(),
+    proEntitlementProvider: any ProEntitlementProviding = VerifiedStoreKitEntitlementProvider(),
     keychainTokenStore: KeychainTokenStore = KeychainTokenStore(),
     repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(service: "PersonalSitePublisherMac.RepositoryProvider", accountPrefix: "repository-provider"),
     deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(service: "PersonalSitePublisherMac.DeploymentProvider", accountPrefix: "deployment-provider"),
@@ -100,9 +109,11 @@ public final class WorkbenchStore: ObservableObject {
     self.siteMaintenanceStore = SiteMaintenanceStore()
 
     let snapshotLoad: WorkbenchSnapshotLoadResult
+    var requiresPersistenceRecoveryDecision = false
     do {
       snapshotLoad = try persistenceStore.loadWithRecovery()
     } catch {
+      requiresPersistenceRecoveryDecision = true
       snapshotLoad = WorkbenchSnapshotLoadResult(
         snapshot: nil,
         recoveryMessage: "工作台数据无法读取，已使用空白工作台启动。原始文件未被覆盖：\(error.localizedDescription)"
@@ -120,7 +131,8 @@ public final class WorkbenchStore: ObservableObject {
       privacySettings: snapshot?.privacySettings ?? .default,
       privacyProtectionEvents: snapshot?.privacyProtectionEvents ?? [],
       monetizationState: snapshot?.monetizationState ?? .default,
-      monetizationService: monetizationService
+      monetizationService: monetizationService,
+      entitlementProvider: proEntitlementProvider
     )
     self.repositoryStore = RepositoryStore(
       remoteRepositoryAccessCheck: snapshot?.remoteRepositoryAccessCheck,
@@ -157,11 +169,12 @@ public final class WorkbenchStore: ObservableObject {
       profiles: initialProfiles,
       activeProfileID: initialActiveProfileID,
       drafts: initialDrafts,
+      draftVersions: snapshot?.draftVersions ?? [],
+      recycledDrafts: snapshot?.recycledDrafts ?? [],
+      draftRepositoryCleanupRequests: snapshot?.draftRepositoryCleanupRequests ?? [],
       releaseRecords: snapshot?.releaseRecords ?? [],
       selectedDraftID: initialDrafts.first?.id,
-      externalVerificationEvidenceRecords: snapshot?.externalVerificationEvidenceRecords ?? [],
       maintenanceOperationRecords: snapshot?.maintenanceOperationRecords ?? [],
-      contentPerformanceSnapshots: snapshot?.contentPerformanceSnapshots ?? [],
       preflightService: preflightService,
       publishPackageBuilder: publishPackageBuilder,
       localPublishPreviewService: localPublishPreviewService,
@@ -177,9 +190,7 @@ public final class WorkbenchStore: ObservableObject {
       generalDraftLibraryService: generalDraftLibraryService,
       localSitePreviewService: localSitePreviewService,
       localSitePreviewProcessService: localSitePreviewProcessService,
-      contentPerformanceCSVImportService: contentPerformanceCSVImportService,
-      siteMaintenanceService: siteMaintenanceService,
-      releaseQualityGateService: releaseQualityGateService
+      siteMaintenanceService: siteMaintenanceService
     )
     publishingStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
@@ -202,18 +213,20 @@ public final class WorkbenchStore: ObservableObject {
     siteMaintenanceStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStoreCancellables)
-    aiStore.replaceAIChatSessions(
-      persistenceStore.persistence.hydratedAIChatSessions(snapshot?.aiChatSessionsByDraftID ?? [:])
-    )
+    aiStore.replaceAIChatSessions(snapshot?.aiChatSessionsByDraftID ?? [:])
     repositoryDeploymentCoordinator.refreshTokenAvailability(store: self)
-    privacyMonetizationStore.showPrivacyMaskIfNeededOnLaunch()
     if let recoveryMessage = snapshotLoad.recoveryMessage {
-      persistenceStore.setRecoveryMessage(recoveryMessage)
-      setLastSaveStatus("需要检查工作台数据")
+      if requiresPersistenceRecoveryDecision {
+        persistenceStore.protectWritesForUnrecoverableSnapshot(message: recoveryMessage)
+      } else {
+        persistenceStore.setRecoveryMessage(recoveryMessage)
+        setLastSaveStatus("需要检查工作台数据")
+      }
     }
     runPreflight()
-    refreshPublishPreview(for: selectedDraft)
+    refreshPublishPreviewInBackground(for: selectedDraft)
     aiStore.restoreSEOSocialPreviewSnapshotForCurrentSelection()
+    scheduleSiteMaintenanceSnapshotRefresh()
   }
 
   public var activeProfile: SiteProfile { publishingStore.activeProfile }
@@ -231,6 +244,10 @@ public final class WorkbenchStore: ObservableObject {
   public func save() {
     flushDraftBodyEditorBuffers()
     persistenceStore.saveImmediately(snapshot: persistenceStore.persistence.snapshot(from: self))
+  }
+
+  func waitForPendingSave() async {
+    await persistenceStore.waitForCurrentBackgroundSave()
   }
 
   /// Saves immediately and reports whether it is safe to let the process exit.
@@ -267,34 +284,25 @@ public final class WorkbenchStore: ObservableObject {
   }
 
   func invalidateDraftTaskQueueStateCache() {
-    invalidateImageWorkbenchSiteSummaryCache()
     draftTaskQueueStateCache.removeAll()
     draftTaskQueueStateVersion += 1
   }
 
-  private func invalidateImageWorkbenchSiteSummaryCache() {
-    imageWorkbenchSiteSummaryCache = nil
-    imageWorkbenchSiteSummaryVersion += 1
+  func imageWorkbenchBackgroundStateDidChange() {
+    objectWillChange.send()
   }
 
   func invalidateSiteMaintenanceSnapshot() {
+    siteMaintenanceRefreshGeneration &+= 1
+    siteMaintenanceRefreshTask?.cancel()
+    siteMaintenanceRefreshTask = nil
     siteMaintenanceStore.invalidate()
-  }
-
-  public var imageWorkbenchSiteSummary: ImageWorkbenchSiteSummary {
-    let version = imageWorkbenchSiteSummaryVersion
-    if let cached = imageWorkbenchSiteSummaryCache, cached.version == version {
-      return cached.summary
-    }
-
-    let summary = imageWorkbenchService.siteSummary(drafts: visibleDrafts, profile: activeProfile)
-    imageWorkbenchSiteSummaryCache = (version, summary)
-    return summary
+    scheduleSiteMaintenanceSnapshotRefresh()
   }
 
   public func draftTaskQueueStates(for drafts: [ArticleDraft]) -> [UUID: DraftTaskQueueState] {
     let imageIssueCounts = Dictionary(
-      uniqueKeysWithValues: imageWorkbenchSiteSummary.draftSummaries.map { summary in
+      uniqueKeysWithValues: (cachedImageWorkbenchSiteSummary?.draftSummaries ?? []).map { summary in
         (summary.draftID, summary.issueCount)
       }
     )
@@ -306,6 +314,11 @@ public final class WorkbenchStore: ObservableObject {
       "\(repositoryReport?.remoteChangedFiles.count ?? 0)"
     ].joined(separator: "|")
     let draftIDs = Set(drafts.map(\.id))
+    let preflightDrafts = self.drafts.filter { $0.siteProfileID == activeProfileID }
+    let preflightDuplicateIndex = PreflightDuplicateIndex(
+      drafts: preflightDrafts,
+      profile: activeProfile
+    )
     draftTaskQueueStateCache = draftTaskQueueStateCache.filter { draftIDs.contains($0.key) }
 
     return Dictionary(
@@ -324,7 +337,13 @@ public final class WorkbenchStore: ObservableObject {
         let state = DraftTaskQueueState(
           draftID: draft.id,
           signature: signature,
-          hasPreflightErrors: preflightIssues(for: draft).contains { $0.severity == .error },
+          hasPreflightErrors: publishingStore.preflightIssues(
+            for: draft,
+            includeRepositoryReadiness: true,
+            allDrafts: preflightDrafts,
+            duplicateIndex: preflightDuplicateIndex,
+            store: self
+          ).contains { $0.severity == .error },
           hasImageIssues: imageIssueCount > 0
         )
         draftTaskQueueStateCache[draft.id] = state
@@ -337,12 +356,16 @@ public final class WorkbenchStore: ObservableObject {
     siteMaintenanceStore.isStale()
   }
 
-  func replaceSiteMaintenanceSnapshot(report: SiteMaintenanceReport) {
+  func replaceSiteMaintenanceSnapshot(
+    report: SiteMaintenanceReport,
+    inputSignature: SiteMaintenanceReportInputSignature
+  ) {
     siteMaintenanceStore.replaceSnapshot(
       report: report,
       profileID: activeProfileID,
       profileName: activeProfile.name,
-      draftCount: visibleDrafts.count
+      draftCount: visibleDrafts.count,
+      inputSignature: inputSignature
     )
   }
 }

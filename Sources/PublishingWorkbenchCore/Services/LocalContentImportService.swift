@@ -26,11 +26,13 @@ public struct LocalContentImportMergeSummary: Codable, Hashable, Sendable {
   }
 }
 
-public struct LocalContentImportService {
-  private let fileManager: FileManager
+public struct LocalContentImportService: Sendable {
+  private let fileSystem: SendableFileManager
+
+  private var fileManager: FileManager { fileSystem.value }
 
   public init(fileManager: FileManager = .default) {
-    self.fileManager = fileManager
+    self.fileSystem = SendableFileManager(fileManager)
   }
 
   public func importDrafts(profile: SiteProfile) -> LocalContentImportResult {
@@ -41,6 +43,13 @@ public struct LocalContentImportService {
     }
 
     return result
+  }
+
+  public func importDraftsAsync(profile: SiteProfile) async -> LocalContentImportResult {
+    let service = self
+    return await Task.detached(priority: .userInitiated) {
+      service.importDrafts(profile: profile)
+    }.value
   }
 
   public func importDraft(profile: SiteProfile, repositoryPath: String) -> LocalContentImportResult {

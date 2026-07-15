@@ -43,6 +43,11 @@ extension WorkbenchStore {
   }
 
   @discardableResult
+  public func copyDraft(_ draftID: UUID, toProfileID profileID: UUID) -> ArticleDraft? {
+    publishingStore.copyDraft(draftID, toProfileID: profileID, store: self)
+  }
+
+  @discardableResult
   public func importGeneralDraftLibraryPackage(from packageText: String) -> LocalContentImportMergeSummary {
     publishingStore.importGeneralDraftLibraryPackage(from: packageText, store: self)
   }

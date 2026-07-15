@@ -23,10 +23,10 @@ struct SelectionActionBar: View {
           Button {
             onSelectSelectionAction(item.kind)
           } label: {
-            Label(item.kind.displayName, systemImage: item.systemImage)
+            Label(item.kind.localizedDisplayName, systemImage: item.systemImage)
           }
           .disabled(!availability.isEnabled)
-          .help(availability.unavailableReason ?? item.kind.displayName)
+          .help(availability.unavailableReason ?? item.kind.localizedDisplayName)
         }
       } label: {
         Label(activeSelectionActionName ?? "AI 编辑", systemImage: "sparkles")
@@ -160,8 +160,6 @@ struct MarkdownPreviewPane: View {
   let draft: ArticleDraft
   let profile: SiteProfile
   @AppStorage("markdownEditorPreviewTheme") private var previewThemeRaw = MarkdownPreviewTheme.github.rawValue
-  @AppStorage("markdownEditorPreviewCustomCSS") private var customCSS = ""
-  @State private var showCustomCSSPanel = false
   @State private var htmlDocument = ""
   @State private var renderWorkItem: DispatchWorkItem?
   @State private var renderGeneration = 0
@@ -185,13 +183,6 @@ struct MarkdownPreviewPane: View {
           .labelsHidden()
           .accessibilityLabel("预览主题")
           .accessibilityValue(previewThemeBinding.wrappedValue.title)
-
-          Button {
-            showCustomCSSPanel.toggle()
-          } label: {
-            Label("自定义 CSS", systemImage: "paintbrush.pointed")
-          }
-          .accessibilityLabel("自定义预览 CSS")
         }
 
         Text(profile.markdownPath(for: draft))
@@ -203,25 +194,6 @@ struct MarkdownPreviewPane: View {
           Text(draft.summary)
             .font(.callout)
             .foregroundStyle(.secondary)
-        }
-
-        if showCustomCSSPanel {
-          VStack(alignment: .leading, spacing: 6) {
-            Text("自定义 CSS")
-              .font(.caption.weight(.semibold))
-              .foregroundStyle(.secondary)
-
-            TextEditor(text: $customCSS)
-              .font(.system(.body, design: .monospaced))
-              .padding(8)
-              .frame(minHeight: 170)
-              .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-
-            Text("修改 CSS 后会实时应用到预览区。可使用 `.markdown-content` 选择器。")
-              .font(.caption2)
-              .foregroundStyle(.secondary)
-          }
-          .padding(.top, 4)
         }
 
         Divider()
@@ -250,7 +222,7 @@ struct MarkdownPreviewPane: View {
   }
 
   private var previewRenderInput: String {
-    [draft.bodyMarkdown, previewTheme.rawValue, customCSS].joined(separator: "\u{1F}")
+    [draft.bodyMarkdown, previewTheme.rawValue].joined(separator: "\u{1F}")
   }
 
   private func scheduleHTMLRender() {
@@ -259,9 +231,8 @@ struct MarkdownPreviewPane: View {
     let generation = renderGeneration
     let markdown = draft.bodyMarkdown
     let theme = previewTheme
-    let css = customCSS
     let workItem = DispatchWorkItem {
-      let html = MarkdownPreviewHTMLRenderer.document(markdown: markdown, theme: theme, customCSS: css)
+      let html = MarkdownPreviewHTMLRenderer.document(markdown: markdown, theme: theme)
       DispatchQueue.main.async {
         guard generation == renderGeneration else { return }
         htmlDocument = html
@@ -274,7 +245,7 @@ struct MarkdownPreviewPane: View {
 }
 
 private enum MarkdownPreviewHTMLRenderer {
-  static func document(markdown: String, theme: MarkdownPreviewTheme, customCSS: String) -> String {
+  static func document(markdown: String, theme: MarkdownPreviewTheme) -> String {
     let body = theme.decorate(markdownHTMLBody(for: markdown))
     return """
     <!doctype html>
@@ -282,8 +253,8 @@ private enum MarkdownPreviewHTMLRenderer {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; media-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
         <style>\(theme.styles)</style>
-        <style>\(customCSS)</style>
       </head>
       <body>
         <article class="markdown-content">\(body)</article>
@@ -397,8 +368,28 @@ enum MarkdownPreviewTheme: String, CaseIterable, Identifiable {
 struct MarkdownPreviewWebView: NSViewRepresentable {
   let html: String
 
-  final class Coordinator {
+  @MainActor
+  final class Coordinator: NSObject, WKNavigationDelegate {
     var lastLoadedHTML: String?
+
+    func webView(
+      _ webView: WKWebView,
+      decidePolicyFor navigationAction: WKNavigationAction,
+      decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
+    ) {
+      guard let url = navigationAction.request.url else {
+        decisionHandler(.allow)
+        return
+      }
+      if url.scheme == "about" {
+        decisionHandler(.allow)
+        return
+      }
+      if navigationAction.navigationType == .linkActivated {
+        _ = ExternalURLOpener.open(url)
+      }
+      decisionHandler(.cancel)
+    }
   }
 
   func makeCoordinator() -> Coordinator {
@@ -407,7 +398,11 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
 
   func makeNSView(context: Context) -> WKWebView {
     let configuration = WKWebViewConfiguration()
+    configuration.websiteDataStore = .nonPersistent()
+    configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+    configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
     let view = WKWebView(frame: .zero, configuration: configuration)
+    view.navigationDelegate = context.coordinator
     view.setValue(false, forKey: "drawsBackground")
     return view
   }

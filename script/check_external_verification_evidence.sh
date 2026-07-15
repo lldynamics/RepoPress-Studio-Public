@@ -3,6 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EVIDENCE_FILE="${EXTERNAL_VERIFY_EVIDENCE_FILE:-$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md}"
+SCREENSHOT_MANIFEST_FILE="${SCREENSHOT_MANIFEST_FILE:-$ROOT_DIR/docs/app-store-screenshots/SCREENSHOT_MANIFEST.md}"
+SCREENSHOT_FINGERPRINT_SCRIPT="$ROOT_DIR/script/screenshot_evidence_fingerprint.py"
+SCREENSHOT_CAPTURE_PROVENANCE_SCRIPT="$ROOT_DIR/script/screenshot_capture_provenance.py"
+SCREENSHOT_DIR="${SCREENSHOT_DIR:-$ROOT_DIR/docs/app-store-screenshots}"
 
 fail() {
   echo "external verification gate: $*" >&2
@@ -64,16 +68,15 @@ require_screenshot_set_coverage() {
   local value_lc
   value_lc="$(printf "%s" "$1" | tr '[:upper:]' '[:lower:]')"
   local missing=()
-  contains_any "$value_lc" "writing" || missing+=("writing")
-  contains_any "$value_lc" "ai chat" "ai-chat" || missing+=("ai-chat")
-  contains_any "$value_lc" "sync/api publish" "sync api publish" "sync-api-publish" || missing+=("sync-api-publish")
-  contains_any "$value_lc" "seo/social preview" "seo social preview" "seo-social-preview" || missing+=("seo-social-preview")
-  contains_any "$value_lc" "deployment" "deployment-status" || missing+=("deployment-status")
-  contains_any "$value_lc" "maintenance" || missing+=("maintenance")
-  contains_any "$value_lc" "general drafts" "general-drafts" "通用草稿" || missing+=("general-drafts")
-  contains_any "$value_lc" "pro" "pro-settings" || missing+=("pro-settings")
-  contains_any "$value_lc" "privacy lock" "privacy-lock" || missing+=("privacy-lock")
-  contains_any "$value_lc" "release readiness" "release-readiness" "release gate" || missing+=("release-readiness")
+  local id
+  local required_count=0
+  [[ -f "$SCREENSHOT_MANIFEST_FILE" ]] || fail "screenshot manifest is missing: $SCREENSHOT_MANIFEST_FILE"
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    required_count=$((required_count + 1))
+    contains_any "$value_lc" "$id" || missing+=("$id")
+  done < <(sed -nE 's/^\| `([^`]+)` \|.*/\1/p' "$SCREENSHOT_MANIFEST_FILE")
+  [[ "$required_count" -gt 0 ]] || fail "screenshot manifest contains no required screenshot IDs"
   [[ "${#missing[@]}" -eq 0 ]] || fail "app-store-screenshots evidence Screenshot set is missing required screen(s): ${missing[*]}"
 }
 
@@ -201,6 +204,7 @@ if grep -Eq "^- \[[xX]\][[:space:]]+\`app-store-screenshots\`" "$EVIDENCE_FILE";
     "Screenshot set:"
     "Screenshot privacy gate:"
     "Screenshot strict gate:"
+    "Screenshot source fingerprint:"
   )
   missing_screenshot_labels=()
   for label in "${screenshot_labels[@]}"; do
@@ -214,6 +218,14 @@ if grep -Eq "^- \[[xX]\][[:space:]]+\`app-store-screenshots\`" "$EVIDENCE_FILE";
   if requires_structured_evidence && [[ "${#missing_screenshot_labels[@]}" -eq 0 ]]; then
     screenshot_set_line="$(grep -i "Screenshot set:" "$EVIDENCE_FILE" | tail -n 1)"
     require_screenshot_set_coverage "$screenshot_set_line"
+    [[ -f "$SCREENSHOT_FINGERPRINT_SCRIPT" ]] || fail "screenshot fingerprint helper is missing"
+    recorded_fingerprint="$(grep -i "Screenshot source fingerprint:" "$EVIDENCE_FILE" | tail -n 1 | sed -E 's/^.*(sha256:[0-9a-f]{64}).*$/\1/')"
+    current_fingerprint="$(python3 "$SCREENSHOT_FINGERPRINT_SCRIPT" --root "$ROOT_DIR" --manifest "$SCREENSHOT_MANIFEST_FILE")"
+    [[ "$recorded_fingerprint" == "$current_fingerprint" ]] \
+      || fail "app-store-screenshots evidence is stale; recapture after screenshot-visible source changes"
+    python3 "$SCREENSHOT_CAPTURE_PROVENANCE_SCRIPT" check \
+      --root "$ROOT_DIR" --manifest "$SCREENSHOT_MANIFEST_FILE" --screenshot-dir "$SCREENSHOT_DIR" >/dev/null \
+      || fail "app-store-screenshots evidence does not match the current captured image provenance"
   fi
   if requires_structured_evidence && grep -Eiq '(pending capture|pending screenshot|pending privacy|pending strict|todo|not captured|missing screenshot|waiting for screenshot|待采集|待截图|待验证)' "$EVIDENCE_FILE"; then
     fail "app-store-screenshots evidence still contains pending screenshot verification placeholder text"

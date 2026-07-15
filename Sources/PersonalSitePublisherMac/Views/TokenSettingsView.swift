@@ -27,7 +27,7 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     Form {
       TokenRepositoryDefaultsSection(
         repositoryProviderBinding: repositoryProviderBinding,
-        repositoryProviderDisplayName: activeProfile.repositoryProvider.displayName,
+        repositoryProviderDisplayName: activeProfile.repositoryProvider.localizedDisplayName,
         repositoryBaseURL: activeProfileBinding.repositoryBaseURL,
         ownerOrNamespace: activeProfileBinding.repoOwner,
         ownerOrNamespaceDisplayValue: activeProfile.repoOwner.isEmpty ? "未填写" : activeProfile.repoOwner,
@@ -36,14 +36,14 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
         branch: activeProfileBinding.branch,
         branchDisplayValue: activeProfile.branch.isEmpty ? "未填写" : activeProfile.branch,
         publishStrategyBinding: activeProfileBinding.repositoryPublishStrategy,
-        publishStrategyDisplayValue: activeProfile.repositoryPublishStrategy.displayName,
+        publishStrategyDisplayValue: activeProfile.repositoryPublishStrategy.localizedDisplayName,
         publishStrategyDetail: activeProfile.repositoryPublishStrategy.detail
       )
 
       TokenDeploymentDefaultsSection(
         readiness: readiness,
         deploymentProviderBinding: deploymentProviderBinding,
-        deploymentProviderDisplayName: activeDeploymentProvider.displayName,
+        deploymentProviderDisplayName: activeDeploymentProvider.localizedDisplayName,
         deploymentSiteURL: optionalProfileStringBinding(\.deploymentSiteURL),
         deploymentSiteURLDisplayValue: activeProfile.deploymentSiteURL?.nilIfEmpty ?? "未填写",
         deploymentStatusEndpointURL: optionalProfileStringBinding(\.deploymentStatusEndpointURL),

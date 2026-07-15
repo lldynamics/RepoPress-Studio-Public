@@ -160,7 +160,7 @@ required = {
     },
     "privacy-lock": {
         "target": "privacy-lock.png",
-        "capture": ["privacy-lock", "locked workbench", "private-content masking"],
+        "capture": ["privacy-lock", "manually hidden workbench", "private-content masking"],
         "source": {
             "Sources/PersonalSitePublisherMac/Views/SharedViews.swift": [
                 "PrivacyLockOverlay",
@@ -168,30 +168,8 @@ required = {
             ],
             "Sources/PersonalSitePublisherMac/Views/ContentView.swift": [
                 "isPrivacyLocked",
-                "lockPrivacyIfNeededForInactiveScene",
+                "lockPrivacy(reason",
                 "canUseProtectedWorkbench",
-            ],
-        },
-    },
-    "release-readiness": {
-        "target": "release-readiness.png",
-        "capture": ["release-readiness", "localization", "UI runtime", "product-readiness gates"],
-        "source": {
-            "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspector.swift": [
-                "ReleaseQualityGateInspectorView",
-            ],
-            "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSectionsExtra.swift": [
-                "refreshReleaseQualityGate",
-            ],
-            "Sources/PersonalSitePublisherMac/Views/ReleaseQualityGateDetailView.swift": [
-                "releaseGateSection",
-                "releaseGateItemCard",
-            ],
-            "Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateReport.swift": [
-                "ReleaseQualityGateReport",
-            ],
-            "Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateAppStoreChecklistReport.swift": [
-                "strictReadinessSummary",
             ],
         },
     },

@@ -49,12 +49,12 @@ struct WorkspaceTaskMetadataSection: View {
               .accessibilityValue(draft.date.formatted(date: .abbreviated, time: .shortened))
             Picker("Visibility", selection: $draft.visibility) {
               ForEach(ArticleVisibility.allCases) { visibility in
-                Label(visibility.displayName, systemImage: visibility.systemImage)
+                Label(visibility.localizedDisplayName, systemImage: visibility.systemImage)
                   .tag(visibility)
               }
             }
             .accessibilityLabel("文章可见性")
-            .accessibilityValue(draft.visibility.displayName)
+            .accessibilityValue(draft.visibility.localizedDisplayName)
             Toggle("Draft", isOn: $draft.draft)
               .accessibilityLabel("草稿状态")
               .accessibilityValue(draft.draft ? "草稿" : "非草稿")
@@ -68,7 +68,7 @@ struct WorkspaceTaskMetadataSection: View {
 
           InspectorSection("发布路径") {
             InspectorStatRow(title: "站点", value: state.siteName, systemImage: "globe")
-            InspectorStatRow(title: "状态", value: draft.status.displayName, systemImage: draft.status.systemImage)
+            InspectorStatRow(title: "状态", value: draft.status.localizedDisplayName, systemImage: draft.status.systemImage)
             Text(state.markdownPath)
               .font(.caption.monospaced())
               .foregroundStyle(.secondary)
@@ -152,7 +152,7 @@ struct WorkspaceTaskSEOSection: View {
         if let snapshot {
           InspectorStatRow(title: "标题", value: "\(snapshot.titleCharacterCount) 字", systemImage: "textformat.size")
           InspectorStatRow(title: "描述", value: "\(snapshot.descriptionCharacterCount) 字", systemImage: "text.alignleft")
-          InspectorStatRow(title: "图片", value: snapshot.imageDimensions?.displayName ?? (snapshot.imagePath == nil ? "未设置" : "已设置"), systemImage: "photo")
+          InspectorStatRow(title: "图片", value: snapshot.imageDimensions?.workbenchDimensionText ?? (snapshot.imagePath == nil ? "未设置" : "已设置"), systemImage: "photo")
           Text(snapshot.canonicalURLText)
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
@@ -165,7 +165,7 @@ struct WorkspaceTaskSEOSection: View {
 
           ForEach(snapshot.cards) { card in
             VStack(alignment: .leading, spacing: 5) {
-              Label(card.kind.displayName, systemImage: card.kind.systemImage)
+              Label(card.kind.localizedDisplayName, systemImage: card.kind.systemImage)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
               HStack(spacing: 8) {
@@ -178,7 +178,7 @@ struct WorkspaceTaskSEOSection: View {
                     .foregroundStyle(.secondary)
                 }
                 if let imageDimensions = card.imageDimensions {
-                  Label(imageDimensions.displayName, systemImage: "ruler")
+                  Label(imageDimensions.workbenchDimensionText, systemImage: "ruler")
                     .foregroundStyle(.secondary)
                 }
               }
@@ -306,9 +306,9 @@ struct WorkspaceTaskSEOSection: View {
             .frame(width: 16)
           VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
-              Text(item.kind.displayName)
+              Text(item.kind.localizedDisplayName)
                 .font(.caption.weight(.semibold))
-              Text(item.status.displayName)
+              Text(item.status.localizedDisplayName)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(socialPreviewReadinessForeground(item.status))
             }
@@ -334,18 +334,18 @@ struct WorkspaceTaskSEOSection: View {
       ForEach(items) { item in
         VStack(alignment: .leading, spacing: 5) {
           HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Label(item.kind.displayName, systemImage: item.kind.systemImage)
+            Label(item.kind.localizedDisplayName, systemImage: item.kind.systemImage)
               .font(.caption.weight(.semibold))
             Spacer()
             Button {
-              copy(item.clipboardText, message: "已复制 \(item.kind.displayName) 分享文案。")
+              copy(item.clipboardText, message: "已复制 \(item.kind.localizedDisplayName) 分享文案。")
             } label: {
               Image(systemName: "doc.on.doc")
             }
             .buttonStyle(.borderless)
             .help("复制分享文案")
             .accessibilityLabel("复制分享文案")
-            .accessibilityValue(item.kind.displayName)
+            .accessibilityValue(item.kind.localizedDisplayName)
           }
 
           Text(item.title)
@@ -556,7 +556,7 @@ struct WorkspaceTaskChecksSection: View {
         .font(.caption2)
 
         ForEach(summary.issues.prefix(3)) { issue in
-          Text("\(issue.severity.displayName) · \(issue.title)")
+          Text("\(issue.severity.localizedDisplayName) · \(issue.title)")
             .font(.caption2)
             .foregroundStyle(.tertiary)
             .lineLimit(1)
@@ -588,13 +588,13 @@ struct WorkspaceTaskPublishSection: View {
       InspectorSection("发布包") {
         InspectorStatRow(title: "文件", value: package.map { "\($0.files.count)" } ?? "待刷新", systemImage: "shippingbox")
         InspectorStatRow(title: "变化", value: preview.map { "\($0.changedFileDiffs.count)" } ?? "待刷新", systemImage: "arrow.left.arrow.right")
-        InspectorStatRow(title: "本地策略", value: profile.repositoryPublishStrategy.displayName, systemImage: profile.repositoryPublishStrategy == .direct ? "checkmark.seal" : "arrow.triangle.branch")
-        InspectorStatRow(title: "线上策略", value: mode.displayName, systemImage: "network")
+        InspectorStatRow(title: "本地策略", value: profile.repositoryPublishStrategy.localizedDisplayName, systemImage: profile.repositoryPublishStrategy == .direct ? "checkmark.seal" : "arrow.triangle.branch")
+        InspectorStatRow(title: "线上策略", value: mode.localizedDisplayName, systemImage: "network")
 
         HStack {
           Button {
             store.runPreflight()
-            store.refreshPublishPreview(for: draft)
+            store.refreshPublishPreviewInBackground(for: draft)
           } label: {
             Label("刷新", systemImage: "arrow.clockwise")
           }
@@ -617,10 +617,10 @@ struct WorkspaceTaskPublishSection: View {
           ForEach(preview.changedFileDiffs.prefix(5)) { diff in
             VStack(alignment: .leading, spacing: 4) {
               HStack {
-                Label(diff.status.displayName, systemImage: diff.status.systemImage)
+                Label(diff.status.localizedDisplayName, systemImage: diff.status.systemImage)
                   .foregroundStyle(diff.status.color)
                 Spacer()
-                Text(diff.kind.displayName)
+                Text(diff.kind.localizedDisplayName)
                   .foregroundStyle(.secondary)
               }
               .font(.caption)
@@ -640,8 +640,8 @@ struct WorkspaceTaskPublishSection: View {
       }
 
       InspectorSection("提交方式") {
-        InspectorStatRow(title: "写入", value: readiness?.writeReadiness.displayName ?? "待刷新", systemImage: readiness?.writeReadiness.systemImage ?? "clock")
-        InspectorStatRow(title: "提交", value: readiness?.commitReadiness.displayName ?? "待刷新", systemImage: readiness?.commitReadiness.systemImage ?? "clock")
+        InspectorStatRow(title: "写入", value: readiness?.writeReadiness.localizedDisplayName ?? "待刷新", systemImage: readiness?.writeReadiness.systemImage ?? "clock")
+        InspectorStatRow(title: "提交", value: readiness?.commitReadiness.localizedDisplayName ?? "待刷新", systemImage: readiness?.commitReadiness.systemImage ?? "clock")
         if let readiness, readiness.blockingIssueCount > 0 {
           ForEach((readiness.writeBlockingIssues + readiness.commitBlockingIssues).prefix(3)) { issue in
             IssueCompactRow(issue: issue)
@@ -651,7 +651,7 @@ struct WorkspaceTaskPublishSection: View {
 
       InspectorSection("线上发布预览") {
         if let remotePreview {
-          InspectorStatRow(title: "状态", value: remotePreview.readiness.displayName, systemImage: remotePreview.readiness.systemImage)
+          InspectorStatRow(title: "状态", value: remotePreview.readiness.localizedDisplayName, systemImage: remotePreview.readiness.systemImage)
           InspectorStatRow(title: "远端", value: remotePreview.repositoryName, systemImage: remotePreview.provider == .github ? "point.3.connected.trianglepath.dotted" : "point.3.filled.connected.trianglepath.dotted")
           InspectorStatRow(title: "权限", value: remotePreview.accessSummary, systemImage: remotePreview.hasToken ? "person.badge.key" : "key")
           InspectorStatRow(title: "目标", value: remotePreview.targetBranch, systemImage: "arrow.down.to.line")
@@ -703,7 +703,7 @@ struct WorkspaceTaskPublishSection: View {
       InspectorSection("部署状态") {
         InspectorStatRow(
           title: "轮询",
-          value: store.deploymentPollingSettings.isEnabled ? store.deploymentPollingState.status.displayName : "已关闭",
+          value: store.deploymentPollingSettings.isEnabled ? store.deploymentPollingState.status.localizedDisplayName : "已关闭",
           systemImage: store.deploymentPollingState.status.systemImage
         )
         InspectorStatRow(title: "待检查", value: "\(store.deploymentPollingEligibleRecords.count)", systemImage: "hourglass")
@@ -717,7 +717,7 @@ struct WorkspaceTaskPublishSection: View {
         if let checkedRecord = store.deploymentPollingState.checkedRecords.first {
           InspectorStatRow(
             title: "最近检查",
-            value: "\(checkedRecord.provider.displayName) · \(checkedRecord.level.displayName)",
+            value: "\(checkedRecord.provider.localizedDisplayName) · \(checkedRecord.level.localizedDisplayName)",
             systemImage: checkedRecord.level.systemImage
           )
           Text(checkedRecord.title)
@@ -730,7 +730,7 @@ struct WorkspaceTaskPublishSection: View {
         }
 
         if let latestEntry {
-          InspectorStatRow(title: "最近记录", value: latestEntry.status.displayName, systemImage: latestEntry.status.systemImage)
+          InspectorStatRow(title: "最近记录", value: latestEntry.status.localizedDisplayName, systemImage: latestEntry.status.systemImage)
           Text(latestEntry.statusMessage)
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -742,7 +742,7 @@ struct WorkspaceTaskPublishSection: View {
         }
 
         if let actionItem = ledger.actionItems.first {
-          Label("\(actionItem.priority.displayName) · \(actionItem.title)", systemImage: actionItem.systemImage)
+          Label("\(actionItem.priority.localizedDisplayName) · \(actionItem.title)", systemImage: actionItem.systemImage)
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
           Text(actionItem.summary)
@@ -786,8 +786,8 @@ private struct IssueCompactRow: View {
 }
 
 struct WorkspaceTaskImageState {
-  let report: ImageWorkbenchReport
-  let siteSummary: ImageWorkbenchSiteSummary
+  let report: ImageWorkbenchReport?
+  let siteSummary: ImageWorkbenchSiteSummary?
   let actionMessage: String?
 }
 
@@ -805,19 +805,26 @@ struct WorkspaceTaskImageSection: View {
 
   var body: some View {
     let report = state.report
-    let visibleIssues = report.issues.filter { $0.title != "还没有图片" }
+    let visibleIssues = report?.issues.filter { $0.title != "还没有图片" } ?? []
     let siteSummary = state.siteSummary
 
     return VStack(alignment: .leading, spacing: 14) {
       InspectorSection("当前文章") {
-        InspectorStatRow(title: "图片", value: "\(report.items.count)", systemImage: "photo")
-        InspectorStatRow(title: "缺 alt", value: "\(report.missingAltTextCount)", systemImage: "text.quote")
-        InspectorStatRow(title: "缺源图", value: "\(report.missingSourceCount)", systemImage: "xmark.octagon")
-        InspectorStatRow(title: "可压缩 JPEG", value: "\(report.optimizableJPEGCount)", systemImage: "arrow.down.forward")
-        Label(report.coverStatus.state.displayName, systemImage: report.coverStatus.state.systemImage)
-          .font(.caption)
-          .foregroundStyle(report.coverStatus.state.color)
-          .lineLimit(2)
+        if let report {
+          InspectorStatRow(title: "图片", value: "\(report.items.count)", systemImage: "photo")
+          InspectorStatRow(title: "缺 alt", value: "\(report.missingAltTextCount)", systemImage: "text.quote")
+          InspectorStatRow(title: "缺源图", value: "\(report.missingSourceCount)", systemImage: "xmark.octagon")
+          InspectorStatRow(title: "可压缩 JPEG", value: "\(report.optimizableJPEGCount)", systemImage: "arrow.down.forward")
+          Label(report.coverStatus.state.localizedDisplayName, systemImage: report.coverStatus.state.systemImage)
+            .font(.caption)
+            .foregroundStyle(report.coverStatus.state.color)
+            .lineLimit(2)
+        } else {
+          ProgressView {
+            Text("正在读取当前文章图片…")
+          }
+            .controlSize(.small)
+        }
       }
 
       InspectorSection("图片元数据") {
@@ -829,7 +836,7 @@ struct WorkspaceTaskImageSection: View {
           ForEach(draft.attachments) { attachment in
             ImageMetadataEditorRow(
               attachment: attachment,
-              item: report.items.first { $0.attachmentID == attachment.id },
+              item: report?.items.first { $0.attachmentID == attachment.id },
               altText: attachmentStringBinding(for: attachment.id, keyPath: \.altText),
               caption: attachmentStringBinding(for: attachment.id, keyPath: \.caption)
             )
@@ -838,7 +845,12 @@ struct WorkspaceTaskImageSection: View {
       }
 
       InspectorSection("图片问题") {
-        if visibleIssues.isEmpty {
+        if report == nil {
+          ProgressView {
+            Text("正在检查…")
+          }
+            .controlSize(.small)
+        } else if visibleIssues.isEmpty {
           Label("图片检查通过", systemImage: "checkmark.circle")
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -850,24 +862,16 @@ struct WorkspaceTaskImageSection: View {
       }
 
       InspectorSection("批处理") {
-        InspectorStatRow(title: "站点图片", value: "\(siteSummary.imageCount)", systemImage: "photo.stack")
-        InspectorStatRow(title: "站点缺 alt", value: "\(siteSummary.missingAltTextCount)", systemImage: "text.quote")
-        InspectorStatRow(title: "可压缩 JPEG", value: "\(siteSummary.optimizableJPEGCount)", systemImage: "arrow.down.forward")
-
-        HStack {
-          Button {
-            actions.fillMissingMetadataForCurrentDraft()
-          } label: {
-            Label("补当前", systemImage: "text.badge.checkmark")
+        if let siteSummary {
+          InspectorStatRow(title: "站点图片", value: "\(siteSummary.imageCount)", systemImage: "photo.stack")
+          InspectorStatRow(title: "站点缺 alt", value: "\(siteSummary.missingAltTextCount)", systemImage: "text.quote")
+          InspectorStatRow(title: "可压缩 JPEG", value: "\(siteSummary.optimizableJPEGCount)", systemImage: "arrow.down.forward")
+        } else {
+          ProgressView {
+            Text("正在统计站点图片…")
           }
-
-          Button {
-            actions.optimizeJPEGForCurrentDraft()
-          } label: {
-            Label("压当前", systemImage: "arrow.down.forward")
-          }
+            .controlSize(.small)
         }
-        .controlSize(.small)
 
         Button {
           actions.openImageWorkbench()

@@ -63,12 +63,17 @@ extension WorkbenchStore {
   public func stageDraftBody(
     _ bodyMarkdown: String,
     for draftID: UUID,
-    baseRevision: UInt64
+    baseRevision: UInt64,
+    replacingBaseBody baseBodyMarkdown: String? = nil
   ) -> DraftBodyEditorBufferStageResult? {
     guard drafts.contains(where: { $0.id == draftID }) else { return nil }
 
     let current = draftBodyEditorBuffer(for: draftID)
-    guard baseRevision == current.revision || bodyMarkdown == current.bodyMarkdown else {
+    let canRebaseUnchangedBody = baseBodyMarkdown == current.bodyMarkdown
+    guard baseRevision == current.revision
+      || bodyMarkdown == current.bodyMarkdown
+      || canRebaseUnchangedBody
+    else {
       return DraftBodyEditorBufferStageResult(buffer: current, wasAccepted: false)
     }
 
@@ -83,7 +88,7 @@ extension WorkbenchStore {
       isDirty: true
     )
     publishingStore.setDraftBodyEditorBuffer(staged, for: draftID)
-    persistenceStore.markStatus("有未保存修改")
+    persistenceStore.markUnsavedChanges()
     scheduleDraftBodyCommit(for: draftID)
     return DraftBodyEditorBufferStageResult(buffer: staged, wasAccepted: true)
   }
