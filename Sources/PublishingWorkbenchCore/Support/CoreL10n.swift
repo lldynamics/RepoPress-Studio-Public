@@ -32,8 +32,9 @@ enum CoreL10n {
 
   private static func bundle(for locale: Locale) -> Bundle {
     let language = locale.identifier.lowercased().hasPrefix("zh") ? "zh-Hans" : "en"
-    guard let path = Bundle.module.path(forResource: language, ofType: "lproj"),
-          let bundle = Bundle(path: path) else {
+    let bundleURL = Bundle.module.bundleURL
+      .appendingPathComponent("\(language).lproj", isDirectory: true)
+    guard let bundle = Bundle(url: bundleURL) else {
       return Bundle.module
     }
     return bundle

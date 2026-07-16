@@ -31,6 +31,10 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+      - name: Configure deterministic test language
+        run: |
+          defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"
+          defaults write NSGlobalDomain AppleLocale "zh_CN"
       - name: Run release-tooling self-tests
         run: ./script/check_release_gate.sh --tooling --result-json .build/tooling-gate-result.json
       - name: Upload unified result
