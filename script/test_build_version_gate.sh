@@ -91,7 +91,7 @@ write_info_plist 2.4.1 38
 expect_failure "gate accepted an inconsistent packaged build number" \
   bash "$GATE" --config "$CONFIG" --info-plist "$INFO_PLIST"
 
-if rg -n '^(MARKETING_VERSION|BUILD_NUMBER)="[0-9]' "$ROOT_DIR/script/build_and_run.sh" >/dev/null; then
+if grep -En '^(MARKETING_VERSION|BUILD_NUMBER)="[0-9]' "$ROOT_DIR/script/build_and_run.sh" >/dev/null; then
   fail "build_and_run.sh still hardcodes app version values"
 fi
 for consumer in \
@@ -99,7 +99,7 @@ for consumer in \
   check_app_store_metadata.sh \
   check_app_store_archive_readiness.sh \
   record_app_store_build_metadata_evidence.sh; do
-  rg -q 'check_build_version\.sh' "$ROOT_DIR/script/$consumer" \
+  grep -Eq 'check_build_version\.sh' "$ROOT_DIR/script/$consumer" \
     || fail "$consumer does not consume the shared version gate"
 done
 
