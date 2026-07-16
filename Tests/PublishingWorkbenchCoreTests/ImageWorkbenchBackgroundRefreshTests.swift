@@ -123,7 +123,7 @@ final class ImageWorkbenchBackgroundRefreshTests: XCTestCase {
       persistence: WorkbenchPersistence(fileURL: temporaryPersistenceURL()),
       imageWorkbenchService: service
     )
-    weak let weakStore = store
+    let weakStore = WeakReference(store)
     let draft = try XCTUnwrap(store?.selectedDraft)
 
     store?.scheduleImageWorkbenchCachesRefresh(for: draft, force: true)
@@ -131,15 +131,15 @@ final class ImageWorkbenchBackgroundRefreshTests: XCTestCase {
     store = nil
 
     XCTAssertNotNil(
-      weakStore,
+      weakStore.value,
       "The in-flight image refresh must retain its root owner across suspension."
     )
 
     await gate.releaseAll()
-    for _ in 0 ..< 100 where weakStore != nil {
+    for _ in 0 ..< 100 where weakStore.value != nil {
       await Task.yield()
     }
-    XCTAssertNil(weakStore)
+    XCTAssertNil(weakStore.value)
   }
 
   func testImageInputSignaturesIgnoreOrdinaryProseAndTrackImageChanges() {
@@ -419,6 +419,15 @@ private actor CancellableReportInvocationTracker {
     while cancellationCount < expectedCount {
       await Task.yield()
     }
+  }
+}
+
+@MainActor
+private final class WeakReference<Value: AnyObject> {
+  weak var value: Value?
+
+  init(_ value: Value?) {
+    self.value = value
   }
 }
 

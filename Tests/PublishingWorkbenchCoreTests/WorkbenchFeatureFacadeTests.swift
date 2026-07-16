@@ -157,13 +157,48 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     withExtendedLifetime([rootCancellable, imageCancellable]) {}
   }
 
-  func testRepeatedBodyBufferTypingOnlyInvalidatesPublishingFacade() throws {
-    let store = WorkbenchStore()
+  func testRepeatedBodyBufferTypingOnlyInvalidatesPublishingFacade() async throws {
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("WorkbenchFeatureFacadeTests-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+    )
+    let preflightRefreshTask = store.preflightRefreshTask
+    let publishPreviewRefreshTask = store.publishingStore.publishPreviewRefreshTask
+    let siteMaintenanceRefreshScheduleTask = store.siteMaintenanceRefreshScheduleTask
+    let siteMaintenanceRefreshTask = store.siteMaintenanceRefreshTask
+    preflightRefreshTask?.cancel()
+    publishPreviewRefreshTask?.cancel()
+    siteMaintenanceRefreshScheduleTask?.cancel()
+    siteMaintenanceRefreshTask?.cancel()
+    if let preflightRefreshTask {
+      await preflightRefreshTask.value
+    }
+    if let publishPreviewRefreshTask {
+      await publishPreviewRefreshTask.value
+    }
+    if let siteMaintenanceRefreshScheduleTask {
+      await siteMaintenanceRefreshScheduleTask.value
+    }
+    if let siteMaintenanceRefreshTask {
+      _ = await siteMaintenanceRefreshTask.result
+    }
+    store.preflightRefreshTask = nil
+    store.publishingStore.publishPreviewRefreshTask = nil
+    store.siteMaintenanceRefreshScheduleTask = nil
+    store.siteMaintenanceRefreshTask = nil
     let draft = try XCTUnwrap(store.selectedDraft)
     let initialRevision = store.draftBodyEditorBuffer(for: draft.id).revision
     let first = try XCTUnwrap(
       store.stageDraftBody("first keystroke", for: draft.id, baseRevision: initialRevision)
     )
+    // Keep this notification test focused on the second staged edit. Startup
+    // refreshes may update the shared status after the first edit has already
+    // marked the workbench dirty.
+    store.persistenceStore.markStatus("有未保存修改")
+    XCTAssertTrue(store.hasUnsavedChanges)
+    XCTAssertEqual(store.lastSaveStatus, "有未保存修改")
 
     var rootChanges = 0
     var publishingChanges = 0
