@@ -26,7 +26,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     let isCompact: Bool
     @State private var searchText = ""
     @State private var filter: DraftListFilter = .all
-    @State private var density: WritingDraftDensity = .compact
+    @State private var density: WritingDraftDensity = .comfortable
     @State private var isDraftListLoading = false
     @State private var draftListLoadingNonce = 0
     @State private var visibleDraftCount = 0
@@ -128,6 +128,15 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
         Spacer(minLength: 8)
 
         Button {
+          store.createDraft()
+        } label: {
+          Label("新建文章", systemImage: "plus")
+        }
+        .labelStyle(.iconOnly)
+        .help("新建文章")
+        .accessibilityLabel("新建文章")
+
+        Button {
           isDraftLifecycleCenterPresented = true
         } label: {
           Label("版本历史与回收站", systemImage: "clock.arrow.circlepath")
@@ -135,16 +144,6 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
         .labelStyle(.iconOnly)
         .help("版本历史与回收站")
         .accessibilityLabel("打开版本历史与回收站")
-
-        Button(role: .destructive) {
-          requestDeleteSelectedDraft()
-        } label: {
-          Label("移到回收站", systemImage: "trash")
-        }
-        .labelStyle(.iconOnly)
-        .disabled(selectedDraftForDeletion == nil)
-        .help("将选中文章移到回收站")
-        .accessibilityLabel("将选中文章移到回收站")
 
       }
     }
@@ -272,14 +271,18 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
             .allowsHitTesting(false)
         }
       } else {
-        ForEach(Array(paginatedDrafts.enumerated()), id: \.1.id) { index, draft in
-          draftRow(draft)
-            .onAppear {
-              maybeLoadMoreDraftsIfNeeded(
-                currentIndex: index,
-                visibleCount: paginatedDrafts.count
-              )
-            }
+        if filteredDrafts.isEmpty {
+          draftListEmptyState
+        } else {
+          ForEach(Array(paginatedDrafts.enumerated()), id: \.1.id) { index, draft in
+            draftRow(draft)
+              .onAppear {
+                maybeLoadMoreDraftsIfNeeded(
+                  currentIndex: index,
+                  visibleCount: paginatedDrafts.count
+                )
+              }
+          }
         }
       }
     }
@@ -410,7 +413,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     Button {
       _ = store.focusDraft(draft.id, section: .images)
     } label: {
-      Label("查看图片元数据", systemImage: "photo.on.rectangle")
+      Label("在图片工作台检查此文", systemImage: "photo.on.rectangle")
     }
 
     Divider()
@@ -613,34 +616,10 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
   }
 
   private var statusFooter: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Label(repositoryStatus, systemImage: store.activeProfile.purpose.systemImage)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .lineLimit(2)
-
-      HStack(spacing: 5) {
-        if store.hasUnsavedChanges {
-          Image(systemName: "circle.fill")
-            .font(.system(size: 5))
-            .foregroundStyle(WorkbenchTheme.warning)
-            .accessibilityHidden(true)
-        }
-        if store.hasUnsavedChanges {
-          Text(store.lastSaveStatus)
-            .font(.caption2)
-            .foregroundStyle(WorkbenchTheme.warning)
-            .lineLimit(1)
-        } else {
-          Text(store.lastSaveStatus)
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
-        }
-      }
-      .accessibilityLabel("保存状态")
-      .accessibilityValue(store.lastSaveStatus)
-    }
+    Label(repositoryStatus, systemImage: store.activeProfile.purpose.systemImage)
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .lineLimit(2)
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 
@@ -673,9 +652,6 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
       },
       focusSearch: {
         isSearchFieldFocused = true
-        if !searchText.isEmpty {
-          searchText = ""
-        }
       },
       selectPreviousDraft: {
         selectDraft(byOffset: -1)
@@ -684,6 +660,50 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
         selectDraft(byOffset: 1)
       }
     )
+  }
+
+  private var draftListEmptyState: some View {
+    VStack(spacing: 10) {
+      Image(systemName: store.visibleDrafts.isEmpty ? "doc.badge.plus" : "doc.text.magnifyingglass")
+        .font(.system(size: 28))
+        .foregroundStyle(.secondary)
+
+      Text(draftListEmptyTitle)
+        .font(.headline)
+
+      Text(draftListEmptyMessage)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+
+      if store.visibleDrafts.isEmpty {
+        Button("新建文章") {
+          store.createDraft()
+        }
+        .buttonStyle(.borderedProminent)
+      } else {
+        Button("清除搜索与筛选") {
+          searchText = ""
+          filter = .all
+        }
+        .buttonStyle(.bordered)
+      }
+    }
+    .frame(maxWidth: .infinity, minHeight: 220)
+    .listRowInsets(EdgeInsets(top: 20, leading: 16, bottom: 20, trailing: 16))
+    .listRowSeparator(.hidden)
+    .listRowBackground(Color.clear)
+    .accessibilityElement(children: .contain)
+  }
+
+  private var draftListEmptyTitle: LocalizedStringKey {
+    store.visibleDrafts.isEmpty ? "还没有文章" : "没有匹配的文章"
+  }
+
+  private var draftListEmptyMessage: LocalizedStringKey {
+    store.visibleDrafts.isEmpty
+      ? "新建文章后即可开始写作。"
+      : "尝试清除搜索词或切换筛选条件。"
   }
 
   private func requestDelete(_ draft: ArticleDraft) {

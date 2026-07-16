@@ -13,6 +13,7 @@ public struct ImageWorkbenchReportInputSignature: Hashable, Sendable {
   private let visibility: ArticleVisibility
   private let coverAttachmentID: UUID?
   private let attachments: [DraftAttachment]
+  private let attachmentFiles: [AttachmentFileInput]
   private let markdownImageReferences: [MarkdownImageReference]
   private let profile: ProfileInput
 
@@ -21,6 +22,7 @@ public struct ImageWorkbenchReportInputSignature: Hashable, Sendable {
     self.visibility = draft.visibility
     self.coverAttachmentID = draft.coverAttachmentID
     self.attachments = draft.attachments
+    self.attachmentFiles = draft.attachments.map(AttachmentFileInput.init)
     self.markdownImageReferences = Self.markdownImageReferences(in: draft.bodyMarkdown)
     self.profile = ProfileInput(profile: profile)
   }
@@ -28,6 +30,30 @@ public struct ImageWorkbenchReportInputSignature: Hashable, Sendable {
   private struct MarkdownImageReference: Hashable, Sendable {
     let path: String
     let count: Int
+  }
+
+  private struct AttachmentFileInput: Hashable, Sendable {
+    let attachmentID: UUID
+    let sourcePath: String?
+    let exists: Bool
+    let byteSize: Int64?
+    let modifiedAt: Date?
+
+    init(attachment: DraftAttachment) {
+      attachmentID = attachment.id
+      sourcePath = attachment.sourceFilePath
+      guard let sourcePath = attachment.sourceFilePath?.nilIfEmpty else {
+        exists = false
+        byteSize = nil
+        modifiedAt = nil
+        return
+      }
+
+      let attributes = try? FileManager.default.attributesOfItem(atPath: sourcePath)
+      exists = attributes != nil
+      byteSize = (attributes?[.size] as? NSNumber)?.int64Value
+      modifiedAt = attributes?[.modificationDate] as? Date
+    }
   }
 
   private struct ProfileInput: Hashable, Sendable {

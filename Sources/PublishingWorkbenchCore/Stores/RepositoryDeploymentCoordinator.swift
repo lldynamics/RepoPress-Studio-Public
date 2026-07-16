@@ -12,15 +12,9 @@ final class RepositoryDeploymentCoordinator {
     self.deploymentStore = deploymentStore
   }
 
-  func refreshTokenAvailability(
-    store: WorkbenchStore,
-    migrateLegacyDeploymentToken: Bool = false
-  ) {
+  func refreshTokenAvailability(store: WorkbenchStore) {
     repositoryStore.refreshRepositoryTokenAvailability(store: store)
-    deploymentStore.refreshDeploymentTokenAvailability(
-      store: store,
-      migrateLegacyToken: migrateLegacyDeploymentToken
-    )
+    deploymentStore.refreshDeploymentTokenAvailability(store: store)
   }
 
   @discardableResult

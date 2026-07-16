@@ -502,10 +502,10 @@ public final class RepositoryStore: ObservableObject {
       )
       remoteRepositoryAccessCheck = nil
       repositoryTokenAvailability = try repositoryTokenAvailability(for: store.activeProfile)
-      store.setPublishActionMessage("仓库访问 Token 已保存到 Keychain。")
+      store.setPublishActionMessage(CoreL10n.text("仓库访问 Token 已保存到 Keychain。"))
       store.save()
     } catch {
-      store.setPublishActionMessage("仓库 Token 保存失败：\(error.localizedDescription)")
+      store.setPublishActionMessage(CoreL10n.format("仓库 Token 保存失败：%@", error.localizedDescription))
     }
   }
 
@@ -516,7 +516,7 @@ public final class RepositoryStore: ObservableObject {
   public func refreshRepositoryTokenAvailability(updatesMessage: Bool, store: WorkbenchStore) {
     refreshRepositoryTokenAvailability(store: store)
     if updatesMessage {
-      store.setPublishActionMessage(repositoryTokenAvailability.hasToken ? "仓库 Token 已配置。" : "仓库 Token 未配置。")
+      store.setPublishActionMessage(CoreL10n.text(repositoryTokenAvailability.hasToken ? "仓库 Token 已配置。" : "仓库 Token 未配置。"))
     }
   }
 
@@ -525,10 +525,10 @@ public final class RepositoryStore: ObservableObject {
       try repositoryTokenStore.deleteRepositoryToken(for: store.activeProfile)
       remoteRepositoryAccessCheck = nil
       refreshRepositoryTokenAvailability(store: store)
-      store.setPublishActionMessage("仓库 Token 已删除。")
+      store.setPublishActionMessage(CoreL10n.text("仓库 Token 已删除。"))
       store.save()
     } catch {
-      store.setPublishActionMessage("仓库 Token 删除失败：\(error.localizedDescription)")
+      store.setPublishActionMessage(CoreL10n.format("仓库 Token 删除失败：%@", error.localizedDescription))
     }
   }
 
@@ -540,7 +540,7 @@ public final class RepositoryStore: ObservableObject {
     }
     let profile = store.activeProfile
     guard let operation = beginRemoteRepositoryCheck(profile: profile) else {
-      store.setPublishActionMessage("已有仓库权限检查或建仓任务正在运行，请等待完成。")
+      store.setPublishActionMessage(CoreL10n.text("已有仓库权限检查或建仓任务正在运行，请等待完成。"))
       return nil
     }
     defer { finishRemoteRepositoryCheck(operation) }
@@ -555,7 +555,7 @@ public final class RepositoryStore: ObservableObject {
       return check
     } catch {
       guard remoteRepositoryCheckIsCurrent(operation, store: store) else { return nil }
-      store.setPublishActionMessage("仓库权限检查失败：\(error.localizedDescription)")
+      store.setPublishActionMessage(CoreL10n.format("仓库权限检查失败：%@", error.localizedDescription))
       return nil
     }
   }
@@ -614,7 +614,7 @@ public final class RepositoryStore: ObservableObject {
     }
     let profile = store.activeProfile
     guard let operation = beginRemoteRepositoryCheck(profile: profile) else {
-      store.setPublishActionMessage("已有仓库权限检查或建仓任务正在运行，请等待完成。")
+      store.setPublishActionMessage(CoreL10n.text("已有仓库权限检查或建仓任务正在运行，请等待完成。"))
       return nil
     }
     defer { finishRemoteRepositoryCheck(operation) }

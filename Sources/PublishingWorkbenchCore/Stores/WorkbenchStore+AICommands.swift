@@ -1,14 +1,6 @@
 import Foundation
 
 extension WorkbenchStore {
-  var aiArchivedConversations: [AIPublishingChatArchivedConversation] {
-    aiStore.aiChatArchivedConversations
-  }
-
-  func aiChatSessionsForPersistence() -> [UUID: AIPublishingChatSessionState] {
-    aiStore.aiChatSessionsForPersistence()
-  }
-
   func aiRefreshKeyAvailability() {
     aiStore.refreshAIKeyAvailability()
   }
@@ -72,14 +64,6 @@ extension WorkbenchStore {
 
   func aiStartNewChatConversation(draft: ArticleDraft? = nil) {
     aiStore.startNewAIChatConversation(draft: draft)
-  }
-
-  func aiRestoreArchivedChatConversation(_ conversationID: AIPublishingChatArchivedConversation.ID, draft: ArticleDraft? = nil) {
-    aiStore.restoreArchivedAIChatConversation(conversationID, draft: draft)
-  }
-
-  func aiDeleteArchivedChatConversation(_ conversationID: AIPublishingChatArchivedConversation.ID, draft: ArticleDraft? = nil) {
-    aiStore.deleteArchivedAIChatConversation(conversationID, draft: draft)
   }
 
   func aiDeleteChatMessage(_ messageID: AIPublishingChatMessage.ID, draft: ArticleDraft? = nil) {

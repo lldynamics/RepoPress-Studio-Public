@@ -326,8 +326,8 @@ private func linkSeverityForeground(_ severity: SiteLinkAuditSeverity) -> AnySha
   case .info:
     return AnyShapeStyle(.secondary)
   case .warning:
-    return AnyShapeStyle(.orange)
+    return AnyShapeStyle(WorkbenchTheme.warning)
   case .error:
-    return AnyShapeStyle(.red)
+    return AnyShapeStyle(WorkbenchTheme.risk)
   }
 }

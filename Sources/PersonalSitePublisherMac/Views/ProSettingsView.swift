@@ -4,7 +4,6 @@ import SwiftUI
 struct ProSettingsState {
   let upgrade: ProUpgradePresentation
   let summary: ProStatusSummary
-  let sandboxSummary: ProSandboxVerificationSummary
   let latestBlockNotice: ProFeatureBlockNotice?
   let isUnlocked: Bool
   let productID: String?
@@ -16,19 +15,12 @@ struct ProSettingsState {
   let batchRemaining: Int
   let isPurchaseRestoreBusy: Bool
   let monetizationMessage: String?
-  let recentAccessEvents: [MonetizationAccessEvent]
-  let requirements: [ProUpgradeRequirement]
 }
 
 struct ProSettingsActions {
   let purchase: () async -> Void
   let restore: () async -> Void
   let copyStatusSummary: () -> Void
-  let copyAuditChecklist: () -> Void
-  let copyEvidencePackage: () -> Void
-  let copySandboxSummary: () -> Void
-  let copySandboxEvidence: () -> Void
-  let copySandboxRecordCommand: () -> Void
 }
 
 struct ProSettingsView: View {
@@ -73,29 +65,6 @@ struct ProSettingsView: View {
         },
         message: state.monetizationMessage
       )
-
-#if DEBUG
-      ProDeveloperDiagnosticsSection(
-        sandboxSummary: state.sandboxSummary,
-        recentAccessEvents: state.recentAccessEvents,
-        requirements: state.requirements,
-        onCopyAuditChecklist: {
-          actions.copyAuditChecklist()
-        },
-        onCopyEvidencePackage: {
-          actions.copyEvidencePackage()
-        },
-        onCopySandboxSummary: {
-          actions.copySandboxSummary()
-        },
-        onCopySandboxEvidence: {
-          actions.copySandboxEvidence()
-        },
-        onCopySandboxRecordCommand: {
-          actions.copySandboxRecordCommand()
-        }
-      )
-#endif
     }
     .formStyle(.grouped)
     .padding()

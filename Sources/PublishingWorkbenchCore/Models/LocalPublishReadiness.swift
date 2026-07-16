@@ -9,13 +9,13 @@ public enum LocalPublishActionReadiness: String, Codable, Sendable {
   public var displayName: String {
     switch self {
     case .ready:
-      return "可执行"
+      return CoreL10n.text("可执行")
     case .needsReview:
-      return "需确认"
+      return CoreL10n.text("需确认")
     case .blocked:
-      return "已阻塞"
+      return CoreL10n.text("已阻塞")
     case .unchanged:
-      return "无变化"
+      return CoreL10n.text("无变化")
     }
   }
 

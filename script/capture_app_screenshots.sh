@@ -14,6 +14,7 @@ CAPTURE_DELAY=4
 ONLY_ID=""
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_PRODUCT"
 CAPTURE_PROVENANCE_SCRIPT="$ROOT_DIR/script/screenshot_capture_provenance.py"
+NORMALIZE_SCREENSHOT_SCRIPT="$ROOT_DIR/script/normalize_app_store_screenshot.sh"
 
 required_ids=()
 
@@ -24,7 +25,8 @@ Usage: script/capture_app_screenshots.sh [--skip-build] [--only <id>] [--force-r
 Captures the App Store screenshot set listed in
 docs/app-store-screenshots/SCREENSHOT_MANIFEST.md. By default it uses the
 macOS interactive capture picker; --auto-window captures the frontmost app
-window for each isolated demo surface.
+window for each isolated demo surface. Captures are fitted onto an accepted
+1440x900 canvas and flattened before validation.
 
 Options:
   --skip-build   Do not build or launch the app before capture.
@@ -62,7 +64,7 @@ screen_title() {
     seo-social-preview) echo "SEO and social preview" ;;
     deployment-status) echo "Deployment status" ;;
     maintenance) echo "Site maintenance" ;;
-    general-drafts) echo "General drafts" ;;
+    general-drafts) echo "Cross-site copy" ;;
     pro-settings) echo "Pro settings" ;;
     privacy-lock) echo "Quick hide" ;;
     *) echo "$1" ;;
@@ -77,7 +79,7 @@ screen_guidance() {
     seo-social-preview) echo "Show search/Open Graph/Twitter card previews, cache state, manual refresh, and external debug links." ;;
     deployment-status) echo "Show GitHub Pages/Actions, Netlify, Vercel, Cloudflare Pages, or custom endpoint validation status." ;;
     maintenance) echo "Show content calendar, taxonomy governance, stale articles, links, and operation log." ;;
-    general-drafts) echo "Show cross-site drafts, reusable material package, backup repository, and reuse checklist." ;;
+    general-drafts) echo "Show cross-site copy across publishing sites with the copy to site action." ;;
     pro-settings) echo "Show free quota, Pro unlock, purchase, and restore state without real payment or account secrets." ;;
     privacy-lock) echo "Show the manually hidden workbench and private-content masking state." ;;
     *) echo "Arrange the app for this required App Store screenshot." ;;
@@ -226,6 +228,9 @@ done
 
 mkdir -p "$SCREENSHOT_DIR"
 command -v screencapture >/dev/null 2>&1 || fail "screencapture is not available"
+[[ -f "$NORMALIZE_SCREENSHOT_SCRIPT" ]] || fail "screenshot normalization script is missing"
+CAPTURE_TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/personal-site-publisher-capture.XXXXXX")"
+trap 'rm -rf "$CAPTURE_TEMP_DIR"' EXIT
 
 if [[ "$SKIP_BUILD" == "0" ]]; then
   echo "screenshot capture: building $APP_PRODUCT app bundle"
@@ -248,27 +253,30 @@ for id in "${required_ids[@]}"; do
   fi
 
   output="$SCREENSHOT_DIR/$id.png"
+  raw_output="$CAPTURE_TEMP_DIR/$id.png"
   echo
   echo "screenshot capture: $id - $(screen_title "$id")"
   echo "screenshot capture: $(screen_guidance "$id")"
   echo "screenshot capture: hide private paths, real tokens, personal accounts, and unrelated windows."
 
-  rm -f "$output"
+  rm -f "$output" "$raw_output"
   if [[ "$AUTO_WINDOW" == "1" ]]; then
     if [[ "$SKIP_BUILD" == "0" ]]; then
       launch_app "$id"
     fi
     echo "screenshot capture: automatically capturing the frontmost $APP_PRODUCT window."
-    capture_current_app_window "$output"
+    capture_current_app_window "$raw_output"
   else
     echo "screenshot capture: press Return, then use the macOS capture picker to select the app window or region."
     read -r _
-    screencapture -i "$output"
+    screencapture -i "$raw_output"
   fi
 
-  if [[ ! -s "$output" ]]; then
+  if [[ ! -s "$raw_output" ]]; then
     fail "capture was cancelled or empty for $id"
   fi
+
+  bash "$NORMALIZE_SCREENSHOT_SCRIPT" "$raw_output" "$output" >/dev/null
 
   echo "screenshot capture: saved $output"
   python3 "$CAPTURE_PROVENANCE_SCRIPT" record \

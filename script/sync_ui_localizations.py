@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Synchronize the declared app-UI localization scope.
+"""Synchronize app UI localization and validate Core presentation resources.
 
 This extracts app-target SwiftUI literals, literal localization API calls,
-workspace navigation keys, and semantic display-name keys. It intentionally
-does not claim coverage of presentation strings assembled by
-PublishingWorkbenchCore services.
+workspace navigation keys, semantic display-name keys, and explicit CoreL10n
+calls used by PublishingWorkbenchCore services.
 """
 
 from __future__ import annotations
@@ -19,15 +18,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_ROOT = ROOT / "Sources" / "PersonalSitePublisherMac"
+CORE_SOURCE_ROOT = ROOT / "Sources" / "PublishingWorkbenchCore"
+CORE_RESOURCE_ROOT = CORE_SOURCE_ROOT / "Resources"
 WORKSPACE_MODELS_PATH = ROOT / "Sources" / "PublishingWorkbenchCore" / "Models" / "WorkspaceModels.swift"
 CATALOG_PATH = SOURCE_ROOT / "Resources" / "Localizable.xcstrings"
-TRANSLATION_PATHS = (
-    ROOT / "script" / "ui_localization_translations.json",
-    ROOT / "script" / "ui_display_name_translations_configuration.json",
-    ROOT / "script" / "ui_display_name_translations_publishing.json",
-    ROOT / "script" / "ui_display_name_translations_ai_maintenance.json",
-    ROOT / "script" / "ui_display_name_translations_additional.json",
-)
+TRANSLATION_PATHS = tuple(sorted((ROOT / "script").glob("ui_*translations*.json")))
 FORMAT_PATTERN = re.compile(r"%(?:\d+\$)?(?:@|[-+0-9.]*[a-zA-Z])")
 CJK_PATTERN = re.compile(r"[\u3400-\u9fff]")
 WORKSPACE_SECTION_PATTERN = re.compile(
@@ -41,6 +36,23 @@ LITERAL_LOCALIZATION_CALL_PATTERN = re.compile(
 )
 DISPLAY_NAME_SEMANTIC_KEY_PATTERN = re.compile(r'"(display\.[a-z0-9.-]+)"')
 DIRECT_DISPLAY_NAME_PATTERN = re.compile(r"\.displayName\b")
+NAMED_COMPONENT_TITLE_PATTERN = re.compile(
+    r"\b(?:MetricTile|InspectorScaffold|InspectorStatRow|AIChatInspectorStatRow|"
+    r"PublishDrawerCard|PublishDrawerStat|PublishDrawerInfoRow|SettingsConfigurationHealthItem|EmptyStateView)"
+    r"\s*\([\s\S]{0,240}?\btitle:\s*\"((?:\\.|[^\"\\])*)\""
+)
+POSITIONAL_COMPONENT_TITLE_PATTERN = re.compile(
+    r"\b(?:InspectorSection|AIChatInspectorSection)\s*\(\s*\"((?:\\.|[^\"\\])*)\""
+)
+EMPTY_STATE_MESSAGE_PATTERN = re.compile(
+    r"\bEmptyStateView\s*\([\s\S]{0,320}?\bmessage:\s*\"((?:\\.|[^\"\\])*)\""
+)
+EMPTY_STATE_ACTION_TITLE_PATTERN = re.compile(
+    r"\bEmptyStateView\s*\([\s\S]{0,520}?\bactionTitle:\s*\"((?:\\.|[^\"\\])*)\""
+)
+CORE_LOCALIZATION_CALL_PATTERN = re.compile(
+    r'\bCoreL10n\.(?:text|format)\s*\(\s*"((?:\\.|[^"\\])*)"'
+)
 
 
 def extract_swiftui_strings() -> dict[str, str]:
@@ -108,6 +120,30 @@ def extract_literal_localization_calls() -> dict[str, str]:
     return extracted
 
 
+def extract_component_localization_keys() -> dict[str, str]:
+    """Collect static titles rendered by reusable components through LocalizedStringKey."""
+    extracted: dict[str, str] = {}
+    for source_path in sorted(SOURCE_ROOT.rglob("*.swift")):
+        source = source_path.read_text(encoding="utf-8")
+        for pattern in (
+            NAMED_COMPONENT_TITLE_PATTERN,
+            POSITIONAL_COMPONENT_TITLE_PATTERN,
+            EMPTY_STATE_MESSAGE_PATTERN,
+            EMPTY_STATE_ACTION_TITLE_PATTERN,
+        ):
+            for match in pattern.finditer(source):
+                raw_value = match.group(1)
+                value = (
+                    raw_value
+                    .replace(r'\"', '"')
+                    .replace(r"\n", "\n")
+                    .replace(r"\t", "\t")
+                    .replace(r"\\", "\\")
+                )
+                extracted[value] = value
+    return extracted
+
+
 def extract_display_name_semantic_keys() -> dict[str, str]:
     extracted: dict[str, str] = {}
     support_root = SOURCE_ROOT / "Support"
@@ -116,6 +152,56 @@ def extract_display_name_semantic_keys() -> dict[str, str]:
         for key in DISPLAY_NAME_SEMANTIC_KEY_PATTERN.findall(source):
             extracted[key] = key
     return extracted
+
+
+def extract_core_localization_keys() -> dict[str, str]:
+    extracted: dict[str, str] = {}
+    for source_path in sorted(CORE_SOURCE_ROOT.rglob("*.swift")):
+        source = source_path.read_text(encoding="utf-8")
+        for raw_value in CORE_LOCALIZATION_CALL_PATTERN.findall(source):
+            value = (
+                raw_value
+                .replace(r'\"', '"')
+                .replace(r"\n", "\n")
+                .replace(r"\t", "\t")
+                .replace(r"\\", "\\")
+            )
+            extracted[value] = value
+    return extracted
+
+
+def load_strings_file(path: Path) -> dict[str, str]:
+    result = subprocess.run(
+        ["plutil", "-convert", "json", "-o", "-", str(path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or f"could not parse {path}")
+    values = json.loads(result.stdout)
+    if not isinstance(values, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in values.items()):
+        raise RuntimeError(f"{path} must contain string-to-string entries")
+    return values
+
+
+def validate_core_localizations(extracted: dict[str, str]) -> list[str]:
+    localized_values = {
+        language: load_strings_file(CORE_RESOURCE_ROOT / f"{language}.lproj" / "Localizable.strings")
+        for language in ("zh-Hans", "en")
+    }
+    failures: list[str] = []
+    for key, source_value in extracted.items():
+        for language, values in localized_values.items():
+            value = values.get(key, "")
+            if not value.strip():
+                failures.append(f"{key}: missing Core {language} value")
+                continue
+            if sorted(placeholders(value)) != sorted(placeholders(source_value)):
+                failures.append(f"{key}: Core {language} placeholders differ")
+            if language == "en" and CJK_PATTERN.search(value):
+                failures.append(f"{key}: Core English value contains CJK text")
+    return failures
 
 
 def direct_display_name_localization_gaps() -> list[str]:
@@ -246,15 +332,18 @@ def main() -> int:
         return 1
     extracted = extract_swiftui_strings()
     extracted.update(extract_literal_localization_calls())
+    extracted.update(extract_component_localization_keys())
     workspace_navigation_keys = extract_workspace_navigation_keys()
     display_name_semantic_keys = extract_display_name_semantic_keys()
     extracted.update(workspace_navigation_keys)
     extracted.update(display_name_semantic_keys)
     catalog = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
     model_keys = set(workspace_navigation_keys) | set(display_name_semantic_keys)
+    core_extracted = extract_core_localization_keys()
+    core_failures = validate_core_localizations(core_extracted)
 
     if arguments.check:
-        failures = validate(catalog, extracted, model_keys)
+        failures = validate(catalog, extracted, model_keys) + core_failures
         if failures:
             print(f"ui-scoped localization catalog: {len(failures)} coverage issue(s)")
             for failure in failures[:20]:
@@ -262,12 +351,12 @@ def main() -> int:
             return 1
         print(
             f"ui-scoped localization catalog: {len(extracted)} SwiftUI/selected-model keys "
-            "have valid zh-Hans/en values; Core service presentation strings are outside this check"
+            f"and {len(core_extracted)} migrated Core presentation keys have valid zh-Hans/en values"
         )
         return 0
 
     synchronized = synchronize(catalog, extracted)
-    failures = validate(synchronized, extracted, model_keys)
+    failures = validate(synchronized, extracted, model_keys) + core_failures
     if failures:
         raise RuntimeError("; ".join(failures[:10]))
     CATALOG_PATH.write_text(
@@ -275,8 +364,8 @@ def main() -> int:
         encoding="utf-8",
     )
     print(
-        f"ui-scoped localization catalog: synchronized {len(extracted)} SwiftUI/selected-model keys; "
-        "Core service presentation strings are outside this operation"
+        f"localization catalog: synchronized {len(extracted)} SwiftUI/selected-model keys; "
+        f"validated {len(core_extracted)} migrated Core presentation keys"
     )
     return 0
 

@@ -8,7 +8,7 @@ struct AdvancedWorkspaceMenu: View {
   let presentFirstRunSetup: () -> Void
 
   var body: some View {
-    Menu {
+    Group {
       ForEach(WorkspaceNavigationPresentation.secondaryEntryItems) { item in
         Button {
           store.selectSection(item.section)
@@ -27,10 +27,7 @@ struct AdvancedWorkspaceMenu: View {
           Label("首次设置…", systemImage: "wand.and.stars")
         }
       }
-    } label: {
-      Label("高级工具", systemImage: "wrench.and.screwdriver")
     }
     .disabled(!canUseProtectedWorkbench)
-    .accessibilityLabel("高级工具")
   }
 }

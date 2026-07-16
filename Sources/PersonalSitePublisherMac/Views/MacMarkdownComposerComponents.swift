@@ -1,7 +1,101 @@
+import AppKit
 import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 import WebKit
+
+struct MarkdownOutlinePopover: View {
+  let items: [MarkdownOutlineItem]
+  let onSelect: (MarkdownOutlineItem) -> Void
+
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    VStack(spacing: 0) {
+      HStack(spacing: 8) {
+        Label("文章大纲", systemImage: "list.bullet.indent")
+          .font(.headline)
+
+        Spacer()
+
+        Text("章节 \(items.count)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      .padding(.horizontal, 14)
+      .padding(.vertical, 12)
+
+      Divider()
+
+      if items.isEmpty {
+        VStack(spacing: 8) {
+          Image(systemName: "text.badge.plus")
+            .font(.system(size: 24, weight: .medium))
+            .foregroundStyle(.secondary)
+          Text("还没有可导航的标题")
+            .font(.headline)
+          Text("在正文中添加 ## 或 ### 标题后，就能从这里快速跳转。")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, minHeight: 150)
+      } else {
+        ScrollView {
+          LazyVStack(spacing: 2) {
+            ForEach(items) { item in
+              outlineRow(item)
+            }
+          }
+          .padding(8)
+        }
+        .frame(maxHeight: 360)
+      }
+    }
+    .frame(width: 320)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("markdown-outline-popover")
+  }
+
+  private func outlineRow(_ item: MarkdownOutlineItem) -> some View {
+    Button {
+      onSelect(item)
+      dismiss()
+    } label: {
+      HStack(spacing: 8) {
+        Text("H\(item.level)")
+          .font(.caption2.monospaced().weight(.semibold))
+          .foregroundStyle(.secondary)
+          .frame(width: 22, alignment: .leading)
+
+        Text(item.title)
+          .lineLimit(1)
+
+        Spacer(minLength: 8)
+
+        if !item.publicRiskSummary.isClear {
+          Image(systemName: "exclamationmark.triangle.fill")
+            .font(.caption)
+            .foregroundStyle(
+              item.publicRiskSummary.errorCount > 0
+                ? WorkbenchTheme.risk
+                : WorkbenchTheme.warning
+            )
+            .help(item.publicRiskSummary.statusTitle)
+            .accessibilityHidden(true)
+        }
+      }
+      .padding(.leading, item.level == 3 ? 16 : 0)
+      .padding(.horizontal, 8)
+      .padding(.vertical, 7)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("\(item.level) 级标题：\(item.title)")
+    .accessibilityValue(item.publicRiskSummary.statusTitle)
+  }
+}
 
 struct SelectionActionBar: View {
   let selectionAIActionMenuItems: [AIPublishingActionMenuItem]
@@ -71,9 +165,13 @@ struct FindReplaceBar: View {
   @Binding var findQuery: String
   @Binding var replacementText: String
   @Binding var isFindCaseSensitive: Bool
+  @Binding var isFindWholeWord: Bool
+  @Binding var isFindRegularExpression: Bool
 
   let canUseFindReplace: Bool
+  let findMatchStatus: String
   let findReplaceMessage: String
+  let onFindPrevious: () -> Void
   let onFindNext: () -> Void
   let onReplaceCurrentOrNext: () -> Void
   let onReplaceAll: () -> Void
@@ -85,24 +183,32 @@ struct FindReplaceBar: View {
     HStack(spacing: 8) {
       TextField("查找", text: $findQuery)
         .textFieldStyle(.roundedBorder)
-        .frame(width: 180)
+        .frame(width: 170)
         .focused($isFindFieldFocused)
         .accessibilityLabel("查找文本")
         .accessibilityValue(findQuery.nilIfEmpty ?? "未输入")
 
       TextField("替换为", text: $replacementText)
         .textFieldStyle(.roundedBorder)
-        .frame(width: 180)
+        .frame(width: 170)
         .accessibilityLabel("替换文本")
         .accessibilityValue(replacementText.nilIfEmpty ?? "未输入")
 
-      Toggle(isOn: $isFindCaseSensitive) {
-        Image(systemName: "textformat")
+      Text(findMatchStatus)
+        .font(.caption.monospacedDigit())
+        .foregroundStyle(.secondary)
+        .frame(minWidth: 38)
+        .accessibilityLabel("查找匹配位置")
+        .accessibilityValue(findMatchStatus)
+
+      Button {
+        onFindPrevious()
+      } label: {
+        Image(systemName: "chevron.up")
       }
-      .toggleStyle(.button)
-      .help("区分大小写")
-      .accessibilityLabel("区分大小写")
-      .accessibilityValue(isFindCaseSensitive ? "开启" : "关闭")
+      .disabled(!canUseFindReplace)
+      .help("查找上一个（Shift+Return）")
+      .accessibilityLabel("查找上一个")
 
       Button {
         onFindNext()
@@ -110,8 +216,20 @@ struct FindReplaceBar: View {
         Image(systemName: "chevron.down")
       }
       .disabled(!canUseFindReplace)
-      .help("查找下一个")
+      .help("查找下一个（Return）")
       .accessibilityLabel("查找下一个")
+
+      Menu {
+        Toggle("区分大小写", isOn: $isFindCaseSensitive)
+        Toggle("整词匹配", isOn: $isFindWholeWord)
+        Toggle("正则表达式", isOn: $isFindRegularExpression)
+      } label: {
+        Image(systemName: "slider.horizontal.3")
+      }
+      .menuStyle(.borderlessButton)
+      .fixedSize()
+      .help("查找模式")
+      .accessibilityLabel("查找模式")
 
       Button {
         onReplaceCurrentOrNext()
@@ -153,13 +271,26 @@ struct FindReplaceBar: View {
     .onAppear {
       isFindFieldFocused = true
     }
+    .onKeyPress(.return) {
+      if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
+        onFindPrevious()
+      } else {
+        onFindNext()
+      }
+      return .handled
+    }
+    .onExitCommand(perform: onDismiss)
   }
 }
 
 struct MarkdownPreviewPane: View {
   let draft: ArticleDraft
   let profile: SiteProfile
-  @AppStorage("markdownEditorPreviewTheme") private var previewThemeRaw = MarkdownPreviewTheme.github.rawValue
+  @Binding var isSynchronizedScrollingEnabled: Bool
+  let scrollSyncUpdate: MarkdownScrollSyncUpdate?
+  let onScrollProgressChanged: (Double) -> Void
+  @Environment(\.colorScheme) private var colorScheme
+  @AppStorage("markdownEditorPreviewTheme") private var previewThemeRaw = MarkdownPreviewTheme.system.rawValue
   @State private var htmlDocument = ""
   @State private var renderWorkItem: DispatchWorkItem?
   @State private var renderGeneration = 0
@@ -173,6 +304,14 @@ struct MarkdownPreviewPane: View {
             .textSelection(.enabled)
 
           Spacer()
+
+          Toggle(isOn: $isSynchronizedScrollingEnabled) {
+            Image(systemName: "arrow.up.and.down.text.horizontal")
+          }
+          .toggleStyle(.button)
+          .help(isSynchronizedScrollingEnabled ? "关闭编辑与预览同步滚动" : "开启编辑与预览同步滚动")
+          .accessibilityLabel("编辑与预览同步滚动")
+          .accessibilityValue(isSynchronizedScrollingEnabled ? "开启" : "关闭")
 
           Picker("预览主题", selection: previewThemeBinding) {
             ForEach(MarkdownPreviewTheme.allCases) { theme in
@@ -201,7 +340,11 @@ struct MarkdownPreviewPane: View {
       .padding(14)
       .background(.bar)
 
-      MarkdownPreviewWebView(html: htmlDocument)
+      MarkdownPreviewWebView(
+        html: htmlDocument,
+        scrollSyncUpdate: isSynchronizedScrollingEnabled ? scrollSyncUpdate : nil,
+        onScrollProgressChanged: onScrollProgressChanged
+      )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     .onAppear(perform: scheduleHTMLRender)
@@ -211,7 +354,7 @@ struct MarkdownPreviewPane: View {
   }
 
   private var previewTheme: MarkdownPreviewTheme {
-    MarkdownPreviewTheme(rawValue: previewThemeRaw) ?? .github
+    MarkdownPreviewTheme(rawValue: previewThemeRaw) ?? .system
   }
 
   private var previewThemeBinding: Binding<MarkdownPreviewTheme> {
@@ -222,7 +365,8 @@ struct MarkdownPreviewPane: View {
   }
 
   private var previewRenderInput: String {
-    [draft.bodyMarkdown, previewTheme.rawValue].joined(separator: "\u{1F}")
+    [draft.bodyMarkdown, previewTheme.rawValue, colorScheme == .dark ? "dark" : "light"]
+      .joined(separator: "\u{1F}")
   }
 
   private func scheduleHTMLRender() {
@@ -231,8 +375,13 @@ struct MarkdownPreviewPane: View {
     let generation = renderGeneration
     let markdown = draft.bodyMarkdown
     let theme = previewTheme
+    let isDarkAppearance = colorScheme == .dark
     let workItem = DispatchWorkItem {
-      let html = MarkdownPreviewHTMLRenderer.document(markdown: markdown, theme: theme)
+      let html = MarkdownPreviewHTMLRenderer.document(
+        markdown: markdown,
+        theme: theme,
+        isDarkAppearance: isDarkAppearance
+      )
       DispatchQueue.main.async {
         guard generation == renderGeneration else { return }
         htmlDocument = html
@@ -245,7 +394,11 @@ struct MarkdownPreviewPane: View {
 }
 
 private enum MarkdownPreviewHTMLRenderer {
-  static func document(markdown: String, theme: MarkdownPreviewTheme) -> String {
+  static func document(
+    markdown: String,
+    theme: MarkdownPreviewTheme,
+    isDarkAppearance: Bool
+  ) -> String {
     let body = theme.decorate(markdownHTMLBody(for: markdown))
     return """
     <!doctype html>
@@ -254,7 +407,7 @@ private enum MarkdownPreviewHTMLRenderer {
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; media-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
-        <style>\(theme.styles)</style>
+        <style>\(theme.styles(isDarkAppearance: isDarkAppearance))</style>
       </head>
       <body>
         <article class="markdown-content">\(body)</article>
@@ -304,6 +457,7 @@ private enum MarkdownPreviewHTMLRenderer {
 }
 
 enum MarkdownPreviewTheme: String, CaseIterable, Identifiable {
+  case system
   case github
   case githubDark
   case simple
@@ -312,17 +466,22 @@ enum MarkdownPreviewTheme: String, CaseIterable, Identifiable {
 
   var title: String {
     switch self {
+    case .system:
+      return String(localized: "跟随系统")
     case .github:
       return "GitHub"
     case .githubDark:
       return "GitHub Dark"
     case .simple:
-      return "简洁白"
+      return String(localized: "简洁白")
     }
   }
 
-  var styles: String {
+  func styles(isDarkAppearance: Bool) -> String {
     switch self {
+    case .system:
+      return (isDarkAppearance ? MarkdownPreviewTheme.githubDark : .github)
+        .styles(isDarkAppearance: isDarkAppearance)
     case .github:
       return """
       :root { color-scheme: light; }
@@ -367,10 +526,61 @@ enum MarkdownPreviewTheme: String, CaseIterable, Identifiable {
 
 struct MarkdownPreviewWebView: NSViewRepresentable {
   let html: String
+  let scrollSyncUpdate: MarkdownScrollSyncUpdate?
+  let onScrollProgressChanged: (Double) -> Void
 
   @MainActor
   final class Coordinator: NSObject, WKNavigationDelegate {
     var lastLoadedHTML: String?
+    var latestScrollSyncUpdate: MarkdownScrollSyncUpdate?
+    private let scrollSyncBridge: MarkdownScrollViewSyncBridge
+
+    init(onScrollProgressChanged: @escaping (Double) -> Void) {
+      scrollSyncBridge = MarkdownScrollViewSyncBridge(
+        source: .preview,
+        onProgressChanged: onScrollProgressChanged
+      )
+      super.init()
+    }
+
+    func observeScrolling(in webView: WKWebView, allowDeferredRetry: Bool = true) {
+      guard let scrollView = descendantScrollView(in: webView) else {
+        guard allowDeferredRetry else { return }
+        DispatchQueue.main.async { [weak self, weak webView] in
+          guard let self, let webView else { return }
+          self.observeScrolling(in: webView, allowDeferredRetry: false)
+        }
+        return
+      }
+      scrollSyncBridge.observe(scrollView)
+    }
+
+    func applySynchronizedScroll(includingOwnSource: Bool = false) {
+      scrollSyncBridge.apply(
+        latestScrollSyncUpdate,
+        includingOwnSource: includingOwnSource
+      )
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+      DispatchQueue.main.async { [weak self, weak webView] in
+        guard let webView else { return }
+        self?.observeScrolling(in: webView, allowDeferredRetry: false)
+        self?.applySynchronizedScroll(includingOwnSource: true)
+      }
+    }
+
+    private func descendantScrollView(in view: NSView) -> NSScrollView? {
+      if let scrollView = view as? NSScrollView {
+        return scrollView
+      }
+      for subview in view.subviews {
+        if let scrollView = descendantScrollView(in: subview) {
+          return scrollView
+        }
+      }
+      return nil
+    }
 
     func webView(
       _ webView: WKWebView,
@@ -393,7 +603,7 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
   }
 
   func makeCoordinator() -> Coordinator {
-    Coordinator()
+    Coordinator(onScrollProgressChanged: onScrollProgressChanged)
   }
 
   func makeNSView(context: Context) -> WKWebView {
@@ -404,11 +614,16 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
     let view = WKWebView(frame: .zero, configuration: configuration)
     view.navigationDelegate = context.coordinator
     view.setValue(false, forKey: "drawsBackground")
+    context.coordinator.observeScrolling(in: view)
     return view
   }
 
   func updateNSView(_ nsView: WKWebView, context: Context) {
-    guard context.coordinator.lastLoadedHTML != html else { return }
+    context.coordinator.latestScrollSyncUpdate = scrollSyncUpdate
+    guard context.coordinator.lastLoadedHTML != html else {
+      context.coordinator.applySynchronizedScroll()
+      return
+    }
     context.coordinator.lastLoadedHTML = html
     nsView.loadHTMLString(html, baseURL: nil)
   }

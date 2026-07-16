@@ -92,6 +92,69 @@ final class BatchPublishPlanServiceTests: XCTestCase {
     })
   }
 
+  func testPlanBlocksDifferentImagePayloadsForSameDestination() throws {
+    let rootURL = try makeRepositoryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let firstImageURL = rootURL.appendingPathComponent("first-source.png")
+    let secondImageURL = rootURL.appendingPathComponent("second-source.png")
+    try Data([1, 2, 3, 4]).write(to: firstImageURL)
+    try Data([4, 3, 2, 1]).write(to: secondImageURL)
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    var firstDraft = longDraft(profile: profile, title: "First Image", slug: "first-image")
+    firstDraft.attachments = [sharedAttachment(sourceURL: firstImageURL)]
+    var secondDraft = longDraft(profile: profile, title: "Second Image", slug: "second-image")
+    secondDraft.attachments = [sharedAttachment(sourceURL: secondImageURL)]
+
+    let plan = BatchPublishPlanService().plan(
+      drafts: [firstDraft, secondDraft],
+      profile: profile,
+      repositoryReport: nil
+    )
+
+    XCTAssertEqual(plan.blockedCount, 2)
+    XCTAssertTrue(plan.remotePublishableItems.isEmpty)
+    XCTAssertTrue(plan.items.allSatisfy { item in
+      item.preflightIssues.contains {
+        $0.title == "批量目标路径冲突"
+          && $0.message.contains("static/images/shared.png")
+      }
+    })
+  }
+
+  func testEquivalentSharedImageIsAllowedAndDeduplicatedForRemotePublish() throws {
+    let rootURL = try makeRepositoryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let firstImageURL = rootURL.appendingPathComponent("first-source.png")
+    let secondImageURL = rootURL.appendingPathComponent("second-source.png")
+    let sharedData = Data([1, 2, 3, 4])
+    try sharedData.write(to: firstImageURL)
+    try sharedData.write(to: secondImageURL)
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    var firstDraft = longDraft(profile: profile, title: "First Image", slug: "first-image")
+    firstDraft.attachments = [sharedAttachment(sourceURL: firstImageURL)]
+    var secondDraft = longDraft(profile: profile, title: "Second Image", slug: "second-image")
+    secondDraft.attachments = [sharedAttachment(sourceURL: secondImageURL, repositorySHA: "image-sha")]
+
+    let plan = BatchPublishPlanService().plan(
+      drafts: [firstDraft, secondDraft],
+      profile: profile,
+      repositoryReport: nil
+    )
+    let mergedFiles = deduplicatedBatchPublishFiles(plan.remotePublishableItems.flatMap(\.package.files))
+    let sharedImages = mergedFiles.filter { $0.repositoryPath == "static/images/shared.png" }
+
+    XCTAssertEqual(plan.blockedCount, 0)
+    XCTAssertEqual(plan.remotePublishableItems.count, 2)
+    XCTAssertEqual(sharedImages.count, 1)
+    XCTAssertEqual(sharedImages.first?.expectedRemoteSHA, "image-sha")
+  }
+
   private func makeRepositoryRoot() throws -> URL {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacBatchPlanTests-\(UUID().uuidString)", isDirectory: true)
@@ -109,6 +172,18 @@ final class BatchPublishPlanServiceTests: XCTestCase {
       slug: slug,
       draft: false,
       bodyMarkdown: "This article body is intentionally longer than the preflight minimum so batch readiness is driven by repository diff state."
+    )
+  }
+
+  private func sharedAttachment(sourceURL: URL, repositorySHA: String? = nil) -> DraftAttachment {
+    DraftAttachment(
+      originalFilename: "shared.png",
+      relativePublishPath: "/images/shared.png",
+      repositoryPath: "static/images/shared.png",
+      altText: "Shared image",
+      byteSize: 4,
+      sourceFilePath: sourceURL.path,
+      repositorySHA: repositorySHA
     )
   }
 }

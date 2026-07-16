@@ -8,21 +8,22 @@ struct MacMarkdownEditorToolbar: View {
   let hasUnsavedChanges: Bool
   let editorDisplayMode: EditorDisplayMode
   let isSelectionAIActionRunning: Bool
+  @Binding var isOutlinePresented: Bool
+  let outlineItems: [MarkdownOutlineItem]
   let onSetEditorDisplayMode: (EditorDisplayMode) -> Void
   let onShowFindReplace: () -> Void
+  let onShowOutline: () -> Void
+  let onSelectOutlineItem: (MarkdownOutlineItem) -> Void
   let onShowShortcutHelp: () -> Void
   let onOpenAIContextInspector: () -> Void
-  let writingAIActionMenuItems: [AIPublishingActionMenuItem]
-  let publishingAIActionMenuItems: [AIPublishingActionMenuItem]
-  let distributionAIActionMenuItems: [AIPublishingActionMenuItem]
-  let maintenanceAIActionMenuItems: [AIPublishingActionMenuItem]
-  let additionalSelectionAIActionMenuItems: [AIPublishingActionMenuItem]
+  let recommendedAIActionMenuItems: [AIPublishingActionMenuItem]
+  let moreAIActionMenuItems: [AIPublishingActionMenuItem]
+  let isSelectionAIAction: (AIPublishingActionKind) -> Bool
   let selectionAIActionAvailability: (AIPublishingActionKind) -> AIPublishingActionAvailabilityPresentation
   let articleAIActionAvailability: (AIPublishingActionKind) -> AIPublishingActionAvailabilityPresentation
   let onPerformSelectionAIAction: (AIPublishingActionKind) -> Void
   let onPerformArticleAIAction: (AIPublishingActionKind) -> Void
   let onPasteAIPromptToClipboard: () -> Void
-  let onRewriteSelection: () -> Void
 
   var body: some View {
     HStack(spacing: 8) {
@@ -85,6 +86,22 @@ struct MacMarkdownEditorToolbar: View {
       .accessibilityLabel("查找与替换")
 
       Button {
+        onShowOutline()
+      } label: {
+        editorActionIcon("list.bullet.indent")
+      }
+      .keyboardShortcut("o", modifiers: [.command, .option])
+      .help("文章大纲（⌥⌘O）")
+      .accessibilityLabel("文章大纲")
+      .accessibilityIdentifier("markdown-outline-button")
+      .popover(isPresented: $isOutlinePresented, arrowEdge: .top) {
+        MarkdownOutlinePopover(
+          items: outlineItems,
+          onSelect: onSelectOutlineItem
+        )
+      }
+
+      Button {
         onShowShortcutHelp()
       } label: {
         editorActionIcon("keyboard")
@@ -92,83 +109,52 @@ struct MacMarkdownEditorToolbar: View {
       .help("快捷键说明")
       .accessibilityLabel("快捷键说明")
 
-      Button {
-        onOpenAIContextInspector()
-      } label: {
-        editorActionIcon("sparkles")
-      }
-      .help("打开 AI 对话")
-      .accessibilityLabel("打开 AI 对话")
-
       Divider()
         .frame(height: 18)
 
       Menu {
-        ForEach(writingAIActionMenuItems) { item in
-          articleAIActionButton(item)
+        ForEach(recommendedAIActionMenuItems) { item in
+          aiActionButton(item)
+        }
+
+        Divider()
+
+        Menu("更多指令") {
+          ForEach(AIPublishingQuickPromptGroup.allCases) { group in
+            let groupItems = moreAIActionMenuItems.filter {
+              $0.kind.promptLibraryGroup == group
+            }
+            if !groupItems.isEmpty {
+              Menu {
+                ForEach(groupItems) { item in
+                  aiActionButton(item)
+                }
+              } label: {
+                Label(aiActionGroupTitle(group), systemImage: group.systemImage)
+              }
+            }
+          }
+
+          Divider()
+
+          Button {
+            onOpenAIContextInspector()
+          } label: {
+            Label("打开 AI 对话", systemImage: "bubble.left.and.text.bubble.right")
+          }
+
+          Button {
+            onPasteAIPromptToClipboard()
+          } label: {
+            Label("复制上下文 Prompt", systemImage: "doc.on.doc")
+          }
         }
       } label: {
-        editorActionIcon("square.and.pencil")
+        editorActionIcon("sparkles")
       }
-      .help("写作生成")
-      .accessibilityLabel("写作生成")
-
-      Menu {
-        ForEach(publishingAIActionMenuItems) { item in
-          articleAIActionButton(item)
-        }
-      } label: {
-        editorActionIcon("checkmark.shield")
-      }
-      .help("发布检查")
-      .accessibilityLabel("发布检查")
-
-      Menu {
-        ForEach(distributionAIActionMenuItems) { item in
-          articleAIActionButton(item)
-        }
-      } label: {
-        editorActionIcon("megaphone")
-      }
-      .help("分发素材")
-      .accessibilityLabel("分发素材")
-
-      Menu {
-        ForEach(maintenanceAIActionMenuItems) { item in
-          articleAIActionButton(item)
-        }
-      } label: {
-        editorActionIcon("wrench.and.screwdriver")
-      }
-      .help("内容维护")
-      .accessibilityLabel("内容维护")
-
-      Menu {
-        Button {
-          onRewriteSelection()
-        } label: {
-          Label("改写选中文本", systemImage: "wand.and.stars")
-        }
-        .disabled(!selectionAIActionAvailability(.rewriteSelection).isEnabled)
-        .help(selectionAIActionAvailability(.rewriteSelection).unavailableReason ?? "改写选中文本")
-
-        ForEach(additionalSelectionAIActionMenuItems) { item in
-          selectionAIActionButton(item)
-        }
-      } label: {
-        editorActionIcon("wand.and.stars")
-      }
-      .help("选区 AI 编辑")
-      .accessibilityLabel("选区 AI 编辑")
+      .help("AI 推荐指令")
+      .accessibilityLabel("AI 推荐指令")
       .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
-
-      Button {
-        onPasteAIPromptToClipboard()
-      } label: {
-        editorActionIcon("doc.on.doc")
-      }
-      .help("复制上下文 Prompt")
-      .accessibilityLabel("复制上下文 Prompt")
     }
     .buttonStyle(.borderless)
     .accessibilityElement(children: .contain)
@@ -210,6 +196,21 @@ struct MacMarkdownEditorToolbar: View {
       .contentShape(Rectangle())
   }
 
+  private func aiActionGroupTitle(_ group: AIPublishingQuickPromptGroup) -> LocalizedStringKey {
+    switch group {
+    case .writing:
+      return "写作生成"
+    case .editing:
+      return "选区编辑"
+    case .publishing:
+      return "发布检查"
+    case .distribution:
+      return "分发素材"
+    case .maintenance:
+      return "内容维护"
+    }
+  }
+
   private func articleAIActionButton(_ item: AIPublishingActionMenuItem) -> some View {
     let availability = articleAIActionAvailability(item.kind)
     return Button {
@@ -231,6 +232,15 @@ struct MacMarkdownEditorToolbar: View {
     .disabled(!availability.isEnabled)
     .help(availability.unavailableReason ?? item.kind.localizedDisplayName)
   }
+
+  @ViewBuilder
+  private func aiActionButton(_ item: AIPublishingActionMenuItem) -> some View {
+    if isSelectionAIAction(item.kind) {
+      selectionAIActionButton(item)
+    } else {
+      articleAIActionButton(item)
+    }
+  }
 }
 
 struct MacMarkdownFormattingToolbar: View {
@@ -238,46 +248,28 @@ struct MacMarkdownFormattingToolbar: View {
   let wordCount: Int
   let lineCount: Int
   let readingMinutes: Int
-  let onApplyHeading: (Int) -> Void
+  let onApplyMarkdownFormatting: (MarkdownFormattingCommand) -> Void
   let onWrapSelection: (String, String, String) -> Void
   let onPrefixCurrentLine: (String) -> Void
   let onInsertCodeBlock: () -> Void
   let onInsertTable: () -> Void
   let onInsertHorizontalRule: () -> Void
-  let onInsertLink: () -> Void
   let onInsertImage: () -> Void
 
   var body: some View {
-    HStack(spacing: 4) {
-      Button {
-        onApplyHeading(1)
+    HStack(spacing: 5) {
+      Menu {
+        Button("一级标题") { onApplyMarkdownFormatting(.heading(level: 1)) }
+        Button("二级标题") { onApplyMarkdownFormatting(.heading(level: 2)) }
+        Button("三级标题") { onApplyMarkdownFormatting(.heading(level: 3)) }
       } label: {
-        toolbarText("H1")
+        toolbarIcon("textformat.size")
       }
-      .help("一级标题")
-      .accessibilityLabel("一级标题")
+      .help("标题级别")
+      .accessibilityLabel("标题级别")
 
       Button {
-        onApplyHeading(2)
-      } label: {
-        toolbarText("H2")
-      }
-      .help("二级标题")
-      .accessibilityLabel("二级标题")
-
-      Button {
-        onApplyHeading(3)
-      } label: {
-        toolbarText("H3")
-      }
-      .help("三级标题")
-      .accessibilityLabel("三级标题")
-
-      Divider()
-        .frame(height: 18)
-
-      Button {
-        onWrapSelection("**", "**", "粗体")
+        onApplyMarkdownFormatting(.bold)
       } label: {
         toolbarIcon("bold")
       }
@@ -285,7 +277,7 @@ struct MacMarkdownFormattingToolbar: View {
       .accessibilityLabel("粗体")
 
       Button {
-        onWrapSelection("*", "*", "斜体")
+        onApplyMarkdownFormatting(.italic)
       } label: {
         toolbarIcon("italic")
       }
@@ -303,84 +295,38 @@ struct MacMarkdownFormattingToolbar: View {
       Divider()
         .frame(height: 18)
 
-      Button {
-        onPrefixCurrentLine("> ")
-      } label: {
-        toolbarIcon("quote.opening")
-      }
-      .help("引用")
-      .accessibilityLabel("引用")
-
-      Button {
-        onPrefixCurrentLine("- ")
+      Menu {
+        Button("引用") { onPrefixCurrentLine("> ") }
+        Button("无序列表") { onPrefixCurrentLine("- ") }
+        Button("有序列表") { onPrefixCurrentLine("1. ") }
+        Button("任务列表") { onPrefixCurrentLine("- [ ] ") }
+        Divider()
+        Button("代码块") { onInsertCodeBlock() }
       } label: {
         toolbarIcon("list.bullet")
       }
-      .help("无序列表")
-      .accessibilityLabel("无序列表")
+      .help("段落与列表")
+      .accessibilityLabel("段落与列表")
 
-      Button {
-        onPrefixCurrentLine("1. ")
+      Menu {
+        Button("表格") { onInsertTable() }
+        Button("分隔线") { onInsertHorizontalRule() }
+        Divider()
+        Button("链接") { onApplyMarkdownFormatting(.link) }
+        Button("插图") { onInsertImage() }
       } label: {
-        toolbarIcon("list.number")
+        toolbarIcon("plus")
       }
-      .help("有序列表")
-      .accessibilityLabel("有序列表")
-
-      Button {
-        onPrefixCurrentLine("- [ ] ")
-      } label: {
-        toolbarIcon("checklist")
-      }
-      .help("任务列表")
-      .accessibilityLabel("任务列表")
-
-      Button {
-        onInsertCodeBlock()
-      } label: {
-        toolbarIcon("chevron.left.forwardslash.chevron.right")
-      }
-      .help("代码块")
-      .accessibilityLabel("代码块")
-
-      Button {
-        onInsertTable()
-      } label: {
-        toolbarIcon("rectangle.grid.2x2")
-      }
-      .help("表格")
-      .accessibilityLabel("表格")
-
-      Button {
-        onInsertHorizontalRule()
-      } label: {
-        toolbarIcon("minus")
-      }
-      .help("分隔线")
-      .accessibilityLabel("分隔线")
-
-      Button {
-        onInsertLink()
-      } label: {
-        toolbarIcon("link")
-      }
-      .help("链接")
-      .accessibilityLabel("链接")
-
-      Button {
-        onInsertImage()
-      } label: {
-        toolbarIcon("photo.badge.plus")
-      }
-      .help("插图")
-      .accessibilityLabel("插图")
+      .help("插入内容")
+      .accessibilityLabel("插入内容")
 
       Spacer()
 
-      Text("\(characterCount) 字符 · \(wordCount) 词 · \(lineCount) 行 · 约 \(readingMinutes) min")
+      Text("\(characterCount) 字符 · 约 \(readingMinutes) min")
         .font(.caption)
         .foregroundStyle(.secondary)
         .monospacedDigit()
+        .help("\(characterCount) 字符 · \(wordCount) 词 · \(lineCount) 行 · 约 \(readingMinutes) 分钟")
         .accessibilityLabel("文章统计")
         .accessibilityValue("\(characterCount) 字符，\(wordCount) 词，\(lineCount) 行，预计阅读 \(readingMinutes) 分钟")
     }
@@ -395,9 +341,4 @@ struct MacMarkdownFormattingToolbar: View {
       .frame(width: 22, height: 22)
   }
 
-  private func toolbarText(_ value: String) -> some View {
-    Text(value)
-      .font(.caption2.weight(.semibold))
-      .frame(width: 22, height: 22)
-  }
 }

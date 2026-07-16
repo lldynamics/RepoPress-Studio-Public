@@ -106,12 +106,6 @@ extension ReleaseHistoryDetailView {
               Label("复制诊断", systemImage: "doc.on.doc")
             }
             .controlSize(.small)
-            Button {
-              copy(deploymentStatus.postPublishChecklistMarkdown, message: "已复制发布后校验报告。")
-            } label: {
-              Label("复制报告", systemImage: "checklist.checked")
-            }
-            .controlSize(.small)
             if let siteURLText = deploymentStatus.siteURLText,
                let siteURL = URL(string: siteURLText) {
               Button {
@@ -239,13 +233,6 @@ extension ReleaseHistoryDetailView {
           Label("复制恢复包", systemImage: "shippingbox")
         }
         .accessibilityLabel("复制发布恢复包")
-
-        Button {
-          copyRecoveryEvidence(recoveryPackage)
-        } label: {
-          Label("复制验证摘要", systemImage: "checklist.checked")
-        }
-        .accessibilityLabel("复制发布恢复验证摘要")
 
         Button {
           Task {

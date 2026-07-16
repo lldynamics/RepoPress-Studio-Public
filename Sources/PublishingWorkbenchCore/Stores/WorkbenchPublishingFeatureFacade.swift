@@ -5,9 +5,11 @@ import Foundation
 public final class WorkbenchPublishingFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
   private var cancellables = Set<AnyCancellable>()
+  public let editorDisplayModePublisher: AnyPublisher<EditorDisplayMode, Never>
 
   init(store: WorkbenchStore) {
     self.store = store
+    editorDisplayModePublisher = store.publishingStore.$editorDisplayMode.eraseToAnyPublisher()
     store.publishingStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &cancellables)

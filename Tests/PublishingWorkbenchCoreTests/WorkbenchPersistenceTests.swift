@@ -3,6 +3,83 @@ import XCTest
 
 @MainActor
 final class WorkbenchPersistenceTests: XCTestCase {
+  func testReleaseHistoryIsBoundedInMemoryAndDuringSnapshotMigration() throws {
+    let profile = SiteProfile.defaultProfile
+    let records = (0..<(ReleaseRecord.maximumRetainedRecords + 25)).map { index in
+      ReleaseRecord(
+        title: "Release \(index)",
+        summary: "Summary \(index)",
+        siteProfileID: profile.id,
+        createdAt: Date(timeIntervalSince1970: TimeInterval(index))
+      )
+    }
+    let snapshot = WorkbenchSnapshot(
+      profiles: [profile],
+      activeProfileID: profile.id,
+      drafts: [ArticleDraft.empty(profile: profile)],
+      releaseRecords: records
+    )
+
+    XCTAssertEqual(snapshot.releaseRecords.count, ReleaseRecord.maximumRetainedRecords)
+    XCTAssertEqual(snapshot.releaseRecords.first?.title, "Release 0")
+
+    var encodedObject = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: JSONEncoder.workbench.encode(snapshot)) as? [String: Any]
+    )
+    encodedObject["releaseRecords"] = try JSONSerialization.jsonObject(
+      with: JSONEncoder.workbench.encode(records)
+    )
+    let migrated = try JSONDecoder.workbench.decode(
+      WorkbenchSnapshot.self,
+      from: JSONSerialization.data(withJSONObject: encodedObject)
+    )
+
+    XCTAssertEqual(migrated.releaseRecords.count, ReleaseRecord.maximumRetainedRecords)
+    XCTAssertEqual(migrated.releaseRecords.first?.title, "Release 0")
+
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: temporaryPersistenceURL()))
+    store.setReleaseRecords(records)
+    XCTAssertEqual(store.releaseRecords.count, ReleaseRecord.maximumRetainedRecords)
+  }
+
+  func testReleaseHistoryKeepsCallerOrderForEqualTimestamps() {
+    let profile = SiteProfile.defaultProfile
+    let timestamp = Date(timeIntervalSince1970: 1_900_000_000)
+    let records = ["Running", "Failed", "Success"].map { title in
+      ReleaseRecord(
+        title: title,
+        summary: title,
+        siteProfileID: profile.id,
+        createdAt: timestamp
+      )
+    }
+
+    XCTAssertEqual(ReleaseRecord.limitedHistory(records).map(\.title), ["Running", "Failed", "Success"])
+  }
+
+  func testImageOptimizationCachePrunesOnlyUnreferencedBatchFolders() throws {
+    let persistence = WorkbenchPersistence(fileURL: temporaryPersistenceURL())
+    let rootURL = persistence.imageOptimizationDirectoryURL
+    let referencedBatch = rootURL.appendingPathComponent(".image-batch-referenced", isDirectory: true)
+    let abandonedBatch = rootURL.appendingPathComponent(".image-batch-abandoned", isDirectory: true)
+    let userFolder = rootURL.appendingPathComponent("manual-assets", isDirectory: true)
+    try FileManager.default.createDirectory(at: referencedBatch, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: abandonedBatch, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: userFolder, withIntermediateDirectories: true)
+    let referencedImage = referencedBatch.appendingPathComponent("image.jpg")
+    try Data([1, 2, 3]).write(to: referencedImage)
+    try Data([4, 5, 6]).write(to: abandonedBatch.appendingPathComponent("old.jpg"))
+
+    let removedCount = persistence.pruneUnreferencedImageOptimizationBatches(
+      referencedSourceFilePaths: [referencedImage.path, "/tmp/not-in-cache.jpg"]
+    )
+
+    XCTAssertEqual(removedCount, 1)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: referencedBatch.path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: abandonedBatch.path))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: userFolder.path))
+  }
+
   func testCorruptPrimaryRecoversLastKnownGoodSnapshot() throws {
     let url = temporaryPersistenceURL()
     defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

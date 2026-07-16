@@ -15,7 +15,9 @@ extension RepositoryWorkspaceView {
             .font(.headline)
           Spacer()
           Button {
-            store.importChangedArticleDraftsFromLocalRepository()
+            Task {
+              await store.importChangedArticleDraftsFromLocalRepository()
+            }
           } label: {
             Label("导入文章变更", systemImage: "tray.and.arrow.down")
           }

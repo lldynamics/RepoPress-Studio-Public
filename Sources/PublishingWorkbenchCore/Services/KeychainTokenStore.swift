@@ -102,10 +102,29 @@ public final class KeychainTokenStore: @unchecked Sendable {
     try token(forAccount: account(for: profile, scope: scope))
   }
 
+  public func token(
+    for profile: SiteProfile,
+    scope: KeychainTokenScope,
+    originURLText: String
+  ) throws -> String? {
+    try token(forAccount: credentialBoundAccount(
+      for: profile,
+      component: scope.accountComponent,
+      originURLText: originURLText
+    ))
+  }
+
+  public func aiToken(for profile: SiteProfile) throws -> String? {
+    try token(forAccount: aiCredentialAccount(for: profile))
+  }
+
   public func repositoryToken(for profile: SiteProfile) throws -> String? {
     let scope = KeychainTokenScope.repository(profile.repositoryProvider)
-    _ = try migrateLegacyToken(for: profile, to: scope)
-    return try token(for: profile, scope: scope)
+    return try token(
+      for: profile,
+      scope: scope,
+      originURLText: repositoryOriginURLText(for: profile)
+    )
   }
 
   public func availability(for profile: SiteProfile) throws -> KeychainTokenAvailability {
@@ -116,21 +135,51 @@ public final class KeychainTokenStore: @unchecked Sendable {
     try availability(forAccount: account(for: profile, scope: scope))
   }
 
+  public func availability(
+    for profile: SiteProfile,
+    scope: KeychainTokenScope,
+    originURLText: String
+  ) throws -> KeychainTokenAvailability {
+    try availability(forAccount: credentialBoundAccount(
+      for: profile,
+      component: scope.accountComponent,
+      originURLText: originURLText
+    ))
+  }
+
+  public func aiTokenAvailability(for profile: SiteProfile) throws -> KeychainTokenAvailability {
+    try availability(forAccount: aiCredentialAccount(for: profile))
+  }
+
   public func repositoryTokenAvailability(for profile: SiteProfile) throws -> KeychainTokenAvailability {
     let scope = KeychainTokenScope.repository(profile.repositoryProvider)
-    _ = try migrateLegacyToken(for: profile, to: scope)
-    return try availability(for: profile, scope: scope)
+    return try availability(
+      for: profile,
+      scope: scope,
+      originURLText: repositoryOriginURLText(for: profile)
+    )
   }
 
   public func saveRepositoryToken(_ token: String, for profile: SiteProfile) throws {
     try KeychainTokenMutationCoordinator.shared.synchronized {
-      try saveToken(token, for: profile, scope: .repository(profile.repositoryProvider))
+      try saveToken(
+        token,
+        for: profile,
+        scope: .repository(profile.repositoryProvider),
+        originURLText: repositoryOriginURLText(for: profile)
+      )
+      try deleteToken(for: profile, scope: .repository(profile.repositoryProvider))
       try deleteToken(for: profile)
     }
   }
 
   public func deleteRepositoryToken(for profile: SiteProfile) throws {
     try KeychainTokenMutationCoordinator.shared.synchronized {
+      try deleteToken(
+        for: profile,
+        scope: .repository(profile.repositoryProvider),
+        originURLText: repositoryOriginURLText(for: profile)
+      )
       try deleteToken(for: profile, scope: .repository(profile.repositoryProvider))
       // Older releases left this unscoped credential behind after migration.
       // Remove it in the same critical section so availability refresh cannot
@@ -147,12 +196,54 @@ public final class KeychainTokenStore: @unchecked Sendable {
     try saveToken(token, forAccount: account(for: profile, scope: scope))
   }
 
+  public func saveToken(
+    _ token: String,
+    for profile: SiteProfile,
+    scope: KeychainTokenScope,
+    originURLText: String
+  ) throws {
+    try saveToken(
+      token,
+      forAccount: credentialBoundAccount(
+        for: profile,
+        component: scope.accountComponent,
+        originURLText: originURLText
+      )
+    )
+  }
+
+  public func saveAIToken(_ token: String, for profile: SiteProfile) throws {
+    try KeychainTokenMutationCoordinator.shared.synchronized {
+      try saveToken(token, forAccount: aiCredentialAccount(for: profile))
+      try deleteToken(for: profile)
+    }
+  }
+
   public func deleteToken(for profile: SiteProfile) throws {
     try deleteToken(forAccount: account(for: profile))
   }
 
   public func deleteToken(for profile: SiteProfile, scope: KeychainTokenScope) throws {
     try deleteToken(forAccount: account(for: profile, scope: scope))
+  }
+
+  public func deleteToken(
+    for profile: SiteProfile,
+    scope: KeychainTokenScope,
+    originURLText: String
+  ) throws {
+    try deleteToken(forAccount: credentialBoundAccount(
+      for: profile,
+      component: scope.accountComponent,
+      originURLText: originURLText
+    ))
+  }
+
+  public func deleteAIToken(for profile: SiteProfile) throws {
+    try KeychainTokenMutationCoordinator.shared.synchronized {
+      try deleteToken(forAccount: aiCredentialAccount(for: profile))
+      try deleteToken(for: profile)
+    }
   }
 
   @discardableResult
@@ -287,6 +378,44 @@ public final class KeychainTokenStore: @unchecked Sendable {
     "\(account(for: profile))-\(scope.accountComponent)"
   }
 
+  private func aiCredentialAccount(for profile: SiteProfile) throws -> String {
+    try credentialBoundAccount(
+      for: profile,
+      component: "ai-\(profile.aiProviderConfig.preset.rawValue)",
+      originURLText: profile.aiProviderConfig.normalizedBaseURL
+    )
+  }
+
+  private func repositoryOriginURLText(for profile: SiteProfile) -> String {
+    profile.repositoryBaseURL.nilIfEmpty ?? profile.repositoryProvider.defaultBaseURL
+  }
+
+  private func credentialBoundAccount(
+    for profile: SiteProfile,
+    component: String,
+    originURLText: String
+  ) throws -> String {
+    guard let origin = normalizedCredentialOrigin(originURLText) else {
+      throw KeychainTokenStoreError.invalidCredentialOrigin(originURLText)
+    }
+    let originComponent = Data(origin.utf8).base64EncodedString()
+    return "\(account(for: profile))-\(component)-origin-\(originComponent)"
+  }
+
+  private func normalizedCredentialOrigin(_ rawValue: String) -> String? {
+    let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let components = URLComponents(string: value),
+          let scheme = components.scheme?.lowercased(),
+          scheme == "https",
+          let host = components.host?.lowercased(),
+          !host.isEmpty,
+          components.user == nil,
+          components.password == nil else {
+      return nil
+    }
+    return "\(scheme)://\(host):\(components.port ?? 443)"
+  }
+
   private func baseQuery(account: String) -> [String: Any] {
     var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
@@ -304,12 +433,15 @@ public final class KeychainTokenStore: @unchecked Sendable {
 
 public enum KeychainTokenStoreError: LocalizedError, Equatable {
   case invalidData
+  case invalidCredentialOrigin(String)
   case unhandledStatus(OSStatus)
 
   public var errorDescription: String? {
     switch self {
     case .invalidData:
       return "Keychain 返回了不可解析的 token 数据。"
+    case .invalidCredentialOrigin(let value):
+      return "凭据端点必须是有效的 HTTPS 地址：\(value)"
     case .unhandledStatus(let status):
       return "Keychain 操作失败：\(Self.statusDescription(for: status))（错误码 \(status)）"
     }
@@ -319,6 +451,8 @@ public enum KeychainTokenStoreError: LocalizedError, Equatable {
     switch self {
     case .invalidData:
       return "请检查该服务在钥匙串中的记录是否损坏，可删除后重新保存 Token。"
+    case .invalidCredentialOrigin:
+      return "请先修正 API Base URL；端点变化后需要重新保存对应 Token。"
     case .unhandledStatus(let status):
       switch status {
       case errSecInteractionNotAllowed:

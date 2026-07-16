@@ -343,6 +343,8 @@ struct ContentMigrationAssistantView: View {
       return .invalidExport(details)
     case .profileChanged:
       return .profileChanged
+    case .sourceOutsideSelectedDirectory:
+      return .failure(migrationError.localizedDescription)
     case let .sourceLimitExceeded(details):
       if details == "导出文件超过 100 MB，请拆分后分批导入。" {
         return .fileTooLarge

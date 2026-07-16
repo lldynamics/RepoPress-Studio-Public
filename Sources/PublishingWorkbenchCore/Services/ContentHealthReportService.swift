@@ -18,13 +18,37 @@ public struct ContentHealthReportService: Sendable {
     sitePreflightIssues: [PreflightIssue],
     presentations: [UUID: ContentHealthDraftPresentation]
   ) -> ContentHealthReport {
+    do {
+      return try makeReport(
+        drafts: drafts,
+        profile: profile,
+        sitePreflightIssues: sitePreflightIssues,
+        presentations: presentations,
+        cancellationCheck: {}
+      )
+    } catch {
+      preconditionFailure("A non-cancellable content health report unexpectedly failed: \(error)")
+    }
+  }
+
+  private func makeReport(
+    drafts: [ArticleDraft],
+    profile: SiteProfile,
+    sitePreflightIssues: [PreflightIssue],
+    presentations: [UUID: ContentHealthDraftPresentation],
+    cancellationCheck: () throws -> Void
+  ) throws -> ContentHealthReport {
+    try cancellationCheck()
     let duplicateIndex = PreflightDuplicateIndex(drafts: drafts, profile: profile)
-    let draftSummaries = drafts.map { draft in
+    var draftSummaries: [DraftPreflightSummary] = []
+    draftSummaries.reserveCapacity(drafts.count)
+    for draft in drafts {
+      try cancellationCheck()
       let presentation = presentations[draft.id] ?? ContentHealthDraftPresentation(
         title: draft.title,
         markdownPath: profile.markdownPath(for: draft)
       )
-      return DraftPreflightSummary(
+      draftSummaries.append(DraftPreflightSummary(
         draftID: draft.id,
         draftTitle: presentation.title,
         markdownPath: presentation.markdownPath,
@@ -35,16 +59,19 @@ public struct ContentHealthReportService: Sendable {
           includeRepositoryReadiness: false,
           duplicateIndex: duplicateIndex
         )
-      )
+      ))
     }
+    try cancellationCheck()
     let publicRiskSummary = PublicRiskSummary(issues: draftSummaries.flatMap(\.issues))
+    let aiFixQueueItems = aiFixQueueService.items(drafts: drafts, profile: profile, summaries: draftSummaries)
+    try cancellationCheck()
 
     return ContentHealthReport(
       sitePreflightIssues: sitePreflightIssues,
       draftSummaries: draftSummaries,
       publicRiskSummary: publicRiskSummary,
       publicRiskDraftSummaries: draftSummaries.filter { !$0.publicRiskIssues.isEmpty },
-      aiFixQueueItems: aiFixQueueService.items(drafts: drafts, profile: profile, summaries: draftSummaries)
+      aiFixQueueItems: aiFixQueueItems
     )
   }
 
@@ -53,14 +80,20 @@ public struct ContentHealthReportService: Sendable {
     profile: SiteProfile,
     sitePreflightIssues: [PreflightIssue],
     presentations: [UUID: ContentHealthDraftPresentation]
-  ) async -> ContentHealthReport {
-    await Task.detached(priority: .utility) {
-      report(
+  ) async throws -> ContentHealthReport {
+    let task = Task.detached(priority: .utility) {
+      try makeReport(
         drafts: drafts,
         profile: profile,
         sitePreflightIssues: sitePreflightIssues,
-        presentations: presentations
+        presentations: presentations,
+        cancellationCheck: { try Task.checkCancellation() }
       )
-    }.value
+    }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
   }
 }

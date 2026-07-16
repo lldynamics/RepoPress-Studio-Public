@@ -28,10 +28,8 @@
 ## Screenshots
 
 - [x] Add a repeatable screenshot capture or verification script.
-- [x] Capture the nine manifest screens: writing, AI chat, sync/API publish, SEO/social preview, deployment status, maintenance, general drafts, Pro settings, and quick hide.
-  Evidence: 已记录 App Store 截图外部验收证据。
-- [x] Verify screenshots contain no private content, local tokens, or personal paths.
-  Evidence: 截图隐私门禁已通过。
+- [ ] Capture the nine manifest screens: writing, AI chat, sync/API publish, SEO/social preview, deployment status, maintenance, general drafts, Pro settings, and quick hide.
+- [ ] Verify screenshots contain no private content, local tokens, or personal paths.
 
 ## Privacy And Monetization
 

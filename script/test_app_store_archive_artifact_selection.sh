@@ -24,6 +24,8 @@ plutil -insert CFBundleIdentifier -string com.jinfang.PersonalSitePublisherMac "
 plutil -insert CFBundleShortVersionString -string "$marketing_version" "$APP/Contents/Info.plist"
 plutil -insert CFBundleVersion -string "$build_number" "$APP/Contents/Info.plist"
 plutil -insert PersonalSitePublisherBuildConfiguration -string Release "$APP/Contents/Info.plist"
+plutil -insert LSApplicationCategoryType -string public.app-category.developer-tools "$APP/Contents/Info.plist"
+plutil -insert NSHumanReadableCopyright -string "Copyright © 2026 Jinfang. All rights reserved." "$APP/Contents/Info.plist"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$APP/Contents/MacOS/PersonalSitePublisherMac"
 chmod +x "$APP/Contents/MacOS/PersonalSitePublisherMac"
 

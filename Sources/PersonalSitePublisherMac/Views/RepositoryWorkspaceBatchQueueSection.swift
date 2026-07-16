@@ -16,10 +16,16 @@ extension RepositoryWorkspaceView {
           }
           Spacer()
           Button {
-            store.refreshBatchPublishPlan()
+            Task {
+              await store.refreshBatchPublishPlanAsync()
+            }
           } label: {
-            Label("刷新队列", systemImage: "arrow.clockwise")
+            Label(
+              store.isBatchPublishPlanRefreshing ? "刷新中" : "刷新队列",
+              systemImage: "arrow.clockwise"
+            )
           }
+          .disabled(store.isBatchPublishPlanRefreshing)
           Button {
             Task {
               await store.writeBatchReadyDraftsToLocalRepository()
@@ -41,7 +47,7 @@ extension RepositoryWorkspaceView {
           .disabled(plan.remotePublishableItems.isEmpty || store.isRemoteRepositoryPublishing)
         }
 
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 132, maximum: 210))], spacing: 8) {
           MetricTile(title: "可写入", value: "\(plan.readyCount)", systemImage: "checkmark.circle")
           MetricTile(title: "需确认", value: "\(plan.needsReviewCount)", systemImage: "exclamationmark.triangle")
           MetricTile(title: "阻塞", value: "\(plan.blockedCount)", systemImage: "xmark.octagon")

@@ -48,7 +48,7 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertEqual(report.coverStatus.relativePublishPath, "/images/2026/cover.png")
     XCTAssertEqual(report.coverStatus.repositoryPath, "static/images/2026/cover.png")
     XCTAssertTrue(report.coverStatus.writesFrontMatter)
-    XCTAssertTrue(report.issues.contains { $0.title == "正文图片未登记" })
+    XCTAssertTrue(report.issues.contains { $0.title == CoreL10n.text("正文图片未登记") })
   }
 
   func testReportFlagsDuplicateImageReferences() throws {

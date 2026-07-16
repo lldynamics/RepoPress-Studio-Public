@@ -9,6 +9,7 @@ actor RecordingAIChatTransport: AIChatStreamingTransport {
   private let streamLineDelayNanoseconds: UInt64
   private let streamFinishesWithCancellation: Bool
   private(set) var lastRequest: URLRequest?
+  private var requestCount = 0
 
   init(
     data: Data,
@@ -26,6 +27,7 @@ actor RecordingAIChatTransport: AIChatStreamingTransport {
 
   func data(for request: URLRequest) async throws -> (Data, URLResponse) {
     lastRequest = request
+    requestCount += 1
 
     let response = HTTPURLResponse(
       url: request.url!,
@@ -38,6 +40,7 @@ actor RecordingAIChatTransport: AIChatStreamingTransport {
 
   func lines(for request: URLRequest) async throws -> (AsyncThrowingStream<String, Error>, URLResponse) {
     lastRequest = request
+    requestCount += 1
 
     let response = HTTPURLResponse(
       url: request.url!,
@@ -76,6 +79,39 @@ actor RecordingAIChatTransport: AIChatStreamingTransport {
 
   func capturedRequest() -> URLRequest? {
     lastRequest
+  }
+
+  func capturedRequestCount() -> Int {
+    requestCount
+  }
+}
+
+actor DelayedAIChatTransport: AIChatTransport {
+  private let data: Data
+  private let statusCode: Int
+  private let delayNanoseconds: UInt64
+  private var requestCount = 0
+
+  init(data: Data, statusCode: Int, delayNanoseconds: UInt64) {
+    self.data = data
+    self.statusCode = statusCode
+    self.delayNanoseconds = delayNanoseconds
+  }
+
+  func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+    requestCount += 1
+    try await Task.sleep(nanoseconds: delayNanoseconds)
+    let response = HTTPURLResponse(
+      url: request.url!,
+      statusCode: statusCode,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    return (data, response)
+  }
+
+  func capturedRequestCount() -> Int {
+    requestCount
   }
 }
 

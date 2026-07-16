@@ -9,13 +9,11 @@ extension WorkbenchStore {
   public func lockPrivacy(reason: String? = nil) {
     privacyMonetizationStore.lockPrivacy(reason: reason)
     setAIPublishingAssistantPresented(false)
-    privacyMonetizationStore.recordManualPrivacyMaskShown(reason: reason)
     save()
   }
 
   public func unlockPrivacy() {
     privacyMonetizationStore.unlockPrivacy()
-    privacyMonetizationStore.recordPrivacyMaskRemoved()
     save()
   }
 

@@ -18,7 +18,7 @@ struct PublishDrawerCard<Content: View>: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Label(title, systemImage: systemImage)
+      Label(LocalizedStringKey(title), systemImage: systemImage)
         .font(.callout.weight(.semibold))
 
       content
@@ -29,7 +29,7 @@ struct PublishDrawerCard<Content: View>: View {
     .frame(maxWidth: .infinity, alignment: .topLeading)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .contain)
-    .accessibilityLabel(title)
+    .accessibilityLabel(Text(LocalizedStringKey(title)))
     .accessibilityHint("发布流程步骤内容")
   }
 }
@@ -42,7 +42,7 @@ struct PublishDrawerStat: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
-      Label(title, systemImage: systemImage)
+      Label(LocalizedStringKey(title), systemImage: systemImage)
         .font(.caption2)
         .foregroundStyle(.secondary)
       Text(value)
@@ -51,7 +51,7 @@ struct PublishDrawerStat: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel(title)
+    .accessibilityLabel(Text(LocalizedStringKey(title)))
     .accessibilityValue(value)
   }
 }
@@ -66,7 +66,7 @@ struct PublishDrawerInfoRow: View {
       Image(systemName: systemImage)
         .foregroundStyle(.secondary)
         .frame(width: 16)
-      Text(title)
+      Text(LocalizedStringKey(title))
         .foregroundStyle(.secondary)
       Spacer(minLength: 6)
       Text(value)
@@ -74,7 +74,7 @@ struct PublishDrawerInfoRow: View {
     }
     .font(.caption)
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel(title)
+    .accessibilityLabel(Text(LocalizedStringKey(title)))
     .accessibilityValue(value)
   }
 }

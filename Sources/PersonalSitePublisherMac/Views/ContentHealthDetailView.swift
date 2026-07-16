@@ -4,37 +4,45 @@ import SwiftUI
 struct ContentHealthDetailView: View {
   @ObservedObject var store: WorkbenchStore
   let filter: ContentHealthContextFilter
-  @State private var isMaintenanceReportLoaded = false
   @State private var healthSnapshot: ContentHealthSnapshot?
   @State private var severityFilter: ContentHealthSeverityFilter = .all
-  @State private var selectedDraftID: UUID?
+  @State private var issueScope: ContentHealthIssueScopeFilter = .all
   @State private var healthSnapshotTask: Task<Void, Never>?
 
   var body: some View {
-    ScrollView {
-      if let snapshot = healthSnapshot {
-        content(snapshot)
+    Group {
+      if filter == .maintenance {
+        SiteMaintenanceDetailView(store: store)
       } else {
-        EmptyStateView(
-          title: "正在准备检查快照",
-          message: "内容健康页会先生成一次快照，再渲染公开风险、AI 修复队列和文章级问题。",
-          systemImage: "checklist"
-        )
-        .frame(maxWidth: .infinity, minHeight: 360)
-        .padding(20)
+        ScrollView {
+          if let snapshot = healthSnapshot {
+            content(snapshot)
+          } else {
+            EmptyStateView(
+              title: "正在准备检查快照",
+              message: "内容健康页会先生成一次快照，再渲染公开风险、AI 修复队列和文章级问题。",
+              systemImage: "checklist"
+            )
+            .frame(maxWidth: .infinity, minHeight: 360)
+            .padding(20)
+          }
+        }
       }
     }
     .task {
-      refreshContentHealthSnapshotIfNeeded()
+      issueScope = ContentHealthIssueScopeFilter(legacyFilter: filter)
+      if filter != .maintenance {
+        refreshContentHealthSnapshotIfNeeded()
+      }
     }
     .onChange(of: store.contentHealthSnapshotVersion) { _, _ in
       refreshContentHealthSnapshot()
     }
-    .onChange(of: filter) { _, _ in
-      selectedDraftID = nil
-    }
-    .onChange(of: severityFilter) { _, _ in
-      selectedDraftID = nil
+    .onChange(of: filter) { _, newFilter in
+      issueScope = ContentHealthIssueScopeFilter(legacyFilter: newFilter)
+      if newFilter != .maintenance {
+        refreshContentHealthSnapshotIfNeeded()
+      }
     }
     .onDisappear {
       healthSnapshotTask?.cancel()
@@ -44,7 +52,7 @@ struct ContentHealthDetailView: View {
 
   private func content(_ snapshot: ContentHealthSnapshot) -> some View {
     VStack(alignment: .leading, spacing: 16) {
-      HStack {
+      HStack(alignment: .firstTextBaseline, spacing: 16) {
         VStack(alignment: .leading, spacing: 4) {
           Text("内容健康")
             .font(.title2.weight(.semibold))
@@ -52,9 +60,18 @@ struct ContentHealthDetailView: View {
             .foregroundStyle(.secondary)
         }
         Spacer()
+        healthSummary(snapshot)
       }
 
       HStack(spacing: 12) {
+        Picker("问题类型", selection: $issueScope) {
+          ForEach(ContentHealthIssueScopeFilter.allCases) { scope in
+            Label(scope.title, systemImage: scope.systemImage).tag(scope)
+          }
+        }
+        .pickerStyle(.menu)
+        .accessibilityLabel("问题类型筛选")
+
         Picker("严重级别", selection: $severityFilter) {
           ForEach(ContentHealthSeverityFilter.allCases) { severity in
             Text(severity.title).tag(severity)
@@ -69,16 +86,6 @@ struct ContentHealthDetailView: View {
         recommendedAction(snapshot)
       }
 
-      LazyVGrid(
-        columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
-        spacing: 12
-      ) {
-        MetricTile(title: "错误", value: "\(snapshot.errorCount)", semantic: .blocking)
-        MetricTile(title: "警告", value: "\(snapshot.warningCount)", semantic: .warning)
-        MetricTile(title: "AI 可修复", value: "\(snapshot.aiFixQueueItems.count)", systemImage: "sparkles", tint: WorkbenchTheme.inventory)
-        MetricTile(title: "通过文章", value: "\(snapshot.passingDraftCount)", semantic: .passed)
-      }
-
       filteredSections(snapshot)
     }
     .padding(20)
@@ -87,17 +94,14 @@ struct ContentHealthDetailView: View {
   @ViewBuilder
   private func filteredSections(_ snapshot: ContentHealthSnapshot) -> some View {
     switch filter {
-    case .overview:
-      healthOverview(snapshot)
-      articleHealthFlow(snapshot)
-    case .publicRisks:
-      articleHealthFlow(snapshot)
-    case .aiFixes:
-      articleHealthFlow(snapshot)
-    case .siteIssues:
-      siteIssuesSection(snapshot)
+    case .overview, .publicRisks, .aiFixes, .siteIssues:
+      if issueScope == .siteIssues {
+        siteIssuesSection(snapshot)
+      } else {
+        articleHealthFlow(snapshot)
+      }
     case .maintenance:
-      maintenanceReportSection
+      EmptyView()
     }
   }
 
@@ -110,21 +114,31 @@ struct ContentHealthDetailView: View {
     healthSnapshotTask?.cancel()
     let expectedVersion = store.contentHealthSnapshotVersion
     healthSnapshotTask = Task { @MainActor in
-      let snapshot = await ContentHealthSnapshot.make(store: store)
+      guard let snapshot = try? await ContentHealthSnapshot.make(store: store) else { return }
       guard !Task.isCancelled, store.contentHealthSnapshotVersion == expectedVersion else { return }
       healthSnapshot = snapshot
     }
   }
 
-  private func healthOverview(_ snapshot: ContentHealthSnapshot) -> some View {
-    HStack(spacing: 12) {
-      Label("站点问题 \(snapshot.sitePreflightIssues.count)", systemImage: "building.2")
-      Label("公开风险 \(snapshot.publicRiskSummary.issueCount)", systemImage: "lock.shield")
-      Label("待 AI 修复 \(snapshot.aiFixQueueItems.count)", systemImage: "sparkles")
+  private func healthSummary(_ snapshot: ContentHealthSnapshot) -> some View {
+    HStack(spacing: 10) {
+      Label("\(snapshot.errorCount)", systemImage: "xmark.octagon")
+        .foregroundStyle(snapshot.errorCount > 0 ? WorkbenchTheme.risk : Color.secondary)
+      Label("\(snapshot.warningCount)", systemImage: "exclamationmark.triangle")
+        .foregroundStyle(snapshot.warningCount > 0 ? WorkbenchTheme.warning : Color.secondary)
+      Label("\(snapshot.aiFixQueueItems.count)", systemImage: "sparkles")
+        .foregroundStyle(WorkbenchTheme.inventoryForeground)
+      Label("\(snapshot.passingDraftCount)", systemImage: "checkmark.circle")
+        .foregroundStyle(WorkbenchTheme.success)
     }
-    .font(.caption)
-    .foregroundStyle(.secondary)
-    .padding(.horizontal, 4)
+    .font(.caption.weight(.medium))
+    .monospacedDigit()
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("内容健康摘要")
+    .accessibilityValue(
+      "\(snapshot.errorCount) 个错误，\(snapshot.warningCount) 个警告，"
+        + "\(snapshot.aiFixQueueItems.count) 项可用 AI 修复，\(snapshot.passingDraftCount) 篇文章通过"
+    )
   }
 
   @ViewBuilder
@@ -172,9 +186,9 @@ struct ContentHealthDetailView: View {
           .padding(.vertical, 12)
       } else {
         ForEach(summaries) { summary in
-          let isSelected = selectedSummary(in: snapshot)?.draftID == summary.draftID
+          let isSelected = store.selectedDraftID == summary.draftID
           Button {
-            selectedDraftID = summary.draftID
+            store.selectDraft(summary.draftID)
           } label: {
             articleSummaryRow(summary, isSelected: isSelected)
           }
@@ -183,7 +197,6 @@ struct ContentHealthDetailView: View {
         }
       }
 
-      articleIssueDetails(in: snapshot)
     }
     .padding(14)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
@@ -229,55 +242,28 @@ struct ContentHealthDetailView: View {
     }
   }
 
-  @ViewBuilder
-  private func articleIssueDetails(in snapshot: ContentHealthSnapshot) -> some View {
-    if let summary = selectedSummary(in: snapshot) {
-      VStack(alignment: .leading, spacing: 10) {
-        HStack {
-          Text("问题详情")
-            .font(.headline)
-          Spacer()
-          Text(summary.draftTitle)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-        }
-
-        ForEach(matchingIssues(for: summary)) { issue in
-          ContentHealthIssueCard(issue: issue)
-        }
-      }
-      .padding(.top, 6)
-    }
-  }
-
   private func filteredDraftSummaries(in snapshot: ContentHealthSnapshot) -> [DraftPreflightSummary] {
     let aiFixDraftIDs = Set(snapshot.aiFixQueueItems.map(\.draftID))
     let summaries: [DraftPreflightSummary]
-    switch filter {
-    case .overview:
+    switch issueScope {
+    case .all:
       summaries = snapshot.contentHealthSummaries
     case .publicRisks:
       summaries = snapshot.contentHealthSummaries.filter { !$0.publicRiskIssues.isEmpty }
     case .aiFixes:
       summaries = snapshot.contentHealthSummaries.filter { aiFixDraftIDs.contains($0.draftID) }
-    case .siteIssues, .maintenance:
+    case .siteIssues:
       summaries = []
     }
     return summaries.filter { !matchingIssues(for: $0).isEmpty }
   }
 
-  private func selectedSummary(in snapshot: ContentHealthSnapshot) -> DraftPreflightSummary? {
-    let summaries = filteredDraftSummaries(in: snapshot)
-    return summaries.first { $0.draftID == selectedDraftID } ?? summaries.first
-  }
-
   private func matchingIssues(for summary: DraftPreflightSummary) -> [PreflightIssue] {
     let issues: [PreflightIssue]
-    switch filter {
+    switch issueScope {
     case .publicRisks:
       issues = summary.publicRiskIssues
-    case .overview, .aiFixes, .siteIssues, .maintenance:
+    case .all, .aiFixes, .siteIssues:
       issues = summary.blockingIssues
     }
     return severityFilter.filter(issues)
@@ -322,42 +308,54 @@ struct ContentHealthDetailView: View {
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
-  private var maintenanceReportSection: some View {
-    DisclosureGroup {
-      VStack(alignment: .leading, spacing: 10) {
-        if isMaintenanceReportLoaded {
-          SiteMaintenanceDetailView(store: store, isEmbedded: true)
-        } else {
-          Text("维护报告包含内容日历、标签治理、旧文整理、内链机会和链接审计。为避免打开健康页时立即重算，点击后再加载详情。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+}
 
-          Button {
-            if store.siteMaintenanceSnapshot == nil {
-              Task {
-                await store.refreshSiteMaintenanceSnapshot()
-              }
-            }
-            isMaintenanceReportLoaded = true
-          } label: {
-            Label(store.siteMaintenanceSnapshot == nil ? "生成并加载维护报告" : "加载维护报告", systemImage: "arrow.clockwise")
-          }
-        }
-      }
-      .padding(.top, 8)
-    } label: {
-      VStack(alignment: .leading, spacing: 3) {
-        Label("定期维护报告", systemImage: WorkspaceSection.maintenance.systemImage)
-          .font(.headline)
-        Text("内容日历、标签治理、旧文整理、内链机会和链接提示已并入全站检查，作为低频治理报告查看。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
+private enum ContentHealthIssueScopeFilter: String, CaseIterable, Identifiable {
+  case all
+  case publicRisks
+  case aiFixes
+  case siteIssues
+
+  var id: String { rawValue }
+
+  init(legacyFilter: ContentHealthContextFilter) {
+    switch legacyFilter {
+    case .publicRisks:
+      self = .publicRisks
+    case .aiFixes:
+      self = .aiFixes
+    case .siteIssues:
+      self = .siteIssues
+    case .overview, .maintenance:
+      self = .all
     }
-    .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
+  var title: String {
+    switch self {
+    case .all:
+      return "全部问题"
+    case .publicRisks:
+      return "公开风险"
+    case .aiFixes:
+      return "AI 可修复"
+    case .siteIssues:
+      return "站点级问题"
+    }
+  }
+
+  var systemImage: String {
+    switch self {
+    case .all:
+      return "checklist"
+    case .publicRisks:
+      return "exclamationmark.shield"
+    case .aiFixes:
+      return "sparkles"
+    case .siteIssues:
+      return "globe.badge.chevron.backward"
+    }
+  }
 }
 
 private enum ContentHealthSeverityFilter: String, CaseIterable, Identifiable {
@@ -414,10 +412,10 @@ private struct ContentHealthSnapshot {
   }
 
   @MainActor
-  static func make(store: WorkbenchStore) async -> ContentHealthSnapshot {
+  static func make(store: WorkbenchStore) async throws -> ContentHealthSnapshot {
     let profileName = store.activeProfile.name
     let visibleDraftCount = store.visibleDrafts.count
-    let report = await store.contentHealthReportAsync()
+    let report = try await store.contentHealthReportAsync()
     return ContentHealthSnapshot(
       profileName: profileName,
       visibleDraftCount: visibleDraftCount,

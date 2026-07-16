@@ -214,6 +214,41 @@ struct AIChatQuickPromptsInspectorSection: View {
   }
 }
 
+struct AIChatRecommendedActionsInspectorSection: View {
+  let context: AIChatInspectorDraftContext
+  let actions: AIChatContextInspectorActions
+
+  var body: some View {
+    AIChatInspectorSection("当前推荐") {
+      ForEach(recommendedActions, id: \.self) { action in
+        Button {
+          actions.sendMessage(
+            AIPublishingChatPromptTemplateService.editorActionPrompt(for: action),
+            context.draft
+          )
+        } label: {
+          Label(action.localizedDisplayName, systemImage: systemImage(for: action))
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .disabled(context.isChatRunning)
+      }
+    }
+  }
+
+  private var recommendedActions: [AIPublishingActionKind] {
+    Array(
+      AIPublishingActionRecommendationService.recommendation(draft: context.draft)
+        .actions
+        .prefix(4)
+    )
+  }
+
+  private func systemImage(for action: AIPublishingActionKind) -> String {
+    AIPublishingWritingActionCatalog.articleActions.first { $0.kind == action }?.systemImage
+      ?? "sparkles"
+  }
+}
+
 struct AIChatLatestReplyInspectorSection: View {
   let context: AIChatInspectorDraftContext
   let actions: AIChatContextInspectorActions

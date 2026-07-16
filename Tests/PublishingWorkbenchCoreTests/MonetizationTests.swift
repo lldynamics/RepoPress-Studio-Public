@@ -511,7 +511,7 @@ final class MonetizationTests: XCTestCase {
 	    XCTAssertTrue(store.monetizationState.entitlement.isUnlocked)
 	  }
 
-  func testFeatureUseRecordsAuditableFreeBlockedAndProEvents() throws {
+  func testFeatureUseDoesNotRecordDebugEvents() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
       monetizationService: MonetizationService(
@@ -524,17 +524,9 @@ final class MonetizationTests: XCTestCase {
     store.applyVerifiedStoreKitEntitlement(productID: MonetizationProductCatalog.proLifetimeProductID)
     _ = store.consumeFeatureUse(.onlinePublishing)
 
-    let events = store.monetizationState.recentAccessEvents
-
-    XCTAssertEqual(events.map(\.feature), [.onlinePublishing, .onlinePublishing, .aiRequest])
-    XCTAssertEqual(events.map(\.outcome), [.allowedProEntitlement, .blockedRequiresPro, .allowedFreeUse])
-    XCTAssertNil(events[0].remainingFreeUsesAfterAction)
-    XCTAssertEqual(events[1].remainingFreeUsesAfterAction, 0)
-    XCTAssertEqual(events[2].usedFreeUsesBeforeAction, 0)
-    XCTAssertEqual(events[2].remainingFreeUsesAfterAction, 1)
-    XCTAssertTrue(store.proMonetizationAuditReport.checklistMarkdown.contains("## 最近使用记录"))
-    XCTAssertTrue(store.proMonetizationAuditReport.checklistMarkdown.contains("Pro 放行"))
-    XCTAssertTrue(store.proMonetizationAuditReport.checklistMarkdown.contains("需要 Pro"))
+    XCTAssertTrue(store.monetizationState.recentAccessEvents.isEmpty)
+    XCTAssertEqual(store.monetizationState.freeUsage.aiRequestCount, 1)
+    XCTAssertTrue(store.monetizationState.entitlement.isUnlocked)
   }
 
   func testMonetizationStateDecodesLegacyPayloadWithoutAccessEvents() throws {

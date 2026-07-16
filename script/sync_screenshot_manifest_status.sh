@@ -4,8 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCREENSHOT_DIR="${SCREENSHOT_DIR:-$ROOT_DIR/docs/app-store-screenshots}"
 MANIFEST="${SCREENSHOT_MANIFEST_FILE:-$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md}"
-MIN_WIDTH="${SCREENSHOT_MIN_WIDTH:-800}"
-MIN_HEIGHT="${SCREENSHOT_MIN_HEIGHT:-500}"
+ACCEPTED_DIMENSIONS="${SCREENSHOT_ACCEPTED_DIMENSIONS:-1280x800 1440x900 2560x1600 2880x1800}"
 MODE="write"
 
 usage() {
@@ -54,7 +53,7 @@ done
 command -v sips >/dev/null 2>&1 || fail "sips is required to inspect screenshot dimensions"
 
 tmp_output="$(mktemp "${TMPDIR:-/tmp}/screenshot-manifest.XXXXXX")"
-python3 - "$MANIFEST" "$SCREENSHOT_DIR" "$MIN_WIDTH" "$MIN_HEIGHT" >"$tmp_output" <<'PY'
+python3 - "$MANIFEST" "$SCREENSHOT_DIR" "$ACCEPTED_DIMENSIONS" >"$tmp_output" <<'PY'
 from pathlib import Path
 import re
 import subprocess
@@ -62,28 +61,30 @@ import sys
 
 manifest = Path(sys.argv[1])
 screenshot_dir = Path(sys.argv[2])
-min_width = int(sys.argv[3])
-min_height = int(sys.argv[4])
+accepted_dimensions = set(sys.argv[3].split())
 
-def dimensions(path: Path):
+def image_properties(path: Path):
     try:
         output = subprocess.check_output(
-            ["sips", "-g", "pixelWidth", "-g", "pixelHeight", str(path)],
+            ["sips", "-g", "pixelWidth", "-g", "pixelHeight", "-g", "hasAlpha", str(path)],
             stderr=subprocess.DEVNULL,
             text=True,
         )
     except subprocess.CalledProcessError:
         return None
     width = height = None
+    has_alpha = None
     for line in output.splitlines():
         stripped = line.strip()
         if stripped.startswith("pixelWidth:"):
             width = int(stripped.split(":", 1)[1].strip())
         if stripped.startswith("pixelHeight:"):
             height = int(stripped.split(":", 1)[1].strip())
-    if width is None or height is None:
+        if stripped.startswith("hasAlpha:"):
+            has_alpha = stripped.split(":", 1)[1].strip()
+    if width is None or height is None or has_alpha not in {"yes", "no"}:
         return None
-    return width, height
+    return width, height, has_alpha == "yes"
 
 def privacy_findings(path: Path):
     try:
@@ -101,12 +102,14 @@ def status_for(filename: str) -> str:
     image = screenshot_dir / filename
     if not image.exists():
         return "Pending capture"
-    size = dimensions(image)
-    if size is None:
+    properties = image_properties(image)
+    if properties is None:
         return "Invalid: unreadable image"
-    width, height = size
-    if width < min_width or height < min_height:
-        return f"Invalid: {width}x{height} below {min_width}x{min_height}"
+    width, height, has_alpha = properties
+    if f"{width}x{height}" not in accepted_dimensions:
+        return f"Invalid: {width}x{height} is not an accepted Mac App Store size"
+    if has_alpha:
+        return "Invalid: alpha channel/transparency"
     findings = privacy_findings(image)
     if findings:
         return "Invalid: possible private content (" + ", ".join(findings) + ")"

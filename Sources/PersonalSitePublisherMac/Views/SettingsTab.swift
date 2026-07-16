@@ -6,7 +6,6 @@ struct SettingsContext {
   let store: WorkbenchStore
   let storeKitProEntitlementCoordinator: StoreKitProEntitlementCoordinator
   let activeProfileBinding: Binding<SiteProfile>
-  let defaultShowsInspector: Binding<Bool>
   let autoRunPreflightBinding: Binding<Bool>
   let scanRepositoryOnLaunch: Binding<Bool>
   let siteKindBinding: Binding<SiteKind>
@@ -43,7 +42,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
     }
   }
 
-  var title: String {
+  var title: LocalizedStringKey {
     switch self {
     case .defaultRules:
       return "默认规则"

@@ -346,7 +346,10 @@ public struct AIChatCompletionClient: Sendable {
       throw AIChatCompletionClientError.invalidResponse
     }
     guard (200..<300).contains(httpResponse.statusCode) else {
-      let body = String(data: data, encoding: .utf8) ?? ""
+      let body = HTTPErrorResponseSanitizer.sanitize(
+        data: data,
+        sensitiveValues: [apiKey].compactMap { $0 }
+      )
       throw AIChatCompletionClientError.httpStatus(httpResponse.statusCode, body)
     }
 
@@ -388,11 +391,17 @@ public struct AIChatCompletionClient: Sendable {
       throw AIChatCompletionClientError.invalidResponse
     }
     guard (200..<300).contains(httpResponse.statusCode) else {
-      let body = try await responseBody(from: lines)
+      let body = HTTPErrorResponseSanitizer.sanitize(
+        text: try await responseBody(from: lines),
+        sensitiveValues: [apiKey].compactMap { $0 }
+      )
       throw AIChatCompletionClientError.httpStatus(httpResponse.statusCode, body)
     }
 
-    return streamUpdates(from: lines)
+    return streamUpdates(
+      from: lines,
+      sensitiveValues: [apiKey].compactMap { $0 }
+    )
   }
 
   private func validatedRequestURL(config: AIProviderConfig, apiKey: String?) throws -> URL {
@@ -428,7 +437,10 @@ public struct AIChatCompletionClient: Sendable {
     )
   }
 
-  private func streamUpdates(from lines: AsyncThrowingStream<String, Error>)
+  private func streamUpdates(
+    from lines: AsyncThrowingStream<String, Error>,
+    sensitiveValues: [String]
+  )
     -> AsyncThrowingStream<AIChatStreamUpdate, Error>
   {
     AsyncThrowingStream { continuation in
@@ -439,7 +451,11 @@ public struct AIChatCompletionClient: Sendable {
             try Task.checkCancellation()
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty {
-              try emitSSEEvent(dataLines, continuation: continuation)
+              try emitSSEEvent(
+                dataLines,
+                sensitiveValues: sensitiveValues,
+                continuation: continuation
+              )
               dataLines.removeAll()
               continue
             }
@@ -460,7 +476,11 @@ public struct AIChatCompletionClient: Sendable {
           }
 
           if !dataLines.isEmpty {
-            try emitSSEEvent(dataLines, continuation: continuation)
+            try emitSSEEvent(
+              dataLines,
+              sensitiveValues: sensitiveValues,
+              continuation: continuation
+            )
           }
           continuation.finish()
         } catch {
@@ -476,6 +496,7 @@ public struct AIChatCompletionClient: Sendable {
 
   private func emitSSEEvent(
     _ dataLines: [String],
+    sensitiveValues: [String],
     continuation: AsyncThrowingStream<AIChatStreamUpdate, Error>.Continuation
   ) throws {
     guard !dataLines.isEmpty else {
@@ -483,12 +504,17 @@ public struct AIChatCompletionClient: Sendable {
     }
 
     for payload in normalizedSSEPayloads(from: dataLines) {
-      try emitSSEPayload(payload, continuation: continuation)
+      try emitSSEPayload(
+        payload,
+        sensitiveValues: sensitiveValues,
+        continuation: continuation
+      )
     }
   }
 
   private func emitSSEPayload(
     _ rawPayload: String,
+    sensitiveValues: [String],
     continuation: AsyncThrowingStream<AIChatStreamUpdate, Error>.Continuation
   ) throws {
     let payload = rawPayload.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -506,7 +532,11 @@ public struct AIChatCompletionClient: Sendable {
     }
     let decoded = try decoder.decode(AIChatCompletionStreamChunk.self, from: data)
     if let errorMessage = decoded.error?.displayMessage.nilIfEmpty {
-      throw AIChatCompletionClientError.httpStatus(200, errorMessage)
+      let sanitizedMessage = HTTPErrorResponseSanitizer.sanitize(
+        text: errorMessage,
+        sensitiveValues: sensitiveValues
+      )
+      throw AIChatCompletionClientError.httpStatus(200, sanitizedMessage)
     }
 
     let content = decoded.contentDelta
@@ -553,11 +583,14 @@ public struct AIChatCompletionClient: Sendable {
     var body = ""
     for try await line in lines {
       try Task.checkCancellation()
+      let remainingCount = HTTPErrorResponseSanitizer.maximumCharacterCount - body.count
+      guard remainingCount > 0 else { break }
       if !body.isEmpty {
         body.append("\n")
       }
-      body.append(line)
-      if body.count > 2_000 {
+      body.append(contentsOf: line.prefix(remainingCount))
+      if line.count > remainingCount || body.count >= HTTPErrorResponseSanitizer.maximumCharacterCount {
+        body.append("\n[远端响应已截断]")
         break
       }
     }

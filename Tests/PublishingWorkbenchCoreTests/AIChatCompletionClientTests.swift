@@ -278,6 +278,69 @@ final class AIChatCompletionClientTests: XCTestCase {
     }
   }
 
+  func testHTTPErrorBodyIsBoundedAndRedactsAPIKey() async {
+    let apiKey = "sk-super-secret-value-123456789"
+    let responseBody = #"{"error":"Bearer \#(apiKey)","api_key":"\#(apiKey)","detail":""#
+      + String(repeating: "x", count: 4_000)
+      + #""}"#
+    let transport = RecordingAIChatTransport(
+      data: Data(responseBody.utf8),
+      statusCode: 401
+    )
+    let client = AIChatCompletionClient(transport: transport)
+
+    await XCTAssertThrowsErrorAsync(
+      try await client.complete(
+        request: AIChatCompletionRequest(model: "model", messages: []),
+        config: AIProviderConfig(),
+        apiKey: apiKey
+      )
+    ) { error in
+      guard case .httpStatus(401, let body) = error as? AIChatCompletionClientError else {
+        XCTFail("Expected sanitized HTTP error")
+        return
+      }
+      XCTAssertFalse(body.contains(apiKey))
+      XCTAssertTrue(body.contains("[REDACTED]"))
+      XCTAssertTrue(body.contains("远端响应已截断"))
+      XCTAssertLessThan(body.count, 2_100)
+    }
+  }
+
+  func testStreamErrorPayloadIsBoundedAndRedactsAPIKey() async throws {
+    let apiKey = "sk-stream-secret-value-123456789"
+    let errorMessage = "Bearer \(apiKey) " + String(repeating: "x", count: 4_000)
+    let payload = try JSONSerialization.data(
+      withJSONObject: ["error": ["message": errorMessage]]
+    )
+    let line = try XCTUnwrap(String(data: payload, encoding: .utf8))
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200,
+      streamLines: ["data: \(line)", ""]
+    )
+    let client = AIChatCompletionClient(transport: transport)
+    let stream = try await client.stream(
+      request: AIChatCompletionRequest(model: "model", messages: []),
+      config: AIProviderConfig(),
+      apiKey: apiKey
+    )
+
+    do {
+      for try await _ in stream {}
+      XCTFail("Expected sanitized streaming error")
+    } catch let error as AIChatCompletionClientError {
+      guard case .httpStatus(200, let body) = error else {
+        XCTFail("Expected streaming HTTP error, got \(error)")
+        return
+      }
+      XCTAssertFalse(body.contains(apiKey))
+      XCTAssertTrue(body.contains("[REDACTED]"))
+      XCTAssertTrue(body.contains("远端响应已截断"))
+      XCTAssertLessThan(body.count, 2_100)
+    }
+  }
+
   func testCompleteRejectsHTTPBeforeSendingAPIKey() async {
     let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
     let client = AIChatCompletionClient(transport: transport)

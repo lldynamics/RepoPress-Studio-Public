@@ -67,11 +67,11 @@ struct BatchPublishPlanRow: View {
   private var readinessColor: Color {
     switch item.readiness {
     case .ready:
-      return .green
+      return WorkbenchTheme.success
     case .needsReview:
-      return .orange
+      return WorkbenchTheme.warning
     case .blocked:
-      return .red
+      return WorkbenchTheme.risk
     case .unchanged:
       return .secondary
     }
@@ -82,11 +82,11 @@ extension LocalPublishActionReadiness {
   var color: Color {
     switch self {
     case .ready:
-      return .green
+      return WorkbenchTheme.success
     case .needsReview:
-      return .orange
+      return WorkbenchTheme.warning
     case .blocked:
-      return .red
+      return WorkbenchTheme.risk
     case .unchanged:
       return .secondary
     }

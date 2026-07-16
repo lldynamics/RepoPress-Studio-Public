@@ -2,7 +2,6 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SOURCE_MANIFEST_HELPER="$ROOT_DIR/script/release_evidence_source_manifest.py"
 PRODUCT_ID="${STOREKIT_PRODUCT_ID:-personal.site.publisher.pro}"
 STOREKIT_DIR="${STOREKIT_DIR:-$ROOT_DIR/StoreKit}"
 EVIDENCE_FILE="${EXTERNAL_VERIFY_EVIDENCE_FILE:-$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md}"
@@ -130,27 +129,11 @@ require_source_pattern_any_file() {
   fail "missing local StoreKit coverage: $label"
 }
 
-require_source_pattern_source_manifest() {
-  local relative_path="$1"
-  local pattern="$2"
-  local label="$3"
-  local expanded_paths=()
-  local expanded_path
-  while IFS= read -r expanded_path; do
-    expanded_paths+=("$expanded_path")
-  done < <(python3 "$SOURCE_MANIFEST_HELPER" "$relative_path" "$pattern")
-  require_source_pattern_any_file "$pattern" "$label" "${expanded_paths[@]}"
-}
-
 require_source_pattern "Sources/PersonalSitePublisherMac/Support/StoreKitProEntitlementCoordinator.swift" "Product.products(for: \\[productID\\])" "StoreKit product lookup"
 require_source_pattern "Sources/PersonalSitePublisherMac/Support/StoreKitProEntitlementCoordinator.swift" "product.purchase()" "StoreKit purchase entry point"
 require_source_pattern "Sources/PersonalSitePublisherMac/Support/StoreKitProEntitlementCoordinator.swift" "AppStore.sync()" "StoreKit restore entry point"
 require_source_pattern "Sources/PersonalSitePublisherMac/Support/StoreKitProEntitlementCoordinator.swift" "Transaction.currentEntitlements" "StoreKit entitlement refresh"
 require_source_pattern "Sources/PublishingWorkbenchCore/Models/MonetizationModels.swift" "externalVerificationEvidenceMarkdown" "StoreKit external evidence export"
-require_source_pattern_source_manifest \
-  "Sources/PersonalSitePublisherMac/Views/SettingsView.swift" \
-  "copyProSandboxEvidence" \
-  "StoreKit external evidence copy UI"
 require_source_pattern "Tests/PublishingWorkbenchCoreTests/MonetizationTests.swift" "testStatusSummaryShowsUnlockedStoreKitEntitlement" "StoreKit entitlement status regression test"
 require_source_pattern "Tests/PublishingWorkbenchCoreTests/MonetizationTests.swift" "testProSandboxVerificationSummaryIsVerifiedForCheckedStoreKitEntitlement" "StoreKit sandbox verification regression test"
 require_source_pattern "Tests/PublishingWorkbenchCoreTests/MonetizationTests.swift" "testProSandboxVerificationSummaryBuildsExternalEvidenceFields" "StoreKit external evidence regression test"

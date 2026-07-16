@@ -65,8 +65,8 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func importChangedArticleDraftsFromLocalRepository() -> LocalContentImportMergeSummary {
-    let summary = publishingStore.importChangedArticleDraftsFromLocalRepository(store: self)
+  public func importChangedArticleDraftsFromLocalRepository() async -> LocalContentImportMergeSummary {
+    let summary = await publishingStore.importChangedArticleDraftsFromLocalRepository(store: self)
     invalidateDraftDerivedCaches()
     return summary
   }

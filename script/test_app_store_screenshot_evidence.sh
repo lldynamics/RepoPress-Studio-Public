@@ -5,6 +5,16 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d /private/tmp/mac-editor-screenshot-evidence.XXXXXX)"
 SCREENSHOT_DIR="$TMP_DIR/app-store-screenshots"
 EVIDENCE_FILE="$TMP_DIR/EXTERNAL_VERIFICATION_EVIDENCE.md"
+OCR_EXECUTABLE="$TMP_DIR/screenshot-privacy-ocr-stub"
+
+python3 - "$OCR_EXECUTABLE" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+path.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+path.chmod(0o755)
+PY
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -79,6 +89,7 @@ run_recorder() {
   SCREENSHOT_DIR="$SCREENSHOT_DIR" \
   SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
   EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" \
+  SCREENSHOT_PRIVACY_OCR_EXECUTABLE="$OCR_EXECUTABLE" \
     bash "$ROOT_DIR/script/record_app_store_screenshot_evidence.sh" "$@"
 }
 
@@ -92,7 +103,7 @@ if run_recorder --execute >/dev/null 2>&1; then
 fi
 
 for id in "${required_ids[@]}"; do
-  create_png "$SCREENSHOT_DIR/$id.png" 900 600
+  create_png "$SCREENSHOT_DIR/$id.png" 1440 900
 done
 
 if run_recorder --execute >/dev/null 2>&1; then
@@ -139,7 +150,7 @@ stamp_captures
 
 reset_fixture
 for id in "${required_ids[@]}"; do
-  create_png "$SCREENSHOT_DIR/$id.png" 900 600
+  create_png "$SCREENSHOT_DIR/$id.png" 1440 900
 done
 printf '/Users/example/private-site/content/post.md' >>"$SCREENSHOT_DIR/privacy-lock.png"
 SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \

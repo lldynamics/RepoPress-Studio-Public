@@ -7,8 +7,10 @@ struct WorkbenchThemePalette {
   let warning: Color
   let risk: Color
   let document: Color
+  let documentForeground: Color
   let finance: Color
   let inventory: Color
+  let inventoryForeground: Color
   let people: Color
   let journal: Color
   let photo: Color
@@ -19,13 +21,15 @@ struct WorkbenchThemePalette {
 enum WorkbenchTheme {
   /// Mirrors the default “江南春” palette used by 工程工具箱.
   static let jiangnanSpring = WorkbenchThemePalette(
-    primary: adaptive(light: (0.48, 0.69, 0.42), dark: (0.58, 0.78, 0.52)),
-    success: adaptive(light: (0.35, 0.62, 0.35), dark: (0.50, 0.75, 0.48)),
-    warning: adaptive(light: (0.90, 0.40, 0.10), dark: (0.90, 0.40, 0.10)),
-    risk: adaptive(light: (0.91, 0.57, 0.64), dark: (0.91, 0.57, 0.64)),
+    primary: adaptive(light: (0.26, 0.48, 0.22), dark: (0.58, 0.78, 0.52)),
+    success: adaptive(light: (0.22, 0.48, 0.22), dark: (0.50, 0.75, 0.48)),
+    warning: adaptive(light: (0.68, 0.27, 0.03), dark: (0.90, 0.40, 0.10)),
+    risk: adaptive(light: (0.64, 0.25, 0.33), dark: (0.91, 0.57, 0.64)),
     document: adaptive(light: (0.55, 0.66, 0.73), dark: (0.65, 0.75, 0.80)),
+    documentForeground: adaptive(light: (0.22, 0.39, 0.48), dark: (0.65, 0.75, 0.80)),
     finance: adaptive(light: (0.83, 0.66, 0.33), dark: (0.88, 0.72, 0.44)),
     inventory: adaptive(light: (0.61, 0.55, 0.71), dark: (0.70, 0.64, 0.78)),
+    inventoryForeground: adaptive(light: (0.38, 0.31, 0.50), dark: (0.70, 0.64, 0.78)),
     people: adaptive(light: (0.49, 0.65, 0.65), dark: (0.60, 0.74, 0.74)),
     journal: adaptive(light: (0.78, 0.72, 0.59), dark: (0.85, 0.79, 0.67)),
     photo: adaptive(light: (0.72, 0.44, 0.42), dark: (0.80, 0.54, 0.52)),
@@ -40,7 +44,10 @@ enum WorkbenchTheme {
   static var warning: Color { `default`.warning }
   static var risk: Color { `default`.risk }
   static var document: Color { `default`.document }
+  static var documentForeground: Color { `default`.documentForeground }
+  static var finance: Color { `default`.finance }
   static var inventory: Color { `default`.inventory }
+  static var inventoryForeground: Color { `default`.inventoryForeground }
 
   private static func adaptive(
     light: (red: CGFloat, green: CGFloat, blue: CGFloat),
@@ -57,6 +64,36 @@ enum WorkbenchTheme {
         )
       }
     )
+  }
+}
+
+enum WorkbenchThemeNSColor {
+  static let primary = adaptive(
+    light: (0.26, 0.48, 0.22),
+    dark: (0.58, 0.78, 0.52)
+  )
+  static let success = adaptive(
+    light: (0.22, 0.48, 0.22),
+    dark: (0.50, 0.75, 0.48)
+  )
+  static let warning = adaptive(
+    light: (0.68, 0.27, 0.03),
+    dark: (0.90, 0.40, 0.10)
+  )
+
+  private static func adaptive(
+    light: (red: CGFloat, green: CGFloat, blue: CGFloat),
+    dark: (red: CGFloat, green: CGFloat, blue: CGFloat)
+  ) -> NSColor {
+    NSColor(name: nil) { appearance in
+      let components = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+      return NSColor(
+        red: components.red,
+        green: components.green,
+        blue: components.blue,
+        alpha: 1
+      )
+    }
   }
 }
 

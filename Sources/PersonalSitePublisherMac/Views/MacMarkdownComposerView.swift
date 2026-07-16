@@ -13,16 +13,28 @@ struct MacMarkdownComposerView: View {
   @State private var selectedRange = NSRange(location: 0, length: 0)
   @State private var isImageDropTargeted = false
   @State private var activeSelectionAIAction: AIPublishingActionKind?
+  @State private var selectionAIActionTask: Task<Void, Never>?
+  @State private var selectionAIActionRequestID: UUID?
+  @State private var aiPromptClipboardTask: Task<Void, Never>?
+  @State private var aiPromptClipboardRequestID: UUID?
   @State private var isFindReplacePresented = false
   @State private var findQuery = ""
   @State private var replacementText = ""
   @State private var isFindCaseSensitive = false
+  @State private var isFindWholeWord = false
+  @State private var isFindRegularExpression = false
   @State private var findReplaceMessage = ""
+  @State private var editorEditRequest: MarkdownTextEditRequest?
+  @State private var scrollSyncUpdate: MarkdownScrollSyncUpdate?
   @State private var selectionActionMessage = ""
   @State private var selectionEditPreview: AIPublishingSelectionEditPreview?
   @State private var isShortcutHelpPresented = false
+  @State private var isOutlinePresented = false
+  @State private var outlineItems: [MarkdownOutlineItem] = []
   @State private var editorBodyRevision: UInt64
+  @AppStorage("markdownEditorSynchronizedScrolling") private var isSynchronizedScrollingEnabled = true
   private let findReplaceService = MarkdownFindReplaceService()
+  private let outlineService = MarkdownOutlineService()
 
   init(draft: Binding<ArticleDraft>, store: WorkbenchStore) {
     _draft = draft
@@ -44,17 +56,19 @@ struct MacMarkdownComposerView: View {
         hasUnsavedChanges: persistenceState.hasUnsavedChanges,
         editorDisplayMode: publishingState.editorDisplayMode,
         isSelectionAIActionRunning: isSelectionAIActionRunning,
+        isOutlinePresented: $isOutlinePresented,
+        outlineItems: outlineItems,
         onSetEditorDisplayMode: { store.setEditorDisplayMode($0) },
         onShowFindReplace: showFindReplace,
+        onShowOutline: showOutline,
+        onSelectOutlineItem: selectOutlineItem,
         onShowShortcutHelp: {
           isShortcutHelpPresented = true
         },
         onOpenAIContextInspector: showAIContextInspector,
-        writingAIActionMenuItems: writingAIActionMenuItems,
-        publishingAIActionMenuItems: publishingAIActionMenuItems,
-        distributionAIActionMenuItems: distributionAIActionMenuItems,
-        maintenanceAIActionMenuItems: maintenanceAIActionMenuItems,
-        additionalSelectionAIActionMenuItems: additionalSelectionAIActionMenuItems,
+        recommendedAIActionMenuItems: recommendedAIActionMenuItems,
+        moreAIActionMenuItems: moreAIActionMenuItems,
+        isSelectionAIAction: isSelectionAIAction,
         selectionAIActionAvailability: { kind in
           selectionAIActionAvailability(kind)
         },
@@ -63,8 +77,7 @@ struct MacMarkdownComposerView: View {
         },
         onPerformSelectionAIAction: performSelectionAIAction,
         onPerformArticleAIAction: performArticleAIAction,
-        onPasteAIPromptToClipboard: pasteAIPromptToClipboard,
-        onRewriteSelection: rewriteSelectedText
+        onPasteAIPromptToClipboard: pasteAIPromptToClipboard
       )
       Divider()
       if isFindReplacePresented {
@@ -72,8 +85,12 @@ struct MacMarkdownComposerView: View {
           findQuery: $findQuery,
           replacementText: $replacementText,
           isFindCaseSensitive: $isFindCaseSensitive,
+          isFindWholeWord: $isFindWholeWord,
+          isFindRegularExpression: $isFindRegularExpression,
           canUseFindReplace: canUseFindReplace,
-          findReplaceMessage: findReplaceMessage,
+          findMatchStatus: findMatchStatus,
+          findReplaceMessage: findReplaceFeedbackMessage,
+          onFindPrevious: findPrevious,
           onFindNext: findNext,
           onReplaceCurrentOrNext: replaceCurrentOrNext,
           onReplaceAll: replaceAll,
@@ -127,9 +144,23 @@ struct MacMarkdownComposerView: View {
     .onChange(of: selectedRange) { _, _ in
       syncActiveEditorSelection()
     }
+    .onChange(of: findQuery) { _, _ in
+      findReplaceMessage = ""
+    }
+    .onChange(of: findOptions) { _, _ in
+      findReplaceMessage = ""
+    }
+    .onChange(of: isSynchronizedScrollingEnabled) { _, isEnabled in
+      guard isEnabled, let scrollSyncUpdate else { return }
+      self.scrollSyncUpdate = MarkdownScrollSyncUpdate(
+        source: scrollSyncUpdate.source,
+        progress: scrollSyncUpdate.progress
+      )
+    }
     .onChange(of: editorBody) { previousBody, _ in
       syncActiveEditorSelection()
       stageEditorBody(replacingBaseBody: previousBody)
+      refreshOutlineIfPresented()
     }
     .onChange(of: draft.bodyMarkdown) { _, _ in
       syncEditorBodyFromStore()
@@ -138,14 +169,21 @@ struct MacMarkdownComposerView: View {
       syncEditorBodyFromStore()
     }
     .onChange(of: draft.id) { oldDraftID, _ in
+      cancelSelectionAIAction()
+      cancelAIPromptClipboardTask()
+      editorEditRequest = nil
+      scrollSyncUpdate = nil
       store.flushDraftBodyEditorBuffer(for: oldDraftID)
       syncEditorBodyFromStore()
       syncActiveEditorSelection()
+      refreshOutlineIfPresented()
     }
     .sheet(isPresented: $isShortcutHelpPresented) {
       MarkdownShortcutHelpPanel()
     }
     .onDisappear {
+      cancelSelectionAIAction()
+      cancelAIPromptClipboardTask()
       store.flushDraftBodyEditorBuffer(for: draft.id)
       store.clearActiveEditorSelection(for: draft.id)
     }
@@ -157,12 +195,12 @@ struct MacMarkdownComposerView: View {
       case .edit:
         markdownEditor
       case .preview:
-        MarkdownPreviewPane(draft: previewDraft, profile: store.profile(for: draft))
+        markdownPreview
       case .split:
         HSplitView {
           markdownEditor
             .frame(minWidth: 320)
-          MarkdownPreviewPane(draft: previewDraft, profile: store.profile(for: draft))
+          markdownPreview
             .frame(minWidth: 320)
         }
       }
@@ -174,6 +212,18 @@ struct MacMarkdownComposerView: View {
     var updated = draft
     updated.bodyMarkdown = editorBody
     return updated
+  }
+
+  private var markdownPreview: some View {
+    MarkdownPreviewPane(
+      draft: previewDraft,
+      profile: store.profile(for: draft),
+      isSynchronizedScrollingEnabled: $isSynchronizedScrollingEnabled,
+      scrollSyncUpdate: scrollSyncUpdate,
+      onScrollProgressChanged: { progress in
+        updateSynchronizedScroll(source: .preview, progress: progress)
+      }
+    )
   }
 
   private var editorBufferRevision: UInt64 {
@@ -226,7 +276,7 @@ struct MacMarkdownComposerView: View {
         wordCount: editorStatistics.wordCount,
         lineCount: editorStatistics.lineCount,
         readingMinutes: editorStatistics.readingMinutes,
-        onApplyHeading: applyHeading,
+        onApplyMarkdownFormatting: applyMarkdownFormatting,
         onWrapSelection: { prefix, suffix, placeholder in
           wrapSelection(prefix: prefix, suffix: suffix, placeholder: placeholder)
         },
@@ -234,7 +284,6 @@ struct MacMarkdownComposerView: View {
         onInsertCodeBlock: insertCodeBlock,
         onInsertTable: insertTable,
         onInsertHorizontalRule: insertHorizontalRule,
-        onInsertLink: insertLink,
         onInsertImage: {
           insertImageReferences(ImageSelectionPanel.chooseImages())
         }
@@ -247,8 +296,18 @@ struct MacMarkdownComposerView: View {
         MacMarkdownTextView(
           text: $editorBody,
           selectedRange: $selectedRange,
+          editRequest: editorEditRequest,
+          scrollSyncUpdate: isSynchronizedScrollingEnabled ? scrollSyncUpdate : nil,
           onStatisticsChanged: { editorStatistics = $0 },
-          onFileDropTargetChanged: { isImageDropTargeted = $0 }
+          onFileDropTargetChanged: { isImageDropTargeted = $0 },
+          onPasteMessage: { selectionActionMessage = $0 },
+          onEditRequestHandled: { requestID in
+            guard editorEditRequest?.id == requestID else { return }
+            editorEditRequest = nil
+          },
+          onScrollProgressChanged: { progress in
+            updateSynchronizedScroll(source: .editor, progress: progress)
+          }
         ) { urls in
           insertImageReferences(urls)
         }
@@ -356,24 +415,35 @@ struct MacMarkdownComposerView: View {
     AIPublishingWritingActionCatalog.selectionActions
   }
 
-  private var writingAIActionMenuItems: [AIPublishingActionMenuItem] {
-    AIPublishingWritingActionCatalog.writingActions
+  private var recommendedAIActionMenuItems: [AIPublishingActionMenuItem] {
+    let recommendation = AIPublishingActionRecommendationService.recommendation(
+      selectedText: selectedText(in: editorBody),
+      draft: previewDraft
+    )
+    return recommendation.actions.prefix(4).map { kind in
+      aiActionMenuItem(for: kind)
+    }
   }
 
-  private var publishingAIActionMenuItems: [AIPublishingActionMenuItem] {
-    AIPublishingWritingActionCatalog.publishingActions
+  private var moreAIActionMenuItems: [AIPublishingActionMenuItem] {
+    let recommendedKinds = Set(recommendedAIActionMenuItems.map(\.kind))
+    return allAIActionMenuItems.filter { !recommendedKinds.contains($0.kind) }
   }
 
-  private var distributionAIActionMenuItems: [AIPublishingActionMenuItem] {
-    AIPublishingWritingActionCatalog.distributionActions
+  private var allAIActionMenuItems: [AIPublishingActionMenuItem] {
+    var seen = Set<AIPublishingActionKind>()
+    return (selectionAIActionMenuItems + AIPublishingWritingActionCatalog.articleActions).filter {
+      seen.insert($0.kind).inserted
+    }
   }
 
-  private var maintenanceAIActionMenuItems: [AIPublishingActionMenuItem] {
-    AIPublishingWritingActionCatalog.maintenanceActions
+  private func aiActionMenuItem(for kind: AIPublishingActionKind) -> AIPublishingActionMenuItem {
+    allAIActionMenuItems.first { $0.kind == kind }
+      ?? AIPublishingActionMenuItem(kind: kind, systemImage: "sparkles")
   }
 
-  private var additionalSelectionAIActionMenuItems: [AIPublishingActionMenuItem] {
-    selectionAIActionMenuItems.filter { $0.kind != .rewriteSelection }
+  private func isSelectionAIAction(_ kind: AIPublishingActionKind) -> Bool {
+    selectionAIActionMenuItems.contains { $0.kind == kind }
   }
 
   private func insertImageReferences(_ urls: [URL]) {
@@ -409,9 +479,11 @@ struct MacMarkdownComposerView: View {
       showKeyboardShortcuts: {
         isShortcutHelpPresented = true
       },
+      findPrevious: findPrevious,
       findNext: findNext,
       replaceCurrentOrNext: replaceCurrentOrNext,
       replaceAll: replaceAll,
+      applyFormatting: applyMarkdownFormatting,
       insertImages: {
         insertImageReferences(ImageSelectionPanel.chooseImages())
       },
@@ -423,10 +495,84 @@ struct MacMarkdownComposerView: View {
   }
 
   private var canUseFindReplace: Bool {
-    !findQuery.isEmpty
+    guard !findQuery.isEmpty else { return false }
+    return (try? findReplaceService.matches(
+      in: editorBody,
+      query: findQuery,
+      options: findOptions
+    )) != nil
+  }
+
+  private func updateSynchronizedScroll(
+    source: MarkdownScrollSyncSource,
+    progress: Double
+  ) {
+    guard isSynchronizedScrollingEnabled else { return }
+    scrollSyncUpdate = MarkdownScrollSyncUpdate(source: source, progress: progress)
+  }
+
+  private var findOptions: MarkdownFindOptions {
+    MarkdownFindOptions(
+      caseSensitive: isFindCaseSensitive,
+      wholeWord: isFindWholeWord,
+      usesRegularExpression: isFindRegularExpression
+    )
+  }
+
+  private var findMatchStatus: String {
+    guard !findQuery.isEmpty else { return "0/0" }
+    guard let position = try? findReplaceService.position(
+      in: editorBody,
+      query: findQuery,
+      selectedRange: selectedRange,
+      options: findOptions
+    ) else {
+      return "—/—"
+    }
+    return "\(position.currentNumber ?? 0)/\(position.total)"
+  }
+
+  private var findReplaceFeedbackMessage: String {
+    guard !findQuery.isEmpty else { return findReplaceMessage }
+    do {
+      _ = try findReplaceService.matches(
+        in: editorBody,
+        query: findQuery,
+        options: findOptions
+      )
+      return findReplaceMessage
+    } catch {
+      return error.localizedDescription
+    }
+  }
+
+  private func showOutline() {
+    outlineItems = outlineService.outline(in: editorBody)
+    isOutlinePresented = true
+  }
+
+  private func refreshOutlineIfPresented() {
+    guard isOutlinePresented else { return }
+    outlineItems = outlineService.outline(in: editorBody)
+  }
+
+  private func selectOutlineItem(_ item: MarkdownOutlineItem) {
+    if publishingState.editorDisplayMode == .preview {
+      store.setEditorDisplayMode(.edit)
+    }
+
+    let bodyLength = (editorBody as NSString).length
+    selectedRange = NSRange(
+      location: min(max(item.headingLocation, 0), bodyLength),
+      length: 0
+    )
+    selectionActionMessage = ""
   }
 
   private func showFindReplace() {
+    if publishingState.editorDisplayMode == .preview {
+      store.setEditorDisplayMode(.edit)
+    }
     let selected = selectedText(in: editorBody).trimmedForPublishing
     if !selected.isEmpty, !selected.contains("\n") {
       findQuery = selected
@@ -436,69 +582,103 @@ struct MacMarkdownComposerView: View {
   }
 
   private func findNext() {
+    find(.next)
+  }
+
+  private func findPrevious() {
+    find(.previous)
+  }
+
+  private func find(_ direction: MarkdownFindDirection) {
     isFindReplacePresented = true
-    guard canUseFindReplace else {
+    guard !findQuery.isEmpty else {
       findReplaceMessage = "输入查找内容。"
       return
     }
 
-    guard let result = findReplaceService.findNext(
-      in: editorBody,
-      query: findQuery,
-      selectedRange: selectedRange,
-      caseSensitive: isFindCaseSensitive
-    ) else {
-      findReplaceMessage = "没有找到匹配。"
-      return
-    }
+    do {
+      guard let result = try findReplaceService.find(
+        in: editorBody,
+        query: findQuery,
+        selectedRange: selectedRange,
+        direction: direction,
+        options: findOptions
+      ) else {
+        findReplaceMessage = "没有找到匹配。"
+        return
+      }
 
-    selectedRange = result.range
-    findReplaceMessage = result.didWrap ? "已从开头继续查找。" : "已找到匹配。"
+      selectedRange = result.range
+      if result.didWrap {
+        findReplaceMessage = direction == .next
+          ? "已从开头继续查找。"
+          : "已从末尾继续查找。"
+      } else {
+        findReplaceMessage = ""
+      }
+    } catch {
+      findReplaceMessage = error.localizedDescription
+    }
   }
 
   private func replaceCurrentOrNext() {
     isFindReplacePresented = true
-    guard canUseFindReplace else {
+    guard !findQuery.isEmpty else {
       findReplaceMessage = "输入查找内容。"
       return
     }
 
-    let mutation = findReplaceService.replaceCurrentOrNext(
-      in: editorBody,
-      query: findQuery,
-      replacement: replacementText,
-      selectedRange: selectedRange,
-      caseSensitive: isFindCaseSensitive
-    )
+    do {
+      let mutation = try findReplaceService.replaceCurrentOrNext(
+        in: editorBody,
+        query: findQuery,
+        replacement: replacementText,
+        selectedRange: selectedRange,
+        options: findOptions
+      )
 
-    guard mutation.replacementCount > 0 else {
-      findReplaceMessage = "没有找到可替换内容。"
-      return
+      guard mutation.replacementCount > 0 else {
+        findReplaceMessage = "没有找到可替换内容。"
+        return
+      }
+
+      applyFindReplaceMutation(mutation)
+      findReplaceMessage = "已替换 1 处。"
+    } catch {
+      findReplaceMessage = error.localizedDescription
     }
-
-    var updated = previewDraft
-    updated.bodyMarkdown = mutation.text
-    applyDraftUpdate(updated)
-    selectedRange = mutation.selectedRange
-    findReplaceMessage = "已替换 1 处。"
   }
 
   private func replaceAll() {
     isFindReplacePresented = true
-    guard canUseFindReplace else {
+    guard !findQuery.isEmpty else {
       findReplaceMessage = "输入查找内容。"
       return
     }
 
-    let mutation = findReplaceService.replaceAll(
-      in: editorBody,
-      query: findQuery,
-      replacement: replacementText,
-      caseSensitive: isFindCaseSensitive
-    )
+    do {
+      let mutation = try findReplaceService.replaceAll(
+        in: editorBody,
+        query: findQuery,
+        replacement: replacementText,
+        options: findOptions
+      )
 
-    guard mutation.replacementCount > 0 else {
-      findReplaceMessage = "没有找到可替换内容。"
+      guard mutation.replacementCount > 0 else {
+        findReplaceMessage = "没有找到可替换内容。"
+        return
+      }
+
+      applyFindReplaceMutation(mutation)
+      findReplaceMessage = "已替换 \(mutation.replacementCount) 处，可撤销。"
+    } catch {
+      findReplaceMessage = error.localizedDescription
+    }
+  }
+
+  private func applyFindReplaceMutation(_ mutation: MarkdownFindReplaceMutation) {
+    if let edit = mutation.edit {
+      editorEditRequest = MarkdownTextEditRequest(expectedText: editorBody, edit: edit)
       return
     }
 
@@ -506,7 +686,6 @@ struct MacMarkdownComposerView: View {
     updated.bodyMarkdown = mutation.text
     applyDraftUpdate(updated)
     selectedRange = mutation.selectedRange
-    findReplaceMessage = "已替换 \(mutation.replacementCount) 处。"
   }
 
   private func replacingSelection(in draft: ArticleDraft, with markdown: String) -> ArticleDraft {
@@ -531,16 +710,22 @@ struct MacMarkdownComposerView: View {
     return updated
   }
 
-  private func applyHeading(level: Int) {
-    let marker = String(repeating: "#", count: min(max(level, 1), 6))
-    replaceCurrentLines { line in
-      let stripped = line.replacingOccurrences(
-        of: #"^#{1,6}\s+"#,
-        with: "",
-        options: .regularExpression
-      )
-      return "\(marker) \(stripped.nilIfEmpty ?? "标题")"
-    }
+  private func applyMarkdownFormatting(_ command: MarkdownFormattingCommand) {
+    guard !MarkdownFormattingResponderBridge.perform(command) else { return }
+    let service = MarkdownFormattingService()
+    guard let edit = service.edit(
+      in: editorBody,
+      selectedRange: selectedRange,
+      command: command
+    ) else { return }
+
+    var updated = previewDraft
+    updated.bodyMarkdown = (editorBody as NSString).replacingCharacters(
+      in: edit.replacedRange,
+      with: edit.replacement
+    )
+    applyDraftUpdate(updated)
+    selectedRange = edit.selectedRange
   }
 
   private func wrapSelection(prefix: String, suffix: String, placeholder: String) {
@@ -606,22 +791,6 @@ struct MacMarkdownComposerView: View {
     applyDraftUpdate(replacingSelection(in: previewDraft, with: "---"))
   }
 
-  private func insertLink() {
-    var updated = previewDraft
-    let source = updated.bodyMarkdown as NSString
-    let range = editingRange(in: source)
-    let selected = range.length > 0 ? source.substring(with: range) : "链接文本"
-    let url = "https://"
-    let replacement = "[\(selected)](\(url))"
-
-    updated.bodyMarkdown = source.replacingCharacters(in: range, with: replacement)
-    applyDraftUpdate(updated)
-
-    let urlLocation = range.location
-      + ("[\(selected)](" as NSString).length
-    selectedRange = NSRange(location: urlLocation, length: (url as NSString).length)
-  }
-
   private func selectedText(in text: String) -> String {
     let source = text as NSString
     let range = clamped(selectedRange, length: source.length)
@@ -663,10 +832,36 @@ struct MacMarkdownComposerView: View {
   }
 
   private func pasteAIPromptToClipboard() {
-    ClipboardWriter.copy(
-      store.publishingAIPrompt(for: previewDraft),
-      successMessage: "已复制 AI Prompt。"
-    ) { store.setPublishActionMessage($0) }
+    cancelAIPromptClipboardTask()
+    let requestedDraft = previewDraft
+    let requestedBody = requestedDraft.bodyMarkdown
+    let requestID = UUID()
+    aiPromptClipboardRequestID = requestID
+    store.setPublishActionMessage("正在生成 AI Prompt…")
+    aiPromptClipboardTask = Task { @MainActor in
+      let prompt = await store.publishingAIPromptInBackground(for: requestedDraft)
+      guard !Task.isCancelled,
+            aiPromptClipboardRequestID == requestID else {
+        return
+      }
+      aiPromptClipboardTask = nil
+      aiPromptClipboardRequestID = nil
+      guard draft.id == requestedDraft.id,
+            editorBody == requestedBody else {
+        store.setPublishActionMessage("文章已变化，未复制陈旧 AI Prompt；请重试。")
+        return
+      }
+      ClipboardWriter.copy(
+        prompt,
+        successMessage: "已复制 AI Prompt。"
+      ) { store.setPublishActionMessage($0) }
+    }
+  }
+
+  private func cancelAIPromptClipboardTask() {
+    aiPromptClipboardTask?.cancel()
+    aiPromptClipboardTask = nil
+    aiPromptClipboardRequestID = nil
   }
 
   private func applyEditorFocusRequest() {
@@ -710,28 +905,39 @@ struct MacMarkdownComposerView: View {
       return
     }
 
+    cancelSelectionAIAction()
+    let requestedDraft = previewDraft
+    let requestID = UUID()
     activeSelectionAIAction = kind
+    selectionAIActionRequestID = requestID
     selectionActionMessage = "\(kind.localizedDisplayName)处理中..."
     let previewRange = clamped(selectedRange, length: (editorBody as NSString).length)
     selectionEditPreview = nil
-    Task {
-      let result = await aiState.performAction(kind, draft: previewDraft, selectedText: promptSelectedText)
-      await MainActor.run {
-        if let result {
-          selectionEditPreview = AIPublishingSelectionEditPreview(
-            kind: result.kind,
-            range: previewRange,
-            originalText: rawSelectedText,
-            replacementText: result.content,
-            application: selectionEditApplication(for: result.kind),
-            providerName: result.providerName,
-            model: result.model
-          )
-          selectionActionMessage = result.kind.localizedDisplayName + "预览已生成。"
-        } else {
-          selectionActionMessage = kind.localizedDisplayName + "失败。"
-        }
-        activeSelectionAIAction = nil
+    selectionAIActionTask = Task { @MainActor in
+      let result = await aiState.performAction(
+        kind,
+        draft: requestedDraft,
+        selectedText: promptSelectedText
+      )
+      guard selectionAIActionRequestID == requestID else { return }
+      defer { finishSelectionAIAction(requestID: requestID) }
+      guard !Task.isCancelled, draft.id == requestedDraft.id else { return }
+
+      if let result {
+        selectionEditPreview = AIPublishingSelectionEditPreview(
+          draftID: requestedDraft.id,
+          sourceBodyMarkdown: requestedDraft.bodyMarkdown,
+          kind: result.kind,
+          range: previewRange,
+          originalText: rawSelectedText,
+          replacementText: result.content,
+          application: selectionEditApplication(for: result.kind),
+          providerName: result.providerName,
+          model: result.model
+        )
+        selectionActionMessage = result.kind.localizedDisplayName + "预览已生成。"
+      } else {
+        selectionActionMessage = kind.localizedDisplayName + "失败。"
       }
     }
   }
@@ -743,34 +949,56 @@ struct MacMarkdownComposerView: View {
       return
     }
 
+    cancelSelectionAIAction()
+    let requestedDraft = previewDraft
+    let requestID = UUID()
     activeSelectionAIAction = kind
+    selectionAIActionRequestID = requestID
     selectionActionMessage = "\(kind.localizedDisplayName)处理中..."
     let previewRange = articleInsertionRange(for: kind)
     selectionEditPreview = nil
-    Task {
-      let result = await aiState.performAction(kind, draft: previewDraft)
-      await MainActor.run {
-        if let result {
-          if result.kind.producesMetadataSuggestion, aiState.metadataSuggestion != nil {
-            selectionActionMessage = result.kind.localizedDisplayName + "已生成，可在元数据建议中应用。"
-          } else {
-            selectionEditPreview = AIPublishingSelectionEditPreview(
-              kind: result.kind,
-              range: previewRange,
-              originalText: "",
-              replacementText: result.content,
-              application: .insertAtRange,
-              providerName: result.providerName,
-              model: result.model
-            )
-            selectionActionMessage = result.kind.localizedDisplayName + "预览已生成。"
-          }
+    selectionAIActionTask = Task { @MainActor in
+      let result = await aiState.performAction(kind, draft: requestedDraft)
+      guard selectionAIActionRequestID == requestID else { return }
+      defer { finishSelectionAIAction(requestID: requestID) }
+      guard !Task.isCancelled, draft.id == requestedDraft.id else { return }
+
+      if let result {
+        if result.kind.producesMetadataSuggestion, aiState.metadataSuggestion != nil {
+          selectionActionMessage = result.kind.localizedDisplayName + "已生成，可在元数据建议中应用。"
         } else {
-          selectionActionMessage = kind.localizedDisplayName + "失败。"
+          selectionEditPreview = AIPublishingSelectionEditPreview(
+            draftID: requestedDraft.id,
+            sourceBodyMarkdown: requestedDraft.bodyMarkdown,
+            kind: result.kind,
+            range: previewRange,
+            originalText: "",
+            replacementText: result.content,
+            application: .insertAtRange,
+            providerName: result.providerName,
+            model: result.model
+          )
+          selectionActionMessage = result.kind.localizedDisplayName + "预览已生成。"
         }
-        activeSelectionAIAction = nil
+      } else {
+        selectionActionMessage = kind.localizedDisplayName + "失败。"
       }
     }
+  }
+
+  private func cancelSelectionAIAction() {
+    selectionAIActionTask?.cancel()
+    selectionAIActionTask = nil
+    selectionAIActionRequestID = nil
+    activeSelectionAIAction = nil
+    selectionEditPreview = nil
+  }
+
+  private func finishSelectionAIAction(requestID: UUID) {
+    guard selectionAIActionRequestID == requestID else { return }
+    selectionAIActionTask = nil
+    selectionAIActionRequestID = nil
+    activeSelectionAIAction = nil
   }
 
   private func articleInsertionRange(for kind: AIPublishingActionKind) -> NSRange {

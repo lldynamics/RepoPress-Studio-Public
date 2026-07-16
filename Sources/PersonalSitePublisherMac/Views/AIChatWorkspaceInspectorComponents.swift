@@ -3,6 +3,8 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct AIChatContextInspectorView: View {
+  @Environment(\.openSettings) private var openSettings
+  @AppStorage("settingsRequestedTabID") private var requestedSettingsTabID = ""
   @ObservedObject private var ai: WorkbenchAIFeatureFacade
   @State private var inputText = ""
   @State private var isSubmitting = false
@@ -17,6 +19,11 @@ struct AIChatContextInspectorView: View {
       inspectorHeader
 
       Divider()
+
+      if isAIKeyMissing {
+        missingAIKeyBanner
+        Divider()
+      }
 
       ScrollViewReader { proxy in
         ScrollView {
@@ -51,6 +58,40 @@ struct AIChatContextInspectorView: View {
       applyPendingQuickPrompt()
     }
     .onDisappear(perform: stopSending)
+  }
+
+  private var missingAIKeyBanner: some View {
+    HStack(alignment: .center, spacing: 10) {
+      Image(systemName: "key.horizontal")
+        .foregroundStyle(WorkbenchTheme.warning)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text("需要配置 AI API Key")
+          .font(.callout.weight(.medium))
+        Text("密钥仅保存在系统钥匙串中。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      Spacer(minLength: 8)
+
+      Button("打开 AI 设置") {
+        requestedSettingsTabID = SettingsTab.ai.id
+        openSettings()
+      }
+      .controlSize(.small)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(WorkbenchTheme.warning.opacity(WorkbenchOpacity.noticeBackground))
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("需要配置 AI API Key")
+  }
+
+  private var isAIKeyMissing: Bool {
+    guard let draft = ai.selectedChatDraft else { return false }
+    return ai.chatProfile(for: draft).aiProviderConfig.requiresAPIKey
+      && !ai.tokenAvailability.hasToken
   }
 
   private var inspectorHeader: some View {
@@ -109,24 +150,43 @@ struct AIChatContextInspectorView: View {
       }
       .disabled(isSending)
 
-      if !ai.archivedConversations.isEmpty {
-        Menu("历史对话") {
-          ForEach(ai.archivedConversations.prefix(8)) { conversation in
-            Button(conversation.title) {
-              ai.restoreArchivedChatConversation(
-                conversation.id,
-                draft: ai.selectedChatDraft
-              )
+      Divider()
+
+      Menu("自定义指令") {
+        if ai.chatCustomPrompts.isEmpty {
+          Text("尚未保存自定义指令")
+        } else {
+          ForEach(ai.chatCustomPrompts) { prompt in
+            Menu(prompt.title) {
+              Button {
+                inputText = prompt.prompt
+              } label: {
+                Label("使用", systemImage: "text.cursor")
+              }
+
+              Button(role: .destructive) {
+                ai.deleteChatCustomPrompt(prompt.id)
+              } label: {
+                Label("删除", systemImage: "trash")
+              }
             }
           }
         }
-        .disabled(isSending)
+
+        Divider()
+
+        Button {
+          saveCurrentInputAsCustomPrompt()
+        } label: {
+          Label("保存当前输入", systemImage: "plus")
+        }
+        .disabled(trimmedInput.isEmpty)
       }
     } label: {
       Image(systemName: "slider.horizontal.3")
     }
     .menuIndicator(.hidden)
-    .help("模型、上下文与对话历史")
+    .help("模型、上下文与自定义提示")
     .accessibilityLabel("AI 助手选项")
   }
 
@@ -144,7 +204,7 @@ struct AIChatContextInspectorView: View {
         TextField("询问当前文章…", text: $inputText, axis: .vertical)
           .textFieldStyle(.roundedBorder)
           .lineLimit(2...6)
-          .disabled(ai.selectedChatDraft == nil || isSending)
+          .disabled(ai.selectedChatDraft == nil || isSending || isAIKeyMissing)
           .accessibilityLabel("AI 消息")
 
         Button(action: handleSendButton) {
@@ -153,7 +213,7 @@ struct AIChatContextInspectorView: View {
         }
         .buttonStyle(.borderless)
         .keyboardShortcut(.return, modifiers: [.command])
-        .disabled(!isSending && (trimmedInput.isEmpty || ai.selectedChatDraft == nil))
+        .disabled(!isSending && (trimmedInput.isEmpty || ai.selectedChatDraft == nil || isAIKeyMissing))
         .help(isSending ? "停止生成" : "发送（⌘Return）")
         .accessibilityLabel(isSending ? "停止 AI 回复" : "发送 AI 消息")
       }
@@ -268,6 +328,17 @@ struct AIChatContextInspectorView: View {
     let message = trimmedInput
     guard !message.isEmpty, !isSending else { return }
     startSending(message, draft: draft, clearsComposerOnAccept: true)
+  }
+
+  private func saveCurrentInputAsCustomPrompt() {
+    let prompt = trimmedInput
+    guard !prompt.isEmpty else { return }
+    let title = prompt
+      .split(whereSeparator: \.isNewline)
+      .first
+      .map(String.init)?
+      .prefix(28) ?? Substring("自定义指令")
+    _ = ai.saveChatCustomPrompt(title: String(title), prompt: prompt)
   }
 
   private var isSending: Bool {
@@ -386,12 +457,12 @@ struct AIChatContextInspectorContent: View {
   let state: AIChatContextInspectorState
   let actions: AIChatContextInspectorActions
   @State private var isContextExpanded = false
-  @State private var isToolsExpanded = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       if let draftContext = state.draft {
         AIChatConversationInspectorSection(context: draftContext, actions: actions)
+        AIChatRecommendedActionsInspectorSection(context: draftContext, actions: actions)
         AIChatRelatedSuggestionsInspectorSection(context: draftContext, actions: actions)
 
         DisclosureGroup("文章上下文", isExpanded: $isContextExpanded) {
@@ -399,13 +470,6 @@ struct AIChatContextInspectorContent: View {
             .padding(.top, 10)
         }
 
-        DisclosureGroup("更多 AI 工具", isExpanded: $isToolsExpanded) {
-          VStack(alignment: .leading, spacing: 16) {
-            AIChatWorkflowGuidesInspectorSection(context: draftContext, actions: actions)
-            AIChatQuickPromptsInspectorSection(context: draftContext, actions: actions)
-          }
-          .padding(.top, 10)
-        }
       } else {
         EmptyStateView(
           title: "没有上下文",
@@ -430,7 +494,7 @@ struct AIChatInspectorSection<Content: View>: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 9) {
-      Text(title)
+      Text(LocalizedStringKey(title))
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
       content
@@ -449,7 +513,7 @@ struct AIChatInspectorStatRow: View {
       Image(systemName: systemImage)
         .foregroundStyle(.secondary)
         .frame(width: 16)
-      Text(title)
+      Text(LocalizedStringKey(title))
         .foregroundStyle(.secondary)
       Spacer()
       Text(value)

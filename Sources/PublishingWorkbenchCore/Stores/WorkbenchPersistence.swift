@@ -15,7 +15,6 @@ public struct WorkbenchSnapshot: Codable, Sendable {
   public var releaseRecords: [ReleaseRecord]
   public var maintenanceOperationRecords: [MaintenanceOperationRecord]
   public var aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord]
-  public var aiChatSessionsByDraftID: [UUID: AIPublishingChatSessionState]
   public var aiChatCustomPrompts: [AIPublishingCustomPrompt]
   public var seoSocialPreviewSnapshots: [SEOSocialPreviewSnapshot]
   public var privacySettings: PrivacyProtectionSettings
@@ -39,7 +38,6 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     releaseRecords: [ReleaseRecord],
     maintenanceOperationRecords: [MaintenanceOperationRecord] = [],
     aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord] = [],
-    aiChatSessionsByDraftID: [UUID: AIPublishingChatSessionState] = [:],
     aiChatCustomPrompts: [AIPublishingCustomPrompt] = [],
     seoSocialPreviewSnapshots: [SEOSocialPreviewSnapshot] = [],
     privacySettings: PrivacyProtectionSettings = .default,
@@ -66,10 +64,9 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         .sorted { $0.requestedAt > $1.requestedAt }
         .prefix(DraftLifecycleService.maximumRepositoryCleanupRequests)
     )
-    self.releaseRecords = releaseRecords
+    self.releaseRecords = ReleaseRecord.limitedHistory(releaseRecords)
     self.maintenanceOperationRecords = Self.limitedMaintenanceOperationRecords(maintenanceOperationRecords)
     self.aiMetadataApplicationRecords = Self.limitedMetadataApplicationRecords(aiMetadataApplicationRecords)
-    self.aiChatSessionsByDraftID = aiChatSessionsByDraftID
     self.aiChatCustomPrompts = Self.limitedCustomPrompts(aiChatCustomPrompts)
     self.seoSocialPreviewSnapshots = seoSocialPreviewSnapshots
     self.privacySettings = privacySettings
@@ -95,7 +92,6 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     case releaseRecords
     case maintenanceOperationRecords
     case aiMetadataApplicationRecords
-    case aiChatSessionsByDraftID
     case aiChatCustomPrompts
     case seoSocialPreviewSnapshots
     case privacySettings
@@ -143,7 +139,9 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         .sorted { $0.requestedAt > $1.requestedAt }
         .prefix(DraftLifecycleService.maximumRepositoryCleanupRequests)
     )
-    releaseRecords = try container.decode([ReleaseRecord].self, forKey: .releaseRecords)
+    releaseRecords = ReleaseRecord.limitedHistory(
+      try container.decode([ReleaseRecord].self, forKey: .releaseRecords)
+    )
     maintenanceOperationRecords = Self.limitedMaintenanceOperationRecords(
       try container.decodeIfPresent(
         [MaintenanceOperationRecord].self,
@@ -156,10 +154,6 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         forKey: .aiMetadataApplicationRecords
       ) ?? []
     )
-    aiChatSessionsByDraftID = try container.decodeIfPresent(
-      [UUID: AIPublishingChatSessionState].self,
-      forKey: .aiChatSessionsByDraftID
-    ) ?? [:]
     aiChatCustomPrompts = Self.limitedCustomPrompts(
       try container.decodeIfPresent(
         [AIPublishingCustomPrompt].self,
@@ -371,15 +365,10 @@ public struct WorkbenchPersistence: Sendable {
 
   public func prepareSave(
     _ snapshot: WorkbenchSnapshot,
-    reclaimUnreferencedAttachments: Bool = true
+    reclaimUnreferencedAttachments _: Bool = true
   ) throws -> WorkbenchPreparedPersistenceSave {
-    var persistedSnapshot = snapshot
-    persistedSnapshot.aiChatSessionsByDraftID = try persistedAIChatSessions(
-      snapshot.aiChatSessionsByDraftID,
-      reclaimUnreferencedFiles: reclaimUnreferencedAttachments
-    )
     return WorkbenchPreparedPersistenceSave(
-      data: try JSONEncoder.workbench.encode(persistedSnapshot),
+      data: try JSONEncoder.workbench.encode(snapshot),
       retiredFeatureArchives: try retiredFeatureArchivesFromPersistedSnapshots()
     )
   }
@@ -485,35 +474,47 @@ public struct WorkbenchPersistence: Sendable {
       .appendingPathComponent("OptimizedImages", isDirectory: true)
   }
 
-  var aiChatAttachmentDirectoryURL: URL {
-    fileURL
-      .deletingLastPathComponent()
-      .appendingPathComponent("AIChatAttachments", isDirectory: true)
-  }
+  /// Removes successful batch folders that are no longer referenced by any
+  /// attachment. Non-batch files are deliberately left untouched.
+  @discardableResult
+  func pruneUnreferencedImageOptimizationBatches(
+    referencedSourceFilePaths: [String]
+  ) -> Int {
+    let fileManager = FileManager.default
+    let rootURL = imageOptimizationDirectoryURL.standardizedFileURL
+    guard let children = try? fileManager.contentsOfDirectory(
+      at: rootURL,
+      includingPropertiesForKeys: [.isDirectoryKey],
+      options: []
+    ) else {
+      return 0
+    }
 
-  func persistedAIChatSessions(
-    _ sessions: [UUID: AIPublishingChatSessionState],
-    reclaimUnreferencedFiles: Bool = true
-  ) throws -> [UUID: AIPublishingChatSessionState] {
-    try AIChatAttachmentStore(directoryURL: aiChatAttachmentDirectoryURL).persistedSessions(
-      sessions,
-      shouldReclaimUnreferencedFiles: reclaimUnreferencedFiles
-    )
-  }
+    let rootPrefix = rootURL.path.hasSuffix("/") ? rootURL.path : rootURL.path + "/"
+    let referencedBatchNames = Set(referencedSourceFilePaths.compactMap { path -> String? in
+      let sourcePath = URL(fileURLWithPath: path).standardizedFileURL.path
+      guard sourcePath.hasPrefix(rootPrefix) else { return nil }
+      let relativePath = String(sourcePath.dropFirst(rootPrefix.count))
+      guard let firstComponent = relativePath.split(separator: "/").first else { return nil }
+      let name = String(firstComponent)
+      return name.hasPrefix(".image-batch-") ? name : nil
+    })
 
-  func hydratedAIChatSessions(
-    _ sessions: [UUID: AIPublishingChatSessionState]
-  ) -> [UUID: AIPublishingChatSessionState] {
-    AIChatAttachmentStore(directoryURL: aiChatAttachmentDirectoryURL).hydratedSessions(sessions)
-  }
-
-  func hydratedAIChatSession(
-    _ session: AIPublishingChatSessionState
-  ) -> AIPublishingChatSessionState {
-    AIChatAttachmentStore(directoryURL: aiChatAttachmentDirectoryURL)
-      .hydratedSessions([UUID(): session])
-      .values
-      .first ?? session
+    var removedCount = 0
+    for child in children where child.lastPathComponent.hasPrefix(".image-batch-") {
+      let standardizedChild = child.standardizedFileURL
+      guard standardizedChild.deletingLastPathComponent() == rootURL,
+            !referencedBatchNames.contains(standardizedChild.lastPathComponent) else {
+        continue
+      }
+      do {
+        try fileManager.removeItem(at: standardizedChild)
+        removedCount += 1
+      } catch {
+        continue
+      }
+    }
+    return removedCount
   }
 
   private func archiveRecoveryFiles(in parentDirectoryURL: URL, folderPrefix: String) throws -> URL {
@@ -652,12 +653,11 @@ extension WorkbenchPersistence {
       releaseRecords: store.releaseRecords,
       maintenanceOperationRecords: store.maintenanceOperationRecords,
       aiMetadataApplicationRecords: store.aiMetadataApplicationRecords,
-      aiChatSessionsByDraftID: store.aiChatSessionsForPersistence(),
       aiChatCustomPrompts: store.aiChatCustomPrompts,
       seoSocialPreviewSnapshots: Array(store.seoSocialPreviewSnapshots.values),
       privacySettings: store.privacySettings,
-      privacyProtectionEvents: store.privacyProtectionEvents,
-      monetizationState: store.monetizationState,
+      privacyProtectionEvents: [],
+      monetizationState: persistedMonetizationState(from: store.monetizationState),
       repositoryAutoSyncSettings: store.repositoryAutoSyncSettings,
       repositoryAutoSyncState: store.repositoryAutoSyncState,
       remoteRepositoryAccessCheck: store.remoteRepositoryAccessCheck,
@@ -666,6 +666,12 @@ extension WorkbenchPersistence {
       deploymentStatusSnapshots: Array(store.deploymentStatusSnapshots.values),
       deploymentStatusHistory: store.deploymentStatusHistory
     )
+  }
+
+  private func persistedMonetizationState(from state: MonetizationState) -> MonetizationState {
+    var persistedState = state
+    persistedState.recentAccessEvents = []
+    return persistedState
   }
 
   public func save(store: WorkbenchStore) {

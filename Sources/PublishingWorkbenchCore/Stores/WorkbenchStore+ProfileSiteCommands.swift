@@ -61,10 +61,6 @@ extension WorkbenchStore {
   }
 
   public func selectSection(_ section: WorkspaceSection) {
-    if section == .ai {
-      _ = aiStore.openAIChatWorkspace(for: selectedDraftID)
-      return
-    }
     aiStore.hideAIPublishingAssistant()
     publishingStore.selectSection(section)
   }

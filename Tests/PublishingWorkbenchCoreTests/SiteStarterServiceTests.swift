@@ -390,8 +390,16 @@ final class SiteStarterServiceTests: XCTestCase {
     try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
     try git(["config", "user.name", "Tests"], rootURL: rootURL)
     try git(["remote", "add", "origin", remoteURL.path], rootURL: rootURL)
+    try "LOCAL_SECRET=do-not-commit\n".write(
+      to: rootURL.appendingPathComponent(".env"),
+      atomically: true,
+      encoding: .utf8
+    )
 
-    let result = try service.commitAndPushStarterSite(profile: starter.profile)
+    let result = try service.commitAndPushStarterSite(
+      profile: starter.profile,
+      createdFilePaths: starter.createdFilePaths
+    )
 
     XCTAssertEqual(result.branch, "main")
     XCTAssertEqual(result.remoteURL, remoteURL.path)
@@ -400,7 +408,49 @@ final class SiteStarterServiceTests: XCTestCase {
     XCTAssertFalse(result.commitSHA.isEmpty)
     XCTAssertEqual(try git(["rev-parse", "main"], rootURL: remoteURL), result.commitSHA)
     XCTAssertTrue(try git(["ls-tree", "--name-only", "main"], rootURL: remoteURL).contains("config.toml"))
-    XCTAssertEqual(try git(["status", "--porcelain"], rootURL: rootURL), "")
+    XCTAssertFalse(try git(["ls-tree", "--name-only", "main"], rootURL: remoteURL).contains(".env"))
+    XCTAssertEqual(try git(["status", "--porcelain"], rootURL: rootURL), "?? .env")
+  }
+
+  func testCommitAndPushRejectsUnrelatedPreStagedChanges() throws {
+    let rootURL = try temporaryDirectoryURL()
+    let remoteURL = try temporaryDirectoryURL()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+      try? FileManager.default.removeItem(at: remoteURL)
+    }
+
+    try git(["init", "--bare"], rootURL: remoteURL)
+    let service = SiteStarterService()
+    let starter = try service.createSite(
+      request: SiteStarterRequest(
+        rootPath: rootURL.path,
+        siteName: "Safe Starter",
+        initializeGit: true,
+        configureOriginRemote: false,
+        now: fixedDate
+      )
+    )
+    try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
+    try git(["config", "user.name", "Tests"], rootURL: rootURL)
+    try git(["remote", "add", "origin", remoteURL.path], rootURL: rootURL)
+    try "TOKEN=secret\n".write(
+      to: rootURL.appendingPathComponent(".env"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try git(["add", "--", ".env"], rootURL: rootURL)
+
+    XCTAssertThrowsError(
+      try service.commitAndPushStarterSite(
+        profile: starter.profile,
+        createdFilePaths: starter.createdFilePaths
+      )
+    ) { error in
+      XCTAssertEqual(error as? SiteStarterError, .unrelatedStagedChanges([".env"]))
+    }
+    XCTAssertEqual(try git(["diff", "--cached", "--name-only"], rootURL: rootURL), ".env")
+    XCTAssertThrowsError(try git(["rev-parse", "main"], rootURL: remoteURL))
   }
 
   private var fixedDate: Date {

@@ -180,6 +180,113 @@ final class LocalContentImportServiceTests: XCTestCase {
     XCTAssertNotNil(cover.sourceFilePath)
   }
 
+  func testRejectsMarkdownImageParentTraversalOutsideRepository() throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    let outsideURL = rootURL.deletingLastPathComponent()
+      .appendingPathComponent("outside-image-\(UUID().uuidString).png")
+    try Data([9, 8, 7]).write(to: outsideURL)
+    defer { try? FileManager.default.removeItem(at: outsideURL) }
+    let document = """
+    +++
+    title = "Traversal"
+    +++
+
+    ![private](../../../\(outsideURL.lastPathComponent))
+    """
+    try document.write(
+      to: rootURL.appendingPathComponent("content/posts/traversal.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    var profile = SiteProfile.defaultProfile
+    profile.contentRoot = "content"
+    let result = LocalContentImportService().importDrafts(rootURL: rootURL, profile: profile)
+    let draft = try XCTUnwrap(result.importedDrafts.first)
+
+    XCTAssertTrue(draft.attachments.isEmpty)
+  }
+
+  func testRejectsImageSymlinkThatEscapesRepository() throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("static/images", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    let outsideURL = rootURL.deletingLastPathComponent()
+      .appendingPathComponent("symlink-target-\(UUID().uuidString).png")
+    try Data([1, 3, 3, 7]).write(to: outsideURL)
+    defer { try? FileManager.default.removeItem(at: outsideURL) }
+    try FileManager.default.createSymbolicLink(
+      at: rootURL.appendingPathComponent("static/images/leak.png"),
+      withDestinationURL: outsideURL
+    )
+    try """
+    +++
+    title = "Symlink Escape"
+    +++
+
+    ![private](/images/leak.png)
+    """.write(
+      to: rootURL.appendingPathComponent("content/posts/symlink.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    var profile = SiteProfile.defaultProfile
+    profile.contentRoot = "content"
+    profile.assetRoot = "static"
+    let result = LocalContentImportService().importDrafts(rootURL: rootURL, profile: profile)
+    let draft = try XCTUnwrap(result.importedDrafts.first)
+
+    XCTAssertTrue(draft.attachments.isEmpty)
+  }
+
+  func testRejectsMarkdownSymlinkThatEscapesRepository() throws {
+    let rootURL = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    let outsideURL = rootURL.deletingLastPathComponent()
+      .appendingPathComponent("markdown-symlink-target-\(UUID().uuidString).md")
+    try """
+    +++
+    title = "Private Outside Article"
+    +++
+
+    Sensitive content
+    """.write(to: outsideURL, atomically: true, encoding: .utf8)
+    defer { try? FileManager.default.removeItem(at: outsideURL) }
+    let symlinkURL = postsURL.appendingPathComponent("leak.md")
+    try FileManager.default.createSymbolicLink(at: symlinkURL, withDestinationURL: outsideURL)
+
+    var profile = SiteProfile.defaultProfile
+    profile.contentRoot = "content"
+    let service = LocalContentImportService()
+
+    let batchResult = service.importDrafts(rootURL: rootURL, profile: profile)
+    let pathResult = service.importDrafts(
+      rootURL: rootURL,
+      repositoryPaths: ["content/posts/leak.md"],
+      profile: profile
+    )
+
+    XCTAssertTrue(batchResult.importedDrafts.isEmpty)
+    XCTAssertEqual(batchResult.skippedPaths, ["content/posts/leak.md"])
+    XCTAssertTrue(pathResult.importedDrafts.isEmpty)
+    XCTAssertEqual(pathResult.skippedPaths, ["content/posts/leak.md"])
+  }
+
   func testImportsSingleDraftFromRepositoryPath() throws {
     let rootURL = try temporaryDirectory()
     try FileManager.default.createDirectory(
@@ -326,7 +433,7 @@ final class LocalContentImportServiceTests: XCTestCase {
     XCTAssertEqual(updatedDraft.bodyMarkdown, "Updated body")
   }
 
-  func testStoreImportsOnlyChangedArticleDraftsFromRepositoryReport() throws {
+  func testStoreImportsOnlyChangedArticleDraftsFromRepositoryReport() async throws {
     let rootURL = try temporaryDirectory()
     try FileManager.default.createDirectory(
       at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
@@ -387,7 +494,7 @@ final class LocalContentImportServiceTests: XCTestCase {
       preflightIssues: []
     ))
 
-    let summary = store.importChangedArticleDraftsFromLocalRepository()
+    let summary = await store.importChangedArticleDraftsFromLocalRepository()
 
     XCTAssertEqual(summary.insertedCount, 2)
     XCTAssertEqual(summary.updatedCount, 0)
@@ -397,6 +504,112 @@ final class LocalContentImportServiceTests: XCTestCase {
     XCTAssertNil(store.drafts.first { $0.repositoryPath == "content/posts/deleted.md" })
     XCTAssertEqual(store.selectedSection, .writing)
     XCTAssertEqual(store.publishActionMessage, "已从文章变更导入 2 篇、更新 0 篇。")
+  }
+
+  func testAsyncImportPropagatesCancellation() async throws {
+    let rootURL = try temporaryDirectory()
+    let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    for index in 0..<128 {
+      try """
+      ---
+      title: "Article \(index)"
+      slug: article-\(index)
+      ---
+
+      \(String(repeating: "Imported content. ", count: 64))
+      """.write(
+        to: postsURL.appendingPathComponent("article-\(index).md"),
+        atomically: true,
+        encoding: .utf8
+      )
+    }
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.contentRoot = "content"
+    let task = Task {
+      try await LocalContentImportService().importDraftsAsync(profile: profile)
+    }
+
+    task.cancel()
+
+    do {
+      _ = try await task.value
+      XCTFail("Expected local content import cancellation to propagate")
+    } catch is CancellationError {
+      // Expected.
+    } catch {
+      XCTFail("Expected CancellationError, got \(error)")
+    }
+  }
+
+  func testChangedArticleBatchInvalidatesDerivedStateOnlyOnce() async throws {
+    let rootURL = try temporaryDirectory()
+    let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    try """
+    ---
+    title: "First Updated"
+    slug: first
+    ---
+
+    First updated body
+    """.write(to: postsURL.appendingPathComponent("first.md"), atomically: true, encoding: .utf8)
+    try """
+    ---
+    title: "Second Updated"
+    slug: second
+    ---
+
+    Second updated body
+    """.write(to: postsURL.appendingPathComponent("second.md"), atomically: true, encoding: .utf8)
+
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    store.setAutomaticallyRefreshPreflightOnEdit(false)
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.contentRoot = "content"
+    store.updateActiveProfile(profile)
+    store.setDrafts([
+      ArticleDraft(
+        siteProfileID: profile.id,
+        title: "First Original",
+        slug: "first",
+        bodyMarkdown: "First original body",
+        repositoryPath: "content/posts/first.md"
+      ),
+      ArticleDraft(
+        siteProfileID: profile.id,
+        title: "Second Original",
+        slug: "second",
+        bodyMarkdown: "Second original body",
+        repositoryPath: "content/posts/second.md"
+      ),
+    ])
+    store.setRepositoryReport(RepositoryScanReport(
+      rootPath: rootURL.path,
+      detectedKind: .zola,
+      expectedKind: profile.siteKind,
+      hasGitDirectory: true,
+      contentRootExists: true,
+      assetRootExists: true,
+      markdownFileCount: 2,
+      imageFileCount: 0,
+      changedFiles: [
+        RepositoryChangedFile(status: " M", path: "content/posts/first.md", kind: .modified),
+        RepositoryChangedFile(status: " M", path: "content/posts/second.md", kind: .modified),
+      ],
+      preflightIssues: []
+    ))
+    let versionBeforeImport = store.contentHealthSnapshotVersion
+
+    let summary = await store.importChangedArticleDraftsFromLocalRepository()
+
+    XCTAssertEqual(summary.insertedCount, 0)
+    XCTAssertEqual(summary.updatedCount, 2)
+    XCTAssertEqual(store.contentHealthSnapshotVersion, versionBeforeImport + 1)
+    XCTAssertEqual(store.drafts.first { $0.repositoryPath == "content/posts/first.md" }?.title, "First Updated")
+    XCTAssertEqual(store.drafts.first { $0.repositoryPath == "content/posts/second.md" }?.title, "Second Updated")
   }
 
   func testStoreImportRequiresLocalRepositoryRoot() throws {

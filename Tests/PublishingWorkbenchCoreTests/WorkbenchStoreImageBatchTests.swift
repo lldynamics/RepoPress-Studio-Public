@@ -100,6 +100,31 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
     )
   }
 
+  func testAIChatImageAttachmentsSkipsUnsupportedImageFormat() async throws {
+    let directory = try temporaryDirectory()
+    let imageURL = directory.appendingPathComponent("unsupported.heic")
+    try Data([1, 2, 3, 4]).write(to: imageURL)
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let attachment = DraftAttachment(
+      originalFilename: "unsupported.heic",
+      relativePublishPath: "/images/unsupported.heic",
+      repositoryPath: "static/images/unsupported.heic",
+      byteSize: 4,
+      sourceFilePath: imageURL.path
+    )
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfile.id,
+      title: "Unsupported AI Image",
+      slug: "unsupported-ai-image",
+      attachments: [attachment]
+    )
+
+    let images = await store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
+
+    XCTAssertTrue(images.isEmpty)
+    XCTAssertTrue(store.aiChatMessage?.contains("格式不支持") == true)
+  }
+
   func testAttachRepositoryImageToSelectedDraftKeepsRepositoryPathAndSourceFile() throws {
     let rootURL = try temporaryDirectory()
     try FileManager.default.createDirectory(

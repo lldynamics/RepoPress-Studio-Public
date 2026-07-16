@@ -7,9 +7,9 @@ public enum RemoteRepositoryPublishMode: String, Codable, Sendable {
   public var displayName: String {
     switch self {
     case .directCommit:
-      return "线上直接提交"
+      return CoreL10n.text("线上直接提交")
     case .reviewRequest:
-      return "线上 PR/MR"
+      return CoreL10n.text("线上 PR/MR")
     }
   }
 }
@@ -26,19 +26,19 @@ public enum RemoteRepositoryPublishProgressStage: String, Codable, Sendable {
   public var displayName: String {
     switch self {
     case .preparing:
-      return "准备"
+      return CoreL10n.text("准备")
     case .validatingTarget:
-      return "校验"
+      return CoreL10n.text("校验")
     case .creatingBranch:
-      return "分支"
+      return CoreL10n.text("分支")
     case .uploadingFiles:
-      return "上传"
+      return CoreL10n.text("上传")
     case .creatingReview:
-      return "提交评审"
+      return CoreL10n.text("提交评审")
     case .completed:
-      return "完成"
+      return CoreL10n.text("完成")
     case .failed:
-      return "失败"
+      return CoreL10n.text("失败")
     }
   }
 }
@@ -95,9 +95,9 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     self.defaultBranch = defaultBranch
     self.canRead = canRead
     self.canWrite = canWrite
-    self.permissionSummary = permissionSummary ?? (canWrite ? "已确认写入权限。" : "未确认写入权限。")
+    self.permissionSummary = permissionSummary ?? CoreL10n.text(canWrite ? "已确认写入权限。" : "未确认写入权限。")
     self.tokenScopeSummary = tokenScopeSummary
-    self.minimumWritePermission = minimumWritePermission ?? "需要仓库写入权限。"
+    self.minimumWritePermission = minimumWritePermission ?? CoreL10n.text("需要仓库写入权限。")
     self.message = message
   }
 
@@ -123,51 +123,51 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     canRead = try container.decodeIfPresent(Bool.self, forKey: .canRead) ?? false
     canWrite = try container.decodeIfPresent(Bool.self, forKey: .canWrite) ?? false
     permissionSummary = try container.decodeIfPresent(String.self, forKey: .permissionSummary)
-      ?? (canWrite ? "已确认写入权限。" : "未确认写入权限。")
+      ?? CoreL10n.text(canWrite ? "已确认写入权限。" : "未确认写入权限。")
     tokenScopeSummary = try container.decodeIfPresent(String.self, forKey: .tokenScopeSummary)
     minimumWritePermission = try container.decodeIfPresent(String.self, forKey: .minimumWritePermission)
-      ?? "需要仓库写入权限。"
+      ?? CoreL10n.text("需要仓库写入权限。")
     message = try container.decodeIfPresent(String.self, forKey: .message)
-      ?? (canWrite ? "Token 具备写入权限。" : "Token 未确认写入权限。")
+      ?? CoreL10n.text(canWrite ? "Token 具备写入权限。" : "Token 未确认写入权限。")
   }
 }
 
 public extension RemoteRepositoryAccessCheck {
   var accessEvidenceMarkdown: String {
     var lines: [String] = [
-      "# \(provider.displayName) Token 权限证据包",
+      CoreL10n.format("# %@ Token 权限证据包", provider.displayName),
       "",
-      "- 平台：\(provider.displayName)",
-      "- 仓库：\(repositoryName)",
-      "- 可读取：\(canRead ? "是" : "否")",
-      "- 可写入：\(canWrite ? "是" : "否")",
-      "- 权限来源：\(permissionSummary)",
-      "- 最低写入要求：\(minimumWritePermission)",
-      "- 结论：\(message)"
+      CoreL10n.format("- 平台：%@", provider.displayName),
+      CoreL10n.format("- 仓库：%@", repositoryName),
+      CoreL10n.format("- 可读取：%@", CoreL10n.text(canRead ? "是" : "否")),
+      CoreL10n.format("- 可写入：%@", CoreL10n.text(canWrite ? "是" : "否")),
+      CoreL10n.format("- 权限来源：%@", permissionSummary),
+      CoreL10n.format("- 最低写入要求：%@", minimumWritePermission),
+      CoreL10n.format("- 结论：%@", message)
     ]
 
     if let apiBaseURL = apiBaseURL?.trimmedForPublishing.nilIfEmpty {
-      lines.append("- API 端点：\(apiBaseURL)")
+      lines.append(CoreL10n.format("- API 端点：%@", apiBaseURL))
     }
     if let defaultBranch = defaultBranch?.trimmedForPublishing.nilIfEmpty {
-      lines.append("- 默认分支：\(defaultBranch)")
+      lines.append(CoreL10n.format("- 默认分支：%@", defaultBranch))
     }
     if let tokenScopeSummary = tokenScopeSummary?.trimmedForPublishing.nilIfEmpty {
-      lines.append("- Token scope：\(tokenScopeSummary)")
+      lines.append(CoreL10n.format("- Token scope：%@", tokenScopeSummary))
     }
 
     lines.append("")
-    lines.append("## 发布前权限清单")
-    lines.append("- [\(canRead ? "x" : " ")] Token 可以读取仓库元数据")
-    lines.append("- [\(canWrite ? "x" : " ")] Token 满足线上直接提交或 PR/MR 所需写入权限")
-    lines.append("- [\(repositoryName.trimmedForPublishing.isEmpty ? " " : "x")] 权限检查仓库与当前发布仓库一致")
-    lines.append("- [ ] 使用最小权限 Token，未在截图、日志或证据包中暴露 Token 原文")
+    lines.append(CoreL10n.text("## 发布前权限清单"))
+    lines.append(CoreL10n.format("- [%@] Token 可以读取仓库元数据", canRead ? "x" : " "))
+    lines.append(CoreL10n.format("- [%@] Token 满足线上直接提交或 PR/MR 所需写入权限", canWrite ? "x" : " "))
+    lines.append(CoreL10n.format("- [%@] 权限检查仓库与当前发布仓库一致", repositoryName.trimmedForPublishing.isEmpty ? " " : "x"))
+    lines.append(CoreL10n.text("- [ ] 使用最小权限 Token，未在截图、日志或证据包中暴露 Token 原文"))
 
     lines.append("")
-    lines.append("## API 校验命令")
+    lines.append(CoreL10n.text("## API 校验命令"))
     let commands = accessVerificationCommands
     if commands.isEmpty {
-      lines.append("当前权限检查缺少仓库名，或 API 端点不符合 HTTPS 安全要求；未生成含 Token 的命令。")
+      lines.append(CoreL10n.text("当前权限检查缺少仓库名，或 API 端点不符合 HTTPS 安全要求；未生成含 Token 的命令。"))
     } else {
       lines.append("```bash")
       lines.append(contentsOf: commands)
@@ -415,24 +415,24 @@ public extension RemoteRepositoryPublishResult {
   var clipboardSummary: String {
     var lines = [
       "\(displayTitle)",
-      "分支：\(branchSummary)",
-      "文件：\(changedPaths.count)"
+      CoreL10n.format("分支：%@", branchSummary),
+      CoreL10n.format("文件：%@", String(changedPaths.count))
     ]
     if let repositoryName {
-      lines.insert("仓库：\(repositoryName)", at: 1)
+      lines.insert(CoreL10n.format("仓库：%@", repositoryName), at: 1)
     }
     if let commitSHA {
-      lines.append("Commit：\(commitSHA)")
+      lines.append(CoreL10n.format("Commit：%@", commitSHA))
     }
     if let reviewURL {
-      lines.append("PR/MR：\(reviewURL)")
+      lines.append(CoreL10n.format("PR/MR：%@", reviewURL))
     }
     if let reviewTitle {
-      lines.append("标题：\(reviewTitle)")
+      lines.append(CoreL10n.format("标题：%@", reviewTitle))
     }
     if !changedPaths.isEmpty {
       lines.append("")
-      lines.append("变更文件：")
+      lines.append(CoreL10n.text("变更文件："))
       lines.append(contentsOf: changedPaths.map { "- \($0)" })
     }
     return lines.joined(separator: "\n")
@@ -440,36 +440,36 @@ public extension RemoteRepositoryPublishResult {
 
   var remoteVerificationMarkdown: String {
     var lines = [
-      "# \(provider.displayName) 线上发布实测包",
+      CoreL10n.format("# %@ 线上发布实测包", provider.displayName),
       "",
-      "- 发布方式：\(mode.displayName)",
-      "- 分支：\(branchSummary)",
-      "- 文件：\(changedPaths.count)"
+      CoreL10n.format("- 发布方式：%@", mode.displayName),
+      CoreL10n.format("- 分支：%@", branchSummary),
+      CoreL10n.format("- 文件：%@", String(changedPaths.count))
     ]
     if let repositoryName = repositoryName?.trimmedForPublishing.nilIfEmpty {
-      lines.append("- 仓库：\(repositoryName)")
+      lines.append(CoreL10n.format("- 仓库：%@", repositoryName))
     }
     if let commitSHA = commitSHA?.trimmedForPublishing.nilIfEmpty {
-      lines.append("- Commit：\(commitSHA)")
+      lines.append(CoreL10n.format("- Commit：%@", commitSHA))
     }
     if let reviewURL = reviewURL?.trimmedForPublishing.nilIfEmpty {
-      lines.append("- PR/MR：\(reviewURL)")
+      lines.append(CoreL10n.format("- PR/MR：%@", reviewURL))
     }
     if let reviewTitle = reviewTitle?.trimmedForPublishing.nilIfEmpty {
-      lines.append("- 标题：\(reviewTitle)")
+      lines.append(CoreL10n.format("- 标题：%@", reviewTitle))
     }
 
     if !changedPaths.isEmpty {
       lines.append("")
-      lines.append("## 文件清单")
+      lines.append(CoreL10n.text("## 文件清单"))
       lines.append(contentsOf: changedPaths.map { "- \($0)" })
     }
 
     let commands = remoteVerificationCommands
     lines.append("")
-    lines.append("## API 实测命令")
+    lines.append(CoreL10n.text("## API 实测命令"))
     if commands.isEmpty {
-      lines.append("当前结果缺少仓库名或 commit，或 API 端点不符合 HTTPS 安全要求；未生成含 Token 的命令。")
+      lines.append(CoreL10n.text("当前结果缺少仓库名或 commit，或 API 端点不符合 HTTPS 安全要求；未生成含 Token 的命令。"))
     } else {
       lines.append("```bash")
       lines.append(contentsOf: commands)
@@ -477,11 +477,11 @@ public extension RemoteRepositoryPublishResult {
     }
 
     lines.append("")
-    lines.append("## 发布后核对")
-    lines.append("- [ ] 远端 commit 或 PR/MR 可打开。")
-    lines.append("- [ ] 变更文件都在目标分支或 Review 分支。")
-    lines.append("- [ ] 部署状态面板已刷新到最新记录。")
-    lines.append("- [ ] 文章页面、Open Graph 和 Twitter 卡片已完成发布后检查。")
+    lines.append(CoreL10n.text("## 发布后核对"))
+    lines.append(CoreL10n.text("- [ ] 远端 commit 或 PR/MR 可打开。"))
+    lines.append(CoreL10n.text("- [ ] 变更文件都在目标分支或 Review 分支。"))
+    lines.append(CoreL10n.text("- [ ] 部署状态面板已刷新到最新记录。"))
+    lines.append(CoreL10n.text("- [ ] 文章页面、Open Graph 和 Twitter 卡片已完成发布后检查。"))
 
     return lines.joined(separator: "\n")
   }
@@ -592,10 +592,11 @@ public extension RemoteRepositoryRollbackDraft {
       ?? record.branchName?.nilIfEmpty
       ?? "main"
     let displayTitle = record.draftTitle ?? record.title
+    let rollbackTitle = CoreL10n.format("回滚：%@", displayTitle)
     return RemoteRepositoryRollbackDraft(
       recordID: record.id,
-      title: "回滚：\(displayTitle)",
-      commitMessage: "Rollback: \(displayTitle)",
+      title: rollbackTitle,
+      commitMessage: rollbackTitle,
       targetBranch: targetBranch,
       commitSHA: commitSHA,
       changedPaths: record.changedPaths
@@ -613,7 +614,7 @@ public extension RemoteRepositoryReviewWithdrawalDraft {
     }
     return RemoteRepositoryReviewWithdrawalDraft(
       recordID: record.id,
-      title: "撤回 Review：\(record.draftTitle ?? record.title)",
+      title: CoreL10n.format("撤回 Review：%@", record.draftTitle ?? record.title),
       reviewURL: reviewURL,
       reviewNumber: reviewNumber,
       branchName: record.branchName?.nilIfEmpty,

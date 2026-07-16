@@ -2,11 +2,28 @@ import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
+struct MarkdownTextEditRequest: Equatable {
+  let id: UUID
+  let expectedText: String
+  let edit: MarkdownSmartEdit
+
+  init(expectedText: String, edit: MarkdownSmartEdit) {
+    id = UUID()
+    self.expectedText = expectedText
+    self.edit = edit
+  }
+}
+
 struct MacMarkdownTextView: NSViewRepresentable {
   @Binding var text: String
   @Binding var selectedRange: NSRange
+  var editRequest: MarkdownTextEditRequest?
+  var scrollSyncUpdate: MarkdownScrollSyncUpdate?
   var onStatisticsChanged: (MarkdownEditorStatistics) -> Void
   var onFileDropTargetChanged: (Bool) -> Void
+  var onPasteMessage: (String) -> Void
+  var onEditRequestHandled: (UUID) -> Void
+  var onScrollProgressChanged: (Double) -> Void
   var onDroppedFiles: ([URL]) -> Void
 
   func makeCoordinator() -> Coordinator {
@@ -14,6 +31,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
       text: $text,
       selectedRange: $selectedRange,
       onStatisticsChanged: onStatisticsChanged,
+      onPasteMessage: onPasteMessage,
+      onScrollProgressChanged: onScrollProgressChanged,
       onDroppedFiles: onDroppedFiles
     )
   }
@@ -29,6 +48,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
     let textStorage = NSTextStorage()
     let layoutManager = NSLayoutManager()
+    layoutManager.allowsNonContiguousLayout = true
     let textContainer = NSTextContainer(
       containerSize: NSSize(
         width: max(scrollView.contentSize.width, 1),
@@ -47,6 +67,12 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.fileDropHandler = { urls, dropRange in
       context.coordinator.selectedRange = dropRange
       context.coordinator.onDroppedFiles(urls)
+    }
+    textView.smartPasteHandler = { textView, pasteboard in
+      context.coordinator.handlePaste(in: textView, pasteboard: pasteboard)
+    }
+    textView.markdownFormattingHandler = { textView, command in
+      context.coordinator.handleFormatting(command, in: textView)
     }
     textView.string = text
     textView.isEditable = true
@@ -80,6 +106,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.textContainer?.widthTracksTextView = true
 
     scrollView.documentView = textView
+    context.coordinator.observeScrolling(in: scrollView)
     context.coordinator.scheduleFullStatistics(for: text)
     context.coordinator.scheduleMarkdownSyntaxHighlighting(for: textView, text: text)
     return scrollView
@@ -91,11 +118,18 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.isSelectable = true
     if let droppableTextView = textView as? DroppableMarkdownTextView {
       droppableTextView.fileDropTargetChangedHandler = onFileDropTargetChanged
+      droppableTextView.smartPasteHandler = { textView, pasteboard in
+        context.coordinator.handlePaste(in: textView, pasteboard: pasteboard)
+      }
+      droppableTextView.markdownFormattingHandler = { textView, command in
+        context.coordinator.handleFormatting(command, in: textView)
+      }
     }
 
     if textView.string != text {
       let currentRange = textView.selectedRange()
       textView.string = text
+      (nsView as? MarkdownEditorScrollView)?.invalidateDocumentHeight()
       textView.setSelectedRange(clamped(currentRange, length: (text as NSString).length))
       context.coordinator.invalidateHighlightedTextCache()
       context.coordinator.scheduleFullStatistics(for: text)
@@ -109,6 +143,12 @@ struct MacMarkdownTextView: NSViewRepresentable {
     }
 
     textView.typingAttributes = MarkdownTextViewSyntaxHighlighter.defaultAttributes
+    if let handledRequestID = context.coordinator.handle(editRequest, in: textView) {
+      DispatchQueue.main.async {
+        onEditRequestHandled(handledRequestID)
+      }
+    }
+    context.coordinator.applySynchronizedScroll(scrollSyncUpdate, in: nsView)
   }
 
   private func clamped(_ range: NSRange, length: Int) -> NSRange {
@@ -126,6 +166,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var selectedRange: NSRange
     let onStatisticsChanged: (MarkdownEditorStatistics) -> Void
+    let onPasteMessage: (String) -> Void
+    let onScrollProgressChanged: (Double) -> Void
     let onDroppedFiles: ([URL]) -> Void
     private weak var textView: NSTextView?
     private var highlightTask: Task<Void, Never>?
@@ -137,18 +179,32 @@ struct MacMarkdownTextView: NSViewRepresentable {
     private var statisticsText: String?
     private var statistics = MarkdownEditorStatistics.empty
     private var pendingTextEdit: MarkdownTextEdit?
+    private var lastAppliedEditRequestID: UUID?
+    private let scrollSyncBridge: MarkdownScrollViewSyncBridge
+    private let smartEditingService = MarkdownSmartEditingService()
+    private let smartPasteService = MarkdownSmartPasteService()
+    private let formattingService = MarkdownFormattingService()
+    private let pastedImageFileStore = PastedImageFileStore()
     private let statisticsDelay: TimeInterval = 0.18
 
     init(
       text: Binding<String>,
       selectedRange: Binding<NSRange>,
       onStatisticsChanged: @escaping (MarkdownEditorStatistics) -> Void,
+      onPasteMessage: @escaping (String) -> Void,
+      onScrollProgressChanged: @escaping (Double) -> Void,
       onDroppedFiles: @escaping ([URL]) -> Void
     ) {
       _text = text
       _selectedRange = selectedRange
       self.onStatisticsChanged = onStatisticsChanged
+      self.onPasteMessage = onPasteMessage
+      self.onScrollProgressChanged = onScrollProgressChanged
       self.onDroppedFiles = onDroppedFiles
+      scrollSyncBridge = MarkdownScrollViewSyncBridge(
+        source: .editor,
+        onProgressChanged: onScrollProgressChanged
+      )
     }
 
     deinit {
@@ -168,8 +224,102 @@ struct MacMarkdownTextView: NSViewRepresentable {
       return true
     }
 
+    func handlePaste(
+      in textView: NSTextView,
+      pasteboard: NSPasteboard
+    ) -> Bool {
+      let imageURLs = MarkdownPasteboardReader.imageFileURLs(from: pasteboard)
+      if !imageURLs.isEmpty {
+        selectedRange = textView.selectedRange()
+        onDroppedFiles(imageURLs)
+        return true
+      }
+
+      if let pngData = MarkdownPasteboardReader.pngData(from: pasteboard) {
+        do {
+          let imageURL = try pastedImageFileStore.storePNG(pngData)
+          selectedRange = textView.selectedRange()
+          onDroppedFiles([imageURL])
+        } catch {
+          onPasteMessage("粘贴图片失败：\(error.localizedDescription)")
+          NSSound.beep()
+        }
+        return true
+      }
+
+      guard let pastedText = pasteboard.string(forType: .string),
+            let edit = smartPasteService.linkEdit(
+              in: textView.string,
+              selectedRange: textView.selectedRange(),
+              pastedText: pastedText
+            ) else {
+        return false
+      }
+
+      apply(edit, in: textView)
+      return true
+    }
+
+    func handleFormatting(
+      _ command: MarkdownFormattingCommand,
+      in textView: NSTextView
+    ) -> Bool {
+      guard let edit = formattingService.edit(
+        in: textView.string,
+        selectedRange: textView.selectedRange(),
+        command: command
+      ) else {
+        return false
+      }
+      apply(edit, in: textView)
+      return true
+    }
+
+    private func apply(_ edit: MarkdownSmartEdit, in textView: NSTextView) {
+      if edit.changesText {
+        textView.insertText(edit.replacement, replacementRange: edit.replacedRange)
+      }
+      textView.setSelectedRange(edit.selectedRange)
+      selectedRange = edit.selectedRange
+    }
+
+    @discardableResult
+    func handle(_ request: MarkdownTextEditRequest?, in textView: NSTextView) -> UUID? {
+      guard let request,
+            request.id != lastAppliedEditRequestID else {
+        return nil
+      }
+
+      lastAppliedEditRequestID = request.id
+      guard textView.string == request.expectedText else {
+        return request.id
+      }
+
+      let textLength = (textView.string as NSString).length
+      guard request.edit.replacedRange.location >= 0,
+            NSMaxRange(request.edit.replacedRange) <= textLength else {
+        return request.id
+      }
+
+      apply(request.edit, in: textView)
+      return request.id
+    }
+
+    func observeScrolling(in scrollView: NSScrollView) {
+      scrollSyncBridge.observe(scrollView)
+    }
+
+    func applySynchronizedScroll(
+      _ update: MarkdownScrollSyncUpdate?,
+      in scrollView: NSScrollView,
+      allowDeferredRetry: Bool = true
+    ) {
+      scrollSyncBridge.apply(update, allowDeferredRetry: allowDeferredRetry)
+    }
+
     func textDidChange(_ notification: Notification) {
       guard let textView = notification.object as? NSTextView else { return }
+      (textView.enclosingScrollView as? MarkdownEditorScrollView)?.invalidateDocumentHeight()
       let updatedText = textView.string
       updateStatistics(afterEditing: updatedText)
       text = updatedText
@@ -180,6 +330,38 @@ struct MacMarkdownTextView: NSViewRepresentable {
     func textViewDidChangeSelection(_ notification: Notification) {
       guard let textView = notification.object as? NSTextView else { return }
       selectedRange = textView.selectedRange()
+    }
+
+    func textView(
+      _ textView: NSTextView,
+      doCommandBy commandSelector: Selector
+    ) -> Bool {
+      let edit: MarkdownSmartEdit?
+      switch commandSelector {
+      case #selector(NSResponder.insertNewline(_:)):
+        edit = smartEditingService.newlineEdit(
+          in: textView.string,
+          selectedRange: textView.selectedRange()
+        )
+      case #selector(NSResponder.insertTab(_:)):
+        edit = smartEditingService.indentationEdit(
+          in: textView.string,
+          selectedRange: textView.selectedRange(),
+          direction: .indent
+        )
+      case #selector(NSResponder.insertBacktab(_:)):
+        edit = smartEditingService.indentationEdit(
+          in: textView.string,
+          selectedRange: textView.selectedRange(),
+          direction: .outdent
+        )
+      default:
+        return false
+      }
+
+      guard let edit else { return false }
+      apply(edit, in: textView)
+      return true
     }
 
     func invalidateHighlightedTextCache() {
@@ -263,6 +445,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         )
       }
       textStorage.endEditing()
+      (textView.enclosingScrollView as? MarkdownEditorScrollView)?.invalidateDocumentHeight()
       textView.setSelectedRange(Self.clamped(selectedRange, length: (text as NSString).length))
       textView.typingAttributes = MarkdownTextViewSyntaxHighlighter.defaultAttributes
       highlightedTextCache = text
@@ -315,26 +498,46 @@ struct MacMarkdownTextView: NSViewRepresentable {
 }
 
 private final class MarkdownEditorScrollView: NSScrollView {
+  private var cachedLayoutWidth: CGFloat = 0
+  private var cachedTextHeight: CGFloat?
+
   override var acceptsFirstResponder: Bool { false }
+
+  func invalidateDocumentHeight() {
+    cachedTextHeight = nil
+    needsLayout = true
+  }
 
   override func layout() {
     super.layout()
     guard let textView = documentView as? NSTextView else { return }
 
     let contentHeight = contentSize.height
+    let contentWidth = max(contentSize.width, 1)
+    let widthChanged = abs(cachedLayoutWidth - contentWidth) > 0.5
+    if widthChanged {
+      textView.textContainer?.containerSize = NSSize(
+        width: contentWidth,
+        height: CGFloat.greatestFiniteMagnitude
+      )
+      cachedTextHeight = nil
+      cachedLayoutWidth = contentWidth
+    }
     let textHeight = textView.layoutManager.map { layoutManager in
       guard let textContainer = textView.textContainer else { return contentHeight }
+      if let cachedTextHeight {
+        return cachedTextHeight
+      }
       layoutManager.ensureLayout(for: textContainer)
-      return layoutManager.usedRect(for: textContainer).height + textView.textContainerInset.height * 2
+      let measuredHeight = layoutManager.usedRect(for: textContainer).height
+        + textView.textContainerInset.height * 2
+      cachedTextHeight = measuredHeight
+      return measuredHeight
     } ?? contentHeight
 
     textView.frame.size = NSSize(
-      width: max(contentSize.width, 1),
+      width: contentWidth,
       height: max(contentHeight, textHeight, 1)
-    )
-    textView.textContainer?.containerSize = NSSize(
-      width: max(contentSize.width, 1),
-      height: CGFloat.greatestFiniteMagnitude
     )
   }
 }
@@ -342,6 +545,8 @@ private final class MarkdownEditorScrollView: NSScrollView {
 private final class DroppableMarkdownTextView: NSTextView {
   var fileDropTargetChangedHandler: ((Bool) -> Void)?
   var fileDropHandler: (([URL], NSRange) -> Void)?
+  var smartPasteHandler: ((NSTextView, NSPasteboard) -> Bool)?
+  var markdownFormattingHandler: ((NSTextView, MarkdownFormattingCommand) -> Bool)?
   private var isFileDropTargeted = false
 
   override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
@@ -367,6 +572,43 @@ private final class DroppableMarkdownTextView: NSTextView {
     if window?.firstResponder !== self {
       window?.makeFirstResponder(self)
     }
+  }
+
+  override func paste(_ sender: Any?) {
+    guard smartPasteHandler?(self, .general) == true else {
+      super.paste(sender)
+      return
+    }
+  }
+
+  @objc(applyMarkdownBold:)
+  private func applyMarkdownBold(_ sender: Any?) {
+    _ = markdownFormattingHandler?(self, .bold)
+  }
+
+  @objc(applyMarkdownItalic:)
+  private func applyMarkdownItalic(_ sender: Any?) {
+    _ = markdownFormattingHandler?(self, .italic)
+  }
+
+  @objc(applyMarkdownLink:)
+  private func applyMarkdownLink(_ sender: Any?) {
+    _ = markdownFormattingHandler?(self, .link)
+  }
+
+  @objc(applyMarkdownHeading1:)
+  private func applyMarkdownHeading1(_ sender: Any?) {
+    _ = markdownFormattingHandler?(self, .heading(level: 1))
+  }
+
+  @objc(applyMarkdownHeading2:)
+  private func applyMarkdownHeading2(_ sender: Any?) {
+    _ = markdownFormattingHandler?(self, .heading(level: 2))
+  }
+
+  @objc(applyMarkdownHeading3:)
+  private func applyMarkdownHeading3(_ sender: Any?) {
+    _ = markdownFormattingHandler?(self, .heading(level: 3))
   }
 
   override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
@@ -419,10 +661,48 @@ private final class DroppableMarkdownTextView: NSTextView {
   }
 
   private func imageFileURLs(from pasteboard: NSPasteboard) -> [URL] {
+    MarkdownPasteboardReader.imageFileURLs(from: pasteboard)
+  }
+}
+
+enum MarkdownFormattingResponderBridge {
+  @MainActor
+  static func perform(_ command: MarkdownFormattingCommand) -> Bool {
+    let selectorName: String
+    switch command {
+    case .bold:
+      selectorName = "applyMarkdownBold:"
+    case .italic:
+      selectorName = "applyMarkdownItalic:"
+    case .link:
+      selectorName = "applyMarkdownLink:"
+    case .heading(let level):
+      guard (1 ... 3).contains(level) else { return false }
+      selectorName = "applyMarkdownHeading\(level):"
+    }
+    return NSApp.sendAction(NSSelectorFromString(selectorName), to: nil, from: nil)
+  }
+}
+
+private enum MarkdownPasteboardReader {
+  static func imageFileURLs(from pasteboard: NSPasteboard) -> [URL] {
     let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: nil)?
       .compactMap { ($0 as? URL)?.standardizedFileURL }
+      .filter(\.isFileURL)
       ?? []
     return ImageFileSupport.supportedImageURLs(in: fileURLs)
+  }
+
+  static func pngData(from pasteboard: NSPasteboard) -> Data? {
+    if let pngData = pasteboard.data(forType: .png), !pngData.isEmpty {
+      return pngData
+    }
+    guard let image = NSImage(pasteboard: pasteboard),
+          let tiffData = image.tiffRepresentation,
+          let bitmap = NSBitmapImageRep(data: tiffData) else {
+      return nil
+    }
+    return bitmap.representation(using: .png, properties: [:])
   }
 }
 
@@ -671,7 +951,7 @@ private enum MarkdownTextViewSyntaxHighlighter {
       headingRegex,
       to: attributed,
       attributes: [
-        .foregroundColor: NSColor.systemPurple,
+        .foregroundColor: WorkbenchThemeNSColor.primary,
         .font: NSFont.boldSystemFont(ofSize: 14)
       ],
       excluding: codeBlockRanges
@@ -702,7 +982,7 @@ private enum MarkdownTextViewSyntaxHighlighter {
       listRegex,
       to: attributed,
       attributes: [
-        .foregroundColor: NSColor.systemGreen
+        .foregroundColor: WorkbenchThemeNSColor.success
       ],
       excluding: codeBlockRanges
     )
@@ -740,7 +1020,7 @@ private enum MarkdownTextViewSyntaxHighlighter {
       to: attributed,
       attributes: [
         .font: codeFont,
-        .foregroundColor: NSColor.systemOrange
+        .foregroundColor: WorkbenchThemeNSColor.warning
       ],
       excluding: codeBlockRanges
     )

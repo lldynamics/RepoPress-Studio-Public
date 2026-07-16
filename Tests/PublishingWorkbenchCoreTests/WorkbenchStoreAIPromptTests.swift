@@ -33,11 +33,6 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     store.selectDraft(nil)
 
     XCTAssertFalse(store.isAIPublishingAssistantPresented)
-
-    store.selectSection(.ai)
-
-    XCTAssertEqual(store.selectedSection, .writing)
-    XCTAssertTrue(store.isAIPublishingAssistantPresented)
   }
 
   func testAIEntryCanCarryQuickPromptIntoInspectorAssistant() throws {
@@ -87,7 +82,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertEqual(reloaded.aiChatMessage, "已删除自定义提示。")
   }
 
-  func testAIChatBranchArchivesOriginalConversationAndTruncatesAtSelectedMessage() throws {
+  func testAIChatBranchTruncatesAtSelectedMessageWithoutArchiving() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
     )
@@ -102,9 +97,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     store.branchAIChatConversation(after: second.id, draft: draft)
 
     XCTAssertEqual(store.aiChatMessages.map(\.id), [first.id, second.id])
-    XCTAssertEqual(store.aiChatArchivedConversations.count, 1)
-    XCTAssertEqual(store.aiChatArchivedConversations.first?.messages.map(\.id), [first.id, second.id, third.id, fourth.id])
-    XCTAssertEqual(store.aiChatMessage, "已从所选消息创建分支，原对话已存入历史。")
+    XCTAssertEqual(store.aiChatMessage, "已从所选消息创建分支。")
   }
 
   func testAIChatModelSelectionUsesMobileModelCandidatesAndDefaultReset() throws {
@@ -144,6 +137,22 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertTrue(prompt.contains("本地预览："))
     XCTAssertTrue(prompt.contains("图片检查："))
     XCTAssertTrue(prompt.contains("PR/MR 描述草稿"))
+  }
+
+  func testBackgroundPublishingPromptMatchesMacWorkflowContext() async throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    let draft = try XCTUnwrap(store.selectedDraft)
+
+    let prompt = await store.publishingAIPromptInBackground(for: draft)
+
+    XCTAssertTrue(prompt.contains("发布准备建议"))
+    XCTAssertTrue(prompt.contains("Mac 发布上下文："))
+    XCTAssertTrue(prompt.contains("本地 diff："))
+    XCTAssertTrue(prompt.contains("图片检查："))
+    XCTAssertTrue(prompt.contains("正文"))
+    XCTAssertTrue(prompt.contains(draft.bodyMarkdown))
   }
 
   func testCopiedPublishingPromptIncludesRemoteSamePathRisk() throws {

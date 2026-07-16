@@ -194,10 +194,13 @@ struct SiteMaintenanceCalendarSection: View {
         if !cell.scheduleItems.isEmpty {
           Text("\(cell.scheduleItems.count)")
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(WorkbenchTheme.primary)
             .padding(.horizontal, 5)
             .padding(.vertical, 1)
-            .background(.blue, in: Capsule())
+            .background(
+              WorkbenchTheme.primary.opacity(WorkbenchOpacity.accentBackground),
+              in: Capsule()
+            )
         }
       }
 
@@ -209,7 +212,7 @@ struct SiteMaintenanceCalendarSection: View {
             .font(.caption2)
             .lineLimit(1)
             .truncationMode(.tail)
-            .foregroundStyle(WorkbenchTheme.document)
+            .foregroundStyle(WorkbenchTheme.documentForeground)
         }
         .buttonStyle(.plain)
       }
@@ -230,7 +233,10 @@ struct SiteMaintenanceCalendarSection: View {
     )
     .overlay {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-        .strokeBorder(cell.isToday ? .blue.opacity(WorkbenchOpacity.controlBackground) : .clear, lineWidth: 1)
+        .strokeBorder(
+          cell.isToday ? WorkbenchTheme.primary.opacity(WorkbenchOpacity.controlBackground) : .clear,
+          lineWidth: 1
+        )
     }
   }
 
@@ -280,9 +286,9 @@ struct SiteMaintenanceCalendarSection: View {
   private func actionPriorityForeground(_ priority: MaintenanceActionPriority) -> AnyShapeStyle {
     switch priority {
     case .high:
-      return AnyShapeStyle(.red)
+      return AnyShapeStyle(WorkbenchTheme.risk)
     case .medium:
-      return AnyShapeStyle(.orange)
+      return AnyShapeStyle(WorkbenchTheme.warning)
     case .low:
       return AnyShapeStyle(.secondary)
     }

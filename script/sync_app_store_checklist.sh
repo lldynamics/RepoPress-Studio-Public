@@ -6,6 +6,7 @@ CHECKLIST="${APP_STORE_CHECKLIST_FILE:-$ROOT_DIR/APP_STORE_CHECKLIST.md}"
 EVIDENCE_FILE="${EXTERNAL_VERIFY_EVIDENCE_FILE:-$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md}"
 ARCHIVE_EVIDENCE_FILE="${APP_STORE_ARCHIVE_EVIDENCE_FILE:-$ROOT_DIR/docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md}"
 CLEAN_RUNTIME_EVIDENCE_FILE="${CLEAN_RUNTIME_EVIDENCE_FILE:-$ROOT_DIR/docs/release-evidence/CLEAN_RUNTIME_VALIDATION.md}"
+GATE_RESULT="${RELEASE_GATE_RESULT_JSON:-$ROOT_DIR/.build/release-gate-result.json}"
 EXECUTE=0
 
 usage() {
@@ -58,16 +59,44 @@ run_gate() {
   "$@" >/dev/null 2>&1 || fail "$name gate failed; not updating checklist"
 }
 
-run_gate "localization" bash "$ROOT_DIR/script/check_localization_gate.sh"
-run_gate "app store metadata" bash "$ROOT_DIR/script/check_app_store_metadata.sh"
+run_gate "unified release result" bash "$ROOT_DIR/script/check_release_gate.sh" \
+  --result-json "$GATE_RESULT" \
+  --check localization \
+  --check app-store-metadata \
+  --check ui-runtime \
+  --check privacy-copy \
+  --check storekit \
+  --check screenshot-map \
+  --check screenshots \
+  --check screenshot-privacy
+
+python3 - "$GATE_RESULT" <<'PY' || fail "unified release result is missing required passing checks"
+import json
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+payload = json.loads(path.read_text(encoding="utf-8"))
+required = {
+    "localization",
+    "app-store-metadata",
+    "ui-runtime",
+    "privacy-copy",
+    "storekit",
+    "screenshot-map",
+    "screenshots",
+    "screenshot-privacy",
+}
+passed = {item["id"] for item in payload.get("checks", []) if item.get("status") == "passed"}
+if not required.issubset(passed):
+    raise SystemExit(1)
+if payload.get("verification", {}).get("packagedArtifact") != "passed":
+    raise SystemExit(1)
+PY
+
 run_gate "app store archive readiness" bash "$ROOT_DIR/script/check_app_store_archive_readiness.sh"
-run_gate "ui runtime" bash "$ROOT_DIR/script/check_ui_runtime.sh"
 run_gate "clean runtime evidence" env CLEAN_RUNTIME_EVIDENCE_FILE="$CLEAN_RUNTIME_EVIDENCE_FILE" bash "$ROOT_DIR/script/check_clean_runtime_evidence.sh"
-run_gate "privacy support copy" bash "$ROOT_DIR/script/check_privacy_support_copy.sh"
-run_gate "storekit static" bash "$ROOT_DIR/script/check_storekit.sh"
-run_gate "screenshot manifest" bash "$ROOT_DIR/script/check_screenshots.sh"
 run_gate "external verification" env STRICT_EXTERNAL_STRUCTURE_ONLY=1 EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" bash "$ROOT_DIR/script/check_external_verification_evidence.sh"
-run_gate "screenshot privacy" bash "$ROOT_DIR/script/check_screenshot_privacy.sh"
 
 completed_external_ids() {
   grep -E '^- \[[xX]\][[:space:]]+`[^`]+`' "$EVIDENCE_FILE" \
@@ -248,8 +277,38 @@ UPDATED_TITLES_FILE="$(mktemp "${TMPDIR:-/tmp}/app-store-checklist-titles.XXXXXX
 trap 'rm -f "$TMP_OUTPUT" "$UPDATED_COUNT_FILE" "$UPDATED_TITLES_FILE"' EXIT
 printf '0' > "$UPDATED_COUNT_FILE"
 
+is_screenshot_evidence_title() {
+  local title_lc="$1"
+  [[ "$title_lc" == *"capture the nine"* ||
+     "$title_lc" == *"nine manifest screens"* ||
+     "$title_lc" == *"screenshots contain no private"* ]]
+}
+
+SKIP_STALE_EVIDENCE_LINE=0
+
 while IFS= read -r line || [[ -n "$line" ]]; do
   trimmed="${line#"${line%%[![:space:]]*}"}"
+  if [[ "$SKIP_STALE_EVIDENCE_LINE" == "1" ]]; then
+    SKIP_STALE_EVIDENCE_LINE=0
+    if [[ "$trimmed" == Evidence:* || "$trimmed" == Evidence：* ]]; then
+      continue
+    fi
+  fi
+
+  if [[ "$trimmed" == "- [x]"* || "$trimmed" == "- [X]"* ]]; then
+    title="${trimmed:6}"
+    title_lc="$(printf "%s" "$title" | tr '[:upper:]' '[:lower:]')"
+    if is_screenshot_evidence_title "$title_lc" && ! has_external_id "app-store-screenshots"; then
+      leading="${line%%-*}"
+      printf "%s- [ ] %s\n" "$leading" "$title" >> "$TMP_OUTPUT"
+      count="$(cat "$UPDATED_COUNT_FILE")"
+      printf "%s" "$((count + 1))" > "$UPDATED_COUNT_FILE"
+      printf "撤销过期证据：%s\n" "$title" >> "$UPDATED_TITLES_FILE"
+      SKIP_STALE_EVIDENCE_LINE=1
+      continue
+    fi
+  fi
+
   if [[ "$trimmed" == "- [ ]"* ]]; then
     title="${trimmed#"- [ ] "}"
     title_lc="$(printf "%s" "$title" | tr '[:upper:]' '[:lower:]')"

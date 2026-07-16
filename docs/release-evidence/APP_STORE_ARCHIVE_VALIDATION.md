@@ -7,6 +7,9 @@ proof, then summarize only the non-sensitive result here.
 Prefer `script/record_app_store_archive_validation_evidence.sh` over manual
 edits. It rejects local paths, token-like strings, Apple IDs, team identifiers,
 emails, and receipt-like identifiers.
+Create the signed app and installer from a clean committed checkout with
+`script/package_app_store.sh`. Run `script/package_app_store.sh --dry-run` to
+see the three required signing variables without exposing their values.
 Use `script/prepare_external_verification_envs.sh` to copy
 `docs/release-evidence/app-store-archive-validation.env.example` outside the
 repository before filling real archive validation notes.

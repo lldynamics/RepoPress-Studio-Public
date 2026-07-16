@@ -21,22 +21,16 @@ struct EditorCenterColumn: View {
   var body: some View {
     Group {
       switch publishingState.selectedSection.centerSurface {
-      case .aiChat:
-        AIChatWorkspaceView(store: store)
       case .repository:
         RepositoryWorkspaceView(store: store, stage: $repositoryContextStage)
       case .images:
         ImageWorkbenchView(store: store)
       case .contentHealth:
         ContentHealthDetailView(store: store, filter: contentHealthFilter)
-      case .releaseHistory:
-        ReleaseHistoryDetailView(store: store)
       case .siteStarter:
         SiteStarterWorkspaceView(store: store)
       case .generalDrafts:
         GeneralDraftLibraryDetailView(store: store)
-      case .maintenance:
-        SiteMaintenanceDetailView(store: store)
       case .editor:
         if let fallbackDraft = publishingState.selectedDraft {
           let draft = Binding<ArticleDraft>(

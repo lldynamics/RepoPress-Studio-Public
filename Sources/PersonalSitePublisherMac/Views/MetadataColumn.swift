@@ -13,14 +13,35 @@ struct MetadataColumn: View {
   }
 
   var body: some View {
-    if (ai.isAssistantPresented && store.selectedSection == .writing)
-      || store.selectedSection == .ai {
-      AIChatContextInspectorView(store: store)
-    } else if store.selectedSection == .siteStarter {
-      SiteStarterInspectorView(state: SiteStarterInspectorState(store: store))
-    } else if store.selectedSection == .generalDrafts {
-      GeneralDraftLibraryInspectorView(store: store)
-    } else if let fallbackDraft = store.selectedDraft {
+    Group {
+      switch WorkspaceInspectorPresentation.route(
+        for: store.selectedSection,
+        isAIAssistantPresented: ai.isAssistantPresented
+      ) {
+      case .aiAssistant:
+        AIChatContextInspectorView(store: store)
+      case .siteStarter:
+        SiteStarterInspectorView(state: SiteStarterInspectorState(store: store))
+      case .repository:
+        RepositoryContextInspectorView(store: store)
+      case .articleMetadata, .articleChecks, .articleImages:
+        articleInspector
+      case .unavailable:
+        EmptyStateView(
+          title: "当前页面没有 Inspector",
+          message: "此页面的操作已集中在主内容区。",
+          systemImage: "sidebar.right"
+        )
+        .background(.bar)
+      }
+    }
+    .accessibilityIdentifier("workspace-inspector")
+    .accessibilityLabel("工作区 Inspector")
+  }
+
+  @ViewBuilder
+  private var articleInspector: some View {
+    if let fallbackDraft = store.selectedDraft {
       let draft = Binding<ArticleDraft>(
         get: { store.selectedDraft ?? fallbackDraft },
         set: { store.updateDraftFromEditor($0) }
@@ -35,7 +56,13 @@ struct MetadataColumn: View {
       EmptyStateView(
         title: "没有元数据",
         message: "选择或新建文章后，这里会显示 Front Matter、SEO、图片、检查和发布任务。",
-        systemImage: "sidebar.right"
+        systemImage: "sidebar.right",
+        actionTitle: "新建文章",
+        actionSystemImage: "square.and.pencil",
+        action: {
+          store.createDraft()
+          store.selectSection(.writing)
+        }
       )
       .background(.bar)
     }

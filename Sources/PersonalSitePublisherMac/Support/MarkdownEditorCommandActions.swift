@@ -1,3 +1,4 @@
+import PublishingWorkbenchCore
 import SwiftUI
 
 struct MarkdownEditorCommandActions {
@@ -6,9 +7,11 @@ struct MarkdownEditorCommandActions {
   var canUseFindReplace: Bool
   var showFindReplace: () -> Void
   var showKeyboardShortcuts: () -> Void
+  var findPrevious: () -> Void
   var findNext: () -> Void
   var replaceCurrentOrNext: () -> Void
   var replaceAll: () -> Void
+  var applyFormatting: (MarkdownFormattingCommand) -> Void
   var insertImages: () -> Void
   var runPreflight: () -> Void
   var rewriteSelection: () -> Void

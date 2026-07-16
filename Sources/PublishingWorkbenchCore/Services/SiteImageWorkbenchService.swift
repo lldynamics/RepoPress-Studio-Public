@@ -711,6 +711,7 @@ public struct SiteImageWorkbenchService: Sendable {
       updatedDraft.attachments[index].originalFilename = newFilename
       updatedDraft.attachments[index].relativePublishPath = newPublishPath
       updatedDraft.attachments[index].repositoryPath = newRepositoryPath
+      updatedDraft.attachments[index].repositorySHA = nil
       updatedDraft.attachments[index].sourceFilePath = webPURL.path
       updatedDraft.attachments[index].byteSize = webPSize
       updatedDraft.bodyMarkdown = replaceMarkdownImagePath(

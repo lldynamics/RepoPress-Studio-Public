@@ -4,14 +4,9 @@ import SwiftUI
 struct PrivacySettingsView: View {
   let privacySettings: PrivacyProtectionSettings
   let status: PrivacyProtectionStatus
-  let audit: PrivacyProtectionAudit
-  let events: [PrivacyProtectionEvent]
   let onLock: () -> Void
   let onUnlock: () -> Void
   let updatePrivacySettings: (PrivacyProtectionSettings) -> Void
-  let onCopyChecklist: () -> Void
-  let onCopyAuditReport: () -> Void
-  let onCopyEvidence: () -> Void
 
   var body: some View {
     Form {
@@ -28,22 +23,6 @@ struct PrivacySettingsView: View {
       PrivacySettingsVisibilitySection(
         masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent)
       )
-
-#if DEBUG
-      PrivacyAdvancedDiagnosticsSection(
-        audit: audit,
-        events: events,
-        onCopyChecklist: {
-          onCopyChecklist()
-        },
-        onCopyAuditReport: {
-          onCopyAuditReport()
-        },
-        onCopyEvidence: {
-          onCopyEvidence()
-        }
-      )
-#endif
     }
     .formStyle(.grouped)
     .padding()

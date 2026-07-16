@@ -7,7 +7,6 @@ public final class PrivacyMonetizationStore: ObservableObject {
 
   @Published public internal(set) var privacySettings: PrivacyProtectionSettings
   @Published public internal(set) var isPrivacyLocked: Bool
-  @Published public internal(set) var privacyProtectionEvents: [PrivacyProtectionEvent]
   @Published public internal(set) var privacyLockReason: String?
   @Published public internal(set) var monetizationState: MonetizationState
   @Published public internal(set) var monetizationMessage: String?
@@ -16,7 +15,6 @@ public final class PrivacyMonetizationStore: ObservableObject {
   init(
     privacySettings: PrivacyProtectionSettings = .default,
     isPrivacyLocked: Bool = false,
-    privacyProtectionEvents: [PrivacyProtectionEvent] = [],
     privacyLockReason: String? = nil,
     monetizationState: MonetizationState = .default,
     monetizationMessage: String? = nil,
@@ -27,9 +25,9 @@ public final class PrivacyMonetizationStore: ObservableObject {
     self.monetizationService = monetizationService
     self.privacySettings = privacySettings
     self.isPrivacyLocked = isPrivacyLocked
-    self.privacyProtectionEvents = privacyProtectionEvents
     self.privacyLockReason = privacyLockReason
     var restoredMonetizationState = monetizationState
+    restoredMonetizationState.recentAccessEvents = []
     restoredMonetizationState.entitlement = entitlementProvider.entitlement(
       restoring: monetizationState.entitlement
     )
@@ -66,7 +64,7 @@ public final class PrivacyMonetizationStore: ObservableObject {
     PrivacyProtectionEvidencePackage(
       status: privacyProtectionStatus,
       audit: privacyProtectionAudit(store: store),
-      recentEvents: privacyProtectionEvents
+      recentEvents: []
     )
   }
 
@@ -110,7 +108,6 @@ public final class PrivacyMonetizationStore: ObservableObject {
 
   public func updatePrivacySettings(_ settings: PrivacyProtectionSettings, store: WorkbenchStore) {
     privacySettings = settings
-    recordPrivacyEvent(.settingsUpdated, message: "已更新隐私界面遮罩和私密内容设置。")
     store.save()
   }
 
@@ -152,20 +149,11 @@ public final class PrivacyMonetizationStore: ObservableObject {
 
   @discardableResult
   public func consumeFeatureUse(_ feature: PremiumFeature, store: WorkbenchStore) -> FeatureAccessDecision {
-    let beforeUsage = monetizationState.freeUsage
     let decision = accessDecision(for: feature)
-    let outcome: MonetizationAccessEventOutcome
-    let remainingAfter: Int?
     if monetizationState.entitlement.isUnlocked {
-      outcome = .allowedProEntitlement
-      remainingAfter = nil
     } else if decision.isAllowed {
-      outcome = .allowedFreeUse
-      remainingAfter = max(0, (decision.remainingFreeUses ?? 0) - 1)
       monetizationState = monetizationService.consuming(feature, state: monetizationState)
     } else {
-      outcome = .blockedRequiresPro
-      remainingAfter = 0
       latestProFeatureBlockNotice = ProFeatureBlockNotice(
         feature: feature,
         title: decision.title,
@@ -173,18 +161,6 @@ public final class PrivacyMonetizationStore: ObservableObject {
         nextStep: "请在 Pro 设置中购买或恢复。"
       )
     }
-    var state = monetizationState
-    state.recordAccessEvent(
-      MonetizationAccessEvent(
-        feature: feature,
-        outcome: outcome,
-        usedFreeUsesBeforeAction: monetizationService.usedFreeUses(for: feature, usage: beforeUsage),
-        freeLimit: monetizationService.freeLimit(for: feature),
-        remainingFreeUsesAfterAction: remainingAfter,
-        message: decision.message
-      )
-    )
-    monetizationState = state
     store.save()
     return decision
   }
@@ -245,16 +221,4 @@ public final class PrivacyMonetizationStore: ObservableObject {
     privacyLockReason = nil
   }
 
-  public func recordManualPrivacyMaskShown(reason: String?) {
-    recordPrivacyEvent(.manualLock, message: reason?.nilIfEmpty ?? "已手动显示隐私界面遮罩。")
-  }
-
-  public func recordPrivacyMaskRemoved() {
-    recordPrivacyEvent(.unlocked, message: "已移除隐私界面遮罩。")
-  }
-
-  private func recordPrivacyEvent(_ kind: PrivacyProtectionEventKind, message: String) {
-    privacyProtectionEvents.insert(PrivacyProtectionEvent(kind: kind, message: message), at: 0)
-    privacyProtectionEvents = Array(privacyProtectionEvents.prefix(50))
-  }
 }

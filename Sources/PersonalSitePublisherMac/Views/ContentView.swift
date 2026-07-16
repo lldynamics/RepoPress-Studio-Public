@@ -9,16 +9,17 @@ struct ContentView: View {
   let store: WorkbenchStore
   @ObservedObject private var shellState: WorkbenchShellFeatureFacade
   @ObservedObject private var aiState: WorkbenchAIFeatureFacade
+  @ObservedObject private var publishingState: WorkbenchPublishingFeatureFacade
   @Environment(\.scenePhase) private var scenePhase
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
   @AppStorage("didCompleteFirstRunSetup") private var didCompleteFirstRunSetup = false
+  @SceneStorage("workspace.focusMode") private var isFocusMode = false
   @State private var didApplyInitialWorkbenchPreferences = false
   @State private var didApplyScreenshotDemoSurface = false
   @State private var isPublishDrawerPresented = false
   @State private var isFirstRunSetupPresented = false
   @State private var isCompactLayout = false
-  @State private var isCompactInspectorPresented = false
   @State private var contentHealthFilter: ContentHealthContextFilter = .overview
   @State private var repositoryContextStage: RepositoryContextStage = .overview
   private let repositoryAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -27,6 +28,7 @@ struct ContentView: View {
     self.store = store
     _shellState = ObservedObject(wrappedValue: store.shell)
     _aiState = ObservedObject(wrappedValue: store.ai)
+    _publishingState = ObservedObject(wrappedValue: store.publishing)
   }
 
   var body: some View {
@@ -37,14 +39,16 @@ struct ContentView: View {
         WorkspaceShellSplitLayout(
           store: store,
           isCompact: compactLayout,
-          isInspectorPresented: shellState.isInspectorPresented,
-          isAIInspectorSelected: aiState.isAssistantPresented,
+          isFocusMode: isFocusMode,
           contentHealthFilter: $contentHealthFilter,
           repositoryContextStage: $repositoryContextStage,
-          onSelectSection: { store.selectSection($0) },
-          onOpenAIInspector: openAIInspector
+          onSelectSection: { store.selectSection($0) }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .inspector(isPresented: inspectorPresentation) {
+          MetadataColumn(store: store, prioritizesChecks: compactLayout)
+            .inspectorColumnWidth(min: 320, ideal: 360, max: 460)
+        }
         .disabled(shellState.isPrivacyLocked)
         .accessibilityHidden(shellState.isPrivacyLocked)
 
@@ -55,9 +59,17 @@ struct ContentView: View {
       }
       .onAppear {
         updateCompactLayout(for: geometry.size.width)
+        adaptWorkspacePresentation(
+          for: publishingState.editorDisplayMode,
+          width: geometry.size.width
+        )
       }
       .onChange(of: geometry.size.width) { _, width in
         updateCompactLayout(for: width)
+        adaptWorkspacePresentation(for: publishingState.editorDisplayMode, width: width)
+      }
+      .onReceive(publishingState.editorDisplayModePublisher) { mode in
+        adaptWorkspacePresentation(for: mode, width: geometry.size.width)
       }
     }
     .navigationTitle(shellState.activeProfileName)
@@ -79,48 +91,56 @@ struct ContentView: View {
       }
 
       ToolbarItem(placement: .principal) {
-        HStack(spacing: 10) {
-          WorkspaceToolbarTitle(store: store)
-
-          if showsDraftEditingToolbar {
-            Divider()
-              .frame(height: 18)
-
-            Button {
-              store.createDraft()
-            } label: {
-              Label("新建", systemImage: "square.and.pencil")
-            }
-            .disabled(!shellState.canUseProtectedWorkbench)
-
-            Button {
-              store.save()
-            } label: {
-              Label("保存", systemImage: "tray.and.arrow.down")
-            }
-            .disabled(!shellState.canUseProtectedWorkbench)
-
-            PublishingStatusToolbarControl(
-              store: store,
-              canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
-              selectedDraftID: shellState.selectedDraftID,
-              openPublishFlow: { openPublishDrawer(message: nil) },
-              openReleaseHistory: {
-                repositoryContextStage = .history
-                store.selectSection(.sync)
-              }
-            )
-          }
-        }
+        WorkspaceToolbarTitle(store: store)
         .accessibilityHidden(shellState.isPrivacyLocked)
       }
 
       ToolbarItemGroup(placement: .primaryAction) {
-        if supportsInspector {
+        if showsDraftEditingToolbar {
+          PublishingStatusToolbarControl(
+            store: store,
+            canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
+            selectedDraftID: shellState.selectedDraftID,
+            openPublishFlow: { openPublishDrawer(message: nil) },
+            openRepositoryOverview: {
+              repositoryContextStage = .overview
+              store.selectSection(.sync)
+            },
+            openContentHealthOverview: {
+              contentHealthFilter = .overview
+              store.selectSection(.contentHealth)
+            },
+            openReleaseHistory: {
+              repositoryContextStage = .history
+              store.selectSection(.sync)
+            }
+          )
+
+          Button(action: toggleFocusMode) {
+            Label(
+              isFocusMode ? "退出专注" : "专注写作",
+              systemImage: isFocusMode
+                ? "arrow.down.right.and.arrow.up.left"
+                : "arrow.up.left.and.arrow.down.right"
+            )
+          }
+          .keyboardShortcut("f", modifiers: [.command, .shift])
+          .disabled(!shellState.canUseProtectedWorkbench)
+          .help(isFocusMode ? "退出专注写作（⇧⌘F）" : "专注写作（⇧⌘F）")
+          .accessibilityLabel(isFocusMode ? "退出专注写作" : "进入专注写作")
+          .accessibilityValue(isFocusMode ? "已开启" : "已关闭")
+          .accessibilityIdentifier("workspace-focus-mode-toggle")
+        }
+
+        if supportsInspector && !isFocusMode {
           Button(action: toggleArticleInspector) {
             Label("Inspector", systemImage: "sidebar.right")
           }
           .disabled(!shellState.canUseProtectedWorkbench)
+          .help(inspectorToggleHelp)
+          .accessibilityLabel("工作区 Inspector")
+          .accessibilityValue(inspectorAccessibilityValue)
+          .accessibilityIdentifier("workspace-inspector-toggle")
         }
       }
 
@@ -204,20 +224,6 @@ struct ContentView: View {
     } message: {
       Text(persistenceRecoveryMessage)
     }
-    .sheet(
-      isPresented: $isCompactInspectorPresented,
-      onDismiss: dismissCompactInspector
-    ) {
-      MetadataColumn(store: store, prioritizesChecks: true)
-        .frame(minWidth: 520, idealWidth: 560, maxWidth: 620, minHeight: 520, idealHeight: 620)
-        .toolbar {
-          ToolbarItem(placement: .cancellationAction) {
-            Button("完成") {
-              isCompactInspectorPresented = false
-            }
-          }
-        }
-    }
     .sheet(isPresented: $isPublishDrawerPresented) {
       PublishDrawerView(store: store, isPresented: $isPublishDrawerPresented)
         .frame(minWidth: 680, idealWidth: 780, minHeight: 600, idealHeight: 720)
@@ -299,20 +305,40 @@ struct ContentView: View {
   }
 
   private var supportsInspector: Bool {
-    switch shellState.selectedSection {
-    case .writing, .images, .ai:
-      return true
-    case .sync:
-      return repositoryContextStage != .history
-    case .contentHealth:
-      return contentHealthFilter != .maintenance
-    case .siteStarter, .generalDrafts, .maintenance, .releaseHistory:
-      return false
+    WorkspaceInspectorPresentation.supportsInspector(
+      for: shellState.selectedSection,
+      isAIAssistantPresented: aiState.isAssistantPresented,
+      isRepositoryHistoryPresented: repositoryContextStage == .history,
+      isMaintenancePresented: contentHealthFilter == .maintenance
+    )
+  }
+
+  private var inspectorToggleHelp: String {
+    if aiState.isAssistantPresented {
+      return "切换到文章 Inspector"
     }
+    return shellState.isInspectorPresented ? "隐藏 Inspector" : "显示 Inspector"
+  }
+
+  private var inspectorAccessibilityValue: String {
+    if aiState.isAssistantPresented {
+      return "AI 助手已显示"
+    }
+    return shellState.isInspectorPresented ? "已显示" : "已隐藏"
+  }
+
+  private var inspectorPresentation: Binding<Bool> {
+    Binding(
+      get: { shellState.isInspectorPresented && supportsInspector && !isFocusMode },
+      set: { store.setInspectorPresented($0) }
+    )
   }
 
   private func normalizeWorkspacePresentation(for section: WorkspaceSection) {
-    if section != .writing && section != .ai && aiState.isAssistantPresented {
+    if section != .writing {
+      isFocusMode = false
+    }
+    if section != .writing && aiState.isAssistantPresented {
       aiState.hideAssistant()
     }
 
@@ -326,9 +352,7 @@ struct ContentView: View {
       hideInspectorIfNeeded()
       store.selectSection(.sync)
     case .siteStarter, .generalDrafts:
-      hideInspectorIfNeeded()
-    case .ai:
-      openAIInspector()
+      break
     case .writing, .sync, .images, .contentHealth:
       break
     }
@@ -337,27 +361,30 @@ struct ContentView: View {
   private func openAIInspector() {
     guard let draft = store.ensureEditableDraftSelected() else { return }
     guard store.openAIChatWorkspace(for: draft.id) else { return }
-    if isCompactLayout {
-      isCompactInspectorPresented = true
-    }
+    store.setInspectorPresented(true)
   }
 
   private func toggleArticleInspector() {
-    if aiState.isAssistantPresented {
-      aiState.hideAssistant()
-      if isCompactLayout {
-        isCompactInspectorPresented = true
-      } else if !shellState.isInspectorPresented {
+    if isFocusMode {
+      isFocusMode = false
+      if aiState.isAssistantPresented {
+        aiState.hideAssistant()
+      }
+      if !shellState.isInspectorPresented {
         store.setInspectorPresented(true)
       }
       return
     }
 
-    if isCompactLayout {
-      isCompactInspectorPresented = true
-    } else {
-      store.setInspectorPresented(!shellState.isInspectorPresented)
+    if aiState.isAssistantPresented {
+      aiState.hideAssistant()
+      if !shellState.isInspectorPresented {
+        store.setInspectorPresented(true)
+      }
+      return
     }
+
+    store.setInspectorPresented(!shellState.isInspectorPresented)
   }
 
   private func hideInspectorIfNeeded() {
@@ -367,7 +394,6 @@ struct ContentView: View {
     if shellState.isInspectorPresented {
       store.setInspectorPresented(false)
     }
-    isCompactInspectorPresented = false
   }
 
   private func openPublishDrawer(message: String?) {
@@ -381,15 +407,25 @@ struct ContentView: View {
     let isNowCompact = WorkbenchLayoutMode.isCompact(width: width)
     guard isNowCompact != isCompactLayout else { return }
     isCompactLayout = isNowCompact
-    isCompactInspectorPresented = false
-    if isNowCompact && aiState.isAssistantPresented {
-      aiState.hideAssistant()
-    }
   }
 
-  private func dismissCompactInspector() {
+  private func toggleFocusMode() {
+    guard shellState.selectedSection == .writing else { return }
+    isFocusMode.toggle()
+  }
+
+  private func adaptWorkspacePresentation(for mode: EditorDisplayMode, width: CGFloat) {
+    guard !isFocusMode else { return }
+    guard WorkbenchLayoutMode.shouldAutoHideAuxiliaryPanels(
+      editorDisplayMode: mode,
+      width: width
+    ) else { return }
+
     if aiState.isAssistantPresented {
       aiState.hideAssistant()
+    }
+    if shellState.isInspectorPresented {
+      store.setInspectorPresented(false)
     }
   }
 }

@@ -84,7 +84,6 @@ extension BatchPublishReadiness: WorkbenchDisplayNameLocalizable {}
 extension ContentMigrationSourceKind: WorkbenchDisplayNameLocalizable {}
 extension DeploymentPollingStatus: WorkbenchDisplayNameLocalizable {}
 extension GeneralDraftReuseRiskLevel: WorkbenchDisplayNameLocalizable {}
-extension GeneralDraftReuseStatus: WorkbenchDisplayNameLocalizable {}
 extension ImageCoverPublishState: WorkbenchDisplayNameLocalizable {}
 extension LocalGitPublishMode: WorkbenchDisplayNameLocalizable {}
 extension PremiumFeature: WorkbenchDisplayNameLocalizable {}
@@ -95,7 +94,6 @@ extension RemoteRepositoryPublishReadiness: WorkbenchDisplayNameLocalizable {}
 extension RepositoryAutoSyncStatus: WorkbenchDisplayNameLocalizable {}
 extension SEOSocialPreviewCacheState: WorkbenchDisplayNameLocalizable {}
 extension SEOSocialPreviewCardKind: WorkbenchDisplayNameLocalizable {}
-extension AIChatTranscriptExportFormat: WorkbenchDisplayNameLocalizable {}
 extension DraftListFilter: WorkbenchDisplayNameLocalizable {}
 extension MonetizationAccessEventOutcome: WorkbenchDisplayNameLocalizable {}
 extension RepositoryChangedFileRole: WorkbenchDisplayNameLocalizable {}

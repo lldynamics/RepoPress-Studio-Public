@@ -72,17 +72,23 @@ struct PublishingConsoleCommands: Commands {
       .keyboardShortcut("f")
       .disabled(!canUseProtectedWorkbench || (markdownEditorCommands == nil && writingDraftCommands == nil))
 
+      Button("搜索草稿") {
+        writingDraftCommands?.focusSearch()
+      }
+      .keyboardShortcut("f", modifiers: [.command, .option])
+      .disabled(!canUseProtectedWorkbench || writingDraftCommands == nil)
+
       if let writingDraftCommands {
         Button("上一个草稿") {
           writingDraftCommands.selectPreviousDraft()
         }
-        .keyboardShortcut(.upArrow)
+        .keyboardShortcut(.upArrow, modifiers: [.command, .option])
         .disabled(!canUseProtectedWorkbench)
 
         Button("下一个草稿") {
           writingDraftCommands.selectNextDraft()
         }
-        .keyboardShortcut(.downArrow)
+        .keyboardShortcut(.downArrow, modifiers: [.command, .option])
         .disabled(!canUseProtectedWorkbench)
       }
 
@@ -92,10 +98,15 @@ struct PublishingConsoleCommands: Commands {
       .keyboardShortcut("g")
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canUseFindReplace != true)
 
+      Button("查找上一个") {
+        markdownEditorCommands?.findPrevious()
+      }
+      .keyboardShortcut("g", modifiers: [.command, .shift])
+      .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canUseFindReplace != true)
+
       Button("替换当前匹配") {
         markdownEditorCommands?.replaceCurrentOrNext()
       }
-      .keyboardShortcut("e", modifiers: [.command])
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canUseFindReplace != true)
 
       Button("全部替换") {
@@ -110,6 +121,42 @@ struct PublishingConsoleCommands: Commands {
         markdownEditorCommands?.showKeyboardShortcuts()
       }
       .keyboardShortcut("/", modifiers: [.command, .option])
+      .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
+
+      Button("Markdown 加粗") {
+        markdownEditorCommands?.applyFormatting(.bold)
+      }
+      .keyboardShortcut("b", modifiers: [.command])
+      .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
+
+      Button("Markdown 斜体") {
+        markdownEditorCommands?.applyFormatting(.italic)
+      }
+      .keyboardShortcut("i", modifiers: [.command])
+      .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
+
+      Button("插入 Markdown 链接") {
+        markdownEditorCommands?.applyFormatting(.link)
+      }
+      .keyboardShortcut("k", modifiers: [.command])
+      .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
+
+      Menu("Markdown 标题") {
+        Button("一级标题") {
+          markdownEditorCommands?.applyFormatting(.heading(level: 1))
+        }
+        .keyboardShortcut("1", modifiers: [.command, .option])
+
+        Button("二级标题") {
+          markdownEditorCommands?.applyFormatting(.heading(level: 2))
+        }
+        .keyboardShortcut("2", modifiers: [.command, .option])
+
+        Button("三级标题") {
+          markdownEditorCommands?.applyFormatting(.heading(level: 3))
+        }
+        .keyboardShortcut("3", modifiers: [.command, .option])
+      }
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
 
       Button("插入图片到当前文章") {
@@ -193,10 +240,12 @@ struct PublishingConsoleCommands: Commands {
 
         Button("刷新待发布队列") {
           focusCommandDraft(section: .sync)
-          store.refreshBatchPublishPlan()
+          Task {
+            await store.refreshBatchPublishPlanAsync()
+          }
           store.selectSection(.sync)
         }
-        .disabled(!canUseProtectedWorkbench)
+        .disabled(!canUseProtectedWorkbench || store.isBatchPublishPlanRefreshing)
 
         Button("批量写入可发布文章") {
           focusCommandDraft(section: .sync)
@@ -254,12 +303,7 @@ struct PublishingConsoleCommands: Commands {
   }
 
   private var supportsInspector: Bool {
-    switch store.selectedSection {
-    case .writing, .sync, .images, .contentHealth, .ai:
-      return true
-    case .siteStarter, .generalDrafts, .maintenance, .releaseHistory:
-      return false
-    }
+    WorkspaceInspectorPresentation.supportsInspector(for: store.selectedSection)
   }
 
   private func focusCommandDraft(section: WorkspaceSection? = nil) {

@@ -127,11 +127,11 @@ struct WritingDraftRow: View {
           .frame(width: 16)
 
         VStack(alignment: .leading, spacing: 1) {
-          Text(display.title)
+          Text(display.title.nilIfEmpty ?? "未命名文章")
             .font(density.titleFont)
             .lineLimit(1)
 
-          Text("上次修改：\(draft.updatedAt.workbenchShortText) · \(draft.wordCount) 字 · \(draft.status.localizedDisplayName)")
+          Text("\(draft.updatedAt.workbenchShortText) · \(draft.wordCount) 字 · \(draft.status.localizedDisplayName)")
             .font(density.metadataFont)
             .foregroundStyle(.tertiary)
             .lineLimit(1)

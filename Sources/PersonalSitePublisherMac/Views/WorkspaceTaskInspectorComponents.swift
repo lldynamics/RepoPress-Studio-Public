@@ -15,9 +15,9 @@ struct InspectorScaffold<Content: View>: View {
           .frame(width: 18)
 
         VStack(alignment: .leading, spacing: 2) {
-          Text(title)
+          Text(LocalizedStringKey(title))
             .font(.headline)
-          Text(subtitle)
+          Text(LocalizedStringKey(subtitle))
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(2)
@@ -52,7 +52,7 @@ struct InspectorSection<Content: View>: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 9) {
-      Text(title)
+      Text(LocalizedStringKey(title))
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
       content
@@ -71,7 +71,7 @@ struct InspectorStatRow: View {
       Image(systemName: systemImage)
         .foregroundStyle(.secondary)
         .frame(width: 16)
-      Text(title)
+      Text(LocalizedStringKey(title))
         .foregroundStyle(.secondary)
       Spacer()
       Text(value)
@@ -115,15 +115,15 @@ extension PublishFileDiffStatus {
   var color: Color {
     switch self {
     case .added:
-      return .green
+      return WorkbenchTheme.success
     case .modified:
-      return .orange
+      return WorkbenchTheme.warning
     case .deleted:
-      return .red
+      return WorkbenchTheme.risk
     case .unchanged:
       return .secondary
     case .missingSource, .unsafePath:
-      return .red
+      return WorkbenchTheme.risk
     }
   }
 }

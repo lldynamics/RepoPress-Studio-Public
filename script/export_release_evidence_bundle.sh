@@ -119,6 +119,7 @@ fi
 mkdir -p "$(dirname "$OUTPUT")"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/release-evidence.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
+GATE_RESULT="$TMP_DIR/release-gate-result.json"
 
 run_check() {
   local name="$1"
@@ -131,20 +132,26 @@ run_check() {
   echo "$status" >"$TMP_DIR/${name}.status"
 }
 
-run_check localization bash script/check_localization_gate.sh
-run_check app_store_metadata bash script/check_app_store_metadata.sh
-run_check app_store_archive_readiness bash script/check_app_store_archive_readiness.sh
-run_check ui_runtime bash script/check_ui_runtime.sh
-run_check clean_runtime_evidence bash script/check_clean_runtime_evidence.sh
-run_check privacy_support_copy bash script/check_privacy_support_copy.sh
-run_check storekit bash script/check_storekit.sh
-run_check screenshot_surface_map bash script/check_screenshot_surface_map.sh
-run_check screenshots bash script/check_screenshots.sh
-run_check external_verification bash script/check_external_verification_evidence.sh
-run_check screenshot_privacy bash script/check_screenshot_privacy.sh
+gate_args=(
+  bash script/check_release_gate.sh
+  --result-json "$GATE_RESULT"
+  --check localization
+  --check app-store-metadata
+  --check archive-readiness
+  --check ui-runtime
+  --check clean-runtime
+  --check privacy-copy
+  --check storekit
+  --check screenshot-map
+  --check screenshots
+  --check external-evidence
+  --check screenshot-privacy
+)
 if [[ "$INCLUDE_TESTS" == "1" ]]; then
-  run_check swift_tests swift test --disable-sandbox
+  gate_args+=(--check swift-tests)
 fi
+run_check release_gate "${gate_args[@]}"
+[[ -f "$GATE_RESULT" ]] || fail "release gate did not write unified result JSON"
 
 unchecked_checklist_count="$(grep -c '^- \[ \]' "$ROOT_DIR/APP_STORE_CHECKLIST.md" || true)"
 unchecked_archive_validation_count="$(grep -c '^- \[ \]' "$ROOT_DIR/docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md" || true)"
@@ -196,20 +203,15 @@ check_section() {
   echo
   echo "## Local Gate Outputs"
   echo
-  check_section localization "Localization Gate" "bash script/check_localization_gate.sh"
-  check_section app_store_metadata "App Store Metadata Gate" "bash script/check_app_store_metadata.sh"
-  check_section app_store_archive_readiness "App Store Archive Readiness Gate" "bash script/check_app_store_archive_readiness.sh"
-  check_section ui_runtime "UI Runtime Gate" "bash script/check_ui_runtime.sh"
-  check_section clean_runtime_evidence "Clean Runtime Evidence Gate" "bash script/check_clean_runtime_evidence.sh"
-  check_section privacy_support_copy "Privacy Support Copy Gate" "bash script/check_privacy_support_copy.sh"
-  check_section storekit "StoreKit Static Gate" "bash script/check_storekit.sh"
-  check_section screenshot_surface_map "Screenshot Surface Map Gate" "bash script/check_screenshot_surface_map.sh"
-  check_section screenshots "Screenshot Manifest Gate" "bash script/check_screenshots.sh"
-  check_section external_verification "External Verification Template Gate" "bash script/check_external_verification_evidence.sh"
-  check_section screenshot_privacy "Screenshot Privacy Gate" "bash script/check_screenshot_privacy.sh"
-  if [[ "$INCLUDE_TESTS" == "1" ]]; then
-    check_section swift_tests "Swift Tests" "swift test --disable-sandbox"
-  fi
+  check_section release_gate "Unified Release Gate" "./script/check_release_gate.sh --check ... --result-json <temporary-path>"
+  echo "### Unified Result JSON"
+  echo
+  echo "- Packaged artifact and real app launch are reported separately under \`verification\`."
+  echo
+  echo '```json'
+  cat "$GATE_RESULT"
+  echo '```'
+  echo
   echo "## Evidence Files To Complete"
   echo
   echo "- \`docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md\`"

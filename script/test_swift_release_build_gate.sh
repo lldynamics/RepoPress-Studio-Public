@@ -189,7 +189,11 @@ grep -Fq 'PersonalSitePublisherBuildConfiguration' "$ROOT_DIR/script/record_app_
 all_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --list)"
 grep -q $'^swift-release-build\talways\t' <<<"$all_checks" \
   || fail "shared release manifest omitted the Release build"
-grep -q $'^swift-release-build-tests\talways\t' <<<"$all_checks" \
+if grep -q $'^swift-release-build-tests\t' <<<"$all_checks"; then
+  fail "normal release gate still duplicates release-tooling behavior tests"
+fi
+tooling_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --tooling --list)"
+grep -q $'^swift-release-build-tests\talways\t' <<<"$tooling_checks" \
   || fail "shared release manifest omitted Release build behavior tests"
 
 quick_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --quick --list)"
