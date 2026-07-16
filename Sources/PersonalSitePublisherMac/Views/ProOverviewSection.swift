@@ -28,7 +28,7 @@ struct ProOverviewSection: View {
         Label("\(summary.availableRequirements.count) 项可用", systemImage: "checkmark.circle")
           .foregroundStyle(WorkbenchTheme.success)
         Label("\(summary.blockedRequirements.count) 项受限", systemImage: "lock.fill")
-          .foregroundStyle(summary.blockedRequirements.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
+          .foregroundStyle(summary.blockedRequirements.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(WorkbenchTheme.warning))
       }
       .font(.caption)
 
@@ -42,10 +42,10 @@ struct ProOverviewSection: View {
 
   private func summaryForeground(_ summary: ProStatusSummary) -> AnyShapeStyle {
     if summary.entitlement.isUnlocked {
-      return AnyShapeStyle(.yellow)
+      return AnyShapeStyle(WorkbenchTheme.finance)
     }
     if summary.isActionRequired {
-      return AnyShapeStyle(.orange)
+      return AnyShapeStyle(WorkbenchTheme.warning)
     }
     return AnyShapeStyle(.secondary)
   }

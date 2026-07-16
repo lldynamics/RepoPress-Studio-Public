@@ -151,6 +151,7 @@ done
 [[ -f "$ROOT_DIR/script/build_and_run.sh" ]] || fail "missing script/build_and_run.sh"
 [[ -f "$ROOT_DIR/script/check_build_version.sh" ]] || fail "missing script/check_build_version.sh"
 [[ -f "$ROOT_DIR/script/check_app_store_metadata.sh" ]] || fail "missing script/check_app_store_metadata.sh"
+[[ -f "$ROOT_DIR/script/package_app_store.sh" ]] || fail "missing script/package_app_store.sh"
 [[ -f "$ENTITLEMENTS" ]] || fail "missing Sources/PersonalSitePublisherMac/AppStore.entitlements"
 [[ -f "$ARCHIVE_EVIDENCE" ]] || fail "missing docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md"
 bash "$ROOT_DIR/script/check_build_version.sh" >/dev/null
@@ -187,11 +188,15 @@ bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST
 marketing_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST")"
 build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST")"
 build_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' "$INFO_PLIST" 2>/dev/null || true)"
+application_category="$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$INFO_PLIST" 2>/dev/null || true)"
+human_readable_copyright="$(/usr/libexec/PlistBuddy -c 'Print :NSHumanReadableCopyright' "$INFO_PLIST" 2>/dev/null || true)"
 
 [[ "$bundle_id" == "com.jinfang.PersonalSitePublisherMac" ]] || fail "unexpected bundle identifier: $bundle_id"
 [[ "$marketing_version" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || fail "invalid marketing version: $marketing_version"
 [[ "$build_number" =~ ^[0-9]+$ ]] || fail "invalid build number: $build_number"
 [[ "$build_configuration" == "Release" ]] || fail "archive readiness requires a Release bundle, got: ${build_configuration:-missing configuration evidence}"
+[[ "$application_category" == public.app-category.* ]] || fail "archive is missing a valid LSApplicationCategoryType"
+[[ -n "${human_readable_copyright//[[:space:]]/}" ]] || fail "archive is missing NSHumanReadableCopyright"
 bash "$ROOT_DIR/script/check_build_version.sh" --info-plist "$INFO_PLIST" >/dev/null
 
 codesign_log="$(mktemp "${TMPDIR:-/tmp}/app-store-codesign.XXXXXX")"

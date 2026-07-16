@@ -140,18 +140,6 @@ extension GeneralDraftReuseRiskLevel {
   var fallbackDisplayName: String { displayName }
 }
 
-extension GeneralDraftReuseStatus {
-  var workbenchDisplayNameSemanticKey: String {
-    switch self {
-    case .libraryDraft: "display.general-draft-reuse-status.library-draft"
-    case .reusableCandidate: "display.general-draft-reuse-status.reusable-candidate"
-    case .siteSpecific: "display.general-draft-reuse-status.site-specific"
-    }
-  }
-
-  var fallbackDisplayName: String { displayName }
-}
-
 extension ImageCoverPublishState {
   var workbenchDisplayNameSemanticKey: String {
     switch self {
@@ -329,17 +317,6 @@ extension SEOSocialPreviewReadinessStatus {
     case .ready: "display.seo-social-preview-readiness-status.ready"
     case .warning: "display.seo-social-preview-readiness-status.warning"
     case .missing: "display.seo-social-preview-readiness-status.missing"
-    }
-  }
-
-  var fallbackDisplayName: String { displayName }
-}
-
-extension AIChatTranscriptExportFormat {
-  var workbenchDisplayNameSemanticKey: String {
-    switch self {
-    case .markdown: "display.ai-chat-transcript-export-format.markdown"
-    case .pdf: "display.ai-chat-transcript-export-format.pdf"
     }
   }
 

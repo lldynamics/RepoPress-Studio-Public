@@ -211,12 +211,32 @@ extension RemoteRepositoryPublishService {
       guard let key = item.key as? String else { return }
       result[key] = String(describing: item.value)
     }
-    return HTTPDataResponse(data: data, statusCode: httpResponse.statusCode, headers: headers)
+    let credentialHeaderNames: [String] = ["Authorization", "PRIVATE-TOKEN"]
+    let sensitiveValues: [String] = credentialHeaderNames
+      .compactMap { headerName -> String? in
+        request.value(forHTTPHeaderField: headerName)
+      }
+      .flatMap { (value: String) -> [String] in
+        let bearerPrefix = "Bearer "
+        if value.lowercased().hasPrefix(bearerPrefix.lowercased()) {
+          return [value, String(value.dropFirst(bearerPrefix.count))]
+        }
+        return [value]
+      }
+    return HTTPDataResponse(
+      data: data,
+      statusCode: httpResponse.statusCode,
+      headers: headers,
+      sensitiveValues: sensitiveValues
+    )
   }
 
   func validate(_ response: HTTPDataResponse) throws {
     guard (200..<300).contains(response.statusCode) else {
-      let body = String(data: response.data, encoding: .utf8) ?? ""
+      let body = HTTPErrorResponseSanitizer.sanitize(
+        data: response.data,
+        sensitiveValues: response.sensitiveValues
+      )
       throw RemoteRepositoryPublishError.httpStatus(response.statusCode, body)
     }
   }
@@ -265,7 +285,7 @@ extension RemoteRepositoryPublishService {
 
   func githubPermissionSummary(_ permissions: GitHubRepositoryMetadata.Permissions?) -> String {
     guard let permissions else {
-      return "GitHub 未返回 repository permissions；无法确认 push/maintain/admin。"
+      return CoreL10n.text("GitHub 未返回 repository permissions；无法确认 push/maintain/admin。")
     }
     let active = [
       permissions.push == true ? "push" : nil,
@@ -273,14 +293,14 @@ extension RemoteRepositoryPublishService {
       permissions.admin == true ? "admin" : nil,
     ].compactMap(\.self)
     let activeText = active.isEmpty ? "none" : active.joined(separator: ", ")
-    return "GitHub repository permissions: push=\(permissions.push == true), maintain=\(permissions.maintain == true), admin=\(permissions.admin == true); active=\(activeText)."
+    return CoreL10n.format("GitHub repository permissions: push=%@, maintain=%@, admin=%@; active=%@.", String(permissions.push == true), String(permissions.maintain == true), String(permissions.admin == true), activeText)
   }
 
   func gitLabPermissionSummary(_ permissions: GitLabProjectMetadata.Permissions?) -> String {
     let projectAccess = permissions?.projectAccess?.accessLevel ?? 0
     let groupAccess = permissions?.groupAccess?.accessLevel ?? 0
     let effectiveAccess = max(projectAccess, groupAccess)
-    return "GitLab access level: project=\(projectAccess) (\(gitLabAccessLevelName(projectAccess))), group=\(groupAccess) (\(gitLabAccessLevelName(groupAccess))), effective=\(effectiveAccess) (\(gitLabAccessLevelName(effectiveAccess)))."
+    return CoreL10n.format("GitLab access level: project=%@ (%@), group=%@ (%@), effective=%@ (%@).", String(projectAccess), gitLabAccessLevelName(projectAccess), String(groupAccess), gitLabAccessLevelName(groupAccess), String(effectiveAccess), gitLabAccessLevelName(effectiveAccess))
   }
 
   func gitLabAccessLevelName(_ level: Int) -> String {
@@ -305,11 +325,11 @@ extension RemoteRepositoryPublishService {
     let accepted = response.headerValue("X-Accepted-OAuth-Scopes")?.trimmedForPublishing.nilIfEmpty
     switch (scopes, accepted) {
     case (.some(let scopes), .some(let accepted)):
-      return "GitHub OAuth scopes: \(scopes); accepted: \(accepted)."
+      return CoreL10n.format("GitHub OAuth scopes: %@; accepted: %@.", scopes, accepted)
     case (.some(let scopes), .none):
-      return "GitHub OAuth scopes: \(scopes)."
+      return CoreL10n.format("GitHub OAuth scopes: %@.", scopes)
     case (.none, .some(let accepted)):
-      return "GitHub accepted OAuth scopes: \(accepted)."
+      return CoreL10n.format("GitHub accepted OAuth scopes: %@.", accepted)
     case (.none, .none):
       return nil
     }

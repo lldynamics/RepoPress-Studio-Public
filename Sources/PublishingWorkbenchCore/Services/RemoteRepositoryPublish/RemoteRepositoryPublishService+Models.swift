@@ -20,6 +20,7 @@ struct HTTPDataResponse {
   var data: Data
   var statusCode: Int
   var headers: [String: String] = [:]
+  var sensitiveValues: [String] = []
 
   func headerValue(_ name: String) -> String? {
     headers.first { key, _ in
@@ -118,6 +119,55 @@ struct GitHubCreateCommitBody: Encodable {
   var message: String
   var tree: String
   var parents: [String]
+}
+
+struct GitHubCreateBlobBody: Encodable {
+  var content: String
+  var encoding: String
+}
+
+struct GitHubBlobResponse: Decodable {
+  var sha: String
+}
+
+struct GitHubCreateTreeBody: Encodable {
+  var baseTree: String
+  var tree: [GitHubTreeEntry]
+
+  enum CodingKeys: String, CodingKey {
+    case baseTree = "base_tree"
+    case tree
+  }
+}
+
+struct GitHubTreeEntry: Encodable {
+  var path: String
+  var mode: String = "100644"
+  var type: String = "blob"
+  var sha: String?
+
+  enum CodingKeys: String, CodingKey {
+    case path
+    case mode
+    case type
+    case sha
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(path, forKey: .path)
+    try container.encode(mode, forKey: .mode)
+    try container.encode(type, forKey: .type)
+    if let sha {
+      try container.encode(sha, forKey: .sha)
+    } else {
+      try container.encodeNil(forKey: .sha)
+    }
+  }
+}
+
+struct GitHubTreeResponse: Decodable {
+  var sha: String
 }
 
 struct GitHubContentResponse: Decodable {
@@ -292,13 +342,26 @@ struct GitLabCommitAction: Encodable {
 struct GitLabFileRemoteState {
   var exists: Bool
   var lastCommitID: String?
+  var content: Data?
 }
 
 struct GitLabFileResponse: Decodable {
   var lastCommitID: String?
+  var content: String?
+  var encoding: String?
 
   enum CodingKeys: String, CodingKey {
     case lastCommitID = "last_commit_id"
+    case content
+    case encoding
+  }
+
+  var decodedContent: Data? {
+    guard let content else { return nil }
+    if encoding?.lowercased() == "base64" {
+      return Data(base64Encoded: content, options: .ignoreUnknownCharacters)
+    }
+    return Data(content.utf8)
   }
 }
 
@@ -377,61 +440,65 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
   public var errorDescription: String? {
     switch self {
     case .missingToken:
-      return "未保存仓库访问 Token。"
+      return CoreL10n.text("未保存仓库访问 Token。")
     case .missingRepositoryConfiguration:
-      return "请先填写仓库 Owner/Namespace 和 Repo/Project。"
+      return CoreL10n.text("请先填写仓库 Owner/Namespace 和 Repo/Project。")
     case .missingRepositoryName:
-      return "请先填写 Repo/Project 名称。"
+      return CoreL10n.text("请先填写 Repo/Project 名称。")
     case .missingRollbackCommit:
-      return "这条发布记录没有远端 commit，无法执行线上回滚。"
+      return CoreL10n.text("这条发布记录没有远端 commit，无法执行线上回滚。")
     case .rollbackCommitHasNoParent(let sha):
-      return "无法回滚 commit \(sha)：远端没有返回父提交。"
+      return CoreL10n.format("无法回滚 commit %@：远端没有返回父提交。", sha)
     case .missingReviewURL:
-      return "这条发布记录没有 PR/MR 链接，无法通过 API 撤回 Review。"
+      return CoreL10n.text("这条发布记录没有 PR/MR 链接，无法通过 API 撤回 Review。")
     case .invalidReviewURL(let value):
-      return "无法从 PR/MR 链接解析编号：\(value)"
+      return CoreL10n.format("无法从 PR/MR 链接解析编号：%@", value)
     case .unsupportedRepositoryCreationProvider(let provider):
-      return "\(provider) 暂不支持在 App 内创建仓库。"
+      return CoreL10n.format("%@ 暂不支持在 App 内创建仓库。", provider)
     case .invalidBaseURL(let value):
-      return "仓库 API Base URL 无效：\(value)"
+      return CoreL10n.format("仓库 API Base URL 无效：%@", value)
     case .insecureBaseURL:
-      return "仓库 API Base URL 必须使用 HTTPS；已阻止向不安全端点发送 Token。"
+      return CoreL10n.text("仓库 API Base URL 必须使用 HTTPS；已阻止向不安全端点发送 Token。")
     case .invalidResponse:
-      return "仓库 API 返回了无效响应。"
+      return CoreL10n.text("仓库 API 返回了无效响应。")
     case .httpStatus(let status, let body):
       return remoteAPIHTTPStatusDescription(status: status, body: body)
     case .missingSourceFile(let path):
-      return "图片源文件缺失：\(path)"
+      return CoreL10n.format("图片源文件缺失：%@", path)
     case .untrackedRemoteFile(let path, let actualSHA):
-      return "远端同路径文件已存在：\(path) 的当前版本是 \(actualSHA)，但本地草稿没有记录远端版本。请先同步远端变更或改用 PR/MR。"
+      return CoreL10n.format("远端同路径文件已存在：%@ 的当前版本是 %@，但本地草稿没有记录远端版本。请先同步远端变更或改用 PR/MR。", path, actualSHA)
     case .remoteVersionConflict(let path, let expectedSHA, let actualSHA):
-      let actual = actualSHA?.nilIfEmpty ?? "远端文件不存在"
-      return "远端版本冲突：\(path) 的当前版本是 \(actual)，本地草稿基于 \(expectedSHA)。请先同步远端变更或改用 PR/MR。"
+      let actual = actualSHA?.nilIfEmpty ?? CoreL10n.text("远端文件不存在")
+      return CoreL10n.format("远端版本冲突：%@ 的当前版本是 %@，本地草稿基于 %@。请先同步远端变更或改用 PR/MR。", path, actual, expectedSHA)
     case .partialPublish(let provider, let mode, let branchName, _, let changedPaths, let commitSHA, let underlyingMessage):
-      let commitSummary = commitSHA.map { "，最后 commit：\(String($0.prefix(8)))" } ?? ""
-      return "\(provider.displayName) \(mode.displayName)部分完成后失败：\(changedPaths.count) 个文件已写入 \(branchName)\(commitSummary)。\(underlyingMessage)"
+      let commitSummary = commitSHA.map {
+        CoreL10n.format("，最后 commit：%@", String($0.prefix(8)))
+      } ?? ""
+      return CoreL10n.format("%@ %@部分完成后失败：%@ 个文件已写入 %@%@。%@", provider.displayName, mode.displayName, String(changedPaths.count), branchName, commitSummary, underlyingMessage)
     }
   }
 
   private func remoteAPIHTTPStatusDescription(status: Int, body: String) -> String {
     let detail = remoteAPIErrorDetail(from: body)
-    let detailLine = detail.map { "\n远端信息：\($0)" } ?? body.nilIfEmpty.map { "\n\($0)" } ?? ""
+    let detailLine = detail.map { CoreL10n.format("\n远端信息：%@", $0) }
+      ?? body.nilIfEmpty.map { "\n\($0)" }
+      ?? ""
     let nextStep: String
     switch status {
     case 401:
-      nextStep = "Token 无效或已过期；请重新保存 GitHub/GitLab Token 后再检查权限。"
+      nextStep = CoreL10n.text("Token 无效或已过期；请重新保存 GitHub/GitLab Token 后再检查权限。")
     case 403:
-      nextStep = "Token 权限不足或仓库策略拒绝写入；GitHub 请确认 Contents: Read and write，GitLab 请确认 Developer(30) 或更高权限。"
+      nextStep = CoreL10n.text("Token 权限不足或仓库策略拒绝写入；GitHub 请确认 Contents: Read and write，GitLab 请确认 Developer(30) 或更高权限。")
     case 404:
-      nextStep = "仓库、分支或文件路径不存在；请确认 Owner/Namespace、Repo/Project、默认分支和发布路径。"
+      nextStep = CoreL10n.text("仓库、分支或文件路径不存在；请确认 Owner/Namespace、Repo/Project、默认分支和发布路径。")
     case 409:
-      nextStep = "远端存在冲突或分支状态不一致；请先同步远端变更，或改用 PR/MR。"
+      nextStep = CoreL10n.text("远端存在冲突或分支状态不一致；请先同步远端变更，或改用 PR/MR。")
     case 422:
-      nextStep = "平台拒绝了本次写入参数；请检查分支名、同名 PR/MR、文件路径、commit 内容和 Token 写权限。"
+      nextStep = CoreL10n.text("平台拒绝了本次写入参数；请检查分支名、同名 PR/MR、文件路径、commit 内容和 Token 写权限。")
     default:
-      nextStep = "请根据远端响应修正配置或稍后重试。"
+      nextStep = CoreL10n.text("请根据远端响应修正配置或稍后重试。")
     }
-    return "仓库 API 请求失败：HTTP \(status)。\(nextStep)\(detailLine)"
+    return CoreL10n.format("仓库 API 请求失败：HTTP %@。%@%@", String(status), nextStep, detailLine)
   }
 
   private func remoteAPIErrorDetail(from body: String) -> String? {
@@ -451,7 +518,7 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
     let summary = uniqueStrings(parts)
       .map { $0.trimmedForPublishing }
       .filter { !$0.isEmpty }
-      .joined(separator: "；")
+      .joined(separator: CoreL10n.text("；"))
     return summary.nilIfEmpty
   }
 

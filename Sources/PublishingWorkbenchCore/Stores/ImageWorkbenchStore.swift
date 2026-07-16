@@ -34,6 +34,9 @@ public final class ImageWorkbenchStore: ObservableObject {
     self.imageWorkbenchService = imageWorkbenchService
     self.persistence = persistence
     self.batchProcessor = ImageBatchProcessingActor(service: imageWorkbenchService)
+    persistence.pruneUnreferencedImageOptimizationBatches(
+      referencedSourceFilePaths: store.drafts.flatMap(\.attachments).compactMap(\.sourceFilePath)
+    )
   }
 
   private var selectedDraft: ArticleDraft? {
@@ -177,6 +180,9 @@ public final class ImageWorkbenchStore: ObservableObject {
       store.invalidateDraftDerivedCaches()
       runPreflight()
       save()
+      persistence.pruneUnreferencedImageOptimizationBatches(
+        referencedSourceFilePaths: store.drafts.flatMap(\.attachments).compactMap(\.sourceFilePath)
+      )
     } else {
       try? FileManager.default.removeItem(at: result.outputDirectory)
     }

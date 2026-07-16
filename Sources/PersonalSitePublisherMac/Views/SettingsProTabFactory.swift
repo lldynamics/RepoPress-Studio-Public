@@ -8,7 +8,6 @@ struct SettingsProTabFactory {
       state: ProSettingsState(
         upgrade: context.store.proUpgradePresentation,
         summary: context.store.proStatusSummary,
-        sandboxSummary: context.store.proSandboxVerificationSummary,
         latestBlockNotice: context.store.latestProFeatureBlockNotice,
         isUnlocked: context.store.monetizationState.entitlement.isUnlocked,
         productID: context.store.monetizationState.entitlement.productID,
@@ -19,9 +18,7 @@ struct SettingsProTabFactory {
         batchUsed: context.store.monetizationState.freeUsage.batchPublishCount,
         batchRemaining: context.store.remainingFreeUses(for: .batchPublishing),
         isPurchaseRestoreBusy: context.storeKitProEntitlementCoordinator.isBusy,
-        monetizationMessage: context.store.monetizationMessage,
-        recentAccessEvents: context.store.monetizationState.recentAccessEvents,
-        requirements: context.store.proUpgradeRequirements
+        monetizationMessage: context.store.monetizationMessage
       ),
       actions: ProSettingsActions(
         purchase: {
@@ -32,21 +29,6 @@ struct SettingsProTabFactory {
         },
         copyStatusSummary: {
           context.actions.copyProStatusSummary()
-        },
-        copyAuditChecklist: {
-          context.actions.copyProAuditChecklist()
-        },
-        copyEvidencePackage: {
-          context.actions.copyProEvidencePackage()
-        },
-        copySandboxSummary: {
-          context.actions.copyProSandboxSummary()
-        },
-        copySandboxEvidence: {
-          context.actions.copyProSandboxEvidence()
-        },
-        copySandboxRecordCommand: {
-          context.actions.copyProSandboxRecordCommand()
         }
       )
     )

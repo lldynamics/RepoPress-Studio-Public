@@ -70,6 +70,40 @@ final class PublishPackageBuilderTests: XCTestCase {
     XCTAssertEqual(package.files[1].expectedRemoteSHA, "old-remote-sha")
   }
 
+  func testImageFileCarriesExpectedRemoteSHAForSafeRepublish() throws {
+    var profile = SiteProfile.defaultProfile
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let attachment = DraftAttachment(
+      originalFilename: "cover.png",
+      relativePublishPath: "/images/cover.png",
+      repositoryPath: "static/images/cover.png",
+      sourceFilePath: "/tmp/cover.png",
+      repositorySHA: "remote-image-sha"
+    )
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Republish With Image",
+      slug: "republish-with-image",
+      bodyMarkdown: "Long enough body content for attachment remote version coverage.",
+      attachments: [attachment]
+    )
+
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let imageFile = try XCTUnwrap(package.files.first { $0.kind == .image })
+
+    XCTAssertEqual(imageFile.repositoryPath, "static/images/cover.png")
+    XCTAssertEqual(imageFile.expectedRemoteSHA, "remote-image-sha")
+  }
+
+  func testDraftAttachmentDecodesLegacyPayloadWithoutRepositorySHA() throws {
+    let data = #"{"id":"00000000-0000-0000-0000-000000000001","originalFilename":"legacy.png","relativePublishPath":"/images/legacy.png","repositoryPath":"static/images/legacy.png","altText":"","caption":"","byteSize":4}"#
+      .data(using: .utf8)!
+
+    let attachment = try JSONDecoder().decode(DraftAttachment.self, from: data)
+
+    XCTAssertNil(attachment.repositorySHA)
+  }
+
   func testPublishPackageFileDecodesLegacyPayloadAsUpsert() throws {
     let data = #"{"kind":"markdown","repositoryPath":"content/posts/legacy.md","content":"legacy","byteSize":0}"#
       .data(using: .utf8)!

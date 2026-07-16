@@ -57,7 +57,7 @@ PY
 SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
   bash "$ROOT_DIR/script/sync_screenshot_manifest_status.sh" --check >/dev/null
 
-create_png "$SCREENSHOT_DIR/writing.png" 900 600
+create_png "$SCREENSHOT_DIR/writing.png" 1440 900
 
 if SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
   bash "$ROOT_DIR/script/sync_screenshot_manifest_status.sh" --check >/dev/null 2>&1; then
@@ -66,7 +66,7 @@ fi
 
 SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
   bash "$ROOT_DIR/script/sync_screenshot_manifest_status.sh" >/dev/null
-grep -q '| `writing` | `writing.png` | Writing workspace | Markdown editing, preview, metadata, and contextual writing actions. | Captured 900x600 |' \
+grep -q '| `writing` | `writing.png` | Writing workspace | Markdown editing, preview, metadata, and contextual writing actions. | Captured 1440x900 |' \
   "$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" || fail "captured screenshot status was not written"
 
 SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
@@ -75,17 +75,17 @@ SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREE
 create_png "$SCREENSHOT_DIR/ai-chat.png" 10 10
 SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
   bash "$ROOT_DIR/script/sync_screenshot_manifest_status.sh" >/dev/null
-grep -q '| `ai-chat` | `ai-chat.png` | AI assistant Inspector | Keep the article editor visible while showing conversation, context, quick prompts, and apply actions. | Invalid: 10x10 below 800x500 |' \
+grep -q '| `ai-chat` | `ai-chat.png` | AI assistant Inspector | Keep the article editor visible while showing conversation, context, quick prompts, and apply actions. | Invalid: 10x10 is not an accepted Mac App Store size |' \
   "$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" || fail "invalid screenshot status was not written"
 
-create_png "$SCREENSHOT_DIR/sync-api-publish.png" 900 600
+create_png "$SCREENSHOT_DIR/sync-api-publish.png" 1440 900
 printf '/Users/example/private-site/content/post.md' >>"$SCREENSHOT_DIR/sync-api-publish.png"
 SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
   bash "$ROOT_DIR/script/sync_screenshot_manifest_status.sh" >/dev/null
 grep -q '| `sync-api-publish` | `sync-api-publish.png` | Sync workspace | GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR flow. | Invalid: possible private content (local path) |' \
   "$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" || fail "local path privacy status was not written"
 
-create_png "$SCREENSHOT_DIR/seo-social-preview.png" 900 600
+create_png "$SCREENSHOT_DIR/seo-social-preview.png" 1440 900
 printf 'github_pat_abcdefghijklmnopqrstuvwxyz1234567890' >>"$SCREENSHOT_DIR/seo-social-preview.png"
 SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
   bash "$ROOT_DIR/script/sync_screenshot_manifest_status.sh" >/dev/null
@@ -95,6 +95,6 @@ grep -q '| `seo-social-preview` | `seo-social-preview.png` | SEO/social preview 
 dry_run="$TMP_DIR/dry-run.md"
 SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
   bash "$ROOT_DIR/script/sync_screenshot_manifest_status.sh" --dry-run >"$dry_run"
-grep -q 'Captured 900x600' "$dry_run" || fail "dry-run did not print synchronized manifest"
+grep -q 'Captured 1440x900' "$dry_run" || fail "dry-run did not print synchronized manifest"
 
 echo "screenshot manifest sync test: passed"

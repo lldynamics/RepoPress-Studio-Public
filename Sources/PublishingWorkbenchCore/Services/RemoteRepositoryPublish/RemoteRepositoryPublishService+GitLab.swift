@@ -16,11 +16,15 @@ extension RemoteRepositoryPublishService {
     )
     let response = try await data(for: request)
     if response.statusCode == 404 {
-      return GitLabFileRemoteState(exists: false, lastCommitID: nil)
+      return GitLabFileRemoteState(exists: false, lastCommitID: nil, content: nil)
     }
     try validate(response)
     let file = try decoder.decode(GitLabFileResponse.self, from: response.data)
-    return GitLabFileRemoteState(exists: true, lastCommitID: file.lastCommitID)
+    return GitLabFileRemoteState(
+      exists: true,
+      lastCommitID: file.lastCommitID,
+      content: file.decodedContent
+    )
   }
 
   func gitLabBranchExists(

@@ -27,6 +27,8 @@ stub_scripts=(
   check_build_version.sh
   test_build_version_gate.sh
   check_app_store_metadata.sh
+  package_app_store.sh
+  test_package_app_store_safety.sh
   record_app_store_build_metadata_evidence.sh
   test_app_store_build_metadata_evidence.sh
   record_app_store_archive_validation_evidence.sh
@@ -69,6 +71,7 @@ stub_scripts=(
   record_app_store_screenshot_evidence.sh
   test_app_store_screenshot_evidence.sh
   test_screenshot_manifest_sync.sh
+  test_screenshot_specifications.sh
   test_screenshot_privacy.sh
   test_app_store_checklist_sync_evidence.sh
   test_release_gate_strict_reporting.sh
@@ -180,6 +183,29 @@ grep -q "./script/check_release_gate.sh --strict" <<<"$output" \
   || fail "strict output omitted strict rerun command"
 grep -q "swift test: ok" <<<"$output" \
   || fail "strict gate did not continue through Swift tests before reporting blockers"
+
+for script_name in check_app_store_archive_readiness.sh check_screenshots.sh check_external_verification_evidence.sh; do
+  cat >"$FIXTURE_ROOT/script/$script_name" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "${0##*/}: ok"
+STUB
+done
+checklist_only_json="$TMP_DIR/checklist-only.json"
+if checklist_output="$(PATH="$FIXTURE_ROOT/bin:$PATH" bash "$FIXTURE_ROOT/script/check_release_gate.sh" \
+  --strict --result-json "$checklist_only_json" 2>&1)"; then
+  fail "strict release gate passed despite unchecked checklist items"
+fi
+python3 - "$checklist_only_json" <<'PY'
+import json
+import sys
+
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+assert payload["summary"]["status"] == "failed", payload
+assert payload["summary"]["uncheckedChecklistCount"] == 2, payload
+assert payload["summary"]["blockerCount"] == 1, payload
+assert payload["blockers"] == ["APP_STORE_CHECKLIST.md (2 unchecked items)"], payload
+PY
 
 for script_name in check_localization_gate.sh check_build_version.sh; do
   cat >"$FIXTURE_ROOT/script/$script_name" <<'STUB'

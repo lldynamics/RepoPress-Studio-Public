@@ -38,9 +38,9 @@ struct AIConnectionStatusCard: View {
   private func aiConnectionStatusColor(_ level: AISettingsConnectionStatusLevel) -> Color {
     switch level {
     case .success:
-      return .green
+      return WorkbenchTheme.success
     case .warning:
-      return .orange
+      return WorkbenchTheme.warning
     case .info:
       return .secondary
     }

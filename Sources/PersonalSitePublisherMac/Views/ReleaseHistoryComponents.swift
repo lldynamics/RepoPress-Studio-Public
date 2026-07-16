@@ -56,11 +56,11 @@ struct DeploymentStatusTrendChart: View {
   private func color(for level: DeploymentStatusLevel) -> Color {
     switch level {
     case .success:
-      return .green
+      return WorkbenchTheme.success
     case .running:
-      return .blue
+      return WorkbenchTheme.primary
     case .failed:
-      return .red
+      return WorkbenchTheme.risk
     case .unknown:
       return .secondary
     }

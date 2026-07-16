@@ -139,10 +139,6 @@ require_source_pattern "Sources/PublishingWorkbenchCore/Services/ReleaseLedgerSe
 require_source_pattern "Sources/PublishingWorkbenchCore/Services/ReleaseLedgerService.swift" "ReleaseRollbackDraft" "rollback package generation"
 require_source_pattern "Sources/PublishingWorkbenchCore/Services/ReleaseLedgerService.swift" "externalVerificationEvidenceMarkdown" "structured recovery evidence export"
 require_source_pattern_source_manifest \
-  "Sources/PersonalSitePublisherMac/Views/DetailContainerView.swift" \
-  "copyRecoveryEvidence" \
-  "structured recovery evidence copy UI"
-require_source_pattern_source_manifest \
   "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore.swift" \
   "refreshDeploymentStatus" \
   "manual deployment status refresh"

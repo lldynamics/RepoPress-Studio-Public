@@ -8,7 +8,6 @@ import sys
 
 DETAIL_CONTAINER = "Sources/PersonalSitePublisherMac/Views/DetailContainerView.swift"
 SETTINGS_VIEW = "Sources/PersonalSitePublisherMac/Views/SettingsView.swift"
-AI_CHAT_WORKSPACE_VIEW = "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift"
 AI_CHAT_INSPECTOR_VIEW = "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift"
 REPOSITORY_WORKSPACE_VIEW = "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceView.swift"
 WORKSPACE_LAYOUT_VIEWS = "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift"
@@ -58,47 +57,10 @@ DETAIL_MARKER_PATHS = {
         DETAIL_CONTAINER,
         "Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift",
     ],
-    "reusePlanSection": [
-        "Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift",
-        DETAIL_CONTAINER,
-    ],
-    "sendReusePlanToAI": [
-        "Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift",
-        DETAIL_CONTAINER,
-    ],
-    "backupSection": [
-        "Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift",
-        DETAIL_CONTAINER,
-    ],
-    "librarySection": [
-        "Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift",
-        DETAIL_CONTAINER,
-    ],
-    "assetSection": [
-        "Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift",
-        DETAIL_CONTAINER,
-    ],
-    "crossSiteMaterialPackageMarkdown": [
-        "Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift",
-        "Sources/PublishingWorkbenchCore/Services/GeneralDraftLibraryService.swift",
-        DETAIL_CONTAINER,
-    ],
-    "copyRecoveryEvidence": [
-        "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift",
-        "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryRecordCardSection.swift",
-        DETAIL_CONTAINER,
-    ],
 }
 
 
-SETTINGS_MARKER_PATHS = {
-    "copyProSandboxEvidence": [
-        "Sources/PersonalSitePublisherMac/Views/SettingsStoreActions.swift",
-        "Sources/PersonalSitePublisherMac/Views/SettingsProTabFactory.swift",
-        "Sources/PersonalSitePublisherMac/Views/ProSettingsView.swift",
-        SETTINGS_VIEW,
-    ],
-}
+SETTINGS_MARKER_PATHS = {}
 
 
 REPOSITORY_WORKSPACE_MARKER_PATHS = {
@@ -158,8 +120,10 @@ def expanded_source_paths(relative_path: str, marker: str) -> list[str]:
                 relative_path,
                 "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceView.swift",
                 "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift",
-                "Sources/PersonalSitePublisherMac/Views/EditorInspectorView.swift",
-                "Sources/PersonalSitePublisherMac/Views/EditorInspectorSections.swift",
+                "Sources/PersonalSitePublisherMac/Views/MetadataColumn.swift",
+                "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspector.swift",
+                "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift",
+                "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSectionsExtra.swift",
                 "Sources/PersonalSitePublisherMac/Views/SiteMaintenanceDetailView.swift",
                 "Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift",
             ]
@@ -172,26 +136,12 @@ def expanded_source_paths(relative_path: str, marker: str) -> list[str]:
             [
                 relative_path,
                 "Sources/PersonalSitePublisherMac/Views/ProSettingsView.swift",
-                "Sources/PersonalSitePublisherMac/Views/ProSandboxVerificationSection.swift",
-                "Sources/PersonalSitePublisherMac/Views/ProBoundaryEvidenceRow.swift",
                 "Sources/PersonalSitePublisherMac/Views/ProBenefitsSection.swift",
-                "Sources/PersonalSitePublisherMac/Views/ProRequirementsSection.swift",
                 "Sources/PersonalSitePublisherMac/Views/TokenSettingsView.swift",
                 "Sources/PersonalSitePublisherMac/Views/TokenRepositoryTokenSection.swift",
                 "Sources/PersonalSitePublisherMac/Views/RepositoryPermissionSettingsView.swift",
                 "Sources/PersonalSitePublisherMac/Views/PrivacySettingsView.swift",
                 "Sources/PersonalSitePublisherMac/Views/PrivacySettingsVisibilitySection.swift",
-            ]
-        )
-
-    if relative_path == AI_CHAT_WORKSPACE_VIEW:
-        return unique(
-            [
-                relative_path,
-                "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInputSection.swift",
-                "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceComponents.swift",
-                "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift",
-                "Sources/PersonalSitePublisherMac/Views/AIChatPromptLibraryComponents.swift",
             ]
         )
 

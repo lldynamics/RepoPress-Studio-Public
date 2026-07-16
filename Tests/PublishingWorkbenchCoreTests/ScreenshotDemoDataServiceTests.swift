@@ -8,13 +8,13 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     let snapshot = ScreenshotDemoDataService().makeSnapshot()
 
     XCTAssertEqual(snapshot.profiles.count, 2)
-    XCTAssertTrue(snapshot.profiles.contains { $0.purpose == .publishing })
-    XCTAssertTrue(snapshot.profiles.contains { $0.purpose == .generalDraftBackup })
+    XCTAssertTrue(snapshot.profiles.allSatisfy { $0.purpose == .publishing })
     XCTAssertEqual(snapshot.activeProfileID, snapshot.profiles.first?.id)
     XCTAssertTrue(snapshot.drafts.contains { $0.visibility == .private })
     XCTAssertTrue(snapshot.drafts.contains { $0.siteProfileID == snapshot.activeProfileID && $0.status == .ready })
     XCTAssertTrue(snapshot.drafts.contains { draft in
-      snapshot.profiles.contains { $0.id == draft.siteProfileID && $0.purpose == .generalDraftBackup }
+      draft.siteProfileID != snapshot.activeProfileID
+        && snapshot.profiles.contains { $0.id == draft.siteProfileID && $0.purpose == .publishing }
     })
 
     XCTAssertTrue(snapshot.releaseRecords.contains { $0.kind == .remoteDirectCommit })
@@ -24,7 +24,6 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertEqual(snapshot.deploymentStatusSnapshots.first?.level, .success)
     XCTAssertFalse(snapshot.seoSocialPreviewSnapshots.isEmpty)
     XCTAssertEqual(Set(snapshot.seoSocialPreviewSnapshots.first?.cards.map(\.kind) ?? []), Set(SEOSocialPreviewCardKind.allCases))
-    XCTAssertFalse(snapshot.aiChatSessionsByDraftID.values.flatMap(\.messages).isEmpty)
     XCTAssertTrue(snapshot.repositoryAutoSyncSettings.isEnabled)
     XCTAssertTrue(snapshot.repositoryAutoSyncSettings.fetchBeforeScan)
     XCTAssertTrue(snapshot.deploymentPollingSettings.isEnabled)
@@ -37,6 +36,7 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertFalse(encoded.localizedCaseInsensitiveContains("bearer "))
     XCTAssertFalse(encoded.localizedCaseInsensitiveContains("authorization"))
     XCTAssertFalse(encoded.contains("sk-"))
+    XCTAssertFalse(encoded.contains("aiChatSessionsByDraftID"))
   }
 
   func testScreenshotDemoSurfaceMapsRequiredScreenshotIDs() {

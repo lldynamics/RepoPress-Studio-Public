@@ -6,20 +6,13 @@ extension RepositoryWorkspaceView {
   @ViewBuilder
   var repositoryStageContent: some View {
     switch stage {
-    case .overview:
+    case .overview, .changes:
       repositorySummary
       repositoryScanProgress
       repositorySyncPlan
-    case .changes:
       remoteChangedFiles
       changedFiles
       pathRules
-    case .publishing:
-      publishPackageSummary
-      publishDiffPreview
-      batchPublishQueueSection
-      onlinePublishCenterSection
-      reviewRequestSection
     case .automation:
       repositoryAutoSyncSection
     case .preview:
@@ -78,6 +71,18 @@ extension RepositoryWorkspaceView {
         stage = .automation
       } label: {
         Label("自动化设置", systemImage: "arrow.triangle.2.circlepath")
+      }
+
+      Button {
+        stage = .preview
+      } label: {
+        Label("本地预览", systemImage: "play.rectangle")
+      }
+
+      Button {
+        stage = .history
+      } label: {
+        Label("发布记录", systemImage: "clock.arrow.circlepath")
       }
     } label: {
       Label("仓库操作", systemImage: "ellipsis.circle")
@@ -156,11 +161,11 @@ extension RepositoryWorkspaceView {
     } else if store.selectedDraft != nil {
       workflowBanner(
         title: "已具备继续发布的仓库上下文",
-        detail: "下一步确认发布包、写入策略和线上发布方式。",
+        detail: "在统一发布流程中确认检查、Diff、写入、远端和部署状态。",
         systemImage: "paperplane",
         tint: WorkbenchTheme.success,
-        actionTitle: "写入与发布",
-        action: { stage = .publishing }
+        actionTitle: "打开发布流程",
+        action: openUnifiedPublishFlow
       )
     } else {
       workflowBanner(
@@ -178,18 +183,38 @@ extension RepositoryWorkspaceView {
     EmptyStateView(
       title: "选择仓库后继续",
       message: "变更、写入与发布、自动化和本地预览会在仓库选定后按需显示。",
-      systemImage: "externaldrive.badge.plus"
+      systemImage: "externaldrive.badge.plus",
+      actionTitle: "选择仓库",
+      actionSystemImage: "folder.badge.plus",
+      action: chooseRepository
     )
     .frame(maxWidth: .infinity, minHeight: 280)
   }
 
   var repositoryScanRequiredState: some View {
-    EmptyStateView(
-      title: "扫描仓库后继续",
-      message: "先完成一次仓库扫描，才会显示变更、写入与发布、自动化和本地预览模块。",
-      systemImage: "arrow.clockwise.circle"
-    )
+    VStack(spacing: 14) {
+      EmptyStateView(
+        title: "扫描仓库后继续",
+        message: "先完成一次仓库扫描，才会显示变更、自动化和本地预览模块。",
+        systemImage: "arrow.clockwise.circle"
+      )
+      Button(action: scanRepository) {
+        Label("开始扫描", systemImage: "arrow.clockwise")
+      }
+      .buttonStyle(.borderedProminent)
+    }
     .frame(maxWidth: .infinity, minHeight: 280)
+  }
+
+  func openUnifiedPublishFlow() {
+    if let publishDrawerCommandAction {
+      publishDrawerCommandAction.open(
+        "已从仓库工作区进入统一发布流程，请确认检查、Diff、写入、远端和部署状态。"
+      )
+    } else {
+      store.runPreflight()
+      store.setPublishActionMessage("请从顶部发布状态打开统一发布流程。")
+    }
   }
 
   func workflowBanner(
@@ -317,7 +342,10 @@ extension RepositoryWorkspaceView {
       EmptyStateView(
         title: "还没有扫描结果",
         message: "选择仓库后会检查站点类型、内容目录、图片目录和 Git 状态。",
-        systemImage: "externaldrive.badge.plus"
+        systemImage: "externaldrive.badge.plus",
+        actionTitle: "开始扫描",
+        actionSystemImage: "arrow.clockwise",
+        action: scanRepository
       )
       .frame(height: 240)
     }

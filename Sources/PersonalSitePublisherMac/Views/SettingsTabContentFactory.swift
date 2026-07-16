@@ -8,7 +8,6 @@ struct SettingsTabContentFactory {
     switch tab {
     case .defaultRules:
       DefaultRuleSettingsView(
-        defaultShowsInspector: context.defaultShowsInspector,
         autoRunPreflightBinding: context.autoRunPreflightBinding,
         scanRepositoryOnLaunch: context.scanRepositoryOnLaunch,
         activeProfileBinding: context.activeProfileBinding,

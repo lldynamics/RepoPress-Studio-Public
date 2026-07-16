@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public enum PublishFileDiffStatus: String, Codable, Sendable {
@@ -179,11 +180,19 @@ public struct LocalPublishPreviewService: Sendable {
         }
 
         let exists = fileManager.fileExists(atPath: destinationURL.path)
+        let status: PublishFileDiffStatus
+        if !exists {
+          status = .added
+        } else if fileManager.contentsEqual(atPath: sourceFilePath, andPath: destinationURL.path) {
+          status = .unchanged
+        } else {
+          status = .modified
+        }
         diffs.append(
           PublishFileDiff(
             path: file.repositoryPath,
             kind: file.kind,
-            status: exists ? .modified : .added,
+            status: status,
             byteSize: file.byteSize
           )
         )
@@ -219,6 +228,10 @@ public struct LocalPublishPreviewService: Sendable {
   }
 
   func write(package: PublishPackage, rootURL: URL) throws -> [String] {
+    try writeWithEvidence(package: package, rootURL: rootURL).writtenPaths
+  }
+
+  func writeWithEvidence(package: PublishPackage, rootURL: URL) throws -> LocalPublishWriteResult {
     var seenDestinationPaths = Set<String>()
     let preparedWrites = try package.files.map { file -> PreparedLocalPublishWrite in
       let destinationURL = try validatedDestinationURLForWrite(
@@ -276,7 +289,6 @@ public struct LocalPublishPreviewService: Sendable {
           backupURL = nil
         }
 
-        rollbackEntries.append(LocalPublishRollbackEntry(destinationURL: destinationURL, backupURL: backupURL))
         switch prepared.file.operation {
         case .delete:
           if fileManager.fileExists(atPath: destinationURL.path) {
@@ -294,6 +306,13 @@ public struct LocalPublishPreviewService: Sendable {
           }
         }
 
+        rollbackEntries.append(
+          LocalPublishRollbackEntry(
+            destinationURL: destinationURL,
+            backupURL: backupURL,
+            appliedState: try localPublishFileState(at: destinationURL, fileManager: fileManager)
+          )
+        )
         writtenPaths.append(prepared.file.repositoryPath)
       }
     } catch {
@@ -307,7 +326,15 @@ public struct LocalPublishPreviewService: Sendable {
       }
       throw error
     }
-    return writtenPaths
+    return LocalPublishWriteResult(
+      writtenPaths: writtenPaths,
+      appliedStatesByRepositoryPath: Dictionary(
+        uniqueKeysWithValues: zip(
+          writtenPaths,
+          rollbackEntries.map(\.appliedState)
+        )
+      )
+    )
   }
 
   public func commitCommand(package: PublishPackage, profile: SiteProfile) -> String? {
@@ -438,6 +465,10 @@ public struct LocalPublishPreviewService: Sendable {
 
   private func rollbackLocalPublishWrites(_ entries: [LocalPublishRollbackEntry]) throws {
     for entry in entries.reversed() {
+      let currentState = try localPublishFileState(at: entry.destinationURL, fileManager: fileManager)
+      guard currentState == entry.appliedState else {
+        throw LocalPublishPreviewError.rollbackConflict(entry.destinationURL.path)
+      }
       if fileManager.fileExists(atPath: entry.destinationURL.path) {
         try fileManager.removeItem(at: entry.destinationURL)
       }
@@ -457,8 +488,26 @@ public struct LocalPublishPreviewService: Sendable {
     let newLines = new.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
     var lines: [String] = ["--- repository", "+++ publish-package"]
     let maxCount = max(oldLines.count, newLines.count)
+    let changedIndexes = Set((0..<maxCount).filter { index in
+      let oldLine = index < oldLines.count ? oldLines[index] : nil
+      let newLine = index < newLines.count ? newLines[index] : nil
+      return oldLine != newLine
+    })
+    let contextRadius = 3
+    let includedIndexes = Set(changedIndexes.flatMap { changedIndex in
+      max(0, changedIndex - contextRadius)...min(maxCount - 1, changedIndex + contextRadius)
+    })
+    var skippedUnchangedLineCount = 0
 
     for index in 0..<maxCount {
+      guard includedIndexes.contains(index) else {
+        skippedUnchangedLineCount += 1
+        continue
+      }
+      if skippedUnchangedLineCount > 0 {
+        lines.append(" ... \(skippedUnchangedLineCount) unchanged line(s) ...")
+        skippedUnchangedLineCount = 0
+      }
       let oldLine = index < oldLines.count ? oldLines[index] : nil
       let newLine = index < newLines.count ? newLines[index] : nil
       if oldLine == newLine {
@@ -474,6 +523,9 @@ public struct LocalPublishPreviewService: Sendable {
         }
       }
     }
+    if skippedUnchangedLineCount > 0 {
+      lines.append(" ... \(skippedUnchangedLineCount) unchanged line(s) ...")
+    }
 
     return lines.joined(separator: "\n")
   }
@@ -483,6 +535,7 @@ public enum LocalPublishPreviewError: LocalizedError {
   case missingRepositoryRoot
   case unsafePath(String)
   case missingSource(String)
+  case rollbackConflict(String)
   case rollbackFailed(original: String, rollback: String)
 
   public var errorDescription: String? {
@@ -493,6 +546,8 @@ public enum LocalPublishPreviewError: LocalizedError {
       return "发布路径不安全：\(path)"
     case .missingSource(let path):
       return "源文件缺失：\(path)"
+    case .rollbackConflict(let path):
+      return "检测到外部修改，已停止自动恢复并保留当前文件：\(path)"
     case .rollbackFailed(let original, let rollback):
       return "本地写入失败，且自动恢复未完整完成：\(original)；恢复错误：\(rollback)"
     }
@@ -508,4 +563,27 @@ private struct PreparedLocalPublishWrite {
 private struct LocalPublishRollbackEntry {
   let destinationURL: URL
   let backupURL: URL?
+  let appliedState: LocalPublishFileState
+}
+
+struct LocalPublishWriteResult {
+  let writtenPaths: [String]
+  let appliedStatesByRepositoryPath: [String: LocalPublishFileState]
+}
+
+enum LocalPublishFileState: Equatable, Sendable {
+  case missing
+  case fileDigest(Data)
+}
+
+func localPublishFileState(at url: URL, fileManager: FileManager) throws -> LocalPublishFileState {
+  var isDirectory: ObjCBool = false
+  guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+    return .missing
+  }
+  guard !isDirectory.boolValue else {
+    throw LocalPublishPreviewError.unsafePath(url.path)
+  }
+  let data = try Data(contentsOf: url, options: .mappedIfSafe)
+  return .fileDigest(Data(SHA256.hash(data: data)))
 }

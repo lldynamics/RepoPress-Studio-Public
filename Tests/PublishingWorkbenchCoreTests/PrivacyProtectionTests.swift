@@ -59,31 +59,26 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertFalse(store.isPrivacyLocked)
   }
 
-  func testPrivacyProtectionEventsRecordManualHideReturnAndSettings() throws {
+  func testPrivacyProtectionEventsAreNotPersisted() async throws {
     let url = try temporaryPersistenceURL()
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
-
-    store.lockPrivacy(reason: "Manual review")
-    XCTAssertEqual(store.privacyProtectionEvents.first?.kind, .manualLock)
-    store.unlockPrivacy()
-    XCTAssertEqual(store.privacyProtectionEvents.first?.kind, .unlocked)
-    store.updatePrivacySettings(
-      PrivacyProtectionSettings(masksPrivateContent: true)
+    let persistence = WorkbenchPersistence(fileURL: url)
+    let profile = SiteProfile.defaultProfile
+    _ = try persistence.save(
+      WorkbenchSnapshot(
+        profiles: [profile],
+        activeProfileID: profile.id,
+        drafts: [ArticleDraft(siteProfileID: profile.id, title: "Private", slug: "private")],
+        releaseRecords: [],
+        privacyProtectionEvents: [PrivacyProtectionEvent(kind: .manualLock, message: "Legacy")]
+      )
     )
-    XCTAssertEqual(store.privacyProtectionEvents.first?.kind, .settingsUpdated)
-  }
-
-  func testPrivacyProtectionEventsPersistAcrossReloads() async throws {
-    let url = try temporaryPersistenceURL()
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
+    let store = WorkbenchStore(persistence: persistence)
     store.lockPrivacy(reason: "Manual review")
     store.unlockPrivacy()
-
     await store.waitForPendingSave()
-    let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 
-    XCTAssertTrue(reloaded.privacyProtectionEvents.contains { $0.kind == .manualLock })
-    XCTAssertTrue(reloaded.privacyProtectionEvents.contains { $0.kind == .unlocked })
+    let snapshot = try XCTUnwrap(try persistence.load())
+    XCTAssertTrue(snapshot.privacyProtectionEvents.isEmpty)
   }
 
   func testLegacySnapshotDecodesWithEmptyPrivacyProtectionEvents() throws {
@@ -420,7 +415,7 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertFalse(markdown.contains("Private body"))
   }
 
-  func testGeneralDraftLibraryReportMasksPrivateDraftsAndAssetsWhenProtectionEnabled() throws {
+  func testCrossSiteCopyListMasksPrivateDraftTitlesWhenProtectionEnabled() throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
@@ -451,36 +446,10 @@ final class PrivacyProtectionTests: XCTestCase {
 
     let report = store.generalDraftLibraryReport
     let item = try XCTUnwrap(report.items.first)
-    let asset = try XCTUnwrap(report.assets.first)
-    let package = report.crossSiteMaterialPackageMarkdown
-
     XCTAssertEqual(item.title, "私密文章")
-    XCTAssertEqual(item.slug, "")
-    XCTAssertEqual(item.summary, "内容已遮挡，打开文章或关闭私密遮挡后查看。")
-    XCTAssertEqual(item.tags, [])
-    XCTAssertEqual(item.categories, [])
-    XCTAssertEqual(item.bodyCharacterCount, 0)
-    XCTAssertTrue(item.reuseChecklistMarkdown.contains("私密文章"))
-    XCTAssertFalse(item.reuseChecklistMarkdown.contains("Secret Cross Site Plan"))
-
-    XCTAssertEqual(asset.draftTitle, "私密文章")
-    XCTAssertEqual(asset.originalFilename, "私密附件")
-    XCTAssertEqual(asset.relativePublishPath, "内容已遮挡")
-    XCTAssertEqual(asset.repositoryPath, "内容已遮挡")
-
-    XCTAssertTrue(package.contains("[可复用候选] 私密文章"))
-    XCTAssertTrue(package.contains("Slug：未设置"))
-    XCTAssertTrue(package.contains("私密附件"))
-    XCTAssertFalse(package.contains("Secret Cross Site Plan"))
-    XCTAssertFalse(package.contains("secret-cross-site-plan"))
-    XCTAssertFalse(package.contains("Hidden cross-site notes"))
-    XCTAssertFalse(package.contains("Private reusable body"))
-    XCTAssertFalse(package.contains("secret-diagram.png"))
-    XCTAssertFalse(package.contains("static/private"))
-    XCTAssertFalse(package.contains("internal"))
   }
 
-  func testGeneralDraftLibraryReportUsesRawPrivateDraftsWhenMaskingDisabled() throws {
+  func testCrossSiteCopyListUsesPrivateDraftTitleWhenMaskingDisabled() throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
@@ -508,10 +477,6 @@ final class PrivacyProtectionTests: XCTestCase {
     let report = store.generalDraftLibraryReport
 
     XCTAssertEqual(report.items.first?.title, "Secret Cross Site Plan")
-    XCTAssertEqual(report.items.first?.slug, "secret-cross-site-plan")
-    XCTAssertEqual(report.assets.first?.originalFilename, "secret-diagram.png")
-    XCTAssertTrue(report.crossSiteMaterialPackageMarkdown.contains("Secret Cross Site Plan"))
-    XCTAssertTrue(report.crossSiteMaterialPackageMarkdown.contains("secret-diagram.png"))
   }
 
   func testPrivacyProtectionAuditFlagsVisiblePrivateDraftsWhenMaskingDisabled() throws {

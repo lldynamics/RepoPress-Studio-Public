@@ -9,7 +9,11 @@ extension DeploymentStatusService {
     usesToken: Bool
   ) async -> DeploymentStatusSignal {
     guard let url = URL(string: urlText), url.scheme != nil, url.host != nil else {
-      return DeploymentStatusSignal(level: .failed, title: "状态端点", message: "URL 无效：\(urlText)")
+      return DeploymentStatusSignal(
+        level: .failed,
+        title: CoreL10n.text("状态端点"),
+        message: CoreL10n.format("URL 无效：%@", urlText)
+      )
     }
 
     var request = URLRequest(url: url)
@@ -19,16 +23,16 @@ extension DeploymentStatusService {
       guard CredentialedEndpointPolicy.isSecureRequestURL(url) else {
         return DeploymentStatusSignal(
           level: .failed,
-          title: "状态端点",
-          message: "使用 Bearer Token 的状态端点必须使用 HTTPS；本次未发送 Token。",
+          title: CoreL10n.text("状态端点"),
+          message: CoreL10n.text("使用 Bearer Token 的状态端点必须使用 HTTPS；本次未发送 Token。"),
           urlText: nil
         )
       }
       guard let token = token?.trimmedForPublishing, !token.isEmpty else {
         return DeploymentStatusSignal(
           level: .unknown,
-          title: "状态端点未检查",
-          message: "该端点要求 Bearer Token，但当前未保存 Token；本次未发起请求。",
+          title: CoreL10n.text("状态端点未检查"),
+          message: CoreL10n.text("该端点要求 Bearer Token，但当前未保存 Token；本次未发起请求。"),
           urlText: urlText
         )
       }
@@ -38,7 +42,11 @@ extension DeploymentStatusService {
     do {
       let (data, response) = try await transport.data(for: request)
       guard let httpResponse = response as? HTTPURLResponse else {
-        return DeploymentStatusSignal(level: .unknown, title: "\(provider.displayName) 可达性", message: "端点没有返回 HTTP 状态。")
+        return DeploymentStatusSignal(
+          level: .unknown,
+          title: CoreL10n.format("%@ 可达性", provider.displayName),
+          message: CoreL10n.text("端点没有返回 HTTP 状态。")
+        )
       }
       if let endpoint = decodedEndpointStatus(data: data) {
         let httpSucceeded = (200..<400).contains(httpResponse.statusCode)
@@ -48,21 +56,21 @@ extension DeploymentStatusService {
           : "HTTP \(httpResponse.statusCode) · \(endpoint.rawStatus)"
         return DeploymentStatusSignal(
           level: level,
-          title: endpoint.title?.nilIfEmpty ?? "\(provider.displayName) 状态",
+          title: endpoint.title?.nilIfEmpty ?? CoreL10n.format("%@ 状态", provider.displayName),
           message: endpoint.message?.nilIfEmpty ?? fallbackMessage,
           urlText: endpoint.urlText?.nilIfEmpty ?? urlText
         )
       }
       return DeploymentStatusSignal(
         level: (200..<400).contains(httpResponse.statusCode) ? .success : .failed,
-        title: "\(provider.displayName) 可达性",
+        title: CoreL10n.format("%@ 可达性", provider.displayName),
         message: "HTTP \(httpResponse.statusCode)",
         urlText: urlText
       )
     } catch {
       return DeploymentStatusSignal(
         level: .failed,
-        title: "\(provider.displayName) 可达性",
+        title: CoreL10n.format("%@ 可达性", provider.displayName),
         message: error.localizedDescription,
         urlText: urlText
       )
@@ -90,16 +98,16 @@ extension DeploymentStatusService {
       guard let httpResponse = response as? HTTPURLResponse else {
         return [DeploymentStatusSignal(
           level: .unknown,
-          title: "发布页面内容",
-          message: "文章页面没有返回 HTTP 状态。",
+          title: CoreL10n.text("发布页面内容"),
+          message: CoreL10n.text("文章页面没有返回 HTTP 状态。"),
           urlText: articleURLText
         )]
       }
       guard (200..<400).contains(httpResponse.statusCode) else {
         return [DeploymentStatusSignal(
           level: .failed,
-          title: "发布页面内容",
-          message: "文章页面 HTTP \(httpResponse.statusCode)。",
+          title: CoreL10n.text("发布页面内容"),
+          message: CoreL10n.format("文章页面 HTTP %@。", String(httpResponse.statusCode)),
           urlText: articleURLText
         )]
       }
@@ -117,8 +125,8 @@ extension DeploymentStatusService {
         return [
           DeploymentStatusSignal(
             level: .success,
-            title: "发布页面内容",
-            message: "文章页面可访问。",
+            title: CoreL10n.text("发布页面内容"),
+            message: CoreL10n.text("文章页面可访问。"),
             urlText: articleURLText
           ),
           seoSignal,
@@ -129,8 +137,8 @@ extension DeploymentStatusService {
         return [
           DeploymentStatusSignal(
             level: .success,
-            title: "发布页面内容",
-            message: "已在发布页面找到文章标题：\(expectedTitle)",
+            title: CoreL10n.text("发布页面内容"),
+            message: CoreL10n.format("已在发布页面找到文章标题：%@", expectedTitle),
             urlText: articleURLText
           ),
           seoSignal,
@@ -139,8 +147,8 @@ extension DeploymentStatusService {
       return [
         DeploymentStatusSignal(
           level: .failed,
-          title: "发布页面内容",
-          message: "文章页面可访问，但没有找到文章标题：\(expectedTitle)",
+          title: CoreL10n.text("发布页面内容"),
+          message: CoreL10n.format("文章页面可访问，但没有找到文章标题：%@", expectedTitle),
           urlText: articleURLText
         ),
         seoSignal,
@@ -148,8 +156,8 @@ extension DeploymentStatusService {
     } catch {
       return [DeploymentStatusSignal(
         level: .failed,
-        title: "发布页面内容",
-        message: "读取文章页面失败：\(error.localizedDescription)",
+        title: CoreL10n.text("发布页面内容"),
+        message: CoreL10n.format("读取文章页面失败：%@", error.localizedDescription),
         urlText: articleURLText
       )]
     }
@@ -181,8 +189,8 @@ extension DeploymentStatusService {
       guard !titleCandidates.isEmpty else {
         return DeploymentStatusSignal(
           level: .failed,
-          title: "发布页面社交元数据",
-          message: "缺少 og:title 或 twitter:title，无法确认社交卡片标题。",
+          title: CoreL10n.text("发布页面社交元数据"),
+          message: CoreL10n.text("缺少 og:title 或 twitter:title，无法确认社交卡片标题。"),
           urlText: expectedURLText
         )
       }
@@ -191,8 +199,8 @@ extension DeploymentStatusService {
         let first = titleCandidates[0]
         return DeploymentStatusSignal(
           level: .failed,
-          title: "发布页面社交元数据",
-          message: "\(first.0) 与发布记录标题不一致：\(first.1)",
+          title: CoreL10n.text("发布页面社交元数据"),
+          message: CoreL10n.format("%@ 与发布记录标题不一致：%@", first.0, first.1),
           urlText: expectedURLText
         )
       }
@@ -211,8 +219,8 @@ extension DeploymentStatusService {
       guard !descriptionCandidates.isEmpty else {
         return DeploymentStatusSignal(
           level: .failed,
-          title: "发布页面社交元数据",
-          message: "缺少 meta description、og:description 或 twitter:description，无法确认社交分享摘要。",
+          title: CoreL10n.text("发布页面社交元数据"),
+          message: CoreL10n.text("缺少 meta description、og:description 或 twitter:description，无法确认社交分享摘要。"),
           urlText: expectedURLText
         )
       }
@@ -221,8 +229,8 @@ extension DeploymentStatusService {
         let first = descriptionCandidates[0]
         return DeploymentStatusSignal(
           level: .failed,
-          title: "发布页面社交元数据",
-          message: "\(first.0) 与发布记录摘要不一致：\(first.1)",
+          title: CoreL10n.text("发布页面社交元数据"),
+          message: CoreL10n.format("%@ 与发布记录摘要不一致：%@", first.0, first.1),
           urlText: expectedURLText
         )
       }
@@ -240,8 +248,8 @@ extension DeploymentStatusService {
       guard !imageCandidates.isEmpty else {
         return DeploymentStatusSignal(
           level: .failed,
-          title: "发布页面社交元数据",
-          message: "缺少 og:image 或 twitter:image，无法确认社交图 URL。",
+          title: CoreL10n.text("发布页面社交元数据"),
+          message: CoreL10n.text("缺少 og:image 或 twitter:image，无法确认社交图 URL。"),
           urlText: expectedURLText
         )
       }
@@ -255,8 +263,8 @@ extension DeploymentStatusService {
       guard let socialImageURLText = resolvedImageCandidates.first else {
         return DeploymentStatusSignal(
           level: .failed,
-          title: "发布页面社交元数据",
-          message: "\(imageCandidates[0].0) 不是有效 URL：\(imageCandidates[0].1)",
+          title: CoreL10n.text("发布页面社交元数据"),
+          message: CoreL10n.format("%@ 不是有效 URL：%@", imageCandidates[0].0, imageCandidates[0].1),
           urlText: expectedURLText
         )
       }
@@ -272,8 +280,8 @@ extension DeploymentStatusService {
       guard !altCandidates.isEmpty else {
         return DeploymentStatusSignal(
           level: .failed,
-          title: "发布页面社交元数据",
-          message: "缺少 og:image:alt 或 twitter:image:alt，无法确认社交图 Alt。",
+          title: CoreL10n.text("发布页面社交元数据"),
+          message: CoreL10n.text("缺少 og:image:alt 或 twitter:image:alt，无法确认社交图 Alt。"),
           urlText: expectedURLText
         )
       }
@@ -282,35 +290,35 @@ extension DeploymentStatusService {
         let first = altCandidates[0]
         return DeploymentStatusSignal(
           level: .failed,
-          title: "发布页面社交元数据",
-          message: "\(first.0) 与发布记录封面 Alt 不一致：\(first.1)",
+          title: CoreL10n.text("发布页面社交元数据"),
+          message: CoreL10n.format("%@ 与发布记录封面 Alt 不一致：%@", first.0, first.1),
           urlText: socialImageURLText.1
         )
       }
 
       let matchedPieces = [
-        expectedTitle == nil ? nil : "标题",
-        expectedSummary == nil ? nil : "摘要",
-        "封面 Alt",
-        "\(socialImageURLText.0) URL",
-      ].compactMap(\.self).joined(separator: "、")
+        expectedTitle == nil ? nil : CoreL10n.text("标题"),
+        expectedSummary == nil ? nil : CoreL10n.text("摘要"),
+        CoreL10n.text("封面 Alt"),
+        CoreL10n.format("%@ URL", socialImageURLText.0),
+      ].compactMap(\.self).joined(separator: CoreL10n.text("、"))
       return DeploymentStatusSignal(
         level: .success,
-        title: "发布页面社交元数据",
-        message: "社交卡片字段（\(matchedPieces)）已匹配发布记录。",
+        title: CoreL10n.text("发布页面社交元数据"),
+        message: CoreL10n.format("社交卡片字段（%@）已匹配发布记录。", matchedPieces),
         urlText: socialImageURLText.1
       )
     }
 
     let matchedPieces = [
-      expectedTitle == nil ? nil : "标题",
-      expectedSummary == nil ? nil : "摘要",
-      expectedImageAltText == nil ? nil : "封面 Alt",
-    ].compactMap(\.self).joined(separator: "、")
+      expectedTitle == nil ? nil : CoreL10n.text("标题"),
+      expectedSummary == nil ? nil : CoreL10n.text("摘要"),
+      expectedImageAltText == nil ? nil : CoreL10n.text("封面 Alt"),
+    ].compactMap(\.self).joined(separator: CoreL10n.text("、"))
     return DeploymentStatusSignal(
       level: .success,
-      title: "发布页面社交元数据",
-      message: "社交卡片字段（\(matchedPieces)）已匹配发布记录。",
+      title: CoreL10n.text("发布页面社交元数据"),
+      message: CoreL10n.format("社交卡片字段（%@）已匹配发布记录。", matchedPieces),
       urlText: expectedURLText
     )
   }
@@ -361,8 +369,8 @@ extension DeploymentStatusService {
     guard !presentCandidates.isEmpty else {
       return DeploymentStatusSignal(
         level: .unknown,
-        title: "发布页面 SEO",
-        message: "文章页面缺少 canonical 或 og:url，无法确认社交分享 URL。",
+        title: CoreL10n.text("发布页面 SEO"),
+        message: CoreL10n.text("文章页面缺少 canonical 或 og:url，无法确认社交分享 URL。"),
         urlText: expectedURLText
       )
     }
@@ -373,8 +381,8 @@ extension DeploymentStatusService {
     if let mismatch = mismatches.first {
       return DeploymentStatusSignal(
         level: .failed,
-        title: "发布页面 SEO",
-        message: "\(mismatch.0) 指向 \(mismatch.1)，不是当前文章 URL。",
+        title: CoreL10n.text("发布页面 SEO"),
+        message: CoreL10n.format("%@ 指向 %@，不是当前文章 URL。", mismatch.0, mismatch.1),
         urlText: expectedURLText
       )
     }
@@ -382,8 +390,8 @@ extension DeploymentStatusService {
     let matchedNames = presentCandidates.map(\.0).joined(separator: " / ")
     return DeploymentStatusSignal(
       level: .success,
-      title: "发布页面 SEO",
-      message: "\(matchedNames) 已指向当前文章 URL。",
+      title: CoreL10n.text("发布页面 SEO"),
+      message: CoreL10n.format("%@ 已指向当前文章 URL。", matchedNames),
       urlText: expectedURLText
     )
   }

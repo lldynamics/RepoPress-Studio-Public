@@ -97,6 +97,73 @@ final class ContentMigrationServiceTests: XCTestCase {
     XCTAssertEqual(plan.redirects.first?.targetPath, "/markdown-post/")
   }
 
+  func testRejectsMarkdownSymlinkOutsideSelectedFolder() throws {
+    let selectedDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ContentMigrationSelected-\(UUID().uuidString)", isDirectory: true)
+    let outsideDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ContentMigrationOutside-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: selectedDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: outsideDirectory, withIntermediateDirectories: true)
+    defer {
+      try? FileManager.default.removeItem(at: selectedDirectory)
+      try? FileManager.default.removeItem(at: outsideDirectory)
+    }
+
+    let outsideFile = outsideDirectory.appendingPathComponent("secret.md")
+    try "---\ntitle: Outside\n---\nsecret".write(
+      to: outsideFile,
+      atomically: true,
+      encoding: .utf8
+    )
+    try FileManager.default.createSymbolicLink(
+      at: selectedDirectory.appendingPathComponent("linked.md"),
+      withDestinationURL: outsideFile
+    )
+
+    XCTAssertThrowsError(try service.makePlan(sourceURL: selectedDirectory, profile: profile)) { error in
+      guard case ContentMigrationError.sourceOutsideSelectedDirectory = error else {
+        XCTFail("Expected sourceOutsideSelectedDirectory, got \(error)")
+        return
+      }
+    }
+  }
+
+  @MainActor
+  func testApplyRejectsPlanAfterMarkdownPathConfigurationChanges() async throws {
+    let sourceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("migration-\(UUID().uuidString).md")
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("migration-persistence-\(UUID().uuidString).json")
+    defer {
+      try? FileManager.default.removeItem(at: sourceURL)
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
+    try "---\ntitle: Planned Article\nslug: planned\n---\nBody".write(
+      to: sourceURL,
+      atomically: true,
+      encoding: .utf8
+    )
+
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
+    var configuredProfile = store.activeProfile
+    configuredProfile.markdownPathPattern = "content/old/{slug}.md"
+    store.updateActiveProfile(configuredProfile)
+    let plan = try await store.makeContentMigrationPlan(sourceURL: sourceURL)
+    XCTAssertEqual(plan.drafts.first?.repositoryPath, "content/old/planned.md")
+
+    configuredProfile = store.activeProfile
+    configuredProfile.markdownPathPattern = "content/new/{slug}.md"
+    store.updateActiveProfile(configuredProfile)
+
+    XCTAssertThrowsError(try store.applyContentMigration(plan)) { error in
+      guard case ContentMigrationError.profileChanged = error else {
+        XCTFail("Expected profileChanged, got \(error)")
+        return
+      }
+    }
+    XCTAssertFalse(store.visibleDrafts.contains { $0.title == "Planned Article" })
+  }
+
   func testConvertsTOMLFrontMatterFromMarkdownFolder() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -153,6 +220,99 @@ final class ContentMigrationServiceTests: XCTestCase {
 
     XCTAssertEqual(plan.drafts.first?.title, "Async Migration")
     XCTAssertEqual(plan.drafts.first?.bodyMarkdown, "Async body")
+  }
+
+  func testAsyncMigrationPropagatesCancellation() async throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("migration-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let items = (0..<1_000).map { index in
+      ["title": "Article \(index)", "content": String(repeating: "Body ", count: 64)]
+    }
+    try JSONSerialization.data(withJSONObject: ["posts": items]).write(to: url)
+    let task = Task {
+      try await service.makePlanAsync(sourceURL: url, profile: profile)
+    }
+
+    task.cancel()
+
+    do {
+      _ = try await task.value
+      XCTFail("Expected migration cancellation to propagate")
+    } catch is CancellationError {
+      // Expected.
+    } catch {
+      XCTFail("Expected CancellationError, got \(error)")
+    }
+  }
+
+  func testRejectsJSONAndXMLRecordsBeyondConfiguredLimit() throws {
+    let limitedService = ContentMigrationService(limits: ContentMigrationLimits(
+      maximumSourceFileBytes: 10_000,
+      maximumRecordCount: 1,
+      maximumMarkdownFileCount: 10,
+      maximumMarkdownFileBytes: 1_000,
+      maximumMarkdownFolderBytes: 2_000
+    ))
+    let jsonURL = FileManager.default.temporaryDirectory.appendingPathComponent("migration-\(UUID().uuidString).json")
+    let xmlURL = FileManager.default.temporaryDirectory.appendingPathComponent("migration-\(UUID().uuidString).xml")
+    defer {
+      try? FileManager.default.removeItem(at: jsonURL)
+      try? FileManager.default.removeItem(at: xmlURL)
+    }
+    try #"{"posts":[{"title":"One"},{"title":"Two"}]}"#
+      .write(to: jsonURL, atomically: true, encoding: .utf8)
+    try """
+    <rss><channel>
+      <item><title>One</title></item>
+      <item><title>Two</title></item>
+    </channel></rss>
+    """.write(to: xmlURL, atomically: true, encoding: .utf8)
+
+    for sourceURL in [jsonURL, xmlURL] {
+      XCTAssertThrowsError(try limitedService.makePlan(sourceURL: sourceURL, profile: profile)) { error in
+        guard case ContentMigrationError.sourceLimitExceeded = error else {
+          XCTFail("Expected sourceLimitExceeded, got \(error)")
+          return
+        }
+      }
+    }
+  }
+
+  func testRejectsOversizedMarkdownFileAndFolderTotal() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let document = "---\ntitle: Article\n---\n" + String(repeating: "x", count: 80)
+    try document.write(to: directory.appendingPathComponent("one.md"), atomically: true, encoding: .utf8)
+    try document.write(to: directory.appendingPathComponent("two.md"), atomically: true, encoding: .utf8)
+
+    let oversizedFileService = ContentMigrationService(limits: ContentMigrationLimits(
+      maximumSourceFileBytes: 10_000,
+      maximumRecordCount: 10,
+      maximumMarkdownFileCount: 10,
+      maximumMarkdownFileBytes: 64,
+      maximumMarkdownFolderBytes: 10_000
+    ))
+    XCTAssertThrowsError(try oversizedFileService.makePlan(sourceURL: directory, profile: profile)) { error in
+      guard case ContentMigrationError.sourceLimitExceeded = error else {
+        XCTFail("Expected per-file sourceLimitExceeded, got \(error)")
+        return
+      }
+    }
+
+    let oversizedFolderService = ContentMigrationService(limits: ContentMigrationLimits(
+      maximumSourceFileBytes: 10_000,
+      maximumRecordCount: 10,
+      maximumMarkdownFileCount: 10,
+      maximumMarkdownFileBytes: 1_000,
+      maximumMarkdownFolderBytes: document.utf8.count + 10
+    ))
+    XCTAssertThrowsError(try oversizedFolderService.makePlan(sourceURL: directory, profile: profile)) { error in
+      guard case ContentMigrationError.sourceLimitExceeded = error else {
+        XCTFail("Expected folder-total sourceLimitExceeded, got \(error)")
+        return
+      }
+    }
   }
 
   private func makePlan(contents: String, extension fileExtension: String) throws -> ContentMigrationPlan {

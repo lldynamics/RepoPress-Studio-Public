@@ -11,7 +11,7 @@ struct ProQuotaRow: View {
       Label(title, systemImage: systemImage)
       Spacer()
       Text("已用 \(used) · 剩余 \(remaining)")
-        .foregroundStyle(remaining > 0 ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
+        .foregroundStyle(remaining > 0 ? AnyShapeStyle(.secondary) : AnyShapeStyle(WorkbenchTheme.warning))
     }
   }
 }

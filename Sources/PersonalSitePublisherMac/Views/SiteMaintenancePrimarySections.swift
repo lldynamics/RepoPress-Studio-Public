@@ -7,20 +7,27 @@ struct SiteMaintenanceMetricGrid: View {
 
   var body: some View {
     LazyVGrid(
-      columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
+      columns: [GridItem(.adaptive(minimum: 138, maximum: 220))],
       spacing: 12
     ) {
-      MetricTile(title: "文章", value: "\(report.draftCount)", systemImage: "doc.text")
-      MetricTile(title: "公开", value: "\(report.publicDraftCount)", systemImage: "globe")
-      MetricTile(title: "待发布", value: "\(report.readyCount)", systemImage: "paperplane")
-      MetricTile(title: "排期", value: "\(report.calendarScheduleItems.count)", systemImage: "calendar.badge.clock")
-      MetricTile(title: "旧文候选", value: "\(report.staleArticles.count)", systemImage: "clock.badge.exclamationmark")
-      MetricTile(title: "缺标签", value: "\(report.tagSummary.missingCount)", systemImage: "tag")
-      MetricTile(title: "缺分类", value: "\(report.categorySummary.missingCount)", systemImage: "folder")
-      MetricTile(title: "行动项", value: "\(report.actionItems.count)", systemImage: "checklist")
-      MetricTile(title: "内链机会", value: "\(report.internalLinkOpportunityCount)", systemImage: "point.3.connected.trianglepath.dotted")
-      MetricTile(title: "链接提示", value: "\(report.linkAuditItems.count)", systemImage: "link")
-      MetricTile(title: "操作记录", value: "\(report.operationLogEntries.count)", systemImage: "list.bullet.clipboard")
+      MetricTile(title: "文章", value: "\(report.draftCount)", semantic: .neutral)
+      MetricTile(title: "待发布", value: "\(report.readyCount)", semantic: .progress)
+      MetricTile(
+        title: "行动项",
+        value: "\(report.actionItems.count)",
+        semantic: report.actionItems.isEmpty ? .passed : .warning
+      )
+      MetricTile(
+        title: "旧文候选",
+        value: "\(report.staleArticles.count)",
+        semantic: report.staleArticles.isEmpty ? .passed : .warning
+      )
+      MetricTile(title: "内链机会", value: "\(report.internalLinkOpportunityCount)", semantic: .progress)
+      MetricTile(
+        title: "链接提示",
+        value: "\(report.linkAuditItems.count)",
+        semantic: report.linkAuditItems.isEmpty ? .passed : .warning
+      )
     }
   }
 }
@@ -183,22 +190,22 @@ struct SiteMaintenanceActionQueueSection: View {
 private func siteMaintenanceHealthForeground(_ level: SiteMaintenanceHealthLevel) -> AnyShapeStyle {
   switch level {
   case .stable:
-    return AnyShapeStyle(.green)
+    return AnyShapeStyle(WorkbenchTheme.success)
   case .watch:
-    return AnyShapeStyle(.blue)
+    return AnyShapeStyle(WorkbenchTheme.primary)
   case .needsWork:
-    return AnyShapeStyle(.orange)
+    return AnyShapeStyle(WorkbenchTheme.warning)
   case .urgent:
-    return AnyShapeStyle(.red)
+    return AnyShapeStyle(WorkbenchTheme.risk)
   }
 }
 
 private func siteMaintenanceActionPriorityForeground(_ priority: MaintenanceActionPriority) -> AnyShapeStyle {
   switch priority {
   case .high:
-    return AnyShapeStyle(.red)
+    return AnyShapeStyle(WorkbenchTheme.risk)
   case .medium:
-    return AnyShapeStyle(.orange)
+    return AnyShapeStyle(WorkbenchTheme.warning)
   case .low:
     return AnyShapeStyle(.secondary)
   }

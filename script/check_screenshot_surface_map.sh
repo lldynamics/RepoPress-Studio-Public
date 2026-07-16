@@ -34,9 +34,9 @@ required = {
                 "markdownBlocks",
                 "pasteAIPromptToClipboard",
             ],
-            "Sources/PersonalSitePublisherMac/Views/EditorInspectorView.swift": [
-                "EditorFrontMatterSection",
-                "EditorSocialPreviewSection",
+            "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift": [
+                "WorkspaceTaskMetadataSection",
+                '.accessibilityLabel("文章标题")',
             ],
         },
     },
@@ -78,12 +78,11 @@ required = {
         "target": "seo-social-preview.png",
         "capture": ["seo-social-preview", "Open Graph", "Twitter card", "manual refresh", "external debug"],
         "source": {
-            "Sources/PersonalSitePublisherMac/Views/EditorInspectorSections.swift": [
-                "EditorSocialPreviewSection",
-                "Open Graph",
-                "Twitter/X",
+            "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift": [
+                "WorkspaceTaskSEOSection",
                 "refreshSEOSocialPreview",
                 "relatedArticleSuggestionSection",
+                '.accessibilityLabel("复制全部外部调试链接")',
             ],
             "Tests/PublishingWorkbenchCoreTests/SEOSocialPreviewServiceTests.swift": [
                 "testSnapshotBuildsSearchOpenGraphAndTwitterCards",
@@ -120,19 +119,17 @@ required = {
     },
     "general-drafts": {
         "target": "general-drafts.png",
-        "capture": ["general-drafts", "cross-site drafts", "backup repository", "reuse checklist"],
+        "capture": ["general-drafts", "cross-site copy", "publishing sites", "copy to site"],
         "source": {
             "Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift": [
                 "GeneralDraftLibraryDetailView",
-                "backupSection",
-                "reusePlanSection",
-                "crossSiteMaterialPackageMarkdown",
+                "copyTargets",
+                "复制到站点",
             ],
             "Sources/PublishingWorkbenchCore/Services/GeneralDraftLibraryService.swift": [
-                "GeneralDraftBackupPlan",
-                "reusePlan",
-                "backupPlan",
-                "general-drafts/MANIFEST.md",
+                "GeneralDraftLibraryReport",
+                "publishingProfileCount",
+                "purpose == .publishing",
             ],
         },
     },
@@ -155,8 +152,9 @@ required = {
                 "selectedSettingsTab",
                 "ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .proSettings ? .pro",
             ],
-            "Sources/PersonalSitePublisherMac/Views/ProSandboxVerificationSection.swift": [
-                "StoreKit 沙盒核验",
+            "Sources/PersonalSitePublisherMac/Views/ProSettingsView.swift": [
+                "ProPurchaseRestoreSection",
+                "ProQuotaSection",
             ],
         },
     },

@@ -46,7 +46,7 @@ extension WorkbenchStore {
   }
 
   func setReleaseRecords(_ records: [ReleaseRecord]) {
-    publishingStore.releaseRecords = records
+    publishingStore.releaseRecords = ReleaseRecord.limitedHistory(records)
     invalidateSiteMaintenanceSnapshot()
   }
 
@@ -65,10 +65,6 @@ extension WorkbenchStore {
 
   func setLatestGeneralDraftReusePlan(_ plan: GeneralDraftReusePlan?) {
     publishingStore.latestGeneralDraftReusePlan = plan
-  }
-
-  func setLatestGeneralDraftBackupWriteResult(_ result: GeneralDraftBackupWriteResult?) {
-    publishingStore.latestGeneralDraftBackupWriteResult = result
   }
 
 }

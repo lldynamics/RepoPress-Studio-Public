@@ -1,0 +1,41 @@
+name: Release Tooling CI
+
+on:
+  push:
+    paths:
+      - "script/**"
+      - ".github/workflows/**"
+      - "APP_STORE_CHECKLIST.md"
+      - "docs/release-evidence/**"
+      - "docs/app-store-screenshots/**"
+  pull_request:
+    paths:
+      - "script/**"
+      - ".github/workflows/**"
+      - "APP_STORE_CHECKLIST.md"
+      - "docs/release-evidence/**"
+      - "docs/app-store-screenshots/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-tooling-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tooling-self-tests:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Run release-tooling self-tests
+        run: ./script/check_release_gate.sh --tooling --result-json .build/tooling-gate-result.json
+      - name: Upload unified result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-tooling-result
+          path: .build/tooling-gate-result.json

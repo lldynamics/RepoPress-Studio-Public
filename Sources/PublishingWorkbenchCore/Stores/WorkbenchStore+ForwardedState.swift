@@ -11,6 +11,7 @@ extension WorkbenchStore {
   public var isPublishPreviewRefreshing: Bool { publishingStore.isPublishPreviewRefreshing }
   public var remotePublishPreviewSnapshot: RemoteRepositoryPublishPreview? { publishingStore.remotePublishPreviewSnapshot }
   public var batchPublishPlan: BatchPublishPlan? { publishingStore.batchPublishPlan }
+  public var isBatchPublishPlanRefreshing: Bool { publishingStore.isBatchPublishPlanRefreshing }
   public var batchRemotePublishPreviewSnapshot: RemoteRepositoryPublishPreview? { publishingStore.batchRemotePublishPreviewSnapshot }
   public var localSitePreviewPlan: LocalSitePreviewPlan? { publishingStore.localSitePreviewPlan }
   public var localSitePreviewRuntimeStatus: LocalSitePreviewRuntimeStatus { publishingStore.localSitePreviewRuntimeStatus }
@@ -38,7 +39,6 @@ extension WorkbenchStore {
   public var siteMaintenanceSnapshot: SiteMaintenanceSnapshot? { siteMaintenanceStore.snapshot }
   public var siteMaintenanceSnapshotVersion: Int { siteMaintenanceStore.snapshotVersion }
   public var latestGeneralDraftReusePlan: GeneralDraftReusePlan? { publishingStore.latestGeneralDraftReusePlan }
-  public var latestGeneralDraftBackupWriteResult: GeneralDraftBackupWriteResult? { publishingStore.latestGeneralDraftBackupWriteResult }
 }
 
 extension WorkbenchStore {
@@ -105,7 +105,6 @@ extension WorkbenchStore {
 extension WorkbenchStore {
   public var privacySettings: PrivacyProtectionSettings { privacyMonetizationStore.privacySettings }
   public var isPrivacyLocked: Bool { privacyMonetizationStore.isPrivacyLocked }
-  public var privacyProtectionEvents: [PrivacyProtectionEvent] { privacyMonetizationStore.privacyProtectionEvents }
   public var privacyLockReason: String? { privacyMonetizationStore.privacyLockReason }
   public var monetizationState: MonetizationState { privacyMonetizationStore.monetizationState }
   public var monetizationMessage: String? { privacyMonetizationStore.monetizationMessage }

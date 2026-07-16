@@ -105,10 +105,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.isAIImageTextRunning
   }
 
-  public var archivedConversations: [AIPublishingChatArchivedConversation] {
-    store.aiArchivedConversations
-  }
-
   public func refreshKeyAvailability() {
     store.aiRefreshKeyAvailability()
   }
@@ -246,14 +242,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func startNewChatConversation(draft: ArticleDraft? = nil) {
     store.aiStartNewChatConversation(draft: draft)
-  }
-
-  public func restoreArchivedChatConversation(_ conversationID: AIPublishingChatArchivedConversation.ID, draft: ArticleDraft? = nil) {
-    store.aiRestoreArchivedChatConversation(conversationID, draft: draft)
-  }
-
-  public func deleteArchivedChatConversation(_ conversationID: AIPublishingChatArchivedConversation.ID, draft: ArticleDraft? = nil) {
-    store.aiDeleteArchivedChatConversation(conversationID, draft: draft)
   }
 
   public func deleteChatMessage(_ messageID: AIPublishingChatMessage.ID, draft: ArticleDraft? = nil) {

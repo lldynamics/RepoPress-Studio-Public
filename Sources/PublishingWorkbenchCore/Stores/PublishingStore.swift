@@ -81,6 +81,8 @@ public final class PublishingStore: ObservableObject {
   var localSitePreviewGeneration: UInt64 = 0
   var publishPreviewRefreshTask: Task<Void, Never>?
   var publishPreviewRefreshGeneration: UInt64 = 0
+  var batchPublishPlanRefreshTask: Task<Void, Never>?
+  var batchPublishPlanRefreshGeneration: UInt64 = 0
   var siteStarterOperationGeneration: UInt64 = 0
 
   @Published public internal(set) var profiles: [SiteProfile]
@@ -100,6 +102,7 @@ public final class PublishingStore: ObservableObject {
   /// Views render this snapshot instead of rebuilding a package and diff from `body`.
   @Published public internal(set) var remotePublishPreviewSnapshot: RemoteRepositoryPublishPreview?
   @Published public internal(set) var batchPublishPlan: BatchPublishPlan?
+  @Published public internal(set) var isBatchPublishPlanRefreshing = false
   /// The last explicitly refreshed remote preview for the batch publish plan.
   @Published public internal(set) var batchRemotePublishPreviewSnapshot: RemoteRepositoryPublishPreview?
   @Published public internal(set) var localSitePreviewPlan: LocalSitePreviewPlan?
@@ -125,7 +128,6 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var imageActionMessage: String?
   @Published public internal(set) var maintenanceOperationRecords: [MaintenanceOperationRecord]
   @Published public internal(set) var latestGeneralDraftReusePlan: GeneralDraftReusePlan?
-  @Published public internal(set) var latestGeneralDraftBackupWriteResult: GeneralDraftBackupWriteResult?
   @Published public internal(set) var recentlyDeletedProfile: RecentlyDeletedProfile?
 
   func setDraftBodyEditorBuffer(_ buffer: DraftBodyEditorBuffer, for draftID: UUID) {
@@ -175,7 +177,6 @@ public final class PublishingStore: ObservableObject {
     imageActionMessage: String? = nil,
     maintenanceOperationRecords: [MaintenanceOperationRecord] = [],
     latestGeneralDraftReusePlan: GeneralDraftReusePlan? = nil,
-    latestGeneralDraftBackupWriteResult: GeneralDraftBackupWriteResult? = nil,
     recentlyDeletedProfile: RecentlyDeletedProfile? = nil,
     preflightService: PreflightCheckService = PreflightCheckService(),
     publishPackageBuilder: PublishPackageBuilder = PublishPackageBuilder(),
@@ -222,7 +223,7 @@ public final class PublishingStore: ObservableObject {
     self.draftVersions = draftVersions
     self.recycledDrafts = recycledDrafts
     self.draftRepositoryCleanupRequests = draftRepositoryCleanupRequests
-    self.releaseRecords = releaseRecords
+    self.releaseRecords = ReleaseRecord.limitedHistory(releaseRecords)
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
     self.publishPackage = publishPackage
@@ -250,7 +251,6 @@ public final class PublishingStore: ObservableObject {
     self.imageActionMessage = imageActionMessage
     self.maintenanceOperationRecords = maintenanceOperationRecords
     self.latestGeneralDraftReusePlan = latestGeneralDraftReusePlan
-    self.latestGeneralDraftBackupWriteResult = latestGeneralDraftBackupWriteResult
     self.recentlyDeletedProfile = recentlyDeletedProfile
   }
 

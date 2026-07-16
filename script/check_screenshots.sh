@@ -4,8 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCREENSHOT_DIR="${SCREENSHOT_DIR:-$ROOT_DIR/docs/app-store-screenshots}"
 MANIFEST="${SCREENSHOT_MANIFEST_FILE:-$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md}"
-MIN_WIDTH="${SCREENSHOT_MIN_WIDTH:-800}"
-MIN_HEIGHT="${SCREENSHOT_MIN_HEIGHT:-500}"
+ACCEPTED_DIMENSIONS="${SCREENSHOT_ACCEPTED_DIMENSIONS:-1280x800 1440x900 2560x1600 2880x1800}"
 
 fail() {
   echo "screenshot gate: $*" >&2
@@ -19,14 +18,25 @@ is_integer() {
   [[ "$1" =~ ^[0-9]+$ ]]
 }
 
-image_dimensions() {
+image_properties() {
   local file="$1"
-  local output width height
-  output="$(sips -g pixelWidth -g pixelHeight "$file" 2>/dev/null)" || return 1
+  local output width height has_alpha
+  output="$(sips -g pixelWidth -g pixelHeight -g hasAlpha "$file" 2>/dev/null)" || return 1
   width="$(printf "%s\n" "$output" | awk '/pixelWidth:/ { print $2; exit }')"
   height="$(printf "%s\n" "$output" | awk '/pixelHeight:/ { print $2; exit }')"
+  has_alpha="$(printf "%s\n" "$output" | awk '/hasAlpha:/ { print $2; exit }')"
   is_integer "$width" && is_integer "$height" || return 1
-  printf "%s %s" "$width" "$height"
+  [[ "$has_alpha" == "yes" || "$has_alpha" == "no" ]] || return 1
+  printf "%s %s %s" "$width" "$height" "$has_alpha"
+}
+
+is_accepted_dimensions() {
+  local candidate="$1"
+  local accepted
+  for accepted in $ACCEPTED_DIMENSIONS; do
+    [[ "$candidate" == "$accepted" ]] && return 0
+  done
+  return 1
 }
 
 required_ids=()
@@ -55,14 +65,16 @@ done < <(find "$SCREENSHOT_DIR" -maxdepth 1 -type f \( -name '*.png' -o -name '*
 invalid_images=()
 if [[ "${#image_files[@]}" -gt 0 ]]; then
   for file in "${image_files[@]}"; do
-    if ! dimensions="$(image_dimensions "$file")"; then
+    if ! properties="$(image_properties "$file")"; then
       invalid_images+=("$(basename "$file"): unreadable image")
       continue
     fi
-    width="${dimensions%% *}"
-    height="${dimensions##* }"
-    if (( width < MIN_WIDTH || height < MIN_HEIGHT )); then
-      invalid_images+=("$(basename "$file"): ${width}x${height} below ${MIN_WIDTH}x${MIN_HEIGHT}")
+    read -r width height has_alpha <<<"$properties"
+    if ! is_accepted_dimensions "${width}x${height}"; then
+      invalid_images+=("$(basename "$file"): ${width}x${height} is not an accepted Mac App Store size (${ACCEPTED_DIMENSIONS})")
+    fi
+    if [[ "$has_alpha" == "yes" ]]; then
+      invalid_images+=("$(basename "$file"): alpha channel/transparency is not accepted by App Store Connect")
     fi
   done
 fi
@@ -77,7 +89,7 @@ if [[ "${STRICT_SCREENSHOTS:-0}" == "1" && "${#missing_images[@]}" -gt 0 ]]; the
 fi
 
 if [[ "${#missing_images[@]}" -gt 0 ]]; then
-  echo "screenshot gate: manifest covers ${#required_ids[@]} required screens; images found: $image_count; validated minimum: ${MIN_WIDTH}x${MIN_HEIGHT}; missing: ${missing_images[*]}"
+  echo "screenshot gate: manifest covers ${#required_ids[@]} required screens; images found: $image_count; accepted Mac sizes: ${ACCEPTED_DIMENSIONS}; missing: ${missing_images[*]}"
 else
-  echo "screenshot gate: manifest covers ${#required_ids[@]} required screens; images found: $image_count; validated minimum: ${MIN_WIDTH}x${MIN_HEIGHT}"
+  echo "screenshot gate: manifest covers ${#required_ids[@]} required screens; images found: $image_count; accepted Mac sizes: ${ACCEPTED_DIMENSIONS}; alpha-free"
 fi

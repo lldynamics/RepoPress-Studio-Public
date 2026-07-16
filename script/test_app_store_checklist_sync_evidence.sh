@@ -6,6 +6,8 @@ TMP_DIR="$(mktemp -d /private/tmp/mac-editor-checklist-sync.XXXXXX)"
 CHECKLIST_FILE="$TMP_DIR/APP_STORE_CHECKLIST.md"
 EXTERNAL_FILE="$TMP_DIR/EXTERNAL_VERIFICATION_EVIDENCE.md"
 ARCHIVE_FILE="$TMP_DIR/APP_STORE_ARCHIVE_VALIDATION.md"
+SCREENSHOT_DIR="$TMP_DIR/app-store-screenshots"
+SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -20,6 +22,8 @@ fail() {
 cp "$ROOT_DIR/APP_STORE_CHECKLIST.md" "$CHECKLIST_FILE"
 cp "$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md" "$EXTERNAL_FILE"
 cp "$ROOT_DIR/docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md" "$ARCHIVE_FILE"
+mkdir -p "$SCREENSHOT_DIR"
+cp "$ROOT_DIR/docs/app-store-screenshots/SCREENSHOT_MANIFEST.md" "$SCREENSHOT_MANIFEST_FILE"
 
 python3 - "$EXTERNAL_FILE" <<'PY'
 from pathlib import Path
@@ -41,6 +45,8 @@ PY
 if APP_STORE_CHECKLIST_FILE="$CHECKLIST_FILE" \
   EXTERNAL_VERIFY_EVIDENCE_FILE="$EXTERNAL_FILE" \
   APP_STORE_ARCHIVE_EVIDENCE_FILE="$ARCHIVE_FILE" \
+  SCREENSHOT_DIR="$SCREENSHOT_DIR" \
+  SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_MANIFEST_FILE" \
   bash "$ROOT_DIR/script/sync_app_store_checklist.sh" --dry-run >/dev/null 2>&1; then
   fail "checklist sync accepted legacy external evidence without structured fields"
 fi
@@ -59,6 +65,8 @@ metadata_sync_output="$(
   APP_STORE_CHECKLIST_FILE="$CHECKLIST_FILE" \
     EXTERNAL_VERIFY_EVIDENCE_FILE="$EXTERNAL_FILE" \
     APP_STORE_ARCHIVE_EVIDENCE_FILE="$ARCHIVE_FILE" \
+    SCREENSHOT_DIR="$SCREENSHOT_DIR" \
+    SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_MANIFEST_FILE" \
     bash "$ROOT_DIR/script/sync_app_store_checklist.sh" --dry-run
 )"
 grep -q "Confirm bundle identifier, version, build number, minimum macOS, and sandbox entitlements." <<<"$metadata_sync_output" \
@@ -90,6 +98,8 @@ PY
 if APP_STORE_CHECKLIST_FILE="$CHECKLIST_FILE" \
   EXTERNAL_VERIFY_EVIDENCE_FILE="$EXTERNAL_FILE" \
   APP_STORE_ARCHIVE_EVIDENCE_FILE="$ARCHIVE_FILE" \
+  SCREENSHOT_DIR="$SCREENSHOT_DIR" \
+  SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_MANIFEST_FILE" \
   bash "$ROOT_DIR/script/sync_app_store_checklist.sh" --dry-run >/dev/null 2>&1; then
   fail "checklist sync accepted archive evidence with empty Evidence fields"
 fi

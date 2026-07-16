@@ -2,7 +2,6 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct DefaultRuleSettingsView: View {
-  @Binding var defaultShowsInspector: Bool
   let autoRunPreflightBinding: Binding<Bool>
   @Binding var scanRepositoryOnLaunch: Bool
   let activeProfileBinding: Binding<SiteProfile>
@@ -13,7 +12,6 @@ struct DefaultRuleSettingsView: View {
   var body: some View {
     Form {
       DefaultRuleGeneralSection(
-        defaultShowsInspector: $defaultShowsInspector,
         autoRunPreflightBinding: autoRunPreflightBinding,
         scanRepositoryOnLaunch: $scanRepositoryOnLaunch
       )

@@ -8,13 +8,11 @@ extension WorkbenchStore {
 
   @discardableResult
   public func writeBatchReadyDraftsToLocalRepository() async -> BatchLocalWriteResult {
-    refreshBatchPublishPlan()
     return await publishingStore.writeBatchReadyDraftsToLocalRepository(store: self)
   }
 
   @discardableResult
   public func publishBatchReadyDraftsOnlineUsingPreferredStrategy() async -> RemoteRepositoryPublishResult? {
-    refreshBatchPublishPlan()
     return await publishingStore.publishBatchReadyDraftsOnlineUsingPreferredStrategy(store: self)
   }
 

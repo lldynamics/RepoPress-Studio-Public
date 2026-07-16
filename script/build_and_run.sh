@@ -6,6 +6,8 @@ BUILD_CONFIGURATION="debug"
 APP_NAME="PersonalSitePublisherMac"
 BUNDLE_ID="com.jinfang.PersonalSitePublisherMac"
 MIN_SYSTEM_VERSION="14.0"
+APP_CATEGORY="${APP_CATEGORY:-public.app-category.developer-tools}"
+HUMAN_READABLE_COPYRIGHT="${APP_COPYRIGHT:-Copyright © 2026 Jinfang. All rights reserved.}"
 SCREENSHOT_SURFACE="writing"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -64,7 +66,8 @@ Modes:
   --debug | debug           Build, then start lldb with the app binary.
   --logs | logs             Build, open, then stream process logs.
   --telemetry | telemetry   Build, open, then stream app telemetry logs.
-  --verify | verify         Build, open, and verify the process starts.
+  --verify | verify         Build, open, and verify the window when System Events is available.
+  --verify-process          Build, open, and verify only that the process starts.
   --launch-baseline        Build, then measure bundle-open to visible-window time.
   --package-only | package  Build the .app bundle and print its path.
   --screenshot-demo [id]    Build and launch screenshot demo data for a surface.
@@ -102,7 +105,7 @@ while [[ "$#" -gt 0 ]]; do
       BUILD_CONFIGURATION="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
       shift 2
       ;;
-    run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify|--launch-baseline|launch-baseline|--package-only|package)
+    run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify|--verify-process|verify-process|--launch-baseline|launch-baseline|--package-only|package)
       MODE="$1"
       shift
       ;;
@@ -156,7 +159,7 @@ if [[ "$MODE" == "screenshot-demo" ]] && ! contains_screenshot_surface "$SCREENS
 fi
 
 case "$MODE" in
-  run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify|--launch-baseline|launch-baseline|screenshot-demo)
+  run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify|--verify-process|verify-process|--launch-baseline|launch-baseline|screenshot-demo)
     pkill -x "$APP_NAME" >/dev/null 2>&1 || true
     ;;
 esac
@@ -209,6 +212,10 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$BUILD_CONFIGURATION_DISPLAY_NAME</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
+  <key>LSApplicationCategoryType</key>
+  <string>$APP_CATEGORY</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>$HUMAN_READABLE_COPYRIGHT</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
 </dict>
@@ -219,6 +226,7 @@ wait_for_main_window() {
   local attempts=20
   local count=""
   local app_pid=""
+  local query_output=""
   while [[ "$attempts" -gt 0 ]]; do
     app_pid="$(pgrep -x "$APP_NAME" | head -n 1 || true)"
     if [[ -z "$app_pid" ]]; then
@@ -226,7 +234,7 @@ wait_for_main_window() {
       attempts="$((attempts - 1))"
       continue
     fi
-    count="$(osascript - "$app_pid" <<'OSA' 2>/dev/null || true
+    if ! query_output="$(osascript - "$app_pid" <<'OSA' 2>&1
 on run argv
   set targetPID to (item 1 of argv) as integer
 tell application "System Events"
@@ -236,7 +244,11 @@ tell application "System Events"
 end tell
 end run
 OSA
-)"
+)"; then
+      echo "System Events window query unavailable: ${query_output%%$'\n'*}" >&2
+      return 2
+    fi
+    count="$query_output"
     count="$(printf "%s" "$count" | tr -d '[:space:]')"
     if [[ "$count" =~ ^[0-9]+$ && "$count" -gt 0 ]]; then
       return 0
@@ -246,6 +258,20 @@ OSA
   done
   echo "$APP_NAME launched but no visible main window was detected" >&2
   return 1
+}
+
+verify_main_window_or_process() {
+  local status=0
+  if wait_for_main_window; then
+    return 0
+  else
+    status="$?"
+  fi
+  if [[ "$status" == "2" ]]; then
+    echo "window visibility query unavailable; running process verification passed" >&2
+    return 0
+  fi
+  return "$status"
 }
 
 can_query_main_window() {
@@ -307,23 +333,33 @@ case "$MODE" in
     run_bundle
     sleep 1
     if pgrep -x "$APP_NAME" >/dev/null 2>&1; then
-      if ! wait_for_main_window; then
-        echo "无法读取窗口信息，可能是当前环境不支持 GUI 校验，已继续返回启动成功。" >&2
-      fi
+      verify_main_window_or_process || {
+        echo "启动校验失败：进程存活，但在可查询窗口的环境中未检测到可见主窗口。" >&2
+        exit 1
+      }
       exit 0
     fi
 
     launched_pid="${LAUNCHED_PID-}"
     if [[ -n "$launched_pid" ]] && kill -0 "$launched_pid" 2>/dev/null; then
       echo "进程未被 pgrep 枚举到，但直接启动句柄仍存活（pid: $launched_pid），视为启动成功。" >&2
-      if ! wait_for_main_window; then
-        echo "无法读取窗口信息，可能是当前环境不支持 GUI 校验，已继续返回启动成功。" >&2
-      fi
+      verify_main_window_or_process || {
+        echo "启动校验失败：进程存活，但在可查询窗口的环境中未检测到可见主窗口。" >&2
+        exit 1
+      }
       exit 0
     fi
 
     echo "启动校验失败：未检测到运行中的进程（请确认运行环境）" >&2
     exit 1
+    ;;
+  --verify-process|verify-process)
+    run_bundle
+    wait_for_running_process || {
+      echo "进程启动校验失败：未检测到运行中的进程" >&2
+      exit 1
+    }
+    echo "process launch verification: running process detected; window visibility was not checked"
     ;;
   --launch-baseline|launch-baseline)
     max_launch_seconds="${LAUNCH_BASELINE_MAX_SECONDS:-5.0}"
@@ -333,9 +369,10 @@ case "$MODE" in
       echo "launch performance gate: process did not become ready" >&2
       exit 1
     }
-    launch_readiness="running process"
+    launch_readiness="visible window"
     if is_console_session_locked; then
-      echo "launch performance gate: console session is locked; measuring process readiness" >&2
+      echo "launch performance gate: console session is locked; visible-window evidence is unavailable" >&2
+      exit 1
     elif can_query_main_window; then
       wait_for_main_window || {
         echo "launch performance gate: visible window was not detected" >&2
@@ -343,7 +380,8 @@ case "$MODE" in
       }
       launch_readiness="visible window"
     else
-      echo "launch performance gate: System Events window query unavailable; measuring process readiness" >&2
+      echo "launch performance gate: System Events window query unavailable; visible-window evidence is required" >&2
+      exit 1
     fi
     launch_finished_at="$(perl -MTime::HiRes=time -e 'printf "%.6f", time')"
     launch_elapsed="$(awk -v start="$launch_started_at" -v finish="$launch_finished_at" 'BEGIN { printf "%.3f", finish - start }')"

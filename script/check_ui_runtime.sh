@@ -6,11 +6,24 @@ APP_NAME="PersonalSitePublisherMac"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+MODE="package"
 
 fail() {
   echo "ui runtime gate: $*" >&2
   exit 1
 }
+
+case "${1:-}" in
+  ""|--package-only)
+    MODE="package"
+    ;;
+  --launch)
+    MODE="launch"
+    ;;
+  *)
+    fail "unknown argument: $1"
+    ;;
+esac
 
 bash "$ROOT_DIR/script/build_and_run.sh" --package-only >/dev/null
 
@@ -44,8 +57,12 @@ grep -q -- "--launch-baseline" "$ROOT_DIR/script/build_and_run.sh" \
 [[ -x "$ROOT_DIR/script/check_launch_performance.sh" ]] \
   || fail "launch performance gate is missing or not executable"
 
-if [[ "${RUN_UI_APP:-0}" == "1" ]]; then
+if [[ "$MODE" == "launch" ]]; then
   bash "$ROOT_DIR/script/check_launch_performance.sh"
 fi
 
-echo "ui runtime gate: bundle, plist, executable, core UI files, accessibility contract, window verification, and launch baseline contract verified"
+if [[ "$MODE" == "launch" ]]; then
+  echo "ui runtime gate: packaged artifact passed and a real visible main-window launch was verified"
+else
+  echo "ui runtime gate: packaged artifact passed; real app launch was not run"
+fi

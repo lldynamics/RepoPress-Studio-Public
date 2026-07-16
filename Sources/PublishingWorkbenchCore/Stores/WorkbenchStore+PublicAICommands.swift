@@ -48,10 +48,6 @@ extension WorkbenchStore {
     await aiStore.testAIConnection()
   }
 
-  public var aiChatArchivedConversations: [AIPublishingChatArchivedConversation] {
-    aiStore.aiChatArchivedConversations
-  }
-
   public func clearAIChat() {
     aiStore.clearAIChat()
   }
@@ -89,19 +85,13 @@ extension WorkbenchStore {
     aiStore.startNewAIChatConversation(draft: draft)
   }
 
-  public func restoreArchivedAIChatConversation(
-    _ conversationID: AIPublishingChatArchivedConversation.ID,
-    draft: ArticleDraft? = nil
-  ) {
-    aiStore.restoreArchivedAIChatConversation(conversationID, draft: draft)
+  #if DEBUG
+  /// Seeds a runtime-only conversation for deterministic screenshot fixtures.
+  public func seedTransientAIChatPreview(_ messages: [AIPublishingChatMessage]) {
+    setAIChatMessages(messages)
+    aiStore.cacheCurrentAIChatSessionForAIStore()
   }
-
-  public func deleteArchivedAIChatConversation(
-    _ conversationID: AIPublishingChatArchivedConversation.ID,
-    draft: ArticleDraft? = nil
-  ) {
-    aiStore.deleteArchivedAIChatConversation(conversationID, draft: draft)
-  }
+  #endif
 
   public func deleteAIChatMessage(_ messageID: AIPublishingChatMessage.ID, draft: ArticleDraft? = nil) {
     aiStore.deleteAIChatMessage(messageID, draft: draft)

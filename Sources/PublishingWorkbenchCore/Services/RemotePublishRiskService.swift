@@ -1,6 +1,6 @@
 import Foundation
 
-public struct RemotePublishRiskService {
+public struct RemotePublishRiskService: Sendable {
   public init() {}
 
   public func issues(

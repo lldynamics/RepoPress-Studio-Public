@@ -5,7 +5,10 @@ import XCTest
 
 final class AIPublishingSelectionEditPreviewTests: XCTestCase {
   func testSelectionEditPreviewExposesModelSummary() {
+    let draftID = UUID()
     let preview = AIPublishingSelectionEditPreview(
+      draftID: draftID,
+      sourceBodyMarkdown: "text",
       kind: .polishSelection,
       range: NSRange(location: 0, length: 4),
       originalText: "text",
@@ -14,6 +17,8 @@ final class AIPublishingSelectionEditPreviewTests: XCTestCase {
       model: "deepseek-v4-pro"
     )
     let legacyPreview = AIPublishingSelectionEditPreview(
+      draftID: draftID,
+      sourceBodyMarkdown: "text",
       kind: .polishSelection,
       range: NSRange(location: 0, length: 4),
       originalText: "text",
@@ -33,6 +38,8 @@ final class AIPublishingSelectionEditPreviewTests: XCTestCase {
       bodyMarkdown: "Before selected text after"
     )
     let preview = AIPublishingSelectionEditPreview(
+      draftID: draft.id,
+      sourceBodyMarkdown: draft.bodyMarkdown,
       kind: .polishSelection,
       range: NSRange(location: 7, length: 13),
       originalText: "selected text",
@@ -53,6 +60,8 @@ final class AIPublishingSelectionEditPreviewTests: XCTestCase {
       bodyMarkdown: "Before selected text\nAfter"
     )
     let preview = AIPublishingSelectionEditPreview(
+      draftID: draft.id,
+      sourceBodyMarkdown: draft.bodyMarkdown,
       kind: .continueAfterSelection,
       range: NSRange(location: 7, length: 13),
       originalText: "selected text",
@@ -74,6 +83,8 @@ final class AIPublishingSelectionEditPreviewTests: XCTestCase {
       bodyMarkdown: "After"
     )
     let preview = AIPublishingSelectionEditPreview(
+      draftID: draft.id,
+      sourceBodyMarkdown: draft.bodyMarkdown,
       kind: .continueAfterSelection,
       range: NSRange(location: 0, length: 0),
       originalText: "",
@@ -95,6 +106,8 @@ final class AIPublishingSelectionEditPreviewTests: XCTestCase {
       bodyMarkdown: "Before changed text after"
     )
     let preview = AIPublishingSelectionEditPreview(
+      draftID: draft.id,
+      sourceBodyMarkdown: draft.bodyMarkdown,
       kind: .polishSelection,
       range: NSRange(location: 7, length: 13),
       originalText: "selected text",
@@ -117,6 +130,8 @@ final class AIPublishingSelectionEditPreviewTests: XCTestCase {
       bodyMarkdown: "Before selected text after"
     )
     let preview = AIPublishingSelectionEditPreview(
+      draftID: draft.id,
+      sourceBodyMarkdown: draft.bodyMarkdown,
       kind: .polishSelection,
       range: NSRange(location: 7, length: 13),
       originalText: "selected text",
@@ -127,6 +142,63 @@ final class AIPublishingSelectionEditPreviewTests: XCTestCase {
       try AIPublishingSelectionEditPreviewService.apply(preview, to: draft)
     ) { error in
       XCTAssertEqual(error as? AIPublishingSelectionEditPreviewApplyError, .emptyReplacement)
+    }
+  }
+
+  func testApplySelectionEditPreviewRejectsAnotherDraft() {
+    let profile = SiteProfile.defaultProfile
+    let sourceDraft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Source",
+      slug: "source",
+      bodyMarkdown: "Original"
+    )
+    let currentDraft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Current",
+      slug: "current",
+      bodyMarkdown: "Original"
+    )
+    let preview = AIPublishingSelectionEditPreview(
+      draftID: sourceDraft.id,
+      sourceBodyMarkdown: sourceDraft.bodyMarkdown,
+      kind: .continueArticle,
+      range: NSRange(location: 8, length: 0),
+      originalText: "",
+      replacementText: "More",
+      application: .insertAtRange
+    )
+
+    XCTAssertThrowsError(
+      try AIPublishingSelectionEditPreviewService.apply(preview, to: currentDraft)
+    ) { error in
+      XCTAssertEqual(error as? AIPublishingSelectionEditPreviewApplyError, .draftChanged)
+    }
+  }
+
+  func testApplySelectionEditPreviewRejectsChangedBodyAtCollapsedRange() {
+    let profile = SiteProfile.defaultProfile
+    var draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Preview",
+      slug: "preview",
+      bodyMarkdown: "Original"
+    )
+    let preview = AIPublishingSelectionEditPreview(
+      draftID: draft.id,
+      sourceBodyMarkdown: draft.bodyMarkdown,
+      kind: .continueArticle,
+      range: NSRange(location: 8, length: 0),
+      originalText: "",
+      replacementText: "More",
+      application: .insertAtRange
+    )
+    draft.bodyMarkdown = "Changed body"
+
+    XCTAssertThrowsError(
+      try AIPublishingSelectionEditPreviewService.apply(preview, to: draft)
+    ) { error in
+      XCTAssertEqual(error as? AIPublishingSelectionEditPreviewApplyError, .sourceBodyChanged)
     }
   }
 }

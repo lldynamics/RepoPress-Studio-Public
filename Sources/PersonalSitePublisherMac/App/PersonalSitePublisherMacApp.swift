@@ -12,7 +12,7 @@ struct PersonalSitePublisherMacApp: App {
   @StateObject private var storeKitProEntitlementCoordinator = StoreKitProEntitlementCoordinator()
 
   init() {
-    WindowRestorationPolicy.disableAutomaticRestoration()
+    WindowRestorationPolicy.restoreSystemDefaults()
 #if DEBUG
     let workbenchStore = WorkbenchStore(
       persistence: ScreenshotDemoDataService.preparePersistenceIfEnabled()
@@ -53,23 +53,9 @@ struct PersonalSitePublisherMacApp: App {
 final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate {
   weak var workbenchStore: WorkbenchStore?
 
-  func applicationWillFinishLaunching(_ notification: Notification) {
-    WindowRestorationPolicy.disableAutomaticRestoration()
-  }
-
   func applicationDidFinishLaunching(_ notification: Notification) {
-    WindowRestorationPolicy.disableAutomaticRestoration()
-    disableRestorationForVisibleWindows()
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(windowDidBecomeKey(_:)),
-      name: NSWindow.didBecomeKeyNotification,
-      object: nil
-    )
-
     NSApp.setActivationPolicy(.regular)
-    Task { @MainActor [weak self] in
-      self?.disableRestorationForVisibleWindows()
+    Task { @MainActor in
       NSApp.activate(ignoringOtherApps: true)
     }
   }
@@ -97,23 +83,13 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     _ = workbenchStore?.flushPendingChanges()
   }
 
-  @objc private func windowDidBecomeKey(_ notification: Notification) {
-    guard let window = notification.object as? NSWindow else { return }
-    window.isRestorable = false
-  }
-
-  private func disableRestorationForVisibleWindows() {
-    for window in NSApp.windows {
-      window.isRestorable = false
-    }
-  }
 }
 
 private enum WindowRestorationPolicy {
-  static func disableAutomaticRestoration() {
+  static func restoreSystemDefaults() {
     let defaults = UserDefaults.standard
-    defaults.set(true, forKey: "ApplePersistenceIgnoreState")
-    defaults.set(false, forKey: "NSQuitAlwaysKeepsWindows")
+    defaults.removeObject(forKey: "ApplePersistenceIgnoreState")
+    defaults.removeObject(forKey: "NSQuitAlwaysKeepsWindows")
   }
 }
 

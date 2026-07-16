@@ -47,7 +47,11 @@ final class TokenCredentialScopeTests: XCTestCase {
     profile.repositoryProvider = .github
     try tokenStore.saveToken("legacy-repository-token", for: profile)
 
-    XCTAssertEqual(try tokenStore.repositoryToken(for: profile), "legacy-repository-token")
+    XCTAssertNil(try tokenStore.repositoryToken(for: profile))
+    XCTAssertFalse(try tokenStore.repositoryTokenAvailability(for: profile).hasToken)
+
+    try tokenStore.saveRepositoryToken("repository-token", for: profile)
+    XCTAssertEqual(try tokenStore.repositoryToken(for: profile), "repository-token")
     XCTAssertNil(try tokenStore.token(for: profile))
     XCTAssertTrue(try tokenStore.repositoryTokenAvailability(for: profile).hasToken)
 
@@ -71,7 +75,7 @@ final class TokenCredentialScopeTests: XCTestCase {
     var profile = SiteProfile.defaultProfile
     profile.id = UUID()
     profile.repositoryProvider = .github
-    try tokenStore.saveToken("scoped-token", for: profile, scope: .repository(.github))
+    try tokenStore.saveRepositoryToken("scoped-token", for: profile)
     try tokenStore.saveToken("stale-legacy-token", for: profile)
 
     try tokenStore.deleteRepositoryToken(for: profile)
@@ -79,6 +83,39 @@ final class TokenCredentialScopeTests: XCTestCase {
     XCTAssertNil(try tokenStore.token(for: profile))
     XCTAssertNil(try tokenStore.repositoryToken(for: profile))
     XCTAssertFalse(try tokenStore.repositoryTokenAvailability(for: profile).hasToken)
+  }
+
+  func testRepositoryAndDeploymentCredentialsAreBoundToOrigin() throws {
+    let tokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.OriginBinding",
+      accountPrefix: "origin-binding",
+      inMemory: true
+    )
+    var profile = SiteProfile.defaultProfile
+    profile.id = UUID()
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "https://api.github.com"
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    try tokenStore.saveToken(
+      "vercel-token",
+      for: profile,
+      scope: .deployment(.vercel),
+      originURLText: "https://api.vercel.com"
+    )
+
+    XCTAssertEqual(try tokenStore.repositoryToken(for: profile), "github-token")
+    profile.repositoryBaseURL = "https://github-enterprise.example/api/v3"
+    XCTAssertNil(try tokenStore.repositoryToken(for: profile))
+    XCTAssertNil(try tokenStore.token(
+      for: profile,
+      scope: .deployment(.vercel),
+      originURLText: "https://proxy.example"
+    ))
+    XCTAssertEqual(try tokenStore.token(
+      for: profile,
+      scope: .deployment(.vercel),
+      originURLText: "https://api.vercel.com/v2"
+    ), "vercel-token")
   }
 
   func testInMemoryBackendSupportsConcurrentMultiScopeReadWriteAndDelete() throws {

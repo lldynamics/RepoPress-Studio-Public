@@ -20,7 +20,10 @@ let package = Package(
   ],
   targets: [
     .target(
-      name: "PublishingWorkbenchCore"
+      name: "PublishingWorkbenchCore",
+      resources: [
+        .process("Resources")
+      ]
     ),
     .target(
       name: "PublishingWorkbenchScreenshotSupport",

@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_NAME="PersonalSitePublisherMac"
+BUNDLE_ID="com.jinfang.PersonalSitePublisherMac"
+ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
+OUTPUT_DIR="${APP_STORE_OUTPUT_DIR:-$ROOT_DIR/dist/app-store}"
+APPLICATION_IDENTITY="${APP_STORE_APPLICATION_IDENTITY:-}"
+INSTALLER_IDENTITY="${APP_STORE_INSTALLER_IDENTITY:-}"
+PROVISIONING_PROFILE="${APP_STORE_PROVISIONING_PROFILE:-}"
+DRY_RUN=0
+
+usage() {
+  cat <<'USAGE'
+Usage: script/package_app_store.sh [--dry-run] [--output-dir <path>]
+
+Creates a distribution-signed Mac App Store .app and installer .pkg from a
+clean Git checkout. The command intentionally requires explicit credentials:
+
+  APP_STORE_APPLICATION_IDENTITY  Mac App Distribution signing identity
+  APP_STORE_INSTALLER_IDENTITY    Mac Installer Distribution signing identity
+  APP_STORE_PROVISIONING_PROFILE  Matching Mac App Store provisioning profile
+
+Options:
+  --dry-run            Verify the packaging path and print missing configuration.
+  --output-dir <path>  Override the generated artifact directory.
+USAGE
+}
+
+fail() {
+  echo "app store package: $*" >&2
+  exit 1
+}
+
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --output-dir)
+      [[ "$#" -ge 2 ]] || fail "--output-dir requires a path"
+      OUTPUT_DIR="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      fail "unknown argument: $1"
+      ;;
+  esac
+done
+
+OUTPUT_DIR="$(python3 - "$OUTPUT_DIR" <<'PY'
+from pathlib import Path
+import sys
+
+print(Path(sys.argv[1]).expanduser().resolve(strict=False))
+PY
+)"
+case "$OUTPUT_DIR" in
+  /|"$HOME"|"$ROOT_DIR"|"$ROOT_DIR/dist")
+    fail "refusing unsafe output directory: $OUTPUT_DIR"
+    ;;
+esac
+
+for tool in codesign ditto git plutil productbuild pkgutil python3 security shasum; do
+  command -v "$tool" >/dev/null 2>&1 || fail "$tool is required"
+done
+[[ -f "$ROOT_DIR/script/build_and_run.sh" ]] || fail "missing script/build_and_run.sh"
+[[ -f "$ROOT_DIR/script/check_app_store_archive_readiness.sh" ]] \
+  || fail "missing script/check_app_store_archive_readiness.sh"
+[[ -f "$ENTITLEMENTS" ]] || fail "missing AppStore.entitlements"
+plutil -lint "$ENTITLEMENTS" >/dev/null || fail "AppStore.entitlements is invalid"
+
+if [[ "$DRY_RUN" == "1" ]]; then
+  missing=()
+  [[ -n "$APPLICATION_IDENTITY" ]] || missing+=(APP_STORE_APPLICATION_IDENTITY)
+  [[ -n "$INSTALLER_IDENTITY" ]] || missing+=(APP_STORE_INSTALLER_IDENTITY)
+  [[ -n "$PROVISIONING_PROFILE" ]] || missing+=(APP_STORE_PROVISIONING_PROFILE)
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    echo "app store package: packaging path is present; configure before signing: ${missing[*]}"
+  else
+    echo "app store package: packaging path and required environment variables are present"
+  fi
+  exit 0
+fi
+
+bash "$ROOT_DIR/script/check_repository_source_boundary.sh" --release >/dev/null \
+  || fail "distribution packaging requires a clean committed Git checkout"
+[[ -n "$APPLICATION_IDENTITY" ]] || fail "APP_STORE_APPLICATION_IDENTITY is required"
+[[ -n "$INSTALLER_IDENTITY" ]] || fail "APP_STORE_INSTALLER_IDENTITY is required"
+[[ -f "$PROVISIONING_PROFILE" ]] || fail "APP_STORE_PROVISIONING_PROFILE does not point to a file"
+
+security find-identity -v -p codesigning | grep -F -- "$APPLICATION_IDENTITY" >/dev/null \
+  || fail "application signing identity is not available in the current keychain"
+security find-identity -v | grep -F -- "$INSTALLER_IDENTITY" >/dev/null \
+  || fail "installer signing identity is not available in the current keychain"
+
+tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/personal-site-publisher-app-store.XXXXXX")"
+trap 'rm -rf "$tmp_dir"' EXIT
+profile_plist="$tmp_dir/profile.plist"
+resolved_entitlements="$tmp_dir/resolved-entitlements.plist"
+security cms -D -i "$PROVISIONING_PROFILE" >"$profile_plist" \
+  || fail "could not decode the provisioning profile"
+
+python3 - "$profile_plist" "$ENTITLEMENTS" "$resolved_entitlements" "$BUNDLE_ID" <<'PY'
+from datetime import datetime, timezone
+import plistlib
+from pathlib import Path
+import sys
+
+profile_path = Path(sys.argv[1])
+base_path = Path(sys.argv[2])
+output_path = Path(sys.argv[3])
+bundle_id = sys.argv[4]
+with profile_path.open("rb") as handle:
+    profile = plistlib.load(handle)
+with base_path.open("rb") as handle:
+    resolved = plistlib.load(handle)
+
+expiration = profile.get("ExpirationDate")
+if not isinstance(expiration, datetime):
+    raise SystemExit("app store package: provisioning profile has no expiration date")
+if expiration.replace(tzinfo=expiration.tzinfo or timezone.utc) <= datetime.now(timezone.utc):
+    raise SystemExit("app store package: provisioning profile is expired")
+
+profile_entitlements = profile.get("Entitlements", {})
+application_identifier = profile_entitlements.get("com.apple.application-identifier", "")
+if not application_identifier.endswith("." + bundle_id):
+    raise SystemExit("app store package: provisioning profile does not match the app bundle identifier")
+if profile_entitlements.get("com.apple.security.get-task-allow") is True:
+    raise SystemExit("app store package: development provisioning profile is not valid for distribution")
+
+for key in (
+    "com.apple.application-identifier",
+    "com.apple.developer.team-identifier",
+    "keychain-access-groups",
+):
+    if key in profile_entitlements:
+        resolved[key] = profile_entitlements[key]
+
+with output_path.open("wb") as handle:
+    plistlib.dump(resolved, handle, fmt=plistlib.FMT_XML, sort_keys=True)
+PY
+
+version_values="$(bash "$ROOT_DIR/script/check_build_version.sh" --print-values)"
+IFS=$'\t' read -r marketing_version build_number <<<"$version_values"
+artifact_base="$APP_NAME-$marketing_version-$build_number"
+signed_app="$OUTPUT_DIR/$artifact_base.app"
+installer_pkg="$OUTPUT_DIR/$artifact_base.pkg"
+hash_file="$OUTPUT_DIR/$artifact_base.sha256"
+
+mkdir -p "$OUTPUT_DIR"
+for artifact_path in "$signed_app" "$installer_pkg" "$hash_file"; do
+  case "$artifact_path" in
+    "$OUTPUT_DIR"/*) ;;
+    *) fail "artifact path escaped output directory: $artifact_path" ;;
+  esac
+done
+rm -rf "$signed_app"
+rm -f "$installer_pkg" "$hash_file"
+bash "$ROOT_DIR/script/build_and_run.sh" --package-only --release >/dev/null
+ditto "$ROOT_DIR/dist/$APP_NAME.app" "$signed_app"
+cp "$PROVISIONING_PROFILE" "$signed_app/Contents/embedded.provisionprofile"
+
+codesign --force --options runtime --timestamp \
+  --entitlements "$resolved_entitlements" \
+  --sign "$APPLICATION_IDENTITY" "$signed_app"
+codesign --verify --deep --strict --verbose=2 "$signed_app"
+
+bash "$ROOT_DIR/script/check_app_store_archive_readiness.sh" --app-bundle "$signed_app"
+productbuild --component "$signed_app" /Applications \
+  --sign "$INSTALLER_IDENTITY" "$installer_pkg"
+pkgutil --check-signature "$installer_pkg" >/dev/null \
+  || fail "installer package signature verification failed"
+
+shasum -a 256 "$signed_app/Contents/MacOS/$APP_NAME" "$installer_pkg" \
+  >"$hash_file"
+
+echo "app store package: signed app $signed_app"
+echo "app store package: signed installer $installer_pkg"
+echo "app store package: hashes $hash_file"

@@ -42,7 +42,7 @@ final class PreflightCheckServiceTests: XCTestCase {
       profile: profile
     )
 
-    XCTAssertTrue(issues.contains { $0.title == "发布路径重复" })
+    XCTAssertTrue(issues.contains { $0.title == CoreL10n.text("发布路径重复") })
   }
 
   func testDuplicateIndexMatchesPerDraftScanForCaseInsensitiveTitlesAndPaths() {
@@ -106,8 +106,8 @@ final class PreflightCheckServiceTests: XCTestCase {
       duplicateIndex: PreflightDuplicateIndex(drafts: drafts, profile: profile)
     )
 
-    XCTAssertFalse(issues.contains { $0.title == "标题重复" })
-    XCTAssertFalse(issues.contains { $0.title == "发布路径重复" })
+    XCTAssertFalse(issues.contains { $0.title == CoreL10n.text("标题重复") })
+    XCTAssertFalse(issues.contains { $0.title == CoreL10n.text("发布路径重复") })
   }
 
   func testReportsMarkdownPathOutsideContentRoot() {
@@ -215,7 +215,9 @@ final class PreflightCheckServiceTests: XCTestCase {
       includeRepositoryReadiness: false
     )
 
-    let issue = issues.first { $0.title == "疑似密钥泄露" && $0.field == "body" }
+    let issue = issues.first {
+      $0.title == CoreL10n.text("疑似密钥泄露") && $0.field == "body"
+    }
     XCTAssertEqual(issue?.severity, .error)
     XCTAssertFalse(issue?.message.contains(secret) ?? true)
   }
@@ -239,8 +241,12 @@ final class PreflightCheckServiceTests: XCTestCase {
       includeRepositoryReadiness: false
     )
 
-    XCTAssertTrue(issues.contains { $0.title == "内网地址疑似泄露" && $0.severity == .warning })
-    XCTAssertTrue(issues.contains { $0.title == "本机路径疑似泄露" && $0.severity == .warning })
+    XCTAssertTrue(issues.contains {
+      $0.title == CoreL10n.text("内网地址疑似泄露") && $0.severity == .warning
+    })
+    XCTAssertTrue(issues.contains {
+      $0.title == CoreL10n.text("本机路径疑似泄露") && $0.severity == .warning
+    })
   }
 
   func testRepositoryBackupPurposeSkipsDeploymentReadinessButKeepsRepositorySafety() {
@@ -286,7 +292,7 @@ final class PreflightCheckServiceTests: XCTestCase {
       repositoryReport: repositoryReportWithDeploymentAndGitIssues()
     )
 
-    XCTAssertFalse(issues.contains { $0.title == "未选择本地仓库" })
+    XCTAssertFalse(issues.contains { $0.title == CoreL10n.text("未选择本地仓库") })
     XCTAssertFalse(issues.contains { $0.field == "repository" })
     XCTAssertFalse(issues.contains { $0.field == "siteKind" })
     XCTAssertFalse(issues.contains { $0.field == "contentRoot" })

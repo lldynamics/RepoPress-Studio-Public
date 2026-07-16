@@ -73,8 +73,8 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/AdvancedWorkspaceMenu.swift" \
-  ".accessibilityLabel(\"高级工具\")" \
-  "advanced workspace menu must expose an accessibility label"
+  "ForEach(WorkspaceNavigationPresentation.secondaryEntryItems)" \
+  "flattened workspace menu must expose every advanced destination as a labeled button"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
@@ -85,6 +85,16 @@ require_literal \
   "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
   ".focusedSceneValue(" \
   "content view must expose focused command actions"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
+  ".accessibilityIdentifier(\"workspace-inspector-toggle\")" \
+  "workspace inspector toggle must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MetadataColumn.swift" \
+  ".accessibilityIdentifier(\"workspace-inspector\")" \
+  "workspace inspector must expose a stable accessibility identifier"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
@@ -167,30 +177,19 @@ require_literal \
   "AI assistant composer must expose a stable accessibility identifier"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" \
-  ".accessibilityLabel(\"AI 对话标题\")" \
-  "AI chat title field must expose an accessibility label"
-
-require_literal_any_file \
-  ".accessibilityLabel(\"复制消息\")" \
-  "AI chat message action buttons must expose accessibility labels" \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceComponents.swift"
-
-require_literal \
   "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
   ".accessibilityValue(value)" \
   "metric tiles must expose their current value"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
-  ".accessibilityHint(\"拖入图片文件到此处\")" \
-  "image workbench drop target must expose an accessibility hint"
+  ".accessibilityLabel(\"全站图片优化\")" \
+  "site-wide image optimization must expose an accessibility label"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
-  ".accessibilityLabel(\"图片 Alt 文本\")" \
-  "image workbench alt text field must expose an accessibility label"
+  ".accessibilityLabel(\"优化全站图片\")" \
+  "site-wide image optimization menu must expose an accessibility label"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/PublishDrawerView.swift" \
@@ -229,15 +228,13 @@ require_literal_any_file \
   ".accessibilityLabel(\"文章标题\")" \
   "article inspector title field must expose an accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspector.swift" \
-  "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift" \
-  "Sources/PersonalSitePublisherMac/Views/EditorInspectorSections.swift"
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift"
 
 require_literal_any_file \
   ".accessibilityLabel(\"图片 Alt 文本\")" \
   "article inspector image alt field must expose an accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspector.swift" \
-  "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift" \
-  "Sources/PersonalSitePublisherMac/Views/EditorInspectorSections.swift"
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift"
 
 require_literal_any_file \
   ".accessibilityLabel(\"查找文本\")" \
@@ -307,11 +304,6 @@ require_literal \
   ".accessibilityValue(statusTitle)" \
   "local preview toolbar control must expose its current runtime status"
 
-require_literal_source_manifest \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" \
-  ".accessibilityLabel(\"AI 模型名称\")" \
-  "AI custom model field must expose an accessibility label"
-
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift" \
   ".accessibilityLabel(\"启用部署轮询\")" \
@@ -321,8 +313,7 @@ require_literal_any_file \
   ".accessibilityLabel(\"复制全部外部调试链接\")" \
   "social external debug copy-all action must expose an accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspector.swift" \
-  "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift" \
-  "Sources/PersonalSitePublisherMac/Views/EditorInspectorSections.swift"
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/FirstRunSetupView.swift" \
@@ -356,23 +347,23 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceRailView.swift" \
-  ".accessibilityAddTraits(isSelected ? .isSelected : [])" \
-  "workspace task navigation must expose exact selected accessibility traits"
+  "List(selection: navigationSelection)" \
+  "workspace task navigation must use native single-selection semantics"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/WorkspaceRailView.swift" \
-  ".accessibilityRemoveTraits(.isSelected)" \
-  "AI assistant must remain an auxiliary open state instead of a selected main task"
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  ".accessibilityLabel(\"AI 推荐指令\")" \
+  "the single editor AI entry must expose a descriptive accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  ".accessibilityValue(isSelectionAIActionRunning ? \"AI 处理中\" : \"\")" \
+  "the single editor AI entry must expose its running state"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
   ".accessibilityAddTraits(editorDisplayMode == mode ? .isSelected : [])" \
   "editor display modes must expose selected accessibility traits"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInputSection.swift" \
-  ".accessibilityAddTraits(isSelected ? .isSelected : [])" \
-  "AI image attachments must expose selected accessibility traits"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ContentHealthDetailView.swift" \

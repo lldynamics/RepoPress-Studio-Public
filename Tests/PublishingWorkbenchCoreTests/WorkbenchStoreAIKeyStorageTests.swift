@@ -25,7 +25,7 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
 
     XCTAssertEqual(store.aiActionMessage, "AI API Key 已保存到 Keychain。")
     XCTAssertTrue(store.aiTokenAvailability.hasToken)
-    XCTAssertEqual(try tokenStore.token(for: store.activeProfile), "sk-test-token")
+    XCTAssertEqual(try tokenStore.aiToken(for: store.activeProfile), "sk-test-token")
   }
 
   func testDeleteAIAPIKeyClearsStoredTokenAndAvailability() throws {
@@ -50,6 +50,32 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
 
     XCTAssertEqual(store.aiActionMessage, "AI API Key 已删除。")
     XCTAssertFalse(store.aiTokenAvailability.hasToken)
-    XCTAssertNil(try tokenStore.token(for: store.activeProfile))
+    XCTAssertNil(try tokenStore.aiToken(for: store.activeProfile))
+  }
+
+  func testChangingAIEndpointRequiresTokenToBeSavedAgain() throws {
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("WorkbenchStoreAIOriginTests-\(UUID().uuidString)")
+      .appendingPathExtension("json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let tokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.AIOrigin.\(UUID().uuidString)",
+      accountPrefix: "ai-origin-tests",
+      inMemory: true
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: tokenStore
+    )
+    store.saveAIAPIKey("deepseek-token")
+    XCTAssertTrue(store.aiTokenAvailability.hasToken)
+
+    store.updateActiveProfile { profile in
+      profile.aiProviderConfig.baseURL = "https://ai-proxy.example/v1"
+    }
+    store.refreshAIKeyAvailability()
+
+    XCTAssertFalse(store.aiTokenAvailability.hasToken)
+    XCTAssertNil(try tokenStore.aiToken(for: store.activeProfile))
   }
 }

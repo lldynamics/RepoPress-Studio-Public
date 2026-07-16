@@ -1,0 +1,123 @@
+import AppKit
+import Foundation
+import PublishingWorkbenchCore
+
+enum MarkdownScrollSyncSource: Equatable {
+  case editor
+  case preview
+}
+
+struct MarkdownScrollSyncUpdate: Equatable, Identifiable {
+  let id: UUID
+  let source: MarkdownScrollSyncSource
+  let progress: Double
+
+  init(source: MarkdownScrollSyncSource, progress: Double) {
+    id = UUID()
+    self.source = source
+    self.progress = min(max(progress.isFinite ? progress : 0, 0), 1)
+  }
+}
+
+@MainActor
+final class MarkdownScrollViewSyncBridge: NSObject {
+  private let source: MarkdownScrollSyncSource
+  private let onProgressChanged: (Double) -> Void
+  private let service = MarkdownScrollSynchronizationService()
+  private weak var scrollView: NSScrollView?
+  private var lastAppliedUpdateID: UUID?
+  private var lastReportedProgress: Double?
+  private var isApplyingUpdate = false
+
+  init(
+    source: MarkdownScrollSyncSource,
+    onProgressChanged: @escaping (Double) -> Void
+  ) {
+    self.source = source
+    self.onProgressChanged = onProgressChanged
+    super.init()
+  }
+
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+  }
+
+  func observe(_ scrollView: NSScrollView) {
+    NotificationCenter.default.removeObserver(self)
+    self.scrollView = scrollView
+    scrollView.contentView.postsBoundsChangedNotifications = true
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(scrollBoundsDidChange(_:)),
+      name: NSView.boundsDidChangeNotification,
+      object: scrollView.contentView
+    )
+  }
+
+  func apply(
+    _ update: MarkdownScrollSyncUpdate?,
+    includingOwnSource: Bool = false,
+    allowDeferredRetry: Bool = true
+  ) {
+    guard let update,
+          let scrollView,
+          (includingOwnSource || update.source != source),
+          update.id != lastAppliedUpdateID else {
+      return
+    }
+
+    scrollView.layoutSubtreeIfNeeded()
+    let viewportLength = Double(scrollView.contentView.bounds.height)
+    let contentLength = Double(scrollView.documentView?.frame.height ?? 0)
+    let scrollableLength = max(0, contentLength - viewportLength)
+    guard scrollableLength > 0 || update.progress == 0 else {
+      guard allowDeferredRetry else { return }
+      DispatchQueue.main.async { [weak self] in
+        self?.apply(
+          update,
+          includingOwnSource: includingOwnSource,
+          allowDeferredRetry: false
+        )
+      }
+      return
+    }
+
+    lastAppliedUpdateID = update.id
+    let y = service.contentOffset(
+      progress: update.progress,
+      viewportLength: viewportLength,
+      contentLength: contentLength
+    )
+    isApplyingUpdate = true
+    scrollView.contentView.scroll(
+      to: NSPoint(x: scrollView.contentView.bounds.origin.x, y: y)
+    )
+    scrollView.reflectScrolledClipView(scrollView.contentView)
+    lastReportedProgress = update.progress
+    DispatchQueue.main.async { [weak self] in
+      self?.isApplyingUpdate = false
+    }
+  }
+
+  @objc
+  private func scrollBoundsDidChange(_ notification: Notification) {
+    guard !isApplyingUpdate,
+          let scrollView,
+          let changedClipView = notification.object as? NSClipView,
+          changedClipView === scrollView.contentView else {
+      return
+    }
+
+    let progress = service.progress(
+      contentOffset: Double(scrollView.contentView.bounds.origin.y),
+      viewportLength: Double(scrollView.contentView.bounds.height),
+      contentLength: Double(scrollView.documentView?.frame.height ?? 0)
+    )
+    if let lastReportedProgress,
+       abs(lastReportedProgress - progress) < 0.001 {
+      return
+    }
+    lastReportedProgress = progress
+    onProgressChanged(progress)
+  }
+}

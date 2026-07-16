@@ -1,6 +1,6 @@
 import Foundation
 
-public struct FrontMatterRenderer {
+public struct FrontMatterRenderer: Sendable {
   public init() {}
 
   public func render(draft: ArticleDraft, profile: SiteProfile) -> String {

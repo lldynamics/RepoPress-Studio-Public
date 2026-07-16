@@ -11,9 +11,9 @@ enum SiteStarterMode: String, CaseIterable, Identifiable {
   var title: String {
     switch self {
     case .create:
-      return "新建站点"
+      return String(localized: "新建站点")
     case .importExisting:
-      return "导入仓库"
+      return String(localized: "导入仓库")
     }
   }
 }
@@ -31,34 +31,34 @@ enum SiteStarterWizardStep: String, CaseIterable, Identifiable {
   var title: String {
     switch self {
     case .template:
-      return "模板"
+      return String(localized: "模板")
     case .localDirectory:
-      return "本地目录"
+      return String(localized: "本地目录")
     case .github:
       return "GitHub"
     case .generate:
-      return "生成站点"
+      return String(localized: "生成站点")
     case .firstPush:
-      return "首次推送"
+      return String(localized: "首次推送")
     case .deployment:
-      return "部署状态"
+      return String(localized: "部署状态")
     }
   }
 
   var summary: String {
     switch self {
     case .template:
-      return "选择 Zola/Jekyll 模板，并填写站点名称、描述、作者和 URL。"
+      return String(localized: "选择 Zola/Jekyll 模板，并填写站点名称、描述、作者和 URL。")
     case .localDirectory:
-      return "选择一个空文件夹作为本地静态站点仓库。"
+      return String(localized: "选择一个空文件夹作为本地静态站点仓库。")
     case .github:
-      return "配置 owner/repo/branch，必要时直接创建 GitHub 仓库。"
+      return String(localized: "配置 owner/repo/branch，必要时直接创建 GitHub 仓库。")
     case .generate:
-      return "生成模板文件、首篇文章、部署说明和本地 Profile。"
+      return String(localized: "生成模板文件、首篇文章、部署说明和本地 Profile。")
     case .firstPush:
-      return "把生成的 Starter 提交并推送到远端分支。"
+      return String(localized: "把生成的 Starter 提交并推送到远端分支。")
     case .deployment:
-      return "确认 GitHub Pages / Actions 的首次部署状态。"
+      return String(localized: "确认 GitHub Pages / Actions 的首次部署状态。")
     }
   }
 
@@ -106,11 +106,11 @@ enum SiteStarterWizardStepStatus {
   var title: String {
     switch self {
     case .done:
-      return "已完成"
+      return String(localized: "已完成")
     case .active:
-      return "当前"
+      return String(localized: "当前")
     case .pending:
-      return "未完成"
+      return String(localized: "未完成")
     }
   }
 
@@ -128,7 +128,7 @@ enum SiteStarterWizardStepStatus {
   var color: Color {
     switch self {
     case .done:
-      return .green
+      return WorkbenchTheme.success
     case .active:
       return .accentColor
     case .pending:

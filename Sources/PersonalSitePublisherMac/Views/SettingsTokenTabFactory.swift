@@ -49,9 +49,6 @@ struct SettingsTokenTabFactory {
           actions: RepositoryPermissionSettingsActions(
             checkAccess: {
               await context.actions.checkRepositoryTokenAccess()
-            },
-            copyAccessEvidence: { check in
-              context.actions.copyRepositoryAccessEvidence(check)
             }
           ),
           isPresented: isPresented

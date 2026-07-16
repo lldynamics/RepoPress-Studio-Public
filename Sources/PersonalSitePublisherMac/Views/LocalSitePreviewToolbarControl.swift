@@ -133,13 +133,13 @@ struct LocalSitePreviewToolbarControl: View {
 
   private var statusColor: Color {
     if store.localSitePreviewRuntimeStatus.isReachable {
-      return .green
+      return WorkbenchTheme.success
     }
     if store.localSitePreviewRuntimeStatus.isRunning {
-      return .blue
+      return WorkbenchTheme.primary
     }
     if isTransitioning {
-      return .orange
+      return WorkbenchTheme.warning
     }
     return .secondary
   }

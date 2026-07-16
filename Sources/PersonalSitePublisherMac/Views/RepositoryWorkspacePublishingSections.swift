@@ -65,13 +65,6 @@ extension RepositoryWorkspaceView {
           } label: {
             Label("复制核对包", systemImage: "doc.on.doc")
           }
-          if let accessCheck = preview.accessCheck {
-            Button {
-              copy(accessCheck.accessEvidenceMarkdown, message: "已复制仓库 Token 权限证据包。")
-            } label: {
-              Label("复制权限证据", systemImage: "checklist.checked")
-            }
-          }
         }
 
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
@@ -249,11 +242,6 @@ extension RepositoryWorkspaceView {
           copy(result.clipboardSummary, message: "已复制线上发布结果。")
         } label: {
           Label("复制结果", systemImage: "doc.on.doc")
-        }
-        Button {
-          copy(result.remoteVerificationMarkdown, message: "已复制线上发布实测包。")
-        } label: {
-          Label("复制实测包", systemImage: "checklist.checked")
         }
         if let reviewURL = result.reviewURL, let url = URL(string: reviewURL) {
           Button {

@@ -44,6 +44,14 @@ package_type="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$INFO_P
 minimum_system="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$INFO_PLIST")"
 [[ "$minimum_system" == "14.0" ]] || fail "unexpected minimum system version: $minimum_system"
 
+application_category="$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$INFO_PLIST" 2>/dev/null || true)"
+[[ "$application_category" == public.app-category.* ]] \
+  || fail "LSApplicationCategoryType must use a public.app-category value"
+
+human_readable_copyright="$(/usr/libexec/PlistBuddy -c 'Print :NSHumanReadableCopyright' "$INFO_PLIST" 2>/dev/null || true)"
+[[ -n "${human_readable_copyright//[[:space:]]/}" ]] \
+  || fail "NSHumanReadableCopyright must not be empty"
+
 marketing_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST")"
 build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST")"
 build_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' "$INFO_PLIST" 2>/dev/null || true)"
@@ -61,4 +69,7 @@ network_enabled="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.network
 file_access_enabled="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.files.user-selected.read-write' "$ENTITLEMENTS" 2>/dev/null || true)"
 [[ "$file_access_enabled" == "true" ]] || fail "user-selected read/write entitlement must be enabled for local repository access"
 
-echo "app store metadata gate: Release bundle id, version $marketing_version ($build_number), icon, localized display names, minimum macOS, and sandbox entitlements verified"
+bookmarks_enabled="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.files.bookmarks.app-scope' "$ENTITLEMENTS" 2>/dev/null || true)"
+[[ "$bookmarks_enabled" == "true" ]] || fail "app-scope bookmarks entitlement must be enabled for persisted repository access"
+
+echo "app store metadata gate: Release bundle id, version $marketing_version ($build_number), icon, localized display names, category, copyright, minimum macOS, and sandbox entitlements verified"

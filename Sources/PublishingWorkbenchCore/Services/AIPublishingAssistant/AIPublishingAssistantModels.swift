@@ -443,65 +443,6 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
   }
 }
 
-public struct AIPublishingChatArchivedConversation: Codable, Hashable, Identifiable, Sendable {
-  public var id: UUID
-  public var title: String
-  public var messages: [AIPublishingChatMessage]
-  public var contextMode: AIPublishingChatContextMode
-  public var modelGrade: AIChatModelGrade
-  public var selectedModel: String
-  public var focusedParagraphID: String?
-  public var createdAt: Date
-  public var updatedAt: Date
-
-  public init(
-    id: UUID = UUID(),
-    title: String,
-    messages: [AIPublishingChatMessage],
-    contextMode: AIPublishingChatContextMode,
-    modelGrade: AIChatModelGrade,
-    selectedModel: String,
-    focusedParagraphID: String? = nil,
-    createdAt: Date = Date(),
-    updatedAt: Date = Date()
-  ) {
-    self.id = id
-    self.title = title
-    self.messages = messages
-    self.contextMode = contextMode
-    self.modelGrade = modelGrade
-    self.selectedModel = selectedModel
-    self.focusedParagraphID = focusedParagraphID
-    self.createdAt = createdAt
-    self.updatedAt = updatedAt
-  }
-
-  private enum CodingKeys: String, CodingKey {
-    case id
-    case title
-    case messages
-    case contextMode
-    case modelGrade
-    case selectedModel
-    case focusedParagraphID
-    case createdAt
-    case updatedAt
-  }
-
-  public init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-    title = try container.decode(String.self, forKey: .title)
-    messages = try container.decode([AIPublishingChatMessage].self, forKey: .messages)
-    contextMode = try container.decodeIfPresent(AIPublishingChatContextMode.self, forKey: .contextMode) ?? .site
-    modelGrade = try container.decodeIfPresent(AIChatModelGrade.self, forKey: .modelGrade) ?? .standard
-    selectedModel = try container.decodeIfPresent(String.self, forKey: .selectedModel) ?? ""
-    focusedParagraphID = try container.decodeIfPresent(String.self, forKey: .focusedParagraphID)
-    createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
-    updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
-  }
-}
-
 public struct AIPublishingCustomPrompt: Codable, Hashable, Identifiable, Sendable {
   public var id: UUID
   public var title: String
@@ -543,14 +484,15 @@ public struct AIPublishingCustomPrompt: Codable, Hashable, Identifiable, Sendabl
   }
 }
 
-public struct AIPublishingChatSessionState: Codable, Hashable, Sendable {
+/// Runtime-only conversation state. AI conversations intentionally do not enter
+/// `WorkbenchSnapshot`; quitting the app discards them.
+public struct AIPublishingChatSessionState: Hashable, Sendable {
   public var conversationTitle: String?
   public var messages: [AIPublishingChatMessage]
   public var contextMode: AIPublishingChatContextMode
   public var modelGrade: AIChatModelGrade
   public var selectedModel: String
   public var focusedParagraphID: String?
-  public var archivedConversations: [AIPublishingChatArchivedConversation]
 
   public init(
     conversationTitle: String? = nil,
@@ -558,8 +500,7 @@ public struct AIPublishingChatSessionState: Codable, Hashable, Sendable {
     contextMode: AIPublishingChatContextMode = .site,
     modelGrade: AIChatModelGrade = .standard,
     selectedModel: String = "",
-    focusedParagraphID: String? = nil,
-    archivedConversations: [AIPublishingChatArchivedConversation] = []
+    focusedParagraphID: String? = nil
   ) {
     self.conversationTitle = conversationTitle?.trimmedForPublishing.nilIfEmpty
     self.messages = messages
@@ -567,21 +508,26 @@ public struct AIPublishingChatSessionState: Codable, Hashable, Sendable {
     self.modelGrade = modelGrade
     self.selectedModel = selectedModel
     self.focusedParagraphID = focusedParagraphID
-    self.archivedConversations = archivedConversations
   }
 
-  public var shouldPersist: Bool {
+  public var shouldCache: Bool {
     conversationTitle?.nilIfEmpty != nil
       || !messages.isEmpty
       || contextMode != .site
       || modelGrade != .standard
       || !selectedModel.trimmedForPublishing.isEmpty
       || focusedParagraphID?.nilIfEmpty != nil
-      || !archivedConversations.isEmpty
+  }
+
+  public var imageAttachmentByteCount: Int64 {
+    messages.reduce(Int64(0)) { messageTotal, message in
+      messageTotal + message.imageAttachments.reduce(Int64(0)) { attachmentTotal, attachment in
+        attachmentTotal + max(attachment.byteCount, Int64(attachment.data.count))
+      }
+    }
   }
 
   public func prepared(
-    maxArchivedConversations: Int = 20,
     maxMessagesPerConversation: Int = 80,
     maxTotalImageBytes: Int64 = 24_000_000
   ) -> AIPublishingChatSessionState {
@@ -589,17 +535,6 @@ public struct AIPublishingChatSessionState: Codable, Hashable, Sendable {
     prepared.conversationTitle = prepared.conversationTitle?.trimmedForPublishing.nilIfEmpty
     if prepared.messages.count > maxMessagesPerConversation {
       prepared.messages = Array(prepared.messages.suffix(maxMessagesPerConversation))
-    }
-    prepared.archivedConversations = prepared.archivedConversations
-      .filter { !$0.messages.isEmpty }
-      .sorted { $0.updatedAt > $1.updatedAt }
-      .prefix(maxArchivedConversations)
-      .map { conversation in
-        var trimmed = conversation
-        if trimmed.messages.count > maxMessagesPerConversation {
-          trimmed.messages = Array(trimmed.messages.suffix(maxMessagesPerConversation))
-      }
-      return trimmed
     }
     prepared.trimImageAttachmentsToFit(maxTotalImageBytes: maxTotalImageBytes)
     return prepared
@@ -612,21 +547,11 @@ public struct AIPublishingChatSessionState: Codable, Hashable, Sendable {
         trimmed.imageAttachments = []
         return trimmed
       }
-      archivedConversations = archivedConversations.map { conversation in
-        var trimmed = conversation
-        trimmed.messages = trimmed.messages.map { message in
-          var message = message
-          message.imageAttachments = []
-          return message
-        }
-        return trimmed
-      }
       return
     }
 
     var remainingBytes = maxTotalImageBytes
-    // Keep the newest active/archived images and preserve message text when
-    // reclaiming older image payloads from the persisted session.
+    // Keep the newest images while preserving message text.
     for index in messages.indices.reversed() {
       let byteCount = messages[index].imageAttachments.reduce(Int64(0)) { partial, attachment in
         partial + max(attachment.byteCount, Int64(attachment.data.count))
@@ -637,44 +562,6 @@ public struct AIPublishingChatSessionState: Codable, Hashable, Sendable {
         messages[index].imageAttachments = []
       }
     }
-    for conversationIndex in archivedConversations.indices {
-      for messageIndex in archivedConversations[conversationIndex].messages.indices.reversed() {
-        let byteCount = archivedConversations[conversationIndex].messages[messageIndex].imageAttachments.reduce(Int64(0)) { partial, attachment in
-          partial + max(attachment.byteCount, Int64(attachment.data.count))
-        }
-        if byteCount <= remainingBytes {
-          remainingBytes -= byteCount
-        } else {
-          archivedConversations[conversationIndex].messages[messageIndex].imageAttachments = []
-        }
-      }
-    }
-  }
-
-  private enum CodingKeys: String, CodingKey {
-    case conversationTitle
-    case messages
-    case contextMode
-    case modelGrade
-    case selectedModel
-    case focusedParagraphID
-    case archivedConversations
-  }
-
-  public init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    conversationTitle = try container.decodeIfPresent(String.self, forKey: .conversationTitle)?
-      .trimmedForPublishing
-      .nilIfEmpty
-    messages = try container.decodeIfPresent([AIPublishingChatMessage].self, forKey: .messages) ?? []
-    contextMode = try container.decodeIfPresent(AIPublishingChatContextMode.self, forKey: .contextMode) ?? .site
-    modelGrade = try container.decodeIfPresent(AIChatModelGrade.self, forKey: .modelGrade) ?? .standard
-    selectedModel = try container.decodeIfPresent(String.self, forKey: .selectedModel) ?? ""
-    focusedParagraphID = try container.decodeIfPresent(String.self, forKey: .focusedParagraphID)
-    archivedConversations = try container.decodeIfPresent(
-      [AIPublishingChatArchivedConversation].self,
-      forKey: .archivedConversations
-    ) ?? []
   }
 }
 

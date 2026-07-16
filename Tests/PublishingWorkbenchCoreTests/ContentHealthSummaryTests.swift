@@ -6,10 +6,12 @@ final class ContentHealthSummaryTests: XCTestCase {
   func testStoreSeparatesSiteIssuesFromDraftHealthSummaries() throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
 
-    XCTAssertTrue(store.sitePreflightIssues.contains { $0.title == "未选择本地仓库" })
+    XCTAssertTrue(store.sitePreflightIssues.contains { $0.title == CoreL10n.text("未选择本地仓库") })
     XCTAssertEqual(store.contentHealthSummaries.count, store.visibleDrafts.count)
     XCTAssertFalse(
-      store.contentHealthSummaries.flatMap(\.issues).contains { $0.title == "未选择本地仓库" }
+      store.contentHealthSummaries.flatMap(\.issues).contains {
+        $0.title == CoreL10n.text("未选择本地仓库")
+      }
     )
   }
 
@@ -89,10 +91,41 @@ final class ContentHealthSummaryTests: XCTestCase {
     )
     store.updateDraft(draft)
 
-    let report = await store.contentHealthReportAsync()
+    let report = try await store.contentHealthReportAsync()
 
     XCTAssertEqual(Set(report.draftSummaries.map(\.draftID)), Set(store.visibleDrafts.map(\.id)))
     XCTAssertEqual(report.publicRiskSummary, PublicRiskSummary(issues: report.draftSummaries.flatMap(\.issues)))
+  }
+
+  func testContentHealthReportAsyncPropagatesCancellation() async {
+    let profile = SiteProfile.defaultProfile
+    let drafts = (0..<256).map { index in
+      ArticleDraft(
+        siteProfileID: profile.id,
+        title: "Draft \(index)",
+        slug: "draft-\(index)",
+        bodyMarkdown: String(repeating: "Content health cancellation check. ", count: 64)
+      )
+    }
+    let task = Task {
+      try await ContentHealthReportService().reportAsync(
+        drafts: drafts,
+        profile: profile,
+        sitePreflightIssues: [],
+        presentations: [:]
+      )
+    }
+
+    task.cancel()
+
+    do {
+      _ = try await task.value
+      XCTFail("Expected content health report cancellation to propagate")
+    } catch is CancellationError {
+      // Expected.
+    } catch {
+      XCTFail("Expected CancellationError, got \(error)")
+    }
   }
 
   func testCanSuppressRepositoryReadinessForDraftOnlyChecks() {
@@ -112,7 +145,7 @@ final class ContentHealthSummaryTests: XCTestCase {
       includeRepositoryReadiness: false
     )
 
-    XCTAssertFalse(issues.contains { $0.title == "未选择本地仓库" })
+    XCTAssertFalse(issues.contains { $0.title == CoreL10n.text("未选择本地仓库") })
   }
 
   func testDraftPreflightSummaryAggregatesPublicRiskIssues() throws {
@@ -144,7 +177,7 @@ final class ContentHealthSummaryTests: XCTestCase {
 
     XCTAssertEqual(summary.publicRiskErrorCount, 1)
     XCTAssertEqual(summary.publicRiskWarningCount, 2)
-    XCTAssertEqual(summary.publicRiskSummary.statusTitle, "公开风险阻塞")
+    XCTAssertEqual(summary.publicRiskSummary.statusTitle, CoreL10n.text("公开风险阻塞"))
     XCTAssertFalse(summary.publicRiskIssues.contains { $0.message.contains(secret) })
   }
 

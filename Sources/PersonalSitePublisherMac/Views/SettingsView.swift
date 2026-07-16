@@ -7,9 +7,9 @@ import PublishingWorkbenchScreenshotSupport
 struct SettingsView: View {
   @ObservedObject var store: WorkbenchStore
   @ObservedObject var storeKitProEntitlementCoordinator: StoreKitProEntitlementCoordinator
-  @AppStorage("defaultShowsInspector") private var defaultShowsInspector = true
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
+  @AppStorage("settingsRequestedTabID") private var requestedSettingsTabID = ""
   @State private var selectedSettingsTab: SettingsTab
   @State private var healthDestination: SettingsConfigurationHealthDestination?
   @State private var healthNavigationRequestID = UUID()
@@ -26,7 +26,7 @@ struct SettingsView: View {
   var body: some View {
     VStack(spacing: 0) {
       SettingsProfileBar(
-        profiles: store.profiles,
+        profiles: store.publishingProfiles,
         activeProfile: store.activeProfile,
         activeProfileIDBinding: activeProfileIDBinding,
         activeProfileBinding: activeProfileBinding,
@@ -70,7 +70,6 @@ struct SettingsView: View {
               store: store,
               storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator,
               activeProfileBinding: activeProfileBinding,
-              defaultShowsInspector: $defaultShowsInspector,
               autoRunPreflightBinding: autoRunPreflightBinding,
               scanRepositoryOnLaunch: $scanRepositoryOnLaunch,
               siteKindBinding: siteKindBinding,
@@ -88,7 +87,11 @@ struct SettingsView: View {
     .frame(minWidth: 620, idealWidth: 760, minHeight: 520, idealHeight: 680)
     .scenePadding()
     .onAppear {
+      applyRequestedSettingsTab(requestedSettingsTabID)
       store.setAutomaticallyRefreshPreflightOnEdit(autoRunPreflight)
+    }
+    .onChange(of: requestedSettingsTabID) { _, requestedTabID in
+      applyRequestedSettingsTab(requestedTabID)
     }
     .onChange(of: autoRunPreflight) { _, newValue in
       store.setAutomaticallyRefreshPreflightOnEdit(newValue)
@@ -159,5 +162,19 @@ struct SettingsView: View {
     case .pro:
       selectedSettingsTab = .pro
     }
+  }
+
+  private func applyRequestedSettingsTab(_ requestedTabID: String) {
+    guard !requestedTabID.isEmpty,
+          let tab = SettingsTab.allCases.first(where: { $0.id == requestedTabID }) else {
+      return
+    }
+
+    selectedSettingsTab = tab
+    if tab == .ai {
+      healthDestination = .aiKey
+      healthNavigationRequestID = UUID()
+    }
+    self.requestedSettingsTabID = ""
   }
 }

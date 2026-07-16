@@ -15,7 +15,7 @@ struct WorkspaceToolbarLeadingContent: View {
   var body: some View {
     HStack(spacing: 8) {
       Picker("站点", selection: profileSelection) {
-        ForEach(store.profiles) { profile in
+        ForEach(store.publishingProfiles) { profile in
           Text(profile.name).tag(profile.id)
         }
       }
@@ -63,11 +63,11 @@ private enum PublishingStatusArea {
   var title: String {
     switch self {
     case .repository:
-      return "仓库"
+      return String(localized: "仓库")
     case .draft:
-      return "当前文章"
+      return String(localized: "当前文章")
     case .deployment:
-      return "部署历史"
+      return String(localized: "部署历史")
     }
   }
 
@@ -108,6 +108,8 @@ struct PublishingStatusToolbarControl: View {
   let canUseProtectedWorkbench: Bool
   let selectedDraftID: UUID?
   let openPublishFlow: () -> Void
+  let openRepositoryOverview: () -> Void
+  let openContentHealthOverview: () -> Void
   let openReleaseHistory: () -> Void
   @State private var isPresented = false
 
@@ -177,8 +179,8 @@ struct PublishingStatusToolbarControl: View {
        store.activeProfile.localRepositoryRootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       return PublishingStatusPopoverItem(
         area: area,
-        value: "未配置",
-        detail: "当前站点尚未选择本地仓库。",
+        value: String(localized: "未配置"),
+        detail: String(localized: "当前站点尚未选择本地仓库。"),
         statusImage: "externaldrive.badge.questionmark",
         color: .secondary,
         severity: .pending
@@ -188,8 +190,8 @@ struct PublishingStatusToolbarControl: View {
     guard let report = store.repositoryReport else {
       return PublishingStatusPopoverItem(
         area: area,
-        value: "待扫描",
-        detail: "尚未读取当前仓库状态。",
+        value: String(localized: "待扫描"),
+        detail: String(localized: "尚未读取当前仓库状态。"),
         statusImage: "arrow.clockwise",
         color: .secondary,
         severity: .pending
@@ -199,10 +201,10 @@ struct PublishingStatusToolbarControl: View {
     if !report.remoteChangedFiles.isEmpty {
       return PublishingStatusPopoverItem(
         area: area,
-        value: "远端有 \(report.remoteChangedFiles.count) 项变化",
-        detail: "同步前请审阅远端变更队列。",
+        value: String(localized: "远端有 \(report.remoteChangedFiles.count) 项变化"),
+        detail: String(localized: "同步前请审阅远端变更队列。"),
         statusImage: "arrow.down.doc",
-        color: .red,
+        color: WorkbenchTheme.risk,
         severity: .error
       )
     }
@@ -210,10 +212,10 @@ struct PublishingStatusToolbarControl: View {
     if !report.changedFiles.isEmpty {
       return PublishingStatusPopoverItem(
         area: area,
-        value: "本地有 \(report.changedFiles.count) 项变化",
-        detail: "发布前请审阅本地 Diff。",
+        value: String(localized: "本地有 \(report.changedFiles.count) 项变化"),
+        detail: String(localized: "发布前请审阅本地 Diff。"),
         statusImage: "arrow.triangle.2.circlepath",
-        color: .orange,
+        color: WorkbenchTheme.warning,
         severity: .warning
       )
     }
@@ -223,7 +225,7 @@ struct PublishingStatusToolbarControl: View {
       value: report.syncStatusTitle,
       detail: report.rootPath,
       statusImage: "checkmark.circle",
-      color: .green,
+      color: WorkbenchTheme.success,
       severity: .ready
     )
   }
@@ -233,8 +235,8 @@ struct PublishingStatusToolbarControl: View {
     guard let draft = store.selectedDraft else {
       return PublishingStatusPopoverItem(
         area: area,
-        value: "未选择文章",
-        detail: "选择文章后可查看其发布检查状态。",
+        value: String(localized: "未选择文章"),
+        detail: String(localized: "选择文章后可查看其发布检查状态。"),
         statusImage: "doc.badge.questionmark",
         color: .secondary,
         severity: .pending
@@ -249,10 +251,10 @@ struct PublishingStatusToolbarControl: View {
     if blockingCount > 0 {
       return PublishingStatusPopoverItem(
         area: area,
-        value: "\(blockingCount) 个阻断项",
-        detail: draft.title.nilIfEmpty ?? "当前文章存在发布阻断项。",
+        value: String(localized: "\(blockingCount) 个阻断项"),
+        detail: draft.title.nilIfEmpty ?? String(localized: "当前文章存在发布阻断项。"),
         statusImage: "xmark.octagon",
-        color: .red,
+        color: WorkbenchTheme.risk,
         severity: .error
       )
     }
@@ -264,10 +266,10 @@ struct PublishingStatusToolbarControl: View {
     if warningCount > 0 {
       return PublishingStatusPopoverItem(
         area: area,
-        value: "\(warningCount) 个待确认项",
-        detail: draft.title.nilIfEmpty ?? "当前文章需要审阅发布提示。",
+        value: String(localized: "\(warningCount) 个待确认项"),
+        detail: draft.title.nilIfEmpty ?? String(localized: "当前文章需要审阅发布提示。"),
         statusImage: "exclamationmark.triangle",
-        color: .orange,
+        color: WorkbenchTheme.warning,
         severity: .warning
       )
     }
@@ -277,8 +279,8 @@ struct PublishingStatusToolbarControl: View {
           readiness.commitReadiness != .blocked else {
       return PublishingStatusPopoverItem(
         area: area,
-        value: "待运行检查",
-        detail: draft.title.nilIfEmpty ?? "请运行发布前检查。",
+        value: String(localized: "待运行检查"),
+        detail: draft.title.nilIfEmpty ?? String(localized: "请运行发布前检查。"),
         statusImage: "checklist",
         color: .secondary,
         severity: .pending
@@ -287,10 +289,10 @@ struct PublishingStatusToolbarControl: View {
 
     return PublishingStatusPopoverItem(
       area: area,
-      value: "检查通过",
-      detail: draft.title.nilIfEmpty ?? "当前文章已具备写入和提交条件。",
+      value: String(localized: "检查通过"),
+      detail: draft.title.nilIfEmpty ?? String(localized: "当前文章已具备写入和提交条件。"),
       statusImage: "checkmark.circle",
-      color: .green,
+      color: WorkbenchTheme.success,
       severity: .ready
     )
   }
@@ -301,8 +303,8 @@ struct PublishingStatusToolbarControl: View {
     guard !entries.isEmpty else {
       return PublishingStatusPopoverItem(
         area: area,
-        value: "暂无发布记录",
-        detail: "远端发布后会在这里显示部署检查结果。",
+        value: String(localized: "暂无发布记录"),
+        detail: String(localized: "远端发布后会在这里显示部署检查结果。"),
         statusImage: "clock",
         color: .secondary,
         severity: .pending
@@ -315,7 +317,7 @@ struct PublishingStatusToolbarControl: View {
         value: failedEntry.status.localizedDisplayName,
         detail: failedEntry.statusMessage,
         statusImage: failedEntry.status.systemImage,
-        color: .red,
+        color: WorkbenchTheme.risk,
         severity: .error
       )
     }
@@ -326,7 +328,7 @@ struct PublishingStatusToolbarControl: View {
         value: pendingEntry.status.localizedDisplayName,
         detail: pendingEntry.statusMessage,
         statusImage: pendingEntry.status.systemImage,
-        color: .blue,
+        color: WorkbenchTheme.primary,
         severity: .active
       )
     }
@@ -337,15 +339,15 @@ struct PublishingStatusToolbarControl: View {
         value: latestEntry.status.localizedDisplayName,
         detail: latestEntry.statusMessage,
         statusImage: latestEntry.status.systemImage,
-        color: latestEntry.status == .succeeded ? .green : .secondary,
+        color: latestEntry.status == .succeeded ? WorkbenchTheme.success : .secondary,
         severity: latestEntry.status == .succeeded ? .ready : .pending
       )
     }
 
     return PublishingStatusPopoverItem(
       area: area,
-      value: "待检查",
-      detail: "尚未记录部署检查结果。",
+      value: String(localized: "待检查"),
+      detail: String(localized: "尚未记录部署检查结果。"),
       statusImage: "clock",
       color: .secondary,
       severity: .pending
@@ -357,9 +359,17 @@ struct PublishingStatusToolbarControl: View {
       HStack(spacing: 8) {
         Button {
           isPresented = false
-          openPublishFlow()
+          if let blockingArea = publishBlockingItem?.area {
+            openStatusArea(blockingArea)
+          } else {
+            openPublishFlow()
+          }
         } label: {
-          Label("发布当前文章…", systemImage: "paperplane")
+          if publishBlockingItem == nil {
+            Label("发布当前文章…", systemImage: "paperplane")
+          } else {
+            Label("处理发布阻断项", systemImage: "exclamationmark.triangle")
+          }
         }
         .buttonStyle(.borderedProminent)
         .disabled(selectedDraftID == nil)
@@ -367,7 +377,7 @@ struct PublishingStatusToolbarControl: View {
         Button {
           isPresented = false
           store.runPreflight()
-          store.selectSection(.contentHealth)
+          openContentHealthOverview()
         } label: {
           Label("运行检查", systemImage: "checklist")
         }
@@ -377,7 +387,7 @@ struct PublishingStatusToolbarControl: View {
       HStack(spacing: 14) {
         Button {
           isPresented = false
-          store.selectSection(.sync)
+          openRepositoryOverview()
         } label: {
           Label("仓库与批量发布", systemImage: "arrow.triangle.2.circlepath")
         }
@@ -393,14 +403,18 @@ struct PublishingStatusToolbarControl: View {
     }
   }
 
+  private var publishBlockingItem: PublishingStatusPopoverItem? {
+    [repositoryStatus, draftStatus].first { $0.severity == .error }
+  }
+
   private func openStatusArea(_ area: PublishingStatusArea) {
     isPresented = false
     switch area {
     case .repository:
-      store.selectSection(.sync)
+      openRepositoryOverview()
     case .draft:
       store.runPreflight()
-      store.selectSection(.contentHealth)
+      openContentHealthOverview()
     case .deployment:
       openReleaseHistory()
     }

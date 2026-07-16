@@ -34,16 +34,20 @@ struct AIKeychainSection: View {
         Button("保存 API Key") {
           onSaveAPIKey()
         }
+        .buttonStyle(.borderedProminent)
         .accessibilityLabel("保存 AI API Key")
 
-        Button("删除") {
+        Button("删除", role: .destructive) {
           onDeleteAPIKey()
         }
+        .buttonStyle(.bordered)
+        .disabled(!tokenAvailability.hasToken)
         .accessibilityLabel("删除 AI API Key")
 
         Button("刷新状态") {
           onRefreshState()
         }
+        .buttonStyle(.bordered)
         .accessibilityLabel("刷新 AI Key 状态")
 
         Button {
@@ -51,15 +55,16 @@ struct AIKeychainSection: View {
         } label: {
           Label("测试连接", systemImage: "network")
         }
+        .buttonStyle(.bordered)
         .disabled(isAIActionRunning)
         .accessibilityLabel("测试 AI 连接")
       }
 
       Label(
-        tokenAvailability.hasToken ? "已保存 API Key" : "未保存 API Key",
+        tokenStatusTitle,
         systemImage: tokenAvailability.hasToken ? "checkmark.seal" : "key"
       )
-      .foregroundStyle(tokenAvailability.hasToken ? .green : .secondary)
+      .foregroundStyle(tokenAvailability.hasToken ? WorkbenchTheme.success : .secondary)
 
       if let message = actionMessage {
         Text(message)
@@ -71,5 +76,9 @@ struct AIKeychainSection: View {
       guard shouldFocusInput else { return }
       isAPIKeyFocused = true
     }
+  }
+
+  private var tokenStatusTitle: LocalizedStringKey {
+    tokenAvailability.hasToken ? "已保存 API Key" : "未保存 API Key"
   }
 }

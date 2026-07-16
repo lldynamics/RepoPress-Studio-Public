@@ -6,7 +6,6 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
   case sync
   case images
   case contentHealth
-  case ai
   case generalDrafts
   case maintenance
   case releaseHistory
@@ -31,8 +30,6 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
       return "square.and.pencil"
     case .siteStarter:
       return "sparkles.rectangle.stack"
-    case .ai:
-      return "sparkles"
     case .sync:
       return "arrow.triangle.2.circlepath"
     case .contentHealth:
@@ -53,21 +50,19 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
     case .writing:
       return "1"
     case .siteStarter:
-      return "2"
-    case .sync:
-      return "3"
-    case .images:
-      return "4"
-    case .contentHealth:
       return "5"
-    case .ai:
-      return "6"
+    case .sync:
+      return "2"
+    case .images:
+      return "3"
+    case .contentHealth:
+      return "4"
     case .generalDrafts:
-      return "7"
+      return "6"
     case .maintenance:
-      return "8"
+      return "7"
     case .releaseHistory:
-      return "9"
+      return "8"
     }
   }
 
@@ -101,7 +96,7 @@ public enum WorkspaceArea: String, CaseIterable, Identifiable, Sendable {
   public var sections: [WorkspaceSection] {
     switch self {
     case .writing:
-      return [.writing, .ai, .images, .generalDrafts]
+      return [.writing, .images, .generalDrafts]
     case .publishing:
       return [.sync, .contentHealth, .releaseHistory]
     case .site:
@@ -124,7 +119,7 @@ public enum WorkspaceArea: String, CaseIterable, Identifiable, Sendable {
 public extension WorkspaceSection {
   var area: WorkspaceArea {
     switch self {
-    case .writing, .ai, .images, .generalDrafts:
+    case .writing, .images, .generalDrafts:
       return .writing
     case .sync, .contentHealth, .releaseHistory:
       return .publishing
@@ -153,10 +148,64 @@ public enum WorkspaceCenterSurface: String, CaseIterable, Sendable {
   case repository
   case images
   case contentHealth
-  case aiChat
   case generalDrafts
-  case maintenance
-  case releaseHistory
+}
+
+public enum WorkspaceInspectorRoute: String, CaseIterable, Sendable {
+  case articleMetadata
+  case articleChecks
+  case articleImages
+  case repository
+  case siteStarter
+  case aiAssistant
+  case unavailable
+}
+
+/// Keeps Inspector routing testable outside SwiftUI. Context-only subpages
+/// such as maintenance and release history deliberately use their parent
+/// workspace without opening a second Inspector surface.
+public enum WorkspaceInspectorPresentation {
+  public static func route(
+    for section: WorkspaceSection,
+    isAIAssistantPresented: Bool = false,
+    isRepositoryHistoryPresented: Bool = false,
+    isMaintenancePresented: Bool = false
+  ) -> WorkspaceInspectorRoute {
+    if isAIAssistantPresented && section == .writing {
+      return .aiAssistant
+    }
+
+    switch section {
+    case .writing:
+      return .articleMetadata
+    case .generalDrafts:
+      return .unavailable
+    case .contentHealth:
+      return isMaintenancePresented ? .unavailable : .articleChecks
+    case .images:
+      return .articleImages
+    case .sync:
+      return isRepositoryHistoryPresented ? .unavailable : .repository
+    case .siteStarter:
+      return .siteStarter
+    case .maintenance, .releaseHistory:
+      return .unavailable
+    }
+  }
+
+  public static func supportsInspector(
+    for section: WorkspaceSection,
+    isAIAssistantPresented: Bool = false,
+    isRepositoryHistoryPresented: Bool = false,
+    isMaintenancePresented: Bool = false
+  ) -> Bool {
+    route(
+      for: section,
+      isAIAssistantPresented: isAIAssistantPresented,
+      isRepositoryHistoryPresented: isRepositoryHistoryPresented,
+      isMaintenancePresented: isMaintenancePresented
+    ) != .unavailable
+  }
 }
 
 public extension WorkspaceSection {
@@ -167,20 +216,14 @@ public extension WorkspaceSection {
     case .sync: .repository
     case .images: .images
     case .contentHealth: .contentHealth
-    case .ai: .aiChat
     case .generalDrafts: .generalDrafts
-    case .maintenance: .maintenance
-    case .releaseHistory: .releaseHistory
+    case .maintenance: .contentHealth
+    case .releaseHistory: .repository
     }
   }
 
   var requiresEditableDraftForCenterSurface: Bool {
-    switch centerSurface {
-    case .siteStarter, .aiChat, .generalDrafts, .maintenance:
-      false
-    case .editor, .repository, .images, .contentHealth, .releaseHistory:
-      true
-    }
+    self == .writing
   }
 }
 
@@ -195,7 +238,6 @@ public extension WorkspaceSection {
       return .repositoryStages
     case .siteStarter,
          .images,
-         .ai,
          .generalDrafts,
          .maintenance,
          .releaseHistory:
@@ -233,15 +275,13 @@ public enum WorkspaceVisibilityPolicy {
 
   public static let dailyTopBarSections = WorkspaceSection.allCases.filter { section in
     section != .writing
-      && section != .ai
       && section != .siteStarter
       && section != .generalDrafts
       && !hiddenNavigationSections.contains(section)
   }
 
   public static let commandMenuPrimarySections = WorkspaceSection.allCases.filter { section in
-    section != .ai
-      && section != .siteStarter
+    section != .siteStarter
       && section != .generalDrafts
       && !hiddenNavigationSections.contains(section)
   }
@@ -422,23 +462,23 @@ public enum ReleaseRecordKind: String, CaseIterable, Codable, Identifiable, Send
   public var displayName: String {
     switch self {
     case .localWrite:
-      return "写入仓库"
+      return CoreL10n.text("写入仓库")
     case .batchLocalWrite:
-      return "批量写入"
+      return CoreL10n.text("批量写入")
     case .directCommit:
-      return "直接提交"
+      return CoreL10n.text("直接提交")
     case .reviewBranch:
-      return "发布分支"
+      return CoreL10n.text("发布分支")
     case .remoteDirectCommit:
-      return "线上提交"
+      return CoreL10n.text("线上提交")
     case .remoteReviewRequest:
-      return "线上 PR/MR"
+      return CoreL10n.text("线上 PR/MR")
     case .remotePublishFailure:
-      return "线上发布失败"
+      return CoreL10n.text("线上发布失败")
     case .remoteRollback:
-      return "线上回滚"
+      return CoreL10n.text("线上回滚")
     case .remoteReviewWithdrawal:
-      return "线上 Review 撤回"
+      return CoreL10n.text("线上 Review 撤回")
     }
   }
 
@@ -501,6 +541,8 @@ public struct ReleaseRecordBatchItem: Identifiable, Codable, Hashable, Sendable 
 }
 
 public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
+  public static let maximumRetainedRecords = 250
+
   public var id: UUID
   public var kind: ReleaseRecordKind
   public var title: String
@@ -577,6 +619,10 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
 
   public var shortCommitSHA: String? {
     commitSHA.map { String($0.prefix(8)) }
+  }
+
+  public static func limitedHistory(_ records: [ReleaseRecord]) -> [ReleaseRecord] {
+    Array(records.prefix(maximumRetainedRecords))
   }
 
   public var reviewWebURL: URL? {
@@ -797,8 +843,8 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
   ) -> ReleaseRecord {
     ReleaseRecord(
       kind: .remoteRollback,
-      title: "线上回滚：\(original.draftTitle ?? original.title)",
-      summary: "\(result.provider.displayName) · \(result.targetBranch) · 回滚 \(String(result.rolledBackCommitSHA.prefix(8))) -> \(String(result.rollbackCommitSHA.prefix(8)))",
+      title: CoreL10n.format("线上回滚：%@", original.draftTitle ?? original.title),
+      summary: CoreL10n.format("%@ · %@ · 回滚 %@ -> %@", result.provider.displayName, result.targetBranch, String(result.rolledBackCommitSHA.prefix(8)), String(result.rollbackCommitSHA.prefix(8))),
       siteProfileID: profile.id,
       siteName: profile.name,
       draftID: original.draftID,
@@ -815,7 +861,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       targetBranch: result.targetBranch,
       commitSHA: result.rollbackCommitSHA,
       reviewURL: result.remoteURL,
-      reviewTitle: "Rollback \(original.draftTitle ?? original.title)",
+      reviewTitle: CoreL10n.format("回滚 %@", original.draftTitle ?? original.title),
       batchItems: original.batchItems,
       createdAt: createdAt
     )
@@ -829,7 +875,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
   ) -> ReleaseRecord {
     ReleaseRecord(
       kind: .remoteReviewWithdrawal,
-      title: "线上 Review 撤回：\(original.draftTitle ?? original.title)",
+      title: CoreL10n.format("线上 Review 撤回：%@", original.draftTitle ?? original.title),
       summary: "\(result.provider.displayName) · #\(result.reviewNumber) · \(result.state)",
       siteProfileID: profile.id,
       siteName: profile.name,
@@ -847,7 +893,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       targetBranch: result.targetBranch,
       commitSHA: original.commitSHA,
       reviewURL: result.reviewURL,
-      reviewTitle: "Closed \(original.reviewTitle ?? original.draftTitle ?? original.title)",
+      reviewTitle: CoreL10n.format("已关闭 %@", original.reviewTitle ?? original.draftTitle ?? original.title),
       batchItems: original.batchItems,
       createdAt: createdAt
     )

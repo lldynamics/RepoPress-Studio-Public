@@ -125,7 +125,7 @@ public struct PublishPackage: Identifiable, Codable, Hashable, Sendable {
   }
 }
 
-public struct PublishPackageBuilder {
+public struct PublishPackageBuilder: Sendable {
   private let frontMatterRenderer: FrontMatterRenderer
 
   public init(frontMatterRenderer: FrontMatterRenderer = FrontMatterRenderer()) {
@@ -149,7 +149,8 @@ public struct PublishPackageBuilder {
           kind: .image,
           repositoryPath: attachment.repositoryPath,
           sourceFilePath: attachment.sourceFilePath,
-          byteSize: attachment.byteSize
+          byteSize: attachment.byteSize,
+          expectedRemoteSHA: attachment.repositorySHA?.trimmedForPublishing.nilIfEmpty
         )
       }
     )

@@ -8,6 +8,7 @@ struct PublishDrawerView: View {
   @State private var newBranchName = ""
   @State private var showAllCommits = false
   @State private var selectedStep: PublishDrawerFlowCard = .checks
+  @State private var didManuallySelectStep = false
 
   var body: some View {
     drawerContent
@@ -16,9 +17,19 @@ struct PublishDrawerView: View {
       store.ensureEditableDraftSelected()
       store.runPreflight()
       if let draft = store.selectedDraft {
+        didManuallySelectStep = false
         store.refreshPublishPreviewInBackground(for: draft)
-        selectedStep = recommendedStep(for: publishFlowSteps(draft: draft, issues: store.preflightIssues))
+        synchronizeRecommendedStep(for: draft)
       }
+    }
+    .onChange(of: store.isPublishPreviewRefreshing) { wasRefreshing, isRefreshing in
+      guard wasRefreshing, !isRefreshing, let draft = store.selectedDraft else { return }
+      synchronizeRecommendedStep(for: draft)
+    }
+    .onChange(of: store.selectedDraftID) { _, _ in
+      didManuallySelectStep = false
+      guard let draft = store.selectedDraft else { return }
+      synchronizeRecommendedStep(for: draft)
     }
   }
 
@@ -121,7 +132,7 @@ struct PublishDrawerView: View {
         Spacer()
       }
 
-      Picker("发布步骤", selection: $selectedStep) {
+      Picker("发布步骤", selection: selectedStepBinding) {
         ForEach(PublishDrawerFlowCard.allCases) { step in
           Text(step.title).tag(step)
         }
@@ -217,7 +228,25 @@ struct PublishDrawerView: View {
     guard PublishDrawerFlowCard.allCases.indices.contains(target) else {
       return
     }
+    didManuallySelectStep = true
     selectedStep = PublishDrawerFlowCard.allCases[target]
+  }
+
+  private var selectedStepBinding: Binding<PublishDrawerFlowCard> {
+    Binding(
+      get: { selectedStep },
+      set: { newValue in
+        didManuallySelectStep = true
+        selectedStep = newValue
+      }
+    )
+  }
+
+  private func synchronizeRecommendedStep(for draft: ArticleDraft) {
+    guard !didManuallySelectStep else { return }
+    selectedStep = recommendedStep(
+      for: publishFlowSteps(draft: draft, issues: store.preflightIssues)
+    )
   }
 
   private func publishFlowSteps(
@@ -623,7 +652,7 @@ struct PublishDrawerView: View {
             }
             .buttonStyle(.borderless)
             .font(.caption2)
-            .foregroundStyle(WorkbenchTheme.document)
+            .foregroundStyle(WorkbenchTheme.documentForeground)
             .padding(.top, 4)
             .accessibilityLabel(showAllCommits ? "收起提交历史" : "显示更多提交历史")
           }

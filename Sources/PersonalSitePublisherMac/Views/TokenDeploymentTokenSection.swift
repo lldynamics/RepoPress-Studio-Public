@@ -31,7 +31,7 @@ struct TokenDeploymentTokenSection: View {
       )
       .foregroundStyle(hasDeploymentToken ? .green : .secondary)
 
-      Text("部署 Token 与仓库 Token 使用独立的钥匙串项；切换部署平台后需要保存该平台自己的 Token。旧共用 Token 只会在 GitHub/GitLab Pages 的兼容场景自动迁移。")
+      Text("部署 Token 与仓库 Token 使用独立的钥匙串项；切换部署平台后需要保存该平台自己的 Token。旧共用 Token 不会自动作为部署 Token 使用，需要重新保存。")
         .font(.caption)
         .foregroundStyle(.secondary)
     }

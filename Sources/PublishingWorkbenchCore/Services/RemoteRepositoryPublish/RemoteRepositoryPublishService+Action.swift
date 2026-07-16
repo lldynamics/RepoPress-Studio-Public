@@ -59,8 +59,8 @@ extension RemoteRepositoryPublishService {
       .init(
         stage: .preparing,
         progress: 0.05,
-        message: "开始发布",
-        detail: "已解析发布参数"
+        message: CoreL10n.text("开始发布"),
+        detail: CoreL10n.text("已解析发布参数")
       )
     )
 

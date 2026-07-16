@@ -187,6 +187,36 @@ final class ImageWorkbenchBackgroundRefreshTests: XCTestCase {
     )
   }
 
+  func testImageInputSignatureTracksSourceFileChanges() throws {
+    let profile = SiteProfile.defaultProfile
+    let sourceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ImageWorkbenchSignature-\(UUID().uuidString).jpg")
+    defer { try? FileManager.default.removeItem(at: sourceURL) }
+    try Data([0x01]).write(to: sourceURL)
+
+    let attachment = DraftAttachment(
+      originalFilename: sourceURL.lastPathComponent,
+      relativePublishPath: "/images/source.jpg",
+      repositoryPath: "static/images/source.jpg",
+      sourceFilePath: sourceURL.path
+    )
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "File signature",
+      bodyMarkdown: "![Source](/images/source.jpg)",
+      attachments: [attachment]
+    )
+    let original = ImageWorkbenchReportInputSignature(draft: draft, profile: profile)
+
+    try Data([0x01, 0x02, 0x03]).write(to: sourceURL)
+    let changed = ImageWorkbenchReportInputSignature(draft: draft, profile: profile)
+    XCTAssertNotEqual(original, changed)
+
+    try FileManager.default.removeItem(at: sourceURL)
+    let missing = ImageWorkbenchReportInputSignature(draft: draft, profile: profile)
+    XCTAssertNotEqual(changed, missing)
+  }
+
   @MainActor
   func testOrdinaryProseKeepsCachedReportWhileImageInputsInvalidateIt() async throws {
     let tracker = AsyncReportInvocationTracker()

@@ -11,7 +11,7 @@ public struct DeploymentWebhookHTTPReceiverState: Codable, Hashable, Sendable {
     isRunning: Bool = false,
     port: UInt16 = 8787,
     endpointURLText: String? = nil,
-    message: String = "Webhook 接收器未启动。"
+    message: String = DeploymentWebhookHTTPReceiverState.defaultMessage
   ) {
     self.isRunning = isRunning
     self.port = port
@@ -20,6 +20,10 @@ public struct DeploymentWebhookHTTPReceiverState: Codable, Hashable, Sendable {
   }
 
   public static let idle = DeploymentWebhookHTTPReceiverState()
+
+  public static var defaultMessage: String {
+    CoreL10n.text("Webhook 接收器未启动。")
+  }
 }
 
 public struct DeploymentWebhookHTTPRequest: Equatable, Sendable {
@@ -220,9 +224,9 @@ public enum DeploymentWebhookHTTPReceiverError: LocalizedError, Equatable {
   public var errorDescription: String? {
     switch self {
     case .invalidPort:
-      return "Webhook 接收端口无效。"
+      return CoreL10n.text("Webhook 接收端口无效。")
     case .unavailableInRelease:
-      return "Webhook 接收器仅用于 Debug 构建，不会包含在 Release/App Store 构建中。"
+      return CoreL10n.text("Webhook 接收器仅用于 Debug 构建，不会包含在 Release/App Store 构建中。")
     }
   }
 }

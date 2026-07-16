@@ -59,6 +59,33 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     XCTAssertEqual(preview.fileDiffs.first(where: { $0.kind == .markdown })?.status, .modified)
   }
 
+  func testPreviewDiffCollapsesLongUnchangedRegions() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/large.md")
+    let oldLines = (0..<200).map { "line-\($0)" }
+    var newLines = oldLines
+    newLines[100] = "changed-line"
+    try oldLines.joined(separator: "\n").write(to: destinationURL, atomically: true, encoding: .utf8)
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          repositoryPath: "content/posts/large.md",
+          content: newLines.joined(separator: "\n")
+        )
+      ]
+    )
+
+    let preview = LocalPublishPreviewService().preview(package: package, rootURL: rootURL)
+    let lineDiff = try XCTUnwrap(preview.fileDiffs.first?.lineDiff)
+
+    XCTAssertTrue(lineDiff.contains("-line-100"))
+    XCTAssertTrue(lineDiff.contains("+changed-line"))
+    XCTAssertTrue(lineDiff.contains("unchanged line(s)"))
+    XCTAssertLessThan(lineDiff.components(separatedBy: "\n").count, 20)
+  }
+
   func testPreviewAsyncMatchesSynchronousPreview() async throws {
     let rootURL = try makeRepositoryFixture()
     defer {
@@ -272,6 +299,28 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
 
     XCTAssertEqual(imageDiff.status, .unsafePath)
     XCTAssertTrue(preview.issues.contains { $0.title == "发布路径不安全" && $0.message == "/tmp/cover.jpg" })
+  }
+
+  func testPreviewMarksIdenticalExistingImageAsUnchanged() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceURL = rootURL.appendingPathComponent("source-cover.jpg")
+    let destinationDirectory = rootURL.appendingPathComponent("images", isDirectory: true)
+    let destinationURL = destinationDirectory.appendingPathComponent("cover.jpg")
+    try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+    let imageData = Data("identical image bytes".utf8)
+    try imageData.write(to: sourceURL)
+    try imageData.write(to: destinationURL)
+    let package = publishPackage(
+      files: [
+        .init(kind: .image, repositoryPath: "images/cover.jpg", sourceFilePath: sourceURL.path)
+      ]
+    )
+
+    let preview = LocalPublishPreviewService().preview(package: package, rootURL: rootURL)
+
+    XCTAssertEqual(preview.fileDiffs.first?.status, .unchanged)
+    XCTAssertTrue(preview.changedFileDiffs.isEmpty)
   }
 
   func testWriteRejectsRepositorySymlinkBeforeWritingOutsideRoot() throws {

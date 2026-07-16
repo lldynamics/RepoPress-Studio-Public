@@ -18,15 +18,12 @@ fail() {
 [[ -f "$SUMMARY" ]] || fail "print_remaining_external_verification.sh is missing"
 
 current_output="$(bash "$SUMMARY")"
-grep -q "remaining external verification: 4 target(s)" <<<"$current_output" \
-  || fail "current summary did not report 4 remaining targets"
-for target in app-store-archive remote-publish storekit remote-recovery; do
+grep -q "remaining external verification: 5 target(s)" <<<"$current_output" \
+  || fail "current summary did not report 5 remaining targets"
+for target in app-store-archive remote-publish storekit remote-recovery app-store-screenshots; do
   grep -q -- "- $target" <<<"$current_output" \
     || fail "current summary omitted $target"
 done
-if grep -q -- "- app-store-screenshots" <<<"$current_output"; then
-  fail "current summary included screenshots even though screenshot evidence is complete"
-fi
 grep -q "prepare_external_verification_envs.sh --output-dir /private/tmp/personal-site-publisher-release-envs --target remaining" <<<"$current_output" \
   || fail "current summary omitted target-aware prepare command"
 grep -q "check_external_verification_envs.sh --env-dir /private/tmp/personal-site-publisher-release-envs --mode filled --target remaining --report-file /private/tmp/personal-site-publisher-release-envs/ENV_STATUS.md" <<<"$current_output" \
@@ -67,7 +64,8 @@ perl -0pi -e 's/- \[ \] `github-direct-publish`/- [x] `github-direct-publish`/g;
               s/- \[ \] `gitlab-direct-publish`/- [x] `gitlab-direct-publish`/g;
               s/- \[ \] `gitlab-review-publish`/- [x] `gitlab-review-publish`/g;
               s/- \[ \] `remote-conflict-deployment-rollback`/- [x] `remote-conflict-deployment-rollback`/g;
-              s/- \[ \] `storekit-sandbox`/- [x] `storekit-sandbox`/g;' "$external_file"
+              s/- \[ \] `storekit-sandbox`/- [x] `storekit-sandbox`/g;
+              s/- \[ \] `app-store-screenshots`/- [x] `app-store-screenshots`/g;' "$external_file"
 cat >"$archive_file" <<'EOF_ARCHIVE'
 # App Store Archive Validation Evidence
 

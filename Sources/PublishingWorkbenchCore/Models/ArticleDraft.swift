@@ -69,6 +69,7 @@ public struct DraftAttachment: Codable, Hashable, Identifiable, Sendable {
   public var caption: String
   public var byteSize: Int64
   public var sourceFilePath: String?
+  public var repositorySHA: String?
 
   public init(
     id: UUID = UUID(),
@@ -78,7 +79,8 @@ public struct DraftAttachment: Codable, Hashable, Identifiable, Sendable {
     altText: String = "",
     caption: String = "",
     byteSize: Int64 = 0,
-    sourceFilePath: String? = nil
+    sourceFilePath: String? = nil,
+    repositorySHA: String? = nil
   ) {
     self.id = id
     self.originalFilename = originalFilename
@@ -88,6 +90,7 @@ public struct DraftAttachment: Codable, Hashable, Identifiable, Sendable {
     self.caption = caption
     self.byteSize = byteSize
     self.sourceFilePath = sourceFilePath
+    self.repositorySHA = repositorySHA
   }
 }
 

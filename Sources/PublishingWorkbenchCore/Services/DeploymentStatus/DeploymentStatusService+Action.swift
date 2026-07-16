@@ -45,8 +45,8 @@ public extension DeploymentStatusService {
       signals.append(
         DeploymentStatusSignal(
           level: .unknown,
-          title: "缺少状态端点",
-          message: "请在 Profile 设置中填写站点 URL 或状态端点。"
+          title: CoreL10n.text("缺少状态端点"),
+          message: CoreL10n.text("请在 Profile 设置中填写站点 URL 或状态端点。")
         )
       )
     }
@@ -66,7 +66,7 @@ public extension DeploymentStatusService {
       releaseRecordID: releaseRecord?.id,
       provider: provider,
       level: level,
-      title: "\(provider.displayName) · \(level.displayName)",
+      title: CoreL10n.format("%@ · %@", provider.displayName, level.displayName),
       message: aggregateMessage(level: level, signals: signals),
       siteURLText: siteURLText,
       signals: signals
@@ -100,23 +100,23 @@ public extension DeploymentStatusService {
     var apiReady = false
 
     if hasToken {
-      configured.append("部署 Token")
+      configured.append(CoreL10n.text("部署 Token"))
     } else {
-      missing.append("部署 Token")
+      missing.append(CoreL10n.text("部署 Token"))
     }
 
     if hasSiteURL {
-      configured.append("站点 URL")
+      configured.append(CoreL10n.text("站点 URL"))
     }
     if hasStatusEndpoint {
-      configured.append("状态端点 URL")
+      configured.append(CoreL10n.text("状态端点 URL"))
       if endpointUsesToken {
         if !hasSecureProtectedEndpoint {
-          missing.append("状态端点 HTTPS URL")
+          missing.append(CoreL10n.text("状态端点 HTTPS URL"))
         } else if hasToken {
-          configured.append("状态端点 Bearer Token")
+          configured.append(CoreL10n.text("状态端点 Bearer Token"))
         } else {
-          missing.append("状态端点 Bearer Token")
+          missing.append(CoreL10n.text("状态端点 Bearer Token"))
         }
       }
     }
@@ -129,7 +129,7 @@ public extension DeploymentStatusService {
         missing.append("GitHub owner/repository")
       }
       if !hasSecureRepositoryAPI {
-        missing.append("仓库 API HTTPS URL")
+        missing.append(CoreL10n.text("仓库 API HTTPS URL"))
       }
       apiReady = hasRepository && hasToken && hasSecureRepositoryAPI
     case .gitlabPages:
@@ -139,7 +139,7 @@ public extension DeploymentStatusService {
         missing.append("GitLab namespace/project")
       }
       if !hasSecureRepositoryAPI {
-        missing.append("仓库 API HTTPS URL")
+        missing.append(CoreL10n.text("仓库 API HTTPS URL"))
       }
       apiReady = hasRepository && hasToken && hasSecureRepositoryAPI
     case .netlify:
@@ -173,7 +173,7 @@ public extension DeploymentStatusService {
       apiReady = hasAccountID && hasProjectID && hasToken
     case .custom:
       if !hasReachabilityFallback {
-        missing.append("站点 URL 或状态端点 URL")
+        missing.append(CoreL10n.text("站点 URL 或状态端点 URL"))
       }
       apiReady = hasReachabilityFallback
         && (!endpointUsesToken || (hasSecureProtectedEndpoint && hasToken))
@@ -191,23 +191,33 @@ public extension DeploymentStatusService {
       hasProviderConfiguration = hasReachabilityFallback
     }
 
-    let fallbackMessage: String
+    var fallbackMessage: String
     if hasStatusEndpoint && endpointTokenRequested && provider != .custom {
-      fallbackMessage = "只有自定义平台可向状态端点发送部署 Token；当前平台的端点将按无授权方式检查，避免将平台 Token 发送到第三方域名。"
+      fallbackMessage = CoreL10n.text("只有自定义平台可向状态端点发送部署 Token；当前平台的端点将按无授权方式检查，避免将平台 Token 发送到第三方域名。")
     } else if hasStatusEndpoint && endpointUsesToken && !hasSecureProtectedEndpoint {
-      fallbackMessage = "受保护状态端点必须使用 HTTPS；当前端点已禁用，不会发送 Bearer Token。"
+      fallbackMessage = CoreL10n.text("受保护状态端点必须使用 HTTPS；当前端点已禁用，不会发送 Bearer Token。")
     } else if hasReachabilityFallback {
-      fallbackMessage = "已配置站点 URL 或状态端点；即使 API 未就绪，也能检查 HTTP 可达性和文章页面内容。\(hasStatusEndpoint && endpointUsesToken ? " 状态端点会在保存 Token 后使用 Bearer 授权。" : "")"
+      fallbackMessage = CoreL10n.text("已配置站点 URL 或状态端点；即使 API 未就绪，也能检查 HTTP 可达性和文章页面内容。")
+      if hasStatusEndpoint && endpointUsesToken {
+        fallbackMessage += CoreL10n.text(" 状态端点会在保存 Token 后使用 Bearer 授权。")
+      }
     } else {
-      fallbackMessage = "未配置可用的站点 URL 或状态端点；API 未就绪时无法做发布后降级校验。"
+      fallbackMessage = CoreL10n.text("未配置可用的站点 URL 或状态端点；API 未就绪时无法做发布后降级校验。")
     }
     let nextStep: String
     if apiReady {
-      nextStep = "可以读取 \(provider.displayName) 的部署状态，并继续保留站点 URL 做发布后页面校验。"
+      nextStep = CoreL10n.format("可以读取 %@ 的部署状态，并继续保留站点 URL 做发布后页面校验。", provider.displayName)
     } else if hasProviderConfiguration {
-      nextStep = "补齐 \(missing.joined(separator: "、")) 后可读取 \(provider.displayName) API 状态。"
+      nextStep = CoreL10n.format(
+        "补齐 %@ 后可读取 %@ API 状态。",
+        missing.joined(separator: CoreL10n.text("、")),
+        provider.displayName
+      )
     } else {
-      nextStep = "先补齐 \(missing.joined(separator: "、"))。"
+      nextStep = CoreL10n.format(
+        "先补齐 %@。",
+        missing.joined(separator: CoreL10n.text("、"))
+      )
     }
 
     return DeploymentStatusProviderReadiness(
@@ -286,13 +296,15 @@ public extension DeploymentStatusService {
   private func aggregateMessage(level: DeploymentStatusLevel, signals: [DeploymentStatusSignal]) -> String {
     switch level {
     case .success:
-      return "部署 API 和站点端点检查通过。"
+      return CoreL10n.text("部署 API 和站点端点检查通过。")
     case .running:
-      return "部署仍在运行，稍后可再次刷新。"
+      return CoreL10n.text("部署仍在运行，稍后可再次刷新。")
     case .failed:
-      return signals.first(where: { $0.level == .failed })?.message ?? "部署检查失败。"
+      return signals.first(where: { $0.level == .failed })?.message
+        ?? CoreL10n.text("部署检查失败。")
     case .unknown:
-      return signals.first(where: { $0.level == .unknown })?.message ?? "部署状态还不能确认。"
+      return signals.first(where: { $0.level == .unknown })?.message
+        ?? CoreL10n.text("部署状态还不能确认。")
     }
   }
 

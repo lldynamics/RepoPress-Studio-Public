@@ -24,12 +24,6 @@ struct ReleaseHistoryDetailView: View {
           }
           Spacer()
           Button {
-            copy(store.releaseRecoveryVerificationDraftMarkdown, message: "已复制远端恢复验收草稿。")
-          } label: {
-            Label("复制恢复验收草稿", systemImage: "checklist")
-          }
-          .disabled(ledger.entries.isEmpty)
-          Button {
             copy(ledger.operationLogMarkdown, message: "已复制发布台账。")
           } label: {
             Label("复制台账", systemImage: "doc.on.doc")
@@ -39,16 +33,25 @@ struct ReleaseHistoryDetailView: View {
             .foregroundStyle(.secondary)
         }
 
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-          MetricTile(title: "待处理", value: "\(ledger.summary.actionItemCount)", systemImage: "checklist")
-          MetricTile(title: "本地待处理", value: "\(ledger.summary.localPendingCount)", systemImage: ReleaseLedgerStatus.localOnly.systemImage)
-          MetricTile(title: "等待合并", value: "\(ledger.summary.reviewPendingCount)", systemImage: ReleaseLedgerStatus.pendingReview.systemImage)
-          MetricTile(title: "等待部署", value: "\(ledger.summary.deploymentPendingCount)", systemImage: ReleaseLedgerStatus.pendingDeployment.systemImage)
-          MetricTile(title: "远端待确认", value: "\(ledger.summary.remoteRecoveryPendingCount)", systemImage: ReleaseLedgerStatus.pendingRemoteRecovery.systemImage)
-          MetricTile(title: "已上线", value: "\(ledger.summary.succeededCount)", systemImage: ReleaseLedgerStatus.succeeded.systemImage)
-          MetricTile(title: "失败", value: "\(ledger.summary.failedCount)", systemImage: ReleaseLedgerStatus.failed.systemImage)
-          MetricTile(title: "可回滚", value: "\(ledger.summary.rollbackAvailableCount)", systemImage: "arrow.uturn.backward")
-          MetricTile(title: "部署检查", value: "\(store.activeProfileDeploymentStatusSnapshots.count)", systemImage: "checkmark.icloud")
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 138, maximum: 220))], spacing: 12) {
+          MetricTile(
+            title: "待处理",
+            value: "\(ledger.summary.actionItemCount)",
+            semantic: ledger.summary.actionItemCount == 0 ? .passed : .warning
+          )
+          MetricTile(title: "等待合并", value: "\(ledger.summary.reviewPendingCount)", semantic: .progress)
+          MetricTile(title: "等待部署", value: "\(ledger.summary.deploymentPendingCount)", semantic: .progress)
+          MetricTile(
+            title: "远端待确认",
+            value: "\(ledger.summary.remoteRecoveryPendingCount)",
+            semantic: ledger.summary.remoteRecoveryPendingCount == 0 ? .passed : .warning
+          )
+          MetricTile(title: "已上线", value: "\(ledger.summary.succeededCount)", semantic: .passed)
+          MetricTile(
+            title: "失败",
+            value: "\(ledger.summary.failedCount)",
+            semantic: ledger.summary.failedCount == 0 ? .passed : .blocking
+          )
         }
 
         deploymentOverviewSummary(ledger.deploymentOverview)
@@ -63,7 +66,10 @@ struct ReleaseHistoryDetailView: View {
           EmptyStateView(
             title: "还没有发布记录",
             message: "写入本地仓库或创建提交后，这里会记录文章、路径、分支和 PR/MR 信息。",
-            systemImage: "clock.arrow.circlepath"
+            systemImage: "clock.arrow.circlepath",
+            actionTitle: "前往写作",
+            actionSystemImage: "square.and.pencil",
+            action: { store.selectSection(.writing) }
           )
           .frame(height: 260)
         } else {
@@ -199,12 +205,6 @@ struct ReleaseHistoryDetailView: View {
             copyRecoveryPackage(entry.recoveryPackage)
           } label: {
             Label("复制恢复包", systemImage: "shippingbox")
-          }
-
-          Button {
-            copyRecoveryEvidence(entry.recoveryPackage)
-          } label: {
-            Label("复制验证摘要", systemImage: "checklist.checked")
           }
 
         }
@@ -621,11 +621,11 @@ struct ReleaseHistoryDetailView: View {
   func statusForeground(_ level: DeploymentStatusLevel) -> AnyShapeStyle {
     switch level {
     case .success:
-      return AnyShapeStyle(.green)
+      return AnyShapeStyle(WorkbenchTheme.success)
     case .running:
-      return AnyShapeStyle(.orange)
+      return AnyShapeStyle(WorkbenchTheme.warning)
     case .failed:
-      return AnyShapeStyle(.red)
+      return AnyShapeStyle(WorkbenchTheme.risk)
     case .unknown:
       return AnyShapeStyle(.secondary)
     }
@@ -634,11 +634,11 @@ struct ReleaseHistoryDetailView: View {
   func ledgerStatusForeground(_ status: ReleaseLedgerStatus) -> AnyShapeStyle {
     switch status {
     case .succeeded:
-      return AnyShapeStyle(.green)
+      return AnyShapeStyle(WorkbenchTheme.success)
     case .deploying, .pendingDeployment, .pendingRemoteRecovery, .pendingRetry, .pendingReview:
-      return AnyShapeStyle(.orange)
+      return AnyShapeStyle(WorkbenchTheme.warning)
     case .failed:
-      return AnyShapeStyle(.red)
+      return AnyShapeStyle(WorkbenchTheme.risk)
     case .localOnly, .unknown:
       return AnyShapeStyle(.secondary)
     }
@@ -647,9 +647,9 @@ struct ReleaseHistoryDetailView: View {
   private func releaseActionPriorityForeground(_ priority: ReleaseLedgerActionPriority) -> AnyShapeStyle {
     switch priority {
     case .high:
-      return AnyShapeStyle(.red)
+      return AnyShapeStyle(WorkbenchTheme.risk)
     case .medium:
-      return AnyShapeStyle(.orange)
+      return AnyShapeStyle(WorkbenchTheme.warning)
     case .low:
       return AnyShapeStyle(.secondary)
     }
@@ -680,7 +680,4 @@ struct ReleaseHistoryDetailView: View {
     copy(package.clipboardMarkdown, message: "已复制发布恢复包。")
   }
 
-  func copyRecoveryEvidence(_ package: ReleaseRecoveryPackage) {
-    copy(package.externalVerificationEvidenceMarkdown, message: "已复制远端恢复验证摘要。")
-  }
 }

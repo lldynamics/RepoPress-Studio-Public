@@ -24,4 +24,10 @@ jobs:
       - name: Show toolchain
         run: swift --version
       - name: Run quick quality gate
-        run: ./script/check_release_gate.sh --quick
+        run: ./script/check_release_gate.sh --quick --result-json .build/quality-gate-result.json
+      - name: Upload unified result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-gate-result
+          path: .build/quality-gate-result.json

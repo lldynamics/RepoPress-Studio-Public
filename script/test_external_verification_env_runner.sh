@@ -22,6 +22,32 @@ fail() {
 bash "$PREP" --output-dir "$ENV_DIR" >/dev/null
 cp "$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md" "$TMP_DIR/EXTERNAL_VERIFICATION_EVIDENCE.md"
 cp "$ROOT_DIR/docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md" "$TMP_DIR/APP_STORE_ARCHIVE_VALIDATION.md"
+perl -0pi -e 's/- \[[xX]\] `(github-direct-publish|github-review-publish|gitlab-direct-publish|gitlab-review-publish|remote-conflict-deployment-rollback|storekit-sandbox)`/- [ ] `$1`/g;
+              s/- \[ \] `app-store-screenshots`/- [x] `app-store-screenshots`/g;' "$TMP_DIR/EXTERNAL_VERIFICATION_EVIDENCE.md"
+perl -0pi -e 's/- \[[xX]\]/- [ ]/g' "$TMP_DIR/APP_STORE_ARCHIVE_VALIDATION.md"
+export EXTERNAL_VERIFY_EVIDENCE_FILE="$TMP_DIR/EXTERNAL_VERIFICATION_EVIDENCE.md"
+export APP_STORE_ARCHIVE_EVIDENCE_FILE="$TMP_DIR/APP_STORE_ARCHIVE_VALIDATION.md"
+
+SCREENSHOT_FIXTURE_DIR="$TMP_DIR/app-store-screenshots"
+mkdir -p "$SCREENSHOT_FIXTURE_DIR"
+cp "$ROOT_DIR/docs/app-store-screenshots/SCREENSHOT_MANIFEST.md" "$SCREENSHOT_FIXTURE_DIR/SCREENSHOT_MANIFEST.md"
+cp "$ROOT_DIR/docs/app-store-screenshots/"*.png "$SCREENSHOT_FIXTURE_DIR/"
+SCREENSHOT_DIR="$SCREENSHOT_FIXTURE_DIR" \
+  SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_FIXTURE_DIR/SCREENSHOT_MANIFEST.md" \
+  bash "$ROOT_DIR/script/sync_screenshot_manifest_status.sh" >/dev/null
+while IFS= read -r screenshot_id; do
+  [[ -n "$screenshot_id" ]] || continue
+  python3 "$ROOT_DIR/script/screenshot_capture_provenance.py" record \
+    --root "$ROOT_DIR" \
+    --manifest "$SCREENSHOT_FIXTURE_DIR/SCREENSHOT_MANIFEST.md" \
+    --screenshot-dir "$SCREENSHOT_FIXTURE_DIR" \
+    --id "$screenshot_id" \
+    --image "$SCREENSHOT_FIXTURE_DIR/$screenshot_id.png" >/dev/null
+done < <(sed -nE 's/^\| `([^`]+)` \|.*/\1/p' "$SCREENSHOT_FIXTURE_DIR/SCREENSHOT_MANIFEST.md")
+OCR_STUB="$TMP_DIR/screenshot-privacy-ocr-stub"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$OCR_STUB"
+chmod 700 "$OCR_STUB"
+export SCREENSHOT_PRIVACY_OCR_EXECUTABLE="$OCR_STUB"
 
 cat >"$ENV_DIR/remote-publish-live.env" <<ENV
 REMOTE_VERIFY_BRANCH="main"
@@ -81,8 +107,8 @@ cat >"$ENV_DIR/app-store-screenshots.env" <<ENV
 APP_STORE_SCREENSHOT_SET_SUMMARY="Captured all required App Store screenshot surfaces with redacted demo content."
 APP_STORE_SCREENSHOT_PRIVACY_GATE_SUMMARY="Screenshot privacy gate passed without local paths or token-like strings."
 APP_STORE_SCREENSHOT_STRICT_GATE_SUMMARY="Strict screenshot count and manifest sync gates passed."
-APP_STORE_SCREENSHOT_DIR=""
-APP_STORE_SCREENSHOT_MANIFEST_FILE=""
+APP_STORE_SCREENSHOT_DIR="$SCREENSHOT_FIXTURE_DIR"
+APP_STORE_SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_FIXTURE_DIR/SCREENSHOT_MANIFEST.md"
 ENV
 
 chmod 600 "$ENV_DIR"/*.env

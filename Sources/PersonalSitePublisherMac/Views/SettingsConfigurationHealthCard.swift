@@ -14,15 +14,12 @@ struct SettingsConfigurationHealthCard: View {
   private var requiredItems: [SettingsConfigurationHealthItem] {
     [
       repositoryItem,
-      repositoryTokenItem,
-      aiKeyItem,
-      defaultRulesItem,
-      privacyItem
+      defaultRulesItem
     ]
   }
 
   private var allItems: [SettingsConfigurationHealthItem] {
-    requiredItems + [proItem]
+    requiredItems + [repositoryTokenItem, aiKeyItem, privacyItem, proItem]
   }
 
   private var unresolvedItems: [SettingsConfigurationHealthItem] {
@@ -37,16 +34,16 @@ struct SettingsConfigurationHealthCard: View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(alignment: .firstTextBaseline, spacing: 10) {
         VStack(alignment: .leading, spacing: 2) {
-          Text("配置健康度")
+          Text("发布基础配置")
             .font(.headline)
-          Text(summaryText)
+          summaryText
             .font(.caption)
             .foregroundStyle(.secondary)
         }
 
         Spacer()
 
-        Label(overallStatusText, systemImage: overallStatusImage)
+        Label(LocalizedStringKey(overallStatusText), systemImage: overallStatusImage)
           .font(.caption.weight(.semibold))
           .foregroundStyle(overallStatusColor)
           .padding(.horizontal, 10)
@@ -85,8 +82,8 @@ struct SettingsConfigurationHealthCard: View {
         .strokeBorder(Color(nsColor: .separatorColor).opacity(0.55))
     }
     .accessibilityElement(children: .contain)
-    .accessibilityLabel("配置健康度")
-    .accessibilityValue("\(readyRequiredCount)/\(requiredItems.count) 项发布配置已就绪")
+    .accessibilityLabel("发布基础配置")
+    .accessibilityValue("\(readyRequiredCount)/\(requiredItems.count) 项基础配置已就绪")
   }
 
   private var repositoryItem: SettingsConfigurationHealthItem {
@@ -94,22 +91,22 @@ struct SettingsConfigurationHealthCard: View {
     let isReady = profile.localRepositoryRootURL != nil
     return SettingsConfigurationHealthItem(
       title: "仓库路径",
-      detail: isReady ? path : "未选择本地仓库",
+      detail: isReady ? Text(verbatim: path) : Text("未选择本地仓库"),
       systemImage: "folder",
       state: isReady ? .ready : .warning,
       destination: .repository,
-      actionTitle: "选择本地仓库"
+      actionTitle: String(localized: "选择本地仓库")
     )
   }
 
   private var repositoryTokenItem: SettingsConfigurationHealthItem {
     SettingsConfigurationHealthItem(
       title: "仓库 Token",
-      detail: repositoryTokenAvailability.hasToken ? "已保存，可用于线上发布" : "未保存，线上发布会受限",
+      detail: repositoryTokenAvailability.hasToken ? Text("已保存，可用于线上发布") : Text("未保存，线上发布会受限"),
       systemImage: "key",
-      state: repositoryTokenAvailability.hasToken ? .ready : .warning,
+      state: repositoryTokenAvailability.hasToken ? .ready : .info,
       destination: .repositoryToken,
-      actionTitle: "打开 Token 设置"
+      actionTitle: String(localized: "打开 Token 设置")
     )
   }
 
@@ -118,11 +115,13 @@ struct SettingsConfigurationHealthCard: View {
     let isReady = !requiresKey || aiTokenAvailability.hasToken
     return SettingsConfigurationHealthItem(
       title: "AI Key",
-      detail: isReady ? (requiresKey ? "已保存，可生成建议" : "当前配置无需 API Key") : "未保存，AI 功能会受限",
+      detail: isReady
+        ? (requiresKey ? Text("已保存，可生成建议") : Text("当前配置无需 API Key"))
+        : Text("未保存，AI 功能会受限"),
       systemImage: "sparkles",
-      state: isReady ? .ready : .warning,
+      state: isReady ? .ready : .info,
       destination: .aiKey,
-      actionTitle: "打开 AI 设置"
+      actionTitle: String(localized: "打开 AI 设置")
     )
   }
 
@@ -133,38 +132,42 @@ struct SettingsConfigurationHealthCard: View {
       && !profile.dateFormat.trimmedForPublishing.isEmpty
     return SettingsConfigurationHealthItem(
       title: "默认规则",
-      detail: hasPublishingPaths ? "\(profile.siteKind.localizedDisplayName) · 路径规则已配置" : "路径或日期规则缺失",
+      detail: hasPublishingPaths
+        ? Text("\(profile.siteKind.localizedDisplayName) · 路径规则已配置")
+        : Text("路径或日期规则缺失"),
       systemImage: "gearshape.2",
       state: hasPublishingPaths ? .ready : .warning,
       destination: .defaultRules,
-      actionTitle: "打开默认规则"
+      actionTitle: String(localized: "打开默认规则")
     )
   }
 
   private var privacyItem: SettingsConfigurationHealthItem {
     return SettingsConfigurationHealthItem(
       title: "内容遮挡",
-      detail: privacySettings.masksPrivateContent ? "私密内容遮挡已开启" : "私密内容遮挡未开启",
+      detail: privacySettings.masksPrivateContent ? Text("私密内容遮挡已开启") : Text("私密内容遮挡未开启"),
       systemImage: "hand.raised",
-      state: privacySettings.masksPrivateContent ? .ready : .warning,
+      state: privacySettings.masksPrivateContent ? .ready : .info,
       destination: .privacy,
-      actionTitle: "打开隐私设置"
+      actionTitle: String(localized: "打开隐私设置")
     )
   }
 
   private var proItem: SettingsConfigurationHealthItem {
     SettingsConfigurationHealthItem(
       title: "Pro 状态",
-      detail: isProUnlocked ? "\(proSource) 权益已生效" : "免费版，可按需升级",
+      detail: isProUnlocked ? Text("\(proSource) 权益已生效") : Text("免费版，可按需升级"),
       systemImage: isProUnlocked ? "crown.fill" : "crown",
       state: isProUnlocked ? .ready : .info,
       destination: .pro,
-      actionTitle: "打开 Pro 设置"
+      actionTitle: String(localized: "打开 Pro 设置")
     )
   }
 
   private var overallStatusText: String {
-    readyRequiredCount == requiredItems.count ? "已就绪" : "需补配置"
+    readyRequiredCount == requiredItems.count
+      ? String(localized: "基础就绪")
+      : String(localized: "需补配置")
   }
 
   private var overallStatusImage: String {
@@ -179,10 +182,10 @@ struct SettingsConfigurationHealthCard: View {
     readyRequiredCount == requiredItems.count
   }
 
-  private var summaryText: String {
+  private var summaryText: Text {
     isComplete
-      ? "\(profile.name) · 发布配置已全部就绪"
-      : "\(profile.name) · \(unresolvedItems.count) 项需要处理"
+      ? Text("\(profile.name) · 路径与规则可用于本地发布")
+      : Text("\(profile.name) · \(unresolvedItems.count) 项基础配置需要处理")
   }
 }
 
@@ -197,10 +200,10 @@ private struct SettingsConfigurationHealthTile: View {
         .frame(width: 16)
 
       VStack(alignment: .leading, spacing: 2) {
-        Text(item.title)
+        Text(LocalizedStringKey(item.title))
           .font(.caption.weight(.semibold))
           .lineLimit(1)
-        Text(item.detail)
+        item.detail
           .font(.caption2)
           .foregroundStyle(.secondary)
           .lineLimit(2)
@@ -226,7 +229,7 @@ private struct SettingsConfigurationHealthTile: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(Color(nsColor: .controlBackgroundColor).opacity(0.7), in: RoundedRectangle(cornerRadius: 10))
     .accessibilityElement(children: .combine)
-    .accessibilityLabel(item.title)
+    .accessibilityLabel(Text(LocalizedStringKey(item.title)))
     .accessibilityValue(item.detail)
   }
 }
@@ -234,7 +237,7 @@ private struct SettingsConfigurationHealthTile: View {
 private struct SettingsConfigurationHealthItem: Identifiable {
   let id: String
   let title: String
-  let detail: String
+  let detail: Text
   let systemImage: String
   let state: SettingsConfigurationHealthState
   let destination: SettingsConfigurationHealthDestination
@@ -242,7 +245,7 @@ private struct SettingsConfigurationHealthItem: Identifiable {
 
   init(
     title: String,
-    detail: String,
+    detail: Text,
     systemImage: String,
     state: SettingsConfigurationHealthState,
     destination: SettingsConfigurationHealthDestination,
@@ -279,9 +282,9 @@ private enum SettingsConfigurationHealthState {
   var color: Color {
     switch self {
     case .ready:
-      return .green
+      return WorkbenchTheme.success
     case .warning:
-      return .orange
+      return WorkbenchTheme.warning
     case .info:
       return .secondary
     }

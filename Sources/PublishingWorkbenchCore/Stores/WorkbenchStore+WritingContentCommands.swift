@@ -40,6 +40,16 @@ extension WorkbenchStore {
     publishingStore.refreshBatchPublishPlan(store: self)
   }
 
+  public func refreshBatchPublishPlanInBackground() {
+    flushDraftBodyEditorBuffers()
+    publishingStore.scheduleBatchPublishPlanRefresh(store: self)
+  }
+
+  public func refreshBatchPublishPlanAsync() async {
+    refreshBatchPublishPlanInBackground()
+    await publishingStore.waitForBatchPublishPlanRefresh()
+  }
+
   public func publishingPackage(for draft: ArticleDraft) -> PublishPackage {
     flushDraftBodyEditorBuffer(for: draft.id)
     let currentDraft = drafts.first(where: { $0.id == draft.id }) ?? draft
@@ -100,6 +110,13 @@ extension WorkbenchStore {
 
   public func publishingAIPrompt(for draft: ArticleDraft) -> String {
     publishingStore.publishingAIPrompt(for: draft, store: self)
+  }
+
+  /// Builds file-system-backed publishing context away from the main actor
+  /// before formatting the clipboard prompt.
+  public func publishingAIPromptInBackground(for draft: ArticleDraft) async -> String {
+    let artifacts = await aiPublishingRequestArtifacts(for: draft)
+    return publishingStore.publishingAIPrompt(from: artifacts, store: self)
   }
 
   public func selectDraft(_ id: UUID?) {
@@ -311,8 +328,8 @@ extension WorkbenchStore {
     publishingStore.contentHealthReport(store: self)
   }
 
-  public func contentHealthReportAsync() async -> ContentHealthReport {
-    await publishingStore.contentHealthReportAsync(store: self)
+  public func contentHealthReportAsync() async throws -> ContentHealthReport {
+    try await publishingStore.contentHealthReportAsync(store: self)
   }
 
   public var publicRiskSummary: PublicRiskSummary {

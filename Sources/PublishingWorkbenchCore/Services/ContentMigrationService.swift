@@ -38,8 +38,21 @@ public struct ContentMigrationRedirect: Hashable, Sendable, Identifiable {
   }
 }
 
+public struct ContentMigrationProfileConfiguration: Hashable, Sendable {
+  public var profileID: UUID
+  public var markdownPathPattern: String
+  public var defaultAuthor: String
+
+  public init(profile: SiteProfile) {
+    self.profileID = profile.id
+    self.markdownPathPattern = profile.markdownPathPattern.normalizedRelativePath()
+    self.defaultAuthor = profile.defaultAuthor.trimmedForPublishing
+  }
+}
+
 public struct ContentMigrationPlan: Sendable {
   public var profileID: UUID
+  public var profileConfiguration: ContentMigrationProfileConfiguration
   public var sourceKind: ContentMigrationSourceKind
   public var sourceName: String
   public var drafts: [ArticleDraft]
@@ -49,6 +62,7 @@ public struct ContentMigrationPlan: Sendable {
 
   public init(
     profileID: UUID,
+    profileConfiguration: ContentMigrationProfileConfiguration,
     sourceKind: ContentMigrationSourceKind,
     sourceName: String,
     drafts: [ArticleDraft],
@@ -57,6 +71,7 @@ public struct ContentMigrationPlan: Sendable {
     warnings: [String]
   ) {
     self.profileID = profileID
+    self.profileConfiguration = profileConfiguration
     self.sourceKind = sourceKind
     self.sourceName = sourceName
     self.drafts = drafts
@@ -75,6 +90,7 @@ public enum ContentMigrationError: LocalizedError {
   case unreadableSource(String)
   case invalidExport(String)
   case profileChanged
+  case sourceOutsideSelectedDirectory(String)
   case sourceLimitExceeded(String)
 
   public var errorDescription: String? {
@@ -87,31 +103,67 @@ public enum ContentMigrationError: LocalizedError {
       return "无法识别导出内容：\(message)"
     case .profileChanged:
       return "迁移计划属于另一个站点配置，请重新生成预览后再导入。"
+    case let .sourceOutsideSelectedDirectory(path):
+      return "导入来源通过符号链接指向所选文件夹外部，已停止读取：\(path)"
     case let .sourceLimitExceeded(message):
       return message
     }
   }
 }
 
+public struct ContentMigrationLimits: Sendable {
+  public var maximumSourceFileBytes: Int
+  public var maximumRecordCount: Int
+  public var maximumMarkdownFileCount: Int
+  public var maximumMarkdownFileBytes: Int
+  public var maximumMarkdownFolderBytes: Int
+
+  public init(
+    maximumSourceFileBytes: Int = 100 * 1_024 * 1_024,
+    maximumRecordCount: Int = 10_000,
+    maximumMarkdownFileCount: Int = 10_000,
+    maximumMarkdownFileBytes: Int = 20 * 1_024 * 1_024,
+    maximumMarkdownFolderBytes: Int = 100 * 1_024 * 1_024
+  ) {
+    self.maximumSourceFileBytes = max(1, maximumSourceFileBytes)
+    self.maximumRecordCount = max(1, maximumRecordCount)
+    self.maximumMarkdownFileCount = max(1, maximumMarkdownFileCount)
+    self.maximumMarkdownFileBytes = max(1, maximumMarkdownFileBytes)
+    self.maximumMarkdownFolderBytes = max(1, maximumMarkdownFolderBytes)
+  }
+
+  public static let `default` = ContentMigrationLimits()
+}
+
 public struct ContentMigrationService: Sendable {
-  private static let maximumSourceFileBytes = 100 * 1_024 * 1_024
-  private static let maximumMarkdownFileCount = 10_000
   private let fileSystem: SendableFileManager
+  private let limits: ContentMigrationLimits
 
   private var fileManager: FileManager { fileSystem.value }
 
-  public init(fileManager: FileManager = .default) {
+  public init(
+    fileManager: FileManager = .default,
+    limits: ContentMigrationLimits = .default
+  ) {
     self.fileSystem = SendableFileManager(fileManager)
+    self.limits = limits
   }
 
   public func makePlanAsync(sourceURL: URL, profile: SiteProfile) async throws -> ContentMigrationPlan {
     let service = self
-    return try await Task.detached(priority: .userInitiated) {
-      try service.makePlan(sourceURL: sourceURL, profile: profile)
-    }.value
+    let task = Task.detached(priority: .userInitiated) { () throws -> ContentMigrationPlan in
+      try Task.checkCancellation()
+      return try service.makePlan(sourceURL: sourceURL, profile: profile)
+    }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
   }
 
   public func makePlan(sourceURL: URL, profile: SiteProfile) throws -> ContentMigrationPlan {
+    try Task.checkCancellation()
     let records: [ContentMigrationRecord]
     let kind: ContentMigrationSourceKind
     var warnings: [String] = []
@@ -125,10 +177,15 @@ public struct ContentMigrationService: Sendable {
       records = try markdownRecords(in: sourceURL)
     } else {
       let sourceFileSize = try sourceURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-      guard sourceFileSize <= Self.maximumSourceFileBytes else {
+      guard sourceFileSize <= limits.maximumSourceFileBytes else {
         throw ContentMigrationError.sourceLimitExceeded("导出文件超过 100 MB，请拆分后分批导入。")
       }
+      if ["md", "markdown", "mdx"].contains(sourceURL.pathExtension.lowercased()),
+         sourceFileSize > limits.maximumMarkdownFileBytes {
+        throw ContentMigrationError.sourceLimitExceeded("单个 Markdown 文件过大，请拆分文章后再导入。")
+      }
       let data = try Data(contentsOf: sourceURL)
+      try Task.checkCancellation()
       let text = String(data: data, encoding: .utf8) ?? ""
       if sourceURL.pathExtension.lowercased() == "json" {
         kind = .genericJSON
@@ -155,6 +212,7 @@ public struct ContentMigrationService: Sendable {
     var slugs = Set<String>()
 
     for record in records where !record.title.trimmedForPublishing.isEmpty {
+      try Task.checkCancellation()
       let baseSlug = record.slug?.nilIfEmpty ?? SlugService.slug(from: record.title)
       let slug = uniqueSlug(baseSlug, existing: &slugs)
       let transformed = transformImages(in: record.body)
@@ -200,6 +258,7 @@ public struct ContentMigrationService: Sendable {
 
     return ContentMigrationPlan(
       profileID: profile.id,
+      profileConfiguration: ContentMigrationProfileConfiguration(profile: profile),
       sourceKind: kind,
       sourceName: sourceURL.lastPathComponent,
       drafts: drafts.sorted { $0.date > $1.date },
@@ -210,24 +269,48 @@ public struct ContentMigrationService: Sendable {
   }
 
   private func markdownRecords(in directoryURL: URL) throws -> [ContentMigrationRecord] {
+    let canonicalDirectoryURL = directoryURL.standardizedFileURL.resolvingSymlinksInPath()
     guard let enumerator = fileManager.enumerator(
       at: directoryURL,
-      includingPropertiesForKeys: [.isRegularFileKey],
+      includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
       options: [.skipsHiddenFiles, .skipsPackageDescendants]
     ) else {
       throw ContentMigrationError.unreadableSource(directoryURL.path)
     }
     var records: [ContentMigrationRecord] = []
+    var totalByteCount = 0
     for case let fileURL as URL in enumerator where ["md", "markdown", "mdx"].contains(fileURL.pathExtension.lowercased()) {
-      guard records.count < Self.maximumMarkdownFileCount else {
+      try Task.checkCancellation()
+      guard let canonicalFileURL = canonicalDescendant(candidateURL: fileURL, rootURL: canonicalDirectoryURL) else {
+        throw ContentMigrationError.sourceOutsideSelectedDirectory(fileURL.path)
+      }
+      let values = try canonicalFileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+      guard values.isRegularFile == true else { continue }
+      guard records.count < limits.maximumMarkdownFileCount else {
         throw ContentMigrationError.sourceLimitExceeded("Markdown 文件超过 10,000 个，请拆分文件夹后分批导入。")
       }
-      if Task.isCancelled {
-        throw CancellationError()
+      let fileByteCount = values.fileSize ?? 0
+      guard fileByteCount <= limits.maximumMarkdownFileBytes else {
+        throw ContentMigrationError.sourceLimitExceeded("单个 Markdown 文件过大：\(canonicalFileURL.lastPathComponent)。请拆分文章后再导入。")
       }
-      records.append(try markdownRecord(fileURL: fileURL))
+      let (nextTotal, overflow) = totalByteCount.addingReportingOverflow(fileByteCount)
+      guard !overflow, nextTotal <= limits.maximumMarkdownFolderBytes else {
+        throw ContentMigrationError.sourceLimitExceeded("Markdown 文件夹总体积过大，请拆分文件夹后分批导入。")
+      }
+      totalByteCount = nextTotal
+      records.append(try markdownRecord(fileURL: canonicalFileURL))
     }
     return records
+  }
+
+  private func canonicalDescendant(candidateURL: URL, rootURL: URL) -> URL? {
+    let canonicalRoot = rootURL.standardizedFileURL.resolvingSymlinksInPath()
+    let canonicalCandidate = candidateURL.standardizedFileURL.resolvingSymlinksInPath()
+    let rootPath = canonicalRoot.path.hasSuffix("/") ? canonicalRoot.path : canonicalRoot.path + "/"
+    guard canonicalCandidate.path.hasPrefix(rootPath) else {
+      return nil
+    }
+    return canonicalCandidate
   }
 
   private func markdownRecord(fileURL: URL) throws -> ContentMigrationRecord {
@@ -264,6 +347,9 @@ public struct ContentMigrationService: Sendable {
       values = []
     }
     guard !values.isEmpty else { throw ContentMigrationError.invalidExport("未找到 posts/items/entries/articles 数组") }
+    guard values.count <= limits.maximumRecordCount else {
+      throw ContentMigrationError.sourceLimitExceeded("导出记录超过 10,000 条，请拆分后分批导入。")
+    }
     return values.map { object in
       let title = string(object, keys: ["title", "name"]) ?? ""
       return ContentMigrationRecord(
@@ -283,10 +369,20 @@ public struct ContentMigrationService: Sendable {
   }
 
   private func xmlRecords(data: Data, sourceKind: ContentMigrationSourceKind) throws -> [ContentMigrationRecord] {
-    let collector = XMLItemCollector(sourceKind: sourceKind)
+    let collector = XMLItemCollector(
+      sourceKind: sourceKind,
+      maximumRecordCount: limits.maximumRecordCount
+    )
     let parser = XMLParser(data: data)
     parser.delegate = collector
-    guard parser.parse() else {
+    let didParse = parser.parse()
+    if collector.wasCancelled {
+      throw CancellationError()
+    }
+    if collector.didExceedRecordLimit {
+      throw ContentMigrationError.sourceLimitExceeded("导出记录超过 10,000 条，请拆分后分批导入。")
+    }
+    guard didParse else {
       throw ContentMigrationError.invalidExport(parser.parserError?.localizedDescription ?? "XML 解析失败")
     }
     return collector.records
@@ -465,18 +561,27 @@ fileprivate func parseMigrationDate(_ value: String?) -> Date? {
 
 private final class XMLItemCollector: NSObject, XMLParserDelegate {
   private let sourceKind: ContentMigrationSourceKind
+  private let maximumRecordCount: Int
   private var currentItem: [String: String] = [:]
   private var currentElement = ""
   private var text = ""
   private var categories: [String] = []
   private var tags: [String] = []
   var records: [ContentMigrationRecord] = []
+  private(set) var didExceedRecordLimit = false
+  private(set) var wasCancelled = false
 
-  init(sourceKind: ContentMigrationSourceKind) {
+  init(sourceKind: ContentMigrationSourceKind, maximumRecordCount: Int) {
     self.sourceKind = sourceKind
+    self.maximumRecordCount = maximumRecordCount
   }
 
   func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String: String] = [:]) {
+    guard !Task.isCancelled else {
+      wasCancelled = true
+      parser.abortParsing()
+      return
+    }
     currentElement = qName ?? elementName
     text = ""
     if currentElement == "item" || currentElement == "entry" {
@@ -518,6 +623,13 @@ private final class XMLItemCollector: NSObject, XMLParserDelegate {
         return
       }
       let title = currentItem["title"] ?? ""
+      guard records.count < maximumRecordCount else {
+        didExceedRecordLimit = true
+        parser.abortParsing()
+        currentElement = ""
+        text = ""
+        return
+      }
       let status = currentItem["wp:status"]?.lowercased()
       let body = currentItem["content:encoded"] ?? currentItem["content"] ?? currentItem["description"] ?? ""
       records.append(ContentMigrationRecord(

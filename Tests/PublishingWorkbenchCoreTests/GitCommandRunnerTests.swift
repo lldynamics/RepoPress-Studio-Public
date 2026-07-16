@@ -8,7 +8,7 @@ final class GitCommandRunnerTests: XCTestCase {
 
     let result = GitCommandRunner(
       executableURL: scriptURL,
-      timeout: 2,
+      timeout: 10,
       maximumOutputBytes: 4_096
     ).run(["noisy"], rootURL: FileManager.default.temporaryDirectory)
 

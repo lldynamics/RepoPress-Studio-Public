@@ -44,10 +44,7 @@ public final class WorkbenchStore: ObservableObject {
     aiConnectionTestService: aiConnectionTestService,
     imageWorkbenchService: imageWorkbenchService,
     seoAuditService: seoAuditService,
-    seoSocialPreviewService: seoSocialPreviewService,
-    aiChatSessionHydrator: { [persistence = persistenceStore.persistence] state in
-      persistence.hydratedAIChatSession(state)
-    }
+    seoSocialPreviewService: seoSocialPreviewService
   )
   lazy var imageStore: ImageWorkbenchStore = ImageWorkbenchStore(
     store: self,
@@ -56,6 +53,9 @@ public final class WorkbenchStore: ObservableObject {
   )
 
   public var profiles: [SiteProfile] { publishingStore.profiles }
+  public var publishingProfiles: [SiteProfile] {
+    publishingStore.profiles.filter { $0.purpose == .publishing }
+  }
   public var activeProfileID: UUID { publishingStore.activeProfileID }
   public var drafts: [ArticleDraft] { publishingStore.drafts }
   public var draftVersions: [DraftVersionSnapshot] { publishingStore.draftVersions }
@@ -121,15 +121,21 @@ public final class WorkbenchStore: ObservableObject {
     }
     let snapshot = snapshotLoad.snapshot
     let snapshotProfiles = snapshot?.profiles ?? []
-    let initialProfiles = snapshotProfiles.isEmpty ? [SiteProfile.defaultProfile] : snapshotProfiles
-    let initialActiveProfileID = snapshot?.activeProfileID ?? initialProfiles.first?.id ?? SiteProfile.defaultProfileID
+    let restoredProfiles = snapshotProfiles.isEmpty ? [SiteProfile.defaultProfile] : snapshotProfiles
+    let initialProfiles = restoredProfiles.contains(where: { $0.purpose == .publishing })
+      ? restoredProfiles
+      : restoredProfiles + [SiteProfile.defaultProfile]
+    let initialPublishingProfiles = initialProfiles.filter { $0.purpose == .publishing }
+    let restoredActiveProfileID = (snapshot?.activeProfileID).flatMap { candidate in
+      initialPublishingProfiles.contains(where: { $0.id == candidate }) ? candidate : nil
+    }
+    let initialActiveProfileID = restoredActiveProfileID ?? initialPublishingProfiles[0].id
     let activeProfile = initialProfiles.first { $0.id == initialActiveProfileID } ?? initialProfiles[0]
     let snapshotDrafts = snapshot?.drafts ?? []
     let initialDrafts = snapshotDrafts.isEmpty ? [ArticleDraft.empty(profile: activeProfile)] : snapshotDrafts
 
     self.privacyMonetizationStore = PrivacyMonetizationStore(
       privacySettings: snapshot?.privacySettings ?? .default,
-      privacyProtectionEvents: snapshot?.privacyProtectionEvents ?? [],
       monetizationState: snapshot?.monetizationState ?? .default,
       monetizationService: monetizationService,
       entitlementProvider: proEntitlementProvider
@@ -153,7 +159,6 @@ public final class WorkbenchStore: ObservableObject {
       deploymentStatusService: deploymentStatusService,
       deploymentWebhookService: deploymentWebhookService,
       deploymentTokenStore: deploymentTokenStore,
-      legacyRepositoryTokenStore: repositoryTokenStore,
       releaseLedgerService: releaseLedgerService
     )
     self.repositoryDeploymentCoordinator = RepositoryDeploymentCoordinator(
@@ -213,7 +218,6 @@ public final class WorkbenchStore: ObservableObject {
     siteMaintenanceStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStoreCancellables)
-    aiStore.replaceAIChatSessions(snapshot?.aiChatSessionsByDraftID ?? [:])
     repositoryDeploymentCoordinator.refreshTokenAvailability(store: self)
     if let recoveryMessage = snapshotLoad.recoveryMessage {
       if requiresPersistenceRecoveryDecision {

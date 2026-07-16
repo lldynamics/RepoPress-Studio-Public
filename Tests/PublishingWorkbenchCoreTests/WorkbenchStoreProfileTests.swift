@@ -715,7 +715,9 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     store.refreshPublishPreview(for: draft)
 
     XCTAssertEqual(store.localPublishReadiness?.writeReadiness, .blocked)
-    XCTAssertTrue(store.localPublishReadiness?.writeBlockingIssues.contains { $0.title == "标题为空" } == true)
+    XCTAssertTrue(store.localPublishReadiness?.writeBlockingIssues.contains {
+      $0.title == CoreL10n.text("标题为空")
+    } == true)
 
     let initialRecordCount = store.releaseRecords.count
     await store.writeSelectedDraftToLocalRepository()
@@ -724,7 +726,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: writtenURL.path))
     XCTAssertEqual(store.releaseRecords.count, initialRecordCount)
     XCTAssertTrue(store.publishActionMessage?.contains("已停止写入") == true)
-    XCTAssertTrue(store.publishActionMessage?.contains("标题为空") == true)
+    XCTAssertTrue(store.publishActionMessage?.contains(CoreL10n.text("标题为空")) == true)
   }
 
   func testWritingPackageBlocksMissingImageSourceBeforePartialMarkdownWrite() async throws {
@@ -763,7 +765,11 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     store.refreshPublishPreview(for: draft)
 
     XCTAssertEqual(store.localPublishReadiness?.writeReadiness, .blocked)
-    XCTAssertTrue(store.localPublishReadiness?.writeBlockingIssues.contains { $0.title == "图片源文件缺失" } == true)
+    XCTAssertTrue(
+      store.localPublishReadiness?.writeBlockingIssues.contains {
+        $0.title == CoreL10n.text("图片源文件缺失")
+      } == true
+    )
 
     let initialRecordCount = store.releaseRecords.count
     await store.writeSelectedDraftToLocalRepository()
@@ -774,7 +780,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: imageURL.path))
     XCTAssertEqual(store.releaseRecords.count, initialRecordCount)
     XCTAssertTrue(store.publishActionMessage?.contains("已停止写入") == true)
-    XCTAssertTrue(store.publishActionMessage?.contains("图片源文件缺失") == true)
+    XCTAssertTrue(store.publishActionMessage?.contains(CoreL10n.text("图片源文件缺失")) == true)
   }
 
   func testPublishReadinessWarnsWhenRemoteChangedFileMatchesPackagePath() throws {

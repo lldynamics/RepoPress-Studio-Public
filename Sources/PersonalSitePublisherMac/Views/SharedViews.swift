@@ -23,7 +23,7 @@ struct MetricTile: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Label(title, systemImage: systemImage)
+      Label(LocalizedStringKey(title), systemImage: systemImage)
         .font(.caption)
         .foregroundStyle(tint ?? .secondary)
       Text(value)
@@ -34,7 +34,7 @@ struct MetricTile: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel(title)
+    .accessibilityLabel(Text(LocalizedStringKey(title)))
     .accessibilityValue(value)
   }
 }
@@ -64,13 +64,13 @@ enum MetricTileSemantic {
   var color: Color {
     switch self {
     case .blocking:
-      return .red
+      return WorkbenchTheme.risk
     case .warning:
-      return .orange
+      return WorkbenchTheme.warning
     case .passed:
-      return .green
+      return WorkbenchTheme.success
     case .progress:
-      return .blue
+      return WorkbenchTheme.primary
     case .neutral:
       return .secondary
     }
@@ -101,19 +101,38 @@ struct SeverityBadge: View {
   private var color: Color {
     switch severity {
     case .error:
-      return .red
+      return WorkbenchTheme.risk
     case .warning:
-      return .orange
+      return WorkbenchTheme.warning
     case .info:
-      return .green
+      return WorkbenchTheme.success
     }
   }
 }
 
 struct EmptyStateView: View {
-  let title: String
-  let message: String
+  let title: LocalizedStringKey
+  let message: LocalizedStringKey
   let systemImage: String
+  let actionTitle: LocalizedStringKey?
+  let actionSystemImage: String
+  let action: (() -> Void)?
+
+  init(
+    title: LocalizedStringKey,
+    message: LocalizedStringKey,
+    systemImage: String,
+    actionTitle: LocalizedStringKey? = nil,
+    actionSystemImage: String = "arrow.right.circle",
+    action: (() -> Void)? = nil
+  ) {
+    self.title = title
+    self.message = message
+    self.systemImage = systemImage
+    self.actionTitle = actionTitle
+    self.actionSystemImage = actionSystemImage
+    self.action = action
+  }
 
   var body: some View {
     VStack(spacing: 12) {
@@ -127,6 +146,12 @@ struct EmptyStateView: View {
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
         .frame(maxWidth: 360)
+      if let actionTitle, let action {
+        Button(action: action) {
+          Label(actionTitle, systemImage: actionSystemImage)
+        }
+        .buttonStyle(.borderedProminent)
+      }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
@@ -226,13 +251,13 @@ extension ImageCoverPublishState {
   var color: Color {
     switch self {
     case .ready:
-      return .green
+      return WorkbenchTheme.success
     case .disabled, .privateSuppressed:
       return .secondary
     case .missingCover, .missingPublishPath:
-      return .orange
+      return WorkbenchTheme.warning
     case .missingAttachment, .missingSource:
-      return .red
+      return WorkbenchTheme.risk
     }
   }
 }

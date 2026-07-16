@@ -30,12 +30,14 @@ extension RepositoryWorkspaceView {
   }
 
   func copyBatchReviewDescription() {
-    store.refreshBatchPublishPlan()
-    guard let review = store.batchRemoteReviewDraft else {
-      store.setPublishActionMessage("待发布队列没有可生成 PR/MR 描述的文章。")
-      return
+    Task {
+      await store.refreshBatchPublishPlanAsync()
+      guard let review = store.batchRemoteReviewDraft else {
+        store.setPublishActionMessage("待发布队列没有可生成 PR/MR 描述的文章。")
+        return
+      }
+      copy(review.body, message: "已复制批量 PR/MR 描述。")
     }
-    copy(review.body, message: "已复制批量 PR/MR 描述。")
   }
 
   func openReviewURL(_ review: RemoteReviewDraft) {
@@ -53,11 +55,11 @@ extension RepositoryWorkspaceView {
   func ledgerStatusForeground(_ status: ReleaseLedgerStatus) -> AnyShapeStyle {
     switch status {
     case .succeeded:
-      return AnyShapeStyle(.green)
+      return AnyShapeStyle(WorkbenchTheme.success)
     case .deploying, .pendingDeployment, .pendingRemoteRecovery, .pendingRetry, .pendingReview:
-      return AnyShapeStyle(.orange)
+      return AnyShapeStyle(WorkbenchTheme.warning)
     case .failed:
-      return AnyShapeStyle(.red)
+      return AnyShapeStyle(WorkbenchTheme.risk)
     case .localOnly, .unknown:
       return AnyShapeStyle(.secondary)
     }

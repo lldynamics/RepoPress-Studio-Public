@@ -13,8 +13,8 @@ public struct ScreenshotDemoDataService {
     let profileID = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
     let articleID = UUID(uuidString: "22222222-2222-4222-8222-222222222222")!
     let privateArticleID = UUID(uuidString: "33333333-3333-4333-8333-333333333333")!
-    let generalDraftProfileID = UUID(uuidString: "44444444-4444-4444-8444-444444444444")!
-    let generalDraftID = UUID(uuidString: "55555555-5555-4555-8555-555555555555")!
+    let secondProfileID = UUID(uuidString: "44444444-4444-4444-8444-444444444444")!
+    let crossSiteDraftID = UUID(uuidString: "55555555-5555-4555-8555-555555555555")!
     let directRecordID = UUID(uuidString: "66666666-6666-4666-8666-666666666666")!
     let reviewRecordID = UUID(uuidString: "77777777-7777-4777-8777-777777777777")!
     let failedRecordID = UUID(uuidString: "88888888-8888-4888-8888-888888888888")!
@@ -35,13 +35,12 @@ public struct ScreenshotDemoDataService {
     profile.deploymentAccountID = "demo-team"
     profile.deploymentStatusEndpointUsesToken = true
 
-    var generalProfile = SiteProfile.defaultProfile
-    generalProfile.id = generalDraftProfileID
-    generalProfile.name = "素材库"
-    generalProfile.purpose = .generalDraftBackup
-    generalProfile.repoOwner = "demo-owner"
-    generalProfile.repoName = "demo-notes"
-    generalProfile.branch = "main"
+    var secondProfile = SiteProfile.defaultProfile
+    secondProfile.id = secondProfileID
+    secondProfile.name = "示例项目网站"
+    secondProfile.repoOwner = "demo-owner"
+    secondProfile.repoName = "demo-project-site"
+    secondProfile.branch = "main"
 
     let cover = DraftAttachment(
       originalFilename: "social-preview.png",
@@ -102,9 +101,9 @@ public struct ScreenshotDemoDataService {
       createdAt: now.addingTimeInterval(-100_000),
       updatedAt: now.addingTimeInterval(-1_800)
     )
-    let generalDraft = ArticleDraft(
-      id: generalDraftID,
-      siteProfileID: generalDraftProfileID,
+    let crossSiteDraft = ArticleDraft(
+      id: crossSiteDraftID,
+      siteProfileID: secondProfileID,
       title: "跨站点发布检查模板",
       date: now.addingTimeInterval(-7_200),
       slug: "cross-site-publish-checklist",
@@ -265,33 +264,11 @@ public struct ScreenshotDemoDataService {
       generatedAt: now.addingTimeInterval(-240)
     )
 
-    let chatState = AIPublishingChatSessionState(
-      messages: [
-        AIPublishingChatMessage(
-          role: .user,
-          content: "请从发布前角度检查这篇文章的标题、摘要、SEO 和发布风险。",
-          contextMode: .site,
-          createdAt: now.addingTimeInterval(-500)
-        ),
-        AIPublishingChatMessage(
-          role: .assistant,
-          content: "标题清晰，摘要覆盖写作、SEO、线上发布和部署校验。建议保留 Open Graph 图片，并在发布前确认远端冲突预览为空。",
-          model: "deepseek-v4-flash",
-          contextMode: .site,
-          createdAt: now.addingTimeInterval(-460)
-        ),
-      ],
-      contextMode: .site,
-      modelGrade: .standard,
-      selectedModel: "deepseek-v4-flash"
-    )
-
     return WorkbenchSnapshot(
-      profiles: [profile, generalProfile],
+      profiles: [profile, secondProfile],
       activeProfileID: profileID,
-      drafts: [article, privateArticle, generalDraft],
+      drafts: [article, privateArticle, crossSiteDraft],
       releaseRecords: [directRecord, reviewRecord, failedRecord],
-      aiChatSessionsByDraftID: [articleID: chatState],
       seoSocialPreviewSnapshots: [seoSnapshot],
       privacySettings: PrivacyProtectionSettings(
         masksPrivateContent: true
@@ -396,6 +373,19 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
       store.setPublishActionMessage("截图模式：写作工作区已载入演示文章。")
     case .aiChat:
       _ = store.openAIChatWorkspace(for: preferredDraft(in: store)?.id)
+      store.seedTransientAIChatPreview([
+        AIPublishingChatMessage(
+          role: .user,
+          content: "请从发布前角度检查这篇文章的标题、摘要、SEO 和发布风险。",
+          contextMode: .site
+        ),
+        AIPublishingChatMessage(
+          role: .assistant,
+          content: "标题清晰，摘要覆盖写作、SEO、线上发布和部署校验。建议保留 Open Graph 图片，并在发布前确认远端冲突预览为空。",
+          model: "deepseek-v4-flash",
+          contextMode: .site
+        ),
+      ])
       store.setPublishActionMessage("截图模式：AI 助手 Inspector 已载入。")
     case .syncAPIPublish:
       store.selectSection(.sync)
@@ -414,7 +404,7 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
       store.setPublishActionMessage("截图模式：站点维护工作台已载入。")
     case .generalDrafts:
       store.selectSection(.generalDrafts)
-      store.setPublishActionMessage("截图模式：素材库已载入。")
+      store.setPublishActionMessage("截图模式：跨站点复制已载入。")
     case .proSettings:
       store.selectSection(.writing)
       store.setMonetizationMessage("截图模式：请打开 Settings > Pro 捕获免费额度、StoreKit 购买和恢复状态。")
