@@ -18,6 +18,8 @@ struct WorkspaceTaskNavigation: View {
 
     }
     .listStyle(.sidebar)
+    .scrollDisabled(true)
+    .scrollIndicators(.hidden)
     .scrollContentBackground(.hidden)
     .background(Color.clear)
     .accessibilityIdentifier("workspace-task-navigation")
@@ -63,7 +65,7 @@ struct WorkspaceTaskNavigation: View {
       Spacer(minLength: 8)
     }
     .padding(.horizontal, 8)
-    .padding(.vertical, 5)
+    .padding(.vertical, 3)
     .frame(maxWidth: .infinity, alignment: .leading)
     .foregroundStyle(Color.primary)
     .contentShape(Rectangle())

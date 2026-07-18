@@ -175,6 +175,24 @@ final class KnowledgeWebContentSanitizerTests: XCTestCase {
     XCTAssertFalse(cleaned.contains("博客归档"))
   }
 
+  func testExistingBloggerReadingTextDropsCombinedAtomFooterAndStrayBracket() {
+    let text = """
+    # 正文标题
+
+    这是应该保留的文章结尾。
+    [
+    [主页](https://example.blogspot.com/) [订阅](https://example.blogspot.com/feeds/posts/default) 博文评论 (Atom)
+    """
+
+    let cleaned = KnowledgeWebContentSanitizer().sanitizeExtractedReadingText(text)
+
+    XCTAssertTrue(cleaned.contains("应该保留的文章结尾"))
+    XCTAssertFalse(cleaned.contains("[主页]"))
+    XCTAssertFalse(cleaned.contains("订阅"))
+    XCTAssertFalse(cleaned.localizedCaseInsensitiveContains("Atom"))
+    XCTAssertFalse(cleaned.components(separatedBy: .newlines).contains("["))
+  }
+
   func testBloggerPageFixtureKeepsPostAndDropsCommentsArchiveAndEmbeddedFrames() {
     let html = """
     <!doctype html>

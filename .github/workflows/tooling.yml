@@ -5,6 +5,11 @@ on:
     paths:
       - "script/**"
       - ".github/workflows/**"
+      - "Package.swift"
+      - "Packaging/**"
+      - "StoreKit/**"
+      - "BrowserExtension/**"
+      - "Sources/PersonalSitePublisherMac/AppStore.entitlements"
       - "APP_STORE_CHECKLIST.md"
       - "docs/release-evidence/**"
       - "docs/app-store-screenshots/**"
@@ -12,6 +17,11 @@ on:
     paths:
       - "script/**"
       - ".github/workflows/**"
+      - "Package.swift"
+      - "Packaging/**"
+      - "StoreKit/**"
+      - "BrowserExtension/**"
+      - "Sources/PersonalSitePublisherMac/AppStore.entitlements"
       - "APP_STORE_CHECKLIST.md"
       - "docs/release-evidence/**"
       - "docs/app-store-screenshots/**"

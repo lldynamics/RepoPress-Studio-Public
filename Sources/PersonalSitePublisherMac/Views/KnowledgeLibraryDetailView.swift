@@ -10,6 +10,8 @@ struct KnowledgeLibraryDetailView: View {
   @State private var isMetadataEditorPresented = false
   @State private var annotationDraft: KnowledgeAnnotation?
   @State private var isSourceHistoryPresented = false
+  @State private var preparesLocalRepairOnHistoryOpen = false
+  @AppStorage("knowledgeLibraryInspectorVisibleV1") private var isInspectorPresented = true
 
   var body: some View {
     Group {
@@ -44,7 +46,11 @@ struct KnowledgeLibraryDetailView: View {
     }
     .sheet(isPresented: $isSourceHistoryPresented) {
       if let documentID = knowledge.selectedDocumentID {
-        KnowledgeSourceHistoryView(knowledge: knowledge, documentID: documentID)
+        KnowledgeSourceHistoryView(
+          knowledge: knowledge,
+          documentID: documentID,
+          preparesLocalRepairOnAppear: preparesLocalRepairOnHistoryOpen
+        )
       }
     }
     .confirmationDialog(
@@ -64,60 +70,104 @@ struct KnowledgeLibraryDetailView: View {
   }
 
   private func documentDetail(_ document: KnowledgeDocument) -> some View {
-    VStack(spacing: 0) {
-      header(document)
-      Divider()
+    GeometryReader { geometry in
+      let isInspectorAvailable = geometry.size.width >= 900
+      documentDetailLayout(
+        document,
+        showsInspector: isInspectorPresented && isInspectorAvailable,
+        isInspectorAvailable: isInspectorAvailable
+      )
+    }
+  }
 
-      ScrollViewReader { proxy in
-        ScrollView {
-          VStack(alignment: .leading, spacing: 18) {
-            metadata(document)
-            Divider()
-            if let activeSearchHit {
-              searchLocationBanner(activeSearchHit)
+  private func documentDetailLayout(
+    _ document: KnowledgeDocument,
+    showsInspector: Bool,
+    isInspectorAvailable: Bool
+  ) -> some View {
+    HStack(spacing: 0) {
+      VStack(spacing: 0) {
+        header(
+          document,
+          showsInspector: showsInspector,
+          isInspectorAvailable: isInspectorAvailable
+        )
+        Divider()
+
+        ScrollViewReader { proxy in
+          ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+              metadata(document)
+              Divider()
+              if let activeSearchHit {
+                searchLocationBanner(activeSearchHit)
+              }
+              KnowledgeDocumentReader(
+                blocks: readerBlocks,
+                isLoading: knowledge.isLoadingSelectedDocumentText,
+                errorMessage: knowledge.selectedDocumentTextError,
+                highlightedBlockID: readerScrollTarget?.blockID,
+                highlightTerms: activeSearchHit?.highlightTerms ?? [],
+                retry: { knowledge.selectDocument(document.id) },
+                onAnnotateBlock: { beginAnnotatingBlock($0, document: document) },
+                onCopyBlockCitation: { copyBlockCitation($0, document: document) }
+              )
+              if knowledge.selectedDocumentText.count > 100_000,
+                 activeSearchResult == nil {
+                Text("正文较长，当前详情只显示前 100,000 个字符；全文已完整保存并可检索。")
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
             }
-            KnowledgeDocumentReader(
-              blocks: readerBlocks,
-              isLoading: knowledge.isLoadingSelectedDocumentText,
-              errorMessage: knowledge.selectedDocumentTextError,
-              highlightedBlockID: readerScrollTarget?.blockID,
-              highlightTerms: activeSearchHit?.highlightTerms ?? [],
-              retry: { knowledge.selectDocument(document.id) }
-            )
-            if knowledge.selectedDocumentText.count > 100_000,
-               activeSearchResult == nil {
-              Text("正文较长，当前详情只显示前 100,000 个字符；全文已完整保存并可检索。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            .padding(24)
+            .frame(maxWidth: 900, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
+          }
+          .task(id: readerScrollTarget) {
+            guard let target = readerScrollTarget else { return }
+            await Task.yield()
+            withAnimation(.easeInOut(duration: 0.24)) {
+              proxy.scrollTo(target.blockID, anchor: .center)
             }
-            Divider()
-            KnowledgeDocumentInsightsSection(
-              annotations: knowledge.annotations,
-              backlinkGroups: knowledge.backlinkGroups,
-              onAddAnnotation: { beginAddingAnnotation(to: document) },
-              onEditAnnotation: { annotationDraft = $0 },
-              onDeleteAnnotation: { knowledge.deleteAnnotation($0) }
-            )
-            Divider()
-            KnowledgeRelatedChaptersSection(knowledge: knowledge)
-          }
-          .padding(24)
-          .frame(maxWidth: 900, alignment: .leading)
-          .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .task(id: readerScrollTarget) {
-          guard let target = readerScrollTarget else { return }
-          await Task.yield()
-          withAnimation(.easeInOut(duration: 0.24)) {
-            proxy.scrollTo(target.blockID, anchor: .center)
           }
         }
+      }
+      .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+
+      if showsInspector {
+        Divider()
+
+        KnowledgeLibraryInspectorPanel(
+          knowledge: knowledge,
+          document: document,
+          activeSearchResult: activeSearchResult,
+          onEditMetadata: { isMetadataEditorPresented = true },
+          onAddAnnotation: { beginAddingAnnotation(to: document) },
+          onAnnotateSearchHit: { beginAnnotatingSearchResult(document: document) },
+          onEditAnnotation: { annotationDraft = $0 },
+          onDeleteAnnotation: { knowledge.deleteAnnotation($0) },
+          onOpenSourceHistory: {
+            preparesLocalRepairOnHistoryOpen = false
+            isSourceHistoryPresented = true
+          },
+          onReportContentIssue: {
+            preparesLocalRepairOnHistoryOpen = true
+            isSourceHistoryPresented = true
+          }
+        )
+        .frame(width: 340)
+        .frame(maxHeight: .infinity)
+        .background(.bar)
       }
     }
     .accessibilityIdentifier("knowledge-library-detail")
   }
 
-  private func header(_ document: KnowledgeDocument) -> some View {
+  private func header(
+    _ document: KnowledgeDocument,
+    showsInspector: Bool,
+    isInspectorAvailable: Bool
+  ) -> some View {
     HStack(spacing: 12) {
       Image(systemName: document.kind.systemImage)
         .font(.title3)
@@ -131,6 +181,25 @@ struct KnowledgeLibraryDetailView: View {
           .foregroundStyle(.secondary)
       }
       Spacer()
+
+      Button {
+        guard isInspectorAvailable else { return }
+        isInspectorPresented.toggle()
+      } label: {
+        Label(
+          isInspectorAvailable
+            ? (showsInspector ? "隐藏检查器" : "显示检查器")
+            : "检查器已自动收起",
+          systemImage: "sidebar.trailing"
+        )
+      }
+      .disabled(!isInspectorAvailable)
+      .help(
+        isInspectorAvailable
+          ? (showsInspector ? "隐藏资料检查器" : "显示资料检查器")
+          : "放大资料阅读区域后可显示检查器"
+      )
+      .keyboardShortcut("i", modifiers: [.command, .option])
 
       Button {
         knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)
@@ -162,6 +231,7 @@ struct KnowledgeLibraryDetailView: View {
           }
         }
         Button {
+          preparesLocalRepairOnHistoryOpen = false
           isSourceHistoryPresented = true
         } label: {
           Label("来源更新与版本…", systemImage: "clock.arrow.circlepath")
@@ -241,6 +311,48 @@ struct KnowledgeLibraryDetailView: View {
       highlightedText: String(result.chunk.content.prefix(4_000)),
       note: ""
     )
+  }
+
+  private func beginAnnotatingBlock(
+    _ block: KnowledgeDocumentBlock,
+    document: KnowledgeDocument
+  ) {
+    annotationDraft = KnowledgeAnnotation(
+      documentID: document.id,
+      revisionID: document.currentRevisionID,
+      locator: blockLocator(block),
+      highlightedText: String(block.text.prefix(4_000)),
+      note: ""
+    )
+  }
+
+  private func copyBlockCitation(
+    _ block: KnowledgeDocumentBlock,
+    document: KnowledgeDocument
+  ) {
+    let location = blockLocator(block)
+    let source: String
+    if let sourceURL = document.sourceURL, !sourceURL.isFileURL {
+      source = "[\(document.title)](\(sourceURL.absoluteString))"
+    } else {
+      source = document.title
+    }
+    let citation = "> \(block.text.trimmedForPublishing)\n\n— \(source)，\(location)"
+    _ = ClipboardWriter.copy(
+      citation,
+      successMessage: "已复制“\(document.title)”的引用片段。"
+    ) { message in
+      EditorAccessibilityAnnouncementCenter.announce(message, priority: .low)
+    }
+  }
+
+  private func blockLocator(_ block: KnowledgeDocumentBlock) -> String {
+    switch block.kind {
+    case .heading, .locator:
+      return block.text
+    default:
+      return "正文第 \(block.id + 1) 段"
+    }
   }
 
   private func metadata(_ document: KnowledgeDocument) -> some View {
@@ -389,6 +501,8 @@ private struct KnowledgeDocumentReader: View {
   let highlightedBlockID: Int?
   let highlightTerms: [String]
   let retry: () -> Void
+  let onAnnotateBlock: (KnowledgeDocumentBlock) -> Void
+  let onCopyBlockCitation: (KnowledgeDocumentBlock) -> Void
 
   var body: some View {
     if isLoading {
@@ -429,6 +543,18 @@ private struct KnowledgeDocumentReader: View {
               }
             }
             .accessibilityAddTraits(block.id == highlightedBlockID ? .isSelected : [])
+            .contextMenu {
+              Button {
+                onAnnotateBlock(block)
+              } label: {
+                Label("将本段添加为笔记…", systemImage: "note.text.badge.plus")
+              }
+              Button {
+                onCopyBlockCitation(block)
+              } label: {
+                Label("复制本段为引用", systemImage: "quote.opening")
+              }
+            }
             .id(block.id)
         }
       }

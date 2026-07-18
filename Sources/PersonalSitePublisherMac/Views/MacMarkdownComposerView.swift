@@ -8,6 +8,10 @@ struct MacMarkdownComposerView: View {
   let aiActions: WorkbenchAIFeatureFacade
   @StateObject private var editorState: WorkbenchMarkdownEditorFeatureFacade
   @State private var editorBody: String
+  @State private var editorDocument: String
+  @State private var isFrontMatterSelection = false
+  @State private var frontMatterIssue: MarkdownFrontMatterEditingIssue?
+  @State private var ignoredCanonicalFrontMatter: String?
   @State private var editorStatistics = MarkdownEditorStatistics.empty
   @State private var selectedRange: NSRange
   @State private var isImageDropTargeted = false
@@ -57,12 +61,15 @@ struct MacMarkdownComposerView: View {
   private var isTypewriterModeEnabled = MarkdownEditorComfortConfiguration.defaultTypewriterModeEnabled
   @AppStorage(MarkdownEditorComfortPreferences.currentParagraphHighlightEnabledKey)
   private var isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration.defaultCurrentParagraphHighlightEnabled
+  @AppStorage(MarkdownEditorComfortPreferences.warmPaperBackgroundEnabledKey)
+  private var isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
   @AppStorage(MarkdownEditorComfortPreferences.writingGoalKey)
   private var editorWritingGoal = MarkdownEditorComfortConfiguration.defaultWritingGoal
   private let findReplaceService = MarkdownFindReplaceService()
   private let outlineService = MarkdownOutlineService()
   private let markdownAnalysisService = MarkdownEditorAnalysisService()
   private let imageMetadataEditingService = ImageMetadataEditingService()
+  private let frontMatterEditingService = MarkdownFrontMatterEditingService()
 
   private var inlineDiagnostics: [MarkdownInlineDiagnostic] {
     guard appliedMarkdownAnalysisGeneration == markdownAnalysisGeneration else { return [] }
@@ -81,8 +88,35 @@ struct MacMarkdownComposerView: View {
       bodyWidth: editorBodyWidth,
       spellCheckEnabled: isEditorSpellCheckEnabled,
       typewriterModeEnabled: isTypewriterModeEnabled,
-      currentParagraphHighlightEnabled: isCurrentParagraphHighlightEnabled
+      currentParagraphHighlightEnabled: isCurrentParagraphHighlightEnabled,
+      warmPaperBackgroundEnabled: isWarmPaperBackgroundEnabled
     )
+  }
+
+  private var activeProfile: SiteProfile {
+    editorState.profile(for: draft)
+  }
+
+  private var canonicalFrontMatter: String {
+    frontMatterEditingService.render(draft: draft, profile: activeProfile)
+  }
+
+  private var editorDocumentParts: MarkdownFrontMatterDocumentParts? {
+    frontMatterEditingService.splitDocument(editorDocument, profile: activeProfile)
+  }
+
+  private var editorDocumentBodyOffset: Int {
+    if let editorDocumentParts {
+      return editorDocumentParts.bodyUTF16Offset
+    }
+    let canonicalDocument = frontMatterEditingService.renderDocument(
+      draft: draft,
+      profile: activeProfile,
+      bodyMarkdown: editorBody
+    )
+    return frontMatterEditingService
+      .splitDocument(canonicalDocument, profile: activeProfile)?
+      .bodyUTF16Offset ?? 0
   }
 
   init(draft: Binding<ArticleDraft>, store: WorkbenchStore) {
@@ -93,6 +127,13 @@ struct MacMarkdownComposerView: View {
     let editorSession = store.markdownEditorSessionState(for: draftID)
       .normalized(bodyUTF16Count: bodyUTF16Count)
     _editorBody = State(initialValue: buffer.bodyMarkdown)
+    _editorDocument = State(
+      initialValue: MarkdownFrontMatterEditingService().renderDocument(
+        draft: draft.wrappedValue,
+        profile: store.profile(for: draft.wrappedValue),
+        bodyMarkdown: buffer.bodyMarkdown
+      )
+    )
     _editorBodyRevision = State(initialValue: buffer.revision)
     _selectedRange = State(
       initialValue: editorSession.selectedRange(bodyUTF16Count: bodyUTF16Count)
@@ -245,6 +286,13 @@ struct MacMarkdownComposerView: View {
       syncActiveEditorSelection()
       saveCurrentEditorSession()
     }
+    .onChange(of: isFrontMatterSelection) { _, isSelected in
+      if isSelected {
+        store.clearActiveEditorSelection(for: draft.id)
+      } else {
+        syncActiveEditorSelection()
+      }
+    }
     .onChange(of: findQuery) { _, _ in
       findReplaceMessage = ""
       saveCurrentEditorSession()
@@ -266,12 +314,16 @@ struct MacMarkdownComposerView: View {
         progress: scrollSyncUpdate.progress
       )
     }
-    .onChange(of: editorBody) { previousBody, _ in
-      syncActiveEditorSelection()
-      stageEditorBody(replacingBaseBody: previousBody)
-      scheduleMarkdownAnalysis()
-      saveCurrentEditorSession()
-    }
+    .modifier(
+      MarkdownDocumentSynchronizationModifier(
+        editorDocument: editorDocument,
+        editorBody: editorBody,
+        canonicalFrontMatter: canonicalFrontMatter,
+        onEditorDocumentChange: applyEditorDocument,
+        onEditorBodyChange: handleEditorBodyChange,
+        onCanonicalFrontMatterChange: handleCanonicalFrontMatterChange
+      )
+    )
     .onChange(of: draft.bodyMarkdown) { _, _ in
       syncEditorBodyFromStore()
     }
@@ -289,6 +341,7 @@ struct MacMarkdownComposerView: View {
       scrollSyncUpdate = nil
       store.flushDraftBodyEditorBuffer(for: oldDraftID)
       syncEditorBodyFromStore(force: true)
+      resetEditorDocumentFromDraft()
       restoreEditorSession(for: draft.id)
       syncActiveEditorSelection()
       scheduleMarkdownAnalysis(immediate: true)
@@ -375,6 +428,7 @@ struct MacMarkdownComposerView: View {
   private var markdownPreview: some View {
     MarkdownPreviewPane(
       draft: previewDraft,
+      showsSynchronizedScrollingControl: editorState.editorDisplayMode == .split,
       isSynchronizedScrollingEnabled: $isSynchronizedScrollingEnabled,
       scrollSyncUpdate: scrollSyncUpdate,
       scrollRestorationUpdate: previewScrollRestorationUpdate,
@@ -411,11 +465,91 @@ struct MacMarkdownComposerView: View {
     selectionActionMessage = "另一窗口已更新正文，刚才的陈旧修改未写入；已同步到最新版本。"
   }
 
+  private func handleEditorBodyChange(
+    from previousBody: String,
+    to _: String
+  ) {
+    syncActiveEditorSelection()
+    stageEditorBody(replacingBaseBody: previousBody)
+    synchronizeDocumentBodyFromBuffer()
+    scheduleMarkdownAnalysis()
+    saveCurrentEditorSession()
+  }
+
+  private func handleCanonicalFrontMatterChange(_ updatedFrontMatter: String) {
+    if ignoredCanonicalFrontMatter == updatedFrontMatter {
+      ignoredCanonicalFrontMatter = nil
+    } else {
+      synchronizeDocumentFrontMatter(updatedFrontMatter)
+    }
+  }
+
   private func syncEditorBodyFromStore(force: Bool = false) {
     let buffer = editorState.draftBodyEditorBuffer(for: draft.id)
     guard force || buffer.revision != editorBodyRevision else { return }
     editorBody = buffer.bodyMarkdown
     editorBodyRevision = buffer.revision
+  }
+
+  private func applyEditorDocument(_ document: String) {
+    guard let parts = frontMatterEditingService.splitDocument(
+      document,
+      profile: activeProfile
+    ) else {
+      frontMatterIssue = .invalidDelimiter
+      return
+    }
+
+    let metadataResult = frontMatterEditingService.applying(
+      parts.frontMatter,
+      to: draft,
+      profile: activeProfile
+    )
+    frontMatterIssue = metadataResult.issue
+    if metadataResult.isValid, metadataResult.draft != draft {
+      ignoredCanonicalFrontMatter = frontMatterEditingService.render(
+        draft: metadataResult.draft,
+        profile: activeProfile
+      )
+      draft = metadataResult.draft
+    }
+    if parts.bodyMarkdown != editorBody {
+      editorBody = parts.bodyMarkdown
+    }
+  }
+
+  private func synchronizeDocumentBodyFromBuffer() {
+    let frontMatter = editorDocumentParts?.frontMatter ?? canonicalFrontMatter
+    guard editorDocumentParts?.bodyMarkdown != editorBody else { return }
+    editorDocument = frontMatterEditingService.composeDocument(
+      frontMatter: frontMatter,
+      bodyMarkdown: editorBody
+    )
+  }
+
+  private func synchronizeDocumentFrontMatter(_ frontMatter: String) {
+    let body = editorDocumentParts?.bodyMarkdown ?? editorBody
+    let updatedDocument = frontMatterEditingService.composeDocument(
+      frontMatter: frontMatter,
+      bodyMarkdown: body
+    )
+    guard editorDocument != updatedDocument else {
+      frontMatterIssue = nil
+      return
+    }
+    editorDocument = updatedDocument
+    frontMatterIssue = nil
+  }
+
+  private func resetEditorDocumentFromDraft() {
+    ignoredCanonicalFrontMatter = nil
+    frontMatterIssue = nil
+    isFrontMatterSelection = false
+    editorDocument = frontMatterEditingService.renderDocument(
+      draft: draft,
+      profile: activeProfile,
+      bodyMarkdown: editorBody
+    )
   }
 
   @discardableResult
@@ -454,9 +588,11 @@ struct MacMarkdownComposerView: View {
         onInsertTable: insertTable,
         onInsertHorizontalRule: insertHorizontalRule,
         onInsertInternalLink: {
+          guard requireBodyEditingContext() else { return }
           isInternalLinkPickerPresented = true
         },
         onShowSnippets: {
+          guard requireBodyEditingContext() else { return }
           isSnippetLibraryPresented = true
         },
         onShowDiagnostics: {
@@ -464,20 +600,25 @@ struct MacMarkdownComposerView: View {
         },
         diagnosticCount: inlineDiagnostics.count,
         onInsertImage: {
+          guard requireBodyEditingContext() else { return }
           insertImageReferences(ImageSelectionPanel.chooseImages())
         },
         onInsertVideo: {
+          guard requireBodyEditingContext() else { return }
           insertVideoReferences(VideoSelectionPanel.chooseVideos())
         }
       )
       Divider()
 
       ZStack {
-        Color(nsColor: .textBackgroundColor)
+        WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled)
 
         MacMarkdownTextView(
-          text: $editorBody,
+          text: $editorDocument,
+          bodyMarkdown: editorBody,
+          bodyUTF16Offset: editorDocumentBodyOffset,
           selectedRange: $selectedRange,
+          isFrontMatterSelection: $isFrontMatterSelection,
           comfortConfiguration: editorComfortConfiguration,
           diagnostics: inlineDiagnostics,
           editRequest: editorEditRequest,
@@ -502,15 +643,15 @@ struct MacMarkdownComposerView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-        if editorBody.trimmedForPublishing.isEmpty {
-          Text("Markdown 正文")
-            .font(.body)
-            .foregroundStyle(.tertiary)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 18)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        if frontMatterIssue != nil {
+          Label("Front Matter 格式", systemImage: "exclamationmark.triangle.fill")
+            .font(.caption)
+            .foregroundStyle(WorkbenchTheme.warning)
+            .padding(8)
+            .background(.regularMaterial, in: Capsule())
+            .padding(10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             .allowsHitTesting(false)
-            .accessibilityHidden(true)
         }
 
         if isImageDropTargeted {
@@ -535,7 +676,7 @@ struct MacMarkdownComposerView: View {
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    .background(Color(nsColor: .textBackgroundColor))
+    .background(WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled))
     .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .overlay(
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -552,7 +693,8 @@ struct MacMarkdownComposerView: View {
   }
 
   private var hasSelectedText: Bool {
-    !selectedText(in: editorBody).trimmedForPublishing.isEmpty
+    !isFrontMatterSelection
+      && !selectedText(in: editorBody).trimmedForPublishing.isEmpty
   }
 
   private var latestAssistantMessageForCurrentDraft: AIPublishingChatMessage? {
@@ -633,6 +775,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func insertImageReferences(_ urls: [URL]) {
+    guard requireBodyEditingContext() else { return }
     let imageURLs = ImageFileSupport.supportedImageURLs(in: urls)
     guard !imageURLs.isEmpty else {
       selectionActionMessage = "没有可插入的图片文件。"
@@ -681,6 +824,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func insertVideoReferences(_ urls: [URL]) {
+    guard requireBodyEditingContext() else { return }
     let videoURLs = VideoFileSupport.supportedVideoURLs(in: urls)
     guard !videoURLs.isEmpty else {
       selectionActionMessage = "没有可插入的视频文件。"
@@ -1220,6 +1364,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func applyMarkdownFormatting(_ command: MarkdownFormattingCommand) {
+    guard requireBodyEditingContext() else { return }
     guard !MarkdownFormattingResponderBridge.perform(command) else { return }
     let service = MarkdownFormattingService()
     guard let edit = service.edit(
@@ -1238,6 +1383,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func wrapSelection(prefix: String, suffix: String, placeholder: String) {
+    guard requireBodyEditingContext() else { return }
     var updated = previewDraft
     let source = updated.bodyMarkdown as NSString
     let range = editingRange(in: source)
@@ -1252,6 +1398,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func prefixCurrentLine(_ prefix: String) {
+    guard requireBodyEditingContext() else { return }
     replaceCurrentLines { line in
       line.hasPrefix(prefix) ? line : prefix + line
     }
@@ -1282,12 +1429,14 @@ struct MacMarkdownComposerView: View {
   }
 
   private func insertCodeBlock() {
+    guard requireBodyEditingContext() else { return }
     let selected = selectedText(in: editorBody).trimmedForPublishing
     let body = selected.isEmpty ? "code" : selected
     applyDraftUpdate(replacingSelection(in: previewDraft, with: "```\n\(body)\n```"))
   }
 
   private func insertTable() {
+    guard requireBodyEditingContext() else { return }
     let table = """
     | 列 1 | 列 2 |
     | --- | --- |
@@ -1320,10 +1469,12 @@ struct MacMarkdownComposerView: View {
   }
 
   private func insertHorizontalRule() {
+    guard requireBodyEditingContext() else { return }
     applyDraftUpdate(replacingSelection(in: previewDraft, with: "---"))
   }
 
   private func insertInternalLink(_ suggestion: MarkdownInternalLinkSuggestion) {
+    guard requireBodyEditingContext() else { return }
     let markdown = MarkdownInternalLinkService.markdownLink(
       to: suggestion,
       selectedText: selectedText(in: editorBody)
@@ -1333,10 +1484,21 @@ struct MacMarkdownComposerView: View {
   }
 
   private func insertSnippet(_ snippet: MarkdownSnippet) {
+    guard requireBodyEditingContext() else { return }
     let markdown = MarkdownSnippetLibraryService.expandedMarkdown(for: snippet, draft: previewDraft)
     guard applyDraftUpdate(replacingSelection(in: previewDraft, with: markdown)) else { return }
     let kindName = snippet.kind == .articleTemplate ? "文章模板" : "正文片段"
     selectionActionMessage = "已插入\(kindName)：\(snippet.title)"
+  }
+
+  @discardableResult
+  private func requireBodyEditingContext() -> Bool {
+    guard isFrontMatterSelection else { return true }
+    let message = String(localized: "请先将光标移到 Markdown 正文。")
+    selectionActionMessage = message
+    EditorAccessibilityAnnouncementCenter.announce(message, priority: .high)
+    NSSound.beep()
+    return false
   }
 
   private func selectDiagnostic(_ diagnostic: MarkdownInlineDiagnostic) {
@@ -1378,6 +1540,10 @@ struct MacMarkdownComposerView: View {
   }
 
   private func syncActiveEditorSelection() {
+    guard !isFrontMatterSelection else {
+      store.clearActiveEditorSelection(for: draft.id)
+      return
+    }
     let source = editorBody as NSString
     let range = clamped(selectedRange, length: source.length)
     let selectedText = range.length > 0 ? source.substring(with: range) : ""
@@ -1733,5 +1899,27 @@ struct MacMarkdownComposerView: View {
   private func discardSelectionEditPreview() {
     selectionEditPreview = nil
     selectionActionMessage = "已丢弃 AI 预览。"
+  }
+}
+
+private struct MarkdownDocumentSynchronizationModifier: ViewModifier {
+  let editorDocument: String
+  let editorBody: String
+  let canonicalFrontMatter: String
+  let onEditorDocumentChange: (String) -> Void
+  let onEditorBodyChange: (String, String) -> Void
+  let onCanonicalFrontMatterChange: (String) -> Void
+
+  func body(content: Content) -> some View {
+    content
+      .onChange(of: editorDocument) { _, updatedDocument in
+        onEditorDocumentChange(updatedDocument)
+      }
+      .onChange(of: editorBody) { previousBody, updatedBody in
+        onEditorBodyChange(previousBody, updatedBody)
+      }
+      .onChange(of: canonicalFrontMatter) { _, updatedFrontMatter in
+        onCanonicalFrontMatterChange(updatedFrontMatter)
+      }
   }
 }

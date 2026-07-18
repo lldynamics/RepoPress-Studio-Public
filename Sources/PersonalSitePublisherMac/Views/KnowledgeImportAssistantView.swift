@@ -3,6 +3,8 @@ import SwiftUI
 
 struct KnowledgeImportAssistantView: View {
   @ObservedObject var knowledge: KnowledgeStore
+  let initialSourceURLs: [URL]
+  let importDestination: KnowledgeImportDestination
   @Environment(\.dismiss) private var dismiss
   @State private var webURLText = ""
   @State private var preview: KnowledgeImportPreview?
@@ -11,6 +13,18 @@ struct KnowledgeImportAssistantView: View {
   @State private var isCommitting = false
   @State private var statusMessage: StatusMessage?
   @State private var analysisTask: Task<Void, Never>?
+  @State private var isFileDropTargeted = false
+  @State private var didAnalyzeInitialSources = false
+
+  init(
+    knowledge: KnowledgeStore,
+    initialSourceURLs: [URL] = [],
+    importDestination: KnowledgeImportDestination = .preserveExisting
+  ) {
+    self.knowledge = knowledge
+    self.initialSourceURLs = initialSourceURLs
+    self.importDestination = importDestination
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -40,6 +54,11 @@ struct KnowledgeImportAssistantView: View {
       footer
     }
     .frame(minWidth: 760, idealWidth: 900, minHeight: 580, idealHeight: 700)
+    .onAppear {
+      guard !didAnalyzeInitialSources, !initialSourceURLs.isEmpty else { return }
+      didAnalyzeInitialSources = true
+      analyzeFileSources(initialSourceURLs)
+    }
     .onDisappear {
       analysisTask?.cancel()
       analysisTask = nil
@@ -63,6 +82,49 @@ struct KnowledgeImportAssistantView: View {
   private var sourceSection: some View {
     GroupBox(String(localized: "1. 选择来源")) {
       VStack(alignment: .leading, spacing: 12) {
+        HStack(spacing: 10) {
+          Image(systemName: isFileDropTargeted ? "tray.and.arrow.down.fill" : "arrow.down.doc")
+            .font(.title3)
+            .foregroundStyle(isFileDropTargeted ? Color.accentColor : Color.secondary)
+          VStack(alignment: .leading, spacing: 2) {
+            Text(
+              isFileDropTargeted
+                ? String(localized: "释放以生成导入预览")
+                : String(localized: "可直接拖入文件或文件夹")
+            )
+              .font(.callout.weight(.medium))
+            Text(String(localized: "支持一次拖入多项；会先分析、去重，再由你确认保存。"))
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+          Spacer()
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+          isFileDropTargeted
+            ? AnyShapeStyle(Color.accentColor.opacity(0.12))
+            : WorkbenchBackgroundStyle.subtle,
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+        )
+        .overlay {
+          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+            .stroke(
+              isFileDropTargeted ? Color.accentColor : Color.secondary.opacity(0.22),
+              style: StrokeStyle(lineWidth: isFileDropTargeted ? 2 : 1, dash: [6, 4])
+            )
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+          handleDroppedURLs(urls)
+        } isTargeted: { isTargeted in
+          isFileDropTargeted = isTargeted
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("拖放资料文件或文件夹"))
+        .accessibilityHint(Text("释放后生成导入预览，不会立即保存"))
+
+        Divider()
+
         HStack {
           VStack(alignment: .leading, spacing: 3) {
             Text("本地文件或文件夹")
@@ -248,19 +310,51 @@ struct KnowledgeImportAssistantView: View {
   }
 
   private func chooseFileSource() {
-    guard let url = KnowledgeSelectionPanel.chooseSource() else { return }
+    let urls = KnowledgeSelectionPanel.chooseSources()
+    guard !urls.isEmpty else { return }
+    analyzeFileSources(urls)
+  }
+
+  @discardableResult
+  private func handleDroppedURLs(_ urls: [URL]) -> Bool {
+    let fileURLs = normalizedFileURLs(urls)
+    guard !fileURLs.isEmpty, !isAnalyzing, !isCommitting else { return false }
+    isFileDropTargeted = false
+    analyzeFileSources(fileURLs)
+    return true
+  }
+
+  private func analyzeFileSources(_ urls: [URL]) {
+    let fileURLs = normalizedFileURLs(urls)
+    guard !fileURLs.isEmpty else {
+      statusMessage = .failure(String(localized: "失败：请拖入本机文件或文件夹。"))
+      return
+    }
     analyze {
-      let didStartAccessing = url.startAccessingSecurityScopedResource()
+      let accessedURLs = fileURLs.map { url in
+        (url, url.startAccessingSecurityScopedResource())
+      }
       defer {
-        if didStartAccessing { url.stopAccessingSecurityScopedResource() }
+        for (url, didStartAccessing) in accessedURLs where didStartAccessing {
+          url.stopAccessingSecurityScopedResource()
+        }
       }
       return try await knowledge.makeImportPreview(
-        sourceURL: url,
+        sourceURLs: fileURLs,
         options: KnowledgeImportOptions(
           performsPDFOCR: performsPDFOCR,
           maximumPDFOCRPageCount: 200
         )
       )
+    }
+  }
+
+  private func normalizedFileURLs(_ urls: [URL]) -> [URL] {
+    var seenPaths = Set<String>()
+    return urls.compactMap { url in
+      guard url.isFileURL else { return nil }
+      let standardizedURL = url.standardizedFileURL
+      return seenPaths.insert(standardizedURL.path).inserted ? standardizedURL : nil
     }
   }
 
@@ -303,7 +397,7 @@ struct KnowledgeImportAssistantView: View {
     Task {
       defer { isCommitting = false }
       do {
-        let result = try await knowledge.commit(preview)
+        let result = try await knowledge.commit(preview, destination: importDestination)
         statusMessage = .success(
           String(
             format: String(localized: "导入完成：新增 %@，更新 %@，跳过 %@。"),

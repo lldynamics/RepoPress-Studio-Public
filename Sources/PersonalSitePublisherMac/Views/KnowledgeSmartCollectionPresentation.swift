@@ -60,6 +60,44 @@ extension KnowledgeSmartTimeBucket {
   }
 }
 
+extension KnowledgeSmartCollectionMatchMode {
+  var localizedDisplayName: String {
+    switch self {
+    case .all: String(localized: "同时满足全部规则")
+    case .any: String(localized: "满足任一规则")
+    }
+  }
+}
+
+extension KnowledgeSearchScope {
+  var localizedDisplayName: String {
+    switch self {
+    case .currentCollection: String(localized: "当前集合")
+    case .allLibrary: String(localized: "全部资料库")
+    }
+  }
+}
+
+extension KnowledgeSearchSignalFilter {
+  var localizedDisplayName: String {
+    switch self {
+    case .all: String(localized: "全部命中")
+    case .title: String(localized: "标题命中")
+    case .fullText: String(localized: "全文命中")
+    case .semantic: String(localized: "语义命中")
+    }
+  }
+}
+
+extension KnowledgeSearchResultSort {
+  var localizedDisplayName: String {
+    switch self {
+    case .relevance: String(localized: "按相关度")
+    case .addedNewest: String(localized: "按添加时间")
+    }
+  }
+}
+
 extension KnowledgeRelatedChapterReason {
   var localizedDisplayName: String {
     switch self {

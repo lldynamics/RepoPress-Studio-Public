@@ -465,6 +465,22 @@
         }
       }
     },
+    "%@ 个片段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ Chunks"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 个片段"
+          }
+        }
+      }
+    },
     "%@ 个相关文件": {
       "localizations": {
         "en": {
@@ -721,6 +737,22 @@
         }
       }
     },
+    "%@ 篇 · %@ 片段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ Articles · %2$@ Chunks"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 篇 · %2$@ 片段"
+          }
+        }
+      }
+    },
     "%@ 篇文章 · %@ 张图片": {
       "localizations": {
         "en": {
@@ -733,6 +765,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ 篇文章 · %2$@ 张图片"
+          }
+        }
+      }
+    },
+    "%@ 篇私密文章仅搜索标题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Title-only search for %@ private articles"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 篇私密文章仅搜索标题"
           }
         }
       }
@@ -1553,6 +1601,38 @@
         }
       }
     },
+    "AI 没有返回可用的摘要。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI did not return a usable summary."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 没有返回可用的摘要。"
+          }
+        }
+      }
+    },
+    "AI 没有返回新的摘要。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI did not return a new summary."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 没有返回新的摘要。"
+          }
+        }
+      }
+    },
     "AI 消息": {
       "localizations": {
         "en": {
@@ -1585,6 +1665,22 @@
         }
       }
     },
+    "AI 生成": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Generate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 生成"
+          }
+        }
+      }
+    },
     "AI 能力范围": {
       "localizations": {
         "en": {
@@ -1601,6 +1697,22 @@
         }
       }
     },
+    "AI 自动生成摘要": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatically Generate Summary with AI"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 自动生成摘要"
+          }
+        }
+      }
+    },
     "AI 设置范围": {
       "localizations": {
         "en": {
@@ -1613,6 +1725,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "AI 设置范围"
+          }
+        }
+      }
+    },
+    "AI 重写": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Rewrite"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 重写"
           }
         }
       }
@@ -2161,6 +2289,22 @@
         }
       }
     },
+    "Markdown 文档编辑器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Markdown Document Editor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Markdown 文档编辑器"
+          }
+        }
+      }
+    },
     "Markdown 智能编辑": {
       "localizations": {
         "en": {
@@ -2237,6 +2381,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Markdown 表格"
+          }
+        }
+      }
+    },
+    "Markdown 路径": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Markdown Path"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Markdown 路径"
           }
         }
       }
@@ -9425,6 +9585,54 @@
         }
       }
     },
+    "不再生成站点永久链接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Site Permalink"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不再生成站点永久链接"
+          }
+        }
+      }
+    },
+    "不再生成站点路径": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Site Path"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不再生成站点路径"
+          }
+        }
+      }
+    },
+    "不绑定站点": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not Assigned to a Site"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不绑定站点"
+          }
+        }
+      }
+    },
     "与当前本地草稿相同，将自动跳过。": {
       "localizations": {
         "en": {
@@ -10753,6 +10961,22 @@
         }
       }
     },
+    "修改重复文章的 slug 或日期后，再重新选择目标站点。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change the slug or date of conflicting articles, then choose the target site again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改重复文章的 slug 或日期后，再重新选择目标站点。"
+          }
+        }
+      }
+    },
     "停止 Webhook 接收器": {
       "localizations": {
         "en": {
@@ -10845,6 +11069,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "元数据 %@ 项"
+          }
+        }
+      }
+    },
+    "元数据标题": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Metadata Title"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "元数据标题"
           }
         }
       }
@@ -10977,6 +11217,22 @@
         }
       }
     },
+    "全文命中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full-Text Matches"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全文命中"
+          }
+        }
+      }
+    },
     "全文搜索范围": {
       "localizations": {
         "en": {
@@ -11057,6 +11313,22 @@
         }
       }
     },
+    "全部命中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All Matches"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部命中"
+          }
+        }
+      }
+    },
     "全部替换": {
       "localizations": {
         "en": {
@@ -11117,6 +11389,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "全部资料"
+          }
+        }
+      }
+    },
+    "全部资料库": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entire Library"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部资料库"
           }
         }
       }
@@ -11661,6 +11949,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "内容节奏提示"
+          }
+        }
+      }
+    },
+    "内容范围": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Content Scope"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内容范围"
           }
         }
       }
@@ -12865,6 +13169,38 @@
         }
       }
     },
+    "原稿保持不变，在目标站点创建一份可独立编辑的新草稿。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The original remains unchanged, and a separately editable draft is created for the target site."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原稿保持不变，在目标站点创建一份可独立编辑的新草稿。"
+          }
+        }
+      }
+    },
+    "原稿将改为归属目标站点，并重置发布状态与仓库关联。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The original draft will be assigned to the target site, with publishing status and repository links reset."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原稿将改为归属目标站点，并重置发布状态与仓库关联。"
+          }
+        }
+      }
+    },
     "反向链接": {
       "localizations": {
         "en": {
@@ -13345,6 +13681,22 @@
         }
       }
     },
+    "发现 %@ 项冲突，当前操作不会执行": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ conflicts found. This action will not run."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发现 %@ 项冲突，当前操作不会执行"
+          }
+        }
+      }
+    },
     "取消": {
       "localizations": {
         "en": {
@@ -13389,6 +13741,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "取消固定"
+          }
+        }
+      }
+    },
+    "取消选择": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear Selection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消选择"
           }
         }
       }
@@ -13569,6 +13937,22 @@
         }
       }
     },
+    "可以查看来源更新和历史版本；已有版本不会被静默覆盖。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review source updates and revision history; existing versions are never overwritten silently."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可以查看来源更新和历史版本；已有版本不会被静默覆盖。"
+          }
+        }
+      }
+    },
     "可以连接": {
       "localizations": {
         "en": {
@@ -13713,6 +14097,22 @@
         }
       }
     },
+    "可直接拖入文件或文件夹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drop Files or Folders Here"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可直接拖入文件或文件夹"
+          }
+        }
+      }
+    },
     "可见性": {
       "localizations": {
         "en": {
@@ -13773,6 +14173,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "同作者·%@"
+          }
+        }
+      }
+    },
+    "同时满足全部规则": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Match All Rules"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同时满足全部规则"
           }
         }
       }
@@ -13869,6 +14285,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "同步建议"
+          }
+        }
+      }
+    },
+    "同步滚动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync Scrolling"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同步滚动"
           }
         }
       }
@@ -14481,6 +14913,22 @@
         }
       }
     },
+    "在较小窗口中显示更多内容。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show more content in smaller windows."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在较小窗口中显示更多内容。"
+          }
+        }
+      }
+    },
     "在远端 diff 审阅中导入文章或复制 diff": {
       "localizations": {
         "en": {
@@ -15073,6 +15521,22 @@
         }
       }
     },
+    "复制草稿到站点": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Draft to Site"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制草稿到站点"
+          }
+        }
+      }
+    },
     "复制远端 diff": {
       "localizations": {
         "en": {
@@ -15185,6 +15649,22 @@
         }
       }
     },
+    "外观": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appearance"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "外观"
+          }
+        }
+      }
+    },
     "失败": {
       "localizations": {
         "en": {
@@ -15217,6 +15697,22 @@
         }
       }
     },
+    "失败：请拖入本机文件或文件夹。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed: Drop a local file or folder."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "失败：请拖入本机文件或文件夹。"
+          }
+        }
+      }
+    },
     "套用 AI 写作风格预设模板": {
       "localizations": {
         "en": {
@@ -15229,6 +15725,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "套用 AI 写作风格预设模板"
+          }
+        }
+      }
+    },
+    "如果正文缺失、混入导航、订阅或网页页脚，可以先比较当前正文与重新净化结果，再决定是否创建新版本。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "If the body is missing or includes navigation, subscription prompts, or a page footer, compare it with a newly sanitized version before creating a new revision."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果正文缺失、混入导航、订阅或网页页脚，可以先比较当前正文与重新净化结果，再决定是否创建新版本。"
           }
         }
       }
@@ -15969,6 +16481,54 @@
         }
       }
     },
+    "将先生成预览，确认后保存到“%@”。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A preview will be generated first. After confirmation, items will be saved to “%@”."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将先生成预览，确认后保存到“%@”。"
+          }
+        }
+      }
+    },
+    "将先生成预览，确认后保存到“未分类”。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A preview will be generated first. After confirmation, items will be saved to Unfiled."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将先生成预览，确认后保存到“未分类”。"
+          }
+        }
+      }
+    },
+    "将先生成预览，确认后保存到本机资料库。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A preview will be generated first. After confirmation, items will be saved to the local knowledge library."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将先生成预览，确认后保存到本机资料库。"
+          }
+        }
+      }
+    },
     "将删除「%@」及其 %@ 篇草稿；可在本次会话中通过“撤销删除”恢复。": {
       "localizations": {
         "en": {
@@ -16529,6 +17089,22 @@
         }
       }
     },
+    "已固定到 AI": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pinned for AI"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已固定到 AI"
+          }
+        }
+      }
+    },
     "已在光标位置插入 %@ 个视频。": {
       "localizations": {
         "en": {
@@ -16845,6 +17421,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "已选择 %@ 条"
+          }
+        }
+      }
+    },
+    "已选择 %@ 篇": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ articles selected"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已选择 %@ 篇"
           }
         }
       }
@@ -17261,6 +17853,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "引用这条消息追问"
+          }
+        }
+      }
+    },
+    "归属": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assignment"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "归属"
+          }
+        }
+      }
+    },
+    "归属变更只更新工作台中的草稿，不会修改或删除原站点仓库文件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assignment changes update drafts in the workbench only. Files in the original site repository are not changed or deleted."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "归属变更只更新工作台中的草稿，不会修改或删除原站点仓库文件。"
           }
         }
       }
@@ -17805,6 +18429,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "当前配置无需 API Key"
+          }
+        }
+      }
+    },
+    "当前集合": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current Collection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前集合"
           }
         }
       }
@@ -18945,6 +19585,38 @@
         }
       }
     },
+    "执行后可撤销本次归属变更": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You can undo this assignment change after it runs"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "执行后可撤销本次归属变更"
+          }
+        }
+      }
+    },
+    "执行后可撤销本次批量归属变更": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You can undo this batch assignment change after it runs"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "执行后可撤销本次批量归属变更"
+          }
+        }
+      }
+    },
     "扫描仓库": {
       "localizations": {
         "en": {
@@ -19217,6 +19889,22 @@
         }
       }
     },
+    "批量复制到站点": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Multiple to Site"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "批量复制到站点"
+          }
+        }
+      }
+    },
     "批量文章": {
       "localizations": {
         "en": {
@@ -19277,6 +19965,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "批量添加标签"
+          }
+        }
+      }
+    },
+    "批量移动、复制或转为通用草稿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move, copy, or convert the selected drafts to general drafts"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "批量移动、复制或转为通用草稿"
+          }
+        }
+      }
+    },
+    "批量移动到站点": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move Multiple to Site"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "批量移动到站点"
           }
         }
       }
@@ -19345,6 +20065,22 @@
         }
       }
     },
+    "批量转为通用草稿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Convert Multiple to General Drafts"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "批量转为通用草稿"
+          }
+        }
+      }
+    },
     "批量转换图片为 WebP": {
       "localizations": {
         "en": {
@@ -19357,6 +20093,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "批量转换图片为 WebP"
+          }
+        }
+      }
+    },
+    "找不到当前文章，摘要未应用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current article could not be found, so the summary was not applied."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找不到当前文章，摘要未应用。"
           }
         }
       }
@@ -19537,6 +20289,22 @@
         }
       }
     },
+    "拖放资料文件或文件夹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drop Knowledge Files or Folders"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拖放资料文件或文件夹"
+          }
+        }
+      }
+    },
     "按原格式生成缩小尺寸的图片副本。": {
       "localizations": {
         "en": {
@@ -19565,6 +20333,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "按手机版的 AI 修复队列逻辑，优先处理缺摘要、缺 Tags 和可由 AI 辅助判断的元数据问题。"
+          }
+        }
+      }
+    },
+    "按添加时间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Date Added"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按添加时间"
+          }
+        }
+      }
+    },
+    "按相关度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Relevance"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按相关度"
           }
         }
       }
@@ -19937,6 +20737,22 @@
         }
       }
     },
+    "搜索结果排序": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search Result Sort"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索结果排序"
+          }
+        }
+      }
+    },
     "搜索草稿": {
       "localizations": {
         "en": {
@@ -19981,6 +20797,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "摘要"
+          }
+        }
+      }
+    },
+    "摘要在生成期间已被修改，未自动覆盖。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The summary changed while AI was generating, so it was not overwritten."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "摘要在生成期间已被修改，未自动覆盖。"
+          }
+        }
+      }
+    },
+    "摘要已自动生成并填写。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The summary was generated and filled in automatically."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "摘要已自动生成并填写。"
+          }
+        }
+      }
+    },
+    "撤销上次归属变更": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Undo Last Assignment Change"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤销上次归属变更"
           }
         }
       }
@@ -20161,6 +21025,22 @@
         }
       }
     },
+    "支持一次拖入多项；会先分析、去重，再由你确认保存。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drop multiple items at once. They will be analyzed and deduplicated before you confirm saving."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "支持一次拖入多项；会先分析、去重，再由你确认保存。"
+          }
+        }
+      }
+    },
     "收起": {
       "localizations": {
         "en": {
@@ -20177,6 +21057,22 @@
         }
       }
     },
+    "收起相关内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Fewer Related Items"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起相关内容"
+          }
+        }
+      }
+    },
     "改写选中文本": {
       "localizations": {
         "en": {
@@ -20189,6 +21085,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "改写选中文本"
+          }
+        }
+      }
+    },
+    "放大辅助文字、图标和常用控件，减少浏览疲劳。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Increase supporting text, icons, and common controls to reduce reading fatigue."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "放大辅助文字、图标和常用控件，减少浏览疲劳。"
           }
         }
       }
@@ -20401,6 +21313,22 @@
         }
       }
     },
+    "文章列表": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Article List"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文章列表"
+          }
+        }
+      }
+    },
     "文章前进": {
       "localizations": {
         "en": {
@@ -20413,6 +21341,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "文章前进"
+          }
+        }
+      }
+    },
+    "文章发布时间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Article Publication Time"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文章发布时间"
           }
         }
       }
@@ -20445,6 +21389,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "文章后退"
+          }
+        }
+      }
+    },
+    "文章固定链接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Article Permalink"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文章固定链接"
           }
         }
       }
@@ -20573,6 +21533,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "文章头信息（Front Matter）"
+          }
+        }
+      }
+    },
+    "文章将解除站点归属并保留正文，之后不能直接发布。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The article will keep its content but lose its site assignment, so it cannot be published directly."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文章将解除站点归属并保留正文，之后不能直接发布。"
           }
         }
       }
@@ -20817,6 +21793,22 @@
         }
       }
     },
+    "新建": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建"
+          }
+        }
+      }
+    },
     "新建一篇文章后，中间区域只负责正文编辑；预览通过编辑器顶部按钮打开。": {
       "localizations": {
         "en": {
@@ -20913,6 +21905,22 @@
         }
       }
     },
+    "新建文章或通用草稿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Article or General Draft"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建文章或通用草稿"
+          }
+        }
+      }
+    },
     "新建站点": {
       "localizations": {
         "en": {
@@ -20925,6 +21933,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "新建站点"
+          }
+        }
+      }
+    },
+    "新建组合智能集合": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Combined Smart Collection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建组合智能集合"
           }
         }
       }
@@ -21217,6 +22241,38 @@
         }
       }
     },
+    "显示全部 %lld 条": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show All %lld Items"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示全部 %lld 条"
+          }
+        }
+      }
+    },
+    "显示更多文章": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show More Articles"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示更多文章"
+          }
+        }
+      }
+    },
     "智能集合": {
       "localizations": {
         "en": {
@@ -21245,6 +22301,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "智能集合会在资料元数据变化后自动更新。"
+          }
+        }
+      }
+    },
+    "智能集合名称": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Smart Collection Name"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能集合名称"
           }
         }
       }
@@ -22753,6 +23825,22 @@
         }
       }
     },
+    "标题命中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Title Matches"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标题命中"
+          }
+        }
+      }
+    },
     "标题层级、图片 alt 和脚注引用没有发现问题。": {
       "localizations": {
         "en": {
@@ -22813,6 +23901,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "校验"
+          }
+        }
+      }
+    },
+    "根据当前文章重新生成并替换摘要": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regenerate and replace the summary from the current article"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "根据当前文章重新生成并替换摘要"
+          }
+        }
+      }
+    },
+    "根据文章标题和正文自动生成摘要": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatically generate a summary from the article title and body"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "根据文章标题和正文自动生成摘要"
           }
         }
       }
@@ -23793,6 +24913,22 @@
         }
       }
     },
+    "永久链接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permalink"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "永久链接"
+          }
+        }
+      }
+    },
     "沉淀跨文章、跨站点复用的想法、片段、文章雏形和附件素材。": {
       "localizations": {
         "en": {
@@ -24273,6 +25409,22 @@
         }
       }
     },
+    "满足任一规则": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Match Any Rule"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "满足任一规则"
+          }
+        }
+      }
+    },
     "点击生成后才会扫描内容日历、标签、旧文和链接，避免打开页面时自动重算。": {
       "localizations": {
         "en": {
@@ -24289,6 +25441,22 @@
         }
       }
     },
+    "焦点导航": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus Navigation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "焦点导航"
+          }
+        }
+      }
+    },
     "状态": {
       "localizations": {
         "en": {
@@ -24301,6 +25469,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "状态"
+          }
+        }
+      }
+    },
+    "状态、说明和列表摘要保持清晰可读，不再依赖过小的灰色文字。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Statuses, guidance, and list summaries remain readable without relying on undersized gray text."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状态、说明和列表摘要保持清晰可读，不再依赖过小的灰色文字。"
           }
         }
       }
@@ -24413,6 +25597,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "生成 WebP 副本，并把草稿图片引用更新为 WebP。"
+          }
+        }
+      }
+    },
+    "生成中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Generating"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "生成中"
           }
         }
       }
@@ -24785,6 +25985,22 @@
         }
       }
     },
+    "确认复制": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认复制"
+          }
+        }
+      }
+    },
     "确认导入 %@ 条": {
       "localizations": {
         "en": {
@@ -24829,6 +26045,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "确认并开始"
+          }
+        }
+      }
+    },
+    "确认批量复制": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy All"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认批量复制"
+          }
+        }
+      }
+    },
+    "确认批量移动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move All"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认批量移动"
+          }
+        }
+      }
+    },
+    "确认批量转换": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Convert All"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认批量转换"
+          }
+        }
+      }
+    },
+    "确认移动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认移动"
+          }
+        }
+      }
+    },
+    "确认转换": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Convert"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认转换"
           }
         }
       }
@@ -24913,6 +26209,38 @@
         }
       }
     },
+    "移到上一个控件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move to Previous Control"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移到上一个控件"
+          }
+        }
+      }
+    },
+    "移到下一个控件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move to Next Control"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移到下一个控件"
+          }
+        }
+      }
+    },
     "移到回收站": {
       "localizations": {
         "en": {
@@ -24957,6 +26285,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "移动到文件夹"
+          }
+        }
+      }
+    },
+    "移动到站点": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move to Site"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移动到站点"
+          }
+        }
+      }
+    },
+    "移动草稿归属": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move Draft Assignment"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移动草稿归属"
           }
         }
       }
@@ -25537,6 +26897,22 @@
         }
       }
     },
+    "管理归属": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage Assignment"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "管理归属"
+          }
+        }
+      }
+    },
     "管理文章图片与压缩设置": {
       "localizations": {
         "en": {
@@ -25761,6 +27137,38 @@
         }
       }
     },
+    "组合智能集合规则": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Combined Smart Collection Rules"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "组合智能集合规则"
+          }
+        }
+      }
+    },
+    "组合集合会随作者、标签、来源、时间和 AI 权限变化自动更新。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Combined collections update automatically as authors, tags, sources, dates, and AI permissions change."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "组合集合会随作者、标签、来源、时间和 AI 权限变化自动更新。"
+          }
+        }
+      }
+    },
     "继续编辑": {
       "localizations": {
         "en": {
@@ -25905,6 +27313,22 @@
         }
       }
     },
+    "编辑当前文章的 Front Matter 与 Markdown 正文；Control-Tab 移到下一个控件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit the current article's Front Matter and Markdown body; press Control-Tab to move to the next control"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑当前文章的 Front Matter 与 Markdown 正文；Control-Tab 移到下一个控件"
+          }
+        }
+      }
+    },
     "编辑当前文章的 Markdown 正文": {
       "localizations": {
         "en": {
@@ -25921,6 +27345,22 @@
         }
       }
     },
+    "编辑当前文章的 Markdown 正文；Control-Tab 移到下一个控件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit the current article's Markdown body; press Control-Tab to move to the next control"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑当前文章的 Markdown 正文；Control-Tab 移到下一个控件"
+          }
+        }
+      }
+    },
     "编辑显示与辅助功能": {
       "localizations": {
         "en": {
@@ -25933,6 +27373,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "编辑显示与辅助功能"
+          }
+        }
+      }
+    },
+    "编辑资料元数据": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit Knowledge Metadata"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑资料元数据"
           }
         }
       }
@@ -26269,6 +27725,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "自定义连接"
+          }
+        }
+      }
+    },
+    "舒适": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comfortable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "舒适"
+          }
+        }
+      }
+    },
+    "舒适模式是默认选项；标准模式适合窗口空间有限或希望显示更多列表内容时使用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comfortable mode is the default. Use Standard mode when window space is limited or you want to see more list content."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "舒适模式是默认选项；标准模式适合窗口空间有限或希望显示更多列表内容时使用。"
           }
         }
       }
@@ -26721,6 +28209,22 @@
         }
       }
     },
+    "语义命中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Semantic Matches"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "语义命中"
+          }
+        }
+      }
+    },
     "语义相关": {
       "localizations": {
         "en": {
@@ -26829,6 +28333,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "请先填写 Owner/Namespace 和仓库名称。"
+          }
+        }
+      }
+    },
+    "请先处理冲突后重新打开此面板": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resolve the conflicts, then open this panel again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先处理冲突后重新打开此面板"
+          }
+        }
+      }
+    },
+    "请先将光标移到 Markdown 正文。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move the cursor to the Markdown body first."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先将光标移到 Markdown 正文。"
           }
         }
       }
@@ -26973,6 +28509,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "读取仓库状态后，这里会显示发布准备情况和下一步建议。"
+          }
+        }
+      }
+    },
+    "调整全局文字、图标和列表密度。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adjust global text, icon, and list density."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "调整全局文字、图标和列表密度。"
+          }
+        }
+      }
+    },
+    "调整工作区侧栏宽度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resize Workspace Sidebar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "调整工作区侧栏宽度"
           }
         }
       }
@@ -27153,6 +28721,22 @@
         }
       }
     },
+    "资料整理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Organize Library"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "资料整理"
+          }
+        }
+      }
+    },
     "资料文件夹": {
       "localizations": {
         "en": {
@@ -27165,6 +28749,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "资料文件夹"
+          }
+        }
+      }
+    },
+    "资料文件夹与智能集合": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folders and Smart Collections"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "资料文件夹与智能集合"
           }
         }
       }
@@ -27309,6 +28909,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "跳过文件"
+          }
+        }
+      }
+    },
+    "转为通用草稿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Convert to General Draft"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "转为通用草稿"
           }
         }
       }
@@ -28689,6 +30305,22 @@
         }
       }
     },
+    "选择规则": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose Rules"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择规则"
+          }
+        }
+      }
+    },
     "选择资料导出文件夹": {
       "localizations": {
         "en": {
@@ -28753,6 +30385,38 @@
         }
       }
     },
+    "通用草稿": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "General Drafts"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通用草稿"
+          }
+        }
+      }
+    },
+    "通用草稿，不绑定站点": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "General draft, not assigned to a site"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通用草稿，不绑定站点"
+          }
+        }
+      }
+    },
     "通过发布控制台菜单进入": {
       "localizations": {
         "en": {
@@ -28765,6 +30429,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "通过发布控制台菜单进入"
+          }
+        }
+      }
+    },
+    "遮挡私密文章内容和路径（标题仍显示）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Private Article Content and Paths (Titles Remain Visible)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "遮挡私密文章内容和路径（标题仍显示）"
+          }
+        }
+      }
+    },
+    "遮挡私密文章内容和路径，标题仍显示": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Private Article Content and Paths; Titles Remain Visible"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "遮挡私密文章内容和路径，标题仍显示"
           }
         }
       }
@@ -29105,6 +30801,54 @@
         }
       }
     },
+    "释放以导入资料": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drop to Import into the Knowledge Library"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "释放以导入资料"
+          }
+        }
+      }
+    },
+    "释放以生成导入预览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drop to Generate an Import Preview"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "释放以生成导入预览"
+          }
+        }
+      }
+    },
+    "释放后生成导入预览，不会立即保存": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dropping creates an import preview and does not save immediately"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "释放后生成导入预览，不会立即保存"
+          }
+        }
+      }
+    },
     "重命名文件夹…": {
       "localizations": {
         "en": {
@@ -29213,6 +30957,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "重新运行设置向导…"
+          }
+        }
+      }
+    },
+    "重点建议": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top Recommendations"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重点建议"
           }
         }
       }

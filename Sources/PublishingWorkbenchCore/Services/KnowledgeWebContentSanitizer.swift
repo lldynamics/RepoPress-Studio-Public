@@ -308,7 +308,7 @@ struct KnowledgeWebContentSanitizer: Sendable {
       return true
     }
     guard line.count <= 180 else { return false }
-    let exactPattern = "^(?:首页|主页|登录|注册|订阅|分享|打印|返回顶部|上一篇|下一篇|目录|菜单|搜索|关闭|同意|接受全部|拒绝|广告|没有评论[：:]?|发表评论|较新的博文|较早的博文|搜索此博客|博客归档|供稿人|近30天最高点击率|advertisement|sign in|log in|subscribe|share|print|back to top|menu|search|close|email this|post a comment|newer post|older post|blog archive|contributors)$"
+    let exactPattern = "^(?:\\[|\\]|首页|主页|登录|注册|订阅|分享|打印|返回顶部|上一篇|下一篇|目录|菜单|搜索|关闭|同意|接受全部|拒绝|广告|没有评论[：:]?|发表评论|较新的博文|较早的博文|搜索此博客|博客归档|供稿人|博文评论(?:\\s*\\(Atom\\))?|近30天最高点击率|advertisement|sign in|log in|subscribe|share|print|back to top|menu|search|close|email this|post a comment|newer post|older post|blog archive|contributors)$"
     if line.range(of: exactPattern, options: [.regularExpression, .caseInsensitive]) != nil {
       return true
     }
@@ -334,6 +334,12 @@ struct KnowledgeWebContentSanitizer: Sendable {
       "较早的博文",
       "订阅：帖子评论",
       "订阅: 帖子评论",
+      "[主页](",
+      "[首页](",
+      "博文评论 (atom)",
+      "博文评论(atom)",
+      "订阅：博文评论",
+      "订阅: 博文评论",
       "email thisblogthis!",
       "email this blogthis!",
       "post a comment",

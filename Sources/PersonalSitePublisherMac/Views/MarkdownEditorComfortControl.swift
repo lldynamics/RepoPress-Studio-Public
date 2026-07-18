@@ -13,6 +13,8 @@ struct MarkdownEditorComfortControl: View {
   private var isTypewriterModeEnabled = MarkdownEditorComfortConfiguration.defaultTypewriterModeEnabled
   @AppStorage(MarkdownEditorComfortPreferences.currentParagraphHighlightEnabledKey)
   private var isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration.defaultCurrentParagraphHighlightEnabled
+  @AppStorage(MarkdownEditorComfortPreferences.warmPaperBackgroundEnabledKey)
+  private var isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
   @AppStorage(MarkdownEditorComfortPreferences.writingGoalKey)
   private var writingGoal = MarkdownEditorComfortConfiguration.defaultWritingGoal
   @State private var isPresented = false
@@ -22,8 +24,9 @@ struct MarkdownEditorComfortControl: View {
       isPresented.toggle()
     } label: {
       Image(systemName: "textformat.size.smaller")
-        .frame(width: 22, height: 22)
+        .frame(width: 28, height: 28)
     }
+    .foregroundStyle(.secondary)
     .help("编辑显示与辅助功能")
     .accessibilityLabel("编辑显示与辅助功能")
     .accessibilityValue(accessibilitySummary)
@@ -69,6 +72,10 @@ struct MarkdownEditorComfortControl: View {
 
       Toggle("高亮当前段落", isOn: $isCurrentParagraphHighlightEnabled)
         .toggleStyle(.switch)
+
+      Toggle("柔和纸张背景", isOn: $isWarmPaperBackgroundEnabled)
+        .toggleStyle(.switch)
+        .help("为编辑器使用自适应的暖白或暖黑背景。")
 
       Stepper(value: $writingGoal, in: 100...20_000, step: 100) {
         HStack {
@@ -138,6 +145,7 @@ struct MarkdownEditorComfortControl: View {
     isSpellCheckEnabled = MarkdownEditorComfortConfiguration.defaultSpellCheckEnabled
     isTypewriterModeEnabled = MarkdownEditorComfortConfiguration.defaultTypewriterModeEnabled
     isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration.defaultCurrentParagraphHighlightEnabled
+    isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
     writingGoal = MarkdownEditorComfortConfiguration.defaultWritingGoal
   }
 }

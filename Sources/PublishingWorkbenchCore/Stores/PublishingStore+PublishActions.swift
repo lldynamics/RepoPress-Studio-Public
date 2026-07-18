@@ -41,18 +41,65 @@ extension PublishingStore {
 
   public var selectedDraft: ArticleDraft? {
     if let selectedDraftID,
-       let selected = drafts.first(where: { $0.id == selectedDraftID && $0.siteProfileID == activeProfileID }) {
+       let selected = writingDrafts.first(where: { $0.id == selectedDraftID }) {
       return selected
     }
-    return visibleDrafts.first
+    return writingDrafts.first
   }
 
+  /// Site-owned drafts for repository, publishing, maintenance and batch operations.
   public var visibleDrafts: [ArticleDraft] {
-    drafts.filter { $0.siteProfileID == activeProfileID }
+    drafts.filter { $0.belongs(toSiteProfileID: activeProfileID) }
+  }
+
+  /// Drafts shown by the Writing sidebar for its currently selected content scope.
+  public var writingDrafts: [ArticleDraft] {
+    switch draftListContentScope {
+    case .currentSite:
+      return visibleDrafts
+    case .general:
+      return drafts.filter(\.isGeneralDraft)
+    }
+  }
+
+  var generalDraftPublishingIssue: PreflightIssue {
+    PreflightIssue(
+      severity: .error,
+      title: CoreL10n.text("通用草稿不能直接发布"),
+      message: CoreL10n.text("请先将它复制到目标站点，再执行写入、提交或线上发布。"),
+      field: "scope"
+    )
+  }
+
+  @discardableResult
+  func blockPublishingIfGeneralDraftSelected(store: WorkbenchStore) -> Bool {
+    guard store.selectedDraft?.isGeneralDraft == true else { return false }
+    publishActionMessage = generalDraftPublishingIssue.message
+    return true
+  }
+
+  /// Returns a package that is guaranteed to belong to the article selected at
+  /// execution time. Shared preview state may still contain the previous
+  /// article while an asynchronous refresh is running, so publishing commands
+  /// must never trust it without this check.
+  func publishPackageForSelectedDraft(store: WorkbenchStore) -> PublishPackage? {
+    guard let selectedDraft = store.selectedDraft, !selectedDraft.isGeneralDraft else {
+      return nil
+    }
+    if publishPackage?.draftID != selectedDraft.id {
+      refreshPublishPreview(for: selectedDraft, store: store)
+    }
+    guard let publishPackage, publishPackage.draftID == selectedDraft.id else {
+      return nil
+    }
+    return publishPackage
   }
 
   public func profile(for draft: ArticleDraft) -> SiteProfile {
-    profiles.first { $0.id == draft.siteProfileID } ?? activeProfile
+    if draft.isGeneralDraft {
+      return activeProfile
+    }
+    return profiles.first { $0.id == draft.siteProfileID } ?? activeProfile
   }
 
   public func profile(for record: ReleaseRecord) -> SiteProfile {
@@ -217,6 +264,14 @@ extension PublishingStore {
       remotePublishPreviewSnapshot = nil
       return
     }
+    guard !selectedDraft.isGeneralDraft else {
+      publishPackage = nil
+      localPublishPreview = nil
+      localPublishReadiness = nil
+      remotePublishPreviewSnapshot = nil
+      remoteReviewDraft = nil
+      return
+    }
     let package = publishingPackage(for: selectedDraft, store: store)
     let preview = localPublishPreviewService.preview(package: package, profile: profile)
     let draftIssuesWithoutRepository = store.preflightIssues(
@@ -374,7 +429,10 @@ extension PublishingStore {
     includeRepositoryReadiness: Bool = true,
     store: WorkbenchStore
   ) -> [PreflightIssue] {
-    let allDrafts = store.drafts.filter { $0.siteProfileID == draft.siteProfileID }
+    if draft.isGeneralDraft {
+      return [generalDraftPublishingIssue]
+    }
+    let allDrafts = store.drafts.filter { $0.belongs(toSiteProfileID: draft.siteProfileID) }
     return preflightService.run(
       draft: draft,
       allDrafts: allDrafts,
@@ -391,7 +449,10 @@ extension PublishingStore {
     duplicateIndex: PreflightDuplicateIndex,
     store: WorkbenchStore
   ) -> [PreflightIssue] {
-    preflightService.run(
+    if draft.isGeneralDraft {
+      return [generalDraftPublishingIssue]
+    }
+    return preflightService.run(
       draft: draft,
       allDrafts: allDrafts,
       profile: store.profile(for: draft),
@@ -420,7 +481,7 @@ extension PublishingStore {
   public func contentHealthSummaries(store: WorkbenchStore) -> [DraftPreflightSummary] {
     let drafts = store.visibleDrafts
     let profile = store.activeProfile
-    let allDrafts = store.drafts.filter { $0.siteProfileID == profile.id }
+    let allDrafts = store.drafts.filter { $0.belongs(toSiteProfileID: profile.id) }
     let duplicateIndex = PreflightDuplicateIndex(drafts: allDrafts, profile: profile)
     return drafts.map {
       let display = store.privateContentDisplay(for: $0)
@@ -476,7 +537,7 @@ extension PublishingStore {
   public func publicRiskSummary(store: WorkbenchStore) -> PublicRiskSummary {
     let drafts = store.visibleDrafts
     let profile = store.activeProfile
-    let allDrafts = store.drafts.filter { $0.siteProfileID == profile.id }
+    let allDrafts = store.drafts.filter { $0.belongs(toSiteProfileID: profile.id) }
     let duplicateIndex = PreflightDuplicateIndex(drafts: allDrafts, profile: profile)
     return PublicRiskSummary(
       issues: drafts.flatMap {
@@ -498,7 +559,7 @@ extension PublishingStore {
   public func publicRiskDraftSummaries(store: WorkbenchStore) -> [DraftPreflightSummary] {
     let drafts = store.visibleDrafts
     let profile = store.activeProfile
-    let allDrafts = store.drafts.filter { $0.siteProfileID == profile.id }
+    let allDrafts = store.drafts.filter { $0.belongs(toSiteProfileID: profile.id) }
     let duplicateIndex = PreflightDuplicateIndex(drafts: allDrafts, profile: profile)
     return drafts.map {
       DraftPreflightSummary(
@@ -756,7 +817,7 @@ extension PublishingStore {
     }
 
     var draftBaselinesByRepositoryPath: [String: DraftOperationBaseline] = [:]
-    for draft in drafts where draft.siteProfileID == profile.id {
+    for draft in drafts where draft.belongs(toSiteProfileID: profile.id) {
       guard let repositoryPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty,
             let baseline = store.draftOperationBaseline(for: draft.id) else { continue }
       draftBaselinesByRepositoryPath[repositoryPath] = baseline
@@ -819,12 +880,12 @@ extension PublishingStore {
 
     var existingPaths = Set(
       drafts.compactMap { draft -> String? in
-        guard draft.siteProfileID == profile.id else { return nil }
+        guard draft.belongs(toSiteProfileID: profile.id) else { return nil }
         return draft.repositoryPath?.normalizedRelativePath().nilIfEmpty
       }
     )
     let missingDrafts = result.importedDrafts.filter { draft in
-      guard draft.siteProfileID == profile.id,
+      guard draft.belongs(toSiteProfileID: profile.id),
             draft.isPrivate,
             let repositoryPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty else {
         return false
@@ -854,7 +915,7 @@ extension PublishingStore {
       store: store
     )
     let normalizedPath = repositoryPath.normalizedRelativePath()
-    if let imported = drafts.first(where: { $0.siteProfileID == store.activeProfileID && $0.repositoryPath == normalizedPath }) {
+    if let imported = drafts.first(where: { $0.belongs(toSiteProfileID: store.activeProfileID) && $0.repositoryPath == normalizedPath }) {
       selectedDraftID = imported.id
     }
     selectedSection = .writing
@@ -895,7 +956,7 @@ extension PublishingStore {
       }
 
       guard let existingDraft = drafts.first(where: {
-        $0.siteProfileID == plan.profileID
+        $0.belongs(toSiteProfileID: plan.profileID)
           && $0.repositoryPath?.normalizedRelativePath() == repositoryPath
       }), let operationBaseline = store.draftOperationBaseline(for: existingDraft.id) else {
         return ContentMigrationDraftReviewItem(
@@ -951,7 +1012,7 @@ extension PublishingStore {
       }
 
       let currentDraft = drafts.first {
-        $0.siteProfileID == plan.profileID
+        $0.belongs(toSiteProfileID: plan.profileID)
           && $0.repositoryPath?.normalizedRelativePath() == item.repositoryPath
       }
 
@@ -1081,7 +1142,7 @@ extension PublishingStore {
     var baselines: [String: DraftOperationBaseline] = [:]
     for path in paths {
       let normalizedPath = path.normalizedRelativePath()
-      guard let draft = drafts.first(where: { $0.siteProfileID == profile.id && $0.repositoryPath == normalizedPath }),
+      guard let draft = drafts.first(where: { $0.belongs(toSiteProfileID: profile.id) && $0.repositoryPath == normalizedPath }),
             let baseline = store.draftOperationBaseline(for: draft.id) else { continue }
       baselines[normalizedPath] = baseline
     }
@@ -1144,7 +1205,7 @@ extension PublishingStore {
     let summary = mergeImportedDrafts(result, store: store)
     selectedSection = .writing
     if let firstPath = paths.first,
-       let imported = drafts.first(where: { $0.siteProfileID == profile.id && $0.repositoryPath == firstPath.normalizedRelativePath() }) {
+       let imported = drafts.first(where: { $0.belongs(toSiteProfileID: profile.id) && $0.repositoryPath == firstPath.normalizedRelativePath() }) {
       selectedDraftID = imported.id
     }
     publishActionMessage = "已从远端文章变更导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇。"
@@ -1162,7 +1223,7 @@ extension PublishingStore {
     let normalizedPath = repositoryPath.normalizedRelativePath()
     let result = remoteContentImportResult(paths: [normalizedPath], profile: profile, store: store)
     let summary = mergeImportedDrafts(result, store: store)
-    if let imported = drafts.first(where: { $0.siteProfileID == profile.id && $0.repositoryPath == normalizedPath }) {
+    if let imported = drafts.first(where: { $0.belongs(toSiteProfileID: profile.id) && $0.repositoryPath == normalizedPath }) {
       selectedDraftID = imported.id
       selectedSection = .writing
     }
@@ -1233,7 +1294,7 @@ extension PublishingStore {
       remoteDraft.repositoryImportFingerprint = remoteFingerprint
 
       guard let existingIndex = drafts.firstIndex(where: {
-        $0.siteProfileID == profile.id
+        $0.belongs(toSiteProfileID: profile.id)
           && $0.repositoryPath?.normalizedRelativePath() == path
       }) else {
         drafts.append(remoteDraft)
@@ -1481,8 +1542,7 @@ extension PublishingStore {
   public func generalDraftLibraryReport(store: WorkbenchStore) -> GeneralDraftLibraryReport {
     generalDraftLibraryService.report(
       drafts: drafts,
-      profiles: profiles,
-      masksPrivateContent: store.privacySettings.masksPrivateContent
+      profiles: profiles
     )
   }
 
@@ -1648,50 +1708,16 @@ extension PublishingStore {
     toProfileID targetProfileID: UUID,
     store: WorkbenchStore
   ) -> ArticleDraft? {
-    guard let source = drafts.first(where: { $0.id == draftID }) else { return nil }
-    let sourceProfile = profiles.first { $0.id == source.siteProfileID }
-    guard let targetProfile = profiles.first(where: { $0.id == targetProfileID }) else {
-      publishActionMessage = "所选目标站点已不存在，请重新选择。"
-      return nil
-    }
-    guard targetProfile.purpose != .generalDraftBackup else {
-      publishActionMessage = "素材必须复制到发布站点，不能复制回素材库。"
-      return nil
-    }
-    guard source.siteProfileID != targetProfile.id else {
-      publishActionMessage = "来源文章已经属于所选站点。"
-      return nil
-    }
-
-    var copied = source
-    copied.id = UUID()
-    copied.siteProfileID = targetProfile.id
-    copied.status = .draft
-    copied.draft = true
-    copied.repositoryPath = nil
-    copied.repositorySHA = nil
-    copied.repositoryImportFingerprint = nil
-    copied.reusedFromSourceSnapshot = GeneralDraftReuseSourceSnapshot.make(
-      from: source,
-      sourceProfileName: sourceProfile?.name ?? "未知 Profile"
+    let plan = draftOwnershipTransferPlan(
+      draftIDs: [draftID],
+      operation: .copyToSite,
+      targetProfileID: targetProfileID
     )
-    copied.createdAt = Date()
-    copied.updatedAt = copied.createdAt
-    drafts.insert(copied, at: 0)
-    activeProfileID = targetProfile.id
-    selectedDraftID = copied.id
-    selectedSection = .writing
-    latestGeneralDraftReusePlan = generalDraftLibraryService.reusePlan(
-      sourceDraft: source,
-      copiedDraft: copied,
-      sourceProfile: sourceProfile,
-      targetProfile: targetProfile
-    )
-    publishActionMessage = latestGeneralDraftReusePlan.map {
-      "已复制到 \(targetProfile.name)：\($0.targetMarkdownPath)"
+    guard let result = applyDraftOwnershipTransfer(plan, store: store),
+          let copiedID = result.affectedDraftIDs.first else {
+      return nil
     }
-    store.save()
-    return copied
+    return drafts.first(where: { $0.id == copiedID })
   }
 
   private func mergeImportedDrafts(
@@ -1759,11 +1785,8 @@ extension PublishingStore {
   }
 
   public func writeSelectedDraftToLocalRepository(store: WorkbenchStore) async {
-    if let draftID = publishPackage?.draftID {
-      _ = store.focusDraft(draftID, section: .sync)
-    }
-
-    guard let package = publishPackage else {
+    guard !blockPublishingIfGeneralDraftSelected(store: store) else { return }
+    guard let package = publishPackageForSelectedDraft(store: store) else {
       publishActionMessage = "没有可写入的发布包。"
       return
     }

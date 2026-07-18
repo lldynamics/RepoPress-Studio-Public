@@ -103,6 +103,7 @@ struct WorkspaceToolbarLeadingContent: View {
         .frame(maxWidth: isCompact ? nil : 150, alignment: .leading)
       }
       .menuStyle(.borderlessButton)
+      .menuIndicator(.hidden)
       .help("个人网站：\(store.activeProfile.name) · \(store.activeProfile.siteKind.localizedDisplayName)")
       .accessibilityLabel("切换个人网站")
       .accessibilityValue(store.activeProfile.name)

@@ -55,9 +55,55 @@ struct InspectorSection<Content: View>: View {
       Text(LocalizedStringKey(title))
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
+        .accessibilityAddTraits(.isHeader)
       content
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+    .accessibilityElement(children: .contain)
+  }
+}
+
+struct InspectorDisclosureSection<Content: View>: View {
+  let title: String
+  let detail: String?
+  @Binding var isExpanded: Bool
+  @ViewBuilder var content: Content
+
+  init(
+    _ title: String,
+    detail: String? = nil,
+    isExpanded: Binding<Bool>,
+    @ViewBuilder content: () -> Content
+  ) {
+    self.title = title
+    self.detail = detail
+    _isExpanded = isExpanded
+    self.content = content()
+  }
+
+  var body: some View {
+    DisclosureGroup(isExpanded: $isExpanded) {
+      VStack(alignment: .leading, spacing: 9) {
+        content
+      }
+      .padding(.top, 8)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    } label: {
+      HStack(spacing: 8) {
+        Text(LocalizedStringKey(title))
+          .font(.caption.weight(.semibold))
+        Spacer(minLength: 8)
+        if let detail, !detail.isEmpty {
+          Text(detail)
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+        }
+      }
+      .foregroundStyle(.secondary)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .accessibilityElement(children: .contain)
   }
 }
 

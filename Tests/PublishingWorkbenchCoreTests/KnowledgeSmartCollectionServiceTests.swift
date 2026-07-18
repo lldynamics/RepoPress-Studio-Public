@@ -71,6 +71,82 @@ final class KnowledgeSmartCollectionServiceTests: XCTestCase {
     XCTAssertFalse(service.matches(document, rule: .aiPermission(false)))
   }
 
+  func testSavedCollectionCombinesRulesAndRoundTripsThroughJSON() throws {
+    let matching = makeDocument(
+      title: "匹配",
+      authors: ["Alice"],
+      tags: ["Research"],
+      sourceURL: URL(string: "https://example.com/a"),
+      allowsAIUse: true,
+      importedAt: Date()
+    )
+    let partial = makeDocument(
+      title: "部分匹配",
+      authors: ["Alice"],
+      tags: ["Other"],
+      sourceURL: URL(string: "https://example.com/b"),
+      allowsAIUse: false,
+      importedAt: Date()
+    )
+    let collection = KnowledgeSavedCollection(
+      name: "研究资料",
+      rules: [.author("Alice"), .tag("Research"), .aiPermission(true)],
+      matchMode: .all
+    )
+
+    XCTAssertTrue(service.matches(matching, rules: collection.rules, matchMode: .all))
+    XCTAssertFalse(service.matches(partial, rules: collection.rules, matchMode: .all))
+    XCTAssertTrue(service.matches(partial, rules: collection.rules, matchMode: .any))
+
+    let decoded = try JSONDecoder().decode(
+      KnowledgeSavedCollection.self,
+      from: JSONEncoder().encode(collection)
+    )
+    XCTAssertEqual(decoded, collection)
+  }
+
+  func testSearchFilterSupportsScopeSignalAndAddedTimeSort() {
+    let older = makeDocument(
+      title: "旧资料",
+      authors: [],
+      tags: [],
+      sourceURL: nil,
+      allowsAIUse: true,
+      importedAt: Date(timeIntervalSince1970: 10)
+    )
+    let newer = makeDocument(
+      title: "新资料",
+      authors: [],
+      tags: [],
+      sourceURL: nil,
+      allowsAIUse: true,
+      importedAt: Date(timeIntervalSince1970: 20)
+    )
+    let olderResult = makeSearchResult(document: older, signals: [.semantic], score: 0.9)
+    let newerResult = makeSearchResult(document: newer, signals: [.fullText], score: 0.5)
+    let filter = KnowledgeSearchFilter(
+      scope: .allLibrary,
+      signal: .all,
+      sort: .addedNewest
+    )
+
+    XCTAssertEqual(
+      filter.filtered([olderResult, newerResult], isInCurrentCollection: { _ in false })
+        .map(\.document.title),
+      ["新资料", "旧资料"]
+    )
+
+    let semanticOnly = KnowledgeSearchFilter(
+      scope: .currentCollection,
+      signal: .semantic,
+      sort: .relevance
+    )
+    XCTAssertEqual(
+      semanticOnly.filtered([olderResult, newerResult]) { $0.id == older.id }.map(\.id),
+      [olderResult.id]
+    )
+  }
+
   func testRelatedRankingCombinesMetadataAndSemanticReasons() {
     let now = Date()
     let anchor = makeRecord(
@@ -200,6 +276,26 @@ final class KnowledgeSmartCollectionServiceTests: XCTestCase {
         tokenEstimate: 10,
         contentHash: UUID().uuidString
       )
+    )
+  }
+
+  private func makeSearchResult(
+    document: KnowledgeDocument,
+    signals: Set<KnowledgeRetrievalSignal>,
+    score: Double
+  ) -> KnowledgeSearchResult {
+    KnowledgeSearchResult(
+      document: document,
+      chunk: KnowledgeChunk(
+        documentID: document.id,
+        revisionID: document.currentRevisionID,
+        ordinal: 0,
+        content: document.title,
+        tokenEstimate: 2,
+        contentHash: UUID().uuidString
+      ),
+      score: score,
+      signals: signals
     )
   }
 }

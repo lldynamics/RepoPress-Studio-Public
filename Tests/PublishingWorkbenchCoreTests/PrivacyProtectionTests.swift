@@ -200,7 +200,8 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertTrue(markdown.contains("手动快速隐藏后"))
     XCTAssertTrue(markdown.contains("写作、AI、同步和发布操作不可用"))
     XCTAssertTrue(markdown.contains("主窗口和设置窗口都遮挡工作台内容"))
-    XCTAssertTrue(markdown.contains("不暴露私密文章标题、摘要或路径"))
+    XCTAssertTrue(markdown.contains("标题仍可辨认"))
+    XCTAssertTrue(markdown.contains("不暴露摘要、正文或路径"))
     XCTAssertTrue(markdown.contains("不得包含本地路径、Token、授权头或私密正文"))
   }
 
@@ -229,13 +230,13 @@ final class PrivacyProtectionTests: XCTestCase {
     let publicDisplay = store.privateContentDisplay(for: publicDraft)
 
     XCTAssertTrue(privateDisplay.isMasked)
-    XCTAssertEqual(privateDisplay.title, "私密文章")
+    XCTAssertEqual(privateDisplay.title, "Secret Plan")
     XCTAssertFalse(privateDisplay.summary.contains("Hidden"))
     XCTAssertFalse(publicDisplay.isMasked)
     XCTAssertEqual(publicDisplay.title, "Public Plan")
   }
 
-  func testPrivacyProtectedDraftSearchDoesNotMatchHiddenPrivateMetadata() throws {
+  func testPrivacyProtectedDraftSearchMatchesTitleButNotHiddenPrivateMetadata() throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
@@ -251,7 +252,7 @@ final class PrivacyProtectionTests: XCTestCase {
       summary: "Hidden token rotation notes"
     )
 
-    XCTAssertFalse(
+    XCTAssertTrue(
       store.matchesPrivacyProtectedDraftSearch(
         privateDraft,
         query: "Migration",
@@ -272,6 +273,18 @@ final class PrivacyProtectionTests: XCTestCase {
         profile: store.activeProfile
       )
     )
+
+    let protectedSearchDraft = store.privacyProtectedSearchDraft(for: privateDraft)
+    let titleHits = DraftFullTextSearchService().search(
+      query: "title:Migration is:private",
+      drafts: [protectedSearchDraft]
+    )
+    let hiddenMetadataHits = DraftFullTextSearchService().search(
+      query: "rotation",
+      drafts: [protectedSearchDraft]
+    )
+    XCTAssertEqual(titleHits.first?.draftTitle, "Secret Migration Plan")
+    XCTAssertTrue(hiddenMetadataHits.isEmpty)
   }
 
   func testPrivacyProtectedDraftSearchUsesRawMetadataWhenMaskingDisabled() throws {
@@ -306,7 +319,7 @@ final class PrivacyProtectionTests: XCTestCase {
     )
   }
 
-  func testContentHealthSummariesMaskPrivateDraftTitleAndPathWhenEnabled() throws {
+  func testContentHealthSummariesShowPrivateDraftTitleButMaskPathWhenEnabled() throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
@@ -325,9 +338,9 @@ final class PrivacyProtectionTests: XCTestCase {
 
     let summary = try XCTUnwrap(store.contentHealthSummaries.first)
 
-    XCTAssertEqual(summary.draftTitle, "私密文章")
+    XCTAssertEqual(summary.draftTitle, "Secret Launch Plan")
     XCTAssertEqual(summary.markdownPath, "内容已遮挡，打开文章或关闭私密遮挡后查看。")
-    XCTAssertFalse(summary.draftTitle.contains("Secret"))
+    XCTAssertTrue(summary.draftTitle.contains("Secret"))
     XCTAssertFalse(summary.markdownPath.contains("secret-launch-plan"))
   }
 
@@ -384,7 +397,7 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertFalse(markdown.contains("Private body"))
   }
 
-  func testCrossSiteCopyListMasksPrivateDraftTitlesWhenProtectionEnabled() throws {
+  func testCrossSiteCopyListShowsPrivateDraftTitlesWhenProtectionEnabled() throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.updatePrivacySettings(
       PrivacyProtectionSettings(
@@ -415,7 +428,7 @@ final class PrivacyProtectionTests: XCTestCase {
 
     let report = store.generalDraftLibraryReport
     let item = try XCTUnwrap(report.items.first)
-    XCTAssertEqual(item.title, "私密文章")
+    XCTAssertEqual(item.title, "Secret Cross Site Plan")
   }
 
   func testCrossSiteCopyListUsesPrivateDraftTitleWhenMaskingDisabled() throws {

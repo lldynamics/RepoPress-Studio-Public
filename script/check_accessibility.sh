@@ -22,6 +22,16 @@ require_literal() {
   grep -Fq "$literal" "$ROOT_DIR/$relative_path" || fail "$message"
 }
 
+require_absent_literal() {
+  local relative_path="$1"
+  local literal="$2"
+  local message="$3"
+  require_file "$relative_path"
+  if grep -Fq "$literal" "$ROOT_DIR/$relative_path"; then
+    fail "$message"
+  fi
+}
+
 require_literal_any_file() {
   local literal="$1"
   local message="$2"
@@ -95,6 +105,31 @@ require_literal \
   "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
   ".focusedSceneValue(" \
   "content view must expose focused command actions"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
+  "isCommandPalettePresented = false" \
+  "quick hide must close the command palette"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WritingDraftListComponents.swift" \
+  "display.title.nilIfEmpty" \
+  "private draft rows must render the privacy-safe title"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceCommandPalette.swift" \
+  "matchesPrivacyProtectedDraftSearch(" \
+  "command palette search must honor private-content masking"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
+  "@FocusState private var isKeyboardFocused" \
+  "status announcements must not steal keyboard focus"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownTextView.swift" \
+  "heightInvalidationWorkItem" \
+  "long-document height measurement must coalesce typing updates"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
@@ -289,14 +324,14 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/AIKeychainSection.swift"
 
 require_literal_any_file \
-  ".accessibilityLabel(\"在列表和概览中遮挡私密文章\")" \
+  ".accessibilityLabel(\"遮挡私密文章内容和路径，标题仍显示\")" \
   "settings private-content masking toggle must expose an accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/PrivacySettingsView.swift" \
   "Sources/PersonalSitePublisherMac/Views/PrivacySettingsVisibilitySection.swift"
 
 require_literal_any_file \
-  ".accessibilityLabel(\"文章标题\")" \
-  "article inspector title field must expose an accessibility label" \
+  ".accessibilityLabel(\"元数据标题\")" \
+  "article inspector title field must expose a distinct metadata accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspector.swift" \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift"
 
@@ -335,7 +370,7 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownTextView.swift" \
-  "textView.setAccessibilityLabel(String(localized: \"Markdown 正文编辑器\"))" \
+  "textView.setAccessibilityLabel(String(localized: \"Markdown 文档编辑器\"))" \
   "native markdown text editor must expose a descriptive accessibility name"
 
 require_literal \

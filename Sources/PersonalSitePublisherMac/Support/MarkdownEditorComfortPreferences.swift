@@ -7,6 +7,7 @@ enum MarkdownEditorComfortPreferences {
   static let spellCheckEnabledKey = "markdownEditorSpellCheckEnabled"
   static let typewriterModeEnabledKey = "markdownEditorTypewriterModeEnabled"
   static let currentParagraphHighlightEnabledKey = "markdownEditorCurrentParagraphHighlightEnabled"
+  static let warmPaperBackgroundEnabledKey = "markdownEditorWarmPaperBackgroundEnabled"
   static let writingGoalKey = "markdownEditorWritingGoal"
 }
 
@@ -21,6 +22,7 @@ struct MarkdownEditorComfortConfiguration: Equatable {
   static let defaultSpellCheckEnabled = false
   static let defaultTypewriterModeEnabled = false
   static let defaultCurrentParagraphHighlightEnabled = true
+  static let defaultWarmPaperBackgroundEnabled = false
   static let defaultWritingGoal = 1_500
 
   let fontSize: Double
@@ -29,6 +31,7 @@ struct MarkdownEditorComfortConfiguration: Equatable {
   let spellCheckEnabled: Bool
   let typewriterModeEnabled: Bool
   let currentParagraphHighlightEnabled: Bool
+  let warmPaperBackgroundEnabled: Bool
 
   init(
     fontSize: Double = defaultFontSize,
@@ -36,7 +39,8 @@ struct MarkdownEditorComfortConfiguration: Equatable {
     bodyWidth: Double = defaultBodyWidth,
     spellCheckEnabled: Bool = defaultSpellCheckEnabled,
     typewriterModeEnabled: Bool = defaultTypewriterModeEnabled,
-    currentParagraphHighlightEnabled: Bool = defaultCurrentParagraphHighlightEnabled
+    currentParagraphHighlightEnabled: Bool = defaultCurrentParagraphHighlightEnabled,
+    warmPaperBackgroundEnabled: Bool = defaultWarmPaperBackgroundEnabled
   ) {
     self.fontSize = fontSize.clamped(to: Self.fontSizeRange)
     self.lineSpacing = lineSpacing.clamped(to: Self.lineSpacingRange)
@@ -44,6 +48,7 @@ struct MarkdownEditorComfortConfiguration: Equatable {
     self.spellCheckEnabled = spellCheckEnabled
     self.typewriterModeEnabled = typewriterModeEnabled
     self.currentParagraphHighlightEnabled = currentParagraphHighlightEnabled
+    self.warmPaperBackgroundEnabled = warmPaperBackgroundEnabled
   }
 }
 

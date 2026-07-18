@@ -109,9 +109,7 @@ public struct LocalGitPublishService: Sendable {
     mode: LocalGitPublishMode,
     preview: LocalPublishPreview?
   ) throws -> LocalGitPublishResult {
-    guard directoryExists(rootURL.appendingPathComponent(".git", isDirectory: true)) else {
-      throw LocalGitPublishError.notGitRepository(rootURL.path)
-    }
+    try ensureGitWorkTree(rootURL: rootURL)
 
     let currentBranch = try trimmedOutput(runGit(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL))
     let initialHEAD = try trimmedOutput(runGit(["rev-parse", "HEAD"], rootURL: rootURL))
@@ -201,9 +199,7 @@ public struct LocalGitPublishService: Sendable {
     mode: LocalGitPublishMode,
     preview: LocalPublishPreview?
   ) async throws -> LocalGitPublishResult {
-    guard directoryExists(rootURL.appendingPathComponent(".git", isDirectory: true)) else {
-      throw LocalGitPublishError.notGitRepository(rootURL.path)
-    }
+    try await ensureGitWorkTreeAsync(rootURL: rootURL)
 
     let currentBranch = try trimmedOutput(await runGitAsync(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL))
     let initialHEAD = try trimmedOutput(await runGitAsync(["rev-parse", "HEAD"], rootURL: rootURL))
@@ -472,9 +468,20 @@ public struct LocalGitPublishService: Sendable {
     }
   }
 
-  private func directoryExists(_ url: URL) -> Bool {
-    var isDirectory: ObjCBool = false
-    return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+  private func ensureGitWorkTree(rootURL: URL) throws {
+    let result = gitCommandRunner.run(["rev-parse", "--is-inside-work-tree"], rootURL: rootURL)
+    guard result.terminationStatus == 0,
+          trimmedOutput(result) == "true" else {
+      throw LocalGitPublishError.notGitRepository(rootURL.path)
+    }
+  }
+
+  private func ensureGitWorkTreeAsync(rootURL: URL) async throws {
+    let result = await gitCommandRunner.runAsync(["rev-parse", "--is-inside-work-tree"], rootURL: rootURL)
+    guard result.terminationStatus == 0,
+          trimmedOutput(result) == "true" else {
+      throw LocalGitPublishError.notGitRepository(rootURL.path)
+    }
   }
 
   private func trimmedOutput(_ result: GitCommandResult) -> String {

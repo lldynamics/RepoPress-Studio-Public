@@ -154,6 +154,7 @@ struct MacMarkdownEditorToolbar: View {
       } label: {
         editorActionIcon("sparkles")
       }
+      .menuIndicator(.hidden)
       .help("AI 推荐指令")
       .accessibilityLabel("AI 推荐指令")
       .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
@@ -170,7 +171,7 @@ struct MacMarkdownEditorToolbar: View {
         } label: {
           Image(systemName: mode.systemImage)
             .font(.system(size: 13, weight: .medium))
-            .frame(width: 26, height: 22)
+            .frame(width: 28, height: 28)
             .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
         }
         .buttonStyle(.plain)
@@ -190,7 +191,7 @@ struct MacMarkdownEditorToolbar: View {
       }
     }
     .padding(2)
-    .frame(width: 92, height: 28)
+    .frame(width: 92, height: 32)
     .background(WorkbenchBackgroundStyle.badge, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     .accessibilityElement(children: .contain)
   }
@@ -403,6 +404,8 @@ struct MacMarkdownFormattingToolbar: View {
     } label: {
       toolbarIcon("ellipsis.circle")
     }
+    .menuIndicator(.hidden)
+    .foregroundStyle(.secondary)
     .help("更多插入选项")
     .accessibilityLabel("更多插入选项")
   }
@@ -424,6 +427,7 @@ struct MacMarkdownFormattingToolbar: View {
         }
       }
     }
+    .foregroundStyle(diagnosticCount == 0 ? Color.secondary : WorkbenchTheme.warning)
     .help(diagnosticCount == 0 ? "正文诊断：未发现问题" : "正文诊断：\(diagnosticCount) 项")
     .accessibilityLabel("正文诊断")
     .accessibilityValue(diagnosticCount == 0 ? "没有问题" : "\(diagnosticCount) 项")
@@ -463,8 +467,9 @@ struct MacMarkdownFormattingToolbar: View {
     } label: {
       Text("H\(level)")
         .font(.system(size: 11, weight: .semibold, design: .rounded))
-        .frame(width: 22, height: 22)
+        .frame(width: 28, height: 28)
     }
+    .foregroundStyle(.secondary)
     .help(title)
     .accessibilityLabel(Text(title))
   }
@@ -477,13 +482,14 @@ struct MacMarkdownFormattingToolbar: View {
     Button(action: action) {
       toolbarIcon(systemName)
     }
+    .foregroundStyle(.secondary)
     .help(title)
     .accessibilityLabel(Text(title))
   }
 
   private func toolbarIcon(_ systemName: String) -> some View {
     Image(systemName: systemName)
-      .frame(width: 22, height: 22)
+      .frame(width: 28, height: 28)
   }
 
 }

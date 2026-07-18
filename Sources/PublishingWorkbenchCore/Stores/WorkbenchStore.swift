@@ -147,7 +147,11 @@ public final class WorkbenchStore: ObservableObject {
     let initialDrafts: [ArticleDraft]
     var didSeedFreshWorkspace = false
     if !snapshotDrafts.isEmpty {
-      initialDrafts = snapshotDrafts
+      initialDrafts = snapshotDrafts.map { draft in
+        var normalized = draft
+        normalized.normalizeLegacyScope()
+        return normalized
+      }
     } else if snapshot == nil, snapshotLoad.recoveryMessage == nil {
       switch freshWorkspaceSeedPolicy {
       case .blank:
@@ -176,9 +180,14 @@ public final class WorkbenchStore: ObservableObject {
       repositorySyncCommandBuilder: repositorySyncCommandBuilder
     )
     self.deploymentStore = DeploymentStore(
-      deploymentStatusSnapshots: Dictionary(uniqueKeysWithValues: (snapshot?.deploymentStatusSnapshots ?? []).compactMap { snapshot in
-        snapshot.releaseRecordID.map { ($0, snapshot) }
-      }),
+      deploymentStatusSnapshots: Dictionary(
+        (snapshot?.deploymentStatusSnapshots ?? []).compactMap { snapshot in
+          snapshot.releaseRecordID.map { ($0, snapshot) }
+        },
+        uniquingKeysWith: { current, candidate in
+          candidate.checkedAt > current.checkedAt ? candidate : current
+        }
+      ),
       deploymentStatusHistory: snapshot?.deploymentStatusHistory ?? [:],
       deploymentPollingSettings: snapshot?.deploymentPollingSettings ?? .default,
       deploymentPollingState: snapshot?.deploymentPollingState ?? .idle,
@@ -194,7 +203,12 @@ public final class WorkbenchStore: ObservableObject {
     self.aiWorkspaceStore = AIWorkspaceStore(
       aiMetadataApplicationRecords: snapshot?.aiMetadataApplicationRecords ?? [],
       aiChatCustomPrompts: snapshot?.aiChatCustomPrompts ?? [],
-      seoSocialPreviewSnapshots: Dictionary(uniqueKeysWithValues: (snapshot?.seoSocialPreviewSnapshots ?? []).map { ($0.draftID, $0) })
+      seoSocialPreviewSnapshots: Dictionary(
+        (snapshot?.seoSocialPreviewSnapshots ?? []).map { ($0.draftID, $0) },
+        uniquingKeysWith: { current, candidate in
+          candidate.generatedAt > current.generatedAt ? candidate : current
+        }
+      )
     )
     self.publishingStore = PublishingStore(
       profiles: initialProfiles,
@@ -272,6 +286,8 @@ public final class WorkbenchStore: ObservableObject {
   public var selectedDraft: ArticleDraft? { publishingStore.selectedDraft }
 
   public var visibleDrafts: [ArticleDraft] { publishingStore.visibleDrafts }
+
+  public var writingDrafts: [ArticleDraft] { publishingStore.writingDrafts }
 
   public func profile(for draft: ArticleDraft) -> SiteProfile { publishingStore.profile(for: draft) }
 
@@ -352,7 +368,7 @@ public final class WorkbenchStore: ObservableObject {
       "\(repositoryReport?.remoteChangedFiles.count ?? 0)"
     ].joined(separator: "|")
     let draftIDs = Set(drafts.map(\.id))
-    let preflightDrafts = self.drafts.filter { $0.siteProfileID == activeProfileID }
+    let preflightDrafts = self.drafts.filter { $0.belongs(toSiteProfileID: activeProfileID) }
     let preflightDuplicateIndex = PreflightDuplicateIndex(
       drafts: preflightDrafts,
       profile: activeProfile

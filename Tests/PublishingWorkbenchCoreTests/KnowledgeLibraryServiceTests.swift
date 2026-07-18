@@ -6,6 +6,39 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class KnowledgeLibraryServiceTests: XCTestCase {
+  func testMultipleFilePreviewDeduplicatesDragItemsAndReportsUnsupportedFiles() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-multi-file-drop")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let firstURL = rootURL.appendingPathComponent("first.md")
+    let secondURL = rootURL.appendingPathComponent("second.txt")
+    let duplicateURL = rootURL.appendingPathComponent("duplicate.md")
+    let unsupportedURL = rootURL.appendingPathComponent("image.bin")
+    let firstContent = "# 第一条拖放资料\n\n拖放后应先生成安全预览。"
+    try firstContent.write(to: firstURL, atomically: true, encoding: .utf8)
+    try "second\n\n第二条拖放资料用于验证批量导入。".write(
+      to: secondURL,
+      atomically: true,
+      encoding: .utf8
+    )
+    try firstContent.write(to: duplicateURL, atomically: true, encoding: .utf8)
+    try Data([0x00, 0x01, 0x02]).write(to: unsupportedURL)
+    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+
+    let preview = try await service.makeImportPreview(
+      sourceURLs: [firstURL, secondURL, duplicateURL, unsupportedURL, firstURL]
+    )
+
+    XCTAssertEqual(preview.candidates.count, 2)
+    XCTAssertEqual(Set(preview.candidates.map(\.title)), ["第一条拖放资料", "second"])
+    XCTAssertTrue(preview.warnings.contains { $0.contains("重复拖入") })
+    XCTAssertTrue(preview.warnings.contains { $0.contains("暂不支持这种资料格式") })
+
+    let folder = try service.createFolder(name: "拖放导入")
+    let result = try await service.commit(preview, destination: .folder(folder.id))
+    XCTAssertEqual(result.insertedCount, 2)
+    XCTAssertTrue(try service.documents().allSatisfy { $0.folderID == folder.id })
+  }
+
   func testRelatedChaptersUseSemanticAndMetadataSignals() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-related-chapters")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -71,6 +104,16 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
 
     let titleMatches = try service.search(query: "星云", limit: 10)
     let bodyMatches = try service.search(query: "素材管理", limit: 10)
+    let titleOnlyMatches = try service.search(
+      query: "星云",
+      limit: 10,
+      requiredSignal: .title
+    )
+    let bodyExcludedFromTitle = try service.search(
+      query: "素材管理",
+      limit: 10,
+      requiredSignal: .title
+    )
 
     XCTAssertFalse(titleMatches.isEmpty)
     XCTAssertTrue(titleMatches.allSatisfy { $0.signals.contains(.title) })
@@ -78,6 +121,9 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertFalse(bodyMatches.isEmpty)
     XCTAssertTrue(bodyMatches.allSatisfy { $0.signals.contains(.fullText) })
     XCTAssertTrue(bodyMatches.allSatisfy { !$0.signals.contains(.title) })
+    XCTAssertFalse(titleOnlyMatches.isEmpty)
+    XCTAssertTrue(titleOnlyMatches.allSatisfy { $0.signals.contains(.title) })
+    XCTAssertTrue(bodyExcludedFromTitle.isEmpty)
   }
 
   func testMarkdownImportPersistsSearchableDocumentAndCitations() async throws {
@@ -261,6 +307,33 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertFalse(try service.search(query: "新段落").isEmpty)
   }
 
+  func testDuplicateReimportRepairsDamagedContentAddressedFiles() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-duplicate-repair")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let sourceURL = rootURL.appendingPathComponent("article.md")
+    let source = "# 完整资料\n\n这些字节应在重复导入时自动修复。"
+    try source.write(to: sourceURL, atomically: true, encoding: .utf8)
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    _ = try await service.commit(try await service.makeImportPreview(sourceURL: sourceURL))
+    let document = try XCTUnwrap(service.documents().first)
+    let database = try KnowledgeDatabase(fileURL: storeURL.appendingPathComponent("library.sqlite"))
+    let revision = try XCTUnwrap(database.currentRevision(documentID: document.id))
+    let references = [revision.originalStorageReference, revision.normalizedStorageReference].compactMap { $0 }
+    XCTAssertEqual(references.count, 2)
+    for reference in references {
+      try Data("damaged".utf8).write(to: storeURL.appendingPathComponent(reference), options: .atomic)
+    }
+
+    let duplicatePreview = try await service.makeImportPreview(sourceURL: sourceURL)
+    let result = try await service.commit(duplicatePreview)
+
+    XCTAssertEqual(result.skippedCount, 1)
+    XCTAssertEqual(try service.normalizedText(documentID: document.id), source)
+    let originalReference = try XCTUnwrap(revision.originalStorageReference)
+    XCTAssertEqual(try Data(contentsOf: storeURL.appendingPathComponent(originalReference)), Data(source.utf8))
+  }
+
   func testParserUpgradeReprocessesUnchangedHTMLInsteadOfTreatingItAsDuplicate() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-web-parser-upgrade")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -330,6 +403,13 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     )
     let healthAfterRepair = try await service.libraryHealth()
     XCTAssertEqual(healthAfterRepair.outdatedParserDocumentCount, 0)
+    let defaultPreviews = try await service.makeLocalContentRepairPreviews()
+    let userRequestedPreviews = try await service.makeLocalContentRepairPreviews(
+      documentIDs: [document.id],
+      includingCurrentParserVersion: true
+    )
+    XCTAssertTrue(defaultPreviews.isEmpty)
+    XCTAssertEqual(userRequestedPreviews.map(\.documentID), [document.id])
   }
 
   func testBrowserCaptureImportsArchiveIntoFolderAndCanReclassifyDuplicate() async throws {

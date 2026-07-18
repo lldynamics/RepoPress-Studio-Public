@@ -19,6 +19,7 @@ public final class KnowledgeStore: ObservableObject {
   @Published public var selectedDocumentID: UUID?
   @Published public private(set) var folderScope: KnowledgeFolderScope = .all
   @Published public private(set) var documentSort = KnowledgeDocumentSort()
+  @Published public private(set) var searchFilter = KnowledgeSearchFilter()
   @Published public private(set) var selectedDocumentText = ""
   @Published public private(set) var isLoadingSelectedDocumentText = false
   @Published public private(set) var selectedDocumentTextError: String?
@@ -87,16 +88,18 @@ public final class KnowledgeStore: ObservableObject {
       candidates = documents
     } else {
       var seen = Set<UUID>()
-      candidates = searchResults.compactMap { result in
+      candidates = visibleSearchResults.compactMap { result in
         seen.insert(result.document.id).inserted ? result.document : nil
       }
     }
-    let filtered = candidates.filter(isIncludedInCurrentScope)
+    let filtered = searchText.trimmedForPublishing.isEmpty
+      ? candidates.filter(isIncludedInCurrentScope)
+      : candidates
     return documentSort.sorted(filtered)
   }
 
   public var visibleSearchResults: [KnowledgeSearchResult] {
-    searchResults.filter { isIncludedInCurrentScope($0.document) }
+    searchFilter.filtered(searchResults, isInCurrentCollection: isIncludedInCurrentScope)
   }
 
   public func reload(selecting preferredDocumentID: UUID? = nil) async {
@@ -320,11 +323,24 @@ public final class KnowledgeStore: ObservableObject {
     searchResults = []
     isSearching = true
     let service = self.service
+    let searchScope = searchFilter.scope
+    let requiredSignal = searchFilter.signal.signal
+    let documentIDs: Set<UUID>? = searchScope == .currentCollection
+      ? Set(documents.filter(isIncludedInCurrentScope).map(\.id))
+      : nil
     searchTask = Task { [weak self] in
       do {
         try await Task.sleep(for: .milliseconds(180))
-        let results = try await service.searchAsync(query: query, limit: 80)
-        guard !Task.isCancelled, self?.searchText.trimmedForPublishing == query else { return }
+        let results = try await service.searchAsync(
+          query: query,
+          limit: 80,
+          documentIDs: documentIDs,
+          requiredSignal: requiredSignal
+        )
+        guard !Task.isCancelled,
+              self?.searchText.trimmedForPublishing == query,
+              self?.searchFilter.scope == searchScope,
+              self?.searchFilter.signal.signal == requiredSignal else { return }
         self?.searchResults = results
         self?.isSearching = false
         let semanticCount = results.filter { $0.signals.contains(.semantic) }.count
@@ -346,7 +362,42 @@ public final class KnowledgeStore: ObservableObject {
 
   public func setFolderScope(_ scope: KnowledgeFolderScope) {
     folderScope = scope
+    if searchFilter.scope == .currentCollection,
+       !searchText.trimmedForPublishing.isEmpty {
+      updateSearchText(searchText)
+    }
     ensureVisibleSelection()
+  }
+
+  public func setSearchScope(_ scope: KnowledgeSearchScope) {
+    searchFilter.scope = scope
+    if !searchText.trimmedForPublishing.isEmpty {
+      updateSearchText(searchText)
+    }
+    ensureVisibleSelection()
+  }
+
+  public func setSearchSignalFilter(_ signal: KnowledgeSearchSignalFilter) {
+    searchFilter.signal = signal
+    if !searchText.trimmedForPublishing.isEmpty {
+      updateSearchText(searchText)
+    }
+    ensureVisibleSelection()
+  }
+
+  public func setSearchResultSort(_ sort: KnowledgeSearchResultSort) {
+    searchFilter.sort = sort
+    ensureVisibleSelection()
+  }
+
+  public func documentCount(for collection: KnowledgeSavedCollection) -> Int {
+    documents.count {
+      smartCollectionService.matches(
+        $0,
+        rules: collection.rules,
+        matchMode: collection.matchMode
+      )
+    }
   }
 
   public func setDocumentSortField(_ field: KnowledgeDocumentSortField) {
@@ -541,6 +592,25 @@ public final class KnowledgeStore: ObservableObject {
     }
   }
 
+  public func makeImportPreview(
+    sourceURLs: [URL],
+    options: KnowledgeImportOptions = KnowledgeImportOptions()
+  ) async throws -> KnowledgeImportPreview {
+    statusMessage = "正在分析拖入的资料…"
+    do {
+      let preview = try await service.makeImportPreview(
+        sourceURLs: sourceURLs,
+        options: options
+      )
+      statusMessage = "拖放资料预览已生成。"
+      return preview
+    } catch {
+      lastError = error.localizedDescription
+      statusMessage = "拖放资料分析失败：\(error.localizedDescription)"
+      throw error
+    }
+  }
+
   public func makeWebImportPreview(url: URL) async throws -> KnowledgeImportPreview {
     statusMessage = "正在读取网页…"
     do {
@@ -554,12 +624,15 @@ public final class KnowledgeStore: ObservableObject {
     }
   }
 
-  public func commit(_ preview: KnowledgeImportPreview) async throws -> KnowledgeImportResult {
+  public func commit(
+    _ preview: KnowledgeImportPreview,
+    destination: KnowledgeImportDestination = .preserveExisting
+  ) async throws -> KnowledgeImportResult {
     isBusy = true
     statusMessage = "正在保存并建立索引…"
     defer { isBusy = false }
     do {
-      let result = try await service.commit(preview)
+      let result = try await service.commit(preview, destination: destination)
       await reload()
       statusMessage = "资料导入完成：新增 \(result.insertedCount)，更新 \(result.updatedCount)，跳过 \(result.skippedCount)。"
       lastError = nil
@@ -936,15 +1009,19 @@ public final class KnowledgeStore: ObservableObject {
   }
 
   public func localContentRepairPreviews(
-    documentIDs: Set<UUID>? = nil
+    documentIDs: Set<UUID>? = nil,
+    includingCurrentParserVersion: Bool = false
   ) async -> [KnowledgeSourceRefreshPreview]? {
     isBusy = true
     statusMessage = "正在分析本机网页归档和旧解析器版本…"
     defer { isBusy = false }
     do {
-      let previews = try await service.makeLocalContentRepairPreviews(documentIDs: documentIDs)
+      let previews = try await service.makeLocalContentRepairPreviews(
+        documentIDs: documentIDs,
+        includingCurrentParserVersion: includingCurrentParserVersion
+      )
       statusMessage = previews.isEmpty
-        ? "没有需要使用新版解析器重新净化的网页资料。"
+        ? "没有找到可使用本机原始归档重新净化的网页资料。"
         : "发现 \(previews.count) 条可在本机重新净化的网页资料，请预览后修复。"
       lastError = nil
       return previews
@@ -1056,6 +1133,12 @@ public final class KnowledgeStore: ObservableObject {
       document.folderID == folderID
     case .smartCollection(let rule):
       smartCollectionService.matches(document, rule: rule)
+    case .savedCollection(let collection):
+      smartCollectionService.matches(
+        document,
+        rules: collection.rules,
+        matchMode: collection.matchMode
+      )
     }
   }
 

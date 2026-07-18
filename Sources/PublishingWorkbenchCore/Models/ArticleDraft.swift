@@ -61,6 +61,27 @@ public enum ArticleVisibility: String, Codable, CaseIterable, Identifiable, Send
   }
 }
 
+public enum ArticleDraftScope: Codable, Hashable, Sendable {
+  case site(UUID)
+  case general
+
+  public var siteProfileID: UUID? {
+    guard case let .site(profileID) = self else { return nil }
+    return profileID
+  }
+
+  public var isGeneral: Bool {
+    self == .general
+  }
+}
+
+public enum DraftListContentScope: String, Codable, CaseIterable, Identifiable, Sendable {
+  case currentSite
+  case general
+
+  public var id: String { rawValue }
+}
+
 public struct DraftAttachment: Codable, Hashable, Identifiable, Sendable {
   public var id: UUID
   public var originalFilename: String
@@ -156,7 +177,12 @@ public struct GeneralDraftReuseSourceSnapshot: Codable, Hashable, Sendable {
 
 public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   public var id: UUID
-  public var siteProfileID: UUID
+  /// The site used for site-owned drafts and as an editing context for general drafts.
+  /// Ownership must be read through `scope` rather than inferred from this value.
+  public private(set) var siteProfileID: UUID
+  /// Optional storage keeps snapshots written before draft scopes backward compatible.
+  /// Legacy drafts resolve to their existing site and are normalized on load.
+  private var scopeStorage: ArticleDraftScope?
   public var title: String
   public var date: Date
   public var slug: String
@@ -187,6 +213,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
   public init(
     id: UUID = UUID(),
     siteProfileID: UUID,
+    scope: ArticleDraftScope? = nil,
     title: String,
     date: Date = Date(),
     slug: String = "",
@@ -209,7 +236,9 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
     softwareGuideID: String? = nil
   ) {
     self.id = id
-    self.siteProfileID = siteProfileID
+    let resolvedScope = scope ?? .site(siteProfileID)
+    self.siteProfileID = resolvedScope.siteProfileID ?? siteProfileID
+    self.scopeStorage = resolvedScope
     self.title = title
     self.date = date
     self.slug = slug
@@ -234,6 +263,41 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
   public var isPrivate: Bool {
     visibility == .private
+  }
+
+  public var scope: ArticleDraftScope {
+    scopeStorage ?? .site(siteProfileID)
+  }
+
+  public var isGeneralDraft: Bool {
+    scope.isGeneral
+  }
+
+  public func belongs(toSiteProfileID profileID: UUID) -> Bool {
+    scope == .site(profileID)
+  }
+
+  public mutating func assignToSite(_ profileID: UUID) {
+    siteProfileID = profileID
+    scopeStorage = .site(profileID)
+  }
+
+  public mutating func assignToGeneralDraft(editingProfileID: UUID? = nil) {
+    if let editingProfileID {
+      siteProfileID = editingProfileID
+    }
+    scopeStorage = .general
+    draft = true
+    status = .draft
+    repositoryPath = nil
+    repositorySHA = nil
+    repositoryImportFingerprint = nil
+  }
+
+  public mutating func normalizeLegacyScope() {
+    if scopeStorage == nil {
+      scopeStorage = .site(siteProfileID)
+    }
   }
 
   /// Stable content identity for fields controlled by repository Markdown.
@@ -287,6 +351,18 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       categories: profile.defaultCategories,
       authors: profile.defaultAuthor.nilIfEmpty.map { [$0] } ?? [],
       bodyMarkdown: "# 未命名文章\n\n从这里开始写作。\n"
+    )
+  }
+
+  public static func emptyGeneralDraft(editingProfile: SiteProfile) -> ArticleDraft {
+    let now = Date()
+    return ArticleDraft(
+      siteProfileID: editingProfile.id,
+      scope: .general,
+      title: "未命名草稿",
+      date: now,
+      slug: SlugService.fallbackSlug(date: now),
+      bodyMarkdown: "# 未命名草稿\n\n从这里开始写作。\n"
     )
   }
 

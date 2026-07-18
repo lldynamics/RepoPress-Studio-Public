@@ -98,6 +98,13 @@ struct MarkdownShortcutHelpPanel: View {
 
   private let shortcutGroups: [(String, [(String, String)])] = [
     (
+      String(localized: "焦点导航"),
+      [
+        (String(localized: "移到下一个控件"), "Control-Tab"),
+        (String(localized: "移到上一个控件"), "Control-Shift-Tab")
+      ]
+    ),
+    (
       String(localized: "编辑"),
       [
         (String(localized: "查找"), "⌘F"),

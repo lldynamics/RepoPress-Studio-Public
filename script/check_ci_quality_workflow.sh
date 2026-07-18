@@ -18,9 +18,13 @@ grep -Fq 'uses: actions/checkout@v6' "$WORKFLOW" || fail "workflow must use the 
 grep -Fq 'runs-on: macos-15' "$WORKFLOW" || fail "workflow must use a macOS runner"
 grep -Fq 'timeout-minutes:' "$WORKFLOW" || fail "workflow must have a job timeout"
 grep -Fq './script/check_release_gate.sh --quick' "$WORKFLOW" || fail "workflow must run the shared quick gate"
+for release_check in app-store-metadata app-store-package-path ui-runtime swift-release-build; do
+  grep -Fq -- "--check $release_check" "$WORKFLOW" \
+    || fail "workflow must exercise distribution check: $release_check"
+done
 
 if grep -Eq '(github_pat_|ghp_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|Authorization:[[:space:]]*Bearer)' "$WORKFLOW"; then
   fail "workflow contains token-like content"
 fi
 
-echo "CI quality workflow gate: push, pull request, manual trigger, read-only permissions, timeout, and quick gate verified"
+echo "CI quality workflow gate: triggers, read-only permissions, quick checks, and distribution path verified"

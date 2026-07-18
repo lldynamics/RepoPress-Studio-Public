@@ -370,15 +370,12 @@ enum AccessibleStatusSeverity {
 struct AccessibleStatusMessage: View {
   let message: String
   let severity: AccessibleStatusSeverity
-  @FocusState private var isKeyboardFocused: Bool
   @AccessibilityFocusState private var isAccessibilityFocused: Bool
 
   var body: some View {
     Label(message, systemImage: severity.systemImage)
       .font(.callout)
       .foregroundStyle(severity.color)
-      .focusable(severity.isUrgent)
-      .focused($isKeyboardFocused)
       .accessibilityElement(children: .combine)
       .accessibilityFocused($isAccessibilityFocused)
       .onAppear(perform: focusAndAnnounceIfNeeded)
@@ -390,7 +387,6 @@ struct AccessibleStatusMessage: View {
   private func focusAndAnnounceIfNeeded() {
     guard severity.isUrgent else { return }
     DispatchQueue.main.async {
-      isKeyboardFocused = true
       isAccessibilityFocused = true
       NSAccessibility.post(
         element: NSApp as Any,

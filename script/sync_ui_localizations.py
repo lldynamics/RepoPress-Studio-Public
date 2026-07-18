@@ -360,7 +360,7 @@ def main() -> int:
         failures = validate(catalog, extracted, model_keys) + core_failures
         if failures:
             print(f"ui-scoped localization catalog: {len(failures)} coverage issue(s)")
-            for failure in failures[:20]:
+            for failure in failures:
                 print(f"- {failure}")
             return 1
         print(
@@ -372,7 +372,7 @@ def main() -> int:
     synchronized = synchronize(catalog, extracted)
     failures = validate(synchronized, extracted, model_keys) + core_failures
     if failures:
-        raise RuntimeError("; ".join(failures[:10]))
+        raise RuntimeError("; ".join(failures))
     CATALOG_PATH.write_text(
         json.dumps(synchronized, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

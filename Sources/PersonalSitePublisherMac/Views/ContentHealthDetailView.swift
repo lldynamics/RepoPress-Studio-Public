@@ -210,29 +210,63 @@ struct ContentHealthDetailView: View {
   }
 
   private func healthSummary(_ snapshot: ContentHealthSnapshot) -> some View {
-    HStack(spacing: 10) {
-      Label("错误 \(snapshot.errorCount)", systemImage: "xmark.octagon")
-        .foregroundStyle(snapshot.errorCount > 0 ? WorkbenchTheme.risk : Color.secondary)
-      Label("警告 \(snapshot.warningCount)", systemImage: "exclamationmark.triangle")
-        .foregroundStyle(snapshot.warningCount > 0 ? WorkbenchTheme.warning : Color.secondary)
-      Label("AI \(snapshot.aiFixQueueItems.count)", systemImage: "sparkles")
-        .foregroundStyle(WorkbenchTheme.inventoryForeground)
-      Label("通过 \(snapshot.passingDraftCount)", systemImage: "checkmark.circle")
-        .foregroundStyle(WorkbenchTheme.success)
+    HStack(spacing: 8) {
+      healthSummaryBadge(
+        title: "错误",
+        value: snapshot.errorCount,
+        systemImage: "xmark.octagon",
+        color: WorkbenchTheme.risk
+      )
+      healthSummaryBadge(
+        title: "警告",
+        value: snapshot.warningCount,
+        systemImage: "exclamationmark.triangle",
+        color: WorkbenchTheme.warning
+      )
+      healthSummaryBadge(
+        title: "AI",
+        value: snapshot.aiFixQueueItems.count,
+        systemImage: "sparkles",
+        color: WorkbenchTheme.inventoryForeground
+      )
+      healthSummaryBadge(
+        title: "通过",
+        value: snapshot.passingDraftCount,
+        systemImage: "checkmark.circle",
+        color: WorkbenchTheme.success
+      )
     }
-    .font(.callout.weight(.medium))
-    .monospacedDigit()
-    .padding(.horizontal, 10)
-    .padding(.vertical, 7)
-    .background(
-      WorkbenchBackgroundStyle.subtle,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-    )
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("内容健康摘要")
     .accessibilityValue(
       "\(snapshot.errorCount) 个错误，\(snapshot.warningCount) 个警告，"
         + "\(snapshot.aiFixQueueItems.count) 项可用 AI 修复，\(snapshot.passingDraftCount) 篇文章通过"
+    )
+  }
+
+  private func healthSummaryBadge(
+    title: LocalizedStringKey,
+    value: Int,
+    systemImage: String,
+    color: Color
+  ) -> some View {
+    HStack(spacing: 5) {
+      Image(systemName: systemImage)
+        .accessibilityHidden(true)
+      Text(title)
+      Text("\(value)")
+        .fontWeight(.semibold)
+        .monospacedDigit()
+    }
+    .font(.callout.weight(.medium))
+    .foregroundStyle(value > 0 ? color : Color.secondary)
+    .padding(.horizontal, 9)
+    .padding(.vertical, 6)
+    .background(
+      value > 0
+        ? AnyShapeStyle(color.opacity(WorkbenchOpacity.noticeBackground))
+        : WorkbenchBackgroundStyle.control,
+      in: Capsule()
     )
   }
 
@@ -318,10 +352,18 @@ struct ContentHealthDetailView: View {
 
       Spacer(minLength: 12)
 
-      Label("\(errorCount)", systemImage: "xmark.octagon")
-        .foregroundStyle(errorCount > 0 ? WorkbenchTheme.risk : Color.secondary)
-      Label("\(warningCount)", systemImage: "exclamationmark.triangle")
-        .foregroundStyle(warningCount > 0 ? WorkbenchTheme.warning : Color.secondary)
+      healthIssueCountBadge(
+        count: errorCount,
+        systemImage: "xmark.octagon",
+        color: WorkbenchTheme.risk,
+        label: "错误"
+      )
+      healthIssueCountBadge(
+        count: warningCount,
+        systemImage: "exclamationmark.triangle",
+        color: WorkbenchTheme.warning,
+        label: "警告"
+      )
       if isSelected {
         Image(systemName: "sidebar.right")
         .foregroundStyle(WorkbenchTheme.navigationSelection)
@@ -339,6 +381,28 @@ struct ContentHealthDetailView: View {
             : WorkbenchBackgroundStyle.subtle
         )
     }
+  }
+
+  private func healthIssueCountBadge(
+    count: Int,
+    systemImage: String,
+    color: Color,
+    label: LocalizedStringKey
+  ) -> some View {
+    Label("\(count)", systemImage: systemImage)
+      .font(.caption.weight(.semibold))
+      .monospacedDigit()
+      .foregroundStyle(count > 0 ? color : Color.secondary)
+      .padding(.horizontal, 6)
+      .padding(.vertical, 4)
+      .background(
+        count > 0
+          ? AnyShapeStyle(color.opacity(WorkbenchOpacity.noticeBackground))
+          : WorkbenchBackgroundStyle.control,
+        in: Capsule()
+      )
+      .accessibilityLabel(label)
+      .accessibilityValue("\(count)")
   }
 
   private func filteredDraftSummaries(in snapshot: ContentHealthSnapshot) -> [DraftPreflightSummary] {

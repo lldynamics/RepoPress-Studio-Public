@@ -91,16 +91,19 @@ struct KnowledgeDocumentInsightsSection: View {
   let onAddAnnotation: () -> Void
   let onEditAnnotation: (KnowledgeAnnotation) -> Void
   let onDeleteAnnotation: (UUID) -> Void
+  var showsHeader = true
   @State private var expandedBacklinkGroupIDs = Set<String>()
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      HStack {
-        Label("标注与反向链接", systemImage: "link.badge.plus")
-          .font(.headline)
-        Spacer()
-        Button("添加笔记", action: onAddAnnotation)
-          .controlSize(.small)
+      if showsHeader {
+        HStack {
+          Label("标注与反向链接", systemImage: "link.badge.plus")
+            .font(.headline)
+          Spacer()
+          Button("添加笔记", action: onAddAnnotation)
+            .controlSize(.small)
+        }
       }
 
       if annotations.isEmpty && backlinkGroups.isEmpty {
@@ -145,6 +148,8 @@ struct KnowledgeDocumentInsightsSection: View {
           .font(.body)
           .lineLimit(5)
       }
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel("标注：\(annotation.note)")
       Spacer(minLength: 8)
       Menu {
         Button("编辑") { onEditAnnotation(annotation) }
@@ -155,8 +160,7 @@ struct KnowledgeDocumentInsightsSection: View {
       .menuStyle(.borderlessButton)
       .accessibilityLabel("标注操作")
     }
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel("标注：\(annotation.note)")
+    .accessibilityElement(children: .contain)
   }
 
   private func backlinkGroupRow(_ group: KnowledgeBacklinkGroup) -> some View {

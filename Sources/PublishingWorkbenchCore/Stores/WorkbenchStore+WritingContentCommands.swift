@@ -285,6 +285,17 @@ extension WorkbenchStore {
     invalidateDraftDerivedCaches()
   }
 
+  public func createGeneralDraft() {
+    publishingStore.createGeneralDraft(store: self)
+    invalidateDraftDerivedCaches()
+  }
+
+  public func setDraftListContentScope(_ scope: DraftListContentScope) {
+    flushDraftBodyEditorBuffers()
+    publishingStore.setDraftListContentScope(scope, store: self)
+    invalidateDraftDerivedCaches()
+  }
+
   public func updateDraft(_ draft: ArticleDraft) {
     let buffer = draftBodyEditorBuffer(for: draft.id)
     var bufferedDraft = draft

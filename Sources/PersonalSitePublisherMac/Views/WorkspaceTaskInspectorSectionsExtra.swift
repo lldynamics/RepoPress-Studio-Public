@@ -217,6 +217,7 @@ struct ArticleInspectorTabs: View {
   private var metadataContent: some View {
     WorkspaceTaskMetadataSection(
       draft: $draft,
+      store: store,
       state: WorkspaceTaskMetadataState(
         draft: draft,
         profile: store.profile(for: draft)

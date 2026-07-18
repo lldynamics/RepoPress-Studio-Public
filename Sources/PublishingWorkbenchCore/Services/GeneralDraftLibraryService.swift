@@ -171,19 +171,16 @@ public struct GeneralDraftLibraryService {
   public func report(
     drafts: [ArticleDraft],
     profiles: [SiteProfile],
-    now: Date = Date(),
-    masksPrivateContent: Bool = false
+    now: Date = Date()
   ) -> GeneralDraftLibraryReport {
     let publishingProfiles = profiles.filter { $0.purpose == .publishing }
     let profilesByID = Dictionary(uniqueKeysWithValues: publishingProfiles.map { ($0.id, $0) })
     let items = drafts.compactMap { draft -> GeneralDraftLibraryItem? in
+      guard !draft.isGeneralDraft else { return nil }
       guard let profile = profilesByID[draft.siteProfileID] else { return nil }
-      let title = masksPrivateContent && draft.isPrivate
-        ? "私密文章"
-        : draft.title.nilIfEmpty ?? "未命名文章"
       return GeneralDraftLibraryItem(
         draftID: draft.id,
-        title: title,
+        title: draft.title.nilIfEmpty ?? "未命名文章",
         profileID: profile.id,
         profileName: profile.name,
         updatedAt: draft.updatedAt

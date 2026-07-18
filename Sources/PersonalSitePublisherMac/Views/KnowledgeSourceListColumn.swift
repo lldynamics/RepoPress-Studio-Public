@@ -21,6 +21,8 @@ struct KnowledgeSourceListColumn: View {
   @State private var isBatchRecycleConfirmationPresented = false
   @State private var isBatchTagEditorPresented = false
   @State private var batchTags = ""
+  @State private var hoveredDocumentID: UUID?
+  @AppStorage("knowledgeSidebarDensityV1") private var sidebarDensity: KnowledgeSidebarDensity = .comfortable
   @FocusState private var isSearchFocused: Bool
 
   var body: some View {
@@ -28,6 +30,15 @@ struct KnowledgeSourceListColumn: View {
       knowledgeHeader
         .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
         .padding(.vertical, WorkspaceSidebarMetrics.headerVerticalPadding)
+
+      Divider()
+
+      KnowledgeCollectionNavigationView(
+        knowledge: knowledge,
+        onCreateFolder: beginCreatingFolder,
+        onRenameFolder: beginRenamingFolder,
+        onDeleteFolder: requestFolderDeletion
+      )
 
       Divider()
 
@@ -152,9 +163,20 @@ struct KnowledgeSourceListColumn: View {
 
   private var knowledgeHeader: some View {
     WorkspaceContextListHeader(title: "资料") {
-      Text("\(knowledge.visibleDocuments.count) 条")
+      if searchText.trimmedForPublishing.isEmpty {
+        Text("\(knowledge.visibleDocuments.count) 条")
+      } else {
+        Text("\(searchResultGroups.count) 篇 · \(knowledge.visibleSearchResults.count) 片段")
+          .monospacedDigit()
+      }
     } actions: {
       Menu {
+        Button {
+          isBrowserExtensionPresented = true
+        } label: {
+          Label("连接浏览器插件", systemImage: "puzzlepiece.extension")
+        }
+        Divider()
         Button {
           isHealthPresented = true
         } label: {
@@ -177,27 +199,29 @@ struct KnowledgeSourceListColumn: View {
         } label: {
           Label("从备份恢复…", systemImage: "arrow.counterclockwise")
         }
+        Divider()
+        Picker("列表密度", selection: $sidebarDensity) {
+          ForEach(KnowledgeSidebarDensity.allCases) { density in
+            Text(density.localizedTitle).tag(density)
+          }
+        }
       } label: {
-        WorkspaceSidebarHeaderIcon("ellipsis.circle")
+        Label("管理", systemImage: "ellipsis.circle")
       }
-      .menuStyle(.borderlessButton)
+      .menuStyle(.button)
+      .menuIndicator(.hidden)
+      .controlSize(.regular)
+      .fixedSize()
       .help("回收站、备份与恢复")
       .accessibilityLabel("资料库管理")
       .disabled(knowledge.isBusy)
       Button {
-        isBrowserExtensionPresented = true
-      } label: {
-        WorkspaceSidebarHeaderIcon("puzzlepiece.extension")
-      }
-      .buttonStyle(.plain)
-      .help("连接浏览器插件")
-      .accessibilityLabel("连接浏览器插件")
-      Button {
         isImportPresented = true
       } label: {
-        WorkspaceSidebarHeaderIcon("plus")
+        Label("导入", systemImage: "plus")
       }
-      .buttonStyle(.plain)
+      .workbenchProminentActionStyle()
+      .controlSize(.regular)
       .help("导入资料")
       .accessibilityLabel("导入资料")
     }
@@ -229,6 +253,10 @@ struct KnowledgeSourceListColumn: View {
           .help("清除搜索")
           .accessibilityLabel("清除资料搜索")
         }
+
+        if searchText.trimmedForPublishing.isEmpty {
+          sortMenu
+        }
       }
       .padding(.horizontal, 8)
       .padding(.vertical, 6)
@@ -237,86 +265,181 @@ struct KnowledgeSourceListColumn: View {
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
       )
 
-      folderAndSortControls
+      if searchText.trimmedForPublishing.isEmpty {
+        savedCollectionRuleBar
+      } else {
+        searchFilterControls
+      }
     }
   }
 
-  private var folderAndSortControls: some View {
-    HStack(spacing: 8) {
-      Menu {
-        folderScopeButton(String(localized: "全部资料"), image: "books.vertical", scope: .all)
-        folderScopeButton(String(localized: "未分类"), image: "tray", scope: .unfiled)
-
-        if !knowledge.folders.isEmpty {
-          Divider()
-          ForEach(knowledge.folders) { folder in
-            folderScopeButton(folder.name, image: "folder", scope: .folder(folder.id))
+  private var searchFilterControls: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack(spacing: 6) {
+        Menu {
+          Picker("搜索范围", selection: searchScopeBinding) {
+            ForEach(KnowledgeSearchScope.allCases) { scope in
+              Text(scope.localizedDisplayName).tag(scope)
+            }
           }
-        }
-
-        if !knowledge.smartCollections.isEmpty {
-          Divider()
-          smartCollectionsMenu
-        }
-
-        Divider()
-        Button {
-          beginCreatingFolder()
         } label: {
-          Label(String(localized: "新建文件夹…"), systemImage: "folder.badge.plus")
+          Label(searchScopeTitle, systemImage: "scope")
+            .lineLimit(1)
         }
+        .menuStyle(.borderlessButton)
 
-        if case .folder(let folderID) = knowledge.folderScope,
-           let folder = knowledge.folder(id: folderID) {
-          Button {
-            beginRenamingFolder(folder)
-          } label: {
-            Label(String(localized: "重命名文件夹…"), systemImage: "pencil")
+        Menu {
+          Picker("命中类型", selection: searchSignalBinding) {
+            ForEach(KnowledgeSearchSignalFilter.allCases) { signal in
+              Text(signal.localizedDisplayName).tag(signal)
+            }
           }
-          Button(role: .destructive) {
-            folderPendingDeletion = folder
-            isFolderDeleteConfirmationPresented = true
-          } label: {
-            Label(String(localized: "删除文件夹…"), systemImage: "trash")
-          }
-        }
-      } label: {
-        Label(selectedFolderTitle, systemImage: selectedScopeSystemImage)
-          .workbenchTruncatedIdentity(selectedFolderTitle)
-      }
-      .menuStyle(.borderlessButton)
-      .help(Text("选择或管理资料文件夹"))
-
-      Spacer(minLength: 0)
-
-      Menu {
-        Picker(String(localized: "排序依据"), selection: sortFieldBinding) {
-          ForEach(KnowledgeDocumentSortField.allCases) { field in
-            Text(field.localizedDisplayNameKey).tag(field)
-          }
-        }
-        Divider()
-        Picker(String(localized: "顺序"), selection: sortDirectionBinding) {
-          ForEach(KnowledgeSortDirection.allCases) { direction in
-            Label(direction.localizedDisplayName, systemImage: direction.systemImage)
-              .tag(direction)
-          }
-        }
-      } label: {
-        Image(systemName: "arrow.up.arrow.down")
-      }
-      .menuStyle(.borderlessButton)
-      .help(
-        Text(
-          String(
-            format: String(localized: "排序：%@ · %@"),
-            knowledge.documentSort.field.localizedDisplayName,
-            knowledge.documentSort.direction.localizedDisplayName
+        } label: {
+          Label(
+            knowledge.searchFilter.signal.localizedDisplayName,
+            systemImage: "line.3.horizontal.decrease.circle"
           )
+          .lineLimit(1)
+        }
+        .menuStyle(.borderlessButton)
+
+        Spacer(minLength: 0)
+
+        Menu {
+          Picker("搜索排序", selection: searchSortBinding) {
+            ForEach(KnowledgeSearchResultSort.allCases) { sort in
+              Text(sort.localizedDisplayName).tag(sort)
+            }
+          }
+        } label: {
+          Image(
+            systemName: knowledge.searchFilter.sort == .relevance
+              ? "arrow.down.to.line.compact"
+              : "calendar"
+          )
+        }
+        .menuStyle(.borderlessButton)
+        .help("搜索结果排序：\(knowledge.searchFilter.sort.localizedDisplayName)")
+        .accessibilityLabel("搜索结果排序")
+        .accessibilityValue(knowledge.searchFilter.sort.localizedDisplayName)
+      }
+
+      if hasActiveSearchFilter {
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: 5) {
+            if knowledge.searchFilter.scope == .currentCollection,
+               knowledge.folderScope != .all {
+              filterChip(selectedFolderTitle) {
+                knowledge.setFolderScope(.all)
+              }
+            }
+            if knowledge.searchFilter.scope == .allLibrary {
+              filterChip("全部资料库") { knowledge.setSearchScope(.currentCollection) }
+            }
+            if knowledge.searchFilter.signal != .all {
+              filterChip(knowledge.searchFilter.signal.localizedDisplayName) {
+                knowledge.setSearchSignalFilter(.all)
+              }
+            }
+            if knowledge.searchFilter.sort != .relevance {
+              filterChip(knowledge.searchFilter.sort.localizedDisplayName) {
+                knowledge.setSearchResultSort(.relevance)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  @ViewBuilder
+  private var savedCollectionRuleBar: some View {
+    if case .savedCollection(let collection) = knowledge.folderScope,
+       !collection.rules.isEmpty {
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: 5) {
+          ForEach(collection.rules, id: \.id) { rule in
+            Text(rule.localizedDisplayName)
+              .font(.caption2)
+              .foregroundStyle(.secondary)
+              .padding(.horizontal, 7)
+              .padding(.vertical, 3)
+              .background(WorkbenchBackgroundStyle.subtle, in: Capsule())
+          }
+        }
+      }
+      .accessibilityLabel("组合智能集合规则")
+    }
+  }
+
+  private func filterChip(_ title: String, onRemove: @escaping () -> Void) -> some View {
+    HStack(spacing: 4) {
+      Text(title)
+        .lineLimit(1)
+      Button(action: onRemove) {
+        Image(systemName: "xmark")
+          .font(.system(size: 8, weight: .bold))
+          .frame(width: 20, height: 20)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("移除筛选：\(title)")
+    }
+    .font(.caption2.weight(.medium))
+    .padding(.leading, 7)
+    .padding(.trailing, 5)
+    .padding(.vertical, 3)
+    .foregroundStyle(.tint)
+    .background(Color.accentColor.opacity(0.1), in: Capsule())
+  }
+
+  private var hasActiveSearchFilter: Bool {
+    (knowledge.searchFilter.scope == .currentCollection && knowledge.folderScope != .all)
+      || knowledge.searchFilter.scope != .currentCollection
+      || knowledge.searchFilter.signal != .all
+      || knowledge.searchFilter.sort != .relevance
+  }
+
+  private var searchScopeTitle: String {
+    if knowledge.searchFilter.scope == .currentCollection,
+       knowledge.folderScope != .all {
+      return selectedFolderTitle
+    }
+    return knowledge.searchFilter.scope.localizedDisplayName
+  }
+
+  private var sortMenu: some View {
+    Menu {
+      Picker(String(localized: "排序依据"), selection: sortFieldBinding) {
+        ForEach(KnowledgeDocumentSortField.allCases) { field in
+          Text(field.localizedDisplayNameKey).tag(field)
+        }
+      }
+      Divider()
+      Picker(String(localized: "顺序"), selection: sortDirectionBinding) {
+        ForEach(KnowledgeSortDirection.allCases) { direction in
+          Label(direction.localizedDisplayName, systemImage: direction.systemImage)
+            .tag(direction)
+        }
+      }
+    } label: {
+      Image(systemName: "arrow.up.arrow.down")
+        .frame(width: 20, height: 20)
+        .contentShape(Rectangle())
+    }
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .fixedSize()
+    .help(
+      Text(
+        String(
+          format: String(localized: "排序：%@ · %@"),
+          knowledge.documentSort.field.localizedDisplayName,
+          knowledge.documentSort.direction.localizedDisplayName
         )
       )
-      .accessibilityLabel("资料排序")
-    }
+    )
+    .accessibilityLabel("资料排序")
   }
 
   @ViewBuilder
@@ -335,57 +458,7 @@ struct KnowledgeSourceListColumn: View {
         }
         List(selection: $selectedDocumentIDs) {
           ForEach(knowledge.visibleDocuments) { document in
-          HStack(spacing: 9) {
-            Image(systemName: document.kind.systemImage)
-              .foregroundStyle(.secondary)
-              .frame(width: 16)
-            VStack(alignment: .leading, spacing: 2) {
-              Text(document.title)
-                .font(.callout.weight(.medium))
-                .workbenchTruncatedIdentity(document.title)
-              Text(documentSubtitle(document))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .workbenchTruncatedIdentity(documentSubtitle(document))
-            }
-            Spacer(minLength: 4)
-            if knowledge.isPinned(document.id) {
-              Image(systemName: "pin.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            } else if !document.allowsAIUse {
-              Image(systemName: "sparkles.slash")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-          }
-          .listRowInsets(WorkspaceSidebarMetrics.rowInsets)
-          .listRowSeparator(.hidden)
-          .listRowBackground(Color.clear)
-          .tag(document.id)
-          .contextMenu {
-            documentFolderMenu(document)
-            Divider()
-            Button(
-              knowledge.isPinned(document.id)
-                ? String(localized: "取消固定")
-                : String(localized: "固定到 AI 对话")
-            ) {
-              knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)
-            }
-            Button(
-              document.allowsAIUse
-                ? String(localized: "不允许 AI 使用")
-                : String(localized: "允许 AI 使用")
-            ) {
-              knowledge.setAllowsAIUse(!document.allowsAIUse, documentID: document.id)
-            }
-            Divider()
-            Button("移到回收站…", role: .destructive) {
-              requestDocumentDeletion(document)
-            }
-            .disabled(knowledge.isBusy)
-          }
+            documentRow(document)
           }
         }
         .listStyle(.sidebar)
@@ -394,7 +467,108 @@ struct KnowledgeSourceListColumn: View {
         .onChange(of: selectedDocumentIDs) { previous, current in
           handleListSelectionChange(previous: previous, current: current)
         }
+        .onDeleteCommand(perform: requestSelectedDocumentDeletion)
       }
+    }
+  }
+
+  private func documentRow(_ document: KnowledgeDocument) -> some View {
+    HStack(spacing: 9) {
+      Image(systemName: document.kind.systemImage)
+        .foregroundStyle(.secondary)
+        .frame(width: 16)
+        .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: sidebarDensity.rowTextSpacing) {
+        Text(document.title)
+          .font(.callout.weight(.medium))
+          .workbenchTruncatedIdentity(document.title)
+        Text(documentSubtitle(document))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .workbenchTruncatedIdentity(documentSubtitle(document))
+      }
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel("\(document.title)，\(documentSubtitle(document))")
+
+      Spacer(minLength: 4)
+
+      if knowledge.isPinned(document.id) {
+        Image(systemName: "pin.fill")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .accessibilityLabel("已固定到 AI")
+      } else if !document.allowsAIUse {
+        Image(systemName: "sparkles.slash")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .accessibilityLabel("不允许 AI 使用")
+      }
+
+      if hoveredDocumentID == document.id || selectedDocumentIDs.contains(document.id) {
+        documentActionsMenu(document)
+      }
+    }
+    .onHover { isHovered in
+      if isHovered {
+        hoveredDocumentID = document.id
+      } else if hoveredDocumentID == document.id {
+        hoveredDocumentID = nil
+      }
+    }
+    .listRowInsets(sidebarDensity.listRowInsets)
+    .listRowSeparator(.hidden)
+    .listRowBackground(Color.clear)
+    .tag(document.id)
+    .contextMenu {
+      documentActionItems(document)
+    }
+  }
+
+  private func documentActionsMenu(_ document: KnowledgeDocument) -> some View {
+    Menu {
+      documentActionItems(document)
+    } label: {
+      Image(systemName: "ellipsis.circle")
+        .frame(width: 22, height: 22)
+        .contentShape(Rectangle())
+    }
+    .menuStyle(.borderlessButton)
+    .help("资料操作")
+    .accessibilityLabel("\(document.title)的资料操作")
+  }
+
+  @ViewBuilder
+  private func documentActionItems(_ document: KnowledgeDocument) -> some View {
+    documentFolderMenu(document)
+    Divider()
+    Button(
+      knowledge.isPinned(document.id)
+        ? String(localized: "取消固定")
+        : String(localized: "固定到 AI 对话")
+    ) {
+      knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)
+    }
+    Button(
+      document.allowsAIUse
+        ? String(localized: "不允许 AI 使用")
+        : String(localized: "允许 AI 使用")
+    ) {
+      knowledge.setAllowsAIUse(!document.allowsAIUse, documentID: document.id)
+    }
+    Divider()
+    Button("移到回收站…", role: .destructive) {
+      requestDocumentDeletion(document)
+    }
+    .disabled(knowledge.isBusy)
+  }
+
+  private func requestSelectedDocumentDeletion() {
+    guard !selectedDocumentIDs.isEmpty else { return }
+    if selectedDocumentIDs.count > 1 {
+      isBatchRecycleConfirmationPresented = true
+    } else if let documentID = selectedDocumentIDs.first,
+              let document = knowledge.documents.first(where: { $0.id == documentID }) {
+      requestDocumentDeletion(document)
     }
   }
 
@@ -429,30 +603,51 @@ struct KnowledgeSourceListColumn: View {
       .frame(maxHeight: .infinity, alignment: .top)
     } else {
       List(selection: searchResultSelection) {
-        ForEach(knowledge.visibleSearchResults) { result in
-          KnowledgeSearchResultRow(result: result, query: knowledge.searchText)
-            .listRowInsets(WorkspaceSidebarMetrics.rowInsets)
-            .listRowSeparator(.hidden)
-            .tag(result.id)
-            .contextMenu {
-              documentFolderMenu(result.document)
-              Divider()
-              Button(
-                knowledge.isPinned(result.document.id)
-                  ? String(localized: "取消固定")
-                  : String(localized: "固定到 AI 对话")
-              ) {
-                knowledge.setPinned(
-                  !knowledge.isPinned(result.document.id),
-                  documentID: result.document.id
-                )
+        ForEach(searchResultGroups) { group in
+          Section {
+            ForEach(group.results) { result in
+              KnowledgeSearchResultRow(
+                result: result,
+                query: knowledge.searchText,
+                showsDocumentTitle: false
+              )
+              .listRowInsets(sidebarDensity.listRowInsets)
+              .listRowSeparator(.hidden)
+              .tag(result.id)
+              .contextMenu {
+                documentFolderMenu(result.document)
+                Divider()
+                Button(
+                  knowledge.isPinned(result.document.id)
+                    ? String(localized: "取消固定")
+                    : String(localized: "固定到 AI 对话")
+                ) {
+                  knowledge.setPinned(
+                    !knowledge.isPinned(result.document.id),
+                    documentID: result.document.id
+                  )
+                }
+                Divider()
+                Button("移到回收站…", role: .destructive) {
+                  requestDocumentDeletion(result.document)
+                }
+                .disabled(knowledge.isBusy)
               }
-              Divider()
-              Button("移到回收站…", role: .destructive) {
-                requestDocumentDeletion(result.document)
-              }
-              .disabled(knowledge.isBusy)
             }
+          } header: {
+            HStack(spacing: 6) {
+              Image(systemName: group.document.kind.systemImage)
+                .accessibilityHidden(true)
+              Text(group.document.title)
+                .lineLimit(1)
+              Spacer(minLength: 2)
+              Text("\(group.results.count) 个片段")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(group.document.title)，\(group.results.count) 个命中片段")
+          }
         }
       }
       .listStyle(.sidebar)
@@ -486,7 +681,30 @@ struct KnowledgeSourceListColumn: View {
       fromByteCount: document.sourceByteCount,
       countStyle: .file
     )
-    return "\(document.kind.localizedDisplayName) · \(size)"
+    let date = knowledge.documentSort.field == .updatedAt
+      ? document.updatedAt
+      : document.importedAt
+    let relativeDate = date.formatted(
+      .relative(presentation: .named, unitsStyle: .abbreviated)
+    )
+    if knowledge.documentSort.field == .fileSize {
+      return "\(size) · \(document.kind.localizedDisplayName) · \(relativeDate)"
+    }
+    return "\(document.kind.localizedDisplayName) · \(relativeDate) · \(size)"
+  }
+
+  private var searchResultGroups: [KnowledgeSearchDocumentGroup] {
+    var groups: [KnowledgeSearchDocumentGroup] = []
+    var indices: [UUID: Int] = [:]
+    for result in knowledge.visibleSearchResults {
+      if let index = indices[result.document.id] {
+        groups[index].results.append(result)
+      } else {
+        indices[result.document.id] = groups.count
+        groups.append(KnowledgeSearchDocumentGroup(document: result.document, results: [result]))
+      }
+    }
+    return groups
   }
 
   private var documentDeletionConfirmationTitle: String {
@@ -676,47 +894,6 @@ struct KnowledgeSourceListColumn: View {
     synchronizeListSelection()
   }
 
-  @ViewBuilder
-  private func folderScopeButton(
-    _ title: String,
-    image: String,
-    scope: KnowledgeFolderScope
-  ) -> some View {
-    Button {
-      knowledge.setFolderScope(scope)
-    } label: {
-      Label(title, systemImage: knowledge.folderScope == scope ? "checkmark" : image)
-    }
-  }
-
-  private var smartCollectionsMenu: some View {
-    Menu {
-      ForEach(KnowledgeSmartCollectionKind.allCases) { kind in
-        let collections = knowledge.smartCollections(kind: kind)
-        if !collections.isEmpty {
-          Menu {
-            ForEach(collections) { collection in
-              Button {
-                knowledge.setFolderScope(.smartCollection(collection.rule))
-              } label: {
-                Label(
-                  "\(collection.rule.localizedDisplayName) (\(collection.documentCount))",
-                  systemImage: knowledge.folderScope == .smartCollection(collection.rule)
-                    ? "checkmark"
-                    : collection.rule.systemImage
-                )
-              }
-            }
-          } label: {
-            Label(kind.localizedDisplayName, systemImage: kind.systemImage)
-          }
-        }
-      }
-    } label: {
-      Label(String(localized: "智能集合"), systemImage: "wand.and.stars")
-    }
-  }
-
   private func documentFolderMenu(_ document: KnowledgeDocument) -> some View {
     Menu(String(localized: "移动到文件夹")) {
       Button {
@@ -747,6 +924,8 @@ struct KnowledgeSourceListColumn: View {
       knowledge.folder(id: folderID)?.name ?? String(localized: "资料文件夹")
     case .smartCollection(let rule):
       rule.localizedDisplayName
+    case .savedCollection(let collection):
+      collection.name
     }
   }
 
@@ -756,6 +935,7 @@ struct KnowledgeSourceListColumn: View {
     case .unfiled: "tray"
     case .folder: "folder"
     case .smartCollection(let rule): rule.systemImage
+    case .savedCollection: "bookmark"
     }
   }
 
@@ -792,7 +972,7 @@ struct KnowledgeSourceListColumn: View {
         actionSystemImage: "plus",
         action: { isImportPresented = true }
       )
-    case .smartCollection:
+    case .smartCollection, .savedCollection:
       EmptyStateView(
         title: "没有符合条件的资料",
         message: "智能集合会在资料元数据变化后自动更新。",
@@ -816,6 +996,27 @@ struct KnowledgeSourceListColumn: View {
     Binding(
       get: { knowledge.documentSort.direction },
       set: { knowledge.setDocumentSortDirection($0) }
+    )
+  }
+
+  private var searchScopeBinding: Binding<KnowledgeSearchScope> {
+    Binding(
+      get: { knowledge.searchFilter.scope },
+      set: { knowledge.setSearchScope($0) }
+    )
+  }
+
+  private var searchSignalBinding: Binding<KnowledgeSearchSignalFilter> {
+    Binding(
+      get: { knowledge.searchFilter.signal },
+      set: { knowledge.setSearchSignalFilter($0) }
+    )
+  }
+
+  private var searchSortBinding: Binding<KnowledgeSearchResultSort> {
+    Binding(
+      get: { knowledge.searchFilter.sort },
+      set: { knowledge.setSearchResultSort($0) }
     )
   }
 
@@ -843,6 +1044,11 @@ struct KnowledgeSourceListColumn: View {
     folderEditorMode = .rename(folder.id)
     folderName = folder.name
     isFolderEditorPresented = true
+  }
+
+  private func requestFolderDeletion(_ folder: KnowledgeFolder) {
+    folderPendingDeletion = folder
+    isFolderDeleteConfirmationPresented = true
   }
 
   private func commitFolderEditor() {
@@ -946,4 +1152,10 @@ struct KnowledgeSourceListColumn: View {
 private enum FolderEditorMode {
   case create
   case rename(UUID)
+}
+
+private struct KnowledgeSearchDocumentGroup: Identifiable {
+  var id: UUID { document.id }
+  let document: KnowledgeDocument
+  var results: [KnowledgeSearchResult]
 }

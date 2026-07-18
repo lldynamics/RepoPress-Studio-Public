@@ -64,10 +64,26 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def packaged_artifact_metadata(results: list[dict[str, object]]) -> dict[str, object]:
-    if verification_status(results, "ui-runtime") != "passed":
+def packaged_artifact_metadata(results: list[dict[str, object]], mode: str) -> dict[str, object]:
+    verification_check = "ui-launch-verification" if mode == "strict" else "ui-runtime"
+    if verification_status(results, verification_check) != "passed":
         return {"status": "not_verified", "appBundle": None, "files": {}}
     app_bundle = ROOT / "dist" / "PersonalSitePublisherMac.app"
+    provenance = "local-package"
+    if mode == "strict":
+        explicit_app = os.environ.get("APP_STORE_APP_BUNDLE_PATH", "").strip()
+        explicit_archive = os.environ.get("APP_STORE_ARCHIVE_PATH", "").strip()
+        if explicit_app:
+            app_bundle = Path(explicit_app).expanduser().resolve()
+            provenance = "explicit-signed-app"
+        elif explicit_archive:
+            app_bundle = (
+                Path(explicit_archive).expanduser().resolve()
+                / "Products"
+                / "Applications"
+                / "PersonalSitePublisherMac.app"
+            )
+            provenance = "explicit-xcarchive"
     files = {
         "executable": app_bundle / "Contents" / "MacOS" / "PersonalSitePublisherMac",
         "infoPlist": app_bundle / "Contents" / "Info.plist",
@@ -76,10 +92,12 @@ def packaged_artifact_metadata(results: list[dict[str, object]]) -> dict[str, ob
         return {"status": "missing", "appBundle": str(app_bundle), "files": {}}
     return {
         "status": "hashed",
-        "appBundle": str(app_bundle.relative_to(ROOT)),
+        "appBundle": str(app_bundle),
+        "provenance": provenance,
+        "verificationCheck": verification_check,
         "files": {
             name: {
-                "path": str(path.relative_to(ROOT)),
+                "path": str(path),
                 "sha256": sha256(path),
                 "sizeBytes": path.stat().st_size,
             }
@@ -194,7 +212,7 @@ def write_result_json(
             "realAppLaunch": verification_status(results, "ui-launch-verification"),
         },
         "artifacts": {
-            "packagedApp": packaged_artifact_metadata(results),
+            "packagedApp": packaged_artifact_metadata(results, mode),
         },
         "checks": results,
     }
