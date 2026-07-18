@@ -1441,7 +1441,7 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     XCTAssertEqual(body["auto_init"] as? Bool, false)
   }
 
-  func testCreatesGitHubOrganizationRepositoryWhenOwnerDiffersFromTokenUser() async throws {
+  func testCreatesGitHubOrganizationRepositoryAsPrivateByDefault() async throws {
     let transport = SequencedRemoteRepositoryTransport(responses: [
       response(json: #"{"login":"me"}"#),
       response(json: #"{"full_name":"org/site","ssh_url":"git@github.com:org/site.git","clone_url":"https://github.com/org/site.git","html_url":"https://github.com/org/site","private":true}"#),
@@ -1453,8 +1453,7 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
 
     let result = try await service.createRepository(
       profile: profile,
-      token: "github-token",
-      privateRepository: true
+      token: "github-token"
     )
 
     XCTAssertEqual(result.repositoryName, "org/site")

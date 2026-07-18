@@ -27,10 +27,10 @@ struct SiteMaintenanceCalendarSection: View {
       if report.calendarBuckets.isEmpty {
         EmptyStateView(
           title: "还没有内容节奏",
-          message: "当前 Profile 没有可统计的文章。",
-          systemImage: "calendar"
+          message: "当前站点配置没有可统计的文章。",
+          systemImage: "calendar",
+          density: .compactPane
         )
-        .frame(height: 180)
       } else {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 10)], spacing: 10) {
           ForEach(report.calendarBuckets.prefix(12)) { bucket in
@@ -45,8 +45,8 @@ struct SiteMaintenanceCalendarSection: View {
               .font(.caption)
               .foregroundStyle(.secondary)
               Text("公开 \(bucket.publicCount) · 私密 \(bucket.privateCount)")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
@@ -73,7 +73,7 @@ struct SiteMaintenanceCalendarSection: View {
                   Text(insight.title)
                     .font(.caption.weight(.semibold))
                   Text(insight.priority.localizedDisplayName)
-                    .font(.caption2.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(actionPriorityForeground(insight.priority))
                   Spacer()
                 }
@@ -83,8 +83,8 @@ struct SiteMaintenanceCalendarSection: View {
                   .lineLimit(2)
                 if !insight.detail.isEmpty {
                   Text(insight.detail)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     .lineLimit(2)
                 }
               }
@@ -113,10 +113,10 @@ struct SiteMaintenanceCalendarSection: View {
                   HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(item.title)
                       .font(.caption.weight(.semibold))
-                      .lineLimit(1)
+                      .workbenchTruncatedIdentity(item.title)
                     Spacer()
                     Text(item.scheduledDate.workbenchShortText)
-                      .font(.caption2)
+                      .font(.caption)
                       .foregroundStyle(.secondary)
                   }
                   Text(item.reason)
@@ -124,9 +124,9 @@ struct SiteMaintenanceCalendarSection: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                   Text(item.markdownPath)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .workbenchTruncatedIdentity(item.markdownPath)
                 }
               }
               .frame(maxWidth: .infinity, alignment: .leading)
@@ -210,8 +210,7 @@ struct SiteMaintenanceCalendarSection: View {
         } label: {
           Text(item.title)
             .font(.caption2)
-            .lineLimit(1)
-            .truncationMode(.tail)
+            .workbenchTruncatedIdentity(item.title)
             .foregroundStyle(WorkbenchTheme.documentForeground)
         }
         .buttonStyle(.plain)
@@ -328,7 +327,7 @@ private struct MaintenanceCalendarBucketChart: View {
           Text(bucket.title)
             .font(.caption)
             .foregroundStyle(.secondary)
-            .lineLimit(1)
+            .workbenchTruncatedIdentity(bucket.title)
             .frame(width: 74, alignment: .leading)
 
           GeometryReader { proxy in
@@ -355,8 +354,8 @@ private struct MaintenanceCalendarBucketChart: View {
         Label("蓝色月份包含待发布文章", systemImage: "paperplane")
         Label("灰色为历史内容沉淀", systemImage: "doc.text")
       }
-      .font(.caption2)
-      .foregroundStyle(.tertiary)
+      .font(.caption)
+      .foregroundStyle(.secondary)
     }
   }
 }

@@ -221,7 +221,8 @@ public struct PreflightCheckService: Sendable {
     }
 
     for attachment in draft.attachments {
-      if attachment.altText.trimmedForPublishing.isEmpty {
+      let isVideo = attachment.mediaKind == .video
+      if !isVideo, attachment.altText.trimmedForPublishing.isEmpty {
         issues.append(.init(
           severity: .warning,
           title: CoreL10n.text("图片缺少 alt"),
@@ -233,19 +234,22 @@ public struct PreflightCheckService: Sendable {
       if attachment.relativePublishPath.trimmedForPublishing.isEmpty {
         issues.append(.init(
           severity: .error,
-          title: CoreL10n.text("图片发布路径为空"),
-          message: CoreL10n.format("%@ 缺少发布路径。", attachment.originalFilename),
+          title: CoreL10n.text(isVideo ? "视频发布路径为空" : "图片发布路径为空"),
+          message: CoreL10n.format(
+            isVideo ? "%@ 缺少视频发布路径。" : "%@ 缺少发布路径。",
+            attachment.originalFilename
+          ),
           field: "attachments"
         ))
       }
 
       issues.append(
         contentsOf: repositoryPathIssues(
-          label: CoreL10n.text("图片路径"),
+          label: CoreL10n.text(isVideo ? "视频路径" : "图片路径"),
           path: attachment.repositoryPath,
           field: "attachments",
           requiredRoot: profile.assetRoot,
-          rootLabel: CoreL10n.text("图片目录")
+          rootLabel: CoreL10n.text(isVideo ? "视频目录" : "图片目录")
         )
       )
       issues.append(contentsOf: publicPathIssues(path: attachment.relativePublishPath, filename: attachment.originalFilename))
@@ -402,7 +406,11 @@ public struct PreflightCheckService: Sendable {
   }
 
   private func missingMarkdownImagePaths(in draft: ArticleDraft) -> [String] {
-    let registered = Set(draft.attachments.map(\.relativePublishPath))
+    let registered = Set(
+      draft.attachments
+        .filter { $0.mediaKind == .image }
+        .map(\.relativePublishPath)
+    )
     guard let regex = Self.markdownImageRegex else {
       return []
     }

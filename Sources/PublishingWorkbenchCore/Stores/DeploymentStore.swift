@@ -33,7 +33,7 @@ public final class DeploymentStore: ObservableObject {
     deploymentTokenAvailability: KeychainTokenAvailability = KeychainTokenAvailability(hasToken: false),
     deploymentStatusService: DeploymentStatusService = DeploymentStatusService(),
     deploymentWebhookService: DeploymentWebhookService = DeploymentWebhookService(),
-    deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(service: "PersonalSitePublisherMac.DeploymentProvider", accountPrefix: "deployment-provider"),
+    deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.deployment, accountPrefix: "deployment-provider"),
     releaseLedgerService: ReleaseLedgerService = ReleaseLedgerService()
   ) {
     self.deploymentStatusService = deploymentStatusService
@@ -400,7 +400,8 @@ public final class DeploymentStore: ObservableObject {
     )
   }
 
-  public func saveDeploymentAccessToken(_ token: String, store: WorkbenchStore) {
+  @discardableResult
+  public func saveDeploymentAccessToken(_ token: String, store: WorkbenchStore) -> Bool {
     do {
       try deploymentTokenStore.saveToken(
         token.trimmedForPublishing,
@@ -413,8 +414,10 @@ public final class DeploymentStore: ObservableObject {
         "%@ 部署 Token 已保存。",
         deploymentProvider(for: store.activeProfile).displayName
       )
+      return true
     } catch {
       deploymentStatusMessage = CoreL10n.format("部署 Token 保存失败：%@", error.localizedDescription)
+      return false
     }
   }
 

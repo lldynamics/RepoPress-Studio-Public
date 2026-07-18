@@ -37,16 +37,7 @@ public struct MarkdownSmartPasteService: Sendable {
   }
 
   private func normalizedWebURL(from pastedText: String) -> String? {
-    let candidate = pastedText.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !candidate.isEmpty,
-          !candidate.unicodeScalars.contains(where: CharacterSet.whitespacesAndNewlines.contains),
-          let components = URLComponents(string: candidate),
-          let scheme = components.scheme?.lowercased(),
-          ["http", "https"].contains(scheme),
-          components.host?.nilIfEmpty != nil else {
-      return nil
-    }
-    return candidate
+    MarkdownPastedURLSanitizer.webURL(from: pastedText)
   }
 }
 

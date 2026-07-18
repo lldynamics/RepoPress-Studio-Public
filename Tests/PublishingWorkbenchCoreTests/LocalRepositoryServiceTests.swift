@@ -524,6 +524,7 @@ final class LocalRepositoryServiceTests: XCTestCase {
       changedFiles: [
         RepositoryChangedFile(status: " M", path: "content/posts/mac-editor.md", kind: .modified),
         RepositoryChangedFile(status: "R ", path: "content/old.md -> content/posts/new-name.md", kind: .renamed),
+        RepositoryChangedFile(status: "??", path: "private/posts/private-note.md", kind: .untracked),
         RepositoryChangedFile(status: "??", path: "static/images/cover.webp", kind: .untracked),
         RepositoryChangedFile(status: " M", path: "config.toml", kind: .modified),
         RepositoryChangedFile(status: " M", path: "README.md", kind: .modified),
@@ -533,14 +534,14 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
     let summary = report.changeSummary(contentRoot: "content", assetRoot: "static")
 
-    XCTAssertEqual(summary.articleCount, 2)
+    XCTAssertEqual(summary.articleCount, 3)
     XCTAssertEqual(summary.imageCount, 1)
     XCTAssertEqual(summary.configurationCount, 1)
     XCTAssertEqual(summary.otherCount, 1)
-    XCTAssertEqual(summary.publishRelevantCount, 4)
+    XCTAssertEqual(summary.publishRelevantCount, 5)
     XCTAssertEqual(
       report.changedFiles(role: .article, contentRoot: "content", assetRoot: "static").map(\.path),
-      ["content/posts/mac-editor.md", "content/old.md -> content/posts/new-name.md"]
+      ["content/posts/mac-editor.md", "content/old.md -> content/posts/new-name.md", "private/posts/private-note.md"]
     )
   }
 
@@ -560,6 +561,7 @@ final class LocalRepositoryServiceTests: XCTestCase {
         RepositoryChangedFile(status: "??", path: "static/images/cover.webp", kind: .untracked),
         RepositoryChangedFile(status: " M", path: "content/posts/mac-editor.md", kind: .modified),
         RepositoryChangedFile(status: "R ", path: "content/old.md -> content/posts/new-name.md", kind: .renamed),
+        RepositoryChangedFile(status: "??", path: "private/posts/private-note.md", kind: .untracked),
       ],
       preflightIssues: []
     )
@@ -568,8 +570,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
     XCTAssertEqual(sections.map(\.role), [.article, .image, .configuration, .other])
     XCTAssertEqual(sections.map(\.title), ["文章变更", "图片变更", "配置变更", "其他变更"])
-    XCTAssertEqual(sections.map(\.count), [2, 1, 1, 1])
-    XCTAssertEqual(sections.first?.files.map(\.displayPath), ["content/posts/mac-editor.md", "content/posts/new-name.md"])
+    XCTAssertEqual(sections.map(\.count), [3, 1, 1, 1])
+    XCTAssertEqual(sections.first?.files.map(\.displayPath), ["content/posts/mac-editor.md", "content/posts/new-name.md", "private/posts/private-note.md"])
     XCTAssertTrue(sections[0].role.isPublishRelevant)
     XCTAssertFalse(sections[3].role.isPublishRelevant)
   }

@@ -8,12 +8,12 @@ struct PrivacySettingsCurrentStatusSection: View {
   let onUnlock: () -> Void
 
   var body: some View {
-    Section("当前状态") {
+    Section("快速隐藏") {
       Label(
         status.title,
         systemImage: status.isLocked ? "lock.shield" : "lock.open"
       )
-      .foregroundStyle(status.isLocked ? .orange : .secondary)
+      .foregroundStyle(status.isLocked ? WorkbenchTheme.warning : Color.secondary)
 
       Text(status.detail)
         .font(.caption)
@@ -31,6 +31,7 @@ struct PrivacySettingsCurrentStatusSection: View {
         } label: {
           Label("快速隐藏", systemImage: "eye.slash")
         }
+        .workbenchProminentActionStyle(tint: WorkbenchTheme.warningActionFill)
         .disabled(status.isLocked)
 
         Button {
@@ -38,6 +39,7 @@ struct PrivacySettingsCurrentStatusSection: View {
         } label: {
           Label("返回工作台", systemImage: "eye")
         }
+        .buttonStyle(.bordered)
         .disabled(!status.isLocked)
       }
     }

@@ -7,6 +7,7 @@ struct MarkdownEditorCommandActions {
   var canUseFindReplace: Bool
   var showFindReplace: () -> Void
   var showKeyboardShortcuts: () -> Void
+  var showSnippets: () -> Void
   var findPrevious: () -> Void
   var findNext: () -> Void
   var replaceCurrentOrNext: () -> Void

@@ -197,6 +197,34 @@ public struct SiteStarterService: Sendable {
     }.value
   }
 
+  public func configureGitHubOriginRemoteAsync(profile: SiteProfile) async throws -> String {
+    guard let rootURL = profile.localRepositoryRootURL else {
+      throw SiteStarterError.missingRepositoryRoot
+    }
+    guard fileManager.fileExists(atPath: rootURL.appendingPathComponent(".git", isDirectory: true).path) else {
+      throw SiteStarterError.notGitRepository(rootURL.path)
+    }
+    guard let remoteURL = githubRemoteURL(
+      owner: profile.repoOwner.trimmedForPublishing,
+      repoName: profile.repoName.trimmedForPublishing
+    ) else {
+      throw SiteStarterError.missingOriginRemote
+    }
+
+    let existingRemote = await gitCommandRunner.runAsync(
+      ["remote", "get-url", "origin"],
+      rootURL: rootURL
+    )
+    let arguments = existingRemote.terminationStatus == 0
+      ? ["remote", "set-url", "origin", remoteURL]
+      : ["remote", "add", "origin", remoteURL]
+    let result = await gitCommandRunner.runAsync(arguments, rootURL: rootURL)
+    guard result.terminationStatus == 0 else {
+      throw SiteStarterError.gitFailed(result.output)
+    }
+    return remoteURL
+  }
+
   public func commitAndPushStarterSite(
     profile: SiteProfile,
     createdFilePaths: [String],

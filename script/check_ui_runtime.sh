@@ -6,6 +6,8 @@ APP_NAME="PersonalSitePublisherMac"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+APP_RESOURCES="$APP_BUNDLE/Contents/Resources"
+CORE_RESOURCE_BUNDLE="$APP_RESOURCES/${APP_NAME}_PublishingWorkbenchCore.bundle"
 MODE="package"
 
 fail() {
@@ -29,6 +31,10 @@ bash "$ROOT_DIR/script/build_and_run.sh" --package-only >/dev/null
 
 [[ -d "$APP_BUNDLE" ]] || fail "app bundle was not created"
 [[ -x "$APP_BINARY" ]] || fail "app executable is missing or not executable"
+[[ -d "$APP_RESOURCES" ]] || fail "app Resources directory is missing"
+[[ -f "$APP_RESOURCES/en.lproj/Localizable.strings" ]] || fail "app English localization is missing"
+[[ -f "$APP_RESOURCES/zh-Hans.lproj/Localizable.strings" ]] || fail "app Simplified Chinese localization is missing"
+[[ -d "$CORE_RESOURCE_BUNDLE" ]] || fail "core SwiftPM resource bundle is missing"
 plutil -lint "$INFO_PLIST" >/dev/null || fail "Info.plist is invalid"
 
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST")"
@@ -56,6 +62,16 @@ grep -q -- "--launch-baseline" "$ROOT_DIR/script/build_and_run.sh" \
   || fail "build_and_run must expose a launch performance baseline mode"
 [[ -x "$ROOT_DIR/script/check_launch_performance.sh" ]] \
   || fail "launch performance gate is missing or not executable"
+
+grep -Fq ".frame(minHeight: 120, idealHeight: 132, maxHeight: 140)" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
+  || fail "compact empty states must keep the shared 120-140 point height"
+grep -Fq "density: .compactPane" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
+  || fail "the image workbench empty state must use compact density"
+grep -Fq "summary.imageCount > 0" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
+  || fail "the image workbench must hide refresh when no images exist"
 
 if [[ "$MODE" == "launch" ]]; then
   bash "$ROOT_DIR/script/check_launch_performance.sh"

@@ -9,6 +9,11 @@ struct AIChatContextInspectorView: View {
   @State private var inputText = ""
   @State private var isSubmitting = false
   @State private var sendTask: Task<Void, Never>?
+  @State private var draftDiffPreview: AIChatDraftDiffPreview?
+  @State private var visibleMessageLimit = 8
+  @State private var isFollowingLatestMessage = true
+  @State private var messageAnchorToPreserve: AIPublishingChatMessage.ID?
+  @FocusState private var isComposerFocused: Bool
 
   init(store: WorkbenchStore) {
     _ai = ObservedObject(wrappedValue: store.ai)
@@ -25,19 +30,58 @@ struct AIChatContextInspectorView: View {
         Divider()
       }
 
-      ScrollViewReader { proxy in
-        ScrollView {
-          AIChatContextInspectorContent(state: state, actions: actions)
-            .padding(16)
-        }
-        .onAppear {
-          scrollToLatestMessage(using: proxy, animated: false)
-        }
-        .onChange(of: latestMessageID) { _, _ in
-          scrollToLatestMessage(using: proxy)
-        }
-        .onChange(of: latestMessageContent) { _, _ in
-          scrollToLatestMessage(using: proxy)
+      GeometryReader { viewport in
+        ScrollViewReader { proxy in
+          ScrollView {
+            AIChatContextInspectorContent(state: state, actions: actions)
+              .padding(16)
+
+            Color.clear
+              .frame(height: 1)
+              .background {
+                GeometryReader { geometry in
+                  Color.clear.preference(
+                    key: AIChatScrollBottomPreferenceKey.self,
+                    value: geometry.frame(in: .named("ai-chat-scroll")).maxY
+                  )
+                }
+              }
+          }
+          .coordinateSpace(name: "ai-chat-scroll")
+          .onPreferenceChange(AIChatScrollBottomPreferenceKey.self) { bottomPosition in
+            guard bottomPosition > 0 else { return }
+            isFollowingLatestMessage = bottomPosition <= viewport.size.height + 56
+          }
+          .overlay(alignment: .bottomTrailing) {
+            if !isFollowingLatestMessage, latestMessageID != nil {
+              Button {
+                isFollowingLatestMessage = true
+                scrollToLatestMessage(using: proxy)
+              } label: {
+                Label("跳到最新", systemImage: "arrow.down.circle.fill")
+              }
+              .controlSize(.small)
+              .padding(10)
+            }
+          }
+          .onAppear {
+            scrollToLatestMessage(using: proxy, animated: false)
+          }
+          .onChange(of: latestMessageID) { _, _ in
+            guard isFollowingLatestMessage else { return }
+            scrollToLatestMessage(using: proxy)
+          }
+          .onChange(of: latestMessageContent) { _, _ in
+            guard isFollowingLatestMessage else { return }
+            scrollToLatestMessage(using: proxy)
+          }
+          .onChange(of: visibleMessageLimit) { _, _ in
+            guard let anchor = messageAnchorToPreserve else { return }
+            DispatchQueue.main.async {
+              proxy.scrollTo(anchor, anchor: .top)
+              messageAnchorToPreserve = nil
+            }
+          }
         }
       }
 
@@ -53,11 +97,33 @@ struct AIChatContextInspectorView: View {
       guard let draft = ai.selectedChatDraft else { return }
       await ai.refreshChatImageWorkbenchReportInBackground(for: draft)
     }
-    .onAppear(perform: applyPendingQuickPrompt)
+    .onAppear {
+      applyPendingQuickPrompt()
+      focusComposerIfAvailable()
+    }
     .onChange(of: ai.pendingQuickPrompt?.id) { _, _ in
       applyPendingQuickPrompt()
     }
-    .onDisappear(perform: stopSending)
+    .onChange(of: isAIKeyMissing) { _, isMissing in
+      if !isMissing {
+        focusComposerIfAvailable()
+      }
+    }
+    .onChange(of: ai.chatDraftID) { _, _ in
+      visibleMessageLimit = 8
+      isFollowingLatestMessage = true
+    }
+    .onChange(of: ai.chatMessages.count) { _, count in
+      if count == 0 {
+        visibleMessageLimit = 8
+        isFollowingLatestMessage = true
+      }
+    }
+    .sheet(item: $draftDiffPreview) { preview in
+      AIChatDraftDiffPreviewSheet(preview: preview) {
+        applyDraftDiffPreview(preview)
+      }
+    }
   }
 
   private var missingAIKeyBanner: some View {
@@ -95,39 +161,39 @@ struct AIChatContextInspectorView: View {
   }
 
   private var inspectorHeader: some View {
-    HStack(spacing: 10) {
-      Image(systemName: "sparkles")
-        .foregroundStyle(WorkbenchTheme.primary)
+    VStack(alignment: .leading, spacing: 9) {
+      HStack(spacing: 10) {
+        Image(systemName: "sparkles")
+          .foregroundStyle(WorkbenchTheme.primary)
 
-      VStack(alignment: .leading, spacing: 2) {
         Text("AI 助手")
           .font(.headline)
-        if let modelSummary = state.draft?.modelSummary {
-          Text(modelSummary)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
+
+        Spacer(minLength: 8)
+
+        assistantOptionsMenu
+
+        Button {
+          ai.closeAssistantPanel()
+        } label: {
+          Image(systemName: "xmark")
         }
+        .buttonStyle(.plain)
+        .help("关闭 AI 助手")
+        .accessibilityLabel("关闭 AI 助手")
       }
 
-      Spacer(minLength: 8)
-
-      assistantOptionsMenu
-
-      Button {
-        ai.hideAssistant()
-      } label: {
-        Image(systemName: "xmark")
+      HStack(spacing: 7) {
+        modelSelectionMenu
+        reasoningLevelMenu
+        Spacer(minLength: 0)
       }
-      .buttonStyle(.plain)
-      .help("关闭 AI 助手")
-      .accessibilityLabel("关闭 AI 助手")
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 11)
   }
 
-  private var assistantOptionsMenu: some View {
+  private var modelSelectionMenu: some View {
     Menu {
       Picker("模型档位", selection: modelGradeBinding) {
         ForEach(AIChatModelGrade.allCases) { grade in
@@ -135,9 +201,73 @@ struct AIChatContextInspectorView: View {
         }
       }
 
+      if let modelSelection {
+        Divider()
+
+        ForEach(modelSelection.modelCandidates, id: \.self) { model in
+          Button {
+            selectModel(model)
+          } label: {
+            Label(
+              model,
+              systemImage: model == modelSelection.activeModel ? "checkmark" : "cpu"
+            )
+          }
+        }
+
+        Divider()
+
+        Button {
+          ai.resetChatModelToProfileDefault()
+        } label: {
+          Label("恢复站点默认模型", systemImage: "arrow.counterclockwise")
+        }
+      }
+    } label: {
+      Label(modelMenuTitle, systemImage: "cpu")
+        .workbenchTruncatedIdentity(modelMenuTitle)
+    }
+    .controlSize(.small)
+    .help(state.draft?.modelSummary ?? "更换 AI 模型")
+    .accessibilityLabel("AI 模型")
+    .accessibilityValue(state.draft?.modelSummary ?? "未选择")
+  }
+
+  private var reasoningLevelMenu: some View {
+    Menu {
+      Picker("思考级别", selection: reasoningLevelBinding) {
+        ForEach(AIChatReasoningLevel.allCases) { level in
+          Text(localizedReasoningLevelTitle(level)).tag(level)
+        }
+      }
+    } label: {
+      Label(
+        "思考 \(localizedReasoningLevelTitle(ai.chatReasoningLevel))",
+        systemImage: "brain.head.profile"
+      )
+    }
+    .controlSize(.small)
+    .disabled(ai.selectedChatDraft == nil || !supportsSelectableReasoningLevel)
+    .help(
+      supportsSelectableReasoningLevel
+        ? "切换当前对话的思考级别"
+        : "当前 AI 服务暂不支持单独切换思考级别"
+    )
+    .accessibilityLabel("AI 思考级别")
+    .accessibilityValue(localizedReasoningLevelTitle(ai.chatReasoningLevel))
+  }
+
+  private var assistantOptionsMenu: some View {
+    Menu {
       Picker("上下文", selection: contextModeBinding) {
         ForEach(AIPublishingChatContextMode.allCases) { mode in
           Text(mode.localizedDisplayNameKey).tag(mode)
+        }
+      }
+
+      Picker("资料库", selection: knowledgePolicyBinding) {
+        ForEach(KnowledgeRetrievalPolicy.allCases) { policy in
+          Text(localizedKnowledgePolicyTitle(policy)).tag(policy)
         }
       }
 
@@ -160,6 +290,7 @@ struct AIChatContextInspectorView: View {
             Menu(prompt.title) {
               Button {
                 inputText = prompt.prompt
+                focusComposerIfAvailable()
               } label: {
                 Label("使用", systemImage: "text.cursor")
               }
@@ -186,7 +317,7 @@ struct AIChatContextInspectorView: View {
       Image(systemName: "slider.horizontal.3")
     }
     .menuIndicator(.hidden)
-    .help("模型、上下文与自定义提示")
+    .help("上下文、资料库与自定义提示")
     .accessibilityLabel("AI 助手选项")
   }
 
@@ -205,6 +336,7 @@ struct AIChatContextInspectorView: View {
           .textFieldStyle(.roundedBorder)
           .lineLimit(2...6)
           .disabled(ai.selectedChatDraft == nil || isSending || isAIKeyMissing)
+          .focused($isComposerFocused)
           .accessibilityLabel("AI 消息")
 
         Button(action: handleSendButton) {
@@ -272,7 +404,7 @@ struct AIChatContextInspectorView: View {
         selectedParagraphTitle: contextDetails.selectedParagraphTitle,
         selectedParagraphPreview: contextDetails.selectedParagraphPreview,
         chatMessage: ai.chatMessage,
-        messages: ai.chatDraftID == draft.id ? Array(ai.chatMessages.suffix(8)) : [],
+        messages: ai.chatDraftID == draft.id ? Array(ai.chatMessages.suffix(visibleMessageLimit)) : [],
         totalMessageCount: ai.chatDraftID == draft.id ? ai.chatMessages.count : 0,
         relatedSuggestions: relationSuggestions.prefix(4).map { suggestion in
           AIChatRelatedSuggestionPresentation(
@@ -311,6 +443,12 @@ struct AIChatContextInspectorView: View {
       },
       appendReply: { message, draft in
         append(message, to: draft)
+      },
+      loadEarlierMessages: {
+        loadEarlierMessages()
+      },
+      openCitation: { citation in
+        _ = ai.openKnowledgeCitation(citation)
       }
     )
   }
@@ -352,10 +490,86 @@ struct AIChatContextInspectorView: View {
     )
   }
 
+  private var reasoningLevelBinding: Binding<AIChatReasoningLevel> {
+    Binding(
+      get: { ai.chatReasoningLevel },
+      set: { ai.setChatReasoningLevel($0) }
+    )
+  }
+
+  private var modelSelection: AIChatModelSelectionPresentation? {
+    guard let draft = ai.selectedChatDraft else { return nil }
+    return AIChatModelSelectionPresentationService.presentation(
+      grade: ai.chatModelGrade,
+      selectedModel: ai.chatSelectedModel,
+      config: ai.chatProfile(for: draft).aiProviderConfig
+    )
+  }
+
+  private var modelMenuTitle: String {
+    guard let activeModel = modelSelection?.activeModel.nilIfEmpty else {
+      return "选择模型"
+    }
+    let maximumLength = 22
+    guard activeModel.count > maximumLength else { return activeModel }
+    return "\(activeModel.prefix(maximumLength))…"
+  }
+
+  private var supportsSelectableReasoningLevel: Bool {
+    guard let draft = ai.selectedChatDraft else { return false }
+    return ai.chatProfile(for: draft).aiProviderConfig.usesDeepSeekAPI
+  }
+
+  private func localizedReasoningLevelTitle(_ level: AIChatReasoningLevel) -> String {
+    switch level {
+    case .quick:
+      return String(localized: "快速")
+    case .standard:
+      return String(localized: "标准")
+    case .deep:
+      return String(localized: "深度")
+    }
+  }
+
+  private func localizedKnowledgePolicyTitle(_ policy: KnowledgeRetrievalPolicy) -> String {
+    switch policy {
+    case .off:
+      return String(localized: "关闭资料库")
+    case .automatic:
+      return String(localized: "自动检索")
+    case .pinnedOnly:
+      return String(localized: "仅固定资料")
+    }
+  }
+
+  private func selectModel(_ model: String) {
+    guard let draft = ai.selectedChatDraft else { return }
+    let config = ai.chatProfile(for: draft).aiProviderConfig
+    for grade in [AIChatModelGrade.standard, .highQuality, .fast] {
+      let gradeModel = AIChatModelCatalog.model(
+        for: grade,
+        config: config,
+        currentModel: ai.chatSelectedModel
+      )
+      if gradeModel == model {
+        ai.setChatModelGrade(grade)
+        return
+      }
+    }
+    ai.setChatCustomModel(model)
+  }
+
   private var contextModeBinding: Binding<AIPublishingChatContextMode> {
     Binding(
       get: { ai.chatContextMode },
       set: { ai.setChatContextMode($0) }
+    )
+  }
+
+  private var knowledgePolicyBinding: Binding<KnowledgeRetrievalPolicy> {
+    Binding(
+      get: { ai.chatKnowledgePolicy },
+      set: { ai.setChatKnowledgePolicy($0) }
     )
   }
 
@@ -381,6 +595,7 @@ struct AIChatContextInspectorView: View {
     clearsComposerOnAccept: Bool
   ) {
     guard !isSending else { return }
+    isFollowingLatestMessage = true
     let existingMessageIDs = Set(ai.chatMessages.map(\.id))
     isSubmitting = true
     sendTask = Task {
@@ -407,12 +622,27 @@ struct AIChatContextInspectorView: View {
     isSubmitting = false
   }
 
+  private func loadEarlierMessages() {
+    guard let context = state.draft,
+          context.totalMessageCount > context.messages.count else { return }
+    messageAnchorToPreserve = context.messages.first?.id
+    visibleMessageLimit = min(context.totalMessageCount, visibleMessageLimit + 8)
+  }
+
   private func applyPendingQuickPrompt() {
     guard let prompt = ai.consumePendingQuickPrompt() else { return }
     if trimmedInput.isEmpty {
       inputText = prompt.prompt
     } else if trimmedInput != prompt.prompt {
       inputText += "\n\n\(prompt.prompt)"
+    }
+    focusComposerIfAvailable()
+  }
+
+  private func focusComposerIfAvailable() {
+    guard ai.selectedChatDraft != nil, !isAIKeyMissing else { return }
+    DispatchQueue.main.async {
+      isComposerFocused = true
     }
   }
 
@@ -433,8 +663,12 @@ struct AIChatContextInspectorView: View {
   }
 
   private func append(_ message: AIPublishingChatMessage, to draft: ArticleDraft) {
+    let content = KnowledgeCitationMarkdownService.appendingCitations(
+      to: message.content,
+      citations: message.knowledgeCitations
+    )
     guard let result = AIPublishingChatDraftApplicationService.applyAssistantContent(
-      message.content,
+      content,
       to: draft,
       mode: .appendToBody
     ) else {
@@ -442,9 +676,45 @@ struct AIChatContextInspectorView: View {
       return
     }
 
-    ai.updateChatDraft(result.draft)
+    draftDiffPreview = AIChatDraftDiffPreview(
+      originalDraft: draft,
+      updatedDraft: result.draft,
+      citations: message.knowledgeCitations
+    )
+    ai.setChatMessage("AI 修改预览已打开，接受后才会写入文章。")
+  }
+
+  private func applyDraftDiffPreview(_ preview: AIChatDraftDiffPreview) {
+    guard let current = ai.selectedChatDraft,
+          current.id == preview.originalDraft.id,
+          current.bodyMarkdown == preview.originalDraft.bodyMarkdown else {
+      ai.setChatMessage("文章已变化，这份 AI 修改预览未应用；请重新预览。")
+      return
+    }
+    ai.updateChatDraft(preview.updatedDraft)
     ai.saveChatDraftChanges()
-    ai.setChatMessage(result.action.statusMessage)
+    ai.recordKnowledgeBacklinks(
+      preview.citations,
+      target: KnowledgeBacklinkTarget(
+        kind: .articleDraft,
+        id: preview.updatedDraft.id.uuidString,
+        title: preview.updatedDraft.title,
+        location: "正文"
+      )
+    )
+    ai.setChatMessage(
+      preview.citationCount > 0
+        ? "已追加 AI 回复并插入资料库脚注。"
+        : "已接受 AI 修改并追加到文章末尾。"
+    )
+  }
+}
+
+private struct AIChatScrollBottomPreferenceKey: PreferenceKey {
+  static let defaultValue: CGFloat = 0
+
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    value = nextValue()
   }
 }
 
@@ -474,9 +744,9 @@ struct AIChatContextInspectorContent: View {
         EmptyStateView(
           title: "没有上下文",
           message: "选择文章后，这里显示 AI 对话上下文。",
-          systemImage: "sparkles"
+          systemImage: "sparkles",
+          density: .compactPane
         )
-        .frame(height: 260)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -517,8 +787,7 @@ struct AIChatInspectorStatRow: View {
         .foregroundStyle(.secondary)
       Spacer()
       Text(value)
-        .lineLimit(1)
-        .truncationMode(.middle)
+        .workbenchTruncatedIdentity(value)
     }
     .font(.caption)
   }

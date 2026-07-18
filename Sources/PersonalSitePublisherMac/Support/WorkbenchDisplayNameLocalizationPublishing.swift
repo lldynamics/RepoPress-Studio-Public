@@ -105,6 +105,8 @@ extension PublishFileKind {
       return "display.publish-file-kind.markdown"
     case .image:
       return "display.publish-file-kind.image"
+    case .video:
+      return "display.publish-file-kind.video"
     }
   }
 
@@ -135,6 +137,8 @@ extension DraftVersionReason {
       return "display.draft-version-reason.before-restore"
     case .beforeDeletion:
       return "display.draft-version-reason.before-deletion"
+    case .beforeBatchProcessing:
+      return "display.draft-version-reason.before-batch-processing"
     }
   }
 

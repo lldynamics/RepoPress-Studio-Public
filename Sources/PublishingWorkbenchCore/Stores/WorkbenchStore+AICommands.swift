@@ -5,7 +5,8 @@ extension WorkbenchStore {
     aiStore.refreshAIKeyAvailability()
   }
 
-  func aiSaveAPIKey(_ token: String) {
+  @discardableResult
+  func aiSaveAPIKey(_ token: String) -> Bool {
     aiStore.saveAIAPIKey(token)
   }
 
@@ -35,6 +36,10 @@ extension WorkbenchStore {
 
   func aiSetChatModelGrade(_ grade: AIChatModelGrade) {
     aiStore.setAIChatModelGrade(grade)
+  }
+
+  func aiSetChatReasoningLevel(_ level: AIChatReasoningLevel) {
+    aiStore.setAIChatReasoningLevel(level)
   }
 
   func aiSetChatCustomModel(_ model: String) {

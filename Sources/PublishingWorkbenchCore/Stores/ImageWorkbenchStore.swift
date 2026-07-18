@@ -24,6 +24,7 @@ public final class ImageWorkbenchStore: ObservableObject {
   @Published public private(set) var imageReportLoadingDraftID: UUID?
   @Published public private(set) var backgroundSiteSummary: ImageWorkbenchSiteSummary?
   @Published public private(set) var isSiteSummaryLoading = false
+  @Published public private(set) var siteSummaryErrorMessage: String?
 
   init(
     store: WorkbenchStore,
@@ -85,7 +86,11 @@ public final class ImageWorkbenchStore: ObservableObject {
     imageBatchTask?.cancel()
   }
 
-  private func startImageBatch(_ operation: ImageBatchOperation, drafts: [ArticleDraft]) {
+  private func startImageBatch(
+    _ operation: ImageBatchOperation,
+    drafts: [ArticleDraft],
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>] = [:]
+  ) {
     guard !isImageBatchProcessing else {
       imageActionMessage = "已有图片处理任务正在运行，请先等待或取消。"
       return
@@ -107,6 +112,7 @@ public final class ImageWorkbenchStore: ObservableObject {
     let cancellationToken = ImageProcessingCancellationToken()
     let batchProcessor = batchProcessor
     let destinationRoot = persistence.imageOptimizationDirectoryURL
+    _ = store.recordVersionsBeforeBatchProcessing(draftIDs: Set(currentDrafts.map(\.id)))
     imageBatchOperationID = operationID
     imageBatchDraftBaselines = Dictionary(
       uniqueKeysWithValues: currentDrafts.compactMap { draft in
@@ -127,6 +133,7 @@ public final class ImageWorkbenchStore: ObservableObject {
         let result = try await batchProcessor.process(
           operation: operation,
           drafts: currentDrafts,
+          includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID,
           destinationRoot: destinationRoot,
           cancellationToken: cancellationToken,
           progress: { [weak self] progress in
@@ -340,6 +347,7 @@ public final class ImageWorkbenchStore: ObservableObject {
     siteSummaryGeneration &+= 1
     let generation = siteSummaryGeneration
     isSiteSummaryLoading = true
+    siteSummaryErrorMessage = nil
     owningStore.imageWorkbenchBackgroundStateDidChange()
 
     let service = imageWorkbenchService
@@ -360,14 +368,23 @@ public final class ImageWorkbenchStore: ObservableObject {
     guard ImageWorkbenchSiteSummaryInputSignature(
       drafts: owningStore.visibleDrafts,
       profile: owningStore.activeProfile
-    ) == signature,
-      case .success(let summary) = result else {
+    ) == signature else {
       owningStore.imageWorkbenchBackgroundStateDidChange()
       return
     }
 
-    siteSummaryBaseline = signature
-    backgroundSiteSummary = summary
+    switch result {
+    case .success(let summary):
+      siteSummaryBaseline = signature
+      backgroundSiteSummary = summary
+      siteSummaryErrorMessage = nil
+    case .failure(let error):
+      guard !(error is CancellationError) else {
+        owningStore.imageWorkbenchBackgroundStateDidChange()
+        return
+      }
+      siteSummaryErrorMessage = error.localizedDescription
+    }
     owningStore.imageWorkbenchBackgroundStateDidChange()
   }
 
@@ -432,13 +449,29 @@ public final class ImageWorkbenchStore: ObservableObject {
   }
 
   public func fillMissingImageMetadataForVisibleDrafts() {
+    let selection = Dictionary(
+      uniqueKeysWithValues: visibleDrafts.map { draft in
+        (draft.id, Set(draft.attachments.map(\.id)))
+      }
+    )
+    fillMissingImageMetadataForVisibleDrafts(includedAttachmentIDsByDraftID: selection)
+  }
+
+  public func fillMissingImageMetadataForVisibleDrafts(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
     var updatedDraftsByID: [UUID: ArticleDraft] = [:]
     var filledAltTextCount = 0
     var filledCaptionCount = 0
     var updatedMarkdownReferenceCount = 0
 
     for draft in visibleDrafts {
-      let result = imageWorkbenchService.fillMissingMetadata(draft: draft)
+      guard let includedAttachmentIDs = includedAttachmentIDsByDraftID[draft.id],
+            !includedAttachmentIDs.isEmpty else { continue }
+      let result = imageWorkbenchService.fillMissingMetadata(
+        draft: draft,
+        includedAttachmentIDs: includedAttachmentIDs
+      )
       let changedCount = result.filledAltTextCount
         + result.filledCaptionCount
         + result.updatedMarkdownReferenceCount
@@ -456,6 +489,7 @@ public final class ImageWorkbenchStore: ObservableObject {
       return
     }
 
+    _ = store.recordVersionsBeforeBatchProcessing(draftIDs: Set(updatedDraftsByID.keys))
     drafts = drafts.map { updatedDraftsByID[$0.id] ?? $0 }
     runPreflight()
     scheduleImageWorkbenchCachesRefresh()
@@ -475,6 +509,16 @@ public final class ImageWorkbenchStore: ObservableObject {
     startImageBatch(.optimizeJPEG, drafts: visibleDrafts)
   }
 
+  public func optimizeVisibleDraftJPEGImages(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    startImageBatch(
+      .optimizeJPEG,
+      drafts: visibleDrafts.filter { includedAttachmentIDsByDraftID[$0.id]?.isEmpty == false },
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
+  }
+
   public func convertSelectedDraftImagesToWebP() {
     guard let selectedDraft else {
       imageActionMessage = "请先选择一篇文章。"
@@ -486,6 +530,16 @@ public final class ImageWorkbenchStore: ObservableObject {
 
   public func convertVisibleDraftImagesToWebP() {
     startImageBatch(.convertWebP, drafts: visibleDrafts)
+  }
+
+  public func convertVisibleDraftImagesToWebP(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    startImageBatch(
+      .convertWebP,
+      drafts: visibleDrafts.filter { includedAttachmentIDsByDraftID[$0.id]?.isEmpty == false },
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
   }
 
   public func optimizeSelectedDraftSVGImages() {
@@ -501,6 +555,16 @@ public final class ImageWorkbenchStore: ObservableObject {
     startImageBatch(.optimizeSVG, drafts: visibleDrafts)
   }
 
+  public func optimizeVisibleDraftSVGImages(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    startImageBatch(
+      .optimizeSVG,
+      drafts: visibleDrafts.filter { includedAttachmentIDsByDraftID[$0.id]?.isEmpty == false },
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
+  }
+
   public func resizeSelectedDraftLargeImages() {
     guard let selectedDraft else {
       imageActionMessage = "请先选择一篇文章。"
@@ -512,6 +576,16 @@ public final class ImageWorkbenchStore: ObservableObject {
 
   public func resizeVisibleDraftLargeImages() {
     startImageBatch(.resizeLargeImages, drafts: visibleDrafts)
+  }
+
+  public func resizeVisibleDraftLargeImages(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    startImageBatch(
+      .resizeLargeImages,
+      drafts: visibleDrafts.filter { includedAttachmentIDsByDraftID[$0.id]?.isEmpty == false },
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
   }
 
   public func cropSelectedDraftCoverImageForSocialPreview() {

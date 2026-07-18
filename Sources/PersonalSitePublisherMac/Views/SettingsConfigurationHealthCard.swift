@@ -9,7 +9,6 @@ struct SettingsConfigurationHealthCard: View {
   let isProUnlocked: Bool
   let proSource: String
   let selectDestination: (SettingsConfigurationHealthDestination) -> Void
-  @State private var isExpanded = false
 
   private var requiredItems: [SettingsConfigurationHealthItem] {
     [
@@ -22,6 +21,10 @@ struct SettingsConfigurationHealthCard: View {
     requiredItems + [repositoryTokenItem, aiKeyItem, privacyItem, proItem]
   }
 
+  private var supportingItems: [SettingsConfigurationHealthItem] {
+    Array(allItems.dropFirst(requiredItems.count))
+  }
+
   private var unresolvedItems: [SettingsConfigurationHealthItem] {
     requiredItems.filter { !$0.isReady }
   }
@@ -31,59 +34,66 @@ struct SettingsConfigurationHealthCard: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .firstTextBaseline, spacing: 10) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text("发布基础配置")
-            .font(.headline)
-          summaryText
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-
-        Spacer()
-
-        Label(LocalizedStringKey(overallStatusText), systemImage: overallStatusImage)
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(overallStatusColor)
-          .padding(.horizontal, 10)
-          .padding(.vertical, 5)
-          .background(overallStatusColor.opacity(0.12), in: Capsule())
-
-        if isComplete {
-          Button {
-            isExpanded.toggle()
-          } label: {
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-          }
-          .buttonStyle(.borderless)
-          .accessibilityLabel(isExpanded ? "收起配置详情" : "展开配置详情")
-        }
+    ScrollView {
+      VStack(alignment: .leading, spacing: 20) {
+        statusSummary
+        configurationSection(title: String(localized: "发布基础"), items: requiredItems)
+        configurationSection(title: String(localized: "功能与权限"), items: supportingItems)
       }
-
-      if !isComplete || isExpanded {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
-          ForEach(isComplete ? allItems : unresolvedItems) { item in
-            Button {
-              selectDestination(item.destination)
-            } label: {
-              SettingsConfigurationHealthTile(item: item, showsActionIndicator: true)
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint(item.actionTitle)
-          }
-        }
-      }
+      .padding(18)
     }
-    .padding(12)
-    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("配置状态")
+    .accessibilityValue("\(readyRequiredCount)/\(requiredItems.count) 项基础配置已就绪")
+  }
+
+  private var statusSummary: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 12) {
+      VStack(alignment: .leading, spacing: 3) {
+        Text("当前站点")
+          .font(.headline)
+        summaryText
+          .font(.callout)
+          .foregroundStyle(.secondary)
+      }
+
+      Spacer()
+
+      Label(LocalizedStringKey(overallStatusText), systemImage: overallStatusImage)
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(overallStatusColor)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(overallStatusColor.opacity(0.12), in: Capsule())
+    }
+    .padding(14)
+    .background(WorkbenchBackgroundStyle.panel, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .overlay {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         .strokeBorder(Color(nsColor: .separatorColor).opacity(0.55))
     }
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("发布基础配置")
-    .accessibilityValue("\(readyRequiredCount)/\(requiredItems.count) 项基础配置已就绪")
+  }
+
+  private func configurationSection(
+    title: String,
+    items: [SettingsConfigurationHealthItem]
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(title)
+        .font(.headline)
+
+      LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], spacing: 10) {
+        ForEach(items) { item in
+          Button {
+            selectDestination(item.destination)
+          } label: {
+            SettingsConfigurationHealthTile(item: item, showsActionIndicator: true)
+          }
+          .buttonStyle(.plain)
+          .accessibilityHint(item.actionTitle)
+        }
+      }
+    }
   }
 
   private var repositoryItem: SettingsConfigurationHealthItem {
@@ -101,12 +111,12 @@ struct SettingsConfigurationHealthCard: View {
 
   private var repositoryTokenItem: SettingsConfigurationHealthItem {
     SettingsConfigurationHealthItem(
-      title: "仓库 Token",
+      title: "仓库访问令牌",
       detail: repositoryTokenAvailability.hasToken ? Text("已保存，可用于线上发布") : Text("未保存，线上发布会受限"),
       systemImage: "key",
       state: repositoryTokenAvailability.hasToken ? .ready : .info,
       destination: .repositoryToken,
-      actionTitle: String(localized: "打开 Token 设置")
+      actionTitle: String(localized: "打开访问令牌设置")
     )
   }
 
@@ -131,14 +141,14 @@ struct SettingsConfigurationHealthCard: View {
       && !profile.publicImagePathPattern.trimmedForPublishing.isEmpty
       && !profile.dateFormat.trimmedForPublishing.isEmpty
     return SettingsConfigurationHealthItem(
-      title: "默认规则",
+      title: "发布规则",
       detail: hasPublishingPaths
         ? Text("\(profile.siteKind.localizedDisplayName) · 路径规则已配置")
         : Text("路径或日期规则缺失"),
       systemImage: "gearshape.2",
       state: hasPublishingPaths ? .ready : .warning,
       destination: .defaultRules,
-      actionTitle: String(localized: "打开默认规则")
+      actionTitle: String(localized: "打开发布规则")
     )
   }
 
@@ -175,7 +185,7 @@ struct SettingsConfigurationHealthCard: View {
   }
 
   private var overallStatusColor: Color {
-    readyRequiredCount == requiredItems.count ? .green : .orange
+    readyRequiredCount == requiredItems.count ? WorkbenchTheme.success : WorkbenchTheme.warning
   }
 
   private var isComplete: Bool {
@@ -194,6 +204,7 @@ private struct SettingsConfigurationHealthTile: View {
   let showsActionIndicator: Bool
 
   var body: some View {
+    let localizedTitle = Bundle.main.localizedString(forKey: item.title, value: item.title, table: nil)
     HStack(alignment: .top, spacing: 8) {
       Image(systemName: item.systemImage)
         .foregroundStyle(.secondary)
@@ -202,7 +213,7 @@ private struct SettingsConfigurationHealthTile: View {
       VStack(alignment: .leading, spacing: 2) {
         Text(LocalizedStringKey(item.title))
           .font(.caption.weight(.semibold))
-          .lineLimit(1)
+          .workbenchTruncatedIdentity(localizedTitle)
         item.detail
           .font(.caption2)
           .foregroundStyle(.secondary)
@@ -227,7 +238,7 @@ private struct SettingsConfigurationHealthTile: View {
     }
     .padding(8)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color(nsColor: .controlBackgroundColor).opacity(0.7), in: RoundedRectangle(cornerRadius: 10))
+    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .combine)
     .accessibilityLabel(Text(LocalizedStringKey(item.title)))
     .accessibilityValue(item.detail)

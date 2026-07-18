@@ -58,7 +58,7 @@ public final class RepositoryStore: ObservableObject {
     repositoryAutoSyncSettings: RepositoryAutoSyncSettings = .default,
     repositoryAutoSyncState: RepositoryAutoSyncState = .idle,
     repositoryService: LocalRepositoryService = LocalRepositoryService(),
-    repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(service: "PersonalSitePublisher.Repository"),
+    repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.repository),
     remoteRepositoryPublishService: RemoteRepositoryPublishService = RemoteRepositoryPublishService(),
     repositorySyncCommandBuilder: RepositorySyncCommandBuilder = RepositorySyncCommandBuilder()
   ) {
@@ -220,15 +220,23 @@ public final class RepositoryStore: ObservableObject {
   public var repositoryAutoSyncReviewMarkdown: String {
     var lines = [
       """
-    # 仓库自动同步审阅
+    # 仓库远端自动检查审阅
 
     - 状态：\(repositoryAutoSyncState.status.displayName)
     - 启用：\(repositoryAutoSyncSettings.isEnabled ? "是" : "否")
     - 间隔：\(repositoryAutoSyncSettings.normalizedIntervalMinutes) 分钟
+    - 自动导入远端文章：\(repositoryAutoSyncSettings.autoImportRemoteArticles ? "是" : "否")
     - 远端变更：\(repositoryAutoSyncState.remoteChangedFileCount)
     - 消息：\(repositoryAutoSyncState.message)
     """
     ]
+    if let lastAutoImportAt = repositoryAutoSyncState.lastAutoImportAt {
+      lines.append("\n## 最近自动导入\n")
+      lines.append("- 时间：\(lastAutoImportAt)")
+      lines.append("- 导入文章：\(repositoryAutoSyncState.lastAutoImportedArticleCount)")
+      lines.append("- 本地冲突：\(repositoryAutoSyncState.lastAutoImportConflictCount)")
+      lines.append("- 远端删除待确认：\(repositoryAutoSyncState.lastAutoImportDeletionCount)")
+    }
     if let provider = repositoryAutoSyncState.lastRemotePublishProvider,
        let mode = repositoryAutoSyncState.lastRemotePublishMode {
       lines.append("\n## 最近线上写入\n")
@@ -241,7 +249,7 @@ public final class RepositoryStore: ObservableObject {
 
   public func applyDetectedRepositoryRemote(store: WorkbenchStore) {
     guard let remote = repositoryReport?.originRemote else {
-      store.setPublishActionMessage("没有检测到 origin 远端。")
+      store.setPublishActionMessage(CoreL10n.text("没有检测到 origin 远端。"))
       return
     }
     var profile = store.activeProfile
@@ -253,7 +261,7 @@ public final class RepositoryStore: ObservableObject {
       profile.branch = detectedBranch
     }
     store.updateActiveProfile(profile)
-    store.setPublishActionMessage("已使用 \(remote.displayName) 更新 PR/MR 配置。")
+    store.setPublishActionMessage(CoreL10n.format("已使用 %@ 更新 PR/MR 配置。", remote.displayName))
     store.save()
   }
 
@@ -294,13 +302,13 @@ public final class RepositoryStore: ObservableObject {
     case .success:
       if alignPublishTarget(profileID: profile.id, branchName: branchName, store: store) {
         await scanRepositoryAsync(store: store)
-        store.setPublishActionMessage("已切换本地工作分支并将发布目标设为 \(branchName)。")
+        store.setPublishActionMessage(CoreL10n.format("已切换本地工作分支并将发布目标设为 %@。", branchName))
       } else {
-        store.setPublishActionMessage("原站点仓库已切换到 \(branchName)；当前站点已变化，未覆盖当前界面状态。")
+        store.setPublishActionMessage(CoreL10n.format("原站点仓库已切换到 %@；当前站点已变化，未覆盖当前界面状态。", branchName))
       }
     case .failure(let error):
       let prefix = operation.stillMatches(store.activeProfile) ? "切换分支失败" : "原站点切换分支失败"
-      store.setPublishActionMessage("\(prefix)：\(error.localizedDescription)")
+      store.setPublishActionMessage(CoreL10n.format("%@：%@", prefix, error.localizedDescription))
     }
   }
 
@@ -336,13 +344,13 @@ public final class RepositoryStore: ObservableObject {
     case .success:
       if alignPublishTarget(profileID: profile.id, branchName: branchName, store: store) {
         await scanRepositoryAsync(store: store)
-        store.setPublishActionMessage("已创建并切换本地工作分支：\(branchName)。")
+        store.setPublishActionMessage(CoreL10n.format("已创建并切换本地工作分支：%@。", branchName))
       } else {
-        store.setPublishActionMessage("原站点仓库已创建并切换到 \(branchName)；当前站点已变化，未覆盖当前界面状态。")
+        store.setPublishActionMessage(CoreL10n.format("原站点仓库已创建并切换到 %@；当前站点已变化，未覆盖当前界面状态。", branchName))
       }
     case .failure(let error):
       let prefix = operation.stillMatches(store.activeProfile) ? "创建分支失败" : "原站点创建分支失败"
-      store.setPublishActionMessage("\(prefix)：\(error.localizedDescription)")
+      store.setPublishActionMessage(CoreL10n.format("%@：%@", prefix, error.localizedDescription))
     }
   }
 
@@ -438,14 +446,14 @@ public final class RepositoryStore: ObservableObject {
   ) async -> Bool {
     guard repositoryAutoSyncSettings.isEnabled else {
       repositoryAutoSyncState.status = .disabled
-      repositoryAutoSyncState.message = "自动同步未启用。"
+      repositoryAutoSyncState.message = CoreL10n.text("自动检查远端未启用。")
       return false
     }
     guard !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty else {
       repositoryAutoSyncState.status = .waitingForRepository
       repositoryAutoSyncState.lastRunAt = now
       repositoryAutoSyncState.nextRunAt = repositoryAutoSyncSettings.nextRunDate(after: now)
-      repositoryAutoSyncState.message = "自动同步等待本地仓库路径。"
+      repositoryAutoSyncState.message = CoreL10n.text("自动检查远端等待本地仓库路径。")
       store.save()
       return true
     }
@@ -465,7 +473,10 @@ public final class RepositoryStore: ObservableObject {
         repositoryAutoSyncState.status = .fetchFailed
         repositoryAutoSyncState.lastRunAt = now
         repositoryAutoSyncState.nextRunAt = repositoryAutoSyncSettings.nextRunDate(after: now)
-        repositoryAutoSyncState.message = "自动同步 Fetch 失败，已保留上次扫描结果：\(fetch.message)"
+        repositoryAutoSyncState.message = CoreL10n.format(
+          "自动检查远端 Fetch 失败，已保留上次检查结果：%@",
+          fetch.message
+        )
         store.save()
         return true
       }
@@ -477,24 +488,96 @@ public final class RepositoryStore: ObservableObject {
     repositoryAutoSyncState.status = .scanned
     repositoryAutoSyncState.lastRunAt = now
     repositoryAutoSyncState.nextRunAt = repositoryAutoSyncSettings.nextRunDate(after: now)
-    repositoryAutoSyncState.remoteChangedFileCount = repositoryReport?.remoteChangedFiles.count ?? 0
-    repositoryAutoSyncState.remoteChangedPaths = repositoryReport?.remoteChangedFiles.map(\.displayPath) ?? []
-    let contentRoot = store.activeProfile.contentRoot.normalizedRelativePath() + "/"
-    let importablePaths = repositoryAutoSyncState.remoteChangedPaths.filter {
-      $0.normalizedRelativePath().hasPrefix(contentRoot)
-        && ["md", "markdown", "mdx"].contains(URL(fileURLWithPath: $0).pathExtension.lowercased())
-    }
+    let detectedRemoteFiles = repositoryReport?.remoteChangedFiles ?? []
+    let detectedRemoteCount = detectedRemoteFiles.count
+    repositoryAutoSyncState.remoteChangedFileCount = detectedRemoteCount
+    repositoryAutoSyncState.remoteChangedPaths = detectedRemoteFiles.map(\.displayPath)
+    let articleFiles = repositoryReport?.remoteChangedFilesForRole(
+      role: .article,
+      contentRoot: store.activeProfile.contentRoot,
+      assetRoot: store.activeProfile.assetRoot
+    ) ?? []
+    let importablePaths = articleFiles
+      .filter { $0.kind != .deleted }
+      .map { $0.displayPath.normalizedRelativePath() }
     repositoryAutoSyncState.importableRemoteArticleCount = importablePaths.count
     repositoryAutoSyncState.nonArticleRemoteChangedFileCount = max(
       0,
-      repositoryAutoSyncState.remoteChangedFileCount - importablePaths.count
+      detectedRemoteCount - importablePaths.count
     )
-    repositoryAutoSyncState.message = "自动同步完成：发现 \(repositoryAutoSyncState.remoteChangedFileCount) 个远端变更，其中 \(importablePaths.count) 篇文章可导入。"
+
+    if repositoryAutoSyncSettings.autoImportRemoteArticles {
+      let locallyChangedPaths = Set(
+        (repositoryReport?.changedFiles ?? []).map { $0.displayPath.normalizedRelativePath() }
+      )
+      let candidatePaths = articleFiles
+        .filter { ($0.kind == .added || $0.kind == .modified) }
+        .map { $0.displayPath.normalizedRelativePath() }
+        .filter { !locallyChangedPaths.contains($0) }
+      let profile = store.activeProfile
+      let repositoryService = repositoryService
+      let snapshots = await Task.detached(priority: .utility) {
+        candidatePaths.compactMap {
+          repositoryService.remoteFileSnapshot(profile: profile, repositoryPath: $0)
+        }
+      }.value
+      guard isCurrentRepositoryAutoSync(generation: generation, operation: operation, store: store) else {
+        return false
+      }
+
+      let autoImport = store.autoImportRemoteArticleDrafts(
+        remoteFiles: articleFiles,
+        snapshots: snapshots,
+        locallyChangedPaths: locallyChangedPaths
+      )
+      let resolvedPaths = Set(autoImport.resolvedPaths.map { $0.normalizedRelativePath() })
+      repositoryAutoSyncState.remoteChangedPaths.removeAll {
+        resolvedPaths.contains($0.normalizedRelativePath())
+      }
+      repositoryAutoSyncState.remoteChangedFileCount = repositoryAutoSyncState.remoteChangedPaths.count
+      let pendingPaths = Set(repositoryAutoSyncState.remoteChangedPaths.map { $0.normalizedRelativePath() })
+      repositoryAutoSyncState.importableRemoteArticleCount = articleFiles.filter {
+        $0.kind != .deleted && pendingPaths.contains($0.displayPath.normalizedRelativePath())
+      }.count
+      repositoryAutoSyncState.nonArticleRemoteChangedFileCount = max(
+        0,
+        repositoryAutoSyncState.remoteChangedFileCount - repositoryAutoSyncState.importableRemoteArticleCount
+      )
+      repositoryAutoSyncState.lastAutoImportAt = now
+      repositoryAutoSyncState.lastAutoImportedArticleCount = autoImport.importedCount
+      repositoryAutoSyncState.lastAutoImportConflictCount = autoImport.conflictPaths.count + autoImport.failedPaths.count
+      repositoryAutoSyncState.lastAutoImportDeletionCount = autoImport.deletionPaths.count
+
+      if autoImport.pendingReviewCount > 0 {
+        repositoryAutoSyncState.message = CoreL10n.format(
+          "自动检查远端完成：发现 %d 个变更，已自动导入 %d 篇文章；%d 项保留手动审阅。",
+          detectedRemoteCount,
+          autoImport.importedCount,
+          autoImport.pendingReviewCount
+        )
+      } else {
+        repositoryAutoSyncState.message = CoreL10n.format(
+          "自动检查远端完成：发现 %d 个变更，已自动导入 %d 篇文章。",
+          detectedRemoteCount,
+          autoImport.importedCount
+        )
+      }
+    } else {
+      repositoryAutoSyncState.lastAutoImportedArticleCount = 0
+      repositoryAutoSyncState.lastAutoImportConflictCount = 0
+      repositoryAutoSyncState.lastAutoImportDeletionCount = 0
+      repositoryAutoSyncState.message = CoreL10n.format(
+        "自动检查远端完成：发现 %d 个远端变更，其中 %d 篇文章可手动导入。",
+        detectedRemoteCount,
+        importablePaths.count
+      )
+    }
     store.save()
     return true
   }
 
-  public func saveRepositoryAccessToken(_ token: String, store: WorkbenchStore) {
+  @discardableResult
+  public func saveRepositoryAccessToken(_ token: String, store: WorkbenchStore) -> Bool {
     do {
       try repositoryTokenStore.saveRepositoryToken(
         token.trimmedForPublishing,
@@ -504,8 +587,10 @@ public final class RepositoryStore: ObservableObject {
       repositoryTokenAvailability = try repositoryTokenAvailability(for: store.activeProfile)
       store.setPublishActionMessage(CoreL10n.text("仓库访问 Token 已保存到 Keychain。"))
       store.save()
+      return true
     } catch {
       store.setPublishActionMessage(CoreL10n.format("仓库 Token 保存失败：%@", error.localizedDescription))
+      return false
     }
   }
 
@@ -591,10 +676,6 @@ public final class RepositoryStore: ObservableObject {
       == remoteRepositoryPublishService.normalizedAPIBaseURLString(profileAPIBaseURL)
   }
 
-  private func repositoryTokenScope(for profile: SiteProfile) -> KeychainTokenScope {
-    .repository(profile.repositoryProvider)
-  }
-
   private func repositoryAccessToken(for profile: SiteProfile) throws -> String? {
     try repositoryTokenStore.repositoryToken(for: profile)
   }
@@ -605,7 +686,7 @@ public final class RepositoryStore: ObservableObject {
 
   @discardableResult
   public func createRemoteRepositoryForActiveProfile(
-    privateRepository: Bool = false,
+    privateRepository: Bool = true,
     store: WorkbenchStore
   ) async -> RemoteRepositoryCreationResult? {
     guard store.canUseProtectedWorkbench else {
@@ -628,12 +709,12 @@ public final class RepositoryStore: ObservableObject {
       guard remoteRepositoryCheckIsCurrent(operation, store: store) else { return nil }
       remoteRepositoryCreationResult = result
       repositoryTokenAvailability = try repositoryTokenAvailability(for: profile)
-      store.setPublishActionMessage("\(result.provider.displayName) 仓库已创建：\(result.repositoryName)。")
+      store.setPublishActionMessage(CoreL10n.format("%@ 仓库已创建：%@。", result.provider.displayName, result.repositoryName))
       store.save()
       return result
     } catch {
       guard remoteRepositoryCheckIsCurrent(operation, store: store) else { return nil }
-      store.setPublishActionMessage("远端仓库创建失败：\(error.localizedDescription)")
+      store.setPublishActionMessage(CoreL10n.format("远端仓库创建失败：%@", error.localizedDescription))
       return nil
     }
   }

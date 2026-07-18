@@ -47,6 +47,15 @@ extension WorkbenchStore {
   }
 
   @discardableResult
+  public func importMissingPrivateDraftsFromLocalRepository() async -> Int {
+    let insertedCount = await publishingStore.importMissingPrivateDraftsFromLocalRepository(store: self)
+    if insertedCount > 0 {
+      invalidateDraftDerivedCaches()
+    }
+    return insertedCount
+  }
+
+  @discardableResult
   public func importDraftFromLocalRepository(repositoryPath: String) -> LocalContentImportMergeSummary {
     let summary = publishingStore.importDraftFromLocalRepository(repositoryPath: repositoryPath, store: self)
     invalidateDraftDerivedCaches()
@@ -57,9 +66,27 @@ extension WorkbenchStore {
     try await publishingStore.makeContentMigrationPlan(sourceURL: sourceURL, store: self)
   }
 
+  public func refreshContentMigrationPlanReview(_ plan: ContentMigrationPlan) -> ContentMigrationPlan {
+    publishingStore.refreshContentMigrationPlanReview(plan, store: self)
+  }
+
   @discardableResult
   public func applyContentMigration(_ plan: ContentMigrationPlan) throws -> LocalContentImportMergeSummary {
     let summary = try publishingStore.applyContentMigration(plan, store: self)
+    invalidateDraftDerivedCaches()
+    return summary
+  }
+
+  @discardableResult
+  public func applyContentMigration(
+    _ plan: ContentMigrationPlan,
+    selectedDraftIDs: Set<UUID>
+  ) throws -> LocalContentImportMergeSummary {
+    let summary = try publishingStore.applyContentMigration(
+      plan,
+      selectedDraftIDs: selectedDraftIDs,
+      store: self
+    )
     invalidateDraftDerivedCaches()
     return summary
   }
@@ -79,9 +106,39 @@ extension WorkbenchStore {
   }
 
   @discardableResult
+  public func importRemoteArticleDraftsFromRepository(
+    repositoryPaths: [String]
+  ) -> LocalContentImportMergeSummary {
+    let summary = publishingStore.importRemoteArticleDraftsFromRepository(
+      repositoryPaths: repositoryPaths,
+      store: self
+    )
+    invalidateDraftDerivedCaches()
+    return summary
+  }
+
+  @discardableResult
   public func importRemoteDraftFromRepository(repositoryPath: String) -> LocalContentImportMergeSummary {
     let summary = publishingStore.importRemoteDraftFromRepository(repositoryPath: repositoryPath, store: self)
     invalidateDraftDerivedCaches()
+    return summary
+  }
+
+  @discardableResult
+  func autoImportRemoteArticleDrafts(
+    remoteFiles: [RepositoryChangedFile],
+    snapshots: [RepositoryFileSnapshot],
+    locallyChangedPaths: Set<String>
+  ) -> RemoteArticleAutoImportSummary {
+    let summary = publishingStore.autoImportRemoteArticleDrafts(
+      remoteFiles: remoteFiles,
+      snapshots: snapshots,
+      locallyChangedPaths: locallyChangedPaths,
+      store: self
+    )
+    if summary.importedCount > 0 || summary.unchangedCount > 0 {
+      invalidateDraftDerivedCaches()
+    }
     return summary
   }
 }

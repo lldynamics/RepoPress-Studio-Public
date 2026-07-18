@@ -6,7 +6,8 @@ struct ProSettingsState {
   let summary: ProStatusSummary
   let latestBlockNotice: ProFeatureBlockNotice?
   let isUnlocked: Bool
-  let productID: String?
+  let productDisplayPrice: String?
+  let purchaseTypeDisplayName: String?
   let aiUsed: Int
   let aiRemaining: Int
   let publishingUsed: Int
@@ -39,19 +40,9 @@ struct ProSettingsView: View {
 
       ProSubscriptionSection(
         isUnlocked: state.isUnlocked,
-        productID: state.productID,
+        productDisplayPrice: state.productDisplayPrice,
+        purchaseTypeDisplayName: state.purchaseTypeDisplayName,
         upgradeMessage: state.upgrade.message
-      )
-
-      ProBenefitsSection()
-
-      ProQuotaSection(
-        aiUsed: state.aiUsed,
-        aiRemaining: state.aiRemaining,
-        publishingUsed: state.publishingUsed,
-        publishingRemaining: state.publishingRemaining,
-        batchUsed: state.batchUsed,
-        batchRemaining: state.batchRemaining
       )
 
       ProPurchaseRestoreSection(
@@ -65,6 +56,18 @@ struct ProSettingsView: View {
         },
         message: state.monetizationMessage
       )
+
+      ProQuotaSection(
+        aiUsed: state.aiUsed,
+        aiRemaining: state.aiRemaining,
+        publishingUsed: state.publishingUsed,
+        publishingRemaining: state.publishingRemaining,
+        batchUsed: state.batchUsed,
+        batchRemaining: state.batchRemaining
+      )
+
+      ProBenefitsSection()
+
     }
     .formStyle(.grouped)
     .padding()

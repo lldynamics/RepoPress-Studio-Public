@@ -12,7 +12,9 @@ struct GeneralDraftLibraryDetailView: View {
         summary
         articleList
       }
+      .frame(maxWidth: 980, alignment: .leading)
       .padding(20)
+      .frame(maxWidth: .infinity, alignment: .center)
     }
   }
 
@@ -39,6 +41,7 @@ struct GeneralDraftLibraryDetailView: View {
         title: "需要至少两个发布站点",
         message: "在设置中新增另一个站点后，即可在站点之间复制文章。",
         systemImage: "globe.badge.chevron.backward",
+        density: .compactPane,
         actionTitle: "打开设置",
         actionSystemImage: "gearshape",
         action: { openSettings() }
@@ -49,6 +52,7 @@ struct GeneralDraftLibraryDetailView: View {
         title: "还没有可复制文章",
         message: "新建文章后，可以从这里复制到其他站点。",
         systemImage: "doc.on.doc",
+        density: .compactPane,
         actionTitle: "新建文章",
         actionSystemImage: "square.and.pencil",
         action: {
@@ -78,7 +82,7 @@ struct GeneralDraftLibraryDetailView: View {
       VStack(alignment: .leading, spacing: 4) {
         Text(item.title)
           .font(.callout.weight(.medium))
-          .lineLimit(1)
+          .workbenchTruncatedIdentity(item.title)
         Text("\(item.profileName) · \(item.updatedAt.workbenchShortText)")
           .font(.caption)
           .foregroundStyle(.secondary)
@@ -92,6 +96,7 @@ struct GeneralDraftLibraryDetailView: View {
       } label: {
         Label("打开", systemImage: "arrow.right.circle")
       }
+      .buttonStyle(.bordered)
       .controlSize(.small)
 
       Menu {
@@ -105,6 +110,7 @@ struct GeneralDraftLibraryDetailView: View {
       } label: {
         Label("复制到站点", systemImage: "doc.on.doc")
       }
+      .workbenchProminentActionStyle()
       .controlSize(.small)
       .disabled(copyTargets(for: item).isEmpty)
     }

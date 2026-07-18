@@ -1,6 +1,5 @@
 #if DEBUG
 import Foundation
-import PublishingWorkbenchCore
 
 public struct ScreenshotDemoDataService {
   public static let environmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"
@@ -370,7 +369,7 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
       store.selectSection(.writing)
       store.setInspectorPresented(true)
       store.setEditorDisplayMode(.split)
-      store.setPublishActionMessage("截图模式：写作工作区已载入演示文章。")
+      store.setPublishActionMessage(String(localized: "截图模式：写作工作区已载入演示文章。"))
     case .aiChat:
       _ = store.openAIChatWorkspace(for: preferredDraft(in: store)?.id)
       store.seedTransientAIChatPreview([
@@ -386,10 +385,10 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
           contextMode: .site
         ),
       ])
-      store.setPublishActionMessage("截图模式：AI 助手 Inspector 已载入。")
+      store.setPublishActionMessage(String(localized: "截图模式：AI 助手 Inspector 已载入。"))
     case .syncAPIPublish:
       store.selectSection(.sync)
-      store.setPublishActionMessage("截图模式：同步/API 发布工作区已载入。")
+      store.setPublishActionMessage(String(localized: "截图模式：同步/API 发布工作区已载入。"))
     case .seoSocialPreview:
       store.selectSection(.contentHealth)
       store.setInspectorPresented(true)
@@ -401,10 +400,10 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
       store.setDeploymentStatusMessage("截图模式：部署状态和轮询记录已载入。")
     case .maintenance:
       store.selectSection(.maintenance)
-      store.setPublishActionMessage("截图模式：站点维护工作台已载入。")
+      store.setPublishActionMessage(String(localized: "截图模式：站点维护工作台已载入。"))
     case .generalDrafts:
       store.selectSection(.generalDrafts)
-      store.setPublishActionMessage("截图模式：跨站点复制已载入。")
+      store.setPublishActionMessage(String(localized: "截图模式：跨站点复制已载入。"))
     case .proSettings:
       store.selectSection(.writing)
       store.setMonetizationMessage("截图模式：请打开 Settings > Pro 捕获免费额度、StoreKit 购买和恢复状态。")

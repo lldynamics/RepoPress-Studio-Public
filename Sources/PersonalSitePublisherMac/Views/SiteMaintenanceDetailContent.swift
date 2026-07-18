@@ -3,18 +3,31 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct SiteMaintenanceSnapshotPlaceholder: View {
+  let isRefreshing: Bool
+  let errorMessage: String?
   let generate: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Label("维护报告尚未生成", systemImage: "wrench.and.screwdriver")
+      Label(
+        isRefreshing ? "正在生成维护报告" : (errorMessage == nil ? "维护报告尚未生成" : "维护报告生成失败"),
+        systemImage: isRefreshing ? "arrow.clockwise" : (errorMessage == nil ? "wrench.and.screwdriver" : "exclamationmark.triangle")
+      )
         .font(.headline)
-      Text("点击生成后才会扫描内容日历、标签、旧文和链接，避免打开页面时自动重算。")
-        .foregroundStyle(.secondary)
-      Button {
-        generate()
-      } label: {
-        Label("生成维护报告", systemImage: "arrow.clockwise")
+        .foregroundStyle(errorMessage == nil ? Color.primary : WorkbenchTheme.risk)
+      if isRefreshing {
+        ProgressView("正在扫描内容日历、标签、旧文和链接…")
+          .controlSize(.small)
+      } else {
+        Text(errorMessage ?? "点击生成后才会扫描内容日历、标签、旧文和链接，避免打开页面时自动重算。")
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+        Button {
+          generate()
+        } label: {
+          Label(errorMessage == nil ? "生成维护报告" : "重新生成", systemImage: "arrow.clockwise")
+        }
+        .workbenchProminentActionStyle()
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -24,6 +37,7 @@ struct SiteMaintenanceSnapshotPlaceholder: View {
 struct SiteMaintenanceDetailContent: View {
   let snapshot: SiteMaintenanceSnapshot
   let isStale: Bool
+  let isRefreshing: Bool
   let isAIChatRunning: Bool
   let refresh: () -> Void
   let copySprintPlan: (SiteMaintenanceReport) -> Void
@@ -39,6 +53,7 @@ struct SiteMaintenanceDetailContent: View {
   let isDeploymentChecking: Bool
   let onlineInspectionMessage: String?
   let runOnlineInspection: () -> Void
+  @State private var selectedPage: SiteMaintenancePage = .overview
 
   private var report: SiteMaintenanceReport {
     snapshot.report
@@ -50,6 +65,7 @@ struct SiteMaintenanceDetailContent: View {
         snapshot: snapshot,
         report: report,
         isStale: isStale,
+        isRefreshing: isRefreshing,
         refresh: refresh,
         copySprintPlan: {
           copySprintPlan(report)
@@ -57,6 +73,28 @@ struct SiteMaintenanceDetailContent: View {
         copyChecklist: {
           copyChecklist(report)
         }
+      )
+
+      Picker("站点维护页面", selection: $selectedPage) {
+        ForEach(SiteMaintenancePage.allCases) { page in
+          Label(page.title, systemImage: page.systemImage).tag(page)
+        }
+      }
+      .pickerStyle(.segmented)
+      .accessibilityLabel("站点维护页面")
+
+      selectedPageContent
+    }
+  }
+
+  @ViewBuilder
+  private var selectedPageContent: some View {
+    switch selectedPage {
+    case .overview:
+      SiteMaintenanceMetricGrid(
+        report: report,
+        latestRelease: latestRelease,
+        deploymentSnapshot: deploymentSnapshot
       )
       OnlineSiteInspectionSection(
         report: report,
@@ -67,15 +105,74 @@ struct SiteMaintenanceDetailContent: View {
         message: onlineInspectionMessage,
         runInspection: runOnlineInspection
       )
-      SiteMaintenanceReportSections(
+      SiteMaintenanceHealthSection(summary: report.healthSummary)
+      SiteMaintenanceActionQueueSection(
         report: report,
         isAIChatRunning: isAIChatRunning,
         openDraft: openDraft,
         copyItem: copyItem,
         recordItem: recordItem,
         sendToAI: sendToAI,
-        applySuggestedSchedule: applySuggestedSchedule
+        maximumVisibleCount: 3,
+        allowsExpansion: false
       )
+
+    case .tasks:
+      SiteMaintenanceActionQueueSection(
+        report: report,
+        isAIChatRunning: isAIChatRunning,
+        openDraft: openDraft,
+        copyItem: copyItem,
+        recordItem: recordItem,
+        sendToAI: sendToAI
+      )
+      SiteMaintenanceOperationLogSection(report: report)
+
+    case .calendar:
+      SiteMaintenanceCalendarSection(
+        report: report,
+        applySuggestedSchedule: applySuggestedSchedule,
+        openDraft: openDraft
+      )
+
+    case .governance:
+      SiteMaintenanceTaxonomySection(title: "标签治理", summary: report.tagSummary, systemImage: "tag")
+      SiteMaintenanceTaxonomySection(title: "分类治理", summary: report.categorySummary, systemImage: "folder")
+      SiteMaintenanceStaleArticleSection(report: report, openDraft: openDraft)
+
+    case .links:
+      SiteMaintenanceRelationSuggestionSection(report: report, openDraft: openDraft)
+      SiteMaintenanceLinkAuditSection(report: report, openDraft: openDraft)
+    }
+  }
+}
+
+private enum SiteMaintenancePage: String, CaseIterable, Identifiable {
+  case overview
+  case tasks
+  case calendar
+  case governance
+  case links
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .overview: String(localized: "总览")
+    case .tasks: String(localized: "待办")
+    case .calendar: String(localized: "内容日历")
+    case .governance: String(localized: "分类治理")
+    case .links: String(localized: "链接检查")
+    }
+  }
+
+  var systemImage: String {
+    switch self {
+    case .overview: "gauge.with.dots.needle.50percent"
+    case .tasks: "checklist"
+    case .calendar: "calendar"
+    case .governance: "tag"
+    case .links: "link"
     }
   }
 }

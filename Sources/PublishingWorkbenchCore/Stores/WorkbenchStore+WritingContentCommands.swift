@@ -1,6 +1,19 @@
 import Foundation
 
 extension WorkbenchStore {
+  public func makeVideoAttachment(from url: URL, draft: ArticleDraft) -> DraftAttachment {
+    let filename = url.lastPathComponent.nilIfEmpty ?? "video-\(UUID().uuidString).mp4"
+    let byteSize = ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)) ?? 0
+    let profile = profile(for: draft)
+    return DraftAttachment(
+      originalFilename: filename,
+      relativePublishPath: profile.publicVideoPath(filename: filename, draft: draft),
+      repositoryPath: profile.videoRepositoryPath(filename: filename, draft: draft),
+      byteSize: byteSize,
+      sourceFilePath: url.path
+    )
+  }
+
   public func runPreflight() {
     flushDraftBodyEditorBuffers()
     preflightRefreshTask?.cancel()
@@ -60,11 +73,6 @@ extension WorkbenchStore {
     flushDraftBodyEditorBuffer(for: draft.id)
     let currentDraft = drafts.first(where: { $0.id == draft.id }) ?? draft
     return publishingStore.localPublishPreview(for: currentDraft, store: self)
-  }
-
-  public func cachedPublishingPackage(for draft: ArticleDraft) -> PublishPackage? {
-    guard publishPackage?.draftID == draft.id else { return nil }
-    return publishPackage
   }
 
   public func cachedLocalPublishPreview(for draft: ArticleDraft) -> LocalPublishPreview? {
@@ -129,8 +137,67 @@ extension WorkbenchStore {
     publishingStore.ensureEditableDraftSelected(store: self)
   }
 
-  public func requestEditorFocus(draftID: UUID, field: String?, query: String? = nil) {
-    publishingStore.requestEditorFocus(draftID: draftID, field: field, query: query, store: self)
+  /// Adds any missing software guides to the active site without replacing
+  /// user content. Guide identity is independent from editable slugs, and a
+  /// colliding user slug is resolved by suffixing the new guide.
+  @discardableResult
+  public func installSoftwareGuides() -> Int {
+    flushDraftBodyEditorBuffers()
+    let guides = ArticleDraft.samples(profile: activeProfile)
+    let installedGuideIDs = Set(visibleDrafts.compactMap(\.softwareGuideID))
+    var occupiedSlugs = Set(visibleDrafts.map { normalizedSoftwareGuideSlug($0.slug) })
+    let missingGuides = guides
+      .filter { guide in
+        guard let guideID = guide.softwareGuideID else { return false }
+        return !installedGuideIDs.contains(guideID)
+      }
+      .map { guide in
+        var resolvedGuide = guide
+        let baseSlug = guide.slug
+        var candidateSlug = baseSlug
+        var suffix = 2
+        while occupiedSlugs.contains(normalizedSoftwareGuideSlug(candidateSlug)) {
+          candidateSlug = "\(baseSlug)-\(suffix)"
+          suffix += 1
+        }
+        resolvedGuide.slug = candidateSlug
+        occupiedSlugs.insert(normalizedSoftwareGuideSlug(candidateSlug))
+        return resolvedGuide
+      }
+
+    if !missingGuides.isEmpty {
+      publishingStore.drafts.insert(contentsOf: missingGuides, at: 0)
+    }
+
+    if let firstGuideID = guides.first?.softwareGuideID,
+       let firstGuide = visibleDrafts.first(where: { $0.softwareGuideID == firstGuideID }) {
+      setAIPublishingAssistantPresented(false)
+      _ = publishingStore.focusDraft(firstGuide.id, section: .writing, store: self)
+    }
+
+    if !missingGuides.isEmpty {
+      save()
+    }
+    return missingGuides.count
+  }
+
+  private func normalizedSoftwareGuideSlug(_ slug: String) -> String {
+    slug.trimmedForPublishing.lowercased()
+  }
+
+  public func requestEditorFocus(
+    draftID: UUID,
+    field: String?,
+    query: String? = nil,
+    selectedRange: NSRange? = nil
+  ) {
+    publishingStore.requestEditorFocus(
+      draftID: draftID,
+      field: field,
+      query: query,
+      selectedRange: selectedRange,
+      store: self
+    )
   }
 
   public func updateActiveEditorSelection(
@@ -153,6 +220,36 @@ extension WorkbenchStore {
 
   public func activeEditorSelectionRange(for draft: ArticleDraft) -> NSRange? {
     publishingStore.activeEditorSelectionRange(for: draft)
+  }
+
+  public func saveCustomMarkdownSnippet(_ snippet: MarkdownSnippet) {
+    guard let siteProfileID = snippet.siteProfileID,
+          profiles.contains(where: { $0.id == siteProfileID }) else {
+      return
+    }
+    publishingStore.customMarkdownSnippets = MarkdownSnippetLibraryService.savingCustomSnippet(
+      id: snippet.id,
+      title: snippet.title,
+      detail: snippet.detail,
+      kind: snippet.kind,
+      markdown: snippet.markdown,
+      siteProfileID: siteProfileID,
+      in: publishingStore.customMarkdownSnippets
+    )
+    scheduleAutosave()
+  }
+
+  public func deleteCustomMarkdownSnippet(id: String, siteProfileID: UUID) {
+    guard publishingStore.customMarkdownSnippets.contains(where: {
+      $0.id == id && $0.siteProfileID == siteProfileID
+    }) else {
+      return
+    }
+    publishingStore.customMarkdownSnippets = MarkdownSnippetLibraryService.removingCustomSnippet(
+      id: id,
+      from: publishingStore.customMarkdownSnippets
+    )
+    scheduleAutosave()
   }
 
   public func setEditorDisplayMode(_ mode: EditorDisplayMode) {
@@ -225,7 +322,7 @@ extension WorkbenchStore {
       return true
     }
     guard draft.updatedAt == current.updatedAt else {
-      setPublishActionMessage("另一窗口已更新这篇文章，刚才的陈旧元数据未写入；编辑器已同步到最新版本。")
+      setPublishActionMessage(CoreL10n.text("另一窗口已更新这篇文章，刚才的陈旧元数据未写入；编辑器已同步到最新版本。"))
       persistenceStore.markStatus("编辑冲突：已保留另一窗口的最新版本")
       return false
     }
@@ -252,6 +349,15 @@ extension WorkbenchStore {
   public func createManualVersion(for draftID: UUID) -> Bool {
     flushDraftBodyEditorBuffer(for: draftID)
     return publishingStore.createManualVersion(for: draftID, store: self)
+  }
+
+  @discardableResult
+  func recordVersionsBeforeBatchProcessing(draftIDs: Set<UUID>) -> Int {
+    flushDraftBodyEditorBuffers()
+    return publishingStore.recordVersionsBeforeBatchProcessing(
+      draftIDs: draftIDs,
+      store: self
+    )
   }
 
   @discardableResult
@@ -287,8 +393,11 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func performLocalRepositoryCleanup(_ requestID: UUID) -> Bool {
-    publishingStore.performLocalRepositoryCleanup(requestID, store: self)
+  public func performLocalRepositoryCleanup(
+    _ requestID: UUID,
+    preview: LocalPublishPreview? = nil
+  ) -> Bool {
+    publishingStore.performLocalRepositoryCleanup(requestID, preview: preview, store: self)
   }
 
   @discardableResult
@@ -299,6 +408,26 @@ extension WorkbenchStore {
   public func focusDraft(_ id: UUID, section: WorkspaceSection? = nil) -> Bool {
     flushDraftBodyEditorBuffers()
     return publishingStore.focusDraft(id, section: section, store: self)
+  }
+
+  public var canNavigateBackwardInDraftHistory: Bool {
+    publishingStore.canNavigateBackwardInDraftHistory
+  }
+
+  public var canNavigateForwardInDraftHistory: Bool {
+    publishingStore.canNavigateForwardInDraftHistory
+  }
+
+  @discardableResult
+  public func navigateBackwardInDraftHistory() -> Bool {
+    flushDraftBodyEditorBuffers()
+    return publishingStore.navigateBackwardInDraftHistory(store: self)
+  }
+
+  @discardableResult
+  public func navigateForwardInDraftHistory() -> Bool {
+    flushDraftBodyEditorBuffers()
+    return publishingStore.navigateForwardInDraftHistory(store: self)
   }
 
   public func restoreSEOSocialPreviewSnapshotForCurrentSelection() {

@@ -19,7 +19,7 @@ extension RemoteRepositoryPublishService {
   public func createRepository(
     profile: SiteProfile,
     token: String?,
-    privateRepository: Bool = false
+    privateRepository: Bool = true
   ) async throws -> RemoteRepositoryCreationResult {
     let token = try requiredToken(token)
     let name = profile.repoName.trimmedForPublishing

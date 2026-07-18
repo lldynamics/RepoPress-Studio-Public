@@ -3,6 +3,26 @@ import XCTest
 
 @MainActor
 final class WorkbenchStoreProfileTests: XCTestCase {
+  func testDraftVisitHistoryReturnsAcrossSitesAfterFocusedNavigation() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let firstSite = store.activeProfile
+    let secondSite = store.createProfile(named: "第二站点")
+    let firstDraft = ArticleDraft(siteProfileID: firstSite.id, title: "来源文章", slug: "source")
+    let secondDraft = ArticleDraft(siteProfileID: secondSite.id, title: "搜索结果", slug: "result")
+    store.setDrafts([firstDraft, secondDraft])
+
+    XCTAssertTrue(store.focusDraft(firstDraft.id, section: .writing))
+    XCTAssertTrue(store.focusDraft(secondDraft.id, section: .writing))
+    XCTAssertTrue(store.canNavigateBackwardInDraftHistory)
+    XCTAssertTrue(store.navigateBackwardInDraftHistory())
+    XCTAssertEqual(store.selectedDraftID, firstDraft.id)
+    XCTAssertEqual(store.activeProfileID, firstSite.id)
+    XCTAssertTrue(store.canNavigateForwardInDraftHistory)
+    XCTAssertTrue(store.navigateForwardInDraftHistory())
+    XCTAssertEqual(store.selectedDraftID, secondDraft.id)
+    XCTAssertEqual(store.activeProfileID, secondSite.id)
+  }
+
   func testCreateProfileSwitchesToAnEmptySiteProfile() throws {
     let store = try TestWorkbenchFactory.makeStore()
     let originalProfileID = store.activeProfileID
@@ -118,19 +138,31 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     let deletedProfile = store.createProfile(named: "待删除站点")
     store.createDraft()
     let draft = try XCTUnwrap(store.selectedDraft)
+    let snippet = try XCTUnwrap(MarkdownSnippetLibraryService.savingCustomSnippet(
+      title: "待恢复片段",
+      detail: "",
+      kind: .snippet,
+      markdown: "恢复内容",
+      siteProfileID: deletedProfile.id,
+      in: []
+    ).first)
+    store.saveCustomMarkdownSnippet(snippet)
 
     XCTAssertEqual(store.activeProfileDraftCount, 1)
     let recentlyDeleted = try XCTUnwrap(store.deleteActiveProfile())
 
     XCTAssertEqual(recentlyDeleted.profile.id, deletedProfile.id)
     XCTAssertEqual(recentlyDeleted.draftCount, 1)
+    XCTAssertEqual(recentlyDeleted.customMarkdownSnippets.map(\.id), [snippet.id])
     XCTAssertFalse(store.profiles.contains { $0.id == deletedProfile.id })
     XCTAssertFalse(store.drafts.contains { $0.id == draft.id })
+    XCTAssertFalse(store.customMarkdownSnippets.contains { $0.id == snippet.id })
     XCTAssertEqual(store.activeProfileID, originalProfileID)
 
     XCTAssertTrue(store.restoreRecentlyDeletedProfile())
     XCTAssertEqual(store.activeProfileID, deletedProfile.id)
     XCTAssertTrue(store.drafts.contains { $0.id == draft.id })
+    XCTAssertTrue(store.customMarkdownSnippets.contains { $0.id == snippet.id })
     XCTAssertNil(store.recentlyDeletedProfile)
   }
 
@@ -310,7 +342,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     store.deleteActiveProfile()
 
     XCTAssertEqual(store.profiles.count, 1)
-    XCTAssertEqual(store.publishActionMessage, "至少需要保留一个站点 Profile。")
+    XCTAssertEqual(store.publishActionMessage, "至少需要保留一个站点配置。")
   }
 
   func testCanDeferPreflightRefreshWhileEditing() throws {

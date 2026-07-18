@@ -23,17 +23,18 @@ let package = Package(
       name: "PublishingWorkbenchCore",
       resources: [
         .process("Resources")
+      ],
+      linkerSettings: [
+        .linkedLibrary("sqlite3"),
+        .linkedLibrary("z"),
+        .linkedFramework("PDFKit"),
+        .linkedFramework("Vision"),
       ]
-    ),
-    .target(
-      name: "PublishingWorkbenchScreenshotSupport",
-      dependencies: ["PublishingWorkbenchCore"]
     ),
     .executableTarget(
       name: "PersonalSitePublisherMac",
       dependencies: [
         "PublishingWorkbenchCore",
-        "PublishingWorkbenchScreenshotSupport",
       ],
       exclude: [
         "AppStore.entitlements"
@@ -46,7 +47,6 @@ let package = Package(
       name: "PublishingWorkbenchCoreTests",
       dependencies: [
         "PublishingWorkbenchCore",
-        "PublishingWorkbenchScreenshotSupport",
       ]
     ),
   ]

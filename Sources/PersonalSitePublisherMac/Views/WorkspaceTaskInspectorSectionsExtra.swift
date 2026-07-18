@@ -46,7 +46,7 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
       return .checks
     case .images:
       return .images
-    case .siteStarter, .generalDrafts, .maintenance:
+    case .siteStarter, .library, .generalDrafts, .maintenance:
       return .metadata
     }
   }
@@ -81,12 +81,20 @@ struct ArticleInspectorTabs: View {
         Divider()
       }
 
-      ScrollView {
-        VStack(alignment: .leading, spacing: 14) {
-          selectedContent
+      ScrollViewReader { proxy in
+        ScrollView {
+          VStack(alignment: .leading, spacing: 14) {
+            selectedContent
+          }
+          .padding(14)
+          .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+          scrollToFocusedImage(using: proxy)
+        }
+        .onChange(of: store.imageInspectorFocusRequest?.id) { _, _ in
+          scrollToFocusedImage(using: proxy)
+        }
       }
 
       Divider()
@@ -121,12 +129,11 @@ struct ArticleInspectorTabs: View {
       VStack(alignment: .leading, spacing: 2) {
         Text("文章 Inspector")
           .font(.headline)
-        Text(store.profile(for: draft).markdownPath(for: draft))
+        let markdownPath = store.profile(for: draft).markdownPath(for: draft)
+        Text(markdownPath)
           .font(.caption.monospaced())
           .foregroundStyle(.secondary)
-          .lineLimit(2)
-          .truncationMode(.middle)
-          .textSelection(.enabled)
+          .workbenchTruncatedIdentity(markdownPath, lineLimit: 2)
       }
 
       Spacer()
@@ -142,6 +149,7 @@ struct ArticleInspectorTabs: View {
       }
     }
     .pickerStyle(.segmented)
+    .tint(WorkbenchTheme.navigationSelection)
     .labelsHidden()
     .padding(10)
     .accessibilityLabel("文章 Inspector 标签")
@@ -178,6 +186,20 @@ struct ArticleInspectorTabs: View {
     .accessibilityLabel("文章 Inspector 主要操作")
   }
 
+  private func scrollToFocusedImage(using proxy: ScrollViewProxy) {
+    guard selectedTab == .images,
+          let request = store.imageInspectorFocusRequest,
+          request.draftID == draft.id else {
+      return
+    }
+    Task { @MainActor in
+      await Task.yield()
+      withAnimation(.easeInOut(duration: 0.2)) {
+        proxy.scrollTo(request.attachmentID, anchor: .center)
+      }
+    }
+  }
+
   @ViewBuilder
   private var selectedContent: some View {
     switch selectedTab {
@@ -198,8 +220,15 @@ struct ArticleInspectorTabs: View {
       state: WorkspaceTaskMetadataState(
         draft: draft,
         profile: store.profile(for: draft)
-      )
+      ),
+      tagSuggestions: taxonomySuggestions(\.tags),
+      categorySuggestions: taxonomySuggestions(\.categories)
     )
+  }
+
+  private func taxonomySuggestions(_ keyPath: KeyPath<ArticleDraft, [String]>) -> [String] {
+    Array(Set(store.drafts.flatMap { $0[keyPath: keyPath] }))
+      .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
   }
 
   private var seoContent: some View {
@@ -212,7 +241,10 @@ struct ArticleInspectorTabs: View {
       state: WorkspaceTaskImageState(
         report: store.cachedImageWorkbenchReport(for: draft),
         siteSummary: store.cachedImageWorkbenchSiteSummary,
-        actionMessage: store.imageActionMessage
+        actionMessage: store.imageActionMessage,
+        focusedAttachmentID: store.imageInspectorFocusRequest.flatMap { request in
+          request.draftID == draft.id ? request.attachmentID : nil
+        }
       ),
       actions: WorkspaceTaskImageActions(
         fillMissingMetadataForCurrentDraft: {
@@ -225,9 +257,7 @@ struct ArticleInspectorTabs: View {
           _ = store.focusDraft(draft.id, section: .images)
         },
         refreshReport: {
-          Task { @MainActor in
-            await store.refreshImageWorkbenchCachesInBackground(for: draft, force: true)
-          }
+          store.scheduleImageWorkbenchCachesRefresh(force: true)
         }
       )
     )

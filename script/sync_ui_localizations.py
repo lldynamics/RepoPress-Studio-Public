@@ -19,6 +19,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_ROOT = ROOT / "Sources" / "PersonalSitePublisherMac"
 CORE_SOURCE_ROOT = ROOT / "Sources" / "PublishingWorkbenchCore"
+SCREENSHOT_SUPPORT_SOURCE_ROOT = CORE_SOURCE_ROOT / "DebugSupport"
+UI_SOURCE_ROOTS = (SOURCE_ROOT, SCREENSHOT_SUPPORT_SOURCE_ROOT)
 CORE_RESOURCE_ROOT = CORE_SOURCE_ROOT / "Resources"
 WORKSPACE_MODELS_PATH = ROOT / "Sources" / "PublishingWorkbenchCore" / "Models" / "WorkspaceModels.swift"
 CATALOG_PATH = SOURCE_ROOT / "Resources" / "Localizable.xcstrings"
@@ -26,7 +28,7 @@ TRANSLATION_PATHS = tuple(sorted((ROOT / "script").glob("ui_*translations*.json"
 FORMAT_PATTERN = re.compile(r"%(?:\d+\$)?(?:@|[-+0-9.]*[a-zA-Z])")
 CJK_PATTERN = re.compile(r"[\u3400-\u9fff]")
 WORKSPACE_SECTION_PATTERN = re.compile(
-    r"public enum WorkspaceSection.*?(?=public enum WorkspaceArea|public enum WorkspaceNavigationSurface)",
+    r"public enum WorkspaceSection.*?(?=public enum WorkspaceCenterSurface)",
     re.DOTALL,
 )
 WORKSPACE_SECTION_CASE_PATTERN = re.compile(r"^\s*case\s+([A-Za-z][A-Za-z0-9_]*)\s*$", re.MULTILINE)
@@ -56,7 +58,11 @@ CORE_LOCALIZATION_CALL_PATTERN = re.compile(
 
 
 def extract_swiftui_strings() -> dict[str, str]:
-    swift_files = sorted(str(path) for path in SOURCE_ROOT.rglob("*.swift"))
+    swift_files = sorted(
+        str(path)
+        for source_root in UI_SOURCE_ROOTS
+        for path in source_root.rglob("*.swift")
+    )
     with tempfile.TemporaryDirectory(prefix="psp-localization-") as temporary_directory:
         output_directory = Path(temporary_directory) / "genstrings"
         output_directory.mkdir()
@@ -103,7 +109,11 @@ def extract_workspace_navigation_keys() -> dict[str, str]:
 def extract_literal_localization_calls() -> dict[str, str]:
     """Collect literal APIs that genstrings -SwiftUI does not discover."""
     extracted: dict[str, str] = {}
-    for source_path in sorted(SOURCE_ROOT.rglob("*.swift")):
+    for source_path in sorted(
+        path
+        for source_root in UI_SOURCE_ROOTS
+        for path in source_root.rglob("*.swift")
+    ):
         source = source_path.read_text(encoding="utf-8")
         for match in LITERAL_LOCALIZATION_CALL_PATTERN.finditer(source):
             raw_value = match.group(1)
@@ -123,7 +133,11 @@ def extract_literal_localization_calls() -> dict[str, str]:
 def extract_component_localization_keys() -> dict[str, str]:
     """Collect static titles rendered by reusable components through LocalizedStringKey."""
     extracted: dict[str, str] = {}
-    for source_path in sorted(SOURCE_ROOT.rglob("*.swift")):
+    for source_path in sorted(
+        path
+        for source_root in UI_SOURCE_ROOTS
+        for path in source_root.rglob("*.swift")
+    ):
         source = source_path.read_text(encoding="utf-8")
         for pattern in (
             NAMED_COMPONENT_TITLE_PATTERN,

@@ -69,6 +69,18 @@ public enum KeychainTokenScope: Hashable, Sendable {
   }
 }
 
+public enum KeychainCredentialServices {
+  #if DEBUG
+  public static let ai = "PersonalSitePublisherMac.LocalDevelopment.AIProvider"
+  public static let repository = "PersonalSitePublisherMac.LocalDevelopment.RepositoryProvider"
+  public static let deployment = "PersonalSitePublisherMac.LocalDevelopment.DeploymentProvider"
+  #else
+  public static let ai = "PersonalSitePublisherMac.AIProvider"
+  public static let repository = "PersonalSitePublisherMac.RepositoryProvider"
+  public static let deployment = "PersonalSitePublisherMac.DeploymentProvider"
+  #endif
+}
+
 public final class KeychainTokenStore: @unchecked Sendable {
   private let service: String
   private let accountPrefix: String
@@ -76,7 +88,7 @@ public final class KeychainTokenStore: @unchecked Sendable {
   private let inMemoryBackend: InMemoryTokenBackend?
 
   public convenience init(
-    service: String = "PersonalSitePublisherMac.AIProvider",
+    service: String = KeychainCredentialServices.ai,
     accountPrefix: String = "ai-provider"
   ) {
     self.init(service: service, accountPrefix: accountPrefix, inMemory: false)
@@ -168,8 +180,13 @@ public final class KeychainTokenStore: @unchecked Sendable {
         scope: .repository(profile.repositoryProvider),
         originURLText: repositoryOriginURLText(for: profile)
       )
-      try deleteToken(for: profile, scope: .repository(profile.repositoryProvider))
-      try deleteToken(for: profile)
+      // The origin-bound credential above is the only item read by current
+      // releases. Cleanup of credentials created by older local builds is
+      // deliberately best effort: an ad-hoc rebuild can retain an item whose
+      // old ACL refuses deletion, and that must not turn a successful save
+      // into a false failure.
+      try? deleteToken(for: profile, scope: .repository(profile.repositoryProvider))
+      try? deleteToken(for: profile)
     }
   }
 
@@ -180,11 +197,11 @@ public final class KeychainTokenStore: @unchecked Sendable {
         scope: .repository(profile.repositoryProvider),
         originURLText: repositoryOriginURLText(for: profile)
       )
-      try deleteToken(for: profile, scope: .repository(profile.repositoryProvider))
+      try? deleteToken(for: profile, scope: .repository(profile.repositoryProvider))
       // Older releases left this unscoped credential behind after migration.
-      // Remove it in the same critical section so availability refresh cannot
-      // recreate the scoped credential that the user just deleted.
-      try deleteToken(for: profile)
+      // It is no longer read by current releases, so a stale ACL must not make
+      // deletion of the authoritative credential look unsuccessful.
+      try? deleteToken(for: profile)
     }
   }
 
@@ -215,7 +232,9 @@ public final class KeychainTokenStore: @unchecked Sendable {
   public func saveAIToken(_ token: String, for profile: SiteProfile) throws {
     try KeychainTokenMutationCoordinator.shared.synchronized {
       try saveToken(token, forAccount: aiCredentialAccount(for: profile))
-      try deleteToken(for: profile)
+      // See saveRepositoryToken(_:for:). The scoped item is authoritative;
+      // stale unscoped cleanup must not invalidate the completed save.
+      try? deleteToken(for: profile)
     }
   }
 
@@ -242,7 +261,7 @@ public final class KeychainTokenStore: @unchecked Sendable {
   public func deleteAIToken(for profile: SiteProfile) throws {
     try KeychainTokenMutationCoordinator.shared.synchronized {
       try deleteToken(forAccount: aiCredentialAccount(for: profile))
-      try deleteToken(for: profile)
+      try? deleteToken(for: profile)
     }
   }
 
@@ -275,7 +294,7 @@ public final class KeychainTokenStore: @unchecked Sendable {
       return inMemoryBackend.token(for: account)
     }
 
-    var query = baseQuery(account: account)
+    var query = readQuery(account: account)
     query[kSecReturnData as String] = true
     query[kSecMatchLimit as String] = kSecMatchLimitOne
 
@@ -298,8 +317,9 @@ public final class KeychainTokenStore: @unchecked Sendable {
       return KeychainTokenAvailability(hasToken: inMemoryBackend.containsToken(for: account))
     }
 
-    var query = baseQuery(account: account)
+    var query = readQuery(account: account)
     query[kSecReturnAttributes as String] = true
+    query[kSecReturnData as String] = true
     query[kSecMatchLimit as String] = kSecMatchLimitOne
 
     var result: AnyObject?
@@ -311,10 +331,13 @@ public final class KeychainTokenStore: @unchecked Sendable {
       throw KeychainTokenStoreError.unhandledStatus(status)
     }
 
-    let attributes = result as? [String: Any]
+    guard let attributes = result as? [String: Any],
+          let data = attributes[kSecValueData as String] as? Data else {
+      throw KeychainTokenStoreError.invalidData
+    }
     return KeychainTokenAvailability(
-      hasToken: true,
-      updatedAt: attributes?[kSecAttrModificationDate as String] as? Date
+      hasToken: !data.isEmpty,
+      updatedAt: attributes[kSecAttrModificationDate as String] as? Date
     )
   }
 
@@ -364,10 +387,29 @@ public final class KeychainTokenStore: @unchecked Sendable {
       }
 
       let status = SecItemDelete(baseQuery(account: account) as CFDictionary)
-      guard status == errSecSuccess || status == errSecItemNotFound else {
-        throw KeychainTokenStoreError.unhandledStatus(status)
+      if status == errSecSuccess || status == errSecItemNotFound {
+        return
       }
+      if Self.isRecoverableDeletionOwnershipStatus(status) {
+        // Legacy macOS keychain ACLs can allow a newer signed build to read and
+        // update an item but reject deletion as an owner edit. Clearing the
+        // value removes the credential; availability treats empty data as no
+        // token, so the user-facing result remains a real deletion.
+        let updateStatus = SecItemUpdate(
+          baseQuery(account: account) as CFDictionary,
+          [kSecValueData as String: Data()] as CFDictionary
+        )
+        guard updateStatus == errSecSuccess else {
+          throw KeychainTokenStoreError.unhandledStatus(updateStatus)
+        }
+        return
+      }
+      throw KeychainTokenStoreError.unhandledStatus(status)
     }
+  }
+
+  static func isRecoverableDeletionOwnershipStatus(_ status: OSStatus) -> Bool {
+    status == errSecInvalidOwnerEdit || status == -25253
   }
 
   private func account(for profile: SiteProfile) -> String {
@@ -417,14 +459,18 @@ public final class KeychainTokenStore: @unchecked Sendable {
   }
 
   private func baseQuery(account: String) -> [String: Any] {
-    var query: [String: Any] = [
+    [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,
       kSecAttrAccount as String: account,
     ]
-    if allowsAuthenticationInteraction {
+  }
+
+  private func readQuery(account: String) -> [String: Any] {
+    var query = baseQuery(account: account)
+    if !allowsAuthenticationInteraction {
       let context = LAContext()
-      context.interactionNotAllowed = false
+      context.interactionNotAllowed = true
       query[kSecUseAuthenticationContext as String] = context
     }
     return query
@@ -459,6 +505,10 @@ public enum KeychainTokenStoreError: LocalizedError, Equatable {
         return "系统当前禁止了本应用的钥匙串访问。请前往“系统设置” → “隐私与安全性” → “钥匙串”，允许本应用访问该服务后重试。"
       case errSecAuthFailed:
         return "钥匙串认证失败。可尝试重启电脑或重新登录系统后重试。"
+      case errSecNoSuchKeychain:
+        return "应用未连接到登录钥匙串。请使用项目的统一启动脚本重新启动；若仍失败，请在“钥匙串访问”中确认 login 钥匙串可用。"
+      case errSecInvalidOwnerEdit, -25253:
+        return "当前本地构建无法继续使用旧构建创建的钥匙串访问上下文。请重启最新构建后重新保存；如果仍失败，可在“钥匙串访问”中删除对应的 PersonalSitePublisher 旧项后再保存。"
       case errSecItemNotFound:
         return "对应 Profile 的钥匙串条目不存在，请先点击“保存”写入 Token。"
       case errSecUserCanceled:
@@ -467,6 +517,10 @@ public enum KeychainTokenStoreError: LocalizedError, Equatable {
         return nil
       }
     }
+  }
+
+  public var recoverySuggestion: String? {
+    recoveryHint
   }
 
   private static func statusDescription(for status: OSStatus) -> String {

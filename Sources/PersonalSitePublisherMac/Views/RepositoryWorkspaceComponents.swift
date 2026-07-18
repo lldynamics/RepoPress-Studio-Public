@@ -17,7 +17,7 @@ struct PublishReadinessTile: View {
     }
     .padding(10)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 }
 
@@ -35,11 +35,11 @@ struct BatchPublishPlanRow: View {
       VStack(alignment: .leading, spacing: 4) {
         Text(item.draftTitle)
           .font(.callout.weight(.medium))
-          .lineLimit(1)
+          .workbenchTruncatedIdentity(item.draftTitle)
         Text(item.markdownPath)
           .font(.caption.monospaced())
           .foregroundStyle(.secondary)
-          .lineLimit(1)
+          .workbenchTruncatedIdentity(item.markdownPath)
       }
 
       Spacer()
@@ -90,5 +90,11 @@ extension LocalPublishActionReadiness {
     case .unchanged:
       return .secondary
     }
+  }
+}
+
+extension RepositoryWorkspaceView {
+  var repositoryMetricGridColumns: [GridItem] {
+    [GridItem(.adaptive(minimum: 132, maximum: 220), spacing: 10)]
   }
 }

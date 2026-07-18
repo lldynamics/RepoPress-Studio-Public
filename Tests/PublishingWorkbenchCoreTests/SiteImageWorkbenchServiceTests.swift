@@ -6,6 +6,32 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class SiteImageWorkbenchServiceTests: XCTestCase {
+  func testReportIgnoresVideoAttachments() {
+    let profile = SiteProfile.defaultProfile
+    let video = DraftAttachment(
+      originalFilename: "walkthrough.mp4",
+      relativePublishPath: "/videos/2026/walkthrough.mp4",
+      repositoryPath: "static/videos/2026/walkthrough.mp4",
+      altText: "",
+      caption: "",
+      sourceFilePath: "/tmp/missing-walkthrough.mp4"
+    )
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Video Only",
+      slug: "video-only",
+      bodyMarkdown: "<video controls src=\"/videos/2026/walkthrough.mp4\"></video>",
+      attachments: [video]
+    )
+
+    let report = SiteImageWorkbenchService().report(draft: draft, profile: profile)
+
+    XCTAssertTrue(report.items.isEmpty)
+    XCTAssertEqual(report.missingAltTextCount, 0)
+    XCTAssertEqual(report.missingCaptionCount, 0)
+    XCTAssertEqual(report.missingSourceCount, 0)
+  }
+
   func testReportInspectsImagePublishReadiness() throws {
     let directory = try makeTemporaryDirectory()
     let imageURL = directory.appendingPathComponent("cover.png")
@@ -194,6 +220,39 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertEqual(result.draft.attachments[1].caption, "Custom detail")
     XCTAssertTrue(result.draft.bodyMarkdown.contains("![hero image](/images/2026/hero-image.jpg)"))
     XCTAssertTrue(result.draft.bodyMarkdown.contains("![Keep this](/images/2026/detail.jpg)"))
+  }
+
+  func testFillMissingMetadataOnlyChangesIncludedAttachments() {
+    let profile = SiteProfile.defaultProfile
+    let included = DraftAttachment(
+      originalFilename: "included-image.jpg",
+      relativePublishPath: "/images/2026/included-image.jpg",
+      repositoryPath: "static/images/2026/included-image.jpg"
+    )
+    let excluded = DraftAttachment(
+      originalFilename: "excluded-image.jpg",
+      relativePublishPath: "/images/2026/excluded-image.jpg",
+      repositoryPath: "static/images/2026/excluded-image.jpg"
+    )
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Selective metadata",
+      slug: "selective-metadata",
+      bodyMarkdown: "![](/images/2026/included-image.jpg)\n![](/images/2026/excluded-image.jpg)",
+      attachments: [included, excluded]
+    )
+
+    let result = SiteImageWorkbenchService().fillMissingMetadata(
+      draft: draft,
+      includedAttachmentIDs: [included.id]
+    )
+
+    XCTAssertEqual(result.filledAltTextCount, 1)
+    XCTAssertEqual(result.filledCaptionCount, 1)
+    XCTAssertEqual(result.draft.attachments[0].altText, "included image")
+    XCTAssertEqual(result.draft.attachments[1].altText, "")
+    XCTAssertTrue(result.draft.bodyMarkdown.contains("![included image](/images/2026/included-image.jpg)"))
+    XCTAssertTrue(result.draft.bodyMarkdown.contains("![](/images/2026/excluded-image.jpg)"))
   }
 
   func testImageTextTargetsIncludeImagesMissingAltOrCaption() {
@@ -410,6 +469,46 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertGreaterThan(result.savedBytes, 0)
     XCTAssertNotEqual(result.draft.attachments[0].sourceFilePath, sourceURL.path)
     XCTAssertEqual(try Data(contentsOf: sourceURL), originalData)
+  }
+
+  func testOptimizeJPEGSkipsExcludedAttachment() throws {
+    let directory = try makeTemporaryDirectory()
+    let includedURL = directory.appendingPathComponent("included.jpg")
+    let excludedURL = directory.appendingPathComponent("excluded.jpg")
+    let optimizedDirectory = directory.appendingPathComponent("optimized", isDirectory: true)
+    try writeTestImage(at: includedURL, width: 360, height: 360, type: .jpeg, quality: 1)
+    try writeTestImage(at: excludedURL, width: 360, height: 360, type: .jpeg, quality: 1)
+
+    let profile = SiteProfile.defaultProfile
+    let included = DraftAttachment(
+      originalFilename: "included.jpg",
+      relativePublishPath: "/images/2026/included.jpg",
+      repositoryPath: "static/images/2026/included.jpg",
+      sourceFilePath: includedURL.path
+    )
+    let excluded = DraftAttachment(
+      originalFilename: "excluded.jpg",
+      relativePublishPath: "/images/2026/excluded.jpg",
+      repositoryPath: "static/images/2026/excluded.jpg",
+      sourceFilePath: excludedURL.path
+    )
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Selective optimization",
+      slug: "selective-optimization",
+      attachments: [included, excluded]
+    )
+
+    let result = try SiteImageWorkbenchService().optimizeJPEGAttachments(
+      draft: draft,
+      destinationDirectory: optimizedDirectory,
+      quality: 0.25,
+      includedAttachmentIDs: [included.id]
+    )
+
+    XCTAssertEqual(result.optimizedCount, 1)
+    XCTAssertNotEqual(result.draft.attachments[0].sourceFilePath, includedURL.path)
+    XCTAssertEqual(result.draft.attachments[1].sourceFilePath, excludedURL.path)
   }
 
   func testConvertAttachmentsToWebPUpdatesPathsAndMarkdownReferences() throws {

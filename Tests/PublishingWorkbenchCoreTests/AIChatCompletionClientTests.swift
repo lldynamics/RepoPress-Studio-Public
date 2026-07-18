@@ -152,6 +152,39 @@ final class AIChatCompletionClientTests: XCTestCase {
     XCTAssertEqual(thinking["type"] as? String, "enabled")
   }
 
+  func testExplicitQuickReasoningOverridesDeepSeekInteractiveDefaults() async throws {
+    let transport = RecordingAIChatTransport(
+      data: responseData(content: #"{"role":"assistant","content":"快速回复。"}"#),
+      statusCode: 200
+    )
+    let client = AIChatCompletionClient(transport: transport)
+    let config = AIProviderConfig(
+      preset: .deepSeek,
+      baseURL: "https://api.deepseek.com",
+      model: AIProviderPreset.deepSeek.defaultModel,
+      requiresAPIKey: false
+    )
+
+    _ = try await client.complete(
+      request: AIChatCompletionRequest(
+        model: config.normalizedModel,
+        messages: [AIChatMessage(role: "user", content: "Hello")],
+        thinking: AIProviderThinkingOption(type: "disabled")
+      ),
+      config: config,
+      apiKey: nil,
+      purpose: .interactiveChat
+    )
+
+    let requestFromTransport = await transport.capturedRequest()
+    let capturedRequest = try XCTUnwrap(requestFromTransport)
+    let body = try XCTUnwrap(capturedRequest.httpBody)
+    let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    XCTAssertNil(payload["reasoning_effort"])
+    let thinking = try XCTUnwrap(payload["thinking"] as? [String: Any])
+    XCTAssertEqual(thinking["type"] as? String, "disabled")
+  }
+
   func testBuildsOpenAICompatibleRequestWithImageContentParts() async throws {
     let transport = RecordingAIChatTransport(
       data: responseData(content: #"{"role":"assistant","content":"图片看起来适合作为封面。"}"#),

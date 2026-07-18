@@ -21,8 +21,8 @@ enum SiteStarterMode: String, CaseIterable, Identifiable {
 enum SiteStarterWizardStep: String, CaseIterable, Identifiable {
   case template
   case localDirectory
-  case github
   case generate
+  case github
   case firstPush
   case deployment
 
@@ -54,7 +54,7 @@ enum SiteStarterWizardStep: String, CaseIterable, Identifiable {
     case .github:
       return String(localized: "配置 owner/repo/branch，必要时直接创建 GitHub 仓库。")
     case .generate:
-      return String(localized: "生成模板文件、首篇文章、部署说明和本地 Profile。")
+      return String(localized: "生成模板文件、首篇文章、部署说明和本地站点配置。")
     case .firstPush:
       return String(localized: "把生成的 Starter 提交并推送到远端分支。")
     case .deployment:
@@ -137,34 +137,62 @@ enum SiteStarterWizardStepStatus {
   }
 }
 
-struct SiteStarterWizardStepRow: View {
-  let step: SiteStarterWizardStep
-  let status: SiteStarterWizardStepStatus
-  let detail: String
+struct SiteStarterWizardStepNavigation: View {
+  @Binding var selection: SiteStarterWizardStep
+  let steps: [SiteStarterWizardStep]
+  let status: (SiteStarterWizardStep) -> SiteStarterWizardStepStatus
+  let isEnabled: (SiteStarterWizardStep) -> Bool
 
   var body: some View {
-    HStack(alignment: .top, spacing: 10) {
-      Image(systemName: status.systemImage)
-        .foregroundStyle(status.color)
-        .frame(width: 18)
-
-      VStack(alignment: .leading, spacing: 3) {
-        HStack {
-          Label(step.title, systemImage: step.systemImage)
-            .font(.callout.weight(.medium))
-          Spacer()
-          Text(status.title)
-            .font(.caption2)
-            .foregroundStyle(status.color)
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 8) {
+        ForEach(steps) { step in
+          let stepStatus = status(step)
+          Button {
+            selection = step
+          } label: {
+            HStack(spacing: 7) {
+              Image(systemName: stepStatus.systemImage)
+                .foregroundStyle(stepStatus.color)
+                .accessibilityHidden(true)
+              Text(step.title)
+                .font(.callout.weight(selection == step ? .semibold : .regular))
+                .workbenchTruncatedIdentity(step.title)
+            }
+            .padding(.horizontal, 11)
+            .frame(height: 32)
+            .background(
+              selection == step
+                ? AnyShapeStyle(
+                  WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.accentBackground)
+                )
+                : WorkbenchBackgroundStyle.subtle,
+              in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+            )
+            .overlay {
+              RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+                .stroke(
+                  selection == step
+                    ? WorkbenchTheme.navigationSelection.opacity(0.48)
+                    : Color(nsColor: .separatorColor).opacity(0.45),
+                  lineWidth: 1
+                )
+            }
+          }
+          .buttonStyle(.plain)
+          .disabled(!isEnabled(step))
+          .help(isEnabled(step) ? step.summary : "请先完成前面的步骤")
+          .accessibilityLabel("\(step.title)，\(stepStatus.title)")
+          .accessibilityHint(isEnabled(step) ? step.summary : "请先完成前面的步骤")
+          .accessibilityAddTraits(selection == step ? .isSelected : [])
         }
-
-        Text(detail)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
       }
+      .padding(.horizontal, 20)
+      .padding(.vertical, 10)
     }
-    .padding(.vertical, 4)
+    .background(.bar)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("建站步骤")
   }
 }
 
@@ -196,6 +224,7 @@ struct SiteStarterTemplateStep: View {
         }
       }
       .pickerStyle(.segmented)
+      .tint(WorkbenchTheme.navigationSelection)
       .accessibilityLabel("建站模式")
       .accessibilityValue(mode.wrappedValue.title)
 
@@ -276,25 +305,27 @@ struct SiteStarterLocalDirectoryStep: View {
           .accessibilityLabel("生成后配置 origin remote")
           .accessibilityValue(configuresOrigin.wrappedValue ? "开启" : "关闭")
       } else {
-        Label("导入模式会保留已有文件，只创建工作台 Profile 并导入内容目录里的 Markdown/MDX。", systemImage: "tray.and.arrow.down")
+        Label("导入模式会保留已有文件，只创建工作台站点配置并导入内容目录里的 Markdown/MDX。", systemImage: "tray.and.arrow.down")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
 
       if let path = siteStarterResultProfilePath {
         Divider()
-        Label("已生成到 \(path)", systemImage: "checkmark.circle")
+        let generatedPathLabel = "已生成到 \(path)"
+        Label(generatedPathLabel, systemImage: "checkmark.circle")
           .foregroundStyle(WorkbenchTheme.success)
           .font(.caption)
-          .lineLimit(2)
+          .workbenchTruncatedIdentity(path, lineLimit: 2)
       }
 
       if let importPath = siteStarterImportProfilePath {
         Divider()
-        Label("已导入 \(importPath)", systemImage: "checkmark.circle")
+        let importedPathLabel = "已导入 \(importPath)"
+        Label(importedPathLabel, systemImage: "checkmark.circle")
           .foregroundStyle(WorkbenchTheme.success)
           .font(.caption)
-          .lineLimit(2)
+          .workbenchTruncatedIdentity(importPath, lineLimit: 2)
         if let importedDraftCount {
           InspectorStatRow(title: "导入文章", value: "\(importedDraftCount)", systemImage: "doc.text")
         }
@@ -312,11 +343,13 @@ struct SiteStarterGitHubStep: View {
   let deploymentAccountID: Binding<String>
   let createsPrivateRepository: Binding<Bool>
   let canCreateGitHubRepository: Bool
-  let isRemoteRepositoryPublishing: Bool
+  let isRepositoryOperationRunning: Bool
+  let hasVerifiedExistingRepository: Bool
   let remoteRepositoryURL: String?
   let remoteRepositoryHTMLURL: String?
   let remoteRepositoryName: String?
   let createAction: () -> Void
+  let verifyExistingAction: () -> Void
 
   var body: some View {
     SiteStarterWizardPanel(title: "GitHub", systemImage: "point.3.connected.trianglepath.dotted") {
@@ -367,31 +400,55 @@ struct SiteStarterGitHubStep: View {
         .accessibilityLabel("创建为私有仓库")
         .accessibilityValue(createsPrivateRepository.wrappedValue ? "开启" : "关闭")
 
+      if !createsPrivateRepository.wrappedValue {
+        Label {
+          Text("公开仓库中的代码和内容可被任何人查看。")
+        } icon: {
+          Image(systemName: "exclamationmark.triangle")
+        }
+        .font(.caption)
+        .foregroundStyle(WorkbenchTheme.warning)
+      }
+
       HStack {
         Button {
           createAction()
         } label: {
           Label("创建 GitHub 仓库", systemImage: "plus.circle")
         }
-        .disabled(!canCreateGitHubRepository || isRemoteRepositoryPublishing)
+        .disabled(!canCreateGitHubRepository || isRepositoryOperationRunning)
         .accessibilityLabel("创建 GitHub 仓库")
         .accessibilityHint("使用填写的 Owner、Repo 和分支创建远端仓库")
 
-        if isRemoteRepositoryPublishing {
+        Button {
+          verifyExistingAction()
+        } label: {
+          Label("验证已有仓库", systemImage: "checkmark.shield")
+        }
+        .disabled(!canCreateGitHubRepository || isRepositoryOperationRunning)
+        .accessibilityHint("检查已有仓库是否可读且可写")
+
+        if isRepositoryOperationRunning {
           ProgressView()
             .controlSize(.small)
         }
+      }
+
+      if hasVerifiedExistingRepository, remoteRepositoryName == nil {
+        Label("已验证远端仓库可读且可写", systemImage: "checkmark.shield.fill")
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.success)
       }
 
       if let repositoryName = remoteRepositoryName {
         Divider()
         Label(repositoryName, systemImage: "checkmark.circle")
           .foregroundStyle(WorkbenchTheme.success)
-        Text(remoteRepositoryHTMLURL ?? remoteRepositoryURL ?? repositoryName)
+        let remoteURL = remoteRepositoryHTMLURL ?? remoteRepositoryURL ?? repositoryName
+        Text(remoteURL)
           .font(.caption.monospaced())
           .foregroundStyle(.secondary)
-          .lineLimit(2)
-          .textSelection(.enabled)
+          .workbenchTruncatedIdentity(remoteURL, lineLimit: 2)
       }
     }
   }
@@ -413,7 +470,7 @@ struct SiteStarterGenerateStep: View {
     SiteStarterWizardPanel(title: isCreateMode ? "生成站点" : "导入仓库", systemImage: isCreateMode ? "wand.and.stars" : "tray.and.arrow.down") {
       Text(
         isCreateMode
-          ? "生成 Starter 会写入模板文件、示例文章、部署说明，并把新站点 Profile 加入工作台。"
+          ? "生成 Starter 会写入模板文件、示例文章、部署说明，并把新站点配置加入工作台。"
           : "导入已有仓库不会改写文件；会按所选 SSG 默认内容目录导入文章。"
       )
       .font(.callout)
@@ -432,7 +489,7 @@ struct SiteStarterGenerateStep: View {
           Label(isCreateMode ? "生成站点" : "导入已有仓库", systemImage: isCreateMode ? "wand.and.stars" : "tray.and.arrow.down")
         }
       }
-      .buttonStyle(.borderedProminent)
+      .workbenchProminentActionStyle()
       .disabled(disabled || isRunning)
 
       if let createdProfileText, let createdProfileKindText {
@@ -482,7 +539,7 @@ struct SiteStarterFirstPushStep: View {
       } label: {
         Label("首次提交并推送", systemImage: "arrow.up.circle")
       }
-      .buttonStyle(.borderedProminent)
+      .workbenchProminentActionStyle()
       .disabled(!canPushStarterSite)
 
       if let pushBranch, let pushSHA {
@@ -496,8 +553,7 @@ struct SiteStarterFirstPushStep: View {
           Text(remoteURL)
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
-            .lineLimit(2)
-            .textSelection(.enabled)
+            .workbenchTruncatedIdentity(remoteURL, lineLimit: 2)
         }
       }
     }
@@ -612,9 +668,12 @@ struct SiteStarterTemplatePreviewCard: View {
       }
       .padding(10)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(.background, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .background(
+        Color(nsColor: .textBackgroundColor),
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+      )
     }
     .padding(12)
-    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 }

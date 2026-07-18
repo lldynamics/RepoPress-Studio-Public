@@ -1,11 +1,18 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+private struct DraftRepositoryCleanupConfirmation {
+  let request: DraftRepositoryCleanupRequest
+  let preview: LocalPublishPreview?
+}
+
 struct DraftLifecycleCenterView: View {
   @ObservedObject var store: WorkbenchStore
   @Environment(\.dismiss) private var dismiss
   @State private var draftPendingPermanentDeletion: RecycledDraft?
-  @State private var cleanupPendingExecution: DraftRepositoryCleanupRequest?
+  @State private var cleanupPendingExecution: DraftRepositoryCleanupConfirmation?
+  @State private var versionPendingComparison: DraftVersionSnapshot?
+  @State private var versionPendingRestore: DraftVersionSnapshot?
 
   private var selectedDraftVersions: [DraftVersionSnapshot] {
     guard let draftID = store.selectedDraftID else { return [] }
@@ -50,16 +57,38 @@ struct DraftLifecycleCenterView: View {
       isPresented: cleanupExecutionPresented,
       titleVisibility: .visible,
       presenting: cleanupPendingExecution
-    ) { request in
+    ) { confirmation in
       Button("清理本地文件", role: .destructive) {
-        _ = store.performLocalRepositoryCleanup(request.id)
+        _ = store.performLocalRepositoryCleanup(
+          confirmation.request.id,
+          preview: confirmation.preview
+        )
         cleanupPendingExecution = nil
       }
       Button("取消", role: .cancel) {
         cleanupPendingExecution = nil
       }
-    } message: { request in
-      Text("将从已配置的本地仓库删除 \(request.repositoryPath)。该操作有路径保护和回滚，但仍需你后续检查并提交 Git 变更。")
+    } message: { confirmation in
+      Text("将从已配置的本地仓库删除 \(confirmation.request.repositoryPath)。该操作有路径保护和回滚，但仍需你后续检查并提交 Git 变更。")
+    }
+    .confirmationDialog(
+      "恢复这个版本？",
+      isPresented: versionRestorePresented,
+      titleVisibility: .visible,
+      presenting: versionPendingRestore
+    ) { version in
+      Button("恢复版本", role: .destructive) {
+        _ = store.restoreDraftVersion(version.id)
+        versionPendingRestore = nil
+      }
+      Button("取消", role: .cancel) {
+        versionPendingRestore = nil
+      }
+    } message: { _ in
+      Text("恢复前会自动保存当前内容；仓库路径、远端版本和内部发布状态会保留。")
+    }
+    .sheet(item: $versionPendingComparison) { version in
+      DraftVersionComparisonView(store: store, sourceVersion: version)
     }
   }
 
@@ -106,8 +135,14 @@ struct DraftLifecycleCenterView: View {
                   .lineLimit(2)
               }
               Spacer()
+              Button {
+                versionPendingComparison = version
+              } label: {
+                Label("比较", systemImage: "arrow.left.arrow.right")
+              }
+              .help("比较这个版本与当前文章或其他版本")
               Button("恢复") {
-                _ = store.restoreDraftVersion(version.id)
+                versionPendingRestore = version
               }
             }
           }
@@ -137,12 +172,22 @@ struct DraftLifecycleCenterView: View {
                   .foregroundStyle(.secondary)
               }
               Spacer()
-              Button("恢复") {
+              Button {
                 _ = store.restoreRecycledDraft(recycled.id)
+              } label: {
+                Label("恢复", systemImage: "arrow.uturn.backward")
+                  .foregroundStyle(WorkbenchTheme.success)
               }
-              Button("永久删除", role: .destructive) {
+              .help(Text("恢复文章并取消尚未执行的仓库清理请求"))
+
+              Button(role: .destructive) {
                 draftPendingPermanentDeletion = recycled
+              } label: {
+                Label("永久删除", systemImage: "trash")
+                  .foregroundStyle(.red)
               }
+              .tint(.red)
+              .help(Text("永久删除回收站副本和版本历史"))
             }
 
             if let repositoryPath = recycled.draft.repositoryPath?.nilIfEmpty {
@@ -183,7 +228,10 @@ struct DraftLifecycleCenterView: View {
                 _ = store.keepRepositoryFile(request.id)
               }
               Button("清理本地文件", role: .destructive) {
-                cleanupPendingExecution = request
+                cleanupPendingExecution = DraftRepositoryCleanupConfirmation(
+                  request: request,
+                  preview: store.repositoryCleanupPreview(for: request.id)
+                )
               }
             }
           }
@@ -225,6 +273,13 @@ struct DraftLifecycleCenterView: View {
     Binding(
       get: { cleanupPendingExecution != nil },
       set: { if !$0 { cleanupPendingExecution = nil } }
+    )
+  }
+
+  private var versionRestorePresented: Binding<Bool> {
+    Binding(
+      get: { versionPendingRestore != nil },
+      set: { if !$0 { versionPendingRestore = nil } }
     )
   }
 }

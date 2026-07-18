@@ -64,6 +64,10 @@ extension WorkbenchStore {
     imageStore.isSiteSummaryLoading
   }
 
+  public var imageWorkbenchSiteSummaryErrorMessage: String? {
+    imageStore.siteSummaryErrorMessage
+  }
+
   public func refreshImageWorkbenchSiteSummaryInBackground(force: Bool = false) async {
     await imageStore.refreshImageWorkbenchSiteSummaryInBackground(force: force)
     invalidateDraftTaskQueueStateCache()
@@ -91,6 +95,15 @@ extension WorkbenchStore {
     invalidateDraftDerivedCaches()
   }
 
+  public func fillMissingImageMetadataForVisibleDrafts(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    imageStore.fillMissingImageMetadataForVisibleDrafts(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
+    invalidateDraftDerivedCaches()
+  }
+
   public func optimizeSelectedDraftJPEGImages() {
     imageStore.optimizeSelectedDraftJPEGImages()
     invalidateDraftDerivedCaches()
@@ -98,6 +111,15 @@ extension WorkbenchStore {
 
   public func optimizeVisibleDraftJPEGImages() {
     imageStore.optimizeVisibleDraftJPEGImages()
+    invalidateDraftDerivedCaches()
+  }
+
+  public func optimizeVisibleDraftJPEGImages(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    imageStore.optimizeVisibleDraftJPEGImages(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
     invalidateDraftDerivedCaches()
   }
 
@@ -111,6 +133,15 @@ extension WorkbenchStore {
     invalidateDraftDerivedCaches()
   }
 
+  public func convertVisibleDraftImagesToWebP(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    imageStore.convertVisibleDraftImagesToWebP(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
+    invalidateDraftDerivedCaches()
+  }
+
   public func optimizeSelectedDraftSVGImages() {
     imageStore.optimizeSelectedDraftSVGImages()
     invalidateDraftDerivedCaches()
@@ -121,6 +152,15 @@ extension WorkbenchStore {
     invalidateDraftDerivedCaches()
   }
 
+  public func optimizeVisibleDraftSVGImages(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    imageStore.optimizeVisibleDraftSVGImages(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
+    invalidateDraftDerivedCaches()
+  }
+
   public func resizeSelectedDraftLargeImages() {
     imageStore.resizeSelectedDraftLargeImages()
     invalidateDraftDerivedCaches()
@@ -128,6 +168,15 @@ extension WorkbenchStore {
 
   public func resizeVisibleDraftLargeImages() {
     imageStore.resizeVisibleDraftLargeImages()
+    invalidateDraftDerivedCaches()
+  }
+
+  public func resizeVisibleDraftLargeImages(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    imageStore.resizeVisibleDraftLargeImages(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
     invalidateDraftDerivedCaches()
   }
 
@@ -144,6 +193,22 @@ extension WorkbenchStore {
   public func attachRepositoryImageToSelectedDraft(repositoryPath: String) {
     imageStore.attachRepositoryImageToSelectedDraft(repositoryPath: repositoryPath)
     invalidateDraftDerivedCaches()
+  }
+
+  @discardableResult
+  public func focusImageInspector(draftID: UUID, attachmentID: UUID) -> Bool {
+    guard let targetDraft = drafts.first(where: { $0.id == draftID }),
+          targetDraft.attachments.contains(where: { $0.id == attachmentID }),
+          focusDraft(draftID, section: .images) else {
+      return false
+    }
+
+    publishingStore.imageInspectorFocusRequest = ImageInspectorFocusRequest(
+      draftID: draftID,
+      attachmentID: attachmentID
+    )
+    publishingStore.isInspectorPresented = true
+    return true
   }
 
 }

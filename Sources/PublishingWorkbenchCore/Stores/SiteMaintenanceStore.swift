@@ -8,6 +8,7 @@ final class SiteMaintenanceStore: ObservableObject {
   @Published private(set) var snapshot: SiteMaintenanceSnapshot?
   @Published private(set) var snapshotVersion = 0
   @Published private(set) var isRefreshing = false
+  @Published private(set) var refreshErrorMessage: String?
   private var sourceVersion = 0
   private var inputSignature: SiteMaintenanceReportInputSignature?
 
@@ -27,6 +28,10 @@ final class SiteMaintenanceStore: ObservableObject {
 
   func setRefreshing(_ value: Bool) {
     isRefreshing = value
+  }
+
+  func setRefreshErrorMessage(_ value: String?) {
+    refreshErrorMessage = value
   }
 
   func relatedArticleSuggestions(
@@ -53,6 +58,7 @@ final class SiteMaintenanceStore: ObservableObject {
       sourceVersion: sourceVersion
     )
     self.inputSignature = inputSignature
+    refreshErrorMessage = nil
     snapshotVersion += 1
   }
 }

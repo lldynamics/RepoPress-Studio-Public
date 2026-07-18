@@ -102,9 +102,19 @@ public final class WorkbenchAIStore: ObservableObject {
     set { workspace.aiChatContextMode = newValue }
   }
 
+  public var aiChatKnowledgePolicy: KnowledgeRetrievalPolicy {
+    get { workspace.aiChatKnowledgePolicy }
+    set { workspace.aiChatKnowledgePolicy = newValue }
+  }
+
   public var aiChatModelGrade: AIChatModelGrade {
     get { workspace.aiChatModelGrade }
     set { workspace.aiChatModelGrade = newValue }
+  }
+
+  public var aiChatReasoningLevel: AIChatReasoningLevel {
+    get { workspace.aiChatReasoningLevel }
+    set { workspace.aiChatReasoningLevel = newValue }
   }
 
   public var aiChatSelectedModel: String {
@@ -245,13 +255,16 @@ public final class WorkbenchAIStore: ObservableObject {
     aiTokenAvailability = (try? keychainTokenStore.aiTokenAvailability(for: store.activeProfile)) ?? KeychainTokenAvailability(hasToken: false)
   }
 
-  public func saveAIAPIKey(_ token: String) {
+  @discardableResult
+  public func saveAIAPIKey(_ token: String) -> Bool {
     do {
       try keychainTokenStore.saveAIToken(token.trimmedForPublishing, for: store.activeProfile)
       refreshAIKeyAvailability()
       aiActionMessage = "AI API Key 已保存到 Keychain。"
+      return true
     } catch {
-      aiActionMessage = "AI API Key 保存失败：\(error.localizedDescription)"
+      aiActionMessage = aiKeychainFailureMessage(action: "保存", error: error)
+      return false
     }
   }
 
@@ -261,8 +274,17 @@ public final class WorkbenchAIStore: ObservableObject {
       refreshAIKeyAvailability()
       aiActionMessage = "AI API Key 已删除。"
     } catch {
-      aiActionMessage = "AI API Key 删除失败：\(error.localizedDescription)"
+      aiActionMessage = aiKeychainFailureMessage(action: "删除", error: error)
     }
+  }
+
+  private func aiKeychainFailureMessage(action: String, error: Error) -> String {
+    var message = "AI API Key \(action)失败：\(error.localizedDescription)"
+    if let keychainError = error as? KeychainTokenStoreError,
+       let recoveryHint = keychainError.recoveryHint {
+      message += " \(recoveryHint)"
+    }
+    return message
   }
 
   public func testAIConnection() async -> AIConnectionTestReport? {
@@ -341,7 +363,9 @@ public final class WorkbenchAIStore: ObservableObject {
       conversationTitle: aiChatConversationTitle,
       messages: aiChatMessages,
       contextMode: aiChatContextMode,
+      knowledgePolicy: aiChatKnowledgePolicy,
       modelGrade: aiChatModelGrade,
+      reasoningLevel: aiChatReasoningLevel,
       selectedModel: aiChatSelectedModel,
       focusedParagraphID: aiChatFocusedParagraphID
     )
@@ -351,7 +375,9 @@ public final class WorkbenchAIStore: ObservableObject {
     aiChatConversationTitle = state.conversationTitle
     aiChatMessages = state.messages
     aiChatContextMode = state.contextMode
+    aiChatKnowledgePolicy = state.knowledgePolicy
     aiChatModelGrade = state.modelGrade
+    aiChatReasoningLevel = state.reasoningLevel
     aiChatSelectedModel = state.selectedModel
     aiChatFocusedParagraphID = state.focusedParagraphID
   }
@@ -485,17 +511,30 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   func aiChatRequest(for draft: ArticleDraft) async -> AIPublishingChatRequest {
+    let session = aiChatSessionState(for: draft.id) ?? AIPublishingChatSessionState()
     let artifacts = await store.aiPublishingRequestArtifacts(for: draft)
-    let focusedParagraph = aiChatFocusedParagraphID.flatMap { focusedID in
+    let focusedParagraph = session.focusedParagraphID.flatMap { focusedID in
       AIPublishingChatDraftParagraphParser.extract(from: artifacts.draft.bodyMarkdown).first { $0.id == focusedID }
     }
+    let latestQuestion = session.messages.last(where: { $0.role == .user })?.content
+    let knowledgeContext = await store.knowledge.context(
+      query: knowledgeQuery(
+        draft: artifacts.draft,
+        selectedText: focusedParagraph?.text,
+        instruction: latestQuestion
+      ),
+      policy: session.knowledgePolicy
+    )
     return AIPublishingChatRequest(
       draft: artifacts.draft,
       profile: artifacts.profile,
-      messages: aiChatMessages,
-      contextMode: aiChatContextMode,
-      modelGrade: aiChatModelGrade,
-      selectedModel: aiChatSelectedModel.nilIfEmpty,
+      messages: session.messages,
+      contextMode: session.contextMode,
+      knowledgePolicy: session.knowledgePolicy,
+      knowledgeContext: knowledgeContext,
+      modelGrade: session.modelGrade,
+      reasoningLevel: session.reasoningLevel,
+      selectedModel: session.selectedModel.nilIfEmpty,
       preflightIssues: artifacts.preflightIssues,
       publishPackage: artifacts.publishPackage,
       remoteReviewDraft: artifacts.remoteReviewDraft,
@@ -503,6 +542,27 @@ public final class WorkbenchAIStore: ObservableObject {
       focusedParagraph: focusedParagraph,
       relatedSuggestions: store.relatedArticleSuggestions(for: artifacts.draft)
     )
+  }
+
+  private func knowledgeQuery(
+    draft: ArticleDraft,
+    selectedText: String? = nil,
+    instruction: String? = nil
+  ) -> String {
+    [
+      instruction?.trimmedForPublishing.nilIfEmpty,
+      draft.title.trimmedForPublishing.nilIfEmpty,
+      draft.summary.trimmedForPublishing.nilIfEmpty,
+      selectedText?.trimmedForPublishing.nilIfEmpty.map { String($0.prefix(1_500)) },
+      String(draft.bodyMarkdown.prefix(1_500)).trimmedForPublishing.nilIfEmpty,
+    ]
+    .compactMap { $0 }
+    .joined(separator: "\n")
+  }
+
+  public func setAIChatKnowledgePolicy(_ policy: KnowledgeRetrievalPolicy) {
+    aiChatKnowledgePolicy = policy
+    cacheCurrentAIChatSessionForAIStore()
   }
 
   public func setAIChatModelGrade(_ grade: AIChatModelGrade) {
@@ -513,6 +573,11 @@ public final class WorkbenchAIStore: ObservableObject {
       config: config,
       currentModel: aiChatSelectedModel
     )
+    cacheCurrentAIChatSessionForAIStore()
+  }
+
+  public func setAIChatReasoningLevel(_ level: AIChatReasoningLevel) {
+    aiChatReasoningLevel = level
     cacheCurrentAIChatSessionForAIStore()
   }
 
@@ -1003,6 +1068,7 @@ public final class WorkbenchAIStore: ObservableObject {
           messages[index] = assistantMessage
         }
       }
+      recordAIResponseBacklinks(message: assistantMessage, request: request)
       store.setAIChatMessage("AI 已回复。")
       return assistantMessage
     } catch is CancellationError {
@@ -1020,6 +1086,7 @@ public final class WorkbenchAIStore: ObservableObject {
           messages[index] = assistantMessage
         }
       }
+      recordAIResponseBacklinks(message: assistantMessage, request: request)
       store.setAIChatMessage("AI 回复已停止。")
       return assistantMessage
     } catch {
@@ -1046,8 +1113,25 @@ public final class WorkbenchAIStore: ObservableObject {
     updateAIChatSession(for: draftID) { messages in
       messages.append(assistantMessage)
     }
+    recordAIResponseBacklinks(message: assistantMessage, request: request)
     store.setAIChatMessage("AI 已回复。")
     return assistantMessage
+  }
+
+  private func recordAIResponseBacklinks(
+    message: AIPublishingChatMessage,
+    request: AIPublishingChatRequest
+  ) {
+    guard !message.knowledgeCitations.isEmpty else { return }
+    store.knowledge.recordBacklinks(
+      citations: message.knowledgeCitations,
+      target: KnowledgeBacklinkTarget(
+        kind: .aiResponse,
+        id: message.id.uuidString,
+        title: "AI 回复：\(request.draft.title)",
+        location: message.createdAt.formatted(date: .abbreviated, time: .shortened)
+      )
+    )
   }
 
   @discardableResult
@@ -1337,6 +1421,14 @@ public final class WorkbenchAIStore: ObservableObject {
       isAIActionRunning = true
       defer { isAIActionRunning = false }
       let artifacts = await store.aiPublishingRequestArtifacts(for: draft)
+      let knowledgeContext = await store.knowledge.context(
+        query: knowledgeQuery(
+          draft: artifacts.draft,
+          selectedText: selectedText,
+          instruction: kind.displayName
+        ),
+        policy: aiChatKnowledgePolicy
+      )
       let request = AIPublishingActionRequest(
         kind: kind,
         draft: artifacts.draft,
@@ -1345,7 +1437,8 @@ public final class WorkbenchAIStore: ObservableObject {
         preflightIssues: artifacts.preflightIssues,
         publishPackage: artifacts.publishPackage,
         remoteReviewDraft: artifacts.remoteReviewDraft,
-        workflowContext: artifacts.workflowContext
+        workflowContext: artifacts.workflowContext,
+        knowledgeContext: knowledgeContext
       )
       let result = try await aiPublishingAssistantService.perform(
         request,
@@ -1384,6 +1477,10 @@ public final class WorkbenchAIStore: ObservableObject {
       isAIMetadataSuggestionRunning = true
       defer { isAIMetadataSuggestionRunning = false }
       let artifacts = await store.aiPublishingRequestArtifacts(for: draft)
+      let knowledgeContext = await store.knowledge.context(
+        query: knowledgeQuery(draft: artifacts.draft, instruction: "标题 摘要 标签 元数据"),
+        policy: aiChatKnowledgePolicy
+      )
       let request = AIPublishingActionRequest(
         kind: .draftFrontMatterPack,
         draft: artifacts.draft,
@@ -1391,7 +1488,8 @@ public final class WorkbenchAIStore: ObservableObject {
         preflightIssues: artifacts.preflightIssues,
         publishPackage: artifacts.publishPackage,
         remoteReviewDraft: artifacts.remoteReviewDraft,
-        workflowContext: artifacts.workflowContext
+        workflowContext: artifacts.workflowContext,
+        knowledgeContext: knowledgeContext
       )
       let suggestion = try await aiPublishingAssistantService.suggestMetadata(
         for: request,
@@ -1534,7 +1632,7 @@ public final class WorkbenchAIStore: ObservableObject {
   ) async -> [AIChatImageAttachment] {
     let selectedAttachments = Array(
       draft.attachments
-      .filter { attachmentIDs.contains($0.id) }
+      .filter { attachmentIDs.contains($0.id) && $0.mediaKind == .image }
       .prefix(AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount)
     )
     let result = await Task.detached(priority: .userInitiated) {

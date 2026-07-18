@@ -7,6 +7,7 @@ private struct WritingDraftListCache {
   var visibleDraftSignatures: [UUID: DraftTaskQueueState.Signature] = [:]
   var searchText = ""
   var filter: DraftListFilter = .all
+  var sortOrder: WritingDraftSortOrder = .updatedNewest
   var activeProfileID: UUID?
   var draftTaskQueueStateVersion = 0
   var lastLoadMoreTriggerCount = -1
@@ -26,7 +27,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     let isCompact: Bool
     @State private var searchText = ""
     @State private var filter: DraftListFilter = .all
-    @State private var density: WritingDraftDensity = .comfortable
+    @AppStorage("writingDraftSortOrderV1") private var sortOrderRawValue = WritingDraftSortOrder.updatedNewest.rawValue
     @State private var isDraftListLoading = false
     @State private var draftListLoadingNonce = 0
     @State private var visibleDraftCount = 0
@@ -55,19 +56,19 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
   var body: some View {
     VStack(spacing: 0) {
       writingHeader
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
+        .padding(.vertical, WorkspaceSidebarMetrics.headerVerticalPadding)
+
+      Divider()
+
+      draftListToolbar
+        .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
+        .padding(.vertical, WorkspaceSidebarMetrics.toolbarVerticalPadding)
 
       Divider()
 
       draftList
-
-      Divider()
-
-      statusFooter
-        .padding(12)
     }
-    .background(.bar)
     .focusedSceneValue(\.writingDraftCommandActions, writingDraftCommandActions)
     .confirmationDialog(
       "移到回收站？",
@@ -91,61 +92,51 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
   }
 
   private var writingHeader: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack(alignment: .firstTextBaseline) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text("文章")
-            .font(.headline)
-          HStack(spacing: 6) {
-            Text("\(filteredDraftCount) / \(visibleDraftCount) 篇")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+    WorkspaceContextListHeader(title: "文章") {
+      HStack(spacing: 6) {
+        Text("\(filteredDraftCount) / \(visibleDraftCount) 篇")
 
-            if let delta = draftCountDelta {
-              Text(delta > 0 ? "+\(delta)" : "\(delta)")
-                .font(.caption2)
-                .fontWeight(.semibold)
-                .foregroundStyle(delta > 0 ? .green : .red)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background((delta > 0 ? WorkbenchTheme.success : WorkbenchTheme.risk).opacity(WorkbenchOpacity.accentBackground), in: Capsule())
-                .scaleEffect(isDraftCountPunching ? 1.06 : 1)
-                .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isDraftCountPunching)
-                .transition(.scale.combined(with: .opacity))
-            }
-          }
-          .lineLimit(1)
+        if let delta = draftCountDelta {
+          Text(delta > 0 ? "+\(delta)" : "\(delta)")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(delta > 0 ? WorkbenchTheme.success : WorkbenchTheme.risk)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+              (delta > 0 ? WorkbenchTheme.success : WorkbenchTheme.risk)
+                .opacity(WorkbenchOpacity.accentBackground),
+              in: Capsule()
+            )
+            .scaleEffect(isDraftCountPunching ? 1.06 : 1)
+            .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isDraftCountPunching)
+            .transition(.scale.combined(with: .opacity))
         }
-
-        Spacer()
-
-        if isDraftListLoading && store.visibleDrafts.isEmpty {
-          ProgressView()
-            .controlSize(.small)
-            .help("加载草稿中…")
-        }
-
-        Spacer(minLength: 8)
-
-        Button {
-          store.createDraft()
-        } label: {
-          Label("新建文章", systemImage: "plus")
-        }
-        .labelStyle(.iconOnly)
-        .help("新建文章")
-        .accessibilityLabel("新建文章")
-
-        Button {
-          isDraftLifecycleCenterPresented = true
-        } label: {
-          Label("版本历史与回收站", systemImage: "clock.arrow.circlepath")
-        }
-        .labelStyle(.iconOnly)
-        .help("版本历史与回收站")
-        .accessibilityLabel("打开版本历史与回收站")
-
       }
+    } actions: {
+      if isDraftListLoading && store.visibleDrafts.isEmpty {
+        ProgressView()
+          .controlSize(.small)
+          .help("加载草稿中…")
+      }
+
+      Button {
+        store.createDraft()
+      } label: {
+        WorkspaceSidebarHeaderIcon("plus")
+      }
+      .buttonStyle(.plain)
+      .help("新建文章")
+      .accessibilityLabel("新建文章")
+
+      Button {
+        store.flushDraftBodyEditorBuffers()
+        isDraftLifecycleCenterPresented = true
+      } label: {
+        WorkspaceSidebarHeaderIcon("clock.arrow.circlepath")
+      }
+      .buttonStyle(.plain)
+      .help("版本历史与回收站")
+      .accessibilityLabel("打开版本历史与回收站")
     }
   }
 
@@ -207,18 +198,18 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
         Spacer(minLength: 0)
 
         Menu {
-          Picker("列表密度", selection: $density) {
-            ForEach(WritingDraftDensity.allCases) { option in
+          Picker("文章排序", selection: sortOrderSelection) {
+            ForEach(WritingDraftSortOrder.allCases) { option in
               Text(option.localizedDisplayName).tag(option)
             }
           }
         } label: {
-          Image(systemName: density == .compact ? "line.3.horizontal" : "rectangle.3.group")
+          Image(systemName: "arrow.up.arrow.down")
         }
         .menuStyle(.borderlessButton)
-        .help("列表密度：\(density.localizedDisplayName)")
-        .accessibilityLabel("草稿列表密度")
-        .accessibilityValue(density.localizedDisplayName)
+        .help("排序：\(sortOrder.localizedDisplayName)")
+        .accessibilityLabel("文章排序")
+        .accessibilityValue(sortOrder.localizedDisplayName)
       }
     }
   }
@@ -264,7 +255,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     List(selection: draftSelection) {
       if isDraftListLoading {
         ForEach(0..<skeletonPlaceholderCount, id: \.self) { _ in
-          WritingDraftSkeletonRow(density: density)
+          WritingDraftSkeletonRow()
             .listRowInsets(listRowInsets)
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
@@ -286,18 +277,9 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
         }
       }
     }
-    .listStyle(.plain)
+    .listStyle(.sidebar)
     .scrollContentBackground(.hidden)
     .background(Color.clear)
-    .safeAreaInset(edge: .top, spacing: 0) {
-      draftListToolbar
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.clear)
-        .overlay(alignment: .bottom) {
-          Divider()
-        }
-    }
     .onDeleteCommand {
       requestDeleteSelectedDraft()
     }
@@ -322,8 +304,9 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     .onChange(of: filter) { _, _ in
       scheduleDraftFilterDebounce()
     }
-    .onChange(of: density) { _, _ in
+    .onChange(of: sortOrderRawValue) { _, _ in
       resetDraftPagination()
+      refreshDraftCounts()
     }
     .onChange(of: debouncedSearchText) { _, _ in
       resetDraftPagination()
@@ -384,8 +367,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     WritingDraftRow(
       draft: draft,
       profile: store.activeProfile,
-      display: store.privateContentDisplay(for: draft),
-      density: density
+      display: store.privateContentDisplay(for: draft)
     )
     .tag(draft.id)
     .listRowInsets(listRowInsets)
@@ -510,7 +492,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
   }
 
   private var draftPageStep: Int {
-    density == .compact ? 48 : 36
+    36
   }
 
   private func resetDraftPagination() {
@@ -525,7 +507,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
   }
 
   private var listRowInsets: EdgeInsets {
-    EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8)
+    WorkspaceSidebarMetrics.rowInsets
   }
 
   private func refreshDraftListLoadingState() {
@@ -556,6 +538,17 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     draftListCache.filteredDrafts
   }
 
+  private var sortOrder: WritingDraftSortOrder {
+    WritingDraftSortOrder(rawValue: sortOrderRawValue) ?? .updatedNewest
+  }
+
+  private var sortOrderSelection: Binding<WritingDraftSortOrder> {
+    Binding(
+      get: { sortOrder },
+      set: { sortOrderRawValue = $0.rawValue }
+    )
+  }
+
   private func refreshFilteredDraftsCache() {
     let visibleDrafts = store.visibleDrafts
     let visibleDraftIDs = visibleDrafts.map(\.id)
@@ -580,6 +573,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
 
     guard visibleDraftIDs != draftListCache.visibleDraftIDs || visibleDraftSignatures != draftListCache.visibleDraftSignatures ||
       query != draftListCache.searchText || draftListCache.filter != debouncedFilter ||
+      draftListCache.sortOrder != sortOrder ||
       draftListCache.activeProfileID != activeProfileID ||
       draftListCache.draftTaskQueueStateVersion != draftTaskQueueStateVersion else {
       return
@@ -589,38 +583,23 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     draftListCache.visibleDraftSignatures = visibleDraftSignatures
     draftListCache.searchText = query
     draftListCache.filter = debouncedFilter
+    draftListCache.sortOrder = sortOrder
     draftListCache.activeProfileID = activeProfileID
     draftListCache.draftTaskQueueStateVersion = draftTaskQueueStateVersion
     let searchableDrafts = visibleDrafts.filter { draft in
       debouncedFilter.matches(draft, taskState: debouncedFilter.requiresTaskQueueState ? taskQueueStates[draft.id] : nil)
     }
-    guard !query.isEmpty else {
-      draftListCache.filteredDrafts = searchableDrafts
-      return
-    }
-
-    draftListCache.filteredDrafts = searchableDrafts.filter { draft in
-      store.matchesPrivacyProtectedDraftSearch(
-        draft,
-        query: query,
-        profile: store.activeProfile
-      )
-    }
-  }
-
-  private var repositoryStatus: String {
-    if let report = store.repositoryReport, !report.rootPath.isEmpty {
-      return report.statusTitle
-    }
-    return store.activeProfile.purpose.repositoryStatusWhenUnconfigured
-  }
-
-  private var statusFooter: some View {
-    Label(repositoryStatus, systemImage: store.activeProfile.purpose.systemImage)
-      .font(.caption)
-      .foregroundStyle(.secondary)
-      .lineLimit(2)
-    .frame(maxWidth: .infinity, alignment: .leading)
+    let matchedDrafts = query.isEmpty
+      ? searchableDrafts
+      : searchableDrafts.filter { draft in
+          draft.title.localizedCaseInsensitiveContains(query)
+            || store.matchesPrivacyProtectedDraftSearch(
+              draft,
+              query: query,
+              profile: store.activeProfile
+            )
+        }
+    draftListCache.filteredDrafts = sortOrder.sorted(matchedDrafts)
   }
 
   private var deleteConfirmationPresented: Binding<Bool> {
@@ -635,7 +614,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
   }
 
   private var skeletonPlaceholderCount: Int {
-    return density == .compact ? 10 : 8
+    8
   }
 
   private var selectedDraftForDeletion: ArticleDraft? {
@@ -652,6 +631,10 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
       },
       focusSearch: {
         isSearchFieldFocused = true
+      },
+      openVersionHistory: {
+        store.flushDraftBodyEditorBuffers()
+        isDraftLifecycleCenterPresented = true
       },
       selectPreviousDraft: {
         selectDraft(byOffset: -1)
@@ -680,7 +663,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
         Button("新建文章") {
           store.createDraft()
         }
-        .buttonStyle(.borderedProminent)
+        .workbenchProminentActionStyle()
       } else {
         Button("清除搜索与筛选") {
           searchText = ""

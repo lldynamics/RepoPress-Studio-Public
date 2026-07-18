@@ -136,18 +136,19 @@ public struct SiteImageWorkbenchService: Sendable {
     cancellationCheck: () throws -> Void
   ) throws -> ImageWorkbenchReport {
     try cancellationCheck()
+    let imageAttachments = draft.attachments.filter { $0.mediaKind == .image }
     let markdownImagePathCounts = localMarkdownImagePathCounts(in: draft.bodyMarkdown)
     let markdownImagePaths = Set(markdownImagePathCounts.keys)
-    let registeredPublishPaths = Set(draft.attachments.map(\.relativePublishPath))
+    let registeredPublishPaths = Set(imageAttachments.map(\.relativePublishPath))
     let publishPathCounts = duplicateCounts(
-      draft.attachments.map { normalizedPublishPath($0.relativePublishPath) }
+      imageAttachments.map { normalizedPublishPath($0.relativePublishPath) }
     )
     let sourcePathCounts = duplicateCounts(
-      draft.attachments.map { normalizedSourcePath($0.sourceFilePath) }
+      imageAttachments.map { normalizedSourcePath($0.sourceFilePath) }
     )
     var issues: [ImageWorkbenchIssue] = []
 
-    let items = try draft.attachments.map { attachment in
+    let items = try imageAttachments.map { attachment in
       try cancellationCheck()
       let sourceURL = attachment.sourceFilePath.map { URL(fileURLWithPath: $0) }
       let fileExists = sourceURL.map { fileManager.fileExists(atPath: $0.path) } ?? false
@@ -421,6 +422,7 @@ public struct SiteImageWorkbenchService: Sendable {
 
     for index in updatedDraft.attachments.indices {
       let attachment = updatedDraft.attachments[index]
+      guard attachment.mediaKind == .image else { continue }
       guard let suggestion = suggestionsByAttachmentID[attachment.id] else {
         continue
       }
@@ -530,13 +532,21 @@ public struct SiteImageWorkbenchService: Sendable {
     )
   }
 
-  public func fillMissingMetadata(draft: ArticleDraft) -> ImageMetadataFillResult {
+  public func fillMissingMetadata(
+    draft: ArticleDraft,
+    includedAttachmentIDs: Set<UUID>? = nil
+  ) -> ImageMetadataFillResult {
     var updatedDraft = draft
     var filledAltTextCount = 0
     var filledCaptionCount = 0
     var updatedMarkdownReferenceCount = 0
 
     for index in updatedDraft.attachments.indices {
+      guard updatedDraft.attachments[index].mediaKind == .image else { continue }
+      if let includedAttachmentIDs,
+         !includedAttachmentIDs.contains(updatedDraft.attachments[index].id) {
+        continue
+      }
       let originalAlt = updatedDraft.attachments[index].altText
       let fallback = humanizedFilename(updatedDraft.attachments[index].originalFilename)
       let resolvedAlt = originalAlt.trimmedForPublishing.nilIfEmpty ?? fallback
@@ -572,7 +582,8 @@ public struct SiteImageWorkbenchService: Sendable {
     draft: ArticleDraft,
     destinationDirectory: URL,
     quality: CGFloat = 0.72,
-    cancellationToken: ImageProcessingCancellationToken? = nil
+    cancellationToken: ImageProcessingCancellationToken? = nil,
+    includedAttachmentIDs: Set<UUID>? = nil
   ) throws -> ImageOptimizationResult {
     try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
 
@@ -585,6 +596,8 @@ public struct SiteImageWorkbenchService: Sendable {
     for index in updatedDraft.attachments.indices {
       try cancellationToken?.throwIfCancelled()
       let attachment = updatedDraft.attachments[index]
+      if let includedAttachmentIDs, !includedAttachmentIDs.contains(attachment.id) { continue }
+      guard attachment.mediaKind == .image else { continue }
       guard isJPEGFilename(attachment.sourceFilePath ?? attachment.originalFilename) else {
         skippedCount += 1
         continue
@@ -648,7 +661,8 @@ public struct SiteImageWorkbenchService: Sendable {
     draft: ArticleDraft,
     destinationDirectory: URL,
     quality: CGFloat = 0.78,
-    cancellationToken: ImageProcessingCancellationToken? = nil
+    cancellationToken: ImageProcessingCancellationToken? = nil,
+    includedAttachmentIDs: Set<UUID>? = nil
   ) throws -> ImageOptimizationResult {
     try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
 
@@ -661,6 +675,8 @@ public struct SiteImageWorkbenchService: Sendable {
     for index in updatedDraft.attachments.indices {
       try cancellationToken?.throwIfCancelled()
       let attachment = updatedDraft.attachments[index]
+      if let includedAttachmentIDs, !includedAttachmentIDs.contains(attachment.id) { continue }
+      guard attachment.mediaKind == .image else { continue }
       guard isWebPConvertibleFilename(attachment.sourceFilePath ?? attachment.originalFilename) else {
         skippedCount += 1
         continue
@@ -745,7 +761,8 @@ public struct SiteImageWorkbenchService: Sendable {
   public func optimizeSVGAttachments(
     draft: ArticleDraft,
     destinationDirectory: URL,
-    cancellationToken: ImageProcessingCancellationToken? = nil
+    cancellationToken: ImageProcessingCancellationToken? = nil,
+    includedAttachmentIDs: Set<UUID>? = nil
   ) throws -> ImageOptimizationResult {
     try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
 
@@ -758,6 +775,8 @@ public struct SiteImageWorkbenchService: Sendable {
     for index in updatedDraft.attachments.indices {
       try cancellationToken?.throwIfCancelled()
       let attachment = updatedDraft.attachments[index]
+      if let includedAttachmentIDs, !includedAttachmentIDs.contains(attachment.id) { continue }
+      guard attachment.mediaKind == .image else { continue }
       guard isSVGFilename(attachment.sourceFilePath ?? attachment.originalFilename) else {
         skippedCount += 1
         continue
@@ -828,7 +847,8 @@ public struct SiteImageWorkbenchService: Sendable {
     destinationDirectory: URL,
     maxPixelDimension: Int = 1_600,
     quality: CGFloat = 0.82,
-    cancellationToken: ImageProcessingCancellationToken? = nil
+    cancellationToken: ImageProcessingCancellationToken? = nil,
+    includedAttachmentIDs: Set<UUID>? = nil
   ) throws -> ImageOptimizationResult {
     try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
 
@@ -841,6 +861,8 @@ public struct SiteImageWorkbenchService: Sendable {
     for index in updatedDraft.attachments.indices {
       try cancellationToken?.throwIfCancelled()
       let attachment = updatedDraft.attachments[index]
+      if let includedAttachmentIDs, !includedAttachmentIDs.contains(attachment.id) { continue }
+      guard attachment.mediaKind == .image else { continue }
       guard isResizableRasterFilename(attachment.sourceFilePath ?? attachment.originalFilename) else {
         skippedCount += 1
         continue

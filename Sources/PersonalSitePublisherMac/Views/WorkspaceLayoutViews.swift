@@ -12,18 +12,14 @@ struct WorkspaceShellSplitLayout: View {
   var body: some View {
     HStack(spacing: 0) {
       if !isFocusMode {
-        WorkspaceUnifiedSidebar(
+        WorkspacePrimarySidebar(
           store: store,
           isCompact: isCompact,
           contentHealthFilter: $contentHealthFilter,
           onSelectSection: onSelectSection
         )
-        .frame(
-          minWidth: isCompact ? 230 : 260,
-          idealWidth: isCompact ? 240 : 290,
-          maxWidth: isCompact ? 280 : 320,
-          maxHeight: .infinity
-        )
+        .frame(width: isCompact ? 240 : 260)
+        .frame(maxHeight: .infinity)
 
         Divider()
       }

@@ -50,6 +50,51 @@ public struct ContentMigrationProfileConfiguration: Hashable, Sendable {
   }
 }
 
+public enum ContentMigrationDraftDisposition: String, CaseIterable, Sendable {
+  case insert
+  case update
+  case unchanged
+  case conflict
+
+  public var isSelectable: Bool {
+    self == .insert || self == .update
+  }
+}
+
+public struct ContentMigrationDraftBaseline: Hashable, Sendable {
+  public var draft: ArticleDraft
+  public var bodyRevision: UInt64
+
+  public init(draft: ArticleDraft, bodyRevision: UInt64) {
+    self.draft = draft
+    self.bodyRevision = bodyRevision
+  }
+}
+
+public struct ContentMigrationDraftReviewItem: Identifiable, Hashable, Sendable {
+  public var id: UUID { importedDraft.id }
+  public var importedDraft: ArticleDraft
+  public var baseline: ContentMigrationDraftBaseline?
+  public var disposition: ContentMigrationDraftDisposition
+  public var comparison: DraftVersionComparison?
+
+  public init(
+    importedDraft: ArticleDraft,
+    baseline: ContentMigrationDraftBaseline? = nil,
+    disposition: ContentMigrationDraftDisposition,
+    comparison: DraftVersionComparison? = nil
+  ) {
+    self.importedDraft = importedDraft
+    self.baseline = baseline
+    self.disposition = disposition
+    self.comparison = comparison
+  }
+
+  public var repositoryPath: String {
+    importedDraft.repositoryPath?.normalizedRelativePath() ?? ""
+  }
+}
+
 public struct ContentMigrationPlan: Sendable {
   public var profileID: UUID
   public var profileConfiguration: ContentMigrationProfileConfiguration
@@ -59,6 +104,7 @@ public struct ContentMigrationPlan: Sendable {
   public var imageMappings: [ContentMigrationImageMapping]
   public var redirects: [ContentMigrationRedirect]
   public var warnings: [String]
+  public var reviewItems: [ContentMigrationDraftReviewItem]
 
   public init(
     profileID: UUID,
@@ -68,7 +114,8 @@ public struct ContentMigrationPlan: Sendable {
     drafts: [ArticleDraft],
     imageMappings: [ContentMigrationImageMapping],
     redirects: [ContentMigrationRedirect],
-    warnings: [String]
+    warnings: [String],
+    reviewItems: [ContentMigrationDraftReviewItem]? = nil
   ) {
     self.profileID = profileID
     self.profileConfiguration = profileConfiguration
@@ -78,6 +125,12 @@ public struct ContentMigrationPlan: Sendable {
     self.imageMappings = imageMappings
     self.redirects = redirects
     self.warnings = warnings
+    self.reviewItems = reviewItems ?? drafts.map {
+      ContentMigrationDraftReviewItem(
+        importedDraft: $0,
+        disposition: .insert
+      )
+    }
   }
 
   public var redirectTableCSV: String {
@@ -92,6 +145,7 @@ public enum ContentMigrationError: LocalizedError {
   case profileChanged
   case sourceOutsideSelectedDirectory(String)
   case sourceLimitExceeded(String)
+  case draftsChanged([String])
 
   public var errorDescription: String? {
     switch self {
@@ -107,6 +161,10 @@ public enum ContentMigrationError: LocalizedError {
       return "导入来源通过符号链接指向所选文件夹外部，已停止读取：\(path)"
     case let .sourceLimitExceeded(message):
       return message
+    case let .draftsChanged(paths):
+      let visiblePaths = paths.prefix(3).joined(separator: "、")
+      let suffix = paths.count > 3 ? "等 \(paths.count) 篇" : ""
+      return "生成预览后本地草稿已变化：\(visiblePaths)\(suffix)。请重新生成预览。"
     }
   }
 }

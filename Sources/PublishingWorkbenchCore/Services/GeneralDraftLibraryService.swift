@@ -207,8 +207,9 @@ public struct GeneralDraftLibraryService {
   ) -> GeneralDraftReusePlan {
     let sourceProfileName = sourceProfile?.name ?? "未知 Profile"
     let targetMarkdownPath = targetProfile.markdownPath(for: copiedDraft)
-    let missingAltTextCount = copiedDraft.attachments.filter { $0.altText.trimmedForPublishing.isEmpty }.count
-    let missingCaptionCount = copiedDraft.attachments.filter { $0.caption.trimmedForPublishing.isEmpty }.count
+    let imageAttachments = copiedDraft.attachments.filter { $0.mediaKind == .image }
+    let missingAltTextCount = imageAttachments.filter { $0.altText.trimmedForPublishing.isEmpty }.count
+    let missingCaptionCount = imageAttachments.filter { $0.caption.trimmedForPublishing.isEmpty }.count
     let riskItems = reuseRiskItems(
       sourceDraft: sourceDraft,
       copiedDraft: copiedDraft,

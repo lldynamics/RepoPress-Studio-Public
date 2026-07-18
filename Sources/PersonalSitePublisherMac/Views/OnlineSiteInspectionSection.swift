@@ -9,6 +9,7 @@ struct OnlineSiteInspectionSection: View {
   let isChecking: Bool
   let message: String?
   let runInspection: () -> Void
+  @SceneStorage("siteMaintenance.onlineMetricsExpanded") private var showsOnlineMetrics = false
 
   private var linkErrorCount: Int {
     report.linkAuditItems.filter { $0.severity == .error }.count
@@ -37,19 +38,34 @@ struct OnlineSiteInspectionSection: View {
         .disabled(isChecking || latestRelease == nil || !canCheckDeployment)
       }
 
-      LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 10)], spacing: 10) {
-        MetricTile(
-          title: "线上状态",
-          value: deploymentSnapshot?.level.localizedDisplayName ?? "未检查",
-          systemImage: deploymentSnapshot?.level.systemImage ?? "checkmark.icloud"
-        )
-        MetricTile(
-          title: "内容健康",
-          value: "\(report.healthSummary.score)/100",
-          systemImage: report.healthSummary.level.systemImage
-        )
-        MetricTile(title: "链接错误", value: "\(linkErrorCount)", systemImage: "link.badge.xmark")
-        MetricTile(title: "链接警告", value: "\(linkWarningCount)", systemImage: "link.badge.plus")
+      DisclosureGroup(isExpanded: $showsOnlineMetrics) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 10)], spacing: 10) {
+          MetricTile(
+            title: "线上状态",
+            value: deploymentSnapshot?.level.localizedDisplayName ?? "未检查",
+            semantic: deploymentSnapshot.map { deploymentSemantic($0.level) } ?? .neutral
+          )
+          MetricTile(
+            title: "内容健康",
+            value: "\(report.healthSummary.score)/100",
+            semantic: healthSemantic(report.healthSummary.level)
+          )
+          MetricTile(
+            title: "链接错误",
+            value: "\(linkErrorCount)",
+            semantic: linkErrorCount == 0 ? .passed : .blocking
+          )
+          MetricTile(
+            title: "链接警告",
+            value: "\(linkWarningCount)",
+            semantic: linkWarningCount == 0 ? .passed : .warning
+          )
+        }
+        .padding(.top, 10)
+      } label: {
+        Label("查看巡检指标", systemImage: "chart.bar")
+          .font(.caption.weight(.medium))
+          .foregroundStyle(.secondary)
       }
 
       if let deploymentSnapshot {
@@ -81,10 +97,28 @@ struct OnlineSiteInspectionSection: View {
 
   private func statusColor(_ level: DeploymentStatusLevel) -> Color {
     switch level {
-    case .success: .green
-    case .running: .orange
-    case .failed: .red
+    case .success: WorkbenchTheme.success
+    case .running: WorkbenchTheme.warning
+    case .failed: WorkbenchTheme.risk
     case .unknown: .secondary
+    }
+  }
+
+  private func deploymentSemantic(_ level: DeploymentStatusLevel) -> MetricTileSemantic {
+    switch level {
+    case .success: .passed
+    case .running: .progress
+    case .failed: .blocking
+    case .unknown: .neutral
+    }
+  }
+
+  private func healthSemantic(_ level: SiteMaintenanceHealthLevel) -> MetricTileSemantic {
+    switch level {
+    case .stable: .passed
+    case .watch: .progress
+    case .needsWork: .warning
+    case .urgent: .blocking
     }
   }
 }

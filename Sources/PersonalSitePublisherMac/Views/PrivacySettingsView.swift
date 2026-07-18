@@ -10,6 +10,10 @@ struct PrivacySettingsView: View {
 
   var body: some View {
     Form {
+      PrivacySettingsVisibilitySection(
+        masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent)
+      )
+
       PrivacySettingsCurrentStatusSection(
         status: status,
         onLock: {
@@ -20,9 +24,6 @@ struct PrivacySettingsView: View {
         }
       )
 
-      PrivacySettingsVisibilitySection(
-        masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent)
-      )
     }
     .formStyle(.grouped)
     .padding()

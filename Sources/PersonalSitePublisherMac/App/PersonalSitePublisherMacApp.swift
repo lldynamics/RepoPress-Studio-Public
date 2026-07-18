@@ -1,41 +1,52 @@
 import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
-#if DEBUG
-import PublishingWorkbenchScreenshotSupport
-#endif
 
 @main
 struct PersonalSitePublisherMacApp: App {
   @NSApplicationDelegateAdaptor(PersonalSitePublisherMacAppDelegate.self) private var appDelegate
   @StateObject private var store: WorkbenchStore
   @StateObject private var storeKitProEntitlementCoordinator = StoreKitProEntitlementCoordinator()
+  @StateObject private var browserBridge: KnowledgeBrowserBridge
 
   init() {
-    WindowRestorationPolicy.restoreSystemDefaults()
+    // Earlier builds disabled AppKit restoration globally. Remove those sticky
+    // overrides now that the main workspace is owned by a native SwiftUI scene.
+    UserDefaults.standard.removeObject(forKey: "ApplePersistenceIgnoreState")
+    UserDefaults.standard.removeObject(forKey: "NSQuitAlwaysKeepsWindows")
+    let knowledgeRestoreOutcome = KnowledgeLibraryService.applyPendingRestoreIfNeeded()
 #if DEBUG
     let workbenchStore = WorkbenchStore(
-      persistence: ScreenshotDemoDataService.preparePersistenceIfEnabled()
+      persistence: ScreenshotDemoDataService.preparePersistenceIfEnabled(),
+      freshWorkspaceSeedPolicy: .softwareGuides
     )
 #else
-    let workbenchStore = WorkbenchStore()
+    let workbenchStore = WorkbenchStore(freshWorkspaceSeedPolicy: .softwareGuides)
 #endif
+    workbenchStore.knowledge.reportStartupRestoreOutcome(knowledgeRestoreOutcome)
     _store = StateObject(
       wrappedValue: workbenchStore
     )
+    let browserBridge = KnowledgeBrowserBridge(knowledge: workbenchStore.knowledge)
+    _browserBridge = StateObject(wrappedValue: browserBridge)
     appDelegate.workbenchStore = workbenchStore
+    appDelegate.browserBridge = browserBridge
   }
 
   var body: some Scene {
-    Window("个人网站发布控制台", id: "main-workbench") {
+    WindowGroup("个人网站发布控制台", id: "main-workbench") {
       ContentView(store: store)
+        .environmentObject(browserBridge)
         .frame(minWidth: 980, minHeight: 720)
-        .tint(WorkbenchTheme.default.primary)
+        .tint(WorkbenchTheme.navigationSelection)
         .task {
           storeKitProEntitlementCoordinator.start(store: store)
+          browserBridge.start()
         }
     }
+    .windowToolbarStyle(.unified(showsTitle: false))
     .commands {
+      CommandGroup(replacing: .newItem) {}
       PublishingConsoleCommands(store: store)
     }
 
@@ -44,24 +55,18 @@ struct PersonalSitePublisherMacApp: App {
         store: store,
         storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator
       )
-      .tint(WorkbenchTheme.default.primary)
+      .tint(WorkbenchTheme.navigationSelection)
     }
   }
 }
 
 @MainActor
 final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate {
-  weak var workbenchStore: WorkbenchStore?
+  var workbenchStore: WorkbenchStore?
+  var browserBridge: KnowledgeBrowserBridge?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
-    Task { @MainActor in
-      NSApp.activate(ignoringOtherApps: true)
-    }
-  }
-
-  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-    return true
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -70,27 +75,21 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     }
 
     let alert = NSAlert()
-    alert.messageText = "未能保存工作台修改"
-    alert.informativeText = workbenchStore.lastSaveError ?? "请修复保存位置或权限后重试。应用将保持打开，避免丢失未保存修改。"
+    alert.messageText = String(localized: "未能保存工作台修改")
+    alert.informativeText = workbenchStore.lastSaveError
+      ?? String(localized: "请修复保存位置或权限后重试。应用将保持打开，避免丢失未保存修改。")
     alert.alertStyle = .warning
-    alert.addButton(withTitle: "继续编辑")
+    alert.addButton(withTitle: String(localized: "继续编辑"))
     alert.runModal()
     return .terminateCancel
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    browserBridge?.stop()
     workbenchStore?.stopLocalSitePreviewImmediately()
     _ = workbenchStore?.flushPendingChanges()
   }
 
-}
-
-private enum WindowRestorationPolicy {
-  static func restoreSystemDefaults() {
-    let defaults = UserDefaults.standard
-    defaults.removeObject(forKey: "ApplePersistenceIgnoreState")
-    defaults.removeObject(forKey: "NSQuitAlwaysKeepsWindows")
-  }
 }
 
 private struct ProtectedSettingsView: View {

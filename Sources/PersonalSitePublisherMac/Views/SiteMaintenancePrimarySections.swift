@@ -4,30 +4,71 @@ import SwiftUI
 
 struct SiteMaintenanceMetricGrid: View {
   let report: SiteMaintenanceReport
+  let latestRelease: ReleaseRecord?
+  let deploymentSnapshot: DeploymentStatusSnapshot?
+  @SceneStorage("siteMaintenance.secondaryMetricsExpanded") private var showsSecondaryMetrics = false
+
+  private var blockingCount: Int {
+    report.actionItems.filter { $0.priority == .high }.count
+  }
+
+  private var onlineStatusText: String {
+    if deploymentSnapshot?.level == .success {
+      return String(localized: "已确认")
+    }
+    if latestRelease == nil {
+      return String(localized: "暂无")
+    }
+    return String(localized: "待确认")
+  }
 
   var body: some View {
-    LazyVGrid(
-      columns: [GridItem(.adaptive(minimum: 138, maximum: 220))],
-      spacing: 12
-    ) {
-      MetricTile(title: "文章", value: "\(report.draftCount)", semantic: .neutral)
-      MetricTile(title: "待发布", value: "\(report.readyCount)", semantic: .progress)
-      MetricTile(
-        title: "行动项",
-        value: "\(report.actionItems.count)",
-        semantic: report.actionItems.isEmpty ? .passed : .warning
-      )
-      MetricTile(
-        title: "旧文候选",
-        value: "\(report.staleArticles.count)",
-        semantic: report.staleArticles.isEmpty ? .passed : .warning
-      )
-      MetricTile(title: "内链机会", value: "\(report.internalLinkOpportunityCount)", semantic: .progress)
-      MetricTile(
-        title: "链接提示",
-        value: "\(report.linkAuditItems.count)",
-        semantic: report.linkAuditItems.isEmpty ? .passed : .warning
-      )
+    VStack(alignment: .leading, spacing: 10) {
+      PrimaryStatusMetricGrid {
+        MetricTile(
+          title: "阻断",
+          value: "\(blockingCount)",
+          semantic: blockingCount == 0 ? .passed : .blocking
+        )
+        MetricTile(
+          title: "待处理",
+          value: "\(report.actionItems.count)",
+          semantic: report.actionItems.isEmpty ? .passed : .warning
+        )
+        MetricTile(
+          title: "已上线",
+          value: onlineStatusText,
+          semantic: deploymentSnapshot?.level == .success ? .passed : .neutral
+        )
+      }
+
+      DisclosureGroup(isExpanded: $showsSecondaryMetrics) {
+        LazyVGrid(
+          columns: [GridItem(.adaptive(minimum: 138, maximum: 220))],
+          spacing: 10
+        ) {
+          MetricTile(title: "文章", value: "\(report.draftCount)", semantic: .neutral)
+          MetricTile(title: "待发布", value: "\(report.readyCount)", semantic: .progress)
+          MetricTile(title: "已发布", value: "\(report.publishedCount)", semantic: .passed)
+          MetricTile(
+            title: "旧文候选",
+            value: "\(report.staleArticles.count)",
+            semantic: report.staleArticles.isEmpty ? .passed : .warning
+          )
+          MetricTile(title: "内链机会", value: "\(report.internalLinkOpportunityCount)", semantic: .progress)
+          MetricTile(
+            title: "链接提示",
+            value: "\(report.linkAuditItems.count)",
+            semantic: report.linkAuditItems.isEmpty ? .passed : .warning
+          )
+        }
+        .padding(.top, 10)
+      } label: {
+        Label("更多站点指标", systemImage: "chart.bar.xaxis")
+          .font(.callout.weight(.medium))
+      }
+      .padding(12)
+      .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     }
   }
 }
@@ -80,6 +121,9 @@ struct SiteMaintenanceActionQueueSection: View {
   let copyItem: (MaintenanceActionItem) -> Void
   let recordItem: (MaintenanceActionItem) -> Void
   let sendToAI: (MaintenanceActionItem) -> Void
+  var maximumVisibleCount = 8
+  var allowsExpansion = true
+  @State private var showsAllActions = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -96,8 +140,18 @@ struct SiteMaintenanceActionQueueSection: View {
         Label("当前没有需要优先处理的维护事项。", systemImage: "checkmark.circle")
           .foregroundStyle(.secondary)
       } else {
-        ForEach(report.actionItems.prefix(8)) { item in
+        let visibleActions = showsAllActions
+          ? report.actionItems
+          : Array(report.actionItems.prefix(maximumVisibleCount))
+        ForEach(visibleActions) { item in
           actionQueueRow(item)
+        }
+        if allowsExpansion, report.actionItems.count > maximumVisibleCount {
+          WorkbenchListDisclosureFooter(
+            visibleCount: visibleActions.count,
+            totalCount: report.actionItems.count,
+            showsAll: $showsAllActions
+          )
         }
       }
     }
@@ -110,7 +164,7 @@ struct SiteMaintenanceActionQueueSection: View {
     VStack(alignment: .leading, spacing: 8) {
       actionQueueRowContent(item)
 
-      HStack {
+      HStack(spacing: 8) {
         if let draftID = item.draftID {
           Button {
             openDraft(draftID)
@@ -120,25 +174,29 @@ struct SiteMaintenanceActionQueueSection: View {
         }
 
         Button {
-          copyItem(item)
-        } label: {
-          Label("复制任务", systemImage: "doc.on.doc")
-        }
-
-        Button {
           recordItem(item)
         } label: {
           Label("记录处理", systemImage: "checkmark.circle")
         }
 
-        Button {
-          sendToAI(item)
+        Menu {
+          Button {
+            copyItem(item)
+          } label: {
+            Label("复制任务", systemImage: "doc.on.doc")
+          }
+
+          Button {
+            sendToAI(item)
+          } label: {
+            Label("交给 AI", systemImage: "sparkles")
+          }
+          .disabled(item.draftID == nil || isAIChatRunning)
         } label: {
-          Label("交给 AI", systemImage: "sparkles")
+          Label("更多...", systemImage: "ellipsis.circle")
         }
-        .disabled(item.draftID == nil || isAIChatRunning)
-        .accessibilityLabel("把维护动作交给 AI")
-        .accessibilityValue(item.title)
+
+        Spacer(minLength: 0)
       }
       .controlSize(.small)
     }
@@ -157,16 +215,16 @@ struct SiteMaintenanceActionQueueSection: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Text(item.title)
             .font(.callout.weight(.medium))
-            .lineLimit(1)
+            .workbenchTruncatedIdentity(item.title)
           Text(item.kind.localizedDisplayName)
-            .font(.caption2)
+            .font(.caption)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(WorkbenchBackgroundStyle.badge, in: Capsule())
           Spacer()
           Text(item.priority.localizedDisplayName)
-            .font(.caption2.weight(.semibold))
+            .font(.caption.weight(.semibold))
             .foregroundStyle(siteMaintenanceActionPriorityForeground(item.priority))
         }
 
@@ -177,9 +235,9 @@ struct SiteMaintenanceActionQueueSection: View {
 
         if !item.detail.isEmpty {
           Text(item.detail)
-            .font(.caption2.monospaced())
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
+            .font(.caption.monospaced())
+            .foregroundStyle(.secondary)
+            .workbenchTruncatedIdentity(item.detail)
         }
       }
     }

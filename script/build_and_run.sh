@@ -28,22 +28,33 @@ INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_ICON_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources/AppIcon.icns"
 LOCALIZATION_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources"
 LOCALIZATION_CATALOG="$LOCALIZATION_SOURCE/Localizable.xcstrings"
+BROWSER_EXTENSION_SOURCE="$ROOT_DIR/BrowserExtension"
+LOCAL_DEVELOPMENT_ENTITLEMENTS="$ROOT_DIR/Packaging/LocalDevelopment.entitlements"
 LAUNCHED_PID=""
 
+RUNTIME_HOME="${PERSONAL_SITE_PUBLISHER_RUNTIME_HOME:-${HOME:?HOME is required to launch the app}}"
 SWIFT_BUILD_HOME="${SWIFT_BUILD_HOME:-/private/tmp/personal-site-publisher-swift-home}"
-export HOME="$SWIFT_BUILD_HOME"
-export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
-export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$HOME/.swift-clang-cache}"
-export SWIFT_MODULE_CACHE_PATH="${SWIFT_MODULE_CACHE_PATH:-$HOME/.swift-module-cache}"
+SWIFT_BUILD_XDG_CACHE_HOME="${SWIFT_BUILD_XDG_CACHE_HOME:-$SWIFT_BUILD_HOME/.cache}"
+SWIFT_BUILD_CLANG_MODULE_CACHE_PATH="${SWIFT_BUILD_CLANG_MODULE_CACHE_PATH:-$SWIFT_BUILD_HOME/.swift-clang-cache}"
+SWIFT_BUILD_MODULE_CACHE_PATH="${SWIFT_BUILD_MODULE_CACHE_PATH:-$SWIFT_BUILD_HOME/.swift-module-cache}"
 
 mkdir -p \
-  "$HOME" \
-  "$XDG_CACHE_HOME" \
-  "$HOME/.swift-clang-cache" \
-  "$HOME/.swift-module-cache" \
-  "$HOME/Library/org.swift.swiftpm/configuration" \
-  "$HOME/Library/org.swift.swiftpm/security" \
-  "$HOME/Library/Caches/org.swift.swiftpm"
+  "$SWIFT_BUILD_HOME" \
+  "$SWIFT_BUILD_XDG_CACHE_HOME" \
+  "$SWIFT_BUILD_CLANG_MODULE_CACHE_PATH" \
+  "$SWIFT_BUILD_MODULE_CACHE_PATH" \
+  "$SWIFT_BUILD_HOME/Library/org.swift.swiftpm/configuration" \
+  "$SWIFT_BUILD_HOME/Library/org.swift.swiftpm/security" \
+  "$SWIFT_BUILD_HOME/Library/Caches/org.swift.swiftpm"
+
+swift_build() {
+  env \
+    HOME="$SWIFT_BUILD_HOME" \
+    XDG_CACHE_HOME="$SWIFT_BUILD_XDG_CACHE_HOME" \
+    CLANG_MODULE_CACHE_PATH="$SWIFT_BUILD_CLANG_MODULE_CACHE_PATH" \
+    SWIFT_MODULE_CACHE_PATH="$SWIFT_BUILD_MODULE_CACHE_PATH" \
+    swift "$@"
+}
 
 required_screenshot_surfaces=(
   writing
@@ -158,14 +169,33 @@ if [[ "$MODE" == "screenshot-demo" ]] && ! contains_screenshot_surface "$SCREENS
   exit 2
 fi
 
+app_process_pids() {
+  # On macOS, pgrep -x can compare against a truncated process name for this
+  # 24-character executable. Match the absolute executable command instead so
+  # restart and verification do not miss a still-running older build.
+  pgrep -f "^${APP_BINARY}([[:space:]]|$)" 2>/dev/null || true
+}
+
+app_process_is_running() {
+  [[ -n "$(app_process_pids)" ]]
+}
+
+stop_running_app_processes() {
+  local pid=""
+  while IFS= read -r pid; do
+    [[ -z "$pid" ]] || kill "$pid" >/dev/null 2>&1 || true
+  done < <(app_process_pids)
+  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+}
+
 case "$MODE" in
   run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify|--verify-process|verify-process|--launch-baseline|launch-baseline|screenshot-demo)
-    pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+    stop_running_app_processes
     ;;
 esac
 
-swift build -c "$BUILD_CONFIGURATION" --disable-sandbox --disable-index-store --product "$APP_NAME"
-BUILD_BIN_DIR="$(swift build -c "$BUILD_CONFIGURATION" --disable-sandbox --show-bin-path)"
+swift_build build -c "$BUILD_CONFIGURATION" --disable-sandbox --disable-index-store --product "$APP_NAME"
+BUILD_BIN_DIR="$(swift_build build -c "$BUILD_CONFIGURATION" --disable-sandbox --show-bin-path)"
 case "$BUILD_BIN_DIR" in
   */"$BUILD_CONFIGURATION") ;;
   *)
@@ -178,6 +208,11 @@ BUILD_BINARY="$BUILD_BIN_DIR/$APP_NAME"
   echo "$BUILD_CONFIGURATION app executable is missing or not executable: $BUILD_BINARY" >&2
   exit 1
 }
+[[ -f "$BROWSER_EXTENSION_SOURCE/manifest.json" ]] || {
+  echo "browser extension manifest is missing: $BROWSER_EXTENSION_SOURCE/manifest.json" >&2
+  exit 1
+}
+"$ROOT_DIR/script/sync_firefox_browser_extension.sh" --check
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
@@ -185,7 +220,18 @@ cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
 cp "$APP_ICON_SOURCE" "$APP_RESOURCES/AppIcon.icns"
 cp -R "$LOCALIZATION_SOURCE"/*.lproj "$APP_RESOURCES"/
+cp -R "$BROWSER_EXTENSION_SOURCE" "$APP_RESOURCES/BrowserExtension"
 xcrun xcstringstool compile "$LOCALIZATION_CATALOG" --output-directory "$APP_RESOURCES"
+
+# Keep the Core target's localization bundle inside Contents/Resources so the
+# assembled app follows the standard macOS bundle layout and can be sealed by
+# codesign. CoreL10n resolves this packaged location before SwiftPM's build path.
+core_resource_bundle="$BUILD_BIN_DIR/${APP_NAME}_PublishingWorkbenchCore.bundle"
+[[ -d "$core_resource_bundle" ]] || {
+  echo "SwiftPM Core resource bundle is missing: $core_resource_bundle" >&2
+  exit 1
+}
+cp -R "$core_resource_bundle" "$APP_RESOURCES/"
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -218,17 +264,88 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$HUMAN_READABLE_COPYRIGHT</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>UTExportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>com.jinfang.personalsitepublisher.knowledge-library-backup</string>
+      <key>UTTypeDescription</key>
+      <string>Personal Site Knowledge Library Backup</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>com.apple.package</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>pslibrarybackup</string>
+        </array>
+      </dict>
+    </dict>
+  </array>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Personal Site Knowledge Library Backup</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Owner</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>com.jinfang.personalsitepublisher.knowledge-library-backup</string>
+      </array>
+      <key>LSTypeIsPackage</key>
+      <true/>
+    </dict>
+  </array>
 </dict>
 </plist>
 PLIST
 
+resolved_code_sign_identity="${CODE_SIGN_IDENTITY:-}"
+if [[ -z "$resolved_code_sign_identity" && "$BUILD_CONFIGURATION" == "debug" ]]; then
+  # Ad-hoc signing derives its designated requirement from the binary cdhash,
+  # so every rebuild loses access to generic-password items saved by the
+  # previous build. Prefer an installed Apple Development identity to keep the
+  # requirement stable across local rebuilds. Release packaging is still
+  # re-signed by package_app_store.sh with the explicitly selected identity.
+  resolved_code_sign_identity="$(
+    /usr/bin/security find-identity -v -p codesigning 2>/dev/null \
+      | /usr/bin/awk '/"Apple Development:/{print $2; exit}' \
+      || true
+  )"
+fi
+resolved_code_sign_identity="${resolved_code_sign_identity:--}"
+code_sign_arguments=(
+  --force
+  --sign "$resolved_code_sign_identity"
+  --identifier "$BUNDLE_ID"
+)
+if [[ "$BUILD_CONFIGURATION" == "debug" ]]; then
+  [[ -f "$LOCAL_DEVELOPMENT_ENTITLEMENTS" ]] || {
+    echo "local development entitlements are missing: $LOCAL_DEVELOPMENT_ENTITLEMENTS" >&2
+    exit 1
+  }
+  code_sign_arguments+=(--entitlements "$LOCAL_DEVELOPMENT_ENTITLEMENTS")
+fi
+/usr/bin/codesign "${code_sign_arguments[@]}" "$APP_BUNDLE"
+/usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+if [[ "$resolved_code_sign_identity" == "-" ]]; then
+  echo "local app signing identity: ad hoc"
+else
+  echo "local app signing identity: $resolved_code_sign_identity"
+fi
+
 wait_for_main_window() {
-  local attempts=20
+  local attempts="${1:-20}"
   local count=""
   local app_pid=""
   local query_output=""
   while [[ "$attempts" -gt 0 ]]; do
-    app_pid="$(pgrep -x "$APP_NAME" | head -n 1 || true)"
+    app_pid="$(app_process_pids | head -n 1)"
     if [[ -z "$app_pid" ]]; then
       sleep 0.5
       attempts="$((attempts - 1))"
@@ -262,7 +379,9 @@ OSA
 
 verify_main_window_or_process() {
   local status=0
-  if wait_for_main_window; then
+  # Correctness verification allows slower development workspaces to restore
+  # state without weakening the separate five-second launch baseline gate.
+  if wait_for_main_window 60; then
     return 0
   else
     status="$?"
@@ -287,7 +406,7 @@ is_console_session_locked() {
 wait_for_running_process() {
   local attempts=50
   while [[ "$attempts" -gt 0 ]]; do
-    if pgrep -x "$APP_NAME" >/dev/null 2>&1; then
+    if app_process_is_running; then
       return 0
     fi
     sleep 0.1
@@ -298,7 +417,7 @@ wait_for_running_process() {
 
 run_bundle() {
   /usr/bin/xattr -cr "$APP_BUNDLE"
-  if /usr/bin/open -n "$APP_BUNDLE" >/tmp/personal-site-publisher-open.log 2>&1; then
+  if env HOME="$RUNTIME_HOME" /usr/bin/open -n "$APP_BUNDLE" >/tmp/personal-site-publisher-open.log 2>&1; then
     LAUNCHED_PID=""
     return 0
   fi
@@ -306,7 +425,7 @@ run_bundle() {
   echo "open dist app failed, fallback to direct binary launch." >&2
   cat /tmp/personal-site-publisher-open.log >&2
 
-  if ! nohup "$APP_BINARY" >/tmp/personal-site-publisher-direct.log 2>&1 & then
+  if ! env HOME="$RUNTIME_HOME" nohup "$APP_BINARY" >/tmp/personal-site-publisher-direct.log 2>&1 & then
     cat /tmp/personal-site-publisher-open.log
     return 1
   fi
@@ -319,7 +438,7 @@ case "$MODE" in
     run_bundle
     ;;
   --debug|debug)
-    lldb -- "$APP_BINARY"
+    env HOME="$RUNTIME_HOME" lldb -- "$APP_BINARY"
     ;;
   --logs|logs)
     run_bundle
@@ -332,7 +451,7 @@ case "$MODE" in
   --verify|verify)
     run_bundle
     sleep 1
-    if pgrep -x "$APP_NAME" >/dev/null 2>&1; then
+    if app_process_is_running; then
       verify_main_window_or_process || {
         echo "启动校验失败：进程存活，但在可查询窗口的环境中未检测到可见主窗口。" >&2
         exit 1
@@ -342,7 +461,7 @@ case "$MODE" in
 
     launched_pid="${LAUNCHED_PID-}"
     if [[ -n "$launched_pid" ]] && kill -0 "$launched_pid" 2>/dev/null; then
-      echo "进程未被 pgrep 枚举到，但直接启动句柄仍存活（pid: $launched_pid），视为启动成功。" >&2
+      echo "进程未被 pgrep 枚举到，但直接启动句柄仍存活（pid: ${launched_pid}），视为启动成功。" >&2
       verify_main_window_or_process || {
         echo "启动校验失败：进程存活，但在可查询窗口的环境中未检测到可见主窗口。" >&2
         exit 1
@@ -395,7 +514,8 @@ case "$MODE" in
     echo "$APP_BUNDLE"
     ;;
   --screenshot-demo|screenshot-demo)
-    PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO=1 \
+    HOME="$RUNTIME_HOME" \
+      PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO=1 \
       PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE="$SCREENSHOT_SURFACE" \
       "$APP_BINARY" >/tmp/personal-site-publisher-screenshot-demo.log 2>&1 &
     ;;

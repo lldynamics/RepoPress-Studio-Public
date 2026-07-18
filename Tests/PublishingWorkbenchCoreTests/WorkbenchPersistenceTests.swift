@@ -3,6 +3,162 @@ import XCTest
 
 @MainActor
 final class WorkbenchPersistenceTests: XCTestCase {
+  func testSoftwareGuideSeedPolicyCreatesSafeGuidesForFreshWorkspace() async {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let persistence = WorkbenchPersistence(fileURL: url)
+
+    let store = WorkbenchStore(
+      persistence: persistence,
+      freshWorkspaceSeedPolicy: .softwareGuides
+    )
+
+    XCTAssertEqual(
+      store.drafts.map(\.slug),
+      [
+        "personal-site-publisher-getting-started",
+        "personal-site-publisher-writing-preview",
+        "personal-site-publisher-knowledge-library",
+        "personal-site-publisher-safe-publishing",
+        "personal-site-publisher-maintenance",
+      ]
+    )
+    XCTAssertEqual(store.selectedDraft?.id, store.drafts.first?.id)
+    XCTAssertTrue(store.drafts.allSatisfy(\.draft))
+    XCTAssertTrue(store.drafts.allSatisfy { $0.status == .draft })
+    XCTAssertTrue(store.drafts.allSatisfy { $0.repositoryPath == nil && $0.repositorySHA == nil })
+    XCTAssertEqual(Set(store.drafts.map(\.slug)).count, store.drafts.count)
+    XCTAssertEqual(Set(store.drafts.compactMap(\.softwareGuideID)).count, store.drafts.count)
+
+    let initialIDs = store.drafts.map(\.id)
+    await store.waitForPendingSave()
+    XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+
+    let reloaded = WorkbenchStore(
+      persistence: persistence,
+      freshWorkspaceSeedPolicy: .softwareGuides
+    )
+    XCTAssertEqual(reloaded.drafts.map(\.id), initialIDs)
+  }
+
+  func testSoftwareGuidesFollowPreferredChineseAndEnglishLanguage() {
+    let profile = SiteProfile.defaultProfile
+    let now = Date(timeIntervalSince1970: 1_900_000_000)
+    let chinese = ArticleDraft.samples(
+      profile: profile,
+      preferredLanguage: "zh-Hans",
+      now: now
+    )
+    let english = ArticleDraft.samples(
+      profile: profile,
+      preferredLanguage: "en-US",
+      now: now
+    )
+
+    XCTAssertEqual(chinese.map(\.slug), english.map(\.slug))
+    XCTAssertEqual(chinese.map(\.softwareGuideID), english.map(\.softwareGuideID))
+    XCTAssertEqual(chinese.first?.title, "开始使用：认识发布工作台")
+    XCTAssertEqual(english.first?.title, "Getting Started: Meet Your Publishing Workbench")
+    XCTAssertTrue(chinese[2].bodyMarkdown.contains("资料库"))
+    XCTAssertTrue(english[2].bodyMarkdown.contains("Library"))
+    XCTAssertTrue((chinese + english).allSatisfy { !$0.summary.isEmpty && !$0.bodyMarkdown.isEmpty })
+    XCTAssertTrue((chinese + english).allSatisfy { $0.authors == [profile.defaultAuthor] })
+  }
+
+  func testSoftwareGuideSeedPolicyDoesNotRefillExistingEmptySnapshot() throws {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let persistence = WorkbenchPersistence(fileURL: url)
+    let profile = SiteProfile.defaultProfile
+    _ = try persistence.save(
+      WorkbenchSnapshot(
+        profiles: [profile],
+        activeProfileID: profile.id,
+        drafts: [],
+        releaseRecords: []
+      )
+    )
+
+    let store = WorkbenchStore(
+      persistence: persistence,
+      freshWorkspaceSeedPolicy: .softwareGuides
+    )
+
+    XCTAssertEqual(store.drafts.count, 1)
+    XCTAssertEqual(store.selectedDraft?.title, "未命名文章")
+    XCTAssertFalse(store.drafts.contains { $0.softwareGuideID != nil })
+  }
+
+  func testInstallingSoftwareGuidesIsIdempotentAndPreservesExistingDraft() async {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
+    let originalDraftID = store.drafts[0].id
+
+    XCTAssertEqual(store.installSoftwareGuides(), 5)
+    await store.waitForPendingSave()
+
+    XCTAssertEqual(store.drafts.count, 6)
+    XCTAssertTrue(store.drafts.contains { $0.id == originalDraftID })
+    XCTAssertEqual(store.selectedDraft?.softwareGuideID, "getting-started")
+    XCTAssertEqual(store.selectedSection, .writing)
+
+    XCTAssertEqual(store.installSoftwareGuides(), 0)
+    XCTAssertEqual(store.drafts.count, 6)
+    XCTAssertEqual(Set(store.drafts.map(\.slug)).count, store.drafts.count)
+
+    let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
+    XCTAssertEqual(reloaded.drafts.count, 6)
+    XCTAssertEqual(Set(reloaded.drafts.compactMap(\.softwareGuideID)).count, 5)
+  }
+
+  func testInstallingSoftwareGuidesResolvesUserSlugCollisionWithoutMisidentification() async throws {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
+    var userDraft = store.drafts[0]
+    userDraft.title = "User-owned article"
+    userDraft.slug = "personal-site-publisher-getting-started"
+    store.updateDraft(userDraft)
+
+    XCTAssertEqual(store.installSoftwareGuides(), 5)
+    await store.waitForPendingSave()
+
+    let preservedUserDraft = try XCTUnwrap(store.drafts.first(where: { $0.id == userDraft.id }))
+    XCTAssertNil(preservedUserDraft.softwareGuideID)
+    XCTAssertEqual(preservedUserDraft.slug, "personal-site-publisher-getting-started")
+    let installedGuide = try XCTUnwrap(
+      store.drafts.first(where: { $0.softwareGuideID == "getting-started" })
+    )
+    XCTAssertEqual(installedGuide.slug, "personal-site-publisher-getting-started-2")
+    XCTAssertEqual(store.selectedDraft?.id, installedGuide.id)
+    XCTAssertEqual(store.installSoftwareGuides(), 0)
+  }
+
+  func testInstallingSoftwareGuidesCompletesPartialGuideSet() async throws {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let persistence = WorkbenchPersistence(fileURL: url)
+    let profile = SiteProfile.defaultProfile
+    let existingGuide = try XCTUnwrap(ArticleDraft.samples(profile: profile).first)
+    _ = try persistence.save(
+      WorkbenchSnapshot(
+        profiles: [profile],
+        activeProfileID: profile.id,
+        drafts: [ArticleDraft.empty(profile: profile), existingGuide],
+        releaseRecords: []
+      )
+    )
+    let store = WorkbenchStore(persistence: persistence)
+
+    XCTAssertEqual(store.installSoftwareGuides(), 4)
+    await store.waitForPendingSave()
+
+    XCTAssertEqual(Set(store.drafts.compactMap(\.softwareGuideID)).count, 5)
+    XCTAssertEqual(store.drafts.filter { $0.softwareGuideID == existingGuide.softwareGuideID }.count, 1)
+    XCTAssertEqual(store.selectedDraft?.softwareGuideID, "getting-started")
+  }
+
   func testReleaseHistoryIsBoundedInMemoryAndDuringSnapshotMigration() throws {
     let profile = SiteProfile.defaultProfile
     let records = (0..<(ReleaseRecord.maximumRetainedRecords + 25)).map { index in
@@ -94,6 +250,29 @@ final class WorkbenchPersistenceTests: XCTestCase {
     XCTAssertEqual(result.snapshot?.drafts.first?.id, snapshot.drafts.first?.id)
     XCTAssertEqual(result.snapshot?.drafts.first?.title, snapshot.drafts.first?.title)
     XCTAssertNotNil(result.recoveryMessage)
+  }
+
+  func testMissingPrimaryRecoversBackupWithoutInstallingSoftwareGuides() throws {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let persistence = WorkbenchPersistence(fileURL: url)
+    var snapshot = makeSnapshot()
+    snapshot.drafts[0].title = "Only backup copy"
+    _ = try persistence.save(snapshot)
+    try FileManager.default.removeItem(at: url)
+
+    let result = try persistence.loadWithRecovery()
+    XCTAssertEqual(result.snapshot?.drafts.first?.title, "Only backup copy")
+    XCTAssertNotNil(result.recoveryMessage)
+
+    let store = WorkbenchStore(
+      persistence: persistence,
+      freshWorkspaceSeedPolicy: .softwareGuides
+    )
+    XCTAssertEqual(store.drafts.count, 1)
+    XCTAssertEqual(store.selectedDraft?.title, "Only backup copy")
+    XCTAssertNotNil(store.persistenceRecoveryMessage)
+    XCTAssertFalse(store.drafts.contains { $0.softwareGuideID != nil })
   }
 
   func testUnrecoverableSnapshotWriteProtectsOriginalFilesUntilExplicitReset() async throws {

@@ -5,7 +5,7 @@ struct PrivacySettingsVisibilitySection: View {
   let masksPrivateContent: Binding<Bool>
 
   var body: some View {
-    Section("公开风险") {
+    Section("私密内容") {
       Toggle(
         "在列表和概览中遮挡私密文章",
         isOn: masksPrivateContent

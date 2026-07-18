@@ -2,6 +2,7 @@ import Foundation
 
 public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   public static let defaultProfileID = UUID(uuidString: "F44F7DB7-8D6F-44A3-A4F3-1D0C05931F31")!
+  public static let privateContentRoot = "private"
 
   public var id: UUID
   public var name: String
@@ -308,7 +309,28 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   }
 
   public func markdownPath(for draft: ArticleDraft) -> String {
-    renderPath(pattern: markdownPathPattern, draft: draft, filename: nil)
+    let publicPath = renderPath(pattern: markdownPathPattern, draft: draft, filename: nil)
+    guard draft.isPrivate else {
+      return publicPath
+    }
+
+    if let repositoryPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty,
+       isPrivateContentPath(repositoryPath) {
+      return repositoryPath
+    }
+
+    let normalizedContentRoot = contentRoot.normalizedRelativePath()
+    guard !normalizedContentRoot.isEmpty,
+          publicPath.hasPrefix(normalizedContentRoot + "/") else {
+      return Self.privateContentRoot + "/" + publicPath
+    }
+    return Self.privateContentRoot + "/" + String(publicPath.dropFirst(normalizedContentRoot.count + 1))
+  }
+
+  public func isPrivateContentPath(_ repositoryPath: String) -> Bool {
+    let normalizedPath = repositoryPath.normalizedRelativePath()
+    return normalizedPath == Self.privateContentRoot
+      || normalizedPath.hasPrefix(Self.privateContentRoot + "/")
   }
 
   public func imageRepositoryPath(filename: String, draft: ArticleDraft? = nil) -> String {
@@ -318,6 +340,32 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   public func publicImagePath(filename: String, draft: ArticleDraft? = nil) -> String {
     let path = renderPath(pattern: publicImagePathPattern, draft: draft, filename: filename)
     return path.hasPrefix("/") ? path : "/" + path
+  }
+
+  public func videoRepositoryPath(filename: String, draft: ArticleDraft? = nil) -> String {
+    replacingImageDirectoryWithVideos(
+      in: imageRepositoryPath(filename: filename, draft: draft)
+    )
+  }
+
+  public func publicVideoPath(filename: String, draft: ArticleDraft? = nil) -> String {
+    let path = replacingImageDirectoryWithVideos(
+      in: publicImagePath(filename: filename, draft: draft)
+    )
+    return path.hasPrefix("/") ? path : "/" + path
+  }
+
+  private func replacingImageDirectoryWithVideos(in path: String) -> String {
+    var components = path
+      .split(separator: "/", omittingEmptySubsequences: false)
+      .map(String.init)
+    guard let imageDirectoryIndex = components.firstIndex(where: {
+      $0.caseInsensitiveCompare("images") == .orderedSame
+    }) else {
+      return path
+    }
+    components[imageDirectoryIndex] = "videos"
+    return components.joined(separator: "/")
   }
 
   private func renderPath(pattern: String, draft: ArticleDraft?, filename: String?) -> String {

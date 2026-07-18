@@ -5,6 +5,7 @@ public enum DraftVersionReason: String, Codable, CaseIterable, Sendable {
   case manual
   case beforeRestore
   case beforeDeletion
+  case beforeBatchProcessing
 
   public var displayName: String {
     switch self {
@@ -16,6 +17,8 @@ public enum DraftVersionReason: String, Codable, CaseIterable, Sendable {
       return "恢复前"
     case .beforeDeletion:
       return "删除前"
+    case .beforeBatchProcessing:
+      return "批处理前"
     }
   }
 }

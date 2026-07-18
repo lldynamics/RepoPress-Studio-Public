@@ -48,6 +48,14 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     store.imageStore.imageBatchProgress
   }
 
+  public var isSiteSummaryLoading: Bool {
+    store.imageStore.isSiteSummaryLoading
+  }
+
+  public var siteSummaryErrorMessage: String? {
+    store.imageStore.siteSummaryErrorMessage
+  }
+
   public func setActionMessage(_ message: String?) {
     store.setImageActionMessage(message)
   }
@@ -60,28 +68,20 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     store.imageWorkbenchReport(for: draft)
   }
 
-  public func cachedReport(for draft: ArticleDraft) -> ImageWorkbenchReport? {
-    store.cachedImageWorkbenchReport(for: draft)
-  }
-
-  public func isReportLoading(for draft: ArticleDraft) -> Bool {
-    store.isImageWorkbenchReportLoading(for: draft)
-  }
-
-  public func refreshReportInBackground(for draft: ArticleDraft, force: Bool = false) async {
-    await store.refreshImageWorkbenchReportInBackground(for: draft, force: force)
-  }
-
   public func imageTextTargetCount(for draft: ArticleDraft, report: ImageWorkbenchReport?) -> Int {
     store.imageTextTargetCount(for: draft, report: report)
   }
 
-  public func fillMissingMetadataForSelectedDraft() {
-    store.fillMissingImageMetadataForSelectedDraft()
-  }
-
   public func fillMissingMetadataForVisibleDrafts() {
     store.fillMissingImageMetadataForVisibleDrafts()
+  }
+
+  public func fillMissingMetadataForVisibleDrafts(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    store.fillMissingImageMetadataForVisibleDrafts(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
   }
 
   public func optimizeSelectedDraftJPEGImages() {
@@ -92,12 +92,28 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     store.optimizeVisibleDraftJPEGImages()
   }
 
+  public func optimizeVisibleDraftJPEGImages(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    store.optimizeVisibleDraftJPEGImages(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
+  }
+
   public func convertSelectedDraftImagesToWebP() {
     store.convertSelectedDraftImagesToWebP()
   }
 
   public func convertVisibleDraftImagesToWebP() {
     store.convertVisibleDraftImagesToWebP()
+  }
+
+  public func convertVisibleDraftImagesToWebP(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    store.convertVisibleDraftImagesToWebP(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
   }
 
   public func optimizeSelectedDraftSVGImages() {
@@ -108,12 +124,28 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     store.optimizeVisibleDraftSVGImages()
   }
 
+  public func optimizeVisibleDraftSVGImages(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    store.optimizeVisibleDraftSVGImages(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
+  }
+
   public func resizeSelectedDraftLargeImages() {
     store.resizeSelectedDraftLargeImages()
   }
 
   public func resizeVisibleDraftLargeImages() {
     store.resizeVisibleDraftLargeImages()
+  }
+
+  public func resizeVisibleDraftLargeImages(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    store.resizeVisibleDraftLargeImages(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
   }
 
   public func cancelBatchProcessing() {
@@ -126,27 +158,6 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
 
   public func attachRepositoryImageToSelectedDraft(repositoryPath: String) {
     store.attachRepositoryImageToSelectedDraft(repositoryPath: repositoryPath)
-  }
-
-  public func prepareAISuggestions(for draft: ArticleDraft) {
-    store.aiPrepareImageTextSuggestions(for: draft)
-  }
-
-  @discardableResult
-  public func generateAISuggestions(draft: ArticleDraft) async -> [AIPublishingImageTextSuggestion] {
-    await store.aiGenerateImageTextSuggestions(draft: draft)
-  }
-
-  public func applyAISuggestion(_ suggestion: AIPublishingImageTextSuggestion) {
-    store.aiApplyImageTextSuggestion(suggestion)
-  }
-
-  public func applyAISuggestions(_ suggestions: [AIPublishingImageTextSuggestion]) {
-    store.aiApplyImageTextSuggestions(suggestions)
-  }
-
-  public func clearAISuggestions() {
-    store.aiClearImageTextSuggestions()
   }
 
   private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {

@@ -13,14 +13,6 @@ extension WorkbenchStore {
     privacyMonetizationStore.privacyProtectionStatus
   }
 
-  public var privacyProtectionAudit: PrivacyProtectionAudit {
-    privacyMonetizationStore.privacyProtectionAudit(store: self)
-  }
-
-  public var privacyProtectionEvidencePackage: PrivacyProtectionEvidencePackage {
-    privacyMonetizationStore.privacyProtectionEvidencePackage(store: self)
-  }
-
   public var proStatusSummary: ProStatusSummary {
     privacyMonetizationStore.proStatusSummary
   }
@@ -35,18 +27,6 @@ extension WorkbenchStore {
 
   public func proUpgradeRequirement(for feature: PremiumFeature) -> ProUpgradeRequirement {
     privacyMonetizationStore.proUpgradeRequirement(for: feature)
-  }
-
-  public var proMonetizationAuditReport: ProMonetizationAuditReport {
-    privacyMonetizationStore.proMonetizationAuditReport
-  }
-
-  public var proSandboxVerificationSummary: ProSandboxVerificationSummary {
-    privacyMonetizationStore.proSandboxVerificationSummary
-  }
-
-  public var proStoreKitReviewEvidencePackage: ProStoreKitReviewEvidencePackage {
-    privacyMonetizationStore.proStoreKitReviewEvidencePackage
   }
 
   public func updatePrivacySettings(_ settings: PrivacyProtectionSettings) {

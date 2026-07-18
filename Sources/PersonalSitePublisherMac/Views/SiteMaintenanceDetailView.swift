@@ -12,7 +12,7 @@ struct SiteMaintenanceDetailView: View {
     } else {
       ScrollView {
         bodyContent
-          .padding(20)
+          .workbenchPageLayout()
       }
     }
   }
@@ -20,40 +20,69 @@ struct SiteMaintenanceDetailView: View {
   @ViewBuilder
   private var bodyContent: some View {
     if let snapshot = store.siteMaintenanceSnapshot {
-      SiteMaintenanceDetailContent(
-        snapshot: snapshot,
-        isStale: store.isSiteMaintenanceSnapshotStale,
-        isAIChatRunning: store.ai.isChatRunning,
-        refresh: {
-          Task {
-            await store.refreshSiteMaintenanceSnapshot(force: true)
-          }
-        },
-        copySprintPlan: copySprintPlan,
-        copyChecklist: copyChecklist,
-        openDraft: openDraft,
-        copyItem: copyItem,
-        recordItem: recordItem,
-        sendToAI: sendToAI,
-        applySuggestedSchedule: {
-          Task {
-            await store.applySuggestedMaintenanceSchedule()
-          }
-        },
-        latestRelease: store.activeProfileReleaseRecords.first,
-        deploymentSnapshot: store.activeProfileReleaseRecords.first.flatMap(store.deploymentStatusSnapshot),
-        canCheckDeployment: store.activeProfileReleaseRecords.first.map(store.canCheckDeploymentStatus) ?? false,
-        isDeploymentChecking: store.isDeploymentStatusChecking,
-        onlineInspectionMessage: onlineInspectionMessage,
-        runOnlineInspection: runOnlineInspection
-      )
-    } else {
-      SiteMaintenanceSnapshotPlaceholder {
-        Task {
-          await store.refreshSiteMaintenanceSnapshot(force: true)
+      VStack(alignment: .leading, spacing: 12) {
+        if let errorMessage = store.siteMaintenanceSnapshotErrorMessage {
+          maintenanceRefreshFailure(errorMessage)
         }
+        SiteMaintenanceDetailContent(
+          snapshot: snapshot,
+          isStale: store.isSiteMaintenanceSnapshotStale,
+          isRefreshing: store.isSiteMaintenanceSnapshotRefreshing,
+          isAIChatRunning: store.ai.isChatRunning,
+          refresh: refreshMaintenanceSnapshot,
+          copySprintPlan: copySprintPlan,
+          copyChecklist: copyChecklist,
+          openDraft: openDraft,
+          copyItem: copyItem,
+          recordItem: recordItem,
+          sendToAI: sendToAI,
+          applySuggestedSchedule: {
+            Task {
+              await store.applySuggestedMaintenanceSchedule()
+            }
+          },
+          latestRelease: store.activeProfileReleaseRecords.first,
+          deploymentSnapshot: store.activeProfileReleaseRecords.first.flatMap(store.deploymentStatusSnapshot),
+          canCheckDeployment: store.activeProfileReleaseRecords.first.map(store.canCheckDeploymentStatus) ?? false,
+          isDeploymentChecking: store.isDeploymentStatusChecking,
+          onlineInspectionMessage: onlineInspectionMessage,
+          runOnlineInspection: runOnlineInspection
+        )
       }
+    } else {
+      SiteMaintenanceSnapshotPlaceholder(
+        isRefreshing: store.isSiteMaintenanceSnapshotRefreshing,
+        errorMessage: store.siteMaintenanceSnapshotErrorMessage,
+        generate: refreshMaintenanceSnapshot
+      )
     }
+  }
+
+  private func refreshMaintenanceSnapshot() {
+    guard !store.isSiteMaintenanceSnapshotRefreshing else { return }
+    Task {
+      await store.refreshSiteMaintenanceSnapshot(force: true)
+    }
+  }
+
+  private func maintenanceRefreshFailure(_ message: String) -> some View {
+    HStack(alignment: .top, spacing: 10) {
+      Image(systemName: "exclamationmark.triangle")
+        .foregroundStyle(WorkbenchTheme.risk)
+      VStack(alignment: .leading, spacing: 3) {
+        Text("维护报告刷新失败")
+          .font(.callout.weight(.semibold))
+        Text(message)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+      }
+      Spacer()
+      Button("重试", action: refreshMaintenanceSnapshot)
+        .disabled(store.isSiteMaintenanceSnapshotRefreshing)
+    }
+    .padding(10)
+    .background(WorkbenchTheme.risk.opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   private func copySprintPlan(_ report: SiteMaintenanceReport) {

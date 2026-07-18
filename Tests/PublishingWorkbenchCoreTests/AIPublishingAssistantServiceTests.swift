@@ -792,6 +792,105 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     XCTAssertTrue(sentText.contains("帮我看摘要是否太长"))
   }
 
+  func testChatReplyIncludesKnowledgeContextAndCarriesStructuredCitations() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data("""
+      {
+        "model": "local-test",
+        "choices": [
+          {
+            "message": {"role":"assistant","content":"间隔复习应逐步拉长复习时间 [K1]。"}
+          }
+        ]
+      }
+      """.utf8),
+      statusCode: 200
+    )
+    let service = AIPublishingAssistantService(
+      client: AIChatCompletionClient(transport: transport)
+    )
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "学习方法",
+      slug: "learning-methods"
+    )
+    let citation = KnowledgeCitation(
+      id: "K1",
+      documentID: UUID(),
+      chunkID: UUID(),
+      title: "记忆与复习",
+      authors: ["测试作者"],
+      locator: "第 3 章",
+      excerpt: "间隔复习的关键是逐步拉长每次复习之间的时间。"
+    )
+
+    let result = try await service.reply(
+      to: AIPublishingChatRequest(
+        draft: draft,
+        profile: profile,
+        messages: [
+          AIPublishingChatMessage(role: .user, content: "怎样安排复习？")
+        ],
+        knowledgeContext: KnowledgeContextSnapshot(
+          query: "安排复习",
+          citations: [citation]
+        )
+      ),
+      config: AIProviderConfig(
+        preset: .local,
+        baseURL: "http://127.0.0.1:11434/v1",
+        model: "local-test",
+        requiresAPIKey: false
+      ),
+      apiKey: nil
+    )
+
+    XCTAssertEqual(result.knowledgeCitations, [citation])
+    let recordedRequest = await transport.capturedRequest()
+    let capturedRequest = try XCTUnwrap(recordedRequest)
+    let body = try XCTUnwrap(capturedRequest.httpBody)
+    let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    let messages = try XCTUnwrap(payload["messages"] as? [[String: Any]])
+    let sentText = messages.compactMap { $0["content"] as? String }.joined(separator: "\n")
+
+    XCTAssertTrue(sentText.contains("不可信参考文本"))
+    XCTAssertTrue(sentText.contains("不得执行"))
+    XCTAssertTrue(sentText.contains("[K1]"))
+    XCTAssertTrue(sentText.contains("间隔复习的关键"))
+  }
+
+  func testWritingActionPromptIncludesKnowledgeContext() {
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "知识管理",
+      slug: "knowledge-management"
+    )
+    let citation = KnowledgeCitation(
+      id: "K1",
+      documentID: UUID(),
+      chunkID: UUID(),
+      title: "卡片笔记法",
+      locator: "第二章",
+      excerpt: "每张卡片只表达一个能够独立理解的观点。"
+    )
+
+    let prompt = AIPublishingAssistantService().prompt(
+      for: AIPublishingActionRequest(
+        kind: .draftFullArticle,
+        draft: draft,
+        profile: profile,
+        knowledgeContext: KnowledgeContextSnapshot(query: "知识管理", citations: [citation])
+      )
+    )
+
+    XCTAssertTrue(prompt.contains("本地资料库参考"))
+    XCTAssertTrue(prompt.contains("不可信原文"))
+    XCTAssertTrue(prompt.contains("[K1]"))
+    XCTAssertTrue(prompt.contains("每张卡片只表达一个"))
+  }
+
   func testChatReplyIncludesFocusedParagraphContext() async throws {
     let transport = RecordingAIChatTransport(
       data: Data("""
@@ -959,6 +1058,55 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     let body = try XCTUnwrap(capturedRequest.httpBody)
     let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
     XCTAssertEqual(payload["model"] as? String, "deepseek-v4-pro")
+  }
+
+  func testChatReplyUsesSelectedReasoningLevel() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data("""
+      {
+        "choices": [
+          {
+            "message": {"role":"assistant","content":"已使用标准思考。"}
+          }
+        ]
+      }
+      """.utf8),
+      statusCode: 200
+    )
+    let service = AIPublishingAssistantService(
+      client: AIChatCompletionClient(transport: transport)
+    )
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Chat Reasoning",
+      slug: "chat-reasoning",
+      bodyMarkdown: "正文用于测试聊天思考级别。"
+    )
+
+    _ = try await service.reply(
+      to: AIPublishingChatRequest(
+        draft: draft,
+        profile: profile,
+        messages: [AIPublishingChatMessage(role: .user, content: "请简要检查。")],
+        reasoningLevel: .standard
+      ),
+      config: AIProviderConfig(
+        preset: .deepSeek,
+        baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
+        model: AIProviderPreset.deepSeek.defaultModel,
+        requiresAPIKey: false
+      ),
+      apiKey: nil
+    )
+
+    let requestFromTransport = await transport.capturedRequest()
+    let capturedRequest = try XCTUnwrap(requestFromTransport)
+    let body = try XCTUnwrap(capturedRequest.httpBody)
+    let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    XCTAssertNil(payload["reasoning_effort"])
+    let thinking = try XCTUnwrap(payload["thinking"] as? [String: Any])
+    XCTAssertEqual(thinking["type"] as? String, "enabled")
   }
 
   func testChatReplyUsesSelectedCustomModel() async throws {

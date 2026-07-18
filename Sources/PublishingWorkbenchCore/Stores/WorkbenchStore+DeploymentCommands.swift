@@ -24,7 +24,8 @@ extension WorkbenchStore {
     deploymentStore.deploymentStatusReadiness(for: profile, hasToken: deploymentTokenAvailability.hasToken)
   }
 
-  public func saveDeploymentAccessToken(_ token: String) {
+  @discardableResult
+  public func saveDeploymentAccessToken(_ token: String) -> Bool {
     deploymentStore.saveDeploymentAccessToken(token, store: self)
   }
 

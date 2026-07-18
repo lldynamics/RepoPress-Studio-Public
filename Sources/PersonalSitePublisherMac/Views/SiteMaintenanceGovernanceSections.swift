@@ -28,16 +28,16 @@ struct SiteMaintenanceTaxonomySection: View {
           HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(entry.name)
               .font(.callout.weight(.medium))
-              .lineLimit(1)
+              .workbenchTruncatedIdentity(entry.name)
             Text("\(entry.count) 篇")
               .font(.caption)
-              .foregroundStyle(entry.count == 1 ? .orange : .secondary)
+              .foregroundStyle(entry.count == 1 ? WorkbenchTheme.warning : Color.secondary)
             Spacer()
-            Text(entry.draftTitles.prefix(3).joined(separator: " / "))
+            let draftTitles = entry.draftTitles.prefix(3).joined(separator: " / ")
+            Text(draftTitles)
               .font(.caption)
               .foregroundStyle(.secondary)
-              .lineLimit(1)
-              .truncationMode(.tail)
+              .workbenchTruncatedIdentity(draftTitles)
           }
         }
 
@@ -79,7 +79,7 @@ private struct TaxonomyDistributionChart: View {
         HStack(spacing: 10) {
           Text(entry.name)
             .font(.caption)
-            .lineLimit(1)
+            .workbenchTruncatedIdentity(entry.name)
             .frame(width: 96, alignment: .leading)
 
           GeometryReader { proxy in
@@ -94,7 +94,7 @@ private struct TaxonomyDistributionChart: View {
 
           Text("\(entry.count)")
             .font(.caption.monospacedDigit())
-            .foregroundStyle(entry.count == 1 ? .orange : .secondary)
+            .foregroundStyle(entry.count == 1 ? WorkbenchTheme.warning : Color.secondary)
             .frame(width: 28, alignment: .trailing)
         }
         .accessibilityElement(children: .ignore)
@@ -131,7 +131,7 @@ struct SiteMaintenanceStaleArticleSection: View {
               HStack(alignment: .firstTextBaseline) {
                 Text(item.title)
                   .font(.callout.weight(.medium))
-                  .lineLimit(1)
+                  .workbenchTruncatedIdentity(item.title)
                 Spacer()
                 Text("\(item.daysSinceUpdate) 天未更新")
                   .font(.caption)
@@ -140,10 +140,10 @@ struct SiteMaintenanceStaleArticleSection: View {
               Text(item.markdownPath)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .workbenchTruncatedIdentity(item.markdownPath)
               Text(item.reasons.joined(separator: "；"))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 .lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -188,22 +188,22 @@ struct SiteMaintenanceRelationSuggestionSection: View {
               HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(item.sourceTitle)
                   .font(.callout.weight(.medium))
-                  .lineLimit(1)
+                  .workbenchTruncatedIdentity(item.sourceTitle)
                 Image(systemName: "arrow.right")
                   .font(.caption.weight(.semibold))
                   .foregroundStyle(.secondary)
                 Text(item.targetTitle)
                   .font(.callout)
-                  .lineLimit(1)
+                  .workbenchTruncatedIdentity(item.targetTitle)
                 Spacer()
               }
               Text(item.targetPath)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .workbenchTruncatedIdentity(item.targetPath)
               Text(item.reason)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 .lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -251,14 +251,14 @@ struct SiteMaintenanceLinkAuditSection: View {
               VStack(alignment: .leading, spacing: 4) {
                 Text(item.draftTitle)
                   .font(.callout.weight(.medium))
-                  .lineLimit(1)
+                  .workbenchTruncatedIdentity(item.draftTitle)
                 Text(item.target)
                   .font(.caption.monospaced())
                   .foregroundStyle(.secondary)
-                  .lineLimit(1)
+                  .workbenchTruncatedIdentity(item.target)
                 Text(item.message)
-                  .font(.caption2)
-                  .foregroundStyle(.tertiary)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
                   .lineLimit(2)
               }
               Spacer()
@@ -302,7 +302,7 @@ struct SiteMaintenanceOperationLogSection: View {
             VStack(alignment: .leading, spacing: 3) {
               Text(entry.title)
                 .font(.callout.weight(.medium))
-                .lineLimit(1)
+                .workbenchTruncatedIdentity(entry.title)
               Text(entry.summary)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -310,8 +310,8 @@ struct SiteMaintenanceOperationLogSection: View {
             }
             Spacer()
             Text(entry.createdAt.workbenchShortText)
-              .font(.caption2)
-              .foregroundStyle(.tertiary)
+              .font(.caption)
+              .foregroundStyle(.secondary)
           }
         }
       }

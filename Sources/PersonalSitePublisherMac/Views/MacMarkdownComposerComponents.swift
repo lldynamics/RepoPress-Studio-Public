@@ -2,13 +2,24 @@ import AppKit
 import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
+import UniformTypeIdentifiers
 import WebKit
+
+enum MarkdownOutlineSectionAction {
+  case moveUp
+  case moveDown
+  case duplicate
+  case delete
+  case copyAnchorLink
+}
 
 struct MarkdownOutlinePopover: View {
   let items: [MarkdownOutlineItem]
   let onSelect: (MarkdownOutlineItem) -> Void
+  let onAction: (MarkdownOutlineSectionAction, MarkdownOutlineItem) -> Void
 
   @Environment(\.dismiss) private var dismiss
+  @State private var collapsedItemIDs: Set<String> = []
 
   var body: some View {
     VStack(spacing: 0) {
@@ -44,7 +55,7 @@ struct MarkdownOutlinePopover: View {
       } else {
         ScrollView {
           LazyVStack(spacing: 2) {
-            ForEach(items) { item in
+            ForEach(visibleItems) { item in
               outlineRow(item)
             }
           }
@@ -56,44 +67,191 @@ struct MarkdownOutlinePopover: View {
     .frame(width: 320)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("markdown-outline-popover")
+    .onChange(of: items.map(\.id)) { _, itemIDs in
+      collapsedItemIDs.formIntersection(itemIDs)
+    }
   }
 
   private func outlineRow(_ item: MarkdownOutlineItem) -> some View {
-    Button {
-      onSelect(item)
-      dismiss()
-    } label: {
-      HStack(spacing: 8) {
-        Text("H\(item.level)")
-          .font(.caption2.monospaced().weight(.semibold))
-          .foregroundStyle(.secondary)
-          .frame(width: 22, alignment: .leading)
+    HStack(spacing: 4) {
+      Button {
+        onSelect(item)
+        dismiss()
+      } label: {
+        HStack(spacing: 8) {
+          Text("H\(item.level)")
+            .font(.caption2.monospaced().weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 22, alignment: .leading)
 
-        Text(item.title)
-          .lineLimit(1)
+          Text(item.title)
+            .workbenchTruncatedIdentity(item.title)
 
-        Spacer(minLength: 8)
+          Spacer(minLength: 8)
 
-        if !item.publicRiskSummary.isClear {
-          Image(systemName: "exclamationmark.triangle.fill")
-            .font(.caption)
-            .foregroundStyle(
-              item.publicRiskSummary.errorCount > 0
-                ? WorkbenchTheme.risk
-                : WorkbenchTheme.warning
-            )
-            .help(item.publicRiskSummary.statusTitle)
-            .accessibilityHidden(true)
+          if !item.publicRiskSummary.isClear {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .font(.caption)
+              .foregroundStyle(
+                item.publicRiskSummary.errorCount > 0
+                  ? WorkbenchTheme.risk
+                  : WorkbenchTheme.warning
+              )
+              .help(item.publicRiskSummary.statusTitle)
+              .accessibilityHidden(true)
+          }
+        }
+        .padding(.leading, item.level == 3 ? 16 : 0)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("\(item.level) 级标题：\(item.title)")
+      .accessibilityValue(item.publicRiskSummary.statusTitle)
+
+      outlineActionMenu(for: item)
+    }
+  }
+
+  private func outlineActionMenu(for item: MarkdownOutlineItem) -> some View {
+    Menu {
+      Button {
+        onAction(.moveUp, item)
+      } label: {
+        Label {
+          Text("章节上移")
+        } icon: {
+          Image(systemName: "arrow.up")
         }
       }
-      .padding(.leading, item.level == 3 ? 16 : 0)
-      .padding(.horizontal, 8)
-      .padding(.vertical, 7)
-      .contentShape(Rectangle())
+      .disabled(!canMove(item, direction: .up))
+
+      Button {
+        onAction(.moveDown, item)
+      } label: {
+        Label {
+          Text("章节下移")
+        } icon: {
+          Image(systemName: "arrow.down")
+        }
+      }
+      .disabled(!canMove(item, direction: .down))
+
+      if hasChildItems(item) {
+        Button {
+          toggleCollapsed(item)
+        } label: {
+          if collapsedItemIDs.contains(item.id) {
+            Label {
+              Text("展开子章节")
+            } icon: {
+              Image(systemName: "chevron.down")
+            }
+          } else {
+            Label {
+              Text("折叠子章节")
+            } icon: {
+              Image(systemName: "chevron.right")
+            }
+          }
+        }
+      }
+
+      Divider()
+
+      Button {
+        onAction(.duplicate, item)
+      } label: {
+        Label {
+          Text("复制章节")
+        } icon: {
+          Image(systemName: "plus.square.on.square")
+        }
+      }
+
+      Button {
+        onAction(.copyAnchorLink, item)
+      } label: {
+        Label {
+          Text("复制锚点链接")
+        } icon: {
+          Image(systemName: "link")
+        }
+      }
+
+      Divider()
+
+      Button(role: .destructive) {
+        onAction(.delete, item)
+      } label: {
+        Label {
+          Text("删除章节")
+        } icon: {
+          Image(systemName: "trash")
+        }
+      }
+    } label: {
+      Image(systemName: "ellipsis.circle")
+        .foregroundStyle(.secondary)
+        .frame(width: 24, height: 24)
+        .contentShape(Rectangle())
     }
-    .buttonStyle(.plain)
-    .accessibilityLabel("\(item.level) 级标题：\(item.title)")
-    .accessibilityValue(item.publicRiskSummary.statusTitle)
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .fixedSize()
+    .help("更多章节操作")
+    .accessibilityLabel(Text("更多章节操作"))
+  }
+
+  private var visibleItems: [MarkdownOutlineItem] {
+    var collapsedLevel: Int?
+    return items.filter { item in
+      if let level = collapsedLevel {
+        if item.level > level {
+          return false
+        }
+        collapsedLevel = nil
+      }
+      if collapsedItemIDs.contains(item.id) {
+        collapsedLevel = item.level
+      }
+      return true
+    }
+  }
+
+  private func hasChildItems(_ item: MarkdownOutlineItem) -> Bool {
+    guard let index = items.firstIndex(of: item), index + 1 < items.count else { return false }
+    return items[index + 1].level > item.level
+  }
+
+  private func toggleCollapsed(_ item: MarkdownOutlineItem) {
+    if !collapsedItemIDs.insert(item.id).inserted {
+      collapsedItemIDs.remove(item.id)
+    }
+  }
+
+  private func canMove(
+    _ item: MarkdownOutlineItem,
+    direction: MarkdownOutlineMoveDirection
+  ) -> Bool {
+    guard let itemIndex = items.firstIndex(of: item) else { return false }
+    let lowerBound = stride(from: itemIndex - 1, through: 0, by: -1)
+      .first(where: { items[$0].level < item.level })
+      .map { $0 + 1 }
+      ?? 0
+    let upperBound = ((itemIndex + 1)..<items.count)
+      .first(where: { items[$0].level < item.level })
+      ?? items.count
+    let siblingIndices = (lowerBound..<upperBound).filter { items[$0].level == item.level }
+    guard let siblingPosition = siblingIndices.firstIndex(of: itemIndex) else { return false }
+
+    switch direction {
+    case .up:
+      return siblingPosition > siblingIndices.startIndex
+    case .down:
+      return siblingIndices.index(after: siblingPosition) < siblingIndices.endIndex
+    }
   }
 }
 
@@ -157,7 +315,10 @@ struct SelectionActionBar: View {
     .padding(.horizontal, 10)
     .padding(.vertical, 7)
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .shadow(radius: 8, y: 2)
+    .overlay {
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.55))
+    }
   }
 }
 
@@ -180,20 +341,87 @@ struct FindReplaceBar: View {
   @FocusState private var isFindFieldFocused: Bool
 
   var body: some View {
+    ViewThatFits(in: .horizontal) {
+      wideLayout
+      compactLayout
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 7)
+    .background(.bar)
+    .onAppear {
+      isFindFieldFocused = true
+    }
+    .onKeyPress(.return) {
+      if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
+        onFindPrevious()
+      } else {
+        onFindNext()
+      }
+      return .handled
+    }
+    .onExitCommand(perform: onDismiss)
+  }
+
+  private var wideLayout: some View {
     HStack(spacing: 8) {
-      TextField("查找", text: $findQuery)
-        .textFieldStyle(.roundedBorder)
-        .frame(width: 170)
-        .focused($isFindFieldFocused)
-        .accessibilityLabel("查找文本")
-        .accessibilityValue(findQuery.nilIfEmpty ?? "未输入")
+      findField(maxWidth: 170)
+      replacementField(maxWidth: 170)
+      findControls
+      replaceControls
 
-      TextField("替换为", text: $replacementText)
-        .textFieldStyle(.roundedBorder)
-        .frame(width: 170)
-        .accessibilityLabel("替换文本")
-        .accessibilityValue(replacementText.nilIfEmpty ?? "未输入")
+      if !findReplaceMessage.isEmpty {
+        Text(findReplaceMessage)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+      }
 
+      Spacer()
+      dismissButton
+    }
+  }
+
+  private var compactLayout: some View {
+    VStack(alignment: .leading, spacing: 7) {
+      HStack(spacing: 8) {
+        findField(maxWidth: .infinity)
+        replacementField(maxWidth: .infinity)
+        dismissButton
+      }
+
+      HStack(spacing: 8) {
+        findControls
+        replaceControls
+        if !findReplaceMessage.isEmpty {
+          Text(findReplaceMessage)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+        Spacer(minLength: 0)
+      }
+    }
+  }
+
+  private func findField(maxWidth: CGFloat) -> some View {
+    TextField("查找", text: $findQuery)
+      .textFieldStyle(.roundedBorder)
+      .frame(minWidth: 100, idealWidth: 170, maxWidth: maxWidth)
+      .focused($isFindFieldFocused)
+      .accessibilityLabel("查找文本")
+      .accessibilityValue(findQuery.nilIfEmpty ?? "未输入")
+  }
+
+  private func replacementField(maxWidth: CGFloat) -> some View {
+    TextField("替换为", text: $replacementText)
+      .textFieldStyle(.roundedBorder)
+      .frame(minWidth: 100, idealWidth: 170, maxWidth: maxWidth)
+      .accessibilityLabel("替换文本")
+      .accessibilityValue(replacementText.nilIfEmpty ?? "未输入")
+  }
+
+  private var findControls: some View {
+    HStack(spacing: 4) {
       Text(findMatchStatus)
         .font(.caption.monospacedDigit())
         .foregroundStyle(.secondary)
@@ -230,7 +458,12 @@ struct FindReplaceBar: View {
       .fixedSize()
       .help("查找模式")
       .accessibilityLabel("查找模式")
+    }
+    .fixedSize()
+  }
 
+  private var replaceControls: some View {
+    HStack(spacing: 6) {
       Button {
         onReplaceCurrentOrNext()
       } label: {
@@ -246,110 +479,89 @@ struct FindReplaceBar: View {
       }
       .disabled(!canUseFindReplace)
       .accessibilityLabel("全部替换")
-
-      if !findReplaceMessage.isEmpty {
-        Text(findReplaceMessage)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-      }
-
-      Spacer()
-
-      Button {
-        onDismiss()
-      } label: {
-        Image(systemName: "xmark")
-      }
-      .buttonStyle(.borderless)
-      .help("关闭查找替换")
-      .accessibilityLabel("关闭查找替换")
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 7)
-    .background(.bar)
-    .onAppear {
-      isFindFieldFocused = true
+    .fixedSize()
+  }
+
+  private var dismissButton: some View {
+    Button {
+      onDismiss()
+    } label: {
+      Image(systemName: "xmark")
     }
-    .onKeyPress(.return) {
-      if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
-        onFindPrevious()
-      } else {
-        onFindNext()
-      }
-      return .handled
-    }
-    .onExitCommand(perform: onDismiss)
+    .buttonStyle(.borderless)
+    .help("关闭查找替换")
+    .accessibilityLabel("关闭查找替换")
   }
 }
 
 struct MarkdownPreviewPane: View {
   let draft: ArticleDraft
-  let profile: SiteProfile
   @Binding var isSynchronizedScrollingEnabled: Bool
   let scrollSyncUpdate: MarkdownScrollSyncUpdate?
+  let scrollRestorationUpdate: MarkdownScrollSyncUpdate?
   let onScrollProgressChanged: (Double) -> Void
   @Environment(\.colorScheme) private var colorScheme
   @AppStorage("markdownEditorPreviewTheme") private var previewThemeRaw = MarkdownPreviewTheme.system.rawValue
   @State private var htmlDocument = ""
-  @State private var renderWorkItem: DispatchWorkItem?
-  @State private var renderGeneration = 0
+  @State private var assetResources: [MarkdownPreviewAssetResource] = []
+  @State private var renderID: UUID?
+  @State private var renderTask: Task<Void, Never>?
+  @State private var renderGeneration: UInt64 = 0
+  @State private var isRendering = false
+  @State private var renderErrorMessage: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      VStack(alignment: .leading, spacing: 10) {
-        HStack(alignment: .top) {
-          Text(draft.title)
-            .font(.title.weight(.semibold))
-            .textSelection(.enabled)
+      HStack(spacing: 10) {
+        Label("预览", systemImage: "doc.richtext")
+          .font(.callout.weight(.semibold))
 
-          Spacer()
-
-          Toggle(isOn: $isSynchronizedScrollingEnabled) {
-            Image(systemName: "arrow.up.and.down.text.horizontal")
-          }
-          .toggleStyle(.button)
-          .help(isSynchronizedScrollingEnabled ? "关闭编辑与预览同步滚动" : "开启编辑与预览同步滚动")
-          .accessibilityLabel("编辑与预览同步滚动")
-          .accessibilityValue(isSynchronizedScrollingEnabled ? "开启" : "关闭")
-
-          Picker("预览主题", selection: previewThemeBinding) {
-            ForEach(MarkdownPreviewTheme.allCases) { theme in
-              Text(theme.title).tag(theme)
-            }
-          }
-          .pickerStyle(.menu)
-          .labelsHidden()
-          .accessibilityLabel("预览主题")
-          .accessibilityValue(previewThemeBinding.wrappedValue.title)
+        if isRendering {
+          ProgressView()
+            .controlSize(.small)
+            .accessibilityLabel("正在更新文章预览")
         }
 
-        Text(profile.markdownPath(for: draft))
-          .font(.callout.monospaced())
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
+        Spacer()
 
-        if !draft.summary.isEmpty {
-          Text(draft.summary)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+        Toggle(isOn: $isSynchronizedScrollingEnabled) {
+          Image(systemName: "arrow.up.and.down.text.horizontal")
         }
+        .toggleStyle(.button)
+        .help(isSynchronizedScrollingEnabled ? "关闭编辑与预览同步滚动" : "开启编辑与预览同步滚动")
+        .accessibilityLabel("编辑与预览同步滚动")
+        .accessibilityValue(isSynchronizedScrollingEnabled ? "开启" : "关闭")
 
-        Divider()
+        Picker("预览主题", selection: previewThemeBinding) {
+          ForEach(MarkdownPreviewTheme.allCases) { theme in
+            Text(theme.title).tag(theme)
+          }
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .accessibilityLabel("预览主题")
+        .accessibilityValue(previewThemeBinding.wrappedValue.title)
       }
-      .padding(14)
+      .padding(.horizontal, 12)
+      .padding(.vertical, 8)
       .background(.bar)
 
-      MarkdownPreviewWebView(
-        html: htmlDocument,
-        scrollSyncUpdate: isSynchronizedScrollingEnabled ? scrollSyncUpdate : nil,
-        onScrollProgressChanged: onScrollProgressChanged
-      )
+      Divider()
+
+      previewContent
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    .onAppear(perform: scheduleHTMLRender)
+    .accessibilityLabel("文章预览：\(draft.title)")
+    .onAppear {
+      scheduleHTMLRender(immediate: true)
+    }
     .onChange(of: previewRenderInput) { _, _ in
       scheduleHTMLRender()
+    }
+    .onDisappear {
+      renderTask?.cancel()
+      renderTask = nil
     }
   }
 
@@ -364,53 +576,232 @@ struct MarkdownPreviewPane: View {
     )
   }
 
-  private var previewRenderInput: String {
-    [draft.bodyMarkdown, previewTheme.rawValue, colorScheme == .dark ? "dark" : "light"]
-      .joined(separator: "\u{1F}")
+  private var previewRenderInput: MarkdownPreviewRenderInput {
+    MarkdownPreviewRenderInput(
+      title: draft.title.trimmedForPublishing.nilIfEmpty ?? String(localized: "未命名文章"),
+      markdown: draft.bodyMarkdown,
+      attachments: draft.attachments,
+      theme: previewTheme,
+      isDarkAppearance: colorScheme == .dark
+    )
   }
 
-  private func scheduleHTMLRender() {
-    renderWorkItem?.cancel()
-    renderGeneration += 1
-    let generation = renderGeneration
-    let markdown = draft.bodyMarkdown
-    let theme = previewTheme
-    let isDarkAppearance = colorScheme == .dark
-    let workItem = DispatchWorkItem {
-      let html = MarkdownPreviewHTMLRenderer.document(
-        markdown: markdown,
-        theme: theme,
-        isDarkAppearance: isDarkAppearance
-      )
-      DispatchQueue.main.async {
-        guard generation == renderGeneration else { return }
-        htmlDocument = html
-        renderWorkItem = nil
+  @ViewBuilder
+  private var previewContent: some View {
+    if htmlDocument.isEmpty {
+      if isRendering {
+        VStack(spacing: 10) {
+          ProgressView()
+          Text("正在生成预览…")
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("正在生成文章预览")
+      } else if let renderErrorMessage {
+        previewFailure(message: renderErrorMessage, fillsAvailableSpace: true)
+      } else {
+        EmptyStateView(
+          title: "预览尚未生成",
+          message: "正文发生变化后会自动重新生成，也可以手动重试。",
+          systemImage: "doc.richtext",
+          density: .inline,
+          actionTitle: "生成预览",
+          actionSystemImage: "arrow.clockwise",
+          action: { scheduleHTMLRender(immediate: true) }
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      }
+    } else {
+      VStack(spacing: 0) {
+        if let renderErrorMessage {
+          previewFailure(message: renderErrorMessage, fillsAvailableSpace: false)
+          Divider()
+        }
+        MarkdownPreviewWebView(
+          html: htmlDocument,
+          renderID: renderID,
+          assetResources: assetResources,
+          scrollSyncUpdate: isSynchronizedScrollingEnabled ? scrollSyncUpdate : nil,
+          scrollRestorationUpdate: scrollRestorationUpdate,
+          onScrollProgressChanged: onScrollProgressChanged
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
-    renderWorkItem = workItem
-    DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.25, execute: workItem)
+  }
+
+  private func previewFailure(message: String, fillsAvailableSpace: Bool) -> some View {
+    HStack(alignment: .top, spacing: 10) {
+      Image(systemName: "exclamationmark.triangle")
+        .foregroundStyle(WorkbenchTheme.risk)
+      VStack(alignment: .leading, spacing: 3) {
+        Text("预览生成失败")
+          .font(.callout.weight(.semibold))
+        Text(message)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+      }
+      Spacer()
+      Button("重试") {
+        scheduleHTMLRender(immediate: true)
+      }
+      .disabled(isRendering)
+    }
+    .padding(12)
+    .frame(
+      maxWidth: .infinity,
+      maxHeight: fillsAvailableSpace ? .infinity : nil,
+      alignment: fillsAvailableSpace ? .center : .topLeading
+    )
+    .background(WorkbenchTheme.risk.opacity(WorkbenchOpacity.warningBackground))
+  }
+
+  private func scheduleHTMLRender(immediate: Bool = false) {
+    renderTask?.cancel()
+    renderGeneration &+= 1
+    let generation = renderGeneration
+    let input = previewRenderInput
+    isRendering = true
+    renderErrorMessage = nil
+
+    renderTask = Task { @MainActor in
+      defer {
+        if renderGeneration == generation {
+          renderTask = nil
+          isRendering = false
+        }
+      }
+      if !immediate {
+        do {
+          try await Task.sleep(for: .milliseconds(250))
+        } catch {
+          return
+        }
+      }
+      guard !Task.isCancelled else { return }
+      do {
+        let snapshot = try await MarkdownPreviewRenderEngine.shared.render(input)
+        guard !Task.isCancelled, renderGeneration == generation else { return }
+        renderID = snapshot.id
+        assetResources = snapshot.assetResources
+        htmlDocument = snapshot.html
+        renderErrorMessage = nil
+      } catch is CancellationError {
+        return
+      } catch {
+        guard renderGeneration == generation else { return }
+        renderErrorMessage = error.localizedDescription
+      }
+    }
+  }
+}
+
+private struct MarkdownPreviewRenderInput: Hashable, Sendable {
+  let title: String
+  let markdown: String
+  let attachments: [DraftAttachment]
+  let theme: MarkdownPreviewTheme
+  let isDarkAppearance: Bool
+}
+
+private struct MarkdownPreviewRenderCacheKey: Hashable, Sendable {
+  let input: MarkdownPreviewRenderInput
+  let assetResources: [MarkdownPreviewAssetResource]
+}
+
+private struct MarkdownPreviewRenderSnapshot: Sendable {
+  let id: UUID
+  let html: String
+  let assetResources: [MarkdownPreviewAssetResource]
+}
+
+private actor MarkdownPreviewRenderEngine {
+  static let shared = MarkdownPreviewRenderEngine()
+  private var cache = MarkdownPreviewRenderCache<
+    MarkdownPreviewRenderCacheKey,
+    MarkdownPreviewRenderSnapshot
+  >(capacity: 4)
+
+  func render(_ input: MarkdownPreviewRenderInput) throws -> MarkdownPreviewRenderSnapshot {
+    try Task.checkCancellation()
+    let resources = MarkdownPreviewAssetResource.resources(for: input.attachments)
+    let cacheKey = MarkdownPreviewRenderCacheKey(
+      input: input,
+      assetResources: resources
+    )
+    if let cachedSnapshot = cache.snapshot(for: cacheKey) {
+      return cachedSnapshot
+    }
+
+    try Task.checkCancellation()
+    let html = try MarkdownPreviewHTMLRenderer.document(
+      title: input.title,
+      markdown: input.markdown,
+      attachments: input.attachments,
+      previewURLByAttachmentID: Dictionary(
+        uniqueKeysWithValues: resources.map { ($0.attachmentID, $0.previewURLString) }
+      ),
+      theme: input.theme,
+      isDarkAppearance: input.isDarkAppearance
+    )
+    try Task.checkCancellation()
+    let snapshot = MarkdownPreviewRenderSnapshot(
+      id: UUID(),
+      html: html,
+      assetResources: resources
+    )
+    cache.insert(snapshot, for: cacheKey)
+    return snapshot
   }
 }
 
 private enum MarkdownPreviewHTMLRenderer {
   static func document(
+    title: String,
     markdown: String,
+    attachments: [DraftAttachment],
+    previewURLByAttachmentID: [UUID: String],
     theme: MarkdownPreviewTheme,
     isDarkAppearance: Bool
-  ) -> String {
-    let body = theme.decorate(markdownHTMLBody(for: markdown))
+  ) throws -> String {
+    var renderedBlocks: [String] = []
+    for block in MarkdownExtendedPreviewService.blocks(in: markdown) {
+      try Task.checkCancellation()
+      switch block {
+      case let .markdown(markdownBlock):
+        let prepared = MarkdownPreviewAssetService.prepare(
+          markdown: markdownBlock,
+          attachments: attachments,
+          previewURLByAttachmentID: previewURLByAttachmentID
+        )
+        renderedBlocks.append(restoredAssetHTML(
+          markdownHTMLBody(for: prepared.markdown),
+          replacements: prepared.replacements
+        ))
+      case let .mermaid(diagram):
+        renderedBlocks.append(mermaidHTML(for: diagram))
+      }
+    }
+    try Task.checkCancellation()
+    let body = theme.decorate(renderedBlocks.joined(separator: "\n"))
+    let escapedTitle = escapeHTML(title)
     return """
     <!doctype html>
     <html>
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; media-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: publisher-asset:; font-src 'none'; media-src publisher-asset:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+        <title>\(escapedTitle)</title>
         <style>\(theme.styles(isDarkAppearance: isDarkAppearance))</style>
       </head>
       <body>
-        <article class="markdown-content">\(body)</article>
+        <article class="markdown-content">
+          <header class="article-header"><h1 class="article-title">\(escapedTitle)</h1></header>
+          <div class="article-body">\(body)</div>
+        </article>
       </body>
     </html>
     """
@@ -446,6 +837,76 @@ private enum MarkdownPreviewHTMLRenderer {
     "<pre><code>\(escapeHTML(markdown))</code></pre>"
   }
 
+  private static func restoredAssetHTML(
+    _ html: String,
+    replacements: [MarkdownPreviewAssetHTMLReplacement]
+  ) -> String {
+    replacements.reduce(html) { partialResult, replacement in
+      partialResult.replacingOccurrences(of: replacement.token, with: replacement.html)
+    }
+  }
+
+  private static func mermaidHTML(for diagram: MarkdownMermaidDiagram) -> String {
+    guard !diagram.nodes.isEmpty else {
+      return "<section class=\"mermaid-diagram mermaid-fallback\"><strong>Mermaid 图示</strong>\(preformattedFallback(from: diagram.source))</section>"
+    }
+
+    let nodeWidth = 180.0
+    let nodeHeight = 48.0
+    let gap = 54.0
+    let padding = 34.0
+    let isHorizontal = diagram.direction == .leftRight
+    let width = isHorizontal
+      ? padding * 2 + Double(diagram.nodes.count) * nodeWidth + Double(max(0, diagram.nodes.count - 1)) * gap
+      : padding * 2 + nodeWidth
+    let height = isHorizontal
+      ? padding * 2 + nodeHeight
+      : padding * 2 + Double(diagram.nodes.count) * nodeHeight + Double(max(0, diagram.nodes.count - 1)) * gap
+
+    var positions: [String: (x: Double, y: Double)] = [:]
+    for (index, node) in diagram.nodes.enumerated() {
+      positions[node.id] = isHorizontal
+        ? (padding + Double(index) * (nodeWidth + gap), padding)
+        : (padding, padding + Double(index) * (nodeHeight + gap))
+    }
+
+    let edges = diagram.edges.compactMap { edge -> String? in
+      guard let start = positions[edge.from], let end = positions[edge.to] else { return nil }
+      let x1 = isHorizontal ? start.x + nodeWidth : start.x + nodeWidth / 2
+      let y1 = isHorizontal ? start.y + nodeHeight / 2 : start.y + nodeHeight
+      let x2 = isHorizontal ? end.x : end.x + nodeWidth / 2
+      let y2 = isHorizontal ? end.y + nodeHeight / 2 : end.y
+      let label = edge.label.map {
+        "<text class=\"edge-label\" x=\"\((x1 + x2) / 2)\" y=\"\((y1 + y2) / 2 - 6)\" text-anchor=\"middle\">\(escapeHTML($0))</text>"
+      } ?? ""
+      return "<line class=\"edge\" x1=\"\(x1)\" y1=\"\(y1)\" x2=\"\(x2)\" y2=\"\(y2)\" marker-end=\"url(#mermaid-arrow)\"/>\(label)"
+    }
+    .joined()
+
+    let nodes = diagram.nodes.compactMap { node -> String? in
+      guard let point = positions[node.id] else { return nil }
+      return """
+      <g class="node">
+        <rect x="\(point.x)" y="\(point.y)" width="\(nodeWidth)" height="\(nodeHeight)" rx="10" />
+        <text x="\(point.x + nodeWidth / 2)" y="\(point.y + nodeHeight / 2 + 5)" text-anchor="middle">\(escapeHTML(node.label))</text>
+      </g>
+      """
+    }
+    .joined()
+
+    return """
+    <section class="mermaid-diagram" aria-label="Mermaid 图示">
+      <div class="mermaid-title">Mermaid 图示</div>
+      <svg viewBox="0 0 \(width) \(height)" role="img" aria-label="\(escapeHTML(diagram.nodes.map(\.label).joined(separator: "，")))">
+        <defs><marker id="mermaid-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker></defs>
+        \(edges)
+        \(nodes)
+      </svg>
+      <details><summary>查看 Mermaid 源码</summary>\(preformattedFallback(from: diagram.source))</details>
+    </section>
+    """
+  }
+
   private static func escapeHTML(_ value: String) -> String {
     value
       .replacingOccurrences(of: "&", with: "&amp;")
@@ -456,7 +917,7 @@ private enum MarkdownPreviewHTMLRenderer {
   }
 }
 
-enum MarkdownPreviewTheme: String, CaseIterable, Identifiable {
+enum MarkdownPreviewTheme: String, CaseIterable, Identifiable, Hashable, Sendable {
   case system
   case github
   case githubDark
@@ -480,41 +941,68 @@ enum MarkdownPreviewTheme: String, CaseIterable, Identifiable {
   func styles(isDarkAppearance: Bool) -> String {
     switch self {
     case .system:
-      return (isDarkAppearance ? MarkdownPreviewTheme.githubDark : .github)
-        .styles(isDarkAppearance: isDarkAppearance)
+      if isDarkAppearance {
+        return """
+        :root { color-scheme: dark; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', sans-serif; line-height: 1.78; background: #171c17; color: #e3e8e1; padding: 22px; }
+        .markdown-content { max-width: 860px; margin: 0; }
+        .markdown-content a { color: #94c785; }
+        .markdown-content pre { background: #222a21; border: 1px solid #3e4b3a; border-radius: 8px; padding: 12px; }
+        .markdown-content code { font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        .markdown-content table { border-collapse: collapse; margin: 12px 0; }
+        .markdown-content th, .markdown-content td { border: 1px solid #3e4b3a; padding: 6px 10px; }
+        .markdown-content blockquote { border-left: 4px solid #76a96b; margin: 12px 0; padding: 8px 12px; background: #222d21; color: #c5d3c1; }
+        \(extendedPreviewStyles)
+        """
+      }
+      return """
+      :root { color-scheme: light; }
+      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', sans-serif; line-height: 1.78; background: #f7f9f5; color: #253126; padding: 22px; }
+      .markdown-content { max-width: 860px; margin: 0; }
+      .markdown-content a { color: #427a38; }
+      .markdown-content pre { background: #edf2e9; border: 1px solid #ced9c8; border-radius: 8px; padding: 12px; }
+      .markdown-content code { font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+      .markdown-content table { border-collapse: collapse; margin: 12px 0; }
+      .markdown-content th, .markdown-content td { border: 1px solid #ced9c8; padding: 6px 10px; }
+      .markdown-content blockquote { border-left: 4px solid #6f9b65; margin: 12px 0; padding: 8px 12px; background: #e9f1e5; color: #4d624f; }
+      \(extendedPreviewStyles)
+      """
     case .github:
       return """
       :root { color-scheme: light; }
       body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; background: #fff; color: #24292f; padding: 20px; }
-      .markdown-content { max-width: 860px; margin: 0 auto; }
+      .markdown-content { max-width: 860px; margin: 0; }
       .markdown-content pre { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px; }
       .markdown-content code { font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
       .markdown-content a { color: #0969da; }
       .markdown-content table { border-collapse: collapse; margin: 12px 0; }
       .markdown-content th, .markdown-content td { border: 1px solid #d0d7de; padding: 6px 10px; }
       .markdown-content blockquote { border-left: 4px solid #d0d7de; margin: 12px 0; padding: 8px 12px; background: #f6f8fa; color: #57606a; }
+      \(extendedPreviewStyles)
       """
     case .githubDark:
       return """
       :root { color-scheme: dark; }
       body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; background: #0d1117; color: #c9d1d9; padding: 20px; }
-      .markdown-content { max-width: 860px; margin: 0 auto; }
+      .markdown-content { max-width: 860px; margin: 0; }
       .markdown-content pre { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px; }
       .markdown-content code { font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
       .markdown-content a { color: #58a6ff; }
       .markdown-content table { border-collapse: collapse; margin: 12px 0; }
       .markdown-content th, .markdown-content td { border: 1px solid #30363d; padding: 6px 10px; }
       .markdown-content blockquote { border-left: 4px solid #30363d; margin: 12px 0; padding: 8px 12px; background: #161b22; color: #8b949e; }
+      \(extendedPreviewStyles)
       """
     case .simple:
       return """
       :root { color-scheme: light; }
       body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', sans-serif; line-height: 1.85; background: #fffef8; color: #202020; padding: 24px; }
-      .markdown-content { max-width: 900px; margin: 0 auto; }
+      .markdown-content { max-width: 900px; margin: 0; }
       .markdown-content pre { border: 1px solid #ddd; border-radius: 6px; padding: 12px; background: #f7f6f2; }
       .markdown-content code { font-family: Menlo, SFMono-Regular, Consolas, monospace; }
       .markdown-content h1, .markdown-content h2, .markdown-content h3 { line-height: 1.25; }
       .markdown-content img { max-width: 100%; }
+      \(extendedPreviewStyles)
       """
     }
   }
@@ -522,18 +1010,139 @@ enum MarkdownPreviewTheme: String, CaseIterable, Identifiable {
   func decorate(_ html: String) -> String {
     html
   }
+
+  private var extendedPreviewStyles: String {
+    """
+    .article-header { margin: 0 0 1.5em; padding-bottom: .85em; border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent); }
+    .article-title { margin: 0; font-size: clamp(1.75em, 4vw, 2.25em); line-height: 1.18; letter-spacing: -.02em; overflow-wrap: anywhere; }
+    .mermaid-diagram { margin: 18px 0; padding: 14px; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 10px; overflow-x: auto; }
+    .mermaid-title { font-weight: 600; margin-bottom: 8px; }
+    .mermaid-diagram svg { width: 100%; min-width: 320px; max-height: 720px; }
+    .mermaid-diagram .node rect { fill: color-mix(in srgb, currentColor 8%, transparent); stroke: color-mix(in srgb, currentColor 55%, transparent); stroke-width: 1.5; }
+    .mermaid-diagram .node text, .mermaid-diagram .edge-label { fill: currentColor; font: 13px -apple-system, BlinkMacSystemFont, sans-serif; }
+    .mermaid-diagram .edge { stroke: color-mix(in srgb, currentColor 65%, transparent); stroke-width: 1.6; }
+    .mermaid-diagram marker path { fill: currentColor; }
+    .mermaid-diagram details { margin-top: 8px; color: inherit; opacity: .75; }
+    .local-asset { display: block; margin: 18px 0; max-width: 100%; }
+    .local-asset img, .local-asset video { display: block; max-width: 100%; height: auto; border-radius: 8px; }
+    .local-asset-caption { display: block; margin-top: 7px; color: color-mix(in srgb, currentColor 68%, transparent); font-size: .9em; line-height: 1.45; }
+    """
+  }
+}
+
+struct MarkdownPreviewAssetResource: Hashable, Sendable {
+  let attachmentID: UUID
+  let sourceURL: URL
+  let mimeType: String
+  let previewURLString: String
+
+  static func resources(for attachments: [DraftAttachment]) -> [Self] {
+    var seenAttachmentIDs: Set<UUID> = []
+    return attachments.compactMap { attachment in
+      guard seenAttachmentIDs.insert(attachment.id).inserted,
+            let sourceFilePath = attachment.sourceFilePath?.nilIfEmpty else {
+        return nil
+      }
+      let sourceURL = URL(fileURLWithPath: sourceFilePath)
+        .standardizedFileURL
+        .resolvingSymlinksInPath()
+      guard FileManager.default.isReadableFile(atPath: sourceURL.path),
+            let values = try? sourceURL.resourceValues(forKeys: [
+              .isRegularFileKey,
+              .contentModificationDateKey,
+              .fileSizeKey,
+            ]),
+            values.isRegularFile == true else {
+        return nil
+      }
+
+      let expectedByteCount = values.fileSize ?? Int(attachment.byteSize)
+      let modificationTime = Int64(
+        (values.contentModificationDate?.timeIntervalSince1970 ?? 0) * 1_000
+      )
+      let revision = "\(modificationTime)-\(expectedByteCount)"
+      let identifier = attachment.id.uuidString.lowercased()
+      let previewURL = "\(MarkdownPreviewAssetService.URLScheme)://attachment/\(identifier)?v=\(revision)"
+      let pathExtension = sourceURL.pathExtension.nilIfEmpty
+        ?? URL(fileURLWithPath: attachment.originalFilename).pathExtension
+      let mimeType = UTType(filenameExtension: pathExtension)?.preferredMIMEType
+        ?? (attachment.mediaKind == .video
+          ? VideoFileSupport.mimeType(for: sourceURL.path)
+          : "application/octet-stream")
+      return Self(
+        attachmentID: attachment.id,
+        sourceURL: sourceURL,
+        mimeType: mimeType,
+        previewURLString: previewURL
+      )
+    }
+  }
+}
+
+final class MarkdownPreviewAssetSchemeHandler: NSObject, WKURLSchemeHandler {
+  private let lock = NSLock()
+  private var resourceByAttachmentID: [String: MarkdownPreviewAssetResource] = [:]
+
+  func update(resources: [MarkdownPreviewAssetResource]) {
+    lock.lock()
+    resourceByAttachmentID = Dictionary(
+      uniqueKeysWithValues: resources.map {
+        ($0.attachmentID.uuidString.lowercased(), $0)
+      }
+    )
+    lock.unlock()
+  }
+
+  func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
+    guard let requestURL = urlSchemeTask.request.url,
+          requestURL.scheme == MarkdownPreviewAssetService.URLScheme,
+          requestURL.host == "attachment",
+          let identifier = requestURL.pathComponents.dropFirst().first,
+          let resource = resource(for: identifier.lowercased()) else {
+      urlSchemeTask.didFailWithError(URLError(.fileDoesNotExist))
+      return
+    }
+
+    do {
+      let data = try Data(contentsOf: resource.sourceURL, options: [.mappedIfSafe])
+      let response = URLResponse(
+        url: requestURL,
+        mimeType: resource.mimeType,
+        expectedContentLength: data.count,
+        textEncodingName: nil
+      )
+      urlSchemeTask.didReceive(response)
+      urlSchemeTask.didReceive(data)
+      urlSchemeTask.didFinish()
+    } catch {
+      urlSchemeTask.didFailWithError(error)
+    }
+  }
+
+  func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
+
+  private func resource(for attachmentID: String) -> MarkdownPreviewAssetResource? {
+    lock.lock()
+    defer { lock.unlock() }
+    return resourceByAttachmentID[attachmentID]
+  }
 }
 
 struct MarkdownPreviewWebView: NSViewRepresentable {
   let html: String
+  let renderID: UUID?
+  let assetResources: [MarkdownPreviewAssetResource]
   let scrollSyncUpdate: MarkdownScrollSyncUpdate?
+  let scrollRestorationUpdate: MarkdownScrollSyncUpdate?
   let onScrollProgressChanged: (Double) -> Void
 
   @MainActor
   final class Coordinator: NSObject, WKNavigationDelegate {
-    var lastLoadedHTML: String?
+    var lastLoadedRenderID: UUID?
     var latestScrollSyncUpdate: MarkdownScrollSyncUpdate?
+    var latestScrollRestorationUpdate: MarkdownScrollSyncUpdate?
     private let scrollSyncBridge: MarkdownScrollViewSyncBridge
+    let assetSchemeHandler = MarkdownPreviewAssetSchemeHandler()
 
     init(onScrollProgressChanged: @escaping (Double) -> Void) {
       scrollSyncBridge = MarkdownScrollViewSyncBridge(
@@ -562,11 +1171,16 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
       )
     }
 
+    func applyRestoredScroll() {
+      scrollSyncBridge.restore(latestScrollRestorationUpdate)
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
       DispatchQueue.main.async { [weak self, weak webView] in
         guard let webView else { return }
         self?.observeScrolling(in: webView, allowDeferredRetry: false)
         self?.applySynchronizedScroll(includingOwnSource: true)
+        self?.applyRestoredScroll()
       }
     }
 
@@ -595,6 +1209,10 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
         decisionHandler(.allow)
         return
       }
+      if url.scheme == MarkdownPreviewAssetService.URLScheme {
+        decisionHandler(.cancel)
+        return
+      }
       if navigationAction.navigationType == .linkActivated {
         _ = ExternalURLOpener.open(url)
       }
@@ -611,6 +1229,10 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
     configuration.websiteDataStore = .nonPersistent()
     configuration.defaultWebpagePreferences.allowsContentJavaScript = false
     configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+    configuration.setURLSchemeHandler(
+      context.coordinator.assetSchemeHandler,
+      forURLScheme: MarkdownPreviewAssetService.URLScheme
+    )
     let view = WKWebView(frame: .zero, configuration: configuration)
     view.navigationDelegate = context.coordinator
     view.setValue(false, forKey: "drawsBackground")
@@ -620,11 +1242,14 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
 
   func updateNSView(_ nsView: WKWebView, context: Context) {
     context.coordinator.latestScrollSyncUpdate = scrollSyncUpdate
-    guard context.coordinator.lastLoadedHTML != html else {
+    context.coordinator.latestScrollRestorationUpdate = scrollRestorationUpdate
+    guard let renderID, context.coordinator.lastLoadedRenderID != renderID else {
       context.coordinator.applySynchronizedScroll()
+      context.coordinator.applyRestoredScroll()
       return
     }
-    context.coordinator.lastLoadedHTML = html
+    context.coordinator.assetSchemeHandler.update(resources: assetResources)
+    context.coordinator.lastLoadedRenderID = renderID
     nsView.loadHTMLString(html, baseURL: nil)
   }
 }

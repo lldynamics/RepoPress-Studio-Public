@@ -39,6 +39,22 @@ final class MarkdownSmartPasteServiceTests: XCTestCase {
     )
   }
 
+  func testPastedWebURLRemovesKnownTrackingParameters() throws {
+    let markdown = "指南"
+    let edit = try XCTUnwrap(
+      service.linkEdit(
+        in: markdown,
+        selectedRange: NSRange(location: 0, length: 2),
+        pastedText: "https://example.com/docs?id=8&utm_source=chat&fbclid=secret"
+      )
+    )
+
+    XCTAssertEqual(
+      applying(edit, to: markdown),
+      "[指南](https://example.com/docs?id=8)"
+    )
+  }
+
   func testLeavesNonWebTextAndEmptySelectionToSystemPaste() {
     let markdown = "guide"
     XCTAssertNil(

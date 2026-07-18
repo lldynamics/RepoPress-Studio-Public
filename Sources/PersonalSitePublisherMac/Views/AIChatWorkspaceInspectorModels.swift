@@ -41,4 +41,6 @@ struct AIChatContextInspectorActions {
   let sendMessage: (String, ArticleDraft) -> Void
   let selectDraft: (UUID) -> Void
   let appendReply: (AIPublishingChatMessage, ArticleDraft) -> Void
+  let loadEarlierMessages: () -> Void
+  let openCitation: (KnowledgeCitation) -> Void
 }

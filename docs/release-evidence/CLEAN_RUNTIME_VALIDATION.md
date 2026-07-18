@@ -20,17 +20,9 @@ Use these only after the runtime smoke test has actually been performed:
 
 ```sh
 script/record_clean_runtime_evidence.sh --dry-run
-script/record_clean_runtime_evidence_bundle.sh --dry-run
-
-script/record_clean_runtime_evidence_bundle.sh \
-  --clean-launch "Clean test user launched the app through build_and_run --verify and reached the main workspace without migration or permission failures." \
-  --privacy-settings-workspace "Quick hide, private-content masking, settings, and workspace switching were verified with sample data and redacted screenshots only." \
-  --accessibility-keyboard-smoke "Keyboard navigation, visible focus, VoiceOver labels, and primary menu commands were smoke checked in the running app." \
-  --execute
 ```
 
-Use the single-item recorder only when one runtime smoke item is being completed
-separately:
+Use the same recorder for each completed runtime smoke item:
 
 ```sh
 script/record_clean_runtime_evidence.sh --dry-run

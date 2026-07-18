@@ -6,21 +6,23 @@ extension RepositoryWorkspaceView {
   var remoteChangedFiles: some View {
     if let report = store.repositoryReport {
       let summary = remoteRepositoryChangeSummary(for: report)
-      let importableArticleCount = importableRemoteChangedArticleCount(for: report)
+      let importableArticleFiles = importableRemoteChangedArticleFiles(for: report)
+      let importableArticleCount = importableArticleFiles.count
 
       VStack(alignment: .leading, spacing: 10) {
         HStack {
           VStack(alignment: .leading, spacing: 3) {
             Text("远端 diff 审阅")
               .font(.headline)
-            Text(report.branchStatus?.upstreamName ?? "当前分支未设置 upstream")
+            let upstreamName = report.branchStatus?.upstreamName ?? "当前分支未设置 upstream"
+            Text(upstreamName)
               .font(.caption.monospaced())
               .foregroundStyle(.secondary)
-              .lineLimit(1)
+              .workbenchTruncatedIdentity(upstreamName)
           }
           Spacer()
           Button {
-            store.importRemoteChangedArticleDraftsFromRepository()
+            presentRemoteArticleImportPreview(importableArticleFiles)
           } label: {
             Label("导入远端文章", systemImage: "tray.and.arrow.down")
           }
@@ -35,7 +37,7 @@ extension RepositoryWorkspaceView {
         }
 
         if summary.totalCount > 0 {
-          LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+          LazyVGrid(columns: repositoryMetricGridColumns, spacing: 8) {
             MetricTile(title: "文章", value: "\(summary.articleCount)", systemImage: "doc.text")
             MetricTile(title: "图片", value: "\(summary.imageCount)", systemImage: "photo")
             MetricTile(title: "配置", value: "\(summary.configurationCount)", systemImage: "gearshape")
@@ -70,14 +72,12 @@ extension RepositoryWorkspaceView {
                         .font(.caption)
                         .frame(width: 58, alignment: .leading)
                         .foregroundStyle(.secondary)
-                      Text(file.displayPath)
-                        .font(.callout.monospaced())
-                        .lineLimit(1)
+                      WorkbenchPathIdentity(path: file.displayPath)
                       Spacer()
 
                       if role == .article, file.kind != .deleted {
                         Button {
-                          store.importRemoteDraftFromRepository(repositoryPath: file.displayPath)
+                          presentRemoteArticleImportPreview([file])
                         } label: {
                           Label("导入", systemImage: "tray.and.arrow.down")
                         }
@@ -144,13 +144,12 @@ extension RepositoryWorkspaceView {
     )
   }
 
-  private func importableRemoteChangedArticleCount(for report: RepositoryScanReport) -> Int {
+  private func importableRemoteChangedArticleFiles(for report: RepositoryScanReport) -> [RepositoryChangedFile] {
     report.remoteChangedFilesForRole(
       role: .article,
       contentRoot: store.activeProfile.contentRoot,
       assetRoot: store.activeProfile.assetRoot
     )
     .filter { $0.kind != .deleted }
-    .count
   }
 }

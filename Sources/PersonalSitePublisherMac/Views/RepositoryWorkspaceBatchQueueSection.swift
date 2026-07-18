@@ -48,10 +48,18 @@ extension RepositoryWorkspaceView {
         }
 
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 132, maximum: 210))], spacing: 8) {
-          MetricTile(title: "可写入", value: "\(plan.readyCount)", systemImage: "checkmark.circle")
-          MetricTile(title: "需确认", value: "\(plan.needsReviewCount)", systemImage: "exclamationmark.triangle")
-          MetricTile(title: "阻塞", value: "\(plan.blockedCount)", systemImage: "xmark.octagon")
-          MetricTile(title: "无变化", value: "\(plan.unchangedCount)", systemImage: "equal.circle")
+          MetricTile(title: "可写入", value: "\(plan.readyCount)", semantic: .passed)
+          MetricTile(
+            title: "需确认",
+            value: "\(plan.needsReviewCount)",
+            semantic: plan.needsReviewCount == 0 ? .passed : .warning
+          )
+          MetricTile(
+            title: "阻塞",
+            value: "\(plan.blockedCount)",
+            semantic: plan.blockedCount == 0 ? .passed : .blocking
+          )
+          MetricTile(title: "无变化", value: "\(plan.unchangedCount)", semantic: .neutral)
         }
 
         if let preview = store.batchRemotePublishPreviewSnapshot {
@@ -104,10 +112,11 @@ extension RepositoryWorkspaceView {
                 Text("批量 PR/MR 草稿")
                   .font(.caption.weight(.semibold))
                   .foregroundStyle(.secondary)
-                Text("\(review.branchName) -> \(review.targetBranch)")
+                let branchPair = "\(review.branchName) -> \(review.targetBranch)"
+                Text(branchPair)
                   .font(.caption.monospaced())
                   .foregroundStyle(.secondary)
-                  .lineLimit(1)
+                  .workbenchTruncatedIdentity(branchPair)
               }
               Spacer()
               Button {
@@ -125,14 +134,14 @@ extension RepositoryWorkspaceView {
 
             Text(review.title)
               .font(.callout.weight(.medium))
-              .textSelection(.enabled)
+              .workbenchTruncatedIdentity(review.title, lineLimit: 2)
           }
           .padding(10)
           .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
         }
 
         if plan.items.isEmpty {
-          Text("当前 Profile 没有可纳入发布队列的文章。")
+          Text("当前站点配置没有可纳入发布队列的文章。")
             .foregroundStyle(.secondary)
         } else {
           ForEach(plan.items) { item in

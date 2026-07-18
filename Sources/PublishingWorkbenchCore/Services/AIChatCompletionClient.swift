@@ -426,12 +426,15 @@ public struct AIChatCompletionClient: Sendable {
       temperature: request.temperature,
       purpose: purpose
     )
+    let hasExplicitReasoningOptions = request.thinking != nil || request.reasoningEffort != nil
     return AIChatCompletionRequest(
       model: config.requestModel(resolving: request.model),
       messages: request.messages,
       temperature: requestOptions.temperature,
-      thinking: requestOptions.thinking,
-      reasoningEffort: requestOptions.reasoningEffort,
+      thinking: request.thinking ?? requestOptions.thinking,
+      reasoningEffort: hasExplicitReasoningOptions
+        ? request.reasoningEffort
+        : requestOptions.reasoningEffort,
       stream: request.stream,
       streamOptions: request.streamOptions
     )

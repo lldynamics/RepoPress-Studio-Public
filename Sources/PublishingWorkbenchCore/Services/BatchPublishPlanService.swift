@@ -278,7 +278,7 @@ public struct BatchPublishPlanService: Sendable {
     switch lhs.kind {
     case .markdown:
       return lhs.content == rhs.content
-    case .image:
+    case .image, .video:
       guard let lhsPath = lhs.sourceFilePath?.nilIfEmpty,
             let rhsPath = rhs.sourceFilePath?.nilIfEmpty else {
         return false

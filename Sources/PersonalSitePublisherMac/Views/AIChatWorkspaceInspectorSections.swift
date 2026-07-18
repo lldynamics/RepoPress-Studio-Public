@@ -16,9 +16,17 @@ struct AIChatConversationInspectorSection: View {
         .frame(minHeight: 130)
       } else {
         if context.totalMessageCount > context.messages.count {
-          Text("仅显示最近 \(context.messages.count) 条，共 \(context.totalMessageCount) 条消息。")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
+          Button {
+            actions.loadEarlierMessages()
+          } label: {
+            Label(
+              "加载更早消息（已显示 \(context.messages.count)/\(context.totalMessageCount)）",
+              systemImage: "clock.arrow.circlepath"
+            )
+          }
+          .buttonStyle(.plain)
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.primary)
         }
 
         ForEach(context.messages) { message in
@@ -32,11 +40,18 @@ struct AIChatConversationInspectorSection: View {
               .textSelection(.enabled)
               .fixedSize(horizontal: false, vertical: true)
 
+            if !message.knowledgeCitations.isEmpty {
+              knowledgeCitations(message.knowledgeCitations)
+            }
+
             if message.id == latestAssistantMessageID {
               Button {
                 actions.appendReply(message, context.draft)
               } label: {
-                Label("追加到文章", systemImage: "text.append")
+                Label(
+                  message.knowledgeCitations.isEmpty ? "预览并追加" : "预览并附引用",
+                  systemImage: "rectangle.split.2x1"
+                )
               }
               .controlSize(.small)
             }
@@ -56,6 +71,44 @@ struct AIChatConversationInspectorSection: View {
   private var latestAssistantMessageID: AIPublishingChatMessage.ID? {
     context.messages.last(where: { $0.role == .assistant })?.id
   }
+
+  @ViewBuilder
+  private func knowledgeCitations(_ citations: [KnowledgeCitation]) -> some View {
+    Divider()
+    VStack(alignment: .leading, spacing: 5) {
+      Label("资料库引用", systemImage: "books.vertical")
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(.secondary)
+
+      ForEach(citations) { citation in
+        VStack(alignment: .leading, spacing: 4) {
+          HStack(alignment: .firstTextBaseline) {
+            Text("[\(citation.id)] \(citation.title)")
+              .font(.caption.weight(.medium))
+            Spacer(minLength: 8)
+            Button {
+              actions.openCitation(citation)
+            } label: {
+              Label("打开原文", systemImage: "arrow.up.forward.square")
+            }
+            .buttonStyle(.plain)
+            .font(.caption2)
+            .foregroundStyle(WorkbenchTheme.primary)
+          }
+          if let locator = citation.locator?.nilIfEmpty {
+            Text(locator)
+              .font(.caption2)
+              .foregroundStyle(.secondary)
+          }
+          Text(citation.excerpt)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(3)
+            .textSelection(.enabled)
+        }
+      }
+    }
+  }
 }
 
 struct AIChatContextOverviewInspectorSection: View {
@@ -72,15 +125,15 @@ struct AIChatContextOverviewInspectorSection: View {
 
       Divider()
 
-      Text(context.draft.title.nilIfEmpty ?? "未命名文章")
+      let draftTitle = context.draft.title.nilIfEmpty ?? "未命名文章"
+      Text(draftTitle)
         .font(.callout.weight(.medium))
-        .lineLimit(2)
+        .workbenchTruncatedIdentity(draftTitle, lineLimit: 2)
 
       Text(context.markdownPath)
         .font(.caption.monospaced())
         .foregroundStyle(.secondary)
-        .lineLimit(2)
-        .textSelection(.enabled)
+        .workbenchTruncatedIdentity(context.markdownPath, lineLimit: 2)
 
       AIChatInspectorStatRow(title: "发布文件", value: "\(context.publishFileCount)", systemImage: "shippingbox")
       AIChatInspectorStatRow(title: "发布检查", value: "\(context.preflightIssueCount)", systemImage: "checklist")
@@ -122,15 +175,15 @@ struct AIChatRelatedSuggestionsInspectorSection: View {
           VStack(alignment: .leading, spacing: 5) {
             Text(suggestion.targetTitle)
               .font(.caption.weight(.semibold))
-              .lineLimit(1)
+              .workbenchTruncatedIdentity(suggestion.targetTitle)
             Text(suggestion.reason)
               .font(.caption2)
               .foregroundStyle(.secondary)
               .lineLimit(2)
             Text(suggestion.targetPath)
               .font(.caption2.monospaced())
-              .foregroundStyle(.tertiary)
-              .lineLimit(1)
+              .foregroundStyle(.secondary)
+              .workbenchTruncatedIdentity(suggestion.targetPath)
 
             HStack {
               Button {
@@ -151,62 +204,6 @@ struct AIChatRelatedSuggestionsInspectorSection: View {
 
           if suggestion.id != context.relatedSuggestions.last?.id {
             Divider()
-          }
-        }
-      }
-    }
-  }
-}
-
-struct AIChatWorkflowGuidesInspectorSection: View {
-  let context: AIChatInspectorDraftContext
-  let actions: AIChatContextInspectorActions
-
-  var body: some View {
-    AIChatInspectorSection("AI 工作流") {
-      ForEach(AIPublishingWorkflowGuide.featuredGuides) { guide in
-        Button {
-          actions.sendMessage(
-            AIPublishingChatPromptTemplateService.workflowGuidePrompt(for: guide),
-            context.draft
-          )
-        } label: {
-          VStack(alignment: .leading, spacing: 3) {
-            Label(guide.title, systemImage: guide.systemImage)
-              .frame(maxWidth: .infinity, alignment: .leading)
-            Text(guide.actionPreview)
-              .font(.caption2)
-              .foregroundStyle(.secondary)
-              .lineLimit(1)
-          }
-          .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .disabled(context.isChatRunning)
-      }
-    }
-  }
-}
-
-struct AIChatQuickPromptsInspectorSection: View {
-  let context: AIChatInspectorDraftContext
-  let actions: AIChatContextInspectorActions
-
-  var body: some View {
-    AIChatInspectorSection("快捷提示") {
-      ForEach(AIPublishingQuickPrompt.featuredCapabilitySections) { section in
-        VStack(alignment: .leading, spacing: 6) {
-          Label(section.group.localizedDisplayName, systemImage: section.group.systemImage)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.secondary)
-
-          ForEach(section.prompts) { prompt in
-            Button {
-              actions.sendMessage(prompt.prompt, context.draft)
-            } label: {
-              Label(prompt.localizedDisplayName, systemImage: prompt.systemImage)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .disabled(context.isChatRunning)
           }
         }
       }
@@ -246,27 +243,5 @@ struct AIChatRecommendedActionsInspectorSection: View {
   private func systemImage(for action: AIPublishingActionKind) -> String {
     AIPublishingWritingActionCatalog.articleActions.first { $0.kind == action }?.systemImage
       ?? "sparkles"
-  }
-}
-
-struct AIChatLatestReplyInspectorSection: View {
-  let context: AIChatInspectorDraftContext
-  let actions: AIChatContextInspectorActions
-
-  var body: some View {
-    if let latestReply = context.latestReply {
-      AIChatInspectorSection("最近回复") {
-        Text(latestReply.content)
-          .font(.caption)
-          .lineLimit(8)
-          .textSelection(.enabled)
-
-        Button {
-          actions.appendReply(latestReply, context.draft)
-        } label: {
-          Label("追加到文章", systemImage: "text.append")
-        }
-      }
-    }
   }
 }

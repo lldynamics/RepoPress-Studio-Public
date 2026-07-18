@@ -9,6 +9,7 @@ struct PublishDrawerView: View {
   @State private var showAllCommits = false
   @State private var selectedStep: PublishDrawerFlowCard = .checks
   @State private var didManuallySelectStep = false
+  @State private var pendingOnlinePublishDraft: ArticleDraft?
 
   var body: some View {
     drawerContent
@@ -30,6 +31,9 @@ struct PublishDrawerView: View {
       didManuallySelectStep = false
       guard let draft = store.selectedDraft else { return }
       synchronizeRecommendedStep(for: draft)
+    }
+    .sheet(item: $pendingOnlinePublishDraft) { draft in
+      onlinePublishConfirmation(draft: draft)
     }
   }
 
@@ -69,12 +73,13 @@ struct PublishDrawerView: View {
 
       Text(draft.title)
         .font(.callout.weight(.medium))
-        .lineLimit(1)
+        .workbenchTruncatedIdentity(draft.title)
 
-      Text(store.profile(for: draft).markdownPath(for: draft))
+      let markdownPath = store.profile(for: draft).markdownPath(for: draft)
+      Text(markdownPath)
         .font(.caption.monospaced())
         .foregroundStyle(.secondary)
-        .lineLimit(1)
+        .workbenchTruncatedIdentity(markdownPath)
 
       Spacer()
 
@@ -97,16 +102,8 @@ struct PublishDrawerView: View {
       } label: {
         Label("刷新", systemImage: "arrow.clockwise")
       }
-      .accessibilityLabel("刷新发布检查和 Diff")
+      .accessibilityLabel("刷新发布检查和差异")
 
-      Button {
-        isPresented = false
-      } label: {
-        Image(systemName: "xmark")
-      }
-      .buttonStyle(.borderless)
-      .help("关闭发布流程")
-      .accessibilityLabel("关闭发布流程")
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
@@ -120,15 +117,25 @@ struct PublishDrawerView: View {
     issues: [PreflightIssue]
   ) -> some View {
     let steps = publishFlowSteps(draft: draft, issues: issues)
+    let summaryStep = publishFlowSummaryStep(steps)
 
     return VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .firstTextBaseline) {
         Label("发布流程", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
           .font(.caption.weight(.semibold))
-        Text(publishFlowSummary(steps))
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
+        if let summaryStep {
+          Label(publishFlowSummary(steps), systemImage: summaryStep.systemImage)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(summaryStep.state.color)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(summaryStep.state.backgroundColor, in: Capsule())
+            .overlay {
+              Capsule()
+                .stroke(summaryStep.state.borderColor, lineWidth: 1)
+            }
+        }
         Spacer()
       }
 
@@ -138,13 +145,14 @@ struct PublishDrawerView: View {
         }
       }
       .pickerStyle(.segmented)
+      .tint(WorkbenchTheme.navigationSelection)
       .labelsHidden()
       .accessibilityLabel("发布步骤")
       .accessibilityValue(selectedStep.title)
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
-    .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
+    .background(.bar)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("发布流程")
     .accessibilityValue(publishFlowSummary(steps))
@@ -191,6 +199,11 @@ struct PublishDrawerView: View {
       }
 
       HStack {
+        Button("取消") {
+          isPresented = false
+        }
+        .keyboardShortcut(.cancelAction)
+
         Button("上一步") {
           moveSelectedStep(by: -1)
         }
@@ -258,8 +271,8 @@ struct PublishDrawerView: View {
     guard let preview = store.cachedLocalPublishPreview(for: draft) else {
       return [
         PublishDrawerFlowStep(title: "检查", detail: "等待快照", systemImage: "clock", state: .pending),
-        PublishDrawerFlowStep(title: "Diff", detail: "待刷新", systemImage: "doc.text.magnifyingglass", state: .active),
-        PublishDrawerFlowStep(title: "写入", detail: "等待 Diff", systemImage: "square.and.arrow.down", state: .pending),
+        PublishDrawerFlowStep(title: "差异", detail: "待刷新", systemImage: "doc.text.magnifyingglass", state: .active),
+        PublishDrawerFlowStep(title: "写入", detail: "等待差异确认", systemImage: "square.and.arrow.down", state: .pending),
         PublishDrawerFlowStep(title: "远端", detail: "等待本地写入", systemImage: "arrow.up.circle", state: .pending),
         PublishDrawerFlowStep(title: "部署", detail: "等待发布", systemImage: "globe", state: .pending),
       ]
@@ -276,7 +289,7 @@ struct PublishDrawerView: View {
           systemImage: "xmark.octagon",
           state: .blocked
         ),
-        PublishDrawerFlowStep(title: "Diff", detail: "等待检查通过", systemImage: "doc.text.magnifyingglass", state: .pending),
+        PublishDrawerFlowStep(title: "差异", detail: "等待检查通过", systemImage: "doc.text.magnifyingglass", state: .pending),
         PublishDrawerFlowStep(title: "写入", detail: "暂不可写入", systemImage: "square.and.arrow.down", state: .pending),
         PublishDrawerFlowStep(title: "远端", detail: "等待本地写入", systemImage: "arrow.up.circle", state: .pending),
         PublishDrawerFlowStep(title: "部署", detail: "等待发布", systemImage: "globe", state: .pending)
@@ -291,11 +304,11 @@ struct PublishDrawerView: View {
           systemImage: "checkmark.circle",
           state: .complete
         ),
-        PublishDrawerFlowStep(title: "Diff", detail: "无待写入变化", systemImage: "equal.circle", state: .complete),
+        PublishDrawerFlowStep(title: "差异", detail: "无待写入变化", systemImage: "equal.circle", state: .complete),
         PublishDrawerFlowStep(title: "写入", detail: "本地已同步", systemImage: "checkmark.seal", state: .complete),
         PublishDrawerFlowStep(
           title: "远端",
-          detail: hasToken ? "可继续发布" : "需要 Token",
+          detail: hasToken ? "可继续发布" : "需要访问令牌",
           systemImage: hasToken ? "arrow.up.circle" : "key",
           state: hasToken ? .active : .blocked
         ),
@@ -311,7 +324,7 @@ struct PublishDrawerView: View {
           systemImage: "checkmark.circle",
           state: .complete
         ),
-        PublishDrawerFlowStep(title: "Diff", detail: "\(changedCount) 个变化", systemImage: "doc.text.magnifyingglass", state: .complete),
+        PublishDrawerFlowStep(title: "差异", detail: "\(changedCount) 个变化", systemImage: "doc.text.magnifyingglass", state: .complete),
         PublishDrawerFlowStep(title: "写入", detail: "准备状态不足", systemImage: "exclamationmark.triangle", state: .blocked),
         PublishDrawerFlowStep(title: "远端", detail: "等待本地写入", systemImage: "arrow.up.circle", state: .pending),
         PublishDrawerFlowStep(title: "部署", detail: "等待发布", systemImage: "globe", state: .pending)
@@ -325,11 +338,11 @@ struct PublishDrawerView: View {
         systemImage: "checkmark.circle",
         state: .complete
       ),
-      PublishDrawerFlowStep(title: "Diff", detail: "\(changedCount) 个变化", systemImage: "doc.text.magnifyingglass", state: .complete),
+      PublishDrawerFlowStep(title: "差异", detail: "\(changedCount) 个变化", systemImage: "doc.text.magnifyingglass", state: .complete),
       PublishDrawerFlowStep(title: "写入", detail: "下一步写入仓库", systemImage: "square.and.arrow.down", state: .active),
       PublishDrawerFlowStep(
         title: "远端",
-        detail: hasToken ? "Token 已就绪" : "需要 Token",
+        detail: hasToken ? "访问令牌已就绪" : "需要访问令牌",
         systemImage: hasToken ? "arrow.up.circle" : "key",
         state: hasToken ? .pending : .blocked
       ),
@@ -349,11 +362,20 @@ struct PublishDrawerView: View {
     return "发布流程已准备就绪"
   }
 
+  private func publishFlowSummaryStep(
+    _ steps: [PublishDrawerFlowStep]
+  ) -> PublishDrawerFlowStep? {
+    steps.first(where: { $0.state == .blocked })
+      ?? steps.first(where: { $0.state == .active })
+      ?? steps.last(where: { $0.state == .complete })
+      ?? steps.first
+  }
+
   private func publishFlowDestination(for step: PublishDrawerFlowStep) -> PublishDrawerFlowCard {
     switch step.title {
     case "检查":
       return .checks
-    case "Diff":
+    case "差异":
       return .diff
     case "写入":
       return .write
@@ -452,23 +474,41 @@ struct PublishDrawerView: View {
           .foregroundStyle(WorkbenchTheme.success)
       } else {
         VStack(alignment: .leading, spacing: 6) {
-          ForEach(issues.prefix(4)) { issue in
-            HStack(alignment: .top, spacing: 6) {
-              Image(systemName: issue.severity.publishDrawerSystemImage)
-                .foregroundStyle(issue.severity.publishDrawerColor)
-                .frame(width: 14)
-              VStack(alignment: .leading, spacing: 2) {
-                Text(issue.title)
-                  .font(.caption.weight(.medium))
-                  .lineLimit(1)
-                Text(issue.message)
-                  .font(.caption2)
-                  .foregroundStyle(.secondary)
-                  .lineLimit(2)
+          ForEach(blocking) { issue in
+            publishIssueRow(issue)
+          }
+
+          if !warnings.isEmpty {
+            DisclosureGroup {
+              VStack(alignment: .leading, spacing: 6) {
+                ForEach(warnings) { issue in
+                  publishIssueRow(issue)
+                }
               }
+              .padding(.top, 4)
+            } label: {
+              Label("警告（\(warnings.count)）", systemImage: "exclamationmark.triangle")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(WorkbenchTheme.warning)
             }
           }
         }
+      }
+    }
+  }
+
+  private func publishIssueRow(_ issue: PreflightIssue) -> some View {
+    HStack(alignment: .top, spacing: 6) {
+      Image(systemName: issue.severity.publishDrawerSystemImage)
+        .foregroundStyle(issue.severity.publishDrawerColor)
+        .frame(width: 14)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(issue.title)
+          .font(.caption.weight(.medium))
+        Text(issue.message)
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
   }
@@ -477,7 +517,7 @@ struct PublishDrawerView: View {
     let preview = store.cachedLocalPublishPreview(for: draft)
     let changedDiffs = preview?.changedFileDiffs ?? []
 
-    return PublishDrawerCard(title: "Diff", systemImage: "doc.text.magnifyingglass") {
+    return PublishDrawerCard(title: "差异", systemImage: "doc.text.magnifyingglass") {
       HStack(spacing: 8) {
         PublishDrawerStat(title: "文件", value: preview.map { "\($0.fileDiffs.count)" } ?? "—", systemImage: "doc.on.doc", color: .secondary)
         PublishDrawerStat(title: "变化", value: "\(changedDiffs.count)", systemImage: "arrow.left.arrow.right", color: changedDiffs.isEmpty ? .secondary : WorkbenchTheme.warning)
@@ -492,21 +532,16 @@ struct PublishDrawerView: View {
           .font(.caption)
           .foregroundStyle(.secondary)
       } else {
-        VStack(alignment: .leading, spacing: 6) {
-          ForEach(changedDiffs.prefix(5)) { diff in
-            HStack(spacing: 6) {
-              Image(systemName: diff.status.publishDrawerSystemImage)
-                .foregroundStyle(diff.status.publishDrawerColor)
-                .frame(width: 14)
-              VStack(alignment: .leading, spacing: 2) {
-                Text(diff.path)
-                  .font(.caption.monospaced())
-                  .lineLimit(1)
-                Text("\(diff.kind.localizedDisplayName) · \(diff.status.localizedDisplayName)")
-                  .font(.caption2)
-                  .foregroundStyle(.secondary)
-              }
-            }
+        VStack(alignment: .leading, spacing: 8) {
+          Label("已显示全部 \(changedDiffs.count) 个变化，可展开逐文件审阅。", systemImage: "checkmark.circle")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+          ForEach(Array(changedDiffs.enumerated()), id: \.element.id) { index, diff in
+            PublishDrawerFileDiffRow(
+              diff: diff,
+              isExpandedInitially: index == 0
+            )
           }
         }
       }
@@ -542,8 +577,9 @@ struct PublishDrawerView: View {
       }
 
       Text("切换或新建分支前，工作区必须没有未提交变更；成功后会同步更新发布目标。")
-        .font(.caption2)
+        .font(.caption)
         .foregroundStyle(.secondary)
+        .lineSpacing(1)
 
       if hasBranches {
         Text("本地工作分支")
@@ -553,7 +589,7 @@ struct PublishDrawerView: View {
           ForEach(Array(branches.prefix(6))) { branch in
             HStack {
               Text(branch.name)
-                .lineLimit(1)
+                .workbenchTruncatedIdentity(branch.name)
                 .font(.caption.monospaced())
               Spacer()
               if branch.isCurrent {
@@ -614,7 +650,7 @@ struct PublishDrawerView: View {
         title: "最近提交",
         value: "\(commits.count)",
         systemImage: "list.number",
-        color: .blue
+        color: WorkbenchTheme.documentForeground
       )
 
       if commits.isEmpty {
@@ -634,7 +670,7 @@ struct PublishDrawerView: View {
                   .foregroundStyle(.secondary)
                 Text(commit.message)
                   .font(.caption2.weight(.medium))
-                  .lineLimit(1)
+                  .workbenchTruncatedIdentity(commit.message)
                 Spacer(minLength: 0)
               }
               Text("\(commit.author) · \(commit.date.formatted(date: .abbreviated, time: .shortened))")
@@ -705,11 +741,12 @@ struct PublishDrawerView: View {
 
         Text(review.title)
           .font(.caption.weight(.semibold))
-          .lineLimit(2)
+          .workbenchTruncatedIdentity(review.title, lineLimit: 2)
 
         Text(review.body)
-          .font(.caption2)
+          .font(.callout)
           .foregroundStyle(.secondary)
+          .lineSpacing(2)
           .lineLimit(6)
           .textSelection(.enabled)
 
@@ -740,21 +777,31 @@ struct PublishDrawerView: View {
       PublishDrawerInfoRow(title: "分支", value: preview.branchName, systemImage: "arrow.triangle.branch")
       PublishDrawerInfoRow(title: "权限", value: preview.accessSummary, systemImage: preview.hasToken ? "person.badge.key" : "key")
 
-      if let issue = (preview.blockingIssues + preview.warningIssues).first {
-        Label(issue.title, systemImage: issue.severity == .error ? "xmark.octagon" : "exclamationmark.triangle")
-          .font(.caption)
-          .foregroundStyle(issue.severity == .error ? WorkbenchTheme.risk : WorkbenchTheme.warning)
-          .lineLimit(1)
-        Text(issue.message)
-          .font(.caption2)
-          .foregroundStyle(.secondary)
-          .lineLimit(3)
+      if !preview.blockingIssues.isEmpty || !preview.warningIssues.isEmpty {
+        ForEach(preview.blockingIssues) { issue in
+          publishIssueRow(issue)
+        }
+
+        if !preview.warningIssues.isEmpty {
+          DisclosureGroup {
+            VStack(alignment: .leading, spacing: 6) {
+              ForEach(preview.warningIssues) { issue in
+                publishIssueRow(issue)
+              }
+            }
+            .padding(.top, 4)
+          } label: {
+            Label("警告（\(preview.warningIssues.count)）", systemImage: "exclamationmark.triangle")
+              .font(.caption.weight(.medium))
+              .foregroundStyle(WorkbenchTheme.warning)
+          }
+        }
       } else {
-        Text(preview.changedPaths.prefix(3).joined(separator: "\n"))
+        let changedPaths = preview.changedPaths.prefix(3).joined(separator: "\n")
+        Text(changedPaths)
           .font(.caption2.monospaced())
           .foregroundStyle(.secondary)
-          .lineLimit(3)
-          .textSelection(.enabled)
+          .workbenchTruncatedIdentity(changedPaths, lineLimit: 3)
       }
 
       HStack(spacing: 8) {
@@ -766,16 +813,16 @@ struct PublishDrawerView: View {
           Label("查权限", systemImage: "person.badge.key")
         }
         .disabled(store.isRemoteRepositoryChecking)
-        .accessibilityLabel("检查仓库 Token 权限")
+        .accessibilityLabel("检查仓库访问令牌权限")
 
         Button {
-          publishDraftOnline(draft)
+          pendingOnlinePublishDraft = draft
         } label: {
-          Label(preview.mode.localizedDisplayName, systemImage: preview.mode == .directCommit ? "arrow.up.circle" : "arrow.triangle.pull")
+          Label("审阅并发布…", systemImage: preview.mode == .directCommit ? "arrow.up.circle" : "arrow.triangle.pull")
         }
         .disabled(!preview.canPublish || store.isRemoteRepositoryPublishing)
-        .accessibilityLabel("线上发布：\(preview.mode.localizedDisplayName)")
-        .accessibilityHint(preview.canPublish ? "执行线上发布确认流程" : "当前线上发布预览未通过")
+        .accessibilityLabel("审阅并线上发布：\(preview.mode.localizedDisplayName)")
+        .accessibilityHint(preview.canPublish ? "打开最终确认页" : "当前线上发布预览未通过")
 
         Button {
           copy(preview.checklistMarkdown, message: "已复制线上发布核对包。")
@@ -821,24 +868,25 @@ struct PublishDrawerView: View {
 
         if let detail = progress.detail {
           Text(detail)
-            .font(.caption2)
+            .font(.caption)
             .foregroundStyle(.secondary)
+            .lineSpacing(1)
             .lineLimit(2)
         }
         if let filePath = progress.filePath {
           Text(filePath)
             .font(.caption2.monospaced())
             .foregroundStyle(.secondary)
-            .lineLimit(2)
+            .workbenchTruncatedIdentity(filePath, lineLimit: 2)
         }
 
         if progress.stage == .completed {
           Text("已完成")
-            .font(.caption2)
+            .font(.caption.weight(.medium))
             .foregroundStyle(WorkbenchTheme.success)
         } else if progress.stage == .failed {
           Text("已失败")
-            .font(.caption2)
+            .font(.caption.weight(.medium))
             .foregroundStyle(WorkbenchTheme.risk)
         }
       }
@@ -851,7 +899,7 @@ struct PublishDrawerView: View {
     }
   }
 
-  private func deploymentStatusCard(draft: ArticleDraft? = nil) -> some View {
+  private func deploymentStatusCard(draft: ArticleDraft) -> some View {
     let latestRecord = latestReleaseRecord(for: draft)
     let entry = latestRecord.map { store.releaseLedgerEntry(for: $0) }
 
@@ -879,10 +927,11 @@ struct PublishDrawerView: View {
         PublishDrawerInfoRow(title: "最近记录", value: entry.status.localizedDisplayName, systemImage: entry.status.systemImage)
         Text(entry.record.title)
           .font(.caption.weight(.medium))
-          .lineLimit(1)
+          .workbenchTruncatedIdentity(entry.record.title)
         Text(entry.statusMessage)
-          .font(.caption2)
+          .font(.caption)
           .foregroundStyle(.secondary)
+          .lineSpacing(1)
           .lineLimit(3)
 
         if let deploymentStatus = entry.deploymentStatus {
@@ -958,6 +1007,39 @@ struct PublishDrawerView: View {
     }
   }
 
+  @ViewBuilder
+  private func onlinePublishConfirmation(draft: ArticleDraft) -> some View {
+    if let preview = store.cachedRemotePublishPreview(for: draft) {
+      RemotePublishConfirmationView(
+        draftTitle: draft.title,
+        preview: preview,
+        isPublishing: store.isRemoteRepositoryPublishing,
+        cancelAction: {
+          pendingOnlinePublishDraft = nil
+        },
+        confirmAction: {
+          pendingOnlinePublishDraft = nil
+          publishDraftOnline(draft)
+        }
+      )
+    } else {
+      VStack(spacing: 12) {
+        Image(systemName: "clock.arrow.circlepath")
+          .font(.system(size: 28))
+          .foregroundStyle(.secondary)
+        Text("发布预览已失效")
+          .font(.headline)
+        Text("请关闭确认页，刷新发布快照后重新审阅。")
+          .foregroundStyle(.secondary)
+        Button("关闭") {
+          pendingOnlinePublishDraft = nil
+        }
+      }
+      .frame(minWidth: 420, minHeight: 260)
+      .padding(24)
+    }
+  }
+
   @MainActor
   private func createAndSwitchBranch() async {
     let branchName = newBranchName
@@ -975,15 +1057,11 @@ struct PublishDrawerView: View {
     store.selectSection(currentSection)
   }
 
-  private func latestReleaseRecord(for draft: ArticleDraft?) -> ReleaseRecord? {
-    let records = store.activeProfileReleaseRecords
-    guard let draft else {
-      return records.first
-    }
-    return records.first { record in
-      record.draftID == draft.id
-        || (record.draftID == nil && record.draftTitle == draft.title && record.siteProfileID == draft.siteProfileID)
-    } ?? records.first
+  private func latestReleaseRecord(for draft: ArticleDraft) -> ReleaseRecord? {
+    ReleaseRecordDraftResolver.latestRecord(
+      for: draft,
+      in: store.activeProfileReleaseRecords
+    )
   }
 
   private func copy(_ value: String, message: String) {

@@ -102,6 +102,34 @@ final class SiteStarterServiceTests: XCTestCase {
     XCTAssertTrue(post.contains("欢迎来到 个人网站"))
   }
 
+  func testConfiguresGitHubOriginAfterStarterGeneration() async throws {
+    let rootURL = try temporaryDirectoryURL()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let service = SiteStarterService()
+    let result = try service.createSite(
+      request: SiteStarterRequest(
+        templateID: .zolaPersonalBlog,
+        rootPath: rootURL.path,
+        siteName: "Deferred Remote",
+        branch: "main",
+        initializeGit: true,
+        configureOriginRemote: false,
+        now: fixedDate
+      )
+    )
+    var configuredProfile = result.profile
+    configuredProfile.repoOwner = "lldynamics"
+    configuredProfile.repoName = "deferred-remote"
+
+    let remoteURL = try await service.configureGitHubOriginRemoteAsync(profile: configuredProfile)
+
+    XCTAssertEqual(remoteURL, "git@github.com:lldynamics/deferred-remote.git")
+    XCTAssertEqual(
+      try git(["remote", "get-url", "origin"], rootURL: rootURL),
+      "git@github.com:lldynamics/deferred-remote.git"
+    )
+  }
+
   func testCreatesAstroStarterWithNetlifyConfiguration() throws {
     let rootURL = try temporaryDirectoryURL()
     defer {

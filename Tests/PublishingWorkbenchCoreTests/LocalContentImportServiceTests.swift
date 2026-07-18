@@ -66,6 +66,65 @@ final class LocalContentImportServiceTests: XCTestCase {
     XCTAssertEqual(toml.status, .draft)
   }
 
+  func testImportsPrivateDirectoryAndFrontMatterVisibility() throws {
+    let rootURL = try temporaryDirectory()
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("private/posts", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try """
+    +++
+    title = "Public Article"
+    +++
+
+    Public body.
+    """.write(
+      to: rootURL.appendingPathComponent("content/posts/public.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try """
+    +++
+    title = "Flagged Private"
+    private = true
+    +++
+
+    Flagged body.
+    """.write(
+      to: rootURL.appendingPathComponent("content/posts/flagged.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try """
+    +++
+    title = "Private Directory Article"
+    draft = false
+    +++
+
+    Secret body.
+    """.write(
+      to: rootURL.appendingPathComponent("private/posts/secret.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    var profile = SiteProfile.defaultProfile
+    profile.contentRoot = "content"
+    let result = LocalContentImportService().importDrafts(rootURL: rootURL, profile: profile)
+
+    XCTAssertEqual(result.importedDrafts.count, 3)
+    XCTAssertEqual(result.importedDrafts.filter(\.isPrivate).count, 2)
+    XCTAssertEqual(result.importedDrafts.first { $0.repositoryPath == "content/posts/public.md" }?.visibility, .public)
+    XCTAssertEqual(result.importedDrafts.first { $0.repositoryPath == "content/posts/flagged.md" }?.visibility, .private)
+    let privateDraft = try XCTUnwrap(result.importedDrafts.first { $0.repositoryPath == "private/posts/secret.md" })
+    XCTAssertEqual(privateDraft.visibility, .private)
+    XCTAssertEqual(privateDraft.status, .published)
+  }
+
   func testImportsJekyllDateAndSlugFromRepositoryPath() throws {
     let rootURL = try temporaryDirectory()
     try FileManager.default.createDirectory(
@@ -384,6 +443,70 @@ final class LocalContentImportServiceTests: XCTestCase {
     XCTAssertEqual(updatedDraft.id, importedID)
     XCTAssertEqual(updatedDraft.title, "Imported One Updated")
     XCTAssertEqual(updatedDraft.bodyMarkdown, "Updated body")
+  }
+
+  func testMissingPrivateBackfillAddsOnlyNewPrivateDraftsWithoutOverwriting() async throws {
+    let rootURL = try temporaryDirectory()
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("content/posts", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("private/posts", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try "Public body".write(
+      to: rootURL.appendingPathComponent("content/posts/public.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try """
+    +++
+    title = "Repository Existing"
+    +++
+
+    Repository body.
+    """.write(
+      to: rootURL.appendingPathComponent("private/posts/existing.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try """
+    +++
+    title = "New Private"
+    +++
+
+    New private body.
+    """.write(
+      to: rootURL.appendingPathComponent("private/posts/new-private.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.contentRoot = "content"
+    store.updateActiveProfile(profile)
+    let locallyEdited = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Keep Local Edit",
+      visibility: .private,
+      bodyMarkdown: "Locally edited body.",
+      repositoryPath: "private/posts/existing.md"
+    )
+    store.setDrafts([locallyEdited])
+
+    let firstInsertedCount = await store.importMissingPrivateDraftsFromLocalRepository()
+    let secondInsertedCount = await store.importMissingPrivateDraftsFromLocalRepository()
+
+    XCTAssertEqual(firstInsertedCount, 1)
+    XCTAssertEqual(secondInsertedCount, 0)
+    XCTAssertEqual(store.drafts.count, 2)
+    XCTAssertEqual(store.drafts.first { $0.repositoryPath == "private/posts/existing.md" }?.title, "Keep Local Edit")
+    XCTAssertEqual(store.drafts.first { $0.repositoryPath == "private/posts/existing.md" }?.bodyMarkdown, "Locally edited body.")
+    XCTAssertEqual(store.drafts.first { $0.repositoryPath == "private/posts/new-private.md" }?.visibility, .private)
+    XCTAssertNil(store.drafts.first { $0.repositoryPath == "content/posts/public.md" })
   }
 
   func testStoreImportsSingleDraftAndMergesByRepositoryPath() throws {

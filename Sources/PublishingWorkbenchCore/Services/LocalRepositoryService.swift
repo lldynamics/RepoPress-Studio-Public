@@ -491,10 +491,12 @@ public struct RepositoryScanReport: Codable, Hashable, Sendable {
   ) -> RepositoryChangedFileRole {
     let normalizedPath = effectiveChangedPath(path).normalizedRelativePath()
     let contentRoot = contentRoot.normalizedRelativePath()
+    let privateContentRoot = SiteProfile.privateContentRoot.normalizedRelativePath()
     let assetRoot = assetRoot.normalizedRelativePath()
     let pathExtension = (normalizedPath as NSString).pathExtension.lowercased()
 
-    if isWithin(normalizedPath, root: contentRoot), ["md", "markdown", "mdx"].contains(pathExtension) {
+    if (isWithin(normalizedPath, root: contentRoot) || isWithin(normalizedPath, root: privateContentRoot)),
+       ["md", "markdown", "mdx"].contains(pathExtension) {
       return .article
     }
 
@@ -588,15 +590,6 @@ public struct LocalRepositoryService: @unchecked Sendable {
     return report
   }
 
-  public func hasGitIgnoreFile(profile: SiteProfile) -> Bool {
-    guard let result = profile.withLocalRepositoryRootAccess({ rootURL in
-      fileManager.fileExists(atPath: rootURL.appendingPathComponent(".gitignore").path)
-    }) else {
-      return false
-    }
-    return result
-  }
-
   public func localBranches(profile: SiteProfile) -> [RepositoryBranch] {
     guard let branches = profile.withLocalRepositoryRootAccess({ rootURL in
       self.localBranches(rootURL: rootURL)
@@ -618,31 +611,6 @@ public struct LocalRepositoryService: @unchecked Sendable {
     }) else {
       throw LocalRepositoryServiceError.repositoryUnavailable
     }
-    guard result.terminationStatus == 0 else {
-      throw LocalRepositoryServiceError.commandFailed(terminated: result.terminationStatus, output: result.output)
-    }
-  }
-
-  public func createLocalBranch(profile: SiteProfile, branchName: String, from sourceBranch: String?) throws {
-    let branchName = branchName.trimmedForPublishing
-    guard isValidBranchName(branchName) else {
-      throw LocalRepositoryServiceError.invalidBranchName
-    }
-
-    let sourceBranch = sourceBranch?.trimmedForPublishing.nilIfEmpty
-    if let sourceBranch, !isValidBranchName(sourceBranch) {
-      throw LocalRepositoryServiceError.invalidBranchName
-    }
-    guard let result = profile.withLocalRepositoryRootAccess({ rootURL in
-      var arguments = ["branch", branchName]
-      if let sourceBranch {
-        arguments.append(sourceBranch)
-      }
-      return self.runGitCommand(arguments, rootURL: rootURL)
-    }) else {
-      throw LocalRepositoryServiceError.repositoryUnavailable
-    }
-
     guard result.terminationStatus == 0 else {
       throw LocalRepositoryServiceError.commandFailed(terminated: result.terminationStatus, output: result.output)
     }

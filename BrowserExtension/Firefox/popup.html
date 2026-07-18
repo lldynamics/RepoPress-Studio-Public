@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>保存到资料库</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="mark">文</div>
+        <div>
+          <h1>保存到资料库</h1>
+          <p id="page-title">读取当前页面中…</p>
+        </div>
+      </header>
+
+      <section id="connection-panel">
+        <label for="token">应用连接令牌</label>
+        <div class="inline">
+          <input id="token" type="password" autocomplete="off" placeholder="从资料库连接窗口复制">
+          <button id="connect" class="secondary">连接</button>
+        </div>
+        <p class="hint">令牌只发送到本机 127.0.0.1。</p>
+      </section>
+
+      <section id="save-panel" hidden>
+        <label for="folder">资料库分类</label>
+        <select id="folder">
+          <option value="">未分类</option>
+        </select>
+
+        <label for="new-folder">或新建分类</label>
+        <input id="new-folder" maxlength="80" placeholder="例如：产品研究">
+
+        <label class="check-row">
+          <input id="include-archive" type="checkbox" checked>
+          <span id="archive-label">保存页面归档</span>
+        </label>
+        <p id="archive-hint" class="hint archive-hint"></p>
+
+        <button id="save" class="primary">保存当前页面</button>
+      </section>
+
+      <p id="status" role="status" aria-live="polite"></p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

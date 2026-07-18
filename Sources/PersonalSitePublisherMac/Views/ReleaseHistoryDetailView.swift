@@ -9,12 +9,17 @@ struct ReleaseHistoryDetailView: View {
   @State var webhookPayloadText = ""
 #endif
   @State var pendingDangerousReleaseAction: DangerousReleaseAction?
+  @SceneStorage("releaseHistory.secondaryMetricsExpanded") private var showsSecondaryMetrics = false
+  @SceneStorage("releaseHistory.deploymentDetailsExpanded") private var showsDeploymentDetails = false
+  @SceneStorage("releaseHistory.deploymentMetricsExpanded") private var showsDeploymentMetrics = false
+  @State private var showsAllReleaseActions = false
+  @State private var showsAllReleaseRecords = false
 
   var body: some View {
     let ledger = store.activeProfileReleaseLedger
 
     ScrollView {
-      VStack(alignment: .leading, spacing: 16) {
+      LazyVStack(alignment: .leading, spacing: 16) {
         HStack(alignment: .firstTextBaseline) {
           VStack(alignment: .leading, spacing: 4) {
             Text("发布台账")
@@ -33,31 +38,12 @@ struct ReleaseHistoryDetailView: View {
             .foregroundStyle(.secondary)
         }
 
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 138, maximum: 220))], spacing: 12) {
-          MetricTile(
-            title: "待处理",
-            value: "\(ledger.summary.actionItemCount)",
-            semantic: ledger.summary.actionItemCount == 0 ? .passed : .warning
-          )
-          MetricTile(title: "等待合并", value: "\(ledger.summary.reviewPendingCount)", semantic: .progress)
-          MetricTile(title: "等待部署", value: "\(ledger.summary.deploymentPendingCount)", semantic: .progress)
-          MetricTile(
-            title: "远端待确认",
-            value: "\(ledger.summary.remoteRecoveryPendingCount)",
-            semantic: ledger.summary.remoteRecoveryPendingCount == 0 ? .passed : .warning
-          )
-          MetricTile(title: "已上线", value: "\(ledger.summary.succeededCount)", semantic: .passed)
-          MetricTile(
-            title: "失败",
-            value: "\(ledger.summary.failedCount)",
-            semantic: ledger.summary.failedCount == 0 ? .passed : .blocking
-          )
-        }
+        releasePrimaryMetrics(ledger.summary)
+        releaseSecondaryMetrics(ledger.summary)
 
         deploymentOverviewSummary(ledger.deploymentOverview)
         releaseActionQueueSection(ledger)
-        deploymentPollingSummary
-        deploymentStatusSummary
+        deploymentDetailsDisclosure
 #if DEBUG
         deploymentAdvancedDebugSection
 #endif
@@ -67,18 +53,29 @@ struct ReleaseHistoryDetailView: View {
             title: "还没有发布记录",
             message: "写入本地仓库或创建提交后，这里会记录文章、路径、分支和 PR/MR 信息。",
             systemImage: "clock.arrow.circlepath",
+            density: .compactPane,
             actionTitle: "前往写作",
             actionSystemImage: "square.and.pencil",
             action: { store.selectSection(.writing) }
           )
           .frame(height: 260)
         } else {
-          ForEach(ledger.entries) { entry in
+          let visibleEntries = showsAllReleaseRecords
+            ? ledger.entries
+            : Array(ledger.entries.prefix(12))
+          ForEach(visibleEntries) { entry in
             releaseRecordCard(entry)
+          }
+          if ledger.entries.count > 12 {
+            WorkbenchListDisclosureFooter(
+              visibleCount: visibleEntries.count,
+              totalCount: ledger.entries.count,
+              showsAll: $showsAllReleaseRecords
+            )
           }
         }
       }
-      .padding(20)
+      .workbenchPageLayout()
     }
     .confirmationDialog(
       "确认危险操作",
@@ -109,6 +106,68 @@ struct ReleaseHistoryDetailView: View {
     )
   }
 
+  private func releasePrimaryMetrics(_ summary: ReleaseLedgerSummary) -> some View {
+    PrimaryStatusMetricGrid {
+      MetricTile(
+        title: "阻断",
+        value: "\(summary.failedCount)",
+        semantic: summary.failedCount == 0 ? .passed : .blocking
+      )
+      MetricTile(
+        title: "待处理",
+        value: "\(summary.actionItemCount)",
+        semantic: summary.actionItemCount == 0 ? .passed : .warning
+      )
+      MetricTile(title: "已上线", value: "\(summary.succeededCount)", semantic: .passed)
+    }
+  }
+
+  private func releaseSecondaryMetrics(_ summary: ReleaseLedgerSummary) -> some View {
+    DisclosureGroup(isExpanded: $showsSecondaryMetrics) {
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 138, maximum: 220))],
+        spacing: 10
+      ) {
+        MetricTile(title: "全部记录", value: "\(summary.totalCount)", semantic: .neutral)
+        MetricTile(title: "仅本地", value: "\(summary.localPendingCount)", semantic: .neutral)
+        MetricTile(title: "等待合并", value: "\(summary.reviewPendingCount)", semantic: .progress)
+        MetricTile(title: "等待部署", value: "\(summary.deploymentPendingCount)", semantic: .progress)
+        MetricTile(
+          title: "远端待确认",
+          value: "\(summary.remoteRecoveryPendingCount)",
+          semantic: summary.remoteRecoveryPendingCount == 0 ? .passed : .warning
+        )
+        MetricTile(title: "可回滚", value: "\(summary.rollbackAvailableCount)", semantic: .neutral)
+      }
+      .padding(.top, 10)
+    } label: {
+      Label("更多台账指标", systemImage: "chart.bar.xaxis")
+        .font(.callout.weight(.medium))
+    }
+    .padding(12)
+    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+  }
+
+  private var deploymentDetailsDisclosure: some View {
+    DisclosureGroup(isExpanded: $showsDeploymentDetails) {
+      VStack(alignment: .leading, spacing: 12) {
+        deploymentPollingSummary
+        deploymentStatusSummary
+      }
+      .padding(.top, 10)
+    } label: {
+      VStack(alignment: .leading, spacing: 3) {
+        Label("部署自动化与状态详情", systemImage: "gearshape.arrow.triangle.2.circlepath")
+          .font(.callout.weight(.medium))
+        Text("展开后可配置轮询、查看集成深度和手动刷新部署状态。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .padding(12)
+    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+  }
+
   private func releaseActionQueueSection(_ ledger: ReleaseLedger) -> some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack {
@@ -124,8 +183,18 @@ struct ReleaseHistoryDetailView: View {
         Label("当前没有需要处理的发布事项。", systemImage: "checkmark.circle")
           .foregroundStyle(.secondary)
       } else {
-        ForEach(ledger.actionItems.prefix(6)) { item in
+        let visibleActions = showsAllReleaseActions
+          ? ledger.actionItems
+          : Array(ledger.actionItems.prefix(6))
+        ForEach(visibleActions) { item in
           releaseActionRow(item)
+        }
+        if ledger.actionItems.count > 6 {
+          WorkbenchListDisclosureFooter(
+            visibleCount: visibleActions.count,
+            totalCount: ledger.actionItems.count,
+            showsAll: $showsAllReleaseActions
+          )
         }
       }
     }
@@ -144,16 +213,16 @@ struct ReleaseHistoryDetailView: View {
           HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(item.title)
               .font(.callout.weight(.medium))
-              .lineLimit(1)
+              .workbenchTruncatedIdentity(item.title)
             Text(item.kind.localizedDisplayName)
-              .font(.caption2)
+              .font(.caption)
               .foregroundStyle(.secondary)
               .padding(.horizontal, 6)
               .padding(.vertical, 2)
               .background(WorkbenchBackgroundStyle.badge, in: Capsule())
             Spacer()
             Text(item.priority.localizedDisplayName)
-              .font(.caption2.weight(.semibold))
+              .font(.caption.weight(.semibold))
               .foregroundStyle(releaseActionPriorityForeground(item.priority))
           }
 
@@ -164,9 +233,9 @@ struct ReleaseHistoryDetailView: View {
 
           if !item.detail.isEmpty {
             Text(item.detail)
-              .font(.caption2.monospaced())
-              .foregroundStyle(.tertiary)
-              .lineLimit(1)
+              .font(.caption.monospaced())
+              .foregroundStyle(.secondary)
+              .workbenchTruncatedIdentity(item.detail)
           }
         }
       }
@@ -174,13 +243,66 @@ struct ReleaseHistoryDetailView: View {
       if !item.commandLines.isEmpty {
         ForEach(item.commandLines.prefix(2), id: \.self) { command in
           Text(command)
-            .font(.caption2.monospaced())
+            .font(.caption.monospaced())
             .textSelection(.enabled)
             .lineLimit(2)
         }
       }
 
-      HStack {
+      let entry = store.activeProfileReleaseLedger.entries.first(where: { $0.id == item.recordID })
+      ViewThatFits(in: .horizontal) {
+        releaseActionButtons(item, entry: entry)
+        compactReleaseActionButtons(item, entry: entry)
+      }
+      .controlSize(.small)
+    }
+    .padding(10)
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+  }
+
+  @ViewBuilder
+  private func releaseActionButtons(_ item: ReleaseLedgerActionItem, entry: ReleaseLedgerEntry?) -> some View {
+    HStack(spacing: 8) {
+      if !item.commandLines.isEmpty {
+        Button {
+          copy(item.commandLines.joined(separator: "\n"), message: "已复制发布处理命令。")
+        } label: {
+          Label("复制命令", systemImage: "doc.on.doc")
+        }
+      }
+
+      if let entry {
+        if item.kind.supportsDeploymentRecheck {
+          deploymentRecheckButton(entry)
+        }
+
+        Button {
+          copyRecoveryPackage(entry.recoveryPackage)
+        } label: {
+          Label("复制恢复包", systemImage: "shippingbox")
+        }
+      }
+
+      if let remoteURL = item.remoteURL.flatMap(URL.init(string:)) {
+        Button {
+          ExternalURLOpener.open(remoteURL)
+        } label: {
+          Label("打开远端", systemImage: "arrow.up.right.square")
+        }
+      }
+
+      Spacer(minLength: 0)
+    }
+  }
+
+  @ViewBuilder
+  private func compactReleaseActionButtons(_ item: ReleaseLedgerActionItem, entry: ReleaseLedgerEntry?) -> some View {
+    HStack(spacing: 8) {
+      if let entry, item.kind.supportsDeploymentRecheck {
+        deploymentRecheckButton(entry)
+      }
+
+      Menu {
         if !item.commandLines.isEmpty {
           Button {
             copy(item.commandLines.joined(separator: "\n"), message: "已复制发布处理命令。")
@@ -189,24 +311,12 @@ struct ReleaseHistoryDetailView: View {
           }
         }
 
-        if let entry = store.activeProfileReleaseLedger.entries.first(where: { $0.id == item.recordID }) {
-          if item.kind.supportsDeploymentRecheck {
-            Button {
-              Task {
-                await store.refreshDeploymentStatus(for: entry.record)
-              }
-            } label: {
-              Label("重试检查", systemImage: "checkmark.icloud")
-            }
-            .disabled(store.isDeploymentStatusChecking || !store.canCheckDeploymentStatus(for: entry.record))
-          }
-
+        if let entry {
           Button {
             copyRecoveryPackage(entry.recoveryPackage)
           } label: {
             Label("复制恢复包", systemImage: "shippingbox")
           }
-
         }
 
         if let remoteURL = item.remoteURL.flatMap(URL.init(string:)) {
@@ -216,11 +326,23 @@ struct ReleaseHistoryDetailView: View {
             Label("打开远端", systemImage: "arrow.up.right.square")
           }
         }
+      } label: {
+        Label("更多...", systemImage: "ellipsis.circle")
       }
-      .controlSize(.small)
+
+      Spacer(minLength: 0)
     }
-    .padding(10)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+  }
+
+  private func deploymentRecheckButton(_ entry: ReleaseLedgerEntry) -> some View {
+    Button {
+      Task {
+        await store.refreshDeploymentStatus(for: entry.record)
+      }
+    } label: {
+      Label("重试检查", systemImage: "checkmark.icloud")
+    }
+    .disabled(store.isDeploymentStatusChecking || !store.canCheckDeploymentStatus(for: entry.record))
   }
 
 
@@ -236,14 +358,14 @@ struct ReleaseHistoryDetailView: View {
             .foregroundStyle(statusForeground(snapshot.level))
             .frame(width: 16)
           Text(snapshot.checkedAt.workbenchShortText)
-            .font(.caption2.monospacedDigit())
+            .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
             .frame(width: 74, alignment: .leading)
           Text(snapshot.level.localizedDisplayName)
             .font(.caption.weight(.medium))
             .foregroundStyle(statusForeground(snapshot.level))
           Text(snapshot.message)
-            .font(.caption2)
+            .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(1)
           Spacer(minLength: 0)
@@ -269,15 +391,14 @@ struct ReleaseHistoryDetailView: View {
             Text(item.title)
               .font(.caption.weight(.medium))
             Text(item.message)
-              .font(.caption2)
+              .font(.caption)
               .foregroundStyle(.secondary)
               .lineLimit(2)
             if let urlText = item.urlText?.nilIfEmpty {
               Text(urlText)
-                .font(.caption2.monospaced())
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .textSelection(.enabled)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .workbenchTruncatedIdentity(urlText)
             }
           }
           Spacer(minLength: 0)
@@ -305,11 +426,33 @@ struct ReleaseHistoryDetailView: View {
           .foregroundStyle(statusForeground(overview.level))
       }
 
-      LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-        MetricTile(title: "已检查", value: "\(overview.checkedRecordCount)", systemImage: "checkmark.icloud")
-        MetricTile(title: "未检查", value: "\(overview.uncheckedDeploymentCount)", systemImage: "clock.badge.questionmark")
-        MetricTile(title: "运行中", value: "\(overview.runningDeploymentCount)", systemImage: "hourglass")
-        MetricTile(title: "失败", value: "\(overview.failedDeploymentCount)", systemImage: "xmark.octagon")
+      DisclosureGroup(isExpanded: $showsDeploymentMetrics) {
+        LazyVGrid(
+          columns: [GridItem(.adaptive(minimum: 132, maximum: 220), spacing: 10)],
+          spacing: 10
+        ) {
+          MetricTile(title: "已检查", value: "\(overview.checkedRecordCount)", semantic: .passed)
+          MetricTile(
+            title: "未检查",
+            value: "\(overview.uncheckedDeploymentCount)",
+            semantic: overview.uncheckedDeploymentCount == 0 ? .passed : .warning
+          )
+          MetricTile(
+            title: "运行中",
+            value: "\(overview.runningDeploymentCount)",
+            semantic: overview.runningDeploymentCount == 0 ? .neutral : .progress
+          )
+          MetricTile(
+            title: "失败",
+            value: "\(overview.failedDeploymentCount)",
+            semantic: overview.failedDeploymentCount == 0 ? .passed : .blocking
+          )
+        }
+        .padding(.top, 10)
+      } label: {
+        Label("查看部署指标", systemImage: "chart.bar")
+          .font(.caption.weight(.medium))
+          .foregroundStyle(.secondary)
       }
 
       if let lastCheckedAt = overview.lastCheckedAt {
@@ -388,6 +531,7 @@ struct ReleaseHistoryDetailView: View {
           }
         }
         .pickerStyle(.segmented)
+        .tint(WorkbenchTheme.navigationSelection)
         .frame(maxWidth: 320)
         .disabled(!store.deploymentPollingSettings.isEnabled || store.isDeploymentStatusChecking)
         .accessibilityLabel("部署轮询间隔")
@@ -453,23 +597,23 @@ struct ReleaseHistoryDetailView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                   Text(checkedRecord.title)
                     .font(.caption.weight(.semibold))
-                    .lineLimit(1)
+                    .workbenchTruncatedIdentity(checkedRecord.title)
                   Text(checkedRecord.provider.localizedDisplayName)
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                   Text(checkedRecord.level.localizedDisplayName)
-                    .font(.caption2.weight(.medium))
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(statusForeground(checkedRecord.level))
                 }
                 Text(checkedRecord.message)
-                  .font(.caption2)
+                  .font(.caption)
                   .foregroundStyle(.secondary)
                   .lineLimit(2)
               }
               Spacer(minLength: 0)
               Text(checkedRecord.checkedAt.workbenchShortText)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
           }
         }
@@ -550,7 +694,7 @@ struct ReleaseHistoryDetailView: View {
         systemImage: readiness.isAPIReady ? "checkmark.seal" : readiness.canCheckAnyStatus ? "exclamationmark.triangle" : "xmark.octagon"
       )
       .font(.caption.weight(.medium))
-      .foregroundStyle(readiness.isAPIReady ? .green : readiness.canCheckAnyStatus ? .orange : .red)
+      .foregroundStyle(readiness.isAPIReady ? WorkbenchTheme.success : readiness.canCheckAnyStatus ? WorkbenchTheme.warning : WorkbenchTheme.risk)
 
       VStack(alignment: .leading, spacing: 4) {
         Label(readiness.provider.integrationDepth.title, systemImage: readiness.provider.systemImage)
@@ -597,20 +741,18 @@ struct ReleaseHistoryDetailView: View {
         .foregroundStyle(.secondary)
       Text(value)
         .font(.callout.monospaced())
-        .lineLimit(1)
-        .textSelection(.enabled)
+        .workbenchTruncatedIdentity(value)
     }
   }
 
   func metadataTextRow(_ title: String, _ value: String) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       Text(title)
-        .font(.caption2)
-        .foregroundStyle(.tertiary)
+        .font(.caption)
+        .foregroundStyle(.secondary)
       Text(value)
-        .font(.caption2.monospaced())
-        .lineLimit(1)
-        .textSelection(.enabled)
+        .font(.caption.monospaced())
+        .workbenchTruncatedIdentity(value)
     }
   }
 

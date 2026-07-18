@@ -11,7 +11,7 @@ extension RepositoryWorkspaceView {
 
       VStack(alignment: .leading, spacing: 10) {
         HStack {
-          Text("Diff 摘要")
+          Text("差异摘要")
             .font(.headline)
           Spacer()
           Button {
@@ -32,7 +32,7 @@ extension RepositoryWorkspaceView {
         }
 
         if summary.totalCount > 0 {
-          LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+          LazyVGrid(columns: repositoryMetricGridColumns, spacing: 8) {
             MetricTile(title: "文章", value: "\(summary.articleCount)", systemImage: "doc.text")
             MetricTile(title: "图片", value: "\(summary.imageCount)", systemImage: "photo")
             MetricTile(title: "配置", value: "\(summary.configurationCount)", systemImage: "gearshape")
@@ -64,9 +64,7 @@ extension RepositoryWorkspaceView {
                         .font(.caption)
                         .frame(width: 58, alignment: .leading)
                         .foregroundStyle(.secondary)
-                      Text(file.path)
-                        .font(.callout.monospaced())
-                        .lineLimit(1)
+                      WorkbenchPathIdentity(path: file.path)
                       Spacer()
                       Text(file.status)
                         .font(.caption.monospaced())

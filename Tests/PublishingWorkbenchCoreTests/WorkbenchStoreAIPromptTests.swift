@@ -108,9 +108,11 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
 
     _ = store.openAIChatWorkspace(for: draft.id)
     store.setAIChatModelGrade(.highQuality)
+    store.setAIChatReasoningLevel(.quick)
 
     XCTAssertEqual(store.aiChatModelGrade, .highQuality)
     XCTAssertEqual(store.aiChatSelectedModel, "deepseek-v4-pro")
+    XCTAssertEqual(store.aiChatReasoningLevel, .quick)
 
     store.setAIChatCustomModel("custom-chat-model")
 

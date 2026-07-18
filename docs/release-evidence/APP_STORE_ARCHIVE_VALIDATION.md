@@ -27,22 +27,18 @@ Use these only after the external action has actually been performed:
 
 ```sh
 script/record_app_store_archive_validation_evidence.sh --dry-run
-script/record_app_store_archive_validation_bundle.sh --dry-run
 
 # Optional private env-template flow:
 script/prepare_external_verification_envs.sh --output-dir /private/tmp/personal-site-publisher-release-envs --target app-store-archive
 # Fill the copied file outside git, then:
 source /private/tmp/personal-site-publisher-release-envs/app-store-archive-validation.env
-
-script/record_app_store_archive_validation_bundle.sh \
-  --clean-release-archive "Clean Release archive produced from a fresh checkout and reproducible release command." \
-  --distribution-signing-runtime "Distribution signature verified and hardened runtime flag confirmed on the archive." \
-  --transporter-validation "Archive validated successfully in Transporter before upload; no private account identifiers recorded." \
+script/run_external_verification_from_envs.sh \
+  --env-dir /private/tmp/personal-site-publisher-release-envs \
+  --target app-store-archive \
   --execute
 ```
 
-Use the single-item recorder only when one external validation item is being
-completed separately:
+The same recorder handles each archive validation item:
 
 ```sh
 script/record_app_store_archive_validation_evidence.sh --dry-run
