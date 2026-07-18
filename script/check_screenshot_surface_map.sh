@@ -70,7 +70,7 @@ required = {
             ],
             "Sources/PersonalSitePublisherMac/Views/TokenRepositoryTokenSection.swift": [
                 "TokenRepositoryTokenSection",
-                "仓库访问 Token",
+                "WorkbenchUITerminology.repositoryAccessTokenIntroduction",
             ],
         },
     },

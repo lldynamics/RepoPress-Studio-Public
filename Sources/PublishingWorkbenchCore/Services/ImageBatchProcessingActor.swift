@@ -9,11 +9,11 @@ public enum ImageBatchOperation: String, Sendable {
 
   public var progressTitle: String {
     switch self {
-    case .optimizeJPEG: "压缩 JPEG"
-    case .convertWebP: "转换 WebP"
-    case .optimizeSVG: "优化 SVG"
-    case .resizeLargeImages: "缩放大图"
-    case .cropCover16By9: "裁剪 16:9 封面"
+    case .optimizeJPEG: CoreL10n.text("压缩 JPEG")
+    case .convertWebP: CoreL10n.text("转换 WebP")
+    case .optimizeSVG: CoreL10n.text("优化 SVG")
+    case .resizeLargeImages: CoreL10n.text("缩放大图")
+    case .cropCover16By9: CoreL10n.text("裁剪 16:9 封面")
     }
   }
 }
@@ -78,6 +78,7 @@ public actor ImageBatchProcessingActor {
   public func process(
     operation: ImageBatchOperation,
     drafts: [ArticleDraft],
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>] = [:],
     destinationRoot: URL,
     cancellationToken: ImageProcessingCancellationToken,
     progress: @MainActor @Sendable @escaping (ImageBatchProgress) -> Void
@@ -105,6 +106,7 @@ public actor ImageBatchProcessingActor {
       let result = try process(
         operation: operation,
         draft: draft,
+        includedAttachmentIDs: includedAttachmentIDsByDraftID[draft.id],
         destinationDirectory: outputDirectory,
         cancellationToken: cancellationToken
       )
@@ -135,6 +137,7 @@ public actor ImageBatchProcessingActor {
   private func process(
     operation: ImageBatchOperation,
     draft: ArticleDraft,
+    includedAttachmentIDs: Set<UUID>?,
     destinationDirectory: URL,
     cancellationToken: ImageProcessingCancellationToken
   ) throws -> ImageOptimizationResult {
@@ -143,25 +146,29 @@ public actor ImageBatchProcessingActor {
       return try service.optimizeJPEGAttachments(
         draft: draft,
         destinationDirectory: destinationDirectory,
-        cancellationToken: cancellationToken
+        cancellationToken: cancellationToken,
+        includedAttachmentIDs: includedAttachmentIDs
       )
     case .convertWebP:
       return try service.convertAttachmentsToWebP(
         draft: draft,
         destinationDirectory: destinationDirectory,
-        cancellationToken: cancellationToken
+        cancellationToken: cancellationToken,
+        includedAttachmentIDs: includedAttachmentIDs
       )
     case .optimizeSVG:
       return try service.optimizeSVGAttachments(
         draft: draft,
         destinationDirectory: destinationDirectory,
-        cancellationToken: cancellationToken
+        cancellationToken: cancellationToken,
+        includedAttachmentIDs: includedAttachmentIDs
       )
     case .resizeLargeImages:
       return try service.resizeLargeAttachments(
         draft: draft,
         destinationDirectory: destinationDirectory,
-        cancellationToken: cancellationToken
+        cancellationToken: cancellationToken,
+        includedAttachmentIDs: includedAttachmentIDs
       )
     case .cropCover16By9:
       guard let coverAttachmentID = draft.coverAttachmentID else {

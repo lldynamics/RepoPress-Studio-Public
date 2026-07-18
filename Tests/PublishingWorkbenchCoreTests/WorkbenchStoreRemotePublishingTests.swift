@@ -99,6 +99,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(requestCount, 0)
     let preview = store.remoteRepositoryPublishPreview(for: draft)
     XCTAssertEqual(preview.remoteConflictPaths, ["content/posts/online-direct-conflict.md"])
+    XCTAssertEqual(preview.remoteRiskState, .conflict)
     XCTAssertEqual(preview.readiness, .blocked)
     XCTAssertFalse(preview.canPublish)
     XCTAssertTrue(preview.checklistMarkdown.contains(CoreL10n.text("## 远端冲突预览")))
@@ -109,6 +110,75 @@ extension WorkbenchStoreProfileTests {
     let cachedPreview = try XCTUnwrap(store.remotePublishPreviewSnapshot)
     XCTAssertEqual(cachedPreview.changedPaths, preview.changedPaths)
     XCTAssertEqual(cachedPreview.remoteConflictPaths, preview.remoteConflictPaths)
+  }
+
+  func testRemotePublishRiskAssessmentDistinguishesUnknownCleanAndConflict() {
+    let package = PublishPackage(
+      draftID: UUID(),
+      title: "Remote Risk",
+      markdownPath: "content/posts/remote-risk.md",
+      files: [
+        PublishPackageFile(
+          kind: .markdown,
+          repositoryPath: "content/posts/remote-risk.md",
+          content: "body"
+        )
+      ],
+      commitMessage: "Publish remote risk",
+      reviewBranchName: "publish/remote-risk",
+      reviewTitle: "Remote Risk",
+      reviewChecklist: []
+    )
+    let service = RemotePublishRiskService()
+
+    XCTAssertEqual(
+      service.assessment(package: package, repositoryReport: nil).state,
+      .unknown
+    )
+
+    let cleanReport = RepositoryScanReport(
+      rootPath: "/tmp/site",
+      detectedKind: .zola,
+      expectedKind: .zola,
+      hasGitDirectory: true,
+      contentRootExists: true,
+      assetRootExists: true,
+      markdownFileCount: 1,
+      imageFileCount: 0,
+      branchStatus: RepositoryBranchStatus(
+        branchName: "main",
+        upstreamName: "origin/main"
+      ),
+      changedFiles: [],
+      remoteChangedFiles: [],
+      preflightIssues: []
+    )
+    XCTAssertEqual(
+      service.assessment(package: package, repositoryReport: cleanReport).state,
+      .clean
+    )
+
+    var staleReport = cleanReport
+    staleReport.scannedAt = Date().addingTimeInterval(-301)
+    XCTAssertEqual(
+      service.assessment(package: package, repositoryReport: staleReport).state,
+      .unknown
+    )
+
+    var conflictingReport = cleanReport
+    conflictingReport.remoteChangedFiles = [
+      RepositoryChangedFile(
+        status: "M",
+        path: "content/posts/remote-risk.md",
+        kind: .modified
+      )
+    ]
+    let conflict = service.assessment(
+      package: package,
+      repositoryReport: conflictingReport
+    )
+    XCTAssertEqual(conflict.state, .conflict)
+    XCTAssertEqual(conflict.conflictPaths, ["content/posts/remote-risk.md"])
   }
 
   func testOnlineDirectPublishMarksDraftPublishedAndRecordsDeploymentStatus() async throws {
@@ -177,7 +247,7 @@ extension WorkbenchStoreProfileTests {
         ],
         importableRemoteArticleCount: 2,
         nonArticleRemoteChangedFileCount: 0,
-        message: "自动同步已扫描：发现 2 个远端待拉取变化。"
+        message: "自动检查远端已扫描：发现 2 个远端待拉取变化。"
       )
     )
 
@@ -486,6 +556,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(preview.branchName.hasPrefix("publish/online-review-preview-"))
     XCTAssertEqual(preview.changedPaths, ["content/posts/online-review-preview.md"])
     XCTAssertEqual(preview.remoteConflictPaths, ["content/posts/online-review-preview.md"])
+    XCTAssertEqual(preview.remoteRiskState, .conflict)
     XCTAssertEqual(preview.accessSummary, CoreL10n.text("Token 可写"))
     XCTAssertEqual(preview.readiness, .ready)
     XCTAssertTrue(preview.canPublish)
@@ -684,9 +755,12 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(reloaded.activeRemoteRepositoryAccessCheck?.canWrite == true)
 
     let preview = reloaded.remoteRepositoryPublishPreview(for: draft)
-    XCTAssertEqual(preview.readiness, .ready)
+    XCTAssertEqual(preview.remoteRiskState, .unknown)
+    XCTAssertEqual(preview.readiness, .needsRemoteCheck)
     XCTAssertTrue(preview.canPublish)
     XCTAssertEqual(preview.accessSummary, CoreL10n.text("Token 可写"))
+    XCTAssertTrue(preview.warningIssues.contains { $0.title == CoreL10n.text("远端状态待确认") })
+    XCTAssertTrue(preview.checklistMarkdown.contains(CoreL10n.text("## 远端状态待确认")))
   }
 
   func testRepositoryPermissionCheckDiscardsResultAfterRepositoryConfigurationChanges() async throws {
@@ -930,6 +1004,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(preview.branchName.hasPrefix("publish/batch-"))
     XCTAssertEqual(preview.changedPaths, ["content/posts/batch-review-conflict.md"])
     XCTAssertEqual(preview.remoteConflictPaths, ["content/posts/batch-review-conflict.md"])
+    XCTAssertEqual(preview.remoteRiskState, .conflict)
     XCTAssertEqual(preview.accessSummary, CoreL10n.text("Token 可写"))
     XCTAssertEqual(preview.readiness, .ready)
     XCTAssertTrue(preview.canPublish)
@@ -1053,10 +1128,10 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(store.publishActionMessage, CoreL10n.text("Token 无写入权限，无法线上发布。"))
   }
 
-  func testCreateGitHubRepositoryForActiveProfileUsesAPIAndUpdatesProfile() async throws {
+  func testCreateGitHubRepositoryForActiveProfileDefaultsToPrivateAndUpdatesProfile() async throws {
     let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
       workbenchRemoteResponse(json: #"{"login":"owner"}"#),
-      workbenchRemoteResponse(json: #"{"full_name":"owner/site","default_branch":"main","ssh_url":"git@github.com:owner/site.git","clone_url":"https://github.com/owner/site.git","html_url":"https://github.com/owner/site","private":false}"#),
+      workbenchRemoteResponse(json: #"{"full_name":"owner/site","default_branch":"main","ssh_url":"git@github.com:owner/site.git","clone_url":"https://github.com/owner/site.git","html_url":"https://github.com/owner/site","private":true}"#),
     ])
     let tokenStore = repositoryTokenStoreForTest()
     let store = WorkbenchStore(
@@ -1079,9 +1154,10 @@ extension WorkbenchStoreProfileTests {
     store.refreshRepositoryTokenAvailability()
     store.applyVerifiedStoreKitEntitlement(productID: "test.pro")
 
-    let result = await store.createGitHubRepositoryForActiveProfile(privateRepository: false)
+    let result = await store.createGitHubRepositoryForActiveProfile()
 
     XCTAssertEqual(result?.repositoryName, "owner/site")
+    XCTAssertEqual(result?.privateRepository, true)
     XCTAssertEqual(store.remoteRepositoryCreationResult?.htmlURL, "https://github.com/owner/site")
     XCTAssertEqual(store.activeProfile.repoOwner, "owner")
     XCTAssertEqual(store.activeProfile.repoName, "site")
@@ -1093,6 +1169,10 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(requests[0].url?.path, "/user")
     XCTAssertEqual(requests[1].url?.path, "/user/repos")
     XCTAssertEqual(requests[1].value(forHTTPHeaderField: "Authorization"), "Bearer github-token")
+    let body = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: try XCTUnwrap(requests[1].httpBody)) as? [String: Any]
+    )
+    XCTAssertEqual(body["private"] as? Bool, true)
   }
 
   func testCreateRemoteRepositoryForActiveProfilePreservesCustomGitLabBaseURL() async throws {
@@ -1307,7 +1387,7 @@ extension WorkbenchStoreProfileTests {
         ],
         importableRemoteArticleCount: 2,
         nonArticleRemoteChangedFileCount: 1,
-        message: "自动同步已扫描：发现 3 个远端待拉取变化。"
+        message: "自动检查远端已扫描：发现 3 个远端待拉取变化。"
       )
     )
 
@@ -1639,7 +1719,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(store.repositoryAutoSyncState.remoteChangedFileCount, 3)
     XCTAssertEqual(store.repositoryAutoSyncState.importableRemoteArticleCount, 2)
     XCTAssertEqual(store.repositoryAutoSyncState.nonArticleRemoteChangedFileCount, 1)
-    XCTAssertTrue(store.repositoryAutoSyncState.message.contains("其中 2 篇文章可导入"))
+    XCTAssertTrue(store.repositoryAutoSyncState.message.contains("其中 2 篇文章可手动导入"))
 
     let summary = store.importRemoteChangedArticleDraftsFromRepository()
 

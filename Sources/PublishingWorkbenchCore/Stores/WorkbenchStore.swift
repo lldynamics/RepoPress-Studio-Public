@@ -1,6 +1,11 @@
 import Combine
 import Foundation
 
+public enum FreshWorkspaceSeedPolicy: Sendable {
+  case blank
+  case softwareGuides
+}
+
 @MainActor
 public final class WorkbenchStore: ObservableObject {
   private let imageWorkbenchService: SiteImageWorkbenchService
@@ -16,6 +21,7 @@ public final class WorkbenchStore: ObservableObject {
   let deploymentStore: DeploymentStore
   let privacyMonetizationStore: PrivacyMonetizationStore
   let siteMaintenanceStore: SiteMaintenanceStore
+  public let knowledge: KnowledgeStore
   let persistenceStore: WorkbenchPersistenceStore
   let repositoryDeploymentCoordinator: RepositoryDeploymentCoordinator
 
@@ -59,6 +65,9 @@ public final class WorkbenchStore: ObservableObject {
   public var activeProfileID: UUID { publishingStore.activeProfileID }
   public var drafts: [ArticleDraft] { publishingStore.drafts }
   public var draftVersions: [DraftVersionSnapshot] { publishingStore.draftVersions }
+  public var markdownEditorSessionStates: [UUID: MarkdownEditorSessionState] {
+    publishingStore.markdownEditorSessionStates
+  }
   public var recycledDrafts: [RecycledDraft] { publishingStore.recycledDrafts }
   public var draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest] {
     publishingStore.draftRepositoryCleanupRequests
@@ -68,6 +77,7 @@ public final class WorkbenchStore: ObservableObject {
 
   public init(
     persistence: WorkbenchPersistence = WorkbenchPersistence(),
+    freshWorkspaceSeedPolicy: FreshWorkspaceSeedPolicy = .blank,
     preflightService: PreflightCheckService = PreflightCheckService(),
     repositoryService: LocalRepositoryService = LocalRepositoryService(),
     localContentImportService: LocalContentImportService = LocalContentImportService(),
@@ -89,13 +99,14 @@ public final class WorkbenchStore: ObservableObject {
     seoAuditService: SEOAuditService = SEOAuditService(),
     seoSocialPreviewService: SEOSocialPreviewService = SEOSocialPreviewService(),
     siteMaintenanceService: SiteMaintenanceService = SiteMaintenanceService(),
+    knowledgeLibraryService: KnowledgeLibraryService = KnowledgeLibraryService(),
     releaseLedgerService: ReleaseLedgerService = ReleaseLedgerService(),
     generalDraftLibraryService: GeneralDraftLibraryService = GeneralDraftLibraryService(),
     monetizationService: MonetizationService = MonetizationService(),
     proEntitlementProvider: any ProEntitlementProviding = VerifiedStoreKitEntitlementProvider(),
     keychainTokenStore: KeychainTokenStore = KeychainTokenStore(),
-    repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(service: "PersonalSitePublisherMac.RepositoryProvider", accountPrefix: "repository-provider"),
-    deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(service: "PersonalSitePublisherMac.DeploymentProvider", accountPrefix: "deployment-provider"),
+    repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.repository, accountPrefix: "repository-provider"),
+    deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.deployment, accountPrefix: "deployment-provider"),
     aiPublishingAssistantService: AIPublishingAssistantService = AIPublishingAssistantService(),
     aiConnectionTestService: AIConnectionTestService = AIConnectionTestService()
   ) {
@@ -107,6 +118,7 @@ public final class WorkbenchStore: ObservableObject {
     self.seoAuditService = seoAuditService
     self.seoSocialPreviewService = seoSocialPreviewService
     self.siteMaintenanceStore = SiteMaintenanceStore()
+    self.knowledge = KnowledgeStore(service: knowledgeLibraryService)
 
     let snapshotLoad: WorkbenchSnapshotLoadResult
     var requiresPersistenceRecoveryDecision = false
@@ -132,7 +144,21 @@ public final class WorkbenchStore: ObservableObject {
     let initialActiveProfileID = restoredActiveProfileID ?? initialPublishingProfiles[0].id
     let activeProfile = initialProfiles.first { $0.id == initialActiveProfileID } ?? initialProfiles[0]
     let snapshotDrafts = snapshot?.drafts ?? []
-    let initialDrafts = snapshotDrafts.isEmpty ? [ArticleDraft.empty(profile: activeProfile)] : snapshotDrafts
+    let initialDrafts: [ArticleDraft]
+    var didSeedFreshWorkspace = false
+    if !snapshotDrafts.isEmpty {
+      initialDrafts = snapshotDrafts
+    } else if snapshot == nil, snapshotLoad.recoveryMessage == nil {
+      switch freshWorkspaceSeedPolicy {
+      case .blank:
+        initialDrafts = [ArticleDraft.empty(profile: activeProfile)]
+      case .softwareGuides:
+        initialDrafts = ArticleDraft.samples(profile: activeProfile)
+        didSeedFreshWorkspace = true
+      }
+    } else {
+      initialDrafts = [ArticleDraft.empty(profile: activeProfile)]
+    }
 
     self.privacyMonetizationStore = PrivacyMonetizationStore(
       privacySettings: snapshot?.privacySettings ?? .default,
@@ -174,11 +200,13 @@ public final class WorkbenchStore: ObservableObject {
       profiles: initialProfiles,
       activeProfileID: initialActiveProfileID,
       drafts: initialDrafts,
+      customMarkdownSnippets: snapshot?.customMarkdownSnippets ?? [],
       draftVersions: snapshot?.draftVersions ?? [],
       recycledDrafts: snapshot?.recycledDrafts ?? [],
       draftRepositoryCleanupRequests: snapshot?.draftRepositoryCleanupRequests ?? [],
       releaseRecords: snapshot?.releaseRecords ?? [],
       selectedDraftID: initialDrafts.first?.id,
+      markdownEditorSessionStates: snapshot?.markdownEditorSessionStates ?? [:],
       maintenanceOperationRecords: snapshot?.maintenanceOperationRecords ?? [],
       preflightService: preflightService,
       publishPackageBuilder: publishPackageBuilder,
@@ -218,6 +246,9 @@ public final class WorkbenchStore: ObservableObject {
     siteMaintenanceStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStoreCancellables)
+    knowledge.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &childStoreCancellables)
     repositoryDeploymentCoordinator.refreshTokenAvailability(store: self)
     if let recoveryMessage = snapshotLoad.recoveryMessage {
       if requiresPersistenceRecoveryDecision {
@@ -226,6 +257,9 @@ public final class WorkbenchStore: ObservableObject {
         persistenceStore.setRecoveryMessage(recoveryMessage)
         setLastSaveStatus("需要检查工作台数据")
       }
+    }
+    if didSeedFreshWorkspace {
+      save()
     }
     runPreflight()
     refreshPublishPreviewInBackground(for: selectedDraft)

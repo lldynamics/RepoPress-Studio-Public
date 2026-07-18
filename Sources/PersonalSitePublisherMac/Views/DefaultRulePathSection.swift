@@ -8,32 +8,30 @@ struct DefaultRulePathSection: View {
   @FocusState private var focusedPathField: DefaultRulePathField?
 
   var body: some View {
-    Section("路径规则") {
-      TextField("Content root", text: activeProfileBinding.contentRoot)
-        .focused($focusedPathField, equals: .contentRoot)
-        .accessibilityLabel("Content root")
-        .accessibilityValue(activeProfile.contentRoot)
+    TextField("内容根目录", text: activeProfileBinding.contentRoot)
+      .focused($focusedPathField, equals: .contentRoot)
+      .accessibilityLabel("内容根目录")
+      .accessibilityValue(activeProfile.contentRoot)
 
-      TextField("Asset root", text: activeProfileBinding.assetRoot)
-        .accessibilityLabel("Asset root")
-        .accessibilityValue(activeProfile.assetRoot)
+    TextField("资源根目录", text: activeProfileBinding.assetRoot)
+      .accessibilityLabel("资源根目录")
+      .accessibilityValue(activeProfile.assetRoot)
 
-      TextField("Markdown path pattern", text: activeProfileBinding.markdownPathPattern)
-        .accessibilityLabel("Markdown path pattern")
-        .accessibilityValue(activeProfile.markdownPathPattern)
+    TextField("Markdown 路径模板", text: activeProfileBinding.markdownPathPattern)
+      .accessibilityLabel("Markdown 路径模板")
+      .accessibilityValue(activeProfile.markdownPathPattern)
 
-      TextField("Image path pattern", text: activeProfileBinding.imagePathPattern)
-        .accessibilityLabel("Image path pattern")
-        .accessibilityValue(activeProfile.imagePathPattern)
+    TextField("图片路径模板", text: activeProfileBinding.imagePathPattern)
+      .accessibilityLabel("图片路径模板")
+      .accessibilityValue(activeProfile.imagePathPattern)
 
-      TextField("Public image path pattern", text: activeProfileBinding.publicImagePathPattern)
-        .accessibilityLabel("Public image path pattern")
-        .accessibilityValue(activeProfile.publicImagePathPattern)
-    }
-    .task(id: navigationRequestID) {
-      guard shouldFocusPaths else { return }
-      focusedPathField = .contentRoot
-    }
+    TextField("公开图片路径模板", text: activeProfileBinding.publicImagePathPattern)
+      .accessibilityLabel("公开图片路径模板")
+      .accessibilityValue(activeProfile.publicImagePathPattern)
+      .task(id: navigationRequestID) {
+        guard shouldFocusPaths else { return }
+        focusedPathField = .contentRoot
+      }
   }
 
   private var activeProfile: SiteProfile {

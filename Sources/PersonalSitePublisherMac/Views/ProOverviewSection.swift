@@ -18,7 +18,7 @@ struct ProOverviewSection: View {
 
       Text(summary.nextStep)
         .font(.caption)
-        .foregroundStyle(summary.isActionRequired ? .orange : .secondary)
+        .foregroundStyle(summary.isActionRequired ? WorkbenchTheme.warning : Color.secondary)
 
       if let notice = latestBlockNotice {
         ProBlockNoticeRow(notice: notice)
@@ -42,7 +42,7 @@ struct ProOverviewSection: View {
 
   private func summaryForeground(_ summary: ProStatusSummary) -> AnyShapeStyle {
     if summary.entitlement.isUnlocked {
-      return AnyShapeStyle(WorkbenchTheme.finance)
+      return AnyShapeStyle(WorkbenchTheme.financeForeground)
     }
     if summary.isActionRequired {
       return AnyShapeStyle(WorkbenchTheme.warning)

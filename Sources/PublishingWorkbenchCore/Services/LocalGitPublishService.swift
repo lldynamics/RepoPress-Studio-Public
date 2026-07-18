@@ -60,10 +60,17 @@ public struct LocalGitPublishService: Sendable {
   public func publish(
     package: PublishPackage,
     profile: SiteProfile,
-    mode: LocalGitPublishMode
+    mode: LocalGitPublishMode,
+    preview: LocalPublishPreview? = nil
   ) throws -> LocalGitPublishResult {
     guard let result = try profile.withLocalRepositoryRootAccess({ rootURL in
-      try publish(package: package, profile: profile, rootURL: rootURL, mode: mode)
+      try publish(
+        package: package,
+        profile: profile,
+        rootURL: rootURL,
+        mode: mode,
+        preview: preview
+      )
     }) else {
       throw LocalGitPublishError.missingRepositoryRoot
     }
@@ -74,7 +81,8 @@ public struct LocalGitPublishService: Sendable {
   public func publishAsync(
     package: PublishPackage,
     profile: SiteProfile,
-    mode: LocalGitPublishMode
+    mode: LocalGitPublishMode,
+    preview: LocalPublishPreview? = nil
   ) async throws -> LocalGitPublishResult {
     guard let rootURL = profile.localRepositoryRootURL else {
       throw LocalGitPublishError.missingRepositoryRoot
@@ -85,14 +93,21 @@ public struct LocalGitPublishService: Sendable {
         rootURL.stopAccessingSecurityScopedResource()
       }
     }
-    return try await publishAsync(package: package, profile: profile, rootURL: rootURL, mode: mode)
+    return try await publishAsync(
+      package: package,
+      profile: profile,
+      rootURL: rootURL,
+      mode: mode,
+      preview: preview
+    )
   }
 
   private func publish(
     package: PublishPackage,
     profile: SiteProfile,
     rootURL: URL,
-    mode: LocalGitPublishMode
+    mode: LocalGitPublishMode,
+    preview: LocalPublishPreview?
   ) throws -> LocalGitPublishResult {
     guard directoryExists(rootURL.appendingPathComponent(".git", isDirectory: true)) else {
       throw LocalGitPublishError.notGitRepository(rootURL.path)
@@ -117,7 +132,11 @@ public struct LocalGitPublishService: Sendable {
         outputChunks.append(switchResult.output)
       }
 
-      let writeResult = try previewService.writeWithEvidence(package: package, rootURL: rootURL)
+      let writeResult = try previewService.writeWithEvidence(
+        package: package,
+        rootURL: rootURL,
+        preview: preview
+      )
       let writtenPaths = writeResult.writtenPaths
       appliedStatesByRepositoryPath = writeResult.appliedStatesByRepositoryPath
       let addResult = try runGit(["add", "--"] + packagePaths, rootURL: rootURL)
@@ -179,7 +198,8 @@ public struct LocalGitPublishService: Sendable {
     package: PublishPackage,
     profile: SiteProfile,
     rootURL: URL,
-    mode: LocalGitPublishMode
+    mode: LocalGitPublishMode,
+    preview: LocalPublishPreview?
   ) async throws -> LocalGitPublishResult {
     guard directoryExists(rootURL.appendingPathComponent(".git", isDirectory: true)) else {
       throw LocalGitPublishError.notGitRepository(rootURL.path)
@@ -204,7 +224,11 @@ public struct LocalGitPublishService: Sendable {
         outputChunks.append(switchResult.output)
       }
 
-      let writeResult = try previewService.writeWithEvidence(package: package, rootURL: rootURL)
+      let writeResult = try previewService.writeWithEvidence(
+        package: package,
+        rootURL: rootURL,
+        preview: preview
+      )
       let writtenPaths = writeResult.writtenPaths
       appliedStatesByRepositoryPath = writeResult.appliedStatesByRepositoryPath
       let addResult = try await runGitAsync(["add", "--"] + packagePaths, rootURL: rootURL)

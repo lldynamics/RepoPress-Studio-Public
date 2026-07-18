@@ -606,15 +606,18 @@ extension PublishingStore {
       preview: localPreview,
       draftIssues: draftIssuesWithRepository
     )
-    let remoteConflictPaths = remotePublishRiskService.remoteConflictPaths(
+    let remoteRiskAssessment = remotePublishRiskService.assessment(
       package: package,
       repositoryReport: store.repositoryReport(for: profile)
     )
     let remoteWarnings = remotePublishRiskService.issues(
-      package: package,
-      repositoryReport: store.repositoryReport(for: profile)
+      for: remoteRiskAssessment,
+      includeUnknownState: true
     )
-    let directConflictBlockingIssues = mode == .directCommit ? remoteWarnings : []
+    let directConflictBlockingIssues = mode == .directCommit && remoteRiskAssessment.state == .conflict
+      ? remoteWarnings
+      : []
+    let visibleRemoteWarnings = directConflictBlockingIssues.isEmpty ? remoteWarnings : []
     let accessCheck = store.activeRemoteRepositoryAccessCheck
     let permissionWarnings: [PreflightIssue] = store.repositoryTokenAvailability.hasToken && accessCheck == nil
       ? [PreflightIssue(
@@ -631,11 +634,12 @@ extension PublishingStore {
       branchName: mode == .reviewRequest ? package.reviewBranchName : profile.branch,
       targetBranch: profile.branch,
       changedPaths: localPreview.changedFileDiffs.map(\.path),
-      remoteConflictPaths: remoteConflictPaths,
+      remoteConflictPaths: remoteRiskAssessment.conflictPaths,
+      remoteRiskState: remoteRiskAssessment.state,
       hasToken: store.repositoryTokenAvailability.hasToken,
       accessCheck: accessCheck,
       blockingIssues: blockingIssues + directConflictBlockingIssues,
-      warningIssues: remoteWarnings + permissionWarnings + extraWarningIssues
+      warningIssues: visibleRemoteWarnings + permissionWarnings + extraWarningIssues
     )
   }
 
@@ -688,6 +692,7 @@ extension PublishingStore {
     if previousPath != confirmedPath {
       drafts[index].repositorySHA = nil
     }
+    drafts[index].repositoryImportFingerprint = drafts[index].repositoryContentFingerprint
     drafts[index].touch()
   }
 
@@ -711,6 +716,7 @@ extension PublishingStore {
         confirmedAttachment.repositorySHA = remoteVersion
         return confirmedAttachment
       }
+      updated.repositoryImportFingerprint = updated.repositoryContentFingerprint
       updated.updatedAt = now
       return updated
     }
@@ -790,6 +796,53 @@ extension PublishingStore {
     )
   }
 
+  /// Discovers private repository articles that have never been added to the
+  /// writing library. Existing drafts are intentionally left untouched so this
+  /// launch-time backfill cannot overwrite local edits.
+  @discardableResult
+  public func importMissingPrivateDraftsFromLocalRepository(store: WorkbenchStore) async -> Int {
+    let profile = store.activeProfile
+    guard !profile.localRepositoryRootPath.trimmedForPublishing.isEmpty else {
+      return 0
+    }
+
+    let operation = LocalRepositoryOperationContext(profile: profile)
+    let result: LocalContentImportResult
+    do {
+      result = try await localContentImportService.importDraftsAsync(profile: profile)
+    } catch {
+      return 0
+    }
+    guard operation.stillMatches(store.activeProfile) else {
+      return 0
+    }
+
+    var existingPaths = Set(
+      drafts.compactMap { draft -> String? in
+        guard draft.siteProfileID == profile.id else { return nil }
+        return draft.repositoryPath?.normalizedRelativePath().nilIfEmpty
+      }
+    )
+    let missingDrafts = result.importedDrafts.filter { draft in
+      guard draft.siteProfileID == profile.id,
+            draft.isPrivate,
+            let repositoryPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty else {
+        return false
+      }
+      return existingPaths.insert(repositoryPath).inserted
+    }
+    guard !missingDrafts.isEmpty else {
+      return 0
+    }
+
+    drafts.append(contentsOf: missingDrafts)
+    if automaticallyRefreshPreflightOnEdit {
+      store.schedulePreflightRefresh()
+    }
+    store.save()
+    return missingDrafts.count
+  }
+
   @discardableResult
   public func importDraftFromLocalRepository(
     repositoryPath: String,
@@ -811,7 +864,127 @@ extension PublishingStore {
 
   public func makeContentMigrationPlan(sourceURL: URL, store: WorkbenchStore) async throws -> ContentMigrationPlan {
     let profile = store.activeProfile
-    return try await contentMigrationService.makePlanAsync(sourceURL: sourceURL, profile: profile)
+    let plan = try await contentMigrationService.makePlanAsync(sourceURL: sourceURL, profile: profile)
+    guard plan.profileID == store.activeProfileID,
+          plan.profileConfiguration == ContentMigrationProfileConfiguration(profile: store.activeProfile) else {
+      throw ContentMigrationError.profileChanged
+    }
+    store.flushDraftBodyEditorBuffers()
+    return captureContentMigrationBaselines(in: plan, store: store)
+  }
+
+  private func captureContentMigrationBaselines(
+    in plan: ContentMigrationPlan,
+    store: WorkbenchStore
+  ) -> ContentMigrationPlan {
+    var prepared = plan
+    let pathCounts = Dictionary(
+      grouping: plan.drafts,
+      by: { $0.repositoryPath?.normalizedRelativePath() ?? "" }
+    ).mapValues(\.count)
+    let comparisonService = DraftVersionComparisonService()
+
+    prepared.reviewItems = plan.drafts.map { importedDraft in
+      let repositoryPath = importedDraft.repositoryPath?.normalizedRelativePath() ?? ""
+      guard !repositoryPath.isEmpty,
+            pathCounts[repositoryPath] == 1 else {
+        return ContentMigrationDraftReviewItem(
+          importedDraft: importedDraft,
+          disposition: .conflict
+        )
+      }
+
+      guard let existingDraft = drafts.first(where: {
+        $0.siteProfileID == plan.profileID
+          && $0.repositoryPath?.normalizedRelativePath() == repositoryPath
+      }), let operationBaseline = store.draftOperationBaseline(for: existingDraft.id) else {
+        return ContentMigrationDraftReviewItem(
+          importedDraft: importedDraft,
+          disposition: .insert
+        )
+      }
+
+      let comparison = comparisonService.compare(
+        previous: existingDraft,
+        current: importedDraft
+      )
+      return ContentMigrationDraftReviewItem(
+        importedDraft: importedDraft,
+        baseline: ContentMigrationDraftBaseline(
+          draft: operationBaseline.draft,
+          bodyRevision: operationBaseline.bodyRevision
+        ),
+        disposition: comparison.hasChanges ? .update : .unchanged,
+        comparison: comparison
+      )
+    }
+    prepared.drafts = prepared.reviewItems.map(\.importedDraft)
+    return prepared
+  }
+
+  private func contentMigrationReviewItem(
+    _ item: ContentMigrationDraftReviewItem,
+    disposition: ContentMigrationDraftDisposition
+  ) -> ContentMigrationDraftReviewItem {
+    ContentMigrationDraftReviewItem(
+      importedDraft: item.importedDraft,
+      baseline: item.baseline,
+      disposition: disposition,
+      comparison: disposition == .update || disposition == .unchanged ? item.comparison : nil
+    )
+  }
+
+  public func refreshContentMigrationPlanReview(
+    _ plan: ContentMigrationPlan,
+    store: WorkbenchStore
+  ) -> ContentMigrationPlan {
+    var refreshed = plan
+    let pathCounts = Dictionary(
+      grouping: plan.reviewItems,
+      by: { $0.repositoryPath }
+    ).mapValues(\.count)
+
+    refreshed.reviewItems = plan.reviewItems.map { item in
+      guard !item.repositoryPath.isEmpty,
+            pathCounts[item.repositoryPath] == 1 else {
+        return contentMigrationReviewItem(item, disposition: .conflict)
+      }
+
+      let currentDraft = drafts.first {
+        $0.siteProfileID == plan.profileID
+          && $0.repositoryPath?.normalizedRelativePath() == item.repositoryPath
+      }
+
+      guard let baseline = item.baseline else {
+        return currentDraft == nil
+          ? contentMigrationReviewItem(item, disposition: .insert)
+          : contentMigrationReviewItem(item, disposition: .conflict)
+      }
+
+      guard let currentDraft,
+            currentDraft.id == baseline.draft.id,
+            store.draftStillMatchesOperationBaseline(
+              DraftOperationBaseline(
+                draft: baseline.draft,
+                bodyRevision: baseline.bodyRevision
+              )
+            ) else {
+        return contentMigrationReviewItem(item, disposition: .conflict)
+      }
+
+      let comparison = DraftVersionComparisonService().compare(
+        previous: currentDraft,
+        current: item.importedDraft
+      )
+      return ContentMigrationDraftReviewItem(
+        importedDraft: item.importedDraft,
+        baseline: baseline,
+        disposition: comparison.hasChanges ? .update : .unchanged,
+        comparison: comparison
+      )
+    }
+    refreshed.drafts = refreshed.reviewItems.map(\.importedDraft)
+    return refreshed
   }
 
   @discardableResult
@@ -819,21 +992,72 @@ extension PublishingStore {
     _ plan: ContentMigrationPlan,
     store: WorkbenchStore
   ) throws -> LocalContentImportMergeSummary {
+    let refreshed = refreshContentMigrationPlanReview(plan, store: store)
+    let selectedDraftIDs = Set(
+      refreshed.reviewItems
+        .filter { $0.disposition.isSelectable }
+        .map(\.id)
+    )
+    return try applyContentMigration(
+      refreshed,
+      selectedDraftIDs: selectedDraftIDs,
+      store: store
+    )
+  }
+
+  @discardableResult
+  public func applyContentMigration(
+    _ plan: ContentMigrationPlan,
+    selectedDraftIDs: Set<UUID>,
+    store: WorkbenchStore
+  ) throws -> LocalContentImportMergeSummary {
     guard plan.profileID == store.activeProfileID,
           plan.profileConfiguration == ContentMigrationProfileConfiguration(profile: store.activeProfile) else {
       throw ContentMigrationError.profileChanged
     }
     store.flushDraftBodyEditorBuffers()
+    let refreshed = refreshContentMigrationPlanReview(plan, store: store)
+    let selectedItems = refreshed.reviewItems.filter { selectedDraftIDs.contains($0.id) }
+    let conflicts = selectedItems
+      .filter { $0.disposition == .conflict }
+      .map { $0.repositoryPath.nilIfEmpty ?? $0.importedDraft.title }
+    guard conflicts.isEmpty else {
+      throw ContentMigrationError.draftsChanged(conflicts)
+    }
+
+    let importItems = selectedItems.filter { $0.disposition.isSelectable }
+    guard !importItems.isEmpty else {
+      return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
+    }
+
+    let expectedBaselines = Dictionary(
+      uniqueKeysWithValues: importItems.compactMap { item -> (String, DraftOperationBaseline)? in
+        guard let baseline = item.baseline else { return nil }
+        return (
+          item.repositoryPath,
+          DraftOperationBaseline(draft: baseline.draft, bodyRevision: baseline.bodyRevision)
+        )
+      }
+    )
+    let selectedIDs = Set(importItems.map(\.id))
+    let skippedPaths = refreshed.reviewItems
+      .filter { !selectedIDs.contains($0.id) }
+      .map(\.repositoryPath)
+      .filter { !$0.isEmpty }
     let summary = mergeImportedDrafts(
-      LocalContentImportResult(importedDrafts: plan.drafts, skippedPaths: []),
+      LocalContentImportResult(
+        importedDrafts: importItems.map(\.importedDraft),
+        skippedPaths: skippedPaths
+      ),
+      expectedBaselinesByRepositoryPath: expectedBaselines,
       store: store
     )
-    if let firstImported = plan.drafts.first,
+    if let firstImported = importItems.first?.importedDraft,
        let imported = drafts.first(where: { $0.siteProfileID == firstImported.siteProfileID && $0.repositoryPath == firstImported.repositoryPath }) {
       selectedDraftID = imported.id
     }
     selectedSection = .writing
-    publishActionMessage = "已导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇；已生成 \(plan.imageMappings.count) 条图片路径映射和 \(plan.redirects.count) 条重定向候选。"
+    publishActionMessage = "已导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇；已生成 \(refreshed.imageMappings.count) 条图片路径映射和 \(refreshed.redirects.count) 条重定向候选。"
     store.save()
     return summary
   }
@@ -847,13 +1071,11 @@ extension PublishingStore {
     let profile = store.activeProfile
     let operation = LocalRepositoryOperationContext(profile: profile)
     localImportOperationContext = operation
-    let contentRoot = profile.contentRoot.normalizedRelativePath() + "/"
     let paths = (store.repositoryReport?.changedFiles ?? [])
       .filter { $0.kind != .deleted }
       .map(\.displayPath)
       .filter { path in
-        path.normalizedRelativePath().hasPrefix(contentRoot)
-          && ["md", "markdown", "mdx"].contains(URL(fileURLWithPath: path).pathExtension.lowercased())
+        localContentImportService.isImportableArticleRepositoryPath(path, profile: profile)
       }
     store.flushDraftBodyEditorBuffers()
     var baselines: [String: DraftOperationBaseline] = [:]
@@ -899,15 +1121,25 @@ extension PublishingStore {
 
   @discardableResult
   public func importRemoteChangedArticleDraftsFromRepository(store: WorkbenchStore) -> LocalContentImportMergeSummary {
-    store.flushDraftBodyEditorBuffers()
-    let profile = store.activeProfile
-    let contentRoot = profile.contentRoot.normalizedRelativePath() + "/"
     let paths = (store.repositoryReport?.remoteChangedFiles ?? [])
       .map(\.displayPath)
+    return importRemoteArticleDraftsFromRepository(repositoryPaths: paths, store: store)
+  }
+
+  @discardableResult
+  public func importRemoteArticleDraftsFromRepository(
+    repositoryPaths: [String],
+    store: WorkbenchStore
+  ) -> LocalContentImportMergeSummary {
+    store.flushDraftBodyEditorBuffers()
+    let profile = store.activeProfile
+    var seenPaths = Set<String>()
+    let paths = repositoryPaths
+      .map { $0.normalizedRelativePath() }
       .filter { path in
-        path.normalizedRelativePath().hasPrefix(contentRoot)
-          && ["md", "markdown", "mdx"].contains(URL(fileURLWithPath: path).pathExtension.lowercased())
+        localContentImportService.isImportableArticleRepositoryPath(path, profile: profile)
       }
+      .filter { seenPaths.insert($0).inserted }
     let result = remoteContentImportResult(paths: paths, profile: profile, store: store)
     let summary = mergeImportedDrafts(result, store: store)
     selectedSection = .writing
@@ -941,6 +1173,125 @@ extension PublishingStore {
       publishActionMessage = "未能导入远端文章：\(normalizedPath)。"
     }
     store.save()
+    return summary
+  }
+
+  /// Imports only remote article changes that can be proven safe. New paths are
+  /// accepted, while an existing draft is replaced only when its repository
+  /// content still matches the fingerprint recorded by the last import.
+  @discardableResult
+  public func autoImportRemoteArticleDrafts(
+    remoteFiles: [RepositoryChangedFile],
+    snapshots: [RepositoryFileSnapshot],
+    locallyChangedPaths: Set<String>,
+    store: WorkbenchStore
+  ) -> RemoteArticleAutoImportSummary {
+    let profile = store.activeProfile
+    let snapshotsByPath = Dictionary(
+      snapshots.map { ($0.repositoryPath.normalizedRelativePath(), $0) },
+      uniquingKeysWith: { _, latest in latest }
+    )
+    var summary = RemoteArticleAutoImportSummary()
+    var seenPaths = Set<String>()
+    var didMutateDrafts = false
+
+    for file in remoteFiles {
+      let path = file.displayPath.normalizedRelativePath()
+      guard seenPaths.insert(path).inserted,
+            localContentImportService.isImportableArticleRepositoryPath(path, profile: profile) else {
+        continue
+      }
+
+      if file.kind == .deleted {
+        summary.deletionPaths.append(path)
+        continue
+      }
+      guard file.kind == .added || file.kind == .modified else {
+        summary.conflictPaths.append(path)
+        continue
+      }
+      guard !locallyChangedPaths.contains(path) else {
+        summary.conflictPaths.append(path)
+        continue
+      }
+      guard let snapshot = snapshotsByPath[path] else {
+        summary.failedPaths.append(path)
+        continue
+      }
+
+      let importResult = localContentImportService.importDraft(
+        document: snapshot.content,
+        repositoryPath: path,
+        profile: profile,
+        repositorySHA: snapshot.repositorySHA
+      )
+      guard var remoteDraft = importResult.importedDrafts.first else {
+        summary.failedPaths.append(path)
+        continue
+      }
+      let remoteFingerprint = remoteDraft.repositoryContentFingerprint
+      remoteDraft.repositoryImportFingerprint = remoteFingerprint
+
+      guard let existingIndex = drafts.firstIndex(where: {
+        $0.siteProfileID == profile.id
+          && $0.repositoryPath?.normalizedRelativePath() == path
+      }) else {
+        drafts.append(remoteDraft)
+        summary.insertedCount += 1
+        summary.resolvedPaths.append(path)
+        didMutateDrafts = true
+        continue
+      }
+
+      let existing = drafts[existingIndex]
+      let editorBuffer = store.draftBodyEditorBuffer(for: existing.id)
+      guard !editorBuffer.isDirty else {
+        summary.conflictPaths.append(path)
+        continue
+      }
+
+      let existingFingerprint = existing.repositoryContentFingerprint
+      let normalizedRemoteSHA = snapshot.repositorySHA?.trimmedForPublishing.nilIfEmpty
+      if let normalizedRemoteSHA,
+         existing.repositorySHA?.trimmedForPublishing == normalizedRemoteSHA {
+        summary.unchangedCount += 1
+        summary.resolvedPaths.append(path)
+        continue
+      }
+
+      if existingFingerprint == remoteFingerprint {
+        var confirmed = existing
+        confirmed.repositorySHA = normalizedRemoteSHA
+        confirmed.repositoryImportFingerprint = remoteFingerprint
+        drafts[existingIndex] = confirmed
+        summary.unchangedCount += 1
+        summary.resolvedPaths.append(path)
+        didMutateDrafts = didMutateDrafts || confirmed != existing
+        continue
+      }
+
+      guard existing.repositoryImportFingerprint == existingFingerprint else {
+        summary.conflictPaths.append(path)
+        continue
+      }
+
+      remoteDraft.id = existing.id
+      remoteDraft.createdAt = existing.createdAt
+      recordAutomaticVersionIfNeeded(for: existing)
+      remoteDraft.touch()
+      drafts[existingIndex] = remoteDraft
+      store.synchronizeDraftBodyEditorBuffer(with: remoteDraft)
+      summary.updatedCount += 1
+      summary.resolvedPaths.append(path)
+      didMutateDrafts = true
+    }
+
+    if didMutateDrafts {
+      if automaticallyRefreshPreflightOnEdit {
+        store.schedulePreflightRefresh()
+      }
+      store.save()
+    }
     return summary
   }
 
@@ -1053,6 +1404,43 @@ extension PublishingStore {
       guard siteStarterOperationGeneration == generation else { return nil }
       publishActionMessage = "导入已有站点失败：\(error.localizedDescription)"
       return nil
+    }
+  }
+
+  @discardableResult
+  public func configureStarterSiteOrigin(store: WorkbenchStore) async -> Bool {
+    guard var starterResult = siteStarterResult,
+          starterResult.profile.id == store.activeProfileID else {
+      publishActionMessage = "没有可配置远端的 Starter 生成结果，请先创建站点。"
+      return false
+    }
+    let profile = store.activeProfile
+    guard let operation = beginLocalRepositoryMutation(profile: profile) else {
+      publishActionMessage = "已有本地仓库写入或提交任务正在运行，请等待完成。"
+      return false
+    }
+    defer { finishLocalRepositoryMutation(operation) }
+    publishActionMessage = "正在配置 Starter 的 origin remote…"
+
+    do {
+      let remoteURL = try await siteStarterService.configureGitHubOriginRemoteAsync(profile: profile)
+      guard localRepositoryMutationContext == operation,
+            operation.stillMatches(store.activeProfile) else {
+        return false
+      }
+      starterResult.profile = profile
+      starterResult.configuredRemoteURL = remoteURL
+      siteStarterResult = starterResult
+      publishActionMessage = "已配置 Starter 远端：\(profile.repositoryDisplayName)。"
+      store.save()
+      return true
+    } catch {
+      guard localRepositoryMutationContext == operation,
+            operation.stillMatches(store.activeProfile) else {
+        return false
+      }
+      publishActionMessage = "配置 Starter 远端失败：\(error.localizedDescription)"
+      return false
     }
   }
 
@@ -1282,6 +1670,7 @@ extension PublishingStore {
     copied.draft = true
     copied.repositoryPath = nil
     copied.repositorySHA = nil
+    copied.repositoryImportFingerprint = nil
     copied.reusedFromSourceSnapshot = GeneralDraftReuseSourceSnapshot.make(
       from: source,
       sourceProfileName: sourceProfile?.name ?? "未知 Profile"
@@ -1404,7 +1793,7 @@ extension PublishingStore {
 
     do {
       let writtenPaths = try await localPublishPreviewService.writeAsync(
-        package: package,
+        preview: preview,
         profile: profile
       )
       prependReleaseRecord(
@@ -1470,7 +1859,7 @@ extension PublishingStore {
     for item in writableItems {
       do {
         let paths = try await localPublishPreviewService.writeAsync(
-          package: item.package,
+          preview: item.preview,
           profile: profile
         )
         writtenItems.append(item)
@@ -1596,7 +1985,9 @@ extension PublishingStore {
       return nil
     }
     store.setRemoteRepositoryPublishProgress(nil)
-    publishActionMessage = "正在通过 \(profile.repositoryProvider.displayName) 批量执行\(mode.displayName)..."
+    publishActionMessage = mode == .directCommit
+      ? CoreL10n.format("正在通过 %@ 批量核对远端版本并执行%@...", profile.repositoryProvider.displayName, mode.displayName)
+      : CoreL10n.format("正在通过 %@ 批量执行%@...", profile.repositoryProvider.displayName, mode.displayName)
     defer { finishRemoteRepositoryMutation(operation, store: store) }
 
     do {

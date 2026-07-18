@@ -20,7 +20,9 @@ struct SiteStarterWorkspaceView: View {
   @State private var deploymentAccountID = ""
   @State private var initializesGit = true
   @State private var configuresOrigin = true
-  @State private var createsPrivateRepository = false
+  @State private var createsPrivateRepository = true
+  @State private var isRepositoryCreationConfirmationPresented = false
+  @State private var repositoryCreationFailureMessage: String?
 
   private var mode: SiteStarterMode {
     get { SiteStarterMode(rawValue: modeRaw) ?? .create }
@@ -37,27 +39,44 @@ struct SiteStarterWorkspaceView: View {
       header
       Divider()
 
-      HSplitView {
-        stepRail
-          .frame(minWidth: 240, idealWidth: 270, maxWidth: 320, maxHeight: .infinity)
+      stepNavigation
+      Divider()
 
-        ScrollView {
-          VStack(alignment: .leading, spacing: 18) {
-            selectedStepHeader
-            selectedStepContent
-            navigationBar
-          }
-          .padding(20)
-          .frame(maxWidth: 720, alignment: .leading)
+      ScrollView {
+        VStack(alignment: .leading, spacing: 18) {
+          selectedStepHeader
+          selectedStepContent
+          navigationBar
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .workbenchPageLayout()
       }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
       .disabled(store.isSiteStarterOperationRunning)
     }
-    .background(Color(nsColor: .textBackgroundColor))
     .onAppear {
       hydrateDefaults()
       selectedStep = SiteStarterWizardStep(rawValue: selectedStepRaw) ?? .template
+      normalizeSelectedStep()
+    }
+    .onChange(of: modeRaw) { _, _ in
+      normalizeSelectedStep()
+    }
+    .onChange(of: deploymentTarget) { _, _ in
+      normalizeSelectedStep()
+    }
+    .sheet(isPresented: $isRepositoryCreationConfirmationPresented) {
+      RemoteRepositoryCreationConfirmationView(
+        providerName: RepositoryProvider.github.localizedDisplayName,
+        owner: githubOwner,
+        repositoryName: githubRepo,
+        createsPrivateRepository: $createsPrivateRepository,
+        isCreating: store.isRemoteRepositoryChecking || store.isLocalRepositoryMutationRunning,
+        failureMessage: repositoryCreationFailureMessage,
+        cancelAction: {
+          isRepositoryCreationConfirmationPresented = false
+        },
+        createAction: createGitHubRepositoryAfterConfirmation
+      )
     }
   }
 
@@ -91,27 +110,16 @@ struct SiteStarterWorkspaceView: View {
     .background(.bar)
   }
 
-  private var stepRail: some View {
-    List(selection: Binding(
-      get: { selectedStep },
-      set: { step in
-        if let step {
-          selectedStep = step
-        }
-      }
-    )) {
-      Section("建站步骤") {
-        ForEach(SiteStarterWizardStep.allCases) { step in
-          SiteStarterWizardStepRow(
-            step: step,
-            status: status(for: step),
-            detail: detail(for: step)
-          )
-          .tag(step)
-        }
-      }
-    }
-    .listStyle(.sidebar)
+  private var stepNavigation: some View {
+    SiteStarterWizardStepNavigation(
+      selection: Binding(
+        get: { selectedStep },
+        set: { selectedStep = $0 }
+      ),
+      steps: workflowSteps,
+      status: status,
+      isEnabled: canNavigate
+    )
   }
 
   private var selectedStepHeader: some View {
@@ -174,11 +182,13 @@ struct SiteStarterWorkspaceView: View {
         deploymentAccountID: $deploymentAccountID,
         createsPrivateRepository: $createsPrivateRepository,
         canCreateGitHubRepository: canCreateGitHubRepository,
-        isRemoteRepositoryPublishing: store.isRemoteRepositoryPublishing,
-        remoteRepositoryURL: store.remoteRepositoryCreationResult?.cloneURL,
-        remoteRepositoryHTMLURL: store.remoteRepositoryCreationResult?.htmlURL,
-        remoteRepositoryName: store.remoteRepositoryCreationResult?.repositoryName,
-        createAction: createGitHubRepositoryFromWizard
+        isRepositoryOperationRunning: store.isRemoteRepositoryChecking || store.isLocalRepositoryMutationRunning,
+        hasVerifiedExistingRepository: hasVerifiedExistingGitHubRepository,
+        remoteRepositoryURL: matchingRemoteRepositoryCreationResult?.cloneURL,
+        remoteRepositoryHTMLURL: matchingRemoteRepositoryCreationResult?.htmlURL,
+        remoteRepositoryName: matchingRemoteRepositoryCreationResult?.repositoryName,
+        createAction: presentGitHubRepositoryConfirmation,
+        verifyExistingAction: verifyExistingGitHubRepository
       )
     case .generate:
       SiteStarterGenerateStep(
@@ -228,18 +238,18 @@ struct SiteStarterWorkspaceView: View {
   private var navigationBar: some View {
     HStack {
       Button {
-        selectedStep = selectedStep.previous ?? selectedStep
+        selectedStep = previousVisibleStep ?? selectedStep
       } label: {
         Label("上一步", systemImage: "chevron.left")
       }
-      .disabled(selectedStep.previous == nil)
+      .disabled(previousVisibleStep == nil)
 
       Button {
-        selectedStep = selectedStep.next ?? selectedStep
+        selectedStep = nextVisibleStep ?? selectedStep
       } label: {
         Label("下一步", systemImage: "chevron.right")
       }
-      .disabled(selectedStep.next == nil)
+      .disabled(nextVisibleStep == nil || nextVisibleStep.map { !canNavigate(to: $0) } == true)
 
       Spacer()
 
@@ -257,6 +267,28 @@ struct SiteStarterWorkspaceView: View {
     SiteStarterTemplate.builtIn.first { $0.id == templateID }
   }
 
+  private var workflowSteps: [SiteStarterWizardStep] {
+    if mode == .importExisting || deploymentTarget == .none {
+      return [.template, .localDirectory, .generate, .deployment]
+    }
+    return SiteStarterWizardStep.allCases
+  }
+
+  private var previousVisibleStep: SiteStarterWizardStep? {
+    guard let index = workflowSteps.firstIndex(of: selectedStep), index > workflowSteps.startIndex else {
+      return nil
+    }
+    return workflowSteps[workflowSteps.index(before: index)]
+  }
+
+  private var nextVisibleStep: SiteStarterWizardStep? {
+    guard let index = workflowSteps.firstIndex(of: selectedStep),
+          index < workflowSteps.index(before: workflowSteps.endIndex) else {
+      return nil
+    }
+    return workflowSteps[workflowSteps.index(after: index)]
+  }
+
   private var canCreateStarterSite: Bool {
     !rootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       && !siteName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -272,7 +304,36 @@ struct SiteStarterWorkspaceView: View {
   private var canPushStarterSite: Bool {
     store.siteStarterResult?.initializedGit == true
       && store.siteStarterResult?.configuredRemoteURL != nil
+      && hasReadyGitHubRepository
       && !store.isLocalRepositoryMutationRunning
+  }
+
+  private var expectedGitHubRepositoryName: String {
+    [githubOwner.trimmedForPublishing, githubRepo.trimmedForPublishing]
+      .filter { !$0.isEmpty }
+      .joined(separator: "/")
+  }
+
+  private var matchingRemoteRepositoryCreationResult: RemoteRepositoryCreationResult? {
+    guard let result = store.remoteRepositoryCreationResult,
+          result.provider == .github,
+          result.repositoryName.caseInsensitiveCompare(expectedGitHubRepositoryName) == .orderedSame else {
+      return nil
+    }
+    return result
+  }
+
+  private var hasVerifiedExistingGitHubRepository: Bool {
+    guard let check = store.activeRemoteRepositoryAccessCheck,
+          check.provider == .github,
+          check.repositoryName.caseInsensitiveCompare(expectedGitHubRepositoryName) == .orderedSame else {
+      return false
+    }
+    return check.canRead && check.canWrite
+  }
+
+  private var hasReadyGitHubRepository: Bool {
+    matchingRemoteRepositoryCreationResult != nil || hasVerifiedExistingGitHubRepository
   }
 
   private func status(for step: SiteStarterWizardStep) -> SiteStarterWizardStepStatus {
@@ -289,7 +350,21 @@ struct SiteStarterWorkspaceView: View {
   }
 
   private var firstIncompleteStep: SiteStarterWizardStep {
-    SiteStarterWizardStep.allCases.first { !isStepComplete($0) } ?? .deployment
+    workflowSteps.first { !isStepComplete($0) } ?? workflowSteps.last ?? .deployment
+  }
+
+  private func canNavigate(to step: SiteStarterWizardStep) -> Bool {
+    guard workflowSteps.contains(step),
+          let targetIndex = workflowSteps.firstIndex(of: step),
+          let firstIncompleteIndex = workflowSteps.firstIndex(of: firstIncompleteStep) else {
+      return false
+    }
+    return targetIndex <= firstIncompleteIndex
+  }
+
+  private func normalizeSelectedStep() {
+    guard !canNavigate(to: selectedStep) else { return }
+    selectedStep = firstIncompleteStep
   }
 
   private func isStepComplete(_ step: SiteStarterWizardStep) -> Bool {
@@ -302,13 +377,13 @@ struct SiteStarterWorkspaceView: View {
       if deploymentTarget == .none {
         return true
       }
-      return store.siteStarterResult?.configuredRemoteURL != nil || store.remoteRepositoryCreationResult != nil
+      return hasReadyGitHubRepository
     case .generate:
       return mode == .create ? store.siteStarterResult != nil : store.siteStarterImportResult != nil
     case .firstPush:
       return deploymentTarget == .none || store.siteStarterPushResult != nil
     case .deployment:
-      return deploymentTarget == .none || store.siteStarterPushResult != nil || store.siteStarterImportResult != nil
+      return deploymentTarget == .none
     }
   }
 
@@ -324,8 +399,11 @@ struct SiteStarterWorkspaceView: View {
       if let remote = store.siteStarterResult?.configuredRemoteURL {
         return remote
       }
-      if let creation = store.remoteRepositoryCreationResult {
+      if let creation = matchingRemoteRepositoryCreationResult {
         return creation.repositoryName
+      }
+      if hasVerifiedExistingGitHubRepository {
+        return "\(expectedGitHubRepositoryName) · 已验证可写"
       }
       if githubOwner.isEmpty && githubRepo.isEmpty {
         return deploymentTarget == .none ? "暂不部署" : "填写 owner/repo"
@@ -419,12 +497,41 @@ struct SiteStarterWorkspaceView: View {
     return "\(index + 1)/\(SiteStarterTemplate.builtIn.count)"
   }
 
-  private func createGitHubRepositoryFromWizard() {
+  private func presentGitHubRepositoryConfirmation() {
     syncGitHubInputsToActiveProfile()
-    Task {
-      if await store.createGitHubRepositoryForActiveProfile(privateRepository: createsPrivateRepository) != nil {
-        selectedStep = .firstPush
+    repositoryCreationFailureMessage = nil
+    isRepositoryCreationConfirmationPresented = true
+  }
+
+  private func createGitHubRepositoryAfterConfirmation() {
+    let privateRepository = createsPrivateRepository
+    repositoryCreationFailureMessage = nil
+    Task { @MainActor in
+      guard await store.createGitHubRepositoryForActiveProfile(
+        privateRepository: privateRepository
+      ) != nil else {
+        repositoryCreationFailureMessage = store.publishActionMessage
+        return
       }
+      guard await store.configureStarterSiteOrigin() else {
+        repositoryCreationFailureMessage = store.publishActionMessage
+        return
+      }
+      isRepositoryCreationConfirmationPresented = false
+      selectedStep = .firstPush
+    }
+  }
+
+  private func verifyExistingGitHubRepository() {
+    syncGitHubInputsToActiveProfile()
+    Task { @MainActor in
+      guard let check = await store.checkRepositoryTokenAccess(),
+            check.canRead,
+            check.canWrite else {
+        return
+      }
+      guard await store.configureStarterSiteOrigin() else { return }
+      selectedStep = .firstPush
     }
   }
 

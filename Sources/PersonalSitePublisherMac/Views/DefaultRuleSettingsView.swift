@@ -8,6 +8,7 @@ struct DefaultRuleSettingsView: View {
   let siteKindBinding: Binding<SiteKind>
   let healthDestination: SettingsConfigurationHealthDestination?
   let healthNavigationRequestID: UUID
+  @State private var showsPathRules = false
 
   var body: some View {
     Form {
@@ -16,22 +17,35 @@ struct DefaultRuleSettingsView: View {
         scanRepositoryOnLaunch: $scanRepositoryOnLaunch
       )
 
-      DisclosureGroup {
-        DefaultRuleSiteSection(
-          activeProfileBinding: activeProfileBinding,
-          siteKindBinding: siteKindBinding
-        )
+      DefaultRuleSiteSection(
+        activeProfileBinding: activeProfileBinding,
+        siteKindBinding: siteKindBinding
+      )
 
-        DefaultRulePathSection(
-          activeProfileBinding: activeProfileBinding,
-          shouldFocusPaths: healthDestination == .defaultRules,
-          navigationRequestID: healthNavigationRequestID
-        )
-      } label: {
-        Label("站点高级规则", systemImage: "gearshape.2")
+      Section {
+        DisclosureGroup(isExpanded: $showsPathRules) {
+          DefaultRulePathSection(
+            activeProfileBinding: activeProfileBinding,
+            shouldFocusPaths: healthDestination == .defaultRules,
+            navigationRequestID: healthNavigationRequestID
+          )
+        } label: {
+          Label("文件路径与模板", systemImage: "folder.badge.gearshape")
+        }
+      } footer: {
+        Text("仅在站点目录结构不同时调整；默认值适用于当前站点类型。")
       }
     }
     .formStyle(.grouped)
     .padding()
+    .onAppear(perform: revealRequestedPathRules)
+    .onChange(of: healthNavigationRequestID) { _, _ in
+      revealRequestedPathRules()
+    }
+  }
+
+  private func revealRequestedPathRules() {
+    guard healthDestination == .defaultRules else { return }
+    showsPathRules = true
   }
 }

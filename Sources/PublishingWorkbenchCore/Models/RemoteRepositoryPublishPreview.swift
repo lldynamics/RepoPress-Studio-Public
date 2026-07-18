@@ -4,6 +4,7 @@ public enum RemoteRepositoryPublishReadiness: String, Codable, Sendable {
   case ready
   case needsToken
   case needsPermissionCheck
+  case needsRemoteCheck
   case blocked
 
   public var displayName: String {
@@ -14,6 +15,8 @@ public enum RemoteRepositoryPublishReadiness: String, Codable, Sendable {
       return CoreL10n.text("缺少 Token")
     case .needsPermissionCheck:
       return CoreL10n.text("建议检查权限")
+    case .needsRemoteCheck:
+      return CoreL10n.text("待核对远端")
     case .blocked:
       return CoreL10n.text("已阻塞")
     }
@@ -27,6 +30,8 @@ public enum RemoteRepositoryPublishReadiness: String, Codable, Sendable {
       return "key"
     case .needsPermissionCheck:
       return "person.badge.key"
+    case .needsRemoteCheck:
+      return "arrow.triangle.2.circlepath"
     case .blocked:
       return "xmark.octagon"
     }
@@ -41,6 +46,7 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
   public var targetBranch: String
   public var changedPaths: [String]
   public var remoteConflictPaths: [String]
+  public var remoteRiskState: RemotePublishRiskState
   public var hasToken: Bool
   public var accessCheck: RemoteRepositoryAccessCheck?
   public var blockingIssues: [PreflightIssue]
@@ -54,6 +60,7 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     targetBranch: String,
     changedPaths: [String],
     remoteConflictPaths: [String] = [],
+    remoteRiskState: RemotePublishRiskState = .unknown,
     hasToken: Bool,
     accessCheck: RemoteRepositoryAccessCheck? = nil,
     blockingIssues: [PreflightIssue],
@@ -66,6 +73,7 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     self.targetBranch = targetBranch
     self.changedPaths = changedPaths
     self.remoteConflictPaths = remoteConflictPaths
+    self.remoteRiskState = remoteRiskState
     self.hasToken = hasToken
     self.accessCheck = accessCheck
     self.blockingIssues = blockingIssues
@@ -85,6 +93,9 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     if accessCheck?.canWrite != true {
       return .blocked
     }
+    if mode == .directCommit && remoteRiskState == .unknown {
+      return .needsRemoteCheck
+    }
     return .ready
   }
 
@@ -92,6 +103,7 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     blockingIssues.isEmpty
       && hasToken
       && accessCheck?.canWrite == true
+      && (mode != .directCommit || remoteRiskState != .conflict)
   }
 
   public var accessSummary: String {
@@ -122,6 +134,7 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
       CoreL10n.format("- 状态：%@", readiness.displayName),
       CoreL10n.format("- Token：%@", CoreL10n.text(hasToken ? "已保存" : "未保存")),
       CoreL10n.format("- 权限：%@", accessSummary),
+      CoreL10n.format("- 远端风险：%@", remoteRiskState.displayName),
     ]
 
     if let accessCheck {
@@ -149,7 +162,7 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     lines.append(CoreL10n.format("- [%@] 没有阻断项", blockingIssues.isEmpty ? "x" : " "))
     lines.append(CoreL10n.format("- [%@] 已审阅警告项", warningIssues.isEmpty ? "x" : " "))
     lines.append(CoreL10n.format("- [%@] 已确认发布文件清单", changedPaths.isEmpty ? " " : "x"))
-    lines.append(CoreL10n.format("- [%@] 已确认远端同路径变更", remoteConflictPaths.isEmpty ? "x" : " "))
+    lines.append(CoreL10n.format("- [%@] 已确认远端同路径变更", remoteRiskState == .clean ? "x" : " "))
 
     if !changedPaths.isEmpty {
       lines.append("")
@@ -162,6 +175,10 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
       lines.append(CoreL10n.text("## 远端冲突预览"))
       lines.append(CoreL10n.text("这些路径在 upstream 也有变更。直接提交会被阻断；如需继续，请先同步远端或改用 PR/MR。"))
       lines.append(contentsOf: remoteConflictPaths.map { "- \($0)" })
+    } else if remoteRiskState == .unknown {
+      lines.append("")
+      lines.append(CoreL10n.text("## 远端状态待确认"))
+      lines.append(CoreL10n.text("当前快照不能证明远端干净。直接提交会在实际写入前通过远端 API 核对每个文件版本；若版本不一致，将在零写入状态下停止。"))
     }
 
     let issues = blockingIssues + warningIssues
@@ -174,5 +191,37 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     }
 
     return lines.joined(separator: "\n")
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case provider
+    case repositoryName
+    case mode
+    case branchName
+    case targetBranch
+    case changedPaths
+    case remoteConflictPaths
+    case remoteRiskState
+    case hasToken
+    case accessCheck
+    case blockingIssues
+    case warningIssues
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    provider = try container.decode(RepositoryProvider.self, forKey: .provider)
+    repositoryName = try container.decode(String.self, forKey: .repositoryName)
+    mode = try container.decode(RemoteRepositoryPublishMode.self, forKey: .mode)
+    branchName = try container.decode(String.self, forKey: .branchName)
+    targetBranch = try container.decode(String.self, forKey: .targetBranch)
+    changedPaths = try container.decode([String].self, forKey: .changedPaths)
+    remoteConflictPaths = try container.decodeIfPresent([String].self, forKey: .remoteConflictPaths) ?? []
+    remoteRiskState = try container.decodeIfPresent(RemotePublishRiskState.self, forKey: .remoteRiskState)
+      ?? (remoteConflictPaths.isEmpty ? .unknown : .conflict)
+    hasToken = try container.decode(Bool.self, forKey: .hasToken)
+    accessCheck = try container.decodeIfPresent(RemoteRepositoryAccessCheck.self, forKey: .accessCheck)
+    blockingIssues = try container.decode([PreflightIssue].self, forKey: .blockingIssues)
+    warningIssues = try container.decode([PreflightIssue].self, forKey: .warningIssues)
   }
 }

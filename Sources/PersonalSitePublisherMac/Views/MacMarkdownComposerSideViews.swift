@@ -68,7 +68,10 @@ struct SelectionEditPreviewPanel: View {
     .padding(10)
     .frame(maxWidth: 720)
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .shadow(radius: 10, y: 3)
+    .overlay {
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.55))
+    }
   }
 
   private func selectionPreviewColumn(title: String, text: String) -> some View {
@@ -95,42 +98,45 @@ struct MarkdownShortcutHelpPanel: View {
 
   private let shortcutGroups: [(String, [(String, String)])] = [
     (
-      "编辑",
+      String(localized: "编辑"),
       [
-        ("查找", "⌘F"),
-        ("查找下一个", "⌘G"),
-        ("查找上一个", "⇧⌘G"),
-        ("查找栏下一个 / 上一个", "Return / Shift-Return"),
-        ("关闭查找栏", "Esc"),
-        ("替换当前", "查找栏“替换”"),
-        ("全部替换", "⌥⌘E"),
-        ("插入图片", "⇧⌘I"),
-        ("文章大纲", "⌥⌘O"),
-        ("粘贴 URL 为链接", "选中文字后按 ⌘V"),
-        ("粘贴截图", "⌘V")
+        (String(localized: "查找"), "⌘F"),
+        (String(localized: "查找下一个"), "⌘G"),
+        (String(localized: "查找上一个"), "⇧⌘G"),
+        (String(localized: "查找栏下一个 / 上一个"), "Return / Shift-Return"),
+        (String(localized: "关闭查找栏"), "Esc"),
+        (String(localized: "替换当前"), String(localized: "查找栏“替换”")),
+        (String(localized: "全部替换"), "⌥⌘E"),
+        (String(localized: "插入图片"), "⇧⌘I"),
+        (String(localized: "模板与片段"), "⌥⌘S"),
+        (String(localized: "文章大纲"), "⌥⌘O"),
+        (String(localized: "文章后退"), "⌘["),
+        (String(localized: "文章前进"), "⌘]"),
+        (String(localized: "粘贴 URL 为链接"), String(localized: "选中文字后按 ⌘V")),
+        (String(localized: "粘贴截图"), "⌘V")
       ]
     ),
     (
-      "Markdown 智能编辑",
+      String(localized: "Markdown 智能编辑"),
       [
-        ("加粗", "⌘B"),
-        ("斜体", "⌘I"),
-        ("插入链接", "⌘K"),
-        ("一级标题", "⌥⌘1"),
-        ("二级标题", "⌥⌘2"),
-        ("三级标题", "⌥⌘3"),
-        ("续写列表或引用", "Return"),
-        ("退出空列表项", "空项再按 Return"),
-        ("增加列表层级", "Tab"),
-        ("减少列表层级", "Shift-Tab")
+        (String(localized: "加粗"), "⌘B"),
+        (String(localized: "斜体"), "⌘I"),
+        (String(localized: "插入链接"), "⌘K"),
+        (String(localized: "一级标题"), "⌥⌘1"),
+        (String(localized: "二级标题"), "⌥⌘2"),
+        (String(localized: "三级标题"), "⌥⌘3"),
+        (String(localized: "续写列表或引用"), "Return"),
+        (String(localized: "退出空列表项"), String(localized: "空项再按 Return")),
+        (String(localized: "增加列表层级"), "Tab"),
+        (String(localized: "减少列表层级"), "Shift-Tab")
       ]
     ),
     (
-      "AI 与工具",
+      String(localized: "AI 与工具"),
       [
-        ("改写选中文本", "⌥⌘R"),
-        ("打开 AI 对话", "通过发布控制台菜单进入"),
-        ("复制上下文 Prompt", "通过发布控制台菜单进入")
+        (String(localized: "改写选中文本"), "⌥⌘R"),
+        (String(localized: "打开 AI 对话"), String(localized: "通过发布控制台菜单进入")),
+        (String(localized: "复制上下文 Prompt"), String(localized: "通过发布控制台菜单进入"))
       ]
     )
   ]

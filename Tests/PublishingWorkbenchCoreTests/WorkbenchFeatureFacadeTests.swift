@@ -216,4 +216,83 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     store.discardDraftBodyEditorBuffer(for: draft.id)
     withExtendedLifetime([rootCancellable, publishingCancellable]) {}
   }
+
+  func testEditorNavigationFacadeIgnoresPublishingProgressChanges() {
+    let store = WorkbenchStore()
+    let editorNavigation = WorkbenchEditorNavigationFeatureFacade(store: store)
+    var editorChanges = 0
+    let cancellable = editorNavigation.objectWillChange.sink { editorChanges += 1 }
+
+    store.setPublishActionMessage("正在生成发布预览…")
+    XCTAssertEqual(editorChanges, 0)
+
+    store.setSelectedSection(.images)
+    XCTAssertEqual(editorChanges, 1)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testMarkdownEditorFacadeIgnoresStreamingUpdatesForExistingAssistantMessage() throws {
+    let store = WorkbenchStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let editor = WorkbenchMarkdownEditorFeatureFacade(store: store, draftID: draft.id)
+    var editorChanges = 0
+    let cancellable = editor.objectWillChange.sink { editorChanges += 1 }
+
+    store.setAIChatDraftID(draft.id)
+    let assistantMessage = AIPublishingChatMessage(
+      role: .assistant,
+      content: "第一段"
+    )
+    store.setAIChatMessages([assistantMessage])
+    editorChanges = 0
+
+    var streamedMessage = assistantMessage
+    streamedMessage.content += "，继续生成的内容"
+    store.setAIChatMessages([streamedMessage])
+    XCTAssertEqual(editorChanges, 0)
+
+    let nextMessage = AIPublishingChatMessage(
+      role: .assistant,
+      content: "下一条回复"
+    )
+    store.setAIChatMessages([streamedMessage, nextMessage])
+    XCTAssertEqual(editorChanges, 1)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testMarkdownEditorFacadeObservesOnlyTrackedDraftBodyBuffer() throws {
+    let store = WorkbenchStore()
+    let trackedDraft = try XCTUnwrap(store.selectedDraft)
+    let otherDraft = ArticleDraft.empty(profile: store.activeProfile)
+    store.setDrafts([trackedDraft, otherDraft])
+    let editor = WorkbenchMarkdownEditorFeatureFacade(
+      store: store,
+      draftID: trackedDraft.id
+    )
+    var editorChanges = 0
+    let cancellable = editor.objectWillChange.sink { editorChanges += 1 }
+
+    store.publishingStore.setDraftBodyEditorBuffer(
+      DraftBodyEditorBuffer(
+        draftID: otherDraft.id,
+        bodyMarkdown: "另一篇文章",
+        revision: 1,
+        isDirty: true
+      ),
+      for: otherDraft.id
+    )
+    XCTAssertEqual(editorChanges, 0)
+
+    store.publishingStore.setDraftBodyEditorBuffer(
+      DraftBodyEditorBuffer(
+        draftID: trackedDraft.id,
+        bodyMarkdown: "当前文章",
+        revision: 1,
+        isDirty: true
+      ),
+      for: trackedDraft.id
+    )
+    XCTAssertEqual(editorChanges, 1)
+    withExtendedLifetime(cancellable) {}
+  }
 }

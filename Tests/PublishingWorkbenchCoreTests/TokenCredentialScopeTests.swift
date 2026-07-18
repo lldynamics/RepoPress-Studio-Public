@@ -1,8 +1,41 @@
+import Security
 import XCTest
 @testable import PublishingWorkbenchCore
 
 @MainActor
 final class TokenCredentialScopeTests: XCTestCase {
+  func testDebugCredentialServicesAreIsolatedFromReleaseKeychainItems() {
+    #if DEBUG
+    XCTAssertEqual(KeychainCredentialServices.ai, "PersonalSitePublisherMac.LocalDevelopment.AIProvider")
+    XCTAssertEqual(KeychainCredentialServices.repository, "PersonalSitePublisherMac.LocalDevelopment.RepositoryProvider")
+    XCTAssertEqual(KeychainCredentialServices.deployment, "PersonalSitePublisherMac.LocalDevelopment.DeploymentProvider")
+    #else
+    XCTAssertEqual(KeychainCredentialServices.ai, "PersonalSitePublisherMac.AIProvider")
+    XCTAssertEqual(KeychainCredentialServices.repository, "PersonalSitePublisherMac.RepositoryProvider")
+    XCTAssertEqual(KeychainCredentialServices.deployment, "PersonalSitePublisherMac.DeploymentProvider")
+    #endif
+  }
+
+  func testMissingKeychainErrorExplainsHowToRestoreTheLoginKeychainContext() {
+    let error = KeychainTokenStoreError.unhandledStatus(errSecNoSuchKeychain)
+
+    XCTAssertTrue(error.localizedDescription.contains("\(errSecNoSuchKeychain)"))
+    XCTAssertTrue(error.recoveryHint?.contains("登录钥匙串") == true)
+    XCTAssertEqual(error.recoverySuggestion, error.recoveryHint)
+  }
+
+  func testLegacyLocalBuildKeychainErrorsExplainHowToRecover() {
+    for status in [errSecInvalidOwnerEdit, OSStatus(-25253)] {
+      let error = KeychainTokenStoreError.unhandledStatus(status)
+
+      XCTAssertTrue(error.localizedDescription.contains("\(status)"))
+      XCTAssertTrue(error.recoveryHint?.contains("旧构建") == true)
+      XCTAssertTrue(error.recoveryHint?.contains("PersonalSitePublisher") == true)
+      XCTAssertTrue(KeychainTokenStore.isRecoverableDeletionOwnershipStatus(status))
+    }
+    XCTAssertFalse(KeychainTokenStore.isRecoverableDeletionOwnershipStatus(errSecAuthFailed))
+  }
+
   func testKeychainScopesKeepRepositoryAndDeploymentTokensSeparate() throws {
     let tokenStore = KeychainTokenStore(
       service: "PersonalSitePublisherMac.Tests.TokenScope",

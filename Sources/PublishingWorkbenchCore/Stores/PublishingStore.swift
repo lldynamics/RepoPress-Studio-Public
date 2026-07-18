@@ -4,6 +4,7 @@ import Foundation
 public struct RecentlyDeletedProfile: Sendable {
   public let profile: SiteProfile
   public let drafts: [ArticleDraft]
+  public let customMarkdownSnippets: [MarkdownSnippet]
   public let deletedAt: Date
 
   public var draftCount: Int { drafts.count }
@@ -88,12 +89,14 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var profiles: [SiteProfile]
   @Published public internal(set) var activeProfileID: UUID
   @Published public internal(set) var drafts: [ArticleDraft]
+  @Published public internal(set) var customMarkdownSnippets: [MarkdownSnippet]
   @Published public internal(set) var draftVersions: [DraftVersionSnapshot]
   @Published public internal(set) var recycledDrafts: [RecycledDraft]
   @Published public internal(set) var draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest]
   @Published public internal(set) var releaseRecords: [ReleaseRecord]
   @Published public internal(set) var selectedSection: WorkspaceSection
   @Published public internal(set) var selectedDraftID: UUID?
+  @Published public internal(set) var draftNavigationHistory: DraftNavigationHistory
   @Published public internal(set) var publishPackage: PublishPackage?
   @Published public internal(set) var localPublishPreview: LocalPublishPreview?
   @Published public internal(set) var localPublishReadiness: LocalPublishReadiness?
@@ -118,8 +121,10 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var isInspectorPresented: Bool
   @Published public internal(set) var editorDisplayMode: EditorDisplayMode
   @Published public internal(set) var editorFocusRequest: EditorFocusRequest?
+  @Published public internal(set) var imageInspectorFocusRequest: ImageInspectorFocusRequest?
+  public internal(set) var markdownEditorSessionStates: [UUID: MarkdownEditorSessionState]
   public internal(set) var draftBodyEditorBuffers: [UUID: DraftBodyEditorBuffer] = [:]
-  let draftBodyEditorBufferWillChange = PassthroughSubject<Void, Never>()
+  let draftBodyEditorBufferWillChange = PassthroughSubject<UUID, Never>()
   @Published public internal(set) var activeEditorSelection: ActiveEditorSelection?
   @Published public internal(set) var automaticallyRefreshPreflightOnEdit: Bool
   @Published public internal(set) var lastSaveStatus: String
@@ -132,13 +137,13 @@ public final class PublishingStore: ObservableObject {
 
   func setDraftBodyEditorBuffer(_ buffer: DraftBodyEditorBuffer, for draftID: UUID) {
     guard draftBodyEditorBuffers[draftID] != buffer else { return }
-    draftBodyEditorBufferWillChange.send()
+    draftBodyEditorBufferWillChange.send(draftID)
     draftBodyEditorBuffers[draftID] = buffer
   }
 
   func removeDraftBodyEditorBuffer(for draftID: UUID) {
     guard draftBodyEditorBuffers[draftID] != nil else { return }
-    draftBodyEditorBufferWillChange.send()
+    draftBodyEditorBufferWillChange.send(draftID)
     draftBodyEditorBuffers.removeValue(forKey: draftID)
   }
 
@@ -146,12 +151,14 @@ public final class PublishingStore: ObservableObject {
     profiles: [SiteProfile],
     activeProfileID: UUID,
     drafts: [ArticleDraft],
+    customMarkdownSnippets: [MarkdownSnippet] = [],
     draftVersions: [DraftVersionSnapshot] = [],
     recycledDrafts: [RecycledDraft] = [],
     draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest] = [],
     releaseRecords: [ReleaseRecord],
     selectedSection: WorkspaceSection = .writing,
     selectedDraftID: UUID? = nil,
+    draftNavigationHistory: DraftNavigationHistory? = nil,
     publishPackage: PublishPackage? = nil,
     localPublishPreview: LocalPublishPreview? = nil,
     localPublishReadiness: LocalPublishReadiness? = nil,
@@ -170,6 +177,8 @@ public final class PublishingStore: ObservableObject {
     isInspectorPresented: Bool = true,
     editorDisplayMode: EditorDisplayMode = .edit,
     editorFocusRequest: EditorFocusRequest? = nil,
+    imageInspectorFocusRequest: ImageInspectorFocusRequest? = nil,
+    markdownEditorSessionStates: [UUID: MarkdownEditorSessionState] = [:],
     activeEditorSelection: ActiveEditorSelection? = nil,
     automaticallyRefreshPreflightOnEdit: Bool = true,
     lastSaveStatus: String = "尚未保存",
@@ -183,7 +192,7 @@ public final class PublishingStore: ObservableObject {
     localPublishPreviewService: LocalPublishPreviewService = LocalPublishPreviewService(),
     batchPublishPlanService: BatchPublishPlanService = BatchPublishPlanService(),
     remoteRepositoryPublishService: RemoteRepositoryPublishService = RemoteRepositoryPublishService(),
-    repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(service: "PersonalSitePublisher.Repository"),
+    repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.repository),
     localGitPublishService: LocalGitPublishService = LocalGitPublishService(),
     remoteReviewDraftBuilder: RemoteReviewDraftBuilder = RemoteReviewDraftBuilder(),
     batchPublishCommandBuilder: BatchPublishCommandBuilder = BatchPublishCommandBuilder(),
@@ -220,12 +229,15 @@ public final class PublishingStore: ObservableObject {
     self.profiles = profiles
     self.activeProfileID = activeProfileID
     self.drafts = drafts
+    self.customMarkdownSnippets = customMarkdownSnippets
     self.draftVersions = draftVersions
     self.recycledDrafts = recycledDrafts
     self.draftRepositoryCleanupRequests = draftRepositoryCleanupRequests
     self.releaseRecords = ReleaseRecord.limitedHistory(releaseRecords)
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
+    self.draftNavigationHistory = draftNavigationHistory
+      ?? DraftNavigationHistory(currentDraftID: selectedDraftID)
     self.publishPackage = publishPackage
     self.localPublishPreview = localPublishPreview
     self.localPublishReadiness = localPublishReadiness
@@ -244,6 +256,8 @@ public final class PublishingStore: ObservableObject {
     self.isInspectorPresented = isInspectorPresented
     self.editorDisplayMode = editorDisplayMode
     self.editorFocusRequest = editorFocusRequest
+    self.imageInspectorFocusRequest = imageInspectorFocusRequest
+    self.markdownEditorSessionStates = markdownEditorSessionStates
     self.activeEditorSelection = activeEditorSelection
     self.automaticallyRefreshPreflightOnEdit = automaticallyRefreshPreflightOnEdit
     self.lastSaveStatus = lastSaveStatus

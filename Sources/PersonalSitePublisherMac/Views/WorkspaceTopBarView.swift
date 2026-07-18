@@ -1,57 +1,115 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
-struct WorkspaceToolbarLeadingContent: View {
-  @ObservedObject var store: WorkbenchStore
-  let isCompact: Bool
+struct WorkspaceToolbarControlCluster<Content: View>: View {
+  let content: Content
 
-  private var profileSelection: Binding<UUID> {
-    Binding(
-      get: { store.activeProfileID },
-      set: { store.selectProfile($0) }
-    )
+  init(@ViewBuilder content: () -> Content) {
+    self.content = content()
   }
 
   var body: some View {
-    HStack(spacing: 8) {
-      Picker("站点", selection: profileSelection) {
-        ForEach(store.publishingProfiles) { profile in
-          Text(profile.name).tag(profile.id)
-        }
-      }
-      .labelsHidden()
-      .pickerStyle(.menu)
-      .frame(width: isCompact ? 140 : 170)
-      .help("当前站点：\(store.activeProfile.name) · \(store.activeProfile.siteKind.localizedDisplayName)")
-      .accessibilityLabel("当前站点 Profile")
-      .accessibilityValue(store.activeProfile.name)
-
-      LocalSitePreviewToolbarControl(store: store, isCompact: isCompact)
+    HStack(spacing: 2) {
+      content
+    }
+    .padding(2)
+    .background(
+      WorkbenchBackgroundStyle.page,
+      in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+    )
+    .overlay {
+      RoundedRectangle(cornerRadius: 7, style: .continuous)
+        .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
     }
   }
 }
 
-struct WorkspaceToolbarTitle: View {
-  @ObservedObject var store: WorkbenchStore
+struct WorkspaceToolbarMenuLabel: View {
+  let title: String
+  let systemImage: String
+  let showsTitle: Bool
+  var iconColor: Color = .secondary
 
   var body: some View {
-    Label(sectionTitleKey, systemImage: sectionSystemImage)
-      .font(.headline)
-      .lineLimit(1)
-      .help(workspaceNavigationLocalizedString(sectionTitleKeyString))
-      .accessibilityLabel(sectionTitleKey)
+    HStack(spacing: 5) {
+      Image(systemName: systemImage)
+        .foregroundStyle(iconColor)
+      if showsTitle {
+        Text(title)
+          .foregroundStyle(.primary)
+          .workbenchTruncatedIdentity(title)
+      }
+    }
+    .font(.caption.weight(.medium))
+    .frame(minWidth: showsTitle ? nil : 28, minHeight: 24)
+    .padding(.horizontal, showsTitle ? 6 : 0)
+    .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+    .accessibilityHidden(true)
+  }
+}
+
+struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
+  let isActive: Bool
+
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .labelStyle(.iconOnly)
+      .font(.system(size: 13, weight: .medium))
+      .symbolVariant(isActive ? .fill : .none)
+      .foregroundStyle(isActive ? WorkbenchTheme.navigationSelection : Color.secondary)
+      .frame(width: 28, height: 24)
+      .background {
+        RoundedRectangle(cornerRadius: 5, style: .continuous)
+          .fill(backgroundColor(isPressed: configuration.isPressed))
+      }
+      .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
   }
 
-  private var sectionTitleKey: LocalizedStringKey {
-    workspaceNavigationLocalizedKey(sectionTitleKeyString)
+  private func backgroundColor(isPressed: Bool) -> Color {
+    if isPressed {
+      return Color.primary.opacity(0.08)
+    }
+    if isActive {
+      return WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.selectionBackground)
+    }
+    return .clear
   }
+}
 
-  private var sectionTitleKeyString: String {
-    WorkspaceNavigationItem(section: store.selectedSection).displayNameLocalizationKey
-  }
+struct WorkspaceToolbarLeadingContent: View {
+  @ObservedObject var store: WorkbenchStore
+  let isCompact: Bool
 
-  private var sectionSystemImage: String {
-    WorkspaceNavigationItem(section: store.selectedSection).systemImage
+  var body: some View {
+    WorkspaceToolbarControlCluster {
+      Menu {
+        ForEach(store.publishingProfiles) { profile in
+          Button {
+            store.selectProfile(profile.id)
+          } label: {
+            if profile.id == store.activeProfileID {
+              Label(profile.name, systemImage: "checkmark")
+            } else {
+              Text(profile.name)
+            }
+          }
+        }
+      } label: {
+        WorkspaceToolbarMenuLabel(
+          title: store.activeProfile.name,
+          systemImage: "globe",
+          showsTitle: !isCompact
+        )
+        .frame(maxWidth: isCompact ? nil : 150, alignment: .leading)
+      }
+      .menuStyle(.borderlessButton)
+      .help("个人网站：\(store.activeProfile.name) · \(store.activeProfile.siteKind.localizedDisplayName)")
+      .accessibilityLabel("切换个人网站")
+      .accessibilityValue(store.activeProfile.name)
+      .accessibilityIdentifier("workspace-profile-menu")
+
+      LocalSitePreviewToolbarControl(store: store, isCompact: isCompact)
+    }
   }
 }
 
@@ -117,14 +175,22 @@ struct PublishingStatusToolbarControl: View {
     Button {
       isPresented.toggle()
     } label: {
-      Label(toolbarStatus.value, systemImage: toolbarStatus.statusImage)
-        .font(.caption2.weight(.semibold))
-        .foregroundStyle(toolbarStatus.color)
+      HStack(spacing: 6) {
+        Image(systemName: toolbarStatus.statusImage)
+          .foregroundStyle(toolbarStatus.color)
+        Text(toolbarStatus.value)
+          .foregroundStyle(.primary)
+      }
+        .font(.caption.weight(.semibold))
         .lineLimit(1)
         .accessibilityLabel("发布状态")
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(WorkbenchBackgroundStyle.badge, in: Capsule())
+        .padding(.horizontal, 8)
+        .frame(height: 26)
+        .background(WorkbenchBackgroundStyle.page, in: Capsule())
+        .overlay {
+          Capsule()
+            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+        }
         .contentShape(Capsule())
     }
     .buttonStyle(.plain)
@@ -213,7 +279,7 @@ struct PublishingStatusToolbarControl: View {
       return PublishingStatusPopoverItem(
         area: area,
         value: String(localized: "本地有 \(report.changedFiles.count) 项变化"),
-        detail: String(localized: "发布前请审阅本地 Diff。"),
+        detail: String(localized: "发布前请审阅本地差异。"),
         statusImage: "arrow.triangle.2.circlepath",
         color: WorkbenchTheme.warning,
         severity: .warning
@@ -328,7 +394,7 @@ struct PublishingStatusToolbarControl: View {
         value: pendingEntry.status.localizedDisplayName,
         detail: pendingEntry.statusMessage,
         statusImage: pendingEntry.status.systemImage,
-        color: WorkbenchTheme.primary,
+        color: WorkbenchTheme.progress,
         severity: .active
       )
     }
@@ -371,7 +437,7 @@ struct PublishingStatusToolbarControl: View {
             Label("处理发布阻断项", systemImage: "exclamationmark.triangle")
           }
         }
-        .buttonStyle(.borderedProminent)
+        .workbenchProminentActionStyle()
         .disabled(selectedDraftID == nil)
 
         Button {
@@ -451,11 +517,4 @@ struct PublishingStatusToolbarControl: View {
     .accessibilityValue(item.value)
   }
 
-}
-
-private extension ReleaseLedgerEntry {
-  @MainActor
-  func matchesActiveProfile(_ store: WorkbenchStore) -> Bool {
-    record.siteProfileID == nil || record.siteProfileID == store.activeProfileID
-  }
 }

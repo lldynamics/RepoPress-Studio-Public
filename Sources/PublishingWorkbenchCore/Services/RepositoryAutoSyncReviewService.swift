@@ -11,11 +11,12 @@ public struct RepositoryAutoSyncReviewService {
     maxFilesPerSection: Int = 8
   ) -> String {
     var lines: [String] = [
-      "# 远端自动同步审阅",
+      "# 远端自动检查审阅",
       "",
       "- 状态：\(settings.isEnabled ? state.status.displayName : RepositoryAutoSyncStatus.disabled.displayName)",
       "- 扫描间隔：\(settings.isEnabled ? "\(settings.normalizedIntervalMinutes) 分钟" : "已关闭")",
       "- 扫描前 fetch upstream：\(settings.fetchBeforeScan ? "是" : "否")",
+      "- 自动导入远端文章：\(settings.autoImportRemoteArticles ? "是" : "否")",
     ]
 
     if let lastRunAt = state.lastRunAt {
@@ -27,6 +28,12 @@ public struct RepositoryAutoSyncReviewService {
     if let fetchMessage = state.fetchMessage?.trimmedForPublishing, !fetchMessage.isEmpty {
       let fetchState = state.fetchSucceeded.map { $0 ? "成功" : "失败" } ?? "跳过"
       lines.append("- Fetch：\(fetchState)，\(fetchMessage)")
+    }
+    if let lastAutoImportAt = state.lastAutoImportAt {
+      lines.append("- 上次自动导入检查：\(formattedDate(lastAutoImportAt))")
+      lines.append("- 自动导入文章：\(state.lastAutoImportedArticleCount)")
+      lines.append("- 本地冲突：\(state.lastAutoImportConflictCount)")
+      lines.append("- 远端删除待确认：\(state.lastAutoImportDeletionCount)")
     }
     if let lastRemotePublishAt = state.lastRemotePublishAt {
       lines.append("- 最近线上发布：\(formattedDate(lastRemotePublishAt))")
@@ -150,7 +157,7 @@ public struct RepositoryAutoSyncReviewService {
     queueSections: [RepositoryChangeQueueSection]
   ) -> [String] {
     if !settings.isEnabled {
-      return ["- 打开自动同步后再生成远端变更队列。"]
+      return ["- 启用自动检查远端后再生成远端变更队列；自动导入默认关闭。"]
     }
     guard let report else {
       return ["- 先扫描本地仓库，确认 upstream 和远端变更。"]
@@ -159,7 +166,7 @@ public struct RepositoryAutoSyncReviewService {
       return ["- 当前目录不是 Git 工作树，先选择真实站点仓库。"]
     }
     guard report.branchStatus?.upstreamName != nil else {
-      return ["- 先设置 upstream，再让自动同步拉取远端变更。"]
+      return ["- 先设置 upstream，再让远端自动检查执行 Fetch 与差异检查。"]
     }
     if state.fetchSucceeded == false {
       return ["- Fetch 失败，先修复远端权限或网络，再重新扫描。"]
@@ -170,7 +177,14 @@ public struct RepositoryAutoSyncReviewService {
 
     var actions: [String] = []
     if state.importableRemoteArticleCount > 0 {
-      actions.append("- 先导入 \(state.importableRemoteArticleCount) 篇远端文章草稿，再处理本地发布。")
+      if settings.autoImportRemoteArticles {
+        actions.append("- 手动审阅 \(state.importableRemoteArticleCount) 篇未自动导入的文章；本地内容不会被覆盖。")
+      } else {
+        actions.append("- 先导入 \(state.importableRemoteArticleCount) 篇远端文章草稿，再处理本地发布。")
+      }
+    }
+    if state.lastAutoImportDeletionCount > 0 {
+      actions.append("- 审阅 \(state.lastAutoImportDeletionCount) 篇远端删除；自动检查不会删除本地草稿。")
     }
     if queueSections.contains(where: { $0.role == .configuration || $0.role == .image }) {
       actions.append("- 审阅图片或配置变更，确认不会影响站点构建和社交预览。")

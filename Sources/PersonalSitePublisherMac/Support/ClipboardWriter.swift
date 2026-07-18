@@ -14,9 +14,3 @@ enum ClipboardWriter {
     return didCopy
   }
 }
-
-enum ClipboardReader {
-  static func string() -> String? {
-    NSPasteboard.general.string(forType: .string)
-  }
-}

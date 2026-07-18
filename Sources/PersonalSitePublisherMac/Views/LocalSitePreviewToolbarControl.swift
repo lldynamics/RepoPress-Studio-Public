@@ -27,7 +27,7 @@ struct LocalSitePreviewToolbarControl: View {
         guard let previewURL else { return }
         ExternalURLOpener.open(previewURL)
       } label: {
-        Label("打开预览", systemImage: "safari")
+        Label("在浏览器中打开", systemImage: "safari")
       }
       .disabled(previewURL == nil || !store.localSitePreviewRuntimeStatus.isRunning)
 
@@ -36,7 +36,7 @@ struct LocalSitePreviewToolbarControl: View {
           await store.verifyLocalSitePreviewReachability()
         }
       } label: {
-        Label("检测端口", systemImage: "network")
+        Label("检查预览连接", systemImage: "network")
       }
       .disabled(!store.localSitePreviewRuntimeStatus.isRunning)
 
@@ -45,25 +45,22 @@ struct LocalSitePreviewToolbarControl: View {
       Button {
         store.selectSection(.sync)
       } label: {
-        Label("查看本地预览详情", systemImage: "slider.horizontal.3")
+        Label("预览设置与详情", systemImage: "slider.horizontal.3")
       }
     } label: {
-      HStack(spacing: 5) {
-        Image(systemName: statusSystemImage)
-          .foregroundStyle(statusColor)
-        if !isCompact {
-          Text(statusTitle)
-            .foregroundStyle(.primary)
-        }
-      }
-      .font(.caption2.weight(.semibold))
-      .lineLimit(1)
+      WorkspaceToolbarMenuLabel(
+        title: "预览",
+        systemImage: statusSystemImage,
+        showsTitle: !isCompact,
+        iconColor: statusColor
+      )
     }
     .menuStyle(.borderlessButton)
     .fixedSize()
     .help("本地预览：\(statusTitle)。\(store.localSitePreviewRuntimeStatus.message)")
     .accessibilityLabel("本地预览")
     .accessibilityValue(statusTitle)
+    .accessibilityIdentifier("workspace-preview-menu")
     .task(id: store.activeProfileID) {
       store.refreshLocalSitePreviewRuntimeStatus()
       while !Task.isCancelled {
@@ -136,7 +133,7 @@ struct LocalSitePreviewToolbarControl: View {
       return WorkbenchTheme.success
     }
     if store.localSitePreviewRuntimeStatus.isRunning {
-      return WorkbenchTheme.primary
+      return WorkbenchTheme.progress
     }
     if isTransitioning {
       return WorkbenchTheme.warning

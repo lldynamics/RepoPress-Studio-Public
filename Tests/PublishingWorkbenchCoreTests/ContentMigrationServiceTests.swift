@@ -164,6 +164,110 @@ final class ContentMigrationServiceTests: XCTestCase {
     XCTAssertFalse(store.visibleDrafts.contains { $0.title == "Planned Article" })
   }
 
+  @MainActor
+  func testPlanClassifiesDraftsAndAppliesOnlySelectedArticles() async throws {
+    let directory = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "ContentMigrationReview")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let sourceDirectory = directory.appendingPathComponent("source", isDirectory: true)
+    try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+    let suffix = UUID().uuidString.lowercased()
+    let updateSlug = "update-\(suffix)"
+    let unchangedSlug = "same-\(suffix)"
+    let insertSlug = "insert-\(suffix)"
+    try "---\ntitle: Update Article\nslug: \(updateSlug)\ndraft: true\n---\nImported body".write(
+      to: sourceDirectory.appendingPathComponent("update.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try "---\ntitle: Same Article\nslug: \(unchangedSlug)\ndraft: true\n---\nSame body".write(
+      to: sourceDirectory.appendingPathComponent("same.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try "---\ntitle: Insert Article\nslug: \(insertSlug)\ndraft: true\n---\nNew body".write(
+      to: sourceDirectory.appendingPathComponent("insert.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: directory.appendingPathComponent("workbench.json"))
+    )
+    var configuredProfile = store.activeProfile
+    configuredProfile.markdownPathPattern = "content/posts/{slug}.md"
+    store.updateActiveProfile(configuredProfile)
+    let sourcePlan = try service.makePlan(sourceURL: sourceDirectory, profile: store.activeProfile)
+
+    var existingUpdate = try XCTUnwrap(sourcePlan.drafts.first { $0.slug == updateSlug })
+    existingUpdate.id = UUID()
+    existingUpdate.bodyMarkdown = "Local body before migration"
+    store.updateDraft(existingUpdate)
+    var existingUnchanged = try XCTUnwrap(sourcePlan.drafts.first { $0.slug == unchangedSlug })
+    existingUnchanged.id = UUID()
+    store.updateDraft(existingUnchanged)
+
+    let plan = try await store.makeContentMigrationPlan(sourceURL: sourceDirectory)
+    let dispositions = Dictionary(uniqueKeysWithValues: plan.reviewItems.map {
+      ($0.importedDraft.slug, $0.disposition)
+    })
+    XCTAssertEqual(dispositions[updateSlug], .update)
+    XCTAssertEqual(dispositions[unchangedSlug], .unchanged)
+    XCTAssertEqual(dispositions[insertSlug], .insert)
+    let insertItem = try XCTUnwrap(plan.reviewItems.first { $0.importedDraft.slug == insertSlug })
+
+    let summary = try store.applyContentMigration(plan, selectedDraftIDs: [insertItem.id])
+
+    XCTAssertEqual(summary.insertedCount, 1)
+    XCTAssertEqual(summary.updatedCount, 0)
+    XCTAssertEqual(summary.skippedCount, 2)
+    XCTAssertEqual(store.drafts.first { $0.slug == updateSlug }?.bodyMarkdown, "Local body before migration")
+    XCTAssertEqual(store.drafts.first { $0.slug == insertSlug }?.bodyMarkdown, "New body")
+  }
+
+  @MainActor
+  func testApplyRejectsSelectedDraftChangedAfterPreview() async throws {
+    let directory = try TestWorkbenchFactory.temporaryDirectoryURL(prefix: "ContentMigrationConflict")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let sourceURL = directory.appendingPathComponent("article.md")
+    let slug = "conflict-\(UUID().uuidString.lowercased())"
+    try "---\ntitle: Conflict Article\nslug: \(slug)\ndraft: true\n---\nImported body".write(
+      to: sourceURL,
+      atomically: true,
+      encoding: .utf8
+    )
+
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: directory.appendingPathComponent("workbench.json"))
+    )
+    var configuredProfile = store.activeProfile
+    configuredProfile.markdownPathPattern = "content/posts/{slug}.md"
+    store.updateActiveProfile(configuredProfile)
+    let sourcePlan = try service.makePlan(sourceURL: sourceURL, profile: store.activeProfile)
+    var existingDraft = try XCTUnwrap(sourcePlan.drafts.first)
+    existingDraft.id = UUID()
+    existingDraft.bodyMarkdown = "Original local body"
+    store.updateDraft(existingDraft)
+
+    let plan = try await store.makeContentMigrationPlan(sourceURL: sourceURL)
+    let updateItem = try XCTUnwrap(plan.reviewItems.first)
+    XCTAssertEqual(updateItem.disposition, .update)
+
+    var locallyEdited = try XCTUnwrap(store.drafts.first { $0.id == existingDraft.id })
+    locallyEdited.bodyMarkdown = "Edited locally after preview"
+    store.updateDraft(locallyEdited)
+
+    XCTAssertThrowsError(
+      try store.applyContentMigration(plan, selectedDraftIDs: [updateItem.id])
+    ) { error in
+      guard case let ContentMigrationError.draftsChanged(paths) = error else {
+        XCTFail("Expected draftsChanged, got \(error)")
+        return
+      }
+      XCTAssertEqual(paths, ["content/posts/\(slug).md"])
+    }
+    XCTAssertEqual(store.drafts.first { $0.id == existingDraft.id }?.bodyMarkdown, "Edited locally after preview")
+  }
+
   func testConvertsTOMLFrontMatterFromMarkdownFolder() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

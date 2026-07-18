@@ -1,7 +1,6 @@
 import Darwin
 import XCTest
 @testable import PublishingWorkbenchCore
-@testable import PublishingWorkbenchScreenshotSupport
 
 final class ScreenshotDemoDataServiceTests: XCTestCase {
   func testScreenshotDemoSnapshotCoversReleaseScreenshotSurfacesWithoutSensitiveValues() throws {

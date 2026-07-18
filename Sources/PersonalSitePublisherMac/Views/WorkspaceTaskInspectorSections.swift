@@ -15,7 +15,8 @@ struct WorkspaceTaskMetadataState {
 struct WorkspaceTaskMetadataSection: View {
   @Binding var draft: ArticleDraft
   let state: WorkspaceTaskMetadataState
-  @State private var isSupplementaryMetadataExpanded = false
+  let tagSuggestions: [String]
+  let categorySuggestions: [String]
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -33,15 +34,19 @@ struct WorkspaceTaskMetadataSection: View {
       }
 
       InspectorSection("分类") {
-        TextField("Tags", text: tagsBinding)
-          .accessibilityLabel("文章标签")
-          .accessibilityValue(draft.tags.isEmpty ? "未填写" : draft.tags.joined(separator: "，"))
-        TextField("Categories", text: categoriesBinding)
-          .accessibilityLabel("文章分类")
-          .accessibilityValue(draft.categories.isEmpty ? "未填写" : draft.categories.joined(separator: "，"))
+        TaxonomySuggestionField(
+          title: "标签",
+          values: $draft.tags,
+          suggestions: tagSuggestions
+        )
+        TaxonomySuggestionField(
+          title: "分类",
+          values: $draft.categories,
+          suggestions: categorySuggestions
+        )
       }
 
-      DisclosureGroup(isExpanded: $isSupplementaryMetadataExpanded) {
+      InspectorSection("补充元数据") {
         VStack(alignment: .leading, spacing: 14) {
           InspectorSection("发布时间与可见性") {
             DatePicker("Date", selection: $draft.date, displayedComponents: [.date, .hourAndMinute])
@@ -72,30 +77,11 @@ struct WorkspaceTaskMetadataSection: View {
             Text(state.markdownPath)
               .font(.caption.monospaced())
               .foregroundStyle(.secondary)
-              .lineLimit(3)
-              .textSelection(.enabled)
+              .workbenchTruncatedIdentity(state.markdownPath, lineLimit: 3)
           }
         }
-        .padding(.top, 2)
-      } label: {
-        Label("补充元数据", systemImage: "ellipsis.circle")
-          .font(.callout.weight(.medium))
       }
     }
-  }
-
-  private var tagsBinding: Binding<String> {
-    Binding(
-      get: { draft.tags.commaSeparated },
-      set: { draft.tags = parseList($0) }
-    )
-  }
-
-  private var categoriesBinding: Binding<String> {
-    Binding(
-      get: { draft.categories.commaSeparated },
-      set: { draft.categories = parseList($0) }
-    )
   }
 
   private var authorsBinding: Binding<String> {
@@ -139,7 +125,7 @@ struct WorkspaceTaskSEOSection: View {
 
         Label(cachePresentation.message, systemImage: cachePresentation.state.systemImage)
           .font(.caption)
-          .foregroundStyle(cachePresentation.needsManualRefresh ? .orange : .secondary)
+          .foregroundStyle(cachePresentation.needsManualRefresh ? WorkbenchTheme.warning : Color.secondary)
       }
 
       InspectorSection("问题") {
@@ -156,8 +142,7 @@ struct WorkspaceTaskSEOSection: View {
           Text(snapshot.canonicalURLText)
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
-            .lineLimit(2)
-            .textSelection(.enabled)
+            .workbenchTruncatedIdentity(snapshot.canonicalURLText, lineLimit: 2)
 
           socialPreviewReadinessSection(snapshot)
           socialShareCopySection(snapshot.socialShareCopyItems)
@@ -185,7 +170,7 @@ struct WorkspaceTaskSEOSection: View {
               .font(.caption2)
               Text(card.title)
                 .font(.caption.weight(.semibold))
-                .lineLimit(2)
+                .workbenchTruncatedIdentity(card.title, lineLimit: 2)
               Text(card.description)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -203,7 +188,7 @@ struct WorkspaceTaskSEOSection: View {
 
       relatedArticleSuggestionSection
 
-      InspectorSection("Front Matter 预览") {
+      InspectorSection("文章头信息预览") {
         Text(report.frontMatterPreview)
           .font(.caption.monospaced())
           .textSelection(.enabled)
@@ -234,11 +219,11 @@ struct WorkspaceTaskSEOSection: View {
                 VStack(alignment: .leading, spacing: 2) {
                   Text(suggestion.targetTitle)
                     .font(.caption.weight(.semibold))
-                    .lineLimit(1)
+                    .workbenchTruncatedIdentity(suggestion.targetTitle)
                   Text(suggestion.targetPath)
                     .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
+                    .workbenchTruncatedIdentity(suggestion.targetPath)
                 }
                 Spacer(minLength: 0)
               }
@@ -350,15 +335,15 @@ struct WorkspaceTaskSEOSection: View {
 
           Text(item.title)
             .font(.caption)
-            .lineLimit(2)
+            .workbenchTruncatedIdentity(item.title, lineLimit: 2)
           Text(item.body)
             .font(.caption2)
             .foregroundStyle(.secondary)
             .lineLimit(3)
           Text(item.urlText)
             .font(.caption2.monospaced())
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
+            .foregroundStyle(.secondary)
+            .workbenchTruncatedIdentity(item.urlText)
           if !item.hashtagText.isEmpty {
             Text(item.hashtagText)
               .font(.caption2)
@@ -427,9 +412,8 @@ struct WorkspaceTaskSEOSection: View {
             .lineLimit(2)
           Text(link.urlText)
             .font(.caption2.monospaced())
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
-            .textSelection(.enabled)
+            .foregroundStyle(.secondary)
+            .workbenchTruncatedIdentity(link.urlText)
         }
         .padding(8)
         .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
@@ -549,17 +533,18 @@ struct WorkspaceTaskChecksSection: View {
       if !summary.isClear {
         HStack(spacing: 10) {
           Label("\(summary.errorCount) 错误", systemImage: "xmark.octagon")
-            .foregroundStyle(summary.errorCount > 0 ? .red : .secondary)
+            .foregroundStyle(summary.errorCount > 0 ? WorkbenchTheme.risk : Color.secondary)
           Label("\(summary.warningCount) 警告", systemImage: "exclamationmark.triangle")
-            .foregroundStyle(summary.warningCount > 0 ? .orange : .secondary)
+            .foregroundStyle(summary.warningCount > 0 ? WorkbenchTheme.warning : Color.secondary)
         }
         .font(.caption2)
 
         ForEach(summary.issues.prefix(3)) { issue in
-          Text("\(issue.severity.localizedDisplayName) · \(issue.title)")
+          let issueTitle = "\(issue.severity.localizedDisplayName) · \(issue.title)"
+          Text(issueTitle)
             .font(.caption2)
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
+            .foregroundStyle(.secondary)
+            .workbenchTruncatedIdentity(issueTitle)
         }
       }
     }
@@ -590,6 +575,7 @@ struct WorkspaceTaskImageState {
   let report: ImageWorkbenchReport?
   let siteSummary: ImageWorkbenchSiteSummary?
   let actionMessage: String?
+  let focusedAttachmentID: UUID?
 }
 
 struct WorkspaceTaskImageActions {
@@ -639,8 +625,11 @@ struct WorkspaceTaskImageSection: View {
               attachment: attachment,
               item: report?.items.first { $0.attachmentID == attachment.id },
               altText: attachmentStringBinding(for: attachment.id, keyPath: \.altText),
-              caption: attachmentStringBinding(for: attachment.id, keyPath: \.caption)
+              caption: attachmentStringBinding(for: attachment.id, keyPath: \.caption),
+              isCover: attachmentCoverBinding(for: attachment.id),
+              isFocused: state.focusedAttachmentID == attachment.id
             )
+            .id(attachment.id)
           }
         }
       }
@@ -703,6 +692,20 @@ struct WorkspaceTaskImageSection: View {
       }
     )
   }
+
+  private func attachmentCoverBinding(for attachmentID: UUID) -> Binding<Bool> {
+    Binding(
+      get: { draft.coverAttachmentID == attachmentID },
+      set: { isCover in
+        if isCover {
+          draft.coverAttachmentID = attachmentID
+        } else if draft.coverAttachmentID == attachmentID {
+          draft.coverAttachmentID = nil
+        }
+        actions.refreshReport()
+      }
+    )
+  }
 }
 
 private struct ImageMetadataEditorRow: View {
@@ -710,13 +713,17 @@ private struct ImageMetadataEditorRow: View {
   let item: ImageWorkbenchItem?
   @Binding var altText: String
   @Binding var caption: String
+  @Binding var isCover: Bool
+  let isFocused: Bool
+
+  @FocusState private var isAltFocused: Bool
 
   var body: some View {
     VStack(alignment: .leading, spacing: 7) {
       HStack(alignment: .firstTextBaseline) {
         Text(attachment.originalFilename)
           .font(.callout.weight(.medium))
-          .lineLimit(1)
+          .workbenchTruncatedIdentity(attachment.originalFilename)
 
         if item?.isCover == true {
           Image(systemName: "star.fill")
@@ -726,17 +733,17 @@ private struct ImageMetadataEditorRow: View {
         Spacer()
 
         Image(systemName: item?.fileExists == false ? "xmark.octagon" : "checkmark.circle")
-          .foregroundStyle(item?.fileExists == false ? .red : .secondary)
+          .foregroundStyle(item?.fileExists == false ? WorkbenchTheme.risk : Color.secondary)
       }
 
       Text(attachment.relativePublishPath)
         .font(.caption.monospaced())
         .foregroundStyle(.secondary)
-        .lineLimit(2)
-        .textSelection(.enabled)
+        .workbenchTruncatedIdentity(attachment.relativePublishPath, lineLimit: 2)
 
       TextField("Alt", text: $altText)
         .textFieldStyle(.roundedBorder)
+        .focused($isAltFocused)
         .accessibilityLabel("图片 Alt 文本")
         .accessibilityValue(altText.isEmpty ? "未填写" : altText)
 
@@ -744,8 +751,32 @@ private struct ImageMetadataEditorRow: View {
         .textFieldStyle(.roundedBorder)
         .accessibilityLabel("图片 Caption")
         .accessibilityValue(caption.isEmpty ? "未填写" : caption)
+
+      Toggle("设为文章封面", isOn: $isCover)
+        .toggleStyle(.checkbox)
+        .controlSize(.small)
     }
-    .padding(.vertical, 6)
+    .padding(8)
+    .background(
+      isFocused ? Color.accentColor.opacity(0.10) : Color.clear,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
+    .overlay {
+      if isFocused {
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+          .stroke(Color.accentColor.opacity(0.45), lineWidth: 1)
+      }
+    }
+    .onAppear {
+      if isFocused {
+        isAltFocused = true
+      }
+    }
+    .onChange(of: isFocused) { _, shouldFocus in
+      if shouldFocus {
+        isAltFocused = true
+      }
+    }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("图片元数据 \(attachment.originalFilename)")
     .accessibilityValue(item?.fileExists == false ? "源图缺失" : "源图可用")

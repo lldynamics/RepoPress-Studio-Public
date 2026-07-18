@@ -43,13 +43,18 @@ extension WorkbenchStore {
   }
 
   @discardableResult
+  public func configureStarterSiteOrigin() async -> Bool {
+    await publishingStore.configureStarterSiteOrigin(store: self)
+  }
+
+  @discardableResult
   public func commitAndPushStarterSite() async -> SiteStarterPushResult? {
     await publishingStore.commitAndPushStarterSite(store: self)
   }
 
   @discardableResult
   public func createGitHubRepositoryForActiveProfile(
-    privateRepository: Bool = false
+    privateRepository: Bool = true
   ) async -> RemoteRepositoryCreationResult? {
     await publishingStore.createGitHubRepositoryForActiveProfile(privateRepository: privateRepository, store: self)
   }

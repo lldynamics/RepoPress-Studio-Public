@@ -9,6 +9,10 @@ extension WorkbenchStore {
     siteMaintenanceStore.isRefreshing
   }
 
+  public var siteMaintenanceSnapshotErrorMessage: String? {
+    siteMaintenanceStore.refreshErrorMessage
+  }
+
   public func refreshSiteMaintenanceSnapshot(force: Bool = false) async {
     siteMaintenanceRefreshScheduleTask?.cancel()
     siteMaintenanceRefreshScheduleTask = nil
@@ -23,6 +27,7 @@ extension WorkbenchStore {
     siteMaintenanceRefreshGeneration &+= 1
     let generation = siteMaintenanceRefreshGeneration
     siteMaintenanceStore.setRefreshing(true)
+    siteMaintenanceStore.setRefreshErrorMessage(nil)
 
     let service = publishingStore.siteMaintenanceService
     let task = Task {
@@ -50,8 +55,13 @@ extension WorkbenchStore {
       scheduleSiteMaintenanceSnapshotRefresh()
       return
     }
-    guard case .success(let report) = result else { return }
-    replaceSiteMaintenanceSnapshot(report: report, inputSignature: signature)
+    switch result {
+    case .success(let report):
+      replaceSiteMaintenanceSnapshot(report: report, inputSignature: signature)
+    case .failure(let error):
+      guard !(error is CancellationError) else { return }
+      siteMaintenanceStore.setRefreshErrorMessage(error.localizedDescription)
+    }
   }
 
   func scheduleSiteMaintenanceSnapshotRefresh() {

@@ -30,9 +30,9 @@ struct DeploymentStatusTrendChart: View {
       .accessibilityValue("共 \(orderedHistory.count) 条部署状态记录")
 
       HStack(spacing: 10) {
-        trendLegend("正常", color: .green)
-        trendLegend("部署中", color: .blue)
-        trendLegend("失败", color: .red)
+        trendLegend("正常", color: WorkbenchTheme.success)
+        trendLegend("部署中", color: WorkbenchTheme.progress)
+        trendLegend("失败", color: WorkbenchTheme.risk)
         trendLegend("未知", color: .secondary)
       }
     }
@@ -58,7 +58,7 @@ struct DeploymentStatusTrendChart: View {
     case .success:
       return WorkbenchTheme.success
     case .running:
-      return WorkbenchTheme.primary
+      return WorkbenchTheme.progress
     case .failed:
       return WorkbenchTheme.risk
     case .unknown:
@@ -72,7 +72,7 @@ struct DeploymentStatusTrendChart: View {
         .fill(color)
         .frame(width: 6, height: 6)
       Text(title)
-        .font(.caption2)
+        .font(.caption)
         .foregroundStyle(.secondary)
     }
   }

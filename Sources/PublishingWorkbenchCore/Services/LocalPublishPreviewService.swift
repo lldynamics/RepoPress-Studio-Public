@@ -34,19 +34,22 @@ public struct PublishFileDiff: Identifiable, Codable, Hashable, Sendable {
   public var status: PublishFileDiffStatus
   public var lineDiff: String?
   public var byteSize: Int64
+  public var baselineState: LocalPublishFileState?
 
   public init(
     path: String,
     kind: PublishFileKind,
     status: PublishFileDiffStatus,
     lineDiff: String? = nil,
-    byteSize: Int64 = 0
+    byteSize: Int64 = 0,
+    baselineState: LocalPublishFileState? = nil
   ) {
     self.path = path
     self.kind = kind
     self.status = status
     self.lineDiff = lineDiff
     self.byteSize = byteSize
+    self.baselineState = baselineState
   }
 }
 
@@ -117,23 +120,26 @@ public struct LocalPublishPreviewService: Sendable {
         continue
       }
 
+      let baselineState: LocalPublishFileState
+      do {
+        baselineState = try localPublishFileState(at: destinationURL, fileManager: fileManager)
+      } catch {
+        diffs.append(
+          PublishFileDiff(path: file.repositoryPath, kind: file.kind, status: .unsafePath, byteSize: file.byteSize)
+        )
+        issues.append(
+          .init(
+            severity: .error,
+            title: "无法读取发布目标",
+            message: file.repositoryPath,
+            field: "repositoryPath"
+          )
+        )
+        continue
+      }
+
       if file.operation == .delete {
-        var isDirectory: ObjCBool = false
-        let exists = fileManager.fileExists(atPath: destinationURL.path, isDirectory: &isDirectory)
-        guard !exists || !isDirectory.boolValue else {
-          diffs.append(
-            PublishFileDiff(path: file.repositoryPath, kind: file.kind, status: .unsafePath)
-          )
-          issues.append(
-            .init(
-              severity: .error,
-              title: "删除目标不是文件",
-              message: file.repositoryPath,
-              field: "repositoryPath"
-            )
-          )
-          continue
-        }
+        let exists = baselineState != .missing
 
         let existingContent = file.kind == .markdown
           ? (try? String(contentsOf: destinationURL, encoding: .utf8)) ?? ""
@@ -145,7 +151,8 @@ public struct LocalPublishPreviewService: Sendable {
             status: exists ? .deleted : .unchanged,
             lineDiff: exists && file.kind == .markdown
               ? unifiedDiff(old: existingContent, new: "")
-              : nil
+              : nil,
+            baselineState: baselineState
           )
         )
         continue
@@ -155,7 +162,7 @@ public struct LocalPublishPreviewService: Sendable {
       case .markdown:
         let newContent = file.content ?? ""
         let existingContent = (try? String(contentsOf: destinationURL, encoding: .utf8)) ?? ""
-        let exists = fileManager.fileExists(atPath: destinationURL.path)
+        let exists = baselineState != .missing
         let status: PublishFileDiffStatus = exists
           ? (existingContent == newContent ? .unchanged : .modified)
           : .added
@@ -165,21 +172,33 @@ public struct LocalPublishPreviewService: Sendable {
             kind: file.kind,
             status: status,
             lineDiff: status == .unchanged ? nil : unifiedDiff(old: existingContent, new: newContent),
-            byteSize: Int64(newContent.utf8.count)
+            byteSize: Int64(newContent.utf8.count),
+            baselineState: baselineState
           )
         )
-      case .image:
+      case .image, .video:
         guard let sourceFilePath = file.sourceFilePath,
               fileManager.fileExists(atPath: sourceFilePath)
         else {
           diffs.append(
-            PublishFileDiff(path: file.repositoryPath, kind: file.kind, status: .missingSource, byteSize: file.byteSize)
+            PublishFileDiff(
+              path: file.repositoryPath,
+              kind: file.kind,
+              status: .missingSource,
+              byteSize: file.byteSize,
+              baselineState: baselineState
+            )
           )
-          issues.append(.init(severity: .error, title: "图片源文件缺失", message: file.repositoryPath, field: "attachments"))
+          issues.append(.init(
+            severity: .error,
+            title: "\(file.kind.displayName)源文件缺失",
+            message: file.repositoryPath,
+            field: "attachments"
+          ))
           continue
         }
 
-        let exists = fileManager.fileExists(atPath: destinationURL.path)
+        let exists = baselineState != .missing
         let status: PublishFileDiffStatus
         if !exists {
           status = .added
@@ -193,7 +212,8 @@ public struct LocalPublishPreviewService: Sendable {
             path: file.repositoryPath,
             kind: file.kind,
             status: status,
-            byteSize: file.byteSize
+            byteSize: file.byteSize,
+            baselineState: baselineState
           )
         )
       }
@@ -205,6 +225,16 @@ public struct LocalPublishPreviewService: Sendable {
   public func write(package: PublishPackage, profile: SiteProfile) throws -> [String] {
     guard let writtenPaths = try profile.withLocalRepositoryRootAccess({ rootURL in
       try write(package: package, rootURL: rootURL)
+    }) else {
+      throw LocalPublishPreviewError.missingRepositoryRoot
+    }
+
+    return writtenPaths
+  }
+
+  public func write(preview: LocalPublishPreview, profile: SiteProfile) throws -> [String] {
+    guard let writtenPaths = try profile.withLocalRepositoryRootAccess({ rootURL in
+      try write(preview: preview, rootURL: rootURL)
     }) else {
       throw LocalPublishPreviewError.missingRepositoryRoot
     }
@@ -227,11 +257,44 @@ public struct LocalPublishPreviewService: Sendable {
     }.value
   }
 
+  public func writeAsync(preview: LocalPublishPreview, profile: SiteProfile) async throws -> [String] {
+    guard let rootURL = profile.localRepositoryRootURL else {
+      throw LocalPublishPreviewError.missingRepositoryRoot
+    }
+    let didStartAccessing = rootURL.startAccessingSecurityScopedResource()
+    defer {
+      if didStartAccessing {
+        rootURL.stopAccessingSecurityScopedResource()
+      }
+    }
+    return try await Task.detached(priority: .userInitiated) {
+      try write(preview: preview, rootURL: rootURL)
+    }.value
+  }
+
   func write(package: PublishPackage, rootURL: URL) throws -> [String] {
     try writeWithEvidence(package: package, rootURL: rootURL).writtenPaths
   }
 
-  func writeWithEvidence(package: PublishPackage, rootURL: URL) throws -> LocalPublishWriteResult {
+  func write(preview: LocalPublishPreview, rootURL: URL) throws -> [String] {
+    try writeWithEvidence(
+      package: preview.package,
+      rootURL: rootURL,
+      preview: preview
+    ).writtenPaths
+  }
+
+  func writeWithEvidence(
+    package: PublishPackage,
+    rootURL: URL,
+    preview: LocalPublishPreview? = nil
+  ) throws -> LocalPublishWriteResult {
+    let previewBaseStates: [String: LocalPublishFileState]?
+    if let preview {
+      previewBaseStates = try expectedBaseStates(for: package, preview: preview)
+    } else {
+      previewBaseStates = nil
+    }
     var seenDestinationPaths = Set<String>()
     let preparedWrites = try package.files.map { file -> PreparedLocalPublishWrite in
       let destinationURL = try validatedDestinationURLForWrite(
@@ -250,7 +313,7 @@ public struct LocalPublishPreviewService: Sendable {
       switch file.kind {
       case .markdown:
         sourceURL = nil
-      case .image:
+      case .image, .video:
         guard let sourceFilePath = file.sourceFilePath else {
           throw LocalPublishPreviewError.missingSource(file.repositoryPath)
         }
@@ -263,6 +326,14 @@ public struct LocalPublishPreviewService: Sendable {
         sourceURL = candidate
       }
       return PreparedLocalPublishWrite(file: file, destinationURL: destinationURL, sourceURL: sourceURL)
+    }
+
+    for prepared in preparedWrites {
+      try validatePreviewBaseline(
+        for: prepared.file,
+        destinationURL: prepared.destinationURL,
+        expectedBaseStates: previewBaseStates
+      )
     }
 
     let rollbackDirectory = fileManager.temporaryDirectory
@@ -280,6 +351,11 @@ public struct LocalPublishPreviewService: Sendable {
             rootURL: rootURL,
             repositoryPath: prepared.file.repositoryPath
           )
+        try validatePreviewBaseline(
+          for: prepared.file,
+          destinationURL: destinationURL,
+          expectedBaseStates: previewBaseStates
+        )
         let backupURL: URL?
         if fileManager.fileExists(atPath: destinationURL.path) {
           let candidate = rollbackDirectory.appendingPathComponent("\(index)-backup")
@@ -298,11 +374,11 @@ public struct LocalPublishPreviewService: Sendable {
           switch prepared.file.kind {
           case .markdown:
             try (prepared.file.content ?? "").write(to: destinationURL, atomically: true, encoding: .utf8)
-          case .image:
+          case .image, .video:
             guard let sourceURL = prepared.sourceURL else {
               throw LocalPublishPreviewError.missingSource(prepared.file.repositoryPath)
             }
-            try replaceImageAtomically(sourceURL: sourceURL, destinationURL: destinationURL)
+            try replaceBinaryFileAtomically(sourceURL: sourceURL, destinationURL: destinationURL)
           }
         }
 
@@ -347,6 +423,45 @@ public struct LocalPublishPreviewService: Sendable {
       .map(posixShellQuote)
       .joined(separator: " ")
     return "cd \(posixShellQuote(rootPath)) && git add \(paths) && git commit -m \(posixShellQuote(package.commitMessage))"
+  }
+
+  private func expectedBaseStates(
+    for package: PublishPackage,
+    preview: LocalPublishPreview
+  ) throws -> [String: LocalPublishFileState] {
+    guard preview.package == package else {
+      throw LocalPublishPreviewError.invalidPreview("发布包已变化")
+    }
+
+    var result: [String: LocalPublishFileState] = [:]
+    for file in package.files {
+      let normalizedPath = file.repositoryPath.normalizedRelativePath()
+      guard result[normalizedPath] == nil,
+            let diff = preview.fileDiffs.first(where: {
+              $0.path.normalizedRelativePath() == normalizedPath
+            }),
+            let baselineState = diff.baselineState else {
+        throw LocalPublishPreviewError.invalidPreview(file.repositoryPath)
+      }
+      result[normalizedPath] = baselineState
+    }
+    return result
+  }
+
+  private func validatePreviewBaseline(
+    for file: PublishPackageFile,
+    destinationURL: URL,
+    expectedBaseStates: [String: LocalPublishFileState]?
+  ) throws {
+    guard let expectedBaseStates else { return }
+    let normalizedPath = file.repositoryPath.normalizedRelativePath()
+    guard let expectedState = expectedBaseStates[normalizedPath] else {
+      throw LocalPublishPreviewError.invalidPreview(file.repositoryPath)
+    }
+    let currentState = try localPublishFileState(at: destinationURL, fileManager: fileManager)
+    guard currentState == expectedState else {
+      throw LocalPublishPreviewError.previewOutdated(file.repositoryPath)
+    }
   }
 
   private func missingRepositoryPreview(package: PublishPackage) -> LocalPublishPreview {
@@ -450,7 +565,7 @@ public struct LocalPublishPreviewService: Sendable {
     return destinationURL
   }
 
-  private func replaceImageAtomically(sourceURL: URL, destinationURL: URL) throws {
+  private func replaceBinaryFileAtomically(sourceURL: URL, destinationURL: URL) throws {
     let stagingURL = destinationURL
       .deletingLastPathComponent()
       .appendingPathComponent(".\(destinationURL.lastPathComponent).publisher-stage-\(UUID().uuidString)")
@@ -535,6 +650,8 @@ public enum LocalPublishPreviewError: LocalizedError {
   case missingRepositoryRoot
   case unsafePath(String)
   case missingSource(String)
+  case invalidPreview(String)
+  case previewOutdated(String)
   case rollbackConflict(String)
   case rollbackFailed(original: String, rollback: String)
 
@@ -546,6 +663,10 @@ public enum LocalPublishPreviewError: LocalizedError {
       return "发布路径不安全：\(path)"
     case .missingSource(let path):
       return "源文件缺失：\(path)"
+    case .invalidPreview(let path):
+      return "发布预览缺少有效的文件基线，请重新生成预览：\(path)"
+    case .previewOutdated(let path):
+      return "目标文件在预览后已被外部修改，已停止写入：\(path)"
     case .rollbackConflict(let path):
       return "检测到外部修改，已停止自动恢复并保留当前文件：\(path)"
     case .rollbackFailed(let original, let rollback):
@@ -571,7 +692,7 @@ struct LocalPublishWriteResult {
   let appliedStatesByRepositoryPath: [String: LocalPublishFileState]
 }
 
-enum LocalPublishFileState: Equatable, Sendable {
+public enum LocalPublishFileState: Codable, Hashable, Sendable {
   case missing
   case fileDigest(Data)
 }

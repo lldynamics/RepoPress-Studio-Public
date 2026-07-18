@@ -1,9 +1,6 @@
 import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
-#if DEBUG
-import PublishingWorkbenchScreenshotSupport
-#endif
 
 struct ContentView: View {
   let store: WorkbenchStore
@@ -17,9 +14,12 @@ struct ContentView: View {
   @SceneStorage("workspace.focusMode") private var isFocusMode = false
   @State private var didApplyInitialWorkbenchPreferences = false
   @State private var didApplyScreenshotDemoSurface = false
+  @State private var didOpenAIAssistantByDefault = false
   @State private var isPublishDrawerPresented = false
   @State private var isFirstRunSetupPresented = false
-  @State private var isCompactLayout = false
+  @State private var isCommandPalettePresented = false
+  @State private var isDraftFullTextSearchPresented = false
+  @State private var isCompactLayout = true
   @State private var contentHealthFilter: ContentHealthContextFilter = .overview
   @State private var repositoryContextStage: RepositoryContextStage = .overview
   private let repositoryAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -59,26 +59,28 @@ struct ContentView: View {
       }
       .onAppear {
         updateCompactLayout(for: geometry.size.width)
-        adaptWorkspacePresentation(
-          for: publishingState.editorDisplayMode,
-          width: geometry.size.width
-        )
       }
       .onChange(of: geometry.size.width) { _, width in
         updateCompactLayout(for: width)
-        adaptWorkspacePresentation(for: publishingState.editorDisplayMode, width: width)
-      }
-      .onReceive(publishingState.editorDisplayModePublisher) { mode in
-        adaptWorkspacePresentation(for: mode, width: geometry.size.width)
       }
     }
-    .navigationTitle(shellState.activeProfileName)
     .background(WorkbenchAccessibilityStatusAnnouncer(store: store))
     .focusedSceneValue(
       \.publishDrawerCommandAction,
       PublishDrawerCommandAction { message in
         openPublishDrawer(message: message)
       }
+    )
+    .focusedSceneValue(
+      \.workspaceCommandPaletteAction,
+      WorkspaceCommandPaletteAction {
+        guard shellState.canUseProtectedWorkbench else { return }
+        isCommandPalettePresented = true
+      }
+    )
+    .focusedSceneValue(
+      \.draftFullTextSearchAction,
+      DraftFullTextSearchAction(open: openDraftFullTextSearch)
     )
     .toolbar {
       ToolbarItemGroup(placement: .navigation) {
@@ -88,82 +90,27 @@ struct ContentView: View {
         )
         .disabled(!shellState.canUseProtectedWorkbench)
         .accessibilityHidden(shellState.isPrivacyLocked)
-      }
 
-      ToolbarItem(placement: .principal) {
-        WorkspaceToolbarTitle(store: store)
-        .accessibilityHidden(shellState.isPrivacyLocked)
-      }
-
-      ToolbarItemGroup(placement: .primaryAction) {
-        if showsDraftEditingToolbar {
-          PublishingStatusToolbarControl(
-            store: store,
-            canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
-            selectedDraftID: shellState.selectedDraftID,
-            openPublishFlow: { openPublishDrawer(message: nil) },
-            openRepositoryOverview: {
-              repositoryContextStage = .overview
-              store.selectSection(.sync)
-            },
-            openContentHealthOverview: {
-              contentHealthFilter = .overview
-              store.selectSection(.contentHealth)
-            },
-            openReleaseHistory: {
-              repositoryContextStage = .history
-              store.selectSection(.sync)
-            }
-          )
-
-          Button(action: toggleFocusMode) {
-            Label(
-              isFocusMode ? "退出专注" : "专注写作",
-              systemImage: isFocusMode
-                ? "arrow.down.right.and.arrow.up.left"
-                : "arrow.up.left.and.arrow.down.right"
-            )
+        PublishingStatusToolbarControl(
+          store: store,
+          canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
+          selectedDraftID: shellState.selectedDraftID,
+          openPublishFlow: { openPublishDrawer(message: nil) },
+          openRepositoryOverview: {
+            repositoryContextStage = .overview
+            store.selectSection(.sync)
+          },
+          openContentHealthOverview: {
+            contentHealthFilter = .overview
+            store.selectSection(.contentHealth)
+          },
+          openReleaseHistory: {
+            repositoryContextStage = .history
+            store.selectSection(.sync)
           }
-          .keyboardShortcut("f", modifiers: [.command, .shift])
-          .disabled(!shellState.canUseProtectedWorkbench)
-          .help(isFocusMode ? "退出专注写作（⇧⌘F）" : "专注写作（⇧⌘F）")
-          .accessibilityLabel(isFocusMode ? "退出专注写作" : "进入专注写作")
-          .accessibilityValue(isFocusMode ? "已开启" : "已关闭")
-          .accessibilityIdentifier("workspace-focus-mode-toggle")
-        }
+        )
 
-        if supportsInspector && !isFocusMode {
-          Button(action: toggleArticleInspector) {
-            Label("Inspector", systemImage: "sidebar.right")
-          }
-          .disabled(!shellState.canUseProtectedWorkbench)
-          .help(inspectorToggleHelp)
-          .accessibilityLabel("工作区 Inspector")
-          .accessibilityValue(inspectorAccessibilityValue)
-          .accessibilityIdentifier("workspace-inspector-toggle")
-        }
-      }
-
-      ToolbarItem(placement: .secondaryAction) {
-        Menu {
-          Button {
-            store.lockPrivacy(reason: "已手动快速隐藏工作台内容。")
-          } label: {
-            Label("快速隐藏", systemImage: "eye.slash")
-          }
-          .disabled(shellState.isPrivacyLocked)
-
-          Divider()
-
-          AdvancedWorkspaceMenu(
-            store: store,
-            canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
-            showsFirstRunSetup: !didCompleteFirstRunSetup,
-            presentFirstRunSetup: { isFirstRunSetupPresented = true }
-          )
-        } label: {
-          Label("更多", systemImage: "ellipsis.circle")
-        }
+        workspaceToolbarActionCluster
       }
     }
     .onAppear {
@@ -175,6 +122,7 @@ struct ContentView: View {
     .onChange(of: shellState.isPrivacyLocked) { _, isLocked in
       if isLocked {
         isPublishDrawerPresented = false
+        isDraftFullTextSearchPresented = false
       }
     }
     .onChange(of: shellState.selectedSection) { _, section in
@@ -235,6 +183,12 @@ struct ContentView: View {
         skip: skipFirstRunSetup
       )
     }
+    .sheet(isPresented: $isCommandPalettePresented) {
+      WorkspaceCommandPalette(store: store, onToggleFocusMode: toggleFocusMode)
+    }
+    .sheet(isPresented: $isDraftFullTextSearchPresented) {
+      DraftFullTextSearchPanel(store: store)
+    }
   }
 
   private func handleRepositoryAutoSyncTick(_ date: Date) {
@@ -244,12 +198,21 @@ struct ContentView: View {
     }
   }
 
+  private func openDraftFullTextSearch() {
+    guard shellState.canUseProtectedWorkbench else { return }
+    store.flushDraftBodyEditorBuffers()
+    isDraftFullTextSearchPresented = true
+  }
+
   private func applyWorkbenchPreferences() {
     if !didApplyInitialWorkbenchPreferences {
       if scanRepositoryOnLaunch {
         Task {
           await store.repository.scanAsync()
         }
+      }
+      Task {
+        await store.importMissingPrivateDraftsFromLocalRepository()
       }
       didApplyInitialWorkbenchPreferences = true
     }
@@ -262,6 +225,7 @@ struct ContentView: View {
     }
     store.setAutomaticallyRefreshPreflightOnEdit(autoRunPreflight)
     normalizeWorkspacePresentation(for: shellState.selectedSection)
+    openAIAssistantByDefaultIfNeeded()
     presentFirstRunSetupIfNeeded()
   }
 
@@ -292,7 +256,6 @@ struct ContentView: View {
   }
 
   private func skipFirstRunSetup() {
-    didCompleteFirstRunSetup = true
     isFirstRunSetupPresented = false
   }
 
@@ -304,6 +267,129 @@ struct ContentView: View {
     shellState.selectedSection == .writing
   }
 
+  private var workspaceToolbarActionCluster: some View {
+    HStack(spacing: 2) {
+      if showsDraftEditingToolbar {
+        Button(action: openDraftFullTextSearch) {
+          Label("跨文章搜索", systemImage: "doc.text.magnifyingglass")
+        }
+        .buttonStyle(WorkspaceToolbarIconButtonStyle(isActive: false))
+        .disabled(!shellState.canUseProtectedWorkbench)
+        .help("跨文章全文搜索（⌥⌘F）")
+        .accessibilityLabel("跨文章全文搜索")
+        .accessibilityIdentifier("workspace-full-text-search")
+      }
+
+      if showsDraftEditingToolbar && !isFocusMode {
+        aiToolbarButton
+      }
+
+      if supportsInspector {
+        inspectorToolbarButton
+      }
+
+      workspaceMoreToolbarMenu
+    }
+  }
+
+  private var aiToolbarButton: some View {
+    Button(action: toggleAIAssistant) {
+      Label(
+        "AI",
+        systemImage: isAIAssistantVisible
+          ? "bubble.left.and.text.bubble.right.fill"
+          : "bubble.left.and.text.bubble.right"
+      )
+    }
+    .buttonStyle(WorkspaceToolbarIconButtonStyle(isActive: isAIAssistantVisible))
+    .disabled(!shellState.canUseProtectedWorkbench || !allowsInspectorInCurrentLayout)
+    .help(aiToolbarHelp)
+    .accessibilityLabel(isAIAssistantVisible ? "关闭 AI 对话" : "打开 AI 对话")
+    .accessibilityValue(isAIAssistantVisible ? "已打开" : "已关闭")
+    .accessibilityIdentifier("workspace-ai-chat-toggle")
+  }
+
+  private var inspectorToolbarButton: some View {
+    Button(action: toggleArticleInspector) {
+      Label("Inspector", systemImage: "sidebar.right")
+    }
+    .buttonStyle(
+      WorkspaceToolbarIconButtonStyle(
+        isActive: shellState.isInspectorPresented && !aiState.isAssistantPresented
+      )
+    )
+    .disabled(!shellState.canUseProtectedWorkbench || !allowsInspectorInCurrentLayout)
+    .help(inspectorToolbarHelp)
+    .accessibilityLabel("工作区 Inspector")
+    .accessibilityValue(inspectorAccessibilityValue)
+    .accessibilityIdentifier("workspace-inspector-toggle")
+  }
+
+  private var inspectorToolbarHelp: String {
+    guard allowsInspectorInCurrentLayout else {
+      return "扩大窗口后可使用 Inspector"
+    }
+    if aiState.isAssistantPresented {
+      return "切换到文章 Inspector"
+    }
+    return shellState.isInspectorPresented ? "隐藏 Inspector" : "显示 Inspector"
+  }
+
+  private var aiToolbarHelp: String {
+    guard allowsInspectorInCurrentLayout else {
+      return "扩大窗口后可使用 AI 对话"
+    }
+    return isAIAssistantVisible ? "关闭 AI 对话（⌥⌘A）" : "打开 AI 对话（⌥⌘A）"
+  }
+
+  private var workspaceMoreToolbarMenu: some View {
+    Menu {
+      if showsDraftEditingToolbar {
+        Button(action: toggleFocusMode) {
+          Label(
+            isFocusMode ? "退出专注写作" : "专注写作",
+            systemImage: isFocusMode
+              ? "arrow.down.right.and.arrow.up.left"
+              : "arrow.up.left.and.arrow.down.right"
+          )
+        }
+        .keyboardShortcut("f", modifiers: [.command, .shift])
+        .disabled(!shellState.canUseProtectedWorkbench)
+        .accessibilityValue(isFocusMode ? "已开启" : "已关闭")
+        .accessibilityIdentifier("workspace-focus-mode-toggle")
+      }
+
+      if showsDraftEditingToolbar {
+        Divider()
+      }
+
+      Button {
+        store.lockPrivacy(reason: "已手动快速隐藏工作台内容。")
+      } label: {
+        Label("快速隐藏", systemImage: "eye.slash")
+      }
+      .disabled(shellState.isPrivacyLocked)
+
+      Divider()
+
+      AdvancedWorkspaceMenu(
+        store: store,
+        canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
+        isFirstRunSetupComplete: didCompleteFirstRunSetup,
+        presentFirstRunSetup: { isFirstRunSetupPresented = true }
+      )
+    } label: {
+      WorkspaceToolbarMenuLabel(
+        title: "更多",
+        systemImage: "ellipsis",
+        showsTitle: false
+      )
+    }
+    .menuStyle(.borderlessButton)
+    .help("专注写作与高级操作")
+    .accessibilityIdentifier("workspace-more-menu")
+  }
+
   private var supportsInspector: Bool {
     WorkspaceInspectorPresentation.supportsInspector(
       for: shellState.selectedSection,
@@ -313,14 +399,10 @@ struct ContentView: View {
     )
   }
 
-  private var inspectorToggleHelp: String {
-    if aiState.isAssistantPresented {
-      return "切换到文章 Inspector"
-    }
-    return shellState.isInspectorPresented ? "隐藏 Inspector" : "显示 Inspector"
-  }
-
   private var inspectorAccessibilityValue: String {
+    guard allowsInspectorInCurrentLayout else {
+      return "窗口过窄，已临时隐藏"
+    }
     if aiState.isAssistantPresented {
       return "AI 助手已显示"
     }
@@ -329,9 +411,26 @@ struct ContentView: View {
 
   private var inspectorPresentation: Binding<Bool> {
     Binding(
-      get: { shellState.isInspectorPresented && supportsInspector && !isFocusMode },
-      set: { store.setInspectorPresented($0) }
+      get: {
+        WorkspaceInspectorPresentation.isPresented(
+          requested: shellState.isInspectorPresented,
+          supportsInspector: supportsInspector,
+          isFocusMode: isFocusMode,
+          allowsInspector: allowsInspectorInCurrentLayout
+        )
+      },
+      set: { isPresented in
+        guard allowsInspectorInCurrentLayout else { return }
+        store.setInspectorPresented(isPresented)
+        if !isPresented && aiState.isAssistantPresented {
+          aiState.hideAssistant()
+        }
+      }
     )
+  }
+
+  private var isAIAssistantVisible: Bool {
+    aiState.isAssistantPresented && shellState.isInspectorPresented
   }
 
   private func normalizeWorkspacePresentation(for section: WorkspaceSection) {
@@ -353,18 +452,45 @@ struct ContentView: View {
       store.selectSection(.sync)
     case .siteStarter, .generalDrafts:
       break
-    case .writing, .sync, .images, .contentHealth:
+    case .sync:
+      if store.repositoryReport == nil {
+        hideInspectorIfNeeded()
+      }
+    case .writing, .library, .images, .contentHealth:
       break
     }
   }
 
   private func openAIInspector() {
+    guard allowsInspectorInCurrentLayout else { return }
     guard let draft = store.ensureEditableDraftSelected() else { return }
     guard store.openAIChatWorkspace(for: draft.id) else { return }
     store.setInspectorPresented(true)
   }
 
+  private func openAIAssistantByDefaultIfNeeded() {
+    guard !didOpenAIAssistantByDefault else { return }
+    didOpenAIAssistantByDefault = true
+#if DEBUG
+    guard !ScreenshotDemoDataService.isEnabledFromEnvironment else { return }
+#endif
+    guard shellState.selectedSection == .writing,
+          !isFocusMode,
+          !isCompactLayout,
+          shellState.canUseProtectedWorkbench else { return }
+    openAIInspector()
+  }
+
+  private func toggleAIAssistant() {
+    if isAIAssistantVisible {
+      aiState.closeAssistantPanel()
+      return
+    }
+    openAIInspector()
+  }
+
   private func toggleArticleInspector() {
+    guard allowsInspectorInCurrentLayout else { return }
     if isFocusMode {
       isFocusMode = false
       if aiState.isAssistantPresented {
@@ -400,7 +526,7 @@ struct ContentView: View {
     store.ensureEditableDraftSelected()
     store.runPreflight()
     isPublishDrawerPresented = true
-    store.setPublishActionMessage(message ?? "发布流程已打开，请按检查、Diff、写入、远端和部署步骤确认。")
+    store.setPublishActionMessage(message ?? "发布流程已打开，请按检查、差异、写入、远端和部署步骤确认。")
   }
 
   private func updateCompactLayout(for width: CGFloat) {
@@ -409,24 +535,13 @@ struct ContentView: View {
     isCompactLayout = isNowCompact
   }
 
+  private var allowsInspectorInCurrentLayout: Bool {
+    !isCompactLayout
+  }
+
   private func toggleFocusMode() {
     guard shellState.selectedSection == .writing else { return }
     isFocusMode.toggle()
-  }
-
-  private func adaptWorkspacePresentation(for mode: EditorDisplayMode, width: CGFloat) {
-    guard !isFocusMode else { return }
-    guard WorkbenchLayoutMode.shouldAutoHideAuxiliaryPanels(
-      editorDisplayMode: mode,
-      width: width
-    ) else { return }
-
-    if aiState.isAssistantPresented {
-      aiState.hideAssistant()
-    }
-    if shellState.isInspectorPresented {
-      store.setInspectorPresented(false)
-    }
   }
 }
 
@@ -484,13 +599,16 @@ private enum WorkbenchAccessibilityStatus: Equatable {
 
   var message: String {
     switch self {
-    case .privacyLocked: return "隐私界面遮罩已启用。"
-    case let .repositoryScanning(message): return "仓库状态更新：\(message)"
-    case .remotePublishing: return "正在执行线上发布。"
-    case .aiReplying: return "AI 正在回复。"
-    case .deploymentChecking: return "正在检查部署状态。"
-    case let .saveFailed(error): return "保存失败：\(error)"
-    case let .saveStatus(status): return "保存状态：\(status)"
+    case .privacyLocked: return String(localized: "隐私界面遮罩已启用。")
+    case let .repositoryScanning(message):
+      return String(format: String(localized: "仓库状态更新：%@"), message)
+    case .remotePublishing: return String(localized: "正在执行线上发布。")
+    case .aiReplying: return String(localized: "AI 正在回复。")
+    case .deploymentChecking: return String(localized: "正在检查部署状态。")
+    case let .saveFailed(error):
+      return String(format: String(localized: "保存失败：%@"), error)
+    case let .saveStatus(status):
+      return String(format: String(localized: "保存状态：%@"), status)
     }
   }
 }

@@ -32,16 +32,12 @@ stub_scripts=(
   record_app_store_build_metadata_evidence.sh
   test_app_store_build_metadata_evidence.sh
   record_app_store_archive_validation_evidence.sh
-  record_app_store_archive_validation_bundle.sh
   test_app_store_archive_validation_evidence.sh
-  test_app_store_archive_validation_bundle.sh
   test_app_store_archive_artifact_selection.sh
   check_ui_runtime.sh
   check_clean_runtime_evidence.sh
   record_clean_runtime_evidence.sh
-  record_clean_runtime_evidence_bundle.sh
   test_clean_runtime_evidence.sh
-  test_clean_runtime_evidence_bundle.sh
   check_privacy_support_copy.sh
   test_privacy_support_copy.sh
   check_storekit.sh

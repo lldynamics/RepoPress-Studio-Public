@@ -24,6 +24,8 @@ struct WorkspaceTaskInspector: View {
     switch section {
     case .sync, .releaseHistory:
       RepositoryContextInspectorView(store: store)
+    case .library:
+      EmptyView()
     case .writing, .contentHealth, .images, .generalDrafts, .maintenance:
       ArticleInspectorTabs(
         selectedTab: $selectedTab,
@@ -58,6 +60,8 @@ struct WorkspaceTaskInspector: View {
     case .images:
       return [.images]
     case .sync, .releaseHistory:
+      return []
+    case .library:
       return []
     case .siteStarter:
       return [.metadata]
@@ -140,10 +144,7 @@ struct RepositoryContextInspectorView: View {
         ForEach(files.prefix(8)) { file in
           VStack(alignment: .leading, spacing: 3) {
             HStack {
-              Text(file.path)
-                .font(.caption.monospaced())
-                .lineLimit(1)
-                .truncationMode(.middle)
+              WorkbenchPathIdentity(path: file.path)
               Spacer()
               Text(file.status)
                 .font(.caption2.monospaced())

@@ -1,22 +1,6 @@
 import Foundation
 
 extension WorkbenchStore {
-  func setRepositoryScanState(_ state: RepositoryScanState) {
-    repositoryStore.repositoryScanState = state
-  }
-
-  func setLocalRepositoryBranches(_ branches: [RepositoryBranch]) {
-    repositoryStore.localRepositoryBranches = branches
-  }
-
-  func setLocalRepositoryRecentCommits(_ commits: [RepositoryCommitInfo]) {
-    repositoryStore.localRepositoryRecentCommits = commits
-  }
-
-  func setRepositoryAutoSyncSettings(_ settings: RepositoryAutoSyncSettings) {
-    repositoryStore.repositoryAutoSyncSettings = settings
-  }
-
   func setRepositoryAutoSyncState(_ state: RepositoryAutoSyncState) {
     repositoryStore.repositoryAutoSyncState = state
   }

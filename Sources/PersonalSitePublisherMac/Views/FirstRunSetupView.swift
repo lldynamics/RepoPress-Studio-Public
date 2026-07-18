@@ -59,7 +59,7 @@ struct FirstRunSetupView: View {
           HStack(spacing: 6) {
             Image(systemName: candidate.rawValue < step.rawValue ? "checkmark.circle.fill" : "\(candidate.rawValue + 1).circle.fill")
             Text(candidate.titleKey)
-              .lineLimit(1)
+              .workbenchTruncatedIdentity(candidate.accessibilityTitle)
           }
           .font(.caption.weight(candidate == step ? .semibold : .regular))
           .foregroundStyle(candidate.rawValue <= step.rawValue ? WorkbenchTheme.primary : Color.secondary)
@@ -80,7 +80,7 @@ struct FirstRunSetupView: View {
 
   private var siteTypeStep: some View {
     VStack(alignment: .leading, spacing: 18) {
-      stepTitle("选择站点类型", detail: "应用会据此设置 Front Matter、文章目录和图片路径默认值。")
+      stepTitle("选择站点类型", detail: "应用会据此设置文章头信息（Front Matter）、文章目录和图片路径默认值。")
 
       Picker("站点生成器", selection: siteKindBinding) {
         ForEach(SiteKind.allCases) { kind in
@@ -93,7 +93,10 @@ struct FirstRunSetupView: View {
       setupSummary(
         systemImage: "doc.text",
         title: store.activeProfile.siteKind.localizedDisplayName,
-        detail: "内容目录：\(store.activeProfile.contentRoot)"
+        detail: String(
+          format: String(localized: "内容目录：%@"),
+          store.activeProfile.contentRoot
+        )
       )
     }
   }
@@ -104,8 +107,10 @@ struct FirstRunSetupView: View {
 
       setupSummary(
         systemImage: hasRepository ? "externaldrive.fill.badge.checkmark" : "externaldrive.badge.questionmark",
-        title: hasRepository ? "本地仓库已连接" : "尚未选择本地仓库",
-        detail: hasRepository ? store.activeProfile.localRepositoryRootPath : "选择包含站点配置和内容目录的仓库根目录。"
+        title: hasRepository ? String(localized: "本地仓库已连接") : String(localized: "尚未选择本地仓库"),
+        detail: hasRepository
+          ? store.activeProfile.localRepositoryRootPath
+          : String(localized: "选择包含站点配置和内容目录的仓库根目录。")
       )
 
       Button {
@@ -113,16 +118,14 @@ struct FirstRunSetupView: View {
       } label: {
         Label(hasRepository ? "更换本地仓库" : "选择本地仓库", systemImage: "folder.badge.plus")
       }
-      .buttonStyle(.borderedProminent)
+      .workbenchProminentActionStyle()
       .disabled(isPreparingRepository)
 
       if isPreparingRepository {
         ProgressView("正在读取仓库配置…")
           .controlSize(.small)
       } else if let repositoryMessage {
-        Text(repositoryMessage)
-          .font(.callout)
-          .foregroundStyle(WorkbenchTheme.warning)
+        AccessibleStatusMessage(message: repositoryMessage, severity: .error)
       }
     }
   }
@@ -137,6 +140,7 @@ struct FirstRunSetupView: View {
         }
       }
       .pickerStyle(.segmented)
+      .tint(WorkbenchTheme.navigationSelection)
 
       Picker("发布策略", selection: publishStrategyBinding) {
         ForEach(RepositoryPublishStrategy.allCases) { strategy in
@@ -147,19 +151,28 @@ struct FirstRunSetupView: View {
 
       setupSummary(
         systemImage: "checkmark.seal",
-        title: "准备完成",
-        detail: "完成后会进入同步工作区并扫描仓库；发布前仍会要求检查和 Diff 确认。"
+        title: String(localized: "准备完成"),
+        detail: String(localized: "完成后会进入同步工作区并扫描仓库；发布前仍会要求检查和差异确认。")
       )
     }
   }
 
   private var footer: some View {
     HStack {
-      Button("稍后设置") {
-        skip()
+      VStack(alignment: .leading, spacing: 3) {
+        Button(String(localized: "稍后设置")) {
+          skip()
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(.cancelAction)
+        .foregroundStyle(.secondary)
+
+        Text("当前已选择的站点类型、仓库和发布方式会保留，可稍后在设置中继续修改。")
+          .font(.caption2)
+          .foregroundStyle(.tertiary)
+          .frame(maxWidth: 300, alignment: .leading)
+          .fixedSize(horizontal: false, vertical: true)
       }
-      .buttonStyle(.plain)
-      .foregroundStyle(.secondary)
 
       Spacer()
 
@@ -176,7 +189,7 @@ struct FirstRunSetupView: View {
           step = Step(rawValue: step.rawValue + 1) ?? .publishing
         }
       }
-      .buttonStyle(.borderedProminent)
+      .workbenchProminentActionStyle()
       .disabled(step == .repository && !hasRepository)
       .keyboardShortcut(.defaultAction)
     }
@@ -253,7 +266,7 @@ struct FirstRunSetupView: View {
       if hasRepository {
         step = .publishing
       } else {
-        repositoryMessage = "未能保存仓库权限，请重新选择或检查文件夹访问权限。"
+        repositoryMessage = String(localized: "未能保存仓库权限，请重新选择或检查文件夹访问权限。")
       }
     }
   }

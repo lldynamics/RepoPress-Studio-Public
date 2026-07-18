@@ -61,8 +61,16 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiChatContextMode
   }
 
+  public var chatKnowledgePolicy: KnowledgeRetrievalPolicy {
+    store.aiChatKnowledgePolicy
+  }
+
   public var chatModelGrade: AIChatModelGrade {
     store.aiChatModelGrade
+  }
+
+  public var chatReasoningLevel: AIChatReasoningLevel {
+    store.aiChatReasoningLevel
   }
 
   public var chatSelectedModel: String {
@@ -105,11 +113,27 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.isAIImageTextRunning
   }
 
+  public func recordKnowledgeBacklinks(
+    _ citations: [KnowledgeCitation],
+    target: KnowledgeBacklinkTarget
+  ) {
+    store.knowledge.recordBacklinks(citations: citations, target: target)
+  }
+
+  @discardableResult
+  public func openKnowledgeCitation(_ citation: KnowledgeCitation) -> Bool {
+    guard store.knowledge.selectCitation(citation) else { return false }
+    store.hideAIPublishingAssistant()
+    store.selectSection(.library)
+    return true
+  }
+
   public func refreshKeyAvailability() {
     store.aiRefreshKeyAvailability()
   }
 
-  public func saveAPIKey(_ token: String) {
+  @discardableResult
+  public func saveAPIKey(_ token: String) -> Bool {
     store.aiSaveAPIKey(token)
   }
 
@@ -133,16 +157,21 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.hideAIPublishingAssistant()
   }
 
+  public func closeAssistantPanel() {
+    store.hideAIPublishingAssistant()
+    store.setInspectorPresented(false)
+  }
+
   public func prepareChat(for draft: ArticleDraft) {
     store.aiPrepareChat(for: draft)
   }
 
-  public func clearChat() {
-    store.aiClearChat()
-  }
-
   public func setChatModelGrade(_ grade: AIChatModelGrade) {
     store.aiSetChatModelGrade(grade)
+  }
+
+  public func setChatReasoningLevel(_ level: AIChatReasoningLevel) {
+    store.aiSetChatReasoningLevel(level)
   }
 
   public func setChatCustomModel(_ model: String) {
@@ -151,14 +180,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func resetChatModelToProfileDefault() {
     store.aiResetChatModelToProfileDefault()
-  }
-
-  public func setChatConversationTitle(_ title: String?, draft: ArticleDraft? = nil) {
-    store.aiSetChatConversationTitle(title, draft: draft)
-  }
-
-  public func setChatFocusedParagraph(_ paragraphID: String?, draft: ArticleDraft? = nil) {
-    store.aiSetChatFocusedParagraph(paragraphID, draft: draft)
   }
 
   public func updateChatDraft(_ draft: ArticleDraft) {
@@ -177,20 +198,12 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.profile(for: draft)
   }
 
-  public func activeChatEditorSelectionRange(for draft: ArticleDraft) -> NSRange? {
-    store.activeEditorSelectionRange(for: draft)
-  }
-
   public func chatPublishingPackage(for draft: ArticleDraft) -> PublishPackage {
     store.publishingPackage(for: draft)
   }
 
   public func chatPreflightIssues(for draft: ArticleDraft) -> [PreflightIssue] {
     store.preflightIssues(for: draft)
-  }
-
-  public func chatImageWorkbenchReport(for draft: ArticleDraft) -> ImageWorkbenchReport {
-    store.imageWorkbenchReport(for: draft)
   }
 
   public func cachedChatImageWorkbenchReport(for draft: ArticleDraft) -> ImageWorkbenchReport? {
@@ -202,10 +215,6 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     force: Bool = false
   ) async {
     await store.refreshImageWorkbenchReportInBackground(for: draft, force: force)
-  }
-
-  public func refreshChatImageWorkbenchReport() {
-    store.refreshImageWorkbenchReport()
   }
 
   public func relatedChatArticleSuggestions(
@@ -227,6 +236,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.setAIChatContextMode(mode)
   }
 
+  public func setChatKnowledgePolicy(_ policy: KnowledgeRetrievalPolicy) {
+    store.setAIChatKnowledgePolicy(policy)
+  }
+
   public func setChatMessage(_ message: String?) {
     store.setAIChatMessage(message)
   }
@@ -244,26 +257,8 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiStartNewChatConversation(draft: draft)
   }
 
-  public func deleteChatMessage(_ messageID: AIPublishingChatMessage.ID, draft: ArticleDraft? = nil) {
-    store.aiDeleteChatMessage(messageID, draft: draft)
-  }
-
-  public func branchChatConversation(after messageID: AIPublishingChatMessage.ID, draft: ArticleDraft? = nil) {
-    store.aiBranchChatConversation(after: messageID, draft: draft)
-  }
-
   public func cancelChatReply() {
     store.aiCancelChatReply()
-  }
-
-  @discardableResult
-  public func regenerateLastChatReply(draft: ArticleDraft? = nil) async -> AIPublishingChatMessage? {
-    await store.aiRegenerateLastChatReply(draft: draft)
-  }
-
-  @discardableResult
-  public func regenerateChatReply(messageID: AIPublishingChatMessage.ID, draft: ArticleDraft? = nil) async -> AIPublishingChatMessage? {
-    await store.aiRegenerateChatReply(messageID: messageID, draft: draft)
   }
 
   @discardableResult
@@ -288,19 +283,4 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     await store.aiPerformAction(kind, draft: draft, selectedText: selectedText)
   }
 
-  @discardableResult
-  public func generateImageTextSuggestions(draft: ArticleDraft) async -> [AIPublishingImageTextSuggestion] {
-    await store.aiGenerateImageTextSuggestions(draft: draft)
-  }
-
-  public func chatImageAttachments(
-    for draft: ArticleDraft,
-    attachmentIDs: Set<UUID>
-  ) async -> [AIChatImageAttachment] {
-    await store.aiChatImageAttachments(for: draft, attachmentIDs: attachmentIDs)
-  }
-
-  public func makeImageAttachment(from url: URL, draft: ArticleDraft) -> DraftAttachment {
-    store.makeAIChatImageAttachment(from: url, draft: draft)
-  }
 }

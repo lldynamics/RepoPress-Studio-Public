@@ -4,6 +4,7 @@ extension WorkbenchStore {
   public var releaseRecords: [ReleaseRecord] { publishingStore.releaseRecords }
   public var selectedSection: WorkspaceSection { publishingStore.selectedSection }
   public var selectedDraftID: UUID? { publishingStore.selectedDraftID }
+  public var customMarkdownSnippets: [MarkdownSnippet] { publishingStore.customMarkdownSnippets }
 
   public var publishPackage: PublishPackage? { publishingStore.publishPackage }
   public var localPublishPreview: LocalPublishPreview? { publishingStore.localPublishPreview }
@@ -25,6 +26,9 @@ extension WorkbenchStore {
   public var isInspectorPresented: Bool { publishingStore.isInspectorPresented }
   public var editorDisplayMode: EditorDisplayMode { publishingStore.editorDisplayMode }
   public var editorFocusRequest: EditorFocusRequest? { publishingStore.editorFocusRequest }
+  public var imageInspectorFocusRequest: ImageInspectorFocusRequest? {
+    publishingStore.imageInspectorFocusRequest
+  }
   public var activeEditorSelection: ActiveEditorSelection? { publishingStore.activeEditorSelection }
   public var automaticallyRefreshPreflightOnEdit: Bool { publishingStore.automaticallyRefreshPreflightOnEdit }
   public var lastSaveStatus: String { persistenceStore.status }
@@ -86,7 +90,9 @@ extension WorkbenchStore {
   public var aiChatConversationTitle: String? { aiWorkspaceStore.aiChatConversationTitle }
   public var aiChatMessages: [AIPublishingChatMessage] { aiWorkspaceStore.aiChatMessages }
   public var aiChatContextMode: AIPublishingChatContextMode { aiWorkspaceStore.aiChatContextMode }
+  public var aiChatKnowledgePolicy: KnowledgeRetrievalPolicy { aiWorkspaceStore.aiChatKnowledgePolicy }
   public var aiChatModelGrade: AIChatModelGrade { aiWorkspaceStore.aiChatModelGrade }
+  public var aiChatReasoningLevel: AIChatReasoningLevel { aiWorkspaceStore.aiChatReasoningLevel }
   public var aiChatSelectedModel: String { aiWorkspaceStore.aiChatSelectedModel }
   public var aiChatFocusedParagraphID: String? { aiWorkspaceStore.aiChatFocusedParagraphID }
   public var aiChatCustomPrompts: [AIPublishingCustomPrompt] { aiWorkspaceStore.aiChatCustomPrompts }

@@ -1,11 +1,6 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
-private enum WorkspaceTaskNavigationSelection: Hashable {
-  case section(WorkspaceSection)
-  case contentHealth(ContentHealthContextFilter)
-}
-
 struct WorkspaceTaskNavigation: View {
   @ObservedObject var store: WorkbenchStore
   @Binding var contentHealthFilter: ContentHealthContextFilter
@@ -15,62 +10,46 @@ struct WorkspaceTaskNavigation: View {
     List(selection: navigationSelection) {
       Section {
         sectionRow(.writing)
+        sectionRow(.library)
         sectionRow(.sync)
         sectionRow(.images)
         sectionRow(.contentHealth)
       }
 
-      if store.selectedSection == .contentHealth {
-        Section("查看") {
-          navigationLabel("问题", systemImage: "checklist")
-            .tag(WorkspaceTaskNavigationSelection.contentHealth(.overview))
-          navigationLabel("站点维护", systemImage: "wrench.and.screwdriver")
-            .tag(WorkspaceTaskNavigationSelection.contentHealth(.maintenance))
-        }
-      }
-
     }
     .listStyle(.sidebar)
+    .scrollContentBackground(.hidden)
+    .background(Color.clear)
     .accessibilityIdentifier("workspace-task-navigation")
   }
 
-  private var navigationSelection: Binding<WorkspaceTaskNavigationSelection?> {
+  private var navigationSelection: Binding<WorkspaceSection?> {
     Binding(
-      get: {
-        if store.selectedSection == .contentHealth {
-          return .contentHealth(contentHealthFilter == .maintenance ? .maintenance : .overview)
-        }
-        return .section(store.selectedSection)
-      },
+      get: { store.selectedSection },
       set: { selection in
         guard let selection else { return }
-        switch selection {
-        case .section(let section):
-          if section == .contentHealth {
-            contentHealthFilter = .overview
-          }
-          onSelectSection(section)
-        case .contentHealth(let filter):
-          contentHealthFilter = filter
-          onSelectSection(.contentHealth)
+        if selection == .contentHealth, store.selectedSection != .contentHealth {
+          contentHealthFilter = .overview
         }
+        onSelectSection(selection)
       }
     )
   }
 
   private func sectionRow(_ section: WorkspaceSection) -> some View {
-    navigationLabel(
-      workspaceNavigationLocalizedKey(section.displayNameLocalizationKey),
+    let title = workspaceNavigationLocalizedString(section.displayNameLocalizationKey)
+    return navigationLabel(
+      title,
       systemImage: section.systemImage
     )
-    .tag(WorkspaceTaskNavigationSelection.section(section))
-    .help(workspaceNavigationLocalizedString(section.displayNameLocalizationKey))
+    .tag(section)
+    .help(title)
     .accessibilityLabel(workspaceNavigationLocalizedKey(section.displayNameLocalizationKey))
     .accessibilityIdentifier("workspace-sidebar-\(section.rawValue)")
   }
 
   private func navigationLabel(
-    _ title: LocalizedStringKey,
+    _ title: String,
     systemImage: String
   ) -> some View {
     HStack(spacing: 9) {
@@ -79,7 +58,7 @@ struct WorkspaceTaskNavigation: View {
         .foregroundStyle(Color.secondary)
 
       Text(title)
-        .lineLimit(1)
+        .workbenchTruncatedIdentity(title)
 
       Spacer(minLength: 8)
     }

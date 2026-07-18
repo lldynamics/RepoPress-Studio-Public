@@ -62,7 +62,7 @@ extension RepositoryWorkspaceView {
             : (store.localSitePreviewRuntimeStatus.isRunning ? "play.circle" : "stop.circle")
         )
           .font(.caption)
-          .foregroundStyle(store.localSitePreviewRuntimeStatus.isReachable ? .green : .secondary)
+          .foregroundStyle(store.localSitePreviewRuntimeStatus.isReachable ? WorkbenchTheme.success : Color.secondary)
 
         ForEach(plan.notes, id: \.self) { note in
           Label(note, systemImage: "info.circle")

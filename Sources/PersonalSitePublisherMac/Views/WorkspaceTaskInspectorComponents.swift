@@ -75,8 +75,7 @@ struct InspectorStatRow: View {
         .foregroundStyle(.secondary)
       Spacer()
       Text(value)
-        .lineLimit(1)
-        .truncationMode(.middle)
+        .workbenchTruncatedIdentity(value)
     }
     .font(.caption)
   }

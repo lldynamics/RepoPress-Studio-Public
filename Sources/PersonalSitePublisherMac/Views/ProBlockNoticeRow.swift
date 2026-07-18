@@ -21,6 +21,6 @@ struct ProBlockNoticeRow: View {
     }
     .padding(8)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(.orange.opacity(WorkbenchOpacity.selectionBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchTheme.warning.opacity(WorkbenchOpacity.selectionBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 }

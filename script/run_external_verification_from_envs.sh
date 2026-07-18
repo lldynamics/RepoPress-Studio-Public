@@ -385,12 +385,23 @@ run_app_store_archive() {
   require_value APP_STORE_ARCHIVE_TRANSPORTER_SUMMARY
 
   echo "external verification runner: app-store-archive $([[ "$EXECUTE" == "1" ]] && echo execute || echo dry-run)"
+  local mode
+  mode="$(execute_flag)"
   APP_STORE_ARCHIVE_EVIDENCE_FILE="${APP_STORE_ARCHIVE_EVIDENCE_FILE:-}" \
-    bash "$ROOT_DIR/script/record_app_store_archive_validation_bundle.sh" \
-      --clean-release-archive "$APP_STORE_ARCHIVE_CLEAN_RELEASE_SUMMARY" \
-      --distribution-signing-runtime "$APP_STORE_ARCHIVE_SIGNING_RUNTIME_SUMMARY" \
-      --transporter-validation "$APP_STORE_ARCHIVE_TRANSPORTER_SUMMARY" \
-      "$(execute_flag)"
+    bash "$ROOT_DIR/script/record_app_store_archive_validation_evidence.sh" \
+      --item clean-release-archive \
+      --summary "$APP_STORE_ARCHIVE_CLEAN_RELEASE_SUMMARY" \
+      "$mode"
+  APP_STORE_ARCHIVE_EVIDENCE_FILE="${APP_STORE_ARCHIVE_EVIDENCE_FILE:-}" \
+    bash "$ROOT_DIR/script/record_app_store_archive_validation_evidence.sh" \
+      --item distribution-signing-runtime \
+      --summary "$APP_STORE_ARCHIVE_SIGNING_RUNTIME_SUMMARY" \
+      "$mode"
+  APP_STORE_ARCHIVE_EVIDENCE_FILE="${APP_STORE_ARCHIVE_EVIDENCE_FILE:-}" \
+    bash "$ROOT_DIR/script/record_app_store_archive_validation_evidence.sh" \
+      --item transporter-validation \
+      --summary "$APP_STORE_ARCHIVE_TRANSPORTER_SUMMARY" \
+      "$mode"
 }
 
 case "$TARGET" in

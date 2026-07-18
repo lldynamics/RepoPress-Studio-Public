@@ -3,6 +3,7 @@ import SwiftUI
 struct WritingDraftCommandActions {
   var createDraft: () -> Void
   var focusSearch: () -> Void
+  var openVersionHistory: () -> Void
   var selectPreviousDraft: () -> Void
   var selectNextDraft: () -> Void
 }

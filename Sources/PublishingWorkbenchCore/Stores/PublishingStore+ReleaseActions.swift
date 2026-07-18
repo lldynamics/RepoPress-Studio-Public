@@ -102,7 +102,12 @@ extension PublishingStore {
     publishActionMessage = CoreL10n.format("正在执行%@…", mode.displayName)
 
     do {
-      let result = try await localGitPublishService.publishAsync(package: package, profile: profile, mode: mode)
+      let result = try await localGitPublishService.publishAsync(
+        package: package,
+        profile: profile,
+        mode: mode,
+        preview: preview
+      )
       guard localRepositoryMutationContext == operation, operation.stillMatches(store.profile(for: package)) else {
         return
       }
@@ -198,7 +203,9 @@ extension PublishingStore {
       return nil
     }
     store.setRemoteRepositoryPublishProgress(nil)
-    publishActionMessage = CoreL10n.format("正在通过 %@ 执行%@...", profile.repositoryProvider.displayName, mode.displayName)
+    publishActionMessage = mode == .directCommit
+      ? CoreL10n.format("正在通过 %@ 核对远端版本并执行%@...", profile.repositoryProvider.displayName, mode.displayName)
+      : CoreL10n.format("正在通过 %@ 执行%@...", profile.repositoryProvider.displayName, mode.displayName)
     defer { finishRemoteRepositoryMutation(operation, store: store) }
 
     do {

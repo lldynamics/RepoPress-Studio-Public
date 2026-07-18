@@ -127,6 +127,7 @@ final class PublishPreviewSnapshotReuseTests: XCTestCase {
     XCTAssertEqual(actual.targetBranch, expected.targetBranch)
     XCTAssertEqual(actual.changedPaths, expected.changedPaths)
     XCTAssertEqual(actual.remoteConflictPaths, expected.remoteConflictPaths)
+    XCTAssertEqual(actual.remoteRiskState, expected.remoteRiskState)
     XCTAssertEqual(actual.hasToken, expected.hasToken)
     XCTAssertEqual(actual.accessCheck, expected.accessCheck)
     XCTAssertEqual(issueSignatures(actual.blockingIssues), issueSignatures(expected.blockingIssues))

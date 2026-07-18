@@ -27,7 +27,6 @@ public final class PrivacyMonetizationStore: ObservableObject {
     self.isPrivacyLocked = isPrivacyLocked
     self.privacyLockReason = privacyLockReason
     var restoredMonetizationState = monetizationState
-    restoredMonetizationState.recentAccessEvents = []
     restoredMonetizationState.entitlement = entitlementProvider.entitlement(
       restoring: monetizationState.entitlement
     )
@@ -52,22 +51,6 @@ public final class PrivacyMonetizationStore: ObservableObject {
     )
   }
 
-  public func privacyProtectionAudit(store: WorkbenchStore) -> PrivacyProtectionAudit {
-    PrivacyProtectionAudit.make(
-      settings: privacySettings,
-      status: privacyProtectionStatus,
-      privateDraftCount: store.visibleDrafts.filter(\.isPrivate).count
-    )
-  }
-
-  public func privacyProtectionEvidencePackage(store: WorkbenchStore) -> PrivacyProtectionEvidencePackage {
-    PrivacyProtectionEvidencePackage(
-      status: privacyProtectionStatus,
-      audit: privacyProtectionAudit(store: store),
-      recentEvents: []
-    )
-  }
-
   public var proStatusSummary: ProStatusSummary {
     monetizationService.statusSummary(state: monetizationState)
   }
@@ -82,28 +65,6 @@ public final class PrivacyMonetizationStore: ObservableObject {
 
   public func proUpgradeRequirement(for feature: PremiumFeature) -> ProUpgradeRequirement {
     monetizationService.upgradeRequirement(for: feature, state: monetizationState)
-  }
-
-  public var proMonetizationAuditReport: ProMonetizationAuditReport {
-    ProMonetizationAuditReport(
-      state: monetizationState,
-      requirements: proUpgradeRequirements
-    )
-  }
-
-  public var proSandboxVerificationSummary: ProSandboxVerificationSummary {
-    ProSandboxVerificationSummary.make(
-      state: monetizationState,
-      requirements: proUpgradeRequirements
-    )
-  }
-
-  public var proStoreKitReviewEvidencePackage: ProStoreKitReviewEvidencePackage {
-    ProStoreKitReviewEvidencePackage(
-      statusSummary: proStatusSummary,
-      auditReport: proMonetizationAuditReport,
-      sandboxSummary: proSandboxVerificationSummary
-    )
   }
 
   public func updatePrivacySettings(_ settings: PrivacyProtectionSettings, store: WorkbenchStore) {

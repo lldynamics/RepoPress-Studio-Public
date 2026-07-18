@@ -35,6 +35,7 @@ struct ContentMigrationAssistantView: View {
   @State private var notice: ContentMigrationNotice?
   @State private var isAnalyzing = false
   @State private var isApplying = false
+  @State private var selectedDraftIDs = Set<UUID>()
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -76,7 +77,6 @@ struct ContentMigrationAssistantView: View {
           .foregroundStyle(.secondary)
       }
       Spacer()
-      Button("关闭") { dismiss() }
     }
     .padding(20)
   }
@@ -87,7 +87,7 @@ struct ContentMigrationAssistantView: View {
         VStack(alignment: .leading, spacing: 4) {
           Text("支持 WXR、RSS/Atom、JSON 导出、单篇 Markdown 与 Markdown 文件夹。")
             .font(.callout)
-          Text("预览会转换 Front Matter、Slug、图片目标路径和重定向候选，但不会复制文件或访问网络。")
+          Text("预览会转换文章头信息（Front Matter）、Slug、图片目标路径和重定向候选，但不会复制文件或访问网络。")
             .font(.caption)
             .foregroundStyle(.secondary)
         }
@@ -112,25 +112,31 @@ struct ContentMigrationAssistantView: View {
         .disabled(isAnalyzing || isApplying)
       }
       if let notice {
-        migrationNoticeText(notice)
+        AccessibleStatusMessage(
+          message: migrationNoticeMessage(notice),
+          severity: notice.isError ? .error : .info
+        )
           .font(.caption)
-          .foregroundStyle(notice.isError ? .red : .secondary)
           .padding(.top, 6)
       }
     }
   }
 
   private func planSummary(_ plan: ContentMigrationPlan) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
+    let insertCount = plan.reviewItems.count { $0.disposition == .insert }
+    let updateCount = plan.reviewItems.count { $0.disposition == .update }
+    let unchangedCount = plan.reviewItems.count { $0.disposition == .unchanged }
+    let conflictCount = plan.reviewItems.count { $0.disposition == .conflict }
+    return VStack(alignment: .leading, spacing: 10) {
       Text("2. 转换概览")
         .font(.headline)
       HStack(spacing: 12) {
-        migrationMetric("文章", value: "\(plan.drafts.count)", image: "doc.text")
-        migrationMetric("图片路径", value: "\(plan.imageMappings.count)", image: "photo")
-        migrationMetric("重定向", value: "\(plan.redirects.count)", image: "arrow.triangle.branch")
-        migrationMetric("来源", value: plan.sourceKind.localizedDisplayName, image: "archivebox")
+        migrationMetric("新增", value: "\(insertCount)", image: "doc.badge.plus")
+        migrationMetric("更新", value: "\(updateCount)", image: "arrow.triangle.2.circlepath.doc.on.clipboard")
+        migrationMetric("无需变更", value: "\(unchangedCount)", image: "equal.circle")
+        migrationMetric("冲突", value: "\(conflictCount)", image: "exclamationmark.triangle")
       }
-      Text("来源：\(plan.sourceName) · 将导入到「\(store.activeProfile.name)」。")
+      Text("来源：\(plan.sourceName)（\(plan.sourceKind.localizedDisplayName)） · 将导入到「\(store.activeProfile.name)」 · \(plan.imageMappings.count) 条图片路径 · \(plan.redirects.count) 条重定向")
         .font(.caption)
         .foregroundStyle(.secondary)
     }
@@ -157,37 +163,160 @@ struct ContentMigrationAssistantView: View {
 
   private func draftPreview(_ plan: ContentMigrationPlan) -> some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text("3. 文章预览")
-        .font(.headline)
-      ForEach(Array(plan.drafts.prefix(8))) { draft in
+      HStack {
+        Text("3. 逐篇审阅")
+          .font(.headline)
+        Spacer()
+        Button("清空选择") {
+          selectedDraftIDs.removeAll()
+        }
+        .controlSize(.small)
+        .disabled(selectedDraftIDs.isEmpty)
+        Button("全选可导入") {
+          selectedDraftIDs = selectableDraftIDs(in: plan)
+        }
+        .controlSize(.small)
+        .disabled(selectableDraftIDs(in: plan).isEmpty)
+      }
+
+      Text("只有勾选的「新增」和「更新」项会被应用；相同文章和冲突项不会改写本地草稿。")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+
+      LazyVStack(alignment: .leading, spacing: 8) {
+        ForEach(plan.reviewItems) { item in
+          migrationDraftRow(item)
+        }
+      }
+    }
+  }
+
+  private func migrationDraftRow(_ item: ContentMigrationDraftReviewItem) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(alignment: .top, spacing: 10) {
+        if item.disposition.isSelectable {
+          Toggle(
+            "选择\(item.importedDraft.title)",
+            isOn: Binding(
+              get: { selectedDraftIDs.contains(item.id) },
+              set: { isSelected in
+                if isSelected {
+                  selectedDraftIDs.insert(item.id)
+                } else {
+                  selectedDraftIDs.remove(item.id)
+                }
+              }
+            )
+          )
+          .labelsHidden()
+          .toggleStyle(.checkbox)
+        } else {
+          Image(systemName: item.disposition == .conflict ? "exclamationmark.triangle.fill" : "equal.circle.fill")
+            .foregroundStyle(migrationDispositionColor(item.disposition))
+            .frame(width: 16, height: 18)
+            .accessibilityHidden(true)
+        }
+
         VStack(alignment: .leading, spacing: 4) {
-          HStack {
-            Text(draft.title)
+          HStack(spacing: 8) {
+            Text(item.importedDraft.title)
               .font(.callout.weight(.medium))
-              .lineLimit(1)
+              .workbenchTruncatedIdentity(item.importedDraft.title)
+            migrationDispositionBadge(item.disposition)
             Spacer()
-            Text(draft.draft ? "草稿" : "已发布")
+            Text(item.importedDraft.draft ? "草稿" : "已发布")
               .font(.caption)
               .foregroundStyle(.secondary)
           }
-          Text("/\(draft.slug)  →  \(draft.repositoryPath ?? "")")
+          let destination = "/\(item.importedDraft.slug)  →  \(item.repositoryPath)"
+          Text(destination)
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
-            .lineLimit(1)
-          if !draft.summary.isEmpty {
-            Text(draft.summary)
+            .workbenchTruncatedIdentity(destination)
+          if !item.importedDraft.summary.isEmpty {
+            Text(item.importedDraft.summary)
               .font(.caption)
               .foregroundStyle(.secondary)
               .lineLimit(2)
           }
         }
-        .padding(10)
-        .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
-      if plan.drafts.count > 8 {
-        Text("另有 \(plan.drafts.count - 8) 篇文章会在确认后导入。")
+
+      if item.disposition == .conflict {
+        Text("目标路径重复、无效，或本地草稿在生成预览后已变化。请检查源文件并重新生成预览。")
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.risk)
+      } else if item.disposition == .unchanged {
+        Text("与当前本地草稿相同，将自动跳过。")
           .font(.caption)
           .foregroundStyle(.secondary)
+      } else if item.disposition == .update, let comparison = item.comparison {
+        DisclosureGroup("查看更新差异") {
+          migrationComparison(comparison)
+            .padding(.top, 6)
+        }
+        .font(.caption)
+      }
+    }
+    .padding(10)
+    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .accessibilityElement(children: .contain)
+  }
+
+  private func migrationDispositionBadge(_ disposition: ContentMigrationDraftDisposition) -> some View {
+    Text(migrationDispositionTitle(disposition))
+      .font(.caption2.weight(.semibold))
+      .foregroundStyle(migrationDispositionColor(disposition))
+      .padding(.horizontal, 7)
+      .padding(.vertical, 2)
+      .background(migrationDispositionColor(disposition).opacity(0.1), in: Capsule())
+  }
+
+  private func migrationComparison(_ comparison: DraftVersionComparison) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 8) {
+        Text("元数据 \(comparison.fieldChanges.count) 项")
+        Text("+\(comparison.addedLineCount) 行")
+          .foregroundStyle(WorkbenchTheme.success)
+        Text("−\(comparison.removedLineCount) 行")
+          .foregroundStyle(WorkbenchTheme.risk)
+      }
+      .font(.caption.monospacedDigit())
+
+      ForEach(comparison.fieldChanges, id: \.field) { change in
+        HStack(alignment: .top, spacing: 8) {
+          Text(migrationFieldTitle(change.field))
+            .fontWeight(.semibold)
+            .frame(width: 72, alignment: .leading)
+          Text(change.previousValue)
+            .foregroundStyle(WorkbenchTheme.risk)
+            .frame(maxWidth: .infinity, alignment: .leading)
+          Image(systemName: "arrow.right")
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+          Text(change.currentValue)
+            .foregroundStyle(WorkbenchTheme.success)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+      }
+
+      if !comparison.bodyLineDiffs.isEmpty {
+        VStack(alignment: .leading, spacing: 1) {
+          ForEach(Array(comparison.bodyLineDiffs.prefix(80))) { line in
+            Text(migrationDiffText(line))
+              .font(.caption2.monospaced())
+              .foregroundStyle(migrationDiffColor(line.kind))
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.horizontal, 6)
+              .padding(.vertical, 2)
+          }
+        }
+        .textSelection(.enabled)
+        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+        if comparison.bodyLineDiffs.count > 80 {
+          Text("差异较大，此处显示前 80 行；已完整统计新增和删除行数。")
+            .foregroundStyle(.secondary)
+        }
       }
     }
   }
@@ -202,9 +331,10 @@ struct ContentMigrationAssistantView: View {
           .font(.caption)
           .foregroundStyle(.secondary)
         ForEach(Array(plan.imageMappings.prefix(5))) { mapping in
-          Text("\(mapping.sourcePath)  →  \(mapping.targetPath)")
+          let pathMapping = "\(mapping.sourcePath)  →  \(mapping.targetPath)"
+          Text(pathMapping)
             .font(.caption.monospaced())
-            .lineLimit(1)
+            .workbenchTruncatedIdentity(pathMapping)
         }
         if plan.imageMappings.count > 5 {
           Text("另有 \(plan.imageMappings.count - 5) 条图片路径映射。")
@@ -238,9 +368,10 @@ struct ContentMigrationAssistantView: View {
           .controlSize(.small)
         }
         ForEach(Array(plan.redirects.prefix(5))) { redirect in
-          Text("\(redirect.sourcePath)  →  \(redirect.targetPath)")
+          let redirectMapping = "\(redirect.sourcePath)  →  \(redirect.targetPath)"
+          Text(redirectMapping)
             .font(.caption.monospaced())
-            .lineLimit(1)
+            .workbenchTruncatedIdentity(redirectMapping)
         }
         if plan.redirects.count > 5 {
           Text("另有 \(plan.redirects.count - 5) 条重定向候选。")
@@ -268,11 +399,15 @@ struct ContentMigrationAssistantView: View {
 
   private var footer: some View {
     HStack {
+      Button("取消") { dismiss() }
+        .keyboardShortcut(.cancelAction)
+
       if let plan {
-        Text("确认后会新增或更新本地草稿；不会自动写入仓库。")
+        let selectedCount = selectedImportCount(in: plan)
+        Spacer()
+        Text("应用前会再次校验本地草稿；如已变化将停止改写，也不会自动写入仓库。")
           .font(.caption)
           .foregroundStyle(.secondary)
-        Spacer()
         Button {
           apply(plan)
         } label: {
@@ -284,13 +419,14 @@ struct ContentMigrationAssistantView: View {
             }
           } else {
             Label {
-              Text("确认导入 \(plan.drafts.count) 篇")
+              Text("确认导入 \(selectedCount) 篇")
             } icon: {
               Image(systemName: "tray.and.arrow.down.fill")
             }
           }
         }
-        .disabled(isApplying || plan.drafts.isEmpty)
+        .workbenchProminentActionStyle()
+        .disabled(isApplying || selectedCount == 0)
         .keyboardShortcut(.defaultAction)
       } else {
         Spacer()
@@ -310,10 +446,13 @@ struct ContentMigrationAssistantView: View {
         isAnalyzing = false
       }
       do {
-        plan = try await store.makeContentMigrationPlan(sourceURL: url)
+        let generatedPlan = try await store.makeContentMigrationPlan(sourceURL: url)
+        plan = generatedPlan
+        selectedDraftIDs = selectableDraftIDs(in: generatedPlan)
         notice = .ready
       } catch {
         plan = nil
+        selectedDraftIDs.removeAll()
         notice = migrationErrorNotice(error)
       }
     }
@@ -323,9 +462,17 @@ struct ContentMigrationAssistantView: View {
     isApplying = true
     defer { isApplying = false }
     do {
-      let summary = try store.applyContentMigration(plan)
+      let summary = try store.applyContentMigration(plan, selectedDraftIDs: selectedDraftIDs)
       notice = .completed(inserted: summary.insertedCount, updated: summary.updatedCount)
+      self.plan = nil
+      selectedDraftIDs.removeAll()
     } catch {
+      if let migrationError = error as? ContentMigrationError,
+         case .draftsChanged = migrationError {
+        let refreshedPlan = store.refreshContentMigrationPlanReview(plan)
+        self.plan = refreshedPlan
+        selectedDraftIDs.formIntersection(selectableDraftIDs(in: refreshedPlan))
+      }
       notice = migrationErrorNotice(error)
     }
   }
@@ -343,6 +490,8 @@ struct ContentMigrationAssistantView: View {
       return .invalidExport(details)
     case .profileChanged:
       return .profileChanged
+    case .draftsChanged:
+      return .failure(migrationError.localizedDescription)
     case .sourceOutsideSelectedDirectory:
       return .failure(migrationError.localizedDescription)
     case let .sourceLimitExceeded(details):
@@ -356,37 +505,36 @@ struct ContentMigrationAssistantView: View {
     }
   }
 
-  @ViewBuilder
-  private func migrationNoticeText(_ notice: ContentMigrationNotice) -> some View {
+  private func migrationNoticeMessage(_ notice: ContentMigrationNotice) -> String {
     switch notice {
     case .analyzing:
-      Text("正在分析导出内容…")
+      return String(localized: "正在分析导出内容…")
     case .ready:
-      Text("已生成转换预览，可检查文章、图片路径和重定向后再导入。")
+      return String(localized: "已生成转换预览，可检查文章、图片路径和重定向后再导入。")
     case let .completed(inserted, updated):
-      Text("导入完成：新增 \(inserted) 篇，更新 \(updated) 篇。")
+      return String(localized: "导入完成：新增 \(inserted) 篇，更新 \(updated) 篇。")
     case .unsupportedSource:
-      Text("请选择 WordPress WXR、RSS/Atom、JSON 导出文件或 Markdown 文件夹。")
+      return String(localized: "请选择 WordPress WXR、RSS/Atom、JSON 导出文件或 Markdown 文件夹。")
     case let .unreadableSource(path):
-      Text("无法读取导入来源：\(path)")
+      return String(localized: "无法读取导入来源：\(path)")
     case let .invalidExport(details):
-      Text("无法识别导出内容：\(details)")
+      return String(localized: "无法识别导出内容：\(details)")
     case .profileChanged:
-      Text("迁移计划属于另一个站点配置，请重新生成预览后再导入。")
+      return String(localized: "迁移计划属于另一个站点配置，请重新生成预览后再导入。")
     case .fileTooLarge:
-      Text("导出文件超过 100 MB，请拆分后分批导入。")
+      return String(localized: "导出文件超过 100 MB，请拆分后分批导入。")
     case .tooManyMarkdownFiles:
-      Text("Markdown 文件超过 10,000 个，请拆分文件夹后分批导入。")
+      return String(localized: "Markdown 文件超过 10,000 个，请拆分文件夹后分批导入。")
     case .copiedRedirectCSV:
-      Text("已复制重定向 CSV。")
+      return String(localized: "已复制重定向 CSV。")
     case let .exportedRedirectCSV(filename):
-      Text("已导出重定向 CSV：\(filename)")
+      return String(localized: "已导出重定向 CSV：\(filename)")
     case .copyFailed:
-      Text("复制失败，请重试。")
+      return String(localized: "复制失败，请重试。")
     case let .exportFailed(details):
-      Text("无法导出重定向 CSV：\(details)")
+      return String(localized: "无法导出重定向 CSV：\(details)")
     case let .failure(details):
-      Text("操作失败：\(details)")
+      return String(localized: "操作失败：\(details)")
     }
   }
 
@@ -397,6 +545,67 @@ struct ContentMigrationAssistantView: View {
       notice = .exportedRedirectCSV(url.lastPathComponent)
     } catch {
       notice = .exportFailed(error.localizedDescription)
+    }
+  }
+
+  private func selectableDraftIDs(in plan: ContentMigrationPlan) -> Set<UUID> {
+    Set(plan.reviewItems.filter { $0.disposition.isSelectable }.map(\.id))
+  }
+
+  private func selectedImportCount(in plan: ContentMigrationPlan) -> Int {
+    plan.reviewItems.count {
+      $0.disposition.isSelectable && selectedDraftIDs.contains($0.id)
+    }
+  }
+
+  private func migrationDispositionTitle(_ disposition: ContentMigrationDraftDisposition) -> String {
+    switch disposition {
+    case .insert: "新增"
+    case .update: "更新"
+    case .unchanged: "相同"
+    case .conflict: "冲突"
+    }
+  }
+
+  private func migrationDispositionColor(_ disposition: ContentMigrationDraftDisposition) -> Color {
+    switch disposition {
+    case .insert: WorkbenchTheme.success
+    case .update: WorkbenchTheme.primary
+    case .unchanged: .secondary
+    case .conflict: WorkbenchTheme.risk
+    }
+  }
+
+  private func migrationDiffText(_ line: DraftVersionLineDiff) -> String {
+    switch line.kind {
+    case .added: "+ \(line.text)"
+    case .removed: "− \(line.text)"
+    case .unchanged: "  \(line.text)"
+    case .skipped: "… 省略 \(line.skippedLineCount) 行 …"
+    }
+  }
+
+  private func migrationFieldTitle(_ field: DraftVersionEditableField) -> String {
+    switch field {
+    case .title: "标题"
+    case .date: "日期"
+    case .slug: "Slug"
+    case .tags: "标签"
+    case .categories: "分类"
+    case .authors: "作者"
+    case .draftState: "草稿状态"
+    case .visibility: "可见性"
+    case .summary: "摘要"
+    case .cover: "封面"
+    case .attachments: "附件"
+    }
+  }
+
+  private func migrationDiffColor(_ kind: DraftVersionLineDiffKind) -> Color {
+    switch kind {
+    case .added: WorkbenchTheme.success
+    case .removed: WorkbenchTheme.risk
+    case .unchanged, .skipped: .secondary
     }
   }
 }

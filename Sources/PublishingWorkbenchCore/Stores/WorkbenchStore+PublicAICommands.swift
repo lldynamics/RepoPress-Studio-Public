@@ -36,7 +36,8 @@ extension WorkbenchStore {
     aiStore.seoReport(for: draft)
   }
 
-  public func saveAIAPIKey(_ token: String) {
+  @discardableResult
+  public func saveAIAPIKey(_ token: String) -> Bool {
     aiStore.saveAIAPIKey(token)
   }
 
@@ -54,6 +55,14 @@ extension WorkbenchStore {
 
   public func setAIChatModelGrade(_ grade: AIChatModelGrade) {
     aiStore.setAIChatModelGrade(grade)
+  }
+
+  public func setAIChatReasoningLevel(_ level: AIChatReasoningLevel) {
+    aiStore.setAIChatReasoningLevel(level)
+  }
+
+  public func setAIChatKnowledgePolicy(_ policy: KnowledgeRetrievalPolicy) {
+    aiStore.setAIChatKnowledgePolicy(policy)
   }
 
   public func setAIChatCustomModel(_ model: String) {

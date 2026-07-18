@@ -198,6 +198,34 @@ final class PreflightCheckServiceTests: XCTestCase {
     XCTAssertTrue(issues.contains { $0.title == "图片路径不安全" && $0.severity == .error })
   }
 
+  func testVideoAttachmentDoesNotRequireImageMetadata() {
+    let profile = SiteProfile.defaultProfile
+    let attachment = DraftAttachment(
+      originalFilename: "walkthrough.mp4",
+      relativePublishPath: "/videos/2026/walkthrough.mp4",
+      repositoryPath: "static/videos/2026/walkthrough.mp4",
+      altText: "",
+      caption: ""
+    )
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Video Attachment",
+      slug: "video-attachment",
+      bodyMarkdown: "This body is intentionally long enough to isolate video attachment preflight behavior.",
+      attachments: [attachment]
+    )
+
+    let issues = PreflightCheckService().run(
+      draft: draft,
+      allDrafts: [draft],
+      profile: profile,
+      includeRepositoryReadiness: false
+    )
+
+    XCTAssertFalse(issues.contains { $0.title == CoreL10n.text("图片缺少 alt") })
+    XCTAssertFalse(issues.contains { $0.field == "attachments" && $0.severity == .error })
+  }
+
   func testReportsPublicRiskWithoutEchoingSecretValue() {
     let profile = SiteProfile.defaultProfile
     let secret = "sk-12345678901234567890abcd"

@@ -9,7 +9,8 @@ extension WorkbenchStore {
     repositoryStore.setRepositoryProvider(provider, store: self)
   }
 
-  public func saveRepositoryAccessToken(_ token: String) {
+  @discardableResult
+  public func saveRepositoryAccessToken(_ token: String) -> Bool {
     repositoryStore.saveRepositoryAccessToken(token, store: self)
   }
 
@@ -40,7 +41,7 @@ extension WorkbenchStore {
 
   @discardableResult
   public func createRemoteRepositoryForActiveProfile(
-    privateRepository: Bool = false
+    privateRepository: Bool = true
   ) async -> RemoteRepositoryCreationResult? {
     await repositoryStore.createRemoteRepositoryForActiveProfile(privateRepository: privateRepository, store: self)
   }

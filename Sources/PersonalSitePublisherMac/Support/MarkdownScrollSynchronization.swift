@@ -25,9 +25,15 @@ final class MarkdownScrollViewSyncBridge: NSObject {
   private let onProgressChanged: (Double) -> Void
   private let service = MarkdownScrollSynchronizationService()
   private weak var scrollView: NSScrollView?
-  private var lastAppliedUpdateID: UUID?
+  private var lastAppliedSynchronizationUpdateID: UUID?
+  private var lastAppliedRestorationUpdateID: UUID?
   private var lastReportedProgress: Double?
   private var isApplyingUpdate = false
+
+  private enum UpdatePurpose {
+    case synchronization
+    case restoration
+  }
 
   init(
     source: MarkdownScrollSyncSource,
@@ -45,6 +51,7 @@ final class MarkdownScrollViewSyncBridge: NSObject {
   func observe(_ scrollView: NSScrollView) {
     NotificationCenter.default.removeObserver(self)
     self.scrollView = scrollView
+    lastAppliedSynchronizationUpdateID = nil
     scrollView.contentView.postsBoundsChangedNotifications = true
     NotificationCenter.default.addObserver(
       self,
@@ -59,10 +66,33 @@ final class MarkdownScrollViewSyncBridge: NSObject {
     includingOwnSource: Bool = false,
     allowDeferredRetry: Bool = true
   ) {
+    apply(
+      update,
+      includingOwnSource: includingOwnSource,
+      allowDeferredRetry: allowDeferredRetry,
+      purpose: .synchronization
+    )
+  }
+
+  func restore(_ update: MarkdownScrollSyncUpdate?) {
+    apply(
+      update,
+      includingOwnSource: true,
+      allowDeferredRetry: true,
+      purpose: .restoration
+    )
+  }
+
+  private func apply(
+    _ update: MarkdownScrollSyncUpdate?,
+    includingOwnSource: Bool,
+    allowDeferredRetry: Bool,
+    purpose: UpdatePurpose
+  ) {
     guard let update,
           let scrollView,
           (includingOwnSource || update.source != source),
-          update.id != lastAppliedUpdateID else {
+          update.id != lastAppliedUpdateID(for: purpose) else {
       return
     }
 
@@ -76,13 +106,14 @@ final class MarkdownScrollViewSyncBridge: NSObject {
         self?.apply(
           update,
           includingOwnSource: includingOwnSource,
-          allowDeferredRetry: false
+          allowDeferredRetry: false,
+          purpose: purpose
         )
       }
       return
     }
 
-    lastAppliedUpdateID = update.id
+    setLastAppliedUpdateID(update.id, for: purpose)
     let y = service.contentOffset(
       progress: update.progress,
       viewportLength: viewportLength,
@@ -96,6 +127,24 @@ final class MarkdownScrollViewSyncBridge: NSObject {
     lastReportedProgress = update.progress
     DispatchQueue.main.async { [weak self] in
       self?.isApplyingUpdate = false
+    }
+  }
+
+  private func lastAppliedUpdateID(for purpose: UpdatePurpose) -> UUID? {
+    switch purpose {
+    case .synchronization:
+      return lastAppliedSynchronizationUpdateID
+    case .restoration:
+      return lastAppliedRestorationUpdateID
+    }
+  }
+
+  private func setLastAppliedUpdateID(_ id: UUID, for purpose: UpdatePurpose) {
+    switch purpose {
+    case .synchronization:
+      lastAppliedSynchronizationUpdateID = id
+    case .restoration:
+      lastAppliedRestorationUpdateID = id
     }
   }
 

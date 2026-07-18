@@ -5,56 +5,133 @@ import SwiftUI
 struct MacMarkdownComposerView: View {
   @Binding var draft: ArticleDraft
   let store: WorkbenchStore
-  @ObservedObject private var publishingState: WorkbenchPublishingFeatureFacade
-  @ObservedObject private var aiState: WorkbenchAIFeatureFacade
-  @ObservedObject private var persistenceState: WorkbenchPersistenceFeatureFacade
+  let aiActions: WorkbenchAIFeatureFacade
+  @StateObject private var editorState: WorkbenchMarkdownEditorFeatureFacade
   @State private var editorBody: String
   @State private var editorStatistics = MarkdownEditorStatistics.empty
-  @State private var selectedRange = NSRange(location: 0, length: 0)
+  @State private var selectedRange: NSRange
   @State private var isImageDropTargeted = false
   @State private var activeSelectionAIAction: AIPublishingActionKind?
   @State private var selectionAIActionTask: Task<Void, Never>?
   @State private var selectionAIActionRequestID: UUID?
   @State private var aiPromptClipboardTask: Task<Void, Never>?
   @State private var aiPromptClipboardRequestID: UUID?
-  @State private var isFindReplacePresented = false
-  @State private var findQuery = ""
-  @State private var replacementText = ""
-  @State private var isFindCaseSensitive = false
-  @State private var isFindWholeWord = false
-  @State private var isFindRegularExpression = false
+  @State private var isFindReplacePresented: Bool
+  @State private var findQuery: String
+  @State private var replacementText: String
+  @State private var isFindCaseSensitive: Bool
+  @State private var isFindWholeWord: Bool
+  @State private var isFindRegularExpression: Bool
   @State private var findReplaceMessage = ""
   @State private var editorEditRequest: MarkdownTextEditRequest?
+  @State private var markdownTextFocusRequest: MarkdownTextFocusRequest?
   @State private var scrollSyncUpdate: MarkdownScrollSyncUpdate?
+  @State private var editorScrollRestorationUpdate: MarkdownScrollSyncUpdate?
+  @State private var previewScrollRestorationUpdate: MarkdownScrollSyncUpdate?
+  @State private var editorScrollProgress: Double
+  @State private var previewScrollProgress: Double
   @State private var selectionActionMessage = ""
   @State private var selectionEditPreview: AIPublishingSelectionEditPreview?
   @State private var isShortcutHelpPresented = false
   @State private var isOutlinePresented = false
-  @State private var outlineItems: [MarkdownOutlineItem] = []
+  @State private var isInternalLinkPickerPresented = false
+  @State private var isDiagnosticsPresented = false
+  @State private var isSnippetLibraryPresented = false
+  @State private var markdownAnalysis = MarkdownEditorAnalysisSnapshot.empty
+  @State private var markdownAnalysisGeneration: UInt64 = 0
+  @State private var appliedMarkdownAnalysisGeneration: UInt64 = 0
+  @State private var markdownAnalysisTask: Task<Void, Never>?
+  @State private var insertedImageMetadataDrafts: [InsertedImageMetadataDraft] = []
+  @State private var activeInsertedImageMetadataID: UUID?
   @State private var editorBodyRevision: UInt64
   @AppStorage("markdownEditorSynchronizedScrolling") private var isSynchronizedScrollingEnabled = true
+  @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
+  private var editorFontSize = MarkdownEditorComfortConfiguration.defaultFontSize
+  @AppStorage(MarkdownEditorComfortPreferences.lineSpacingKey)
+  private var editorLineSpacing = MarkdownEditorComfortConfiguration.defaultLineSpacing
+  @AppStorage(MarkdownEditorComfortPreferences.bodyWidthKey)
+  private var editorBodyWidth = MarkdownEditorComfortConfiguration.defaultBodyWidth
+  @AppStorage(MarkdownEditorComfortPreferences.spellCheckEnabledKey)
+  private var isEditorSpellCheckEnabled = MarkdownEditorComfortConfiguration.defaultSpellCheckEnabled
+  @AppStorage(MarkdownEditorComfortPreferences.typewriterModeEnabledKey)
+  private var isTypewriterModeEnabled = MarkdownEditorComfortConfiguration.defaultTypewriterModeEnabled
+  @AppStorage(MarkdownEditorComfortPreferences.currentParagraphHighlightEnabledKey)
+  private var isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration.defaultCurrentParagraphHighlightEnabled
+  @AppStorage(MarkdownEditorComfortPreferences.writingGoalKey)
+  private var editorWritingGoal = MarkdownEditorComfortConfiguration.defaultWritingGoal
   private let findReplaceService = MarkdownFindReplaceService()
   private let outlineService = MarkdownOutlineService()
+  private let markdownAnalysisService = MarkdownEditorAnalysisService()
+  private let imageMetadataEditingService = ImageMetadataEditingService()
+
+  private var inlineDiagnostics: [MarkdownInlineDiagnostic] {
+    guard appliedMarkdownAnalysisGeneration == markdownAnalysisGeneration else { return [] }
+    return markdownAnalysis.diagnostics
+  }
+
+  private var outlineItems: [MarkdownOutlineItem] {
+    guard appliedMarkdownAnalysisGeneration == markdownAnalysisGeneration else { return [] }
+    return markdownAnalysis.outlineItems
+  }
+
+  private var editorComfortConfiguration: MarkdownEditorComfortConfiguration {
+    MarkdownEditorComfortConfiguration(
+      fontSize: editorFontSize,
+      lineSpacing: editorLineSpacing,
+      bodyWidth: editorBodyWidth,
+      spellCheckEnabled: isEditorSpellCheckEnabled,
+      typewriterModeEnabled: isTypewriterModeEnabled,
+      currentParagraphHighlightEnabled: isCurrentParagraphHighlightEnabled
+    )
+  }
 
   init(draft: Binding<ArticleDraft>, store: WorkbenchStore) {
     _draft = draft
-    let buffer = store.draftBodyEditorBuffer(for: draft.wrappedValue.id)
+    let draftID = draft.wrappedValue.id
+    let buffer = store.draftBodyEditorBuffer(for: draftID)
+    let bodyUTF16Count = (buffer.bodyMarkdown as NSString).length
+    let editorSession = store.markdownEditorSessionState(for: draftID)
+      .normalized(bodyUTF16Count: bodyUTF16Count)
     _editorBody = State(initialValue: buffer.bodyMarkdown)
     _editorBodyRevision = State(initialValue: buffer.revision)
+    _selectedRange = State(
+      initialValue: editorSession.selectedRange(bodyUTF16Count: bodyUTF16Count)
+    )
+    _isFindReplacePresented = State(initialValue: editorSession.isFindReplacePresented)
+    _findQuery = State(initialValue: editorSession.findQuery)
+    _replacementText = State(initialValue: editorSession.replacementText)
+    _isFindCaseSensitive = State(initialValue: editorSession.isFindCaseSensitive)
+    _isFindWholeWord = State(initialValue: editorSession.isFindWholeWord)
+    _isFindRegularExpression = State(initialValue: editorSession.isFindRegularExpression)
+    _editorScrollProgress = State(initialValue: editorSession.editorScrollProgress)
+    _previewScrollProgress = State(initialValue: editorSession.previewScrollProgress)
+    _editorScrollRestorationUpdate = State(
+      initialValue: MarkdownScrollSyncUpdate(
+        source: .editor,
+        progress: editorSession.editorScrollProgress
+      )
+    )
+    _previewScrollRestorationUpdate = State(
+      initialValue: MarkdownScrollSyncUpdate(
+        source: .preview,
+        progress: editorSession.previewScrollProgress
+      )
+    )
     self.store = store
-    _publishingState = ObservedObject(wrappedValue: store.publishing)
-    _aiState = ObservedObject(wrappedValue: store.ai)
-    _persistenceState = ObservedObject(wrappedValue: store.persistenceStatus)
+    aiActions = store.ai
+    _editorState = StateObject(
+      wrappedValue: WorkbenchMarkdownEditorFeatureFacade(store: store, draftID: draftID)
+    )
   }
 
   var body: some View {
     VStack(spacing: 0) {
       MacMarkdownEditorToolbar(
         title: $draft.title,
-        markdownPath: store.profile(for: draft).markdownPath(for: draft),
-        lastSaveStatus: persistenceState.lastSaveStatus,
-        hasUnsavedChanges: persistenceState.hasUnsavedChanges,
-        editorDisplayMode: publishingState.editorDisplayMode,
+        markdownPath: editorState.profile(for: draft).markdownPath(for: draft),
+        lastSaveStatus: editorState.lastSaveStatus,
+        hasUnsavedChanges: editorState.hasUnsavedChanges,
+        editorDisplayMode: editorState.editorDisplayMode,
         isSelectionAIActionRunning: isSelectionAIActionRunning,
         isOutlinePresented: $isOutlinePresented,
         outlineItems: outlineItems,
@@ -62,6 +139,7 @@ struct MacMarkdownComposerView: View {
         onShowFindReplace: showFindReplace,
         onShowOutline: showOutline,
         onSelectOutlineItem: selectOutlineItem,
+        onPerformOutlineAction: performOutlineAction,
         onShowShortcutHelp: {
           isShortcutHelpPresented = true
         },
@@ -131,24 +209,55 @@ struct MacMarkdownComposerView: View {
             .padding(.top, hasSelectedText ? 58 : 10)
             .zIndex(2)
         }
+        if let metadata = activeInsertedImageMetadataBinding,
+           let activeIndex = activeInsertedImageMetadataIndex {
+          InsertedImageMetadataPanel(
+            metadata: metadata,
+            position: activeIndex + 1,
+            total: insertedImageMetadataDrafts.count,
+            canMovePrevious: activeIndex > 0,
+            canMoveNext: activeIndex + 1 < insertedImageMetadataDrafts.count,
+            onSetCover: { isCover in
+              setPendingImageCover(isCover, attachmentID: metadata.wrappedValue.id)
+            },
+            onMovePrevious: moveToPreviousInsertedImage,
+            onApplyAndAdvance: applyInsertedImageMetadataAndAdvance,
+            onOpenInspector: openInsertedImageInspector,
+            onDismiss: dismissInsertedImageMetadata
+          )
+          .padding(.top, 10)
+          .zIndex(3)
+        }
       }
     }
     .focusedSceneValue(\.markdownEditorCommandActions, commandActions)
     .onAppear {
       syncEditorBodyFromStore()
+      restoreEditorSession(for: draft.id)
       syncActiveEditorSelection()
+      applyEditorFocusRequest()
+      scheduleMarkdownAnalysis(immediate: true)
     }
-    .onChange(of: publishingState.editorFocusRequest?.id) { _, _ in
+    .onChange(of: editorState.editorFocusRequest?.id) { _, _ in
       applyEditorFocusRequest()
     }
     .onChange(of: selectedRange) { _, _ in
       syncActiveEditorSelection()
+      saveCurrentEditorSession()
     }
     .onChange(of: findQuery) { _, _ in
       findReplaceMessage = ""
+      saveCurrentEditorSession()
     }
     .onChange(of: findOptions) { _, _ in
       findReplaceMessage = ""
+      saveCurrentEditorSession()
+    }
+    .onChange(of: replacementText) { _, _ in
+      saveCurrentEditorSession()
+    }
+    .onChange(of: isFindReplacePresented) { _, _ in
+      saveCurrentEditorSession()
     }
     .onChange(of: isSynchronizedScrollingEnabled) { _, isEnabled in
       guard isEnabled, let scrollSyncUpdate else { return }
@@ -160,7 +269,8 @@ struct MacMarkdownComposerView: View {
     .onChange(of: editorBody) { previousBody, _ in
       syncActiveEditorSelection()
       stageEditorBody(replacingBaseBody: previousBody)
-      refreshOutlineIfPresented()
+      scheduleMarkdownAnalysis()
+      saveCurrentEditorSession()
     }
     .onChange(of: draft.bodyMarkdown) { _, _ in
       syncEditorBodyFromStore()
@@ -169,19 +279,64 @@ struct MacMarkdownComposerView: View {
       syncEditorBodyFromStore()
     }
     .onChange(of: draft.id) { oldDraftID, _ in
+      editorState.trackDraft(draft.id)
+      persistEditorSession(for: oldDraftID)
+      dismissInsertedImageMetadata()
       cancelSelectionAIAction()
       cancelAIPromptClipboardTask()
       editorEditRequest = nil
+      markdownTextFocusRequest = nil
       scrollSyncUpdate = nil
       store.flushDraftBodyEditorBuffer(for: oldDraftID)
-      syncEditorBodyFromStore()
+      syncEditorBodyFromStore(force: true)
+      restoreEditorSession(for: draft.id)
       syncActiveEditorSelection()
-      refreshOutlineIfPresented()
+      scheduleMarkdownAnalysis(immediate: true)
     }
     .sheet(isPresented: $isShortcutHelpPresented) {
       MarkdownShortcutHelpPanel()
     }
+    .sheet(isPresented: $isInternalLinkPickerPresented) {
+      MarkdownInternalLinkPicker(
+        draft: previewDraft,
+        drafts: editorState.drafts,
+        profile: editorState.profile(for: previewDraft),
+        selectedText: selectedText(in: editorBody),
+        onInsert: insertInternalLink,
+        onOpenBacklink: { draftID in
+          _ = store.focusDraft(draftID, section: .writing)
+        },
+        onInsertExternalLink: {
+          applyMarkdownFormatting(.link)
+        }
+      )
+    }
+    .sheet(isPresented: $isDiagnosticsPresented) {
+      MarkdownDiagnosticsPanel(
+        diagnostics: inlineDiagnostics,
+        onSelect: selectDiagnostic,
+        onQuickFix: applyDiagnosticQuickFix
+      )
+    }
+    .sheet(isPresented: $isSnippetLibraryPresented) {
+      MarkdownSnippetLibraryPanel(
+        draft: previewDraft,
+        siteName: editorState.profile(for: previewDraft).name,
+        storedCustomSnippets: store.customMarkdownSnippets,
+        onInsert: insertSnippet,
+        onSaveCustomSnippet: store.saveCustomMarkdownSnippet,
+        onDeleteCustomSnippet: { snippet in
+          store.deleteCustomMarkdownSnippet(
+            id: snippet.id,
+            siteProfileID: previewDraft.siteProfileID
+          )
+        }
+      )
+    }
     .onDisappear {
+      markdownAnalysisTask?.cancel()
+      markdownAnalysisTask = nil
+      persistEditorSession(for: draft.id)
       cancelSelectionAIAction()
       cancelAIPromptClipboardTask()
       store.flushDraftBodyEditorBuffer(for: draft.id)
@@ -191,11 +346,13 @@ struct MacMarkdownComposerView: View {
 
   private var editorSurface: some View {
     Group {
-      switch publishingState.editorDisplayMode {
+      switch editorState.editorDisplayMode {
       case .edit:
         markdownEditor
+          .padding(14)
       case .preview:
         markdownPreview
+          .padding(14)
       case .split:
         HSplitView {
           markdownEditor
@@ -203,6 +360,7 @@ struct MacMarkdownComposerView: View {
           markdownPreview
             .frame(minWidth: 320)
         }
+        .padding(14)
       }
     }
     .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
@@ -217,17 +375,23 @@ struct MacMarkdownComposerView: View {
   private var markdownPreview: some View {
     MarkdownPreviewPane(
       draft: previewDraft,
-      profile: store.profile(for: draft),
       isSynchronizedScrollingEnabled: $isSynchronizedScrollingEnabled,
       scrollSyncUpdate: scrollSyncUpdate,
+      scrollRestorationUpdate: previewScrollRestorationUpdate,
       onScrollProgressChanged: { progress in
         updateSynchronizedScroll(source: .preview, progress: progress)
       }
     )
+    .background(Color(nsColor: .textBackgroundColor))
+    .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .overlay(
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+    )
   }
 
   private var editorBufferRevision: UInt64 {
-    publishingState.draftBodyEditorBuffer(for: draft.id).revision
+    editorState.draftBodyEditorBuffer(for: draft.id).revision
   }
 
   private func stageEditorBody(replacingBaseBody baseBodyMarkdown: String) {
@@ -247,35 +411,40 @@ struct MacMarkdownComposerView: View {
     selectionActionMessage = "另一窗口已更新正文，刚才的陈旧修改未写入；已同步到最新版本。"
   }
 
-  private func syncEditorBodyFromStore() {
-    let buffer = publishingState.draftBodyEditorBuffer(for: draft.id)
-    guard buffer.revision != editorBodyRevision else { return }
+  private func syncEditorBodyFromStore(force: Bool = false) {
+    let buffer = editorState.draftBodyEditorBuffer(for: draft.id)
+    guard force || buffer.revision != editorBodyRevision else { return }
     editorBody = buffer.bodyMarkdown
     editorBodyRevision = buffer.revision
   }
 
-  private func applyDraftUpdate(_ updated: ArticleDraft) {
+  @discardableResult
+  private func applyDraftUpdate(_ updated: ArticleDraft) -> Bool {
     guard let result = store.replaceDraftBody(
       updated.bodyMarkdown,
       for: updated.id,
       expectedRevision: editorBodyRevision
-    ) else { return }
+    ) else { return false }
     editorBody = result.buffer.bodyMarkdown
     editorBodyRevision = result.buffer.revision
     guard result.wasAccepted else {
       selectionActionMessage = "另一窗口已更新正文，刚才的编辑命令未应用；已同步到最新版本。"
-      return
+      return false
     }
     draft = updated
+    return true
   }
 
   private var markdownEditor: some View {
     VStack(spacing: 0) {
       MacMarkdownFormattingToolbar(
         characterCount: editorStatistics.characterCount,
+        hanCharacterCount: editorStatistics.hanCharacterCount,
         wordCount: editorStatistics.wordCount,
+        writingUnitCount: editorStatistics.writingUnitCount,
         lineCount: editorStatistics.lineCount,
         readingMinutes: editorStatistics.readingMinutes,
+        writingGoal: editorWritingGoal,
         onApplyMarkdownFormatting: applyMarkdownFormatting,
         onWrapSelection: { prefix, suffix, placeholder in
           wrapSelection(prefix: prefix, suffix: suffix, placeholder: placeholder)
@@ -284,8 +453,21 @@ struct MacMarkdownComposerView: View {
         onInsertCodeBlock: insertCodeBlock,
         onInsertTable: insertTable,
         onInsertHorizontalRule: insertHorizontalRule,
+        onInsertInternalLink: {
+          isInternalLinkPickerPresented = true
+        },
+        onShowSnippets: {
+          isSnippetLibraryPresented = true
+        },
+        onShowDiagnostics: {
+          showDiagnostics()
+        },
+        diagnosticCount: inlineDiagnostics.count,
         onInsertImage: {
           insertImageReferences(ImageSelectionPanel.chooseImages())
+        },
+        onInsertVideo: {
+          insertVideoReferences(VideoSelectionPanel.chooseVideos())
         }
       )
       Divider()
@@ -296,11 +478,18 @@ struct MacMarkdownComposerView: View {
         MacMarkdownTextView(
           text: $editorBody,
           selectedRange: $selectedRange,
+          comfortConfiguration: editorComfortConfiguration,
+          diagnostics: inlineDiagnostics,
           editRequest: editorEditRequest,
+          focusRequest: markdownTextFocusRequest,
           scrollSyncUpdate: isSynchronizedScrollingEnabled ? scrollSyncUpdate : nil,
+          scrollRestorationUpdate: editorScrollRestorationUpdate,
           onStatisticsChanged: { editorStatistics = $0 },
           onFileDropTargetChanged: { isImageDropTargeted = $0 },
-          onPasteMessage: { selectionActionMessage = $0 },
+          onPasteMessage: { message in
+            selectionActionMessage = message
+            EditorAccessibilityAnnouncementCenter.announce(message)
+          },
           onEditRequestHandled: { requestID in
             guard editorEditRequest?.id == requestID else { return }
             editorEditRequest = nil
@@ -321,6 +510,7 @@ struct MacMarkdownComposerView: View {
             .padding(.vertical, 18)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
 
         if isImageDropTargeted {
@@ -351,7 +541,6 @@ struct MacMarkdownComposerView: View {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
     )
-      .padding(14)
   }
 
   private var canShowSelectionActions: Bool {
@@ -367,19 +556,16 @@ struct MacMarkdownComposerView: View {
   }
 
   private var latestAssistantMessageForCurrentDraft: AIPublishingChatMessage? {
-    guard aiState.chatDraftID == draft.id else {
-      return nil
-    }
-    return aiState.chatMessages.last { $0.role == .assistant }
+    editorState.latestAssistantMessage(for: draft.id)
   }
 
   private var isSelectionAIActionRunning: Bool {
-    activeSelectionAIAction != nil || aiState.isActionRunning
+    activeSelectionAIAction != nil || editorState.isAIActionRunning
   }
 
   private var isAIEnabledForDraft: Bool {
-    let profile = store.publishing.profile(for: draft)
-    return !profile.aiProviderConfig.requiresAPIKey || aiState.tokenAvailability.hasToken
+    let profile = editorState.profile(for: draft)
+    return !profile.aiProviderConfig.requiresAPIKey || editorState.aiTokenAvailability.hasToken
   }
 
   private func articleAIActionAvailability(
@@ -408,7 +594,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func activeAIActionForAvailability(fallback kind: AIPublishingActionKind) -> AIPublishingActionKind? {
-    activeSelectionAIAction ?? (aiState.isActionRunning ? kind : nil)
+    activeSelectionAIAction ?? (editorState.isAIActionRunning ? kind : nil)
   }
 
   private var selectionAIActionMenuItems: [AIPublishingActionMenuItem] {
@@ -450,11 +636,16 @@ struct MacMarkdownComposerView: View {
     let imageURLs = ImageFileSupport.supportedImageURLs(in: urls)
     guard !imageURLs.isEmpty else {
       selectionActionMessage = "没有可插入的图片文件。"
+      EditorAccessibilityAnnouncementCenter.announce(
+        String(localized: "没有可插入的图片文件。"),
+        priority: .high
+      )
       return
     }
 
     var updated = previewDraft
     var markdownBlocks: [String] = []
+    var insertedMetadata: [InsertedImageMetadataDraft] = []
     for url in imageURLs {
       let selectedAlt = selectedText(in: updated.bodyMarkdown).trimmedForPublishing
       var attachment = store.makeAttachment(from: url, draft: updated)
@@ -462,12 +653,161 @@ struct MacMarkdownComposerView: View {
         attachment.altText = selectedAlt
       }
       updated.attachments.append(attachment)
-      markdownBlocks.append("![\(attachment.altText)](\(attachment.relativePublishPath))")
+      markdownBlocks.append(
+        imageMetadataEditingService.markdownReference(
+          altText: attachment.altText,
+          imagePath: attachment.relativePublishPath
+        )
+      )
+      insertedMetadata.append(
+        InsertedImageMetadataDraft(
+          attachment: attachment,
+          coverAttachmentID: updated.coverAttachmentID
+        )
+      )
     }
 
-    applyDraftUpdate(replacingSelection(in: updated, with: markdownBlocks.joined(separator: "\n")))
-    store.scheduleImageWorkbenchCachesRefresh(for: updated)
-    selectionActionMessage = "已在光标位置插入 \(imageURLs.count) 张图片。"
+    let insertedDraft = replacingSelection(
+      in: updated,
+      with: markdownBlocks.joined(separator: "\n")
+    )
+    guard applyDraftUpdate(insertedDraft) else { return }
+
+    insertedImageMetadataDrafts = insertedMetadata
+    activeInsertedImageMetadataID = insertedMetadata.first?.id
+    store.scheduleImageWorkbenchCachesRefresh(for: insertedDraft)
+    selectionActionMessage = "已在光标位置插入 \(imageURLs.count) 张图片，请完善图片信息。"
+    EditorAccessibilityAnnouncementCenter.announceImageInsertion(count: imageURLs.count)
+  }
+
+  private func insertVideoReferences(_ urls: [URL]) {
+    let videoURLs = VideoFileSupport.supportedVideoURLs(in: urls)
+    guard !videoURLs.isEmpty else {
+      selectionActionMessage = "没有可插入的视频文件。"
+      EditorAccessibilityAnnouncementCenter.announce(
+        String(localized: "没有可插入的视频文件。"),
+        priority: .high
+      )
+      return
+    }
+
+    var updated = previewDraft
+    let selectedTitle = selectedText(in: updated.bodyMarkdown).trimmedForPublishing
+    let htmlBlocks = videoURLs.map { url in
+      let attachment = store.makeVideoAttachment(from: url, draft: updated)
+      updated.attachments.append(attachment)
+      let accessibleTitle = videoURLs.count == 1 && !selectedTitle.isEmpty
+        ? selectedTitle
+        : VideoFileSupport.accessibleTitle(for: url)
+      return VideoFileSupport.htmlEmbed(
+        publicPath: attachment.relativePublishPath,
+        accessibleTitle: accessibleTitle
+      )
+    }
+
+    let insertedDraft = replacingSelection(
+      in: updated,
+      with: htmlBlocks.joined(separator: "\n\n")
+    )
+    guard applyDraftUpdate(insertedDraft) else { return }
+    selectionActionMessage = String(
+      format: String(localized: "已在光标位置插入 %@ 个视频。"),
+      "\(videoURLs.count)"
+    )
+    EditorAccessibilityAnnouncementCenter.announceVideoInsertion(count: videoURLs.count)
+  }
+
+  private var activeInsertedImageMetadataIndex: Int? {
+    guard let activeInsertedImageMetadataID else { return nil }
+    return insertedImageMetadataDrafts.firstIndex { $0.id == activeInsertedImageMetadataID }
+  }
+
+  private var activeInsertedImageMetadataBinding: Binding<InsertedImageMetadataDraft>? {
+    guard let activeInsertedImageMetadataID,
+          let index = activeInsertedImageMetadataIndex else {
+      return nil
+    }
+    let fallback = insertedImageMetadataDrafts[index]
+    return Binding(
+      get: {
+        insertedImageMetadataDrafts.first { $0.id == activeInsertedImageMetadataID } ?? fallback
+      },
+      set: { metadata in
+        guard let currentIndex = insertedImageMetadataDrafts.firstIndex(where: {
+          $0.id == activeInsertedImageMetadataID
+        }) else { return }
+        insertedImageMetadataDrafts[currentIndex] = metadata
+      }
+    )
+  }
+
+  private func setPendingImageCover(_ isCover: Bool, attachmentID: UUID) {
+    for index in insertedImageMetadataDrafts.indices {
+      if insertedImageMetadataDrafts[index].id == attachmentID {
+        insertedImageMetadataDrafts[index].isCover = isCover
+      } else if isCover {
+        insertedImageMetadataDrafts[index].isCover = false
+      }
+    }
+  }
+
+  private func moveToPreviousInsertedImage() {
+    guard let index = activeInsertedImageMetadataIndex, index > 0 else { return }
+    activeInsertedImageMetadataID = insertedImageMetadataDrafts[index - 1].id
+  }
+
+  private func applyInsertedImageMetadataAndAdvance() {
+    guard let index = activeInsertedImageMetadataIndex else { return }
+    if index + 1 < insertedImageMetadataDrafts.count {
+      let currentID = insertedImageMetadataDrafts[index].id
+      guard applyInsertedImageMetadata(attachmentIDs: [currentID]) else { return }
+      activeInsertedImageMetadataID = insertedImageMetadataDrafts[index + 1].id
+      return
+    }
+
+    guard applyInsertedImageMetadata(
+      attachmentIDs: Set(insertedImageMetadataDrafts.map(\.id))
+    ) else { return }
+    dismissInsertedImageMetadata()
+  }
+
+  private func openInsertedImageInspector() {
+    guard let attachmentID = activeInsertedImageMetadataID else { return }
+    guard applyInsertedImageMetadata(
+      attachmentIDs: Set(insertedImageMetadataDrafts.map(\.id))
+    ) else { return }
+    guard store.focusImageInspector(draftID: draft.id, attachmentID: attachmentID) else {
+      selectionActionMessage = "找不到刚插入的图片，请刷新图片 Inspector 后重试。"
+      return
+    }
+    dismissInsertedImageMetadata()
+  }
+
+  private func applyInsertedImageMetadata(attachmentIDs: Set<UUID>) -> Bool {
+    var updated = previewDraft
+    for metadata in insertedImageMetadataDrafts where attachmentIDs.contains(metadata.id) {
+      guard let result = imageMetadataEditingService.updating(
+        draft: updated,
+        attachmentID: metadata.id,
+        altText: metadata.altText,
+        caption: metadata.caption,
+        isCover: metadata.isCover
+      ) else {
+        selectionActionMessage = "图片附件已变化，请重新插入或前往图片 Inspector 处理。"
+        return false
+      }
+      updated = result.draft
+    }
+
+    guard applyDraftUpdate(updated) else { return false }
+    store.scheduleImageWorkbenchCachesRefresh(for: updated, force: true)
+    selectionActionMessage = "图片 alt、caption 和封面状态已更新。"
+    return true
+  }
+
+  private func dismissInsertedImageMetadata() {
+    insertedImageMetadataDrafts = []
+    activeInsertedImageMetadataID = nil
   }
 
   private var commandActions: MarkdownEditorCommandActions {
@@ -478,6 +818,9 @@ struct MacMarkdownComposerView: View {
       showFindReplace: showFindReplace,
       showKeyboardShortcuts: {
         isShortcutHelpPresented = true
+      },
+      showSnippets: {
+        isSnippetLibraryPresented = true
       },
       findPrevious: findPrevious,
       findNext: findNext,
@@ -507,8 +850,77 @@ struct MacMarkdownComposerView: View {
     source: MarkdownScrollSyncSource,
     progress: Double
   ) {
+    let normalizedProgress = min(max(progress.isFinite ? progress : 0, 0), 1)
+    switch source {
+    case .editor:
+      editorScrollProgress = normalizedProgress
+      if isSynchronizedScrollingEnabled {
+        previewScrollProgress = normalizedProgress
+      }
+    case .preview:
+      previewScrollProgress = normalizedProgress
+      if isSynchronizedScrollingEnabled {
+        editorScrollProgress = normalizedProgress
+      }
+    }
+    saveCurrentEditorSession()
+
     guard isSynchronizedScrollingEnabled else { return }
-    scrollSyncUpdate = MarkdownScrollSyncUpdate(source: source, progress: progress)
+    scrollSyncUpdate = MarkdownScrollSyncUpdate(source: source, progress: normalizedProgress)
+  }
+
+  private func restoreEditorSession(for draftID: UUID) {
+    let bodyUTF16Count = (editorBody as NSString).length
+    let editorSession = store.markdownEditorSessionState(for: draftID)
+      .normalized(bodyUTF16Count: bodyUTF16Count)
+
+    selectedRange = editorSession.selectedRange(bodyUTF16Count: bodyUTF16Count)
+    isFindReplacePresented = editorSession.isFindReplacePresented
+    findQuery = editorSession.findQuery
+    replacementText = editorSession.replacementText
+    isFindCaseSensitive = editorSession.isFindCaseSensitive
+    isFindWholeWord = editorSession.isFindWholeWord
+    isFindRegularExpression = editorSession.isFindRegularExpression
+    editorScrollProgress = editorSession.editorScrollProgress
+    previewScrollProgress = editorSession.previewScrollProgress
+    scrollSyncUpdate = nil
+    editorScrollRestorationUpdate = MarkdownScrollSyncUpdate(
+      source: .editor,
+      progress: editorSession.editorScrollProgress
+    )
+    previewScrollRestorationUpdate = MarkdownScrollSyncUpdate(
+      source: .preview,
+      progress: editorSession.previewScrollProgress
+    )
+    findReplaceMessage = findQuery.isEmpty && isFindReplacePresented
+      ? "输入查找内容。"
+      : ""
+  }
+
+  private func currentEditorSessionState() -> MarkdownEditorSessionState {
+    MarkdownEditorSessionState(
+      selectedRange: selectedRange,
+      editorScrollProgress: editorScrollProgress,
+      previewScrollProgress: previewScrollProgress,
+      isFindReplacePresented: isFindReplacePresented,
+      findQuery: findQuery,
+      replacementText: replacementText,
+      isFindCaseSensitive: isFindCaseSensitive,
+      isFindWholeWord: isFindWholeWord,
+      isFindRegularExpression: isFindRegularExpression
+    )
+  }
+
+  private func saveCurrentEditorSession() {
+    persistEditorSession(for: draft.id)
+  }
+
+  private func persistEditorSession(for draftID: UUID) {
+    store.updateMarkdownEditorSessionState(
+      currentEditorSessionState(),
+      for: draftID,
+      bodyUTF16Count: (editorBody as NSString).length
+    )
   }
 
   private var findOptions: MarkdownFindOptions {
@@ -547,17 +959,51 @@ struct MacMarkdownComposerView: View {
   }
 
   private func showOutline() {
-    outlineItems = outlineService.outline(in: editorBody)
     isOutlinePresented = true
+    scheduleMarkdownAnalysis(immediate: true, includeOutline: true)
   }
 
-  private func refreshOutlineIfPresented() {
-    guard isOutlinePresented else { return }
-    outlineItems = outlineService.outline(in: editorBody)
+  private func showDiagnostics() {
+    isDiagnosticsPresented = true
+    guard appliedMarkdownAnalysisGeneration != markdownAnalysisGeneration else { return }
+    scheduleMarkdownAnalysis(immediate: true)
+  }
+
+  private func scheduleMarkdownAnalysis(
+    immediate: Bool = false,
+    includeOutline: Bool? = nil
+  ) {
+    markdownAnalysisTask?.cancel()
+    markdownAnalysisGeneration &+= 1
+    let generation = markdownAnalysisGeneration
+    let requestedMarkdown = editorBody
+    let requestedDraftID = draft.id
+    let shouldIncludeOutline = includeOutline ?? isOutlinePresented
+
+    markdownAnalysisTask = Task { @MainActor in
+      if !immediate {
+        do {
+          try await Task.sleep(for: .milliseconds(250))
+        } catch {
+          return
+        }
+      }
+      guard !Task.isCancelled else { return }
+      let snapshot = await markdownAnalysisService.analyzeInBackground(
+        requestedMarkdown,
+        includeOutline: shouldIncludeOutline
+      )
+      guard !Task.isCancelled,
+            markdownAnalysisGeneration == generation,
+            draft.id == requestedDraftID else { return }
+      markdownAnalysis = snapshot
+      appliedMarkdownAnalysisGeneration = generation
+      markdownAnalysisTask = nil
+    }
   }
 
   private func selectOutlineItem(_ item: MarkdownOutlineItem) {
-    if publishingState.editorDisplayMode == .preview {
+    if editorState.editorDisplayMode == .preview {
       store.setEditorDisplayMode(.edit)
     }
 
@@ -569,8 +1015,57 @@ struct MacMarkdownComposerView: View {
     selectionActionMessage = ""
   }
 
+  private func performOutlineAction(
+    _ action: MarkdownOutlineSectionAction,
+    item: MarkdownOutlineItem
+  ) {
+    switch action {
+    case .moveUp:
+      applyOutlineEdit(
+        outlineService.moveSectionEdit(in: editorBody, item: item, direction: .up),
+        message: "已上移章节「\(item.title)」。"
+      )
+    case .moveDown:
+      applyOutlineEdit(
+        outlineService.moveSectionEdit(in: editorBody, item: item, direction: .down),
+        message: "已下移章节「\(item.title)」。"
+      )
+    case .duplicate:
+      applyOutlineEdit(
+        outlineService.duplicateSectionEdit(in: editorBody, item: item),
+        message: "已创建章节「\(item.title)」的副本。"
+      )
+    case .delete:
+      applyOutlineEdit(
+        outlineService.deleteSectionEdit(in: editorBody, item: item),
+        message: "已删除章节「\(item.title)」，可撤销。"
+      )
+    case .copyAnchorLink:
+      guard let anchorLink = outlineService.anchorLink(for: item, in: editorBody) else {
+        selectionActionMessage = "章节已变化，请刷新大纲后重试。"
+        return
+      }
+      ClipboardWriter.copy(
+        anchorLink,
+        successMessage: "已复制锚点链接：\(anchorLink)"
+      ) { selectionActionMessage = $0 }
+    }
+  }
+
+  private func applyOutlineEdit(_ edit: MarkdownSmartEdit?, message: String) {
+    guard let edit else {
+      selectionActionMessage = "章节已变化，请刷新大纲后重试。"
+      return
+    }
+    if editorState.editorDisplayMode == .preview {
+      store.setEditorDisplayMode(.edit)
+    }
+    editorEditRequest = MarkdownTextEditRequest(expectedText: editorBody, edit: edit)
+    selectionActionMessage = message
+  }
+
   private func showFindReplace() {
-    if publishingState.editorDisplayMode == .preview {
+    if editorState.editorDisplayMode == .preview {
       store.setEditorDisplayMode(.edit)
     }
     let selected = selectedText(in: editorBody).trimmedForPublishing
@@ -593,6 +1088,9 @@ struct MacMarkdownComposerView: View {
     isFindReplacePresented = true
     guard !findQuery.isEmpty else {
       findReplaceMessage = "输入查找内容。"
+      EditorAccessibilityAnnouncementCenter.announceFindMessage(
+        String(localized: "输入查找内容。")
+      )
       return
     }
 
@@ -605,6 +1103,9 @@ struct MacMarkdownComposerView: View {
         options: findOptions
       ) else {
         findReplaceMessage = "没有找到匹配。"
+        EditorAccessibilityAnnouncementCenter.announceFindMessage(
+          String(localized: "没有找到匹配。")
+        )
         return
       }
 
@@ -616,8 +1117,16 @@ struct MacMarkdownComposerView: View {
       } else {
         findReplaceMessage = ""
       }
+      EditorAccessibilityAnnouncementCenter.announceFindResult(
+        result,
+        direction: direction
+      )
     } catch {
       findReplaceMessage = error.localizedDescription
+      EditorAccessibilityAnnouncementCenter.announceFindMessage(
+        error.localizedDescription,
+        isError: true
+      )
     }
   }
 
@@ -784,11 +1293,73 @@ struct MacMarkdownComposerView: View {
     | --- | --- |
     | 内容 | 内容 |
     """
-    applyDraftUpdate(replacingSelection(in: previewDraft, with: table))
+    let source = editorBody as NSString
+    let insertionRange = editingRange(in: source)
+    let updated = replacingSelection(in: previewDraft, with: table)
+    guard applyDraftUpdate(updated) else { return }
+
+    let updatedSource = updated.bodyMarkdown as NSString
+    let searchStart = min(insertionRange.location, updatedSource.length)
+    let searchRange = NSRange(
+      location: searchStart,
+      length: min(
+        updatedSource.length - searchStart,
+        (table as NSString).length + 2
+      )
+    )
+    let insertedTableRange = updatedSource.range(of: table, options: [], range: searchRange)
+    guard insertedTableRange.location != NSNotFound else { return }
+    let firstHeaderRange = updatedSource.range(
+      of: "列 1",
+      options: [],
+      range: insertedTableRange
+    )
+    if firstHeaderRange.location != NSNotFound {
+      selectedRange = firstHeaderRange
+    }
   }
 
   private func insertHorizontalRule() {
     applyDraftUpdate(replacingSelection(in: previewDraft, with: "---"))
+  }
+
+  private func insertInternalLink(_ suggestion: MarkdownInternalLinkSuggestion) {
+    let markdown = MarkdownInternalLinkService.markdownLink(
+      to: suggestion,
+      selectedText: selectedText(in: editorBody)
+    )
+    guard applyDraftUpdate(replacingRawSelection(in: previewDraft, with: markdown)) else { return }
+    selectionActionMessage = "已插入站内链接：\(suggestion.title)"
+  }
+
+  private func insertSnippet(_ snippet: MarkdownSnippet) {
+    let markdown = MarkdownSnippetLibraryService.expandedMarkdown(for: snippet, draft: previewDraft)
+    guard applyDraftUpdate(replacingSelection(in: previewDraft, with: markdown)) else { return }
+    let kindName = snippet.kind == .articleTemplate ? "文章模板" : "正文片段"
+    selectionActionMessage = "已插入\(kindName)：\(snippet.title)"
+  }
+
+  private func selectDiagnostic(_ diagnostic: MarkdownInlineDiagnostic) {
+    if editorState.editorDisplayMode == .preview {
+      store.setEditorDisplayMode(.edit)
+    }
+    selectedRange = clamped(diagnostic.range, length: (editorBody as NSString).length)
+    EditorAccessibilityAnnouncementCenter.announce(
+      "已定位：\(diagnostic.title)",
+      priority: .high
+    )
+  }
+
+  private func applyDiagnosticQuickFix(_ diagnostic: MarkdownInlineDiagnostic) {
+    guard let edit = MarkdownInlineDiagnosticService.quickFix(for: diagnostic, in: editorBody) else {
+      selectionActionMessage = "这项诊断没有可自动应用的修复。"
+      return
+    }
+    if editorState.editorDisplayMode == .preview {
+      store.setEditorDisplayMode(.edit)
+    }
+    editorEditRequest = MarkdownTextEditRequest(expectedText: editorBody, edit: edit)
+    selectionActionMessage = "已修复：\(diagnostic.title)"
   }
 
   private func selectedText(in text: String) -> String {
@@ -796,13 +1367,6 @@ struct MacMarkdownComposerView: View {
     let range = clamped(selectedRange, length: source.length)
     guard range.length > 0 else { return "" }
     return source.substring(with: range)
-  }
-
-  private func moveSelectionToDocumentEndIfNeeded() {
-    let bodyLength = (editorBody as NSString).length
-    if selectedRange.location > bodyLength || selectedRange.length > 0 {
-      selectedRange = NSRange(location: bodyLength, length: 0)
-    }
   }
 
   private func editingRange(in source: NSString) -> NSRange {
@@ -837,7 +1401,7 @@ struct MacMarkdownComposerView: View {
     let requestedBody = requestedDraft.bodyMarkdown
     let requestID = UUID()
     aiPromptClipboardRequestID = requestID
-    store.setPublishActionMessage("正在生成 AI Prompt…")
+    store.setPublishActionMessage(String(localized: "正在生成 AI Prompt…"))
     aiPromptClipboardTask = Task { @MainActor in
       let prompt = await store.publishingAIPromptInBackground(for: requestedDraft)
       guard !Task.isCancelled,
@@ -848,7 +1412,7 @@ struct MacMarkdownComposerView: View {
       aiPromptClipboardRequestID = nil
       guard draft.id == requestedDraft.id,
             editorBody == requestedBody else {
-        store.setPublishActionMessage("文章已变化，未复制陈旧 AI Prompt；请重试。")
+        store.setPublishActionMessage(String(localized: "文章已变化，未复制陈旧 AI Prompt；请重试。"))
         return
       }
       ClipboardWriter.copy(
@@ -865,7 +1429,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func applyEditorFocusRequest() {
-    guard let request = store.editorFocusRequest, request.draftID == draft.id else {
+    guard let request = editorState.editorFocusRequest, request.draftID == draft.id else {
       return
     }
 
@@ -875,20 +1439,64 @@ struct MacMarkdownComposerView: View {
     }
 
     let text = editorBody as NSString
-    if let query = request.query?.trimmedForPublishing, !query.isEmpty {
-      let range = text.range(of: query, options: [.caseInsensitive])
-      if range.location != NSNotFound {
-        selectedRange = range
-        selectionActionMessage = "已定位到正文匹配内容。"
+    if let requestedRange = request.selectedRange,
+       requestedRange.location >= 0,
+       NSMaxRange(requestedRange) <= text.length {
+      let expectedQuery = request.query?.trimmedForPublishing
+      let selectedText = text.substring(with: requestedRange)
+      if expectedQuery?.isEmpty != false
+        || selectedText.compare(
+          expectedQuery ?? "",
+          options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+        ) == .orderedSame {
+        focusMarkdownText(
+          for: request.id,
+          selectedRange: requestedRange,
+          message: "已定位到正文匹配内容。"
+        )
         return
       }
     }
 
-    selectedRange = NSRange(location: 0, length: 0)
-    selectionActionMessage = "已定位到正文。"
+    if let query = request.query?.trimmedForPublishing, !query.isEmpty {
+      let range = text.range(
+        of: query,
+        options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+      )
+      if range.location != NSNotFound {
+        focusMarkdownText(
+          for: request.id,
+          selectedRange: range,
+          message: "已定位到正文匹配内容。"
+        )
+        return
+      }
+    }
+
+    focusMarkdownText(
+      for: request.id,
+      selectedRange: NSRange(location: 0, length: 0),
+      message: "已定位到正文。"
+    )
+  }
+
+  private func focusMarkdownText(
+    for requestID: UUID,
+    selectedRange: NSRange,
+    message: String
+  ) {
+    self.selectedRange = selectedRange
+    markdownTextFocusRequest = MarkdownTextFocusRequest(
+      id: requestID,
+      selectedRange: selectedRange
+    )
+    selectionActionMessage = message
   }
 
   private func runPreflightForCurrentDraft() {
+    store.runPreflight()
+    let issues = editorState.preflightIssues(for: previewDraft)
+    EditorAccessibilityAnnouncementCenter.announceDiagnostics(issues)
     _ = store.focusDraft(draft.id, section: .contentHealth)
   }
 
@@ -914,7 +1522,7 @@ struct MacMarkdownComposerView: View {
     let previewRange = clamped(selectedRange, length: (editorBody as NSString).length)
     selectionEditPreview = nil
     selectionAIActionTask = Task { @MainActor in
-      let result = await aiState.performAction(
+      let result = await aiActions.performAction(
         kind,
         draft: requestedDraft,
         selectedText: promptSelectedText
@@ -924,7 +1532,7 @@ struct MacMarkdownComposerView: View {
       guard !Task.isCancelled, draft.id == requestedDraft.id else { return }
 
       if let result {
-        selectionEditPreview = AIPublishingSelectionEditPreview(
+        let preview = AIPublishingSelectionEditPreview(
           draftID: requestedDraft.id,
           sourceBodyMarkdown: requestedDraft.bodyMarkdown,
           kind: result.kind,
@@ -935,9 +1543,18 @@ struct MacMarkdownComposerView: View {
           providerName: result.providerName,
           model: result.model
         )
+        selectionEditPreview = preview
         selectionActionMessage = result.kind.localizedDisplayName + "预览已生成。"
+        EditorAccessibilityAnnouncementCenter.announceAIPreview(
+          kind: result.kind.localizedDisplayName,
+          characterCount: (preview.trimmedReplacementText as NSString).length
+        )
       } else {
         selectionActionMessage = kind.localizedDisplayName + "失败。"
+        EditorAccessibilityAnnouncementCenter.announce(
+          selectionActionMessage,
+          priority: .high
+        )
       }
     }
   }
@@ -958,16 +1575,17 @@ struct MacMarkdownComposerView: View {
     let previewRange = articleInsertionRange(for: kind)
     selectionEditPreview = nil
     selectionAIActionTask = Task { @MainActor in
-      let result = await aiState.performAction(kind, draft: requestedDraft)
+      let result = await aiActions.performAction(kind, draft: requestedDraft)
       guard selectionAIActionRequestID == requestID else { return }
       defer { finishSelectionAIAction(requestID: requestID) }
       guard !Task.isCancelled, draft.id == requestedDraft.id else { return }
 
       if let result {
-        if result.kind.producesMetadataSuggestion, aiState.metadataSuggestion != nil {
+        if result.kind.producesMetadataSuggestion, editorState.aiMetadataSuggestion != nil {
           selectionActionMessage = result.kind.localizedDisplayName + "已生成，可在元数据建议中应用。"
+          EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
         } else {
-          selectionEditPreview = AIPublishingSelectionEditPreview(
+          let preview = AIPublishingSelectionEditPreview(
             draftID: requestedDraft.id,
             sourceBodyMarkdown: requestedDraft.bodyMarkdown,
             kind: result.kind,
@@ -978,10 +1596,19 @@ struct MacMarkdownComposerView: View {
             providerName: result.providerName,
             model: result.model
           )
+          selectionEditPreview = preview
           selectionActionMessage = result.kind.localizedDisplayName + "预览已生成。"
+          EditorAccessibilityAnnouncementCenter.announceAIPreview(
+            kind: result.kind.localizedDisplayName,
+            characterCount: (preview.trimmedReplacementText as NSString).length
+          )
         }
       } else {
         selectionActionMessage = kind.localizedDisplayName + "失败。"
+        EditorAccessibilityAnnouncementCenter.announce(
+          selectionActionMessage,
+          priority: .high
+        )
       }
     }
   }
@@ -1043,8 +1670,8 @@ struct MacMarkdownComposerView: View {
       content = "选中文本公开风险：\n\(issueLines.joined(separator: "\n"))"
       selectionActionMessage = "选区有 \(summary.issueCount) 项公开风险。"
     }
-    aiState.setActionResult(AIPublishingActionResult(kind: .privacyReview, content: content))
-    aiState.setActionMessage(selectionActionMessage)
+    aiActions.setActionResult(AIPublishingActionResult(kind: .privacyReview, content: content))
+    aiActions.setActionMessage(selectionActionMessage)
   }
 
   private func applyLatestAIReplyToSelection() {
@@ -1076,7 +1703,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func showAIContextInspector() {
-    aiState.openChatWorkspace(for: draft.id)
+    aiActions.openChatWorkspace(for: draft.id)
   }
 
   private func applySelectionEditPreview(_ preview: AIPublishingSelectionEditPreview) {

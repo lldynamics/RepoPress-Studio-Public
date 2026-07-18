@@ -7,59 +7,75 @@ extension RepositoryWorkspaceView {
     VStack(alignment: .leading, spacing: 10) {
       HStack(alignment: .firstTextBaseline) {
         VStack(alignment: .leading, spacing: 3) {
-          Text("自动同步")
+          Text("自动检查远端")
             .font(.headline)
+          Text(repositoryAutoSyncDescription)
+            .font(.caption)
+            .foregroundStyle(.secondary)
           Text(store.repositoryAutoSyncState.message)
             .font(.callout)
             .foregroundStyle(.secondary)
         }
         Spacer()
         Button {
-          copy(store.repositoryAutoSyncReviewMarkdown, message: "已复制自动同步审阅摘要。")
+          copy(store.repositoryAutoSyncReviewMarkdown, message: "已复制远端自动检查审阅摘要。")
         } label: {
           Label("复制摘要", systemImage: "doc.on.doc")
         }
-        .accessibilityLabel("复制自动同步摘要")
+        .accessibilityLabel("复制远端自动检查摘要")
         Button {
           Task {
             await store.runRepositoryAutoSync()
           }
         } label: {
           Label(
-            store.repositoryScanState.isScanning ? "扫描中" : "立即扫描",
+            store.repositoryScanState.isScanning ? "检查中" : "立即检查",
             systemImage: "arrow.clockwise"
           )
         }
         .disabled(!store.repositoryAutoSyncSettings.isEnabled || store.repositoryScanState.isScanning)
-        .accessibilityLabel("立即扫描自动同步")
+        .accessibilityLabel("立即检查远端")
       }
 
       HStack(spacing: 12) {
-        Toggle("启用自动同步", isOn: repositoryAutoSyncEnabledBinding)
+        Toggle("启用自动检查远端", isOn: repositoryAutoSyncEnabledBinding)
           .toggleStyle(.switch)
-          .accessibilityLabel("启用自动同步")
+          .accessibilityLabel("启用自动检查远端")
           .accessibilityValue(store.repositoryAutoSyncSettings.isEnabled ? "开启" : "关闭")
-        Toggle("扫描前 fetch upstream", isOn: repositoryAutoSyncFetchBeforeScanBinding)
+        Toggle("检查前 fetch upstream", isOn: repositoryAutoSyncFetchBeforeScanBinding)
           .toggleStyle(.checkbox)
           .disabled(!store.repositoryAutoSyncSettings.isEnabled)
-          .accessibilityLabel("扫描前 fetch upstream")
+          .accessibilityLabel("检查前 fetch upstream")
           .accessibilityValue(store.repositoryAutoSyncSettings.fetchBeforeScan ? "开启" : "关闭")
 
         Spacer()
 
-        Picker("扫描间隔", selection: repositoryAutoSyncIntervalBinding) {
+        Picker("检查间隔", selection: repositoryAutoSyncIntervalBinding) {
           ForEach(repositoryAutoSyncIntervalOptions, id: \.self) { minutes in
             Text("\(minutes) 分钟").tag(minutes)
           }
         }
         .pickerStyle(.segmented)
+        .tint(WorkbenchTheme.navigationSelection)
         .frame(maxWidth: 360)
         .disabled(!store.repositoryAutoSyncSettings.isEnabled)
-        .accessibilityLabel("自动同步扫描间隔")
+        .accessibilityLabel("远端自动检查间隔")
         .accessibilityValue("\(store.repositoryAutoSyncSettings.normalizedIntervalMinutes) 分钟")
       }
 
-      LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+      HStack(spacing: 10) {
+        Toggle("自动导入远端文章", isOn: repositoryAutoImportRemoteArticlesBinding)
+          .toggleStyle(.checkbox)
+          .disabled(!store.repositoryAutoSyncSettings.isEnabled)
+          .accessibilityLabel("自动导入远端文章")
+          .accessibilityValue(store.repositoryAutoSyncSettings.autoImportRemoteArticles ? "开启" : "关闭")
+        Text("新文章自动导入；本地已修改、远端删除或重命名仍保留手动审阅。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Spacer(minLength: 0)
+      }
+
+      LazyVGrid(columns: repositoryMetricGridColumns, spacing: 10) {
         MetricTile(
           title: "状态",
           value: store.repositoryAutoSyncSettings.isEnabled ? store.repositoryAutoSyncState.status.localizedDisplayName : "已关闭",
@@ -76,7 +92,7 @@ extension RepositoryWorkspaceView {
           systemImage: "arrow.down.doc"
         )
         MetricTile(
-          title: "可导入文章",
+          title: "待审阅文章",
           value: "\(store.repositoryAutoSyncState.importableRemoteArticleCount)",
           systemImage: "tray.and.arrow.down"
         )
@@ -97,9 +113,42 @@ extension RepositoryWorkspaceView {
         if store.repositoryAutoSyncState.nonArticleRemoteChangedFileCount > 0 {
           Label("其他变更：\(store.repositoryAutoSyncState.nonArticleRemoteChangedFileCount)", systemImage: "doc.badge.gearshape")
         }
+        if store.repositoryAutoSyncState.lastAutoImportedArticleCount > 0 {
+          Label(
+            String(
+              format: String(localized: "自动导入：%d"),
+              store.repositoryAutoSyncState.lastAutoImportedArticleCount
+            ),
+            systemImage: "tray.and.arrow.down.fill"
+          )
+        }
+        if store.repositoryAutoSyncState.lastAutoImportConflictCount > 0 {
+          Label(
+            String(
+              format: String(localized: "需手动合并：%d"),
+              store.repositoryAutoSyncState.lastAutoImportConflictCount
+            ),
+            systemImage: "exclamationmark.triangle"
+          )
+        }
+        if store.repositoryAutoSyncState.lastAutoImportDeletionCount > 0 {
+          Label(
+            String(
+              format: String(localized: "远端删除：%d"),
+              store.repositoryAutoSyncState.lastAutoImportDeletionCount
+            ),
+            systemImage: "trash"
+          )
+        }
         Spacer()
         Button {
-          store.importRemoteChangedArticleDraftsFromRepository()
+          guard let report = store.repositoryReport else { return }
+          let files = report.remoteChangedFilesForRole(
+            role: .article,
+            contentRoot: store.activeProfile.contentRoot,
+            assetRoot: store.activeProfile.assetRoot
+          )
+          presentRemoteArticleImportPreview(files)
         } label: {
           Label("导入远端文章", systemImage: "tray.and.arrow.down")
         }
@@ -127,11 +176,10 @@ extension RepositoryWorkspaceView {
                 .frame(width: 16)
               Text(path)
                 .font(.caption.monospaced())
-                .lineLimit(1)
-                .truncationMode(.middle)
+                .workbenchTruncatedIdentity(path)
               Spacer()
               Button {
-                copy(path, message: "已复制自动同步发现的远端路径。")
+                copy(path, message: "已复制远端自动检查发现的路径。")
               } label: {
                 Label("复制路径", systemImage: "doc.on.doc")
               }
@@ -161,6 +209,12 @@ extension RepositoryWorkspaceView {
     ]
   }
 
+  private var repositoryAutoSyncDescription: String {
+    store.repositoryAutoSyncSettings.autoImportRemoteArticles
+      ? String(localized: "定时执行 Fetch 与差异检查；仅自动导入可确认没有本地编辑的文章。")
+      : String(localized: "定时执行 Fetch 与差异检查；文章导入需要手动确认。")
+  }
+
   private var repositoryAutoSyncEnabledBinding: Binding<Bool> {
     Binding(
       get: { store.repositoryAutoSyncSettings.isEnabled },
@@ -169,7 +223,8 @@ extension RepositoryWorkspaceView {
           RepositoryAutoSyncSettings(
             isEnabled: isEnabled,
             intervalMinutes: store.repositoryAutoSyncSettings.normalizedIntervalMinutes,
-            fetchBeforeScan: store.repositoryAutoSyncSettings.fetchBeforeScan
+            fetchBeforeScan: store.repositoryAutoSyncSettings.fetchBeforeScan,
+            autoImportRemoteArticles: store.repositoryAutoSyncSettings.autoImportRemoteArticles
           )
         )
       }
@@ -184,7 +239,24 @@ extension RepositoryWorkspaceView {
           RepositoryAutoSyncSettings(
             isEnabled: store.repositoryAutoSyncSettings.isEnabled,
             intervalMinutes: store.repositoryAutoSyncSettings.normalizedIntervalMinutes,
-            fetchBeforeScan: fetchBeforeScan
+            fetchBeforeScan: fetchBeforeScan,
+            autoImportRemoteArticles: store.repositoryAutoSyncSettings.autoImportRemoteArticles
+          )
+        )
+      }
+    )
+  }
+
+  private var repositoryAutoImportRemoteArticlesBinding: Binding<Bool> {
+    Binding(
+      get: { store.repositoryAutoSyncSettings.autoImportRemoteArticles },
+      set: { autoImportRemoteArticles in
+        store.updateRepositoryAutoSyncSettings(
+          RepositoryAutoSyncSettings(
+            isEnabled: store.repositoryAutoSyncSettings.isEnabled,
+            intervalMinutes: store.repositoryAutoSyncSettings.normalizedIntervalMinutes,
+            fetchBeforeScan: store.repositoryAutoSyncSettings.fetchBeforeScan,
+            autoImportRemoteArticles: autoImportRemoteArticles
           )
         )
       }
@@ -199,7 +271,8 @@ extension RepositoryWorkspaceView {
           RepositoryAutoSyncSettings(
             isEnabled: store.repositoryAutoSyncSettings.isEnabled,
             intervalMinutes: intervalMinutes,
-            fetchBeforeScan: store.repositoryAutoSyncSettings.fetchBeforeScan
+            fetchBeforeScan: store.repositoryAutoSyncSettings.fetchBeforeScan,
+            autoImportRemoteArticles: store.repositoryAutoSyncSettings.autoImportRemoteArticles
           )
         )
       }

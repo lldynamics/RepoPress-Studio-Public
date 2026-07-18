@@ -2,6 +2,7 @@ import Foundation
 
 public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Sendable {
   case writing
+  case library
   case siteStarter
   case sync
   case images
@@ -28,6 +29,8 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
     switch self {
     case .writing:
       return "square.and.pencil"
+    case .library:
+      return "books.vertical"
     case .siteStarter:
       return "sparkles.rectangle.stack"
     case .sync:
@@ -49,6 +52,8 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
     switch self {
     case .writing:
       return "1"
+    case .library:
+      return "9"
     case .siteStarter:
       return "5"
     case .sync:
@@ -71,79 +76,9 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
   }
 }
 
-public enum WorkspaceArea: String, CaseIterable, Identifiable, Sendable {
-  case writing
-  case publishing
-  case site
-
-  public var id: String { rawValue }
-
-  public var localizationKey: String {
-    "workspace.area.\(rawValue)"
-  }
-
-  public var systemImage: String {
-    switch self {
-    case .writing:
-      return "square.and.pencil"
-    case .publishing:
-      return "paperplane"
-    case .site:
-      return "globe"
-    }
-  }
-
-  public var sections: [WorkspaceSection] {
-    switch self {
-    case .writing:
-      return [.writing, .images, .generalDrafts]
-    case .publishing:
-      return [.sync, .contentHealth, .releaseHistory]
-    case .site:
-      return [.siteStarter, .maintenance]
-    }
-  }
-
-  public var defaultSection: WorkspaceSection {
-    switch self {
-    case .writing:
-      return .writing
-    case .publishing:
-      return .sync
-    case .site:
-      return .siteStarter
-    }
-  }
-}
-
-public extension WorkspaceSection {
-  var area: WorkspaceArea {
-    switch self {
-    case .writing, .images, .generalDrafts:
-      return .writing
-    case .sync, .contentHealth, .releaseHistory:
-      return .publishing
-    case .siteStarter, .maintenance:
-      return .site
-    }
-  }
-}
-
-public enum WorkspaceNavigationSurface: String, CaseIterable, Sendable {
-  case topBar
-  case commandMenu
-  case sidebarList
-}
-
-public enum WorkspaceContextSidebarMode: String, Sendable {
-  case writingDrafts
-  case contentHealthFilters
-  case repositoryStages
-  case none
-}
-
 public enum WorkspaceCenterSurface: String, CaseIterable, Sendable {
   case editor
+  case knowledgeLibrary
   case siteStarter
   case repository
   case images
@@ -165,6 +100,17 @@ public enum WorkspaceInspectorRoute: String, CaseIterable, Sendable {
 /// such as maintenance and release history deliberately use their parent
 /// workspace without opening a second Inspector surface.
 public enum WorkspaceInspectorPresentation {
+  /// Resolves the visible Inspector state without changing the user's stored
+  /// preference while SwiftUI is measuring or rearranging the workspace.
+  public static func isPresented(
+    requested: Bool,
+    supportsInspector: Bool,
+    isFocusMode: Bool,
+    allowsInspector: Bool = true
+  ) -> Bool {
+    requested && supportsInspector && !isFocusMode && allowsInspector
+  }
+
   public static func route(
     for section: WorkspaceSection,
     isAIAssistantPresented: Bool = false,
@@ -178,7 +124,7 @@ public enum WorkspaceInspectorPresentation {
     switch section {
     case .writing:
       return .articleMetadata
-    case .generalDrafts:
+    case .library, .generalDrafts:
       return .unavailable
     case .contentHealth:
       return isMaintenancePresented ? .unavailable : .articleChecks
@@ -212,6 +158,7 @@ public extension WorkspaceSection {
   var centerSurface: WorkspaceCenterSurface {
     switch self {
     case .writing: .editor
+    case .library: .knowledgeLibrary
     case .siteStarter: .siteStarter
     case .sync: .repository
     case .images: .images
@@ -224,25 +171,6 @@ public extension WorkspaceSection {
 
   var requiresEditableDraftForCenterSurface: Bool {
     self == .writing
-  }
-}
-
-public extension WorkspaceSection {
-  var contextSidebarMode: WorkspaceContextSidebarMode {
-    switch self {
-    case .writing:
-      return .writingDrafts
-    case .contentHealth:
-      return .contentHealthFilters
-    case .sync:
-      return .repositoryStages
-    case .siteStarter,
-         .images,
-         .generalDrafts,
-         .maintenance,
-         .releaseHistory:
-      return .none
-    }
   }
 }
 
@@ -273,13 +201,6 @@ public enum WorkspaceVisibilityPolicy {
     .releaseHistory,
   ]
 
-  public static let dailyTopBarSections = WorkspaceSection.allCases.filter { section in
-    section != .writing
-      && section != .siteStarter
-      && section != .generalDrafts
-      && !hiddenNavigationSections.contains(section)
-  }
-
   public static let commandMenuPrimarySections = WorkspaceSection.allCases.filter { section in
     section != .siteStarter
       && section != .generalDrafts
@@ -295,32 +216,15 @@ public enum WorkspaceVisibilityPolicy {
 
 public enum WorkspaceNavigationPresentation {
   public static let defaultSection: WorkspaceSection = .writing
-  public static let primaryAreas = WorkspaceArea.allCases.filter { !primarySections(in: $0).isEmpty }
-  public static let topBarItems = items(for: .topBar)
-  public static let commandMenuItems = items(for: .commandMenu)
+  public static let commandMenuItems = WorkspaceVisibilityPolicy.commandMenuPrimarySections.map(
+    WorkspaceNavigationItem.init(section:)
+  )
   public static let secondaryEntryItems = WorkspaceVisibilityPolicy.secondaryEntrySections.map(WorkspaceNavigationItem.init(section:))
+  public static let commandMenuAdvancedItems = (
+    WorkspaceVisibilityPolicy.secondaryEntrySections
+      + WorkspaceVisibilityPolicy.hiddenNavigationSections
+  ).map(WorkspaceNavigationItem.init(section:))
 
-  public static func primarySections(in area: WorkspaceArea) -> [WorkspaceSection] {
-    area.sections.filter {
-      !WorkspaceVisibilityPolicy.secondaryEntrySections.contains($0)
-        && !WorkspaceVisibilityPolicy.hiddenNavigationSections.contains($0)
-    }
-  }
-
-  public static func sections(for surface: WorkspaceNavigationSurface) -> [WorkspaceSection] {
-    switch surface {
-    case .topBar:
-      return WorkspaceVisibilityPolicy.dailyTopBarSections
-    case .commandMenu:
-      return WorkspaceVisibilityPolicy.commandMenuPrimarySections
-    case .sidebarList:
-      return []
-    }
-  }
-
-  public static func items(for surface: WorkspaceNavigationSurface) -> [WorkspaceNavigationItem] {
-    sections(for: surface).map(WorkspaceNavigationItem.init(section:))
-  }
 }
 
 public enum EditorDisplayMode: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -358,17 +262,32 @@ public struct EditorFocusRequest: Identifiable, Equatable, Sendable {
   public var draftID: UUID
   public var field: String?
   public var query: String?
+  public var selectedRange: NSRange?
 
   public init(
     id: UUID = UUID(),
     draftID: UUID,
     field: String?,
-    query: String? = nil
+    query: String? = nil,
+    selectedRange: NSRange? = nil
   ) {
     self.id = id
     self.draftID = draftID
     self.field = field
     self.query = query
+    self.selectedRange = selectedRange
+  }
+}
+
+public struct ImageInspectorFocusRequest: Identifiable, Equatable, Sendable {
+  public var id: UUID
+  public var draftID: UUID
+  public var attachmentID: UUID
+
+  public init(id: UUID = UUID(), draftID: UUID, attachmentID: UUID) {
+    self.id = id
+    self.draftID = draftID
+    self.attachmentID = attachmentID
   }
 }
 

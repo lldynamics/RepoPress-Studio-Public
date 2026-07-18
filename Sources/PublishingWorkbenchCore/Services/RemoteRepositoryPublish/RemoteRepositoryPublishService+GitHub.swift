@@ -707,8 +707,8 @@ extension RemoteRepositoryPublishService {
         GitLabCommitAction(
           action: remoteState.exists ? "update" : "create",
           filePath: file.repositoryPath,
-          content: file.kind == .image ? data.base64EncodedString() : String(data: data, encoding: .utf8) ?? "",
-          encoding: file.kind == .image ? "base64" : nil,
+          content: file.kind == .markdown ? String(data: data, encoding: .utf8) ?? "" : data.base64EncodedString(),
+          encoding: file.kind == .markdown ? nil : "base64",
           lastCommitID: remoteState.lastCommitID
         )
       )

@@ -158,8 +158,8 @@ grep -q "shared external recorder validation: ready" <<<"$storekit_output" \
   || fail "storekit target did not validate recorder"
 
 archive_output="$(bash "$RUNNER" --env-dir "$ENV_DIR" --target app-store-archive)"
-grep -q "app store archive evidence bundle: dry-run" <<<"$archive_output" \
-  || fail "archive target did not delegate to archive bundle dry-run"
+[[ "$(grep -c "app store archive evidence recorder: ready" <<<"$archive_output")" == "3" ]] \
+  || fail "archive target did not record all three archive evidence items"
 
 screenshots_output="$(bash "$RUNNER" --env-dir "$ENV_DIR" --target app-store-screenshots)"
 grep -q "external verification runner: app-store-screenshots dry-run" <<<"$screenshots_output" \

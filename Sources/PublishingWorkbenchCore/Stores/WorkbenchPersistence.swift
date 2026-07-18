@@ -3,12 +3,14 @@ import Foundation
 
 public struct WorkbenchSnapshot: Codable, Sendable {
   /// Bump this only together with a backwards-compatible decode migration.
-  public static let currentFormatVersion = 6
+  public static let currentFormatVersion = 7
 
   public var formatVersion: Int
   public var profiles: [SiteProfile]
   public var activeProfileID: UUID
   public var drafts: [ArticleDraft]
+  public var customMarkdownSnippets: [MarkdownSnippet]
+  public var markdownEditorSessionStates: [UUID: MarkdownEditorSessionState]
   public var draftVersions: [DraftVersionSnapshot]
   public var recycledDrafts: [RecycledDraft]
   public var draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest]
@@ -32,6 +34,8 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     profiles: [SiteProfile],
     activeProfileID: UUID,
     drafts: [ArticleDraft],
+    customMarkdownSnippets: [MarkdownSnippet] = [],
+    markdownEditorSessionStates: [UUID: MarkdownEditorSessionState] = [:],
     draftVersions: [DraftVersionSnapshot] = [],
     recycledDrafts: [RecycledDraft] = [],
     draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest] = [],
@@ -55,10 +59,19 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     self.profiles = profiles
     self.activeProfileID = activeProfileID
     self.drafts = drafts
-    self.draftVersions = Self.limitedDraftVersions(draftVersions)
-    self.recycledDrafts = Array(
+    self.customMarkdownSnippets = Array(
+      customMarkdownSnippets.prefix(MarkdownSnippetLibraryService.maximumCustomSnippetCount)
+    )
+    let limitedRecycledDrafts = Array(
       recycledDrafts.sorted { $0.deletedAt > $1.deletedAt }.prefix(DraftLifecycleService.maximumRecycledDrafts)
     )
+    self.markdownEditorSessionStates = Self.validEditorSessionStates(
+      markdownEditorSessionStates,
+      drafts: drafts,
+      recycledDrafts: limitedRecycledDrafts
+    )
+    self.draftVersions = Self.limitedDraftVersions(draftVersions)
+    self.recycledDrafts = limitedRecycledDrafts
     self.draftRepositoryCleanupRequests = Array(
       draftRepositoryCleanupRequests
         .sorted { $0.requestedAt > $1.requestedAt }
@@ -86,6 +99,8 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     case profiles
     case activeProfileID
     case drafts
+    case customMarkdownSnippets
+    case markdownEditorSessionStates
     case draftVersions
     case recycledDrafts
     case draftRepositoryCleanupRequests
@@ -123,6 +138,10 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     profiles = try container.decode([SiteProfile].self, forKey: .profiles)
     activeProfileID = try container.decode(UUID.self, forKey: .activeProfileID)
     drafts = try container.decode([ArticleDraft].self, forKey: .drafts)
+    customMarkdownSnippets = Array(
+      (try container.decodeIfPresent([MarkdownSnippet].self, forKey: .customMarkdownSnippets) ?? [])
+        .prefix(MarkdownSnippetLibraryService.maximumCustomSnippetCount)
+    )
     draftVersions = Self.limitedDraftVersions(
       try container.decodeIfPresent([DraftVersionSnapshot].self, forKey: .draftVersions) ?? []
     )
@@ -130,6 +149,14 @@ public struct WorkbenchSnapshot: Codable, Sendable {
       (try container.decodeIfPresent([RecycledDraft].self, forKey: .recycledDrafts) ?? [])
         .sorted { $0.deletedAt > $1.deletedAt }
         .prefix(DraftLifecycleService.maximumRecycledDrafts)
+    )
+    markdownEditorSessionStates = Self.validEditorSessionStates(
+      try container.decodeIfPresent(
+        [UUID: MarkdownEditorSessionState].self,
+        forKey: .markdownEditorSessionStates
+      ) ?? [:],
+      drafts: drafts,
+      recycledDrafts: recycledDrafts
     )
     draftRepositoryCleanupRequests = Array(
       (try container.decodeIfPresent(
@@ -210,6 +237,15 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     _ records: [AIPublishingMetadataApplicationRecord]
   ) -> [AIPublishingMetadataApplicationRecord] {
     Array(records.sorted { $0.createdAt > $1.createdAt }.prefix(120))
+  }
+
+  private static func validEditorSessionStates(
+    _ states: [UUID: MarkdownEditorSessionState],
+    drafts: [ArticleDraft],
+    recycledDrafts: [RecycledDraft]
+  ) -> [UUID: MarkdownEditorSessionState] {
+    let validDraftIDs = Set(drafts.map(\.id) + recycledDrafts.map(\.id))
+    return states.filter { validDraftIDs.contains($0.key) }
   }
 
   private static func limitedDraftVersions(
@@ -335,7 +371,23 @@ public struct WorkbenchPersistence: Sendable {
 
   public func loadWithRecovery() throws -> WorkbenchSnapshotLoadResult {
     guard FileManager.default.fileExists(atPath: fileURL.path) else {
-      return WorkbenchSnapshotLoadResult(snapshot: nil)
+      guard FileManager.default.fileExists(atPath: lastKnownGoodURL.path) else {
+        return WorkbenchSnapshotLoadResult(snapshot: nil)
+      }
+
+      do {
+        let backupData = try Data(contentsOf: lastKnownGoodURL)
+        let snapshot = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: backupData)
+        return WorkbenchSnapshotLoadResult(
+          snapshot: snapshot,
+          recoveryMessage: "工作台数据文件缺失，已从上次有效备份恢复。"
+        )
+      } catch {
+        throw WorkbenchPersistenceError.unrecoverableSnapshot(
+          primary: "主工作台数据文件不存在。",
+          backup: error.localizedDescription
+        )
+      }
     }
 
     do {
@@ -647,6 +699,8 @@ extension WorkbenchPersistence {
       profiles: store.profiles,
       activeProfileID: store.activeProfileID,
       drafts: store.drafts,
+      customMarkdownSnippets: store.customMarkdownSnippets,
+      markdownEditorSessionStates: store.markdownEditorSessionStates,
       draftVersions: store.draftVersions,
       recycledDrafts: store.recycledDrafts,
       draftRepositoryCleanupRequests: store.draftRepositoryCleanupRequests,
@@ -657,7 +711,7 @@ extension WorkbenchPersistence {
       seoSocialPreviewSnapshots: Array(store.seoSocialPreviewSnapshots.values),
       privacySettings: store.privacySettings,
       privacyProtectionEvents: [],
-      monetizationState: persistedMonetizationState(from: store.monetizationState),
+      monetizationState: store.monetizationState,
       repositoryAutoSyncSettings: store.repositoryAutoSyncSettings,
       repositoryAutoSyncState: store.repositoryAutoSyncState,
       remoteRepositoryAccessCheck: store.remoteRepositoryAccessCheck,
@@ -666,12 +720,6 @@ extension WorkbenchPersistence {
       deploymentStatusSnapshots: Array(store.deploymentStatusSnapshots.values),
       deploymentStatusHistory: store.deploymentStatusHistory
     )
-  }
-
-  private func persistedMonetizationState(from state: MonetizationState) -> MonetizationState {
-    var persistedState = state
-    persistedState.recentAccessEvents = []
-    return persistedState
   }
 
   public func save(store: WorkbenchStore) {

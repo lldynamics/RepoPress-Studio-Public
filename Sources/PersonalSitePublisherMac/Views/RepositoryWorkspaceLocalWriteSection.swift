@@ -80,9 +80,7 @@ extension RepositoryWorkspaceView {
               .font(.caption)
               .frame(width: 70, alignment: .leading)
               .foregroundStyle(.secondary)
-            Text(file.repositoryPath)
-              .font(.callout.monospaced())
-              .lineLimit(1)
+            WorkbenchPathIdentity(path: file.repositoryPath)
             Spacer()
             if file.byteSize > 0 {
               Text(ByteCountFormatter.string(fromByteCount: file.byteSize, countStyle: .file))
@@ -125,9 +123,7 @@ extension RepositoryWorkspaceView {
                 .font(.caption)
                 .frame(width: 70, alignment: .leading)
                 .foregroundStyle(diff.status == .unchanged ? .secondary : .primary)
-              Text(diff.path)
-                .font(.callout.monospaced())
-                .lineLimit(1)
+              WorkbenchPathIdentity(path: diff.path)
               Spacer()
               Text(diff.kind.localizedDisplayName)
                 .font(.caption)
@@ -183,7 +179,7 @@ extension RepositoryWorkspaceView {
   private var singlePublishReadiness: some View {
     if let readiness = store.localPublishReadiness {
       VStack(alignment: .leading, spacing: 10) {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+        LazyVGrid(columns: repositoryMetricGridColumns, spacing: 8) {
           PublishReadinessTile(title: "写入", readiness: readiness.writeReadiness)
           PublishReadinessTile(title: "提交", readiness: readiness.commitReadiness)
           MetricTile(title: "变化", value: "\(readiness.changedFileCount)", systemImage: "doc.on.doc")
@@ -193,25 +189,25 @@ extension RepositoryWorkspaceView {
         let blockingIssues = visibleReadinessIssues(readiness)
         if !blockingIssues.isEmpty {
           VStack(alignment: .leading, spacing: 6) {
-            ForEach(blockingIssues.prefix(3)) { issue in
-              HStack(alignment: .top, spacing: 8) {
-                SeverityBadge(severity: issue.severity)
-                  .frame(width: 70, alignment: .leading)
-                VStack(alignment: .leading, spacing: 2) {
-                  Text(issue.title)
-                    .font(.caption.weight(.semibold))
-                  Text(issue.message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                }
-              }
+            ForEach(blockingIssues) { issue in
+              localReadinessIssueRow(issue)
             }
           }
-        } else if !readiness.warningIssues.isEmpty {
-          Label("\(readiness.warningIssues.count) 项警告，执行前建议确认。", systemImage: "exclamationmark.triangle")
-            .font(.caption)
-            .foregroundStyle(WorkbenchTheme.warning)
+        }
+
+        if !readiness.warningIssues.isEmpty {
+          DisclosureGroup {
+            VStack(alignment: .leading, spacing: 6) {
+              ForEach(readiness.warningIssues) { issue in
+                localReadinessIssueRow(issue)
+              }
+            }
+            .padding(.top, 4)
+          } label: {
+            Label("\(readiness.warningIssues.count) 项警告，执行前建议确认。", systemImage: "exclamationmark.triangle")
+              .font(.caption)
+              .foregroundStyle(WorkbenchTheme.warning)
+          }
         }
       }
       .padding(10)
@@ -227,9 +223,24 @@ extension RepositoryWorkspaceView {
     }
   }
 
+  private func localReadinessIssueRow(_ issue: PreflightIssue) -> some View {
+    HStack(alignment: .top, spacing: 8) {
+      SeverityBadge(severity: issue.severity)
+        .frame(width: 70, alignment: .leading)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(issue.title)
+          .font(.caption.weight(.semibold))
+        Text(issue.message)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+  }
+
   private func copyCommitCommand() {
     guard let command = store.localCommitCommandForSelectedDraft() else {
-      store.setPublishActionMessage("选择本地仓库后才能生成提交命令。")
+      store.setPublishActionMessage(String(localized: "选择本地仓库后才能生成提交命令。"))
       return
     }
     copy(command, message: "已复制 git 提交命令。")

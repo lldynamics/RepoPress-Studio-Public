@@ -3,6 +3,25 @@ import XCTest
 
 @MainActor
 final class DraftLifecycleServiceTests: XCTestCase {
+  func testBatchProcessingVersionReasonCreatesRecoverableSnapshot() throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "DraftBatchVersion")
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "Before batch",
+      slug: "before-batch",
+      bodyMarkdown: "Original body"
+    )
+    store.setDrafts([draft])
+
+    let recordedCount = store.recordVersionsBeforeBatchProcessing(draftIDs: [draft.id])
+
+    XCTAssertEqual(recordedCount, 1)
+    let version = try XCTUnwrap(store.versions(for: draft.id).first)
+    XCTAssertEqual(version.reason, .beforeBatchProcessing)
+    XCTAssertEqual(version.reason.displayName, "批处理前")
+    XCTAssertEqual(version.draft.bodyMarkdown, "Original body")
+  }
+
   func testAutomaticVersionsAreDeduplicatedThrottledAndRetained() {
     let service = DraftLifecycleService()
     let profileID = UUID()
@@ -72,6 +91,40 @@ final class DraftLifecycleServiceTests: XCTestCase {
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.selectedDraft?.title, original.title)
     XCTAssertFalse(reloaded.versions(for: original.id).isEmpty)
+  }
+
+  func testStoreRestoreKeepsCurrentRepositoryTrackingAndInternalStatus() throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "DraftVersionSafeRestore")
+    let original = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "旧内容",
+      slug: "old-content",
+      bodyMarkdown: "旧正文",
+      status: .draft,
+      repositoryPath: "content/old.md",
+      repositorySHA: "old-sha"
+    )
+    store.setDrafts([original])
+    store.setSelectedDraftID(original.id)
+
+    var current = original
+    current.title = "当前内容"
+    current.bodyMarkdown = "当前正文"
+    current.status = .published
+    current.repositoryPath = "content/current.md"
+    current.repositorySHA = "current-sha"
+    store.updateDraft(current)
+    let originalVersion = try XCTUnwrap(store.versions(for: original.id).first)
+
+    XCTAssertTrue(store.restoreDraftVersion(originalVersion.id))
+
+    let restored = try XCTUnwrap(store.selectedDraft)
+    XCTAssertEqual(restored.title, "旧内容")
+    XCTAssertEqual(restored.bodyMarkdown, "旧正文")
+    XCTAssertEqual(restored.status, .published)
+    XCTAssertEqual(restored.repositoryPath, "content/current.md")
+    XCTAssertEqual(restored.repositorySHA, "current-sha")
+    XCTAssertTrue(store.versions(for: original.id).contains { $0.reason == .beforeRestore })
   }
 
   func testDeletingDraftMovesItToRecycleBinAndRestoreCancelsPendingCleanup() async throws {
@@ -169,6 +222,40 @@ final class DraftLifecycleServiceTests: XCTestCase {
       reloaded.draftRepositoryCleanupRequests.first?.status,
       DraftRepositoryCleanupStatus.completed
     )
+  }
+
+  func testLocalRepositoryCleanupPreservesFileChangedAfterConfirmationPreview() throws {
+    let rootURL = try temporaryDirectoryURL(prefix: "DraftRepositoryCleanupConflict")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let articleURL = rootURL.appendingPathComponent("content/posts/article.md")
+    try FileManager.default.createDirectory(
+      at: articleURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try "published".write(to: articleURL, atomically: true, encoding: .utf8)
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: rootURL.appendingPathComponent("workbench.json"))
+    )
+    store.updateActiveProfile { profile in
+      profile.localRepositoryRootPath = rootURL.path
+    }
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "Article",
+      slug: "article",
+      repositoryPath: "content/posts/article.md"
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+    store.deleteDraft(id: draft.id)
+    let request = try XCTUnwrap(store.pendingRepositoryCleanupRequests.first)
+    let preview = try XCTUnwrap(store.repositoryCleanupPreview(for: request.id))
+    try "external editor content".write(to: articleURL, atomically: true, encoding: .utf8)
+
+    XCTAssertFalse(store.performLocalRepositoryCleanup(request.id, preview: preview))
+    XCTAssertEqual(try String(contentsOf: articleURL, encoding: .utf8), "external editor content")
+    XCTAssertEqual(store.pendingRepositoryCleanupRequests.map(\.id), [request.id])
+    XCTAssertTrue(store.publishActionMessage?.contains("预览后已被外部修改") == true)
   }
 
   func testLegacySnapshotDecodesEmptyLifecycleCollections() throws {

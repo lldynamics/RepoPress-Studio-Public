@@ -30,7 +30,8 @@ struct MetadataColumn: View {
         EmptyStateView(
           title: "当前页面没有 Inspector",
           message: "此页面的操作已集中在主内容区。",
-          systemImage: "sidebar.right"
+          systemImage: "sidebar.right",
+          density: .compactPane
         )
         .background(.bar)
       }
@@ -55,8 +56,9 @@ struct MetadataColumn: View {
     } else {
       EmptyStateView(
         title: "没有元数据",
-        message: "选择或新建文章后，这里会显示 Front Matter、SEO、图片、检查和发布任务。",
+        message: "选择或新建文章后，这里会显示文章头信息（Front Matter）、SEO、图片、检查和发布任务。",
         systemImage: "sidebar.right",
+        density: .compactPane,
         actionTitle: "新建文章",
         actionSystemImage: "square.and.pencil",
         action: {

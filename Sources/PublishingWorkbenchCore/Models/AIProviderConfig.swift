@@ -130,6 +130,49 @@ public enum AIChatModelGrade: String, CaseIterable, Codable, Identifiable, Senda
   }
 }
 
+public enum AIChatReasoningLevel: String, CaseIterable, Codable, Identifiable, Sendable {
+  case quick
+  case standard
+  case deep
+
+  public var id: String { rawValue }
+
+  public var title: String {
+    switch self {
+    case .quick:
+      return "快速"
+    case .standard:
+      return "标准"
+    case .deep:
+      return "深度"
+    }
+  }
+
+  public func requestOptions(for config: AIProviderConfig) -> AIProviderChatRequestOptions? {
+    guard config.usesDeepSeekAPI else { return nil }
+    switch self {
+    case .quick:
+      return AIProviderChatRequestOptions(
+        temperature: nil,
+        thinking: AIProviderThinkingOption(type: "disabled"),
+        reasoningEffort: nil
+      )
+    case .standard:
+      return AIProviderChatRequestOptions(
+        temperature: nil,
+        thinking: AIProviderThinkingOption(type: "enabled"),
+        reasoningEffort: nil
+      )
+    case .deep:
+      return AIProviderChatRequestOptions(
+        temperature: nil,
+        thinking: AIProviderThinkingOption(type: "enabled"),
+        reasoningEffort: "high"
+      )
+    }
+  }
+}
+
 public enum AIModelTaskKind: String, CaseIterable, Codable, Identifiable, Sendable {
   case chat
   case articleContextChat

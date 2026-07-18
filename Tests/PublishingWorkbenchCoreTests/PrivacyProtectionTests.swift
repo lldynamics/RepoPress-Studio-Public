@@ -204,37 +204,6 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertTrue(markdown.contains("不得包含本地路径、Token、授权头或私密正文"))
   }
 
-  func testPrivacyProtectionEvidencePackageSummarizesEventsWithoutPrivateMetadata() throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
-    store.updatePrivacySettings(
-      PrivacyProtectionSettings(
-        masksPrivateContent: true
-      )
-    )
-    let privateDraft = ArticleDraft(
-      siteProfileID: store.activeProfileID,
-      title: "Secret Launch Plan",
-      slug: "secret-launch-plan",
-      visibility: .private,
-      summary: "Hidden launch notes",
-      bodyMarkdown: "Private body"
-    )
-    store.setDrafts([privateDraft])
-    store.lockPrivacy(reason: "Manual privacy review")
-
-    let markdown = store.privacyProtectionEvidencePackage.checklistMarkdown
-
-    XCTAssertTrue(markdown.contains("# 隐私保护证据包"))
-    XCTAssertTrue(markdown.contains("## 最近隐私事件"))
-    XCTAssertTrue(markdown.contains("Manual privacy review"))
-    XCTAssertTrue(markdown.contains("swift test --filter PrivacyProtectionTests"))
-    XCTAssertTrue(markdown.contains("bash script/check_privacy_support_copy.sh"))
-    XCTAssertTrue(markdown.contains("bash script/check_screenshot_privacy.sh"))
-    XCTAssertFalse(markdown.contains("Secret Launch Plan"))
-    XCTAssertFalse(markdown.contains("secret-launch-plan"))
-    XCTAssertFalse(markdown.contains("Hidden launch notes"))
-    XCTAssertFalse(markdown.contains("Private body"))
-  }
 
   func testPrivateContentDisplayMasksOnlyPrivateDraftsWhenEnabled() throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
@@ -479,67 +448,7 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertEqual(report.items.first?.title, "Secret Cross Site Plan")
   }
 
-  func testPrivacyProtectionAuditFlagsVisiblePrivateDraftsWhenMaskingDisabled() throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
-    store.updatePrivacySettings(
-      PrivacyProtectionSettings(
-        masksPrivateContent: false
-      )
-    )
-    store.setDrafts([
-      ArticleDraft(
-        siteProfileID: store.activeProfileID,
-        title: "Secret Roadmap",
-        slug: "secret-roadmap",
-        visibility: .private,
-        summary: "Internal plan"
-      )
-    ])
 
-    let audit = store.privacyProtectionAudit
-
-    XCTAssertEqual(audit.level, .exposed)
-    XCTAssertEqual(audit.privateDraftCount, 1)
-    XCTAssertEqual(audit.maskedPrivateDraftCount, 0)
-    XCTAssertEqual(audit.visiblePrivateDraftCount, 1)
-    XCTAssertTrue(audit.message.contains("1 篇私密文章"))
-    XCTAssertTrue(audit.recommendations.contains { $0.contains("私密内容遮挡") })
-    XCTAssertTrue(audit.checklistMarkdown.contains("# 隐私保护体检"))
-    XCTAssertTrue(audit.checklistMarkdown.contains("- 可见风险：1"))
-  }
-
-  func testPrivacyProtectionAuditCountsOnlyActiveProfilePrivateDrafts() throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
-    store.updatePrivacySettings(
-      PrivacyProtectionSettings(
-        masksPrivateContent: true
-      )
-    )
-    store.lockPrivacy(reason: "Manual")
-    store.setDrafts([
-      ArticleDraft(
-        siteProfileID: store.activeProfileID,
-        title: "Active Secret",
-        slug: "active-secret",
-        visibility: .private
-      ),
-      ArticleDraft(
-        siteProfileID: UUID(),
-        title: "Other Site Secret",
-        slug: "other-secret",
-        visibility: .private
-      )
-    ])
-
-    let audit = store.privacyProtectionAudit
-
-    XCTAssertEqual(audit.level, .protected)
-    XCTAssertEqual(audit.privateDraftCount, 1)
-    XCTAssertEqual(audit.maskedPrivateDraftCount, 1)
-    XCTAssertEqual(audit.visiblePrivateDraftCount, 0)
-    XCTAssertTrue(audit.recommendations.isEmpty)
-    XCTAssertTrue(audit.message.contains("1 篇私密文章已在列表、搜索和概览中遮挡"))
-  }
 
   private func temporaryPersistenceURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory

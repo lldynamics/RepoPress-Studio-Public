@@ -68,8 +68,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
-  "WorkspaceNavigationPresentation.secondaryEntryItems" \
-  "advanced workspace tools must remain available from the command menu"
+  "WorkspaceNavigationPresentation.commandMenuAdvancedItems" \
+  "every advertised advanced workspace shortcut must remain available from the command menu"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkbenchVisualStyle.swift" \
+  "func workbenchProminentActionStyle(" \
+  "prominent actions must use the shared high-contrast action style"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
+  ".tint(WorkbenchTheme.navigationSelection)" \
+  "global navigation controls must follow the user's macOS accent"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/AdvancedWorkspaceMenu.swift" \
@@ -100,6 +110,31 @@ require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
   ".focusedSceneValue(\\.markdownEditorCommandActions" \
   "markdown composer must expose focused editor commands"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MarkdownEditorEnhancementPanels.swift" \
+  ".accessibilityLabel(\"站点片段名称\")" \
+  "site snippet name field must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MarkdownEditorEnhancementPanels.swift" \
+  ".accessibilityLabel(\"站点片段 Markdown 内容\")" \
+  "site snippet editor must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  ".keyboardShortcut(\"[\", modifiers: [.command])" \
+  "draft history backward navigation must keep its keyboard shortcut"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  ".keyboardShortcut(\"]\", modifiers: [.command])" \
+  "draft history forward navigation must keep its keyboard shortcut"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  "EditorAccessibilityAnnouncementCenter.announce(" \
+  "draft history navigation must announce the destination article"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
@@ -182,6 +217,41 @@ require_literal \
   "metric tiles must expose their current value"
 
 require_literal \
+  "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
+  "func workbenchTruncatedIdentity(_ value: String, lineLimit: Int = 1)" \
+  "truncated titles and paths must use the shared readable identity treatment"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
+  ".truncationMode(.middle)" \
+  "truncated identities must preserve both ends of paths and titles"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
+  ".help(value)" \
+  "truncated identities must reveal their complete value on hover"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
+  ".accessibilityAction(named: Text(\"复制完整内容\"), copyValue)" \
+  "truncated identities must expose a copy action to assistive technologies"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
+  "struct WorkbenchPathIdentity: View" \
+  "path-only rows must expose a high-contrast file-name identity"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceChangeSections.swift" \
+  "WorkbenchPathIdentity(path: file.path)" \
+  "repository change rows must not rely on a low-contrast path as their only identity"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WritingDraftListComponents.swift" \
+  ".workbenchTruncatedIdentity(displayTitle)" \
+  "draft titles must keep their full hover and copy affordances"
+
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
   ".accessibilityLabel(\"全站图片优化\")" \
   "site-wide image optimization must expose an accessibility label"
@@ -203,12 +273,12 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/SettingsProfileBar.swift" \
-  ".accessibilityLabel(\"Profile 名称\")" \
-  "settings profile name field must expose an accessibility label"
+  ".accessibilityLabel(\"站点配置名称\")" \
+  "settings site configuration name field must expose an accessibility label"
 
 require_literal_any_file \
-  ".accessibilityLabel(\"仓库访问 Token\")" \
-  "settings repository token field must expose an accessibility label" \
+  ".accessibilityLabel(\"仓库访问令牌\")" \
+  "settings repository access token field must expose an accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/TokenSettingsView.swift" \
   "Sources/PersonalSitePublisherMac/Views/TokenRepositoryTokenSection.swift"
 
@@ -248,6 +318,36 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift"
 
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerComponents.swift" \
+  "title: draft.title.trimmedForPublishing.nilIfEmpty" \
+  "writing preview must include the current article title in its render input"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerComponents.swift" \
+  "<header class=\"article-header\"><h1 class=\"article-title\">" \
+  "writing preview must render the article title as a semantic heading"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerComponents.swift" \
+  "<title>\\(escapedTitle)</title>" \
+  "writing preview HTML must expose the article title as its document title"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownTextView.swift" \
+  "textView.setAccessibilityLabel(String(localized: \"Markdown 正文编辑器\"))" \
+  "native markdown text editor must expose a descriptive accessibility name"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownTextView.swift" \
+  "requestKeyboardFocus(focusRequest, in: textView)" \
+  "markdown focus requests must cross the SwiftUI-AppKit bridge"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownTextView.swift" \
+  "window.makeFirstResponder(textView)" \
+  "markdown focus requests must make the native editor first responder"
+
 require_literal_any_file \
   ".accessibilityLabel(\"建站模式\")" \
   "site starter mode picker must expose an accessibility label" \
@@ -261,8 +361,8 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/SiteStarterWorkspaceComponents.swift"
 
 require_literal_any_file \
-  ".accessibilityLabel(\"启用自动同步\")" \
-  "repository auto-sync toggle must expose an accessibility label" \
+  ".accessibilityLabel(\"启用自动检查远端\")" \
+  "repository remote auto-check toggle must expose an accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceView.swift" \
   "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceAutoSyncSection.swift"
 
@@ -290,9 +390,84 @@ require_literal_source_manifest \
   "draft search field must expose an accessibility label"
 
 require_literal \
+  "Sources/PersonalSitePublisherMac/Views/DraftFullTextSearchPanel.swift" \
+  ".accessibilityLabel(\"搜索文章或输入结构化条件\")" \
+  "structured full-text search field must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/DraftFullTextSearchPanel.swift" \
+  ".accessibilityLabel(\"保存的全文搜索查询\")" \
+  "saved full-text queries must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/DraftFullTextSearchPanel.swift" \
+  ".onKeyPress(.downArrow)" \
+  "full-text search must support down-arrow result selection"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/DraftFullTextSearchPanel.swift" \
+  ".onKeyPress(.upArrow)" \
+  "full-text search must support up-arrow result selection"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/DraftFullTextSearchPanel.swift" \
+  ".onExitCommand" \
+  "full-text search must close with Escape"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/DraftFullTextSearchPanel.swift" \
+  ".accessibilityAddTraits(selectedHitID == hit.id ? .isSelected : [])" \
+  "full-text search must expose its keyboard selection to accessibility"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/DraftFullTextSearchPanel.swift" \
+  "Button(\"清除条件\"" \
+  "empty full-text search results must offer to clear filters"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/DraftFullTextSearchPanel.swift" \
+  "Button(\"搜索全部站点\"" \
+  "empty full-text search results must offer an all-sites search"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/DraftVersionComparisonView.swift" \
+  "Text(\"恢复左侧版本 · \\(" \
+  "version comparison must identify the fixed left-side restore source"
+
+sheet_action_files=(
+  "Sources/PersonalSitePublisherMac/Views/DraftFullTextSearchPanel.swift"
+  "Sources/PersonalSitePublisherMac/Views/DraftVersionComparisonView.swift"
+  "Sources/PersonalSitePublisherMac/Views/AIChatDraftDiffPreview.swift"
+  "Sources/PersonalSitePublisherMac/Views/MarkdownEditorEnhancementPanels.swift"
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeMetadataEditorView.swift"
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeAnnotationViews.swift"
+  "Sources/PersonalSitePublisherMac/Views/ContentMigrationAssistantView.swift"
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeImportAssistantView.swift"
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeRecycleBinView.swift"
+  "Sources/PersonalSitePublisherMac/Views/FirstRunSetupView.swift"
+  "Sources/PersonalSitePublisherMac/Views/SiteKindChangeConfirmationView.swift"
+  "Sources/PersonalSitePublisherMac/Views/RemoteArticleImportPreviewView.swift"
+  "Sources/PersonalSitePublisherMac/Views/RemoteRepositoryCreationConfirmationView.swift"
+  "Sources/PersonalSitePublisherMac/Views/PublishDrawerComponents.swift"
+  "Sources/PersonalSitePublisherMac/Views/PublishDrawerView.swift"
+  "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift"
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeLibraryRestorePreviewView.swift"
+)
+for sheet_action_file in "${sheet_action_files[@]}"; do
+  require_literal \
+    "$sheet_action_file" \
+    ".keyboardShortcut(.cancelAction)" \
+    "submission sheet must support Escape: $sheet_action_file"
+  require_literal \
+    "$sheet_action_file" \
+    ".keyboardShortcut(.defaultAction)" \
+    "submission sheet must support Return: $sheet_action_file"
+done
+
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
-  ".accessibilityLabel(\"当前站点 Profile\")" \
-  "profile picker must expose an accessibility label"
+  ".accessibilityLabel(\"切换个人网站\")" \
+  "personal website menu must expose an accessibility label"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/LocalSitePreviewToolbarControl.swift" \
@@ -370,6 +545,61 @@ require_literal \
   ".accessibilityAddTraits(isSelected ? .isSelected : [])" \
   "content health article selection must expose selected accessibility traits"
 
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeLibraryDetailView.swift" \
+  ".accessibilityHeading(accessibilityHeadingLevel(level))" \
+  "knowledge reader headings must expose semantic VoiceOver heading levels"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeMetadataEditorView.swift" \
+  ".accessibilityLabel(\"标题\")" \
+  "knowledge metadata title field must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeMetadataEditorView.swift" \
+  ".accessibilityLabel(\"作者\")" \
+  "knowledge metadata authors field must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeMetadataEditorView.swift" \
+  ".accessibilityLabel(\"语言\")" \
+  "knowledge metadata language field must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeMetadataEditorView.swift" \
+  ".accessibilityLabel(\"标签\")" \
+  "knowledge metadata tags field must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeMetadataEditorView.swift" \
+  ".accessibilityLabel(\"摘要\")" \
+  "knowledge metadata summary editor must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeAnnotationViews.swift" \
+  ".accessibilityLabel(\"引用文字（可选）\")" \
+  "knowledge annotation quote editor must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeAnnotationViews.swift" \
+  ".accessibilityLabel(\"笔记\")" \
+  "knowledge annotation note editor must expose an accessibility label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift" \
+  ".focusedSceneValue(\.knowledgeLibraryCommandActions" \
+  "knowledge library must expose focused keyboard command actions"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/EditorCenterColumn.swift" \
+  "EditorAccessibilityAnnouncementCenter.announce(message)" \
+  "knowledge search and import status changes must be announced to VoiceOver"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  "if knowledgeLibraryCommands != nil { return \"搜索资料库\" }" \
+  "command-f must route to knowledge search while the library is active"
+
 textfield_gaps="$(
   perl -0ne 'while(/TextField\([^\n]*(?:\n[^\n]*){0,8}/g){$m=$&; if($m !~ /accessibilityLabel/){$prefix=substr($_,0,pos($_)); $line=1+($prefix=~tr/\n//); print "$ARGV:$line\n"}}' \
     "$ROOT_DIR"/Sources/PersonalSitePublisherMac/Views/*.swift
@@ -382,4 +612,11 @@ texteditor_gaps="$(
 )"
 [[ -z "$texteditor_gaps" ]] || fail "text editors missing accessibility labels: $texteditor_gaps"
 
-echo "accessibility gate: labels, values, hints, text editors, selection traits, keyboard shortcuts, command routing, first-run setup, status light, settings, editor, site starter, diff review, and publish recovery verified"
+prominent_style_gaps="$(
+  rg -n 'buttonStyle\(\.borderedProminent\)' \
+    "$ROOT_DIR"/Sources/PersonalSitePublisherMac/Views \
+    --glob '!WorkbenchVisualStyle.swift' || true
+)"
+[[ -z "$prominent_style_gaps" ]] || fail "prominent buttons bypassing the shared high-contrast style: $prominent_style_gaps"
+
+echo "accessibility gate: labels, values, hints, text editors, semantic knowledge headings, VoiceOver status announcements, selection traits, keyboard shortcuts, command routing, prominent-action contrast, first-run setup, status light, settings, editor, site starter, diff review, and publish recovery verified"

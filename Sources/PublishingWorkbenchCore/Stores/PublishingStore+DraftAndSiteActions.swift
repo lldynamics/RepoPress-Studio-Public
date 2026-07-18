@@ -2,6 +2,9 @@ import Foundation
 
 extension PublishingStore {
   public func selectDraft(_ id: UUID?, store: WorkbenchStore) {
+    if let id, drafts.contains(where: { $0.id == id }) {
+      draftNavigationHistory.recordVisit(id)
+    }
     selectedDraftID = id
     store.setAIPublishingAssistantPresented(false)
     if selectedSection == .writing {
@@ -43,12 +46,21 @@ extension PublishingStore {
     draftID: UUID,
     field: String?,
     query: String? = nil,
+    selectedRange: NSRange? = nil,
     store: WorkbenchStore
   ) {
+    if drafts.contains(where: { $0.id == draftID }) {
+      draftNavigationHistory.recordVisit(draftID)
+    }
     selectedDraftID = draftID
     store.setAIPublishingAssistantPresented(false)
     store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
-    editorFocusRequest = EditorFocusRequest(draftID: draftID, field: field, query: query)
+    editorFocusRequest = EditorFocusRequest(
+      draftID: draftID,
+      field: field,
+      query: query,
+      selectedRange: selectedRange
+    )
   }
 
   public func updateActiveEditorSelection(
@@ -85,6 +97,7 @@ extension PublishingStore {
   public func createDraft(store: WorkbenchStore) {
     let draft = ArticleDraft.empty(profile: store.activeProfile)
     drafts.insert(draft, at: 0)
+    draftNavigationHistory.recordVisit(draft.id)
     selectedDraftID = draft.id
     selectedSection = .writing
     store.setAIPublishingAssistantPresented(false)
@@ -106,6 +119,7 @@ extension PublishingStore {
       drafts[index] = updated
     } else {
       drafts.insert(updated, at: 0)
+      draftNavigationHistory.recordVisit(updated.id)
       selectedDraftID = updated.id
       store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
     }
@@ -127,8 +141,12 @@ extension PublishingStore {
     let deletedSelectedDraft = selectedDraftID == draftID
     moveDraftToRecycleBin(draft)
     drafts.removeAll { $0.id == draftID }
+    draftNavigationHistory.remove(draftID)
     if deletedSelectedDraft || !drafts.contains(where: { $0.id == selectedDraftID }) {
       selectedDraftID = store.visibleDrafts.first?.id
+      if let selectedDraftID {
+        draftNavigationHistory.recordVisit(selectedDraftID)
+      }
     }
     store.runPreflight()
     store.scheduleImageWorkbenchReportRefresh()
@@ -144,9 +162,53 @@ extension PublishingStore {
   @discardableResult
   public func focusDraft(_ id: UUID, section: WorkspaceSection? = nil, store: WorkbenchStore) -> Bool {
     guard let draft = drafts.first(where: { $0.id == id }) else { return false }
+    draftNavigationHistory.recordVisit(id)
     activeProfileID = draft.siteProfileID
     selectedDraftID = id
     if let section { selectedSection = section }
+    store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
+    store.runPreflight()
+    store.scheduleImageWorkbenchReportRefresh(for: draft)
+    store.refreshPublishPreviewInBackground(for: draft)
+    return true
+  }
+
+  public var canNavigateBackwardInDraftHistory: Bool {
+    draftNavigationHistory.canNavigateBackward(availableDraftIDs: Set(drafts.map(\.id)))
+  }
+
+  public var canNavigateForwardInDraftHistory: Bool {
+    draftNavigationHistory.canNavigateForward(availableDraftIDs: Set(drafts.map(\.id)))
+  }
+
+  @discardableResult
+  public func navigateBackwardInDraftHistory(store: WorkbenchStore) -> Bool {
+    let availableDraftIDs = Set(drafts.map(\.id))
+    guard let draftID = draftNavigationHistory.navigateBackward(
+      availableDraftIDs: availableDraftIDs
+    ) else {
+      return false
+    }
+    return activateDraftFromHistory(draftID, store: store)
+  }
+
+  @discardableResult
+  public func navigateForwardInDraftHistory(store: WorkbenchStore) -> Bool {
+    let availableDraftIDs = Set(drafts.map(\.id))
+    guard let draftID = draftNavigationHistory.navigateForward(
+      availableDraftIDs: availableDraftIDs
+    ) else {
+      return false
+    }
+    return activateDraftFromHistory(draftID, store: store)
+  }
+
+  private func activateDraftFromHistory(_ draftID: UUID, store: WorkbenchStore) -> Bool {
+    guard let draft = drafts.first(where: { $0.id == draftID }) else { return false }
+    activeProfileID = draft.siteProfileID
+    selectedDraftID = draftID
+    selectedSection = .writing
+    store.setAIPublishingAssistantPresented(false)
     store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
     store.runPreflight()
     store.scheduleImageWorkbenchReportRefresh(for: draft)
@@ -171,7 +233,7 @@ extension PublishingStore {
 
   @discardableResult
   public func createGitHubRepositoryForActiveProfile(
-    privateRepository: Bool = false,
+    privateRepository: Bool = true,
     store: WorkbenchStore
   ) async -> RemoteRepositoryCreationResult? {
     if store.activeProfile.repositoryProvider != .github {
@@ -187,6 +249,9 @@ extension PublishingStore {
     guard profiles.contains(where: { $0.id == id }) else { return }
     activeProfileID = id
     selectedDraftID = store.visibleDrafts.first?.id
+    if let selectedDraftID {
+      draftNavigationHistory.recordVisit(selectedDraftID)
+    }
     store.runPreflight()
     store.scheduleImageWorkbenchReportRefresh()
     store.refreshPublishPreviewInBackground(for: store.selectedDraft)
@@ -211,9 +276,19 @@ extension PublishingStore {
 
   public func duplicateActiveProfile(store: WorkbenchStore) -> SiteProfile {
     var profile = store.activeProfile
+    let sourceProfileID = profile.id
     profile.id = UUID()
     profile.name += " 副本"
     profiles.append(profile)
+    let duplicatedSnippets = customMarkdownSnippets
+      .filter { $0.siteProfileID == sourceProfileID }
+      .map { snippet in
+        var duplicate = snippet
+        duplicate.id = "custom-\(UUID().uuidString.lowercased())"
+        duplicate.siteProfileID = profile.id
+        return duplicate
+      }
+    customMarkdownSnippets.append(contentsOf: duplicatedSnippets)
     activeProfileID = profile.id
     selectedDraftID = nil
     store.runPreflight()
@@ -229,19 +304,22 @@ extension PublishingStore {
   @discardableResult
   public func deleteActiveProfile(store: WorkbenchStore) -> RecentlyDeletedProfile? {
     guard profiles.count > 1 else {
-      store.setPublishActionMessage("至少需要保留一个站点 Profile。")
+      store.setPublishActionMessage(CoreL10n.text("至少需要保留一个站点 Profile。"))
       return nil
     }
     let removed = activeProfileID
     guard let profile = profiles.first(where: { $0.id == removed }) else { return nil }
     let removedDrafts = drafts.filter { $0.siteProfileID == removed }
+    let removedSnippets = customMarkdownSnippets.filter { $0.siteProfileID == removed }
     recentlyDeletedProfile = RecentlyDeletedProfile(
       profile: profile,
       drafts: removedDrafts,
+      customMarkdownSnippets: removedSnippets,
       deletedAt: Date()
     )
     profiles.removeAll { $0.id == removed }
     drafts.removeAll { $0.siteProfileID == removed }
+    customMarkdownSnippets.removeAll { $0.siteProfileID == removed }
     activeProfileID = profiles[0].id
     selectedDraftID = store.visibleDrafts.first?.id
     store.runPreflight()
@@ -259,6 +337,7 @@ extension PublishingStore {
     }
     profiles.append(recentlyDeletedProfile.profile)
     drafts.append(contentsOf: recentlyDeletedProfile.drafts)
+    customMarkdownSnippets.append(contentsOf: recentlyDeletedProfile.customMarkdownSnippets)
     activeProfileID = recentlyDeletedProfile.profile.id
     selectedDraftID = recentlyDeletedProfile.drafts.first?.id
     self.recentlyDeletedProfile = nil

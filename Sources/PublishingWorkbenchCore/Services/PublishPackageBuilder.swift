@@ -3,6 +3,7 @@ import Foundation
 public enum PublishFileKind: String, Codable, Sendable {
   case markdown
   case image
+  case video
 
   public var displayName: String {
     switch self {
@@ -10,6 +11,8 @@ public enum PublishFileKind: String, Codable, Sendable {
       return "Markdown"
     case .image:
       return "图片"
+    case .video:
+      return "视频"
     }
   }
 }
@@ -146,7 +149,7 @@ public struct PublishPackageBuilder: Sendable {
     files.append(
       contentsOf: draft.attachments.map { attachment in
         PublishPackageFile(
-          kind: .image,
+          kind: attachment.mediaKind == .video ? .video : .image,
           repositoryPath: attachment.repositoryPath,
           sourceFilePath: attachment.sourceFilePath,
           byteSize: attachment.byteSize,
@@ -178,7 +181,7 @@ public struct PublishPackageBuilder: Sendable {
       reviewTitle: "Publish \(draft.title)",
       reviewChecklist: [
         "Front Matter 已检查",
-        "图片路径和 alt/caption 已检查",
+        "图片、视频路径和 alt/caption 已检查",
         "本地预览已确认",
         "公开风险和私密内容已确认",
       ]

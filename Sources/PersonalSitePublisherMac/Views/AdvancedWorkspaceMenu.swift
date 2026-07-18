@@ -4,7 +4,7 @@ import SwiftUI
 struct AdvancedWorkspaceMenu: View {
   @ObservedObject var store: WorkbenchStore
   let canUseProtectedWorkbench: Bool
-  let showsFirstRunSetup: Bool
+  let isFirstRunSetupComplete: Bool
   let presentFirstRunSetup: () -> Void
 
   var body: some View {
@@ -20,12 +20,15 @@ struct AdvancedWorkspaceMenu: View {
         }
       }
 
-      if showsFirstRunSetup {
-        Divider()
+      Divider()
 
-        Button(action: presentFirstRunSetup) {
-          Label("首次设置…", systemImage: "wand.and.stars")
-        }
+      Button(action: presentFirstRunSetup) {
+        Label(
+          isFirstRunSetupComplete
+            ? String(localized: "重新运行设置向导…")
+            : String(localized: "首次设置…"),
+          systemImage: "wand.and.stars"
+        )
       }
     }
     .disabled(!canUseProtectedWorkbench)

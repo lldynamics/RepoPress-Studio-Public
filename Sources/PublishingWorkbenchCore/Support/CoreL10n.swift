@@ -27,15 +27,21 @@ enum CoreL10n {
   }
 
   private static var localizedBundle: Bundle {
-    Bundle.module
+    if let packagedBundleURL = Bundle.main.resourceURL?
+      .appendingPathComponent("PersonalSitePublisherMac_PublishingWorkbenchCore.bundle"),
+       let packagedBundle = Bundle(url: packagedBundleURL) {
+      return packagedBundle
+    }
+    return Bundle.module
   }
 
   private static func bundle(for locale: Locale) -> Bundle {
     let language = locale.identifier.lowercased().hasPrefix("zh") ? "zh-Hans" : "en"
-    let bundleURL = Bundle.module.bundleURL
+    let rootBundle = localizedBundle
+    let bundleURL = rootBundle.bundleURL
       .appendingPathComponent("\(language).lproj", isDirectory: true)
     guard let bundle = Bundle(url: bundleURL) else {
-      return Bundle.module
+      return rootBundle
     }
     return bundle
   }

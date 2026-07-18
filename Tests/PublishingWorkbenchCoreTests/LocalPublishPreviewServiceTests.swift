@@ -241,6 +241,86 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("content/posts/existing.md").path))
   }
 
+  func testProtectedWriteRejectsExternalModificationAfterPreview() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/existing.md")
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          repositoryPath: "content/posts/existing.md",
+          content: "publisher content"
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+    guard case .fileDigest(_)? = preview.fileDiffs.first?.baselineState else {
+      return XCTFail("Expected the preview to record the existing file digest")
+    }
+    try "external editor content".write(to: destinationURL, atomically: true, encoding: .utf8)
+
+    XCTAssertThrowsError(try service.write(preview: preview, rootURL: rootURL)) { error in
+      guard case .previewOutdated("content/posts/existing.md")? = error as? LocalPublishPreviewError else {
+        return XCTFail("Expected previewOutdated, got \(error)")
+      }
+    }
+    XCTAssertEqual(
+      try String(contentsOf: destinationURL, encoding: .utf8),
+      "external editor content"
+    )
+  }
+
+  func testProtectedWriteRejectsFileCreatedAfterPreview() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/new-after-preview.md")
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          repositoryPath: "content/posts/new-after-preview.md",
+          content: "publisher content"
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+    XCTAssertEqual(preview.fileDiffs.first?.baselineState, .missing)
+    try "external new file".write(to: destinationURL, atomically: true, encoding: .utf8)
+
+    XCTAssertThrowsError(try service.write(preview: preview, rootURL: rootURL)) { error in
+      guard case .previewOutdated("content/posts/new-after-preview.md")? = error as? LocalPublishPreviewError else {
+        return XCTFail("Expected previewOutdated, got \(error)")
+      }
+    }
+    XCTAssertEqual(try String(contentsOf: destinationURL, encoding: .utf8), "external new file")
+  }
+
+  func testProtectedWriteAcceptsUnchangedPreviewBaseline() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/existing.md")
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          repositoryPath: "content/posts/existing.md",
+          content: "publisher content"
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+
+    XCTAssertEqual(
+      try service.write(preview: preview, rootURL: rootURL),
+      ["content/posts/existing.md"]
+    )
+    XCTAssertEqual(try String(contentsOf: destinationURL, encoding: .utf8), "publisher content")
+  }
+
   func testDeleteOperationRejectsRepositorySymlink() throws {
     let rootURL = try makeRepositoryFixture()
     let outsideURL = FileManager.default.temporaryDirectory
@@ -419,6 +499,34 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
       try FileManager.default.contentsOfDirectory(atPath: imagesURL.path)
         .contains(where: { $0.contains("publisher-stage") })
     )
+  }
+
+  func testPreviewAndWriteCopyVideoAsBinaryData() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceURL = rootURL.appendingPathComponent("walkthrough.mp4")
+    let videoData = Data([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0xFF, 0x00])
+    try videoData.write(to: sourceURL)
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .video,
+          repositoryPath: "static/videos/walkthrough.mp4",
+          sourceFilePath: sourceURL.path,
+          byteSize: Int64(videoData.count)
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+
+    let preview = service.preview(package: package, rootURL: rootURL)
+    let written = try service.write(package: package, rootURL: rootURL)
+    let destinationURL = rootURL.appendingPathComponent("static/videos/walkthrough.mp4")
+
+    XCTAssertEqual(preview.fileDiffs.first?.kind, .video)
+    XCTAssertEqual(preview.fileDiffs.first?.status, .added)
+    XCTAssertEqual(written, ["static/videos/walkthrough.mp4"])
+    XCTAssertEqual(try Data(contentsOf: destinationURL), videoData)
   }
 
   private func publishPackage(files: [PublishPackageFile]) -> PublishPackage {

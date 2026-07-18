@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import PublishingWorkbenchCore
 import SwiftUI
 
@@ -14,11 +15,27 @@ struct MarkdownTextEditRequest: Equatable {
   }
 }
 
+struct MarkdownTextFocusRequest: Equatable {
+  let id: UUID
+  let selectedRange: NSRange
+}
+
+private struct MarkdownSyntaxHighlightComputation: Sendable {
+  let text: String
+  let plan: MarkdownSyntaxHighlightPlan
+  let snapshot: MarkdownSyntaxHighlightSnapshot
+  let applicationSnapshots: [MarkdownSyntaxHighlightSnapshot]
+}
+
 struct MacMarkdownTextView: NSViewRepresentable {
   @Binding var text: String
   @Binding var selectedRange: NSRange
+  var comfortConfiguration: MarkdownEditorComfortConfiguration
+  var diagnostics: [MarkdownInlineDiagnostic]
   var editRequest: MarkdownTextEditRequest?
+  var focusRequest: MarkdownTextFocusRequest?
   var scrollSyncUpdate: MarkdownScrollSyncUpdate?
+  var scrollRestorationUpdate: MarkdownScrollSyncUpdate?
   var onStatisticsChanged: (MarkdownEditorStatistics) -> Void
   var onFileDropTargetChanged: (Bool) -> Void
   var onPasteMessage: (String) -> Void
@@ -30,6 +47,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
     Coordinator(
       text: $text,
       selectedRange: $selectedRange,
+      comfortConfiguration: comfortConfiguration,
+      diagnostics: diagnostics,
       onStatisticsChanged: onStatisticsChanged,
       onPasteMessage: onPasteMessage,
       onScrollProgressChanged: onScrollProgressChanged,
@@ -39,6 +58,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
   func makeNSView(context: Context) -> NSScrollView {
     let scrollView = MarkdownEditorScrollView()
+    scrollView.preferredBodyWidth = CGFloat(comfortConfiguration.bodyWidth)
     scrollView.hasVerticalScroller = true
     scrollView.hasHorizontalScroller = false
     scrollView.autohidesScrollers = true
@@ -57,11 +77,12 @@ struct MacMarkdownTextView: NSViewRepresentable {
     )
     textStorage.addLayoutManager(layoutManager)
     layoutManager.addTextContainer(textContainer)
-    textContainer.widthTracksTextView = true
+    textContainer.widthTracksTextView = false
     textContainer.heightTracksTextView = false
 
     let textView = DroppableMarkdownTextView(frame: .zero, textContainer: textContainer)
     precondition(textView.layoutManager != nil, "Markdown editor requires a complete TextKit stack")
+    Self.configureAccessibility(for: textView)
     textView.delegate = context.coordinator
     textView.fileDropTargetChangedHandler = onFileDropTargetChanged
     textView.fileDropHandler = { urls, dropRange in
@@ -74,6 +95,12 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.markdownFormattingHandler = { textView, command in
       context.coordinator.handleFormatting(command, in: textView)
     }
+    textView.markdownTableContextProvider = { textView in
+      context.coordinator.tableContext(in: textView)
+    }
+    textView.markdownTableEditingHandler = { textView, command in
+      context.coordinator.handleTableEditing(command, in: textView)
+    }
     textView.string = text
     textView.isEditable = true
     textView.isSelectable = true
@@ -83,15 +110,15 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.isAutomaticDashSubstitutionEnabled = false
     textView.isAutomaticTextReplacementEnabled = false
     textView.isAutomaticSpellingCorrectionEnabled = false
+    textView.isContinuousSpellCheckingEnabled = comfortConfiguration.spellCheckEnabled
     textView.allowsUndo = true
     textView.usesFindBar = true
     textView.isIncrementalSearchingEnabled = true
-    textView.font = MarkdownTextViewSyntaxHighlighter.baseFont
     textView.textColor = NSColor.labelColor
     textView.insertionPointColor = NSColor.controlAccentColor
     textView.backgroundColor = NSColor.textBackgroundColor
     textView.drawsBackground = true
-    textView.typingAttributes = MarkdownTextViewSyntaxHighlighter.defaultAttributes
+    context.coordinator.applyCachedSyntaxAppearance(in: textView)
     textView.textContainerInset = NSSize(width: 16, height: 16)
     textView.frame = NSRect(
       origin: .zero,
@@ -103,19 +130,26 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.isHorizontallyResizable = false
     textView.autoresizingMask = [NSView.AutoresizingMask.width]
     textView.textContainer?.containerSize = NSSize(width: scrollView.contentSize.width, height: CGFloat.greatestFiniteMagnitude)
-    textView.textContainer?.widthTracksTextView = true
+    textView.textContainer?.widthTracksTextView = false
 
     scrollView.documentView = textView
     context.coordinator.observeScrolling(in: scrollView)
     context.coordinator.scheduleFullStatistics(for: text)
     context.coordinator.scheduleMarkdownSyntaxHighlighting(for: textView, text: text)
+    context.coordinator.updateDiagnostics(diagnostics, in: textView, force: true)
+    context.coordinator.updateCurrentParagraphHighlight(in: textView, force: true)
     return scrollView
   }
 
   func updateNSView(_ nsView: NSScrollView, context: Context) {
     guard let textView = nsView.documentView as? NSTextView else { return }
+    Self.configureAccessibility(for: textView)
     textView.isEditable = true
     textView.isSelectable = true
+    context.coordinator.applyComfortConfiguration(
+      comfortConfiguration,
+      in: textView
+    )
     if let droppableTextView = textView as? DroppableMarkdownTextView {
       droppableTextView.fileDropTargetChangedHandler = onFileDropTargetChanged
       droppableTextView.smartPasteHandler = { textView, pasteboard in
@@ -124,9 +158,16 @@ struct MacMarkdownTextView: NSViewRepresentable {
       droppableTextView.markdownFormattingHandler = { textView, command in
         context.coordinator.handleFormatting(command, in: textView)
       }
+      droppableTextView.markdownTableContextProvider = { textView in
+        context.coordinator.tableContext(in: textView)
+      }
+      droppableTextView.markdownTableEditingHandler = { textView, command in
+        context.coordinator.handleTableEditing(command, in: textView)
+      }
     }
 
-    if textView.string != text {
+    let didReplaceText = textView.string != text
+    if didReplaceText {
       let currentRange = textView.selectedRange()
       textView.string = text
       (nsView as? MarkdownEditorScrollView)?.invalidateDocumentHeight()
@@ -141,14 +182,25 @@ struct MacMarkdownTextView: NSViewRepresentable {
       textView.setSelectedRange(range)
       textView.scrollRangeToVisible(range)
     }
+    context.coordinator.updateDiagnostics(
+      diagnostics,
+      in: textView,
+      force: didReplaceText
+    )
+    context.coordinator.updateCurrentParagraphHighlight(
+      in: textView,
+      force: didReplaceText
+    )
 
-    textView.typingAttributes = MarkdownTextViewSyntaxHighlighter.defaultAttributes
+    context.coordinator.refreshCachedTypingAttributes(in: textView)
     if let handledRequestID = context.coordinator.handle(editRequest, in: textView) {
       DispatchQueue.main.async {
         onEditRequestHandled(handledRequestID)
       }
     }
+    context.coordinator.requestKeyboardFocus(focusRequest, in: textView)
     context.coordinator.applySynchronizedScroll(scrollSyncUpdate, in: nsView)
+    context.coordinator.applyRestoredScroll(scrollRestorationUpdate, in: nsView)
   }
 
   private func clamped(_ range: NSRange, length: Int) -> NSRange {
@@ -161,6 +213,12 @@ struct MacMarkdownTextView: NSViewRepresentable {
     return NSRange(location: location, length: min(range.length, maxLength))
   }
 
+  private static func configureAccessibility(for textView: NSTextView) {
+    textView.setAccessibilityLabel(String(localized: "Markdown 正文编辑器"))
+    textView.setAccessibilityHelp(String(localized: "编辑当前文章的 Markdown 正文"))
+    textView.setAccessibilityIdentifier("markdown-body-editor")
+  }
+
   @MainActor
   final class Coordinator: NSObject, NSTextViewDelegate {
     @Binding var text: String
@@ -170,26 +228,50 @@ struct MacMarkdownTextView: NSViewRepresentable {
     let onScrollProgressChanged: (Double) -> Void
     let onDroppedFiles: ([URL]) -> Void
     private weak var textView: NSTextView?
-    private var highlightTask: Task<Void, Never>?
-    private var highlightGeneration = 0
+    private let syntaxHighlightDebouncer = MarkdownSyntaxHighlightDebouncer()
+    private var syntaxAttributeApplicationTask: Task<Void, Never>?
+    private var syntaxAttributeApplicationGeneration: UInt64 = 0
     private var highlightedTextCache: String?
-    private let syntaxHighlightDelay: TimeInterval = 0.12
+    private var pendingSyntaxHighlightPlan: MarkdownSyntaxHighlightPlan?
+    private var syntaxCodeBlockRanges: [NSRange]?
+    private let syntaxHighlightParser = MarkdownSyntaxHighlightParser()
+    private let syntaxHighlightSignposter = OSSignposter(
+      subsystem: "com.jinfang.PersonalSitePublisherMac",
+      category: "MarkdownSyntax"
+    )
+    private let syntaxHighlightLogger = Logger(
+      subsystem: "com.jinfang.PersonalSitePublisherMac",
+      category: "MarkdownSyntax"
+    )
+    private var hasLoggedSyntaxTelemetryActivation = false
     private var statisticsTask: Task<Void, Never>?
     private var statisticsGeneration = 0
     private var statisticsText: String?
     private var statistics = MarkdownEditorStatistics.empty
     private var pendingTextEdit: MarkdownTextEdit?
     private var lastAppliedEditRequestID: UUID?
+    private var pendingFocusRequest: MarkdownTextFocusRequest?
+    private var lastAppliedFocusRequestID: UUID?
+    private var focusRequestTask: Task<Void, Never>?
+    private var comfortConfiguration: MarkdownEditorComfortConfiguration
+    private var syntaxHighlightPalette: MarkdownTextViewSyntaxPalette
+    private var diagnostics: [MarkdownInlineDiagnostic]
+    private var appliedParagraphHighlightRange: NSRange?
+    private var appliedDiagnosticOverlays: [MarkdownEditorDiagnosticOverlay] = []
     private let scrollSyncBridge: MarkdownScrollViewSyncBridge
     private let smartEditingService = MarkdownSmartEditingService()
     private let smartPasteService = MarkdownSmartPasteService()
+    private let richTextPasteService = MarkdownRichTextPasteService()
     private let formattingService = MarkdownFormattingService()
+    private let tableEditingService = MarkdownTableEditingService()
     private let pastedImageFileStore = PastedImageFileStore()
     private let statisticsDelay: TimeInterval = 0.18
 
     init(
       text: Binding<String>,
       selectedRange: Binding<NSRange>,
+      comfortConfiguration: MarkdownEditorComfortConfiguration,
+      diagnostics: [MarkdownInlineDiagnostic],
       onStatisticsChanged: @escaping (MarkdownEditorStatistics) -> Void,
       onPasteMessage: @escaping (String) -> Void,
       onScrollProgressChanged: @escaping (Double) -> Void,
@@ -197,6 +279,11 @@ struct MacMarkdownTextView: NSViewRepresentable {
     ) {
       _text = text
       _selectedRange = selectedRange
+      self.comfortConfiguration = comfortConfiguration
+      syntaxHighlightPalette = MarkdownTextViewSyntaxPalette(
+        configuration: comfortConfiguration
+      )
+      self.diagnostics = diagnostics
       self.onStatisticsChanged = onStatisticsChanged
       self.onPasteMessage = onPasteMessage
       self.onScrollProgressChanged = onScrollProgressChanged
@@ -207,9 +294,50 @@ struct MacMarkdownTextView: NSViewRepresentable {
       )
     }
 
+    func applyComfortConfiguration(
+      _ configuration: MarkdownEditorComfortConfiguration,
+      in textView: NSTextView
+    ) {
+      guard configuration != comfortConfiguration else { return }
+      let shouldRebuildSyntaxPalette = !syntaxHighlightPalette.matches(configuration)
+      comfortConfiguration = configuration
+      if shouldRebuildSyntaxPalette {
+        syntaxHighlightPalette = MarkdownTextViewSyntaxPalette(configuration: configuration)
+        applyCachedSyntaxAppearance(in: textView)
+      }
+      textView.isContinuousSpellCheckingEnabled = configuration.spellCheckEnabled
+      if let scrollView = textView.enclosingScrollView as? MarkdownEditorScrollView {
+        scrollView.preferredBodyWidth = CGFloat(configuration.bodyWidth)
+      }
+      if shouldRebuildSyntaxPalette {
+        invalidateHighlightedTextCache()
+        scheduleMarkdownSyntaxHighlighting(for: textView, text: textView.string)
+      }
+      updateCurrentParagraphHighlight(in: textView)
+    }
+
+    func applyCachedSyntaxAppearance(in textView: NSTextView) {
+      textView.font = syntaxHighlightPalette.baseFont
+      refreshCachedTypingAttributes(in: textView)
+    }
+
+    func refreshCachedTypingAttributes(in textView: NSTextView) {
+      textView.typingAttributes = syntaxHighlightPalette.defaultAttributes
+    }
+
+    func updateDiagnostics(
+      _ diagnostics: [MarkdownInlineDiagnostic],
+      in textView: NSTextView,
+      force: Bool = false
+    ) {
+      self.diagnostics = diagnostics
+      updateDiagnosticOverlays(in: textView, force: force)
+    }
+
     deinit {
-      highlightTask?.cancel()
+      syntaxAttributeApplicationTask?.cancel()
       statisticsTask?.cancel()
+      focusRequestTask?.cancel()
     }
 
     func textView(
@@ -247,16 +375,41 @@ struct MacMarkdownTextView: NSViewRepresentable {
         return true
       }
 
-      guard let pastedText = pasteboard.string(forType: .string),
-            let edit = smartPasteService.linkEdit(
+      if let pastedText = pasteboard.string(forType: .string),
+         let edit = smartPasteService.linkEdit(
+           in: textView.string,
+           selectedRange: textView.selectedRange(),
+           pastedText: pastedText
+         ) {
+        apply(edit, in: textView)
+        return true
+      }
+
+      guard let richContent = MarkdownPasteboardReader.richTextContent(from: pasteboard),
+            let conversion = richTextPasteService.conversion(
+              fromHTML: richContent.html,
+              baseURL: richContent.baseURL
+            ),
+            MarkdownPasteboardReader.shouldPreferRichConversion(
+              conversion.markdown,
+              over: pasteboard.string(forType: .string)
+            ),
+            let edit = richTextPasteService.edit(
               in: textView.string,
               selectedRange: textView.selectedRange(),
-              pastedText: pastedText
+              conversion: conversion
             ) else {
         return false
       }
 
       apply(edit, in: textView)
+      if conversion.removedTrackingParameterCount > 0 {
+        onPasteMessage(
+          "已将富文本转换为 Markdown，并移除 \(conversion.removedTrackingParameterCount) 个跟踪参数。"
+        )
+      } else {
+        onPasteMessage("已将富文本转换为 Markdown。")
+      }
       return true
     }
 
@@ -265,6 +418,28 @@ struct MacMarkdownTextView: NSViewRepresentable {
       in textView: NSTextView
     ) -> Bool {
       guard let edit = formattingService.edit(
+        in: textView.string,
+        selectedRange: textView.selectedRange(),
+        command: command
+      ) else {
+        return false
+      }
+      apply(edit, in: textView)
+      return true
+    }
+
+    func tableContext(in textView: NSTextView) -> MarkdownTableEditingContext? {
+      tableEditingService.context(
+        in: textView.string,
+        selectedRange: textView.selectedRange()
+      )
+    }
+
+    func handleTableEditing(
+      _ command: MarkdownTableEditingCommand,
+      in textView: NSTextView
+    ) -> Bool {
+      guard let edit = tableEditingService.edit(
         in: textView.string,
         selectedRange: textView.selectedRange(),
         command: command
@@ -305,6 +480,64 @@ struct MacMarkdownTextView: NSViewRepresentable {
       return request.id
     }
 
+    func requestKeyboardFocus(
+      _ request: MarkdownTextFocusRequest?,
+      in textView: NSTextView
+    ) {
+      guard let request else {
+        pendingFocusRequest = nil
+        focusRequestTask?.cancel()
+        focusRequestTask = nil
+        return
+      }
+      guard request.id != lastAppliedFocusRequestID else { return }
+      guard pendingFocusRequest != request || focusRequestTask == nil else { return }
+
+      pendingFocusRequest = request
+      focusRequestTask?.cancel()
+      focusRequestTask = Task { @MainActor [weak self, weak textView] in
+        let retryDelays = [0, 60, 160, 320]
+        for delay in retryDelays {
+          if delay > 0 {
+            try? await Task.sleep(for: .milliseconds(delay))
+          }
+          guard !Task.isCancelled,
+                let self,
+                let textView,
+                self.pendingFocusRequest?.id == request.id else {
+            return
+          }
+          guard let window = textView.window,
+                window.attachedSheet == nil else {
+            continue
+          }
+
+          let range = MacMarkdownTextView.clamped(
+            request.selectedRange,
+            length: (textView.string as NSString).length
+          )
+          textView.setSelectedRange(range)
+          textView.scrollRangeToVisible(range)
+          let didFocus = window.firstResponder === textView
+            || window.makeFirstResponder(textView)
+          guard didFocus else { continue }
+
+          self.selectedRange = range
+          self.lastAppliedFocusRequestID = request.id
+          self.pendingFocusRequest = nil
+          self.focusRequestTask = nil
+          NSAccessibility.post(
+            element: textView,
+            notification: .focusedUIElementChanged
+          )
+          return
+        }
+
+        guard self?.pendingFocusRequest?.id == request.id else { return }
+        self?.focusRequestTask = nil
+      }
+    }
+
     func observeScrolling(in scrollView: NSScrollView) {
       scrollSyncBridge.observe(scrollView)
     }
@@ -317,19 +550,47 @@ struct MacMarkdownTextView: NSViewRepresentable {
       scrollSyncBridge.apply(update, allowDeferredRetry: allowDeferredRetry)
     }
 
+    func applyRestoredScroll(
+      _ update: MarkdownScrollSyncUpdate?,
+      in scrollView: NSScrollView
+    ) {
+      scrollSyncBridge.restore(update)
+    }
+
     func textDidChange(_ notification: Notification) {
       guard let textView = notification.object as? NSTextView else { return }
       (textView.enclosingScrollView as? MarkdownEditorScrollView)?.invalidateDocumentHeight()
       let updatedText = textView.string
+      let syntaxHighlightPlan: MarkdownSyntaxHighlightPlan
+      if let pendingTextEdit {
+        syntaxHighlightPlan = MarkdownSyntaxHighlightRangeService.plan(
+          accumulating: pendingSyntaxHighlightPlan,
+          previousText: pendingTextEdit.previousText,
+          currentText: updatedText,
+          replacedRange: pendingTextEdit.replacedRange,
+          knownCodeBlockRanges: syntaxCodeBlockRanges
+        )
+      } else {
+        syntaxHighlightPlan = .fullDocument(for: updatedText)
+      }
+      pendingSyntaxHighlightPlan = syntaxHighlightPlan
+      syntaxCodeBlockRanges = syntaxHighlightPlan.codeBlockRanges
       updateStatistics(afterEditing: updatedText)
       text = updatedText
       selectedRange = textView.selectedRange()
-      scheduleMarkdownSyntaxHighlighting(for: textView, text: updatedText)
+      scheduleMarkdownSyntaxHighlighting(
+        for: textView,
+        text: updatedText,
+        plan: syntaxHighlightPlan
+      )
+      updateCurrentParagraphHighlight(in: textView)
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
       guard let textView = notification.object as? NSTextView else { return }
       selectedRange = textView.selectedRange()
+      updateCurrentParagraphHighlight(in: textView)
+      centerSelectionIfNeeded(in: textView)
     }
 
     func textView(
@@ -344,12 +605,18 @@ struct MacMarkdownTextView: NSViewRepresentable {
           selectedRange: textView.selectedRange()
         )
       case #selector(NSResponder.insertTab(_:)):
+        if handleTableEditing(.navigateForward, in: textView) {
+          return true
+        }
         edit = smartEditingService.indentationEdit(
           in: textView.string,
           selectedRange: textView.selectedRange(),
           direction: .indent
         )
       case #selector(NSResponder.insertBacktab(_:)):
+        if handleTableEditing(.navigateBackward, in: textView) {
+          return true
+        }
         edit = smartEditingService.indentationEdit(
           in: textView.string,
           selectedRange: textView.selectedRange(),
@@ -366,9 +633,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
     func invalidateHighlightedTextCache() {
       highlightedTextCache = nil
-      highlightTask?.cancel()
-      highlightTask = nil
-      highlightGeneration += 1
+      pendingSyntaxHighlightPlan = nil
+      syntaxCodeBlockRanges = nil
+      syntaxHighlightDebouncer.cancel()
+      cancelPendingSyntaxAttributeApplication()
     }
 
     func scheduleFullStatistics(for text: String) {
@@ -388,25 +656,64 @@ struct MacMarkdownTextView: NSViewRepresentable {
       }
     }
 
-    func scheduleMarkdownSyntaxHighlighting(for textView: NSTextView, text: String) {
+    func scheduleMarkdownSyntaxHighlighting(
+      for textView: NSTextView,
+      text: String,
+      plan: MarkdownSyntaxHighlightPlan? = nil
+    ) {
+      cancelPendingSyntaxAttributeApplication()
       guard highlightedTextCache != text else { return }
 
       self.textView = textView
-      highlightTask?.cancel()
-      highlightGeneration += 1
-      let generation = highlightGeneration
-      let previousText = highlightedTextCache
-      let delay = syntaxHighlightDelay
-      highlightTask = Task.detached(priority: .userInitiated) { [weak self, text] in
-        try? await Task.sleep(for: .seconds(delay))
-        guard !Task.isCancelled else { return }
-        let plan = MarkdownSyntaxHighlightPlan(previousText: previousText, currentText: text)
-        await self?.applyMarkdownSyntaxHighlighting(
-          text: text,
-          range: plan.range,
-          generation: generation
-        )
-      }
+      let requestedPlan = plan ?? .fullDocument(for: text)
+      pendingSyntaxHighlightPlan = requestedPlan
+      syntaxCodeBlockRanges = requestedPlan.codeBlockRanges
+      let syntaxHighlightParser = self.syntaxHighlightParser
+      let delay = MarkdownSyntaxHighlightSchedulingPolicy.delay(
+        for: requestedPlan,
+        documentUTF16Length: (text as NSString).length
+      )
+      let priorityRange = selectionSyntaxHighlightRange(
+        in: text,
+        selectedRange: textView.selectedRange(),
+        snapshotRange: requestedPlan.range
+      )
+      syntaxHighlightDebouncer.schedule(
+        delay: delay,
+        operation: { [text] () async -> MarkdownSyntaxHighlightComputation? in
+          let resolvedPlan = MarkdownSyntaxHighlightRangeService.resolvingCodeBlockRanges(
+            in: text,
+            plan: requestedPlan
+          )
+          guard !Task.isCancelled else { return nil }
+          guard let snapshot = await syntaxHighlightParser.snapshot(
+            in: text,
+            range: resolvedPlan.range
+          ) else {
+            return nil
+          }
+          guard !Task.isCancelled else { return nil }
+          let applicationSnapshots = MarkdownSyntaxHighlightApplicationPlanner
+            .applicationSnapshots(
+              for: snapshot,
+              prioritizing: priorityRange
+            )
+          return MarkdownSyntaxHighlightComputation(
+            text: text,
+            plan: resolvedPlan,
+            snapshot: snapshot,
+            applicationSnapshots: applicationSnapshots
+          )
+        },
+        onValue: { [weak self] computation in
+          self?.applyMarkdownSyntaxHighlighting(
+            text: computation.text,
+            plan: computation.plan,
+            snapshot: computation.snapshot,
+            applicationSnapshots: computation.applicationSnapshots
+          )
+        }
+      )
     }
 
     private func applyFullStatistics(
@@ -423,33 +730,248 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
     func applyMarkdownSyntaxHighlighting(
       text: String,
-      range: NSRange,
-      generation: Int
+      plan: MarkdownSyntaxHighlightPlan,
+      snapshot: MarkdownSyntaxHighlightSnapshot,
+      applicationSnapshots: [MarkdownSyntaxHighlightSnapshot]
     ) {
-      guard highlightGeneration == generation else { return }
       guard highlightedTextCache != text else { return }
       guard let textView else { return }
       guard textView.string == text else { return }
-      guard let highlighted = MarkdownTextViewSyntaxHighlighter.highlightedString(for: text, range: range) else {
+      guard snapshot.range == plan.range else { return }
+
+      let currentPriorityRange = visibleSyntaxHighlightRange(
+        in: textView,
+        snapshotRange: snapshot.range
+      )
+      let prioritizedApplicationSnapshots = MarkdownSyntaxHighlightApplicationPlanner
+        .prioritizing(
+          applicationSnapshots,
+          around: currentPriorityRange
+        )
+      cancelPendingSyntaxAttributeApplication()
+      syntaxAttributeApplicationGeneration &+= 1
+      let generation = syntaxAttributeApplicationGeneration
+      syntaxAttributeApplicationTask = Task { @MainActor [weak self] in
+        await self?.applyMarkdownSyntaxHighlighting(
+          text: text,
+          plan: plan,
+          snapshot: snapshot,
+          applicationSnapshots: prioritizedApplicationSnapshots,
+          generation: generation
+        )
+      }
+    }
+
+    private func applyMarkdownSyntaxHighlighting(
+      text: String,
+      plan: MarkdownSyntaxHighlightPlan,
+      snapshot: MarkdownSyntaxHighlightSnapshot,
+      applicationSnapshots: [MarkdownSyntaxHighlightSnapshot],
+      generation: UInt64
+    ) async {
+      guard syntaxAttributeApplicationGeneration == generation,
+            !Task.isCancelled,
+            let textView,
+            textView.string == text else {
         return
       }
 
       let selectedRange = textView.selectedRange()
       guard let textStorage = textView.textStorage else { return }
-      textStorage.beginEditing()
-      textStorage.setAttributes(MarkdownTextViewSyntaxHighlighter.defaultAttributes, range: range)
-      highlighted.enumerateAttributes(in: NSRange(location: 0, length: highlighted.length), options: []) { attributes, localRange, _ in
-        textStorage.addAttributes(
-          attributes,
-          range: NSRange(location: range.location + localRange.location, length: localRange.length)
+      let signpostID = syntaxHighlightSignposter.makeSignpostID()
+      let intervalState = syntaxHighlightSignposter.beginInterval(
+        "ApplyAttributes",
+        id: signpostID,
+        "rangeLength: \(snapshot.range.length, privacy: .public), runCount: \(snapshot.runs.count, privacy: .public), chunkCount: \(applicationSnapshots.count, privacy: .public)"
+      )
+      var appliedChunkCount = 0
+      defer {
+        syntaxHighlightSignposter.endInterval(
+          "ApplyAttributes",
+          intervalState,
+          "textStorageLength: \(textStorage.length, privacy: .public), completedChunks: \(appliedChunkCount, privacy: .public)"
         )
       }
-      textStorage.endEditing()
+
+      for (index, applicationSnapshot) in applicationSnapshots.enumerated() {
+        guard syntaxAttributeApplicationGeneration == generation,
+              !Task.isCancelled,
+              textView.string == text,
+              textStorage.length == (text as NSString).length else {
+          return
+        }
+        textStorage.beginEditing()
+        MarkdownSyntaxHighlightAttributeApplier.apply(
+          applicationSnapshot,
+          to: textStorage,
+          defaultAttributes: syntaxHighlightPalette.defaultAttributes,
+          styleAttributes: syntaxHighlightPalette.styleAttributes
+        )
+        textStorage.endEditing()
+        appliedChunkCount += 1
+        if index < applicationSnapshots.count - 1 {
+          await Task.yield()
+        }
+      }
+
+      guard syntaxAttributeApplicationGeneration == generation,
+            !Task.isCancelled,
+            textView.string == text else {
+        return
+      }
+      if !hasLoggedSyntaxTelemetryActivation {
+        syntaxHighlightLogger.info(
+          "Syntax telemetry active: documentLength=\(textStorage.length, privacy: .public), rangeLength=\(snapshot.range.length, privacy: .public), runCount=\(snapshot.runs.count, privacy: .public), chunkCount=\(applicationSnapshots.count, privacy: .public)"
+        )
+        hasLoggedSyntaxTelemetryActivation = true
+      }
       (textView.enclosingScrollView as? MarkdownEditorScrollView)?.invalidateDocumentHeight()
       textView.setSelectedRange(Self.clamped(selectedRange, length: (text as NSString).length))
-      textView.typingAttributes = MarkdownTextViewSyntaxHighlighter.defaultAttributes
+      refreshCachedTypingAttributes(in: textView)
+      updateCurrentParagraphHighlight(in: textView, force: true)
+      updateDiagnosticOverlays(in: textView, force: true)
       highlightedTextCache = text
-      highlightTask = nil
+      syntaxCodeBlockRanges = plan.codeBlockRanges
+      pendingSyntaxHighlightPlan = nil
+      syntaxAttributeApplicationTask = nil
+    }
+
+    private func cancelPendingSyntaxAttributeApplication() {
+      syntaxAttributeApplicationTask?.cancel()
+      syntaxAttributeApplicationTask = nil
+      syntaxAttributeApplicationGeneration &+= 1
+    }
+
+    private func visibleSyntaxHighlightRange(
+      in textView: NSTextView,
+      snapshotRange: NSRange
+    ) -> NSRange? {
+      guard let layoutManager = textView.layoutManager,
+            let textContainer = textView.textContainer else {
+        return nil
+      }
+      let inset = textView.textContainerInset
+      let textContainerVisibleRect = textView.visibleRect.offsetBy(
+        dx: -inset.width,
+        dy: -inset.height
+      )
+      let glyphRange = layoutManager.glyphRange(
+        forBoundingRect: textContainerVisibleRect,
+        in: textContainer
+      )
+      let characterRange = layoutManager.characterRange(
+        forGlyphRange: glyphRange,
+        actualGlyphRange: nil
+      )
+      let intersection = NSIntersectionRange(snapshotRange, characterRange)
+      return intersection.length > 0 ? intersection : nil
+    }
+
+    private func selectionSyntaxHighlightRange(
+      in text: String,
+      selectedRange: NSRange,
+      snapshotRange: NSRange
+    ) -> NSRange? {
+      let source = text as NSString
+      let selection = Self.clamped(selectedRange, length: source.length)
+      let lineRange = source.lineRange(for: selection)
+      let intersection = NSIntersectionRange(snapshotRange, lineRange)
+      return intersection.length > 0 ? intersection : nil
+    }
+
+    func updateCurrentParagraphHighlight(
+      in textView: NSTextView,
+      force: Bool = false
+    ) {
+      guard let layoutManager = textView.layoutManager else { return }
+      let length = (textView.string as NSString).length
+      let paragraphRange = MarkdownEditorOverlayService.currentParagraphRange(
+        in: textView.string,
+        selectedRange: textView.selectedRange(),
+        isEnabled: comfortConfiguration.currentParagraphHighlightEnabled
+      )
+      guard force || paragraphRange != appliedParagraphHighlightRange else { return }
+
+      if let appliedParagraphHighlightRange,
+         let removableRange = MarkdownEditorOverlayService.clampedNonEmptyRange(
+           appliedParagraphHighlightRange,
+           length: length
+         ) {
+        layoutManager.removeTemporaryAttribute(
+          .backgroundColor,
+          forCharacterRange: removableRange
+        )
+      }
+      if let paragraphRange {
+        layoutManager.addTemporaryAttribute(
+          .backgroundColor,
+          value: NSColor.controlAccentColor.withAlphaComponent(0.07),
+          forCharacterRange: paragraphRange
+        )
+      }
+      appliedParagraphHighlightRange = paragraphRange
+    }
+
+    private func updateDiagnosticOverlays(
+      in textView: NSTextView,
+      force: Bool = false
+    ) {
+      guard let layoutManager = textView.layoutManager else { return }
+      let overlays = MarkdownEditorOverlayService.diagnosticOverlays(
+        in: textView.string,
+        diagnostics: diagnostics
+      )
+      guard force || overlays != appliedDiagnosticOverlays else { return }
+
+      let length = (textView.string as NSString).length
+      for overlay in appliedDiagnosticOverlays {
+        guard let removableRange = MarkdownEditorOverlayService.clampedNonEmptyRange(
+          overlay.range,
+          length: length
+        ) else { continue }
+        layoutManager.removeTemporaryAttribute(
+          .underlineStyle,
+          forCharacterRange: removableRange
+        )
+        layoutManager.removeTemporaryAttribute(
+          .underlineColor,
+          forCharacterRange: removableRange
+        )
+      }
+
+      let underlineStyle = NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue
+      for overlay in overlays {
+        let color: NSColor = overlay.severity == .error ? .systemRed : .systemOrange
+        layoutManager.addTemporaryAttributes(
+          [
+            .underlineStyle: underlineStyle,
+            .underlineColor: color,
+          ],
+          forCharacterRange: overlay.range
+        )
+      }
+      appliedDiagnosticOverlays = overlays
+    }
+
+    private func centerSelectionIfNeeded(in textView: NSTextView) {
+      guard comfortConfiguration.typewriterModeEnabled,
+            let scrollView = textView.enclosingScrollView,
+            let layoutManager = textView.layoutManager,
+            let textContainer = textView.textContainer else { return }
+      let length = (textView.string as NSString).length
+      guard length > 0 else { return }
+      let location = min(textView.selectedRange().location, length - 1)
+      let glyphRange = layoutManager.glyphRange(
+        forCharacterRange: NSRange(location: location, length: 1),
+        actualCharacterRange: nil
+      )
+      let rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+      let clipView = scrollView.contentView
+      let documentHeight = textView.bounds.height
+      let targetY = rect.midY + textView.textContainerInset.height - clipView.bounds.height / 2
+      let maximumY = max(0, documentHeight - clipView.bounds.height)
+      clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: min(max(0, targetY), maximumY)))
+      scrollView.reflectScrolledClipView(clipView)
     }
 
     private func updateStatistics(afterEditing updatedText: String) {
@@ -500,6 +1022,13 @@ struct MacMarkdownTextView: NSViewRepresentable {
 private final class MarkdownEditorScrollView: NSScrollView {
   private var cachedLayoutWidth: CGFloat = 0
   private var cachedTextHeight: CGFloat?
+  var preferredBodyWidth = CGFloat(MarkdownEditorComfortConfiguration.defaultBodyWidth) {
+    didSet {
+      guard abs(oldValue - preferredBodyWidth) > 0.5 else { return }
+      cachedLayoutWidth = 0
+      invalidateDocumentHeight()
+    }
+  }
 
   override var acceptsFirstResponder: Bool { false }
 
@@ -514,15 +1043,20 @@ private final class MarkdownEditorScrollView: NSScrollView {
 
     let contentHeight = contentSize.height
     let contentWidth = max(contentSize.width, 1)
-    let widthChanged = abs(cachedLayoutWidth - contentWidth) > 0.5
+    let availableBodyWidth = max(contentWidth - 32, 1)
+    let bodyWidth = min(preferredBodyWidth, availableBodyWidth)
+    let horizontalInset: CGFloat = 16
+    let layoutWidth = bodyWidth
+    let widthChanged = abs(cachedLayoutWidth - layoutWidth) > 0.5
     if widthChanged {
       textView.textContainer?.containerSize = NSSize(
-        width: contentWidth,
+        width: layoutWidth,
         height: CGFloat.greatestFiniteMagnitude
       )
       cachedTextHeight = nil
-      cachedLayoutWidth = contentWidth
+      cachedLayoutWidth = layoutWidth
     }
+    textView.textContainerInset = NSSize(width: horizontalInset, height: 16)
     let textHeight = textView.layoutManager.map { layoutManager in
       guard let textContainer = textView.textContainer else { return contentHeight }
       if let cachedTextHeight {
@@ -547,6 +1081,8 @@ private final class DroppableMarkdownTextView: NSTextView {
   var fileDropHandler: (([URL], NSRange) -> Void)?
   var smartPasteHandler: ((NSTextView, NSPasteboard) -> Bool)?
   var markdownFormattingHandler: ((NSTextView, MarkdownFormattingCommand) -> Bool)?
+  var markdownTableContextProvider: ((NSTextView) -> MarkdownTableEditingContext?)?
+  var markdownTableEditingHandler: ((NSTextView, MarkdownTableEditingCommand) -> Bool)?
   private var isFileDropTargeted = false
 
   override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
@@ -579,6 +1115,111 @@ private final class DroppableMarkdownTextView: NSTextView {
       super.paste(sender)
       return
     }
+  }
+
+  override func menu(for event: NSEvent) -> NSMenu? {
+    guard let context = markdownTableContextProvider?(self) else {
+      return super.menu(for: event)
+    }
+
+    let menu = super.menu(for: event) ?? NSMenu()
+    if !menu.items.isEmpty, menu.items.last?.isSeparatorItem != true {
+      menu.addItem(.separator())
+    }
+
+    let tableMenu = NSMenu(title: String(localized: "Markdown 表格"))
+    tableMenu.autoenablesItems = false
+    tableMenu.addItem(tableMenuItem(
+      title: String(localized: "格式化表格"),
+      action: #selector(formatMarkdownTable(_:))
+    ))
+    tableMenu.addItem(.separator())
+    tableMenu.addItem(tableMenuItem(
+      title: String(localized: "在上方插入行"),
+      action: #selector(insertMarkdownTableRowAbove(_:))
+    ))
+    tableMenu.addItem(tableMenuItem(
+      title: String(localized: "在下方插入行"),
+      action: #selector(insertMarkdownTableRowBelow(_:))
+    ))
+    tableMenu.addItem(tableMenuItem(
+      title: String(localized: "删除当前行"),
+      action: #selector(deleteMarkdownTableRow(_:)),
+      isEnabled: context.canDeleteRow
+    ))
+    tableMenu.addItem(.separator())
+    tableMenu.addItem(tableMenuItem(
+      title: String(localized: "在左侧插入列"),
+      action: #selector(insertMarkdownTableColumnBefore(_:))
+    ))
+    tableMenu.addItem(tableMenuItem(
+      title: String(localized: "在右侧插入列"),
+      action: #selector(insertMarkdownTableColumnAfter(_:))
+    ))
+    tableMenu.addItem(tableMenuItem(
+      title: String(localized: "删除当前列"),
+      action: #selector(deleteMarkdownTableColumn(_:)),
+      isEnabled: context.canDeleteColumn
+    ))
+
+    let tableMenuItem = NSMenuItem(
+      title: String(localized: "Markdown 表格"),
+      action: nil,
+      keyEquivalent: ""
+    )
+    tableMenuItem.submenu = tableMenu
+    menu.addItem(tableMenuItem)
+    return menu
+  }
+
+  private func tableMenuItem(
+    title: String,
+    action: Selector,
+    isEnabled: Bool = true
+  ) -> NSMenuItem {
+    let item = NSMenuItem(
+      title: title,
+      action: action,
+      keyEquivalent: ""
+    )
+    item.target = self
+    item.isEnabled = isEnabled
+    return item
+  }
+
+  @objc(formatMarkdownTable:)
+  private func formatMarkdownTable(_ sender: Any?) {
+    _ = markdownTableEditingHandler?(self, .format)
+  }
+
+  @objc(insertMarkdownTableRowAbove:)
+  private func insertMarkdownTableRowAbove(_ sender: Any?) {
+    _ = markdownTableEditingHandler?(self, .insertRowAbove)
+  }
+
+  @objc(insertMarkdownTableRowBelow:)
+  private func insertMarkdownTableRowBelow(_ sender: Any?) {
+    _ = markdownTableEditingHandler?(self, .insertRowBelow)
+  }
+
+  @objc(deleteMarkdownTableRow:)
+  private func deleteMarkdownTableRow(_ sender: Any?) {
+    _ = markdownTableEditingHandler?(self, .deleteRow)
+  }
+
+  @objc(insertMarkdownTableColumnBefore:)
+  private func insertMarkdownTableColumnBefore(_ sender: Any?) {
+    _ = markdownTableEditingHandler?(self, .insertColumnBefore)
+  }
+
+  @objc(insertMarkdownTableColumnAfter:)
+  private func insertMarkdownTableColumnAfter(_ sender: Any?) {
+    _ = markdownTableEditingHandler?(self, .insertColumnAfter)
+  }
+
+  @objc(deleteMarkdownTableColumn:)
+  private func deleteMarkdownTableColumn(_ sender: Any?) {
+    _ = markdownTableEditingHandler?(self, .deleteColumn)
   }
 
   @objc(applyMarkdownBold:)
@@ -685,6 +1326,11 @@ enum MarkdownFormattingResponderBridge {
 }
 
 private enum MarkdownPasteboardReader {
+  struct RichTextContent {
+    let html: String
+    let baseURL: URL?
+  }
+
   static func imageFileURLs(from pasteboard: NSPasteboard) -> [URL] {
     let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: nil)?
       .compactMap { ($0 as? URL)?.standardizedFileURL }
@@ -704,10 +1350,266 @@ private enum MarkdownPasteboardReader {
     }
     return bitmap.representation(using: .png, properties: [:])
   }
+
+  static func richTextContent(from pasteboard: NSPasteboard) -> RichTextContent? {
+    let baseURL = pasteboard.string(forType: .URL).flatMap { value -> URL? in
+      guard let url = URL(string: value),
+            let scheme = url.scheme?.lowercased(),
+            ["http", "https"].contains(scheme) else {
+        return nil
+      }
+      return url
+    }
+
+    if let html = pasteboard.string(forType: .html)?.nilIfEmpty {
+      return RichTextContent(html: html, baseURL: baseURL)
+    }
+    if let data = pasteboard.data(forType: .html),
+       let html = decodedHTML(data)?.nilIfEmpty {
+      return RichTextContent(html: html, baseURL: baseURL)
+    }
+    if let attributed = attributedString(from: pasteboard, type: .rtf, documentType: .rtf) {
+      return RichTextContent(
+        html: semanticHTML(from: attributed),
+        baseURL: baseURL
+      )
+    }
+    if let attributed = attributedString(from: pasteboard, type: .rtfd, documentType: .rtfd) {
+      return RichTextContent(
+        html: semanticHTML(from: attributed),
+        baseURL: baseURL
+      )
+    }
+    return nil
+  }
+
+  static func shouldPreferRichConversion(
+    _ markdown: String,
+    over plainText: String?
+  ) -> Bool {
+    guard let plainText else { return true }
+    return normalizedPasteComparison(markdown) != normalizedPasteComparison(plainText)
+  }
+
+  private static func attributedString(
+    from pasteboard: NSPasteboard,
+    type: NSPasteboard.PasteboardType,
+    documentType: NSAttributedString.DocumentType
+  ) -> NSAttributedString? {
+    guard let data = pasteboard.data(forType: type), !data.isEmpty else { return nil }
+    return try? NSAttributedString(
+      data: data,
+      options: [.documentType: documentType],
+      documentAttributes: nil
+    )
+  }
+
+  private static func decodedHTML(_ data: Data) -> String? {
+    for encoding in [
+      String.Encoding.utf8,
+      .utf16,
+      .unicode,
+      .windowsCP1252,
+      .isoLatin1,
+    ] {
+      if let value = String(data: data, encoding: encoding), !value.isEmpty {
+        return value
+      }
+    }
+    return nil
+  }
+
+  private static func semanticHTML(from attributed: NSAttributedString) -> String {
+    let source = attributed.string as NSString
+    guard source.length > 0 else { return "" }
+    var html = "<article>"
+    var cursor = 0
+    var openList: RichTextListKind?
+
+    func closeOpenList() {
+      if let openList {
+        html += openList == .ordered ? "</ol>" : "</ul>"
+      }
+      openList = nil
+    }
+
+    while cursor < source.length {
+      let paragraphRange = source.paragraphRange(
+        for: NSRange(location: cursor, length: 0)
+      )
+      var contentRange = paragraphRange
+      while contentRange.length > 0,
+            source.substring(
+              with: NSRange(location: NSMaxRange(contentRange) - 1, length: 1)
+            ).rangeOfCharacter(from: .newlines) != nil {
+        contentRange.length -= 1
+      }
+      let plainParagraph = source.substring(with: contentRange)
+      let list = richTextListKind(
+        for: attributed,
+        paragraphRange: contentRange,
+        plainText: plainParagraph
+      )
+      let markerLength = listMarkerLength(in: plainParagraph, kind: list)
+      let semanticRange = NSRange(
+        location: min(NSMaxRange(contentRange), contentRange.location + markerLength),
+        length: max(0, contentRange.length - markerLength)
+      )
+      let inline = semanticInlineHTML(from: attributed, range: semanticRange)
+
+      if let list {
+        if openList != list {
+          closeOpenList()
+          html += list == .ordered ? "<ol>" : "<ul>"
+          openList = list
+        }
+        html += "<li>\(inline)</li>"
+      } else {
+        closeOpenList()
+        let headingLevel = inferredHeadingLevel(in: attributed, range: contentRange)
+        if let headingLevel, !inline.isEmpty {
+          html += "<h\(headingLevel)>\(inline)</h\(headingLevel)>"
+        } else {
+          html += "<p>\(inline)</p>"
+        }
+      }
+      cursor = NSMaxRange(paragraphRange)
+    }
+    closeOpenList()
+    html += "</article>"
+    return html
+  }
+
+  private static func semanticInlineHTML(
+    from attributed: NSAttributedString,
+    range: NSRange
+  ) -> String {
+    guard range.length > 0 else { return "" }
+    var html = ""
+    attributed.enumerateAttributes(in: range, options: []) { attributes, runRange, _ in
+      var fragment = escapedHTML((attributed.string as NSString).substring(with: runRange))
+      guard !fragment.isEmpty else { return }
+      let font = attributes[.font] as? NSFont
+      let traits = font.map { NSFontManager.shared.traits(of: $0) } ?? []
+      if font?.isFixedPitch == true {
+        fragment = "<code>\(fragment)</code>"
+      }
+      if traits.contains(.boldFontMask) {
+        fragment = "<strong>\(fragment)</strong>"
+      }
+      if traits.contains(.italicFontMask) {
+        fragment = "<em>\(fragment)</em>"
+      }
+      if (attributes[.strikethroughStyle] as? Int ?? 0) != 0 {
+        fragment = "<del>\(fragment)</del>"
+      }
+      if let linkValue = attributes[.link] {
+        let destination = (linkValue as? URL)?.absoluteString
+          ?? (linkValue as? String)
+        if let destination = destination?.nilIfEmpty {
+          fragment = "<a href=\"\(escapedHTMLAttribute(destination))\">\(fragment)</a>"
+        }
+      }
+      html += fragment
+    }
+    return html
+  }
+
+  private static func inferredHeadingLevel(
+    in attributed: NSAttributedString,
+    range: NSRange
+  ) -> Int? {
+    guard range.length > 0 else { return nil }
+    var maximumSize: CGFloat = 0
+    var containsBold = false
+    attributed.enumerateAttribute(.font, in: range, options: []) { value, _, _ in
+      guard let font = value as? NSFont else { return }
+      maximumSize = max(maximumSize, font.pointSize)
+      containsBold = containsBold
+        || NSFontManager.shared.traits(of: font).contains(.boldFontMask)
+    }
+    if maximumSize >= 24 { return 1 }
+    if maximumSize >= 19 { return 2 }
+    if maximumSize >= 16, containsBold { return 3 }
+    return nil
+  }
+
+  private static func richTextListKind(
+    for attributed: NSAttributedString,
+    paragraphRange: NSRange,
+    plainText: String
+  ) -> RichTextListKind? {
+    if paragraphRange.length > 0,
+       let style = attributed.attribute(
+         .paragraphStyle,
+         at: paragraphRange.location,
+         effectiveRange: nil
+       ) as? NSParagraphStyle,
+       let marker = style.textLists.first?.markerFormat.rawValue.lowercased() {
+      return marker.contains("decimal")
+        || marker.contains("roman")
+        || marker.contains("alpha")
+        ? .ordered
+        : .unordered
+    }
+    let trimmed = plainText.trimmingCharacters(in: .whitespaces)
+    if trimmed.range(of: #"^\d+[\.)][ \t]+"#, options: .regularExpression) != nil {
+      return .ordered
+    }
+    if trimmed.range(of: #"^[•◦▪‣⁃\-+*][ \t]+"#, options: .regularExpression) != nil {
+      return .unordered
+    }
+    return nil
+  }
+
+  private static func listMarkerLength(
+    in plainText: String,
+    kind: RichTextListKind?
+  ) -> Int {
+    guard kind != nil else { return 0 }
+    let source = plainText as NSString
+    let pattern = kind == .ordered
+      ? #"^[ \t]*\d+[\.)][ \t]+"#
+      : #"^[ \t]*[•◦▪‣⁃\-+*][ \t]+"#
+    guard let expression = try? NSRegularExpression(pattern: pattern),
+          let match = expression.firstMatch(
+            in: plainText,
+            range: NSRange(location: 0, length: source.length)
+          ) else {
+      return 0
+    }
+    return match.range.length
+  }
+
+  private static func normalizedPasteComparison(_ value: String) -> String {
+    value
+      .replacingOccurrences(of: "\r\n", with: "\n")
+      .replacingOccurrences(of: "\r", with: "\n")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private static func escapedHTML(_ value: String) -> String {
+    escapedHTMLAttribute(value)
+  }
+
+  private static func escapedHTMLAttribute(_ value: String) -> String {
+    value
+      .replacingOccurrences(of: "&", with: "&amp;")
+      .replacingOccurrences(of: "\"", with: "&quot;")
+      .replacingOccurrences(of: "'", with: "&#39;")
+      .replacingOccurrences(of: "<", with: "&lt;")
+      .replacingOccurrences(of: ">", with: "&gt;")
+  }
+
+  private enum RichTextListKind: Equatable {
+    case ordered
+    case unordered
+  }
 }
 
 struct MarkdownEditorStatistics: Equatable, Sendable {
   let characterCount: Int
+  let hanCharacterCount: Int
   let wordCount: Int
   let lineCount: Int
   private let lineBreakCount: Int
@@ -715,15 +1617,22 @@ struct MarkdownEditorStatistics: Equatable, Sendable {
 
   static let empty = MarkdownEditorStatistics(
     characterCount: 0,
+    hanCharacterCount: 0,
     wordCount: 0,
     lineCount: 0,
     lineBreakCount: 0,
     nonWhitespaceCharacterCount: 0
   )
 
+  var writingUnitCount: Int {
+    hanCharacterCount + wordCount
+  }
+
   var readingMinutes: Int {
-    guard wordCount > 0 else { return 0 }
-    return Int(ceil(Double(wordCount) / 250.0))
+    MarkdownWritingStatistics(
+      hanCharacterCount: hanCharacterCount,
+      wordCount: wordCount
+    ).estimatedReadingMinutes
   }
 
   static func make(for text: String) -> MarkdownEditorStatistics {
@@ -735,9 +1644,11 @@ struct MarkdownEditorStatistics: Equatable, Sendable {
     let nonWhitespaceCharacterCount = text.unicodeScalars.reduce(into: 0) { count, scalar in
       if !CharacterSet.whitespacesAndNewlines.contains(scalar) { count += 1 }
     }
+    let writingStatistics = MarkdownWritingStatisticsService.statistics(in: text)
     return MarkdownEditorStatistics(
       characterCount: characterCount,
-      wordCount: wordCount(in: text),
+      hanCharacterCount: writingStatistics.hanCharacterCount,
+      wordCount: writingStatistics.wordCount,
       lineCount: nonWhitespaceCharacterCount == 0 ? 0 : lineBreakCount + 1,
       lineBreakCount: lineBreakCount,
       nonWhitespaceCharacterCount: nonWhitespaceCharacterCount
@@ -764,10 +1675,21 @@ struct MarkdownEditorStatistics: Equatable, Sendable {
     let insertedText = updated.substring(with: updatedRange)
     let previousWordRange = Self.wordContextRange(around: previousRange, in: previous)
     let updatedWordRange = Self.wordContextRange(around: updatedRange, in: updated)
+    let previousWritingStatistics = MarkdownWritingStatisticsService.statistics(
+      in: previous.substring(with: previousWordRange)
+    )
+    let updatedWritingStatistics = MarkdownWritingStatisticsService.statistics(
+      in: updated.substring(with: updatedWordRange)
+    )
+    let updatedHanCharacterCount = max(
+      0,
+      hanCharacterCount - previousWritingStatistics.hanCharacterCount
+        + updatedWritingStatistics.hanCharacterCount
+    )
     let updatedWordCount = max(
       0,
-      wordCount - Self.wordCount(in: previous.substring(with: previousWordRange))
-        + Self.wordCount(in: updated.substring(with: updatedWordRange))
+      wordCount - previousWritingStatistics.wordCount
+        + updatedWritingStatistics.wordCount
     )
     let updatedLineBreakCount = max(
       0,
@@ -782,6 +1704,7 @@ struct MarkdownEditorStatistics: Equatable, Sendable {
     let updatedCharacterCount = updated.length
     return MarkdownEditorStatistics(
       characterCount: updatedCharacterCount,
+      hanCharacterCount: updatedHanCharacterCount,
       wordCount: updatedWordCount,
       lineCount: updatedNonWhitespaceCount == 0 ? 0 : updatedLineBreakCount + 1,
       lineBreakCount: updatedLineBreakCount,
@@ -792,10 +1715,6 @@ struct MarkdownEditorStatistics: Equatable, Sendable {
   private static let wordSeparators = CharacterSet.whitespacesAndNewlines
     .union(.punctuationCharacters)
     .union(.symbols)
-
-  private static func wordCount(in text: String) -> Int {
-    text.components(separatedBy: wordSeparators).filter { !$0.isEmpty }.count
-  }
 
   private static func lineBreakCount(in text: String) -> Int {
     text.utf16.reduce(into: 0) { count, value in
@@ -831,229 +1750,75 @@ private struct MarkdownTextEdit {
   let replacedRange: NSRange
 }
 
-private struct MarkdownSyntaxHighlightPlan {
-  let range: NSRange
-
-  init(previousText: String?, currentText: String) {
-    let current = currentText as NSString
-    guard let previousText else {
-      range = NSRange(location: 0, length: current.length)
-      return
-    }
-
-    let previous = previousText as NSString
-    let change = Self.changedRanges(previous: previous, current: current)
-    guard !Self.touchesCodeFence(change.previousRange, in: previous)
-            && !Self.touchesCodeFence(change.currentRange, in: current) else {
-      range = NSRange(location: 0, length: current.length)
-      return
-    }
-
-    var expanded = current.lineRange(for: change.currentRange)
-    for codeBlockRange in Self.codeBlockRanges(in: current) {
-      if NSIntersectionRange(expanded, codeBlockRange).length > 0 {
-        expanded = NSUnionRange(expanded, codeBlockRange)
-      }
-    }
-    range = expanded
-  }
-
-  private static func changedRanges(previous: NSString, current: NSString) -> (previousRange: NSRange, currentRange: NSRange) {
-    let sharedLength = min(previous.length, current.length)
-    var prefix = 0
-    while prefix < sharedLength, previous.character(at: prefix) == current.character(at: prefix) {
-      prefix += 1
-    }
-
-    var suffix = 0
-    while suffix < sharedLength - prefix,
-          previous.character(at: previous.length - suffix - 1) == current.character(at: current.length - suffix - 1) {
-      suffix += 1
-    }
-    return (
-      NSRange(location: prefix, length: previous.length - prefix - suffix),
-      NSRange(location: prefix, length: current.length - prefix - suffix)
-    )
-  }
-
-  private static func touchesCodeFence(_ range: NSRange, in text: NSString) -> Bool {
-    guard range.location <= text.length, NSMaxRange(range) <= text.length else { return true }
-    let lineRange = text.lineRange(for: range)
-    return text.substring(with: lineRange).contains("```")
-  }
-
-  private static func codeBlockRanges(in text: NSString) -> [NSRange] {
-    var ranges: [NSRange] = []
-    var searchRange = NSRange(location: 0, length: text.length)
-
-    while searchRange.length > 0 {
-      let openingRange = text.range(of: "```", options: [], range: searchRange)
-      guard openingRange.location != NSNotFound else { break }
-      let contentStart = NSMaxRange(openingRange)
-      let remainingRange = NSRange(location: contentStart, length: text.length - contentStart)
-      let closingRange = text.range(of: "```", options: [], range: remainingRange)
-      guard closingRange.location != NSNotFound else {
-        ranges.append(NSRange(location: openingRange.location, length: text.length - openingRange.location))
-        break
-      }
-      let rangeEnd = NSMaxRange(closingRange)
-      ranges.append(NSRange(location: openingRange.location, length: rangeEnd - openingRange.location))
-      searchRange = NSRange(location: rangeEnd, length: text.length - rangeEnd)
-    }
-
-    return ranges
-  }
-}
-
 @MainActor
-private enum MarkdownTextViewSyntaxHighlighter {
-  static let baseFont = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
-  static let codeFont = NSFont.monospacedSystemFont(ofSize: 13.5, weight: .medium)
-  static let defaultAttributes: [NSAttributedString.Key: Any] = {
-    var paragraphStyle = NSMutableParagraphStyle()
-    paragraphStyle.minimumLineHeight = 18
-    return [
+private struct MarkdownTextViewSyntaxPalette {
+  let fontSize: Double
+  let lineSpacing: Double
+  let baseFont: NSFont
+  let defaultAttributes: [NSAttributedString.Key: Any]
+  let styleAttributes: [MarkdownSyntaxHighlightStyle: [NSAttributedString.Key: Any]]
+
+  init(configuration: MarkdownEditorComfortConfiguration) {
+    fontSize = configuration.fontSize
+    lineSpacing = configuration.lineSpacing
+    let baseFont = NSFont.monospacedSystemFont(
+      ofSize: CGFloat(configuration.fontSize),
+      weight: .regular
+    )
+    let codeFont = NSFont.monospacedSystemFont(
+      ofSize: CGFloat(configuration.fontSize),
+      weight: .medium
+    )
+    let emphasizedFont = NSFont.monospacedSystemFont(
+      ofSize: CGFloat(configuration.fontSize),
+      weight: .semibold
+    )
+    let italicFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
+    let paragraphStyle = NSMutableParagraphStyle()
+    paragraphStyle.lineSpacing = CGFloat(configuration.lineSpacing)
+
+    self.baseFont = baseFont
+    defaultAttributes = [
       .font: baseFont,
       .foregroundColor: NSColor.labelColor,
       .paragraphStyle: paragraphStyle
     ]
-  }()
-
-  private static let headingRegex = compilePattern("^(#{1,6})\\s+.*$", options: .anchorsMatchLines)
-  private static let boldRegex = compilePattern("\\*\\*[^\\n\\*]+\\*\\*")
-  private static let italicRegex = compilePattern("(?<!\\*)\\*(?!\\*)([^\\n\\*]+?)\\*(?!\\*)")
-  private static let inlineCodeRegex = compilePattern("`[^`\\n]+`")
-  private static let listRegex = compilePattern("^\\s*(?:[-*+]|\\d+\\.)\\s+.*$", options: .anchorsMatchLines)
-  private static let quoteRegex = compilePattern("^> .*+$", options: .anchorsMatchLines)
-  private static let linkRegex = compilePattern(#"\[[^\]]+\]\([^)]+\)"#)
-  private static let codeBlockRegex = compilePattern("```[\\s\\S]*?```")
-
-  static func highlightedString(for value: String, range: NSRange? = nil) -> NSAttributedString? {
-    let fullRange = NSRange(location: 0, length: (value as NSString).length)
-    let requestedRange = range ?? fullRange
-    guard requestedRange.location >= 0, NSMaxRange(requestedRange) <= fullRange.length else {
-      return nil
-    }
-    let substring = (value as NSString).substring(with: requestedRange)
-    return highlightedSubstring(substring)
-  }
-
-  static func codeBlockRanges(in value: String) -> [NSRange] {
-    ranges(for: codeBlockRegex, in: value)
-  }
-
-  private static func highlightedSubstring(_ value: String) -> NSAttributedString? {
-    let attributed = NSMutableAttributedString(string: value)
-    attributed.setAttributes(defaultAttributes, range: NSRange(location: 0, length: attributed.length))
-    let codeBlockRanges = ranges(for: codeBlockRegex, in: attributed.string)
-
-    apply(
-      headingRegex,
-      to: attributed,
-      attributes: [
+    styleAttributes = [
+      .heading: [
         .foregroundColor: WorkbenchThemeNSColor.primary,
-        .font: NSFont.boldSystemFont(ofSize: 14)
+        .font: emphasizedFont
       ],
-      excluding: codeBlockRanges
-    )
-
-    apply(
-      codeBlockRegex,
-      to: attributed,
-      attributes: [
+      .codeBlock: [
         .font: codeFont,
         .foregroundColor: NSColor.labelColor,
         .backgroundColor: NSColor.textBackgroundColor.withAlphaComponent(0.18)
-      ]
-    )
-
-    apply(
-      linkRegex,
-      to: attributed,
-      attributes: [
+      ],
+      .link: [
         .foregroundColor: NSColor.linkColor,
         .underlineStyle: NSUnderlineStyle.single.rawValue,
         .underlineColor: NSColor.linkColor
       ],
-      excluding: codeBlockRanges
-    )
-
-    apply(
-      listRegex,
-      to: attributed,
-      attributes: [
+      .list: [
         .foregroundColor: WorkbenchThemeNSColor.success
       ],
-      excluding: codeBlockRanges
-    )
-
-    apply(
-      quoteRegex,
-      to: attributed,
-      attributes: [
+      .quote: [
         .foregroundColor: NSColor.secondaryLabelColor,
         .backgroundColor: NSColor.textBackgroundColor.withAlphaComponent(0.08)
       ],
-      excluding: codeBlockRanges
-    )
-
-    apply(
-      boldRegex,
-      to: attributed,
-      attributes: [
-        .font: NSFont.boldSystemFont(ofSize: 14)
+      .bold: [
+        .font: emphasizedFont
       ],
-      excluding: codeBlockRanges
-    )
-
-    apply(
-      italicRegex,
-      to: attributed,
-      attributes: [
-        .font: NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
+      .italic: [
+        .font: italicFont
       ],
-      excluding: codeBlockRanges
-    )
-
-    apply(
-      inlineCodeRegex,
-      to: attributed,
-      attributes: [
+      .inlineCode: [
         .font: codeFont,
         .foregroundColor: WorkbenchThemeNSColor.warning
-      ],
-      excluding: codeBlockRanges
-    )
-
-    return attributed
+      ]
+    ]
   }
 
-  private static func ranges(for regex: NSRegularExpression?, in text: String) -> [NSRange] {
-    guard let regex else { return [] }
-    var result: [NSRange] = []
-    regex.enumerateMatches(in: text, options: [], range: NSRange(location: 0, length: (text as NSString).length)) { match, _, _ in
-      guard let match else { return }
-      result.append(match.range)
-    }
-    return result
-  }
-
-  private static func apply(
-    _ regex: NSRegularExpression?,
-    to attributed: NSMutableAttributedString,
-    attributes: [NSAttributedString.Key: Any],
-    excluding excludedRanges: [NSRange] = []
-  ) {
-    guard let regex else { return }
-    regex.enumerateMatches(in: attributed.string, options: [], range: NSRange(location: 0, length: attributed.length)) { match, _, _ in
-      guard let match else { return }
-      let overlap = excludedRanges.contains { NSIntersectionRange($0, match.range).length > 0 }
-      guard !overlap else { return }
-      attributed.addAttributes(attributes, range: match.range)
-    }
-  }
-
-  private static func compilePattern(_ pattern: String, options: NSRegularExpression.Options = []) -> NSRegularExpression? {
-    try? NSRegularExpression(pattern: pattern, options: options)
+  func matches(_ configuration: MarkdownEditorComfortConfiguration) -> Bool {
+    fontSize == configuration.fontSize && lineSpacing == configuration.lineSpacing
   }
 }

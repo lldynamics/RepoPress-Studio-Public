@@ -15,7 +15,9 @@ public final class AIWorkspaceStore: ObservableObject {
   @Published public internal(set) var aiChatConversationTitle: String?
   @Published public internal(set) var aiChatMessages: [AIPublishingChatMessage]
   @Published public internal(set) var aiChatContextMode: AIPublishingChatContextMode
+  @Published public internal(set) var aiChatKnowledgePolicy: KnowledgeRetrievalPolicy
   @Published public internal(set) var aiChatModelGrade: AIChatModelGrade
+  @Published public internal(set) var aiChatReasoningLevel: AIChatReasoningLevel
   @Published public internal(set) var aiChatSelectedModel: String
   @Published public internal(set) var aiChatFocusedParagraphID: String?
   @Published public internal(set) var aiChatCustomPrompts: [AIPublishingCustomPrompt]
@@ -43,7 +45,9 @@ public final class AIWorkspaceStore: ObservableObject {
     aiChatConversationTitle: String? = nil,
     aiChatMessages: [AIPublishingChatMessage] = [],
     aiChatContextMode: AIPublishingChatContextMode = .site,
+    aiChatKnowledgePolicy: KnowledgeRetrievalPolicy = .automatic,
     aiChatModelGrade: AIChatModelGrade = .standard,
+    aiChatReasoningLevel: AIChatReasoningLevel = .deep,
     aiChatSelectedModel: String = "",
     aiChatFocusedParagraphID: String? = nil,
     aiChatCustomPrompts: [AIPublishingCustomPrompt] = [],
@@ -70,7 +74,9 @@ public final class AIWorkspaceStore: ObservableObject {
     self.aiChatConversationTitle = aiChatConversationTitle
     self.aiChatMessages = aiChatMessages
     self.aiChatContextMode = aiChatContextMode
+    self.aiChatKnowledgePolicy = aiChatKnowledgePolicy
     self.aiChatModelGrade = aiChatModelGrade
+    self.aiChatReasoningLevel = aiChatReasoningLevel
     self.aiChatSelectedModel = aiChatSelectedModel
     self.aiChatFocusedParagraphID = aiChatFocusedParagraphID
     self.aiChatCustomPrompts = aiChatCustomPrompts

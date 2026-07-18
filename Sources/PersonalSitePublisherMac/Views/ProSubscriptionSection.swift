@@ -3,7 +3,8 @@ import SwiftUI
 
 struct ProSubscriptionSection: View {
   let isUnlocked: Bool
-  let productID: String?
+  let productDisplayPrice: String?
+  let purchaseTypeDisplayName: String?
   let upgradeMessage: String
 
   var body: some View {
@@ -12,11 +13,17 @@ struct ProSubscriptionSection: View {
         isUnlocked ? "Pro 已解锁" : "免费版",
         systemImage: isUnlocked ? "crown.fill" : "person"
       )
-      .foregroundStyle(isUnlocked ? .yellow : .secondary)
+      .foregroundStyle(isUnlocked ? WorkbenchTheme.financeForeground : Color.secondary)
 
-      Text("产品：\(productID ?? MonetizationProductCatalog.proLifetimeProductID)")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+      if let productDisplayPrice, let purchaseTypeDisplayName {
+        Label("\(productDisplayPrice) · \(purchaseTypeDisplayName)", systemImage: "cart")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      } else {
+        Text("价格与购买类型将在 App Store 产品加载后显示。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
 
       Text(upgradeMessage)
         .font(.caption)

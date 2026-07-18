@@ -68,8 +68,7 @@ extension ReleaseHistoryDetailView {
           Text(endpointURLText)
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .textSelection(.enabled)
+            .workbenchTruncatedIdentity(endpointURLText)
         } else {
           Text(store.deploymentWebhookHTTPReceiverState.message)
             .font(.caption)
@@ -110,10 +109,11 @@ extension ReleaseHistoryDetailView {
             .font(.caption)
             .foregroundStyle(.secondary)
         } else if let latestRecord = store.activeProfileReleaseRecords.first {
-          Text("目标：\(latestRecord.title)")
+          let targetLabel = "目标：\(latestRecord.title)"
+          Text(targetLabel)
             .font(.caption)
             .foregroundStyle(.secondary)
-            .lineLimit(1)
+            .workbenchTruncatedIdentity(targetLabel)
         }
       }
       .controlSize(.small)

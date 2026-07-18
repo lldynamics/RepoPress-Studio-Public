@@ -98,6 +98,7 @@
   "display.draft-list-filter.draft": { "zh-Hans": "待写作", "en": "To Write" },
   "display.draft-list-filter.image-issues": { "zh-Hans": "有图片问题", "en": "Image Issues" },
   "display.draft-list-filter.published": { "zh-Hans": "已上线", "en": "Published" },
+  "display.draft-list-filter.private-articles": { "zh-Hans": "私密文章", "en": "Private Articles" },
   "display.draft-list-filter.ready": { "zh-Hans": "待发布", "en": "Ready to Publish" },
   "display.general-draft-reuse-risk-level.high": { "zh-Hans": "高风险", "en": "High Risk" },
   "display.general-draft-reuse-risk-level.ready": { "zh-Hans": "可复用", "en": "Ready to Reuse" },
@@ -162,6 +163,10 @@
   "display.seo-social-preview-readiness-status.missing": { "zh-Hans": "缺字段", "en": "Missing Fields" },
   "display.seo-social-preview-readiness-status.ready": { "zh-Hans": "可发布", "en": "Ready to Publish" },
   "display.seo-social-preview-readiness-status.warning": { "zh-Hans": "需确认", "en": "Review Required" },
-  "display.writing-draft-density.comfortable": { "zh-Hans": "舒适", "en": "Comfortable" },
-  "display.writing-draft-density.compact": { "zh-Hans": "紧凑", "en": "Compact" }
+  "display.writing-draft-sort-order.article-date-newest": { "zh-Hans": "文章日期：最新", "en": "Article Date: Newest" },
+  "display.writing-draft-sort-order.article-date-oldest": { "zh-Hans": "文章日期：最早", "en": "Article Date: Oldest" },
+  "display.writing-draft-sort-order.title-ascending": { "zh-Hans": "标题：A–Z", "en": "Title: A–Z" },
+  "display.writing-draft-sort-order.title-descending": { "zh-Hans": "标题：Z–A", "en": "Title: Z–A" },
+  "display.writing-draft-sort-order.updated-newest": { "zh-Hans": "最近更新", "en": "Recently Updated" },
+  "display.writing-draft-sort-order.updated-oldest": { "zh-Hans": "最早更新", "en": "Least Recently Updated" }
 }

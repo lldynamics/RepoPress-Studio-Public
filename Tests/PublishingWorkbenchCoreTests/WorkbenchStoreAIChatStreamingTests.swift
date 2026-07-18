@@ -109,7 +109,14 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       ],
       streamLineDelayNanoseconds: 50_000_000
     )
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("json")
+    defer {
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
     let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
@@ -173,7 +180,14 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       statusCode: 200,
       delayNanoseconds: 50_000_000
     )
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("json")
+    defer {
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
     let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
       keychainTokenStore: aiTokenStoreForTest(),
       aiPublishingAssistantService: AIPublishingAssistantService(
         client: AIChatCompletionClient(transport: transport)
@@ -192,9 +206,9 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let canceledSubmission = Task {
       await store.sendAIChatMessage("请取消", draft: draft)
     }
-    for _ in 0..<200 {
+    for _ in 0..<1_000 {
       if await transport.capturedRequestCount() == 1 { break }
-      await Task.yield()
+      try await Task.sleep(for: .milliseconds(5))
     }
     let requestCountBeforeCancellation = await transport.capturedRequestCount()
     XCTAssertEqual(requestCountBeforeCancellation, 1)
@@ -752,25 +766,30 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
 
     store.prepareAIChat(for: firstDraft)
     store.setAIChatContextMode(.general)
+    store.setAIChatKnowledgePolicy(.pinnedOnly)
     store.setAIChatModelGradeState(.custom)
     store.setAIChatSelectedModelState("first-custom-model")
 
     store.prepareAIChat(for: secondDraft)
     XCTAssertEqual(store.aiChatContextMode, .site)
+    XCTAssertEqual(store.aiChatKnowledgePolicy, .automatic)
     XCTAssertEqual(store.aiChatModelGrade, .standard)
     XCTAssertEqual(store.aiChatSelectedModel, "")
 
     store.setAIChatContextMode(.site)
+    store.setAIChatKnowledgePolicy(.off)
     store.setAIChatModelGradeState(.highQuality)
     store.setAIChatSelectedModelState("second-note")
 
     store.prepareAIChat(for: firstDraft)
     XCTAssertEqual(store.aiChatContextMode, .general)
+    XCTAssertEqual(store.aiChatKnowledgePolicy, .pinnedOnly)
     XCTAssertEqual(store.aiChatModelGrade, .custom)
     XCTAssertEqual(store.aiChatSelectedModel, "first-custom-model")
 
     store.prepareAIChat(for: secondDraft)
     XCTAssertEqual(store.aiChatContextMode, .site)
+    XCTAssertEqual(store.aiChatKnowledgePolicy, .off)
     XCTAssertEqual(store.aiChatModelGrade, .highQuality)
     XCTAssertEqual(store.aiChatSelectedModel, "second-note")
   }
@@ -840,6 +859,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       AIPublishingChatMessage(role: .user, content: "准备清空")
     ])
     store.setAIChatContextMode(.general)
+    store.setAIChatKnowledgePolicy(.pinnedOnly)
     store.setAIChatModelGradeState(.custom)
     store.setAIChatSelectedModelState("kept-model")
 
@@ -847,6 +867,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
 
     XCTAssertTrue(store.aiChatMessages.isEmpty)
     XCTAssertEqual(store.aiChatContextMode, .general)
+    XCTAssertEqual(store.aiChatKnowledgePolicy, .pinnedOnly)
     XCTAssertEqual(store.aiChatModelGrade, .custom)
     XCTAssertEqual(store.aiChatSelectedModel, "kept-model")
   }

@@ -104,13 +104,6 @@ public enum AIPublishingChatConversationPresentation {
     return "\(grade.title) · \(model)"
   }
 
-  public static func streamingStatus(tokenUsage: AIChatTokenUsage?) -> String {
-    guard let tokenUsage else {
-      return "AI 正在回复"
-    }
-    return "AI 正在回复 · \(tokenUsage.displayText)"
-  }
-
   public static func configurationIssue(
     config: AIProviderConfig,
     aiTokenAvailability: KeychainTokenAvailability,

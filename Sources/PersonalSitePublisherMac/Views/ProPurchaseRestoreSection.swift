@@ -17,6 +17,7 @@ struct ProPurchaseRestoreSection: View {
         } label: {
           Label("解锁 Pro", systemImage: "crown")
         }
+        .workbenchProminentActionStyle()
         .disabled(isBusy || isUnlocked)
 
         Button {

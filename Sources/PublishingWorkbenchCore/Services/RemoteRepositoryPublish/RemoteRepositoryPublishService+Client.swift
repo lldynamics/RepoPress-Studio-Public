@@ -346,7 +346,7 @@ extension RemoteRepositoryPublishService {
     switch file.kind {
     case .markdown:
       return Data((file.content ?? "").utf8)
-    case .image:
+    case .image, .video:
       guard let sourceFilePath = file.sourceFilePath, fileManager.fileExists(atPath: sourceFilePath) else {
         throw RemoteRepositoryPublishError.missingSourceFile(file.repositoryPath)
       }

@@ -6,13 +6,16 @@ extension RepositoryWorkspaceView {
   @ViewBuilder
   var repositoryStageContent: some View {
     switch stage {
-    case .overview, .changes:
+    case .overview:
       repositorySummary
       repositoryScanProgress
+      onlinePublishCenterSection
       repositorySyncPlan
+      pathRules
+    case .changes:
+      repositoryScanProgress
       remoteChangedFiles
       changedFiles
-      pathRules
     case .automation:
       repositoryAutoSyncSection
     case .preview:
@@ -161,7 +164,7 @@ extension RepositoryWorkspaceView {
     } else if store.selectedDraft != nil {
       workflowBanner(
         title: "已具备继续发布的仓库上下文",
-        detail: "在统一发布流程中确认检查、Diff、写入、远端和部署状态。",
+        detail: "在统一发布流程中确认检查、差异（Diff）、写入、远端和部署状态。",
         systemImage: "paperplane",
         tint: WorkbenchTheme.success,
         actionTitle: "打开发布流程",
@@ -192,28 +195,67 @@ extension RepositoryWorkspaceView {
   }
 
   var repositoryScanRequiredState: some View {
-    VStack(spacing: 14) {
-      EmptyStateView(
-        title: "扫描仓库后继续",
-        message: "先完成一次仓库扫描，才会显示变更、自动化和本地预览模块。",
-        systemImage: "arrow.clockwise.circle"
+    let content: (title: String, message: String, systemImage: String)
+    switch stage {
+    case .changes:
+      content = (
+        String(localized: "扫描后查看仓库变更"),
+        String(localized: "扫描会读取 Git 状态、远端差异和发布相关文件，不会修改仓库。"),
+        "arrow.left.arrow.right"
       )
-      Button(action: scanRepository) {
-        Label("开始扫描", systemImage: "arrow.clockwise")
-      }
-      .buttonStyle(.borderedProminent)
+    case .automation:
+      content = (
+        String(localized: "扫描后启用自动检查"),
+        String(localized: "先识别项目类型和现有脚本，再为当前仓库提供准确的检查入口。"),
+        "checkmark.shield"
+      )
+    case .preview:
+      content = (
+        String(localized: "扫描后启动本地预览"),
+        String(localized: "扫描会确认站点类型、预览命令和可用端口，然后显示启动操作。"),
+        "play.rectangle"
+      )
+    case .history:
+      content = (
+        String(localized: "扫描后关联发布台账"),
+        String(localized: "扫描当前仓库后，可将发布记录与分支、远端和部署状态对应起来。"),
+        "clock.arrow.circlepath"
+      )
+    case .overview:
+      content = (
+        String(localized: "先扫描本地仓库"),
+        String(localized: "读取仓库状态后，这里会显示发布准备情况和下一步建议。"),
+        "arrow.clockwise.circle"
+      )
     }
-    .frame(maxWidth: .infinity, minHeight: 280)
+
+    return EmptyStateView(
+      title: LocalizedStringKey(content.title),
+      message: LocalizedStringKey(content.message),
+      systemImage: content.systemImage,
+      density: .inline,
+      actionTitle: "扫描仓库",
+      actionSystemImage: "arrow.clockwise",
+      action: {
+        Task { await store.repository.scanAsync() }
+      }
+    )
+    .padding(16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      WorkbenchBackgroundStyle.subtle,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
   }
 
   func openUnifiedPublishFlow() {
     if let publishDrawerCommandAction {
       publishDrawerCommandAction.open(
-        "已从仓库工作区进入统一发布流程，请确认检查、Diff、写入、远端和部署状态。"
+        "已从仓库工作区进入统一发布流程，请确认检查、差异、写入、远端和部署状态。"
       )
     } else {
       store.runPreflight()
-      store.setPublishActionMessage("请从顶部发布状态打开统一发布流程。")
+      store.setPublishActionMessage(String(localized: "请从顶部发布状态打开统一发布流程。"))
     }
   }
 
@@ -242,7 +284,7 @@ extension RepositoryWorkspaceView {
       Button(action: action) {
         Text(actionTitle)
       }
-      .buttonStyle(.borderedProminent)
+      .workbenchProminentActionStyle()
     }
     .padding(12)
     .background(tint.opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
@@ -292,7 +334,7 @@ extension RepositoryWorkspaceView {
   @ViewBuilder
   var repositorySummary: some View {
     if let report = store.repositoryReport {
-      LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+      LazyVGrid(columns: repositoryMetricGridColumns, spacing: 12) {
         MetricTile(title: "仓库状态", value: report.statusTitle, systemImage: "externaldrive")
         MetricTile(title: "同步", value: report.syncStatusTitle, systemImage: "arrow.up.arrow.down")
         MetricTile(title: "Markdown", value: "\(report.markdownFileCount)", systemImage: "doc.text")
@@ -325,10 +367,8 @@ extension RepositoryWorkspaceView {
               .foregroundStyle(.secondary)
             Text(remote.remoteURL)
               .font(.caption.monospaced())
-              .foregroundStyle(.tertiary)
-              .lineLimit(1)
-              .truncationMode(.middle)
-              .textSelection(.enabled)
+              .foregroundStyle(.secondary)
+              .workbenchTruncatedIdentity(remote.remoteURL)
             Spacer()
             Button {
               store.applyDetectedRepositoryRemote()
@@ -340,14 +380,12 @@ extension RepositoryWorkspaceView {
       }
     } else {
       EmptyStateView(
-        title: "还没有扫描结果",
-        message: "选择仓库后会检查站点类型、内容目录、图片目录和 Git 状态。",
-        systemImage: "externaldrive.badge.plus",
-        actionTitle: "开始扫描",
-        actionSystemImage: "arrow.clockwise",
-        action: scanRepository
+        title: "扫描后将显示仓库概况",
+        message: "这里会汇总站点类型、内容目录、图片目录和 Git 状态。",
+        systemImage: "list.bullet.clipboard",
+        density: .inline
       )
-      .frame(height: 240)
+      .padding(.vertical, 8)
     }
   }
 

@@ -167,18 +167,6 @@ extension LocalGitPublishMode {
   var fallbackDisplayName: String { displayName }
 }
 
-extension MonetizationAccessEventOutcome {
-  var workbenchDisplayNameSemanticKey: String {
-    switch self {
-    case .allowedFreeUse: "display.monetization-access-event-outcome.allowed-free-use"
-    case .allowedProEntitlement: "display.monetization-access-event-outcome.allowed-pro-entitlement"
-    case .blockedRequiresPro: "display.monetization-access-event-outcome.blocked-requires-pro"
-    }
-  }
-
-  var fallbackDisplayName: String { displayName }
-}
-
 extension PremiumFeature {
   var workbenchDisplayNameSemanticKey: String {
     switch self {
@@ -238,6 +226,7 @@ extension RemoteRepositoryPublishReadiness {
     case .ready: "display.remote-repository-publish-readiness.ready"
     case .needsToken: "display.remote-repository-publish-readiness.needs-token"
     case .needsPermissionCheck: "display.remote-repository-publish-readiness.needs-permission-check"
+    case .needsRemoteCheck: "display.remote-repository-publish-readiness.needs-remote-check"
     case .blocked: "display.remote-repository-publish-readiness.blocked"
     }
   }
@@ -331,6 +320,7 @@ extension DraftListFilter {
     case .checkFailed: "display.draft-list-filter.check-failed"
     case .ready: "display.draft-list-filter.ready"
     case .published: "display.draft-list-filter.published"
+    case .privateArticles: "display.draft-list-filter.private-articles"
     case .imageIssues: "display.draft-list-filter.image-issues"
     }
   }
@@ -338,11 +328,69 @@ extension DraftListFilter {
   var fallbackDisplayName: String { displayName }
 }
 
-extension WritingDraftDensity {
+extension WritingDraftSortOrder {
   var workbenchDisplayNameSemanticKey: String {
     switch self {
-    case .compact: "display.writing-draft-density.compact"
-    case .comfortable: "display.writing-draft-density.comfortable"
+    case .updatedNewest: "display.writing-draft-sort-order.updated-newest"
+    case .updatedOldest: "display.writing-draft-sort-order.updated-oldest"
+    case .articleDateNewest: "display.writing-draft-sort-order.article-date-newest"
+    case .articleDateOldest: "display.writing-draft-sort-order.article-date-oldest"
+    case .titleAscending: "display.writing-draft-sort-order.title-ascending"
+    case .titleDescending: "display.writing-draft-sort-order.title-descending"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
+extension KnowledgeDocumentKind {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .article: "display.knowledge-document-kind.article"
+    case .book: "display.knowledge-document-kind.book"
+    case .webpage: "display.knowledge-document-kind.webpage"
+    case .pdf: "display.knowledge-document-kind.pdf"
+    case .markdown: "display.knowledge-document-kind.markdown"
+    case .text: "display.knowledge-document-kind.text"
+    case .note: "display.knowledge-document-kind.note"
+    case .other: "display.knowledge-document-kind.other"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
+extension KnowledgeImportDisposition {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .new: "display.knowledge-import-disposition.new"
+    case .update: "display.knowledge-import-disposition.update"
+    case .duplicate: "display.knowledge-import-disposition.duplicate"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
+extension KnowledgeDocumentSortField {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .title: "display.knowledge-document-sort-field.title"
+    case .kind: "display.knowledge-document-sort-field.kind"
+    case .fileSize: "display.knowledge-document-sort-field.file-size"
+    case .addedAt: "display.knowledge-document-sort-field.added-at"
+    case .updatedAt: "display.knowledge-document-sort-field.updated-at"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
+extension KnowledgeSortDirection {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .ascending: "display.knowledge-sort-direction.ascending"
+    case .descending: "display.knowledge-sort-direction.descending"
     }
   }
 

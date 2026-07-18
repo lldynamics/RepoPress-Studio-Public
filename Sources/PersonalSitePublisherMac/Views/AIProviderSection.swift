@@ -10,34 +10,31 @@ struct AIProviderSection: View {
   let modelDisplayValue: String
   let requiresAPIKeyBinding: Binding<Bool>
   let requiresAPIKeyDisplayValue: String
-  let applyCurrentPreset: () -> Void
+  @State private var showsConnectionDetails = false
 
   var body: some View {
-    Picker("Preset", selection: presetBinding) {
-      ForEach(AIProviderPreset.allCases) { preset in
-        Text(preset.localizedDisplayName).tag(preset)
+    Section(String(localized: "AI 服务")) {
+      Picker(String(localized: "服务预设"), selection: presetBinding) {
+        ForEach(AIProviderPreset.allCases) { preset in
+          Text(preset.localizedDisplayName).tag(preset)
+        }
+      }
+      .accessibilityLabel("AI 服务预设")
+      .accessibilityValue(presetDisplayName)
+
+      DisclosureGroup(String(localized: "自定义连接"), isExpanded: $showsConnectionDetails) {
+        TextField(String(localized: "API 基础地址"), text: baseURL)
+          .accessibilityLabel("AI Base URL")
+          .accessibilityValue(baseURLDisplayValue)
+
+        TextField(String(localized: "模型"), text: model)
+          .accessibilityLabel("AI 模型")
+          .accessibilityValue(modelDisplayValue)
+
+        Toggle(String(localized: "需要 API 密钥"), isOn: requiresAPIKeyBinding)
+          .accessibilityLabel("AI 需要 API Key")
+          .accessibilityValue(requiresAPIKeyDisplayValue)
       }
     }
-    .accessibilityLabel("AI 服务预设")
-    .accessibilityValue(presetDisplayName)
-
-    Button {
-      applyCurrentPreset()
-    } label: {
-      Label("应用当前预设", systemImage: "wand.and.stars")
-    }
-    .accessibilityLabel("应用当前 AI 预设")
-
-    TextField("Base URL", text: baseURL)
-      .accessibilityLabel("AI Base URL")
-      .accessibilityValue(baseURLDisplayValue)
-
-    TextField("Model", text: model)
-      .accessibilityLabel("AI 模型")
-      .accessibilityValue(modelDisplayValue)
-
-    Toggle("需要 API Key", isOn: requiresAPIKeyBinding)
-      .accessibilityLabel("AI 需要 API Key")
-      .accessibilityValue(requiresAPIKeyDisplayValue)
   }
 }

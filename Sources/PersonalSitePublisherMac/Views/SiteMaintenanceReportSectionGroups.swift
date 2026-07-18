@@ -12,7 +12,6 @@ struct SiteMaintenancePlanningSections: View {
   let applySuggestedSchedule: () -> Void
 
   var body: some View {
-    SiteMaintenanceMetricGrid(report: report)
     SiteMaintenanceHealthSection(summary: report.healthSummary)
     SiteMaintenanceActionQueueSection(
       report: report,

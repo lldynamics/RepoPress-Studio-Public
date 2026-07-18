@@ -300,6 +300,7 @@ public struct AIPublishingActionRequest: Sendable {
   public var publishPackage: PublishPackage?
   public var remoteReviewDraft: RemoteReviewDraft?
   public var workflowContext: AIPublishingWorkflowContext?
+  public var knowledgeContext: KnowledgeContextSnapshot?
 
   public init(
     kind: AIPublishingActionKind,
@@ -309,7 +310,8 @@ public struct AIPublishingActionRequest: Sendable {
     preflightIssues: [PreflightIssue] = [],
     publishPackage: PublishPackage? = nil,
     remoteReviewDraft: RemoteReviewDraft? = nil,
-    workflowContext: AIPublishingWorkflowContext? = nil
+    workflowContext: AIPublishingWorkflowContext? = nil,
+    knowledgeContext: KnowledgeContextSnapshot? = nil
   ) {
     self.kind = kind
     self.draft = draft
@@ -319,6 +321,7 @@ public struct AIPublishingActionRequest: Sendable {
     self.publishPackage = publishPackage
     self.remoteReviewDraft = remoteReviewDraft
     self.workflowContext = workflowContext
+    self.knowledgeContext = knowledgeContext
   }
 }
 
@@ -327,17 +330,20 @@ public struct AIPublishingActionResult: Hashable, Sendable {
   public var content: String
   public var providerName: String
   public var model: String
+  public var knowledgeCitations: [KnowledgeCitation]
 
   public init(
     kind: AIPublishingActionKind,
     content: String,
     providerName: String = "",
-    model: String = ""
+    model: String = "",
+    knowledgeCitations: [KnowledgeCitation] = []
   ) {
     self.kind = kind
     self.content = content
     self.providerName = providerName
     self.model = model
+    self.knowledgeCitations = knowledgeCitations
   }
 }
 
@@ -397,6 +403,7 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
   public var tokenUsage: AIChatTokenUsage?
   public var contextMode: AIPublishingChatContextMode
   public var imageAttachments: [AIChatImageAttachment]
+  public var knowledgeCitations: [KnowledgeCitation]
   public var createdAt: Date
 
   public init(
@@ -407,6 +414,7 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     tokenUsage: AIChatTokenUsage? = nil,
     contextMode: AIPublishingChatContextMode = .site,
     imageAttachments: [AIChatImageAttachment] = [],
+    knowledgeCitations: [KnowledgeCitation] = [],
     createdAt: Date = Date()
   ) {
     self.id = id
@@ -416,6 +424,7 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     self.tokenUsage = tokenUsage
     self.contextMode = contextMode
     self.imageAttachments = imageAttachments
+    self.knowledgeCitations = knowledgeCitations
     self.createdAt = createdAt
   }
 
@@ -427,6 +436,7 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     case tokenUsage
     case contextMode
     case imageAttachments
+    case knowledgeCitations
     case createdAt
   }
 
@@ -439,6 +449,7 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     tokenUsage = try container.decodeIfPresent(AIChatTokenUsage.self, forKey: .tokenUsage)
     contextMode = try container.decodeIfPresent(AIPublishingChatContextMode.self, forKey: .contextMode) ?? .site
     imageAttachments = try container.decodeIfPresent([AIChatImageAttachment].self, forKey: .imageAttachments) ?? []
+    knowledgeCitations = try container.decodeIfPresent([KnowledgeCitation].self, forKey: .knowledgeCitations) ?? []
     createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
   }
 }
@@ -490,7 +501,9 @@ public struct AIPublishingChatSessionState: Hashable, Sendable {
   public var conversationTitle: String?
   public var messages: [AIPublishingChatMessage]
   public var contextMode: AIPublishingChatContextMode
+  public var knowledgePolicy: KnowledgeRetrievalPolicy
   public var modelGrade: AIChatModelGrade
+  public var reasoningLevel: AIChatReasoningLevel
   public var selectedModel: String
   public var focusedParagraphID: String?
 
@@ -498,14 +511,18 @@ public struct AIPublishingChatSessionState: Hashable, Sendable {
     conversationTitle: String? = nil,
     messages: [AIPublishingChatMessage] = [],
     contextMode: AIPublishingChatContextMode = .site,
+    knowledgePolicy: KnowledgeRetrievalPolicy = .automatic,
     modelGrade: AIChatModelGrade = .standard,
+    reasoningLevel: AIChatReasoningLevel = .deep,
     selectedModel: String = "",
     focusedParagraphID: String? = nil
   ) {
     self.conversationTitle = conversationTitle?.trimmedForPublishing.nilIfEmpty
     self.messages = messages
     self.contextMode = contextMode
+    self.knowledgePolicy = knowledgePolicy
     self.modelGrade = modelGrade
+    self.reasoningLevel = reasoningLevel
     self.selectedModel = selectedModel
     self.focusedParagraphID = focusedParagraphID
   }
@@ -514,7 +531,9 @@ public struct AIPublishingChatSessionState: Hashable, Sendable {
     conversationTitle?.nilIfEmpty != nil
       || !messages.isEmpty
       || contextMode != .site
+      || knowledgePolicy != .automatic
       || modelGrade != .standard
+      || reasoningLevel != .deep
       || !selectedModel.trimmedForPublishing.isEmpty
       || focusedParagraphID?.nilIfEmpty != nil
   }
@@ -570,7 +589,10 @@ public struct AIPublishingChatRequest: Sendable {
   public var profile: SiteProfile
   public var messages: [AIPublishingChatMessage]
   public var contextMode: AIPublishingChatContextMode
+  public var knowledgePolicy: KnowledgeRetrievalPolicy
+  public var knowledgeContext: KnowledgeContextSnapshot?
   public var modelGrade: AIChatModelGrade
+  public var reasoningLevel: AIChatReasoningLevel
   public var selectedModel: String?
   public var preflightIssues: [PreflightIssue]
   public var publishPackage: PublishPackage?
@@ -584,7 +606,10 @@ public struct AIPublishingChatRequest: Sendable {
     profile: SiteProfile,
     messages: [AIPublishingChatMessage],
     contextMode: AIPublishingChatContextMode = .site,
+    knowledgePolicy: KnowledgeRetrievalPolicy = .automatic,
+    knowledgeContext: KnowledgeContextSnapshot? = nil,
     modelGrade: AIChatModelGrade = .standard,
+    reasoningLevel: AIChatReasoningLevel = .deep,
     selectedModel: String? = nil,
     preflightIssues: [PreflightIssue] = [],
     publishPackage: PublishPackage? = nil,
@@ -597,7 +622,10 @@ public struct AIPublishingChatRequest: Sendable {
     self.profile = profile
     self.messages = messages
     self.contextMode = contextMode
+    self.knowledgePolicy = knowledgePolicy
+    self.knowledgeContext = knowledgeContext
     self.modelGrade = modelGrade
+    self.reasoningLevel = reasoningLevel
     self.selectedModel = selectedModel
     self.preflightIssues = preflightIssues
     self.publishPackage = publishPackage
