@@ -27,7 +27,11 @@ case "${1:-}" in
     ;;
 esac
 
-bash "$ROOT_DIR/script/build_and_run.sh" --package-only >/dev/null
+build_arguments=(--package-only)
+if [[ "$MODE" == "launch" ]]; then
+  build_arguments+=(--release)
+fi
+bash "$ROOT_DIR/script/build_and_run.sh" "${build_arguments[@]}" >/dev/null
 
 [[ -d "$APP_BUNDLE" ]] || fail "app bundle was not created"
 [[ -x "$APP_BINARY" ]] || fail "app executable is missing or not executable"
@@ -74,11 +78,19 @@ grep -Fq "summary.imageCount > 0" \
   || fail "the image workbench must hide refresh when no images exist"
 
 if [[ "$MODE" == "launch" ]]; then
-  bash "$ROOT_DIR/script/check_launch_performance.sh"
+  build_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' "$INFO_PLIST")"
+  [[ "$build_configuration" == "Release" ]] || fail "launch verification must use a Release bundle"
+  actual_entitlements="$(mktemp "${TMPDIR:-/tmp}/ui-runtime-entitlements.XXXXXX")"
+  trap 'rm -f "$actual_entitlements"' EXIT
+  codesign -d --entitlements :- "$APP_BUNDLE" >"$actual_entitlements" 2>/dev/null \
+    || fail "could not read Release bundle entitlements"
+  actual_sandbox="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$actual_entitlements" 2>/dev/null || true)"
+  [[ "$actual_sandbox" == "true" ]] || fail "Release launch bundle is missing App Sandbox"
+  bash "$ROOT_DIR/script/check_launch_performance.sh" --release
 fi
 
 if [[ "$MODE" == "launch" ]]; then
-  echo "ui runtime gate: packaged artifact passed and a real visible main-window launch was verified"
+  echo "ui runtime gate: sandboxed Release artifact passed and a real visible main-window launch was verified"
 else
   echo "ui runtime gate: packaged artifact passed; real app launch was not run"
 fi

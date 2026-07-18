@@ -8,6 +8,8 @@ struct WorkspaceShellSplitLayout: View {
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var repositoryContextStage: RepositoryContextStage
   let onSelectSection: (WorkspaceSection) -> Void
+  @AppStorage("workspacePrimarySidebarWidthV1") private var storedSidebarWidth = 260.0
+  @State private var sidebarResizeStartWidth: CGFloat?
 
   var body: some View {
     HStack(spacing: 0) {
@@ -18,10 +20,10 @@ struct WorkspaceShellSplitLayout: View {
           contentHealthFilter: $contentHealthFilter,
           onSelectSection: onSelectSection
         )
-        .frame(width: isCompact ? 240 : 260)
+        .frame(width: sidebarWidth)
         .frame(maxHeight: .infinity)
 
-        Divider()
+        workspaceSidebarResizeHandle
       }
 
       if isFocusMode {
@@ -41,5 +43,48 @@ struct WorkspaceShellSplitLayout: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
+    .knowledgeFileDropImport(
+      knowledge: store.knowledge,
+      isEnabled: store.selectedSection == .library
+    )
+  }
+
+  private var sidebarWidth: CGFloat {
+    min(max(CGFloat(storedSidebarWidth), 240), 380)
+  }
+
+  private var workspaceSidebarResizeHandle: some View {
+    Divider()
+      .overlay {
+        Color.clear
+          .frame(width: 10)
+          .contentShape(Rectangle())
+          .gesture(
+            DragGesture(minimumDistance: 1)
+              .onChanged { value in
+                let startWidth = sidebarResizeStartWidth ?? sidebarWidth
+                sidebarResizeStartWidth = startWidth
+                storedSidebarWidth = Double(
+                  min(max(startWidth + value.translation.width, 240), 380)
+                )
+              }
+              .onEnded { _ in
+                sidebarResizeStartWidth = nil
+              }
+          )
+      }
+      .accessibilityElement()
+      .accessibilityLabel("调整工作区侧栏宽度")
+      .accessibilityValue("\(Int(sidebarWidth)) 点")
+      .accessibilityAdjustableAction { direction in
+        switch direction {
+        case .increment:
+          storedSidebarWidth = Double(min(sidebarWidth + 20, 380))
+        case .decrement:
+          storedSidebarWidth = Double(max(sidebarWidth - 20, 240))
+        @unknown default:
+          break
+        }
+      }
   }
 }

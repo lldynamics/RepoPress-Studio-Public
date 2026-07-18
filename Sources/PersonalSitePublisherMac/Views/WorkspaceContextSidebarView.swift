@@ -14,7 +14,7 @@ struct WorkspaceContextListHeader<Subtitle: View, Actions: View>: View {
   @ViewBuilder let actions: () -> Actions
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
+    HStack(alignment: .center, spacing: 8) {
       VStack(alignment: .leading, spacing: 2) {
         Text(title)
           .font(.headline)
@@ -30,6 +30,7 @@ struct WorkspaceContextListHeader<Subtitle: View, Actions: View>: View {
         actions()
       }
       .controlSize(.small)
+      .frame(height: 28, alignment: .center)
     }
     .frame(minHeight: 38)
   }
@@ -44,7 +45,8 @@ struct WorkspaceSidebarHeaderIcon: View {
 
   var body: some View {
     Image(systemName: systemName)
-      .frame(width: 24, height: 24)
+      .font(.system(size: 15, weight: .medium))
+      .frame(width: 28, height: 28)
       .contentShape(Rectangle())
   }
 }
@@ -59,7 +61,7 @@ struct WorkspacePrimarySidebar: View {
     VStack(spacing: 0) {
       if showsContextList {
         taskNavigation
-          .frame(height: isCompact ? 198 : 210)
+          .frame(height: isCompact ? 164 : 176)
 
         Divider()
 

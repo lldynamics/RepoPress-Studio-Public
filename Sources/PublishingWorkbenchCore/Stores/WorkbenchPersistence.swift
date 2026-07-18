@@ -81,7 +81,7 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     self.maintenanceOperationRecords = Self.limitedMaintenanceOperationRecords(maintenanceOperationRecords)
     self.aiMetadataApplicationRecords = Self.limitedMetadataApplicationRecords(aiMetadataApplicationRecords)
     self.aiChatCustomPrompts = Self.limitedCustomPrompts(aiChatCustomPrompts)
-    self.seoSocialPreviewSnapshots = seoSocialPreviewSnapshots
+    self.seoSocialPreviewSnapshots = Self.latestSEOSocialPreviewSnapshots(seoSocialPreviewSnapshots)
     self.privacySettings = privacySettings
     self.privacyProtectionEvents = Self.limitedPrivacyProtectionEvents(privacyProtectionEvents)
     self.monetizationState = monetizationState
@@ -187,10 +187,12 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         forKey: .aiChatCustomPrompts
       ) ?? []
     )
-    seoSocialPreviewSnapshots = try container.decodeIfPresent(
-      [SEOSocialPreviewSnapshot].self,
-      forKey: .seoSocialPreviewSnapshots
-    ) ?? []
+    seoSocialPreviewSnapshots = Self.latestSEOSocialPreviewSnapshots(
+      try container.decodeIfPresent(
+        [SEOSocialPreviewSnapshot].self,
+        forKey: .seoSocialPreviewSnapshots
+      ) ?? []
+    )
     privacySettings = try container.decodeIfPresent(PrivacyProtectionSettings.self, forKey: .privacySettings) ?? .default
     privacyProtectionEvents = Self.limitedPrivacyProtectionEvents(
       try container.decodeIfPresent(
@@ -286,10 +288,30 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     Array(events.sorted { $0.createdAt > $1.createdAt }.prefix(50))
   }
 
+  private static func latestSEOSocialPreviewSnapshots(
+    _ snapshots: [SEOSocialPreviewSnapshot]
+  ) -> [SEOSocialPreviewSnapshot] {
+    Dictionary(
+      snapshots.map { ($0.draftID, $0) },
+      uniquingKeysWith: { current, candidate in
+        candidate.generatedAt > current.generatedAt ? candidate : current
+      }
+    )
+    .values
+    .sorted { $0.generatedAt > $1.generatedAt }
+  }
+
   private static func limitedDeploymentStatusSnapshots(
     _ snapshots: [DeploymentStatusSnapshot]
   ) -> [DeploymentStatusSnapshot] {
-    Array(snapshots.sorted { $0.checkedAt > $1.checkedAt }.prefix(300))
+    var seenReleaseRecordIDs: Set<UUID> = []
+    let uniqueSnapshots = snapshots
+      .sorted { $0.checkedAt > $1.checkedAt }
+      .filter { snapshot in
+        guard let releaseRecordID = snapshot.releaseRecordID else { return true }
+        return seenReleaseRecordIDs.insert(releaseRecordID).inserted
+      }
+    return Array(uniqueSnapshots.prefix(300))
   }
 
   private static func limitedDeploymentStatusHistory(

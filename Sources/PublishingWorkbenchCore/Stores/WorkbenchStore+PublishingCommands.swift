@@ -86,12 +86,8 @@ extension WorkbenchStore {
   }
 
   private func refreshSelectedDraftPublishingState() {
-    let targetDraftID = publishingStore.publishPackage?.draftID ?? selectedDraft?.id
     flushDraftBodyEditorBuffers()
-    if let targetDraftID,
-       let draft = drafts.first(where: { $0.id == targetDraftID }) {
-      refreshPublishPreview(for: draft)
-    }
+    refreshPublishPreview(for: selectedDraft)
   }
 
   public func blockingLocalPublishIssues(

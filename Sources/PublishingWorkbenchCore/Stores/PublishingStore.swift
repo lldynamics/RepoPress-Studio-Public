@@ -96,6 +96,7 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var releaseRecords: [ReleaseRecord]
   @Published public internal(set) var selectedSection: WorkspaceSection
   @Published public internal(set) var selectedDraftID: UUID?
+  @Published public internal(set) var draftListContentScope: DraftListContentScope
   @Published public internal(set) var draftNavigationHistory: DraftNavigationHistory
   @Published public internal(set) var publishPackage: PublishPackage?
   @Published public internal(set) var localPublishPreview: LocalPublishPreview?
@@ -134,6 +135,7 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var maintenanceOperationRecords: [MaintenanceOperationRecord]
   @Published public internal(set) var latestGeneralDraftReusePlan: GeneralDraftReusePlan?
   @Published public internal(set) var recentlyDeletedProfile: RecentlyDeletedProfile?
+  @Published var latestDraftOwnershipTransferUndoState: DraftOwnershipTransferUndoState? = nil
 
   func setDraftBodyEditorBuffer(_ buffer: DraftBodyEditorBuffer, for draftID: UUID) {
     guard draftBodyEditorBuffers[draftID] != buffer else { return }
@@ -158,6 +160,7 @@ public final class PublishingStore: ObservableObject {
     releaseRecords: [ReleaseRecord],
     selectedSection: WorkspaceSection = .writing,
     selectedDraftID: UUID? = nil,
+    draftListContentScope: DraftListContentScope = .currentSite,
     draftNavigationHistory: DraftNavigationHistory? = nil,
     publishPackage: PublishPackage? = nil,
     localPublishPreview: LocalPublishPreview? = nil,
@@ -236,6 +239,7 @@ public final class PublishingStore: ObservableObject {
     self.releaseRecords = ReleaseRecord.limitedHistory(releaseRecords)
     self.selectedSection = selectedSection
     self.selectedDraftID = selectedDraftID
+    self.draftListContentScope = draftListContentScope
     self.draftNavigationHistory = draftNavigationHistory
       ?? DraftNavigationHistory(currentDraftID: selectedDraftID)
     self.publishPackage = publishPackage

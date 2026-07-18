@@ -25,13 +25,15 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 
-[[ -d "$ROOT_DIR/.git" ]] || fail "not a Git worktree: $ROOT_DIR"
+[[ "$(git -C "$ROOT_DIR" rev-parse --is-inside-work-tree 2>/dev/null || true)" == "true" ]] \
+  || fail "not a Git worktree: $ROOT_DIR"
 
 critical_paths=(
   Package.swift
   Packaging
   Config
   StoreKit
+  BrowserExtension
   Sources
   Tests
   script

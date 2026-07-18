@@ -15,6 +15,7 @@ public final class WorkbenchEditorNavigationFeatureFacade: ObservableObject {
     observeValue(store.publishingStore.$drafts)
     observeValue(store.publishingStore.$selectedSection)
     observeValue(store.publishingStore.$selectedDraftID)
+    observeValue(store.publishingStore.$draftListContentScope)
   }
 
   public var activeProfileID: UUID {

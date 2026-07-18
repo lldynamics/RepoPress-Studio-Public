@@ -45,6 +45,10 @@ extension WorkbenchStore {
     privacyMonetizationStore.matchesPrivacyProtectedDraftSearch(draft, query: query, profile: profile)
   }
 
+  public func privacyProtectedSearchDraft(for draft: ArticleDraft) -> ArticleDraft {
+    privacyMonetizationStore.privacyProtectedSearchDraft(for: draft)
+  }
+
   public func accessDecision(for feature: PremiumFeature) -> FeatureAccessDecision {
     privacyMonetizationStore.accessDecision(for: feature)
   }

@@ -58,10 +58,11 @@ struct WorkspaceCommandPalette: View {
             if !visibleDrafts.isEmpty {
               paletteSection(String(localized: "文章")) {
                 ForEach(visibleDrafts) { draft in
+                  let display = store.privateContentDisplay(for: draft)
                   row(
                     id: draftResultID(draft),
-                    title: draft.title.nilIfEmpty ?? String(localized: "未命名文章"),
-                    detail: draft.slug,
+                    title: display.title.nilIfEmpty ?? String(localized: "未命名文章"),
+                    detail: display.isMasked ? display.summary : draft.slug,
                     systemImage: draft.id == publishing.selectedDraftID ? "doc.text.fill" : "doc.text",
                     action: { openDraft(draft.id) }
                   )
@@ -107,6 +108,11 @@ struct WorkspaceCommandPalette: View {
     .onChange(of: query) { _, _ in
       synchronizeSelection()
     }
+    .onChange(of: shell.isPrivacyLocked) { _, isLocked in
+      if isLocked {
+        dismiss()
+      }
+    }
     .onKeyPress(.downArrow) {
       moveSelection(by: 1)
       return .handled
@@ -130,10 +136,12 @@ struct WorkspaceCommandPalette: View {
     guard !normalizedQuery.isEmpty else {
       return publishing.drafts.sorted { $0.updatedAt > $1.updatedAt }
     }
-    return publishing.drafts.filter {
-      [$0.title, $0.slug, $0.summary, $0.tags.joined(separator: " ")]
-        .joined(separator: " ")
-        .localizedStandardContains(normalizedQuery)
+    return publishing.drafts.filter { draft in
+      store.matchesPrivacyProtectedDraftSearch(
+        draft,
+        query: normalizedQuery,
+        profile: store.profile(for: draft)
+      )
     }
     .sorted { $0.updatedAt > $1.updatedAt }
   }

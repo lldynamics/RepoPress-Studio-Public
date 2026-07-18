@@ -76,7 +76,7 @@ public final class PrivacyMonetizationStore: ObservableObject {
     guard draft.isPrivate, privacySettings.masksPrivateContent else {
       return PrivateContentDisplay(title: draft.title, summary: draft.summary, isMasked: false)
     }
-    return PrivateContentDisplay(title: "私密文章", summary: "内容已遮挡", isMasked: true)
+    return PrivateContentDisplay(title: draft.title, summary: "内容已遮挡", isMasked: true)
   }
 
   public func matchesPrivacyProtectedDraftSearch(
@@ -87,7 +87,10 @@ public final class PrivacyMonetizationStore: ObservableObject {
     let trimmedQuery = query.trimmedForPublishing
     guard !trimmedQuery.isEmpty else { return true }
     if draft.isPrivate, privacySettings.masksPrivateContent {
-      return "私密文章 内容已遮挡".contains(trimmedQuery)
+      let protectedHaystack = [draft.title, "私密文章", "内容已遮挡"]
+        .joined(separator: " ")
+        .lowercased()
+      return protectedHaystack.contains(trimmedQuery.lowercased())
     }
     let haystack = [
       draft.title,
@@ -98,6 +101,21 @@ public final class PrivacyMonetizationStore: ObservableObject {
       profile.markdownPath(for: draft)
     ].joined(separator: " ").lowercased()
     return haystack.contains(trimmedQuery.lowercased())
+  }
+
+  public func privacyProtectedSearchDraft(for draft: ArticleDraft) -> ArticleDraft {
+    guard draft.isPrivate, privacySettings.masksPrivateContent else {
+      return draft
+    }
+    var protectedDraft = draft
+    protectedDraft.slug = ""
+    protectedDraft.summary = ""
+    protectedDraft.bodyMarkdown = ""
+    protectedDraft.tags = []
+    protectedDraft.categories = []
+    protectedDraft.authors = []
+    protectedDraft.repositoryPath = nil
+    return protectedDraft
   }
 
   public func accessDecision(for feature: PremiumFeature) -> FeatureAccessDecision {

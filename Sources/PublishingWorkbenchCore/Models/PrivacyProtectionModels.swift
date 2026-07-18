@@ -138,7 +138,7 @@ public struct PrivacyProtectionStatus: Hashable, Sendable {
 
     lines.append("- [ ] 手动快速隐藏后，主窗口和设置窗口都遮挡工作台内容。")
     lines.append("- [ ] 工作台隐藏时，设置项以及写作、AI、同步和发布操作不可用。")
-    lines.append("- [ ] 私密内容遮挡开启时，列表、搜索和概览不暴露私密文章标题、摘要或路径。")
+    lines.append("- [ ] 私密内容遮挡开启时，标题仍可辨认，但列表、搜索和概览不暴露摘要、正文或路径。")
     lines.append("- [ ] 截图、支持页和隐私政策文案不得包含本地路径、Token、授权头或私密正文。")
 
     return lines.joined(separator: "\n")

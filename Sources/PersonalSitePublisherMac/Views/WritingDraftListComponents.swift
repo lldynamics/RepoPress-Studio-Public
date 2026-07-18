@@ -162,7 +162,7 @@ struct WritingDraftRow: View {
         .frame(width: 16)
 
       VStack(alignment: .leading, spacing: 4) {
-        let displayTitle = draft.title.nilIfEmpty ?? "未命名文章"
+        let displayTitle = display.title.nilIfEmpty ?? "未命名文章"
         Text(displayTitle)
           .font(.body.weight(.medium))
           .workbenchTruncatedIdentity(displayTitle)
@@ -175,7 +175,13 @@ struct WritingDraftRow: View {
     }
     .padding(.horizontal, 4)
     .padding(.vertical, 5)
-    .help(display.isMasked ? display.summary : profile.markdownPath(for: draft))
+    .help(
+      display.isMasked
+        ? display.summary
+        : draft.isGeneralDraft
+          ? String(localized: "通用草稿，不绑定站点")
+          : profile.markdownPath(for: draft)
+    )
   }
 
   private var leadingSystemImage: String {
@@ -187,10 +193,13 @@ struct WritingDraftRow: View {
 
   private var metadataText: Text {
     let base = Text("\(draft.updatedAt.workbenchShortText) · \(draft.writingUnitCount) 字/词 · \(draft.status.localizedDisplayName)")
+    let scoped = draft.isGeneralDraft
+      ? base + Text(verbatim: " · ") + Text("通用草稿")
+      : base
     guard draft.isPrivate else {
-      return base
+      return scoped
     }
-    return base + Text(verbatim: " · ") + Text(verbatim: draft.visibility.localizedDisplayName)
+    return scoped + Text(verbatim: " · ") + Text(verbatim: draft.visibility.localizedDisplayName)
   }
 }
 

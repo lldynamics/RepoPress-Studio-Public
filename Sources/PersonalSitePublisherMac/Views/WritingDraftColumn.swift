@@ -45,11 +45,21 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     @FocusState private var isSearchFieldFocused: Bool
     @State private var draftPendingDeletion: ArticleDraft?
     @State private var isDraftLifecycleCenterPresented = false
+    @State private var selectedDraftIDs: Set<UUID> = []
+    @State private var draftOwnershipTransferPlan: DraftOwnershipTransferPlan?
+    @Environment(\.undoManager) private var undoManager
 
-  private var draftSelection: Binding<UUID?> {
+  private var draftSelection: Binding<Set<UUID>> {
     Binding(
-      get: { store.selectedDraftID },
-      set: { store.selectDraft($0) }
+      get: { selectedDraftIDs },
+      set: { updateDraftSelection($0) }
+    )
+  }
+
+  private var contentScopeSelection: Binding<DraftListContentScope> {
+    Binding(
+      get: { store.draftListContentScope },
+      set: { store.setDraftListContentScope($0) }
     )
   }
 
@@ -89,6 +99,11 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     .sheet(isPresented: $isDraftLifecycleCenterPresented) {
       DraftLifecycleCenterView(store: store)
     }
+    .sheet(item: $draftOwnershipTransferPlan) { plan in
+      DraftOwnershipTransferConfirmationView(plan: plan) { confirmedPlan in
+        applyDraftOwnershipTransfer(confirmedPlan)
+      }
+    }
   }
 
   private var writingHeader: some View {
@@ -113,35 +128,87 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
         }
       }
     } actions: {
-      if isDraftListLoading && store.visibleDrafts.isEmpty {
+      if isDraftListLoading && store.writingDrafts.isEmpty {
         ProgressView()
           .controlSize(.small)
           .help("加载草稿中…")
       }
 
-      Button {
-        store.createDraft()
-      } label: {
-        WorkspaceSidebarHeaderIcon("plus")
+      if store.canUndoLatestDraftOwnershipTransfer {
+        Button {
+          _ = store.undoLatestDraftOwnershipTransfer()
+        } label: {
+          WorkspaceSidebarHeaderIcon("arrow.uturn.backward")
+        }
+        .buttonStyle(.plain)
+        .help(String(localized: "撤销上次归属变更"))
+        .accessibilityLabel("撤销上次归属变更")
       }
-      .buttonStyle(.plain)
-      .help("新建文章")
-      .accessibilityLabel("新建文章")
 
       Button {
         store.flushDraftBodyEditorBuffers()
         isDraftLifecycleCenterPresented = true
       } label: {
-        WorkspaceSidebarHeaderIcon("clock.arrow.circlepath")
+        Label("历史", systemImage: "clock.arrow.circlepath")
       }
-      .buttonStyle(.plain)
+      .buttonStyle(.bordered)
+      .controlSize(.regular)
+      .fixedSize()
       .help("版本历史与回收站")
       .accessibilityLabel("打开版本历史与回收站")
+
+      Menu {
+        Button {
+          store.createDraft()
+        } label: {
+          Label("新建站点文章", systemImage: "doc.badge.plus")
+        }
+
+        Button {
+          store.createGeneralDraft()
+        } label: {
+          Label("新建通用草稿", systemImage: "square.and.pencil")
+        }
+      } label: {
+        HStack(spacing: 5) {
+          Image(systemName: "plus")
+          Text("新建")
+            .fixedSize(horizontal: true, vertical: false)
+        }
+        .font(.callout.weight(.semibold))
+        .foregroundStyle(Color.white)
+        .layoutPriority(1)
+      }
+      .menuStyle(.borderlessButton)
+      .menuIndicator(.hidden)
+      .controlSize(.regular)
+      .tint(.white)
+      .padding(.horizontal, 8)
+      .frame(height: 28)
+      .background(
+        WorkbenchTheme.primaryActionFill,
+        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+      )
+      .fixedSize()
+      .help("新建文章或通用草稿")
+      .accessibilityLabel("新建文章或通用草稿")
     }
   }
 
   private var draftListToolbar: some View {
     VStack(spacing: 8) {
+      Picker("内容范围", selection: contentScopeSelection) {
+        Text("当前站点").tag(DraftListContentScope.currentSite)
+        Text("通用草稿").tag(DraftListContentScope.general)
+      }
+      .pickerStyle(.segmented)
+      .labelsHidden()
+      .accessibilityLabel("内容范围")
+
+      if selectedDraftIDs.count > 1 {
+        bulkSelectionBar
+      }
+
       HStack(spacing: 8) {
         Image(systemName: "magnifyingglass")
           .foregroundStyle(.secondary)
@@ -190,6 +257,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
           } label: {
             Label(overflowFilterLabel, systemImage: "line.3.horizontal.decrease.circle")
           }
+          .menuIndicator(.hidden)
           .controlSize(.small)
           .accessibilityLabel("更多草稿筛选")
           .accessibilityValue(filter.localizedDisplayName)
@@ -198,15 +266,22 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
         Spacer(minLength: 0)
 
         Menu {
-          Picker("文章排序", selection: sortOrderSelection) {
-            ForEach(WritingDraftSortOrder.allCases) { option in
-              Text(option.localizedDisplayName).tag(option)
+          ForEach(WritingDraftSortOrder.allCases) { option in
+            Button {
+              sortOrderRawValue = option.rawValue
+            } label: {
+              if sortOrder == option {
+                Label(option.localizedDisplayName, systemImage: "checkmark")
+              } else {
+                Text(option.localizedDisplayName)
+              }
             }
           }
         } label: {
           Image(systemName: "arrow.up.arrow.down")
         }
         .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .help("排序：\(sortOrder.localizedDisplayName)")
         .accessibilityLabel("文章排序")
         .accessibilityValue(sortOrder.localizedDisplayName)
@@ -227,6 +302,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
       Label(filter.localizedDisplayName, systemImage: "line.3.horizontal.decrease.circle")
         .lineLimit(1)
     }
+    .menuIndicator(.hidden)
     .controlSize(.small)
     .accessibilityLabel("草稿筛选")
     .accessibilityValue(filter.localizedDisplayName)
@@ -274,6 +350,10 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
                 )
               }
           }
+
+          if paginatedDrafts.count < filteredDrafts.count {
+            loadMoreDraftsButton
+          }
         }
       }
     }
@@ -284,6 +364,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
       requestDeleteSelectedDraft()
     }
     .onAppear {
+      synchronizeDraftSelectionFromStore()
       applyDraftFilterDebounce()
       refreshDraftListLoadingState()
       refreshDraftCounts()
@@ -291,7 +372,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     .task(
       id: DraftListImageSummaryRefreshInput(
         signature: ImageWorkbenchSiteSummaryInputSignature(
-          drafts: store.visibleDrafts,
+          drafts: store.writingDrafts,
           profile: store.activeProfile
         )
       )
@@ -326,7 +407,8 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
       refreshFilteredDraftsCache()
       refreshDraftCounts()
     }
-    .onChange(of: store.visibleDrafts) { _, newDrafts in
+    .onChange(of: store.writingDrafts) { _, newDrafts in
+      synchronizeDraftSelection(with: newDrafts)
       if isDraftListLoading && !newDrafts.isEmpty {
         isDraftListLoading = false
         draftListLoadingTask?.cancel()
@@ -336,6 +418,9 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
       refreshDraftListLoadingState()
       resetDraftPagination()
     }
+    .onChange(of: store.selectedDraftID) { _, _ in
+      synchronizeDraftSelectionFromStore()
+    }
     .onChange(of: filteredDrafts.count) { _, newCount in
       if newCount == 0 {
         draftListLimit = 0
@@ -344,7 +429,37 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
       }
       refreshDraftCounts()
     }
+    .accessibilityLabel("文章列表")
+    .accessibilityValue("已显示 \(paginatedDrafts.count) 篇，共 \(filteredDrafts.count) 篇")
   }
+
+  private var loadMoreDraftsButton: some View {
+    Button {
+      loadMoreDrafts()
+    } label: {
+      HStack(spacing: 8) {
+        Image(systemName: "chevron.down.circle")
+          .foregroundStyle(.secondary)
+          .frame(width: 16)
+        Text("显示更多文章")
+        Spacer(minLength: 8)
+        Text("\(paginatedDrafts.count) / \(filteredDrafts.count)")
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(.secondary)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.horizontal, 4)
+      .padding(.vertical, 6)
+    }
+    .buttonStyle(.plain)
+    .listRowInsets(listRowInsets)
+    .listRowSeparator(.hidden)
+    .listRowBackground(Color.clear)
+    .accessibilityLabel("显示更多文章")
+    .accessibilityValue("当前显示 \(paginatedDrafts.count) 篇，共 \(filteredDrafts.count) 篇")
+    .accessibilityHint("每次再显示最多 \(draftPageStep) 篇文章")
+  }
+
   private func maybeLoadMoreDraftsIfNeeded(
     currentIndex: Int,
     visibleCount: Int
@@ -366,7 +481,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
   private func draftRow(_ draft: ArticleDraft) -> some View {
     WritingDraftRow(
       draft: draft,
-      profile: store.activeProfile,
+      profile: store.profile(for: draft),
       display: store.privateContentDisplay(for: draft)
     )
     .tag(draft.id)
@@ -386,11 +501,17 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
       Label("编辑文章", systemImage: "square.and.pencil")
     }
 
-    Button {
-      _ = store.focusDraft(draft.id, section: .contentHealth)
-    } label: {
-      Label("查看发布检查", systemImage: "checklist")
+    if !draft.isGeneralDraft {
+      Button {
+        _ = store.focusDraft(draft.id, section: .contentHealth)
+      } label: {
+        Label("查看发布检查", systemImage: "checklist")
+      }
     }
+
+    Divider()
+
+    draftOwnershipActions(for: draft)
 
     Button {
       _ = store.focusDraft(draft.id, section: .images)
@@ -404,6 +525,152 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
       requestDelete(draft)
     } label: {
       Label("删除文章", systemImage: "trash")
+    }
+  }
+
+  private var bulkSelectionBar: some View {
+    HStack(spacing: 8) {
+      Label {
+        Text("已选择 \(selectedDraftIDs.count) 篇")
+      } icon: {
+        Image(systemName: "checkmark.circle.fill")
+      }
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(.secondary)
+
+      Spacer(minLength: 0)
+
+      Menu {
+        bulkDraftOwnershipActions
+      } label: {
+        Label(String(localized: "管理归属"), systemImage: "arrow.triangle.branch")
+      }
+      .controlSize(.small)
+      .help(String(localized: "批量移动、复制或转为通用草稿"))
+
+      Button(String(localized: "取消选择")) {
+        if let selectedDraftID = store.selectedDraftID {
+          selectedDraftIDs = [selectedDraftID]
+        } else {
+          selectedDraftIDs = []
+        }
+      }
+      .buttonStyle(.borderless)
+      .controlSize(.small)
+    }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 6)
+    .background(Color.accentColor.opacity(WorkbenchOpacity.accentBackground), in: RoundedRectangle(cornerRadius: 8))
+  }
+
+  @ViewBuilder
+  private func draftOwnershipActions(for draft: ArticleDraft) -> some View {
+    let draftIDs = transferDraftIDs(for: draft)
+
+    if !draft.isGeneralDraft {
+      Button {
+        presentDraftOwnershipTransfer(
+          draftIDs: draftIDs,
+          operation: .moveToGeneral
+        )
+      } label: {
+        Label(
+          draftIDs.count > 1 ? String(localized: "批量转为通用草稿") : String(localized: "转为通用草稿"),
+          systemImage: "tray.and.arrow.down"
+        )
+      }
+    }
+
+    Menu {
+      ForEach(availableTransferProfiles(for: draft, includeCurrentSite: false)) { profile in
+        Button(profile.name) {
+          presentDraftOwnershipTransfer(
+            draftIDs: draftIDs,
+            operation: .moveToSite,
+            targetProfileID: profile.id
+          )
+        }
+      }
+    } label: {
+      Label(
+        draftIDs.count > 1 ? String(localized: "批量移动到站点") : String(localized: "移动到站点"),
+        systemImage: "arrow.right.doc.on.clipboard"
+      )
+    }
+    .disabled(availableTransferProfiles(for: draft, includeCurrentSite: false).isEmpty)
+
+    Menu {
+      ForEach(availableTransferProfiles(for: draft, includeCurrentSite: false)) { profile in
+        Button(profile.name) {
+          presentDraftOwnershipTransfer(
+            draftIDs: draftIDs,
+            operation: .copyToSite,
+            targetProfileID: profile.id
+          )
+        }
+      }
+    } label: {
+      Label(
+        draftIDs.count > 1 ? String(localized: "批量复制到站点") : String(localized: "复制到站点"),
+        systemImage: "doc.on.doc"
+      )
+    }
+    .disabled(availableTransferProfiles(for: draft, includeCurrentSite: false).isEmpty)
+
+    if store.canUndoLatestDraftOwnershipTransfer {
+      Divider()
+      Button {
+        _ = store.undoLatestDraftOwnershipTransfer()
+      } label: {
+        Label(String(localized: "撤销上次归属变更"), systemImage: "arrow.uturn.backward")
+      }
+    }
+  }
+
+  @ViewBuilder
+  private var bulkDraftOwnershipActions: some View {
+    let selectedDrafts = store.writingDrafts.filter { selectedDraftIDs.contains($0.id) }
+
+    if selectedDrafts.allSatisfy({ !$0.isGeneralDraft }) {
+      Button {
+        presentDraftOwnershipTransfer(
+          draftIDs: Array(selectedDraftIDs),
+          operation: .moveToGeneral
+        )
+      } label: {
+        Label(String(localized: "批量转为通用草稿"), systemImage: "tray.and.arrow.down")
+      }
+    }
+
+    Menu(String(localized: "批量移动到站点")) {
+      ForEach(availableTransferProfiles(for: selectedDrafts.first, includeCurrentSite: false)) { profile in
+        Button(profile.name) {
+          presentDraftOwnershipTransfer(
+            draftIDs: Array(selectedDraftIDs),
+            operation: .moveToSite,
+            targetProfileID: profile.id
+          )
+        }
+      }
+    }
+
+    Menu(String(localized: "批量复制到站点")) {
+      ForEach(availableTransferProfiles(for: selectedDrafts.first, includeCurrentSite: false)) { profile in
+        Button(profile.name) {
+          presentDraftOwnershipTransfer(
+            draftIDs: Array(selectedDraftIDs),
+            operation: .copyToSite,
+            targetProfileID: profile.id
+          )
+        }
+      }
+    }
+
+    if store.canUndoLatestDraftOwnershipTransfer {
+      Divider()
+      Button(String(localized: "撤销上次归属变更")) {
+        _ = store.undoLatestDraftOwnershipTransfer()
+      }
     }
   }
 
@@ -459,7 +726,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
   private func refreshDraftCounts() {
     refreshFilteredDraftsCache()
     let nextFilteredCount = filteredDrafts.count
-    let nextVisibleCount = store.visibleDrafts.count
+    let nextVisibleCount = store.writingDrafts.count
     let delta = nextVisibleCount - visibleDraftCount
 
     visibleDraftCount = nextVisibleCount
@@ -515,7 +782,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     draftListLoadingNonce += 1
     let nonce = draftListLoadingNonce
 
-    guard store.visibleDrafts.isEmpty else {
+    guard store.writingDrafts.isEmpty else {
       isDraftListLoading = false
       return
     }
@@ -542,15 +809,8 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     WritingDraftSortOrder(rawValue: sortOrderRawValue) ?? .updatedNewest
   }
 
-  private var sortOrderSelection: Binding<WritingDraftSortOrder> {
-    Binding(
-      get: { sortOrder },
-      set: { sortOrderRawValue = $0.rawValue }
-    )
-  }
-
   private func refreshFilteredDraftsCache() {
-    let visibleDrafts = store.visibleDrafts
+    let visibleDrafts = store.writingDrafts
     let visibleDraftIDs = visibleDrafts.map(\.id)
     let activeProfileID = store.activeProfile.id
     let taskQueueStates: [UUID: DraftTaskQueueState] = debouncedFilter.requiresTaskQueueState
@@ -621,7 +881,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     guard let selectedDraftID = store.selectedDraftID else {
       return nil
     }
-    return store.visibleDrafts.first { $0.id == selectedDraftID }
+    return store.writingDrafts.first { $0.id == selectedDraftID }
   }
 
   private var writingDraftCommandActions: WritingDraftCommandActions {
@@ -647,7 +907,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
 
   private var draftListEmptyState: some View {
     VStack(spacing: 10) {
-      Image(systemName: store.visibleDrafts.isEmpty ? "doc.badge.plus" : "doc.text.magnifyingglass")
+      Image(systemName: store.writingDrafts.isEmpty ? "doc.badge.plus" : "doc.text.magnifyingglass")
         .font(.system(size: 28))
         .foregroundStyle(.secondary)
 
@@ -659,9 +919,13 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
 
-      if store.visibleDrafts.isEmpty {
-        Button("新建文章") {
-          store.createDraft()
+      if store.writingDrafts.isEmpty {
+        Button(emptyStateActionTitle) {
+          if store.draftListContentScope == .general {
+            store.createGeneralDraft()
+          } else {
+            store.createDraft()
+          }
         }
         .workbenchProminentActionStyle()
       } else {
@@ -680,13 +944,21 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
   }
 
   private var draftListEmptyTitle: LocalizedStringKey {
-    store.visibleDrafts.isEmpty ? "还没有文章" : "没有匹配的文章"
+    guard store.writingDrafts.isEmpty else { return "没有匹配的文章" }
+    return store.draftListContentScope == .general ? "还没有通用草稿" : "还没有文章"
   }
 
   private var draftListEmptyMessage: LocalizedStringKey {
-    store.visibleDrafts.isEmpty
-      ? "新建文章后即可开始写作。"
-      : "尝试清除搜索词或切换筛选条件。"
+    guard store.writingDrafts.isEmpty else {
+      return "尝试清除搜索词或切换筛选条件。"
+    }
+    return store.draftListContentScope == .general
+      ? "新建后可跨站点复用，复制到目标站点后再发布。"
+      : "新建文章后即可开始写作。"
+  }
+
+  private var emptyStateActionTitle: LocalizedStringKey {
+    store.draftListContentScope == .general ? "新建通用草稿" : "新建站点文章"
   }
 
   private func requestDelete(_ draft: ArticleDraft) {
@@ -698,6 +970,97 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
       return
     }
     requestDelete(draft)
+  }
+
+  private func updateDraftSelection(_ newSelection: Set<UUID>) {
+    let previousSelection = selectedDraftIDs
+    selectedDraftIDs = newSelection
+
+    let newlySelectedID = newSelection.subtracting(previousSelection).first
+    let primaryID = newlySelectedID
+      ?? store.selectedDraftID.flatMap { newSelection.contains($0) ? $0 : nil }
+      ?? newSelection.first
+    if store.selectedDraftID != primaryID {
+      store.selectDraft(primaryID)
+    }
+  }
+
+  private func synchronizeDraftSelectionFromStore() {
+    guard let selectedDraftID = store.selectedDraftID else {
+      selectedDraftIDs = []
+      return
+    }
+    if !selectedDraftIDs.contains(selectedDraftID) {
+      selectedDraftIDs = [selectedDraftID]
+    }
+  }
+
+  private func synchronizeDraftSelection(with drafts: [ArticleDraft]) {
+    let availableIDs = Set(drafts.map(\.id))
+    selectedDraftIDs.formIntersection(availableIDs)
+    synchronizeDraftSelectionFromStore()
+  }
+
+  private func transferDraftIDs(for draft: ArticleDraft) -> [UUID] {
+    if selectedDraftIDs.count > 1 && selectedDraftIDs.contains(draft.id) {
+      return Array(selectedDraftIDs)
+    }
+    return [draft.id]
+  }
+
+  private func availableTransferProfiles(
+    for referenceDraft: ArticleDraft?,
+    includeCurrentSite: Bool
+  ) -> [SiteProfile] {
+    store.profiles.filter { profile in
+      guard profile.purpose != .generalDraftBackup else { return false }
+      guard !includeCurrentSite, let referenceDraft, !referenceDraft.isGeneralDraft else {
+        return true
+      }
+      return !referenceDraft.belongs(toSiteProfileID: profile.id)
+    }
+  }
+
+  private func presentDraftOwnershipTransfer(
+    draftIDs: [UUID],
+    operation: DraftOwnershipTransferOperation,
+    targetProfileID: UUID? = nil
+  ) {
+    guard !draftIDs.isEmpty else { return }
+    draftOwnershipTransferPlan = store.draftOwnershipTransferPlan(
+      draftIDs: draftIDs,
+      operation: operation,
+      targetProfileID: targetProfileID
+    )
+  }
+
+  private func applyDraftOwnershipTransfer(_ plan: DraftOwnershipTransferPlan) -> Bool {
+    guard let result = store.applyDraftOwnershipTransfer(plan) else {
+      return false
+    }
+    selectedDraftIDs = Set(result.affectedDraftIDs)
+    registerDraftOwnershipUndo(result)
+    return true
+  }
+
+  private func registerDraftOwnershipUndo(_ result: DraftOwnershipTransferResult) {
+    undoManager?.registerUndo(withTarget: store) { target in
+      _ = target.undoLatestDraftOwnershipTransfer(expectedUndoID: result.undoID)
+    }
+    undoManager?.setActionName(draftOwnershipUndoActionName(for: result.operation))
+  }
+
+  private func draftOwnershipUndoActionName(
+    for operation: DraftOwnershipTransferOperation
+  ) -> String {
+    switch operation {
+    case .moveToSite:
+      return String(localized: "移动草稿归属")
+    case .copyToSite:
+      return String(localized: "复制草稿到站点")
+    case .moveToGeneral:
+      return String(localized: "转为通用草稿")
+    }
   }
 
   private func selectDraft(byOffset offset: Int) {

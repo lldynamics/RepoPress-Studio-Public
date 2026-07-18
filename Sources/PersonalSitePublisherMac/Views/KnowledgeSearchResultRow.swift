@@ -4,6 +4,7 @@ import SwiftUI
 struct KnowledgeSearchResultRow: View {
   let result: KnowledgeSearchResult
   let query: String
+  var showsDocumentTitle = true
 
   private var hit: KnowledgeSearchHitPresentation {
     KnowledgeSearchPresentationService().presentation(for: result, query: query)
@@ -11,15 +12,17 @@ struct KnowledgeSearchResultRow: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
-      HStack(spacing: 7) {
-        Image(systemName: result.document.kind.systemImage)
-          .foregroundStyle(.secondary)
-          .frame(width: 14)
-          .accessibilityHidden(true)
-        KnowledgeHighlightedText(text: result.document.title, terms: hit.highlightTerms)
-          .font(.callout.weight(.medium))
-          .workbenchTruncatedIdentity(result.document.title)
-        Spacer(minLength: 0)
+      if showsDocumentTitle {
+        HStack(spacing: 7) {
+          Image(systemName: result.document.kind.systemImage)
+            .foregroundStyle(.secondary)
+            .frame(width: 14)
+            .accessibilityHidden(true)
+          KnowledgeHighlightedText(text: result.document.title, terms: hit.highlightTerms)
+            .font(.callout.weight(.medium))
+            .workbenchTruncatedIdentity(result.document.title)
+          Spacer(minLength: 0)
+        }
       }
 
       if let location = hit.locationLabel {

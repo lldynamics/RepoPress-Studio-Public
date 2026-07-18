@@ -480,7 +480,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.publishPackage?.markdownPath, "_posts/2026-08-29-jekyll-article.md")
   }
 
-  func testWritingPackageFocusesDraftProfileAndUsesItsRepositoryRoot() async throws {
+  func testWritingIgnoresStalePackageThenUsesSelectedDraftRepositoryRoot() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let originalProfileID = store.activeProfileID
     let astroRoot = try temporaryDirectoryURL()
@@ -516,6 +516,13 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     await store.writeSelectedDraftToLocalRepository()
 
     let writtenURL = astroRoot.appendingPathComponent("src/content/blog/astro-write.mdx")
+    XCTAssertEqual(store.activeProfileID, originalProfileID)
+    XCTAssertNotEqual(store.selectedDraftID, draft.id)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: writtenURL.path))
+
+    XCTAssertTrue(store.focusDraft(draft.id))
+    await store.writeSelectedDraftToLocalRepository()
+
     XCTAssertEqual(store.activeProfileID, astroProfile.id)
     XCTAssertEqual(store.selectedDraftID, draft.id)
     XCTAssertTrue(FileManager.default.fileExists(atPath: writtenURL.path))

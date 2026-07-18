@@ -101,9 +101,10 @@ public enum KnowledgeFolderScope: Hashable, Sendable {
   case unfiled
   case folder(UUID)
   case smartCollection(KnowledgeSmartCollectionRule)
+  case savedCollection(KnowledgeSavedCollection)
 }
 
-public enum KnowledgeSmartCollectionKind: String, CaseIterable, Identifiable, Sendable {
+public enum KnowledgeSmartCollectionKind: String, Codable, CaseIterable, Identifiable, Sendable {
   case author
   case tag
   case sourceDomain
@@ -113,7 +114,7 @@ public enum KnowledgeSmartCollectionKind: String, CaseIterable, Identifiable, Se
   public var id: String { rawValue }
 }
 
-public enum KnowledgeSmartTimeBucket: String, CaseIterable, Identifiable, Sendable {
+public enum KnowledgeSmartTimeBucket: String, Codable, CaseIterable, Identifiable, Sendable {
   case today
   case thisWeek
   case thisMonth
@@ -122,7 +123,7 @@ public enum KnowledgeSmartTimeBucket: String, CaseIterable, Identifiable, Sendab
   public var id: String { rawValue }
 }
 
-public enum KnowledgeSmartCollectionRule: Hashable, Sendable {
+public enum KnowledgeSmartCollectionRule: Codable, Hashable, Sendable {
   case author(String)
   case tag(String)
   case sourceDomain(String)
@@ -147,6 +148,36 @@ public enum KnowledgeSmartCollectionRule: Hashable, Sendable {
     case .time(let value): "time:\(value.rawValue)"
     case .aiPermission(let value): "ai:\(value)"
     }
+  }
+}
+
+public enum KnowledgeSmartCollectionMatchMode: String, Codable, CaseIterable, Identifiable, Sendable {
+  case all
+  case any
+
+  public var id: String { rawValue }
+}
+
+public struct KnowledgeSavedCollection: Identifiable, Codable, Hashable, Sendable {
+  public var id: UUID
+  public var name: String
+  public var rules: [KnowledgeSmartCollectionRule]
+  public var matchMode: KnowledgeSmartCollectionMatchMode
+  public var createdAt: Date
+
+  public init(
+    id: UUID = UUID(),
+    name: String,
+    rules: [KnowledgeSmartCollectionRule],
+    matchMode: KnowledgeSmartCollectionMatchMode = .all,
+    createdAt: Date = Date()
+  ) {
+    self.id = id
+    self.name = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+    var seen = Set<String>()
+    self.rules = rules.filter { seen.insert($0.id).inserted }
+    self.matchMode = matchMode
+    self.createdAt = createdAt
   }
 }
 
@@ -249,6 +280,78 @@ public struct KnowledgeDocumentSort: Hashable, Sendable {
     if lhs < rhs { return .orderedAscending }
     if lhs > rhs { return .orderedDescending }
     return .orderedSame
+  }
+}
+
+public enum KnowledgeSearchScope: String, CaseIterable, Identifiable, Sendable {
+  case currentCollection
+  case allLibrary
+
+  public var id: String { rawValue }
+}
+
+public enum KnowledgeSearchSignalFilter: String, CaseIterable, Identifiable, Sendable {
+  case all
+  case title
+  case fullText
+  case semantic
+
+  public var id: String { rawValue }
+
+  public var signal: KnowledgeRetrievalSignal? {
+    switch self {
+    case .all: nil
+    case .title: .title
+    case .fullText: .fullText
+    case .semantic: .semantic
+    }
+  }
+}
+
+public enum KnowledgeSearchResultSort: String, CaseIterable, Identifiable, Sendable {
+  case relevance
+  case addedNewest
+
+  public var id: String { rawValue }
+}
+
+public struct KnowledgeSearchFilter: Hashable, Sendable {
+  public var scope: KnowledgeSearchScope
+  public var signal: KnowledgeSearchSignalFilter
+  public var sort: KnowledgeSearchResultSort
+
+  public init(
+    scope: KnowledgeSearchScope = .currentCollection,
+    signal: KnowledgeSearchSignalFilter = .all,
+    sort: KnowledgeSearchResultSort = .relevance
+  ) {
+    self.scope = scope
+    self.signal = signal
+    self.sort = sort
+  }
+
+  public func filtered(
+    _ results: [KnowledgeSearchResult],
+    isInCurrentCollection: (KnowledgeDocument) -> Bool
+  ) -> [KnowledgeSearchResult] {
+    let scoped = results.filter { result in
+      (scope == .allLibrary || isInCurrentCollection(result.document))
+        && (signal.signal.map(result.signals.contains) ?? true)
+    }
+    switch sort {
+    case .relevance:
+      return scoped
+    case .addedNewest:
+      return scoped.sorted {
+        if $0.document.importedAt != $1.document.importedAt {
+          return $0.document.importedAt > $1.document.importedAt
+        }
+        if $0.document.id != $1.document.id {
+          return $0.document.title.localizedStandardCompare($1.document.title) == .orderedAscending
+        }
+        return $0.chunk.ordinal < $1.chunk.ordinal
+      }
+    }
   }
 }
 
@@ -953,6 +1056,7 @@ public struct KnowledgeBatchExportReport: Hashable, Sendable {
 
 public enum KnowledgeLibraryError: LocalizedError, Sendable {
   case unsupportedSource(String)
+  case noImportableSources(String)
   case unreadableSource(String)
   case emptyContent(String)
   case sourceLimitExceeded(String)
@@ -974,6 +1078,7 @@ public enum KnowledgeLibraryError: LocalizedError, Sendable {
   public var errorDescription: String? {
     switch self {
     case .unsupportedSource(let name): "暂不支持这种资料格式：\(name)"
+    case .noImportableSources(let message): "拖放内容中没有可导入的资料：\(message)"
     case .unreadableSource(let path): "无法读取资料来源：\(path)"
     case .emptyContent(let name): "没有从资料中提取到可检索文本：\(name)"
     case .sourceLimitExceeded(let message): message

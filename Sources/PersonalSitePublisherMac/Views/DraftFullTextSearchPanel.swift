@@ -10,7 +10,7 @@ struct DraftFullTextSearchPanel: View {
   @State private var scope = DraftFullTextSearchScope.currentSite
   @State private var results: [DraftFullTextSearchHit] = []
   @State private var isSearching = false
-  @State private var hiddenPrivateDraftCount = 0
+  @State private var protectedPrivateDraftCount = 0
   @State private var searchTask: Task<Void, Never>?
   @State private var savedQueries: [DraftFullTextSavedQuery] = []
   @State private var selectedHitID: DraftFullTextSearchHitID?
@@ -133,11 +133,12 @@ struct DraftFullTextSearchPanel: View {
 
       Spacer()
 
-      if hiddenPrivateDraftCount > 0 {
-        Label(
-          "已隐藏 \(hiddenPrivateDraftCount) 篇私密文章",
-          systemImage: "lock.shield"
-        )
+      if protectedPrivateDraftCount > 0 {
+        Label {
+          Text("\(protectedPrivateDraftCount) 篇私密文章仅搜索标题")
+        } icon: {
+          Image(systemName: "lock.shield")
+        }
         .font(.caption)
         .foregroundStyle(.secondary)
       }
@@ -427,18 +428,22 @@ struct DraftFullTextSearchPanel: View {
     guard !requestedQuery.isEmpty else {
       results = []
       selectedHitID = nil
-      hiddenPrivateDraftCount = 0
+      protectedPrivateDraftCount = 0
       isSearching = false
       return
     }
 
     let scopedDrafts = publishing.drafts.filter { draft in
-      scope == .allSites || draft.siteProfileID == publishing.activeProfileID
+      scope == .allSites
+        ? !draft.isGeneralDraft
+        : draft.belongs(toSiteProfileID: publishing.activeProfileID)
     }
-    let searchableDrafts = scopedDrafts.filter {
-      !store.privateContentDisplay(for: $0).isMasked
+    protectedPrivateDraftCount = scopedDrafts.count {
+      store.privateContentDisplay(for: $0).isMasked
     }
-    hiddenPrivateDraftCount = scopedDrafts.count - searchableDrafts.count
+    let searchableDrafts = scopedDrafts.map {
+      store.privacyProtectedSearchDraft(for: $0)
+    }
     results = []
     selectedHitID = nil
     isSearching = true

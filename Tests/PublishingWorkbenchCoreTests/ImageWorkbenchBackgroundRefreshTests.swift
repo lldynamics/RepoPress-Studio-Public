@@ -66,7 +66,8 @@ final class ImageWorkbenchBackgroundRefreshTests: XCTestCase {
     let olderRefresh = Task { @MainActor in
       await store.refreshImageWorkbenchReportInBackground(for: original, force: true)
     }
-    await tracker.waitUntilStarted(title: "Original")
+    let didStartOriginal = await tracker.waitUntilStarted(title: "Original")
+    XCTAssertTrue(didStartOriginal)
 
     var changed = try XCTUnwrap(store.selectedDraft)
     changed.title = "Changed"
@@ -93,7 +94,8 @@ final class ImageWorkbenchBackgroundRefreshTests: XCTestCase {
     let profileRefresh = Task { @MainActor in
       await store.refreshImageWorkbenchReportInBackground(for: profileBaselineDraft, force: true)
     }
-    await tracker.waitUntilStarted(title: "Profile Baseline")
+    let didStartBaseline = await tracker.waitUntilStarted(title: "Profile Baseline")
+    XCTAssertTrue(didStartBaseline)
 
     var changedProfile = store.activeProfile
     changedProfile.includeCoverInFrontMatter.toggle()
@@ -127,7 +129,8 @@ final class ImageWorkbenchBackgroundRefreshTests: XCTestCase {
     let draft = try XCTUnwrap(store?.selectedDraft)
 
     store?.scheduleImageWorkbenchCachesRefresh(for: draft, force: true)
-    await gate.waitUntilAllStarted()
+    let didStartAll = await gate.waitUntilAllStarted()
+    XCTAssertTrue(didStartAll)
     store = nil
 
     XCTAssertNotNil(
@@ -294,7 +297,8 @@ final class ImageWorkbenchBackgroundRefreshTests: XCTestCase {
     let firstRefresh = Task { @MainActor in
       await store.refreshImageWorkbenchReportInBackground(for: first, force: true)
     }
-    await tracker.waitUntilStarted(title: "First")
+    let didStartFirst = await tracker.waitUntilStarted(title: "First")
+    XCTAssertTrue(didStartFirst)
 
     var second = first
     second.title = "Second"
@@ -303,8 +307,10 @@ final class ImageWorkbenchBackgroundRefreshTests: XCTestCase {
     let secondRefresh = Task { @MainActor in
       await store.refreshImageWorkbenchReportInBackground(for: second, force: true)
     }
-    await tracker.waitUntilStarted(title: "Second")
-    await tracker.waitForCancellationCount(1)
+    let didStartSecond = await tracker.waitUntilStarted(title: "Second")
+    let didCancelFirst = await tracker.waitForCancellationCount(1)
+    XCTAssertTrue(didStartSecond)
+    XCTAssertTrue(didCancelFirst)
 
     var final = second
     final.title = "Final"
@@ -313,8 +319,10 @@ final class ImageWorkbenchBackgroundRefreshTests: XCTestCase {
     let finalRefresh = Task { @MainActor in
       await store.refreshImageWorkbenchReportInBackground(for: final, force: true)
     }
-    await tracker.waitUntilStarted(title: "Final")
-    await tracker.waitForCancellationCount(2)
+    let didStartFinal = await tracker.waitUntilStarted(title: "Final")
+    let didCancelSecond = await tracker.waitForCancellationCount(2)
+    XCTAssertTrue(didStartFinal)
+    XCTAssertTrue(didCancelSecond)
 
     await finalRefresh.value
     await secondRefresh.value
@@ -356,10 +364,14 @@ private actor AsyncReportInvocationTracker {
     totalStartCount += 1
   }
 
-  func waitUntilStarted(title: String) async {
+  func waitUntilStarted(title: String) async -> Bool {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
     while !startedTitles.contains(title) {
-      await Task.yield()
+      guard clock.now < deadline else { return false }
+      try? await clock.sleep(for: .milliseconds(1))
     }
+    return true
   }
 }
 
@@ -409,16 +421,24 @@ private actor CancellableReportInvocationTracker {
     }
   }
 
-  func waitUntilStarted(title: String) async {
+  func waitUntilStarted(title: String) async -> Bool {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
     while !startedTitles.contains(title) {
-      await Task.yield()
+      guard clock.now < deadline else { return false }
+      try? await clock.sleep(for: .milliseconds(1))
     }
+    return true
   }
 
-  func waitForCancellationCount(_ expectedCount: Int) async {
+  func waitForCancellationCount(_ expectedCount: Int) async -> Bool {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
     while cancellationCount < expectedCount {
-      await Task.yield()
+      guard clock.now < deadline else { return false }
+      try? await clock.sleep(for: .milliseconds(1))
     }
+    return true
   }
 }
 
@@ -447,10 +467,14 @@ private actor ImageRefreshLifetimeGate {
     }
   }
 
-  func waitUntilAllStarted() async {
+  func waitUntilAllStarted() async -> Bool {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
     while startCount < expectedStarts {
-      await Task.yield()
+      guard clock.now < deadline else { return false }
+      try? await clock.sleep(for: .milliseconds(1))
     }
+    return true
   }
 
   func releaseAll() {

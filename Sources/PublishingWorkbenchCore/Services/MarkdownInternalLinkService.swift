@@ -47,7 +47,11 @@ public enum MarkdownInternalLinkService {
       .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
 
     return drafts
-      .filter { $0.id != currentDraft.id && $0.siteProfileID == currentDraft.siteProfileID }
+      .filter {
+        $0.id != currentDraft.id
+          && !currentDraft.isGeneralDraft
+          && $0.belongs(toSiteProfileID: currentDraft.siteProfileID)
+      }
       .compactMap { draft in
         let title = draft.title.trimmedForPublishing
         let slug = draft.slug.trimmedForPublishing
@@ -103,7 +107,8 @@ public enum MarkdownInternalLinkService {
 
     return drafts.compactMap { source in
       guard source.id != target.id,
-            source.siteProfileID == target.siteProfileID else { return nil }
+            !source.isGeneralDraft,
+            target.belongs(toSiteProfileID: source.siteProfileID) else { return nil }
       let body = source.bodyMarkdown
       let matchedDestination = markdownLinkDestinations(in: body).first { candidate in
         normalizedWebDestination(candidate) == normalizedTargetDestination

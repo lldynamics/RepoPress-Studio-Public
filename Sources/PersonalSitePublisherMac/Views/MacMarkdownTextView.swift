@@ -29,7 +29,10 @@ private struct MarkdownSyntaxHighlightComputation: Sendable {
 
 struct MacMarkdownTextView: NSViewRepresentable {
   @Binding var text: String
+  var bodyMarkdown: String
+  var bodyUTF16Offset: Int
   @Binding var selectedRange: NSRange
+  @Binding var isFrontMatterSelection: Bool
   var comfortConfiguration: MarkdownEditorComfortConfiguration
   var diagnostics: [MarkdownInlineDiagnostic]
   var editRequest: MarkdownTextEditRequest?
@@ -46,7 +49,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
   func makeCoordinator() -> Coordinator {
     Coordinator(
       text: $text,
+      bodyMarkdown: bodyMarkdown,
+      bodyUTF16Offset: bodyUTF16Offset,
       selectedRange: $selectedRange,
+      isFrontMatterSelection: $isFrontMatterSelection,
       comfortConfiguration: comfortConfiguration,
       diagnostics: diagnostics,
       onStatisticsChanged: onStatisticsChanged,
@@ -58,13 +64,16 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
   func makeNSView(context: Context) -> NSScrollView {
     let scrollView = MarkdownEditorScrollView()
+    let editorBackgroundColor = WorkbenchWritingSurface.nsColor(
+      usesWarmPaper: comfortConfiguration.warmPaperBackgroundEnabled
+    )
     scrollView.preferredBodyWidth = CGFloat(comfortConfiguration.bodyWidth)
     scrollView.hasVerticalScroller = true
     scrollView.hasHorizontalScroller = false
     scrollView.autohidesScrollers = true
     scrollView.borderType = .noBorder
     scrollView.drawsBackground = true
-    scrollView.backgroundColor = NSColor.textBackgroundColor
+    scrollView.backgroundColor = editorBackgroundColor
 
     let textStorage = NSTextStorage()
     let layoutManager = NSLayoutManager()
@@ -86,8 +95,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.delegate = context.coordinator
     textView.fileDropTargetChangedHandler = onFileDropTargetChanged
     textView.fileDropHandler = { urls, dropRange in
-      context.coordinator.selectedRange = dropRange
-      context.coordinator.onDroppedFiles(urls)
+      context.coordinator.handleDroppedFiles(urls, at: dropRange)
     }
     textView.smartPasteHandler = { textView, pasteboard in
       context.coordinator.handlePaste(in: textView, pasteboard: pasteboard)
@@ -116,7 +124,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.isIncrementalSearchingEnabled = true
     textView.textColor = NSColor.labelColor
     textView.insertionPointColor = NSColor.controlAccentColor
-    textView.backgroundColor = NSColor.textBackgroundColor
+    textView.backgroundColor = editorBackgroundColor
     textView.drawsBackground = true
     context.coordinator.applyCachedSyntaxAppearance(in: textView)
     textView.textContainerInset = NSSize(width: 16, height: 16)
@@ -134,7 +142,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
     scrollView.documentView = textView
     context.coordinator.observeScrolling(in: scrollView)
-    context.coordinator.scheduleFullStatistics(for: text)
+    context.coordinator.scheduleFullStatistics(for: bodyMarkdown)
     context.coordinator.scheduleMarkdownSyntaxHighlighting(for: textView, text: text)
     context.coordinator.updateDiagnostics(diagnostics, in: textView, force: true)
     context.coordinator.updateCurrentParagraphHighlight(in: textView, force: true)
@@ -146,6 +154,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
     Self.configureAccessibility(for: textView)
     textView.isEditable = true
     textView.isSelectable = true
+    context.coordinator.updateDocumentContext(
+      bodyMarkdown: bodyMarkdown,
+      bodyUTF16Offset: bodyUTF16Offset
+    )
     context.coordinator.applyComfortConfiguration(
       comfortConfiguration,
       in: textView
@@ -168,19 +180,32 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
     let didReplaceText = textView.string != text
     if didReplaceText {
-      let currentRange = textView.selectedRange()
+      let currentDocumentRange = textView.selectedRange()
       textView.string = text
-      (nsView as? MarkdownEditorScrollView)?.invalidateDocumentHeight()
-      textView.setSelectedRange(clamped(currentRange, length: (text as NSString).length))
+      (nsView as? MarkdownEditorScrollView)?.invalidateDocumentHeight(immediately: true)
+      let replacementRange = isFrontMatterSelection
+        ? clamped(currentDocumentRange, length: (text as NSString).length)
+        : documentRange(
+          forBodyRange: selectedRange,
+          bodyUTF16Offset: bodyUTF16Offset,
+          documentLength: (text as NSString).length
+        )
+      textView.setSelectedRange(replacementRange)
       context.coordinator.invalidateHighlightedTextCache()
-      context.coordinator.scheduleFullStatistics(for: text)
+      context.coordinator.scheduleFullStatistics(for: bodyMarkdown)
       context.coordinator.scheduleMarkdownSyntaxHighlighting(for: textView, text: text)
     }
 
-    let range = clamped(selectedRange, length: (textView.string as NSString).length)
-    if textView.selectedRange() != range {
-      textView.setSelectedRange(range)
-      textView.scrollRangeToVisible(range)
+    if !isFrontMatterSelection {
+      let range = documentRange(
+        forBodyRange: selectedRange,
+        bodyUTF16Offset: bodyUTF16Offset,
+        documentLength: (textView.string as NSString).length
+      )
+      if textView.selectedRange() != range {
+        textView.setSelectedRange(range)
+        textView.scrollRangeToVisible(range)
+      }
     }
     context.coordinator.updateDiagnostics(
       diagnostics,
@@ -207,6 +232,19 @@ struct MacMarkdownTextView: NSViewRepresentable {
     Self.clamped(range, length: length)
   }
 
+  private func documentRange(
+    forBodyRange range: NSRange,
+    bodyUTF16Offset: Int,
+    documentLength: Int
+  ) -> NSRange {
+    let bodyLength = max(0, documentLength - bodyUTF16Offset)
+    let clampedBodyRange = Self.clamped(range, length: bodyLength)
+    return NSRange(
+      location: bodyUTF16Offset + clampedBodyRange.location,
+      length: clampedBodyRange.length
+    )
+  }
+
   private static func clamped(_ range: NSRange, length: Int) -> NSRange {
     let location = min(max(range.location, 0), length)
     let maxLength = max(0, length - location)
@@ -214,15 +252,20 @@ struct MacMarkdownTextView: NSViewRepresentable {
   }
 
   private static func configureAccessibility(for textView: NSTextView) {
-    textView.setAccessibilityLabel(String(localized: "Markdown 正文编辑器"))
-    textView.setAccessibilityHelp(String(localized: "编辑当前文章的 Markdown 正文"))
-    textView.setAccessibilityIdentifier("markdown-body-editor")
+    textView.setAccessibilityLabel(String(localized: "Markdown 文档编辑器"))
+    textView.setAccessibilityHelp(
+      String(localized: "编辑当前文章的 Front Matter 与 Markdown 正文；Control-Tab 移到下一个控件")
+    )
+    textView.setAccessibilityIdentifier("markdown-document-editor")
   }
 
   @MainActor
   final class Coordinator: NSObject, NSTextViewDelegate {
     @Binding var text: String
     @Binding var selectedRange: NSRange
+    @Binding var isFrontMatterSelection: Bool
+    private var bodyMarkdown: String
+    private var bodyUTF16Offset: Int
     let onStatisticsChanged: (MarkdownEditorStatistics) -> Void
     let onPasteMessage: (String) -> Void
     let onScrollProgressChanged: (Double) -> Void
@@ -269,7 +312,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
     init(
       text: Binding<String>,
+      bodyMarkdown: String,
+      bodyUTF16Offset: Int,
       selectedRange: Binding<NSRange>,
+      isFrontMatterSelection: Binding<Bool>,
       comfortConfiguration: MarkdownEditorComfortConfiguration,
       diagnostics: [MarkdownInlineDiagnostic],
       onStatisticsChanged: @escaping (MarkdownEditorStatistics) -> Void,
@@ -278,7 +324,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
       onDroppedFiles: @escaping ([URL]) -> Void
     ) {
       _text = text
+      self.bodyMarkdown = bodyMarkdown
+      self.bodyUTF16Offset = bodyUTF16Offset
       _selectedRange = selectedRange
+      _isFrontMatterSelection = isFrontMatterSelection
       self.comfortConfiguration = comfortConfiguration
       syntaxHighlightPalette = MarkdownTextViewSyntaxPalette(
         configuration: comfortConfiguration
@@ -294,6 +343,78 @@ struct MacMarkdownTextView: NSViewRepresentable {
       )
     }
 
+    func updateDocumentContext(bodyMarkdown: String, bodyUTF16Offset: Int) {
+      self.bodyMarkdown = bodyMarkdown
+      self.bodyUTF16Offset = bodyUTF16Offset
+    }
+
+    func handleDroppedFiles(_ urls: [URL], at documentRange: NSRange) {
+      guard documentRange.location >= bodyUTF16Offset else { return }
+      selectedRange = bodyRange(from: documentRange)
+      isFrontMatterSelection = false
+      onDroppedFiles(urls)
+    }
+
+    private func documentRange(from bodyRange: NSRange) -> NSRange {
+      NSRange(
+        location: bodyUTF16Offset + bodyRange.location,
+        length: bodyRange.length
+      )
+    }
+
+    private func bodyRange(from documentRange: NSRange) -> NSRange {
+      let bodyLength = (bodyMarkdown as NSString).length
+      let location = min(
+        max(documentRange.location - bodyUTF16Offset, 0),
+        bodyLength
+      )
+      let maxLength = max(0, bodyLength - location)
+      return NSRange(location: location, length: min(documentRange.length, maxLength))
+    }
+
+    private func updateSelectionBinding(from documentRange: NSRange) {
+      if documentRange.location < bodyUTF16Offset {
+        isFrontMatterSelection = true
+        selectedRange = NSRange(location: 0, length: 0)
+      } else {
+        isFrontMatterSelection = false
+        selectedRange = bodyRange(from: documentRange)
+      }
+    }
+
+    private struct DocumentParts {
+      let bodyMarkdown: String
+      let bodyUTF16Offset: Int
+    }
+
+    private static func documentParts(in source: String) -> DocumentParts? {
+      let normalized = source
+        .replacingOccurrences(of: "\r\n", with: "\n")
+        .replacingOccurrences(of: "\r", with: "\n")
+      let lines = normalized.components(separatedBy: "\n")
+      guard let delimiter = lines.first?.trimmedForPublishing,
+            delimiter == "---" || delimiter == "+++",
+            let closingIndex = lines.dropFirst().firstIndex(where: {
+              $0.trimmedForPublishing == delimiter
+            }) else {
+        return nil
+      }
+
+      let frontMatter = lines[...closingIndex].joined(separator: "\n")
+      let sourceText = normalized as NSString
+      var bodyOffset = (frontMatter as NSString).length
+      var skippedNewlines = 0
+      while bodyOffset < sourceText.length, skippedNewlines < 2,
+            sourceText.character(at: bodyOffset) == 10 {
+        bodyOffset += 1
+        skippedNewlines += 1
+      }
+      return DocumentParts(
+        bodyMarkdown: sourceText.substring(from: bodyOffset),
+        bodyUTF16Offset: bodyOffset
+      )
+    }
+
     func applyComfortConfiguration(
       _ configuration: MarkdownEditorComfortConfiguration,
       in textView: NSTextView
@@ -306,6 +427,11 @@ struct MacMarkdownTextView: NSViewRepresentable {
         applyCachedSyntaxAppearance(in: textView)
       }
       textView.isContinuousSpellCheckingEnabled = configuration.spellCheckEnabled
+      let editorBackgroundColor = WorkbenchWritingSurface.nsColor(
+        usesWarmPaper: configuration.warmPaperBackgroundEnabled
+      )
+      textView.backgroundColor = editorBackgroundColor
+      textView.enclosingScrollView?.backgroundColor = editorBackgroundColor
       if let scrollView = textView.enclosingScrollView as? MarkdownEditorScrollView {
         scrollView.preferredBodyWidth = CGFloat(configuration.bodyWidth)
       }
@@ -356,9 +482,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
       in textView: NSTextView,
       pasteboard: NSPasteboard
     ) -> Bool {
+      guard textView.selectedRange().location >= bodyUTF16Offset else { return false }
       let imageURLs = MarkdownPasteboardReader.imageFileURLs(from: pasteboard)
       if !imageURLs.isEmpty {
-        selectedRange = textView.selectedRange()
+        updateSelectionBinding(from: textView.selectedRange())
         onDroppedFiles(imageURLs)
         return true
       }
@@ -366,7 +493,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       if let pngData = MarkdownPasteboardReader.pngData(from: pasteboard) {
         do {
           let imageURL = try pastedImageFileStore.storePNG(pngData)
-          selectedRange = textView.selectedRange()
+          updateSelectionBinding(from: textView.selectedRange())
           onDroppedFiles([imageURL])
         } catch {
           onPasteMessage("粘贴图片失败：\(error.localizedDescription)")
@@ -417,6 +544,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
       _ command: MarkdownFormattingCommand,
       in textView: NSTextView
     ) -> Bool {
+      guard textView.selectedRange().location >= bodyUTF16Offset else {
+        NSSound.beep()
+        return true
+      }
       guard let edit = formattingService.edit(
         in: textView.string,
         selectedRange: textView.selectedRange(),
@@ -429,7 +560,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
     }
 
     func tableContext(in textView: NSTextView) -> MarkdownTableEditingContext? {
-      tableEditingService.context(
+      guard textView.selectedRange().location >= bodyUTF16Offset else { return nil }
+      return tableEditingService.context(
         in: textView.string,
         selectedRange: textView.selectedRange()
       )
@@ -439,6 +571,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       _ command: MarkdownTableEditingCommand,
       in textView: NSTextView
     ) -> Bool {
+      guard textView.selectedRange().location >= bodyUTF16Offset else { return false }
       guard let edit = tableEditingService.edit(
         in: textView.string,
         selectedRange: textView.selectedRange(),
@@ -455,7 +588,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         textView.insertText(edit.replacement, replacementRange: edit.replacedRange)
       }
       textView.setSelectedRange(edit.selectedRange)
-      selectedRange = edit.selectedRange
+      updateSelectionBinding(from: edit.selectedRange)
     }
 
     @discardableResult
@@ -466,17 +599,22 @@ struct MacMarkdownTextView: NSViewRepresentable {
       }
 
       lastAppliedEditRequestID = request.id
-      guard textView.string == request.expectedText else {
+      guard bodyMarkdown == request.expectedText else {
         return request.id
       }
 
-      let textLength = (textView.string as NSString).length
+      let textLength = (bodyMarkdown as NSString).length
       guard request.edit.replacedRange.location >= 0,
             NSMaxRange(request.edit.replacedRange) <= textLength else {
         return request.id
       }
 
-      apply(request.edit, in: textView)
+      let documentEdit = MarkdownSmartEdit(
+        replacedRange: documentRange(from: request.edit.replacedRange),
+        replacement: request.edit.replacement,
+        selectedRange: documentRange(from: request.edit.selectedRange)
+      )
+      apply(documentEdit, in: textView)
       return request.id
     }
 
@@ -512,17 +650,19 @@ struct MacMarkdownTextView: NSViewRepresentable {
             continue
           }
 
-          let range = MacMarkdownTextView.clamped(
+          let bodyRange = MacMarkdownTextView.clamped(
             request.selectedRange,
-            length: (textView.string as NSString).length
+            length: (self.bodyMarkdown as NSString).length
           )
+          let range = self.documentRange(from: bodyRange)
           textView.setSelectedRange(range)
           textView.scrollRangeToVisible(range)
           let didFocus = window.firstResponder === textView
             || window.makeFirstResponder(textView)
           guard didFocus else { continue }
 
-          self.selectedRange = range
+          self.selectedRange = bodyRange
+          self.isFrontMatterSelection = false
           self.lastAppliedFocusRequestID = request.id
           self.pendingFocusRequest = nil
           self.focusRequestTask = nil
@@ -575,9 +715,13 @@ struct MacMarkdownTextView: NSViewRepresentable {
       }
       pendingSyntaxHighlightPlan = syntaxHighlightPlan
       syntaxCodeBlockRanges = syntaxHighlightPlan.codeBlockRanges
-      updateStatistics(afterEditing: updatedText)
+      if let parts = Self.documentParts(in: updatedText) {
+        bodyMarkdown = parts.bodyMarkdown
+        bodyUTF16Offset = parts.bodyUTF16Offset
+      }
       text = updatedText
-      selectedRange = textView.selectedRange()
+      updateSelectionBinding(from: textView.selectedRange())
+      scheduleFullStatistics(for: bodyMarkdown)
       scheduleMarkdownSyntaxHighlighting(
         for: textView,
         text: updatedText,
@@ -588,7 +732,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
     func textViewDidChangeSelection(_ notification: Notification) {
       guard let textView = notification.object as? NSTextView else { return }
-      selectedRange = textView.selectedRange()
+      updateSelectionBinding(from: textView.selectedRange())
       updateCurrentParagraphHighlight(in: textView)
       centerSelectionIfNeeded(in: textView)
     }
@@ -597,6 +741,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
       _ textView: NSTextView,
       doCommandBy commandSelector: Selector
     ) -> Bool {
+      guard textView.selectedRange().location >= bodyUTF16Offset else {
+        return false
+      }
       let edit: MarkdownSmartEdit?
       switch commandSelector {
       case #selector(NSResponder.insertNewline(_:)):
@@ -917,9 +1064,14 @@ struct MacMarkdownTextView: NSViewRepresentable {
       force: Bool = false
     ) {
       guard let layoutManager = textView.layoutManager else { return }
+      let documentDiagnostics = diagnostics.map { diagnostic in
+        var updated = diagnostic
+        updated.range.location += bodyUTF16Offset
+        return updated
+      }
       let overlays = MarkdownEditorOverlayService.diagnosticOverlays(
         in: textView.string,
-        diagnostics: diagnostics
+        diagnostics: documentDiagnostics
       )
       guard force || overlays != appliedDiagnosticOverlays else { return }
 
@@ -1022,19 +1174,31 @@ struct MacMarkdownTextView: NSViewRepresentable {
 private final class MarkdownEditorScrollView: NSScrollView {
   private var cachedLayoutWidth: CGFloat = 0
   private var cachedTextHeight: CGFloat?
+  private var heightInvalidationWorkItem: DispatchWorkItem?
   var preferredBodyWidth = CGFloat(MarkdownEditorComfortConfiguration.defaultBodyWidth) {
     didSet {
       guard abs(oldValue - preferredBodyWidth) > 0.5 else { return }
       cachedLayoutWidth = 0
-      invalidateDocumentHeight()
+      invalidateDocumentHeight(immediately: true)
     }
   }
 
   override var acceptsFirstResponder: Bool { false }
 
-  func invalidateDocumentHeight() {
-    cachedTextHeight = nil
-    needsLayout = true
+  func invalidateDocumentHeight(immediately: Bool = false) {
+    heightInvalidationWorkItem?.cancel()
+    if immediately {
+      cachedTextHeight = nil
+      needsLayout = true
+      return
+    }
+    let workItem = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      self.cachedTextHeight = nil
+      self.needsLayout = true
+    }
+    heightInvalidationWorkItem = workItem
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.075, execute: workItem)
   }
 
   override func layout() {
@@ -1108,6 +1272,19 @@ private final class DroppableMarkdownTextView: NSTextView {
     if window?.firstResponder !== self {
       window?.makeFirstResponder(self)
     }
+  }
+
+  override func keyDown(with event: NSEvent) {
+    let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+    if event.keyCode == 48, modifiers.contains(.control) {
+      if modifiers.contains(.shift) {
+        window?.selectPreviousKeyView(self)
+      } else {
+        window?.selectNextKeyView(self)
+      }
+      return
+    }
+    super.keyDown(with: event)
   }
 
   override func paste(_ sender: Any?) {

@@ -343,6 +343,7 @@ public struct LocalPublishPreviewService: Sendable {
 
     var writtenPaths: [String] = []
     var rollbackEntries: [LocalPublishRollbackEntry] = []
+    var appliedStates: [LocalPublishFileState] = []
     do {
       for (index, prepared) in preparedWrites.enumerated() {
         let destinationURL = prepared.file.operation == .delete
@@ -365,6 +366,14 @@ public struct LocalPublishPreviewService: Sendable {
           backupURL = nil
         }
 
+        rollbackEntries.append(
+          LocalPublishRollbackEntry(
+            destinationURL: destinationURL,
+            backupURL: backupURL,
+            appliedState: nil
+          )
+        )
+
         switch prepared.file.operation {
         case .delete:
           if fileManager.fileExists(atPath: destinationURL.path) {
@@ -382,13 +391,9 @@ public struct LocalPublishPreviewService: Sendable {
           }
         }
 
-        rollbackEntries.append(
-          LocalPublishRollbackEntry(
-            destinationURL: destinationURL,
-            backupURL: backupURL,
-            appliedState: try localPublishFileState(at: destinationURL, fileManager: fileManager)
-          )
-        )
+        let appliedState = try localPublishFileState(at: destinationURL, fileManager: fileManager)
+        rollbackEntries[rollbackEntries.count - 1].appliedState = appliedState
+        appliedStates.append(appliedState)
         writtenPaths.append(prepared.file.repositoryPath)
       }
     } catch {
@@ -407,7 +412,7 @@ public struct LocalPublishPreviewService: Sendable {
       appliedStatesByRepositoryPath: Dictionary(
         uniqueKeysWithValues: zip(
           writtenPaths,
-          rollbackEntries.map(\.appliedState)
+          appliedStates
         )
       )
     )
@@ -580,9 +585,11 @@ public struct LocalPublishPreviewService: Sendable {
 
   private func rollbackLocalPublishWrites(_ entries: [LocalPublishRollbackEntry]) throws {
     for entry in entries.reversed() {
-      let currentState = try localPublishFileState(at: entry.destinationURL, fileManager: fileManager)
-      guard currentState == entry.appliedState else {
-        throw LocalPublishPreviewError.rollbackConflict(entry.destinationURL.path)
+      if let appliedState = entry.appliedState {
+        let currentState = try localPublishFileState(at: entry.destinationURL, fileManager: fileManager)
+        guard currentState == appliedState else {
+          throw LocalPublishPreviewError.rollbackConflict(entry.destinationURL.path)
+        }
       }
       if fileManager.fileExists(atPath: entry.destinationURL.path) {
         try fileManager.removeItem(at: entry.destinationURL)
@@ -684,7 +691,7 @@ private struct PreparedLocalPublishWrite {
 private struct LocalPublishRollbackEntry {
   let destinationURL: URL
   let backupURL: URL?
-  let appliedState: LocalPublishFileState
+  var appliedState: LocalPublishFileState?
 }
 
 struct LocalPublishWriteResult {

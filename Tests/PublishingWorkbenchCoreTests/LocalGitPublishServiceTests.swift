@@ -224,6 +224,48 @@ final class LocalGitPublishServiceTests: XCTestCase {
     }
   }
 
+  func testDirectCommitSupportsLinkedGitWorktree() throws {
+    let rootURL = try makeGitRepositoryFixture()
+    let linkedURL = rootURL
+      .deletingLastPathComponent()
+      .appendingPathComponent("PersonalSitePublisherMacLinked-\(UUID().uuidString)", isDirectory: true)
+    defer {
+      _ = try? git(["worktree", "remove", "--force", linkedURL.path], rootURL: rootURL)
+      try? FileManager.default.removeItem(at: linkedURL)
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+    try git(["worktree", "add", "-b", "linked-publish", linkedURL.path], rootURL: rootURL)
+    var isDirectory: ObjCBool = false
+    XCTAssertTrue(FileManager.default.fileExists(
+      atPath: linkedURL.appendingPathComponent(".git").path,
+      isDirectory: &isDirectory
+    ))
+    XCTAssertFalse(isDirectory.boolValue)
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(linkedURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Linked Worktree",
+      slug: "linked-worktree",
+      draft: false,
+      bodyMarkdown: "Publishing must support Git worktrees whose .git entry is a file."
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+
+    let result = try LocalGitPublishService().publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit
+    )
+
+    XCTAssertEqual(result.branchName, "linked-publish")
+    XCTAssertTrue(try git(["show", "--name-only", "--format="], rootURL: linkedURL).contains(
+      "content/posts/linked-worktree.md"
+    ))
+  }
+
   private func makeGitRepositoryFixture() throws -> URL {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacGitTests-\(UUID().uuidString)", isDirectory: true)

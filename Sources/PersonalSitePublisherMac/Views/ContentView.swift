@@ -2,6 +2,16 @@ import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
+private struct WorkspaceResponsiveLayoutSnapshot: Equatable {
+  let width: CGFloat
+  let editorDisplayMode: EditorDisplayMode
+
+  static let initial = WorkspaceResponsiveLayoutSnapshot(
+    width: WorkbenchLayoutMode.expandedWorkspaceWidth,
+    editorDisplayMode: .edit
+  )
+}
+
 struct ContentView: View {
   let store: WorkbenchStore
   @ObservedObject private var shellState: WorkbenchShellFeatureFacade
@@ -12,6 +22,8 @@ struct ContentView: View {
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
   @AppStorage("didCompleteFirstRunSetup") private var didCompleteFirstRunSetup = false
   @SceneStorage("workspace.focusMode") private var isFocusMode = false
+  @SceneStorage("workspace.revealSidebarInNarrowSplit") private var revealsSidebarInNarrowSplit = false
+  @SceneStorage("workspace.revealInspectorInNarrowSplit") private var revealsInspectorInNarrowSplit = false
   @State private var didApplyInitialWorkbenchPreferences = false
   @State private var didApplyScreenshotDemoSurface = false
   @State private var didOpenAIAssistantByDefault = false
@@ -19,7 +31,7 @@ struct ContentView: View {
   @State private var isFirstRunSetupPresented = false
   @State private var isCommandPalettePresented = false
   @State private var isDraftFullTextSearchPresented = false
-  @State private var isCompactLayout = true
+  @State private var responsiveLayout = WorkspaceResponsiveLayoutSnapshot.initial
   @State private var contentHealthFilter: ContentHealthContextFilter = .overview
   @State private var repositoryContextStage: RepositoryContextStage = .overview
   private let repositoryAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -34,12 +46,16 @@ struct ContentView: View {
   var body: some View {
     GeometryReader { geometry in
       let compactLayout = WorkbenchLayoutMode.isCompact(width: geometry.size.width)
+      let responsiveLayoutSnapshot = WorkspaceResponsiveLayoutSnapshot(
+        width: geometry.size.width,
+        editorDisplayMode: publishingState.editorDisplayMode
+      )
 
       ZStack {
         WorkspaceShellSplitLayout(
           store: store,
           isCompact: compactLayout,
-          isFocusMode: isFocusMode,
+          isFocusMode: effectiveFocusMode,
           contentHealthFilter: $contentHealthFilter,
           repositoryContextStage: $repositoryContextStage,
           onSelectSection: { store.selectSection($0) }
@@ -57,11 +73,13 @@ struct ContentView: View {
             .zIndex(2)
         }
       }
-      .onAppear {
-        updateCompactLayout(for: geometry.size.width)
-      }
-      .onChange(of: geometry.size.width) { _, width in
-        updateCompactLayout(for: width)
+      .task(id: responsiveLayoutSnapshot) {
+        do {
+          try await Task.sleep(for: .milliseconds(50))
+        } catch {
+          return
+        }
+        applyResponsiveLayout(responsiveLayoutSnapshot)
       }
     }
     .background(WorkbenchAccessibilityStatusAnnouncer(store: store))
@@ -122,6 +140,8 @@ struct ContentView: View {
     .onChange(of: shellState.isPrivacyLocked) { _, isLocked in
       if isLocked {
         isPublishDrawerPresented = false
+        isFirstRunSetupPresented = false
+        isCommandPalettePresented = false
         isDraftFullTextSearchPresented = false
       }
     }
@@ -280,7 +300,7 @@ struct ContentView: View {
         .accessibilityIdentifier("workspace-full-text-search")
       }
 
-      if showsDraftEditingToolbar && !isFocusMode {
+      if showsDraftEditingToolbar && !effectiveFocusMode {
         aiToolbarButton
       }
 
@@ -302,7 +322,7 @@ struct ContentView: View {
       )
     }
     .buttonStyle(WorkspaceToolbarIconButtonStyle(isActive: isAIAssistantVisible))
-    .disabled(!shellState.canUseProtectedWorkbench || !allowsInspectorInCurrentLayout)
+    .disabled(!shellState.canUseProtectedWorkbench || !canRequestInspectorInCurrentLayout)
     .help(aiToolbarHelp)
     .accessibilityLabel(isAIAssistantVisible ? "关闭 AI 对话" : "打开 AI 对话")
     .accessibilityValue(isAIAssistantVisible ? "已打开" : "已关闭")
@@ -315,10 +335,10 @@ struct ContentView: View {
     }
     .buttonStyle(
       WorkspaceToolbarIconButtonStyle(
-        isActive: shellState.isInspectorPresented && !aiState.isAssistantPresented
+        isActive: inspectorPresentation.wrappedValue && !aiState.isAssistantPresented
       )
     )
-    .disabled(!shellState.canUseProtectedWorkbench || !allowsInspectorInCurrentLayout)
+    .disabled(!shellState.canUseProtectedWorkbench || !canRequestInspectorInCurrentLayout)
     .help(inspectorToolbarHelp)
     .accessibilityLabel("工作区 Inspector")
     .accessibilityValue(inspectorAccessibilityValue)
@@ -326,6 +346,9 @@ struct ContentView: View {
   }
 
   private var inspectorToolbarHelp: String {
+    if canOverrideSplitInspector && !allowsInspectorInCurrentLayout {
+      return "分屏空间较窄；点击仍显示 Inspector"
+    }
     guard allowsInspectorInCurrentLayout else {
       return "扩大窗口后可使用 Inspector"
     }
@@ -336,6 +359,9 @@ struct ContentView: View {
   }
 
   private var aiToolbarHelp: String {
+    if canOverrideSplitInspector && !allowsInspectorInCurrentLayout {
+      return "分屏空间较窄；点击仍打开 AI 对话"
+    }
     guard allowsInspectorInCurrentLayout else {
       return "扩大窗口后可使用 AI 对话"
     }
@@ -347,15 +373,15 @@ struct ContentView: View {
       if showsDraftEditingToolbar {
         Button(action: toggleFocusMode) {
           Label(
-            isFocusMode ? "退出专注写作" : "专注写作",
-            systemImage: isFocusMode
+            effectiveFocusMode ? "显示文章列表" : "专注写作",
+            systemImage: effectiveFocusMode
               ? "arrow.down.right.and.arrow.up.left"
               : "arrow.up.left.and.arrow.down.right"
           )
         }
         .keyboardShortcut("f", modifiers: [.command, .shift])
         .disabled(!shellState.canUseProtectedWorkbench)
-        .accessibilityValue(isFocusMode ? "已开启" : "已关闭")
+        .accessibilityValue(effectiveFocusMode ? "文章列表已隐藏" : "文章列表已显示")
         .accessibilityIdentifier("workspace-focus-mode-toggle")
       }
 
@@ -386,6 +412,7 @@ struct ContentView: View {
       )
     }
     .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
     .help("专注写作与高级操作")
     .accessibilityIdentifier("workspace-more-menu")
   }
@@ -400,6 +427,9 @@ struct ContentView: View {
   }
 
   private var inspectorAccessibilityValue: String {
+    if canOverrideSplitInspector && !allowsInspectorInCurrentLayout {
+      return "分屏空间较窄，已临时隐藏；可以手动显示"
+    }
     guard allowsInspectorInCurrentLayout else {
       return "窗口过窄，已临时隐藏"
     }
@@ -415,7 +445,7 @@ struct ContentView: View {
         WorkspaceInspectorPresentation.isPresented(
           requested: shellState.isInspectorPresented,
           supportsInspector: supportsInspector,
-          isFocusMode: isFocusMode,
+          isFocusMode: effectiveFocusMode,
           allowsInspector: allowsInspectorInCurrentLayout
         )
       },
@@ -430,12 +460,14 @@ struct ContentView: View {
   }
 
   private var isAIAssistantVisible: Bool {
-    aiState.isAssistantPresented && shellState.isInspectorPresented
+    aiState.isAssistantPresented && inspectorPresentation.wrappedValue
   }
 
   private func normalizeWorkspacePresentation(for section: WorkspaceSection) {
     if section != .writing {
       isFocusMode = false
+      revealsSidebarInNarrowSplit = false
+      revealsInspectorInNarrowSplit = false
     }
     if section != .writing && aiState.isAssistantPresented {
       aiState.hideAssistant()
@@ -462,7 +494,7 @@ struct ContentView: View {
   }
 
   private func openAIInspector() {
-    guard allowsInspectorInCurrentLayout else { return }
+    guard prepareInspectorForUserRequest() else { return }
     guard let draft = store.ensureEditableDraftSelected() else { return }
     guard store.openAIChatWorkspace(for: draft.id) else { return }
     store.setInspectorPresented(true)
@@ -475,8 +507,9 @@ struct ContentView: View {
     guard !ScreenshotDemoDataService.isEnabledFromEnvironment else { return }
 #endif
     guard shellState.selectedSection == .writing,
-          !isFocusMode,
+          !effectiveFocusMode,
           !isCompactLayout,
+          allowsInspectorByWidth,
           shellState.canUseProtectedWorkbench else { return }
     openAIInspector()
   }
@@ -490,9 +523,10 @@ struct ContentView: View {
   }
 
   private func toggleArticleInspector() {
-    guard allowsInspectorInCurrentLayout else { return }
-    if isFocusMode {
+    guard prepareInspectorForUserRequest() else { return }
+    if effectiveFocusMode {
       isFocusMode = false
+      revealsSidebarInNarrowSplit = true
       if aiState.isAssistantPresented {
         aiState.hideAssistant()
       }
@@ -529,19 +563,93 @@ struct ContentView: View {
     store.setPublishActionMessage(message ?? "发布流程已打开，请按检查、差异、写入、远端和部署步骤确认。")
   }
 
-  private func updateCompactLayout(for width: CGFloat) {
-    let isNowCompact = WorkbenchLayoutMode.isCompact(width: width)
-    guard isNowCompact != isCompactLayout else { return }
-    isCompactLayout = isNowCompact
+  private var isCompactLayout: Bool {
+    WorkbenchLayoutMode.isCompact(width: responsiveLayout.width)
+  }
+
+  private func applyResponsiveLayout(_ snapshot: WorkspaceResponsiveLayoutSnapshot) {
+    guard snapshot != responsiveLayout else { return }
+    var transaction = Transaction(animation: nil)
+    transaction.disablesAnimations = true
+    withTransaction(transaction) {
+      responsiveLayout = snapshot
+      if !automaticallyHidesSidebarForSplit(snapshot) {
+        revealsSidebarInNarrowSplit = false
+      }
+      if !canOverrideSplitInspector(snapshot) {
+        revealsInspectorInNarrowSplit = false
+      }
+    }
   }
 
   private var allowsInspectorInCurrentLayout: Bool {
-    !isCompactLayout
+    allowsInspectorByWidth || (canOverrideSplitInspector && revealsInspectorInNarrowSplit)
+  }
+
+  private var allowsInspectorByWidth: Bool {
+    WorkbenchLayoutMode.allowsInspector(
+      width: responsiveLayout.width,
+      editorDisplayMode: shellState.selectedSection == .writing
+        ? responsiveLayout.editorDisplayMode
+        : nil
+    )
+  }
+
+  private var canOverrideSplitInspector: Bool {
+    canOverrideSplitInspector(responsiveLayout)
+  }
+
+  private func canOverrideSplitInspector(_ snapshot: WorkspaceResponsiveLayoutSnapshot) -> Bool {
+    shellState.selectedSection == .writing
+      && snapshot.editorDisplayMode == .split
+      && snapshot.width >= WorkbenchLayoutMode.minimumInspectorWorkspaceWidth
+      && !WorkbenchLayoutMode.allowsInspector(
+        width: snapshot.width,
+        editorDisplayMode: snapshot.editorDisplayMode
+      )
+  }
+
+  private var canRequestInspectorInCurrentLayout: Bool {
+    allowsInspectorInCurrentLayout || canOverrideSplitInspector
+  }
+
+  private var automaticallyHidesSidebarForSplit: Bool {
+    automaticallyHidesSidebarForSplit(responsiveLayout)
+  }
+
+  private func automaticallyHidesSidebarForSplit(_ snapshot: WorkspaceResponsiveLayoutSnapshot) -> Bool {
+    shellState.selectedSection == .writing
+      && WorkbenchLayoutMode.prefersFocusedWriting(
+        width: snapshot.width,
+        editorDisplayMode: snapshot.editorDisplayMode
+      )
+  }
+
+  private var effectiveFocusMode: Bool {
+    isFocusMode || (automaticallyHidesSidebarForSplit && !revealsSidebarInNarrowSplit)
+  }
+
+  @discardableResult
+  private func prepareInspectorForUserRequest() -> Bool {
+    if allowsInspectorInCurrentLayout {
+      return true
+    }
+    guard canOverrideSplitInspector else {
+      return false
+    }
+    revealsInspectorInNarrowSplit = true
+    return true
   }
 
   private func toggleFocusMode() {
     guard shellState.selectedSection == .writing else { return }
-    isFocusMode.toggle()
+    if isFocusMode {
+      isFocusMode = false
+    } else if automaticallyHidesSidebarForSplit && !revealsSidebarInNarrowSplit {
+      revealsSidebarInNarrowSplit = true
+    } else {
+      isFocusMode = true
+    }
   }
 }
 

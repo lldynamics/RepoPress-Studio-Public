@@ -3,21 +3,35 @@ import SwiftUI
 
 struct KnowledgeRelatedChaptersSection: View {
   @ObservedObject var knowledge: KnowledgeStore
+  var showsHeader = true
+  var maximumVisibleRecommendations: Int?
+
+  init(
+    knowledge: KnowledgeStore,
+    showsHeader: Bool = true,
+    maximumVisibleRecommendations: Int? = nil
+  ) {
+    self.knowledge = knowledge
+    self.showsHeader = showsHeader
+    self.maximumVisibleRecommendations = maximumVisibleRecommendations
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        Label(sectionTitle, systemImage: "point.3.connected.trianglepath.dotted")
-          .font(.headline)
-        Spacer()
-        if knowledge.isLoadingRelatedChapters {
-          ProgressView()
-            .controlSize(.small)
-            .accessibilityLabel("正在查找\(sectionTitle)")
-        } else if !knowledge.relatedChapters.isEmpty {
-          Text("本地智能推荐")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+      if showsHeader {
+        HStack {
+          Label(sectionTitle, systemImage: "point.3.connected.trianglepath.dotted")
+            .font(.headline)
+          Spacer()
+          if knowledge.isLoadingRelatedChapters {
+            ProgressView()
+              .controlSize(.small)
+              .accessibilityLabel("正在查找\(sectionTitle)")
+          } else if !knowledge.relatedChapters.isEmpty {
+            Text("本地智能推荐")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
         }
       }
 
@@ -31,7 +45,7 @@ struct KnowledgeRelatedChaptersSection: View {
           .foregroundStyle(.secondary)
       } else {
         LazyVStack(spacing: 8) {
-          ForEach(knowledge.relatedChapters) { recommendation in
+          ForEach(visibleRecommendations) { recommendation in
             Button {
               knowledge.selectRelatedChapter(recommendation)
             } label: {
@@ -51,6 +65,13 @@ struct KnowledgeRelatedChaptersSection: View {
     knowledge.selectedDocument?.kind == .book
       ? String(localized: "相关章节")
       : String(localized: "相关内容")
+  }
+
+  private var visibleRecommendations: [KnowledgeRelatedChapter] {
+    guard let maximumVisibleRecommendations else {
+      return knowledge.relatedChapters
+    }
+    return Array(knowledge.relatedChapters.prefix(maximumVisibleRecommendations))
   }
 
   private func relatedChapterRow(_ recommendation: KnowledgeRelatedChapter) -> some View {

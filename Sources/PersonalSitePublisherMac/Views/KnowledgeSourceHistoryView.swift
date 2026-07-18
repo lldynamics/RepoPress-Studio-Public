@@ -5,6 +5,7 @@ struct KnowledgeSourceHistoryView: View {
   @Environment(\.dismiss) private var dismiss
   @ObservedObject var knowledge: KnowledgeStore
   let documentID: UUID
+  var preparesLocalRepairOnAppear = false
   @State private var refreshPreview: KnowledgeSourceRefreshPreview?
   @State private var localRepairPreview: KnowledgeSourceRefreshPreview?
   @State private var isCheckingSource = false
@@ -49,6 +50,9 @@ struct KnowledgeSourceHistoryView: View {
     .frame(minWidth: 760, idealWidth: 920, minHeight: 620, idealHeight: 760)
     .task {
       knowledge.loadDocumentInsights(documentID: documentID)
+      if preparesLocalRepairOnAppear {
+        prepareLocalRepair()
+      }
     }
     .confirmationDialog(
       "恢复这个资料版本？",
@@ -100,17 +104,30 @@ struct KnowledgeSourceHistoryView: View {
         ProgressView("正在下载并净化来源内容…")
           .controlSize(.small)
       }
-      if let revision = currentRevision,
-         revision.parserVersion < KnowledgeLibraryService.parserVersion {
+      if document?.kind == .webpage, let revision = currentRevision {
         HStack(spacing: 8) {
           Label(
-            "当前正文使用解析器 v\(revision.parserVersion)，可以在本机升级到 v\(KnowledgeLibraryService.parserVersion)。",
-            systemImage: "wand.and.stars"
+            revision.parserVersion < KnowledgeLibraryService.parserVersion
+              ? "当前正文使用解析器 v\(revision.parserVersion)，可以在本机升级到 v\(KnowledgeLibraryService.parserVersion)。"
+              : "正文有缺失、混入导航或网页页脚时，可以使用本机原始归档重新净化。",
+            systemImage: revision.parserVersion < KnowledgeLibraryService.parserVersion
+              ? "wand.and.stars"
+              : "doc.text.magnifyingglass"
           )
           .font(.callout)
-          .foregroundStyle(WorkbenchTheme.warning)
+          .foregroundStyle(
+            revision.parserVersion < KnowledgeLibraryService.parserVersion
+              ? WorkbenchTheme.warning
+              : Color.secondary
+          )
           Spacer()
-          Button("本地重新净化") { prepareLocalRepair() }
+          Button(
+            revision.parserVersion < KnowledgeLibraryService.parserVersion
+              ? "本地重新净化"
+              : "重新净化并预览"
+          ) {
+            prepareLocalRepair()
+          }
             .disabled(isPreparingLocalRepair || knowledge.isBusy)
         }
       }
@@ -290,14 +307,14 @@ struct KnowledgeSourceHistoryView: View {
     VStack(alignment: .leading, spacing: 6) {
       Text(title)
         .font(.caption.weight(.semibold))
-      ScrollView([.vertical, .horizontal]) {
+      ScrollView(.horizontal) {
         Text(text.isEmpty ? "（此处没有内容）" : text)
           .font(.system(.caption, design: .monospaced))
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .topLeading)
           .padding(9)
       }
-      .frame(minHeight: 150, maxHeight: 230)
+      .frame(minHeight: 150, alignment: .topLeading)
       .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -335,7 +352,10 @@ struct KnowledgeSourceHistoryView: View {
     refreshError = nil
     Task {
       defer { isPreparingLocalRepair = false }
-      guard let previews = await knowledge.localContentRepairPreviews(documentIDs: [documentID]),
+      guard let previews = await knowledge.localContentRepairPreviews(
+        documentIDs: [documentID],
+        includingCurrentParserVersion: true
+      ),
             let preview = previews.first else {
         refreshError = knowledge.lastError ?? "这条资料没有可用的本机原始网页归档。"
         return

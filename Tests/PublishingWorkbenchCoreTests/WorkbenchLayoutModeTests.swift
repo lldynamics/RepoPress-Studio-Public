@@ -17,4 +17,30 @@ final class WorkbenchLayoutModeTests: XCTestCase {
     XCTAssertFalse(WorkbenchLayoutMode.allowsInspector(width: 1179))
     XCTAssertTrue(WorkbenchLayoutMode.allowsInspector(width: 1180))
   }
+
+  func testSplitEditorRequiresMoreWidthBeforeShowingInspector() {
+    XCTAssertEqual(WorkbenchLayoutMode.minimumSplitInspectorWorkspaceWidth, 1580)
+    XCTAssertFalse(
+      WorkbenchLayoutMode.allowsInspector(width: 1579, editorDisplayMode: .split)
+    )
+    XCTAssertTrue(
+      WorkbenchLayoutMode.allowsInspector(width: 1580, editorDisplayMode: .split)
+    )
+    XCTAssertTrue(
+      WorkbenchLayoutMode.allowsInspector(width: 1180, editorDisplayMode: .edit)
+    )
+  }
+
+  func testNarrowSplitEditorPrefersFocusedWritingLayout() {
+    XCTAssertEqual(WorkbenchLayoutMode.minimumSplitSidebarWorkspaceWidth, 1100)
+    XCTAssertTrue(
+      WorkbenchLayoutMode.prefersFocusedWriting(width: 1099, editorDisplayMode: .split)
+    )
+    XCTAssertFalse(
+      WorkbenchLayoutMode.prefersFocusedWriting(width: 1100, editorDisplayMode: .split)
+    )
+    XCTAssertFalse(
+      WorkbenchLayoutMode.prefersFocusedWriting(width: 980, editorDisplayMode: .edit)
+    )
+  }
 }

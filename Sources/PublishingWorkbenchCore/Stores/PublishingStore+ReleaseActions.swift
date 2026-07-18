@@ -69,11 +69,8 @@ extension PublishingStore {
   }
 
   func publishSelectedDraft(mode: LocalGitPublishMode, store: WorkbenchStore) async {
-    if let draftID = publishPackage?.draftID {
-      _ = store.focusDraft(draftID, section: .sync)
-    }
-
-    guard let package = publishPackage else {
+    guard !blockPublishingIfGeneralDraftSelected(store: store) else { return }
+    guard let package = publishPackageForSelectedDraft(store: store) else {
       publishActionMessage = CoreL10n.text("没有可提交的发布包。")
       return
     }
@@ -150,23 +147,16 @@ extension PublishingStore {
   public func publishSelectedDraftOnlineUsingPreferredStrategy(
     store: WorkbenchStore
   ) async -> RemoteRepositoryPublishResult? {
+    guard !blockPublishingIfGeneralDraftSelected(store: store) else { return nil }
     guard store.canUseProtectedWorkbench else {
       publishActionMessage = store.privacyLockedOperationMessage
       return nil
     }
 
-    let package: PublishPackage
-    if let currentPackage = publishPackage {
-      package = currentPackage
-    } else if let draft = store.selectedDraft {
-      package = store.publishingPackage(for: draft)
-      publishPackage = package
-    } else {
+    guard let package = publishPackageForSelectedDraft(store: store) else {
       publishActionMessage = CoreL10n.text("没有可线上发布的文章。")
       return nil
     }
-
-    _ = store.focusDraft(package.draftID, section: .sync)
 
     let profile = store.profile(for: package)
     let mode = preferredRemoteRepositoryPublishMode(for: profile)

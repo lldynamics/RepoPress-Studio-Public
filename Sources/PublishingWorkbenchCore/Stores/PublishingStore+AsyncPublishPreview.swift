@@ -54,6 +54,24 @@ extension PublishingStore {
       remoteReviewDraft = nil
       return
     }
+    guard !selectedDraft.isGeneralDraft else {
+      publishPreviewRefreshTask = nil
+      isPublishPreviewRefreshing = false
+      publishPackage = nil
+      localPublishPreview = nil
+      localPublishReadiness = nil
+      remotePublishPreviewSnapshot = nil
+      remoteReviewDraft = nil
+      return
+    }
+
+    if publishPackage?.draftID != selectedDraft.id {
+      publishPackage = nil
+      localPublishPreview = nil
+      localPublishReadiness = nil
+      remotePublishPreviewSnapshot = nil
+      remoteReviewDraft = nil
+    }
 
     let package = publishingPackage(for: selectedDraft, store: store)
     let activeProfileID = store.activeProfileID
@@ -65,7 +83,7 @@ extension PublishingStore {
       return
     }
     let repositoryReport = store.repositoryReport(for: profile)
-    let profileDrafts = store.drafts.filter { $0.siteProfileID == selectedDraft.siteProfileID }
+    let profileDrafts = store.drafts.filter { $0.belongs(toSiteProfileID: selectedDraft.siteProfileID) }
     let duplicateIndex = PreflightDuplicateIndex(drafts: profileDrafts, profile: profile)
     let draftIssuesWithoutRepository = preflightIssues(
       for: selectedDraft,

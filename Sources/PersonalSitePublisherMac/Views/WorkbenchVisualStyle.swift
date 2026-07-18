@@ -22,10 +22,10 @@ enum WorkbenchTheme {
   /// Mirrors the default “江南春” palette used by 工程工具箱.
   static let jiangnanSpring = WorkbenchThemePalette(
     primary: adaptive(
-      light: (0.26, 0.48, 0.22),
-      dark: (0.58, 0.78, 0.52),
-      lightHighContrast: (0.16, 0.38, 0.12),
-      darkHighContrast: (0.68, 0.88, 0.62)
+      light: (0.16, 0.39, 0.30),
+      dark: (0.48, 0.78, 0.66),
+      lightHighContrast: (0.08, 0.30, 0.21),
+      darkHighContrast: (0.60, 0.90, 0.78)
     ),
     success: adaptive(
       light: (0.22, 0.48, 0.22),
@@ -59,7 +59,9 @@ enum WorkbenchTheme {
 
   static let `default` = jiangnanSpring
 
-  static var primary: Color { `default`.primary }
+  /// Product identity and primary actions. Navigation selection remains the user's system accent.
+  static var brand: Color { `default`.primary }
+  static var primary: Color { brand }
   static var success: Color { `default`.success }
   static var warning: Color { `default`.warning }
   static var risk: Color { `default`.risk }
@@ -72,10 +74,10 @@ enum WorkbenchTheme {
   )
   /// Prominent controls need a darker dark-mode fill because macOS renders their labels in white.
   static let primaryActionFill = adaptive(
-    light: (0.26, 0.48, 0.22),
-    dark: (0.22, 0.42, 0.18),
-    lightHighContrast: (0.16, 0.38, 0.12),
-    darkHighContrast: (0.16, 0.34, 0.12)
+    light: (0.16, 0.39, 0.30),
+    dark: (0.14, 0.34, 0.25),
+    lightHighContrast: (0.08, 0.30, 0.21),
+    darkHighContrast: (0.09, 0.28, 0.19)
   )
   static let warningActionFill = adaptive(
     light: (0.68, 0.27, 0.03),
@@ -135,10 +137,10 @@ enum WorkbenchTheme {
 
 enum WorkbenchThemeNSColor {
   static let primary = adaptive(
-    light: (0.26, 0.48, 0.22),
-    dark: (0.58, 0.78, 0.52),
-    lightHighContrast: (0.16, 0.38, 0.12),
-    darkHighContrast: (0.68, 0.88, 0.62)
+    light: (0.16, 0.39, 0.30),
+    dark: (0.48, 0.78, 0.66),
+    lightHighContrast: (0.08, 0.30, 0.21),
+    darkHighContrast: (0.60, 0.90, 0.78)
   )
   static let success = adaptive(
     light: (0.22, 0.48, 0.22),
@@ -193,6 +195,32 @@ enum WorkbenchThemeNSColor {
   }
 }
 
+enum WorkbenchWritingSurface {
+  static func color(usesWarmPaper: Bool) -> Color {
+    Color(nsColor: nsColor(usesWarmPaper: usesWarmPaper))
+  }
+
+  static func nsColor(usesWarmPaper: Bool) -> NSColor {
+    usesWarmPaper ? warmPaper : .textBackgroundColor
+  }
+
+  private static let warmPaper = NSColor(name: nil) { appearance in
+    switch appearance.bestMatch(from: [
+      .accessibilityHighContrastAqua,
+      .accessibilityHighContrastDarkAqua,
+      .aqua,
+      .darkAqua,
+    ]) {
+    case .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua:
+      return .textBackgroundColor
+    case .darkAqua:
+      return NSColor(srgbRed: 0.125, green: 0.129, blue: 0.114, alpha: 1)
+    default:
+      return NSColor(srgbRed: 0.984, green: 0.980, blue: 0.969, alpha: 1)
+    }
+  }
+}
+
 enum WorkbenchCornerRadius {
   static let chartBar: CGFloat = 3
   static let control: CGFloat = 6
@@ -223,26 +251,26 @@ enum WorkbenchOpacity {
 }
 
 enum WorkbenchBackgroundStyle {
-  /// Page-level grouping. Keep this nearly flat so nested sections do not become grey blocks.
+  /// Page-level grouping stays transparent; hierarchy starts with actual content cards.
   static var page: AnyShapeStyle {
-    surface(opacity: 0.025)
+    AnyShapeStyle(Color.clear)
   }
 
   /// The single elevated content surface used for primary cards.
   static var card: AnyShapeStyle {
-    surface(opacity: 0.055)
+    surface(opacity: 0.05)
   }
 
   /// Interactive controls and compact badges use the strongest neutral surface.
   static var control: AnyShapeStyle {
-    surface(opacity: 0.085)
+    surface(opacity: 0.10)
   }
 
   // Compatibility aliases intentionally map the previous five surface names to
   // the three levels above. This prevents older views from reintroducing extra
   // grey layers while they are migrated incrementally.
   static var subtle: AnyShapeStyle {
-    page
+    card
   }
 
   static var panel: AnyShapeStyle {

@@ -63,13 +63,22 @@ extension PublishingStore {
       reason: .beforeRestore,
       in: draftVersions
     )
-    let restored = DraftVersionComparisonService().restoringContent(
+    var restored = DraftVersionComparisonService().restoringContent(
       from: version.draft,
       into: currentDraft
     )
+    if restored.isGeneralDraft,
+       !profiles.contains(where: { $0.id == restored.siteProfileID }) {
+      restored.assignToGeneralDraft(editingProfileID: activeProfileID)
+    }
     drafts[currentIndex] = restored
     selectedDraftID = restored.id
-    activeProfileID = restored.siteProfileID
+    if restored.isGeneralDraft {
+      draftListContentScope = .general
+    } else {
+      activeProfileID = restored.siteProfileID
+      draftListContentScope = .currentSite
+    }
     store.synchronizeDraftBodyEditorBuffer(with: restored)
     store.runPreflight()
     store.scheduleImageWorkbenchReportRefresh(for: restored)
@@ -92,7 +101,8 @@ extension PublishingStore {
       return false
     }
     let recycled = recycledDrafts[recycledIndex]
-    guard profiles.contains(where: { $0.id == recycled.draft.siteProfileID }) else {
+    guard recycled.draft.isGeneralDraft
+      || profiles.contains(where: { $0.id == recycled.draft.siteProfileID }) else {
       store.setPublishActionMessage(CoreL10n.text("原站点 Profile 已不存在，无法恢复这篇文章。"))
       return false
     }
@@ -102,9 +112,17 @@ extension PublishingStore {
       $0.draftID == draftID && $0.status == .pending
     }
     var restored = recycled.draft
+    if restored.isGeneralDraft {
+      restored.assignToGeneralDraft(editingProfileID: activeProfileID)
+    }
     restored.updatedAt = Date()
     drafts.insert(restored, at: 0)
-    activeProfileID = restored.siteProfileID
+    if restored.isGeneralDraft {
+      draftListContentScope = .general
+    } else {
+      activeProfileID = restored.siteProfileID
+      draftListContentScope = .currentSite
+    }
     selectedDraftID = restored.id
     store.runPreflight()
     store.scheduleImageWorkbenchReportRefresh(for: restored)

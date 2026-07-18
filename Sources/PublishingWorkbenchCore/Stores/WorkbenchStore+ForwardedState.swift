@@ -4,6 +4,7 @@ extension WorkbenchStore {
   public var releaseRecords: [ReleaseRecord] { publishingStore.releaseRecords }
   public var selectedSection: WorkspaceSection { publishingStore.selectedSection }
   public var selectedDraftID: UUID? { publishingStore.selectedDraftID }
+  public var draftListContentScope: DraftListContentScope { publishingStore.draftListContentScope }
   public var customMarkdownSnippets: [MarkdownSnippet] { publishingStore.customMarkdownSnippets }
 
   public var publishPackage: PublishPackage? { publishingStore.publishPackage }

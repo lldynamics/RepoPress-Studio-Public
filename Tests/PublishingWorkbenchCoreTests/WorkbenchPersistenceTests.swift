@@ -3,6 +3,76 @@ import XCTest
 
 @MainActor
 final class WorkbenchPersistenceTests: XCTestCase {
+  func testDuplicateCachedSnapshotsKeepNewestValueWithoutCrashingStoreLoad() throws {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft.empty(profile: profile)
+    let releaseRecordID = UUID()
+    let olderDeployment = DeploymentStatusSnapshot(
+      profileID: profile.id,
+      releaseRecordID: releaseRecordID,
+      provider: .custom,
+      level: .running,
+      title: "Older",
+      message: "Older status",
+      siteURLText: nil,
+      checkedAt: Date(timeIntervalSince1970: 1),
+      signals: []
+    )
+    let newerDeployment = DeploymentStatusSnapshot(
+      profileID: profile.id,
+      releaseRecordID: releaseRecordID,
+      provider: .custom,
+      level: .success,
+      title: "Newer",
+      message: "Newer status",
+      siteURLText: nil,
+      checkedAt: Date(timeIntervalSince1970: 2),
+      signals: []
+    )
+    let olderSEO = SEOSocialPreviewSnapshot(
+      draftID: draft.id,
+      signature: "older",
+      markdownPath: "content/older.md",
+      canonicalURLText: "https://example.com/older",
+      titleCharacterCount: 5,
+      descriptionCharacterCount: 5,
+      imagePath: nil,
+      cards: [],
+      findings: [],
+      generatedAt: Date(timeIntervalSince1970: 1)
+    )
+    let newerSEO = SEOSocialPreviewSnapshot(
+      draftID: draft.id,
+      signature: "newer",
+      markdownPath: "content/newer.md",
+      canonicalURLText: "https://example.com/newer",
+      titleCharacterCount: 5,
+      descriptionCharacterCount: 5,
+      imagePath: nil,
+      cards: [],
+      findings: [],
+      generatedAt: Date(timeIntervalSince1970: 2)
+    )
+    let persistence = WorkbenchPersistence(fileURL: url)
+    _ = try persistence.save(
+      WorkbenchSnapshot(
+        profiles: [profile],
+        activeProfileID: profile.id,
+        drafts: [draft],
+        releaseRecords: [],
+        seoSocialPreviewSnapshots: [olderSEO, newerSEO],
+        deploymentStatusSnapshots: [olderDeployment, newerDeployment]
+      )
+    )
+
+    let store = WorkbenchStore(persistence: persistence)
+
+    XCTAssertEqual(store.deploymentStatusSnapshots[releaseRecordID]?.title, "Newer")
+    XCTAssertEqual(store.seoSocialPreviewSnapshots[draft.id]?.signature, "newer")
+  }
+
   func testSoftwareGuideSeedPolicyCreatesSafeGuidesForFreshWorkspace() async {
     let url = temporaryPersistenceURL()
     defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

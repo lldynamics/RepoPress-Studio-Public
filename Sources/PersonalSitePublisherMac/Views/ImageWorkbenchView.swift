@@ -83,20 +83,23 @@ struct ImageWorkbenchView: View {
 
     if let progress = imageWorkbench.batchProgress {
       HStack(spacing: 10) {
-        ProgressView(value: progress.fractionCompleted)
-          .frame(maxWidth: 220)
-        Text(progress.operation.progressTitle)
-        Text("\(progress.completedDraftCount)/\(progress.totalDraftCount)")
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.secondary)
+        HStack(spacing: 10) {
+          ProgressView(value: progress.fractionCompleted)
+            .frame(maxWidth: 220)
+          Text(progress.operation.progressTitle)
+          Text("\(progress.completedDraftCount)/\(progress.totalDraftCount)")
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("全站图片处理进度")
+        .accessibilityValue("\(progress.completedDraftCount)/\(progress.totalDraftCount)")
         Spacer()
         Button("取消") {
           imageWorkbench.cancelBatchProcessing()
         }
       }
-      .accessibilityElement(children: .combine)
-      .accessibilityLabel("全站图片处理进度")
-      .accessibilityValue("\(progress.completedDraftCount)/\(progress.totalDraftCount)")
+      .accessibilityElement(children: .contain)
     }
   }
 

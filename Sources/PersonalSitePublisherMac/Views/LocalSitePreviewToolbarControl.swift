@@ -56,6 +56,7 @@ struct LocalSitePreviewToolbarControl: View {
       )
     }
     .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
     .fixedSize()
     .help("本地预览：\(statusTitle)。\(store.localSitePreviewRuntimeStatus.message)")
     .accessibilityLabel("本地预览")

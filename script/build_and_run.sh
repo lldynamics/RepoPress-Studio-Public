@@ -30,6 +30,7 @@ LOCALIZATION_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources"
 LOCALIZATION_CATALOG="$LOCALIZATION_SOURCE/Localizable.xcstrings"
 BROWSER_EXTENSION_SOURCE="$ROOT_DIR/BrowserExtension"
 LOCAL_DEVELOPMENT_ENTITLEMENTS="$ROOT_DIR/Packaging/LocalDevelopment.entitlements"
+APP_STORE_ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
 LAUNCHED_PID=""
 
 RUNTIME_HOME="${PERSONAL_SITE_PUBLISHER_RUNTIME_HOME:-${HOME:?HOME is required to launch the app}}"
@@ -330,6 +331,12 @@ if [[ "$BUILD_CONFIGURATION" == "debug" ]]; then
     exit 1
   }
   code_sign_arguments+=(--entitlements "$LOCAL_DEVELOPMENT_ENTITLEMENTS")
+else
+  [[ -f "$APP_STORE_ENTITLEMENTS" ]] || {
+    echo "App Store entitlements are missing: $APP_STORE_ENTITLEMENTS" >&2
+    exit 1
+  }
+  code_sign_arguments+=(--entitlements "$APP_STORE_ENTITLEMENTS")
 fi
 /usr/bin/codesign "${code_sign_arguments[@]}" "$APP_BUNDLE"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"

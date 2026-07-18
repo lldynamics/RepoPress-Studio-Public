@@ -297,11 +297,15 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
   }
 
   public func makeLocalContentRepairPreviews(
-    documentIDs: Set<UUID>? = nil
+    documentIDs: Set<UUID>? = nil,
+    includingCurrentParserVersion: Bool = false
   ) async throws -> [KnowledgeSourceRefreshPreview] {
     let service = self
     return try await Task.detached(priority: .utility) {
-      try service.makeLocalContentRepairPreviewsSynchronously(documentIDs: documentIDs)
+      try service.makeLocalContentRepairPreviewsSynchronously(
+        documentIDs: documentIDs,
+        includingCurrentParserVersion: includingCurrentParserVersion
+      )
     }.value
   }
 
@@ -333,6 +337,25 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     let task = Task.detached(priority: .userInitiated) {
       try Task.checkCancellation()
       return try service.makeImportPreviewSynchronously(sourceURL: sourceURL, options: options)
+    }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
+  }
+
+  public func makeImportPreview(
+    sourceURLs: [URL],
+    options: KnowledgeImportOptions = KnowledgeImportOptions()
+  ) async throws -> KnowledgeImportPreview {
+    let service = self
+    let task = Task.detached(priority: .userInitiated) {
+      try Task.checkCancellation()
+      return try service.makeImportPreviewSynchronously(
+        sourceURLs: sourceURLs,
+        options: options
+      )
     }
     return try await withTaskCancellationHandler {
       try await task.value
@@ -655,7 +678,8 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     query: String,
     limit: Int = 30,
     onlyAIAllowed: Bool = false,
-    documentIDs: Set<UUID>? = nil
+    documentIDs: Set<UUID>? = nil,
+    requiredSignal: KnowledgeRetrievalSignal? = nil
   ) throws -> [KnowledgeSearchResult] {
     let trimmedQuery = query.trimmedForPublishing
     guard !trimmedQuery.isEmpty, limit > 0 else { return [] }
@@ -687,9 +711,29 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
       ))
     }
 
+    let eligibleFullTextResults: [KnowledgeSearchResult]
+    let eligibleSemanticRankings: [[KnowledgeSearchResult]]
+    switch requiredSignal {
+    case nil:
+      eligibleFullTextResults = fullTextResults
+      eligibleSemanticRankings = semanticRankings
+    case .semantic:
+      eligibleFullTextResults = []
+      eligibleSemanticRankings = semanticRankings
+    case .title, .fullText:
+      let eligibleFullText = fullTextResults.filter { result in
+        requiredSignal.map(result.signals.contains) ?? true
+      }
+      let eligibleResultIDs = Set(eligibleFullText.map(\.id))
+      eligibleFullTextResults = eligibleFullText
+      eligibleSemanticRankings = semanticRankings.map { ranking in
+        ranking.filter { eligibleResultIDs.contains($0.id) }
+      }
+    }
+
     return fusedSearchResults(
-      fullText: fullTextResults,
-      semanticRankings: semanticRankings,
+      fullText: eligibleFullTextResults,
+      semanticRankings: eligibleSemanticRankings,
       limit: limit
     )
   }
@@ -698,7 +742,8 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     query: String,
     limit: Int = 30,
     onlyAIAllowed: Bool = false,
-    documentIDs: Set<UUID>? = nil
+    documentIDs: Set<UUID>? = nil,
+    requiredSignal: KnowledgeRetrievalSignal? = nil
   ) async throws -> [KnowledgeSearchResult] {
     semanticEmbeddingService.prepareContextualModelIfNeeded(for: query)
     let service = self
@@ -707,7 +752,8 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
         query: query,
         limit: limit,
         onlyAIAllowed: onlyAIAllowed,
-        documentIDs: documentIDs
+        documentIDs: documentIDs,
+        requiredSignal: requiredSignal
       )
     }.value
   }
@@ -1059,7 +1105,8 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
   }
 
   private func makeLocalContentRepairPreviewsSynchronously(
-    documentIDs: Set<UUID>?
+    documentIDs: Set<UUID>?,
+    includingCurrentParserVersion: Bool
   ) throws -> [KnowledgeSourceRefreshPreview] {
     let database = try database()
     let documents = try database.documents().filter { document in
@@ -1069,7 +1116,7 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     for document in documents where document.kind == .webpage {
       try Task.checkCancellation()
       guard let revision = try database.currentRevision(documentID: document.id),
-            revision.parserVersion < Self.parserVersion else { continue }
+            includingCurrentParserVersion || revision.parserVersion < Self.parserVersion else { continue }
       guard let reference = revision.originalStorageReference?.nilIfEmpty,
             let fileURL = safeStorageFileURL(for: reference),
             let data = try? Data(contentsOf: fileURL) else {
@@ -1171,6 +1218,86 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
 
     let candidate = try fileCandidate(sourceURL, options: options)
     return KnowledgeImportPreview(sourceName: sourceURL.lastPathComponent, candidates: [candidate])
+  }
+
+  private func makeImportPreviewSynchronously(
+    sourceURLs: [URL],
+    options: KnowledgeImportOptions
+  ) throws -> KnowledgeImportPreview {
+    var seenTopLevelPaths = Set<String>()
+    let uniqueSourceURLs = sourceURLs.compactMap { sourceURL -> URL? in
+      guard sourceURL.isFileURL else { return nil }
+      let canonicalURL = sourceURL.standardizedFileURL.resolvingSymlinksInPath()
+      return seenTopLevelPaths.insert(canonicalURL.path).inserted ? canonicalURL : nil
+    }
+
+    guard !uniqueSourceURLs.isEmpty else {
+      throw KnowledgeLibraryError.noImportableSources("请拖入本机文件或文件夹。")
+    }
+    guard uniqueSourceURLs.count <= 100 else {
+      throw KnowledgeLibraryError.sourceLimitExceeded("一次最多拖入 100 个文件或文件夹，请分批导入。")
+    }
+
+    var candidates: [KnowledgeImportCandidate] = []
+    var warnings: [String] = []
+    var seenSourcePaths = Set<String>()
+    var seenContentHashes = Set<String>()
+    var totalOriginalBytes = 0
+
+    for sourceURL in uniqueSourceURLs {
+      try Task.checkCancellation()
+      let preview: KnowledgeImportPreview
+      do {
+        preview = try makeImportPreviewSynchronously(
+          sourceURL: sourceURL,
+          options: options
+        )
+      } catch is CancellationError {
+        throw CancellationError()
+      } catch {
+        warnings.append("\(sourceURL.lastPathComponent)：\(error.localizedDescription)")
+        continue
+      }
+
+      warnings.append(contentsOf: preview.warnings)
+      for candidate in preview.candidates {
+        try Task.checkCancellation()
+        let sourcePath = candidate.sourceURL?
+          .standardizedFileURL
+          .resolvingSymlinksInPath()
+          .path
+        let repeatsSource = sourcePath.map { !seenSourcePaths.insert($0).inserted } ?? false
+        let repeatsContent = !seenContentHashes.insert(candidate.originalContentHash).inserted
+        guard !repeatsSource, !repeatsContent else {
+          warnings.append("跳过了重复拖入的资料：\(candidate.sourceName)")
+          continue
+        }
+
+        totalOriginalBytes += candidate.originalData?.count ?? 0
+        guard candidates.count < 500 else {
+          throw KnowledgeLibraryError.sourceLimitExceeded("一次最多导入 500 个资料文件，请分批重试。")
+        }
+        guard totalOriginalBytes <= 100 * 1_024 * 1_024 else {
+          throw KnowledgeLibraryError.sourceLimitExceeded("拖入资料总量超过 100 MB，请分批导入。")
+        }
+        candidates.append(candidate)
+      }
+    }
+
+    guard !candidates.isEmpty else {
+      throw KnowledgeLibraryError.noImportableSources(
+        warnings.joined(separator: "；").nilIfEmpty ?? "没有找到支持的文件。"
+      )
+    }
+
+    let sourceName = uniqueSourceURLs.count == 1
+      ? uniqueSourceURLs[0].lastPathComponent
+      : "\(uniqueSourceURLs.count) 个拖放项目"
+    return KnowledgeImportPreview(
+      sourceName: sourceName,
+      candidates: candidates,
+      warnings: warnings
+    )
   }
 
   private func makeFolderPreview(
@@ -1474,6 +1601,11 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     for candidate in preview.candidates {
       try Task.checkCancellation()
       guard candidate.disposition != .duplicate else {
+        // A duplicate import is also a cheap integrity opportunity. Rewriting
+        // only when bytes differ repairs truncated or externally damaged
+        // content-addressed files without creating a redundant revision.
+        _ = try persistOriginalData(candidate)
+        _ = try persistNormalizedText(candidate)
         if let documentID = candidate.existingDocumentID {
           switch destination {
           case .preserveExisting:
@@ -1586,7 +1718,10 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
 
   private func persist(_ data: Data, reference: String) throws {
     let destination = rootURL.appendingPathComponent(reference)
-    if fileManager.fileExists(atPath: destination.path) { return }
+    if fileManager.fileExists(atPath: destination.path),
+       (try? Data(contentsOf: destination, options: .mappedIfSafe)) == data {
+      return
+    }
     try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
     try data.write(to: destination, options: .atomic)
   }

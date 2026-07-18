@@ -54,6 +54,22 @@ public struct KnowledgeSmartCollectionService: Sendable {
     }
   }
 
+  public func matches(
+    _ document: KnowledgeDocument,
+    rules: [KnowledgeSmartCollectionRule],
+    matchMode: KnowledgeSmartCollectionMatchMode,
+    now: Date = Date(),
+    calendar: Calendar = .current
+  ) -> Bool {
+    guard !rules.isEmpty else { return true }
+    switch matchMode {
+    case .all:
+      return rules.allSatisfy { matches(document, rule: $0, now: now, calendar: calendar) }
+    case .any:
+      return rules.contains { matches(document, rule: $0, now: now, calendar: calendar) }
+    }
+  }
+
   public func sourceDomain(for document: KnowledgeDocument) -> String? {
     guard let url = document.sourceURL,
           !url.isFileURL,

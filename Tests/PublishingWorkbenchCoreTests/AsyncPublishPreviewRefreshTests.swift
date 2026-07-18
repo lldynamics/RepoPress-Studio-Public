@@ -152,6 +152,36 @@ final class AsyncPublishPreviewRefreshTests: XCTestCase {
     XCTAssertFalse(store.isPublishPreviewRefreshing)
   }
 
+  func testSelectedDraftCommandNeverUsesPreviousDraftPackage() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    store.publishingStore.cancelPublishPreviewRefresh()
+    let profile = store.activeProfile
+    let previousDraft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Previous Article",
+      slug: "previous-article",
+      draft: false,
+      bodyMarkdown: "This package must not be reused after selecting a different article."
+    )
+    let selectedDraft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Selected Article",
+      slug: "selected-article",
+      draft: false,
+      bodyMarkdown: "The command must regenerate the package for this selected article."
+    )
+    store.setDrafts([previousDraft, selectedDraft])
+    store.setSelectedDraftID(previousDraft.id)
+    store.refreshPublishPreview(for: previousDraft)
+    XCTAssertEqual(store.publishPackage?.draftID, previousDraft.id)
+
+    store.setSelectedDraftID(selectedDraft.id)
+    _ = store.localCommitCommandForSelectedDraft()
+
+    XCTAssertEqual(store.publishPackage?.draftID, selectedDraft.id)
+    XCTAssertEqual(store.publishPackage?.title, selectedDraft.title)
+  }
+
   private func assertEquivalent(_ actual: LocalPublishPreview, _ expected: LocalPublishPreview) {
     assertEquivalent(actual.package, expected.package)
     XCTAssertEqual(actual.fileDiffs, expected.fileDiffs)

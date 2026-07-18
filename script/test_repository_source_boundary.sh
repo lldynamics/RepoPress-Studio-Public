@@ -4,8 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHECK="$ROOT_DIR/script/check_repository_source_boundary.sh"
 TMP_DIR="$(mktemp -d /private/tmp/mac-editor-source-boundary.XXXXXX)"
+LINKED_DIR="$TMP_DIR-linked"
 
 cleanup() {
+  git -C "$TMP_DIR" worktree remove --force "$LINKED_DIR" >/dev/null 2>&1 || true
+  rm -rf "$LINKED_DIR"
   rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
@@ -23,6 +26,11 @@ printf 'let tracked = true\n' >"$TMP_DIR/Sources/App/Tracked.swift"
 printf 'notes\n' >"$TMP_DIR/docs/local-notes.md"
 git -C "$TMP_DIR" add Sources/App/Tracked.swift
 git -C "$TMP_DIR" commit -qm "fixture"
+
+git -C "$TMP_DIR" worktree add -qb source-boundary-linked "$LINKED_DIR"
+REPOSITORY_SOURCE_BOUNDARY_ROOT="$LINKED_DIR" bash "$CHECK" >/dev/null \
+  || fail "linked worktrees with a .git file should pass"
+git -C "$TMP_DIR" worktree remove --force "$LINKED_DIR"
 
 REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null \
   || fail "tracked sources and untracked noncritical notes should pass"

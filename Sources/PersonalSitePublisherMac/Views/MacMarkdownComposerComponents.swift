@@ -497,6 +497,7 @@ struct FindReplaceBar: View {
 
 struct MarkdownPreviewPane: View {
   let draft: ArticleDraft
+  let showsSynchronizedScrollingControl: Bool
   @Binding var isSynchronizedScrollingEnabled: Bool
   let scrollSyncUpdate: MarkdownScrollSyncUpdate?
   let scrollRestorationUpdate: MarkdownScrollSyncUpdate?
@@ -525,13 +526,14 @@ struct MarkdownPreviewPane: View {
 
         Spacer()
 
-        Toggle(isOn: $isSynchronizedScrollingEnabled) {
-          Image(systemName: "arrow.up.and.down.text.horizontal")
+        if showsSynchronizedScrollingControl {
+          ViewThatFits(in: .horizontal) {
+            synchronizedScrollingToggle(showsLabel: true)
+              .fixedSize()
+            synchronizedScrollingToggle(showsLabel: false)
+              .fixedSize()
+          }
         }
-        .toggleStyle(.button)
-        .help(isSynchronizedScrollingEnabled ? "关闭编辑与预览同步滚动" : "开启编辑与预览同步滚动")
-        .accessibilityLabel("编辑与预览同步滚动")
-        .accessibilityValue(isSynchronizedScrollingEnabled ? "开启" : "关闭")
 
         Picker("预览主题", selection: previewThemeBinding) {
           ForEach(MarkdownPreviewTheme.allCases) { theme in
@@ -563,6 +565,20 @@ struct MarkdownPreviewPane: View {
       renderTask?.cancel()
       renderTask = nil
     }
+  }
+
+  private func synchronizedScrollingToggle(showsLabel: Bool) -> some View {
+    Toggle(isOn: $isSynchronizedScrollingEnabled) {
+      if showsLabel {
+        Label("同步滚动", systemImage: "arrow.up.and.down.text.horizontal")
+      } else {
+        Image(systemName: "arrow.up.and.down.text.horizontal")
+      }
+    }
+    .toggleStyle(.button)
+    .help(isSynchronizedScrollingEnabled ? "关闭编辑与预览同步滚动" : "开启编辑与预览同步滚动")
+    .accessibilityLabel("编辑与预览同步滚动")
+    .accessibilityValue(isSynchronizedScrollingEnabled ? "开启" : "关闭")
   }
 
   private var previewTheme: MarkdownPreviewTheme {
@@ -767,7 +783,11 @@ private enum MarkdownPreviewHTMLRenderer {
     isDarkAppearance: Bool
   ) throws -> String {
     var renderedBlocks: [String] = []
-    for block in MarkdownExtendedPreviewService.blocks(in: markdown) {
+    let bodyMarkdown = MarkdownPreviewTitleService.bodyMarkdown(
+      title: title,
+      markdown: markdown
+    )
+    for block in MarkdownExtendedPreviewService.blocks(in: bodyMarkdown) {
       try Task.checkCancellation()
       switch block {
       case let .markdown(markdownBlock):
@@ -808,29 +828,7 @@ private enum MarkdownPreviewHTMLRenderer {
   }
 
   private static func markdownHTMLBody(for markdown: String) -> String {
-    autoreleasepool {
-      guard #available(macOS 12.0, *) else {
-        return preformattedFallback(from: markdown)
-      }
-      do {
-        let attributed = try NSAttributedString(markdown: markdown)
-        let data = try attributed.data(
-          from: NSRange(location: 0, length: attributed.length),
-          documentAttributes: [.documentType: NSAttributedString.DocumentType.html]
-        )
-        guard let raw = String(data: data, encoding: .utf8) else {
-          return preformattedFallback(from: markdown)
-        }
-        if let bodyRangeStart = raw.range(of: "<body", options: .caseInsensitive),
-           let bodyStart = raw.range(of: ">", range: bodyRangeStart.upperBound..<raw.endIndex),
-           let bodyEnd = raw.range(of: "</body", options: .caseInsensitive, range: bodyStart.upperBound..<raw.endIndex) {
-          return String(raw[bodyStart.upperBound..<bodyEnd.lowerBound])
-        }
-        return raw
-      } catch {
-        return preformattedFallback(from: markdown)
-      }
-    }
+    MarkdownHTMLRenderingService.renderBody(markdown)
   }
 
   private static func preformattedFallback(from markdown: String) -> String {

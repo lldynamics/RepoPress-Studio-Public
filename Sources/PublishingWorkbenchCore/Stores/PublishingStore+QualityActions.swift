@@ -58,7 +58,7 @@ extension PublishingStore {
   }
 
   public func localCommitCommandForSelectedDraft(store: WorkbenchStore) -> String? {
-    guard let package = publishPackage else {
+    guard let package = publishPackageForSelectedDraft(store: store) else {
       return nil
     }
 
@@ -71,7 +71,7 @@ extension PublishingStore {
   }
 
   public func reviewBranchCommandsForSelectedDraft(store: WorkbenchStore) -> [String] {
-    guard let package = publishPackage else {
+    guard let package = publishPackageForSelectedDraft(store: store) else {
       return []
     }
 
@@ -112,7 +112,7 @@ extension PublishingStore {
   }
 
   public func commitSelectedDraftUsingPreferredStrategy(store: WorkbenchStore) async {
-    guard let package = publishPackage else {
+    guard let package = publishPackageForSelectedDraft(store: store) else {
       publishActionMessage = "没有可提交的发布包。"
       return
     }

@@ -39,7 +39,6 @@ struct SettingsView: View {
     .frame(minWidth: 820, idealWidth: 940, minHeight: 580, idealHeight: 700)
     .background(Color(nsColor: .windowBackgroundColor))
     .navigationTitle("设置")
-    .tint(WorkbenchTheme.navigationSelection)
     .onAppear {
       applyRequestedSettingsTab(requestedSettingsTabID)
       store.setAutomaticallyRefreshPreflightOnEdit(autoRunPreflight)
@@ -99,10 +98,10 @@ struct SettingsView: View {
     HStack(alignment: .center, spacing: 14) {
       Image(systemName: selectedSettingsTab.systemImage)
         .font(.system(size: 18, weight: .semibold))
-        .foregroundStyle(WorkbenchTheme.navigationSelection)
+        .foregroundStyle(WorkbenchTheme.brand)
         .frame(width: 38, height: 38)
         .background(
-          WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.selectionBackground),
+          WorkbenchTheme.brand.opacity(WorkbenchOpacity.selectionBackground),
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         )
         .accessibilityHidden(true)

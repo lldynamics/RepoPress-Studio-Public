@@ -135,6 +135,16 @@ if not application_identifier.endswith("." + bundle_id):
 if profile_entitlements.get("com.apple.security.get-task-allow") is True:
     raise SystemExit("app store package: development provisioning profile is not valid for distribution")
 
+team_identifiers = profile.get("TeamIdentifier", [])
+if not isinstance(team_identifiers, list) or len(team_identifiers) != 1 or not team_identifiers[0]:
+    raise SystemExit("app store package: provisioning profile must contain exactly one TeamIdentifier")
+profile_team = team_identifiers[0]
+if not application_identifier.startswith(profile_team + "."):
+    raise SystemExit("app store package: application identifier does not belong to the profile team")
+entitlement_team = profile_entitlements.get("com.apple.developer.team-identifier")
+if entitlement_team and entitlement_team != profile_team:
+    raise SystemExit("app store package: profile team entitlement does not match TeamIdentifier")
+
 for key in (
     "com.apple.application-identifier",
     "com.apple.developer.team-identifier",
@@ -171,6 +181,12 @@ codesign --force --options runtime --timestamp \
   --entitlements "$resolved_entitlements" \
   --sign "$APPLICATION_IDENTITY" "$signed_app"
 codesign --verify --deep --strict --verbose=2 "$signed_app"
+
+profile_team="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$profile_plist")"
+signed_team="$(codesign -dv --verbose=4 "$signed_app" 2>&1 | sed -n 's/^TeamIdentifier=//p' | head -n 1)"
+[[ -n "$signed_team" ]] || fail "signed app does not expose a TeamIdentifier"
+[[ "$signed_team" == "$profile_team" ]] \
+  || fail "application signing certificate team does not match the provisioning profile"
 
 bash "$ROOT_DIR/script/check_app_store_archive_readiness.sh" --app-bundle "$signed_app"
 productbuild --component "$signed_app" /Applications \

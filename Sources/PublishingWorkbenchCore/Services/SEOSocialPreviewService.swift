@@ -1108,7 +1108,7 @@ public struct SEOSocialPreviewService {
   ) -> SEOSitemapPreview {
     let sitemapURLText = sitemapURL(profile: profile, localPreviewURL: localPreviewURL)
     let eligibleDrafts = drafts
-      .filter { $0.siteProfileID == profile.id && !$0.isPrivate && !$0.draft }
+      .filter { $0.belongs(toSiteProfileID: profile.id) && !$0.isPrivate && !$0.draft }
       .sorted {
         if $0.date == $1.date {
           return $0.title < $1.title
