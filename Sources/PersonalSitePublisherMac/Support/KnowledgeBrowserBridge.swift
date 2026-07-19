@@ -1,5 +1,7 @@
 import Combine
+import Darwin
 import Foundation
+import KnowledgeNativeMessagingSupport
 import Network
 import PublishingWorkbenchCore
 import Security
@@ -22,43 +24,67 @@ enum KnowledgeBrowserBridgeState: Equatable {
 
 @MainActor
 final class KnowledgeBrowserBridge: ObservableObject {
-  nonisolated static let port: UInt16 = 47_831
+  nonisolated static var socketPath: String {
+    KnowledgeNativeMessagingProtocol.unixSocketPath(userID: getuid())
+  }
 
   @Published private(set) var state: KnowledgeBrowserBridgeState = .stopped
   @Published private(set) var connectionToken: String
+  @Published private(set) var connectionTokenExpiresAt: Date
   @Published private(set) var lastMessage: String?
+  @Published private(set) var lastOpenedDocumentID: UUID?
 
   private let knowledge: KnowledgeStore
   private let defaults: UserDefaults
+  private let onOpenDocument: (UUID) -> Void
+  private let now: () -> Date
+  private var invalidatedExpiredToken: String?
   private let queue = DispatchQueue(label: "com.jinfang.PersonalSitePublisherMac.browser-bridge")
   private var listener: NWListener?
 
-  init(knowledge: KnowledgeStore, defaults: UserDefaults = .standard) {
+  init(
+    knowledge: KnowledgeStore,
+    defaults: UserDefaults = .standard,
+    now: @escaping () -> Date = Date.init,
+    onOpenDocument: @escaping (UUID) -> Void = { _ in }
+  ) {
     self.knowledge = knowledge
     self.defaults = defaults
-    if let stored = defaults.string(forKey: Self.tokenDefaultsKey), stored.count >= 32 {
-      connectionToken = stored
+    self.now = now
+    self.onOpenDocument = onOpenDocument
+    let currentDate = now()
+    let storedToken = defaults.string(forKey: Self.tokenDefaultsKey)
+    let storedExpiry = defaults.object(forKey: Self.tokenExpiryDefaultsKey) as? Date
+    invalidatedExpiredToken = if let storedToken, let storedExpiry, storedExpiry <= currentDate {
+      storedToken
     } else {
-      let token = Self.makeConnectionToken()
-      connectionToken = token
-      defaults.set(token, forKey: Self.tokenDefaultsKey)
+      nil
     }
+    let lease = KnowledgeBrowserConnectionTokenLease(
+      storedToken: storedToken,
+      storedExpiresAt: storedExpiry,
+      now: currentDate,
+      generateToken: Self.makeConnectionToken
+    )
+    connectionToken = lease.token
+    connectionTokenExpiresAt = lease.expiresAt
+    defaults.set(connectionToken, forKey: Self.tokenDefaultsKey)
+    defaults.set(connectionTokenExpiresAt, forKey: Self.tokenExpiryDefaultsKey)
   }
 
   deinit {
     listener?.cancel()
+    try? FileManager.default.removeItem(atPath: Self.socketPath)
   }
 
   func start() {
     guard listener == nil else { return }
     state = .starting
     do {
+      try prepareUnixSocketPath()
       let parameters = NWParameters.tcp
       parameters.allowLocalEndpointReuse = true
-      parameters.requiredLocalEndpoint = .hostPort(
-        host: "127.0.0.1",
-        port: NWEndpoint.Port(rawValue: Self.port)!
-      )
+      parameters.requiredLocalEndpoint = .unix(path: Self.socketPath)
       let listener = try NWListener(using: parameters)
       listener.newConnectionHandler = { [weak self] connection in
         self?.receiveRequest(on: connection)
@@ -68,16 +94,26 @@ final class KnowledgeBrowserBridge: ObservableObject {
           guard let self else { return }
           switch state {
           case .ready:
+            guard chmod(Self.socketPath, S_IRUSR | S_IWUSR) == 0 else {
+              self.state = .failed(String(localized: "无法限制本地套接字权限。"))
+              self.lastMessage = String(localized: "原生连接套接字权限设置失败。")
+              self.listener?.cancel()
+              self.listener = nil
+              try? FileManager.default.removeItem(atPath: Self.socketPath)
+              return
+            }
             self.state = .ready
-            self.lastMessage = "浏览器桥接仅监听本机 127.0.0.1。"
+            self.lastMessage = String(localized: "原生连接使用当前用户专属 Unix Domain Socket。")
           case .failed(let error):
             self.state = .failed(error.localizedDescription)
             self.lastMessage = "浏览器桥接启动失败：\(error.localizedDescription)"
             self.listener?.cancel()
             self.listener = nil
+            try? FileManager.default.removeItem(atPath: Self.socketPath)
           case .cancelled:
             self.state = .stopped
             self.listener = nil
+            try? FileManager.default.removeItem(atPath: Self.socketPath)
           default:
             break
           }
@@ -94,14 +130,27 @@ final class KnowledgeBrowserBridge: ObservableObject {
   func stop() {
     listener?.cancel()
     listener = nil
+    try? FileManager.default.removeItem(atPath: Self.socketPath)
     state = .stopped
   }
 
   func rotateConnectionToken() {
     let token = Self.makeConnectionToken()
     connectionToken = token
+    connectionTokenExpiresAt = now().addingTimeInterval(
+      KnowledgeBrowserConnectionTokenLease.defaultLifetime
+    )
     defaults.set(token, forKey: Self.tokenDefaultsKey)
+    defaults.set(connectionTokenExpiresAt, forKey: Self.tokenExpiryDefaultsKey)
     lastMessage = "连接令牌已更新，浏览器插件需要重新连接。"
+  }
+
+  @discardableResult
+  func refreshExpiredConnectionToken() -> Bool {
+    guard now() >= connectionTokenExpiresAt else { return false }
+    rotateConnectionToken()
+    lastMessage = "旧连接令牌已过期并失效，请用新令牌重新配对浏览器插件。"
+    return true
   }
 
   nonisolated private func receiveRequest(on connection: NWConnection) {
@@ -155,30 +204,100 @@ final class KnowledgeBrowserBridge: ObservableObject {
     _ request: BrowserBridgeHTTPRequest,
     connection: NWConnection
   ) async {
-    guard request.hasSafeLoopbackHost else {
-      sendResponse(.error(status: 403, message: "只接受本机连接。"), on: connection)
-      return
-    }
-    if request.method == "OPTIONS" {
-      sendResponse(.empty(status: 204), on: connection)
+    guard request.isNativeMessagingForward else {
+      sendResponse(.error(status: 403, message: "只接受已安装原生宿主。", code: "invalid-transport"), on: connection)
       return
     }
     if request.method == "GET", request.path == "/v1/status" {
       sendResponse(.json(status: 200, value: BrowserStatusResponse(
         ready: state == .ready,
-        protocolVersion: 1,
+        protocolVersion: 5,
         application: "PersonalSitePublisherMac"
       )), on: connection)
       return
     }
+    if let invalidatedExpiredToken,
+       request.bearerToken == invalidatedExpiredToken {
+      self.invalidatedExpiredToken = nil
+      sendResponse(.error(
+        status: 401,
+        message: "连接令牌已过期，请从应用复制新令牌重新配对。",
+        code: "token-expired"
+      ), on: connection)
+      return
+    }
+    if refreshExpiredConnectionToken() {
+      sendResponse(.error(
+        status: 401,
+        message: "连接令牌已过期，请从应用复制新令牌重新配对。",
+        code: "token-expired"
+      ), on: connection)
+      return
+    }
     guard request.headers["authorization"] == "Bearer \(connectionToken)" else {
-      sendResponse(.error(status: 401, message: "连接令牌无效。"), on: connection)
+      sendResponse(.error(status: 401, message: "连接令牌无效，请重新配对。", code: "invalid-token"), on: connection)
       return
     }
 
     if request.method == "GET", request.path == "/v1/folders" {
       sendResponse(.json(status: 200, value: BrowserFoldersResponse(
-        folders: knowledge.folders.map { BrowserFolderResponse(id: $0.id, name: $0.name) }
+        folders: knowledge.folders.map { BrowserFolderResponse(id: $0.id, name: $0.name) },
+        tokenExpiresAt: ISO8601DateFormatter().string(from: connectionTokenExpiresAt)
+      )), on: connection)
+      return
+    }
+
+    if request.method == "POST", request.path == "/v1/suggestions" {
+      guard request.headers["content-type"]?.lowercased().hasPrefix("application/json") == true else {
+        sendResponse(.error(status: 415, message: "只接受 JSON 分类建议请求。"), on: connection)
+        return
+      }
+      guard let envelope = try? JSONDecoder().decode(
+        BrowserOrganizationSuggestionEnvelope.self,
+        from: request.body
+      ) else {
+        sendResponse(.error(status: 400, message: "分类建议请求无效。"), on: connection)
+        return
+      }
+      let suggestions = KnowledgeSmartCollectionService().browserOrganizationSuggestions(
+        sourceURL: envelope.sourceURL,
+        authors: envelope.authors,
+        tags: envelope.tags,
+        documents: knowledge.documents,
+        folders: knowledge.folders
+      )
+      sendResponse(.json(status: 200, value: BrowserOrganizationSuggestionsResponse(
+        folders: suggestions.folders.map {
+          BrowserFolderSuggestionResponse(
+            folder: BrowserFolderResponse(id: $0.folder.id, name: $0.folder.name),
+            score: $0.score,
+            reasons: $0.reasons.map(\.rawValue)
+          )
+        },
+        tags: suggestions.tags
+      )), on: connection)
+      return
+    }
+
+    if request.method == "POST", request.path == "/v1/open" {
+      guard request.headers["content-type"]?.lowercased().hasPrefix("application/json") == true else {
+        sendResponse(.error(status: 415, message: "只接受 JSON 资料定位请求。"), on: connection)
+        return
+      }
+      guard let envelope = try? JSONDecoder().decode(BrowserOpenEnvelope.self, from: request.body) else {
+        sendResponse(.error(status: 400, message: "资料定位请求无效。"), on: connection)
+        return
+      }
+      guard knowledge.revealDocument(envelope.documentID) else {
+        sendResponse(.error(status: 404, message: "资料库中找不到该资料。"), on: connection)
+        return
+      }
+      lastOpenedDocumentID = envelope.documentID
+      onOpenDocument(envelope.documentID)
+      lastMessage = "已打开浏览器刚保存的资料。"
+      sendResponse(.json(status: 200, value: BrowserOpenResponse(
+        documentID: envelope.documentID,
+        opened: true
       )), on: connection)
       return
     }
@@ -192,16 +311,53 @@ final class KnowledgeBrowserBridge: ObservableObject {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let envelope = try decoder.decode(BrowserImportEnvelope.self, from: request.body)
-        let result = try await knowledge.importBrowserCapture(
+        let outcome = try await knowledge.importBrowserCapture(
           envelope.capture,
           folderID: envelope.folderID,
-          newFolderName: envelope.newFolderName
+          newFolderName: envelope.newFolderName,
+          duplicateResolution: envelope.duplicateResolution
         )
+        guard case .saved(let result, let action) = outcome else {
+          if case .requiresDuplicateResolution(let conflict) = outcome {
+            lastMessage = "检测到同网址资料，等待选择处理方式。"
+            sendResponse(.json(status: 200, value: BrowserDuplicateResolutionResponse(
+              requiresDuplicateResolution: true,
+              conflict: BrowserDuplicateConflictResponse(
+                documentID: conflict.document.id,
+                title: conflict.document.title,
+                folder: conflict.folder.map { BrowserFolderResponse(id: $0.id, name: $0.name) },
+                fileSizeBytes: conflict.document.sourceByteCount,
+                updatedAt: conflict.document.updatedAt,
+                incomingHasChanges: conflict.incomingHasChanges
+              )
+            )), on: connection)
+          }
+          return
+        }
+        guard
+          let documentID = result.documentIDs.first,
+          let document = knowledge.documents.first(where: { $0.id == documentID })
+        else {
+          sendResponse(.error(status: 500, message: "页面已保存，但生成保存回执失败。"), on: connection)
+          return
+        }
+        let folder = document.folderID.flatMap { folderID in
+          knowledge.folders.first(where: { $0.id == folderID })
+        }
         lastMessage = "已从浏览器保存“\(envelope.capture.title)”。"
         sendResponse(.json(status: 200, value: BrowserImportResponse(
           insertedCount: result.insertedCount,
           updatedCount: result.updatedCount,
-          skippedCount: result.skippedCount
+          skippedCount: result.skippedCount,
+          action: action.rawValue,
+          documentID: document.id,
+          title: document.title,
+          folder: folder.map { BrowserFolderResponse(id: $0.id, name: $0.name) },
+          fileSizeBytes: document.sourceByteCount,
+          archiveType: envelope.capture.archiveFormat?.lowercased() ?? "none",
+          indexStatus: "ready",
+          allowsAIUse: document.allowsAIUse,
+          savedAt: document.updatedAt
         )), on: connection)
       } catch {
         lastMessage = error.localizedDescription
@@ -224,6 +380,7 @@ final class KnowledgeBrowserBridge: ObservableObject {
   }
 
   private static let tokenDefaultsKey = "KnowledgeBrowserBridge.connectionToken.v1"
+  private static let tokenExpiryDefaultsKey = "KnowledgeBrowserBridge.connectionTokenExpiresAt.v1"
 
   private static func makeConnectionToken() -> String {
     var bytes = [UInt8](repeating: 0, count: 32)
@@ -233,12 +390,40 @@ final class KnowledgeBrowserBridge: ObservableObject {
     return UUID().uuidString.replacingOccurrences(of: "-", with: "")
       + UUID().uuidString.replacingOccurrences(of: "-", with: "")
   }
+
+  private func prepareUnixSocketPath() throws {
+    let path = Self.socketPath
+    guard FileManager.default.fileExists(atPath: path) else { return }
+    let attributes = try FileManager.default.attributesOfItem(atPath: path)
+    guard attributes[.type] as? FileAttributeType == .typeSocket else {
+      throw NSError(
+        domain: "KnowledgeBrowserBridge",
+        code: 1,
+        userInfo: [
+          NSLocalizedDescriptionKey:
+            String(localized: "原生连接路径被非套接字文件占用，已拒绝覆盖。")
+        ]
+      )
+    }
+    try FileManager.default.removeItem(atPath: path)
+  }
 }
 
 private struct BrowserImportEnvelope: Decodable {
   var capture: KnowledgeBrowserCapture
   var folderID: UUID?
   var newFolderName: String?
+  var duplicateResolution: KnowledgeBrowserDuplicateResolution?
+}
+
+private struct BrowserOpenEnvelope: Decodable {
+  var documentID: UUID
+}
+
+private struct BrowserOrganizationSuggestionEnvelope: Decodable {
+  var sourceURL: URL
+  var authors: [String]
+  var tags: [String]
 }
 
 private struct BrowserStatusResponse: Encodable {
@@ -254,12 +439,52 @@ private struct BrowserFolderResponse: Encodable {
 
 private struct BrowserFoldersResponse: Encodable {
   var folders: [BrowserFolderResponse]
+  var tokenExpiresAt: String
+}
+
+private struct BrowserFolderSuggestionResponse: Encodable {
+  var folder: BrowserFolderResponse
+  var score: Double
+  var reasons: [String]
+}
+
+private struct BrowserOrganizationSuggestionsResponse: Encodable {
+  var folders: [BrowserFolderSuggestionResponse]
+  var tags: [String]
 }
 
 private struct BrowserImportResponse: Encodable {
   var insertedCount: Int
   var updatedCount: Int
   var skippedCount: Int
+  var action: String
+  var documentID: UUID
+  var title: String
+  var folder: BrowserFolderResponse?
+  var fileSizeBytes: Int64
+  var archiveType: String
+  var indexStatus: String
+  var allowsAIUse: Bool
+  var savedAt: Date
+}
+
+private struct BrowserDuplicateConflictResponse: Encodable {
+  var documentID: UUID
+  var title: String
+  var folder: BrowserFolderResponse?
+  var fileSizeBytes: Int64
+  var updatedAt: Date
+  var incomingHasChanges: Bool
+}
+
+private struct BrowserDuplicateResolutionResponse: Encodable {
+  var requiresDuplicateResolution: Bool
+  var conflict: BrowserDuplicateConflictResponse
+}
+
+private struct BrowserOpenResponse: Encodable {
+  var documentID: UUID
+  var opened: Bool
 }
 
 private enum BrowserBridgeRequestCompletionState {
@@ -303,10 +528,16 @@ private struct BrowserBridgeHTTPRequest {
     body = Data(data[separatorRange.upperBound...])
   }
 
-  var hasSafeLoopbackHost: Bool {
-    guard let host = headers["host"]?.lowercased() else { return false }
-    return host == "127.0.0.1:\(KnowledgeBrowserBridge.port)"
-      || host == "localhost:\(KnowledgeBrowserBridge.port)"
+  var isNativeMessagingForward: Bool {
+    headers["x-knowledge-native-messaging"] == "1"
+      && headers["origin"] == nil
+  }
+
+  var bearerToken: String? {
+    let prefix = "Bearer "
+    guard let authorization = headers["authorization"],
+          authorization.hasPrefix(prefix) else { return nil }
+    return String(authorization.dropFirst(prefix.count))
   }
 
   static func completionState(for data: Data) -> BrowserBridgeRequestCompletionState {
@@ -352,15 +583,16 @@ private struct BrowserBridgeHTTPResponse {
     return Self(status: status, contentType: "application/json; charset=utf-8", body: data)
   }
 
-  static func error(status: Int, message: String) -> Self {
-    json(status: status, value: ["error": message])
+  static func error(status: Int, message: String, code: String? = nil) -> Self {
+    var value = ["error": message]
+    if let code { value["code"] = code }
+    return json(status: status, value: value)
   }
 
   func encodedData() -> Data {
     let reason: String
     switch status {
     case 200: reason = "OK"
-    case 204: reason = "No Content"
     case 400: reason = "Bad Request"
     case 401: reason = "Unauthorized"
     case 403: reason = "Forbidden"
@@ -374,9 +606,6 @@ private struct BrowserBridgeHTTPResponse {
     HTTP/1.1 \(status) \(reason)\r
     Content-Type: \(contentType)\r
     Content-Length: \(body.count)\r
-    Access-Control-Allow-Origin: *\r
-    Access-Control-Allow-Headers: Authorization, Content-Type\r
-    Access-Control-Allow-Methods: GET, POST, OPTIONS\r
     Cache-Control: no-store\r
     Connection: close\r
     \r

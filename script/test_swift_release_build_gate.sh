@@ -33,6 +33,8 @@ fi
 mkdir -p "$RELEASE_BUILD_STUB_BIN_DIR"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$RELEASE_BUILD_STUB_BIN_DIR/PersonalSitePublisherMac"
 chmod +x "$RELEASE_BUILD_STUB_BIN_DIR/PersonalSitePublisherMac"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$RELEASE_BUILD_STUB_BIN_DIR/KnowledgeNativeMessagingHost"
+chmod +x "$RELEASE_BUILD_STUB_BIN_DIR/KnowledgeNativeMessagingHost"
 exit "${RELEASE_BUILD_STUB_EXIT:-0}"
 STUB
 chmod +x "$BIN_DIR/swift"
@@ -51,6 +53,7 @@ grep -Fxq "release" "$ARGS_FILE" || fail "gate omitted release configuration"
 grep -Fxq -- "--disable-sandbox" "$ARGS_FILE" || fail "gate omitted --disable-sandbox"
 grep -Fxq -- "--product" "$ARGS_FILE" || fail "gate omitted the app product"
 grep -Fxq "PersonalSitePublisherMac" "$ARGS_FILE" || fail "gate omitted the app product name"
+grep -Fxq "KnowledgeNativeMessagingHost" "$ARGS_FILE" || fail "gate omitted the native messaging host product"
 grep -Fxq -- "--show-bin-path" "$ARGS_FILE" || fail "gate did not verify the Release binary directory"
 grep -Fq "$TMP_DIR/swift-home" "$ENV_FILE" || fail "gate did not isolate Swift build caches"
 
@@ -81,15 +84,28 @@ PACKAGE_CALLS="$TMP_DIR/package-calls"
 mkdir -p \
   "$FIXTURE_ROOT/script" \
   "$FIXTURE_ROOT/Packaging" \
+  "$FIXTURE_ROOT/BrowserExtension/Firefox" \
   "$FIXTURE_ROOT/Sources/PersonalSitePublisherMac/Resources/en.lproj" \
   "$FIXTURE_ROOT/Sources/PersonalSitePublisherMac/Resources/zh-Hans.lproj" \
   "$FIXTURE_BIN"
 cp "$ROOT_DIR/script/build_and_run.sh" "$FIXTURE_ROOT/script/build_and_run.sh"
 cp "$ROOT_DIR/script/check_build_version.sh" "$FIXTURE_ROOT/script/check_build_version.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$FIXTURE_ROOT/script/sync_firefox_browser_extension.sh"
+chmod +x "$FIXTURE_ROOT/script/sync_firefox_browser_extension.sh"
+printf '{"manifest_version":3}\n' >"$FIXTURE_ROOT/BrowserExtension/manifest.json"
+printf '{"manifest_version":3}\n' >"$FIXTURE_ROOT/BrowserExtension/Firefox/manifest.json"
 printf '%s\n' \
   'MARKETING_VERSION = 1.2.3' \
   'CURRENT_PROJECT_VERSION = 42' \
   >"$FIXTURE_ROOT/Packaging/BuildVersion.xcconfig"
+printf '%s\n' \
+  '<?xml version="1.0" encoding="UTF-8"?>' \
+  '<plist version="1.0"><dict><key>com.apple.security.get-task-allow</key><true/></dict></plist>' \
+  >"$FIXTURE_ROOT/Packaging/LocalDevelopment.entitlements"
+printf '%s\n' \
+  '<?xml version="1.0" encoding="UTF-8"?>' \
+  '<plist version="1.0"><dict><key>com.apple.security.app-sandbox</key><true/></dict></plist>' \
+  >"$FIXTURE_ROOT/Sources/PersonalSitePublisherMac/AppStore.entitlements"
 printf 'fixture icon\n' >"$FIXTURE_ROOT/Sources/PersonalSitePublisherMac/Resources/AppIcon.icns"
 printf '{"sourceLanguage":"en","strings":{},"version":"1.0"}\n' \
   >"$FIXTURE_ROOT/Sources/PersonalSitePublisherMac/Resources/Localizable.xcstrings"
@@ -120,9 +136,13 @@ if [[ " $* " == *" --show-bin-path "* ]]; then
   exit 0
 fi
 mkdir -p "$PACKAGE_STUB_BUILD_ROOT/arm64-apple-macosx/$configuration"
+mkdir -p "$PACKAGE_STUB_BUILD_ROOT/arm64-apple-macosx/$configuration/PersonalSitePublisherMac_PublishingWorkbenchCore.bundle"
 printf 'fixture-%s-binary\n' "$configuration" \
   >"$PACKAGE_STUB_BUILD_ROOT/arm64-apple-macosx/$configuration/PersonalSitePublisherMac"
 chmod +x "$PACKAGE_STUB_BUILD_ROOT/arm64-apple-macosx/$configuration/PersonalSitePublisherMac"
+printf 'fixture-%s-native-host\n' "$configuration" \
+  >"$PACKAGE_STUB_BUILD_ROOT/arm64-apple-macosx/$configuration/KnowledgeNativeMessagingHost"
+chmod +x "$PACKAGE_STUB_BUILD_ROOT/arm64-apple-macosx/$configuration/KnowledgeNativeMessagingHost"
 STUB
 chmod +x "$FIXTURE_BIN/swift"
 
@@ -156,6 +176,12 @@ packaged_binary="$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/MacOS/
 cmp -s "$debug_source" "$packaged_binary" || fail "default package did not copy the Debug binary"
 debug_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/Info.plist")"
 [[ "$debug_configuration" == "Debug" ]] || fail "default package did not record Debug configuration"
+[[ -d "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/Resources/BrowserExtension" ]] \
+  || fail "direct package omitted browser-extension assets"
+[[ -x "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/MacOS/KnowledgeNativeMessagingHost" ]] \
+  || fail "direct package omitted Firefox native messaging host"
+direct_channel="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherDistributionChannel' "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/Info.plist")"
+[[ "$direct_channel" == "Direct" ]] || fail "default package did not record the Direct distribution channel"
 
 : >"$PACKAGE_CALLS"
 run_package_fixture --package-only --configuration release
@@ -165,6 +191,30 @@ release_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublishe
 [[ "$release_configuration" == "Release" ]] || fail "Release package did not record Release configuration"
 grep -q $'^release\t.*-c release.*--product PersonalSitePublisherMac' "$PACKAGE_CALLS" \
   || fail "Release package did not pass the Release configuration to SwiftPM"
+
+: >"$PACKAGE_CALLS"
+run_package_fixture --package-only --app-store
+app_store_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/Info.plist")"
+[[ "$app_store_configuration" == "Release" ]] || fail "App Store package did not record Release configuration"
+app_store_channel="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherDistributionChannel' "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/Info.plist")"
+[[ "$app_store_channel" == "AppStore" ]] || fail "App Store package did not record its distribution channel"
+uses_non_exempt_encryption="$(/usr/libexec/PlistBuddy -c 'Print :ITSAppUsesNonExemptEncryption' "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/Info.plist")"
+[[ "$uses_non_exempt_encryption" == "false" ]] || fail "App Store package did not declare the audited exempt-encryption boundary"
+browser_extension_available="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBrowserExtensionAvailable' "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/Info.plist")"
+[[ "$browser_extension_available" == "false" ]] || fail "App Store package did not disable the browser extension"
+core_resource_info="$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/Resources/PersonalSitePublisherMac_PublishingWorkbenchCore.bundle/Info.plist"
+core_resource_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$core_resource_info")"
+[[ "$core_resource_bundle_id" == "com.jinfang.PersonalSitePublisherMac.PublishingWorkbenchCoreResources" ]] \
+  || fail "App Store package did not assign the Core resource bundle identifier"
+core_resource_package_type="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$core_resource_info")"
+[[ "$core_resource_package_type" == "BNDL" ]] \
+  || fail "App Store package did not identify the Core resource bundle as BNDL"
+[[ ! -e "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/Resources/BrowserExtension" ]] \
+  || fail "App Store package contained unpacked browser-extension assets"
+[[ ! -e "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/MacOS/KnowledgeNativeMessagingHost" ]] \
+  || fail "App Store package contained the direct-distribution native messaging host"
+grep -Fq "APP_STORE_BUILD" "$PACKAGE_CALLS" \
+  || fail "App Store package did not pass the APP_STORE_BUILD compile condition"
 
 if PATH="$FIXTURE_BIN:$PATH" \
   SWIFT_BUILD_HOME="$TMP_DIR/package-swift-home-wrong-path" \
@@ -176,13 +226,13 @@ if PATH="$FIXTURE_BIN:$PATH" \
 fi
 
 for gate in check_app_store_metadata.sh check_app_store_archive_readiness.sh; do
-  grep -Fq 'build_and_run.sh" --package-only --release' "$ROOT_DIR/script/$gate" \
-    || fail "$gate does not force a fresh Release package"
+  grep -Fq 'build_and_run.sh" --package-only --app-store' "$ROOT_DIR/script/$gate" \
+    || fail "$gate does not force a fresh App Store Release package"
   grep -Fq 'PersonalSitePublisherBuildConfiguration' "$ROOT_DIR/script/$gate" \
     || fail "$gate does not verify Release configuration evidence"
 done
-grep -Fq 'build_and_run.sh" --package-only --release' "$ROOT_DIR/script/record_app_store_build_metadata_evidence.sh" \
-  || fail "build metadata recorder does not create a Release package when missing"
+grep -Fq 'build_and_run.sh" --package-only --app-store' "$ROOT_DIR/script/record_app_store_build_metadata_evidence.sh" \
+  || fail "build metadata recorder does not create an App Store Release package when missing"
 grep -Fq 'PersonalSitePublisherBuildConfiguration' "$ROOT_DIR/script/record_app_store_build_metadata_evidence.sh" \
   || fail "build metadata recorder does not reject Debug bundle evidence"
 

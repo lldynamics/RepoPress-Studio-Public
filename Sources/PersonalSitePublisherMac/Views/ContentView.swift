@@ -17,6 +17,7 @@ struct ContentView: View {
   @ObservedObject private var shellState: WorkbenchShellFeatureFacade
   @ObservedObject private var aiState: WorkbenchAIFeatureFacade
   @ObservedObject private var publishingState: WorkbenchPublishingFeatureFacade
+  @Environment(\.openSettings) private var openSettings
   @Environment(\.scenePhase) private var scenePhase
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
@@ -239,7 +240,9 @@ struct ContentView: View {
     if !didApplyScreenshotDemoSurface {
 #if DEBUG
       ScreenshotDemoDataService.applyRequestedSurfaceIfEnabled(to: store)
-      ScreenshotDemoSettingsPresenter.openSettingsIfNeeded()
+      ScreenshotDemoSettingsPresenter.openSettingsIfNeeded {
+        openSettings()
+      }
 #endif
       didApplyScreenshotDemoSurface = true
     }

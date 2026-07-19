@@ -20,6 +20,7 @@ QUICK_CHECK_IDS = {
     "repository-source-boundary",
     "build-version",
     "build-version-tests",
+    "app-store-listing",
     "localization",
     "privacy-copy",
     "storekit",

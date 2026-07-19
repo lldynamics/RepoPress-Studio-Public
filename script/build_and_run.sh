@@ -3,6 +3,7 @@ set -euo pipefail
 
 MODE="run"
 BUILD_CONFIGURATION="debug"
+APP_STORE_BUILD=0
 APP_NAME="PersonalSitePublisherMac"
 BUNDLE_ID="com.jinfang.PersonalSitePublisherMac"
 MIN_SYSTEM_VERSION="14.0"
@@ -24,6 +25,8 @@ APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
+NATIVE_HOST_NAME="KnowledgeNativeMessagingHost"
+NATIVE_HOST_BINARY="$APP_MACOS/$NATIVE_HOST_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_ICON_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources/AppIcon.icns"
 LOCALIZATION_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources"
@@ -31,7 +34,6 @@ LOCALIZATION_CATALOG="$LOCALIZATION_SOURCE/Localizable.xcstrings"
 BROWSER_EXTENSION_SOURCE="$ROOT_DIR/BrowserExtension"
 LOCAL_DEVELOPMENT_ENTITLEMENTS="$ROOT_DIR/Packaging/LocalDevelopment.entitlements"
 APP_STORE_ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
-LAUNCHED_PID=""
 
 RUNTIME_HOME="${PERSONAL_SITE_PUBLISHER_RUNTIME_HOME:-${HOME:?HOME is required to launch the app}}"
 SWIFT_BUILD_HOME="${SWIFT_BUILD_HOME:-/private/tmp/personal-site-publisher-swift-home}"
@@ -86,6 +88,7 @@ Modes:
 
 Options:
   --release                 Build with SwiftPM's Release configuration.
+  --app-store               Build the Mac App Store Release variant without browser-extension assets.
   --configuration <name>   Select debug or release (default: debug).
   --screenshot-surface <id> Select a screenshot demo surface and imply --screenshot-demo.
   --list-screenshot-surfaces
@@ -109,6 +112,11 @@ list_screenshot_surfaces() {
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --release)
+      BUILD_CONFIGURATION="release"
+      shift
+      ;;
+    --app-store)
+      APP_STORE_BUILD=1
       BUILD_CONFIGURATION="release"
       shift
       ;;
@@ -163,6 +171,19 @@ case "$BUILD_CONFIGURATION" in
     ;;
 esac
 
+if [[ "$APP_STORE_BUILD" == "1" && "$BUILD_CONFIGURATION" != "release" ]]; then
+  echo "App Store builds require the Release configuration" >&2
+  exit 2
+fi
+
+if [[ "$APP_STORE_BUILD" == "1" ]]; then
+  DISTRIBUTION_CHANNEL="AppStore"
+  BROWSER_EXTENSION_AVAILABLE_PLIST="  <false/>"
+else
+  DISTRIBUTION_CHANNEL="Direct"
+  BROWSER_EXTENSION_AVAILABLE_PLIST="  <true/>"
+fi
+
 if [[ "$MODE" == "screenshot-demo" ]] && ! contains_screenshot_surface "$SCREENSHOT_SURFACE"; then
   echo "unknown screenshot surface: $SCREENSHOT_SURFACE" >&2
   echo "known screenshot surfaces:" >&2
@@ -195,8 +216,21 @@ case "$MODE" in
     ;;
 esac
 
-swift_build build -c "$BUILD_CONFIGURATION" --disable-sandbox --disable-index-store --product "$APP_NAME"
-BUILD_BIN_DIR="$(swift_build build -c "$BUILD_CONFIGURATION" --disable-sandbox --show-bin-path)"
+swift_build_options=(
+  -c "$BUILD_CONFIGURATION"
+  --disable-sandbox
+)
+if [[ "$APP_STORE_BUILD" == "1" ]]; then
+  swift_build_options+=(
+    -Xswiftc -D
+    -Xswiftc APP_STORE_BUILD
+  )
+fi
+swift_build build "${swift_build_options[@]}" --disable-index-store --product "$APP_NAME"
+if [[ "$APP_STORE_BUILD" != "1" ]]; then
+  swift_build build "${swift_build_options[@]}" --disable-index-store --product "$NATIVE_HOST_NAME"
+fi
+BUILD_BIN_DIR="$(swift_build build "${swift_build_options[@]}" --show-bin-path)"
 case "$BUILD_BIN_DIR" in
   */"$BUILD_CONFIGURATION") ;;
   *)
@@ -209,19 +243,43 @@ BUILD_BINARY="$BUILD_BIN_DIR/$APP_NAME"
   echo "$BUILD_CONFIGURATION app executable is missing or not executable: $BUILD_BINARY" >&2
   exit 1
 }
-[[ -f "$BROWSER_EXTENSION_SOURCE/manifest.json" ]] || {
-  echo "browser extension manifest is missing: $BROWSER_EXTENSION_SOURCE/manifest.json" >&2
-  exit 1
-}
-"$ROOT_DIR/script/sync_firefox_browser_extension.sh" --check
+if [[ "$APP_STORE_BUILD" != "1" ]]; then
+  [[ -f "$BROWSER_EXTENSION_SOURCE/manifest.json" ]] || {
+    echo "browser extension manifest is missing: $BROWSER_EXTENSION_SOURCE/manifest.json" >&2
+    exit 1
+  }
+  "$ROOT_DIR/script/sync_firefox_browser_extension.sh" --check
+fi
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
+if [[ "$APP_STORE_BUILD" != "1" ]]; then
+  BUILD_NATIVE_HOST="$BUILD_BIN_DIR/$NATIVE_HOST_NAME"
+  [[ -x "$BUILD_NATIVE_HOST" ]] || {
+    echo "$BUILD_CONFIGURATION native messaging host is missing or not executable: $BUILD_NATIVE_HOST" >&2
+    exit 1
+  }
+  cp "$BUILD_NATIVE_HOST" "$NATIVE_HOST_BINARY"
+  chmod +x "$NATIVE_HOST_BINARY"
+fi
 cp "$APP_ICON_SOURCE" "$APP_RESOURCES/AppIcon.icns"
 cp -R "$LOCALIZATION_SOURCE"/*.lproj "$APP_RESOURCES"/
-cp -R "$BROWSER_EXTENSION_SOURCE" "$APP_RESOURCES/BrowserExtension"
+if [[ "$APP_STORE_BUILD" != "1" ]]; then
+  cp -R "$BROWSER_EXTENSION_SOURCE" "$APP_RESOURCES/BrowserExtension"
+  firefox_extension_version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("version", ""))' "$BROWSER_EXTENSION_SOURCE/Firefox/manifest.json")"
+  signed_firefox_xpi="$DIST_DIR/browser-extension/knowledge-capture-firefox-$firefox_extension_version.xpi"
+  if [[ -n "$firefox_extension_version" && -f "$signed_firefox_xpi" ]]; then
+    "$ROOT_DIR/script/firefox_extension_release.py" verify-signed --signed-xpi "$signed_firefox_xpi"
+    firefox_release_resources="$APP_RESOURCES/BrowserExtension/Release"
+    mkdir -p "$firefox_release_resources"
+    cp "$signed_firefox_xpi" "$firefox_release_resources/"
+    "$ROOT_DIR/script/firefox_extension_release.py" updates \
+      --signed-xpi "$signed_firefox_xpi" \
+      --output "$firefox_release_resources/updates.json"
+  fi
+fi
 xcrun xcstringstool compile "$LOCALIZATION_CATALOG" --output-directory "$APP_RESOURCES"
 
 # Keep the Core target's localization bundle inside Contents/Resources so the
@@ -233,6 +291,32 @@ core_resource_bundle="$BUILD_BIN_DIR/${APP_NAME}_PublishingWorkbenchCore.bundle"
   exit 1
 }
 cp -R "$core_resource_bundle" "$APP_RESOURCES/"
+core_resource_info="$APP_RESOURCES/${APP_NAME}_PublishingWorkbenchCore.bundle/Info.plist"
+python3 - "$core_resource_info" "$BUNDLE_ID.PublishingWorkbenchCoreResources" "$MARKETING_VERSION" "$BUILD_NUMBER" <<'PY'
+import plistlib
+from pathlib import Path
+import sys
+
+info_path = Path(sys.argv[1])
+bundle_identifier = sys.argv[2]
+marketing_version = sys.argv[3]
+build_number = sys.argv[4]
+if info_path.exists():
+    with info_path.open("rb") as handle:
+        info = plistlib.load(handle)
+else:
+    info = {}
+info.update({
+    "CFBundleDevelopmentRegion": info.get("CFBundleDevelopmentRegion", "zh-Hans"),
+    "CFBundleIdentifier": bundle_identifier,
+    "CFBundleName": "PublishingWorkbenchCoreResources",
+    "CFBundlePackageType": "BNDL",
+    "CFBundleShortVersionString": marketing_version,
+    "CFBundleVersion": build_number,
+})
+with info_path.open("wb") as handle:
+    plistlib.dump(info, handle, fmt=plistlib.FMT_XML, sort_keys=True)
+PY
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -255,8 +339,14 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$MARKETING_VERSION</string>
   <key>CFBundleVersion</key>
   <string>$BUILD_NUMBER</string>
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
   <key>PersonalSitePublisherBuildConfiguration</key>
   <string>$BUILD_CONFIGURATION_DISPLAY_NAME</string>
+  <key>PersonalSitePublisherDistributionChannel</key>
+  <string>$DISTRIBUTION_CHANNEL</string>
+  <key>PersonalSitePublisherBrowserExtensionAvailable</key>
+$BROWSER_EXTENSION_AVAILABLE_PLIST
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>LSApplicationCategoryType</key>
@@ -331,12 +421,19 @@ if [[ "$BUILD_CONFIGURATION" == "debug" ]]; then
     exit 1
   }
   code_sign_arguments+=(--entitlements "$LOCAL_DEVELOPMENT_ENTITLEMENTS")
-else
+elif [[ "$APP_STORE_BUILD" == "1" ]]; then
   [[ -f "$APP_STORE_ENTITLEMENTS" ]] || {
     echo "App Store entitlements are missing: $APP_STORE_ENTITLEMENTS" >&2
     exit 1
   }
   code_sign_arguments+=(--entitlements "$APP_STORE_ENTITLEMENTS")
+fi
+if [[ "$APP_STORE_BUILD" != "1" ]]; then
+  /usr/bin/codesign \
+    --force \
+    --sign "$resolved_code_sign_identity" \
+    --identifier "$BUNDLE_ID.KnowledgeNativeMessagingHost" \
+    "$NATIVE_HOST_BINARY"
 fi
 /usr/bin/codesign "${code_sign_arguments[@]}" "$APP_BUNDLE"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
@@ -425,19 +522,12 @@ wait_for_running_process() {
 run_bundle() {
   /usr/bin/xattr -cr "$APP_BUNDLE"
   if env HOME="$RUNTIME_HOME" /usr/bin/open -n "$APP_BUNDLE" >/tmp/personal-site-publisher-open.log 2>&1; then
-    LAUNCHED_PID=""
     return 0
   fi
 
-  echo "open dist app failed, fallback to direct binary launch." >&2
+  echo "open dist app failed; refusing to launch the SwiftUI GUI as a raw executable." >&2
   cat /tmp/personal-site-publisher-open.log >&2
-
-  if ! env HOME="$RUNTIME_HOME" nohup "$APP_BINARY" >/tmp/personal-site-publisher-direct.log 2>&1 & then
-    cat /tmp/personal-site-publisher-open.log
-    return 1
-  fi
-  LAUNCHED_PID=$!
-  echo "app launched via direct binary fallback (pid: $!)." >&2
+  return 1
 }
 
 case "$MODE" in
@@ -459,16 +549,6 @@ case "$MODE" in
     run_bundle
     sleep 1
     if app_process_is_running; then
-      verify_main_window_or_process || {
-        echo "启动校验失败：进程存活，但在可查询窗口的环境中未检测到可见主窗口。" >&2
-        exit 1
-      }
-      exit 0
-    fi
-
-    launched_pid="${LAUNCHED_PID-}"
-    if [[ -n "$launched_pid" ]] && kill -0 "$launched_pid" 2>/dev/null; then
-      echo "进程未被 pgrep 枚举到，但直接启动句柄仍存活（pid: ${launched_pid}），视为启动成功。" >&2
       verify_main_window_or_process || {
         echo "启动校验失败：进程存活，但在可查询窗口的环境中未检测到可见主窗口。" >&2
         exit 1

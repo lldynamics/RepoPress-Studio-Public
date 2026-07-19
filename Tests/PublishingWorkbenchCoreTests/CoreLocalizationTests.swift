@@ -169,6 +169,43 @@ final class CoreLocalizationTests: XCTestCase {
     )
   }
 
+  func testImageAIWebhookAndCredentialFeedbackResolveInEnglish() {
+    let english = Locale(identifier: "en")
+
+    XCTAssertEqual(
+      CoreL10n.format(
+        "正在%@：%d/%d 篇文章。",
+        locale: english,
+        arguments: ["Compress JPEGs", 2, 5]
+      ),
+      "Compress JPEGs in progress: 2 of 5 articles."
+    )
+    XCTAssertEqual(
+      CoreL10n.text("AI 正在处理", locale: english),
+      "AI is processing"
+    )
+    XCTAssertEqual(
+      CoreL10n.format(
+        "已附加图片：%@",
+        locale: english,
+        arguments: ["cover.png"]
+      ),
+      "Attached images: cover.png"
+    )
+    XCTAssertEqual(
+      CoreL10n.text("Webhook payload 不是有效 JSON。", locale: english),
+      "The webhook payload is not valid JSON."
+    )
+    XCTAssertEqual(
+      CoreL10n.format(
+        "Keychain 操作失败：%@（错误码 %@）",
+        locale: english,
+        arguments: ["Denied", "-50"]
+      ),
+      "Keychain operation failed: Denied (error code -50)"
+    )
+  }
+
   func testPublicRiskCategorySurvivesLocalizationAndLegacyDecoding() throws {
     let issue = PreflightIssue(
       severity: .error,

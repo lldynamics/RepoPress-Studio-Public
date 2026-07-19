@@ -18,7 +18,7 @@ struct KnowledgeDatabaseDeletionOutcome: Hashable, Sendable {
 }
 
 final class KnowledgeDatabase: @unchecked Sendable {
-  static let currentSchemaVersion = 5
+  static let currentSchemaVersion = 6
 
   private let fileURL: URL
   private let lock = NSLock()
@@ -563,7 +563,8 @@ final class KnowledgeDatabase: @unchecked Sendable {
       WHERE (? IS NOT NULL AND d.source_url = ?)
          OR r.original_hash = ?
          OR r.normalized_hash = ?
-      ORDER BY CASE WHEN (? IS NOT NULL AND d.source_url = ?) THEN 0 ELSE 1 END
+      ORDER BY CASE WHEN (? IS NOT NULL AND d.source_url = ?) THEN 0 ELSE 1 END,
+               d.updated_at DESC
       LIMIT 1;
       """
       let statement = try prepare(sql)
@@ -1300,8 +1301,9 @@ final class KnowledgeDatabase: @unchecked Sendable {
       ON knowledge_revisions(document_id, imported_at DESC);
     CREATE INDEX IF NOT EXISTS knowledge_revisions_hash_idx
       ON knowledge_revisions(original_hash, normalized_hash);
-    CREATE UNIQUE INDEX IF NOT EXISTS knowledge_documents_source_url_idx
-      ON knowledge_documents(source_url) WHERE source_url IS NOT NULL;
+    DROP INDEX IF EXISTS knowledge_documents_source_url_idx;
+    CREATE INDEX IF NOT EXISTS knowledge_documents_source_url_idx
+      ON knowledge_documents(source_url, updated_at DESC) WHERE source_url IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS knowledge_chunks (
       id TEXT PRIMARY KEY NOT NULL,

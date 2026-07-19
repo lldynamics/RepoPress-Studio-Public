@@ -23,9 +23,9 @@ public enum DeploymentWebhookError: LocalizedError, Equatable {
   public var errorDescription: String? {
     switch self {
     case .emptyPayload:
-      return "Webhook payload 为空。"
+      return CoreL10n.text("Webhook payload 为空。")
     case .invalidJSON:
-      return "Webhook payload 不是有效 JSON。"
+      return CoreL10n.text("Webhook payload 不是有效 JSON。")
     }
   }
 }
@@ -52,8 +52,8 @@ public struct DeploymentWebhookService {
 
     let event = sourceEvent(in: object, provider: provider)
     let parsed = parsedWebhook(object: object, provider: provider)
-    let title = parsed.title.nilIfEmpty ?? "\(provider.displayName) Webhook"
-    let message = parsed.message.nilIfEmpty ?? "收到 \(provider.displayName) 部署通知。"
+    let title = parsed.title.nilIfEmpty ?? CoreL10n.format("%@ Webhook", provider.displayName)
+    let message = parsed.message.nilIfEmpty ?? CoreL10n.format("收到 %@ 部署通知。", provider.displayName)
     let signal = DeploymentStatusSignal(
       level: parsed.level,
       title: title,
@@ -111,9 +111,9 @@ public struct DeploymentWebhookService {
         level(from: status),
         stringValue(for: ["name"], in: run) ?? "GitHub Actions",
         joinedMessage([
-          status.map { "状态：\($0)" },
-          stringValue(for: ["head_branch"], in: run).map { "分支：\($0)" },
-          stringValue(for: ["head_sha"], in: run).map { "提交：\($0)" },
+          status.map(statusLabel),
+          stringValue(for: ["head_branch"], in: run).map(branchLabel),
+          stringValue(for: ["head_sha"], in: run).map(commitLabel),
         ]),
         stringValue(for: ["html_url"], in: run)
       )
@@ -125,7 +125,7 @@ public struct DeploymentWebhookService {
         level(from: status),
         "GitHub Deployment",
         joinedMessage([
-          status.map { "状态：\($0)" },
+          status.map(statusLabel),
           stringValue(for: ["description"], in: deployment),
         ]),
         stringValue(for: ["target_url", "environment_url"], in: deployment)
@@ -142,9 +142,9 @@ public struct DeploymentWebhookService {
       level(from: status),
       stringValue(for: ["name", "stage"], in: attributes) ?? "GitLab Pipeline",
       joinedMessage([
-        status.map { "状态：\($0)" },
-        stringValue(for: ["ref"], in: attributes).map { "分支：\($0)" },
-        stringValue(for: ["sha", "commit_sha"], in: attributes).map { "提交：\($0)" },
+        status.map(statusLabel),
+        stringValue(for: ["ref"], in: attributes).map(branchLabel),
+        stringValue(for: ["sha", "commit_sha"], in: attributes).map(commitLabel),
       ]),
       stringValue(for: ["url", "web_url"], in: attributes)
         ?? dictionaryValue(for: ["project"], in: object).flatMap { stringValue(for: ["web_url"], in: $0) }
@@ -158,9 +158,9 @@ public struct DeploymentWebhookService {
       level(from: status),
       stringValue(for: ["name", "site_name"], in: deploy) ?? "Netlify Deploy",
       joinedMessage([
-        status.map { "状态：\($0)" },
-        stringValue(for: ["branch"], in: deploy).map { "分支：\($0)" },
-        stringValue(for: ["commit_ref", "commit_sha", "sha"], in: deploy).map { "提交：\($0)" },
+        status.map(statusLabel),
+        stringValue(for: ["branch"], in: deploy).map(branchLabel),
+        stringValue(for: ["commit_ref", "commit_sha", "sha"], in: deploy).map(commitLabel),
         stringValue(for: ["error_message"], in: deploy),
       ]),
       stringValue(for: ["admin_url", "deploy_url", "url", "ssl_url"], in: deploy)
@@ -177,10 +177,10 @@ public struct DeploymentWebhookService {
       level(from: status),
       stringValue(for: ["name"], in: deployment) ?? "Vercel Deployment",
       joinedMessage([
-        status.map { "状态：\($0)" },
-        stringValue(for: ["target"], in: deployment).map { "目标：\($0)" },
-        stringValue(for: ["githubCommitRef", "branch"], in: meta).map { "分支：\($0)" },
-        stringValue(for: ["githubCommitSha", "commit"], in: meta).map { "提交：\($0)" },
+        status.map(statusLabel),
+        stringValue(for: ["target"], in: deployment).map(targetLabel),
+        stringValue(for: ["githubCommitRef", "branch"], in: meta).map(branchLabel),
+        stringValue(for: ["githubCommitSha", "commit"], in: meta).map(commitLabel),
       ]),
       stringValue(for: ["inspectorUrl", "url"], in: deployment)
     )
@@ -198,9 +198,9 @@ public struct DeploymentWebhookService {
       level(from: status),
       stringValue(for: ["name"], in: stage) ?? "Cloudflare Pages",
       joinedMessage([
-        status.map { "状态：\($0)" },
-        stringValue(for: ["branch"], in: trigger).map { "分支：\($0)" },
-        stringValue(for: ["commit_hash"], in: trigger).map { "提交：\($0)" },
+        status.map(statusLabel),
+        stringValue(for: ["branch"], in: trigger).map(branchLabel),
+        stringValue(for: ["commit_hash"], in: trigger).map(commitLabel),
         stringValue(for: ["commit_message"], in: trigger),
       ]),
       stringValue(for: ["url"], in: deployment)
@@ -216,8 +216,9 @@ public struct DeploymentWebhookService {
     let message = stringValue(for: ["message", "summary", "description"], in: object)
     return (
       level(from: status),
-      stringValue(for: ["title", "name", "deployment", "service"], in: object) ?? "\(provider.displayName) Webhook",
-      joinedMessage([status.map { "状态：\($0)" }, message]),
+      stringValue(for: ["title", "name", "deployment", "service"], in: object)
+        ?? CoreL10n.format("%@ Webhook", provider.displayName),
+      joinedMessage([status.map(statusLabel), message]),
       stringValue(for: ["url", "html_url", "deploy_url", "deployment_url"], in: object)
     )
   }
@@ -238,6 +239,22 @@ public struct DeploymentWebhookService {
 
   private func joinedMessage(_ parts: [String?]) -> String {
     parts.compactMap { $0?.trimmedForPublishing.nilIfEmpty }.joined(separator: " · ")
+  }
+
+  private func statusLabel(_ value: String) -> String {
+    CoreL10n.format("状态：%@", value)
+  }
+
+  private func branchLabel(_ value: String) -> String {
+    CoreL10n.format("分支：%@", value)
+  }
+
+  private func commitLabel(_ value: String) -> String {
+    CoreL10n.format("提交：%@", value)
+  }
+
+  private func targetLabel(_ value: String) -> String {
+    CoreL10n.format("目标：%@", value)
   }
 
   private func stringValue(for keys: [String], in object: [String: Any]) -> String? {

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "bundleIdentifier": "com.jinfang.PersonalSitePublisherMac",
+  "primaryCategory": "public.app-category.productivity",
+  "privacyPolicyURL": "https://apps.chengjinfang.com/personal-site-publisher/privacy/",
+  "localizations": {
+    "zh-Hans": {
+      "name": "个人网站写作与发布",
+      "subtitle": "写作、资料整理与网站发布",
+      "promotionalText": "在 Mac 上集中完成 Markdown 写作、资料整理、SEO 检查与静态网站发布。",
+      "description": "个人网站写作与发布是一款面向静态网站作者的原生 macOS 工具。它将文章写作、资料整理、图片管理和发布检查放在同一个工作台中。\n\n主要功能\n• Markdown 写作与实时预览，支持标题、摘要、标签和分类等元数据。\n• 管理通用草稿与站点文章，通过全文搜索快速找到内容。\n• 导入 EPUB、Markdown、TXT、HTML 和 PDF 资料，建立可检索的本地资料库。\n• 检查 SEO 和社交分享摘要，完善图片 alt 与 caption。\n• 为 Zola、Hugo、Astro、Jekyll 和 Hexo 仓库执行本地检查与用户发起的发布操作。\n• 可选配置 AI 服务，获取文章结构、摘要、元数据和图片文本建议。\n• 快速隐藏工作区，并遮挡标记为私密的文章信息。\n\n本地编辑和本地仓库检查不需要登录。只有在你主动使用 AI、仓库 API、部署状态或购买恢复功能时，应用才会连接相应的外部服务。",
+      "keywords": "Markdown,静态网站,文章写作,资料库,SEO,图片管理,网站发布",
+      "supportURL": "https://apps.chengjinfang.com/personal-site-publisher/",
+      "marketingURL": "https://apps.chengjinfang.com/"
+    },
+    "en-US": {
+      "name": "Personal Site Publisher",
+      "subtitle": "Write, organize, and publish",
+      "promotionalText": "A focused Mac workspace for Markdown writing, research, SEO checks, images, and static-site publishing.",
+      "description": "Personal Site Publisher is a native macOS workspace for static-site authors. It brings writing, research, image management, and publishing checks together without taking ownership of your repository.\n\nHighlights\n• Write Markdown with live preview and structured title, summary, tag, category, and visibility metadata.\n• Manage site articles and general drafts, with full-text search across your content.\n• Import EPUB, Markdown, TXT, HTML, and PDF sources into a searchable local knowledge library.\n• Review SEO and social sharing summaries, and improve image alt text and captions.\n• Run local checks and user-initiated publishing workflows for Zola, Hugo, Astro, Jekyll, and Hexo repositories.\n• Optionally connect an AI provider for structure, summary, metadata, and image-text suggestions.\n• Quickly cover the workspace and mask articles marked as private.\n\nNo sign-in is required for local editing or local repository checks. The app contacts external services only when you initiate AI, repository API, deployment-status, purchase, or restore actions.",
+      "keywords": "markdown,static site,writing,research library,seo,image workflow,publishing",
+      "supportURL": "https://apps.chengjinfang.com/personal-site-publisher/en/",
+      "marketingURL": "https://apps.chengjinfang.com/"
+    }
+  },
+  "appReview": {
+    "signInRequired": false,
+    "contact": {
+      "email": "support@chengjinfang.com",
+      "configuredInAppStoreConnect": true
+    },
+    "notesFile": "docs/app-store/APP_REVIEW_NOTES.md"
+  },
+  "privacyResponsesFile": "docs/app-store/APP_PRIVACY_RESPONSES.md"
+}

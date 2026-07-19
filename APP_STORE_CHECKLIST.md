@@ -8,12 +8,29 @@
 - [ ] Produce a clean Release archive from a clean checkout.
 - [ ] Validate the archive with App Store Connect or Transporter before upload.
 
+## Product Page And Review
+
+- [x] Prepare Simplified Chinese and English product-page copy, reviewer notes, and an App Privacy response worksheet.
+  Evidence: Local listing metadata gate verifies both localizations, field limits, reviewer notes, and privacy worksheet structure.
+- [x] Generate localized privacy-policy and support pages, and configure their intended App Store URLs.
+  Evidence: Chinese and English pages are published at `apps.chengjinfang.com` and the configured public URLs return HTTP 200.
+- [x] Publish the privacy-policy and support pages, verify successful public responses, and fill the App Review contact name and phone.
+  Evidence: Public URL checks passed and the private contact fields were verified in App Store Connect without copying them into the repository.
+- [x] Add an easily accessible in-app privacy-policy and support link.
+  Evidence: Settings > Privacy contains localized links to the owner-controlled privacy and support pages.
+- [ ] Confirm the published App Privacy answers against the exact submitted binary.
+- [x] Complete age rating, availability, pricing, tax, banking, and agreement fields in the owner account.
+  Evidence: Live App Store Connect review on 2026-07-19; content rights remains a separate unchecked legal declaration below.
+- [ ] Complete the content-rights declaration in the owner account.
+- [ ] Create and submit the `personal.site.publisher.pro` in-app purchase with the first app version if it is not already approved.
+
 ## Localization
 
 - [x] Cover app-target SwiftUI literals, literal localization calls, workspace navigation keys, and semantic display names in the localization catalog.
   Evidence: UI-scope localization gate has complete Simplified Chinese and English values for the keys it extracts.
-- [ ] Migrate remaining user-facing strings produced by `PublishingWorkbenchCore` services, including preflight issues, image reports, deployment/publish status, and error guidance, into locale-aware resources.
-- [ ] Complete Simplified Chinese and English copy coverage across both app UI and Core-generated presentation output.
+- [x] Migrate App Store-critical `PublishingWorkbenchCore` presentation strings for preflight, image operations, deployment/webhooks, AI availability/usage/transcripts, and credential errors into locale-aware resources.
+  Evidence: Core localization tests cover Simplified Chinese and English output for the migrated release-critical paths.
+- [ ] Complete remaining Simplified Chinese and English copy coverage across all Core-generated presentation output.
 - [x] Run the UI-scoped localization gate and review missing or stale strings within its declared extraction boundary.
   Evidence: UI-scope localization gate passed; this does not claim coverage of Core-generated presentation strings.
 
@@ -28,8 +45,10 @@
 ## Screenshots
 
 - [x] Add a repeatable screenshot capture or verification script.
-- [ ] Capture the nine manifest screens: writing, AI chat, sync/API publish, SEO/social preview, deployment status, maintenance, general drafts, Pro settings, and quick hide.
-- [ ] Verify screenshots contain no private content, local tokens, or personal paths.
+- [x] Capture the nine manifest screens: writing, AI chat, sync/API publish, SEO/social preview, deployment status, maintenance, general drafts, Pro settings, and quick hide.
+  Evidence: 已记录 App Store 截图外部验收证据。
+- [x] Verify screenshots contain no private content, local tokens, or personal paths.
+  Evidence: 截图隐私门禁已通过。
 
 ## Privacy And Monetization
 

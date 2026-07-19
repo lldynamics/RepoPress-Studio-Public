@@ -485,34 +485,38 @@ public enum KeychainTokenStoreError: LocalizedError, Equatable {
   public var errorDescription: String? {
     switch self {
     case .invalidData:
-      return "Keychain 返回了不可解析的 token 数据。"
+      return CoreL10n.text("Keychain 返回了不可解析的 token 数据。")
     case .invalidCredentialOrigin(let value):
-      return "凭据端点必须是有效的 HTTPS 地址：\(value)"
+      return CoreL10n.format("凭据端点必须是有效的 HTTPS 地址：%@", value)
     case .unhandledStatus(let status):
-      return "Keychain 操作失败：\(Self.statusDescription(for: status))（错误码 \(status)）"
+      return CoreL10n.format(
+        "Keychain 操作失败：%@（错误码 %@）",
+        Self.statusDescription(for: status),
+        String(status)
+      )
     }
   }
 
   public var recoveryHint: String? {
     switch self {
     case .invalidData:
-      return "请检查该服务在钥匙串中的记录是否损坏，可删除后重新保存 Token。"
+      return CoreL10n.text("请检查该服务在钥匙串中的记录是否损坏，可删除后重新保存 Token。")
     case .invalidCredentialOrigin:
-      return "请先修正 API Base URL；端点变化后需要重新保存对应 Token。"
+      return CoreL10n.text("请先修正 API Base URL；端点变化后需要重新保存对应 Token。")
     case .unhandledStatus(let status):
       switch status {
       case errSecInteractionNotAllowed:
-        return "系统当前禁止了本应用的钥匙串访问。请前往“系统设置” → “隐私与安全性” → “钥匙串”，允许本应用访问该服务后重试。"
+        return CoreL10n.text("系统当前禁止了本应用的钥匙串访问。请前往“系统设置” → “隐私与安全性” → “钥匙串”，允许本应用访问该服务后重试。")
       case errSecAuthFailed:
-        return "钥匙串认证失败。可尝试重启电脑或重新登录系统后重试。"
+        return CoreL10n.text("钥匙串认证失败。可尝试重启电脑或重新登录系统后重试。")
       case errSecNoSuchKeychain:
-        return "应用未连接到登录钥匙串。请使用项目的统一启动脚本重新启动；若仍失败，请在“钥匙串访问”中确认 login 钥匙串可用。"
+        return CoreL10n.text("应用未连接到登录钥匙串。请使用项目的统一启动脚本重新启动；若仍失败，请在“钥匙串访问”中确认 login 钥匙串可用。")
       case errSecInvalidOwnerEdit, -25253:
-        return "当前本地构建无法继续使用旧构建创建的钥匙串访问上下文。请重启最新构建后重新保存；如果仍失败，可在“钥匙串访问”中删除对应的 PersonalSitePublisher 旧项后再保存。"
+        return CoreL10n.text("当前本地构建无法继续使用旧构建创建的钥匙串访问上下文。请重启最新构建后重新保存；如果仍失败，可在“钥匙串访问”中删除对应的 PersonalSitePublisher 旧项后再保存。")
       case errSecItemNotFound:
-        return "对应 Profile 的钥匙串条目不存在，请先点击“保存”写入 Token。"
+        return CoreL10n.text("对应 Profile 的钥匙串条目不存在，请先点击“保存”写入 Token。")
       case errSecUserCanceled:
-        return "你已取消了系统授权提示，请重新触发操作并在授权弹窗中选择允许。"
+        return CoreL10n.text("你已取消了系统授权提示，请重新触发操作并在授权弹窗中选择允许。")
       default:
         return nil
       }
@@ -527,6 +531,6 @@ public enum KeychainTokenStoreError: LocalizedError, Equatable {
     if let message = SecCopyErrorMessageString(status, nil) {
       return "\(message)"
     }
-    return "未知错误"
+    return CoreL10n.text("未知错误")
   }
 }

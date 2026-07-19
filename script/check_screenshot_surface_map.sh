@@ -36,7 +36,7 @@ required = {
             ],
             "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift": [
                 "WorkspaceTaskMetadataSection",
-                '.accessibilityLabel("文章标题")',
+                '.accessibilityLabel("元数据标题")',
             ],
         },
     },
@@ -70,7 +70,7 @@ required = {
             ],
             "Sources/PersonalSitePublisherMac/Views/TokenRepositoryTokenSection.swift": [
                 "TokenRepositoryTokenSection",
-                "WorkbenchUITerminology.repositoryAccessTokenIntroduction",
+                '.accessibilityHint("仅用于仓库创建、权限检查、提交、PR/MR 和回滚")',
             ],
         },
     },

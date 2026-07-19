@@ -73,6 +73,8 @@ done
 [[ -f "$ROOT_DIR/script/build_and_run.sh" ]] || fail "missing script/build_and_run.sh"
 [[ -f "$ROOT_DIR/script/check_app_store_archive_readiness.sh" ]] \
   || fail "missing script/check_app_store_archive_readiness.sh"
+[[ -f "$ROOT_DIR/script/resolve_app_store_entitlements.py" ]] \
+  || fail "missing script/resolve_app_store_entitlements.py"
 [[ -f "$ENTITLEMENTS" ]] || fail "missing AppStore.entitlements"
 plutil -lint "$ENTITLEMENTS" >/dev/null || fail "AppStore.entitlements is invalid"
 
@@ -107,55 +109,8 @@ resolved_entitlements="$tmp_dir/resolved-entitlements.plist"
 security cms -D -i "$PROVISIONING_PROFILE" >"$profile_plist" \
   || fail "could not decode the provisioning profile"
 
-python3 - "$profile_plist" "$ENTITLEMENTS" "$resolved_entitlements" "$BUNDLE_ID" <<'PY'
-from datetime import datetime, timezone
-import plistlib
-from pathlib import Path
-import sys
-
-profile_path = Path(sys.argv[1])
-base_path = Path(sys.argv[2])
-output_path = Path(sys.argv[3])
-bundle_id = sys.argv[4]
-with profile_path.open("rb") as handle:
-    profile = plistlib.load(handle)
-with base_path.open("rb") as handle:
-    resolved = plistlib.load(handle)
-
-expiration = profile.get("ExpirationDate")
-if not isinstance(expiration, datetime):
-    raise SystemExit("app store package: provisioning profile has no expiration date")
-if expiration.replace(tzinfo=expiration.tzinfo or timezone.utc) <= datetime.now(timezone.utc):
-    raise SystemExit("app store package: provisioning profile is expired")
-
-profile_entitlements = profile.get("Entitlements", {})
-application_identifier = profile_entitlements.get("com.apple.application-identifier", "")
-if not application_identifier.endswith("." + bundle_id):
-    raise SystemExit("app store package: provisioning profile does not match the app bundle identifier")
-if profile_entitlements.get("com.apple.security.get-task-allow") is True:
-    raise SystemExit("app store package: development provisioning profile is not valid for distribution")
-
-team_identifiers = profile.get("TeamIdentifier", [])
-if not isinstance(team_identifiers, list) or len(team_identifiers) != 1 or not team_identifiers[0]:
-    raise SystemExit("app store package: provisioning profile must contain exactly one TeamIdentifier")
-profile_team = team_identifiers[0]
-if not application_identifier.startswith(profile_team + "."):
-    raise SystemExit("app store package: application identifier does not belong to the profile team")
-entitlement_team = profile_entitlements.get("com.apple.developer.team-identifier")
-if entitlement_team and entitlement_team != profile_team:
-    raise SystemExit("app store package: profile team entitlement does not match TeamIdentifier")
-
-for key in (
-    "com.apple.application-identifier",
-    "com.apple.developer.team-identifier",
-    "keychain-access-groups",
-):
-    if key in profile_entitlements:
-        resolved[key] = profile_entitlements[key]
-
-with output_path.open("wb") as handle:
-    plistlib.dump(resolved, handle, fmt=plistlib.FMT_XML, sort_keys=True)
-PY
+python3 "$ROOT_DIR/script/resolve_app_store_entitlements.py" \
+  "$profile_plist" "$ENTITLEMENTS" "$resolved_entitlements" "$BUNDLE_ID"
 
 version_values="$(bash "$ROOT_DIR/script/check_build_version.sh" --print-values)"
 IFS=$'\t' read -r marketing_version build_number <<<"$version_values"
@@ -173,7 +128,7 @@ for artifact_path in "$signed_app" "$installer_pkg" "$hash_file"; do
 done
 rm -rf "$signed_app"
 rm -f "$installer_pkg" "$hash_file"
-bash "$ROOT_DIR/script/build_and_run.sh" --package-only --release >/dev/null
+bash "$ROOT_DIR/script/build_and_run.sh" --package-only --app-store >/dev/null
 ditto "$ROOT_DIR/dist/$APP_NAME.app" "$signed_app"
 cp "$PROVISIONING_PROFILE" "$signed_app/Contents/embedded.provisionprofile"
 

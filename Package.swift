@@ -17,6 +17,10 @@ let package = Package(
       name: "PersonalSitePublisherMac",
       targets: ["PersonalSitePublisherMac"]
     ),
+    .executable(
+      name: "KnowledgeNativeMessagingHost",
+      targets: ["KnowledgeNativeMessagingHost"]
+    ),
   ],
   targets: [
     .target(
@@ -34,6 +38,7 @@ let package = Package(
     .executableTarget(
       name: "PersonalSitePublisherMac",
       dependencies: [
+        "KnowledgeNativeMessagingSupport",
         "PublishingWorkbenchCore",
       ],
       exclude: [
@@ -43,9 +48,19 @@ let package = Package(
         .process("Resources")
       ]
     ),
+    .target(
+      name: "KnowledgeNativeMessagingSupport"
+    ),
+    .executableTarget(
+      name: "KnowledgeNativeMessagingHost",
+      dependencies: [
+        "KnowledgeNativeMessagingSupport",
+      ]
+    ),
     .testTarget(
       name: "PublishingWorkbenchCoreTests",
       dependencies: [
+        "KnowledgeNativeMessagingSupport",
         "PublishingWorkbenchCore",
       ]
     ),

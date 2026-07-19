@@ -64,10 +64,10 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
   static let fallbackModelIdentifier = "local-semantic-hash-v2"
 
   private let lock = NSLock()
+  private let contextualInferenceLock = NSLock()
   private var contextualModels: [String: NLContextualEmbedding] = [:]
   private var loadedContextualModelIDs: Set<String> = []
   private var preparingContextualModelIDs: Set<String> = []
-  private var requestedContextualModelIDs: Set<String> = []
 
   func vectors(for text: String) -> [KnowledgeSemanticVector] {
     let normalizedText = text.trimmedForPublishing
@@ -76,7 +76,8 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
     var output = [fallbackVector(for: normalizedText)]
     let language = detectedLanguage(for: normalizedText)
 
-    if let sentenceVector = sentenceVector(for: normalizedText, language: language) {
+    if language != .simplifiedChinese,
+       let sentenceVector = sentenceVector(for: normalizedText, language: language) {
       output.append(sentenceVector)
     } else if language == .english,
               let wordVector = englishWordVector(for: normalizedText) {
@@ -99,26 +100,42 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
 
   func prepareContextualModelIfNeeded(for text: String) {
     let language = detectedLanguage(for: text)
-    guard let model = contextualModel(for: language), !model.hasAvailableAssets else { return }
+    guard let model = contextualModel(for: language) else { return }
     let identifier = contextualIdentifier(for: model)
 
     lock.lock()
-    let shouldPrepare = !requestedContextualModelIDs.contains(identifier)
+    let shouldPrepare = !loadedContextualModelIDs.contains(identifier)
       && preparingContextualModelIDs.insert(identifier).inserted
-    if shouldPrepare {
-      requestedContextualModelIDs.insert(identifier)
-    }
     lock.unlock()
     guard shouldPrepare else { return }
 
     Task.detached(priority: .utility) { [weak self] in
-      _ = try? await model.requestAssets()
-      self?.finishPreparingContextualModel(identifier)
+      if !model.hasAvailableAssets {
+        _ = try? await model.requestAssets()
+      }
+      let didLoad: Bool
+      if model.hasAvailableAssets {
+        do {
+          try model.load()
+          didLoad = true
+        } catch {
+          didLoad = false
+        }
+      } else {
+        didLoad = false
+      }
+      self?.finishPreparingContextualModel(identifier, didLoad: didLoad)
     }
   }
 
-  private func finishPreparingContextualModel(_ identifier: String) {
+  private func finishPreparingContextualModel(
+    _ identifier: String,
+    didLoad: Bool
+  ) {
     lock.lock()
+    if didLoad {
+      loadedContextualModelIDs.insert(identifier)
+    }
     preparingContextualModelIDs.remove(identifier)
     lock.unlock()
   }
@@ -221,20 +238,15 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
     language: NLLanguage
   ) -> KnowledgeSemanticVector? {
     guard let model = contextualModel(for: language) else { return nil }
-    lock.lock()
-    defer { lock.unlock() }
-    guard model.hasAvailableAssets else { return nil }
     let identifier = contextualIdentifier(for: model)
-    if !loadedContextualModelIDs.contains(identifier) {
-      do {
-        try model.load()
-      } catch {
-        return nil
-      }
-      loadedContextualModelIDs.insert(identifier)
-    }
+    lock.lock()
+    let isLoaded = loadedContextualModelIDs.contains(identifier)
+    lock.unlock()
+    guard isLoaded else { return nil }
 
     let input = clipped(text, maximumCharacters: 1_600)
+    contextualInferenceLock.lock()
+    defer { contextualInferenceLock.unlock() }
     guard let result = try? model.embeddingResult(for: input, language: language) else { return nil }
     var aggregate = [Double](repeating: 0, count: model.dimension)
     var count = 0

@@ -1,11 +1,15 @@
 import AppKit
 import SwiftUI
 
+#if !APP_STORE_BUILD
 struct BrowserExtensionConnectionView: View {
   @EnvironmentObject private var bridge: KnowledgeBrowserBridge
   @Environment(\.dismiss) private var dismiss
   @State private var isTokenVisible = false
   @State private var isRotationConfirmationPresented = false
+  @State private var firefoxReleaseState = FirefoxExtensionReleaseState.detect()
+  @State private var nativeMessagingStates = BrowserNativeMessagingInstaller.detectAll()
+  @State private var nativeMessagingMessage: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -30,7 +34,14 @@ struct BrowserExtensionConnectionView: View {
             Label(bridge.state.localizedDisplayName, systemImage: bridge.state == .ready ? "checkmark.circle.fill" : "circle.dotted")
               .foregroundStyle(bridge.state == .ready ? WorkbenchTheme.success : Color.secondary)
           }
-          LabeledContent("地址", value: "127.0.0.1:\(KnowledgeBrowserBridge.port)")
+          LabeledContent(String(localized: "传输"), value: "Unix Domain Socket")
+          LabeledContent {
+            Text(KnowledgeBrowserBridge.socketPath)
+              .font(.system(.caption, design: .monospaced))
+              .textSelection(.enabled)
+          } label: {
+            Text("套接字")
+          }
           if let lastMessage = bridge.lastMessage {
             Text(lastMessage)
               .font(.caption)
@@ -54,7 +65,14 @@ struct BrowserExtensionConnectionView: View {
               NSPasteboard.general.setString(bridge.connectionToken, forType: .string)
             }
           }
-          Text("令牌只用于本机回环接口。不要粘贴到网页或发送给其他人。")
+          Text("令牌只用于本机原生连接。不要粘贴到网页或发送给其他人。")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          LabeledContent("有效期") {
+            Text(bridge.connectionTokenExpiresAt.formatted(date: .abbreviated, time: .shortened))
+              .monospacedDigit()
+          }
+          Text("连接令牌有效 30 天；过期或手动更换后，旧令牌会立即失效，插件需要重新配对。")
             .font(.caption)
             .foregroundStyle(.secondary)
           Button("更换连接令牌…", role: .destructive) {
@@ -79,14 +97,93 @@ struct BrowserExtensionConnectionView: View {
           }
         }
 
+        Section("浏览器原生连接") {
+          ForEach(BrowserNativeMessagingBrowser.allCases) { browser in
+            let state = nativeMessagingState(for: browser)
+            LabeledContent(browser.localizedDisplayName) {
+              Label(
+                state.isInstalled ? "Native Messaging 已安装" : "需要安装原生宿主",
+                systemImage: state.isInstalled ? "checkmark.shield.fill" : "shield.lefthalf.filled"
+              )
+              .foregroundStyle(state.isInstalled ? WorkbenchTheme.success : .orange)
+            }
+            Text(state.detail)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            HStack {
+              Button {
+                installNativeMessagingHost(for: browser)
+              } label: {
+                Label(
+                  state.isInstalled ? "修复原生连接" : "安装原生连接",
+                  systemImage: "link.badge.plus"
+                )
+              }
+              Button {
+                NSWorkspace.shared.activateFileViewerSelecting([state.manifestURL])
+              } label: {
+                Label("显示宿主清单", systemImage: "doc.text.magnifyingglass")
+              }
+              .disabled(!FileManager.default.fileExists(atPath: state.manifestURL.path))
+            }
+            if browser != .edge {
+              Divider()
+            }
+          }
+          if let nativeMessagingMessage {
+            Text(nativeMessagingMessage)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .textSelection(.enabled)
+          }
+          Text("安装操作只写入当前用户对应浏览器的 NativeMessagingHosts 目录，无需管理员权限。插件仍需连接令牌，原生宿主不能绕过资料库鉴权。")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+
+        Section("Firefox 长期安装") {
+          LabeledContent("发布版本", value: firefoxReleaseState.version ?? "未知")
+          LabeledContent("Mozilla 签名") {
+            Label(firefoxReleaseState.statusTitle, systemImage: firefoxReleaseState.statusSymbol)
+              .foregroundStyle(firefoxReleaseState.statusColor)
+          }
+          Text(firefoxReleaseState.statusDescription)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          HStack {
+            if let signedPackageURL = firefoxReleaseState.signedPackageURL {
+              Button {
+                NSWorkspace.shared.open(signedPackageURL)
+              } label: {
+                Label("让 Firefox 验证并安装…", systemImage: "puzzlepiece.extension")
+              }
+              .help("交给 Firefox 打开，并由 Firefox 显示最终安装确认。")
+            }
+            Button {
+              revealFirefoxReleaseDirectory()
+            } label: {
+              Label("显示发布目录", systemImage: "shippingbox")
+            }
+            .disabled(firefoxReleaseState.releaseDirectoryURL == nil)
+          }
+        }
+
         Section("保存内容") {
-          Text("Chrome/Edge 会优先生成自包含 MHTML 归档；Firefox 会保存可检索正文与清理后的原始 HTML。两者都通过本机回环接口直接写入资料库，脚本不会作为检索文本执行。")
+          Text("Chrome/Edge 会优先生成自包含 MHTML 归档；Firefox 会在 24 MB 上限内将可读取的图片、样式和字体内联为离线 HTML，并报告未能内联的外部资源。应用暂时未连接时，插件会在自己的本地队列中保留待导入内容，恢复后自动重试。脚本不会作为检索文本执行。")
             .font(.callout)
         }
       }
       .formStyle(.grouped)
     }
     .frame(minWidth: 620, idealWidth: 700, minHeight: 560, idealHeight: 640)
+    .onAppear {
+      bridge.refreshExpiredConnectionToken()
+      firefoxReleaseState = FirefoxExtensionReleaseState.detect()
+      nativeMessagingStates = BrowserNativeMessagingInstaller.detectAll()
+    }
+    .onChange(of: bridge.lastOpenedDocumentID) { _, documentID in
+      if documentID != nil { dismiss() }
+    }
     .confirmationDialog(
       "更换连接令牌？",
       isPresented: $isRotationConfirmationPresented,
@@ -104,6 +201,26 @@ struct BrowserExtensionConnectionView: View {
 
   private var maskedToken: String {
     String(repeating: "•", count: 24)
+  }
+
+  private func nativeMessagingState(
+    for browser: BrowserNativeMessagingBrowser
+  ) -> BrowserNativeMessagingInstallationState {
+    nativeMessagingStates[browser]
+      ?? BrowserNativeMessagingInstaller.detect(browser: browser)
+  }
+
+  private func installNativeMessagingHost(for browser: BrowserNativeMessagingBrowser) {
+    do {
+      let manifestURL = try BrowserNativeMessagingInstaller.install(browser: browser)
+      nativeMessagingStates = BrowserNativeMessagingInstaller.detectAll()
+      nativeMessagingMessage = String(
+        localized: "已为 \(browser.localizedDisplayName) 安装宿主清单：\(manifestURL.path)。请重新打开浏览器插件。"
+      )
+    } catch {
+      nativeMessagingStates = BrowserNativeMessagingInstaller.detectAll()
+      nativeMessagingMessage = error.localizedDescription
+    }
   }
 
   private enum BrowserExtensionKind {
@@ -131,4 +248,91 @@ struct BrowserExtensionConnectionView: View {
     guard let target else { return }
     NSWorkspace.shared.activateFileViewerSelecting([target])
   }
+
+  private func revealFirefoxReleaseDirectory() {
+    guard let directory = firefoxReleaseState.releaseDirectoryURL else { return }
+    NSWorkspace.shared.activateFileViewerSelecting([directory])
+  }
 }
+
+private struct FirefoxExtensionReleaseState {
+  let version: String?
+  let signedPackageURL: URL?
+  let unsignedPackageURL: URL?
+  let releaseDirectoryURL: URL?
+
+  var statusTitle: String {
+    if signedPackageURL != nil { return "签名包已就绪，等待 Firefox 验证" }
+    if unsignedPackageURL != nil { return "候选包已就绪，等待签名" }
+    return "尚未生成发布包"
+  }
+
+  var statusSymbol: String {
+    if signedPackageURL != nil { return "checkmark.seal.fill" }
+    if unsignedPackageURL != nil { return "clock.badge.exclamationmark" }
+    return "shippingbox"
+  }
+
+  var statusColor: Color {
+    if signedPackageURL != nil { return WorkbenchTheme.success }
+    if unsignedPackageURL != nil { return .orange }
+    return .secondary
+  }
+
+  var statusDescription: String {
+    if signedPackageURL != nil {
+      return "发布工具已确认包内正文与当前候选源码一致；Mozilla 证书信任由 Firefox 在安装时最终验证。验证通过后可长期安装并通过 HTTPS 更新清单升级。"
+    }
+    if unsignedPackageURL != nil {
+      return "已生成可复现的未签名验证包。Firefox 正式版会拒绝它，需要先完成 Mozilla 的 unlisted 签名。"
+    }
+    return "发布脚本会校验版本、扩展 ID、数据声明和 HTTPS 更新地址，再生成待签名候选包。"
+  }
+
+  static func detect() -> Self {
+    let bundledExtensionRoot = Bundle.main.resourceURL?
+      .appendingPathComponent("BrowserExtension", isDirectory: true)
+    let projectRoot = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+    let sourceExtensionRoot = projectRoot.appendingPathComponent("BrowserExtension", isDirectory: true)
+    let extensionRoots = [bundledExtensionRoot, sourceExtensionRoot].compactMap { $0 }
+    let version = extensionRoots.lazy.compactMap { root in
+      manifestVersion(at: root.appendingPathComponent("Firefox/manifest.json"))
+    }.first
+
+    let releaseDirectories = [
+      bundledExtensionRoot?.appendingPathComponent("Release", isDirectory: true),
+      projectRoot.appendingPathComponent("dist/browser-extension", isDirectory: true)
+    ].compactMap { $0 }
+    let existingReleaseDirectories = releaseDirectories.filter {
+      FileManager.default.fileExists(atPath: $0.path)
+    }
+    let signedName = version.map { "knowledge-capture-firefox-\($0).xpi" }
+    let unsignedName = version.map { "knowledge-capture-firefox-\($0)-unsigned.xpi" }
+
+    return Self(
+      version: version,
+      signedPackageURL: signedName.flatMap { name in
+        existingReleaseDirectories.lazy.map { $0.appendingPathComponent(name) }
+          .first { FileManager.default.fileExists(atPath: $0.path) }
+      },
+      unsignedPackageURL: unsignedName.flatMap { name in
+        existingReleaseDirectories.lazy.map { $0.appendingPathComponent(name) }
+          .first { FileManager.default.fileExists(atPath: $0.path) }
+      },
+      releaseDirectoryURL: existingReleaseDirectories.first
+    )
+  }
+
+  private static func manifestVersion(at url: URL) -> String? {
+    guard
+      let data = try? Data(contentsOf: url),
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { return nil }
+    return object["version"] as? String
+  }
+}
+#endif

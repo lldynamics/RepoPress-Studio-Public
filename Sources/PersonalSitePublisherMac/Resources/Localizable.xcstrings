@@ -1873,6 +1873,22 @@
         }
       }
     },
+    "Chrome/Edge 会优先生成自包含 MHTML 归档；Firefox 会在 24 MB 上限内将可读取的图片、样式和字体内联为离线 HTML，并报告未能内联的外部资源。应用暂时未连接时，插件会在自己的本地队列中保留待导入内容，恢复后自动重试。脚本不会作为检索文本执行。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chrome and Edge create a self-contained MHTML archive when possible. Firefox inlines readable images, styles, and fonts into offline HTML within a 24 MB limit and reports external resources that could not be inlined. When the app is temporarily unavailable, the extension keeps pending imports in its own local queue and retries automatically after reconnection. Scripts are never executed as searchable text."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chrome/Edge 会优先生成自包含 MHTML 归档；Firefox 会在 24 MB 上限内将可读取的图片、样式和字体内联为离线 HTML，并报告未能内联的外部资源。应用暂时未连接时，插件会在自己的本地队列中保留待导入内容，恢复后自动重试。脚本不会作为检索文本执行。"
+          }
+        }
+      }
+    },
     "Chrome/Edge 在扩展管理页启用开发者模式并加载插件文件夹；Firefox 打开 about:debugging#/runtime/this-firefox，选择“临时载入附加组件”，再选中插件文件夹里的 manifest.json。首次连接时，把上面的令牌粘贴到插件中。": {
       "localizations": {
         "en": {
@@ -1981,6 +1997,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Diff 摘要"
+          }
+        }
+      }
+    },
+    "Firefox 将通过原生宿主连接应用，不再直接访问本机 HTTP 端口。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Firefox connects through the native host instead of accessing the local HTTP port directly."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Firefox 将通过原生宿主连接应用，不再直接访问本机 HTTP 端口。"
           }
         }
       }
@@ -10449,6 +10481,22 @@
         }
       }
     },
+    "令牌只用于本机原生连接。不要粘贴到网页或发送给其他人。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This token is only for the local native connection. Do not paste it into a webpage or send it to anyone."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "令牌只用于本机原生连接。不要粘贴到网页或发送给其他人。"
+          }
+        }
+      }
+    },
     "令牌只用于本机回环接口。不要粘贴到网页或发送给其他人。": {
       "localizations": {
         "en": {
@@ -10525,6 +10573,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "优化当前文章 SVG 图片"
+          }
+        }
+      }
+    },
+    "传输": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transport"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "传输"
           }
         }
       }
@@ -13169,6 +13233,54 @@
         }
       }
     },
+    "原生连接使用当前用户专属 Unix Domain Socket。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native connection uses a Unix domain socket dedicated to the current user."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原生连接使用当前用户专属 Unix Domain Socket。"
+          }
+        }
+      }
+    },
+    "原生连接套接字权限设置失败。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not configure native connection socket permissions."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原生连接套接字权限设置失败。"
+          }
+        }
+      }
+    },
+    "原生连接路径被非套接字文件占用，已拒绝覆盖。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native connection path is occupied by a non-socket file and was not overwritten."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原生连接路径被非套接字文件占用，已拒绝覆盖。"
+          }
+        }
+      }
+    },
     "原稿保持不变，在目标站点创建一份可独立编辑的新草稿。": {
       "localizations": {
         "en": {
@@ -15713,6 +15825,22 @@
         }
       }
     },
+    "套接字": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Socket"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "套接字"
+          }
+        }
+      }
+    },
     "套用 AI 写作风格预设模板": {
       "localizations": {
         "en": {
@@ -15789,6 +15917,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "字段对比（相对来源）"
+          }
+        }
+      }
+    },
+    "安装操作只写入当前用户对应浏览器的 NativeMessagingHosts 目录，无需管理员权限。插件仍需连接令牌，原生宿主不能绕过资料库鉴权。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installation only writes to the selected browser's NativeMessagingHosts directory for the current user and does not require administrator privileges. The extension still needs a connection token, and the native host cannot bypass library authentication."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装操作只写入当前用户对应浏览器的 NativeMessagingHosts 目录，无需管理员权限。插件仍需连接令牌，原生宿主不能绕过资料库鉴权。"
+          }
+        }
+      }
+    },
+    "安装操作只写入当前用户的 Firefox NativeMessagingHosts 目录；无需管理员权限。Firefox 插件仍需连接令牌，原生宿主不能绕过资料库鉴权。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installation only writes to the current user's Firefox NativeMessagingHosts directory and does not require administrator privileges. The Firefox extension still needs a connection token, and the native host cannot bypass library authentication."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装操作只写入当前用户的 Firefox NativeMessagingHosts 目录；无需管理员权限。Firefox 插件仍需连接令牌，原生宿主不能绕过资料库鉴权。"
           }
         }
       }
@@ -15965,6 +16125,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "定时执行 Fetch 与差异检查；文章导入需要手动确认。"
+          }
+        }
+      }
+    },
+    "宿主清单存在，但可执行文件已移动或不可执行。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The host manifest exists, but its executable was moved or is not executable."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宿主清单存在，但可执行文件已移动或不可执行。"
           }
         }
       }
@@ -16669,6 +16845,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "尚未保存自定义指令"
+          }
+        }
+      }
+    },
+    "尚未安装 Firefox 原生连接。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Firefox native connection is not installed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未安装 Firefox 原生连接。"
+          }
+        }
+      }
+    },
+    "尚未安装原生连接。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Native connection is not installed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未安装原生连接。"
           }
         }
       }
@@ -18093,6 +18301,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "当前已选择的站点类型、仓库和发布方式会保留，可稍后在设置中继续修改。"
+          }
+        }
+      }
+    },
+    "当前应用包没有包含 Firefox 原生连接宿主，请重新构建或安装完整的直接分发版本。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This app bundle does not include the Firefox native connection host. Rebuild or install the complete direct-distribution version."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前应用包没有包含 Firefox 原生连接宿主，请重新构建或安装完整的直接分发版本。"
+          }
+        }
+      }
+    },
+    "当前应用包没有包含浏览器原生连接宿主，请重新构建或安装完整的直接分发版本。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This app bundle does not include the browser native connection host. Rebuild or install the complete direct-distribution version."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前应用包没有包含浏览器原生连接宿主，请重新构建或安装完整的直接分发版本。"
           }
         }
       }
@@ -22129,6 +22369,22 @@
         }
       }
     },
+    "无法限制本地套接字权限。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not restrict local socket permissions."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法限制本地套接字权限。"
+          }
+        }
+      }
+    },
     "日期": {
       "localizations": {
         "en": {
@@ -25213,6 +25469,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "测试 AI 连接"
+          }
+        }
+      }
+    },
+    "浏览器将通过原生宿主连接应用，不再直接访问本机 HTTP 端口。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The browser connects through the native host instead of accessing the local HTTP port directly."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浏览器将通过原生宿主连接应用，不再直接访问本机 HTTP 端口。"
           }
         }
       }
@@ -29693,6 +29965,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "连接仓库与部署平台，并将凭据安全保存在钥匙串。"
+          }
+        }
+      }
+    },
+    "连接令牌有效 30 天；过期或手动更换后，旧令牌会立即失效，插件需要重新配对。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection tokens are valid for 30 days. Expired or manually rotated tokens stop working immediately, and the extension must be paired again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接令牌有效 30 天；过期或手动更换后，旧令牌会立即失效，插件需要重新配对。"
           }
         }
       }
