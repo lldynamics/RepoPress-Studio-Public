@@ -374,6 +374,41 @@ public enum KnowledgeImportDestination: Hashable, Sendable {
   case folder(UUID)
 }
 
+public enum KnowledgeBrowserCaptureMode: String, Codable, Hashable, Sendable {
+  case cleanedArticle = "cleaned-article"
+  case fullPage = "full-page"
+  case selection = "selection"
+  case linkOnly = "link-only"
+}
+
+public struct KnowledgeBrowserConnectionTokenLease: Hashable, Sendable {
+  public static let defaultLifetime: TimeInterval = 30 * 24 * 60 * 60
+
+  public var token: String
+  public var expiresAt: Date
+
+  public init(
+    storedToken: String?,
+    storedExpiresAt: Date?,
+    now: Date,
+    lifetime: TimeInterval = Self.defaultLifetime,
+    generateToken: () -> String
+  ) {
+    if let storedToken, storedToken.count >= 32,
+       storedExpiresAt == nil || storedExpiresAt! > now {
+      token = storedToken
+      expiresAt = storedExpiresAt ?? now.addingTimeInterval(lifetime)
+    } else {
+      token = generateToken()
+      expiresAt = now.addingTimeInterval(lifetime)
+    }
+  }
+
+  public func isExpired(at date: Date) -> Bool {
+    date >= expiresAt
+  }
+}
+
 public struct KnowledgeBrowserCapture: Codable, Hashable, Sendable {
   public static let currentSchemaVersion = 1
 
@@ -389,6 +424,11 @@ public struct KnowledgeBrowserCapture: Codable, Hashable, Sendable {
   public var originalHTML: String?
   public var archiveFormat: String?
   public var archiveData: Data?
+  public var archiveEmbeddedResourceCount: Int?
+  public var archiveMissingResourceCount: Int?
+  public var archiveWasTruncated: Bool?
+  public var captureMode: KnowledgeBrowserCaptureMode?
+  public var allowsAIUse: Bool?
 
   public init(
     schemaVersion: Int = Self.currentSchemaVersion,
@@ -402,7 +442,12 @@ public struct KnowledgeBrowserCapture: Codable, Hashable, Sendable {
     contentText: String,
     originalHTML: String? = nil,
     archiveFormat: String? = nil,
-    archiveData: Data? = nil
+    archiveData: Data? = nil,
+    archiveEmbeddedResourceCount: Int? = nil,
+    archiveMissingResourceCount: Int? = nil,
+    archiveWasTruncated: Bool? = nil,
+    captureMode: KnowledgeBrowserCaptureMode? = nil,
+    allowsAIUse: Bool? = nil
   ) {
     self.schemaVersion = schemaVersion
     self.sourceURL = sourceURL
@@ -416,6 +461,78 @@ public struct KnowledgeBrowserCapture: Codable, Hashable, Sendable {
     self.originalHTML = originalHTML
     self.archiveFormat = archiveFormat
     self.archiveData = archiveData
+    self.archiveEmbeddedResourceCount = archiveEmbeddedResourceCount
+    self.archiveMissingResourceCount = archiveMissingResourceCount
+    self.archiveWasTruncated = archiveWasTruncated
+    self.captureMode = captureMode
+    self.allowsAIUse = allowsAIUse
+  }
+}
+
+public enum KnowledgeBrowserDuplicateResolution: String, Codable, Hashable, Sendable {
+  case saveNewVersion = "save-new-version"
+  case moveOnly = "move-only"
+  case keepCopy = "keep-copy"
+}
+
+public enum KnowledgeBrowserImportAction: String, Codable, Hashable, Sendable {
+  case inserted
+  case updated
+  case existing
+  case moved
+  case copied
+}
+
+public struct KnowledgeBrowserDuplicateConflict: Hashable, Sendable {
+  public var document: KnowledgeDocument
+  public var folder: KnowledgeFolder?
+  public var incomingHasChanges: Bool
+
+  public init(
+    document: KnowledgeDocument,
+    folder: KnowledgeFolder?,
+    incomingHasChanges: Bool
+  ) {
+    self.document = document
+    self.folder = folder
+    self.incomingHasChanges = incomingHasChanges
+  }
+}
+
+public enum KnowledgeBrowserImportOutcome: Hashable, Sendable {
+  case requiresDuplicateResolution(KnowledgeBrowserDuplicateConflict)
+  case saved(result: KnowledgeImportResult, action: KnowledgeBrowserImportAction)
+}
+
+public enum KnowledgeBrowserFolderSuggestionReason: String, Codable, Hashable, Sendable {
+  case sourceDomain = "source-domain"
+  case author
+  case tag
+}
+
+public struct KnowledgeBrowserFolderSuggestion: Hashable, Sendable {
+  public var folder: KnowledgeFolder
+  public var score: Double
+  public var reasons: [KnowledgeBrowserFolderSuggestionReason]
+
+  public init(
+    folder: KnowledgeFolder,
+    score: Double,
+    reasons: [KnowledgeBrowserFolderSuggestionReason]
+  ) {
+    self.folder = folder
+    self.score = score
+    self.reasons = reasons
+  }
+}
+
+public struct KnowledgeBrowserOrganizationSuggestions: Hashable, Sendable {
+  public var folders: [KnowledgeBrowserFolderSuggestion]
+  public var tags: [String]
+
+  public init(folders: [KnowledgeBrowserFolderSuggestion], tags: [String]) {
+    self.folders = folders
+    self.tags = tags
   }
 }
 
@@ -1023,11 +1140,18 @@ public struct KnowledgeImportResult: Hashable, Sendable {
   public var insertedCount: Int
   public var updatedCount: Int
   public var skippedCount: Int
+  public var documentIDs: [UUID]
 
-  public init(insertedCount: Int, updatedCount: Int, skippedCount: Int) {
+  public init(
+    insertedCount: Int,
+    updatedCount: Int,
+    skippedCount: Int,
+    documentIDs: [UUID] = []
+  ) {
     self.insertedCount = insertedCount
     self.updatedCount = updatedCount
     self.skippedCount = skippedCount
+    self.documentIDs = documentIDs
   }
 }
 

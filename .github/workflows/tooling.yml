@@ -45,6 +45,12 @@ jobs:
         run: |
           defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"
           defaults write NSGlobalDomain AppleLocale "zh_CN"
+      - name: Install pinned Firefox extension tooling
+        run: npm install --global web-ext@10.5.0
+      - name: Test browser extension compatibility
+        run: |
+          node script/test_browser_extension_compatibility.mjs
+          ./script/test_firefox_extension_release.sh
       - name: Run release-tooling self-tests
         run: ./script/check_release_gate.sh --tooling --result-json .build/tooling-gate-result.json
       - name: Upload unified result

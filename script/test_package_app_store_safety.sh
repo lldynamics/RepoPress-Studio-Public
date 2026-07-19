@@ -26,4 +26,6 @@ if grep -Fq 'rm -rf "$OUTPUT_DIR"' "$PACKAGE_SCRIPT"; then
   fail "package script still removes the entire caller-provided output directory"
 fi
 
+python3 "$ROOT_DIR/script/test_resolve_app_store_entitlements.py"
+
 echo "app store package safety test: passed"

@@ -27,7 +27,14 @@ struct PersonalSitePublisherMacApp: App {
     _store = StateObject(
       wrappedValue: workbenchStore
     )
-    let browserBridge = KnowledgeBrowserBridge(knowledge: workbenchStore.knowledge)
+    let browserBridge = KnowledgeBrowserBridge(
+      knowledge: workbenchStore.knowledge,
+      onOpenDocument: { _ in
+        workbenchStore.selectSection(.library)
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first(where: \.canBecomeMain)?.makeKeyAndOrderFront(nil)
+      }
+    )
     _browserBridge = StateObject(wrappedValue: browserBridge)
     appDelegate.workbenchStore = workbenchStore
     appDelegate.browserBridge = browserBridge
@@ -41,7 +48,9 @@ struct PersonalSitePublisherMacApp: App {
         .tint(WorkbenchTheme.navigationSelection)
         .task {
           storeKitProEntitlementCoordinator.start(store: store)
+#if !APP_STORE_BUILD
           browserBridge.start()
+#endif
         }
     }
     .windowToolbarStyle(.unified(showsTitle: false))

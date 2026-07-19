@@ -143,6 +143,22 @@ public final class KnowledgeStore: ObservableObject {
     loadDocumentInsights(documentID: documentID)
   }
 
+  @discardableResult
+  public func revealDocument(_ documentID: UUID) -> Bool {
+    guard documents.contains(where: { $0.id == documentID }) else {
+      statusMessage = "资料库中找不到要打开的资料。"
+      return false
+    }
+    searchTask?.cancel()
+    searchText = ""
+    searchResults = []
+    isSearching = false
+    folderScope = .all
+    selectDocument(documentID)
+    statusMessage = "已从浏览器打开保存的资料。"
+    return true
+  }
+
   public func selectSearchResult(_ result: KnowledgeSearchResult) {
     selectedSearchResult = result
     selectedResultQuery = searchText
@@ -647,39 +663,107 @@ public final class KnowledgeStore: ObservableObject {
   public func importBrowserCapture(
     _ capture: KnowledgeBrowserCapture,
     folderID: UUID?,
-    newFolderName: String?
-  ) async throws -> KnowledgeImportResult {
+    newFolderName: String?,
+    duplicateResolution: KnowledgeBrowserDuplicateResolution? = nil
+  ) async throws -> KnowledgeBrowserImportOutcome {
     isBusy = true
     statusMessage = "正在保存浏览器页面并建立索引…"
     defer { isBusy = false }
     do {
-      let destination: KnowledgeImportDestination
-      if let requestedName = newFolderName?.trimmedForPublishing.nilIfEmpty {
-        if let existing = try service.folders().first(where: {
-          $0.name.compare(requestedName, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
-        }) {
-          destination = .folder(existing.id)
-        } else {
-          let folder = try service.createFolder(name: requestedName)
-          destination = .folder(folder.id)
+      var preview = try await service.makeBrowserImportPreview(capture: capture)
+      guard var candidate = preview.candidates.first else {
+        throw KnowledgeLibraryError.invalidBrowserCapture("浏览器页面没有可保存的内容。")
+      }
+      let currentDocuments = try service.documents()
+      let currentFolders = try service.folders()
+      let existingDocument = candidate.existingDocumentID.flatMap { documentID in
+        currentDocuments.first(where: { $0.id == documentID })
+      }
+      let hasSameURL = existingDocument?.sourceURL?.absoluteString == candidate.sourceURL?.absoluteString
+      if let existingDocument, hasSameURL, duplicateResolution == nil {
+        let existingFolder = existingDocument.folderID.flatMap { existingFolderID in
+          currentFolders.first(where: { $0.id == existingFolderID })
         }
-      } else if let folderID {
-        destination = .folder(folderID)
-      } else {
-        destination = .unfiled
+        statusMessage = "检测到同网址资料，请选择处理方式。"
+        lastError = nil
+        return .requiresDuplicateResolution(KnowledgeBrowserDuplicateConflict(
+          document: existingDocument,
+          folder: existingFolder,
+          incomingHasChanges: candidate.disposition == .update
+        ))
       }
 
-      let preview = try await service.makeBrowserImportPreview(capture: capture)
-      let result = try await service.commit(preview, destination: destination)
-      await reload()
-      statusMessage = "浏览器页面已保存到资料库。"
+      let destination = try browserImportDestination(
+        folderID: folderID,
+        newFolderName: newFolderName
+      )
+      let result: KnowledgeImportResult
+      let action: KnowledgeBrowserImportAction
+      if let existingDocument, hasSameURL, duplicateResolution == .moveOnly {
+        try service.setFolder(destination.folderID, documentID: existingDocument.id)
+        result = KnowledgeImportResult(
+          insertedCount: 0,
+          updatedCount: 0,
+          skippedCount: 0,
+          documentIDs: [existingDocument.id]
+        )
+        action = .moved
+      } else {
+        if let existingDocument, hasSameURL, duplicateResolution == .saveNewVersion {
+          candidate.existingDocumentID = existingDocument.id
+          candidate.disposition = .update
+        } else if hasSameURL, duplicateResolution == .keepCopy {
+          candidate.existingDocumentID = nil
+          candidate.disposition = .new
+          candidate.title = "\(candidate.title)（副本）"
+        }
+        preview.candidates = [candidate]
+        result = try await service.commit(preview, destination: destination.importDestination)
+        if duplicateResolution == .keepCopy, hasSameURL {
+          action = .copied
+        } else if result.insertedCount > 0 {
+          action = .inserted
+        } else if result.updatedCount > 0 {
+          action = .updated
+        } else {
+          action = .existing
+        }
+      }
+      if let allowsAIUse = capture.allowsAIUse {
+        for documentID in result.documentIDs {
+          try service.setAllowsAIUse(allowsAIUse, documentID: documentID)
+        }
+      }
+      await reload(selecting: result.documentIDs.first)
+      statusMessage = action == .moved
+        ? "已将原资料移到选定分类，没有创建新版本。"
+        : "浏览器页面已保存到资料库。"
       lastError = nil
-      return result
+      return .saved(result: result, action: action)
     } catch {
       lastError = error.localizedDescription
       statusMessage = "浏览器页面保存失败：\(error.localizedDescription)"
       throw error
     }
+  }
+
+  private func browserImportDestination(
+    folderID: UUID?,
+    newFolderName: String?
+  ) throws -> (importDestination: KnowledgeImportDestination, folderID: UUID?) {
+    if let requestedName = newFolderName?.trimmedForPublishing.nilIfEmpty {
+      if let existing = try service.folders().first(where: {
+        $0.name.compare(requestedName, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+      }) {
+        return (.folder(existing.id), existing.id)
+      }
+      let folder = try service.createFolder(name: requestedName)
+      return (.folder(folder.id), folder.id)
+    }
+    if let folderID {
+      return (.folder(folderID), folderID)
+    }
+    return (.unfiled, nil)
   }
 
   public func setAllowsAIUse(_ allowsAIUse: Bool, documentID: UUID) {

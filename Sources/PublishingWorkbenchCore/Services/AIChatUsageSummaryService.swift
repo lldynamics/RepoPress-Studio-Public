@@ -30,16 +30,24 @@ public struct AIChatUsageSummary: Equatable, Sendable {
 
   public var tokenDisplayText: String {
     guard hasUsage else {
-      return "暂无 Token 用量"
+      return CoreL10n.text("暂无 Token 用量")
     }
-    return "\(totalTokens) tokens · 输入 \(promptTokens) · 输出 \(completionTokens)"
+    return CoreL10n.format(
+      "%d tokens · 输入 %d · 输出 %d",
+      totalTokens,
+      promptTokens,
+      completionTokens
+    )
   }
 
   public var costDisplayText: String {
     guard let estimatedCostUSD else {
       return pricingNote
     }
-    return "估算费用 \(Self.currencyFormatter.string(from: estimatedCostUSD as NSDecimalNumber) ?? "$0.00")"
+    return CoreL10n.format(
+      "估算费用 %@",
+      Self.currencyFormatter.string(from: estimatedCostUSD as NSDecimalNumber) ?? "$0.00"
+    )
   }
 
   private static let currencyFormatter: NumberFormatter = {
@@ -100,12 +108,12 @@ public enum AIChatUsageSummaryService {
 
   private static func pricingNote(for config: AIProviderConfig, hasUsage: Bool) -> String {
     guard hasUsage else {
-      return "等待模型返回 usage 后统计"
+      return CoreL10n.text("等待模型返回 usage 后统计")
     }
     if config.preset == .local {
-      return "本地模型按 0 美元估算"
+      return CoreL10n.text("本地模型按 0 美元估算")
     }
-    return "费用需按当前服务商和模型价格确认"
+    return CoreL10n.text("费用需按当前服务商和模型价格确认")
   }
 }
 

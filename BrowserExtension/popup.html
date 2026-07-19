@@ -25,8 +25,52 @@
         <p class="hint">令牌只发送到本机 127.0.0.1。</p>
       </section>
 
+      <section id="session-panel" class="session-panel" hidden aria-labelledby="session-title">
+        <div>
+          <strong id="session-title">已连接本机资料库</strong>
+          <p id="token-expiry" class="hint">正在读取令牌有效期…</p>
+        </div>
+        <div class="session-actions">
+          <button id="disconnect" class="secondary" type="button">断开并清除令牌</button>
+          <button id="re-pair" class="text-button" type="button">重新配对</button>
+        </div>
+      </section>
+
       <section id="save-panel" hidden>
-        <label for="folder">资料库分类</label>
+        <fieldset class="capture-mode-fieldset">
+          <legend>采集模式</legend>
+          <div class="capture-mode-grid">
+            <label class="mode-card">
+              <input type="radio" name="capture-mode" value="cleaned-article" checked>
+              <span><strong>净化正文</strong><small>去掉导航、广告和交互噪声</small></span>
+            </label>
+            <label class="mode-card">
+              <input type="radio" name="capture-mode" value="full-page">
+              <span><strong>完整网页</strong><small>正文与离线页面归档一起保存</small></span>
+            </label>
+            <label class="mode-card">
+              <input type="radio" name="capture-mode" value="selection">
+              <span><strong>选中文字</strong><small>只保存当前页面中的选择内容</small></span>
+            </label>
+            <label class="mode-card">
+              <input type="radio" name="capture-mode" value="link-only">
+              <span><strong>仅链接</strong><small>保存标题、来源和可检索链接</small></span>
+            </label>
+          </div>
+        </fieldset>
+
+        <button id="prepare-preview" class="primary">生成保存预览</button>
+        <button id="batch-save" class="secondary" type="button" aria-describedby="batch-hint" aria-keyshortcuts="Control+Shift+B Meta+Shift+B" disabled>批量保存已选择标签页</button>
+        <p id="batch-hint" class="hint">在浏览器标签栏按住 Command/Ctrl 选择多个标签页。</p>
+      </section>
+
+      <section id="organization-panel" class="organization-panel" hidden aria-labelledby="organization-title">
+        <div class="organization-heading">
+          <label id="organization-title" for="folder">资料库分类</label>
+          <button id="favorite-folder" class="text-button favorite-button" type="button" aria-pressed="false">☆ 收藏</button>
+        </div>
+        <input id="folder-search" type="search" placeholder="搜索分类" autocomplete="off">
+        <div id="folder-shortcuts" class="folder-shortcuts" hidden></div>
         <select id="folder">
           <option value="">未分类</option>
         </select>
@@ -34,16 +78,109 @@
         <label for="new-folder">或新建分类</label>
         <input id="new-folder" maxlength="80" placeholder="例如：产品研究">
 
-        <label class="check-row">
-          <input id="include-archive" type="checkbox" checked>
-          <span id="archive-label">保存页面归档</span>
+        <label class="check-row domain-memory-row">
+          <input id="remember-domain" type="checkbox">
+          <span id="remember-domain-label">记住此网站的分类选择</span>
         </label>
-        <p id="archive-hint" class="hint archive-hint"></p>
 
-        <button id="save" class="primary">保存当前页面</button>
+        <div id="organization-suggestions" class="organization-suggestions" hidden>
+          <strong>资料库建议</strong>
+          <p class="hint">依据相同来源域名、作者和标签生成；点击后才会应用。</p>
+          <div id="folder-suggestions" class="suggestion-row"></div>
+          <div id="tag-suggestions" class="suggestion-row"></div>
+        </div>
       </section>
 
-      <p id="status" role="status" aria-live="polite"></p>
+      <section id="preview-panel" class="preview-panel" hidden aria-labelledby="preview-title">
+        <div class="preview-heading">
+          <div>
+            <strong id="preview-title">保存前预览</strong>
+            <p id="preview-mode" class="hint"></p>
+          </div>
+          <button id="edit-capture" class="text-button" type="button">重新采集</button>
+        </div>
+
+        <label for="capture-title">标题</label>
+        <input id="capture-title" maxlength="300">
+
+        <div class="metadata-grid">
+          <div>
+            <label for="capture-authors">作者</label>
+            <input id="capture-authors" maxlength="1000" placeholder="多位作者用逗号分隔">
+          </div>
+          <div>
+            <label for="capture-tags">标签</label>
+            <input id="capture-tags" maxlength="1200" placeholder="多个标签用逗号分隔">
+          </div>
+        </div>
+
+        <label class="check-row">
+          <input id="capture-ai" type="checkbox" checked>
+          <span>允许 AI 在写作和对话时检索此资料</span>
+        </label>
+
+        <div class="preview-summary" aria-live="polite">
+          <span id="preview-size"></span>
+          <span id="preview-archive"></span>
+        </div>
+
+        <label for="capture-preview">正文预览</label>
+        <textarea id="capture-preview" readonly rows="8"></textarea>
+
+        <button id="save" class="primary" aria-keyshortcuts="Control+Enter Meta+Enter">确认保存</button>
+      </section>
+
+      <section id="receipt-panel" class="receipt-panel" hidden aria-live="polite">
+        <div class="receipt-heading">
+          <span class="receipt-check" aria-hidden="true">✓</span>
+          <div>
+            <strong>已保存到长期参考</strong>
+            <p id="receipt-title" class="hint"></p>
+          </div>
+        </div>
+        <dl class="receipt-details">
+          <div><dt>分类</dt><dd id="receipt-folder"></dd></div>
+          <div><dt>文件大小</dt><dd id="receipt-size"></dd></div>
+          <div><dt>归档类型</dt><dd id="receipt-archive"></dd></div>
+          <div><dt>索引状态</dt><dd id="receipt-index"></dd></div>
+          <div><dt>AI 权限</dt><dd id="receipt-ai"></dd></div>
+        </dl>
+        <button id="open-document" class="secondary">在资料库中打开</button>
+      </section>
+
+      <section id="duplicate-panel" class="duplicate-panel" hidden aria-labelledby="duplicate-title">
+        <div>
+          <strong id="duplicate-title">该网址已在资料库中</strong>
+          <p id="duplicate-message" class="hint"></p>
+        </div>
+        <dl class="receipt-details duplicate-details">
+          <div><dt>现有资料</dt><dd id="duplicate-document"></dd></div>
+          <div><dt>当前分类</dt><dd id="duplicate-folder"></dd></div>
+          <div><dt>文件大小</dt><dd id="duplicate-size"></dd></div>
+          <div><dt>上次更新</dt><dd id="duplicate-updated"></dd></div>
+          <div><dt>本次目标</dt><dd id="duplicate-target"></dd></div>
+        </dl>
+        <div class="duplicate-actions">
+          <button id="duplicate-new-version" class="primary compact-primary">保存新版本</button>
+          <button id="duplicate-move" class="secondary">仅移动分类</button>
+          <button id="duplicate-copy" class="secondary">保留副本</button>
+          <button id="duplicate-cancel" class="secondary">取消</button>
+        </div>
+      </section>
+
+      <section id="queue-panel" class="queue-panel" hidden aria-labelledby="queue-title">
+        <div class="queue-heading">
+          <strong id="queue-title">待保存队列</strong>
+          <span id="queue-count" class="queue-count"></span>
+        </div>
+        <p id="queue-summary" class="hint"></p>
+        <div class="queue-actions">
+          <button id="retry-queue" class="secondary">立即重试</button>
+          <button id="discard-queue" class="quiet-danger">清空队列</button>
+        </div>
+      </section>
+
+      <p id="status" role="status" aria-live="polite" aria-atomic="true"></p>
     </main>
     <script src="popup.js"></script>
   </body>

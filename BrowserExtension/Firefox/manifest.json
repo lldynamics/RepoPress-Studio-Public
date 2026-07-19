@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "个人网站发布控制台 · 资料采集",
   "description": "把当前网页正文和 HTML 归档保存到本机资料库分类。",
-  "version": "0.2.0",
+  "version": "0.12.0",
   "action": {
     "default_title": "保存到资料库",
     "default_popup": "popup.html"
@@ -14,16 +14,49 @@
   },
   "permissions": [
     "activeTab",
+    "alarms",
+    "menus",
+    "nativeMessaging",
     "scripting",
-    "storage"
+    "storage",
+    "unlimitedStorage"
   ],
-  "host_permissions": [
-    "http://127.0.0.1:47831/*"
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
   ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+K",
+        "mac": "Command+Shift+K"
+      },
+      "description": "打开资料采集面板"
+    },
+    "quick-save-cleaned": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "快速保存当前网页净化正文"
+    },
+    "quick-save-selection": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+U",
+        "mac": "Command+Shift+U"
+      },
+      "description": "快速保存当前选中文字"
+    }
+  },
   "browser_specific_settings": {
     "gecko": {
       "id": "knowledge-capture@jinfang.local",
-      "strict_min_version": "121.0"
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
     }
   }
 }

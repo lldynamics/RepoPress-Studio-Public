@@ -1550,6 +1550,27 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
       disposition = .new
     }
     var warnings = ["页面由浏览器插件在 \(capture.capturedAt.formatted(date: .abbreviated, time: .shortened)) 保存；正文和归档均留在本机。"]
+    switch capture.captureMode {
+    case .cleanedArticle:
+      warnings.append("本次使用净化正文模式，只保存适合阅读与检索的正文。")
+    case .fullPage:
+      warnings.append("本次使用完整网页模式，同时保存可检索正文和页面归档。")
+    case .selection:
+      warnings.append("本次仅保存用户在网页中选中的文字。")
+    case .linkOnly:
+      warnings.append("本次仅保存页面标题和原始链接。")
+    case nil:
+      break
+    }
+    if archiveFormat == "html", let embeddedCount = capture.archiveEmbeddedResourceCount {
+      warnings.append("离线 HTML 已内联 \(embeddedCount) 个图片、样式或字体资源。")
+    }
+    if let missingCount = capture.archiveMissingResourceCount, missingCount > 0 {
+      warnings.append("有 \(missingCount) 个外部资源因跨域、网络或大小限制未能内联；离线外观可能不完整。")
+    }
+    if capture.archiveWasTruncated == true {
+      warnings.append("网页归档已达到 24 MB 上限，已保留可检索正文和可用的精简 HTML。")
+    }
     if let sanitizedHTML {
       warnings.append("保存前已在本机重新净化网页正文，原始页面归档保持不变。")
       if sanitizedHTML.removedNoiseBlockCount > 0 {
@@ -1597,6 +1618,7 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     var insertedCount = 0
     var updatedCount = 0
     var skippedCount = 0
+    var documentIDs: [UUID] = []
 
     for candidate in preview.candidates {
       try Task.checkCancellation()
@@ -1607,6 +1629,9 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
         _ = try persistOriginalData(candidate)
         _ = try persistNormalizedText(candidate)
         if let documentID = candidate.existingDocumentID {
+          if !documentIDs.contains(documentID) {
+            documentIDs.append(documentID)
+          }
           switch destination {
           case .preserveExisting:
             break
@@ -1622,6 +1647,9 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
 
       let existingDocument = try candidate.existingDocumentID.flatMap { try database.document(id: $0) }
       let documentID = existingDocument?.id ?? UUID()
+      if !documentIDs.contains(documentID) {
+        documentIDs.append(documentID)
+      }
       let revisionID = UUID()
       let now = Date()
       let originalReference = try persistOriginalData(candidate)
@@ -1698,7 +1726,8 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     return KnowledgeImportResult(
       insertedCount: insertedCount,
       updatedCount: updatedCount,
-      skippedCount: skippedCount
+      skippedCount: skippedCount,
+      documentIDs: documentIDs
     )
   }
 

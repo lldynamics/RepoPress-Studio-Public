@@ -64,7 +64,7 @@ if [[ ! -d "$APP_BUNDLE" ]]; then
   if [[ "${APP_STORE_BUILD_METADATA_SKIP_BUILD:-0}" == "1" ]]; then
     fail "app bundle is missing: ${APP_BUNDLE#$ROOT_DIR/}"
   fi
-  bash "$ROOT_DIR/script/build_and_run.sh" --package-only --release >/dev/null
+  bash "$ROOT_DIR/script/build_and_run.sh" --package-only --app-store >/dev/null
 fi
 
 [[ -d "$APP_BUNDLE" ]] || fail "app bundle is missing: ${APP_BUNDLE#$ROOT_DIR/}"

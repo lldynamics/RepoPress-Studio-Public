@@ -71,14 +71,96 @@ public struct KnowledgeSmartCollectionService: Sendable {
   }
 
   public func sourceDomain(for document: KnowledgeDocument) -> String? {
-    guard let url = document.sourceURL,
-          !url.isFileURL,
+    document.sourceURL.flatMap { sourceDomain(for: $0) }
+  }
+
+  public func sourceDomain(for url: URL) -> String? {
+    guard !url.isFileURL,
           var host = url.host(percentEncoded: false)?.lowercased(),
           !host.isEmpty else { return nil }
     if host.hasPrefix("www.") {
       host.removeFirst(4)
     }
     return host
+  }
+
+  public func browserOrganizationSuggestions(
+    sourceURL: URL,
+    authors: [String],
+    tags: [String],
+    documents: [KnowledgeDocument],
+    folders: [KnowledgeFolder],
+    limit: Int = 3
+  ) -> KnowledgeBrowserOrganizationSuggestions {
+    guard limit > 0 else {
+      return KnowledgeBrowserOrganizationSuggestions(folders: [], tags: [])
+    }
+    let incomingDomain = sourceDomain(for: sourceURL)
+    let incomingAuthors = Set(authors.map(normalized).filter { !$0.isEmpty })
+    let incomingTags = Set(tags.map(normalized).filter { !$0.isEmpty })
+    let foldersByID = Dictionary(uniqueKeysWithValues: folders.map { ($0.id, $0) })
+    var folderScores: [UUID: Double] = [:]
+    var folderReasons: [UUID: Set<KnowledgeBrowserFolderSuggestionReason>] = [:]
+    var tagScores: [String: (displayValue: String, score: Double)] = [:]
+
+    for document in documents {
+      guard let folderID = document.folderID, foldersByID[folderID] != nil else { continue }
+      var documentScore = 0.0
+      var reasons = Set<KnowledgeBrowserFolderSuggestionReason>()
+      if let incomingDomain,
+         matches(document, rule: .sourceDomain(incomingDomain)) {
+        documentScore += 6
+        reasons.insert(.sourceDomain)
+      }
+      let sharedAuthors = document.authors.filter { incomingAuthors.contains(normalized($0)) }
+      if !sharedAuthors.isEmpty {
+        documentScore += 4 + min(Double(sharedAuthors.count - 1), 2)
+        reasons.insert(.author)
+      }
+      let sharedTags = document.tags.filter { incomingTags.contains(normalized($0)) }
+      if !sharedTags.isEmpty {
+        documentScore += 2 + min(Double(sharedTags.count - 1), 3)
+        reasons.insert(.tag)
+      }
+      guard documentScore > 0 else { continue }
+      folderScores[folderID, default: 0] += documentScore
+      folderReasons[folderID, default: []].formUnion(reasons)
+      for tag in document.tags {
+        let displayValue = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = normalized(displayValue)
+        guard !key.isEmpty, !incomingTags.contains(key) else { continue }
+        let current = tagScores[key] ?? (displayValue, 0)
+        tagScores[key] = (current.displayValue, current.score + documentScore)
+      }
+    }
+
+    let folderSuggestions = folderScores.compactMap { folderID, score in
+      foldersByID[folderID].map {
+        KnowledgeBrowserFolderSuggestion(
+          folder: $0,
+          score: score,
+          reasons: Array(folderReasons[folderID] ?? []).sorted { $0.rawValue < $1.rawValue }
+        )
+      }
+    }
+    .sorted {
+      if $0.score != $1.score { return $0.score > $1.score }
+      return $0.folder.name.localizedStandardCompare($1.folder.name) == .orderedAscending
+    }
+    .prefix(limit)
+
+    let suggestedTags = tagScores.values
+      .sorted {
+        if $0.score != $1.score { return $0.score > $1.score }
+        return $0.displayValue.localizedStandardCompare($1.displayValue) == .orderedAscending
+      }
+      .prefix(8)
+      .map(\.displayValue)
+
+    return KnowledgeBrowserOrganizationSuggestions(
+      folders: Array(folderSuggestions),
+      tags: suggestedTags
+    )
   }
 
   private func countedCollections(

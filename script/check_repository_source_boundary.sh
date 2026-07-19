@@ -40,6 +40,7 @@ critical_paths=(
   .github
   APP_STORE_CHECKLIST.md
   docs/release-evidence
+  docs/app-store
   docs/app-store-screenshots
 )
 

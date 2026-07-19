@@ -14,7 +14,7 @@ public enum AIPublishingChatMessageCompositionService {
     }
 
     let names = imageAttachments.map(\.filename).joined(separator: ", ")
-    let attachmentLine = "已附加图片：\(names)"
+    let attachmentLine = CoreL10n.format("已附加图片：%@", names)
     let trimmedText = text.trimmedForPublishing
     return trimmedText.isEmpty ? attachmentLine : "\(trimmedText)\n\n\(attachmentLine)"
   }
@@ -46,21 +46,21 @@ public enum AIPublishingChatTranscriptService {
     let resolvedModelSummary = modelSummary?.nilIfEmpty
 
     var metadataLines = [
-      "- 对话：\(resolvedConversationTitle)",
-      "- 文章：\(draft.title.nilIfEmpty ?? "未命名文章")",
-      "- Slug：\(draft.slug.nilIfEmpty ?? "未设置")",
-      "- 上下文模式：\(contextMode.displayName)",
-      "- 上下文摘要：\(resolvedContextSummary)",
+      CoreL10n.format("- 对话：%@", resolvedConversationTitle),
+      CoreL10n.format("- 文章：%@", draft.title.nilIfEmpty ?? CoreL10n.text("未命名文章")),
+      CoreL10n.format("- Slug：%@", draft.slug.nilIfEmpty ?? CoreL10n.text("未设置")),
+      CoreL10n.format("- 上下文模式：%@", contextMode.displayName),
+      CoreL10n.format("- 上下文摘要：%@", resolvedContextSummary),
     ]
     if let resolvedModelSummary {
-      metadataLines.append("- 模型：\(resolvedModelSummary)")
+      metadataLines.append(CoreL10n.format("- 模型：%@", resolvedModelSummary))
     }
-    metadataLines.append("- 导出时间：\(timestamp(exportedAt))")
-    metadataLines.append("- 消息数：\(trimmedMessages.count)")
+    metadataLines.append(CoreL10n.format("- 导出时间：%@", timestamp(exportedAt)))
+    metadataLines.append(CoreL10n.format("- 消息数：%d", trimmedMessages.count))
 
     var sections: [String] = [
       """
-      # AI 对话记录
+      \(CoreL10n.text("# AI 对话记录"))
 
       \(metadataLines.joined(separator: "\n"))
       """,
@@ -78,10 +78,10 @@ public enum AIPublishingChatTranscriptService {
     if message.role == .assistant {
       var metadata: [String] = []
       if let model = message.model?.nilIfEmpty {
-        metadata.append("模型：\(model)")
+        metadata.append(CoreL10n.format("模型：%@", model))
       }
       if let tokenText = message.tokenUsage?.displayText.nilIfEmpty {
-        metadata.append("Token：\(tokenText)")
+        metadata.append(CoreL10n.format("Token：%@", tokenText))
       }
       if !metadata.isEmpty {
         lines.append(metadata.joined(separator: " · "))
@@ -94,10 +94,10 @@ public enum AIPublishingChatTranscriptService {
     }
 
     if !message.imageAttachments.isEmpty {
-      lines.append("图片附件：")
+      lines.append(CoreL10n.text("图片附件："))
       lines.append(
         contentsOf: message.imageAttachments.map {
-          "- \($0.filename)（\($0.mimeType)，\($0.data.count) bytes）"
+          CoreL10n.format("- %@（%@，%d bytes）", $0.filename, $0.mimeType, $0.data.count)
         }
       )
     }

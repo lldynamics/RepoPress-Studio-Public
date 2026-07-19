@@ -3,10 +3,14 @@ import SwiftUI
 
 struct KnowledgeSourceListColumn: View {
   @ObservedObject var knowledge: KnowledgeStore
+#if !APP_STORE_BUILD
   @EnvironmentObject private var browserBridge: KnowledgeBrowserBridge
+#endif
   @State private var searchText = ""
   @State private var isImportPresented = false
+#if !APP_STORE_BUILD
   @State private var isBrowserExtensionPresented = false
+#endif
   @State private var folderEditorMode: FolderEditorMode = .create
   @State private var folderName = ""
   @State private var isFolderEditorPresented = false
@@ -53,10 +57,12 @@ struct KnowledgeSourceListColumn: View {
     .sheet(isPresented: $isImportPresented) {
       KnowledgeImportAssistantView(knowledge: knowledge)
     }
+#if !APP_STORE_BUILD
     .sheet(isPresented: $isBrowserExtensionPresented) {
       BrowserExtensionConnectionView()
         .environmentObject(browserBridge)
     }
+#endif
     .sheet(item: $restorePreview) { preview in
       KnowledgeLibraryRestorePreviewView(knowledge: knowledge, preview: preview)
     }
@@ -171,12 +177,14 @@ struct KnowledgeSourceListColumn: View {
       }
     } actions: {
       Menu {
+#if !APP_STORE_BUILD
         Button {
           isBrowserExtensionPresented = true
         } label: {
           Label("连接浏览器插件", systemImage: "puzzlepiece.extension")
         }
         Divider()
+#endif
         Button {
           isHealthPresented = true
         } label: {

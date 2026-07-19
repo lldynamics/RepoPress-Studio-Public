@@ -11,13 +11,13 @@ public enum AIPublishingMetadataField: String, CaseIterable, Codable, Identifiab
   public var displayName: String {
     switch self {
     case .title:
-      return "标题"
+      return CoreL10n.text("标题")
     case .slug:
-      return "Slug"
+      return CoreL10n.text("Slug")
     case .summary:
-      return "摘要"
+      return CoreL10n.text("摘要")
     case .tags:
-      return "Tags"
+      return CoreL10n.text("Tags")
     }
   }
 }
