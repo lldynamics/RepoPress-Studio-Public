@@ -14,6 +14,8 @@ struct ContentHealthDetailView: View {
   @State private var isHealthSnapshotRefreshing = false
   @State private var healthSnapshotRequestID = UUID()
   @State private var aiFixResultPreview: ContentHealthAIFixResultPreview?
+  @State private var selectedHealthDraftID: UUID?
+  @State private var articlePresentation: ContentHealthArticlePresentation?
 
   init(store: WorkbenchStore, filter: ContentHealthContextFilter) {
     self.store = store
@@ -44,6 +46,12 @@ struct ContentHealthDetailView: View {
         refreshContentHealthSnapshotIfNeeded()
       }
     }
+    .onChange(of: issueScope) { _, _ in
+      rebuildArticlePresentation()
+    }
+    .onChange(of: severityFilter) { _, _ in
+      rebuildArticlePresentation()
+    }
     .onDisappear {
       healthSnapshotTask?.cancel()
       healthSnapshotTask = nil
@@ -56,16 +64,20 @@ struct ContentHealthDetailView: View {
 
   @ViewBuilder
   private var detailContent: some View {
-    ScrollView(.vertical, showsIndicators: true) {
-      VStack(alignment: .leading, spacing: 16) {
-        pageModePicker
-        if pageMode == .maintenance {
-          SiteMaintenanceDetailView(store: store, isEmbedded: true)
-        } else {
-          healthSnapshotContent
+    GeometryReader { geometry in
+      ScrollView(.vertical, showsIndicators: true) {
+        VStack(alignment: .leading, spacing: 16) {
+          pageModePicker
+          if pageMode == .maintenance {
+            SiteMaintenanceDetailView(store: store, isEmbedded: true)
+          } else {
+            healthSnapshotContent(
+              usesSplitLayout: WorkbenchPageMetrics.usesOperationalSplit(for: geometry.size.width)
+            )
+          }
         }
+        .workbenchOperationalPageLayout()
       }
-      .workbenchPageLayout()
     }
   }
 
@@ -76,14 +88,15 @@ struct ContentHealthDetailView: View {
       }
     }
     .pickerStyle(.segmented)
+    .labelsHidden()
     .frame(maxWidth: 360)
     .accessibilityLabel("内容健康页面")
   }
 
   @ViewBuilder
-  private var healthSnapshotContent: some View {
+  private func healthSnapshotContent(usesSplitLayout: Bool) -> some View {
     if let snapshot = healthSnapshot {
-      content(snapshot)
+      content(snapshot, usesSplitLayout: usesSplitLayout)
     } else if let healthSnapshotErrorMessage {
       snapshotFailureState(healthSnapshotErrorMessage)
     } else {
@@ -97,67 +110,173 @@ struct ContentHealthDetailView: View {
     }
   }
 
-  private func content(_ snapshot: ContentHealthSnapshot) -> some View {
-    VStack(alignment: .leading, spacing: 16) {
-      HStack(alignment: .firstTextBaseline, spacing: 16) {
-        VStack(alignment: .leading, spacing: 4) {
-          Text("内容健康")
-            .font(.title2.weight(.semibold))
-          Text("\(snapshot.profileName) · 一次扫描派生总览、文章分组与问题详情")
-            .foregroundStyle(.secondary)
-        }
-        Spacer()
-        Label(
-          isHealthSnapshotRefreshing
-            ? "正在更新"
-            : "上次检查 \(snapshot.generatedAt.workbenchShortText)",
-          systemImage: isHealthSnapshotRefreshing ? "arrow.clockwise" : "clock"
+  private func content(
+    _ snapshot: ContentHealthSnapshot,
+    usesSplitLayout: Bool
+  ) -> some View {
+    let presentation = currentArticlePresentation(for: snapshot)
+    let selectedRow = selectedHealthRow(in: presentation)
+
+    return VStack(alignment: .leading, spacing: 16) {
+      contentHeader(snapshot)
+      contentFilters(presentation)
+
+      WorkbenchOperationalSplitLayout(usesSplitLayout: usesSplitLayout) {
+        filteredSections(
+          presentation,
+          selectedDraftID: selectedRow?.draftID
         )
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        healthSummary(snapshot)
+      } context: {
+        contentHealthOperationalContextPanel(
+          presentation,
+          selectedRow: selectedRow
+        )
       }
-
-      HStack(spacing: 12) {
-        Picker("问题类型", selection: $issueScope) {
-          ForEach(ContentHealthIssueScopeFilter.allCases) { scope in
-            Label(scope.title, systemImage: scope.systemImage).tag(scope)
-          }
-        }
-        .pickerStyle(.menu)
-        .accessibilityLabel("问题类型筛选")
-
-        Picker("严重级别", selection: $severityFilter) {
-          ForEach(ContentHealthSeverityFilter.allCases) { severity in
-            Text(severity.title).tag(severity)
-          }
-        }
-        .pickerStyle(.segmented)
-        .tint(WorkbenchTheme.navigationSelection)
-        .labelsHidden()
-        .frame(maxWidth: 280)
-        .accessibilityLabel("严重级别筛选")
-
-        Spacer(minLength: 0)
-        recommendedAction(snapshot)
-      }
-
-      filteredSections(snapshot)
     }
   }
 
+  private func contentHeader(_ snapshot: ContentHealthSnapshot) -> some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .top, spacing: 16) {
+        contentTitle(snapshot)
+        Spacer(minLength: 16)
+        VStack(alignment: .trailing, spacing: 8) {
+          snapshotStatus(snapshot)
+          healthSummary(snapshot)
+        }
+      }
+
+      VStack(alignment: .leading, spacing: 10) {
+        contentTitle(snapshot)
+        snapshotStatus(snapshot)
+        healthSummary(snapshot)
+      }
+    }
+  }
+
+  private func contentTitle(_ snapshot: ContentHealthSnapshot) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text("内容健康")
+        .font(.title2.weight(.semibold))
+      Text("\(snapshot.profileName) · 一次扫描派生总览、文章分组与问题详情")
+        .foregroundStyle(.secondary)
+        .lineLimit(2)
+    }
+  }
+
+  private func snapshotStatus(_ snapshot: ContentHealthSnapshot) -> some View {
+    Label(
+      isHealthSnapshotRefreshing
+        ? "正在更新"
+        : "上次检查 \(snapshot.generatedAt.workbenchShortText)",
+      systemImage: isHealthSnapshotRefreshing ? "arrow.clockwise" : "clock"
+    )
+    .font(.caption)
+    .foregroundStyle(.secondary)
+    .fixedSize(horizontal: true, vertical: false)
+  }
+
+  private func contentFilters(
+    _ presentation: ContentHealthArticlePresentation
+  ) -> some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 12) {
+        issueScopePicker
+        severityPicker
+        Spacer(minLength: 0)
+        recommendedAction(presentation)
+          .fixedSize(horizontal: true, vertical: false)
+      }
+
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(spacing: 12) {
+          issueScopePicker
+          severityPicker
+          Spacer(minLength: 0)
+        }
+        recommendedAction(presentation)
+      }
+
+      VStack(alignment: .leading, spacing: 10) {
+        issueScopePicker
+        severityPicker
+        recommendedAction(presentation)
+      }
+    }
+  }
+
+  private var issueScopePicker: some View {
+    Picker("问题类型", selection: $issueScope) {
+      ForEach(ContentHealthIssueScopeFilter.allCases) { scope in
+        Label(scope.title, systemImage: scope.systemImage).tag(scope)
+      }
+    }
+    .pickerStyle(.menu)
+    .fixedSize(horizontal: true, vertical: false)
+    .accessibilityLabel("问题类型筛选")
+  }
+
+  private var severityPicker: some View {
+    Picker("严重级别", selection: $severityFilter) {
+      ForEach(ContentHealthSeverityFilter.allCases) { severity in
+        Text(severity.title).tag(severity)
+      }
+    }
+    .pickerStyle(.segmented)
+    .tint(WorkbenchTheme.navigationSelection)
+    .labelsHidden()
+    .frame(minWidth: 220, maxWidth: 280)
+    .accessibilityLabel("严重级别筛选")
+  }
+
   @ViewBuilder
-  private func filteredSections(_ snapshot: ContentHealthSnapshot) -> some View {
+  private func filteredSections(
+    _ presentation: ContentHealthArticlePresentation,
+    selectedDraftID: UUID?
+  ) -> some View {
     if issueScope == .siteIssues {
-      siteIssuesSection(snapshot)
+      siteIssuesSection(presentation.siteIssues)
     } else {
-      articleHealthFlow(snapshot)
+      articleHealthFlow(
+        presentation.rows,
+        selectedDraftID: selectedDraftID
+      )
     }
   }
 
   private func refreshContentHealthSnapshotIfNeeded() {
     guard healthSnapshot == nil else { return }
     refreshContentHealthSnapshot()
+  }
+
+  private func currentArticlePresentation(
+    for snapshot: ContentHealthSnapshot
+  ) -> ContentHealthArticlePresentation {
+    if let articlePresentation,
+       articlePresentation.matches(
+         snapshotID: snapshot.id,
+         issueScope: issueScope,
+         severityFilter: severityFilter
+       ) {
+      return articlePresentation
+    }
+    return ContentHealthArticlePresentation(
+      snapshot: snapshot,
+      issueScope: issueScope,
+      severityFilter: severityFilter
+    )
+  }
+
+  private func rebuildArticlePresentation() {
+    guard let healthSnapshot else {
+      articlePresentation = nil
+      return
+    }
+    articlePresentation = ContentHealthArticlePresentation(
+      snapshot: healthSnapshot,
+      issueScope: issueScope,
+      severityFilter: severityFilter
+    )
   }
 
   private func refreshContentHealthSnapshot() {
@@ -174,6 +293,11 @@ struct ContentHealthDetailView: View {
               healthSnapshotRequestID == requestID,
               store.contentHealthSnapshotVersion == expectedVersion else { return }
         healthSnapshot = snapshot
+        articlePresentation = ContentHealthArticlePresentation(
+          snapshot: snapshot,
+          issueScope: issueScope,
+          severityFilter: severityFilter
+        )
         healthSnapshotErrorMessage = nil
         isHealthSnapshotRefreshing = false
       } catch is CancellationError {
@@ -183,6 +307,7 @@ struct ContentHealthDetailView: View {
               healthSnapshotRequestID == requestID,
               store.contentHealthSnapshotVersion == expectedVersion else { return }
         healthSnapshot = nil
+        articlePresentation = nil
         healthSnapshotErrorMessage = error.localizedDescription
         isHealthSnapshotRefreshing = false
       }
@@ -210,7 +335,17 @@ struct ContentHealthDetailView: View {
   }
 
   private func healthSummary(_ snapshot: ContentHealthSnapshot) -> some View {
-    HStack(spacing: 8) {
+    LazyVGrid(
+      columns: [
+        GridItem(
+          .adaptive(minimum: 108, maximum: 132),
+          spacing: 8,
+          alignment: .leading
+        )
+      ],
+      alignment: .leading,
+      spacing: 8
+    ) {
       healthSummaryBadge(
         title: "错误",
         value: snapshot.errorCount,
@@ -236,6 +371,7 @@ struct ContentHealthDetailView: View {
         color: WorkbenchTheme.success
       )
     }
+    .frame(maxWidth: 552, alignment: .leading)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("内容健康摘要")
     .accessibilityValue(
@@ -262,6 +398,7 @@ struct ContentHealthDetailView: View {
     .foregroundStyle(value > 0 ? color : Color.secondary)
     .padding(.horizontal, 9)
     .padding(.vertical, 6)
+    .frame(maxWidth: .infinity, alignment: .center)
     .background(
       value > 0
         ? AnyShapeStyle(color.opacity(WorkbenchOpacity.noticeBackground))
@@ -271,8 +408,10 @@ struct ContentHealthDetailView: View {
   }
 
   @ViewBuilder
-  private func recommendedAction(_ snapshot: ContentHealthSnapshot) -> some View {
-    if let item = recommendedAIFixItem(in: snapshot) {
+  private func recommendedAction(
+    _ presentation: ContentHealthArticlePresentation
+  ) -> some View {
+    if let item = presentation.recommendedAIFixItem {
       let recommendationTitle = "推荐：用 AI 修复 \(item.draftTitle)"
       Button {
         runAIFixQueueItem(item)
@@ -281,10 +420,10 @@ struct ContentHealthDetailView: View {
           .workbenchTruncatedIdentity(recommendationTitle)
       }
       .disabled(store.ai.isActionRunning)
-    } else if let summary = filteredDraftSummaries(in: snapshot).first {
-      let recommendationTitle = "推荐：处理 \(summary.draftTitle)"
+    } else if let row = presentation.rows.first {
+      let recommendationTitle = "推荐：处理 \(row.draftTitle)"
       Button {
-        _ = store.focusDraft(summary.draftID, section: .writing)
+        _ = store.focusDraft(row.draftID, section: .writing)
       } label: {
         Label(recommendationTitle, systemImage: "arrow.right.circle")
           .workbenchTruncatedIdentity(recommendationTitle)
@@ -298,34 +437,136 @@ struct ContentHealthDetailView: View {
     }
   }
 
-  private func articleHealthFlow(_ snapshot: ContentHealthSnapshot) -> some View {
-    let summaries = filteredDraftSummaries(in: snapshot)
+  private func contentHealthOperationalContextPanel(
+    _ presentation: ContentHealthArticlePresentation,
+    selectedRow: ContentHealthArticleRowModel?
+  ) -> some View {
+    return VStack(alignment: .leading, spacing: 12) {
+      Label("问题详情", systemImage: "sidebar.right")
+        .font(.headline)
 
-    return VStack(alignment: .leading, spacing: 14) {
+      if issueScope == .siteIssues {
+        if let siteIssue = presentation.siteIssues.first {
+          ContentHealthIssueCard(issue: siteIssue)
+        } else {
+          Label("站点路径和仓库状态没有阻塞问题。", systemImage: "checkmark.circle")
+            .foregroundStyle(WorkbenchTheme.success)
+        }
+      } else if let selectedRow {
+        Text(selectedRow.draftTitle)
+          .font(.callout.weight(.semibold))
+          .workbenchTruncatedIdentity(selectedRow.draftTitle)
+        Text(selectedRow.markdownPath)
+          .font(.caption.monospaced())
+          .foregroundStyle(.secondary)
+          .workbenchTruncatedIdentity(selectedRow.markdownPath)
+
+        InspectorStatRow(
+          title: "错误",
+          value: "\(selectedRow.errorCount)",
+          systemImage: "xmark.octagon"
+        )
+        InspectorStatRow(
+          title: "警告",
+          value: "\(selectedRow.warningCount)",
+          systemImage: "exclamationmark.triangle"
+        )
+
+        if !selectedRow.issues.isEmpty {
+          Divider()
+          ForEach(selectedRow.issues.prefix(4)) { issue in
+            ContentHealthIssueCard(issue: issue)
+          }
+        }
+
+        if let aiItem = selectedRow.aiFixItem {
+          Button {
+            runAIFixQueueItem(aiItem)
+          } label: {
+            Label("AI 修复", systemImage: "sparkles")
+          }
+          .disabled(store.ai.isActionRunning)
+          .workbenchProminentActionStyle()
+        }
+
+        HStack(spacing: 8) {
+          Button {
+            _ = store.focusDraft(selectedRow.draftID, section: .writing)
+          } label: {
+            Label("前往写作", systemImage: "square.and.pencil")
+          }
+          .buttonStyle(.bordered)
+
+          Button {
+            guard store.focusDraft(selectedRow.draftID, section: .contentHealth) else {
+              return
+            }
+            store.setInspectorPresented(true)
+          } label: {
+            Label("Inspector", systemImage: "sidebar.right")
+          }
+          .buttonStyle(.bordered)
+        }
+      } else {
+        Label("当前筛选下没有待处理的文章问题。", systemImage: "checkmark.circle")
+          .foregroundStyle(WorkbenchTheme.success)
+      }
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("问题详情")
+  }
+
+  private func selectedHealthRow(
+    in presentation: ContentHealthArticlePresentation
+  ) -> ContentHealthArticleRowModel? {
+    if let selectedHealthDraftID,
+       let selected = presentation.rowByDraftID[selectedHealthDraftID] {
+      return selected
+    }
+    if let selectedDraftID = store.selectedDraftID,
+       let selected = presentation.rowByDraftID[selectedDraftID] {
+      return selected
+    }
+    return presentation.rows.first
+  }
+
+  private func articleHealthFlow(
+    _ rows: [ContentHealthArticleRowModel],
+    selectedDraftID: UUID?
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 14) {
       HStack {
         Text("文章分组")
           .font(.headline)
         Spacer()
-        Text("\(summaries.count) 篇")
+        Text("\(rows.count) 篇")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
 
-      if summaries.isEmpty {
+      if rows.isEmpty {
         Label("当前筛选下没有待处理的文章问题。", systemImage: "checkmark.circle")
           .foregroundStyle(.secondary)
           .padding(.vertical, 12)
       } else {
-        ForEach(summaries) { summary in
-          let isSelected = store.selectedDraftID == summary.draftID
-          Button {
-            store.selectDraft(summary.draftID)
-            store.setInspectorPresented(true)
-          } label: {
-            articleSummaryRow(summary, isSelected: isSelected)
+        LazyVStack(alignment: .leading, spacing: 8) {
+          ForEach(rows) { row in
+            let isSelected = selectedDraftID == row.draftID
+            Button {
+              selectedHealthDraftID = row.draftID
+            } label: {
+              articleSummaryRow(row, isSelected: isSelected)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("选择 \(row.draftTitle) 查看问题详情")
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
           }
-          .buttonStyle(.plain)
-          .accessibilityAddTraits(isSelected ? .isSelected : [])
         }
       }
 
@@ -334,41 +575,22 @@ struct ContentHealthDetailView: View {
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
-  private func articleSummaryRow(_ summary: DraftPreflightSummary, isSelected: Bool) -> some View {
-    let issues = matchingIssues(for: summary)
-    let errorCount = issues.filter { $0.severity == .error }.count
-    let warningCount = issues.filter { $0.severity == .warning }.count
-
-    return HStack(alignment: .firstTextBaseline, spacing: 10) {
-      VStack(alignment: .leading, spacing: 3) {
-        Text(summary.draftTitle)
-          .font(.callout.weight(.medium))
-          .workbenchTruncatedIdentity(summary.draftTitle)
-        Text(summary.markdownPath)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-          .workbenchTruncatedIdentity(summary.markdownPath)
+  private func articleSummaryRow(
+    _ row: ContentHealthArticleRowModel,
+    isSelected: Bool
+  ) -> some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .firstTextBaseline, spacing: 10) {
+        articleRowIdentity(row)
+          .frame(minWidth: 240, maxWidth: .infinity, alignment: .leading)
+        Spacer(minLength: 12)
+        articleRowBadges(row, isSelected: isSelected)
+          .fixedSize(horizontal: true, vertical: false)
       }
 
-      Spacer(minLength: 12)
-
-      healthIssueCountBadge(
-        count: errorCount,
-        systemImage: "xmark.octagon",
-        color: WorkbenchTheme.risk,
-        label: "错误"
-      )
-      healthIssueCountBadge(
-        count: warningCount,
-        systemImage: "exclamationmark.triangle",
-        color: WorkbenchTheme.warning,
-        label: "警告"
-      )
-      if isSelected {
-        Image(systemName: "sidebar.right")
-        .foregroundStyle(WorkbenchTheme.navigationSelection)
-          .font(.caption.weight(.semibold))
-          .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 8) {
+        articleRowIdentity(row)
+        articleRowBadges(row, isSelected: isSelected)
       }
     }
     .padding(10)
@@ -380,6 +602,46 @@ struct ContentHealthDetailView: View {
             ? AnyShapeStyle(WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.selectionBackground))
             : WorkbenchBackgroundStyle.subtle
         )
+    }
+  }
+
+  private func articleRowIdentity(
+    _ row: ContentHealthArticleRowModel
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 3) {
+      Text(row.draftTitle)
+        .font(.callout.weight(.medium))
+        .workbenchTruncatedIdentity(row.draftTitle)
+      Text(row.markdownPath)
+        .font(.caption.monospaced())
+        .foregroundStyle(.secondary)
+        .workbenchTruncatedIdentity(row.markdownPath)
+    }
+  }
+
+  private func articleRowBadges(
+    _ row: ContentHealthArticleRowModel,
+    isSelected: Bool
+  ) -> some View {
+    HStack(spacing: 8) {
+      healthIssueCountBadge(
+        count: row.errorCount,
+        systemImage: "xmark.octagon",
+        color: WorkbenchTheme.risk,
+        label: "错误"
+      )
+      healthIssueCountBadge(
+        count: row.warningCount,
+        systemImage: "exclamationmark.triangle",
+        color: WorkbenchTheme.warning,
+        label: "警告"
+      )
+      if isSelected {
+        Image(systemName: "sidebar.right")
+          .foregroundStyle(WorkbenchTheme.navigationSelection)
+          .font(.caption.weight(.semibold))
+          .accessibilityHidden(true)
+      }
     }
   }
 
@@ -405,38 +667,6 @@ struct ContentHealthDetailView: View {
       .accessibilityValue("\(count)")
   }
 
-  private func filteredDraftSummaries(in snapshot: ContentHealthSnapshot) -> [DraftPreflightSummary] {
-    let aiFixDraftIDs = Set(snapshot.aiFixQueueItems.map(\.draftID))
-    let summaries: [DraftPreflightSummary]
-    switch issueScope {
-    case .all:
-      summaries = snapshot.contentHealthSummaries
-    case .publicRisks:
-      summaries = snapshot.contentHealthSummaries.filter { !$0.publicRiskIssues.isEmpty }
-    case .aiFixes:
-      summaries = snapshot.contentHealthSummaries.filter { aiFixDraftIDs.contains($0.draftID) }
-    case .siteIssues:
-      summaries = []
-    }
-    return summaries.filter { !matchingIssues(for: $0).isEmpty }
-  }
-
-  private func matchingIssues(for summary: DraftPreflightSummary) -> [PreflightIssue] {
-    let issues: [PreflightIssue]
-    switch issueScope {
-    case .publicRisks:
-      issues = summary.publicRiskIssues
-    case .all, .aiFixes, .siteIssues:
-      issues = summary.blockingIssues
-    }
-    return severityFilter.filter(issues)
-  }
-
-  private func recommendedAIFixItem(in snapshot: ContentHealthSnapshot) -> AIPublishingFixQueueItem? {
-    let visibleDraftIDs = Set(filteredDraftSummaries(in: snapshot).map(\.draftID))
-    return snapshot.aiFixQueueItems.first { visibleDraftIDs.contains($0.draftID) }
-  }
-
   private func runAIFixQueueItem(_ item: AIPublishingFixQueueItem) {
     guard let draft = store.publishing.visibleDrafts.first(where: { $0.id == item.draftID }) else {
       return
@@ -451,22 +681,22 @@ struct ContentHealthDetailView: View {
     }
   }
 
-  private func siteIssuesSection(_ snapshot: ContentHealthSnapshot) -> some View {
+  private func siteIssuesSection(_ issues: [PreflightIssue]) -> some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack {
         Text("站点级问题")
           .font(.headline)
         Spacer()
-        Text("\(snapshot.sitePreflightIssues.count) 项")
+        Text("\(issues.count) 项")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
 
-      if snapshot.sitePreflightIssues.isEmpty {
+      if issues.isEmpty {
         Label("站点路径和仓库状态没有阻塞问题。", systemImage: "checkmark.circle")
           .foregroundStyle(.secondary)
       } else {
-        ForEach(snapshot.sitePreflightIssues) { issue in
+        ForEach(issues) { issue in
           ContentHealthIssueCard(issue: issue)
         }
       }
@@ -555,44 +785,175 @@ private enum ContentHealthSeverityFilter: String, CaseIterable, Identifiable {
   }
 }
 
+private struct ContentHealthArticleRowModel: Identifiable {
+  let draftID: UUID
+  let draftTitle: String
+  let markdownPath: String
+  let issues: [PreflightIssue]
+  let errorCount: Int
+  let warningCount: Int
+  let aiFixItem: AIPublishingFixQueueItem?
+
+  var id: UUID { draftID }
+
+  init(
+    summary: DraftPreflightSummary,
+    issues: [PreflightIssue],
+    aiFixItem: AIPublishingFixQueueItem?
+  ) {
+    var errorCount = 0
+    var warningCount = 0
+    for issue in issues {
+      switch issue.severity {
+      case .error:
+        errorCount += 1
+      case .warning:
+        warningCount += 1
+      case .info:
+        break
+      }
+    }
+
+    draftID = summary.draftID
+    draftTitle = summary.draftTitle
+    markdownPath = summary.markdownPath
+    self.issues = issues
+    self.errorCount = errorCount
+    self.warningCount = warningCount
+    self.aiFixItem = aiFixItem
+  }
+}
+
+private struct ContentHealthArticlePresentation {
+  let snapshotID: UUID
+  let issueScope: ContentHealthIssueScopeFilter
+  let severityFilter: ContentHealthSeverityFilter
+  let rows: [ContentHealthArticleRowModel]
+  let rowByDraftID: [UUID: ContentHealthArticleRowModel]
+  let siteIssues: [PreflightIssue]
+  let recommendedAIFixItem: AIPublishingFixQueueItem?
+
+  init(
+    snapshot: ContentHealthSnapshot,
+    issueScope: ContentHealthIssueScopeFilter,
+    severityFilter: ContentHealthSeverityFilter
+  ) {
+    var aiFixItemByDraftID: [UUID: AIPublishingFixQueueItem] = [:]
+    for item in snapshot.aiFixQueueItems where aiFixItemByDraftID[item.draftID] == nil {
+      aiFixItemByDraftID[item.draftID] = item
+    }
+
+    let sourceSummaries: [DraftPreflightSummary]
+    switch issueScope {
+    case .all:
+      sourceSummaries = snapshot.contentHealthSummaries
+    case .publicRisks:
+      sourceSummaries = snapshot.publicRiskDraftSummaries
+    case .aiFixes:
+      sourceSummaries = snapshot.contentHealthSummaries.filter {
+        aiFixItemByDraftID[$0.draftID] != nil
+      }
+    case .siteIssues:
+      sourceSummaries = []
+    }
+
+    let rows = sourceSummaries.compactMap { summary -> ContentHealthArticleRowModel? in
+      let sourceIssues: [PreflightIssue]
+      switch issueScope {
+      case .publicRisks:
+        sourceIssues = summary.publicRiskIssues
+      case .all, .aiFixes, .siteIssues:
+        sourceIssues = summary.blockingIssues
+      }
+      let issues = severityFilter.filter(sourceIssues)
+      guard !issues.isEmpty else { return nil }
+      return ContentHealthArticleRowModel(
+        summary: summary,
+        issues: issues,
+        aiFixItem: aiFixItemByDraftID[summary.draftID]
+      )
+    }
+
+    var rowByDraftID: [UUID: ContentHealthArticleRowModel] = [:]
+    for row in rows {
+      rowByDraftID[row.draftID] = row
+    }
+    let visibleDraftIDs = Set(rowByDraftID.keys)
+
+    snapshotID = snapshot.id
+    self.issueScope = issueScope
+    self.severityFilter = severityFilter
+    self.rows = rows
+    self.rowByDraftID = rowByDraftID
+    siteIssues = severityFilter.filter(snapshot.sitePreflightIssues)
+    recommendedAIFixItem = snapshot.aiFixQueueItems.first {
+      visibleDraftIDs.contains($0.draftID)
+    }
+  }
+
+  func matches(
+    snapshotID: UUID,
+    issueScope: ContentHealthIssueScopeFilter,
+    severityFilter: ContentHealthSeverityFilter
+  ) -> Bool {
+    self.snapshotID == snapshotID
+      && self.issueScope == issueScope
+      && self.severityFilter == severityFilter
+  }
+}
+
 private struct ContentHealthSnapshot {
+  var id: UUID
   var generatedAt: Date
   var profileName: String
-  var visibleDraftCount: Int
-  var publicRiskSummary: PublicRiskSummary
   var publicRiskDraftSummaries: [DraftPreflightSummary]
   var aiFixQueueItems: [AIPublishingFixQueueItem]
   var sitePreflightIssues: [PreflightIssue]
   var contentHealthSummaries: [DraftPreflightSummary]
-
-  var errorCount: Int {
-    sitePreflightIssues.filter { $0.severity == .error }.count
-      + contentHealthSummaries.reduce(0) { $0 + $1.errorCount }
-  }
-
-  var warningCount: Int {
-    sitePreflightIssues.filter { $0.severity == .warning }.count
-      + contentHealthSummaries.reduce(0) { $0 + $1.warningCount }
-  }
-
-  var passingDraftCount: Int {
-    contentHealthSummaries.filter(\.isPassing).count
-  }
+  var errorCount: Int
+  var warningCount: Int
+  var passingDraftCount: Int
 
   @MainActor
   static func make(store: WorkbenchStore) async throws -> ContentHealthSnapshot {
     let profileName = store.activeProfile.name
-    let visibleDraftCount = store.visibleDrafts.count
     let report = try await store.contentHealthReportAsync()
+    var errorCount = report.sitePreflightIssues.reduce(into: 0) { count, issue in
+      if issue.severity == .error { count += 1 }
+    }
+    var warningCount = report.sitePreflightIssues.reduce(into: 0) { count, issue in
+      if issue.severity == .warning { count += 1 }
+    }
+    var passingDraftCount = 0
+    for summary in report.draftSummaries {
+      var draftHasBlockingIssue = false
+      for issue in summary.issues {
+        switch issue.severity {
+        case .error:
+          errorCount += 1
+          draftHasBlockingIssue = true
+        case .warning:
+          warningCount += 1
+          draftHasBlockingIssue = true
+        case .info:
+          break
+        }
+      }
+      if !draftHasBlockingIssue {
+        passingDraftCount += 1
+      }
+    }
     return ContentHealthSnapshot(
+      id: UUID(),
       generatedAt: Date(),
       profileName: profileName,
-      visibleDraftCount: visibleDraftCount,
-      publicRiskSummary: report.publicRiskSummary,
       publicRiskDraftSummaries: report.publicRiskDraftSummaries,
       aiFixQueueItems: report.aiFixQueueItems,
       sitePreflightIssues: report.sitePreflightIssues,
-      contentHealthSummaries: report.draftSummaries
+      contentHealthSummaries: report.draftSummaries,
+      errorCount: errorCount,
+      warningCount: warningCount,
+      passingDraftCount: passingDraftCount
     )
   }
 }

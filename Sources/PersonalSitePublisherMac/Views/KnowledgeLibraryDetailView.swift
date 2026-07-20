@@ -11,6 +11,7 @@ struct KnowledgeLibraryDetailView: View {
   @State private var annotationDraft: KnowledgeAnnotation?
   @State private var isSourceHistoryPresented = false
   @State private var preparesLocalRepairOnHistoryOpen = false
+  @State private var contentPresentation: KnowledgeContentPresentation = .cleaned
   @AppStorage("knowledgeLibraryInspectorVisibleV1") private var isInspectorPresented = true
 
   var body: some View {
@@ -67,6 +68,14 @@ struct KnowledgeLibraryDetailView: View {
     } message: {
       Text("资料会移到回收站并停止参与搜索与 AI 检索；之后可以恢复。")
     }
+    .onChange(of: knowledge.selectedDocumentID) { _, _ in
+      contentPresentation = .cleaned
+    }
+    .onChange(of: knowledge.selectedSearchResult?.id) { _, resultID in
+      if resultID != nil {
+        contentPresentation = .cleaned
+      }
+    }
   }
 
   private func documentDetail(_ document: KnowledgeDocument) -> some View {
@@ -98,23 +107,26 @@ struct KnowledgeLibraryDetailView: View {
           ScrollView {
             VStack(alignment: .leading, spacing: 18) {
               metadata(document)
+              if showsContentPresentationControl {
+                contentPresentationControl
+              }
               Divider()
               if let activeSearchHit {
                 searchLocationBanner(activeSearchHit)
               }
               KnowledgeDocumentReader(
                 blocks: readerBlocks,
-                isLoading: knowledge.isLoadingSelectedDocumentText,
-                errorMessage: knowledge.selectedDocumentTextError,
+                isLoading: isDisplayedContentLoading,
+                errorMessage: displayedContentError,
                 highlightedBlockID: readerScrollTarget?.blockID,
                 highlightTerms: activeSearchHit?.highlightTerms ?? [],
                 retry: { knowledge.selectDocument(document.id) },
                 onAnnotateBlock: { beginAnnotatingBlock($0, document: document) },
                 onCopyBlockCitation: { copyBlockCitation($0, document: document) }
               )
-              if knowledge.selectedDocumentText.count > 100_000,
+              if displayedContentText.count > 100_000,
                  activeSearchResult == nil {
-                Text("正文较长，当前详情只显示前 100,000 个字符；全文已完整保存并可检索。")
+                Text(contentLimitMessage)
                   .font(.caption)
                   .foregroundStyle(.secondary)
               }
@@ -123,6 +135,8 @@ struct KnowledgeLibraryDetailView: View {
             .frame(maxWidth: 900, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
           }
+          .accessibilityElement(children: .contain)
+          .accessibilityIdentifier("knowledge-library-reader")
           .task(id: readerScrollTarget) {
             guard let target = readerScrollTarget else { return }
             await Task.yield()
@@ -160,6 +174,7 @@ struct KnowledgeLibraryDetailView: View {
         .background(.bar)
       }
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("knowledge-library-detail")
   }
 
@@ -176,6 +191,9 @@ struct KnowledgeLibraryDetailView: View {
         Text(document.title)
           .font(.headline)
           .workbenchTruncatedIdentity(document.title)
+          .accessibilityElement(children: .ignore)
+          .accessibilityLabel(document.title)
+          .accessibilityIdentifier("knowledge-library-detail-title")
         Text("仅保存在本机 · \(document.kind.localizedDisplayName)")
           .font(.caption)
           .foregroundStyle(.secondary)
@@ -200,6 +218,7 @@ struct KnowledgeLibraryDetailView: View {
           : "放大资料阅读区域后可显示检查器"
       )
       .keyboardShortcut("i", modifiers: [.command, .option])
+      .accessibilityIdentifier("knowledge-library-inspector-toggle")
 
       Button {
         knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)
@@ -211,6 +230,7 @@ struct KnowledgeLibraryDetailView: View {
           systemImage: knowledge.isPinned(document.id) ? "pin.slash" : "pin"
         )
       }
+      .accessibilityIdentifier("knowledge-library-pin-toggle")
 
       Menu {
         Button {
@@ -255,12 +275,14 @@ struct KnowledgeLibraryDetailView: View {
         Label(String(localized: "资料操作"), systemImage: "ellipsis.circle")
       }
       .disabled(knowledge.isBusy)
+      .accessibilityIdentifier("knowledge-library-actions-menu")
 
       Button {
         isImportPresented = true
       } label: {
         Label(String(localized: "导入"), systemImage: "plus")
       }
+      .accessibilityIdentifier("knowledge-library-import-button")
     }
     .padding(.horizontal, 18)
     .padding(.vertical, 12)
@@ -482,11 +504,80 @@ struct KnowledgeLibraryDetailView: View {
   }
 
   private var previewText: String {
-    let text = knowledge.selectedDocumentText
+    let text = displayedContentText
     guard text.count > 100_000 else { return text }
     return String(text.prefix(100_000))
   }
 
+  private var showsContentPresentationControl: Bool {
+    knowledge.selectedDocument?.kind == .webpage
+      && (knowledge.selectedDocumentCapturedText != nil
+        || knowledge.isLoadingSelectedDocumentCapturedText
+        || knowledge.selectedDocumentCapturedTextError != nil)
+  }
+
+  private var contentPresentationControl: some View {
+    VStack(alignment: .leading, spacing: 7) {
+      Picker("正文版本", selection: $contentPresentation) {
+        Text("清洗内容").tag(KnowledgeContentPresentation.cleaned)
+        Text("原始内容").tag(KnowledgeContentPresentation.original)
+      }
+      .pickerStyle(.segmented)
+      .frame(width: 220)
+      .disabled(knowledge.selectedDocumentCapturedText == nil)
+      .accessibilityIdentifier("knowledge-library-content-presentation-picker")
+
+      if let error = knowledge.selectedDocumentCapturedTextError {
+        Label(
+          String(
+            format: String(localized: "原始抓取正文读取失败：%@"),
+            error
+          ),
+          systemImage: "exclamationmark.triangle"
+        )
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.risk)
+      } else {
+        Text("清洗内容用于阅读、搜索与 AI 检索；原始抓取正文仅供核对，不会进入 AI 索引。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("knowledge-library-content-presentation")
+  }
+
+  private var displayedContentText: String {
+    if contentPresentation == .original,
+       let capturedText = knowledge.selectedDocumentCapturedText {
+      return capturedText
+    }
+    return knowledge.selectedDocumentText
+  }
+
+  private var isDisplayedContentLoading: Bool {
+    contentPresentation == .original
+      ? knowledge.isLoadingSelectedDocumentCapturedText
+      : knowledge.isLoadingSelectedDocumentText
+  }
+
+  private var displayedContentError: String? {
+    contentPresentation == .original
+      ? knowledge.selectedDocumentCapturedTextError
+      : knowledge.selectedDocumentTextError
+  }
+
+  private var contentLimitMessage: String {
+    contentPresentation == .original
+      ? String(localized: "原始抓取正文较长，当前只显示前 100,000 个字符；原文已完整保存。")
+      : String(localized: "正文较长，当前详情只显示前 100,000 个字符；全文已完整保存并可检索。")
+  }
+
+}
+
+private enum KnowledgeContentPresentation: Hashable {
+  case cleaned
+  case original
 }
 
 private struct KnowledgeReaderScrollTarget: Hashable {

@@ -314,7 +314,14 @@ extension WorkbenchStore {
       synchronizeDraftBodyEditorBuffer(with: bufferedDraft)
     }
     if isBodyOnlyEdit {
-      invalidateBodyEditingDerivedCaches(for: bufferedDraft.id)
+      let imageInputsDidChange = previousDraft.map {
+        ImageWorkbenchMarkdownReferenceSignature(markdown: $0.bodyMarkdown)
+          != ImageWorkbenchMarkdownReferenceSignature(markdown: bufferedDraft.bodyMarkdown)
+      } ?? true
+      invalidateBodyEditingDerivedCaches(
+        for: bufferedDraft.id,
+        imageInputsDidChange: imageInputsDidChange
+      )
     } else {
       invalidateDraftDerivedCaches()
     }

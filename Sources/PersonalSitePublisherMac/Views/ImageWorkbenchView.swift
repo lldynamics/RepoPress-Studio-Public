@@ -6,6 +6,7 @@ struct ImageWorkbenchView: View {
   @ObservedObject private var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade
   @State private var pendingBatchPreview: ImageBatchOperationPreview?
   @State private var showsAllAffectedDrafts = false
+  @State private var selectedImageDraftID: UUID?
 
   init(store: WorkbenchStore) {
     self.store = store
@@ -13,21 +14,26 @@ struct ImageWorkbenchView: View {
   }
 
   var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 16) {
-        header
-        batchStatus
+    GeometryReader { geometry in
+      ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+          header
+          batchStatus
 
-        if let summary = store.cachedImageWorkbenchSiteSummary {
-          siteWideSummary(summary)
-        } else if let errorMessage = imageWorkbench.siteSummaryErrorMessage,
-                  !imageWorkbench.isSiteSummaryLoading {
-          failureCard(errorMessage)
-        } else {
-          loadingCard
+          if let summary = store.cachedImageWorkbenchSiteSummary {
+            siteWideSummary(
+              summary,
+              usesSplitLayout: WorkbenchPageMetrics.usesOperationalSplit(for: geometry.size.width)
+            )
+          } else if let errorMessage = imageWorkbench.siteSummaryErrorMessage,
+                    !imageWorkbench.isSiteSummaryLoading {
+            failureCard(errorMessage)
+          } else {
+            loadingCard
+          }
         }
+        .workbenchOperationalPageLayout()
       }
-      .workbenchPageLayout()
     }
     .accessibilityLabel("全站图片优化")
     .task(id: refreshInput) {
@@ -103,9 +109,21 @@ struct ImageWorkbenchView: View {
     }
   }
 
-  private func siteWideSummary(_ summary: ImageWorkbenchSiteSummary) -> some View {
+  private func siteWideSummary(
+    _ summary: ImageWorkbenchSiteSummary,
+    usesSplitLayout: Bool
+  ) -> some View {
+    WorkbenchOperationalSplitLayout(usesSplitLayout: usesSplitLayout) {
+      siteWideSummaryPrimary(summary)
+    } context: {
+      imageOperationalContextPanel(summary)
+    }
+  }
+
+  private func siteWideSummaryPrimary(_ summary: ImageWorkbenchSiteSummary) -> some View {
     let metrics = issueMetrics(for: summary)
     let affectedDrafts = summary.draftSummaries.filter { $0.issueCount > 0 }
+    let selectedDraftID = selectedImageDraftSummary(in: summary)?.draftID
 
     return VStack(alignment: .leading, spacing: 14) {
       HStack(alignment: .firstTextBaseline) {
@@ -119,11 +137,7 @@ struct ImageWorkbenchView: View {
           .font(.caption)
           .foregroundStyle(.secondary)
         }
-
         Spacer()
-        if summary.imageCount > 0 {
-          optimizationMenu(summary)
-        }
       }
 
       if summary.imageCount == 0 {
@@ -176,9 +190,10 @@ struct ImageWorkbenchView: View {
             ? affectedDrafts
             : Array(affectedDrafts.prefix(20))
           ForEach(visibleAffectedDrafts) { draftSummary in
+            let isSelected = selectedDraftID == draftSummary.draftID
             Button {
-              guard store.focusDraft(draftSummary.draftID, section: .images) else { return }
-              store.setInspectorPresented(true)
+              selectedImageDraftID = draftSummary.draftID
+              store.selectDraft(draftSummary.draftID)
             } label: {
               HStack(spacing: 10) {
                 Image(systemName: draftSummary.errorCount > 0 ? "xmark.octagon" : "exclamationmark.triangle")
@@ -196,12 +211,28 @@ struct ImageWorkbenchView: View {
                 Text("\(draftSummary.issueCount)")
                   .font(.caption.monospacedDigit())
                   .foregroundStyle(.secondary)
-                Image(systemName: "sidebar.right")
-                  .foregroundStyle(.tertiary)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "chevron.right")
+                  .foregroundStyle(
+                    isSelected ? WorkbenchTheme.navigationSelection : Color.secondary
+                  )
+              }
+              .padding(8)
+              .background {
+                RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+                  .fill(
+                    isSelected
+                      ? AnyShapeStyle(
+                        WorkbenchTheme.navigationSelection.opacity(
+                          WorkbenchOpacity.selectionBackground
+                        )
+                      )
+                      : WorkbenchBackgroundStyle.subtle
+                  )
               }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("在 Inspector 查看 \(draftSummary.draftTitle) 的图片")
+            .accessibilityLabel("选择 \(draftSummary.draftTitle) 查看图片问题")
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
           }
 
           if affectedDrafts.count > 20 {
@@ -216,6 +247,93 @@ struct ImageWorkbenchView: View {
     }
     .padding(14)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+  }
+
+  private func imageOperationalContextPanel(_ summary: ImageWorkbenchSiteSummary) -> some View {
+    let selectedDraft = selectedImageDraftSummary(in: summary)
+
+    return VStack(alignment: .leading, spacing: 12) {
+      Label("当前文章", systemImage: "sidebar.right")
+        .font(.headline)
+
+      if let selectedDraft {
+        Text(selectedDraft.draftTitle)
+          .font(.callout.weight(.semibold))
+          .workbenchTruncatedIdentity(selectedDraft.draftTitle)
+
+        InspectorStatRow(
+          title: "图片",
+          value: "\(selectedDraft.imageCount)",
+          systemImage: "photo.on.rectangle"
+        )
+        InspectorStatRow(
+          title: "错误",
+          value: "\(selectedDraft.errorCount)",
+          systemImage: "xmark.octagon"
+        )
+        InspectorStatRow(
+          title: "警告",
+          value: "\(selectedDraft.warningCount)",
+          systemImage: "exclamationmark.triangle"
+        )
+
+        let metrics = issueMetrics(for: selectedDraft)
+        if !metrics.isEmpty {
+          Divider()
+          ForEach(metrics.prefix(7)) { metric in
+            HStack(spacing: 8) {
+              Image(systemName: metric.systemImage)
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+              Text(LocalizedStringKey(metric.title))
+                .font(.caption)
+              Spacer()
+              Text("\(metric.value)")
+                .font(.caption.monospacedDigit())
+            }
+          }
+        }
+
+        Button {
+          guard store.focusDraft(selectedDraft.draftID, section: .images) else { return }
+          store.setInspectorPresented(true)
+        } label: {
+          Label("Inspector", systemImage: "sidebar.right")
+        }
+        .buttonStyle(.bordered)
+      } else {
+        Label("没有需要批量处理的图片问题。", systemImage: "checkmark.circle")
+          .foregroundStyle(WorkbenchTheme.success)
+      }
+
+      if summary.imageCount > 0 {
+        Divider()
+        optimizationMenu(summary)
+      }
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("当前文章")
+  }
+
+  private func selectedImageDraftSummary(
+    in summary: ImageWorkbenchSiteSummary
+  ) -> ImageWorkbenchDraftSummary? {
+    let affectedDrafts = summary.draftSummaries.filter { $0.issueCount > 0 }
+    if let selectedImageDraftID,
+       let selected = affectedDrafts.first(where: { $0.draftID == selectedImageDraftID }) {
+      return selected
+    }
+    if let selectedDraftID = store.selectedDraftID,
+       let selected = affectedDrafts.first(where: { $0.draftID == selectedDraftID }) {
+      return selected
+    }
+    return affectedDrafts.first
   }
 
   private func optimizationMenu(_ summary: ImageWorkbenchSiteSummary) -> some View {
@@ -298,17 +416,27 @@ struct ImageWorkbenchView: View {
     .accessibilityElement(children: .contain)
   }
 
-  private var refreshInput: ImageWorkbenchSiteSummaryInputSignature {
-    ImageWorkbenchSiteSummaryInputSignature(
-      drafts: store.visibleDrafts,
-      profile: store.activeProfile
-    )
+  private var refreshInput: UInt64 {
+    store.imageWorkbenchInputRevision
   }
 
   private func issueMetrics(for summary: ImageWorkbenchSiteSummary) -> [ImageOptimizationMetric] {
     [
       ImageOptimizationMetric(title: "错误", value: summary.errorCount, systemImage: "xmark.octagon"),
       ImageOptimizationMetric(title: "警告", value: summary.warningCount, systemImage: "exclamationmark.triangle"),
+      ImageOptimizationMetric(title: "缺 alt", value: summary.missingAltTextCount, systemImage: "text.quote"),
+      ImageOptimizationMetric(title: "源图缺失", value: summary.missingSourceCount, systemImage: "questionmark.folder"),
+      ImageOptimizationMetric(title: "重复图片", value: summary.duplicateImageCount, systemImage: "square.on.square"),
+      ImageOptimizationMetric(title: "可压缩 JPEG", value: summary.optimizableJPEGCount, systemImage: "arrow.down.forward"),
+      ImageOptimizationMetric(title: "可转 WebP", value: summary.webPConvertibleCount, systemImage: "arrow.triangle.2.circlepath"),
+      ImageOptimizationMetric(title: "可优化 SVG", value: summary.optimizableSVGCount, systemImage: "wand.and.stars"),
+      ImageOptimizationMetric(title: "可缩放", value: summary.resizableImageCount, systemImage: "arrow.down.right.and.arrow.up.left"),
+    ]
+    .filter { $0.value > 0 }
+  }
+
+  private func issueMetrics(for summary: ImageWorkbenchDraftSummary) -> [ImageOptimizationMetric] {
+    [
       ImageOptimizationMetric(title: "缺 alt", value: summary.missingAltTextCount, systemImage: "text.quote"),
       ImageOptimizationMetric(title: "源图缺失", value: summary.missingSourceCount, systemImage: "questionmark.folder"),
       ImageOptimizationMetric(title: "重复图片", value: summary.duplicateImageCount, systemImage: "square.on.square"),

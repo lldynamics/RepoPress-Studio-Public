@@ -428,7 +428,6 @@ public struct SiteStarterService: Sendable {
         draft: draft,
         siteName: siteName,
         description: description,
-        author: author,
         baseURL: baseURL,
         deploymentTarget: deploymentTarget
       )
@@ -557,7 +556,6 @@ public struct SiteStarterService: Sendable {
     draft: ArticleDraft,
     siteName: String,
     description: String,
-    author: String,
     baseURL: String,
     deploymentTarget: SiteStarterDeploymentTarget
   ) -> [StarterFile] {

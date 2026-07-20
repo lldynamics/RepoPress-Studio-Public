@@ -6,6 +6,49 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class KnowledgeLibraryServiceTests: XCTestCase {
+  func testSemanticVectorsDoNotSynchronouslyLoadUnpreparedContextualModel() {
+    let vectors = KnowledgeSemanticEmbeddingService().vectors(
+      for: "本地资料库通过混合检索找到相关章节"
+    )
+
+    XCTAssertTrue(vectors.contains { $0.modelIdentifier == "local-semantic-hash-v2" })
+    XCTAssertFalse(vectors.contains { $0.modelIdentifier.hasPrefix("apple-contextual-") })
+    XCTAssertFalse(vectors.contains { $0.modelIdentifier.hasPrefix("apple-sentence-zh") })
+  }
+
+  func testSearchAsyncPropagatesCancellationIntoDetachedSearchWork() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-search-cancellation")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let probe = KnowledgeSearchCancellationProbe()
+    let service = KnowledgeLibraryService(
+      rootURL: rootURL.appendingPathComponent("store"),
+      searchCancellationCheck: { try probe.checkpoint() }
+    )
+    let searchTask = Task {
+      try await service.searchAsync(query: "可取消的资料检索")
+    }
+
+    let didStart = await Task.detached {
+      probe.waitForStart(timeout: 1)
+    }.value
+    guard didStart else {
+      searchTask.cancel()
+      return XCTFail("搜索子任务未进入可取消工作")
+    }
+
+    let cancellationStartedAt = Date()
+    searchTask.cancel()
+    do {
+      _ = try await searchTask.value
+      XCTFail("取消外层搜索后应抛出 CancellationError")
+    } catch is CancellationError {
+      XCTAssertTrue(probe.didObserveCancellation)
+      XCTAssertLessThan(Date().timeIntervalSince(cancellationStartedAt), 1)
+    } catch {
+      XCTFail("应传播 CancellationError，实际为：\(error)")
+    }
+  }
+
   func testMultipleFilePreviewDeduplicatesDragItemsAndReportsUnsupportedFiles() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-multi-file-drop")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -443,11 +486,13 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertEqual(candidate.kind, .webpage)
     XCTAssertEqual(candidate.originalFilenameExtension, "mhtml")
     XCTAssertEqual(candidate.originalData, archive)
+    XCTAssertEqual(candidate.capturedText, capture.contentText)
     XCTAssertEqual(candidate.sourceURL?.fragment, nil)
 
     let inserted = try await service.commit(preview, destination: .folder(readingFolder.id))
     XCTAssertEqual(inserted.insertedCount, 1)
     var document = try XCTUnwrap(service.documents().first)
+    XCTAssertEqual(inserted.documentIDs, [document.id])
     XCTAssertEqual(document.folderID, readingFolder.id)
     XCTAssertEqual(document.title, "用资料库辅助长期写作")
     XCTAssertFalse(try service.search(query: "长期知识积累", limit: 5).isEmpty)
@@ -455,6 +500,9 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       try service.normalizedText(documentID: document.id)
         .contains("[继续阅读](https://example.com/notes/chapter)")
     )
+    XCTAssertEqual(try service.capturedText(documentID: document.id), capture.contentText)
+    let firstRevision = try XCTUnwrap(service.revisions(documentID: document.id).first)
+    XCTAssertNotNil(firstRevision.capturedTextStorageReference)
 
     let duplicatePreview = try await service.makeBrowserImportPreview(capture: capture)
     XCTAssertEqual(duplicatePreview.duplicateCount, 1)
@@ -464,7 +512,9 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     )
     XCTAssertEqual(duplicate.skippedCount, 1)
     document = try XCTUnwrap(service.documents().first)
+    XCTAssertEqual(duplicate.documentIDs, [document.id])
     XCTAssertEqual(document.folderID, referenceFolder.id)
+    XCTAssertEqual(try service.capturedText(documentID: document.id), capture.contentText)
 
     var changedCapture = capture
     changedCapture.contentText += " 新版本补充了浏览器一键归档流程。"
@@ -474,8 +524,10 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     let updated = try await service.commit(updatePreview, destination: .preserveExisting)
     XCTAssertEqual(updated.updatedCount, 1)
     document = try XCTUnwrap(service.documents().first)
+    XCTAssertEqual(updated.documentIDs, [document.id])
     XCTAssertEqual(document.folderID, referenceFolder.id)
     XCTAssertFalse(try service.search(query: "一键归档", limit: 5).isEmpty)
+    XCTAssertEqual(try service.capturedText(documentID: document.id), changedCapture.contentText)
   }
 
   func testBrowserCaptureRejectsUnsupportedSchemaAndCredentialedURL() async throws {
@@ -504,6 +556,259 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     } catch {
       XCTAssertTrue(error.localizedDescription.contains("页面地址无效"))
     }
+  }
+
+  @MainActor
+  func testBrowserPreparedCapturePersistsEditedMetadataModeAndAIPermission() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-browser-prepared-preview")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+    let store = KnowledgeStore(service: service)
+    let capture = KnowledgeBrowserCapture(
+      sourceURL: try XCTUnwrap(URL(string: "https://example.com/reference-link")),
+      title: "保存前编辑后的标题",
+      authors: ["作者甲", "作者乙"],
+      tags: ["研究", "写作"],
+      contentText: "[保存前预览资料](https://example.com/reference-link)",
+      captureMode: .linkOnly,
+      allowsAIUse: false
+    )
+
+    let preview = try await service.makeBrowserImportPreview(capture: capture)
+    let candidate = try XCTUnwrap(preview.candidates.first)
+    XCTAssertEqual(candidate.allowsAIUse, false)
+    XCTAssertTrue(candidate.warnings.contains {
+      $0.contains("仅保存页面标题和原始链接")
+    })
+
+    let outcome = try await store.importBrowserCapture(
+      capture,
+      folderID: nil,
+      newFolderName: nil
+    )
+    guard case .saved(let result, let action) = outcome else {
+      return XCTFail("Expected prepared capture to be saved")
+    }
+    XCTAssertEqual(action, .inserted)
+    let document = try XCTUnwrap(store.documents.first(where: {
+      $0.id == result.documentIDs.first
+    }))
+    XCTAssertEqual(document.title, "保存前编辑后的标题")
+    XCTAssertEqual(document.authors, ["作者甲", "作者乙"])
+    XCTAssertEqual(document.tags, ["研究", "写作"])
+    XCTAssertFalse(document.allowsAIUse)
+    XCTAssertTrue(try service.normalizedText(documentID: document.id).contains("reference-link"))
+  }
+
+  @MainActor
+  func testBrowserAIPermissionIsCommittedWithoutPostImportUpdate() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-browser-ai-permission-transaction")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store")
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    _ = try service.documents()
+    try executeSQLite(
+      """
+      CREATE TRIGGER reject_post_import_ai_permission_update
+      BEFORE UPDATE OF allows_ai_use ON knowledge_documents
+      BEGIN
+        SELECT RAISE(ABORT, 'AI permission must be part of the import transaction');
+      END;
+      """,
+      at: storeURL.appendingPathComponent("library.sqlite")
+    )
+    let store = KnowledgeStore(service: service)
+    let capture = KnowledgeBrowserCapture(
+      sourceURL: try XCTUnwrap(URL(string: "https://example.com/transactional-ai-permission")),
+      title: "AI 权限事务导入",
+      contentText: "这段正文用于验证不允许 AI 的选择与文档在同一事务中提交。",
+      allowsAIUse: false
+    )
+
+    let outcome = try await store.importBrowserCapture(
+      capture,
+      folderID: nil,
+      newFolderName: nil
+    )
+    guard case .saved(let result, let action) = outcome else {
+      return XCTFail("Expected browser capture to be saved")
+    }
+    XCTAssertEqual(action, .inserted)
+    let documentID = try XCTUnwrap(result.documentIDs.first)
+    XCTAssertFalse(try XCTUnwrap(service.documents().first { $0.id == documentID }).allowsAIUse)
+  }
+
+  @MainActor
+  func testRevealDocumentClearsFiltersAndSelectsExactBrowserReceiptDocument() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-browser-receipt-open")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+    let destinationFolder = try service.createFolder(name: "长期参考")
+    let hiddenFolder = try service.createFolder(name: "其他分类")
+    let capture = KnowledgeBrowserCapture(
+      sourceURL: try XCTUnwrap(URL(string: "https://example.com/receipt-open")),
+      title: "可从保存回执打开的资料",
+      contentText: "这段正文用于验证浏览器保存回执能打开准确资料。"
+    )
+    let preview = try await service.makeBrowserImportPreview(capture: capture)
+    let result = try await service.commit(preview, destination: .folder(destinationFolder.id))
+    let documentID = try XCTUnwrap(result.documentIDs.first)
+    let store = KnowledgeStore(service: service)
+    await store.reload()
+    store.setFolderScope(.folder(hiddenFolder.id))
+    store.updateSearchText("不可能命中的搜索词")
+
+    XCTAssertTrue(store.revealDocument(documentID))
+    XCTAssertEqual(store.folderScope, .all)
+    XCTAssertEqual(store.selectedDocumentID, documentID)
+    XCTAssertEqual(store.selectedDocument?.title, "可从保存回执打开的资料")
+    XCTAssertTrue(store.searchText.isEmpty)
+  }
+
+  @MainActor
+  func testBrowserDuplicateResolutionSupportsVersionMoveCopyAndCancelWithoutSilentMutation() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-browser-duplicate-resolution")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+    let readingFolder = try service.createFolder(name: "阅读")
+    let referenceFolder = try service.createFolder(name: "参考")
+    let store = KnowledgeStore(service: service)
+    await store.reload()
+    let capture = KnowledgeBrowserCapture(
+      sourceURL: try XCTUnwrap(URL(string: "https://example.com/duplicate-panel")),
+      title: "重复网页处理",
+      authors: ["原作者"],
+      tags: ["原标签"],
+      contentText: "这是用于验证重复网页处理选项的长期参考正文。",
+      allowsAIUse: true
+    )
+
+    let firstOutcome = try await store.importBrowserCapture(
+      capture,
+      folderID: readingFolder.id,
+      newFolderName: nil
+    )
+    guard case .saved(let firstResult, let firstAction) = firstOutcome else {
+      return XCTFail("首次导入应直接保存")
+    }
+    XCTAssertEqual(firstAction, .inserted)
+    let originalDocumentID = try XCTUnwrap(firstResult.documentIDs.first)
+    XCTAssertEqual(try service.revisions(documentID: originalDocumentID).count, 1)
+
+    let unresolved = try await store.importBrowserCapture(
+      capture,
+      folderID: referenceFolder.id,
+      newFolderName: nil
+    )
+    guard case .requiresDuplicateResolution(let conflict) = unresolved else {
+      return XCTFail("同网址应先等待用户选择")
+    }
+    XCTAssertEqual(conflict.document.id, originalDocumentID)
+    XCTAssertEqual(conflict.folder?.id, readingFolder.id)
+    XCTAssertFalse(conflict.incomingHasChanges)
+    XCTAssertEqual(try service.documents().count, 1)
+    XCTAssertEqual(try service.documents().first?.folderID, readingFolder.id)
+    XCTAssertEqual(try service.revisions(documentID: originalDocumentID).count, 1)
+
+    var moveOnlyCapture = capture
+    moveOnlyCapture.title = "不应写入的标题"
+    moveOnlyCapture.authors = ["不应写入的作者"]
+    moveOnlyCapture.tags = ["不应写入的标签"]
+    moveOnlyCapture.contentText += " 这段新内容不应被仅移动分类写入。"
+    moveOnlyCapture.allowsAIUse = false
+    let moved = try await store.importBrowserCapture(
+      moveOnlyCapture,
+      folderID: referenceFolder.id,
+      newFolderName: nil,
+      duplicateResolution: .moveOnly
+    )
+    guard case .saved(let movedResult, let movedAction) = moved else {
+      return XCTFail("仅移动分类应返回保存回执")
+    }
+    XCTAssertEqual(movedAction, .moved)
+    XCTAssertEqual(movedResult.documentIDs, [originalDocumentID])
+    let movedDocument = try XCTUnwrap(service.documents().first)
+    XCTAssertEqual(movedDocument.folderID, referenceFolder.id)
+    XCTAssertEqual(movedDocument.title, capture.title)
+    XCTAssertEqual(movedDocument.authors, capture.authors)
+    XCTAssertEqual(movedDocument.tags, capture.tags)
+    XCTAssertTrue(movedDocument.allowsAIUse)
+    XCTAssertFalse(
+      try service.normalizedText(documentID: originalDocumentID)
+        .contains("这段新内容不应被仅移动分类写入")
+    )
+    XCTAssertEqual(try service.revisions(documentID: originalDocumentID).count, 1)
+
+    let versioned = try await store.importBrowserCapture(
+      capture,
+      folderID: referenceFolder.id,
+      newFolderName: nil,
+      duplicateResolution: .saveNewVersion
+    )
+    guard case .saved(let versionedResult, let versionedAction) = versioned else {
+      return XCTFail("保存新版本应返回保存回执")
+    }
+    XCTAssertEqual(versionedAction, .updated)
+    XCTAssertEqual(versionedResult.documentIDs, [originalDocumentID])
+    XCTAssertEqual(try service.revisions(documentID: originalDocumentID).count, 2)
+
+    var changedCapture = capture
+    changedCapture.contentText += " 本次采集增加了一段新内容。"
+    let changedConflict = try await store.importBrowserCapture(
+      changedCapture,
+      folderID: referenceFolder.id,
+      newFolderName: nil
+    )
+    guard case .requiresDuplicateResolution(let conflict) = changedConflict else {
+      return XCTFail("同网址新内容也应先询问")
+    }
+    XCTAssertTrue(conflict.incomingHasChanges)
+
+    let copied = try await store.importBrowserCapture(
+      changedCapture,
+      folderID: readingFolder.id,
+      newFolderName: nil,
+      duplicateResolution: .keepCopy
+    )
+    guard case .saved(let copiedResult, let copiedAction) = copied else {
+      return XCTFail("保留副本应返回保存回执")
+    }
+    XCTAssertEqual(copiedAction, .copied)
+    let copiedDocumentID = try XCTUnwrap(copiedResult.documentIDs.first)
+    XCTAssertNotEqual(copiedDocumentID, originalDocumentID)
+    let documents = try service.documents()
+    XCTAssertEqual(documents.count, 2)
+    XCTAssertEqual(Set(documents.compactMap(\.sourceURL)), [capture.sourceURL])
+    XCTAssertTrue(documents.contains { $0.id == copiedDocumentID && $0.title.hasSuffix("（副本）") })
+  }
+
+  func testBrowserCapturePreservesSelfContainedHTMLAndResourceWarnings() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-browser-self-contained-html")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+    let archive = Data("""
+    <!doctype html><html><head><style>body{color:#222}</style></head>
+    <body><article><h1>离线资料</h1><img src="data:image/png;base64,AA=="></article></body></html>
+    """.utf8)
+    let capture = KnowledgeBrowserCapture(
+      sourceURL: try XCTUnwrap(URL(string: "https://example.com/offline")),
+      title: "Firefox 自包含归档",
+      contentText: "# 离线资料\n\n正文可以检索。",
+      archiveFormat: "html",
+      archiveData: archive,
+      archiveEmbeddedResourceCount: 3,
+      archiveMissingResourceCount: 2,
+      archiveWasTruncated: true
+    )
+
+    let preview = try await service.makeBrowserImportPreview(capture: capture)
+    let candidate = try XCTUnwrap(preview.candidates.first)
+    XCTAssertEqual(candidate.originalFilenameExtension, "html")
+    XCTAssertEqual(candidate.originalData, archive)
+    XCTAssertTrue(candidate.warnings.contains { $0.contains("已内联 3 个") })
+    XCTAssertTrue(candidate.warnings.contains { $0.contains("有 2 个外部资源") })
+    XCTAssertTrue(candidate.warnings.contains { $0.contains("24 MB 上限") })
   }
 
   func testChunkerPreservesLocatorAndBoundsChunkSize() {
@@ -1281,5 +1586,49 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       .appendingPathComponent("\(name)-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
+  }
+}
+
+private final class KnowledgeSearchCancellationProbe: @unchecked Sendable {
+  private let lock = NSLock()
+  private let started = DispatchSemaphore(value: 0)
+  private var didSignalStart = false
+  private var observedCancellation = false
+
+  var didObserveCancellation: Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return observedCancellation
+  }
+
+  func waitForStart(timeout: TimeInterval) -> Bool {
+    started.wait(timeout: .now() + timeout) == .success
+  }
+
+  func checkpoint() throws {
+    lock.lock()
+    let shouldSignalStart = !didSignalStart
+    didSignalStart = true
+    lock.unlock()
+    if shouldSignalStart {
+      started.signal()
+    }
+
+    let deadline = Date().addingTimeInterval(2)
+    while !Task.isCancelled, Date() < deadline {
+      Thread.sleep(forTimeInterval: 0.001)
+    }
+    guard Task.isCancelled else {
+      throw NSError(
+        domain: "KnowledgeSearchCancellationProbe",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "Detached search did not receive cancellation"]
+      )
+    }
+
+    lock.lock()
+    observedCancellation = true
+    lock.unlock()
+    throw CancellationError()
   }
 }

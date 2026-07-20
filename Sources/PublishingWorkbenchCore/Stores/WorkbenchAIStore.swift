@@ -1,6 +1,22 @@
 import Combine
 import Foundation
 
+public struct AIChatManualRetryState: Equatable, Sendable {
+  public let draftID: UUID
+  public let requiresDuplicateChargeConfirmation: Bool
+  public let retryAfter: Date?
+
+  public init(
+    draftID: UUID,
+    requiresDuplicateChargeConfirmation: Bool,
+    retryAfter: Date? = nil
+  ) {
+    self.draftID = draftID
+    self.requiresDuplicateChargeConfirmation = requiresDuplicateChargeConfirmation
+    self.retryAfter = retryAfter
+  }
+}
+
 @MainActor
 public final class WorkbenchAIStore: ObservableObject {
   private unowned let store: WorkbenchStore
@@ -21,6 +37,7 @@ public final class WorkbenchAIStore: ObservableObject {
   private var activeAIChatOperationID: UUID?
   private var isAIChatCancellationRequested = false
   private let aiChatStreamPublishInterval: Duration = .milliseconds(50)
+  @Published public private(set) var aiChatManualRetryState: AIChatManualRetryState? = nil
 
   init(
     store: WorkbenchStore,
@@ -252,7 +269,12 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   public func refreshAIKeyAvailability() {
-    aiTokenAvailability = (try? keychainTokenStore.aiTokenAvailability(for: store.activeProfile)) ?? KeychainTokenAvailability(hasToken: false)
+    refreshAIKeyAvailability(for: store.activeProfile)
+  }
+
+  func refreshAIKeyAvailability(for profile: SiteProfile) {
+    aiTokenAvailability = (try? keychainTokenStore.aiTokenAvailability(for: profile))
+      ?? KeychainTokenAvailability(hasToken: false)
   }
 
   @discardableResult
@@ -261,6 +283,7 @@ public final class WorkbenchAIStore: ObservableObject {
       try keychainTokenStore.saveAIToken(token.trimmedForPublishing, for: store.activeProfile)
       refreshAIKeyAvailability()
       aiActionMessage = "AI API Key 已保存到 Keychain。"
+      aiChatMessage = "AI API Key 已就绪，可以发送消息。"
       return true
     } catch {
       aiActionMessage = aiKeychainFailureMessage(action: "保存", error: error)
@@ -273,6 +296,7 @@ public final class WorkbenchAIStore: ObservableObject {
       try keychainTokenStore.deleteAIToken(for: store.activeProfile)
       refreshAIKeyAvailability()
       aiActionMessage = "AI API Key 已删除。"
+      aiChatMessage = "AI API Key 已删除，请重新配置后再发送消息。"
     } catch {
       aiActionMessage = aiKeychainFailureMessage(action: "删除", error: error)
     }
@@ -293,7 +317,9 @@ public final class WorkbenchAIStore: ObservableObject {
     do {
       let token = try aiChatAvailableAPIKey(for: store.activeProfile)
       let report = try await aiConnectionTestService.testConnection(config: store.activeProfile.aiProviderConfig, apiKey: token)
+      refreshAIKeyAvailability()
       aiActionMessage = report.headline
+      aiChatMessage = "AI 连接正常，可以发送消息。"
       return report
     } catch {
       aiActionMessage = "AI 连接测试失败：\(error.localizedDescription)"
@@ -305,6 +331,7 @@ public final class WorkbenchAIStore: ObservableObject {
     if aiChatDraftID == draft.id {
       return
     }
+    aiChatManualRetryState = nil
     if let currentDraftID = aiChatDraftID {
       cacheCurrentAIChatSessionForTransition(for: currentDraftID)
     }
@@ -487,6 +514,7 @@ public final class WorkbenchAIStore: ObservableObject {
       return nil
     }
     let operationID = UUID()
+    aiChatManualRetryState = nil
     activeAIChatOperationID = operationID
     setAIChatCancellationRequested(false)
     store.setAIChatRunning(true)
@@ -594,6 +622,7 @@ public final class WorkbenchAIStore: ObservableObject {
   public func clearAIChat() {
     aiChatConversationTitle = nil
     aiChatMessages = []
+    aiChatManualRetryState = nil
     cacheCurrentAIChatSessionForAIStore()
     aiChatMessage = "AI 讨论已清空。"
     store.save()
@@ -768,6 +797,35 @@ public final class WorkbenchAIStore: ObservableObject {
 
   public func cancelAIChatReply() {
     _ = requestAIChatCancellation()
+  }
+
+  @discardableResult
+  public func retryLastFailedAIChatReply(
+    confirmingPossibleDuplicateCharge: Bool = false,
+    draft: ArticleDraft? = nil
+  ) async -> AIPublishingChatMessage? {
+    guard let retryState = aiChatManualRetryState else {
+      store.setAIChatMessage("当前没有可重试的 AI 请求。")
+      return nil
+    }
+    guard let chatDraft = draft ?? store.selectedDraft,
+          chatDraft.id == retryState.draftID else {
+      store.setAIChatMessage("请先返回发生错误的文章，再重试 AI 回复。")
+      return nil
+    }
+    if let retryAfter = retryState.retryAfter, retryAfter > Date() {
+      let remainingSeconds = max(1, Int(ceil(retryAfter.timeIntervalSinceNow)))
+      store.setAIChatMessage("服务器要求稍后重试，请等待约 \(remainingSeconds) 秒。")
+      return nil
+    }
+    if retryState.requiresDuplicateChargeConfirmation,
+       !confirmingPossibleDuplicateCharge {
+      store.setAIChatMessage("已保留部分回复。再次生成可能产生重复内容和费用，请确认后手动重新生成。")
+      return nil
+    }
+
+    aiChatManualRetryState = nil
+    return await regenerateLastAIChatReply(draft: chatDraft)
   }
 
   @discardableResult
@@ -994,6 +1052,13 @@ public final class WorkbenchAIStore: ObservableObject {
     } catch is CancellationError {
       store.setAIChatMessage("AI 回复已停止。")
       return aiChatSessionState(for: chatDraft.id)?.messages.last { $0.role == .assistant }
+    } catch let error as AIChatCompletionClientError {
+      configureManualRetry(for: error, draftID: chatDraft.id)
+      store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
+      if error.didReceivePartialContent {
+        return aiChatSessionState(for: chatDraft.id)?.messages.last { $0.role == .assistant }
+      }
+      return nil
     } catch {
       store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
       return nil
@@ -1089,6 +1154,23 @@ public final class WorkbenchAIStore: ObservableObject {
       recordAIResponseBacklinks(message: assistantMessage, request: request)
       store.setAIChatMessage("AI 回复已停止。")
       return assistantMessage
+    } catch let error as AIChatCompletionClientError where error.didReceivePartialContent {
+      flushPendingStreamUpdate(force: true)
+      let finalContent = assistantMessage.content.trimmedForPublishing
+      guard !finalContent.isEmpty else {
+        updateAIChatSession(for: draftID) { messages in
+          messages.removeAll { $0.id == assistantMessage.id }
+        }
+        throw error
+      }
+      assistantMessage.content = finalContent
+      updateAIChatSession(for: draftID) { messages in
+        if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+          messages[index] = assistantMessage
+        }
+      }
+      recordAIResponseBacklinks(message: assistantMessage, request: request)
+      throw error
     } catch {
       updateAIChatSession(for: draftID) { messages in
         messages.removeAll { $0.id == assistantMessage.id }
@@ -1131,6 +1213,21 @@ public final class WorkbenchAIStore: ObservableObject {
         title: "AI 回复：\(request.draft.title)",
         location: message.createdAt.formatted(date: .abbreviated, time: .shortened)
       )
+    )
+  }
+
+  private func configureManualRetry(
+    for error: AIChatCompletionClientError,
+    draftID: UUID
+  ) {
+    guard error.supportsManualRetry else {
+      aiChatManualRetryState = nil
+      return
+    }
+    aiChatManualRetryState = AIChatManualRetryState(
+      draftID: draftID,
+      requiresDuplicateChargeConfirmation: error.didReceivePartialContent,
+      retryAfter: error.retryAfterSeconds.map { Date().addingTimeInterval($0) }
     )
   }
 

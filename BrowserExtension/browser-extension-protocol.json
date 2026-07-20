@@ -1,0 +1,29 @@
+{
+  "documentVersion": 1,
+  "extensions": {
+    "chromiumDevelopmentID": "lnibkmfhfikfbkeehcjbiaalhkiankam",
+    "firefoxID": "knowledge-capture@jinfang.local",
+    "chromeProductionID": "ginjcibepmeobaaadmfiagigcpcebmcc",
+    "edgeProductionID": null
+  },
+  "nativeMessaging": {
+    "hostName": "com.jinfang.personal_site_publisher.knowledge",
+    "maximumInputBytes": 52428800,
+    "maximumOutputBytes": 1048576,
+    "routes": {
+      "/v1/folders": [
+        "GET"
+      ],
+      "/v1/import": [
+        "POST"
+      ],
+      "/v1/open": [
+        "POST"
+      ],
+      "/v1/suggestions": [
+        "POST"
+      ]
+    },
+    "schemaVersion": 1
+  }
+}

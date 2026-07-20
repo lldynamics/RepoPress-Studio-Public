@@ -150,24 +150,59 @@ enum WritingDraftSortOrder: String, CaseIterable, Identifiable {
   }
 }
 
-struct WritingDraftRow: View {
+struct WritingDraftRowPresentation {
   let draft: ArticleDraft
-  let profile: SiteProfile
-  let display: PrivateContentDisplay
+  let title: String
+  let metadata: String
+  let leadingSystemImage: String
+  let help: String
+
+  init(draft: ArticleDraft, profile: SiteProfile, display: PrivateContentDisplay) {
+    self.draft = draft
+    title = display.title.nilIfEmpty ?? String(localized: "未命名文章")
+    let writingUnitCount = MarkdownWritingStatisticsService
+      .statistics(in: draft.bodyMarkdown)
+      .writingUnitCount
+    var metadataParts = [
+      draft.updatedAt.workbenchShortText,
+      "\(writingUnitCount) \(String(localized: "字/词"))",
+      draft.status.localizedDisplayName,
+    ]
+    if draft.isGeneralDraft {
+      metadataParts.append(String(localized: "通用草稿"))
+    }
+    if draft.isPrivate {
+      metadataParts.append(draft.visibility.localizedDisplayName)
+    }
+    metadata = metadataParts.joined(separator: " · ")
+    if draft.isPrivate {
+      leadingSystemImage = display.isMasked ? "lock.shield.fill" : "lock.fill"
+    } else {
+      leadingSystemImage = draft.status.systemImage
+    }
+    help = display.isMasked
+      ? display.summary
+      : draft.isGeneralDraft
+        ? String(localized: "通用草稿，不绑定站点")
+        : profile.markdownPath(for: draft)
+  }
+}
+
+struct WritingDraftRow: View {
+  let presentation: WritingDraftRowPresentation
 
   var body: some View {
     HStack(spacing: 8) {
-      Image(systemName: leadingSystemImage)
+      Image(systemName: presentation.leadingSystemImage)
         .foregroundStyle(.secondary)
         .frame(width: 16)
 
       VStack(alignment: .leading, spacing: 4) {
-        let displayTitle = display.title.nilIfEmpty ?? "未命名文章"
-        Text(displayTitle)
+        Text(presentation.title)
           .font(.body.weight(.medium))
-          .workbenchTruncatedIdentity(displayTitle)
+          .workbenchTruncatedIdentity(presentation.title)
 
-        metadataText
+        Text(presentation.metadata)
           .font(.caption)
           .foregroundStyle(.secondary)
           .lineLimit(1)
@@ -175,31 +210,7 @@ struct WritingDraftRow: View {
     }
     .padding(.horizontal, 4)
     .padding(.vertical, 5)
-    .help(
-      display.isMasked
-        ? display.summary
-        : draft.isGeneralDraft
-          ? String(localized: "通用草稿，不绑定站点")
-          : profile.markdownPath(for: draft)
-    )
-  }
-
-  private var leadingSystemImage: String {
-    guard draft.isPrivate else {
-      return draft.status.systemImage
-    }
-    return display.isMasked ? "lock.shield.fill" : "lock.fill"
-  }
-
-  private var metadataText: Text {
-    let base = Text("\(draft.updatedAt.workbenchShortText) · \(draft.writingUnitCount) 字/词 · \(draft.status.localizedDisplayName)")
-    let scoped = draft.isGeneralDraft
-      ? base + Text(verbatim: " · ") + Text("通用草稿")
-      : base
-    guard draft.isPrivate else {
-      return scoped
-    }
-    return scoped + Text(verbatim: " · ") + Text(verbatim: draft.visibility.localizedDisplayName)
+    .help(presentation.help)
   }
 }
 
@@ -223,11 +234,5 @@ struct WritingDraftSkeletonRow: View {
     .padding(.vertical, 5)
     .redacted(reason: .placeholder)
     .foregroundStyle(.secondary)
-  }
-}
-
-private extension ArticleDraft {
-  var writingUnitCount: Int {
-    MarkdownWritingStatisticsService.statistics(in: bodyMarkdown).writingUnitCount
   }
 }

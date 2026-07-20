@@ -1,12 +1,69 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+private struct KnowledgeDocumentListRowSnapshot: Identifiable {
+  var id: UUID { document.id }
+  let document: KnowledgeDocument
+  let subtitle: String
+}
+
+private struct KnowledgeSourceListPresentationSnapshot {
+  let revision: UInt64
+  let documentRows: [KnowledgeDocumentListRowSnapshot]
+  let searchResults: [KnowledgeSearchResult]
+  let searchGroups: [KnowledgeSearchDocumentGroup]
+
+  @MainActor
+  static func make(knowledge: KnowledgeStore) -> Self {
+    let documentRows = knowledge.visibleDocuments.map { document in
+      let size = ByteCountFormatter.string(
+        fromByteCount: document.sourceByteCount,
+        countStyle: .file
+      )
+      let date = knowledge.documentSort.field == .updatedAt
+        ? document.updatedAt
+        : document.importedAt
+      let relativeDate = date.formatted(
+        .relative(presentation: .named, unitsStyle: .abbreviated)
+      )
+      let subtitle = knowledge.documentSort.field == .fileSize
+        ? "\(size) · \(document.kind.localizedDisplayName) · \(relativeDate)"
+        : "\(document.kind.localizedDisplayName) · \(relativeDate) · \(size)"
+      return KnowledgeDocumentListRowSnapshot(document: document, subtitle: subtitle)
+    }
+
+    let searchResults = knowledge.visibleSearchResults
+    var searchGroups: [KnowledgeSearchDocumentGroup] = []
+    var indices: [UUID: Int] = [:]
+    for result in searchResults {
+      if let index = indices[result.document.id] {
+        searchGroups[index].results.append(result)
+      } else {
+        indices[result.document.id] = searchGroups.count
+        searchGroups.append(
+          KnowledgeSearchDocumentGroup(document: result.document, results: [result])
+        )
+      }
+    }
+    return Self(
+      revision: knowledge.listPresentationRevision,
+      documentRows: documentRows,
+      searchResults: searchResults,
+      searchGroups: searchGroups
+    )
+  }
+}
+
 struct KnowledgeSourceListColumn: View {
   @ObservedObject var knowledge: KnowledgeStore
+#if !APP_STORE_BUILD
   @EnvironmentObject private var browserBridge: KnowledgeBrowserBridge
+#endif
   @State private var searchText = ""
   @State private var isImportPresented = false
+#if !APP_STORE_BUILD
   @State private var isBrowserExtensionPresented = false
+#endif
   @State private var folderEditorMode: FolderEditorMode = .create
   @State private var folderName = ""
   @State private var isFolderEditorPresented = false
@@ -22,8 +79,16 @@ struct KnowledgeSourceListColumn: View {
   @State private var isBatchTagEditorPresented = false
   @State private var batchTags = ""
   @State private var hoveredDocumentID: UUID?
+  @State private var listPresentation: KnowledgeSourceListPresentationSnapshot
   @AppStorage("knowledgeSidebarDensityV1") private var sidebarDensity: KnowledgeSidebarDensity = .comfortable
   @FocusState private var isSearchFocused: Bool
+
+  init(knowledge: KnowledgeStore) {
+    self.knowledge = knowledge
+    _listPresentation = State(
+      initialValue: KnowledgeSourceListPresentationSnapshot.make(knowledge: knowledge)
+    )
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -53,10 +118,12 @@ struct KnowledgeSourceListColumn: View {
     .sheet(isPresented: $isImportPresented) {
       KnowledgeImportAssistantView(knowledge: knowledge)
     }
+#if !APP_STORE_BUILD
     .sheet(isPresented: $isBrowserExtensionPresented) {
       BrowserExtensionConnectionView()
         .environmentObject(browserBridge)
     }
+#endif
     .sheet(item: $restorePreview) { preview in
       KnowledgeLibraryRestorePreviewView(knowledge: knowledge, preview: preview)
     }
@@ -135,28 +202,34 @@ struct KnowledgeSourceListColumn: View {
     } message: {
       Text("共 \(selectedDocumentIDs.count) 条资料。移入后可以从回收站恢复。")
     }
-    .onAppear(perform: synchronizeListSelection)
+    .onAppear {
+      refreshListPresentationSnapshot()
+      synchronizeListSelection()
+    }
     .onChange(of: knowledge.selectedDocumentID) { _, _ in
       synchronizeListSelection()
     }
     .onChange(of: knowledge.folderScope) { _, _ in
       retainVisibleBatchSelection()
     }
-    .onChange(of: knowledge.documents.map(\.id)) { _, _ in
+    .onChange(of: knowledge.listPresentationRevision) { _, _ in
+      refreshListPresentationSnapshot()
       retainVisibleBatchSelection()
     }
     .onChange(of: knowledge.isSearching) { wasSearching, isSearching in
       guard wasSearching, !isSearching,
             !searchText.trimmedForPublishing.isEmpty else { return }
-      let documentCount = Set(knowledge.visibleSearchResults.map { $0.document.id }).count
+      refreshListPresentationSnapshot()
+      let documentCount = Set(listPresentation.searchResults.map { $0.document.id }).count
       EditorAccessibilityAnnouncementCenter.announce(
-        knowledge.visibleSearchResults.isEmpty
+        listPresentation.searchResults.isEmpty
           ? "搜索完成，没有匹配资料。"
-          : "搜索完成，共 \(documentCount) 条资料、\(knowledge.visibleSearchResults.count) 个命中片段。",
+          : "搜索完成，共 \(documentCount) 条资料、\(listPresentation.searchResults.count) 个命中片段。",
         priority: .medium
       )
     }
     .onExitCommand(perform: exitBatchSelection)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("knowledge-source-list")
     .focusedSceneValue(\.knowledgeLibraryCommandActions, commandActions)
   }
@@ -164,19 +237,21 @@ struct KnowledgeSourceListColumn: View {
   private var knowledgeHeader: some View {
     WorkspaceContextListHeader(title: "资料") {
       if searchText.trimmedForPublishing.isEmpty {
-        Text("\(knowledge.visibleDocuments.count) 条")
+        Text("\(listPresentation.documentRows.count) 条")
       } else {
-        Text("\(searchResultGroups.count) 篇 · \(knowledge.visibleSearchResults.count) 片段")
+        Text("\(listPresentation.searchGroups.count) 篇 · \(listPresentation.searchResults.count) 片段")
           .monospacedDigit()
       }
     } actions: {
       Menu {
+#if !APP_STORE_BUILD
         Button {
           isBrowserExtensionPresented = true
         } label: {
           Label("连接浏览器插件", systemImage: "puzzlepiece.extension")
         }
         Divider()
+#endif
         Button {
           isHealthPresented = true
         } label: {
@@ -241,6 +316,7 @@ struct KnowledgeSourceListColumn: View {
             knowledge.updateSearchText(value)
           }
           .accessibilityLabel("搜索资料全文")
+          .accessibilityIdentifier("knowledge-source-search")
 
         if !searchText.isEmpty {
           Button {
@@ -446,7 +522,7 @@ struct KnowledgeSourceListColumn: View {
   private var documentList: some View {
     if !searchText.trimmedForPublishing.isEmpty {
       searchResultList
-    } else if knowledge.visibleDocuments.isEmpty {
+    } else if listPresentation.documentRows.isEmpty {
       emptyFolderState
       .padding(12)
       .frame(maxHeight: .infinity, alignment: .top)
@@ -457,8 +533,8 @@ struct KnowledgeSourceListColumn: View {
           Divider()
         }
         List(selection: $selectedDocumentIDs) {
-          ForEach(knowledge.visibleDocuments) { document in
-            documentRow(document)
+          ForEach(listPresentation.documentRows) { row in
+            documentRow(row)
           }
         }
         .listStyle(.sidebar)
@@ -468,12 +544,14 @@ struct KnowledgeSourceListColumn: View {
           handleListSelectionChange(previous: previous, current: current)
         }
         .onDeleteCommand(perform: requestSelectedDocumentDeletion)
+        .accessibilityIdentifier("knowledge-document-list")
       }
     }
   }
 
-  private func documentRow(_ document: KnowledgeDocument) -> some View {
-    HStack(spacing: 9) {
+  private func documentRow(_ row: KnowledgeDocumentListRowSnapshot) -> some View {
+    let document = row.document
+    return HStack(spacing: 9) {
       Image(systemName: document.kind.systemImage)
         .foregroundStyle(.secondary)
         .frame(width: 16)
@@ -482,13 +560,13 @@ struct KnowledgeSourceListColumn: View {
         Text(document.title)
           .font(.callout.weight(.medium))
           .workbenchTruncatedIdentity(document.title)
-        Text(documentSubtitle(document))
+        Text(row.subtitle)
           .font(.caption)
           .foregroundStyle(.secondary)
-          .workbenchTruncatedIdentity(documentSubtitle(document))
+          .workbenchTruncatedIdentity(row.subtitle)
       }
       .accessibilityElement(children: .combine)
-      .accessibilityLabel("\(document.title)，\(documentSubtitle(document))")
+      .accessibilityLabel("\(document.title)，\(row.subtitle)")
 
       Spacer(minLength: 4)
 
@@ -586,7 +664,7 @@ struct KnowledgeSourceListColumn: View {
       .padding(.top, 28)
       .accessibilityElement(children: .combine)
       .accessibilityLabel("正在搜索资料全文和本地语义索引")
-    } else if knowledge.visibleSearchResults.isEmpty {
+    } else if listPresentation.searchResults.isEmpty {
       EmptyStateView(
         title: "没有匹配资料",
         message: "尝试更短的关键词或换一种说法。",
@@ -603,7 +681,7 @@ struct KnowledgeSourceListColumn: View {
       .frame(maxHeight: .infinity, alignment: .top)
     } else {
       List(selection: searchResultSelection) {
-        ForEach(searchResultGroups) { group in
+        ForEach(listPresentation.searchGroups) { group in
           Section {
             ForEach(group.results) { result in
               KnowledgeSearchResultRow(
@@ -654,7 +732,8 @@ struct KnowledgeSourceListColumn: View {
       .scrollContentBackground(.hidden)
       .background(Color.clear)
       .accessibilityLabel("资料搜索命中片段")
-      .accessibilityValue("共 \(knowledge.visibleSearchResults.count) 个片段")
+      .accessibilityValue("共 \(listPresentation.searchResults.count) 个片段")
+      .accessibilityIdentifier("knowledge-search-result-list")
     }
   }
 
@@ -674,37 +753,6 @@ struct KnowledgeSourceListColumn: View {
         )
       }
     )
-  }
-
-  private func documentSubtitle(_ document: KnowledgeDocument) -> String {
-    let size = ByteCountFormatter.string(
-      fromByteCount: document.sourceByteCount,
-      countStyle: .file
-    )
-    let date = knowledge.documentSort.field == .updatedAt
-      ? document.updatedAt
-      : document.importedAt
-    let relativeDate = date.formatted(
-      .relative(presentation: .named, unitsStyle: .abbreviated)
-    )
-    if knowledge.documentSort.field == .fileSize {
-      return "\(size) · \(document.kind.localizedDisplayName) · \(relativeDate)"
-    }
-    return "\(document.kind.localizedDisplayName) · \(relativeDate) · \(size)"
-  }
-
-  private var searchResultGroups: [KnowledgeSearchDocumentGroup] {
-    var groups: [KnowledgeSearchDocumentGroup] = []
-    var indices: [UUID: Int] = [:]
-    for result in knowledge.visibleSearchResults {
-      if let index = indices[result.document.id] {
-        groups[index].results.append(result)
-      } else {
-        indices[result.document.id] = groups.count
-        groups.append(KnowledgeSearchDocumentGroup(document: result.document, results: [result]))
-      }
-    }
-    return groups
   }
 
   private var documentDeletionConfirmationTitle: String {
@@ -879,7 +927,7 @@ struct KnowledgeSourceListColumn: View {
   private func synchronizeListSelection() {
     guard searchText.trimmedForPublishing.isEmpty else { return }
     guard let selectedID = knowledge.selectedDocumentID,
-          knowledge.visibleDocuments.contains(where: { $0.id == selectedID }) else {
+          listPresentation.documentRows.contains(where: { $0.id == selectedID }) else {
       selectedDocumentIDs = []
       return
     }
@@ -889,7 +937,7 @@ struct KnowledgeSourceListColumn: View {
   }
 
   private func retainVisibleBatchSelection() {
-    let visibleIDs = Set(knowledge.visibleDocuments.map(\.id))
+    let visibleIDs = Set(listPresentation.documentRows.map(\.id))
     selectedDocumentIDs.formIntersection(visibleIDs)
     synchronizeListSelection()
   }
@@ -1100,7 +1148,7 @@ struct KnowledgeSourceListColumn: View {
       selectRelativeSearchResult(offset: offset)
       return
     }
-    let documents = knowledge.visibleDocuments
+    let documents = listPresentation.documentRows.map(\.document)
     guard !documents.isEmpty else {
       EditorAccessibilityAnnouncementCenter.announce("资料列表为空。", priority: .low)
       return
@@ -1119,7 +1167,7 @@ struct KnowledgeSourceListColumn: View {
   }
 
   private func selectRelativeSearchResult(offset: Int) {
-    let results = knowledge.visibleSearchResults
+    let results = listPresentation.searchResults
     guard !results.isEmpty else {
       EditorAccessibilityAnnouncementCenter.announce("没有搜索命中片段。", priority: .low)
       return
@@ -1146,6 +1194,11 @@ struct KnowledgeSourceListColumn: View {
       "\(result.document.title)，\(reasons)。第 \(nextIndex + 1) 个片段，共 \(results.count) 个。",
       priority: .low
     )
+  }
+
+  private func refreshListPresentationSnapshot() {
+    guard listPresentation.revision != knowledge.listPresentationRevision else { return }
+    listPresentation = KnowledgeSourceListPresentationSnapshot.make(knowledge: knowledge)
   }
 }
 

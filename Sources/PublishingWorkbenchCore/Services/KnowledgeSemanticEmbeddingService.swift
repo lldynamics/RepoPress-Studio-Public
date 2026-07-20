@@ -64,19 +64,22 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
   static let fallbackModelIdentifier = "local-semantic-hash-v2"
 
   private let lock = NSLock()
+  private let contextualInferenceLock = NSLock()
   private var contextualModels: [String: NLContextualEmbedding] = [:]
   private var loadedContextualModelIDs: Set<String> = []
   private var preparingContextualModelIDs: Set<String> = []
-  private var requestedContextualModelIDs: Set<String> = []
 
   func vectors(for text: String) -> [KnowledgeSemanticVector] {
+    guard !Task.isCancelled else { return [] }
     let normalizedText = text.trimmedForPublishing
     guard !normalizedText.isEmpty else { return [] }
 
     var output = [fallbackVector(for: normalizedText)]
+    guard !Task.isCancelled else { return [] }
     let language = detectedLanguage(for: normalizedText)
 
-    if let sentenceVector = sentenceVector(for: normalizedText, language: language) {
+    if language != .simplifiedChinese,
+       let sentenceVector = sentenceVector(for: normalizedText, language: language) {
       output.append(sentenceVector)
     } else if language == .english,
               let wordVector = englishWordVector(for: normalizedText) {
@@ -86,10 +89,12 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
     if let contextualVector = contextualVector(for: normalizedText, language: language) {
       output.append(contextualVector)
     }
+    guard !Task.isCancelled else { return [] }
 
     var seen: Set<String> = []
     return output.filter { vector in
-      !vector.isEmpty && seen.insert(vector.modelIdentifier).inserted
+      guard !Task.isCancelled else { return false }
+      return !vector.isEmpty && seen.insert(vector.modelIdentifier).inserted
     }
   }
 
@@ -99,26 +104,42 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
 
   func prepareContextualModelIfNeeded(for text: String) {
     let language = detectedLanguage(for: text)
-    guard let model = contextualModel(for: language), !model.hasAvailableAssets else { return }
+    guard let model = contextualModel(for: language) else { return }
     let identifier = contextualIdentifier(for: model)
 
     lock.lock()
-    let shouldPrepare = !requestedContextualModelIDs.contains(identifier)
+    let shouldPrepare = !loadedContextualModelIDs.contains(identifier)
       && preparingContextualModelIDs.insert(identifier).inserted
-    if shouldPrepare {
-      requestedContextualModelIDs.insert(identifier)
-    }
     lock.unlock()
     guard shouldPrepare else { return }
 
     Task.detached(priority: .utility) { [weak self] in
-      _ = try? await model.requestAssets()
-      self?.finishPreparingContextualModel(identifier)
+      if !model.hasAvailableAssets {
+        _ = try? await model.requestAssets()
+      }
+      let didLoad: Bool
+      if model.hasAvailableAssets {
+        do {
+          try model.load()
+          didLoad = true
+        } catch {
+          didLoad = false
+        }
+      } else {
+        didLoad = false
+      }
+      self?.finishPreparingContextualModel(identifier, didLoad: didLoad)
     }
   }
 
-  private func finishPreparingContextualModel(_ identifier: String) {
+  private func finishPreparingContextualModel(
+    _ identifier: String,
+    didLoad: Bool
+  ) {
     lock.lock()
+    if didLoad {
+      loadedContextualModelIDs.insert(identifier)
+    }
     preparingContextualModelIDs.remove(identifier)
     lock.unlock()
   }
@@ -133,6 +154,7 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
     let tokenizer = NLTokenizer(unit: .word)
     tokenizer.string = normalized
     tokenizer.enumerateTokens(in: normalized.startIndex..<normalized.endIndex) { range, _ in
+      guard !Task.isCancelled else { return false }
       let token = String(normalized[range]).trimmingCharacters(in: .punctuationCharacters)
       if !token.isEmpty {
         addHashedFeature("word:\(token)", weight: 1.0, to: &values)
@@ -147,6 +169,7 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
     let scalars = Array(compactCharacters)
     if scalars.count >= 2 {
       for index in 0..<(scalars.count - 1) {
+        guard !Task.isCancelled else { break }
         addHashedFeature(
           "gram2:\(String(String.UnicodeScalarView(scalars[index...index + 1])))",
           weight: 0.34,
@@ -156,6 +179,7 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
     }
     if scalars.count >= 3 {
       for index in 0..<(scalars.count - 2) {
+        guard !Task.isCancelled else { break }
         addHashedFeature(
           "gram3:\(String(String.UnicodeScalarView(scalars[index...index + 2])))",
           weight: 0.18,
@@ -164,8 +188,11 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
       }
     }
 
-    for concept in Self.semanticConcepts where concept.aliases.contains(where: normalized.contains) {
-      addHashedFeature("concept:\(concept.id)", weight: 7.0, to: &values)
+    for concept in Self.semanticConcepts {
+      guard !Task.isCancelled else { break }
+      if concept.aliases.contains(where: normalized.contains) {
+        addHashedFeature("concept:\(concept.id)", weight: 7.0, to: &values)
+      }
     }
 
     return KnowledgeSemanticVector(
@@ -179,10 +206,12 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
     for text: String,
     language: NLLanguage
   ) -> KnowledgeSemanticVector? {
-    guard let embedding = NLEmbedding.sentenceEmbedding(for: language),
+    guard !Task.isCancelled,
+          let embedding = NLEmbedding.sentenceEmbedding(for: language),
           let values = embedding.vector(for: clipped(text, maximumCharacters: 1_600)) else {
       return nil
     }
+    guard !Task.isCancelled else { return nil }
     return KnowledgeSemanticVector(
       modelIdentifier: "apple-sentence-\(language.rawValue)-r\(embedding.revision)-d\(embedding.dimension)",
       values: values.map(Float.init),
@@ -191,13 +220,15 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
   }
 
   private func englishWordVector(for text: String) -> KnowledgeSemanticVector? {
-    guard let embedding = NLEmbedding.wordEmbedding(for: .english) else { return nil }
+    guard !Task.isCancelled,
+          let embedding = NLEmbedding.wordEmbedding(for: .english) else { return nil }
     let normalized = text.lowercased()
     let tokenizer = NLTokenizer(unit: .word)
     tokenizer.string = normalized
     var aggregate = [Double](repeating: 0, count: embedding.dimension)
     var count = 0
     tokenizer.enumerateTokens(in: normalized.startIndex..<normalized.endIndex) { range, _ in
+      guard !Task.isCancelled else { return false }
       let token = String(normalized[range])
       guard let vector = embedding.vector(for: token), vector.count == aggregate.count else {
         return true
@@ -208,7 +239,7 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
       count += 1
       return count < 160
     }
-    guard count > 0 else { return nil }
+    guard !Task.isCancelled, count > 0 else { return nil }
     return KnowledgeSemanticVector(
       modelIdentifier: "apple-word-en-r\(embedding.revision)-mean-v1",
       values: aggregate.map { Float($0 / Double(count)) },
@@ -220,25 +251,22 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
     for text: String,
     language: NLLanguage
   ) -> KnowledgeSemanticVector? {
-    guard let model = contextualModel(for: language) else { return nil }
-    lock.lock()
-    defer { lock.unlock() }
-    guard model.hasAvailableAssets else { return nil }
+    guard !Task.isCancelled,
+          let model = contextualModel(for: language) else { return nil }
     let identifier = contextualIdentifier(for: model)
-    if !loadedContextualModelIDs.contains(identifier) {
-      do {
-        try model.load()
-      } catch {
-        return nil
-      }
-      loadedContextualModelIDs.insert(identifier)
-    }
+    lock.lock()
+    let isLoaded = loadedContextualModelIDs.contains(identifier)
+    lock.unlock()
+    guard isLoaded else { return nil }
 
     let input = clipped(text, maximumCharacters: 1_600)
+    contextualInferenceLock.lock()
+    defer { contextualInferenceLock.unlock() }
     guard let result = try? model.embeddingResult(for: input, language: language) else { return nil }
     var aggregate = [Double](repeating: 0, count: model.dimension)
     var count = 0
     result.enumerateTokenVectors(in: input.startIndex..<input.endIndex) { vector, _ in
+      guard !Task.isCancelled else { return true }
       guard vector.count == aggregate.count else { return false }
       for index in aggregate.indices {
         aggregate[index] += vector[index]
@@ -246,7 +274,7 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
       count += 1
       return false
     }
-    guard count > 0 else { return nil }
+    guard !Task.isCancelled, count > 0 else { return nil }
     return KnowledgeSemanticVector(
       modelIdentifier: identifier,
       values: aggregate.map { Float($0 / Double(count)) },

@@ -59,8 +59,8 @@ struct KnowledgeWebContentSanitizer: Sendable {
       )
     }
 
-    let noiseTokens = "nav|menu|sidebar|footer|advert(?:isement)?|ads?|promo|cookie|consent|share|social|related|recommend(?:ed|ation)?|comment|popup|modal|newsletter|subscribe|paywall|breadcrumb|toolbar"
-    let attributedNoisePattern = "<(div|section|ul|ol|p)\\b[^>]*(?:id|class|role|aria-label)\\s*=\\s*[\\\"'][^\\\"']*(?:\(noiseTokens))[^\\\"']*[\\\"'][^>]*>[\\s\\S]*?</\\1\\s*>"
+    let noiseTokens = "nav|menu|sidebar|footer|advert(?:isement)?|ads?|promo|cookie|consent|share|social|related|recommend(?:ed|ation)?|comment|popup|modal|newsletter|subscribe|paywall|breadcrumb|toolbar|(?:engagement|interaction|reaction)[-_ ]?(?:bar|count|metrics|stats|summary)|action[-_ ]?bar|(?:view|reply|like|repost|retweet)[-_ ]?count|(?:post|tweet)[-_ ]?(?:actions?|stats?)"
+    let attributedNoisePattern = "<(div|section|ul|ol|p|button)\\b[^>]*(?:id|class|role|aria-label)\\s*=\\s*[\\\"'][^\\\"']*(?:\(noiseTokens))[^\\\"']*[\\\"'][^>]*>[\\s\\S]*?</\\1\\s*>"
     for _ in 0..<4 {
       let before = body
       body = removePattern(attributedNoisePattern, from: body, count: &removedNoiseBlockCount)
@@ -68,6 +68,11 @@ struct KnowledgeWebContentSanitizer: Sendable {
     }
     body = removePattern(
       "<(div|section|ul|ol|p)\\b[^>]*(?:hidden(?:\\s|=|>)|aria-hidden\\s*=\\s*[\\\"']?true)[^>]*>[\\s\\S]*?</\\1\\s*>",
+      from: body,
+      count: &removedNoiseBlockCount
+    )
+    body = removePattern(
+      "<(div|section|button|a)\\b[^>]*data-testid\\s*=\\s*[\\\"'][^\\\"']*(?:reply|retweet|like|bookmark|view[-_ ]?count|social[-_ ]?context)[^\\\"']*[\\\"'][^>]*>[\\s\\S]*?</\\1\\s*>",
       from: body,
       count: &removedNoiseBlockCount
     )
@@ -91,6 +96,23 @@ struct KnowledgeWebContentSanitizer: Sendable {
 
   func sanitizeExtractedReadingText(_ text: String) -> String {
     normalizeExtractedText(text)
+  }
+
+  /// Builds a readable, non-executing view of a stored HTML/MHTML archive
+  /// without applying interface or social-interaction cleanup.
+  func readableOriginalText(from data: Data) -> String? {
+    var html = decodedHTMLSource(from: data)
+    guard !html.isEmpty else { return nil }
+    var ignoredRemovalCount = 0
+    html = removePattern("<!--[\\s\\S]*?-->", from: html, count: &ignoredRemovalCount)
+    for tag in ["script", "style", "noscript", "template", "svg", "canvas"] {
+      html = removePattern(
+        "<\\s*\(tag)\\b[^>]*>[\\s\\S]*?<\\s*/\\s*\(tag)\\s*>",
+        from: html,
+        count: &ignoredRemovalCount
+      )
+    }
+    return normalizeOriginalReadingText(htmlToReadingMarkdown(html)).nilIfEmpty
   }
 
   private func selectReadingRoot(in html: String) -> (html: String, selectedMainContent: Bool) {
@@ -274,27 +296,139 @@ struct KnowledgeWebContentSanitizer: Sendable {
       .replacingOccurrences(of: "\r\n", with: "\n")
       .replacingOccurrences(of: "\r", with: "\n")
       .replacingOccurrences(of: "\u{00a0}", with: " ")
+    let rawLines = normalizedNewlines.components(separatedBy: "\n")
+    let socialNoiseClassifier = KnowledgeSocialInteractionNoiseClassifier()
+    let normalizedLines = rawLines.map {
+      $0.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
+        .trimmingCharacters(in: .whitespaces)
+    }
+    let socialChromeLineIndexes = socialChromeLineIndexes(
+      in: normalizedLines,
+      classifier: socialNoiseClassifier
+    )
     var output: [String] = []
     var previousNonEmpty: String?
     var pendingBlankLine = false
+    var isInsideFencedCodeBlock = false
 
-    for rawLine in normalizedNewlines.components(separatedBy: "\n") {
-      let normalizedLine = rawLine
-        .replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
-        .trimmingCharacters(in: .whitespaces)
-      let line = trimmingTrailingBloggerInterfaceNoise(from: normalizedLine)
+    for (lineIndex, normalizedLine) in normalizedLines.enumerated() {
+      let isFence = normalizedLine.hasPrefix("```")
+      let line = isInsideFencedCodeBlock
+        ? normalizedLine
+        : trimmingTrailingBloggerInterfaceNoise(from: normalizedLine)
       if line.isEmpty {
         pendingBlankLine = !output.isEmpty
         continue
       }
-      guard !isInterfaceNoiseLine(line) else { continue }
+      if !isInsideFencedCodeBlock,
+         !isFence,
+         (isInterfaceNoiseLine(line)
+           || socialNoiseClassifier.isNoiseLine(line)
+           || socialChromeLineIndexes.contains(lineIndex)) {
+        continue
+      }
       guard line != previousNonEmpty else { continue }
       if pendingBlankLine, !output.isEmpty, output.last != "" { output.append("") }
       output.append(line)
       previousNonEmpty = line
       pendingBlankLine = false
+      if isFence { isInsideFencedCodeBlock.toggle() }
     }
     return output.joined(separator: "\n").trimmedForPublishing
+  }
+
+  private func normalizeOriginalReadingText(_ value: String) -> String {
+    let lines = value
+      .replacingOccurrences(of: "\r\n", with: "\n")
+      .replacingOccurrences(of: "\r", with: "\n")
+      .replacingOccurrences(of: "\u{00a0}", with: " ")
+      .components(separatedBy: "\n")
+      .map {
+        $0.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
+          .trimmingCharacters(in: .whitespaces)
+      }
+
+    var output: [String] = []
+    var previousNonEmpty: String?
+    var pendingBlankLine = false
+    for line in lines {
+      if line.isEmpty {
+        pendingBlankLine = !output.isEmpty
+        continue
+      }
+      guard line != previousNonEmpty else { continue }
+      if pendingBlankLine, output.last != "" { output.append("") }
+      output.append(line)
+      previousNonEmpty = line
+      pendingBlankLine = false
+    }
+    return output.joined(separator: "\n").trimmedForPublishing
+  }
+
+  private func socialChromeLineIndexes(
+    in lines: [String],
+    classifier: KnowledgeSocialInteractionNoiseClassifier
+  ) -> Set<Int> {
+    var fencedLineIndexes = Set<Int>()
+    var isInsideFence = false
+    for (index, line) in lines.enumerated() {
+      if line.hasPrefix("```") {
+        fencedLineIndexes.insert(index)
+        isInsideFence.toggle()
+      } else if isInsideFence {
+        fencedLineIndexes.insert(index)
+      }
+    }
+
+    let explicitNoiseIndexes = Set(lines.indices.filter { index in
+      !fencedLineIndexes.contains(index) && classifier.isNoiseLine(lines[index])
+    })
+    let standaloneCountIndexes = Set(lines.indices.filter { index in
+      !fencedLineIndexes.contains(index)
+        && classifier.isStandaloneInteractionCount(lines[index])
+    })
+    guard !standaloneCountIndexes.isEmpty else { return [] }
+
+    var removable = Set<Int>()
+    for index in standaloneCountIndexes {
+      let neighboringIndexes = nearestNonEmptyLineIndexes(around: index, in: lines)
+      let touchesExplicitChrome = neighboringIndexes.contains { explicitNoiseIndexes.contains($0) }
+      if touchesExplicitChrome {
+        removable.insert(index)
+      }
+    }
+    var uncheckedCountIndexes = standaloneCountIndexes.subtracting(removable)
+    while let start = uncheckedCountIndexes.first {
+      var component: Set<Int> = [start]
+      var frontier = [start]
+      uncheckedCountIndexes.remove(start)
+      while let index = frontier.popLast() {
+        for neighbor in nearestNonEmptyLineIndexes(around: index, in: lines)
+          where uncheckedCountIndexes.contains(neighbor) {
+          uncheckedCountIndexes.remove(neighbor)
+          component.insert(neighbor)
+          frontier.append(neighbor)
+        }
+      }
+      if component.count >= 3 {
+        removable.formUnion(component)
+      }
+    }
+    return removable
+  }
+
+  private func nearestNonEmptyLineIndexes(around index: Int, in lines: [String]) -> [Int] {
+    var output: [Int] = []
+    if index > 0,
+       let previous = stride(from: index - 1, through: 0, by: -1)
+        .first(where: { !lines[$0].isEmpty }) {
+      output.append(previous)
+    }
+    if index + 1 < lines.count,
+       let next = (index + 1..<lines.count).first(where: { !lines[$0].isEmpty }) {
+      output.append(next)
+    }
+    return output
   }
 
   private func isInterfaceNoiseLine(_ line: String) -> Bool {

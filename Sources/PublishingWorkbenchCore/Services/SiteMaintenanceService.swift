@@ -1139,7 +1139,7 @@ public struct SiteMaintenanceService: Sendable {
       }
 
     var nextOverflowSlot = startOfToday
-    return readyPublicDrafts.enumerated().map { index, draft in
+    return readyPublicDrafts.map { draft in
       let draftDay = calendar.startOfDay(for: draft.date)
       let scheduledDate: Date
       let reason: String

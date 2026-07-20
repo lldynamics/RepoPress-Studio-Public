@@ -3,6 +3,136 @@ import XCTest
 
 @MainActor
 final class MonetizationTests: XCTestCase {
+  func testDefaultFreePlanMatchesPublishedQuotaOffer() {
+    let limits = FreePlanLimits.default
+    let service = MonetizationService()
+    let state = MonetizationState.default
+
+    XCTAssertEqual(limits.aiRequestLimit, 33)
+    XCTAssertEqual(limits.onlinePublishAttemptLimit, 1)
+    XCTAssertEqual(limits.batchPublishLimit, 3)
+
+    let requirements = Dictionary(
+      uniqueKeysWithValues: service.upgradeRequirements(state: state).map { ($0.feature, $0) }
+    )
+    XCTAssertEqual(requirements[.aiRequest]?.quotaSummary, "已用 0/33，剩余 33 次")
+    XCTAssertEqual(requirements[.onlinePublishing]?.quotaSummary, "已用 0/1，剩余 1 次")
+    XCTAssertEqual(requirements[.batchPublishing]?.quotaSummary, "已用 0/3，剩余 3 次")
+    XCTAssertTrue(PremiumFeature.allCases.allSatisfy { requirements[$0]?.isBlocking == false })
+  }
+
+  func testDailyFreeUsageKeepsCountsWithinTheSameLocalDay() throws {
+    let calendar = utcCalendar()
+    let morning = try utcDate(year: 2026, month: 7, day: 20, hour: 8, calendar: calendar)
+    let evening = try utcDate(year: 2026, month: 7, day: 20, hour: 22, calendar: calendar)
+    let usage = FreePlanUsage(
+      aiRequestCount: 5,
+      onlinePublishAttemptCount: 1,
+      batchPublishCount: 2,
+      dailyPeriodStartedAt: morning
+    )
+    let service = MonetizationService()
+
+    let normalized = service.normalizedFreeUsage(usage, at: evening, calendar: calendar)
+
+    XCTAssertEqual(normalized.aiRequestCount, 5)
+    XCTAssertEqual(normalized.onlinePublishAttemptCount, 1)
+    XCTAssertEqual(normalized.batchPublishCount, 2)
+    XCTAssertEqual(
+      service.remainingFreeUses(
+        for: .aiRequest,
+        usage: usage,
+        at: evening,
+        calendar: calendar
+      ),
+      28
+    )
+  }
+
+  func testDailyFreeUsageResetsBeforeDecisionAndConsumptionOnTheNextDay() throws {
+    let calendar = utcCalendar()
+    let previousDay = try utcDate(year: 2026, month: 7, day: 20, hour: 23, calendar: calendar)
+    let nextDay = try utcDate(year: 2026, month: 7, day: 21, hour: 0, calendar: calendar)
+    let state = MonetizationState(
+      freeUsage: FreePlanUsage(
+        aiRequestCount: 33,
+        onlinePublishAttemptCount: 1,
+        batchPublishCount: 3,
+        dailyPeriodStartedAt: previousDay
+      )
+    )
+    let service = MonetizationService()
+
+    let decision = service.accessDecision(
+      for: .aiRequest,
+      state: state,
+      at: nextDay,
+      calendar: calendar
+    )
+    let consumed = service.consuming(
+      .aiRequest,
+      state: state,
+      at: nextDay,
+      calendar: calendar
+    )
+
+    XCTAssertTrue(decision.isAllowed)
+    XCTAssertEqual(decision.remainingFreeUses, 33)
+    XCTAssertEqual(consumed.freeUsage.aiRequestCount, 1)
+    XCTAssertEqual(consumed.freeUsage.onlinePublishAttemptCount, 0)
+    XCTAssertEqual(consumed.freeUsage.batchPublishCount, 0)
+    XCTAssertTrue(
+      calendar.isDate(
+        try XCTUnwrap(consumed.freeUsage.dailyPeriodStartedAt),
+        inSameDayAs: nextDay
+      )
+    )
+  }
+
+  func testLegacyFreeUsageWithoutDayMarkerResetsOnFirstNormalization() throws {
+    let legacyJSON = Data(
+      #"{"aiRequestCount":33,"onlinePublishAttemptCount":1,"batchPublishCount":3}"#.utf8
+    )
+    let usage = try JSONDecoder().decode(FreePlanUsage.self, from: legacyJSON)
+    let now = try utcDate(year: 2026, month: 7, day: 20, hour: 12, calendar: utcCalendar())
+
+    let normalized = usage.normalized(for: now, calendar: utcCalendar())
+
+    XCTAssertNil(usage.dailyPeriodStartedAt)
+    XCTAssertEqual(normalized.aiRequestCount, 0)
+    XCTAssertEqual(normalized.onlinePublishAttemptCount, 0)
+    XCTAssertEqual(normalized.batchPublishCount, 0)
+  }
+
+  func testStoreResetsPersistedUsageFromAnEarlierDayOnLaunch() throws {
+    let url = try temporaryPersistenceURL()
+    let persistence = WorkbenchPersistence(fileURL: url)
+    let profile = SiteProfile.defaultProfile
+    _ = try persistence.save(
+      WorkbenchSnapshot(
+        profiles: [profile],
+        activeProfileID: profile.id,
+        drafts: [ArticleDraft(siteProfileID: profile.id, title: "Daily", slug: "daily")],
+        releaseRecords: [],
+        monetizationState: MonetizationState(
+          freeUsage: FreePlanUsage(
+            aiRequestCount: 33,
+            onlinePublishAttemptCount: 1,
+            batchPublishCount: 3,
+            dailyPeriodStartedAt: Date(timeIntervalSince1970: 0)
+          )
+        )
+      )
+    )
+
+    let store = WorkbenchStore(persistence: persistence)
+
+    XCTAssertEqual(store.monetizationState.freeUsage.aiRequestCount, 0)
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 0)
+    XCTAssertEqual(store.monetizationState.freeUsage.batchPublishCount, 0)
+    XCTAssertNotNil(store.monetizationState.freeUsage.dailyPeriodStartedAt)
+  }
+
   func testFreePlanAllowsLimitedAIRequestsAndBlocksOnlinePublishing() {
     let service = MonetizationService(limits: FreePlanLimits(aiRequestLimit: 2, onlinePublishAttemptLimit: 0, batchPublishLimit: 1))
     var state = MonetizationState.default
@@ -348,6 +478,31 @@ final class MonetizationTests: XCTestCase {
       .appendingPathComponent("MonetizationTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appendingPathComponent("workbench.json")
+  }
+
+  private func utcCalendar() -> Calendar {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    return calendar
+  }
+
+  private func utcDate(
+    year: Int,
+    month: Int,
+    day: Int,
+    hour: Int,
+    calendar: Calendar
+  ) throws -> Date {
+    try XCTUnwrap(
+      calendar.date(
+        from: DateComponents(
+          year: year,
+          month: month,
+          day: day,
+          hour: hour
+        )
+      )
+    )
   }
 
   private func storeWithMissingRequiredAIKey(

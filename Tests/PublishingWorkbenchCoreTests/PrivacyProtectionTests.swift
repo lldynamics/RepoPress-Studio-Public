@@ -24,7 +24,7 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertTrue(snapshot.privacySettings.masksPrivateContent)
   }
 
-  func testLegacyAutomaticLockSettingsAreIgnored() throws {
+  func testLegacyAutomaticLockSettingsMigrateWithDefaultDelay() throws {
     let url = try temporaryPersistenceURL()
     let profile = SiteProfile.defaultProfile
     let encoded = try JSONEncoder.workbench.encode(WorkbenchSnapshot(
@@ -46,6 +46,32 @@ final class PrivacyProtectionTests: XCTestCase {
 
     XCTAssertFalse(store.isPrivacyLocked)
     XCTAssertTrue(store.privacySettings.masksPrivateContent)
+    XCTAssertTrue(store.privacySettings.locksWhenInactive)
+    XCTAssertEqual(
+      store.privacySettings.inactivityLockDelayMinutes,
+      PrivacyProtectionSettings.defaultInactivityLockDelayMinutes
+    )
+  }
+
+  func testAutomaticLockSettingsClampDelayAndExposeInterval() throws {
+    let tooShort = PrivacyProtectionSettings(
+      locksWhenInactive: true,
+      inactivityLockDelayMinutes: 0
+    )
+    let tooLong = PrivacyProtectionSettings(
+      locksWhenInactive: true,
+      inactivityLockDelayMinutes: 999
+    )
+    let disabled = PrivacyProtectionSettings(
+      locksWhenInactive: false,
+      inactivityLockDelayMinutes: 17
+    )
+
+    XCTAssertEqual(tooShort.effectiveInactivityLockDelayMinutes, 1)
+    XCTAssertEqual(tooShort.inactivityLockInterval, 60)
+    XCTAssertEqual(tooLong.effectiveInactivityLockDelayMinutes, 240)
+    XCTAssertEqual(tooLong.inactivityLockInterval, 14_400)
+    XCTAssertNil(disabled.inactivityLockInterval)
   }
 
   func testManualQuickHideAndReturnToWorkbench() throws {
@@ -180,7 +206,42 @@ final class PrivacyProtectionTests: XCTestCase {
 
     XCTAssertFalse(status.isLocked)
     XCTAssertEqual(status.activeProtections, ["私密内容遮挡"])
-    XCTAssertTrue(status.detail.contains("手动快速隐藏"))
+    XCTAssertTrue(status.detail.contains("⌃⌘L"))
+  }
+
+  func testPrivacyProtectionStatusSummarizesAutomaticLockDelay() throws {
+    let status = PrivacyProtectionStatus.make(
+      settings: PrivacyProtectionSettings(
+        masksPrivateContent: true,
+        locksWhenInactive: true,
+        inactivityLockDelayMinutes: 17
+      ),
+      isLocked: false,
+      reason: nil
+    )
+
+    XCTAssertEqual(status.activeProtections, ["私密内容遮挡", "无操作 17 分钟自动锁定"])
+    XCTAssertTrue(status.detail.contains("连续 17 分钟未操作"))
+    XCTAssertTrue(status.detail.contains("⌃⌘L"))
+  }
+
+  func testAutomaticLockSettingsPersistAcrossStoreReload() async throws {
+    let url = try temporaryPersistenceURL()
+    let persistence = WorkbenchPersistence(fileURL: url)
+    let store = WorkbenchStore(persistence: persistence)
+    store.updatePrivacySettings(
+      PrivacyProtectionSettings(
+        masksPrivateContent: true,
+        locksWhenInactive: true,
+        inactivityLockDelayMinutes: 23
+      )
+    )
+    await store.waitForPendingSave()
+
+    let reloadedStore = WorkbenchStore(persistence: persistence)
+
+    XCTAssertTrue(reloadedStore.privacySettings.locksWhenInactive)
+    XCTAssertEqual(reloadedStore.privacySettings.inactivityLockDelayMinutes, 23)
   }
 
   func testPrivacyProtectionStatusChecklistSummarizesReviewableBehavior() throws {

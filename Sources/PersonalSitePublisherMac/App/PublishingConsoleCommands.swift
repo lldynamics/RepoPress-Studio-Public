@@ -37,7 +37,7 @@ struct PublishingConsoleCommands: Commands {
       .keyboardShortcut("s")
       .disabled(!canUseProtectedWorkbench)
 
-      Button("快速隐藏工作台") {
+      Button(String(localized: "立即锁定软件")) {
         store.lockPrivacy(reason: "已手动快速隐藏工作台内容。")
       }
       .keyboardShortcut("l", modifiers: [.command, .control])

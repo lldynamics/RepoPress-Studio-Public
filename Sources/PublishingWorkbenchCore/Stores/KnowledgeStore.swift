@@ -7,23 +7,48 @@ public final class KnowledgeStore: ObservableObject {
   private let smartCollectionService = KnowledgeSmartCollectionService()
   private var searchTask: Task<Void, Never>?
   private var selectedTextTask: Task<Void, Never>?
+  private var selectedCapturedTextTask: Task<Void, Never>?
   private var relatedChaptersTask: Task<Void, Never>?
   private var documentInsightsTask: Task<Void, Never>?
+  private var visibleDocumentsCacheRevision: UInt64?
+  private var visibleDocumentsCache: [KnowledgeDocument] = []
+  private var visibleSearchResultsCacheRevision: UInt64?
+  private var visibleSearchResultsCache: [KnowledgeSearchResult] = []
+#if DEBUG
+  private(set) var visibleDocumentsSnapshotBuildCount = 0
+  private(set) var visibleSearchResultsSnapshotBuildCount = 0
+#endif
 
-  @Published public private(set) var documents: [KnowledgeDocument] = []
+  @Published public private(set) var listPresentationRevision: UInt64 = 0
+  @Published public private(set) var documents: [KnowledgeDocument] = [] {
+    didSet { invalidateListPresentation() }
+  }
   @Published public private(set) var recycledDocuments: [KnowledgeRecycledDocument] = []
   @Published public private(set) var folders: [KnowledgeFolder] = []
-  @Published public private(set) var searchResults: [KnowledgeSearchResult] = []
+  @Published public private(set) var searchResults: [KnowledgeSearchResult] = [] {
+    didSet { invalidateListPresentation() }
+  }
   @Published public private(set) var selectedSearchResult: KnowledgeSearchResult?
   @Published public private(set) var selectedResultQuery = ""
   @Published public var selectedDocumentID: UUID?
-  @Published public private(set) var folderScope: KnowledgeFolderScope = .all
-  @Published public private(set) var documentSort = KnowledgeDocumentSort()
-  @Published public private(set) var searchFilter = KnowledgeSearchFilter()
+  @Published public private(set) var folderScope: KnowledgeFolderScope = .all {
+    didSet { invalidateListPresentation() }
+  }
+  @Published public private(set) var documentSort = KnowledgeDocumentSort() {
+    didSet { invalidateListPresentation() }
+  }
+  @Published public private(set) var searchFilter = KnowledgeSearchFilter() {
+    didSet { invalidateListPresentation() }
+  }
   @Published public private(set) var selectedDocumentText = ""
   @Published public private(set) var isLoadingSelectedDocumentText = false
   @Published public private(set) var selectedDocumentTextError: String?
-  @Published public private(set) var searchText = ""
+  @Published public private(set) var selectedDocumentCapturedText: String?
+  @Published public private(set) var isLoadingSelectedDocumentCapturedText = false
+  @Published public private(set) var selectedDocumentCapturedTextError: String?
+  @Published public private(set) var searchText = "" {
+    didSet { invalidateListPresentation() }
+  }
   @Published public private(set) var isSearching = false
   @Published public private(set) var isBusy = false
   @Published public private(set) var statusMessage: String?
@@ -45,6 +70,7 @@ public final class KnowledgeStore: ObservableObject {
   deinit {
     searchTask?.cancel()
     selectedTextTask?.cancel()
+    selectedCapturedTextTask?.cancel()
     relatedChaptersTask?.cancel()
     documentInsightsTask?.cancel()
   }
@@ -83,6 +109,9 @@ public final class KnowledgeStore: ObservableObject {
   }
 
   public var visibleDocuments: [KnowledgeDocument] {
+    if visibleDocumentsCacheRevision == listPresentationRevision {
+      return visibleDocumentsCache
+    }
     let candidates: [KnowledgeDocument]
     if searchText.trimmedForPublishing.isEmpty {
       candidates = documents
@@ -95,11 +124,35 @@ public final class KnowledgeStore: ObservableObject {
     let filtered = searchText.trimmedForPublishing.isEmpty
       ? candidates.filter(isIncludedInCurrentScope)
       : candidates
-    return documentSort.sorted(filtered)
+    let result = documentSort.sorted(filtered)
+#if DEBUG
+    visibleDocumentsSnapshotBuildCount += 1
+#endif
+    visibleDocumentsCache = result
+    visibleDocumentsCacheRevision = listPresentationRevision
+    return result
   }
 
   public var visibleSearchResults: [KnowledgeSearchResult] {
-    searchFilter.filtered(searchResults, isInCurrentCollection: isIncludedInCurrentScope)
+    if visibleSearchResultsCacheRevision == listPresentationRevision {
+      return visibleSearchResultsCache
+    }
+    let result = searchFilter.filtered(
+      searchResults,
+      isInCurrentCollection: isIncludedInCurrentScope
+    )
+#if DEBUG
+    visibleSearchResultsSnapshotBuildCount += 1
+#endif
+    visibleSearchResultsCache = result
+    visibleSearchResultsCacheRevision = listPresentationRevision
+    return result
+  }
+
+  private func invalidateListPresentation() {
+    listPresentationRevision &+= 1
+    visibleDocumentsCacheRevision = nil
+    visibleSearchResultsCacheRevision = nil
   }
 
   public func reload(selecting preferredDocumentID: UUID? = nil) async {
@@ -141,6 +194,22 @@ public final class KnowledgeStore: ObservableObject {
     loadDocument(documentID)
     loadRelatedChapters(documentID: documentID, anchorChunkID: nil)
     loadDocumentInsights(documentID: documentID)
+  }
+
+  @discardableResult
+  public func revealDocument(_ documentID: UUID) -> Bool {
+    guard documents.contains(where: { $0.id == documentID }) else {
+      statusMessage = "资料库中找不到要打开的资料。"
+      return false
+    }
+    searchTask?.cancel()
+    searchText = ""
+    searchResults = []
+    isSearching = false
+    folderScope = .all
+    selectDocument(documentID)
+    statusMessage = "已从浏览器打开保存的资料。"
+    return true
   }
 
   public func selectSearchResult(_ result: KnowledgeSearchResult) {
@@ -222,9 +291,13 @@ public final class KnowledgeStore: ObservableObject {
     selectedDocumentID = documentID
     selectedDocumentText = ""
     selectedDocumentTextError = nil
+    selectedDocumentCapturedText = nil
+    selectedDocumentCapturedTextError = nil
     selectedTextTask?.cancel()
+    selectedCapturedTextTask?.cancel()
     guard let documentID else {
       isLoadingSelectedDocumentText = false
+      isLoadingSelectedDocumentCapturedText = false
       return
     }
     isLoadingSelectedDocumentText = true
@@ -244,6 +317,24 @@ public final class KnowledgeStore: ObservableObject {
         self?.isLoadingSelectedDocumentText = false
         self?.selectedDocumentTextError = error.localizedDescription
         self?.lastError = error.localizedDescription
+      }
+    }
+    guard documentKind == .webpage else {
+      isLoadingSelectedDocumentCapturedText = false
+      return
+    }
+    isLoadingSelectedDocumentCapturedText = true
+    selectedCapturedTextTask = Task { [weak self] in
+      do {
+        let text = try await service.capturedTextAsync(documentID: documentID)
+        guard !Task.isCancelled, self?.selectedDocumentID == documentID else { return }
+        self?.selectedDocumentCapturedText = text
+        self?.isLoadingSelectedDocumentCapturedText = false
+        self?.selectedDocumentCapturedTextError = nil
+      } catch {
+        guard !Task.isCancelled, self?.selectedDocumentID == documentID else { return }
+        self?.isLoadingSelectedDocumentCapturedText = false
+        self?.selectedDocumentCapturedTextError = error.localizedDescription
       }
     }
   }
@@ -647,39 +738,104 @@ public final class KnowledgeStore: ObservableObject {
   public func importBrowserCapture(
     _ capture: KnowledgeBrowserCapture,
     folderID: UUID?,
-    newFolderName: String?
-  ) async throws -> KnowledgeImportResult {
+    newFolderName: String?,
+    duplicateResolution: KnowledgeBrowserDuplicateResolution? = nil
+  ) async throws -> KnowledgeBrowserImportOutcome {
     isBusy = true
     statusMessage = "正在保存浏览器页面并建立索引…"
     defer { isBusy = false }
     do {
-      let destination: KnowledgeImportDestination
-      if let requestedName = newFolderName?.trimmedForPublishing.nilIfEmpty {
-        if let existing = try service.folders().first(where: {
-          $0.name.compare(requestedName, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
-        }) {
-          destination = .folder(existing.id)
-        } else {
-          let folder = try service.createFolder(name: requestedName)
-          destination = .folder(folder.id)
+      var preview = try await service.makeBrowserImportPreview(capture: capture)
+      guard var candidate = preview.candidates.first else {
+        throw KnowledgeLibraryError.invalidBrowserCapture("浏览器页面没有可保存的内容。")
+      }
+      let currentDocuments = try service.documents()
+      let currentFolders = try service.folders()
+      let existingDocument = candidate.existingDocumentID.flatMap { documentID in
+        currentDocuments.first(where: { $0.id == documentID })
+      }
+      let hasSameURL = existingDocument?.sourceURL?.absoluteString == candidate.sourceURL?.absoluteString
+      if let existingDocument, hasSameURL, duplicateResolution == nil {
+        let existingFolder = existingDocument.folderID.flatMap { existingFolderID in
+          currentFolders.first(where: { $0.id == existingFolderID })
         }
-      } else if let folderID {
-        destination = .folder(folderID)
-      } else {
-        destination = .unfiled
+        statusMessage = "检测到同网址资料，请选择处理方式。"
+        lastError = nil
+        return .requiresDuplicateResolution(KnowledgeBrowserDuplicateConflict(
+          document: existingDocument,
+          folder: existingFolder,
+          incomingHasChanges: candidate.disposition == .update
+        ))
       }
 
-      let preview = try await service.makeBrowserImportPreview(capture: capture)
-      let result = try await service.commit(preview, destination: destination)
-      await reload()
-      statusMessage = "浏览器页面已保存到资料库。"
+      let destination = try browserImportDestination(
+        folderID: folderID,
+        newFolderName: newFolderName
+      )
+      let result: KnowledgeImportResult
+      let action: KnowledgeBrowserImportAction
+      if let existingDocument, hasSameURL, duplicateResolution == .moveOnly {
+        try service.setFolder(destination.folderID, documentID: existingDocument.id)
+        result = KnowledgeImportResult(
+          insertedCount: 0,
+          updatedCount: 0,
+          skippedCount: 0,
+          documentIDs: [existingDocument.id]
+        )
+        action = .moved
+      } else {
+        if let existingDocument, hasSameURL, duplicateResolution == .saveNewVersion {
+          candidate.existingDocumentID = existingDocument.id
+          candidate.disposition = .update
+        } else if hasSameURL, duplicateResolution == .keepCopy {
+          candidate.existingDocumentID = nil
+          candidate.disposition = .new
+          candidate.title = "\(candidate.title)（副本）"
+        }
+        preview.candidates = [candidate]
+        result = try await service.commit(preview, destination: destination.importDestination)
+        if duplicateResolution == .keepCopy, hasSameURL {
+          action = .copied
+        } else if result.insertedCount > 0 {
+          action = .inserted
+        } else if result.updatedCount > 0 {
+          action = .updated
+        } else {
+          action = .existing
+        }
+      }
+      // 新版本和副本的 AI 权限已由导入候选项带入数据库事务。
+      // “仅移动分类”不提交候选项，因此仍只更新分类并保留原 AI 权限。
+      await reload(selecting: result.documentIDs.first)
+      statusMessage = action == .moved
+        ? "已将原资料移到选定分类；正文、元数据和 AI 权限均保持不变。"
+        : "浏览器页面已保存到资料库。"
       lastError = nil
-      return result
+      return .saved(result: result, action: action)
     } catch {
       lastError = error.localizedDescription
       statusMessage = "浏览器页面保存失败：\(error.localizedDescription)"
       throw error
     }
+  }
+
+  private func browserImportDestination(
+    folderID: UUID?,
+    newFolderName: String?
+  ) throws -> (importDestination: KnowledgeImportDestination, folderID: UUID?) {
+    if let requestedName = newFolderName?.trimmedForPublishing.nilIfEmpty {
+      if let existing = try service.folders().first(where: {
+        $0.name.compare(requestedName, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+      }) {
+        return (.folder(existing.id), existing.id)
+      }
+      let folder = try service.createFolder(name: requestedName)
+      return (.folder(folder.id), folder.id)
+    }
+    if let folderID {
+      return (.folder(folderID), folderID)
+    }
+    return (.unfiled, nil)
   }
 
   public func setAllowsAIUse(_ allowsAIUse: Bool, documentID: UUID) {

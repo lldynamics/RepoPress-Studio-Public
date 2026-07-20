@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TARGET_WIDTH="${SCREENSHOT_TARGET_WIDTH:-1440}"
-TARGET_HEIGHT="${SCREENSHOT_TARGET_HEIGHT:-900}"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TARGET_WIDTH="${SCREENSHOT_TARGET_WIDTH:-2880}"
+TARGET_HEIGHT="${SCREENSHOT_TARGET_HEIGHT:-1800}"
 CANVAS_COLOR="${SCREENSHOT_CANVAS_COLOR:-F5F2EA}"
 ACCEPTED_DIMENSIONS="${SCREENSHOT_ACCEPTED_DIMENSIONS:-1280x800 1440x900 2560x1600 2880x1800}"
+RENDERER="${APP_STORE_SCREENSHOT_RENDERER:-$ROOT_DIR/script/run_app_store_screenshot_renderer.sh}"
 
 fail() {
   echo "screenshot normalize: $*" >&2
@@ -16,6 +18,7 @@ input="$1"
 output="$2"
 [[ -s "$input" ]] || fail "input image is missing or empty: $input"
 command -v sips >/dev/null 2>&1 || fail "sips is required"
+[[ -f "$RENDERER" ]] || fail "lossless screenshot renderer is missing: $RENDERER"
 
 target="${TARGET_WIDTH}x${TARGET_HEIGHT}"
 case " $ACCEPTED_DIMENSIONS " in
@@ -32,23 +35,12 @@ source_height="$(printf '%s\n' "$properties" | awk '/pixelHeight:/ { print $2; e
 
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/app-store-screenshot.XXXXXX")"
 trap 'rm -rf "$tmp_dir"' EXIT
-scaled="$tmp_dir/scaled.png"
-padded="$tmp_dir/padded.png"
-flattened="$tmp_dir/flattened.jpg"
 final="$tmp_dir/final.png"
 
-if (( source_width * TARGET_HEIGHT >= source_height * TARGET_WIDTH )); then
-  sips --resampleWidth "$TARGET_WIDTH" "$input" --out "$scaled" >/dev/null
-else
-  sips --resampleHeight "$TARGET_HEIGHT" "$input" --out "$scaled" >/dev/null
-fi
-sips --padToHeightWidth "$TARGET_HEIGHT" "$TARGET_WIDTH" --padColor "$CANVAS_COLOR" \
-  "$scaled" --out "$padded" >/dev/null 2>&1
-
-# Passing through a maximum-quality JPEG removes alpha deterministically. The
-# final PNG keeps the manifest filenames stable while satisfying App Store Connect.
-sips -s format jpeg -s formatOptions 100 "$padded" --out "$flattened" >/dev/null
-sips -s format png "$flattened" --out "$final" >/dev/null
+# Composite directly into a three-channel RGB bitmap. This keeps text and icon
+# edges lossless while removing alpha without the previous JPEG round-trip.
+bash "$RENDERER" normalize \
+  "$input" "$final" "$TARGET_WIDTH" "$TARGET_HEIGHT" "$CANVAS_COLOR"
 
 final_properties="$(sips -g pixelWidth -g pixelHeight -g hasAlpha "$final" 2>/dev/null)"
 final_width="$(printf '%s\n' "$final_properties" | awk '/pixelWidth:/ { print $2; exit }')"

@@ -1,9 +1,7 @@
-import AppKit
 import Foundation
-import PDFKit
 
 public final class KnowledgeLibraryService: @unchecked Sendable {
-  public static let parserVersion = 3
+  public static let parserVersion = 5
 
   public static func defaultRootURL(fileManager: FileManager = .default) -> URL {
     let supportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -41,19 +39,34 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
   private let searchDiversificationService = KnowledgeSearchDiversificationService()
   private let revisionDifferenceService = KnowledgeRevisionDifferenceService()
   private let webContentSanitizer = KnowledgeWebContentSanitizer()
-  private let epubParser = KnowledgeEPUBParser()
-  private let pdfOCRService = KnowledgePDFOCRService()
+  private let contentExtractionService = KnowledgeContentExtractionService()
   private let fileManager: FileManager
+  private let searchCancellationCheck: @Sendable () throws -> Void
 
-  public init(
+  public convenience init(
     rootURL: URL? = nil,
     chunkingService: KnowledgeChunkingService = KnowledgeChunkingService(),
     fileManager: FileManager = .default
+  ) {
+    self.init(
+      rootURL: rootURL,
+      chunkingService: chunkingService,
+      fileManager: fileManager,
+      searchCancellationCheck: { try Task.checkCancellation() }
+    )
+  }
+
+  init(
+    rootURL: URL? = nil,
+    chunkingService: KnowledgeChunkingService = KnowledgeChunkingService(),
+    fileManager: FileManager = .default,
+    searchCancellationCheck: @escaping @Sendable () throws -> Void
   ) {
     self.rootURL = rootURL ?? Self.defaultRootURL(fileManager: fileManager)
     self.chunkingService = chunkingService
     self.semanticEmbeddingService = KnowledgeSemanticEmbeddingService()
     self.fileManager = fileManager
+    self.searchCancellationCheck = searchCancellationCheck
   }
 
   public func documents() throws -> [KnowledgeDocument] {
@@ -182,6 +195,44 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     let service = self
     return try await Task.detached(priority: .userInitiated) {
       try service.normalizedText(documentID: documentID)
+    }.value
+  }
+
+  /// Returns the browser-extracted text before local reading/index cleanup.
+  /// The original HTML or MHTML archive remains stored separately.
+  public func capturedText(documentID: UUID) throws -> String? {
+    guard let revision = try database().currentRevision(documentID: documentID) else {
+      throw KnowledgeLibraryError.missingDocument
+    }
+    if let reference = revision.capturedTextStorageReference?.nilIfEmpty {
+      guard let url = safeStorageFileURL(for: reference),
+            let text = try? String(contentsOf: url, encoding: .utf8) else {
+        throw KnowledgeLibraryError.unreadableSource(reference)
+      }
+      return text
+    }
+
+    // Before schema version 7, plain-text browser captures used the original
+    // blob itself. Keep those documents inspectable without rewriting history.
+    guard let reference = revision.originalStorageReference?.nilIfEmpty,
+          let url = safeStorageFileURL(for: reference) else {
+      return nil
+    }
+    let pathExtension = (reference as NSString).pathExtension.lowercased()
+    if ["txt", "text"].contains(pathExtension) {
+      return try? String(contentsOf: url, encoding: .utf8)
+    }
+    guard ["html", "htm", "mhtml", "mht"].contains(pathExtension),
+          let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+      return nil
+    }
+    return webContentSanitizer.readableOriginalText(from: data)
+  }
+
+  public func capturedTextAsync(documentID: UUID) async throws -> String? {
+    let service = self
+    return try await Task.detached(priority: .userInitiated) {
+      try service.capturedText(documentID: documentID)
     }.value
   }
 
@@ -573,7 +624,9 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     guard !reference.hasPrefix("/"),
           !reference.contains("\\"),
           components.count >= 2,
-          components.first == "blobs" || components.first == "normalized",
+          components.first == "blobs"
+            || components.first == "captured"
+            || components.first == "normalized",
           components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
       return nil
     }
@@ -681,34 +734,46 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     documentIDs: Set<UUID>? = nil,
     requiredSignal: KnowledgeRetrievalSignal? = nil
   ) throws -> [KnowledgeSearchResult] {
+    try checkSearchCancellation()
     let trimmedQuery = query.trimmedForPublishing
     guard !trimmedQuery.isEmpty, limit > 0 else { return [] }
     let candidateLimit = min(max(limit * 4, 48), 240)
     let database = try database()
-    let fullTextResults = try database.search(
+    try checkSearchCancellation()
+    let rawFullTextResults = try database.search(
       query: trimmedQuery,
       limit: candidateLimit,
       onlyAIAllowed: onlyAIAllowed,
       documentIDs: documentIDs
-    ).map { result in
+    )
+    var fullTextResults: [KnowledgeSearchResult] = []
+    fullTextResults.reserveCapacity(rawFullTextResults.count)
+    for result in rawFullTextResults {
+      try checkSearchCancellation()
       var explainedResult = result
       explainedResult.signals = searchPresentationService.lexicalSignals(
         for: result,
         query: trimmedQuery
       )
-      return explainedResult
+      fullTextResults.append(explainedResult)
     }
 
     let queryVectors = semanticEmbeddingService.vectors(for: trimmedQuery)
+    try checkSearchCancellation()
     var semanticRankings: [[KnowledgeSearchResult]] = []
+    semanticRankings.reserveCapacity(queryVectors.count)
     for queryVector in queryVectors {
+      try checkSearchCancellation()
       try ensureSemanticIndex(for: queryVector, database: database)
-      semanticRankings.append(try database.semanticSearch(
+      try checkSearchCancellation()
+      let ranking = try database.semanticSearch(
         queryVector: queryVector,
         limit: candidateLimit,
         onlyAIAllowed: onlyAIAllowed,
         documentIDs: documentIDs
-      ))
+      )
+      try checkSearchCancellation()
+      semanticRankings.append(ranking)
     }
 
     let eligibleFullTextResults: [KnowledgeSearchResult]
@@ -721,17 +786,33 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
       eligibleFullTextResults = []
       eligibleSemanticRankings = semanticRankings
     case .title, .fullText:
-      let eligibleFullText = fullTextResults.filter { result in
-        requiredSignal.map(result.signals.contains) ?? true
+      var eligibleFullText: [KnowledgeSearchResult] = []
+      for result in fullTextResults {
+        try checkSearchCancellation()
+        if requiredSignal.map(result.signals.contains) ?? true {
+          eligibleFullText.append(result)
+        }
       }
       let eligibleResultIDs = Set(eligibleFullText.map(\.id))
       eligibleFullTextResults = eligibleFullText
-      eligibleSemanticRankings = semanticRankings.map { ranking in
-        ranking.filter { eligibleResultIDs.contains($0.id) }
+      var filteredRankings: [[KnowledgeSearchResult]] = []
+      filteredRankings.reserveCapacity(semanticRankings.count)
+      for ranking in semanticRankings {
+        var filteredRanking: [KnowledgeSearchResult] = []
+        filteredRanking.reserveCapacity(ranking.count)
+        for result in ranking {
+          try checkSearchCancellation()
+          if eligibleResultIDs.contains(result.id) {
+            filteredRanking.append(result)
+          }
+        }
+        filteredRankings.append(filteredRanking)
       }
+      eligibleSemanticRankings = filteredRankings
     }
 
-    return fusedSearchResults(
+    try checkSearchCancellation()
+    return try fusedSearchResults(
       fullText: eligibleFullTextResults,
       semanticRankings: eligibleSemanticRankings,
       limit: limit
@@ -745,17 +826,27 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     documentIDs: Set<UUID>? = nil,
     requiredSignal: KnowledgeRetrievalSignal? = nil
   ) async throws -> [KnowledgeSearchResult] {
-    semanticEmbeddingService.prepareContextualModelIfNeeded(for: query)
+    try Task.checkCancellation()
     let service = self
-    return try await Task.detached(priority: .userInitiated) {
-      try service.search(
+    let task = Task.detached(priority: .userInitiated) {
+      try service.checkSearchCancellation()
+      service.semanticEmbeddingService.prepareContextualModelIfNeeded(for: query)
+      try service.checkSearchCancellation()
+      return try service.search(
         query: query,
         limit: limit,
         onlyAIAllowed: onlyAIAllowed,
         documentIDs: documentIDs,
         requiredSignal: requiredSignal
       )
-    }.value
+    }
+    // An unstructured detached task does not inherit cancellation that arrives
+    // after creation, so explicitly forward the outer search cancellation.
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
   }
 
   public func relatedChapters(
@@ -910,8 +1001,12 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     for queryVector: KnowledgeSemanticVector,
     database: KnowledgeDatabase
   ) throws {
-    semanticBackfillLock.lock()
+    try checkSearchCancellation()
+    while !semanticBackfillLock.lock(before: Date(timeIntervalSinceNow: 0.02)) {
+      try checkSearchCancellation()
+    }
     defer { semanticBackfillLock.unlock() }
+    try checkSearchCancellation()
     let modelIdentifier = queryVector.modelIdentifier
     guard !backfilledSemanticModelIDs.contains(modelIdentifier) else { return }
 
@@ -919,20 +1014,27 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
       modelIdentifier: modelIdentifier,
       expectedDimension: queryVector.values.count
     )
-    let embeddings = repairRecords.compactMap { record -> KnowledgeChunkEmbedding? in
+    try checkSearchCancellation()
+    var embeddings: [KnowledgeChunkEmbedding] = []
+    embeddings.reserveCapacity(repairRecords.count)
+    for record in repairRecords {
+      try checkSearchCancellation()
       guard let vector = semanticEmbeddingService.vector(
         for: record.searchableText,
         modelIdentifier: modelIdentifier
       ) else {
-        return nil
+        continue
       }
-      return KnowledgeChunkEmbedding(
+      try checkSearchCancellation()
+      embeddings.append(KnowledgeChunkEmbedding(
         chunkID: record.chunk.id,
         revisionID: record.chunk.revisionID,
         vector: vector
-      )
+      ))
     }
+    try checkSearchCancellation()
     try database.upsertSemanticEmbeddings(embeddings)
+    try checkSearchCancellation()
     backfilledSemanticModelIDs.insert(modelIdentifier)
   }
 
@@ -1006,13 +1108,14 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     fullText: [KnowledgeSearchResult],
     semanticRankings: [[KnowledgeSearchResult]],
     limit: Int
-  ) -> [KnowledgeSearchResult] {
+  ) throws -> [KnowledgeSearchResult] {
     let rankConstant = 60.0
     var resultByID: [UUID: KnowledgeSearchResult] = [:]
     var scoreByID: [UUID: Double] = [:]
     var signalsByID: [UUID: Set<KnowledgeRetrievalSignal>] = [:]
 
     for (offset, result) in fullText.enumerated() {
+      try checkSearchCancellation()
       let contribution = 0.62 / (rankConstant + Double(offset + 1))
       resultByID[result.id] = result
       scoreByID[result.id, default: 0] += contribution
@@ -1023,6 +1126,7 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     var bestSemanticResult: [UUID: KnowledgeSearchResult] = [:]
     for ranking in semanticRankings {
       for (offset, result) in ranking.enumerated() {
+        try checkSearchCancellation()
         let rankContribution = 0.38 / (rankConstant + Double(offset + 1))
         let similarityContribution = max(0, result.score) * 0.0015
         let contribution = rankContribution + similarityContribution
@@ -1034,6 +1138,7 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     }
 
     for (id, contribution) in bestSemanticContribution {
+      try checkSearchCancellation()
       if resultByID[id] == nil, let semanticResult = bestSemanticResult[id] {
         resultByID[id] = semanticResult
       }
@@ -1041,20 +1146,29 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
       signalsByID[id, default: []].formUnion([.semantic])
     }
 
-    let fused = resultByID.compactMap { id, storedResult in
+    var fused: [KnowledgeSearchResult] = []
+    fused.reserveCapacity(resultByID.count)
+    for (id, storedResult) in resultByID {
+      try checkSearchCancellation()
       var result = storedResult
       result.score = scoreByID[id, default: 0]
       result.signals = signalsByID[id, default: []]
-      return result
+      fused.append(result)
     }
-    .sorted {
+    try checkSearchCancellation()
+    fused.sort {
       if $0.score != $1.score { return $0.score > $1.score }
       if $0.document.updatedAt != $1.document.updatedAt {
         return $0.document.updatedAt > $1.document.updatedAt
       }
       return $0.chunk.ordinal < $1.chunk.ordinal
     }
-    return searchDiversificationService.rank(fused, limit: limit)
+    try checkSearchCancellation()
+    return try searchDiversificationService.rankCancellable(fused, limit: limit)
+  }
+
+  private func checkSearchCancellation() throws {
+    try searchCancellationCheck()
   }
 
   private func invalidateSemanticBackfillCache() {
@@ -1138,6 +1252,7 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
       candidate.language = document.language
       candidate.summary = document.summary
       candidate.tags = document.tags
+      candidate.capturedText = try capturedText(documentID: document.id)
       let previousText = try normalizedText(revisionID: revision.id)
       previews.append(KnowledgeSourceRefreshPreview(
         documentID: document.id,
@@ -1180,7 +1295,11 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
   }
 
   private func storedByteCount(for revision: KnowledgeDocumentRevision) -> Int64? {
-    [revision.originalStorageReference, revision.normalizedStorageReference]
+    [
+      revision.originalStorageReference,
+      revision.capturedTextStorageReference,
+      revision.normalizedStorageReference,
+    ]
       .compactMap { $0?.nilIfEmpty }
       .lazy
       .compactMap { reference -> Int64? in
@@ -1387,26 +1506,13 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     options: KnowledgeImportOptions = KnowledgeImportOptions()
   ) throws -> KnowledgeImportCandidate {
     let lowerExtension = fileExtension.lowercased()
-    let extraction: KnowledgeExtraction
-
-    switch lowerExtension {
-    case "md", "markdown", "mdx":
-      extraction = try extractMarkdown(data: data, sourceName: sourceName)
-    case "txt", "text":
-      extraction = try extractPlainText(data: data, sourceName: sourceName)
-    case "html", "htm":
-      extraction = try extractHTML(data: data, sourceName: sourceName)
-    case "pdf":
-      extraction = try extractPDF(data: data, sourceName: sourceName, options: options)
-    case "epub":
-      extraction = try extractEPUB(data: data, sourceName: sourceName)
-    default:
-      if preferredKind == .webpage {
-        extraction = try extractHTML(data: data, sourceName: sourceName)
-      } else {
-        throw KnowledgeLibraryError.unsupportedSource(sourceName)
-      }
-    }
+    let extraction = try contentExtractionService.extract(
+      data: data,
+      sourceName: sourceName,
+      fileExtension: lowerExtension,
+      preferredKind: preferredKind,
+      options: options
+    )
 
     let normalizedText = normalizedText(from: extraction.sections)
     guard !normalizedText.isEmpty else {
@@ -1432,7 +1538,7 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
       existingDocumentID: existing?.document.id,
       disposition: disposition,
       kind: preferredKind ?? extraction.kind,
-      title: extraction.title.nilIfEmpty ?? humanizedFilename(sourceName),
+      title: extraction.title.nilIfEmpty ?? contentExtractionService.humanizedFilename(sourceName),
       authors: extraction.authors,
       language: extraction.language,
       summary: extraction.summary,
@@ -1550,6 +1656,27 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
       disposition = .new
     }
     var warnings = ["页面由浏览器插件在 \(capture.capturedAt.formatted(date: .abbreviated, time: .shortened)) 保存；正文和归档均留在本机。"]
+    switch capture.captureMode {
+    case .cleanedArticle:
+      warnings.append("本次使用净化正文模式，只保存适合阅读与检索的正文。")
+    case .fullPage:
+      warnings.append("本次使用完整网页模式，同时保存可检索正文和页面归档。")
+    case .selection:
+      warnings.append("本次仅保存用户在网页中选中的文字。")
+    case .linkOnly:
+      warnings.append("本次仅保存页面标题和原始链接。")
+    case nil:
+      break
+    }
+    if archiveFormat == "html", let embeddedCount = capture.archiveEmbeddedResourceCount {
+      warnings.append("离线 HTML 已内联 \(embeddedCount) 个图片、样式或字体资源。")
+    }
+    if let missingCount = capture.archiveMissingResourceCount, missingCount > 0 {
+      warnings.append("有 \(missingCount) 个外部资源因跨域、网络或大小限制未能内联；离线外观可能不完整。")
+    }
+    if capture.archiveWasTruncated == true {
+      warnings.append("网页归档已达到 24 MB 上限，已保留可检索正文和可用的精简 HTML。")
+    }
     if let sanitizedHTML {
       warnings.append("保存前已在本机重新净化网页正文，原始页面归档保持不变。")
       if sanitizedHTML.removedNoiseBlockCount > 0 {
@@ -1571,8 +1698,10 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
       sourceURL: sourceURL,
       sourceName: sourceURL.host ?? sourceURL.absoluteString,
       sourceModifiedAt: nil,
+      allowsAIUse: capture.allowsAIUse,
       originalFilenameExtension: originalExtension,
       originalData: originalData,
+      capturedText: capture.contentText,
       originalContentHash: originalHash,
       normalizedText: normalizedText,
       normalizedContentHash: normalizedHash,
@@ -1597,6 +1726,7 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     var insertedCount = 0
     var updatedCount = 0
     var skippedCount = 0
+    var documentIDs: [UUID] = []
 
     for candidate in preview.candidates {
       try Task.checkCancellation()
@@ -1607,6 +1737,21 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
         _ = try persistOriginalData(candidate)
         _ = try persistNormalizedText(candidate)
         if let documentID = candidate.existingDocumentID {
+          if let revision = try database.currentRevision(documentID: documentID) {
+            if let existingReference = revision.capturedTextStorageReference?.nilIfEmpty {
+              if existingReference == capturedTextStorageReference(for: candidate) {
+                _ = try persistCapturedText(candidate)
+              }
+            } else if let capturedReference = try persistCapturedText(candidate) {
+              try database.setCapturedTextStorageReference(
+                capturedReference,
+                revisionID: revision.id
+              )
+            }
+          }
+          if !documentIDs.contains(documentID) {
+            documentIDs.append(documentID)
+          }
           switch destination {
           case .preserveExisting:
             break
@@ -1622,9 +1767,13 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
 
       let existingDocument = try candidate.existingDocumentID.flatMap { try database.document(id: $0) }
       let documentID = existingDocument?.id ?? UUID()
+      if !documentIDs.contains(documentID) {
+        documentIDs.append(documentID)
+      }
       let revisionID = UUID()
       let now = Date()
       let originalReference = try persistOriginalData(candidate)
+      let capturedTextReference = try persistCapturedText(candidate)
       let normalizedReference = try persistNormalizedText(candidate)
 
       let document = KnowledgeDocument(
@@ -1645,7 +1794,7 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
           }
         }(),
         sourceByteCount: Int64(candidate.originalData?.count ?? candidate.normalizedText.utf8.count),
-        allowsAIUse: existingDocument?.allowsAIUse ?? true,
+        allowsAIUse: candidate.allowsAIUse ?? existingDocument?.allowsAIUse ?? true,
         isArchived: existingDocument?.isArchived ?? false,
         importedAt: existingDocument?.importedAt ?? now,
         updatedAt: now,
@@ -1660,6 +1809,7 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
         importedAt: now,
         sourceModifiedAt: candidate.sourceModifiedAt,
         originalStorageReference: originalReference,
+        capturedTextStorageReference: capturedTextReference,
         normalizedStorageReference: normalizedReference
       )
       let chunks = chunkingService.chunks(
@@ -1698,7 +1848,8 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     return KnowledgeImportResult(
       insertedCount: insertedCount,
       updatedCount: updatedCount,
-      skippedCount: skippedCount
+      skippedCount: skippedCount,
+      documentIDs: documentIDs
     )
   }
 
@@ -1716,6 +1867,21 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     return reference
   }
 
+  private func capturedTextStorageReference(
+    for candidate: KnowledgeImportCandidate
+  ) -> String? {
+    guard let capturedText = candidate.capturedText?.nilIfEmpty else { return nil }
+    let hash = KnowledgeChunkingService.contentHash(for: capturedText)
+    return "captured/sha256/\(String(hash.prefix(2)))/\(hash).txt"
+  }
+
+  private func persistCapturedText(_ candidate: KnowledgeImportCandidate) throws -> String? {
+    guard let capturedText = candidate.capturedText?.nilIfEmpty,
+          let reference = capturedTextStorageReference(for: candidate) else { return nil }
+    try persist(Data(capturedText.utf8), reference: reference)
+    return reference
+  }
+
   private func persist(_ data: Data, reference: String) throws {
     let destination = rootURL.appendingPathComponent(reference)
     if fileManager.fileExists(atPath: destination.path),
@@ -1726,291 +1892,9 @@ public final class KnowledgeLibraryService: @unchecked Sendable {
     try data.write(to: destination, options: .atomic)
   }
 
-  private func extractMarkdown(data: Data, sourceName: String) throws -> KnowledgeExtraction {
-    guard let source = String(data: data, encoding: .utf8) else {
-      throw KnowledgeLibraryError.unreadableSource(sourceName)
-    }
-    let parsed = markdownFrontMatter(source)
-    let title = parsed.values["title"]?.nilIfEmpty
-      ?? firstMarkdownHeading(parsed.body)
-      ?? humanizedFilename(sourceName)
-    let authors = listValue(parsed.values["authors"] ?? parsed.values["author"])
-    let tags = listValue(parsed.values["tags"] ?? parsed.values["tag"])
-    let summary = parsed.values["summary"] ?? parsed.values["description"] ?? ""
-    return KnowledgeExtraction(
-      kind: .markdown,
-      title: title,
-      authors: authors,
-      language: parsed.values["language"] ?? parsed.values["lang"],
-      summary: summary,
-      tags: tags,
-      sections: markdownSections(parsed.body),
-      warnings: []
-    )
-  }
-
-  private func extractPlainText(data: Data, sourceName: String) throws -> KnowledgeExtraction {
-    guard let text = String(data: data, encoding: .utf8) else {
-      throw KnowledgeLibraryError.unreadableSource(sourceName)
-    }
-    return KnowledgeExtraction(
-      kind: .text,
-      title: firstNonEmptyLine(text) ?? humanizedFilename(sourceName),
-      authors: [],
-      language: nil,
-      summary: "",
-      tags: [],
-      sections: [KnowledgeExtractedSection(text: text)],
-      warnings: []
-    )
-  }
-
-  private func extractHTML(data: Data, sourceName: String) throws -> KnowledgeExtraction {
-    let sanitized = try webContentSanitizer.sanitize(data: data, sourceName: sourceName)
-    var warnings = ["网页正文已在本机净化；原始 HTML 保持不变。"]
-    if sanitized.selectedMainContent {
-      warnings.append("已优先提取页面的 article/main 正文区域。")
-    }
-    if sanitized.removedNoiseBlockCount > 0 {
-      warnings.append("已移除 \(sanitized.removedNoiseBlockCount) 个导航、广告或交互噪声区块。")
-    }
-    return KnowledgeExtraction(
-      kind: .webpage,
-      title: sanitized.title ?? humanizedFilename(sourceName),
-      authors: sanitized.authors,
-      language: sanitized.language,
-      summary: sanitized.summary,
-      tags: [],
-      sections: sanitized.sections,
-      warnings: warnings
-    )
-  }
-
-  private func extractPDF(
-    data: Data,
-    sourceName: String,
-    options: KnowledgeImportOptions
-  ) throws -> KnowledgeExtraction {
-    guard let document = PDFDocument(data: data) else {
-      throw KnowledgeLibraryError.unreadableSource(sourceName)
-    }
-    var sections: [KnowledgeExtractedSection] = []
-    var emptyPageCount = 0
-    var ocrAttemptCount = 0
-    var ocrRecognizedCount = 0
-    var ocrFailureCount = 0
-    var ocrLimitSkippedCount = 0
-    for index in 0..<document.pageCount {
-      try Task.checkCancellation()
-      guard let page = document.page(at: index) else {
-        emptyPageCount += 1
-        continue
-      }
-      let pageText = page.string?.trimmedForPublishing ?? ""
-      if !pageText.isEmpty {
-        sections.append(KnowledgeExtractedSection(locator: "第 \(index + 1) 页", text: pageText))
-        continue
-      }
-
-      guard options.performsPDFOCR else {
-        emptyPageCount += 1
-        continue
-      }
-      guard ocrAttemptCount < options.maximumPDFOCRPageCount else {
-        emptyPageCount += 1
-        ocrLimitSkippedCount += 1
-        continue
-      }
-
-      ocrAttemptCount += 1
-      do {
-        let recognizedText = try pdfOCRService.recognizeText(in: page).trimmedForPublishing
-        if recognizedText.isEmpty {
-          emptyPageCount += 1
-        } else {
-          ocrRecognizedCount += 1
-          sections.append(KnowledgeExtractedSection(
-            locator: "第 \(index + 1) 页（OCR）",
-            text: recognizedText
-          ))
-        }
-      } catch {
-        emptyPageCount += 1
-        ocrFailureCount += 1
-      }
-    }
-    var warnings: [String] = []
-    if ocrRecognizedCount > 0 {
-      warnings.append("已在本机使用 Vision OCR 识别 \(ocrRecognizedCount) 页；原始 PDF 保持不变。")
-    }
-    if ocrFailureCount > 0 {
-      warnings.append("有 \(ocrFailureCount) 页 OCR 处理失败，未加入检索文本。")
-    }
-    if ocrLimitSkippedCount > 0 {
-      warnings.append("OCR 最多处理 \(options.maximumPDFOCRPageCount) 页；另有 \(ocrLimitSkippedCount) 个无文字层页面未识别。")
-    }
-    if emptyPageCount > 0 {
-      let reason = options.performsPDFOCR ? "OCR 后仍没有可识别文字" : "未启用 OCR"
-      warnings.append("有 \(emptyPageCount) 页\(reason)，这些页面暂时不能检索。")
-    }
-    let title = (document.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String)?.nilIfEmpty
-      ?? humanizedFilename(sourceName)
-    let author = (document.documentAttributes?[PDFDocumentAttribute.authorAttribute] as? String)?.nilIfEmpty
-    return KnowledgeExtraction(
-      kind: .pdf,
-      title: title,
-      authors: author.map { [$0] } ?? [],
-      language: nil,
-      summary: "",
-      tags: [],
-      sections: sections,
-      warnings: warnings
-    )
-  }
-
-  private func extractEPUB(data: Data, sourceName: String) throws -> KnowledgeExtraction {
-    let book = try epubParser.parse(data: data, sourceName: sourceName)
-    return KnowledgeExtraction(
-      kind: .book,
-      title: book.title.nilIfEmpty ?? humanizedFilename(sourceName),
-      authors: book.authors,
-      language: book.language,
-      summary: book.summary,
-      tags: book.tags,
-      sections: book.sections,
-      warnings: book.warnings
-    )
-  }
-
-  private func markdownFrontMatter(_ source: String) -> (values: [String: String], body: String) {
-    let lines = source.components(separatedBy: .newlines)
-    guard lines.first?.trimmingCharacters(in: .whitespacesAndNewlines) == "---" else {
-      return ([:], source)
-    }
-    guard let end = lines.dropFirst().firstIndex(where: {
-      $0.trimmingCharacters(in: .whitespacesAndNewlines) == "---"
-    }) else {
-      return ([:], source)
-    }
-    var values: [String: String] = [:]
-    for line in lines[1..<end] {
-      guard let separator = line.firstIndex(of: ":") else { continue }
-      let key = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-      let value = line[line.index(after: separator)...]
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-        .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-      values[key] = value
-    }
-    return (values, lines[(end + 1)...].joined(separator: "\n"))
-  }
-
-  private func markdownSections(_ source: String) -> [KnowledgeExtractedSection] {
-    var sections: [KnowledgeExtractedSection] = []
-    var headings: [Int: String] = [:]
-    var buffer: [String] = []
-
-    func flush() {
-      let text = buffer.joined(separator: "\n").trimmedForPublishing
-      buffer = []
-      guard !text.isEmpty else { return }
-      let path = headings.keys.sorted().compactMap { headings[$0] }.joined(separator: " › ")
-      sections.append(KnowledgeExtractedSection(
-        headingPath: path.nilIfEmpty,
-        text: text
-      ))
-    }
-
-    for line in source.components(separatedBy: .newlines) {
-      let trimmed = line.trimmingCharacters(in: .whitespaces)
-      let hashes = trimmed.prefix { $0 == "#" }.count
-      if (1...6).contains(hashes), trimmed.dropFirst(hashes).first == " " {
-        flush()
-        let heading = trimmed.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
-        headings[hashes] = heading
-        if hashes < 6 {
-          for level in (hashes + 1)...6 { headings.removeValue(forKey: level) }
-        }
-      } else {
-        buffer.append(line)
-      }
-    }
-    flush()
-    if sections.isEmpty {
-      return [KnowledgeExtractedSection(text: source)]
-    }
-    return sections
-  }
-
-  private func firstMarkdownHeading(_ source: String) -> String? {
-    source.components(separatedBy: .newlines).compactMap { line in
-      let trimmed = line.trimmingCharacters(in: .whitespaces)
-      guard trimmed.hasPrefix("# ") else { return nil }
-      return String(trimmed.dropFirst(2)).trimmedForPublishing.nilIfEmpty
-    }.first
-  }
-
-  private func listValue(_ value: String?) -> [String] {
-    guard let value else { return [] }
-    let trimmed = value.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-    return trimmed
-      .components(separatedBy: CharacterSet(charactersIn: ",，"))
-      .map {
-        $0.trimmingCharacters(in: .whitespacesAndNewlines)
-          .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-      }
-      .filter { !$0.isEmpty }
-  }
-
-  private func firstCapture(in text: String, pattern: String) -> String? {
-    guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-          let match = expression.firstMatch(
-            in: text,
-            range: NSRange(text.startIndex..<text.endIndex, in: text)
-          ),
-          match.numberOfRanges > 1,
-          let range = Range(match.range(at: 1), in: text) else { return nil }
-    return String(text[range]).trimmedForPublishing.nilIfEmpty
-  }
-
-  private func firstNonEmptyLine(_ text: String) -> String? {
-    text.components(separatedBy: .newlines)
-      .map { $0.trimmedForPublishing }
-      .first(where: { !$0.isEmpty })?
-      .nilIfEmpty
-  }
-
-  private func humanizedFilename(_ name: String) -> String {
-    let stem = URL(fileURLWithPath: name).deletingPathExtension().lastPathComponent
-    let humanized = stem
-      .replacingOccurrences(of: "[-_]", with: " ", options: .regularExpression)
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-    return humanized.nilIfEmpty ?? "未命名资料"
-  }
-
-  private func decodeHTMLEntities(_ text: String) -> String {
-    text
-      .replacingOccurrences(of: "&nbsp;", with: " ")
-      .replacingOccurrences(of: "&amp;", with: "&")
-      .replacingOccurrences(of: "&lt;", with: "<")
-      .replacingOccurrences(of: "&gt;", with: ">")
-      .replacingOccurrences(of: "&quot;", with: "\"")
-      .replacingOccurrences(of: "&#39;", with: "'")
-  }
-
   private func clipped(_ text: String, maximumCharacters: Int) -> String {
     guard text.count > maximumCharacters else { return text }
     let end = text.index(text.startIndex, offsetBy: maximumCharacters)
     return String(text[..<end]).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
   }
-}
-
-private struct KnowledgeExtraction {
-  var kind: KnowledgeDocumentKind
-  var title: String
-  var authors: [String]
-  var language: String?
-  var summary: String
-  var tags: [String]
-  var sections: [KnowledgeExtractedSection]
-  var warnings: [String]
 }

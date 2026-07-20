@@ -30,7 +30,7 @@ public final class PrivacyMonetizationStore: ObservableObject {
     restoredMonetizationState.entitlement = entitlementProvider.entitlement(
       restoring: monetizationState.entitlement
     )
-    self.monetizationState = restoredMonetizationState
+    self.monetizationState = monetizationService.normalizedState(restoredMonetizationState)
     self.monetizationMessage = monetizationMessage
     self.latestProFeatureBlockNotice = latestProFeatureBlockNotice
   }
@@ -55,6 +55,10 @@ public final class PrivacyMonetizationStore: ObservableObject {
     monetizationService.statusSummary(state: monetizationState)
   }
 
+  public var currentFreePlanUsage: FreePlanUsage {
+    monetizationService.normalizedFreeUsage(monetizationState.freeUsage)
+  }
+
   public var proUpgradePresentation: ProUpgradePresentation {
     .default
   }
@@ -68,7 +72,7 @@ public final class PrivacyMonetizationStore: ObservableObject {
   }
 
   public func updatePrivacySettings(_ settings: PrivacyProtectionSettings, store: WorkbenchStore) {
-    privacySettings = settings
+    privacySettings = settings.normalized
     store.save()
   }
 
@@ -127,7 +131,25 @@ public final class PrivacyMonetizationStore: ObservableObject {
   }
 
   @discardableResult
+  public func refreshDailyFreeUsageIfNeeded(
+    now: Date = Date(),
+    calendar: Calendar = .current
+  ) -> Bool {
+    let normalizedUsage = monetizationService.normalizedFreeUsage(
+      monetizationState.freeUsage,
+      at: now,
+      calendar: calendar
+    )
+    guard normalizedUsage != monetizationState.freeUsage else { return false }
+
+    monetizationState.freeUsage = normalizedUsage
+    latestProFeatureBlockNotice = nil
+    return true
+  }
+
+  @discardableResult
   public func consumeFeatureUse(_ feature: PremiumFeature, store: WorkbenchStore) -> FeatureAccessDecision {
+    refreshDailyFreeUsageIfNeeded()
     let decision = accessDecision(for: feature)
     if monetizationState.entitlement.isUnlocked {
     } else if decision.isAllowed {

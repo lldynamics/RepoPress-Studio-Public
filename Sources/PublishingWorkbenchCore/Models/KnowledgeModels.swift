@@ -374,6 +374,41 @@ public enum KnowledgeImportDestination: Hashable, Sendable {
   case folder(UUID)
 }
 
+public enum KnowledgeBrowserCaptureMode: String, Codable, Hashable, Sendable {
+  case cleanedArticle = "cleaned-article"
+  case fullPage = "full-page"
+  case selection = "selection"
+  case linkOnly = "link-only"
+}
+
+public struct KnowledgeBrowserConnectionTokenLease: Hashable, Sendable {
+  public static let defaultLifetime: TimeInterval = 30 * 24 * 60 * 60
+
+  public var token: String
+  public var expiresAt: Date
+
+  public init(
+    storedToken: String?,
+    storedExpiresAt: Date?,
+    now: Date,
+    lifetime: TimeInterval = Self.defaultLifetime,
+    generateToken: () -> String
+  ) {
+    if let storedToken, storedToken.count >= 32,
+       storedExpiresAt == nil || storedExpiresAt! > now {
+      token = storedToken
+      expiresAt = storedExpiresAt ?? now.addingTimeInterval(lifetime)
+    } else {
+      token = generateToken()
+      expiresAt = now.addingTimeInterval(lifetime)
+    }
+  }
+
+  public func isExpired(at date: Date) -> Bool {
+    date >= expiresAt
+  }
+}
+
 public struct KnowledgeBrowserCapture: Codable, Hashable, Sendable {
   public static let currentSchemaVersion = 1
 
@@ -389,6 +424,11 @@ public struct KnowledgeBrowserCapture: Codable, Hashable, Sendable {
   public var originalHTML: String?
   public var archiveFormat: String?
   public var archiveData: Data?
+  public var archiveEmbeddedResourceCount: Int?
+  public var archiveMissingResourceCount: Int?
+  public var archiveWasTruncated: Bool?
+  public var captureMode: KnowledgeBrowserCaptureMode?
+  public var allowsAIUse: Bool?
 
   public init(
     schemaVersion: Int = Self.currentSchemaVersion,
@@ -402,7 +442,12 @@ public struct KnowledgeBrowserCapture: Codable, Hashable, Sendable {
     contentText: String,
     originalHTML: String? = nil,
     archiveFormat: String? = nil,
-    archiveData: Data? = nil
+    archiveData: Data? = nil,
+    archiveEmbeddedResourceCount: Int? = nil,
+    archiveMissingResourceCount: Int? = nil,
+    archiveWasTruncated: Bool? = nil,
+    captureMode: KnowledgeBrowserCaptureMode? = nil,
+    allowsAIUse: Bool? = nil
   ) {
     self.schemaVersion = schemaVersion
     self.sourceURL = sourceURL
@@ -416,6 +461,248 @@ public struct KnowledgeBrowserCapture: Codable, Hashable, Sendable {
     self.originalHTML = originalHTML
     self.archiveFormat = archiveFormat
     self.archiveData = archiveData
+    self.archiveEmbeddedResourceCount = archiveEmbeddedResourceCount
+    self.archiveMissingResourceCount = archiveMissingResourceCount
+    self.archiveWasTruncated = archiveWasTruncated
+    self.captureMode = captureMode
+    self.allowsAIUse = allowsAIUse
+  }
+}
+
+public enum KnowledgeBrowserDuplicateResolution: String, Codable, Hashable, Sendable {
+  case saveNewVersion = "save-new-version"
+  case moveOnly = "move-only"
+  case keepCopy = "keep-copy"
+}
+
+public enum KnowledgeBrowserImportAction: String, Codable, Hashable, Sendable {
+  case inserted
+  case updated
+  case existing
+  case moved
+  case copied
+}
+
+public struct KnowledgeBrowserDuplicateConflict: Hashable, Sendable {
+  public var document: KnowledgeDocument
+  public var folder: KnowledgeFolder?
+  public var incomingHasChanges: Bool
+
+  public init(
+    document: KnowledgeDocument,
+    folder: KnowledgeFolder?,
+    incomingHasChanges: Bool
+  ) {
+    self.document = document
+    self.folder = folder
+    self.incomingHasChanges = incomingHasChanges
+  }
+}
+
+public enum KnowledgeBrowserImportOutcome: Hashable, Sendable {
+  case requiresDuplicateResolution(KnowledgeBrowserDuplicateConflict)
+  case saved(result: KnowledgeImportResult, action: KnowledgeBrowserImportAction)
+}
+
+public struct KnowledgeBrowserReceiptFolder: Codable, Hashable, Sendable {
+  public var id: UUID
+  public var name: String
+
+  public init(id: UUID, name: String) {
+    self.id = id
+    self.name = name
+  }
+}
+
+public struct KnowledgeBrowserImportReceipt: Codable, Hashable, Sendable {
+  public var operationID: UUID
+  public var insertedCount: Int
+  public var updatedCount: Int
+  public var skippedCount: Int
+  public var action: String
+  public var documentID: UUID
+  public var title: String
+  public var sourceURL: URL?
+  public var folder: KnowledgeBrowserReceiptFolder?
+  public var fileSizeBytes: Int64
+  public var archiveType: String
+  public var indexStatus: String
+  public var allowsAIUse: Bool
+  public var savedAt: Date
+  public var replayed: Bool
+
+  public init(
+    operationID: UUID,
+    insertedCount: Int,
+    updatedCount: Int,
+    skippedCount: Int,
+    action: String,
+    documentID: UUID,
+    title: String,
+    sourceURL: URL? = nil,
+    folder: KnowledgeBrowserReceiptFolder?,
+    fileSizeBytes: Int64,
+    archiveType: String,
+    indexStatus: String,
+    allowsAIUse: Bool,
+    savedAt: Date,
+    replayed: Bool = false
+  ) {
+    self.operationID = operationID
+    self.insertedCount = insertedCount
+    self.updatedCount = updatedCount
+    self.skippedCount = skippedCount
+    self.action = action
+    self.documentID = documentID
+    self.title = title
+    self.sourceURL = sourceURL
+    self.folder = folder
+    self.fileSizeBytes = fileSizeBytes
+    self.archiveType = archiveType
+    self.indexStatus = indexStatus
+    self.allowsAIUse = allowsAIUse
+    self.savedAt = savedAt
+    self.replayed = replayed
+  }
+}
+
+public struct KnowledgeBrowserImportOperationRecord: Codable, Hashable, Sendable {
+  public var operationID: UUID
+  public var requestFingerprint: String
+  public var receipt: KnowledgeBrowserImportReceipt
+  public var completedAt: Date
+
+  public init(
+    operationID: UUID,
+    requestFingerprint: String,
+    receipt: KnowledgeBrowserImportReceipt,
+    completedAt: Date
+  ) {
+    self.operationID = operationID
+    self.requestFingerprint = requestFingerprint
+    self.receipt = receipt
+    self.completedAt = completedAt
+  }
+}
+
+public enum KnowledgeBrowserImportOperationLookup: Hashable, Sendable {
+  case miss
+  case replay(KnowledgeBrowserImportReceipt)
+  case conflictingRequest
+  case missingDocument
+}
+
+public struct KnowledgeBrowserImportOperationLedger: Sendable {
+  public static let defaultMaximumRecordCount = 256
+  public static let defaultRetentionInterval: TimeInterval = 30 * 24 * 60 * 60
+
+  private var recordsByID: [UUID: KnowledgeBrowserImportOperationRecord]
+  private let maximumRecordCount: Int
+  private let retentionInterval: TimeInterval
+
+  public init(
+    records: [KnowledgeBrowserImportOperationRecord] = [],
+    maximumRecordCount: Int = Self.defaultMaximumRecordCount,
+    retentionInterval: TimeInterval = Self.defaultRetentionInterval
+  ) {
+    self.maximumRecordCount = max(1, maximumRecordCount)
+    self.retentionInterval = max(60, retentionInterval)
+    recordsByID = [:]
+    for record in records.sorted(by: { $0.completedAt < $1.completedAt }) {
+      recordsByID[record.operationID] = record
+    }
+  }
+
+  public var records: [KnowledgeBrowserImportOperationRecord] {
+    recordsByID.values.sorted {
+      if $0.completedAt != $1.completedAt { return $0.completedAt < $1.completedAt }
+      return $0.operationID.uuidString < $1.operationID.uuidString
+    }
+  }
+
+  public mutating func lookup(
+    operationID: UUID,
+    requestFingerprint: String,
+    now: Date,
+    documentExists: (UUID) -> Bool
+  ) -> KnowledgeBrowserImportOperationLookup {
+    prune(at: now)
+    guard let record = recordsByID[operationID] else { return .miss }
+    guard record.requestFingerprint == requestFingerprint else {
+      return .conflictingRequest
+    }
+    guard documentExists(record.receipt.documentID) else {
+      recordsByID.removeValue(forKey: operationID)
+      return .missingDocument
+    }
+    var receipt = record.receipt
+    receipt.replayed = true
+    return .replay(receipt)
+  }
+
+  public mutating func record(
+    operationID: UUID,
+    requestFingerprint: String,
+    receipt: KnowledgeBrowserImportReceipt,
+    completedAt: Date
+  ) {
+    var storedReceipt = receipt
+    storedReceipt.operationID = operationID
+    storedReceipt.replayed = false
+    recordsByID[operationID] = KnowledgeBrowserImportOperationRecord(
+      operationID: operationID,
+      requestFingerprint: requestFingerprint,
+      receipt: storedReceipt,
+      completedAt: completedAt
+    )
+    prune(at: completedAt)
+  }
+
+  public mutating func prune(at now: Date) {
+    recordsByID = recordsByID.filter { _, record in
+      now.timeIntervalSince(record.completedAt) <= retentionInterval
+    }
+    guard recordsByID.count > maximumRecordCount else { return }
+    let retainedIDs = Set(recordsByID.values
+      .sorted {
+        if $0.completedAt != $1.completedAt { return $0.completedAt > $1.completedAt }
+        return $0.operationID.uuidString > $1.operationID.uuidString
+      }
+      .prefix(maximumRecordCount)
+      .map(\.operationID))
+    recordsByID = recordsByID.filter { retainedIDs.contains($0.key) }
+  }
+}
+
+public enum KnowledgeBrowserFolderSuggestionReason: String, Codable, Hashable, Sendable {
+  case sourceDomain = "source-domain"
+  case author
+  case tag
+}
+
+public struct KnowledgeBrowserFolderSuggestion: Hashable, Sendable {
+  public var folder: KnowledgeFolder
+  public var score: Double
+  public var reasons: [KnowledgeBrowserFolderSuggestionReason]
+
+  public init(
+    folder: KnowledgeFolder,
+    score: Double,
+    reasons: [KnowledgeBrowserFolderSuggestionReason]
+  ) {
+    self.folder = folder
+    self.score = score
+    self.reasons = reasons
+  }
+}
+
+public struct KnowledgeBrowserOrganizationSuggestions: Hashable, Sendable {
+  public var folders: [KnowledgeBrowserFolderSuggestion]
+  public var tags: [String]
+
+  public init(folders: [KnowledgeBrowserFolderSuggestion], tags: [String]) {
+    self.folders = folders
+    self.tags = tags
   }
 }
 
@@ -483,6 +770,7 @@ public struct KnowledgeDocumentRevision: Identifiable, Codable, Hashable, Sendab
   public var importedAt: Date
   public var sourceModifiedAt: Date?
   public var originalStorageReference: String?
+  public var capturedTextStorageReference: String?
   public var normalizedStorageReference: String
 
   public init(
@@ -494,6 +782,7 @@ public struct KnowledgeDocumentRevision: Identifiable, Codable, Hashable, Sendab
     importedAt: Date = Date(),
     sourceModifiedAt: Date? = nil,
     originalStorageReference: String? = nil,
+    capturedTextStorageReference: String? = nil,
     normalizedStorageReference: String
   ) {
     self.id = id
@@ -504,6 +793,7 @@ public struct KnowledgeDocumentRevision: Identifiable, Codable, Hashable, Sendab
     self.importedAt = importedAt
     self.sourceModifiedAt = sourceModifiedAt
     self.originalStorageReference = originalStorageReference
+    self.capturedTextStorageReference = capturedTextStorageReference
     self.normalizedStorageReference = normalizedStorageReference
   }
 }
@@ -951,8 +1241,10 @@ public struct KnowledgeImportCandidate: Identifiable, Hashable, Sendable {
   public var sourceURL: URL?
   public var sourceName: String
   public var sourceModifiedAt: Date?
+  public var allowsAIUse: Bool?
   public var originalFilenameExtension: String?
   public var originalData: Data?
+  public var capturedText: String?
   public var originalContentHash: String
   public var normalizedText: String
   public var normalizedContentHash: String
@@ -972,8 +1264,10 @@ public struct KnowledgeImportCandidate: Identifiable, Hashable, Sendable {
     sourceURL: URL? = nil,
     sourceName: String,
     sourceModifiedAt: Date? = nil,
+    allowsAIUse: Bool? = nil,
     originalFilenameExtension: String? = nil,
     originalData: Data? = nil,
+    capturedText: String? = nil,
     originalContentHash: String,
     normalizedText: String,
     normalizedContentHash: String,
@@ -992,8 +1286,10 @@ public struct KnowledgeImportCandidate: Identifiable, Hashable, Sendable {
     self.sourceURL = sourceURL
     self.sourceName = sourceName
     self.sourceModifiedAt = sourceModifiedAt
+    self.allowsAIUse = allowsAIUse
     self.originalFilenameExtension = originalFilenameExtension
     self.originalData = originalData
+    self.capturedText = capturedText
     self.originalContentHash = originalContentHash
     self.normalizedText = normalizedText
     self.normalizedContentHash = normalizedContentHash
@@ -1023,11 +1319,18 @@ public struct KnowledgeImportResult: Hashable, Sendable {
   public var insertedCount: Int
   public var updatedCount: Int
   public var skippedCount: Int
+  public var documentIDs: [UUID]
 
-  public init(insertedCount: Int, updatedCount: Int, skippedCount: Int) {
+  public init(
+    insertedCount: Int,
+    updatedCount: Int,
+    skippedCount: Int,
+    documentIDs: [UUID] = []
+  ) {
     self.insertedCount = insertedCount
     self.updatedCount = updatedCount
     self.skippedCount = skippedCount
+    self.documentIDs = documentIDs
   }
 }
 

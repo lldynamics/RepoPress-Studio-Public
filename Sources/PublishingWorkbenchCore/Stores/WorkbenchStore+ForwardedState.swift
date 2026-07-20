@@ -100,6 +100,7 @@ extension WorkbenchStore {
   public var pendingAIQuickPrompt: AIPublishingQuickPrompt? { aiWorkspaceStore.pendingAIQuickPrompt }
   public var aiChatMessage: String? { aiWorkspaceStore.aiChatMessage }
   public var isAIChatRunning: Bool { aiWorkspaceStore.isAIChatRunning }
+  public var aiChatManualRetryState: AIChatManualRetryState? { aiStore.aiChatManualRetryState }
   public var aiImageTextSuggestionDraftID: UUID? { aiWorkspaceStore.aiImageTextSuggestionDraftID }
   public var aiImageTextSuggestions: [AIPublishingImageTextSuggestion] { aiWorkspaceStore.aiImageTextSuggestions }
   public var isAIImageTextRunning: Bool { aiWorkspaceStore.isAIImageTextRunning }

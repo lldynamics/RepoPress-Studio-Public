@@ -1,0 +1,39 @@
+{
+  "documentVersion": 1,
+  "defaultLocale": "zh_CN",
+  "privacyPolicyURL": "https://apps.chengjinfang.com/personal-site-publisher/privacy/",
+  "supportURL": "https://apps.chengjinfang.com/personal-site-publisher/",
+  "localizations": {
+    "zh_CN": {
+      "name": "个人网站发布控制台 · 资料采集",
+      "shortDescription": "将网页正文、完整页面、选中文字或链接保存到 Mac 本机资料库。",
+      "actionTitle": "保存到资料库",
+      "singlePurpose": "在用户确认后，将当前网页内容归档到个人网站发布控制台的本机资料库。",
+      "description": "将当前网页的净化正文、完整页面、选中文字或链接保存到“个人网站发布控制台”的本机资料库。保存前可以预览并编辑标题、作者、标签、分类和 AI 检索权限；重复网页会要求明确选择处理方式。批量保存只临时授权用户所选标签页的网站，完成后撤销。扩展只通过 Native Messaging 与同一台 Mac 上的应用通信，不向开发者服务器上传网页内容。"
+    },
+    "en": {
+      "name": "Personal Site Publisher · Knowledge Capture",
+      "shortDescription": "Save articles, full pages, selections, or links to your local Mac knowledge library.",
+      "actionTitle": "Save to Knowledge Library",
+      "singlePurpose": "Archive the current page into Personal Site Publisher's local knowledge library after user confirmation.",
+      "description": "Save a cleaned article, a complete page, selected text, or a link to the local knowledge library in Personal Site Publisher. Preview and edit the title, author, tags, category, and AI access before saving. Duplicate pages always require an explicit choice. Batch capture temporarily grants only the sites of the selected tabs and removes that access afterward. The extension communicates only with the companion Mac app through Native Messaging and does not upload page content to the developer's servers."
+    }
+  },
+  "permissionJustifications": {
+    "activeTab": "只在用户点击扩展或快捷操作后读取当前标签页。",
+    "alarms": "定时重试用户已确认但暂时无法写入本机应用的待保存项目。",
+    "contextMenus": "提供保存正文、选中文字和链接的右键菜单。",
+    "nativeMessaging": "与同一台 Mac 上的个人网站发布控制台安全通信。",
+    "pageCapture": "仅在用户选择完整网页模式后生成 MHTML 归档。",
+    "scripting": "在用户授权的页面中提取正文、元数据和选择内容。",
+    "storage": "保存分类偏好、连接状态、回执和有限的离线队列。",
+    "unlimitedStorage": "容纳用户明确保存的完整网页归档；扩展仍执行 10 项或 96 MB 的内部上限。"
+  },
+  "optionalHostPermissionJustifications": {
+    "http://*/*": "作为运行时权限范围声明；实际只请求用户本次所选 HTTP 网站的精确来源，并在批量任务结束后撤销。",
+    "https://*/*": "作为运行时权限范围声明；实际只请求用户本次所选 HTTPS 网站的精确来源，并在批量任务结束后撤销。"
+  },
+  "optionalPermissionJustifications": {
+    "tabs": "仅在首次准备批量采集时临时读取已选择标签页的地址，用于计算精确网站权限；识别完成后立即撤销。"
+  }
+}

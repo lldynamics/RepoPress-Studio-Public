@@ -10,7 +10,7 @@ struct ProQuotaSection: View {
   let batchRemaining: Int
 
   var body: some View {
-    Section("免费额度") {
+    Section(String(localized: "每日免费额度")) {
       ProQuotaRow(
         title: PremiumFeature.aiRequest.localizedDisplayName,
         used: aiUsed,
@@ -29,6 +29,10 @@ struct ProQuotaSection: View {
         remaining: batchRemaining,
         systemImage: PremiumFeature.batchPublishing.systemImage
       )
+
+      Text(String(localized: "每天按设备当前日期自动重置。"))
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
   }
 }

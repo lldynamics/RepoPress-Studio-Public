@@ -1,0 +1,6 @@
+{
+  "addonID": "knowledge-capture@jinfang.local",
+  "channel": "unlisted",
+  "updateManifestURL": "https://chengjinfang.com/downloads/browser-extension/firefox/updates.json",
+  "xpiBaseURL": "https://chengjinfang.com/downloads/browser-extension/firefox"
+}

@@ -508,6 +508,78 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(store.aiChatMessage, "AI 回复已停止。")
   }
 
+  func testStoreRequiresExplicitManualConfirmationBeforeRetryingPartialReply() async throws {
+    let transport = ScriptedAIChatStreamingTransport(
+      attempts: [
+        ScriptedAIChatStreamAttempt(
+          lines: [#"data: {"choices":[{"delta":{"content":"部分回复"}}]}"#, ""],
+          terminalError: .connectionLost
+        ),
+        ScriptedAIChatStreamAttempt(
+          lines: [
+            #"data: {"choices":[{"delta":{"content":"重新生成完成"},"finish_reason":"stop"}]}"#,
+            "",
+          ]
+        ),
+      ]
+    )
+    let client = AIChatCompletionClient(
+      transport: transport,
+      networkRecoveryPolicy: AIChatNetworkRecoveryPolicy(
+        firstByteTimeout: 1,
+        resourceTimeout: 2,
+        maximumAutomaticRetryCount: 3,
+        automaticRetryBaseDelay: 0
+      )
+    )
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(client: client)
+    )
+    var profile = store.activeProfile
+    profile.aiProviderConfig = AIProviderConfig(
+      preset: .openAICompatible,
+      baseURL: "https://api.openai.example/v1",
+      model: "gpt-4.1",
+      requiresAPIKey: false
+    )
+    store.updateActiveProfile(profile)
+    let draft = try XCTUnwrap(store.selectedDraft)
+
+    let partialReply = await store.sendAIChatMessage("请生成。", draft: draft)
+
+    XCTAssertEqual(partialReply?.content, "部分回复")
+    XCTAssertEqual(store.aiChatMessages.map(\.content), ["请生成。", "部分回复"])
+    var requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
+    XCTAssertEqual(
+      store.aiChatManualRetryState?.requiresDuplicateChargeConfirmation,
+      true
+    )
+    XCTAssertTrue(store.aiChatMessage?.contains("重复计费") == true)
+
+    let unconfirmedReply = await store.retryLastFailedAIChatReply(draft: draft)
+    XCTAssertNil(unconfirmedReply)
+    requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
+    XCTAssertEqual(store.aiChatMessages.map(\.content), ["请生成。", "部分回复"])
+
+    let regeneratedReply = await store.retryLastFailedAIChatReply(
+      confirmingPossibleDuplicateCharge: true,
+      draft: draft
+    )
+    XCTAssertEqual(regeneratedReply?.content, "重新生成完成")
+    XCTAssertEqual(store.aiChatMessages.map(\.content), ["请生成。", "重新生成完成"])
+    requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 2)
+    XCTAssertNil(store.aiChatManualRetryState)
+  }
+
   func testStoreRegeneratesSelectedAssistantReplyFromMatchingUserTurn() async throws {
     let transport = RecordingAIChatTransport(
       data: Data(),

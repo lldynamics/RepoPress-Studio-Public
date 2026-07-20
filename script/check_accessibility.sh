@@ -127,7 +127,7 @@ require_absent_literal \
   "status announcements must not steal keyboard focus"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownTextView.swift" \
+  "Sources/PersonalSitePublisherMac/Views/MarkdownEditorAppKitViews.swift" \
   "heightInvalidationWorkItem" \
   "long-document height measurement must coalesce typing updates"
 
@@ -247,6 +247,21 @@ require_literal \
   "AI assistant composer must expose a stable accessibility identifier"
 
 require_literal \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  ".allowsHitTesting(false)" \
+  "AI assistant composer decoration must not intercept text input"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  ".disabled(isComposerInputUnavailable)" \
+  "AI assistant input must use its own availability state"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  "!trimmedInput.isEmpty && !isComposerInputUnavailable && !isAIKeyMissing" \
+  "a missing AI key may block sending but must not block composing text"
+
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
   ".accessibilityValue(value)" \
   "metric tiles must expose their current value"
@@ -283,7 +298,7 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WritingDraftListComponents.swift" \
-  ".workbenchTruncatedIdentity(displayTitle)" \
+  ".workbenchTruncatedIdentity(presentation.title)" \
   "draft titles must keep their full hover and copy affordances"
 
 require_literal \
@@ -547,8 +562,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceContextSidebarView.swift" \
+  ".accessibilityElement(children: .contain)" \
+  "unified workspace sidebar must own its identifier without overwriting descendants"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceContextSidebarView.swift" \
   ".accessibilityIdentifier(\"workspace-sidebar\")" \
   "unified workspace sidebar must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceRailView.swift" \
+  ".accessibilityElement(children: .contain)" \
+  "workspace task navigation must own its identifier without overwriting buttons"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceRailView.swift" \
@@ -557,8 +582,89 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceRailView.swift" \
-  "List(selection: navigationSelection)" \
-  "workspace task navigation must use native single-selection semantics"
+  ".accessibilityAddTraits(isSelected ? .isSelected : [])" \
+  "workspace task navigation buttons must expose single-selection semantics"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceRailView.swift" \
+  '.accessibilityIdentifier("workspace-sidebar-\(section.rawValue)")' \
+  "workspace task navigation buttons must expose stable accessibility identifiers"
+
+for workspace_section in writing library sync images contentHealth; do
+  require_literal \
+    "Sources/PersonalSitePublisherMac/Views/WorkspaceRailView.swift" \
+    "sectionButton(.$workspace_section" \
+    "workspace task navigation must keep the $workspace_section entry"
+done
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift" \
+  'Label("新建", systemImage: "plus")' \
+  "writing create menu must keep its visible title and icon"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift" \
+  ".labelStyle(.titleAndIcon)" \
+  "writing create menu must not collapse to an icon-only label"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift" \
+  ".accessibilityIdentifier(\"writing-create-menu\")" \
+  "writing create menu must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift" \
+  ".accessibilityIdentifier(\"writing-draft-search\")" \
+  "writing search field must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift" \
+  ".accessibilityIdentifier(\"writing-draft-list\")" \
+  "writing list must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift" \
+  ".accessibilityIdentifier(\"knowledge-source-search\")" \
+  "knowledge search field must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift" \
+  ".accessibilityIdentifier(\"knowledge-document-list\")" \
+  "knowledge document list must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeLibraryDetailView.swift" \
+  ".accessibilityElement(children: .contain)" \
+  "knowledge detail must contain descendants without overwriting their identifiers"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeLibraryDetailView.swift" \
+  ".accessibilityLabel(document.title)" \
+  "knowledge detail title must expose the selected document title"
+
+for knowledge_detail_identifier in \
+  knowledge-library-detail \
+  knowledge-library-detail-title \
+  knowledge-library-reader \
+  knowledge-library-inspector-toggle \
+  knowledge-library-pin-toggle \
+  knowledge-library-actions-menu \
+  knowledge-library-import-button; do
+  require_literal \
+    "Sources/PersonalSitePublisherMac/Views/KnowledgeLibraryDetailView.swift" \
+    ".accessibilityIdentifier(\"$knowledge_detail_identifier\")" \
+    "knowledge detail must expose the $knowledge_detail_identifier accessibility identifier"
+done
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "testSidebarIdentifiersRemainUniqueAcrossWritingAndLibrary" \
+  "runtime accessibility identifier uniqueness must remain covered by XCUI"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "testKnowledgeDetailIdentifiersRemainUniqueAndActionSpecific" \
+  "runtime knowledge detail identifier uniqueness must remain covered by XCUI"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \

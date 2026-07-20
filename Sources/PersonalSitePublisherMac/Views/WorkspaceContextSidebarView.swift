@@ -53,7 +53,6 @@ struct WorkspaceSidebarHeaderIcon: View {
 
 struct WorkspacePrimarySidebar: View {
   @ObservedObject var store: WorkbenchStore
-  let isCompact: Bool
   @Binding var contentHealthFilter: ContentHealthContextFilter
   let onSelectSection: (WorkspaceSection) -> Void
 
@@ -61,7 +60,7 @@ struct WorkspacePrimarySidebar: View {
     VStack(spacing: 0) {
       if showsContextList {
         taskNavigation
-          .frame(height: isCompact ? 164 : 176)
+          .fixedSize(horizontal: false, vertical: true)
 
         Divider()
 
@@ -69,11 +68,12 @@ struct WorkspacePrimarySidebar: View {
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
         taskNavigation
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(.bar)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("workspace-sidebar")
   }
 

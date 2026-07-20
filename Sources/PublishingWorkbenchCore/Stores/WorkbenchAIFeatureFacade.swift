@@ -109,6 +109,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.isAIChatRunning
   }
 
+  public var chatManualRetryState: AIChatManualRetryState? {
+    store.aiChatManualRetryState
+  }
+
   public var isImageTextRunning: Bool {
     store.isAIImageTextRunning
   }
@@ -259,6 +263,17 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func cancelChatReply() {
     store.aiCancelChatReply()
+  }
+
+  @discardableResult
+  public func retryLastFailedChatReply(
+    confirmingPossibleDuplicateCharge: Bool,
+    draft: ArticleDraft? = nil
+  ) async -> AIPublishingChatMessage? {
+    await store.aiRetryLastFailedChatReply(
+      confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
+      draft: draft
+    )
   }
 
   @discardableResult

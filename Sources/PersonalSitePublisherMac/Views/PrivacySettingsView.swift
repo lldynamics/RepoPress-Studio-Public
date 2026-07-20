@@ -14,6 +14,11 @@ struct PrivacySettingsView: View {
         masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent)
       )
 
+      PrivacySettingsAutoLockSection(
+        locksWhenInactive: privacySettingBinding(keyPath: \.locksWhenInactive),
+        inactivityLockDelayMinutes: privacySettingBinding(keyPath: \.inactivityLockDelayMinutes)
+      )
+
       PrivacySettingsCurrentStatusSection(
         status: status,
         onLock: {
@@ -24,12 +29,44 @@ struct PrivacySettingsView: View {
         }
       )
 
+      Section("隐私与支持") {
+        Link(destination: Self.privacyPolicyURL) {
+          Label("隐私政策", systemImage: "hand.raised")
+        }
+        .help("在浏览器中打开隐私政策")
+
+        Link(destination: Self.supportURL) {
+          Label("技术支持", systemImage: "questionmark.circle")
+        }
+        .help("在浏览器中打开技术支持页面")
+      }
+
     }
     .formStyle(.grouped)
     .padding()
   }
 
-  private func privacySettingBinding(keyPath: WritableKeyPath<PrivacyProtectionSettings, Bool>) -> Binding<Bool> {
+  private static var privacyPolicyURL: URL {
+    let path = usesChineseSupportPages
+      ? "https://chengjinfang.com/personal-site-publisher/privacy/"
+      : "https://chengjinfang.com/personal-site-publisher/privacy/en/"
+    return URL(string: path)!
+  }
+
+  private static var supportURL: URL {
+    let path = usesChineseSupportPages
+      ? "https://chengjinfang.com/personal-site-publisher/"
+      : "https://chengjinfang.com/personal-site-publisher/en/"
+    return URL(string: path)!
+  }
+
+  private static var usesChineseSupportPages: Bool {
+    Locale.preferredLanguages.first?.lowercased().hasPrefix("zh") == true
+  }
+
+  private func privacySettingBinding<Value>(
+    keyPath: WritableKeyPath<PrivacyProtectionSettings, Value>
+  ) -> Binding<Value> {
     Binding(
       get: { privacySettings[keyPath: keyPath] },
       set: { value in

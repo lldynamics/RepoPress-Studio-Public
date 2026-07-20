@@ -2,7 +2,8 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct WorkspaceShellSplitLayout: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var layoutState: WorkbenchWorkspaceLayoutFeatureFacade
   let isCompact: Bool
   let isFocusMode: Bool
   @Binding var contentHealthFilter: ContentHealthContextFilter
@@ -11,12 +12,28 @@ struct WorkspaceShellSplitLayout: View {
   @AppStorage("workspacePrimarySidebarWidthV1") private var storedSidebarWidth = 260.0
   @State private var sidebarResizeStartWidth: CGFloat?
 
+  init(
+    store: WorkbenchStore,
+    isCompact: Bool,
+    isFocusMode: Bool,
+    contentHealthFilter: Binding<ContentHealthContextFilter>,
+    repositoryContextStage: Binding<RepositoryContextStage>,
+    onSelectSection: @escaping (WorkspaceSection) -> Void
+  ) {
+    self.store = store
+    _layoutState = ObservedObject(wrappedValue: store.workspaceLayout)
+    self.isCompact = isCompact
+    self.isFocusMode = isFocusMode
+    _contentHealthFilter = contentHealthFilter
+    _repositoryContextStage = repositoryContextStage
+    self.onSelectSection = onSelectSection
+  }
+
   var body: some View {
     HStack(spacing: 0) {
       if !isFocusMode {
         WorkspacePrimarySidebar(
           store: store,
-          isCompact: isCompact,
           contentHealthFilter: $contentHealthFilter,
           onSelectSection: onSelectSection
         )
@@ -45,7 +62,7 @@ struct WorkspaceShellSplitLayout: View {
     }
     .knowledgeFileDropImport(
       knowledge: store.knowledge,
-      isEnabled: store.selectedSection == .library
+      isEnabled: layoutState.selectedSection == .library
     )
   }
 

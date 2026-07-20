@@ -10,7 +10,7 @@ Record only redacted evidence. Do not paste tokens, authorization headers, local
 - [ ] `gitlab-review-publish` - GitLab MR evidence: MR URL, provider API MR iid/state, source branch, target branch, file changes, deployment status, and rollback draft.
 - [ ] `remote-conflict-deployment-rollback` - Remote conflict, pending/offline deployment, retry, and rollback evidence.
 - [ ] `storekit-sandbox` - StoreKit sandbox purchase, restore, entitlement source, free quota, and Pro boundary event evidence.
-- [ ] `app-store-screenshots` - App Store 截图和严格门禁: source-visible UI changed; recapture and record a fresh source fingerprint.
+- [x] `app-store-screenshots` - App Store 截图和严格门禁: 9 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
 
 ## Evidence Notes
 
@@ -161,3 +161,8 @@ script/record_app_store_screenshot_evidence.sh --execute
 - Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
 - Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
 - Screenshot source fingerprint: stale legacy evidence; recapture required.
+- 9 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
+- Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
+- Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
+- Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
+- Screenshot source fingerprint: sha256:64c53923544993c231c2ac6683e3b268b05ca53635398299965e24efe91c5a9f

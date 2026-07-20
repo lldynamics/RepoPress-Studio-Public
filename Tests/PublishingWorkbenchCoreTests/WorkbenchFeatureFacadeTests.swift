@@ -10,7 +10,88 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertTrue(store.ai === store.ai)
     XCTAssertTrue(store.repository === store.repository)
     XCTAssertTrue(store.publishing === store.publishing)
+    XCTAssertTrue(store.contentPresentation === store.contentPresentation)
     XCTAssertTrue(store.activityStatus === store.activityStatus)
+    XCTAssertTrue(store.workspaceLayout === store.workspaceLayout)
+  }
+
+  func testWorkspaceLayoutFacadeIgnoresUnrelatedChildStoreChanges() {
+    let store = WorkbenchStore()
+    let layout = store.workspaceLayout
+    var layoutChanges = 0
+    let cancellable = layout.objectWillChange.sink { layoutChanges += 1 }
+
+    store.setPublishActionMessage("正在生成发布预览…")
+    store.setAIChatMessages([
+      AIPublishingChatMessage(role: .assistant, content: "流式内容")
+    ])
+    store.setRepositoryReport(nil)
+    XCTAssertEqual(layoutChanges, 0)
+
+    let nextSection: WorkspaceSection = layout.selectedSection == .library ? .writing : .library
+    store.selectSection(nextSection)
+    XCTAssertEqual(layoutChanges, 1)
+    XCTAssertEqual(layout.selectedSection, nextSection)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testContentPresentationFacadeIgnoresTypingAndAIStreaming() throws {
+    let store = WorkbenchStore()
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let presentation = store.contentPresentation
+    var presentationChanges = 0
+    let cancellable = presentation.objectWillChange.sink { presentationChanges += 1 }
+
+    store.publishingStore.setDraftBodyEditorBuffer(
+      DraftBodyEditorBuffer(
+        draftID: draft.id,
+        bodyMarkdown: "正在输入的正文",
+        revision: 1,
+        isDirty: true
+      ),
+      for: draft.id
+    )
+
+    let assistantMessage = AIPublishingChatMessage(role: .assistant, content: "第一段")
+    store.setAIChatMessages([assistantMessage])
+    var streamedMessage = assistantMessage
+    streamedMessage.content += "，逐字返回"
+    store.setAIChatMessages([streamedMessage])
+
+    XCTAssertEqual(presentationChanges, 0)
+    XCTAssertEqual(presentation.editorDisplayMode, .edit)
+    XCTAssertFalse(presentation.isAssistantPresented)
+
+    store.setEditorDisplayMode(.split)
+    XCTAssertEqual(presentationChanges, 1)
+    XCTAssertEqual(presentation.editorDisplayMode, .split)
+
+    store.setAIPublishingAssistantPresented(true)
+    XCTAssertEqual(presentationChanges, 2)
+    XCTAssertTrue(presentation.isAssistantPresented)
+
+    store.setEditorDisplayMode(.split)
+    store.setAIPublishingAssistantPresented(true)
+    XCTAssertEqual(presentationChanges, 2)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testShellFacadeIgnoresEquivalentRootStateAssignments() {
+    let store = WorkbenchStore()
+    let shell = store.shell
+    var shellChanges = 0
+    let cancellable = shell.objectWillChange.sink { shellChanges += 1 }
+
+    store.selectSection(shell.selectedSection)
+    XCTAssertEqual(shellChanges, 0)
+
+    let differentSection: WorkspaceSection = shell.selectedSection == .sync ? .writing : .sync
+    store.selectSection(differentSection)
+    XCTAssertEqual(shellChanges, 1)
+
+    store.selectSection(differentSection)
+    XCTAssertEqual(shellChanges, 1)
+    withExtendedLifetime(cancellable) {}
   }
 
   func testAIFacadeUsesNarrowActionsAndReadsAIWorkspaceState() {

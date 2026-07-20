@@ -39,7 +39,7 @@ public enum MarkdownInlineDiagnosticService {
     let source = markdown as NSString
     var result: [MarkdownInlineDiagnostic] = []
     result.append(contentsOf: imageAltDiagnostics(in: markdown, source: source))
-    result.append(contentsOf: headingDiagnostics(in: markdown, source: source))
+    result.append(contentsOf: headingDiagnostics(in: markdown))
     result.append(contentsOf: footnoteDiagnostics(in: markdown, source: source))
     return result.sorted {
       if $0.range.location == $1.range.location { return $0.id < $1.id }
@@ -85,7 +85,7 @@ public enum MarkdownInlineDiagnosticService {
     }
   }
 
-  private static func headingDiagnostics(in markdown: String, source: NSString) -> [MarkdownInlineDiagnostic] {
+  private static func headingDiagnostics(in markdown: String) -> [MarkdownInlineDiagnostic] {
     let lines = markdown.components(separatedBy: "\n")
     var location = 0
     var previousLevel: Int?

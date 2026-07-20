@@ -17,6 +17,10 @@ extension WorkbenchStore {
     privacyMonetizationStore.proStatusSummary
   }
 
+  public var currentFreePlanUsage: FreePlanUsage {
+    privacyMonetizationStore.currentFreePlanUsage
+  }
+
   public var proUpgradePresentation: ProUpgradePresentation {
     privacyMonetizationStore.proUpgradePresentation
   }
@@ -54,6 +58,7 @@ extension WorkbenchStore {
   }
 
   public func canStartFeatureUse(_ feature: PremiumFeature) -> FeatureAccessDecision {
+    refreshDailyFreeUsageIfNeeded()
     let decision = privacyMonetizationStore.canStartFeatureUse(feature)
     if !decision.isAllowed {
       privacyMonetizationStore.latestProFeatureBlockNotice = ProFeatureBlockNotice(
@@ -75,6 +80,21 @@ extension WorkbenchStore {
 
   public func remainingFreeUses(for feature: PremiumFeature) -> Int {
     privacyMonetizationStore.remainingFreeUses(for: feature)
+  }
+
+  @discardableResult
+  public func refreshDailyFreeUsageIfNeeded(
+    now: Date = Date(),
+    calendar: Calendar = .current
+  ) -> Bool {
+    let didReset = privacyMonetizationStore.refreshDailyFreeUsageIfNeeded(
+      now: now,
+      calendar: calendar
+    )
+    if didReset {
+      save()
+    }
+    return didReset
   }
 
   public func applyVerifiedStoreKitEntitlement(productID: String) {

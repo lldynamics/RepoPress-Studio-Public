@@ -1,6 +1,23 @@
 import AppKit
+import OSLog
 import PublishingWorkbenchCore
 import SwiftUI
+
+#if DEBUG
+private enum ContentViewBodyPerformanceProbe {
+  private static let isEnabled =
+    ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_CONTENT_VIEW_BODY_PROBE"] == "1"
+  private static let signposter = OSSignposter(
+    subsystem: "com.jinfang.PersonalSitePublisherMac",
+    category: "SwiftUIBody"
+  )
+
+  static func record() {
+    guard isEnabled else { return }
+    signposter.emitEvent("ContentView.body")
+  }
+}
+#endif
 
 private struct WorkspaceResponsiveLayoutSnapshot: Equatable {
   let width: CGFloat
@@ -15,8 +32,8 @@ private struct WorkspaceResponsiveLayoutSnapshot: Equatable {
 struct ContentView: View {
   let store: WorkbenchStore
   @ObservedObject private var shellState: WorkbenchShellFeatureFacade
-  @ObservedObject private var aiState: WorkbenchAIFeatureFacade
-  @ObservedObject private var publishingState: WorkbenchPublishingFeatureFacade
+  @ObservedObject private var presentationState: WorkbenchContentPresentationFeatureFacade
+  @Environment(\.openSettings) private var openSettings
   @Environment(\.scenePhase) private var scenePhase
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
@@ -39,16 +56,18 @@ struct ContentView: View {
   init(store: WorkbenchStore) {
     self.store = store
     _shellState = ObservedObject(wrappedValue: store.shell)
-    _aiState = ObservedObject(wrappedValue: store.ai)
-    _publishingState = ObservedObject(wrappedValue: store.publishing)
+    _presentationState = ObservedObject(wrappedValue: store.contentPresentation)
   }
 
   var body: some View {
+#if DEBUG
+    let _ = ContentViewBodyPerformanceProbe.record()
+#endif
     GeometryReader { geometry in
       let compactLayout = WorkbenchLayoutMode.isCompact(width: geometry.size.width)
       let responsiveLayoutSnapshot = WorkspaceResponsiveLayoutSnapshot(
         width: geometry.size.width,
-        editorDisplayMode: publishingState.editorDisplayMode
+        editorDisplayMode: presentationState.editorDisplayMode
       )
 
       ZStack {
@@ -67,6 +86,16 @@ struct ContentView: View {
         }
         .disabled(shellState.isPrivacyLocked)
         .accessibilityHidden(shellState.isPrivacyLocked)
+
+#if DEBUG
+        if usesInlineAIScreenshotInspector {
+          ScreenshotInlineAIInspector(
+            store: store,
+            width: min(max(geometry.size.width * 0.40, 420), 480)
+          )
+          .zIndex(1)
+        }
+#endif
 
         if shellState.isPrivacyLocked {
           PrivacyLockOverlay(store: store)
@@ -211,8 +240,16 @@ struct ContentView: View {
     }
   }
 
+#if DEBUG
+  private var usesInlineAIScreenshotInspector: Bool {
+    ScreenshotDemoDataService.isEnabledFromEnvironment
+      && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .aiChat
+  }
+#endif
+
   private func handleRepositoryAutoSyncTick(_ date: Date) {
     guard scenePhase == .active else { return }
+    store.refreshDailyFreeUsageIfNeeded(now: date)
     Task {
       await store.tickRepositoryAndDeploymentPolling(now: date)
     }
@@ -239,7 +276,9 @@ struct ContentView: View {
     if !didApplyScreenshotDemoSurface {
 #if DEBUG
       ScreenshotDemoDataService.applyRequestedSurfaceIfEnabled(to: store)
-      ScreenshotDemoSettingsPresenter.openSettingsIfNeeded()
+      ScreenshotDemoSettingsPresenter.openSettingsIfNeeded {
+        openSettings()
+      }
 #endif
       didApplyScreenshotDemoSurface = true
     }
@@ -335,7 +374,7 @@ struct ContentView: View {
     }
     .buttonStyle(
       WorkspaceToolbarIconButtonStyle(
-        isActive: inspectorPresentation.wrappedValue && !aiState.isAssistantPresented
+        isActive: inspectorPresentation.wrappedValue && !presentationState.isAssistantPresented
       )
     )
     .disabled(!shellState.canUseProtectedWorkbench || !canRequestInspectorInCurrentLayout)
@@ -352,7 +391,7 @@ struct ContentView: View {
     guard allowsInspectorInCurrentLayout else {
       return "扩大窗口后可使用 Inspector"
     }
-    if aiState.isAssistantPresented {
+    if presentationState.isAssistantPresented {
       return "切换到文章 Inspector"
     }
     return shellState.isInspectorPresented ? "隐藏 Inspector" : "显示 Inspector"
@@ -420,7 +459,7 @@ struct ContentView: View {
   private var supportsInspector: Bool {
     WorkspaceInspectorPresentation.supportsInspector(
       for: shellState.selectedSection,
-      isAIAssistantPresented: aiState.isAssistantPresented,
+      isAIAssistantPresented: presentationState.isAssistantPresented,
       isRepositoryHistoryPresented: repositoryContextStage == .history,
       isMaintenancePresented: contentHealthFilter == .maintenance
     )
@@ -433,7 +472,7 @@ struct ContentView: View {
     guard allowsInspectorInCurrentLayout else {
       return "窗口过窄，已临时隐藏"
     }
-    if aiState.isAssistantPresented {
+    if presentationState.isAssistantPresented {
       return "AI 助手已显示"
     }
     return shellState.isInspectorPresented ? "已显示" : "已隐藏"
@@ -452,15 +491,15 @@ struct ContentView: View {
       set: { isPresented in
         guard allowsInspectorInCurrentLayout else { return }
         store.setInspectorPresented(isPresented)
-        if !isPresented && aiState.isAssistantPresented {
-          aiState.hideAssistant()
+        if !isPresented && presentationState.isAssistantPresented {
+          presentationState.hideAssistant()
         }
       }
     )
   }
 
   private var isAIAssistantVisible: Bool {
-    aiState.isAssistantPresented && inspectorPresentation.wrappedValue
+    presentationState.isAssistantPresented && inspectorPresentation.wrappedValue
   }
 
   private func normalizeWorkspacePresentation(for section: WorkspaceSection) {
@@ -469,8 +508,8 @@ struct ContentView: View {
       revealsSidebarInNarrowSplit = false
       revealsInspectorInNarrowSplit = false
     }
-    if section != .writing && aiState.isAssistantPresented {
-      aiState.hideAssistant()
+    if section != .writing && presentationState.isAssistantPresented {
+      presentationState.hideAssistant()
     }
 
     switch section {
@@ -484,11 +523,9 @@ struct ContentView: View {
       store.selectSection(.sync)
     case .siteStarter, .generalDrafts:
       break
-    case .sync:
-      if store.repositoryReport == nil {
-        hideInspectorIfNeeded()
-      }
-    case .writing, .library, .images, .contentHealth:
+    case .sync, .images, .contentHealth:
+      hideInspectorIfNeeded()
+    case .writing, .library:
       break
     }
   }
@@ -516,7 +553,7 @@ struct ContentView: View {
 
   private func toggleAIAssistant() {
     if isAIAssistantVisible {
-      aiState.closeAssistantPanel()
+      presentationState.closeAssistantPanel()
       return
     }
     openAIInspector()
@@ -527,8 +564,8 @@ struct ContentView: View {
     if effectiveFocusMode {
       isFocusMode = false
       revealsSidebarInNarrowSplit = true
-      if aiState.isAssistantPresented {
-        aiState.hideAssistant()
+      if presentationState.isAssistantPresented {
+        presentationState.hideAssistant()
       }
       if !shellState.isInspectorPresented {
         store.setInspectorPresented(true)
@@ -536,8 +573,8 @@ struct ContentView: View {
       return
     }
 
-    if aiState.isAssistantPresented {
-      aiState.hideAssistant()
+    if presentationState.isAssistantPresented {
+      presentationState.hideAssistant()
       if !shellState.isInspectorPresented {
         store.setInspectorPresented(true)
       }
@@ -548,8 +585,8 @@ struct ContentView: View {
   }
 
   private func hideInspectorIfNeeded() {
-    if aiState.isAssistantPresented {
-      aiState.hideAssistant()
+    if presentationState.isAssistantPresented {
+      presentationState.hideAssistant()
     }
     if shellState.isInspectorPresented {
       store.setInspectorPresented(false)
@@ -652,6 +689,24 @@ struct ContentView: View {
     }
   }
 }
+
+#if DEBUG
+private struct ScreenshotInlineAIInspector: View {
+  let store: WorkbenchStore
+  let width: CGFloat
+
+  var body: some View {
+    HStack(spacing: 0) {
+      Spacer(minLength: 0)
+      Divider()
+      AIChatContextInspectorView(store: store)
+        .frame(width: width)
+        .frame(maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+  }
+}
+#endif
 
 private struct WorkbenchAccessibilityStatusAnnouncer: View {
   @ObservedObject private var activityStatus: WorkbenchActivityStatusFacade

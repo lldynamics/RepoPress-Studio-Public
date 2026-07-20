@@ -13,6 +13,7 @@ struct AIChatContextInspectorView: View {
   @State private var visibleMessageLimit = 8
   @State private var isFollowingLatestMessage = true
   @State private var messageAnchorToPreserve: AIPublishingChatMessage.ID?
+  @State private var isPartialRetryConfirmationPresented = false
   @FocusState private var isComposerFocused: Bool
 
   init(store: WorkbenchStore) {
@@ -123,6 +124,18 @@ struct AIChatContextInspectorView: View {
       AIChatDraftDiffPreviewSheet(preview: preview) {
         applyDraftDiffPreview(preview)
       }
+    }
+    .confirmationDialog(
+      String(localized: "重新生成可能重复计费"),
+      isPresented: $isPartialRetryConfirmationPresented,
+      titleVisibility: .visible
+    ) {
+      Button(String(localized: "仍要重新生成"), role: .destructive) {
+        retryLastFailedReply(confirmingPossibleDuplicateCharge: true)
+      }
+      Button("取消", role: .cancel) {}
+    } message: {
+      Text("AI 已返回部分内容，软件没有自动重放请求。继续会移除这段未完成回复并重新生成，可能产生重复内容和费用。")
     }
   }
 
@@ -324,31 +337,88 @@ struct AIChatContextInspectorView: View {
   private var messageComposer: some View {
     VStack(alignment: .leading, spacing: 8) {
       if let status = ai.chatMessage?.nilIfEmpty {
-        Text(status)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(3)
-          .accessibilityLabel("AI 状态")
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          Text(status)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(4)
+            .accessibilityLabel("AI 状态")
+
+          Spacer(minLength: 0)
+
+          if let retryState = activeManualRetryState {
+            if retryState.requiresDuplicateChargeConfirmation {
+              Button(String(localized: "重新生成")) {
+                isPartialRetryConfirmationPresented = true
+              }
+              .controlSize(.small)
+              .disabled(isSending)
+              .help(String(localized: "部分回复已保留；确认后才会重新发起请求"))
+            } else {
+              Button(String(localized: "手动重试")) {
+                retryLastFailedReply(confirmingPossibleDuplicateCharge: false)
+              }
+              .controlSize(.small)
+              .disabled(isSending)
+              .help(String(localized: "由你确认后重新发起上一次请求"))
+            }
+          }
+        }
       }
 
-      HStack(alignment: .bottom, spacing: 8) {
+      VStack(alignment: .leading, spacing: 10) {
         TextField("询问当前文章…", text: $inputText, axis: .vertical)
-          .textFieldStyle(.roundedBorder)
-          .lineLimit(2...6)
-          .disabled(ai.selectedChatDraft == nil || isSending || isAIKeyMissing)
+          .textFieldStyle(.plain)
+          .font(.body)
+          .lineLimit(3...8)
+          .disabled(isComposerInputUnavailable)
           .focused($isComposerFocused)
           .accessibilityLabel("AI 消息")
+          .accessibilityHint("按 Command 和 Return 发送；按 Return 换行")
+          .accessibilityIdentifier("ai-assistant-input")
 
-        Button(action: handleSendButton) {
-          Image(systemName: isSending ? "stop.circle.fill" : "arrow.up.circle.fill")
-            .foregroundStyle(isSending ? WorkbenchTheme.risk : WorkbenchTheme.primary)
+        HStack(spacing: 8) {
+          Text("↩ 换行 · ⌘↩ 发送")
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .accessibilityHidden(true)
+
+          Spacer(minLength: 8)
+
+          Button(action: handleSendButton) {
+            Label(
+              isSending ? "停止" : "发送",
+              systemImage: isSending ? "stop.fill" : "arrow.up"
+            )
+            .frame(minWidth: 58)
+          }
+          .controlSize(.regular)
+          .workbenchProminentActionStyle(
+            tint: isSending ? WorkbenchTheme.risk : WorkbenchTheme.primaryActionFill
+          )
+          .keyboardShortcut(.return, modifiers: [.command])
+          .disabled(!isSending && !canSubmitMessage)
+          .help(isSending ? "停止生成" : "发送（⌘Return）")
+          .accessibilityLabel(isSending ? "停止 AI 回复" : "发送 AI 消息")
+          .accessibilityIdentifier("ai-assistant-send-button")
         }
-        .buttonStyle(.borderless)
-        .keyboardShortcut(.return, modifiers: [.command])
-        .disabled(!isSending && (trimmedInput.isEmpty || ai.selectedChatDraft == nil || isAIKeyMissing))
-        .help(isSending ? "停止生成" : "发送（⌘Return）")
-        .accessibilityLabel(isSending ? "停止 AI 回复" : "发送 AI 消息")
       }
+      .padding(10)
+      .background(
+        Color(nsColor: .textBackgroundColor).opacity(0.72),
+        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+      )
+      .overlay {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+          .strokeBorder(
+            isComposerFocused
+              ? WorkbenchTheme.primary
+              : Color(nsColor: .separatorColor).opacity(0.65),
+            lineWidth: isComposerFocused ? 1.5 : 1
+          )
+          .allowsHitTesting(false)
+      }
+      .animation(.easeOut(duration: 0.12), value: isComposerFocused)
     }
     .padding(12)
     .accessibilityElement(children: .contain)
@@ -461,6 +531,14 @@ struct AIChatContextInspectorView: View {
     inputText.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
+  private var isComposerInputUnavailable: Bool {
+    ai.selectedChatDraft == nil || isSending
+  }
+
+  private var canSubmitMessage: Bool {
+    !trimmedInput.isEmpty && !isComposerInputUnavailable && !isAIKeyMissing
+  }
+
   private func submitMessage() {
     guard let draft = ai.selectedChatDraft else { return }
     let message = trimmedInput
@@ -481,6 +559,15 @@ struct AIChatContextInspectorView: View {
 
   private var isSending: Bool {
     isSubmitting || ai.isChatRunning
+  }
+
+  private var activeManualRetryState: AIChatManualRetryState? {
+    guard let draftID = ai.selectedChatDraft?.id,
+          let retryState = ai.chatManualRetryState,
+          retryState.draftID == draftID else {
+      return nil
+    }
+    return retryState
   }
 
   private var modelGradeBinding: Binding<AIChatModelGrade> {
@@ -622,6 +709,20 @@ struct AIChatContextInspectorView: View {
     isSubmitting = false
   }
 
+  private func retryLastFailedReply(confirmingPossibleDuplicateCharge: Bool) {
+    guard let draft = ai.selectedChatDraft, !isSending else { return }
+    isFollowingLatestMessage = true
+    isSubmitting = true
+    sendTask = Task {
+      _ = await ai.retryLastFailedChatReply(
+        confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
+        draft: draft
+      )
+      isSubmitting = false
+      sendTask = nil
+    }
+  }
+
   private func loadEarlierMessages() {
     guard let context = state.draft,
           context.totalMessageCount > context.messages.count else { return }
@@ -640,7 +741,7 @@ struct AIChatContextInspectorView: View {
   }
 
   private func focusComposerIfAvailable() {
-    guard ai.selectedChatDraft != nil, !isAIKeyMissing else { return }
+    guard ai.selectedChatDraft != nil, !isSending else { return }
     DispatchQueue.main.async {
       isComposerFocused = true
     }
