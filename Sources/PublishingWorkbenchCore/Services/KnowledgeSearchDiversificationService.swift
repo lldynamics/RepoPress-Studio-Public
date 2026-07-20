@@ -10,31 +10,76 @@ public struct KnowledgeSearchDiversificationService: Sendable {
     limit: Int,
     maximumResultsPerDocument: Int = 2
   ) -> [KnowledgeSearchResult] {
-    guard limit > 0, maximumResultsPerDocument > 0 else { return [] }
+    rank(
+      candidates,
+      limit: limit,
+      maximumResultsPerDocument: maximumResultsPerDocument,
+      cancellationCheck: {}
+    )
+  }
 
-    let prepared = collapseNearDuplicates(candidates).map { candidate in
-      RankedCandidate(
+  func rankCancellable(
+    _ candidates: [KnowledgeSearchResult],
+    limit: Int,
+    maximumResultsPerDocument: Int = 2
+  ) throws -> [KnowledgeSearchResult] {
+    try rank(
+      candidates,
+      limit: limit,
+      maximumResultsPerDocument: maximumResultsPerDocument,
+      cancellationCheck: { try Task.checkCancellation() }
+    )
+  }
+
+  private func rank(
+    _ candidates: [KnowledgeSearchResult],
+    limit: Int,
+    maximumResultsPerDocument: Int,
+    cancellationCheck: () throws -> Void
+  ) rethrows -> [KnowledgeSearchResult] {
+    guard limit > 0, maximumResultsPerDocument > 0 else { return [] }
+    try cancellationCheck()
+
+    let uniqueCandidates = try collapseNearDuplicates(
+      candidates,
+      cancellationCheck: cancellationCheck
+    )
+    var prepared: [RankedCandidate] = []
+    prepared.reserveCapacity(uniqueCandidates.count)
+    for candidate in uniqueCandidates {
+      try cancellationCheck()
+      prepared.append(RankedCandidate(
         result: candidate,
         adjustedScore: max(candidate.score, 0.000_001)
           * qualityService.assessment(for: candidate.chunk.content).scoreMultiplier,
-        fingerprint: fingerprint(candidate.chunk.content)
-      )
+        fingerprint: try fingerprint(
+          candidate.chunk.content,
+          cancellationCheck: cancellationCheck
+        )
+      ))
     }
     var remaining = prepared
     var selected: [RankedCandidate] = []
     var documentCounts: [UUID: Int] = [:]
 
     while selected.count < limit {
+      try cancellationCheck()
       var bestIndex: Int?
       var bestValue = -Double.infinity
 
       for (index, candidate) in remaining.enumerated() {
+        try cancellationCheck()
         let existingCount = documentCounts[candidate.result.document.id, default: 0]
         guard existingCount < maximumResultsPerDocument else { continue }
         let documentNovelty = existingCount == 0 ? 1.0 : 0.58
-        let maximumSimilarity = selected
-          .map { similarity(candidate.fingerprint, $0.fingerprint) }
-          .max() ?? 0
+        var maximumSimilarity = 0.0
+        for selectedCandidate in selected {
+          try cancellationCheck()
+          maximumSimilarity = max(
+            maximumSimilarity,
+            similarity(candidate.fingerprint, selectedCandidate.fingerprint)
+          )
+        }
         let novelty = max(0.28, 1 - maximumSimilarity * 0.62)
         let value = candidate.adjustedScore * documentNovelty * novelty
 
@@ -58,19 +103,26 @@ public struct KnowledgeSearchDiversificationService: Sendable {
   }
 
   private func collapseNearDuplicates(
-    _ candidates: [KnowledgeSearchResult]
-  ) -> [KnowledgeSearchResult] {
+    _ candidates: [KnowledgeSearchResult],
+    cancellationCheck: () throws -> Void
+  ) rethrows -> [KnowledgeSearchResult] {
+    try cancellationCheck()
     let sorted = candidates.sorted(by: precedes)
+    try cancellationCheck()
     var retained: [KnowledgeSearchResult] = []
     var fingerprints: [UUID: [Set<String>]] = [:]
     var hashes: [UUID: Set<String>] = [:]
 
     for candidate in sorted {
+      try cancellationCheck()
       let documentID = candidate.document.id
       if hashes[documentID, default: []].contains(candidate.chunk.contentHash) {
         continue
       }
-      let candidateFingerprint = fingerprint(candidate.chunk.content)
+      let candidateFingerprint = try fingerprint(
+        candidate.chunk.content,
+        cancellationCheck: cancellationCheck
+      )
       let isNearDuplicate = fingerprints[documentID, default: []].contains { existing in
         similarity(candidateFingerprint, existing) >= 0.86
       }
@@ -93,7 +145,11 @@ public struct KnowledgeSearchDiversificationService: Sendable {
     return lhs.chunk.ordinal < rhs.chunk.ordinal
   }
 
-  private func fingerprint(_ content: String) -> Set<String> {
+  private func fingerprint(
+    _ content: String,
+    cancellationCheck: () throws -> Void
+  ) rethrows -> Set<String> {
+    try cancellationCheck()
     let normalized = content
       .lowercased()
       .unicodeScalars
@@ -107,6 +163,7 @@ public struct KnowledgeSearchDiversificationService: Sendable {
     var shingles = Set<String>()
     var index = 0
     while index + width <= characters.count {
+      try cancellationCheck()
       shingles.insert(String(characters[index..<(index + width)]))
       index += max(1, width / 2)
     }

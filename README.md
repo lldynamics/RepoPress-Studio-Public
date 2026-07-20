@@ -41,3 +41,15 @@ GitHub Actions 会在 push、pull request 和手动触发时运行同一套精�
 ./script/check_release_gate.sh --check localization --check swift-strict-build --check swift-tests
 ./script/check_release_gate.sh --list
 ```
+
+浏览器扩展保留了快速的 VM/DOM 兼容回归，并额外使用真实 Chromium
+和 Firefox 验证权限提示边界、MV3 Service Worker 唤醒、键盘焦点、320px
+重排及浏览器 API 差异。首次运行需安装锁定依赖和 Chromium 内核：
+
+```bash
+npm ci
+npm run install:browser-extension:e2e
+npm run test:browser-extension:e2e
+```
+
+失败截图和结构化结果会写入 `output/playwright/browser-extension-e2e/`。

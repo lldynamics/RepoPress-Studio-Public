@@ -231,6 +231,12 @@ enum WorkbenchPageMetrics {
   static let horizontalPadding: CGFloat = 20
   static let verticalPadding: CGFloat = 20
   static let readingWidth: CGFloat = 980
+  static let operationalSplitMinimumWidth: CGFloat = 1_080
+  static let operationalContextWidth: CGFloat = 320
+
+  static func usesOperationalSplit(for availableWidth: CGFloat) -> Bool {
+    availableWidth >= operationalSplitMinimumWidth
+  }
 }
 
 enum WorkbenchOpacity {
@@ -319,6 +325,39 @@ struct WorkbenchListDisclosureFooter: View {
   }
 }
 
+struct WorkbenchOperationalSplitLayout<Primary: View, Context: View>: View {
+  let usesSplitLayout: Bool
+  private let primary: Primary
+  private let context: Context
+
+  init(
+    usesSplitLayout: Bool,
+    @ViewBuilder primary: () -> Primary,
+    @ViewBuilder context: () -> Context
+  ) {
+    self.usesSplitLayout = usesSplitLayout
+    self.primary = primary()
+    self.context = context()
+  }
+
+  @ViewBuilder
+  var body: some View {
+    if usesSplitLayout {
+      HStack(alignment: .top, spacing: 16) {
+        primary
+          .frame(maxWidth: .infinity, alignment: .topLeading)
+        context
+          .frame(width: WorkbenchPageMetrics.operationalContextWidth, alignment: .topLeading)
+      }
+    } else {
+      VStack(alignment: .leading, spacing: 16) {
+        context
+        primary
+      }
+    }
+  }
+}
+
 extension Font {
   static let workbenchCardTitle: Font = .callout.weight(.semibold)
   static let workbenchMetricValue: Font = .title3.weight(.semibold)
@@ -333,6 +372,10 @@ extension View {
       .padding(.vertical, WorkbenchPageMetrics.verticalPadding)
       .frame(maxWidth: maxWidth, alignment: .leading)
       .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  func workbenchOperationalPageLayout() -> some View {
+    workbenchPageLayout(maxWidth: .infinity)
   }
 
   func workbenchProminentActionStyle(

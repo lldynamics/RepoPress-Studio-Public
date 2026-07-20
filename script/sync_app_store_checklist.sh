@@ -63,6 +63,7 @@ run_gate "unified release result" bash "$ROOT_DIR/script/check_release_gate.sh" 
   --result-json "$GATE_RESULT" \
   --check localization \
   --check app-store-metadata \
+  --check app-store-listing \
   --check ui-runtime \
   --check privacy-copy \
   --check storekit \
@@ -80,6 +81,7 @@ payload = json.loads(path.read_text(encoding="utf-8"))
 required = {
     "localization",
     "app-store-metadata",
+    "app-store-listing",
     "ui-runtime",
     "privacy-copy",
     "storekit",
@@ -149,6 +151,12 @@ evidence_for_title() {
   if [[ "$title_lc" == *"publishingworkbenchcore"* ||
         "$title_lc" == *"core-generated presentation"* ]]; then
     return 1
+  fi
+  if [[ "$title_lc" == *"product-page copy"* &&
+        "$title_lc" == *"reviewer notes"* &&
+        "$title_lc" == *"app privacy response worksheet"* ]]; then
+    echo "Local listing metadata gate verifies both localizations, field limits, reviewer notes, and privacy worksheet structure."
+    return 0
   fi
   if [[ "$title_lc" == *"signing team"* ||
         "$title_lc" == *"hardened runtime"* ]]; then

@@ -27,7 +27,19 @@ bash "$ROOT_DIR/script/normalize_app_store_screenshot.sh" \
 
 SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$MANIFEST" STRICT_SCREENSHOTS=1 \
   bash "$ROOT_DIR/script/check_screenshots.sh" >/dev/null \
-  || fail "normalized 1440x900 alpha-free screenshot should pass"
+  || fail "normalized 2880x1800 alpha-free screenshot should pass"
+
+properties="$(sips -g pixelWidth -g pixelHeight -g hasAlpha "$SCREENSHOT_DIR/writing.png")"
+grep -q 'pixelWidth: 2880' <<<"$properties" || fail "normalizer should default to 2880 pixels wide"
+grep -q 'pixelHeight: 1800' <<<"$properties" || fail "normalizer should default to 1800 pixels high"
+grep -q 'hasAlpha: no' <<<"$properties" || fail "normalizer should remove alpha without JPEG"
+
+bash "$ROOT_DIR/script/compose_app_store_marketing_screenshot.sh" \
+  writing "$TMP_DIR/source.png" "$TMP_DIR/marketing.png" >/dev/null
+marketing_properties="$(sips -g pixelWidth -g pixelHeight -g hasAlpha "$TMP_DIR/marketing.png")"
+grep -q 'pixelWidth: 2880' <<<"$marketing_properties" || fail "marketing output should be 2880 pixels wide"
+grep -q 'pixelHeight: 1800' <<<"$marketing_properties" || fail "marketing output should be 1800 pixels high"
+grep -q 'hasAlpha: no' <<<"$marketing_properties" || fail "marketing output should be alpha-free"
 
 sips -z 750 1200 "$SCREENSHOT_DIR/writing.png" --out "$TMP_DIR/wrong-size.png" >/dev/null
 mv "$TMP_DIR/wrong-size.png" "$SCREENSHOT_DIR/writing.png"

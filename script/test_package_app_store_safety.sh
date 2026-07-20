@@ -26,4 +26,9 @@ if grep -Fq 'rm -rf "$OUTPUT_DIR"' "$PACKAGE_SCRIPT"; then
   fail "package script still removes the entire caller-provided output directory"
 fi
 
+grep -Fq 'xattr -cr "$signed_app"' "$PACKAGE_SCRIPT" \
+  || fail "package script does not strip App Store-rejected extended attributes before signing"
+
+python3 "$ROOT_DIR/script/test_resolve_app_store_entitlements.py"
+
 echo "app store package safety test: passed"

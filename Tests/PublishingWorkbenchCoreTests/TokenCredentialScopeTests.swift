@@ -19,7 +19,10 @@ final class TokenCredentialScopeTests: XCTestCase {
   func testMissingKeychainErrorExplainsHowToRestoreTheLoginKeychainContext() {
     let error = KeychainTokenStoreError.unhandledStatus(errSecNoSuchKeychain)
 
-    XCTAssertTrue(error.localizedDescription.contains("\(errSecNoSuchKeychain)"))
+    XCTAssertTrue(
+      error.localizedDescription.contains("\(errSecNoSuchKeychain)"),
+      "Actual error: \(error.localizedDescription)"
+    )
     XCTAssertTrue(error.recoveryHint?.contains("登录钥匙串") == true)
     XCTAssertEqual(error.recoverySuggestion, error.recoveryHint)
   }
@@ -28,7 +31,10 @@ final class TokenCredentialScopeTests: XCTestCase {
     for status in [errSecInvalidOwnerEdit, OSStatus(-25253)] {
       let error = KeychainTokenStoreError.unhandledStatus(status)
 
-      XCTAssertTrue(error.localizedDescription.contains("\(status)"))
+      XCTAssertTrue(
+        error.localizedDescription.contains("\(status)"),
+        "Actual error: \(error.localizedDescription)"
+      )
       XCTAssertTrue(error.recoveryHint?.contains("旧构建") == true)
       XCTAssertTrue(error.recoveryHint?.contains("PersonalSitePublisher") == true)
       XCTAssertTrue(KeychainTokenStore.isRecoverableDeletionOwnershipStatus(status))

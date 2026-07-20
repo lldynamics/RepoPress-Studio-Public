@@ -5,68 +5,114 @@ import SwiftUI
 @main
 struct PersonalSitePublisherMacApp: App {
   @NSApplicationDelegateAdaptor(PersonalSitePublisherMacAppDelegate.self) private var appDelegate
-  @StateObject private var store: WorkbenchStore
+  @StateObject private var launchCoordinator: WorkbenchLaunchCoordinator
   @StateObject private var storeKitProEntitlementCoordinator = StoreKitProEntitlementCoordinator()
-  @StateObject private var browserBridge: KnowledgeBrowserBridge
 
   init() {
     // Earlier builds disabled AppKit restoration globally. Remove those sticky
     // overrides now that the main workspace is owned by a native SwiftUI scene.
+#if DEBUG
+    // Deterministic screenshot and XCUI launches pass temporary restoration
+    // overrides on the command line. Keep those volatile values for the
+    // automated run so AppKit cannot reopen a stale workspace window while the
+    // requested demo surface is being installed.
+    if ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"] != "1" {
+      UserDefaults.standard.removeObject(forKey: "ApplePersistenceIgnoreState")
+      UserDefaults.standard.removeObject(forKey: "NSQuitAlwaysKeepsWindows")
+    }
+#else
     UserDefaults.standard.removeObject(forKey: "ApplePersistenceIgnoreState")
     UserDefaults.standard.removeObject(forKey: "NSQuitAlwaysKeepsWindows")
-    let knowledgeRestoreOutcome = KnowledgeLibraryService.applyPendingRestoreIfNeeded()
-#if DEBUG
-    let workbenchStore = WorkbenchStore(
-      persistence: ScreenshotDemoDataService.preparePersistenceIfEnabled(),
-      freshWorkspaceSeedPolicy: .softwareGuides
-    )
-#else
-    let workbenchStore = WorkbenchStore(freshWorkspaceSeedPolicy: .softwareGuides)
 #endif
-    workbenchStore.knowledge.reportStartupRestoreOutcome(knowledgeRestoreOutcome)
-    _store = StateObject(
-      wrappedValue: workbenchStore
+#if DEBUG
+    let knowledgeLibraryService = ScreenshotDemoDataService.prepareKnowledgeLibraryServiceIfEnabled()
+#else
+    let knowledgeLibraryService = KnowledgeLibraryService()
+#endif
+#if DEBUG
+    let persistence = ScreenshotDemoDataService.preparePersistenceIfEnabled()
+#else
+    let persistence = WorkbenchPersistence()
+#endif
+    _launchCoordinator = StateObject(
+      wrappedValue: WorkbenchLaunchCoordinator(
+        persistence: persistence,
+        knowledgeLibraryService: knowledgeLibraryService
+      )
     )
-    let browserBridge = KnowledgeBrowserBridge(knowledge: workbenchStore.knowledge)
-    _browserBridge = StateObject(wrappedValue: browserBridge)
-    appDelegate.workbenchStore = workbenchStore
-    appDelegate.browserBridge = browserBridge
   }
 
   var body: some Scene {
     WindowGroup("个人网站发布控制台", id: "main-workbench") {
-      ContentView(store: store)
-        .environmentObject(browserBridge)
-        .frame(minWidth: 980, minHeight: 720)
-        .tint(WorkbenchTheme.navigationSelection)
-        .task {
-          storeKitProEntitlementCoordinator.start(store: store)
-          browserBridge.start()
+      WorkbenchLaunchRootView(
+        coordinator: launchCoordinator,
+        storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator,
+        onReady: { store, browserBridge in
+          appDelegate.workbenchStore = store
+          appDelegate.browserBridge = browserBridge
         }
+      )
+        .frame(
+          minWidth: WorkbenchLayoutMode.minimumWindowWidth,
+          minHeight: 720
+        )
+        .background(MainWindowInitialSizeBridge())
+#if DEBUG
+        .background(ScreenshotCaptureWindowBridge())
+#endif
+        .tint(WorkbenchTheme.navigationSelection)
     }
+    .defaultSize(
+      width: WorkbenchLayoutMode.defaultWindowWidth,
+      height: WorkbenchLayoutMode.defaultWindowHeight
+    )
     .windowToolbarStyle(.unified(showsTitle: false))
     .commands {
       CommandGroup(replacing: .newItem) {}
-      PublishingConsoleCommands(store: store)
+      if let store = launchCoordinator.store {
+        PublishingConsoleCommands(store: store)
+      }
     }
 
     Settings {
-      ProtectedSettingsView(
-        store: store,
-        storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator
-      )
-      .tint(WorkbenchTheme.navigationSelection)
+      Group {
+        if let store = launchCoordinator.store {
+          ProtectedSettingsView(
+            store: store,
+            storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator
+          )
+        } else {
+          ProgressView()
+            .frame(width: 420, height: 300)
+        }
+      }
+        .tint(WorkbenchTheme.navigationSelection)
     }
   }
 }
 
 @MainActor
 final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate {
-  var workbenchStore: WorkbenchStore?
+  private let privacyIdleLockController = PrivacyIdleLockController()
+  var workbenchStore: WorkbenchStore? {
+    didSet {
+      guard oldValue !== workbenchStore else { return }
+      if let workbenchStore {
+        privacyIdleLockController.start(monitoring: workbenchStore)
+      } else {
+        privacyIdleLockController.stop()
+      }
+    }
+  }
   var browserBridge: KnowledgeBrowserBridge?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
+#if !APP_STORE_BUILD
+    Task.detached(priority: .utility) {
+      _ = BrowserNativeMessagingInstaller.repairInstalledConnectionsAfterUpgrade()
+    }
+#endif
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -85,6 +131,7 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    privacyIdleLockController.stop()
     browserBridge?.stop()
     workbenchStore?.stopLocalSitePreviewImmediately()
     _ = workbenchStore?.flushPendingChanges()
@@ -109,5 +156,8 @@ private struct ProtectedSettingsView: View {
         PrivacyLockOverlay(store: store)
       }
     }
+#if DEBUG
+    .background(ScreenshotCaptureWindowBridge(role: .settings))
+#endif
   }
 }

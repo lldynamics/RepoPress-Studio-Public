@@ -77,6 +77,15 @@ grep -Fq "summary.imageCount > 0" \
   "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
   || fail "the image workbench must hide refresh when no images exist"
 
+content_view="$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/ContentView.swift"
+grep -Fq "@ObservedObject private var presentationState: WorkbenchContentPresentationFeatureFacade" \
+  "$content_view" \
+  || fail "ContentView must observe the narrow presentation projection"
+if grep -Eq "@ObservedObject private var (aiState: WorkbenchAIFeatureFacade|publishingState: WorkbenchPublishingFeatureFacade)" \
+  "$content_view"; then
+  fail "ContentView must not observe broad AI or publishing facades"
+fi
+
 if [[ "$MODE" == "launch" ]]; then
   build_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' "$INFO_PLIST")"
   [[ "$build_configuration" == "Release" ]] || fail "launch verification must use a Release bundle"

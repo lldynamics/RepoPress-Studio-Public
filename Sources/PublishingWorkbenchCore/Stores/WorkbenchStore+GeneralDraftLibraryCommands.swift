@@ -6,7 +6,7 @@ extension WorkbenchStore {
   }
 
   public var generalDraftLibraryReport: GeneralDraftLibraryReport {
-    publishingStore.generalDraftLibraryReport(store: self)
+    publishingStore.generalDraftLibraryReport()
   }
 
   @discardableResult

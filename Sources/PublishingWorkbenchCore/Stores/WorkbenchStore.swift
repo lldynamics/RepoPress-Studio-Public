@@ -31,9 +31,15 @@ public final class WorkbenchStore: ObservableObject {
   public lazy var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade = WorkbenchImageWorkbenchFeatureFacade(store: self)
   public lazy var persistenceStatus: WorkbenchPersistenceFeatureFacade = WorkbenchPersistenceFeatureFacade(store: self)
   public lazy var shell: WorkbenchShellFeatureFacade = WorkbenchShellFeatureFacade(store: self)
+  public lazy var contentPresentation: WorkbenchContentPresentationFeatureFacade =
+    WorkbenchContentPresentationFeatureFacade(store: self)
   public lazy var activityStatus: WorkbenchActivityStatusFacade = WorkbenchActivityStatusFacade(store: self)
+  public lazy var workspaceLayout: WorkbenchWorkspaceLayoutFeatureFacade =
+    WorkbenchWorkspaceLayoutFeatureFacade(store: self)
   @Published public private(set) var contentHealthSnapshotVersion = 0
   @Published public private(set) var draftTaskQueueStateVersion = 0
+  @Published public private(set) var draftListPresentationRevision: UInt64 = 0
+  @Published public private(set) var imageWorkbenchInputRevision: UInt64 = 0
   private var draftTaskQueueStateCache: [UUID: DraftTaskQueueState] = [:]
   private var childStoreCancellables = Set<AnyCancellable>()
   var preflightRefreshTask: Task<Void, Never>?
@@ -77,6 +83,7 @@ public final class WorkbenchStore: ObservableObject {
 
   public init(
     persistence: WorkbenchPersistence = WorkbenchPersistence(),
+    initialSnapshotSource: WorkbenchInitialSnapshotSource = .persistence,
     freshWorkspaceSeedPolicy: FreshWorkspaceSeedPolicy = .blank,
     preflightService: PreflightCheckService = PreflightCheckService(),
     repositoryService: LocalRepositoryService = LocalRepositoryService(),
@@ -121,15 +128,28 @@ public final class WorkbenchStore: ObservableObject {
     self.knowledge = KnowledgeStore(service: knowledgeLibraryService)
 
     let snapshotLoad: WorkbenchSnapshotLoadResult
-    var requiresPersistenceRecoveryDecision = false
-    do {
-      snapshotLoad = try persistenceStore.loadWithRecovery()
-    } catch {
-      requiresPersistenceRecoveryDecision = true
+    let requiresPersistenceRecoveryDecision: Bool
+    switch initialSnapshotSource {
+    case .persistence:
+      do {
+        snapshotLoad = try persistenceStore.loadWithRecovery()
+        requiresPersistenceRecoveryDecision = false
+      } catch {
+        snapshotLoad = WorkbenchSnapshotLoadResult(
+          snapshot: nil,
+          recoveryMessage: "工作台数据无法读取，已使用空白工作台启动。原始文件未被覆盖：\(error.localizedDescription)"
+        )
+        requiresPersistenceRecoveryDecision = true
+      }
+    case .preloaded(let result):
+      snapshotLoad = result
+      requiresPersistenceRecoveryDecision = false
+    case .loadFailure(let message):
       snapshotLoad = WorkbenchSnapshotLoadResult(
         snapshot: nil,
-        recoveryMessage: "工作台数据无法读取，已使用空白工作台启动。原始文件未被覆盖：\(error.localizedDescription)"
+        recoveryMessage: "工作台数据无法读取，已使用空白工作台启动。原始文件未被覆盖：\(message)"
       )
+      requiresPersistenceRecoveryDecision = true
     }
     let snapshot = snapshotLoad.snapshot
     let snapshotProfiles = snapshot?.profiles ?? []
@@ -242,6 +262,17 @@ public final class WorkbenchStore: ObservableObject {
     publishingStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStoreCancellables)
+    publishingStore.$activeProfileID
+      .removeDuplicates()
+      .dropFirst()
+      .sink { [weak self] profileID in
+        guard let self,
+              let profile = self.publishingStore.profiles.first(where: { $0.id == profileID }) else {
+          return
+        }
+        self.aiStore.refreshAIKeyAvailability(for: profile)
+      }
+      .store(in: &childStoreCancellables)
     repositoryStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStoreCancellables)
@@ -250,6 +281,13 @@ public final class WorkbenchStore: ObservableObject {
       .store(in: &childStoreCancellables)
     privacyMonetizationStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &childStoreCancellables)
+    privacyMonetizationStore.$isPrivacyLocked
+      .removeDuplicates()
+      .dropFirst()
+      .sink { [weak self] _ in
+        self?.draftListPresentationRevision &+= 1
+      }
       .store(in: &childStoreCancellables)
     persistenceStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
@@ -264,6 +302,7 @@ public final class WorkbenchStore: ObservableObject {
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStoreCancellables)
     repositoryDeploymentCoordinator.refreshTokenAvailability(store: self)
+    aiStore.refreshAIKeyAvailability()
     if let recoveryMessage = snapshotLoad.recoveryMessage {
       if requiresPersistenceRecoveryDecision {
         persistenceStore.protectWritesForUnrecoverableSnapshot(message: recoveryMessage)
@@ -322,15 +361,24 @@ public final class WorkbenchStore: ObservableObject {
     invalidateContentHealthSnapshot()
     invalidateSiteMaintenanceSnapshot()
     invalidateDraftTaskQueueStateCache()
+    draftListPresentationRevision &+= 1
+    imageWorkbenchInputRevision &+= 1
   }
 
-  func invalidateBodyEditingDerivedCaches(for draftID: UUID) {
+  func invalidateBodyEditingDerivedCaches(
+    for draftID: UUID,
+    imageInputsDidChange: Bool
+  ) {
     // Body typing does not alter images, release history, or maintenance
     // metadata. Keep those expensive summaries warm until a debounced
     // preflight refresh runs.
     invalidateContentHealthSnapshot()
     draftTaskQueueStateCache.removeValue(forKey: draftID)
     draftTaskQueueStateVersion += 1
+    draftListPresentationRevision &+= 1
+    if imageInputsDidChange {
+      imageWorkbenchInputRevision &+= 1
+    }
   }
 
   private func invalidateContentHealthSnapshot() {

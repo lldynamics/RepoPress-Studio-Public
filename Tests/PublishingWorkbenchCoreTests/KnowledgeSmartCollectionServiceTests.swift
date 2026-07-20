@@ -71,6 +71,56 @@ final class KnowledgeSmartCollectionServiceTests: XCTestCase {
     XCTAssertFalse(service.matches(document, rule: .aiPermission(false)))
   }
 
+  func testBrowserOrganizationSuggestionsRankFolderAndRelatedTagsWithoutApplyingThem() throws {
+    let research = KnowledgeFolder(name: "产品研究")
+    let reading = KnowledgeFolder(name: "待读")
+    var domainAndAuthor = makeDocument(
+      title: "同来源同作者",
+      authors: ["陈作者"],
+      tags: ["AI", "知识管理"],
+      sourceURL: URL(string: "https://www.example.com/older"),
+      allowsAIUse: true,
+      importedAt: Date()
+    )
+    domainAndAuthor.folderID = research.id
+    var sameDomain = makeDocument(
+      title: "同来源",
+      authors: ["其他作者"],
+      tags: ["检索"],
+      sourceURL: URL(string: "https://example.com/second"),
+      allowsAIUse: true,
+      importedAt: Date()
+    )
+    sameDomain.folderID = research.id
+    var onlyTag = makeDocument(
+      title: "仅标签相同",
+      authors: [],
+      tags: ["AI", "稍后读"],
+      sourceURL: URL(string: "https://other.example/item"),
+      allowsAIUse: true,
+      importedAt: Date()
+    )
+    onlyTag.folderID = reading.id
+
+    let suggestions = service.browserOrganizationSuggestions(
+      sourceURL: try XCTUnwrap(URL(string: "https://example.com/new")),
+      authors: ["陈作者"],
+      tags: ["AI"],
+      documents: [domainAndAuthor, sameDomain, onlyTag],
+      folders: [research, reading]
+    )
+
+    XCTAssertEqual(suggestions.folders.first?.folder.id, research.id)
+    XCTAssertEqual(
+      Set(try XCTUnwrap(suggestions.folders.first).reasons),
+      [.sourceDomain, .author, .tag]
+    )
+    XCTAssertTrue(suggestions.tags.contains("知识管理"))
+    XCTAssertFalse(suggestions.tags.contains("AI"))
+    XCTAssertEqual(domainAndAuthor.folderID, research.id)
+    XCTAssertEqual(onlyTag.folderID, reading.id)
+  }
+
   func testSavedCollectionCombinesRulesAndRoundTripsThroughJSON() throws {
     let matching = makeDocument(
       title: "匹配",

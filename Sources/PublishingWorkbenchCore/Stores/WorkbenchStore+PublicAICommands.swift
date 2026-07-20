@@ -115,6 +115,17 @@ extension WorkbenchStore {
   }
 
   @discardableResult
+  public func retryLastFailedAIChatReply(
+    confirmingPossibleDuplicateCharge: Bool = false,
+    draft: ArticleDraft? = nil
+  ) async -> AIPublishingChatMessage? {
+    await aiStore.retryLastFailedAIChatReply(
+      confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
+      draft: draft
+    )
+  }
+
+  @discardableResult
   public func regenerateLastAIChatReply(draft: ArticleDraft? = nil) async -> AIPublishingChatMessage? {
     await aiStore.regenerateLastAIChatReply(draft: draft)
   }

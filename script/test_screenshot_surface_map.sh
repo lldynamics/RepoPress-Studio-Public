@@ -80,7 +80,7 @@ struct MacMarkdownComposerView { let markdownBlocks = ""; let pasteAIPromptToCli
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift" <<'EOF_SWIFT'
 let inspector = "WorkspaceTaskMetadataSection WorkspaceTaskSEOSection refreshSEOSocialPreview relatedArticleSuggestionSection"
-// .accessibilityLabel("文章标题")
+// .accessibilityLabel("元数据标题")
 // .accessibilityLabel("复制全部外部调试链接")
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" <<'EOF_SWIFT'
@@ -120,7 +120,8 @@ EOF_SWIFT
 let settings = "selectedSettingsTab ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .proSettings ? .pro"
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/TokenRepositoryTokenSection.swift" <<'EOF_SWIFT'
-let token = "TokenRepositoryTokenSection 仓库访问 Token"
+let token = "TokenRepositoryTokenSection"
+// .accessibilityHint("仅用于仓库创建、权限检查、提交、PR/MR 和回滚")
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/TokenSettingsView.swift" <<'EOF_SWIFT'
 let tokenSettings = "deploymentProviderBinding"

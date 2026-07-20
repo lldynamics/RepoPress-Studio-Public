@@ -20,7 +20,27 @@ cp "$ROOT_DIR/script/check_release_gate.sh" "$FIXTURE_ROOT/script/check_release_
 cp "$ROOT_DIR/script/release_gate_runner.py" "$FIXTURE_ROOT/script/release_gate_runner.py"
 cp "$ROOT_DIR/script/release_checks.json" "$FIXTURE_ROOT/script/release_checks.json"
 
+cat >"$FIXTURE_ROOT/script/firefox_extension_release.py" <<'PY'
+#!/usr/bin/env python3
+import sys
+
+if sys.argv[1:] not in (["lint"], ["verify-remote"]):
+    raise SystemExit("unexpected Firefox release fixture arguments")
+print("Firefox remote release fixture: ok")
+PY
+
+for python_script in \
+  check_app_store_listing_metadata.py \
+  test_app_store_listing_metadata.py \
+  test_browser_extension_protocol_generation.py; do
+  cat >"$FIXTURE_ROOT/script/$python_script" <<'PY'
+#!/usr/bin/env python3
+print("App Store listing fixture: ok")
+PY
+done
+
 stub_scripts=(
+  check_browser_extension_release.sh
   check_localization_gate.sh
   check_repository_source_boundary.sh
   test_repository_source_boundary.sh
@@ -70,6 +90,7 @@ stub_scripts=(
   test_screenshot_specifications.sh
   test_screenshot_privacy.sh
   test_app_store_checklist_sync_evidence.sh
+  test_browser_extension_release_gate.sh
   test_release_gate_strict_reporting.sh
   check_ci_quality_workflow.sh
   check_swift_strict_build.sh

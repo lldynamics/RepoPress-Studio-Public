@@ -40,6 +40,11 @@ final class KnowledgeDatabaseCompatibilityTests: XCTestCase {
       "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'knowledge_backlinks';",
       at: databaseURL
     ), 1)
+    XCTAssertEqual(try querySQLiteInt(
+      "SELECT COUNT(*) FROM pragma_table_info('knowledge_revisions') "
+        + "WHERE name = 'captured_text_storage_ref';",
+      at: databaseURL
+    ), 1)
   }
 
   func testFutureDatabaseVersionIsRejectedWithoutRewritingDatabase() throws {

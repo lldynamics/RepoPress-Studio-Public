@@ -66,7 +66,6 @@ public struct LocalGitPublishService: Sendable {
     guard let result = try profile.withLocalRepositoryRootAccess({ rootURL in
       try publish(
         package: package,
-        profile: profile,
         rootURL: rootURL,
         mode: mode,
         preview: preview
@@ -95,7 +94,6 @@ public struct LocalGitPublishService: Sendable {
     }
     return try await publishAsync(
       package: package,
-      profile: profile,
       rootURL: rootURL,
       mode: mode,
       preview: preview
@@ -104,7 +102,6 @@ public struct LocalGitPublishService: Sendable {
 
   private func publish(
     package: PublishPackage,
-    profile: SiteProfile,
     rootURL: URL,
     mode: LocalGitPublishMode,
     preview: LocalPublishPreview?
@@ -194,7 +191,6 @@ public struct LocalGitPublishService: Sendable {
 
   private func publishAsync(
     package: PublishPackage,
-    profile: SiteProfile,
     rootURL: URL,
     mode: LocalGitPublishMode,
     preview: LocalPublishPreview?

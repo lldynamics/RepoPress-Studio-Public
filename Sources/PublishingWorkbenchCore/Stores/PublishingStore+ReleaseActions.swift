@@ -80,7 +80,6 @@ extension PublishingStore {
     localPublishPreview = preview
     let blockingIssues = blockingLocalPublishIssues(
       package: package,
-      profile: profile,
       preview: preview,
       includeRepositoryReadiness: true,
       store: store

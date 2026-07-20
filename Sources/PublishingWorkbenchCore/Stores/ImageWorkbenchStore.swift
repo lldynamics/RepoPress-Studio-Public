@@ -14,9 +14,11 @@ public final class ImageWorkbenchStore: ObservableObject {
   private var imageReportTask: Task<ImageWorkbenchReport, Error>?
   private var imageReportGeneration: UInt64 = 0
   private var imageReportBaseline: ImageWorkbenchReportInputSignature?
+  private var imageReportBaselineRevision: UInt64?
   private var siteSummaryTask: Task<ImageWorkbenchSiteSummary, Error>?
   private var siteSummaryGeneration: UInt64 = 0
   private var siteSummaryBaseline: ImageWorkbenchSiteSummaryInputSignature?
+  private var siteSummaryBaselineRevision: UInt64?
 
   @Published public private(set) var imageBatchProgress: ImageBatchProgress?
   @Published public private(set) var isImageBatchProcessing = false
@@ -81,7 +83,7 @@ public final class ImageWorkbenchStore: ObservableObject {
 
   public func cancelImageBatchProcessing() {
     guard isImageBatchProcessing else { return }
-    imageActionMessage = "正在取消图片处理…"
+    imageActionMessage = CoreL10n.text("正在取消图片处理…")
     imageBatchCancellationToken?.cancel()
     imageBatchTask?.cancel()
   }
@@ -92,11 +94,11 @@ public final class ImageWorkbenchStore: ObservableObject {
     includedAttachmentIDsByDraftID: [UUID: Set<UUID>] = [:]
   ) {
     guard !isImageBatchProcessing else {
-      imageActionMessage = "已有图片处理任务正在运行，请先等待或取消。"
+      imageActionMessage = CoreL10n.text("已有图片处理任务正在运行，请先等待或取消。")
       return
     }
     guard !drafts.isEmpty else {
-      imageActionMessage = "没有可处理的文章。"
+      imageActionMessage = CoreL10n.text("没有可处理的文章。")
       return
     }
 
@@ -104,7 +106,7 @@ public final class ImageWorkbenchStore: ObservableObject {
     let requestedDraftIDs = Set(drafts.map(\.id))
     let currentDrafts = store.drafts.filter { requestedDraftIDs.contains($0.id) }
     guard !currentDrafts.isEmpty else {
-      imageActionMessage = "没有可处理的文章。"
+      imageActionMessage = CoreL10n.text("没有可处理的文章。")
       return
     }
 
@@ -126,7 +128,7 @@ public final class ImageWorkbenchStore: ObservableObject {
       totalDraftCount: currentDrafts.count
     )
     isImageBatchProcessing = true
-    imageActionMessage = "正在\(operation.progressTitle)：0/\(currentDrafts.count) 篇文章。"
+    imageActionMessage = CoreL10n.format("正在%@：0/%d 篇文章。", operation.progressTitle, currentDrafts.count)
 
     imageBatchTask = Task { [weak self] in
       do {
@@ -139,7 +141,12 @@ public final class ImageWorkbenchStore: ObservableObject {
           progress: { [weak self] progress in
             guard self?.imageBatchOperationID == operationID else { return }
             self?.imageBatchProgress = progress
-            self?.imageActionMessage = "正在\(progress.operation.progressTitle)：\(progress.completedDraftCount)/\(progress.totalDraftCount) 篇文章。"
+            self?.imageActionMessage = CoreL10n.format(
+              "正在%@：%d/%d 篇文章。",
+              progress.operation.progressTitle,
+              progress.completedDraftCount,
+              progress.totalDraftCount
+            )
           }
         )
         guard self?.imageBatchOperationID == operationID else {
@@ -150,12 +157,12 @@ public final class ImageWorkbenchStore: ObservableObject {
       } catch is CancellationError {
         self?.finishImageBatch(
           operationID: operationID,
-          message: "已取消\(operation.progressTitle)，临时文件已清理。"
+          message: CoreL10n.format("已取消%@，临时文件已清理。", operation.progressTitle)
         )
       } catch {
         self?.finishImageBatch(
           operationID: operationID,
-          message: "\(operation.progressTitle)失败：\(error.localizedDescription)"
+          message: CoreL10n.format("%@失败：%@", operation.progressTitle, error.localizedDescription)
         )
       }
     }
@@ -175,7 +182,10 @@ public final class ImageWorkbenchStore: ObservableObject {
       try? FileManager.default.removeItem(at: result.outputDirectory)
       finishImageBatch(
         operationID: imageBatchOperationID,
-        message: "有 \(conflictingDraftIDs.count) 篇文章在图片处理期间被修改，本次结果未应用；请确认编辑内容后重新运行。"
+        message: CoreL10n.format(
+          "有 %d 篇文章在图片处理期间被修改，本次结果未应用；请确认编辑内容后重新运行。",
+          conflictingDraftIDs.count
+        )
       )
       return
     }
@@ -197,20 +207,20 @@ public final class ImageWorkbenchStore: ObservableObject {
 
     let message: String
     if result.optimizedCount == 0 {
-      message = result.firstMessage ?? "没有可\(operation.progressTitle)的图片。"
+      message = result.firstMessage ?? CoreL10n.format("没有可%@的图片。", operation.progressTitle)
     } else {
       let saved = ByteCountFormatter.string(fromByteCount: result.savedBytes, countStyle: .file)
       switch operation {
       case .optimizeJPEG:
-        message = "已批量生成 \(result.optimizedCount) 个 JPEG 优化副本，预计减少 \(saved)。"
+        message = CoreL10n.format("已批量生成 %d 个 JPEG 优化副本，预计减少 %@。", result.optimizedCount, saved)
       case .convertWebP:
-        message = "已批量转换 \(result.optimizedCount) 张 WebP 图片，预计减少 \(saved)。"
+        message = CoreL10n.format("已批量转换 %d 张 WebP 图片，预计减少 %@。", result.optimizedCount, saved)
       case .optimizeSVG:
-        message = "已批量优化 \(result.optimizedCount) 个 SVG 副本，预计减少 \(saved)。"
+        message = CoreL10n.format("已批量优化 %d 个 SVG 副本，预计减少 %@。", result.optimizedCount, saved)
       case .resizeLargeImages:
-        message = "已批量缩放 \(result.optimizedCount) 张大图，预计减少 \(saved)。"
+        message = CoreL10n.format("已批量缩放 %d 张大图，预计减少 %@。", result.optimizedCount, saved)
       case .cropCover16By9:
-        message = "已裁剪封面图为 16:9，预计减少 \(saved)。"
+        message = CoreL10n.format("已裁剪封面图为 16:9，预计减少 %@。", saved)
       }
     }
     finishImageBatch(operationID: imageBatchOperationID, message: message)
@@ -246,6 +256,7 @@ public final class ImageWorkbenchStore: ObservableObject {
       draft: selectedDraft,
       profile: profile
     )
+    imageReportBaselineRevision = store.imageWorkbenchInputRevision
   }
 
   public func imageWorkbenchReport(for draft: ArticleDraft) -> ImageWorkbenchReport {
@@ -253,11 +264,8 @@ public final class ImageWorkbenchStore: ObservableObject {
   }
 
   public func cachedImageWorkbenchReport(for draft: ArticleDraft) -> ImageWorkbenchReport? {
-    let signature = ImageWorkbenchReportInputSignature(
-      draft: draft,
-      profile: profile(for: draft)
-    )
-    guard imageReportBaseline == signature,
+    guard imageReportBaseline != nil,
+          imageReportBaselineRevision == store.imageWorkbenchInputRevision,
           backgroundImageReport?.draftID == draft.id else {
       return nil
     }
@@ -277,16 +285,32 @@ public final class ImageWorkbenchStore: ObservableObject {
     // can become dangling while the file-backed report is suspended.
     let owningStore = store
     let profile = owningStore.profile(for: draft)
-    let signature = ImageWorkbenchReportInputSignature(draft: draft, profile: profile)
-    if !force, cachedImageWorkbenchReport(for: draft) != nil {
-      return
-    }
-
     imageReportTask?.cancel()
     imageReportGeneration &+= 1
     let generation = imageReportGeneration
+    let inputRevision = owningStore.imageWorkbenchInputRevision
     imageReportLoadingDraftID = draft.id
     owningStore.imageWorkbenchBackgroundStateDidChange()
+
+    let signature = await Task.detached(priority: .utility) {
+      ImageWorkbenchReportInputSignature(draft: draft, profile: profile)
+    }.value
+    guard !Task.isCancelled else {
+      if generation == imageReportGeneration {
+        imageReportLoadingDraftID = nil
+        owningStore.imageWorkbenchBackgroundStateDidChange()
+      }
+      return
+    }
+    guard generation == imageReportGeneration else { return }
+    if !force,
+       imageReportBaseline == signature,
+       backgroundImageReport?.draftID == draft.id {
+      imageReportBaselineRevision = inputRevision
+      imageReportLoadingDraftID = nil
+      owningStore.imageWorkbenchBackgroundStateDidChange()
+      return
+    }
 
     let service = imageWorkbenchService
     let task = Task {
@@ -303,17 +327,15 @@ public final class ImageWorkbenchStore: ObservableObject {
     imageReportTask = nil
     imageReportLoadingDraftID = nil
 
-    guard let currentDraft = owningStore.drafts.first(where: { $0.id == draft.id }),
-          ImageWorkbenchReportInputSignature(
-            draft: currentDraft,
-            profile: owningStore.profile(for: currentDraft)
-          ) == signature,
+    guard owningStore.imageWorkbenchInputRevision == inputRevision,
+          owningStore.drafts.contains(where: { $0.id == draft.id }),
           case .success(let report) = result else {
       owningStore.imageWorkbenchBackgroundStateDidChange()
       return
     }
 
     imageReportBaseline = signature
+    imageReportBaselineRevision = inputRevision
     backgroundImageReport = report
     if owningStore.selectedDraft?.id == draft.id {
       imageWorkbenchReport = report
@@ -322,11 +344,8 @@ public final class ImageWorkbenchStore: ObservableObject {
   }
 
   public func cachedImageWorkbenchSiteSummary() -> ImageWorkbenchSiteSummary? {
-    let signature = ImageWorkbenchSiteSummaryInputSignature(
-      drafts: visibleDrafts,
-      profile: store.activeProfile
-    )
-    guard siteSummaryBaseline == signature else {
+    guard siteSummaryBaseline != nil,
+          siteSummaryBaselineRevision == store.imageWorkbenchInputRevision else {
       return nil
     }
     return backgroundSiteSummary
@@ -338,17 +357,33 @@ public final class ImageWorkbenchStore: ObservableObject {
     let owningStore = store
     let drafts = owningStore.visibleDrafts
     let profile = owningStore.activeProfile
-    let signature = ImageWorkbenchSiteSummaryInputSignature(drafts: drafts, profile: profile)
-    if !force, cachedImageWorkbenchSiteSummary() != nil {
-      return
-    }
-
     siteSummaryTask?.cancel()
     siteSummaryGeneration &+= 1
     let generation = siteSummaryGeneration
+    let inputRevision = owningStore.imageWorkbenchInputRevision
     isSiteSummaryLoading = true
     siteSummaryErrorMessage = nil
     owningStore.imageWorkbenchBackgroundStateDidChange()
+
+    let signature = await Task.detached(priority: .utility) {
+      ImageWorkbenchSiteSummaryInputSignature(drafts: drafts, profile: profile)
+    }.value
+    guard !Task.isCancelled else {
+      if generation == siteSummaryGeneration {
+        isSiteSummaryLoading = false
+        owningStore.imageWorkbenchBackgroundStateDidChange()
+      }
+      return
+    }
+    guard generation == siteSummaryGeneration else { return }
+    if !force,
+       siteSummaryBaseline == signature,
+       backgroundSiteSummary != nil {
+      siteSummaryBaselineRevision = inputRevision
+      isSiteSummaryLoading = false
+      owningStore.imageWorkbenchBackgroundStateDidChange()
+      return
+    }
 
     let service = imageWorkbenchService
     let task = Task {
@@ -365,10 +400,7 @@ public final class ImageWorkbenchStore: ObservableObject {
     siteSummaryTask = nil
     isSiteSummaryLoading = false
 
-    guard ImageWorkbenchSiteSummaryInputSignature(
-      drafts: owningStore.visibleDrafts,
-      profile: owningStore.activeProfile
-    ) == signature else {
+    guard owningStore.imageWorkbenchInputRevision == inputRevision else {
       owningStore.imageWorkbenchBackgroundStateDidChange()
       return
     }
@@ -376,6 +408,7 @@ public final class ImageWorkbenchStore: ObservableObject {
     switch result {
     case .success(let summary):
       siteSummaryBaseline = signature
+      siteSummaryBaselineRevision = inputRevision
       backgroundSiteSummary = summary
       siteSummaryErrorMessage = nil
     case .failure(let error):
@@ -427,7 +460,7 @@ public final class ImageWorkbenchStore: ObservableObject {
 
   public func fillMissingImageMetadataForSelectedDraft() {
     guard let selectedDraft else {
-      imageActionMessage = "请先选择一篇文章。"
+      imageActionMessage = CoreL10n.text("请先选择一篇文章。")
       return
     }
 
@@ -437,7 +470,7 @@ public final class ImageWorkbenchStore: ObservableObject {
       + result.updatedMarkdownReferenceCount
 
     guard changedCount > 0 else {
-      imageActionMessage = "没有需要补全的图片元数据。"
+      imageActionMessage = CoreL10n.text("没有需要补全的图片元数据。")
       scheduleImageWorkbenchCachesRefresh(force: true)
       return
     }
@@ -445,7 +478,12 @@ public final class ImageWorkbenchStore: ObservableObject {
     updateDraft(result.draft)
     scheduleImageWorkbenchCachesRefresh()
     save()
-    imageActionMessage = "已补全 \(result.filledAltTextCount) 个 alt、\(result.filledCaptionCount) 个 caption，更新 \(result.updatedMarkdownReferenceCount) 处正文引用。"
+    imageActionMessage = CoreL10n.format(
+      "已补全 %d 个 alt、%d 个 caption，更新 %d 处正文引用。",
+      result.filledAltTextCount,
+      result.filledCaptionCount,
+      result.updatedMarkdownReferenceCount
+    )
   }
 
   public func fillMissingImageMetadataForVisibleDrafts() {
@@ -484,7 +522,7 @@ public final class ImageWorkbenchStore: ObservableObject {
     }
 
     guard !updatedDraftsByID.isEmpty else {
-      imageActionMessage = "当前 Profile 没有需要补全的图片元数据。"
+      imageActionMessage = CoreL10n.text("当前 Profile 没有需要补全的图片元数据。")
       scheduleImageWorkbenchCachesRefresh(force: true)
       return
     }
@@ -494,12 +532,17 @@ public final class ImageWorkbenchStore: ObservableObject {
     runPreflight()
     scheduleImageWorkbenchCachesRefresh()
     save()
-    imageActionMessage = "已批量补全 \(filledAltTextCount) 个 alt、\(filledCaptionCount) 个 caption，更新 \(updatedMarkdownReferenceCount) 处正文引用。"
+    imageActionMessage = CoreL10n.format(
+      "已批量补全 %d 个 alt、%d 个 caption，更新 %d 处正文引用。",
+      filledAltTextCount,
+      filledCaptionCount,
+      updatedMarkdownReferenceCount
+    )
   }
 
   public func optimizeSelectedDraftJPEGImages() {
     guard let selectedDraft else {
-      imageActionMessage = "请先选择一篇文章。"
+      imageActionMessage = CoreL10n.text("请先选择一篇文章。")
       return
     }
     startImageBatch(.optimizeJPEG, drafts: [selectedDraft])
@@ -521,7 +564,7 @@ public final class ImageWorkbenchStore: ObservableObject {
 
   public func convertSelectedDraftImagesToWebP() {
     guard let selectedDraft else {
-      imageActionMessage = "请先选择一篇文章。"
+      imageActionMessage = CoreL10n.text("请先选择一篇文章。")
       return
     }
 
@@ -544,7 +587,7 @@ public final class ImageWorkbenchStore: ObservableObject {
 
   public func optimizeSelectedDraftSVGImages() {
     guard let selectedDraft else {
-      imageActionMessage = "请先选择一篇文章。"
+      imageActionMessage = CoreL10n.text("请先选择一篇文章。")
       return
     }
 
@@ -567,7 +610,7 @@ public final class ImageWorkbenchStore: ObservableObject {
 
   public func resizeSelectedDraftLargeImages() {
     guard let selectedDraft else {
-      imageActionMessage = "请先选择一篇文章。"
+      imageActionMessage = CoreL10n.text("请先选择一篇文章。")
       return
     }
 
@@ -590,12 +633,12 @@ public final class ImageWorkbenchStore: ObservableObject {
 
   public func cropSelectedDraftCoverImageForSocialPreview() {
     guard let selectedDraft else {
-      imageActionMessage = "请先选择一篇文章。"
+      imageActionMessage = CoreL10n.text("请先选择一篇文章。")
       return
     }
 
     guard selectedDraft.coverAttachmentID != nil else {
-      imageActionMessage = "请先设置封面图，再裁剪 16:9 封面。"
+      imageActionMessage = CoreL10n.text("请先设置封面图，再裁剪 16:9 封面。")
       return
     }
 
@@ -619,22 +662,24 @@ public final class ImageWorkbenchStore: ObservableObject {
   public func setSelectedDraftCoverAttachment(_ attachmentID: UUID?) {
     guard var draft = selectedDraft else { return }
     if let attachmentID, !draft.attachments.contains(where: { $0.id == attachmentID }) {
-      imageActionMessage = "找不到要设为封面的图片。"
+      imageActionMessage = CoreL10n.text("找不到要设为封面的图片。")
       return
     }
     draft.coverAttachmentID = attachmentID
     draft.updatedAt = Date()
     updateDraft(draft)
-    imageActionMessage = attachmentID == nil ? "已清除封面图。" : "已设置封面图。"
+    imageActionMessage = attachmentID == nil
+      ? CoreL10n.text("已清除封面图。")
+      : CoreL10n.text("已设置封面图。")
   }
 
   public func attachRepositoryImageToSelectedDraft(repositoryPath: String) {
     guard var draft = selectedDraft else {
-      imageActionMessage = "请先选择文章。"
+      imageActionMessage = CoreL10n.text("请先选择文章。")
       return
     }
     if draft.attachments.contains(where: { $0.repositoryPath == repositoryPath }) {
-      imageActionMessage = "\(repositoryPath) 已在当前文章图片列表中。"
+      imageActionMessage = CoreL10n.format("%@ 已在当前文章图片列表中。", repositoryPath)
       return
     }
 
@@ -666,7 +711,7 @@ public final class ImageWorkbenchStore: ObservableObject {
     draft.updatedAt = Date()
     updateDraft(draft)
     store.selectSection(.images)
-    imageActionMessage = "已把 \(repositoryPath) 加入当前文章图片列表。"
+    imageActionMessage = CoreL10n.format("已把 %@ 加入当前文章图片列表。", repositoryPath)
     save()
   }
 }

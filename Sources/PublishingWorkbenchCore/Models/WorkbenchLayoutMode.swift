@@ -2,6 +2,8 @@ import Foundation
 
 public enum WorkbenchLayoutMode {
   public static let minimumWindowWidth: CGFloat = 980
+  public static let defaultWindowWidth: CGFloat = 1440
+  public static let defaultWindowHeight: CGFloat = 900
   public static let expandedWorkspaceWidth: CGFloat = 1180
   public static let minimumInspectorWorkspaceWidth: CGFloat = 1180
   public static let minimumSplitInspectorWorkspaceWidth: CGFloat = 1580

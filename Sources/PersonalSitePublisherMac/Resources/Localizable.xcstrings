@@ -1441,6 +1441,22 @@
         }
       }
     },
+    "AI 已返回部分内容，软件没有自动重放请求。继续会移除这段未完成回复并重新生成，可能产生重复内容和费用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI already returned partial content, so the app did not replay the request automatically. Continuing removes the incomplete reply and regenerates it, which may create duplicate content and charges."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 已返回部分内容，软件没有自动重放请求。继续会移除这段未完成回复并重新生成，可能产生重复内容和费用。"
+          }
+        }
+      }
+    },
     "AI 思考级别": {
       "localizations": {
         "en": {
@@ -1873,6 +1889,22 @@
         }
       }
     },
+    "Chrome/Edge 会优先生成自包含 MHTML 归档；Firefox 会在 24 MB 上限内将可读取的图片、样式和字体内联为离线 HTML，并报告未能内联的外部资源。应用暂时未连接时，插件会在自己的本地队列中保留待导入内容，恢复后自动重试。脚本不会作为检索文本执行。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chrome and Edge create a self-contained MHTML archive when possible. Firefox inlines readable images, styles, and fonts into offline HTML within a 24 MB limit and reports external resources that could not be inlined. When the app is temporarily unavailable, the extension keeps pending imports in its own local queue and retries automatically after reconnection. Scripts are never executed as searchable text."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chrome/Edge 会优先生成自包含 MHTML 归档；Firefox 会在 24 MB 上限内将可读取的图片、样式和字体内联为离线 HTML，并报告未能内联的外部资源。应用暂时未连接时，插件会在自己的本地队列中保留待导入内容，恢复后自动重试。脚本不会作为检索文本执行。"
+          }
+        }
+      }
+    },
     "Chrome/Edge 在扩展管理页启用开发者模式并加载插件文件夹；Firefox 打开 about:debugging#/runtime/this-firefox，选择“临时载入附加组件”，再选中插件文件夹里的 manifest.json。首次连接时，把上面的令牌粘贴到插件中。": {
       "localizations": {
         "en": {
@@ -1981,6 +2013,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Diff 摘要"
+          }
+        }
+      }
+    },
+    "Firefox 将通过原生宿主连接应用，不再直接访问本机 HTTP 端口。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Firefox connects through the native host instead of accessing the local HTTP port directly."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Firefox 将通过原生宿主连接应用，不再直接访问本机 HTTP 端口。"
           }
         }
       }
@@ -2413,6 +2461,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Markdown 路径模板"
+          }
+        }
+      }
+    },
+    "Native Messaging 已验证": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Native Messaging Verified"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Native Messaging 已验证"
           }
         }
       }
@@ -9281,6 +9345,22 @@
         }
       }
     },
+    "↩ 换行 · ⌘↩ 发送": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "↩ New Line · ⌘↩ Send"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "↩ 换行 · ⌘↩ 发送"
+          }
+        }
+      }
+    },
     "−%@ 行": {
       "localizations": {
         "en": {
@@ -9969,6 +10049,22 @@
         }
       }
     },
+    "仍要重新生成": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regenerate Anyway"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仍要重新生成"
+          }
+        }
+      }
+    },
     "仍需人工完成": {
       "localizations": {
         "en": {
@@ -10449,6 +10545,22 @@
         }
       }
     },
+    "令牌只用于本机原生连接。不要粘贴到网页或发送给其他人。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This token is only for the local native connection. Do not paste it into a webpage or send it to anyone."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "令牌只用于本机原生连接。不要粘贴到网页或发送给其他人。"
+          }
+        }
+      }
+    },
     "令牌只用于本机回环接口。不要粘贴到网页或发送给其他人。": {
       "localizations": {
         "en": {
@@ -10525,6 +10637,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "优化当前文章 SVG 图片"
+          }
+        }
+      }
+    },
+    "传输": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transport"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "传输"
           }
         }
       }
@@ -13137,6 +13265,22 @@
         }
       }
     },
+    "协议版本不兼容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incompatible Protocol Version"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "协议版本不兼容"
+          }
+        }
+      }
+    },
     "压缩当前文章 JPEG 图片": {
       "localizations": {
         "en": {
@@ -13153,6 +13297,22 @@
         }
       }
     },
+    "原始内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Original Content"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原始内容"
+          }
+        }
+      }
+    },
     "原始图片不会被覆盖，处理结果以新副本保存并更新草稿引用。": {
       "localizations": {
         "en": {
@@ -13165,6 +13325,182 @@
           "stringUnit": {
             "state": "translated",
             "value": "原始图片不会被覆盖，处理结果以新副本保存并更新草稿引用。"
+          }
+        }
+      }
+    },
+    "原始抓取正文读取失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not read the original captured text: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原始抓取正文读取失败：%@"
+          }
+        }
+      }
+    },
+    "原始抓取正文较长，当前只显示前 100,000 个字符；原文已完整保存。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The original captured text is long. Only the first 100,000 characters are shown here; the complete original remains saved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原始抓取正文较长，当前只显示前 100,000 个字符；原文已完整保存。"
+          }
+        }
+      }
+    },
+    "原生宿主协议握手超时。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native host protocol handshake timed out."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原生宿主协议握手超时。"
+          }
+        }
+      }
+    },
+    "原生宿主返回了无效的版本握手。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native host returned an invalid version handshake."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原生宿主返回了无效的版本握手。"
+          }
+        }
+      }
+    },
+    "原生连接使用当前用户专属 Unix Domain Socket。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native connection uses a Unix domain socket dedicated to the current user."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原生连接使用当前用户专属 Unix Domain Socket。"
+          }
+        }
+      }
+    },
+    "原生连接套接字尚未建立。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native connection socket has not been created yet."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原生连接套接字尚未建立。"
+          }
+        }
+      }
+    },
+    "原生连接套接字权限设置失败。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not configure native connection socket permissions."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原生连接套接字权限设置失败。"
+          }
+        }
+      }
+    },
+    "原生连接路径属于其他用户，已拒绝覆盖。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native connection path belongs to another user and was not overwritten."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原生连接路径属于其他用户，已拒绝覆盖。"
+          }
+        }
+      }
+    },
+    "原生连接路径被非套接字文件占用，已拒绝覆盖。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native connection path is occupied by a non-socket file and was not overwritten."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原生连接路径被非套接字文件占用，已拒绝覆盖。"
+          }
+        }
+      }
+    },
+    "原生连接锁文件或目录不安全，已拒绝启动。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native connection lock file or directory is unsafe, so startup was refused."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原生连接锁文件或目录不安全，已拒绝启动。"
+          }
+        }
+      }
+    },
+    "原生连接需要修复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Native Connection Needs Repair"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原生连接需要修复"
           }
         }
       }
@@ -13869,6 +14205,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "另有 %@ 篇文章会在确认后导入。"
+          }
+        }
+      }
+    },
+    "只会删除当前用户的宿主清单和安装收据，不会删除浏览器插件或资料库内容。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only the current user's host manifest and installation receipt will be removed. The browser extension and knowledge library content will remain untouched."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只会删除当前用户的宿主清单和安装收据，不会删除浏览器插件或资料库内容。"
           }
         }
       }
@@ -15713,6 +16065,22 @@
         }
       }
     },
+    "套接字": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Socket"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "套接字"
+          }
+        }
+      }
+    },
     "套用 AI 写作风格预设模板": {
       "localizations": {
         "en": {
@@ -15741,6 +16109,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "如果正文缺失、混入导航、订阅或网页页脚，可以先比较当前正文与重新净化结果，再决定是否创建新版本。"
+          }
+        }
+      }
+    },
+    "字/词": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "characters/words"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "字/词"
           }
         }
       }
@@ -15789,6 +16173,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "字段对比（相对来源）"
+          }
+        }
+      }
+    },
+    "安装操作只写入当前用户对应浏览器的 NativeMessagingHosts 目录，无需管理员权限。插件仍需连接令牌，原生宿主不能绕过资料库鉴权。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installation only writes to the selected browser's NativeMessagingHosts directory for the current user and does not require administrator privileges. The extension still needs a connection token, and the native host cannot bypass library authentication."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装操作只写入当前用户对应浏览器的 NativeMessagingHosts 目录，无需管理员权限。插件仍需连接令牌，原生宿主不能绕过资料库鉴权。"
+          }
+        }
+      }
+    },
+    "安装操作只写入当前用户的 Firefox NativeMessagingHosts 目录；无需管理员权限。Firefox 插件仍需连接令牌，原生宿主不能绕过资料库鉴权。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installation only writes to the current user's Firefox NativeMessagingHosts directory and does not require administrator privileges. The Firefox extension still needs a connection token, and the native host cannot bypass library authentication."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装操作只写入当前用户的 Firefox NativeMessagingHosts 目录；无需管理员权限。Firefox 插件仍需连接令牌，原生宿主不能绕过资料库鉴权。"
           }
         }
       }
@@ -15965,6 +16381,134 @@
           "stringUnit": {
             "state": "translated",
             "value": "定时执行 Fetch 与差异检查；文章导入需要手动确认。"
+          }
+        }
+      }
+    },
+    "宿主与当前应用的签名团队不一致。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native host and the current app were signed by different teams."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宿主与当前应用的签名团队不一致。"
+          }
+        }
+      }
+    },
+    "宿主握手响应超过协议大小上限。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native host handshake response exceeds the protocol size limit."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宿主握手响应超过协议大小上限。"
+          }
+        }
+      }
+    },
+    "宿主清单内容无效，需要修复。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native host manifest is invalid and needs repair."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宿主清单内容无效，需要修复。"
+          }
+        }
+      }
+    },
+    "宿主清单存在，但可执行文件已移动或不可执行。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The host manifest exists, but its executable was moved or is not executable."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宿主清单存在，但可执行文件已移动或不可执行。"
+          }
+        }
+      }
+    },
+    "宿主版本或完整性收据已变化，需要重新验证并修复。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The host version or integrity receipt changed and must be verified and repaired."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宿主版本或完整性收据已变化，需要重新验证并修复。"
+          }
+        }
+      }
+    },
+    "宿主签名无效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid Host Signature"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宿主签名无效"
+          }
+        }
+      }
+    },
+    "宿主签名标识不属于当前应用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native host signing identifier does not belong to this app."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宿主签名标识不属于当前应用。"
+          }
+        }
+      }
+    },
+    "宿主返回了长度不一致的握手数据。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native host returned handshake data with an inconsistent length."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "宿主返回了长度不一致的握手数据。"
           }
         }
       }
@@ -16673,6 +17217,38 @@
         }
       }
     },
+    "尚未安装 Firefox 原生连接。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Firefox native connection is not installed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未安装 Firefox 原生连接。"
+          }
+        }
+      }
+    },
+    "尚未安装原生连接。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Native connection is not installed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未安装原生连接。"
+          }
+        }
+      }
+    },
     "尚未记录部署检查结果。": {
       "localizations": {
         "en": {
@@ -17265,6 +17841,22 @@
         }
       }
     },
+    "已有另一个应用实例正在提供浏览器原生连接。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another app instance is already providing the browser native connection."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已有另一个应用实例正在提供浏览器原生连接。"
+          }
+        }
+      }
+    },
     "已有证据但清单未勾选": {
       "localizations": {
         "en": {
@@ -17357,6 +17949,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "已确认"
+          }
+        }
+      }
+    },
+    "已自动修复旧版本原生连接。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The native connection from the previous app version was repaired automatically."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已自动修复旧版本原生连接。"
           }
         }
       }
@@ -18033,6 +18641,22 @@
         }
       }
     },
+    "当前原生宿主可用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current native host is available."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前原生宿主可用。"
+          }
+        }
+      }
+    },
     "当前同步阻断与下一步": {
       "localizations": {
         "en": {
@@ -18093,6 +18717,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "当前已选择的站点类型、仓库和发布方式会保留，可稍后在设置中继续修改。"
+          }
+        }
+      }
+    },
+    "当前应用包没有包含 Firefox 原生连接宿主，请重新构建或安装完整的直接分发版本。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This app bundle does not include the Firefox native connection host. Rebuild or install the complete direct-distribution version."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前应用包没有包含 Firefox 原生连接宿主，请重新构建或安装完整的直接分发版本。"
+          }
+        }
+      }
+    },
+    "当前应用包没有包含浏览器原生连接宿主，请重新构建或安装完整的直接分发版本。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This app bundle does not include the browser native connection host. Rebuild or install the complete direct-distribution version."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前应用包没有包含浏览器原生连接宿主，请重新构建或安装完整的直接分发版本。"
           }
         }
       }
@@ -18865,6 +19521,22 @@
         }
       }
     },
+    "快捷键：⌃⌘L": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shortcut: ⌃⌘L"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快捷键：⌃⌘L"
+          }
+        }
+      }
+    },
     "快速": {
       "localizations": {
         "en": {
@@ -19089,6 +19761,22 @@
         }
       }
     },
+    "截图模式：本地资料库已载入。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screenshot mode: the local knowledge library is loaded."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "截图模式：本地资料库已载入。"
+          }
+        }
+      }
+    },
     "截图模式：站点维护工作台已载入。": {
       "localizations": {
         "en": {
@@ -19165,6 +19853,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "手动复用部署状态、站点/文章页检查、内容健康与链接审计。"
+          }
+        }
+      }
+    },
+    "手动重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry Manually"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动重试"
           }
         }
       }
@@ -20305,6 +21009,22 @@
         }
       }
     },
+    "按 Command 和 Return 发送；按 Return 换行": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Press Command-Return to send; press Return for a new line"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按 Command 和 Return 发送；按 Return 换行"
+          }
+        }
+      }
+    },
     "按原格式生成缩小尺寸的图片副本。": {
       "localizations": {
         "en": {
@@ -21117,6 +21837,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "文件"
+          }
+        }
+      }
+    },
+    "文件变更": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File Changes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件变更"
           }
         }
       }
@@ -22049,6 +22785,54 @@
         }
       }
     },
+    "无操作时自动锁定软件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lock App After Inactivity"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无操作时自动锁定软件"
+          }
+        }
+      }
+    },
+    "无操作时间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inactivity Period"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无操作时间"
+          }
+        }
+      }
+    },
+    "无法取得浏览器原生连接锁（错误码 %@）。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not acquire the browser native connection lock (error code %@)."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法取得浏览器原生连接锁（错误码 %@）。"
+          }
+        }
+      }
+    },
     "无法导出重定向 CSV：%@": {
       "localizations": {
         "en": {
@@ -22125,6 +22909,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法读取导入来源：%@"
+          }
+        }
+      }
+    },
+    "无法限制本地套接字权限。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not restrict local socket permissions."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法限制本地套接字权限。"
           }
         }
       }
@@ -22637,6 +23437,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "最多保留 30 个去重版本；连续编辑每 5 分钟最多记录一次。"
+          }
+        }
+      }
+    },
+    "最少 1 分钟，最多 240 分钟。切换到其他应用后也会继续计时。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minimum 1 minute, maximum 240 minutes. The timer continues while you use another app."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最少 1 分钟，最多 240 分钟。切换到其他应用后也会继续计时。"
           }
         }
       }
@@ -24257,6 +25073,38 @@
         }
       }
     },
+    "正在准备工作台": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing the workspace"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在准备工作台"
+          }
+        }
+      }
+    },
+    "正在准备工作台…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing the workspace…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在准备工作台…"
+          }
+        }
+      }
+    },
     "正在准备检查快照": {
       "localizations": {
         "en": {
@@ -24865,6 +25713,38 @@
         }
       }
     },
+    "每天按设备当前日期自动重置。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resets every day based on the device's current date."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每天按设备当前日期自动重置。"
+          }
+        }
+      }
+    },
+    "每日免费额度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daily Free Allowance"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每日免费额度"
+          }
+        }
+      }
+    },
     "每条资料会导出为一个带元数据的 Markdown 文件；资料库本身不会被修改。": {
       "localizations": {
         "en": {
@@ -25217,6 +26097,22 @@
         }
       }
     },
+    "浏览器将通过原生宿主连接应用，不再直接访问本机 HTTP 端口。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The browser connects through the native host instead of accessing the local HTTP port directly."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浏览器将通过原生宿主连接应用，不再直接访问本机 HTTP 端口。"
+          }
+        }
+      }
+    },
     "浏览器资料采集": {
       "localizations": {
         "en": {
@@ -25309,6 +26205,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "清单"
+          }
+        }
+      }
+    },
+    "清单仍指向旧应用宿主，将在应用升级后自动修复。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The manifest still points to a host from an older app location and will be repaired automatically after the app upgrade."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清单仍指向旧应用宿主，将在应用升级后自动修复。"
+          }
+        }
+      }
+    },
+    "清洗内容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cleaned Content"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清洗内容"
+          }
+        }
+      }
+    },
+    "清洗内容用于阅读、搜索与 AI 检索；原始抓取正文仅供核对，不会进入 AI 索引。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cleaned content is used for reading, search, and AI retrieval. Original captured text is for verification only and is not added to the AI index."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清洗内容用于阅读、搜索与 AI 检索；原始抓取正文仅供核对，不会进入 AI 索引。"
           }
         }
       }
@@ -25773,6 +26717,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "用于上架材料、隐私审计和调试；日常只需要上方快速隐藏和内容遮挡。"
+          }
+        }
+      }
+    },
+    "由你确认后重新发起上一次请求": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry the previous request only after your confirmation."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "由你确认后重新发起上一次请求"
           }
         }
       }
@@ -26509,6 +27469,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "立即检查远端"
+          }
+        }
+      }
+    },
+    "立即锁定快捷键": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lock Now Shortcut"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "立即锁定快捷键"
+          }
+        }
+      }
+    },
+    "立即锁定软件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lock App Now"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "立即锁定软件"
           }
         }
       }
@@ -27693,6 +28685,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "自动检索"
+          }
+        }
+      }
+    },
+    "自动锁定": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic Lock"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动锁定"
+          }
+        }
+      }
+    },
+    "自动锁定前的无操作时间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inactivity period before automatic lock"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动锁定前的无操作时间"
           }
         }
       }
@@ -29697,6 +30721,22 @@
         }
       }
     },
+    "连接令牌有效 30 天；过期或手动更换后，旧令牌会立即失效，插件需要重新配对。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection tokens are valid for 30 days. Expired or manually rotated tokens stop working immediately, and the extension must be paired again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接令牌有效 30 天；过期或手动更换后，旧令牌会立即失效，插件需要重新配对。"
+          }
+        }
+      }
+    },
     "连接失败": {
       "localizations": {
         "en": {
@@ -29725,6 +30765,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "连接浏览器插件"
+          }
+        }
+      }
+    },
+    "连续 %@ 分钟未操作，软件已自动锁定。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The app was locked automatically after %@ minutes of inactivity."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连续 %@ 分钟未操作，软件已自动锁定。"
           }
         }
       }
@@ -30465,6 +31521,22 @@
         }
       }
     },
+    "部分回复已保留；确认后才会重新发起请求": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The partial reply is preserved; a new request starts only after confirmation."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "部分回复已保留；确认后才会重新发起请求"
+          }
+        }
+      }
+    },
     "部署": {
       "localizations": {
         "en": {
@@ -30913,6 +31985,38 @@
         }
       }
     },
+    "重新生成": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regenerate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新生成"
+          }
+        }
+      }
+    },
+    "重新生成可能重复计费": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regenerating May Cause Duplicate Charges"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新生成可能重复计费"
+          }
+        }
+      }
+    },
     "重新生成此回复": {
       "localizations": {
         "en": {
@@ -31101,6 +32205,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "链接错误"
+          }
+        }
+      }
+    },
+    "锁定状态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lock Status"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "锁定状态"
           }
         }
       }
@@ -31405,6 +32525,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "需要 API 密钥"
+          }
+        }
+      }
+    },
+    "需要安装原生宿主": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Native Host Required"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要安装原生宿主"
           }
         }
       }

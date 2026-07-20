@@ -23,6 +23,10 @@ swift build \
   -c release \
   --disable-sandbox \
   --product PersonalSitePublisherMac
+swift build \
+  -c release \
+  --disable-sandbox \
+  --product KnowledgeNativeMessagingHost
 
 release_bin_dir="$(swift build -c release --disable-sandbox --show-bin-path)"
 case "$release_bin_dir" in
@@ -36,5 +40,9 @@ esac
   echo "swift release build gate: release app executable is missing or not executable" >&2
   exit 1
 }
+[[ -x "$release_bin_dir/KnowledgeNativeMessagingHost" ]] || {
+  echo "swift release build gate: release native messaging host is missing or not executable" >&2
+  exit 1
+}
 
-echo "swift release build gate: release configuration app product passed"
+echo "swift release build gate: release app and native messaging host products passed"

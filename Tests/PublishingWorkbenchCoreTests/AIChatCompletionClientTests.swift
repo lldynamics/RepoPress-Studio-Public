@@ -307,8 +307,250 @@ final class AIChatCompletionClientTests: XCTestCase {
         apiKey: "bad"
       )
     ) { error in
-      XCTAssertEqual(error as? AIChatCompletionClientError, .httpStatus(401, #"{"error":"bad"}"#))
+      XCTAssertEqual(
+        error as? AIChatCompletionClientError,
+        .httpStatus(401, #"{"error":"bad"}"#, retryAfterSeconds: nil)
+      )
     }
+  }
+
+  func testCompleteAppliesFirstByteTimeoutAndEnforcesResourceTimeout() async throws {
+    let successTransport = RecordingAIChatTransport(
+      data: responseData(content: #"{"role":"assistant","content":"Done"}"#),
+      statusCode: 200
+    )
+    let successClient = AIChatCompletionClient(
+      transport: successTransport,
+      networkRecoveryPolicy: AIChatNetworkRecoveryPolicy(
+        firstByteTimeout: 7,
+        resourceTimeout: 20,
+        maximumAutomaticRetryCount: 0
+      )
+    )
+    _ = try await successClient.complete(
+      request: AIChatCompletionRequest(model: "model", messages: []),
+      config: AIProviderConfig(),
+      apiKey: "key"
+    )
+    let capturedRequest = await successTransport.capturedRequest()
+    let request = try XCTUnwrap(capturedRequest)
+    XCTAssertEqual(request.timeoutInterval, 7, accuracy: 0.001)
+
+    let delayedTransport = DelayedAIChatTransport(
+      data: responseData(content: #"{"role":"assistant","content":"late"}"#),
+      statusCode: 200,
+      delayNanoseconds: 200_000_000
+    )
+    let timeoutClient = AIChatCompletionClient(
+      transport: delayedTransport,
+      networkRecoveryPolicy: AIChatNetworkRecoveryPolicy(
+        firstByteTimeout: 0.02,
+        resourceTimeout: 0.04,
+        maximumAutomaticRetryCount: 0
+      )
+    )
+
+    await XCTAssertThrowsErrorAsync(
+      try await timeoutClient.complete(
+        request: AIChatCompletionRequest(model: "model", messages: []),
+        config: AIProviderConfig(),
+        apiKey: "key"
+      )
+    ) { error in
+      XCTAssertEqual(error as? AIChatCompletionClientError, .resourceTimedOut(0.04))
+    }
+  }
+
+  func testStreamTimesOutWaitingForFirstByte() async throws {
+    let transport = ScriptedAIChatStreamingTransport(
+      attempts: [
+        ScriptedAIChatStreamAttempt(
+          lines: [#"data: {"choices":[{"delta":{"content":"late"}}]}"#, ""],
+          lineDelayNanoseconds: 200_000_000
+        ),
+      ]
+    )
+    let client = AIChatCompletionClient(
+      transport: transport,
+      networkRecoveryPolicy: AIChatNetworkRecoveryPolicy(
+        firstByteTimeout: 0.03,
+        resourceTimeout: 0.5,
+        maximumAutomaticRetryCount: 0
+      )
+    )
+    let stream = try await client.stream(
+      request: AIChatCompletionRequest(model: "model", messages: []),
+      config: AIProviderConfig(),
+      apiKey: "key"
+    )
+
+    do {
+      for try await _ in stream {}
+      XCTFail("Expected first-byte timeout")
+    } catch {
+      guard case .firstByteTimedOut(let timeout) = error as? AIChatCompletionClientError else {
+        XCTFail("Expected first-byte timeout, got \(error)")
+        return
+      }
+      XCTAssertEqual(timeout, 0.03, accuracy: 0.01)
+    }
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
+  }
+
+  func testStreamAutomaticallyRetriesOnlyBeforeContentArrives() async throws {
+    let transport = ScriptedAIChatStreamingTransport(
+      attempts: [
+        ScriptedAIChatStreamAttempt(terminalError: .connectionLost),
+        ScriptedAIChatStreamAttempt(
+          lines: [
+            #"data: {"choices":[{"delta":{"content":"recovered"},"finish_reason":"stop"}]}"#,
+            "",
+          ]
+        ),
+      ]
+    )
+    let client = AIChatCompletionClient(
+      transport: transport,
+      networkRecoveryPolicy: AIChatNetworkRecoveryPolicy(
+        firstByteTimeout: 1,
+        resourceTimeout: 2,
+        maximumAutomaticRetryCount: 1,
+        automaticRetryBaseDelay: 0
+      )
+    )
+    let stream = try await client.stream(
+      request: AIChatCompletionRequest(model: "model", messages: []),
+      config: AIProviderConfig(),
+      apiKey: "key"
+    )
+
+    var content = ""
+    for try await update in stream {
+      content += update.contentDelta
+    }
+    XCTAssertEqual(content, "recovered")
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 2)
+  }
+
+  func testStreamNeverAutomaticallyReplaysAfterPartialContent() async throws {
+    let transport = ScriptedAIChatStreamingTransport(
+      attempts: [
+        ScriptedAIChatStreamAttempt(
+          lines: [#"data: {"choices":[{"delta":{"content":"partial"}}]}"#, ""],
+          terminalError: .connectionLost
+        ),
+        ScriptedAIChatStreamAttempt(
+          lines: [#"data: {"choices":[{"delta":{"content":"duplicate"}}]}"#, ""]
+        ),
+      ]
+    )
+    let client = AIChatCompletionClient(
+      transport: transport,
+      networkRecoveryPolicy: AIChatNetworkRecoveryPolicy(
+        firstByteTimeout: 1,
+        resourceTimeout: 2,
+        maximumAutomaticRetryCount: 3,
+        automaticRetryBaseDelay: 0
+      )
+    )
+    let stream = try await client.stream(
+      request: AIChatCompletionRequest(model: "model", messages: []),
+      config: AIProviderConfig(),
+      apiKey: "key"
+    )
+
+    var content = ""
+    do {
+      for try await update in stream {
+        content += update.contentDelta
+      }
+      XCTFail("Expected interrupted partial stream")
+    } catch let error as AIChatCompletionClientError {
+      XCTAssertTrue(error.didReceivePartialContent)
+      XCTAssertTrue(error.localizedDescription.contains("重复计费"))
+    } catch {
+      XCTFail("Unexpected error: \(error)")
+    }
+    XCTAssertEqual(content, "partial")
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
+  }
+
+  func testRetryAfterHeaderIsPreservedForManualRetryPrompt() async {
+    let transport = RecordingAIChatTransport(
+      data: Data(#"{"error":"rate limited"}"#.utf8),
+      statusCode: 429,
+      headerFields: ["Retry-After": "12"]
+    )
+    let client = AIChatCompletionClient(transport: transport)
+
+    await XCTAssertThrowsErrorAsync(
+      try await client.complete(
+        request: AIChatCompletionRequest(model: "model", messages: []),
+        config: AIProviderConfig(),
+        apiKey: "key"
+      )
+    ) { error in
+      guard case .httpStatus(429, _, let retryAfter) = error as? AIChatCompletionClientError else {
+        XCTFail("Expected HTTP 429 recovery metadata")
+        return
+      }
+      XCTAssertEqual(retryAfter, 12)
+      XCTAssertTrue(error.localizedDescription.contains("等待 12 秒"))
+    }
+  }
+
+  func testStreamDoesNotSilentlyWaitOrRetryLongRetryAfter() async throws {
+    let transport = ScriptedAIChatStreamingTransport(
+      attempts: [
+        ScriptedAIChatStreamAttempt(
+          statusCode: 429,
+          headerFields: ["Retry-After": "30"],
+          lines: [#"{"error":"rate limited"}"#]
+        ),
+        ScriptedAIChatStreamAttempt(
+          lines: [#"data: {"choices":[{"delta":{"content":"unexpected retry"}}]}"#, ""]
+        ),
+      ]
+    )
+    let client = AIChatCompletionClient(
+      transport: transport,
+      networkRecoveryPolicy: AIChatNetworkRecoveryPolicy(
+        firstByteTimeout: 1,
+        resourceTimeout: 2,
+        maximumAutomaticRetryCount: 3,
+        automaticRetryBaseDelay: 0,
+        maximumAutomaticRetryAfterDelay: 5
+      )
+    )
+    let stream = try await client.stream(
+      request: AIChatCompletionRequest(model: "model", messages: []),
+      config: AIProviderConfig(),
+      apiKey: "key"
+    )
+
+    do {
+      for try await _ in stream {}
+      XCTFail("Expected rate-limit recovery guidance")
+    } catch let error as AIChatCompletionClientError {
+      XCTAssertEqual(error.retryAfterSeconds, 30)
+      XCTAssertTrue(error.localizedDescription.contains("等待 30 秒"))
+    } catch {
+      XCTFail("Unexpected error: \(error)")
+    }
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
+  }
+
+  func testRetryAfterParsesHTTPDate() {
+    let now = Date(timeIntervalSince1970: 784_111_777)
+    let parsedInterval = AIChatCompletionClient.retryAfterInterval(
+      from: "Sun, 06 Nov 1994 08:49:47 GMT",
+      now: now
+    )
+    XCTAssertEqual(parsedInterval ?? -1, 10, accuracy: 0.001)
   }
 
   func testHTTPErrorBodyIsBoundedAndRedactsAPIKey() async {
@@ -329,7 +571,7 @@ final class AIChatCompletionClientTests: XCTestCase {
         apiKey: apiKey
       )
     ) { error in
-      guard case .httpStatus(401, let body) = error as? AIChatCompletionClientError else {
+      guard case .httpStatus(401, let body, nil) = error as? AIChatCompletionClientError else {
         XCTFail("Expected sanitized HTTP error")
         return
       }
@@ -363,7 +605,7 @@ final class AIChatCompletionClientTests: XCTestCase {
       for try await _ in stream {}
       XCTFail("Expected sanitized streaming error")
     } catch let error as AIChatCompletionClientError {
-      guard case .httpStatus(200, let body) = error else {
+      guard case .httpStatus(200, let body, nil) = error else {
         XCTFail("Expected streaming HTTP error, got \(error)")
         return
       }

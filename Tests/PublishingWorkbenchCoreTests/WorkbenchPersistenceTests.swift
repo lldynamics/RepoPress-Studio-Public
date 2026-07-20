@@ -3,6 +3,30 @@ import XCTest
 
 @MainActor
 final class WorkbenchPersistenceTests: XCTestCase {
+  func testPreloadedSnapshotAvoidsReadingCorruptPersistenceOnMainActor() throws {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try Data("{ corrupt persistence".utf8).write(to: url)
+    var snapshot = makeSnapshot()
+    snapshot.drafts[0].title = "后台预加载的工作台"
+
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: url),
+      initialSnapshotSource: .preloaded(
+        WorkbenchSnapshotLoadResult(snapshot: snapshot)
+      )
+    )
+
+    XCTAssertEqual(store.selectedDraft?.title, "后台预加载的工作台")
+    XCTAssertFalse(store.isPersistenceRecoveryWriteProtected)
+    XCTAssertNil(store.persistenceRecoveryMessage)
+    XCTAssertEqual(try Data(contentsOf: url), Data("{ corrupt persistence".utf8))
+  }
+
   func testDuplicateCachedSnapshotsKeepNewestValueWithoutCrashingStoreLoad() throws {
     let url = temporaryPersistenceURL()
     defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

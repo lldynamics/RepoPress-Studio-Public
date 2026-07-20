@@ -2,6 +2,16 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class WorkbenchLayoutModeTests: XCTestCase {
+  func testDefaultWindowSizeStartsInExpandedInspectorLayout() {
+    XCTAssertEqual(WorkbenchLayoutMode.defaultWindowWidth, 1440)
+    XCTAssertEqual(WorkbenchLayoutMode.defaultWindowHeight, 900)
+    XCTAssertGreaterThanOrEqual(
+      WorkbenchLayoutMode.defaultWindowWidth,
+      WorkbenchLayoutMode.minimumInspectorWorkspaceWidth
+    )
+    XCTAssertFalse(WorkbenchLayoutMode.isCompact(width: WorkbenchLayoutMode.defaultWindowWidth))
+  }
+
   func testRuntimeLayoutUsesCompactShellAtMinimum980Width() {
     XCTAssertEqual(WorkbenchLayoutMode.minimumWindowWidth, 980)
     XCTAssertTrue(WorkbenchLayoutMode.isCompact(width: 980))

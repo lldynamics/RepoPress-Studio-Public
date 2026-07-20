@@ -83,6 +83,126 @@ final class KnowledgeWebContentSanitizerTests: XCTestCase {
     XCTAssertFalse(text.contains("菜单 登录"))
   }
 
+  func testSanitizerRemovesSocialEngagementControlsAndKeepsRelatedProse() {
+    let html = """
+    <html><body>
+      <article>
+        <h1>社交平台导入</h1>
+        <p>正文会解释如何查看发布记录，也会回复读者提出的问题。</p>
+        <div class="engagement-bar">
+          <span>查看 2.3 万</span><span>回复 128</span><span>点赞 900</span>
+        </div>
+        <button data-testid="reply">回复</button>
+        <p>互动数量不是衡量内容质量的唯一标准。</p>
+      </article>
+    </body></html>
+    """
+
+    let result = KnowledgeWebContentSanitizer().sanitize(html: html)
+    let text = result.sections.map(\.text).joined(separator: "\n")
+
+    XCTAssertTrue(text.contains("如何查看发布记录"))
+    XCTAssertTrue(text.contains("回复读者提出的问题"))
+    XCTAssertTrue(text.contains("互动数量不是衡量内容质量的唯一标准"))
+    XCTAssertFalse(text.contains("2.3 万"))
+    XCTAssertFalse(text.contains("回复 128"))
+    XCTAssertFalse(text.contains("点赞 900"))
+    XCTAssertGreaterThanOrEqual(result.removedNoiseBlockCount, 2)
+  }
+
+  func testExtractedSocialTextDropsChineseEnglishAndIconMetricRows() {
+    let text = """
+    # 正文标题
+
+    这是应该长期保存的社交平台正文。
+    浏览量 18.4万
+    互动数量
+    2,031 条回复 · 6.2 万次点赞 · 304 次转发
+    [查看全部 2,031 条回复](https://example.com/replies)
+    1.2M views · 45K likes · 800 reposts
+    View 2,031 replies
+    💬 128 · 🔁 35 · ❤️ 900
+    回复 转发 点赞
+    这是正文的最后一段。
+    """
+
+    let cleaned = KnowledgeWebContentSanitizer().sanitizeExtractedReadingText(text)
+
+    XCTAssertTrue(cleaned.contains("应该长期保存"))
+    XCTAssertTrue(cleaned.contains("正文的最后一段"))
+    XCTAssertFalse(cleaned.contains("18.4万"))
+    XCTAssertFalse(cleaned.components(separatedBy: .newlines).contains("互动数量"))
+    XCTAssertFalse(cleaned.contains("2,031"))
+    XCTAssertFalse(cleaned.contains("45K likes"))
+    XCTAssertFalse(cleaned.contains("💬 128"))
+    XCTAssertFalse(cleaned.contains("回复 转发 点赞"))
+  }
+
+  func testExtractedSocialTextKeepsSentencesAndFencedCodeUsingInteractionWords() {
+    let text = """
+    请查看完整说明，并回复用户提出的问题。
+    互动数量不是衡量内容质量的唯一标准。
+    请回复 12 条评论并说明判断理由。
+
+    ```text
+    回复 12
+    120 views
+    ```
+    """
+
+    let cleaned = KnowledgeWebContentSanitizer().sanitizeExtractedReadingText(text)
+
+    XCTAssertTrue(cleaned.contains("请查看完整说明"))
+    XCTAssertTrue(cleaned.contains("互动数量不是衡量内容质量"))
+    XCTAssertTrue(cleaned.contains("请回复 12 条评论并说明判断理由"))
+    XCTAssertTrue(cleaned.contains("回复 12"))
+    XCTAssertTrue(cleaned.contains("120 views"))
+  }
+
+  func testExtractedSocialTextDropsCountFirstActionsReplyPermissionsAndNewPostPrompts() {
+    let text = """
+    这是需要保留的帖子正文。
+    428 回复 · 3.1K 点赞 · 91 转发
+    谁可以回复此帖子？
+    仅限你关注的人可以回复
+    查看 12 条新帖子
+    Show 8 new posts
+    回复
+    428
+    转发
+    91
+    正文结束。
+    """
+
+    let cleaned = KnowledgeWebContentSanitizer().sanitizeExtractedReadingText(text)
+
+    XCTAssertTrue(cleaned.contains("需要保留"))
+    XCTAssertTrue(cleaned.contains("正文结束"))
+    XCTAssertFalse(cleaned.contains("428 回复"))
+    XCTAssertFalse(cleaned.contains("谁可以回复"))
+    XCTAssertFalse(cleaned.contains("仅限你关注"))
+    XCTAssertFalse(cleaned.contains("新帖子"))
+    XCTAssertFalse(cleaned.localizedCaseInsensitiveContains("new posts"))
+    XCTAssertFalse(cleaned.components(separatedBy: .newlines).contains("428"))
+    XCTAssertFalse(cleaned.components(separatedBy: .newlines).contains("91"))
+  }
+
+  func testExtractedSocialTextKeepsAnUnrelatedStandaloneNumber() {
+    let text = """
+    章节编号
+
+    2026
+    2027
+
+    这个数字属于正文，不是互动区。
+    """
+
+    let cleaned = KnowledgeWebContentSanitizer().sanitizeExtractedReadingText(text)
+
+    XCTAssertTrue(cleaned.components(separatedBy: .newlines).contains("2026"))
+    XCTAssertTrue(cleaned.components(separatedBy: .newlines).contains("2027"))
+  }
+
   func testHTMLImportUsesSanitizedSectionsForNormalizedTextAndSearch() async throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("knowledge-clean-web-\(UUID().uuidString)", isDirectory: true)
@@ -146,6 +266,88 @@ final class KnowledgeWebContentSanitizerTests: XCTestCase {
     XCTAssertFalse(candidate.normalizedText.contains("浏览器页脚噪声"))
     XCTAssertFalse(candidate.normalizedText.contains("插件回退文本"))
     XCTAssertTrue(candidate.warnings.contains { $0.contains("重新净化") })
+  }
+
+  func testBrowserCaptureFallbackTextRemovesSocialInteractionMetrics() async throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("knowledge-browser-social-clean-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let capture = KnowledgeBrowserCapture(
+      sourceURL: try XCTUnwrap(URL(string: "https://example.com/social-post")),
+      title: "社交平台正文",
+      contentText: """
+      这段内容应该进入资料库和搜索索引。
+      浏览量 12.6万
+      428 replies · 3.1K likes · 91 reposts
+      查看全部 428 条回复
+      """,
+      originalHTML: nil
+    )
+    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+
+    let preview = try await service.makeBrowserImportPreview(capture: capture)
+    let candidate = try XCTUnwrap(preview.candidates.first)
+
+    XCTAssertEqual(candidate.capturedText, capture.contentText)
+    XCTAssertTrue(candidate.normalizedText.contains("应该进入资料库和搜索索引"))
+    XCTAssertFalse(candidate.normalizedText.contains("12.6万"))
+    XCTAssertFalse(candidate.normalizedText.contains("428 replies"))
+    XCTAssertFalse(candidate.normalizedText.contains("查看全部"))
+
+    let result = try await service.commit(preview)
+    let documentID = try XCTUnwrap(result.documentIDs.first)
+    XCTAssertEqual(try service.capturedText(documentID: documentID), capture.contentText)
+    XCTAssertTrue(try service.normalizedText(documentID: documentID).contains("应该进入资料库"))
+    XCTAssertFalse(try service.normalizedText(documentID: documentID).contains("12.6万"))
+    XCTAssertFalse(try service.search(query: "12.6万").contains {
+      $0.signals.contains(.fullText)
+    })
+
+    let database = try KnowledgeDatabase(
+      fileURL: rootURL.appendingPathComponent("store/library.sqlite")
+    )
+    let revision = try XCTUnwrap(database.currentRevision(documentID: documentID))
+    let capturedReference = try XCTUnwrap(revision.capturedTextStorageReference)
+    XCTAssertEqual(
+      try String(
+        contentsOf: rootURL
+          .appendingPathComponent("store")
+          .appendingPathComponent(capturedReference),
+        encoding: .utf8
+      ),
+      capture.contentText
+    )
+  }
+
+  func testLegacyHTMLImportCanReadOriginalArchiveWithoutCapturedTextSidecar() async throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("knowledge-legacy-original-view-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    let sourceURL = rootURL.appendingPathComponent("social.html")
+    try """
+    <html><body>
+      <nav>旧归档导航</nav>
+      <article>
+        <h1>旧社交帖子</h1>
+        <p>这是需要阅读和检索的正文。</p>
+        <p>浏览量 12.6万</p>
+      </article>
+    </body></html>
+    """.write(to: sourceURL, atomically: true, encoding: .utf8)
+    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+
+    let preview = try await service.makeImportPreview(sourceURL: sourceURL)
+    XCTAssertNil(preview.candidates.first?.capturedText)
+    let result = try await service.commit(preview)
+    let documentID = try XCTUnwrap(result.documentIDs.first)
+    let originalText = try XCTUnwrap(service.capturedText(documentID: documentID))
+
+    XCTAssertTrue(originalText.contains("旧归档导航"))
+    XCTAssertTrue(originalText.contains("浏览量 12.6万"))
+    XCTAssertTrue(originalText.contains("需要阅读和检索的正文"))
+    XCTAssertFalse(try service.normalizedText(documentID: documentID).contains("旧归档导航"))
+    XCTAssertFalse(try service.normalizedText(documentID: documentID).contains("12.6万"))
   }
 
   func testExistingBloggerReadingTextDropsTrailingShareAndCommentChrome() {

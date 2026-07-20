@@ -6,5 +6,7 @@
 .swiftpm/
 dist/
 DerivedData/
+node_modules/
+output/playwright/
 docs/release-evidence/snapshots/
 *.xcuserstate

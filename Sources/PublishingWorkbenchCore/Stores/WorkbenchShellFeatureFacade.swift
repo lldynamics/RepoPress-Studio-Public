@@ -55,8 +55,10 @@ public final class WorkbenchShellFeatureFacade: ObservableObject {
     store.isPersistenceRecoveryWriteProtected
   }
 
-  private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {
+  private func observe<P: Publisher>(_ publisher: P)
+  where P.Failure == Never, P.Output: Equatable {
     publisher
+      .removeDuplicates()
       .dropFirst()
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &cancellables)

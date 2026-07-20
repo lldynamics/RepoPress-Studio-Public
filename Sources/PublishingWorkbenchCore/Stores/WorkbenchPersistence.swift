@@ -333,6 +333,17 @@ public struct WorkbenchSnapshotLoadResult: Sendable {
   }
 }
 
+/// Selects how a ``WorkbenchStore`` obtains its initial persisted state.
+///
+/// The macOS app preloads snapshots on a utility task so JSON and file I/O do
+/// not block the first window. Tests and direct library clients keep the
+/// synchronous default for source compatibility.
+public enum WorkbenchInitialSnapshotSource: Sendable {
+  case persistence
+  case preloaded(WorkbenchSnapshotLoadResult)
+  case loadFailure(String)
+}
+
 public enum WorkbenchPersistenceSaveResult: Sendable, Equatable {
   case saved
   case savedWithoutBackup(String)

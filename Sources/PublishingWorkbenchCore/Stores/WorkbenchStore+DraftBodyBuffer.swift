@@ -116,11 +116,17 @@ extension WorkbenchStore {
       return
     }
 
+    let imageInputsDidChange = ImageWorkbenchMarkdownReferenceSignature(
+      markdown: draft.bodyMarkdown
+    ) != ImageWorkbenchMarkdownReferenceSignature(markdown: buffer.bodyMarkdown)
     draft.bodyMarkdown = buffer.bodyMarkdown
     publishingStore.updateDraft(draft, store: self)
     buffer.isDirty = false
     publishingStore.setDraftBodyEditorBuffer(buffer, for: draftID)
-    invalidateBodyEditingDerivedCaches(for: draftID)
+    invalidateBodyEditingDerivedCaches(
+      for: draftID,
+      imageInputsDidChange: imageInputsDidChange
+    )
   }
 
   public func flushDraftBodyEditorBuffers() {

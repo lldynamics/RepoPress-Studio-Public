@@ -126,7 +126,7 @@ public final class DeploymentStore: ObservableObject {
     )
   }
 
-  public func releaseLedgerEntry(for record: ReleaseRecord, store: WorkbenchStore) -> ReleaseLedgerEntry {
+  public func releaseLedgerEntry(for record: ReleaseRecord) -> ReleaseLedgerEntry {
     releaseLedgerService.ledger(
       releaseRecords: [record],
       deploymentStatusSnapshots: deploymentStatusSnapshots

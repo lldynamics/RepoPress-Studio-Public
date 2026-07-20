@@ -10,6 +10,7 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     self.store = store
     observe(store.imageStore.objectWillChange)
     observe(store.publishingStore.objectWillChange)
+    observeValue(store.$imageWorkbenchInputRevision)
     observeValue(store.aiWorkspaceStore.$aiTokenAvailability)
     observeValue(store.aiWorkspaceStore.$aiImageTextSuggestionDraftID)
     observeValue(store.aiWorkspaceStore.$aiImageTextSuggestions)

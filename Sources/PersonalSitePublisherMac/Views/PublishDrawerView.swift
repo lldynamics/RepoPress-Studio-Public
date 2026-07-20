@@ -164,7 +164,7 @@ struct PublishDrawerView: View {
       VStack(alignment: .leading, spacing: 12) {
         switch selectedStep {
         case .checks:
-          checkResultsCard(draft: draft, issues: issues)
+          checkResultsCard(issues: issues)
         case .diff:
           diffCard(draft: draft)
         case .write:
@@ -455,10 +455,7 @@ struct PublishDrawerView: View {
     )
   }
 
-  private func checkResultsCard(
-    draft: ArticleDraft,
-    issues: [PreflightIssue]
-  ) -> some View {
+  private func checkResultsCard(issues: [PreflightIssue]) -> some View {
     let blocking = issues.filter { $0.severity == .error }
     let warnings = issues.filter { $0.severity == .warning }
 

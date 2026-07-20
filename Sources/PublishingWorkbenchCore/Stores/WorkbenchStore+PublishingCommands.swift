@@ -92,13 +92,11 @@ extension WorkbenchStore {
 
   public func blockingLocalPublishIssues(
     package: PublishPackage,
-    profile: SiteProfile,
     preview: LocalPublishPreview,
     includeRepositoryReadiness: Bool
   ) -> [PreflightIssue] {
     publishingStore.blockingLocalPublishIssues(
       package: package,
-      profile: profile,
       preview: preview,
       includeRepositoryReadiness: includeRepositoryReadiness,
       store: self
@@ -122,8 +120,8 @@ extension WorkbenchStore {
     publishingStore.blockedLocalPublishMessage(action: action, issues: issues)
   }
 
-  public func remotePublishPackage(for plan: BatchPublishPlan, profile: SiteProfile) -> PublishPackage? {
-    publishingStore.remotePublishPackage(for: plan, profile: profile)
+  public func remotePublishPackage(for plan: BatchPublishPlan) -> PublishPackage? {
+    publishingStore.remotePublishPackage(for: plan)
   }
 
   public func remoteRepositoryPublishPreview(

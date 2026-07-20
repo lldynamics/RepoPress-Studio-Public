@@ -171,17 +171,20 @@ elif [[ -z "$APP_BUNDLE" ]]; then
     || fail "strict mode requires --archive/APP_STORE_ARCHIVE_PATH or --app-bundle/APP_STORE_APP_BUNDLE_PATH"
   # Local readiness may build a fresh unsigned Release package. It is never
   # treated as evidence for the signed distribution archive boundary.
-  bash "$ROOT_DIR/script/build_and_run.sh" --package-only --release >/dev/null
+  bash "$ROOT_DIR/script/build_and_run.sh" --package-only --app-store >/dev/null
   APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 fi
 
 INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+CORE_RESOURCE_INFO="$APP_BUNDLE/Contents/Resources/${APP_NAME}_PublishingWorkbenchCore.bundle/Info.plist"
 
 [[ -d "$APP_BUNDLE" ]] || fail "app bundle does not exist: $APP_BUNDLE"
 [[ -f "$INFO_PLIST" ]] || fail "Info.plist is missing from app bundle"
 [[ -x "$APP_BINARY" ]] || fail "app executable is missing or not executable"
 plutil -lint "$INFO_PLIST" >/dev/null || fail "Info.plist is invalid"
+[[ -f "$CORE_RESOURCE_INFO" ]] || fail "PublishingWorkbenchCore resource bundle Info.plist is missing"
+plutil -lint "$CORE_RESOURCE_INFO" >/dev/null || fail "PublishingWorkbenchCore resource bundle Info.plist is invalid"
 plutil -lint "$ENTITLEMENTS" >/dev/null || fail "AppStore.entitlements is invalid"
 
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST")"
@@ -190,13 +193,22 @@ build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST
 build_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' "$INFO_PLIST" 2>/dev/null || true)"
 application_category="$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$INFO_PLIST" 2>/dev/null || true)"
 human_readable_copyright="$(/usr/libexec/PlistBuddy -c 'Print :NSHumanReadableCopyright' "$INFO_PLIST" 2>/dev/null || true)"
+uses_non_exempt_encryption="$(/usr/libexec/PlistBuddy -c 'Print :ITSAppUsesNonExemptEncryption' "$INFO_PLIST" 2>/dev/null || true)"
 
 [[ "$bundle_id" == "com.jinfang.PersonalSitePublisherMac" ]] || fail "unexpected bundle identifier: $bundle_id"
+core_resource_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$CORE_RESOURCE_INFO" 2>/dev/null || true)"
+[[ "$core_resource_bundle_id" == "$bundle_id.PublishingWorkbenchCoreResources" ]] \
+  || fail "PublishingWorkbenchCore resource bundle is missing its expected CFBundleIdentifier"
+core_resource_package_type="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$CORE_RESOURCE_INFO" 2>/dev/null || true)"
+[[ "$core_resource_package_type" == "BNDL" ]] \
+  || fail "PublishingWorkbenchCore resource bundle must declare CFBundlePackageType=BNDL"
 [[ "$marketing_version" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || fail "invalid marketing version: $marketing_version"
 [[ "$build_number" =~ ^[0-9]+$ ]] || fail "invalid build number: $build_number"
 [[ "$build_configuration" == "Release" ]] || fail "archive readiness requires a Release bundle, got: ${build_configuration:-missing configuration evidence}"
 [[ "$application_category" == public.app-category.* ]] || fail "archive is missing a valid LSApplicationCategoryType"
 [[ -n "${human_readable_copyright//[[:space:]]/}" ]] || fail "archive is missing NSHumanReadableCopyright"
+[[ "$uses_non_exempt_encryption" == "false" ]] \
+  || fail "archive must declare ITSAppUsesNonExemptEncryption=false for the audited encryption boundary"
 bash "$ROOT_DIR/script/check_build_version.sh" --info-plist "$INFO_PLIST" >/dev/null
 
 codesign_log="$(mktemp "${TMPDIR:-/tmp}/app-store-codesign.XXXXXX")"
@@ -210,7 +222,7 @@ if /usr/bin/codesign -dv --verbose=4 "$APP_BUNDLE" >"$codesign_log" 2>&1; then
   if /usr/bin/codesign --verify --deep --strict "$APP_BUNDLE" >/dev/null 2>&1; then
     signed=1
   fi
-  if grep -Eq '(^|[ ,])runtime([, ]|$)' "$codesign_log"; then
+  if grep -Eq '^CodeDirectory .*flags=.*runtime' "$codesign_log"; then
     runtime_enabled=1
   fi
 fi

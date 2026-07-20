@@ -41,6 +41,13 @@ rm -f "$TMP_DIR/docs/local-notes.md"
 REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" --release >/dev/null \
   || fail "clean committed checkout should pass release mode"
 
+mkdir -p "$TMP_DIR/docs/app-store"
+printf '{"name":"Untracked listing"}\n' >"$TMP_DIR/docs/app-store/metadata.json"
+if REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null 2>&1; then
+  fail "untracked App Store metadata should fail"
+fi
+rm -rf "$TMP_DIR/docs/app-store"
+
 printf 'let missing = true\n' >"$TMP_DIR/Sources/App/Missing.swift"
 if REPOSITORY_SOURCE_BOUNDARY_ROOT="$TMP_DIR" bash "$CHECK" >/dev/null 2>&1; then
   fail "untracked source file should fail"

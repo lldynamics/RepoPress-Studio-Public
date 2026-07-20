@@ -2,13 +2,13 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 private struct WritingDraftListCache {
+  var presentationRevision: UInt64?
+  var sourceDrafts: [ArticleDraft] = []
   var filteredDrafts: [ArticleDraft] = []
-  var visibleDraftIDs: [UUID] = []
-  var visibleDraftSignatures: [UUID: DraftTaskQueueState.Signature] = [:]
+  var rowPresentations: [UUID: WritingDraftRowPresentation] = [:]
   var searchText = ""
   var filter: DraftListFilter = .all
   var sortOrder: WritingDraftSortOrder = .updatedNewest
-  var activeProfileID: UUID?
   var draftTaskQueueStateVersion = 0
   var lastLoadMoreTriggerCount = -1
 
@@ -16,38 +16,37 @@ private struct WritingDraftListCache {
     lastLoadMoreTriggerCount = -1
   }
 }
+
 private struct DraftListImageSummaryRefreshInput: Hashable {
-  let signature: ImageWorkbenchSiteSummaryInputSignature
+  let revision: UInt64
 }
 
-
-
-  struct WritingDraftColumn: View {
-    @ObservedObject var store: WorkbenchStore
-    let isCompact: Bool
-    @State private var searchText = ""
-    @State private var filter: DraftListFilter = .all
-    @AppStorage("writingDraftSortOrderV1") private var sortOrderRawValue = WritingDraftSortOrder.updatedNewest.rawValue
-    @State private var isDraftListLoading = false
-    @State private var draftListLoadingNonce = 0
-    @State private var visibleDraftCount = 0
-    @State private var filteredDraftCount = 0
-    @State private var draftCountDelta: Int?
-    @State private var isDraftCountPunching = false
-    @State private var draftListLoadingTask: Task<Void, Never>?
-    @State private var draftCountBadgeTask: Task<Void, Never>?
-    @State private var draftFilterDebounceTask: Task<Void, Never>?
-    @State private var draftListLimit: Int = 60
-    @State private var debouncedSearchText = ""
-    @State private var debouncedFilter: DraftListFilter = .all
-    @State private var draftListCache = WritingDraftListCache()
-    private let draftLoadMorePrefetchThreshold = 15
-    @FocusState private var isSearchFieldFocused: Bool
-    @State private var draftPendingDeletion: ArticleDraft?
-    @State private var isDraftLifecycleCenterPresented = false
-    @State private var selectedDraftIDs: Set<UUID> = []
-    @State private var draftOwnershipTransferPlan: DraftOwnershipTransferPlan?
-    @Environment(\.undoManager) private var undoManager
+struct WritingDraftColumn: View {
+  @ObservedObject var store: WorkbenchStore
+  let isCompact: Bool
+  @State private var searchText = ""
+  @State private var filter: DraftListFilter = .all
+  @AppStorage("writingDraftSortOrderV1") private var sortOrderRawValue = WritingDraftSortOrder.updatedNewest.rawValue
+  @State private var isDraftListLoading = false
+  @State private var draftListLoadingNonce = 0
+  @State private var visibleDraftCount = 0
+  @State private var filteredDraftCount = 0
+  @State private var draftCountDelta: Int?
+  @State private var isDraftCountPunching = false
+  @State private var draftListLoadingTask: Task<Void, Never>?
+  @State private var draftCountBadgeTask: Task<Void, Never>?
+  @State private var draftFilterDebounceTask: Task<Void, Never>?
+  @State private var draftListLimit: Int = 60
+  @State private var debouncedSearchText = ""
+  @State private var debouncedFilter: DraftListFilter = .all
+  @State private var draftListCache = WritingDraftListCache()
+  private let draftLoadMorePrefetchThreshold = 15
+  @FocusState private var isSearchFieldFocused: Bool
+  @State private var draftPendingDeletion: ArticleDraft?
+  @State private var isDraftLifecycleCenterPresented = false
+  @State private var selectedDraftIDs: Set<UUID> = []
+  @State private var draftOwnershipTransferPlan: DraftOwnershipTransferPlan?
+  @Environment(\.undoManager) private var undoManager
 
   private var draftSelection: Binding<Set<UUID>> {
     Binding(
@@ -128,7 +127,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
         }
       }
     } actions: {
-      if isDraftListLoading && store.writingDrafts.isEmpty {
+      if isDraftListLoading && visibleDraftSnapshot.isEmpty {
         ProgressView()
           .controlSize(.small)
           .help("加载草稿中…")
@@ -170,41 +169,24 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
           Label("新建通用草稿", systemImage: "square.and.pencil")
         }
       } label: {
-        HStack(spacing: 5) {
-          Image(systemName: "plus")
-          Text("新建")
-            .fixedSize(horizontal: true, vertical: false)
-        }
-        .font(.callout.weight(.semibold))
-        .foregroundStyle(Color.white)
-        .layoutPriority(1)
+        Label("新建", systemImage: "plus")
+          .labelStyle(.titleAndIcon)
+          .font(.callout.weight(.semibold))
+          .frame(minWidth: 54)
+          .fixedSize(horizontal: true, vertical: false)
       }
-      .menuStyle(.borderlessButton)
+      .workbenchProminentActionStyle()
       .menuIndicator(.hidden)
       .controlSize(.regular)
-      .tint(.white)
-      .padding(.horizontal, 8)
-      .frame(height: 28)
-      .background(
-        WorkbenchTheme.primaryActionFill,
-        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-      )
       .fixedSize()
       .help("新建文章或通用草稿")
       .accessibilityLabel("新建文章或通用草稿")
+      .accessibilityIdentifier("writing-create-menu")
     }
   }
 
   private var draftListToolbar: some View {
     VStack(spacing: 8) {
-      Picker("内容范围", selection: contentScopeSelection) {
-        Text("当前站点").tag(DraftListContentScope.currentSite)
-        Text("通用草稿").tag(DraftListContentScope.general)
-      }
-      .pickerStyle(.segmented)
-      .labelsHidden()
-      .accessibilityLabel("内容范围")
-
       if selectedDraftIDs.count > 1 {
         bulkSelectionBar
       }
@@ -219,6 +201,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
           .focused($isSearchFieldFocused)
           .accessibilityLabel("搜索草稿")
           .accessibilityValue(searchText.nilIfEmpty ?? "未输入")
+          .accessibilityIdentifier("writing-draft-search")
 
         if !searchText.isEmpty {
           Button {
@@ -263,6 +246,8 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
           .accessibilityValue(filter.localizedDisplayName)
         }
 
+        contentScopePicker
+
         Spacer(minLength: 0)
 
         Menu {
@@ -287,6 +272,19 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
         .accessibilityValue(sortOrder.localizedDisplayName)
       }
     }
+  }
+
+  private var contentScopePicker: some View {
+    Picker("内容范围", selection: contentScopeSelection) {
+      Text("当前站点").tag(DraftListContentScope.currentSite)
+      Text("通用草稿").tag(DraftListContentScope.general)
+    }
+    .pickerStyle(.segmented)
+    .labelsHidden()
+    .controlSize(.small)
+    .font(.caption)
+    .frame(minWidth: 110, idealWidth: 130, maxWidth: 150)
+    .accessibilityLabel("内容范围")
   }
 
   private var overflowFilterLabel: String {
@@ -327,7 +325,11 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     filteredDrafts.prefix(draftListLimit)
   }
 
-  private var draftList: some View {
+  private var draftListAccessibilityValue: String {
+    "已显示 \(paginatedDrafts.count) 篇，共 \(filteredDrafts.count) 篇"
+  }
+
+  private var draftListBase: some View {
     List(selection: draftSelection) {
       if isDraftListLoading {
         ForEach(0..<skeletonPlaceholderCount, id: \.self) { _ in
@@ -360,6 +362,10 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     .listStyle(.sidebar)
     .scrollContentBackground(.hidden)
     .background(Color.clear)
+  }
+
+  private var draftList: some View {
+    draftListBase
     .onDeleteCommand {
       requestDeleteSelectedDraft()
     }
@@ -371,10 +377,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     }
     .task(
       id: DraftListImageSummaryRefreshInput(
-        signature: ImageWorkbenchSiteSummaryInputSignature(
-          drafts: store.writingDrafts,
-          profile: store.activeProfile
-        )
+        revision: store.imageWorkbenchInputRevision
       )
     ) {
       await store.refreshImageWorkbenchSiteSummaryInBackground()
@@ -407,7 +410,9 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
       refreshFilteredDraftsCache()
       refreshDraftCounts()
     }
-    .onChange(of: store.writingDrafts) { _, newDrafts in
+    .onChange(of: store.draftListPresentationRevision) { _, _ in
+      refreshFilteredDraftsCache()
+      let newDrafts = visibleDraftSnapshot
       synchronizeDraftSelection(with: newDrafts)
       if isDraftListLoading && !newDrafts.isEmpty {
         isDraftListLoading = false
@@ -430,7 +435,8 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
       refreshDraftCounts()
     }
     .accessibilityLabel("文章列表")
-    .accessibilityValue("已显示 \(paginatedDrafts.count) 篇，共 \(filteredDrafts.count) 篇")
+    .accessibilityValue(draftListAccessibilityValue)
+    .accessibilityIdentifier("writing-draft-list")
   }
 
   private var loadMoreDraftsButton: some View {
@@ -479,11 +485,13 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
   }
 
   private func draftRow(_ draft: ArticleDraft) -> some View {
-    WritingDraftRow(
-      draft: draft,
-      profile: store.profile(for: draft),
-      display: store.privateContentDisplay(for: draft)
-    )
+    let presentation = draftListCache.rowPresentations[draft.id]
+      ?? WritingDraftRowPresentation(
+        draft: draft,
+        profile: store.profile(for: draft),
+        display: store.privateContentDisplay(for: draft)
+      )
+    return WritingDraftRow(presentation: presentation)
     .tag(draft.id)
     .listRowInsets(listRowInsets)
     .listRowSeparator(.hidden)
@@ -629,7 +637,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
 
   @ViewBuilder
   private var bulkDraftOwnershipActions: some View {
-    let selectedDrafts = store.writingDrafts.filter { selectedDraftIDs.contains($0.id) }
+    let selectedDrafts = visibleDraftSnapshot.filter { selectedDraftIDs.contains($0.id) }
 
     if selectedDrafts.allSatisfy({ !$0.isGeneralDraft }) {
       Button {
@@ -726,7 +734,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
   private func refreshDraftCounts() {
     refreshFilteredDraftsCache()
     let nextFilteredCount = filteredDrafts.count
-    let nextVisibleCount = store.writingDrafts.count
+    let nextVisibleCount = visibleDraftSnapshot.count
     let delta = nextVisibleCount - visibleDraftCount
 
     visibleDraftCount = nextVisibleCount
@@ -782,7 +790,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     draftListLoadingNonce += 1
     let nonce = draftListLoadingNonce
 
-    guard store.writingDrafts.isEmpty else {
+    guard visibleDraftSnapshot.isEmpty else {
       isDraftListLoading = false
       return
     }
@@ -805,46 +813,51 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     draftListCache.filteredDrafts
   }
 
+  private var visibleDraftSnapshot: [ArticleDraft] {
+    draftListCache.sourceDrafts
+  }
+
   private var sortOrder: WritingDraftSortOrder {
     WritingDraftSortOrder(rawValue: sortOrderRawValue) ?? .updatedNewest
   }
 
   private func refreshFilteredDraftsCache() {
-    let visibleDrafts = store.writingDrafts
-    let visibleDraftIDs = visibleDrafts.map(\.id)
-    let activeProfileID = store.activeProfile.id
-    let taskQueueStates: [UUID: DraftTaskQueueState] = debouncedFilter.requiresTaskQueueState
-      ? store.draftTaskQueueStates(for: visibleDrafts)
-      : [:]
-    let visibleDraftSignatures = Dictionary(
-      uniqueKeysWithValues: visibleDrafts.map { draft in
-        (
-          draft.id,
-          taskQueueStates[draft.id]?.signature ?? DraftTaskQueueState.Signature(
-            draft: draft,
-            profileID: activeProfileID,
-            imageIssueCount: 0
+    let presentationRevision = store.draftListPresentationRevision
+    let didRefreshPresentation = draftListCache.presentationRevision != presentationRevision
+    if didRefreshPresentation {
+      let sourceDrafts = store.writingDrafts
+      draftListCache.presentationRevision = presentationRevision
+      draftListCache.sourceDrafts = sourceDrafts
+      draftListCache.rowPresentations = Dictionary(
+        uniqueKeysWithValues: sourceDrafts.map { draft in
+          (
+            draft.id,
+            WritingDraftRowPresentation(
+              draft: draft,
+              profile: store.profile(for: draft),
+              display: store.privateContentDisplay(for: draft)
+            )
           )
-        )
-      }
-    )
+        }
+      )
+    }
+    let visibleDrafts = draftListCache.sourceDrafts
     let query = debouncedSearchText
     let draftTaskQueueStateVersion = store.draftTaskQueueStateVersion
 
-    guard visibleDraftIDs != draftListCache.visibleDraftIDs || visibleDraftSignatures != draftListCache.visibleDraftSignatures ||
+    guard didRefreshPresentation ||
       query != draftListCache.searchText || draftListCache.filter != debouncedFilter ||
       draftListCache.sortOrder != sortOrder ||
-      draftListCache.activeProfileID != activeProfileID ||
       draftListCache.draftTaskQueueStateVersion != draftTaskQueueStateVersion else {
       return
     }
 
-    draftListCache.visibleDraftIDs = visibleDraftIDs
-    draftListCache.visibleDraftSignatures = visibleDraftSignatures
+    let taskQueueStates: [UUID: DraftTaskQueueState] = debouncedFilter.requiresTaskQueueState
+      ? store.draftTaskQueueStates(for: visibleDrafts)
+      : [:]
     draftListCache.searchText = query
     draftListCache.filter = debouncedFilter
     draftListCache.sortOrder = sortOrder
-    draftListCache.activeProfileID = activeProfileID
     draftListCache.draftTaskQueueStateVersion = draftTaskQueueStateVersion
     let searchableDrafts = visibleDrafts.filter { draft in
       debouncedFilter.matches(draft, taskState: debouncedFilter.requiresTaskQueueState ? taskQueueStates[draft.id] : nil)
@@ -881,7 +894,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
     guard let selectedDraftID = store.selectedDraftID else {
       return nil
     }
-    return store.writingDrafts.first { $0.id == selectedDraftID }
+    return visibleDraftSnapshot.first { $0.id == selectedDraftID }
   }
 
   private var writingDraftCommandActions: WritingDraftCommandActions {
@@ -907,7 +920,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
 
   private var draftListEmptyState: some View {
     VStack(spacing: 10) {
-      Image(systemName: store.writingDrafts.isEmpty ? "doc.badge.plus" : "doc.text.magnifyingglass")
+      Image(systemName: visibleDraftSnapshot.isEmpty ? "doc.badge.plus" : "doc.text.magnifyingglass")
         .font(.system(size: 28))
         .foregroundStyle(.secondary)
 
@@ -919,7 +932,7 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
 
-      if store.writingDrafts.isEmpty {
+      if visibleDraftSnapshot.isEmpty {
         Button(emptyStateActionTitle) {
           if store.draftListContentScope == .general {
             store.createGeneralDraft()
@@ -944,12 +957,12 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
   }
 
   private var draftListEmptyTitle: LocalizedStringKey {
-    guard store.writingDrafts.isEmpty else { return "没有匹配的文章" }
+    guard visibleDraftSnapshot.isEmpty else { return "没有匹配的文章" }
     return store.draftListContentScope == .general ? "还没有通用草稿" : "还没有文章"
   }
 
   private var draftListEmptyMessage: LocalizedStringKey {
-    guard store.writingDrafts.isEmpty else {
+    guard visibleDraftSnapshot.isEmpty else {
       return "尝试清除搜索词或切换筛选条件。"
     }
     return store.draftListContentScope == .general

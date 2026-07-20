@@ -47,6 +47,7 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
       "deployment-status",
       "maintenance",
       "general-drafts",
+      "knowledge-library",
       "pro-settings",
       "privacy-lock",
     ]
@@ -56,6 +57,7 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertEqual(ScreenshotDemoSurface(rawValue: "sync-api-publish"), .syncAPIPublish)
     XCTAssertEqual(ScreenshotDemoSurface(rawValue: "deployment-status"), .deploymentStatus)
     XCTAssertEqual(ScreenshotDemoSurface(rawValue: "general-drafts"), .generalDrafts)
+    XCTAssertEqual(ScreenshotDemoSurface(rawValue: "knowledge-library"), .knowledgeLibrary)
     XCTAssertEqual(ScreenshotDemoSurface(rawValue: "privacy-lock"), .privacyLock)
   }
 

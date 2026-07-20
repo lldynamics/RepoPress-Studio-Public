@@ -4,6 +4,8 @@ import Foundation
 public struct ScreenshotDemoDataService {
   public static let environmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"
   public static let surfaceEnvironmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE"
+  public static let knowledgeRootEnvironmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_KNOWLEDGE_ROOT"
+  public static let uiTestEnvironmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST"
   public static let persistenceFilename = "screenshot-demo-workbench.json"
 
   public init() {}
@@ -326,6 +328,27 @@ public struct ScreenshotDemoDataService {
       .appendingPathComponent(persistenceFilename)
   }
 
+  public static var defaultKnowledgeLibraryRootURL: URL {
+    FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true)
+      .appendingPathComponent("screenshot-demo-knowledge-library", isDirectory: true)
+  }
+
+  public static func prepareKnowledgeLibraryServiceIfEnabled() -> KnowledgeLibraryService {
+    guard isEnabledFromEnvironment,
+          requestedSurfaceFromEnvironment == .knowledgeLibrary else {
+      return KnowledgeLibraryService()
+    }
+    let configuredPath = ProcessInfo.processInfo.environment[knowledgeRootEnvironmentKey].map {
+      $0.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    let rootURL = configuredPath.flatMap { path in
+      path.isEmpty ? nil : URL(fileURLWithPath: path, isDirectory: true)
+    } ?? defaultKnowledgeLibraryRootURL
+    try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    return KnowledgeLibraryService(rootURL: rootURL)
+  }
+
   public static func preparePersistenceIfEnabled() -> WorkbenchPersistence {
     guard isEnabledFromEnvironment else {
       return WorkbenchPersistence()
@@ -341,6 +364,49 @@ public struct ScreenshotDemoDataService {
       return
     }
     surface.apply(to: store)
+    if surface == .writing,
+       ProcessInfo.processInfo.environment[uiTestEnvironmentKey] == "1" {
+      // Sidebar accessibility coverage does not exercise the AppKit Markdown
+      // editor. Leave the deterministic list populated but avoid mounting an
+      // unrelated editor during this focused UI test.
+      store.selectDraft(nil)
+    }
+    if surface == .knowledgeLibrary {
+      Task { @MainActor in
+        await seedKnowledgeLibraryIfEnabled(in: store.knowledge)
+      }
+    }
+  }
+
+  @MainActor
+  public static func seedKnowledgeLibraryIfEnabled(in knowledge: KnowledgeStore) async {
+    guard isEnabledFromEnvironment,
+          requestedSurfaceFromEnvironment == .knowledgeLibrary,
+          knowledge.documents.isEmpty else { return }
+    let capture = KnowledgeBrowserCapture(
+      sourceURL: URL(string: "https://example.com/accessibility/knowledge-library")!,
+      title: "资料库辅助功能演示",
+      authors: ["Demo Author"],
+      language: "zh-Hans",
+      summary: "用于验证资料详情标题、阅读区和操作控件的辅助功能标识。",
+      tags: ["辅助功能", "资料库"],
+      contentText: """
+      # 资料库辅助功能演示
+
+      这是一份只保存在隔离测试资料库中的合成内容，不包含真实文章、账号或本机路径。
+
+      ## 可访问性检查
+
+      标题、阅读区、检查器开关、固定到 AI、资料操作与导入按钮都应拥有唯一标识。
+      """,
+      captureMode: .cleanedArticle,
+      allowsAIUse: true
+    )
+    _ = try? await knowledge.importBrowserCapture(
+      capture,
+      folderID: nil,
+      newFolderName: nil
+    )
   }
 }
 
@@ -354,6 +420,7 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
   case generalDrafts = "general-drafts"
   case proSettings = "pro-settings"
   case privacyLock = "privacy-lock"
+  case knowledgeLibrary = "knowledge-library"
 
   public var id: String { rawValue }
 
@@ -367,7 +434,7 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
     switch self {
     case .writing:
       store.selectSection(.writing)
-      store.setInspectorPresented(true)
+      store.setInspectorPresented(false)
       store.setEditorDisplayMode(.split)
       store.setPublishActionMessage(String(localized: "截图模式：写作工作区已载入演示文章。"))
     case .aiChat:
@@ -385,6 +452,7 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
           contextMode: .site
         ),
       ])
+      store.setInspectorPresented(false)
       store.setPublishActionMessage(String(localized: "截图模式：AI 助手 Inspector 已载入。"))
     case .syncAPIPublish:
       store.selectSection(.sync)
@@ -411,6 +479,10 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
       store.selectSection(.writing)
       store.setInspectorPresented(true)
       store.lockPrivacy(reason: "截图模式：隐私锁已启用，工作台内容已遮挡。")
+    case .knowledgeLibrary:
+      store.selectSection(.library)
+      store.setInspectorPresented(false)
+      store.setPublishActionMessage(String(localized: "截图模式：本地资料库已载入。"))
     }
   }
 

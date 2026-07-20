@@ -3,6 +3,13 @@ import SQLite3
 
 private let knowledgeSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
+private func knowledgeSQLiteCancellationProgressHandler(
+  _ context: UnsafeMutableRawPointer?
+) -> Int32 {
+  _ = context
+  return Task.isCancelled ? 1 : 0
+}
+
 struct KnowledgeDatabaseBackupInspection: Hashable, Sendable {
   var userVersion: Int
   var documentCount: Int
@@ -18,14 +25,12 @@ struct KnowledgeDatabaseDeletionOutcome: Hashable, Sendable {
 }
 
 final class KnowledgeDatabase: @unchecked Sendable {
-  static let currentSchemaVersion = 5
+  static let currentSchemaVersion = 7
 
-  private let fileURL: URL
   private let lock = NSLock()
   private var handle: OpaquePointer?
 
   init(fileURL: URL) throws {
-    self.fileURL = fileURL
     try FileManager.default.createDirectory(
       at: fileURL.deletingLastPathComponent(),
       withIntermediateDirectories: true
@@ -69,7 +74,6 @@ final class KnowledgeDatabase: @unchecked Sendable {
   }
 
   private init(readOnlyBackupURL fileURL: URL) throws {
-    self.fileURL = fileURL
     var database: OpaquePointer?
     let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX
     guard sqlite3_open_v2(fileURL.path, &database, flags, nil) == SQLITE_OK,
@@ -489,7 +493,8 @@ final class KnowledgeDatabase: @unchecked Sendable {
       let sql = """
       SELECT r.id, r.document_id, r.original_hash, r.normalized_hash,
              r.parser_version, r.imported_at, r.source_modified_at,
-             r.original_storage_ref, r.normalized_storage_ref
+             r.original_storage_ref, r.captured_text_storage_ref,
+             r.normalized_storage_ref
       FROM knowledge_revisions r
       JOIN knowledge_documents d ON d.current_revision_id = r.id
       WHERE d.id = ? LIMIT 1;
@@ -511,7 +516,8 @@ final class KnowledgeDatabase: @unchecked Sendable {
       let statement = try prepare("""
       SELECT id, document_id, original_hash, normalized_hash,
              parser_version, imported_at, source_modified_at,
-             original_storage_ref, normalized_storage_ref
+             original_storage_ref, captured_text_storage_ref,
+             normalized_storage_ref
       FROM knowledge_revisions
       WHERE document_id = ?
       ORDER BY imported_at DESC, id ASC;
@@ -527,12 +533,27 @@ final class KnowledgeDatabase: @unchecked Sendable {
     }
   }
 
+  func setCapturedTextStorageReference(_ reference: String, revisionID: UUID) throws {
+    try withLock {
+      let statement = try prepare("""
+      UPDATE knowledge_revisions
+      SET captured_text_storage_ref = ?
+      WHERE id = ? AND (captured_text_storage_ref IS NULL OR captured_text_storage_ref = '');
+      """)
+      defer { sqlite3_finalize(statement) }
+      bind(reference, at: 1, to: statement)
+      bind(revisionID.uuidString, at: 2, to: statement)
+      guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+    }
+  }
+
   func revision(id: UUID) throws -> KnowledgeDocumentRevision? {
     try withLock {
       let statement = try prepare("""
       SELECT id, document_id, original_hash, normalized_hash,
              parser_version, imported_at, source_modified_at,
-             original_storage_ref, normalized_storage_ref
+             original_storage_ref, captured_text_storage_ref,
+             normalized_storage_ref
       FROM knowledge_revisions WHERE id = ? LIMIT 1;
       """)
       defer { sqlite3_finalize(statement) }
@@ -563,7 +584,8 @@ final class KnowledgeDatabase: @unchecked Sendable {
       WHERE (? IS NOT NULL AND d.source_url = ?)
          OR r.original_hash = ?
          OR r.normalized_hash = ?
-      ORDER BY CASE WHEN (? IS NOT NULL AND d.source_url = ?) THEN 0 ELSE 1 END
+      ORDER BY CASE WHEN (? IS NOT NULL AND d.source_url = ?) THEN 0 ELSE 1 END,
+               d.updated_at DESC
       LIMIT 1;
       """
       let statement = try prepare(sql)
@@ -1007,7 +1029,7 @@ final class KnowledgeDatabase: @unchecked Sendable {
 
   private func storageReferencesUnlocked(documentID: UUID) throws -> Set<String> {
     let statement = try prepare("""
-    SELECT original_storage_ref, normalized_storage_ref
+    SELECT original_storage_ref, captured_text_storage_ref, normalized_storage_ref
     FROM knowledge_revisions
     WHERE document_id = ?;
     """)
@@ -1018,7 +1040,10 @@ final class KnowledgeDatabase: @unchecked Sendable {
       if let originalReference = text(statement, 0)?.nilIfEmpty {
         references.insert(originalReference)
       }
-      if let normalizedReference = text(statement, 1)?.nilIfEmpty {
+      if let capturedTextReference = text(statement, 1)?.nilIfEmpty {
+        references.insert(capturedTextReference)
+      }
+      if let normalizedReference = text(statement, 2)?.nilIfEmpty {
         references.insert(normalizedReference)
       }
     }
@@ -1030,12 +1055,15 @@ final class KnowledgeDatabase: @unchecked Sendable {
     let statement = try prepare("""
     SELECT 1
     FROM knowledge_revisions
-    WHERE original_storage_ref = ? OR normalized_storage_ref = ?
+    WHERE original_storage_ref = ?
+       OR captured_text_storage_ref = ?
+       OR normalized_storage_ref = ?
     LIMIT 1;
     """)
     defer { sqlite3_finalize(statement) }
     bind(reference, at: 1, to: statement)
     bind(reference, at: 2, to: statement)
+    bind(reference, at: 3, to: statement)
     let result = sqlite3_step(statement)
     guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
     return result == SQLITE_ROW
@@ -1047,31 +1075,36 @@ final class KnowledgeDatabase: @unchecked Sendable {
     onlyAIAllowed: Bool,
     documentIDs: Set<UUID>? = nil
   ) throws -> [KnowledgeSearchResult] {
+    try Task.checkCancellation()
     let trimmed = query.trimmedForPublishing
     guard !trimmed.isEmpty, limit > 0 else { return [] }
 
-    return try withLock {
-      let ftsResults = try searchFTS(
-        query: trimmed,
-        limit: limit,
-        onlyAIAllowed: onlyAIAllowed,
-        documentIDs: documentIDs
-      )
-      if !ftsResults.isEmpty {
-        return ftsResults
+    return try withCancellableLock {
+      try withCancellationProgressHandler {
+        let ftsResults = try searchFTS(
+          query: trimmed,
+          limit: limit,
+          onlyAIAllowed: onlyAIAllowed,
+          documentIDs: documentIDs
+        )
+        if !ftsResults.isEmpty {
+          return ftsResults
+        }
+        try Task.checkCancellation()
+        return try searchLike(
+          query: trimmed,
+          limit: limit,
+          onlyAIAllowed: onlyAIAllowed,
+          documentIDs: documentIDs
+        )
       }
-      return try searchLike(
-        query: trimmed,
-        limit: limit,
-        onlyAIAllowed: onlyAIAllowed,
-        documentIDs: documentIDs
-      )
     }
   }
 
   func semanticIndexRecords() throws -> [KnowledgeSemanticIndexRecord] {
-    try withLock {
-      let sql = """
+    try withCancellableLock {
+      try withCancellationProgressHandler {
+        let sql = """
       SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
              d.tags_json, d.source_url, d.source_name, d.folder_id,
              d.source_byte_count, d.allows_ai_use, d.is_archived,
@@ -1084,17 +1117,20 @@ final class KnowledgeDatabase: @unchecked Sendable {
         AND d.is_archived = 0
       ORDER BY d.updated_at DESC, c.ordinal ASC;
       """
-      let statement = try prepare(sql)
-      defer { sqlite3_finalize(statement) }
-      var output: [KnowledgeSemanticIndexRecord] = []
-      while sqlite3_step(statement) == SQLITE_ROW {
-        output.append(KnowledgeSemanticIndexRecord(
-          document: decodeDocument(statement, offset: 0),
-          chunk: decodeChunk(statement, offset: 16)
-        ))
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+        var output: [KnowledgeSemanticIndexRecord] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+          try Task.checkCancellation()
+          output.append(KnowledgeSemanticIndexRecord(
+            document: decodeDocument(statement, offset: 0),
+            chunk: decodeChunk(statement, offset: 16)
+          ))
+        }
+        try Task.checkCancellation()
+        try checkStatementCompletion(statement)
+        return output
       }
-      try checkStatementCompletion(statement)
-      return output
     }
   }
 
@@ -1103,8 +1139,9 @@ final class KnowledgeDatabase: @unchecked Sendable {
     expectedDimension: Int
   ) throws -> [KnowledgeSemanticIndexRecord] {
     guard expectedDimension > 0 else { return [] }
-    return try withLock {
-      let sql = """
+    return try withCancellableLock {
+      try withCancellationProgressHandler {
+        let sql = """
       SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
              d.tags_json, d.source_url, d.source_name, d.folder_id,
              d.source_byte_count, d.allows_ai_use, d.is_archived,
@@ -1120,32 +1157,36 @@ final class KnowledgeDatabase: @unchecked Sendable {
         AND d.is_archived = 0
       ORDER BY d.updated_at DESC, c.ordinal ASC;
       """
-      let statement = try prepare(sql)
-      defer { sqlite3_finalize(statement) }
-      bind(modelIdentifier, at: 1, to: statement)
-      var output: [KnowledgeSemanticIndexRecord] = []
-      while sqlite3_step(statement) == SQLITE_ROW {
-        let chunk = decodeChunk(statement, offset: 16)
-        let storedRevisionID = text(statement, 25).flatMap(UUID.init(uuidString:))
-        let storedDimension = Int(sqlite3_column_int64(statement, 26))
-        let storedVector = decodeVector(statement, index: 27, dimension: expectedDimension)
-        let needsRepair = storedRevisionID != chunk.revisionID
-          || storedDimension != expectedDimension
-          || !isValidStoredSemanticVector(storedVector, expectedDimension: expectedDimension)
-        guard needsRepair else { continue }
-        output.append(KnowledgeSemanticIndexRecord(
-          document: decodeDocument(statement, offset: 0),
-          chunk: chunk
-        ))
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+        bind(modelIdentifier, at: 1, to: statement)
+        var output: [KnowledgeSemanticIndexRecord] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+          try Task.checkCancellation()
+          let chunk = decodeChunk(statement, offset: 16)
+          let storedRevisionID = text(statement, 25).flatMap(UUID.init(uuidString:))
+          let storedDimension = Int(sqlite3_column_int64(statement, 26))
+          let storedVector = KnowledgeSemanticVectorStorage.decodeVector(statement, index: 27, dimension: expectedDimension)
+          let needsRepair = storedRevisionID != chunk.revisionID
+            || storedDimension != expectedDimension
+            || !KnowledgeSemanticVectorStorage.isValidStoredSemanticVector(storedVector, expectedDimension: expectedDimension)
+          guard needsRepair else { continue }
+          output.append(KnowledgeSemanticIndexRecord(
+            document: decodeDocument(statement, offset: 0),
+            chunk: chunk
+          ))
+        }
+        try Task.checkCancellation()
+        try checkStatementCompletion(statement)
+        return output
       }
-      try checkStatementCompletion(statement)
-      return output
     }
   }
 
   func upsertSemanticEmbeddings(_ embeddings: [KnowledgeChunkEmbedding]) throws {
     guard !embeddings.isEmpty else { return }
-    try withLock {
+    try Task.checkCancellation()
+    try withCancellableLock {
       try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
       do {
         try upsertSemanticEmbeddingsUnlocked(embeddings)
@@ -1182,9 +1223,11 @@ final class KnowledgeDatabase: @unchecked Sendable {
     documentIDs: Set<UUID>? = nil
   ) throws -> [KnowledgeSearchResult] {
     guard !queryVector.isEmpty, limit > 0 else { return [] }
-    return try withLock {
-      let idClause = documentIDClause(documentIDs)
-      let sql = """
+    try Task.checkCancellation()
+    return try withCancellableLock {
+      try withCancellationProgressHandler {
+        let idClause = documentIDClause(documentIDs)
+        let sql = """
       SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
              d.tags_json, d.source_url, d.source_name, d.folder_id,
              d.source_byte_count, d.allows_ai_use, d.is_archived,
@@ -1203,288 +1246,50 @@ final class KnowledgeDatabase: @unchecked Sendable {
         AND (? = 0 OR d.allows_ai_use = 1)
         \(idClause.sql)
       """
-      let statement = try prepare(sql)
-      defer { sqlite3_finalize(statement) }
-      var index: Int32 = 1
-      bind(queryVector.modelIdentifier, at: index, to: statement)
-      index += 1
-      sqlite3_bind_int64(statement, index, sqlite3_int64(queryVector.values.count))
-      index += 1
-      sqlite3_bind_int(statement, index, onlyAIAllowed ? 1 : 0)
-      index += 1
-      for id in idClause.ids {
-        bind(id.uuidString, at: index, to: statement)
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+        var index: Int32 = 1
+        bind(queryVector.modelIdentifier, at: index, to: statement)
         index += 1
-      }
+        sqlite3_bind_int64(statement, index, sqlite3_int64(queryVector.values.count))
+        index += 1
+        sqlite3_bind_int(statement, index, onlyAIAllowed ? 1 : 0)
+        index += 1
+        for id in idClause.ids {
+          bind(id.uuidString, at: index, to: statement)
+          index += 1
+        }
 
-      var output: [KnowledgeSearchResult] = []
-      while sqlite3_step(statement) == SQLITE_ROW {
-        let storedVector = decodeVector(statement, index: 25, dimension: queryVector.values.count)
-        guard isValidStoredSemanticVector(
-          storedVector,
-          expectedDimension: queryVector.values.count
-        ) else { continue }
-        let similarity = cosineSimilarity(queryVector.values, storedVector)
-        guard similarity >= queryVector.minimumSimilarity else { continue }
-        output.append(KnowledgeSearchResult(
-          document: decodeDocument(statement, offset: 0),
-          chunk: decodeChunk(statement, offset: 16),
-          score: similarity,
-          signals: [.semantic]
-        ))
-      }
-      try checkStatementCompletion(statement)
-      return output
-        .sorted {
+        var output: [KnowledgeSearchResult] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+          try Task.checkCancellation()
+          let storedVector = KnowledgeSemanticVectorStorage.decodeVector(statement, index: 25, dimension: queryVector.values.count)
+          guard KnowledgeSemanticVectorStorage.isValidStoredSemanticVector(
+            storedVector,
+            expectedDimension: queryVector.values.count
+          ) else { continue }
+          let similarity = KnowledgeSemanticVectorStorage.cosineSimilarity(queryVector.values, storedVector)
+          guard similarity >= queryVector.minimumSimilarity else { continue }
+          output.append(KnowledgeSearchResult(
+            document: decodeDocument(statement, offset: 0),
+            chunk: decodeChunk(statement, offset: 16),
+            score: similarity,
+            signals: [.semantic]
+          ))
+        }
+        try Task.checkCancellation()
+        try checkStatementCompletion(statement)
+        output.sort {
           if $0.score != $1.score { return $0.score > $1.score }
           if $0.document.updatedAt != $1.document.updatedAt {
             return $0.document.updatedAt > $1.document.updatedAt
           }
           return $0.chunk.ordinal < $1.chunk.ordinal
         }
-        .prefix(limit)
-        .map { $0 }
-    }
-  }
-
-  private func migrate(from existingUserVersion: Int) throws {
-    guard existingUserVersion <= Self.currentSchemaVersion else {
-      throw KnowledgeLibraryError.unsupportedDatabaseVersion(
-        found: existingUserVersion,
-        supported: Self.currentSchemaVersion
-      )
-    }
-
-    try execute("BEGIN IMMEDIATE TRANSACTION;")
-    do {
-      try execute("""
-    CREATE TABLE IF NOT EXISTS knowledge_folders (
-      id TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL COLLATE NOCASE UNIQUE,
-      created_at REAL NOT NULL,
-      updated_at REAL NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS knowledge_documents (
-      id TEXT PRIMARY KEY NOT NULL,
-      kind TEXT NOT NULL,
-      title TEXT NOT NULL,
-      authors_json TEXT NOT NULL,
-      language TEXT,
-      summary TEXT NOT NULL,
-      tags_json TEXT NOT NULL,
-      source_url TEXT,
-      source_name TEXT NOT NULL,
-      folder_id TEXT REFERENCES knowledge_folders(id) ON DELETE SET NULL,
-      source_byte_count INTEGER NOT NULL DEFAULT 0,
-      allows_ai_use INTEGER NOT NULL DEFAULT 1,
-      is_archived INTEGER NOT NULL DEFAULT 0,
-      imported_at REAL NOT NULL,
-      updated_at REAL NOT NULL,
-      current_revision_id TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS knowledge_revisions (
-      id TEXT PRIMARY KEY NOT NULL,
-      document_id TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
-      original_hash TEXT NOT NULL,
-      normalized_hash TEXT NOT NULL,
-      parser_version INTEGER NOT NULL,
-      imported_at REAL NOT NULL,
-      source_modified_at REAL,
-      original_storage_ref TEXT,
-      normalized_storage_ref TEXT NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS knowledge_revisions_document_idx
-      ON knowledge_revisions(document_id, imported_at DESC);
-    CREATE INDEX IF NOT EXISTS knowledge_revisions_hash_idx
-      ON knowledge_revisions(original_hash, normalized_hash);
-    CREATE UNIQUE INDEX IF NOT EXISTS knowledge_documents_source_url_idx
-      ON knowledge_documents(source_url) WHERE source_url IS NOT NULL;
-
-    CREATE TABLE IF NOT EXISTS knowledge_chunks (
-      id TEXT PRIMARY KEY NOT NULL,
-      document_id TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
-      revision_id TEXT NOT NULL REFERENCES knowledge_revisions(id) ON DELETE CASCADE,
-      ordinal INTEGER NOT NULL,
-      heading_path TEXT,
-      locator TEXT,
-      content TEXT NOT NULL,
-      token_estimate INTEGER NOT NULL,
-      content_hash TEXT NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS knowledge_chunks_document_idx
-      ON knowledge_chunks(document_id, revision_id, ordinal);
-
-    CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts USING fts5(
-      chunk_id UNINDEXED,
-      document_id UNINDEXED,
-      title,
-      authors,
-      heading,
-      content,
-      tokenize = 'unicode61 remove_diacritics 2'
-    );
-
-    CREATE TABLE IF NOT EXISTS knowledge_chunk_embeddings (
-      chunk_id TEXT NOT NULL REFERENCES knowledge_chunks(id) ON DELETE CASCADE,
-      revision_id TEXT NOT NULL REFERENCES knowledge_revisions(id) ON DELETE CASCADE,
-      model_id TEXT NOT NULL,
-      dimension INTEGER NOT NULL,
-      vector BLOB NOT NULL,
-      created_at REAL NOT NULL,
-      PRIMARY KEY (chunk_id, model_id)
-    );
-
-    CREATE INDEX IF NOT EXISTS knowledge_chunk_embeddings_model_idx
-      ON knowledge_chunk_embeddings(model_id, revision_id);
-
-    CREATE TABLE IF NOT EXISTS knowledge_pinned_documents (
-      document_id TEXT PRIMARY KEY NOT NULL
-        REFERENCES knowledge_documents(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS knowledge_recycle_bin (
-      document_id TEXT PRIMARY KEY NOT NULL
-        REFERENCES knowledge_documents(id) ON DELETE CASCADE,
-      deleted_at REAL NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS knowledge_recycle_bin_deleted_idx
-      ON knowledge_recycle_bin(deleted_at DESC);
-
-    CREATE TABLE IF NOT EXISTS knowledge_annotations (
-      id TEXT PRIMARY KEY NOT NULL,
-      document_id TEXT NOT NULL
-        REFERENCES knowledge_documents(id) ON DELETE CASCADE,
-      revision_id TEXT
-        REFERENCES knowledge_revisions(id) ON DELETE SET NULL,
-      chunk_id TEXT
-        REFERENCES knowledge_chunks(id) ON DELETE SET NULL,
-      locator TEXT,
-      highlighted_text TEXT NOT NULL DEFAULT '',
-      note TEXT NOT NULL,
-      created_at REAL NOT NULL,
-      updated_at REAL NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS knowledge_annotations_document_idx
-      ON knowledge_annotations(document_id, updated_at DESC);
-
-    CREATE TABLE IF NOT EXISTS knowledge_backlinks (
-      id TEXT PRIMARY KEY NOT NULL,
-      cited_document_id TEXT NOT NULL
-        REFERENCES knowledge_documents(id) ON DELETE CASCADE,
-      chunk_id TEXT NOT NULL
-        REFERENCES knowledge_chunks(id) ON DELETE CASCADE,
-      target_kind TEXT NOT NULL,
-      target_id TEXT NOT NULL,
-      target_title TEXT NOT NULL,
-      target_location TEXT,
-      created_at REAL NOT NULL,
-      UNIQUE(cited_document_id, chunk_id, target_kind, target_id)
-    );
-
-    CREATE INDEX IF NOT EXISTS knowledge_backlinks_document_idx
-      ON knowledge_backlinks(cited_document_id, created_at DESC);
-    """)
-
-      if try !columnExists("folder_id", in: "knowledge_documents") {
-        try execute("""
-      ALTER TABLE knowledge_documents
-      ADD COLUMN folder_id TEXT REFERENCES knowledge_folders(id) ON DELETE SET NULL;
-      """)
-      }
-      if try !columnExists("source_byte_count", in: "knowledge_documents") {
-        try execute("""
-      ALTER TABLE knowledge_documents
-      ADD COLUMN source_byte_count INTEGER NOT NULL DEFAULT 0;
-      """)
-      }
-      try execute("""
-      CREATE INDEX IF NOT EXISTS knowledge_documents_folder_idx
-        ON knowledge_documents(folder_id, imported_at DESC);
-      INSERT OR IGNORE INTO knowledge_recycle_bin (document_id, deleted_at)
-        SELECT id, updated_at FROM knowledge_documents WHERE is_archived = 1;
-      PRAGMA user_version = \(Self.currentSchemaVersion);
-      """)
-      try execute("COMMIT;")
-    } catch {
-      try? execute("ROLLBACK;")
-      throw error
-    }
-  }
-
-  private func backupInspectionUnlocked(
-    validateIntegrity: Bool
-  ) throws -> KnowledgeDatabaseBackupInspection {
-    if validateIntegrity {
-      let quickCheck = try prepare("PRAGMA quick_check;")
-      defer { sqlite3_finalize(quickCheck) }
-      guard sqlite3_step(quickCheck) == SQLITE_ROW,
-            text(quickCheck, 0)?.lowercased() == "ok" else {
-        throw KnowledgeLibraryBackupError.databaseIntegrity(
-          text(quickCheck, 0) ?? "PRAGMA quick_check 未通过"
-        )
-      }
-
-      let foreignKeyCheck = try prepare("PRAGMA foreign_key_check;")
-      defer { sqlite3_finalize(foreignKeyCheck) }
-      let foreignKeyResult = sqlite3_step(foreignKeyCheck)
-      guard foreignKeyResult == SQLITE_DONE else {
-        let table = text(foreignKeyCheck, 0) ?? "未知数据表"
-        throw KnowledgeLibraryBackupError.databaseIntegrity("外键约束无效：\(table)")
+        try Task.checkCancellation()
+        return Array(output.prefix(limit))
       }
     }
-
-    let referenceStatement = try prepare("""
-    SELECT original_storage_ref
-    FROM knowledge_revisions
-    WHERE original_storage_ref IS NOT NULL AND original_storage_ref <> ''
-    UNION
-    SELECT normalized_storage_ref
-    FROM knowledge_revisions
-    WHERE normalized_storage_ref <> '';
-    """)
-    defer { sqlite3_finalize(referenceStatement) }
-    var references = Set<String>()
-    while sqlite3_step(referenceStatement) == SQLITE_ROW {
-      if let reference = text(referenceStatement, 0) {
-        references.insert(reference)
-      }
-    }
-    try checkStatementCompletion(referenceStatement)
-
-    let titleStatement = try prepare("""
-    SELECT title FROM knowledge_documents
-    ORDER BY updated_at DESC, title COLLATE NOCASE ASC
-    LIMIT 5;
-    """)
-    defer { sqlite3_finalize(titleStatement) }
-    var titles: [String] = []
-    while sqlite3_step(titleStatement) == SQLITE_ROW {
-      if let title = text(titleStatement, 0) { titles.append(title) }
-    }
-    try checkStatementCompletion(titleStatement)
-
-    return KnowledgeDatabaseBackupInspection(
-      userVersion: try scalarIntUnlocked("PRAGMA user_version;"),
-      documentCount: try scalarIntUnlocked("SELECT COUNT(*) FROM knowledge_documents;"),
-      folderCount: try scalarIntUnlocked("SELECT COUNT(*) FROM knowledge_folders;"),
-      revisionCount: try scalarIntUnlocked("SELECT COUNT(*) FROM knowledge_revisions;"),
-      chunkCount: try scalarIntUnlocked("SELECT COUNT(*) FROM knowledge_chunks;"),
-      storageReferences: references,
-      sampleTitles: titles
-    )
-  }
-
-  private func scalarIntUnlocked(_ sql: String) throws -> Int {
-    let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
-    guard sqlite3_step(statement) == SQLITE_ROW else { throw databaseError() }
-    return Int(sqlite3_column_int64(statement, 0))
   }
 
   private func upsertDocument(_ document: KnowledgeDocument) throws {
@@ -1551,8 +1356,9 @@ final class KnowledgeDatabase: @unchecked Sendable {
     let sql = """
     INSERT INTO knowledge_revisions (
       id, document_id, original_hash, normalized_hash, parser_version,
-      imported_at, source_modified_at, original_storage_ref, normalized_storage_ref
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+      imported_at, source_modified_at, original_storage_ref,
+      captured_text_storage_ref, normalized_storage_ref
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     """
     let statement = try prepare(sql)
     defer { sqlite3_finalize(statement) }
@@ -1564,7 +1370,8 @@ final class KnowledgeDatabase: @unchecked Sendable {
     sqlite3_bind_double(statement, 6, revision.importedAt.timeIntervalSince1970)
     bindOptional(revision.sourceModifiedAt?.timeIntervalSince1970, at: 7, to: statement)
     bindOptional(revision.originalStorageReference, at: 8, to: statement)
-    bind(revision.normalizedStorageReference, at: 9, to: statement)
+    bindOptional(revision.capturedTextStorageReference, at: 9, to: statement)
+    bind(revision.normalizedStorageReference, at: 10, to: statement)
     guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
   }
 
@@ -1666,13 +1473,14 @@ final class KnowledgeDatabase: @unchecked Sendable {
     defer { sqlite3_finalize(statement) }
     let now = Date().timeIntervalSince1970
     for embedding in embeddings where !embedding.vector.isEmpty {
+      try Task.checkCancellation()
       sqlite3_reset(statement)
       sqlite3_clear_bindings(statement)
       bind(embedding.chunkID.uuidString, at: 1, to: statement)
       bind(embedding.revisionID.uuidString, at: 2, to: statement)
       bind(embedding.vector.modelIdentifier, at: 3, to: statement)
       sqlite3_bind_int64(statement, 4, sqlite3_int64(embedding.vector.values.count))
-      bind(vectorData(embedding.vector.values), at: 5, to: statement)
+      bind(KnowledgeSemanticVectorStorage.vectorData(embedding.vector.values), at: 5, to: statement)
       sqlite3_bind_double(statement, 6, now)
       guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
     }
@@ -1784,6 +1592,7 @@ final class KnowledgeDatabase: @unchecked Sendable {
   private func collectSearchResults(_ statement: OpaquePointer?) throws -> [KnowledgeSearchResult] {
     var output: [KnowledgeSearchResult] = []
     while sqlite3_step(statement) == SQLITE_ROW {
+      try Task.checkCancellation()
       let document = decodeDocument(statement, offset: 0)
       let chunk = decodeChunk(statement, offset: 16)
       output.append(KnowledgeSearchResult(
@@ -1793,6 +1602,7 @@ final class KnowledgeDatabase: @unchecked Sendable {
         signals: [.fullText]
       ))
     }
+    try Task.checkCancellation()
     try checkStatementCompletion(statement)
     return output
   }
@@ -1910,7 +1720,8 @@ final class KnowledgeDatabase: @unchecked Sendable {
         ? nil
         : Date(timeIntervalSince1970: sqlite3_column_double(statement, 6)),
       originalStorageReference: text(statement, 7),
-      normalizedStorageReference: text(statement, 8) ?? ""
+      capturedTextStorageReference: text(statement, 8),
+      normalizedStorageReference: text(statement, 9) ?? ""
     )
   }
 
@@ -1988,7 +1799,7 @@ final class KnowledgeDatabase: @unchecked Sendable {
     return decoded
   }
 
-  private func columnExists(_ column: String, in table: String) throws -> Bool {
+  func columnExists(_ column: String, in table: String) throws -> Bool {
     try withLock {
       let statement = try prepare("PRAGMA table_info(\(table));")
       defer { sqlite3_finalize(statement) }
@@ -2000,7 +1811,7 @@ final class KnowledgeDatabase: @unchecked Sendable {
     }
   }
 
-  private func execute(_ sql: String) throws {
+  func execute(_ sql: String) throws {
     try withLock { try executeUnlocked(sql) }
   }
 
@@ -2014,7 +1825,7 @@ final class KnowledgeDatabase: @unchecked Sendable {
     }
   }
 
-  private func prepare(_ sql: String) throws -> OpaquePointer? {
+  func prepare(_ sql: String) throws -> OpaquePointer? {
     guard let handle else { throw KnowledgeLibraryError.database("数据库尚未打开") }
     var statement: OpaquePointer?
     guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
@@ -2049,69 +1860,13 @@ final class KnowledgeDatabase: @unchecked Sendable {
     }
   }
 
-  private func text(_ statement: OpaquePointer?, _ index: Int32) -> String? {
+  func text(_ statement: OpaquePointer?, _ index: Int32) -> String? {
     guard sqlite3_column_type(statement, index) != SQLITE_NULL,
           let pointer = sqlite3_column_text(statement, index) else { return nil }
     return String(cString: pointer)
   }
 
-  private func vectorData(_ values: [Float]) -> Data {
-    values.withUnsafeBufferPointer { Data(buffer: $0) }
-  }
-
-  private func decodeVector(
-    _ statement: OpaquePointer?,
-    index: Int32,
-    dimension: Int
-  ) -> [Float] {
-    guard dimension > 0,
-          sqlite3_column_bytes(statement, index) == dimension * MemoryLayout<Float>.size,
-          let pointer = sqlite3_column_blob(statement, index) else {
-      return []
-    }
-    var output = [Float](repeating: 0, count: dimension)
-    output.withUnsafeMutableBytes { destination in
-      destination.copyMemory(
-        from: UnsafeRawBufferPointer(
-          start: pointer,
-          count: dimension * MemoryLayout<Float>.size
-        )
-      )
-    }
-    return output
-  }
-
-  private func isValidStoredSemanticVector(
-    _ values: [Float],
-    expectedDimension: Int
-  ) -> Bool {
-    guard values.count == expectedDimension, !values.isEmpty else { return false }
-    var squaredMagnitude: Double = 0
-    for value in values {
-      guard value.isFinite else { return false }
-      squaredMagnitude += Double(value * value)
-    }
-    // Every vector written by KnowledgeSemanticVector is normalized. A broad
-    // tolerance catches zero/truncated/corrupt blobs without rejecting harmless
-    // floating-point drift between OS releases.
-    return squaredMagnitude.isFinite && (0.5...1.5).contains(squaredMagnitude)
-  }
-
-  private func cosineSimilarity(_ lhs: [Float], _ rhs: [Float]) -> Double {
-    guard lhs.count == rhs.count, !lhs.isEmpty else { return -1 }
-    var dot: Float = 0
-    var lhsMagnitude: Float = 0
-    var rhsMagnitude: Float = 0
-    for index in lhs.indices {
-      dot += lhs[index] * rhs[index]
-      lhsMagnitude += lhs[index] * lhs[index]
-      rhsMagnitude += rhs[index] * rhs[index]
-    }
-    guard lhsMagnitude > 0, rhsMagnitude > 0 else { return -1 }
-    return Double(dot / sqrt(lhsMagnitude * rhsMagnitude))
-  }
-
-  private func checkStatementCompletion(_ statement: OpaquePointer?) throws {
+  func checkStatementCompletion(_ statement: OpaquePointer?) throws {
     let result = sqlite3_errcode(handle)
     guard result == SQLITE_OK || result == SQLITE_DONE || result == SQLITE_ROW else {
       throw databaseError()
@@ -2119,9 +1874,46 @@ final class KnowledgeDatabase: @unchecked Sendable {
     _ = statement
   }
 
-  private func databaseError() -> KnowledgeLibraryError {
+  func databaseError() -> KnowledgeLibraryError {
     guard let handle else { return .database("数据库尚未打开") }
     return .database(String(cString: sqlite3_errmsg(handle)))
+  }
+
+  private func withCancellationProgressHandler<T>(
+    _ body: () throws -> T
+  ) throws -> T {
+    try Task.checkCancellation()
+    guard let handle else { throw databaseError() }
+    // Let SQLite abort a long scan or ORDER BY before sqlite3_step returns a row.
+    sqlite3_progress_handler(
+      handle,
+      1_000,
+      knowledgeSQLiteCancellationProgressHandler,
+      nil
+    )
+    defer { sqlite3_progress_handler(handle, 0, nil, nil) }
+
+    do {
+      let result = try body()
+      try Task.checkCancellation()
+      return result
+    } catch {
+      if Task.isCancelled {
+        throw CancellationError()
+      }
+      throw error
+    }
+  }
+
+  private func withCancellableLock<T>(_ body: () throws -> T) throws -> T {
+    try Task.checkCancellation()
+    // NSLock.lock() cannot observe task cancellation while another query owns it.
+    while !lock.lock(before: Date(timeIntervalSinceNow: 0.02)) {
+      try Task.checkCancellation()
+    }
+    defer { lock.unlock() }
+    try Task.checkCancellation()
+    return try body()
   }
 
   private func withLock<T>(_ body: () throws -> T) rethrows -> T {

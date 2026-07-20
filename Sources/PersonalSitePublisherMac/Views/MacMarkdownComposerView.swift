@@ -2,6 +2,56 @@ import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
+private struct MarkdownFindMatchSnapshot: Equatable {
+  var ranges: [NSRange]
+  var errorMessage: String?
+
+  static let empty = MarkdownFindMatchSnapshot(ranges: [], errorMessage: nil)
+
+  func position(selectedRange: NSRange) -> MarkdownFindPosition {
+    let currentIndex = ranges.firstIndex { NSEqualRanges($0, selectedRange) }
+    return MarkdownFindPosition(
+      currentNumber: currentIndex.map { $0 + 1 },
+      total: ranges.count
+    )
+  }
+
+  func result(
+    selectedRange: NSRange,
+    direction: MarkdownFindDirection
+  ) -> MarkdownFindResult? {
+    guard !ranges.isEmpty else { return nil }
+    let currentIndex = ranges.firstIndex { NSEqualRanges($0, selectedRange) }
+    let target: (index: Int, didWrap: Bool)
+    switch direction {
+    case .next:
+      if let currentIndex {
+        let nextIndex = (currentIndex + 1) % ranges.count
+        target = (nextIndex, nextIndex <= currentIndex)
+      } else if let nextIndex = ranges.firstIndex(where: { $0.location >= NSMaxRange(selectedRange) }) {
+        target = (nextIndex, false)
+      } else {
+        target = (0, true)
+      }
+    case .previous:
+      if let currentIndex {
+        let previousIndex = currentIndex == 0 ? ranges.count - 1 : currentIndex - 1
+        target = (previousIndex, previousIndex >= currentIndex)
+      } else if let previousIndex = ranges.lastIndex(where: { NSMaxRange($0) <= selectedRange.location }) {
+        target = (previousIndex, false)
+      } else {
+        target = (ranges.count - 1, true)
+      }
+    }
+    return MarkdownFindResult(
+      range: ranges[target.index],
+      didWrap: target.didWrap,
+      currentNumber: target.index + 1,
+      total: ranges.count
+    )
+  }
+}
+
 struct MacMarkdownComposerView: View {
   @Binding var draft: ArticleDraft
   let store: WorkbenchStore
@@ -27,6 +77,7 @@ struct MacMarkdownComposerView: View {
   @State private var isFindWholeWord: Bool
   @State private var isFindRegularExpression: Bool
   @State private var findReplaceMessage = ""
+  @State private var findMatchSnapshot: MarkdownFindMatchSnapshot
   @State private var editorEditRequest: MarkdownTextEditRequest?
   @State private var markdownTextFocusRequest: MarkdownTextFocusRequest?
   @State private var scrollSyncUpdate: MarkdownScrollSyncUpdate?
@@ -70,6 +121,7 @@ struct MacMarkdownComposerView: View {
   private let markdownAnalysisService = MarkdownEditorAnalysisService()
   private let imageMetadataEditingService = ImageMetadataEditingService()
   private let frontMatterEditingService = MarkdownFrontMatterEditingService()
+  private let selectionEditingService = MarkdownComposerSelectionEditingService()
 
   private var inlineDiagnostics: [MarkdownInlineDiagnostic] {
     guard appliedMarkdownAnalysisGeneration == markdownAnalysisGeneration else { return [] }
@@ -144,6 +196,17 @@ struct MacMarkdownComposerView: View {
     _isFindCaseSensitive = State(initialValue: editorSession.isFindCaseSensitive)
     _isFindWholeWord = State(initialValue: editorSession.isFindWholeWord)
     _isFindRegularExpression = State(initialValue: editorSession.isFindRegularExpression)
+    _findMatchSnapshot = State(
+      initialValue: Self.makeFindMatchSnapshot(
+        text: buffer.bodyMarkdown,
+        query: editorSession.findQuery,
+        options: MarkdownFindOptions(
+          caseSensitive: editorSession.isFindCaseSensitive,
+          wholeWord: editorSession.isFindWholeWord,
+          usesRegularExpression: editorSession.isFindRegularExpression
+        )
+      )
+    )
     _editorScrollProgress = State(initialValue: editorSession.editorScrollProgress)
     _previewScrollProgress = State(initialValue: editorSession.previewScrollProgress)
     _editorScrollRestorationUpdate = State(
@@ -295,10 +358,12 @@ struct MacMarkdownComposerView: View {
     }
     .onChange(of: findQuery) { _, _ in
       findReplaceMessage = ""
+      refreshFindMatchSnapshot()
       saveCurrentEditorSession()
     }
     .onChange(of: findOptions) { _, _ in
       findReplaceMessage = ""
+      refreshFindMatchSnapshot()
       saveCurrentEditorSession()
     }
     .onChange(of: replacementText) { _, _ in
@@ -471,6 +536,7 @@ struct MacMarkdownComposerView: View {
   ) {
     syncActiveEditorSelection()
     stageEditorBody(replacingBaseBody: previousBody)
+    refreshFindMatchSnapshot()
     synchronizeDocumentBodyFromBuffer()
     scheduleMarkdownAnalysis()
     saveCurrentEditorSession()
@@ -489,6 +555,7 @@ struct MacMarkdownComposerView: View {
     guard force || buffer.revision != editorBodyRevision else { return }
     editorBody = buffer.bodyMarkdown
     editorBodyRevision = buffer.revision
+    refreshFindMatchSnapshot()
   }
 
   private func applyEditorDocument(_ document: String) {
@@ -983,11 +1050,7 @@ struct MacMarkdownComposerView: View {
 
   private var canUseFindReplace: Bool {
     guard !findQuery.isEmpty else { return false }
-    return (try? findReplaceService.matches(
-      in: editorBody,
-      query: findQuery,
-      options: findOptions
-    )) != nil
+    return findMatchSnapshot.errorMessage == nil
   }
 
   private func updateSynchronizedScroll(
@@ -1039,6 +1102,7 @@ struct MacMarkdownComposerView: View {
     findReplaceMessage = findQuery.isEmpty && isFindReplacePresented
       ? "输入查找内容。"
       : ""
+    refreshFindMatchSnapshot()
   }
 
   private func currentEditorSessionState() -> MarkdownEditorSessionState {
@@ -1077,29 +1141,44 @@ struct MacMarkdownComposerView: View {
 
   private var findMatchStatus: String {
     guard !findQuery.isEmpty else { return "0/0" }
-    guard let position = try? findReplaceService.position(
-      in: editorBody,
-      query: findQuery,
-      selectedRange: selectedRange,
-      options: findOptions
-    ) else {
+    guard findMatchSnapshot.errorMessage == nil else {
       return "—/—"
     }
+    let position = findMatchSnapshot.position(selectedRange: selectedRange)
     return "\(position.currentNumber ?? 0)/\(position.total)"
   }
 
   private var findReplaceFeedbackMessage: String {
     guard !findQuery.isEmpty else { return findReplaceMessage }
+    return findMatchSnapshot.errorMessage ?? findReplaceMessage
+  }
+
+  private static func makeFindMatchSnapshot(
+    text: String,
+    query: String,
+    options: MarkdownFindOptions
+  ) -> MarkdownFindMatchSnapshot {
+    guard !query.isEmpty else { return .empty }
     do {
-      _ = try findReplaceService.matches(
-        in: editorBody,
-        query: findQuery,
-        options: findOptions
+      return MarkdownFindMatchSnapshot(
+        ranges: try MarkdownFindReplaceService().matches(
+          in: text,
+          query: query,
+          options: options
+        ),
+        errorMessage: nil
       )
-      return findReplaceMessage
     } catch {
-      return error.localizedDescription
+      return MarkdownFindMatchSnapshot(ranges: [], errorMessage: error.localizedDescription)
     }
+  }
+
+  private func refreshFindMatchSnapshot() {
+    findMatchSnapshot = Self.makeFindMatchSnapshot(
+      text: editorBody,
+      query: findQuery,
+      options: findOptions
+    )
   }
 
   private func showOutline() {
@@ -1239,12 +1318,12 @@ struct MacMarkdownComposerView: View {
     }
 
     do {
-      guard let result = try findReplaceService.find(
-        in: editorBody,
-        query: findQuery,
+      if let errorMessage = findMatchSnapshot.errorMessage {
+        throw MarkdownFindReplaceError.invalidRegularExpression(errorMessage)
+      }
+      guard let result = findMatchSnapshot.result(
         selectedRange: selectedRange,
-        direction: direction,
-        options: findOptions
+        direction: direction
       ) else {
         findReplaceMessage = "没有找到匹配。"
         EditorAccessibilityAnnouncementCenter.announceFindMessage(
@@ -1342,25 +1421,23 @@ struct MacMarkdownComposerView: View {
   }
 
   private func replacingSelection(in draft: ArticleDraft, with markdown: String) -> ArticleDraft {
-    var updated = draft
-    let source = updated.bodyMarkdown as NSString
-    let range = editingRange(in: source)
-    let needsLeadingBreak = range.location > 0 && !source.substring(to: range.location).hasSuffix("\n")
-    let needsTrailingBreak = range.location + range.length < source.length
-      && !source.substring(from: range.location + range.length).hasPrefix("\n")
-    let insertion = "\(needsLeadingBreak ? "\n" : "")\(markdown)\(needsTrailingBreak ? "\n" : "")"
-    updated.bodyMarkdown = source.replacingCharacters(in: range, with: insertion)
-    selectedRange = NSRange(location: range.location + (insertion as NSString).length, length: 0)
-    return updated
+    let mutation = selectionEditingService.replacingSelection(
+      in: draft,
+      selectedRange: selectedRange,
+      with: markdown
+    )
+    selectedRange = mutation.selectedRange
+    return mutation.draft
   }
 
   private func replacingRawSelection(in draft: ArticleDraft, with text: String) -> ArticleDraft {
-    var updated = draft
-    let source = updated.bodyMarkdown as NSString
-    let range = editingRange(in: source)
-    updated.bodyMarkdown = source.replacingCharacters(in: range, with: text)
-    selectedRange = NSRange(location: range.location + (text as NSString).length, length: 0)
-    return updated
+    let mutation = selectionEditingService.replacingRawSelection(
+      in: draft,
+      selectedRange: selectedRange,
+      with: text
+    )
+    selectedRange = mutation.selectedRange
+    return mutation.draft
   }
 
   private func applyMarkdownFormatting(_ command: MarkdownFormattingCommand) {
@@ -1384,17 +1461,15 @@ struct MacMarkdownComposerView: View {
 
   private func wrapSelection(prefix: String, suffix: String, placeholder: String) {
     guard requireBodyEditingContext() else { return }
-    var updated = previewDraft
-    let source = updated.bodyMarkdown as NSString
-    let range = editingRange(in: source)
-    let selected = range.length > 0 ? source.substring(with: range) : placeholder
-    let replacement = prefix + selected + suffix
-
-    updated.bodyMarkdown = source.replacingCharacters(in: range, with: replacement)
-    applyDraftUpdate(updated)
-
-    let prefixLength = (prefix as NSString).length
-    selectedRange = NSRange(location: range.location + prefixLength, length: (selected as NSString).length)
+    let mutation = selectionEditingService.wrappingSelection(
+      in: previewDraft,
+      selectedRange: selectedRange,
+      prefix: prefix,
+      suffix: suffix,
+      placeholder: placeholder
+    )
+    _ = applyDraftUpdate(mutation.draft)
+    selectedRange = mutation.selectedRange
   }
 
   private func prefixCurrentLine(_ prefix: String) {
@@ -1405,27 +1480,13 @@ struct MacMarkdownComposerView: View {
   }
 
   private func replaceCurrentLines(_ transform: (String) -> String) {
-    var updated = previewDraft
-    let source = updated.bodyMarkdown as NSString
-    let range = editingRange(in: source)
-    let effectiveRange = NSRange(location: range.location, length: max(range.length, 0))
-    let lineRange = source.lineRange(for: effectiveRange)
-    let lineText = source.substring(with: lineRange)
-    let lines = lineText.components(separatedBy: "\n")
-    let transformed = lines.enumerated().map { index, line in
-      if index == lines.count - 1, line.isEmpty {
-        return line
-      }
-      return transform(line)
-    }
-    .joined(separator: "\n")
-
-    updated.bodyMarkdown = source.replacingCharacters(in: lineRange, with: transformed)
-    applyDraftUpdate(updated)
-    selectedRange = NSRange(
-      location: min(range.location, (updated.bodyMarkdown as NSString).length),
-      length: range.length
+    let mutation = selectionEditingService.replacingCurrentLines(
+      in: previewDraft,
+      selectedRange: selectedRange,
+      transform: transform
     )
+    _ = applyDraftUpdate(mutation.draft)
+    selectedRange = mutation.selectedRange
   }
 
   private func insertCodeBlock() {
@@ -1525,18 +1586,11 @@ struct MacMarkdownComposerView: View {
   }
 
   private func selectedText(in text: String) -> String {
-    let source = text as NSString
-    let range = clamped(selectedRange, length: source.length)
-    guard range.length > 0 else { return "" }
-    return source.substring(with: range)
+    selectionEditingService.selectedText(in: text, selectedRange: selectedRange)
   }
 
   private func editingRange(in source: NSString) -> NSRange {
-    let range = clamped(selectedRange, length: source.length)
-    if range.length > 0 {
-      return range
-    }
-    return NSRange(location: source.length, length: 0)
+    selectionEditingService.editingRange(in: source, selectedRange: selectedRange)
   }
 
   private func syncActiveEditorSelection() {
@@ -1556,9 +1610,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func clamped(_ range: NSRange, length: Int) -> NSRange {
-    let location = min(max(range.location, 0), length)
-    let maxLength = max(0, length - location)
-    return NSRange(location: location, length: min(range.length, maxLength))
+    selectionEditingService.clamped(range, length: length)
   }
 
   private func pasteAIPromptToClipboard() {
@@ -1899,27 +1951,5 @@ struct MacMarkdownComposerView: View {
   private func discardSelectionEditPreview() {
     selectionEditPreview = nil
     selectionActionMessage = "已丢弃 AI 预览。"
-  }
-}
-
-private struct MarkdownDocumentSynchronizationModifier: ViewModifier {
-  let editorDocument: String
-  let editorBody: String
-  let canonicalFrontMatter: String
-  let onEditorDocumentChange: (String) -> Void
-  let onEditorBodyChange: (String, String) -> Void
-  let onCanonicalFrontMatterChange: (String) -> Void
-
-  func body(content: Content) -> some View {
-    content
-      .onChange(of: editorDocument) { _, updatedDocument in
-        onEditorDocumentChange(updatedDocument)
-      }
-      .onChange(of: editorBody) { previousBody, updatedBody in
-        onEditorBodyChange(previousBody, updatedBody)
-      }
-      .onChange(of: canonicalFrontMatter) { _, updatedFrontMatter in
-        onCanonicalFrontMatterChange(updatedFrontMatter)
-      }
   }
 }

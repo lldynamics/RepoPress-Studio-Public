@@ -49,10 +49,15 @@ final class CredentialSafeURLSessionDelegate: NSObject, URLSessionTaskDelegate, 
 }
 
 enum CredentialSafeURLSession {
-  static func make() -> URLSession {
+  static func make(
+    timeoutIntervalForRequest: TimeInterval = 60,
+    timeoutIntervalForResource: TimeInterval = 7 * 24 * 60 * 60
+  ) -> URLSession {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.httpShouldSetCookies = false
     configuration.httpCookieAcceptPolicy = .never
+    configuration.timeoutIntervalForRequest = timeoutIntervalForRequest
+    configuration.timeoutIntervalForResource = timeoutIntervalForResource
     return URLSession(
       configuration: configuration,
       delegate: CredentialSafeURLSessionDelegate(),

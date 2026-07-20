@@ -392,8 +392,8 @@ public struct MarkdownTableEditingService: Sendable {
     for separatorLineIndex in 1 ..< lines.count {
       let headerLineIndex = separatorLineIndex - 1
       guard !isInsideFencedCodeBlock(lines: lines, before: headerLineIndex),
-            let header = parsedRow(in: source, line: lines[headerLineIndex]),
-            let separator = parsedRow(in: source, line: lines[separatorLineIndex]),
+            let header = parsedRow(line: lines[headerLineIndex]),
+            let separator = parsedRow(line: lines[separatorLineIndex]),
             header.cells.count == separator.cells.count,
             !header.cells.isEmpty,
             let alignments = separatorAlignments(for: separator.cells) else {
@@ -405,7 +405,7 @@ public struct MarkdownTableEditingService: Sendable {
       var nextLineIndex = separatorLineIndex + 1
       while nextLineIndex < lines.count,
             !lines[nextLineIndex].content.trimmingCharacters(in: .whitespaces).isEmpty,
-            let row = parsedRow(in: source, line: lines[nextLineIndex]) {
+            let row = parsedRow(line: lines[nextLineIndex]) {
         parsedRows.append(row)
         lastLineIndex = nextLineIndex
         nextLineIndex += 1
@@ -508,10 +508,7 @@ public struct MarkdownTableEditingService: Sendable {
     return lines.firstIndex { NSLocationInRange(location, $0.fullRange) }
   }
 
-  private func parsedRow(
-    in source: NSString,
-    line: MarkdownSourceLine
-  ) -> ParsedMarkdownTableRow? {
+  private func parsedRow(line: MarkdownSourceLine) -> ParsedMarkdownTableRow? {
     let value = line.content as NSString
     let pipeLocations = structuralPipeLocations(in: value)
     guard !pipeLocations.isEmpty else { return nil }
