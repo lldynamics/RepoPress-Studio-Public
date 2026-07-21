@@ -105,7 +105,8 @@ struct SettingsConfigurationHealthCard: View {
       systemImage: "folder",
       state: isReady ? .ready : .warning,
       destination: .repository,
-      actionTitle: String(localized: "选择本地仓库")
+      actionTitle: String(localized: "选择本地仓库"),
+      identityValue: isReady ? path : nil
     )
   }
 
@@ -212,12 +213,19 @@ private struct SettingsConfigurationHealthTile: View {
 
       VStack(alignment: .leading, spacing: 2) {
         Text(LocalizedStringKey(item.title))
-          .font(.caption.weight(.semibold))
+          .font(.callout.weight(.semibold))
           .workbenchTruncatedIdentity(localizedTitle)
-        item.detail
-          .font(.caption2)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
+        if let identityValue = item.identityValue {
+          item.detail
+            .font(.caption.monospaced())
+            .foregroundStyle(.secondary)
+            .workbenchTruncatedIdentity(identityValue, lineLimit: 2)
+        } else {
+          item.detail
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+        }
       }
 
       Spacer(minLength: 0)
@@ -236,7 +244,8 @@ private struct SettingsConfigurationHealthTile: View {
           .accessibilityHidden(true)
       }
     }
-    .padding(8)
+    .padding(10)
+    .frame(minHeight: 68)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .combine)
@@ -253,6 +262,7 @@ private struct SettingsConfigurationHealthItem: Identifiable {
   let state: SettingsConfigurationHealthState
   let destination: SettingsConfigurationHealthDestination
   let actionTitle: String
+  let identityValue: String?
 
   init(
     title: String,
@@ -260,7 +270,8 @@ private struct SettingsConfigurationHealthItem: Identifiable {
     systemImage: String,
     state: SettingsConfigurationHealthState,
     destination: SettingsConfigurationHealthDestination,
-    actionTitle: String
+    actionTitle: String,
+    identityValue: String? = nil
   ) {
     id = title
     self.title = title
@@ -269,6 +280,7 @@ private struct SettingsConfigurationHealthItem: Identifiable {
     self.state = state
     self.destination = destination
     self.actionTitle = actionTitle
+    self.identityValue = identityValue
   }
 
   var isReady: Bool {

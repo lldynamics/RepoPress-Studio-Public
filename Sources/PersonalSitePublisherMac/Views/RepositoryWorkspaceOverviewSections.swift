@@ -69,26 +69,6 @@ extension RepositoryWorkspaceView {
       } label: {
         Label("内容迁移", systemImage: "arrow.triangle.2.circlepath.doc.on.clipboard")
       }
-
-      Divider()
-
-      Button {
-        stage = .automation
-      } label: {
-        Label("自动化设置", systemImage: "arrow.triangle.2.circlepath")
-      }
-
-      Button {
-        stage = .preview
-      } label: {
-        Label("本地预览", systemImage: "play.rectangle")
-      }
-
-      Button {
-        stage = .history
-      } label: {
-        Label("发布记录", systemImage: "clock.arrow.circlepath")
-      }
     } label: {
       Label("仓库操作", systemImage: "ellipsis.circle")
     }

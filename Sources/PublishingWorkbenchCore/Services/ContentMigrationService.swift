@@ -512,20 +512,17 @@ public struct ContentMigrationService: Sendable {
   }
 
   private func parseFrontMatter(_ document: String) -> (values: [String: String], body: String) {
-    let lines = document.components(separatedBy: .newlines)
-    guard let delimiter = lines.first?.trimmingCharacters(in: .whitespaces),
-          delimiter == "---" || delimiter == "+++",
-          let end = lines.dropFirst().firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == delimiter }) else {
+    guard let parsed = DelimitedFrontMatterParser().split(document) else {
       return ([:], document)
     }
     var values: [String: String] = [:]
-    for line in lines[1..<end] {
-      let separator: Character = delimiter == "+++" ? "=" : ":"
+    for line in parsed.contentLines {
+      let separator: Character = parsed.delimiter == .toml ? "=" : ":"
       let parts = line.split(separator: separator, maxSplits: 1).map(String.init)
       guard parts.count == 2 else { continue }
       values[parts[0].trimmingCharacters(in: .whitespaces).lowercased()] = parts[1].trimmingCharacters(in: CharacterSet(charactersIn: " \\\"'"))
     }
-    return (values, lines[lines.index(after: end)...].joined(separator: "\n"))
+    return (values, parsed.body)
   }
 
   private func normalizedSourcePath(_ link: String?) -> String? {

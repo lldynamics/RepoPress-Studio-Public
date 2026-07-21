@@ -16,17 +16,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "script" / "release_checks.json"
-QUICK_CHECK_IDS = {
-    "repository-source-boundary",
-    "build-version",
-    "build-version-tests",
-    "app-store-listing",
-    "localization",
-    "privacy-copy",
-    "storekit",
-    "swift-strict-build",
-    "swift-tests",
-}
 DEFAULT_RESULT_JSON = ROOT / ".build" / "release-gate-result.json"
 
 
@@ -139,6 +128,9 @@ def validate_check(check: dict[str, object]) -> None:
         raise SystemExit(f"release gate: source and evidence for {check['id']} must be string lists")
     if not isinstance(check.get("environment", {}), dict):
         raise SystemExit(f"release gate: environment for {check['id']} must be an object")
+    groups = check.get("groups", [])
+    if not isinstance(groups, list) or not all(isinstance(value, str) for value in groups):
+        raise SystemExit(f"release gate: groups for {check['id']} must be a string list")
     for value in check["command"]:
         if value.startswith("script/") and not (ROOT / value).is_file():
             raise SystemExit(f"release gate: manifest command path is missing for {check['id']}: {value}")
@@ -280,7 +272,7 @@ def main() -> int:
     if unknown_ids:
         parser.error(f"unknown check ID(s): {', '.join(unknown_ids)}")
     if args.quick:
-        checks = [check for check in checks if check["id"] in QUICK_CHECK_IDS]
+        checks = [check for check in checks if "quick" in check.get("groups", [])]
     elif args.tooling:
         checks = [check for check in checks if is_tooling_self_test(check)]
     elif args.check:

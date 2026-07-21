@@ -22,8 +22,9 @@ private struct DraftListImageSummaryRefreshInput: Hashable {
 }
 
 struct WritingDraftColumn: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
   let isCompact: Bool
+  @StateObject private var draftListState: WorkbenchDraftListFeatureFacade
   @State private var searchText = ""
   @State private var filter: DraftListFilter = .all
   @AppStorage("writingDraftSortOrderV1") private var sortOrderRawValue = WritingDraftSortOrder.updatedNewest.rawValue
@@ -47,6 +48,14 @@ struct WritingDraftColumn: View {
   @State private var selectedDraftIDs: Set<UUID> = []
   @State private var draftOwnershipTransferPlan: DraftOwnershipTransferPlan?
   @Environment(\.undoManager) private var undoManager
+
+  init(store: WorkbenchStore, isCompact: Bool) {
+    self.store = store
+    self.isCompact = isCompact
+    _draftListState = StateObject(
+      wrappedValue: WorkbenchDraftListFeatureFacade(store: store)
+    )
+  }
 
   private var draftSelection: Binding<Set<UUID>> {
     Binding(
@@ -377,7 +386,7 @@ struct WritingDraftColumn: View {
     }
     .task(
       id: DraftListImageSummaryRefreshInput(
-        revision: store.imageWorkbenchInputRevision
+        revision: draftListState.imageInputRevision
       )
     ) {
       await store.refreshImageWorkbenchSiteSummaryInBackground()
@@ -402,15 +411,15 @@ struct WritingDraftColumn: View {
       refreshFilteredDraftsCache()
       refreshDraftCounts()
     }
-    .onChange(of: store.draftTaskQueueStateVersion) { _, _ in
+    .onChange(of: draftListState.taskQueueStateVersion) { _, _ in
       refreshFilteredDraftsCache()
       refreshDraftCounts()
     }
-    .onChange(of: store.repositoryReport) { _, _ in
+    .onChange(of: draftListState.repositoryReport) { _, _ in
       refreshFilteredDraftsCache()
       refreshDraftCounts()
     }
-    .onChange(of: store.draftListPresentationRevision) { _, _ in
+    .onChange(of: draftListState.presentationRevision) { _, _ in
       refreshFilteredDraftsCache()
       let newDrafts = visibleDraftSnapshot
       synchronizeDraftSelection(with: newDrafts)
@@ -423,7 +432,7 @@ struct WritingDraftColumn: View {
       refreshDraftListLoadingState()
       resetDraftPagination()
     }
-    .onChange(of: store.selectedDraftID) { _, _ in
+    .onChange(of: draftListState.selectedDraftID) { _, _ in
       synchronizeDraftSelectionFromStore()
     }
     .onChange(of: filteredDrafts.count) { _, newCount in
@@ -822,7 +831,7 @@ struct WritingDraftColumn: View {
   }
 
   private func refreshFilteredDraftsCache() {
-    let presentationRevision = store.draftListPresentationRevision
+    let presentationRevision = draftListState.presentationRevision
     let didRefreshPresentation = draftListCache.presentationRevision != presentationRevision
     if didRefreshPresentation {
       let sourceDrafts = store.writingDrafts
@@ -843,7 +852,7 @@ struct WritingDraftColumn: View {
     }
     let visibleDrafts = draftListCache.sourceDrafts
     let query = debouncedSearchText
-    let draftTaskQueueStateVersion = store.draftTaskQueueStateVersion
+    let draftTaskQueueStateVersion = draftListState.taskQueueStateVersion
 
     guard didRefreshPresentation ||
       query != draftListCache.searchText || draftListCache.filter != debouncedFilter ||

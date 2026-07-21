@@ -20,7 +20,7 @@ struct SettingsProfileBar: View {
     HStack(alignment: .center, spacing: 7) {
       VStack(alignment: .trailing, spacing: 2) {
         Text("当前站点")
-          .font(.caption2)
+          .font(.caption.weight(.medium))
           .foregroundStyle(.secondary)
 
         Picker("当前站点", selection: activeProfileIDBinding) {

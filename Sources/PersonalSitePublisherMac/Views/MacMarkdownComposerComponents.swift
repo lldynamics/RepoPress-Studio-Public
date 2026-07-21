@@ -80,9 +80,9 @@ struct MarkdownOutlinePopover: View {
       } label: {
         HStack(spacing: 8) {
           Text("H\(item.level)")
-            .font(.caption2.monospaced().weight(.semibold))
+            .font(.caption.monospaced().weight(.semibold))
             .foregroundStyle(.secondary)
-            .frame(width: 22, alignment: .leading)
+            .frame(width: 26, alignment: .leading)
 
           Text(item.title)
             .workbenchTruncatedIdentity(item.title)
@@ -194,7 +194,7 @@ struct MarkdownOutlinePopover: View {
     } label: {
       Image(systemName: "ellipsis.circle")
         .foregroundStyle(.secondary)
-        .frame(width: 24, height: 24)
+        .frame(width: 30, height: 30)
         .contentShape(Rectangle())
     }
     .menuStyle(.borderlessButton)

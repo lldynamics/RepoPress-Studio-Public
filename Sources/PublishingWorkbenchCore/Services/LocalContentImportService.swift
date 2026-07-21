@@ -434,46 +434,17 @@ public struct LocalContentImportService: Sendable {
   }
 
   private func parseFrontMatter(_ document: String) -> (values: [String: [String]], body: String) {
-    let lines = document.components(separatedBy: .newlines)
-    guard let firstLine = lines.first else {
-      return ([:], "")
+    guard let parsed = DelimitedFrontMatterParser().split(document) else {
+      return ([:], document)
     }
-
-    if firstLine == "---" {
-      return parseDelimitedFrontMatter(lines: lines, delimiter: "---", style: .yaml)
-    }
-
-    if firstLine == "+++" {
-      return parseDelimitedFrontMatter(lines: lines, delimiter: "+++", style: .toml)
-    }
-
-    return ([:], document)
-  }
-
-  private enum FrontMatterImportStyle {
-    case yaml
-    case toml
-  }
-
-  private func parseDelimitedFrontMatter(
-    lines: [String],
-    delimiter: String,
-    style: FrontMatterImportStyle
-  ) -> (values: [String: [String]], body: String) {
-    guard let endIndex = lines.dropFirst().firstIndex(of: delimiter) else {
-      return ([:], lines.joined(separator: "\n"))
-    }
-
-    let frontMatterLines = Array(lines[1..<endIndex])
-    let body = Array(lines[(endIndex + 1)...]).joined(separator: "\n")
     let values: [String: [String]]
-    switch style {
+    switch parsed.delimiter {
     case .yaml:
-      values = parseYAMLFrontMatter(frontMatterLines)
+      values = parseYAMLFrontMatter(parsed.contentLines)
     case .toml:
-      values = parseTOMLFrontMatter(frontMatterLines)
+      values = parseTOMLFrontMatter(parsed.contentLines)
     }
-    return (values, body)
+    return (values, parsed.body)
   }
 
   private func parseYAMLFrontMatter(_ lines: [String]) -> [String: [String]] {
