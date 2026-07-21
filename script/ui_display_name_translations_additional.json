@@ -122,7 +122,6 @@
   "display.premium-feature.batch-publishing": { "zh-Hans": "批量发布", "en": "Batch Publishing" },
   "display.premium-feature.online-publishing": { "zh-Hans": "GitHub/GitLab 线上发布", "en": "GitHub/GitLab Online Publishing" },
   "display.privacy-protection-event-kind.locked-on-launch": { "zh-Hans": "启动显示遮罩", "en": "Masked on Launch" },
-  "display.privacy-protection-event-kind.locked-when-inactive": { "zh-Hans": "后台自动显示遮罩", "en": "Masked When Inactive" },
   "display.privacy-protection-event-kind.manual-lock": { "zh-Hans": "手动显示遮罩", "en": "Masked Manually" },
   "display.privacy-protection-event-kind.settings-updated": { "zh-Hans": "设置已更新", "en": "Settings Updated" },
   "display.privacy-protection-event-kind.unlocked": { "zh-Hans": "已移除遮罩", "en": "Mask Removed" },

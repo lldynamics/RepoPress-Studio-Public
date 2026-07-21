@@ -183,7 +183,6 @@ extension PrivacyProtectionEventKind {
   var workbenchDisplayNameSemanticKey: String {
     switch self {
     case .lockedOnLaunch: "display.privacy-protection-event-kind.locked-on-launch"
-    case .lockedWhenInactive: "display.privacy-protection-event-kind.locked-when-inactive"
     case .manualLock: "display.privacy-protection-event-kind.manual-lock"
     case .unlocked: "display.privacy-protection-event-kind.unlocked"
     case .settingsUpdated: "display.privacy-protection-event-kind.settings-updated"

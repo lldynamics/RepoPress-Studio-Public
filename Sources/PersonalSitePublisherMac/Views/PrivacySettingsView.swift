@@ -14,11 +14,6 @@ struct PrivacySettingsView: View {
         masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent)
       )
 
-      PrivacySettingsAutoLockSection(
-        locksWhenInactive: privacySettingBinding(keyPath: \.locksWhenInactive),
-        inactivityLockDelayMinutes: privacySettingBinding(keyPath: \.inactivityLockDelayMinutes)
-      )
-
       PrivacySettingsCurrentStatusSection(
         status: status,
         onLock: {
