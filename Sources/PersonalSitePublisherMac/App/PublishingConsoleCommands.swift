@@ -10,6 +10,8 @@ struct PublishingConsoleCommands: Commands {
   @FocusedValue(\.workspaceCommandPaletteAction) private var workspaceCommandPaletteAction
   @FocusedValue(\.draftFullTextSearchAction) private var draftFullTextSearchAction
   @FocusedValue(\.knowledgeLibraryCommandActions) private var knowledgeLibraryCommands
+  @FocusedValue(\.repositorySourceEditorCommandActions) private var repositorySourceEditorCommands
+  @FocusedValue(\.repositorySourceSessionCommandActions) private var repositorySourceSessionCommands
 
   var body: some Commands {
     CommandMenu("发布控制台") {
@@ -31,11 +33,39 @@ struct PublishingConsoleCommands: Commands {
       .keyboardShortcut("n")
       .disabled(!canUseProtectedWorkbench)
 
-      Button("保存工作台") {
-        store.save()
+      Button(
+        repositorySourceEditorCommands == nil
+          && repositorySourceSessionCommands?.hasUnsavedChanges != true
+          ? "保存工作台"
+          : "保存 HTML 源文件"
+      ) {
+        if let repositorySourceEditorCommands {
+          repositorySourceEditorCommands.save()
+        } else if let repositorySourceSessionCommands,
+                  repositorySourceSessionCommands.hasUnsavedChanges {
+          if repositorySourceSessionCommands.save() {
+            Task { await store.repository.scanAsync() }
+            EditorAccessibilityAnnouncementCenter.announce(
+              String(localized: "HTML 源文件已保存。"),
+              priority: .high
+            )
+          } else {
+            EditorAccessibilityAnnouncementCenter.announce(
+              repositorySourceSessionCommands.lastErrorMessage()
+                ?? String(localized: "未能保存 HTML 源文件。"),
+              priority: .high
+            )
+          }
+        } else {
+          store.save()
+        }
       }
       .keyboardShortcut("s")
-      .disabled(!canUseProtectedWorkbench)
+      .disabled(
+        !canUseProtectedWorkbench
+          || (repositorySourceEditorCommands != nil
+            && repositorySourceEditorCommands?.canSave != true)
+      )
 
       Button(String(localized: "立即锁定软件")) {
         store.lockPrivacy(reason: "已手动快速隐藏工作台内容。")
@@ -75,7 +105,9 @@ struct PublishingConsoleCommands: Commands {
       Divider()
 
       Button(searchCommandTitle) {
-        if let knowledgeLibraryCommands {
+        if let repositorySourceEditorCommands {
+          repositorySourceEditorCommands.showFind()
+        } else if let knowledgeLibraryCommands {
           knowledgeLibraryCommands.focusSearch()
         } else if let markdownEditorCommands {
           markdownEditorCommands.showFindReplace()
@@ -86,7 +118,10 @@ struct PublishingConsoleCommands: Commands {
       .keyboardShortcut("f")
       .disabled(
         !canUseProtectedWorkbench
-          || (knowledgeLibraryCommands == nil
+          || (repositorySourceEditorCommands != nil
+            && repositorySourceEditorCommands?.hasDocument != true)
+          || (repositorySourceEditorCommands == nil
+            && knowledgeLibraryCommands == nil
             && markdownEditorCommands == nil
             && writingDraftCommands == nil)
       )
@@ -142,16 +177,43 @@ struct PublishingConsoleCommands: Commands {
       }
 
       Button("查找下一个") {
-        markdownEditorCommands?.findNext()
+        if let repositorySourceEditorCommands {
+          repositorySourceEditorCommands.findNext()
+        } else {
+          markdownEditorCommands?.findNext()
+        }
       }
       .keyboardShortcut("g")
-      .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canUseFindReplace != true)
+      .disabled(
+        !canUseProtectedWorkbench
+          || (repositorySourceEditorCommands != nil
+            && repositorySourceEditorCommands?.hasDocument != true)
+          || (repositorySourceEditorCommands == nil
+            && markdownEditorCommands?.canUseFindReplace != true)
+      )
 
       Button("查找上一个") {
-        markdownEditorCommands?.findPrevious()
+        if let repositorySourceEditorCommands {
+          repositorySourceEditorCommands.findPrevious()
+        } else {
+          markdownEditorCommands?.findPrevious()
+        }
       }
       .keyboardShortcut("g", modifiers: [.command, .shift])
-      .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canUseFindReplace != true)
+      .disabled(
+        !canUseProtectedWorkbench
+          || (repositorySourceEditorCommands != nil
+            && repositorySourceEditorCommands?.hasDocument != true)
+          || (repositorySourceEditorCommands == nil
+            && markdownEditorCommands?.canUseFindReplace != true)
+      )
+
+      if let repositorySourceEditorCommands {
+        Button("重新载入 HTML 源文件") {
+          repositorySourceEditorCommands.reload()
+        }
+        .disabled(!canUseProtectedWorkbench || !repositorySourceEditorCommands.hasDocument)
+      }
 
       Button("替换当前匹配") {
         markdownEditorCommands?.replaceCurrentOrNext()
@@ -369,12 +431,14 @@ struct PublishingConsoleCommands: Commands {
   }
 
   private var searchCommandTitle: String {
+    if repositorySourceEditorCommands != nil { return "查找 HTML 源码" }
     if knowledgeLibraryCommands != nil { return "搜索资料库" }
     return markdownEditorCommands == nil ? "搜索草稿" : "查找/替换当前文章"
   }
 
   private var commandDraftID: UUID? {
-    markdownEditorCommands?.draftID ?? store.selectedDraftID
+    guard repositorySourceEditorCommands == nil else { return nil }
+    return markdownEditorCommands?.draftID ?? store.selectedDraftID
   }
 
   private var supportsInspector: Bool {

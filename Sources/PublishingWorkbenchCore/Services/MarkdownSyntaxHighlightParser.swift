@@ -10,6 +10,7 @@ public enum MarkdownSyntaxHighlightStyle: String, Hashable, Sendable {
   case bold
   case italic
   case inlineCode
+  case html
 }
 
 public struct MarkdownSyntaxHighlightRun: Hashable, Sendable {
@@ -40,11 +41,10 @@ public actor MarkdownSyntaxHighlightParser {
   private let headingRegex: NSRegularExpression?
   private let boldRegex: NSRegularExpression?
   private let italicRegex: NSRegularExpression?
-  private let inlineCodeRegex: NSRegularExpression?
   private let listRegex: NSRegularExpression?
   private let quoteRegex: NSRegularExpression?
   private let linkRegex: NSRegularExpression?
-  private let codeBlockRegex: NSRegularExpression?
+  private let htmlRegex: NSRegularExpression?
 
   public init() {
     headingRegex = Self.compilePattern(
@@ -53,14 +53,13 @@ public actor MarkdownSyntaxHighlightParser {
     )
     boldRegex = Self.compilePattern("\\*\\*[^\\n\\*]+\\*\\*")
     italicRegex = Self.compilePattern("(?<!\\*)\\*(?!\\*)([^\\n\\*]+?)\\*(?!\\*)")
-    inlineCodeRegex = Self.compilePattern("`[^`\\n]+`")
     listRegex = Self.compilePattern(
       "^\\s*(?:[-*+]|\\d+\\.)\\s+.*$",
       options: .anchorsMatchLines
     )
     quoteRegex = Self.compilePattern("^> .*+$", options: .anchorsMatchLines)
     linkRegex = Self.compilePattern(#"\[[^\]]+\]\([^)]+\)"#)
-    codeBlockRegex = Self.compilePattern("```[\\s\\S]*?```")
+    htmlRegex = Self.compilePattern(#"<!--[\s\S]*?-->|</?[A-Za-z][^<>\n]*?>"#)
   }
 
   public func snapshot(
@@ -89,7 +88,9 @@ public actor MarkdownSyntaxHighlightParser {
     }
 
     let substring = source.substring(with: range)
-    let localCodeBlockRanges = ranges(for: codeBlockRegex, in: substring)
+    let codeRanges = MarkdownCodeRangeScanner.scan(substring)
+    let localCodeBlockRanges = codeRanges.blockRanges
+    let localInlineCodeRanges = codeRanges.inlineRanges
     guard !Task.isCancelled else { return nil }
 
     var runs: [MarkdownSyntaxHighlightRun] = []
@@ -103,6 +104,14 @@ public actor MarkdownSyntaxHighlightParser {
     )
     guard !Task.isCancelled else { return nil }
     append(localCodeBlockRanges, style: .codeBlock, offset: range.location, to: &runs)
+    appendRuns(
+      for: htmlRegex,
+      style: .html,
+      in: substring,
+      offset: range.location,
+      excluding: (localCodeBlockRanges + localInlineCodeRanges).sorted { $0.location < $1.location },
+      to: &runs
+    )
     appendRuns(
       for: linkRegex,
       style: .link,
@@ -148,14 +157,7 @@ public actor MarkdownSyntaxHighlightParser {
       to: &runs
     )
     guard !Task.isCancelled else { return nil }
-    appendRuns(
-      for: inlineCodeRegex,
-      style: .inlineCode,
-      in: substring,
-      offset: range.location,
-      excluding: localCodeBlockRanges,
-      to: &runs
-    )
+    append(localInlineCodeRanges, style: .inlineCode, offset: range.location, to: &runs)
     guard !Task.isCancelled else { return nil }
     completionState = 1
     emittedRunCount = runs.count

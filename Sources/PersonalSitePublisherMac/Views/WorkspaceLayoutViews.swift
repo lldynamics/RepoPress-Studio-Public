@@ -6,8 +6,11 @@ struct WorkspaceShellSplitLayout: View {
   @ObservedObject private var layoutState: WorkbenchWorkspaceLayoutFeatureFacade
   let isCompact: Bool
   let isFocusMode: Bool
+  let workspaceWidth: CGFloat
+  let isInspectorPresented: Bool
   @Binding var contentHealthFilter: ContentHealthContextFilter
   @Binding var repositoryContextStage: RepositoryContextStage
+  let repositorySourceSession: RepositoryHTMLSourceSession
   let onSelectSection: (WorkspaceSection) -> Void
   @AppStorage("workspacePrimarySidebarWidthV1") private var storedSidebarWidth = 260.0
   @State private var sidebarResizeStartWidth: CGFloat?
@@ -16,16 +19,22 @@ struct WorkspaceShellSplitLayout: View {
     store: WorkbenchStore,
     isCompact: Bool,
     isFocusMode: Bool,
+    workspaceWidth: CGFloat,
+    isInspectorPresented: Bool,
     contentHealthFilter: Binding<ContentHealthContextFilter>,
     repositoryContextStage: Binding<RepositoryContextStage>,
+    repositorySourceSession: RepositoryHTMLSourceSession,
     onSelectSection: @escaping (WorkspaceSection) -> Void
   ) {
     self.store = store
     _layoutState = ObservedObject(wrappedValue: store.workspaceLayout)
     self.isCompact = isCompact
     self.isFocusMode = isFocusMode
+    self.workspaceWidth = workspaceWidth
+    self.isInspectorPresented = isInspectorPresented
     _contentHealthFilter = contentHealthFilter
     _repositoryContextStage = repositoryContextStage
+    self.repositorySourceSession = repositorySourceSession
     self.onSelectSection = onSelectSection
   }
 
@@ -47,16 +56,18 @@ struct WorkspaceShellSplitLayout: View {
         EditorCenterColumn(
           store: store,
           contentHealthFilter: contentHealthFilter,
-          repositoryContextStage: $repositoryContextStage
+          repositoryContextStage: $repositoryContextStage,
+          repositorySourceSession: repositorySourceSession
         )
         .frame(minWidth: 680, maxWidth: .infinity, maxHeight: .infinity)
       } else {
         EditorCenterColumn(
           store: store,
           contentHealthFilter: contentHealthFilter,
-          repositoryContextStage: $repositoryContextStage
+          repositoryContextStage: $repositoryContextStage,
+          repositorySourceSession: repositorySourceSession
         )
-        .frame(minWidth: isCompact ? 460 : 560, maxWidth: .infinity, maxHeight: .infinity)
+        .frame(minWidth: centerMinimumWidth, maxWidth: .infinity, maxHeight: .infinity)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
@@ -67,7 +78,28 @@ struct WorkspaceShellSplitLayout: View {
   }
 
   private var sidebarWidth: CGFloat {
-    min(max(CGFloat(storedSidebarWidth), 240), 380)
+    WorkbenchLayoutMode.sidebarWidth(
+      storedWidth: CGFloat(storedSidebarWidth),
+      workspaceWidth: workspaceWidth,
+      centerMinimumWidth: centerMinimumWidth,
+      inspectorPresented: isInspectorPresented
+    )
+  }
+
+  private var centerMinimumWidth: CGFloat {
+    if layoutState.selectedSection == .sync, repositoryContextStage == .source {
+      return 680
+    }
+    return isCompact ? 460 : 560
+  }
+
+  private var sidebarMaximumWidth: CGFloat {
+    WorkbenchLayoutMode.sidebarWidth(
+      storedWidth: 380,
+      workspaceWidth: workspaceWidth,
+      centerMinimumWidth: centerMinimumWidth,
+      inspectorPresented: isInspectorPresented
+    )
   }
 
   private var workspaceSidebarResizeHandle: some View {
@@ -82,7 +114,7 @@ struct WorkspaceShellSplitLayout: View {
                 let startWidth = sidebarResizeStartWidth ?? sidebarWidth
                 sidebarResizeStartWidth = startWidth
                 storedSidebarWidth = Double(
-                  min(max(startWidth + value.translation.width, 240), 380)
+                  min(max(startWidth + value.translation.width, 240), sidebarMaximumWidth)
                 )
               }
               .onEnded { _ in
@@ -96,7 +128,7 @@ struct WorkspaceShellSplitLayout: View {
       .accessibilityAdjustableAction { direction in
         switch direction {
         case .increment:
-          storedSidebarWidth = Double(min(sidebarWidth + 20, 380))
+          storedSidebarWidth = Double(min(sidebarWidth + 20, sidebarMaximumWidth))
         case .decrement:
           storedSidebarWidth = Double(max(sidebarWidth - 20, 240))
         @unknown default:

@@ -15,6 +15,7 @@ enum RepositoryContextStage: String, CaseIterable, Identifiable {
   case changes
   case automation
   case preview
+  case source
   case history
 
   var id: String { rawValue }
@@ -29,6 +30,8 @@ enum RepositoryContextStage: String, CaseIterable, Identifiable {
       return "自动检查"
     case .preview:
       return "本地预览"
+    case .source:
+      return "源码"
     case .history:
       return "发布台账"
     }
@@ -44,6 +47,8 @@ enum RepositoryContextStage: String, CaseIterable, Identifiable {
       return String(localized: "自动检查")
     case .preview:
       return String(localized: "本地预览")
+    case .source:
+      return String(localized: "源码")
     case .history:
       return String(localized: "发布台账")
     }
@@ -53,7 +58,7 @@ enum RepositoryContextStage: String, CaseIterable, Identifiable {
     switch self {
     case .overview, .history:
       return false
-    case .changes, .automation, .preview:
+    case .changes, .automation, .preview, .source:
       return true
     }
   }

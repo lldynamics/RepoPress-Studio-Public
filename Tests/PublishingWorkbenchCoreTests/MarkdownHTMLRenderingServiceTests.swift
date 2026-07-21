@@ -71,4 +71,19 @@ final class MarkdownHTMLRenderingServiceTests: XCTestCase {
     XCTAssertFalse(html.contains("<script>"))
     XCTAssertTrue(html.contains("&lt;script&gt;"))
   }
+
+  func testExplicitPreviewRendererAllowsSanitizedDetailsButNotScript() {
+    let markdown = """
+    <details open><summary>查看详情</summary><mark>安全内容</mark></details>
+
+    <script>alert('unsafe')</script>
+    """
+
+    let html = MarkdownHTMLRenderingService.renderPreviewBodyAllowingSanitizedHTML(markdown)
+
+    XCTAssertTrue(html.contains("<details open><summary>查看详情</summary><mark>安全内容</mark></details>"))
+    XCTAssertFalse(html.contains("<p><details"))
+    XCTAssertFalse(html.contains("<script>"))
+    XCTAssertTrue(html.contains("&lt;script&gt;"))
+  }
 }

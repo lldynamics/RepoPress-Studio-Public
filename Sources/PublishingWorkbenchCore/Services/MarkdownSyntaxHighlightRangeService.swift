@@ -208,27 +208,11 @@ public enum MarkdownSyntaxHighlightRangeService {
           range.length <= text.length - range.location else {
       return true
     }
-    return text.substring(with: text.lineRange(for: range)).contains("```")
+    let changedLines = text.substring(with: text.lineRange(for: range))
+    return changedLines.contains("`") || changedLines.contains("~~~")
   }
 
   private static func codeBlockRanges(in text: NSString) -> [NSRange] {
-    var ranges: [NSRange] = []
-    var searchRange = NSRange(location: 0, length: text.length)
-
-    while searchRange.length > 0 {
-      let openingRange = text.range(of: "```", options: [], range: searchRange)
-      guard openingRange.location != NSNotFound else { break }
-      let contentStart = NSMaxRange(openingRange)
-      let remainingRange = NSRange(location: contentStart, length: text.length - contentStart)
-      let closingRange = text.range(of: "```", options: [], range: remainingRange)
-      guard closingRange.location != NSNotFound else {
-        ranges.append(NSRange(location: openingRange.location, length: text.length - openingRange.location))
-        break
-      }
-      let rangeEnd = NSMaxRange(closingRange)
-      ranges.append(NSRange(location: openingRange.location, length: rangeEnd - openingRange.location))
-      searchRange = NSRange(location: rangeEnd, length: text.length - rangeEnd)
-    }
-    return ranges
+    MarkdownCodeRangeScanner.scan(text as String).blockRanges
   }
 }

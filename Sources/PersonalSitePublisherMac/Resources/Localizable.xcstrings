@@ -1841,6 +1841,54 @@
         }
       }
     },
+    "Astro": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Astro"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Astro"
+          }
+        }
+      }
+    },
+    "CR": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CR"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CR"
+          }
+        }
+      }
+    },
+    "CRLF": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CRLF"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CRLF"
+          }
+        }
+      }
+    },
     "Caption（可选）": {
       "localizations": {
         "en": {
@@ -2225,6 +2273,22 @@
         }
       }
     },
+    "Go Template": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go Template"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go Template"
+          }
+        }
+      }
+    },
     "H%@": {
       "localizations": {
         "en": {
@@ -2257,6 +2321,118 @@
         }
       }
     },
+    "HTML": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTML"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTML"
+          }
+        }
+      }
+    },
+    "HTML 源文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTML Source Files"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTML 源文件"
+          }
+        }
+      }
+    },
+    "HTML 源文件仍在保存，请稍后再试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The HTML source file is still being saved. Try again in a moment."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTML 源文件仍在保存，请稍后再试。"
+          }
+        }
+      }
+    },
+    "HTML 源文件尚未保存": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTML Source File Not Saved"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTML 源文件尚未保存"
+          }
+        }
+      }
+    },
+    "HTML 源文件已保存。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTML source file saved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTML 源文件已保存。"
+          }
+        }
+      }
+    },
+    "HTML 源码 Inspector": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTML Source Inspector"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTML 源码 Inspector"
+          }
+        }
+      }
+    },
+    "HTML 源码编辑器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTML Source Editor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTML 源码编辑器"
+          }
+        }
+      }
+    },
     "Image path pattern": {
       "localizations": {
         "en": {
@@ -2269,6 +2445,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "图片路径规则"
+          }
+        }
+      }
+    },
+    "LF": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LF"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LF"
+          }
+        }
+      }
+    },
+    "Liquid": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liquid"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liquid"
           }
         }
       }
@@ -2689,6 +2897,22 @@
         }
       }
     },
+    "Tera": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tera"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tera"
+          }
+        }
+      }
+    },
     "URL": {
       "localizations": {
         "en": {
@@ -2701,6 +2925,70 @@
           "stringUnit": {
             "state": "translated",
             "value": "URL"
+          }
+        }
+      }
+    },
+    "UTF-16 BE": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UTF-16 BE"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UTF-16 BE"
+          }
+        }
+      }
+    },
+    "UTF-16 LE": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UTF-16 LE"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UTF-16 LE"
+          }
+        }
+      }
+    },
+    "UTF-8": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UTF-8"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UTF-8"
+          }
+        }
+      }
+    },
+    "UTF-8 BOM": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UTF-8 BOM"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UTF-8 BOM"
           }
         }
       }
@@ -7089,22 +7377,6 @@
         }
       }
     },
-    "display.privacy-protection-event-kind.locked-when-inactive": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Masked When Inactive"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "后台自动显示遮罩"
-          }
-        }
-      }
-    },
     "display.privacy-protection-event-kind.manual-lock": {
       "localizations": {
         "en": {
@@ -9649,6 +9921,38 @@
         }
       }
     },
+    "不保存并关闭": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close Without Saving"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不保存并关闭"
+          }
+        }
+      }
+    },
+    "不保存并退出": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quit Without Saving"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不保存并退出"
+          }
+        }
+      }
+    },
     "不允许 AI 使用": {
       "localizations": {
         "en": {
@@ -10129,6 +10433,22 @@
         }
       }
     },
+    "从资料库的“源码”阶段选择 HTML 文件后，这里会显示文件信息与诊断。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select an HTML file in the repository's Source stage to view file information and diagnostics here."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从资料库的“源码”阶段选择 HTML 文件后，这里会显示文件信息与诊断。"
+          }
+        }
+      }
+    },
     "从资料库移除的内容会先保留在这里，只有永久删除才会清理本地副本。": {
       "localizations": {
         "en": {
@@ -10317,6 +10637,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "仓库与部署设置范围"
+          }
+        }
+      }
+    },
+    "仓库中没有 HTML 或 HTM 文件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No HTML or HTM files were found in the repository."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仓库中没有 HTML 或 HTM 文件。"
           }
         }
       }
@@ -10737,6 +11073,22 @@
         }
       }
     },
+    "使用系统默认浏览器打开这个 HTML 文件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open this HTML file in the default system browser."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用系统默认浏览器打开这个 HTML 文件。"
+          }
+        }
+      }
+    },
     "使用资料库内保存的原始网页归档重新提取正文，不联网、不覆盖旧版本；完成后同时重建全文和本地语义索引。": {
       "localizations": {
         "en": {
@@ -10913,6 +11265,38 @@
         }
       }
     },
+    "保存后关闭可保留源码更改；也可以返回编辑器继续处理。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save before closing to keep your source changes, or return to the editor to continue working."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存后关闭可保留源码更改；也可以返回编辑器继续处理。"
+          }
+        }
+      }
+    },
+    "保存后退出可保留源码更改；也可以返回编辑器继续处理。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save before quitting to keep your source changes, or return to the editor to continue working."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存后退出可保留源码更改；也可以返回编辑器继续处理。"
+          }
+        }
+      }
+    },
     "保存失败：%@": {
       "localizations": {
         "en": {
@@ -10957,6 +11341,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "保存并下一张"
+          }
+        }
+      }
+    },
+    "保存并关闭": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save and Close"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存并关闭"
+          }
+        }
+      }
+    },
+    "保存并退出": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save and Quit"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存并退出"
           }
         }
       }
@@ -11229,6 +11645,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "元数据没有变化"
+          }
+        }
+      }
+    },
+    "先保存更改，再用系统浏览器预览。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save your changes before previewing in the system browser."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先保存更改，再用系统浏览器预览。"
           }
         }
       }
@@ -11837,6 +12269,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "关闭查找栏"
+          }
+        }
+      }
+    },
+    "关闭源码文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close Source File"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭源码文件"
           }
         }
       }
@@ -13073,6 +13521,22 @@
         }
       }
     },
+    "刷新 HTML 文件列表": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh HTML File List"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新 HTML 文件列表"
+          }
+        }
+      }
+    },
     "刷新 Token 状态": {
       "localizations": {
         "en": {
@@ -14209,6 +14673,22 @@
         }
       }
     },
+    "另有 %@ 项": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ more"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "另有 %@ 项"
+          }
+        }
+      }
+    },
     "只会删除当前用户的宿主清单和安装收据，不会删除浏览器插件或资料库内容。": {
       "localizations": {
         "en": {
@@ -14253,6 +14733,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "只做文章发布需要的 Git：路径规则、diff 摘要和发布准备。"
+          }
+        }
+      }
+    },
+    "只显示 .html / .htm": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing .html / .htm only"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只显示 .html / .htm"
           }
         }
       }
@@ -14445,6 +14941,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "可导入文章"
+          }
+        }
+      }
+    },
+    "可用 AI 修复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Fix Available"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可用 AI 修复"
           }
         }
       }
@@ -18769,6 +19281,22 @@
         }
       }
     },
+    "当前文件还有未保存的更改。继续会丢弃这些更改。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current file has unsaved changes. Continuing will discard them."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前文件还有未保存的更改。继续会丢弃这些更改。"
+          }
+        }
+      }
+    },
     "当前文章": {
       "localizations": {
         "en": {
@@ -19117,6 +19645,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "当前页面没有 Inspector"
+          }
+        }
+      }
+    },
+    "当前：%@ · %@ 条": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current: %1$@ · %2$@ items"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前：%1$@ · %2$@ 条"
           }
         }
       }
@@ -19917,6 +20461,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "打开 AI 设置"
+          }
+        }
+      }
+    },
+    "打开 HTML 高级源码编辑器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Advanced HTML Source Editor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 HTML 高级源码编辑器"
           }
         }
       }
@@ -21041,6 +21601,22 @@
         }
       }
     },
+    "按处理方式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Resolution"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按处理方式"
+          }
+        }
+      }
+    },
     "按手机版的 AI 修复队列逻辑，优先处理缺摘要、缺 Tags 和可由 AI 辅助判断的元数据问题。": {
       "localizations": {
         "en": {
@@ -21053,6 +21629,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "按手机版的 AI 修复队列逻辑，优先处理缺摘要、缺 Tags 和可由 AI 辅助判断的元数据问题。"
+          }
+        }
+      }
+    },
+    "按文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By File"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按文件"
+          }
+        }
+      }
+    },
+    "按文件名或仓库相对路径筛选": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter by file name or repository-relative path"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按文件名或仓库相对路径筛选"
           }
         }
       }
@@ -21085,6 +21693,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "按相关度"
+          }
+        }
+      }
+    },
+    "按站点": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Site"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按站点"
+          }
+        }
+      }
+    },
+    "换行符": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Line Endings"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "换行符"
           }
         }
       }
@@ -21341,6 +21981,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "插图"
+          }
+        }
+      }
+    },
+    "搜索 HTML 源文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search HTML Source Files"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索 HTML 源文件"
           }
         }
       }
@@ -21825,6 +22481,102 @@
         }
       }
     },
+    "放弃并关闭": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard and Close"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "放弃并关闭"
+          }
+        }
+      }
+    },
+    "放弃并打开": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard and Open"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "放弃并打开"
+          }
+        }
+      }
+    },
+    "放弃并重新载入": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard and Reload"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "放弃并重新载入"
+          }
+        }
+      }
+    },
+    "放弃更改并关闭文件？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard Changes and Close File?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "放弃更改并关闭文件？"
+          }
+        }
+      }
+    },
+    "放弃更改并打开其他文件？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard Changes and Open Another File?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "放弃更改并打开其他文件？"
+          }
+        }
+      }
+    },
+    "放弃更改并重新载入？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard Changes and Reload?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "放弃更改并重新载入？"
+          }
+        }
+      }
+    },
     "文件": {
       "localizations": {
         "en": {
@@ -21853,6 +22605,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "文件变更"
+          }
+        }
+      }
+    },
+    "文件大小": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File Size"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件大小"
           }
         }
       }
@@ -21901,6 +22669,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "文件夹名称"
+          }
+        }
+      }
+    },
+    "文件格式、诊断与 Git 差异": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File format, diagnostics, and Git diff"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件格式、诊断与 Git 差异"
           }
         }
       }
@@ -22045,6 +22829,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "文章分组"
+          }
+        }
+      }
+    },
+    "文章分组方式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Article Grouping"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文章分组方式"
           }
         }
       }
@@ -22785,38 +23585,6 @@
         }
       }
     },
-    "无操作时自动锁定软件": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Lock App After Inactivity"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无操作时自动锁定软件"
-          }
-        }
-      }
-    },
-    "无操作时间": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Inactivity Period"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无操作时间"
-          }
-        }
-      }
-    },
     "无法取得浏览器原生连接锁（错误码 %@）。": {
       "localizations": {
         "en": {
@@ -23441,22 +24209,6 @@
         }
       }
     },
-    "最少 1 分钟，最多 240 分钟。切换到其他应用后也会继续计时。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Minimum 1 minute, maximum 240 minutes. The timer continues while you use another app."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "最少 1 分钟，最多 240 分钟。切换到其他应用后也会继续计时。"
-          }
-        }
-      }
-    },
     "最近回复": {
       "localizations": {
         "en": {
@@ -23821,6 +24573,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "未知尺寸"
+          }
+        }
+      }
+    },
+    "未能保存 HTML 源文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could Not Save HTML Source File"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未能保存 HTML 源文件"
+          }
+        }
+      }
+    },
+    "未能保存 HTML 源文件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not save the HTML source file."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未能保存 HTML 源文件。"
           }
         }
       }
@@ -25073,6 +25857,38 @@
         }
       }
     },
+    "模板文件请使用资料库中的本地站点预览。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use the repository's local site preview for template files."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模板文件请使用资料库中的本地站点预览。"
+          }
+        }
+      }
+    },
+    "模板档位": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Template Dialect"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模板档位"
+          }
+        }
+      }
+    },
     "正在准备工作台": {
       "localizations": {
         "en": {
@@ -25261,6 +26077,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在执行线上发布。"
+          }
+        }
+      }
+    },
+    "正在扫描 HTML 文件…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scanning HTML files…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在扫描 HTML 文件…"
           }
         }
       }
@@ -26001,6 +26833,22 @@
         }
       }
     },
+    "没有打开源码文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Source File Open"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有打开源码文件"
+          }
+        }
+      }
+    },
     "没有找到匹配。": {
       "localizations": {
         "en": {
@@ -26141,6 +26989,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "深度"
+          }
+        }
+      }
+    },
+    "混合（只读保护）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mixed (Read-only Protection)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "混合（只读保护）"
           }
         }
       }
@@ -26349,6 +27213,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "源文件"
+          }
+        }
+      }
+    },
+    "源码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "源码"
           }
         }
       }
@@ -27089,6 +27969,22 @@
         }
       }
     },
+    "磁盘修改": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modified on Disk"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "磁盘修改"
+          }
+        }
+      }
+    },
     "社交预览": {
       "localizations": {
         "en": {
@@ -27825,6 +28721,38 @@
         }
       }
     },
+    "第 %@ 行 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Line %1$@ · %2$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %1$@ 行 · %2$@"
+          }
+        }
+      }
+    },
+    "第 %@ 行：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Line %1$@: %2$@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %1$@ 行：%2$@"
+          }
+        }
+      }
+    },
     "等待合并": {
       "localizations": {
         "en": {
@@ -28237,6 +29165,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "维护报告尚未生成。"
+          }
+        }
+      }
+    },
+    "编码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Encoding"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编码"
           }
         }
       }
@@ -28689,38 +29633,6 @@
         }
       }
     },
-    "自动锁定": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Automatic Lock"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "自动锁定"
-          }
-        }
-      }
-    },
-    "自动锁定前的无操作时间": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Inactivity period before automatic lock"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "自动锁定前的无操作时间"
-          }
-        }
-      }
-    },
     "自定义写作规则": {
       "localizations": {
         "en": {
@@ -28845,6 +29757,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "行动项"
+          }
+        }
+      }
+    },
+    "行数": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lines"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "行数"
           }
         }
       }
@@ -29489,6 +30417,22 @@
         }
       }
     },
+    "请返回编辑器检查文件权限或外部修改冲突。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Return to the editor and check file permissions or external modification conflicts."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请返回编辑器检查文件权限或外部修改冲突。"
+          }
+        }
+      }
+    },
     "请选择 WordPress WXR、RSS/Atom、JSON 导出文件或 Markdown 文件夹。": {
       "localizations": {
         "en": {
@@ -29981,6 +30925,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "轮询"
+          }
+        }
+      }
+    },
+    "载入期间源码发生了新的编辑；为避免丢失内容，本次打开已取消。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The source changed while it was loading, so opening was cancelled to avoid losing edits."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "载入期间源码发生了新的编辑；为避免丢失内容，本次打开已取消。"
           }
         }
       }
@@ -30769,22 +31729,6 @@
         }
       }
     },
-    "连续 %@ 分钟未操作，软件已自动锁定。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The app was locked automatically after %@ minutes of inactivity."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "连续 %@ 分钟未操作，软件已自动锁定。"
-          }
-        }
-      }
-    },
     "追踪本地写入、Review、线上提交、部署状态和回滚计划。": {
       "localizations": {
         "en": {
@@ -30913,6 +31857,22 @@
         }
       }
     },
+    "选择一个 HTML 文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select an HTML File"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择一个 HTML 文件"
+          }
+        }
+      }
+    },
     "选择一个空文件夹作为本地静态站点仓库。": {
       "localizations": {
         "en": {
@@ -30957,6 +31917,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "选择仓库"
+          }
+        }
+      }
+    },
+    "选择仓库中的 HTML 文件后，可在保留编码与换行符的前提下安全编辑。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select an HTML file in the repository to edit it safely while preserving its encoding and line endings."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择仓库中的 HTML 文件后，可在保留编码与换行符的前提下安全编辑。"
           }
         }
       }
@@ -32545,6 +33521,22 @@
         }
       }
     },
+    "需要手动处理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manual Action Required"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要手动处理"
+          }
+        }
+      }
+    },
     "需要至少两个发布站点": {
       "localizations": {
         "en": {
@@ -32973,6 +33965,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "高级工具"
+          }
+        }
+      }
+    },
+    "高级源码编辑会保留文件编码和换行符，并在保存前检查外部修改。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Advanced source editing preserves file encoding and line endings, and checks for external changes before saving."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高级源码编辑会保留文件编码和换行符，并在保存前检查外部修改。"
           }
         }
       }

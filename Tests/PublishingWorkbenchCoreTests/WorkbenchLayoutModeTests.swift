@@ -53,4 +53,38 @@ final class WorkbenchLayoutModeTests: XCTestCase {
       WorkbenchLayoutMode.prefersFocusedWriting(width: 980, editorDisplayMode: .edit)
     )
   }
+
+  func testInspectorLayoutTemporarilyCompressesWideSidebar() {
+    XCTAssertEqual(
+      WorkbenchLayoutMode.sidebarWidth(
+        storedWidth: 380,
+        workspaceWidth: 1180,
+        centerMinimumWidth: 560,
+        inspectorPresented: true
+      ),
+      300
+    )
+    XCTAssertEqual(
+      WorkbenchLayoutMode.sidebarWidth(
+        storedWidth: 380,
+        workspaceWidth: 1440,
+        centerMinimumWidth: 560,
+        inspectorPresented: true
+      ),
+      380
+    )
+  }
+
+  func testHTMLSourceInspectorRequiresRoomForBothSourceColumns() {
+    XCTAssertEqual(WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth, 1240)
+    XCTAssertEqual(
+      WorkbenchLayoutMode.sidebarWidth(
+        storedWidth: 380,
+        workspaceWidth: 1240,
+        centerMinimumWidth: 680,
+        inspectorPresented: true
+      ),
+      240
+    )
+  }
 }

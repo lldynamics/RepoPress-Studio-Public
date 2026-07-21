@@ -816,6 +816,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       pendingSyntaxHighlightPlan = requestedPlan
       syntaxCodeBlockRanges = requestedPlan.codeBlockRanges
       let syntaxHighlightParser = self.syntaxHighlightParser
+      let bodyUTF16Offset = self.bodyUTF16Offset
       let delay = MarkdownSyntaxHighlightSchedulingPolicy.delay(
         for: requestedPlan,
         documentUTF16Length: (text as NSString).length
@@ -833,12 +834,18 @@ struct MacMarkdownTextView: NSViewRepresentable {
             plan: requestedPlan
           )
           guard !Task.isCancelled else { return nil }
-          guard let snapshot = await syntaxHighlightParser.snapshot(
+          guard let parsedSnapshot = await syntaxHighlightParser.snapshot(
             in: text,
             range: resolvedPlan.range
           ) else {
             return nil
           }
+          let snapshot = MarkdownSyntaxHighlightSnapshot(
+            range: parsedSnapshot.range,
+            runs: parsedSnapshot.runs.filter { run in
+              run.style != .html || run.range.location >= bodyUTF16Offset
+            }
+          )
           guard !Task.isCancelled else { return nil }
           let applicationSnapshots = MarkdownSyntaxHighlightApplicationPlanner
             .applicationSnapshots(

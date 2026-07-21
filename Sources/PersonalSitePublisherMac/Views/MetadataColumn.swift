@@ -4,11 +4,20 @@ import SwiftUI
 struct MetadataColumn: View {
   @ObservedObject var store: WorkbenchStore
   @ObservedObject private var ai: WorkbenchAIFeatureFacade
+  let repositoryContextStage: RepositoryContextStage
+  @ObservedObject var repositorySourceSession: RepositoryHTMLSourceSession
   let prioritizesChecks: Bool
 
-  init(store: WorkbenchStore, prioritizesChecks: Bool = false) {
+  init(
+    store: WorkbenchStore,
+    repositoryContextStage: RepositoryContextStage,
+    repositorySourceSession: RepositoryHTMLSourceSession,
+    prioritizesChecks: Bool = false
+  ) {
     self.store = store
     _ai = ObservedObject(wrappedValue: store.ai)
+    self.repositoryContextStage = repositoryContextStage
+    _repositorySourceSession = ObservedObject(wrappedValue: repositorySourceSession)
     self.prioritizesChecks = prioritizesChecks
   }
 
@@ -23,7 +32,15 @@ struct MetadataColumn: View {
       case .siteStarter:
         SiteStarterInspectorView(state: SiteStarterInspectorState(store: store))
       case .repository:
-        RepositoryContextInspectorView(store: store)
+        if repositoryContextStage == .source,
+           repositorySourceSession.activeDocument != nil {
+          RepositoryHTMLSourceInspectorView(
+            store: store,
+            session: repositorySourceSession
+          )
+        } else {
+          RepositoryContextInspectorView(store: store)
+        }
       case .articleMetadata, .articleChecks, .articleImages:
         articleInspector
       case .unavailable:

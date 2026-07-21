@@ -22,6 +22,16 @@ public enum MarkdownHTMLRenderingService {
       return "<pre><code>\(escapeHTML(markdown))</code></pre>"
     }
   }
+
+  /// Renders the explicit, sanitized HTML subset used by the in-app article preview.
+  /// The default `renderBody` API intentionally continues to escape all raw HTML.
+  public static func renderPreviewBodyAllowingSanitizedHTML(_ markdown: String) -> String {
+    let prepared = MarkdownEmbeddedHTMLService.prepare(markdown: markdown)
+    return MarkdownEmbeddedHTMLService.restore(
+      renderedHTML: renderBody(prepared.markdown),
+      replacements: prepared.replacements
+    )
+  }
 }
 
 private extension MarkdownHTMLRenderingService {
@@ -248,12 +258,7 @@ private extension MarkdownHTMLRenderingService {
   }
 
   static func escapeHTML(_ value: String) -> String {
-    value
-      .replacingOccurrences(of: "&", with: "&amp;")
-      .replacingOccurrences(of: "<", with: "&lt;")
-      .replacingOccurrences(of: ">", with: "&gt;")
-      .replacingOccurrences(of: "\"", with: "&quot;")
-      .replacingOccurrences(of: "'", with: "&#39;")
+    MarkupEscaping.html(value)
   }
 
   static func escapeHTMLAttribute(_ value: String) -> String {

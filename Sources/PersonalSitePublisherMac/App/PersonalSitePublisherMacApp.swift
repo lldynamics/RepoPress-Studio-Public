@@ -56,7 +56,6 @@ struct PersonalSitePublisherMacApp: App {
           minWidth: WorkbenchLayoutMode.minimumWindowWidth,
           minHeight: 720
         )
-        .background(MainWindowInitialSizeBridge())
 #if DEBUG
         .background(ScreenshotCaptureWindowBridge())
 #endif
@@ -106,6 +105,35 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    if RepositoryHTMLSourceSessionRegistry.shared.hasUnsavedChanges {
+      let alert = NSAlert()
+      alert.messageText = String(localized: "HTML 源文件尚未保存")
+      alert.informativeText = String(localized: "保存后退出可保留源码更改；也可以返回编辑器继续处理。")
+      alert.alertStyle = .warning
+      alert.addButton(withTitle: String(localized: "保存并退出"))
+      alert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
+      alert.addButton(withTitle: String(localized: "不保存并退出"))
+      switch alert.runModal() {
+      case .alertFirstButtonReturn:
+        guard RepositoryHTMLSourceSessionRegistry.shared.saveBeforeTermination() else {
+          let failureAlert = NSAlert()
+          failureAlert.messageText = String(localized: "未能保存 HTML 源文件")
+          failureAlert.informativeText = RepositoryHTMLSourceSessionRegistry.shared.lastErrorMessage
+            ?? String(localized: "请返回编辑器检查文件权限或外部修改冲突。")
+          failureAlert.alertStyle = .warning
+          failureAlert.addButton(withTitle: String(localized: "继续编辑"))
+          failureAlert.runModal()
+          return .terminateCancel
+        }
+      case .alertSecondButtonReturn:
+        return .terminateCancel
+      case .alertThirdButtonReturn:
+        break
+      default:
+        return .terminateCancel
+      }
+    }
+
     guard let workbenchStore, !workbenchStore.flushPendingChanges() else {
       return .terminateNow
     }

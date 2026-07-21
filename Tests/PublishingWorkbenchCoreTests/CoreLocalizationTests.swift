@@ -25,6 +25,35 @@ final class CoreLocalizationTests: XCTestCase {
     )
   }
 
+  func testEmbeddedHTMLDiagnosticsResolveInEnglish() {
+    let english = Locale(identifier: "en")
+
+    XCTAssertEqual(
+      CoreL10n.text("HTML 链接已拦截", locale: english),
+      "Unsafe HTML URL blocked"
+    )
+    XCTAssertEqual(
+      CoreL10n.text("HTML 片段格式无效", locale: english),
+      "Invalid HTML fragment"
+    )
+    XCTAssertEqual(
+      CoreL10n.format(
+        "<%@> 的 %@ 属性不在安全白名单中。",
+        locale: english,
+        arguments: ["img", "onerror"]
+      ),
+      "<img> uses the onerror attribute, which is not in the safe allowlist."
+    )
+    XCTAssertEqual(
+      CoreL10n.format(
+        "<%@> 需要单独成块，开始标签前和结束标签后只能有空白。",
+        locale: english,
+        arguments: ["details"]
+      ),
+      "<details> must be a standalone block with only whitespace before its opening tag and after its closing tag."
+    )
+  }
+
   func testDeploymentDiagnosticsResolveEnglishCopyAndFormatting() {
     XCTAssertEqual(
       CoreL10n.text("发布页面社交元数据", locale: Locale(identifier: "en")),

@@ -41,6 +41,7 @@ public enum MarkdownInlineDiagnosticService {
     result.append(contentsOf: imageAltDiagnostics(in: markdown, source: source))
     result.append(contentsOf: headingDiagnostics(in: markdown))
     result.append(contentsOf: footnoteDiagnostics(in: markdown, source: source))
+    result.append(contentsOf: embeddedHTMLDiagnostics(in: markdown))
     return result.sorted {
       if $0.range.location == $1.range.location { return $0.id < $1.id }
       return $0.range.location < $1.range.location
@@ -146,6 +147,18 @@ public enum MarkdownInlineDiagnosticService {
         title: "脚注没有定义",
         message: "为 [^\(name)] 添加对应的脚注内容。",
         range: match.range
+      )
+    }
+  }
+
+  private static func embeddedHTMLDiagnostics(in markdown: String) -> [MarkdownInlineDiagnostic] {
+    MarkdownEmbeddedHTMLService.prepare(markdown: markdown).issues.map { issue in
+      MarkdownInlineDiagnostic(
+        id: issue.id,
+        severity: issue.severity,
+        title: issue.title,
+        message: issue.message,
+        range: issue.range
       )
     }
   }

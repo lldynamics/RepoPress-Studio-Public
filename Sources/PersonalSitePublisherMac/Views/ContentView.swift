@@ -51,12 +51,14 @@ struct ContentView: View {
   @State private var responsiveLayout = WorkspaceResponsiveLayoutSnapshot.initial
   @State private var contentHealthFilter: ContentHealthContextFilter = .overview
   @State private var repositoryContextStage: RepositoryContextStage = .overview
+  @StateObject private var repositorySourceSession: RepositoryHTMLSourceSession
   private let repositoryAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
   init(store: WorkbenchStore) {
     self.store = store
     _shellState = ObservedObject(wrappedValue: store.shell)
     _presentationState = ObservedObject(wrappedValue: store.contentPresentation)
+    _repositorySourceSession = StateObject(wrappedValue: RepositoryHTMLSourceSession())
   }
 
   var body: some View {
@@ -69,19 +71,28 @@ struct ContentView: View {
         width: geometry.size.width,
         editorDisplayMode: presentationState.editorDisplayMode
       )
+      let isInspectorVisible = inspectorPresentation.wrappedValue
 
       ZStack {
         WorkspaceShellSplitLayout(
           store: store,
           isCompact: compactLayout,
           isFocusMode: effectiveFocusMode,
+          workspaceWidth: geometry.size.width,
+          isInspectorPresented: isInspectorVisible,
           contentHealthFilter: $contentHealthFilter,
           repositoryContextStage: $repositoryContextStage,
+          repositorySourceSession: repositorySourceSession,
           onSelectSection: { store.selectSection($0) }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .inspector(isPresented: inspectorPresentation) {
-          MetadataColumn(store: store, prioritizesChecks: compactLayout)
+          MetadataColumn(
+            store: store,
+            repositoryContextStage: repositoryContextStage,
+            repositorySourceSession: repositorySourceSession,
+            prioritizesChecks: compactLayout
+          )
             .inspectorColumnWidth(min: 320, ideal: 360, max: 460)
         }
         .disabled(shellState.isPrivacyLocked)
@@ -160,8 +171,28 @@ struct ContentView: View {
         workspaceToolbarActionCluster
       }
     }
+    .background(
+      MainWindowInitialSizeBridge(
+        sourceSession: repositorySourceSession,
+        profileProvider: { store.activeProfile }
+      )
+    )
+    .focusedSceneValue(
+      \.repositorySourceSessionCommandActions,
+      RepositorySourceSessionCommandActions(
+        hasUnsavedChanges: repositorySourceSession.hasUnsavedChanges,
+        save: {
+          repositorySourceSession.saveSynchronously(profile: store.activeProfile)
+        },
+        lastErrorMessage: { repositorySourceSession.errorMessage }
+      )
+    )
     .onAppear {
       applyWorkbenchPreferences()
+      RepositoryHTMLSourceSessionRegistry.shared.register(
+        session: repositorySourceSession,
+        profileProvider: { store.activeProfile }
+      )
     }
     .onChange(of: autoRunPreflight) { _, newValue in
       store.setAutomaticallyRefreshPreflightOnEdit(newValue)
@@ -624,7 +655,10 @@ struct ContentView: View {
   }
 
   private var allowsInspectorByWidth: Bool {
-    WorkbenchLayoutMode.allowsInspector(
+    if shellState.selectedSection == .sync, repositoryContextStage == .source {
+      return responsiveLayout.width >= WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth
+    }
+    return WorkbenchLayoutMode.allowsInspector(
       width: responsiveLayout.width,
       editorDisplayMode: shellState.selectedSection == .writing
         ? responsiveLayout.editorDisplayMode
