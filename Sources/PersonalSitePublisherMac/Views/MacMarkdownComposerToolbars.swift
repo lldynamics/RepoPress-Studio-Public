@@ -198,9 +198,9 @@ struct MacMarkdownEditorToolbar: View {
 
   private func editorActionIcon(_ systemName: String) -> some View {
     Image(systemName: systemName)
-      .font(.system(size: 13, weight: .medium))
-      .frame(width: 24, height: 22)
-      .contentShape(Rectangle())
+      .font(.system(size: 14, weight: .medium))
+      .frame(width: 30, height: 30)
+      .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   private func aiActionGroupTitle(_ group: AIPublishingQuickPromptGroup) -> LocalizedStringKey {

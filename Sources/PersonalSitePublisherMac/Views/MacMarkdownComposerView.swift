@@ -2,103 +2,16 @@ import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
-private struct MarkdownFindMatchSnapshot: Equatable {
-  var ranges: [NSRange]
-  var errorMessage: String?
-
-  static let empty = MarkdownFindMatchSnapshot(ranges: [], errorMessage: nil)
-
-  func position(selectedRange: NSRange) -> MarkdownFindPosition {
-    let currentIndex = ranges.firstIndex { NSEqualRanges($0, selectedRange) }
-    return MarkdownFindPosition(
-      currentNumber: currentIndex.map { $0 + 1 },
-      total: ranges.count
-    )
-  }
-
-  func result(
-    selectedRange: NSRange,
-    direction: MarkdownFindDirection
-  ) -> MarkdownFindResult? {
-    guard !ranges.isEmpty else { return nil }
-    let currentIndex = ranges.firstIndex { NSEqualRanges($0, selectedRange) }
-    let target: (index: Int, didWrap: Bool)
-    switch direction {
-    case .next:
-      if let currentIndex {
-        let nextIndex = (currentIndex + 1) % ranges.count
-        target = (nextIndex, nextIndex <= currentIndex)
-      } else if let nextIndex = ranges.firstIndex(where: { $0.location >= NSMaxRange(selectedRange) }) {
-        target = (nextIndex, false)
-      } else {
-        target = (0, true)
-      }
-    case .previous:
-      if let currentIndex {
-        let previousIndex = currentIndex == 0 ? ranges.count - 1 : currentIndex - 1
-        target = (previousIndex, previousIndex >= currentIndex)
-      } else if let previousIndex = ranges.lastIndex(where: { NSMaxRange($0) <= selectedRange.location }) {
-        target = (previousIndex, false)
-      } else {
-        target = (ranges.count - 1, true)
-      }
-    }
-    return MarkdownFindResult(
-      range: ranges[target.index],
-      didWrap: target.didWrap,
-      currentNumber: target.index + 1,
-      total: ranges.count
-    )
-  }
-}
-
 struct MacMarkdownComposerView: View {
   @Binding var draft: ArticleDraft
   let store: WorkbenchStore
   let aiActions: WorkbenchAIFeatureFacade
   @StateObject private var editorState: WorkbenchMarkdownEditorFeatureFacade
-  @State private var editorBody: String
-  @State private var editorDocument: String
-  @State private var isFrontMatterSelection = false
-  @State private var frontMatterIssue: MarkdownFrontMatterEditingIssue?
-  @State private var ignoredCanonicalFrontMatter: String?
-  @State private var editorStatistics = MarkdownEditorStatistics.empty
-  @State private var selectedRange: NSRange
-  @State private var isImageDropTargeted = false
-  @State private var activeSelectionAIAction: AIPublishingActionKind?
-  @State private var selectionAIActionTask: Task<Void, Never>?
-  @State private var selectionAIActionRequestID: UUID?
-  @State private var aiPromptClipboardTask: Task<Void, Never>?
-  @State private var aiPromptClipboardRequestID: UUID?
-  @State private var isFindReplacePresented: Bool
-  @State private var findQuery: String
-  @State private var replacementText: String
-  @State private var isFindCaseSensitive: Bool
-  @State private var isFindWholeWord: Bool
-  @State private var isFindRegularExpression: Bool
-  @State private var findReplaceMessage = ""
-  @State private var findMatchSnapshot: MarkdownFindMatchSnapshot
-  @State private var editorEditRequest: MarkdownTextEditRequest?
-  @State private var markdownTextFocusRequest: MarkdownTextFocusRequest?
-  @State private var scrollSyncUpdate: MarkdownScrollSyncUpdate?
-  @State private var editorScrollRestorationUpdate: MarkdownScrollSyncUpdate?
-  @State private var previewScrollRestorationUpdate: MarkdownScrollSyncUpdate?
-  @State private var editorScrollProgress: Double
-  @State private var previewScrollProgress: Double
-  @State private var selectionActionMessage = ""
-  @State private var selectionEditPreview: AIPublishingSelectionEditPreview?
-  @State private var isShortcutHelpPresented = false
-  @State private var isOutlinePresented = false
-  @State private var isInternalLinkPickerPresented = false
-  @State private var isDiagnosticsPresented = false
-  @State private var isSnippetLibraryPresented = false
-  @State private var markdownAnalysis = MarkdownEditorAnalysisSnapshot.empty
-  @State private var markdownAnalysisGeneration: UInt64 = 0
-  @State private var appliedMarkdownAnalysisGeneration: UInt64 = 0
-  @State private var markdownAnalysisTask: Task<Void, Never>?
-  @State private var insertedImageMetadataDrafts: [InsertedImageMetadataDraft] = []
-  @State private var activeInsertedImageMetadataID: UUID?
-  @State private var editorBodyRevision: UInt64
+  @State var editorSessionState: MarkdownComposerEditorSessionState
+  @State var attachmentState = MarkdownComposerAttachmentState()
+  @State var selectionActionState = MarkdownComposerSelectionActionState()
+  @State var presentationState = MarkdownComposerPresentationState()
+  @State var analysisState = MarkdownComposerAnalysisState()
   @AppStorage("markdownEditorSynchronizedScrolling") private var isSynchronizedScrollingEnabled = true
   @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
   private var editorFontSize = MarkdownEditorComfortConfiguration.defaultFontSize
@@ -178,26 +91,12 @@ struct MacMarkdownComposerView: View {
     let bodyUTF16Count = (buffer.bodyMarkdown as NSString).length
     let editorSession = store.markdownEditorSessionState(for: draftID)
       .normalized(bodyUTF16Count: bodyUTF16Count)
-    _editorBody = State(initialValue: buffer.bodyMarkdown)
-    _editorDocument = State(
-      initialValue: MarkdownFrontMatterEditingService().renderDocument(
+    let editorDocument = MarkdownFrontMatterEditingService().renderDocument(
         draft: draft.wrappedValue,
         profile: store.profile(for: draft.wrappedValue),
         bodyMarkdown: buffer.bodyMarkdown
-      )
     )
-    _editorBodyRevision = State(initialValue: buffer.revision)
-    _selectedRange = State(
-      initialValue: editorSession.selectedRange(bodyUTF16Count: bodyUTF16Count)
-    )
-    _isFindReplacePresented = State(initialValue: editorSession.isFindReplacePresented)
-    _findQuery = State(initialValue: editorSession.findQuery)
-    _replacementText = State(initialValue: editorSession.replacementText)
-    _isFindCaseSensitive = State(initialValue: editorSession.isFindCaseSensitive)
-    _isFindWholeWord = State(initialValue: editorSession.isFindWholeWord)
-    _isFindRegularExpression = State(initialValue: editorSession.isFindRegularExpression)
-    _findMatchSnapshot = State(
-      initialValue: Self.makeFindMatchSnapshot(
+    let findMatchSnapshot = Self.makeFindMatchSnapshot(
         text: buffer.bodyMarkdown,
         query: editorSession.findQuery,
         options: MarkdownFindOptions(
@@ -205,20 +104,30 @@ struct MacMarkdownComposerView: View {
           wholeWord: editorSession.isFindWholeWord,
           usesRegularExpression: editorSession.isFindRegularExpression
         )
-      )
     )
-    _editorScrollProgress = State(initialValue: editorSession.editorScrollProgress)
-    _previewScrollProgress = State(initialValue: editorSession.previewScrollProgress)
-    _editorScrollRestorationUpdate = State(
-      initialValue: MarkdownScrollSyncUpdate(
+    _editorSessionState = State(
+      initialValue: MarkdownComposerEditorSessionState(
+        editorBody: buffer.bodyMarkdown,
+        editorDocument: editorDocument,
+        selectedRange: editorSession.selectedRange(bodyUTF16Count: bodyUTF16Count),
+        isFindReplacePresented: editorSession.isFindReplacePresented,
+        findQuery: editorSession.findQuery,
+        replacementText: editorSession.replacementText,
+        isFindCaseSensitive: editorSession.isFindCaseSensitive,
+        isFindWholeWord: editorSession.isFindWholeWord,
+        isFindRegularExpression: editorSession.isFindRegularExpression,
+        findMatchSnapshot: findMatchSnapshot,
+        editorScrollRestorationUpdate: MarkdownScrollSyncUpdate(
         source: .editor,
         progress: editorSession.editorScrollProgress
-      )
-    )
-    _previewScrollRestorationUpdate = State(
-      initialValue: MarkdownScrollSyncUpdate(
+        ),
+        previewScrollRestorationUpdate: MarkdownScrollSyncUpdate(
         source: .preview,
         progress: editorSession.previewScrollProgress
+        ),
+        editorScrollProgress: editorSession.editorScrollProgress,
+        previewScrollProgress: editorSession.previewScrollProgress,
+        editorBodyRevision: buffer.revision
       )
     )
     self.store = store
@@ -237,7 +146,7 @@ struct MacMarkdownComposerView: View {
         hasUnsavedChanges: editorState.hasUnsavedChanges,
         editorDisplayMode: editorState.editorDisplayMode,
         isSelectionAIActionRunning: isSelectionAIActionRunning,
-        isOutlinePresented: $isOutlinePresented,
+        isOutlinePresented: $presentationState.isOutlinePresented,
         outlineItems: outlineItems,
         onSetEditorDisplayMode: { store.setEditorDisplayMode($0) },
         onShowFindReplace: showFindReplace,
@@ -264,11 +173,11 @@ struct MacMarkdownComposerView: View {
       Divider()
       if isFindReplacePresented {
         FindReplaceBar(
-          findQuery: $findQuery,
-          replacementText: $replacementText,
-          isFindCaseSensitive: $isFindCaseSensitive,
-          isFindWholeWord: $isFindWholeWord,
-          isFindRegularExpression: $isFindRegularExpression,
+          findQuery: $editorSessionState.findQuery,
+          replacementText: $editorSessionState.replacementText,
+          isFindCaseSensitive: $editorSessionState.isFindCaseSensitive,
+          isFindWholeWord: $editorSessionState.isFindWholeWord,
+          isFindRegularExpression: $editorSessionState.isFindRegularExpression,
           canUseFindReplace: canUseFindReplace,
           findMatchStatus: findMatchStatus,
           findReplaceMessage: findReplaceFeedbackMessage,
@@ -411,10 +320,10 @@ struct MacMarkdownComposerView: View {
       syncActiveEditorSelection()
       scheduleMarkdownAnalysis(immediate: true)
     }
-    .sheet(isPresented: $isShortcutHelpPresented) {
+    .sheet(isPresented: $presentationState.isShortcutHelpPresented) {
       MarkdownShortcutHelpPanel()
     }
-    .sheet(isPresented: $isInternalLinkPickerPresented) {
+    .sheet(isPresented: $presentationState.isInternalLinkPickerPresented) {
       MarkdownInternalLinkPicker(
         draft: previewDraft,
         drafts: editorState.drafts,
@@ -429,14 +338,14 @@ struct MacMarkdownComposerView: View {
         }
       )
     }
-    .sheet(isPresented: $isDiagnosticsPresented) {
+    .sheet(isPresented: $presentationState.isDiagnosticsPresented) {
       MarkdownDiagnosticsPanel(
         diagnostics: inlineDiagnostics,
         onSelect: selectDiagnostic,
         onQuickFix: applyDiagnosticQuickFix
       )
     }
-    .sheet(isPresented: $isSnippetLibraryPresented) {
+    .sheet(isPresented: $presentationState.isSnippetLibraryPresented) {
       MarkdownSnippetLibraryPanel(
         draft: previewDraft,
         siteName: editorState.profile(for: previewDraft).name,
@@ -681,11 +590,11 @@ struct MacMarkdownComposerView: View {
         WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled)
 
         MacMarkdownTextView(
-          text: $editorDocument,
+          text: $editorSessionState.editorDocument,
           bodyMarkdown: editorBody,
           bodyUTF16Offset: editorDocumentBodyOffset,
-          selectedRange: $selectedRange,
-          isFrontMatterSelection: $isFrontMatterSelection,
+          selectedRange: $editorSessionState.selectedRange,
+          isFrontMatterSelection: $editorSessionState.isFrontMatterSelection,
           comfortConfiguration: editorComfortConfiguration,
           diagnostics: inlineDiagnostics,
           editRequest: editorEditRequest,

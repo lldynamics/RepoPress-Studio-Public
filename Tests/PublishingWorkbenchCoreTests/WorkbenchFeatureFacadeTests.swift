@@ -76,6 +76,29 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     withExtendedLifetime(cancellable) {}
   }
 
+  func testDraftListAndContentHealthFacadesIgnoreAIStreaming() {
+    let store = WorkbenchStore()
+    let draftList = WorkbenchDraftListFeatureFacade(store: store)
+    let contentHealth = WorkbenchContentHealthFeatureFacade(store: store)
+    var draftListChanges = 0
+    var contentHealthChanges = 0
+    let draftListCancellable = draftList.objectWillChange.sink { draftListChanges += 1 }
+    let contentHealthCancellable = contentHealth.objectWillChange.sink { contentHealthChanges += 1 }
+
+    store.setAIChatMessages([
+      AIPublishingChatMessage(role: .assistant, content: "streamed")
+    ])
+    store.setAIChatMessage("stream status")
+
+    XCTAssertEqual(draftListChanges, 0)
+    XCTAssertEqual(contentHealthChanges, 0)
+
+    store.invalidateDraftDerivedCaches()
+    XCTAssertGreaterThan(draftListChanges, 0)
+    XCTAssertGreaterThan(contentHealthChanges, 0)
+    withExtendedLifetime([draftListCancellable, contentHealthCancellable]) {}
+  }
+
   func testShellFacadeIgnoresEquivalentRootStateAssignments() {
     let store = WorkbenchStore()
     let shell = store.shell

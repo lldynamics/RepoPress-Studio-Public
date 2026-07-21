@@ -1724,54 +1724,32 @@ extension PublishingStore {
     expectedBaselinesByRepositoryPath: [String: DraftOperationBaseline]? = nil,
     store: WorkbenchStore
   ) -> LocalContentImportMergeSummary {
-    var insertedCount = 0
-    var updatedCount = 0
-    var conflictCount = 0
-    for imported in result.importedDrafts {
-      let repositoryPath = imported.repositoryPath?.normalizedRelativePath() ?? ""
-      if let index = drafts.firstIndex(where: { $0.siteProfileID == imported.siteProfileID && $0.repositoryPath == imported.repositoryPath }) {
-        if let expectedBaselinesByRepositoryPath {
-          guard let baseline = expectedBaselinesByRepositoryPath[repositoryPath],
-                baseline.draft.id == drafts[index].id,
-                store.draftStillMatchesOperationBaseline(baseline) else {
-            conflictCount += 1
-            continue
-          }
-        }
-        var updated = imported
-        updated.id = drafts[index].id
-        updated.createdAt = drafts[index].createdAt
-        if drafts[index] != updated {
-          recordAutomaticVersionIfNeeded(for: drafts[index])
-          updated.touch()
-          drafts[index] = updated
-          updatedCount += 1
-        }
-      } else {
-        if let expectedBaselinesByRepositoryPath,
-           expectedBaselinesByRepositoryPath[repositoryPath] != nil {
-          conflictCount += 1
-          continue
-        }
-        drafts.append(imported)
-        insertedCount += 1
+    let plan = LocalContentImportMergeService().makePlan(
+      existingDrafts: drafts,
+      result: result,
+      canReplace: { draft, repositoryPath in
+        guard let expectedBaselinesByRepositoryPath else { return true }
+        guard let baseline = expectedBaselinesByRepositoryPath[repositoryPath] else { return false }
+        return baseline.draft.id == draft.id
+          && store.draftStillMatchesOperationBaseline(baseline)
+      },
+      canInsert: { repositoryPath in
+        expectedBaselinesByRepositoryPath?[repositoryPath] == nil
       }
-    }
-    let skippedCount = result.skippedPaths.count + conflictCount
-    let summary = LocalContentImportMergeSummary(
-      insertedCount: insertedCount,
-      updatedCount: updatedCount,
-      skippedCount: skippedCount
     )
-    if insertedCount + updatedCount > 0, automaticallyRefreshPreflightOnEdit {
+    plan.replacedDrafts.forEach(recordAutomaticVersionIfNeeded)
+    drafts = plan.drafts
+
+    if plan.summary.insertedCount + plan.summary.updatedCount > 0,
+       automaticallyRefreshPreflightOnEdit {
       store.schedulePreflightRefresh()
     }
-    if conflictCount > 0 {
-      publishActionMessage = "导入完成：新增 \(insertedCount) 篇、更新 \(updatedCount) 篇；\(conflictCount) 篇在导入期间被本地修改，已保留本地版本。"
+    if plan.conflictCount > 0 {
+      publishActionMessage = "导入完成：新增 \(plan.summary.insertedCount) 篇、更新 \(plan.summary.updatedCount) 篇；\(plan.conflictCount) 篇在导入期间被本地修改，已保留本地版本。"
     } else {
-      publishActionMessage = "导入完成：新增 \(insertedCount) 篇、更新 \(updatedCount) 篇、跳过 \(result.skippedPaths.count) 个文件。"
+      publishActionMessage = "导入完成：新增 \(plan.summary.insertedCount) 篇、更新 \(plan.summary.updatedCount) 篇、跳过 \(result.skippedPaths.count) 个文件。"
     }
     store.save()
-    return summary
+    return plan.summary
   }
 }

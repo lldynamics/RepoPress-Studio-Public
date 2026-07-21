@@ -68,32 +68,17 @@ public struct MarkdownFrontMatterEditingService: Sendable {
     _ source: String,
     profile: SiteProfile
   ) -> MarkdownFrontMatterDocumentParts? {
-    let normalized = source
-      .replacingOccurrences(of: "\r\n", with: "\n")
-      .replacingOccurrences(of: "\r", with: "\n")
-    let delimiter = profile.frontMatterStyle == .yaml ? "---" : "+++"
-    let lines = normalized.components(separatedBy: "\n")
-    guard lines.first?.trimmedForPublishing == delimiter,
-          let closingIndex = lines.dropFirst().firstIndex(where: {
-            $0.trimmedForPublishing == delimiter
-          }) else {
-      return nil
-    }
-
-    let frontMatter = lines[...closingIndex].joined(separator: "\n")
-    let sourceText = normalized as NSString
-    var bodyOffset = (frontMatter as NSString).length
-    var skippedNewlines = 0
-    while bodyOffset < sourceText.length, skippedNewlines < 2,
-          sourceText.character(at: bodyOffset) == 10 {
-      bodyOffset += 1
-      skippedNewlines += 1
-    }
-    let bodyMarkdown = sourceText.substring(from: bodyOffset)
+    let expectedDelimiter: FrontMatterDelimiter = profile.frontMatterStyle == .yaml
+      ? .yaml
+      : .toml
+    guard let document = DelimitedFrontMatterParser().split(
+      source,
+      expectedDelimiter: expectedDelimiter
+    ) else { return nil }
     return MarkdownFrontMatterDocumentParts(
-      frontMatter: frontMatter,
-      bodyMarkdown: bodyMarkdown,
-      bodyUTF16Offset: bodyOffset
+      frontMatter: document.frontMatter,
+      bodyMarkdown: document.body,
+      bodyUTF16Offset: document.bodyUTF16Offset
     )
   }
 

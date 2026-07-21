@@ -74,11 +74,7 @@ public enum VideoFileSupport {
   }
 
   private static func escapedHTMLAttribute(_ value: String) -> String {
-    value
-      .replacingOccurrences(of: "&", with: "&amp;")
-      .replacingOccurrences(of: "\"", with: "&quot;")
-      .replacingOccurrences(of: "<", with: "&lt;")
-      .replacingOccurrences(of: ">", with: "&gt;")
+    MarkupEscaping.htmlDoubleQuotedAttribute(value)
   }
 }
 

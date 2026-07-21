@@ -166,11 +166,7 @@ public extension SEOSocialPreviewMetaTag {
   }
 
   private func htmlEscaped(_ value: String) -> String {
-    value
-      .replacingOccurrences(of: "&", with: "&amp;")
-      .replacingOccurrences(of: "\"", with: "&quot;")
-      .replacingOccurrences(of: "<", with: "&lt;")
-      .replacingOccurrences(of: ">", with: "&gt;")
+    MarkupEscaping.htmlDoubleQuotedAttribute(value)
   }
 }
 
@@ -1478,11 +1474,7 @@ public struct SEOSocialPreviewService {
   }
 
   private func xmlEscaped(_ value: String) -> String {
-    value
-      .replacingOccurrences(of: "&", with: "&amp;")
-      .replacingOccurrences(of: "\"", with: "&quot;")
-      .replacingOccurrences(of: "<", with: "&lt;")
-      .replacingOccurrences(of: ">", with: "&gt;")
+    MarkupEscaping.xmlText(value)
   }
 
   private func cardSpecification(

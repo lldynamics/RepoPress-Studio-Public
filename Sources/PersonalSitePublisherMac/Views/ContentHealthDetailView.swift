@@ -3,11 +3,13 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct ContentHealthDetailView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
   let filter: ContentHealthContextFilter
+  @StateObject private var healthState: WorkbenchContentHealthFeatureFacade
   @State private var healthSnapshot: ContentHealthSnapshot?
   @State private var severityFilter: ContentHealthSeverityFilter = .all
   @State private var issueScope: ContentHealthIssueScopeFilter = .all
+  @State private var articleGrouping: ContentHealthArticleGrouping = .automaticFix
   @State private var healthSnapshotTask: Task<Void, Never>?
   @State private var healthSnapshotErrorMessage: String?
   @State private var pageMode: ContentHealthPageMode
@@ -20,6 +22,9 @@ struct ContentHealthDetailView: View {
   init(store: WorkbenchStore, filter: ContentHealthContextFilter) {
     self.store = store
     self.filter = filter
+    _healthState = StateObject(
+      wrappedValue: WorkbenchContentHealthFeatureFacade(store: store)
+    )
     _pageMode = State(initialValue: filter == .maintenance ? .maintenance : .issues)
   }
 
@@ -31,7 +36,7 @@ struct ContentHealthDetailView: View {
         refreshContentHealthSnapshotIfNeeded()
       }
     }
-    .onChange(of: store.contentHealthSnapshotVersion) { _, _ in
+    .onChange(of: healthState.snapshotVersion) { _, _ in
       refreshContentHealthSnapshot()
     }
     .onChange(of: filter) { _, newFilter in
@@ -124,7 +129,8 @@ struct ContentHealthDetailView: View {
       WorkbenchOperationalSplitLayout(usesSplitLayout: usesSplitLayout) {
         filteredSections(
           presentation,
-          selectedDraftID: selectedRow?.draftID
+          selectedDraftID: selectedRow?.draftID,
+          profileName: snapshot.profileName
         )
       } context: {
         contentHealthOperationalContextPanel(
@@ -183,6 +189,7 @@ struct ContentHealthDetailView: View {
       HStack(spacing: 12) {
         issueScopePicker
         severityPicker
+        articleGroupingPicker
         Spacer(minLength: 0)
         recommendedAction(presentation)
           .fixedSize(horizontal: true, vertical: false)
@@ -192,6 +199,7 @@ struct ContentHealthDetailView: View {
         HStack(spacing: 12) {
           issueScopePicker
           severityPicker
+          articleGroupingPicker
           Spacer(minLength: 0)
         }
         recommendedAction(presentation)
@@ -200,6 +208,7 @@ struct ContentHealthDetailView: View {
       VStack(alignment: .leading, spacing: 10) {
         issueScopePicker
         severityPicker
+        articleGroupingPicker
         recommendedAction(presentation)
       }
     }
@@ -229,17 +238,32 @@ struct ContentHealthDetailView: View {
     .accessibilityLabel("严重级别筛选")
   }
 
+  private var articleGroupingPicker: some View {
+    Picker("文章分组方式", selection: $articleGrouping) {
+      ForEach(ContentHealthArticleGrouping.allCases) { grouping in
+        Label(grouping.title, systemImage: grouping.systemImage).tag(grouping)
+      }
+    }
+    .pickerStyle(.menu)
+    .fixedSize(horizontal: true, vertical: false)
+    .disabled(issueScope == .siteIssues)
+    .accessibilityLabel("文章分组方式")
+  }
+
   @ViewBuilder
   private func filteredSections(
     _ presentation: ContentHealthArticlePresentation,
-    selectedDraftID: UUID?
+    selectedDraftID: UUID?,
+    profileName: String
   ) -> some View {
     if issueScope == .siteIssues {
       siteIssuesSection(presentation.siteIssues)
     } else {
       articleHealthFlow(
         presentation.rows,
-        selectedDraftID: selectedDraftID
+        selectedDraftID: selectedDraftID,
+        profileName: profileName,
+        duplicateMarkdownPaths: presentation.duplicateMarkdownPaths
       )
     }
   }
@@ -281,7 +305,7 @@ struct ContentHealthDetailView: View {
 
   private func refreshContentHealthSnapshot() {
     healthSnapshotTask?.cancel()
-    let expectedVersion = store.contentHealthSnapshotVersion
+    let expectedVersion = healthState.snapshotVersion
     let requestID = UUID()
     healthSnapshotRequestID = requestID
     isHealthSnapshotRefreshing = true
@@ -291,7 +315,7 @@ struct ContentHealthDetailView: View {
         let snapshot = try await ContentHealthSnapshot.make(store: store)
         guard !Task.isCancelled,
               healthSnapshotRequestID == requestID,
-              store.contentHealthSnapshotVersion == expectedVersion else { return }
+              healthState.snapshotVersion == expectedVersion else { return }
         healthSnapshot = snapshot
         articlePresentation = ContentHealthArticlePresentation(
           snapshot: snapshot,
@@ -305,7 +329,7 @@ struct ContentHealthDetailView: View {
       } catch {
         guard !Task.isCancelled,
               healthSnapshotRequestID == requestID,
-              store.contentHealthSnapshotVersion == expectedVersion else { return }
+              healthState.snapshotVersion == expectedVersion else { return }
         healthSnapshot = nil
         articlePresentation = nil
         healthSnapshotErrorMessage = error.localizedDescription
@@ -461,6 +485,13 @@ struct ContentHealthDetailView: View {
           .foregroundStyle(.secondary)
           .workbenchTruncatedIdentity(selectedRow.markdownPath)
 
+        if presentation.duplicateMarkdownPaths.contains(selectedRow.normalizedMarkdownPath) {
+          AccessibleStatusMessage(
+            message: "多篇文章映射到同一路径，请先修正路径冲突再发布。",
+            severity: .warning
+          )
+        }
+
         InspectorStatRow(
           title: "错误",
           value: "\(selectedRow.errorCount)",
@@ -538,9 +569,12 @@ struct ContentHealthDetailView: View {
 
   private func articleHealthFlow(
     _ rows: [ContentHealthArticleRowModel],
-    selectedDraftID: UUID?
+    selectedDraftID: UUID?,
+    profileName: String,
+    duplicateMarkdownPaths: Set<String>
   ) -> some View {
-    VStack(alignment: .leading, spacing: 14) {
+    let groups = articleGrouping.groups(rows: rows, profileName: profileName)
+    return VStack(alignment: .leading, spacing: 14) {
       HStack {
         Text("文章分组")
           .font(.headline)
@@ -556,16 +590,36 @@ struct ContentHealthDetailView: View {
           .padding(.vertical, 12)
       } else {
         LazyVStack(alignment: .leading, spacing: 8) {
-          ForEach(rows) { row in
-            let isSelected = selectedDraftID == row.draftID
-            Button {
-              selectedHealthDraftID = row.draftID
-            } label: {
-              articleSummaryRow(row, isSelected: isSelected)
+          ForEach(groups) { group in
+            VStack(alignment: .leading, spacing: 8) {
+              HStack(spacing: 6) {
+                Image(systemName: group.systemImage)
+                  .foregroundStyle(.secondary)
+                Text(group.title)
+                  .font(.callout.weight(.semibold))
+                  .workbenchTruncatedIdentity(group.title)
+                Spacer(minLength: 8)
+                Text("\(group.rows.count) 篇")
+                  .font(.caption.monospacedDigit())
+                  .foregroundStyle(.secondary)
+              }
+
+              ForEach(group.rows) { row in
+                let isSelected = selectedDraftID == row.draftID
+                Button {
+                  selectedHealthDraftID = row.draftID
+                } label: {
+                  articleSummaryRow(
+                    row,
+                    isSelected: isSelected,
+                    hasDuplicatePath: duplicateMarkdownPaths.contains(row.normalizedMarkdownPath)
+                  )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("选择 \(row.draftTitle) 查看问题详情")
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+              }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("选择 \(row.draftTitle) 查看问题详情")
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
           }
         }
       }
@@ -577,20 +631,29 @@ struct ContentHealthDetailView: View {
 
   private func articleSummaryRow(
     _ row: ContentHealthArticleRowModel,
-    isSelected: Bool
+    isSelected: Bool,
+    hasDuplicatePath: Bool
   ) -> some View {
     ViewThatFits(in: .horizontal) {
       HStack(alignment: .firstTextBaseline, spacing: 10) {
         articleRowIdentity(row)
           .frame(minWidth: 240, maxWidth: .infinity, alignment: .leading)
         Spacer(minLength: 12)
-        articleRowBadges(row, isSelected: isSelected)
+        articleRowBadges(
+          row,
+          isSelected: isSelected,
+          hasDuplicatePath: hasDuplicatePath
+        )
           .fixedSize(horizontal: true, vertical: false)
       }
 
       VStack(alignment: .leading, spacing: 8) {
         articleRowIdentity(row)
-        articleRowBadges(row, isSelected: isSelected)
+        articleRowBadges(
+          row,
+          isSelected: isSelected,
+          hasDuplicatePath: hasDuplicatePath
+        )
       }
     }
     .padding(10)
@@ -621,7 +684,8 @@ struct ContentHealthDetailView: View {
 
   private func articleRowBadges(
     _ row: ContentHealthArticleRowModel,
-    isSelected: Bool
+    isSelected: Bool,
+    hasDuplicatePath: Bool
   ) -> some View {
     HStack(spacing: 8) {
       healthIssueCountBadge(
@@ -630,6 +694,12 @@ struct ContentHealthDetailView: View {
         color: WorkbenchTheme.risk,
         label: "错误"
       )
+      if hasDuplicatePath {
+        Label("路径重复", systemImage: "arrow.triangle.branch")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(WorkbenchTheme.warning)
+          .help("多篇文章映射到了同一仓库路径")
+      }
       healthIssueCountBadge(
         count: row.warningCount,
         systemImage: "exclamationmark.triangle",
@@ -785,6 +855,78 @@ private enum ContentHealthSeverityFilter: String, CaseIterable, Identifiable {
   }
 }
 
+private enum ContentHealthArticleGrouping: String, CaseIterable, Identifiable {
+  case automaticFix
+  case site
+  case file
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .automaticFix: String(localized: "按处理方式")
+    case .site: String(localized: "按站点")
+    case .file: String(localized: "按文件")
+    }
+  }
+
+  var systemImage: String {
+    switch self {
+    case .automaticFix: "wand.and.stars"
+    case .site: "globe"
+    case .file: "doc.text"
+    }
+  }
+
+  func groups(
+    rows: [ContentHealthArticleRowModel],
+    profileName: String
+  ) -> [ContentHealthArticleGroup] {
+    switch self {
+    case .automaticFix:
+      let automaticRows = rows.filter { $0.aiFixItem != nil }
+      let manualRows = rows.filter { $0.aiFixItem == nil }
+      return [
+        ContentHealthArticleGroup(
+          id: "automatic",
+          title: String(localized: "可用 AI 修复"),
+          systemImage: "sparkles",
+          rows: automaticRows
+        ),
+        ContentHealthArticleGroup(
+          id: "manual",
+          title: String(localized: "需要手动处理"),
+          systemImage: "hand.raised",
+          rows: manualRows
+        ),
+      ].filter { !$0.rows.isEmpty }
+    case .site:
+      return [ContentHealthArticleGroup(
+        id: "site",
+        title: profileName,
+        systemImage: "globe",
+        rows: rows
+      )]
+    case .file:
+      return rows.map { row in
+        ContentHealthArticleGroup(
+          id: row.draftID.uuidString,
+          title: row.markdownPath,
+          systemImage: "doc.text",
+          rows: [row]
+        )
+      }
+    }
+  }
+}
+
+private struct ContentHealthArticleGroup: Identifiable {
+  let id: String
+  let title: String
+  let systemImage: String
+  let rows: [ContentHealthArticleRowModel]
+}
+
 private struct ContentHealthArticleRowModel: Identifiable {
   let draftID: UUID
   let draftTitle: String
@@ -795,6 +937,7 @@ private struct ContentHealthArticleRowModel: Identifiable {
   let aiFixItem: AIPublishingFixQueueItem?
 
   var id: UUID { draftID }
+  var normalizedMarkdownPath: String { markdownPath.normalizedRelativePath() }
 
   init(
     summary: DraftPreflightSummary,
@@ -832,6 +975,7 @@ private struct ContentHealthArticlePresentation {
   let rowByDraftID: [UUID: ContentHealthArticleRowModel]
   let siteIssues: [PreflightIssue]
   let recommendedAIFixItem: AIPublishingFixQueueItem?
+  let duplicateMarkdownPaths: Set<String>
 
   init(
     snapshot: ContentHealthSnapshot,
@@ -879,12 +1023,17 @@ private struct ContentHealthArticlePresentation {
       rowByDraftID[row.draftID] = row
     }
     let visibleDraftIDs = Set(rowByDraftID.keys)
+    let pathCounts = Dictionary(grouping: rows, by: \.normalizedMarkdownPath)
+      .mapValues(\.count)
 
     snapshotID = snapshot.id
     self.issueScope = issueScope
     self.severityFilter = severityFilter
     self.rows = rows
     self.rowByDraftID = rowByDraftID
+    duplicateMarkdownPaths = Set(
+      pathCounts.compactMap { path, count in count > 1 ? path : nil }
+    )
     siteIssues = severityFilter.filter(snapshot.sitePreflightIssues)
     recommendedAIFixItem = snapshot.aiFixQueueItems.first {
       visibleDraftIDs.contains($0.draftID)
