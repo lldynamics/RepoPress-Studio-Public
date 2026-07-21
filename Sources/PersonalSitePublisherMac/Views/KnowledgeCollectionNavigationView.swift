@@ -23,17 +23,27 @@ struct KnowledgeCollectionNavigationView: View {
             isNavigationExpanded.toggle()
           }
         } label: {
-          Label(
-            "资料整理",
-            systemImage: isNavigationExpanded ? "chevron.down" : "chevron.right"
-          )
-          .font(.body.weight(.semibold))
-          .foregroundStyle(.secondary)
+          VStack(alignment: .leading, spacing: 2) {
+            Label(
+              "资料整理",
+              systemImage: isNavigationExpanded ? "chevron.down" : "chevron.right"
+            )
+            .font(.body.weight(.semibold))
+            .foregroundStyle(.secondary)
+            if !isNavigationExpanded {
+              Text("当前：\(selectedNavigationItem.title) · \(selectedNavigationItem.count) 条")
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            }
+          }
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(isNavigationExpanded ? "收起资料整理" : "展开资料整理")
         .accessibilityLabel(isNavigationExpanded ? "收起资料整理" : "展开资料整理")
+        .accessibilityValue("当前范围：\(selectedNavigationItem.title)，\(selectedNavigationItem.count) 条资料")
         Spacer()
         Button(action: onCreateFolder) {
           Image(systemName: "folder.badge.plus")
@@ -272,6 +282,10 @@ struct KnowledgeCollectionNavigationView: View {
     [allItem, unfiledItem] + folderItems
       + KnowledgeSmartCollectionKind.allCases.flatMap(smartItems)
       + savedItems
+  }
+
+  private var selectedNavigationItem: CollectionNavigationItem {
+    allItems.first(where: { $0.scope == knowledge.folderScope }) ?? allItem
   }
 
   private var favoriteItems: [CollectionNavigationItem] {
