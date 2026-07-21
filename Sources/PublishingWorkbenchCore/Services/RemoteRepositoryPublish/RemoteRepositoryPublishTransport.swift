@@ -5,6 +5,8 @@ public protocol RemoteRepositoryHTTPTransport: Sendable {
 }
 
 public struct URLSessionRemoteRepositoryHTTPTransport: RemoteRepositoryHTTPTransport {
+  static let maximumResponseByteCount = 8 * 1_024 * 1_024
+
   private let session: URLSession
 
   public init(session: URLSession? = nil) {
@@ -12,6 +14,10 @@ public struct URLSessionRemoteRepositoryHTTPTransport: RemoteRepositoryHTTPTrans
   }
 
   public func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-    try await session.data(for: request)
+    try await BoundedHTTPResponseLoader.data(
+      for: request,
+      using: session,
+      maximumByteCount: Self.maximumResponseByteCount
+    )
   }
 }

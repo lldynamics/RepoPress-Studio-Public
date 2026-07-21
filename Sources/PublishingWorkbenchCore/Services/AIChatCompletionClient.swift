@@ -299,6 +299,10 @@ public protocol AIChatStreamingTransport: AIChatTransport {
 }
 
 public struct URLSessionAIChatTransport: AIChatTransport, AIChatStreamingTransport {
+  static let maximumResponseByteCount = 16 * 1_024 * 1_024
+  static let maximumStreamingResponseByteCount = 32 * 1_024 * 1_024
+  static let maximumStreamingLineByteCount = 1 * 1_024 * 1_024
+
   private let session: URLSession
 
   public init(
@@ -313,17 +317,50 @@ public struct URLSessionAIChatTransport: AIChatTransport, AIChatStreamingTranspo
   }
 
   public func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-    try await session.data(for: request)
+    try await BoundedHTTPResponseLoader.data(
+      for: request,
+      using: session,
+      maximumByteCount: Self.maximumResponseByteCount
+    )
   }
 
   public func lines(for request: URLRequest) async throws -> (AsyncThrowingStream<String, Error>, URLResponse) {
     let (bytes, response) = try await session.bytes(for: request)
+    try BoundedHTTPResponseLoader.validateExpectedLength(
+      response,
+      maximumByteCount: Self.maximumStreamingResponseByteCount
+    )
     let stream = AsyncThrowingStream<String, Error> { continuation in
       let task = Task {
         do {
-          for try await line in bytes.lines {
+          var lineBytes: [UInt8] = []
+          lineBytes.reserveCapacity(4 * 1_024)
+          var totalByteCount = 0
+          for try await byte in bytes {
             try Task.checkCancellation()
-            continuation.yield(line)
+            totalByteCount += 1
+            guard totalByteCount <= Self.maximumStreamingResponseByteCount else {
+              throw AIChatCompletionClientError.responseTooLarge(
+                maximumBytes: Self.maximumStreamingResponseByteCount
+              )
+            }
+            if byte == 0x0A {
+              if lineBytes.last == 0x0D {
+                lineBytes.removeLast()
+              }
+              continuation.yield(String(decoding: lineBytes, as: UTF8.self))
+              lineBytes.removeAll(keepingCapacity: true)
+              continue
+            }
+            guard lineBytes.count < Self.maximumStreamingLineByteCount else {
+              throw AIChatCompletionClientError.responseTooLarge(
+                maximumBytes: Self.maximumStreamingLineByteCount
+              )
+            }
+            lineBytes.append(byte)
+          }
+          if !lineBytes.isEmpty {
+            continuation.yield(String(decoding: lineBytes, as: UTF8.self))
           }
           continuation.finish()
         } catch {
@@ -352,6 +389,8 @@ private enum AIChatLineEvent: Sendable {
 }
 
 public struct AIChatCompletionClient: Sendable {
+  static let maximumSSEEventByteCount = 2 * 1_024 * 1_024
+
   private let transport: AIChatTransport
   private let encoder: SerializedJSONEncoder
   private let decoder: SerializedJSONDecoder
@@ -392,11 +431,24 @@ public struct AIChatCompletionClient: Sendable {
     )
     let preparedRequest = request
 
-    let (data, response) = try await performWithTimeout(
-      seconds: networkRecoveryPolicy.resourceTimeout,
-      timeoutError: .resourceTimedOut(networkRecoveryPolicy.resourceTimeout)
-    ) {
-      try await transport.data(for: preparedRequest)
+    let data: Data
+    let response: URLResponse
+    do {
+      (data, response) = try await performWithTimeout(
+        seconds: networkRecoveryPolicy.resourceTimeout,
+        timeoutError: .resourceTimedOut(networkRecoveryPolicy.resourceTimeout)
+      ) {
+        try await transport.data(for: preparedRequest)
+      }
+      try BoundedHTTPResponseLoader.validate(
+        data,
+        response: response,
+        maximumByteCount: URLSessionAIChatTransport.maximumResponseByteCount
+      )
+    } catch let error as HTTPResponseLimitError {
+      throw AIChatCompletionClientError.responseTooLarge(
+        maximumBytes: error.maximumByteCount
+      )
     }
     guard let httpResponse = response as? HTTPURLResponse else {
       throw AIChatCompletionClientError.invalidResponse
@@ -559,8 +611,17 @@ public struct AIChatCompletionClient: Sendable {
       let (events, eventContinuation) = AsyncStream<AIChatLineEvent>.makeStream()
       let sourceTask = Task(priority: .userInitiated) {
         do {
+          var cumulativeByteCount = 0
           for try await line in lines {
             try Task.checkCancellation()
+            let lineByteCount = line.utf8.count
+            guard lineByteCount <= URLSessionAIChatTransport.maximumStreamingLineByteCount,
+                  cumulativeByteCount <= URLSessionAIChatTransport.maximumStreamingResponseByteCount - lineByteCount else {
+              throw AIChatCompletionClientError.responseTooLarge(
+                maximumBytes: URLSessionAIChatTransport.maximumStreamingResponseByteCount
+              )
+            }
+            cumulativeByteCount += lineByteCount
             eventContinuation.yield(.line(line))
           }
           eventContinuation.yield(.finished)
@@ -675,6 +736,9 @@ public struct AIChatCompletionClient: Sendable {
     if error is DecodingError {
       return .invalidResponse
     }
+    if let responseLimitError = error as? HTTPResponseLimitError {
+      return .responseTooLarge(maximumBytes: responseLimitError.maximumByteCount)
+    }
     if let urlError = error as? URLError {
       if urlError.code == .timedOut {
         return .resourceTimedOut(networkRecoveryPolicy.resourceTimeout)
@@ -787,6 +851,7 @@ public struct AIChatCompletionClient: Sendable {
     AsyncThrowingStream { continuation in
       let task = Task(priority: .userInitiated) {
         var dataLines: [String] = []
+        var eventByteCount = 0
         do {
           for try await line in lines {
             try Task.checkCancellation()
@@ -798,12 +863,14 @@ public struct AIChatCompletionClient: Sendable {
                 continuation: continuation
               )
               dataLines.removeAll()
+              eventByteCount = 0
               continue
             }
             if trimmed.hasPrefix(":") || trimmed.hasPrefix("event:") {
               continue
             }
             if isRawStreamPayloadLine(trimmed) {
+              try validateSSELine(trimmed, currentEventByteCount: &eventByteCount)
               dataLines.append(trimmed)
               continue
             }
@@ -813,7 +880,9 @@ public struct AIChatCompletionClient: Sendable {
 
             let payload = trimmed.dropFirst("data:".count)
               .trimmingCharacters(in: .whitespaces)
-            dataLines.append(String(payload))
+            let payloadText = String(payload)
+            try validateSSELine(payloadText, currentEventByteCount: &eventByteCount)
+            dataLines.append(payloadText)
           }
 
           if !dataLines.isEmpty {
@@ -851,6 +920,20 @@ public struct AIChatCompletionClient: Sendable {
         continuation: continuation
       )
     }
+  }
+
+  private func validateSSELine(
+    _ line: String,
+    currentEventByteCount: inout Int
+  ) throws {
+    let lineByteCount = line.utf8.count
+    guard lineByteCount <= Self.maximumSSEEventByteCount,
+          currentEventByteCount <= Self.maximumSSEEventByteCount - lineByteCount else {
+      throw AIChatCompletionClientError.responseTooLarge(
+        maximumBytes: Self.maximumSSEEventByteCount
+      )
+    }
+    currentEventByteCount += lineByteCount
   }
 
   private func emitSSEPayload(
@@ -951,6 +1034,7 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
   case httpStatus(Int, String, retryAfterSeconds: TimeInterval?)
   case firstByteTimedOut(TimeInterval)
   case resourceTimedOut(TimeInterval)
+  case responseTooLarge(maximumBytes: Int)
   case networkFailure(String)
   case streamInterruptedAfterPartialContent(String)
   case emptyContent
@@ -974,6 +1058,8 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
       return "等待 AI 返回首字节超过 \(Self.durationText(timeout))，请求已停止。可以检查网络后手动重试。"
     case .resourceTimedOut(let timeout):
       return "AI 请求超过 \(Self.durationText(timeout))的资源时限，已停止读取。可以检查网络后手动重试。"
+    case .responseTooLarge(let maximumBytes):
+      return "AI 响应超过 \(maximumBytes) 字节的安全上限，已停止读取。"
     case .networkFailure(let message):
       return "AI 网络连接中断：\(message)\n可以检查网络后手动重试。"
     case .streamInterruptedAfterPartialContent(let message):
@@ -1001,7 +1087,7 @@ public enum AIChatCompletionClientError: LocalizedError, Equatable, Sendable {
       return true
     case .httpStatus(let status, _, _):
       return [408, 425, 429, 500, 502, 503, 504].contains(status)
-    case .invalidBaseURL, .insecureCredentialURL, .invalidResponse,
+    case .invalidBaseURL, .insecureCredentialURL, .invalidResponse, .responseTooLarge,
          .streamingUnsupported, .streamInterruptedAfterPartialContent, .emptyContent:
       return false
     }

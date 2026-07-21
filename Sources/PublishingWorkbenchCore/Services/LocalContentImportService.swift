@@ -27,6 +27,8 @@ public struct LocalContentImportMergeSummary: Codable, Hashable, Sendable {
 }
 
 public struct LocalContentImportService: Sendable {
+  static let maximumMarkdownDocumentByteCount = 16 * 1024 * 1024
+
   private let fileSystem: SendableFileManager
 
   private var fileManager: FileManager { fileSystem.value }
@@ -186,7 +188,11 @@ public struct LocalContentImportService: Sendable {
         }
 
         do {
-          let document = try String(contentsOf: fileURL, encoding: .utf8)
+          let document = try BoundedFileReader.utf8String(
+            relativePath: repositoryPath,
+            under: rootURL,
+            maximumByteCount: Self.maximumMarkdownDocumentByteCount
+          )
           importedDrafts.append(
             draft(from: document, rootURL: rootURL, fileURL: fileURL, repositoryPath: repositoryPath, profile: profile)
           )
@@ -274,7 +280,11 @@ public struct LocalContentImportService: Sendable {
     }
 
     do {
-      let document = try String(contentsOf: fileURL, encoding: .utf8)
+      let document = try BoundedFileReader.utf8String(
+        relativePath: safePath,
+        under: rootURL,
+        maximumByteCount: Self.maximumMarkdownDocumentByteCount
+      )
       return LocalContentImportResult(
         importedDrafts: [draft(from: document, rootURL: rootURL, fileURL: fileURL, repositoryPath: safePath, profile: profile)],
         skippedPaths: []

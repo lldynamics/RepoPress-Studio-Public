@@ -66,6 +66,7 @@ public struct LocalSitePreviewRuntimeStatus: Codable, Hashable, Sendable {
 
 public final class LocalSitePreviewProcessService: @unchecked Sendable {
   private var process: Process?
+  private var processGroupIdentifier: Int32?
   private var outputPipe: Pipe?
   private var errorPipe: Pipe?
   private var activePlan: LocalSitePreviewPlan?
@@ -75,23 +76,29 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
 
   public init() {}
 
-  static func launchEnvironment(from baseEnvironment: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
-    var environment = baseEnvironment
-    let existingPaths = environment["PATH"]?.split(separator: ":").map(String.init) ?? []
-    let defaultToolPaths = [
+  static let trustedToolDirectories = [
       "/opt/homebrew/bin",
       "/usr/local/bin",
       "/usr/bin",
       "/bin",
       "/usr/sbin",
       "/sbin"
-    ]
+  ]
 
-    var seenPaths = Set<String>()
-    let mergedPaths = (existingPaths + defaultToolPaths).filter { path in
-      seenPaths.insert(path).inserted
-    }
-    environment["PATH"] = mergedPaths.joined(separator: ":")
+  static func launchEnvironment(from baseEnvironment: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+    let allowedKeys = [
+      "HOME",
+      "LANG",
+      "LC_ALL",
+      "LC_CTYPE",
+      "LOGNAME",
+      "SHELL",
+      "TMPDIR",
+      "USER",
+    ]
+    var environment = baseEnvironment.filter { allowedKeys.contains($0.key) }
+    environment["PATH"] = trustedToolDirectories.joined(separator: ":")
+    environment["NO_COLOR"] = "1"
     return environment
   }
 
@@ -157,6 +164,14 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
 
     try process.run()
 
+#if canImport(Darwin)
+    if Darwin.setpgid(process.processIdentifier, process.processIdentifier) == 0 {
+      processGroupIdentifier = process.processIdentifier
+    } else {
+      processGroupIdentifier = nil
+    }
+#endif
+
     self.process = process
     self.outputPipe = outputPipe
     self.errorPipe = errorPipe
@@ -188,14 +203,26 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
     }
 
     if process.isRunning {
+#if canImport(Darwin)
+      if let processGroupIdentifier {
+        Darwin.kill(-processGroupIdentifier, SIGTERM)
+      } else {
+        process.terminate()
+      }
+#else
       process.terminate()
+#endif
       let gracefulExitDeadline = Date().addingTimeInterval(1)
       while process.isRunning, Date() < gracefulExitDeadline {
         Thread.sleep(forTimeInterval: 0.02)
       }
       if process.isRunning {
 #if canImport(Darwin)
-        Darwin.kill(process.processIdentifier, SIGKILL)
+        if let processGroupIdentifier {
+          Darwin.kill(-processGroupIdentifier, SIGKILL)
+        } else {
+          Darwin.kill(process.processIdentifier, SIGKILL)
+        }
 #endif
       }
     }
@@ -213,6 +240,7 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
     outputPipe = nil
     errorPipe = nil
     process = nil
+    processGroupIdentifier = nil
     activePlan = nil
     startedAt = nil
   }
@@ -264,7 +292,15 @@ private final class LocalSitePreviewLogCollector: @unchecked Sendable {
 }
 
 public struct LocalSitePreviewService {
-  public init() {}
+  private let executableResolver: (String) -> String?
+
+  public init() {
+    executableResolver = Self.resolveTrustedExecutable(named:)
+  }
+
+  init(executableResolver: @escaping (String) -> String?) {
+    self.executableResolver = executableResolver
+  }
 
   public func previewURL(for draft: ArticleDraft, profile: SiteProfile) -> URL? {
     guard let plan = plan(profile: profile) else { return nil }
@@ -280,51 +316,71 @@ public struct LocalSitePreviewService {
       return nil
     }
 
-    let executablePath = "/usr/bin/env"
+    let executableName: String
     let arguments: [String]
     let urlString: String
     let notes: [String]
 
     switch profile.siteKind {
     case .zola:
-      arguments = ["zola", "serve", "--drafts"]
+      executableName = "zola"
+      arguments = ["serve", "--drafts"]
       urlString = "http://127.0.0.1:1111"
       notes = ["Zola 默认端口为 1111。", "如果项目自定义端口，请在终端按实际命令启动。"]
     case .hugo:
-      arguments = ["hugo", "server", "-D"]
+      executableName = "hugo"
+      arguments = ["server", "-D"]
       urlString = "http://127.0.0.1:1313"
       notes = ["Hugo 默认端口为 1313。", "包含草稿预览参数 -D。"]
     case .astro:
-      arguments = ["npm", "run", "dev"]
+      executableName = "npm"
+      arguments = ["run", "dev"]
       urlString = "http://127.0.0.1:4321"
-      notes = ["Astro 默认 dev server 端口为 4321。", "需要项目已安装 npm 依赖。"]
+      notes = ["Astro 默认 dev server 端口为 4321。", "需要项目已安装 npm 依赖。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
     case .hexo:
-      arguments = ["npm", "run", "server"]
+      executableName = "npm"
+      arguments = ["run", "server"]
       urlString = "http://127.0.0.1:4000"
-      notes = ["Hexo 常见本地端口为 4000。", "如果没有 server script，可改用 hexo server。"]
+      notes = ["Hexo 常见本地端口为 4000。", "如果没有 server script，可改用 hexo server。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
     case .jekyll:
-      arguments = ["bundle", "exec", "jekyll", "serve", "--drafts"]
+      executableName = "bundle"
+      arguments = ["exec", "jekyll", "serve", "--drafts"]
       urlString = "http://127.0.0.1:4000"
-      notes = ["Jekyll 常见本地端口为 4000。", "需要 Ruby bundle 环境可用。"]
+      notes = ["Jekyll 常见本地端口为 4000。", "需要 Ruby bundle 环境可用。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
     }
 
     guard let previewURL = URL(string: urlString) else {
       return nil
     }
 
+    let executablePath = executableResolver(executableName)
+      ?? Self.trustedExecutableCandidates(named: executableName)[0]
+
     return LocalSitePreviewPlan(
       siteKind: profile.siteKind,
       rootPath: rootPath,
       executablePath: executablePath,
       arguments: arguments,
-      command: copyableCommand(rootPath: rootPath, arguments: arguments),
+      command: copyableCommand(rootPath: rootPath, executableName: executableName, arguments: arguments),
       previewURL: previewURL,
       notes: notes
     )
   }
 
-  private func copyableCommand(rootPath: String, arguments: [String]) -> String {
-    let command = arguments.map(posixShellQuote).joined(separator: " ")
+  private func copyableCommand(rootPath: String, executableName: String, arguments: [String]) -> String {
+    let command = ([executableName] + arguments).map(posixShellQuote).joined(separator: " ")
     return "cd \(posixShellQuote(rootPath)) && \(command)"
+  }
+
+  private static func resolveTrustedExecutable(named name: String) -> String? {
+    trustedExecutableCandidates(named: name).first {
+      FileManager.default.isExecutableFile(atPath: $0)
+    }
+  }
+
+  private static func trustedExecutableCandidates(named name: String) -> [String] {
+    LocalSitePreviewProcessService.trustedToolDirectories.map {
+      URL(fileURLWithPath: $0, isDirectory: true).appendingPathComponent(name).path
+    }
   }
 }
