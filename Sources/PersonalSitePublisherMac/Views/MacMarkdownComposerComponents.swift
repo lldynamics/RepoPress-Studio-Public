@@ -1073,6 +1073,9 @@ struct MarkdownPreviewAssetResource: Hashable, Sendable {
 }
 
 final class MarkdownPreviewAssetSchemeHandler: NSObject, WKURLSchemeHandler {
+  private static let maximumImageByteCount = 64 * 1024 * 1024
+  private static let maximumVideoByteCount = 256 * 1024 * 1024
+
   private let lock = NSLock()
   private var resourceByAttachmentID: [String: MarkdownPreviewAssetResource] = [:]
 
@@ -1097,7 +1100,13 @@ final class MarkdownPreviewAssetSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     do {
-      let data = try Data(contentsOf: resource.sourceURL, options: [.mappedIfSafe])
+      let maximumByteCount = resource.mimeType.hasPrefix("video/")
+        ? Self.maximumVideoByteCount
+        : Self.maximumImageByteCount
+      let data = try BoundedFileReader.data(
+        at: resource.sourceURL,
+        maximumByteCount: maximumByteCount
+      )
       let response = URLResponse(
         url: requestURL,
         mimeType: resource.mimeType,

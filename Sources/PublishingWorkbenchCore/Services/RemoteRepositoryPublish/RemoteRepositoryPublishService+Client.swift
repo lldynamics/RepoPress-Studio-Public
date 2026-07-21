@@ -204,6 +204,11 @@ extension RemoteRepositoryPublishService {
 
   func data(for request: URLRequest) async throws -> HTTPDataResponse {
     let (data, response) = try await transport.data(for: request)
+    try BoundedHTTPResponseLoader.validate(
+      data,
+      response: response,
+      maximumByteCount: URLSessionRemoteRepositoryHTTPTransport.maximumResponseByteCount
+    )
     guard let httpResponse = response as? HTTPURLResponse else {
       throw RemoteRepositoryPublishError.invalidResponse
     }

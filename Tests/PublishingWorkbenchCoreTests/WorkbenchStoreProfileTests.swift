@@ -55,7 +55,8 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     let plan = try XCTUnwrap(store.localSitePreviewPlan)
     XCTAssertEqual(store.activeProfileID, profile.id)
     XCTAssertEqual(plan.rootPath, rootURL.path)
-    XCTAssertEqual(plan.arguments, ["npm", "run", "dev"])
+    XCTAssertEqual(URL(fileURLWithPath: plan.executablePath).lastPathComponent, "npm")
+    XCTAssertEqual(plan.arguments, ["run", "dev"])
     XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:4321")
   }
 

@@ -3,6 +3,62 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class AIChatCompletionClientTests: XCTestCase {
+  func testCompleteRejectsOversizedResponseBeforeDecoding() async {
+    let maximumByteCount = URLSessionAIChatTransport.maximumResponseByteCount
+    let transport = RecordingAIChatTransport(
+      data: Data(repeating: 0x41, count: maximumByteCount + 1),
+      statusCode: 200
+    )
+    let client = AIChatCompletionClient(transport: transport)
+
+    await XCTAssertThrowsErrorAsync(
+      try await client.complete(
+        request: AIChatCompletionRequest(model: "model", messages: []),
+        config: AIProviderConfig(
+          preset: .local,
+          baseURL: "http://127.0.0.1:11434/v1",
+          model: "model",
+          requiresAPIKey: false
+        ),
+        apiKey: nil
+      )
+    ) { error in
+      XCTAssertEqual(
+        error as? AIChatCompletionClientError,
+        .responseTooLarge(maximumBytes: maximumByteCount)
+      )
+    }
+  }
+
+  func testStreamRejectsOversizedSingleLine() async throws {
+    let maximumLineByteCount = URLSessionAIChatTransport.maximumStreamingLineByteCount
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200,
+      streamLines: [String(repeating: "a", count: maximumLineByteCount + 1)]
+    )
+    let client = AIChatCompletionClient(transport: transport)
+    let stream = try await client.stream(
+      request: AIChatCompletionRequest(model: "model", messages: []),
+      config: AIProviderConfig(
+        preset: .local,
+        baseURL: "http://127.0.0.1:11434/v1",
+        model: "model",
+        requiresAPIKey: false
+      ),
+      apiKey: nil
+    )
+
+    await XCTAssertThrowsErrorAsync(
+      try await consume(stream)
+    ) { error in
+      XCTAssertEqual(
+        error as? AIChatCompletionClientError,
+        .responseTooLarge(maximumBytes: URLSessionAIChatTransport.maximumStreamingResponseByteCount)
+      )
+    }
+  }
+
   func testBuildsOpenAICompatibleRequestWithAuthorization() async throws {
     let transport = RecordingAIChatTransport(
       data: responseData(content: #"{"role":"assistant","content":"Done"}"#),
@@ -788,5 +844,9 @@ final class AIChatCompletionClientTests: XCTestCase {
       ]\(usageFragment)
     }
     """.utf8)
+  }
+
+  private func consume(_ stream: AsyncThrowingStream<AIChatStreamUpdate, Error>) async throws {
+    for try await _ in stream {}
   }
 }
