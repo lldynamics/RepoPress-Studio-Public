@@ -93,17 +93,7 @@ struct PersonalSitePublisherMacApp: App {
 
 @MainActor
 final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate {
-  private let privacyIdleLockController = PrivacyIdleLockController()
-  var workbenchStore: WorkbenchStore? {
-    didSet {
-      guard oldValue !== workbenchStore else { return }
-      if let workbenchStore {
-        privacyIdleLockController.start(monitoring: workbenchStore)
-      } else {
-        privacyIdleLockController.stop()
-      }
-    }
-  }
+  var workbenchStore: WorkbenchStore?
   var browserBridge: KnowledgeBrowserBridge?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
@@ -131,7 +121,6 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   }
 
   func applicationWillTerminate(_ notification: Notification) {
-    privacyIdleLockController.stop()
     browserBridge?.stop()
     workbenchStore?.stopLocalSitePreviewImmediately()
     _ = workbenchStore?.flushPendingChanges()
