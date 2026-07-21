@@ -31,6 +31,54 @@ final class MarkdownSyntaxHighlightParserTests: XCTestCase {
     )
   }
 
+  func testEmbeddedHTMLIsHighlightedOutsideCodeOnly() async throws {
+    let markdown = "<details open>正文</details> `<mark>code</mark>`\n```html\n<div>code</div>\n```"
+    let result = await MarkdownSyntaxHighlightParser().snapshot(in: markdown)
+    let snapshot = try XCTUnwrap(result)
+    let htmlRuns = snapshot.runs.filter { $0.style == .html }
+
+    XCTAssertEqual(htmlRuns.count, 2)
+    XCTAssertEqual(
+      htmlRuns.map { (markdown as NSString).substring(with: $0.range) },
+      ["<details open>", "</details>"]
+    )
+  }
+
+  func testEmbeddedHTMLIsNotHighlightedInsideFourBacktickOrTildeFences() async throws {
+    let markdown = """
+    ````html
+    <div>four backticks</div>
+    ````
+    ~~~html
+    <mark>tilde fence</mark>
+    ~~~
+    """
+    let result = await MarkdownSyntaxHighlightParser().snapshot(in: markdown)
+    let snapshot = try XCTUnwrap(result)
+
+    XCTAssertEqual(snapshot.runs.filter { $0.style == .codeBlock }.count, 2)
+    XCTAssertTrue(snapshot.runs.filter { $0.style == .html }.isEmpty)
+  }
+
+  func testCommonMarkCodeRangesHandleCRLFLongerClosingAndIndentedCode() async throws {
+    let markdown = "```html\r\n<div>fenced</div>\r\n````\r\n    <mark>indented</mark>\n``<span>inline</span>``"
+    let result = await MarkdownSyntaxHighlightParser().snapshot(in: markdown)
+    let snapshot = try XCTUnwrap(result)
+
+    XCTAssertEqual(snapshot.runs.filter { $0.style == .codeBlock }.count, 2)
+    XCTAssertEqual(snapshot.runs.filter { $0.style == .inlineCode }.count, 1)
+    XCTAssertTrue(snapshot.runs.filter { $0.style == .html }.isEmpty)
+  }
+
+  func testUnclosedFenceProtectsHTMLToEndOfDocument() async throws {
+    let markdown = "~~~html\n<div>literal</div>\n"
+    let result = await MarkdownSyntaxHighlightParser().snapshot(in: markdown)
+    let snapshot = try XCTUnwrap(result)
+
+    XCTAssertEqual(snapshot.runs.filter { $0.style == .codeBlock }.count, 1)
+    XCTAssertTrue(snapshot.runs.filter { $0.style == .html }.isEmpty)
+  }
+
   func testMultipleCodeBlocksExcludeOnlyTheirOverlappingStyles() async throws {
     let markdown = """
     **outside one**

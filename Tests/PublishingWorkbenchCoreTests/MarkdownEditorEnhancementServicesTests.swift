@@ -132,6 +132,15 @@ final class MarkdownEditorEnhancementServicesTests: XCTestCase {
     XCTAssertTrue(fixed.contains("![cover photo](images/cover-photo.png)"))
   }
 
+  func testInlineDiagnosticsReportUnsafeEmbeddedHTML() {
+    let markdown = #"正文 <img src="javascript:alert(1)" onerror="run()">"#
+
+    let diagnostics = MarkdownInlineDiagnosticService.diagnostics(in: markdown)
+
+    XCTAssertTrue(diagnostics.contains { $0.title == CoreL10n.text("HTML 链接已拦截") })
+    XCTAssertTrue(diagnostics.contains { $0.message.contains("onerror") && $0.severity == .error })
+  }
+
   func testSnippetExpansionUsesDraftMetadata() throws {
     let draft = ArticleDraft(siteProfileID: UUID(), title: "测试标题", slug: "test-title")
     let template = try XCTUnwrap(

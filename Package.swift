@@ -64,5 +64,12 @@ let package = Package(
         "PublishingWorkbenchCore",
       ]
     ),
+    .testTarget(
+      name: "PersonalSitePublisherMacTests",
+      dependencies: [
+        "PersonalSitePublisherMac",
+        "PublishingWorkbenchCore",
+      ]
+    ),
   ]
 )

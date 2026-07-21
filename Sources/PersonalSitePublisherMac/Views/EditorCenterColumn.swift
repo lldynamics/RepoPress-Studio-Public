@@ -5,17 +5,20 @@ struct EditorCenterColumn: View {
   let store: WorkbenchStore
   let contentHealthFilter: ContentHealthContextFilter
   @Binding var repositoryContextStage: RepositoryContextStage
+  let repositorySourceSession: RepositoryHTMLSourceSession
   @StateObject private var editorState: WorkbenchEditorNavigationFeatureFacade
   @ObservedObject private var knowledge: KnowledgeStore
 
   init(
     store: WorkbenchStore,
     contentHealthFilter: ContentHealthContextFilter,
-    repositoryContextStage: Binding<RepositoryContextStage>
+    repositoryContextStage: Binding<RepositoryContextStage>,
+    repositorySourceSession: RepositoryHTMLSourceSession
   ) {
     self.store = store
     self.contentHealthFilter = contentHealthFilter
     _repositoryContextStage = repositoryContextStage
+    self.repositorySourceSession = repositorySourceSession
     _editorState = StateObject(
       wrappedValue: WorkbenchEditorNavigationFeatureFacade(store: store)
     )
@@ -28,7 +31,11 @@ struct EditorCenterColumn: View {
       case .knowledgeLibrary:
         KnowledgeLibraryDetailView(knowledge: store.knowledge)
       case .repository:
-        RepositoryWorkspaceView(store: store, stage: $repositoryContextStage)
+        RepositoryWorkspaceView(
+          store: store,
+          stage: $repositoryContextStage,
+          sourceSession: repositorySourceSession
+        )
       case .images:
         ImageWorkbenchView(store: store)
       case .contentHealth:

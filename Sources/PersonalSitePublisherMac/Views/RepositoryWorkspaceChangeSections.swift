@@ -66,6 +66,20 @@ extension RepositoryWorkspaceView {
                         .foregroundStyle(.secondary)
                       WorkbenchPathIdentity(path: file.path)
                       Spacer()
+                      if file.kind != .deleted,
+                         ["html", "htm"].contains(
+                           URL(fileURLWithPath: file.displayPath).pathExtension.lowercased()
+                         ) {
+                        Button {
+                          sourceSession.requestOpen(repositoryPath: file.displayPath)
+                          stage = .source
+                          store.setInspectorPresented(true)
+                        } label: {
+                          Label("源码编辑", systemImage: "chevron.left.forwardslash.chevron.right")
+                        }
+                        .controlSize(.small)
+                        .help("在高级源码编辑器中打开 \(file.displayPath)")
+                      }
                       Text(file.status)
                         .font(.caption.monospaced())
                         .foregroundStyle(.tertiary)

@@ -5,6 +5,7 @@ import SwiftUI
 struct RepositoryWorkspaceView: View {
   @ObservedObject var store: WorkbenchStore
   @Binding var stage: RepositoryContextStage
+  @ObservedObject var sourceSession: RepositoryHTMLSourceSession
   @FocusedValue(\.publishDrawerCommandAction) var publishDrawerCommandAction
   @State var isContentMigrationPresented = false
   @State var isRepositoryCreationConfirmationPresented = false
@@ -20,6 +21,8 @@ struct RepositoryWorkspaceView: View {
       Group {
         if stage == .history {
           ReleaseHistoryDetailView(store: store)
+        } else if stage == .source {
+          RepositoryHTMLSourceWorkspaceView(store: store, session: sourceSession)
         } else {
           repositoryContent
         }
@@ -233,6 +236,8 @@ struct RepositoryWorkspaceView: View {
       "checkmark.shield"
     case .preview:
       "play.rectangle"
+    case .source:
+      "chevron.left.forwardslash.chevron.right"
     case .history:
       "clock.arrow.circlepath"
     }

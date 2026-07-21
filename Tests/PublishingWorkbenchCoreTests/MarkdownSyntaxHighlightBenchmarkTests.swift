@@ -568,7 +568,8 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
         .quote: [.foregroundColor: NSColor.secondaryLabelColor],
         .bold: [.font: emphasizedFont],
         .italic: [.obliqueness: 0.15],
-        .inlineCode: [.font: baseFont, .foregroundColor: NSColor.systemOrange]
+        .inlineCode: [.font: baseFont, .foregroundColor: NSColor.systemOrange],
+        .html: [.font: baseFont, .foregroundColor: NSColor.systemPurple]
       ]
     )
   }

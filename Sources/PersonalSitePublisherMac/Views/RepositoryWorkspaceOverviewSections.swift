@@ -20,6 +20,8 @@ extension RepositoryWorkspaceView {
       repositoryAutoSyncSection
     case .preview:
       localPreviewSection
+    case .source:
+      EmptyView()
     case .history:
       ReleaseHistoryDetailView(store: store)
     }
@@ -214,6 +216,12 @@ extension RepositoryWorkspaceView {
         String(localized: "扫描后启动本地预览"),
         String(localized: "扫描会确认站点类型、预览命令和可用端口，然后显示启动操作。"),
         "play.rectangle"
+      )
+    case .source:
+      content = (
+        String(localized: "打开 HTML 高级源码编辑器"),
+        String(localized: "选择仓库中的 HTML 文件后，可在保留编码与换行符的前提下安全编辑。"),
+        "chevron.left.forwardslash.chevron.right"
       )
     case .history:
       content = (

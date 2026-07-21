@@ -65,6 +65,10 @@ struct MarkdownTextViewSyntaxPalette {
       .inlineCode: [
         .font: codeFont,
         .foregroundColor: WorkbenchThemeNSColor.warning
+      ],
+      .html: [
+        .font: codeFont,
+        .foregroundColor: NSColor.systemPurple
       ]
     ]
   }

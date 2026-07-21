@@ -797,7 +797,7 @@ private enum MarkdownPreviewHTMLRenderer {
           previewURLByAttachmentID: previewURLByAttachmentID
         )
         renderedBlocks.append(restoredAssetHTML(
-          markdownHTMLBody(for: prepared.markdown),
+          MarkdownHTMLRenderingService.renderPreviewBodyAllowingSanitizedHTML(prepared.markdown),
           replacements: prepared.replacements
         ))
       case let .mermaid(diagram):
@@ -906,12 +906,7 @@ private enum MarkdownPreviewHTMLRenderer {
   }
 
   private static func escapeHTML(_ value: String) -> String {
-    value
-      .replacingOccurrences(of: "&", with: "&amp;")
-      .replacingOccurrences(of: "<", with: "&lt;")
-      .replacingOccurrences(of: ">", with: "&gt;")
-      .replacingOccurrences(of: "\"", with: "&quot;")
-      .replacingOccurrences(of: "'", with: "&#39;")
+    MarkupEscaping.html(value)
   }
 }
 

@@ -6,6 +6,7 @@ public enum WorkbenchLayoutMode {
   public static let defaultWindowHeight: CGFloat = 900
   public static let expandedWorkspaceWidth: CGFloat = 1180
   public static let minimumInspectorWorkspaceWidth: CGFloat = 1180
+  public static let minimumHTMLSourceInspectorWorkspaceWidth: CGFloat = 1240
   public static let minimumSplitInspectorWorkspaceWidth: CGFloat = 1580
   public static let minimumSplitSidebarWorkspaceWidth: CGFloat = 1100
 
@@ -28,5 +29,21 @@ public enum WorkbenchLayoutMode {
     editorDisplayMode: EditorDisplayMode
   ) -> Bool {
     editorDisplayMode == .split && width < minimumSplitSidebarWorkspaceWidth
+  }
+
+  public static func sidebarWidth(
+    storedWidth: CGFloat,
+    workspaceWidth: CGFloat,
+    centerMinimumWidth: CGFloat,
+    inspectorPresented: Bool,
+    minimumWidth: CGFloat = 240,
+    maximumWidth: CGFloat = 380,
+    inspectorMinimumWidth: CGFloat = 320
+  ) -> CGFloat {
+    let availableMaximum = inspectorPresented
+      ? workspaceWidth - centerMinimumWidth - inspectorMinimumWidth
+      : maximumWidth
+    let responsiveMaximum = max(minimumWidth, min(maximumWidth, availableMaximum))
+    return min(max(storedWidth, minimumWidth), responsiveMaximum)
   }
 }
