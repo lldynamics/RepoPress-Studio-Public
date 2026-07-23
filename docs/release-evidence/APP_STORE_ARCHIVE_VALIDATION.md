@@ -18,8 +18,8 @@ repository before filling real archive validation notes.
   Evidence: Release app and signed installer were produced from a clean committed checkout using the release packaging command.
 - [x] Distribution signing and hardened runtime verified on the archive.
   Evidence: Distribution signatures and hardened runtime were verified for the app and embedded Safari Web Extension; installer signature and artifact hashes also verified.
-- [ ] Archive validated with App Store Connect or Transporter before upload.
-  Evidence:
+- [x] Archive validated with App Store Connect or Transporter before upload.
+  Evidence: App Store build 1.0 (4) was delivered successfully through Transporter and accepted for App Store Connect processing on 2026-07-23.
 
 ## Recording Commands
 
