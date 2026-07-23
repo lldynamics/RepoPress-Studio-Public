@@ -39,6 +39,7 @@ plutil -insert CFBundlePackageType -string BNDL "$CORE_RESOURCES/Info.plist"
 
 plutil -create xml1 "$SAFARI_EXTENSION/Contents/Info.plist"
 plutil -insert CFBundleIdentifier -string com.jinfang.PersonalSitePublisherMac.SafariExtension "$SAFARI_EXTENSION/Contents/Info.plist"
+plutil -insert CFBundleExecutable -string RepoPressSafariExtension "$SAFARI_EXTENSION/Contents/Info.plist"
 plutil -insert CFBundlePackageType -string 'XPC!' "$SAFARI_EXTENSION/Contents/Info.plist"
 plutil -insert LSMinimumSystemVersion -string 14.0 "$SAFARI_EXTENSION/Contents/Info.plist"
 plutil -insert NSExtension -xml '<dict><key>NSExtensionPointIdentifier</key><string>com.apple.Safari.web-extension</string></dict>' "$SAFARI_EXTENSION/Contents/Info.plist"
@@ -46,6 +47,9 @@ cp "$ROOT_DIR/BrowserExtension/Safari/manifest.json" "$SAFARI_EXTENSION/Contents
 
 printf '#!/usr/bin/env bash\nexit 0\n' >"$APP/Contents/MacOS/PersonalSitePublisherMac"
 chmod +x "$APP/Contents/MacOS/PersonalSitePublisherMac"
+mkdir -p "$SAFARI_EXTENSION/Contents/MacOS"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$SAFARI_EXTENSION/Contents/MacOS/RepoPressSafariExtension"
+chmod +x "$SAFARI_EXTENSION/Contents/MacOS/RepoPressSafariExtension"
 
 output="$(bash "$CHECK" --app-bundle "$APP" 2>&1)" \
   || fail "explicit unsigned app should pass non-strict local checks"

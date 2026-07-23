@@ -13,6 +13,7 @@ PRODUCT_BUNDLE="$BUILD_ROOT/product/RepoPressSafariExtension.appex"
 LOCALIZATION_ROOT="$ROOT_DIR/Packaging/SafariWebExtension"
 SAFARI_APP_NAME="RepoPressSafari"
 SAFARI_TARGET="RepoPressSafari Extension"
+SAFARI_EXECUTABLE_NAME="RepoPressSafariExtension"
 CONTAINING_APP_BUNDLE_ID="${PERSONAL_SITE_PUBLISHER_BUNDLE_ID:-com.jinfang.PersonalSitePublisherMac}"
 SAFARI_EXTENSION_BUNDLE_ID="${SAFARI_WEB_EXTENSION_BUNDLE_ID:-$CONTAINING_APP_BUNDLE_ID.SafariExtension}"
 MINIMUM_SYSTEM_VERSION="14.0"
@@ -139,6 +140,7 @@ xcodebuild \
   CODE_SIGNING_ALLOWED=NO \
   MACOSX_DEPLOYMENT_TARGET="$MINIMUM_SYSTEM_VERSION" \
   PRODUCT_BUNDLE_IDENTIFIER="$SAFARI_EXTENSION_BUNDLE_ID" \
+  EXECUTABLE_NAME="$SAFARI_EXECUTABLE_NAME" \
   MARKETING_VERSION="$MARKETING_VERSION" \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
   INFOPLIST_KEY_CFBundleDisplayName="RepoPress Safari Capture" \
@@ -168,10 +170,15 @@ python3 -m json.tool "$manifest" >/dev/null \
   || fail "embedded Safari manifest is invalid"
 
 actual_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$info_plist")"
+actual_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$info_plist")"
 extension_point="$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$info_plist")"
 minimum_system="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$info_plist")"
 [[ "$actual_bundle_id" == "$SAFARI_EXTENSION_BUNDLE_ID" ]] \
   || fail "generated bundle identifier is $actual_bundle_id"
+[[ "$actual_executable" == "$SAFARI_EXECUTABLE_NAME" ]] \
+  || fail "generated executable name is $actual_executable"
+[[ -x "$PRODUCT_BUNDLE/Contents/MacOS/$actual_executable" ]] \
+  || fail "generated Safari executable is missing or not executable"
 [[ "$extension_point" == "com.apple.Safari.web-extension" ]] \
   || fail "generated extension point is $extension_point"
 [[ "$minimum_system" == "$MINIMUM_SYSTEM_VERSION" ]] \

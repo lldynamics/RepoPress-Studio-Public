@@ -227,11 +227,17 @@ core_resource_package_type="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackage
 [[ "$uses_non_exempt_encryption" == "false" ]] \
   || fail "archive must declare ITSAppUsesNonExemptEncryption=false for the audited encryption boundary"
 safari_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$SAFARI_EXTENSION_INFO")"
+safari_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$SAFARI_EXTENSION_INFO")"
+safari_bundle_basename="$(basename "$SAFARI_EXTENSION" .appex)"
 safari_package_type="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$SAFARI_EXTENSION_INFO")"
 safari_extension_point="$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$SAFARI_EXTENSION_INFO")"
 safari_minimum_system="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$SAFARI_EXTENSION_INFO")"
 [[ "$safari_bundle_id" == "$SAFARI_EXTENSION_BUNDLE_ID" ]] \
   || fail "unexpected Safari Web Extension bundle identifier: $safari_bundle_id"
+[[ "$safari_executable" == "$safari_bundle_basename" ]] \
+  || fail "Safari Web Extension CFBundleExecutable must match its bundle name"
+[[ -x "$SAFARI_EXTENSION/Contents/MacOS/$safari_executable" ]] \
+  || fail "Safari Web Extension executable is missing or not executable"
 [[ "$safari_package_type" == "XPC!" ]] \
   || fail "Safari Web Extension must use CFBundlePackageType=XPC!"
 [[ "$safari_extension_point" == "com.apple.Safari.web-extension" ]] \
