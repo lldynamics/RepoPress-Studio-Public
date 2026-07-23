@@ -52,8 +52,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       assertUniqueIdentifier(identifier)
     }
 
-    let libraryButton = element(identifier: "workspace-sidebar-library")
-    libraryButton.tap()
+    select(
+      "workspace-sidebar-library",
+      revealing: "knowledge-source-list"
+    )
 
     for identifier in persistentIdentifiers + [
       "knowledge-source-list",
@@ -90,7 +92,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
   func testOperationalSidebarQuickSearchIdentifiersRemainUnique() throws {
     launchApplication(surface: "writing")
-    element(identifier: "workspace-sidebar-sync").tap()
+    select(
+      "workspace-sidebar-sync",
+      revealing: "repository-workspace"
+    )
 
     for identifier in [
       "workspace-quick-search",
@@ -118,9 +123,12 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
   func testRepositoryWorkspaceIdentifiersRemainUniqueAcrossAllStages() throws {
     launchApplication(surface: "writing")
-    element(identifier: "workspace-sidebar-sync").tap()
+    select(
+      "workspace-sidebar-sync",
+      revealing: "repository-workspace"
+    )
 
-    for identifier in [
+    let overviewIdentifiers = [
       "repository-workspace",
       "repository-primary-actions",
       "repository-action-select-folder",
@@ -136,11 +144,16 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "repository-section-local-preview",
       "repository-section-sync-plan",
       "repository-section-path-rules",
-    ] {
+    ]
+    for identifier in overviewIdentifiers {
+      revealByScrolling(identifier)
       assertUniqueIdentifier(identifier)
     }
 
-    element(identifier: "repository-sidebar-stage-changes").tap()
+    select(
+      "repository-sidebar-stage-changes",
+      revealing: "repository-section-remote-changes"
+    )
     for identifier in [
       "repository-workspace",
       "repository-section-remote-changes",
@@ -149,27 +162,47 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       assertUniqueIdentifier(identifier)
     }
 
-    element(identifier: "repository-sidebar-stage-history").tap()
-    for identifier in [
+    select(
+      "repository-sidebar-stage-history",
+      revealing: "repository-section-release-history"
+    )
+    let historyIdentifiers = [
       "repository-section-release-history",
       "release-history-header",
       "release-history-primary-metrics",
-      "release-history-main-column",
       "release-history-action-queue",
       "release-history-records",
-      "release-history-deployment-column",
       "release-history-deployment-overview",
       "release-history-deployment-polling",
       "release-history-deployment-status",
       "release-history-deployment-debug",
-    ] {
+    ]
+    let releaseHistoryLayoutIdentifier = revealAnyByScrolling([
+      "release-history-main-column",
+      "release-history-narrow-content",
+    ])
+    if releaseHistoryLayoutIdentifier == "release-history-main-column" {
+      assertUniqueIdentifier("release-history-main-column")
+      revealByScrolling("release-history-deployment-column")
+      assertUniqueIdentifier("release-history-deployment-column")
+      XCTAssertEqual(elementCount(identifier: "release-history-narrow-content"), 0)
+    } else if releaseHistoryLayoutIdentifier == "release-history-narrow-content" {
+      assertUniqueIdentifier("release-history-narrow-content")
+      XCTAssertEqual(elementCount(identifier: "release-history-main-column"), 0)
+      XCTAssertEqual(elementCount(identifier: "release-history-deployment-column"), 0)
+    }
+    for identifier in historyIdentifiers {
+      revealByScrolling(identifier)
       assertUniqueIdentifier(identifier)
     }
   }
 
   func testImageWorkbenchIdentifiersRemainUniqueAndDoNotOverrideChildControls() throws {
     launchApplication(surface: "writing")
-    element(identifier: "workspace-sidebar-images").tap()
+    select(
+      "workspace-sidebar-images",
+      revealing: "image-workbench-overview"
+    )
 
     for identifier in [
       "workspace-quick-search",
@@ -193,7 +226,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       assertUniqueIdentifier(identifier)
     }
 
-    element(identifier: "image-sidebar-stage-issues").tap()
+    select(
+      "image-sidebar-stage-issues",
+      revealing: "image-issue-workspace"
+    )
     for identifier in [
       "image-workbench",
       "image-issue-workspace",
@@ -203,7 +239,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       assertUniqueIdentifier(identifier)
     }
 
-    element(identifier: "image-sidebar-stage-repository").tap()
+    select(
+      "image-sidebar-stage-repository",
+      revealing: "repository-image-browser"
+    )
     for identifier in [
       "image-workbench",
       "repository-image-browser",
@@ -214,7 +253,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
   func testContentHealthIdentifiersRemainUniqueAcrossAllStages() throws {
     launchApplication(surface: "writing")
-    element(identifier: "workspace-sidebar-contentHealth").tap()
+    select(
+      "workspace-sidebar-contentHealth",
+      revealing: "content-health-stage-overview"
+    )
 
     for identifier in [
       "workspace-quick-search",
@@ -232,7 +274,10 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     }
 
     for stage in ["publicRisks", "aiFixes", "siteIssues", "maintenance"] {
-      element(identifier: "content-health-sidebar-stage-\(stage)").tap()
+      select(
+        "content-health-sidebar-stage-\(stage)",
+        revealing: "content-health-stage-\(stage)"
+      )
       assertUniqueIdentifier("content-health-workspace")
       assertUniqueIdentifier("content-health-stage-\(stage)")
     }
@@ -255,7 +300,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"] = "1"
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE"] = surface
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_KNOWLEDGE_ROOT"] = knowledgeLibraryRootURL.path
-    application.launchEnvironment["PERSONAL_SITE_PUBLISHER_DISABLE_CAPTURE_WINDOW_BRIDGE"] = "1"
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST"] = "1"
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST_REPOSITORY_ROOT"] = knowledgeLibraryRootURL
       .appendingPathComponent("repository-fixture", isDirectory: true)
@@ -287,6 +331,112 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       file: file,
       line: line
     )
+  }
+
+  private func select(
+    _ controlIdentifier: String,
+    revealing destinationIdentifier: String,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    let destination = element(identifier: destinationIdentifier)
+    for _ in 0..<3 {
+      application.activate()
+      let control = element(identifier: controlIdentifier)
+      guard control.waitForExistence(timeout: 5) else {
+        continue
+      }
+      control
+        .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        .tap()
+      if destination.waitForExistence(timeout: 5) {
+        return
+      }
+    }
+    XCTFail(
+      "Selecting \(controlIdentifier) did not reveal \(destinationIdentifier).",
+      file: file,
+      line: line
+    )
+  }
+
+  private func revealByScrolling(
+    _ identifier: String,
+    maxSwipes: Int = 8,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    let destination = element(identifier: identifier)
+    if destination.exists {
+      return
+    }
+
+    let window = application.windows.firstMatch
+    guard window.waitForExistence(timeout: 5) else {
+      XCTFail(
+        "The app window was unavailable while revealing \(identifier).",
+        file: file,
+        line: line
+      )
+      return
+    }
+    for _ in 0..<maxSwipes {
+      application.activate()
+      window.swipeUp()
+      if destination.waitForExistence(timeout: 2) {
+        return
+      }
+    }
+    for _ in 0..<maxSwipes {
+      application.activate()
+      window.swipeDown()
+      if destination.waitForExistence(timeout: 2) {
+        return
+      }
+    }
+    XCTFail(
+      "Scrolling did not reveal \(identifier).",
+      file: file,
+      line: line
+    )
+  }
+
+  private func revealAnyByScrolling(
+    _ identifiers: [String],
+    maxSwipes: Int = 8,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) -> String? {
+    if let identifier = identifiers.first(where: { element(identifier: $0).exists }) {
+      return identifier
+    }
+
+    let window = application.windows.firstMatch
+    guard window.waitForExistence(timeout: 5) else {
+      XCTFail(
+        "The app window was unavailable while revealing one of \(identifiers).",
+        file: file,
+        line: line
+      )
+      return nil
+    }
+    for _ in 0..<maxSwipes {
+      application.activate()
+      window.swipeUp()
+      if let identifier = identifiers.first(where: { element(identifier: $0).exists }) {
+        return identifier
+      }
+    }
+    XCTFail(
+      "Scrolling did not reveal any of \(identifiers).",
+      file: file,
+      line: line
+    )
+    return nil
+  }
+
+  private func elementCount(identifier: String) -> Int {
+    application.descendants(matching: .any).matching(identifier: identifier).count
   }
 
   private func element(identifier: String) -> XCUIElement {
