@@ -14,12 +14,12 @@ Use `script/prepare_external_verification_envs.sh` to copy
 `docs/release-evidence/app-store-archive-validation.env.example` outside the
 repository before filling real archive validation notes.
 
-- [ ] Clean Release archive produced from a clean checkout.
-  Evidence:
-- [ ] Distribution signing and hardened runtime verified on the archive.
-  Evidence:
-- [ ] Archive validated with App Store Connect or Transporter before upload.
-  Evidence:
+- [x] Clean Release archive produced from a clean checkout.
+  Evidence: Release app and signed installer were produced from a clean committed checkout using the release packaging command.
+- [x] Distribution signing and hardened runtime verified on the archive.
+  Evidence: Distribution signatures and hardened runtime were verified for the app and embedded Safari Web Extension; the installer signature and artifact hashes were also verified.
+- [x] Archive validated with App Store Connect or Transporter before upload.
+  Evidence: App Store build 1.0 (5) was delivered successfully through Transporter and accepted for App Store Connect processing on 2026-07-23.
 
 ## Recording Commands
 
