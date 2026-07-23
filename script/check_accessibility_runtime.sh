@@ -23,7 +23,9 @@ cleanup() {
   fi
   case "$TEST_BUNDLE_ID" in
     com.jinfang.PersonalSitePublisherMac.AccessibilityTests.*)
-      rm -rf "$RUNTIME_HOME/Library/Containers/$TEST_BUNDLE_ID"
+      # ContainerManager owns the protected metadata at the container root.
+      # Remove only test-owned data and leave the system metadata shell intact.
+      rm -rf "$RUNTIME_HOME/Library/Containers/$TEST_BUNDLE_ID/Data"
       ;;
   esac
 }
