@@ -1,10 +1,21 @@
 {
   "documentVersion": 1,
+  "activeExtensions": [
+    "safari",
+    "chrome"
+  ],
   "extensions": {
     "chromiumDevelopmentID": "lnibkmfhfikfbkeehcjbiaalhkiankam",
     "firefoxID": "knowledge-capture@jinfang.local",
+    "safariBundleID": "com.jinfang.PersonalSitePublisherMac.SafariExtension",
     "chromeProductionID": "ginjcibepmeobaaadmfiagigcpcebmcc",
     "edgeProductionID": null
+  },
+  "loopback": {
+    "host": "127.0.0.1",
+    "port": 17843,
+    "protocolHeaderName": "X-RepoPress-Protocol",
+    "protocolHeaderValue": "1"
   },
   "nativeMessaging": {
     "hostName": "com.jinfang.personal_site_publisher.knowledge",

@@ -63,19 +63,25 @@ if os.environ.get("FAIL_STAGE") == "chromium-store-release":
     raise SystemExit(1)
 PY
 
-cat >"$FIXTURE_ROOT/script/test_firefox_extension_release.sh" <<'STUB'
+cat >"$FIXTURE_ROOT/script/sync_safari_browser_extension.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-echo "firefox-release" >>"$COMMAND_LOG"
-[[ "${FAIL_STAGE:-}" != "firefox-release" ]]
+echo "safari-sync:$*" >>"$COMMAND_LOG"
+[[ "${FAIL_STAGE:-}" != "safari-sync" ]]
 STUB
-chmod +x "$FIXTURE_ROOT/script/test_firefox_extension_release.sh"
+chmod +x "$FIXTURE_ROOT/script/sync_safari_browser_extension.sh"
+
+cat >"$FIXTURE_ROOT/script/build_safari_web_extension.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "safari-build:$*" >>"$COMMAND_LOG"
+[[ "${FAIL_STAGE:-}" != "safari-build" ]]
+STUB
+chmod +x "$FIXTURE_ROOT/script/build_safari_web_extension.sh"
 
 for script_name in \
   test_browser_extension_compatibility.mjs \
-  test_browser_extension_e2e.mjs \
-  test_native_messaging_host.mjs \
-  test_native_messaging_unix_bridge.mjs; do
+  test_browser_extension_e2e.mjs; do
   : >"$FIXTURE_ROOT/script/$script_name"
 done
 
@@ -83,7 +89,8 @@ cat >"$FIXTURE_ROOT/bin/node" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 stage="${1##*/}"
-echo "node:$stage:${2:-}" >>"$COMMAND_LOG"
+shift
+echo "node:$stage:$*" >>"$COMMAND_LOG"
 [[ "${FAIL_STAGE:-}" != "$stage" ]]
 STUB
 chmod +x "$FIXTURE_ROOT/bin/node"
@@ -99,12 +106,6 @@ fi
 STUB
 chmod +x "$FIXTURE_ROOT/bin/swift"
 
-cat >"$FIXTURE_ROOT/.build/debug/KnowledgeNativeMessagingHost" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
-chmod +x "$FIXTURE_ROOT/.build/debug/KnowledgeNativeMessagingHost"
-
 COMMAND_LOG="$LOG_PATH" \
 FIXTURE_SWIFT_BIN_DIR="$FIXTURE_ROOT/.build/debug" \
 PATH="$FIXTURE_ROOT/bin:$PATH" \
@@ -113,26 +114,22 @@ bash "$FIXTURE_ROOT/script/check_browser_extension_release.sh" >/dev/null \
 
 grep -Fq "node:test_browser_extension_compatibility.mjs:" "$LOG_PATH" \
   || fail "browser compatibility test was omitted"
-grep -Fq "node:test_browser_extension_e2e.mjs:" "$LOG_PATH" \
+grep -Fq "node:test_browser_extension_e2e.mjs:--browser=chromium" "$LOG_PATH" \
   || fail "real-browser extension E2E test was omitted"
 grep -Fq "protocol-generation:--check" "$LOG_PATH" \
   || fail "cross-language protocol generation check was omitted"
+grep -Fq "safari-sync:--check" "$LOG_PATH" \
+  || fail "Safari shared-resource synchronization check was omitted"
+grep -Fq "safari-build:--check" "$LOG_PATH" \
+  || fail "Safari source contract check was omitted"
 grep -Fq "release-ledger:check" "$LOG_PATH" \
   || fail "immutable browser extension release ledger check was omitted"
 grep -Fq "release-ledger-tests" "$LOG_PATH" \
   || fail "immutable browser extension release ledger tests were omitted"
 grep -Fq "chromium-store-release:check" "$LOG_PATH" \
-  || fail "Chrome/Edge reproducible store package check was omitted"
-grep -Fq "firefox-release" "$LOG_PATH" \
-  || fail "Firefox release test was omitted"
-grep -Fq "swift:build --disable-sandbox" "$LOG_PATH" \
-  || fail "Swift products were not built"
-grep -Fq "node:test_native_messaging_host.mjs:$FIXTURE_ROOT/.build/debug/KnowledgeNativeMessagingHost" "$LOG_PATH" \
-  || fail "native host framing test was omitted"
-grep -Fq "node:test_native_messaging_unix_bridge.mjs:$FIXTURE_ROOT/.build/debug/KnowledgeNativeMessagingHost" "$LOG_PATH" \
-  || fail "Unix socket bridge test was omitted"
-grep -Fq "swift:test --disable-sandbox --filter KnowledgeNativeMessagingProtocolTests" "$LOG_PATH" \
-  || fail "Swift protocol tests were omitted"
+  || fail "Chrome reproducible store package check was omitted"
+grep -Fq "swift:build --disable-sandbox --product PersonalSitePublisherMac" "$LOG_PATH" \
+  || fail "App Store application product was not built"
 grep -Fq "swift:test --disable-sandbox --filter KnowledgeBrowserImportOperationLedgerTests" "$LOG_PATH" \
   || fail "browser import idempotency tests were omitted"
 grep -Fq "swift:test --disable-sandbox --filter KnowledgeLibraryServiceTests.testBrowserDuplicateResolutionSupportsVersionMoveCopyAndCancelWithoutSilentMutation" "$LOG_PATH" \
@@ -170,20 +167,9 @@ if COMMAND_LOG="$LOG_PATH" \
   bash "$FIXTURE_ROOT/script/check_browser_extension_release.sh" >/dev/null 2>&1; then
   fail "real-browser extension E2E failure was not propagated"
 fi
-if grep -Fq "firefox-release" "$LOG_PATH"; then
+if grep -Fq "swift:build" "$LOG_PATH"; then
   fail "gate continued after the real-browser extension E2E test failed"
 fi
 
 : >"$LOG_PATH"
-if COMMAND_LOG="$LOG_PATH" \
-  FIXTURE_SWIFT_BIN_DIR="$FIXTURE_ROOT/.build/debug" \
-  FAIL_STAGE="test_native_messaging_host.mjs" \
-  PATH="$FIXTURE_ROOT/bin:$PATH" \
-  bash "$FIXTURE_ROOT/script/check_browser_extension_release.sh" >/dev/null 2>&1; then
-  fail "native host test failure was not propagated"
-fi
-if grep -Fq "test_native_messaging_unix_bridge.mjs" "$LOG_PATH"; then
-  fail "gate continued after the native host test failed"
-fi
-
 echo "browser extension release gate test: passed"

@@ -853,6 +853,16 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertEqual(summary.webPConvertibleCount, 1)
     XCTAssertEqual(summary.duplicateImageCount, 0)
     XCTAssertEqual(summary.draftSummaries.count, 2)
+    let firstDraftSummary = try XCTUnwrap(
+      summary.draftSummaries.first(where: { $0.draftID == firstDraft.id })
+    )
+    XCTAssertEqual(firstDraftSummary.items.map(\.attachmentID), [firstAttachment.id])
+    XCTAssertFalse(firstDraftSummary.issues.isEmpty)
+    let secondDraftSummary = try XCTUnwrap(
+      summary.draftSummaries.first(where: { $0.draftID == secondDraft.id })
+    )
+    XCTAssertEqual(secondDraftSummary.items.map(\.attachmentID), [secondAttachment.id])
+    XCTAssertTrue(secondDraftSummary.issues.contains { $0.attachmentID == secondAttachment.id })
   }
 
   func testSiteSummarySortsImageQueueBySeverity() throws {

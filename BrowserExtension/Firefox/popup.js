@@ -90,6 +90,8 @@ const queueCount = document.querySelector("#queue-count");
 const queueStateLabel = document.querySelector("#queue-state");
 const queueSummaryLabel = document.querySelector("#queue-summary");
 const queueRetentionSelect = document.querySelector("#queue-retention");
+const queuePrivacyModeSelect = document.querySelector("#queue-privacy-mode");
+const queueAllowPrivateSitesInput = document.querySelector("#queue-allow-private-sites");
 const queueItemsContainer = document.querySelector("#queue-items");
 const retryQueueButton = document.querySelector("#retry-queue");
 const exportQueueButton = document.querySelector("#export-queue");
@@ -209,6 +211,8 @@ retryQueueButton.addEventListener("click", retryCaptureQueue);
 exportQueueButton.addEventListener("click", exportCaptureQueue);
 discardQueueButton.addEventListener("click", discardCaptureQueue);
 queueRetentionSelect.addEventListener("change", updateCaptureQueueRetention);
+queuePrivacyModeSelect.addEventListener("change", updateCaptureQueuePrivacy);
+queueAllowPrivateSitesInput.addEventListener("change", updateCaptureQueuePrivacy);
 openDocumentButton.addEventListener("click", openSavedDocument);
 duplicateNewVersionButton.addEventListener("click", () => resolveDuplicateCapture("save-new-version"));
 duplicateMoveButton.addEventListener("click", () => resolveDuplicateCapture("move-only"));
@@ -1503,10 +1507,15 @@ async function exportCaptureQueue() {
     anchor.download = result.fileName || "knowledge-capture-queue.json";
     anchor.click();
     URL.revokeObjectURL(objectURL);
-    showStatus(localizedText(
-      "queueExportedStatus",
-      "离线队列备份已导出；文件包含私密正文，请妥善保存。"
-    ), "success");
+    showStatus(result.export?.containsPrivateReadingContent
+      ? localizedText(
+        "queueExportedStatus",
+        "离线队列备份已导出；文件包含私密正文，请妥善保存。"
+      )
+      : localizedText(
+        "queueMetadataExportedStatus",
+        "离线队列备份已导出；其中只有标题、链接和队列元数据。"
+      ), "success");
   } catch (error) {
     showStatus(readableError(error), "error");
   } finally {
@@ -1534,6 +1543,62 @@ async function updateCaptureQueueRetention() {
     queueRetentionSelect.disabled = ["unknown", "failed"].includes(
       lastQueueStatus.queueState
     );
+  }
+}
+
+async function updateCaptureQueuePrivacy() {
+  const previousMode = lastQueueStatus.privacyMode || "links-only";
+  const previousAllowPrivateSites = lastQueueStatus.allowPrivateSites === true;
+  const privacyMode = queuePrivacyModeSelect.value;
+  const allowPrivateSites = queueAllowPrivateSitesInput.checked;
+  const totalItems = Number(lastQueueStatus.queuedCount || 0)
+    + Number(lastQueueStatus.quarantinedCount || 0);
+  const fullContentCount = Number(lastQueueStatus.fullContentCount || 0);
+
+  if (privacyMode === "disabled" && totalItems > 0 && !globalThis.confirm(localizedText(
+    "disableQueueConfirmation",
+    "禁用离线队列会删除当前所有待保存内容和隔离项目。是否继续？"
+  ))) {
+    queuePrivacyModeSelect.value = previousMode;
+    return;
+  }
+  if (privacyMode === "links-only" && fullContentCount > 0 && !globalThis.confirm(localizedText(
+    "minimizeQueueConfirmation",
+    "改为“仅标题和链接”会立即移除已排队的正文和网页归档，且无法恢复。是否继续？"
+  ))) {
+    queuePrivacyModeSelect.value = previousMode;
+    return;
+  }
+
+  queuePrivacyModeSelect.disabled = true;
+  queueAllowPrivateSitesInput.disabled = true;
+  try {
+    const result = await sendRuntimeMessage({
+      type: "set-capture-queue-privacy",
+      privacyMode,
+      allowPrivateSites
+    });
+    updateQueuePanel(result);
+    const changedCount = Number(result.purgedCount || 0)
+      + Number(result.minimizedCount || 0);
+    showStatus(changedCount > 0
+      ? localizedText(
+        "queuePrivacyUpdatedAndCleanedStatus",
+        "离线队列隐私设置已更新，并处理 {count} 项已存储数据。",
+        { count: changedCount }
+      )
+      : localizedText(
+        "queuePrivacyUpdatedStatus",
+        "离线队列隐私设置已更新。"
+      ), "success");
+  } catch (error) {
+    queuePrivacyModeSelect.value = previousMode;
+    queueAllowPrivateSitesInput.checked = previousAllowPrivateSites;
+    showStatus(readableError(error), "error");
+  } finally {
+    const unavailable = ["unknown", "failed"].includes(lastQueueStatus.queueState);
+    queuePrivacyModeSelect.disabled = unavailable;
+    queueAllowPrivateSitesInput.disabled = unavailable;
   }
 }
 
@@ -1622,6 +1687,10 @@ function updateQueuePanel(result) {
   queueCount.textContent = state === "unknown" ? "—" : String(totalItems);
   queueRetentionSelect.value = String(result?.retentionDays || 30);
   queueRetentionSelect.disabled = ["unknown", "failed"].includes(state);
+  queuePrivacyModeSelect.value = result?.privacyMode || "links-only";
+  queuePrivacyModeSelect.disabled = ["unknown", "failed"].includes(state);
+  queueAllowPrivateSitesInput.checked = result?.allowPrivateSites === true;
+  queueAllowPrivateSitesInput.disabled = ["unknown", "failed"].includes(state);
   retryQueueButton.disabled = state !== "content" || count === 0;
   discardQueueButton.disabled = ["unknown", "empty"].includes(state);
   exportQueueButton.disabled = ["unknown", "empty"].includes(state);
@@ -1701,6 +1770,11 @@ function captureQueueItemElement(item, quarantined) {
     }) : null,
     quarantined && item.originalSchemaVersion != null
       ? `schema ${item.originalSchemaVersion}`
+      : null,
+    !quarantined
+      ? item.storedContentMode === "links-only"
+        ? localizedText("queueItemLinksOnly", "仅标题和链接")
+        : localizedText("queueItemFullContent", "已保留完整内容")
       : null
   ].filter(Boolean).join(" · ");
   details.append(metadata);
@@ -1844,7 +1918,7 @@ function readableError(error) {
   if (/failed to fetch|networkerror|network request failed|load failed|connection refused/i.test(message)) {
     return localizedText(
       "cannotConnectError",
-      "无法连接应用。请先打开“个人网站发布控制台”，再检查令牌。"
+      "无法连接应用。请先打开“RepoPress”，再检查令牌。"
     );
   }
   return error?.message || String(error);

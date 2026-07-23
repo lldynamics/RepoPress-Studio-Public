@@ -8,6 +8,7 @@ public final class AIWorkspaceStore: ObservableObject {
   @Published public internal(set) var aiActionMessage: String?
   @Published public internal(set) var isAIActionRunning: Bool
   @Published public internal(set) var aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord]
+  @Published public internal(set) var automationRunRecords: [WorkbenchAutomationRunRecord]
   @Published public internal(set) var aiMetadataSuggestionDraftID: UUID?
   @Published public internal(set) var aiMetadataSuggestion: AIPublishingMetadataSuggestion?
   @Published public internal(set) var isAIMetadataSuggestionRunning: Bool
@@ -24,6 +25,9 @@ public final class AIWorkspaceStore: ObservableObject {
   @Published public internal(set) var pendingAIQuickPrompt: AIPublishingQuickPrompt?
   @Published public internal(set) var aiChatMessage: String?
   @Published public internal(set) var isAIChatRunning: Bool
+  @Published public internal(set) var isAutomationRunning: Bool
+  @Published public internal(set) var activeAutomationPlanID: UUID?
+  @Published public internal(set) var automationCancellationRequested: Bool
   @Published public internal(set) var aiImageTextSuggestionDraftID: UUID?
   @Published public internal(set) var aiImageTextSuggestions: [AIPublishingImageTextSuggestion]
   @Published public internal(set) var isAIImageTextRunning: Bool
@@ -38,6 +42,7 @@ public final class AIWorkspaceStore: ObservableObject {
     aiActionMessage: String? = nil,
     isAIActionRunning: Bool = false,
     aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord] = [],
+    automationRunRecords: [WorkbenchAutomationRunRecord] = [],
     aiMetadataSuggestionDraftID: UUID? = nil,
     aiMetadataSuggestion: AIPublishingMetadataSuggestion? = nil,
     isAIMetadataSuggestionRunning: Bool = false,
@@ -54,6 +59,9 @@ public final class AIWorkspaceStore: ObservableObject {
     pendingAIQuickPrompt: AIPublishingQuickPrompt? = nil,
     aiChatMessage: String? = nil,
     isAIChatRunning: Bool = false,
+    isAutomationRunning: Bool = false,
+    activeAutomationPlanID: UUID? = nil,
+    automationCancellationRequested: Bool = false,
     aiImageTextSuggestionDraftID: UUID? = nil,
     aiImageTextSuggestions: [AIPublishingImageTextSuggestion] = [],
     isAIImageTextRunning: Bool = false,
@@ -67,6 +75,7 @@ public final class AIWorkspaceStore: ObservableObject {
     self.aiActionMessage = aiActionMessage
     self.isAIActionRunning = isAIActionRunning
     self.aiMetadataApplicationRecords = aiMetadataApplicationRecords
+    self.automationRunRecords = automationRunRecords
     self.aiMetadataSuggestionDraftID = aiMetadataSuggestionDraftID
     self.aiMetadataSuggestion = aiMetadataSuggestion
     self.isAIMetadataSuggestionRunning = isAIMetadataSuggestionRunning
@@ -83,6 +92,9 @@ public final class AIWorkspaceStore: ObservableObject {
     self.pendingAIQuickPrompt = pendingAIQuickPrompt
     self.aiChatMessage = aiChatMessage
     self.isAIChatRunning = isAIChatRunning
+    self.isAutomationRunning = isAutomationRunning
+    self.activeAutomationPlanID = activeAutomationPlanID
+    self.automationCancellationRequested = automationCancellationRequested
     self.aiImageTextSuggestionDraftID = aiImageTextSuggestionDraftID
     self.aiImageTextSuggestions = aiImageTextSuggestions
     self.isAIImageTextRunning = isAIImageTextRunning

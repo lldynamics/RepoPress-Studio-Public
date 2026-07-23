@@ -11,7 +11,7 @@ struct PersonalSitePublisherMacApp: App {
   init() {
     // Earlier builds disabled AppKit restoration globally. Remove those sticky
     // overrides now that the main workspace is owned by a native SwiftUI scene.
-#if DEBUG
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
     // Deterministic screenshot and XCUI launches pass temporary restoration
     // overrides on the command line. Keep those volatile values for the
     // automated run so AppKit cannot reopen a stale workspace window while the
@@ -24,12 +24,12 @@ struct PersonalSitePublisherMacApp: App {
     UserDefaults.standard.removeObject(forKey: "ApplePersistenceIgnoreState")
     UserDefaults.standard.removeObject(forKey: "NSQuitAlwaysKeepsWindows")
 #endif
-#if DEBUG
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
     let knowledgeLibraryService = ScreenshotDemoDataService.prepareKnowledgeLibraryServiceIfEnabled()
 #else
     let knowledgeLibraryService = KnowledgeLibraryService()
 #endif
-#if DEBUG
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
     let persistence = ScreenshotDemoDataService.preparePersistenceIfEnabled()
 #else
     let persistence = WorkbenchPersistence()
@@ -43,7 +43,7 @@ struct PersonalSitePublisherMacApp: App {
   }
 
   var body: some Scene {
-    WindowGroup("个人网站发布控制台", id: "main-workbench") {
+    WindowGroup("RepoPress", id: "main-workbench") {
       WorkbenchLaunchRootView(
         coordinator: launchCoordinator,
         storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator,
@@ -56,7 +56,7 @@ struct PersonalSitePublisherMacApp: App {
           minWidth: WorkbenchLayoutMode.minimumWindowWidth,
           minHeight: 720
         )
-#if DEBUG
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
         .background(ScreenshotCaptureWindowBridge())
 #endif
         .tint(WorkbenchTheme.navigationSelection)
@@ -78,6 +78,7 @@ struct PersonalSitePublisherMacApp: App {
         if let store = launchCoordinator.store {
           ProtectedSettingsView(
             store: store,
+            browserBridge: launchCoordinator.browserBridge,
             storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator
           )
         } else {
@@ -158,12 +159,14 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
 
 private struct ProtectedSettingsView: View {
   @ObservedObject var store: WorkbenchStore
+  let browserBridge: KnowledgeBrowserBridge?
   @ObservedObject var storeKitProEntitlementCoordinator: StoreKitProEntitlementCoordinator
 
   var body: some View {
     ZStack {
       SettingsView(
         store: store,
+        browserBridge: browserBridge,
         storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator
       )
       .disabled(!store.canUseProtectedWorkbench)
@@ -173,7 +176,7 @@ private struct ProtectedSettingsView: View {
         PrivacyLockOverlay(store: store)
       }
     }
-#if DEBUG
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
     .background(ScreenshotCaptureWindowBridge(role: .settings))
 #endif
   }

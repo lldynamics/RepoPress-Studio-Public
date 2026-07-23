@@ -19,12 +19,12 @@ struct AIConnectionStatusCard: View {
         .foregroundStyle(aiConnectionStatusColor(presentation.level))
 
       Text(presentation.message)
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
 
       Text(presentation.footnote)
-        .font(.caption2)
+        .font(.workbenchMetadata)
         .foregroundStyle(.tertiary)
     }
     .padding(10)

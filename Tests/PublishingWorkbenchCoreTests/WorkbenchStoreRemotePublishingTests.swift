@@ -222,8 +222,6 @@ extension WorkbenchStoreProfileTests {
       canWrite: true,
       message: "GitHub Token 具备仓库写入权限。"
     ))
-    store.applyUnlockedTestEntitlement()
-
     let draft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Online Direct Success",
@@ -254,6 +252,7 @@ extension WorkbenchStoreProfileTests {
     let result = await store.publishSelectedDraftOnlineUsingPreferredStrategy()
 
     XCTAssertEqual(result?.commitSHA, "online-direct-commit")
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 1)
     XCTAssertEqual(store.drafts.first?.status, .published)
     XCTAssertFalse(store.drafts.first?.draft ?? true)
     XCTAssertEqual(store.drafts.first?.repositoryPath, "content/posts/online-direct-success.md")
@@ -371,6 +370,9 @@ extension WorkbenchStoreProfileTests {
       persistence: try TestWorkbenchFactory.persistence(),
       remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
       deploymentStatusService: DeploymentStatusService(transport: deploymentTransport),
+      monetizationService: MonetizationService(
+        limits: FreePlanLimits(aiRequestLimit: 0, onlinePublishAttemptLimit: 0, batchPublishLimit: 0)
+      ),
       repositoryTokenStore: tokenStore
     )
 
@@ -388,8 +390,6 @@ extension WorkbenchStoreProfileTests {
     }
     try tokenStore.saveRepositoryToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.applyUnlockedTestEntitlement()
-
     let original = ReleaseRecord(
       kind: .remoteDirectCommit,
       title: "线上提交：Rollback Me",
@@ -412,6 +412,7 @@ extension WorkbenchStoreProfileTests {
     let result = await store.rollbackRemoteRelease(original)
 
     XCTAssertEqual(result?.rollbackCommitSHA, "rollback-sha")
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 0)
     XCTAssertEqual(store.remoteRepositoryRollbackResult?.rollbackCommitSHA, "rollback-sha")
     XCTAssertEqual(store.publishActionMessage, CoreL10n.format("线上回滚完成：%@", "rollback"))
     let rollbackRecord = try XCTUnwrap(store.releaseRecords.first)
@@ -442,6 +443,9 @@ extension WorkbenchStoreProfileTests {
     let store = WorkbenchStore(
       persistence: try TestWorkbenchFactory.persistence(),
       remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      monetizationService: MonetizationService(
+        limits: FreePlanLimits(aiRequestLimit: 0, onlinePublishAttemptLimit: 0, batchPublishLimit: 0)
+      ),
       repositoryTokenStore: tokenStore
     )
 
@@ -457,8 +461,6 @@ extension WorkbenchStoreProfileTests {
     }
     try tokenStore.saveRepositoryToken("github-token", for: profile)
     store.refreshRepositoryTokenAvailability()
-    store.applyUnlockedTestEntitlement()
-
     let original = ReleaseRecord(
       kind: .remoteReviewRequest,
       title: "线上 PR/MR：Review Me",
@@ -483,6 +485,7 @@ extension WorkbenchStoreProfileTests {
     let result = await store.withdrawRemoteReview(original)
 
     XCTAssertEqual(result?.reviewNumber, 9)
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 0)
     XCTAssertEqual(result?.state, "closed")
     XCTAssertEqual(store.remoteRepositoryReviewWithdrawalResult?.reviewURL, "https://github.com/owner/site/pull/9")
     XCTAssertEqual(store.publishActionMessage, CoreL10n.format("线上 Review 已撤回：#%@", "9"))
@@ -497,6 +500,135 @@ extension WorkbenchStoreProfileTests {
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map(\.httpMethod), ["PATCH"])
     XCTAssertEqual(requests.first?.url?.path, "/repos/owner/site/pulls/9")
+  }
+
+  func testReviewRecoveryReplacesPartialFailureWithoutConsumingPublishQuota() async throws {
+    let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
+      workbenchRemoteResponse(json: #"{"object":{"sha":"remote-branch-sha"}}"#),
+      workbenchRemoteResponse(json: #"[]"#),
+      workbenchRemoteResponse(json: #"{"html_url":"https://github.com/owner/site/pull/22"}"#),
+    ])
+    let tokenStore = repositoryTokenStoreForTest()
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      monetizationService: MonetizationService(
+        limits: FreePlanLimits(aiRequestLimit: 0, onlinePublishAttemptLimit: 0, batchPublishLimit: 0)
+      ),
+      repositoryTokenStore: tokenStore
+    )
+
+    var profile = store.activeProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    store.updateActiveProfile(profile)
+    defer {
+      try? tokenStore.deleteToken(for: profile)
+    }
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    store.refreshRepositoryTokenAvailability()
+    let original = ReleaseRecord(
+      kind: .remotePublishFailure,
+      title: "批量线上 PR/MR 失败",
+      summary: "GitHub 内容已写入，创建 PR 失败",
+      siteProfileID: profile.id,
+      siteName: profile.name,
+      changedPaths: ["content/posts/one.md"],
+      repositoryProvider: .github,
+      repositoryBaseURL: profile.repositoryBaseURL,
+      repoOwner: "owner",
+      repoName: "site",
+      branchName: "publish/batch-recovery",
+      targetBranch: "main",
+      commitSHA: "recorded-sha"
+    )
+    store.setReleaseRecords([original])
+    XCTAssertEqual(store.activeProfileReleaseLedger.entries.first?.status, .pendingRemoteRecovery)
+
+    let result = await store.resumeRemoteReview(original)
+
+    XCTAssertEqual(result?.reviewURL, "https://github.com/owner/site/pull/22")
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 0)
+    XCTAssertEqual(store.releaseRecords.count, 1)
+    let recovered = try XCTUnwrap(store.releaseRecords.first)
+    XCTAssertEqual(recovered.id, original.id)
+    XCTAssertEqual(recovered.kind, .remoteReviewRequest)
+    XCTAssertEqual(recovered.commitSHA, "remote-branch-sha")
+    XCTAssertEqual(recovered.reviewURL, "https://github.com/owner/site/pull/22")
+    XCTAssertEqual(store.activeProfileReleaseLedger.entries.first?.status, .pendingReview)
+    XCTAssertEqual(store.activeProfileReleaseLedger.summary.remoteRecoveryPendingCount, 0)
+    XCTAssertEqual(store.activeProfileReleaseLedger.summary.reviewPendingCount, 1)
+
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "POST"])
+    XCTAssertFalse(requests.contains { $0.url?.path.contains("/contents/") == true })
+  }
+
+  func testReviewRecoveryPersistsPrecisePullRequestPermissionFailure() async throws {
+    let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
+      workbenchRemoteResponse(json: #"{"object":{"sha":"remote-branch-sha"}}"#),
+      workbenchRemoteResponse(json: #"[]"#),
+      workbenchRemoteResponse(
+        statusCode: 403,
+        json: #"{"message":"Resource not accessible by personal access token","documentation_url":"https://docs.github.com/rest/pulls/pulls#create-a-pull-request"}"#
+      ),
+    ])
+    let tokenStore = repositoryTokenStoreForTest()
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      monetizationService: MonetizationService(
+        limits: FreePlanLimits(aiRequestLimit: 0, onlinePublishAttemptLimit: 0, batchPublishLimit: 0)
+      ),
+      repositoryTokenStore: tokenStore
+    )
+
+    var profile = store.activeProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    store.updateActiveProfile(profile)
+    defer {
+      try? tokenStore.deleteToken(for: profile)
+    }
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    store.refreshRepositoryTokenAvailability()
+    let original = ReleaseRecord(
+      kind: .remotePublishFailure,
+      title: "批量线上 PR/MR 失败",
+      summary: "GitHub 内容已写入，创建 PR 失败",
+      siteProfileID: profile.id,
+      siteName: profile.name,
+      changedPaths: ["content/posts/one.md"],
+      repositoryProvider: .github,
+      repositoryBaseURL: profile.repositoryBaseURL,
+      repoOwner: "owner",
+      repoName: "site",
+      branchName: "publish/batch-recovery",
+      targetBranch: "main",
+      commitSHA: "recorded-sha"
+    )
+    store.setReleaseRecords([original])
+
+    let result = await store.resumeRemoteReview(original)
+
+    XCTAssertNil(result)
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 0)
+    XCTAssertEqual(store.releaseRecords.count, 1)
+    XCTAssertEqual(store.releaseRecords.first?.id, original.id)
+    XCTAssertEqual(store.releaseRecords.first?.kind, .remotePublishFailure)
+    XCTAssertTrue(store.releaseRecords.first?.summary.contains("Pull requests: Read and write") == true)
+    XCTAssertTrue(store.publishActionMessage?.contains("Pull requests: Read and write") == true)
+    XCTAssertEqual(store.activeProfileReleaseLedger.entries.first?.status, .pendingRemoteRecovery)
+
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "POST"])
+    XCTAssertFalse(requests.contains { $0.url?.path.contains("/contents/") == true })
   }
 
   func testRemoteRepositoryPublishPreviewSummarizesReviewRequestAndRemoteRisk() throws {
@@ -565,7 +697,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(preview.checklistMarkdown.contains(CoreL10n.text("# GitHub/GitLab 线上发布核对包")))
     XCTAssertTrue(preview.checklistMarkdown.contains("- 平台：GitLab"))
     XCTAssertTrue(preview.checklistMarkdown.contains("- 发布模式：线上 PR/MR"))
-    XCTAssertTrue(preview.checklistMarkdown.contains("- [x] 已确认 Token 对 group/site 具备写入权限"))
+    XCTAssertTrue(preview.checklistMarkdown.contains("- [x] 已确认 Token 对 group/site 具备内容写入权限"))
     XCTAssertTrue(preview.checklistMarkdown.contains("- [ ] 已确认远端同路径变更"))
     XCTAssertTrue(preview.checklistMarkdown.contains(CoreL10n.text("## 远端冲突预览")))
     XCTAssertTrue(preview.checklistMarkdown.contains("- [警告] 远端同路径变更"))
@@ -606,7 +738,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(preview.branchName, "main")
     XCTAssertTrue(preview.checklistMarkdown.contains("- Token：未保存"))
     XCTAssertTrue(preview.checklistMarkdown.contains("- [ ] 已保存 GitHub Token"))
-    XCTAssertTrue(preview.checklistMarkdown.contains("- [ ] 已确认 Token 对 owner/site 具备写入权限"))
+    XCTAssertTrue(preview.checklistMarkdown.contains("- [ ] 已确认 Token 对 owner/site 具备内容写入权限"))
   }
 
   func testRemoteRepositoryPublishPreviewRequiresPermissionCheckBeforePublish() throws {
@@ -759,6 +891,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(preview.readiness, .needsRemoteCheck)
     XCTAssertTrue(preview.canPublish)
     XCTAssertEqual(preview.accessSummary, CoreL10n.text("Token 可写"))
+    XCTAssertFalse(preview.checklistMarkdown.contains(CoreL10n.text("PR 创建权限将在实际创建时验证")))
     XCTAssertTrue(preview.warningIssues.contains { $0.title == CoreL10n.text("远端状态待确认") })
     XCTAssertTrue(preview.checklistMarkdown.contains(CoreL10n.text("## 远端状态待确认")))
   }
@@ -1005,7 +1138,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(preview.changedPaths, ["content/posts/batch-review-conflict.md"])
     XCTAssertEqual(preview.remoteConflictPaths, ["content/posts/batch-review-conflict.md"])
     XCTAssertEqual(preview.remoteRiskState, .conflict)
-    XCTAssertEqual(preview.accessSummary, CoreL10n.text("Token 可写"))
+    XCTAssertEqual(preview.accessSummary, CoreL10n.text("内容可写，PR 权限待创建时验证"))
     XCTAssertEqual(preview.readiness, .ready)
     XCTAssertTrue(preview.canPublish)
     XCTAssertTrue(preview.warningIssues.contains { $0.title == "远端同路径变更" })
@@ -1272,8 +1405,6 @@ extension WorkbenchStoreProfileTests {
       canWrite: true,
       message: "GitHub Token 具备仓库写入权限。"
     ))
-    store.applyUnlockedTestEntitlement()
-
     let attachment = DraftAttachment(
       originalFilename: "partial-cover.png",
       relativePublishPath: "/images/partial-cover.png",
@@ -1295,6 +1426,7 @@ extension WorkbenchStoreProfileTests {
     let result = await store.publishSelectedDraftOnlineUsingPreferredStrategy()
 
     XCTAssertNil(result)
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 0)
     XCTAssertNil(store.remoteRepositoryPublishResult)
     XCTAssertTrue(store.publishActionMessage?.contains("tree creation failed") == true)
     XCTAssertFalse(store.publishActionMessage?.contains("部分完成后失败") == true)
@@ -1309,6 +1441,57 @@ extension WorkbenchStoreProfileTests {
     XCTAssertNil(store.deploymentStatusSnapshot(for: record))
     let deploymentRequests = await deploymentTransport.capturedRequests()
     XCTAssertTrue(deploymentRequests.isEmpty)
+  }
+
+  func testCancelledOnlinePublishReleasesReservedQuota() async throws {
+    let transport = CountingRemoteRepositoryTransport(failureCode: .cancelled)
+    let tokenStore = repositoryTokenStoreForTest()
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+
+    var profile = store.activeProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    profile.repositoryPublishStrategy = .direct
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    store.updateActiveProfile(profile)
+    defer { try? tokenStore.deleteToken(for: profile) }
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+    store.refreshRepositoryTokenAvailability()
+    store.setRemoteRepositoryAccessCheck(RemoteRepositoryAccessCheck(
+      provider: .github,
+      repositoryName: "owner/site",
+      apiBaseURL: RepositoryProvider.github.defaultBaseURL,
+      defaultBranch: "main",
+      canRead: true,
+      canWrite: true,
+      message: "GitHub Token 具备仓库写入权限。"
+    ))
+
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Cancelled Publish",
+      slug: "cancelled-publish",
+      draft: false,
+      bodyMarkdown: "This body is intentionally long enough for cancellation quota coverage."
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+    store.setPublishPackage(store.publishingPackage(for: draft))
+
+    let result = await store.publishSelectedDraftOnlineUsingPreferredStrategy()
+    let requestCount = await transport.requestCount()
+
+    XCTAssertNil(result)
+    XCTAssertEqual(requestCount, 1)
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 0)
+    XCTAssertEqual(store.remainingFreeUses(for: .onlinePublishing), 1)
   }
 
   func testBatchOnlineDirectPublishUsesGitHubAPIAndRecordsBatchRelease() async throws {
@@ -1358,8 +1541,6 @@ extension WorkbenchStoreProfileTests {
       canWrite: true,
       message: "GitHub Token 具备仓库写入权限。"
     ))
-    store.applyUnlockedTestEntitlement()
-
     let firstDraft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Batch One",
@@ -1403,6 +1584,8 @@ extension WorkbenchStoreProfileTests {
       "content/posts/batch-two.md",
     ])
     XCTAssertEqual(result.commitSHA, "batch-commit-sha")
+    XCTAssertEqual(store.monetizationState.freeUsage.batchPublishCount, 1)
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 1)
     XCTAssertEqual(store.remoteRepositoryPublishResult, result)
     XCTAssertEqual(store.releaseRecords.first?.kind, .remoteDirectCommit)
     XCTAssertNil(store.releaseRecords.first?.draftID)
@@ -1490,8 +1673,6 @@ extension WorkbenchStoreProfileTests {
       canWrite: true,
       message: "GitHub Token 具备仓库写入权限。"
     ))
-    store.applyUnlockedTestEntitlement()
-
     let firstDraft = ArticleDraft(
       siteProfileID: profile.id,
       title: "Batch Partial One",
@@ -1512,6 +1693,8 @@ extension WorkbenchStoreProfileTests {
     let result = await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy()
 
     XCTAssertNil(result)
+    XCTAssertEqual(store.monetizationState.freeUsage.batchPublishCount, 0)
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 0)
     XCTAssertNil(store.remoteRepositoryPublishResult)
     XCTAssertTrue(store.publishActionMessage?.contains("批量线上直接提交失败") == true)
     XCTAssertFalse(store.publishActionMessage?.contains("部分完成后失败") == true)
@@ -1734,10 +1917,15 @@ extension WorkbenchStoreProfileTests {
 
 private actor CountingRemoteRepositoryTransport: RemoteRepositoryHTTPTransport {
   private var requests: [URLRequest] = []
+  private let failureCode: URLError.Code
+
+  init(failureCode: URLError.Code = .badServerResponse) {
+    self.failureCode = failureCode
+  }
 
   func data(for request: URLRequest) async throws -> (Data, URLResponse) {
     requests.append(request)
-    throw URLError(.badServerResponse)
+    throw URLError(failureCode)
   }
 
   func requestCount() -> Int {

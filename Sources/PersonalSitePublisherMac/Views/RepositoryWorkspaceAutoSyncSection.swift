@@ -5,74 +5,45 @@ extension RepositoryWorkspaceView {
   @ViewBuilder
   var repositoryAutoSyncSection: some View {
     VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .firstTextBaseline) {
-        VStack(alignment: .leading, spacing: 3) {
-          Text("自动检查远端")
-            .font(.headline)
-          Text(repositoryAutoSyncDescription)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          Text(store.repositoryAutoSyncState.message)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+          repositoryAutoSyncIntroduction
+          Spacer(minLength: 12)
+          repositoryAutoSyncHeaderActions
         }
-        Spacer()
-        Button {
-          copy(store.repositoryAutoSyncReviewMarkdown, message: "已复制远端自动检查审阅摘要。")
-        } label: {
-          Label("复制摘要", systemImage: "doc.on.doc")
+
+        VStack(alignment: .leading, spacing: 10) {
+          repositoryAutoSyncIntroduction
+          repositoryAutoSyncHeaderActions
         }
-        .accessibilityLabel("复制远端自动检查摘要")
-        Button {
-          Task {
-            await store.runRepositoryAutoSync()
-          }
-        } label: {
-          Label(
-            store.repositoryScanState.isScanning ? "检查中" : "立即检查",
-            systemImage: "arrow.clockwise"
-          )
-        }
-        .disabled(!store.repositoryAutoSyncSettings.isEnabled || store.repositoryScanState.isScanning)
-        .accessibilityLabel("立即检查远端")
       }
 
-      HStack(spacing: 12) {
-        Toggle("启用自动检查远端", isOn: repositoryAutoSyncEnabledBinding)
-          .toggleStyle(.switch)
-          .accessibilityLabel("启用自动检查远端")
-          .accessibilityValue(store.repositoryAutoSyncSettings.isEnabled ? "开启" : "关闭")
-        Toggle("检查前 fetch upstream", isOn: repositoryAutoSyncFetchBeforeScanBinding)
-          .toggleStyle(.checkbox)
-          .disabled(!store.repositoryAutoSyncSettings.isEnabled)
-          .accessibilityLabel("检查前 fetch upstream")
-          .accessibilityValue(store.repositoryAutoSyncSettings.fetchBeforeScan ? "开启" : "关闭")
-
-        Spacer()
-
-        Picker("检查间隔", selection: repositoryAutoSyncIntervalBinding) {
-          ForEach(repositoryAutoSyncIntervalOptions, id: \.self) { minutes in
-            Text("\(minutes) 分钟").tag(minutes)
-          }
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 12) {
+          repositoryAutoSyncEnabledToggle
+          repositoryAutoSyncFetchToggle
+          Spacer(minLength: 12)
+          repositoryAutoSyncIntervalPicker
         }
-        .pickerStyle(.segmented)
-        .tint(WorkbenchTheme.navigationSelection)
-        .frame(maxWidth: 360)
-        .disabled(!store.repositoryAutoSyncSettings.isEnabled)
-        .accessibilityLabel("远端自动检查间隔")
-        .accessibilityValue("\(store.repositoryAutoSyncSettings.normalizedIntervalMinutes) 分钟")
+
+        VStack(alignment: .leading, spacing: 10) {
+          repositoryAutoSyncEnabledToggle
+          repositoryAutoSyncFetchToggle
+          repositoryAutoSyncIntervalPicker
+        }
       }
 
-      HStack(spacing: 10) {
-        Toggle("自动导入远端文章", isOn: repositoryAutoImportRemoteArticlesBinding)
-          .toggleStyle(.checkbox)
-          .disabled(!store.repositoryAutoSyncSettings.isEnabled)
-          .accessibilityLabel("自动导入远端文章")
-          .accessibilityValue(store.repositoryAutoSyncSettings.autoImportRemoteArticles ? "开启" : "关闭")
-        Text("新文章自动导入；本地已修改、远端删除或重命名仍保留手动审阅。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        Spacer(minLength: 0)
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 10) {
+          repositoryAutoImportToggle
+          repositoryAutoImportExplanation
+          Spacer(minLength: 0)
+        }
+
+        VStack(alignment: .leading, spacing: 6) {
+          repositoryAutoImportToggle
+          repositoryAutoImportExplanation
+        }
       }
 
       LazyVGrid(columns: repositoryMetricGridColumns, spacing: 10) {
@@ -98,7 +69,11 @@ extension RepositoryWorkspaceView {
         )
       }
 
-      HStack(spacing: 12) {
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 180, maximum: 280), spacing: 10)],
+        alignment: .leading,
+        spacing: 8
+      ) {
         if let lastRunAt = store.repositoryAutoSyncState.lastRunAt {
           Label("上次：\(lastRunAt.workbenchShortText)", systemImage: "clock.arrow.circlepath")
         }
@@ -140,7 +115,6 @@ extension RepositoryWorkspaceView {
             systemImage: "trash"
           )
         }
-        Spacer()
         Button {
           guard let report = store.repositoryReport else { return }
           let files = report.remoteChangedFilesForRole(
@@ -151,10 +125,13 @@ extension RepositoryWorkspaceView {
           presentRemoteArticleImportPreview(files)
         } label: {
           Label("导入远端文章", systemImage: "tray.and.arrow.down")
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .buttonStyle(.bordered)
         .disabled(store.repositoryAutoSyncState.importableRemoteArticleCount == 0)
+        .accessibilityIdentifier("repository-auto-sync-import-articles")
       }
-      .font(.caption)
+      .font(.callout)
       .foregroundStyle(.secondary)
 
       if !store.repositoryAutoSyncState.remoteChangedPaths.isEmpty {
@@ -165,38 +142,155 @@ extension RepositoryWorkspaceView {
               .foregroundStyle(.secondary)
             Spacer()
             Text("在远端 diff 审阅中导入文章或复制 diff")
-              .font(.caption2)
-              .foregroundStyle(.tertiary)
+              .font(.callout)
+              .foregroundStyle(.secondary)
           }
 
           ForEach(Array(store.repositoryAutoSyncState.remoteChangedPaths.prefix(5)), id: \.self) { path in
-            HStack(spacing: 8) {
-              Image(systemName: "doc.text.magnifyingglass")
-                .foregroundStyle(.secondary)
-                .frame(width: 16)
-              Text(path)
-                .font(.caption.monospaced())
-                .workbenchTruncatedIdentity(path)
-              Spacer()
-              Button {
-                copy(path, message: "已复制远端自动检查发现的路径。")
-              } label: {
-                Label("复制路径", systemImage: "doc.on.doc")
+            let identifierToken = RepositoryAccessibilityIdentifier.token(for: path)
+            ViewThatFits(in: .horizontal) {
+              HStack(spacing: 10) {
+                repositoryAutoSyncPathIdentity(path)
+                Spacer(minLength: 12)
+                repositoryAutoSyncPathActions(path)
               }
-              .labelStyle(.iconOnly)
-              .buttonStyle(.borderless)
-              .help("复制远端路径")
-              .accessibilityLabel("复制远端路径")
-              .accessibilityValue(path)
+
+              VStack(alignment: .leading, spacing: 8) {
+                repositoryAutoSyncPathIdentity(path)
+                repositoryAutoSyncPathActions(path)
+              }
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("repository-auto-sync-path-\(identifierToken)")
           }
         }
         .padding(10)
         .background(WorkbenchBackgroundStyle.panel, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("repository-auto-sync-recent-paths")
       }
     }
     .padding(14)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("repository-section-auto-sync")
+  }
+
+  private var repositoryAutoSyncIntroduction: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text("自动检查远端")
+        .font(.headline)
+      Text(repositoryAutoSyncDescription)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+      Text(store.repositoryAutoSyncState.message)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+    }
+  }
+
+  private var repositoryAutoSyncHeaderActions: some View {
+    HStack(spacing: 8) {
+      Button {
+        copy(store.repositoryAutoSyncReviewMarkdown, message: "已复制远端自动检查审阅摘要。")
+      } label: {
+        Label("复制摘要", systemImage: "doc.on.doc")
+      }
+      .buttonStyle(.bordered)
+      .accessibilityLabel("复制远端自动检查摘要")
+      .accessibilityIdentifier("repository-auto-sync-copy-summary")
+
+      Button {
+        Task {
+          await store.runRepositoryAutoSync()
+        }
+      } label: {
+        Label(
+          store.repositoryScanState.isScanning ? "检查中" : "立即检查",
+          systemImage: "arrow.clockwise"
+        )
+      }
+      .workbenchProminentActionStyle()
+      .disabled(!store.repositoryAutoSyncSettings.isEnabled || store.repositoryScanState.isScanning)
+      .accessibilityLabel("立即检查远端")
+      .accessibilityIdentifier("repository-auto-sync-run")
+    }
+  }
+
+  private var repositoryAutoSyncEnabledToggle: some View {
+    Toggle("启用自动检查远端", isOn: repositoryAutoSyncEnabledBinding)
+      .toggleStyle(.switch)
+      .accessibilityLabel("启用自动检查远端")
+      .accessibilityValue(store.repositoryAutoSyncSettings.isEnabled ? "开启" : "关闭")
+      .accessibilityIdentifier("repository-auto-sync-enabled")
+  }
+
+  private var repositoryAutoSyncFetchToggle: some View {
+    Toggle("检查前 fetch upstream", isOn: repositoryAutoSyncFetchBeforeScanBinding)
+      .toggleStyle(.checkbox)
+      .disabled(!store.repositoryAutoSyncSettings.isEnabled)
+      .accessibilityLabel("检查前 fetch upstream")
+      .accessibilityValue(store.repositoryAutoSyncSettings.fetchBeforeScan ? "开启" : "关闭")
+      .accessibilityIdentifier("repository-auto-sync-fetch-upstream")
+  }
+
+  private var repositoryAutoSyncIntervalPicker: some View {
+    Picker("检查间隔", selection: repositoryAutoSyncIntervalBinding) {
+      ForEach(repositoryAutoSyncIntervalOptions, id: \.self) { minutes in
+        Text("\(minutes) 分钟").tag(minutes)
+      }
+    }
+    .pickerStyle(.segmented)
+    .tint(WorkbenchTheme.navigationSelection)
+    .frame(maxWidth: 360)
+    .disabled(!store.repositoryAutoSyncSettings.isEnabled)
+    .accessibilityLabel("远端自动检查间隔")
+    .accessibilityValue("\(store.repositoryAutoSyncSettings.normalizedIntervalMinutes) 分钟")
+    .accessibilityIdentifier("repository-auto-sync-interval")
+  }
+
+  private var repositoryAutoImportToggle: some View {
+    Toggle("自动导入远端文章", isOn: repositoryAutoImportRemoteArticlesBinding)
+      .toggleStyle(.checkbox)
+      .disabled(!store.repositoryAutoSyncSettings.isEnabled)
+      .accessibilityLabel("自动导入远端文章")
+      .accessibilityValue(store.repositoryAutoSyncSettings.autoImportRemoteArticles ? "开启" : "关闭")
+      .accessibilityIdentifier("repository-auto-sync-auto-import")
+  }
+
+  private var repositoryAutoImportExplanation: some View {
+    Text("新文章自动导入；本地已修改、远端删除或重命名仍保留手动审阅。")
+      .font(.callout)
+      .foregroundStyle(.secondary)
+  }
+
+  private func repositoryAutoSyncPathIdentity(_ path: String) -> some View {
+    let identifierToken = RepositoryAccessibilityIdentifier.token(for: path)
+    return HStack(spacing: 8) {
+      Image(systemName: "doc.text.magnifyingglass")
+        .foregroundStyle(.secondary)
+        .frame(width: 16)
+      Text(path)
+        .font(.caption.monospaced())
+        .workbenchTruncatedIdentity(path)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("repository-auto-sync-path-\(identifierToken)-identity")
+  }
+
+  private func repositoryAutoSyncPathActions(_ path: String) -> some View {
+    let identifierToken = RepositoryAccessibilityIdentifier.token(for: path)
+    return Button {
+      copy(path, message: "已复制远端自动检查发现的路径。")
+    } label: {
+      Label("复制路径", systemImage: "doc.on.doc")
+    }
+    .buttonStyle(.bordered)
+    .help("复制远端路径")
+    .accessibilityLabel("复制远端路径")
+    .accessibilityValue(path)
+    .accessibilityIdentifier("repository-auto-sync-path-\(identifierToken)-copy")
   }
 
   private var repositoryAutoSyncIntervalOptions: [Int] {

@@ -18,7 +18,7 @@ struct InspectorScaffold<Content: View>: View {
           Text(LocalizedStringKey(title))
             .font(.headline)
           Text(LocalizedStringKey(subtitle))
-            .font(.caption)
+            .font(.workbenchSupporting)
             .foregroundStyle(.secondary)
             .lineLimit(2)
         }
@@ -53,7 +53,7 @@ struct InspectorSection<Content: View>: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 9) {
       Text(LocalizedStringKey(title))
-        .font(.caption.weight(.semibold))
+        .font(.workbenchCardTitle)
         .foregroundStyle(.secondary)
         .accessibilityAddTraits(.isHeader)
       content
@@ -91,11 +91,11 @@ struct InspectorDisclosureSection<Content: View>: View {
     } label: {
       HStack(spacing: 8) {
         Text(LocalizedStringKey(title))
-          .font(.caption.weight(.semibold))
+          .font(.workbenchCardTitle)
         Spacer(minLength: 8)
         if let detail, !detail.isEmpty {
           Text(detail)
-            .font(.caption2.monospacedDigit())
+            .font(.workbenchMetadata.monospacedDigit())
             .foregroundStyle(.tertiary)
             .lineLimit(1)
         }
@@ -123,7 +123,7 @@ struct InspectorStatRow: View {
       Text(value)
         .workbenchTruncatedIdentity(value)
     }
-    .font(.caption)
+    .font(.workbenchSupporting)
   }
 }
 
@@ -131,7 +131,7 @@ struct InspectorStatRow: View {
 func actionMessage(_ message: String?) -> some View {
   if let message, !message.isEmpty {
     Text(message)
-      .font(.caption)
+      .font(.workbenchSupporting)
       .foregroundStyle(.secondary)
       .padding(8)
       .frame(maxWidth: .infinity, alignment: .leading)

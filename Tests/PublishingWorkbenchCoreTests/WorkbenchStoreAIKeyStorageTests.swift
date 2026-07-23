@@ -155,6 +155,7 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
       )
     )
     try tokenStore.saveAIToken("externally-restored-token", for: store.activeProfile)
+    store.aiStore.grantAIDataSharingConsent()
     store.setAIChatMessage("AI 讨论失败：请先在 Settings 的 AI 页保存 API Key。")
     XCTAssertFalse(store.aiTokenAvailability.hasToken)
 

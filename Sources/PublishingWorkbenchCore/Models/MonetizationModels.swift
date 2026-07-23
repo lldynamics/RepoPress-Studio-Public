@@ -190,7 +190,7 @@ public enum PremiumFeature: String, Codable, CaseIterable, Identifiable, Sendabl
   public var proBenefit: String {
     switch self {
     case .aiRequest:
-      return "更多 AI 写作、SEO、图片和发布检查请求"
+      return "用户自备 AI 服务商和 API Key，不受应用内请求次数限制"
     case .onlinePublishing:
       return "通过 GitHub/GitLab API 直接提交、创建 PR/MR 和记录部署结果"
     case .batchPublishing:
@@ -218,8 +218,8 @@ public struct ProUpgradePresentation: Hashable, Sendable {
 
   public init(
     title: String = "解锁 Pro",
-    message: String = "Pro 解锁线上发布、更多 AI 请求和批量发布能力。",
-    benefits: [String] = PremiumFeature.allCases.map(\.proBenefit),
+    message: String = DistributionFeaturePolicy.proUpgradeMessage,
+    benefits: [String] = DistributionFeaturePolicy.visiblePremiumFeatures.map(\.proBenefit),
     actionTitle: String = "前往 Pro 设置"
   ) {
     self.title = title
@@ -272,7 +272,7 @@ public struct ProStatusSummary: Hashable, Sendable {
 
   public var message: String {
     if entitlement.isUnlocked {
-      return "\(entitlement.source.displayName) 权益已生效，AI、线上发布和批量发布不会消耗免费额度。"
+      return "\(entitlement.source.displayName) 权益已生效，线上发布和批量发布不会消耗免费额度。AI 使用用户自备服务商，不计入 Pro。"
     }
     if blockedRequirements.isEmpty {
       return "当日免费额度仍可覆盖已配置的 Pro 功能边界，设备本地日期变化后会自动恢复。"
@@ -441,6 +441,16 @@ public struct MonetizationService {
     at date: Date = Date(),
     calendar: Calendar = .current
   ) -> FeatureAccessDecision {
+    if feature == .aiRequest {
+      return FeatureAccessDecision(
+        feature: .aiRequest,
+        isAllowed: true,
+        requiresPro: false,
+        remainingFreeUses: nil,
+        title: "用户自备 API Key",
+        message: "AI 请求由用户配置的服务商直接处理，应用不限制请求次数。"
+      )
+    }
     let state = normalizedState(state, at: date, calendar: calendar)
     let used = usedFreeUses(
       for: feature,
@@ -493,6 +503,17 @@ public struct MonetizationService {
     at date: Date = Date(),
     calendar: Calendar = .current
   ) -> ProUpgradeRequirement {
+    if feature == .aiRequest {
+      return ProUpgradeRequirement(
+        feature: .aiRequest,
+        isBlocking: false,
+        title: "用户自备 API Key",
+        summary: "AI 请求不属于 Pro 权益，应用不限制请求次数。",
+        quotaSummary: "用户自备服务商，不限应用内次数",
+        reason: "AI 费用和额度由用户选择的服务商账户决定",
+        nextStep: "在 AI 设置中配置服务商、API Key，并同意发送范围"
+      )
+    }
     let state = normalizedState(state, at: date, calendar: calendar)
     let decision = accessDecision(for: feature, state: state, at: date, calendar: calendar)
     let used = usedFreeUses(
@@ -551,7 +572,7 @@ public struct MonetizationService {
     at date: Date = Date(),
     calendar: Calendar = .current
   ) -> [ProUpgradeRequirement] {
-    PremiumFeature.allCases.map { feature in
+    DistributionFeaturePolicy.visiblePremiumFeatures.map { feature in
       upgradeRequirement(for: feature, state: state, at: date, calendar: calendar)
     }
   }
@@ -574,6 +595,9 @@ public struct MonetizationService {
     calendar: Calendar = .current
   ) -> MonetizationState {
     let state = normalizedState(state, at: date, calendar: calendar)
+    guard feature != .aiRequest else {
+      return state
+    }
     guard !state.entitlement.isUnlocked else {
       return state
     }
@@ -581,7 +605,7 @@ public struct MonetizationService {
     var updated = state
     switch feature {
     case .aiRequest:
-      updated.freeUsage.aiRequestCount += 1
+      break
     case .onlinePublishing:
       updated.freeUsage.onlinePublishAttemptCount += 1
     case .batchPublishing:
@@ -599,7 +623,7 @@ public struct MonetizationService {
     let usage = normalizedFreeUsage(usage, at: date, calendar: calendar)
     switch feature {
     case .aiRequest:
-      return max(0, limits.aiRequestLimit - usage.aiRequestCount)
+      return 0
     case .onlinePublishing:
       return max(0, limits.onlinePublishAttemptLimit - usage.onlinePublishAttemptCount)
     case .batchPublishing:
@@ -616,7 +640,7 @@ public struct MonetizationService {
     let usage = normalizedFreeUsage(usage, at: date, calendar: calendar)
     switch feature {
     case .aiRequest:
-      return usage.aiRequestCount
+      return 0
     case .onlinePublishing:
       return usage.onlinePublishAttemptCount
     case .batchPublishing:
@@ -627,7 +651,7 @@ public struct MonetizationService {
   public func freeLimit(for feature: PremiumFeature) -> Int {
     switch feature {
     case .aiRequest:
-      return limits.aiRequestLimit
+      return 0
     case .onlinePublishing:
       return limits.onlinePublishAttemptLimit
     case .batchPublishing:

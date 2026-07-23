@@ -3,6 +3,7 @@ import Foundation
 extension WorkbenchStore {
   public func scanRepositoryAsync() async {
     await repositoryStore.scanRepositoryAsync(store: self)
+    _ = await importMissingDraftsFromLocalRepository()
   }
 
   public func requestRepositoryScan() {
@@ -18,6 +19,7 @@ extension WorkbenchStore {
 
   public func rememberRepositoryRootAsync(_ url: URL) async {
     await repositoryStore.rememberRepositoryRootAsync(url, store: self)
+    _ = await importMissingDraftsFromLocalRepository()
   }
 
   public var repositorySyncCommandPlan: RepositorySyncCommandPlan? {
@@ -44,6 +46,15 @@ extension WorkbenchStore {
     let summary = await publishingStore.importDraftsFromLocalRepositoryAsync(store: self)
     invalidateDraftDerivedCaches()
     return summary
+  }
+
+  @discardableResult
+  public func importMissingDraftsFromLocalRepository() async -> Int {
+    let insertedCount = await publishingStore.importMissingDraftsFromLocalRepository(store: self)
+    if insertedCount > 0 {
+      invalidateDraftDerivedCaches()
+    }
+    return insertedCount
   }
 
   @discardableResult

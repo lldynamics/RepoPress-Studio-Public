@@ -1,3 +1,4 @@
+import CryptoKit
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -500,7 +501,9 @@ public struct SiteImageWorkbenchService: Sendable {
         webPConvertibleCount: report.webPConvertibleCount,
         optimizableSVGCount: report.optimizableSVGCount,
         resizableImageCount: report.resizableImageCount,
-        duplicateImageCount: report.duplicateImageCount
+        duplicateImageCount: report.duplicateImageCount,
+        items: report.items,
+        issues: stableSummaryIssues(report.issues, draftID: report.draftID)
       )
     }
     .sorted {
@@ -1398,6 +1401,33 @@ public struct SiteImageWorkbenchService: Sendable {
 
   private func isSVGFilename(_ filename: String) -> Bool {
     URL(fileURLWithPath: filename).pathExtension.lowercased() == "svg"
+  }
+
+  private func stableSummaryIssues(
+    _ issues: [ImageWorkbenchIssue],
+    draftID: UUID
+  ) -> [ImageWorkbenchIssue] {
+    issues.enumerated().map { offset, issue in
+      var stableIssue = issue
+      let identity = [
+        draftID.uuidString,
+        issue.attachmentID?.uuidString ?? "",
+        issue.severity.rawValue,
+        issue.title,
+        issue.message,
+        String(offset),
+      ].joined(separator: "\u{1F}")
+      var bytes = Array(SHA256.hash(data: Data(identity.utf8)).prefix(16))
+      bytes[6] = (bytes[6] & 0x0F) | 0x50
+      bytes[8] = (bytes[8] & 0x3F) | 0x80
+      stableIssue.id = UUID(uuid: (
+        bytes[0], bytes[1], bytes[2], bytes[3],
+        bytes[4], bytes[5], bytes[6], bytes[7],
+        bytes[8], bytes[9], bytes[10], bytes[11],
+        bytes[12], bytes[13], bytes[14], bytes[15]
+      ))
+      return stableIssue
+    }
   }
 
   private func isWebPConvertibleFilename(_ filename: String) -> Bool {

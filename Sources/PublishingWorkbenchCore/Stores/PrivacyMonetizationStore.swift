@@ -1,9 +1,25 @@
 import Combine
 import Foundation
 
+struct FeatureUseReservation: Hashable, Sendable {
+  let id: UUID
+  let feature: PremiumFeature
+}
+
+struct FeatureUseReservationResult: Sendable {
+  let decision: FeatureAccessDecision
+  let reservation: FeatureUseReservation?
+}
+
 @MainActor
 public final class PrivacyMonetizationStore: ObservableObject {
+  private struct ActiveFeatureUseReservation {
+    let feature: PremiumFeature
+    let consumesFreeQuota: Bool
+  }
+
   private let monetizationService: MonetizationService
+  private var activeFeatureUseReservations: [UUID: ActiveFeatureUseReservation] = [:]
 
   @Published public internal(set) var privacySettings: PrivacyProtectionSettings
   @Published public internal(set) var isPrivacyLocked: Bool
@@ -123,7 +139,10 @@ public final class PrivacyMonetizationStore: ObservableObject {
   }
 
   public func accessDecision(for feature: PremiumFeature) -> FeatureAccessDecision {
-    monetizationService.accessDecision(for: feature, state: monetizationState)
+    monetizationService.accessDecision(
+      for: feature,
+      state: monetizationStateIncludingReservations(for: feature)
+    )
   }
 
   public func canStartFeatureUse(_ feature: PremiumFeature) -> FeatureAccessDecision {
@@ -164,6 +183,75 @@ public final class PrivacyMonetizationStore: ObservableObject {
     }
     store.save()
     return decision
+  }
+
+  func reserveFeatureUse(
+    _ feature: PremiumFeature,
+    store: WorkbenchStore
+  ) -> FeatureUseReservationResult {
+    refreshDailyFreeUsageIfNeeded()
+    let decision = accessDecision(for: feature)
+    guard decision.isAllowed else {
+      recordBlockedFeatureUse(decision, store: store)
+      return FeatureUseReservationResult(decision: decision, reservation: nil)
+    }
+
+    let reservation = FeatureUseReservation(id: UUID(), feature: feature)
+    activeFeatureUseReservations[reservation.id] = ActiveFeatureUseReservation(
+      feature: feature,
+      consumesFreeQuota: !monetizationState.entitlement.isUnlocked
+    )
+    return FeatureUseReservationResult(decision: decision, reservation: reservation)
+  }
+
+  @discardableResult
+  func commitFeatureUseReservation(
+    _ reservation: FeatureUseReservation,
+    store: WorkbenchStore
+  ) -> Bool {
+    guard let activeReservation = activeFeatureUseReservations.removeValue(forKey: reservation.id),
+          activeReservation.feature == reservation.feature
+    else {
+      return false
+    }
+
+    guard activeReservation.consumesFreeQuota else { return true }
+    refreshDailyFreeUsageIfNeeded()
+    let previousState = monetizationState
+    monetizationState = monetizationService.consuming(
+      activeReservation.feature,
+      state: monetizationState
+    )
+    if monetizationState != previousState {
+      store.save()
+    }
+    return true
+  }
+
+  @discardableResult
+  func releaseFeatureUseReservation(_ reservation: FeatureUseReservation) -> Bool {
+    activeFeatureUseReservations.removeValue(forKey: reservation.id) != nil
+  }
+
+  private func monetizationStateIncludingReservations(for feature: PremiumFeature) -> MonetizationState {
+    activeFeatureUseReservations.values.reduce(into: monetizationState) { state, reservation in
+      guard reservation.feature == feature, reservation.consumesFreeQuota else { return }
+      state = monetizationService.consuming(feature, state: state)
+    }
+  }
+
+  private func recordBlockedFeatureUse(
+    _ decision: FeatureAccessDecision,
+    store: WorkbenchStore
+  ) {
+    latestProFeatureBlockNotice = ProFeatureBlockNotice(
+      feature: decision.feature,
+      title: decision.title,
+      message: decision.message,
+      nextStep: "请在 Pro 设置中购买或恢复。"
+    )
+    monetizationMessage = decision.message
+    store.save()
   }
 
   public func remainingFreeUses(for feature: PremiumFeature) -> Int {

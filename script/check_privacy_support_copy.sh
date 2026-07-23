@@ -25,8 +25,13 @@ required_terms=(
   "support requests"
   "redacted screenshots"
   "online publishing"
-  "AI requests"
+  "repository API requests"
+  "deployment checks"
   "StoreKit"
+  "explicit consent"
+  "API key purchased and managed by the user"
+  "127.0.0.1:17843"
+  "browser extensions"
 )
 
 missing_terms=()
@@ -47,6 +52,11 @@ fi
 if grep -Eq '(github_pat_|ghp_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}|Authorization:[[:space:]]*Bearer[[:space:]]+[A-Za-z0-9._-]{20,})' "$COPY_FILE"; then
   fail "copy contains token-like or authorization-header content"
 fi
+
+grep -Fqi "developer does not proxy or receive" "$COPY_FILE" \
+  || fail "copy does not explain the developer AI data boundary"
+grep -Fqi "does not install a Native Messaging helper" "$COPY_FILE" \
+  || fail "copy does not explain the sandboxed browser-extension boundary"
 
 privacy_model="$PROJECT_ROOT/Sources/PublishingWorkbenchCore/Models/PrivacyProtectionModels.swift"
 app_file="$PROJECT_ROOT/Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift"

@@ -102,6 +102,29 @@ final class KnowledgeSemanticEmbeddingService: @unchecked Sendable {
     vectors(for: text).first { $0.modelIdentifier == modelIdentifier }
   }
 
+  func availableModelDimensions(for texts: [String]) -> [String: Int] {
+    var sampleByLanguage: [String: String] = [:]
+    for text in texts {
+      guard !Task.isCancelled else { return [:] }
+      let normalizedText = text.trimmedForPublishing
+      guard !normalizedText.isEmpty else { continue }
+      let language = detectedLanguage(for: normalizedText)
+      sampleByLanguage[language.rawValue, default: normalizedText] = normalizedText
+    }
+    if sampleByLanguage.isEmpty {
+      sampleByLanguage[NLLanguage.simplifiedChinese.rawValue] = "资料库健康检查"
+    }
+
+    var dimensions: [String: Int] = [:]
+    for sample in sampleByLanguage.values {
+      guard !Task.isCancelled else { return [:] }
+      for vector in vectors(for: sample) {
+        dimensions[vector.modelIdentifier] = vector.values.count
+      }
+    }
+    return dimensions
+  }
+
   func prepareContextualModelIfNeeded(for text: String) {
     let language = detectedLanguage(for: text)
     guard let model = contextualModel(for: language) else { return }

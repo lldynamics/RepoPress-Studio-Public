@@ -23,7 +23,7 @@ struct KnowledgeNativeMessagingHost {
     do {
       framedResponse = try KnowledgeNativeMessagingProtocol.frame(response)
     } catch {
-      framedResponse = try! KnowledgeNativeMessagingProtocol.frame(errorResponse(error.localizedDescription))
+      framedResponse = (try? KnowledgeNativeMessagingProtocol.frame(errorResponse("internal-error"))) ?? Data()
     }
     FileHandle.standardOutput.write(framedResponse)
   }

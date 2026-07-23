@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let logger = Logger(subsystem: "com.repopress", category: "BatchPublishPlanService")
 
 public enum BatchPublishReadiness: String, CaseIterable, Codable, Sendable {
   case ready
@@ -289,8 +292,13 @@ public struct BatchPublishPlanService: Sendable {
       if lhs.byteSize > 0, rhs.byteSize > 0, lhs.byteSize != rhs.byteSize {
         return false
       }
-      guard let lhsData = try? Data(contentsOf: lhsURL),
-            let rhsData = try? Data(contentsOf: rhsURL) else {
+      let lhsData: Data
+      let rhsData: Data
+      do {
+        lhsData = try Data(contentsOf: lhsURL)
+        rhsData = try Data(contentsOf: rhsURL)
+      } catch {
+        logger.warning("无法读取文件进行比较: \(error.localizedDescription, privacy: .public)")
         return false
       }
       return lhsData == rhsData

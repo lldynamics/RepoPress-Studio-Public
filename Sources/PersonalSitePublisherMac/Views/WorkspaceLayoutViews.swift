@@ -9,11 +9,13 @@ struct WorkspaceShellSplitLayout: View {
   let workspaceWidth: CGFloat
   let isInspectorPresented: Bool
   @Binding var contentHealthFilter: ContentHealthContextFilter
+  @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
   @Binding var repositoryContextStage: RepositoryContextStage
   let repositorySourceSession: RepositoryHTMLSourceSession
   let onSelectSection: (WorkspaceSection) -> Void
   @AppStorage("workspacePrimarySidebarWidthV1") private var storedSidebarWidth = 260.0
   @State private var sidebarResizeStartWidth: CGFloat?
+  @StateObject private var contentHealthSidebarProjection = ContentHealthSidebarProjection()
 
   init(
     store: WorkbenchStore,
@@ -22,6 +24,7 @@ struct WorkspaceShellSplitLayout: View {
     workspaceWidth: CGFloat,
     isInspectorPresented: Bool,
     contentHealthFilter: Binding<ContentHealthContextFilter>,
+    imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
     repositoryContextStage: Binding<RepositoryContextStage>,
     repositorySourceSession: RepositoryHTMLSourceSession,
     onSelectSection: @escaping (WorkspaceSection) -> Void
@@ -33,6 +36,7 @@ struct WorkspaceShellSplitLayout: View {
     self.workspaceWidth = workspaceWidth
     self.isInspectorPresented = isInspectorPresented
     _contentHealthFilter = contentHealthFilter
+    _imageWorkbenchContextStage = imageWorkbenchContextStage
     _repositoryContextStage = repositoryContextStage
     self.repositorySourceSession = repositorySourceSession
     self.onSelectSection = onSelectSection
@@ -44,6 +48,9 @@ struct WorkspaceShellSplitLayout: View {
         WorkspacePrimarySidebar(
           store: store,
           contentHealthFilter: $contentHealthFilter,
+          imageWorkbenchContextStage: $imageWorkbenchContextStage,
+          repositoryContextStage: $repositoryContextStage,
+          contentHealthSidebarProjection: contentHealthSidebarProjection,
           onSelectSection: onSelectSection
         )
         .frame(width: sidebarWidth)
@@ -55,16 +62,20 @@ struct WorkspaceShellSplitLayout: View {
       if isFocusMode {
         EditorCenterColumn(
           store: store,
-          contentHealthFilter: contentHealthFilter,
+          contentHealthFilter: $contentHealthFilter,
+          imageWorkbenchContextStage: $imageWorkbenchContextStage,
           repositoryContextStage: $repositoryContextStage,
+          contentHealthSidebarProjection: contentHealthSidebarProjection,
           repositorySourceSession: repositorySourceSession
         )
         .frame(minWidth: 680, maxWidth: .infinity, maxHeight: .infinity)
       } else {
         EditorCenterColumn(
           store: store,
-          contentHealthFilter: contentHealthFilter,
+          contentHealthFilter: $contentHealthFilter,
+          imageWorkbenchContextStage: $imageWorkbenchContextStage,
           repositoryContextStage: $repositoryContextStage,
+          contentHealthSidebarProjection: contentHealthSidebarProjection,
           repositorySourceSession: repositorySourceSession
         )
         .frame(minWidth: centerMinimumWidth, maxWidth: .infinity, maxHeight: .infinity)

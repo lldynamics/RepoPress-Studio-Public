@@ -29,8 +29,8 @@ extension RemoteRepositoryPublishService {
       canWrite: canWrite,
       permissionSummary: permissionSummary,
       tokenScopeSummary: scopeSummary,
-      minimumWritePermission: CoreL10n.text("GitHub 需要 repository permissions.push=true，或 fine-grained token 具备 Contents: Read and write。"),
-      message: CoreL10n.text(canWrite ? "GitHub Token 具备仓库写入权限。" : "GitHub Token 可读取仓库，但未确认写入权限。")
+      minimumWritePermission: CoreL10n.text("GitHub 写入内容需要 Contents: Read and write；使用 PR 发布时还需要 Pull requests: Read and write。"),
+      message: CoreL10n.text(canWrite ? "GitHub Token 已确认内容写入能力；PR 创建权限需在实际创建时验证。" : "GitHub Token 可读取仓库，但未确认内容写入能力。")
     )
   }
 
@@ -335,7 +335,7 @@ extension RemoteRepositoryPublishService {
         targetBranch: targetBranch,
         changedPaths: changedPaths,
         commitSHA: lastCommitSHA,
-        underlyingMessage: error.localizedDescription
+        underlyingMessage: reviewCreationFailureDescription(error, provider: .github)
       )
     } catch {
       guard !changedPaths.isEmpty else {
@@ -348,7 +348,7 @@ extension RemoteRepositoryPublishService {
         targetBranch: targetBranch,
         changedPaths: changedPaths,
         commitSHA: lastCommitSHA,
-        underlyingMessage: error.localizedDescription
+        underlyingMessage: reviewCreationFailureDescription(error, provider: .github)
       )
     }
 
@@ -595,7 +595,7 @@ extension RemoteRepositoryPublishService {
         targetBranch: targetBranch,
         changedPaths: changedPaths,
         commitSHA: commitSHA,
-        underlyingMessage: error.localizedDescription
+        underlyingMessage: reviewCreationFailureDescription(error, provider: .github)
       )
     }
 
@@ -812,7 +812,7 @@ extension RemoteRepositoryPublishService {
           targetBranch: targetBranch,
           changedPaths: changedPaths,
           commitSHA: commit.id,
-          underlyingMessage: error.localizedDescription
+          underlyingMessage: reviewCreationFailureDescription(error, provider: .gitlab)
         )
       } catch {
         onProgress?(
@@ -830,7 +830,7 @@ extension RemoteRepositoryPublishService {
           targetBranch: targetBranch,
           changedPaths: changedPaths,
           commitSHA: commit.id,
-          underlyingMessage: error.localizedDescription
+          underlyingMessage: reviewCreationFailureDescription(error, provider: .gitlab)
         )
       }
     }

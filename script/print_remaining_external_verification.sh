@@ -112,8 +112,8 @@ echo "remaining external verification: ${#target_rows[@]} target(s)"
 if [[ "${#target_rows[@]}" -eq 0 ]]; then
   echo "- all external verification evidence is complete"
   echo
-  echo "final strict gate:"
-  echo "  ./script/check_release_gate.sh --strict"
+  echo "final App Store gate:"
+  echo "  ./script/check_release_gate.sh --profile app-store"
   exit 0
 fi
 

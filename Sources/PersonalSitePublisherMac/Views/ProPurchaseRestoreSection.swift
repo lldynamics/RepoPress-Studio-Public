@@ -35,14 +35,14 @@ struct ProPurchaseRestoreSection: View {
           ProgressView()
             .controlSize(.small)
           Text("正在连接 App Store...")
-            .font(.caption)
+            .font(.workbenchSupporting)
             .foregroundStyle(.secondary)
         }
       }
 
       if let message = message {
         Text(message)
-          .font(.caption)
+          .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
       }
     }

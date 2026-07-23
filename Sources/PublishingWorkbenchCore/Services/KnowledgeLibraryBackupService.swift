@@ -1,16 +1,51 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 final class KnowledgeLibraryBackupService: @unchecked Sendable {
+  struct Limits: Sendable {
+    var maximumManifestByteCount: Int
+    var maximumFileCount: Int
+    var maximumSingleFileByteCount: Int64
+    var maximumTotalByteCount: Int64
+
+    init(
+      maximumManifestByteCount: Int = 8 * 1_024 * 1_024,
+      maximumFileCount: Int = 50_000,
+      maximumSingleFileByteCount: Int64 = 2 * 1_024 * 1_024 * 1_024,
+      maximumTotalByteCount: Int64 = 20 * 1_024 * 1_024 * 1_024
+    ) {
+      precondition(maximumManifestByteCount > 0)
+      precondition(maximumFileCount > 0)
+      precondition(maximumSingleFileByteCount > 0)
+      precondition(maximumTotalByteCount > 0)
+      self.maximumManifestByteCount = maximumManifestByteCount
+      self.maximumFileCount = maximumFileCount
+      self.maximumSingleFileByteCount = maximumSingleFileByteCount
+      self.maximumTotalByteCount = maximumTotalByteCount
+    }
+  }
+
   static let manifestFileName = "manifest.json"
   static let databaseFileName = "library.sqlite"
+  private static let storageRootDirectories: Set<String> = [
+    "blobs",
+    "captured",
+    "normalized",
+  ]
 
   private let rootURL: URL
   private let fileManager: FileManager
+  private let limits: Limits
 
-  init(rootURL: URL, fileManager: FileManager = .default) {
+  init(
+    rootURL: URL,
+    fileManager: FileManager = .default,
+    limits: Limits = Limits()
+  ) {
     self.rootURL = rootURL
     self.fileManager = fileManager
+    self.limits = limits
   }
 
   func createBackup(
@@ -37,22 +72,27 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
 
     let databaseURL = temporaryURL.appendingPathComponent(Self.databaseFileName)
     let inspection = try database.createBackupSnapshot(at: databaseURL)
-    var records = [try fileRecord(for: databaseURL, relativePath: Self.databaseFileName)]
+    var records = [try validatedFileRecord(
+      relativePath: Self.databaseFileName,
+      under: temporaryURL
+    )]
 
     for reference in inspection.storageReferences.sorted() {
       try validateStorageReference(reference)
-      let sourceURL = rootURL.appendingPathComponent(reference)
-      try validateRegularFile(at: sourceURL, relativePath: reference)
       let copiedURL = temporaryURL.appendingPathComponent(reference)
       try fileManager.createDirectory(
         at: copiedURL.deletingLastPathComponent(),
         withIntermediateDirectories: true
       )
-      try fileManager.copyItem(at: sourceURL, to: copiedURL)
-      records.append(try fileRecord(for: copiedURL, relativePath: reference))
+      records.append(try copyValidatedRegularFile(
+        relativePath: reference,
+        from: rootURL,
+        to: copiedURL
+      ))
     }
 
     records.sort { $0.relativePath < $1.relativePath }
+    let totalByteCount = try validateFileLimits(records)
     let manifest = KnowledgeLibraryBackupManifest(
       applicationVersion: applicationVersion,
       databaseUserVersion: inspection.userVersion,
@@ -60,7 +100,7 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
       folderCount: inspection.folderCount,
       revisionCount: inspection.revisionCount,
       chunkCount: inspection.chunkCount,
-      totalByteCount: records.reduce(0) { $0 + $1.byteCount },
+      totalByteCount: totalByteCount,
       files: records
     )
     try encodeManifest(manifest, to: temporaryURL.appendingPathComponent(Self.manifestFileName))
@@ -93,7 +133,26 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
       isDirectory: true
     )
     do {
-      try fileManager.copyItem(at: sourceURL, to: temporaryURL)
+      try fileManager.createDirectory(at: temporaryURL, withIntermediateDirectories: true)
+      try encodeManifest(
+        validated.manifest,
+        to: temporaryURL.appendingPathComponent(Self.manifestFileName)
+      )
+      for record in validated.manifest.files {
+        let destinationURL = temporaryURL.appendingPathComponent(record.relativePath)
+        try fileManager.createDirectory(
+          at: destinationURL.deletingLastPathComponent(),
+          withIntermediateDirectories: true
+        )
+        let copiedRecord = try copyValidatedRegularFile(
+          relativePath: record.relativePath,
+          from: sourceURL,
+          to: destinationURL
+        )
+        guard copiedRecord == record else {
+          throw KnowledgeLibraryBackupError.checksumMismatch(record.relativePath)
+        }
+      }
       _ = try validatedBackup(at: temporaryURL)
       try replaceItem(at: pendingURL, withItemAt: temporaryURL)
     } catch {
@@ -125,13 +184,19 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
 
     try fileManager.createDirectory(at: stagingURL, withIntermediateDirectories: true)
     for record in validated.manifest.files {
-      let sourceURL = pendingURL.appendingPathComponent(record.relativePath)
       let destinationURL = stagingURL.appendingPathComponent(record.relativePath)
       try fileManager.createDirectory(
         at: destinationURL.deletingLastPathComponent(),
         withIntermediateDirectories: true
       )
-      try fileManager.copyItem(at: sourceURL, to: destinationURL)
+      let copiedRecord = try copyValidatedRegularFile(
+        relativePath: record.relativePath,
+        from: pendingURL,
+        to: destinationURL
+      )
+      guard copiedRecord == record else {
+        throw KnowledgeLibraryBackupError.checksumMismatch(record.relativePath)
+      }
     }
     _ = try KnowledgeDatabase.inspectBackup(
       at: stagingURL.appendingPathComponent(Self.databaseFileName)
@@ -200,9 +265,24 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
       throw KnowledgeLibraryBackupError.sourceUnavailable(packageURL.path)
     }
 
-    let manifestURL = packageURL.appendingPathComponent(Self.manifestFileName)
-    guard let manifestData = try? Data(contentsOf: manifestURL) else {
-      throw KnowledgeLibraryBackupError.invalidManifest("找不到 \(Self.manifestFileName)")
+    let manifestData: Data
+    do {
+      manifestData = try BoundedFileReader.data(
+        relativePath: Self.manifestFileName,
+        under: packageURL,
+        maximumByteCount: limits.maximumManifestByteCount
+      )
+    } catch let error as BoundedFileReadError {
+      switch error {
+      case .exceedsByteLimit:
+        throw KnowledgeLibraryBackupError.manifestTooLarge(
+          maximumByteCount: limits.maximumManifestByteCount
+        )
+      case .cannotOpen(_, let code) where code == ENOENT:
+        throw KnowledgeLibraryBackupError.missingFile(Self.manifestFileName)
+      default:
+        throw KnowledgeLibraryBackupError.invalidPath(Self.manifestFileName)
+      }
     }
     let manifest: KnowledgeLibraryBackupManifest
     do {
@@ -221,6 +301,10 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
         supported: KnowledgeDatabase.currentSchemaVersion
       )
     }
+    let declaredTotalByteCount = try validateFileLimits(manifest.files)
+    guard manifest.totalByteCount == declaredTotalByteCount else {
+      throw KnowledgeLibraryBackupError.invalidManifest("总大小与文件清单不一致")
+    }
 
     var seenPaths = Set<String>()
     for record in manifest.files {
@@ -228,23 +312,20 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
       guard seenPaths.insert(record.relativePath).inserted else {
         throw KnowledgeLibraryBackupError.invalidManifest("文件路径重复：\(record.relativePath)")
       }
-      let fileURL = packageURL.appendingPathComponent(record.relativePath)
-      try validateRegularFile(at: fileURL, relativePath: record.relativePath)
-      let values = try fileURL.resourceValues(forKeys: [.fileSizeKey])
-      guard Int64(values.fileSize ?? -1) == record.byteCount else {
+      let actualRecord = try validatedFileRecord(
+        relativePath: record.relativePath,
+        under: packageURL
+      )
+      guard actualRecord.byteCount == record.byteCount else {
         throw KnowledgeLibraryBackupError.fileSizeMismatch(record.relativePath)
       }
-      guard try sha256(at: fileURL) == record.sha256.lowercased() else {
+      guard actualRecord.sha256 == record.sha256.lowercased() else {
         throw KnowledgeLibraryBackupError.checksumMismatch(record.relativePath)
       }
     }
     guard seenPaths.contains(Self.databaseFileName) else {
       throw KnowledgeLibraryBackupError.missingFile(Self.databaseFileName)
     }
-    guard manifest.totalByteCount == manifest.files.reduce(0, { $0 + $1.byteCount }) else {
-      throw KnowledgeLibraryBackupError.invalidManifest("总大小与文件清单不一致")
-    }
-
     let databaseInspection = try KnowledgeDatabase.inspectBackup(
       at: packageURL.appendingPathComponent(Self.databaseFileName)
     )
@@ -289,43 +370,226 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
     guard !path.hasPrefix("/"),
           !path.contains("\\"),
           components.count >= 2,
-          (components[0] == "blobs" || components[0] == "normalized"),
+          Self.storageRootDirectories.contains(String(components[0])),
           components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
       throw KnowledgeLibraryBackupError.invalidPath(path)
     }
   }
 
-  private func validateRegularFile(at fileURL: URL, relativePath: String) throws {
-    guard fileManager.fileExists(atPath: fileURL.path) else {
-      throw KnowledgeLibraryBackupError.missingFile(relativePath)
+  private func validateFileLimits(
+    _ records: [KnowledgeLibraryBackupFileRecord]
+  ) throws -> Int64 {
+    guard records.count <= limits.maximumFileCount else {
+      throw KnowledgeLibraryBackupError.tooManyFiles(maximumCount: limits.maximumFileCount)
     }
-    let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
-    guard values.isRegularFile == true, values.isSymbolicLink != true else {
-      throw KnowledgeLibraryBackupError.invalidPath(relativePath)
+
+    var totalByteCount: Int64 = 0
+    for record in records {
+      guard record.byteCount >= 0,
+            record.byteCount <= limits.maximumSingleFileByteCount else {
+        throw KnowledgeLibraryBackupError.fileTooLarge(
+          path: record.relativePath,
+          maximumByteCount: limits.maximumSingleFileByteCount
+        )
+      }
+      let addition = totalByteCount.addingReportingOverflow(record.byteCount)
+      guard !addition.overflow,
+            addition.partialValue <= limits.maximumTotalByteCount else {
+        throw KnowledgeLibraryBackupError.backupTooLarge(
+          maximumByteCount: limits.maximumTotalByteCount
+        )
+      }
+      totalByteCount = addition.partialValue
     }
+    return totalByteCount
   }
 
-  private func fileRecord(
-    for fileURL: URL,
-    relativePath: String
+  private func validatedFileRecord(
+    relativePath: String,
+    under directoryURL: URL
   ) throws -> KnowledgeLibraryBackupFileRecord {
-    try validateRegularFile(at: fileURL, relativePath: relativePath)
-    let size = try fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-    return KnowledgeLibraryBackupFileRecord(
-      relativePath: relativePath,
-      byteCount: Int64(size),
-      sha256: try sha256(at: fileURL)
-    )
+    try withOpenRegularFile(relativePath: relativePath, under: directoryURL) { descriptor, byteCount in
+      guard byteCount <= limits.maximumSingleFileByteCount else {
+        throw KnowledgeLibraryBackupError.fileTooLarge(
+          path: relativePath,
+          maximumByteCount: limits.maximumSingleFileByteCount
+        )
+      }
+      let digest = try sha256(
+        descriptor: descriptor,
+        relativePath: relativePath,
+        expectedByteCount: byteCount
+      )
+      return KnowledgeLibraryBackupFileRecord(
+        relativePath: relativePath,
+        byteCount: byteCount,
+        sha256: digest
+      )
+    }
   }
 
-  private func sha256(at fileURL: URL) throws -> String {
-    let handle = try FileHandle(forReadingFrom: fileURL)
-    defer { try? handle.close() }
+  private func copyValidatedRegularFile(
+    relativePath: String,
+    from sourceRootURL: URL,
+    to destinationURL: URL
+  ) throws -> KnowledgeLibraryBackupFileRecord {
+    try withOpenRegularFile(relativePath: relativePath, under: sourceRootURL) { descriptor, byteCount in
+      guard byteCount <= limits.maximumSingleFileByteCount else {
+        throw KnowledgeLibraryBackupError.fileTooLarge(
+          path: relativePath,
+          maximumByteCount: limits.maximumSingleFileByteCount
+        )
+      }
+      guard !fileManager.fileExists(atPath: destinationURL.path),
+            fileManager.createFile(atPath: destinationURL.path, contents: nil) else {
+        throw KnowledgeLibraryBackupError.invalidPath(relativePath)
+      }
+      let output = try FileHandle(forWritingTo: destinationURL)
+      var shouldRemoveDestination = true
+      defer {
+        try? output.close()
+        if shouldRemoveDestination { try? fileManager.removeItem(at: destinationURL) }
+      }
+
+      var hasher = SHA256()
+      let copiedByteCount = try stream(
+        descriptor: descriptor,
+        relativePath: relativePath,
+        maximumByteCount: limits.maximumSingleFileByteCount
+      ) { data in
+        hasher.update(data: data)
+        try output.write(contentsOf: data)
+      }
+      guard copiedByteCount == byteCount else {
+        throw KnowledgeLibraryBackupError.fileSizeMismatch(relativePath)
+      }
+      try output.synchronize()
+      shouldRemoveDestination = false
+      return KnowledgeLibraryBackupFileRecord(
+        relativePath: relativePath,
+        byteCount: copiedByteCount,
+        sha256: hasher.finalize().map { String(format: "%02x", $0) }.joined()
+      )
+    }
+  }
+
+  private func sha256(
+    descriptor: Int32,
+    relativePath: String,
+    expectedByteCount: Int64
+  ) throws -> String {
     var hasher = SHA256()
-    while let data = try handle.read(upToCount: 1_048_576), !data.isEmpty {
+    let readByteCount = try stream(
+      descriptor: descriptor,
+      relativePath: relativePath,
+      maximumByteCount: limits.maximumSingleFileByteCount
+    ) { data in
       hasher.update(data: data)
     }
+    guard readByteCount == expectedByteCount else {
+      throw KnowledgeLibraryBackupError.fileSizeMismatch(relativePath)
+    }
     return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+  }
+
+  private func stream(
+    descriptor: Int32,
+    relativePath: String,
+    maximumByteCount: Int64,
+    consume: (Data) throws -> Void
+  ) throws -> Int64 {
+    var totalByteCount: Int64 = 0
+    var buffer = [UInt8](repeating: 0, count: 1_048_576)
+    while true {
+      let bytesRead = buffer.withUnsafeMutableBytes { rawBuffer in
+        Darwin.read(descriptor, rawBuffer.baseAddress, rawBuffer.count)
+      }
+      if bytesRead == 0 { return totalByteCount }
+      if bytesRead < 0 {
+        if errno == EINTR { continue }
+        throw KnowledgeLibraryBackupError.invalidPath(relativePath)
+      }
+      let addition = totalByteCount.addingReportingOverflow(Int64(bytesRead))
+      guard !addition.overflow, addition.partialValue <= maximumByteCount else {
+        throw KnowledgeLibraryBackupError.fileTooLarge(
+          path: relativePath,
+          maximumByteCount: maximumByteCount
+        )
+      }
+      let data = Data(buffer.prefix(bytesRead))
+      try consume(data)
+      totalByteCount = addition.partialValue
+    }
+  }
+
+  private func withOpenRegularFile<Result>(
+    relativePath: String,
+    under rootURL: URL,
+    operation: (Int32, Int64) throws -> Result
+  ) throws -> Result {
+    let components = relativePath.split(
+      separator: "/",
+      omittingEmptySubsequences: false
+    ).map(String.init)
+    guard !relativePath.isEmpty,
+          !relativePath.hasPrefix("/"),
+          !relativePath.contains("\\"),
+          !relativePath.contains("\0"),
+          !components.isEmpty,
+          components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+      throw KnowledgeLibraryBackupError.invalidPath(relativePath)
+    }
+
+    var directoryDescriptor = rootURL.path.withCString {
+      Darwin.open($0, O_RDONLY | O_CLOEXEC | O_DIRECTORY | O_NOFOLLOW)
+    }
+    guard directoryDescriptor >= 0 else {
+      throw KnowledgeLibraryBackupError.invalidPath(relativePath)
+    }
+    defer { Darwin.close(directoryDescriptor) }
+
+    for component in components.dropLast() {
+      let nextDescriptor = component.withCString {
+        Darwin.openat(
+          directoryDescriptor,
+          $0,
+          O_RDONLY | O_CLOEXEC | O_DIRECTORY | O_NOFOLLOW
+        )
+      }
+      guard nextDescriptor >= 0 else {
+        throw fileOpenError(relativePath: relativePath, code: errno)
+      }
+      Darwin.close(directoryDescriptor)
+      directoryDescriptor = nextDescriptor
+    }
+
+    let filename = components[components.count - 1]
+    let descriptor = filename.withCString {
+      Darwin.openat(
+        directoryDescriptor,
+        $0,
+        O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK
+      )
+    }
+    guard descriptor >= 0 else {
+      throw fileOpenError(relativePath: relativePath, code: errno)
+    }
+    defer { Darwin.close(descriptor) }
+
+    var metadata = stat()
+    guard Darwin.fstat(descriptor, &metadata) == 0,
+          (metadata.st_mode & S_IFMT) == S_IFREG,
+          metadata.st_size >= 0 else {
+      throw KnowledgeLibraryBackupError.invalidPath(relativePath)
+    }
+    return try operation(descriptor, Int64(metadata.st_size))
+  }
+
+  private func fileOpenError(
+    relativePath: String,
+    code: Int32
+  ) -> KnowledgeLibraryBackupError {
+    code == ENOENT ? .missingFile(relativePath) : .invalidPath(relativePath)
   }
 
   private func encodeManifest(

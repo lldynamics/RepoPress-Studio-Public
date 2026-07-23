@@ -84,6 +84,7 @@ extension WorkbenchStore {
   public var aiActionMessage: String? { aiWorkspaceStore.aiActionMessage }
   public var isAIActionRunning: Bool { aiWorkspaceStore.isAIActionRunning }
   public var aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord] { aiWorkspaceStore.aiMetadataApplicationRecords }
+  public var automationRunRecords: [WorkbenchAutomationRunRecord] { aiWorkspaceStore.automationRunRecords }
   public var aiMetadataSuggestionDraftID: UUID? { aiWorkspaceStore.aiMetadataSuggestionDraftID }
   public var aiMetadataSuggestion: AIPublishingMetadataSuggestion? { aiWorkspaceStore.aiMetadataSuggestion }
   public var isAIMetadataSuggestionRunning: Bool { aiWorkspaceStore.isAIMetadataSuggestionRunning }

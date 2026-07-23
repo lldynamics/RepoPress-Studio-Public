@@ -12,6 +12,7 @@ public final class WorkbenchStore: ObservableObject {
   private let keychainTokenStore: KeychainTokenStore
   private let aiPublishingAssistantService: AIPublishingAssistantService
   private let aiConnectionTestService: AIConnectionTestService
+  private let aiDataSharingConsentStore: AIDataSharingConsentStore
   private let seoAuditService: SEOAuditService
   private let seoSocialPreviewService: SEOSocialPreviewService
 
@@ -54,6 +55,7 @@ public final class WorkbenchStore: ObservableObject {
     aiPublishingAssistantService: aiPublishingAssistantService,
     keychainTokenStore: keychainTokenStore,
     aiConnectionTestService: aiConnectionTestService,
+    aiDataSharingConsentStore: aiDataSharingConsentStore,
     imageWorkbenchService: imageWorkbenchService,
     seoAuditService: seoAuditService,
     seoSocialPreviewService: seoSocialPreviewService
@@ -115,13 +117,15 @@ public final class WorkbenchStore: ObservableObject {
     repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.repository, accountPrefix: "repository-provider"),
     deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.deployment, accountPrefix: "deployment-provider"),
     aiPublishingAssistantService: AIPublishingAssistantService = AIPublishingAssistantService(),
-    aiConnectionTestService: AIConnectionTestService = AIConnectionTestService()
+    aiConnectionTestService: AIConnectionTestService = AIConnectionTestService(),
+    aiDataSharingConsentStore: AIDataSharingConsentStore = AIDataSharingConsentStore()
   ) {
     self.persistenceStore = WorkbenchPersistenceStore(persistence: persistence)
     self.imageWorkbenchService = imageWorkbenchService
     self.keychainTokenStore = keychainTokenStore
     self.aiPublishingAssistantService = aiPublishingAssistantService
     self.aiConnectionTestService = aiConnectionTestService
+    self.aiDataSharingConsentStore = aiDataSharingConsentStore
     self.seoAuditService = seoAuditService
     self.seoSocialPreviewService = seoSocialPreviewService
     self.siteMaintenanceStore = SiteMaintenanceStore()
@@ -222,6 +226,7 @@ public final class WorkbenchStore: ObservableObject {
     )
     self.aiWorkspaceStore = AIWorkspaceStore(
       aiMetadataApplicationRecords: snapshot?.aiMetadataApplicationRecords ?? [],
+      automationRunRecords: snapshot?.automationRunRecords ?? [],
       aiChatCustomPrompts: snapshot?.aiChatCustomPrompts ?? [],
       seoSocialPreviewSnapshots: Dictionary(
         (snapshot?.seoSocialPreviewSnapshots ?? []).map { ($0.draftID, $0) },

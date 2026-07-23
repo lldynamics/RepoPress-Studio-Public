@@ -168,7 +168,7 @@ struct FirstRunSetupView: View {
         .foregroundStyle(.secondary)
 
         Text("当前已选择的站点类型、仓库和发布方式会保留，可稍后在设置中继续修改。")
-          .font(.caption2)
+          .font(.workbenchSupporting)
           .foregroundStyle(.tertiary)
           .frame(maxWidth: 300, alignment: .leading)
           .fixedSize(horizontal: false, vertical: true)

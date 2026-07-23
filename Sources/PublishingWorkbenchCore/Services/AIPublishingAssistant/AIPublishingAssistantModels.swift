@@ -404,6 +404,7 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
   public var contextMode: AIPublishingChatContextMode
   public var imageAttachments: [AIChatImageAttachment]
   public var knowledgeCitations: [KnowledgeCitation]
+  public var automationPlan: WorkbenchAutomationPlan?
   public var createdAt: Date
 
   public init(
@@ -415,6 +416,7 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     contextMode: AIPublishingChatContextMode = .site,
     imageAttachments: [AIChatImageAttachment] = [],
     knowledgeCitations: [KnowledgeCitation] = [],
+    automationPlan: WorkbenchAutomationPlan? = nil,
     createdAt: Date = Date()
   ) {
     self.id = id
@@ -425,6 +427,7 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     self.contextMode = contextMode
     self.imageAttachments = imageAttachments
     self.knowledgeCitations = knowledgeCitations
+    self.automationPlan = automationPlan
     self.createdAt = createdAt
   }
 
@@ -437,6 +440,7 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     case contextMode
     case imageAttachments
     case knowledgeCitations
+    case automationPlan
     case createdAt
   }
 
@@ -450,6 +454,7 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     contextMode = try container.decodeIfPresent(AIPublishingChatContextMode.self, forKey: .contextMode) ?? .site
     imageAttachments = try container.decodeIfPresent([AIChatImageAttachment].self, forKey: .imageAttachments) ?? []
     knowledgeCitations = try container.decodeIfPresent([KnowledgeCitation].self, forKey: .knowledgeCitations) ?? []
+    automationPlan = try container.decodeIfPresent(WorkbenchAutomationPlan.self, forKey: .automationPlan)
     createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
   }
 }

@@ -32,7 +32,7 @@ struct AIChatConversationInspectorSection: View {
         ForEach(context.messages) { message in
           VStack(alignment: .leading, spacing: 6) {
             Text(message.role.localizedDisplayNameKey)
-              .font(.caption2.weight(.semibold))
+              .font(.caption.weight(.semibold))
               .foregroundStyle(message.role == .assistant ? WorkbenchTheme.primary : .secondary)
 
             Text(AIPublishingChatMessageCompositionService.displayContent(for: message))
@@ -42,6 +42,19 @@ struct AIChatConversationInspectorSection: View {
 
             if !message.knowledgeCitations.isEmpty {
               knowledgeCitations(message.knowledgeCitations)
+            }
+
+            if let plan = message.automationPlan {
+              AIChatAutomationPlanCard(
+                message: message,
+                plan: plan,
+                currentDraft: context.draft,
+                isAutomationRunning: context.isAutomationRunning,
+                latestRunRecord: context.automationRunRecords.first {
+                  $0.planID == plan.id && ($0.hasRollback || $0.rolledBackAt != nil)
+                } ?? context.automationRunRecords.first { $0.planID == plan.id },
+                actions: actions
+              )
             }
 
             if message.id == latestAssistantMessageID {
@@ -77,14 +90,14 @@ struct AIChatConversationInspectorSection: View {
     Divider()
     VStack(alignment: .leading, spacing: 5) {
       Label("资料库引用", systemImage: "books.vertical")
-        .font(.caption2.weight(.semibold))
+        .font(.workbenchCardTitle)
         .foregroundStyle(.secondary)
 
       ForEach(citations) { citation in
         VStack(alignment: .leading, spacing: 4) {
           HStack(alignment: .firstTextBaseline) {
             Text("[\(citation.id)] \(citation.title)")
-              .font(.caption.weight(.medium))
+              .font(.workbenchItemTitle)
             Spacer(minLength: 8)
             Button {
               actions.openCitation(citation)
@@ -92,16 +105,16 @@ struct AIChatConversationInspectorSection: View {
               Label("打开原文", systemImage: "arrow.up.forward.square")
             }
             .buttonStyle(.plain)
-            .font(.caption2)
+            .font(.workbenchButtonLabel)
             .foregroundStyle(WorkbenchTheme.primary)
           }
           if let locator = citation.locator?.nilIfEmpty {
             Text(locator)
-              .font(.caption2)
+              .font(.caption)
               .foregroundStyle(.secondary)
           }
           Text(citation.excerpt)
-            .font(.caption2)
+            .font(.workbenchSupporting)
             .foregroundStyle(.secondary)
             .lineLimit(3)
             .textSelection(.enabled)
@@ -174,14 +187,14 @@ struct AIChatRelatedSuggestionsInspectorSection: View {
         ForEach(context.relatedSuggestions) { suggestion in
           VStack(alignment: .leading, spacing: 5) {
             Text(suggestion.targetTitle)
-              .font(.caption.weight(.semibold))
+              .font(.workbenchItemTitle)
               .workbenchTruncatedIdentity(suggestion.targetTitle)
             Text(suggestion.reason)
-              .font(.caption2)
+              .font(.workbenchSupporting)
               .foregroundStyle(.secondary)
               .lineLimit(2)
             Text(suggestion.targetPath)
-              .font(.caption2.monospaced())
+              .font(.caption.monospaced())
               .foregroundStyle(.secondary)
               .workbenchTruncatedIdentity(suggestion.targetPath)
 

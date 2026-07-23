@@ -395,7 +395,7 @@ public struct KnowledgeBrowserConnectionTokenLease: Hashable, Sendable {
     generateToken: () -> String
   ) {
     if let storedToken, storedToken.count >= 32,
-       storedExpiresAt == nil || storedExpiresAt! > now {
+       storedExpiresAt.map({ $0 > now }) ?? true {
       token = storedToken
       expiresAt = storedExpiresAt ?? now.addingTimeInterval(lifetime)
     } else {

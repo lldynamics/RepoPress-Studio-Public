@@ -93,3 +93,58 @@ final class RepositoryHTMLSourceSessionTests: XCTestCase {
     return (root, SiteProfile(name: "Test Site", localRepositoryRootPath: root.path))
   }
 }
+
+final class RepositoryContextStageTests: XCTestCase {
+  func testPrimaryNavigationOnlyContainsRepositoryInspectionCategories() {
+    XCTAssertEqual(
+      RepositoryContextStage.navigationStages,
+      [.overview, .changes, .history]
+    )
+  }
+
+  func testAdvancedToolsAndSourceEditorRemainContextualDestinations() {
+    XCTAssertEqual(RepositoryContextStage.checks.primaryNavigationStage, .overview)
+    XCTAssertEqual(RepositoryContextStage.source.primaryNavigationStage, .changes)
+  }
+
+  func testOnlyRepositoryIndependentCategoriesRemainAvailableWithoutARepository() {
+    XCTAssertFalse(RepositoryContextStage.overview.requiresRepository)
+    XCTAssertFalse(RepositoryContextStage.history.requiresRepository)
+    XCTAssertTrue(RepositoryContextStage.changes.requiresRepository)
+    XCTAssertTrue(RepositoryContextStage.checks.requiresRepository)
+    XCTAssertTrue(RepositoryContextStage.source.requiresRepository)
+  }
+}
+
+final class OperationalWorkspaceContextStageTests: XCTestCase {
+  func testImageWorkbenchNavigationKeepsTaskOrderStable() {
+    XCTAssertEqual(
+      ImageWorkbenchContextStage.navigationStages,
+      [.overview, .issues, .repository]
+    )
+    XCTAssertEqual(
+      Set(ImageWorkbenchContextStage.navigationStages.map(\.id)).count,
+      ImageWorkbenchContextStage.navigationStages.count
+    )
+  }
+
+  func testContentHealthNavigationKeepsEveryActionScopeVisible() {
+#if APP_STORE_BUILD
+    let expectedFilters: [ContentHealthContextFilter] = [
+      .overview, .publicRisks, .siteIssues, .maintenance,
+    ]
+#else
+    let expectedFilters: [ContentHealthContextFilter] = [
+      .overview, .publicRisks, .aiFixes, .siteIssues, .maintenance,
+    ]
+#endif
+    XCTAssertEqual(
+      ContentHealthContextFilter.navigationFilters,
+      expectedFilters
+    )
+    XCTAssertEqual(
+      Set(ContentHealthContextFilter.navigationFilters.map(\.id)).count,
+      ContentHealthContextFilter.navigationFilters.count
+    )
+  }
+}

@@ -263,7 +263,7 @@ function screenshotPage({ copy, iconDataURL, popupDataURL, variant }) {
   return htmlDocument(`
     <main class="store-shot ${variant}">
       <div class="copy-block">
-        <div class="brand"><img src="${iconDataURL}" alt=""><span>Personal Site Publisher</span><b>${escapeHTML(copy.localFirst)}</b></div>
+        <div class="brand"><img src="${iconDataURL}" alt=""><span>RepoPress</span><b>${escapeHTML(copy.localFirst)}</b></div>
         <h1>${escapeHTML(content.title)}</h1>
         <p>${escapeHTML(content.subtitle)}</p>
       </div>
@@ -335,7 +335,7 @@ function promoPage({ copy, iconDataURL, wide, popupDataURL = null }) {
     <main class="promo ${wide ? "wide" : "small"}">
       <div class="promo-glow one"></div><div class="promo-glow two"></div>
       <div class="promo-copy">
-        <div class="promo-brand"><img src="${iconDataURL}" alt=""><span>Personal Site Publisher</span></div>
+        <div class="promo-brand"><img src="${iconDataURL}" alt=""><span>RepoPress</span></div>
         <h1>${escapeHTML(copy.promoTitle)}</h1>
         <p>${escapeHTML(copy.promoSubtitle)}</p>
         <b>${escapeHTML(copy.localFirst)}</b>

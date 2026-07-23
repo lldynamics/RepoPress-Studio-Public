@@ -170,7 +170,7 @@ struct SiteMaintenanceCalendarSection: View {
       LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 6) {
         ForEach(orderedWeekdays, id: \.self) { weekday in
           Text(weekday)
-            .font(.caption2.weight(.semibold))
+            .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity)
         }
@@ -188,12 +188,12 @@ struct SiteMaintenanceCalendarSection: View {
     VStack(alignment: .leading, spacing: 4) {
       HStack {
         Text(cell.dayText)
-          .font(.caption2.weight(cell.isToday ? .bold : .medium))
+          .font(.caption.weight(cell.isToday ? .bold : .medium))
           .foregroundStyle(cell.isInDisplayedMonth ? .primary : .tertiary)
         Spacer(minLength: 2)
         if !cell.scheduleItems.isEmpty {
           Text("\(cell.scheduleItems.count)")
-            .font(.caption2.weight(.semibold))
+            .font(.caption.weight(.semibold))
             .foregroundStyle(WorkbenchTheme.primary)
             .padding(.horizontal, 5)
             .padding(.vertical, 1)
@@ -209,7 +209,7 @@ struct SiteMaintenanceCalendarSection: View {
           openDraft(item.draftID)
         } label: {
           Text(item.title)
-            .font(.caption2)
+            .font(.caption)
             .workbenchTruncatedIdentity(item.title)
             .foregroundStyle(WorkbenchTheme.documentForeground)
         }
@@ -218,7 +218,7 @@ struct SiteMaintenanceCalendarSection: View {
 
       if cell.scheduleItems.count > 2 {
         Text("+\(cell.scheduleItems.count - 2)")
-          .font(.caption2)
+          .font(.caption)
           .foregroundStyle(.secondary)
       }
 

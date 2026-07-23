@@ -293,7 +293,7 @@ private struct DraftVersionLineDiffRow: View {
 
   private func lineNumber(_ number: Int?) -> some View {
     Text(number.map(String.init) ?? "")
-      .font(.caption2.monospacedDigit())
+      .font(.caption.monospacedDigit())
       .foregroundStyle(.tertiary)
       .frame(width: 42, alignment: .trailing)
       .padding(.trailing, 7)

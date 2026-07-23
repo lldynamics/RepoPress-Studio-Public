@@ -280,6 +280,8 @@ public struct ImageWorkbenchDraftSummary: Identifiable, Codable, Hashable, Senda
   public var optimizableSVGCount: Int
   public var resizableImageCount: Int
   public var duplicateImageCount: Int
+  public var items: [ImageWorkbenchItem]
+  public var issues: [ImageWorkbenchIssue]
 
   public init(
     draftID: UUID,
@@ -295,7 +297,9 @@ public struct ImageWorkbenchDraftSummary: Identifiable, Codable, Hashable, Senda
     webPConvertibleCount: Int = 0,
     optimizableSVGCount: Int = 0,
     resizableImageCount: Int = 0,
-    duplicateImageCount: Int = 0
+    duplicateImageCount: Int = 0,
+    items: [ImageWorkbenchItem] = [],
+    issues: [ImageWorkbenchIssue] = []
   ) {
     self.draftID = draftID
     self.draftTitle = draftTitle
@@ -311,6 +315,8 @@ public struct ImageWorkbenchDraftSummary: Identifiable, Codable, Hashable, Senda
     self.optimizableSVGCount = optimizableSVGCount
     self.resizableImageCount = resizableImageCount
     self.duplicateImageCount = duplicateImageCount
+    self.items = items
+    self.issues = issues
   }
 }
 

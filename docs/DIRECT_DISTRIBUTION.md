@@ -1,4 +1,6 @@
-# Direct 发行签名与公证
+# 已停用：Direct 发行签名与公证
+
+> 产品决定：RepoPress for macOS 只维护一个 Mac App Store 全功能版本。本文件保留旧脚本的历史说明，不再是正式发布路径，不应生成或对外提供第二个应用版本。
 
 本流程用于把 macOS 应用直接提供给用户下载，不用于 Mac App Store。正式产物必须同时满足：
 
@@ -8,7 +10,7 @@
 - 内置与当前扩展版本匹配、经过 Mozilla 签名并已验证的 Firefox XPI；
 - Apple 公证状态为 `Accepted`，票据已装订到应用，并通过 Gatekeeper 检查。
 
-App Store 打包使用独立流程和权限文件，不受这里的 Direct 发行设置影响。
+当前 App Store 版本已经包含用户自备 AI 和浏览器商店扩展连接；完整边界见 `docs/app-store/FEATURE_BOUNDARY.md`。除非以后做出新的产品决策，否则不要执行下述旧 Direct 发行流程。
 
 ## 一次性准备
 
@@ -69,10 +71,12 @@ python3 script/test_direct_release_notarization.py
 bash script/test_swift_release_build_gate.sh
 ```
 
-严格发行门禁还会执行真实凭据检查，因此缺少 Developer ID 证书、钥匙串配置或 Mozilla 签名 XPI 时会失败：
+严格直接分发门禁还会执行真实凭据检查，因此缺少 Developer ID 证书或钥匙串配置时会失败：
 
 ```bash
-./script/check_release_gate.sh --strict
+./script/check_release_gate.sh --profile direct
 ```
+
+Edge 与 Firefox 的浏览器商店 profile 已从当前 Safari + Chrome 发布范围移除；本页仍记录旧版直装工作流需要的 Firefox XPI 校验，它不属于本次 App Store/浏览器渠道发布。
 
 不得把本地 ad-hoc 签名、仅成功构建、待公证 ZIP，或尚未装订的应用描述为可正式分发产物。最终交付前应保留公证回执，并在目标 macOS 版本的干净账户或测试机上再次打开验证。

@@ -10,6 +10,7 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertTrue(snapshot.profiles.allSatisfy { $0.purpose == .publishing })
     XCTAssertEqual(snapshot.activeProfileID, snapshot.profiles.first?.id)
     XCTAssertTrue(snapshot.drafts.contains { $0.visibility == .private })
+    XCTAssertTrue(snapshot.drafts.contains(where: \.isGeneralDraft))
     XCTAssertTrue(snapshot.drafts.contains { $0.siteProfileID == snapshot.activeProfileID && $0.status == .ready })
     XCTAssertTrue(snapshot.drafts.contains { draft in
       draft.siteProfileID != snapshot.activeProfileID
@@ -87,7 +88,7 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     let store = WorkbenchStore(persistence: persistence)
 
     XCTAssertEqual(store.activeProfile.name, "示例个人网站")
-    XCTAssertTrue(store.visibleDrafts.contains { $0.title == "Mac 个人网站发布控制台发布流程" })
+    XCTAssertTrue(store.visibleDrafts.contains { $0.title == "Mac RepoPress发布流程" })
     XCTAssertTrue(store.visibleDrafts.contains { $0.visibility == .private })
     XCTAssertEqual(store.activeProfileReleaseLedger.summary.rollbackAvailableCount, 3)
     XCTAssertEqual(store.activeProfileDeploymentStatusSnapshots.count, 1)
@@ -111,6 +112,16 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertEqual(store.selectedSection, .releaseHistory)
     XCTAssertEqual(store.activeProfileDeploymentStatusSnapshots.count, 1)
     XCTAssertEqual(store.deploymentStatusMessage, "截图模式：部署状态和轮询记录已载入。")
+
+    ScreenshotDemoSurface.seoSocialPreview.apply(to: store)
+    XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertTrue(store.isInspectorPresented)
+    XCTAssertEqual(store.seoSocialPreviewSnapshots.count, 1)
+
+    ScreenshotDemoSurface.generalDrafts.apply(to: store)
+    XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertEqual(store.draftListContentScope, .general)
+    XCTAssertEqual(store.publishActionMessage, "截图模式：通用草稿已载入。")
 
     ScreenshotDemoSurface.privacyLock.apply(to: store)
     XCTAssertEqual(store.selectedSection, .writing)

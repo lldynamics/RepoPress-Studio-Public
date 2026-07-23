@@ -6,7 +6,8 @@ SCREENSHOT_DIR="$ROOT_DIR/docs/app-store-screenshots"
 MANIFEST_FILE="${SCREENSHOT_MANIFEST_FILE:-$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md}"
 APP_PRODUCT="PersonalSitePublisherMac"
 APP_BUNDLE_ID="com.jinfang.PersonalSitePublisherMac"
-APP_BUNDLE="$ROOT_DIR/dist/$APP_PRODUCT.app"
+SCREENSHOT_BUILD_DIST_DIR="${SCREENSHOT_BUILD_DIST_DIR:-$ROOT_DIR/dist/app-store-screenshot}"
+APP_BUNDLE="$SCREENSHOT_BUILD_DIST_DIR/$APP_PRODUCT.app"
 SKIP_BUILD=0
 DEMO_DATA=1
 FORCE_RELAUNCH=0
@@ -18,11 +19,10 @@ CAPTURE_PROVENANCE_SCRIPT="$ROOT_DIR/script/screenshot_capture_provenance.py"
 NORMALIZE_SCREENSHOT_SCRIPT="$ROOT_DIR/script/normalize_app_store_screenshot.sh"
 COMPOSE_MARKETING_SCREENSHOT_SCRIPT="$ROOT_DIR/script/compose_app_store_marketing_screenshot.sh"
 WINDOW_ID_HELPER="$ROOT_DIR/script/app_store_window_id.swift"
-WINDOW_CAPTURE_HELPER="$ROOT_DIR/script/run_app_store_window_capture.sh"
 MARKETING=0
 MARKETING_SCREENSHOT_DIR="${SCREENSHOT_MARKETING_DIR:-$SCREENSHOT_DIR/marketing}"
 RAW_SCREENSHOT_DIR="${SCREENSHOT_RAW_DIR:-$SCREENSHOT_DIR/sources}"
-marketing_only_ids=(knowledge-library)
+marketing_only_ids=()
 
 required_ids=()
 
@@ -70,12 +70,11 @@ load_required_ids() {
 screen_title() {
   case "$1" in
     writing) echo "Writing workspace" ;;
-    ai-chat) echo "AI assistant Inspector" ;;
     sync-api-publish) echo "Sync/API publishing workspace" ;;
     seo-social-preview) echo "SEO and social preview" ;;
     deployment-status) echo "Deployment status" ;;
     maintenance) echo "Site maintenance" ;;
-    general-drafts) echo "Cross-site copy" ;;
+    general-drafts) echo "General drafts" ;;
     pro-settings) echo "Pro settings" ;;
     privacy-lock) echo "Quick hide" ;;
     knowledge-library) echo "Local knowledge library" ;;
@@ -86,15 +85,14 @@ screen_title() {
 screen_guidance() {
   case "$1" in
     writing) echo "Show the writing workspace with editor, preview, metadata, and contextual writing actions." ;;
-    ai-chat) echo "Keep the article editor visible while showing the AI assistant Inspector with conversation, context, quick prompts, and apply actions." ;;
     sync-api-publish) echo "Show GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR controls." ;;
     seo-social-preview) echo "Show search/Open Graph/Twitter card previews, cache state, manual refresh, and external debug links." ;;
     deployment-status) echo "Show GitHub Pages/Actions, Netlify, Vercel, Cloudflare Pages, or custom endpoint validation status." ;;
     maintenance) echo "Show content calendar, taxonomy governance, stale articles, links, and operation log." ;;
-    general-drafts) echo "Show cross-site copy across publishing sites with the copy to site action." ;;
+    general-drafts) echo "Show general drafts in the writing workspace with move and copy to site actions." ;;
     pro-settings) echo "Show free quota, Pro unlock, purchase, and restore state without real payment or account secrets." ;;
     privacy-lock) echo "Show the manually hidden workbench and private-content masking state." ;;
-    knowledge-library) echo "Show the local knowledge library with imported sources, search, and related content." ;;
+    knowledge-library) echo "Show the local knowledge library with import, search, cleaned reading content, source details, and annotations." ;;
     *) echo "Arrange the app for this required App Store screenshot." ;;
   esac
 }
@@ -113,7 +111,7 @@ contains_required_id() {
 contains_marketing_only_id() {
   local candidate="$1"
   local id
-  for id in "${marketing_only_ids[@]}"; do
+  for id in "${marketing_only_ids[@]-}"; do
     [[ "$candidate" == "$id" ]] && return 0
   done
   return 1
@@ -149,8 +147,7 @@ launch_app() {
       /usr/bin/open -n "$APP_BUNDLE" \
         --env PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO=1 \
         --env PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE="$surface_id" \
-        --env PERSONAL_SITE_PUBLISHER_SCREENSHOT_WINDOW_ID_FILE="$SCREENSHOT_WINDOW_ID_FILE" \
-        --env PERSONAL_SITE_PUBLISHER_SCREENSHOT_SOURCE_FILE="$SCREENSHOT_SELF_CAPTURE_FILE"
+        --env PERSONAL_SITE_PUBLISHER_SCREENSHOT_WINDOW_ID_FILE="$SCREENSHOT_WINDOW_ID_FILE"
     else
       /usr/bin/open -n "$APP_BUNDLE"
     fi
@@ -227,20 +224,14 @@ OSA
 
 capture_current_app_window() {
   local output="$1"
-  local window_id rect attempt
-  for attempt in {1..40}; do
-    [[ -s "$SCREENSHOT_SELF_CAPTURE_FILE" ]] && break
-    sleep 0.25
-  done
-  if [[ -s "$SCREENSHOT_SELF_CAPTURE_FILE" ]]; then
-    cp "$SCREENSHOT_SELF_CAPTURE_FILE" "$output"
-    echo "screenshot capture: used the app's native 2x window render."
-    return
-  fi
+  local window_id rect
   command -v osascript >/dev/null 2>&1 || fail "osascript is required for --auto-window"
   if window_id="$(frontmost_app_window_id 2>/dev/null | tr -d '[:space:]')" && [[ -n "$window_id" ]]; then
-    bash "$WINDOW_CAPTURE_HELPER" "$window_id" "$APP_BUNDLE_ID" "$output" 2
-    return
+    if screencapture -x -l"$window_id" "$output"; then
+      return
+    fi
+    rm -f "$output"
+    echo "screenshot capture: window-id capture failed; falling back to the accessible window bounds." >&2
   fi
 
   rect="$(frontmost_app_window_rect | tr -d '[:space:]')" \
@@ -310,16 +301,18 @@ mkdir -p "$SCREENSHOT_DIR"
 command -v screencapture >/dev/null 2>&1 || fail "screencapture is not available"
 [[ -f "$NORMALIZE_SCREENSHOT_SCRIPT" ]] || fail "screenshot normalization script is missing"
 [[ -f "$COMPOSE_MARKETING_SCREENSHOT_SCRIPT" ]] || fail "marketing screenshot compositor is missing"
-[[ -f "$WINDOW_CAPTURE_HELPER" ]] || fail "ScreenCaptureKit window capture helper is missing"
 CAPTURE_TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/personal-site-publisher-capture.XXXXXX")"
-SCREENSHOT_WINDOW_ID_FILE="$CAPTURE_TEMP_DIR/window-id"
-SCREENSHOT_SELF_CAPTURE_FILE="$CAPTURE_TEMP_DIR/window-self.png"
-trap 'rm -rf "$CAPTURE_TEMP_DIR"' EXIT
+APP_CAPTURE_TEMP_PARENT="${HOME:?HOME is required}/Library/Containers/$APP_BUNDLE_ID/Data/tmp"
+mkdir -p "$APP_CAPTURE_TEMP_PARENT"
+APP_CAPTURE_TEMP_DIR="$(mktemp -d "$APP_CAPTURE_TEMP_PARENT/app-store-screenshot.XXXXXX")"
+SCREENSHOT_WINDOW_ID_FILE="$APP_CAPTURE_TEMP_DIR/window-id"
+trap 'rm -rf "$CAPTURE_TEMP_DIR" "$APP_CAPTURE_TEMP_DIR"' EXIT
 
 if [[ "$SKIP_BUILD" == "0" ]]; then
   echo "screenshot capture: building $APP_PRODUCT app bundle"
-  PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD=1 \
-    bash "$ROOT_DIR/script/build_and_run.sh" --package-only >/dev/null
+  PERSONAL_SITE_PUBLISHER_DIST_DIR="$SCREENSHOT_BUILD_DIST_DIR" \
+    PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD=1 \
+    bash "$ROOT_DIR/script/build_and_run.sh" --package-only --app-store >/dev/null
   if [[ "$AUTO_WINDOW" == "0" ]]; then
     launch_app "${ONLY_ID:-writing}"
   fi
@@ -350,7 +343,7 @@ for id in "${required_ids[@]}"; do
 
   rm -f "$output" "$raw_output"
   if [[ "$AUTO_WINDOW" == "1" ]]; then
-    rm -f "$SCREENSHOT_WINDOW_ID_FILE" "$SCREENSHOT_SELF_CAPTURE_FILE"
+    rm -f "$SCREENSHOT_WINDOW_ID_FILE"
     launch_app "$id"
     configure_screenshot_window
     echo "screenshot capture: automatically capturing the frontmost $APP_PRODUCT window."

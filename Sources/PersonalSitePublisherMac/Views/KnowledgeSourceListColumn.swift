@@ -179,7 +179,11 @@ struct KnowledgeSourceListColumn: View {
         documentPendingDeletion = nil
       }
     } message: {
-      Text("资料会移到回收站并停止参与搜索与 AI 检索；本地副本会保留，之后可以恢复。")
+      Text(
+        DistributionFeaturePolicy.allowsExternalAIProviders
+          ? String(localized: "资料会移到回收站并停止参与搜索与 AI 检索；本地副本会保留，之后可以恢复。")
+          : String(localized: "资料会移到回收站并停止参与本地搜索；本地副本会保留，之后可以恢复。")
+      )
     }
     .alert("批量添加标签", isPresented: $isBatchTagEditorPresented) {
       TextField("标签，用逗号分隔", text: $batchTags)
@@ -436,7 +440,7 @@ struct KnowledgeSourceListColumn: View {
         HStack(spacing: 5) {
           ForEach(collection.rules, id: \.id) { rule in
             Text(rule.localizedDisplayName)
-              .font(.caption2)
+              .font(.workbenchMetadata)
               .foregroundStyle(.secondary)
               .padding(.horizontal, 7)
               .padding(.vertical, 3)
@@ -461,7 +465,7 @@ struct KnowledgeSourceListColumn: View {
       .buttonStyle(.plain)
       .accessibilityLabel("移除筛选：\(title)")
     }
-    .font(.caption2.weight(.medium))
+    .font(.workbenchMetadata.weight(.medium))
     .padding(.leading, 7)
     .padding(.trailing, 5)
     .padding(.vertical, 3)
@@ -558,10 +562,10 @@ struct KnowledgeSourceListColumn: View {
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: sidebarDensity.rowTextSpacing) {
         Text(document.title)
-          .font(.callout.weight(.medium))
+          .font(.workbenchItemTitle)
           .workbenchTruncatedIdentity(document.title)
         Text(row.subtitle)
-          .font(.caption)
+          .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
           .workbenchTruncatedIdentity(row.subtitle)
       }
@@ -570,16 +574,18 @@ struct KnowledgeSourceListColumn: View {
 
       Spacer(minLength: 4)
 
-      if knowledge.isPinned(document.id) {
-        Image(systemName: "pin.fill")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .accessibilityLabel("已固定到 AI")
-      } else if !document.allowsAIUse {
-        Image(systemName: "sparkles.slash")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .accessibilityLabel("不允许 AI 使用")
+      if DistributionFeaturePolicy.allowsExternalAIProviders {
+        if knowledge.isPinned(document.id) {
+          Image(systemName: "pin.fill")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("已固定到 AI")
+        } else if !document.allowsAIUse {
+          Image(systemName: "sparkles.slash")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("不允许 AI 使用")
+        }
       }
 
       if hoveredDocumentID == document.id || selectedDocumentIDs.contains(document.id) {
@@ -619,21 +625,23 @@ struct KnowledgeSourceListColumn: View {
   private func documentActionItems(_ document: KnowledgeDocument) -> some View {
     documentFolderMenu(document)
     Divider()
-    Button(
-      knowledge.isPinned(document.id)
-        ? String(localized: "取消固定")
-        : String(localized: "固定到 AI 对话")
-    ) {
-      knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)
+    if DistributionFeaturePolicy.allowsExternalAIProviders {
+      Button(
+        knowledge.isPinned(document.id)
+          ? String(localized: "取消固定")
+          : String(localized: "固定到 AI 对话")
+      ) {
+        knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)
+      }
+      Button(
+        document.allowsAIUse
+          ? String(localized: "不允许 AI 使用")
+          : String(localized: "允许 AI 使用")
+      ) {
+        knowledge.setAllowsAIUse(!document.allowsAIUse, documentID: document.id)
+      }
+      Divider()
     }
-    Button(
-      document.allowsAIUse
-        ? String(localized: "不允许 AI 使用")
-        : String(localized: "允许 AI 使用")
-    ) {
-      knowledge.setAllowsAIUse(!document.allowsAIUse, documentID: document.id)
-    }
-    Divider()
     Button("移到回收站…", role: .destructive) {
       requestDocumentDeletion(document)
     }
@@ -694,16 +702,18 @@ struct KnowledgeSourceListColumn: View {
               .tag(result.id)
               .contextMenu {
                 documentFolderMenu(result.document)
-                Divider()
-                Button(
-                  knowledge.isPinned(result.document.id)
-                    ? String(localized: "取消固定")
-                    : String(localized: "固定到 AI 对话")
-                ) {
-                  knowledge.setPinned(
-                    !knowledge.isPinned(result.document.id),
-                    documentID: result.document.id
-                  )
+                if DistributionFeaturePolicy.allowsExternalAIProviders {
+                  Divider()
+                  Button(
+                    knowledge.isPinned(result.document.id)
+                      ? String(localized: "取消固定")
+                      : String(localized: "固定到 AI 对话")
+                  ) {
+                    knowledge.setPinned(
+                      !knowledge.isPinned(result.document.id),
+                      documentID: result.document.id
+                    )
+                  }
                 }
                 Divider()
                 Button("移到回收站…", role: .destructive) {
@@ -720,7 +730,7 @@ struct KnowledgeSourceListColumn: View {
                 .lineLimit(1)
               Spacer(minLength: 2)
               Text("\(group.results.count) 个片段")
-                .font(.caption2.monospacedDigit())
+                .font(.workbenchMetadata.monospacedDigit())
                 .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
@@ -820,18 +830,20 @@ struct KnowledgeSourceListColumn: View {
       .help("批量添加标签")
       .accessibilityLabel("批量添加标签")
 
-      Menu {
-        Button("允许 AI 使用") {
-          knowledge.setAllowsAIUse(true, documentIDs: selectedDocumentIDs)
+      if DistributionFeaturePolicy.allowsExternalAIProviders {
+        Menu {
+          Button("允许 AI 使用") {
+            knowledge.setAllowsAIUse(true, documentIDs: selectedDocumentIDs)
+          }
+          Button("不允许 AI 使用") {
+            knowledge.setAllowsAIUse(false, documentIDs: selectedDocumentIDs)
+          }
+        } label: {
+          Image(systemName: "sparkles")
         }
-        Button("不允许 AI 使用") {
-          knowledge.setAllowsAIUse(false, documentIDs: selectedDocumentIDs)
-        }
-      } label: {
-        Image(systemName: "sparkles")
+        .help("批量设置 AI 权限")
+        .accessibilityLabel("批量设置 AI 权限")
       }
-      .help("批量设置 AI 权限")
-      .accessibilityLabel("批量设置 AI 权限")
 
       Menu {
         Button {

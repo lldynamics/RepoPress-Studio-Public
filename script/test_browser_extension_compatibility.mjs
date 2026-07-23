@@ -12,13 +12,21 @@ const protocolDefinition = JSON.parse(await readFile(
   path.join(extensionRoot, "browser-extension-protocol.json"),
   "utf8"
 ));
+assert.deepEqual(
+  protocolDefinition.activeExtensions,
+  ["safari", "chrome"],
+  "this release must expose only Safari and Chrome"
+);
 const nativeProtocol = protocolDefinition.nativeMessaging;
+const loopbackProtocol = protocolDefinition.loopback;
 const generatedProtocolSource = await readFile(
   path.join(extensionRoot, "protocol.generated.js"),
   "utf8"
 );
 const firefoxRoot = path.join(extensionRoot, "Firefox");
 const firefoxManifest = JSON.parse(await readFile(path.join(firefoxRoot, "manifest.json"), "utf8"));
+const safariRoot = path.join(extensionRoot, "Safari");
+const safariManifest = JSON.parse(await readFile(path.join(safariRoot, "manifest.json"), "utf8"));
 const firefoxRelease = JSON.parse(await readFile(path.join(extensionRoot, "firefox-release.json"), "utf8"));
 
 assert.equal(manifest.manifest_version, 3);
@@ -85,16 +93,42 @@ assert.equal(firefoxRelease.channel, "unlisted");
 assert.match(firefoxRelease.updateManifestURL, /^https:\/\//);
 assert.match(firefoxRelease.xpiBaseURL, /^https:\/\//);
 assert.ok(!firefoxManifest.permissions.includes("pageCapture"));
+assert.equal(safariManifest.manifest_version, 3);
+assert.equal(safariManifest.name, manifest.name);
+assert.equal(safariManifest.description, manifest.description);
+assert.equal(safariManifest.default_locale, manifest.default_locale);
+assert.equal(safariManifest.version, manifest.version);
+assert.deepEqual(safariManifest.icons, manifest.icons);
+assert.deepEqual(safariManifest.action, manifest.action);
+assert.deepEqual(safariManifest.background, { service_worker: "background.js" });
+assert.equal(safariManifest.key, undefined);
+assert.equal(safariManifest.minimum_chrome_version, undefined);
+assert.equal(safariManifest.permissions.includes("pageCapture"), false);
+assert.equal(safariManifest.permissions.includes("nativeMessaging"), false);
+assert.ok(safariManifest.permissions.includes("activeTab"));
+assert.ok(safariManifest.permissions.includes("scripting"));
+assert.ok(safariManifest.permissions.includes("storage"));
+assert.deepEqual(safariManifest.host_permissions, manifest.host_permissions);
+assert.deepEqual(safariManifest.optional_host_permissions, manifest.optional_host_permissions);
+assert.deepEqual(safariManifest.optional_permissions, manifest.optional_permissions);
+assert.deepEqual(safariManifest.commands, manifest.commands);
+assert.match(
+  protocolDefinition.extensions.safariBundleID,
+  /^com\.jinfang\.PersonalSitePublisherMac\.[A-Za-z0-9.-]+$/
+);
 assert.ok(manifest.permissions.includes("scripting"));
 assert.ok(manifest.permissions.includes("alarms"));
 assert.ok(manifest.permissions.includes("contextMenus"));
 assert.ok(manifest.permissions.includes("unlimitedStorage"));
-assert.ok(manifest.permissions.includes("nativeMessaging"));
+assert.equal(manifest.permissions.includes("nativeMessaging"), false);
 assert.deepEqual(manifest.optional_host_permissions, ["http://*/*", "https://*/*"]);
 assert.deepEqual(manifest.optional_permissions, ["tabs"]);
 assert.ok(manifest.commands["quick-save-cleaned"]);
 assert.ok(manifest.commands["quick-save-selection"]);
-assert.equal(manifest.host_permissions, undefined);
+assert.deepEqual(
+  manifest.host_permissions,
+  [`http://${loopbackProtocol.host}:${loopbackProtocol.port}/*`]
+);
 const chromiumExtensionID = [...createHash("sha256")
   .update(Buffer.from(manifest.key, "base64"))
   .digest()
@@ -112,25 +146,37 @@ assert.ok(firefoxManifest.permissions.includes("alarms"));
 assert.ok(firefoxManifest.permissions.includes("dns"));
 assert.ok(firefoxManifest.permissions.includes("menus"));
 assert.ok(firefoxManifest.permissions.includes("unlimitedStorage"));
+assert.ok(firefoxManifest.permissions.includes("webRequest"));
+assert.ok(firefoxManifest.permissions.includes("webRequestBlocking"));
 assert.deepEqual(firefoxManifest.optional_host_permissions, ["http://*/*", "https://*/*"]);
 assert.deepEqual(firefoxManifest.optional_permissions, ["tabs"]);
-assert.ok(firefoxManifest.permissions.includes("nativeMessaging"));
-assert.equal(firefoxManifest.host_permissions, undefined);
+assert.equal(firefoxManifest.permissions.includes("nativeMessaging"), false);
+assert.deepEqual(firefoxManifest.host_permissions, manifest.host_permissions);
 assert.equal(manifest.permissions.includes("dns"), false);
+assert.equal(manifest.permissions.includes("webRequest"), false);
+assert.equal(manifest.permissions.includes("webRequestBlocking"), false);
 
 for (const sharedFile of [
-  "protocol.generated.js", "background.js", "popup.js", "popup.html", "popup.css",
+  "protocol.generated.js", "background-capture.js", "background-queue-operations.js",
+  "background-queue-storage.js", "background-security.js", "background.js",
+  "popup.js", "popup.html", "popup.css",
   "_locales/en/messages.json", "_locales/zh_CN/messages.json",
   "icons/icon16.png", "icons/icon32.png", "icons/icon48.png", "icons/icon128.png"
 ]) {
-  assert.equal(
-    Buffer.compare(
-      await readFile(path.join(firefoxRoot, sharedFile)),
-      await readFile(path.join(extensionRoot, sharedFile))
-    ),
-    0,
-    `${sharedFile} is not synchronized with the Firefox extension`
-  );
+  const sharedSource = await readFile(path.join(extensionRoot, sharedFile));
+  for (const [browserName, browserRoot] of [
+    ["Firefox", firefoxRoot],
+    ["Safari", safariRoot]
+  ]) {
+    assert.equal(
+      Buffer.compare(
+        await readFile(path.join(browserRoot, sharedFile)),
+        sharedSource
+      ),
+      0,
+      `${sharedFile} is not synchronized with the ${browserName} extension`
+    );
+  }
 }
 
 const popupHTML = await readFile(path.join(firefoxRoot, "popup.html"), "utf8");
@@ -151,9 +197,9 @@ assert.ok(
 assert.match(popupHTML, /class="mark" aria-hidden="true"/);
 assert.match(popupHTML, /id="status" role="status"[^>]*aria-atomic="true"/);
 assert.match(popupHTML, /id="alert" role="alert"[^>]*aria-atomic="true"/);
-assert.doesNotMatch(popupHTML, /127\.0\.0\.1/);
-assert.match(popupHTML, /Native Messaging/);
-assert.match(popupHTML, /Unix Socket/);
+assert.match(popupHTML, /127\.0\.0\.1/);
+assert.match(popupHTML, /本机回环接口/);
+assert.doesNotMatch(popupHTML, /Native Messaging|Unix Socket/);
 assert.match(popupCSS, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important;/s);
 assert.doesNotMatch(popupCSS, /min-width:\s*420px/);
 assert.doesNotMatch(popupCSS, /100vw/);
@@ -238,6 +284,7 @@ for (const selector of [
   "#batch-review-panel", "#batch-settings-summary", "#batch-items", "#batch-retry-failed",
   "#capture-ai", "#status", "#alert", "#page-title", "main",
   "#queue-panel", "#queue-count", "#queue-state", "#queue-summary", "#queue-retention",
+  "#queue-privacy-mode", "#queue-allow-private-sites",
   "#queue-items", "#retry-queue", "#export-queue", "#discard-queue",
   "#receipt-panel", "#receipt-title", "#receipt-source", "#receipt-saved-at",
   "#receipt-folder", "#receipt-size",
@@ -317,6 +364,24 @@ const popupBrowser = {
       if (message.type === "capture-queue-status") {
         return { ok: true, result: { queuedCount: 0, blockedCount: 0, totalBytes: 0 } };
       }
+      if (message.type === "set-capture-queue-privacy") {
+        return {
+          ok: true,
+          result: {
+            queueState: "empty",
+            retentionDays: 30,
+            privacyMode: message.privacyMode,
+            allowPrivateSites: message.allowPrivateSites,
+            queuedCount: 0,
+            quarantinedCount: 0,
+            blockedCount: 0,
+            minimizedCount: 1,
+            purgedCount: 0,
+            queueItems: [],
+            quarantinedItems: []
+          }
+        };
+      }
       if (message.type === "capture-and-save") {
         return {
           ok: true,
@@ -388,6 +453,7 @@ const popupContext = vm.createContext({
   }),
   globalThis: null,
   URL,
+  confirm: () => true,
   Option: class {
     constructor(label, value) {
       this.label = label;
@@ -486,7 +552,7 @@ vm.runInContext("resetCaptureFlow()", popupContext);
 assert.equal(popupElements.get("#save-panel").hidden, false);
 assert.equal(
   vm.runInContext('readableError(new Error("NetworkError when attempting to fetch resource."))', popupContext),
-  "无法连接应用。请先打开“个人网站发布控制台”，再检查令牌。"
+  "无法连接应用。请先打开“RepoPress”，再检查令牌。"
 );
 vm.runInContext('showStatus("无法连接", "error")', popupContext);
 assert.equal(popupElements.get("#status").textContent, "");
@@ -500,6 +566,9 @@ assert.match(popupElements.get("#queue-summary").textContent, /正在读取/);
 vm.runInContext(`updateQueuePanel({
   queueState: "content",
   retentionDays: 30,
+  privacyMode: "full-content",
+  allowPrivateSites: true,
+  fullContentCount: 1,
   queuedCount: 2,
   quarantinedCount: 1,
   blockedCount: 1,
@@ -513,7 +582,8 @@ vm.runInContext(`updateQueuePanel({
     expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
     previewText: "等待恢复的正文片段",
     lastError: "暂时无法连接应用",
-    byteSize: 1024
+    byteSize: 1024,
+    storedContentMode: "full-content"
   }],
   quarantinedItems: [{
     id: "quarantined-item",
@@ -530,6 +600,17 @@ assert.equal(popupElements.get("#queue-state").textContent, "有待处理内容"
 assert.equal(popupElements.get("#queue-count").textContent, "3");
 assert.match(popupElements.get("#queue-summary").textContent, /1 项等待手动处理/);
 assert.equal(popupElements.get("#queue-items").children.length, 2);
+assert.equal(popupElements.get("#queue-privacy-mode").value, "full-content");
+assert.equal(popupElements.get("#queue-allow-private-sites").checked, true);
+popupElements.get("#queue-privacy-mode").value = "links-only";
+popupElements.get("#queue-allow-private-sites").checked = false;
+await vm.runInContext("updateCaptureQueuePrivacy()", popupContext);
+const popupPrivacyMessage = popupRuntimeMessages
+  .filter((message) => message.type === "set-capture-queue-privacy")
+  .at(-1);
+assert.equal(popupPrivacyMessage.privacyMode, "links-only");
+assert.equal(popupPrivacyMessage.allowPrivateSites, false);
+assert.equal(popupElements.get("#queue-privacy-mode").value, "links-only");
 vm.runInContext(`updateQueuePanel({
   queueState: "failed",
   queueSchemaVersion: 99,
@@ -763,14 +844,24 @@ assert.equal(
 assert.match(popupElements.get("#alert").textContent, /批量保存已取消/);
 popupPermissionRequestGranted = true;
 
+const backgroundModuleNames = [
+  "background-security.js",
+  "background-queue-storage.js",
+  "background-queue-operations.js",
+  "background-capture.js"
+];
+const backgroundModuleSources = await Promise.all(backgroundModuleNames.map((name) =>
+  readFile(path.join(firefoxRoot, name), "utf8")
+));
 const backgroundSource = await readFile(path.join(firefoxRoot, "background.js"), "utf8");
-assert.match(backgroundSource, /redirect:\s*"manual"/);
-assert.match(backgroundSource, /response\.body\?\.getReader\?\.\(\)/);
-assert.match(backgroundSource, /response\.headers\.get\("content-length"\)/);
-assert.match(backgroundSource, /reader\.cancel\("resource size limit reached"\)/);
-assert.match(backgroundSource, /maximumRedirects\s*=\s*5/);
-assert.doesNotMatch(backgroundSource, /await response\.(?:blob|text)\(\)/);
-const limitedReaderExpression = backgroundSource.match(
+const completeBackgroundSource = [...backgroundModuleSources, backgroundSource].join("\n");
+assert.match(completeBackgroundSource, /redirect:\s*"manual"/);
+assert.match(completeBackgroundSource, /response\.body\?\.getReader\?\.\(\)/);
+assert.match(completeBackgroundSource, /response\.headers\.get\("content-length"\)/);
+assert.match(completeBackgroundSource, /reader\.cancel\("resource size limit reached"\)/);
+assert.match(completeBackgroundSource, /maximumRedirects\s*=\s*5/);
+assert.doesNotMatch(completeBackgroundSource, /await response\.(?:blob|text)\(\)/);
+const limitedReaderExpression = completeBackgroundSource.match(
   /const readLimitedResponseBody = (async \(response, maximumBytes, controller\) => \{[\s\S]*?\n    \});\n    const fetchResourceBytes/
 )?.[1];
 assert.ok(limitedReaderExpression, "streaming resource reader is missing");
@@ -844,6 +935,7 @@ let bridgeErrorCode = null;
 let nativeHostAvailable = true;
 let nativeMessageRequest;
 let lastFetchURL;
+let lastFetchOptions;
 let fetchCount = 0;
 let duplicateMode = false;
 let loseNextImportResponseAfterCommit = false;
@@ -851,11 +943,13 @@ const completedImportReceipts = new Map();
 const backgroundRuntimeMessages = [];
 let commandListener;
 let menuClickListener;
+let headersReceivedListener;
 const createdMenus = [];
 const toolbarState = {};
 const savedDocumentID = "11111111-1111-1111-1111-111111111111";
 const backgroundStorage = { bridgeToken: "test-token" };
 let backgroundStorageReadFailure = false;
+let backgroundTabIncognito = false;
 const activeAlarms = new Map();
 const backgroundGrantedOrigins = new Set();
 const backgroundPermissionRemovals = [];
@@ -989,6 +1083,15 @@ const browser = {
       return { addresses: ["93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"] };
     }
   },
+  webRequest: {
+    onHeadersReceived: {
+      addListener(listener, filter, extraInfoSpec) {
+        headersReceivedListener = listener;
+        assert.deepEqual(Array.from(filter.types), ["xmlhttprequest"]);
+        assert.deepEqual(Array.from(extraInfoSpec), ["blocking"]);
+      }
+    }
+  },
   action: {
     async setBadgeBackgroundColor(details) { toolbarState.color = details.color; },
     async setBadgeText(details) { toolbarState.text = details.text; },
@@ -1003,7 +1106,13 @@ const browser = {
     onCommand: { addListener(listener) { commandListener = listener; } }
   },
   tabs: {
-    async query() { return [{ id: 9, url: page.pageURL, title: page.title }]; }
+    async query() {
+      return [{ id: 9, url: page.pageURL, title: page.title, incognito: backgroundTabIncognito }];
+    },
+    async get(tabId) {
+      assert.equal(tabId, 9);
+      return { id: 9, url: page.pageURL, title: page.title, incognito: backgroundTabIncognito };
+    }
   },
   permissions: {
     async contains(details) {
@@ -1069,7 +1178,17 @@ const context = vm.createContext({
     fetchCount += 1;
     if (!bridgeAvailable) throw new TypeError("Failed to fetch");
     lastFetchURL = _url;
-    postedBody = JSON.parse(options.body);
+    lastFetchOptions = options;
+    postedBody = options.body ? JSON.parse(options.body) : null;
+    if (_url.endsWith("/v1/folders")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return { folders: [], tokenExpiresAt: "2026-08-18T00:00:00Z" };
+        }
+      };
+    }
     if (_url.endsWith("/v1/open")) {
       return {
         ok: true,
@@ -1097,25 +1216,42 @@ const context = vm.createContext({
         }
       };
     }
+    const completedReceipt = completedImportReceipts.get(postedBody?.operationID);
+    if (completedReceipt) {
+      return {
+        ok: true,
+        status: 200,
+        async json() { return { ...completedReceipt, replayed: true }; }
+      };
+    }
+    const successfulReceipt = {
+      operationID: postedBody?.operationID,
+      insertedCount: 1,
+      updatedCount: 0,
+      skippedCount: 0,
+      action: postedBody?.duplicateResolution === "move-only" ? "moved" : "inserted",
+      documentID: savedDocumentID,
+      title: page.title,
+      folder: { id: "22222222-2222-2222-2222-222222222222", name: "阅读" },
+      fileSizeBytes: 2048,
+      archiveType: page.archiveReport.format,
+      indexStatus: "ready",
+      allowsAIUse: true,
+      replayed: false
+    };
+    if (bridgeStatus >= 200 && bridgeStatus < 300) {
+      completedImportReceipts.set(postedBody?.operationID, successfulReceipt);
+      if (loseNextImportResponseAfterCommit) {
+        loseNextImportResponseAfterCommit = false;
+        throw new TypeError("Failed to fetch");
+      }
+    }
     return {
       ok: bridgeStatus >= 200 && bridgeStatus < 300,
       status: bridgeStatus,
       async json() {
         return bridgeStatus >= 200 && bridgeStatus < 300
-          ? {
-              operationID: postedBody.operationID,
-              insertedCount: 1,
-              updatedCount: 0,
-              skippedCount: 0,
-              action: postedBody.duplicateResolution === "move-only" ? "moved" : "inserted",
-              documentID: savedDocumentID,
-              title: page.title,
-              folder: { id: "22222222-2222-2222-2222-222222222222", name: "阅读" },
-              fileSizeBytes: 2048,
-              archiveType: page.archiveReport.format,
-              indexStatus: "ready",
-              allowsAIUse: true
-            }
+          ? successfulReceipt
           : { error: "capture rejected", code: bridgeErrorCode };
       }
     };
@@ -1124,13 +1260,24 @@ const context = vm.createContext({
 });
 context.globalThis = context;
 vm.runInContext(generatedProtocolSource, context, { filename: "protocol.generated.js" });
+// Production background.js loads the responsibility modules after creating
+// extensionAPI. The VM harness mirrors that dependency without implementing
+// importScripts itself.
+context.extensionAPI = context.browser ?? context.chrome;
+for (const [index, source] of backgroundModuleSources.entries()) {
+  vm.runInContext(source, context, { filename: backgroundModuleNames[index] });
+}
 vm.runInContext(backgroundSource, context, { filename: "background.js" });
 assert.equal(typeof messageListener, "function");
 assert.equal(typeof commandListener, "function");
 assert.equal(typeof menuClickListener, "function");
-const sendBackgroundMessage = (message) => new Promise((resolve, reject) => {
+assert.equal(typeof headersReceivedListener, "function");
+const sendBackgroundMessage = (
+  message,
+  sender = { tab: { id: 9 }, url: page.pageURL }
+) => new Promise((resolve, reject) => {
   const timeout = setTimeout(() => reject(new Error(`${message.type} timed out`)), 1_000);
-  messageListener(message, {}, (value) => {
+  messageListener(message, sender, (value) => {
     clearTimeout(timeout);
     resolve(value);
   });
@@ -1142,14 +1289,62 @@ const allowedArchiveResource = await sendBackgroundMessage({
 });
 assert.equal(allowedArchiveResource.ok, true);
 assert.equal(allowedArchiveResource.result.allowed, true);
-assert.equal(allowedArchiveResource.result.dnsValidated, true);
+assert.equal(allowedArchiveResource.result.validationMode, "resolved");
+assert.equal(allowedArchiveResource.result.peerGuarded, true);
+assert.match(allowedArchiveResource.result.peerGuardID, /^[0-9a-f-]{36}$/);
 assert.equal(allowedArchiveResource.result.url, "https://cdn.example.com/image.png");
+assert.equal(headersReceivedListener({
+  url: allowedArchiveResource.result.url,
+  tabId: 9,
+  ip: "93.184.216.34"
+}).cancel, undefined);
+assert.equal(headersReceivedListener({
+  url: allowedArchiveResource.result.url,
+  tabId: 9,
+  ip: "127.0.0.1"
+}).cancel, true);
+const confirmedArchivePeer = await sendBackgroundMessage({
+  type: "confirm-archive-resource-peer",
+  url: allowedArchiveResource.result.url,
+  guardID: allowedArchiveResource.result.peerGuardID
+});
+assert.equal(confirmedArchivePeer.ok, true);
+assert.equal(confirmedArchivePeer.result.verified, true);
+const reboundArchiveResource = await sendBackgroundMessage({
+  type: "validate-archive-resource-url",
+  url: "https://cdn.example.com/rebound.png"
+});
+assert.equal(reboundArchiveResource.ok, true);
+assert.equal(headersReceivedListener({
+  url: reboundArchiveResource.result.url,
+  tabId: 9,
+  ip: "192.168.1.8"
+}).cancel, true);
+const rejectedReboundConfirmation = await sendBackgroundMessage({
+  type: "confirm-archive-resource-peer",
+  url: reboundArchiveResource.result.url,
+  guardID: reboundArchiveResource.result.peerGuardID
+});
+assert.equal(rejectedReboundConfirmation.ok, false);
+assert.equal(rejectedReboundConfirmation.code, "archive-resource-peer-unverified");
+const unobservedArchiveResource = await sendBackgroundMessage({
+  type: "validate-archive-resource-url",
+  url: "https://cdn.example.com/unobserved.png"
+});
+const unobservedArchiveConfirmation = await sendBackgroundMessage({
+  type: "confirm-archive-resource-peer",
+  url: unobservedArchiveResource.result.url,
+  guardID: unobservedArchiveResource.result.peerGuardID
+});
+assert.equal(unobservedArchiveConfirmation.ok, false);
+assert.equal(unobservedArchiveConfirmation.code, "archive-resource-peer-unverified");
 const allowedPublicIPv6 = await sendBackgroundMessage({
   type: "validate-archive-resource-url",
   url: "https://[2606:4700:4700::1111]/asset.css"
 });
 assert.equal(allowedPublicIPv6.ok, true);
-assert.equal(allowedPublicIPv6.result.dnsValidated, true);
+assert.equal(allowedPublicIPv6.result.validationMode, "literal");
+assert.equal(allowedPublicIPv6.result.peerGuarded, false);
 for (const blockedURL of [
   "http://127.1/private.png",
   "http://[::1]/private.png",
@@ -1177,6 +1372,21 @@ const failedArchiveDNS = await sendBackgroundMessage({
 });
 assert.equal(failedArchiveDNS.ok, false);
 assert.equal(failedArchiveDNS.code, "archive-resource-dns-failed");
+const missingArchiveSender = await sendBackgroundMessage({
+  type: "validate-archive-resource-url",
+  url: "https://cdn.example.com/no-tab.png"
+}, {});
+assert.equal(missingArchiveSender.ok, false);
+assert.equal(missingArchiveSender.code, "archive-resource-peer-unavailable");
+const savedDNSResolve = browser.dns.resolve;
+browser.dns.resolve = null;
+const unavailableArchivePeerCheck = await sendBackgroundMessage({
+  type: "validate-archive-resource-url",
+  url: "https://cdn.example.com/no-dns.png"
+});
+assert.equal(unavailableArchivePeerCheck.ok, false);
+assert.equal(unavailableArchivePeerCheck.code, "archive-resource-peer-unavailable");
+browser.dns.resolve = savedDNSResolve;
 
 const legacyQueueEntry = {
   schemaVersion: 1,
@@ -1208,6 +1418,8 @@ backgroundStorage.pendingKnowledgeCapturesV1 = [
 const migratedQueueStatus = await sendBackgroundMessage({ type: "capture-queue-status" });
 assert.equal(migratedQueueStatus.ok, true);
 assert.equal(migratedQueueStatus.result.queueState, "content");
+assert.equal(migratedQueueStatus.result.privacyMode, "full-content");
+assert.equal(migratedQueueStatus.result.allowPrivateSites, false);
 assert.equal(migratedQueueStatus.result.queuedCount, 1);
 assert.equal(migratedQueueStatus.result.quarantinedCount, 1);
 assert.equal(migratedQueueStatus.result.queueItems[0].title, "旧版队列网页");
@@ -1224,6 +1436,29 @@ assert.equal(exportedMigratedQueue.ok, true);
 assert.equal(exportedMigratedQueue.result.export.containsPrivateReadingContent, true);
 assert.equal(exportedMigratedQueue.result.export.queue.schemaVersion, 2);
 assert.doesNotMatch(JSON.stringify(exportedMigratedQueue.result.export), /must-not-survive/);
+
+const minimizedLegacyQueue = await sendBackgroundMessage({
+  type: "set-capture-queue-privacy",
+  privacyMode: "links-only",
+  allowPrivateSites: false
+});
+assert.equal(minimizedLegacyQueue.ok, true);
+assert.equal(minimizedLegacyQueue.result.privacyMode, "links-only");
+assert.equal(minimizedLegacyQueue.result.minimizedCount, 1);
+assert.equal(backgroundStorage.pendingKnowledgeCapturesV1.entries[0].storedContentMode, "links-only");
+assert.equal(
+  backgroundStorage.pendingKnowledgeCapturesV1.entries[0].envelope.capture.contentText,
+  page.pageURL
+);
+assert.equal(backgroundStorage.pendingKnowledgeCapturesV1.entries[0].envelope.capture.archiveData, null);
+assert.equal(backgroundStorage.pendingKnowledgeCapturesV1.quarantine[0].rawValue, null);
+assert.doesNotMatch(
+  JSON.stringify(backgroundStorage.pendingKnowledgeCapturesV1),
+  /旧版离线正文/
+);
+const exportedMinimizedQueue = await sendBackgroundMessage({ type: "export-capture-queue" });
+assert.equal(exportedMinimizedQueue.result.export.containsPrivateReadingContent, false);
+assert.equal(exportedMinimizedQueue.result.export.containsPrivateMetadata, true);
 
 const quarantinedID = migratedQueueStatus.result.quarantinedItems[0].id;
 const deletedQuarantine = await sendBackgroundMessage({
@@ -1288,22 +1523,12 @@ assert.equal(updatedRetention.ok, true);
 assert.equal(updatedRetention.result.retentionDays, 7);
 assert.equal(backgroundStorage.knowledgeCaptureQueueRetentionDaysV1, 7);
 
-const callbackTransport = await vm.runInContext(`(async () => {
-  const savedBrowser = globalThis.browser;
-  globalThis.browser = undefined;
-  try {
-    return await sendNativeHostMessage({
-      schemaVersion: KNOWLEDGE_NATIVE_MESSAGING_PROTOCOL.schemaVersion,
-      path: "/v1/folders",
-      method: "GET",
-      token: "test-token",
-      bodyJSON: null
-    });
-  } finally {
-    globalThis.browser = savedBrowser;
-  }
-})()`, context);
+const callbackTransport = await vm.runInContext(
+  'performBridgeRequest("/v1/folders", "GET", "test-token")',
+  context
+);
 assert.equal(callbackTransport.ok, true);
+assert.equal(callbackTransport.transport, "loopback");
 await vm.runInContext("setupContextMenus()", context);
 assert.equal(createdMenus.length, 3);
 assert.deepEqual(
@@ -1358,10 +1583,16 @@ const preparedSaveResponse = await new Promise((resolve, reject) => {
   });
 });
 assert.equal(preparedSaveResponse.ok, true);
-assert.equal(nativeMessageRequest.hostName, nativeProtocol.hostName);
-assert.equal(nativeMessageRequest.request.schemaVersion, nativeProtocol.schemaVersion);
-assert.equal(nativeMessageRequest.request.path, "/v1/import");
-assert.equal(nativeMessageRequest.request.method, "POST");
+assert.equal(
+  lastFetchURL,
+  `http://${loopbackProtocol.host}:${loopbackProtocol.port}/v1/import`
+);
+assert.equal(lastFetchOptions.method, "POST");
+assert.equal(lastFetchOptions.headers.Authorization, "Bearer test-token");
+assert.equal(
+  lastFetchOptions.headers[loopbackProtocol.protocolHeaderName],
+  loopbackProtocol.protocolHeaderValue
+);
 assert.equal(postedBody.capture.title, "编辑后的标题");
 assert.deepEqual(postedBody.capture.authors, ["作者甲", "作者乙"]);
 assert.deepEqual(postedBody.capture.tags, ["研究", "写作"]);
@@ -1614,6 +1845,11 @@ const lostReceiptOperationID =
   backgroundStorage.pendingKnowledgeCapturesV1.entries[0].envelope.operationID;
 assert.equal(completedImportReceipts.has(lostReceiptOperationID), true);
 assert.equal("token" in backgroundStorage.pendingKnowledgeCapturesV1.entries[0], false);
+assert.equal(
+  backgroundStorage.pendingKnowledgeCapturesV1.entries[0].envelope.capture.contentText,
+  page.pageURL
+);
+assert.equal(backgroundStorage.pendingKnowledgeCapturesV1.entries[0].storedContentMode, "links-only");
 assert.equal(activeAlarms.has("retry-pending-knowledge-captures"), true);
 
 const replayResponse = await new Promise((resolve, reject) => {
@@ -1659,7 +1895,7 @@ const queuedVersionOperationIDs = backgroundStorage.pendingKnowledgeCapturesV1.e
 assert.equal(new Set(queuedVersionOperationIDs).size, 2);
 assert.equal(backgroundStorage.pendingKnowledgeCapturesV1.entries
   .every((entry) => entry.envelope.capture.sourceURL === page.sourceURL), true);
-assert.equal(fetchCount, 0, "Firefox must not fall back to direct localhost HTTP");
+assert.ok(fetchCount > 0, "Firefox must use the authenticated loopback bridge");
 
 nativeHostAvailable = true;
 bridgeAvailable = true;
@@ -1696,7 +1932,10 @@ const openResponse = await new Promise((resolve, reject) => {
 });
 assert.equal(openResponse.ok, true);
 assert.equal(openResponse.result.opened, true);
-assert.equal(nativeMessageRequest.request.path, "/v1/open");
+assert.equal(
+  lastFetchURL,
+  `http://${loopbackProtocol.host}:${loopbackProtocol.port}/v1/open`
+);
 assert.equal(postedBody.documentID, savedDocumentID);
 
 duplicateMode = true;
@@ -1774,6 +2013,81 @@ assert.equal(cancelledConflict.result.queuedCount, 0);
 assert.equal(backgroundStorage.pendingKnowledgeCapturesV1.entries.length, 0);
 
 duplicateMode = false;
+nativeHostAvailable = false;
+bridgeAvailable = false;
+const originalPageURL = page.pageURL;
+const originalSourceURL = page.sourceURL;
+page.pageURL = "http://192.168.1.20/private-notes";
+page.sourceURL = page.pageURL;
+const blockedPrivateQueue = await sendBackgroundMessage({
+  type: "capture-and-save",
+  tabId: 9,
+  token: "test-token",
+  includeArchive: false
+});
+assert.equal(blockedPrivateQueue.ok, false);
+assert.equal(blockedPrivateQueue.code, "capture-queue-private-site-blocked");
+assert.equal(backgroundStorage.pendingKnowledgeCapturesV1.entries.length, 0);
+
+const allowPrivateQueue = await sendBackgroundMessage({
+  type: "set-capture-queue-privacy",
+  privacyMode: "links-only",
+  allowPrivateSites: true
+});
+assert.equal(allowPrivateQueue.ok, true);
+const queuedPrivatePage = await sendBackgroundMessage({
+  type: "capture-and-save",
+  tabId: 9,
+  token: "test-token",
+  includeArchive: false
+});
+assert.equal(queuedPrivatePage.ok, true);
+assert.equal(queuedPrivatePage.result.queued, true);
+assert.equal(backgroundStorage.pendingKnowledgeCapturesV1.entries.length, 1);
+assert.equal(
+  backgroundStorage.pendingKnowledgeCapturesV1.entries[0].envelope.capture.contentText,
+  page.pageURL
+);
+await sendBackgroundMessage({ type: "discard-capture-queue" });
+
+page.pageURL = originalPageURL;
+page.sourceURL = originalSourceURL;
+const blockPrivateContexts = await sendBackgroundMessage({
+  type: "set-capture-queue-privacy",
+  privacyMode: "links-only",
+  allowPrivateSites: false
+});
+assert.equal(blockPrivateContexts.ok, true);
+backgroundTabIncognito = true;
+const blockedIncognitoQueue = await sendBackgroundMessage({
+  type: "capture-and-save",
+  tabId: 9,
+  token: "test-token",
+  includeArchive: false
+});
+assert.equal(blockedIncognitoQueue.ok, false);
+assert.equal(blockedIncognitoQueue.code, "capture-queue-private-site-blocked");
+assert.equal(backgroundStorage.pendingKnowledgeCapturesV1.entries.length, 0);
+backgroundTabIncognito = false;
+
+const disabledQueue = await sendBackgroundMessage({
+  type: "set-capture-queue-privacy",
+  privacyMode: "disabled",
+  allowPrivateSites: false
+});
+assert.equal(disabledQueue.ok, true);
+const disabledQueueCapture = await sendBackgroundMessage({
+  type: "capture-and-save",
+  tabId: 9,
+  token: "test-token",
+  includeArchive: false
+});
+assert.equal(disabledQueueCapture.ok, false);
+assert.equal(disabledQueueCapture.code, "capture-queue-disabled");
+assert.equal(backgroundStorage.pendingKnowledgeCapturesV1.entries.length, 0);
+
+nativeHostAvailable = true;
+bridgeAvailable = true;
 bridgeStatus = 422;
 const rejectedResponse = await new Promise((resolve, reject) => {
   const timeout = setTimeout(() => reject(new Error("rejection response timed out")), 1_000);

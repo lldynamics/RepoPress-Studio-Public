@@ -422,7 +422,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       bodyMarkdown: """
       # 开始使用：认识发布工作台
 
-      欢迎使用个人网站发布控制台。你正在阅读的几篇“使用指南”都是普通草稿，可以自由修改、复制或移到回收站；它们不会自动发布，也不会写入你的仓库。
+      欢迎使用RepoPress。你正在阅读的几篇“使用指南”都是普通草稿，可以自由修改、复制或移到回收站；它们不会自动发布，也不会写入你的仓库。
 
       ## 界面从左到右
 
@@ -595,7 +595,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       bodyMarkdown: """
       # Getting Started: Meet Your Publishing Workbench
 
-      Welcome to Personal Site Publisher. These “Guide” articles are ordinary drafts: edit, duplicate, or move them to the recycle bin whenever you like. They are never published automatically and do not write to your repository on their own.
+      Welcome to RepoPress. These “Guide” articles are ordinary drafts: edit, duplicate, or move them to the recycle bin whenever you like. They are never published automatically and do not write to your repository on their own.
 
       ## Read the workspace from left to right
 
@@ -695,7 +695,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       bodyMarkdown: """
       # Safe Publishing: Connect, Review, and Commit
 
-      Personal Site Publisher handles the repository operations needed for article releases. On the first connection, prioritize correct paths and reviewable changes over speed.
+      RepoPress handles the repository operations needed for article releases. On the first connection, prioritize correct paths and reviewable changes over speed.
 
       ## 1. Configure the site
 

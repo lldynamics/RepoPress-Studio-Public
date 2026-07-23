@@ -113,7 +113,7 @@ private extension MarkdownPreviewAssetService {
     options: [.caseInsensitive]
   )
   static let markdownImageExpression = try! NSRegularExpression(
-    pattern: #"!\[((?:\\.|[^\]])*)\]\((?:<([^>]+)>|(.+?))(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\)"#
+    pattern: MarkdownPatterns.complexImagePattern
   )
   static let sourceAttributeExpression = try! NSRegularExpression(
     pattern: #"\b(?:src|href)\s*=\s*[\"']([^\"']+)[\"']"#,
@@ -305,9 +305,8 @@ private extension MarkdownPreviewAssetService {
     case .image:
       let accessibleText = candidate.accessibleText?
         .trimmingCharacters(in: .whitespacesAndNewlines)
-      let altText = accessibleText?.isEmpty == false
-        ? accessibleText!
-        : attachment.altText.nilIfEmpty ?? attachment.originalFilename
+      let altText = (accessibleText?.isEmpty == false ? accessibleText : nil)
+        ?? attachment.altText.nilIfEmpty ?? attachment.originalFilename
       return #"<span class="local-asset local-image" role="group"><img src="\#(previewURL)" alt="\#(escapeHTMLAttribute(altText))" loading="lazy" decoding="async">\#(captionHTML)</span>"#
     case .video:
       let title = attachment.altText.nilIfEmpty

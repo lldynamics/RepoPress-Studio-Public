@@ -4,6 +4,12 @@ extension KnowledgeNativeMessagingProtocol {
   public static let schemaVersion = 1
   public static let hostName = "com.jinfang.personal_site_publisher.knowledge"
   public static let firefoxExtensionID = "knowledge-capture@jinfang.local"
+  public static let activeBrowserExtensions = [
+    "safari",
+    "chrome",
+  ]
+  public static let safariWebExtensionBundleID =
+    "com.jinfang.PersonalSitePublisherMac.SafariExtension"
   public static let chromiumDevelopmentExtensionID =
     "lnibkmfhfikfbkeehcjbiaalhkiankam"
   public static let chromiumDevelopmentOrigin =
@@ -12,6 +18,14 @@ extension KnowledgeNativeMessagingProtocol {
     "ginjcibepmeobaaadmfiagigcpcebmcc"
   public static let edgeProductionExtensionID: String? =
     nil
+  public static let loopbackHost = "127.0.0.1"
+  public static let loopbackPort: UInt16 = 17843
+  public static let loopbackBaseURL =
+    "http://\(loopbackHost):\(loopbackPort)"
+  public static let loopbackProtocolHeaderName =
+    "X-RepoPress-Protocol"
+  public static let loopbackProtocolHeaderValue =
+    "1"
   public static let chromeAllowedOrigins = [
     "chrome-extension://lnibkmfhfikfbkeehcjbiaalhkiankam/",
     "chrome-extension://ginjcibepmeobaaadmfiagigcpcebmcc/",

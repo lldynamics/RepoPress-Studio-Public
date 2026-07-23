@@ -674,22 +674,42 @@ public final class ImageWorkbenchStore: ObservableObject {
   }
 
   public func attachRepositoryImageToSelectedDraft(repositoryPath: String) {
-    guard var draft = selectedDraft else {
+    guard let draftID = selectedDraft?.id else {
       imageActionMessage = CoreL10n.text("请先选择文章。")
       return
     }
-    if draft.attachments.contains(where: { $0.repositoryPath == repositoryPath }) {
-      imageActionMessage = CoreL10n.format("%@ 已在当前文章图片列表中。", repositoryPath)
+    attachRepositoryImage(repositoryPath: repositoryPath, toDraftID: draftID)
+  }
+
+  public func attachRepositoryImage(repositoryPath: String, toDraftID draftID: UUID) {
+    guard var draft = visibleDrafts.first(where: { $0.id == draftID }) else {
+      imageActionMessage = CoreL10n.text("请选择当前站点中的目标文章。")
       return
     }
 
     let profile = profile(for: draft)
-    let filename = URL(fileURLWithPath: repositoryPath).lastPathComponent
-    let sourceURL = profile.localRepositoryRootURL?.appendingPathComponent(repositoryPath)
-    let byteSize = (try? sourceURL?.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { $0 }.map(Int64.init) ?? 0
+    let location: RepositoryImageAssetLocation
+    do {
+      location = try RepositoryImageInventoryService().validatedAssetLocation(
+        profile: profile,
+        repositoryPath: repositoryPath
+      )
+    } catch {
+      imageActionMessage = error.localizedDescription
+      return
+    }
+
+    if draft.attachments.contains(where: { $0.repositoryPath == location.repositoryPath }) {
+      imageActionMessage = CoreL10n.format("%@ 已在目标文章图片列表中。", location.repositoryPath)
+      return
+    }
+
+    let filename = URL(fileURLWithPath: location.repositoryPath).lastPathComponent
+    let sourceURL = URL(fileURLWithPath: location.absoluteFilePath)
+    let assetRoot = profile.assetRoot.normalizedRelativePath()
     let publicPath: String
-    if repositoryPath.hasPrefix(profile.assetRoot + "/") {
-      publicPath = "/" + String(repositoryPath.dropFirst(profile.assetRoot.count + 1))
+    if location.repositoryPath.hasPrefix(assetRoot + "/") {
+      publicPath = "/" + String(location.repositoryPath.dropFirst(assetRoot.count + 1))
     } else {
       publicPath = profile.publicImagePath(filename: filename, draft: draft)
     }
@@ -702,16 +722,16 @@ public final class ImageWorkbenchStore: ObservableObject {
     let attachment = DraftAttachment(
       originalFilename: filename,
       relativePublishPath: publicPath,
-      repositoryPath: repositoryPath,
+      repositoryPath: location.repositoryPath,
       altText: altText,
-      byteSize: byteSize,
-      sourceFilePath: sourceURL?.path
+      byteSize: location.byteSize,
+      sourceFilePath: sourceURL.path
     )
     draft.attachments.append(attachment)
     draft.updatedAt = Date()
     updateDraft(draft)
     store.selectSection(.images)
-    imageActionMessage = CoreL10n.format("已把 %@ 加入当前文章图片列表。", repositoryPath)
+    imageActionMessage = CoreL10n.format("已把 %@ 加入目标文章图片列表。", location.repositoryPath)
     save()
   }
 }

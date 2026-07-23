@@ -195,11 +195,20 @@ extension WorkbenchStore {
     invalidateDraftDerivedCaches()
   }
 
+  public func attachRepositoryImage(repositoryPath: String, toDraftID draftID: UUID) {
+    imageStore.attachRepositoryImage(repositoryPath: repositoryPath, toDraftID: draftID)
+    invalidateDraftDerivedCaches()
+  }
+
   @discardableResult
-  public func focusImageInspector(draftID: UUID, attachmentID: UUID) -> Bool {
+  public func focusImageInspector(
+    draftID: UUID,
+    attachmentID: UUID,
+    section: WorkspaceSection = .images
+  ) -> Bool {
     guard let targetDraft = drafts.first(where: { $0.id == draftID }),
           targetDraft.attachments.contains(where: { $0.id == attachmentID }),
-          focusDraft(draftID, section: .images) else {
+          focusDraft(draftID, section: section) else {
       return false
     }
 

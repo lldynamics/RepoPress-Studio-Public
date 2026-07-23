@@ -2,7 +2,9 @@ import Foundation
 
 public enum KnowledgeNativeMessagingProtocol {
   public static func unixSocketPath(userID: UInt32) -> String {
-    "/private/tmp/com.jinfang.personal-site-publisher.\(userID).sock"
+    let path = "/private/tmp/com.jinfang.personal-site-publisher.\(userID).sock"
+    precondition(path.utf8.count < 104, "Unix socket path length exceeds 104 bytes limit")
+    return path
   }
 
   public struct Request: Codable, Sendable, Equatable {
@@ -29,6 +31,9 @@ public enum KnowledgeNativeMessagingProtocol {
     public func validate() throws {
       guard schemaVersion == KnowledgeNativeMessagingProtocol.schemaVersion else {
         throw ProtocolError.unsupportedSchemaVersion
+      }
+      guard !path.contains("\r") && !path.contains("\n") else {
+        throw ProtocolError.disallowedRoute
       }
       if path == KnowledgeNativeMessagingProtocol.handshakePath {
         guard method.uppercased() == "GET", token.isEmpty, bodyJSON == nil else {
@@ -178,7 +183,7 @@ public enum KnowledgeNativeMessagingProtocol {
 
     public init(browserFamily: BrowserFamily, hostPath: String) {
       name = KnowledgeNativeMessagingProtocol.hostName
-      description = "Personal Site Publisher knowledge library bridge"
+      description = "RepoPress knowledge library bridge"
       path = hostPath
       type = "stdio"
       switch browserFamily {

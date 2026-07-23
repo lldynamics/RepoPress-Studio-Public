@@ -1,21 +1,20 @@
 # 保存到资料库浏览器扩展
 
-这是“个人网站发布控制台”的本机网页采集扩展。它会提取当前网页的正文、标题、作者、
-摘要、标签和语言，并可同时保存一份 MHTML 页面归档。Firefox、Chrome 和 Edge 都通过
-应用安装的 Native Messaging 宿主写入本机资料库，不向扩展开放 localhost 主机权限，
+这是“RepoPress”的本机网页采集扩展。它会提取当前网页的正文、标题、作者、
+摘要、标签和语言，并可同时保存一份离线页面归档。当前版本只支持 Safari 和 Chrome，两者都通过
+带随机令牌的 `127.0.0.1:17843` 本机回环接口写入资料库，不安装 Native Messaging 宿主，
 也不经过云端服务。
 
 ## 开发版安装
 
-1. 打开“个人网站发布控制台”，进入资料库，点击工具栏中的拼图按钮。
-2. 在连接窗口点击“在 Finder 中显示扩展”，并复制连接令牌。
+1. 打开“RepoPress”，进入资料库，点击工具栏中的拼图按钮，复制连接令牌。
+2. 确认应用显示本机回环连接已经就绪。
 3. 按浏览器选择安装方式：
-   - Chrome / Edge：打开扩展管理页，启用“开发者模式”，点击“加载已解压的扩展”。
-   - Firefox：打开 `about:debugging#/runtime/this-firefox`，点击“临时载入附加组件”。
-4. Chrome / Edge 选择 `BrowserExtension` 文件夹；Firefox 选择
-   `BrowserExtension/Firefox/manifest.json`。
-5. 在应用的“浏览器原生连接”区域，为正在使用的 Firefox、Chrome 或 Edge 点击“安装原生连接”。
-6. 打开一个普通网页，点击扩展图标，粘贴令牌并连接。
+   - Safari：运行 `./script/build_and_run.sh` 后，在 Safari 设置的“扩展”中启用
+     “RepoPress · 资料采集”；正式版扩展随 Mac App Store 应用安装。
+   - Chrome：打开扩展管理页，启用“开发者模式”，点击“加载已解压的扩展”。
+4. Chrome 选择 `BrowserExtension` 文件夹。
+5. 打开一个普通网页，点击扩展图标，粘贴令牌并连接。
 
 连接成功后，可以选择现有资料库分类，也可以在保存时直接创建新分类。再次保存同一网址
 会按资料库的导入规则更新或去重，并可重新归类。
@@ -98,46 +97,60 @@
 
 ## 数据边界
 
-- 三种浏览器扩展都通过 `runtime.sendNativeMessage()` 调用固定名称的原生宿主；Firefox 清单只允许
-  `knowledge-capture@jinfang.local`。Chrome 与 Edge 使用各自独立的来源列表：开发期间只允许固定开发来源
-  `chrome-extension://lnibkmfhfikfbkeehcjbiaalhkiankam/`；商店分配正式 ID 后，只给对应浏览器追加该
-  商店来源，不会把 Chrome Web Store ID 加到 Edge 清单或反向混用，也不使用通配来源。
-- 两套扩展清单都不再申请访问 localhost 的 `host_permissions`。宿主只转发四个资料库接口，
-  限制单次输入 50 MB、输出 1 MB，并通过当前用户专属、权限为 `0600` 的 Unix Domain Socket
-  连接应用；应用仍要求随机连接令牌。
-- Native Messaging 宿主使用 5 秒连接超时；资料导入和本地索引允许最长 120 秒响应时间。应用在发送
-  成功响应前持久化 operation ID、请求指纹和回执，重试时直接重放原回执，不再次创建资料或版本。
-  幂等账本最多保留 256 项、30 天，且不保存网页正文和归档。
-- 应用不再监听 TCP 端口，也不再返回 CORS 头或处理浏览器 OPTIONS 预检。套接字路径按 macOS 用户 ID
-  隔离，启动时拒绝覆盖同路径的普通文件，退出时清理套接字。
+- Safari 和 Chrome 扩展都只访问固定的 `http://127.0.0.1:17843/*`。应用的沙盒监听器只绑定 IPv4 回环地址，
+  不接受局域网或互联网连接。
+- 每个请求必须携带协议专用请求头和随机配对令牌。应用会拒绝普通网页 Origin；Chrome 会校验已登记的
+  开发或商店扩展 ID，Safari 会校验浏览器分配的 UUID 扩展来源。
+- 浏览器跨域预检只允许 `GET`、`POST` 和固定鉴权请求头。普通网页无法在预检未通过时构造有效请求。
+- 单次输入限制为 50 MB，输出限制为 1 MB。应用在发送成功响应前持久化 operation ID、请求指纹和回执，
+  重试时直接重放原回执，不再次创建资料或版本。幂等账本最多保留 256 项、30 天，且不保存网页正文和归档。
 - 连接令牌有效 30 天；旧版长期令牌会平滑获得首次有效期。过期或在应用中手动更换后，旧令牌立即失效，
   插件会清除浏览器端副本并要求重新配对。
 - 插件提供“断开并清除令牌”和“重新配对”；这些操作只删除令牌，不删除离线待保存队列和分类偏好。
-- 鉴权接口拒绝普通 `http/https` 网页 Origin，只接受 Chromium `chrome-extension://` 或 Firefox
-  `moz-extension://` 扩展来源；本机状态探测接口不返回令牌或资料内容。
+- 鉴权接口拒绝普通 `http/https` 网页 Origin，只接受 Chrome `chrome-extension://` 或 Safari
+  `safari-web-extension://` 扩展来源；本机状态探测接口不返回令牌或资料内容。
 - `alarms` 只用于本机待保存队列的定时重试；`unlimitedStorage` 用于保留可能较大的离线页面归档，
   插件自身仍强制 10 项/96 MB 上限。
-- Chrome / Edge 默认保存 MHTML；超过 24 MB 时自动退回到清理后的 HTML。
-- Firefox 不提供 MHTML 页面归档接口，会在 24 MB 上限内把可读取的图片、样式和字体
+- Chrome 默认保存 MHTML；超过 24 MB 时自动退回到清理后的 HTML。
+- Safari 不提供 MHTML 页面归档接口，会在 24 MB 上限内把可读取的图片、样式和字体
   内联为自包含 HTML；`dns` 权限只用于每次资源请求和每一跳重定向前解析主机，解析到私网、回环、
   链路本地、保留或组播地址时拒绝下载。扩展禁用自动重定向并逐跳重新校验，响应体按块读取，超过
   单资源或剩余归档预算时立即取消；跨域、超时、被安全策略拒绝或过大的资源会在保存结果中列入缺失数量。
 - 登录态页面的归档可能包含页面当前可见的私人内容，请按资料库本地文件一样保护。
 - `chrome://`、扩展商店页面等浏览器受保护页面无法采集。
 
-Native Messaging 由直接分发版应用打包独立 Swift 宿主，并在用户确认后分别将清单写入 Firefox、
-Google Chrome 或 Microsoft Edge 的当前用户 `NativeMessagingHosts` 目录。应用移动或升级后可点击
-“修复原生连接”刷新绝对路径。Chrome/Edge 清单中的公开开发密钥只用于让未打包扩展保持固定 ID；
-从 Chrome Web Store 或 Edge Add-ons 发布时，必须把两家商店各自分配的正式 ID 回填到协议身份源；
-生成器会把它们加入对应宿主的 `allowed_origins`，不会要求手工修改用户目录中的清单。
+RepoPress 只维护一个 Mac App Store 应用版本。Safari Web Extension 以签名 `.appex` 内置于该应用，
+由用户在 Safari 设置中启用；Chrome 版本从 Chrome Web Store 安装。Mac 应用不把扩展文件写入
+浏览器目录，也不安装额外宿主。Chrome 清单中的公开开发密钥只用于让开发者模式下的未打包扩展
+保持固定 ID；商店正式 ID 写入协议身份源，以便应用校验扩展 Origin。
 
-Chrome/Edge 与 Firefox 使用各自最小化的 Manifest V3 清单，并通过同步脚本共享同一套
-采集与弹窗代码。Firefox 临时安装会在浏览器重启后失效。
+Safari 与 Chrome 使用各自最小化的 Manifest V3 清单，并通过同步脚本共享同一套采集与弹窗代码。
+Safari 清单不申请不受支持的 `pageCapture`，完整网页使用自包含 HTML 回退。
+
+## Safari Web Extension
+
+`BrowserExtension/Safari/manifest.json` 是 Safari 专用清单。它与 Chromium/Firefox
+共享业务脚本、弹窗、图标和语言包，但不包含 `pageCapture`、`nativeMessaging` 或 Chromium
+开发密钥。同步和构建命令：
+
+```bash
+./script/sync_safari_browser_extension.sh --check
+./script/build_safari_web_extension.sh
+```
+
+构建脚本使用 Apple 的 Safari Web Extension 转换器生成临时 Xcode 工程，只构建扩展 target，
+并输出 `RepoPressSafariExtension.appex`。`script/build_and_run.sh` 将该扩展嵌入
+`Contents/PlugIns`，先签名子扩展再签名外层应用。App Store 分发必须为
+`com.jinfang.PersonalSitePublisherMac.SafariExtension` 配置独立的 App ID 与 provisioning
+profile；它仍属于同一个 RepoPress 应用，不产生独立浏览器商店版本。
 
 ## 协议身份与生成物
 
-`browser-extension-protocol.json` 是原生宿主名、消息协议版本、路由、大小上限和
-Firefox/Chromium 开发与生产扩展 ID 的唯一来源。`chromeProductionID` 与
+`browser-extension-protocol.json` 是本版本启用渠道、回环地址、协议请求头、路由、大小上限、
+Safari bundle ID 及 Chrome 开发与生产扩展 ID 的唯一来源。Edge/Firefox 身份字段仅为以后恢复
+渠道保留，不在当前版本启用。保留的
+`nativeMessaging` 字段名仅用于旧协议生成物兼容，
+当前扩展不会申请或调用 Native Messaging。`chromeProductionID` 与
 `edgeProductionID` 为 `null` 时表示商店尚未分配身份，不会自动回退成一个伪生产 ID。
 修改它之后执行：
 
@@ -152,9 +165,9 @@ Chromium 清单公钥实际派生的固定 ID。生成文件被手动修改、�
 
 ## 不可变发布账本
 
-`release-ledger.json` 是浏览器扩展的共享发布账本。Chromium 和 Firefox 打包器会对两份清单、
-共享脚本、弹窗资源、图标、语言包及 Firefox 发布配置计算统一的源码 SHA-256，并在生成候选包后记录
-版本、ZIP/XPI 文件名、产物 SHA-256 和候选生成时间。已存在的同版本产物只能按相同字节复用；脚本会
+`release-ledger.json` 保留各版本的历史发布记录。当前版本只生成 Chrome ZIP；旧版 Edge/Firefox
+记录保持不可变。打包器会对清单、共享脚本、弹窗资源、图标和语言包计算统一的源码 SHA-256，并记录
+版本、Chrome ZIP 文件名、产物 SHA-256 和候选生成时间。已存在的同版本产物只能按相同字节复用；脚本会
 拒绝版本倒退、版本数字别名、同版本不同源码，以及用不同字节覆盖已有 ZIP/XPI。
 
 发布门禁会验证当前源码与账本记录一致：
@@ -173,15 +186,13 @@ python3 script/browser_extension_release_ledger.py publish \
   --published-at 2026-07-19T08:00:00Z
 ```
 
-`--channel` 可取 `chrome`、`edge` 或 `firefox`。Firefox 只有在已签名 XPI 和对应 `updates.json`
-都已进入账本后才允许登记发布时间；重复登记相同时间是无操作，修改已经登记的时间会被拒绝。
+当前版本只登记 `chrome` 发布时间；重复登记相同时间是无操作，修改已经登记的时间会被拒绝。
 
-## Chrome Web Store 与 Edge Add-ons
+## Chrome Web Store
 
-两家 Chromium 商店共用经过兼容性验证的代码，但使用独立的商店条目、生产 ID、宿主来源白名单
-和提交 ZIP。`chromium-store-listing.json` 保存中英文商店文案、HTTPS 隐私/支持地址，以及与清单
-逐项对应的权限用途说明；生成包内的 `_locales/zh_CN` 与 `_locales/en` 会同步名称、短描述和工具栏标题，
-让两家商店都能识别中英文条目。它不保存开发者账号凭据，也不会自动提交审核。
+`chromium-store-listing.json` 保存 Chrome 的中英文商店文案、HTTPS 隐私/支持地址，以及与清单
+逐项对应的权限用途说明；生成包内的 `_locales/zh_CN` 与 `_locales/en` 会同步名称、短描述和工具栏标题。
+它不保存开发者账号凭据，也不会自动提交审核。
 
 首次创建商店条目时生成可复现的最小 ZIP：
 
@@ -193,86 +204,27 @@ python3 script/chromium_extension_release.py package
 输出位于 `dist/browser-extension/`：
 
 - `knowledge-capture-chrome-<version>.zip`
-- `knowledge-capture-edge-<version>.zip`
 
 ZIP 根目录直接包含 `manifest.json` 和运行文件，不包含 README、协议源、Firefox 文件或其他开发材料。
-打包器会从商店清单移除只用于未打包开发版固定身份的 `key`，也拒绝自托管 `update_url`；两个商店
-在首次上传后分别分配生产 ID，并负责把审核通过的 ZIP 转成其安装/更新格式。CI 会构建同样的两个 ZIP
-并作为 `chromium-store-submission-zips` 工件保留，但不会登录商店或发布。
+打包器会从商店清单移除只用于未打包开发版固定身份的 `key`，也拒绝自托管 `update_url`；Chrome
+负责把审核通过的 ZIP 转成安装/更新格式。CI 可以构建同样的 ZIP，但不会登录商店或发布。
 
-首次上传并取得两个草稿条目的 ID 后：
+取得 Chrome 商店条目的正式 ID 后：
 
-1. 将 Chrome ID 写入 `chromeProductionID`，Edge ID 写入 `edgeProductionID`。
+1. 将 Chrome ID 写入 `chromeProductionID`。
 2. 执行 `python3 script/generate_browser_extension_protocol.py --write`。
-3. 执行 `python3 script/chromium_extension_release.py readiness`，确认两个 ID 均有效、彼此独立且不等于开发 ID。
-4. 重新构建应用并在连接窗口修复 Chrome/Edge 原生连接，让用户目录里的宿主清单获得对应生产来源。
+3. 执行 `python3 script/chromium_extension_release.py readiness`，确认 ID 有效且不等于开发 ID。
+4. 重新构建应用，确认回环服务端允许新登记的 Chrome 生产扩展 Origin。
 5. 重新运行浏览器发布门禁后再提交审核；严格总门禁会在任一生产 ID 仍待定时失败。
 
-商店新版本仍使用同一打包命令；提交前必须先递增 `manifest.json` 与 Firefox 清单中的扩展版本。
-打包成功后两个 ZIP 会原子安装到输出目录并追加到账本，不再覆盖同名版本产物。
+商店新版本仍使用同一打包命令；提交前必须先递增扩展版本。打包成功后 Chrome ZIP 会原子安装
+到输出目录并追加到账本，不再覆盖同名版本产物。
 
-## Firefox 长期安装与更新
+## 暂缓渠道
 
-Firefox 正式版只接受 Mozilla 签名的长期安装包。仓库将开发清单与发布清单分开：
-开发清单不携带 `update_url`，打包时才注入经 HTTPS 保护的更新地址。当前清单要求
-Firefox 142 或更高版本，以确保 `optional_host_permissions` 和数据收集声明在桌面与 Android
-清单校验中都受支持；实际资料采集仍依赖桌面 Firefox 的 Native Messaging。
+Edge 和 Firefox 不属于 0.30.0 当前发布范围，不在应用界面、支持页、App Store 文案或发布 profile
+中承诺支持，也不会生成新的 Edge ZIP、Firefox XPI 或执行对应商店发布门禁。仓库暂时保留旧版适配源码、
+历史签名工具和不可变发布记录，方便以后重新评估时恢复；这些保留文件不表示本版本支持对应浏览器。
 
-发布前使用固定的 `web-ext 10.5.0` 严格检查清单，任何警告都会阻止发布：
-
-```bash
-python3 script/firefox_extension_release.py lint
-```
-
-1. 生成可复现的待签名候选包：
-
-   ```bash
-   ./script/package_firefox_extension.sh
-   ```
-
-   输出在 `dist/browser-extension/`。文件名含 `-unsigned`，只用于检查，不能被
-   Firefox 正式版长期安装。
-
-2. 在 Mozilla Add-ons 创建 API 凭据，本机安装 `web-ext`，然后显式执行 unlisted 签名：
-
-   ```bash
-   export AMO_JWT_ISSUER='...'
-   export AMO_JWT_SECRET='...'
-   ./script/sign_firefox_extension.sh
-   ```
-
-   凭据只从环境变量读取，脚本不会写入仓库或打印密钥。签名成功后会校验 XPI 里的
-   Mozilla 签名、扩展 ID、版本和 `update_url`，再根据已签名文件的 SHA-256 生成
-   `updates.json`。已签名 XPI 与更新清单会通过不可变安装命令进入发布账本。
-
-3. 将已签名 XPI 和 `updates.json` 一起上传到 `firefox-release.json` 配置的 HTTPS
-   路径。脚本不会自动上传、公开发布或提交审核。上传后执行：
-
-   ```bash
-   python3 script/firefox_extension_release.py verify-remote
-   ```
-
-   这项严格门禁会逐次验证同主机 HTTPS 重定向、公网地址、HTTP 200、
-   Content-Type 和下载大小上限，再比对扩展 ID、版本、最低 Firefox 版本、
-   下载地址、SHA-256 及远端 XPI 字节，最后重新检查 XPI 签名与仓库载荷。
-
-非 App Store 的 Debug 应用允许在没有已签名 XPI 时运行，方便开发临时加载；Info.plist 会明确记录
-`PersonalSitePublisherFirefoxSignedPackageAvailable=false`，且不会创建空的 `Release` 目录。
-
-Direct Release 构建则必须先在 `dist/browser-extension/` 找到与当前版本匹配的 Mozilla 已签名 XPI。
-`build_and_run.sh --package-only --release` 会在编译前验证签名、扩展 ID、版本、更新地址和仓库载荷，
-再把 XPI 与重新生成的 `updates.json` 放入应用；打包后会从应用资源目录再次验证更新清单与 XPI。
-缺失、损坏或版本不符都会直接终止打包，不提供跳过开关。App Store 构建继续明确排除 XPI、
-Native Messaging 宿主及其他浏览器扩展资源。资料库的“浏览器资料采集”窗口只对验证过的签名包提供安装按钮。
-
-如果签名版已经发布到 `firefox-release.json` 配置的地址，但本机 `dist` 尚未保存它，可以显式执行：
-
-```bash
-python3 script/firefox_extension_release.py fetch-verified
-```
-
-该命令逐次限制 HTTPS 同主机重定向、公网地址、Content-Type 和响应大小；只有远端更新清单、SHA-256、
-扩展版本、载荷及签名封装全部通过后，才会把 XPI 与 `updates.json` 原子替换到本地发布目录。
-
-Firefox 签名产物准备完成后，Direct macOS 发行还必须执行 Developer ID 签名、Apple 公证、票据装订和
-Gatekeeper 验证。完整命令与产物边界见 [`docs/DIRECT_DISTRIBUTION.md`](../docs/DIRECT_DISTRIBUTION.md)。
+当前正式发布只包含随 Mac App Store 应用签名的 Safari Web Extension 和提交到 Chrome Web Store
+的 Chrome ZIP，不捆绑 Firefox XPI、Edge ZIP、未打包扩展或 Native Messaging 宿主。

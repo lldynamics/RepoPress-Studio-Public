@@ -1,5 +1,22 @@
 import PublishingWorkbenchCore
 
+extension AIPublishingDefaultCapability {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .continueWriting: "display.ai-publishing-default-capability.continue-writing"
+    case .rewrite: "display.ai-publishing-default-capability.rewrite"
+    case .condense: "display.ai-publishing-default-capability.condense"
+    case .translate: "display.ai-publishing-default-capability.translate"
+    case .generateMetadata: "display.ai-publishing-default-capability.generate-metadata"
+    case .publishingCheck: "display.ai-publishing-default-capability.publishing-check"
+    case .citeKnowledge: "display.ai-publishing-default-capability.cite-knowledge"
+    case .askAnything: "display.ai-publishing-default-capability.ask-anything"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
 extension AIPublishingPromptLibraryScope {
   var workbenchDisplayNameSemanticKey: String {
     switch self {
@@ -176,6 +193,19 @@ extension MaintenanceActionKind {
     case .linkAudit: "display.maintenance-action-kind.link-audit"
     case .taxonomy: "display.maintenance-action-kind.taxonomy"
     case .relationSuggestion: "display.maintenance-action-kind.relation-suggestion"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
+extension WorkbenchAutomationRisk {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .readOnly: "display.workbench-automation-risk.read-only"
+    case .reversible: "display.workbench-automation-risk.reversible"
+    case .contentChange: "display.workbench-automation-risk.content-change"
+    case .externalEffect: "display.workbench-automation-risk.external-effect"
     }
   }
 

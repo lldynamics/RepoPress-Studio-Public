@@ -40,7 +40,7 @@ cat >"$INFO_PLIST" <<'PLIST'
   <key>CFBundleName</key>
   <string>PersonalSitePublisherMac</string>
   <key>CFBundleDisplayName</key>
-  <string>Personal Site Publishing Console</string>
+  <string>RepoPress</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleIconFile</key>
@@ -59,7 +59,7 @@ PLIST
 
 for language in zh-Hans en; do
   cat >"$APP_BUNDLE/Contents/Resources/$language.lproj/InfoPlist.strings" <<'STRINGS'
-"CFBundleDisplayName" = "Personal Site Publishing Console";
+"CFBundleDisplayName" = "RepoPress";
 "CFBundleName" = "PersonalSitePublisherMac";
 STRINGS
 done

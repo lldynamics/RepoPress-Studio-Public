@@ -1,5 +1,7 @@
 import Darwin
 import Foundation
+import Network
+import Security
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -12,6 +14,7 @@ enum KnowledgeWebDownloadError: LocalizedError, Hashable, Sendable {
   case invalidResponse
   case httpStatus(Int)
   case unsupportedContentType(String)
+  case unsupportedContentEncoding(String)
   case byteLimitExceeded(Int)
 
   var errorDescription: String? {
@@ -30,6 +33,8 @@ enum KnowledgeWebDownloadError: LocalizedError, Hashable, Sendable {
       "HTTP \(status)"
     case .unsupportedContentType(let value):
       "服务器返回了不支持的内容类型：\(value)。"
+    case .unsupportedContentEncoding(let value):
+      "服务器返回了不支持的压缩格式：\(value)。"
     case .byteLimitExceeded(let maximumByteCount):
       "网页内容超过 \(ByteCountFormatter.string(fromByteCount: Int64(maximumByteCount), countStyle: .file))，已停止下载。"
     }
@@ -90,15 +95,44 @@ enum KnowledgeResolvedAddress: Hashable, Sendable {
       return true
     }
   }
+
+  var presentation: String {
+    switch self {
+    case .ipv4(let bytes):
+      return bytes.map(String.init).joined(separator: ".")
+    case .ipv6(let bytes):
+      return stride(from: 0, to: bytes.count, by: 2).map { index in
+        let high = UInt16(bytes[index]) << 8
+        let low = UInt16(bytes[index + 1])
+        return String(high | low, radix: 16)
+      }.joined(separator: ":")
+    }
+  }
 }
 
 enum KnowledgeWebDownloadPolicy {
-  typealias Resolver = (String) throws -> [KnowledgeResolvedAddress]
+  typealias Resolver = @Sendable (String) throws -> [KnowledgeResolvedAddress]
+
+  static let defaultResolver: Resolver = { host in
+    try resolveAddresses(host)
+  }
+
+  struct ValidatedEndpoint: Hashable, Sendable {
+    var url: URL
+    var addresses: [KnowledgeResolvedAddress]
+  }
 
   static func validatedURL(
     _ url: URL,
-    resolver: Resolver = resolveAddresses
+    resolver: Resolver = defaultResolver
   ) throws -> URL {
+    try validatedEndpoint(url, resolver: resolver).url
+  }
+
+  static func validatedEndpoint(
+    _ url: URL,
+    resolver: Resolver = defaultResolver
+  ) throws -> ValidatedEndpoint {
     guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
           components.scheme?.lowercased() == "https",
           let host = components.host?.nilIfEmpty,
@@ -132,7 +166,12 @@ enum KnowledgeWebDownloadPolicy {
     guard addresses.allSatisfy(\.isPubliclyRoutable) else {
       throw KnowledgeWebDownloadError.blockedAddress(host)
     }
-    return candidate
+    return ValidatedEndpoint(
+      url: candidate,
+      addresses: Array(
+        addresses.sorted { $0.presentation < $1.presentation }.prefix(8)
+      )
+    )
   }
 
   static func resolveAddresses(_ host: String) throws -> [KnowledgeResolvedAddress] {
@@ -187,93 +226,432 @@ enum KnowledgeWebDownloadPolicy {
   }
 }
 
-final class KnowledgeWebDownloadSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-  private let resolver: KnowledgeWebDownloadPolicy.Resolver
-  private let lock = NSLock()
-  private var rejection: KnowledgeWebDownloadError?
-
-  init(resolver: @escaping KnowledgeWebDownloadPolicy.Resolver = KnowledgeWebDownloadPolicy.resolveAddresses) {
-    self.resolver = resolver
-  }
-
-  var redirectRejection: KnowledgeWebDownloadError? {
-    lock.lock()
-    defer { lock.unlock() }
-    return rejection
-  }
-
-  static func redirectedRequest(
-    proposedRequest: URLRequest,
-    resolver: KnowledgeWebDownloadPolicy.Resolver
-  ) -> URLRequest? {
-    guard let url = proposedRequest.url,
-          (try? KnowledgeWebDownloadPolicy.validatedURL(url, resolver: resolver)) != nil else {
-      return nil
-    }
-    return proposedRequest
-  }
-
-  func urlSession(
-    _ session: URLSession,
-    task: URLSessionTask,
-    willPerformHTTPRedirection response: HTTPURLResponse,
-    newRequest request: URLRequest,
-    completionHandler: @escaping (URLRequest?) -> Void
-  ) {
-    guard let destinationURL = request.url else {
-      record(.redirectBlocked("未知地址"))
-      completionHandler(nil)
-      return
-    }
-    do {
-      _ = try KnowledgeWebDownloadPolicy.validatedURL(destinationURL, resolver: resolver)
-      completionHandler(request)
-    } catch {
-      record(.redirectBlocked(destinationURL.absoluteString))
-      completionHandler(nil)
-    }
-  }
-
-  private func record(_ error: KnowledgeWebDownloadError) {
-    lock.lock()
-    rejection = error
-    lock.unlock()
-  }
-}
-
-struct KnowledgeWebDownloadBuffer: Sendable {
-  let maximumByteCount: Int
-  private(set) var data = Data()
-
-  init(maximumByteCount: Int, expectedByteCount: Int64 = NSURLSessionTransferSizeUnknown) throws {
-    self.maximumByteCount = max(1, maximumByteCount)
-    if expectedByteCount > Int64(self.maximumByteCount) {
-      throw KnowledgeWebDownloadError.byteLimitExceeded(self.maximumByteCount)
-    }
-    if expectedByteCount > 0 {
-      data.reserveCapacity(min(self.maximumByteCount, Int(expectedByteCount)))
-    }
-  }
-
-  mutating func append(_ byte: UInt8) throws {
-    guard data.count < maximumByteCount else {
-      throw KnowledgeWebDownloadError.byteLimitExceeded(maximumByteCount)
-    }
-    data.append(byte)
-  }
-}
-
 struct KnowledgeWebDownloadResponse: Sendable {
   var data: Data
   var response: HTTPURLResponse
 }
 
+struct KnowledgePinnedHTTPResponse: Sendable {
+  var data: Data
+  var statusCode: Int
+  var headerFields: [String: String]
+
+  func header(_ name: String) -> String? {
+    headerFields[name.lowercased()]
+  }
+}
+
+enum KnowledgeHTTP1ResponseParser {
+  private static let headerDelimiter = Data("\r\n\r\n".utf8)
+  private static let lineDelimiter = Data("\r\n".utf8)
+  private static let maximumHeaderByteCount = 64 * 1_024
+
+  static func response(
+    from wireData: Data,
+    maximumBodyByteCount: Int,
+    connectionIsComplete: Bool
+  ) throws -> KnowledgePinnedHTTPResponse? {
+    guard let headerRange = wireData.range(of: headerDelimiter) else {
+      if wireData.count > maximumHeaderByteCount || connectionIsComplete {
+        throw KnowledgeWebDownloadError.invalidResponse
+      }
+      return nil
+    }
+    guard headerRange.lowerBound <= maximumHeaderByteCount,
+          let headerText = String(
+            data: wireData[..<headerRange.lowerBound],
+            encoding: .isoLatin1
+          ) else {
+      throw KnowledgeWebDownloadError.invalidResponse
+    }
+    let lines = headerText.components(separatedBy: "\r\n")
+    guard let statusLine = lines.first else {
+      throw KnowledgeWebDownloadError.invalidResponse
+    }
+    let statusParts = statusLine.split(separator: " ", maxSplits: 2)
+    guard statusParts.count >= 2,
+          statusParts[0].hasPrefix("HTTP/1."),
+          let statusCode = Int(statusParts[1]),
+          (100...599).contains(statusCode) else {
+      throw KnowledgeWebDownloadError.invalidResponse
+    }
+
+    var headers: [String: String] = [:]
+    for line in lines.dropFirst() {
+      guard !line.hasPrefix(" "), !line.hasPrefix("\t"),
+            let separator = line.firstIndex(of: ":") else {
+        throw KnowledgeWebDownloadError.invalidResponse
+      }
+      let name = line[..<separator]
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+      let value = line[line.index(after: separator)...]
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !name.isEmpty,
+            name.unicodeScalars.allSatisfy({ scalar in
+              scalar.value > 0x20 && scalar.value < 0x7f && scalar.value != 0x3a
+            }),
+            !value.contains("\0") else {
+        throw KnowledgeWebDownloadError.invalidResponse
+      }
+      headers[name] = headers[name].map { "\($0), \(value)" } ?? value
+    }
+
+    if [301, 302, 303, 307, 308].contains(statusCode) || !(200..<300).contains(statusCode) {
+      return KnowledgePinnedHTTPResponse(
+        data: Data(),
+        statusCode: statusCode,
+        headerFields: headers
+      )
+    }
+
+    let body = Data(wireData[headerRange.upperBound...])
+    if let transferEncoding = headers["transfer-encoding"]?.lowercased() {
+      guard transferEncoding
+        .split(separator: ",")
+        .map({ $0.trimmingCharacters(in: .whitespaces) }) == ["chunked"] else {
+        throw KnowledgeWebDownloadError.invalidResponse
+      }
+      guard let decodedBody = try decodeChunkedBody(
+        body,
+        maximumByteCount: maximumBodyByteCount,
+        connectionIsComplete: connectionIsComplete
+      ) else {
+        return nil
+      }
+      return KnowledgePinnedHTTPResponse(
+        data: decodedBody,
+        statusCode: statusCode,
+        headerFields: headers
+      )
+    }
+
+    if let rawLength = headers["content-length"] {
+      guard rawLength.allSatisfy(\.isNumber),
+            let contentLength = Int(rawLength),
+            contentLength >= 0 else {
+        throw KnowledgeWebDownloadError.invalidResponse
+      }
+      guard contentLength <= maximumBodyByteCount else {
+        throw KnowledgeWebDownloadError.byteLimitExceeded(maximumBodyByteCount)
+      }
+      guard body.count >= contentLength else {
+        if connectionIsComplete { throw KnowledgeWebDownloadError.invalidResponse }
+        return nil
+      }
+      return KnowledgePinnedHTTPResponse(
+        data: Data(body.prefix(contentLength)),
+        statusCode: statusCode,
+        headerFields: headers
+      )
+    }
+
+    guard body.count <= maximumBodyByteCount else {
+      throw KnowledgeWebDownloadError.byteLimitExceeded(maximumBodyByteCount)
+    }
+    guard connectionIsComplete else { return nil }
+    return KnowledgePinnedHTTPResponse(
+      data: body,
+      statusCode: statusCode,
+      headerFields: headers
+    )
+  }
+
+  private static func decodeChunkedBody(
+    _ body: Data,
+    maximumByteCount: Int,
+    connectionIsComplete: Bool
+  ) throws -> Data? {
+    var cursor = body.startIndex
+    var decoded = Data()
+    while true {
+      guard let lineRange = body.range(of: lineDelimiter, in: cursor..<body.endIndex) else {
+        if connectionIsComplete { throw KnowledgeWebDownloadError.invalidResponse }
+        return nil
+      }
+      guard let sizeLine = String(
+        data: body[cursor..<lineRange.lowerBound],
+        encoding: .ascii
+      ),
+      let sizeToken = sizeLine.split(separator: ";", maxSplits: 1).first,
+      !sizeToken.isEmpty,
+      sizeToken.allSatisfy({ $0.isHexDigit }),
+      let chunkSize = Int(sizeToken, radix: 16),
+      chunkSize >= 0 else {
+        throw KnowledgeWebDownloadError.invalidResponse
+      }
+      cursor = lineRange.upperBound
+
+      if chunkSize == 0 {
+        if body.distance(from: cursor, to: body.endIndex) >= 2,
+           body[cursor] == 0x0d,
+           body[body.index(after: cursor)] == 0x0a {
+          return decoded
+        }
+        guard body.range(of: headerDelimiter, in: cursor..<body.endIndex) != nil else {
+          if connectionIsComplete { throw KnowledgeWebDownloadError.invalidResponse }
+          return nil
+        }
+        return decoded
+      }
+
+      let addition = decoded.count.addingReportingOverflow(chunkSize)
+      guard !addition.overflow, addition.partialValue <= maximumByteCount else {
+        throw KnowledgeWebDownloadError.byteLimitExceeded(maximumByteCount)
+      }
+      guard body.distance(from: cursor, to: body.endIndex) >= chunkSize + 2 else {
+        if connectionIsComplete { throw KnowledgeWebDownloadError.invalidResponse }
+        return nil
+      }
+      let chunkEnd = body.index(cursor, offsetBy: chunkSize)
+      let suffixEnd = body.index(chunkEnd, offsetBy: 2)
+      guard body[chunkEnd] == 0x0d,
+            body[body.index(after: chunkEnd)] == 0x0a else {
+        throw KnowledgeWebDownloadError.invalidResponse
+      }
+      decoded.append(body[cursor..<chunkEnd])
+      cursor = suffixEnd
+    }
+  }
+}
+
+private final class KnowledgePinnedHTTPSOperation: @unchecked Sendable {
+  private let connection: NWConnection
+  private let queue = DispatchQueue(label: "com.jinfang.knowledge-web-download.pinned")
+  private let requestData: Data
+  private let maximumBodyByteCount: Int
+  private let maximumWireByteCount: Int
+  private let timeout: TimeInterval
+  private var wireData = Data()
+  private var continuation: CheckedContinuation<KnowledgePinnedHTTPResponse, Error>?
+  private var didSendRequest = false
+
+  init(
+    url: URL,
+    address: KnowledgeResolvedAddress,
+    requestData: Data,
+    maximumBodyByteCount: Int,
+    timeout: TimeInterval
+  ) throws {
+    guard let host = url.host,
+          let port = NWEndpoint.Port(rawValue: UInt16(url.port ?? 443)) else {
+      throw KnowledgeWebDownloadError.invalidURL
+    }
+    let tlsOptions = NWProtocolTLS.Options()
+    host.withCString {
+      sec_protocol_options_set_tls_server_name(
+        tlsOptions.securityProtocolOptions,
+        $0
+      )
+    }
+    "http/1.1".withCString {
+      sec_protocol_options_add_tls_application_protocol(
+        tlsOptions.securityProtocolOptions,
+        $0
+      )
+    }
+    let tcpOptions = NWProtocolTCP.Options()
+    tcpOptions.noDelay = true
+    let parameters = NWParameters(tls: tlsOptions, tcp: tcpOptions)
+    parameters.allowLocalEndpointReuse = false
+    connection = NWConnection(
+      host: NWEndpoint.Host(address.presentation),
+      port: port,
+      using: parameters
+    )
+    self.requestData = requestData
+    self.maximumBodyByteCount = maximumBodyByteCount
+    let wireLimit = maximumBodyByteCount.addingReportingOverflow(512 * 1_024)
+    guard !wireLimit.overflow else {
+      throw KnowledgeWebDownloadError.byteLimitExceeded(maximumBodyByteCount)
+    }
+    self.maximumWireByteCount = wireLimit.partialValue
+    self.timeout = min(30, max(1, timeout))
+  }
+
+  func execute() async throws -> KnowledgePinnedHTTPResponse {
+    try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation { continuation in
+        self.continuation = continuation
+        connection.stateUpdateHandler = { [weak self] state in
+          self?.handle(state)
+        }
+        connection.start(queue: queue)
+        queue.asyncAfter(deadline: .now() + timeout) { [weak self] in
+          self?.finish(.failure(URLError(.timedOut)))
+        }
+      }
+    } onCancel: {
+      queue.async { [weak self] in
+        self?.finish(.failure(CancellationError()))
+      }
+    }
+  }
+
+  private func handle(_ state: NWConnection.State) {
+    switch state {
+    case .ready where !didSendRequest:
+      didSendRequest = true
+      connection.send(content: requestData, completion: .contentProcessed { [weak self] error in
+        if let error {
+          self?.finish(.failure(error))
+        } else {
+          self?.receive()
+        }
+      })
+    case .failed(let error):
+      finish(.failure(error))
+    case .cancelled where continuation != nil:
+      finish(.failure(URLError(.cancelled)))
+    default:
+      break
+    }
+  }
+
+  private func receive() {
+    connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1_024) {
+      [weak self] data, _, isComplete, error in
+      guard let self else { return }
+      if let error {
+        finish(.failure(error))
+        return
+      }
+      if let data { wireData.append(data) }
+      guard wireData.count <= maximumWireByteCount else {
+        finish(.failure(KnowledgeWebDownloadError.byteLimitExceeded(maximumBodyByteCount)))
+        return
+      }
+      do {
+        if let response = try KnowledgeHTTP1ResponseParser.response(
+          from: wireData,
+          maximumBodyByteCount: maximumBodyByteCount,
+          connectionIsComplete: isComplete
+        ) {
+          finish(.success(response))
+        } else if isComplete {
+          finish(.failure(KnowledgeWebDownloadError.invalidResponse))
+        } else {
+          receive()
+        }
+      } catch {
+        finish(.failure(error))
+      }
+    }
+  }
+
+  private func finish(_ result: Result<KnowledgePinnedHTTPResponse, Error>) {
+    guard let continuation else { return }
+    self.continuation = nil
+    connection.stateUpdateHandler = nil
+    connection.cancel()
+    continuation.resume(with: result)
+  }
+}
+
+enum KnowledgePinnedHTTPSClient {
+  static func fetch(
+    request: URLRequest,
+    addresses: [KnowledgeResolvedAddress],
+    maximumByteCount: Int
+  ) async throws -> KnowledgePinnedHTTPResponse {
+    guard let url = request.url,
+          (request.httpMethod?.uppercased() ?? "GET") == "GET",
+          request.httpBody == nil,
+          request.httpBodyStream == nil else {
+      throw KnowledgeWebDownloadError.invalidURL
+    }
+    let requestData = try encodedRequest(request, url: url)
+    var lastError: Error = KnowledgeWebDownloadError.addressResolutionFailed(
+      url.host ?? url.absoluteString
+    )
+    for address in addresses {
+      try Task.checkCancellation()
+      do {
+        return try await KnowledgePinnedHTTPSOperation(
+          url: url,
+          address: address,
+          requestData: requestData,
+          maximumBodyByteCount: maximumByteCount,
+          timeout: request.timeoutInterval
+        ).execute()
+      } catch is CancellationError {
+        throw CancellationError()
+      } catch {
+        lastError = error
+      }
+    }
+    throw lastError
+  }
+
+  private static func encodedRequest(_ request: URLRequest, url: URL) throws -> Data {
+    guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+          let host = components.host else {
+      throw KnowledgeWebDownloadError.invalidURL
+    }
+    var target = components.percentEncodedPath
+    if target.isEmpty { target = "/" }
+    if let query = components.percentEncodedQuery { target += "?\(query)" }
+    guard !target.contains("\r"), !target.contains("\n") else {
+      throw KnowledgeWebDownloadError.invalidURL
+    }
+
+    let renderedHost = host.contains(":") ? "[\(host)]" : host
+    let hostHeader: String
+    if let port = components.port, port != 443 {
+      hostHeader = "\(renderedHost):\(port)"
+    } else {
+      hostHeader = renderedHost
+    }
+    var lines = [
+      "GET \(target) HTTP/1.1",
+      "Host: \(hostHeader)",
+      "Connection: close",
+      "Accept-Encoding: identity",
+    ]
+    for name in ["Accept", "Accept-Language", "User-Agent"] {
+      guard let value = request.value(forHTTPHeaderField: name) else { continue }
+      guard !value.contains("\r"), !value.contains("\n") else {
+        throw KnowledgeWebDownloadError.invalidURL
+      }
+      lines.append("\(name): \(value)")
+    }
+    lines.append("")
+    lines.append("")
+    return Data(lines.joined(separator: "\r\n").utf8)
+  }
+}
+
 struct KnowledgeWebDownloadClient: Sendable {
+  typealias Transport = @Sendable (
+    URLRequest,
+    [KnowledgeResolvedAddress],
+    Int
+  ) async throws -> KnowledgePinnedHTTPResponse
+
   static let allowedMIMETypes: Set<String> = [
     "text/html",
     "application/xhtml+xml",
     "text/plain",
   ]
+
+  private let resolver: KnowledgeWebDownloadPolicy.Resolver
+  private let transport: Transport
+
+  private static let defaultTransport: Transport = { request, addresses, limit in
+    try await KnowledgePinnedHTTPSClient.fetch(
+      request: request,
+      addresses: addresses,
+      maximumByteCount: limit
+    )
+  }
+
+  init(
+    resolver: @escaping KnowledgeWebDownloadPolicy.Resolver = KnowledgeWebDownloadPolicy.defaultResolver,
+    transport: @escaping Transport = KnowledgeWebDownloadClient.defaultTransport
+  ) {
+    self.resolver = resolver
+    self.transport = transport
+  }
 
   func download(
     request originalRequest: URLRequest,
@@ -282,31 +660,50 @@ struct KnowledgeWebDownloadClient: Sendable {
     guard let originalURL = originalRequest.url else {
       throw KnowledgeWebDownloadError.invalidURL
     }
-    let safeURL = try KnowledgeWebDownloadPolicy.validatedURL(originalURL)
     var request = originalRequest
-    request.url = safeURL
+    var currentURL = originalURL
+    let maximumRedirectCount = 5
+    for redirectCount in 0...maximumRedirectCount {
+      try Task.checkCancellation()
+      let endpoint = try KnowledgeWebDownloadPolicy.validatedEndpoint(
+        currentURL,
+        resolver: resolver
+      )
+      request.url = endpoint.url
+      let received = try await transport(
+        request,
+        endpoint.addresses,
+        maximumByteCount
+      )
 
-    let delegate = KnowledgeWebDownloadSessionDelegate()
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.httpShouldSetCookies = false
-    configuration.httpCookieAcceptPolicy = .never
-    configuration.timeoutIntervalForRequest = 25
-    configuration.timeoutIntervalForResource = 30
-    let session = URLSession(
-      configuration: configuration,
-      delegate: delegate,
-      delegateQueue: nil
-    )
-    defer { session.invalidateAndCancel() }
-
-    do {
-      let (bytes, response) = try await session.bytes(for: request)
-      if let rejection = delegate.redirectRejection { throw rejection }
-      guard let httpResponse = response as? HTTPURLResponse else {
-        throw KnowledgeWebDownloadError.invalidResponse
+      if [301, 302, 303, 307, 308].contains(received.statusCode) {
+        guard redirectCount < maximumRedirectCount,
+              let location = received.header("location"),
+              let destination = URL(string: location, relativeTo: endpoint.url)?.absoluteURL else {
+          throw KnowledgeWebDownloadError.redirectBlocked(
+            received.header("location") ?? "未知地址"
+          )
+        }
+        currentURL = destination
+        request.setValue(nil, forHTTPHeaderField: "Authorization")
+        request.setValue(nil, forHTTPHeaderField: "Cookie")
+        continue
       }
-      guard (200..<300).contains(httpResponse.statusCode) else {
-        throw KnowledgeWebDownloadError.httpStatus(httpResponse.statusCode)
+      guard (200..<300).contains(received.statusCode) else {
+        throw KnowledgeWebDownloadError.httpStatus(received.statusCode)
+      }
+      if let encoding = received.header("content-encoding")?.lowercased(),
+         !encoding.isEmpty,
+         encoding != "identity" {
+        throw KnowledgeWebDownloadError.unsupportedContentEncoding(encoding)
+      }
+      guard let httpResponse = HTTPURLResponse(
+        url: endpoint.url,
+        statusCode: received.statusCode,
+        httpVersion: "HTTP/1.1",
+        headerFields: received.headerFields
+      ) else {
+        throw KnowledgeWebDownloadError.invalidResponse
       }
       let mimeType = httpResponse.mimeType?.lowercased() ?? ""
       guard Self.allowedMIMETypes.contains(mimeType) else {
@@ -314,19 +711,11 @@ struct KnowledgeWebDownloadClient: Sendable {
           mimeType.nilIfEmpty ?? "未知"
         )
       }
-
-      var buffer = try KnowledgeWebDownloadBuffer(
-        maximumByteCount: maximumByteCount,
-        expectedByteCount: response.expectedContentLength
+      return KnowledgeWebDownloadResponse(
+        data: received.data,
+        response: httpResponse
       )
-      for try await byte in bytes {
-        try Task.checkCancellation()
-        try buffer.append(byte)
-      }
-      return KnowledgeWebDownloadResponse(data: buffer.data, response: httpResponse)
-    } catch {
-      if let rejection = delegate.redirectRejection { throw rejection }
-      throw error
     }
+    throw KnowledgeWebDownloadError.redirectBlocked(currentURL.absoluteString)
   }
 }

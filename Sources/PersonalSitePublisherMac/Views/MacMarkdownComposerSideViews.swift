@@ -14,14 +14,14 @@ struct SelectionEditPreviewPanel: View {
           .font(.caption.weight(.semibold))
           .foregroundStyle(.secondary)
         Text(preview.application.localizedDisplayName)
-          .font(.caption2.weight(.medium))
+          .font(.caption.weight(.medium))
           .foregroundStyle(.secondary)
           .padding(.horizontal, 6)
           .padding(.vertical, 2)
           .background(WorkbenchBackgroundStyle.badge, in: Capsule())
         if let modelSummary = preview.modelSummary {
           Text(modelSummary)
-            .font(.caption2.weight(.medium))
+            .font(.caption.weight(.medium))
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .truncationMode(.middle)
@@ -77,7 +77,7 @@ struct SelectionEditPreviewPanel: View {
   private func selectionPreviewColumn(title: String, text: String) -> some View {
     VStack(alignment: .leading, spacing: 5) {
       Text(title)
-        .font(.caption2.weight(.semibold))
+        .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
       ScrollView {
         Text(text)
@@ -96,7 +96,8 @@ struct SelectionEditPreviewPanel: View {
 struct MarkdownShortcutHelpPanel: View {
   @Environment(\.dismiss) private var dismiss
 
-  private let shortcutGroups: [(String, [(String, String)])] = [
+  private var shortcutGroups: [(String, [(String, String)])] {
+    var groups: [(String, [(String, String)])] = [
     (
       String(localized: "焦点导航"),
       [
@@ -138,15 +139,21 @@ struct MarkdownShortcutHelpPanel: View {
         (String(localized: "减少列表层级"), "Shift-Tab")
       ]
     ),
-    (
-      String(localized: "AI 与工具"),
-      [
-        (String(localized: "改写选中文本"), "⌥⌘R"),
-        (String(localized: "打开 AI 对话"), String(localized: "通过发布控制台菜单进入")),
-        (String(localized: "复制上下文 Prompt"), String(localized: "通过发布控制台菜单进入"))
-      ]
-    )
   ]
+    if DistributionFeaturePolicy.allowsExternalAIProviders {
+      groups.append(
+        (
+          String(localized: "AI 与工具"),
+          [
+            (String(localized: "改写选中文本"), "⌥⌘R"),
+            (String(localized: "打开 AI 对话"), String(localized: "通过发布控制台菜单进入")),
+            (String(localized: "复制上下文 Prompt"), String(localized: "通过发布控制台菜单进入")),
+          ]
+        )
+      )
+    }
+    return groups
+  }
 
   var body: some View {
     NavigationStack {

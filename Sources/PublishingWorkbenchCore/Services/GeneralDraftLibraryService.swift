@@ -1,44 +1,5 @@
 import Foundation
 
-public struct GeneralDraftLibraryReport: Codable, Hashable, Sendable {
-  public var generatedAt: Date
-  public var publishingProfileCount: Int
-  public var items: [GeneralDraftLibraryItem]
-
-  public init(
-    generatedAt: Date,
-    publishingProfileCount: Int,
-    items: [GeneralDraftLibraryItem]
-  ) {
-    self.generatedAt = generatedAt
-    self.publishingProfileCount = publishingProfileCount
-    self.items = items
-  }
-}
-
-public struct GeneralDraftLibraryItem: Identifiable, Codable, Hashable, Sendable {
-  public var id: UUID { draftID }
-  public var draftID: UUID
-  public var title: String
-  public var profileID: UUID
-  public var profileName: String
-  public var updatedAt: Date
-
-  public init(
-    draftID: UUID,
-    title: String,
-    profileID: UUID,
-    profileName: String,
-    updatedAt: Date
-  ) {
-    self.draftID = draftID
-    self.title = title
-    self.profileID = profileID
-    self.profileName = profileName
-    self.updatedAt = updatedAt
-  }
-}
-
 public enum GeneralDraftReuseRiskLevel: String, Codable, CaseIterable, Identifiable, Sendable {
   case ready
   case review
@@ -167,33 +128,6 @@ public struct GeneralDraftReusePlan: Identifiable, Codable, Hashable, Sendable {
 
 public struct GeneralDraftLibraryService {
   public init() {}
-
-  public func report(
-    drafts: [ArticleDraft],
-    profiles: [SiteProfile],
-    now: Date = Date()
-  ) -> GeneralDraftLibraryReport {
-    let publishingProfiles = profiles.filter { $0.purpose == .publishing }
-    let profilesByID = Dictionary(uniqueKeysWithValues: publishingProfiles.map { ($0.id, $0) })
-    let items = drafts.compactMap { draft -> GeneralDraftLibraryItem? in
-      guard !draft.isGeneralDraft else { return nil }
-      guard let profile = profilesByID[draft.siteProfileID] else { return nil }
-      return GeneralDraftLibraryItem(
-        draftID: draft.id,
-        title: draft.title.nilIfEmpty ?? "未命名文章",
-        profileID: profile.id,
-        profileName: profile.name,
-        updatedAt: draft.updatedAt
-      )
-    }
-    .sorted { $0.updatedAt > $1.updatedAt }
-
-    return GeneralDraftLibraryReport(
-      generatedAt: now,
-      publishingProfileCount: publishingProfiles.count,
-      items: items
-    )
-  }
 
   public func reusePlan(
     sourceDraft: ArticleDraft,

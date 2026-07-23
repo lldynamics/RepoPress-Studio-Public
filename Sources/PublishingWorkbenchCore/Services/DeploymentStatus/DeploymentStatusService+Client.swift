@@ -47,8 +47,11 @@ extension DeploymentStatusService {
     token: String,
     queryItems: [URLQueryItem]? = nil
   ) throws -> URLRequest {
+    guard let baseURL = URL(string: "https://api.netlify.com") else {
+      throw DeploymentStatusError.invalidURL("https://api.netlify.com")
+    }
     var request = try apiRequest(
-      baseURL: URL(string: "https://api.netlify.com")!,
+      baseURL: baseURL,
       path: path,
       queryItems: queryItems
     )
@@ -61,8 +64,11 @@ extension DeploymentStatusService {
     token: String,
     queryItems: [URLQueryItem]? = nil
   ) throws -> URLRequest {
+    guard let baseURL = URL(string: "https://api.vercel.com") else {
+      throw DeploymentStatusError.invalidURL("https://api.vercel.com")
+    }
     var request = try apiRequest(
-      baseURL: URL(string: "https://api.vercel.com")!,
+      baseURL: baseURL,
       path: path,
       queryItems: queryItems
     )
@@ -75,8 +81,11 @@ extension DeploymentStatusService {
     token: String,
     queryItems: [URLQueryItem]? = nil
   ) throws -> URLRequest {
+    guard let baseURL = URL(string: "https://api.cloudflare.com") else {
+      throw DeploymentStatusError.invalidURL("https://api.cloudflare.com")
+    }
     var request = try apiRequest(
-      baseURL: URL(string: "https://api.cloudflare.com")!,
+      baseURL: baseURL,
       path: path,
       queryItems: queryItems
     )

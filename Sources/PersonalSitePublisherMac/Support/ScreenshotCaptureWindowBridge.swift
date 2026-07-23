@@ -1,4 +1,4 @@
-#if DEBUG
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
 import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
@@ -64,9 +64,8 @@ private final class CaptureBridgeView: NSView {
     if let capturePath = ProcessInfo.processInfo.environment[
       "PERSONAL_SITE_PUBLISHER_SCREENSHOT_SOURCE_FILE"
     ], !capturePath.isEmpty {
-      Task { @MainActor [weak window] in
+      Task { @MainActor in
         try? await Task.sleep(for: .seconds(2))
-        guard let window else { return }
         configureWindow(window)
         try? await Task.sleep(for: .milliseconds(500))
         captureWindow(window, to: capturePath)
@@ -103,34 +102,36 @@ private final class CaptureBridgeView: NSView {
 
   @MainActor
   private func captureWindow(_ window: NSWindow, to path: String) {
-    guard let frameView = window.contentView?.superview else { return }
+    guard let frameView = window.contentView?.superview ?? window.contentView else {
+      recordCaptureFailure("window content view is unavailable", path: path)
+      return
+    }
     frameView.displayIfNeeded()
-    let contentWidth = window.contentView?.frame.width ?? frameView.bounds.width
-    let bounds = NSRect(
-      x: frameView.bounds.minX,
-      y: frameView.bounds.minY,
-      width: min(contentWidth, frameView.bounds.width),
-      height: frameView.bounds.height
-    ).integral
-    let scale: CGFloat = 2
-    guard let bitmap = NSBitmapImageRep(
-      bitmapDataPlanes: nil,
-      pixelsWide: max(Int((bounds.width * scale).rounded()), 1),
-      pixelsHigh: max(Int((bounds.height * scale).rounded()), 1),
-      bitsPerSample: 8,
-      samplesPerPixel: 4,
-      hasAlpha: true,
-      isPlanar: false,
-      colorSpaceName: .deviceRGB,
-      bytesPerRow: 0,
-      bitsPerPixel: 0
-    ) else {
+    let bounds = frameView.bounds.integral
+    guard !bounds.isEmpty,
+          let bitmap = frameView.bitmapImageRepForCachingDisplay(in: bounds) else {
+      recordCaptureFailure("could not allocate a window cache bitmap", path: path)
       return
     }
     bitmap.size = bounds.size
     frameView.cacheDisplay(in: bounds, to: bitmap)
-    guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
-    try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+    guard let data = bitmap.representation(using: .png, properties: [:]) else {
+      recordCaptureFailure("could not encode the window cache as PNG", path: path)
+      return
+    }
+    do {
+      try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+    } catch {
+      recordCaptureFailure("could not write PNG: \(error.localizedDescription)", path: path)
+    }
+  }
+
+  private func recordCaptureFailure(_ message: String, path: String) {
+    try? message.write(
+      toFile: path + ".error.txt",
+      atomically: true,
+      encoding: .utf8
+    )
   }
 }
 #endif

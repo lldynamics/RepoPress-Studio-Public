@@ -3,83 +3,188 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 extension RepositoryWorkspaceView {
-  @ViewBuilder
   var onlinePublishCenterSection: some View {
-    if store.selectedDraft != nil, let preview = store.remotePublishPreviewSnapshot {
-      let latestEntry = store.activeProfileReleaseLedger.entries.first
+    VStack(alignment: .leading, spacing: 16) {
+      if prioritizesPublishPreviewForScreenshot {
+        repositoryPublishPreviewSection
+        repositoryPublishManagementSection
+      } else {
+        repositoryPublishManagementSection
+        repositoryPublishPreviewSection
+      }
+    }
+  }
 
-      VStack(alignment: .leading, spacing: 12) {
-        HStack(alignment: .firstTextBaseline) {
-          VStack(alignment: .leading, spacing: 3) {
-            Text("线上发布中心")
-              .font(.headline)
-            Text("\(preview.provider.localizedDisplayName) API · \(preview.mode.localizedDisplayName) · \(preview.repositoryName)")
-              .font(.callout)
-              .foregroundStyle(.secondary)
-          }
-          Spacer()
-          Button {
-            if let publishDrawerCommandAction {
-              publishDrawerCommandAction.open(
-                "已从发布中心进入统一发布流程，请确认检查、差异、写入方式、远端策略和部署状态。"
-              )
-            } else {
-              store.runPreflight()
-              store.setPublishActionMessage(String(localized: "请从顶部“发布”菜单打开统一发布流程。"))
-            }
-          } label: {
-            Label("打开发布流程", systemImage: "paperplane")
-          }
-          .workbenchProminentActionStyle()
-          .disabled(store.isRemoteRepositoryPublishing)
+  private var prioritizesPublishPreviewForScreenshot: Bool {
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    ScreenshotDemoDataService.isEnabledFromEnvironment
+      && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .syncAPIPublish
+#else
+    false
+#endif
+  }
 
-          Menu {
-            Button {
-              store.refreshPublishPreviewInBackground()
-            } label: {
-              Label("刷新发布快照", systemImage: "arrow.clockwise")
-            }
-            .disabled(store.isRemoteRepositoryChecking || store.isRemoteRepositoryPublishing)
+  private var repositoryPublishManagementSection: some View {
+    let latestEntry = store.activeProfileReleaseLedger.entries.first
 
-            Button {
-              Task {
-                await store.checkRepositoryTokenAccess()
-                store.refreshPublishPreviewInBackground()
-              }
-            } label: {
-              Label("检查权限", systemImage: "person.badge.key")
-            }
-            .disabled(store.isRemoteRepositoryChecking)
+    return VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: 3) {
+        Text("发布准备")
+          .font(.headline)
+          .accessibilityAddTraits(.isHeader)
+        Text("刷新当前文章快照，检查远端权限，管理仓库与发布历史。")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+      }
 
-            Button {
-              createsPrivateRepository = true
-              repositoryCreationFailureMessage = nil
-              isRepositoryCreationConfirmationPresented = true
-            } label: {
-              Label("创建仓库", systemImage: "plus.circle")
-            }
-            .disabled(store.isRemoteRepositoryChecking || store.isRemoteRepositoryPublishing)
-
-            Divider()
-
-            Button {
-              copy(preview.checklistMarkdown, message: "已复制线上发布核对包。")
-            } label: {
-              Label("复制核对包", systemImage: "doc.on.doc")
-            }
-          } label: {
-            Label(String(localized: "更多"), systemImage: "ellipsis.circle")
-          }
-          .menuStyle(.borderlessButton)
-          .fixedSize()
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 10)],
+        alignment: .leading,
+        spacing: 10
+      ) {
+        Button {
+          store.refreshPublishPreviewInBackground()
+        } label: {
+          Label("刷新发布快照", systemImage: "arrow.clockwise")
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .buttonStyle(.bordered)
+        .disabled(
+          store.selectedDraft == nil
+            || store.isRemoteRepositoryChecking
+            || store.isRemoteRepositoryPublishing
+        )
+        .help(store.selectedDraft == nil ? "选择文章后可生成发布快照" : "重新生成当前文章的发布快照")
+        .accessibilityIdentifier("repository-action-refresh-publish-preview")
 
+        Button {
+          Task {
+            await store.checkRepositoryTokenAccess()
+            store.refreshPublishPreviewInBackground()
+          }
+        } label: {
+          Label("检查权限", systemImage: "person.badge.key")
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.bordered)
+        .disabled(store.isRemoteRepositoryChecking || store.isRemoteRepositoryPublishing)
+        .accessibilityIdentifier("repository-action-check-permission")
+
+        Button {
+          createsPrivateRepository = true
+          repositoryCreationFailureMessage = nil
+          isRepositoryCreationConfirmationPresented = true
+        } label: {
+          Label("创建仓库", systemImage: "plus.circle")
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.bordered)
+        .disabled(store.isRemoteRepositoryChecking || store.isRemoteRepositoryPublishing)
+        .accessibilityIdentifier("repository-action-create-remote")
+
+        Button {
+          stage = .history
+        } label: {
+          Label("查看发布记录", systemImage: "clock.arrow.circlepath")
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("repository-action-view-release-history")
+      }
+      .controlSize(.regular)
+
+      repositoryPublishAvailabilityNotice
+
+      if store.isRemoteRepositoryChecking || store.isRemoteRepositoryPublishing {
+        HStack(spacing: 8) {
+          ProgressView()
+            .controlSize(.small)
+          Text(store.isRemoteRepositoryPublishing ? "正在执行线上发布..." : "正在检查仓库权限...")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+      }
+
+      if let result = store.remoteRepositoryPublishResult {
+        remotePublishResultCard(result)
+      }
+
+      if let creation = store.remoteRepositoryCreationResult {
+        remoteRepositoryCreationResultCard(creation)
+      }
+
+      if let latestEntry {
+        Label("最近记录：\(latestEntry.status.localizedDisplayName)", systemImage: latestEntry.status.systemImage)
+          .font(.callout)
+          .foregroundStyle(ledgerStatusForeground(latestEntry.status))
+      }
+    }
+    .padding(14)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("repository-section-online-publish")
+  }
+
+  @ViewBuilder
+  private var repositoryPublishAvailabilityNotice: some View {
+    if store.selectedDraft == nil {
+      Label(
+        "请先选择一篇文章。选择后可生成发布快照并进入发布流程；权限检查和创建仓库仍可使用。",
+        systemImage: "doc.badge.questionmark"
+      )
+      .font(.callout)
+      .foregroundStyle(.secondary)
+    } else if store.remotePublishPreviewSnapshot == nil {
+      Label(
+        "当前文章尚未生成发布快照。请刷新快照；如仍失败，先检查权限和仓库设置。",
+        systemImage: "exclamationmark.triangle"
+      )
+      .font(.callout)
+      .foregroundStyle(WorkbenchTheme.warning)
+    } else {
+      Label("当前文章的发布快照已生成。", systemImage: "checkmark.circle")
+        .font(.callout)
+        .foregroundStyle(WorkbenchTheme.success)
+    }
+  }
+
+  private var repositoryPublishPreviewSection: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: 3) {
+        Text("当前文章发布快照")
+          .font(.headline)
+          .accessibilityAddTraits(.isHeader)
+
+        if let preview = store.remotePublishPreviewSnapshot {
+          Text("\(preview.provider.localizedDisplayName) API · \(preview.mode.localizedDisplayName) · \(preview.repositoryName)")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        } else {
+          Text("生成快照后，这里会显示目标分支、文件清单、权限和发布检查。")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+      }
+
+      if let preview = store.remotePublishPreviewSnapshot {
         LazyVGrid(columns: repositoryMetricGridColumns, spacing: 10) {
           MetricTile(title: "状态", value: preview.readiness.localizedDisplayName, systemImage: preview.readiness.systemImage)
           MetricTile(title: "权限", value: preview.accessSummary, systemImage: preview.hasToken ? "person.badge.key" : "key")
           MetricTile(title: "目标", value: preview.targetBranch, systemImage: "arrow.down.to.line")
           MetricTile(title: "文件", value: "\(preview.changedPaths.count)", systemImage: "shippingbox")
         }
+
+        Button {
+          copy(preview.checklistMarkdown, message: "已复制线上发布核对包。")
+        } label: {
+          Label("复制核对包", systemImage: "doc.on.doc")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
+        .accessibilityIdentifier("repository-action-copy-checklist")
 
         Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
           GridRow {
@@ -96,21 +201,11 @@ extension RepositoryWorkspaceView {
           }
         }
 
-        if store.isRemoteRepositoryChecking || store.isRemoteRepositoryPublishing {
-          HStack(spacing: 8) {
-            ProgressView()
-              .controlSize(.small)
-            Text(store.isRemoteRepositoryPublishing ? "正在执行线上发布..." : "正在检查仓库权限...")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-        }
-
         let blockingIssues = preview.blockingIssues
         let warningIssues = preview.warningIssues
         if preview.readiness == .ready && warningIssues.isEmpty {
           Label("线上 API 发布准备就绪。", systemImage: "checkmark.seal")
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(WorkbenchTheme.success)
         } else if blockingIssues.isEmpty && warningIssues.isEmpty {
           repositoryPublishReadinessNotice(preview)
@@ -130,34 +225,28 @@ extension RepositoryWorkspaceView {
         }
 
         if !preview.remoteConflictPaths.isEmpty {
-          remoteConflictPreview(paths: preview.remoteConflictPaths, isDirectCommit: preview.mode == .directCommit)
+          remoteConflictPreview(
+            paths: preview.remoteConflictPaths,
+            isDirectCommit: preview.mode == .directCommit
+          )
         }
-
-        if let result = store.remoteRepositoryPublishResult {
-          remotePublishResultCard(result)
-        }
-
-        if let creation = store.remoteRepositoryCreationResult {
-          remoteRepositoryCreationResultCard(creation)
-        }
-
-        HStack {
-          Button {
-            stage = .history
-          } label: {
-            Label("查看发布记录", systemImage: "clock.arrow.circlepath")
-          }
-          if let latestEntry {
-            Label("最近：\(latestEntry.status.localizedDisplayName)", systemImage: latestEntry.status.systemImage)
-              .font(.caption)
-              .foregroundStyle(ledgerStatusForeground(latestEntry.status))
-          }
-        }
-        .controlSize(.small)
+      } else if store.selectedDraft == nil {
+        Label("尚未选择文章。", systemImage: "doc.badge.questionmark")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+      } else {
+        Label("等待生成发布快照。", systemImage: "clock")
+          .font(.callout)
+          .foregroundStyle(.secondary)
       }
-      .padding(14)
-      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     }
+    .padding(14)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("repository-section-publish-preview")
   }
 
   @ViewBuilder
@@ -168,6 +257,7 @@ extension RepositoryWorkspaceView {
           VStack(alignment: .leading, spacing: 3) {
             Text("同步建议")
               .font(.headline)
+              .accessibilityAddTraits(.isHeader)
             Text(plan.title)
               .font(.callout.weight(.medium))
           }
@@ -193,12 +283,14 @@ extension RepositoryWorkspaceView {
 
         ForEach(plan.notes, id: \.self) { note in
           Label(note, systemImage: "info.circle")
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
         }
       }
       .padding(14)
       .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("repository-section-sync-plan")
     }
   }
 
@@ -206,24 +298,30 @@ extension RepositoryWorkspaceView {
     VStack(alignment: .leading, spacing: 10) {
       Text("路径规则")
         .font(.headline)
-      Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
-        GridRow {
-          Text("内容目录").foregroundStyle(.secondary)
-          Text(store.activeProfile.contentRoot).font(.callout.monospaced())
-        }
-        GridRow {
-          Text("图片目录").foregroundStyle(.secondary)
-          Text(store.activeProfile.assetRoot).font(.callout.monospaced())
-        }
-        GridRow {
-          Text("文章路径").foregroundStyle(.secondary)
-          Text(store.selectedDraft.map { store.activeProfile.markdownPath(for: $0) } ?? "-")
-            .font(.callout.monospaced())
-        }
-      }
+        .accessibilityAddTraits(.isHeader)
+      repositoryPathRule(title: "内容目录", value: store.activeProfile.contentRoot)
+      repositoryPathRule(title: "图片目录", value: store.activeProfile.assetRoot)
+      repositoryPathRule(
+        title: "文章路径",
+        value: store.selectedDraft.map { store.activeProfile.markdownPath(for: $0) } ?? "-"
+      )
     }
     .padding(14)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("repository-section-path-rules")
+  }
+
+  private func repositoryPathRule(title: LocalizedStringKey, value: String) -> some View {
+    VStack(alignment: .leading, spacing: 3) {
+      Text(title)
+        .font(.callout.weight(.medium))
+        .foregroundStyle(.secondary)
+      Text(value)
+        .font(.callout.monospaced())
+        .textSelection(.enabled)
+        .workbenchTruncatedIdentity(value, lineLimit: 2)
+    }
   }
 
   func remotePublishResultCard(_ result: RemoteRepositoryPublishResult) -> some View {
@@ -358,90 +456,21 @@ extension RepositoryWorkspaceView {
     .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
-  func batchOnlinePublishPreview(_ preview: RemoteRepositoryPublishPreview) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .firstTextBaseline) {
-        VStack(alignment: .leading, spacing: 3) {
-          Text("批量线上预览")
-            .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
-          let repositorySummary = "\(preview.provider.localizedDisplayName) API · \(preview.mode.localizedDisplayName) · \(preview.repositoryName)"
-          Text(repositorySummary)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .workbenchTruncatedIdentity(repositorySummary)
-        }
-        Spacer()
-        Label(preview.readiness.localizedDisplayName, systemImage: preview.readiness.systemImage)
-          .font(.caption.weight(.medium))
-        Button {
-          copy(preview.checklistMarkdown, message: "已复制批量线上发布核对包。")
-        } label: {
-          Label("复制核对包", systemImage: "doc.on.doc")
-        }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .help("复制线上发布核对包")
-        .accessibilityLabel("复制批量线上发布核对包")
-      }
-
-      Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 7) {
-        GridRow {
-          Text("权限").foregroundStyle(.secondary)
-          Text(preview.accessSummary)
-        }
-        GridRow {
-          Text("分支").foregroundStyle(.secondary)
-          Text("\(preview.branchName) -> \(preview.targetBranch)")
-            .font(.caption.monospaced())
-            .textSelection(.enabled)
-        }
-        GridRow {
-          Text("文件").foregroundStyle(.secondary)
-          Text("\(preview.changedPaths.count) 个")
-        }
-      }
-      .font(.caption)
-
-      let blockingIssues = preview.blockingIssues
-      let warningIssues = preview.warningIssues
-      if preview.readiness == .ready && warningIssues.isEmpty {
-        Label("批量线上 API 发布准备就绪。", systemImage: "checkmark.seal")
-          .font(.caption)
-          .foregroundStyle(WorkbenchTheme.success)
-      } else if blockingIssues.isEmpty && warningIssues.isEmpty {
-        repositoryPublishReadinessNotice(preview)
-      } else {
-        repositoryPublishIssueList(
-          blockingIssues: blockingIssues,
-          warningIssues: warningIssues
-        )
-      }
-
-      if !preview.changedPaths.isEmpty {
-        let changedPaths = preview.changedPaths.prefix(5).joined(separator: "\n")
-        Text(changedPaths)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-          .workbenchTruncatedIdentity(changedPaths, lineLimit: 5)
-      }
-
-      if !preview.remoteConflictPaths.isEmpty {
-        remoteConflictPreview(paths: preview.remoteConflictPaths, isDirectCommit: preview.mode == .directCommit)
-      }
-    }
-    .padding(10)
-    .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
-  }
-
   func remoteConflictPreview(paths: [String], isDirectCommit: Bool) -> some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Label(isDirectCommit ? "远端冲突会阻断直接提交" : "远端冲突预览", systemImage: "arrow.triangle.2.circlepath")
-        .font(.caption.weight(.semibold))
+    let title: LocalizedStringKey = isDirectCommit
+      ? "远端冲突会阻断直接提交"
+      : "远端冲突预览"
+    let detail: LocalizedStringKey = isDirectCommit
+      ? "先同步这些 upstream 变更，或切换为 PR/MR 发布。"
+      : "这些路径在 upstream 也有变更，合并前需要审阅远端 diff。"
+
+    return VStack(alignment: .leading, spacing: 6) {
+      Label(title, systemImage: "arrow.triangle.2.circlepath")
+        .font(.workbenchCardTitle)
         .foregroundStyle(isDirectCommit ? WorkbenchTheme.risk : WorkbenchTheme.warning)
 
-      Text(isDirectCommit ? "先同步这些 upstream 变更，或切换为 PR/MR 发布。" : "这些路径在 upstream 也有变更，合并前需要审阅远端 diff。")
-        .font(.caption)
+      Text(detail)
+        .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
         .lineSpacing(1)
 
@@ -464,17 +493,12 @@ extension RepositoryWorkspaceView {
     }
 
     if !warningIssues.isEmpty {
-      DisclosureGroup {
-        VStack(alignment: .leading, spacing: 8) {
-          ForEach(warningIssues) { issue in
-            repositoryPublishIssueRow(issue)
-          }
-        }
-        .padding(.top, 5)
-      } label: {
-        Label("警告（\(warningIssues.count)）", systemImage: "exclamationmark.triangle")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(WorkbenchTheme.warning)
+      Label("警告（\(warningIssues.count)）", systemImage: "exclamationmark.triangle")
+        .font(.callout.weight(.semibold))
+        .foregroundStyle(WorkbenchTheme.warning)
+
+      ForEach(warningIssues) { issue in
+        repositoryPublishIssueRow(issue)
       }
     }
   }
@@ -486,9 +510,9 @@ extension RepositoryWorkspaceView {
         .frame(width: 16)
       VStack(alignment: .leading, spacing: 2) {
         Text(issue.title)
-          .font(.caption.weight(.semibold))
+          .font(.callout.weight(.semibold))
         Text(issue.message)
-          .font(.caption)
+          .font(.callout)
           .foregroundStyle(.secondary)
           .lineSpacing(1)
           .fixedSize(horizontal: false, vertical: true)
@@ -500,7 +524,7 @@ extension RepositoryWorkspaceView {
   private func repositoryPublishReadinessNotice(
     _ preview: RemoteRepositoryPublishPreview
   ) -> some View {
-    let message: String
+    let message: LocalizedStringKey
     switch preview.readiness {
     case .ready:
       message = "线上 API 发布准备就绪。"
@@ -509,15 +533,14 @@ extension RepositoryWorkspaceView {
     case .needsPermissionCheck:
       message = "访问令牌已保存；请先检查仓库写入权限。"
     case .needsRemoteCheck:
-      message = String(localized: "远端快照待核对；直接提交会先通过 API 校验文件版本。")
+      message = "远端快照待核对；直接提交会先通过 API 校验文件版本。"
     case .blocked:
       message = "当前仓库权限不足，暂不能线上发布。"
     }
 
     return Label(message, systemImage: preview.readiness.systemImage)
-      .font(.caption)
+      .font(.callout)
       .foregroundStyle(preview.readiness == .blocked ? WorkbenchTheme.risk : WorkbenchTheme.warning)
-      .accessibilityLabel("线上发布状态：\(message)")
   }
 
 }

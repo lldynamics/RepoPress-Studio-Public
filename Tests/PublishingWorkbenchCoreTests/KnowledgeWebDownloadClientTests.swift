@@ -3,6 +3,31 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class KnowledgeWebDownloadClientTests: XCTestCase {
+  private final class TransportProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var transportedHosts: [String] = []
+    private(set) var transportedAddresses: [[KnowledgeResolvedAddress]] = []
+
+    func record(request: URLRequest, addresses: [KnowledgeResolvedAddress]) {
+      lock.lock()
+      transportedHosts.append(request.url?.host ?? "")
+      transportedAddresses.append(addresses)
+      lock.unlock()
+    }
+
+    var callCount: Int {
+      lock.lock()
+      defer { lock.unlock() }
+      return transportedHosts.count
+    }
+
+    var lastAddresses: [KnowledgeResolvedAddress]? {
+      lock.lock()
+      defer { lock.unlock() }
+      return transportedAddresses.last
+    }
+  }
+
   func testPolicyRejectsLoopbackPrivateLinkLocalAndDocumentationAddresses() throws {
     let blockedHosts = [
       "127.0.0.1",
@@ -55,57 +80,132 @@ final class KnowledgeWebDownloadClientTests: XCTestCase {
     }
   }
 
-  func testEveryRedirectDestinationIsValidated() throws {
+  func testEveryRedirectDestinationIsValidatedBeforeTransport() async throws {
     let publicAddress = try XCTUnwrap(KnowledgeResolvedAddress(presentation: "1.1.1.1"))
     let privateAddress = try XCTUnwrap(KnowledgeResolvedAddress(presentation: "192.168.0.5"))
-    let publicRedirect = URLRequest(
-      url: try XCTUnwrap(URL(string: "https://cdn.example/article"))
-    )
-    let privateRedirect = URLRequest(
-      url: try XCTUnwrap(URL(string: "https://router.example/admin"))
-    )
-    let downgradeRedirect = URLRequest(
-      url: try XCTUnwrap(URL(string: "http://cdn.example/article"))
-    )
-
-    XCTAssertNotNil(KnowledgeWebDownloadSessionDelegate.redirectedRequest(
-      proposedRequest: publicRedirect,
-      resolver: { _ in [publicAddress] }
-    ))
-    XCTAssertNil(KnowledgeWebDownloadSessionDelegate.redirectedRequest(
-      proposedRequest: privateRedirect,
-      resolver: { _ in [privateAddress] }
-    ))
-    XCTAssertNil(KnowledgeWebDownloadSessionDelegate.redirectedRequest(
-      proposedRequest: downgradeRedirect,
-      resolver: { _ in [publicAddress] }
-    ))
-  }
-
-  func testStreamingBufferStopsBeforeAppendingPastLimit() throws {
-    var buffer = try KnowledgeWebDownloadBuffer(maximumByteCount: 4)
-    for byte in Data("safe".utf8) {
-      try buffer.append(byte)
-    }
-    XCTAssertEqual(String(decoding: buffer.data, as: UTF8.self), "safe")
-
-    XCTAssertThrowsError(try buffer.append(UInt8(ascii: "!"))) { error in
-      guard case KnowledgeWebDownloadError.byteLimitExceeded(let limit) = error else {
-        return XCTFail("应在流式接收阶段报告大小上限，实际为：\(error)")
+    let probe = TransportProbe()
+    let client = KnowledgeWebDownloadClient(
+      resolver: { host in
+        host == "router.example" ? [privateAddress] : [publicAddress]
+      },
+      transport: { request, addresses, _ in
+        probe.record(request: request, addresses: addresses)
+        return KnowledgePinnedHTTPResponse(
+          data: Data(),
+          statusCode: 302,
+          headerFields: ["location": "https://router.example/admin"]
+        )
       }
-      XCTAssertEqual(limit, 4)
+    )
+
+    do {
+      _ = try await client.download(
+        request: URLRequest(
+          url: try XCTUnwrap(URL(string: "https://cdn.example/article"))
+        ),
+        maximumByteCount: 1_024
+      )
+      XCTFail("解析到私网的重定向不应进入第二次传输")
+    } catch {
+      guard case KnowledgeWebDownloadError.blockedAddress(let host) = error else {
+        return XCTFail("应拒绝重定向的私网地址，实际为：\(error)")
+      }
+      XCTAssertEqual(host, "router.example")
     }
-    XCTAssertEqual(buffer.data.count, 4)
+    XCTAssertEqual(probe.callCount, 1)
   }
 
-  func testContentLengthOverLimitIsRejectedBeforeStreaming() {
-    XCTAssertThrowsError(
-      try KnowledgeWebDownloadBuffer(maximumByteCount: 4, expectedByteCount: 5)
-    ) { error in
-      guard case KnowledgeWebDownloadError.byteLimitExceeded(let limit) = error else {
-        return XCTFail("应根据 Content-Length 提前拒绝，实际为：\(error)")
+  func testTransportReceivesExactlyThePrevalidatedAddress() async throws {
+    let approvedAddress = try XCTUnwrap(
+      KnowledgeResolvedAddress(presentation: "93.184.216.34")
+    )
+    let probe = TransportProbe()
+    let client = KnowledgeWebDownloadClient(
+      resolver: { _ in [approvedAddress] },
+      transport: { request, addresses, _ in
+        probe.record(request: request, addresses: addresses)
+        return KnowledgePinnedHTTPResponse(
+          data: Data("safe".utf8),
+          statusCode: 200,
+          headerFields: ["content-type": "text/html; charset=utf-8"]
+        )
       }
-      XCTAssertEqual(limit, 4)
+    )
+
+    let response = try await client.download(
+      request: URLRequest(
+        url: try XCTUnwrap(URL(string: "https://reader.example/article"))
+      ),
+      maximumByteCount: 1_024
+    )
+    XCTAssertEqual(String(decoding: response.data, as: UTF8.self), "safe")
+    XCTAssertEqual(probe.lastAddresses, [approvedAddress])
+  }
+
+  func testPinnedHTTPParserEnforcesFramingAndBodyLimit() throws {
+    let fixedResponse = Data(
+      "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\r\nsafe".utf8
+    )
+    let fixed = try XCTUnwrap(KnowledgeHTTP1ResponseParser.response(
+      from: fixedResponse,
+      maximumBodyByteCount: 4,
+      connectionIsComplete: false
+    ))
+    XCTAssertEqual(String(decoding: fixed.data, as: UTF8.self), "safe")
+
+    let chunkedResponse = Data(
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nsafe\r\n0\r\n\r\n".utf8
+    )
+    let chunked = try XCTUnwrap(KnowledgeHTTP1ResponseParser.response(
+      from: chunkedResponse,
+      maximumBodyByteCount: 4,
+      connectionIsComplete: false
+    ))
+    XCTAssertEqual(String(decoding: chunked.data, as: UTF8.self), "safe")
+
+    XCTAssertThrowsError(try KnowledgeHTTP1ResponseParser.response(
+      from: fixedResponse,
+      maximumBodyByteCount: 3,
+      connectionIsComplete: false
+    )) { error in
+      guard case KnowledgeWebDownloadError.byteLimitExceeded(let limit) = error else {
+        return XCTFail("应在读取正文前拒绝超限 Content-Length，实际为：\(error)")
+      }
+      XCTAssertEqual(limit, 3)
     }
   }
+
+  func testUnexpectedContentEncodingIsRejected() async throws {
+    let publicAddress = try XCTUnwrap(
+      KnowledgeResolvedAddress(presentation: "93.184.216.34")
+    )
+    let client = KnowledgeWebDownloadClient(
+      resolver: { _ in [publicAddress] },
+      transport: { _, _, _ in
+        KnowledgePinnedHTTPResponse(
+          data: Data("compressed".utf8),
+          statusCode: 200,
+          headerFields: [
+            "content-type": "text/html",
+            "content-encoding": "gzip",
+          ]
+        )
+      }
+    )
+
+    do {
+      _ = try await client.download(
+        request: URLRequest(
+          url: try XCTUnwrap(URL(string: "https://reader.example/article"))
+        ),
+        maximumByteCount: 1_024
+      )
+      XCTFail("钦定传输不应接受未解码的压缩正文")
+    } catch {
+      guard case KnowledgeWebDownloadError.unsupportedContentEncoding("gzip") = error else {
+        return XCTFail("应报告不支持的内容编码，实际为：\(error)")
+      }
+    }
+  }
+
 }

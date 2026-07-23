@@ -265,7 +265,7 @@ struct ContentMigrationAssistantView: View {
 
   private func migrationDispositionBadge(_ disposition: ContentMigrationDraftDisposition) -> some View {
     Text(migrationDispositionTitle(disposition))
-      .font(.caption2.weight(.semibold))
+      .font(.caption.weight(.semibold))
       .foregroundStyle(migrationDispositionColor(disposition))
       .padding(.horizontal, 7)
       .padding(.vertical, 2)
@@ -304,7 +304,7 @@ struct ContentMigrationAssistantView: View {
         VStack(alignment: .leading, spacing: 1) {
           ForEach(Array(comparison.bodyLineDiffs.prefix(80))) { line in
             Text(migrationDiffText(line))
-              .font(.caption2.monospaced())
+              .font(.caption.monospaced())
               .foregroundStyle(migrationDiffColor(line.kind))
               .frame(maxWidth: .infinity, alignment: .leading)
               .padding(.horizontal, 6)

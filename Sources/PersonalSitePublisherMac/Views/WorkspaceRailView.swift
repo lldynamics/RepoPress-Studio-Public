@@ -2,9 +2,21 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct WorkspaceTaskNavigation: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var shell: WorkbenchShellFeatureFacade
   @Binding var contentHealthFilter: ContentHealthContextFilter
   let onSelectSection: (WorkspaceSection) -> Void
+
+  init(
+    store: WorkbenchStore,
+    contentHealthFilter: Binding<ContentHealthContextFilter>,
+    onSelectSection: @escaping (WorkspaceSection) -> Void
+  ) {
+    self.store = store
+    _shell = ObservedObject(wrappedValue: store.shell)
+    _contentHealthFilter = contentHealthFilter
+    self.onSelectSection = onSelectSection
+  }
 
   var body: some View {
     VStack(spacing: 8) {
@@ -31,7 +43,7 @@ struct WorkspaceTaskNavigation: View {
     prominence: NavigationButtonProminence
   ) -> some View {
     let title = workspaceNavigationLocalizedString(section.displayNameLocalizationKey)
-    let isSelected = store.selectedSection == section
+    let isSelected = shell.selectedSection == section
 
     return Button {
       if section == .contentHealth, !isSelected {
@@ -48,7 +60,6 @@ struct WorkspaceTaskNavigation: View {
         Text(title)
           .font(prominence.font)
           .lineLimit(1)
-          .minimumScaleFactor(0.85)
       }
       .foregroundStyle(isSelected ? WorkbenchTheme.navigationSelection : Color.primary)
       .frame(maxWidth: .infinity, minHeight: 32)
@@ -87,12 +98,7 @@ private enum NavigationButtonProminence {
   case compact
 
   var font: Font {
-    switch self {
-    case .primary:
-      return .callout.weight(.medium)
-    case .compact:
-      return .caption.weight(.medium)
-    }
+    .workbenchButtonLabel
   }
 
   var iconSize: CGFloat {

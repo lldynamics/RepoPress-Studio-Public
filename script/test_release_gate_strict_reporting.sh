@@ -20,19 +20,37 @@ cp "$ROOT_DIR/script/check_release_gate.sh" "$FIXTURE_ROOT/script/check_release_
 cp "$ROOT_DIR/script/release_gate_runner.py" "$FIXTURE_ROOT/script/release_gate_runner.py"
 cp "$ROOT_DIR/script/release_checks.json" "$FIXTURE_ROOT/script/release_checks.json"
 
-cat >"$FIXTURE_ROOT/script/firefox_extension_release.py" <<'PY'
+cat >"$FIXTURE_ROOT/script/package_direct_release.py" <<'PY'
 #!/usr/bin/env python3
+import os
 import sys
 
-if sys.argv[1:] not in (["lint"], ["verify-remote"]):
-    raise SystemExit("unexpected Firefox release fixture arguments")
-print("Firefox remote release fixture: ok")
+if sys.argv[1:] != ["--check-readiness"]:
+    raise SystemExit("unexpected direct release fixture arguments")
+if os.environ.get("FAIL_DIRECT_READINESS") == "1":
+    raise SystemExit("direct release fixture: intentional failure")
+print("direct release fixture: ok")
+PY
+
+cat >"$FIXTURE_ROOT/script/chromium_extension_release.py" <<'PY'
+#!/usr/bin/env python3
+import os
+import sys
+
+arguments = sys.argv[1:]
+if arguments == ["readiness", "--channel", "chrome"] and os.environ.get("FAIL_CHROME_ID") == "1":
+    raise SystemExit("Chrome production ID fixture: intentional failure")
+print("Chromium release fixture: ok")
 PY
 
 for python_script in \
   check_app_store_listing_metadata.py \
   test_app_store_listing_metadata.py \
-  test_browser_extension_protocol_generation.py; do
+  test_browser_extension_protocol_generation.py \
+  test_chromium_extension_release.py \
+  test_direct_release_notarization.py \
+  check_typography.py \
+  test_typography_gate.py; do
   cat >"$FIXTURE_ROOT/script/$python_script" <<'PY'
 #!/usr/bin/env python3
 print("App Store listing fixture: ok")
@@ -55,6 +73,7 @@ stub_scripts=(
   test_app_store_archive_validation_evidence.sh
   test_app_store_archive_artifact_selection.sh
   check_ui_runtime.sh
+  check_accessibility_runtime.sh
   check_clean_runtime_evidence.sh
   record_clean_runtime_evidence.sh
   test_clean_runtime_evidence.sh
@@ -200,6 +219,42 @@ grep -q "./script/check_release_gate.sh --strict" <<<"$output" \
   || fail "strict output omitted strict rerun command"
 grep -q "swift test: ok" <<<"$output" \
   || fail "strict gate did not continue through Swift tests before reporting blockers"
+python3 - "$FIXTURE_ROOT/.build/release-gate-result.json" <<'PY'
+import json
+import sys
+
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+assert payload["mode"] == "strict", payload
+assert payload["profile"] == "all", payload
+PY
+
+chrome_json="$TMP_DIR/chrome-profile.json"
+if ! chrome_output="$(
+  PATH="$FIXTURE_ROOT/bin:$PATH" \
+  FAIL_DIRECT_READINESS=1 \
+  bash "$FIXTURE_ROOT/script/check_release_gate.sh" \
+    --profile chrome \
+    --result-json "$chrome_json" 2>&1
+)"; then
+  fail "Chrome profile was blocked by another distribution channel: $chrome_output"
+fi
+grep -q "release gate: chrome profile passed" <<<"$chrome_output" \
+  || fail "Chrome profile did not report its independent success"
+python3 - "$chrome_json" <<'PY'
+import json
+import sys
+
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+assert payload["mode"] == "strict", payload
+assert payload["profile"] == "chrome", payload
+assert payload["summary"]["uncheckedChecklistCount"] == 0, payload
+check_ids = {check["id"] for check in payload["checks"]}
+assert "chrome-extension-store-readiness" in check_ids, payload
+assert "edge-extension-store-readiness" not in check_ids, payload
+assert "firefox-extension-remote-release" not in check_ids, payload
+assert "direct-release-notarization-readiness" not in check_ids, payload
+assert "archive-readiness-strict" not in check_ids, payload
+PY
 
 for script_name in check_app_store_archive_readiness.sh check_screenshots.sh check_external_verification_evidence.sh; do
   cat >"$FIXTURE_ROOT/script/$script_name" <<'STUB'

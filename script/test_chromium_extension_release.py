@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Behavior tests for Chrome Web Store and Edge Add-ons release packaging."""
+"""Behavior tests for Chrome Web Store release packaging."""
 
 from __future__ import annotations
 
@@ -15,6 +15,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PACKAGER = ROOT / "script" / "chromium_extension_release.py"
 SOURCE_FILES = (
+    "background-capture.js",
+    "background-queue-operations.js",
+    "background-queue-storage.js",
+    "background-security.js",
     "background.js",
     "browser-extension-protocol.json",
     "chromium-store-listing.json",
@@ -60,11 +64,10 @@ with tempfile.TemporaryDirectory(prefix="chromium-store-release-test-") as direc
     run(fixture, "check")
     output_dir = fixture / "packages"
     package_result = run(fixture, "package", "--output-dir", str(output_dir))
-    assert "initial upload" in package_result.stdout
+    assert "ready for upload" in package_result.stdout
 
     expected_packages = {
         output_dir / f"knowledge-capture-chrome-{version}.zip",
-        output_dir / f"knowledge-capture-edge-{version}.zip",
     }
     assert set(output_dir.iterdir()) == expected_packages
     package_bytes = []
@@ -85,7 +88,7 @@ with tempfile.TemporaryDirectory(prefix="chromium-store-release-test-") as direc
             assert archived_manifest["default_locale"] == "zh_CN"
             assert archived_manifest["optional_permissions"] == ["tabs"]
             assert all(info.date_time == (1980, 1, 1, 0, 0, 0) for info in archive.infolist())
-    assert package_bytes[0] == package_bytes[1]
+    assert len(package_bytes) == 1
 
     ledger_path = extension / "release-ledger.json"
     ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
@@ -95,7 +98,6 @@ with tempfile.TemporaryDirectory(prefix="chromium-store-release-test-") as direc
     assert len(release["sourceSHA256"]) == 64
     assert {artifact["kind"] for artifact in release["artifacts"]} == {
         "chrome-zip",
-        "edge-zip",
     }
     ledger_bytes = ledger_path.read_bytes()
     run(fixture, "package", "--output-dir", str(output_dir))
@@ -137,34 +139,43 @@ with tempfile.TemporaryDirectory(prefix="chromium-store-release-test-") as direc
     shutil.copyfile(ROOT / "BrowserExtension" / "manifest.json", chromium_manifest_path)
     shutil.copyfile(ROOT / "BrowserExtension" / "Firefox" / "manifest.json", firefox_manifest_path)
 
-    pending = run(fixture, "readiness", succeeds=False)
-    assert "production ID is pending" in pending.stdout
-
     definition_path = extension / "browser-extension-protocol.json"
     definition = json.loads(definition_path.read_text(encoding="utf-8"))
-    definition["extensions"]["chromeProductionID"] = "a" * 32
-    definition["extensions"]["edgeProductionID"] = "b" * 32
+    definition["extensions"]["safariBundleID"] = "com.example.invalid"
     definition_path.write_text(
         json.dumps(definition, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    invalid_safari_identity = run(fixture, "check", succeeds=False)
+    assert "Safari Web Extension bundle ID" in invalid_safari_identity.stdout
+    definition["extensions"]["safariBundleID"] = (
+        "com.jinfang.PersonalSitePublisherMac.SafariExtension"
+    )
+    definition["activeExtensions"] = ["safari", "chrome", "edge"]
+    definition_path.write_text(
+        json.dumps(definition, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    unsupported_channel = run(fixture, "check", succeeds=False)
+    assert "exactly Safari and Chrome" in unsupported_channel.stdout
+    definition["activeExtensions"] = ["safari", "chrome"]
+    definition["extensions"]["chromeProductionID"] = None
+    definition_path.write_text(
+        json.dumps(definition, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    pending = run(fixture, "readiness", succeeds=False)
+    assert "Chrome Web Store production ID is pending" in pending.stdout
+    definition["extensions"]["chromeProductionID"] = "a" * 32
+    definition_path.write_text(
+        json.dumps(definition, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    chrome_ready = run(fixture, "readiness", "--channel", "chrome")
+    assert "Chrome Web Store: " + "a" * 32 in chrome_ready.stdout
+    assert "Microsoft Edge Add-ons:" not in chrome_ready.stdout
     ready = run(fixture, "readiness")
     assert "Chrome Web Store: " + "a" * 32 in ready.stdout
-    assert "Microsoft Edge Add-ons: " + "b" * 32 in ready.stdout
-
-    definition["extensions"]["edgeProductionID"] = "a" * 32
-    definition_path.write_text(
-        json.dumps(definition, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    duplicate_identity = run(fixture, "readiness", succeeds=False)
-    assert "must use separate production IDs" in duplicate_identity.stdout
-
-    definition["extensions"]["edgeProductionID"] = "b" * 32
-    definition_path.write_text(
-        json.dumps(definition, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
     metadata_path = extension / "chromium-store-listing.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     metadata["optionalPermissionJustifications"] = {}

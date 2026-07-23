@@ -187,6 +187,31 @@ final class KnowledgeWebContentSanitizerTests: XCTestCase {
     XCTAssertFalse(cleaned.components(separatedBy: .newlines).contains("91"))
   }
 
+  func testExtractedSocialTextDropsCurrentChineseReplyAndNewPostChromeWithCounts() {
+    let text = """
+    这段正文应保留并用于 AI 检索。
+    查看新帖子
+    12
+    所有人可以回复
+    36
+    查看新推文 8
+    所有用户均可回复
+    文章结尾也应保留。
+    """
+
+    let cleaned = KnowledgeWebContentSanitizer().sanitizeExtractedReadingText(text)
+    let lines = cleaned.components(separatedBy: .newlines)
+
+    XCTAssertTrue(cleaned.contains("正文应保留"))
+    XCTAssertTrue(cleaned.contains("文章结尾"))
+    XCTAssertFalse(cleaned.contains("查看新帖子"))
+    XCTAssertFalse(cleaned.contains("所有人可以回复"))
+    XCTAssertFalse(cleaned.contains("查看新推文"))
+    XCTAssertFalse(cleaned.contains("所有用户均可回复"))
+    XCTAssertFalse(lines.contains("12"))
+    XCTAssertFalse(lines.contains("36"))
+  }
+
   func testExtractedSocialTextKeepsAnUnrelatedStandaloneNumber() {
     let text = """
     章节编号
@@ -317,6 +342,48 @@ final class KnowledgeWebContentSanitizerTests: XCTestCase {
       ),
       capture.contentText
     )
+  }
+
+  func testBrowserFallbackTextCanBeRecleanedOfflineWithoutRestoringSocialNoise() async throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("knowledge-browser-fallback-reclean-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+    let capture = KnowledgeBrowserCapture(
+      sourceURL: try XCTUnwrap(URL(string: "https://example.com/social-fallback")),
+      title: "社交平台纯文本归档",
+      contentText: """
+      这是需要用于 AI 检索的正文。
+      查看新帖子
+      12
+      所有人可以回复
+      36
+      """,
+      originalHTML: nil
+    )
+    let importResult = try await service.commit(
+      try await service.makeBrowserImportPreview(capture: capture)
+    )
+    let documentID = try XCTUnwrap(importResult.documentIDs.first)
+
+    let previews = try await service.makeLocalContentRepairPreviews(
+      documentIDs: [documentID],
+      includingCurrentParserVersion: true
+    )
+    let preview = try XCTUnwrap(previews.first)
+    let recleanedText = try XCTUnwrap(preview.importPreview.candidates.first?.normalizedText)
+
+    XCTAssertTrue(recleanedText.contains("需要用于 AI 检索的正文"))
+    XCTAssertFalse(recleanedText.contains("查看新帖子"))
+    XCTAssertFalse(recleanedText.contains("所有人可以回复"))
+    XCTAssertFalse(recleanedText.components(separatedBy: .newlines).contains("12"))
+    XCTAssertFalse(recleanedText.components(separatedBy: .newlines).contains("36"))
+
+    _ = try await service.applyLocalContentRepairs(previews)
+    XCTAssertFalse(try service.search(query: "所有人可以回复").contains {
+      $0.signals.contains(.fullText)
+    })
+    XCTAssertEqual(try service.capturedText(documentID: documentID), capture.contentText)
   }
 
   func testLegacyHTMLImportCanReadOriginalArchiveWithoutCapturedTextSidecar() async throws {

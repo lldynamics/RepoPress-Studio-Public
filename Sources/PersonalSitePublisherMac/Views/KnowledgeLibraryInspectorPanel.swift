@@ -45,7 +45,7 @@ struct KnowledgeLibraryInspectorPanel: View {
             }
           }
         }
-        .controlSize(.small)
+        .controlSize(.regular)
 
         Divider()
 
@@ -97,7 +97,7 @@ struct KnowledgeLibraryInspectorPanel: View {
             Spacer()
             if knowledge.isLoadingRelatedChapters {
               ProgressView()
-                .controlSize(.mini)
+                .controlSize(.small)
                 .accessibilityLabel("正在查找\(relatedTitle)")
             } else {
               Text("\(knowledge.relatedChapters.count)")
@@ -113,7 +113,7 @@ struct KnowledgeLibraryInspectorPanel: View {
           VStack(alignment: .leading, spacing: 9) {
             if document.kind == .webpage {
               Text("如果正文缺失、混入导航、订阅或网页页脚，可以先比较当前正文与重新净化结果，再决定是否创建新版本。")
-                .font(.caption)
+                .font(.workbenchSupporting)
                 .foregroundStyle(.secondary)
               Button("正文质量有问题？") {
                 onReportContentIssue()
@@ -121,7 +121,7 @@ struct KnowledgeLibraryInspectorPanel: View {
               .disabled(knowledge.isBusy)
             } else {
               Text("可以查看来源更新和历史版本；已有版本不会被静默覆盖。")
-                .font(.caption)
+                .font(.workbenchSupporting)
                 .foregroundStyle(.secondary)
             }
             Button("来源更新与版本历史…", action: onOpenSourceHistory)

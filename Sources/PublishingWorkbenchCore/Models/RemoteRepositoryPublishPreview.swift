@@ -114,6 +114,9 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
       return CoreL10n.text("Token 已保存，尚未检查权限")
     }
     if accessCheck.canWrite {
+      if provider == .github && mode == .reviewRequest {
+        return CoreL10n.text("内容可写，PR 权限待创建时验证")
+      }
       return CoreL10n.text("Token 可写")
     }
     if accessCheck.canRead {
@@ -158,7 +161,10 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     lines.append("")
     lines.append(CoreL10n.text("## 发布前检查"))
     lines.append(CoreL10n.format("- [%@] 已保存 %@ Token", hasToken ? "x" : " ", provider.displayName))
-    lines.append(CoreL10n.format("- [%@] 已确认 Token 对 %@ 具备写入权限", accessCheck?.canWrite == true ? "x" : " ", repositoryName))
+    lines.append(CoreL10n.format("- [%@] 已确认 Token 对 %@ 具备内容写入权限", accessCheck?.canWrite == true ? "x" : " ", repositoryName))
+    if provider == .github && mode == .reviewRequest {
+      lines.append(CoreL10n.text("- [ ] PR 创建权限将在实际创建时验证"))
+    }
     lines.append(CoreL10n.format("- [%@] 没有阻断项", blockingIssues.isEmpty ? "x" : " "))
     lines.append(CoreL10n.format("- [%@] 已审阅警告项", warningIssues.isEmpty ? "x" : " "))
     lines.append(CoreL10n.format("- [%@] 已确认发布文件清单", changedPaths.isEmpty ? " " : "x"))

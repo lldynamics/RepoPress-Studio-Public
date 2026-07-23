@@ -1147,8 +1147,6 @@ public struct ReleaseLedgerService {
       }
       return $0.priority.rawValue < $1.priority.rawValue
     }
-    .prefix(12)
-    .map { $0 }
   }
 
   private func failedReleaseAction(for entry: ReleaseLedgerEntry) -> ReleaseLedgerActionItem {

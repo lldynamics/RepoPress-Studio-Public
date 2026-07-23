@@ -17,11 +17,11 @@ struct WorkspaceContextListHeader<Subtitle: View, Actions: View>: View {
     HStack(alignment: .center, spacing: 8) {
       VStack(alignment: .leading, spacing: 2) {
         Text(title)
-          .font(.headline)
+          .font(.workbenchSectionTitle)
         subtitle()
-          .font(.caption)
+          .font(.workbenchMetadata)
           .foregroundStyle(.secondary)
-          .lineLimit(1)
+          .lineLimit(2)
       }
 
       Spacer(minLength: 8)
@@ -52,9 +52,30 @@ struct WorkspaceSidebarHeaderIcon: View {
 }
 
 struct WorkspacePrimarySidebar: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var shell: WorkbenchShellFeatureFacade
   @Binding var contentHealthFilter: ContentHealthContextFilter
+  @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
+  @Binding var repositoryContextStage: RepositoryContextStage
+  let contentHealthSidebarProjection: ContentHealthSidebarProjection
   let onSelectSection: (WorkspaceSection) -> Void
+
+  init(
+    store: WorkbenchStore,
+    contentHealthFilter: Binding<ContentHealthContextFilter>,
+    imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
+    repositoryContextStage: Binding<RepositoryContextStage>,
+    contentHealthSidebarProjection: ContentHealthSidebarProjection,
+    onSelectSection: @escaping (WorkspaceSection) -> Void
+  ) {
+    self.store = store
+    _shell = ObservedObject(wrappedValue: store.shell)
+    _contentHealthFilter = contentHealthFilter
+    _imageWorkbenchContextStage = imageWorkbenchContextStage
+    _repositoryContextStage = repositoryContextStage
+    self.contentHealthSidebarProjection = contentHealthSidebarProjection
+    self.onSelectSection = onSelectSection
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -68,7 +89,25 @@ struct WorkspacePrimarySidebar: View {
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
         taskNavigation
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+          .fixedSize(horizontal: false, vertical: true)
+
+        Divider()
+
+        WorkspaceQuickSearchView(
+          store: store,
+          scope: quickSearchScope,
+          contentHealthSidebarProjection: contentHealthSidebarProjection,
+          contentHealthFilter: shell.selectedSection == .contentHealth
+            ? $contentHealthFilter
+            : nil,
+          imageWorkbenchContextStage: shell.selectedSection == .images
+            ? $imageWorkbenchContextStage
+            : nil,
+          repositoryContextStage: shell.selectedSection == .sync
+            ? $repositoryContextStage
+            : nil
+        )
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -78,7 +117,18 @@ struct WorkspacePrimarySidebar: View {
   }
 
   private var showsContextList: Bool {
-    store.selectedSection == .writing || store.selectedSection == .library
+    shell.selectedSection == .writing || shell.selectedSection == .library
+  }
+
+  private var quickSearchScope: WorkspaceQuickSearchScope {
+    switch shell.selectedSection {
+    case .images:
+      return .imageIssues
+    case .contentHealth:
+      return .aiFixes
+    case .writing, .library, .siteStarter, .sync, .maintenance, .releaseHistory:
+      return .recent
+    }
   }
 
   private var taskNavigation: some View {
@@ -91,7 +141,7 @@ struct WorkspacePrimarySidebar: View {
 
   @ViewBuilder
   private var contextList: some View {
-    switch store.selectedSection {
+    switch shell.selectedSection {
     case .writing:
       WritingDraftColumn(store: store, isCompact: true)
     case .library:

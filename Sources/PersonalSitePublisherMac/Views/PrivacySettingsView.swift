@@ -43,15 +43,15 @@ struct PrivacySettingsView: View {
 
   private static var privacyPolicyURL: URL {
     let path = usesChineseSupportPages
-      ? "https://chengjinfang.com/personal-site-publisher/privacy/"
-      : "https://chengjinfang.com/personal-site-publisher/privacy/en/"
+      ? "https://apps.chengjinfang.com/personal-site-publisher/privacy/"
+      : "https://apps.chengjinfang.com/personal-site-publisher/privacy/en/"
     return URL(string: path)!
   }
 
   private static var supportURL: URL {
     let path = usesChineseSupportPages
-      ? "https://chengjinfang.com/personal-site-publisher/"
-      : "https://chengjinfang.com/personal-site-publisher/en/"
+      ? "https://apps.chengjinfang.com/personal-site-publisher/"
+      : "https://apps.chengjinfang.com/personal-site-publisher/en/"
     return URL(string: path)!
   }
 

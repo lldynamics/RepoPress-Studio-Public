@@ -44,6 +44,10 @@ PUBLICATION_ARTIFACTS = {
 SHARED_SOURCE_FILES = (
     "_locales/en/messages.json",
     "_locales/zh_CN/messages.json",
+    "background-capture.js",
+    "background-queue-operations.js",
+    "background-queue-storage.js",
+    "background-security.js",
     "background.js",
     "icons/icon16.png",
     "icons/icon32.png",
@@ -57,6 +61,10 @@ SHARED_SOURCE_FILES = (
 RELEASE_SOURCE_FILES = (
     "BrowserExtension/_locales/en/messages.json",
     "BrowserExtension/_locales/zh_CN/messages.json",
+    "BrowserExtension/background-capture.js",
+    "BrowserExtension/background-queue-operations.js",
+    "BrowserExtension/background-queue-storage.js",
+    "BrowserExtension/background-security.js",
     "BrowserExtension/background.js",
     "BrowserExtension/firefox-release.json",
     "BrowserExtension/Firefox/manifest.json",

@@ -9,6 +9,73 @@ extension PublishingStore {
   }
 
   @discardableResult
+  public func resumeRemoteReview(
+    _ record: ReleaseRecord,
+    store: WorkbenchStore
+  ) async -> RemoteRepositoryPublishResult? {
+    guard store.canUseProtectedWorkbench else {
+      publishActionMessage = store.privacyLockedOperationMessage
+      return nil
+    }
+
+    let profile = store.profile(for: record)
+    let draft: RemoteRepositoryReviewRecoveryDraft
+    do {
+      draft = try RemoteRepositoryReviewRecoveryDraft.make(record: record)
+    } catch {
+      publishActionMessage = CoreL10n.format("继续创建 PR/MR 不可用：%@", error.localizedDescription)
+      return nil
+    }
+
+    guard store.repositoryTokenAvailability.hasToken || (try? repositoryAccessToken(for: profile)) != nil else {
+      publishActionMessage = CoreL10n.text("仓库访问 Token 未保存，无法继续创建 PR/MR。")
+      return nil
+    }
+    guard remoteRepositoryMutationContext == nil,
+          let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
+      publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
+      return nil
+    }
+
+    publishActionMessage = CoreL10n.format("正在从已写入分支 %@ 继续创建 PR/MR…", draft.branchName)
+    defer { finishRemoteRepositoryMutation(operation, store: store) }
+
+    do {
+      let token = try repositoryAccessToken(for: profile)
+      let result = try await remoteRepositoryPublishService.resumeReview(
+        draft: draft,
+        profile: profile,
+        token: token
+      )
+      guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
+      store.setRemoteRepositoryPublishResult(result)
+      store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
+      let recoveredRecord = ReleaseRecord.resumedRemoteReview(
+        original: record,
+        profile: profile,
+        result: result
+      )
+      if let index = releaseRecords.firstIndex(where: { $0.id == record.id }) {
+        releaseRecords[index] = recoveredRecord
+      } else {
+        prependReleaseRecord(recoveredRecord)
+      }
+      publishActionMessage = CoreL10n.format("PR/MR 已恢复：%@", result.reviewURL ?? result.branchName)
+      store.save()
+      return result
+    } catch {
+      guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
+      let failureMessage = CoreL10n.format("继续创建 PR/MR 失败：%@", error.localizedDescription)
+      publishActionMessage = failureMessage
+      if let index = releaseRecords.firstIndex(where: { $0.id == record.id }) {
+        releaseRecords[index].summary = failureMessage
+      }
+      store.save()
+      return nil
+    }
+  }
+
+  @discardableResult
   public func withdrawRemoteReview(
     _ record: ReleaseRecord,
     store: WorkbenchStore
@@ -31,12 +98,6 @@ extension PublishingStore {
       publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
       return nil
     }
-    let access = store.consumeFeatureUse(.onlinePublishing)
-    guard access.isAllowed else {
-      publishActionMessage = access.message
-      return nil
-    }
-
     guard let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
       publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
       return nil
@@ -181,11 +242,12 @@ extension PublishingStore {
       publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
       return nil
     }
-    let access = store.consumeFeatureUse(.onlinePublishing)
-    guard access.isAllowed else {
-      publishActionMessage = access.message
+    let reservationResult = store.reserveFeatureUse(.onlinePublishing)
+    guard let reservation = reservationResult.reservation else {
+      publishActionMessage = reservationResult.decision.message
       return nil
     }
+    defer { store.releaseFeatureUseReservation(reservation) }
 
     guard let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
       publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
@@ -213,6 +275,7 @@ extension PublishingStore {
         token: token,
         onProgress: progressHandler
       )
+      store.commitFeatureUseReservation(reservation)
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       store.setRemoteRepositoryPublishResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
@@ -293,12 +356,6 @@ extension PublishingStore {
       publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
       return nil
     }
-    let access = store.consumeFeatureUse(.onlinePublishing)
-    guard access.isAllowed else {
-      publishActionMessage = access.message
-      return nil
-    }
-
     guard let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
       publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
       return nil

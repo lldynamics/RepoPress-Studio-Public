@@ -96,6 +96,20 @@ printf '#!/usr/bin/env python3\nraise SystemExit(0)\n' \
   >"$FIXTURE_ROOT/script/generate_browser_extension_protocol.py"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$FIXTURE_ROOT/script/sync_firefox_browser_extension.sh"
 chmod +x "$FIXTURE_ROOT/script/sync_firefox_browser_extension.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$FIXTURE_ROOT/script/sync_safari_browser_extension.sh"
+chmod +x "$FIXTURE_ROOT/script/sync_safari_browser_extension.sh"
+cat >"$FIXTURE_ROOT/script/build_safari_web_extension.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+product="$root_dir/.build/safari-web-extension/product/RepoPressSafariExtension.appex"
+mkdir -p "$product/Contents/MacOS" "$product/Contents/Resources"
+printf 'fixture Safari extension\n' >"$product/Contents/MacOS/RepoPressSafariExtension"
+chmod +x "$product/Contents/MacOS/RepoPressSafariExtension"
+printf '{"manifest_version":3,"version":"0.30.0"}\n' \
+  >"$product/Contents/Resources/manifest.json"
+STUB
+chmod +x "$FIXTURE_ROOT/script/build_safari_web_extension.sh"
 cat >"$FIXTURE_ROOT/script/firefox_extension_release.py" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -152,6 +166,10 @@ printf '%s\n' \
   '<?xml version="1.0" encoding="UTF-8"?>' \
   '<plist version="1.0"><dict><key>com.apple.security.app-sandbox</key><true/></dict></plist>' \
   >"$FIXTURE_ROOT/Sources/PersonalSitePublisherMac/AppStore.entitlements"
+printf '%s\n' \
+  '<?xml version="1.0" encoding="UTF-8"?>' \
+  '<plist version="1.0"><dict><key>com.apple.security.app-sandbox</key><true/></dict></plist>' \
+  >"$FIXTURE_ROOT/Packaging/SafariWebExtension.entitlements"
 printf 'fixture icon\n' >"$FIXTURE_ROOT/Sources/PersonalSitePublisherMac/Resources/AppIcon.icns"
 printf '{"sourceLanguage":"en","strings":{},"version":"1.0"}\n' \
   >"$FIXTURE_ROOT/Sources/PersonalSitePublisherMac/Resources/Localizable.xcstrings"
@@ -245,6 +263,8 @@ debug_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherB
 [[ "$debug_configuration" == "Debug" ]] || fail "default package did not record Debug configuration"
 [[ -d "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/Resources/BrowserExtension" ]] \
   || fail "direct package omitted browser-extension assets"
+[[ -d "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/PlugIns/RepoPressSafariExtension.appex" ]] \
+  || fail "direct package omitted the Safari Web Extension"
 [[ -x "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/MacOS/KnowledgeNativeMessagingHost" ]] \
   || fail "direct package omitted Firefox native messaging host"
 debug_firefox_signed="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherFirefoxSignedPackageAvailable' "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/Info.plist")"
@@ -299,11 +319,11 @@ direct_hardened_runtime="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublis
 [[ "$direct_hardened_runtime" == "true" ]] \
   || fail "Developer ID package did not record Hardened Runtime evidence"
 runtime_sign_count="$(grep -c -- '--options runtime' "$DIRECT_CODE_SIGN_CALLS")"
-[[ "$runtime_sign_count" == "2" ]] \
-  || fail "Developer ID package did not enable Hardened Runtime on app and native host"
+[[ "$runtime_sign_count" == "3" ]] \
+  || fail "Developer ID package did not enable Hardened Runtime on app, native host, and Safari extension"
 timestamp_sign_count="$(grep -c -- '--timestamp' "$DIRECT_CODE_SIGN_CALLS")"
-[[ "$timestamp_sign_count" == "2" ]] \
-  || fail "Developer ID package did not request secure timestamps for app and native host"
+[[ "$timestamp_sign_count" == "3" ]] \
+  || fail "Developer ID package did not request secure timestamps for app, native host, and Safari extension"
 grep -Fq -- "--entitlements $FIXTURE_ROOT/Packaging/DirectDistribution.entitlements" "$DIRECT_CODE_SIGN_CALLS" \
   || fail "Developer ID package omitted the dedicated Direct entitlements"
 
@@ -355,6 +375,8 @@ core_resource_package_type="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackage
   || fail "App Store package contained unpacked browser-extension assets"
 [[ ! -e "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/MacOS/KnowledgeNativeMessagingHost" ]] \
   || fail "App Store package contained the direct-distribution native messaging host"
+[[ -d "$FIXTURE_ROOT/dist/PersonalSitePublisherMac.app/Contents/PlugIns/RepoPressSafariExtension.appex" ]] \
+  || fail "App Store package omitted the Safari Web Extension"
 grep -Fq "APP_STORE_BUILD" "$PACKAGE_CALLS" \
   || fail "App Store package did not pass the APP_STORE_BUILD compile condition"
 
@@ -395,5 +417,38 @@ fi
 if grep -q $'^app-store-metadata\t' <<<"$quick_checks"; then
   fail "quick gate unexpectedly packages a Release bundle through the metadata gate"
 fi
+
+app_store_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --profile app-store --list)"
+grep -q $'^archive-readiness-strict\tstrict\t' <<<"$app_store_checks" \
+  || fail "App Store profile omitted strict archive readiness"
+if grep -Eq '^(chrome-extension-store-readiness|direct-release-notarization-readiness)\t' <<<"$app_store_checks"; then
+  fail "App Store profile included another distribution channel"
+fi
+
+direct_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --profile direct --list)"
+grep -q $'^direct-release-notarization-readiness\tstrict\t' <<<"$direct_checks" \
+  || fail "direct profile omitted notarization readiness"
+if grep -Eq '^(archive-readiness-strict|chrome-extension-store-readiness)\t' <<<"$direct_checks"; then
+  fail "direct profile included another distribution channel"
+fi
+
+chrome_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --profile chrome --list)"
+grep -q $'^chrome-extension-store-readiness\tstrict\t' <<<"$chrome_checks" \
+  || fail "Chrome profile omitted Chrome Web Store readiness"
+if grep -Eq '^(archive-readiness-strict|direct-release-notarization-readiness)\t' <<<"$chrome_checks"; then
+  fail "Chrome profile included another distribution channel"
+fi
+
+if bash "$ROOT_DIR/script/check_release_gate.sh" --profile edge --list >/dev/null 2>&1; then
+  fail "deferred Edge channel still has a release profile"
+fi
+if bash "$ROOT_DIR/script/check_release_gate.sh" --profile firefox --list >/dev/null 2>&1; then
+  fail "deferred Firefox channel still has a release profile"
+fi
+
+all_profile_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --profile all --list)"
+strict_alias_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --strict --list)"
+[[ "$all_profile_checks" == "$strict_alias_checks" ]] \
+  || fail "--strict is no longer an exact compatibility alias for --profile all"
 
 echo "swift release build gate test: passed"

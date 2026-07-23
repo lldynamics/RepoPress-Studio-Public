@@ -53,10 +53,6 @@ DETAIL_MARKER_PATHS = {
         "Sources/PersonalSitePublisherMac/Views/SiteMaintenanceContentPerformanceSection.swift",
         DETAIL_CONTAINER,
     ],
-    "GeneralDraftLibraryDetailView": [
-        DETAIL_CONTAINER,
-        "Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift",
-    ],
 }
 
 
@@ -125,7 +121,6 @@ def expanded_source_paths(relative_path: str, marker: str) -> list[str]:
                 "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift",
                 "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSectionsExtra.swift",
                 "Sources/PersonalSitePublisherMac/Views/SiteMaintenanceDetailView.swift",
-                "Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift",
             ]
         )
 

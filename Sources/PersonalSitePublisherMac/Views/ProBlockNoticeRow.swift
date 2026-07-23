@@ -7,16 +7,16 @@ struct ProBlockNoticeRow: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       Label("刚才受限：\(notice.feature.localizedDisplayName)", systemImage: notice.feature.systemImage)
-        .font(.caption.weight(.semibold))
+        .font(.workbenchCardTitle)
         .foregroundStyle(WorkbenchTheme.warning)
 
       Text(notice.message)
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
-        .lineLimit(3)
+        .fixedSize(horizontal: false, vertical: true)
 
       Text(notice.nextStep)
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(WorkbenchTheme.warning)
     }
     .padding(8)

@@ -42,6 +42,10 @@ CONFIG_PATH = EXTENSION_ROOT / "firefox-release.json"
 REQUIRED_SOURCE_FILES = (
     "_locales/en/messages.json",
     "_locales/zh_CN/messages.json",
+    "background-capture.js",
+    "background-queue-operations.js",
+    "background-queue-storage.js",
+    "background-security.js",
     "background.js",
     "icons/icon16.png",
     "icons/icon32.png",

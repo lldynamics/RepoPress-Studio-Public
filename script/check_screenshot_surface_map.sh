@@ -31,8 +31,8 @@ required = {
         "source": {
             "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift": [
                 "MacMarkdownComposerView",
-                "markdownBlocks",
-                "pasteAIPromptToClipboard",
+                "MacMarkdownEditorToolbar",
+                "FindReplaceBar",
             ],
             "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift": [
                 "WorkspaceTaskMetadataSection",
@@ -40,22 +40,19 @@ required = {
             ],
         },
     },
-    "ai-chat": {
-        "target": "ai-chat.png",
-        "capture": ["AI assistant Inspector", "conversation", "context", "quick prompts"],
+    "knowledge-library": {
+        "target": "knowledge-library.png",
+        "capture": ["local knowledge library", "import", "search", "cleaned reading content"],
         "source": {
-            "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift": [
-                "ai-assistant-inspector",
-                "ai-assistant-composer",
-                ".keyboardShortcut(.return, modifiers: [.command])",
+            "Sources/PersonalSitePublisherMac/Views/KnowledgeLibraryDetailView.swift": [
+                "knowledge-library-detail",
+                "knowledge-library-reader",
+                "knowledge-library-import-button",
             ],
-            "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorSections.swift": [
-                "AIChatConversationInspectorSection",
-                "AIChatContextOverviewInspectorSection",
-            ],
-            "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore.swift": [
-                "openAIChatWorkspace",
-                "isAIPublishingAssistantPresented = true",
+            "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift": [
+                "knowledge-document-list",
+                "knowledge-search-result-list",
+                "KnowledgeImportAssistantView",
             ],
         },
     },
@@ -119,17 +116,17 @@ required = {
     },
     "general-drafts": {
         "target": "general-drafts.png",
-        "capture": ["general-drafts", "cross-site copy", "publishing sites", "copy to site"],
+        "capture": ["general-drafts", "general drafts", "writing workspace", "copy to site"],
         "source": {
-            "Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift": [
-                "GeneralDraftLibraryDetailView",
-                "copyTargets",
+            "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift": [
+                "contentScopePicker",
+                "draftOwnershipActions",
                 "复制到站点",
             ],
-            "Sources/PublishingWorkbenchCore/Services/GeneralDraftLibraryService.swift": [
-                "GeneralDraftLibraryReport",
-                "publishingProfileCount",
-                "purpose == .publishing",
+            "Sources/PublishingWorkbenchCore/Stores/PublishingStore+DraftOwnershipTransferActions.swift": [
+                "draftOwnershipTransferPlan",
+                ".copyToSite",
+                ".moveToGeneral",
             ],
         },
     },
@@ -139,7 +136,8 @@ required = {
         "source": {
             "Sources/PersonalSitePublisherMac/Support/ScreenshotDemoSettingsPresenter.swift": [
                 "ScreenshotDemoSettingsPresenter",
-                "showSettingsWindow:",
+                "openSettingsIfNeeded",
+                "openSettings()",
                 "requestedSurfaceFromEnvironment == .proSettings",
             ],
             "Sources/PersonalSitePublisherMac/Support/StoreKitProEntitlementCoordinator.swift": [
@@ -213,10 +211,15 @@ for marker in [
     "AXWindowNumber",
     "capture_current_app_window",
     "screencapture -x -l",
+    "screencapture -x -R",
     "--auto-window with --real-data requires --only",
     "--auto-window with --skip-build requires --only",
     "pkill -TERM -x",
     "${ONLY_ID:-writing}",
+    "PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD=1",
+    "PERSONAL_SITE_PUBLISHER_DIST_DIR",
+    "dist/app-store-screenshot",
+    "--package-only --app-store",
 ]:
     if marker not in capture_text:
         errors.append(f"capture script missing demo launch marker {marker!r}")
@@ -229,6 +232,9 @@ for marker in [
     "--list-screenshot-surfaces",
     "contains_screenshot_surface",
     "required_screenshot_surfaces",
+    "SCREENSHOT_CAPTURE_BUILD",
+    "PersonalSitePublisherScreenshotCaptureBuild",
+    "PERSONAL_SITE_PUBLISHER_DIST_DIR",
 ]:
     if marker not in build_script_text:
         errors.append(f"build/run script missing screenshot surface marker {marker!r}")

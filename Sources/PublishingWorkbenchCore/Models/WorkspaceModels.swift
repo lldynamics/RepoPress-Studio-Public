@@ -7,7 +7,6 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
   case sync
   case images
   case contentHealth
-  case generalDrafts
   case maintenance
   case releaseHistory
 
@@ -37,8 +36,6 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
       return "arrow.triangle.2.circlepath"
     case .contentHealth:
       return "checklist"
-    case .generalDrafts:
-      return "shippingbox"
     case .maintenance:
       return "wrench.and.screwdriver"
     case .images:
@@ -62,8 +59,6 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
       return "3"
     case .contentHealth:
       return "4"
-    case .generalDrafts:
-      return "6"
     case .maintenance:
       return "7"
     case .releaseHistory:
@@ -83,7 +78,6 @@ public enum WorkspaceCenterSurface: String, CaseIterable, Sendable {
   case repository
   case images
   case contentHealth
-  case generalDrafts
 }
 
 public enum WorkspaceInspectorRoute: String, CaseIterable, Sendable {
@@ -124,7 +118,7 @@ public enum WorkspaceInspectorPresentation {
     switch section {
     case .writing:
       return .articleMetadata
-    case .library, .generalDrafts:
+    case .library:
       return .unavailable
     case .contentHealth:
       return isMaintenancePresented ? .unavailable : .articleChecks
@@ -163,7 +157,6 @@ public extension WorkspaceSection {
     case .sync: .repository
     case .images: .images
     case .contentHealth: .contentHealth
-    case .generalDrafts: .generalDrafts
     case .maintenance: .contentHealth
     case .releaseHistory: .repository
     }
@@ -201,17 +194,31 @@ public enum WorkspaceVisibilityPolicy {
     .releaseHistory,
   ]
 
-  public static let commandMenuPrimarySections = WorkspaceSection.allCases.filter { section in
-    section != .siteStarter
-      && section != .generalDrafts
-      && !hiddenNavigationSections.contains(section)
-  }
+  /// Primary navigation is an explicit allowlist. New enum cases must never
+  /// become user-facing merely because they were added to `WorkspaceSection`.
+  public static let commandMenuPrimarySections: [WorkspaceSection] = [
+    .writing,
+    .library,
+    .sync,
+    .images,
+    .contentHealth,
+  ]
 
   public static let secondaryEntrySections: [WorkspaceSection] = [
     .siteStarter,
-    .generalDrafts,
   ]
 
+  /// Keep this independent from `allCases` and the advanced command menu.
+  /// Advanced entries may be aliases or context-only routes that should not
+  /// be discoverable as standalone command-palette workspaces.
+  public static let commandPaletteSections: [WorkspaceSection] = [
+    .writing,
+    .library,
+    .sync,
+    .images,
+    .contentHealth,
+    .siteStarter,
+  ]
 }
 
 public enum WorkspaceNavigationPresentation {
@@ -225,6 +232,7 @@ public enum WorkspaceNavigationPresentation {
       + WorkspaceVisibilityPolicy.hiddenNavigationSections
   ).map(WorkspaceNavigationItem.init(section:))
 
+  public static let commandPaletteSections = WorkspaceVisibilityPolicy.commandPaletteSections
 }
 
 public enum EditorDisplayMode: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -752,6 +760,27 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       },
       createdAt: createdAt
     )
+  }
+
+  public static func resumedRemoteReview(
+    original: ReleaseRecord,
+    profile: SiteProfile,
+    result: RemoteRepositoryPublishResult
+  ) -> ReleaseRecord {
+    var recovered = original
+    recovered.kind = .remoteReviewRequest
+    recovered.title = "恢复线上 PR/MR：\(original.siteName ?? profile.name)"
+    recovered.summary = "已从部分完成的远端分支继续创建 PR/MR：\(result.branchName) -> \(result.targetBranch)"
+    recovered.repositoryProvider = result.provider
+    recovered.repositoryBaseURL = profile.repositoryBaseURL
+    recovered.repoOwner = profile.repoOwner
+    recovered.repoName = profile.repoName
+    recovered.branchName = result.branchName
+    recovered.targetBranch = result.targetBranch
+    recovered.commitSHA = result.commitSHA ?? original.commitSHA
+    recovered.reviewURL = result.reviewURL
+    recovered.reviewTitle = result.reviewTitle
+    return recovered
   }
 
   public static func remoteRollback(

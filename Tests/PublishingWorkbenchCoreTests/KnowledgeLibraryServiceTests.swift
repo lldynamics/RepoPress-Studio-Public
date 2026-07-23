@@ -82,6 +82,114 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertTrue(try service.documents().allSatisfy { $0.folderID == folder.id })
   }
 
+  func testBatchImportPreflightFailureLeavesNoPartialDocumentsOrContentFiles() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-batch-preflight-rollback")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    let validCandidate = makeKnowledgeImportCandidate(
+      title: "第一条有效资料",
+      text: "# 第一条\n\n整批导入失败时，这条资料也不能被留下。"
+    )
+    let invalidCandidate = makeKnowledgeImportCandidate(
+      title: "第二条无分段资料",
+      text: "这条资料故意不提供任何可建索分段。",
+      sections: []
+    )
+
+    do {
+      _ = try await service.commit(
+        KnowledgeImportPreview(
+          sourceName: "批量预检失败",
+          candidates: [validCandidate, invalidCandidate]
+        )
+      )
+      XCTFail("后续文件无法分块时，整批导入应失败")
+    } catch let error as KnowledgeLibraryError {
+      guard case .emptyContent = error else {
+        return XCTFail("应报告空内容，实际为：\(error)")
+      }
+    }
+
+    XCTAssertTrue(try service.documents().isEmpty)
+    XCTAssertTrue(storedKnowledgeContentFiles(at: storeURL).isEmpty)
+  }
+
+  func testBatchImportDatabaseFailureRollsBackEveryDocumentAndContentFile() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-batch-database-rollback")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    _ = try service.documents()
+    try executeSQLite(
+      """
+      CREATE TRIGGER reject_second_batch_document
+      BEFORE INSERT ON knowledge_documents
+      WHEN NEW.title = '第二条触发回滚'
+      BEGIN
+        SELECT RAISE(ABORT, 'forced batch rollback');
+      END;
+      """,
+      at: storeURL.appendingPathComponent("library.sqlite")
+    )
+    let firstCandidate = makeKnowledgeImportCandidate(
+      title: "第一条不应留下",
+      text: "# 第一条\n\n数据库后续写入失败时，本文档和内容文件都应回滚。"
+    )
+    let secondCandidate = makeKnowledgeImportCandidate(
+      title: "第二条触发回滚",
+      text: "# 第二条\n\n这条资料的插入由 SQLite 触发器故意拒绝。"
+    )
+
+    do {
+      _ = try await service.commit(
+        KnowledgeImportPreview(
+          sourceName: "批量数据库回滚",
+          candidates: [firstCandidate, secondCandidate]
+        )
+      )
+      XCTFail("任一文档写入失败时，整批导入应失败")
+    } catch {
+      XCTAssertTrue(error.localizedDescription.contains("forced batch rollback"))
+    }
+
+    XCTAssertTrue(try service.documents().isEmpty)
+    XCTAssertTrue(storedKnowledgeContentFiles(at: storeURL).isEmpty)
+  }
+
+  func testCancelledBatchImportNeverStartsDetachedPersistenceWork() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-batch-cancellation")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    let candidate = makeKnowledgeImportCandidate(
+      title: "取消的批量资料",
+      text: "# 取消导入\n\n外层任务取消后，不应再启动脱离管理的持久化工作。"
+    )
+    let started = expectation(description: "批量导入任务已等待")
+    let gate = KnowledgeImportCancellationGate()
+    let task = Task {
+      started.fulfill()
+      await gate.wait()
+      return try await service.commit(
+        KnowledgeImportPreview(sourceName: "取消批量", candidates: [candidate])
+      )
+    }
+
+    await fulfillment(of: [started], timeout: 1)
+    task.cancel()
+    await gate.release()
+    do {
+      _ = try await task.value
+      XCTFail("已取消的批量导入应抛出 CancellationError")
+    } catch is CancellationError {
+      // Expected.
+    }
+
+    XCTAssertTrue(try service.documents().isEmpty)
+    XCTAssertTrue(storedKnowledgeContentFiles(at: storeURL).isEmpty)
+  }
+
   func testRelatedChaptersUseSemanticAndMetadataSignals() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-related-chapters")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -415,6 +523,10 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       <main><article>
         <h1>离线重新净化</h1>
         <p>原始网页归档保存在资料库内部，因此来源消失后仍可升级。</p>
+        <p>查看新帖子</p>
+        <p>12</p>
+        <p>所有人可以回复</p>
+        <p>36</p>
         <section class="comments">不应进入新版正文的评论区。</section>
       </article></main>
     </body></html>
@@ -436,6 +548,18 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertEqual(previews.first?.importPreview.updateCount, 1)
     XCTAssertTrue(previews.first?.importPreview.candidates.first?.normalizedText.contains("来源消失后仍可升级") == true)
     XCTAssertFalse(previews.first?.importPreview.candidates.first?.normalizedText.contains("评论区") == true)
+    XCTAssertFalse(previews.first?.importPreview.candidates.first?.normalizedText.contains("查看新帖子") == true)
+    XCTAssertFalse(previews.first?.importPreview.candidates.first?.normalizedText.contains("所有人可以回复") == true)
+    XCTAssertFalse(
+      previews.first?.importPreview.candidates.first?.normalizedText
+        .components(separatedBy: .newlines)
+        .contains("12") == true
+    )
+    XCTAssertFalse(
+      previews.first?.importPreview.candidates.first?.normalizedText
+        .components(separatedBy: .newlines)
+        .contains("36") == true
+    )
 
     let result = try await service.applyLocalContentRepairs(previews)
     XCTAssertEqual(result.updatedCount, 1)
@@ -446,6 +570,11 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     )
     let healthAfterRepair = try await service.libraryHealth()
     XCTAssertEqual(healthAfterRepair.outdatedParserDocumentCount, 0)
+    XCTAssertFalse(try service.normalizedText(documentID: document.id).contains("查看新帖子"))
+    XCTAssertFalse(try service.normalizedText(documentID: document.id).contains("所有人可以回复"))
+    XCTAssertFalse(try service.search(query: "查看新帖子").contains {
+      $0.signals.contains(.fullText)
+    })
     let defaultPreviews = try await service.makeLocalContentRepairPreviews()
     let userRequestedPreviews = try await service.makeLocalContentRepairPreviews(
       documentIDs: [document.id],
@@ -453,6 +582,39 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     )
     XCTAssertTrue(defaultPreviews.isEmpty)
     XCTAssertEqual(userRequestedPreviews.map(\.documentID), [document.id])
+  }
+
+  func testCleaningRuleUpgradeHealthOnlyFlagsOutdatedWebPages() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-cleaning-version-scope")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let markdownURL = rootURL.appendingPathComponent("notes.md")
+    let webpageURL = rootURL.appendingPathComponent("article.html")
+    try "# 普通笔记\n\n这份 Markdown 不需要网页清洗升级。".write(
+      to: markdownURL,
+      atomically: true,
+      encoding: .utf8
+    )
+    try """
+    <html><body><article>
+      <h1>网页资料</h1>
+      <p>这份资料需要跟随网页清洗规则升级。</p>
+    </article></body></html>
+    """.write(to: webpageURL, atomically: true, encoding: .utf8)
+
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    _ = try await service.commit(try await service.makeImportPreview(sourceURL: markdownURL))
+    _ = try await service.commit(try await service.makeImportPreview(sourceURL: webpageURL))
+    try executeSQLite(
+      "UPDATE knowledge_revisions SET parser_version = 1;",
+      at: storeURL.appendingPathComponent("library.sqlite")
+    )
+
+    let health = try await service.libraryHealth()
+
+    XCTAssertEqual(health.documentCount, 2)
+    XCTAssertEqual(health.outdatedParserDocumentCount, 1)
+    XCTAssertEqual(health.locallyRepairableDocumentCount, 1)
   }
 
   func testBrowserCaptureImportsArchiveIntoFolderAndCanReclassifyDuplicate() async throws {
@@ -1327,6 +1489,158 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     })
   }
 
+  func testFullSemanticRepairPrunesUnknownModelsAndHealthEnumeratesThem() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-semantic-prune-unknown-model")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let sourceURL = rootURL.appendingPathComponent("retrieval.md")
+    try """
+    # 检索维护
+
+    全量修复应清理已经停用的语义模型，避免旧向量永久残留。
+    """.write(to: sourceURL, atomically: true, encoding: .utf8)
+
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    _ = try await service.commit(try await service.makeImportPreview(sourceURL: sourceURL))
+    let databaseURL = storeURL.appendingPathComponent("library.sqlite")
+    try executeSQLite(
+      """
+      INSERT INTO knowledge_chunk_embeddings (
+        chunk_id, revision_id, model_id, dimension, vector, created_at
+      )
+      SELECT id, revision_id, 'retired-semantic-model', 2, zeroblob(8), 0
+      FROM knowledge_chunks
+      LIMIT 1;
+      """,
+      at: databaseURL
+    )
+
+    XCTAssertEqual(try querySQLiteInt(
+      "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'retired-semantic-model';",
+      at: databaseURL
+    ), 1)
+    let healthBeforeRepair = try await service.libraryHealth()
+    XCTAssertGreaterThan(healthBeforeRepair.semanticRepairChunkCount, 0)
+
+    let report = try await service.repairSemanticVectors()
+
+    XCTAssertGreaterThan(report.regeneratedVectorCount, 0)
+    XCTAssertEqual(try querySQLiteInt(
+      "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'retired-semantic-model';",
+      at: databaseURL
+    ), 0)
+    let healthAfterRepair = try await service.libraryHealth()
+    XCTAssertEqual(healthAfterRepair.semanticRepairChunkCount, 0)
+  }
+
+  func testFullSemanticRepairRollsBackDeleteWhenRebuildInsertFails() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-semantic-repair-rollback")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let sourceURL = rootURL.appendingPathComponent("transaction.md")
+    try """
+    # 事务修复
+
+    新索引写入失败时，旧索引必须完整保留并继续可用。
+    """.write(to: sourceURL, atomically: true, encoding: .utf8)
+
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    _ = try await service.commit(try await service.makeImportPreview(sourceURL: sourceURL))
+    let databaseURL = storeURL.appendingPathComponent("library.sqlite")
+    try executeSQLite(
+      """
+      INSERT INTO knowledge_chunk_embeddings (
+        chunk_id, revision_id, model_id, dimension, vector, created_at
+      )
+      SELECT id, revision_id, 'retired-semantic-model', 2, zeroblob(8), 0
+      FROM knowledge_chunks
+      LIMIT 1;
+      CREATE TRIGGER force_semantic_rebuild_rollback
+      BEFORE INSERT ON knowledge_chunk_embeddings
+      WHEN NEW.model_id = 'local-semantic-hash-v2'
+      BEGIN
+        SELECT RAISE(ABORT, 'forced semantic rebuild rollback');
+      END;
+      """,
+      at: databaseURL
+    )
+    let originalVectorCount = try querySQLiteInt(
+      "SELECT COUNT(*) FROM knowledge_chunk_embeddings;",
+      at: databaseURL
+    )
+
+    do {
+      _ = try await service.repairSemanticVectors()
+      XCTFail("重建向量插入失败时应回滚整个替换事务")
+    } catch {
+      XCTAssertTrue(error.localizedDescription.contains("forced semantic rebuild rollback"))
+    }
+
+    XCTAssertEqual(try querySQLiteInt(
+      "SELECT COUNT(*) FROM knowledge_chunk_embeddings;",
+      at: databaseURL
+    ), originalVectorCount)
+    XCTAssertEqual(try querySQLiteInt(
+      "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'retired-semantic-model';",
+      at: databaseURL
+    ), 1)
+    XCTAssertGreaterThan(try querySQLiteInt(
+      "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'local-semantic-hash-v2';",
+      at: databaseURL
+    ), 0)
+  }
+
+  func testDocumentSemanticRepairPrunesOnlySelectedDocuments() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-semantic-partial-prune")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let firstURL = rootURL.appendingPathComponent("first.md")
+    let secondURL = rootURL.appendingPathComponent("second.md")
+    try "# 第一份资料\n\n局部修复只替换选中的资料。".write(
+      to: firstURL,
+      atomically: true,
+      encoding: .utf8
+    )
+    try "# 第二份资料\n\n未选中的资料索引必须保持不变。".write(
+      to: secondURL,
+      atomically: true,
+      encoding: .utf8
+    )
+
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    _ = try await service.commit(try await service.makeImportPreview(sourceURL: firstURL))
+    _ = try await service.commit(try await service.makeImportPreview(sourceURL: secondURL))
+    let firstDocumentID = try XCTUnwrap(service.documents().first { $0.title == "第一份资料" }?.id)
+    let databaseURL = storeURL.appendingPathComponent("library.sqlite")
+    try executeSQLite(
+      """
+      INSERT INTO knowledge_chunk_embeddings (
+        chunk_id, revision_id, model_id, dimension, vector, created_at
+      )
+      SELECT id, revision_id, 'retired-semantic-model', 2, zeroblob(8), 0
+      FROM knowledge_chunks;
+      """,
+      at: databaseURL
+    )
+
+    _ = try await service.repairSemanticVectors(documentIDs: [firstDocumentID])
+
+    XCTAssertEqual(try querySQLiteInt(
+      """
+      SELECT COUNT(*)
+      FROM knowledge_chunk_embeddings e
+      JOIN knowledge_chunks c ON c.id = e.chunk_id
+      WHERE e.model_id = 'retired-semantic-model'
+        AND c.document_id = '\(firstDocumentID.uuidString)';
+      """,
+      at: databaseURL
+    ), 0)
+    XCTAssertGreaterThan(try querySQLiteInt(
+      "SELECT COUNT(*) FROM knowledge_chunk_embeddings WHERE model_id = 'retired-semantic-model';",
+      at: databaseURL
+    ), 0)
+  }
+
   func testKnowledgeBackupRoundTripRestoresFoldersPinsAndReferencedFiles() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-backup-round-trip")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -1397,6 +1711,60 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertTrue(try restoredService.normalizedText(documentID: document.id).contains("本地知识"))
   }
 
+  func testKnowledgeBackupRoundTripRestoresBrowserCapturedText() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-browser-capture-backup")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let backupURL = rootURL.appendingPathComponent("browser-capture.pslibrarybackup", isDirectory: true)
+    let capturedText = """
+    # 浏览器采集正文
+
+    这段文字必须和原始网页归档一起进入资料库备份。
+    """
+    let archive = Data("From: browser-extension\nContent-Type: multipart/related".utf8)
+    var restoredDocumentID: UUID?
+
+    do {
+      let service = KnowledgeLibraryService(rootURL: storeURL)
+      let capture = KnowledgeBrowserCapture(
+        sourceURL: try XCTUnwrap(URL(string: "https://example.com/backup-proof")),
+        title: "浏览器采集备份测试",
+        authors: ["测试作者"],
+        language: "zh-CN",
+        summary: "验证采集正文和网页归档能够备份恢复",
+        tags: ["备份", "浏览器采集"],
+        capturedAt: Date(timeIntervalSince1970: 1_700_000_000),
+        contentText: capturedText,
+        archiveFormat: "mhtml",
+        archiveData: archive
+      )
+      let result = try await service.commit(
+        try await service.makeBrowserImportPreview(capture: capture)
+      )
+      restoredDocumentID = try XCTUnwrap(result.documentIDs.first)
+
+      _ = try await service.createBackup(
+        at: backupURL,
+        applicationVersion: "test-browser-capture"
+      )
+      let manifest = try decodeKnowledgeBackupManifest(at: backupURL)
+      XCTAssertTrue(manifest.files.contains { $0.relativePath.hasPrefix("captured/") })
+      XCTAssertTrue(manifest.files.contains { $0.relativePath.hasPrefix("blobs/") })
+      XCTAssertTrue(manifest.files.contains { $0.relativePath.hasPrefix("normalized/") })
+      _ = try await service.stageRestore(from: backupURL)
+    }
+
+    let outcome = KnowledgeLibraryService.applyPendingRestoreIfNeeded(rootURL: storeURL)
+    guard case .restored = outcome else {
+      return XCTFail("应恢复包含浏览器采集正文的资料库备份，实际结果：\(outcome)")
+    }
+
+    let restoredService = KnowledgeLibraryService(rootURL: storeURL)
+    let documentID = try XCTUnwrap(restoredDocumentID)
+    XCTAssertEqual(try restoredService.capturedText(documentID: documentID), capturedText)
+    XCTAssertTrue(try restoredService.normalizedText(documentID: documentID).contains("必须和原始网页归档一起"))
+  }
+
   func testKnowledgeBackupRejectsTamperedFile() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-backup-tampered")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -1465,6 +1833,180 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       }
       XCTAssertEqual(path, "../escape")
     }
+  }
+
+  func testKnowledgeBackupRejectsSymbolicLinkPackageRoot() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-backup-root-symlink")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let sourceURL = rootURL.appendingPathComponent("source.md")
+    try "# 根目录链接测试\n\n不能通过符号链接读取整个备份包。".write(
+      to: sourceURL,
+      atomically: true,
+      encoding: .utf8
+    )
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    _ = try await service.commit(try await service.makeImportPreview(sourceURL: sourceURL))
+    let backupURL = rootURL.appendingPathComponent("actual.pslibrarybackup", isDirectory: true)
+    _ = try await service.createBackup(at: backupURL, applicationVersion: "test")
+    let linkedBackupURL = rootURL.appendingPathComponent("linked.pslibrarybackup", isDirectory: true)
+    try FileManager.default.createSymbolicLink(
+      at: linkedBackupURL,
+      withDestinationURL: backupURL
+    )
+
+    do {
+      _ = try await service.inspectBackup(at: linkedBackupURL)
+      XCTFail("符号链接备份包不应通过校验")
+    } catch let error as KnowledgeLibraryBackupError {
+      XCTAssertEqual(error, .invalidPath("manifest.json"))
+    }
+  }
+
+  func testKnowledgeBackupRejectsSymbolicLinkParentDirectory() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-backup-parent-symlink")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let sourceURL = rootURL.appendingPathComponent("source.md")
+    try "# 父目录链接测试\n\n备份文件的父目录必须位于包内。".write(
+      to: sourceURL,
+      atomically: true,
+      encoding: .utf8
+    )
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    _ = try await service.commit(try await service.makeImportPreview(sourceURL: sourceURL))
+    let backupURL = rootURL.appendingPathComponent("parent.pslibrarybackup", isDirectory: true)
+    _ = try await service.createBackup(at: backupURL, applicationVersion: "test")
+
+    let manifest = try decodeKnowledgeBackupManifest(at: backupURL)
+    let nestedRecord = try XCTUnwrap(manifest.files.first {
+      $0.relativePath.split(separator: "/").count >= 2
+    })
+    let storageDirectoryName = try XCTUnwrap(
+      nestedRecord.relativePath.split(separator: "/").first.map(String.init)
+    )
+    let packagedDirectoryURL = backupURL.appendingPathComponent(
+      storageDirectoryName,
+      isDirectory: true
+    )
+    let externalDirectoryURL = rootURL.appendingPathComponent(
+      "external-\(storageDirectoryName)",
+      isDirectory: true
+    )
+    try FileManager.default.copyItem(at: packagedDirectoryURL, to: externalDirectoryURL)
+    try FileManager.default.removeItem(at: packagedDirectoryURL)
+    try FileManager.default.createSymbolicLink(
+      at: packagedDirectoryURL,
+      withDestinationURL: externalDirectoryURL
+    )
+
+    do {
+      _ = try await service.inspectBackup(at: backupURL)
+      XCTFail("父目录为符号链接的备份文件不应通过校验")
+    } catch let error as KnowledgeLibraryBackupError {
+      XCTAssertEqual(error, .invalidPath(nestedRecord.relativePath))
+    }
+  }
+
+  func testKnowledgeBackupEnforcesManifestAndArchiveResourceLimits() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-backup-limits")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let sourceURL = rootURL.appendingPathComponent("source.md")
+    try "# 资源上限测试\n\n备份读取必须在固定资源预算内完成。".write(
+      to: sourceURL,
+      atomically: true,
+      encoding: .utf8
+    )
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    _ = try await service.commit(try await service.makeImportPreview(sourceURL: sourceURL))
+    let backupURL = rootURL.appendingPathComponent("limits.pslibrarybackup", isDirectory: true)
+    _ = try await service.createBackup(at: backupURL, applicationVersion: "test")
+    let manifest = try decodeKnowledgeBackupManifest(at: backupURL)
+    XCTAssertGreaterThan(manifest.files.count, 1)
+    XCTAssertGreaterThan(manifest.totalByteCount, 1)
+
+    let manifestLimitedService = KnowledgeLibraryBackupService(
+      rootURL: storeURL,
+      limits: .init(maximumManifestByteCount: 1)
+    )
+    do {
+      _ = try manifestLimitedService.inspectBackup(at: backupURL)
+      XCTFail("超出上限的清单不应被完整载入")
+    } catch let error as KnowledgeLibraryBackupError {
+      XCTAssertEqual(error, .manifestTooLarge(maximumByteCount: 1))
+    }
+
+    let fileCountLimit = manifest.files.count - 1
+    let fileCountLimitedService = KnowledgeLibraryBackupService(
+      rootURL: storeURL,
+      limits: .init(maximumFileCount: fileCountLimit)
+    )
+    do {
+      _ = try fileCountLimitedService.inspectBackup(at: backupURL)
+      XCTFail("文件数量超限的备份不应通过校验")
+    } catch let error as KnowledgeLibraryBackupError {
+      XCTAssertEqual(error, .tooManyFiles(maximumCount: fileCountLimit))
+    }
+
+    let singleFileLimitedService = KnowledgeLibraryBackupService(
+      rootURL: storeURL,
+      limits: .init(maximumSingleFileByteCount: 1)
+    )
+    do {
+      _ = try singleFileLimitedService.inspectBackup(at: backupURL)
+      XCTFail("单个文件超限的备份不应通过校验")
+    } catch let error as KnowledgeLibraryBackupError {
+      guard case .fileTooLarge(let path, let maximumByteCount) = error else {
+        return XCTFail("应报告单文件大小超限，实际为：\(error)")
+      }
+      XCTAssertTrue(manifest.files.map(\.relativePath).contains(path))
+      XCTAssertEqual(maximumByteCount, 1)
+    }
+
+    let totalByteLimit = manifest.totalByteCount - 1
+    let totalLimitedService = KnowledgeLibraryBackupService(
+      rootURL: storeURL,
+      limits: .init(maximumTotalByteCount: totalByteLimit)
+    )
+    do {
+      _ = try totalLimitedService.inspectBackup(at: backupURL)
+      XCTFail("总容量超限的备份不应通过校验")
+    } catch let error as KnowledgeLibraryBackupError {
+      XCTAssertEqual(error, .backupTooLarge(maximumByteCount: totalByteLimit))
+    }
+  }
+
+  func testKnowledgeBackupStageRestoreCopiesOnlyManifestFiles() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-backup-listed-files")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let sourceURL = rootURL.appendingPathComponent("source.md")
+    try "# 清单复制测试\n\n恢复暂存区只能接收清单声明的文件。".write(
+      to: sourceURL,
+      atomically: true,
+      encoding: .utf8
+    )
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    _ = try await service.commit(try await service.makeImportPreview(sourceURL: sourceURL))
+    let backupURL = rootURL.appendingPathComponent("listed.pslibrarybackup", isDirectory: true)
+    _ = try await service.createBackup(at: backupURL, applicationVersion: "test")
+    let unlistedURL = backupURL.appendingPathComponent("unlisted/private.txt")
+    try FileManager.default.createDirectory(
+      at: unlistedURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try "不得进入恢复区".write(to: unlistedURL, atomically: true, encoding: .utf8)
+
+    _ = try await service.stageRestore(from: backupURL)
+
+    let pendingURL = KnowledgeLibraryBackupService.pendingRestoreURL(for: storeURL)
+    XCTAssertFalse(FileManager.default.fileExists(
+      atPath: pendingURL.appendingPathComponent("unlisted/private.txt").path
+    ))
+    XCTAssertTrue(FileManager.default.fileExists(
+      atPath: pendingURL.appendingPathComponent("library.sqlite").path
+    ))
   }
 
   private func makeEPUB(
@@ -1563,6 +2105,42 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     }
   }
 
+  private func makeKnowledgeImportCandidate(
+    title: String,
+    text: String,
+    sections: [KnowledgeExtractedSection]? = nil
+  ) -> KnowledgeImportCandidate {
+    let contentHash = KnowledgeChunkingService.contentHash(for: text)
+    return KnowledgeImportCandidate(
+      kind: .markdown,
+      title: title,
+      sourceName: "\(title).md",
+      originalFilenameExtension: "md",
+      originalData: Data(text.utf8),
+      originalContentHash: contentHash,
+      normalizedText: text,
+      normalizedContentHash: contentHash,
+      sections: sections ?? [KnowledgeExtractedSection(headingPath: title, text: text)]
+    )
+  }
+
+  private func storedKnowledgeContentFiles(at rootURL: URL) -> [URL] {
+    ["blobs", "captured", "normalized"].flatMap { directoryName -> [URL] in
+      let directoryURL = rootURL.appendingPathComponent(directoryName, isDirectory: true)
+      guard let enumerator = FileManager.default.enumerator(
+        at: directoryURL,
+        includingPropertiesForKeys: [.isRegularFileKey]
+      ) else { return [] }
+      return enumerator.compactMap { item in
+        guard let url = item as? URL,
+              (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+          return nil
+        }
+        return url
+      }
+    }
+  }
+
   private func querySQLiteInt(_ sql: String, at databaseURL: URL) throws -> Int {
     var database: OpaquePointer?
     guard sqlite3_open(databaseURL.path, &database) == SQLITE_OK, let database else {
@@ -1630,5 +2208,23 @@ private final class KnowledgeSearchCancellationProbe: @unchecked Sendable {
     observedCancellation = true
     lock.unlock()
     throw CancellationError()
+  }
+}
+
+private actor KnowledgeImportCancellationGate {
+  private var continuation: CheckedContinuation<Void, Never>?
+  private var isReleased = false
+
+  func wait() async {
+    guard !isReleased else { return }
+    await withCheckedContinuation { continuation in
+      self.continuation = continuation
+    }
+  }
+
+  func release() {
+    isReleased = true
+    continuation?.resume()
+    continuation = nil
   }
 }

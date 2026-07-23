@@ -7,19 +7,18 @@ extension RepositoryWorkspaceView {
   var repositoryStageContent: some View {
     switch stage {
     case .overview:
-      repositorySummary
-      repositoryScanProgress
-      onlinePublishCenterSection
-      repositorySyncPlan
-      pathRules
+      repositoryOverviewLayout
     case .changes:
       repositoryScanProgress
       remoteChangedFiles
       changedFiles
-    case .automation:
-      repositoryAutoSyncSection
-    case .preview:
-      localPreviewSection
+    case .checks:
+      VStack(alignment: .leading, spacing: 16) {
+        repositoryAutoSyncSection
+        localPreviewSection
+        repositorySyncPlan
+        pathRules
+      }
     case .source:
       EmptyView()
     case .history:
@@ -31,65 +30,229 @@ extension RepositoryWorkspaceView {
     !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty
   }
 
-  var repositoryActionsMenu: some View {
-    Menu {
-      Button {
-        chooseRepository()
-      } label: {
-        Label("更换仓库", systemImage: "folder")
+  var repositoryPrimaryActions: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: 3) {
+        Text("常用操作")
+          .font(.headline)
+          .accessibilityAddTraits(.isHeader)
+        Text("仓库管理与发布入口始终显示；实际写入和线上发布仍在统一发布流程中确认。")
+          .font(.callout)
+          .foregroundStyle(.secondary)
       }
-      .disabled(store.repository.scanState.isScanning)
 
-      if store.repository.scanState.isScanning {
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 150, maximum: 230), spacing: 10)],
+        alignment: .leading,
+        spacing: 10
+      ) {
         Button {
-          store.repository.cancelScan()
+          chooseRepository()
         } label: {
-          Label("取消扫描", systemImage: "xmark.circle")
+          Label(
+            hasSelectedRepository ? String(localized: "更换仓库") : String(localized: "选择站点文件夹"),
+            systemImage: "folder"
+          )
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-      } else {
+        .buttonStyle(.bordered)
+        .disabled(store.repository.scanState.isScanning)
+        .accessibilityIdentifier("repository-action-select-folder")
+
+        if store.repository.scanState.isScanning {
+          Button {
+            store.repository.cancelScan()
+          } label: {
+            Label("取消扫描", systemImage: "xmark.circle")
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .buttonStyle(.bordered)
+          .accessibilityIdentifier("repository-action-scan")
+        } else {
+          Button {
+            scanRepository()
+          } label: {
+            Label(
+              hasSelectedRepository ? String(localized: "重新扫描") : String(localized: "扫描仓库"),
+              systemImage: "arrow.clockwise"
+            )
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .buttonStyle(.bordered)
+          .disabled(!hasSelectedRepository)
+          .help(
+            hasSelectedRepository
+              ? String(localized: "重新读取仓库结构、Git 状态和文件变化")
+              : String(localized: "请先选择站点文件夹")
+          )
+          .accessibilityIdentifier("repository-action-scan")
+        }
+
         Button {
-          scanRepository()
+          Task {
+            await store.importDraftsFromLocalRepositoryAsync()
+          }
         } label: {
-          Label("重新扫描", systemImage: "arrow.clockwise")
+          Label("导入文章", systemImage: "tray.and.arrow.down")
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-      }
+        .buttonStyle(.bordered)
+        .disabled(!hasSelectedRepository || store.repository.scanState.isScanning)
+        .help(
+          hasSelectedRepository
+            ? String(localized: "将仓库中的文章导入写作列表")
+            : String(localized: "请先选择站点文件夹")
+        )
+        .accessibilityIdentifier("repository-action-import")
 
-      Divider()
-
-      Button {
-        Task {
-          await store.importDraftsFromLocalRepositoryAsync()
+        Button {
+          isContentMigrationPresented = true
+        } label: {
+          Label("内容迁移", systemImage: "arrow.triangle.2.circlepath.doc.on.clipboard")
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-      } label: {
-        Label("导入文章", systemImage: "tray.and.arrow.down")
-      }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("repository-action-migrate")
 
-      Button {
-        isContentMigrationPresented = true
-      } label: {
-        Label("内容迁移", systemImage: "arrow.triangle.2.circlepath.doc.on.clipboard")
+        Button {
+          openUnifiedPublishFlow()
+        } label: {
+          Label("打开发布流程", systemImage: "paperplane")
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .workbenchProminentActionStyle()
+        .disabled(store.selectedDraft == nil)
+        .help(store.selectedDraft == nil ? "请先选择一篇文章" : "检查并选择保存到本地或发布上线")
+        .accessibilityIdentifier("repository-action-open-publish")
       }
-    } label: {
-      Label("仓库操作", systemImage: "ellipsis.circle")
+      .controlSize(.regular)
     }
-    .accessibilityLabel("仓库操作")
+    .padding(14)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("repository-primary-actions")
+  }
+
+  var repositoryOverviewLayout: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .top, spacing: 16) {
+        repositoryOverviewPrimaryColumn
+          .frame(minWidth: 620, maxWidth: .infinity, alignment: .topLeading)
+        repositoryOverviewContextColumn
+          .frame(width: WorkbenchPageMetrics.operationalContextWidth, alignment: .topLeading)
+      }
+
+      VStack(alignment: .leading, spacing: 16) {
+        repositoryOverviewPrimaryColumn
+        repositoryOverviewContextColumn
+      }
+    }
+  }
+
+  private var repositoryOverviewPrimaryColumn: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      repositoryScanProgress
+      if prioritizesOnlinePublishForScreenshot {
+        onlinePublishCenterSection
+      }
+      repositorySummary
+      repositoryProblemsSection
+      if !prioritizesOnlinePublishForScreenshot {
+        onlinePublishCenterSection
+      }
+      repositoryAutoSyncSection
+    }
+  }
+
+  private var prioritizesOnlinePublishForScreenshot: Bool {
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    ScreenshotDemoDataService.isEnabledFromEnvironment
+      && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .syncAPIPublish
+#else
+    false
+#endif
+  }
+
+  private var repositoryOverviewContextColumn: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      repositoryInformationSection
+      repositoryOverviewLocalPreviewSection
+      repositoryOverviewSyncPlanSection
+      pathRules
+    }
+  }
+
+  @ViewBuilder
+  private var repositoryOverviewLocalPreviewSection: some View {
+    if store.localSitePreviewPlan != nil {
+      localPreviewSection
+    } else {
+      repositoryUnavailableToolCard(
+        title: "本地预览",
+        detail: "尚未识别可用的本地预览命令。请先扫描仓库，或在站点配置中补充预览设置。",
+        systemImage: "play.rectangle",
+        identifier: "repository-section-local-preview"
+      )
+    }
+  }
+
+  @ViewBuilder
+  private var repositoryOverviewSyncPlanSection: some View {
+    if store.repositorySyncCommandPlan != nil {
+      repositorySyncPlan
+    } else {
+      repositoryUnavailableToolCard(
+        title: "同步建议",
+        detail: "尚未生成同步建议。请先扫描仓库，并确认当前分支已经设置 upstream。",
+        systemImage: "arrow.triangle.2.circlepath",
+        identifier: "repository-section-sync-plan"
+      )
+    }
+  }
+
+  private func repositoryUnavailableToolCard(
+    title: LocalizedStringKey,
+    detail: LocalizedStringKey,
+    systemImage: String,
+    identifier: String
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Label(title, systemImage: systemImage)
+        .font(.headline)
+        .accessibilityAddTraits(.isHeader)
+      Text(detail)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier(identifier)
   }
 
   @ViewBuilder
   var repositoryWorkflowBanner: some View {
     if !hasSelectedRepository {
       workflowBanner(
-        title: "尚未选择本地仓库",
-        detail: "先选择静态站点仓库，才能扫描变更、写入文章或启动预览。",
+        title: "先选择站点文件夹",
+        detail: "请选择保存网站文章和图片的文件夹。",
         systemImage: "externaldrive.badge.questionmark",
         tint: WorkbenchTheme.warning,
-        actionTitle: "选择仓库",
+        actionTitle: "选择站点文件夹",
         action: chooseRepository
       )
     } else if store.repository.scanState.isScanning {
       workflowBanner(
         title: "正在扫描仓库",
-        detail: store.repository.scanState.message,
+        detail: LocalizedStringKey(store.repository.scanState.message),
         systemImage: "arrow.clockwise",
         tint: .secondary,
         actionTitle: "取消扫描",
@@ -98,38 +261,38 @@ extension RepositoryWorkspaceView {
     } else if let report = store.repositoryReport,
               let issue = report.preflightIssues.first(where: { $0.severity == .error }) {
       workflowBanner(
-        title: "仓库配置阻断：\(issue.title)",
-        detail: issue.message,
+        title: "需要先处理：\(issue.title)",
+        detail: LocalizedStringKey(issue.message),
         systemImage: "xmark.octagon",
         tint: WorkbenchTheme.risk,
-        actionTitle: "查看概览",
-        action: { stage = .overview }
+        actionTitle: "打开发布规则",
+        action: openPublishingRulesSettings
       )
     } else if let report = store.repositoryReport, !report.remoteChangedFiles.isEmpty {
       workflowBanner(
-        title: "远端有 \(report.remoteChangedFiles.count) 个变更",
-        detail: "先审阅远端 diff，确认是否导入或合并后再写入与发布。",
+        title: "网站上有 \(report.remoteChangedFiles.count) 个更新",
+        detail: "先查看这些更新，避免覆盖其他设备或网站上的新内容。",
         systemImage: "arrow.down.doc",
         tint: WorkbenchTheme.warning,
-        actionTitle: "审阅变更",
+        actionTitle: "查看文件变更",
         action: { stage = .changes }
       )
     } else if let report = store.repositoryReport, !report.changedFiles.isEmpty {
       workflowBanner(
-        title: "本地有 \(report.changedFiles.count) 个变更",
-        detail: "先确认文章、图片和配置 diff，再进入写入与发布。",
+        title: "这台 Mac 上有 \(report.changedFiles.count) 个文件变化",
+        detail: "可以先确认变化内容，再决定保存到本地或发布上线。",
         systemImage: "arrow.triangle.2.circlepath",
         tint: WorkbenchTheme.warning,
-        actionTitle: "审阅变更",
+        actionTitle: "查看文件变更",
         action: { stage = .changes }
       )
     } else if store.repositoryReport == nil {
       workflowBanner(
-        title: "仓库尚未扫描",
-        detail: "扫描会识别站点结构、Git 状态和本地变更。",
+        title: "还没有读取站点文件",
+        detail: "扫描只会检查文件和同步状态，不会修改任何内容。",
         systemImage: "arrow.clockwise",
         tint: .secondary,
-        actionTitle: "开始扫描",
+        actionTitle: "扫描站点",
         action: scanRepository
       )
     } else if let draft = store.selectedDraft,
@@ -145,11 +308,11 @@ extension RepositoryWorkspaceView {
       )
     } else if store.selectedDraft != nil {
       workflowBanner(
-        title: "已具备继续发布的仓库上下文",
-        detail: "在统一发布流程中确认检查、差异（Diff）、写入、远端和部署状态。",
+        title: "可以继续保存或发布",
+        detail: "打开发布流程后，只需选择“保存到本地”或“发布上线”。",
         systemImage: "paperplane",
         tint: WorkbenchTheme.success,
-        actionTitle: "打开发布流程",
+        actionTitle: "打开发布",
         action: openUnifiedPublishFlow
       )
     } else {
@@ -164,16 +327,33 @@ extension RepositoryWorkspaceView {
     }
   }
 
-  var repositorySelectionEmptyState: some View {
-    EmptyStateView(
-      title: "选择仓库后继续",
-      message: "变更、写入与发布、自动化和本地预览会在仓库选定后按需显示。",
-      systemImage: "externaldrive.badge.plus",
-      actionTitle: "选择仓库",
-      actionSystemImage: "folder.badge.plus",
-      action: chooseRepository
+  var repositoryGettingStartedGuide: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      Text("第一次使用，只需三步")
+        .font(.headline)
+
+      repositoryOnboardingStep(
+        number: 1,
+        title: "选择站点文件夹",
+        detail: "选择保存网站文章和图片的文件夹。"
+      )
+      repositoryOnboardingStep(
+        number: 2,
+        title: "检查文件变化",
+        detail: "软件会读取同步状态，不会自动修改文件。"
+      )
+      repositoryOnboardingStep(
+        number: 3,
+        title: "保存或发布",
+        detail: "选择文章后，可以只保存到本地，也可以直接发布上线。"
+      )
+    }
+    .padding(16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
     )
-    .frame(maxWidth: .infinity, minHeight: 280)
   }
 
   var repositoryScanRequiredState: some View {
@@ -185,17 +365,11 @@ extension RepositoryWorkspaceView {
         String(localized: "扫描会读取 Git 状态、远端差异和发布相关文件，不会修改仓库。"),
         "arrow.left.arrow.right"
       )
-    case .automation:
+    case .checks:
       content = (
-        String(localized: "扫描后启用自动检查"),
-        String(localized: "先识别项目类型和现有脚本，再为当前仓库提供准确的检查入口。"),
+        String(localized: "扫描后运行仓库检查"),
+        String(localized: "先识别项目类型、远端状态和预览命令，再集中显示异常与验证入口。"),
         "checkmark.shield"
-      )
-    case .preview:
-      content = (
-        String(localized: "扫描后启动本地预览"),
-        String(localized: "扫描会确认站点类型、预览命令和可用端口，然后显示启动操作。"),
-        "play.rectangle"
       )
     case .source:
       content = (
@@ -239,7 +413,7 @@ extension RepositoryWorkspaceView {
   func openUnifiedPublishFlow() {
     if let publishDrawerCommandAction {
       publishDrawerCommandAction.open(
-        "已从仓库工作区进入统一发布流程，请确认检查、差异、写入、远端和部署状态。"
+        "选择保存到本地或发布上线；需要时再展开检查与高级选项。"
       )
     } else {
       store.runPreflight()
@@ -248,36 +422,75 @@ extension RepositoryWorkspaceView {
   }
 
   func workflowBanner(
-    title: String,
-    detail: String,
+    title: LocalizedStringKey,
+    detail: LocalizedStringKey,
     systemImage: String,
     tint: Color,
-    actionTitle: String,
+    actionTitle: LocalizedStringKey,
     action: @escaping () -> Void
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 9) {
+      Text("下一步")
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .center, spacing: 12) {
+          workflowBannerMessage(
+            title: title,
+            detail: detail,
+            systemImage: systemImage,
+            tint: tint
+          )
+          Spacer(minLength: 12)
+          Button(action: action) {
+            Text(actionTitle)
+          }
+          .workbenchProminentActionStyle()
+        }
+
+        VStack(alignment: .leading, spacing: 12) {
+          workflowBannerMessage(
+            title: title,
+            detail: detail,
+            systemImage: systemImage,
+            tint: tint
+          )
+          Button(action: action) {
+            Text(actionTitle)
+              .frame(maxWidth: .infinity)
+          }
+          .workbenchProminentActionStyle()
+        }
+      }
+    }
+    .padding(16)
+    .background(tint.opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("当前状态和下一步")
+    .accessibilityIdentifier("repository-next-action")
+  }
+
+  private func workflowBannerMessage(
+    title: LocalizedStringKey,
+    detail: LocalizedStringKey,
+    systemImage: String,
+    tint: Color
   ) -> some View {
     HStack(alignment: .center, spacing: 12) {
       Image(systemName: systemImage)
         .foregroundStyle(tint)
-        .font(.title3)
-        .frame(width: 24)
+        .font(.title2)
+        .frame(width: 30)
       VStack(alignment: .leading, spacing: 3) {
         Text(title)
-          .font(.callout.weight(.semibold))
+          .font(.headline)
         Text(detail)
-          .font(.caption)
+          .font(.callout)
           .foregroundStyle(.secondary)
-          .lineLimit(2)
+          .fixedSize(horizontal: false, vertical: true)
       }
-      Spacer(minLength: 12)
-      Button(action: action) {
-        Text(actionTitle)
-      }
-      .workbenchProminentActionStyle()
     }
-    .padding(12)
-    .background(tint.opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("当前同步阻断与下一步")
   }
 
   func chooseRepository() {
@@ -322,50 +535,29 @@ extension RepositoryWorkspaceView {
   @ViewBuilder
   var repositorySummary: some View {
     if let report = store.repositoryReport {
-      LazyVGrid(columns: repositoryMetricGridColumns, spacing: 12) {
-        MetricTile(title: "仓库状态", value: report.statusTitle, systemImage: "externaldrive")
-        MetricTile(title: "同步", value: report.syncStatusTitle, systemImage: "arrow.up.arrow.down")
-        MetricTile(title: "Markdown", value: "\(report.markdownFileCount)", systemImage: "doc.text")
-        MetricTile(title: "图片", value: "\(report.imageFileCount)", systemImage: "photo")
-      }
+      let blockingIssueCount = report.preflightIssues.filter { $0.severity == .error }.count
 
-      VStack(alignment: .leading, spacing: 8) {
-        Text(report.rootPath.isEmpty ? "未选择仓库" : report.rootPath)
-          .font(.callout.monospaced())
-          .textSelection(.enabled)
-        Label(report.detectedKind?.localizedDisplayName ?? "未识别", systemImage: "globe")
-          .foregroundStyle(.secondary)
-        if let branchStatus = report.branchStatus {
-          Label(
-            branchStatus.isDetached
-              ? "Detached HEAD"
-              : (branchStatus.branchName ?? String(localized: "未识别分支")),
-            systemImage: "arrow.triangle.branch"
-          )
-            .foregroundStyle(.secondary)
-          Label(branchStatus.upstreamName ?? "未设置 upstream", systemImage: "arrow.up.arrow.down")
+      VStack(alignment: .leading, spacing: 12) {
+        HStack {
+          Text("同步概况")
+            .font(.headline)
+            .accessibilityAddTraits(.isHeader)
+          Spacer()
+          Label(report.syncStatusTitle, systemImage: "arrow.up.arrow.down")
+            .font(.callout.weight(.medium))
             .foregroundStyle(.secondary)
         }
-        if let remote = report.originRemote {
-          HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Label(
-              "\(remote.provider.localizedDisplayName) \(remote.owner)/\(remote.name)",
-              systemImage: "point.3.connected.trianglepath.dotted"
-            )
-              .foregroundStyle(.secondary)
-            Text(remote.remoteURL)
-              .font(.caption.monospaced())
-              .foregroundStyle(.secondary)
-              .workbenchTruncatedIdentity(remote.remoteURL)
-            Spacer()
-            Button {
-              store.applyDetectedRepositoryRemote()
-            } label: {
-              Label("用于 PR/MR", systemImage: "arrow.triangle.pull")
-            }
-          }
+
+        LazyVGrid(columns: repositoryMetricGridColumns, spacing: 10) {
+          MetricTile(title: "本地变化", value: "\(report.changedFiles.count)", systemImage: "desktopcomputer")
+          MetricTile(title: "网站更新", value: "\(report.remoteChangedFiles.count)", systemImage: "arrow.down.doc")
+          MetricTile(title: "需要处理", value: "\(blockingIssueCount)", systemImage: blockingIssueCount == 0 ? "checkmark.circle" : "exclamationmark.triangle")
         }
       }
+      .padding(14)
+      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("repository-section-summary")
     } else {
       EmptyStateView(
         title: "扫描后将显示仓库概况",
@@ -375,6 +567,120 @@ extension RepositoryWorkspaceView {
       )
       .padding(.vertical, 8)
     }
+  }
+
+  @ViewBuilder
+  var repositoryInformationSection: some View {
+    if let report = store.repositoryReport {
+      VStack(alignment: .leading, spacing: 10) {
+        Label("仓库信息", systemImage: "externaldrive")
+          .font(.headline)
+          .accessibilityAddTraits(.isHeader)
+
+        Text(report.rootPath.isEmpty ? "未选择仓库" : report.rootPath)
+          .font(.callout.monospaced())
+          .textSelection(.enabled)
+          .workbenchTruncatedIdentity(report.rootPath, lineLimit: 2)
+
+        Label(report.detectedKind?.localizedDisplayName ?? "未识别", systemImage: "globe")
+        Label("Markdown \(report.markdownFileCount) · 图片 \(report.imageFileCount)", systemImage: "doc.on.doc")
+
+        if let branchStatus = report.branchStatus {
+          Label(
+            branchStatus.isDetached
+              ? "Detached HEAD"
+              : (branchStatus.branchName ?? String(localized: "未识别分支")),
+            systemImage: "arrow.triangle.branch"
+          )
+          Label(branchStatus.upstreamName ?? "未设置 upstream", systemImage: "arrow.up.arrow.down")
+        }
+
+        if let remote = report.originRemote {
+          Divider()
+          Label(
+            "\(remote.provider.localizedDisplayName) \(remote.owner)/\(remote.name)",
+            systemImage: "point.3.connected.trianglepath.dotted"
+          )
+          Text(remote.remoteURL)
+            .font(.caption.monospaced())
+            .foregroundStyle(.secondary)
+            .workbenchTruncatedIdentity(remote.remoteURL, lineLimit: 2)
+          Button {
+            store.applyDetectedRepositoryRemote()
+          } label: {
+            Label("用于线上发布", systemImage: "paperplane")
+              .frame(maxWidth: .infinity)
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.regular)
+        }
+      }
+      .font(.callout)
+      .padding(14)
+      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("repository-section-information")
+    }
+  }
+
+  @ViewBuilder
+  var repositoryProblemsSection: some View {
+    if let report = store.repositoryReport, !report.preflightIssues.isEmpty {
+      VStack(alignment: .leading, spacing: 10) {
+        Label("需要处理", systemImage: "checklist")
+          .font(.headline)
+          .accessibilityAddTraits(.isHeader)
+
+        ForEach(report.preflightIssues) { issue in
+          HStack(alignment: .top, spacing: 8) {
+            Image(systemName: issue.severity.publishDrawerSystemImage)
+              .foregroundStyle(issue.severity.publishDrawerColor)
+              .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+              Text(issue.title)
+                .font(.callout.weight(.medium))
+              Text(issue.message)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+          }
+        }
+      }
+      .padding(14)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("repository-section-problems")
+    }
+  }
+
+  func repositoryOnboardingStep(
+    number: Int,
+    title: LocalizedStringKey,
+    detail: LocalizedStringKey
+  ) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+      Text("\(number)")
+        .font(.caption.weight(.bold))
+        .foregroundStyle(.white)
+        .frame(width: 24, height: 24)
+        .background(WorkbenchTheme.navigationSelection, in: Circle())
+        .accessibilityLabel("第 \(number) 步")
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+          .font(.callout.weight(.semibold))
+        Text(detail)
+          .font(.callout)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .accessibilityElement(children: .combine)
+  }
+
+  func openPublishingRulesSettings() {
+    requestedSettingsTabID = SettingsTab.defaultRules.id
+    openSettings()
   }
 
 }

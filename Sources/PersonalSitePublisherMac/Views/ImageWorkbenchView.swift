@@ -1,15 +1,27 @@
+import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
 struct ImageWorkbenchView: View {
   let store: WorkbenchStore
+  @Binding private var stage: ImageWorkbenchContextStage
   @ObservedObject private var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade
-  @State private var pendingBatchPreview: ImageBatchOperationPreview?
-  @State private var showsAllAffectedDrafts = false
-  @State private var selectedImageDraftID: UUID?
 
-  init(store: WorkbenchStore) {
+  @State private var pendingBatchPreview: ImageBatchOperationPreview?
+  @State private var selectedImageDraftID: UUID?
+  @State private var issueQuery = ""
+  @State private var issueFilter: ImageIssueArticleFilter = .all
+  @State private var repositoryInventory: RepositoryImageInventory?
+  @State private var repositoryInventoryErrorMessage: String?
+  @State private var isRepositoryInventoryLoading = false
+  @State private var selectedRepositoryPath: String?
+  @State private var repositoryTargetDraftID: UUID?
+  @State private var repositoryRefreshRequestID = UUID()
+  @State private var activeRepositoryInventoryTaskID: UUID?
+
+  init(store: WorkbenchStore, stage: Binding<ImageWorkbenchContextStage>) {
     self.store = store
+    _stage = stage
     _imageWorkbench = ObservedObject(wrappedValue: store.imageWorkbench)
   }
 
@@ -19,25 +31,30 @@ struct ImageWorkbenchView: View {
         VStack(alignment: .leading, spacing: 16) {
           header
           batchStatus
-
-          if let summary = store.cachedImageWorkbenchSiteSummary {
-            siteWideSummary(
-              summary,
-              usesSplitLayout: WorkbenchPageMetrics.usesOperationalSplit(for: geometry.size.width)
-            )
-          } else if let errorMessage = imageWorkbench.siteSummaryErrorMessage,
-                    !imageWorkbench.isSiteSummaryLoading {
-            failureCard(errorMessage)
-          } else {
-            loadingCard
-          }
+          stageContent(availableWidth: geometry.size.width)
         }
         .workbenchOperationalPageLayout()
       }
     }
-    .accessibilityLabel("全站图片优化")
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("图片工作台")
+    .accessibilityIdentifier("image-workbench")
+    .onAppear {
+      normalizeRepositoryTargetDraft()
+    }
+    .onChange(of: store.activeProfile.id) { _, _ in
+      repositoryInventory = nil
+      selectedRepositoryPath = nil
+      normalizeRepositoryTargetDraft()
+    }
+    .onChange(of: store.visibleDrafts.map(\.id)) { _, _ in
+      normalizeRepositoryTargetDraft()
+    }
     .task(id: refreshInput) {
       await store.refreshImageWorkbenchSiteSummaryInBackground()
+    }
+    .task(id: repositoryInventoryRefreshInput) {
+      await refreshRepositoryInventory()
     }
     .sheet(item: $pendingBatchPreview) { preview in
       ImageBatchOperationPreviewView(
@@ -51,345 +68,600 @@ struct ImageWorkbenchView: View {
     }
   }
 
-  private var header: some View {
-    HStack(alignment: .firstTextBaseline) {
-      VStack(alignment: .leading, spacing: 4) {
-        Text("全站图片优化")
-          .font(.title2.weight(.semibold))
-        Text("这里只处理跨文章扫描、批量压缩和格式转换；当前文章图片请在 Inspector 中编辑。")
-          .foregroundStyle(.secondary)
+  @ViewBuilder
+  private func stageContent(availableWidth: CGFloat) -> some View {
+    switch stage {
+    case .overview:
+      VStack(alignment: .leading, spacing: 16) {
+        if let summary = store.cachedImageWorkbenchSiteSummary {
+          overview(summary)
+          batchActions(summary)
+        } else {
+          siteSummaryState
+        }
+      }
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("image-workbench-overview")
+
+    case .issues:
+      if let summary = store.cachedImageWorkbenchSiteSummary {
+        issueWorkspace(
+          summary,
+          usesSplitLayout: WorkbenchPageMetrics.usesOperationalSplit(for: availableWidth)
+        )
+      } else {
+        siteSummaryState
       }
 
-      Spacer()
+    case .repository:
+      RepositoryImageBrowserView(
+        inventory: repositoryInventory,
+        isLoading: isRepositoryInventoryLoading,
+        errorMessage: repositoryInventoryErrorMessage,
+        targetDrafts: store.visibleDrafts,
+        targetDraftID: $repositoryTargetDraftID,
+        selectedRepositoryPath: $selectedRepositoryPath,
+        onAttachToSelectedDraft: attachRepositoryImage,
+        onOpenReferencedDraft: openDraft,
+        onOpenRepositorySettings: { store.selectSection(.sync) }
+      )
+    }
+  }
 
-      if let summary = store.cachedImageWorkbenchSiteSummary,
-         summary.imageCount > 0 {
-        Button {
-          Task { @MainActor in
-            await store.refreshImageWorkbenchSiteSummaryInBackground(force: true)
-          }
-        } label: {
-          Label("刷新", systemImage: "arrow.clockwise")
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .disabled(imageWorkbench.isSiteSummaryLoading)
-        .accessibilityLabel("刷新全站图片扫描")
+  @ViewBuilder
+  private var siteSummaryState: some View {
+    if let errorMessage = imageWorkbench.siteSummaryErrorMessage,
+       !imageWorkbench.isSiteSummaryLoading {
+      failureCard(errorMessage)
+    } else {
+      loadingCard
+    }
+  }
+
+  private var header: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .top, spacing: 16) {
+        headerIntroduction
+        Spacer(minLength: 12)
+        headerActions
+      }
+      VStack(alignment: .leading, spacing: 12) {
+        headerIntroduction
+        headerActions
       }
     }
+  }
+
+  private var headerIntroduction: some View {
+      VStack(alignment: .leading, spacing: 5) {
+        Text("图片工作台")
+          .font(.workbenchPageTitle)
+        Text(stageDescription)
+          .font(.workbenchPageSubtitle)
+          .foregroundStyle(.secondary)
+      }
+  }
+
+  private var stageDescription: LocalizedStringKey {
+    switch stage {
+    case .overview:
+      return "查看站点图片状态，并在预览影响范围后执行批量处理。"
+    case .issues:
+      return "选择问题文章，查看图片详情并直接跳转到正文定位。"
+    case .repository:
+      return "浏览仓库中的图片、查看引用关系，并把图片加入目标文章。"
+    }
+  }
+
+  private var headerActions: some View {
+    HStack(spacing: 8) {
+        Button {
+          openRepositoryImageDirectory()
+        } label: {
+          Label("打开图片目录", systemImage: "folder")
+        }
+        .buttonStyle(.bordered)
+        .disabled(repositoryInventory == nil)
+        .accessibilityIdentifier("image-workbench-open-folder")
+
+        Button {
+          openWritingForImageInsertion()
+        } label: {
+          Label(
+            store.visibleDrafts.isEmpty
+              ? String(localized: "新建文章")
+              : String(localized: "前往写作"),
+            systemImage: store.visibleDrafts.isEmpty ? "plus" : "square.and.pencil"
+          )
+        }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("image-workbench-open-writing")
+
+        Button(action: refreshAll) {
+          Label("重新扫描", systemImage: "arrow.clockwise")
+        }
+        .workbenchProminentActionStyle()
+        .disabled(imageWorkbench.isSiteSummaryLoading || isRepositoryInventoryLoading)
+        .accessibilityLabel("重新扫描文章图片和仓库图片")
+        .accessibilityIdentifier("image-workbench-refresh")
+      }
+      .controlSize(.regular)
   }
 
   @ViewBuilder
   private var batchStatus: some View {
     if let message = imageWorkbench.actionMessage {
       Label(message, systemImage: "info.circle")
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
+        .textSelection(.enabled)
     }
 
     if let progress = imageWorkbench.batchProgress {
       HStack(spacing: 10) {
-        HStack(spacing: 10) {
-          ProgressView(value: progress.fractionCompleted)
-            .frame(maxWidth: 220)
-          Text(progress.operation.progressTitle)
-          Text("\(progress.completedDraftCount)/\(progress.totalDraftCount)")
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("全站图片处理进度")
-        .accessibilityValue("\(progress.completedDraftCount)/\(progress.totalDraftCount)")
+        ProgressView(value: progress.fractionCompleted)
+          .frame(maxWidth: 260)
+        Text(progress.operation.progressTitle)
+        Text("\(progress.completedDraftCount)/\(progress.totalDraftCount)")
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(.secondary)
         Spacer()
         Button("取消") {
           imageWorkbench.cancelBatchProcessing()
         }
       }
       .accessibilityElement(children: .contain)
+      .accessibilityLabel("全站图片处理进度")
+      .accessibilityValue("\(progress.completedDraftCount)/\(progress.totalDraftCount)")
     }
   }
 
-  private func siteWideSummary(
-    _ summary: ImageWorkbenchSiteSummary,
-    usesSplitLayout: Bool
-  ) -> some View {
-    WorkbenchOperationalSplitLayout(usesSplitLayout: usesSplitLayout) {
-      siteWideSummaryPrimary(summary)
-    } context: {
-      imageOperationalContextPanel(summary)
-    }
-  }
-
-  private func siteWideSummaryPrimary(_ summary: ImageWorkbenchSiteSummary) -> some View {
-    let metrics = issueMetrics(for: summary)
-    let affectedDrafts = summary.draftSummaries.filter { $0.issueCount > 0 }
-    let selectedDraftID = selectedImageDraftSummary(in: summary)?.draftID
-
-    return VStack(alignment: .leading, spacing: 14) {
+  private func overview(_ summary: ImageWorkbenchSiteSummary) -> some View {
+    let affectedDraftCount = summary.draftSummaries.filter { $0.issueCount > 0 }.count
+    return VStack(alignment: .leading, spacing: 12) {
       HStack(alignment: .firstTextBaseline) {
         VStack(alignment: .leading, spacing: 3) {
-          Text("站点图片扫描")
+          Text("当前站点")
             .font(.headline)
-          Text(
-            "\(summary.draftCount) 篇文章 · \(summary.imageCount) 张图片 · "
-              + ByteCountFormatter.string(fromByteCount: summary.totalByteSize, countStyle: .file)
-          )
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          Text(store.activeProfile.name)
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         Spacer()
+        Text(ByteCountFormatter.string(fromByteCount: summary.totalByteSize, countStyle: .file))
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(.secondary)
       }
 
-      if summary.imageCount == 0 {
-        EmptyStateView(
-          title: "还没有可扫描的图片",
-          message: "在文章中添加图片后，这里会显示缺失元数据、重复文件和可优化格式。",
-          systemImage: "photo.on.rectangle.angled",
-          density: .compactPane,
-          actionTitle: store.selectedDraftID == nil ? "新建文章并插图" : "前往写作并插图",
-          actionSystemImage: "photo.badge.plus",
-          action: {
-            if store.selectedDraftID == nil {
-              store.createDraft()
-            } else {
-              store.selectSection(.writing)
-            }
-          }
-        )
-      } else if metrics.isEmpty {
-        Label("没有需要批量处理的图片问题。", systemImage: "checkmark.circle")
-          .foregroundStyle(WorkbenchTheme.success)
-          .padding(.vertical, 10)
-      } else {
-        LazyVGrid(
-          columns: [GridItem(.adaptive(minimum: 130), spacing: 12)],
-          spacing: 12
-        ) {
-          ForEach(metrics) { metric in
-            MetricTile(
-              title: metric.title,
-              value: String(metric.value),
-              systemImage: metric.systemImage
-            )
-          }
-        }
+      LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+        MetricTile(title: "文章图片", value: "\(summary.imageCount)", systemImage: "photo.on.rectangle")
+        MetricTile(title: "待处理文章", value: "\(affectedDraftCount)", systemImage: "doc.badge.ellipsis")
+        MetricTile(title: "错误", value: "\(summary.errorCount)", systemImage: "xmark.octagon")
+        MetricTile(title: "警告", value: "\(summary.warningCount)", systemImage: "exclamationmark.triangle")
       }
 
-      if !affectedDrafts.isEmpty {
-        VStack(alignment: .leading, spacing: 8) {
-          HStack {
-            Text("待处理文章")
-              .font(.callout.weight(.medium))
-            Spacer()
-            Text("\(affectedDrafts.count) 篇")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-
-          let visibleAffectedDrafts = showsAllAffectedDrafts
-            ? affectedDrafts
-            : Array(affectedDrafts.prefix(20))
-          ForEach(visibleAffectedDrafts) { draftSummary in
-            let isSelected = selectedDraftID == draftSummary.draftID
-            Button {
-              selectedImageDraftID = draftSummary.draftID
-              store.selectDraft(draftSummary.draftID)
-            } label: {
-              HStack(spacing: 10) {
-                Image(systemName: draftSummary.errorCount > 0 ? "xmark.octagon" : "exclamationmark.triangle")
-                  .foregroundStyle(draftSummary.errorCount > 0 ? WorkbenchTheme.risk : WorkbenchTheme.warning)
-                  .frame(width: 16)
-                VStack(alignment: .leading, spacing: 2) {
-                  Text(draftSummary.draftTitle)
-                    .workbenchTruncatedIdentity(draftSummary.draftTitle)
-                  Text(issueSummary(for: draftSummary))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                }
-                Spacer()
-                Text("\(draftSummary.issueCount)")
-                  .font(.caption.monospacedDigit())
-                  .foregroundStyle(.secondary)
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "chevron.right")
-                  .foregroundStyle(
-                    isSelected ? WorkbenchTheme.navigationSelection : Color.secondary
-                  )
-              }
-              .padding(8)
-              .background {
-                RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-                  .fill(
-                    isSelected
-                      ? AnyShapeStyle(
-                        WorkbenchTheme.navigationSelection.opacity(
-                          WorkbenchOpacity.selectionBackground
-                        )
-                      )
-                      : WorkbenchBackgroundStyle.subtle
-                  )
-              }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("选择 \(draftSummary.draftTitle) 查看图片问题")
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
-          }
-
-          if affectedDrafts.count > 20 {
-            WorkbenchListDisclosureFooter(
-              visibleCount: visibleAffectedDrafts.count,
-              totalCount: affectedDrafts.count,
-              showsAll: $showsAllAffectedDrafts
-            )
-          }
-        }
+      HStack(alignment: .top, spacing: 10) {
+        Image(systemName: "lightbulb")
+          .foregroundStyle(WorkbenchTheme.navigationSelection)
+          .accessibilityHidden(true)
+        Text("新手建议：先在“需要处理”中选文章，点“在文章中查看”定位问题；确认后再使用批量操作。")
+          .font(.workbenchSupporting)
+          .foregroundStyle(.secondary)
       }
     }
     .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-  }
-
-  private func imageOperationalContextPanel(_ summary: ImageWorkbenchSiteSummary) -> some View {
-    let selectedDraft = selectedImageDraftSummary(in: summary)
-
-    return VStack(alignment: .leading, spacing: 12) {
-      Label("当前文章", systemImage: "sidebar.right")
-        .font(.headline)
-
-      if let selectedDraft {
-        Text(selectedDraft.draftTitle)
-          .font(.callout.weight(.semibold))
-          .workbenchTruncatedIdentity(selectedDraft.draftTitle)
-
-        InspectorStatRow(
-          title: "图片",
-          value: "\(selectedDraft.imageCount)",
-          systemImage: "photo.on.rectangle"
-        )
-        InspectorStatRow(
-          title: "错误",
-          value: "\(selectedDraft.errorCount)",
-          systemImage: "xmark.octagon"
-        )
-        InspectorStatRow(
-          title: "警告",
-          value: "\(selectedDraft.warningCount)",
-          systemImage: "exclamationmark.triangle"
-        )
-
-        let metrics = issueMetrics(for: selectedDraft)
-        if !metrics.isEmpty {
-          Divider()
-          ForEach(metrics.prefix(7)) { metric in
-            HStack(spacing: 8) {
-              Image(systemName: metric.systemImage)
-                .foregroundStyle(.secondary)
-                .frame(width: 16)
-              Text(LocalizedStringKey(metric.title))
-                .font(.caption)
-              Spacer()
-              Text("\(metric.value)")
-                .font(.caption.monospacedDigit())
-            }
-          }
-        }
-
-        Button {
-          guard store.focusDraft(selectedDraft.draftID, section: .images) else { return }
-          store.setInspectorPresented(true)
-        } label: {
-          Label("Inspector", systemImage: "sidebar.right")
-        }
-        .buttonStyle(.bordered)
-      } else {
-        Label("没有需要批量处理的图片问题。", systemImage: "checkmark.circle")
-          .foregroundStyle(WorkbenchTheme.success)
-      }
-
-      if summary.imageCount > 0 {
-        Divider()
-        optimizationMenu(summary)
-      }
-    }
-    .padding(14)
-    .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
     )
     .accessibilityElement(children: .contain)
-    .accessibilityLabel("当前文章")
+    .accessibilityLabel("图片工作台概览")
   }
 
-  private func selectedImageDraftSummary(
-    in summary: ImageWorkbenchSiteSummary
-  ) -> ImageWorkbenchDraftSummary? {
-    let affectedDrafts = summary.draftSummaries.filter { $0.issueCount > 0 }
-    if let selectedImageDraftID,
-       let selected = affectedDrafts.first(where: { $0.draftID == selectedImageDraftID }) {
-      return selected
+  private func batchActions(_ summary: ImageWorkbenchSiteSummary) -> some View {
+    VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: 3) {
+        Text("批量处理")
+          .font(.workbenchSectionTitle)
+        Text("所有操作始终显示；点击后会先预览影响的文章和图片，不会直接改动文件。")
+          .font(.workbenchSupporting)
+          .foregroundStyle(.secondary)
+      }
+
+      LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 10)], spacing: 10) {
+        ForEach(ImageWorkbenchBatchAction.allActions) { action in
+          batchActionButton(action, summary: summary)
+        }
+      }
     }
-    if let selectedDraftID = store.selectedDraftID,
-       let selected = affectedDrafts.first(where: { $0.draftID == selectedDraftID }) {
-      return selected
-    }
-    return affectedDrafts.first
+    .padding(14)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("图片批量处理")
+    .accessibilityIdentifier("image-workbench-actions")
   }
 
-  private func optimizationMenu(_ summary: ImageWorkbenchSiteSummary) -> some View {
-    Menu {
-      Button {
-        presentBatchPreview(.fillMetadata, summary: summary)
-      } label: {
-        Label("补全 alt/caption", systemImage: "text.badge.checkmark")
-      }
-
-      Divider()
-
-      Button {
-        presentBatchPreview(.file(.optimizeJPEG), summary: summary)
-      } label: {
-        Label("压缩 JPEG", systemImage: "photo.stack")
-      }
-      .disabled(summary.optimizableJPEGCount == 0)
-
-      Button {
-        presentBatchPreview(.file(.convertWebP), summary: summary)
-      } label: {
-        Label("转换为 WebP", systemImage: "arrow.triangle.2.circlepath")
-      }
-      .disabled(summary.webPConvertibleCount == 0)
-
-      Button {
-        presentBatchPreview(.file(.optimizeSVG), summary: summary)
-      } label: {
-        Label("优化 SVG", systemImage: "wand.and.stars")
-      }
-      .disabled(summary.optimizableSVGCount == 0)
-
-      Button {
-        presentBatchPreview(.file(.resizeLargeImages), summary: summary)
-      } label: {
-        Label("缩放大图", systemImage: "arrow.down.right.and.arrow.up.left")
-      }
-      .disabled(summary.resizableImageCount == 0)
+  private func batchActionButton(
+    _ action: ImageWorkbenchBatchAction,
+    summary: ImageWorkbenchSiteSummary
+  ) -> some View {
+    let count = action.targetCount(in: summary)
+    return Button {
+      presentBatchPreview(action, summary: summary)
     } label: {
-      Label("优化…", systemImage: "slider.horizontal.3")
+      HStack(alignment: .top, spacing: 10) {
+        Image(systemName: action.systemImage)
+          .font(.title3)
+          .frame(width: 24)
+        VStack(alignment: .leading, spacing: 3) {
+          Text(action.title)
+            .font(.workbenchCardTitle)
+          Text(action.shortDescription)
+            .font(.workbenchSupporting)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+        }
+        Spacer(minLength: 6)
+        Text("\(count)")
+          .font(.callout.monospacedDigit().weight(.semibold))
+      }
+      .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
     }
-    .disabled(imageWorkbench.isProcessingBatch)
-    .accessibilityLabel("优化全站图片")
+    .buttonStyle(.bordered)
+    .disabled(count == 0 || imageWorkbench.isProcessingBatch)
+    .help(count == 0 ? String(localized: "当前没有符合此操作的图片。") : action.shortDescription)
+    .accessibilityLabel(action.title)
+    .accessibilityValue(String(format: String(localized: "%d 张图片"), count))
+    .accessibilityIdentifier(action.accessibilityIdentifier)
+  }
+
+  private func issueWorkspace(
+    _ summary: ImageWorkbenchSiteSummary,
+    usesSplitLayout: Bool
+  ) -> some View {
+    let affectedDrafts = filteredAffectedDrafts(in: summary)
+    let selectedDraft = selectedImageDraftSummary(candidates: affectedDrafts)
+
+    return VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: 3) {
+        Text("需要处理")
+          .font(.workbenchSectionTitle)
+        Text("选择文章后可查看真实图片和问题，并直接跳到正文或图片检查器。")
+          .font(.workbenchSupporting)
+          .foregroundStyle(.secondary)
+      }
+
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 10) {
+          issueSearchField
+          issueFilterPicker
+        }
+        VStack(alignment: .leading, spacing: 8) {
+          issueSearchField
+          issueFilterPicker
+        }
+      }
+
+      if affectedDrafts.isEmpty {
+        EmptyStateView(
+          title: issueQuery.trimmedForPublishing.isEmpty ? "没有需要处理的图片问题" : "没有匹配的问题文章",
+          message: issueQuery.trimmedForPublishing.isEmpty
+            ? "当前已载入文章的图片检查已通过。"
+            : "请尝试其他文章标题或问题级别。",
+          systemImage: "checkmark.circle",
+          density: .compactPane
+        )
+      } else if usesSplitLayout {
+        HStack(alignment: .top, spacing: 14) {
+          issueArticleList(affectedDrafts, selectedID: selectedDraft?.draftID)
+            .frame(width: 350)
+          selectedDraftDetail(selectedDraft)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+      } else {
+        VStack(alignment: .leading, spacing: 14) {
+          issueArticleList(affectedDrafts, selectedID: selectedDraft?.draftID)
+          selectedDraftDetail(selectedDraft)
+        }
+      }
+    }
+    .padding(14)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
+    .onAppear { normalizeSelectedDraft(candidates: affectedDrafts) }
+    .onChange(of: issueQuery) { _, _ in
+      normalizeSelectedDraft(candidates: filteredAffectedDrafts(in: summary))
+    }
+    .onChange(of: issueFilter) { _, _ in
+      normalizeSelectedDraft(candidates: filteredAffectedDrafts(in: summary))
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("图片问题文章")
+    .accessibilityIdentifier("image-issue-workspace")
+  }
+
+  private func issueArticleList(
+    _ drafts: [ImageWorkbenchDraftSummary],
+    selectedID: UUID?
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
+        Text("文章")
+          .font(.callout.weight(.semibold))
+        Spacer()
+        Text("\(drafts.count)")
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(.secondary)
+      }
+
+      ScrollView {
+        LazyVStack(spacing: 7) {
+          ForEach(drafts) { draft in
+            issueArticleRow(draft, isSelected: selectedID == draft.draftID)
+          }
+        }
+      }
+      .frame(minHeight: 260, idealHeight: 390, maxHeight: 460)
+      .accessibilityIdentifier("image-issue-article-list")
+    }
+    .padding(10)
+    .background(
+      WorkbenchBackgroundStyle.control,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
+  }
+
+  private func issueArticleRow(
+    _ draft: ImageWorkbenchDraftSummary,
+    isSelected: Bool
+  ) -> some View {
+    HStack(spacing: 8) {
+      Button {
+        selectedImageDraftID = draft.draftID
+        repositoryTargetDraftID = draft.draftID
+        store.selectDraft(draft.draftID)
+      } label: {
+        HStack(spacing: 9) {
+          Image(systemName: severitySystemImage(for: draft))
+            .foregroundStyle(severityColor(for: draft))
+            .frame(width: 17)
+          VStack(alignment: .leading, spacing: 2) {
+            Text(draft.draftTitle.nilIfEmpty ?? String(localized: "未命名文章"))
+              .lineLimit(1)
+            Text(issueSummary(for: draft))
+              .font(.workbenchSupporting)
+              .foregroundStyle(.secondary)
+              .lineLimit(1)
+          }
+          Spacer(minLength: 6)
+          Text("\(draft.issueCount)")
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(String(format: String(localized: "选择%@查看图片问题"), draft.draftTitle))
+      .accessibilityAddTraits(isSelected ? .isSelected : [])
+
+      Button {
+        openDraft(draft.draftID)
+      } label: {
+        Label("打开文章", systemImage: "arrow.right.circle")
+          .labelStyle(.iconOnly)
+      }
+      .buttonStyle(.borderless)
+      .help("打开文章")
+      .accessibilityLabel(String(format: String(localized: "打开文章%@"), draft.draftTitle))
+      .accessibilityIdentifier("image-issue-open-article-\(draft.draftID.uuidString)")
+    }
+    .padding(8)
+    .background(
+      isSelected
+        ? AnyShapeStyle(WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.selectionBackground))
+        : WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
+    .overlay {
+      if isSelected {
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+          .stroke(WorkbenchTheme.navigationSelection.opacity(0.35), lineWidth: 1)
+      }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("image-issue-article-row-\(draft.draftID.uuidString)")
+  }
+
+  @ViewBuilder
+  private func selectedDraftDetail(_ summary: ImageWorkbenchDraftSummary?) -> some View {
+    if let summary {
+      VStack(alignment: .leading, spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
+          VStack(alignment: .leading, spacing: 3) {
+            Text(summary.draftTitle.nilIfEmpty ?? String(localized: "未命名文章"))
+              .font(.headline)
+              .workbenchTruncatedIdentity(summary.draftTitle, lineLimit: 2)
+            Text(issueSummary(for: summary))
+              .font(.workbenchSupporting)
+              .foregroundStyle(.secondary)
+          }
+          Spacer()
+          HStack(spacing: 8) {
+            Button {
+              openDraft(summary.draftID)
+            } label: {
+              Label("编辑文章", systemImage: "square.and.pencil")
+            }
+            .workbenchProminentActionStyle()
+            .accessibilityIdentifier("image-issue-edit-article")
+
+            Button {
+              openFirstImageInspector(summary)
+            } label: {
+              Label("图片详情", systemImage: "sidebar.right")
+            }
+            .buttonStyle(.bordered)
+            .disabled(summary.items.isEmpty)
+            .accessibilityIdentifier("image-issue-open-inspector")
+          }
+          .controlSize(.regular)
+        }
+
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 115), spacing: 8)], spacing: 8) {
+          MetricTile(title: "图片", value: "\(summary.imageCount)", systemImage: "photo")
+          MetricTile(title: "错误", value: "\(summary.errorCount)", systemImage: "xmark.octagon")
+          MetricTile(title: "警告", value: "\(summary.warningCount)", systemImage: "exclamationmark.triangle")
+          MetricTile(title: "全部问题", value: "\(summary.issueCount)", systemImage: "checklist")
+        }
+
+        if summary.issues.isEmpty {
+          Label("该文章的图片检查已通过。", systemImage: "checkmark.circle")
+            .foregroundStyle(WorkbenchTheme.success)
+        } else {
+          Text("具体问题")
+            .font(.callout.weight(.semibold))
+          ForEach(summary.issues) { issue in
+            imageIssueRow(issue, summary: summary)
+          }
+        }
+
+        if !summary.items.isEmpty {
+          Divider()
+          Text("文章图片")
+            .font(.callout.weight(.semibold))
+          ForEach(summary.items) { item in
+            articleImageRow(item, draftID: summary.draftID)
+          }
+        }
+      }
+      .padding(12)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        WorkbenchBackgroundStyle.control,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+      )
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel("选中文章的图片问题")
+      .accessibilityIdentifier("image-issue-detail")
+    }
+  }
+
+  private func imageIssueRow(
+    _ issue: ImageWorkbenchIssue,
+    summary: ImageWorkbenchDraftSummary
+  ) -> some View {
+    let item = issue.attachmentID.flatMap { attachmentID in
+      summary.items.first { $0.attachmentID == attachmentID }
+    }
+    return HStack(alignment: .top, spacing: 9) {
+      SeverityBadge(severity: issue.severity)
+      VStack(alignment: .leading, spacing: 3) {
+        Text(issue.title)
+          .font(.workbenchItemTitle)
+        Text(issue.message)
+          .font(.workbenchSupporting)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Spacer(minLength: 8)
+      Button {
+        openDraft(summary.draftID, locating: item)
+      } label: {
+        Label("在文章中查看", systemImage: "text.magnifyingglass")
+      }
+      .buttonStyle(.borderless)
+      .controlSize(.regular)
+      .accessibilityIdentifier("image-issue-locate-\(issue.id.uuidString)")
+      if let item {
+        Button {
+          _ = store.focusImageInspector(draftID: summary.draftID, attachmentID: item.attachmentID)
+        } label: {
+          Label("图片详情", systemImage: "sidebar.right")
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.regular)
+        .accessibilityLabel("在图片检查器中查看")
+        .accessibilityIdentifier("image-issue-inspector-\(issue.id.uuidString)")
+      }
+    }
+    .padding(8)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
+    .accessibilityElement(children: .contain)
+  }
+
+  private func articleImageRow(_ item: ImageWorkbenchItem, draftID: UUID) -> some View {
+    HStack(alignment: .top, spacing: 10) {
+      Image(systemName: item.fileExists ? "photo" : "photo.badge.exclamationmark")
+        .foregroundStyle(item.fileExists ? Color.secondary : WorkbenchTheme.risk)
+        .frame(width: 18)
+      VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: 6) {
+          Text(item.originalFilename)
+            .font(.callout.weight(.medium))
+            .lineLimit(1)
+          if item.isCover {
+            Label("封面", systemImage: "star.fill")
+              .font(.workbenchMetadata)
+              .foregroundStyle(.secondary)
+          }
+        }
+        Text(item.relativePublishPath)
+          .font(.caption.monospaced())
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+        Text(imageItemDetail(item))
+          .font(.workbenchMetadata)
+          .foregroundStyle(.tertiary)
+      }
+      Spacer(minLength: 8)
+      Button {
+        openDraft(draftID, locating: item)
+      } label: {
+        Label("在文章中查看", systemImage: "text.magnifyingglass")
+      }
+      .buttonStyle(.borderless)
+      .controlSize(.regular)
+      .accessibilityIdentifier("image-item-locate-\(item.attachmentID.uuidString)")
+      Button {
+        _ = store.focusImageInspector(draftID: draftID, attachmentID: item.attachmentID)
+      } label: {
+        Label("编辑信息", systemImage: "slider.horizontal.3")
+      }
+      .buttonStyle(.borderless)
+      .controlSize(.regular)
+      .accessibilityIdentifier("image-item-inspector-\(item.attachmentID.uuidString)")
+    }
+    .padding(8)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(item.originalFilename)
+    .accessibilityValue(imageItemDetail(item))
   }
 
   private var loadingCard: some View {
     HStack(spacing: 10) {
       ProgressView()
         .controlSize(.small)
-      Text("正在统计站点图片…")
+      Text("正在检查文章图片…")
         .foregroundStyle(.secondary)
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
+    .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
     .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
   }
 
   private func failureCard(_ message: String) -> some View {
@@ -401,80 +673,151 @@ struct ImageWorkbenchView: View {
         .font(.callout)
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
-      Button {
-        Task { @MainActor in
-          await store.refreshImageWorkbenchSiteSummaryInBackground(force: true)
-        }
-      } label: {
+      Button(action: refreshAll) {
         Label("重新扫描", systemImage: "arrow.clockwise")
       }
       .workbenchProminentActionStyle()
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
-    .accessibilityElement(children: .contain)
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
   }
 
   private var refreshInput: UInt64 {
     store.imageWorkbenchInputRevision
   }
 
-  private func issueMetrics(for summary: ImageWorkbenchSiteSummary) -> [ImageOptimizationMetric] {
-    [
-      ImageOptimizationMetric(title: "错误", value: summary.errorCount, systemImage: "xmark.octagon"),
-      ImageOptimizationMetric(title: "警告", value: summary.warningCount, systemImage: "exclamationmark.triangle"),
-      ImageOptimizationMetric(title: "缺 alt", value: summary.missingAltTextCount, systemImage: "text.quote"),
-      ImageOptimizationMetric(title: "源图缺失", value: summary.missingSourceCount, systemImage: "questionmark.folder"),
-      ImageOptimizationMetric(title: "重复图片", value: summary.duplicateImageCount, systemImage: "square.on.square"),
-      ImageOptimizationMetric(title: "可压缩 JPEG", value: summary.optimizableJPEGCount, systemImage: "arrow.down.forward"),
-      ImageOptimizationMetric(title: "可转 WebP", value: summary.webPConvertibleCount, systemImage: "arrow.triangle.2.circlepath"),
-      ImageOptimizationMetric(title: "可优化 SVG", value: summary.optimizableSVGCount, systemImage: "wand.and.stars"),
-      ImageOptimizationMetric(title: "可缩放", value: summary.resizableImageCount, systemImage: "arrow.down.right.and.arrow.up.left"),
-    ]
-    .filter { $0.value > 0 }
+  private var issueSearchField: some View {
+    TextField("搜索问题文章", text: $issueQuery)
+      .textFieldStyle(.roundedBorder)
+      .accessibilityLabel("搜索有图片问题的文章")
+      .accessibilityIdentifier("image-issue-search")
   }
 
-  private func issueMetrics(for summary: ImageWorkbenchDraftSummary) -> [ImageOptimizationMetric] {
-    [
-      ImageOptimizationMetric(title: "缺 alt", value: summary.missingAltTextCount, systemImage: "text.quote"),
-      ImageOptimizationMetric(title: "源图缺失", value: summary.missingSourceCount, systemImage: "questionmark.folder"),
-      ImageOptimizationMetric(title: "重复图片", value: summary.duplicateImageCount, systemImage: "square.on.square"),
-      ImageOptimizationMetric(title: "可压缩 JPEG", value: summary.optimizableJPEGCount, systemImage: "arrow.down.forward"),
-      ImageOptimizationMetric(title: "可转 WebP", value: summary.webPConvertibleCount, systemImage: "arrow.triangle.2.circlepath"),
-      ImageOptimizationMetric(title: "可优化 SVG", value: summary.optimizableSVGCount, systemImage: "wand.and.stars"),
-      ImageOptimizationMetric(title: "可缩放", value: summary.resizableImageCount, systemImage: "arrow.down.right.and.arrow.up.left"),
-    ]
-    .filter { $0.value > 0 }
+  private var issueFilterPicker: some View {
+    Picker("问题级别", selection: $issueFilter) {
+      ForEach(ImageIssueArticleFilter.allCases) { filter in
+        Text(filter.title).tag(filter)
+      }
+    }
+    .pickerStyle(.segmented)
+    .frame(maxWidth: 250)
+    .accessibilityIdentifier("image-issue-filter")
+  }
+
+  private var repositoryInventoryRefreshInput: RepositoryInventoryRefreshInput {
+    RepositoryInventoryRefreshInput(
+      requestID: repositoryRefreshRequestID,
+      imageRevision: store.imageWorkbenchInputRevision,
+      profileID: store.activeProfile.id,
+      repositoryRootPath: store.activeProfile.localRepositoryRootPath,
+      assetRoot: store.activeProfile.assetRoot
+    )
+  }
+
+  private func filteredAffectedDrafts(
+    in summary: ImageWorkbenchSiteSummary
+  ) -> [ImageWorkbenchDraftSummary] {
+    let query = issueQuery.trimmedForPublishing
+    return summary.draftSummaries.filter { draft in
+      draft.issueCount > 0
+        && issueFilter.includes(draft)
+        && (query.isEmpty
+          || draft.draftTitle.localizedStandardContains(query)
+          || draft.issues.contains { issue in
+            issue.title.localizedStandardContains(query)
+              || issue.message.localizedStandardContains(query)
+          })
+    }
+  }
+
+  private func selectedImageDraftSummary(
+    candidates: [ImageWorkbenchDraftSummary]
+  ) -> ImageWorkbenchDraftSummary? {
+    if let selectedImageDraftID,
+       let selected = candidates.first(where: { $0.draftID == selectedImageDraftID }) {
+      return selected
+    }
+    if let selectedDraftID = store.selectedDraftID,
+       let selected = candidates.first(where: { $0.draftID == selectedDraftID }) {
+      return selected
+    }
+    return candidates.first
+  }
+
+  private func normalizeSelectedDraft(candidates: [ImageWorkbenchDraftSummary]) {
+    if let selectedImageDraftID,
+       candidates.contains(where: { $0.draftID == selectedImageDraftID }) {
+      return
+    }
+    selectedImageDraftID = candidates.first?.draftID
+  }
+
+  private func severitySystemImage(for summary: ImageWorkbenchDraftSummary) -> String {
+    if summary.errorCount > 0 { return "xmark.octagon" }
+    if summary.warningCount > 0 { return "exclamationmark.triangle" }
+    return "info.circle"
+  }
+
+  private func severityColor(for summary: ImageWorkbenchDraftSummary) -> Color {
+    if summary.errorCount > 0 { return WorkbenchTheme.risk }
+    if summary.warningCount > 0 { return WorkbenchTheme.warning }
+    return .secondary
   }
 
   private func issueSummary(for summary: ImageWorkbenchDraftSummary) -> String {
-    [
-      summary.missingAltTextCount > 0 ? "缺 alt \(summary.missingAltTextCount)" : nil,
-      summary.missingSourceCount > 0 ? "源图缺失 \(summary.missingSourceCount)" : nil,
-      summary.duplicateImageCount > 0 ? "重复 \(summary.duplicateImageCount)" : nil,
-      summary.optimizableJPEGCount > 0 ? "JPEG \(summary.optimizableJPEGCount)" : nil,
-      summary.webPConvertibleCount > 0 ? "WebP \(summary.webPConvertibleCount)" : nil,
-      summary.optimizableSVGCount > 0 ? "SVG \(summary.optimizableSVGCount)" : nil,
-      summary.resizableImageCount > 0 ? "大图 \(summary.resizableImageCount)" : nil,
-    ]
-    .compactMap { $0 }
-    .joined(separator: " · ")
+    var parts: [String] = []
+    if summary.errorCount > 0 {
+      parts.append(String(format: String(localized: "错误 %d"), summary.errorCount))
+    }
+    if summary.warningCount > 0 {
+      parts.append(String(format: String(localized: "警告 %d"), summary.warningCount))
+    }
+    if summary.missingAltTextCount > 0 {
+      parts.append(String(format: String(localized: "缺 alt %d"), summary.missingAltTextCount))
+    }
+    if summary.missingCaptionCount > 0 {
+      parts.append(String(format: String(localized: "缺 caption %d"), summary.missingCaptionCount))
+    }
+    if summary.missingSourceCount > 0 {
+      parts.append(String(format: String(localized: "源图缺失 %d"), summary.missingSourceCount))
+    }
+    if summary.duplicateImageCount > 0 {
+      parts.append(String(format: String(localized: "重复 %d"), summary.duplicateImageCount))
+    }
+    if parts.isEmpty {
+      parts.append(String(format: String(localized: "建议 %d"), summary.issueCount))
+    }
+    return parts.joined(separator: " · ")
+  }
+
+  private func imageItemDetail(_ item: ImageWorkbenchItem) -> String {
+    var parts: [String] = []
+    if item.byteSize > 0 {
+      parts.append(ByteCountFormatter.string(fromByteCount: item.byteSize, countStyle: .file))
+    }
+    if let dimensions = item.dimensions {
+      parts.append("\(dimensions.width)×\(dimensions.height)")
+    }
+    if item.missingAltText { parts.append(String(localized: "缺 alt")) }
+    if item.missingCaption { parts.append(String(localized: "缺 caption")) }
+    if !item.fileExists { parts.append(String(localized: "源图缺失")) }
+    return parts.joined(separator: " · ")
   }
 
   private func presentBatchPreview(
     _ action: ImageWorkbenchBatchAction,
     summary: ImageWorkbenchSiteSummary
   ) {
-    let draftsByID = Dictionary(uniqueKeysWithValues: store.visibleDrafts.map { ($0.id, $0) })
-    let affectedItems = summary.draftSummaries.flatMap { draftSummary -> [ImageBatchAffectedItem] in
-      guard let draft = draftsByID[draftSummary.draftID] else { return [] }
-      let report = store.imageWorkbenchReport(for: draft)
-      return report.items.compactMap { item in
+    let affectedItems: [ImageBatchAffectedItem] = summary.draftSummaries.flatMap { draftSummary in
+      draftSummary.items.compactMap { item -> ImageBatchAffectedItem? in
         guard action.includes(item) else { return nil }
         return ImageBatchAffectedItem(
-          draftID: draft.id,
-          draftTitle: draft.title.nilIfEmpty ?? String(localized: "未命名文章"),
+          draftID: draftSummary.draftID,
+          draftTitle: draftSummary.draftTitle.nilIfEmpty ?? String(localized: "未命名文章"),
           item: item
         )
       }
@@ -517,255 +860,150 @@ struct ImageWorkbenchView: View {
       }
     }
   }
+
+  private func refreshAll() {
+    repositoryInventory = nil
+    selectedRepositoryPath = nil
+    repositoryRefreshRequestID = UUID()
+    Task { @MainActor in
+      await store.refreshImageWorkbenchSiteSummaryInBackground(force: true)
+    }
+  }
+
+  private func refreshRepositoryInventory() async {
+    let profile = store.activeProfile
+    let drafts = store.visibleDrafts
+    let taskID = UUID()
+    activeRepositoryInventoryTaskID = taskID
+    isRepositoryInventoryLoading = true
+    repositoryInventoryErrorMessage = nil
+    repositoryInventory = nil
+    selectedRepositoryPath = nil
+    defer {
+      if activeRepositoryInventoryTaskID == taskID {
+        isRepositoryInventoryLoading = false
+      }
+    }
+    do {
+      let inventory = try await RepositoryImageInventoryService().inventoryAsync(
+        drafts: drafts,
+        profile: profile
+      )
+      try Task.checkCancellation()
+      guard profile.id == store.activeProfile.id else { return }
+      repositoryInventory = inventory
+      repositoryInventoryErrorMessage = nil
+      if let selectedRepositoryPath,
+         !inventory.assets.contains(where: { $0.repositoryPath == selectedRepositoryPath }) {
+        self.selectedRepositoryPath = inventory.assets.first?.repositoryPath
+      } else if selectedRepositoryPath == nil {
+        selectedRepositoryPath = inventory.assets.first?.repositoryPath
+      }
+    } catch is CancellationError {
+      return
+    } catch {
+      guard profile.id == store.activeProfile.id else { return }
+      repositoryInventory = nil
+      repositoryInventoryErrorMessage = error.localizedDescription
+    }
+  }
+
+  private func attachRepositoryImage(_ asset: RepositoryImageAsset) {
+    guard let inventory = repositoryInventory,
+          inventory.profileID == store.activeProfile.id,
+          inventory.assets.contains(where: { $0.repositoryPath == asset.repositoryPath }),
+          let repositoryTargetDraftID,
+          store.visibleDrafts.contains(where: { $0.id == repositoryTargetDraftID }) else {
+      imageWorkbench.setActionMessage(String(localized: "请选择当前站点中的目标文章。"))
+      return
+    }
+    imageWorkbench.attachRepositoryImage(
+      repositoryPath: asset.repositoryPath,
+      toDraftID: repositoryTargetDraftID
+    )
+    repositoryRefreshRequestID = UUID()
+  }
+
+  private func openRepositoryImageDirectory() {
+    guard let inventory = repositoryInventory,
+          inventory.profileID == store.activeProfile.id else { return }
+    let directoryURL = URL(fileURLWithPath: inventory.repositoryRootPath, isDirectory: true)
+      .appendingPathComponent(inventory.assetRootPath, isDirectory: true)
+    NSWorkspace.shared.open(directoryURL)
+  }
+
+  private func openWritingForImageInsertion() {
+    if store.visibleDrafts.isEmpty {
+      store.createDraft()
+      return
+    }
+    store.setDraftListContentScope(.currentSite)
+    if let repositoryTargetDraftID {
+      _ = store.focusDraft(repositoryTargetDraftID, section: .writing)
+    } else {
+      store.selectSection(.writing)
+    }
+  }
+
+  private func normalizeRepositoryTargetDraft() {
+    let drafts = store.visibleDrafts
+    if let repositoryTargetDraftID,
+       drafts.contains(where: { $0.id == repositoryTargetDraftID }) {
+      return
+    }
+    if let selectedDraftID = store.selectedDraftID,
+       drafts.contains(where: { $0.id == selectedDraftID }) {
+      repositoryTargetDraftID = selectedDraftID
+    } else {
+      repositoryTargetDraftID = drafts.first?.id
+    }
+  }
+
+  private func openDraft(_ draftID: UUID) {
+    _ = store.focusDraft(draftID, section: .writing)
+  }
+
+  private func openDraft(_ draftID: UUID, locating item: ImageWorkbenchItem?) {
+    guard store.focusDraft(draftID, section: .writing) else { return }
+    let query = item?.relativePublishPath.nilIfEmpty ?? item?.originalFilename.nilIfEmpty
+    store.requestEditorFocus(draftID: draftID, field: "body", query: query)
+  }
+
+  private func openFirstImageInspector(_ summary: ImageWorkbenchDraftSummary) {
+    let issueAttachmentID = summary.issues.compactMap(\.attachmentID).first
+    guard let attachmentID = issueAttachmentID ?? summary.items.first?.attachmentID else { return }
+    _ = store.focusImageInspector(draftID: summary.draftID, attachmentID: attachmentID)
+  }
 }
 
-private struct ImageOptimizationMetric: Identifiable {
-  let title: String
-  let value: Int
-  let systemImage: String
+enum ImageIssueArticleFilter: String, CaseIterable, Identifiable {
+  case all
+  case errors
+  case warnings
 
-  var id: String { title }
-}
-
-private enum ImageWorkbenchBatchAction {
-  case fillMetadata
-  case file(ImageBatchOperation)
+  var id: String { rawValue }
 
   var title: String {
     switch self {
-    case .fillMetadata: String(localized: "补全 alt/caption")
-    case .file(let operation): operation.progressTitle
+    case .all: String(localized: "全部")
+    case .errors: String(localized: "有错误")
+    case .warnings: String(localized: "有警告")
     }
   }
 
-  var isMetadataFill: Bool {
-    if case .fillMetadata = self { return true }
-    return false
-  }
-
-  var systemImage: String {
+  func includes(_ summary: ImageWorkbenchDraftSummary) -> Bool {
     switch self {
-    case .fillMetadata: "text.badge.checkmark"
-    case .file: "photo.stack"
-    }
-  }
-
-  var outputDescription: String {
-    switch self {
-    case .fillMetadata:
-      return String(localized: "补全所选图片缺失的 alt 和 caption，并同步正文中的空图片替代文本。")
-    case .file(.optimizeJPEG):
-      return String(localized: "生成优化后的 JPEG 副本，保留 JPEG 格式。")
-    case .file(.convertWebP):
-      return String(localized: "生成 WebP 副本，并把草稿图片引用更新为 WebP。")
-    case .file(.optimizeSVG):
-      return String(localized: "生成精简后的 SVG 副本，保留 SVG 格式。")
-    case .file(.resizeLargeImages):
-      return String(localized: "按原格式生成缩小尺寸的图片副本。")
-    case .file(.cropCover16By9):
-      return String(localized: "生成 16:9 的封面副本。")
-    }
-  }
-
-  var estimatedSavingRatio: Double {
-    switch self {
-    case .fillMetadata: 0
-    case .file(.optimizeJPEG): 0.18
-    case .file(.convertWebP): 0.28
-    case .file(.optimizeSVG): 0.12
-    case .file(.resizeLargeImages): 0.35
-    case .file(.cropCover16By9): 0.20
-    }
-  }
-
-  func includes(_ item: ImageWorkbenchItem) -> Bool {
-    switch self {
-    case .fillMetadata:
-      return item.missingAltText || item.missingCaption
-    case .file(.optimizeJPEG):
-      return item.canOptimizeJPEG
-    case .file(.convertWebP):
-      return item.canConvertToWebP
-    case .file(.optimizeSVG):
-      return item.canOptimizeSVG
-    case .file(.resizeLargeImages):
-      return item.canResizeImage
-    case .file(.cropCover16By9):
-      return item.isCover
+    case .all: summary.issueCount > 0
+    case .errors: summary.errorCount > 0
+    case .warnings: summary.warningCount > 0
     }
   }
 }
 
-private struct ImageBatchAffectedItem: Identifiable {
-  let draftID: UUID
-  let draftTitle: String
-  let item: ImageWorkbenchItem
-
-  var id: UUID { item.attachmentID }
-
-  var detail: String {
-    var parts: [String] = []
-    if item.missingAltText { parts.append(String(localized: "缺 alt")) }
-    if item.missingCaption { parts.append(String(localized: "缺 caption")) }
-    if item.byteSize > 0 {
-      parts.append(ByteCountFormatter.string(fromByteCount: item.byteSize, countStyle: .file))
-    }
-    if let dimensions = item.dimensions {
-      parts.append("\(dimensions.width)×\(dimensions.height)")
-    }
-    return parts.joined(separator: " · ")
-  }
-}
-
-private struct ImageBatchOperationPreview: Identifiable {
-  let id = UUID()
-  let action: ImageWorkbenchBatchAction
-  let affectedItems: [ImageBatchAffectedItem]
-}
-
-private struct ImageBatchOperationPreviewView: View {
-  let preview: ImageBatchOperationPreview
-  let cancel: () -> Void
-  let confirm: ([UUID: Set<UUID>]) -> Void
-  @State private var selectedAttachmentIDs: Set<UUID>
-
-  init(
-    preview: ImageBatchOperationPreview,
-    cancel: @escaping () -> Void,
-    confirm: @escaping ([UUID: Set<UUID>]) -> Void
-  ) {
-    self.preview = preview
-    self.cancel = cancel
-    self.confirm = confirm
-    _selectedAttachmentIDs = State(initialValue: Set(preview.affectedItems.map(\.id)))
-  }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      VStack(alignment: .leading, spacing: 4) {
-        Label("确认\(preview.action.title)", systemImage: preview.action.systemImage)
-          .font(.title3.weight(.semibold))
-        Text("逐项核对影响文章和图片；取消勾选即可排除单张图片。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-      }
-
-      LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
-        MetricTile(title: "影响文章", value: "\(selectedDraftCount)", systemImage: "doc.text")
-        MetricTile(title: "影响图片", value: "\(selectedItems.count)", systemImage: "photo.on.rectangle")
-        MetricTile(
-          title: preview.action.isMetadataFill ? "待补字段" : "预计节省",
-          value: preview.action.isMetadataFill
-            ? "\(selectedMetadataFieldCount)"
-            : ByteCountFormatter.string(fromByteCount: estimatedSavedBytes, countStyle: .file),
-          systemImage: preview.action.isMetadataFill ? "textformat" : "arrow.down.circle"
-        )
-      }
-
-      HStack {
-        Text("影响明细")
-          .font(.headline)
-        Spacer()
-        Button("全选") {
-          selectedAttachmentIDs = Set(preview.affectedItems.map(\.id))
-        }
-        .disabled(selectedAttachmentIDs.count == preview.affectedItems.count)
-        Button("全部排除") {
-          selectedAttachmentIDs.removeAll()
-        }
-        .disabled(selectedAttachmentIDs.isEmpty)
-      }
-
-      List(preview.affectedItems) { affected in
-        Toggle(isOn: selectionBinding(for: affected.id)) {
-          HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "photo")
-              .foregroundStyle(.secondary)
-              .frame(width: 16)
-            VStack(alignment: .leading, spacing: 3) {
-              Text(affected.item.originalFilename)
-                .font(.callout.weight(.medium))
-                .workbenchTruncatedIdentity(affected.item.originalFilename)
-              Text(affected.draftTitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .workbenchTruncatedIdentity(affected.draftTitle)
-              if !affected.detail.isEmpty {
-                Text(affected.detail)
-                  .font(.caption2)
-                  .foregroundStyle(.tertiary)
-              }
-            }
-          }
-        }
-        .toggleStyle(.checkbox)
-      }
-      .frame(minHeight: 230, idealHeight: 300)
-
-      GroupBox(String(localized: "输出与恢复")) {
-        VStack(alignment: .leading, spacing: 6) {
-          Text(preview.action.outputDescription)
-          Label("开始前会为每篇受影响文章创建“批处理前”版本点。", systemImage: "clock.arrow.circlepath")
-          Label("文件处理期间可以取消；未应用的临时文件会被清理。", systemImage: "xmark.circle")
-        }
-        .font(.caption)
-        .frame(maxWidth: .infinity, alignment: .leading)
-      }
-
-      HStack {
-        Button("取消", action: cancel)
-          .keyboardShortcut(.cancelAction)
-        Spacer()
-        Button {
-          confirm(selectionByDraft)
-        } label: {
-          Label("确认并开始（\(selectedItems.count) 张）", systemImage: "play.fill")
-        }
-        .workbenchProminentActionStyle()
-        .keyboardShortcut(.defaultAction)
-        .disabled(selectedAttachmentIDs.isEmpty)
-      }
-    }
-    .padding(22)
-    .frame(minWidth: 640, idealWidth: 720, minHeight: 620, idealHeight: 720)
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("图片批处理影响预览")
-  }
-
-  private var selectedItems: [ImageBatchAffectedItem] {
-    preview.affectedItems.filter { selectedAttachmentIDs.contains($0.id) }
-  }
-
-  private var selectedDraftCount: Int {
-    Set(selectedItems.map(\.draftID)).count
-  }
-
-  private var selectedMetadataFieldCount: Int {
-    selectedItems.reduce(0) { count, affected in
-      count + (affected.item.missingAltText ? 1 : 0) + (affected.item.missingCaption ? 1 : 0)
-    }
-  }
-
-  private var estimatedSavedBytes: Int64 {
-    let selectedBytes = selectedItems.reduce(Int64(0)) { $0 + max(0, $1.item.byteSize) }
-    return Int64(Double(selectedBytes) * preview.action.estimatedSavingRatio)
-  }
-
-  private var selectionByDraft: [UUID: Set<UUID>] {
-    Dictionary(grouping: selectedItems, by: \.draftID)
-      .mapValues { Set($0.map(\.id)) }
-  }
-
-  private func selectionBinding(for attachmentID: UUID) -> Binding<Bool> {
-    Binding(
-      get: { selectedAttachmentIDs.contains(attachmentID) },
-      set: { isSelected in
-        if isSelected {
-          selectedAttachmentIDs.insert(attachmentID)
-        } else {
-          selectedAttachmentIDs.remove(attachmentID)
-        }
-      }
-    )
-  }
+private struct RepositoryInventoryRefreshInput: Hashable {
+  let requestID: UUID
+  let imageRevision: UInt64
+  let profileID: UUID
+  let repositoryRootPath: String
+  let assetRoot: String
 }

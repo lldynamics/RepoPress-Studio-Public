@@ -15,10 +15,16 @@ final class MonetizationTests: XCTestCase {
     let requirements = Dictionary(
       uniqueKeysWithValues: service.upgradeRequirements(state: state).map { ($0.feature, $0) }
     )
-    XCTAssertEqual(requirements[.aiRequest]?.quotaSummary, "已用 0/33，剩余 33 次")
+    XCTAssertNil(requirements[.aiRequest])
     XCTAssertEqual(requirements[.onlinePublishing]?.quotaSummary, "已用 0/1，剩余 1 次")
     XCTAssertEqual(requirements[.batchPublishing]?.quotaSummary, "已用 0/3，剩余 3 次")
-    XCTAssertTrue(PremiumFeature.allCases.allSatisfy { requirements[$0]?.isBlocking == false })
+    XCTAssertTrue(DistributionFeaturePolicy.visiblePremiumFeatures.allSatisfy {
+      requirements[$0]?.isBlocking == false
+    })
+    let aiDecision = service.accessDecision(for: .aiRequest, state: state)
+    XCTAssertTrue(aiDecision.isAllowed)
+    XCTAssertFalse(aiDecision.requiresPro)
+    XCTAssertNil(aiDecision.remainingFreeUses)
   }
 
   func testDailyFreeUsageKeepsCountsWithinTheSameLocalDay() throws {
@@ -45,7 +51,7 @@ final class MonetizationTests: XCTestCase {
         at: evening,
         calendar: calendar
       ),
-      28
+      0
     )
   }
 
@@ -77,8 +83,8 @@ final class MonetizationTests: XCTestCase {
     )
 
     XCTAssertTrue(decision.isAllowed)
-    XCTAssertEqual(decision.remainingFreeUses, 33)
-    XCTAssertEqual(consumed.freeUsage.aiRequestCount, 1)
+    XCTAssertNil(decision.remainingFreeUses)
+    XCTAssertEqual(consumed.freeUsage.aiRequestCount, 0)
     XCTAssertEqual(consumed.freeUsage.onlinePublishAttemptCount, 0)
     XCTAssertEqual(consumed.freeUsage.batchPublishCount, 0)
     XCTAssertTrue(
@@ -133,15 +139,16 @@ final class MonetizationTests: XCTestCase {
     XCTAssertNotNil(store.monetizationState.freeUsage.dailyPeriodStartedAt)
   }
 
-  func testFreePlanAllowsLimitedAIRequestsAndBlocksOnlinePublishing() {
+  func testFreePlanLeavesBYOKAIUnmeteredAndBlocksOnlinePublishing() {
     let service = MonetizationService(limits: FreePlanLimits(aiRequestLimit: 2, onlinePublishAttemptLimit: 0, batchPublishLimit: 1))
     var state = MonetizationState.default
 
     XCTAssertTrue(service.accessDecision(for: .aiRequest, state: state).isAllowed)
     state = service.consuming(.aiRequest, state: state)
-    XCTAssertEqual(service.remainingFreeUses(for: .aiRequest, usage: state.freeUsage), 1)
+    XCTAssertEqual(state.freeUsage.aiRequestCount, 0)
+    XCTAssertEqual(service.remainingFreeUses(for: .aiRequest, usage: state.freeUsage), 0)
     state = service.consuming(.aiRequest, state: state)
-    XCTAssertFalse(service.accessDecision(for: .aiRequest, state: state).isAllowed)
+    XCTAssertTrue(service.accessDecision(for: .aiRequest, state: state).isAllowed)
 
     let online = service.accessDecision(for: .onlinePublishing, state: state)
     XCTAssertFalse(online.isAllowed)
@@ -154,7 +161,7 @@ final class MonetizationTests: XCTestCase {
     let service = MonetizationService(limits: FreePlanLimits(aiRequestLimit: 0, onlinePublishAttemptLimit: 0, batchPublishLimit: 0))
     let state = MonetizationState.default
 
-    for feature in PremiumFeature.allCases {
+    for feature in DistributionFeaturePolicy.visiblePremiumFeatures {
       let decision = service.accessDecision(for: feature, state: state)
 
       XCTAssertFalse(decision.isAllowed)
@@ -162,6 +169,9 @@ final class MonetizationTests: XCTestCase {
       XCTAssertTrue(decision.message.contains(feature.proBenefit))
       XCTAssertTrue(decision.message.contains("购买或恢复"))
     }
+    let aiDecision = service.accessDecision(for: .aiRequest, state: state)
+    XCTAssertTrue(aiDecision.isAllowed)
+    XCTAssertFalse(aiDecision.requiresPro)
   }
 
   func testUpgradeRequirementsExplainBlockedFreeBoundaries() {
@@ -170,7 +180,7 @@ final class MonetizationTests: XCTestCase {
 
     let requirements = service.upgradeRequirements(state: state)
 
-    XCTAssertEqual(requirements.map(\.feature), PremiumFeature.allCases)
+    XCTAssertEqual(requirements.map(\.feature), DistributionFeaturePolicy.visiblePremiumFeatures)
     for requirement in requirements {
       XCTAssertTrue(requirement.isBlocking)
       XCTAssertTrue(requirement.summary.contains(requirement.feature.displayName))
@@ -192,10 +202,10 @@ final class MonetizationTests: XCTestCase {
     let onlineRequirement = service.upgradeRequirement(for: .onlinePublishing, state: state)
 
     XCTAssertFalse(aiRequirement.isBlocking)
-    XCTAssertEqual(aiRequirement.quotaSummary, "已用 0/2，剩余 2 次")
-    XCTAssertEqual(aiRequirement.freeLimit, 2)
-    XCTAssertEqual(aiRequirement.remainingFreeUses, 2)
-    XCTAssertTrue(aiRequirement.nextStep.contains("继续试用"))
+    XCTAssertEqual(aiRequirement.quotaSummary, "用户自备服务商，不限应用内次数")
+    XCTAssertEqual(aiRequirement.freeLimit, 0)
+    XCTAssertEqual(aiRequirement.remainingFreeUses, 0)
+    XCTAssertTrue(aiRequirement.nextStep.contains("同意发送范围"))
     XCTAssertFalse(onlineRequirement.isBlocking)
     XCTAssertEqual(onlineRequirement.quotaSummary, "已用 0/1，剩余 1 次")
   }
@@ -210,11 +220,11 @@ final class MonetizationTests: XCTestCase {
     let onlineRequirement = service.upgradeRequirement(for: .onlinePublishing, state: state)
 
     XCTAssertFalse(aiRequirement.isBlocking)
-    XCTAssertEqual(aiRequirement.usedFreeUses, 2)
-    XCTAssertEqual(aiRequirement.freeLimit, 3)
-    XCTAssertEqual(aiRequirement.remainingFreeUses, 1)
-    XCTAssertEqual(aiRequirement.quotaSummary, "已用 2/3，剩余 1 次")
-    XCTAssertTrue(aiRequirement.summary.contains("已用 2/3"))
+    XCTAssertEqual(aiRequirement.usedFreeUses, 0)
+    XCTAssertEqual(aiRequirement.freeLimit, 0)
+    XCTAssertEqual(aiRequirement.remainingFreeUses, 0)
+    XCTAssertEqual(aiRequirement.quotaSummary, "用户自备服务商，不限应用内次数")
+    XCTAssertTrue(aiRequirement.summary.contains("不属于 Pro"))
 
     XCTAssertTrue(onlineRequirement.isBlocking)
     XCTAssertEqual(onlineRequirement.usedFreeUses, 1)
@@ -228,15 +238,15 @@ final class MonetizationTests: XCTestCase {
     let service = MonetizationService(limits: FreePlanLimits(aiRequestLimit: 0, onlinePublishAttemptLimit: 0, batchPublishLimit: 0))
     let summary = service.statusSummary(state: .default)
 
-    XCTAssertEqual(summary.title, "3 项功能需要 Pro")
+    XCTAssertEqual(summary.title, "2 项功能需要 Pro")
     XCTAssertTrue(summary.isActionRequired)
-    XCTAssertEqual(summary.blockedRequirements.count, 3)
-    XCTAssertTrue(summary.message.contains("AI 请求"))
+    XCTAssertEqual(summary.blockedRequirements.count, 2)
+    XCTAssertFalse(summary.message.contains("AI 请求"))
     XCTAssertTrue(summary.message.contains("GitHub/GitLab 线上发布"))
     XCTAssertTrue(summary.nextStep.contains("购买或恢复"))
     XCTAssertEqual(summary.systemImage, "lock.fill")
     XCTAssertTrue(summary.checklistMarkdown.contains("# Pro 状态摘要"))
-    XCTAssertTrue(summary.checklistMarkdown.contains("- 状态：3 项功能需要 Pro"))
+    XCTAssertTrue(summary.checklistMarkdown.contains("- 状态：2 项功能需要 Pro"))
     XCTAssertTrue(summary.checklistMarkdown.contains("批量发布：需要 Pro"))
   }
 
@@ -247,9 +257,59 @@ final class MonetizationTests: XCTestCase {
     XCTAssertEqual(summary.title, "免费额度可用")
     XCTAssertFalse(summary.isActionRequired)
     XCTAssertTrue(summary.blockedRequirements.isEmpty)
-    XCTAssertEqual(summary.availableRequirements.count, PremiumFeature.allCases.count)
+    XCTAssertEqual(
+      summary.availableRequirements.count,
+      DistributionFeaturePolicy.visiblePremiumFeatures.count
+    )
     XCTAssertEqual(summary.systemImage, "person")
     XCTAssertTrue(summary.nextStep.contains("继续试用"))
+  }
+
+  func testFeatureUseReservationConsumesOnlyWhenCommittedAndOnlyOnce() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      monetizationService: MonetizationService(
+        limits: FreePlanLimits(aiRequestLimit: 0, onlinePublishAttemptLimit: 1, batchPublishLimit: 0)
+      )
+    )
+
+    let reservationResult = store.reserveFeatureUse(.onlinePublishing)
+    let reservation = try XCTUnwrap(reservationResult.reservation)
+
+    XCTAssertTrue(reservationResult.decision.isAllowed)
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 0)
+    XCTAssertEqual(store.remainingFreeUses(for: .onlinePublishing), 0)
+
+    XCTAssertTrue(store.commitFeatureUseReservation(reservation))
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 1)
+    XCTAssertFalse(store.commitFeatureUseReservation(reservation))
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 1)
+  }
+
+  func testCancelledFeatureUseReservationReleasesQuotaWithoutConsumingIt() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      monetizationService: MonetizationService(
+        limits: FreePlanLimits(aiRequestLimit: 0, onlinePublishAttemptLimit: 1, batchPublishLimit: 0)
+      )
+    )
+
+    let firstResult = store.reserveFeatureUse(.onlinePublishing)
+    let firstReservation = try XCTUnwrap(firstResult.reservation)
+    let concurrentResult = store.reserveFeatureUse(.onlinePublishing)
+
+    XCTAssertNil(concurrentResult.reservation)
+    XCTAssertFalse(concurrentResult.decision.isAllowed)
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 0)
+
+    XCTAssertTrue(store.releaseFeatureUseReservation(firstReservation))
+    XCTAssertEqual(store.remainingFreeUses(for: .onlinePublishing), 1)
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 0)
+
+    let retryResult = store.reserveFeatureUse(.onlinePublishing)
+    let retryReservation = try XCTUnwrap(retryResult.reservation)
+    XCTAssertTrue(store.releaseFeatureUseReservation(retryReservation))
+    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 0)
   }
 
   func testStatusSummaryShowsUnlockedStoreKitEntitlement() {
@@ -277,9 +337,12 @@ final class MonetizationTests: XCTestCase {
       )
     )
 
-    XCTAssertEqual(store.proUpgradeRequirements.count, PremiumFeature.allCases.count)
+    XCTAssertEqual(
+      store.proUpgradeRequirements.count,
+      DistributionFeaturePolicy.visiblePremiumFeatures.count
+    )
     XCTAssertTrue(store.proUpgradeRequirements.allSatisfy(\.isBlocking))
-    XCTAssertEqual(store.proStatusSummary.title, "3 项功能需要 Pro")
+    XCTAssertEqual(store.proStatusSummary.title, "2 项功能需要 Pro")
     XCTAssertEqual(store.proUpgradeRequirement(for: .onlinePublishing).feature, .onlinePublishing)
     XCTAssertTrue(store.proUpgradeRequirement(for: .onlinePublishing).reason.contains("GitHub/GitLab API"))
   }
@@ -317,7 +380,7 @@ final class MonetizationTests: XCTestCase {
     await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 
-    XCTAssertEqual(reloaded.monetizationState.freeUsage.aiRequestCount, 1)
+    XCTAssertEqual(reloaded.monetizationState.freeUsage.aiRequestCount, 0)
 	    XCTAssertFalse(reloaded.monetizationState.entitlement.isUnlocked)
 	    XCTAssertNil(reloaded.monetizationState.entitlement.productID)
 	  }
@@ -364,48 +427,38 @@ final class MonetizationTests: XCTestCase {
     XCTAssertEqual(store.monetizationMessage, "没有找到可恢复的 Pro 购买。")
   }
 
-  func testBlockedAIChatSendDoesNotAppendUserMessage() async throws {
+  func testZeroLegacyAIQuotaDoesNotCreateProBlockNotice() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
       monetizationService: MonetizationService(
         limits: FreePlanLimits(aiRequestLimit: 0, onlinePublishAttemptLimit: 0, batchPublishLimit: 0)
       )
     )
-    let draft = try XCTUnwrap(store.selectedDraft)
+    let decision = store.consumeFeatureUse(.aiRequest)
 
-    let reply = await store.sendAIChatMessage("帮我检查标题", draft: draft)
+    XCTAssertTrue(decision.isAllowed)
+    XCTAssertFalse(decision.requiresPro)
+    XCTAssertNil(decision.remainingFreeUses)
+    XCTAssertEqual(store.monetizationState.freeUsage.aiRequestCount, 0)
+    XCTAssertNil(store.latestProFeatureBlockNotice)
+  }
 
-    XCTAssertNil(reply)
-    XCTAssertTrue(store.aiChatMessages.isEmpty)
-    XCTAssertTrue(store.aiChatMessage?.contains("AI 请求已达到免费版边界") == true)
-    XCTAssertTrue(store.aiChatMessage?.contains("已用 0/0") == true)
-    XCTAssertTrue(store.aiChatMessage?.contains("购买或恢复") == true)
-	    XCTAssertEqual(store.monetizationMessage, store.aiChatMessage)
-	    XCTAssertEqual(store.latestProFeatureBlockNotice?.feature, .aiRequest)
-	  }
-
-  func testBlockedAIChatRegenerateKeepsExistingAssistantReply() async throws {
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
-      monetizationService: MonetizationService(
-        limits: FreePlanLimits(aiRequestLimit: 0, onlinePublishAttemptLimit: 0, batchPublishLimit: 0)
+  func testDirectAIUpgradeRequirementExplainsBYOKBoundary() {
+    let requirement = MonetizationService(
+      limits: FreePlanLimits(
+        aiRequestLimit: 0,
+        onlinePublishAttemptLimit: 0,
+        batchPublishLimit: 0
       )
+    ).upgradeRequirement(
+      for: .aiRequest,
+      state: .default
     )
-    let draft = try XCTUnwrap(store.selectedDraft)
-    store.prepareAIChat(for: draft)
-    let assistantMessage = AIPublishingChatMessage(role: .assistant, content: "已有回复")
-    store.setAIChatMessages([
-      AIPublishingChatMessage(role: .user, content: "请检查"),
-      assistantMessage,
-    ])
 
-    let reply = await store.regenerateLastAIChatReply(draft: draft)
-
-    XCTAssertNil(reply)
-    XCTAssertEqual(store.aiChatMessages.last, assistantMessage)
-    XCTAssertTrue(store.aiChatMessage?.contains("AI 请求已达到免费版边界") == true)
-    XCTAssertTrue(store.aiChatMessage?.contains("已用 0/0") == true)
-    XCTAssertTrue(store.aiChatMessage?.contains("购买或恢复") == true)
+    XCTAssertFalse(requirement.isBlocking)
+    XCTAssertEqual(requirement.quotaSummary, "用户自备服务商，不限应用内次数")
+    XCTAssertTrue(requirement.summary.contains("不属于 Pro"))
+    XCTAssertTrue(requirement.nextStep.contains("同意发送范围"))
   }
 
   func testMissingAIKeyChatDoesNotConsumeFreeQuotaOrAppendUserMessage() async throws {
@@ -538,6 +591,7 @@ final class MonetizationTests: XCTestCase {
     )
 
     store.updateActiveProfile(profile)
+    store.aiStore.grantAIDataSharingConsent()
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
     return (store, draft)

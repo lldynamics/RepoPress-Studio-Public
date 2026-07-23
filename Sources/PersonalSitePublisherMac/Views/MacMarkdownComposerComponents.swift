@@ -256,7 +256,6 @@ struct MarkdownOutlinePopover: View {
 }
 
 struct SelectionActionBar: View {
-  let selectionAIActionMenuItems: [AIPublishingActionMenuItem]
   let isSelectionAIActionRunning: Bool
   let activeSelectionActionName: String?
   let hasLatestAssistantMessage: Bool
@@ -265,32 +264,45 @@ struct SelectionActionBar: View {
   let onApplyLatestAIReply: () -> Void
   let onInsertImages: () -> Void
   let onCheckSelectedPublicRisk: () -> Void
+  let onOpenAITemplateLibrary: () -> Void
   let availabilityForSelectionAction: (AIPublishingActionKind) -> AIPublishingActionAvailabilityPresentation
 
   var body: some View {
     HStack(spacing: 6) {
-      Menu {
-        ForEach(selectionAIActionMenuItems) { item in
-          let availability = availabilityForSelectionAction(item.kind)
-          Button {
-            onSelectSelectionAction(item.kind)
-          } label: {
-            Label(item.kind.localizedDisplayName, systemImage: item.systemImage)
-          }
-          .disabled(!availability.isEnabled)
-          .help(availability.unavailableReason ?? item.kind.localizedDisplayName)
-        }
-      } label: {
-        Label(activeSelectionActionName ?? "AI 编辑", systemImage: "sparkles")
-      }
-      .disabled(isSelectionAIActionRunning)
+      if DistributionFeaturePolicy.allowsExternalAIProviders {
+        Menu {
+          selectionActionButton(.rewrite, kind: .rewriteSelection)
+          selectionActionButton(.condense, kind: .condenseSelection)
 
-      Button {
-        onApplyLatestAIReply()
-      } label: {
-        Label("应用 AI 回复", systemImage: "text.badge.checkmark")
+          Menu {
+            selectionActionButton(.translate, kind: .translateSelectionToChinese)
+            selectionActionButton(.translate, kind: .translateSelectionToEnglish)
+          } label: {
+            Label(
+              AIPublishingDefaultCapability.translate.localizedDisplayName,
+              systemImage: AIPublishingDefaultCapability.translate.systemImage
+            )
+          }
+
+          Divider()
+
+          Button {
+            onOpenAITemplateLibrary()
+          } label: {
+            Label("搜索模板库…", systemImage: "magnifyingglass")
+          }
+        } label: {
+          Label(activeSelectionActionName ?? "AI 编辑", systemImage: "sparkles")
+        }
+        .disabled(isSelectionAIActionRunning)
+
+        Button {
+          onApplyLatestAIReply()
+        } label: {
+          Label("应用 AI 回复", systemImage: "text.badge.checkmark")
+        }
+        .disabled(!hasLatestAssistantMessage)
       }
-      .disabled(!hasLatestAssistantMessage)
 
       Button {
         onInsertImages()
@@ -319,6 +331,23 @@ struct SelectionActionBar: View {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         .strokeBorder(Color(nsColor: .separatorColor).opacity(0.55))
     }
+  }
+
+  private func selectionActionButton(
+    _ capability: AIPublishingDefaultCapability,
+    kind: AIPublishingActionKind
+  ) -> some View {
+    let availability = availabilityForSelectionAction(kind)
+    return Button {
+      onSelectSelectionAction(kind)
+    } label: {
+      Label(
+        capability == .translate ? kind.localizedDisplayName : capability.localizedDisplayName,
+        systemImage: capability.systemImage
+      )
+    }
+    .disabled(!availability.isEnabled)
+    .help(availability.unavailableReason ?? capability.localizedDisplayName)
   }
 }
 

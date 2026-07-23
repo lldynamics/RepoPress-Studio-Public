@@ -5,6 +5,25 @@ import XCTest
 
 @MainActor
 final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
+  override func setUp() {
+    super.setUp()
+    AIDataSharingConsentStore().grant(for: remoteAIConfig)
+  }
+
+  override func tearDown() {
+    AIDataSharingConsentStore().revoke(for: remoteAIConfig)
+    super.tearDown()
+  }
+
+  private var remoteAIConfig: AIProviderConfig {
+    AIProviderConfig(
+      preset: .openAICompatible,
+      baseURL: "https://api.openai.example/v1",
+      model: "gpt-4.1",
+      requiresAPIKey: false
+    )
+  }
+
   func testStoreStreamsAIChatReplyIntoCurrentConversation() async throws {
     let transport = RecordingAIChatTransport(
       data: Data(),

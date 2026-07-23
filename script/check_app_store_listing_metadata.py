@@ -14,7 +14,16 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_METADATA = ROOT / "docs" / "app-store" / "metadata.json"
 REQUIRED_LOCALES = {"zh-Hans", "en-US"}
+EXPECTED_NAME = "RepoPress"
+EXPECTED_SUBTITLES = {
+    "zh-Hans": "Markdown 写作与仓库同步",
+    "en-US": "Markdown Repository Workspace",
+}
 PENDING_PREFIX = "PENDING_"
+REQUIRED_FULL_FEATURE_DISCLOSURES = {
+    "zh-Hans": ("明确同意", "127.0.0.1", "用户自行购买和管理"),
+    "en-US": ("Explicit consent", "127.0.0.1", "purchase and manage"),
+}
 
 
 class ValidationError(RuntimeError):
@@ -59,8 +68,12 @@ def validate_listing_text(localization: dict[str, object], locale: str, strict: 
 
     if not 2 <= len(name) <= 30:
         fail(f"{locale}.name must contain 2 to 30 characters, got {len(name)}")
+    if name != EXPECTED_NAME:
+        fail(f"{locale}.name must use the shared RepoPress brand")
     if len(subtitle) > 30:
         fail(f"{locale}.subtitle exceeds 30 characters: {len(subtitle)}")
+    if subtitle != EXPECTED_SUBTITLES[locale]:
+        fail(f"{locale}.subtitle does not match the approved positioning")
     if len(promotional_text) > 170:
         fail(f"{locale}.promotionalText exceeds 170 characters: {len(promotional_text)}")
     if len(description) > 4000:
@@ -71,6 +84,11 @@ def validate_listing_text(localization: dict[str, object], locale: str, strict: 
     keyword_items = [item.strip() for item in keywords.split(",")]
     if not keyword_items or any(len(item) <= 2 for item in keyword_items):
         fail(f"{locale}.keywords must be comma-separated and each keyword must exceed two characters")
+
+    visible_listing = "\n".join((subtitle, promotional_text, description, keywords))
+    for disclosure in REQUIRED_FULL_FEATURE_DISCLOSURES[locale]:
+        if disclosure.casefold() not in visible_listing.casefold():
+            fail(f"{locale} listing is missing full-feature disclosure: {disclosure}")
 
     validate_public_url(support_url, f"{locale}.supportURL", strict)
     validate_public_url(marketing_url, f"{locale}.marketingURL", strict=False)
@@ -101,8 +119,8 @@ def validate(metadata_path: Path, strict: bool) -> list[str]:
         fail("metadata must be a schemaVersion 1 object")
     if payload.get("bundleIdentifier") != "com.jinfang.PersonalSitePublisherMac":
         fail("bundleIdentifier does not match the packaged app")
-    if payload.get("primaryCategory") != "public.app-category.productivity":
-        fail("primaryCategory must match the packaged Productivity category")
+    if payload.get("primaryCategory") != "public.app-category.developer-tools":
+        fail("primaryCategory must match the packaged Developer Tools category")
 
     privacy_url = require_string(payload, "privacyPolicyURL", "metadata")
     validate_public_url(privacy_url, "metadata.privacyPolicyURL", strict)
@@ -147,9 +165,28 @@ def validate(metadata_path: Path, strict: bool) -> list[str]:
         fail("App Review contact must be completed in App Store Connect")
 
     notes_file = require_string(review, "notesFile", "appReview")
-    resolve_document(notes_file, "appReview.notesFile", byte_limit=4000)
+    notes_path = resolve_document(notes_file, "appReview.notesFile", byte_limit=4000)
+    notes_text = notes_path.read_text(encoding="utf-8")
+    for required_boundary in (
+        "explicit consent is required",
+        "127.0.0.1:17843",
+        "does not bundle a Native Messaging executable",
+    ):
+        if required_boundary not in notes_text:
+            fail(f"appReview.notesFile is missing distribution boundary: {required_boundary}")
     privacy_file = require_string(payload, "privacyResponsesFile", "metadata")
-    resolve_document(privacy_file, "metadata.privacyResponsesFile")
+    privacy_path = resolve_document(privacy_file, "metadata.privacyResponsesFile")
+    privacy_text = privacy_path.read_text(encoding="utf-8")
+    for required_privacy_boundary in (
+        "| User-configured AI |",
+        "| Browser capture |",
+        "developer does not proxy or receive API keys",
+    ):
+        if required_privacy_boundary not in privacy_text:
+            fail(
+                "metadata.privacyResponsesFile is missing full-feature boundary: "
+                + required_privacy_boundary
+            )
 
     blockers: list[str] = []
     if not strict:

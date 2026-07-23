@@ -89,10 +89,10 @@ struct MetricTile: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       Label(LocalizedStringKey(title), systemImage: systemImage)
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(tint ?? .secondary)
       Text(value)
-        .font(.title3.weight(.semibold))
+        .font(.workbenchMetricValue)
         .lineLimit(1)
     }
     .padding(10)
@@ -265,8 +265,8 @@ struct EmptyStateView: View {
       VStack(spacing: 9) {
         emptyStateIcon(size: 28)
         emptyStateCopy(
-          titleFont: .callout.weight(.semibold),
-          messageFont: .caption,
+          titleFont: .workbenchCardTitle,
+          messageFont: .workbenchSupporting,
           messageWidth: 300,
           alignment: .center
         )
@@ -287,8 +287,8 @@ struct EmptyStateView: View {
         emptyStateIcon(size: 17)
           .frame(width: 20)
         emptyStateCopy(
-          titleFont: .caption.weight(.semibold),
-          messageFont: .caption2,
+          titleFont: .workbenchItemTitle,
+          messageFont: .workbenchMetadata,
           messageWidth: nil,
           alignment: .leading
         )

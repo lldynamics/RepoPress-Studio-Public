@@ -42,7 +42,7 @@ struct KnowledgeImportAssistantView: View {
             ContentUnavailableView(
               String(localized: "选择阅读资料"),
               systemImage: "books.vertical",
-              description: Text("先提取并预览，再确认保存。预览阶段不会把内容加入 AI 检索。")
+              description: Text("先提取并预览，再确认保存。预览阶段不会修改资料库索引。")
             )
             .frame(maxWidth: .infinity, minHeight: 260)
           }
@@ -276,7 +276,7 @@ struct KnowledgeImportAssistantView: View {
 
       Spacer()
 
-      Text("AI 只会在你启用资料库检索时读取命中的少量片段。")
+      Text("只会保存你确认的内容；搜索索引在本机建立。")
         .font(.caption)
         .foregroundStyle(.secondary)
       if let preview {

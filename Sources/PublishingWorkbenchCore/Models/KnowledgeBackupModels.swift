@@ -115,6 +115,10 @@ public enum KnowledgeLibraryBackupError: LocalizedError, Hashable, Sendable {
   case unsupportedDatabaseVersion(found: Int, supported: Int)
   case invalidPath(String)
   case missingFile(String)
+  case manifestTooLarge(maximumByteCount: Int)
+  case tooManyFiles(maximumCount: Int)
+  case fileTooLarge(path: String, maximumByteCount: Int64)
+  case backupTooLarge(maximumByteCount: Int64)
   case fileSizeMismatch(String)
   case checksumMismatch(String)
   case databaseIntegrity(String)
@@ -136,6 +140,14 @@ public enum KnowledgeLibraryBackupError: LocalizedError, Hashable, Sendable {
       "备份包含不安全的文件路径：\(path)"
     case .missingFile(let path):
       "备份缺少文件：\(path)"
+    case .manifestTooLarge(let maximumByteCount):
+      "备份清单超过允许的 \(maximumByteCount / 1_024 / 1_024) MB。"
+    case .tooManyFiles(let maximumCount):
+      "备份文件数超过允许的 \(maximumCount) 个。"
+    case .fileTooLarge(let path, let maximumByteCount):
+      "备份单个文件超过允许的 \(maximumByteCount / 1_024 / 1_024) MB：\(path)"
+    case .backupTooLarge(let maximumByteCount):
+      "备份总大小超过允许的 \(maximumByteCount / 1_024 / 1_024 / 1_024) GB。"
     case .fileSizeMismatch(let path):
       "备份文件大小与清单不一致：\(path)"
     case .checksumMismatch(let path):

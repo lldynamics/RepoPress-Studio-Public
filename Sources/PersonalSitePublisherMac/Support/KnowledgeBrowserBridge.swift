@@ -1,6 +1,5 @@
 import Combine
 import CryptoKit
-import Darwin
 import Foundation
 import KnowledgeNativeMessagingSupport
 import Network
@@ -25,15 +24,8 @@ enum KnowledgeBrowserBridgeState: Equatable {
 
 @MainActor
 final class KnowledgeBrowserBridge: ObservableObject {
-  nonisolated static var socketPath: String {
-    KnowledgeNativeMessagingProtocol.unixSocketPath(userID: getuid())
-  }
-
-  nonisolated private static var socketLockFileURL: URL {
-    FileManager.default.homeDirectoryForCurrentUser
-      .appendingPathComponent("Library/Application Support/PersonalSitePublisherMac", isDirectory: true)
-      .appendingPathComponent("NativeMessaging", isDirectory: true)
-      .appendingPathComponent("browser-bridge.lock")
+  nonisolated static var endpointURL: String {
+    KnowledgeNativeMessagingProtocol.loopbackBaseURL
   }
 
   @Published private(set) var state: KnowledgeBrowserBridgeState = .stopped
@@ -52,7 +44,6 @@ final class KnowledgeBrowserBridge: ObservableObject {
   private let queue = DispatchQueue(label: "com.jinfang.PersonalSitePublisherMac.browser-bridge")
   private var listener: NWListener?
   private var listenerGeneration: UUID?
-  private var socketLease: NativeMessagingSocketLease?
 
   init(
     knowledge: KnowledgeStore,
@@ -97,20 +88,23 @@ final class KnowledgeBrowserBridge: ObservableObject {
 
   deinit {
     listener?.cancel()
-    socketLease?.release()
   }
 
   func start() {
     guard listener == nil else { return }
     state = .starting
     do {
-      let lease = try NativeMessagingSocketLease.acquire(
-        socketPath: Self.socketPath,
-        lockFileURL: Self.socketLockFileURL
-      )
       let parameters = NWParameters.tcp
       parameters.allowLocalEndpointReuse = true
-      parameters.requiredLocalEndpoint = .unix(path: Self.socketPath)
+      guard let port = NWEndpoint.Port(
+        rawValue: KnowledgeNativeMessagingProtocol.loopbackPort
+      ) else {
+        throw KnowledgeBrowserBridgeStartError.invalidLoopbackPort
+      }
+      parameters.requiredLocalEndpoint = .hostPort(
+        host: NWEndpoint.Host(KnowledgeNativeMessagingProtocol.loopbackHost),
+        port: port
+      )
       let listener = try NWListener(using: parameters)
       let generation = UUID()
       listener.newConnectionHandler = { [weak self] connection in
@@ -121,35 +115,22 @@ final class KnowledgeBrowserBridge: ObservableObject {
           guard let self, self.listenerGeneration == generation else { return }
           switch state {
           case .ready:
-            do {
-              guard let socketLease = self.socketLease else {
-                throw NativeMessagingSocketLease.LeaseError.socketUnavailable
-              }
-              try socketLease.recordBoundSocketAndRestrictPermissions()
-            } catch {
-              self.failActiveListener(
-                self.localizedSocketLeaseError(error),
-                generation: generation
-              )
-              return
-            }
             self.state = .ready
-            self.lastMessage = String(localized: "原生连接使用当前用户专属 Unix Domain Socket。")
+            self.lastMessage = String(
+              localized: "浏览器扩展可通过本机回环地址连接，连接令牌仍为必需。"
+            )
           case .failed(let error):
             self.failActiveListener(error.localizedDescription, generation: generation)
           case .cancelled:
             guard self.listenerGeneration == generation else { return }
             self.listenerGeneration = nil
             self.listener = nil
-            self.socketLease?.release()
-            self.socketLease = nil
             self.state = .stopped
           default:
             break
           }
         }
       }
-      self.socketLease = lease
       self.listenerGeneration = generation
       self.listener = listener
       listener.start(queue: queue)
@@ -157,9 +138,7 @@ final class KnowledgeBrowserBridge: ObservableObject {
       listenerGeneration = nil
       listener?.cancel()
       listener = nil
-      socketLease?.release()
-      socketLease = nil
-      let detail = localizedSocketLeaseError(error)
+      let detail = error.localizedDescription
       state = .failed(detail)
       lastMessage = "浏览器桥接启动失败：\(detail)"
     }
@@ -170,8 +149,6 @@ final class KnowledgeBrowserBridge: ObservableObject {
     let listener = listener
     self.listener = nil
     listener?.cancel()
-    socketLease?.release()
-    socketLease = nil
     state = .stopped
   }
 
@@ -181,35 +158,8 @@ final class KnowledgeBrowserBridge: ObservableObject {
     let listener = listener
     self.listener = nil
     listener?.cancel()
-    socketLease?.release()
-    socketLease = nil
     state = .failed(detail)
     lastMessage = "浏览器桥接启动失败：\(detail)"
-  }
-
-  private func localizedSocketLeaseError(_ error: Error) -> String {
-    guard let error = error as? NativeMessagingSocketLease.LeaseError else {
-      return error.localizedDescription
-    }
-    return switch error {
-    case .alreadyOwned:
-      String(localized: "已有另一个应用实例正在提供浏览器原生连接。")
-    case .socketPathOccupied:
-      String(localized: "原生连接路径被非套接字文件占用，已拒绝覆盖。")
-    case .socketOwnerMismatch:
-      String(localized: "原生连接路径属于其他用户，已拒绝覆盖。")
-    case .lockDirectoryUnsafe, .lockFileUnsafe:
-      String(localized: "原生连接锁文件或目录不安全，已拒绝启动。")
-    case .lockFailed(let code):
-      String(
-        format: String(localized: "无法取得浏览器原生连接锁（错误码 %@）。"),
-        String(code)
-      )
-    case .socketUnavailable:
-      String(localized: "原生连接套接字尚未建立。")
-    case .socketPermissionsFailed:
-      String(localized: "无法限制本地套接字权限。")
-    }
   }
 
   func rotateConnectionToken() {
@@ -282,8 +232,22 @@ final class KnowledgeBrowserBridge: ObservableObject {
     _ request: BrowserBridgeHTTPRequest,
     connection: NWConnection
   ) async {
-    guard request.isNativeMessagingForward else {
-      sendResponse(.error(status: 403, message: "只接受已安装原生宿主。", code: "invalid-transport"), on: connection)
+    if request.method == "OPTIONS" {
+      guard request.isApprovedExtensionPreflight else {
+        sendResponse(
+          .error(status: 403, message: "只接受已安装的浏览器扩展。", code: "invalid-origin"),
+          on: connection
+        )
+        return
+      }
+      sendResponse(.empty(status: 204), on: connection)
+      return
+    }
+    guard request.isLoopbackBridgeRequest else {
+      sendResponse(
+        .error(status: 403, message: "只接受已配对的浏览器扩展。", code: "invalid-transport"),
+        on: connection
+      )
       return
     }
     if request.method == "GET", request.path == "/v1/status" {
@@ -640,6 +604,40 @@ private enum BrowserBridgeRequestCompletionState {
   case invalid
 }
 
+enum BrowserExtensionOriginPolicy {
+  static func allows(_ origin: String?) -> Bool {
+    guard let origin else {
+      // Extension service-worker requests can omit Origin. The required custom
+      // protocol header still forces ordinary web pages through CORS preflight.
+      return true
+    }
+    guard let components = URLComponents(string: origin),
+          let scheme = components.scheme?.lowercased(),
+          let host = components.host?.lowercased()
+    else {
+      return false
+    }
+    switch scheme {
+    case "moz-extension":
+      return false
+    case "safari-web-extension":
+      // Safari assigns each installed web extension a per-install UUID origin,
+      // so the signed bundle identifier cannot be used as the URL host.
+      return UUID(uuidString: host) != nil
+    case "chrome-extension":
+      let allowedIDs = Set(
+        [
+          KnowledgeNativeMessagingProtocol.chromiumDevelopmentExtensionID,
+          KnowledgeNativeMessagingProtocol.chromeProductionExtensionID,
+        ].compactMap { $0?.lowercased() }
+      )
+      return allowedIDs.contains(host)
+    default:
+      return false
+    }
+  }
+}
+
 private struct BrowserBridgeHTTPRequest {
   static let maximumRequestBytes = 48 * 1_024 * 1_024
   static let maximumHeaderBytes = 32 * 1_024
@@ -675,9 +673,34 @@ private struct BrowserBridgeHTTPRequest {
     body = Data(data[separatorRange.upperBound...])
   }
 
-  var isNativeMessagingForward: Bool {
-    headers["x-knowledge-native-messaging"] == "1"
-      && headers["origin"] == nil
+  var isLoopbackBridgeRequest: Bool {
+    headers[KnowledgeNativeMessagingProtocol.loopbackProtocolHeaderName.lowercased()]
+      == KnowledgeNativeMessagingProtocol.loopbackProtocolHeaderValue
+      && isApprovedExtensionOrigin
+  }
+
+  var isApprovedExtensionPreflight: Bool {
+    guard method == "OPTIONS",
+          isApprovedExtensionOrigin,
+          let requestedMethod = headers["access-control-request-method"]?.uppercased(),
+          ["GET", "POST"].contains(requestedMethod),
+          let requestedHeaders = headers["access-control-request-headers"]?.lowercased()
+    else {
+      return false
+    }
+    let headerNames = Set(
+      requestedHeaders.split(separator: ",").map {
+        $0.trimmingCharacters(in: .whitespacesAndNewlines)
+      }
+    )
+    return headerNames.contains("authorization")
+      && headerNames.contains(
+        KnowledgeNativeMessagingProtocol.loopbackProtocolHeaderName.lowercased()
+      )
+  }
+
+  private var isApprovedExtensionOrigin: Bool {
+    BrowserExtensionOriginPolicy.allows(headers["origin"])
   }
 
   var bearerToken: String? {
@@ -739,6 +762,7 @@ private struct BrowserBridgeHTTPResponse {
   func encodedData() -> Data {
     let reason: String
     switch status {
+    case 204: reason = "No Content"
     case 200: reason = "OK"
     case 400: reason = "Bad Request"
     case 401: reason = "Unauthorized"
@@ -757,6 +781,10 @@ private struct BrowserBridgeHTTPResponse {
     Content-Type: \(contentType)\r
     Content-Length: \(body.count)\r
     Cache-Control: no-store\r
+    Access-Control-Allow-Origin: *\r
+    Access-Control-Allow-Methods: GET, POST, OPTIONS\r
+    Access-Control-Allow-Headers: Authorization, Content-Type, X-RepoPress-Protocol\r
+    Access-Control-Max-Age: 600\r
     Connection: close\r
     \r
 
@@ -764,5 +792,13 @@ private struct BrowserBridgeHTTPResponse {
     var output = Data(header.utf8)
     output.append(body)
     return output
+  }
+}
+
+private enum KnowledgeBrowserBridgeStartError: LocalizedError {
+  case invalidLoopbackPort
+
+  var errorDescription: String? {
+    "浏览器本机回环端口配置无效。"
   }
 }

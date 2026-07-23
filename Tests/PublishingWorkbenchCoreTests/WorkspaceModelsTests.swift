@@ -5,10 +5,10 @@ final class WorkspaceModelsTests: XCTestCase {
   func testWorkspaceSectionsExposeStableCommandNumberShortcuts() {
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.displayNameLocalizationKey),
-      ["workspace.writing", "workspace.library", "workspace.siteStarter", "workspace.sync", "workspace.images", "workspace.contentHealth", "workspace.generalDrafts", "workspace.maintenance", "workspace.releaseHistory"]
+      ["workspace.writing", "workspace.library", "workspace.siteStarter", "workspace.sync", "workspace.images", "workspace.contentHealth", "workspace.maintenance", "workspace.releaseHistory"]
     )
-    XCTAssertEqual(WorkspaceSection.allCases.map { String($0.keyboardShortcutKey) }, ["1", "9", "5", "2", "3", "4", "6", "7", "8"])
-    XCTAssertEqual(WorkspaceSection.allCases.map(\.keyboardShortcutLabel), ["⌘1", "⌘9", "⌘5", "⌘2", "⌘3", "⌘4", "⌘6", "⌘7", "⌘8"])
+    XCTAssertEqual(WorkspaceSection.allCases.map { String($0.keyboardShortcutKey) }, ["1", "9", "5", "2", "3", "4", "7", "8"])
+    XCTAssertEqual(WorkspaceSection.allCases.map(\.keyboardShortcutLabel), ["⌘1", "⌘9", "⌘5", "⌘2", "⌘3", "⌘4", "⌘7", "⌘8"])
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.localizationKey),
       [
@@ -18,7 +18,6 @@ final class WorkspaceModelsTests: XCTestCase {
         "workspace.sync",
         "workspace.images",
         "workspace.contentHealth",
-        "workspace.generalDrafts",
         "workspace.maintenance",
         "workspace.releaseHistory",
       ]
@@ -26,7 +25,7 @@ final class WorkspaceModelsTests: XCTestCase {
     XCTAssertEqual(Set(WorkspaceSection.allCases.map(\.keyboardShortcutKey)).count, WorkspaceSection.allCases.count)
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.detailLocalizationKey),
-      ["workspace.writing.detail", "workspace.library.detail", "workspace.siteStarter.detail", "workspace.sync.detail", "workspace.images.detail", "workspace.contentHealth.detail", "workspace.generalDrafts.detail", "workspace.maintenance.detail", "workspace.releaseHistory.detail"]
+      ["workspace.writing.detail", "workspace.library.detail", "workspace.siteStarter.detail", "workspace.sync.detail", "workspace.images.detail", "workspace.contentHealth.detail", "workspace.maintenance.detail", "workspace.releaseHistory.detail"]
     )
   }
 
@@ -38,31 +37,45 @@ final class WorkspaceModelsTests: XCTestCase {
     )
     XCTAssertEqual(
       WorkspaceNavigationPresentation.secondaryEntryItems.map(\.section),
-      [.siteStarter, .generalDrafts]
+      [.siteStarter]
     )
     XCTAssertEqual(
       WorkspaceNavigationPresentation.secondaryEntryItems.map(\.keyboardShortcutLabel),
-      ["⌘5", "⌘6"]
+      ["⌘5"]
     )
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuAdvancedItems.map(\.section),
-      [.siteStarter, .generalDrafts, .maintenance, .releaseHistory]
+      [.siteStarter, .maintenance, .releaseHistory]
     )
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuAdvancedItems.map(\.keyboardShortcutLabel),
-      ["⌘5", "⌘6", "⌘7", "⌘8"]
+      ["⌘5", "⌘7", "⌘8"]
     )
     XCTAssertEqual(WorkspaceVisibilityPolicy.hiddenNavigationSections, [.maintenance, .releaseHistory])
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuItems.map(\.keyboardShortcutLabel),
       ["⌘1", "⌘9", "⌘2", "⌘3", "⌘4"]
     )
+    XCTAssertEqual(
+      WorkspaceNavigationPresentation.commandPaletteSections,
+      [.writing, .library, .sync, .images, .contentHealth, .siteStarter]
+    )
+  }
+
+  func testCommandPaletteUsesCanonicalWorkspaceAllowlist() {
+    let sections = WorkspaceNavigationPresentation.commandPaletteSections
+
+    XCTAssertEqual(sections, WorkspaceVisibilityPolicy.commandPaletteSections)
+    XCTAssertEqual(Set(sections).count, sections.count)
+    XCTAssertTrue(Set(sections).isDisjoint(with: WorkspaceVisibilityPolicy.hiddenNavigationSections))
+    XCTAssertFalse(sections.contains(.maintenance))
+    XCTAssertFalse(sections.contains(.releaseHistory))
   }
 
   func testEveryWorkspaceSectionHasAnExplicitCenterSurfaceRoute() {
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.centerSurface),
-      [.editor, .knowledgeLibrary, .siteStarter, .repository, .images, .contentHealth, .generalDrafts, .contentHealth, .repository]
+      [.editor, .knowledgeLibrary, .siteStarter, .repository, .images, .contentHealth, .contentHealth, .repository]
     )
     XCTAssertEqual(
       WorkspaceSection.allCases.filter(\.requiresEditableDraftForCenterSurface),
@@ -83,7 +96,6 @@ final class WorkspaceModelsTests: XCTestCase {
         .articleChecks,
         .unavailable,
         .unavailable,
-        .unavailable,
       ]
     )
   }
@@ -99,7 +111,6 @@ final class WorkspaceModelsTests: XCTestCase {
     XCTAssertFalse(
       WorkspaceInspectorPresentation.supportsInspector(for: .contentHealth, isMaintenancePresented: true)
     )
-    XCTAssertFalse(WorkspaceInspectorPresentation.supportsInspector(for: .generalDrafts))
     XCTAssertTrue(WorkspaceInspectorPresentation.supportsInspector(for: .siteStarter))
   }
 
@@ -286,7 +297,7 @@ final class WorkspaceModelsTests: XCTestCase {
     XCTAssertFalse(preview.canPublish)
     XCTAssertTrue(preview.checklistMarkdown.contains("- 状态：\(CoreL10n.text("已阻塞"))"))
     XCTAssertTrue(preview.checklistMarkdown.contains("- 权限检查端点：https://api.github.com"))
-    XCTAssertTrue(preview.checklistMarkdown.contains("- [ ] 已确认 Token 对 owner/site 具备写入权限"))
+    XCTAssertTrue(preview.checklistMarkdown.contains("- [ ] 已确认 Token 对 owner/site 具备内容写入权限"))
   }
 
   func testRemoteRepositoryPreviewDecodesLegacyPayloadAsUnknownRemoteRisk() throws {

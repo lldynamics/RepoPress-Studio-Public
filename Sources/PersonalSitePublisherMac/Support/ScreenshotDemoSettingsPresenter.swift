@@ -1,4 +1,4 @@
-#if DEBUG
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
 import AppKit
 import PublishingWorkbenchCore
 

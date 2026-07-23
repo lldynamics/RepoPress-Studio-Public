@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let logger = Logger(subsystem: "com.repopress", category: "ContentMigrationService")
 
 public enum ContentMigrationSourceKind: String, CaseIterable, Codable, Sendable {
   case wordpressWXR
@@ -372,7 +375,11 @@ public struct ContentMigrationService: Sendable {
   }
 
   private func markdownRecord(fileURL: URL) throws -> ContentMigrationRecord {
-    guard let text = try? String(contentsOf: fileURL, encoding: .utf8) else {
+    let text: String
+    do {
+      text = try String(contentsOf: fileURL, encoding: .utf8)
+    } catch {
+      logger.warning("无法读取文件 \(fileURL.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
       throw ContentMigrationError.unreadableSource(fileURL.path)
     }
     let parsed = parseFrontMatter(text)
@@ -449,7 +456,7 @@ public struct ContentMigrationService: Sendable {
   private func transformImages(in body: String) -> (body: String, mappings: [ContentMigrationImageMapping]) {
     var mappings: [ContentMigrationImageMapping] = []
     let body = htmlImagesAsMarkdown(body)
-    let imagePattern = try? NSRegularExpression(pattern: #"!\[([^\]]*)\]\(([^\s\)]+)[^\)]*\)"#)
+    let imagePattern = try? NSRegularExpression(pattern: MarkdownPatterns.imagePattern)
     let range = NSRange(body.startIndex..., in: body)
     var rewritten = body
     let matches = imagePattern?.matches(in: body, range: range) ?? []

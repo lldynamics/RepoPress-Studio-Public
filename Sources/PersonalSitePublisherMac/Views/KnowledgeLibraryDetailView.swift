@@ -21,7 +21,9 @@ struct KnowledgeLibraryDetailView: View {
       } else {
         EmptyStateView(
           title: "资料库",
-          message: "导入你读过的 EPUB 书籍、文章、网页或 PDF，写作和对话时 AI 可以按需引用。",
+          message: DistributionFeaturePolicy.allowsExternalAIProviders
+            ? LocalizedStringKey("导入你读过的 EPUB 书籍、文章、网页或 PDF，写作和对话时 AI 可以按需引用。")
+            : LocalizedStringKey("导入 EPUB、Markdown、TXT、HTML 或 PDF，建立只保存在本机的可检索资料库。"),
           systemImage: "books.vertical",
           density: .fullPage,
           actionTitle: "导入资料",
@@ -66,7 +68,11 @@ struct KnowledgeLibraryDetailView: View {
         documentPendingDeletion = nil
       }
     } message: {
-      Text("资料会移到回收站并停止参与搜索与 AI 检索；之后可以恢复。")
+      Text(
+        DistributionFeaturePolicy.allowsExternalAIProviders
+          ? String(localized: "资料会移到回收站并停止参与搜索与 AI 检索；之后可以恢复。")
+          : String(localized: "资料会移到回收站并停止参与本地搜索；之后可以恢复。")
+      )
     }
     .onChange(of: knowledge.selectedDocumentID) { _, _ in
       contentPresentation = .cleaned
@@ -127,7 +133,7 @@ struct KnowledgeLibraryDetailView: View {
               if displayedContentText.count > 100_000,
                  activeSearchResult == nil {
                 Text(contentLimitMessage)
-                  .font(.caption)
+                  .font(.workbenchSupporting)
                   .foregroundStyle(.secondary)
               }
             }
@@ -189,13 +195,13 @@ struct KnowledgeLibraryDetailView: View {
         .foregroundStyle(.tint)
       VStack(alignment: .leading, spacing: 2) {
         Text(document.title)
-          .font(.headline)
+          .font(.title3.weight(.semibold))
           .workbenchTruncatedIdentity(document.title)
           .accessibilityElement(children: .ignore)
           .accessibilityLabel(document.title)
           .accessibilityIdentifier("knowledge-library-detail-title")
         Text("仅保存在本机 · \(document.kind.localizedDisplayName)")
-          .font(.caption)
+          .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
       }
       Spacer()
@@ -220,17 +226,19 @@ struct KnowledgeLibraryDetailView: View {
       .keyboardShortcut("i", modifiers: [.command, .option])
       .accessibilityIdentifier("knowledge-library-inspector-toggle")
 
-      Button {
-        knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)
-      } label: {
-        Label(
-          knowledge.isPinned(document.id)
-            ? String(localized: "取消固定")
-            : String(localized: "固定到 AI"),
-          systemImage: knowledge.isPinned(document.id) ? "pin.slash" : "pin"
-        )
+      if DistributionFeaturePolicy.allowsExternalAIProviders {
+        Button {
+          knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)
+        } label: {
+          Label(
+            knowledge.isPinned(document.id)
+              ? String(localized: "取消固定")
+              : String(localized: "固定到 AI"),
+            systemImage: knowledge.isPinned(document.id) ? "pin.slash" : "pin"
+          )
+        }
+        .accessibilityIdentifier("knowledge-library-pin-toggle")
       }
-      .accessibilityIdentifier("knowledge-library-pin-toggle")
 
       Menu {
         Button {
@@ -256,14 +264,16 @@ struct KnowledgeLibraryDetailView: View {
         } label: {
           Label("来源更新与版本…", systemImage: "clock.arrow.circlepath")
         }
-        Divider()
-        Toggle(
-          String(localized: "允许 AI 检索"),
-          isOn: Binding(
-            get: { knowledge.selectedDocument?.allowsAIUse ?? false },
-            set: { knowledge.setAllowsAIUse($0, documentID: document.id) }
+        if DistributionFeaturePolicy.allowsExternalAIProviders {
+          Divider()
+          Toggle(
+            String(localized: "允许 AI 检索"),
+            isOn: Binding(
+              get: { knowledge.selectedDocument?.allowsAIUse ?? false },
+              set: { knowledge.setAllowsAIUse($0, documentID: document.id) }
+            )
           )
-        )
+        }
         documentFolderMenu(document)
         Divider()
         Button(role: .destructive) {
@@ -411,13 +421,15 @@ struct KnowledgeLibraryDetailView: View {
       if !document.tags.isEmpty {
         Label(document.tags.joined(separator: "、"), systemImage: "tag")
       }
-      Label(
-        document.allowsAIUse
-          ? String(localized: "允许 AI 检索命中片段")
-          : String(localized: "不会提供给 AI"),
-        systemImage: document.allowsAIUse ? "sparkles" : "sparkles.slash"
-      )
-      .foregroundStyle(document.allowsAIUse ? Color.primary : Color.secondary)
+      if DistributionFeaturePolicy.allowsExternalAIProviders {
+        Label(
+          document.allowsAIUse
+            ? String(localized: "允许 AI 检索命中片段")
+            : String(localized: "不会提供给 AI"),
+          systemImage: document.allowsAIUse ? "sparkles" : "sparkles.slash"
+        )
+        .foregroundStyle(document.allowsAIUse ? Color.primary : Color.secondary)
+      }
     }
     .font(.callout)
   }
@@ -518,14 +530,59 @@ struct KnowledgeLibraryDetailView: View {
 
   private var contentPresentationControl: some View {
     VStack(alignment: .leading, spacing: 7) {
-      Picker("正文版本", selection: $contentPresentation) {
-        Text("清洗内容").tag(KnowledgeContentPresentation.cleaned)
-        Text("原始内容").tag(KnowledgeContentPresentation.original)
+      HStack(spacing: 8) {
+        Picker("正文版本", selection: $contentPresentation) {
+          Text("清洗内容").tag(KnowledgeContentPresentation.cleaned)
+          Text("原始内容").tag(KnowledgeContentPresentation.original)
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 220)
+        .disabled(knowledge.selectedDocumentCapturedText == nil)
+        .accessibilityIdentifier("knowledge-library-content-presentation-picker")
+
+        Button {
+          preparesLocalRepairOnHistoryOpen = true
+          isSourceHistoryPresented = true
+        } label: {
+          Label(String(localized: "重新清洗…"), systemImage: "wand.and.stars")
+        }
+        .disabled(knowledge.isBusy || currentRevision == nil)
+        .help(String(localized: "使用本机保存的原始网页归档预览新版清洗结果"))
+        .accessibilityIdentifier("knowledge-library-reclean-button")
       }
-      .pickerStyle(.segmented)
-      .frame(width: 220)
-      .disabled(knowledge.selectedDocumentCapturedText == nil)
-      .accessibilityIdentifier("knowledge-library-content-presentation-picker")
+
+      if let currentRevision,
+         currentRevision.parserVersion < KnowledgeLibraryService.parserVersion {
+        HStack(alignment: .top, spacing: 8) {
+          Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+            .foregroundStyle(WorkbenchTheme.warning)
+            .accessibilityHidden(true)
+          VStack(alignment: .leading, spacing: 2) {
+            Text("清洗规则已升级")
+              .font(.callout.weight(.semibold))
+            Text(
+              DistributionFeaturePolicy.allowsExternalAIProviders
+                ? String(
+                  format: String(localized: "当前正文使用清洗规则 v%@，新版 v%@ 可进一步过滤社交平台界面噪声。重新清洗后，阅读、搜索与 AI 检索会改用新版内容。"),
+                  String(currentRevision.parserVersion),
+                  String(KnowledgeLibraryService.parserVersion)
+                )
+                : String(
+                  format: String(localized: "当前正文使用清洗规则 v%@，新版 v%@ 可进一步过滤社交平台界面噪声。重新清洗后，阅读与本地搜索会改用新版内容。"),
+                  String(currentRevision.parserVersion),
+                  String(KnowledgeLibraryService.parserVersion)
+                )
+            )
+            .font(.workbenchSupporting)
+            .foregroundStyle(.secondary)
+          }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(WorkbenchTheme.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("knowledge-library-cleaning-upgrade-prompt")
+      }
 
       if let error = knowledge.selectedDocumentCapturedTextError {
         Label(
@@ -535,16 +592,25 @@ struct KnowledgeLibraryDetailView: View {
           ),
           systemImage: "exclamationmark.triangle"
         )
-          .font(.caption)
+          .font(.workbenchSupporting)
           .foregroundStyle(WorkbenchTheme.risk)
       } else {
-        Text("清洗内容用于阅读、搜索与 AI 检索；原始抓取正文仅供核对，不会进入 AI 索引。")
-          .font(.caption)
+        Text(
+          DistributionFeaturePolicy.allowsExternalAIProviders
+            ? String(localized: "清洗内容用于阅读、搜索与 AI 检索；原始抓取正文仅供核对，不会进入 AI 索引。")
+            : String(localized: "清洗内容用于阅读与本地搜索；原始抓取正文仅供核对，不会进入搜索索引。")
+        )
+          .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
       }
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("knowledge-library-content-presentation")
+  }
+
+  private var currentRevision: KnowledgeDocumentRevision? {
+    guard let revisionID = knowledge.selectedDocument?.currentRevisionID else { return nil }
+    return knowledge.revisions.first { $0.id == revisionID }
   }
 
   private var displayedContentText: String {
@@ -711,7 +777,7 @@ private struct KnowledgeDocumentReader: View {
       VStack(alignment: .leading, spacing: 6) {
         if let language {
           Text(language.uppercased())
-            .font(.caption2.weight(.semibold))
+            .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
         }
         KnowledgeHighlightedText.highlightedText(

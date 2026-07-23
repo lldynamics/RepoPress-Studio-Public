@@ -87,7 +87,7 @@ struct KnowledgeRelatedChaptersSection: View {
     return VStack(alignment: .leading, spacing: 5) {
       HStack(alignment: .firstTextBaseline) {
         Text(recommendation.document.title)
-          .font(.callout.weight(.semibold))
+          .font(.workbenchCardTitle)
           .workbenchTruncatedIdentity(recommendation.document.title)
         Spacer()
         let location = recommendation.chunk.locator?.nilIfEmpty
@@ -99,14 +99,19 @@ struct KnowledgeRelatedChaptersSection: View {
           .workbenchTruncatedIdentity(location)
       }
       Text(excerpt)
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
         .lineLimit(2)
         .multilineTextAlignment(.leading)
-      HStack(spacing: 5) {
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 72, maximum: 120), spacing: 5)],
+        alignment: .leading,
+        spacing: 5
+      ) {
         ForEach(Array(recommendation.reasons.prefix(3)), id: \.self) { reason in
           Text(reason.localizedDisplayName)
-            .font(.caption2.weight(.medium))
+            .font(.workbenchMetadata.weight(.medium))
+            .lineLimit(1)
             .foregroundStyle(.tint)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)

@@ -16,26 +16,16 @@ mkdir -p "$HOME" "$XDG_CACHE_HOME" "$CLANG_MODULE_CACHE_PATH" "$SWIFT_MODULE_CAC
 cd "$ROOT_DIR"
 
 python3 script/generate_browser_extension_protocol.py --check
+bash script/sync_safari_browser_extension.sh --check
+bash script/build_safari_web_extension.sh --check
 python3 script/browser_extension_release_ledger.py check
 python3 script/test_browser_extension_release_ledger.py
 python3 script/chromium_extension_release.py check
 node script/test_browser_extension_compatibility.mjs
-node script/test_browser_extension_e2e.mjs
-"$ROOT_DIR/script/test_firefox_extension_release.sh"
+node script/test_browser_extension_e2e.mjs --browser=chromium
 
-swift build --disable-sandbox
-SWIFT_BIN_DIR="$(swift build --disable-sandbox --show-bin-path)"
-NATIVE_HOST="$SWIFT_BIN_DIR/KnowledgeNativeMessagingHost"
-
-[[ -x "$NATIVE_HOST" ]] || {
-  echo "Browser extension release gate: native messaging host is missing: $NATIVE_HOST" >&2
-  exit 1
-}
-
-node script/test_native_messaging_host.mjs "$NATIVE_HOST"
-node script/test_native_messaging_unix_bridge.mjs "$NATIVE_HOST"
-swift test --disable-sandbox --filter KnowledgeNativeMessagingProtocolTests
+swift build --disable-sandbox --product PersonalSitePublisherMac
 swift test --disable-sandbox --filter KnowledgeBrowserImportOperationLedgerTests
 swift test --disable-sandbox --filter KnowledgeLibraryServiceTests.testBrowserDuplicateResolutionSupportsVersionMoveCopyAndCancelWithoutSilentMutation
 
-echo "Browser extension and native messaging release gate: passed"
+echo "Safari Web Extension, Chrome and authenticated loopback release gate: passed"

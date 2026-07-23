@@ -8,6 +8,8 @@ ARCHIVE_PATH="${APP_STORE_ARCHIVE_PATH:-}"
 INFO_PLIST=""
 APP_BINARY=""
 ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
+SAFARI_EXTENSION_ENTITLEMENTS="$ROOT_DIR/Packaging/SafariWebExtension.entitlements"
+SAFARI_EXTENSION_BUNDLE_ID="com.jinfang.PersonalSitePublisherMac.SafariExtension"
 ARCHIVE_EVIDENCE="${APP_STORE_ARCHIVE_EVIDENCE_FILE:-$ROOT_DIR/docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md}"
 STRICT=0
 DRY_RUN=0
@@ -153,6 +155,8 @@ done
 [[ -f "$ROOT_DIR/script/check_app_store_metadata.sh" ]] || fail "missing script/check_app_store_metadata.sh"
 [[ -f "$ROOT_DIR/script/package_app_store.sh" ]] || fail "missing script/package_app_store.sh"
 [[ -f "$ENTITLEMENTS" ]] || fail "missing Sources/PersonalSitePublisherMac/AppStore.entitlements"
+[[ -f "$SAFARI_EXTENSION_ENTITLEMENTS" ]] \
+  || fail "missing Packaging/SafariWebExtension.entitlements"
 [[ -f "$ARCHIVE_EVIDENCE" ]] || fail "missing docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md"
 bash "$ROOT_DIR/script/check_build_version.sh" >/dev/null
 
@@ -178,14 +182,26 @@ fi
 INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 CORE_RESOURCE_INFO="$APP_BUNDLE/Contents/Resources/${APP_NAME}_PublishingWorkbenchCore.bundle/Info.plist"
+SAFARI_EXTENSION="$APP_BUNDLE/Contents/PlugIns/RepoPressSafariExtension.appex"
+SAFARI_EXTENSION_INFO="$SAFARI_EXTENSION/Contents/Info.plist"
+SAFARI_EXTENSION_MANIFEST="$SAFARI_EXTENSION/Contents/Resources/manifest.json"
 
 [[ -d "$APP_BUNDLE" ]] || fail "app bundle does not exist: $APP_BUNDLE"
 [[ -f "$INFO_PLIST" ]] || fail "Info.plist is missing from app bundle"
 [[ -x "$APP_BINARY" ]] || fail "app executable is missing or not executable"
+[[ -d "$SAFARI_EXTENSION" ]] || fail "embedded Safari Web Extension is missing"
+[[ -f "$SAFARI_EXTENSION_INFO" ]] || fail "Safari Web Extension Info.plist is missing"
+[[ -f "$SAFARI_EXTENSION_MANIFEST" ]] || fail "Safari Web Extension manifest is missing"
 plutil -lint "$INFO_PLIST" >/dev/null || fail "Info.plist is invalid"
+plutil -lint "$SAFARI_EXTENSION_INFO" >/dev/null \
+  || fail "Safari Web Extension Info.plist is invalid"
+python3 -m json.tool "$SAFARI_EXTENSION_MANIFEST" >/dev/null \
+  || fail "Safari Web Extension manifest is invalid"
 [[ -f "$CORE_RESOURCE_INFO" ]] || fail "PublishingWorkbenchCore resource bundle Info.plist is missing"
 plutil -lint "$CORE_RESOURCE_INFO" >/dev/null || fail "PublishingWorkbenchCore resource bundle Info.plist is invalid"
 plutil -lint "$ENTITLEMENTS" >/dev/null || fail "AppStore.entitlements is invalid"
+plutil -lint "$SAFARI_EXTENSION_ENTITLEMENTS" >/dev/null \
+  || fail "SafariWebExtension.entitlements is invalid"
 
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST")"
 marketing_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST")"
@@ -205,17 +221,35 @@ core_resource_package_type="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackage
 [[ "$marketing_version" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || fail "invalid marketing version: $marketing_version"
 [[ "$build_number" =~ ^[0-9]+$ ]] || fail "invalid build number: $build_number"
 [[ "$build_configuration" == "Release" ]] || fail "archive readiness requires a Release bundle, got: ${build_configuration:-missing configuration evidence}"
-[[ "$application_category" == public.app-category.* ]] || fail "archive is missing a valid LSApplicationCategoryType"
+[[ "$application_category" == "public.app-category.developer-tools" ]] \
+  || fail "archive must use the Developer Tools category"
 [[ -n "${human_readable_copyright//[[:space:]]/}" ]] || fail "archive is missing NSHumanReadableCopyright"
 [[ "$uses_non_exempt_encryption" == "false" ]] \
   || fail "archive must declare ITSAppUsesNonExemptEncryption=false for the audited encryption boundary"
+safari_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$SAFARI_EXTENSION_INFO")"
+safari_package_type="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$SAFARI_EXTENSION_INFO")"
+safari_extension_point="$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$SAFARI_EXTENSION_INFO")"
+safari_minimum_system="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$SAFARI_EXTENSION_INFO")"
+[[ "$safari_bundle_id" == "$SAFARI_EXTENSION_BUNDLE_ID" ]] \
+  || fail "unexpected Safari Web Extension bundle identifier: $safari_bundle_id"
+[[ "$safari_package_type" == "XPC!" ]] \
+  || fail "Safari Web Extension must use CFBundlePackageType=XPC!"
+[[ "$safari_extension_point" == "com.apple.Safari.web-extension" ]] \
+  || fail "unexpected Safari Web Extension point: $safari_extension_point"
+[[ "$safari_minimum_system" == "14.0" ]] \
+  || fail "Safari Web Extension minimum system must be 14.0"
+bash "$ROOT_DIR/script/build_safari_web_extension.sh" --check >/dev/null
 bash "$ROOT_DIR/script/check_build_version.sh" --info-plist "$INFO_PLIST" >/dev/null
 
 codesign_log="$(mktemp "${TMPDIR:-/tmp}/app-store-codesign.XXXXXX")"
-trap 'rm -f "$codesign_log"' EXIT
+safari_codesign_log="$(mktemp "${TMPDIR:-/tmp}/app-store-safari-codesign.XXXXXX")"
+trap 'rm -f "$codesign_log" "$safari_codesign_log"' EXIT
 signed=0
 runtime_enabled=0
+safari_signed=0
+safari_runtime_enabled=0
 identity_summary="unsigned"
+safari_identity_summary="unsigned"
 
 if /usr/bin/codesign -dv --verbose=4 "$APP_BUNDLE" >"$codesign_log" 2>&1; then
   identity_summary="$(grep -E '^Authority=|^TeamIdentifier=|^flags=' "$codesign_log" | paste -sd ';' -)"
@@ -224,6 +258,15 @@ if /usr/bin/codesign -dv --verbose=4 "$APP_BUNDLE" >"$codesign_log" 2>&1; then
   fi
   if grep -Eq '^CodeDirectory .*flags=.*runtime' "$codesign_log"; then
     runtime_enabled=1
+  fi
+fi
+if /usr/bin/codesign -dv --verbose=4 "$SAFARI_EXTENSION" >"$safari_codesign_log" 2>&1; then
+  safari_identity_summary="$(grep -E '^Authority=|^TeamIdentifier=|^flags=' "$safari_codesign_log" | paste -sd ';' -)"
+  if /usr/bin/codesign --verify --strict "$SAFARI_EXTENSION" >/dev/null 2>&1; then
+    safari_signed=1
+  fi
+  if grep -Eq '^CodeDirectory .*flags=.*runtime' "$safari_codesign_log"; then
+    safari_runtime_enabled=1
   fi
 fi
 
@@ -242,6 +285,16 @@ if [[ "$runtime_enabled" == "1" ]]; then
 else
   warn "hardened runtime flag is not proven on the current app bundle"
 fi
+if [[ "$safari_signed" == "1" ]]; then
+  echo "app store archive readiness: Safari Web Extension signature verifies ($safari_identity_summary)"
+else
+  warn "Safari Web Extension is not verified with a distribution code signature"
+fi
+if [[ "$safari_runtime_enabled" == "1" ]]; then
+  echo "app store archive readiness: Safari Web Extension hardened runtime flag is present"
+else
+  warn "Safari Web Extension hardened runtime flag is not proven on the current bundle"
+fi
 
 if [[ "$unchecked_archive_items" -eq 0 && "$checked_archive_items" -gt 0 ]]; then
   echo "app store archive readiness: archive validation evidence is complete"
@@ -252,8 +305,15 @@ fi
 if [[ "$STRICT" == "1" ]]; then
   [[ "$signed" == "1" ]] || fail "strict mode requires a verified distribution-signed app bundle"
   [[ "$runtime_enabled" == "1" ]] || fail "strict mode requires hardened runtime evidence"
+  [[ "$safari_signed" == "1" ]] \
+    || fail "strict mode requires a verified Safari Web Extension signature"
+  [[ "$safari_runtime_enabled" == "1" ]] \
+    || fail "strict mode requires Safari Web Extension hardened runtime evidence"
+  [[ -f "$SAFARI_EXTENSION/Contents/embedded.provisionprofile" ]] \
+    || fail "strict mode requires an embedded Safari extension provisioning profile"
   actual_entitlements="$(mktemp "${TMPDIR:-/tmp}/app-store-entitlements.XXXXXX")"
-  trap 'rm -f "$codesign_log" "$actual_entitlements"' EXIT
+  actual_safari_entitlements="$(mktemp "${TMPDIR:-/tmp}/app-store-safari-entitlements.XXXXXX")"
+  trap 'rm -f "$codesign_log" "$safari_codesign_log" "$actual_entitlements" "$actual_safari_entitlements"' EXIT
   /usr/bin/codesign -d --entitlements :- "$APP_BUNDLE" >"$actual_entitlements" 2>/dev/null \
     || fail "strict mode could not extract entitlements from the signed app bundle"
   plutil -lint "$actual_entitlements" >/dev/null || fail "signed app entitlements are invalid"
@@ -265,6 +325,18 @@ if [[ "$STRICT" == "1" ]]; then
   [[ "$actual_network" == "true" ]] || fail "signed app is missing Network Client entitlement"
   [[ "$actual_file_access" == "true" ]] || fail "signed app is missing user-selected read/write entitlement"
   [[ "$actual_bookmarks" == "true" ]] || fail "signed app is missing app-scope bookmark entitlement"
+  /usr/bin/codesign -d --entitlements :- "$SAFARI_EXTENSION" \
+    >"$actual_safari_entitlements" 2>/dev/null \
+    || fail "strict mode could not extract Safari Web Extension entitlements"
+  plutil -lint "$actual_safari_entitlements" >/dev/null \
+    || fail "signed Safari Web Extension entitlements are invalid"
+  safari_actual_sandbox="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$actual_safari_entitlements" 2>/dev/null || true)"
+  [[ "$safari_actual_sandbox" == "true" ]] \
+    || fail "signed Safari Web Extension is missing App Sandbox entitlement"
+  app_team="$(sed -n 's/^TeamIdentifier=//p' "$codesign_log" | head -n 1)"
+  safari_team="$(sed -n 's/^TeamIdentifier=//p' "$safari_codesign_log" | head -n 1)"
+  [[ -n "$app_team" && "$safari_team" == "$app_team" ]] \
+    || fail "Safari Web Extension signing team does not match the containing app"
   validate_archive_evidence 1
   [[ "$unchecked_archive_items" -eq 0 && "$checked_archive_items" -gt 0 ]] \
     || fail "strict mode requires completed docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md"
