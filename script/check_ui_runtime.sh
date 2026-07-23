@@ -71,6 +71,13 @@ grep -q "window_visibility_probe" "$ROOT_DIR/script/build_and_run.sh" \
 if grep -Fq 'pkill -x "$APP_NAME"' "$ROOT_DIR/script/build_and_run.sh"; then
   fail "release launch cleanup must not terminate same-named isolated UI-test apps"
 fi
+grep -Fq 'rm -rf "$RUNTIME_HOME/Library/Containers/$TEST_BUNDLE_ID/Data"' \
+  "$ROOT_DIR/script/check_accessibility_runtime.sh" \
+  || fail "accessibility cleanup must remove only test-owned sandbox data"
+if grep -Fq 'rm -rf "$RUNTIME_HOME/Library/Containers/$TEST_BUNDLE_ID"' \
+  "$ROOT_DIR/script/check_accessibility_runtime.sh"; then
+  fail "accessibility cleanup must preserve ContainerManager-owned metadata"
+fi
 [[ -x "$ROOT_DIR/script/check_launch_performance.sh" ]] \
   || fail "launch performance gate is missing or not executable"
 
