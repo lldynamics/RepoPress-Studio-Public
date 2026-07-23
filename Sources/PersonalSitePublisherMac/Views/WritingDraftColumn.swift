@@ -178,14 +178,27 @@ struct WritingDraftColumn: View {
           Label("新建通用草稿", systemImage: "square.and.pencil")
         }
       } label: {
-        Label("新建", systemImage: "plus")
-          .labelStyle(.titleAndIcon)
-          .font(.callout.weight(.semibold))
-          .frame(minWidth: 54)
-          .fixedSize(horizontal: true, vertical: false)
+        Color.clear
+          .frame(width: 66, height: 28)
       }
-      .workbenchProminentActionStyle()
+      .menuStyle(.borderlessButton)
       .menuIndicator(.hidden)
+      .frame(width: 66, height: 28)
+      .background(
+        WorkbenchTheme.primaryActionFill,
+        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+      )
+      .overlay {
+        HStack(spacing: 5) {
+          Image(systemName: "plus")
+            .font(.system(size: 11, weight: .bold))
+          Text("新建")
+            .font(.system(size: 13, weight: .bold))
+        }
+          .foregroundColor(.white)
+          .allowsHitTesting(false)
+          .accessibilityHidden(true)
+      }
       .controlSize(.regular)
       .fixedSize()
       .help("新建文章或通用草稿")
