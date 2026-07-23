@@ -21,6 +21,11 @@ cleanup() {
     fi
     rm -rf "$TEST_DIST_DIR"
   fi
+  case "$TEST_BUNDLE_ID" in
+    com.jinfang.PersonalSitePublisherMac.AccessibilityTests.*)
+      rm -rf "$RUNTIME_HOME/Library/Containers/$TEST_BUNDLE_ID"
+      ;;
+  esac
 }
 trap cleanup EXIT
 
