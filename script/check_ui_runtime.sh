@@ -66,6 +66,11 @@ grep -q "count of windows" "$ROOT_DIR/script/build_and_run.sh" \
   || fail "build_and_run --verify must query the app window count"
 grep -q -- "--launch-baseline" "$ROOT_DIR/script/build_and_run.sh" \
   || fail "build_and_run must expose a launch performance baseline mode"
+grep -q "window_visibility_probe" "$ROOT_DIR/script/build_and_run.sh" \
+  || fail "launch performance must use the target-process on-screen window probe"
+if grep -Fq 'pkill -x "$APP_NAME"' "$ROOT_DIR/script/build_and_run.sh"; then
+  fail "release launch cleanup must not terminate same-named isolated UI-test apps"
+fi
 [[ -x "$ROOT_DIR/script/check_launch_performance.sh" ]] \
   || fail "launch performance gate is missing or not executable"
 

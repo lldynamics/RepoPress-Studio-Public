@@ -43,6 +43,8 @@ SAFARI_EXTENSION_BUILD_PRODUCT="$ROOT_DIR/.build/safari-web-extension/product/Re
 SAFARI_EXTENSION_BUNDLE="$APP_PLUGINS/RepoPressSafariExtension.appex"
 CODESIGN_TOOL="${CODESIGN_TOOL:-/usr/bin/codesign}"
 SECURITY_TOOL="${SECURITY_TOOL:-/usr/bin/security}"
+WINDOW_VISIBILITY_PROBE_SOURCE="$ROOT_DIR/script/window_visibility_probe.swift"
+WINDOW_VISIBILITY_PROBE_BINARY="${WINDOW_VISIBILITY_PROBE_BINARY:-$ROOT_DIR/.build/window-visibility-probe/window_visibility_probe}"
 
 RUNTIME_HOME="${PERSONAL_SITE_PUBLISHER_RUNTIME_HOME:-${HOME:?HOME is required to launch the app}}"
 SWIFT_BUILD_HOME="${SWIFT_BUILD_HOME:-/private/tmp/personal-site-publisher-swift-home}"
@@ -254,7 +256,8 @@ stop_running_app_processes() {
   while IFS= read -r pid; do
     [[ -z "$pid" ]] || kill "$pid" >/dev/null 2>&1 || true
   done < <(app_process_pids)
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+  # Do not terminate by process name: isolated UI-test apps intentionally use
+  # the same executable name and may run alongside this release build.
 
   while [[ "$attempts" -gt 0 ]]; do
     if ! app_process_is_running; then
@@ -675,6 +678,27 @@ run_bundle() {
   open_bundle
 }
 
+prepare_window_visibility_probe() {
+  [[ -f "$WINDOW_VISIBILITY_PROBE_SOURCE" ]] || {
+    echo "window visibility probe source is missing: $WINDOW_VISIBILITY_PROBE_SOURCE" >&2
+    return 1
+  }
+  if [[ -x "$WINDOW_VISIBILITY_PROBE_BINARY" \
+    && "$WINDOW_VISIBILITY_PROBE_BINARY" -nt "$WINDOW_VISIBILITY_PROBE_SOURCE" ]]; then
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$WINDOW_VISIBILITY_PROBE_BINARY")"
+  env \
+    HOME="$SWIFT_BUILD_HOME" \
+    XDG_CACHE_HOME="$SWIFT_BUILD_XDG_CACHE_HOME" \
+    CLANG_MODULE_CACHE_PATH="$SWIFT_BUILD_CLANG_MODULE_CACHE_PATH" \
+    SWIFT_MODULE_CACHE_PATH="$SWIFT_BUILD_MODULE_CACHE_PATH" \
+    xcrun swiftc -O \
+      "$WINDOW_VISIBILITY_PROBE_SOURCE" \
+      -o "$WINDOW_VISIBILITY_PROBE_BINARY"
+}
+
 case "$MODE" in
   run)
     run_bundle
@@ -714,7 +738,12 @@ case "$MODE" in
     ;;
   --launch-baseline|launch-baseline)
     max_launch_seconds="${LAUNCH_BASELINE_MAX_SECONDS:-5.0}"
+    if is_console_session_locked; then
+      echo "launch performance gate: console session is locked; visible-window evidence is unavailable" >&2
+      exit 1
+    fi
     prepare_bundle_for_launch
+    prepare_window_visibility_probe
     trap 'stop_running_app_processes >/dev/null 2>&1 || true' EXIT
     launch_started_at="$(perl -MTime::HiRes=time -e 'printf "%.6f", time')"
     open_bundle
@@ -722,20 +751,16 @@ case "$MODE" in
       echo "launch performance gate: process did not become ready" >&2
       exit 1
     }
-    launch_readiness="visible window"
-    if is_console_session_locked; then
-      echo "launch performance gate: console session is locked; visible-window evidence is unavailable" >&2
+    app_pid="$(app_process_pids | head -n 1)"
+    [[ -n "$app_pid" ]] || {
+      echo "launch performance gate: target process disappeared before window verification" >&2
       exit 1
-    elif can_query_main_window; then
-      wait_for_main_window || {
-        echo "launch performance gate: visible window was not detected" >&2
-        exit 1
-      }
-      launch_readiness="visible window"
-    else
-      echo "launch performance gate: System Events window query unavailable; visible-window evidence is required" >&2
+    }
+    "$WINDOW_VISIBILITY_PROBE_BINARY" "$app_pid" "$max_launch_seconds" || {
+      echo "launch performance gate: visible main window was not detected" >&2
       exit 1
-    fi
+    }
+    launch_readiness="on-screen main window"
     launch_finished_at="$(perl -MTime::HiRes=time -e 'printf "%.6f", time')"
     launch_elapsed="$(awk -v start="$launch_started_at" -v finish="$launch_finished_at" 'BEGIN { printf "%.3f", finish - start }')"
     if ! awk -v elapsed="$launch_elapsed" -v maximum="$max_launch_seconds" 'BEGIN { exit !(elapsed <= maximum) }'; then
