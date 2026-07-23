@@ -2,9 +2,9 @@ import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
-/// Applies the wider workspace default once to windows restored from an older,
-/// narrower build. SwiftUI's `defaultSize` covers new windows, while this tiny
-/// bridge handles the existing restoration record without overriding later
+/// Applies the current workspace default once to windows restored from an
+/// older build. SwiftUI's `defaultSize` covers new windows, while this tiny
+/// bridge migrates an existing restoration record before preserving later
 /// user resizing choices.
 struct MainWindowInitialSizeBridge: NSViewRepresentable {
   let sourceSession: RepositoryHTMLSourceSession
@@ -26,7 +26,7 @@ struct MainWindowInitialSizeBridge: NSViewRepresentable {
 }
 
 final class MainWindowSizingView: NSView {
-  private static let migrationKey = "didMigrateMainWindowDefaultSizeV1"
+  private static let migrationKey = "didMigrateMainWindowDefaultSizeV2"
   private weak var sourceSession: RepositoryHTMLSourceSession?
   private var profileProvider: () -> SiteProfile
   private weak var protectedWindow: NSWindow?
@@ -83,7 +83,7 @@ final class MainWindowSizingView: NSView {
     // is what preserves the user's later choice to resize it more narrowly.
     defaults.set(true, forKey: Self.migrationKey)
 
-    guard window.contentLayoutRect.width < WorkbenchLayoutMode.minimumInspectorWorkspaceWidth,
+    guard window.contentLayoutRect.width < WorkbenchLayoutMode.defaultWindowWidth,
           let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame,
           visibleFrame.width >= WorkbenchLayoutMode.minimumInspectorWorkspaceWidth else {
       return

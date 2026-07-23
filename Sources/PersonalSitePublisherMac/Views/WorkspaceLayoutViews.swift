@@ -13,7 +13,8 @@ struct WorkspaceShellSplitLayout: View {
   @Binding var repositoryContextStage: RepositoryContextStage
   let repositorySourceSession: RepositoryHTMLSourceSession
   let onSelectSection: (WorkspaceSection) -> Void
-  @AppStorage("workspacePrimarySidebarWidthV1") private var storedSidebarWidth = 260.0
+  @AppStorage("workspacePrimarySidebarWidthV2")
+  private var storedSidebarWidth = Double(WorkbenchLayoutMode.defaultSidebarWidth)
   @State private var sidebarResizeStartWidth: CGFloat?
   @StateObject private var contentHealthSidebarProjection = ContentHealthSidebarProjection()
 

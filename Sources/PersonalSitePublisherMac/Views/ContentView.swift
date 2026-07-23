@@ -615,8 +615,7 @@ struct ContentView: View {
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
     guard !ScreenshotDemoDataService.isEnabledFromEnvironment else { return }
 #endif
-    guard shellState.selectedSection == .writing,
-          !effectiveFocusMode,
+    guard !effectiveFocusMode,
           !isCompactLayout,
           allowsInspectorByWidth,
           shellState.canUseProtectedWorkbench else { return }
