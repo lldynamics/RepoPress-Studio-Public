@@ -12,10 +12,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
     let appURL = try runtimeAppURL()
     application = XCUIApplication(url: appURL)
-    knowledgeLibraryRootURL = FileManager.default.temporaryDirectory
+    let testDataRoot = try testDataRoot(for: appURL)
+    knowledgeLibraryRootURL = testDataRoot.url
       .appendingPathComponent("PersonalSitePublisherMac-AccessibilityUITests", isDirectory: true)
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
-    try FileManager.default.createDirectory(at: knowledgeLibraryRootURL, withIntermediateDirectories: true)
+    if !testDataRoot.isTargetAppContainer {
+      try FileManager.default.createDirectory(at: knowledgeLibraryRootURL, withIntermediateDirectories: true)
+    }
   }
 
   override func tearDownWithError() throws {
@@ -292,6 +295,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
   private func runtimeAppURL() throws -> URL {
     let configuredPath = ProcessInfo.processInfo.environment["WORKBENCH_XCUI_APP_PATH"]
+      ?? Bundle(for: Self.self).object(forInfoDictionaryKey: "WorkbenchXCUIAppPath") as? String
     let appURL: URL
     if let configuredPath, !configuredPath.isEmpty {
       appURL = URL(fileURLWithPath: configuredPath, isDirectory: true).standardizedFileURL
@@ -308,5 +312,33 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       throw CocoaError(.fileNoSuchFile)
     }
     return appURL
+  }
+
+  private func testDataRoot(for appURL: URL) throws -> (url: URL, isTargetAppContainer: Bool) {
+    let infoPlistURL = appURL.appendingPathComponent("Contents/Info.plist")
+    let data = try Data(contentsOf: infoPlistURL)
+    guard let info = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+          let bundleIdentifier = info["CFBundleIdentifier"] as? String else {
+      throw CocoaError(.propertyListReadCorrupt)
+    }
+    guard info["PersonalSitePublisherDistributionChannel"] as? String == "AppStore" else {
+      return (FileManager.default.temporaryDirectory, false)
+    }
+
+    let runtimeHome = (
+      ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_RUNTIME_HOME"]
+        ?? Bundle(for: Self.self).object(
+          forInfoDictionaryKey: "PersonalSitePublisherRuntimeHome"
+        ) as? String
+    )
+      .map { URL(fileURLWithPath: $0, isDirectory: true) }
+      ?? FileManager.default.homeDirectoryForCurrentUser
+    return (
+      runtimeHome
+        .appendingPathComponent("Library/Containers", isDirectory: true)
+        .appendingPathComponent(bundleIdentifier, isDirectory: true)
+        .appendingPathComponent("Data/tmp", isDirectory: true),
+      true
+    )
   }
 }

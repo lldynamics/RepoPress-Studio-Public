@@ -28,7 +28,9 @@ case "${1:-}" in
 esac
 
 build_arguments=(--package-only)
-if [[ "$MODE" == "launch" ]]; then
+if [[ "${RELEASE_GATE_PROFILE:-}" == "app-store" ]]; then
+  build_arguments+=(--app-store)
+elif [[ "$MODE" == "launch" ]]; then
   build_arguments+=(--release)
 fi
 bash "$ROOT_DIR/script/build_and_run.sh" "${build_arguments[@]}" >/dev/null

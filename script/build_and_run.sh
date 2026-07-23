@@ -6,7 +6,7 @@ BUILD_CONFIGURATION="debug"
 APP_STORE_BUILD=0
 DIRECT_DISTRIBUTION_BUILD="${DIRECT_DISTRIBUTION_BUILD:-0}"
 APP_NAME="PersonalSitePublisherMac"
-BUNDLE_ID="com.jinfang.PersonalSitePublisherMac"
+BUNDLE_ID="${PERSONAL_SITE_PUBLISHER_BUNDLE_ID:-com.jinfang.PersonalSitePublisherMac}"
 MIN_SYSTEM_VERSION="14.0"
 APP_CATEGORY="${APP_CATEGORY:-public.app-category.developer-tools}"
 HUMAN_READABLE_COPYRIGHT="${APP_COPYRIGHT:-Copyright © 2026 Jinfang. All rights reserved.}"
@@ -38,7 +38,7 @@ LOCAL_DEVELOPMENT_ENTITLEMENTS="$ROOT_DIR/Packaging/LocalDevelopment.entitlement
 APP_STORE_ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
 DIRECT_DISTRIBUTION_ENTITLEMENTS="$ROOT_DIR/Packaging/DirectDistribution.entitlements"
 SAFARI_EXTENSION_ENTITLEMENTS="$ROOT_DIR/Packaging/SafariWebExtension.entitlements"
-SAFARI_EXTENSION_BUNDLE_ID="$BUNDLE_ID.SafariExtension"
+SAFARI_EXTENSION_BUNDLE_ID="${SAFARI_WEB_EXTENSION_BUNDLE_ID:-$BUNDLE_ID.SafariExtension}"
 SAFARI_EXTENSION_BUILD_PRODUCT="$ROOT_DIR/.build/safari-web-extension/product/RepoPressSafariExtension.appex"
 SAFARI_EXTENSION_BUNDLE="$APP_PLUGINS/RepoPressSafariExtension.appex"
 CODESIGN_TOOL="${CODESIGN_TOOL:-/usr/bin/codesign}"
@@ -250,10 +250,22 @@ app_process_is_running() {
 
 stop_running_app_processes() {
   local pid=""
+  local attempts=50
   while IFS= read -r pid; do
     [[ -z "$pid" ]] || kill "$pid" >/dev/null 2>&1 || true
   done < <(app_process_pids)
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+
+  while [[ "$attempts" -gt 0 ]]; do
+    if ! app_process_is_running; then
+      return 0
+    fi
+    sleep 0.1
+    attempts="$((attempts - 1))"
+  done
+
+  echo "failed to stop the existing $APP_NAME process before rebuilding" >&2
+  return 1
 }
 
 case "$MODE" in
@@ -644,8 +656,11 @@ wait_for_running_process() {
   return 1
 }
 
-run_bundle() {
+prepare_bundle_for_launch() {
   /usr/bin/xattr -cr "$APP_BUNDLE"
+}
+
+open_bundle() {
   if env HOME="$RUNTIME_HOME" /usr/bin/open -n "$APP_BUNDLE" >/tmp/personal-site-publisher-open.log 2>&1; then
     return 0
   fi
@@ -653,6 +668,11 @@ run_bundle() {
   echo "open dist app failed; refusing to launch the SwiftUI GUI as a raw executable." >&2
   cat /tmp/personal-site-publisher-open.log >&2
   return 1
+}
+
+run_bundle() {
+  prepare_bundle_for_launch
+  open_bundle
 }
 
 case "$MODE" in
@@ -694,8 +714,10 @@ case "$MODE" in
     ;;
   --launch-baseline|launch-baseline)
     max_launch_seconds="${LAUNCH_BASELINE_MAX_SECONDS:-5.0}"
+    prepare_bundle_for_launch
+    trap 'stop_running_app_processes >/dev/null 2>&1 || true' EXIT
     launch_started_at="$(perl -MTime::HiRes=time -e 'printf "%.6f", time')"
-    run_bundle
+    open_bundle
     wait_for_running_process || {
       echo "launch performance gate: process did not become ready" >&2
       exit 1

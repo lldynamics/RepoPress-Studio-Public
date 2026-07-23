@@ -13,7 +13,8 @@ PRODUCT_BUNDLE="$BUILD_ROOT/product/RepoPressSafariExtension.appex"
 LOCALIZATION_ROOT="$ROOT_DIR/Packaging/SafariWebExtension"
 SAFARI_APP_NAME="RepoPressSafari"
 SAFARI_TARGET="RepoPressSafari Extension"
-SAFARI_EXTENSION_BUNDLE_ID="com.jinfang.PersonalSitePublisherMac.SafariExtension"
+CONTAINING_APP_BUNDLE_ID="${PERSONAL_SITE_PUBLISHER_BUNDLE_ID:-com.jinfang.PersonalSitePublisherMac}"
+SAFARI_EXTENSION_BUNDLE_ID="${SAFARI_WEB_EXTENSION_BUNDLE_ID:-$CONTAINING_APP_BUNDLE_ID.SafariExtension}"
 MINIMUM_SYSTEM_VERSION="14.0"
 CONFIGURATION="Release"
 MARKETING_VERSION=""
@@ -81,7 +82,7 @@ version_values="$(bash "$ROOT_DIR/script/check_build_version.sh" --print-values)
 IFS=$'\t' read -r MARKETING_VERSION BUILD_NUMBER <<<"$version_values"
 
 if [[ "$MODE" == "check" ]]; then
-  python3 - "$SAFARI_SOURCE/manifest.json" "$SAFARI_EXTENSION_BUNDLE_ID" <<'PY'
+  python3 - "$SAFARI_SOURCE/manifest.json" "$SAFARI_EXTENSION_BUNDLE_ID" "$CONTAINING_APP_BUNDLE_ID" <<'PY'
 import json
 from pathlib import Path
 import sys
@@ -101,7 +102,8 @@ if "pageCapture" in permissions or "nativeMessaging" in permissions:
 if not {"activeTab", "scripting", "storage"}.issubset(permissions):
     raise SystemExit("safari web extension: required user-initiated capture permissions are missing")
 bundle_id = sys.argv[2]
-if not bundle_id.startswith("com.jinfang.PersonalSitePublisherMac."):
+containing_bundle_id = sys.argv[3]
+if not bundle_id.startswith(f"{containing_bundle_id}."):
     raise SystemExit("safari web extension: bundle identifier is outside the containing app prefix")
 PY
   echo "safari web extension: source contract passed"
@@ -113,7 +115,7 @@ packager_log="$BUILD_ROOT/packager.log"
 xcrun safari-web-extension-packager "$SAFARI_SOURCE" \
   --project-location "$PROJECT_LOCATION" \
   --app-name "$SAFARI_APP_NAME" \
-  --bundle-identifier "com.jinfang.PersonalSitePublisherMac" \
+  --bundle-identifier "$CONTAINING_APP_BUNDLE_ID" \
   --swift \
   --macos-only \
   --copy-resources \
