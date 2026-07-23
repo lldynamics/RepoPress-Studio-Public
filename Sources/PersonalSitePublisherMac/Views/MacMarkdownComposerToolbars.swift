@@ -17,9 +17,7 @@ struct MacMarkdownEditorToolbar: View {
   let onPerformOutlineAction: (MarkdownOutlineSectionAction, MarkdownOutlineItem) -> Void
   let onShowShortcutHelp: () -> Void
   let onOpenAIContextInspector: () -> Void
-  let recommendedAIActionMenuItems: [AIPublishingActionMenuItem]
-  let moreAIActionMenuItems: [AIPublishingActionMenuItem]
-  let isSelectionAIAction: (AIPublishingActionKind) -> Bool
+  let onOpenAITemplateLibrary: () -> Void
   let selectionAIActionAvailability: (AIPublishingActionKind) -> AIPublishingActionAvailabilityPresentation
   let articleAIActionAvailability: (AIPublishingActionKind) -> AIPublishingActionAvailabilityPresentation
   let onPerformSelectionAIAction: (AIPublishingActionKind) -> Void
@@ -111,38 +109,44 @@ struct MacMarkdownEditorToolbar: View {
       .help("快捷键说明")
       .accessibilityLabel("快捷键说明")
 
-      Divider()
-        .frame(height: 18)
-
-      Menu {
-        ForEach(recommendedAIActionMenuItems) { item in
-          aiActionButton(item)
-        }
-
+      if DistributionFeaturePolicy.allowsExternalAIProviders {
         Divider()
+          .frame(height: 18)
 
-        Menu("更多指令") {
-          ForEach(AIPublishingQuickPromptGroup.allCases) { group in
-            let groupItems = moreAIActionMenuItems.filter {
-              $0.kind.promptLibraryGroup == group
-            }
-            if !groupItems.isEmpty {
-              Menu {
-                ForEach(groupItems) { item in
-                  aiActionButton(item)
-                }
-              } label: {
-                Label(aiActionGroupTitle(group), systemImage: group.systemImage)
-              }
-            }
+        Menu {
+          articleAIActionButton(.continueWriting, kind: .continueArticle)
+          selectionAIActionButton(.rewrite, kind: .rewriteSelection)
+          selectionAIActionButton(.condense, kind: .condenseSelection)
+
+          Menu {
+            selectionAIActionButton(.translate, kind: .translateSelectionToChinese)
+            selectionAIActionButton(.translate, kind: .translateSelectionToEnglish)
+          } label: {
+            Label(
+              AIPublishingDefaultCapability.translate.localizedDisplayName,
+              systemImage: AIPublishingDefaultCapability.translate.systemImage
+            )
+          }
+
+          articleAIActionButton(.generateMetadata, kind: .draftFrontMatterPack)
+          articleAIActionButton(.publishingCheck, kind: .publishingReadiness)
+          articleAIActionButton(.citeKnowledge, kind: .draftReferencesSection)
+
+          Button {
+            onOpenAIContextInspector()
+          } label: {
+            Label(
+              AIPublishingDefaultCapability.askAnything.localizedDisplayName,
+              systemImage: AIPublishingDefaultCapability.askAnything.systemImage
+            )
           }
 
           Divider()
 
           Button {
-            onOpenAIContextInspector()
+            onOpenAITemplateLibrary()
           } label: {
-            Label("打开 AI 对话", systemImage: "bubble.left.and.text.bubble.right")
+            Label("搜索模板库…", systemImage: "magnifyingglass")
           }
 
           Button {
@@ -150,14 +154,14 @@ struct MacMarkdownEditorToolbar: View {
           } label: {
             Label("复制上下文 Prompt", systemImage: "doc.on.doc")
           }
+        } label: {
+          editorActionIcon("sparkles")
         }
-      } label: {
-        editorActionIcon("sparkles")
+        .menuIndicator(.hidden)
+        .help("AI 常用操作")
+        .accessibilityLabel("AI 常用操作")
+        .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
       }
-      .menuIndicator(.hidden)
-      .help("AI 推荐指令")
-      .accessibilityLabel("AI 推荐指令")
-      .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
     }
     .buttonStyle(.borderless)
     .accessibilityElement(children: .contain)
@@ -203,50 +207,35 @@ struct MacMarkdownEditorToolbar: View {
       .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
-  private func aiActionGroupTitle(_ group: AIPublishingQuickPromptGroup) -> LocalizedStringKey {
-    switch group {
-    case .writing:
-      return "写作生成"
-    case .editing:
-      return "选区编辑"
-    case .publishing:
-      return "发布检查"
-    case .distribution:
-      return "分发素材"
-    case .maintenance:
-      return "内容维护"
-    }
-  }
-
-  private func articleAIActionButton(_ item: AIPublishingActionMenuItem) -> some View {
-    let availability = articleAIActionAvailability(item.kind)
+  private func articleAIActionButton(
+    _ capability: AIPublishingDefaultCapability,
+    kind: AIPublishingActionKind
+  ) -> some View {
+    let availability = articleAIActionAvailability(kind)
     return Button {
-      onPerformArticleAIAction(item.kind)
+      onPerformArticleAIAction(kind)
     } label: {
-      Label(item.kind.localizedDisplayName, systemImage: item.systemImage)
+      Label(capability.localizedDisplayName, systemImage: capability.systemImage)
     }
     .disabled(!availability.isEnabled)
-    .help(availability.unavailableReason ?? item.kind.localizedDisplayName)
+    .help(availability.unavailableReason ?? capability.localizedDisplayName)
   }
 
-  private func selectionAIActionButton(_ item: AIPublishingActionMenuItem) -> some View {
-    let availability = selectionAIActionAvailability(item.kind)
+  private func selectionAIActionButton(
+    _ capability: AIPublishingDefaultCapability,
+    kind: AIPublishingActionKind
+  ) -> some View {
+    let availability = selectionAIActionAvailability(kind)
     return Button {
-      onPerformSelectionAIAction(item.kind)
+      onPerformSelectionAIAction(kind)
     } label: {
-      Label(item.kind.localizedDisplayName, systemImage: item.systemImage)
+      Label(
+        capability == .translate ? kind.localizedDisplayName : capability.localizedDisplayName,
+        systemImage: capability.systemImage
+      )
     }
     .disabled(!availability.isEnabled)
-    .help(availability.unavailableReason ?? item.kind.localizedDisplayName)
-  }
-
-  @ViewBuilder
-  private func aiActionButton(_ item: AIPublishingActionMenuItem) -> some View {
-    if isSelectionAIAction(item.kind) {
-      selectionAIActionButton(item)
-    } else {
-      articleAIActionButton(item)
-    }
+    .help(availability.unavailableReason ?? capability.localizedDisplayName)
   }
 }
 
@@ -419,7 +408,7 @@ struct MacMarkdownFormattingToolbar: View {
         toolbarIcon(diagnosticCount == 0 ? "checkmark.circle" : "waveform.badge.exclamationmark")
         if diagnosticCount > 0 {
           Text("\(min(diagnosticCount, 99))")
-            .font(.system(size: 8, weight: .bold))
+            .font(.workbenchMetadata.weight(.bold))
             .padding(.horizontal, 3)
             .background(WorkbenchTheme.warningActionFill, in: Capsule())
             .foregroundStyle(.white)
@@ -466,7 +455,8 @@ struct MacMarkdownFormattingToolbar: View {
       onApplyMarkdownFormatting(.heading(level: level))
     } label: {
       Text("H\(level)")
-        .font(.system(size: 11, weight: .semibold, design: .rounded))
+        .font(.workbenchMetadata.weight(.semibold))
+        .monospaced()
         .frame(width: 28, height: 28)
     }
     .foregroundStyle(.secondary)

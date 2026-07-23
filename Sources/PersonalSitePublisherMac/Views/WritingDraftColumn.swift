@@ -121,7 +121,7 @@ struct WritingDraftColumn: View {
 
         if let delta = draftCountDelta {
           Text(delta > 0 ? "+\(delta)" : "\(delta)")
-            .font(.caption2.weight(.semibold))
+            .font(.caption.weight(.semibold))
             .foregroundStyle(delta > 0 ? WorkbenchTheme.success : WorkbenchTheme.risk)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -290,9 +290,9 @@ struct WritingDraftColumn: View {
     }
     .pickerStyle(.segmented)
     .labelsHidden()
-    .controlSize(.small)
-    .font(.caption)
-    .frame(minWidth: 110, idealWidth: 130, maxWidth: 150)
+    .controlSize(.regular)
+    .font(.workbenchButtonLabel)
+    .frame(minWidth: 150, idealWidth: 180, maxWidth: 200)
     .accessibilityLabel("内容范围")
   }
 
@@ -421,6 +421,7 @@ struct WritingDraftColumn: View {
     }
     .onChange(of: draftListState.presentationRevision) { _, _ in
       refreshFilteredDraftsCache()
+      revealSelectedDraftIfNeeded()
       let newDrafts = visibleDraftSnapshot
       synchronizeDraftSelection(with: newDrafts)
       if isDraftListLoading && !newDrafts.isEmpty {
@@ -433,6 +434,7 @@ struct WritingDraftColumn: View {
       resetDraftPagination()
     }
     .onChange(of: draftListState.selectedDraftID) { _, _ in
+      revealSelectedDraftIfNeeded()
       synchronizeDraftSelectionFromStore()
     }
     .onChange(of: filteredDrafts.count) { _, newCount in
@@ -740,6 +742,22 @@ struct WritingDraftColumn: View {
     refreshDraftCounts()
   }
 
+  private func revealSelectedDraftIfNeeded() {
+    guard let selectedDraftID = draftListState.selectedDraftID,
+          store.writingDrafts.contains(where: { $0.id == selectedDraftID }) else {
+      return
+    }
+    refreshFilteredDraftsCache()
+    guard !filteredDrafts.contains(where: { $0.id == selectedDraftID }) else {
+      return
+    }
+
+    draftFilterDebounceTask?.cancel()
+    searchText = ""
+    filter = .all
+    applyDraftFilterDebounce()
+  }
+
   private func refreshDraftCounts() {
     refreshFilteredDraftsCache()
     let nextFilteredCount = filteredDrafts.count
@@ -937,7 +955,7 @@ struct WritingDraftColumn: View {
         .font(.headline)
 
       Text(draftListEmptyMessage)
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
 

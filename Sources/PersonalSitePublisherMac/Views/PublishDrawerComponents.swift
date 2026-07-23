@@ -43,7 +43,7 @@ struct PublishDrawerStat: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       Label(LocalizedStringKey(title), systemImage: systemImage)
-        .font(.caption2)
+        .font(.caption)
         .foregroundStyle(.secondary)
       Text(value)
         .font(.title3.weight(.semibold))
@@ -122,7 +122,7 @@ struct PublishDrawerFileDiffRow: View {
         VStack(alignment: .leading, spacing: 2) {
           WorkbenchPathIdentity(path: diff.path)
           Text("\(diff.kind.localizedDisplayName) · \(diff.status.localizedDisplayName) · \(formattedByteSize)")
-            .font(.caption2)
+            .font(.caption)
             .foregroundStyle(.secondary)
         }
       }
@@ -148,7 +148,8 @@ struct PublishDrawerFileDiffRow: View {
 }
 
 struct RemotePublishConfirmationView: View {
-  let draftTitle: String
+  let targetLabel: String
+  let targetTitle: String
   let preview: RemoteRepositoryPublishPreview
   let isPublishing: Bool
   let cancelAction: () -> Void
@@ -170,7 +171,7 @@ struct RemotePublishConfirmationView: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 14) {
           PublishDrawerCard(title: "发布目标", systemImage: "network") {
-            PublishDrawerInfoRow(title: "文章", value: draftTitle, systemImage: "doc.text")
+            PublishDrawerInfoRow(title: targetLabel, value: targetTitle, systemImage: "doc.text")
             PublishDrawerInfoRow(title: "远端", value: preview.repositoryName, systemImage: "shippingbox")
             PublishDrawerInfoRow(title: "模式", value: preview.mode.localizedDisplayName, systemImage: "arrow.up.circle")
             PublishDrawerInfoRow(title: "发布分支", value: preview.branchName, systemImage: "arrow.triangle.branch")

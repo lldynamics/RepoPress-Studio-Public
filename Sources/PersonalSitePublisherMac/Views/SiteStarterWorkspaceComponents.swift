@@ -645,7 +645,7 @@ struct SiteStarterTemplatePreviewCard: View {
         }
         Spacer()
         Text(template.preview.accentName)
-          .font(.caption2.weight(.semibold))
+          .font(.caption.weight(.semibold))
           .padding(.horizontal, 7)
           .padding(.vertical, 4)
           .background(WorkbenchBackgroundStyle.badge, in: Capsule())

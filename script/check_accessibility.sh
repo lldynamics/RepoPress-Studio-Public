@@ -106,6 +106,19 @@ require_literal \
   ".focusedSceneValue(" \
   "content view must expose focused command actions"
 
+unexpected_publish_execution_references="$(
+  grep -R -nE \
+    '(writeSelectedDraftToLocalRepository|commitSelectedDraftUsingPreferredStrategy|commitSelectedDraftDirectly|commitSelectedDraftToReviewBranch|publishSelectedDraftOnlineUsingPreferredStrategy|writeBatchReadyDraftsToLocalRepository|publishBatchReadyDraftsOnlineUsingPreferredStrategy)\(' \
+    "$ROOT_DIR/Sources/PersonalSitePublisherMac" \
+    --include='*.swift' \
+    | grep -v '/Views/PublishDrawerView.swift:' \
+    || true
+)"
+if [[ -n "$unexpected_publish_execution_references" ]]; then
+  printf '%s\n' "$unexpected_publish_execution_references" >&2
+  fail "desktop publishing mutations must remain isolated to PublishDrawerView"
+fi
+
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
   "isCommandPalettePresented = false" \
@@ -303,13 +316,61 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
-  ".accessibilityLabel(\"全站图片优化\")" \
-  "site-wide image optimization must expose an accessibility label"
+  ".accessibilityIdentifier(\"image-workbench\")" \
+  "image workbench must expose a stable root accessibility identifier"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
-  ".accessibilityLabel(\"优化全站图片\")" \
-  "site-wide image optimization menu must expose an accessibility label"
+  "ForEach(ImageWorkbenchBatchAction.allActions)" \
+  "every primary image operation must remain visible instead of being hidden in a menu"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
+  ".accessibilityIdentifier(action.accessibilityIdentifier)" \
+  "every visible image operation must expose its stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchBatchSupport.swift" \
+  "\"image-action-\(id)\"" \
+  "image operation identifiers must be derived from stable action IDs"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
+  "private var optimizationMenu" \
+  "primary image operations must not be hidden in the legacy optimization menu"
+
+for repository_image_identifier in \
+  repository-image-browser \
+  repository-image-target-picker \
+  repository-image-open-target-article \
+  repository-image-search \
+  repository-image-filter \
+  repository-image-list \
+  repository-image-detail \
+  repository-image-attach \
+  repository-image-preview \
+  repository-image-reveal \
+  repository-image-copy-path; do
+  require_literal \
+    "Sources/PersonalSitePublisherMac/Views/RepositoryImageBrowserView.swift" \
+    ".accessibilityIdentifier(\"$repository_image_identifier\")" \
+    "repository image browser control must expose a unique identifier: $repository_image_identifier"
+done
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryImageBrowserView.swift" \
+  ".accessibilityIdentifier(\"repository-image-open-article-\(reference.draftID.uuidString)\")" \
+  "each repository image reference must expose a unique open-article accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
+  ".accessibilityIdentifier(\"image-issue-open-article-\(draft.draftID.uuidString)\")" \
+  "each problem article must expose a unique open-article accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
+  ".accessibilityIdentifier(\"image-issue-locate-\(issue.id.uuidString)\")" \
+  "each image issue must expose a unique locate-in-article accessibility identifier"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/PublishDrawerView.swift" \
@@ -500,7 +561,7 @@ sheet_action_files=(
   "Sources/PersonalSitePublisherMac/Views/RemoteRepositoryCreationConfirmationView.swift"
   "Sources/PersonalSitePublisherMac/Views/PublishDrawerComponents.swift"
   "Sources/PersonalSitePublisherMac/Views/PublishDrawerView.swift"
-  "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift"
+  "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchBatchSupport.swift"
   "Sources/PersonalSitePublisherMac/Views/KnowledgeLibraryRestorePreviewView.swift"
 )
 for sheet_action_file in "${sheet_action_files[@]}"; do
@@ -598,6 +659,221 @@ for workspace_section in writing library sync images contentHealth; do
 done
 
 require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceContextSidebarView.swift" \
+  "WorkspaceQuickSearchView(" \
+  "operational workspaces must keep quick article search in the sidebar"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceContextSidebarView.swift" \
+  "repositoryContextStage: shell.selectedSection == .sync" \
+  "repository navigation must be injected below search only for the sync workspace"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceContextSidebarView.swift" \
+  "imageWorkbenchContextStage: shell.selectedSection == .images" \
+  "image-workbench navigation must be injected below search only for the image workspace"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceContextSidebarView.swift" \
+  "contentHealthFilter: shell.selectedSection == .contentHealth" \
+  "content-health navigation must be injected below search only for the health workspace"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceQuickSearchView.swift" \
+  ".accessibilityIdentifier(\"repository-sidebar-stage-navigation\")" \
+  "repository overview, changes and history navigation must remain accessible below search"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceQuickSearchView.swift" \
+  "repositoryStageButton(item, stage: stage)" \
+  "repository stages must remain separate full-width sidebar buttons"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceQuickSearchView.swift" \
+  '"repository-sidebar-stage-\(item.rawValue)"' \
+  "repository stage buttons must expose stable identifiers"
+
+for operational_navigation_identifier in \
+  image-sidebar-stage-navigation \
+  content-health-sidebar-stage-navigation; do
+  require_literal \
+    "Sources/PersonalSitePublisherMac/Views/WorkspaceQuickSearchView.swift" \
+    ".accessibilityIdentifier(\"$operational_navigation_identifier\")" \
+    "operational stage navigation must expose $operational_navigation_identifier"
+done
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceQuickSearchView.swift" \
+  '"image-sidebar-stage-\(item.rawValue)"' \
+  "image-workbench stages must remain separate full-width sidebar buttons"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceQuickSearchView.swift" \
+  '"content-health-sidebar-stage-\(item.rawValue)"' \
+  "content-health stages must remain separate full-width sidebar buttons"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/ContentHealthDetailView.swift" \
+  "pageModePicker" \
+  "content health must not restore duplicate center-stage navigation"
+
+for unfolded_health_file in \
+  Sources/PersonalSitePublisherMac/Views/SiteMaintenanceSnapshotHeader.swift \
+  Sources/PersonalSitePublisherMac/Views/SiteMaintenancePrimarySections.swift; do
+  require_absent_literal \
+    "$unfolded_health_file" \
+    "Menu {" \
+    "site-maintenance actions must remain visible instead of hidden in menus: $unfolded_health_file"
+done
+
+for unfolded_health_file in \
+  Sources/PersonalSitePublisherMac/Views/SiteMaintenancePrimarySections.swift \
+  Sources/PersonalSitePublisherMac/Views/OnlineSiteInspectionSection.swift; do
+  require_absent_literal \
+    "$unfolded_health_file" \
+    "DisclosureGroup" \
+    "site-maintenance metrics must remain visible instead of folded: $unfolded_health_file"
+done
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceView.swift" \
+  "repositoryStageNavigation" \
+  "repository navigation must not return to the top of the center content"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift" \
+  "onlinePublishCenterSection" \
+  "repository overview must render the online publish center instead of leaving it as dead UI"
+
+for unfolded_repository_file in \
+  Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift \
+  Sources/PersonalSitePublisherMac/Views/RepositoryWorkspacePublishingSections.swift \
+  Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceLocalPreviewSection.swift \
+  Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift \
+  Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDeploymentDebugSection.swift \
+  Sources/PersonalSitePublisherMac/Views/ReleaseHistoryRecordCardSection.swift; do
+  require_absent_literal \
+    "$unfolded_repository_file" \
+    "DisclosureGroup" \
+    "repository and release-history functions must remain visible instead of folded: $unfolded_repository_file"
+done
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift" \
+  "repositoryActionsMenu" \
+  "repository primary actions must not return to the legacy repository actions menu"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift" \
+  "Menu {" \
+  "repository overview actions must remain visible instead of being hidden in a menu"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceView.swift" \
+  ".accessibilityIdentifier(\"repository-workspace\")" \
+  "repository workspace must expose a stable root accessibility identifier"
+
+for repository_primary_identifier in \
+  repository-primary-actions \
+  repository-action-select-folder \
+  repository-action-scan \
+  repository-action-import \
+  repository-action-migrate \
+  repository-action-open-publish \
+  repository-section-summary \
+  repository-section-information; do
+  require_literal \
+    "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift" \
+    ".accessibilityIdentifier(\"$repository_primary_identifier\")" \
+    "repository overview must expose $repository_primary_identifier"
+done
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspacePublishingSections.swift" \
+  ".accessibilityIdentifier(\"repository-section-online-publish\")" \
+  "repository online publish section must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceAutoSyncSection.swift" \
+  ".accessibilityIdentifier(\"repository-section-auto-sync\")" \
+  "repository auto-sync section must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceLocalPreviewSection.swift" \
+  ".accessibilityIdentifier(\"repository-section-local-preview\")" \
+  "repository local-preview section must expose a stable accessibility identifier"
+
+for repository_publishing_identifier in \
+  repository-section-sync-plan \
+  repository-section-path-rules; do
+  require_literal \
+    "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspacePublishingSections.swift" \
+    ".accessibilityIdentifier(\"$repository_publishing_identifier\")" \
+    "repository publishing support must expose $repository_publishing_identifier"
+done
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceRemoteChangesSection.swift" \
+  ".accessibilityIdentifier(\"repository-section-remote-changes\")" \
+  "repository remote changes must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceChangeSections.swift" \
+  ".accessibilityIdentifier(\"repository-section-local-changes\")" \
+  "repository local changes must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift" \
+  ".accessibilityIdentifier(\"repository-section-release-history\")" \
+  "repository release history must expose a stable accessibility identifier"
+
+for quick_search_identifier in \
+  workspace-quick-search \
+  workspace-quick-search-field \
+  repository-sidebar-stage-navigation \
+  workspace-quick-search-results; do
+  require_literal \
+    "Sources/PersonalSitePublisherMac/Views/WorkspaceQuickSearchView.swift" \
+    ".accessibilityIdentifier(\"$quick_search_identifier\")" \
+    "workspace quick search must expose $quick_search_identifier"
+done
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceQuickSearchView.swift" \
+  "store.matchesPrivacyProtectedDraftSearch" \
+  "workspace quick search must preserve private-content search policy"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceQuickSearchView.swift" \
+  "store.focusDraft(draftID, section: .writing)" \
+  "workspace quick search results must open the selected article"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "testOperationalSidebarQuickSearchIdentifiersRemainUnique" \
+  "runtime accessibility coverage must verify operational sidebar quick search"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "testRepositoryWorkspaceIdentifiersRemainUniqueAcrossAllStages" \
+  "runtime accessibility coverage must verify repository controls across all stages"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "testImageWorkbenchIdentifiersRemainUniqueAndDoNotOverrideChildControls" \
+  "runtime accessibility coverage must verify every image-workbench stage"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "testContentHealthIdentifiersRemainUniqueAcrossAllStages" \
+  "runtime accessibility coverage must verify every content-health stage"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryImageBrowserView.swift" \
+  "RepositoryAccessibilityIdentifier.token(for: asset.repositoryPath)" \
+  "repository-image rows must not expose raw repository paths in accessibility identifiers"
+
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift" \
   'Label("新建", systemImage: "plus")' \
   "writing create menu must keep its visible title and icon"
@@ -649,7 +925,9 @@ for knowledge_detail_identifier in \
   knowledge-library-inspector-toggle \
   knowledge-library-pin-toggle \
   knowledge-library-actions-menu \
-  knowledge-library-import-button; do
+  knowledge-library-import-button \
+  knowledge-library-content-presentation-picker \
+  knowledge-library-reclean-button; do
   require_literal \
     "Sources/PersonalSitePublisherMac/Views/KnowledgeLibraryDetailView.swift" \
     ".accessibilityIdentifier(\"$knowledge_detail_identifier\")" \
@@ -667,8 +945,13 @@ require_literal \
   "runtime knowledge detail identifier uniqueness must remain covered by XCUI"
 
 require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "testImageWorkbenchIdentifiersRemainUniqueAndDoNotOverrideChildControls" \
+  "runtime image workbench identifier uniqueness must remain covered by XCUI"
+
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  ".accessibilityLabel(\"AI 推荐指令\")" \
+  ".accessibilityLabel(\"AI 常用操作\")" \
   "the single editor AI entry must expose a descriptive accessibility label"
 
 require_literal \

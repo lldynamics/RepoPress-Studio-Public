@@ -1,0 +1,86 @@
+import Foundation
+import SQLite3
+
+extension KnowledgeDatabase {
+  func createBackupSnapshot(at destinationURL: URL) throws -> KnowledgeDatabaseBackupInspection {
+    try withLock {
+      guard let handle else {
+        throw KnowledgeLibraryBackupError.databaseIntegrity("资料库数据库尚未打开")
+      }
+      try FileManager.default.createDirectory(
+        at: destinationURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      if FileManager.default.fileExists(atPath: destinationURL.path) {
+        try FileManager.default.removeItem(at: destinationURL)
+      }
+
+      var destinationHandle: OpaquePointer?
+      let flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
+      guard sqlite3_open_v2(destinationURL.path, &destinationHandle, flags, nil) == SQLITE_OK,
+            let destinationHandle else {
+        let message = destinationHandle.flatMap { sqlite3_errmsg($0) }.map(String.init(cString:))
+          ?? "无法创建 SQLite 快照"
+        if let destinationHandle { sqlite3_close(destinationHandle) }
+        throw KnowledgeLibraryBackupError.databaseIntegrity(message)
+      }
+      defer { sqlite3_close(destinationHandle) }
+
+      guard let backup = sqlite3_backup_init(destinationHandle, "main", handle, "main") else {
+        throw KnowledgeLibraryBackupError.databaseIntegrity(
+          String(cString: sqlite3_errmsg(destinationHandle))
+        )
+      }
+
+      var stepResult: Int32 = SQLITE_OK
+      repeat {
+        stepResult = sqlite3_backup_step(backup, -1)
+        if stepResult == SQLITE_BUSY || stepResult == SQLITE_LOCKED {
+          sqlite3_sleep(10)
+        }
+      } while stepResult == SQLITE_BUSY || stepResult == SQLITE_LOCKED
+      let finishResult = sqlite3_backup_finish(backup)
+      guard stepResult == SQLITE_DONE, finishResult == SQLITE_OK else {
+        throw KnowledgeLibraryBackupError.databaseIntegrity(
+          String(cString: sqlite3_errmsg(destinationHandle))
+        )
+      }
+
+      var journalError: UnsafeMutablePointer<CChar>?
+      guard sqlite3_exec(
+        destinationHandle,
+        "PRAGMA journal_mode = DELETE; PRAGMA synchronous = FULL;",
+        nil,
+        nil,
+        &journalError
+      ) == SQLITE_OK else {
+        let message = journalError.map { String(cString: $0) }
+          ?? String(cString: sqlite3_errmsg(destinationHandle))
+        sqlite3_free(journalError)
+        throw KnowledgeLibraryBackupError.databaseIntegrity(message)
+      }
+
+      return try backupInspectionUnlocked(validateIntegrity: false)
+    }
+  }
+
+  static func inspectBackup(at fileURL: URL) throws -> KnowledgeDatabaseBackupInspection {
+    do {
+      let database = try KnowledgeDatabase(readOnlyBackupURL: fileURL)
+      return try database.withLock {
+        let userVersion = try database.scalarIntUnlocked("PRAGMA user_version;")
+        guard userVersion <= Self.currentSchemaVersion else {
+          throw KnowledgeLibraryBackupError.unsupportedDatabaseVersion(
+            found: userVersion,
+            supported: Self.currentSchemaVersion
+          )
+        }
+        return try database.backupInspectionUnlocked(validateIntegrity: true)
+      }
+    } catch let error as KnowledgeLibraryBackupError {
+      throw error
+    } catch {
+      throw KnowledgeLibraryBackupError.databaseIntegrity(error.localizedDescription)
+    }
+  }
+}

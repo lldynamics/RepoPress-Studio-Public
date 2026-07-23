@@ -7,8 +7,15 @@ APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 APP_ICON="$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+SAFARI_EXTENSION="$APP_BUNDLE/Contents/PlugIns/RepoPressSafariExtension.appex"
+SAFARI_EXTENSION_INFO="$SAFARI_EXTENSION/Contents/Info.plist"
+SAFARI_EXTENSION_MANIFEST="$SAFARI_EXTENSION/Contents/Resources/manifest.json"
+SAFARI_EXTENSION_ENTITLEMENTS="$ROOT_DIR/Packaging/SafariWebExtension.entitlements"
+SAFARI_EXTENSION_BUNDLE_ID="com.jinfang.PersonalSitePublisherMac.SafariExtension"
 CORE_RESOURCE_INFO="$APP_BUNDLE/Contents/Resources/${APP_NAME}_PublishingWorkbenchCore.bundle/Info.plist"
 ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
+FEATURE_POLICY="$ROOT_DIR/Sources/PublishingWorkbenchCore/Models/DistributionFeaturePolicy.swift"
+LAUNCH_COORDINATOR="$ROOT_DIR/Sources/PersonalSitePublisherMac/App/WorkbenchLaunchCoordinator.swift"
 LOCALIZED_INFO_PLIST_KEYS=(CFBundleDisplayName CFBundleName)
 
 fail() {
@@ -21,12 +28,24 @@ bash "$ROOT_DIR/script/build_and_run.sh" --package-only --app-store >/dev/null
 [[ -d "$APP_BUNDLE" ]] || fail "app bundle was not created"
 [[ -x "$APP_BINARY" ]] || fail "app executable is missing or not executable"
 [[ -s "$APP_ICON" ]] || fail "AppIcon.icns is missing from the app bundle"
+[[ -d "$SAFARI_EXTENSION" ]] || fail "embedded Safari Web Extension is missing"
+[[ -f "$SAFARI_EXTENSION_INFO" ]] || fail "Safari Web Extension Info.plist is missing"
+[[ -f "$SAFARI_EXTENSION_MANIFEST" ]] || fail "Safari Web Extension manifest is missing"
 [[ -f "$ENTITLEMENTS" ]] || fail "AppStore.entitlements is missing"
+[[ -f "$SAFARI_EXTENSION_ENTITLEMENTS" ]] || fail "SafariWebExtension.entitlements is missing"
+[[ -f "$FEATURE_POLICY" ]] || fail "DistributionFeaturePolicy.swift is missing"
+[[ -f "$LAUNCH_COORDINATOR" ]] || fail "WorkbenchLaunchCoordinator.swift is missing"
 
 plutil -lint "$INFO_PLIST" >/dev/null || fail "Info.plist is invalid"
+plutil -lint "$SAFARI_EXTENSION_INFO" >/dev/null \
+  || fail "Safari Web Extension Info.plist is invalid"
+python3 -m json.tool "$SAFARI_EXTENSION_MANIFEST" >/dev/null \
+  || fail "Safari Web Extension manifest is invalid"
 [[ -f "$CORE_RESOURCE_INFO" ]] || fail "PublishingWorkbenchCore resource bundle Info.plist is missing"
 plutil -lint "$CORE_RESOURCE_INFO" >/dev/null || fail "PublishingWorkbenchCore resource bundle Info.plist is invalid"
 plutil -lint "$ENTITLEMENTS" >/dev/null || fail "AppStore.entitlements is invalid"
+plutil -lint "$SAFARI_EXTENSION_ENTITLEMENTS" >/dev/null \
+  || fail "SafariWebExtension.entitlements is invalid"
 
 for language in zh-Hans en; do
   localized_info="$APP_BUNDLE/Contents/Resources/$language.lproj/InfoPlist.strings"
@@ -36,10 +55,17 @@ for language in zh-Hans en; do
     grep -Eq "^[[:space:]]*\"$required_key\"[[:space:]]*=" "$localized_info" \
       || fail "$language InfoPlist.strings is missing $required_key"
   done
+  grep -Eq '^[[:space:]]*"CFBundleDisplayName"[[:space:]]*=[[:space:]]*"RepoPress";' "$localized_info" \
+    || fail "$language CFBundleDisplayName must be RepoPress"
+  grep -Eq '^[[:space:]]*"CFBundleName"[[:space:]]*=[[:space:]]*"RepoPress";' "$localized_info" \
+    || fail "$language CFBundleName must be RepoPress"
 done
 
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST")"
 [[ "$bundle_id" == "com.jinfang.PersonalSitePublisherMac" ]] || fail "unexpected bundle identifier: $bundle_id"
+
+display_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$INFO_PLIST" 2>/dev/null || true)"
+[[ "$display_name" == "RepoPress" ]] || fail "CFBundleDisplayName must be RepoPress"
 
 core_resource_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$CORE_RESOURCE_INFO" 2>/dev/null || true)"
 [[ "$core_resource_bundle_id" == "$bundle_id.PublishingWorkbenchCoreResources" ]] \
@@ -55,8 +81,8 @@ minimum_system="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$I
 [[ "$minimum_system" == "14.0" ]] || fail "unexpected minimum system version: $minimum_system"
 
 application_category="$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$INFO_PLIST" 2>/dev/null || true)"
-[[ "$application_category" == public.app-category.* ]] \
-  || fail "LSApplicationCategoryType must use a public.app-category value"
+[[ "$application_category" == "public.app-category.developer-tools" ]] \
+  || fail "LSApplicationCategoryType must be public.app-category.developer-tools"
 
 human_readable_copyright="$(/usr/libexec/PlistBuddy -c 'Print :NSHumanReadableCopyright' "$INFO_PLIST" 2>/dev/null || true)"
 [[ -n "${human_readable_copyright//[[:space:]]/}" ]] \
@@ -70,21 +96,51 @@ marketing_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionStri
 build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST")"
 build_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' "$INFO_PLIST" 2>/dev/null || true)"
 distribution_channel="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherDistributionChannel' "$INFO_PLIST" 2>/dev/null || true)"
+screenshot_capture_build="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherScreenshotCaptureBuild' "$INFO_PLIST" 2>/dev/null || true)"
 browser_extension_available="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBrowserExtensionAvailable' "$INFO_PLIST" 2>/dev/null || true)"
+safari_extension_available="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherSafariWebExtensionAvailable' "$INFO_PLIST" 2>/dev/null || true)"
 [[ "$marketing_version" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || fail "CFBundleShortVersionString must be numeric, got: $marketing_version"
 [[ "$build_number" =~ ^[0-9]+$ ]] || fail "CFBundleVersion must be numeric, got: $build_number"
 [[ "$build_configuration" == "Release" ]] || fail "App Store metadata must come from a Release bundle, got: ${build_configuration:-missing configuration evidence}"
 [[ "$distribution_channel" == "AppStore" ]] || fail "App Store metadata must come from the AppStore distribution channel"
+[[ "$screenshot_capture_build" == "false" ]] || fail "App Store submission bundle must not contain screenshot demo data"
 [[ "$browser_extension_available" == "false" ]] || fail "App Store metadata must disable the unpacked browser extension"
+[[ "$safari_extension_available" == "true" ]] \
+  || fail "App Store metadata must declare the embedded Safari Web Extension"
 [[ ! -e "$APP_BUNDLE/Contents/Resources/BrowserExtension" ]] \
   || fail "App Store bundle must not contain unpacked browser-extension assets"
+[[ ! -e "$APP_BUNDLE/Contents/MacOS/KnowledgeNativeMessagingHost" ]] \
+  || fail "App Store bundle must not contain the Native Messaging host"
+bash "$ROOT_DIR/script/build_safari_web_extension.sh" --check >/dev/null
+safari_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$SAFARI_EXTENSION_INFO")"
+safari_package_type="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$SAFARI_EXTENSION_INFO")"
+safari_extension_point="$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$SAFARI_EXTENSION_INFO")"
+safari_minimum_system="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$SAFARI_EXTENSION_INFO")"
+[[ "$safari_bundle_id" == "$SAFARI_EXTENSION_BUNDLE_ID" ]] \
+  || fail "unexpected Safari Web Extension bundle identifier: $safari_bundle_id"
+[[ "$safari_package_type" == "XPC!" ]] \
+  || fail "Safari Web Extension must use CFBundlePackageType=XPC!"
+[[ "$safari_extension_point" == "com.apple.Safari.web-extension" ]] \
+  || fail "unexpected Safari Web Extension point: $safari_extension_point"
+[[ "$safari_minimum_system" == "14.0" ]] \
+  || fail "unexpected Safari Web Extension minimum system: $safari_minimum_system"
+codesign --verify --strict "$SAFARI_EXTENSION" \
+  || fail "Safari Web Extension signature does not verify"
+grep -Fq "public static var allowsExternalAIProviders" "$FEATURE_POLICY" \
+  || fail "distribution policy does not define the App Store AI boundary"
+grep -Fq "public static var allowsBrowserCapture" "$FEATURE_POLICY" \
+  || fail "distribution policy does not define the App Store browser-capture boundary"
+grep -Fq "let browserBridge = KnowledgeBrowserBridge(" "$LAUNCH_COORDINATOR" \
+  || fail "App Store launch path does not construct the sandboxed browser bridge"
+grep -Fq "browserBridge.start()" "$LAUNCH_COORDINATOR" \
+  || fail "App Store launch path does not start the sandboxed browser bridge"
 bash "$ROOT_DIR/script/check_build_version.sh" --info-plist "$INFO_PLIST" >/dev/null
 
 sandbox_enabled="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$ENTITLEMENTS" 2>/dev/null || true)"
 [[ "$sandbox_enabled" == "true" ]] || fail "App Sandbox entitlement must be enabled"
 
 network_enabled="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.client' "$ENTITLEMENTS" 2>/dev/null || true)"
-[[ "$network_enabled" == "true" ]] || fail "network client entitlement must be enabled for API publishing and AI/deployment checks"
+[[ "$network_enabled" == "true" ]] || fail "network client entitlement must be enabled for API publishing and deployment checks"
 
 file_access_enabled="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.files.user-selected.read-write' "$ENTITLEMENTS" 2>/dev/null || true)"
 [[ "$file_access_enabled" == "true" ]] || fail "user-selected read/write entitlement must be enabled for local repository access"
@@ -93,6 +149,11 @@ bookmarks_enabled="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.files
 [[ "$bookmarks_enabled" == "true" ]] || fail "app-scope bookmarks entitlement must be enabled for persisted repository access"
 
 network_server_enabled="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.server' "$ENTITLEMENTS" 2>/dev/null || true)"
-[[ "$network_server_enabled" != "true" ]] || fail "App Store entitlements must not expose the browser bridge's Network Server capability"
+[[ "$network_server_enabled" == "true" ]] \
+  || fail "network server entitlement must be enabled for the 127.0.0.1 browser-extension bridge"
 
-echo "app store metadata gate: AppStore Release bundle id, version $marketing_version ($build_number), browser-extension boundary, icon, localized display names, category, copyright, minimum macOS, and sandbox entitlements verified"
+safari_sandbox_enabled="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$SAFARI_EXTENSION_ENTITLEMENTS" 2>/dev/null || true)"
+[[ "$safari_sandbox_enabled" == "true" ]] \
+  || fail "Safari Web Extension App Sandbox entitlement must be enabled"
+
+echo "app store metadata gate: AppStore Release bundle id, version $marketing_version ($build_number), BYOK AI consent, embedded Safari Web Extension, sandboxed loopback browser capture, icon, localized display names, category, copyright, minimum macOS, and sandbox entitlements verified"

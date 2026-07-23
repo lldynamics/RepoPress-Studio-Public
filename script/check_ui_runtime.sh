@@ -73,9 +73,95 @@ grep -Fq ".frame(minHeight: 120, idealHeight: 132, maxHeight: 140)" \
 grep -Fq "density: .compactPane" \
   "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
   || fail "the image workbench empty state must use compact density"
-grep -Fq "summary.imageCount > 0" \
+grep -Fq "ForEach(ImageWorkbenchBatchAction.allActions)" \
   "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
-  || fail "the image workbench must hide refresh when no images exist"
+  || fail "the image workbench must keep every primary operation visible"
+grep -Fq "RepositoryImageBrowserView(" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
+  || fail "the image workbench must include the repository image browser"
+grep -Fq '.accessibilityIdentifier("image-workbench-refresh")' \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
+  || fail "the image workbench must keep an accessible rescan action available"
+
+grep -Fq "WorkspaceQuickSearchView(" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/WorkspaceContextSidebarView.swift" \
+  || fail "operational workspaces must keep quick article search in the sidebar"
+grep -Fq "repositoryContextStage: shell.selectedSection == .sync" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/WorkspaceContextSidebarView.swift" \
+  || fail "repository navigation must be injected into the sync sidebar"
+grep -Fq '.accessibilityIdentifier("repository-sidebar-stage-navigation")' \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/WorkspaceQuickSearchView.swift" \
+  || fail "repository navigation must stay directly below quick search"
+grep -Fq "repositoryStageButton(item, stage: stage)" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/WorkspaceQuickSearchView.swift" \
+  || fail "repository stages must remain one full-width button per row"
+if grep -Fq "repositoryStageNavigation" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceView.swift"; then
+  fail "repository navigation must not remain above the center content"
+fi
+grep -Fq "onlinePublishCenterSection" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift" \
+  || fail "repository overview must render the online publish center"
+
+for unfolded_repository_file in \
+  RepositoryWorkspaceOverviewSections.swift \
+  RepositoryWorkspacePublishingSections.swift \
+  RepositoryWorkspaceLocalPreviewSection.swift \
+  ReleaseHistoryDetailView.swift \
+  ReleaseHistoryDeploymentDebugSection.swift \
+  ReleaseHistoryRecordCardSection.swift; do
+  if grep -Fq "DisclosureGroup" \
+    "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/$unfolded_repository_file"; then
+    fail "repository and release-history functions must remain visible instead of folded: $unfolded_repository_file"
+  fi
+done
+
+if grep -Fq "repositoryActionsMenu" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift"; then
+  fail "repository primary actions must not return to the legacy actions menu"
+fi
+if grep -Fq "Menu {" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift"; then
+  fail "repository overview actions must remain visible instead of being hidden in a menu"
+fi
+
+repository_identifier_sources=(
+  "RepositoryWorkspaceView.swift:repository-workspace"
+  "RepositoryWorkspaceOverviewSections.swift:repository-primary-actions"
+  "RepositoryWorkspaceOverviewSections.swift:repository-action-select-folder"
+  "RepositoryWorkspaceOverviewSections.swift:repository-action-scan"
+  "RepositoryWorkspaceOverviewSections.swift:repository-action-import"
+  "RepositoryWorkspaceOverviewSections.swift:repository-action-migrate"
+  "RepositoryWorkspaceOverviewSections.swift:repository-action-open-publish"
+  "RepositoryWorkspaceOverviewSections.swift:repository-section-summary"
+  "RepositoryWorkspaceOverviewSections.swift:repository-section-information"
+  "RepositoryWorkspacePublishingSections.swift:repository-section-online-publish"
+  "RepositoryWorkspaceAutoSyncSection.swift:repository-section-auto-sync"
+  "RepositoryWorkspaceLocalPreviewSection.swift:repository-section-local-preview"
+  "RepositoryWorkspacePublishingSections.swift:repository-section-sync-plan"
+  "RepositoryWorkspacePublishingSections.swift:repository-section-path-rules"
+  "RepositoryWorkspaceRemoteChangesSection.swift:repository-section-remote-changes"
+  "RepositoryWorkspaceChangeSections.swift:repository-section-local-changes"
+  "ReleaseHistoryDetailView.swift:repository-section-release-history"
+)
+for identifier_source in "${repository_identifier_sources[@]}"; do
+  source_file="${identifier_source%%:*}"
+  identifier="${identifier_source#*:}"
+  grep -Fq ".accessibilityIdentifier(\"$identifier\")" \
+    "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/$source_file" \
+    || fail "repository UI must expose $identifier in $source_file"
+done
+
+grep -Fq '.accessibilityIdentifier("workspace-quick-search-field")' \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/WorkspaceQuickSearchView.swift" \
+  || fail "the workspace quick search must keep an accessible search field"
+grep -Fq "store.focusDraft(draftID, section: .writing)" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/WorkspaceQuickSearchView.swift" \
+  || fail "workspace quick search results must open their article"
+if grep -Fq "private var optimizationMenu" \
+  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift"; then
+  fail "the image workbench must not hide primary operations in the legacy menu"
+fi
 
 content_view="$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/ContentView.swift"
 grep -Fq "@ObservedObject private var presentationState: WorkbenchContentPresentationFeatureFacade" \

@@ -165,7 +165,7 @@ struct MarkdownDiagnosticsPanel: View {
               .foregroundStyle(diagnostic.severity == .error ? WorkbenchTheme.risk : WorkbenchTheme.warning)
               Spacer()
               Text("位置 \(diagnostic.range.location)")
-                .font(.caption2.monospacedDigit())
+                .font(.caption.monospacedDigit())
                 .foregroundStyle(.tertiary)
             }
             Text(diagnostic.message)
@@ -253,15 +253,15 @@ struct MarkdownSnippetLibraryPanel: View {
             Text(snippet.title)
               .font(.callout.weight(.medium))
             Text(snippet.detail.isEmpty ? "站点自定义片段" : snippet.detail)
-              .font(.caption)
+              .font(.workbenchSupporting)
               .foregroundStyle(.secondary)
             if snippet.isSiteScoped {
               Label(siteName, systemImage: "building.2")
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.secondary)
             }
             Text(MarkdownSnippetLibraryService.expandedMarkdown(for: snippet, draft: draft))
-              .font(.caption2.monospaced())
+              .font(.caption.monospaced())
               .foregroundStyle(.tertiary)
               .lineLimit(2)
           }

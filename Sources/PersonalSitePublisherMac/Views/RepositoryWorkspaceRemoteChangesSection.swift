@@ -10,30 +10,25 @@ extension RepositoryWorkspaceView {
       let importableArticleCount = importableArticleFiles.count
 
       VStack(alignment: .leading, spacing: 10) {
-        HStack {
-          VStack(alignment: .leading, spacing: 3) {
-            Text("远端 diff 审阅")
-              .font(.headline)
-            let upstreamName = report.branchStatus?.upstreamName ?? "当前分支未设置 upstream"
-            Text(upstreamName)
-              .font(.caption.monospaced())
-              .foregroundStyle(.secondary)
-              .workbenchTruncatedIdentity(upstreamName)
+        ViewThatFits(in: .horizontal) {
+          HStack(alignment: .firstTextBaseline, spacing: 12) {
+            remoteChangesHeading(report)
+            Spacer(minLength: 12)
+            remoteChangesHeaderActions(
+              files: importableArticleFiles,
+              importableArticleCount: importableArticleCount,
+              publishRelevantCount: summary.publishRelevantCount
+            )
           }
-          Spacer()
-          Button {
-            presentRemoteArticleImportPreview(importableArticleFiles)
-          } label: {
-            Label("导入远端文章", systemImage: "tray.and.arrow.down")
+
+          VStack(alignment: .leading, spacing: 10) {
+            remoteChangesHeading(report)
+            remoteChangesHeaderActions(
+              files: importableArticleFiles,
+              importableArticleCount: importableArticleCount,
+              publishRelevantCount: summary.publishRelevantCount
+            )
           }
-          .disabled(importableArticleCount == 0)
-          .accessibilityLabel("导入远端文章")
-          .accessibilityValue("\(importableArticleCount) 篇可导入")
-          Text("\(summary.publishRelevantCount) 个发布相关远端变更")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .accessibilityLabel("发布相关远端变更")
-            .accessibilityValue("\(summary.publishRelevantCount) 个")
         }
 
         if summary.totalCount > 0 {
@@ -67,41 +62,17 @@ extension RepositoryWorkspaceView {
 
                 ForEach(files, id: \.id) { (file: RepositoryChangedFile) in
                   VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 10) {
-                      Text(file.kind.localizedDisplayName)
-                        .font(.caption)
-                        .frame(width: 58, alignment: .leading)
-                        .foregroundStyle(.secondary)
-                      WorkbenchPathIdentity(path: file.displayPath)
-                      Spacer()
-
-                      if role == .article, file.kind != .deleted {
-                        Button {
-                          presentRemoteArticleImportPreview([file])
-                        } label: {
-                          Label("导入", systemImage: "tray.and.arrow.down")
-                        }
-                        .labelStyle(.iconOnly)
-                        .help("导入远端文章草稿")
-                        .accessibilityLabel("导入远端文章草稿")
-                        .accessibilityValue(file.displayPath)
+                    ViewThatFits(in: .horizontal) {
+                      HStack(spacing: 10) {
+                        remoteChangedFileIdentity(file)
+                        Spacer(minLength: 12)
+                        remoteChangedFileActions(file, role: role)
                       }
 
-                      Button {
-                        copy(file.displayPath, message: "已复制远端路径。")
-                      } label: {
-                        Label("复制路径", systemImage: "doc.on.doc")
+                      VStack(alignment: .leading, spacing: 8) {
+                        remoteChangedFileIdentity(file)
+                        remoteChangedFileActions(file, role: role)
                       }
-                      .labelStyle(.iconOnly)
-                      .help("复制远端路径")
-                      .accessibilityLabel("复制远端路径")
-                      .accessibilityValue(file.displayPath)
-
-                      Text(file.status)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.tertiary)
-                        .accessibilityLabel("远端文件状态")
-                        .accessibilityValue(file.status)
                     }
 
                     if let lineDiff = file.lineDiff {
@@ -114,6 +85,7 @@ extension RepositoryWorkspaceView {
                         .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
                         .accessibilityLabel("远端 diff 预览")
                         .accessibilityValue(file.displayPath)
+                        .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-diff")
 
                       Button {
                         copy(lineDiff, message: "已复制远端 diff。")
@@ -123,8 +95,11 @@ extension RepositoryWorkspaceView {
                       .buttonStyle(.link)
                       .accessibilityLabel("复制远端 diff")
                       .accessibilityValue(file.displayPath)
+                      .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-copy-diff")
                     }
                   }
+                  .accessibilityElement(children: .contain)
+                  .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)")
                   Divider()
                 }
               }
@@ -134,7 +109,121 @@ extension RepositoryWorkspaceView {
       }
       .padding(14)
       .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("repository-section-remote-changes")
     }
+  }
+
+  private func remoteChangesHeading(_ report: RepositoryScanReport) -> some View {
+    let upstreamName = report.branchStatus?.upstreamName ?? "当前分支未设置 upstream"
+    return VStack(alignment: .leading, spacing: 3) {
+      Text("远端文件变更")
+        .font(.headline)
+      Text("发布前先审阅网站或其他设备的更新，避免覆盖新内容。")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+      Text(upstreamName)
+        .font(.caption.monospaced())
+        .foregroundStyle(.secondary)
+        .workbenchTruncatedIdentity(upstreamName)
+    }
+  }
+
+  private func remoteChangesHeaderActions(
+    files: [RepositoryChangedFile],
+    importableArticleCount: Int,
+    publishRelevantCount: Int
+  ) -> some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 10) {
+        remoteArticleImportButton(files: files, importableArticleCount: importableArticleCount)
+        remotePublishRelevantCount(publishRelevantCount)
+      }
+
+      VStack(alignment: .leading, spacing: 7) {
+        remoteArticleImportButton(files: files, importableArticleCount: importableArticleCount)
+        remotePublishRelevantCount(publishRelevantCount)
+      }
+    }
+  }
+
+  private func remoteArticleImportButton(
+    files: [RepositoryChangedFile],
+    importableArticleCount: Int
+  ) -> some View {
+    Button {
+      presentRemoteArticleImportPreview(files)
+    } label: {
+      Label("导入远端文章", systemImage: "tray.and.arrow.down")
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .buttonStyle(.bordered)
+    .disabled(importableArticleCount == 0)
+    .accessibilityLabel("导入远端文章")
+    .accessibilityValue("\(importableArticleCount) 篇可导入")
+    .accessibilityIdentifier("repository-remote-import-articles")
+  }
+
+  private func remotePublishRelevantCount(_ count: Int) -> some View {
+    Text("\(count) 个发布相关远端变更")
+      .font(.callout)
+      .foregroundStyle(.secondary)
+      .accessibilityLabel("发布相关远端变更")
+      .accessibilityValue("\(count) 个")
+      .accessibilityIdentifier("repository-remote-publish-relevant-count")
+  }
+
+  private func remoteChangedFileIdentity(_ file: RepositoryChangedFile) -> some View {
+    HStack(spacing: 10) {
+      Text(file.kind.localizedDisplayName)
+        .font(.caption)
+        .frame(width: 58, alignment: .leading)
+        .foregroundStyle(.secondary)
+      WorkbenchPathIdentity(path: file.displayPath)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-identity")
+  }
+
+  private func remoteChangedFileActions(
+    _ file: RepositoryChangedFile,
+    role: RepositoryChangedFileRole
+  ) -> some View {
+    HStack(spacing: 8) {
+      if role == .article, file.kind != .deleted {
+        Button {
+          presentRemoteArticleImportPreview([file])
+        } label: {
+          Label("导入", systemImage: "tray.and.arrow.down")
+        }
+        .buttonStyle(.bordered)
+        .help("导入远端文章草稿")
+        .accessibilityLabel("导入远端文章草稿")
+        .accessibilityValue(file.displayPath)
+        .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-import")
+      }
+
+      Button {
+        copy(file.displayPath, message: "已复制远端路径。")
+      } label: {
+        Label("复制路径", systemImage: "doc.on.doc")
+      }
+      .buttonStyle(.bordered)
+      .help("复制远端路径")
+      .accessibilityLabel("复制远端路径")
+      .accessibilityValue(file.displayPath)
+      .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-copy-path")
+
+      Text(file.status)
+        .font(.caption.monospaced())
+        .foregroundStyle(.secondary)
+        .accessibilityLabel("远端文件状态")
+        .accessibilityValue(file.status)
+        .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-status")
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-actions")
   }
 
   private func remoteRepositoryChangeSummary(for report: RepositoryScanReport) -> RepositoryChangeSummary {

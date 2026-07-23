@@ -81,11 +81,12 @@ extension PublishingStore {
       )
     }
 
-    let access = store.consumeFeatureUse(.batchPublishing)
-    guard access.isAllowed else {
-      publishActionMessage = access.message
+    let reservationResult = store.reserveFeatureUse(.batchPublishing)
+    guard let reservation = reservationResult.reservation else {
+      publishActionMessage = reservationResult.decision.message
       return BatchLocalWriteResult(writtenDraftCount: 0, writtenPaths: [], skippedCount: batchPublishPlan.items.count)
     }
+    defer { store.releaseFeatureUseReservation(reservation) }
 
     let profile = store.activeProfile
     guard let operation = beginLocalRepositoryMutation(profile: profile) else {
@@ -117,6 +118,7 @@ extension PublishingStore {
     }
 
     if !writtenItems.isEmpty {
+      store.commitFeatureUseReservation(reservation)
       prependReleaseRecord(
         .batchLocalWrite(profile: profile, items: writtenItems, writtenPaths: writtenPaths)
       )
@@ -149,7 +151,8 @@ extension PublishingStore {
 
   @discardableResult
   public func publishBatchReadyDraftsOnlineUsingPreferredStrategy(
-    store: WorkbenchStore
+    store: WorkbenchStore,
+    expectedChangedPaths: Set<String>? = nil
   ) async -> RemoteRepositoryPublishResult? {
     guard store.canUseProtectedWorkbench else {
       publishActionMessage = store.privacyLockedOperationMessage
@@ -176,17 +179,6 @@ extension PublishingStore {
       return nil
     }
 
-    let batchAccess = store.canStartFeatureUse(.batchPublishing)
-    guard batchAccess.isAllowed else {
-      publishActionMessage = batchAccess.message
-      return nil
-    }
-    let onlineAccess = store.canStartFeatureUse(.onlinePublishing)
-    guard onlineAccess.isAllowed else {
-      publishActionMessage = onlineAccess.message
-      return nil
-    }
-
     let preview = remoteRepositoryPublishPreview(
       package: package,
       profile: profile,
@@ -194,6 +186,11 @@ extension PublishingStore {
       extraWarningIssues: batchRemoteRepositoryPublishWarningIssues(for: batchPublishPlan),
       store: store
     )
+    if let expectedChangedPaths,
+       Set(preview.changedPaths) != expectedChangedPaths {
+      publishActionMessage = CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。")
+      return nil
+    }
     guard preview.hasToken else {
       publishActionMessage = "仓库访问 Token 未保存，无法批量线上发布。"
       return nil
@@ -215,16 +212,19 @@ extension PublishingStore {
       publishActionMessage = "已有远端仓库操作正在运行，请等待完成。"
       return nil
     }
-    let consumedBatchAccess = store.consumeFeatureUse(.batchPublishing)
-    guard consumedBatchAccess.isAllowed else {
-      publishActionMessage = consumedBatchAccess.message
+    let batchReservationResult = store.reserveFeatureUse(.batchPublishing)
+    guard let batchReservation = batchReservationResult.reservation else {
+      publishActionMessage = batchReservationResult.decision.message
       return nil
     }
-    let consumedOnlineAccess = store.consumeFeatureUse(.onlinePublishing)
-    guard consumedOnlineAccess.isAllowed else {
-      publishActionMessage = consumedOnlineAccess.message
+    defer { store.releaseFeatureUseReservation(batchReservation) }
+
+    let onlineReservationResult = store.reserveFeatureUse(.onlinePublishing)
+    guard let onlineReservation = onlineReservationResult.reservation else {
+      publishActionMessage = onlineReservationResult.decision.message
       return nil
     }
+    defer { store.releaseFeatureUseReservation(onlineReservation) }
 
     selectedSection = .sync
     guard let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
@@ -253,6 +253,8 @@ extension PublishingStore {
         token: token,
         onProgress: progressHandler
       )
+      store.commitFeatureUseReservation(batchReservation)
+      store.commitFeatureUseReservation(onlineReservation)
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       store.setRemoteRepositoryPublishResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))

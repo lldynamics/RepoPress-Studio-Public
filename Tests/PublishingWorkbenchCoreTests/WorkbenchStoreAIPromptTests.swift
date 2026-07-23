@@ -272,8 +272,8 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertTrue(AIPublishingQuickPrompt.allCases.contains(.shortVideoScript))
     XCTAssertTrue(sections.allSatisfy { !$0.prompts.isEmpty })
     XCTAssertEqual(
-      AIPublishingQuickPrompt.featuredCapabilitySections.flatMap(\.prompts),
-      AIPublishingQuickPrompt.primaryPrompts
+      Set(AIPublishingQuickPrompt.featuredCapabilitySections.flatMap(\.prompts)),
+      Set(AIPublishingQuickPrompt.primaryPrompts)
     )
     XCTAssertEqual(AIPublishingQuickPrompt.inspectorPrompts, AIPublishingQuickPrompt.primaryPrompts)
   }
@@ -283,18 +283,12 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
       AIPublishingQuickPrompt.writingDashboardPrompts,
       [
         .continueWriting,
-        .outline,
-        .titleIdeas,
         .tone,
-        .grammar,
         .translateChinese,
         .translateEnglish,
         .frontMatterPack,
         .publishReview,
-        .internalLinks,
-        .imageCaptions,
-        .publishAssetPack,
-        .seriesPlan,
+        .sourceChecklist,
       ]
     )
 
@@ -303,8 +297,40 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertEqual(summary.prompts, AIPublishingQuickPrompt.writingDashboardPrompts)
     XCTAssertEqual(summary.promptCount, AIPublishingQuickPrompt.writingDashboardPrompts.count)
     XCTAssertTrue(summary.summaryText.contains("续写"))
-    XCTAssertTrue(summary.summaryText.contains("发布素材包"))
-    XCTAssertTrue(summary.summaryText.contains("系列选题"))
+    XCTAssertTrue(summary.summaryText.contains("发布检查"))
+    XCTAssertTrue(summary.summaryText.contains("来源清单"))
+  }
+
+  func testDefaultAICapabilitiesStayLimitedToEightStableChoices() {
+    XCTAssertEqual(
+      AIPublishingDefaultCapability.allCases,
+      [
+        .continueWriting,
+        .rewrite,
+        .condense,
+        .translate,
+        .generateMetadata,
+        .publishingCheck,
+        .citeKnowledge,
+        .askAnything,
+      ]
+    )
+    XCTAssertEqual(
+      AIPublishingDefaultCapability.defaultActionKinds,
+      [
+        .continueArticle,
+        .rewriteSelection,
+        .condenseSelection,
+        .translateSelectionToChinese,
+        .translateSelectionToEnglish,
+        .draftFrontMatterPack,
+        .publishingReadiness,
+        .draftReferencesSection,
+      ]
+    )
+    XCTAssertFalse(AIPublishingQuickPrompt.morePrompts.contains(.continueWriting))
+    XCTAssertTrue(AIPublishingQuickPrompt.morePrompts.contains(.outline))
+    XCTAssertTrue(AIPublishingActionKind.promptLibraryActions.contains(.pullRequestDescription))
   }
 
   func testQuickPromptsPreservePublishingSafetyBoundaries() {
@@ -508,13 +534,9 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
       bodyRecommendation.actions,
       [
         .continueArticle,
-        .draftArticleTLDR,
-        .suggestArticleOutline,
-        .suggestTitles,
         .draftFrontMatterPack,
         .publishingReadiness,
-        .reviewSEOReadability,
-        .suggestInternalLinks,
+        .draftReferencesSection,
       ]
     )
     XCTAssertEqual(bodyRecommendation.preferredScope, .all)
@@ -537,7 +559,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     )
     XCTAssertEqual(
       AIPublishingActionRecommendationService.recommendation(draft: seedDraft).actions,
-      [.draftOpening, .draftFullArticle, .suggestArticleOutline, .suggestTitles, .suggestSummary, .suggestTags]
+      [.draftFrontMatterPack, .publishingReadiness]
     )
 
     let emptyDraft = ArticleDraft(
@@ -548,7 +570,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     )
     XCTAssertEqual(
       AIPublishingActionRecommendationService.recommendation(draft: emptyDraft).actions,
-      [.draftOpening, .draftFullArticle, .suggestArticleOutline, .suggestTitles]
+      []
     )
   }
 

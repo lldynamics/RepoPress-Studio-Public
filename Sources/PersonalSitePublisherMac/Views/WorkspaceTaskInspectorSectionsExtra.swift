@@ -46,7 +46,7 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
       return .checks
     case .images:
       return .images
-    case .siteStarter, .library, .generalDrafts, .maintenance:
+    case .siteStarter, .library, .maintenance:
       return .metadata
     }
   }

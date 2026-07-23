@@ -1,29 +1,29 @@
 {
-  "identifier": "com.chengjinfang.personal-site-publisher.storekit",
+  "identifier": "com.chengjinfang.repopress.mac.storekit",
   "nonConsumables": [
     {
-      "description": "Unlock GitHub/GitLab online publishing, expanded AI requests, and batch publishing.",
+      "description": "Unlock publishing and batch workflows.",
       "displayPrice": "29.99",
       "familyShareable": false,
-      "internalID": "personal-site-publisher-pro-lifetime",
+      "internalID": "repopress-mac-pro-lifetime",
       "localizations": [
         {
-          "description": "Unlock GitHub/GitLab online publishing, expanded AI requests, and batch publishing.",
-          "displayName": "Personal Site Publisher Pro",
+          "description": "Unlock publishing and batch workflows.",
+          "displayName": "RepoPress Pro",
           "locale": "en_US"
         },
         {
-          "description": "解锁 GitHub/GitLab 线上发布、更多 AI 请求和批量发布能力。",
-          "displayName": "个人网站写作与发布 Pro",
+          "description": "一次性解锁更多线上发布和批量操作。",
+          "displayName": "RepoPress Pro",
           "locale": "zh_Hans"
         }
       ],
       "productID": "personal.site.publisher.pro",
-      "referenceName": "Personal Site Publisher Pro"
+      "referenceName": "RepoPress Pro"
     }
   ],
   "settings": {
-    "_applicationInternalID": "personal-site-publisher-mac"
+    "_applicationInternalID": "repopress-mac"
   },
   "version": {
     "major": 3,

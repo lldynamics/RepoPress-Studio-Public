@@ -27,13 +27,14 @@ CATALOG_PATH = SOURCE_ROOT / "Resources" / "Localizable.xcstrings"
 TRANSLATION_PATHS = tuple(sorted((ROOT / "script").glob("ui_*translations*.json")))
 FORMAT_PATTERN = re.compile(r"%(?:\d+\$)?(?:@|[-+0-9.]*[a-zA-Z])")
 CJK_PATTERN = re.compile(r"[\u3400-\u9fff]")
+SWIFT_INTERPOLATION_PATTERN = re.compile(r"\\\((.*?)\)")
 WORKSPACE_SECTION_PATTERN = re.compile(
     r"public enum WorkspaceSection.*?(?=public enum WorkspaceCenterSurface)",
     re.DOTALL,
 )
 WORKSPACE_SECTION_CASE_PATTERN = re.compile(r"^\s*case\s+([A-Za-z][A-Za-z0-9_]*)\s*$", re.MULTILINE)
 LITERAL_LOCALIZATION_CALL_PATTERN = re.compile(
-    r'(?:String\s*\(\s*localized:\s*|\.accessibility(?:Label|Hint)\s*\(\s*)'
+    r'(?:String\s*\(\s*localized:\s*|LocalizedStringKey\s*\(\s*|\.accessibility(?:Label|Hint)\s*\(\s*)'
     r'"((?:\\.|[^"\\])*)"'
 )
 DISPLAY_NAME_SEMANTIC_KEY_PATTERN = re.compile(r'"(display\.[a-z0-9.-]+)"')
@@ -44,7 +45,7 @@ NAMED_COMPONENT_TITLE_PATTERN = re.compile(
     r"\s*\([\s\S]{0,240}?\btitle:\s*\"((?:\\.|[^\"\\])*)\""
 )
 POSITIONAL_COMPONENT_TITLE_PATTERN = re.compile(
-    r"\b(?:InspectorSection|AIChatInspectorSection)\s*\(\s*\"((?:\\.|[^\"\\])*)\""
+    r"\b(?:InspectorSection|AIChatInspectorSection|releaseRecordActionLabel)\s*\(\s*\"((?:\\.|[^\"\\])*)\""
 )
 EMPTY_STATE_MESSAGE_PATTERN = re.compile(
     r"\bEmptyStateView\s*\([\s\S]{0,320}?\bmessage:\s*\"((?:\\.|[^\"\\])*)\""
@@ -52,9 +53,46 @@ EMPTY_STATE_MESSAGE_PATTERN = re.compile(
 EMPTY_STATE_ACTION_TITLE_PATTERN = re.compile(
     r"\bEmptyStateView\s*\([\s\S]{0,520}?\bactionTitle:\s*\"((?:\\.|[^\"\\])*)\""
 )
+LOCALIZED_STRING_KEY_PROPERTY_PATTERN = re.compile(
+    r"\b(?:var|let)\s+[A-Za-z][A-Za-z0-9_]*\s*:\s*LocalizedStringKey\s*\{([\s\S]{0,4000}?)\n\s{2}\}",
+    re.MULTILINE,
+)
+LOCALIZED_STRING_KEY_RETURN_PATTERN = re.compile(r'\breturn\s+"((?:\\.|[^"\\])*)"')
+LOCALIZED_HELPER_NAMES = (
+    "repositoryUnavailableToolCard",
+    "workflowBanner",
+    "repositoryOnboardingStep",
+    "repositoryPathRule",
+    "releaseHistoryMetadataRow",
+)
+LOCALIZED_HELPER_ARGUMENT_PATTERNS = tuple(
+    re.compile(
+        rf'(?=\b(?:{"|".join(LOCALIZED_HELPER_NAMES)})\s*\([\s\S]{{0,1200}}?\b{argument}:\s*"((?:\\.|[^"\\])*)")'
+    )
+    for argument in ("title", "detail", "actionTitle")
+)
 CORE_LOCALIZATION_CALL_PATTERN = re.compile(
     r'\bCoreL10n\.(?:text|format)\s*\(\s*"((?:\\.|[^"\\])*)"'
 )
+
+
+def normalized_swiftui_literal(raw_value: str) -> str:
+    """Decode a Swift literal and normalize simple LocalizedStringKey interpolation."""
+    value = (
+        raw_value
+        .replace(r'\"', '"')
+        .replace(r"\n", "\n")
+        .replace(r"\t", "\t")
+        .replace(r"\\", "\\")
+    )
+
+    def placeholder(match: re.Match[str]) -> str:
+        expression = match.group(1)
+        if re.search(r"(?:count|Count)\b", expression):
+            return "%lld"
+        return "%@"
+
+    return SWIFT_INTERPOLATION_PATTERN.sub(placeholder, value)
 
 
 def extract_swiftui_strings() -> dict[str, str]:
@@ -144,16 +182,17 @@ def extract_component_localization_keys() -> dict[str, str]:
             POSITIONAL_COMPONENT_TITLE_PATTERN,
             EMPTY_STATE_MESSAGE_PATTERN,
             EMPTY_STATE_ACTION_TITLE_PATTERN,
+            *LOCALIZED_HELPER_ARGUMENT_PATTERNS,
         ):
             for match in pattern.finditer(source):
                 raw_value = match.group(1)
-                value = (
-                    raw_value
-                    .replace(r'\"', '"')
-                    .replace(r"\n", "\n")
-                    .replace(r"\t", "\t")
-                    .replace(r"\\", "\\")
-                )
+                value = normalized_swiftui_literal(raw_value)
+                extracted[value] = value
+        for property_match in LOCALIZED_STRING_KEY_PROPERTY_PATTERN.finditer(source):
+            for raw_value in LOCALIZED_STRING_KEY_RETURN_PATTERN.findall(property_match.group(1)):
+                if "\\(" in raw_value:
+                    continue
+                value = normalized_swiftui_literal(raw_value)
                 extracted[value] = value
     return extracted
 

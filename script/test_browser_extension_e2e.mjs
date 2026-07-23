@@ -168,6 +168,8 @@ async function runChromiumTests(fixture) {
         scripting: typeof chrome.scripting.executeScript === "function",
         pageCapture: typeof chrome.pageCapture?.saveAsMHTML === "function",
         nativeMessaging: typeof chrome.runtime.sendNativeMessage === "function",
+        loopbackPermission: chrome.runtime.getManifest().host_permissions
+          ?.includes("http://127.0.0.1:17843/*") === true,
         action: typeof chrome.action?.setBadgeText === "function",
         serviceWorker: typeof ServiceWorkerGlobalScope !== "undefined"
       }));
@@ -178,7 +180,8 @@ async function runChromiumTests(fixture) {
         permissions: true,
         scripting: true,
         pageCapture: true,
-        nativeMessaging: true,
+        nativeMessaging: false,
+        loopbackPermission: true,
         action: true,
         serviceWorker: true
       });
@@ -438,8 +441,8 @@ async function runChromiumEnglishLocalizationTest() {
       assert.match(copy.lang, /^en/i, JSON.stringify(copy));
       assert.equal(copy.title, "Save to Knowledge Library", JSON.stringify(copy));
       assert.equal(copy.connection, "Connect to Library", JSON.stringify(copy));
-      assert.match(copy.nativeHint, /Native Messaging/, JSON.stringify(copy));
-      assert.match(copy.nativeHint, /Unix Socket/, JSON.stringify(copy));
+      assert.match(copy.nativeHint, /127\.0\.0\.1/, JSON.stringify(copy));
+      assert.match(copy.nativeHint, /loopback interface/, JSON.stringify(copy));
       assert.equal(copy.searchLabel, "Search categories", JSON.stringify(copy));
       assert.equal(copy.queueTitle, "Pending queue", JSON.stringify(copy));
     });
@@ -509,10 +512,10 @@ class BiDiClient {
     }), `Firefox BiDi command timed out: ${method}`);
   }
 
-  async evaluateJSON(context, expression) {
+  async evaluateJSONTarget(target, expression) {
     const result = await this.call("script.evaluate", {
       expression: `JSON.stringify(${expression})`,
-      target: { context },
+      target,
       awaitPromise: true,
       resultOwnership: "none"
     });
@@ -521,6 +524,10 @@ class BiDiClient {
     }
     assert.equal(result.result?.type, "string", JSON.stringify(result));
     return JSON.parse(result.result.value);
+  }
+
+  evaluateJSON(context, expression) {
+    return this.evaluateJSONTarget({ context }, expression);
   }
 
   async close() {
@@ -567,6 +574,7 @@ async function runFirefoxTests() {
   const firefoxProcess = spawn(executablePath, [
     "--headless",
     "--no-remote",
+    "--remote-allow-system-access",
     "--remote-debugging-port", String(port),
     "--profile", FIREFOX_PROFILE_DIR,
     "about:blank"
@@ -609,6 +617,8 @@ async function runFirefoxTests() {
         scripting: typeof browser.scripting.executeScript === "function",
         pageCapture: typeof browser.pageCapture?.saveAsMHTML === "function",
         nativeMessaging: typeof browser.runtime.sendNativeMessage === "function",
+        loopbackPermission: browser.runtime.getManifest().host_permissions
+          ?.includes("http://127.0.0.1:17843/*") === true,
         action: typeof browser.action?.setBadgeText === "function",
         menus: typeof browser.menus?.create === "function",
         icons: browser.runtime.getManifest().icons,
@@ -621,7 +631,8 @@ async function runFirefoxTests() {
       assert.equal(capabilities.permissions, true);
       assert.equal(capabilities.scripting, true);
       assert.equal(capabilities.pageCapture, false);
-      assert.equal(capabilities.nativeMessaging, true);
+      assert.equal(capabilities.nativeMessaging, false);
+      assert.equal(capabilities.loopbackPermission, true);
       assert.equal(capabilities.action, true);
       assert.equal(capabilities.menus, true);
       for (const size of ["16", "32", "48", "128"]) {

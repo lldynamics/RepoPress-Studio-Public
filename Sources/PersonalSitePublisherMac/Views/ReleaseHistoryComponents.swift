@@ -79,11 +79,14 @@ struct DeploymentStatusTrendChart: View {
 }
 
 enum DangerousReleaseAction: Identifiable {
+  case resumeReview(ReleaseRecord)
   case withdrawReview(ReleaseRecord)
   case rollbackRemote(ReleaseRecord)
 
   var id: String {
     switch self {
+    case let .resumeReview(record):
+      return "resume-review-\(record.id)"
     case let .withdrawReview(record):
       return "withdraw-\(record.id)"
     case let .rollbackRemote(record):
@@ -93,6 +96,8 @@ enum DangerousReleaseAction: Identifiable {
 
   var confirmButtonTitle: String {
     switch self {
+    case .resumeReview:
+      return "继续创建 PR/MR"
     case .withdrawReview:
       return "确认撤回 Review"
     case .rollbackRemote:
@@ -102,10 +107,21 @@ enum DangerousReleaseAction: Identifiable {
 
   var confirmationMessage: String {
     switch self {
+    case let .resumeReview(record):
+      return "将复用远端分支 \(record.branchName ?? "-") 与已写入的 commit，仅创建或获取 PR/MR，不会重新上传文件或自动合并。"
     case let .withdrawReview(record):
       return "将通过远端 API 关闭这条 PR/MR：\(record.reviewTitle ?? record.title)。这个操作会影响线上 Review 流程。"
     case let .rollbackRemote(record):
       return "将通过远端 API 为提交 \(record.shortCommitSHA ?? record.commitSHA ?? record.title) 创建回滚 commit。执行前请确认当前线上状态。"
+    }
+  }
+
+  var buttonRole: ButtonRole? {
+    switch self {
+    case .resumeReview:
+      return nil
+    case .withdrawReview, .rollbackRemote:
+      return .destructive
     }
   }
 }

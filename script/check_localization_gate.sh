@@ -41,7 +41,6 @@ required_localizable_keys=(
   workspace.images
   workspace.contentHealth
   workspace.ai
-  workspace.generalDrafts
   workspace.maintenance
   workspace.releaseHistory
 )

@@ -29,7 +29,8 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     XCTAssertTrue(markdown.contains(CoreL10n.format("- 仓库：%@", "owner/site")))
     XCTAssertTrue(markdown.contains(CoreL10n.format("- 可写入：%@", CoreL10n.text("是"))))
     XCTAssertTrue(markdown.contains(CoreL10n.format("- Token scope：%@", "repo, workflow")))
-    XCTAssertTrue(markdown.contains(CoreL10n.format("- [%@] Token 满足线上直接提交或 PR/MR 所需写入权限", "x")))
+    XCTAssertTrue(markdown.contains(CoreL10n.format("- [%@] Token 满足内容写入所需权限", "x")))
+    XCTAssertTrue(markdown.contains(CoreL10n.text("- [ ] PR 创建权限需在实际创建时验证")))
     XCTAssertTrue(markdown.contains("curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\""))
     XCTAssertFalse(markdown.contains("secret-token"))
   }
@@ -58,7 +59,7 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     )
     XCTAssertTrue(markdown.contains(CoreL10n.format("# %@ Token 权限证据包", "GitLab")))
     XCTAssertTrue(markdown.contains(CoreL10n.format("- 可写入：%@", CoreL10n.text("否"))))
-    XCTAssertTrue(markdown.contains(CoreL10n.format("- [%@] Token 满足线上直接提交或 PR/MR 所需写入权限", " ")))
+    XCTAssertTrue(markdown.contains(CoreL10n.format("- [%@] Token 满足内容写入所需权限", " ")))
     XCTAssertTrue(markdown.contains("GitLab Token 可读但未确认写入。"))
     XCTAssertFalse(markdown.contains("PRIVATE-TOKEN: secret"))
   }
@@ -347,6 +348,130 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
     XCTAssertTrue((requests[4].url?.query ?? "").contains("head=owner:publish/github-review-20260829"))
     XCTAssertTrue((requests[4].url?.query ?? "").contains("base=main"))
     XCTAssertFalse(requests.contains { $0.httpMethod == "POST" && $0.url?.path == "/repos/owner/site/pulls" })
+  }
+
+  func testReviewRecoveryDraftReusesRecordedBranchCommitAndBatchMetadata() throws {
+    let profileID = UUID()
+    let record = ReleaseRecord(
+      kind: .remotePublishFailure,
+      title: "批量线上 PR/MR 失败",
+      summary: "PR 创建失败",
+      siteProfileID: profileID,
+      siteName: "Personal Site",
+      changedPaths: ["content/posts/one.md", "content/posts/two.md"],
+      repositoryProvider: .github,
+      repoOwner: "owner",
+      repoName: "site",
+      branchName: "publish/batch-recovery",
+      targetBranch: "main",
+      commitSHA: "recorded-sha",
+      batchItems: [
+        ReleaseRecordBatchItem(
+          draftID: UUID(),
+          draftTitle: "One",
+          markdownPath: "content/posts/one.md",
+          changedPaths: ["content/posts/one.md"]
+        ),
+        ReleaseRecordBatchItem(
+          draftID: UUID(),
+          draftTitle: "Two",
+          markdownPath: "content/posts/two.md",
+          changedPaths: ["content/posts/two.md"]
+        ),
+      ]
+    )
+
+    let draft = try RemoteRepositoryReviewRecoveryDraft.make(record: record)
+
+    XCTAssertEqual(draft.recordID, record.id)
+    XCTAssertEqual(draft.branchName, "publish/batch-recovery")
+    XCTAssertEqual(draft.targetBranch, "main")
+    XCTAssertEqual(draft.recordedCommitSHA, "recorded-sha")
+    XCTAssertEqual(draft.title, "Publish 2 articles")
+    XCTAssertTrue(draft.body.contains("content/posts/one.md"))
+    XCTAssertTrue(draft.body.contains("不重新上传文件"))
+  }
+
+  func testGitHubReviewRecoveryCreatesPullRequestWithoutUploadingFiles() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(json: #"{"object":{"sha":"remote-branch-sha"}}"#),
+      response(json: #"[]"#),
+      response(json: #"{"html_url":"https://github.com/owner/site/pull/21"}"#),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.branch = "main"
+    let draft = RemoteRepositoryReviewRecoveryDraft(
+      recordID: UUID(),
+      branchName: "publish/batch-recovery",
+      targetBranch: "main",
+      title: "Publish 2 articles",
+      body: "Recovered review body",
+      changedPaths: ["content/posts/one.md", "content/posts/two.md"],
+      recordedCommitSHA: "recorded-sha"
+    )
+
+    let result = try await service.resumeReview(
+      draft: draft,
+      profile: profile,
+      token: "secret-token"
+    )
+
+    XCTAssertEqual(result.mode, .reviewRequest)
+    XCTAssertEqual(result.branchName, "publish/batch-recovery")
+    XCTAssertEqual(result.commitSHA, "remote-branch-sha")
+    XCTAssertEqual(result.reviewURL, "https://github.com/owner/site/pull/21")
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.map(\.httpMethod), ["GET", "GET", "POST"])
+    XCTAssertEqual(requests[0].url?.path, "/repos/owner/site/git/ref/heads/publish/batch-recovery")
+    XCTAssertEqual(requests[1].url?.path, "/repos/owner/site/pulls")
+    XCTAssertEqual(requests[2].url?.path, "/repos/owner/site/pulls")
+    XCTAssertFalse(requests.contains { $0.url?.path.contains("/contents/") == true })
+    XCTAssertFalse(requests.contains { $0.url?.path.contains("/git/blobs") == true })
+    let pullBody = try jsonBody(requests[2])
+    XCTAssertEqual(pullBody["head"] as? String, "publish/batch-recovery")
+    XCTAssertEqual(pullBody["base"] as? String, "main")
+  }
+
+  func testGitHubReviewRecoveryExplainsMissingPullRequestWritePermission() async throws {
+    let transport = SequencedRemoteRepositoryTransport(responses: [
+      response(json: #"{"object":{"sha":"remote-branch-sha"}}"#),
+      response(json: #"[]"#),
+      response(
+        statusCode: 403,
+        json: #"{"message":"Resource not accessible by personal access token"}"#
+      ),
+    ])
+    let service = RemoteRepositoryPublishService(transport: transport)
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    let draft = RemoteRepositoryReviewRecoveryDraft(
+      recordID: UUID(),
+      branchName: "publish/batch-recovery",
+      targetBranch: "main",
+      title: "Publish",
+      body: "Body",
+      changedPaths: ["content/posts/one.md"],
+      recordedCommitSHA: "recorded-sha"
+    )
+
+    do {
+      _ = try await service.resumeReview(draft: draft, profile: profile, token: "secret-token")
+      XCTFail("Expected PR permission failure")
+    } catch let error as RemoteRepositoryPublishError {
+      guard case .reviewCreationPermissionDenied(provider: .github, _) = error else {
+        XCTFail("Expected reviewCreationPermissionDenied, got \(error)")
+        return
+      }
+      XCTAssertTrue(error.localizedDescription.contains("Pull requests: Read and write"))
+      XCTAssertTrue(error.localizedDescription.contains("Resource not accessible"))
+      XCTAssertFalse(error.localizedDescription.contains("请确认 Contents: Read and write"))
+    }
   }
 
   func testGitHubDirectPublishUpdatesExistingContentOnTargetBranch() async throws {
@@ -1194,6 +1319,8 @@ final class RemoteRepositoryPublishServiceTests: XCTestCase {
       CoreL10n.format("GitHub OAuth scopes: %@; accepted: %@.", "repo, workflow", "repo")
     )
     XCTAssertTrue(check.minimumWritePermission.contains("Contents: Read and write"))
+    XCTAssertTrue(check.minimumWritePermission.contains("Pull requests: Read and write"))
+    XCTAssertTrue(check.message.contains("PR 创建权限需在实际创建时验证"))
   }
 
   func testAccessCheckReportsNormalizedGitLabAPIBaseURL() async throws {

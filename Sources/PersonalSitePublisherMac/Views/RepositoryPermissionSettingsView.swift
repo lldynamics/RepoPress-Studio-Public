@@ -69,7 +69,7 @@ struct RepositoryPermissionSettingsView: View {
 
           if let check = state.activeAccessCheck {
             Label(
-              check.canWrite ? "已确认写入权限：\(check.repositoryName)" : "未确认写入权限：\(check.repositoryName)",
+              check.canWrite ? "已确认内容写入：\(check.repositoryName)" : "未确认内容写入：\(check.repositoryName)",
               systemImage: check.canWrite ? "lock.open" : "lock"
             )
             .foregroundStyle(check.canWrite ? WorkbenchTheme.success : WorkbenchTheme.warning)

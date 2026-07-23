@@ -1148,6 +1148,21 @@ public final class KnowledgeStore: ObservableObject {
     }
   }
 
+  public func rebuildAllSemanticIndex() async {
+    isBusy = true
+    statusMessage = "正在事务性替换全部本地语义向量…"
+    defer { isBusy = false }
+    do {
+      let report = try await service.repairSemanticVectors()
+      statusMessage = "语义索引重建完成：扫描 \(report.scannedChunkCount) 个片段，生成 \(report.regeneratedVectorCount) 个向量，并清理旧模型。"
+      lastError = nil
+      await refreshLibraryHealth()
+    } catch {
+      lastError = error.localizedDescription
+      statusMessage = "语义索引重建失败，旧索引已保留：\(error.localizedDescription)"
+    }
+  }
+
   @discardableResult
   public func refreshLibraryHealth() async -> KnowledgeLibraryHealthSnapshot? {
     isLoadingHealth = true

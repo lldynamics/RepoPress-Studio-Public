@@ -92,9 +92,9 @@ struct KnowledgeCollectionNavigationView: View {
             }
           }
 
-          if !knowledge.smartCollections.isEmpty {
+          if visibleSmartCollectionKinds.contains(where: { !smartItems(kind: $0).isEmpty }) {
             collectionSectionTitle("智能集合", systemImage: "wand.and.stars")
-            ForEach(KnowledgeSmartCollectionKind.allCases) { kind in
+            ForEach(visibleSmartCollectionKinds) { kind in
               let items = smartItems(kind: kind)
               if !items.isEmpty {
                 DisclosureGroup(
@@ -135,10 +135,13 @@ struct KnowledgeCollectionNavigationView: View {
     )
     .sheet(isPresented: $isCollectionBuilderPresented) {
       KnowledgeSavedCollectionBuilderView(
-        collections: knowledge.smartCollections,
+        collections: knowledge.smartCollections.filter {
+          DistributionFeaturePolicy.allowsExternalAIProviders || $0.rule.kind != .aiPermission
+        },
         onSave: saveCollection
       )
     }
+    .onAppear(perform: normalizeDistributionScope)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("资料文件夹与智能集合")
   }
@@ -280,8 +283,14 @@ struct KnowledgeCollectionNavigationView: View {
 
   private var allItems: [CollectionNavigationItem] {
     [allItem, unfiledItem] + folderItems
-      + KnowledgeSmartCollectionKind.allCases.flatMap(smartItems)
+      + visibleSmartCollectionKinds.flatMap(smartItems)
       + savedItems
+  }
+
+  private var visibleSmartCollectionKinds: [KnowledgeSmartCollectionKind] {
+    KnowledgeSmartCollectionKind.allCases.filter {
+      DistributionFeaturePolicy.allowsExternalAIProviders || $0 != .aiPermission
+    }
   }
 
   private var selectedNavigationItem: CollectionNavigationItem {
@@ -300,7 +309,28 @@ struct KnowledgeCollectionNavigationView: View {
   }
 
   private var savedCollections: [KnowledgeSavedCollection] {
+    let collections = allSavedCollections
+    guard !DistributionFeaturePolicy.allowsExternalAIProviders else { return collections }
+    return collections.filter { collection in
+      !collection.rules.contains { $0.kind == .aiPermission }
+    }
+  }
+
+  private var allSavedCollections: [KnowledgeSavedCollection] {
     decode([KnowledgeSavedCollection].self, from: savedCollectionsJSON) ?? []
+  }
+
+  private func normalizeDistributionScope() {
+    guard !DistributionFeaturePolicy.allowsExternalAIProviders else { return }
+    switch knowledge.folderScope {
+    case .smartCollection(let rule) where rule.kind == .aiPermission:
+      knowledge.setFolderScope(.all)
+    case .savedCollection(let collection)
+      where collection.rules.contains(where: { $0.kind == .aiPermission }):
+      knowledge.setFolderScope(.all)
+    default:
+      break
+    }
   }
 
   private var favoriteIDs: Set<String> {
@@ -342,14 +372,14 @@ struct KnowledgeCollectionNavigationView: View {
     matchMode: KnowledgeSmartCollectionMatchMode
   ) {
     let collection = KnowledgeSavedCollection(name: name, rules: rules, matchMode: matchMode)
-    var collections = savedCollections
+    var collections = allSavedCollections
     collections.append(collection)
     savedCollectionsJSON = encode(collections)
     knowledge.setFolderScope(.savedCollection(collection))
   }
 
   private func deleteSavedCollection(_ collection: KnowledgeSavedCollection) {
-    var collections = savedCollections
+    var collections = allSavedCollections
     collections.removeAll { $0.id == collection.id }
     savedCollectionsJSON = encode(collections)
     let itemID = "saved:\(collection.id.uuidString)"
@@ -413,7 +443,7 @@ private struct KnowledgeSavedCollectionBuilderView: View {
           .font(.callout.weight(.semibold))
 
         List {
-          ForEach(KnowledgeSmartCollectionKind.allCases) { kind in
+          ForEach(visibleSmartCollectionKinds) { kind in
             let kindCollections = collections.filter { $0.rule.kind == kind }
             if !kindCollections.isEmpty {
               Section(kind.localizedDisplayName) {
@@ -435,7 +465,7 @@ private struct KnowledgeSavedCollectionBuilderView: View {
         }
         .listStyle(.inset)
 
-        Text("组合集合会随作者、标签、来源、时间和 AI 权限变化自动更新。")
+        Text("组合集合会随作者、标签、来源和时间变化自动更新。")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
@@ -472,5 +502,11 @@ private struct KnowledgeSavedCollectionBuilderView: View {
         }
       }
     )
+  }
+
+  private var visibleSmartCollectionKinds: [KnowledgeSmartCollectionKind] {
+    KnowledgeSmartCollectionKind.allCases.filter {
+      DistributionFeaturePolicy.allowsExternalAIProviders || $0 != .aiPermission
+    }
   }
 }

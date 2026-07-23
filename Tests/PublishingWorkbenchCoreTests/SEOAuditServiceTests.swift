@@ -15,14 +15,14 @@ final class SEOAuditServiceTests: XCTestCase {
     let summary = "这篇文章说明 macOS 发布控制台如何把本地仓库、预检、图片、SEO 和发布说明收进一个清晰的桌面工作流，减少发布前来回切换。"
     let draft = ArticleDraft(
       siteProfileID: profile.id,
-      title: "macOS 个人网站发布控制台实践",
+      title: "macOS RepoPress实践",
       slug: "mac-publishing-console",
       tags: ["Mac", "发布"],
       draft: false,
       summary: summary,
       coverAttachmentID: attachmentID,
       bodyMarkdown: """
-      # macOS 个人网站发布控制台实践
+      # macOS RepoPress实践
 
       This article is long enough to exercise the local SEO audit path.
       """,

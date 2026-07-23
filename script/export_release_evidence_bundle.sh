@@ -92,6 +92,7 @@ required_files=(
   "script/check_screenshot_privacy.sh"
   "script/test_screenshot_privacy.sh"
   "docs/privacy-support-copy.md"
+  "docs/app-store/FEATURE_BOUNDARY.md"
   "docs/release-evidence/CLEAN_RUNTIME_VALIDATION.md"
   "docs/release-evidence/APP_STORE_BUILD_METADATA.md"
   "docs/app-store-screenshots/SCREENSHOT_MANIFEST.md"
@@ -197,7 +198,7 @@ check_section() {
   echo "- App Store archive validation: $unchecked_archive_validation_count unchecked item(s)"
   echo "- Clean runtime validation: $unchecked_clean_runtime_count unchecked item(s)"
   echo "- App Store checklist: $unchecked_checklist_count unchecked item(s)"
-  echo "- Final strict command: \`./script/check_release_gate.sh --strict\`"
+  echo "- Final App Store command: \`./script/check_release_gate.sh --profile app-store\`"
   echo
   echo "This bundle does not replace the required live GitHub/GitLab, StoreKit sandbox, screenshot, or App Store upload validation evidence."
   echo

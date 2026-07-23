@@ -85,6 +85,7 @@ extension ReleaseLedgerActionKind: WorkbenchDisplayNameLocalizable {}
 
 extension AIPublishingPromptLibraryScope: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingCapabilityCenterMode: WorkbenchDisplayNameLocalizable {}
+extension AIPublishingDefaultCapability: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingQuickPromptGroup: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingQuickPrompt: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingChatRole: WorkbenchDisplayNameLocalizable {}
@@ -94,6 +95,7 @@ extension AIPublishingSelectionEditApplication: WorkbenchDisplayNameLocalizable 
 extension SiteMaintenanceHealthLevel: WorkbenchDisplayNameLocalizable {}
 extension MaintenanceActionPriority: WorkbenchDisplayNameLocalizable {}
 extension MaintenanceActionKind: WorkbenchDisplayNameLocalizable {}
+extension WorkbenchAutomationRisk: WorkbenchDisplayNameLocalizable {}
 
 extension AIPublishingActionKind: WorkbenchDisplayNameLocalizable {}
 extension BatchPublishReadiness: WorkbenchDisplayNameLocalizable {}

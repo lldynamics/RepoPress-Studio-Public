@@ -57,9 +57,9 @@ public struct ImageMetadataEditingService {
     imagePath: String,
     altText: String
   ) -> (markdown: String, count: Int) {
-    let pattern = #"!\[((?:\\.|[^\]])*)\]\("#
+    let pattern = MarkdownPatterns.imagePrefixPattern
       + NSRegularExpression.escapedPattern(for: imagePath)
-      + #"(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\)"#
+      + MarkdownPatterns.imageSuffixPattern
     guard let regex = try? NSRegularExpression(pattern: pattern) else {
       return (markdown, 0)
     }

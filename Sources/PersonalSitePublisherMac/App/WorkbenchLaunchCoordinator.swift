@@ -50,6 +50,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     )
     workbenchStore.knowledge.reportStartupRestoreOutcome(preparation.restoreOutcome)
 
+    self.store = workbenchStore
     let browserBridge = KnowledgeBrowserBridge(
       knowledge: workbenchStore.knowledge,
       onOpenDocument: { [weak workbenchStore] _ in
@@ -58,7 +59,6 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
         NSApp.windows.first(where: \.canBecomeMain)?.makeKeyAndOrderFront(nil)
       }
     )
-    self.store = workbenchStore
     self.browserBridge = browserBridge
   }
 }
@@ -71,21 +71,12 @@ private struct WorkbenchLaunchPreparation: Sendable {
 struct WorkbenchLaunchRootView: View {
   @ObservedObject var coordinator: WorkbenchLaunchCoordinator
   @ObservedObject var storeKitProEntitlementCoordinator: StoreKitProEntitlementCoordinator
-  let onReady: (WorkbenchStore, KnowledgeBrowserBridge) -> Void
+  let onReady: (WorkbenchStore, KnowledgeBrowserBridge?) -> Void
 
   var body: some View {
     Group {
-      if let store = coordinator.store,
-         let browserBridge = coordinator.browserBridge {
-        ContentView(store: store)
-          .environmentObject(browserBridge)
-          .task {
-            onReady(store, browserBridge)
-            storeKitProEntitlementCoordinator.start(store: store)
-#if !APP_STORE_BUILD
-            browserBridge.start()
-#endif
-          }
+      if let store = coordinator.store {
+        readyContent(store: store, browserBridge: coordinator.browserBridge)
       } else {
         VStack(spacing: 14) {
           ProgressView()
@@ -101,6 +92,25 @@ struct WorkbenchLaunchRootView: View {
           await coordinator.start()
         }
       }
+    }
+  }
+
+  @ViewBuilder
+  private func readyContent(
+    store: WorkbenchStore,
+    browserBridge: KnowledgeBrowserBridge?
+  ) -> some View {
+    if let browserBridge {
+      ContentView(store: store)
+        .environmentObject(browserBridge)
+        .task {
+          onReady(store, browserBridge)
+          storeKitProEntitlementCoordinator.start(store: store)
+          browserBridge.start()
+        }
+    } else {
+      ProgressView()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
   }
 }

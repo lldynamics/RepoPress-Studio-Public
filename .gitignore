@@ -7,6 +7,8 @@
 dist/
 DerivedData/
 node_modules/
-output/playwright/
+# Local UI audit screenshots and generated evidence.
+audit/
+output/
 docs/release-evidence/snapshots/
 *.xcuserstate

@@ -151,8 +151,9 @@ struct WorkspaceCommandPalette: View {
   }
 
   private var matchingSections: [WorkspaceSection] {
-    guard !normalizedQuery.isEmpty else { return WorkspaceSection.allCases }
-    return WorkspaceSection.allCases.filter { section in
+    let sections = WorkspaceNavigationPresentation.commandPaletteSections
+    guard !normalizedQuery.isEmpty else { return sections }
+    return sections.filter { section in
       localizedSectionTitle(section).localizedStandardContains(normalizedQuery)
         || section.rawValue.localizedStandardContains(normalizedQuery)
     }
@@ -167,43 +168,19 @@ struct WorkspaceCommandPalette: View {
   }
 
   private var commands: [PaletteCommand] {
-    [
-      PaletteCommand(
-        title: String(localized: "新建文章"),
-        detail: String(localized: "创建并进入新的 Markdown 草稿"),
-        systemImage: "square.and.pencil",
-        shortcut: "⌘N"
-      ) {
+    var items: [PaletteCommand] = [
+      registeredAutomationCommand(.createDraft, shortcut: "⌘N") {
         store.createDraft()
         store.selectSection(.writing)
         dismiss()
       },
-      PaletteCommand(
-        title: String(localized: "保存工作台"),
-        detail: String(localized: "立即保存当前更改"),
-        systemImage: "square.and.arrow.down",
-        shortcut: "⌘S"
-      ) {
+      registeredAutomationCommand(.saveWorkbench, shortcut: "⌘S") {
         store.save()
         dismiss()
       },
-      PaletteCommand(
-        title: String(localized: "运行发布检查"),
-        detail: String(localized: "检查当前文章的元数据、正文和发布风险"),
-        systemImage: "checkmark.seal"
-      ) {
+      registeredAutomationCommand(.runPreflight) {
         store.runPreflight()
         store.selectSection(.contentHealth)
-        dismiss()
-      },
-      PaletteCommand(
-        title: String(localized: "打开 AI 对话"),
-        detail: String(localized: "在右侧继续当前文章的 AI 对话"),
-        systemImage: "sparkles",
-        shortcut: "⌥⌘A"
-      ) {
-        guard let draftID = publishing.selectedDraftID else { return }
-        store.ai.openChatWorkspace(for: draftID)
         dismiss()
       },
       PaletteCommand(
@@ -232,6 +209,47 @@ struct WorkspaceCommandPalette: View {
         dismiss()
       },
     ]
+
+    if DistributionFeaturePolicy.allowsExternalAIProviders {
+      items.insert(
+        PaletteCommand(
+          title: String(localized: "打开 AI 对话"),
+          detail: String(localized: "在右侧继续当前文章的 AI 对话"),
+          systemImage: "sparkles",
+          shortcut: "⌥⌘A"
+        ) {
+          guard let draftID = publishing.selectedDraftID else { return }
+          store.ai.openChatWorkspace(for: draftID)
+          dismiss()
+        },
+        at: min(3, items.count)
+      )
+    }
+
+    return items
+  }
+
+  private func registeredAutomationCommand(
+    _ command: WorkbenchAutomationCommandID,
+    shortcut: String? = nil,
+    action: @escaping () -> Void
+  ) -> PaletteCommand {
+    guard let descriptor = WorkbenchAutomationRegistry.descriptor(for: command) else {
+      return PaletteCommand(
+        title: command.rawValue,
+        detail: "",
+        systemImage: "questionmark.circle",
+        shortcut: shortcut,
+        action: action
+      )
+    }
+    return PaletteCommand(
+      title: descriptor.title,
+      detail: descriptor.detail,
+      systemImage: descriptor.systemImage,
+      shortcut: shortcut,
+      action: action
+    )
   }
 
   private func paletteSection<Content: View>(

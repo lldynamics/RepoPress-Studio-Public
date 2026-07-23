@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SettingsView: View {
   @ObservedObject var store: WorkbenchStore
+  let browserBridge: KnowledgeBrowserBridge?
   @ObservedObject var storeKitProEntitlementCoordinator: StoreKitProEntitlementCoordinator
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
@@ -14,9 +15,11 @@ struct SettingsView: View {
 
   init(
     store: WorkbenchStore,
+    browserBridge: KnowledgeBrowserBridge?,
     storeKitProEntitlementCoordinator: StoreKitProEntitlementCoordinator
   ) {
     self.store = store
+    self.browserBridge = browserBridge
     self.storeKitProEntitlementCoordinator = storeKitProEntitlementCoordinator
     _selectedSettingsTab = State(initialValue: Self.initialSettingsTab())
   }
@@ -108,9 +111,9 @@ struct SettingsView: View {
 
       VStack(alignment: .leading, spacing: 3) {
         Text(selectedSettingsTab.title)
-          .font(.title2.weight(.semibold))
+          .font(.workbenchPageTitle)
         Text(selectedSettingsTab.subtitle)
-          .font(.callout)
+          .font(.workbenchPageSubtitle)
           .foregroundStyle(.secondary)
           .lineLimit(2)
       }
@@ -151,6 +154,7 @@ struct SettingsView: View {
   private var settingsContext: SettingsContext {
     SettingsContext(
       store: store,
+      browserBridge: browserBridge,
       storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator,
       activeProfileBinding: activeProfileBinding,
       autoRunPreflightBinding: autoRunPreflightBinding,
@@ -163,7 +167,7 @@ struct SettingsView: View {
   }
 
   private static func initialSettingsTab() -> SettingsTab {
-#if DEBUG
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
     ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .proSettings ? .pro : .defaultRules
 #else
     .defaultRules
@@ -221,7 +225,7 @@ struct SettingsView: View {
     case .repositoryToken:
       selectedSettingsTab = .token
     case .aiKey:
-      selectedSettingsTab = .ai
+      selectedSettingsTab = DistributionFeaturePolicy.allowsExternalAIProviders ? .ai : .configurationStatus
     case .privacy:
       selectedSettingsTab = .privacy
     case .pro:
@@ -231,7 +235,9 @@ struct SettingsView: View {
 
   private func applyRequestedSettingsTab(_ requestedTabID: String) {
     guard !requestedTabID.isEmpty,
-          let tab = SettingsTab.allCases.first(where: { $0.id == requestedTabID }) else {
+          let tab = SettingsTab.allCases.first(where: {
+            $0.id == requestedTabID && $0.isAvailableInCurrentDistribution
+          }) else {
       return
     }
 

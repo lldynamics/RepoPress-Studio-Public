@@ -9,7 +9,6 @@ struct OnlineSiteInspectionSection: View {
   let isChecking: Bool
   let message: String?
   let runInspection: () -> Void
-  @SceneStorage("siteMaintenance.onlineMetricsExpanded") private var showsOnlineMetrics = false
 
   private var linkErrorCount: Int {
     report.linkAuditItems.filter { $0.severity == .error }.count
@@ -38,34 +37,27 @@ struct OnlineSiteInspectionSection: View {
         .disabled(isChecking || latestRelease == nil || !canCheckDeployment)
       }
 
-      DisclosureGroup(isExpanded: $showsOnlineMetrics) {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 10)], spacing: 10) {
-          MetricTile(
-            title: "线上状态",
-            value: deploymentSnapshot?.level.localizedDisplayName ?? "未检查",
-            semantic: deploymentSnapshot.map { deploymentSemantic($0.level) } ?? .neutral
-          )
-          MetricTile(
-            title: "内容健康",
-            value: "\(report.healthSummary.score)/100",
-            semantic: healthSemantic(report.healthSummary.level)
-          )
-          MetricTile(
-            title: "链接错误",
-            value: "\(linkErrorCount)",
-            semantic: linkErrorCount == 0 ? .passed : .blocking
-          )
-          MetricTile(
-            title: "链接警告",
-            value: "\(linkWarningCount)",
-            semantic: linkWarningCount == 0 ? .passed : .warning
-          )
-        }
-        .padding(.top, 10)
-      } label: {
-        Label("查看巡检指标", systemImage: "chart.bar")
-          .font(.caption.weight(.medium))
-          .foregroundStyle(.secondary)
+      LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 10)], spacing: 10) {
+        MetricTile(
+          title: "线上状态",
+          value: deploymentSnapshot?.level.localizedDisplayName ?? "未检查",
+          semantic: deploymentSnapshot.map { deploymentSemantic($0.level) } ?? .neutral
+        )
+        MetricTile(
+          title: "内容健康",
+          value: "\(report.healthSummary.score)/100",
+          semantic: healthSemantic(report.healthSummary.level)
+        )
+        MetricTile(
+          title: "链接错误",
+          value: "\(linkErrorCount)",
+          semantic: linkErrorCount == 0 ? .passed : .blocking
+        )
+        MetricTile(
+          title: "链接警告",
+          value: "\(linkWarningCount)",
+          semantic: linkWarningCount == 0 ? .passed : .warning
+        )
       }
 
       if let deploymentSnapshot {

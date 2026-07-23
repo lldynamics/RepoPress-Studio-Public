@@ -58,8 +58,8 @@ for entry in "${required_templates[@]}"; do
     || fail "env template omits status-report-aware runner dry-run: $template"
   [[ "$template_text" == *"run_external_verification_from_envs.sh --env-dir /private/tmp/personal-site-publisher-release-envs --target $runner_target --env-status-report-file $env_status_report --execute"* ]] \
     || fail "env template omits status-report-aware runner execute: $template"
-  [[ "$template_text" == *"./script/check_release_gate.sh --strict"* ]] \
-    || fail "env template omits final strict gate: $template"
+  [[ "$template_text" == *"./script/check_release_gate.sh --profile app-store"* ]] \
+    || fail "env template omits final App Store gate: $template"
 done
 
 dry_output="$(bash "$PREP" --output-dir "$OUTPUT_DIR" --dry-run)"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build deterministic Chrome Web Store and Edge Add-ons submission ZIPs."""
+"""Build the deterministic Chrome Web Store submission ZIP."""
 
 from __future__ import annotations
 
@@ -26,15 +26,13 @@ from browser_extension_release_ledger import (
 
 
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent
-CHANNELS = ("chrome", "edge")
+SAFARI_EXTENSION_BUNDLE_ID = "com.jinfang.PersonalSitePublisherMac.SafariExtension"
+CHANNELS = ("chrome",)
 CHANNEL_LABELS = {
     "chrome": "Chrome Web Store",
     "edge": "Microsoft Edge Add-ons",
 }
-PRODUCTION_ID_FIELDS = {
-    "chrome": "chromeProductionID",
-    "edge": "edgeProductionID",
-}
+PRODUCTION_ID_FIELDS = {"chrome": "chromeProductionID"}
 LISTING_URLS = {
     "chrome": "https://chromewebstore.google.com/detail/{extension_id}",
     "edge": "https://microsoftedge.microsoft.com/addons/detail/{extension_id}",
@@ -42,6 +40,10 @@ LISTING_URLS = {
 REQUIRED_SOURCE_FILES = (
     "_locales/en/messages.json",
     "_locales/zh_CN/messages.json",
+    "background-capture.js",
+    "background-queue-operations.js",
+    "background-queue-storage.js",
+    "background-security.js",
     "background.js",
     "icons/icon16.png",
     "icons/icon32.png",
@@ -119,6 +121,7 @@ def validated_metadata(extension_root: Path, manifest: dict) -> dict:
             "supportURL",
             "localizations",
             "permissionJustifications",
+            "requiredHostPermissionJustifications",
             "optionalHostPermissionJustifications",
             "optionalPermissionJustifications",
         },
@@ -152,9 +155,11 @@ def validated_metadata(extension_root: Path, manifest: dict) -> dict:
                 raise ReleaseError(f"Store listing {locale}.{field} is outside its length limit")
 
     required_permissions = manifest.get("permissions")
+    required_host_permissions = manifest.get("host_permissions", [])
     optional_host_permissions = manifest.get("optional_host_permissions")
     optional_permissions = manifest.get("optional_permissions", [])
     justifications = metadata["permissionJustifications"]
+    required_host_justifications = metadata["requiredHostPermissionJustifications"]
     optional_host_justifications = metadata["optionalHostPermissionJustifications"]
     optional_justifications = metadata["optionalPermissionJustifications"]
     if not isinstance(required_permissions, list) or not all(
@@ -165,12 +170,22 @@ def validated_metadata(extension_root: Path, manifest: dict) -> dict:
         isinstance(item, str) for item in optional_host_permissions
     ):
         raise ReleaseError("Chromium optional_host_permissions must be a string array")
+    if not isinstance(required_host_permissions, list) or not all(
+        isinstance(item, str) for item in required_host_permissions
+    ):
+        raise ReleaseError("Chromium host_permissions must be a string array")
     if not isinstance(optional_permissions, list) or not all(
         isinstance(item, str) for item in optional_permissions
     ):
         raise ReleaseError("Chromium optional_permissions must be a string array")
     if not isinstance(justifications, dict) or set(justifications) != set(required_permissions):
         raise ReleaseError("Store permission justifications must match manifest permissions exactly")
+    if not isinstance(required_host_justifications, dict) or set(
+        required_host_justifications
+    ) != set(required_host_permissions):
+        raise ReleaseError(
+            "Store required-host justifications must match host_permissions exactly"
+        )
     if not isinstance(optional_host_justifications, dict) or set(optional_host_justifications) != set(
         optional_host_permissions
     ):
@@ -179,6 +194,11 @@ def validated_metadata(extension_root: Path, manifest: dict) -> dict:
         )
     if any(not isinstance(value, str) or len(value.strip()) < 10 for value in justifications.values()):
         raise ReleaseError("Every required permission needs a meaningful justification")
+    if any(
+        not isinstance(value, str) or len(value.strip()) < 10
+        for value in required_host_justifications.values()
+    ):
+        raise ReleaseError("Every required host permission needs a meaningful justification")
     if any(
         not isinstance(value, str) or len(value.strip()) < 10
         for value in optional_host_justifications.values()
@@ -198,10 +218,15 @@ def validated_metadata(extension_root: Path, manifest: dict) -> dict:
     return metadata
 
 
-def validated_release(root: Path, require_production_ids: bool) -> tuple[dict, dict, str]:
+def validated_release(
+    root: Path,
+    required_production_channels: set[str] | None = None,
+) -> tuple[dict, dict, str]:
     extension_root = root / "BrowserExtension"
     manifest = load_json(extension_root / "manifest.json")
     definition = load_json(extension_root / "browser-extension-protocol.json")
+    if definition.get("activeExtensions") != ["safari", "chrome"]:
+        raise ReleaseError("This release must enable exactly Safari and Chrome")
     extensions = definition.get("extensions")
     if not isinstance(extensions, dict):
         raise ReleaseError("browser-extension-protocol.json extensions must be an object")
@@ -210,12 +235,16 @@ def validated_release(root: Path, require_production_ids: bool) -> tuple[dict, d
         "firefoxID",
         "chromeProductionID",
         "edgeProductionID",
+        "safariBundleID",
     }
     if set(extensions) != expected_identity_fields:
         raise ReleaseError("Browser extension identity fields do not match the store contract")
+    if extensions["safariBundleID"] != SAFARI_EXTENSION_BUNDLE_ID:
+        raise ReleaseError("Safari Web Extension bundle ID does not match the app extension contract")
     development_id = extensions["chromiumDevelopmentID"]
     if not isinstance(development_id, str) or not CHROMIUM_ID_PATTERN.fullmatch(development_id):
         raise ReleaseError("Chromium development extension ID is invalid")
+    required_channels = required_production_channels or set()
     production_ids: list[str] = []
     for channel, field in PRODUCTION_ID_FIELDS.items():
         extension_id = extensions[field]
@@ -223,7 +252,7 @@ def validated_release(root: Path, require_production_ids: bool) -> tuple[dict, d
             not isinstance(extension_id, str) or not CHROMIUM_ID_PATTERN.fullmatch(extension_id)
         ):
             raise ReleaseError(f"{CHANNEL_LABELS[channel]} production extension ID is invalid")
-        if require_production_ids and extension_id is None:
+        if channel in required_channels and extension_id is None:
             raise ReleaseError(
                 f"{CHANNEL_LABELS[channel]} production ID is pending; upload the initial ZIP, "
                 "then record the store-assigned ID in browser-extension-protocol.json"
@@ -233,7 +262,7 @@ def validated_release(root: Path, require_production_ids: bool) -> tuple[dict, d
                 raise ReleaseError(f"{CHANNEL_LABELS[channel]} production ID still uses the development ID")
             production_ids.append(extension_id)
     if len(production_ids) != len(set(production_ids)):
-        raise ReleaseError("Chrome Web Store and Edge Add-ons must use separate production IDs")
+        raise ReleaseError("Chrome Web Store production ID is duplicated")
 
     if manifest.get("manifest_version") != 3:
         raise ReleaseError("Chromium store package must use Manifest V3")
@@ -357,7 +386,7 @@ def validate_zip(path: Path, expected_payloads_by_name: dict[str, bytes]) -> Non
 
 
 def package_all(root: Path, output_dir: Path, record_in_ledger: bool = False) -> list[Path]:
-    manifest, _, version = validated_release(root, require_production_ids=False)
+    manifest, _, version = validated_release(root)
     ledger_version, _ = assert_source_version_allowed(root)
     if ledger_version != version:
         raise ReleaseError("Release ledger version does not match the Chromium manifest")
@@ -404,23 +433,32 @@ def check_release(root: Path) -> None:
                 raise ReleaseError(f"Store ZIP is not reproducible: {first_path.name}")
 
 
-def readiness(root: Path) -> None:
-    _, extensions, version = validated_release(root, require_production_ids=True)
+def readiness(root: Path, channel: str | None = None) -> None:
+    required_channels = {channel} if channel else set(CHANNELS)
+    _, extensions, version = validated_release(
+        root,
+        required_production_channels=required_channels,
+    )
+    selected_channels = (channel,) if channel else CHANNELS
     print(f"Chromium store release {version}: ready")
-    for channel in CHANNELS:
-        extension_id = extensions[PRODUCTION_ID_FIELDS[channel]]
-        listing_url = LISTING_URLS[channel].format(extension_id=extension_id)
-        print(f"{CHANNEL_LABELS[channel]}: {extension_id} ({listing_url})")
+    for selected_channel in selected_channels:
+        extension_id = extensions[PRODUCTION_ID_FIELDS[selected_channel]]
+        listing_url = LISTING_URLS[selected_channel].format(extension_id=extension_id)
+        print(f"{CHANNEL_LABELS[selected_channel]}: {extension_id} ({listing_url})")
 
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT, help=argparse.SUPPRESS)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("check", help="validate and reproducibly build both packages in a temporary directory")
-    package = subparsers.add_parser("package", help="write Chrome and Edge store submission ZIPs")
+    subparsers.add_parser("check", help="validate and reproducibly build the Chrome package in a temporary directory")
+    package = subparsers.add_parser("package", help="write the Chrome store submission ZIP")
     package.add_argument("--output-dir", type=Path)
-    subparsers.add_parser("readiness", help="require both store-assigned production IDs")
+    readiness_parser = subparsers.add_parser(
+        "readiness",
+        help="require the Chrome store-assigned production ID",
+    )
+    readiness_parser.add_argument("--channel", choices=CHANNELS)
     return parser.parse_args()
 
 
@@ -430,18 +468,18 @@ def main() -> int:
     try:
         if args.command == "check":
             check_release(root)
-            print("Chrome Web Store and Edge Add-ons packages: reproducible")
+            print("Chrome Web Store package: reproducible")
         elif args.command == "package":
             output_dir = args.output_dir or root / "dist" / "browser-extension"
             packages = package_all(root, output_dir.resolve(), record_in_ledger=True)
             for package in packages:
                 print(package)
             print(
-                "Store ZIPs are ready for initial upload; run the readiness command after "
-                "recording both store-assigned production IDs."
+                "Chrome Store ZIP is ready for upload; run the readiness command after "
+                "recording the store-assigned production ID."
             )
         elif args.command == "readiness":
-            readiness(root)
+            readiness(root, args.channel)
     except (OSError, ReleaseError, ReleaseLedgerError) as error:
         print(f"Chromium extension release error: {error}", file=sys.stderr)
         return 1

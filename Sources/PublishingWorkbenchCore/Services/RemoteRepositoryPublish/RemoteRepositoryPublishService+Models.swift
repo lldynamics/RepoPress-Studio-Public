@@ -419,6 +419,8 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
   case rollbackCommitHasNoParent(String)
   case missingReviewURL
   case invalidReviewURL(String)
+  case reviewRecoveryUnavailable(String)
+  case reviewCreationPermissionDenied(provider: RepositoryProvider, body: String)
   case unsupportedRepositoryCreationProvider(String)
   case invalidBaseURL(String)
   case insecureBaseURL
@@ -453,6 +455,18 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
       return CoreL10n.text("这条发布记录没有 PR/MR 链接，无法通过 API 撤回 Review。")
     case .invalidReviewURL(let value):
       return CoreL10n.format("无法从 PR/MR 链接解析编号：%@", value)
+    case .reviewRecoveryUnavailable(let reason):
+      return CoreL10n.format("无法继续创建 PR/MR：%@", reason)
+    case .reviewCreationPermissionDenied(let provider, let body):
+      let detail = remoteAPIErrorDetail(from: body)
+        .map { CoreL10n.format("\n远端信息：%@", $0) }
+        ?? ""
+      switch provider {
+      case .github:
+        return CoreL10n.format("GitHub 内容写入已完成，但创建 PR 被拒绝。请给 fine-grained Token 开启 Pull requests: Read and write。%@", detail)
+      case .gitlab:
+        return CoreL10n.format("GitLab 内容写入已完成，但创建 MR 被拒绝。请确认 Token 具备 api scope，且账号至少是 Developer。%@", detail)
+      }
     case .unsupportedRepositoryCreationProvider(let provider):
       return CoreL10n.format("%@ 暂不支持在 App 内创建仓库。", provider)
     case .invalidBaseURL(let value):
@@ -488,7 +502,7 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
     case 401:
       nextStep = CoreL10n.text("Token 无效或已过期；请重新保存 GitHub/GitLab Token 后再检查权限。")
     case 403:
-      nextStep = CoreL10n.text("Token 权限不足或仓库策略拒绝写入；GitHub 请确认 Contents: Read and write，GitLab 请确认 Developer(30) 或更高权限。")
+      nextStep = CoreL10n.text("Token 权限不足或仓库策略拒绝操作；GitHub 写入内容需 Contents: Read and write，创建 PR 还需 Pull requests: Read and write；GitLab 请确认 Developer(30) 或更高权限。")
     case 404:
       nextStep = CoreL10n.text("仓库、分支或文件路径不存在；请确认 Owner/Namespace、Repo/Project、默认分支和发布路径。")
     case 409:

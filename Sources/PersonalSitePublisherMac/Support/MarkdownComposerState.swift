@@ -99,6 +99,7 @@ struct MarkdownComposerPresentationState {
   var isInternalLinkPickerPresented = false
   var isDiagnosticsPresented = false
   var isSnippetLibraryPresented = false
+  var isAITemplateLibraryPresented = false
 }
 
 struct MarkdownComposerAnalysisState {
@@ -297,6 +298,11 @@ extension MacMarkdownComposerView {
   var isSnippetLibraryPresented: Bool {
     get { presentationState.isSnippetLibraryPresented }
     nonmutating set { presentationState.isSnippetLibraryPresented = newValue }
+  }
+
+  var isAITemplateLibraryPresented: Bool {
+    get { presentationState.isAITemplateLibraryPresented }
+    nonmutating set { presentationState.isAITemplateLibraryPresented = newValue }
   }
 
   var markdownAnalysis: MarkdownEditorAnalysisSnapshot {

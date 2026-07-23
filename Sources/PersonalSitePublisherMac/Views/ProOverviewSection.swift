@@ -13,11 +13,11 @@ struct ProOverviewSection: View {
         .foregroundStyle(summaryForeground(summary))
 
       Text(summary.message)
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
 
       Text(summary.nextStep)
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(summary.isActionRequired ? WorkbenchTheme.warning : Color.secondary)
 
       if let notice = latestBlockNotice {
@@ -30,7 +30,7 @@ struct ProOverviewSection: View {
         Label("\(summary.blockedRequirements.count) 项受限", systemImage: "lock.fill")
           .foregroundStyle(summary.blockedRequirements.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(WorkbenchTheme.warning))
       }
-      .font(.caption)
+      .font(.workbenchMetadata)
 
       Button {
         onCopyStatusSummary()

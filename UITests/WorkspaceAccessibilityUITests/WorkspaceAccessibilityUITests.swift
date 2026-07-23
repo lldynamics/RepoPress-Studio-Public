@@ -71,6 +71,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "knowledge-library-pin-toggle",
       "knowledge-library-actions-menu",
       "knowledge-library-import-button",
+      "knowledge-library-content-presentation-picker",
+      "knowledge-library-reclean-button",
     ]
     for identifier in detailIdentifiers {
       assertUniqueIdentifier(identifier)
@@ -81,6 +83,164 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "资料库辅助功能演示",
       "The detail title identifier must remain attached to the selected document title."
     )
+  }
+
+  func testOperationalSidebarQuickSearchIdentifiersRemainUnique() throws {
+    launchApplication(surface: "writing")
+    element(identifier: "workspace-sidebar-sync").tap()
+
+    for identifier in [
+      "workspace-quick-search",
+      "workspace-quick-search-field",
+      "repository-sidebar-stage-navigation",
+      "repository-sidebar-stage-overview",
+      "repository-sidebar-stage-changes",
+      "repository-sidebar-stage-history",
+      "workspace-quick-search-results",
+    ] {
+      assertUniqueIdentifier(identifier)
+    }
+
+    let searchField = element(identifier: "workspace-quick-search-field")
+    searchField.click()
+    // Use digits so the test remains independent of the user's active input method.
+    // Latin text can stay in an uncommitted Pinyin composition and never update
+    // SwiftUI's binding, which makes the conditional clear button look missing.
+    searchField.typeText("404")
+    assertUniqueIdentifier("workspace-quick-search-clear")
+
+    element(identifier: "workspace-quick-search-clear").tap()
+    assertUniqueIdentifier("workspace-quick-search-results")
+  }
+
+  func testRepositoryWorkspaceIdentifiersRemainUniqueAcrossAllStages() throws {
+    launchApplication(surface: "writing")
+    element(identifier: "workspace-sidebar-sync").tap()
+
+    for identifier in [
+      "repository-workspace",
+      "repository-primary-actions",
+      "repository-action-select-folder",
+      "repository-action-scan",
+      "repository-action-import",
+      "repository-action-migrate",
+      "repository-action-open-publish",
+      "repository-next-action",
+      "repository-section-summary",
+      "repository-section-information",
+      "repository-section-online-publish",
+      "repository-section-auto-sync",
+      "repository-section-local-preview",
+      "repository-section-sync-plan",
+      "repository-section-path-rules",
+    ] {
+      assertUniqueIdentifier(identifier)
+    }
+
+    element(identifier: "repository-sidebar-stage-changes").tap()
+    for identifier in [
+      "repository-workspace",
+      "repository-section-remote-changes",
+      "repository-section-local-changes",
+    ] {
+      assertUniqueIdentifier(identifier)
+    }
+
+    element(identifier: "repository-sidebar-stage-history").tap()
+    for identifier in [
+      "repository-section-release-history",
+      "release-history-header",
+      "release-history-primary-metrics",
+      "release-history-main-column",
+      "release-history-action-queue",
+      "release-history-records",
+      "release-history-deployment-column",
+      "release-history-deployment-overview",
+      "release-history-deployment-polling",
+      "release-history-deployment-status",
+      "release-history-deployment-debug",
+    ] {
+      assertUniqueIdentifier(identifier)
+    }
+  }
+
+  func testImageWorkbenchIdentifiersRemainUniqueAndDoNotOverrideChildControls() throws {
+    launchApplication(surface: "writing")
+    element(identifier: "workspace-sidebar-images").tap()
+
+    for identifier in [
+      "workspace-quick-search",
+      "workspace-quick-search-field",
+      "image-sidebar-stage-navigation",
+      "image-sidebar-stage-overview",
+      "image-sidebar-stage-issues",
+      "image-sidebar-stage-repository",
+      "image-workbench",
+      "image-workbench-open-folder",
+      "image-workbench-open-writing",
+      "image-workbench-refresh",
+      "image-workbench-overview",
+      "image-workbench-actions",
+      "image-action-fill-metadata",
+      "image-action-optimize-jpeg",
+      "image-action-convert-webp",
+      "image-action-optimize-svg",
+      "image-action-resize-large-images",
+    ] {
+      assertUniqueIdentifier(identifier)
+    }
+
+    element(identifier: "image-sidebar-stage-issues").tap()
+    for identifier in [
+      "image-workbench",
+      "image-issue-workspace",
+      "image-issue-search",
+      "image-issue-filter",
+    ] {
+      assertUniqueIdentifier(identifier)
+    }
+
+    element(identifier: "image-sidebar-stage-repository").tap()
+    for identifier in [
+      "image-workbench",
+      "repository-image-browser",
+    ] {
+      assertUniqueIdentifier(identifier)
+    }
+  }
+
+  func testContentHealthIdentifiersRemainUniqueAcrossAllStages() throws {
+    launchApplication(surface: "writing")
+    element(identifier: "workspace-sidebar-contentHealth").tap()
+
+    for identifier in [
+      "workspace-quick-search",
+      "workspace-quick-search-field",
+      "content-health-sidebar-stage-navigation",
+      "content-health-sidebar-stage-overview",
+      "content-health-sidebar-stage-publicRisks",
+      "content-health-sidebar-stage-aiFixes",
+      "content-health-sidebar-stage-siteIssues",
+      "content-health-sidebar-stage-maintenance",
+      "content-health-workspace",
+      "content-health-stage-overview",
+    ] {
+      assertUniqueIdentifier(identifier)
+    }
+
+    for stage in ["publicRisks", "aiFixes", "siteIssues", "maintenance"] {
+      element(identifier: "content-health-sidebar-stage-\(stage)").tap()
+      assertUniqueIdentifier("content-health-workspace")
+      assertUniqueIdentifier("content-health-stage-\(stage)")
+    }
+
+    for identifier in [
+      "site-maintenance-refresh",
+      "site-maintenance-copy-sprint-plan",
+      "site-maintenance-copy-checklist",
+    ] {
+      assertUniqueIdentifier(identifier)
+    }
   }
 
   private func launchApplication(surface: String) {
@@ -94,6 +254,9 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_KNOWLEDGE_ROOT"] = knowledgeLibraryRootURL.path
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_DISABLE_CAPTURE_WINDOW_BRIDGE"] = "1"
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST"] = "1"
+    application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST_REPOSITORY_ROOT"] = knowledgeLibraryRootURL
+      .appendingPathComponent("repository-fixture", isDirectory: true)
+      .path
     application.launch()
 
     XCTAssertTrue(

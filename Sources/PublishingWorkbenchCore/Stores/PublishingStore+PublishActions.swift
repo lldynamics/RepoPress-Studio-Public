@@ -856,26 +856,69 @@ extension PublishingStore {
     )
   }
 
-  /// Discovers private repository articles that have never been added to the
-  /// writing library. Existing drafts are intentionally left untouched so this
-  /// launch-time backfill cannot overwrite local edits.
+  /// Discovers repository articles that have never been added to the writing
+  /// library. Existing drafts are intentionally left untouched so an external
+  /// editor cannot overwrite unsaved or newer work in this app.
+  @discardableResult
+  public func importMissingDraftsFromLocalRepository(store: WorkbenchStore) async -> Int {
+    await importMissingDraftsFromLocalRepository(
+      store: store,
+      privateDraftsOnly: false,
+      announcesInsertions: true
+    )
+  }
+
+  /// Keeps the narrower private-only migration available for older callers.
   @discardableResult
   public func importMissingPrivateDraftsFromLocalRepository(store: WorkbenchStore) async -> Int {
+    await importMissingDraftsFromLocalRepository(
+      store: store,
+      privateDraftsOnly: true,
+      announcesInsertions: false
+    )
+  }
+
+  private func importMissingDraftsFromLocalRepository(
+    store: WorkbenchStore,
+    privateDraftsOnly: Bool,
+    announcesInsertions: Bool
+  ) async -> Int {
     let profile = store.activeProfile
     guard !profile.localRepositoryRootPath.trimmedForPublishing.isEmpty else {
       return 0
     }
 
+    guard localImportOperationContext == nil else {
+      return 0
+    }
     let operation = LocalRepositoryOperationContext(profile: profile)
+    localImportOperationContext = operation
+    let existingRepositoryPaths = Set(
+      drafts.compactMap { draft -> String? in
+        guard draft.belongs(toSiteProfileID: profile.id) else { return nil }
+        return draft.repositoryPath?.normalizedRelativePath().nilIfEmpty
+      }
+    )
     let result: LocalContentImportResult
     do {
-      result = try await localContentImportService.importDraftsAsync(profile: profile)
+      result = try await localContentImportService.importMissingDraftsAsync(
+        profile: profile,
+        excludingRepositoryPaths: existingRepositoryPaths
+      )
     } catch {
+      if localImportOperationContext == operation {
+        localImportOperationContext = nil
+      }
       return 0
     }
-    guard operation.stillMatches(store.activeProfile) else {
+    guard localImportOperationContext == operation,
+          operation.stillMatches(store.activeProfile) else {
+      if localImportOperationContext == operation {
+        localImportOperationContext = nil
+      }
       return 0
     }
+    localImportOperationContext = nil
 
     var existingPaths = Set(
       drafts.compactMap { draft -> String? in
@@ -885,10 +928,10 @@ extension PublishingStore {
     )
     let missingDrafts = result.importedDrafts.filter { draft in
       guard draft.belongs(toSiteProfileID: profile.id),
-            draft.isPrivate,
             let repositoryPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty else {
         return false
       }
+      guard !privateDraftsOnly || draft.isPrivate else { return false }
       return existingPaths.insert(repositoryPath).inserted
     }
     guard !missingDrafts.isEmpty else {
@@ -896,8 +939,14 @@ extension PublishingStore {
     }
 
     drafts.append(contentsOf: missingDrafts)
+    if let firstImportedDraft = missingDrafts.first {
+      _ = focusDraft(firstImportedDraft.id, store: store)
+    }
     if automaticallyRefreshPreflightOnEdit {
       store.schedulePreflightRefresh()
+    }
+    if announcesInsertions {
+      publishActionMessage = "已发现并加入本地列表 \(missingDrafts.count) 篇外部新文章。"
     }
     store.save()
     return missingDrafts.count
@@ -1536,18 +1585,6 @@ extension PublishingStore {
       publishActionMessage = "Starter 提交推送失败：\(error.localizedDescription)"
       return nil
     }
-  }
-
-  public func generalDraftLibraryReport() -> GeneralDraftLibraryReport {
-    generalDraftLibraryService.report(
-      drafts: drafts,
-      profiles: profiles
-    )
-  }
-
-  public func generalDraftSourceFieldDiffs(for draft: ArticleDraft) -> [String] {
-    guard let source = draft.reusedFromSourceSnapshot else { return [] }
-    return generalDraftLibraryService.sourceFieldDiffs(from: source, to: draft)
   }
 
   public func localSitePreviewPlan(for draft: ArticleDraft, store: WorkbenchStore) -> LocalSitePreviewPlan? {

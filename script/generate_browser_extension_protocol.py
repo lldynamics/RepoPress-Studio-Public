@@ -17,6 +17,7 @@ DEFAULT_ROOT = Path(__file__).resolve().parent.parent
 HOST_NAME_PATTERN = re.compile(r"^[a-z0-9_]+(?:\.[a-z0-9_]+)+$")
 FIREFOX_ID_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+$")
 CHROMIUM_ID_PATTERN = re.compile(r"^[a-p]{32}$")
+BUNDLE_ID_PATTERN = re.compile(r"^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$")
 ALLOWED_METHODS = frozenset(("GET", "POST"))
 
 
@@ -59,29 +60,64 @@ def require_exact_keys(value: dict, expected: set[str], label: str) -> None:
 def validated_definition(root: Path) -> dict:
     path = root / "BrowserExtension" / "browser-extension-protocol.json"
     value = load_object(path)
-    require_exact_keys(value, {"documentVersion", "extensions", "nativeMessaging"}, "protocol")
+    require_exact_keys(
+        value,
+        {"documentVersion", "activeExtensions", "extensions", "loopback", "nativeMessaging"},
+        "protocol",
+    )
     if value["documentVersion"] != 1:
         raise ProtocolGenerationError("Unsupported browser extension protocol documentVersion")
 
     extensions = value["extensions"]
+    active_extensions = value["activeExtensions"]
+    loopback = value["loopback"]
     native = value["nativeMessaging"]
-    if not isinstance(extensions, dict) or not isinstance(native, dict):
-        raise ProtocolGenerationError("extensions and nativeMessaging must be JSON objects")
+    if (
+        not isinstance(extensions, dict)
+        or not isinstance(loopback, dict)
+        or not isinstance(native, dict)
+    ):
+        raise ProtocolGenerationError(
+            "extensions, loopback and nativeMessaging must be JSON objects"
+        )
     require_exact_keys(
         extensions,
         {
             "chromiumDevelopmentID",
             "firefoxID",
+            "safariBundleID",
             "chromeProductionID",
             "edgeProductionID",
         },
         "extensions",
+    )
+    if active_extensions != ["safari", "chrome"]:
+        raise ProtocolGenerationError(
+            "activeExtensions must be exactly ['safari', 'chrome'] for this release"
+        )
+    require_exact_keys(
+        loopback,
+        {"host", "port", "protocolHeaderName", "protocolHeaderValue"},
+        "loopback",
     )
     require_exact_keys(
         native,
         {"hostName", "maximumInputBytes", "maximumOutputBytes", "routes", "schemaVersion"},
         "nativeMessaging",
     )
+
+    if loopback["host"] != "127.0.0.1":
+        raise ProtocolGenerationError("loopback.host must be the IPv4 loopback address")
+    if (
+        not isinstance(loopback["port"], int)
+        or isinstance(loopback["port"], bool)
+        or not 10_240 <= loopback["port"] <= 65_535
+    ):
+        raise ProtocolGenerationError("loopback.port is outside the allowed range")
+    if loopback["protocolHeaderName"] != "X-RepoPress-Protocol":
+        raise ProtocolGenerationError("loopback.protocolHeaderName is invalid")
+    if loopback["protocolHeaderValue"] != "1":
+        raise ProtocolGenerationError("loopback.protocolHeaderValue is invalid")
 
     if (
         not isinstance(native["schemaVersion"], int)
@@ -99,6 +135,14 @@ def validated_definition(root: Path) -> dict:
         extensions["chromiumDevelopmentID"]
     ):
         raise ProtocolGenerationError("extensions.chromiumDevelopmentID is invalid")
+    if (
+        not isinstance(extensions["safariBundleID"], str)
+        or not BUNDLE_ID_PATTERN.fullmatch(extensions["safariBundleID"])
+        or not extensions["safariBundleID"].startswith(
+            "com.jinfang.PersonalSitePublisherMac."
+        )
+    ):
+        raise ProtocolGenerationError("extensions.safariBundleID is invalid")
     for field in ("chromeProductionID", "edgeProductionID"):
         extension_id = extensions[field]
         if extension_id is not None and (
@@ -148,7 +192,9 @@ def chromium_origins(development_id: str, production_id: str | None) -> list[str
 
 def render_swift(definition: dict) -> str:
     native = definition["nativeMessaging"]
+    loopback = definition["loopback"]
     extensions = definition["extensions"]
+    active_extensions = definition["activeExtensions"]
     routes = []
     for route, methods in sorted(native["routes"].items()):
         rendered_methods = ", ".join(swift_string(method) for method in sorted(methods))
@@ -167,6 +213,11 @@ def render_swift(definition: dict) -> str:
             f"  public static let schemaVersion = {native['schemaVersion']}",
             f"  public static let hostName = {swift_string(native['hostName'])}",
             f"  public static let firefoxExtensionID = {swift_string(extensions['firefoxID'])}",
+            "  public static let activeBrowserExtensions = [",
+            *[f"    {swift_string(channel)}," for channel in active_extensions],
+            "  ]",
+            "  public static let safariWebExtensionBundleID =",
+            f"    {swift_string(extensions['safariBundleID'])}",
             "  public static let chromiumDevelopmentExtensionID =",
             f"    {swift_string(extensions['chromiumDevelopmentID'])}",
             "  public static let chromiumDevelopmentOrigin =",
@@ -175,6 +226,14 @@ def render_swift(definition: dict) -> str:
             f"    {swift_optional_string(extensions['chromeProductionID'])}",
             "  public static let edgeProductionExtensionID: String? =",
             f"    {swift_optional_string(extensions['edgeProductionID'])}",
+            f"  public static let loopbackHost = {swift_string(loopback['host'])}",
+            f"  public static let loopbackPort: UInt16 = {loopback['port']}",
+            "  public static let loopbackBaseURL =",
+            '    "http://\\(loopbackHost):\\(loopbackPort)"',
+            "  public static let loopbackProtocolHeaderName =",
+            f"    {swift_string(loopback['protocolHeaderName'])}",
+            "  public static let loopbackProtocolHeaderValue =",
+            f"    {swift_string(loopback['protocolHeaderValue'])}",
             "  public static let chromeAllowedOrigins = [",
             *[f"    {swift_string(origin)}," for origin in chrome_origins],
             "  ]",
@@ -195,12 +254,19 @@ def render_swift(definition: dict) -> str:
 
 def render_javascript(definition: dict) -> str:
     native = definition["nativeMessaging"]
+    loopback = definition["loopback"]
     payload = {
+        "activeExtensions": definition["activeExtensions"],
         "hostName": native["hostName"],
         "maximumInputBytes": native["maximumInputBytes"],
         "maximumOutputBytes": native["maximumOutputBytes"],
         "routes": {route: sorted(methods) for route, methods in sorted(native["routes"].items())},
         "schemaVersion": native["schemaVersion"],
+        "loopback": {
+            "baseURL": f"http://{loopback['host']}:{loopback['port']}",
+            "protocolHeaderName": loopback["protocolHeaderName"],
+            "protocolHeaderValue": loopback["protocolHeaderValue"],
+        },
     }
     rendered = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).replace(
         "\n", "\n  "
@@ -243,6 +309,7 @@ def synchronize(root: Path, write: bool) -> None:
     definition = validated_definition(root)
     extension_root = root / "BrowserExtension"
     firefox_root = extension_root / "Firefox"
+    safari_root = extension_root / "Safari"
     mismatches: list[str] = []
     chromium_manifest_path = extension_root / "manifest.json"
     firefox_manifest_path = firefox_root / "manifest.json"
@@ -265,6 +332,7 @@ def synchronize(root: Path, write: bool) -> None:
         / "KnowledgeNativeMessagingGenerated.swift": render_swift(definition),
         extension_root / "protocol.generated.js": render_javascript(definition),
         firefox_root / "protocol.generated.js": render_javascript(definition),
+        safari_root / "protocol.generated.js": render_javascript(definition),
     }
     for path, expected in outputs.items():
         actual = path.read_text(encoding="utf-8") if path.is_file() else None

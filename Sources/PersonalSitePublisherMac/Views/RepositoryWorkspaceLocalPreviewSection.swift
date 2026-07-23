@@ -6,29 +6,43 @@ extension RepositoryWorkspaceView {
   var localPreviewSection: some View {
     if let plan = store.localSitePreviewPlan {
       VStack(alignment: .leading, spacing: 12) {
-        HStack {
-          VStack(alignment: .leading, spacing: 3) {
-            Text("本地预览")
-              .font(.headline)
-            Text(plan.previewURL.absoluteString)
-              .font(.callout.monospaced())
-              .foregroundStyle(.secondary)
-              .textSelection(.enabled)
-          }
-          Spacer()
+        VStack(alignment: .leading, spacing: 3) {
+          Text("本地预览")
+            .font(.headline)
+          Text("启动站点后检查端口，再打开当前文章或整个站点。")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+          Text(plan.previewURL.absoluteString)
+            .font(.callout.monospaced())
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+        }
+
+        let currentArticleURL = store.selectedDraft.flatMap { store.localSitePreviewURL(for: $0) }
+        LazyVGrid(
+          columns: [GridItem(.adaptive(minimum: 150, maximum: 240), spacing: 8)],
+          alignment: .leading,
+          spacing: 8
+        ) {
           Button {
             store.startLocalSitePreview()
           } label: {
             Label("启动预览", systemImage: "play.circle")
+              .frame(maxWidth: .infinity, alignment: .leading)
           }
+          .buttonStyle(.bordered)
           .disabled(store.localSitePreviewRuntimeStatus.isRunning)
+          .accessibilityIdentifier("repository-preview-start")
 
           Button {
             store.stopLocalSitePreview()
           } label: {
             Label("停止", systemImage: "stop.circle")
+              .frame(maxWidth: .infinity, alignment: .leading)
           }
+          .buttonStyle(.bordered)
           .disabled(!store.localSitePreviewRuntimeStatus.isRunning)
+          .accessibilityIdentifier("repository-preview-stop")
 
           Button {
             Task {
@@ -36,24 +50,34 @@ extension RepositoryWorkspaceView {
             }
           } label: {
             Label("检测端口", systemImage: "network")
+              .frame(maxWidth: .infinity, alignment: .leading)
           }
+          .buttonStyle(.bordered)
           .disabled(!store.localSitePreviewRuntimeStatus.isRunning)
+          .accessibilityIdentifier("repository-preview-check-port")
 
-          if let draft = store.selectedDraft, let articleURL = store.localSitePreviewURL(for: draft) {
-            Button {
-              ExternalURLOpener.open(articleURL)
-            } label: {
-              Label("打开当前文章", systemImage: "doc.richtext")
-            }
-            .disabled(!store.localSitePreviewRuntimeStatus.isReachable)
+          Button {
+            guard let currentArticleURL else { return }
+            ExternalURLOpener.open(currentArticleURL)
+          } label: {
+            Label("打开当前文章", systemImage: "doc.richtext")
+              .frame(maxWidth: .infinity, alignment: .leading)
           }
+          .buttonStyle(.bordered)
+          .disabled(currentArticleURL == nil || !store.localSitePreviewRuntimeStatus.isReachable)
+          .accessibilityIdentifier("repository-preview-open-current-article")
 
           Button {
             ExternalURLOpener.open(plan.previewURL)
           } label: {
             Label("打开预览", systemImage: "safari")
+              .frame(maxWidth: .infinity, alignment: .leading)
           }
+          .buttonStyle(.bordered)
+          .accessibilityIdentifier("repository-preview-open-site")
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("repository-preview-actions")
 
         Label(
           store.localSitePreviewRuntimeStatus.message,
@@ -63,53 +87,58 @@ extension RepositoryWorkspaceView {
         )
           .font(.caption)
           .foregroundStyle(store.localSitePreviewRuntimeStatus.isReachable ? WorkbenchTheme.success : Color.secondary)
+          .accessibilityIdentifier("repository-preview-runtime-status")
 
         ForEach(plan.notes, id: \.self) { note in
           Label(note, systemImage: "info.circle")
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
         }
 
-        DisclosureGroup {
-          VStack(alignment: .leading, spacing: 6) {
-            Text(plan.command)
-              .font(.callout.monospaced())
-              .textSelection(.enabled)
-              .lineLimit(3)
-
-            Button {
-              copy(plan.command, message: "已复制本地预览启动命令。")
-            } label: {
-              Label("复制启动命令", systemImage: "terminal")
-            }
-
-            if let pid = store.localSitePreviewRuntimeStatus.processIdentifier {
-              Text("PID \(pid)")
-                .font(.caption.monospaced())
-                .foregroundStyle(.tertiary)
-            }
-
-            if !store.localSitePreviewRuntimeStatus.recentLogLines.isEmpty {
-              Text("最近日志")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-              Text(store.localSitePreviewRuntimeStatus.recentLogLines.suffix(8).joined(separator: "\n"))
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .lineLimit(8)
-            }
-          }
-          .padding(10)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-        } label: {
+        VStack(alignment: .leading, spacing: 8) {
           Label("诊断信息", systemImage: "stethoscope")
-            .font(.caption.weight(.semibold))
+            .font(.callout.weight(.semibold))
+
+          Text(plan.command)
+            .font(.callout.monospaced())
+            .textSelection(.enabled)
+            .lineLimit(3)
+
+          Button {
+            copy(plan.command, message: "已复制本地预览启动命令。")
+          } label: {
+            Label("复制启动命令", systemImage: "terminal")
+          }
+          .buttonStyle(.bordered)
+          .accessibilityIdentifier("repository-preview-copy-command")
+
+          if let pid = store.localSitePreviewRuntimeStatus.processIdentifier {
+            Text("PID \(pid)")
+              .font(.caption.monospaced())
+              .foregroundStyle(.secondary)
+          }
+
+          if !store.localSitePreviewRuntimeStatus.recentLogLines.isEmpty {
+            Text("最近日志")
+              .font(.callout.weight(.semibold))
+              .foregroundStyle(.secondary)
+            Text(store.localSitePreviewRuntimeStatus.recentLogLines.suffix(8).joined(separator: "\n"))
+              .font(.caption.monospaced())
+              .foregroundStyle(.secondary)
+              .textSelection(.enabled)
+              .lineLimit(8)
+          }
         }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("repository-preview-diagnostics")
       }
       .padding(14)
       .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("repository-section-local-preview")
     }
   }
 }

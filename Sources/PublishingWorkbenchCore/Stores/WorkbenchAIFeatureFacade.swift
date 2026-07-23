@@ -41,6 +41,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiActionResult
   }
 
+  public var dataSharingConsent: AIDataSharingConsentPresentation {
+    store.aiStore.aiDataSharingConsentPresentation
+  }
+
   public var metadataSuggestion: AIPublishingMetadataSuggestion? {
     store.aiMetadataSuggestion
   }
@@ -109,6 +113,14 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.isAIChatRunning
   }
 
+  public var isAutomationRunning: Bool {
+    store.aiWorkspaceStore.isAutomationRunning
+  }
+
+  public var automationRunRecords: [WorkbenchAutomationRunRecord] {
+    store.automationRunRecords
+  }
+
   public var chatManualRetryState: AIChatManualRetryState? {
     store.aiChatManualRetryState
   }
@@ -147,6 +159,14 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func testConnection() async -> AIConnectionTestReport? {
     await store.aiTestConnection()
+  }
+
+  public func grantDataSharingConsent() {
+    store.aiStore.grantAIDataSharingConsent()
+  }
+
+  public func revokeDataSharingConsent() {
+    store.aiStore.revokeAIDataSharingConsent()
   }
 
   @discardableResult
@@ -263,6 +283,35 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func cancelChatReply() {
     store.aiCancelChatReply()
+  }
+
+  @discardableResult
+  public func executeAutomationPlan(
+    messageID: AIPublishingChatMessage.ID,
+    onlyStepID: UUID? = nil,
+    confirmedStepIDs: Set<UUID> = []
+  ) async -> WorkbenchAutomationExecutionResult? {
+    await store.executeAutomationPlan(
+      messageID: messageID,
+      onlyStepID: onlyStepID,
+      confirmedStepIDs: confirmedStepIDs
+    )
+  }
+
+  public func automationDraftPreview(
+    messageID: AIPublishingChatMessage.ID,
+    stepID: UUID
+  ) -> WorkbenchAutomationDraftPreview? {
+    store.automationDraftPreview(messageID: messageID, stepID: stepID)
+  }
+
+  public func cancelAutomationPlan(messageID: AIPublishingChatMessage.ID) {
+    store.cancelAutomationPlan(messageID: messageID)
+  }
+
+  @discardableResult
+  public func rollbackAutomationRun(_ recordID: UUID) -> Int {
+    store.rollbackAutomationRun(recordID)
   }
 
   @discardableResult

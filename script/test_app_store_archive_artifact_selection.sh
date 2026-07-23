@@ -18,7 +18,12 @@ fail() {
 
 marketing_version="$(sed -nE 's/^MARKETING_VERSION[[:space:]]*=[[:space:]]*(.+)$/\1/p' "$ROOT_DIR/Packaging/BuildVersion.xcconfig")"
 build_number="$(sed -nE 's/^CURRENT_PROJECT_VERSION[[:space:]]*=[[:space:]]*(.+)$/\1/p' "$ROOT_DIR/Packaging/BuildVersion.xcconfig")"
-mkdir -p "$APP/Contents/MacOS"
+CORE_RESOURCES="$APP/Contents/Resources/PersonalSitePublisherMac_PublishingWorkbenchCore.bundle"
+SAFARI_EXTENSION="$APP/Contents/PlugIns/RepoPressSafariExtension.appex"
+mkdir -p \
+  "$APP/Contents/MacOS" \
+  "$CORE_RESOURCES" \
+  "$SAFARI_EXTENSION/Contents/Resources"
 plutil -create xml1 "$APP/Contents/Info.plist"
 plutil -insert CFBundleIdentifier -string com.jinfang.PersonalSitePublisherMac "$APP/Contents/Info.plist"
 plutil -insert CFBundleShortVersionString -string "$marketing_version" "$APP/Contents/Info.plist"
@@ -26,6 +31,19 @@ plutil -insert CFBundleVersion -string "$build_number" "$APP/Contents/Info.plist
 plutil -insert PersonalSitePublisherBuildConfiguration -string Release "$APP/Contents/Info.plist"
 plutil -insert LSApplicationCategoryType -string public.app-category.developer-tools "$APP/Contents/Info.plist"
 plutil -insert NSHumanReadableCopyright -string "Copyright © 2026 Jinfang. All rights reserved." "$APP/Contents/Info.plist"
+plutil -insert ITSAppUsesNonExemptEncryption -bool false "$APP/Contents/Info.plist"
+
+plutil -create xml1 "$CORE_RESOURCES/Info.plist"
+plutil -insert CFBundleIdentifier -string com.jinfang.PersonalSitePublisherMac.PublishingWorkbenchCoreResources "$CORE_RESOURCES/Info.plist"
+plutil -insert CFBundlePackageType -string BNDL "$CORE_RESOURCES/Info.plist"
+
+plutil -create xml1 "$SAFARI_EXTENSION/Contents/Info.plist"
+plutil -insert CFBundleIdentifier -string com.jinfang.PersonalSitePublisherMac.SafariExtension "$SAFARI_EXTENSION/Contents/Info.plist"
+plutil -insert CFBundlePackageType -string 'XPC!' "$SAFARI_EXTENSION/Contents/Info.plist"
+plutil -insert LSMinimumSystemVersion -string 14.0 "$SAFARI_EXTENSION/Contents/Info.plist"
+plutil -insert NSExtension -xml '<dict><key>NSExtensionPointIdentifier</key><string>com.apple.Safari.web-extension</string></dict>' "$SAFARI_EXTENSION/Contents/Info.plist"
+cp "$ROOT_DIR/BrowserExtension/Safari/manifest.json" "$SAFARI_EXTENSION/Contents/Resources/manifest.json"
+
 printf '#!/usr/bin/env bash\nexit 0\n' >"$APP/Contents/MacOS/PersonalSitePublisherMac"
 chmod +x "$APP/Contents/MacOS/PersonalSitePublisherMac"
 

@@ -161,6 +161,10 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
     store.attachRepositoryImageToSelectedDraft(repositoryPath: repositoryPath)
   }
 
+  public func attachRepositoryImage(repositoryPath: String, toDraftID draftID: UUID) {
+    store.attachRepositoryImage(repositoryPath: repositoryPath, toDraftID: draftID)
+  }
+
   private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {
     publisher
       .sink { [weak self] _ in self?.objectWillChange.send() }

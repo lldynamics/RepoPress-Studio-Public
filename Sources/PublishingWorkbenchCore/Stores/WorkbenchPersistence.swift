@@ -3,7 +3,7 @@ import Foundation
 
 public struct WorkbenchSnapshot: Codable, Sendable {
   /// Bump this only together with a backwards-compatible decode migration.
-  public static let currentFormatVersion = 7
+  public static let currentFormatVersion = 8
 
   public var formatVersion: Int
   public var profiles: [SiteProfile]
@@ -17,6 +17,7 @@ public struct WorkbenchSnapshot: Codable, Sendable {
   public var releaseRecords: [ReleaseRecord]
   public var maintenanceOperationRecords: [MaintenanceOperationRecord]
   public var aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord]
+  public var automationRunRecords: [WorkbenchAutomationRunRecord]
   public var aiChatCustomPrompts: [AIPublishingCustomPrompt]
   public var seoSocialPreviewSnapshots: [SEOSocialPreviewSnapshot]
   public var privacySettings: PrivacyProtectionSettings
@@ -42,6 +43,7 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     releaseRecords: [ReleaseRecord],
     maintenanceOperationRecords: [MaintenanceOperationRecord] = [],
     aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord] = [],
+    automationRunRecords: [WorkbenchAutomationRunRecord] = [],
     aiChatCustomPrompts: [AIPublishingCustomPrompt] = [],
     seoSocialPreviewSnapshots: [SEOSocialPreviewSnapshot] = [],
     privacySettings: PrivacyProtectionSettings = .default,
@@ -80,6 +82,7 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     self.releaseRecords = ReleaseRecord.limitedHistory(releaseRecords)
     self.maintenanceOperationRecords = Self.limitedMaintenanceOperationRecords(maintenanceOperationRecords)
     self.aiMetadataApplicationRecords = Self.limitedMetadataApplicationRecords(aiMetadataApplicationRecords)
+    self.automationRunRecords = Self.limitedAutomationRunRecords(automationRunRecords)
     self.aiChatCustomPrompts = Self.limitedCustomPrompts(aiChatCustomPrompts)
     self.seoSocialPreviewSnapshots = Self.latestSEOSocialPreviewSnapshots(seoSocialPreviewSnapshots)
     self.privacySettings = privacySettings
@@ -107,6 +110,7 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     case releaseRecords
     case maintenanceOperationRecords
     case aiMetadataApplicationRecords
+    case automationRunRecords
     case aiChatCustomPrompts
     case seoSocialPreviewSnapshots
     case privacySettings
@@ -181,6 +185,12 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         forKey: .aiMetadataApplicationRecords
       ) ?? []
     )
+    automationRunRecords = Self.limitedAutomationRunRecords(
+      try container.decodeIfPresent(
+        [WorkbenchAutomationRunRecord].self,
+        forKey: .automationRunRecords
+      ) ?? []
+    )
     aiChatCustomPrompts = Self.limitedCustomPrompts(
       try container.decodeIfPresent(
         [AIPublishingCustomPrompt].self,
@@ -239,6 +249,16 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     _ records: [AIPublishingMetadataApplicationRecord]
   ) -> [AIPublishingMetadataApplicationRecord] {
     Array(records.sorted { $0.createdAt > $1.createdAt }.prefix(120))
+  }
+
+  private static func limitedAutomationRunRecords(
+    _ records: [WorkbenchAutomationRunRecord]
+  ) -> [WorkbenchAutomationRunRecord] {
+    Array(
+      records
+        .sorted { $0.completedAt > $1.completedAt }
+        .prefix(WorkbenchAutomationRunRecord.maximumHistoryCount)
+    )
   }
 
   private static func validEditorSessionStates(
@@ -740,6 +760,7 @@ extension WorkbenchPersistence {
       releaseRecords: store.releaseRecords,
       maintenanceOperationRecords: store.maintenanceOperationRecords,
       aiMetadataApplicationRecords: store.aiMetadataApplicationRecords,
+      automationRunRecords: store.automationRunRecords,
       aiChatCustomPrompts: store.aiChatCustomPrompts,
       seoSocialPreviewSnapshots: Array(store.seoSocialPreviewSnapshots.values),
       privacySettings: store.privacySettings,

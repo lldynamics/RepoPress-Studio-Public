@@ -3,21 +3,27 @@ import SwiftUI
 
 struct EditorCenterColumn: View {
   let store: WorkbenchStore
-  let contentHealthFilter: ContentHealthContextFilter
+  @Binding var contentHealthFilter: ContentHealthContextFilter
+  @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
   @Binding var repositoryContextStage: RepositoryContextStage
+  let contentHealthSidebarProjection: ContentHealthSidebarProjection
   let repositorySourceSession: RepositoryHTMLSourceSession
   @StateObject private var editorState: WorkbenchEditorNavigationFeatureFacade
   @ObservedObject private var knowledge: KnowledgeStore
 
   init(
     store: WorkbenchStore,
-    contentHealthFilter: ContentHealthContextFilter,
+    contentHealthFilter: Binding<ContentHealthContextFilter>,
+    imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
     repositoryContextStage: Binding<RepositoryContextStage>,
+    contentHealthSidebarProjection: ContentHealthSidebarProjection,
     repositorySourceSession: RepositoryHTMLSourceSession
   ) {
     self.store = store
-    self.contentHealthFilter = contentHealthFilter
+    _contentHealthFilter = contentHealthFilter
+    _imageWorkbenchContextStage = imageWorkbenchContextStage
     _repositoryContextStage = repositoryContextStage
+    self.contentHealthSidebarProjection = contentHealthSidebarProjection
     self.repositorySourceSession = repositorySourceSession
     _editorState = StateObject(
       wrappedValue: WorkbenchEditorNavigationFeatureFacade(store: store)
@@ -37,13 +43,15 @@ struct EditorCenterColumn: View {
           sourceSession: repositorySourceSession
         )
       case .images:
-        ImageWorkbenchView(store: store)
+        ImageWorkbenchView(store: store, stage: $imageWorkbenchContextStage)
       case .contentHealth:
-        ContentHealthDetailView(store: store, filter: contentHealthFilter)
+        ContentHealthDetailView(
+          store: store,
+          filter: $contentHealthFilter,
+          sidebarProjection: contentHealthSidebarProjection
+        )
       case .siteStarter:
         SiteStarterWorkspaceView(store: store)
-      case .generalDrafts:
-        GeneralDraftLibraryDetailView(store: store)
       case .editor:
         writingEditorDetail
       }

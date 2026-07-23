@@ -78,6 +78,20 @@ extension WorkbenchStore {
     privacyMonetizationStore.consumeFeatureUse(feature, store: self)
   }
 
+  func reserveFeatureUse(_ feature: PremiumFeature) -> FeatureUseReservationResult {
+    privacyMonetizationStore.reserveFeatureUse(feature, store: self)
+  }
+
+  @discardableResult
+  func commitFeatureUseReservation(_ reservation: FeatureUseReservation) -> Bool {
+    privacyMonetizationStore.commitFeatureUseReservation(reservation, store: self)
+  }
+
+  @discardableResult
+  func releaseFeatureUseReservation(_ reservation: FeatureUseReservation) -> Bool {
+    privacyMonetizationStore.releaseFeatureUseReservation(reservation)
+  }
+
   public func remainingFreeUses(for feature: PremiumFeature) -> Int {
     privacyMonetizationStore.remainingFreeUses(for: feature)
   }

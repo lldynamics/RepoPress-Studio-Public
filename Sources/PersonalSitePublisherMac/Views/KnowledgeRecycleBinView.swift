@@ -49,7 +49,7 @@ struct KnowledgeRecycleBinView: View {
 
       Divider()
       HStack {
-        Label("回收站资料不会参与全文搜索、语义检索或 AI 对话", systemImage: "info.circle")
+        Label("回收站资料不会参与全文搜索或语义检索", systemImage: "info.circle")
           .font(.caption)
           .foregroundStyle(.secondary)
         Spacer()

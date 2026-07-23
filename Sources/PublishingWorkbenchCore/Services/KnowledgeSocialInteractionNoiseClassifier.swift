@@ -57,11 +57,11 @@ struct KnowledgeSocialInteractionNoiseClassifier {
       options: [.caseInsensitive]
     )
     replyPermissionExpression = try? NSRegularExpression(
-      pattern: "^(?:谁可以回复(?:此|这)?(?:帖子|帖文|动态)?|仅限(?:你关注的人|关注者|被提及的人|帖子提及的人|指定用户|部分用户|好友|粉丝)可以?回复|可以回复(?:此|这)?(?:帖子|帖文|动态)?(?:的人|的用户)?|任何人都?可以回复|你可以回复|回复权限|(?:who|people|accounts?|everyone|you)\\s+(?:can|may)\\s+repl(?:y|ies)|only\\s+(?:people|accounts?|users?)\\s+(?:you\\s+)?(?:mention(?:ed)?|follow)\\s+can\\s+reply|who can reply|replies are (?:limited|restricted))$",
+      pattern: "^(?:谁可以回复(?:此|这)?(?:帖子|帖文|动态)?|仅限(?:你关注的人|关注者|被提及的人|帖子提及的人|指定用户|部分用户|好友|粉丝)可以?回复|可以回复(?:此|这)?(?:帖子|帖文|动态)?(?:的人|的用户)?|(?:任何人|所有人|每个人|大家|所有(?:用户|账号|帐户))(?:都|均)?(?:可以|可)回复|你可以回复|回复权限|(?:who|people|accounts?|everyone|you)\\s+(?:can|may)\\s+repl(?:y|ies)|only\\s+(?:people|accounts?|users?)\\s+(?:you\\s+)?(?:mention(?:ed)?|follow)\\s+can\\s+reply|who can reply|replies are (?:limited|restricted))$",
       options: [.caseInsensitive]
     )
     newPostsExpression = try? NSRegularExpression(
-      pattern: "^(?:(?:查看|显示|加载|展开)?\\s*\(wrappedNumber)?\\s*(?:条|个)?\\s*(?:新帖子|新帖文|新动态)|(?:有|又有)\\s*\(wrappedNumber)?\\s*(?:条|个)?\\s*(?:新帖子|新帖文|新动态)|(?:view|show|see|load)?\\s*\(wrappedNumber)?\\s*new\\s+(?:posts?|updates?))$",
+      pattern: "^(?:(?:查看|显示|加载|展开)?\\s*(?:\(wrappedNumber))?\\s*(?:条|个)?\\s*(?:新帖子|新帖文|新贴文|新推文|新动态|新内容)(?:\\s*\(wrappedNumber))?|(?:有|又有)\\s*(?:\(wrappedNumber))?\\s*(?:条|个)?\\s*(?:新帖子|新帖文|新贴文|新推文|新动态|新内容)|(?:view|show|see|load)?\\s*(?:\(wrappedNumber))?\\s*new\\s+(?:posts?|updates?)(?:\\s*\(wrappedNumber))?)$",
       options: [.caseInsensitive]
     )
     standaloneInteractionCountExpression = try? NSRegularExpression(

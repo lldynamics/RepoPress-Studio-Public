@@ -20,11 +20,12 @@ VERSION_VALUES="$(
     --print-values
 )"
 IFS=$'\t' read -r MARKETING_VERSION BUILD_NUMBER <<<"$VERSION_VALUES"
-DIST_DIR="$ROOT_DIR/dist"
+DIST_DIR="${PERSONAL_SITE_PUBLISHER_DIST_DIR:-$ROOT_DIR/dist}"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
+APP_PLUGINS="$APP_CONTENTS/PlugIns"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 NATIVE_HOST_NAME="KnowledgeNativeMessagingHost"
 NATIVE_HOST_BINARY="$APP_MACOS/$NATIVE_HOST_NAME"
@@ -36,6 +37,10 @@ BROWSER_EXTENSION_SOURCE="$ROOT_DIR/BrowserExtension"
 LOCAL_DEVELOPMENT_ENTITLEMENTS="$ROOT_DIR/Packaging/LocalDevelopment.entitlements"
 APP_STORE_ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
 DIRECT_DISTRIBUTION_ENTITLEMENTS="$ROOT_DIR/Packaging/DirectDistribution.entitlements"
+SAFARI_EXTENSION_ENTITLEMENTS="$ROOT_DIR/Packaging/SafariWebExtension.entitlements"
+SAFARI_EXTENSION_BUNDLE_ID="$BUNDLE_ID.SafariExtension"
+SAFARI_EXTENSION_BUILD_PRODUCT="$ROOT_DIR/.build/safari-web-extension/product/RepoPressSafariExtension.appex"
+SAFARI_EXTENSION_BUNDLE="$APP_PLUGINS/RepoPressSafariExtension.appex"
 CODESIGN_TOOL="${CODESIGN_TOOL:-/usr/bin/codesign}"
 SECURITY_TOOL="${SECURITY_TOOL:-/usr/bin/security}"
 
@@ -65,7 +70,7 @@ swift_build() {
 
 required_screenshot_surfaces=(
   writing
-  ai-chat
+  knowledge-library
   sync-api-publish
   seo-social-preview
   deployment-status
@@ -73,7 +78,6 @@ required_screenshot_surfaces=(
   general-drafts
   pro-settings
   privacy-lock
-  knowledge-library
 )
 
 usage() {
@@ -215,6 +219,11 @@ else
   DISTRIBUTION_CHANNEL="Direct"
   BROWSER_EXTENSION_AVAILABLE_PLIST="  <true/>"
 fi
+if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then
+  SCREENSHOT_CAPTURE_BUILD_PLIST="  <true/>"
+else
+  SCREENSHOT_CAPTURE_BUILD_PLIST="  <false/>"
+fi
 FIREFOX_SIGNED_PACKAGE_AVAILABLE_PLIST="  <false/>"
 HARDENED_RUNTIME_ENABLED_PLIST="  <false/>"
 firefox_extension_version=""
@@ -263,10 +272,19 @@ if [[ "$APP_STORE_BUILD" == "1" ]]; then
     -Xswiftc APP_STORE_BUILD
   )
 fi
+if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then
+  swift_build_options+=(
+    -Xswiftc -D
+    -Xswiftc SCREENSHOT_CAPTURE_BUILD
+  )
+fi
 if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
   HARDENED_RUNTIME_ENABLED_PLIST="  <true/>"
 fi
 python3 "$ROOT_DIR/script/generate_browser_extension_protocol.py" --check
+bash "$ROOT_DIR/script/sync_safari_browser_extension.sh" --check
+bash "$ROOT_DIR/script/build_safari_web_extension.sh" \
+  --configuration "$BUILD_CONFIGURATION"
 if [[ "$APP_STORE_BUILD" != "1" && "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" != "1" ]]; then
   [[ -f "$BROWSER_EXTENSION_SOURCE/manifest.json" ]] || {
     echo "browser extension manifest is missing: $BROWSER_EXTENSION_SOURCE/manifest.json" >&2
@@ -310,9 +328,14 @@ BUILD_BINARY="$BUILD_BIN_DIR/$APP_NAME"
   exit 1
 }
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_MACOS" "$APP_RESOURCES"
+mkdir -p "$APP_MACOS" "$APP_RESOURCES" "$APP_PLUGINS"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
+[[ -d "$SAFARI_EXTENSION_BUILD_PRODUCT" ]] || {
+  echo "Safari Web Extension build product is missing: $SAFARI_EXTENSION_BUILD_PRODUCT" >&2
+  exit 1
+}
+ditto "$SAFARI_EXTENSION_BUILD_PRODUCT" "$SAFARI_EXTENSION_BUNDLE"
 if [[ "$APP_STORE_BUILD" != "1" ]]; then
   BUILD_NATIVE_HOST="$BUILD_BIN_DIR/$NATIVE_HOST_NAME"
   [[ -x "$BUILD_NATIVE_HOST" ]] || {
@@ -391,7 +414,7 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundleName</key>
   <string>$APP_NAME</string>
   <key>CFBundleDisplayName</key>
-  <string>Personal Site Publishing Console</string>
+  <string>RepoPress</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleIconFile</key>
@@ -406,8 +429,12 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$BUILD_CONFIGURATION_DISPLAY_NAME</string>
   <key>PersonalSitePublisherDistributionChannel</key>
   <string>$DISTRIBUTION_CHANNEL</string>
+  <key>PersonalSitePublisherScreenshotCaptureBuild</key>
+$SCREENSHOT_CAPTURE_BUILD_PLIST
   <key>PersonalSitePublisherBrowserExtensionAvailable</key>
 $BROWSER_EXTENSION_AVAILABLE_PLIST
+  <key>PersonalSitePublisherSafariWebExtensionAvailable</key>
+  <true/>
   <key>PersonalSitePublisherFirefoxSignedPackageAvailable</key>
 $FIREFOX_SIGNED_PACKAGE_AVAILABLE_PLIST
   <key>PersonalSitePublisherHardenedRuntimeEnabled</key>
@@ -426,7 +453,7 @@ $HARDENED_RUNTIME_ENABLED_PLIST
       <key>UTTypeIdentifier</key>
       <string>com.jinfang.personalsitepublisher.knowledge-library-backup</string>
       <key>UTTypeDescription</key>
-      <string>Personal Site Knowledge Library Backup</string>
+      <string>RepoPress Knowledge Library Backup</string>
       <key>UTTypeConformsTo</key>
       <array>
         <string>com.apple.package</string>
@@ -444,7 +471,7 @@ $HARDENED_RUNTIME_ENABLED_PLIST
   <array>
     <dict>
       <key>CFBundleTypeName</key>
-      <string>Personal Site Knowledge Library Backup</string>
+      <string>RepoPress Knowledge Library Backup</string>
       <key>CFBundleTypeRole</key>
       <string>Editor</string>
       <key>LSHandlerRank</key>
@@ -518,6 +545,21 @@ if [[ "$APP_STORE_BUILD" != "1" ]]; then
   fi
   "$CODESIGN_TOOL" "${native_code_sign_arguments[@]}" "$NATIVE_HOST_BINARY"
 fi
+[[ -f "$SAFARI_EXTENSION_ENTITLEMENTS" ]] || {
+  echo "Safari Web Extension entitlements are missing: $SAFARI_EXTENSION_ENTITLEMENTS" >&2
+  exit 1
+}
+safari_code_sign_arguments=(
+  --force
+  --sign "$resolved_code_sign_identity"
+  --identifier "$SAFARI_EXTENSION_BUNDLE_ID"
+  --entitlements "$SAFARI_EXTENSION_ENTITLEMENTS"
+)
+if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
+  safari_code_sign_arguments+=(--options runtime --timestamp)
+fi
+"$CODESIGN_TOOL" "${safari_code_sign_arguments[@]}" "$SAFARI_EXTENSION_BUNDLE"
+"$CODESIGN_TOOL" --verify --strict --verbose=2 "$SAFARI_EXTENSION_BUNDLE"
 "$CODESIGN_TOOL" "${code_sign_arguments[@]}" "$APP_BUNDLE"
 "$CODESIGN_TOOL" --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 if [[ "$resolved_code_sign_identity" == "-" ]]; then

@@ -167,13 +167,95 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
       imageURL.resolvingSymlinksInPath().path
     )
     XCTAssertEqual(store.selectedSection, .images)
-    XCTAssertEqual(store.imageActionMessage, "已把 static/images/2026/hero-image.jpg 加入当前文章图片列表。")
+    XCTAssertEqual(store.imageActionMessage, "已把 static/images/2026/hero-image.jpg 加入目标文章图片列表。")
 
     store.attachRepositoryImageToSelectedDraft(repositoryPath: "static/images/2026/hero-image.jpg")
 
     updatedDraft = try XCTUnwrap(store.drafts.first { $0.id == draft.id })
     XCTAssertEqual(updatedDraft.attachments.count, 1)
-    XCTAssertEqual(store.imageActionMessage, "static/images/2026/hero-image.jpg 已在当前文章图片列表中。")
+    XCTAssertEqual(store.imageActionMessage, "static/images/2026/hero-image.jpg 已在目标文章图片列表中。")
+  }
+
+  func testAttachRepositoryImageRejectsUnsafeOrMissingFilesWithoutMutatingDraft() throws {
+    let rootURL = try temporaryDirectory()
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("static/images", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try Data([1, 2, 3]).write(to: rootURL.appendingPathComponent("outside.jpg"))
+
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.assetRoot = "static"
+    store.updateActiveProfile(profile)
+    let draft = ArticleDraft(
+      id: UUID(),
+      siteProfileID: profile.id,
+      title: "Protected Draft",
+      slug: "protected-draft"
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+
+    store.attachRepositoryImageToSelectedDraft(repositoryPath: "../outside.jpg")
+    XCTAssertEqual(store.drafts.first?.attachments, [])
+    XCTAssertEqual(store.imageActionMessage, "仓库图片路径无效。")
+
+    store.attachRepositoryImageToSelectedDraft(repositoryPath: "static/images/missing.jpg")
+    XCTAssertEqual(store.drafts.first?.attachments, [])
+    XCTAssertEqual(
+      store.imageActionMessage,
+      "图片文件不存在或无法读取：static/images/missing.jpg"
+    )
+  }
+
+  func testAttachRepositoryImageUsesExplicitCurrentSiteTargetInsteadOfGeneralSelection() throws {
+    let rootURL = try temporaryDirectory()
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("static/images", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try Data([1, 2, 3, 4]).write(
+      to: rootURL.appendingPathComponent("static/images/library.png")
+    )
+
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.assetRoot = "static"
+    store.updateActiveProfile(profile)
+    let siteDraft = ArticleDraft(
+      id: UUID(),
+      siteProfileID: profile.id,
+      title: "Site Target",
+      slug: "site-target"
+    )
+    let generalDraft = ArticleDraft(
+      id: UUID(),
+      siteProfileID: profile.id,
+      scope: .general,
+      title: "General Selection",
+      slug: "general-selection"
+    )
+    store.setDrafts([siteDraft, generalDraft])
+    store.setDraftListContentScope(.general)
+    store.setSelectedDraftID(generalDraft.id)
+
+    store.attachRepositoryImage(
+      repositoryPath: "static/images/library.png",
+      toDraftID: siteDraft.id
+    )
+
+    XCTAssertEqual(store.drafts.first(where: { $0.id == siteDraft.id })?.attachments.count, 1)
+    XCTAssertEqual(store.drafts.first(where: { $0.id == generalDraft.id })?.attachments.count, 0)
+
+    store.attachRepositoryImage(
+      repositoryPath: "static/images/library.png",
+      toDraftID: generalDraft.id
+    )
+    XCTAssertEqual(store.drafts.first(where: { $0.id == generalDraft.id })?.attachments.count, 0)
+    XCTAssertEqual(store.imageActionMessage, "请选择当前站点中的目标文章。")
   }
 
   func testBatchFillImageMetadataUpdatesOnlyVisibleProfileDrafts() throws {

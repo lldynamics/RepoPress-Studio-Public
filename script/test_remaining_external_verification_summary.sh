@@ -18,9 +18,9 @@ fail() {
 [[ -f "$SUMMARY" ]] || fail "print_remaining_external_verification.sh is missing"
 
 current_output="$(bash "$SUMMARY")"
-grep -q "remaining external verification: 5 target(s)" <<<"$current_output" \
-  || fail "current summary did not report 5 remaining targets"
-for target in app-store-archive remote-publish storekit remote-recovery app-store-screenshots; do
+grep -q "remaining external verification: 4 target(s)" <<<"$current_output" \
+  || fail "current summary did not report 4 remaining targets"
+for target in app-store-archive remote-publish storekit remote-recovery; do
   grep -q -- "- $target" <<<"$current_output" \
     || fail "current summary omitted $target"
 done
@@ -82,7 +82,7 @@ grep -q "remaining external verification: 0 target(s)" <<<"$complete_output" \
   || fail "complete summary did not report 0 remaining targets"
 grep -q "all external verification evidence is complete" <<<"$complete_output" \
   || fail "complete summary omitted complete message"
-grep -q "./script/check_release_gate.sh --strict" <<<"$complete_output" \
-  || fail "complete summary omitted final strict gate"
+grep -q "./script/check_release_gate.sh --profile app-store" <<<"$complete_output" \
+  || fail "complete summary omitted final App Store gate"
 
 echo "remaining external verification summary test: passed"

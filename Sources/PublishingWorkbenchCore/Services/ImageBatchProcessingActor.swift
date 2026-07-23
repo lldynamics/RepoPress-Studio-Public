@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let logger = Logger(subsystem: "com.repopress", category: "ImageBatchProcessingActor")
 
 public enum ImageBatchOperation: String, Sendable {
   case optimizeJPEG
@@ -88,7 +91,11 @@ public actor ImageBatchProcessingActor {
     var keepOutputDirectory = false
     defer {
       if !keepOutputDirectory {
-        try? FileManager.default.removeItem(at: outputDirectory)
+        do {
+          try FileManager.default.removeItem(at: outputDirectory)
+        } catch {
+          logger.warning("无法删除输出目录 \(outputDirectory.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
       }
     }
 

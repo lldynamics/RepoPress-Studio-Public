@@ -3,7 +3,7 @@ import OSLog
 import PublishingWorkbenchCore
 import SwiftUI
 
-#if DEBUG
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
 private enum ContentViewBodyPerformanceProbe {
   private static let isEnabled =
     ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_CONTENT_VIEW_BODY_PROBE"] == "1"
@@ -44,12 +44,14 @@ struct ContentView: View {
   @State private var didApplyInitialWorkbenchPreferences = false
   @State private var didApplyScreenshotDemoSurface = false
   @State private var didOpenAIAssistantByDefault = false
+  @State private var isRefreshingExternallyCreatedDrafts = false
   @State private var isPublishDrawerPresented = false
   @State private var isFirstRunSetupPresented = false
   @State private var isCommandPalettePresented = false
   @State private var isDraftFullTextSearchPresented = false
   @State private var responsiveLayout = WorkspaceResponsiveLayoutSnapshot.initial
   @State private var contentHealthFilter: ContentHealthContextFilter = .overview
+  @State private var imageWorkbenchContextStage: ImageWorkbenchContextStage = .overview
   @State private var repositoryContextStage: RepositoryContextStage = .overview
   @StateObject private var repositorySourceSession: RepositoryHTMLSourceSession
   private let repositoryAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -62,7 +64,7 @@ struct ContentView: View {
   }
 
   var body: some View {
-#if DEBUG
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
     let _ = ContentViewBodyPerformanceProbe.record()
 #endif
     GeometryReader { geometry in
@@ -81,6 +83,7 @@ struct ContentView: View {
           workspaceWidth: geometry.size.width,
           isInspectorPresented: isInspectorVisible,
           contentHealthFilter: $contentHealthFilter,
+          imageWorkbenchContextStage: $imageWorkbenchContextStage,
           repositoryContextStage: $repositoryContextStage,
           repositorySourceSession: repositorySourceSession,
           onSelectSection: { store.selectSection($0) }
@@ -98,7 +101,7 @@ struct ContentView: View {
         .disabled(shellState.isPrivacyLocked)
         .accessibilityHidden(shellState.isPrivacyLocked)
 
-#if DEBUG
+#if (DEBUG || SCREENSHOT_CAPTURE_BUILD) && !APP_STORE_BUILD
         if usesInlineAIScreenshotInspector {
           ScreenshotInlineAIInspector(
             store: store,
@@ -203,7 +206,13 @@ struct ContentView: View {
         isFirstRunSetupPresented = false
         isCommandPalettePresented = false
         isDraftFullTextSearchPresented = false
+      } else {
+        refreshExternallyCreatedDrafts()
       }
+    }
+    .onChange(of: scenePhase) { _, newPhase in
+      guard newPhase == .active else { return }
+      refreshExternallyCreatedDrafts()
     }
     .onChange(of: shellState.selectedSection) { _, section in
       normalizeWorkspacePresentation(for: section)
@@ -253,7 +262,7 @@ struct ContentView: View {
       Text(persistenceRecoveryMessage)
     }
     .sheet(isPresented: $isPublishDrawerPresented) {
-      PublishDrawerView(store: store, isPresented: $isPublishDrawerPresented)
+      PublishDrawerView(publishingFacade: store.publishing, store: store, isPresented: $isPublishDrawerPresented)
         .frame(minWidth: 680, idealWidth: 780, minHeight: 600, idealHeight: 720)
     }
     .sheet(isPresented: $isFirstRunSetupPresented) {
@@ -271,7 +280,7 @@ struct ContentView: View {
     }
   }
 
-#if DEBUG
+#if (DEBUG || SCREENSHOT_CAPTURE_BUILD) && !APP_STORE_BUILD
   private var usesInlineAIScreenshotInspector: Bool {
     ScreenshotDemoDataService.isEnabledFromEnvironment
       && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .aiChat
@@ -299,16 +308,26 @@ struct ContentView: View {
           await store.repository.scanAsync()
         }
       }
-      Task {
-        await store.importMissingPrivateDraftsFromLocalRepository()
-      }
+      refreshExternallyCreatedDrafts()
       didApplyInitialWorkbenchPreferences = true
     }
     if !didApplyScreenshotDemoSurface {
-#if DEBUG
-      ScreenshotDemoDataService.applyRequestedSurfaceIfEnabled(to: store)
-      ScreenshotDemoSettingsPresenter.openSettingsIfNeeded {
-        openSettings()
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      if ScreenshotDemoDataService.isEnabledFromEnvironment {
+        Task { @MainActor in
+          try? await Task.sleep(for: .seconds(1))
+          guard !Task.isCancelled else { return }
+          var transaction = Transaction(animation: nil)
+          transaction.disablesAnimations = true
+          withTransaction(transaction) {
+            ScreenshotDemoDataService.applyRequestedSurfaceIfEnabled(to: store)
+          }
+          ScreenshotDemoSettingsPresenter.openSettingsIfNeeded {
+            openSettings()
+          }
+        }
+      } else {
+        ScreenshotDemoDataService.applyRequestedSurfaceIfEnabled(to: store)
       }
 #endif
       didApplyScreenshotDemoSurface = true
@@ -319,8 +338,18 @@ struct ContentView: View {
     presentFirstRunSetupIfNeeded()
   }
 
+  private func refreshExternallyCreatedDrafts() {
+    guard shellState.canUseProtectedWorkbench,
+          !isRefreshingExternallyCreatedDrafts else { return }
+    isRefreshingExternallyCreatedDrafts = true
+    Task { @MainActor in
+      defer { isRefreshingExternallyCreatedDrafts = false }
+      _ = await store.importMissingDraftsFromLocalRepository()
+    }
+  }
+
   private func presentFirstRunSetupIfNeeded() {
-#if DEBUG
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
     let isScreenshotDemo = ScreenshotDemoDataService.isEnabledFromEnvironment
 #else
     let isScreenshotDemo = false
@@ -370,7 +399,9 @@ struct ContentView: View {
         .accessibilityIdentifier("workspace-full-text-search")
       }
 
-      if showsDraftEditingToolbar && !effectiveFocusMode {
+      if DistributionFeaturePolicy.allowsExternalAIProviders,
+         showsDraftEditingToolbar,
+         !effectiveFocusMode {
         aiToolbarButton
       }
 
@@ -490,7 +521,8 @@ struct ContentView: View {
   private var supportsInspector: Bool {
     WorkspaceInspectorPresentation.supportsInspector(
       for: shellState.selectedSection,
-      isAIAssistantPresented: presentationState.isAssistantPresented,
+      isAIAssistantPresented: DistributionFeaturePolicy.allowsExternalAIProviders
+        && presentationState.isAssistantPresented,
       isRepositoryHistoryPresented: repositoryContextStage == .history,
       isMaintenancePresented: contentHealthFilter == .maintenance
     )
@@ -530,7 +562,9 @@ struct ContentView: View {
   }
 
   private var isAIAssistantVisible: Bool {
-    presentationState.isAssistantPresented && inspectorPresentation.wrappedValue
+    DistributionFeaturePolicy.allowsExternalAIProviders
+      && presentationState.isAssistantPresented
+      && inspectorPresentation.wrappedValue
   }
 
   private func normalizeWorkspacePresentation(for section: WorkspaceSection) {
@@ -552,7 +586,7 @@ struct ContentView: View {
       repositoryContextStage = .history
       hideInspectorIfNeeded()
       store.selectSection(.sync)
-    case .siteStarter, .generalDrafts:
+    case .siteStarter:
       break
     case .sync, .images, .contentHealth:
       hideInspectorIfNeeded()
@@ -562,6 +596,7 @@ struct ContentView: View {
   }
 
   private func openAIInspector() {
+    guard DistributionFeaturePolicy.allowsExternalAIProviders else { return }
     guard prepareInspectorForUserRequest() else { return }
     guard let draft = store.ensureEditableDraftSelected() else { return }
     guard store.openAIChatWorkspace(for: draft.id) else { return }
@@ -571,7 +606,13 @@ struct ContentView: View {
   private func openAIAssistantByDefaultIfNeeded() {
     guard !didOpenAIAssistantByDefault else { return }
     didOpenAIAssistantByDefault = true
-#if DEBUG
+    guard DistributionFeaturePolicy.allowsExternalAIProviders else {
+      if presentationState.isAssistantPresented {
+        presentationState.hideAssistant()
+      }
+      return
+    }
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
     guard !ScreenshotDemoDataService.isEnabledFromEnvironment else { return }
 #endif
     guard shellState.selectedSection == .writing,
@@ -628,7 +669,7 @@ struct ContentView: View {
     store.ensureEditableDraftSelected()
     store.runPreflight()
     isPublishDrawerPresented = true
-    store.setPublishActionMessage(message ?? "发布流程已打开，请按检查、差异、写入、远端和部署步骤确认。")
+    store.setPublishActionMessage(message ?? "发布流程已打开，请选择保存到本地或发布上线。")
   }
 
   private var isCompactLayout: Bool {
@@ -724,7 +765,7 @@ struct ContentView: View {
   }
 }
 
-#if DEBUG
+#if (DEBUG || SCREENSHOT_CAPTURE_BUILD) && !APP_STORE_BUILD
 private struct ScreenshotInlineAIInspector: View {
   let store: WorkbenchStore
   let width: CGFloat

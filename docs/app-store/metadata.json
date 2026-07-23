@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
   "bundleIdentifier": "com.jinfang.PersonalSitePublisherMac",
-  "primaryCategory": "public.app-category.productivity",
+  "primaryCategory": "public.app-category.developer-tools",
   "privacyPolicyURL": "https://apps.chengjinfang.com/personal-site-publisher/privacy/",
   "localizations": {
     "zh-Hans": {
-      "name": "个人网站写作与发布",
-      "subtitle": "写作、资料整理与网站发布",
-      "promotionalText": "在 Mac 上集中完成 Markdown 写作、资料整理、SEO 检查与静态网站发布。",
-      "description": "个人网站写作与发布是一款面向静态网站作者的原生 macOS 工具。它将文章写作、资料整理、图片管理和发布检查放在同一个工作台中。\n\n主要功能\n• Markdown 写作与实时预览，支持标题、摘要、标签和分类等元数据。\n• 管理通用草稿与站点文章，通过全文搜索快速找到内容。\n• 导入 EPUB、Markdown、TXT、HTML 和 PDF 资料，建立可检索的本地资料库。\n• 检查 SEO 和社交分享摘要，完善图片 alt 与 caption。\n• 为 Zola、Hugo、Astro、Jekyll 和 Hexo 仓库执行本地检查与用户发起的发布操作。\n• 可选配置 AI 服务，获取文章结构、摘要、元数据和图片文本建议。\n• 快速隐藏工作区，并遮挡标记为私密的文章信息。\n\n本地编辑和本地仓库检查不需要登录。只有在你主动使用 AI、仓库 API、部署状态或购买恢复功能时，应用才会连接相应的外部服务。",
-      "keywords": "Markdown,静态网站,文章写作,资料库,SEO,图片管理,网站发布",
+      "name": "RepoPress",
+      "subtitle": "Markdown 写作与仓库同步",
+      "promotionalText": "一个 App Store 版本完成 Markdown 写作、资料整理、用户自备 AI、浏览器网页采集与 Git 仓库同步。",
+      "description": "RepoPress 是一款面向 Git 驱动静态站点作者的原生 macOS 工作台。它把 Markdown 写作、资料整理、图片管理、内容检查、用户自备 AI、浏览器网页采集和仓库操作集中在一个本地优先的工作流中。\n\n主要功能\n• 使用实时预览编写 Markdown，并管理标题、摘要、标签、分类和可见性等元数据。\n• 管理通用草稿与站点文章，通过全文搜索快速找到内容。\n• 导入 EPUB、Markdown、TXT、HTML 和 PDF 文件，建立可检索的本地资料库。\n• 使用你自己购买和管理的 OpenAI-compatible、DeepSeek、OpenRouter、本地模型或自定义 Endpoint；首次向每个远程地址发送内容前会要求明确同意，API Key 保存在钥匙串。\n• 当前浏览器采集支持应用内置的 Safari Web Extension，以及从 Chrome 网上应用店安装的 Chrome 扩展；两者都只连接带随机令牌的 127.0.0.1 本机回环接口。\n• 在本机生成资料索引，并检查内容、SEO、社交分享摘要、链接和图片问题。\n• 查看所选仓库的本地变更、远端差异、发布记录和部署状态。\n• 在用户确认后，为 Zola、Hugo、Astro、Jekyll 和 Hexo 仓库执行同步或发布操作。\n• 快速遮盖工作区，并隐藏标记为私密的文章信息。\n\nRepoPress 不提供公共文章浏览、用户投稿、托管内容或开发者运营的 AI 代理服务。应用不会自动上传内容。AI 服务账号与 API Key 由用户自行购买和管理，AI 请求次数不作为应用内 Pro 次数权益。",
+      "keywords": "Markdown,Git仓库,静态站点,AI写作,网页采集,资料库,SEO,仓库同步",
       "supportURL": "https://apps.chengjinfang.com/personal-site-publisher/",
-      "marketingURL": "https://apps.chengjinfang.com/"
+      "marketingURL": "https://apps.chengjinfang.com/personal-site-publisher/"
     },
     "en-US": {
-      "name": "Personal Site Publisher",
-      "subtitle": "Write, organize, and publish",
-      "promotionalText": "A focused Mac workspace for Markdown writing, research, SEO checks, images, and static-site publishing.",
-      "description": "Personal Site Publisher is a native macOS workspace for static-site authors. It brings writing, research, image management, and publishing checks together without taking ownership of your repository.\n\nHighlights\n• Write Markdown with live preview and structured title, summary, tag, category, and visibility metadata.\n• Manage site articles and general drafts, with full-text search across your content.\n• Import EPUB, Markdown, TXT, HTML, and PDF sources into a searchable local knowledge library.\n• Review SEO and social sharing summaries, and improve image alt text and captions.\n• Run local checks and user-initiated publishing workflows for Zola, Hugo, Astro, Jekyll, and Hexo repositories.\n• Optionally connect an AI provider for structure, summary, metadata, and image-text suggestions.\n• Quickly cover the workspace and mask articles marked as private.\n\nNo sign-in is required for local editing or local repository checks. The app contacts external services only when you initiate AI, repository API, deployment-status, purchase, or restore actions.",
-      "keywords": "markdown,static site,writing,research library,seo,image workflow,publishing",
+      "name": "RepoPress",
+      "subtitle": "Markdown Repository Workspace",
+      "promotionalText": "One App Store edition for Markdown writing, research, bring-your-own AI, browser capture, and user-controlled Git sync.",
+      "description": "RepoPress is a native, local-first macOS workspace for authors of Git-based static sites. It brings Markdown writing, research, image management, content checks, bring-your-own AI, browser capture, and repository operations into one focused workflow.\n\nHighlights\n• Write Markdown with live preview and structured title, summary, tag, category, and visibility metadata.\n• Manage site articles and general drafts with full-text search.\n• Import EPUB, Markdown, TXT, HTML, and PDF files into a searchable local knowledge library.\n• Use an OpenAI-compatible, DeepSeek, OpenRouter, local-model, or custom endpoint that you purchase and manage. Explicit consent is required before content is first sent to each remote endpoint, and API keys stay in Keychain.\n• This release supports capture through the embedded Safari Web Extension and the Chrome extension installed from the Chrome Web Store. Both connect only to an authenticated 127.0.0.1 loopback endpoint on the same Mac.\n• Build local research indexes and review content, SEO, social preview, link, and image issues.\n• Inspect local changes, remote differences, release history, and deployment status for a selected repository.\n• Run user-confirmed sync or publishing operations for Zola, Hugo, Astro, Jekyll, and Hexo repositories.\n• Quickly cover the workspace and mask articles marked as private.\n\nRepoPress does not provide a public article reader, user-submission platform, hosted content service, or developer-operated AI proxy. It does not upload content automatically. Users purchase and manage their own AI provider access; AI request count is not an app-defined Pro usage entitlement.",
+      "keywords": "markdown,git repository,static site,AI writing,web capture,research,seo,sync",
       "supportURL": "https://apps.chengjinfang.com/personal-site-publisher/en/",
-      "marketingURL": "https://apps.chengjinfang.com/"
+      "marketingURL": "https://apps.chengjinfang.com/personal-site-publisher/en/"
     }
   },
   "appReview": {

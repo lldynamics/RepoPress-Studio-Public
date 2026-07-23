@@ -1,6 +1,6 @@
-# PersonalSitePublisherMac
+# RepoPress
 
-原生 macOS 版个人网站发布控制台 MVP。
+面向 Git 驱动静态站点作者的原生 macOS Markdown 与仓库工作台。
 
 当前边界：
 
@@ -20,13 +20,22 @@
 ./script/build_and_run.sh
 ```
 
-日常修改后可先运行精简门禁；准备上架时仍运行完整门禁：
+RepoPress 只维护一个 Mac App Store 应用版本。用户自行配置 AI 服务和 API Key；
+当前版本只支持 Safari 和 Chrome：Safari Web Extension 随应用内置，Chrome 扩展从
+Chrome 网上应用店安装。两种浏览器都通过带随机令牌的本机回环接口连接同一个应用。
+
+日常修改后可先运行精简门禁；准备发布时分别检查应用和浏览器商店：
 
 ```bash
 ./script/check_release_gate.sh --quick
 ./script/check_release_gate.sh
-./script/check_release_gate.sh --strict
+./script/check_release_gate.sh --profile app-store
+./script/check_release_gate.sh --profile chrome
 ```
+
+每个 profile 只检查该渠道与公共发布基线，不会被其他商店的凭据、
+上架 ID 或截图阻断。需要一次性验收全部渠道时运行
+`./script/check_release_gate.sh --profile all`；原有 `--strict` 仍作为该命令的兼容别名。
 
 应用版本只在 `Packaging/BuildVersion.xcconfig` 中维护。日常启动仍使用
 Debug 构建；完整发布门禁会额外执行独立的 SwiftPM Release 配置构建。

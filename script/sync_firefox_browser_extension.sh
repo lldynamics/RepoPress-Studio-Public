@@ -7,6 +7,10 @@ FIREFOX_DIR="$CHROMIUM_DIR/Firefox"
 MODE="${1:-sync}"
 SHARED_FILES=(
   protocol.generated.js
+  background-capture.js
+  background-queue-operations.js
+  background-queue-storage.js
+  background-security.js
   background.js
   popup.js
   popup.html

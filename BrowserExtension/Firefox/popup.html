@@ -25,7 +25,7 @@
               placeholder="从资料库连接窗口复制" data-i18n-placeholder="connectionTokenPlaceholder">
             <button id="connect" class="secondary" type="submit" data-i18n="connectButton">连接</button>
           </div>
-          <p class="hint" data-i18n="nativeConnectionHint">令牌通过浏览器 Native Messaging 发送给应用，应用内部使用本机 Unix Socket；不会发送到互联网。</p>
+          <p class="hint" data-i18n="nativeConnectionHint">令牌通过 127.0.0.1 本机回环接口发送给应用；连接不会离开此 Mac。</p>
         </form>
       </section>
 
@@ -154,6 +154,19 @@
         </summary>
         <p id="queue-summary" class="hint"></p>
         <label class="queue-retention-control">
+          <span data-i18n="queuePrivacyModeLabel">断线时保留</span>
+          <select id="queue-privacy-mode" aria-label="离线队列隐私模式"
+            data-i18n-aria-label="queuePrivacyModeAriaLabel">
+            <option value="disabled" data-i18n="queuePrivacyDisabled">不保留</option>
+            <option value="links-only" selected data-i18n="queuePrivacyLinksOnly">仅标题和链接</option>
+            <option value="full-content" data-i18n="queuePrivacyFullContent">完整内容</option>
+          </select>
+        </label>
+        <label class="queue-private-sites-control">
+          <input id="queue-allow-private-sites" type="checkbox">
+          <span data-i18n="queueAllowPrivateSites">允许无痕窗口和本地私网网页排队</span>
+        </label>
+        <label class="queue-retention-control">
           <span data-i18n="retentionLabel">本地保留期限</span>
           <select id="queue-retention" aria-label="离线队列本地保留期限"
             data-i18n-aria-label="queueRetentionAriaLabel">
@@ -169,7 +182,7 @@
           <button id="export-queue" class="secondary" data-i18n="exportQueueButton">导出备份</button>
           <button id="discard-queue" class="quiet-danger" data-i18n="clearQueueButton">清空队列</button>
         </div>
-        <p class="hint privacy-hint" data-i18n="queuePrivacyHint">队列可能包含完整正文；导出的 JSON 也属于私密资料，请妥善保存。</p>
+        <p class="hint privacy-hint" data-i18n="queuePrivacyHint">默认只保留标题和链接；只有明确选择“完整内容”才会在浏览器中保存正文和归档。</p>
       </details>
 
       <section id="session-panel" class="session-panel" hidden aria-labelledby="session-title">

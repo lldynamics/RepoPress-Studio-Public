@@ -177,8 +177,7 @@ struct KnowledgeLibraryHealthView: View {
           .font(.headline)
         Spacer()
         Button("重建全部语义索引") {
-          let ids = Set(knowledge.documents.map(\.id))
-          Task { await knowledge.rebuildSemanticIndex(for: ids) }
+          Task { await knowledge.rebuildAllSemanticIndex() }
         }
         .disabled(knowledge.documents.isEmpty || knowledge.isBusy)
       }

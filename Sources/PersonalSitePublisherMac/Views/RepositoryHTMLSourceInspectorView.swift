@@ -131,7 +131,7 @@ struct RepositoryHTMLSourceInspectorView: View {
         }
         if let lineDiff = changedFile.lineDiff {
           Text(lineDiff)
-            .font(.caption2.monospaced())
+            .font(.caption.monospaced())
             .lineLimit(12)
             .textSelection(.enabled)
             .padding(8)

@@ -65,6 +65,29 @@ public struct LocalContentImportService: Sendable {
     let task = Task.detached(priority: .userInitiated) {
       try service.importDrafts(
         profile: profile,
+        excludingRepositoryPaths: [],
+        cancellationCheck: { try Task.checkCancellation() }
+      )
+    }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
+  }
+
+  public func importMissingDraftsAsync(
+    profile: SiteProfile,
+    excludingRepositoryPaths: Set<String>
+  ) async throws -> LocalContentImportResult {
+    let normalizedExcludedPaths = Set(
+      excludingRepositoryPaths.map { $0.normalizedRelativePath() }
+    )
+    let service = self
+    let task = Task.detached(priority: .utility) {
+      try service.importDrafts(
+        profile: profile,
+        excludingRepositoryPaths: normalizedExcludedPaths,
         cancellationCheck: { try Task.checkCancellation() }
       )
     }
@@ -135,10 +158,16 @@ public struct LocalContentImportService: Sendable {
 
   private func importDrafts(
     profile: SiteProfile,
+    excludingRepositoryPaths: Set<String> = [],
     cancellationCheck: () throws -> Void
   ) throws -> LocalContentImportResult {
     guard let result = try profile.withLocalRepositoryRootAccess({ rootURL in
-      try importDrafts(rootURL: rootURL, profile: profile, cancellationCheck: cancellationCheck)
+      try importDrafts(
+        rootURL: rootURL,
+        profile: profile,
+        excludingRepositoryPaths: excludingRepositoryPaths,
+        cancellationCheck: cancellationCheck
+      )
     }) else {
       return LocalContentImportResult(importedDrafts: [], skippedPaths: [])
     }
@@ -148,6 +177,7 @@ public struct LocalContentImportService: Sendable {
   private func importDrafts(
     rootURL: URL,
     profile: SiteProfile,
+    excludingRepositoryPaths: Set<String> = [],
     cancellationCheck: () throws -> Void
   ) throws -> LocalContentImportResult {
     try cancellationCheck()
@@ -178,6 +208,10 @@ public struct LocalContentImportService: Sendable {
 
         guard let repositoryPath = repositoryRelativePath(rootURL: rootURL, fileURL: fileURL) else {
           skippedPaths.append(fileURL.path)
+          continue
+        }
+
+        guard !excludingRepositoryPaths.contains(repositoryPath.normalizedRelativePath()) else {
           continue
         }
 
@@ -633,7 +667,7 @@ public struct LocalContentImportService: Sendable {
   }
 
   private func markdownImageReferences(in markdown: String) -> [ImportedMarkdownImageReference] {
-    let pattern = #"!\[([^\]]*)\]\(([^)]+)\)"#
+    let pattern = MarkdownPatterns.imagePattern
     guard let regex = try? NSRegularExpression(pattern: pattern) else {
       return []
     }

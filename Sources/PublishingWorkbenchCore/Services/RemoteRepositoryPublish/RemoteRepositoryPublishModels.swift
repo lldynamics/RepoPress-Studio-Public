@@ -159,7 +159,10 @@ public extension RemoteRepositoryAccessCheck {
     lines.append("")
     lines.append(CoreL10n.text("## 发布前权限清单"))
     lines.append(CoreL10n.format("- [%@] Token 可以读取仓库元数据", canRead ? "x" : " "))
-    lines.append(CoreL10n.format("- [%@] Token 满足线上直接提交或 PR/MR 所需写入权限", canWrite ? "x" : " "))
+    lines.append(CoreL10n.format("- [%@] Token 满足内容写入所需权限", canWrite ? "x" : " "))
+    if provider == .github {
+      lines.append(CoreL10n.text("- [ ] PR 创建权限需在实际创建时验证"))
+    }
     lines.append(CoreL10n.format("- [%@] 权限检查仓库与当前发布仓库一致", repositoryName.trimmedForPublishing.isEmpty ? " " : "x"))
     lines.append(CoreL10n.text("- [ ] 使用最小权限 Token，未在截图、日志或证据包中暴露 Token 原文"))
 
@@ -284,6 +287,86 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
 
   public func remoteVersion(for repositoryPath: String) -> String? {
     remoteVersionsByPath?[repositoryPath.normalizedRelativePath()]?.trimmedForPublishing.nilIfEmpty
+  }
+}
+
+public struct RemoteRepositoryReviewRecoveryDraft: Codable, Hashable, Sendable {
+  public var recordID: UUID
+  public var branchName: String
+  public var targetBranch: String
+  public var title: String
+  public var body: String
+  public var changedPaths: [String]
+  public var recordedCommitSHA: String
+
+  public init(
+    recordID: UUID,
+    branchName: String,
+    targetBranch: String,
+    title: String,
+    body: String,
+    changedPaths: [String],
+    recordedCommitSHA: String
+  ) {
+    self.recordID = recordID
+    self.branchName = branchName
+    self.targetBranch = targetBranch
+    self.title = title
+    self.body = body
+    self.changedPaths = changedPaths
+    self.recordedCommitSHA = recordedCommitSHA
+  }
+}
+
+public extension RemoteRepositoryReviewRecoveryDraft {
+  static func make(record: ReleaseRecord) throws -> RemoteRepositoryReviewRecoveryDraft {
+    guard record.kind == .remotePublishFailure,
+          let branchName = record.branchName?.trimmedForPublishing.nilIfEmpty,
+          let targetBranch = record.targetBranch?.trimmedForPublishing.nilIfEmpty,
+          let commitSHA = record.commitSHA?.trimmedForPublishing.nilIfEmpty,
+          branchName != targetBranch else {
+      throw RemoteRepositoryPublishError.reviewRecoveryUnavailable(
+        CoreL10n.text("记录中没有可恢复的 Review 分支、目标分支或 commit。")
+      )
+    }
+
+    let title: String
+    if let recordedTitle = record.reviewTitle?.trimmedForPublishing.nilIfEmpty {
+      title = recordedTitle
+    } else if !record.batchItems.isEmpty {
+      title = "Publish \(record.batchItems.count) articles"
+    } else {
+      title = CoreL10n.format("发布：%@", record.draftTitle ?? record.title)
+    }
+
+    var bodyLines: [String] = [
+      CoreL10n.text("## 恢复发布"),
+      CoreL10n.format("- 站点：%@", record.siteName ?? CoreL10n.text("未命名站点")),
+      CoreL10n.format("- 目标分支：%@", targetBranch),
+      CoreL10n.format("- 发布分支：%@", branchName),
+      CoreL10n.format("- Commit：%@", commitSHA),
+      "",
+      CoreL10n.text("该分支的文件和 commit 已在之前的发布中写入；本次仅继续创建或获取 PR/MR，不重新上传文件。")
+    ]
+
+    if !record.batchItems.isEmpty {
+      bodyLines.append(contentsOf: ["", CoreL10n.text("## 文章")])
+      bodyLines.append(contentsOf: record.batchItems.map { "- \($0.draftTitle): `\($0.markdownPath)`" })
+    }
+    if !record.changedPaths.isEmpty {
+      bodyLines.append(contentsOf: ["", CoreL10n.text("## 文件")])
+      bodyLines.append(contentsOf: record.changedPaths.map { "- `\($0)`" })
+    }
+
+    return RemoteRepositoryReviewRecoveryDraft(
+      recordID: record.id,
+      branchName: branchName,
+      targetBranch: targetBranch,
+      title: title,
+      body: bodyLines.joined(separator: "\n"),
+      changedPaths: record.changedPaths,
+      recordedCommitSHA: commitSHA
+    )
   }
 }
 

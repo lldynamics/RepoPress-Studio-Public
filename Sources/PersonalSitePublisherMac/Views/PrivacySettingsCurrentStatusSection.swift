@@ -16,12 +16,12 @@ struct PrivacySettingsCurrentStatusSection: View {
       .foregroundStyle(status.isLocked ? WorkbenchTheme.warning : Color.secondary)
 
       Text(status.detail)
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
 
       if !status.activeProtections.isEmpty {
         Text(status.activeProtections.joined(separator: " · "))
-          .font(.caption)
+          .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
       }
 

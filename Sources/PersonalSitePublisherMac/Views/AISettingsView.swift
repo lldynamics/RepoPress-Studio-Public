@@ -6,12 +6,15 @@ struct AISettingsView: View {
   let tokenAvailability: KeychainTokenAvailability
   let isActionRunning: Bool
   let actionMessage: String?
+  let dataSharingConsent: AIDataSharingConsentPresentation
   let shouldFocusAPIKey: Bool
   let navigationRequestID: UUID
   let saveAPIKey: (String) -> Bool
   let deleteAPIKey: () -> Void
   let refreshKeyAvailability: () -> Void
   let testConnection: () async -> AIConnectionTestReport?
+  let grantDataSharingConsent: () -> Void
+  let revokeDataSharingConsent: () -> Void
 
   @State private var aiAPIKeyInput = ""
   @State private var aiConnectionReport: AIConnectionTestReport?
@@ -46,6 +49,12 @@ struct AISettingsView: View {
             modelDisplayValue: activeProfile.aiProviderConfig.model,
             requiresAPIKeyBinding: aiProviderBoolBinding(\.requiresAPIKey),
             requiresAPIKeyDisplayValue: activeProfile.aiProviderConfig.requiresAPIKey ? "开启" : "关闭"
+          )
+
+          AIDataSharingConsentSection(
+            presentation: dataSharingConsent,
+            grantConsent: grantDataSharingConsent,
+            revokeConsent: revokeDataSharingConsent
           )
 
           AIKeychainSection(

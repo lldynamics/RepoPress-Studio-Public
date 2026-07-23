@@ -1,4 +1,4 @@
-#if DEBUG
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
 import Foundation
 
 public struct ScreenshotDemoDataService {
@@ -6,6 +6,7 @@ public struct ScreenshotDemoDataService {
   public static let surfaceEnvironmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE"
   public static let knowledgeRootEnvironmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_KNOWLEDGE_ROOT"
   public static let uiTestEnvironmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST"
+  public static let uiTestRepositoryRootEnvironmentKey = "PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST_REPOSITORY_ROOT"
   public static let persistenceFilename = "screenshot-demo-workbench.json"
 
   public init() {}
@@ -54,7 +55,7 @@ public struct ScreenshotDemoDataService {
     let article = ArticleDraft(
       id: articleID,
       siteProfileID: profileID,
-      title: "Mac 个人网站发布控制台发布流程",
+      title: "Mac RepoPress发布流程",
       date: now.addingTimeInterval(-86_400),
       slug: "mac-publishing-console-flow",
       tags: ["Mac", "发布", "SEO"],
@@ -64,7 +65,7 @@ public struct ScreenshotDemoDataService {
       summary: "演示写作、AI 对话、SEO 社交预览、GitHub API 发布和发布后部署校验的完整桌面流程。",
       coverAttachmentID: cover.id,
       bodyMarkdown: """
-      # Mac 个人网站发布控制台发布流程
+      # Mac RepoPress发布流程
 
       这是一篇用于 App Store 截图的演示文章，所有账号、URL 和路径都是安全示例。
 
@@ -105,7 +106,8 @@ public struct ScreenshotDemoDataService {
     let crossSiteDraft = ArticleDraft(
       id: crossSiteDraftID,
       siteProfileID: secondProfileID,
-      title: "跨站点发布检查模板",
+      scope: .general,
+      title: "通用发布检查模板",
       date: now.addingTimeInterval(-7_200),
       slug: "cross-site-publish-checklist",
       tags: ["Checklist", "Template"],
@@ -113,7 +115,7 @@ public struct ScreenshotDemoDataService {
       authors: ["Demo Author"],
       draft: true,
       summary: "可复用到多个站点的发布前检查模板。",
-      bodyMarkdown: "# 跨站点发布检查模板\n\n- 标题\n- 摘要\n- 封面\n- 链接\n- 部署状态\n",
+      bodyMarkdown: "# 通用发布检查模板\n\n- 标题\n- 摘要\n- 封面\n- 链接\n- 部署状态\n",
       status: .ready,
       createdAt: now.addingTimeInterval(-50_000),
       updatedAt: now.addingTimeInterval(-900)
@@ -122,7 +124,7 @@ public struct ScreenshotDemoDataService {
     let directRecord = ReleaseRecord(
       id: directRecordID,
       kind: .remoteDirectCommit,
-      title: "线上提交：Mac 个人网站发布控制台发布流程",
+      title: "线上提交：Mac RepoPress发布流程",
       summary: "GitHub · main · 2 个文件 · abc123de",
       siteProfileID: profileID,
       siteName: profile.name,
@@ -334,6 +336,12 @@ public struct ScreenshotDemoDataService {
       .appendingPathComponent("screenshot-demo-knowledge-library", isDirectory: true)
   }
 
+  public static var defaultRepositoryRootURL: URL {
+    FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true)
+      .appendingPathComponent("screenshot-demo-repository", isDirectory: true)
+  }
+
   public static func prepareKnowledgeLibraryServiceIfEnabled() -> KnowledgeLibraryService {
     guard isEnabledFromEnvironment,
           requestedSurfaceFromEnvironment == .knowledgeLibrary else {
@@ -364,8 +372,21 @@ public struct ScreenshotDemoDataService {
       return
     }
     surface.apply(to: store)
+    let isUITest = ProcessInfo.processInfo.environment[uiTestEnvironmentKey] == "1"
+    if isUITest || surface == .syncAPIPublish {
+      prepareRepositoryFixture(in: store, isUITest: isUITest)
+      if surface == .syncAPIPublish {
+        seedSyncAPIPublishPreview(in: store)
+      }
+      Task { @MainActor in
+        await store.repository.scanAsync()
+        if surface == .syncAPIPublish {
+          seedSyncAPIPublishPreview(in: store)
+        }
+      }
+    }
     if surface == .writing,
-       ProcessInfo.processInfo.environment[uiTestEnvironmentKey] == "1" {
+       isUITest {
       // Sidebar accessibility coverage does not exercise the AppKit Markdown
       // editor. Leave the deterministic list populated but avoid mounting an
       // unrelated editor during this focused UI test.
@@ -376,6 +397,107 @@ public struct ScreenshotDemoDataService {
         await seedKnowledgeLibraryIfEnabled(in: store.knowledge)
       }
     }
+  }
+
+  @MainActor
+  private static func prepareRepositoryFixture(in store: WorkbenchStore, isUITest: Bool) {
+    let configuredPath = isUITest
+      ? ProcessInfo.processInfo.environment[uiTestRepositoryRootEnvironmentKey]?
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      : nil
+    let rootURL = configuredPath.flatMap { path in
+      path.isEmpty ? nil : URL(fileURLWithPath: path, isDirectory: true)
+    } ?? (isUITest
+      ? FileManager.default.temporaryDirectory
+        .appendingPathComponent("PersonalSitePublisherMac-AccessibilityUITestRepository", isDirectory: true)
+      : defaultRepositoryRootURL)
+
+    let contentURL = rootURL.appendingPathComponent("content/posts/2026", isDirectory: true)
+    let imageURL = rootURL.appendingPathComponent("static/images", isDirectory: true)
+    do {
+      try FileManager.default.createDirectory(at: contentURL, withIntermediateDirectories: true)
+      try FileManager.default.createDirectory(at: imageURL, withIntermediateDirectories: true)
+      try writeFixtureFileIfMissing(
+        at: rootURL.appendingPathComponent("config.toml"),
+        contents: "base_url = \"https://demo.example.com\"\ntitle = \"截图演示站点\"\n"
+      )
+      try writeFixtureFileIfMissing(
+        at: contentURL.appendingPathComponent("mac-publishing-console-flow.md"),
+        contents: "+++\ntitle = \"Mac RepoPress发布流程\"\ndraft = false\n+++\n\n# Mac RepoPress发布流程\n"
+      )
+    } catch {
+      store.setPublishActionMessage(String(localized: "无法准备运行时辅助功能测试仓库。"))
+      return
+    }
+
+    var profile = store.activeProfile
+    profile.localRepositoryRootPath = rootURL.standardizedFileURL.path
+    profile.localRepositoryBookmarkData = nil
+    store.updateActiveProfile(profile)
+  }
+
+  @MainActor
+  private static func seedSyncAPIPublishPreview(in store: WorkbenchStore) {
+    guard let draft = store.selectedDraft else { return }
+
+    let profile = store.profile(for: draft)
+    let accessCheck = RemoteRepositoryAccessCheck(
+      provider: profile.repositoryProvider,
+      repositoryName: profile.repositoryDisplayName,
+      defaultBranch: profile.branch,
+      canRead: true,
+      canWrite: true,
+      permissionSummary: "截图演示：已确认仓库内容写入权限。",
+      tokenScopeSummary: "Repository contents: write",
+      message: "截图演示：Token 权限检查已通过。"
+    )
+    let conflictPath = "content/posts/2026/mac-publishing-console-flow.md"
+    let conflictWarning = PreflightIssue(
+      severity: .warning,
+      title: "远端同路径变更",
+      message: "截图演示：上游也更新了当前文章；可先查看差异，或改用 PR/MR 审阅流程。",
+      field: "repository"
+    )
+
+    store.setRepositoryTokenAvailability(
+      KeychainTokenAvailability(hasToken: true, updatedAt: Date(timeIntervalSince1970: 1_900_000_000))
+    )
+    store.setRemoteRepositoryAccessCheck(accessCheck)
+    store.refreshPublishPreview(for: draft)
+
+    var preview = store.remotePublishPreviewSnapshot ?? RemoteRepositoryPublishPreview(
+      provider: profile.repositoryProvider,
+      repositoryName: profile.repositoryDisplayName,
+      mode: .reviewRequest,
+      branchName: "publish/mac-publishing-console-flow",
+      targetBranch: profile.branch,
+      changedPaths: [
+        conflictPath,
+        "static/images/2026/social-preview.png",
+      ],
+      hasToken: true,
+      blockingIssues: [],
+      warningIssues: []
+    )
+    preview.mode = .reviewRequest
+    preview.branchName = "publish/mac-publishing-console-flow"
+    preview.changedPaths = [
+      conflictPath,
+      "static/images/2026/social-preview.png",
+    ]
+    preview.remoteConflictPaths = [conflictPath]
+    preview.remoteRiskState = .conflict
+    preview.hasToken = true
+    preview.accessCheck = accessCheck
+    preview.blockingIssues = []
+    preview.warningIssues = [conflictWarning]
+    store.publishingStore.remotePublishPreviewSnapshot = preview
+    store.selectSection(.sync)
+  }
+
+  private static func writeFixtureFileIfMissing(at url: URL, contents: String) throws {
+    guard !FileManager.default.fileExists(atPath: url.path) else { return }
+    try Data(contents.utf8).write(to: url, options: .atomic)
   }
 
   @MainActor
@@ -412,7 +534,9 @@ public struct ScreenshotDemoDataService {
 
 public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable {
   case writing
+#if !APP_STORE_BUILD
   case aiChat = "ai-chat"
+#endif
   case syncAPIPublish = "sync-api-publish"
   case seoSocialPreview = "seo-social-preview"
   case deploymentStatus = "deployment-status"
@@ -434,9 +558,9 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
     switch self {
     case .writing:
       store.selectSection(.writing)
-      store.setInspectorPresented(false)
       store.setEditorDisplayMode(.split)
       store.setPublishActionMessage(String(localized: "截图模式：写作工作区已载入演示文章。"))
+#if !APP_STORE_BUILD
     case .aiChat:
       _ = store.openAIChatWorkspace(for: preferredDraft(in: store)?.id)
       store.seedTransientAIChatPreview([
@@ -454,11 +578,12 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
       ])
       store.setInspectorPresented(false)
       store.setPublishActionMessage(String(localized: "截图模式：AI 助手 Inspector 已载入。"))
+#endif
     case .syncAPIPublish:
       store.selectSection(.sync)
       store.setPublishActionMessage(String(localized: "截图模式：同步/API 发布工作区已载入。"))
     case .seoSocialPreview:
-      store.selectSection(.contentHealth)
+      store.selectSection(.writing)
       store.setInspectorPresented(true)
       if let draft = preferredDraft(in: store) {
         store.refreshSEOSocialPreview(for: draft, message: "截图模式：SEO / 社交预览快照已载入。")
@@ -470,8 +595,9 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
       store.selectSection(.maintenance)
       store.setPublishActionMessage(String(localized: "截图模式：站点维护工作台已载入。"))
     case .generalDrafts:
-      store.selectSection(.generalDrafts)
-      store.setPublishActionMessage(String(localized: "截图模式：跨站点复制已载入。"))
+      store.selectSection(.writing)
+      store.setDraftListContentScope(.general)
+      store.setPublishActionMessage(String(localized: "截图模式：通用草稿已载入。"))
     case .proSettings:
       store.selectSection(.writing)
       store.setMonetizationMessage("截图模式：请打开 Settings > Pro 捕获免费额度、StoreKit 购买和恢复状态。")

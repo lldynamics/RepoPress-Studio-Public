@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 struct SettingsContext {
   let store: WorkbenchStore
+  let browserBridge: KnowledgeBrowserBridge?
   let storeKitProEntitlementCoordinator: StoreKitProEntitlementCoordinator
   let activeProfileBinding: Binding<SiteProfile>
   let autoRunPreflightBinding: Binding<Bool>
@@ -26,6 +27,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
   case defaultRules
   case token
   case ai
+  case knowledge
   case privacy
   case pro
 
@@ -39,6 +41,8 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return "token"
     case .ai:
       return "ai"
+    case .knowledge:
+      return "knowledge"
     case .privacy:
       return "privacy"
     case .pro:
@@ -56,6 +60,8 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return String(localized: "仓库与部署")
     case .ai:
       return String(localized: "AI 写作")
+    case .knowledge:
+      return String(localized: "资料库")
     case .privacy:
       return String(localized: "隐私")
     case .pro:
@@ -73,6 +79,8 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return "link"
     case .ai:
       return "sparkles"
+    case .knowledge:
+      return "books.vertical"
     case .privacy:
       return "hand.raised"
     case .pro:
@@ -90,6 +98,11 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return String(localized: "连接仓库与部署平台，并将凭据安全保存在钥匙串。")
     case .ai:
       return String(localized: "选择 AI 服务、模型和当前站点的写作风格。")
+    case .knowledge:
+      if DistributionFeaturePolicy.allowsBrowserCapture {
+        return String(localized: "管理本地检索、智能集合、备份与浏览器连接。")
+      }
+      return String(localized: "管理本地检索、智能集合与资料备份。")
     case .privacy:
       return String(localized: "控制离席时的快速隐藏和私密文章遮挡。")
     case .pro:
@@ -101,7 +114,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
     switch self {
     case .configurationStatus, .defaultRules, .token, .ai:
       return true
-    case .privacy, .pro:
+    case .knowledge, .privacy, .pro:
       return false
     }
   }
@@ -112,13 +125,23 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return 640
     case .pro:
       return 720
-    case .configurationStatus, .defaultRules, .token, .ai:
+    case .configurationStatus, .defaultRules, .token, .ai, .knowledge:
       return 760
     }
   }
 
-  static let siteSettings: [SettingsTab] = [.configurationStatus, .defaultRules, .token, .ai]
-  static let applicationSettings: [SettingsTab] = [.privacy, .pro]
+  static var siteSettings: [SettingsTab] {
+    var tabs: [SettingsTab] = [.configurationStatus, .defaultRules, .token]
+    if DistributionFeaturePolicy.allowsExternalAIProviders {
+      tabs.append(.ai)
+    }
+    return tabs
+  }
+  static let applicationSettings: [SettingsTab] = [.knowledge, .privacy, .pro]
+
+  var isAvailableInCurrentDistribution: Bool {
+    self != .ai || DistributionFeaturePolicy.allowsExternalAIProviders
+  }
 
   @ViewBuilder
   @MainActor

@@ -85,7 +85,7 @@ struct InsertedImageMetadataPanel: View {
         Spacer(minLength: 8)
 
         Text("高级压缩保留在图片工作台。")
-          .font(.caption2)
+          .font(.caption)
           .foregroundStyle(.tertiary)
       }
 

@@ -72,6 +72,24 @@ def main() -> None:
         keyword_result = run(path)
         expect(keyword_result.returncode != 0, "checker accepted keywords over 100 bytes")
 
+        missing_ai_consent = json.loads(json.dumps(payload))
+        missing_ai_consent["localizations"]["en-US"]["description"] = (
+            missing_ai_consent["localizations"]["en-US"]["description"]
+            .replace("Explicit consent", "Permission")
+        )
+        path.write_text(json.dumps(missing_ai_consent, ensure_ascii=False), encoding="utf-8")
+        ai_result = run(path)
+        expect(ai_result.returncode != 0, "checker accepted AI copy without explicit consent")
+
+        missing_loopback = json.loads(json.dumps(payload))
+        missing_loopback["localizations"]["zh-Hans"]["description"] = (
+            missing_loopback["localizations"]["zh-Hans"]["description"]
+            .replace("127.0.0.1", "本机")
+        )
+        path.write_text(json.dumps(missing_loopback, ensure_ascii=False), encoding="utf-8")
+        browser_result = run(path)
+        expect(browser_result.returncode != 0, "checker accepted browser copy without loopback boundary")
+
     print("app store listing metadata tests: passed")
 
 

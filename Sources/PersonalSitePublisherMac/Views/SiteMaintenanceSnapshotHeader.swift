@@ -56,7 +56,21 @@ struct SiteMaintenanceSnapshotHeader: View {
   }
 
   private var headerActions: some View {
-    HStack(spacing: 8) {
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 8) {
+        refreshButton
+        copySprintPlanButton
+        copyChecklistButton
+      }
+      VStack(alignment: .leading, spacing: 8) {
+        refreshButton
+        copySprintPlanButton
+        copyChecklistButton
+      }
+    }
+  }
+
+  private var refreshButton: some View {
       Button {
         refresh()
       } label: {
@@ -67,22 +81,24 @@ struct SiteMaintenanceSnapshotHeader: View {
         }
       }
       .disabled(isRefreshing)
+      .accessibilityIdentifier("site-maintenance-refresh")
+  }
 
-      Menu {
-        Button {
-          copySprintPlan()
-        } label: {
-          Label("复制冲刺计划", systemImage: "checklist")
-        }
-
-        Button {
-          copyChecklist()
-        } label: {
-          Label("复制维护清单", systemImage: "doc.on.doc")
-        }
-      } label: {
-        Label("更多...", systemImage: "ellipsis.circle")
-      }
+  private var copySprintPlanButton: some View {
+    Button {
+      copySprintPlan()
+    } label: {
+      Label("复制冲刺计划", systemImage: "checklist")
     }
+    .accessibilityIdentifier("site-maintenance-copy-sprint-plan")
+  }
+
+  private var copyChecklistButton: some View {
+    Button {
+      copyChecklist()
+    } label: {
+      Label("复制维护清单", systemImage: "doc.on.doc")
+    }
+    .accessibilityIdentifier("site-maintenance-copy-checklist")
   }
 }

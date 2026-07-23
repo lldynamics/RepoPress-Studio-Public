@@ -359,6 +359,17 @@ struct WorkbenchOperationalSplitLayout<Primary: View, Context: View>: View {
 }
 
 extension Font {
+  /// Stable semantic roles keep page hierarchy consistent while preserving the
+  /// user's macOS text-size and accessibility settings.
+  static let workbenchPageTitle: Font = .title2.weight(.semibold)
+  static let workbenchPageSubtitle: Font = .callout
+  static let workbenchSectionTitle: Font = .headline
+  static let workbenchItemTitle: Font = .callout.weight(.medium)
+  static let workbenchBody: Font = .body
+  static let workbenchSupporting: Font = .callout
+  static let workbenchMetadata: Font = .caption
+  static let workbenchButtonLabel: Font = .callout.weight(.medium)
+
   static let workbenchCardTitle: Font = .callout.weight(.semibold)
   static let workbenchMetricValue: Font = .title3.weight(.semibold)
   static let workbenchPath: Font = .caption.monospaced()

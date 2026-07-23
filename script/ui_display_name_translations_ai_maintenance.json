@@ -1,4 +1,12 @@
 {
+  "display.ai-publishing-default-capability.continue-writing": { "zh-Hans": "续写", "en": "Continue" },
+  "display.ai-publishing-default-capability.rewrite": { "zh-Hans": "改写", "en": "Rewrite" },
+  "display.ai-publishing-default-capability.condense": { "zh-Hans": "压缩", "en": "Condense" },
+  "display.ai-publishing-default-capability.translate": { "zh-Hans": "翻译", "en": "Translate" },
+  "display.ai-publishing-default-capability.generate-metadata": { "zh-Hans": "生成元数据", "en": "Generate Metadata" },
+  "display.ai-publishing-default-capability.publishing-check": { "zh-Hans": "发布检查", "en": "Publishing Check" },
+  "display.ai-publishing-default-capability.cite-knowledge": { "zh-Hans": "引用资料", "en": "Cite Sources" },
+  "display.ai-publishing-default-capability.ask-anything": { "zh-Hans": "自由提问", "en": "Ask Anything" },
   "display.ai-publishing-prompt-library-scope.all": { "zh-Hans": "全部", "en": "All" },
   "display.ai-publishing-prompt-library-scope.writing": { "zh-Hans": "写作生成", "en": "Writing" },
   "display.ai-publishing-prompt-library-scope.editing": { "zh-Hans": "选区编辑", "en": "Editing" },
@@ -81,5 +89,9 @@
   "display.maintenance-action-kind.stale-article": { "zh-Hans": "旧文整理", "en": "Stale Article Cleanup" },
   "display.maintenance-action-kind.link-audit": { "zh-Hans": "链接审计", "en": "Link Audit" },
   "display.maintenance-action-kind.taxonomy": { "zh-Hans": "分类治理", "en": "Taxonomy Cleanup" },
-  "display.maintenance-action-kind.relation-suggestion": { "zh-Hans": "内链建议", "en": "Internal Link Suggestions" }
+  "display.maintenance-action-kind.relation-suggestion": { "zh-Hans": "内链建议", "en": "Internal Link Suggestions" },
+  "display.workbench-automation-risk.read-only": { "zh-Hans": "只读", "en": "Read Only" },
+  "display.workbench-automation-risk.reversible": { "zh-Hans": "可撤销", "en": "Reversible" },
+  "display.workbench-automation-risk.content-change": { "zh-Hans": "修改内容", "en": "Content Change" },
+  "display.workbench-automation-risk.external-effect": { "zh-Hans": "外部操作", "en": "External Action" }
 }

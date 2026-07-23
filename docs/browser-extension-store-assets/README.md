@@ -1,6 +1,6 @@
 # Browser Extension Store Assets
 
-This directory contains reproducible Chrome Web Store and Microsoft Edge Add-ons listing assets for the browser knowledge-capture extension. The images are submission candidates, not evidence that either store listing has been submitted or approved.
+This directory contains reproducible Chrome Web Store listing assets for the browser knowledge-capture extension. Safari is embedded in the macOS app and does not use this Chromium store-asset set. The images are submission candidates, not evidence that the Chrome listing has been submitted or approved.
 
 ## Deliverables
 
@@ -9,7 +9,7 @@ Each `zh-CN/` and `en-US/` directory contains:
 | File | Size | Intended use |
 | --- | ---: | --- |
 | `store-icon-128.png` | 128 x 128 | Chrome Web Store icon |
-| `edge-logo-300x300.png` | 300 x 300 | Edge Add-ons logo |
+| `edge-logo-300x300.png` | 300 x 300 | Deferred legacy Edge asset; do not upload for 0.30.0 |
 | `screenshot-01-capture.png` | 1280 x 800 | Capture-mode screenshot |
 | `screenshot-02-preview.png` | 1280 x 800 | Preview, organization, and AI-access screenshot |
 | `screenshot-03-library.png` | 1280 x 800 | Local-library receipt and retrieval screenshot |
@@ -36,7 +36,7 @@ Review every regenerated image before upload. Store copy remains sourced from `B
 ## Submission Mapping
 
 - Chrome Web Store: upload `store-icon-128.png`, the three `screenshot-*.png` files, `promo-small-440x280.png`, and optionally `promo-marquee-1400x560.png` for each localized listing.
-- Edge Add-ons: upload `edge-logo-300x300.png`, the three screenshots, the small promotional tile, and the marquee tile for each localized listing.
 - Do not upload anything under `source/` or `asset-manifest.json` to a store.
+- Do not upload `edge-logo-300x300.png`; Edge is outside the current Safari + Chrome release scope.
 
 The operational sequence, review notes, privacy declarations, and remaining blockers are documented in `SUBMISSION_GUIDE.md`.

@@ -456,7 +456,7 @@ struct PublishingStatusToolbarControl: View {
           isPresented = false
           openRepositoryOverview()
         } label: {
-          Label("仓库与批量发布", systemImage: "arrow.triangle.2.circlepath")
+          Label(workspaceNavigationLocalizedKey("workspace.sync"), systemImage: "arrow.triangle.2.circlepath")
         }
 
         Button {

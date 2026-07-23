@@ -31,6 +31,37 @@ struct AIChatDraftDiffPreviewSheet: View {
       Divider()
 
       VStack(alignment: .leading, spacing: 10) {
+        if !metadataChanges.isEmpty {
+          Label("元数据变化", systemImage: "tag")
+            .font(.callout.weight(.semibold))
+
+          VStack(spacing: 0) {
+            ForEach(metadataChanges) { change in
+              VStack(alignment: .leading, spacing: 4) {
+                Text(change.title)
+                  .font(.caption.weight(.semibold))
+                  .foregroundStyle(.secondary)
+                Text(change.before.isEmpty ? "未设置" : change.before)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+                  .strikethrough()
+                Text(change.after.isEmpty ? "清空" : change.after)
+                  .font(.callout.weight(.medium))
+                  .textSelection(.enabled)
+              }
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(9)
+
+              if change.id != metadataChanges.last?.id {
+                Divider()
+              }
+            }
+          }
+          .background(.quaternary.opacity(0.20), in: RoundedRectangle(cornerRadius: 8))
+
+          Divider()
+        }
+
         HStack {
           Label("行级差异", systemImage: "list.number")
             .font(.callout.weight(.semibold))
@@ -100,6 +131,52 @@ struct AIChatDraftDiffPreviewSheet: View {
     return "修改前 \(before) 字符 · 修改后 \(after) 字符 · \(delta >= 0 ? "+" : "")\(delta)"
   }
 
+  private var metadataChanges: [AIChatMetadataDiffItem] {
+    var changes: [AIChatMetadataDiffItem] = []
+    appendMetadataChange(
+      title: "标题",
+      before: preview.originalDraft.title,
+      after: preview.updatedDraft.title,
+      to: &changes
+    )
+    appendMetadataChange(
+      title: "Slug",
+      before: preview.originalDraft.slug,
+      after: preview.updatedDraft.slug,
+      to: &changes
+    )
+    appendMetadataChange(
+      title: "摘要",
+      before: preview.originalDraft.summary,
+      after: preview.updatedDraft.summary,
+      to: &changes
+    )
+    appendMetadataChange(
+      title: "Tags",
+      before: preview.originalDraft.tags.joined(separator: "、"),
+      after: preview.updatedDraft.tags.joined(separator: "、"),
+      to: &changes
+    )
+    return changes
+  }
+
+  private func appendMetadataChange(
+    title: String,
+    before: String,
+    after: String,
+    to changes: inout [AIChatMetadataDiffItem]
+  ) {
+    guard before != after else { return }
+    changes.append(AIChatMetadataDiffItem(title: title, before: before, after: after))
+  }
+
+}
+
+private struct AIChatMetadataDiffItem: Identifiable {
+  var id: String { title }
+  let title: String
+  let before: String
+  let after: String
 }
 
 private struct AIChatLineDiffRow: View {
@@ -135,7 +212,7 @@ private struct AIChatLineDiffRow: View {
 
   private func lineNumber(_ number: Int?) -> some View {
     Text(number.map(String.init) ?? "")
-      .font(.caption2.monospacedDigit())
+      .font(.caption.monospacedDigit())
       .foregroundStyle(.tertiary)
       .frame(width: 42, alignment: .trailing)
       .padding(.trailing, 7)

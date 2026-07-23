@@ -12,8 +12,13 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func publishBatchReadyDraftsOnlineUsingPreferredStrategy() async -> RemoteRepositoryPublishResult? {
-    return await publishingStore.publishBatchReadyDraftsOnlineUsingPreferredStrategy(store: self)
+  public func publishBatchReadyDraftsOnlineUsingPreferredStrategy(
+    expectedChangedPaths: Set<String>? = nil
+  ) async -> RemoteRepositoryPublishResult? {
+    return await publishingStore.publishBatchReadyDraftsOnlineUsingPreferredStrategy(
+      store: self,
+      expectedChangedPaths: expectedChangedPaths
+    )
   }
 
   public func commitSelectedDraftDirectly() async {
@@ -35,6 +40,11 @@ extension WorkbenchStore {
   public func publishSelectedDraftOnlineUsingPreferredStrategy() async -> RemoteRepositoryPublishResult? {
     refreshSelectedDraftPublishingState()
     return await publishingStore.publishSelectedDraftOnlineUsingPreferredStrategy(store: self)
+  }
+
+  @discardableResult
+  public func resumeRemoteReview(_ record: ReleaseRecord) async -> RemoteRepositoryPublishResult? {
+    await publishingStore.resumeRemoteReview(record, store: self)
   }
 
   @discardableResult

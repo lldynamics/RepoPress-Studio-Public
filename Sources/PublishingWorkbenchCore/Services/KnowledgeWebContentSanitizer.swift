@@ -483,7 +483,11 @@ struct KnowledgeWebContentSanitizer: Sendable {
     var earliestIndex: String.Index?
     for marker in markers {
       guard let range = line.range(of: marker, options: [.caseInsensitive]) else { continue }
-      if earliestIndex == nil || range.lowerBound < earliestIndex! {
+      if let currentEarliest = earliestIndex {
+        if range.lowerBound < currentEarliest {
+          earliestIndex = range.lowerBound
+        }
+      } else {
         earliestIndex = range.lowerBound
       }
     }

@@ -199,11 +199,11 @@ struct WritingDraftRow: View {
 
       VStack(alignment: .leading, spacing: 4) {
         Text(presentation.title)
-          .font(.body.weight(.medium))
+          .font(.workbenchBody.weight(.medium))
           .workbenchTruncatedIdentity(presentation.title)
 
         Text(presentation.metadata)
-          .font(.caption)
+          .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
           .lineLimit(1)
       }
@@ -222,11 +222,11 @@ struct WritingDraftSkeletonRow: View {
 
       VStack(alignment: .leading, spacing: 4) {
         Text("标题占位")
-          .font(.body.weight(.medium))
+          .font(.workbenchBody.weight(.medium))
           .lineLimit(1)
 
         Text("上次修改占位 · 0000 字/词 · 发布中")
-          .font(.caption)
+          .font(.workbenchSupporting)
           .lineLimit(1)
       }
     }

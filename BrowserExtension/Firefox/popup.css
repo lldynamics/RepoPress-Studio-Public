@@ -615,6 +615,21 @@ button:disabled {
   margin: 0;
 }
 
+.queue-private-sites-control {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 0 10px;
+  color: GrayText;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.queue-private-sites-control input {
+  flex: 0 0 auto;
+  margin: 2px 0 0;
+}
+
 .queue-items {
   display: grid;
   gap: 8px;

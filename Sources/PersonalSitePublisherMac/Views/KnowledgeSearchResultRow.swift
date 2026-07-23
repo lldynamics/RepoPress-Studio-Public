@@ -19,7 +19,7 @@ struct KnowledgeSearchResultRow: View {
             .frame(width: 14)
             .accessibilityHidden(true)
           KnowledgeHighlightedText(text: result.document.title, terms: hit.highlightTerms)
-            .font(.callout.weight(.medium))
+            .font(.workbenchItemTitle)
             .workbenchTruncatedIdentity(result.document.title)
           Spacer(minLength: 0)
         }
@@ -27,20 +27,20 @@ struct KnowledgeSearchResultRow: View {
 
       if let location = hit.locationLabel {
         Label(location, systemImage: "mappin.and.ellipse")
-          .font(.caption2)
+          .font(.workbenchMetadata)
           .foregroundStyle(.secondary)
           .workbenchTruncatedIdentity(location)
       }
 
       KnowledgeHighlightedText(text: hit.snippet, terms: hit.highlightTerms)
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
         .lineLimit(3)
 
       HStack(spacing: 5) {
         ForEach(hit.reasons, id: \.self) { reason in
           Text(reason.shortDisplayName)
-            .font(.caption2.weight(.medium))
+            .font(.workbenchMetadata.weight(.medium))
             .foregroundStyle(reason.foregroundStyle)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)

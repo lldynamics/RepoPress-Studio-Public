@@ -166,3 +166,18 @@ script/record_app_store_screenshot_evidence.sh --execute
 - Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
 - Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
 - Screenshot source fingerprint: sha256:64c53923544993c231c2ac6683e3b268b05ca53635398299965e24efe91c5a9f
+- 9 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
+- Screenshot set: Captured manifest screenshot IDs: writing, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
+- Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
+- Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
+- Screenshot source fingerprint: sha256:b16c650465d9acf349b13114cafdd65c59818ebfc51983dc02cedc16a7111953
+- 9 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
+- Screenshot set: Captured manifest screenshot IDs: writing, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
+- Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
+- Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
+- Screenshot source fingerprint: sha256:be62cbd7dc4a0515df0ed053d9733b8e272232e7add1381f5f98f9355ffb81d7
+- 9 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
+- Screenshot set: Captured manifest screenshot IDs: writing, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
+- Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
+- Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
+- Screenshot source fingerprint: sha256:5ebd59b16247b3408a194d9d192e09f905111a2918596365e5988c965605880e

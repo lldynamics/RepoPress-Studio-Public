@@ -59,7 +59,7 @@ public struct AIPublishingAssistantService: Sendable {
       apiKey: apiKey,
       purpose: .interactiveChat
     )
-    return AIPublishingChatMessage(
+    let message = AIPublishingChatMessage(
       role: .assistant,
       content: result.content,
       model: result.rawModel?.nilIfEmpty ?? taskConfig.normalizedModel,
@@ -67,6 +67,7 @@ public struct AIPublishingAssistantService: Sendable {
       contextMode: request.contextMode,
       knowledgeCitations: request.knowledgeContext?.citations ?? []
     )
+    return preparingAutomationPlan(in: message, request: request)
   }
 
   public func streamReply(
@@ -99,6 +100,22 @@ public struct AIPublishingAssistantService: Sendable {
       ),
       updates: updates
     )
+  }
+
+  public func preparingAutomationPlan(
+    in message: AIPublishingChatMessage,
+    request: AIPublishingChatRequest
+  ) -> AIPublishingChatMessage {
+    guard request.contextMode == .site else { return message }
+    let parsed = WorkbenchAutomationPlanParser.parse(
+      message.content,
+      currentDraft: request.draft
+    )
+    guard let plan = parsed.plan else { return message }
+    var prepared = message
+    prepared.content = parsed.displayContent
+    prepared.automationPlan = plan
+    return prepared
   }
 
   private func chatTaskConfig(
@@ -748,11 +765,27 @@ public struct AIPublishingAssistantService: Sendable {
   }
 
   private var systemPrompt: String {
-    "你是个人网站发布控制台里的发布上下文助手。你不做泛聊天，只围绕当前文章、站点结构、front matter、SEO、公开风险、图片和发布说明给建议。"
+    "你是RepoPress里的发布上下文助手。你不做泛聊天，只围绕当前文章、站点结构、front matter、SEO、公开风险、图片和发布说明给建议。"
   }
 
   private var chatSystemPrompt: String {
-    "你是个人网站发布控制台里的文章讨论助手。可以连续对话，但所有回答都必须服务于当前文章、站点结构、front matter、SEO、公开风险、图片和发布流程；不要编造没有给出的仓库状态或线上验证。"
+    """
+    你是RepoPress里的文章讨论助手。可以连续对话，但所有回答都必须服务于当前文章、站点结构、front matter、SEO、公开风险、图片和发布流程；不要编造没有给出的仓库状态或线上验证。
+
+    当用户明确要求操作本软件时，你可以在正常说明后附带一个应用内操作计划。你只能使用下面列出的命令，不得生成 Shell、Swift、AppleScript、任意文件路径、鼠标坐标或其他命令。你只是在提出计划，绝不能声称已经执行。
+
+    (WorkbenchAutomationRegistry.promptCatalog)
+
+    输出计划时必须严格使用以下格式；没有操作请求时不要输出这个区块：
+    <workbench_automation_plan>
+    {"goal":"简短目标","steps":[{"command":"runPreflight","arguments":{"draftID":"当前上下文中的 UUID"}}]}
+    </workbench_automation_plan>
+
+    - 最多 (WorkbenchAutomationPlan.maximumStepCount) 步。
+    - 只使用上下文明确提供的文章 ID；不确定时不要猜测。
+    - 修改正文或元数据必须把具体新内容放入 arguments，应用会显示 Diff 并等待确认。
+    - 删除、仓库写入和线上发布必须各自成为独立步骤，应用会逐项要求确认。
+    """
   }
 
   private var generalChatSystemPrompt: String {
@@ -1006,6 +1039,8 @@ public struct AIPublishingAssistantService: Sendable {
     仓库：\(profile.repositoryDisplayName)
     AI 写作风格：
     \(profile.aiWritingStylePromptInstructions)
+    文章 ID：\(draft.id.uuidString)
+    文章版本时间：\(draft.updatedAt.ISO8601Format())
     文章标题：\(draft.title)
     Slug：\(draft.slug)
     摘要：\(draft.summary)
@@ -1103,6 +1138,8 @@ public struct AIPublishingAssistantService: Sendable {
 }
 
 public enum AIPublishingAssistantError: LocalizedError, Equatable {
+  case externalAIUnavailable
+  case dataSharingConsentRequired(providerName: String, destination: String)
   case missingAPIKey
   case emptyChatMessage
   case unsupportedImageAttachments(String)
@@ -1112,6 +1149,10 @@ public enum AIPublishingAssistantError: LocalizedError, Equatable {
 
   public var errorDescription: String? {
     switch self {
+    case .externalAIUnavailable:
+      return "当前版本无法连接所选 AI 服务。"
+    case .dataSharingConsentRequired(let providerName, let destination):
+      return "发送前，请先在“设置 → AI 写作”中同意将内容发送给 \(providerName)（\(destination)）处理。"
     case .missingAPIKey:
       return "请先在 Settings 的 AI 页保存 API Key。"
     case .emptyChatMessage:

@@ -41,4 +41,36 @@ final class ImageInspectorFocusRequestTests: XCTestCase {
     XCTAssertFalse(store.focusImageInspector(draftID: draft.id, attachmentID: UUID()))
     XCTAssertNil(store.imageInspectorFocusRequest)
   }
+
+  func testFocusImageInspectorCanKeepArticleInWritingWorkspace() throws {
+    let store = try TestWorkbenchFactory.makeStore(prefix: "ImageInspectorFocusWriting")
+    let attachment = DraftAttachment(
+      originalFilename: "diagram.svg",
+      relativePublishPath: "/images/diagram.svg",
+      repositoryPath: "static/images/diagram.svg"
+    )
+    let draft = ArticleDraft(
+      id: UUID(),
+      siteProfileID: store.activeProfile.id,
+      title: "Inspect in writing",
+      attachments: [attachment]
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+    store.selectSection(.images)
+    store.setInspectorPresented(false)
+
+    XCTAssertTrue(
+      store.focusImageInspector(
+        draftID: draft.id,
+        attachmentID: attachment.id,
+        section: .writing
+      )
+    )
+    XCTAssertEqual(store.selectedDraftID, draft.id)
+    XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertTrue(store.isInspectorPresented)
+    XCTAssertEqual(store.imageInspectorFocusRequest?.draftID, draft.id)
+    XCTAssertEqual(store.imageInspectorFocusRequest?.attachmentID, attachment.id)
+  }
 }

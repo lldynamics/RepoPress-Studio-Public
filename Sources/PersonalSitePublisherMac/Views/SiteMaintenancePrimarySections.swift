@@ -6,7 +6,6 @@ struct SiteMaintenanceMetricGrid: View {
   let report: SiteMaintenanceReport
   let latestRelease: ReleaseRecord?
   let deploymentSnapshot: DeploymentStatusSnapshot?
-  @SceneStorage("siteMaintenance.secondaryMetricsExpanded") private var showsSecondaryMetrics = false
 
   private var blockingCount: Int {
     report.actionItems.filter { $0.priority == .high }.count
@@ -42,34 +41,31 @@ struct SiteMaintenanceMetricGrid: View {
         )
       }
 
-      DisclosureGroup(isExpanded: $showsSecondaryMetrics) {
-        LazyVGrid(
-          columns: [GridItem(.adaptive(minimum: 138, maximum: 220))],
-          spacing: 10
-        ) {
-          MetricTile(title: "文章", value: "\(report.draftCount)", semantic: .neutral)
-          MetricTile(title: "待发布", value: "\(report.readyCount)", semantic: .progress)
-          MetricTile(title: "已发布", value: "\(report.publishedCount)", semantic: .passed)
-          MetricTile(
-            title: "旧文候选",
-            value: "\(report.staleArticles.count)",
-            semantic: report.staleArticles.isEmpty ? .passed : .warning
-          )
-          MetricTile(title: "内链机会", value: "\(report.internalLinkOpportunityCount)", semantic: .progress)
-          MetricTile(
-            title: "链接提示",
-            value: "\(report.linkAuditItems.count)",
-            semantic: report.linkAuditItems.isEmpty ? .passed : .warning
-          )
-        }
-        .padding(.top, 10)
-      } label: {
-        Label("更多站点指标", systemImage: "chart.bar.xaxis")
-          .font(.callout.weight(.medium))
+      Label("站点指标", systemImage: "chart.bar.xaxis")
+        .font(.callout.weight(.medium))
+
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 138, maximum: 220))],
+        spacing: 10
+      ) {
+        MetricTile(title: "文章", value: "\(report.draftCount)", semantic: .neutral)
+        MetricTile(title: "待发布", value: "\(report.readyCount)", semantic: .progress)
+        MetricTile(title: "已发布", value: "\(report.publishedCount)", semantic: .passed)
+        MetricTile(
+          title: "旧文候选",
+          value: "\(report.staleArticles.count)",
+          semantic: report.staleArticles.isEmpty ? .passed : .warning
+        )
+        MetricTile(title: "内链机会", value: "\(report.internalLinkOpportunityCount)", semantic: .progress)
+        MetricTile(
+          title: "链接提示",
+          value: "\(report.linkAuditItems.count)",
+          semantic: report.linkAuditItems.isEmpty ? .passed : .warning
+        )
       }
-      .padding(12)
-      .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     }
+    .padding(12)
+    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 }
 
@@ -179,21 +175,19 @@ struct SiteMaintenanceActionQueueSection: View {
           Label("记录处理", systemImage: "checkmark.circle")
         }
 
-        Menu {
-          Button {
-            copyItem(item)
-          } label: {
-            Label("复制任务", systemImage: "doc.on.doc")
-          }
+        Button {
+          copyItem(item)
+        } label: {
+          Label("复制任务", systemImage: "doc.on.doc")
+        }
 
+        if DistributionFeaturePolicy.allowsExternalAIProviders {
           Button {
             sendToAI(item)
           } label: {
             Label("交给 AI", systemImage: "sparkles")
           }
           .disabled(item.draftID == nil || isAIChatRunning)
-        } label: {
-          Label("更多...", systemImage: "ellipsis.circle")
         }
 
         Spacer(minLength: 0)

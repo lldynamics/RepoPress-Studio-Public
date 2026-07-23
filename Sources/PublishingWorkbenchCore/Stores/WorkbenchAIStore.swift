@@ -24,6 +24,7 @@ public final class WorkbenchAIStore: ObservableObject {
   private let aiPublishingAssistantService: AIPublishingAssistantService
   private let keychainTokenStore: KeychainTokenStore
   private let aiConnectionTestService: AIConnectionTestService
+  private let aiDataSharingConsentStore: AIDataSharingConsentStore
   private let imageWorkbenchService: SiteImageWorkbenchService
   private let seoAuditService: SEOAuditService
   private let seoSocialPreviewService: SEOSocialPreviewService
@@ -45,6 +46,7 @@ public final class WorkbenchAIStore: ObservableObject {
     aiPublishingAssistantService: AIPublishingAssistantService = AIPublishingAssistantService(),
     keychainTokenStore: KeychainTokenStore = KeychainTokenStore(),
     aiConnectionTestService: AIConnectionTestService = AIConnectionTestService(),
+    aiDataSharingConsentStore: AIDataSharingConsentStore = AIDataSharingConsentStore(),
     imageWorkbenchService: SiteImageWorkbenchService = SiteImageWorkbenchService(),
     seoAuditService: SEOAuditService = SEOAuditService(),
     seoSocialPreviewService: SEOSocialPreviewService = SEOSocialPreviewService()
@@ -54,6 +56,7 @@ public final class WorkbenchAIStore: ObservableObject {
     self.aiPublishingAssistantService = aiPublishingAssistantService
     self.keychainTokenStore = keychainTokenStore
     self.aiConnectionTestService = aiConnectionTestService
+    self.aiDataSharingConsentStore = aiDataSharingConsentStore
     self.imageWorkbenchService = imageWorkbenchService
     self.seoAuditService = seoAuditService
     self.seoSocialPreviewService = seoSocialPreviewService
@@ -273,12 +276,20 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   func refreshAIKeyAvailability(for profile: SiteProfile) {
+    guard DistributionFeaturePolicy.allowsExternalAIProviders else {
+      aiTokenAvailability = KeychainTokenAvailability(hasToken: false)
+      return
+    }
     aiTokenAvailability = (try? keychainTokenStore.aiTokenAvailability(for: profile))
       ?? KeychainTokenAvailability(hasToken: false)
   }
 
   @discardableResult
   public func saveAIAPIKey(_ token: String) -> Bool {
+    guard DistributionFeaturePolicy.allowsExternalAIProviders else {
+      aiActionMessage = "此 App Store 版本不接受外部 AI API Key。"
+      return false
+    }
     do {
       try keychainTokenStore.saveAIToken(token.trimmedForPublishing, for: store.activeProfile)
       refreshAIKeyAvailability()
@@ -312,6 +323,10 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   public func testAIConnection() async -> AIConnectionTestReport? {
+    guard DistributionFeaturePolicy.allowsExternalAIProviders else {
+      aiActionMessage = "此 App Store 版本不连接第三方 AI 服务。"
+      return nil
+    }
     isAIActionRunning = true
     defer { isAIActionRunning = false }
     do {
@@ -325,6 +340,24 @@ public final class WorkbenchAIStore: ObservableObject {
       aiActionMessage = "AI 连接测试失败：\(error.localizedDescription)"
       return nil
     }
+  }
+
+  public var aiDataSharingConsentPresentation: AIDataSharingConsentPresentation {
+    aiDataSharingConsentStore.presentation(for: store.activeProfile.aiProviderConfig)
+  }
+
+  public func grantAIDataSharingConsent() {
+    let config = store.activeProfile.aiProviderConfig
+    aiDataSharingConsentStore.grant(for: config)
+    aiActionMessage = config.isLocalEndpoint
+      ? "当前为本地 AI 服务，内容不会发送给第三方服务商。"
+      : "已允许向 \(config.normalizedDisplayName)（\(config.dataSharingDestination)）发送内容。"
+  }
+
+  public func revokeAIDataSharingConsent() {
+    let config = store.activeProfile.aiProviderConfig
+    aiDataSharingConsentStore.revoke(for: config)
+    aiActionMessage = "已撤销 \(config.normalizedDisplayName) 的内容发送授权。"
   }
 
   public func prepareAIChat(for draft: ArticleDraft) {
@@ -478,19 +511,46 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   func aiChatCanStartFeatureUse(_ feature: PremiumFeature) -> FeatureAccessDecision {
-    store.canStartFeatureUse(feature)
+    if feature == .aiRequest {
+      return unmeteredAIRequestAccess()
+    }
+    return store.canStartFeatureUse(feature)
   }
 
   func aiChatConsumeFeatureUse(_ feature: PremiumFeature) -> FeatureAccessDecision {
-    store.consumeFeatureUse(feature)
+    if feature == .aiRequest {
+      return unmeteredAIRequestAccess()
+    }
+    return store.consumeFeatureUse(feature)
   }
 
   func aiChatAvailableAPIKey(for profile: SiteProfile) throws -> String? {
+    guard DistributionFeaturePolicy.allowsExternalAIProviders else {
+      throw AIPublishingAssistantError.externalAIUnavailable
+    }
+    let consent = aiDataSharingConsentStore.presentation(for: profile.aiProviderConfig)
+    guard consent.isGranted else {
+      throw AIPublishingAssistantError.dataSharingConsentRequired(
+        providerName: consent.providerName,
+        destination: consent.destination
+      )
+    }
     guard profile.aiProviderConfig.requiresAPIKey else { return nil }
     guard let token = try keychainTokenStore.aiToken(for: profile)?.nilIfEmpty else {
       throw AIPublishingAssistantError.missingAPIKey
     }
     return token
+  }
+
+  private func unmeteredAIRequestAccess() -> FeatureAccessDecision {
+    FeatureAccessDecision(
+      feature: .aiRequest,
+      isAllowed: true,
+      requiresPro: false,
+      remainingFreeUses: nil,
+      title: "用户自备 API Key",
+      message: "AI 请求由用户配置的服务商直接处理，应用不限制请求次数。"
+    )
   }
 
   func setAIChatCancellationRequested(_ value: Bool) {
@@ -1128,6 +1188,10 @@ public final class WorkbenchAIStore: ObservableObject {
         throw AIChatCompletionClientError.emptyContent
       }
       assistantMessage.content = finalContent
+      assistantMessage = aiPublishingAssistantService.preparingAutomationPlan(
+        in: assistantMessage,
+        request: request
+      )
       updateAIChatSession(for: draftID) { messages in
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
           messages[index] = assistantMessage
@@ -1510,11 +1574,6 @@ public final class WorkbenchAIStore: ObservableObject {
     let profile = store.profile(for: draft)
     do {
       let token = try aiChatAvailableAPIKey(for: profile)
-      let access = store.consumeFeatureUse(.aiRequest)
-      guard access.isAllowed else {
-        aiActionMessage = access.message
-        return nil
-      }
       isAIActionRunning = true
       defer { isAIActionRunning = false }
       let artifacts = await store.aiPublishingRequestArtifacts(for: draft)
@@ -1566,11 +1625,6 @@ public final class WorkbenchAIStore: ObservableObject {
     let profile = store.profile(for: draft)
     do {
       let token = try aiChatAvailableAPIKey(for: profile)
-      let access = store.consumeFeatureUse(.aiRequest)
-      guard access.isAllowed else {
-        aiActionMessage = access.message
-        return nil
-      }
       isAIMetadataSuggestionRunning = true
       defer { isAIMetadataSuggestionRunning = false }
       let artifacts = await store.aiPublishingRequestArtifacts(for: draft)

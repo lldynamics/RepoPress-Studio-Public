@@ -134,24 +134,26 @@ struct WorkspaceTaskMetadataSection: View {
 
         Spacer(minLength: 0)
 
-        Button(action: generateAISummary) {
-          if isGeneratingSummary {
-            HStack(spacing: 5) {
-              ProgressView()
-                .controlSize(.small)
-              Text("生成中")
+        if DistributionFeaturePolicy.allowsExternalAIProviders {
+          Button(action: generateAISummary) {
+            if isGeneratingSummary {
+              HStack(spacing: 5) {
+                ProgressView()
+                  .controlSize(.small)
+                Text("生成中")
+              }
+            } else {
+              Label(summaryAIButtonTitle, systemImage: "sparkles")
             }
-          } else {
-            Label(summaryAIButtonTitle, systemImage: "sparkles")
           }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .disabled(!summaryAIAvailability.isEnabled)
+          .help(summaryAIAvailability.unavailableReason ?? summaryAIButtonHelp)
+          .accessibilityIdentifier("metadata-summary-ai-button")
+          .accessibilityLabel("AI 自动生成摘要")
+          .accessibilityValue(isGeneratingSummary ? "生成中" : summaryAIButtonTitle)
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .disabled(!summaryAIAvailability.isEnabled)
-        .help(summaryAIAvailability.unavailableReason ?? summaryAIButtonHelp)
-        .accessibilityIdentifier("metadata-summary-ai-button")
-        .accessibilityLabel("AI 自动生成摘要")
-        .accessibilityValue(isGeneratingSummary ? "生成中" : summaryAIButtonTitle)
       }
 
       TextField("输入用于列表和搜索的文章摘要", text: $draft.summary, axis: .vertical)
@@ -303,6 +305,18 @@ struct WorkspaceTaskSEOSection: View {
   @State private var showsRelatedArticles = false
   @State private var showsFrontMatter = false
 
+  init(draft: ArticleDraft, store: WorkbenchStore) {
+    self.draft = draft
+    self.store = store
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    let expandsScreenshotPreview = ScreenshotDemoDataService.isEnabledFromEnvironment
+      && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .seoSocialPreview
+    _showsSocialPreview = State(initialValue: expandsScreenshotPreview)
+    _showsSocialCards = State(initialValue: expandsScreenshotPreview)
+    _showsPlatformReadiness = State(initialValue: false)
+#endif
+  }
+
   var body: some View {
     let report = store.seoReport(for: draft)
     let snapshot = store.seoSocialPreviewSnapshot(for: draft)
@@ -329,32 +343,34 @@ struct WorkspaceTaskSEOSection: View {
           .foregroundStyle(cachePresentation.needsManualRefresh ? WorkbenchTheme.warning : Color.secondary)
       }
 
-      InspectorSection("重点建议") {
-        Text(verbatim: "\(report.findings.count) 项")
-          .font(.caption2.monospacedDigit())
-          .foregroundStyle(.tertiary)
-        if report.findings.isEmpty {
-          Label("未发现 SEO 问题", systemImage: "checkmark.seal")
-            .font(.caption)
-            .foregroundStyle(WorkbenchTheme.success)
-        } else {
-          ForEach(report.findings.prefix(3)) { finding in
-            seoFindingRow(finding)
-          }
-
-          if report.findings.count > 3 {
-            DisclosureGroup(
-              "查看其余 \(report.findings.count - 3) 项",
-              isExpanded: $showsAllFindings
-            ) {
-              VStack(alignment: .leading, spacing: 7) {
-                ForEach(report.findings.dropFirst(3)) { finding in
-                  seoFindingRow(finding)
-                }
-              }
-              .padding(.top, 7)
+      if !prioritizesSocialPreviewForScreenshot {
+        InspectorSection("重点建议") {
+          Text(verbatim: "\(report.findings.count) 项")
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.tertiary)
+          if report.findings.isEmpty {
+            Label("未发现 SEO 问题", systemImage: "checkmark.seal")
+              .font(.caption)
+              .foregroundStyle(WorkbenchTheme.success)
+          } else {
+            ForEach(report.findings.prefix(3)) { finding in
+              seoFindingRow(finding)
             }
-            .font(.caption)
+
+            if report.findings.count > 3 {
+              DisclosureGroup(
+                "查看其余 \(report.findings.count - 3) 项",
+                isExpanded: $showsAllFindings
+              ) {
+                VStack(alignment: .leading, spacing: 7) {
+                  ForEach(report.findings.dropFirst(3)) { finding in
+                    seoFindingRow(finding)
+                  }
+                }
+                .padding(.top, 7)
+              }
+              .font(.caption)
+            }
           }
         }
       }
@@ -435,6 +451,15 @@ struct WorkspaceTaskSEOSection: View {
     }
   }
 
+  private var prioritizesSocialPreviewForScreenshot: Bool {
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    ScreenshotDemoDataService.isEnabledFromEnvironment
+      && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .seoSocialPreview
+#else
+    false
+#endif
+  }
+
   @ViewBuilder
   private var relatedArticleSuggestionSection: some View {
     let suggestions = store.relatedArticleSuggestions(for: draft, limit: 3)
@@ -456,7 +481,7 @@ struct WorkspaceTaskSEOSection: View {
                     .font(.caption.weight(.semibold))
                     .workbenchTruncatedIdentity(suggestion.targetTitle)
                   Text(suggestion.targetPath)
-                    .font(.caption2.monospaced())
+                    .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .workbenchTruncatedIdentity(suggestion.targetPath)
                 }
@@ -464,13 +489,13 @@ struct WorkspaceTaskSEOSection: View {
               }
 
               Text(suggestion.reason)
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
 
               if !suggestion.sharedLabels.isEmpty {
                 Text(suggestion.sharedLabels.joined(separator: "、"))
-                  .font(.caption2)
+                  .font(.caption)
                   .foregroundStyle(.tertiary)
                   .lineLimit(1)
               }
@@ -516,7 +541,7 @@ struct WorkspaceTaskSEOSection: View {
             .foregroundStyle(.secondary)
         }
       }
-      .font(.caption2)
+      .font(.caption)
       Text(card.title)
         .font(.caption.weight(.semibold))
         .workbenchTruncatedIdentity(card.title, lineLimit: 2)
@@ -568,11 +593,11 @@ struct WorkspaceTaskSEOSection: View {
               Text(item.kind.localizedDisplayName)
                 .font(.caption.weight(.semibold))
               Text(item.status.localizedDisplayName)
-                .font(.caption2.weight(.medium))
+                .font(.caption.weight(.medium))
                 .foregroundStyle(socialPreviewReadinessForeground(item.status))
             }
             Text(item.message)
-              .font(.caption2)
+              .font(.caption)
               .foregroundStyle(.secondary)
               .lineLimit(2)
           }
@@ -610,16 +635,16 @@ struct WorkspaceTaskSEOSection: View {
             .font(.caption)
             .workbenchTruncatedIdentity(item.title, lineLimit: 2)
           Text(item.body)
-            .font(.caption2)
+            .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(3)
           Text(item.urlText)
-            .font(.caption2.monospaced())
+            .font(.caption.monospaced())
             .foregroundStyle(.secondary)
             .workbenchTruncatedIdentity(item.urlText)
           if !item.hashtagText.isEmpty {
             Text(item.hashtagText)
-              .font(.caption2)
+              .font(.caption)
               .foregroundStyle(.secondary)
               .lineLimit(1)
           }
@@ -678,11 +703,11 @@ struct WorkspaceTaskSEOSection: View {
           }
 
           Text(link.purpose)
-            .font(.caption2)
+            .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(2)
           Text(link.urlText)
-            .font(.caption2.monospaced())
+            .font(.caption.monospaced())
             .foregroundStyle(.secondary)
             .workbenchTruncatedIdentity(link.urlText)
         }
@@ -811,12 +836,12 @@ struct WorkspaceTaskChecksSection: View {
           Label("\(summary.warningCount) 警告", systemImage: "exclamationmark.triangle")
             .foregroundStyle(summary.warningCount > 0 ? WorkbenchTheme.warning : Color.secondary)
         }
-        .font(.caption2)
+        .font(.caption)
 
         ForEach(summary.issues.prefix(3)) { issue in
           let issueTitle = "\(issue.severity.localizedDisplayName) · \(issue.title)"
           Text(issueTitle)
-            .font(.caption2)
+            .font(.caption)
             .foregroundStyle(.secondary)
             .workbenchTruncatedIdentity(issueTitle)
         }

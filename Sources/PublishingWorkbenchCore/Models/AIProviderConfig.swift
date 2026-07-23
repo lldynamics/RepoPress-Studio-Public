@@ -403,6 +403,38 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
     requestModel(resolving: normalizedModel)
   }
 
+  public var dataSharingDestination: String {
+    guard let url = URL(string: normalizedBaseURL),
+          let host = url.host?.lowercased() else {
+      return normalizedBaseURL
+    }
+    if let port = url.port {
+      return "\(host):\(port)"
+    }
+    return host
+  }
+
+  public var isLocalEndpoint: Bool {
+    guard let host = URL(string: normalizedBaseURL)?.host?.lowercased() else {
+      return false
+    }
+    return host == "localhost"
+      || host == "127.0.0.1"
+      || host == "::1"
+      || host.hasSuffix(".localhost")
+  }
+
+  public var dataSharingConsentIdentifier: String {
+    guard let components = URLComponents(string: normalizedBaseURL),
+          let scheme = components.scheme?.lowercased(),
+          let host = components.host?.lowercased() else {
+      return "\(preset.rawValue)|\(normalizedBaseURL.lowercased())"
+    }
+    let port = components.port.map(String.init) ?? ""
+    let path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    return "\(preset.rawValue)|\(scheme)|\(host)|\(port)|\(path)"
+  }
+
   public var usesDeepSeekAPI: Bool {
     switch preset {
     case .deepSeek:

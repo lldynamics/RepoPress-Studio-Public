@@ -26,7 +26,7 @@ struct WorkspaceTaskInspector: View {
       RepositoryContextInspectorView(store: store)
     case .library:
       EmptyView()
-    case .writing, .contentHealth, .images, .generalDrafts, .maintenance:
+    case .writing, .contentHealth, .images, .maintenance:
       ArticleInspectorTabs(
         selectedTab: $selectedTab,
         draft: $draft,
@@ -45,6 +45,13 @@ struct WorkspaceTaskInspector: View {
   }
 
   private func initialTab(for section: WorkspaceSection) -> ArticleInspectorTab {
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    if ScreenshotDemoDataService.isEnabledFromEnvironment,
+       ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .seoSocialPreview,
+       section == .writing {
+      return .seo
+    }
+#endif
     if prioritizesChecks && availableTabs.contains(.checks) {
       return .checks
     }
@@ -53,7 +60,7 @@ struct WorkspaceTaskInspector: View {
 
   private var availableTabs: [ArticleInspectorTab] {
     switch section {
-    case .writing, .generalDrafts, .maintenance:
+    case .writing, .maintenance:
       return [.metadata, .seo]
     case .contentHealth:
       return [.checks]
@@ -78,7 +85,7 @@ struct RepositoryContextInspectorView: View {
         Image(systemName: "arrow.left.arrow.right")
           .foregroundStyle(.secondary)
         VStack(alignment: .leading, spacing: 2) {
-          Text("同步 Inspector")
+          Text("仓库与发布 Inspector")
             .font(.headline)
           Text("只显示当前阻断与文件变更")
             .font(.caption)
@@ -101,7 +108,7 @@ struct RepositoryContextInspectorView: View {
     }
     .background(.bar)
     .accessibilityIdentifier("repository-context-inspector")
-    .accessibilityLabel("同步 Inspector")
+    .accessibilityLabel("仓库与发布 Inspector")
   }
 
   @ViewBuilder
@@ -147,12 +154,12 @@ struct RepositoryContextInspectorView: View {
               WorkbenchPathIdentity(path: file.path)
               Spacer()
               Text(file.status)
-                .font(.caption2.monospaced())
+                .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
             }
             if let lineDiff = file.lineDiff {
               Text(lineDiff)
-                .font(.caption2.monospaced())
+                .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
                 .lineLimit(5)
             }

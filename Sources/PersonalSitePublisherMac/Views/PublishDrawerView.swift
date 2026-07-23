@@ -3,52 +3,66 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct PublishDrawerView: View {
-  @ObservedObject var store: WorkbenchStore
+  @ObservedObject var publishingFacade: WorkbenchPublishingFeatureFacade
+  // 部分属性尚未迁移到 Facade，保留 store 访问，但去除 @ObservedObject 以避免全局不相关事件触发重绘
+  let store: WorkbenchStore
   @Binding var isPresented: Bool
   @State private var newBranchName = ""
   @State private var showAllCommits = false
   @State private var selectedStep: PublishDrawerFlowCard = .checks
   @State private var didManuallySelectStep = false
-  @State private var pendingOnlinePublishDraft: ArticleDraft?
+  @State private var isAllChangesPublishConfirmationPresented = false
+  @State private var reviewedAllChangesPaths: Set<String> = []
+  @State private var pendingSingleOnlinePublishDraft: ArticleDraft?
+  @State private var isAdvancedFlowExpanded = false
 
   var body: some View {
     drawerContent
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     .onAppear {
-      store.ensureEditableDraftSelected()
-      store.runPreflight()
-      if let draft = store.selectedDraft {
+      publishingFacade.ensureEditableDraftSelected()
+      publishingFacade.runPreflight()
+      if let draft = publishingFacade.selectedDraft {
         didManuallySelectStep = false
-        store.refreshPublishPreviewInBackground(for: draft)
+        publishingFacade.refreshPublishPreviewInBackground(for: draft)
+        store.refreshBatchPublishPlanInBackground()
         synchronizeRecommendedStep(for: draft)
       }
     }
-    .onChange(of: store.isPublishPreviewRefreshing) { wasRefreshing, isRefreshing in
-      guard wasRefreshing, !isRefreshing, let draft = store.selectedDraft else { return }
+    .onChange(of: publishingFacade.isPublishPreviewRefreshing) { wasRefreshing, isRefreshing in
+      guard wasRefreshing, !isRefreshing, let draft = publishingFacade.selectedDraft else { return }
       synchronizeRecommendedStep(for: draft)
     }
-    .onChange(of: store.selectedDraftID) { _, _ in
+    .onChange(of: publishingFacade.selectedDraftID) { _, _ in
       didManuallySelectStep = false
-      guard let draft = store.selectedDraft else { return }
+      guard let draft = publishingFacade.selectedDraft else { return }
       synchronizeRecommendedStep(for: draft)
     }
-    .sheet(item: $pendingOnlinePublishDraft) { draft in
-      onlinePublishConfirmation(draft: draft)
+    .sheet(isPresented: $isAllChangesPublishConfirmationPresented) {
+      allChangesOnlinePublishConfirmation
+    }
+    .sheet(item: $pendingSingleOnlinePublishDraft) { draft in
+      singleArticleOnlinePublishConfirmation(draft: draft)
     }
   }
 
   @ViewBuilder
   private var drawerContent: some View {
-    if let draft = store.selectedDraft {
+    if let draft = publishingFacade.selectedDraft {
       let issues = store.preflightIssues
       VStack(spacing: 0) {
         header(draft: draft)
         Divider()
-        publishFlowStepper(draft: draft, issues: issues)
+        ScrollView {
+          VStack(alignment: .leading, spacing: 14) {
+            publishDecisionSummary(draft: draft, issues: issues)
+            publishPrimaryActions(draft: draft, issues: issues)
+            advancedPublishOptions(draft: draft, issues: issues)
+          }
+          .padding(16)
+        }
         Divider()
-        publishStepContent(draft: draft, issues: issues)
-        Divider()
-        stepNavigation(draft: draft, issues: issues)
+        drawerFooter
       }
     } else {
       VStack(spacing: 12) {
@@ -75,30 +89,18 @@ struct PublishDrawerView: View {
         .font(.callout.weight(.medium))
         .workbenchTruncatedIdentity(draft.title)
 
-      let markdownPath = store.profile(for: draft).markdownPath(for: draft)
-      Text(markdownPath)
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
-        .workbenchTruncatedIdentity(markdownPath)
-
       Spacer()
 
-      if store.isPublishPreviewRefreshing {
+      if publishingFacade.isPublishPreviewRefreshing {
         ProgressView()
           .controlSize(.small)
           .accessibilityLabel("正在刷新发布预览")
       }
 
-      if let message = store.publishActionMessage {
-        Text(message)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-      }
-
       Button {
-        store.runPreflight()
-        store.refreshPublishPreviewInBackground(for: draft)
+        publishingFacade.runPreflight()
+        publishingFacade.refreshPublishPreviewInBackground(for: draft)
+        store.refreshBatchPublishPlanInBackground()
       } label: {
         Label("刷新", systemImage: "arrow.clockwise")
       }
@@ -109,7 +111,273 @@ struct PublishDrawerView: View {
     .padding(.vertical, 10)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("发布流程")
-    .accessibilityValue("\(draft.title)，\(store.profile(for: draft).markdownPath(for: draft))")
+    .accessibilityValue(draft.title)
+  }
+
+  private func publishDecisionSummary(
+    draft: ArticleDraft,
+    issues: [PreflightIssue]
+  ) -> some View {
+    let blocking = issues.filter { $0.severity == .error }
+    let warnings = issues.filter { $0.severity == .warning }
+    let changedCount = store.cachedLocalPublishPreview(for: draft)?.changedFileDiffs.count
+    let status: (title: String, detail: String, systemImage: String, color: Color)
+
+    if publishingFacade.isPublishPreviewRefreshing {
+      status = ("正在准备发布信息", "正在检查文章、文件变化和线上发布条件。", "arrow.clockwise", .secondary)
+    } else if !blocking.isEmpty {
+      status = ("还需处理 \(blocking.count) 个问题", "处理后即可保存到本地或发布上线。", "xmark.octagon", WorkbenchTheme.risk)
+    } else if changedCount == nil {
+      status = ("发布信息待刷新", "刷新后会显示可以执行的操作。", "clock.arrow.circlepath", .secondary)
+    } else if changedCount == 0 {
+      status = ("没有需要保存的文件变化", "仍可查看线上状态和高级发布选项。", "checkmark.circle", WorkbenchTheme.success)
+    } else {
+      status = ("可以选择下一步", "当前文章有 \(changedCount ?? 0) 个文件变化。", "checkmark.circle", WorkbenchTheme.success)
+    }
+
+    return PublishDrawerCard(title: "发布准备", systemImage: "checklist") {
+      HStack(alignment: .top, spacing: 10) {
+        Image(systemName: status.systemImage)
+          .foregroundStyle(status.color)
+          .font(.title3)
+          .frame(width: 24)
+        VStack(alignment: .leading, spacing: 3) {
+          Text(status.title)
+            .font(.headline)
+          Text(status.detail)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+      }
+
+      HStack(spacing: 8) {
+        PublishDrawerStat(
+          title: "文件变化",
+          value: changedCount.map(String.init) ?? "—",
+          systemImage: "doc.on.doc",
+          color: .secondary
+        )
+        PublishDrawerStat(
+          title: "需要处理",
+          value: "\(blocking.count)",
+          systemImage: "xmark.octagon",
+          color: blocking.isEmpty ? .secondary : WorkbenchTheme.risk
+        )
+        PublishDrawerStat(
+          title: "提醒",
+          value: "\(warnings.count)",
+          systemImage: "exclamationmark.triangle",
+          color: warnings.isEmpty ? .secondary : WorkbenchTheme.warning
+        )
+      }
+
+      ForEach(blocking.prefix(3)) { issue in
+        publishIssueRow(issue)
+      }
+
+      if !blocking.isEmpty || !warnings.isEmpty {
+        Button("查看全部检查") {
+          didManuallySelectStep = true
+          selectedStep = .checks
+          isAdvancedFlowExpanded = true
+        }
+        .buttonStyle(.link)
+        .accessibilityHint("展开高级选项并显示全部检查结果")
+      }
+    }
+  }
+
+  private func publishPrimaryActions(
+    draft: ArticleDraft,
+    issues: [PreflightIssue]
+  ) -> some View {
+    let blockingCount = issues.filter { $0.severity == .error }.count
+    let localReadiness = store.localPublishReadiness
+    let remotePreview = store.batchRemotePublishPreviewSnapshot
+    let batchPlan = store.batchPublishPlan
+    let canSaveLocally = blockingCount == 0
+      && localReadiness?.canWrite == true
+      && !store.isLocalRepositoryMutationRunning
+    let canPublishOnline = remotePreview?.canPublish == true
+      && batchPlan?.remotePublishableItems.isEmpty == false
+      && !store.isBatchPublishPlanRefreshing
+      && !store.isRemoteRepositoryPublishing
+
+    return PublishDrawerCard(title: "选择操作", systemImage: "cursorarrow.click.2") {
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 250, maximum: 420), spacing: 12)],
+        spacing: 12
+      ) {
+        publishActionChoice(
+          title: "保存到本地",
+          detail: "只更新站点文件，不提交到 Git，也不会上传到网站。",
+          status: localActionStatus(
+            blockingCount: blockingCount,
+            readiness: localReadiness
+          ),
+          systemImage: "folder.badge.plus",
+          tint: WorkbenchTheme.navigationSelection,
+          isEnabled: canSaveLocally,
+          isPrimary: false,
+          actionTitle: "保存到本地",
+          actionSystemImage: "square.and.arrow.down"
+        ) {
+          writeDraftToRepository(draft)
+        }
+
+        publishActionChoice(
+          title: "发布所有变更",
+          detail: "把当前站点中所有通过检查且有变化的文章合并为一次提交和推送；执行前会显示完整文件清单。",
+          status: batchOnlineActionStatus(
+            plan: batchPlan,
+            preview: remotePreview
+          ),
+          systemImage: "globe",
+          tint: WorkbenchTheme.success,
+          isEnabled: canPublishOnline,
+          isPrimary: true,
+          actionTitle: "发布所有变更…",
+          actionSystemImage: "paperplane.fill"
+        ) {
+          prepareAllChangesOnlinePublish()
+        }
+      }
+    }
+  }
+
+  private func publishActionChoice(
+    title: String,
+    detail: String,
+    status: String,
+    systemImage: String,
+    tint: Color,
+    isEnabled: Bool,
+    isPrimary: Bool,
+    actionTitle: String,
+    actionSystemImage: String,
+    action: @escaping () -> Void
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Image(systemName: systemImage)
+        .font(.title2)
+        .foregroundStyle(tint)
+        .accessibilityHidden(true)
+      Text(title)
+        .font(.headline)
+      Text(detail)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      Label(status, systemImage: isEnabled ? "checkmark.circle" : "info.circle")
+        .font(.caption)
+        .foregroundStyle(isEnabled ? tint : .secondary)
+
+      Spacer(minLength: 0)
+
+      if isPrimary {
+        Button(action: action) {
+          Label(actionTitle, systemImage: actionSystemImage)
+        }
+        .workbenchProminentActionStyle()
+        .keyboardShortcut(.defaultAction)
+        .disabled(!isEnabled)
+      } else {
+        Button(action: action) {
+          Label(actionTitle, systemImage: actionSystemImage)
+        }
+        .buttonStyle(.bordered)
+        .disabled(!isEnabled)
+      }
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
+    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .overlay {
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+        .stroke(tint.opacity(isEnabled ? 0.35 : 0.15), lineWidth: 1)
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(title)
+    .accessibilityValue(status)
+  }
+
+  private func localActionStatus(
+    blockingCount: Int,
+    readiness: LocalPublishReadiness?
+  ) -> String {
+    if blockingCount > 0 {
+      return "请先处理上方问题"
+    }
+    if store.isLocalRepositoryMutationRunning {
+      return "正在保存"
+    }
+    return readiness?.writeReadiness.localizedDisplayName ?? "正在准备"
+  }
+
+  private func batchOnlineActionStatus(
+    plan: BatchPublishPlan?,
+    preview: RemoteRepositoryPublishPreview?
+  ) -> String {
+    if store.isBatchPublishPlanRefreshing {
+      return "正在汇总全部变更"
+    }
+    if store.isRemoteRepositoryPublishing {
+      return "正在发布"
+    }
+    if let firstIssue = preview?.blockingIssues.first {
+      return firstIssue.title
+    }
+    guard let plan else {
+      return "正在准备"
+    }
+    let count = plan.remotePublishableItems.count
+    guard count > 0 else {
+      return "没有待发布变更"
+    }
+    return "待发布 \(count) 篇 · \(preview?.changedPaths.count ?? plan.changedFileCount) 个文件"
+  }
+
+  private func advancedPublishOptions(
+    draft: ArticleDraft,
+    issues: [PreflightIssue]
+  ) -> some View {
+    DisclosureGroup(isExpanded: $isAdvancedFlowExpanded) {
+      VStack(alignment: .leading, spacing: 12) {
+        publishFlowStepper(draft: draft, issues: issues)
+        publishStepContent(draft: draft, issues: issues)
+      }
+      .padding(.top, 10)
+    } label: {
+      VStack(alignment: .leading, spacing: 2) {
+        Label("检查、差异与高级选项", systemImage: "slider.horizontal.3")
+          .font(.headline)
+        Text("需要时再查看 Git 分支、提交、远端和部署详情")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .padding(14)
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+  }
+
+  private var drawerFooter: some View {
+    HStack(spacing: 12) {
+      Button("关闭") {
+        isPresented = false
+      }
+      .keyboardShortcut(.cancelAction)
+
+      if let message = store.publishActionMessage {
+        Text(message)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+      }
+
+      Spacer()
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 10)
   }
 
   private func publishFlowStepper(
@@ -160,26 +428,23 @@ struct PublishDrawerView: View {
 
   @ViewBuilder
   private func publishStepContent(draft: ArticleDraft, issues: [PreflightIssue]) -> some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 12) {
-        switch selectedStep {
-        case .checks:
-          checkResultsCard(issues: issues)
-        case .diff:
-          diffCard(draft: draft)
-        case .write:
-          commitMethodCard(draft: draft)
-          repositoryBranchCard
-          commitHistoryCard
-        case .remote:
-          remotePublishPreviewCard(draft: draft)
-          reviewDescriptionCard(draft: draft)
-          remotePublishProgressCard
-        case .deployment:
-          deploymentStatusCard(draft: draft)
-        }
+    VStack(alignment: .leading, spacing: 12) {
+      switch selectedStep {
+      case .checks:
+        checkResultsCard(issues: issues)
+      case .diff:
+        diffCard(draft: draft)
+      case .write:
+        commitMethodCard(draft: draft)
+        repositoryBranchCard
+        commitHistoryCard
+      case .remote:
+        remotePublishPreviewCard(draft: draft)
+        reviewDescriptionCard(draft: draft)
+        remotePublishProgressCard
+      case .deployment:
+        deploymentStatusCard(draft: draft)
       }
-      .padding(16)
     }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("\(selectedStep.title)步骤内容")
@@ -501,9 +766,9 @@ struct PublishDrawerView: View {
         .frame(width: 14)
       VStack(alignment: .leading, spacing: 2) {
         Text(issue.title)
-          .font(.caption.weight(.medium))
+          .font(.workbenchItemTitle)
         Text(issue.message)
-          .font(.caption2)
+          .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
@@ -552,7 +817,7 @@ struct PublishDrawerView: View {
       ?? "未识别"
     let currentBranchUpstream = branches.first(where: \.isCurrent)?.upstreamName
       ?? store.repositoryReport?.branchStatus?.upstreamName
-    let profile = store.activeProfile
+    let profile = publishingFacade.activeProfile
     let hasBranches = !branches.isEmpty
 
     return PublishDrawerCard(title: "分支管理", systemImage: "arrow.triangle.branch") {
@@ -580,7 +845,7 @@ struct PublishDrawerView: View {
 
       if hasBranches {
         Text("本地工作分支")
-          .font(.caption2)
+          .font(.caption)
           .foregroundStyle(.secondary)
         VStack(alignment: .leading, spacing: 5) {
           ForEach(Array(branches.prefix(6))) { branch in
@@ -591,7 +856,7 @@ struct PublishDrawerView: View {
               Spacer()
               if branch.isCurrent {
                 Label("当前", systemImage: "checkmark.circle.fill")
-                  .font(.caption2)
+                  .font(.caption)
                   .foregroundStyle(WorkbenchTheme.success)
               } else {
                 Button("切换") {
@@ -663,15 +928,15 @@ struct PublishDrawerView: View {
             VStack(alignment: .leading, spacing: 2) {
               HStack(alignment: .top, spacing: 6) {
                 Text(commit.shortSHA)
-                  .font(.caption2.monospaced())
+                  .font(.caption.monospaced())
                   .foregroundStyle(.secondary)
                 Text(commit.message)
-                  .font(.caption2.weight(.medium))
+                  .font(.caption.weight(.medium))
                   .workbenchTruncatedIdentity(commit.message)
                 Spacer(minLength: 0)
               }
               Text("\(commit.author) · \(commit.date.formatted(date: .abbreviated, time: .shortened))")
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             }
@@ -684,7 +949,7 @@ struct PublishDrawerView: View {
               showAllCommits.toggle()
             }
             .buttonStyle(.borderless)
-            .font(.caption2)
+            .font(.caption)
             .foregroundStyle(WorkbenchTheme.documentForeground)
             .padding(.top, 4)
             .accessibilityLabel(showAllCommits ? "收起提交历史" : "显示更多提交历史")
@@ -695,7 +960,7 @@ struct PublishDrawerView: View {
   }
 
   private func commitMethodCard(draft: ArticleDraft) -> some View {
-    let profile = store.profile(for: draft)
+    let profile = publishingFacade.profile(for: draft)
     let mode = store.preferredRemoteRepositoryPublishMode(for: profile)
     let readiness = store.localPublishReadiness
 
@@ -796,7 +1061,7 @@ struct PublishDrawerView: View {
       } else {
         let changedPaths = preview.changedPaths.prefix(3).joined(separator: "\n")
         Text(changedPaths)
-          .font(.caption2.monospaced())
+          .font(.caption.monospaced())
           .foregroundStyle(.secondary)
           .workbenchTruncatedIdentity(changedPaths, lineLimit: 3)
       }
@@ -813,7 +1078,7 @@ struct PublishDrawerView: View {
         .accessibilityLabel("检查仓库访问令牌权限")
 
         Button {
-          pendingOnlinePublishDraft = draft
+          pendingSingleOnlinePublishDraft = draft
         } label: {
           Label("审阅并发布…", systemImage: preview.mode == .directCommit ? "arrow.up.circle" : "arrow.triangle.pull")
         }
@@ -855,7 +1120,7 @@ struct PublishDrawerView: View {
         if let progressValue = progress.progress {
           ProgressView(value: progressValue) {
             Text("\(Int(progressValue * 100))%")
-              .font(.caption2)
+              .font(.caption)
               .foregroundStyle(.secondary)
           }
           .progressViewStyle(.linear)
@@ -872,7 +1137,7 @@ struct PublishDrawerView: View {
         }
         if let filePath = progress.filePath {
           Text(filePath)
-            .font(.caption2.monospaced())
+            .font(.caption.monospaced())
             .foregroundStyle(.secondary)
             .workbenchTruncatedIdentity(filePath, lineLimit: 2)
         }
@@ -972,51 +1237,80 @@ struct PublishDrawerView: View {
   }
 
   private func writeDraftToRepository(_ draft: ArticleDraft) {
-    let currentSection = store.selectedSection
-    _ = store.focusDraft(draft.id)
-    store.refreshPublishPreviewInBackground(for: draft)
+    let currentSection = publishingFacade.selectedSection
+    _ = publishingFacade.focusDraft(draft.id)
+    publishingFacade.refreshPublishPreviewInBackground(for: draft)
     Task {
       await store.writeSelectedDraftToLocalRepository()
-      store.selectSection(currentSection)
-      store.refreshPublishPreviewInBackground(for: draft)
+      publishingFacade.selectSection(currentSection)
+      publishingFacade.refreshPublishPreviewInBackground(for: draft)
     }
   }
 
   private func commitDraftUsingPreferredStrategy(_ draft: ArticleDraft) {
-    let currentSection = store.selectedSection
-    _ = store.focusDraft(draft.id)
-    store.refreshPublishPreviewInBackground(for: draft)
+    let currentSection = publishingFacade.selectedSection
+    _ = publishingFacade.focusDraft(draft.id)
+    publishingFacade.refreshPublishPreviewInBackground(for: draft)
     Task {
       await store.commitSelectedDraftUsingPreferredStrategy()
+      publishingFacade.selectSection(currentSection)
+      publishingFacade.refreshPublishPreviewInBackground(for: draft)
     }
-    store.selectSection(currentSection)
-    store.refreshPublishPreviewInBackground(for: draft)
   }
 
-  private func publishDraftOnline(_ draft: ArticleDraft) {
-    let currentSection = store.selectedSection
-    _ = store.focusDraft(draft.id)
-    store.refreshPublishPreviewInBackground(for: draft)
+  private func prepareAllChangesOnlinePublish() {
+    Task {
+      await store.refreshBatchPublishPlanAsync()
+      guard let preview = store.batchRemotePublishPreviewSnapshot,
+            preview.canPublish,
+            store.batchPublishPlan?.remotePublishableItems.isEmpty == false else {
+        return
+      }
+      reviewedAllChangesPaths = Set(preview.changedPaths)
+      isAllChangesPublishConfirmationPresented = true
+    }
+  }
+
+  private func publishAllChangesOnline() {
+    let currentSection = publishingFacade.selectedSection
+    Task {
+      await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy(
+        expectedChangedPaths: reviewedAllChangesPaths
+      )
+      publishingFacade.selectSection(currentSection)
+      store.refreshBatchPublishPlanInBackground()
+      if let draft = publishingFacade.selectedDraft {
+        publishingFacade.refreshPublishPreviewInBackground(for: draft)
+      }
+    }
+  }
+
+  private func publishSingleArticleOnline(_ draft: ArticleDraft) {
+    let currentSection = publishingFacade.selectedSection
+    _ = publishingFacade.focusDraft(draft.id)
     Task {
       await store.publishSelectedDraftOnlineUsingPreferredStrategy()
-      store.selectSection(currentSection)
-      store.refreshPublishPreviewInBackground(for: draft)
+      publishingFacade.selectSection(currentSection)
+      publishingFacade.refreshPublishPreviewInBackground(for: draft)
+      store.refreshBatchPublishPlanInBackground()
     }
   }
 
   @ViewBuilder
-  private func onlinePublishConfirmation(draft: ArticleDraft) -> some View {
-    if let preview = store.cachedRemotePublishPreview(for: draft) {
+  private var allChangesOnlinePublishConfirmation: some View {
+    if let preview = store.batchRemotePublishPreviewSnapshot,
+       let plan = store.batchPublishPlan {
       RemotePublishConfirmationView(
-        draftTitle: draft.title,
+        targetLabel: "发布范围",
+        targetTitle: "全部待发布变更（\(plan.remotePublishableItems.count) 篇文章）",
         preview: preview,
         isPublishing: store.isRemoteRepositoryPublishing,
         cancelAction: {
-          pendingOnlinePublishDraft = nil
+          isAllChangesPublishConfirmationPresented = false
         },
         confirmAction: {
-          pendingOnlinePublishDraft = nil
-          publishDraftOnline(draft)
+          isAllChangesPublishConfirmationPresented = false
+          publishAllChangesOnline()
         }
       )
     } else {
@@ -1029,7 +1323,41 @@ struct PublishDrawerView: View {
         Text("请关闭确认页，刷新发布快照后重新审阅。")
           .foregroundStyle(.secondary)
         Button("关闭") {
-          pendingOnlinePublishDraft = nil
+          isAllChangesPublishConfirmationPresented = false
+        }
+      }
+      .frame(minWidth: 420, minHeight: 260)
+      .padding(24)
+    }
+  }
+
+  @ViewBuilder
+  private func singleArticleOnlinePublishConfirmation(draft: ArticleDraft) -> some View {
+    if let preview = store.cachedRemotePublishPreview(for: draft) {
+      RemotePublishConfirmationView(
+        targetLabel: "文章",
+        targetTitle: draft.title,
+        preview: preview,
+        isPublishing: store.isRemoteRepositoryPublishing,
+        cancelAction: {
+          pendingSingleOnlinePublishDraft = nil
+        },
+        confirmAction: {
+          pendingSingleOnlinePublishDraft = nil
+          publishSingleArticleOnline(draft)
+        }
+      )
+    } else {
+      VStack(spacing: 12) {
+        Image(systemName: "clock.arrow.circlepath")
+          .font(.system(size: 28))
+          .foregroundStyle(.secondary)
+        Text("发布预览已失效")
+          .font(.headline)
+        Text("请关闭确认页，刷新发布快照后重新审阅。")
+          .foregroundStyle(.secondary)
+        Button("关闭") {
+          pendingSingleOnlinePublishDraft = nil
         }
       }
       .frame(minWidth: 420, minHeight: 260)
@@ -1041,17 +1369,17 @@ struct PublishDrawerView: View {
   private func createAndSwitchBranch() async {
     let branchName = newBranchName
     await store.createAndSwitchActiveProfileRepositoryBranch(name: branchName)
-    if store.activeProfile.branch == branchName.trimmedForPublishing {
+    if publishingFacade.activeProfile.branch == branchName.trimmedForPublishing {
       newBranchName = ""
     }
   }
 
   @MainActor
   private func checkRepositoryTokenAccess(for draft: ArticleDraft) async {
-    let currentSection = store.selectedSection
-    _ = store.focusDraft(draft.id)
+    let currentSection = publishingFacade.selectedSection
+    _ = publishingFacade.focusDraft(draft.id)
     await store.checkRepositoryTokenAccess()
-    store.selectSection(currentSection)
+    publishingFacade.selectSection(currentSection)
   }
 
   private func latestReleaseRecord(for draft: ArticleDraft) -> ReleaseRecord? {

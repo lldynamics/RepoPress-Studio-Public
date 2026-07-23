@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let logger = Logger(subsystem: "com.repopress", category: "DraftFullTextSavedQueryService")
 
 public enum DraftFullTextSearchField: String, CaseIterable, Hashable, Sendable {
   case title
@@ -304,15 +307,23 @@ public enum DraftFullTextSavedQueryService {
   public static func encode(_ queries: [DraftFullTextSavedQuery]) -> String {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
-    guard let data = try? encoder.encode(Array(queries.prefix(maximumCount))) else {
+    let data: Data
+    do {
+      data = try encoder.encode(Array(queries.prefix(maximumCount)))
+    } catch {
+      logger.warning("无法序列化查询历史: \(error.localizedDescription, privacy: .public)")
       return ""
     }
     return String(data: data, encoding: .utf8) ?? ""
   }
 
   public static func decode(_ value: String) -> [DraftFullTextSavedQuery] {
-    guard let data = value.data(using: .utf8),
-          let decoded = try? JSONDecoder().decode([DraftFullTextSavedQuery].self, from: data) else {
+    guard let data = value.data(using: .utf8) else { return [] }
+    let decoded: [DraftFullTextSavedQuery]
+    do {
+      decoded = try JSONDecoder().decode([DraftFullTextSavedQuery].self, from: data)
+    } catch {
+      logger.warning("无法反序列化查询历史: \(error.localizedDescription, privacy: .public)")
       return []
     }
     return Array(decoded.filter { !$0.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }

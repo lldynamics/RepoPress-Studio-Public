@@ -445,6 +445,105 @@ final class LocalContentImportServiceTests: XCTestCase {
     XCTAssertEqual(updatedDraft.bodyMarkdown, "Updated body")
   }
 
+  func testMissingDraftDiscoveryAddsExternalPublicArticleWithoutOverwritingExistingDraft() async throws {
+    let rootURL = try temporaryDirectory()
+    let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    try """
+    ---
+    title: "Repository Existing"
+    slug: existing
+    ---
+
+    Repository body.
+    """.write(
+      to: postsURL.appendingPathComponent("existing.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.contentRoot = "content"
+    store.updateActiveProfile(profile)
+    let locallyEdited = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Keep Local Edit",
+      bodyMarkdown: "Locally edited body.",
+      repositoryPath: "content/posts/existing.md"
+    )
+    store.setDrafts([locallyEdited])
+
+    let initialInsertedCount = await store.importMissingDraftsFromLocalRepository()
+    store.setDraftListContentScope(.general)
+
+    try """
+    ---
+    title: "Written Elsewhere"
+    slug: written-elsewhere
+    ---
+
+    This article was created in another editor.
+    """.write(
+      to: postsURL.appendingPathComponent("written-elsewhere.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    let insertedCount = await store.importMissingDraftsFromLocalRepository()
+    let repeatedInsertedCount = await store.importMissingDraftsFromLocalRepository()
+
+    XCTAssertEqual(initialInsertedCount, 0)
+    XCTAssertEqual(insertedCount, 1)
+    XCTAssertEqual(repeatedInsertedCount, 0)
+    XCTAssertEqual(store.drafts.count, 2)
+    XCTAssertEqual(store.drafts.first { $0.repositoryPath == "content/posts/existing.md" }?.title, "Keep Local Edit")
+    XCTAssertEqual(store.drafts.first { $0.repositoryPath == "content/posts/existing.md" }?.bodyMarkdown, "Locally edited body.")
+    let externallyCreatedDraft = try XCTUnwrap(
+      store.drafts.first { $0.repositoryPath == "content/posts/written-elsewhere.md" }
+    )
+    XCTAssertEqual(externallyCreatedDraft.title, "Written Elsewhere")
+    XCTAssertEqual(store.draftListContentScope, .currentSite)
+    XCTAssertEqual(store.selectedDraftID, externallyCreatedDraft.id)
+    XCTAssertTrue(store.writingDrafts.contains { $0.id == externallyCreatedDraft.id })
+    XCTAssertEqual(store.publishActionMessage, "已发现并加入本地列表 1 篇外部新文章。")
+  }
+
+  func testRepositoryScanImportsExternallyCreatedArticleIntoWritingList() async throws {
+    let rootURL = try temporaryDirectory()
+    let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    try """
+    ---
+    title: "Found During Scan"
+    slug: found-during-scan
+    ---
+
+    Created outside the workbench.
+    """.write(
+      to: postsURL.appendingPathComponent("found-during-scan.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.contentRoot = "content"
+    store.updateActiveProfile(profile)
+    store.setDraftListContentScope(.general)
+
+    await store.scanRepositoryAsync()
+
+    let importedDraft = try XCTUnwrap(
+      store.writingDrafts.first { $0.repositoryPath == "content/posts/found-during-scan.md" }
+    )
+    XCTAssertEqual(importedDraft.title, "Found During Scan")
+    XCTAssertEqual(store.draftListContentScope, .currentSite)
+    XCTAssertEqual(store.selectedDraftID, importedDraft.id)
+  }
+
   func testMissingPrivateBackfillAddsOnlyNewPrivateDraftsWithoutOverwriting() async throws {
     let rootURL = try temporaryDirectory()
     try FileManager.default.createDirectory(

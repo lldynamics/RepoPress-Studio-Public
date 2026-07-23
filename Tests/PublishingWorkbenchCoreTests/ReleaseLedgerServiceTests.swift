@@ -329,6 +329,100 @@ final class ReleaseLedgerServiceTests: XCTestCase {
     XCTAssertTrue(ledger.actionItems.contains { $0.kind == .keepRollbackReady && $0.priority == .low })
   }
 
+  func testReleaseLedgerReturnsEveryActionItemBeyondTwelveInStablePriorityOrder() {
+    let profileID = UUID()
+    let baseTimestamp = 1_900_000_000.0
+
+    let highPriorityRecords = (0..<3).map { index in
+      ReleaseRecord(
+        id: UUID(),
+        kind: .remoteDirectCommit,
+        title: "失败部署 \(index)",
+        summary: "GitHub · main",
+        siteProfileID: profileID,
+        draftTitle: "高优先级文章 \(index)",
+        changedPaths: ["content/posts/high-\(index).md"],
+        branchName: "main",
+        commitSHA: "high-\(index)",
+        createdAt: Date(timeIntervalSince1970: baseTimestamp + Double(index))
+      )
+    }
+    let mediumPriorityRecords = (0..<10).map { index in
+      ReleaseRecord(
+        id: UUID(),
+        kind: .localWrite,
+        title: "本地写入 \(index)",
+        summary: "已写入 1 个文件",
+        siteProfileID: profileID,
+        draftTitle: "中优先级文章 \(index)",
+        changedPaths: ["content/posts/medium-\(index).md"],
+        createdAt: Date(timeIntervalSince1970: baseTimestamp + 100 + Double(index))
+      )
+    }
+    let lowPriorityRecords = (0..<2).map { index in
+      ReleaseRecord(
+        id: UUID(),
+        kind: .remoteDirectCommit,
+        title: "成功部署 \(index)",
+        summary: "GitHub · main",
+        siteProfileID: profileID,
+        draftTitle: "低优先级文章 \(index)",
+        changedPaths: ["content/posts/low-\(index).md"],
+        branchName: "main",
+        commitSHA: "low-\(index)",
+        createdAt: Date(timeIntervalSince1970: baseTimestamp + 200 + Double(index))
+      )
+    }
+
+    var snapshots: [UUID: DeploymentStatusSnapshot] = [:]
+    for record in highPriorityRecords {
+      snapshots[record.id] = DeploymentStatusSnapshot(
+        profileID: profileID,
+        releaseRecordID: record.id,
+        provider: .githubPages,
+        level: .failed,
+        title: "GitHub Pages · 失败",
+        message: "Actions 失败。",
+        siteURLText: "https://example.com",
+        signals: []
+      )
+    }
+    for record in lowPriorityRecords {
+      snapshots[record.id] = DeploymentStatusSnapshot(
+        profileID: profileID,
+        releaseRecordID: record.id,
+        provider: .githubPages,
+        level: .success,
+        title: "GitHub Pages · 正常",
+        message: "站点可访问。",
+        siteURLText: "https://example.com",
+        signals: []
+      )
+    }
+
+    let records = Array(
+      (mediumPriorityRecords + lowPriorityRecords + highPriorityRecords).reversed()
+    )
+    let ledger = ReleaseLedgerService().ledger(
+      releaseRecords: records,
+      deploymentStatusSnapshots: snapshots
+    )
+    let expectedRecordIDs =
+      highPriorityRecords.reversed().map(\.id)
+      + mediumPriorityRecords.reversed().map(\.id)
+      + lowPriorityRecords.reversed().map(\.id)
+
+    XCTAssertEqual(ledger.actionItems.count, 15)
+    XCTAssertEqual(ledger.summary.actionItemCount, 15)
+    XCTAssertEqual(ledger.actionItems.map(\.recordID), expectedRecordIDs)
+    XCTAssertEqual(ledger.actionItems.map(\.priority), [
+      .high, .high, .high,
+      .medium, .medium, .medium, .medium, .medium,
+      .medium, .medium, .medium, .medium, .medium,
+      .low, .low,
+    ])
+  }
+
   func testDeploymentOverviewHighlightsPendingAndActionableSignals() {
     let profileID = UUID()
     let pendingRecord = ReleaseRecord(

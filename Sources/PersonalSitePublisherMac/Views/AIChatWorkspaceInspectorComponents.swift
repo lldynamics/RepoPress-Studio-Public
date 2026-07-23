@@ -148,7 +148,7 @@ struct AIChatContextInspectorView: View {
         Text("需要配置 AI API Key")
           .font(.callout.weight(.medium))
         Text("密钥仅保存在系统钥匙串中。")
-          .font(.caption)
+          .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
       }
 
@@ -158,7 +158,7 @@ struct AIChatContextInspectorView: View {
         requestedSettingsTabID = SettingsTab.ai.id
         openSettings()
       }
-      .controlSize(.small)
+      .controlSize(.regular)
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
@@ -339,7 +339,7 @@ struct AIChatContextInspectorView: View {
       if let status = ai.chatMessage?.nilIfEmpty {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Text(status)
-            .font(.caption)
+            .font(.workbenchSupporting)
             .foregroundStyle(.secondary)
             .lineLimit(4)
             .accessibilityLabel("AI 状态")
@@ -351,14 +351,14 @@ struct AIChatContextInspectorView: View {
               Button(String(localized: "重新生成")) {
                 isPartialRetryConfirmationPresented = true
               }
-              .controlSize(.small)
+              .controlSize(.regular)
               .disabled(isSending)
               .help(String(localized: "部分回复已保留；确认后才会重新发起请求"))
             } else {
               Button(String(localized: "手动重试")) {
                 retryLastFailedReply(confirmingPossibleDuplicateCharge: false)
               }
-              .controlSize(.small)
+              .controlSize(.regular)
               .disabled(isSending)
               .help(String(localized: "由你确认后重新发起上一次请求"))
             }
@@ -379,7 +379,7 @@ struct AIChatContextInspectorView: View {
 
         HStack(spacing: 8) {
           Text("↩ 换行 · ⌘↩ 发送")
-            .font(.caption2)
+            .font(.caption)
             .foregroundStyle(.tertiary)
             .accessibilityHidden(true)
 
@@ -491,6 +491,8 @@ struct AIChatContextInspectorView: View {
           )
         },
         isChatRunning: ai.isChatRunning,
+        isAutomationRunning: ai.isAutomationRunning,
+        automationRunRecords: ai.automationRunRecords,
         latestReply: ai.chatDraftID == draft.id
           ? ai.chatMessages.last(where: { $0.role == .assistant })
           : nil
@@ -519,6 +521,29 @@ struct AIChatContextInspectorView: View {
       },
       openCitation: { citation in
         _ = ai.openKnowledgeCitation(citation)
+      },
+      executeAutomationPlan: { messageID in
+        Task {
+          _ = await ai.executeAutomationPlan(messageID: messageID)
+        }
+      },
+      executeAutomationStep: { messageID, stepID in
+        Task {
+          _ = await ai.executeAutomationPlan(
+            messageID: messageID,
+            onlyStepID: stepID,
+            confirmedStepIDs: Set([stepID])
+          )
+        }
+      },
+      previewAutomationStep: { messageID, stepID in
+        ai.automationDraftPreview(messageID: messageID, stepID: stepID)
+      },
+      cancelAutomationPlan: { messageID in
+        ai.cancelAutomationPlan(messageID: messageID)
+      },
+      rollbackAutomationRun: { recordID in
+        _ = ai.rollbackAutomationRun(recordID)
       }
     )
   }

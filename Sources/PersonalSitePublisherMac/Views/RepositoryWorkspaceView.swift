@@ -6,7 +6,9 @@ struct RepositoryWorkspaceView: View {
   @ObservedObject var store: WorkbenchStore
   @Binding var stage: RepositoryContextStage
   @ObservedObject var sourceSession: RepositoryHTMLSourceSession
+  @Environment(\.openSettings) var openSettings
   @FocusedValue(\.publishDrawerCommandAction) var publishDrawerCommandAction
+  @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
   @State var isContentMigrationPresented = false
   @State var isRepositoryCreationConfirmationPresented = false
   @State var createsPrivateRepository = true
@@ -15,17 +17,18 @@ struct RepositoryWorkspaceView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      repositoryStageNavigation
-      Divider()
-
-      Group {
-        if stage == .history {
-          ReleaseHistoryDetailView(store: store)
-        } else if stage == .source {
-          RepositoryHTMLSourceWorkspaceView(store: store, session: sourceSession)
-        } else {
-          repositoryContent
+      if stage == .history {
+        ReleaseHistoryDetailView(store: store)
+      } else {
+        Group {
+          if stage == .source {
+            RepositoryHTMLSourceWorkspaceView(store: store, session: sourceSession)
+          } else {
+            repositoryContent
+          }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("repository-workspace")
       }
     }
     .sheet(isPresented: $isContentMigrationPresented) {
@@ -60,63 +63,45 @@ struct RepositoryWorkspaceView: View {
     }
   }
 
-  private var repositoryStageNavigation: some View {
-    HStack(spacing: 12) {
-      Label("仓库流程", systemImage: "arrow.triangle.2.circlepath")
-        .font(.callout.weight(.semibold))
-
-      Picker("仓库阶段", selection: $stage) {
-        ForEach(RepositoryContextStage.allCases) { item in
-          Text(item.title)
-            .tag(item)
-            .disabled(item.requiresRepository && !hasSelectedRepository)
+  private var repositoryContent: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 5) {
+          Text(repositoryPageTitle)
+            .font(.workbenchPageTitle)
+            .accessibilityAddTraits(.isHeader)
+          Text(repositoryPageSubtitle)
+            .font(.workbenchPageSubtitle)
+            .foregroundStyle(.secondary)
         }
-      }
-      .pickerStyle(.segmented)
-      .tint(WorkbenchTheme.navigationSelection)
-      .labelsHidden()
-      .frame(maxWidth: 620)
-      .accessibilityLabel("仓库阶段")
-      .accessibilityValue(stage.accessibilityTitle)
 
-      Spacer(minLength: 0)
+        repositoryPrimaryActions
+        repositoryWorkflowBanner
+        repositoryPrimaryContent
+      }
+      .workbenchOperationalPageLayout()
     }
-    .padding(.horizontal, 20)
-    .padding(.vertical, 10)
-    .background(.bar)
   }
 
-  private var repositoryContent: some View {
-    GeometryReader { geometry in
-      ScrollView {
-        VStack(alignment: .leading, spacing: 18) {
-          HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 4) {
-              Text("本地仓库")
-                .font(.title2.weight(.semibold))
-              Text("只做文章发布需要的 Git：路径规则、diff 摘要和发布准备。")
-                .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if hasSelectedRepository {
-              repositoryActionsMenu
-            }
-          }
+  private var repositoryPageTitle: LocalizedStringKey {
+    switch stage {
+    case .changes:
+      return "文件变更"
+    case .checks:
+      return "仓库工具"
+    case .overview, .source, .history:
+      return "仓库与发布"
+    }
+  }
 
-          repositoryWorkflowBanner
-
-          WorkbenchOperationalSplitLayout(
-            usesSplitLayout: WorkbenchPageMetrics.usesOperationalSplit(for: geometry.size.width)
-          ) {
-            VStack(alignment: .leading, spacing: 16) {
-              repositoryPrimaryContent
-            }
-          } context: {
-            repositoryOperationalContextPanel
-          }
-        }
-        .workbenchOperationalPageLayout()
-      }
+  private var repositoryPageSubtitle: LocalizedStringKey {
+    switch stage {
+    case .changes:
+      return "先处理网站更新，再审阅这台 Mac 上的变化，确认后进入统一发布流程。"
+    case .checks:
+      return "自动检查、本地预览、同步建议和路径规则始终可见。"
+    case .overview, .source, .history:
+      return "先确认状态和问题，再检查文件变化，最后从统一发布流程执行。"
     }
   }
 
@@ -129,117 +114,7 @@ struct RepositoryWorkspaceView: View {
         repositoryScanRequiredState
       }
     } else {
-      repositorySelectionEmptyState
-    }
-  }
-
-  private var repositoryOperationalContextPanel: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Label("同步 Inspector", systemImage: "sidebar.right")
-        .font(.headline)
-
-      Label {
-        Text(stage.title)
-          .font(.callout.weight(.semibold))
-      } icon: {
-        Image(systemName: repositoryStageSystemImage)
-          .foregroundStyle(WorkbenchTheme.navigationSelection)
-      }
-
-      if hasSelectedRepository {
-        Text(store.activeProfile.localRepositoryRootPath)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-          .lineLimit(3)
-          .textSelection(.enabled)
-      }
-
-      Divider()
-
-      if !hasSelectedRepository {
-        Label("尚未选择本地仓库", systemImage: "externaldrive.badge.questionmark")
-          .foregroundStyle(WorkbenchTheme.warning)
-      } else if let issue = currentRepositoryIssue {
-        VStack(alignment: .leading, spacing: 5) {
-          SeverityBadge(severity: issue.severity)
-          Text(issue.title)
-            .font(.callout.weight(.medium))
-          Text(issue.message)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-      } else {
-        Label("没有仓库或发布阻断", systemImage: "checkmark.circle")
-          .foregroundStyle(WorkbenchTheme.success)
-      }
-
-      Divider()
-
-      InspectorStatRow(
-        title: "文件变更",
-        value: "\(store.repositoryReport?.changedFiles.count ?? 0)",
-        systemImage: "doc.badge.ellipsis"
-      )
-      InspectorStatRow(
-        title: "远端变更",
-        value: "\(store.repositoryReport?.remoteChangedFiles.count ?? 0)",
-        systemImage: "arrow.down.doc"
-      )
-      InspectorStatRow(
-        title: "检查结果",
-        value: "\(store.repositoryReport?.preflightIssues.count ?? 0)",
-        systemImage: "checklist"
-      )
-
-      Divider()
-
-      if !hasSelectedRepository {
-        Button(action: chooseRepository) {
-          Label("选择仓库", systemImage: "folder.badge.plus")
-        }
-        .workbenchProminentActionStyle()
-      } else if store.repository.scanState.isScanning {
-        Button(action: store.repository.cancelScan) {
-          Label("取消扫描", systemImage: "xmark.circle")
-        }
-        .buttonStyle(.bordered)
-      } else {
-        Button(action: scanRepository) {
-          Label("重新扫描", systemImage: "arrow.clockwise")
-        }
-        .buttonStyle(.bordered)
-      }
-    }
-    .padding(14)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      WorkbenchBackgroundStyle.card,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
-    )
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("同步 Inspector")
-  }
-
-  private var currentRepositoryIssue: PreflightIssue? {
-    let issues = store.repositoryReport?.preflightIssues ?? []
-    return issues.first(where: { $0.severity == .error })
-      ?? issues.first(where: { $0.severity == .warning })
-  }
-
-  private var repositoryStageSystemImage: String {
-    switch stage {
-    case .overview:
-      "rectangle.grid.2x2"
-    case .changes:
-      "arrow.left.arrow.right"
-    case .automation:
-      "checkmark.shield"
-    case .preview:
-      "play.rectangle"
-    case .source:
-      "chevron.left.forwardslash.chevron.right"
-    case .history:
-      "clock.arrow.circlepath"
+      repositoryGettingStartedGuide
     }
   }
 
