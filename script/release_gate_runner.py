@@ -256,6 +256,9 @@ def unchecked_checklist_count() -> int:
 
 
 def configure_swift_environment() -> None:
+    runtime_home = os.environ.get("PERSONAL_SITE_PUBLISHER_RUNTIME_HOME") or os.environ.get("HOME")
+    if runtime_home:
+        os.environ.setdefault("PERSONAL_SITE_PUBLISHER_RUNTIME_HOME", runtime_home)
     home = Path(os.environ.get("SWIFT_BUILD_HOME", "/private/tmp/personal-site-publisher-swift-home"))
     os.environ["HOME"] = str(home)
     os.environ.setdefault("XDG_CACHE_HOME", str(home / ".cache"))
@@ -305,6 +308,10 @@ def main() -> int:
     if args.strict and args.profile:
         parser.error("--strict and --profile are mutually exclusive")
     strict_profile = args.profile or ("all" if args.strict else None)
+    if strict_profile:
+        os.environ["RELEASE_GATE_PROFILE"] = strict_profile
+    else:
+        os.environ.pop("RELEASE_GATE_PROFILE", None)
     if strict_profile and (args.quick or args.tooling or args.check):
         parser.error("strict release profiles cannot be combined with --quick, --tooling, or --check")
     if sum(bool(value) for value in (args.quick, args.tooling, args.check, strict_profile)) > 1:

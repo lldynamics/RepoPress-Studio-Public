@@ -129,6 +129,22 @@ echo "${0##*/}: ok"
 STUB
 done
 
+cat >"$FIXTURE_ROOT/script/check_ui_runtime.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${PROFILE_LOG:-}" ]]; then
+  printf 'ui-runtime\t%s\t%s\n' "${RELEASE_GATE_PROFILE:-missing}" "${1:-}" >>"$PROFILE_LOG"
+fi
+STUB
+
+cat >"$FIXTURE_ROOT/script/check_accessibility_runtime.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${PROFILE_LOG:-}" ]]; then
+  printf 'accessibility-runtime\t%s\n' "${RELEASE_GATE_PROFILE:-missing}" >>"$PROFILE_LOG"
+fi
+STUB
+
 cat >"$FIXTURE_ROOT/script/check_app_store_archive_readiness.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -193,9 +209,20 @@ cat >"$FIXTURE_ROOT/APP_STORE_CHECKLIST.md" <<'MD'
 - [ ] Verify external evidence.
 MD
 
-if output="$(PATH="$FIXTURE_ROOT/bin:$PATH" bash "$FIXTURE_ROOT/script/check_release_gate.sh" --strict 2>&1)"; then
+if output="$(
+  PROFILE_LOG="$TMP_DIR/profile.log" \
+    PATH="$FIXTURE_ROOT/bin:$PATH" \
+    bash "$FIXTURE_ROOT/script/check_release_gate.sh" --strict 2>&1
+)"; then
   fail "strict release gate fixture unexpectedly passed"
 fi
+
+grep -q $'^ui-runtime\tall\t--package-only$' "$TMP_DIR/profile.log" \
+  || fail "strict gate did not propagate the all profile to packaged UI verification"
+grep -q $'^ui-runtime\tall\t--launch$' "$TMP_DIR/profile.log" \
+  || fail "strict gate did not propagate the all profile to launch verification"
+grep -q $'^accessibility-runtime\tall$' "$TMP_DIR/profile.log" \
+  || fail "strict gate did not propagate the all profile to accessibility verification"
 
 grep -q "release gate: strict mode has 4 blocker(s):" <<<"$output" \
   || fail "strict output did not summarize all blockers"
