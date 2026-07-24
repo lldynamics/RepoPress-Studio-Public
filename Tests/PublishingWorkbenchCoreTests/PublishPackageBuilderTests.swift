@@ -62,6 +62,81 @@ final class PublishPackageBuilderTests: XCTestCase {
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
 
     XCTAssertNil(package.markdownFile?.expectedRemoteSHA)
+    XCTAssertEqual(package.files.count, 2)
+    XCTAssertEqual(package.files[0].operation, .upsert)
+    XCTAssertEqual(package.files[0].repositoryPath, "content/posts/moved-draft.md")
+    XCTAssertEqual(package.files[1].operation, .delete)
+    XCTAssertEqual(package.files[1].repositoryPath, "content/posts/old-path.md")
+    XCTAssertEqual(package.files[1].expectedRemoteSHA, "old-remote-sha")
+  }
+
+  func testImageFileCarriesExpectedRemoteSHAForSafeRepublish() throws {
+    var profile = SiteProfile.defaultProfile
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let attachment = DraftAttachment(
+      originalFilename: "cover.png",
+      relativePublishPath: "/images/cover.png",
+      repositoryPath: "static/images/cover.png",
+      sourceFilePath: "/tmp/cover.png",
+      repositorySHA: "remote-image-sha"
+    )
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Republish With Image",
+      slug: "republish-with-image",
+      bodyMarkdown: "Long enough body content for attachment remote version coverage.",
+      attachments: [attachment]
+    )
+
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let imageFile = try XCTUnwrap(package.files.first { $0.kind == .image })
+
+    XCTAssertEqual(imageFile.repositoryPath, "static/images/cover.png")
+    XCTAssertEqual(imageFile.expectedRemoteSHA, "remote-image-sha")
+  }
+
+  func testVideoFileUsesBinaryPublishKindAndCarriesExpectedRemoteSHA() throws {
+    var profile = SiteProfile.defaultProfile
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let attachment = DraftAttachment(
+      originalFilename: "walkthrough.mp4",
+      relativePublishPath: "/videos/2026/walkthrough.mp4",
+      repositoryPath: "static/videos/2026/walkthrough.mp4",
+      sourceFilePath: "/tmp/walkthrough.mp4",
+      repositorySHA: "remote-video-sha"
+    )
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Publish With Video",
+      slug: "publish-with-video",
+      bodyMarkdown: "Long enough body content for video publish package coverage.",
+      attachments: [attachment]
+    )
+
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let videoFile = try XCTUnwrap(package.files.first { $0.kind == .video })
+
+    XCTAssertEqual(videoFile.repositoryPath, "static/videos/2026/walkthrough.mp4")
+    XCTAssertEqual(videoFile.sourceFilePath, "/tmp/walkthrough.mp4")
+    XCTAssertEqual(videoFile.expectedRemoteSHA, "remote-video-sha")
+  }
+
+  func testDraftAttachmentDecodesLegacyPayloadWithoutRepositorySHA() throws {
+    let data = #"{"id":"00000000-0000-0000-0000-000000000001","originalFilename":"legacy.png","relativePublishPath":"/images/legacy.png","repositoryPath":"static/images/legacy.png","altText":"","caption":"","byteSize":4}"#
+      .data(using: .utf8)!
+
+    let attachment = try JSONDecoder().decode(DraftAttachment.self, from: data)
+
+    XCTAssertNil(attachment.repositorySHA)
+  }
+
+  func testPublishPackageFileDecodesLegacyPayloadAsUpsert() throws {
+    let data = #"{"kind":"markdown","repositoryPath":"content/posts/legacy.md","content":"legacy","byteSize":0}"#
+      .data(using: .utf8)!
+
+    let file = try JSONDecoder().decode(PublishPackageFile.self, from: data)
+
+    XCTAssertEqual(file.operation, .upsert)
   }
 
   func testBuildsYAMLFrontMatter() throws {
@@ -174,6 +249,8 @@ final class PublishPackageBuilderTests: XCTestCase {
     let package = PublishPackageBuilder().build(draft: draft, profile: profile)
     let markdown = try XCTUnwrap(package.markdownFile?.content)
 
+    XCTAssertEqual(package.markdownPath, "private/posts/2026/private-draft.md")
+    XCTAssertFalse(package.files.contains { $0.repositoryPath.hasPrefix("content/posts/") })
     XCTAssertFalse(markdown.contains("og_preview_img"))
     XCTAssertFalse(markdown.contains("private-cover.jpg"))
     XCTAssertFalse(markdown.contains("\ncover = "))

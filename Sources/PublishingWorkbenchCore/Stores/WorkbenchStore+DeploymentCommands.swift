@@ -24,7 +24,8 @@ extension WorkbenchStore {
     deploymentStore.deploymentStatusReadiness(for: profile, hasToken: deploymentTokenAvailability.hasToken)
   }
 
-  public func saveDeploymentAccessToken(_ token: String) {
+  @discardableResult
+  public func saveDeploymentAccessToken(_ token: String) -> Bool {
     deploymentStore.saveDeploymentAccessToken(token, store: self)
   }
 
@@ -111,7 +112,7 @@ extension WorkbenchStore {
   }
 
   public func releaseLedgerEntry(for record: ReleaseRecord) -> ReleaseLedgerEntry {
-    deploymentStore.releaseLedgerEntry(for: record, store: self)
+    deploymentStore.releaseLedgerEntry(for: record)
   }
 
   public var releaseRecoveryVerificationDraftMarkdown: String {

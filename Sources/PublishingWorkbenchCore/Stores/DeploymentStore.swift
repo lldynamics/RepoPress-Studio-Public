@@ -8,9 +8,10 @@ public final class DeploymentStore: ObservableObject {
   private let deploymentStatusService: DeploymentStatusService
   private let deploymentWebhookService: DeploymentWebhookService
   private let deploymentTokenStore: KeychainTokenStore
-  private let legacyRepositoryTokenStore: KeychainTokenStore
   private let releaseLedgerService: ReleaseLedgerService
   private var deploymentWebhookHTTPReceiver: DeploymentWebhookHTTPReceiver?
+  private var latestDeploymentStatusRequestIDByRecord: [UUID: UUID] = [:]
+  private var activeDeploymentStatusRequestIDs: Set<UUID> = []
 
   @Published public internal(set) var deploymentStatusSnapshots: [UUID: DeploymentStatusSnapshot]
   @Published public internal(set) var deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]]
@@ -32,14 +33,12 @@ public final class DeploymentStore: ObservableObject {
     deploymentTokenAvailability: KeychainTokenAvailability = KeychainTokenAvailability(hasToken: false),
     deploymentStatusService: DeploymentStatusService = DeploymentStatusService(),
     deploymentWebhookService: DeploymentWebhookService = DeploymentWebhookService(),
-    deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(service: "PersonalSitePublisherMac.DeploymentProvider", accountPrefix: "deployment-provider"),
-    legacyRepositoryTokenStore: KeychainTokenStore = KeychainTokenStore(service: "PersonalSitePublisherMac.RepositoryProvider", accountPrefix: "repository-provider"),
+    deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.deployment, accountPrefix: "deployment-provider"),
     releaseLedgerService: ReleaseLedgerService = ReleaseLedgerService()
   ) {
     self.deploymentStatusService = deploymentStatusService
     self.deploymentWebhookService = deploymentWebhookService
     self.deploymentTokenStore = deploymentTokenStore
-    self.legacyRepositoryTokenStore = legacyRepositoryTokenStore
     self.releaseLedgerService = releaseLedgerService
     self.deploymentStatusSnapshots = deploymentStatusSnapshots
     self.deploymentStatusHistory = deploymentStatusHistory
@@ -80,6 +79,9 @@ public final class DeploymentStore: ObservableObject {
     store: WorkbenchStore
   ) -> Bool {
     guard record.kind != .remoteReviewRequest else { return false }
+    if record.kind == .remotePublishFailure {
+      guard record.commitSHA?.trimmedForPublishing.nilIfEmpty != nil else { return false }
+    }
     return deploymentStatusReadiness(for: record, store: store).canCheckAnyStatus
   }
 
@@ -124,7 +126,7 @@ public final class DeploymentStore: ObservableObject {
     )
   }
 
-  public func releaseLedgerEntry(for record: ReleaseRecord, store: WorkbenchStore) -> ReleaseLedgerEntry {
+  public func releaseLedgerEntry(for record: ReleaseRecord) -> ReleaseLedgerEntry {
     releaseLedgerService.ledger(
       releaseRecords: [record],
       deploymentStatusSnapshots: deploymentStatusSnapshots
@@ -132,7 +134,7 @@ public final class DeploymentStore: ObservableObject {
       id: record.id,
       record: record,
       status: .unknown,
-      statusMessage: "未找到发布账本记录。",
+      statusMessage: CoreL10n.text("未找到发布账本记录。"),
       deploymentStatus: deploymentStatusSnapshots[record.id],
       rollbackDraft: nil
     )
@@ -169,12 +171,15 @@ public final class DeploymentStore: ObservableObject {
       let now = Date()
       deploymentPollingState.nextRunAt = deploymentPollingSettings.nextRunDate(after: now)
       if deploymentPollingState.lastRunAt == nil {
-        deploymentPollingState.message = "部署轮询已开启，将每 \(deploymentPollingSettings.normalizedIntervalMinutes) 分钟检查待部署记录。"
+        deploymentPollingState.message = CoreL10n.format(
+          "部署轮询已开启，将每 %@ 分钟检查待部署记录。",
+          String(deploymentPollingSettings.normalizedIntervalMinutes)
+        )
       }
     } else {
       deploymentPollingState = DeploymentPollingState(
         status: .disabled,
-        message: "部署轮询已关闭。"
+        message: CoreL10n.text("部署轮询已关闭。")
       )
     }
     store.save()
@@ -199,7 +204,7 @@ public final class DeploymentStore: ObservableObject {
     guard deploymentPollingSettings.isEnabled else {
       deploymentPollingState = DeploymentPollingState(
         status: .disabled,
-        message: "部署轮询已关闭。"
+        message: CoreL10n.text("部署轮询已关闭。")
       )
       store.save()
       return false
@@ -213,7 +218,7 @@ public final class DeploymentStore: ObservableObject {
         nextRunAt: deploymentPollingSettings.nextRunDate(after: now),
         checkedRecordCount: 0,
         checkedRecords: [],
-        message: "当前没有需要轮询的部署记录。"
+        message: CoreL10n.text("当前没有需要轮询的部署记录。")
       )
       store.save()
       return true
@@ -280,11 +285,15 @@ public final class DeploymentStore: ObservableObject {
       if let targetRecord {
         recordDeploymentStatusSnapshot(result.snapshot, for: targetRecord)
       }
-      deploymentStatusMessage = "已接收 \(provider.displayName) Webhook：\(result.snapshot.level.displayName)"
+      deploymentStatusMessage = CoreL10n.format(
+        "已接收 %@ Webhook：%@",
+        provider.displayName,
+        result.snapshot.level.displayName
+      )
       store.save()
       return result
     } catch {
-      deploymentStatusMessage = "Webhook 接收失败：\(error.localizedDescription)"
+      deploymentStatusMessage = CoreL10n.format("Webhook 接收失败：%@", error.localizedDescription)
       return nil
     }
   }
@@ -312,16 +321,16 @@ public final class DeploymentStore: ObservableObject {
         isRunning: true,
         port: port,
         endpointURLText: endpoint,
-        message: "Webhook 接收器已启动。"
+        message: CoreL10n.text("Webhook 接收器已启动。")
       )
-      deploymentStatusMessage = "Webhook 接收器已启动：\(endpoint)"
+      deploymentStatusMessage = CoreL10n.format("Webhook 接收器已启动：%@", endpoint)
     } catch {
       deploymentWebhookHTTPReceiver = nil
       deploymentWebhookHTTPReceiverState = DeploymentWebhookHTTPReceiverState(
         isRunning: false,
         port: port,
         endpointURLText: nil,
-        message: "Webhook 接收器启动失败：\(error.localizedDescription)"
+        message: CoreL10n.format("Webhook 接收器启动失败：%@", error.localizedDescription)
       )
       deploymentStatusMessage = deploymentWebhookHTTPReceiverState.message
     }
@@ -331,7 +340,7 @@ public final class DeploymentStore: ObservableObject {
     deploymentWebhookHTTPReceiver?.stop()
     deploymentWebhookHTTPReceiver = nil
     deploymentWebhookHTTPReceiverState = .idle
-    deploymentStatusMessage = "Webhook 接收器已停止。"
+    deploymentStatusMessage = CoreL10n.text("Webhook 接收器已停止。")
   }
 
   @discardableResult
@@ -345,12 +354,19 @@ public final class DeploymentStore: ObservableObject {
       return nil
     }
 
+    let requestID = UUID()
+    latestDeploymentStatusRequestIDByRecord[record.id] = requestID
+    activeDeploymentStatusRequestIDs.insert(requestID)
     isDeploymentStatusChecking = true
     if updatesMessage {
-      deploymentStatusMessage = "正在检查部署状态..."
+      deploymentStatusMessage = CoreL10n.text("正在检查部署状态...")
     }
     defer {
-      isDeploymentStatusChecking = false
+      activeDeploymentStatusRequestIDs.remove(requestID)
+      if latestDeploymentStatusRequestIDByRecord[record.id] == requestID {
+        latestDeploymentStatusRequestIDByRecord.removeValue(forKey: record.id)
+      }
+      isDeploymentStatusChecking = !activeDeploymentStatusRequestIDs.isEmpty
     }
 
     let profile = store.profile(for: record)
@@ -360,8 +376,17 @@ public final class DeploymentStore: ObservableObject {
       releaseRecord: record,
       token: token
     )
+    guard latestDeploymentStatusRequestIDByRecord[record.id] == requestID else {
+      return nil
+    }
     recordDeploymentStatusSnapshot(snapshot, for: record)
-    deploymentStatusMessage = "\(snapshot.provider.displayName)：\(snapshot.level.displayName)"
+    if updatesMessage {
+      deploymentStatusMessage = CoreL10n.format(
+        "%@：%@",
+        snapshot.provider.displayName,
+        snapshot.level.displayName
+      )
+    }
     store.save()
     return snapshot
   }
@@ -375,17 +400,24 @@ public final class DeploymentStore: ObservableObject {
     )
   }
 
-  public func saveDeploymentAccessToken(_ token: String, store: WorkbenchStore) {
+  @discardableResult
+  public func saveDeploymentAccessToken(_ token: String, store: WorkbenchStore) -> Bool {
     do {
       try deploymentTokenStore.saveToken(
         token.trimmedForPublishing,
         for: store.activeProfile,
-        scope: deploymentTokenScope(for: store.activeProfile)
+        scope: deploymentTokenScope(for: store.activeProfile),
+        originURLText: deploymentCredentialOriginURLText(for: store.activeProfile)
       )
       refreshDeploymentTokenAvailability(store: store)
-      deploymentStatusMessage = "\(deploymentProvider(for: store.activeProfile).displayName) 部署 Token 已保存。"
+      deploymentStatusMessage = CoreL10n.format(
+        "%@ 部署 Token 已保存。",
+        deploymentProvider(for: store.activeProfile).displayName
+      )
+      return true
     } catch {
-      deploymentStatusMessage = "部署 Token 保存失败：\(error.localizedDescription)"
+      deploymentStatusMessage = CoreL10n.format("部署 Token 保存失败：%@", error.localizedDescription)
+      return false
     }
   }
 
@@ -393,36 +425,42 @@ public final class DeploymentStore: ObservableObject {
     do {
       try deploymentTokenStore.deleteToken(
         for: store.activeProfile,
-        scope: deploymentTokenScope(for: store.activeProfile)
+        scope: deploymentTokenScope(for: store.activeProfile),
+        originURLText: deploymentCredentialOriginURLText(for: store.activeProfile)
       )
       refreshDeploymentTokenAvailability(store: store)
-      deploymentStatusMessage = "\(deploymentProvider(for: store.activeProfile).displayName) 部署 Token 已删除。"
+      deploymentStatusMessage = CoreL10n.format(
+        "%@ 部署 Token 已删除。",
+        deploymentProvider(for: store.activeProfile).displayName
+      )
     } catch {
-      deploymentStatusMessage = "部署 Token 删除失败：\(error.localizedDescription)"
+      deploymentStatusMessage = CoreL10n.format("部署 Token 删除失败：%@", error.localizedDescription)
     }
   }
 
   public func refreshDeploymentTokenAvailability(store: WorkbenchStore) {
     let profile = store.activeProfile
-    let didMigrate = (try? migrateLegacyDeploymentTokenIfCompatible(for: profile)) == true
     deploymentTokenAvailability = (try? deploymentTokenStore.availability(
       for: profile,
-      scope: deploymentTokenScope(for: profile)
+      scope: deploymentTokenScope(for: profile),
+      originURLText: deploymentCredentialOriginURLText(for: profile)
     )) ?? KeychainTokenAvailability(hasToken: false)
-    if didMigrate {
-      deploymentStatusMessage = "已将旧共用 Token 迁移为 \(deploymentProvider(for: profile).displayName) 的部署 Token。"
-    }
   }
 
   private func hasDeploymentToken(for profile: SiteProfile) -> Bool {
     (try? deploymentTokenStore.availability(
       for: profile,
-      scope: deploymentTokenScope(for: profile)
+      scope: deploymentTokenScope(for: profile),
+      originURLText: deploymentCredentialOriginURLText(for: profile)
     ).hasToken) == true
   }
 
   private func deploymentAccessToken(for profile: SiteProfile) throws -> String? {
-    try deploymentTokenStore.token(for: profile, scope: deploymentTokenScope(for: profile))
+    try deploymentTokenStore.token(
+      for: profile,
+      scope: deploymentTokenScope(for: profile),
+      originURLText: deploymentCredentialOriginURLText(for: profile)
+    )
   }
 
   private func deploymentTokenScope(for profile: SiteProfile) -> KeychainTokenScope {
@@ -436,22 +474,21 @@ public final class DeploymentStore: ObservableObject {
     return profile.repositoryProvider == .github ? .githubPages : .gitlabPages
   }
 
-  private func migrateLegacyDeploymentTokenIfCompatible(for profile: SiteProfile) throws -> Bool {
-    let provider = deploymentProvider(for: profile)
-    let isCompatibleLegacyCredential: Bool
-    switch (provider, profile.repositoryProvider) {
-    case (.githubPages, .github), (.gitlabPages, .gitlab):
-      isCompatibleLegacyCredential = true
-    default:
-      isCompatibleLegacyCredential = false
+  private func deploymentCredentialOriginURLText(for profile: SiteProfile) -> String {
+    switch deploymentProvider(for: profile) {
+    case .githubPages:
+      return profile.repositoryBaseURL.nilIfEmpty ?? RepositoryProvider.github.defaultBaseURL
+    case .gitlabPages:
+      return profile.repositoryBaseURL.nilIfEmpty ?? RepositoryProvider.gitlab.defaultBaseURL
+    case .netlify:
+      return "https://api.netlify.com"
+    case .vercel:
+      return "https://api.vercel.com"
+    case .cloudflarePages:
+      return "https://api.cloudflare.com"
+    case .custom:
+      return profile.deploymentStatusEndpointURL?.nilIfEmpty ?? ""
     }
-    guard isCompatibleLegacyCredential,
-          try deploymentTokenStore.token(for: profile, scope: deploymentTokenScope(for: profile)) == nil,
-          let legacyToken = try legacyRepositoryTokenStore.token(for: profile) else {
-      return false
-    }
-    try deploymentTokenStore.saveToken(legacyToken, for: profile, scope: deploymentTokenScope(for: profile))
-    return true
   }
 
   private func deploymentPollingMessage(
@@ -459,7 +496,7 @@ public final class DeploymentStore: ObservableObject {
     checkedRecords: [DeploymentPollingRecordSummary]
   ) -> String {
     guard checkedCount > 0 else {
-      return "部署轮询已运行，但没有成功取得部署状态。"
+      return CoreL10n.text("部署轮询已运行，但没有成功取得部署状态。")
     }
 
     let successCount = checkedRecords.filter(\.isResolvedSuccess).count
@@ -467,17 +504,24 @@ public final class DeploymentStore: ObservableObject {
     let failedCount = checkedRecords.filter { $0.level == .failed }.count
     let unknownCount = checkedRecords.filter { $0.level == .unknown }.count
     let remoteRecoveryCount = checkedRecords.filter(\.isPendingRemoteRecovery).count
-    var parts = ["正常 \(successCount)", "部署中 \(runningCount)"]
+    var parts = [
+      CoreL10n.format("正常 %@", String(successCount)),
+      CoreL10n.format("部署中 %@", String(runningCount)),
+    ]
     if remoteRecoveryCount > 0 {
-      parts.append("远端恢复待确认 \(remoteRecoveryCount)")
+      parts.append(CoreL10n.format("远端恢复待确认 %@", String(remoteRecoveryCount)))
     }
     if failedCount > 0 {
-      parts.append("失败 \(failedCount)")
+      parts.append(CoreL10n.format("失败 %@", String(failedCount)))
     }
     if unknownCount > 0 {
-      parts.append("未知 \(unknownCount)")
+      parts.append(CoreL10n.format("未知 %@", String(unknownCount)))
     }
-    return "部署轮询已检查 \(checkedCount) 条待部署记录：\(parts.joined(separator: "，"))。"
+    return CoreL10n.format(
+      "部署轮询已检查 %@ 条待部署记录：%@。",
+      String(checkedCount),
+      parts.joined(separator: CoreL10n.text("，"))
+    )
   }
 
   private func canPollDeploymentStatus(for status: ReleaseLedgerStatus) -> Bool {

@@ -9,7 +9,8 @@ extension WorkbenchStore {
     repositoryStore.setRepositoryProvider(provider, store: self)
   }
 
-  public func saveRepositoryAccessToken(_ token: String) {
+  @discardableResult
+  public func saveRepositoryAccessToken(_ token: String) -> Bool {
     repositoryStore.saveRepositoryAccessToken(token, store: self)
   }
 
@@ -40,20 +41,20 @@ extension WorkbenchStore {
 
   @discardableResult
   public func createRemoteRepositoryForActiveProfile(
-    privateRepository: Bool = false
+    privateRepository: Bool = true
   ) async -> RemoteRepositoryCreationResult? {
     await repositoryStore.createRemoteRepositoryForActiveProfile(privateRepository: privateRepository, store: self)
   }
 
-  public func switchActiveProfileRepositoryBranch(to branchName: String) {
-    repositoryStore.switchActiveProfileRepositoryBranch(to: branchName, store: self)
+  public func switchActiveProfileRepositoryBranch(to branchName: String) async {
+    await repositoryStore.switchActiveProfileRepositoryBranch(to: branchName, store: self)
   }
 
   public func createAndSwitchActiveProfileRepositoryBranch(
     name branchName: String,
     from sourceBranch: String? = nil
-  ) {
-    repositoryStore.createAndSwitchActiveProfileRepositoryBranch(
+  ) async {
+    await repositoryStore.createAndSwitchActiveProfileRepositoryBranch(
       name: branchName,
       from: sourceBranch,
       store: self
@@ -61,12 +62,12 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func tickRepositoryAutoSync(now: Date = Date()) -> Bool {
-    repositoryStore.tickRepositoryAutoSync(store: self, now: now)
+  public func tickRepositoryAutoSync(now: Date = Date()) async -> Bool {
+    await repositoryStore.tickRepositoryAutoSync(store: self, now: now)
   }
 
   @discardableResult
-  public func runRepositoryAutoSync(now: Date = Date()) -> Bool {
-    repositoryStore.runRepositoryAutoSync(store: self, now: now)
+  public func runRepositoryAutoSync(now: Date = Date()) async -> Bool {
+    await repositoryStore.runRepositoryAutoSync(store: self, now: now)
   }
 }

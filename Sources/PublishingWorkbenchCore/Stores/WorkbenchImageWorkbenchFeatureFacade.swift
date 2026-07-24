@@ -1,11 +1,20 @@
+import Combine
 import Foundation
 
 @MainActor
-public final class WorkbenchImageWorkbenchFeatureFacade {
+public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
+  private var cancellables = Set<AnyCancellable>()
 
   init(store: WorkbenchStore) {
     self.store = store
+    observe(store.imageStore.objectWillChange)
+    observe(store.publishingStore.objectWillChange)
+    observeValue(store.$imageWorkbenchInputRevision)
+    observeValue(store.aiWorkspaceStore.$aiTokenAvailability)
+    observeValue(store.aiWorkspaceStore.$aiImageTextSuggestionDraftID)
+    observeValue(store.aiWorkspaceStore.$aiImageTextSuggestions)
+    observeValue(store.aiWorkspaceStore.$isAIImageTextRunning)
   }
 
   public var report: ImageWorkbenchReport? {
@@ -28,6 +37,26 @@ public final class WorkbenchImageWorkbenchFeatureFacade {
     get { store.isAIImageTextRunning }
   }
 
+  public var aiTokenAvailability: KeychainTokenAvailability {
+    store.aiTokenAvailability
+  }
+
+  public var isProcessingBatch: Bool {
+    store.imageStore.isImageBatchProcessing
+  }
+
+  public var batchProgress: ImageBatchProgress? {
+    store.imageStore.imageBatchProgress
+  }
+
+  public var isSiteSummaryLoading: Bool {
+    store.imageStore.isSiteSummaryLoading
+  }
+
+  public var siteSummaryErrorMessage: String? {
+    store.imageStore.siteSummaryErrorMessage
+  }
+
   public func setActionMessage(_ message: String?) {
     store.setImageActionMessage(message)
   }
@@ -44,12 +73,16 @@ public final class WorkbenchImageWorkbenchFeatureFacade {
     store.imageTextTargetCount(for: draft, report: report)
   }
 
-  public func fillMissingMetadataForSelectedDraft() {
-    store.fillMissingImageMetadataForSelectedDraft()
-  }
-
   public func fillMissingMetadataForVisibleDrafts() {
     store.fillMissingImageMetadataForVisibleDrafts()
+  }
+
+  public func fillMissingMetadataForVisibleDrafts(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    store.fillMissingImageMetadataForVisibleDrafts(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
   }
 
   public func optimizeSelectedDraftJPEGImages() {
@@ -60,12 +93,28 @@ public final class WorkbenchImageWorkbenchFeatureFacade {
     store.optimizeVisibleDraftJPEGImages()
   }
 
+  public func optimizeVisibleDraftJPEGImages(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    store.optimizeVisibleDraftJPEGImages(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
+  }
+
   public func convertSelectedDraftImagesToWebP() {
     store.convertSelectedDraftImagesToWebP()
   }
 
   public func convertVisibleDraftImagesToWebP() {
     store.convertVisibleDraftImagesToWebP()
+  }
+
+  public func convertVisibleDraftImagesToWebP(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    store.convertVisibleDraftImagesToWebP(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
   }
 
   public func optimizeSelectedDraftSVGImages() {
@@ -76,12 +125,32 @@ public final class WorkbenchImageWorkbenchFeatureFacade {
     store.optimizeVisibleDraftSVGImages()
   }
 
+  public func optimizeVisibleDraftSVGImages(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    store.optimizeVisibleDraftSVGImages(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
+  }
+
   public func resizeSelectedDraftLargeImages() {
     store.resizeSelectedDraftLargeImages()
   }
 
   public func resizeVisibleDraftLargeImages() {
     store.resizeVisibleDraftLargeImages()
+  }
+
+  public func resizeVisibleDraftLargeImages(
+    includedAttachmentIDsByDraftID: [UUID: Set<UUID>]
+  ) {
+    store.resizeVisibleDraftLargeImages(
+      includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+    )
+  }
+
+  public func cancelBatchProcessing() {
+    store.imageStore.cancelImageBatchProcessing()
   }
 
   public func cropSelectedDraftCoverImageForSocialPreview() {
@@ -92,24 +161,20 @@ public final class WorkbenchImageWorkbenchFeatureFacade {
     store.attachRepositoryImageToSelectedDraft(repositoryPath: repositoryPath)
   }
 
-  public func prepareAISuggestions(for draft: ArticleDraft) {
-    store.aiPrepareImageTextSuggestions(for: draft)
+  public func attachRepositoryImage(repositoryPath: String, toDraftID draftID: UUID) {
+    store.attachRepositoryImage(repositoryPath: repositoryPath, toDraftID: draftID)
   }
 
-  @discardableResult
-  public func generateAISuggestions(draft: ArticleDraft) async -> [AIPublishingImageTextSuggestion] {
-    await store.aiGenerateImageTextSuggestions(draft: draft)
+  private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {
+    publisher
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
   }
 
-  public func applyAISuggestion(_ suggestion: AIPublishingImageTextSuggestion) {
-    store.aiApplyImageTextSuggestion(suggestion)
-  }
-
-  public func applyAISuggestions(_ suggestions: [AIPublishingImageTextSuggestion]) {
-    store.aiApplyImageTextSuggestions(suggestions)
-  }
-
-  public func clearAISuggestions() {
-    store.aiClearImageTextSuggestions()
+  private func observeValue<P: Publisher>(_ publisher: P) where P.Failure == Never {
+    publisher
+      .dropFirst()
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
   }
 }

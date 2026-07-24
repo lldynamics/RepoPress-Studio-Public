@@ -5,12 +5,12 @@ struct PrivacySettingsVisibilitySection: View {
   let masksPrivateContent: Binding<Bool>
 
   var body: some View {
-    Section("公开风险") {
+    Section("私密内容") {
       Toggle(
-        "在列表和概览中遮挡私密文章",
+        String(localized: "遮挡私密文章内容和路径（标题仍显示）"),
         isOn: masksPrivateContent
       )
-      .accessibilityLabel("在列表和概览中遮挡私密文章")
+      .accessibilityLabel("遮挡私密文章内容和路径，标题仍显示")
       .accessibilityValue(masksPrivateContent.wrappedValue ? "开启" : "关闭")
     }
   }

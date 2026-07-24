@@ -1,11 +1,28 @@
+import Combine
 import Foundation
 
 @MainActor
-public final class WorkbenchAIFeatureFacade {
+public final class WorkbenchAIFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
+  private var cancellables = Set<AnyCancellable>()
 
   init(store: WorkbenchStore) {
     self.store = store
+    store.publishingStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+    store.aiWorkspaceStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+    store.aiStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+    store.imageStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+    store.siteMaintenanceStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
   }
 
   public var tokenAvailability: KeychainTokenAvailability {
@@ -22,6 +39,10 @@ public final class WorkbenchAIFeatureFacade {
 
   public var actionResult: AIPublishingActionResult? {
     store.aiActionResult
+  }
+
+  public var dataSharingConsent: AIDataSharingConsentPresentation {
+    store.aiStore.aiDataSharingConsentPresentation
   }
 
   public var metadataSuggestion: AIPublishingMetadataSuggestion? {
@@ -44,8 +65,16 @@ public final class WorkbenchAIFeatureFacade {
     store.aiChatContextMode
   }
 
+  public var chatKnowledgePolicy: KnowledgeRetrievalPolicy {
+    store.aiChatKnowledgePolicy
+  }
+
   public var chatModelGrade: AIChatModelGrade {
     store.aiChatModelGrade
+  }
+
+  public var chatReasoningLevel: AIChatReasoningLevel {
+    store.aiChatReasoningLevel
   }
 
   public var chatSelectedModel: String {
@@ -64,6 +93,10 @@ public final class WorkbenchAIFeatureFacade {
     store.pendingAIQuickPrompt
   }
 
+  public var isAssistantPresented: Bool {
+    store.isAIPublishingAssistantPresented
+  }
+
   public var selectedChatDraft: ArticleDraft? {
     store.selectedDraft
   }
@@ -80,28 +113,60 @@ public final class WorkbenchAIFeatureFacade {
     store.isAIChatRunning
   }
 
+  public var isAutomationRunning: Bool {
+    store.aiWorkspaceStore.isAutomationRunning
+  }
+
+  public var automationRunRecords: [WorkbenchAutomationRunRecord] {
+    store.automationRunRecords
+  }
+
+  public var chatManualRetryState: AIChatManualRetryState? {
+    store.aiChatManualRetryState
+  }
+
   public var isImageTextRunning: Bool {
     store.isAIImageTextRunning
   }
 
-  public var archivedConversations: [AIPublishingChatArchivedConversation] {
-    store.aiArchivedConversations
+  public func recordKnowledgeBacklinks(
+    _ citations: [KnowledgeCitation],
+    target: KnowledgeBacklinkTarget
+  ) {
+    store.knowledge.recordBacklinks(citations: citations, target: target)
+  }
+
+  @discardableResult
+  public func openKnowledgeCitation(_ citation: KnowledgeCitation) -> Bool {
+    guard store.knowledge.selectCitation(citation) else { return false }
+    store.hideAIPublishingAssistant()
+    store.selectSection(.library)
+    return true
   }
 
   public func refreshKeyAvailability() {
-    store.aiRefreshKeyAvailability()
+    store.refreshAIKeyAvailability()
   }
 
-  public func saveAPIKey(_ token: String) {
-    store.aiSaveAPIKey(token)
+  @discardableResult
+  public func saveAPIKey(_ token: String) -> Bool {
+    store.saveAIAPIKey(token)
   }
 
   public func deleteAPIKey() {
-    store.aiDeleteAPIKey()
+    store.deleteAIAPIKey()
   }
 
   public func testConnection() async -> AIConnectionTestReport? {
-    await store.aiTestConnection()
+    await store.testAIConnection()
+  }
+
+  public func grantDataSharingConsent() {
+    store.aiStore.grantAIDataSharingConsent()
+  }
+
+  public func revokeDataSharingConsent() {
+    store.aiStore.revokeAIDataSharingConsent()
   }
 
   @discardableResult
@@ -109,35 +174,36 @@ public final class WorkbenchAIFeatureFacade {
     for draftID: UUID? = nil,
     quickPrompt: AIPublishingQuickPrompt? = nil
   ) -> Bool {
-    store.aiOpenChatWorkspace(for: draftID, quickPrompt: quickPrompt)
+    store.openAIChatWorkspace(for: draftID, quickPrompt: quickPrompt)
+  }
+
+  public func hideAssistant() {
+    store.hideAIPublishingAssistant()
+  }
+
+  public func closeAssistantPanel() {
+    store.hideAIPublishingAssistant()
+    store.setInspectorPresented(false)
   }
 
   public func prepareChat(for draft: ArticleDraft) {
-    store.aiPrepareChat(for: draft)
-  }
-
-  public func clearChat() {
-    store.aiClearChat()
+    store.prepareAIChat(for: draft)
   }
 
   public func setChatModelGrade(_ grade: AIChatModelGrade) {
-    store.aiSetChatModelGrade(grade)
+    store.setAIChatModelGrade(grade)
+  }
+
+  public func setChatReasoningLevel(_ level: AIChatReasoningLevel) {
+    store.setAIChatReasoningLevel(level)
   }
 
   public func setChatCustomModel(_ model: String) {
-    store.aiSetChatCustomModel(model)
+    store.setAIChatCustomModel(model)
   }
 
   public func resetChatModelToProfileDefault() {
-    store.aiResetChatModelToProfileDefault()
-  }
-
-  public func setChatConversationTitle(_ title: String?, draft: ArticleDraft? = nil) {
-    store.aiSetChatConversationTitle(title, draft: draft)
-  }
-
-  public func setChatFocusedParagraph(_ paragraphID: String?, draft: ArticleDraft? = nil) {
-    store.aiSetChatFocusedParagraph(paragraphID, draft: draft)
+    store.resetAIChatModelToProfileDefault()
   }
 
   public func updateChatDraft(_ draft: ArticleDraft) {
@@ -156,10 +222,6 @@ public final class WorkbenchAIFeatureFacade {
     store.profile(for: draft)
   }
 
-  public func activeChatEditorSelectionRange(for draft: ArticleDraft) -> NSRange? {
-    store.activeEditorSelectionRange(for: draft)
-  }
-
   public func chatPublishingPackage(for draft: ArticleDraft) -> PublishPackage {
     store.publishingPackage(for: draft)
   }
@@ -168,12 +230,15 @@ public final class WorkbenchAIFeatureFacade {
     store.preflightIssues(for: draft)
   }
 
-  public func chatImageWorkbenchReport(for draft: ArticleDraft) -> ImageWorkbenchReport {
-    store.imageWorkbenchReport(for: draft)
+  public func cachedChatImageWorkbenchReport(for draft: ArticleDraft) -> ImageWorkbenchReport? {
+    store.cachedImageWorkbenchReport(for: draft)
   }
 
-  public func refreshChatImageWorkbenchReport() {
-    store.refreshImageWorkbenchReport()
+  public func refreshChatImageWorkbenchReportInBackground(
+    for draft: ArticleDraft,
+    force: Bool = false
+  ) async {
+    await store.refreshImageWorkbenchReportInBackground(for: draft, force: force)
   }
 
   public func relatedChatArticleSuggestions(
@@ -195,64 +260,82 @@ public final class WorkbenchAIFeatureFacade {
     store.setAIChatContextMode(mode)
   }
 
+  public func setChatKnowledgePolicy(_ policy: KnowledgeRetrievalPolicy) {
+    store.setAIChatKnowledgePolicy(policy)
+  }
+
   public func setChatMessage(_ message: String?) {
     store.setAIChatMessage(message)
   }
 
   @discardableResult
   public func saveChatCustomPrompt(title: String, prompt: String) -> AIPublishingCustomPrompt? {
-    store.aiSaveChatCustomPrompt(title: title, prompt: prompt)
+    store.saveAIChatCustomPrompt(title: title, prompt: prompt)
   }
 
   public func deleteChatCustomPrompt(_ promptID: AIPublishingCustomPrompt.ID) {
-    store.aiDeleteChatCustomPrompt(promptID)
+    store.deleteAIChatCustomPrompt(promptID)
   }
 
   public func startNewChatConversation(draft: ArticleDraft? = nil) {
-    store.aiStartNewChatConversation(draft: draft)
-  }
-
-  public func restoreArchivedChatConversation(_ conversationID: AIPublishingChatArchivedConversation.ID, draft: ArticleDraft? = nil) {
-    store.aiRestoreArchivedChatConversation(conversationID, draft: draft)
-  }
-
-  public func deleteArchivedChatConversation(_ conversationID: AIPublishingChatArchivedConversation.ID, draft: ArticleDraft? = nil) {
-    store.aiDeleteArchivedChatConversation(conversationID, draft: draft)
-  }
-
-  public func deleteChatMessage(_ messageID: AIPublishingChatMessage.ID, draft: ArticleDraft? = nil) {
-    store.aiDeleteChatMessage(messageID, draft: draft)
-  }
-
-  public func branchChatConversation(after messageID: AIPublishingChatMessage.ID, draft: ArticleDraft? = nil) {
-    store.aiBranchChatConversation(after: messageID, draft: draft)
+    store.startNewAIChatConversation(draft: draft)
   }
 
   public func cancelChatReply() {
-    store.aiCancelChatReply()
+    store.cancelAIChatReply()
   }
 
   @discardableResult
-  public func regenerateLastChatReply(draft: ArticleDraft? = nil) async -> AIPublishingChatMessage? {
-    await store.aiRegenerateLastChatReply(draft: draft)
+  public func executeAutomationPlan(
+    messageID: AIPublishingChatMessage.ID,
+    onlyStepID: UUID? = nil,
+    confirmedStepIDs: Set<UUID> = []
+  ) async -> WorkbenchAutomationExecutionResult? {
+    await store.executeAutomationPlan(
+      messageID: messageID,
+      onlyStepID: onlyStepID,
+      confirmedStepIDs: confirmedStepIDs
+    )
+  }
+
+  public func automationDraftPreview(
+    messageID: AIPublishingChatMessage.ID,
+    stepID: UUID
+  ) -> WorkbenchAutomationDraftPreview? {
+    store.automationDraftPreview(messageID: messageID, stepID: stepID)
+  }
+
+  public func cancelAutomationPlan(messageID: AIPublishingChatMessage.ID) {
+    store.cancelAutomationPlan(messageID: messageID)
   }
 
   @discardableResult
-  public func regenerateChatReply(messageID: AIPublishingChatMessage.ID, draft: ArticleDraft? = nil) async -> AIPublishingChatMessage? {
-    await store.aiRegenerateChatReply(messageID: messageID, draft: draft)
+  public func rollbackAutomationRun(_ recordID: UUID) -> Int {
+    store.rollbackAutomationRun(recordID)
+  }
+
+  @discardableResult
+  public func retryLastFailedChatReply(
+    confirmingPossibleDuplicateCharge: Bool,
+    draft: ArticleDraft? = nil
+  ) async -> AIPublishingChatMessage? {
+    await store.retryLastFailedAIChatReply(
+      confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
+      draft: draft
+    )
   }
 
   @discardableResult
   public func sendChatMessage(_ text: String, draft: ArticleDraft? = nil, imageAttachments: [AIChatImageAttachment] = []) async -> AIPublishingChatMessage? {
-    await store.aiSendChatMessage(text, draft: draft, imageAttachments: imageAttachments)
+    await store.sendAIChatMessage(text, draft: draft, imageAttachments: imageAttachments)
   }
 
   public func consumePendingQuickPrompt() -> AIPublishingQuickPrompt? {
-    store.aiConsumePendingQuickPrompt()
+    store.consumePendingAIQuickPrompt()
   }
 
   public func focusedChatParagraph(for draft: ArticleDraft) -> AIPublishingChatDraftParagraph? {
-    store.aiFocusedChatParagraph(for: draft)
+    store.focusedAIChatParagraph(for: draft)
   }
 
   @discardableResult
@@ -261,22 +344,7 @@ public final class WorkbenchAIFeatureFacade {
     draft: ArticleDraft,
     selectedText: String? = nil
   ) async -> AIPublishingActionResult? {
-    await store.aiPerformAction(kind, draft: draft, selectedText: selectedText)
+    await store.performAIAction(kind, draft: draft, selectedText: selectedText)
   }
 
-  @discardableResult
-  public func generateImageTextSuggestions(draft: ArticleDraft) async -> [AIPublishingImageTextSuggestion] {
-    await store.aiGenerateImageTextSuggestions(draft: draft)
-  }
-
-  public func chatImageAttachments(
-    for draft: ArticleDraft,
-    attachmentIDs: Set<UUID>
-  ) -> [AIChatImageAttachment] {
-    store.aiChatImageAttachments(for: draft, attachmentIDs: attachmentIDs)
-  }
-
-  public func makeImageAttachment(from url: URL, draft: ArticleDraft) -> DraftAttachment {
-    store.makeAIChatImageAttachment(from: url, draft: draft)
-  }
 }

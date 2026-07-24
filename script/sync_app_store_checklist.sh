@@ -6,6 +6,7 @@ CHECKLIST="${APP_STORE_CHECKLIST_FILE:-$ROOT_DIR/APP_STORE_CHECKLIST.md}"
 EVIDENCE_FILE="${EXTERNAL_VERIFY_EVIDENCE_FILE:-$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md}"
 ARCHIVE_EVIDENCE_FILE="${APP_STORE_ARCHIVE_EVIDENCE_FILE:-$ROOT_DIR/docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md}"
 CLEAN_RUNTIME_EVIDENCE_FILE="${CLEAN_RUNTIME_EVIDENCE_FILE:-$ROOT_DIR/docs/release-evidence/CLEAN_RUNTIME_VALIDATION.md}"
+GATE_RESULT="${RELEASE_GATE_RESULT_JSON:-$ROOT_DIR/.build/release-gate-result.json}"
 EXECUTE=0
 
 usage() {
@@ -16,7 +17,9 @@ Synchronizes APP_STORE_CHECKLIST.md with evidence-backed local gates and
 external verification records. By default it previews the changes and does not
 write. It never marks clean runtime, archive/upload, StoreKit sandbox,
 GitHub/GitLab live publishing, or screenshot capture items complete unless the
-matching evidence is already recorded.
+matching evidence is already recorded. The localization gate covers the app UI
+and selected semantic model keys; it does not prove that Core-generated
+presentation strings have been migrated or translated.
 USAGE
 }
 
@@ -56,16 +59,46 @@ run_gate() {
   "$@" >/dev/null 2>&1 || fail "$name gate failed; not updating checklist"
 }
 
-run_gate "localization" bash "$ROOT_DIR/script/check_localization_gate.sh"
-run_gate "app store metadata" bash "$ROOT_DIR/script/check_app_store_metadata.sh"
+run_gate "unified release result" bash "$ROOT_DIR/script/check_release_gate.sh" \
+  --result-json "$GATE_RESULT" \
+  --check localization \
+  --check app-store-metadata \
+  --check app-store-listing \
+  --check ui-runtime \
+  --check privacy-copy \
+  --check storekit \
+  --check screenshot-map \
+  --check screenshots \
+  --check screenshot-privacy
+
+python3 - "$GATE_RESULT" <<'PY' || fail "unified release result is missing required passing checks"
+import json
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+payload = json.loads(path.read_text(encoding="utf-8"))
+required = {
+    "localization",
+    "app-store-metadata",
+    "app-store-listing",
+    "ui-runtime",
+    "privacy-copy",
+    "storekit",
+    "screenshot-map",
+    "screenshots",
+    "screenshot-privacy",
+}
+passed = {item["id"] for item in payload.get("checks", []) if item.get("status") == "passed"}
+if not required.issubset(passed):
+    raise SystemExit(1)
+if payload.get("verification", {}).get("packagedArtifact") != "passed":
+    raise SystemExit(1)
+PY
+
 run_gate "app store archive readiness" bash "$ROOT_DIR/script/check_app_store_archive_readiness.sh"
-run_gate "ui runtime" bash "$ROOT_DIR/script/check_ui_runtime.sh"
 run_gate "clean runtime evidence" env CLEAN_RUNTIME_EVIDENCE_FILE="$CLEAN_RUNTIME_EVIDENCE_FILE" bash "$ROOT_DIR/script/check_clean_runtime_evidence.sh"
-run_gate "privacy support copy" bash "$ROOT_DIR/script/check_privacy_support_copy.sh"
-run_gate "storekit static" bash "$ROOT_DIR/script/check_storekit.sh"
-run_gate "screenshot manifest" bash "$ROOT_DIR/script/check_screenshots.sh"
 run_gate "external verification" env STRICT_EXTERNAL_STRUCTURE_ONLY=1 EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" bash "$ROOT_DIR/script/check_external_verification_evidence.sh"
-run_gate "screenshot privacy" bash "$ROOT_DIR/script/check_screenshot_privacy.sh"
 
 completed_external_ids() {
   grep -E '^- \[[xX]\][[:space:]]+`[^`]+`' "$EVIDENCE_FILE" \
@@ -99,7 +132,7 @@ clean_runtime_validation_complete() {
     bash "$ROOT_DIR/script/check_clean_runtime_evidence.sh" --strict >/dev/null 2>&1 || return 1
   local required_checked=(
     'App launched from `script/build_and_run.sh --verify` on a clean macOS account or equivalent test user.'
-    "First launch, privacy lock, settings, and workspace switching were verified without exposing private content."
+    "Quick hide, private-content masking, settings, and workspace switching were verified without exposing private content."
     "Keyboard navigation, focus visibility, VoiceOver labels, and primary commands were smoke checked in the running app."
   )
   for title in "${required_checked[@]}"; do
@@ -112,6 +145,19 @@ clean_runtime_validation_complete() {
 
 evidence_for_title() {
   local title_lc="$1"
+  # The current localization gate intentionally does not extract user-facing
+  # presentation copy assembled by PublishingWorkbenchCore services. Keep the
+  # two full-coverage checklist items manual until that migration is complete.
+  if [[ "$title_lc" == *"publishingworkbenchcore"* ||
+        "$title_lc" == *"core-generated presentation"* ]]; then
+    return 1
+  fi
+  if [[ "$title_lc" == *"product-page copy"* &&
+        "$title_lc" == *"reviewer notes"* &&
+        "$title_lc" == *"app privacy response worksheet"* ]]; then
+    echo "Local listing metadata gate verifies both localizations, field limits, reviewer notes, and privacy worksheet structure."
+    return 0
+  fi
   if [[ "$title_lc" == *"signing team"* ||
         "$title_lc" == *"hardened runtime"* ]]; then
     archive_validation_complete && {
@@ -145,18 +191,13 @@ evidence_for_title() {
     }
     return 1
   fi
-  if [[ "$title_lc" == *"localization catalog"* ||
-        "$title_lc" == *"localizable.strings"* ]]; then
-    echo "本地化资源门禁已通过。"
+  if [[ "$title_lc" == *"app-target swiftui literals"* &&
+        "$title_lc" == *"semantic display names"* ]]; then
+    echo "UI-scope 本地化门禁已验证其声明范围内的中英文键。"
     return 0
   fi
-  if [[ "$title_lc" == *"simplified chinese"* ||
-        "$title_lc" == *"english copy"* ]]; then
-    echo "中英语言覆盖门禁已通过。"
-    return 0
-  fi
-  if [[ "$title_lc" == *"localization gate"* ]]; then
-    echo "本地化自动门禁已通过。"
+  if [[ "$title_lc" == *"ui-scoped localization gate"* ]]; then
+    echo "UI-scope 本地化门禁已通过；未将 Core 生成的展示文案计入覆盖结论。"
     return 0
   fi
   if [[ "$title_lc" == *"script/build_and_run.sh"* ||
@@ -191,7 +232,7 @@ evidence_for_title() {
   if [[ "$title_lc" == *"privacy policy"* ||
         "$title_lc" == *"support copy"* ||
         "$title_lc" == *"private-content behavior"* ]]; then
-    echo "隐私/支持文案门禁已通过，已覆盖隐私锁、私密内容遮挡和敏感信息 redaction 规则。"
+    echo "隐私/支持文案门禁已通过，已覆盖快速隐藏、私密内容遮挡和敏感信息 redaction 规则。"
     return 0
   fi
   if [[ "$title_lc" == *"storekit"* ||
@@ -227,6 +268,7 @@ evidence_for_title() {
     return 1
   fi
   if [[ "$title_lc" == *"capture writing"* ||
+        "$title_lc" == *"nine manifest screens"* ||
         "$title_lc" == *"release gate screens"* ]]; then
     has_external_id "app-store-screenshots" && {
       echo "已记录 App Store 截图外部验收证据。"
@@ -243,8 +285,38 @@ UPDATED_TITLES_FILE="$(mktemp "${TMPDIR:-/tmp}/app-store-checklist-titles.XXXXXX
 trap 'rm -f "$TMP_OUTPUT" "$UPDATED_COUNT_FILE" "$UPDATED_TITLES_FILE"' EXIT
 printf '0' > "$UPDATED_COUNT_FILE"
 
+is_screenshot_evidence_title() {
+  local title_lc="$1"
+  [[ "$title_lc" == *"capture the nine"* ||
+     "$title_lc" == *"nine manifest screens"* ||
+     "$title_lc" == *"screenshots contain no private"* ]]
+}
+
+SKIP_STALE_EVIDENCE_LINE=0
+
 while IFS= read -r line || [[ -n "$line" ]]; do
   trimmed="${line#"${line%%[![:space:]]*}"}"
+  if [[ "$SKIP_STALE_EVIDENCE_LINE" == "1" ]]; then
+    SKIP_STALE_EVIDENCE_LINE=0
+    if [[ "$trimmed" == Evidence:* || "$trimmed" == Evidence：* ]]; then
+      continue
+    fi
+  fi
+
+  if [[ "$trimmed" == "- [x]"* || "$trimmed" == "- [X]"* ]]; then
+    title="${trimmed:6}"
+    title_lc="$(printf "%s" "$title" | tr '[:upper:]' '[:lower:]')"
+    if is_screenshot_evidence_title "$title_lc" && ! has_external_id "app-store-screenshots"; then
+      leading="${line%%-*}"
+      printf "%s- [ ] %s\n" "$leading" "$title" >> "$TMP_OUTPUT"
+      count="$(cat "$UPDATED_COUNT_FILE")"
+      printf "%s" "$((count + 1))" > "$UPDATED_COUNT_FILE"
+      printf "撤销过期证据：%s\n" "$title" >> "$UPDATED_TITLES_FILE"
+      SKIP_STALE_EVIDENCE_LINE=1
+      continue
+    fi
+  fi
+
   if [[ "$trimmed" == "- [ ]"* ]]; then
     title="${trimmed#"- [ ] "}"
     title_lc="$(printf "%s" "$title" | tr '[:upper:]' '[:lower:]')"

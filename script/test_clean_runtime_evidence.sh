@@ -26,7 +26,7 @@ text, or screenshots containing private content.
 
 - [ ] App launched from `script/build_and_run.sh --verify` on a clean macOS account or equivalent test user.
   Evidence:
-- [ ] First launch, privacy lock, settings, and workspace switching were verified without exposing private content.
+- [ ] Quick hide, private-content masking, settings, and workspace switching were verified without exposing private content.
   Evidence:
 - [ ] Keyboard navigation, focus visibility, VoiceOver labels, and primary commands were smoke checked in the running app.
   Evidence:
@@ -68,7 +68,7 @@ record() {
 record --item clean-launch \
   --summary "Clean test user launched the app through build_and_run --verify and reached the main workspace without migration or permission failures."
 record --item privacy-settings-workspace \
-  --summary "First launch, privacy lock, settings, and workspace switching were verified with sample data and redacted screenshots only."
+  --summary "Quick hide, private-content masking, settings, and workspace switching were verified with sample data and redacted screenshots only."
 record --item accessibility-keyboard-smoke \
   --summary "Keyboard navigation, visible focus, VoiceOver labels, and primary menu commands were smoke checked in the running app."
 

@@ -19,15 +19,20 @@ struct DeploymentStatusTrendChart: View {
           RoundedRectangle(cornerRadius: WorkbenchCornerRadius.chartBar)
             .fill(color(for: snapshot.level))
             .frame(width: 18, height: height(for: snapshot.level))
-            .help("\(snapshot.checkedAt.workbenchShortText) · \(snapshot.level.displayName) · \(snapshot.message)")
+            .help("\(snapshot.checkedAt.workbenchShortText) · \(snapshot.level.localizedDisplayName) · \(snapshot.message)")
+            .accessibilityLabel("\(snapshot.checkedAt.workbenchShortText) 的部署状态")
+            .accessibilityValue("\(snapshot.level.localizedDisplayName)：\(snapshot.message)")
         }
       }
       .frame(height: 42, alignment: .bottom)
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel("部署趋势")
+      .accessibilityValue("共 \(orderedHistory.count) 条部署状态记录")
 
       HStack(spacing: 10) {
-        trendLegend("正常", color: .green)
-        trendLegend("部署中", color: .blue)
-        trendLegend("失败", color: .red)
+        trendLegend("正常", color: WorkbenchTheme.success)
+        trendLegend("部署中", color: WorkbenchTheme.progress)
+        trendLegend("失败", color: WorkbenchTheme.risk)
         trendLegend("未知", color: .secondary)
       }
     }
@@ -51,11 +56,11 @@ struct DeploymentStatusTrendChart: View {
   private func color(for level: DeploymentStatusLevel) -> Color {
     switch level {
     case .success:
-      return .green
+      return WorkbenchTheme.success
     case .running:
-      return .blue
+      return WorkbenchTheme.progress
     case .failed:
-      return .red
+      return WorkbenchTheme.risk
     case .unknown:
       return .secondary
     }
@@ -67,18 +72,21 @@ struct DeploymentStatusTrendChart: View {
         .fill(color)
         .frame(width: 6, height: 6)
       Text(title)
-        .font(.caption2)
+        .font(.caption)
         .foregroundStyle(.secondary)
     }
   }
 }
 
 enum DangerousReleaseAction: Identifiable {
+  case resumeReview(ReleaseRecord)
   case withdrawReview(ReleaseRecord)
   case rollbackRemote(ReleaseRecord)
 
   var id: String {
     switch self {
+    case let .resumeReview(record):
+      return "resume-review-\(record.id)"
     case let .withdrawReview(record):
       return "withdraw-\(record.id)"
     case let .rollbackRemote(record):
@@ -88,6 +96,8 @@ enum DangerousReleaseAction: Identifiable {
 
   var confirmButtonTitle: String {
     switch self {
+    case .resumeReview:
+      return "继续创建 PR/MR"
     case .withdrawReview:
       return "确认撤回 Review"
     case .rollbackRemote:
@@ -97,10 +107,21 @@ enum DangerousReleaseAction: Identifiable {
 
   var confirmationMessage: String {
     switch self {
+    case let .resumeReview(record):
+      return "将复用远端分支 \(record.branchName ?? "-") 与已写入的 commit，仅创建或获取 PR/MR，不会重新上传文件或自动合并。"
     case let .withdrawReview(record):
       return "将通过远端 API 关闭这条 PR/MR：\(record.reviewTitle ?? record.title)。这个操作会影响线上 Review 流程。"
     case let .rollbackRemote(record):
       return "将通过远端 API 为提交 \(record.shortCommitSHA ?? record.commitSHA ?? record.title) 创建回滚 commit。执行前请确认当前线上状态。"
+    }
+  }
+
+  var buttonRole: ButtonRole? {
+    switch self {
+    case .resumeReview:
+      return nil
+    case .withdrawReview, .rollbackRemote:
+      return .destructive
     }
   }
 }

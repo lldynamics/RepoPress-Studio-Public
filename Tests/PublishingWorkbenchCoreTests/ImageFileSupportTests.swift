@@ -16,4 +16,17 @@ struct ImageFileSupportTests {
     #expect(!ImageFileSupport.isSupportedImagePath("assets/raw/source.psd"))
     #expect(!ImageFileSupport.isSupportedImagePath("package.json"))
   }
+
+  @Test func filtersDroppedFilesToSupportedImagesInOriginalOrder() {
+    let urls = [
+      URL(fileURLWithPath: "/tmp/cover.PNG"),
+      URL(fileURLWithPath: "/tmp/notes.md"),
+      URL(fileURLWithPath: "/tmp/diagram.svg"),
+    ]
+
+    #expect(
+      ImageFileSupport.supportedImageURLs(in: urls).map(\.lastPathComponent)
+        == ["cover.PNG", "diagram.svg"]
+    )
+  }
 }

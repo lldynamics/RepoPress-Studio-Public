@@ -9,6 +9,9 @@ struct SettingsAITabFactory {
       tokenAvailability: context.store.ai.tokenAvailability,
       isActionRunning: context.store.ai.isActionRunning,
       actionMessage: context.store.ai.actionMessage,
+      dataSharingConsent: context.store.ai.dataSharingConsent,
+      shouldFocusAPIKey: context.healthDestination == .aiKey,
+      navigationRequestID: context.healthNavigationRequestID,
       saveAPIKey: { token in
         context.store.ai.saveAPIKey(token)
       },
@@ -20,6 +23,12 @@ struct SettingsAITabFactory {
       },
       testConnection: {
         await context.store.ai.testConnection()
+      },
+      grantDataSharingConsent: {
+        context.store.ai.grantDataSharingConsent()
+      },
+      revokeDataSharingConsent: {
+        context.store.ai.revokeDataSharingConsent()
       }
     )
   }

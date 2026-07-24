@@ -15,9 +15,7 @@ fail() {
 text="$(cat "$COPY_FILE")"
 
 required_terms=(
-  "privacy lock"
-  "launch protection"
-  "background auto lock"
+  "quick hide"
   "Private-content masking"
   "private article titles"
   "local paths"
@@ -27,8 +25,13 @@ required_terms=(
   "support requests"
   "redacted screenshots"
   "online publishing"
-  "AI requests"
+  "repository API requests"
+  "deployment checks"
   "StoreKit"
+  "explicit consent"
+  "API key purchased and managed by the user"
+  "127.0.0.1:17843"
+  "browser extensions"
 )
 
 missing_terms=()
@@ -50,31 +53,30 @@ if grep -Eq '(github_pat_|ghp_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|sk-[A-Z
   fail "copy contains token-like or authorization-header content"
 fi
 
+grep -Fqi "developer does not proxy or receive" "$COPY_FILE" \
+  || fail "copy does not explain the developer AI data boundary"
+grep -Fqi "does not install a Native Messaging helper" "$COPY_FILE" \
+  || fail "copy does not explain the sandboxed browser-extension boundary"
+
 privacy_model="$PROJECT_ROOT/Sources/PublishingWorkbenchCore/Models/PrivacyProtectionModels.swift"
 app_file="$PROJECT_ROOT/Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift"
 content_view="$PROJECT_ROOT/Sources/PersonalSitePublisherMac/Views/ContentView.swift"
-draft_window="$PROJECT_ROOT/Sources/PersonalSitePublisherMac/Views/DraftEditorWindowView.swift"
 shared_views="$PROJECT_ROOT/Sources/PersonalSitePublisherMac/Views/SharedViews.swift"
 seo_tests="$PROJECT_ROOT/Tests/PublishingWorkbenchCoreTests/SEOAuditServiceTests.swift"
 
 [[ -f "$privacy_model" ]] || fail "PrivacyProtectionModels.swift is missing"
 [[ -f "$app_file" ]] || fail "PersonalSitePublisherMacApp.swift is missing"
 [[ -f "$content_view" ]] || fail "ContentView.swift is missing"
-[[ -f "$draft_window" ]] || fail "DraftEditorWindowView.swift is missing"
 [[ -f "$shared_views" ]] || fail "SharedViews.swift is missing"
 [[ -f "$seo_tests" ]] || fail "SEOAuditServiceTests.swift is missing"
 
-grep -Fq "requiresUnlockOnLaunch" "$privacy_model" || fail "privacy model does not expose launch protection"
-grep -Fq "locksWhenInactive" "$privacy_model" || fail "privacy model does not expose inactive-scene lock"
 grep -Fq "masksPrivateContent" "$privacy_model" || fail "privacy model does not expose private-content masking"
-grep -Fq "设置窗口锁定时禁用设置项" "$privacy_model" || fail "privacy checklist does not cover locked settings behavior"
+grep -Fq "工作台隐藏时" "$privacy_model" || fail "privacy checklist does not cover hidden workbench behavior"
 grep -Fq "ProtectedSettingsView" "$app_file" || fail "settings scene is not wrapped in a protected settings view"
 grep -Fq ".disabled(!store.canUseProtectedWorkbench)" "$app_file" || fail "settings content is not disabled while privacy locked"
 grep -Fq "PrivacyLockOverlay(store: store)" "$app_file" || fail "settings scene does not show the privacy lock overlay"
 grep -Fq "PrivacyLockOverlay(store: store)" "$content_view" || fail "main workbench does not show the privacy lock overlay"
-grep -Fq "lockPrivacyIfNeededForInactiveScene" "$content_view" || fail "content view does not lock on inactive scene"
-grep -Fq "PrivacyLockOverlay(store: store)" "$draft_window" || fail "draft editor window does not show the privacy lock overlay"
-grep -Fq "lockPrivacyIfNeededForInactiveScene" "$draft_window" || fail "draft editor window does not lock on inactive scene"
+grep -Fq "快速隐藏" "$content_view" || fail "content view does not expose manual quick hide"
 grep -Fq "privacy-lock-overlay" "$shared_views" || fail "privacy lock overlay is missing accessibility identifier"
 grep -Fq "私密文章不输出预览图" "$seo_tests" || fail "private SEO/social preview suppression test is missing"
 

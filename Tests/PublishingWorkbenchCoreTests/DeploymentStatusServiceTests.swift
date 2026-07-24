@@ -33,7 +33,11 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(snapshot.provider, .githubPages)
     XCTAssertEqual(snapshot.level, .success)
     XCTAssertEqual(snapshot.siteURLText, "https://owner.github.io/site/")
-    XCTAssertEqual(snapshot.signals.map(\.title), ["GitHub Pages", "Deploy Pages", "GitHub Pages 状态"])
+    XCTAssertEqual(snapshot.signals.map(\.title), [
+      "GitHub Pages",
+      "Deploy Pages",
+      CoreL10n.format("%@ 状态", DeploymentProvider.githubPages.displayName),
+    ])
 
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.count, 3)
@@ -74,8 +78,11 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(snapshot.provider, .gitlabPages)
     XCTAssertEqual(snapshot.level, .success)
     XCTAssertEqual(snapshot.siteURLText, "https://group.gitlab.io/site/")
-    XCTAssertEqual(snapshot.signals.map(\.title), ["GitLab Pipeline", "GitLab Pages 可达性"])
-    XCTAssertEqual(snapshot.signals.first?.message, "Pipeline 状态：success")
+    XCTAssertEqual(snapshot.signals.map(\.title), [
+      "GitLab Pipeline",
+      CoreL10n.format("%@ 可达性", DeploymentProvider.gitlabPages.displayName),
+    ])
+    XCTAssertEqual(snapshot.signals.first?.message, CoreL10n.format("Pipeline 状态：%@", "success"))
     XCTAssertEqual(snapshot.signals.first?.urlText, "https://gitlab.com/group/site/-/pipelines/5")
 
     let requests = await transport.capturedRequests()
@@ -102,9 +109,12 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(snapshot.provider, .vercel)
     XCTAssertEqual(snapshot.level, .failed)
     XCTAssertEqual(snapshot.signals.first?.message, "HTTP 503")
-    XCTAssertEqual(snapshot.nextActionTitle, "处理失败后重试")
-    XCTAssertTrue(snapshot.nextActionMessage.contains("重新检查部署"))
-    XCTAssertTrue(snapshot.clipboardSummary.contains("Vercel · 失败"))
+    XCTAssertEqual(snapshot.nextActionTitle, CoreL10n.text("处理失败后重试"))
+    XCTAssertEqual(
+      snapshot.nextActionMessage,
+      CoreL10n.text("打开失败的 Actions、Pipeline 或状态端点，修复后重新检查部署。")
+    )
+    XCTAssertTrue(snapshot.clipboardSummary.contains("Vercel · \(CoreL10n.text("失败"))"))
     XCTAssertTrue(snapshot.clipboardSummary.contains("HTTP 503"))
     XCTAssertTrue(snapshot.clipboardSummary.contains("https://example.com/api/status"))
   }
@@ -145,7 +155,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
 
     XCTAssertEqual(snapshot.provider, .netlify)
     XCTAssertEqual(snapshot.level, .success)
-    XCTAssertEqual(snapshot.signals.first?.title, "Netlify 状态")
+    XCTAssertEqual(snapshot.signals.first?.title, CoreL10n.format("%@ 状态", DeploymentProvider.netlify.displayName))
     XCTAssertEqual(snapshot.signals.first?.message, "Netlify deploy is live")
     XCTAssertEqual(snapshot.signals.first?.urlText, "https://status.example.com/netlify")
   }
@@ -179,6 +189,108 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertNil(publicRequests.first?.value(forHTTPHeaderField: "Authorization"))
   }
 
+  func testDeploymentEndpointRejectsHTTPBeforeSendingBearerToken() async throws {
+    let transport = SequencedDeploymentTransport(responses: [])
+    var profile = SiteProfile.defaultProfile
+    profile.deploymentProvider = .custom
+    profile.deploymentStatusEndpointURL = "http://status.example.com/private"
+    profile.deploymentStatusEndpointUsesToken = true
+
+    let snapshot = await DeploymentStatusService(transport: transport)
+      .check(profile: profile, token: "deploy-token")
+
+    XCTAssertEqual(snapshot.level, .failed)
+    let signal = try XCTUnwrap(snapshot.signals.first)
+    XCTAssertTrue(signal.message.contains("HTTPS"))
+    XCTAssertEqual(
+      signal.message,
+      CoreL10n.text("使用 Bearer Token 的状态端点必须使用 HTTPS；本次未发送 Token。")
+    )
+    let requests = await transport.capturedRequests()
+    XCTAssertTrue(requests.isEmpty)
+  }
+
+  func testDeploymentEndpointMarkedForTokenRejectsHTTPEvenWhenTokenIsMissing() async {
+    let transport = SequencedDeploymentTransport(responses: [])
+    var profile = SiteProfile.defaultProfile
+    profile.deploymentProvider = .custom
+    profile.deploymentStatusEndpointURL = "http://status.example.com/private"
+    profile.deploymentStatusEndpointUsesToken = true
+
+    let snapshot = await DeploymentStatusService(transport: transport)
+      .check(profile: profile, token: nil)
+
+    XCTAssertEqual(snapshot.level, .failed)
+    XCTAssertTrue(snapshot.signals.first?.message.contains("HTTPS") == true)
+    let requests = await transport.capturedRequests()
+    XCTAssertTrue(requests.isEmpty)
+  }
+
+  func testProtectedHTTPSEndpointDoesNotFallBackToAnonymousRequestWhenTokenIsMissing() async {
+    let transport = SequencedDeploymentTransport(responses: [])
+    var profile = SiteProfile.defaultProfile
+    profile.deploymentProvider = .custom
+    profile.deploymentStatusEndpointURL = "https://status.example.com/private"
+    profile.deploymentStatusEndpointUsesToken = true
+
+    let snapshot = await DeploymentStatusService(transport: transport)
+      .check(profile: profile, token: nil)
+
+    XCTAssertEqual(snapshot.level, .unknown)
+    XCTAssertEqual(
+      snapshot.signals.first?.message,
+      CoreL10n.text("该端点要求 Bearer Token，但当前未保存 Token；本次未发起请求。")
+    )
+    let requests = await transport.capturedRequests()
+    XCTAssertTrue(requests.isEmpty)
+  }
+
+  func testPublicDeploymentEndpointStillAllowsHTTPWithoutAuthorization() async {
+    let transport = SequencedDeploymentTransport(responses: [
+      deploymentResponse(statusCode: 200, json: #"{"ok":true}"#),
+    ])
+    var profile = SiteProfile.defaultProfile
+    profile.deploymentProvider = .custom
+    profile.deploymentStatusEndpointURL = "http://status.example.com/public"
+    profile.deploymentStatusEndpointUsesToken = false
+
+    let snapshot = await DeploymentStatusService(transport: transport)
+      .check(profile: profile, token: "must-not-be-sent")
+
+    XCTAssertEqual(snapshot.level, .success)
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.count, 1)
+    XCTAssertNil(requests[0].value(forHTTPHeaderField: "Authorization"))
+  }
+
+  func testGitHubDeploymentAPIRejectsHTTPBeforeBuildingTokenRequest() {
+    let service = DeploymentStatusService()
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "http://api.github.example"
+
+    XCTAssertThrowsError(
+      try service.githubRequest(profile: profile, path: "/repos/owner/site/pages", token: "github-token")
+    ) { error in
+      XCTAssertEqual(error as? DeploymentStatusError, .insecureCredentialURL)
+      XCTAssertTrue(error.localizedDescription.contains("HTTPS"))
+    }
+  }
+
+  func testGitLabDeploymentAPIRejectsHTTPBeforeBuildingTokenRequest() {
+    let service = DeploymentStatusService()
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .gitlab
+    profile.repositoryBaseURL = "http://gitlab.example"
+
+    XCTAssertThrowsError(
+      try service.gitLabRequest(profile: profile, path: "/projects/group%2Fsite/pipelines", token: "gitlab-token")
+    ) { error in
+      XCTAssertEqual(error as? DeploymentStatusError, .insecureCredentialURL)
+      XCTAssertTrue(error.localizedDescription.contains("HTTPS"))
+    }
+  }
+
   func testDeploymentSiteURLFallbackNeverReceivesEndpointBearerToken() async throws {
     let transport = SequencedDeploymentTransport(responses: [
       deploymentResponse(statusCode: 200, json: #"{"ok":true,"message":"Site is reachable"}"#),
@@ -196,6 +308,25 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.first?.url?.absoluteString, "https://example.com")
     XCTAssertNil(requests.first?.value(forHTTPHeaderField: "Authorization"))
+  }
+
+  func testProviderDeploymentTokenIsNeverForwardedToThirdPartyStatusEndpoint() async {
+    let transport = SequencedDeploymentTransport(responses: [
+      deploymentResponse(statusCode: 200, json: #"{"ok":true}"#),
+    ])
+    var profile = SiteProfile.defaultProfile
+    profile.deploymentProvider = .githubPages
+    profile.repoOwner = ""
+    profile.repoName = ""
+    profile.deploymentStatusEndpointURL = "https://status.third-party.example/private"
+    profile.deploymentStatusEndpointUsesToken = true
+
+    _ = await DeploymentStatusService(transport: transport)
+      .check(profile: profile, token: "github-platform-token")
+
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.count, 1)
+    XCTAssertNil(requests[0].value(forHTTPHeaderField: "Authorization"))
   }
 
   func testDeploymentCheckVerifiesPublishedArticlePageContainsTitle() async throws {
@@ -219,15 +350,45 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let snapshot = await service.check(profile: profile, releaseRecord: record)
 
     XCTAssertEqual(snapshot.level, .success)
-    XCTAssertEqual(snapshot.signals.map(\.title), ["自定义端点 状态", "发布页面内容", "发布页面 SEO"])
-    XCTAssertEqual(snapshot.signals.first { $0.title == "发布页面内容" }?.message, "已在发布页面找到文章标题：Published Article")
-    XCTAssertEqual(snapshot.signals.first { $0.title == "发布页面 SEO" }?.message, "canonical / og:url 已指向当前文章 URL。")
+    XCTAssertEqual(snapshot.signals.map(\.title), [
+      CoreL10n.format("%@ 状态", DeploymentProvider.custom.displayName),
+      CoreL10n.text("发布页面内容"),
+      CoreL10n.text("发布页面 SEO"),
+    ])
+    XCTAssertEqual(
+      snapshot.signals.first { $0.title == CoreL10n.text("发布页面内容") }?.message,
+      CoreL10n.format("已在发布页面找到文章标题：%@", "Published Article")
+    )
+    XCTAssertEqual(
+      snapshot.signals.first { $0.title == CoreL10n.text("发布页面 SEO") }?.message,
+      CoreL10n.format("%@ 已指向当前文章 URL。", "canonical / og:url")
+    )
     XCTAssertEqual(snapshot.signals.last?.urlText, "https://example.com/blog/published-article")
-    XCTAssertEqual(snapshot.postPublishCheckItems.map(\.title), ["站点入口", "自定义端点 状态", "发布页面内容", "发布页面 SEO", "保持监控"])
+    XCTAssertEqual(snapshot.postPublishCheckItems.map(\.title), [
+      CoreL10n.text("站点入口"),
+      CoreL10n.format("%@ 状态", DeploymentProvider.custom.displayName),
+      CoreL10n.text("发布页面内容"),
+      CoreL10n.text("发布页面 SEO"),
+      CoreL10n.text("保持监控"),
+    ])
     XCTAssertTrue(snapshot.postPublishCheckItems.allSatisfy { $0.level == .success })
-    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains("# 发布后校验报告"))
-    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains("- [x] 发布页面内容：已在发布页面找到文章标题：Published Article"))
-    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains("- [x] 发布页面 SEO：canonical / og:url 已指向当前文章 URL。"))
+    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains(CoreL10n.text("# 发布后校验报告")))
+    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains(
+      CoreL10n.format(
+        "- [%@] %@：%@",
+        "x",
+        CoreL10n.text("发布页面内容"),
+        CoreL10n.format("已在发布页面找到文章标题：%@", "Published Article")
+      )
+    ))
+    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains(
+      CoreL10n.format(
+        "- [%@] %@：%@",
+        "x",
+        CoreL10n.text("发布页面 SEO"),
+        CoreL10n.format("%@ 已指向当前文章 URL。", "canonical / og:url")
+      )
+    ))
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map { $0.url?.absoluteString }, [
       "https://example.com/blog/",
@@ -256,17 +417,25 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let snapshot = await service.check(profile: profile, releaseRecord: record)
 
     XCTAssertEqual(snapshot.level, .failed)
-    let contentSignal = try XCTUnwrap(snapshot.signals.first { $0.title == "发布页面内容" })
+    let missingTitleMessage = CoreL10n.format("文章页面可访问，但没有找到文章标题：%@", "New Article")
+    let contentSignal = try XCTUnwrap(snapshot.signals.first { $0.title == CoreL10n.text("发布页面内容") })
     XCTAssertEqual(contentSignal.level, .failed)
-    XCTAssertEqual(contentSignal.message, "文章页面可访问，但没有找到文章标题：New Article")
-    XCTAssertEqual(snapshot.message, "文章页面可访问，但没有找到文章标题：New Article")
+    XCTAssertEqual(contentSignal.message, missingTitleMessage)
+    XCTAssertEqual(snapshot.message, missingTitleMessage)
     XCTAssertTrue(snapshot.postPublishCheckItems.contains {
-      $0.title == "发布页面内容"
+      $0.title == CoreL10n.text("发布页面内容")
         && $0.level == .failed
-        && $0.message == "文章页面可访问，但没有找到文章标题：New Article"
+        && $0.message == missingTitleMessage
     })
-    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains("## 需处理信号"))
-    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains("- [失败] 发布页面内容：文章页面可访问，但没有找到文章标题：New Article"))
+    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains(CoreL10n.text("## 需处理信号")))
+    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains(
+      CoreL10n.format(
+        "- [%@] %@：%@",
+        CoreL10n.text("失败"),
+        CoreL10n.text("发布页面内容"),
+        missingTitleMessage
+      )
+    ))
   }
 
   func testDeploymentCheckFailsWhenPublishedArticleCanonicalPointsElsewhere() async throws {
@@ -290,12 +459,24 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let snapshot = await service.check(profile: profile, releaseRecord: record)
 
     XCTAssertEqual(snapshot.level, .failed)
-    XCTAssertEqual(snapshot.signals.first { $0.title == "发布页面内容" }?.level, .success)
-    let seoSignal = try XCTUnwrap(snapshot.signals.first { $0.title == "发布页面 SEO" })
+    XCTAssertEqual(snapshot.signals.first { $0.title == CoreL10n.text("发布页面内容") }?.level, .success)
+    let seoSignal = try XCTUnwrap(snapshot.signals.first { $0.title == CoreL10n.text("发布页面 SEO") })
     XCTAssertEqual(seoSignal.level, .failed)
-    XCTAssertEqual(seoSignal.message, "canonical 指向 https://example.com/posts/old-article，不是当前文章 URL。")
-    XCTAssertEqual(snapshot.message, "canonical 指向 https://example.com/posts/old-article，不是当前文章 URL。")
-    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains("- [失败] 发布页面 SEO：canonical 指向 https://example.com/posts/old-article，不是当前文章 URL。"))
+    let canonicalMismatchMessage = CoreL10n.format(
+      "%@ 指向 %@，不是当前文章 URL。",
+      "canonical",
+      "https://example.com/posts/old-article"
+    )
+    XCTAssertEqual(seoSignal.message, canonicalMismatchMessage)
+    XCTAssertEqual(snapshot.message, canonicalMismatchMessage)
+    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains(
+      CoreL10n.format(
+        "- [%@] %@：%@",
+        CoreL10n.text("失败"),
+        CoreL10n.text("发布页面 SEO"),
+        canonicalMismatchMessage
+      )
+    ))
   }
 
   func testDeploymentArticleCheckVerifiesPublishedSocialMetadataAgainstReleaseSnapshot() async throws {
@@ -339,10 +520,29 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let snapshot = await service.check(profile: profile, releaseRecord: record)
 
     XCTAssertEqual(snapshot.level, .success)
-    XCTAssertEqual(snapshot.signals.map(\.title), ["自定义端点 状态", "发布页面内容", "发布页面 SEO", "发布页面社交元数据"])
-    XCTAssertEqual(snapshot.signals.last?.message, "社交卡片字段（标题、摘要、封面 Alt、og:image URL）已匹配发布记录。")
+    XCTAssertEqual(snapshot.signals.map(\.title), [
+      CoreL10n.format("%@ 状态", DeploymentProvider.custom.displayName),
+      CoreL10n.text("发布页面内容"),
+      CoreL10n.text("发布页面 SEO"),
+      CoreL10n.text("发布页面社交元数据"),
+    ])
+    let matchedPieces = [
+      CoreL10n.text("标题"),
+      CoreL10n.text("摘要"),
+      CoreL10n.text("封面 Alt"),
+      CoreL10n.format("%@ URL", "og:image"),
+    ].joined(separator: CoreL10n.text("、"))
+    let socialMetadataMessage = CoreL10n.format("社交卡片字段（%@）已匹配发布记录。", matchedPieces)
+    XCTAssertEqual(snapshot.signals.last?.message, socialMetadataMessage)
     XCTAssertEqual(snapshot.signals.last?.urlText, "https://example.com/images/social-article.jpg")
-    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains("- [x] 发布页面社交元数据：社交卡片字段（标题、摘要、封面 Alt、og:image URL）已匹配发布记录。"))
+    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains(
+      CoreL10n.format(
+        "- [%@] %@：%@",
+        "x",
+        CoreL10n.text("发布页面社交元数据"),
+        socialMetadataMessage
+      )
+    ))
     XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains("https://example.com/images/social-article.jpg"))
   }
 
@@ -385,11 +585,19 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let snapshot = await service.check(profile: profile, releaseRecord: record)
 
     XCTAssertEqual(snapshot.level, .failed)
-    let socialSignal = try XCTUnwrap(snapshot.signals.first { $0.title == "发布页面社交元数据" })
+    let socialSignal = try XCTUnwrap(snapshot.signals.first { $0.title == CoreL10n.text("发布页面社交元数据") })
     XCTAssertEqual(socialSignal.level, .failed)
-    XCTAssertEqual(socialSignal.message, "缺少 og:image 或 twitter:image，无法确认社交图 URL。")
-    XCTAssertEqual(snapshot.message, "缺少 og:image 或 twitter:image，无法确认社交图 URL。")
-    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains("- [失败] 发布页面社交元数据：缺少 og:image 或 twitter:image，无法确认社交图 URL。"))
+    let missingImageMessage = CoreL10n.text("缺少 og:image 或 twitter:image，无法确认社交图 URL。")
+    XCTAssertEqual(socialSignal.message, missingImageMessage)
+    XCTAssertEqual(snapshot.message, missingImageMessage)
+    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains(
+      CoreL10n.format(
+        "- [%@] %@：%@",
+        CoreL10n.text("失败"),
+        CoreL10n.text("发布页面社交元数据"),
+        missingImageMessage
+      )
+    ))
   }
 
   func testDeploymentArticleCheckFailsWhenPublishedSocialImageAltIsMissing() async throws {
@@ -431,11 +639,19 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let snapshot = await service.check(profile: profile, releaseRecord: record)
 
     XCTAssertEqual(snapshot.level, .failed)
-    let socialSignal = try XCTUnwrap(snapshot.signals.first { $0.title == "发布页面社交元数据" })
+    let socialSignal = try XCTUnwrap(snapshot.signals.first { $0.title == CoreL10n.text("发布页面社交元数据") })
     XCTAssertEqual(socialSignal.level, .failed)
-    XCTAssertEqual(socialSignal.message, "缺少 og:image:alt 或 twitter:image:alt，无法确认社交图 Alt。")
-    XCTAssertEqual(snapshot.message, "缺少 og:image:alt 或 twitter:image:alt，无法确认社交图 Alt。")
-    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains("- [失败] 发布页面社交元数据：缺少 og:image:alt 或 twitter:image:alt，无法确认社交图 Alt。"))
+    let missingAltMessage = CoreL10n.text("缺少 og:image:alt 或 twitter:image:alt，无法确认社交图 Alt。")
+    XCTAssertEqual(socialSignal.message, missingAltMessage)
+    XCTAssertEqual(snapshot.message, missingAltMessage)
+    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains(
+      CoreL10n.format(
+        "- [%@] %@：%@",
+        CoreL10n.text("失败"),
+        CoreL10n.text("发布页面社交元数据"),
+        missingAltMessage
+      )
+    ))
   }
 
   func testDeploymentArticleCheckFailsWhenPublishedSocialTitleIsMissing() async throws {
@@ -473,11 +689,19 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let snapshot = await service.check(profile: profile, releaseRecord: record)
 
     XCTAssertEqual(snapshot.level, .failed)
-    let socialSignal = try XCTUnwrap(snapshot.signals.first { $0.title == "发布页面社交元数据" })
+    let socialSignal = try XCTUnwrap(snapshot.signals.first { $0.title == CoreL10n.text("发布页面社交元数据") })
     XCTAssertEqual(socialSignal.level, .failed)
-    XCTAssertEqual(socialSignal.message, "缺少 og:title 或 twitter:title，无法确认社交卡片标题。")
-    XCTAssertEqual(snapshot.message, "缺少 og:title 或 twitter:title，无法确认社交卡片标题。")
-    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains("- [失败] 发布页面社交元数据：缺少 og:title 或 twitter:title，无法确认社交卡片标题。"))
+    let missingSocialTitleMessage = CoreL10n.text("缺少 og:title 或 twitter:title，无法确认社交卡片标题。")
+    XCTAssertEqual(socialSignal.message, missingSocialTitleMessage)
+    XCTAssertEqual(snapshot.message, missingSocialTitleMessage)
+    XCTAssertTrue(snapshot.postPublishChecklistMarkdown.contains(
+      CoreL10n.format(
+        "- [%@] %@：%@",
+        CoreL10n.text("失败"),
+        CoreL10n.text("发布页面社交元数据"),
+        missingSocialTitleMessage
+      )
+    ))
   }
 
   func testDeploymentArticleCheckUsesJekyllDatedPermalink() async throws {
@@ -502,7 +726,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let snapshot = await service.check(profile: profile, releaseRecord: record)
 
     XCTAssertEqual(snapshot.level, .success)
-    XCTAssertEqual(snapshot.signals.last?.title, "发布页面 SEO")
+    XCTAssertEqual(snapshot.signals.last?.title, CoreL10n.text("发布页面 SEO"))
     XCTAssertEqual(snapshot.signals.last?.urlText, "https://example.com/blog/2026/07/07/jekyll-article")
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map { $0.url?.absoluteString }, [
@@ -557,7 +781,11 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(snapshot.provider, .netlify)
     XCTAssertEqual(snapshot.level, .success)
     XCTAssertEqual(snapshot.signals.map(\.title), ["personal-site"])
-    XCTAssertEqual(snapshot.signals.first?.message, "状态：ready · 分支：main · 提交：abc123")
+    XCTAssertEqual(snapshot.signals.first?.message, [
+      CoreL10n.format("状态：%@", "ready"),
+      CoreL10n.format("分支：%@", "main"),
+      CoreL10n.format("提交：%@", "abc123"),
+    ].joined(separator: " · "))
     XCTAssertEqual(snapshot.signals.first?.urlText, "https://app.netlify.com/sites/personal-site/deploys/1")
 
     let requests = await transport.capturedRequests()
@@ -591,7 +819,10 @@ final class DeploymentStatusServiceTests: XCTestCase {
       .check(profile: profile, token: "netlify-token")
 
     XCTAssertEqual(failedSnapshot.level, .failed)
-    XCTAssertEqual(failedSnapshot.signals.first?.message, "状态：error · Build command failed")
+    XCTAssertEqual(failedSnapshot.signals.first?.message, [
+      CoreL10n.format("状态：%@", "error"),
+      "Build command failed",
+    ].joined(separator: " · "))
   }
 
   func testVercelDeploymentsAPIBuildsRunningSnapshotWithProjectAndTeam() async throws {
@@ -620,7 +851,12 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(snapshot.provider, .vercel)
     XCTAssertEqual(snapshot.level, .running)
     XCTAssertEqual(snapshot.signals.map(\.title), ["personal-site"])
-    XCTAssertEqual(snapshot.signals.first?.message, "状态：BUILDING · 目标：production · 分支：main · 提交：abc123")
+    XCTAssertEqual(snapshot.signals.first?.message, [
+      CoreL10n.format("状态：%@", "BUILDING"),
+      CoreL10n.format("目标：%@", "production"),
+      CoreL10n.format("分支：%@", "main"),
+      CoreL10n.format("提交：%@", "abc123"),
+    ].joined(separator: " · "))
     XCTAssertEqual(snapshot.signals.first?.urlText, "https://vercel.com/team/personal-site/abc")
 
     let requests = await transport.capturedRequests()
@@ -655,7 +891,12 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(snapshot.provider, .cloudflarePages)
     XCTAssertEqual(snapshot.level, .success)
     XCTAssertEqual(snapshot.signals.map(\.title), ["deploy"])
-    XCTAssertEqual(snapshot.signals.first?.message, "状态：success · 分支：main · 提交：abc123 · Publish article")
+    XCTAssertEqual(snapshot.signals.first?.message, [
+      CoreL10n.format("状态：%@", "success"),
+      CoreL10n.format("分支：%@", "main"),
+      CoreL10n.format("提交：%@", "abc123"),
+      "Publish article",
+    ].joined(separator: " · "))
     XCTAssertEqual(snapshot.signals.first?.urlText, "https://personal-site.pages.dev")
 
     let requests = await transport.capturedRequests()
@@ -694,10 +935,18 @@ final class DeploymentStatusServiceTests: XCTestCase {
       .check(profile: netlifyProfile, releaseRecord: releaseRecord, token: "netlify-token")
 
     XCTAssertEqual(netlifySnapshot.level, .unknown)
-    XCTAssertTrue(netlifySnapshot.signals.first?.message.contains("最近一次 Netlify 部署不是当前发布") == true)
-    XCTAssertTrue(netlifySnapshot.signals.first?.message.contains("期望提交 abc123456789") == true)
-    XCTAssertTrue(netlifySnapshot.signals.first?.message.contains("实际 def999888777") == true)
-    XCTAssertTrue(netlifySnapshot.signals.first?.message.contains("期望分支 main，实际 preview") == true)
+    let netlifyMismatches = [
+      CoreL10n.format("期望提交 %@，实际 %@", "abc123456789", "def999888777"),
+      CoreL10n.format("期望分支 %@，实际 %@", "main", "preview"),
+    ].joined(separator: CoreL10n.text("；"))
+    XCTAssertEqual(
+      netlifySnapshot.signals.first?.message,
+      CoreL10n.format(
+        "最近一次 %@ 部署不是当前发布：%@。请等待目标 commit 部署完成或检查部署队列。",
+        DeploymentProvider.netlify.displayName,
+        netlifyMismatches
+      )
+    )
 
     let vercelTransport = SequencedDeploymentTransport(responses: [
       deploymentResponse(
@@ -713,8 +962,14 @@ final class DeploymentStatusServiceTests: XCTestCase {
       .check(profile: vercelProfile, releaseRecord: releaseRecord, token: "vercel-token")
 
     XCTAssertEqual(vercelSnapshot.level, .unknown)
-    XCTAssertTrue(vercelSnapshot.signals.first?.message.contains("最近一次 Vercel 部署不是当前发布") == true)
-    XCTAssertTrue(vercelSnapshot.signals.first?.message.contains("期望提交 abc123456789") == true)
+    XCTAssertEqual(
+      vercelSnapshot.signals.first?.message,
+      CoreL10n.format(
+        "最近一次 %@ 部署不是当前发布：%@。请等待目标 commit 部署完成或检查部署队列。",
+        DeploymentProvider.vercel.displayName,
+        CoreL10n.format("期望提交 %@，实际 %@", "abc123456789", "def999888777")
+      )
+    )
 
     let cloudflareTransport = SequencedDeploymentTransport(responses: [
       deploymentResponse(
@@ -731,8 +986,14 @@ final class DeploymentStatusServiceTests: XCTestCase {
       .check(profile: cloudflareProfile, releaseRecord: releaseRecord, token: "cloudflare-token")
 
     XCTAssertEqual(cloudflareSnapshot.level, .unknown)
-    XCTAssertTrue(cloudflareSnapshot.signals.first?.message.contains("最近一次 Cloudflare Pages 部署不是当前发布") == true)
-    XCTAssertTrue(cloudflareSnapshot.signals.first?.message.contains("期望分支 main，实际 develop") == true)
+    XCTAssertEqual(
+      cloudflareSnapshot.signals.first?.message,
+      CoreL10n.format(
+        "最近一次 %@ 部署不是当前发布：%@。请等待目标 commit 部署完成或检查部署队列。",
+        DeploymentProvider.cloudflarePages.displayName,
+        CoreL10n.format("期望分支 %@，实际 %@", "main", "develop")
+      )
+    )
   }
 
   func testDeploymentReadinessShowsProviderMissingTokenAndFallbackState() {
@@ -748,11 +1009,19 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertFalse(readiness.isAPIReady)
     XCTAssertTrue(readiness.canCheckAnyStatus)
     XCTAssertTrue(readiness.configuredSignals.contains("Vercel Project ID"))
-    XCTAssertTrue(readiness.configuredSignals.contains("状态端点 URL"))
-    XCTAssertTrue(readiness.missingRequirements.contains("部署 Token"))
-    XCTAssertTrue(readiness.statusTitle.contains("降级校验"))
-    XCTAssertTrue(readiness.fallbackMessage.contains("HTTP 可达性"))
-    XCTAssertTrue(readiness.checklistMarkdown.contains("- [ ] 部署 Token"))
+    XCTAssertTrue(readiness.configuredSignals.contains(CoreL10n.text("状态端点 URL")))
+    XCTAssertTrue(readiness.missingRequirements.contains(CoreL10n.text("部署 Token")))
+    XCTAssertEqual(
+      readiness.statusTitle,
+      CoreL10n.format("%@ 可做降级校验", DeploymentProvider.vercel.displayName)
+    )
+    XCTAssertEqual(
+      readiness.fallbackMessage,
+      CoreL10n.text("已配置站点 URL 或状态端点；即使 API 未就绪，也能检查 HTTP 可达性和文章页面内容。")
+    )
+    XCTAssertTrue(readiness.checklistMarkdown.contains(
+      CoreL10n.format("- [ ] %@", CoreL10n.text("部署 Token"))
+    ))
   }
 
   func testDeploymentReadinessTracksProtectedStatusEndpointTokenRequirement() {
@@ -764,14 +1033,51 @@ final class DeploymentStatusServiceTests: XCTestCase {
 
     let missingToken = service.readiness(profile: profile, hasToken: false)
 
+    XCTAssertFalse(missingToken.isAPIReady)
     XCTAssertTrue(missingToken.canCheckAnyStatus)
-    XCTAssertTrue(missingToken.missingRequirements.contains("状态端点 Bearer Token"))
-    XCTAssertTrue(missingToken.fallbackMessage.contains("Bearer 授权"))
+    XCTAssertTrue(missingToken.missingRequirements.contains(CoreL10n.text("状态端点 Bearer Token")))
+    XCTAssertTrue(missingToken.fallbackMessage.contains(
+      CoreL10n.text(" 状态端点会在保存 Token 后使用 Bearer 授权。")
+    ))
 
     let ready = service.readiness(profile: profile, hasToken: true)
 
-    XCTAssertTrue(ready.configuredSignals.contains("状态端点 Bearer Token"))
-    XCTAssertFalse(ready.missingRequirements.contains("状态端点 Bearer Token"))
+    XCTAssertTrue(ready.isAPIReady)
+    XCTAssertTrue(ready.configuredSignals.contains(CoreL10n.text("状态端点 Bearer Token")))
+    XCTAssertFalse(ready.missingRequirements.contains(CoreL10n.text("状态端点 Bearer Token")))
+  }
+
+  func testDeploymentReadinessRejectsProtectedHTTPStatusEndpoint() {
+    let service = DeploymentStatusService()
+    var profile = SiteProfile.defaultProfile
+    profile.deploymentProvider = .custom
+    profile.deploymentStatusEndpointURL = "http://status.example.com/private"
+    profile.deploymentStatusEndpointUsesToken = true
+
+    let readiness = service.readiness(profile: profile, hasToken: true)
+
+    XCTAssertFalse(readiness.isAPIReady)
+    XCTAssertFalse(readiness.canCheckAnyStatus)
+    XCTAssertTrue(readiness.missingRequirements.contains(CoreL10n.text("状态端点 HTTPS URL")))
+    XCTAssertEqual(
+      readiness.fallbackMessage,
+      CoreL10n.text("受保护状态端点必须使用 HTTPS；当前端点已禁用，不会发送 Bearer Token。")
+    )
+  }
+
+  func testDeploymentReadinessRejectsHTTPRepositoryAPIWithToken() {
+    let service = DeploymentStatusService()
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = "http://api.github.example"
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    profile.deploymentProvider = .githubPages
+
+    let readiness = service.readiness(profile: profile, hasToken: true)
+
+    XCTAssertFalse(readiness.isAPIReady)
+    XCTAssertTrue(readiness.missingRequirements.contains(CoreL10n.text("仓库 API HTTPS URL")))
   }
 
   func testDeploymentReadinessPassesCloudflareWhenAccountProjectAndTokenExist() {
@@ -788,7 +1094,10 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertTrue(readiness.missingRequirements.isEmpty)
     XCTAssertTrue(readiness.configuredSignals.contains("Cloudflare Account ID"))
     XCTAssertTrue(readiness.configuredSignals.contains("Cloudflare Pages project"))
-    XCTAssertTrue(readiness.statusTitle.contains("API 已就绪"))
+    XCTAssertEqual(
+      readiness.statusTitle,
+      CoreL10n.format("%@ API 已就绪", DeploymentProvider.cloudflarePages.displayName)
+    )
   }
 
   func testDeploymentReadinessRequiresCompleteCloudflareConfigurationBeforeCheckingStatus() {
@@ -832,9 +1141,12 @@ final class DeploymentStatusServiceTests: XCTestCase {
 
     XCTAssertFalse(readiness.isAPIReady)
     XCTAssertTrue(readiness.canCheckAnyStatus)
-    XCTAssertTrue(readiness.configuredSignals.contains("站点 URL"))
+    XCTAssertTrue(readiness.configuredSignals.contains(CoreL10n.text("站点 URL")))
     XCTAssertTrue(readiness.missingRequirements.contains("Cloudflare Pages project"))
-    XCTAssertTrue(readiness.statusTitle.contains("降级校验"))
+    XCTAssertEqual(
+      readiness.statusTitle,
+      CoreL10n.format("%@ 可做降级校验", DeploymentProvider.cloudflarePages.displayName)
+    )
   }
 
   func testStoreRefreshDeploymentStatusCachesSnapshotForRecord() async throws {
@@ -861,8 +1173,12 @@ final class DeploymentStatusServiceTests: XCTestCase {
 
     XCTAssertEqual(snapshot?.level, .success)
     XCTAssertEqual(store.deploymentStatusSnapshot(for: record)?.provider, .custom)
-    XCTAssertEqual(store.deploymentStatusMessage, "自定义端点：正常")
+    XCTAssertEqual(
+      store.deploymentStatusMessage,
+      CoreL10n.format("%@：%@", DeploymentProvider.custom.displayName, CoreL10n.text("正常"))
+    )
 
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.deploymentStatusSnapshot(for: record)?.level, .success)
     XCTAssertEqual(reloaded.releaseLedger.entries.first?.status, .succeeded)
@@ -899,9 +1215,63 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(store.deploymentStatusSnapshot(for: record)?.level, .success)
     XCTAssertEqual(store.deploymentStatusHistory(for: record).map(\.level), [.success, .failed])
 
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.deploymentStatusSnapshot(for: record)?.level, .success)
     XCTAssertEqual(reloaded.deploymentStatusHistory(for: record).map(\.level), [.success, .failed])
+  }
+
+  func testStoreIgnoresOlderDeploymentRefreshThatFinishesLast() async throws {
+    let transport = SequencedDeploymentTransport(responses: [
+      deploymentResponse(
+        statusCode: 200,
+        json: #"{"status":"error","message":"stale failure"}"#,
+        delayNanoseconds: 80_000_000
+      ),
+      deploymentResponse(
+        statusCode: 200,
+        json: #"{"status":"ok","message":"latest success"}"#,
+        delayNanoseconds: 5_000_000
+      ),
+    ])
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      deploymentStatusService: DeploymentStatusService(transport: transport)
+    )
+    store.updateActiveProfile { profile in
+      profile.deploymentProvider = .custom
+      profile.deploymentStatusEndpointURL = "https://status.example.com/site"
+    }
+    let record = ReleaseRecord(
+      title: "线上发布：Concurrent",
+      summary: "custom",
+      siteProfileID: store.activeProfileID
+    )
+    store.setReleaseRecords([record])
+
+    let olderRefresh = Task {
+      await store.refreshDeploymentStatus(for: record)
+    }
+    for _ in 0..<200 {
+      if (await transport.capturedRequests()).count == 1 { break }
+      await Task.yield()
+    }
+    let newerRefresh = Task {
+      await store.refreshDeploymentStatus(for: record)
+    }
+
+    let newerSnapshot = await newerRefresh.value
+    let olderSnapshot = await olderRefresh.value
+
+    XCTAssertEqual(newerSnapshot?.level, .success)
+    XCTAssertNil(olderSnapshot)
+    XCTAssertEqual(store.deploymentStatusSnapshot(for: record)?.level, .success)
+    XCTAssertEqual(store.deploymentStatusHistory(for: record).map(\.level), [.success])
+    XCTAssertEqual(
+      store.deploymentStatusMessage,
+      CoreL10n.format("%@：%@", DeploymentProvider.custom.displayName, CoreL10n.text("正常"))
+    )
+    XCTAssertFalse(store.isDeploymentStatusChecking)
   }
 
   func testStoreBlocksDeploymentStatusCheckWhenNoProviderEvidenceExists() async throws {
@@ -928,7 +1298,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let snapshot = await store.refreshDeploymentStatus(for: record)
 
     XCTAssertNil(snapshot)
-    XCTAssertTrue(store.deploymentStatusMessage?.contains("站点 URL 或状态端点 URL") == true)
+    XCTAssertTrue(store.deploymentStatusMessage?.contains(CoreL10n.text("站点 URL 或状态端点 URL")) == true)
   }
 
   func testStoreAllowsDeploymentStatusChecksFromPlatformProjectConfiguration() async throws {
@@ -993,6 +1363,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let skippedRequests = await transport.capturedRequests()
     XCTAssertEqual(skippedRequests.count, 0)
 
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     XCTAssertTrue(reloaded.deploymentPollingSettings.isEnabled)
     XCTAssertEqual(reloaded.deploymentPollingSettings.normalizedIntervalMinutes, 15)
@@ -1050,11 +1421,12 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(store.deploymentPollingState.successCount, 1)
     XCTAssertEqual(store.deploymentPollingState.runningCount, 0)
     XCTAssertEqual(store.deploymentPollingState.attentionCount, 0)
-    XCTAssertTrue(store.deploymentPollingState.message.contains("正常 1"))
+    XCTAssertTrue(store.deploymentPollingState.message.contains(CoreL10n.format("正常 %@", "1")))
     XCTAssertEqual(store.deploymentStatusSnapshot(for: record)?.level, .success)
     let checkedRequests = await transport.capturedRequests()
     XCTAssertEqual(checkedRequests.count, 1)
 
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.deploymentPollingSettings.normalizedIntervalMinutes, 5)
     XCTAssertTrue(reloaded.deploymentPollingSettings.isEnabled)
@@ -1097,12 +1469,20 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(store.deploymentPollingState.checkedRecords.first?.level, .success)
     XCTAssertEqual(store.deploymentPollingState.successCount, 0)
     XCTAssertEqual(store.deploymentPollingState.attentionCount, 1)
-    XCTAssertTrue(store.deploymentPollingState.message.contains("正常 0"))
-    XCTAssertTrue(store.deploymentPollingState.message.contains("远端恢复待确认 1"))
-    XCTAssertTrue(store.deploymentPollingState.followUpChecklistMarkdown.contains("# 部署轮询后续处理"))
-    XCTAssertTrue(store.deploymentPollingState.followUpChecklistMarkdown.contains("需处理：1"))
-    XCTAssertTrue(store.deploymentPollingState.followUpChecklistMarkdown.contains("确认远端恢复"))
-    XCTAssertTrue(store.deploymentPollingState.followUpChecklistMarkdown.contains("即使本次状态信号正常，也要先确认远端部分写入"))
+    XCTAssertTrue(store.deploymentPollingState.message.contains(CoreL10n.format("正常 %@", "0")))
+    XCTAssertTrue(store.deploymentPollingState.message.contains(CoreL10n.format("远端恢复待确认 %@", "1")))
+    XCTAssertTrue(store.deploymentPollingState.followUpChecklistMarkdown.contains(
+      CoreL10n.text("# 部署轮询后续处理")
+    ))
+    XCTAssertTrue(store.deploymentPollingState.followUpChecklistMarkdown.contains(
+      CoreL10n.format("- 需处理：%@", "1")
+    ))
+    XCTAssertTrue(store.deploymentPollingState.followUpChecklistMarkdown.contains(
+      CoreL10n.text("确认远端恢复")
+    ))
+    XCTAssertTrue(store.deploymentPollingState.followUpChecklistMarkdown.contains(
+      CoreL10n.text("即使本次状态信号正常，也要先确认远端部分写入、冲突路径和恢复包。")
+    ))
     XCTAssertEqual(store.deploymentStatusSnapshot(for: record)?.level, .success)
     XCTAssertEqual(store.releaseLedger.entries.first?.status, .pendingRemoteRecovery)
     XCTAssertEqual(store.releaseLedger.summary.remoteRecoveryPendingCount, 1)
@@ -1110,6 +1490,7 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let checkedRequests = await transport.capturedRequests()
     XCTAssertEqual(checkedRequests.count, 1)
 
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.deploymentPollingState.checkedRecords.first?.releaseStatus, .pendingRemoteRecovery)
     XCTAssertEqual(reloaded.deploymentPollingState.successCount, 0)
@@ -1162,14 +1543,17 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(store.deploymentPollingState.failedCount, 1)
     XCTAssertEqual(store.deploymentPollingState.unknownCount, 0)
     XCTAssertEqual(store.deploymentPollingState.attentionCount, 1)
-    XCTAssertTrue(store.deploymentPollingState.message.contains("正常 1"))
-    XCTAssertTrue(store.deploymentPollingState.message.contains("部署中 1"))
-    XCTAssertTrue(store.deploymentPollingState.message.contains("失败 1"))
+    XCTAssertTrue(store.deploymentPollingState.message.contains(CoreL10n.format("正常 %@", "1")))
+    XCTAssertTrue(store.deploymentPollingState.message.contains(CoreL10n.format("部署中 %@", "1")))
+    XCTAssertTrue(store.deploymentPollingState.message.contains(CoreL10n.format("失败 %@", "1")))
     let checklist = store.deploymentPollingState.followUpChecklistMarkdown
-    XCTAssertTrue(checklist.contains("- [ ] 线上发布：Running：继续观察部署"))
-    XCTAssertTrue(checklist.contains("- [ ] 线上发布：Failed：处理失败记录"))
-    XCTAssertTrue(checklist.contains("- [x] 线上发布：Success：保留校验证据"))
-    XCTAssertTrue(checklist.contains("先处理远端待确认、失败和未知记录"))
+    let checkedRecords = store.deploymentPollingState.checkedRecords
+    XCTAssertTrue(checklist.contains(try XCTUnwrap(checkedRecords.first { $0.recordID == runningRecord.id }).followUpChecklistLine))
+    XCTAssertTrue(checklist.contains(try XCTUnwrap(checkedRecords.first { $0.recordID == failedRecord.id }).followUpChecklistLine))
+    XCTAssertTrue(checklist.contains(try XCTUnwrap(checkedRecords.first { $0.recordID == successRecord.id }).followUpChecklistLine))
+    XCTAssertTrue(checklist.contains(
+      CoreL10n.text("- [ ] 先处理远端待确认、失败和未知记录，再继续观察部署中记录。")
+    ))
     XCTAssertEqual(store.deploymentStatusSnapshot(for: runningRecord)?.level, .running)
     XCTAssertEqual(store.deploymentStatusSnapshot(for: failedRecord)?.level, .failed)
     XCTAssertEqual(store.deploymentStatusSnapshot(for: successRecord)?.level, .success)
@@ -1200,7 +1584,11 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(result.snapshot.releaseRecordID, record.id)
     XCTAssertEqual(result.snapshot.level, .success)
     XCTAssertEqual(result.snapshot.title, "personal-site")
-    XCTAssertEqual(result.snapshot.signals.first?.message, "状态：ready · 分支：main · 提交：abc123")
+    XCTAssertEqual(result.snapshot.signals.first?.message, [
+      CoreL10n.format("状态：%@", "ready"),
+      CoreL10n.format("分支：%@", "main"),
+      CoreL10n.format("提交：%@", "abc123"),
+    ].joined(separator: " · "))
     XCTAssertEqual(result.snapshot.siteURLText, "https://app.netlify.com/sites/personal-site/deploys/1")
   }
 
@@ -1238,14 +1626,20 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(store.deploymentStatusSnapshot(for: record)?.level, .success)
     let history = store.deploymentStatusHistory(for: record)
     XCTAssertEqual(history.map(\.level), [.success, .running])
-    XCTAssertEqual(store.deploymentStatusMessage, "已接收 Vercel Webhook：正常")
+    XCTAssertEqual(
+      store.deploymentStatusMessage,
+      CoreL10n.format("已接收 %@ Webhook：%@", "Vercel", CoreL10n.text("正常"))
+    )
   }
 
   func testDeploymentProviderIntegrationDepthDocumentsThirdPartyAPIs() {
     XCTAssertTrue(DeploymentProvider.netlify.integrationDepth.title.contains("Netlify Deploy API"))
     XCTAssertTrue(DeploymentProvider.vercel.integrationDepth.title.contains("Vercel Deployments API"))
     XCTAssertTrue(DeploymentProvider.cloudflarePages.integrationDepth.detail.contains("Cloudflare Pages Deployments API"))
-    XCTAssertTrue(DeploymentProvider.custom.integrationDepth.detail.contains("状态端点"))
+    XCTAssertEqual(
+      DeploymentProvider.custom.integrationDepth.detail,
+      CoreL10n.text("读取自定义 JSON/HTTP 状态端点，或使用站点 URL 做可达性与发布后页面校验。")
+    )
   }
 
   func testDeploymentWebhookHTTPRequestParsesProviderAndPayload() throws {
@@ -1289,6 +1683,9 @@ private actor SequencedDeploymentTransport: RemoteRepositoryHTTPTransport {
     }
 
     let response = responses.removeFirst()
+    if response.delayNanoseconds > 0 {
+      try await Task.sleep(nanoseconds: response.delayNanoseconds)
+    }
     return (
       response.data,
       HTTPURLResponse(url: request.url!, statusCode: response.statusCode, httpVersion: nil, headerFields: nil)!
@@ -1303,8 +1700,17 @@ private actor SequencedDeploymentTransport: RemoteRepositoryHTTPTransport {
 private struct DeploymentTransportResponse {
   var statusCode: Int
   var data: Data
+  var delayNanoseconds: UInt64 = 0
 }
 
-private func deploymentResponse(statusCode: Int = 200, json: String) -> DeploymentTransportResponse {
-  DeploymentTransportResponse(statusCode: statusCode, data: Data(json.utf8))
+private func deploymentResponse(
+  statusCode: Int = 200,
+  json: String,
+  delayNanoseconds: UInt64 = 0
+) -> DeploymentTransportResponse {
+  DeploymentTransportResponse(
+    statusCode: statusCode,
+    data: Data(json.utf8),
+    delayNanoseconds: delayNanoseconds
+  )
 }

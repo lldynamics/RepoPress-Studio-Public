@@ -10,11 +10,11 @@ public enum PreflightSeverity: String, Codable, CaseIterable, Identifiable, Send
   public var displayName: String {
     switch self {
     case .error:
-      return "错误"
+      return CoreL10n.text("错误")
     case .warning:
-      return "警告"
+      return CoreL10n.text("警告")
     case .info:
-      return "提示"
+      return CoreL10n.text("提示")
     }
   }
 
@@ -30,25 +30,32 @@ public enum PreflightSeverity: String, Codable, CaseIterable, Identifiable, Send
   }
 }
 
+public enum PreflightIssueCategory: String, Codable, Hashable, Sendable {
+  case publicRisk
+}
+
 public struct PreflightIssue: Identifiable, Codable, Hashable, Sendable {
   public var id: UUID
   public var severity: PreflightSeverity
   public var title: String
   public var message: String
   public var field: String?
+  public var category: PreflightIssueCategory?
 
   public init(
     id: UUID = UUID(),
     severity: PreflightSeverity,
     title: String,
     message: String,
-    field: String? = nil
+    field: String? = nil,
+    category: PreflightIssueCategory? = nil
   ) {
     self.id = id
     self.severity = severity
     self.title = title
     self.message = message
     self.field = field
+    self.category = category
   }
 }
 
@@ -89,28 +96,29 @@ public struct PublicRiskSummary: Codable, Hashable, Sendable {
 
   public var statusTitle: String {
     if errorCount > 0 {
-      return "公开风险阻塞"
+      return CoreL10n.text("公开风险阻塞")
     }
     if warningCount > 0 {
-      return "公开风险待确认"
+      return CoreL10n.text("公开风险待确认")
     }
-    return "未发现公开风险"
+    return CoreL10n.text("未发现公开风险")
   }
 
   public var statusMessage: String {
     if errorCount > 0 {
-      return "发现疑似密钥、私钥或高风险公开内容，发布前需要移除。"
+      return CoreL10n.text("发现疑似密钥、私钥或高风险公开内容，发布前需要移除。")
     }
     if warningCount > 0 {
-      return "发现内网地址、本机路径等信息，公开前建议脱敏或确认。"
+      return CoreL10n.text("发现内网地址、本机路径等信息，公开前建议脱敏或确认。")
     }
-    return "密钥、私钥、内网地址和本机路径规则没有命中。"
+    return CoreL10n.text("密钥、私钥、内网地址和本机路径规则没有命中。")
   }
 }
 
 public extension PreflightIssue {
   var isPublicRiskIssue: Bool {
-    title.contains("疑似泄露")
+    category == .publicRisk
+      || title.contains("疑似泄露")
       || title.contains("密钥泄露")
       || title.contains("私钥")
       || title.contains("公开风险")
@@ -167,5 +175,37 @@ public struct DraftPreflightSummary: Identifiable, Codable, Hashable, Sendable {
 
   public var isPassing: Bool {
     errorCount == 0 && warningCount == 0
+  }
+}
+
+public struct ContentHealthReport: Sendable {
+  public var sitePreflightIssues: [PreflightIssue]
+  public var draftSummaries: [DraftPreflightSummary]
+  public var publicRiskSummary: PublicRiskSummary
+  public var publicRiskDraftSummaries: [DraftPreflightSummary]
+  public var aiFixQueueItems: [AIPublishingFixQueueItem]
+
+  public init(
+    sitePreflightIssues: [PreflightIssue],
+    draftSummaries: [DraftPreflightSummary],
+    publicRiskSummary: PublicRiskSummary,
+    publicRiskDraftSummaries: [DraftPreflightSummary],
+    aiFixQueueItems: [AIPublishingFixQueueItem]
+  ) {
+    self.sitePreflightIssues = sitePreflightIssues
+    self.draftSummaries = draftSummaries
+    self.publicRiskSummary = publicRiskSummary
+    self.publicRiskDraftSummaries = publicRiskDraftSummaries
+    self.aiFixQueueItems = aiFixQueueItems
+  }
+}
+
+public struct ContentHealthDraftPresentation: Hashable, Sendable {
+  public var title: String
+  public var markdownPath: String
+
+  public init(title: String, markdownPath: String) {
+    self.title = title
+    self.markdownPath = markdownPath
   }
 }

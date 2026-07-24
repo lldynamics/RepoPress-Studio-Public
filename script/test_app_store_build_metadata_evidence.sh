@@ -9,6 +9,7 @@ APP_BUNDLE="$TMP_DIR/dist/$APP_NAME.app"
 INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
 ENTITLEMENTS="$TMP_DIR/AppStore.entitlements"
 OUTPUT="$TMP_DIR/APP_STORE_BUILD_METADATA.md"
+VERSION_CONFIG="$TMP_DIR/BuildVersion.xcconfig"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -39,7 +40,7 @@ cat >"$INFO_PLIST" <<'PLIST'
   <key>CFBundleName</key>
   <string>PersonalSitePublisherMac</string>
   <key>CFBundleDisplayName</key>
-  <string>Personal Site Publishing Console</string>
+  <string>RepoPress</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleIconFile</key>
@@ -50,13 +51,15 @@ cat >"$INFO_PLIST" <<'PLIST'
   <string>42</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
+  <key>PersonalSitePublisherBuildConfiguration</key>
+  <string>Release</string>
 </dict>
 </plist>
 PLIST
 
 for language in zh-Hans en; do
   cat >"$APP_BUNDLE/Contents/Resources/$language.lproj/InfoPlist.strings" <<'STRINGS'
-"CFBundleDisplayName" = "Personal Site Publishing Console";
+"CFBundleDisplayName" = "RepoPress";
 "CFBundleName" = "PersonalSitePublisherMac";
 STRINGS
 done
@@ -76,7 +79,13 @@ cat >"$ENTITLEMENTS" <<'PLIST'
 </plist>
 PLIST
 
+printf '%s\n' \
+  'MARKETING_VERSION = 1.2.3' \
+  'CURRENT_PROJECT_VERSION = 42' \
+  >"$VERSION_CONFIG"
+
 dry_output="$(
+  BUILD_VERSION_CONFIG="$VERSION_CONFIG" \
   APP_STORE_BUILD_METADATA_SKIP_BUILD=1 \
   APP_STORE_BUILD_APP_BUNDLE="$APP_BUNDLE" \
   APP_STORE_BUILD_ENTITLEMENTS="$ENTITLEMENTS" \
@@ -87,6 +96,7 @@ grep -q "app store build metadata evidence: dry-run" <<<"$dry_output" || fail "d
 grep -q "bundle identifier: com.jinfang.PersonalSitePublisherMac" <<<"$dry_output" || fail "dry-run omitted bundle id"
 [[ ! -f "$OUTPUT" ]] || fail "dry-run wrote output evidence"
 
+BUILD_VERSION_CONFIG="$VERSION_CONFIG" \
 APP_STORE_BUILD_METADATA_SKIP_BUILD=1 \
 APP_STORE_BUILD_APP_BUNDLE="$APP_BUNDLE" \
 APP_STORE_BUILD_ENTITLEMENTS="$ENTITLEMENTS" \
@@ -94,19 +104,32 @@ APP_STORE_BUILD_METADATA_EVIDENCE_FILE="$OUTPUT" \
   bash "$RECORDER" --execute >/dev/null
 
 [[ -f "$OUTPUT" ]] || fail "execute did not write evidence"
+grep -q "Version source: \`Packaging/BuildVersion.xcconfig\`" "$OUTPUT" || fail "evidence omits version source"
 grep -q "Bundle identifier: \`com.jinfang.PersonalSitePublisherMac\`" "$OUTPUT" || fail "evidence omits bundle id"
 grep -q "Marketing version: \`1.2.3\`" "$OUTPUT" || fail "evidence omits marketing version"
 grep -q "Build number: \`42\`" "$OUTPUT" || fail "evidence omits build number"
+grep -q "Build configuration: \`Release\`" "$OUTPUT" || fail "evidence omits Release configuration"
 grep -q "App Sandbox entitlement: enabled" "$OUTPUT" || fail "evidence omits sandbox entitlement"
 grep -q "does not verify distribution signing team" "$OUTPUT" || fail "evidence omits boundary warning"
 if grep -Eq '(/Users/|/Volumes/|Authorization:[[:space:]]*Bearer|TeamIdentifier=|Apple[[:space:]]*ID)' "$OUTPUT"; then
   fail "evidence contains private-looking content"
 fi
 
+perl -0pi -e 's/<string>Release<\/string>/<string>Debug<\/string>/' "$INFO_PLIST"
+if APP_STORE_BUILD_METADATA_SKIP_BUILD=1 \
+  APP_STORE_BUILD_APP_BUNDLE="$APP_BUNDLE" \
+  APP_STORE_BUILD_ENTITLEMENTS="$ENTITLEMENTS" \
+  BUILD_VERSION_CONFIG="$VERSION_CONFIG" \
+    bash "$RECORDER" --dry-run >/dev/null 2>&1; then
+  fail "recorder accepted Debug bundle metadata as App Store build evidence"
+fi
+perl -0pi -e 's/<string>Debug<\/string>/<string>Release<\/string>/' "$INFO_PLIST"
+
 perl -0pi -e 's/<key>com\.apple\.security\.network\.client<\/key>\n  <true\/>\n//' "$ENTITLEMENTS"
 if APP_STORE_BUILD_METADATA_SKIP_BUILD=1 \
   APP_STORE_BUILD_APP_BUNDLE="$APP_BUNDLE" \
   APP_STORE_BUILD_ENTITLEMENTS="$ENTITLEMENTS" \
+  BUILD_VERSION_CONFIG="$VERSION_CONFIG" \
     bash "$RECORDER" --dry-run >/dev/null 2>&1; then
   fail "recorder accepted missing network entitlement"
 fi

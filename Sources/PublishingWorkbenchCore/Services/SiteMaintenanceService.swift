@@ -18,7 +18,6 @@ public struct SiteMaintenanceReport: Hashable, Sendable {
   public var linkAuditItems: [SiteLinkAuditItem]
   public var actionItems: [MaintenanceActionItem]
   public var operationLogEntries: [MaintenanceOperationLogEntry]
-  public var contentPerformanceSummary: ContentPerformanceSummary
   public var healthSummary: SiteMaintenanceHealthSummary
 
   public var internalLinkIssueCount: Int {
@@ -28,71 +27,6 @@ public struct SiteMaintenanceReport: Hashable, Sendable {
   public var internalLinkOpportunityCount: Int {
     relationSuggestions.count
   }
-}
-
-public struct ContentPerformanceSnapshot: Identifiable, Codable, Hashable, Sendable {
-  public var id: UUID
-  public var profileID: UUID
-  public var draftID: UUID?
-  public var title: String
-  public var markdownPath: String
-  public var pageViews: Int
-  public var visitors: Int
-  public var sourceName: String
-  public var capturedAt: Date
-
-  public init(
-    id: UUID = UUID(),
-    profileID: UUID,
-    draftID: UUID? = nil,
-    title: String,
-    markdownPath: String,
-    pageViews: Int,
-    visitors: Int,
-    sourceName: String = "手动记录",
-    capturedAt: Date = Date()
-  ) {
-    self.id = id
-    self.profileID = profileID
-    self.draftID = draftID
-    self.title = title
-    self.markdownPath = markdownPath
-    self.pageViews = max(0, pageViews)
-    self.visitors = max(0, visitors)
-    self.sourceName = sourceName.trimmedForPublishing.nilIfEmpty ?? "手动记录"
-    self.capturedAt = capturedAt
-  }
-}
-
-public struct ContentPerformanceArticleSummary: Identifiable, Hashable, Sendable {
-  public var id: String { draftID?.uuidString ?? markdownPath }
-  public var draftID: UUID?
-  public var title: String
-  public var markdownPath: String
-  public var pageViews: Int
-  public var visitors: Int
-  public var sourceName: String
-  public var capturedAt: Date
-}
-
-public struct ContentPerformanceSummary: Hashable, Sendable {
-  public var trackedArticleCount: Int
-  public var totalPageViews: Int
-  public var totalVisitors: Int
-  public var latestCapturedAt: Date?
-  public var topArticles: [ContentPerformanceArticleSummary]
-
-  public var hasData: Bool {
-    trackedArticleCount > 0
-  }
-
-  public static let empty = ContentPerformanceSummary(
-    trackedArticleCount: 0,
-    totalPageViews: 0,
-    totalVisitors: 0,
-    latestCapturedAt: nil,
-    topArticles: []
-  )
 }
 
 public extension SiteMaintenanceReport {
@@ -108,8 +42,7 @@ public extension SiteMaintenanceReport {
       "- 待发布：\(calendarScheduleItems.count)",
       "- 旧文候选：\(staleArticles.count)",
       "- 内链机会：\(relationSuggestions.count)",
-      "- 链接风险：\(internalLinkIssueCount)",
-      "- 表现追踪：\(contentPerformanceSummary.trackedArticleCount) 篇"
+      "- 链接风险：\(internalLinkIssueCount)"
     ]
 
     lines.append("")
@@ -214,7 +147,6 @@ public extension SiteMaintenanceReport {
     appendCalendar(to: &lines)
     appendCalendarInsights(to: &lines)
     appendCalendarSchedule(to: &lines)
-    appendContentPerformance(to: &lines)
     appendTaxonomySummary(tagSummary, to: &lines)
     appendTaxonomySummary(categorySummary, to: &lines)
     appendStaleArticles(to: &lines)
@@ -292,23 +224,6 @@ public extension SiteMaintenanceReport {
     for item in calendarScheduleItems {
       lines.append("- \(formatterText(item.scheduledDate))：\(item.title)")
       lines.append("  - \(item.reason)")
-      lines.append("  - \(item.markdownPath)")
-    }
-  }
-
-  private func appendContentPerformance(to lines: inout [String]) {
-    lines.append("")
-    lines.append("## 内容表现")
-    guard contentPerformanceSummary.hasData else {
-      lines.append("- 尚未接入或记录阅读量/访客数据。")
-      return
-    }
-
-    lines.append("- 追踪文章：\(contentPerformanceSummary.trackedArticleCount)")
-    lines.append("- 阅读量：\(contentPerformanceSummary.totalPageViews)")
-    lines.append("- 访客：\(contentPerformanceSummary.totalVisitors)")
-    for item in contentPerformanceSummary.topArticles.prefix(5) {
-      lines.append("- \(item.title)：\(item.pageViews) 阅读 / \(item.visitors) 访客")
       lines.append("  - \(item.markdownPath)")
     }
   }
@@ -697,11 +612,24 @@ public extension MaintenanceActionItem {
   }
 }
 
-public struct SiteMaintenanceService {
-  private let calendar: Calendar
+public struct SiteMaintenanceService: Sendable {
+  public typealias AsyncReportOperation = @Sendable (
+    [ArticleDraft],
+    SiteProfile,
+    [ReleaseRecord],
+    [MaintenanceOperationRecord],
+    Date
+  ) async throws -> SiteMaintenanceReport
 
-  public init(calendar: Calendar = Calendar(identifier: .gregorian)) {
+  private let calendar: Calendar
+  private let asyncReportOperation: AsyncReportOperation?
+
+  public init(
+    calendar: Calendar = Calendar(identifier: .gregorian),
+    asyncReportOperation: AsyncReportOperation? = nil
+  ) {
     self.calendar = calendar
+    self.asyncReportOperation = asyncReportOperation
   }
 
   public func report(
@@ -709,27 +637,98 @@ public struct SiteMaintenanceService {
     profile: SiteProfile,
     releaseRecords: [ReleaseRecord],
     maintenanceOperationRecords: [MaintenanceOperationRecord] = [],
-    contentPerformanceSnapshots: [ContentPerformanceSnapshot] = [],
     now: Date = Date()
   ) -> SiteMaintenanceReport {
+    do {
+      return try makeReport(
+        drafts: drafts,
+        profile: profile,
+        releaseRecords: releaseRecords,
+        maintenanceOperationRecords: maintenanceOperationRecords,
+        now: now,
+        cancellationCheck: {}
+      )
+    } catch {
+      preconditionFailure("A non-cancellable maintenance report unexpectedly failed: \(error)")
+    }
+  }
+
+  /// Generates the report away from the caller's actor. Cancellation checks
+  /// are applied between stages and inside the quadratic relation scan so a
+  /// superseded refresh does not continue consuming CPU unnecessarily.
+  public func reportAsync(
+    drafts: [ArticleDraft],
+    profile: SiteProfile,
+    releaseRecords: [ReleaseRecord],
+    maintenanceOperationRecords: [MaintenanceOperationRecord] = [],
+    now: Date = Date()
+  ) async throws -> SiteMaintenanceReport {
+    if let asyncReportOperation {
+      return try await asyncReportOperation(
+        drafts,
+        profile,
+        releaseRecords,
+        maintenanceOperationRecords,
+        now
+      )
+    }
+
+    let task = Task.detached(priority: .utility) {
+      try makeReport(
+        drafts: drafts,
+        profile: profile,
+        releaseRecords: releaseRecords,
+        maintenanceOperationRecords: maintenanceOperationRecords,
+        now: now,
+        cancellationCheck: { try Task.checkCancellation() }
+      )
+    }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
+  }
+
+  private func makeReport(
+    drafts: [ArticleDraft],
+    profile: SiteProfile,
+    releaseRecords: [ReleaseRecord],
+    maintenanceOperationRecords: [MaintenanceOperationRecord],
+    now: Date,
+    cancellationCheck: () throws -> Void
+  ) throws -> SiteMaintenanceReport {
+    try cancellationCheck()
     let calendarBuckets = calendarBuckets(drafts: drafts)
+    try cancellationCheck()
     let calendarInsights = calendarInsights(drafts: drafts, buckets: calendarBuckets, now: now)
+    try cancellationCheck()
     let calendarScheduleItems = calendarScheduleItems(drafts: drafts, profile: profile, now: now)
+    try cancellationCheck()
     let tagSummary = taxonomySummary(title: "标签", drafts: drafts, values: \.tags)
+    try cancellationCheck()
     let categorySummary = taxonomySummary(title: "分类", drafts: drafts, values: \.categories)
+    try cancellationCheck()
     let staleArticles = staleArticles(drafts: drafts, profile: profile, now: now)
-    let relationSuggestions = relationSuggestions(drafts: drafts, profile: profile)
-    let linkAuditItems = linkAuditItems(drafts: drafts, profile: profile)
+    try cancellationCheck()
+    let relationSuggestions = try relationSuggestions(
+      drafts: drafts,
+      profile: profile,
+      cancellationCheck: cancellationCheck
+    )
+    try cancellationCheck()
+    let linkAuditItems = try linkAuditItems(
+      drafts: drafts,
+      profile: profile,
+      cancellationCheck: cancellationCheck
+    )
+    try cancellationCheck()
     let operationLogEntries = operationEntries(
       releaseRecords: releaseRecords,
       maintenanceOperationRecords: maintenanceOperationRecords,
       profileID: profile.id
     )
-    let contentPerformanceSummary = contentPerformanceSummary(
-      drafts: drafts,
-      profile: profile,
-      snapshots: contentPerformanceSnapshots
-    )
+    try cancellationCheck()
     let actionItems = maintenanceActionItems(
       tagSummary: tagSummary,
       categorySummary: categorySummary,
@@ -737,6 +736,7 @@ public struct SiteMaintenanceService {
       relationSuggestions: relationSuggestions,
       linkAuditItems: linkAuditItems
     )
+    try cancellationCheck()
     let healthSummary = healthSummary(
       draftCount: drafts.count,
       publishedCount: drafts.filter { $0.status == .published || (!$0.draft && !$0.isPrivate) }.count,
@@ -767,58 +767,7 @@ public struct SiteMaintenanceService {
       linkAuditItems: linkAuditItems,
       actionItems: actionItems,
       operationLogEntries: operationLogEntries,
-      contentPerformanceSummary: contentPerformanceSummary,
       healthSummary: healthSummary
-    )
-  }
-
-  private func contentPerformanceSummary(
-    drafts: [ArticleDraft],
-    profile: SiteProfile,
-    snapshots: [ContentPerformanceSnapshot]
-  ) -> ContentPerformanceSummary {
-    let visibleDraftIDs = Set(drafts.map(\.id))
-    let visibleMarkdownPaths = Set(drafts.map { profile.markdownPath(for: $0) })
-    let scopedSnapshots = snapshots.filter { snapshot in
-      snapshot.profileID == profile.id
-        && (snapshot.draftID.map { visibleDraftIDs.contains($0) } == true
-          || visibleMarkdownPaths.contains(snapshot.markdownPath))
-    }
-    guard !scopedSnapshots.isEmpty else {
-      return .empty
-    }
-
-    let latestByArticle = Dictionary(grouping: scopedSnapshots) { snapshot in
-      snapshot.draftID?.uuidString ?? snapshot.markdownPath
-    }
-    .compactMap { _, snapshots in
-      snapshots.sorted { $0.capturedAt > $1.capturedAt }.first
-    }
-
-    let articles = latestByArticle.map { snapshot in
-      ContentPerformanceArticleSummary(
-        draftID: snapshot.draftID,
-        title: snapshot.title,
-        markdownPath: snapshot.markdownPath,
-        pageViews: snapshot.pageViews,
-        visitors: snapshot.visitors,
-        sourceName: snapshot.sourceName,
-        capturedAt: snapshot.capturedAt
-      )
-    }
-    .sorted {
-      if $0.pageViews == $1.pageViews {
-        return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
-      }
-      return $0.pageViews > $1.pageViews
-    }
-
-    return ContentPerformanceSummary(
-      trackedArticleCount: articles.count,
-      totalPageViews: articles.reduce(0) { $0 + $1.pageViews },
-      totalVisitors: articles.reduce(0) { $0 + $1.visitors },
-      latestCapturedAt: scopedSnapshots.map(\.capturedAt).max(),
-      topArticles: articles
     )
   }
 
@@ -1190,7 +1139,7 @@ public struct SiteMaintenanceService {
       }
 
     var nextOverflowSlot = startOfToday
-    return readyPublicDrafts.enumerated().map { index, draft in
+    return readyPublicDrafts.map { draft in
       let draftDay = calendar.startOfDay(for: draft.date)
       let scheduledDate: Date
       let reason: String
@@ -1218,12 +1167,17 @@ public struct SiteMaintenanceService {
     }
   }
 
-  private func relationSuggestions(drafts: [ArticleDraft], profile: SiteProfile) -> [SiteRelationSuggestion] {
+  private func relationSuggestions(
+    drafts: [ArticleDraft],
+    profile: SiteProfile,
+    cancellationCheck: () throws -> Void
+  ) throws -> [SiteRelationSuggestion] {
     let sourceDrafts = drafts.filter { !$0.isPrivate && !$0.draft }
     let targetDrafts = drafts.filter { !$0.isPrivate && !$0.draft && $0.status == .published }
     var suggestions: [SiteRelationSuggestion] = []
 
     for source in sourceDrafts {
+      try cancellationCheck()
       let sourceLabels = taxonomyLabels(for: source)
       guard !sourceLabels.isEmpty else {
         continue
@@ -1231,6 +1185,7 @@ public struct SiteMaintenanceService {
       let sourceBody = source.bodyMarkdown.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
 
       for target in targetDrafts where target.id != source.id {
+        try cancellationCheck()
         let targetLabels = taxonomyLabels(for: target)
         let shared = sharedTaxonomyLabels(sourceLabels, targetLabels)
         guard !shared.isEmpty else {
@@ -1356,7 +1311,11 @@ public struct SiteMaintenanceService {
     }
   }
 
-  private func linkAuditItems(drafts: [ArticleDraft], profile: SiteProfile) -> [SiteLinkAuditItem] {
+  private func linkAuditItems(
+    drafts: [ArticleDraft],
+    profile: SiteProfile,
+    cancellationCheck: () throws -> Void
+  ) throws -> [SiteLinkAuditItem] {
     let knownInternalPaths = Set(drafts.flatMap { draft in
       [
         canonicalWebPath(from: profile.markdownPath(for: draft)),
@@ -1364,52 +1323,60 @@ public struct SiteMaintenanceService {
       ]
     })
 
-    return drafts.flatMap { draft in
-      markdownLinks(in: draft.bodyMarkdown).compactMap { link in
+    var items: [SiteLinkAuditItem] = []
+    for draft in drafts {
+      try cancellationCheck()
+      for link in markdownLinks(in: draft.bodyMarkdown) {
         let target = normalizedLinkTarget(link.target)
         guard !target.isEmpty else {
-          return SiteLinkAuditItem(
+          items.append(SiteLinkAuditItem(
             draftID: draft.id,
             draftTitle: draft.title.nilIfEmpty ?? "未命名文章",
             target: link.target,
             anchorText: link.anchor,
             severity: .error,
             message: "链接目标为空。"
-          )
+          ))
+          continue
         }
 
         if target.hasPrefix("http://") || target.hasPrefix("https://") {
-          return externalLinkAuditItem(draft: draft, link: link, target: target)
+          if let item = externalLinkAuditItem(draft: draft, link: link, target: target) {
+            items.append(item)
+          }
+          continue
         }
 
         guard target.hasPrefix("/") else {
-          return SiteLinkAuditItem(
+          items.append(SiteLinkAuditItem(
             draftID: draft.id,
             draftTitle: draft.title.nilIfEmpty ?? "未命名文章",
             target: link.target,
             anchorText: link.anchor,
             severity: .info,
             message: "相对链接需要发布前确认路径基准。"
-          )
+          ))
+          continue
         }
 
         let pathOnly = pathWithoutQueryOrFragment(target)
         guard !isAssetPath(pathOnly) else {
-          return nil
+          continue
         }
         guard knownInternalPaths.contains(pathOnly) else {
-          return SiteLinkAuditItem(
+          items.append(SiteLinkAuditItem(
             draftID: draft.id,
             draftTitle: draft.title.nilIfEmpty ?? "未命名文章",
             target: link.target,
             anchorText: link.anchor,
             severity: .warning,
             message: "没有匹配到当前 Profile 的文章路径。"
-          )
+          ))
+          continue
         }
-        return nil
       }
     }
+    return items
   }
 
   private func externalLinkAuditItem(

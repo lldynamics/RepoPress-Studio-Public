@@ -4,11 +4,17 @@ extension WorkbenchStore {
   public var releaseRecords: [ReleaseRecord] { publishingStore.releaseRecords }
   public var selectedSection: WorkspaceSection { publishingStore.selectedSection }
   public var selectedDraftID: UUID? { publishingStore.selectedDraftID }
+  public var draftListContentScope: DraftListContentScope { publishingStore.draftListContentScope }
+  public var customMarkdownSnippets: [MarkdownSnippet] { publishingStore.customMarkdownSnippets }
 
   public var publishPackage: PublishPackage? { publishingStore.publishPackage }
   public var localPublishPreview: LocalPublishPreview? { publishingStore.localPublishPreview }
   public var localPublishReadiness: LocalPublishReadiness? { publishingStore.localPublishReadiness }
+  public var isPublishPreviewRefreshing: Bool { publishingStore.isPublishPreviewRefreshing }
+  public var remotePublishPreviewSnapshot: RemoteRepositoryPublishPreview? { publishingStore.remotePublishPreviewSnapshot }
   public var batchPublishPlan: BatchPublishPlan? { publishingStore.batchPublishPlan }
+  public var isBatchPublishPlanRefreshing: Bool { publishingStore.isBatchPublishPlanRefreshing }
+  public var batchRemotePublishPreviewSnapshot: RemoteRepositoryPublishPreview? { publishingStore.batchRemotePublishPreviewSnapshot }
   public var localSitePreviewPlan: LocalSitePreviewPlan? { publishingStore.localSitePreviewPlan }
   public var localSitePreviewRuntimeStatus: LocalSitePreviewRuntimeStatus { publishingStore.localSitePreviewRuntimeStatus }
   public var remoteReviewDraft: RemoteReviewDraft? { publishingStore.remoteReviewDraft }
@@ -16,27 +22,28 @@ extension WorkbenchStore {
   public var siteStarterResult: SiteStarterResult? { publishingStore.siteStarterResult }
   public var siteStarterImportResult: SiteStarterImportResult? { publishingStore.siteStarterImportResult }
   public var siteStarterPushResult: SiteStarterPushResult? { publishingStore.siteStarterPushResult }
+  public var isSiteStarterOperationRunning: Bool { publishingStore.isSiteStarterOperationRunning }
   public var preflightIssues: [PreflightIssue] { publishingStore.preflightIssues }
   public var isInspectorPresented: Bool { publishingStore.isInspectorPresented }
   public var editorDisplayMode: EditorDisplayMode { publishingStore.editorDisplayMode }
   public var editorFocusRequest: EditorFocusRequest? { publishingStore.editorFocusRequest }
+  public var imageInspectorFocusRequest: ImageInspectorFocusRequest? {
+    publishingStore.imageInspectorFocusRequest
+  }
   public var activeEditorSelection: ActiveEditorSelection? { publishingStore.activeEditorSelection }
   public var automaticallyRefreshPreflightOnEdit: Bool { publishingStore.automaticallyRefreshPreflightOnEdit }
   public var lastSaveStatus: String { persistenceStore.status }
   public var hasUnsavedChanges: Bool { persistenceStore.hasUnsavedChanges }
   public var lastSaveError: String? { persistenceStore.lastSaveError }
   public var persistenceRecoveryMessage: String? { persistenceStore.recoveryMessage }
+  public var isPersistenceRecoveryWriteProtected: Bool { persistenceStore.isRecoveryWriteProtected }
   public var publishActionMessage: String? { publishingStore.publishActionMessage }
+  public var isLocalRepositoryMutationRunning: Bool { publishingStore.isLocalRepositoryMutationRunning }
   public var imageActionMessage: String? { publishingStore.imageActionMessage }
   public var maintenanceOperationRecords: [MaintenanceOperationRecord] { publishingStore.maintenanceOperationRecords }
-  public var contentPerformanceSnapshots: [ContentPerformanceSnapshot] { publishingStore.contentPerformanceSnapshots }
   public var siteMaintenanceSnapshot: SiteMaintenanceSnapshot? { siteMaintenanceStore.snapshot }
   public var siteMaintenanceSnapshotVersion: Int { siteMaintenanceStore.snapshotVersion }
   public var latestGeneralDraftReusePlan: GeneralDraftReusePlan? { publishingStore.latestGeneralDraftReusePlan }
-  public var latestGeneralDraftBackupWriteResult: GeneralDraftBackupWriteResult? { publishingStore.latestGeneralDraftBackupWriteResult }
-  public var releaseQualityGateReport: ReleaseQualityGateReport { publishingStore.releaseQualityGateReport }
-  public var releaseQualityGateMessage: String? { publishingStore.releaseQualityGateMessage }
-  public var externalVerificationEvidenceRecords: [ReleaseExternalVerificationEvidenceRecord] { publishingStore.externalVerificationEvidenceRecords }
 }
 
 extension WorkbenchStore {
@@ -53,6 +60,9 @@ extension WorkbenchStore {
   public var remoteRepositoryReviewWithdrawalResult: RemoteRepositoryReviewWithdrawalResult? { repositoryStore.remoteRepositoryReviewWithdrawalResult }
   public var isRemoteRepositoryChecking: Bool { repositoryStore.isRemoteRepositoryChecking }
   public var isRemoteRepositoryPublishing: Bool { repositoryStore.isRemoteRepositoryPublishing }
+  public var isLocalRepositoryBranchOperationRunning: Bool {
+    repositoryStore.isLocalRepositoryBranchOperationRunning
+  }
   public var repositoryAutoSyncSettings: RepositoryAutoSyncSettings { repositoryStore.repositoryAutoSyncSettings }
   public var repositoryAutoSyncState: RepositoryAutoSyncState { repositoryStore.repositoryAutoSyncState }
 }
@@ -74,6 +84,7 @@ extension WorkbenchStore {
   public var aiActionMessage: String? { aiWorkspaceStore.aiActionMessage }
   public var isAIActionRunning: Bool { aiWorkspaceStore.isAIActionRunning }
   public var aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord] { aiWorkspaceStore.aiMetadataApplicationRecords }
+  public var automationRunRecords: [WorkbenchAutomationRunRecord] { aiWorkspaceStore.automationRunRecords }
   public var aiMetadataSuggestionDraftID: UUID? { aiWorkspaceStore.aiMetadataSuggestionDraftID }
   public var aiMetadataSuggestion: AIPublishingMetadataSuggestion? { aiWorkspaceStore.aiMetadataSuggestion }
   public var isAIMetadataSuggestionRunning: Bool { aiWorkspaceStore.isAIMetadataSuggestionRunning }
@@ -81,13 +92,16 @@ extension WorkbenchStore {
   public var aiChatConversationTitle: String? { aiWorkspaceStore.aiChatConversationTitle }
   public var aiChatMessages: [AIPublishingChatMessage] { aiWorkspaceStore.aiChatMessages }
   public var aiChatContextMode: AIPublishingChatContextMode { aiWorkspaceStore.aiChatContextMode }
+  public var aiChatKnowledgePolicy: KnowledgeRetrievalPolicy { aiWorkspaceStore.aiChatKnowledgePolicy }
   public var aiChatModelGrade: AIChatModelGrade { aiWorkspaceStore.aiChatModelGrade }
+  public var aiChatReasoningLevel: AIChatReasoningLevel { aiWorkspaceStore.aiChatReasoningLevel }
   public var aiChatSelectedModel: String { aiWorkspaceStore.aiChatSelectedModel }
   public var aiChatFocusedParagraphID: String? { aiWorkspaceStore.aiChatFocusedParagraphID }
   public var aiChatCustomPrompts: [AIPublishingCustomPrompt] { aiWorkspaceStore.aiChatCustomPrompts }
   public var pendingAIQuickPrompt: AIPublishingQuickPrompt? { aiWorkspaceStore.pendingAIQuickPrompt }
   public var aiChatMessage: String? { aiWorkspaceStore.aiChatMessage }
   public var isAIChatRunning: Bool { aiWorkspaceStore.isAIChatRunning }
+  public var aiChatManualRetryState: AIChatManualRetryState? { aiStore.aiChatManualRetryState }
   public var aiImageTextSuggestionDraftID: UUID? { aiWorkspaceStore.aiImageTextSuggestionDraftID }
   public var aiImageTextSuggestions: [AIPublishingImageTextSuggestion] { aiWorkspaceStore.aiImageTextSuggestions }
   public var isAIImageTextRunning: Bool { aiWorkspaceStore.isAIImageTextRunning }
@@ -100,7 +114,6 @@ extension WorkbenchStore {
 extension WorkbenchStore {
   public var privacySettings: PrivacyProtectionSettings { privacyMonetizationStore.privacySettings }
   public var isPrivacyLocked: Bool { privacyMonetizationStore.isPrivacyLocked }
-  public var privacyProtectionEvents: [PrivacyProtectionEvent] { privacyMonetizationStore.privacyProtectionEvents }
   public var privacyLockReason: String? { privacyMonetizationStore.privacyLockReason }
   public var monetizationState: MonetizationState { privacyMonetizationStore.monetizationState }
   public var monetizationMessage: String? { privacyMonetizationStore.monetizationMessage }

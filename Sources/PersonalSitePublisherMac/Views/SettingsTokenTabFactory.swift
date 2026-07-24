@@ -11,6 +11,8 @@ struct SettingsTokenTabFactory {
       hasDeploymentToken: context.store.deploymentTokenAvailability.hasToken,
       publishActionMessage: context.store.publishActionMessage,
       deploymentStatusMessage: context.store.deploymentStatusMessage,
+      shouldFocusRepositoryToken: context.healthDestination == .repositoryToken,
+      navigationRequestID: context.healthNavigationRequestID,
       setRepositoryProvider: { provider in
         context.store.setRepositoryProvider(provider)
       },
@@ -35,7 +37,7 @@ struct SettingsTokenTabFactory {
       repositoryPermissionContent: { isPresented in
         RepositoryPermissionSettingsView(
           state: RepositoryPermissionSettingsState(
-            repositoryProviderDisplayName: context.store.activeProfile.repositoryProvider.displayName,
+            repositoryProviderDisplayName: context.store.activeProfile.repositoryProvider.localizedDisplayName,
             repoOwner: context.store.activeProfile.repoOwner,
             repoName: context.store.activeProfile.repoName,
             branch: context.store.activeProfile.branch,
@@ -47,9 +49,6 @@ struct SettingsTokenTabFactory {
           actions: RepositoryPermissionSettingsActions(
             checkAccess: {
               await context.actions.checkRepositoryTokenAccess()
-            },
-            copyAccessEvidence: { check in
-              context.actions.copyRepositoryAccessEvidence(check)
             }
           ),
           isPresented: isPresented

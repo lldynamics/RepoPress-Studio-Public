@@ -8,7 +8,7 @@ final class GitCommandRunnerTests: XCTestCase {
 
     let result = GitCommandRunner(
       executableURL: scriptURL,
-      timeout: 2,
+      timeout: 10,
       maximumOutputBytes: 4_096
     ).run(["noisy"], rootURL: FileManager.default.temporaryDirectory)
 
@@ -32,6 +32,33 @@ final class GitCommandRunnerTests: XCTestCase {
     XCTAssertTrue(result.didTimeOut)
     XCTAssertTrue(result.output.contains("'$(touch /tmp/should-not-run)'"))
     XCTAssertTrue(result.output.contains("'line\nbreak'"))
+  }
+
+  func testAsyncRunnerTimesOutWithoutBlockingCaller() async throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+
+    let result = await GitCommandRunner(executableURL: scriptURL, timeout: 0.05).runAsync(
+      ["sleep"],
+      rootURL: FileManager.default.temporaryDirectory
+    )
+
+    XCTAssertEqual(result.terminationStatus, 124)
+    XCTAssertTrue(result.didTimeOut)
+  }
+
+  func testAsyncRunnerCancelsChildProcess() async throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+
+    let runner = GitCommandRunner(executableURL: scriptURL, timeout: 5)
+    let task = Task { await runner.runAsync(["sleep"], rootURL: FileManager.default.temporaryDirectory) }
+    try await Task.sleep(nanoseconds: 50_000_000)
+    task.cancel()
+    let result = await task.value
+
+    XCTAssertEqual(result.terminationStatus, 130)
+    XCTAssertFalse(result.didTimeOut)
   }
 
   private func makeFakeGitExecutable() throws -> URL {

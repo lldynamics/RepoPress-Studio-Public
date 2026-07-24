@@ -8,22 +8,21 @@ struct MacMarkdownEditorToolbar: View {
   let hasUnsavedChanges: Bool
   let editorDisplayMode: EditorDisplayMode
   let isSelectionAIActionRunning: Bool
+  @Binding var isOutlinePresented: Bool
+  let outlineItems: [MarkdownOutlineItem]
   let onSetEditorDisplayMode: (EditorDisplayMode) -> Void
   let onShowFindReplace: () -> Void
+  let onShowOutline: () -> Void
+  let onSelectOutlineItem: (MarkdownOutlineItem) -> Void
+  let onPerformOutlineAction: (MarkdownOutlineSectionAction, MarkdownOutlineItem) -> Void
   let onShowShortcutHelp: () -> Void
-  let onShowRevisionHistory: () -> Void
   let onOpenAIContextInspector: () -> Void
-  let writingAIActionMenuItems: [AIPublishingActionMenuItem]
-  let publishingAIActionMenuItems: [AIPublishingActionMenuItem]
-  let distributionAIActionMenuItems: [AIPublishingActionMenuItem]
-  let maintenanceAIActionMenuItems: [AIPublishingActionMenuItem]
-  let additionalSelectionAIActionMenuItems: [AIPublishingActionMenuItem]
+  let onOpenAITemplateLibrary: () -> Void
   let selectionAIActionAvailability: (AIPublishingActionKind) -> AIPublishingActionAvailabilityPresentation
   let articleAIActionAvailability: (AIPublishingActionKind) -> AIPublishingActionAvailabilityPresentation
   let onPerformSelectionAIAction: (AIPublishingActionKind) -> Void
   let onPerformArticleAIAction: (AIPublishingActionKind) -> Void
   let onPasteAIPromptToClipboard: () -> Void
-  let onRewriteSelection: () -> Void
 
   var body: some View {
     HStack(spacing: 8) {
@@ -32,14 +31,14 @@ struct MacMarkdownEditorToolbar: View {
           .textFieldStyle(.plain)
           .font(.headline)
           .lineLimit(1)
+          .help(title.nilIfEmpty ?? String(localized: "未命名文章"))
           .accessibilityLabel("文章标题")
           .accessibilityValue(title.nilIfEmpty ?? "未命名文章")
 
         Text(markdownPath)
           .font(.caption.monospaced())
           .foregroundStyle(.secondary)
-          .lineLimit(1)
-          .truncationMode(.middle)
+          .workbenchTruncatedIdentity(markdownPath)
       }
       .frame(minWidth: 220, idealWidth: 320, maxWidth: 460, alignment: .leading)
 
@@ -49,13 +48,13 @@ struct MacMarkdownEditorToolbar: View {
         if hasUnsavedChanges {
           Image(systemName: "circle.fill")
             .font(.system(size: 6))
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
             .accessibilityHidden(true)
         }
         if hasUnsavedChanges {
           Text(lastSaveStatus)
             .font(.caption)
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
             .lineLimit(1)
         } else {
           Text(lastSaveStatus)
@@ -69,95 +68,103 @@ struct MacMarkdownEditorToolbar: View {
 
       editorDisplayModeControl
 
-      Menu {
-        Button {
-          onShowFindReplace()
-        } label: {
-          Label("查找与替换", systemImage: "magnifyingglass")
-        }
-
-        Button {
-          onShowShortcutHelp()
-        } label: {
-          Label("快捷键说明", systemImage: "keyboard")
-        }
-
-        Button {
-          onShowRevisionHistory()
-        } label: {
-          Label("会话历史", systemImage: "clock.arrow.circlepath")
-        }
-
-        Divider()
-
-        Button {
-          onOpenAIContextInspector()
-        } label: {
-          Label("打开 AI 对话", systemImage: "sparkles")
-        }
-
-        Divider()
-
-        Menu {
-          ForEach(writingAIActionMenuItems) { item in
-            articleAIActionButton(item)
-          }
-        } label: {
-          Label("写作生成", systemImage: "square.and.pencil")
-        }
-
-        Menu {
-          ForEach(publishingAIActionMenuItems) { item in
-            articleAIActionButton(item)
-          }
-        } label: {
-          Label("发布检查", systemImage: "checkmark.shield")
-        }
-
-        Menu {
-          ForEach(distributionAIActionMenuItems) { item in
-            articleAIActionButton(item)
-          }
-        } label: {
-          Label("分发素材", systemImage: "megaphone")
-        }
-
-        Menu {
-          ForEach(maintenanceAIActionMenuItems) { item in
-            articleAIActionButton(item)
-          }
-        } label: {
-          Label("内容维护", systemImage: "wrench.and.screwdriver")
-        }
-
-        Divider()
-
-        Button {
-          onRewriteSelection()
-        } label: {
-          Label("改写选中文本", systemImage: "wand.and.stars")
-        }
-        .disabled(!selectionAIActionAvailability(.rewriteSelection).isEnabled)
-        .help(selectionAIActionAvailability(.rewriteSelection).unavailableReason ?? "改写选中文本")
-
-        ForEach(additionalSelectionAIActionMenuItems) { item in
-          selectionAIActionButton(item)
-        }
-
-        Button {
-          onPasteAIPromptToClipboard()
-        } label: {
-          Label("复制上下文 Prompt", systemImage: "doc.on.doc")
-        }
-      } label: {
-        Label("更多", systemImage: "ellipsis.circle")
-      }
-      .help("查找、快捷键、会话历史与 AI 操作")
-      .accessibilityLabel("更多编辑器操作")
-      .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
+      expandedEditorActions
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 9)
+  }
+
+  private var expandedEditorActions: some View {
+    HStack(spacing: 2) {
+      Button {
+        onShowFindReplace()
+      } label: {
+        editorActionIcon("magnifyingglass")
+      }
+      .help("查找与替换")
+      .accessibilityLabel("查找与替换")
+
+      Button {
+        onShowOutline()
+      } label: {
+        editorActionIcon("list.bullet.indent")
+      }
+      .keyboardShortcut("o", modifiers: [.command, .option])
+      .help("文章大纲（⌥⌘O）")
+      .accessibilityLabel("文章大纲")
+      .accessibilityIdentifier("markdown-outline-button")
+      .popover(isPresented: $isOutlinePresented, arrowEdge: .top) {
+        MarkdownOutlinePopover(
+          items: outlineItems,
+          onSelect: onSelectOutlineItem,
+          onAction: onPerformOutlineAction
+        )
+      }
+
+      Button {
+        onShowShortcutHelp()
+      } label: {
+        editorActionIcon("keyboard")
+      }
+      .help("快捷键说明")
+      .accessibilityLabel("快捷键说明")
+
+      if DistributionFeaturePolicy.allowsExternalAIProviders {
+        Divider()
+          .frame(height: 18)
+
+        Menu {
+          articleAIActionButton(.continueWriting, kind: .continueArticle)
+          selectionAIActionButton(.rewrite, kind: .rewriteSelection)
+          selectionAIActionButton(.condense, kind: .condenseSelection)
+
+          Menu {
+            selectionAIActionButton(.translate, kind: .translateSelectionToChinese)
+            selectionAIActionButton(.translate, kind: .translateSelectionToEnglish)
+          } label: {
+            Label(
+              AIPublishingDefaultCapability.translate.localizedDisplayName,
+              systemImage: AIPublishingDefaultCapability.translate.systemImage
+            )
+          }
+
+          articleAIActionButton(.generateMetadata, kind: .draftFrontMatterPack)
+          articleAIActionButton(.publishingCheck, kind: .publishingReadiness)
+          articleAIActionButton(.citeKnowledge, kind: .draftReferencesSection)
+
+          Button {
+            onOpenAIContextInspector()
+          } label: {
+            Label(
+              AIPublishingDefaultCapability.askAnything.localizedDisplayName,
+              systemImage: AIPublishingDefaultCapability.askAnything.systemImage
+            )
+          }
+
+          Divider()
+
+          Button {
+            onOpenAITemplateLibrary()
+          } label: {
+            Label("搜索模板库…", systemImage: "magnifyingglass")
+          }
+
+          Button {
+            onPasteAIPromptToClipboard()
+          } label: {
+            Label("复制上下文 Prompt", systemImage: "doc.on.doc")
+          }
+        } label: {
+          editorActionIcon("sparkles")
+        }
+        .menuIndicator(.hidden)
+        .help("AI 常用操作")
+        .accessibilityLabel("AI 常用操作")
+        .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
+      }
+    }
+    .buttonStyle(.borderless)
+    .accessibilityElement(children: .contain)
   }
 
   private var editorDisplayModeControl: some View {
@@ -168,193 +175,95 @@ struct MacMarkdownEditorToolbar: View {
         } label: {
           Image(systemName: mode.systemImage)
             .font(.system(size: 13, weight: .medium))
-            .frame(width: 26, height: 22)
+            .frame(width: 28, height: 28)
             .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(editorDisplayMode == mode ? Color.accentColor : Color.secondary)
+        .foregroundStyle(editorDisplayMode == mode ? WorkbenchTheme.navigationSelection : Color.secondary)
         .background(
           RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-            .fill(editorDisplayMode == mode ? Color.accentColor.opacity(WorkbenchOpacity.accentBackground) : Color.clear)
+            .fill(
+              editorDisplayMode == mode
+                ? WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.selectionBackground)
+                : Color.clear
+            )
         )
-        .accessibilityLabel("编辑器模式：\(mode.displayName)")
+        .accessibilityLabel("编辑器模式：\(mode.localizedDisplayName)")
         .accessibilityValue(editorDisplayMode == mode ? "已选择" : "未选择")
-        .help("切换到\(mode.displayName)模式")
+        .accessibilityAddTraits(editorDisplayMode == mode ? .isSelected : [])
+        .help("切换到\(mode.localizedDisplayName)模式")
       }
     }
     .padding(2)
-    .frame(width: 92, height: 28)
+    .frame(width: 92, height: 32)
     .background(WorkbenchBackgroundStyle.badge, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     .accessibilityElement(children: .contain)
   }
 
-  private func articleAIActionButton(_ item: AIPublishingActionMenuItem) -> some View {
-    let availability = articleAIActionAvailability(item.kind)
-    return Button {
-      onPerformArticleAIAction(item.kind)
-    } label: {
-      Label(item.kind.displayName, systemImage: item.systemImage)
-    }
-    .disabled(!availability.isEnabled)
-    .help(availability.unavailableReason ?? item.kind.displayName)
+  private func editorActionIcon(_ systemName: String) -> some View {
+    Image(systemName: systemName)
+      .font(.system(size: 14, weight: .medium))
+      .frame(width: 30, height: 30)
+      .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
-  private func selectionAIActionButton(_ item: AIPublishingActionMenuItem) -> some View {
-    let availability = selectionAIActionAvailability(item.kind)
+  private func articleAIActionButton(
+    _ capability: AIPublishingDefaultCapability,
+    kind: AIPublishingActionKind
+  ) -> some View {
+    let availability = articleAIActionAvailability(kind)
     return Button {
-      onPerformSelectionAIAction(item.kind)
+      onPerformArticleAIAction(kind)
     } label: {
-      Label(item.kind.displayName, systemImage: item.systemImage)
+      Label(capability.localizedDisplayName, systemImage: capability.systemImage)
     }
     .disabled(!availability.isEnabled)
-    .help(availability.unavailableReason ?? item.kind.displayName)
+    .help(availability.unavailableReason ?? capability.localizedDisplayName)
+  }
+
+  private func selectionAIActionButton(
+    _ capability: AIPublishingDefaultCapability,
+    kind: AIPublishingActionKind
+  ) -> some View {
+    let availability = selectionAIActionAvailability(kind)
+    return Button {
+      onPerformSelectionAIAction(kind)
+    } label: {
+      Label(
+        capability == .translate ? kind.localizedDisplayName : capability.localizedDisplayName,
+        systemImage: capability.systemImage
+      )
+    }
+    .disabled(!availability.isEnabled)
+    .help(availability.unavailableReason ?? capability.localizedDisplayName)
   }
 }
 
 struct MacMarkdownFormattingToolbar: View {
   let characterCount: Int
+  let hanCharacterCount: Int
   let wordCount: Int
+  let writingUnitCount: Int
   let lineCount: Int
   let readingMinutes: Int
-  let onApplyHeading: (Int) -> Void
+  let writingGoal: Int
+  let onApplyMarkdownFormatting: (MarkdownFormattingCommand) -> Void
   let onWrapSelection: (String, String, String) -> Void
   let onPrefixCurrentLine: (String) -> Void
   let onInsertCodeBlock: () -> Void
   let onInsertTable: () -> Void
   let onInsertHorizontalRule: () -> Void
-  let onInsertLink: () -> Void
+  let onInsertInternalLink: () -> Void
+  let onShowSnippets: () -> Void
+  let onShowDiagnostics: () -> Void
+  let diagnosticCount: Int
   let onInsertImage: () -> Void
+  let onInsertVideo: () -> Void
 
   var body: some View {
-    HStack(spacing: 4) {
-      Menu {
-        Button {
-          onApplyHeading(1)
-        } label: {
-          Label("一级标题", systemImage: "h.square")
-        }
-
-        Button {
-          onApplyHeading(2)
-        } label: {
-          Label("二级标题", systemImage: "h.square")
-        }
-
-        Button {
-          onApplyHeading(3)
-        } label: {
-          Label("三级标题", systemImage: "textformat.size.smaller")
-        }
-      } label: {
-        toolbarIcon("number")
-      }
-      .help("标题")
-      .accessibilityLabel("标题格式")
-
-      Divider()
-        .frame(height: 18)
-
-      Button {
-        onWrapSelection("**", "**", "粗体")
-      } label: {
-        toolbarIcon("bold")
-      }
-      .help("粗体")
-      .accessibilityLabel("粗体")
-
-      Button {
-        onWrapSelection("*", "*", "斜体")
-      } label: {
-        toolbarIcon("italic")
-      }
-      .help("斜体")
-      .accessibilityLabel("斜体")
-
-      Button {
-        onWrapSelection("`", "`", "code")
-      } label: {
-        toolbarIcon("chevron.left.forwardslash.chevron.right")
-      }
-      .help("行内代码")
-      .accessibilityLabel("行内代码")
-
-      Divider()
-        .frame(height: 18)
-
-      Menu {
-        Button {
-          onPrefixCurrentLine("> ")
-        } label: {
-          Label("引用", systemImage: "quote.opening")
-        }
-
-        Button {
-          onPrefixCurrentLine("- ")
-        } label: {
-          Label("无序列表", systemImage: "list.bullet")
-        }
-
-        Button {
-          onPrefixCurrentLine("1. ")
-        } label: {
-          Label("有序列表", systemImage: "list.number")
-        }
-
-        Button {
-          onPrefixCurrentLine("- [ ] ")
-        } label: {
-          Label("任务列表", systemImage: "checklist")
-        }
-
-        Divider()
-
-        Button {
-          onInsertCodeBlock()
-        } label: {
-          Label("代码块", systemImage: "chevron.left.forwardslash.chevron.right")
-        }
-
-        Button {
-          onInsertTable()
-        } label: {
-          Label("表格", systemImage: "rectangle.grid.2x2")
-        }
-
-        Button {
-          onInsertHorizontalRule()
-        } label: {
-          Label("分隔线", systemImage: "minus")
-        }
-      } label: {
-        toolbarIcon("text.alignleft")
-      }
-      .help("块级格式")
-      .accessibilityLabel("块级格式")
-
-      Button {
-        onInsertLink()
-      } label: {
-        toolbarIcon("link")
-      }
-      .help("链接")
-      .accessibilityLabel("链接")
-
-      Button {
-        onInsertImage()
-      } label: {
-        toolbarIcon("photo.badge.plus")
-      }
-      .help("插图")
-      .accessibilityLabel("插图")
-
-      Spacer()
-
-      Text("\(characterCount) 字符 · \(wordCount) 词 · \(lineCount) 行 · 约 \(readingMinutes) min")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .monospacedDigit()
-        .accessibilityLabel("文章统计")
-        .accessibilityValue("\(characterCount) 字符，\(wordCount) 词，\(lineCount) 行，预计阅读 \(readingMinutes) 分钟")
+    ViewThatFits(in: .horizontal) {
+      expandedRow
+      compactRows
     }
     .buttonStyle(.borderless)
     .padding(.horizontal, 10)
@@ -362,8 +271,215 @@ struct MacMarkdownFormattingToolbar: View {
     .background(.bar)
   }
 
+  private var expandedRow: some View {
+    HStack(spacing: 5) {
+      headingButtons
+      toolbarDivider
+      inlineStyleButtons
+      toolbarDivider
+      blockButtons
+      toolbarDivider
+      insertionButtons
+      Spacer(minLength: 8)
+      trailingControls
+    }
+  }
+
+  private var compactRows: some View {
+    VStack(spacing: 5) {
+      HStack(spacing: 5) {
+        headingButtons
+        toolbarDivider
+        inlineStyleButtons
+        toolbarDivider
+        quoteAndCodeBlockButtons
+        Spacer(minLength: 0)
+      }
+
+      Divider()
+
+      HStack(spacing: 5) {
+        listButtons
+        toolbarDivider
+        insertionButtons
+        Spacer(minLength: 8)
+        trailingControls
+      }
+    }
+  }
+
+  @ViewBuilder
+  private var headingButtons: some View {
+    headingButton(level: 1, title: "一级标题")
+    headingButton(level: 2, title: "二级标题")
+    headingButton(level: 3, title: "三级标题")
+  }
+
+  @ViewBuilder
+  private var inlineStyleButtons: some View {
+    toolbarButton(title: "粗体", systemName: "bold") {
+      onApplyMarkdownFormatting(.bold)
+    }
+    toolbarButton(title: "斜体", systemName: "italic") {
+      onApplyMarkdownFormatting(.italic)
+    }
+    toolbarButton(
+      title: "行内代码",
+      systemName: "chevron.left.forwardslash.chevron.right"
+    ) {
+      onWrapSelection("`", "`", "code")
+    }
+  }
+
+  @ViewBuilder
+  private var blockButtons: some View {
+    quoteAndCodeBlockButtons
+    listButtons
+  }
+
+  @ViewBuilder
+  private var quoteAndCodeBlockButtons: some View {
+    toolbarButton(title: "引用", systemName: "text.quote") {
+      onPrefixCurrentLine("> ")
+    }
+    toolbarButton(title: "代码块", systemName: "curlybraces.square") {
+      onInsertCodeBlock()
+    }
+  }
+
+  @ViewBuilder
+  private var listButtons: some View {
+    toolbarButton(title: "无序列表", systemName: "list.bullet") {
+      onPrefixCurrentLine("- ")
+    }
+    toolbarButton(title: "有序列表", systemName: "list.number") {
+      onPrefixCurrentLine("1. ")
+    }
+    toolbarButton(title: "任务列表", systemName: "checklist") {
+      onPrefixCurrentLine("- [ ] ")
+    }
+  }
+
+  @ViewBuilder
+  private var insertionButtons: some View {
+    toolbarButton(title: "链接", systemName: "link") {
+      onInsertInternalLink()
+    }
+    toolbarButton(title: "插图", systemName: "photo") {
+      onInsertImage()
+    }
+
+    Menu {
+      Button {
+        onInsertTable()
+      } label: {
+        Label("表格", systemImage: "tablecells")
+      }
+      Button {
+        onInsertHorizontalRule()
+      } label: {
+        Label("分隔线", systemImage: "minus")
+      }
+      Button {
+        onShowSnippets()
+      } label: {
+        Label("模板与片段", systemImage: "doc.on.clipboard")
+      }
+      Button {
+        onInsertVideo()
+      } label: {
+        Label("插入视频", systemImage: "video")
+      }
+    } label: {
+      toolbarIcon("ellipsis.circle")
+    }
+    .menuIndicator(.hidden)
+    .foregroundStyle(.secondary)
+    .help("更多插入选项")
+    .accessibilityLabel("更多插入选项")
+  }
+
+  @ViewBuilder
+  private var trailingControls: some View {
+    Button {
+      onShowDiagnostics()
+    } label: {
+      ZStack(alignment: .topTrailing) {
+        toolbarIcon(diagnosticCount == 0 ? "checkmark.circle" : "waveform.badge.exclamationmark")
+        if diagnosticCount > 0 {
+          Text("\(min(diagnosticCount, 99))")
+            .font(.workbenchMetadata.weight(.bold))
+            .padding(.horizontal, 3)
+            .background(WorkbenchTheme.warningActionFill, in: Capsule())
+            .foregroundStyle(.white)
+            .offset(x: 4, y: -3)
+        }
+      }
+    }
+    .foregroundStyle(diagnosticCount == 0 ? Color.secondary : WorkbenchTheme.warning)
+    .help(diagnosticCount == 0 ? "正文诊断：未发现问题" : "正文诊断：\(diagnosticCount) 项")
+    .accessibilityLabel("正文诊断")
+    .accessibilityValue(diagnosticCount == 0 ? "没有问题" : "\(diagnosticCount) 项")
+    MarkdownEditorComfortControl()
+    toolbarDivider
+    statisticsLabel
+  }
+
+  private var toolbarDivider: some View {
+    Divider()
+      .frame(height: 18)
+  }
+
+  private var statisticsLabel: some View {
+    Text(statisticsSummary)
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .monospacedDigit()
+      .fixedSize(horizontal: true, vertical: false)
+      .help("\(hanCharacterCount) 汉字 · \(wordCount) 西文词 · \(characterCount) 字符 · \(lineCount) 行 · 约 \(readingMinutes) 分钟 · 目标 \(writingGoal) 字/词")
+      .accessibilityLabel("文章统计")
+      .accessibilityValue("\(hanCharacterCount) 个汉字，\(wordCount) 个西文词，合计 \(writingUnitCount) 字词，\(lineCount) 行，预计阅读 \(readingMinutes) 分钟，写作目标 \(writingGoal) 字词，已完成 \(writingGoalProgressPercent)%")
+  }
+
+  private var statisticsSummary: String {
+    "\(writingUnitCount) 字/词 · 目标 \(writingGoalProgressPercent)%"
+  }
+
+  private var writingGoalProgressPercent: Int {
+    guard writingGoal > 0 else { return 0 }
+    return min(100, Int((Double(writingUnitCount) / Double(writingGoal) * 100).rounded()))
+  }
+
+  private func headingButton(level: Int, title: LocalizedStringKey) -> some View {
+    Button {
+      onApplyMarkdownFormatting(.heading(level: level))
+    } label: {
+      Text("H\(level)")
+        .font(.workbenchMetadata.weight(.semibold))
+        .monospaced()
+        .frame(width: 28, height: 28)
+    }
+    .foregroundStyle(.secondary)
+    .help(title)
+    .accessibilityLabel(Text(title))
+  }
+
+  private func toolbarButton(
+    title: LocalizedStringKey,
+    systemName: String,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(action: action) {
+      toolbarIcon(systemName)
+    }
+    .foregroundStyle(.secondary)
+    .help(title)
+    .accessibilityLabel(Text(title))
+  }
+
   private func toolbarIcon(_ systemName: String) -> some View {
     Image(systemName: systemName)
-      .frame(width: 22, height: 22)
+      .frame(width: 28, height: 28)
   }
+
 }

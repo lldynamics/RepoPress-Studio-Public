@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EVIDENCE_FILE="${EXTERNAL_VERIFY_EVIDENCE_FILE:-$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md}"
+SCREENSHOT_MANIFEST_FILE="${SCREENSHOT_MANIFEST_FILE:-$ROOT_DIR/docs/app-store-screenshots/SCREENSHOT_MANIFEST.md}"
 ITEM_ID=""
 SUMMARY=""
 EVIDENCE_URL=""
@@ -30,6 +31,7 @@ STOREKIT_BOUNDARY_EVENTS=""
 SCREENSHOT_SET=""
 SCREENSHOT_PRIVACY_GATE=""
 SCREENSHOT_STRICT_GATE=""
+SCREENSHOT_SOURCE_FINGERPRINT=""
 EXECUTE=0
 
 usage() {
@@ -80,6 +82,7 @@ For app-store-screenshots, include:
   --screenshot-set <text>
   --screenshot-privacy-gate <text>
   --screenshot-strict-gate <text>
+  --screenshot-source-fingerprint <sha256:hex>
 
 Records redacted external verification evidence in docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md.
 It only accepts the fixed release evidence item IDs and refuses local paths,
@@ -129,10 +132,11 @@ Examples:
 
   script/record_external_verification_evidence.sh \
     --item app-store-screenshots \
-    --summary "Ten App Store screenshots captured and strict screenshot/privacy gates passed." \
-    --screenshot-set "Captured writing, AI chat, sync/API publish, SEO/social preview, deployment, maintenance, general drafts, Pro, privacy lock, and release readiness screens." \
+    --summary "Nine App Store screenshots captured and strict screenshot/privacy gates passed." \
+    --screenshot-set "Captured manifest screenshot IDs: writing, ai-chat, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock." \
     --screenshot-privacy-gate "check_screenshot_privacy.sh passed with no local paths, tokens, or private article text." \
     --screenshot-strict-gate "STRICT_SCREENSHOTS=1 check_screenshots.sh and strict release gate output were reviewed." \
+    --screenshot-source-fingerprint "$(script/screenshot_evidence_fingerprint.py)" \
     --execute
 USAGE
 }
@@ -231,16 +235,15 @@ require_screenshot_set_coverage() {
   local value_lc
   value_lc="$(printf "%s" "$1" | tr '[:upper:]' '[:lower:]')"
   local missing=()
-  contains_any "$value_lc" "writing" || missing+=("writing")
-  contains_any "$value_lc" "ai chat" "ai-chat" || missing+=("ai-chat")
-  contains_any "$value_lc" "sync/api publish" "sync api publish" "sync-api-publish" || missing+=("sync-api-publish")
-  contains_any "$value_lc" "seo/social preview" "seo social preview" "seo-social-preview" || missing+=("seo-social-preview")
-  contains_any "$value_lc" "deployment" "deployment-status" || missing+=("deployment-status")
-  contains_any "$value_lc" "maintenance" || missing+=("maintenance")
-  contains_any "$value_lc" "general drafts" "general-drafts" "通用草稿" || missing+=("general-drafts")
-  contains_any "$value_lc" "pro" "pro-settings" || missing+=("pro-settings")
-  contains_any "$value_lc" "privacy lock" "privacy-lock" || missing+=("privacy-lock")
-  contains_any "$value_lc" "release readiness" "release-readiness" "release gate" || missing+=("release-readiness")
+  local id
+  local required_count=0
+  [[ -f "$SCREENSHOT_MANIFEST_FILE" ]] || fail "screenshot manifest is missing: $SCREENSHOT_MANIFEST_FILE"
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    required_count=$((required_count + 1))
+    contains_any "$value_lc" "$id" || missing+=("$id")
+  done < <(sed -nE 's/^\| `([^`]+)` \|.*/\1/p' "$SCREENSHOT_MANIFEST_FILE")
+  [[ "$required_count" -gt 0 ]] || fail "screenshot manifest contains no required screenshot IDs"
   [[ "${#missing[@]}" -eq 0 ]] || fail "screenshot set is missing required screen(s): ${missing[*]}"
 }
 
@@ -381,6 +384,11 @@ while [[ "$#" -gt 0 ]]; do
       SCREENSHOT_STRICT_GATE="$2"
       shift 2
       ;;
+    --screenshot-source-fingerprint)
+      [[ "$#" -ge 2 ]] || fail "--screenshot-source-fingerprint requires a sha256 value"
+      SCREENSHOT_SOURCE_FINGERPRINT="$2"
+      shift 2
+      ;;
     --execute)
       EXECUTE=1
       shift
@@ -515,6 +523,8 @@ if [[ "$ITEM_ID" == "app-store-screenshots" ]]; then
   [[ -n "${SCREENSHOT_SET//[[:space:]]/}" ]] || fail "--screenshot-set is required for app-store-screenshots"
   [[ -n "${SCREENSHOT_PRIVACY_GATE//[[:space:]]/}" ]] || fail "--screenshot-privacy-gate is required for app-store-screenshots"
   [[ -n "${SCREENSHOT_STRICT_GATE//[[:space:]]/}" ]] || fail "--screenshot-strict-gate is required for app-store-screenshots"
+  [[ "$SCREENSHOT_SOURCE_FINGERPRINT" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || fail "--screenshot-source-fingerprint must be sha256 followed by 64 lowercase hex characters"
   reject_private_content "$SCREENSHOT_SET" "screenshot set"
   reject_private_content "$SCREENSHOT_PRIVACY_GATE" "screenshot privacy gate"
   reject_private_content "$SCREENSHOT_STRICT_GATE" "screenshot strict gate"
@@ -571,12 +581,13 @@ if [[ "$EXECUTE" != "1" ]]; then
     echo "- screenshot set: recorded"
     echo "- screenshot privacy gate: recorded"
     echo "- screenshot strict gate: recorded"
+    echo "- screenshot source fingerprint: recorded"
   fi
   echo "- execute: pass --execute to write the completed evidence item"
   exit 0
 fi
 
-python3 - "$EVIDENCE_FILE" "$ITEM_ID" "$TITLE" "$SUMMARY" "$EVIDENCE_URL" "$TOKEN_SCOPE" "$COMMIT_SHA" "$DEPLOYMENT_STATUS" "$RELEASE_LEDGER" "$PR_URL" "$MR_URL" "$PROVIDER_REVIEW_ARTIFACT" "$REVIEW_BRANCH" "$SOURCE_BRANCH" "$TARGET_BRANCH" "$FILE_CHANGES" "$ROLLBACK_DRAFT" "$REMOTE_CONFLICT_PREVIEW" "$PENDING_OFFLINE_STATE" "$DEPLOYMENT_RETRY" "$ROLLBACK_PACKAGE" "$STOREKIT_PRODUCT_LOOKUP" "$STOREKIT_PURCHASE" "$STOREKIT_RESTORE" "$STOREKIT_FREE_QUOTA" "$STOREKIT_BOUNDARY_EVENTS" "$SCREENSHOT_SET" "$SCREENSHOT_PRIVACY_GATE" "$SCREENSHOT_STRICT_GATE" <<'PY'
+python3 - "$EVIDENCE_FILE" "$ITEM_ID" "$TITLE" "$SUMMARY" "$EVIDENCE_URL" "$TOKEN_SCOPE" "$COMMIT_SHA" "$DEPLOYMENT_STATUS" "$RELEASE_LEDGER" "$PR_URL" "$MR_URL" "$PROVIDER_REVIEW_ARTIFACT" "$REVIEW_BRANCH" "$SOURCE_BRANCH" "$TARGET_BRANCH" "$FILE_CHANGES" "$ROLLBACK_DRAFT" "$REMOTE_CONFLICT_PREVIEW" "$PENDING_OFFLINE_STATE" "$DEPLOYMENT_RETRY" "$ROLLBACK_PACKAGE" "$STOREKIT_PRODUCT_LOOKUP" "$STOREKIT_PURCHASE" "$STOREKIT_RESTORE" "$STOREKIT_FREE_QUOTA" "$STOREKIT_BOUNDARY_EVENTS" "$SCREENSHOT_SET" "$SCREENSHOT_PRIVACY_GATE" "$SCREENSHOT_STRICT_GATE" "$SCREENSHOT_SOURCE_FINGERPRINT" <<'PY'
 from pathlib import Path
 import re
 import sys
@@ -611,7 +622,8 @@ path = Path(sys.argv[1])
     screenshot_set,
     screenshot_privacy_gate,
     screenshot_strict_gate,
-) = sys.argv[2:30]
+    screenshot_source_fingerprint,
+) = sys.argv[2:31]
 text = path.read_text()
 pattern = re.compile(rf"^- \[[ xX]\] `{re.escape(item_id)}` - .*$", re.MULTILINE)
 replacement = f"- [x] `{item_id}` - {title}: {summary}"
@@ -672,6 +684,7 @@ if item_id == "app-store-screenshots":
         f"- Screenshot set: {screenshot_set}",
         f"- Screenshot privacy gate: {screenshot_privacy_gate}",
         f"- Screenshot strict gate: {screenshot_strict_gate}",
+        f"- Screenshot source fingerprint: {screenshot_source_fingerprint}",
     ])
 if evidence_url:
     note_lines.append(f"- Evidence URL: {evidence_url}")

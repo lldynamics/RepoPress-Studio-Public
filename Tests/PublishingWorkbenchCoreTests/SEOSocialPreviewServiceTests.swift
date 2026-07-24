@@ -21,7 +21,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     )
     let draft = ArticleDraft(
       siteProfileID: profile.id,
-      title: "macOS 个人网站发布控制台实践",
+      title: "macOS RepoPress实践",
       date: Date(timeIntervalSince1970: 1_783_396_800),
       slug: "mac-publishing-console",
       tags: ["Mac 发布", "#SEO", "SEO"],
@@ -30,7 +30,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
       draft: false,
       summary: "这篇文章说明 macOS 发布控制台如何把本地仓库、预检、图片、SEO 和发布说明收进一个清晰的桌面工作流，减少发布前来回切换。",
       coverAttachmentID: coverID,
-      bodyMarkdown: "# macOS 个人网站发布控制台实践\n\nBody",
+      bodyMarkdown: "# macOS RepoPress实践\n\nBody",
       attachments: [cover],
       updatedAt: Date(timeIntervalSince1970: 1_783_400_400)
     )
@@ -58,7 +58,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     XCTAssertTrue(openGraphCard?.isTitleWithinBudget == true)
     XCTAssertTrue(openGraphCard?.isDescriptionWithinBudget == true)
     XCTAssertEqual(snapshot.cards.first { $0.kind == .twitter }?.titleCharacterLimit, 70)
-    XCTAssertEqual(snapshot.metaTags.first { $0.property == "og:title" }?.content, "macOS 个人网站发布控制台实践")
+    XCTAssertEqual(snapshot.metaTags.first { $0.property == "og:title" }?.content, "macOS RepoPress实践")
     XCTAssertEqual(snapshot.metaTags.first { $0.property == "og:image" }?.content, "http://127.0.0.1:1111/images/2026/cover.jpg")
     XCTAssertEqual(snapshot.metaTags.first { $0.property == "og:image:width" }?.content, "1200")
     XCTAssertEqual(snapshot.metaTags.first { $0.property == "og:image:height" }?.content, "630")
@@ -98,7 +98,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     XCTAssertTrue(package.contains("- 图片 URL：http://127.0.0.1:1111/images/2026/cover.jpg"))
     XCTAssertTrue(package.contains("## Meta HTML"))
     XCTAssertTrue(package.contains("- 图片 Alt：Mac publishing workflow"))
-    XCTAssertTrue(package.contains(#"<meta property="og:title" content="macOS 个人网站发布控制台实践">"#))
+    XCTAssertTrue(package.contains(#"<meta property="og:title" content="macOS RepoPress实践">"#))
     XCTAssertTrue(package.contains(#"<meta property="article:published_time" content="2026-07-07T04:00:00Z">"#))
     XCTAssertTrue(package.contains(#"<meta property="article:modified_time" content="2026-07-07T05:00:00Z">"#))
     XCTAssertTrue(package.contains(#"<meta property="article:author" content="Jinfang">"#))
@@ -108,7 +108,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     XCTAssertTrue(package.contains(#"<meta property="og:image:height" content="630">"#))
     XCTAssertEqual(snapshot.structuredData.status, .ready)
     XCTAssertTrue(snapshot.structuredData.jsonLD.contains(#""@type" : "Article""#))
-    XCTAssertTrue(snapshot.structuredData.jsonLD.contains(#""headline" : "macOS 个人网站发布控制台实践""#))
+    XCTAssertTrue(snapshot.structuredData.jsonLD.contains(#""headline" : "macOS RepoPress实践""#))
     XCTAssertTrue(snapshot.structuredData.jsonLD.contains(#""image" : ["#))
     XCTAssertTrue(snapshot.structuredData.jsonLD.contains("http://127.0.0.1:1111/images/2026/cover.jpg"))
     XCTAssertTrue(snapshot.findings.contains { $0.title == "JSON-LD 已生成" })
@@ -724,7 +724,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
 	    XCTAssertFalse(store.isSEOSocialPreviewStale(for: restored))
 	  }
 	
-  func testStoreCachesSocialPreviewSnapshotsPerDraftAndPersistsThem() throws {
+  func testStoreCachesSocialPreviewSnapshotsPerDraftAndPersistsThem() async throws {
     let url = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     var firstDraft = try XCTUnwrap(store.selectedDraft)
@@ -759,6 +759,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     XCTAssertFalse(store.isSEOSocialPreviewStale(for: secondDraft))
 
     store.save()
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     XCTAssertEqual(reloaded.seoSocialPreviewSnapshots.count, 2)
@@ -776,7 +777,7 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
     XCTAssertNil(reloaded.seoSocialPreviewSnapshot)
   }
 
-  func testStoreSEOSocialPublishPackageIncludesRelatedArticleSuggestions() throws {
+  func testStoreSEOSocialPublishPackageIncludesRelatedArticleSuggestions() async throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     let profile = store.activeProfile
     let sourceID = UUID(uuidString: "8E76D4C3-1573-4246-9E1F-9C744420C7C1")!
@@ -819,7 +820,8 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
 
     store.prepareSEOSocialPreview(for: source)
 
-    let package = try XCTUnwrap(store.seoSocialPublishPackageMarkdown(for: source))
+    let generatedPackage = await store.seoSocialPublishPackageMarkdown(for: source)
+    let package = try XCTUnwrap(generatedPackage)
     XCTAssertTrue(package.contains("## 关联文章建议"))
     XCTAssertTrue(package.contains("SEO 发布包 -> Mac SEO 预览"))
     XCTAssertTrue(package.contains("/mac-seo-preview/"))

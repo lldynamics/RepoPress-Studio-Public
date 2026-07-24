@@ -19,6 +19,8 @@ public enum AIPublishingSelectionEditApplication: String, Codable, Hashable, Sen
 
 public struct AIPublishingSelectionEditPreview: Identifiable, Hashable, Sendable {
   public var id: UUID
+  public var draftID: ArticleDraft.ID
+  public var sourceBodyMarkdown: String
   public var kind: AIPublishingActionKind
   public var range: NSRange
   public var originalText: String
@@ -29,6 +31,8 @@ public struct AIPublishingSelectionEditPreview: Identifiable, Hashable, Sendable
 
   public init(
     id: UUID = UUID(),
+    draftID: ArticleDraft.ID,
+    sourceBodyMarkdown: String,
     kind: AIPublishingActionKind,
     range: NSRange,
     originalText: String,
@@ -38,6 +42,8 @@ public struct AIPublishingSelectionEditPreview: Identifiable, Hashable, Sendable
     model: String = ""
   ) {
     self.id = id
+    self.draftID = draftID
+    self.sourceBodyMarkdown = sourceBodyMarkdown
     self.kind = kind
     self.range = range
     self.originalText = originalText
@@ -62,12 +68,18 @@ public struct AIPublishingSelectionEditPreview: Identifiable, Hashable, Sendable
 }
 
 public enum AIPublishingSelectionEditPreviewApplyError: LocalizedError, Equatable {
+  case draftChanged
+  case sourceBodyChanged
   case emptyReplacement
   case invalidRange
   case originalTextChanged
 
   public var errorDescription: String? {
     switch self {
+    case .draftChanged:
+      return "当前文章已切换，请重新生成 AI 预览。"
+    case .sourceBodyChanged:
+      return "文章正文已变化，请重新生成 AI 预览。"
     case .emptyReplacement:
       return "AI 预览内容为空，未应用。"
     case .invalidRange:
@@ -83,6 +95,13 @@ public enum AIPublishingSelectionEditPreviewService {
     _ preview: AIPublishingSelectionEditPreview,
     to draft: ArticleDraft
   ) throws -> ArticleDraft {
+    guard preview.draftID == draft.id else {
+      throw AIPublishingSelectionEditPreviewApplyError.draftChanged
+    }
+    guard preview.sourceBodyMarkdown == draft.bodyMarkdown else {
+      throw AIPublishingSelectionEditPreviewApplyError.sourceBodyChanged
+    }
+
     let replacement = preview.trimmedReplacementText
     guard !replacement.isEmpty else {
       throw AIPublishingSelectionEditPreviewApplyError.emptyReplacement

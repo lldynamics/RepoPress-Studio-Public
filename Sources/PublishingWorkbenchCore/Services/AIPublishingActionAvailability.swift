@@ -79,11 +79,11 @@ public enum AIPublishingActionAvailabilityService {
     activeAction: AIPublishingActionKind?
   ) -> String? {
     guard activeAction == nil else {
-      return "AI 正在处理"
+      return CoreL10n.text("AI 正在处理")
     }
 
     guard isAIEnabled else {
-      return "需要先启用 AI"
+      return CoreL10n.text("需要先启用 AI")
     }
 
     guard !hasRequiredContext else {
@@ -92,15 +92,15 @@ public enum AIPublishingActionAvailabilityService {
 
     switch action.contextRequirement {
     case .selectedText:
-      return "需要先选择正文"
+      return CoreL10n.text("需要先选择正文")
     case .selectedTextOrBody:
-      return "需要选择正文或补充文章正文"
+      return CoreL10n.text("需要选择正文或补充文章正文")
     case .selectedTextOrArticleSeed:
-      return "需要选择正文或补充标题、摘要、正文"
+      return CoreL10n.text("需要选择正文或补充标题、摘要、正文")
     case .body:
-      return "需要先补充文章正文"
+      return CoreL10n.text("需要先补充文章正文")
     case .articleSeed:
-      return "需要先补充标题、摘要或正文"
+      return CoreL10n.text("需要先补充标题、摘要或正文")
     }
   }
 }

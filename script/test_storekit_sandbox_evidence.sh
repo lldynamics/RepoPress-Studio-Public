@@ -18,7 +18,6 @@ fail() {
 
 cp "$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md" "$EVIDENCE_FILE"
 [[ -f "$ENV_TEMPLATE" ]] || fail "StoreKit sandbox env template is missing"
-
 template_text="$(cat "$ENV_TEMPLATE")"
 template_required_markers=(
   "STOREKIT_PRODUCT_ID"

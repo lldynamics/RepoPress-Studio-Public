@@ -13,16 +13,12 @@ extension WorkbenchStore {
     privacyMonetizationStore.privacyProtectionStatus
   }
 
-  public var privacyProtectionAudit: PrivacyProtectionAudit {
-    privacyMonetizationStore.privacyProtectionAudit(store: self)
-  }
-
-  public var privacyProtectionEvidencePackage: PrivacyProtectionEvidencePackage {
-    privacyMonetizationStore.privacyProtectionEvidencePackage(store: self)
-  }
-
   public var proStatusSummary: ProStatusSummary {
     privacyMonetizationStore.proStatusSummary
+  }
+
+  public var currentFreePlanUsage: FreePlanUsage {
+    privacyMonetizationStore.currentFreePlanUsage
   }
 
   public var proUpgradePresentation: ProUpgradePresentation {
@@ -35,18 +31,6 @@ extension WorkbenchStore {
 
   public func proUpgradeRequirement(for feature: PremiumFeature) -> ProUpgradeRequirement {
     privacyMonetizationStore.proUpgradeRequirement(for: feature)
-  }
-
-  public var proMonetizationAuditReport: ProMonetizationAuditReport {
-    privacyMonetizationStore.proMonetizationAuditReport
-  }
-
-  public var proSandboxVerificationSummary: ProSandboxVerificationSummary {
-    privacyMonetizationStore.proSandboxVerificationSummary
-  }
-
-  public var proStoreKitReviewEvidencePackage: ProStoreKitReviewEvidencePackage {
-    privacyMonetizationStore.proStoreKitReviewEvidencePackage
   }
 
   public func updatePrivacySettings(_ settings: PrivacyProtectionSettings) {
@@ -65,11 +49,16 @@ extension WorkbenchStore {
     privacyMonetizationStore.matchesPrivacyProtectedDraftSearch(draft, query: query, profile: profile)
   }
 
+  public func privacyProtectedSearchDraft(for draft: ArticleDraft) -> ArticleDraft {
+    privacyMonetizationStore.privacyProtectedSearchDraft(for: draft)
+  }
+
   public func accessDecision(for feature: PremiumFeature) -> FeatureAccessDecision {
     privacyMonetizationStore.accessDecision(for: feature)
   }
 
   public func canStartFeatureUse(_ feature: PremiumFeature) -> FeatureAccessDecision {
+    refreshDailyFreeUsageIfNeeded()
     let decision = privacyMonetizationStore.canStartFeatureUse(feature)
     if !decision.isAllowed {
       privacyMonetizationStore.latestProFeatureBlockNotice = ProFeatureBlockNotice(
@@ -89,12 +78,45 @@ extension WorkbenchStore {
     privacyMonetizationStore.consumeFeatureUse(feature, store: self)
   }
 
+  func reserveFeatureUse(_ feature: PremiumFeature) -> FeatureUseReservationResult {
+    privacyMonetizationStore.reserveFeatureUse(feature, store: self)
+  }
+
+  @discardableResult
+  func commitFeatureUseReservation(_ reservation: FeatureUseReservation) -> Bool {
+    privacyMonetizationStore.commitFeatureUseReservation(reservation, store: self)
+  }
+
+  @discardableResult
+  func releaseFeatureUseReservation(_ reservation: FeatureUseReservation) -> Bool {
+    privacyMonetizationStore.releaseFeatureUseReservation(reservation)
+  }
+
   public func remainingFreeUses(for feature: PremiumFeature) -> Int {
     privacyMonetizationStore.remainingFreeUses(for: feature)
   }
 
-  public func applyProEntitlement(productID: String? = nil, source: ProEntitlementSource) {
-    privacyMonetizationStore.applyProEntitlement(productID: productID, source: source, store: self)
+  @discardableResult
+  public func refreshDailyFreeUsageIfNeeded(
+    now: Date = Date(),
+    calendar: Calendar = .current
+  ) -> Bool {
+    let didReset = privacyMonetizationStore.refreshDailyFreeUsageIfNeeded(
+      now: now,
+      calendar: calendar
+    )
+    if didReset {
+      save()
+    }
+    return didReset
+  }
+
+  public func applyVerifiedStoreKitEntitlement(productID: String) {
+    privacyMonetizationStore.applyVerifiedStoreKitEntitlement(productID: productID, store: self)
+  }
+
+  func applyProEntitlement(from provider: any ProEntitlementProviding) {
+    privacyMonetizationStore.applyEntitlement(from: provider, store: self)
   }
 
   public func markProEntitlementCheckCompleted(

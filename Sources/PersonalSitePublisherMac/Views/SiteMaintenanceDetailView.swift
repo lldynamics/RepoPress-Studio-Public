@@ -4,9 +4,7 @@ import SwiftUI
 struct SiteMaintenanceDetailView: View {
   @ObservedObject var store: WorkbenchStore
   var isEmbedded: Bool = false
-  @State private var performancePageViews = ""
-  @State private var performanceVisitors = ""
-  @State private var performanceSourceName = "手动记录"
+  @State private var onlineInspectionMessage: String?
 
   var body: some View {
     if isEmbedded {
@@ -14,7 +12,7 @@ struct SiteMaintenanceDetailView: View {
     } else {
       ScrollView {
         bodyContent
-          .padding(20)
+          .workbenchPageLayout()
       }
     }
   }
@@ -22,33 +20,69 @@ struct SiteMaintenanceDetailView: View {
   @ViewBuilder
   private var bodyContent: some View {
     if let snapshot = store.siteMaintenanceSnapshot {
-      SiteMaintenanceDetailContent(
-        snapshot: snapshot,
-        isStale: store.isSiteMaintenanceSnapshotStale,
-        isAIChatRunning: store.ai.isChatRunning,
-        selectedDraft: store.selectedDraft,
-        performancePageViews: $performancePageViews,
-        performanceVisitors: $performanceVisitors,
-        performanceSourceName: $performanceSourceName,
-        refresh: {
-          store.refreshSiteMaintenanceSnapshot()
-        },
-        copySprintPlan: copySprintPlan,
-        copyChecklist: copyChecklist,
-        openDraft: openDraft,
-        copyItem: copyItem,
-        recordItem: recordItem,
-        sendToAI: sendToAI,
-        applySuggestedSchedule: {
-          store.applySuggestedMaintenanceSchedule()
-        },
-        recordPerformanceSnapshot: recordPerformanceSnapshot
-      )
-    } else {
-      SiteMaintenanceSnapshotPlaceholder {
-        store.refreshSiteMaintenanceSnapshot()
+      VStack(alignment: .leading, spacing: 12) {
+        if let errorMessage = store.siteMaintenanceSnapshotErrorMessage {
+          maintenanceRefreshFailure(errorMessage)
+        }
+        SiteMaintenanceDetailContent(
+          snapshot: snapshot,
+          isStale: store.isSiteMaintenanceSnapshotStale,
+          isRefreshing: store.isSiteMaintenanceSnapshotRefreshing,
+          isAIChatRunning: store.ai.isChatRunning,
+          refresh: refreshMaintenanceSnapshot,
+          copySprintPlan: copySprintPlan,
+          copyChecklist: copyChecklist,
+          openDraft: openDraft,
+          copyItem: copyItem,
+          recordItem: recordItem,
+          sendToAI: sendToAI,
+          applySuggestedSchedule: {
+            Task {
+              await store.applySuggestedMaintenanceSchedule()
+            }
+          },
+          latestRelease: store.activeProfileReleaseRecords.first,
+          deploymentSnapshot: store.activeProfileReleaseRecords.first.flatMap(store.deploymentStatusSnapshot),
+          canCheckDeployment: store.activeProfileReleaseRecords.first.map(store.canCheckDeploymentStatus) ?? false,
+          isDeploymentChecking: store.isDeploymentStatusChecking,
+          onlineInspectionMessage: onlineInspectionMessage,
+          runOnlineInspection: runOnlineInspection
+        )
       }
+    } else {
+      SiteMaintenanceSnapshotPlaceholder(
+        isRefreshing: store.isSiteMaintenanceSnapshotRefreshing,
+        errorMessage: store.siteMaintenanceSnapshotErrorMessage,
+        generate: refreshMaintenanceSnapshot
+      )
     }
+  }
+
+  private func refreshMaintenanceSnapshot() {
+    guard !store.isSiteMaintenanceSnapshotRefreshing else { return }
+    Task {
+      await store.refreshSiteMaintenanceSnapshot(force: true)
+    }
+  }
+
+  private func maintenanceRefreshFailure(_ message: String) -> some View {
+    HStack(alignment: .top, spacing: 10) {
+      Image(systemName: "exclamationmark.triangle")
+        .foregroundStyle(WorkbenchTheme.risk)
+      VStack(alignment: .leading, spacing: 3) {
+        Text("维护报告刷新失败")
+          .font(.callout.weight(.semibold))
+        Text(message)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+      }
+      Spacer()
+      Button("重试", action: refreshMaintenanceSnapshot)
+        .disabled(store.isSiteMaintenanceSnapshotRefreshing)
+    }
+    .padding(10)
+    .background(WorkbenchTheme.risk.opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   private func copySprintPlan(_ report: SiteMaintenanceReport) {
@@ -78,21 +112,24 @@ struct SiteMaintenanceDetailView: View {
     }
   }
 
-  private func recordPerformanceSnapshot(for draft: ArticleDraft) {
-    guard let pageViews = Int(performancePageViews.trimmedForPublishing),
-          let visitors = Int(performanceVisitors.trimmedForPublishing)
-    else {
+  private func runOnlineInspection() {
+    guard let release = store.activeProfileReleaseRecords.first else {
+      onlineInspectionMessage = "尚无发布记录。"
+      return
+    }
+    guard store.canCheckDeploymentStatus(for: release) else {
+      onlineInspectionMessage = store.deploymentStatusReadiness(for: release).nextStep
       return
     }
 
-    store.recordContentPerformanceSnapshot(
-      for: draft,
-      pageViews: pageViews,
-      visitors: visitors,
-      sourceName: performanceSourceName
-    )
-    performancePageViews = ""
-    performanceVisitors = ""
+    Task {
+      await store.refreshSiteMaintenanceSnapshot(force: true)
+      if let snapshot = await store.refreshDeploymentStatus(for: release) {
+        onlineInspectionMessage = "巡检完成：\(snapshot.provider.localizedDisplayName) \(snapshot.level.localizedDisplayName)。"
+      } else {
+        onlineInspectionMessage = store.deploymentStatusMessage ?? "线上巡检未获得结果。"
+      }
+    }
   }
 
   private func copy(_ value: String, message: String) {

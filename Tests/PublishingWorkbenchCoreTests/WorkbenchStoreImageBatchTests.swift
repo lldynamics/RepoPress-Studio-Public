@@ -6,7 +6,7 @@ import XCTest
 
 @MainActor
 final class WorkbenchStoreImageBatchTests: XCTestCase {
-  func testAIChatImageAttachmentsLoadsSelectedDraftImages() throws {
+  func testAIChatImageAttachmentsLoadsSelectedDraftImages() async throws {
     let directory = try temporaryDirectory()
     let imageURL = directory.appendingPathComponent("cover.png")
     let imageData = Data([137, 80, 78, 71, 1, 2, 3])
@@ -29,7 +29,7 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
       attachments: [attachment]
     )
 
-    let images = store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
+    let images = await store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
 
     XCTAssertEqual(images.count, 1)
     XCTAssertEqual(images[0].filename, "cover.png")
@@ -37,7 +37,7 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
     XCTAssertEqual(images[0].data, imageData)
   }
 
-  func testAIChatImageAttachmentsUsesMobileEightMegabyteLimit() throws {
+  func testAIChatImageAttachmentsUsesMobileEightMegabyteLimit() async throws {
     let directory = try temporaryDirectory()
     let imageURL = directory.appendingPathComponent("mobile-limit.png")
     let imageData = Data(repeating: 7, count: 5 * 1_024 * 1_024)
@@ -59,14 +59,14 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
       attachments: [attachment]
     )
 
-    let images = store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
+    let images = await store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
 
     XCTAssertEqual(images.count, 1)
     XCTAssertEqual(images[0].data.count, 5 * 1_024 * 1_024)
     XCTAssertNil(store.aiChatMessage)
   }
 
-  func testAIChatImageAttachmentsSkipsImagesAboveMobileEightMegabyteLimit() throws {
+  func testAIChatImageAttachmentsSkipsImagesAboveMobileEightMegabyteLimit() async throws {
     let directory = try temporaryDirectory()
     let imageURL = directory.appendingPathComponent("too-large.png")
     let imageData = Data(
@@ -80,7 +80,7 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
       originalFilename: "too-large.png",
       relativePublishPath: "/images/too-large.png",
       repositoryPath: "static/images/too-large.png",
-      byteSize: Int64(imageData.count),
+      byteSize: 1,
       sourceFilePath: imageURL.path
     )
     let draft = ArticleDraft(
@@ -91,13 +91,38 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
       attachments: [attachment]
     )
 
-    let images = store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
+    let images = await store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
 
     XCTAssertTrue(images.isEmpty)
     XCTAssertEqual(
       store.aiChatMessage,
       "已跳过 1 个无法读取、格式不支持或超过 \(AIPublishingChatImageAttachmentPresentation.attachmentSizeLimitText()) 的图片附件。"
     )
+  }
+
+  func testAIChatImageAttachmentsSkipsUnsupportedImageFormat() async throws {
+    let directory = try temporaryDirectory()
+    let imageURL = directory.appendingPathComponent("unsupported.heic")
+    try Data([1, 2, 3, 4]).write(to: imageURL)
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let attachment = DraftAttachment(
+      originalFilename: "unsupported.heic",
+      relativePublishPath: "/images/unsupported.heic",
+      repositoryPath: "static/images/unsupported.heic",
+      byteSize: 4,
+      sourceFilePath: imageURL.path
+    )
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfile.id,
+      title: "Unsupported AI Image",
+      slug: "unsupported-ai-image",
+      attachments: [attachment]
+    )
+
+    let images = await store.aiChatImageAttachments(for: draft, attachmentIDs: [attachment.id])
+
+    XCTAssertTrue(images.isEmpty)
+    XCTAssertTrue(store.aiChatMessage?.contains("格式不支持") == true)
   }
 
   func testAttachRepositoryImageToSelectedDraftKeepsRepositoryPathAndSourceFile() throws {
@@ -142,13 +167,95 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
       imageURL.resolvingSymlinksInPath().path
     )
     XCTAssertEqual(store.selectedSection, .images)
-    XCTAssertEqual(store.imageActionMessage, "已把 static/images/2026/hero-image.jpg 加入当前文章图片列表。")
+    XCTAssertEqual(store.imageActionMessage, "已把 static/images/2026/hero-image.jpg 加入目标文章图片列表。")
 
     store.attachRepositoryImageToSelectedDraft(repositoryPath: "static/images/2026/hero-image.jpg")
 
     updatedDraft = try XCTUnwrap(store.drafts.first { $0.id == draft.id })
     XCTAssertEqual(updatedDraft.attachments.count, 1)
-    XCTAssertEqual(store.imageActionMessage, "static/images/2026/hero-image.jpg 已在当前文章图片列表中。")
+    XCTAssertEqual(store.imageActionMessage, "static/images/2026/hero-image.jpg 已在目标文章图片列表中。")
+  }
+
+  func testAttachRepositoryImageRejectsUnsafeOrMissingFilesWithoutMutatingDraft() throws {
+    let rootURL = try temporaryDirectory()
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("static/images", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try Data([1, 2, 3]).write(to: rootURL.appendingPathComponent("outside.jpg"))
+
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.assetRoot = "static"
+    store.updateActiveProfile(profile)
+    let draft = ArticleDraft(
+      id: UUID(),
+      siteProfileID: profile.id,
+      title: "Protected Draft",
+      slug: "protected-draft"
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+
+    store.attachRepositoryImageToSelectedDraft(repositoryPath: "../outside.jpg")
+    XCTAssertEqual(store.drafts.first?.attachments, [])
+    XCTAssertEqual(store.imageActionMessage, "仓库图片路径无效。")
+
+    store.attachRepositoryImageToSelectedDraft(repositoryPath: "static/images/missing.jpg")
+    XCTAssertEqual(store.drafts.first?.attachments, [])
+    XCTAssertEqual(
+      store.imageActionMessage,
+      "图片文件不存在或无法读取：static/images/missing.jpg"
+    )
+  }
+
+  func testAttachRepositoryImageUsesExplicitCurrentSiteTargetInsteadOfGeneralSelection() throws {
+    let rootURL = try temporaryDirectory()
+    try FileManager.default.createDirectory(
+      at: rootURL.appendingPathComponent("static/images", isDirectory: true),
+      withIntermediateDirectories: true
+    )
+    try Data([1, 2, 3, 4]).write(
+      to: rootURL.appendingPathComponent("static/images/library.png")
+    )
+
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.assetRoot = "static"
+    store.updateActiveProfile(profile)
+    let siteDraft = ArticleDraft(
+      id: UUID(),
+      siteProfileID: profile.id,
+      title: "Site Target",
+      slug: "site-target"
+    )
+    let generalDraft = ArticleDraft(
+      id: UUID(),
+      siteProfileID: profile.id,
+      scope: .general,
+      title: "General Selection",
+      slug: "general-selection"
+    )
+    store.setDrafts([siteDraft, generalDraft])
+    store.setDraftListContentScope(.general)
+    store.setSelectedDraftID(generalDraft.id)
+
+    store.attachRepositoryImage(
+      repositoryPath: "static/images/library.png",
+      toDraftID: siteDraft.id
+    )
+
+    XCTAssertEqual(store.drafts.first(where: { $0.id == siteDraft.id })?.attachments.count, 1)
+    XCTAssertEqual(store.drafts.first(where: { $0.id == generalDraft.id })?.attachments.count, 0)
+
+    store.attachRepositoryImage(
+      repositoryPath: "static/images/library.png",
+      toDraftID: generalDraft.id
+    )
+    XCTAssertEqual(store.drafts.first(where: { $0.id == generalDraft.id })?.attachments.count, 0)
+    XCTAssertEqual(store.imageActionMessage, "请选择当前站点中的目标文章。")
   }
 
   func testBatchFillImageMetadataUpdatesOnlyVisibleProfileDrafts() throws {
@@ -224,7 +331,7 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
     XCTAssertTrue(store.imageActionMessage?.contains("已批量补全 2 个 alt") ?? false)
   }
 
-  func testBatchOptimizeJPEGUpdatesOnlyVisibleProfileDrafts() throws {
+  func testBatchOptimizeJPEGUpdatesOnlyVisibleProfileDrafts() async throws {
     let directory = try temporaryDirectory()
     let firstURL = directory.appendingPathComponent("first.jpg")
     let otherURL = directory.appendingPathComponent("other.jpg")
@@ -273,12 +380,56 @@ final class WorkbenchStoreImageBatchTests: XCTestCase {
 
     store.optimizeVisibleDraftJPEGImages()
 
+    XCTAssertTrue(store.imageWorkbench.isProcessingBatch)
+    for _ in 0..<100 where store.imageWorkbench.isProcessingBatch {
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    XCTAssertFalse(store.imageWorkbench.isProcessingBatch)
+
     let updatedFirst = try XCTUnwrap(store.drafts.first { $0.id == firstDraft.id })
     let untouchedOther = try XCTUnwrap(store.drafts.first { $0.id == otherDraft.id })
 
     XCTAssertNotEqual(updatedFirst.attachments.first?.sourceFilePath, firstURL.path)
     XCTAssertEqual(untouchedOther.attachments.first?.sourceFilePath, otherURL.path)
     XCTAssertTrue(store.imageActionMessage?.contains("已批量生成") ?? false)
+  }
+
+  func testCropCoverRunsThroughBackgroundBatchAndAppliesResult() async throws {
+    let directory = try temporaryDirectory()
+    let sourceURL = directory.appendingPathComponent("cover.jpg")
+    try writeTestImage(at: sourceURL, width: 360, height: 360, quality: 1.0)
+
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let attachment = DraftAttachment(
+      originalFilename: "cover.jpg",
+      relativePublishPath: "/images/2026/cover.jpg",
+      repositoryPath: "static/images/2026/cover.jpg",
+      byteSize: Int64((try Data(contentsOf: sourceURL)).count),
+      sourceFilePath: sourceURL.path
+    )
+    let draft = ArticleDraft(
+      id: UUID(),
+      siteProfileID: store.activeProfile.id,
+      title: "Cover",
+      slug: "cover",
+      coverAttachmentID: attachment.id,
+      bodyMarkdown: "![Cover](/images/2026/cover.jpg)",
+      attachments: [attachment]
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+
+    store.cropSelectedDraftCoverImageForSocialPreview()
+
+    XCTAssertTrue(store.imageWorkbench.isProcessingBatch)
+    for _ in 0..<100 where store.imageWorkbench.isProcessingBatch {
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    XCTAssertFalse(store.imageWorkbench.isProcessingBatch)
+
+    let updatedDraft = try XCTUnwrap(store.drafts.first { $0.id == draft.id })
+    XCTAssertNotEqual(updatedDraft.attachments.first?.sourceFilePath, sourceURL.path)
+    XCTAssertTrue(store.imageActionMessage?.contains("已裁剪封面图为 16:9") ?? false)
   }
 
   private func temporaryPersistenceURL() throws -> URL {

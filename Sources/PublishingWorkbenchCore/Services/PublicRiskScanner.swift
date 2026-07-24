@@ -1,12 +1,24 @@
 import Foundation
 
 public struct PublicRiskScanner: Sendable {
-  private struct Rule: Sendable {
+  private struct Rule: @unchecked Sendable {
     var title: String
     var message: String
     var severity: PreflightSeverity
-    var pattern: String
-    var options: NSRegularExpression.Options
+    var regex: NSRegularExpression?
+
+    init(
+      title: String,
+      message: String,
+      severity: PreflightSeverity,
+      pattern: String,
+      options: NSRegularExpression.Options
+    ) {
+      self.title = title
+      self.message = message
+      self.severity = severity
+      regex = try? NSRegularExpression(pattern: pattern, options: options)
+    }
   }
 
   private struct ScannedField {
@@ -20,36 +32,36 @@ public struct PublicRiskScanner: Sendable {
   public init() {
     rules = [
       Rule(
-        title: "疑似密钥泄露",
-        message: "包含疑似 API Key、Token、Secret 或密码，请移除后再公开发布。",
+        title: CoreL10n.text("疑似密钥泄露"),
+        message: CoreL10n.text("包含疑似 API Key、Token、Secret 或密码，请移除后再公开发布。"),
         severity: .error,
         pattern: #"\b(api[_-]?key|secret|token|password|access[_-]?key|client[_-]?secret)\b\s*[:=]\s*["']?[A-Za-z0-9_./+=-]{12,}"#,
         options: [.caseInsensitive]
       ),
       Rule(
-        title: "疑似密钥泄露",
-        message: "包含疑似服务访问 Token，请改用占位符或环境变量说明。",
+        title: CoreL10n.text("疑似密钥泄露"),
+        message: CoreL10n.text("包含疑似服务访问 Token，请改用占位符或环境变量说明。"),
         severity: .error,
         pattern: #"\b(sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"#,
         options: []
       ),
       Rule(
-        title: "私钥块疑似泄露",
-        message: "包含 private key 标记，请确认没有把证书或私钥写入公开文章。",
+        title: CoreL10n.text("私钥块疑似泄露"),
+        message: CoreL10n.text("包含 private key 标记，请确认没有把证书或私钥写入公开文章。"),
         severity: .error,
         pattern: #"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"#,
         options: [.caseInsensitive]
       ),
       Rule(
-        title: "内网地址疑似泄露",
-        message: "包含 localhost 或内网 IP，公开前请确认不是调试地址、家庭网络或公司内网信息。",
+        title: CoreL10n.text("内网地址疑似泄露"),
+        message: CoreL10n.text("包含 localhost 或内网 IP，公开前请确认不是调试地址、家庭网络或公司内网信息。"),
         severity: .warning,
         pattern: #"\b(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})\b"#,
         options: [.caseInsensitive]
       ),
       Rule(
-        title: "本机路径疑似泄露",
-        message: "包含本机绝对路径，公开前建议改成相对路径或脱敏说明。",
+        title: CoreL10n.text("本机路径疑似泄露"),
+        message: CoreL10n.text("包含本机绝对路径，公开前建议改成相对路径或脱敏说明。"),
         severity: .warning,
         pattern: #"(/Users/\S+|/Volumes/\S+|[A-Za-z]:\\Users\\\S+)"#,
         options: []
@@ -67,8 +79,9 @@ public struct PublicRiskScanner: Sendable {
           PreflightIssue(
             severity: rule.severity,
             title: rule.title,
-            message: "\(field.displayName)\(rule.message)",
-            field: field.key
+            message: CoreL10n.format("%@：%@", field.displayName, rule.message),
+            field: field.key,
+            category: .publicRisk
           )
         )
       }
@@ -83,16 +96,16 @@ public struct PublicRiskScanner: Sendable {
       .joined(separator: "\n")
 
     return [
-      ScannedField(key: "title", displayName: "标题", value: draft.title),
-      ScannedField(key: "summary", displayName: "摘要", value: draft.summary),
-      ScannedField(key: "tags", displayName: "标签/分类", value: (draft.tags + draft.categories).joined(separator: "\n")),
-      ScannedField(key: "body", displayName: "正文", value: draft.bodyMarkdown),
-      ScannedField(key: "attachments", displayName: "图片元数据", value: attachmentText),
+      ScannedField(key: "title", displayName: CoreL10n.text("标题"), value: draft.title),
+      ScannedField(key: "summary", displayName: CoreL10n.text("摘要"), value: draft.summary),
+      ScannedField(key: "tags", displayName: CoreL10n.text("标签/分类"), value: (draft.tags + draft.categories).joined(separator: "\n")),
+      ScannedField(key: "body", displayName: CoreL10n.text("正文"), value: draft.bodyMarkdown),
+      ScannedField(key: "attachments", displayName: CoreL10n.text("图片元数据"), value: attachmentText),
     ]
   }
 
   private func matches(rule: Rule, in value: String) -> Bool {
-    guard let regex = try? NSRegularExpression(pattern: rule.pattern, options: rule.options) else {
+    guard let regex = rule.regex else {
       return false
     }
     let range = NSRange(value.startIndex..<value.endIndex, in: value)

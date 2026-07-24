@@ -11,11 +11,6 @@ extension WorkbenchStore {
     invalidateDraftDerivedCaches()
   }
 
-  func setActiveProfileID(_ profileID: UUID) {
-    publishingStore.activeProfileID = profileID
-    invalidateDraftDerivedCaches()
-  }
-
   func setDrafts(_ drafts: [ArticleDraft]) {
     publishingStore.drafts = drafts
     invalidateDraftDerivedCaches()
@@ -43,11 +38,4 @@ extension WorkbenchStore {
     publishingStore.preflightIssues = issues
   }
 
-  func setEditorFocusRequest(_ request: EditorFocusRequest?) {
-    publishingStore.editorFocusRequest = request
-  }
-
-  func setActiveEditorSelection(_ selection: ActiveEditorSelection?) {
-    publishingStore.activeEditorSelection = selection
-  }
 }

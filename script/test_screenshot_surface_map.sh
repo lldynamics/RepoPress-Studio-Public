@@ -26,20 +26,20 @@ create_fixture() {
 | ID | Target file | Screen | Purpose | Status |
 | --- | --- | --- | --- | --- |
 | `writing` | `writing.png` | Writing workspace | Markdown editing, preview, metadata, and contextual writing actions. | Pending capture |
-| `ai-chat` | `ai-chat.png` | AI workspace | Independent AI conversation, quick prompts, context article, regenerate, and apply actions. | Pending capture |
+| `ai-chat` | `ai-chat.png` | BYOK AI writing assistant | Show the in-app AI assistant, safe demo conversation, article context, and user-supplied API-key boundary. | Pending capture |
+| `knowledge-library` | `knowledge-library.png` | Local knowledge library | Show local import, search, cleaned reading content, source details, and annotations without browser capture. | Pending capture |
 | `sync-api-publish` | `sync-api-publish.png` | Sync workspace | GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR flow. | Pending capture |
 | `seo-social-preview` | `seo-social-preview.png` | SEO/social preview | Search, Open Graph, Twitter card, cache state, and manual refresh. | Pending capture |
 | `deployment-status` | `deployment-status.png` | Deployment status | GitHub Pages/Actions, Netlify, Vercel, Cloudflare Pages, or custom endpoint validation. | Pending capture |
 | `maintenance` | `maintenance.png` | Site maintenance | Calendar, taxonomy governance, stale articles, links, and operation log. | Pending capture |
-| `general-drafts` | `general-drafts.png` | General drafts | Cross-site drafts, reusable material package, backup repository, and reuse checklist. | Pending capture |
+| `general-drafts` | `general-drafts.png` | General drafts | Filter general drafts and manage article ownership from the writing list. | Pending capture |
 | `pro-settings` | `pro-settings.png` | Pro settings | Free quota, Pro unlock, purchase, and restore state. | Pending capture |
-| `privacy-lock` | `privacy-lock.png` | Privacy lock | Locked workbench and private-content masking. | Pending capture |
-| `release-readiness` | `release-readiness.png` | Release gate | Localization, UI runtime, screenshot, checklist, and product-readiness gates. | Pending capture |
+| `privacy-lock` | `privacy-lock.png` | Quick hide | Manually hidden workbench and private-content masking. | Pending capture |
 EOF_MANIFEST
 
   write_file "$root/script/capture_app_screenshots.sh" <<'EOF_CAPTURE'
 #!/usr/bin/env bash
-required_ids=(writing ai-chat sync-api-publish seo-social-preview deployment-status maintenance general-drafts pro-settings privacy-lock release-readiness)
+required_ids=(writing ai-chat knowledge-library sync-api-publish seo-social-preview deployment-status maintenance general-drafts pro-settings privacy-lock)
 FORCE_RELAUNCH=0
 --force-relaunch
 --auto-window
@@ -47,62 +47,61 @@ frontmost_app_window_id
 AXWindowNumber
 capture_current_app_window
 screencapture -x -l
+screencapture -x -R
 --auto-window with --real-data requires --only
 --auto-window with --skip-build requires --only
 pkill -TERM -x "$APP_PRODUCT"
+SCREENSHOT_BUILD_DIST_DIR="$ROOT_DIR/dist/app-store-screenshot"
+PERSONAL_SITE_PUBLISHER_DIST_DIR="$SCREENSHOT_BUILD_DIST_DIR" PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD=1 bash "$ROOT_DIR/script/build_and_run.sh" --package-only --app-store
 PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO=1 PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE="${ONLY_ID:-writing}" ./PersonalSitePublisherMac
 screen_guidance() {
   case "$1" in
     writing) echo "Show the writing workspace with editor, preview, metadata, and contextual writing actions." ;;
-    ai-chat) echo "Show the independent AI conversation page with quick prompts, context article, attachments, regenerate, and apply actions." ;;
+    ai-chat) echo "Show the in-app AI writing assistant with safe demo conversation, article context, and user-supplied API-key guidance." ;;
+    knowledge-library) echo "Show the local knowledge library with import, search, cleaned reading content, source details, and annotations." ;;
     sync-api-publish) echo "Show GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR controls." ;;
     seo-social-preview) echo "Show search/Open Graph/Twitter card previews, cache state, manual refresh, and external debug links." ;;
     deployment-status) echo "Show GitHub Pages/Actions, Netlify, Vercel, Cloudflare Pages, or custom endpoint validation status." ;;
     maintenance) echo "Show content calendar, taxonomy governance, stale articles, links, and operation log." ;;
-    general-drafts) echo "Show cross-site drafts, reusable material package, backup repository, and reuse checklist." ;;
+    general-drafts) echo "Show general drafts in the writing workspace with move and copy to site actions." ;;
     pro-settings) echo "Show free quota, Pro unlock, purchase, and restore state without real payment or account secrets." ;;
-    privacy-lock) echo "Show the locked workbench and private-content masking state." ;;
-    release-readiness) echo "Show localization, UI runtime, screenshot, checklist, and product-readiness gates." ;;
+    privacy-lock) echo "Show the manually hidden workbench and private-content masking state." ;;
   esac
 }
 EOF_CAPTURE
 
   write_file "$root/script/build_and_run.sh" <<'EOF_BUILD'
 #!/usr/bin/env bash
-required_screenshot_surfaces=(writing ai-chat sync-api-publish seo-social-preview deployment-status maintenance general-drafts pro-settings privacy-lock release-readiness)
+required_screenshot_surfaces=(writing ai-chat knowledge-library sync-api-publish seo-social-preview deployment-status maintenance general-drafts pro-settings privacy-lock)
 --screenshot-demo [id]
 --screenshot-surface <id>
 --list-screenshot-surfaces
 contains_screenshot_surface
+SCREENSHOT_CAPTURE_BUILD
+PersonalSitePublisherScreenshotCaptureBuild
+PERSONAL_SITE_PUBLISHER_DIST_DIR
 PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO=1 PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE="$SCREENSHOT_SURFACE" ./PersonalSitePublisherMac
 EOF_BUILD
 
   write_file "$root/Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" <<'EOF_SWIFT'
-struct MacMarkdownComposerView { let markdownBlocks = ""; let pasteAIPromptToClipboard = "" }
+struct MacMarkdownComposerView { let toolbar = "MacMarkdownEditorToolbar"; let find = "FindReplaceBar" }
 EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/EditorInspectorView.swift" <<'EOF_SWIFT'
-let inspector = "EditorFrontMatterSection EditorSocialPreviewSection"
+  write_file "$root/Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift" <<'EOF_SWIFT'
+let inspector = "WorkspaceTaskMetadataSection WorkspaceTaskSEOSection refreshSEOSocialPreview relatedArticleSuggestionSection"
+// .accessibilityLabel("元数据标题")
+// .accessibilityLabel("复制全部外部调试链接")
 EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/EditorInspectorSections.swift" <<'EOF_SWIFT'
-let socialPreviewSection = "EditorSocialPreviewSection Open Graph Twitter/X refreshSEOSocialPreview relatedArticleSuggestionSection"
+  write_file "$root/Sources/PersonalSitePublisherMac/Views/KnowledgeLibraryDetailView.swift" <<'EOF_SWIFT'
+let knowledgeDetail = "knowledge-library-detail knowledge-library-reader knowledge-library-import-button"
 EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift" <<'EOF_SWIFT'
-let aiChatWorkspace = "ai-chat-workspace AIChatPromptLibrarySheet"
+  write_file "$root/Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift" <<'EOF_SWIFT'
+let knowledgeList = "knowledge-document-list knowledge-search-result-list KnowledgeImportAssistantView"
 EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInputSection.swift" <<'EOF_SWIFT'
-let aiChatComposer = "ai-chat-composer .keyboardShortcut(.return, modifiers: [.command])"
-EOF_SWIFT
-  write_file "$root/Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+PublicAICommands.swift" <<'EOF_SWIFT'
-func regenerateLastAIChatReply() {}
-EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" <<'EOF_SWIFT'
-let aiChatInspector = "AIChatContextInspectorView quickPrompts"
-EOF_SWIFT
-  write_file "$root/Sources/PublishingWorkbenchCore/Services/GeneralDraftLibraryService.swift" <<'EOF_SWIFT'
-let generalDraftService = "GeneralDraftBackupPlan reusePlan backupPlan general-drafts/MANIFEST.md"
+  write_file "$root/Sources/PublishingWorkbenchCore/Stores/PublishingStore+DraftOwnershipTransferActions.swift" <<'EOF_SWIFT'
+let transferActions = "draftOwnershipTransferPlan .copyToSite .moveToGeneral"
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/DetailContainerView.swift" <<'EOF_SWIFT'
-let detail = "SiteMaintenanceDetailView GeneralDraftLibraryDetailView"
+let detail = "SiteMaintenanceDetailView"
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/SiteMaintenanceDetailView.swift" <<'EOF_SWIFT'
 let maintenance = "SiteMaintenanceDetailView calendarSection linkAuditSection operationLogSection"
@@ -110,11 +109,14 @@ EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/SiteMaintenanceReportSectionGroups.swift" <<'EOF_SWIFT'
 let maintenanceSections = "SiteMaintenanceCalendarSection SiteMaintenanceLinkAuditSection SiteMaintenanceOperationLogSection"
 EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift" <<'EOF_SWIFT'
-let generalDrafts = "GeneralDraftLibraryDetailView backupSection reusePlanSection crossSiteMaterialPackageMarkdown"
+  write_file "$root/Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift" <<'EOF_SWIFT'
+let generalDrafts = "contentScopePicker draftOwnershipActions 复制到站点"
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceView.swift" <<'EOF_SWIFT'
-let repository = "onlinePublishCenterSection remoteConflictPreview PR/MR"
+let repository = "RepositoryWorkspaceView"
+EOF_SWIFT
+  write_file "$root/Sources/PersonalSitePublisherMac/Views/RepositoryWorkspacePublishingSections.swift" <<'EOF_SWIFT'
+let repositoryPublishing = "onlinePublishCenterSection remoteConflictPreview PR/MR"
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift" <<'EOF_SWIFT'
 let releaseHistory = "deploymentPollingSummary refreshDeploymentStatus GitHub Pages / Actions Netlify Vercel Cloudflare Pages"
@@ -123,16 +125,17 @@ EOF_SWIFT
 let settings = "selectedSettingsTab ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .proSettings ? .pro"
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/TokenRepositoryTokenSection.swift" <<'EOF_SWIFT'
-let token = "TokenRepositoryTokenSection 仓库访问 Token"
+let token = "TokenRepositoryTokenSection"
+// .accessibilityHint("仅用于仓库创建、权限检查、提交、PR/MR 和回滚")
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/TokenSettingsView.swift" <<'EOF_SWIFT'
 let tokenSettings = "deploymentProviderBinding"
 EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/ProSandboxVerificationSection.swift" <<'EOF_SWIFT'
-let proSandbox = "StoreKit 沙盒核验"
+  write_file "$root/Sources/PersonalSitePublisherMac/Views/ProSettingsView.swift" <<'EOF_SWIFT'
+let proSettings = "ProPurchaseRestoreSection ProQuotaSection"
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Support/ScreenshotDemoSettingsPresenter.swift" <<'EOF_SWIFT'
-let screenshotSettings = "ScreenshotDemoSettingsPresenter showSettingsWindow: requestedSurfaceFromEnvironment == .proSettings"
+let screenshotSettings = "ScreenshotDemoSettingsPresenter openSettingsIfNeeded openSettings() requestedSurfaceFromEnvironment == .proSettings"
 EOF_SWIFT
   write_file "$root/Tests/PublishingWorkbenchCoreTests/SEOSocialPreviewServiceTests.swift" <<'EOF_SWIFT'
 func testSnapshotBuildsSearchOpenGraphAndTwitterCards() {}
@@ -146,25 +149,13 @@ EOF_SWIFT
 let privacy = "PrivacyLockOverlay privacy-lock-overlay"
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/ContentView.swift" <<'EOF_SWIFT'
-let privacyState = "isPrivacyLocked lockPrivacyIfNeededForInactiveScene canUseProtectedWorkbench"
+let privacyState = "isPrivacyLocked lockPrivacy(reason canUseProtectedWorkbench"
+let aiScreenshot = "usesInlineAIScreenshotInspector ScreenshotInlineAIInspector AIChatContextInspectorView"
 EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspector.swift" <<'EOF_SWIFT'
-let releaseGate = "ReleaseQualityGateInspectorView"
-EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSectionsExtra.swift" <<'EOF_SWIFT'
-let releaseGateInspector = "refreshReleaseQualityGate"
-EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/ReleaseQualityGateDetailView.swift" <<'EOF_SWIFT'
-let releaseGateDetail = "releaseGateSection releaseGateItemCard"
-EOF_SWIFT
-  write_file "$root/Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateService.swift" <<'EOF_SWIFT'
-let releaseQualityGateService = "ReleaseQualityGateService"
-EOF_SWIFT
-  write_file "$root/Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateReport.swift" <<'EOF_SWIFT'
-struct ReleaseQualityGateReport {}
-EOF_SWIFT
-  write_file "$root/Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateAppStoreChecklistReport.swift" <<'EOF_SWIFT'
-let strictReadinessSummary = ""
+  write_file "$root/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" <<'EOF_SWIFT'
+let aiInspector = "AIChatContextInspectorView 需要配置 AI API Key"
+// .accessibilityLabel("AI 消息")
+// DisclosureGroup("文章上下文"
 EOF_SWIFT
 }
 
@@ -179,14 +170,14 @@ run_gate "$positive" || fail "valid fixture should pass"
 
 missing_manifest="$TMP_DIR/missing-manifest"
 create_fixture "$missing_manifest"
-perl -0pi -e 's/\| `ai-chat` \| `ai-chat\.png`[^\n]*\n//' "$missing_manifest/docs/app-store-screenshots/SCREENSHOT_MANIFEST.md"
+perl -0pi -e 's/\| `knowledge-library` \| `knowledge-library\.png`[^\n]*\n//' "$missing_manifest/docs/app-store-screenshots/SCREENSHOT_MANIFEST.md"
 if run_gate "$missing_manifest" 2>/dev/null; then
   fail "missing manifest id should fail"
 fi
 
 missing_source_marker="$TMP_DIR/missing-source-marker"
 create_fixture "$missing_source_marker"
-perl -0pi -e 's/ai-chat-composer//' "$missing_source_marker/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInputSection.swift"
+perl -0pi -e 's/knowledge-library-reader//' "$missing_source_marker/Sources/PersonalSitePublisherMac/Views/KnowledgeLibraryDetailView.swift"
 if run_gate "$missing_source_marker" 2>/dev/null; then
   fail "missing source marker should fail"
 fi

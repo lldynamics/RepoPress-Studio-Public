@@ -1,9 +1,23 @@
+import CryptoKit
 import CoreGraphics
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
-public struct SiteImageWorkbenchService {
-  private let fileManager: FileManager
+#if canImport(Darwin)
+import Darwin
+#endif
+public struct SiteImageWorkbenchService: Sendable {
+  public typealias AsyncReportOperation = @Sendable (ArticleDraft, SiteProfile) async throws -> ImageWorkbenchReport
+  public typealias AsyncSiteSummaryOperation = @Sendable ([ArticleDraft], SiteProfile) async throws -> ImageWorkbenchSiteSummary
+
+  private let fileSystem: SendableFileManager
+  private let cwebPExecutableOverride: URL?
+  private let cwebPTimeout: TimeInterval
+  private let prefersCWebP: Bool
+  private let asyncReportOperation: AsyncReportOperation?
+  private let asyncSiteSummaryOperation: AsyncSiteSummaryOperation?
+
+  private var fileManager: FileManager { fileSystem.value }
 
   public static var supportsWebPEncoding: Bool {
     supportsImageIOWebPEncoding || cwebPExecutableURL != nil
@@ -49,23 +63,94 @@ public struct SiteImageWorkbenchService {
       .first { FileManager.default.isExecutableFile(atPath: $0.path) }
   }
 
-  public init(fileManager: FileManager = .default) {
-    self.fileManager = fileManager
+  public init(
+    fileManager: FileManager = .default,
+    cwebPExecutableURL: URL? = nil,
+    cwebPTimeout: TimeInterval = 30,
+    prefersCWebP: Bool = false,
+    asyncReportOperation: AsyncReportOperation? = nil,
+    asyncSiteSummaryOperation: AsyncSiteSummaryOperation? = nil
+  ) {
+    self.fileSystem = SendableFileManager(fileManager)
+    self.cwebPExecutableOverride = cwebPExecutableURL
+    self.cwebPTimeout = max(0.1, cwebPTimeout)
+    self.prefersCWebP = prefersCWebP
+    self.asyncReportOperation = asyncReportOperation
+    self.asyncSiteSummaryOperation = asyncSiteSummaryOperation
+  }
+
+  /// Performs file-backed image inspection away from the caller's actor.
+  /// The synchronous API remains available for explicit publishing and AI actions.
+  public func reportAsync(draft: ArticleDraft, profile: SiteProfile) async throws -> ImageWorkbenchReport {
+    if let asyncReportOperation {
+      return try await asyncReportOperation(draft, profile)
+    }
+
+    let task = Task.detached(priority: .userInitiated) {
+      try makeReport(
+        draft: draft,
+        profile: profile,
+        cancellationCheck: { try Task.checkCancellation() }
+      )
+    }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
+  }
+
+  /// Builds the site-wide image summary away from the caller's actor.
+  public func siteSummaryAsync(
+    drafts: [ArticleDraft],
+    profile: SiteProfile
+  ) async throws -> ImageWorkbenchSiteSummary {
+    if let asyncSiteSummaryOperation {
+      return try await asyncSiteSummaryOperation(drafts, profile)
+    }
+
+    let task = Task.detached(priority: .utility) {
+      try makeSiteSummary(
+        drafts: drafts,
+        profile: profile,
+        cancellationCheck: { try Task.checkCancellation() }
+      )
+    }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
   }
 
   public func report(draft: ArticleDraft, profile: SiteProfile) -> ImageWorkbenchReport {
+    do {
+      return try makeReport(draft: draft, profile: profile, cancellationCheck: {})
+    } catch {
+      preconditionFailure("A non-cancellable image report unexpectedly failed: \(error)")
+    }
+  }
+
+  private func makeReport(
+    draft: ArticleDraft,
+    profile: SiteProfile,
+    cancellationCheck: () throws -> Void
+  ) throws -> ImageWorkbenchReport {
+    try cancellationCheck()
+    let imageAttachments = draft.attachments.filter { $0.mediaKind == .image }
     let markdownImagePathCounts = localMarkdownImagePathCounts(in: draft.bodyMarkdown)
     let markdownImagePaths = Set(markdownImagePathCounts.keys)
-    let registeredPublishPaths = Set(draft.attachments.map(\.relativePublishPath))
+    let registeredPublishPaths = Set(imageAttachments.map(\.relativePublishPath))
     let publishPathCounts = duplicateCounts(
-      draft.attachments.map { normalizedPublishPath($0.relativePublishPath) }
+      imageAttachments.map { normalizedPublishPath($0.relativePublishPath) }
     )
     let sourcePathCounts = duplicateCounts(
-      draft.attachments.map { normalizedSourcePath($0.sourceFilePath) }
+      imageAttachments.map { normalizedSourcePath($0.sourceFilePath) }
     )
     var issues: [ImageWorkbenchIssue] = []
 
-    let items = draft.attachments.map { attachment in
+    let items = try imageAttachments.map { attachment in
+      try cancellationCheck()
       let sourceURL = attachment.sourceFilePath.map { URL(fileURLWithPath: $0) }
       let fileExists = sourceURL.map { fileManager.fileExists(atPath: $0.path) } ?? false
       let actualByteSize = sourceURL.flatMap { fileByteSize(at: $0) } ?? attachment.byteSize
@@ -246,6 +331,7 @@ public struct SiteImageWorkbenchService {
       }
     }
 
+    try cancellationCheck()
     for markdownPath in markdownImagePaths where !registeredPublishPaths.contains(markdownPath) {
       issues.append(
         ImageWorkbenchIssue(
@@ -337,6 +423,7 @@ public struct SiteImageWorkbenchService {
 
     for index in updatedDraft.attachments.indices {
       let attachment = updatedDraft.attachments[index]
+      guard attachment.mediaKind == .image else { continue }
       guard let suggestion = suggestionsByAttachmentID[attachment.id] else {
         continue
       }
@@ -375,8 +462,29 @@ public struct SiteImageWorkbenchService {
   }
 
   public func siteSummary(drafts: [ArticleDraft], profile: SiteProfile) -> ImageWorkbenchSiteSummary {
-    let reports = drafts.map { draft in
-      (draft: draft, report: report(draft: draft, profile: profile))
+    do {
+      return try makeSiteSummary(drafts: drafts, profile: profile, cancellationCheck: {})
+    } catch {
+      preconditionFailure("A non-cancellable image summary unexpectedly failed: \(error)")
+    }
+  }
+
+  private func makeSiteSummary(
+    drafts: [ArticleDraft],
+    profile: SiteProfile,
+    cancellationCheck: () throws -> Void
+  ) throws -> ImageWorkbenchSiteSummary {
+    try cancellationCheck()
+    let reports = try drafts.map { draft in
+      try cancellationCheck()
+      return (
+        draft: draft,
+        report: try makeReport(
+          draft: draft,
+          profile: profile,
+          cancellationCheck: cancellationCheck
+        )
+      )
     }
     let draftSummaries = reports.map { draft, report in
       ImageWorkbenchDraftSummary(
@@ -393,7 +501,9 @@ public struct SiteImageWorkbenchService {
         webPConvertibleCount: report.webPConvertibleCount,
         optimizableSVGCount: report.optimizableSVGCount,
         resizableImageCount: report.resizableImageCount,
-        duplicateImageCount: report.duplicateImageCount
+        duplicateImageCount: report.duplicateImageCount,
+        items: report.items,
+        issues: stableSummaryIssues(report.issues, draftID: report.draftID)
       )
     }
     .sorted {
@@ -425,13 +535,21 @@ public struct SiteImageWorkbenchService {
     )
   }
 
-  public func fillMissingMetadata(draft: ArticleDraft) -> ImageMetadataFillResult {
+  public func fillMissingMetadata(
+    draft: ArticleDraft,
+    includedAttachmentIDs: Set<UUID>? = nil
+  ) -> ImageMetadataFillResult {
     var updatedDraft = draft
     var filledAltTextCount = 0
     var filledCaptionCount = 0
     var updatedMarkdownReferenceCount = 0
 
     for index in updatedDraft.attachments.indices {
+      guard updatedDraft.attachments[index].mediaKind == .image else { continue }
+      if let includedAttachmentIDs,
+         !includedAttachmentIDs.contains(updatedDraft.attachments[index].id) {
+        continue
+      }
       let originalAlt = updatedDraft.attachments[index].altText
       let fallback = humanizedFilename(updatedDraft.attachments[index].originalFilename)
       let resolvedAlt = originalAlt.trimmedForPublishing.nilIfEmpty ?? fallback
@@ -466,7 +584,9 @@ public struct SiteImageWorkbenchService {
   public func optimizeJPEGAttachments(
     draft: ArticleDraft,
     destinationDirectory: URL,
-    quality: CGFloat = 0.72
+    quality: CGFloat = 0.72,
+    cancellationToken: ImageProcessingCancellationToken? = nil,
+    includedAttachmentIDs: Set<UUID>? = nil
   ) throws -> ImageOptimizationResult {
     try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
 
@@ -477,7 +597,10 @@ public struct SiteImageWorkbenchService {
     var messages: [String] = []
 
     for index in updatedDraft.attachments.indices {
+      try cancellationToken?.throwIfCancelled()
       let attachment = updatedDraft.attachments[index]
+      if let includedAttachmentIDs, !includedAttachmentIDs.contains(attachment.id) { continue }
+      guard attachment.mediaKind == .image else { continue }
       guard isJPEGFilename(attachment.sourceFilePath ?? attachment.originalFilename) else {
         skippedCount += 1
         continue
@@ -509,6 +632,10 @@ public struct SiteImageWorkbenchService {
       }
 
       try writeOptimizedJPEG(from: sourceURL, to: optimizedURL, quality: quality)
+      if cancellationToken?.isCancelled == true {
+        try? fileManager.removeItem(at: optimizedURL)
+        throw CancellationError()
+      }
       let optimizedSize = fileByteSize(at: optimizedURL) ?? originalSize
 
       if optimizedSize < originalSize {
@@ -536,7 +663,9 @@ public struct SiteImageWorkbenchService {
   public func convertAttachmentsToWebP(
     draft: ArticleDraft,
     destinationDirectory: URL,
-    quality: CGFloat = 0.78
+    quality: CGFloat = 0.78,
+    cancellationToken: ImageProcessingCancellationToken? = nil,
+    includedAttachmentIDs: Set<UUID>? = nil
   ) throws -> ImageOptimizationResult {
     try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
 
@@ -547,7 +676,10 @@ public struct SiteImageWorkbenchService {
     var messages: [String] = []
 
     for index in updatedDraft.attachments.indices {
+      try cancellationToken?.throwIfCancelled()
       let attachment = updatedDraft.attachments[index]
+      if let includedAttachmentIDs, !includedAttachmentIDs.contains(attachment.id) { continue }
+      guard attachment.mediaKind == .image else { continue }
       guard isWebPConvertibleFilename(attachment.sourceFilePath ?? attachment.originalFilename) else {
         skippedCount += 1
         continue
@@ -578,7 +710,16 @@ public struct SiteImageWorkbenchService {
         continue
       }
 
-      try writeConvertedWebP(from: sourceURL, to: webPURL, quality: quality)
+      try writeConvertedWebP(
+        from: sourceURL,
+        to: webPURL,
+        quality: quality,
+        cancellationToken: cancellationToken
+      )
+      if cancellationToken?.isCancelled == true {
+        try? fileManager.removeItem(at: webPURL)
+        throw CancellationError()
+      }
       let webPSize = fileByteSize(at: webPURL) ?? originalSize
       let oldPublishPath = attachment.relativePublishPath
       let newPublishPath = pathByReplacingExtension(oldPublishPath, with: "webp")
@@ -589,6 +730,7 @@ public struct SiteImageWorkbenchService {
       updatedDraft.attachments[index].originalFilename = newFilename
       updatedDraft.attachments[index].relativePublishPath = newPublishPath
       updatedDraft.attachments[index].repositoryPath = newRepositoryPath
+      updatedDraft.attachments[index].repositorySHA = nil
       updatedDraft.attachments[index].sourceFilePath = webPURL.path
       updatedDraft.attachments[index].byteSize = webPSize
       updatedDraft.bodyMarkdown = replaceMarkdownImagePath(
@@ -621,7 +763,9 @@ public struct SiteImageWorkbenchService {
 
   public func optimizeSVGAttachments(
     draft: ArticleDraft,
-    destinationDirectory: URL
+    destinationDirectory: URL,
+    cancellationToken: ImageProcessingCancellationToken? = nil,
+    includedAttachmentIDs: Set<UUID>? = nil
   ) throws -> ImageOptimizationResult {
     try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
 
@@ -632,7 +776,10 @@ public struct SiteImageWorkbenchService {
     var messages: [String] = []
 
     for index in updatedDraft.attachments.indices {
+      try cancellationToken?.throwIfCancelled()
       let attachment = updatedDraft.attachments[index]
+      if let includedAttachmentIDs, !includedAttachmentIDs.contains(attachment.id) { continue }
+      guard attachment.mediaKind == .image else { continue }
       guard isSVGFilename(attachment.sourceFilePath ?? attachment.originalFilename) else {
         skippedCount += 1
         continue
@@ -677,6 +824,10 @@ public struct SiteImageWorkbenchService {
 
       try? fileManager.removeItem(at: optimizedURL)
       try optimizedData.write(to: optimizedURL, options: .atomic)
+      if cancellationToken?.isCancelled == true {
+        try? fileManager.removeItem(at: optimizedURL)
+        throw CancellationError()
+      }
 
       updatedDraft.attachments[index].sourceFilePath = optimizedURL.path
       updatedDraft.attachments[index].byteSize = Int64(optimizedData.count)
@@ -698,7 +849,9 @@ public struct SiteImageWorkbenchService {
     draft: ArticleDraft,
     destinationDirectory: URL,
     maxPixelDimension: Int = 1_600,
-    quality: CGFloat = 0.82
+    quality: CGFloat = 0.82,
+    cancellationToken: ImageProcessingCancellationToken? = nil,
+    includedAttachmentIDs: Set<UUID>? = nil
   ) throws -> ImageOptimizationResult {
     try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
 
@@ -709,7 +862,10 @@ public struct SiteImageWorkbenchService {
     var messages: [String] = []
 
     for index in updatedDraft.attachments.indices {
+      try cancellationToken?.throwIfCancelled()
       let attachment = updatedDraft.attachments[index]
+      if let includedAttachmentIDs, !includedAttachmentIDs.contains(attachment.id) { continue }
+      guard attachment.mediaKind == .image else { continue }
       guard isResizableRasterFilename(attachment.sourceFilePath ?? attachment.originalFilename) else {
         skippedCount += 1
         continue
@@ -750,6 +906,10 @@ public struct SiteImageWorkbenchService {
         maxPixelDimension: maxPixelDimension,
         quality: quality
       )
+      if cancellationToken?.isCancelled == true {
+        try? fileManager.removeItem(at: resizedURL)
+        throw CancellationError()
+      }
 
       let resizedSize = fileByteSize(at: resizedURL) ?? originalSize
       let resizedDimensions = imageDimensions(at: resizedURL)
@@ -971,10 +1131,16 @@ public struct SiteImageWorkbenchService {
     }
   }
 
-  private func writeConvertedWebP(from sourceURL: URL, to destinationURL: URL, quality: CGFloat) throws {
+  private func writeConvertedWebP(
+    from sourceURL: URL,
+    to destinationURL: URL,
+    quality: CGFloat,
+    cancellationToken: ImageProcessingCancellationToken?
+  ) throws {
     try? fileManager.removeItem(at: destinationURL)
+    try cancellationToken?.throwIfCancelled()
 
-    if Self.supportsImageIOWebPEncoding {
+    if !prefersCWebP, Self.supportsImageIOWebPEncoding {
       do {
         try writeConvertedWebPWithImageIO(from: sourceURL, to: destinationURL, quality: quality)
         return
@@ -983,8 +1149,14 @@ public struct SiteImageWorkbenchService {
       }
     }
 
-    if let cwebPURL = Self.cwebPExecutableURL {
-      try writeConvertedWebPWithCWebP(from: sourceURL, to: destinationURL, quality: quality, executableURL: cwebPURL)
+    if let cwebPURL = cwebPExecutableOverride ?? Self.cwebPExecutableURL {
+      try writeConvertedWebPWithCWebP(
+        from: sourceURL,
+        to: destinationURL,
+        quality: quality,
+        executableURL: cwebPURL,
+        cancellationToken: cancellationToken
+      )
       return
     }
 
@@ -1018,7 +1190,8 @@ public struct SiteImageWorkbenchService {
     from sourceURL: URL,
     to destinationURL: URL,
     quality: CGFloat,
-    executableURL: URL
+    executableURL: URL,
+    cancellationToken: ImageProcessingCancellationToken?
   ) throws {
     let intermediateURL = destinationURL
       .deletingLastPathComponent()
@@ -1026,8 +1199,15 @@ public struct SiteImageWorkbenchService {
     defer {
       try? fileManager.removeItem(at: intermediateURL)
     }
+    var completedSuccessfully = false
+    defer {
+      if !completedSuccessfully {
+        try? fileManager.removeItem(at: destinationURL)
+      }
+    }
 
     try writePNGIntermediate(from: sourceURL, to: intermediateURL)
+    try cancellationToken?.throwIfCancelled()
 
     let process = Process()
     process.executableURL = executableURL
@@ -1040,13 +1220,38 @@ public struct SiteImageWorkbenchService {
       destinationURL.path,
     ]
 
+    let completion = DispatchSemaphore(value: 0)
+    process.terminationHandler = { _ in completion.signal() }
     try process.run()
-    process.waitUntilExit()
+
+    let deadline = Date().addingTimeInterval(cwebPTimeout)
+    while completion.wait(timeout: .now() + .milliseconds(100)) == .timedOut {
+      if cancellationToken?.isCancelled == true {
+        terminate(process, waitingOn: completion)
+        throw CancellationError()
+      }
+      if Date() >= deadline {
+        terminate(process, waitingOn: completion)
+        throw ImageWorkbenchError.externalToolTimedOut("cwebp")
+      }
+    }
 
     guard process.terminationStatus == 0,
           fileManager.fileExists(atPath: destinationURL.path)
     else {
       throw ImageWorkbenchError.cannotFinalizeOptimizedImage(sourceURL.lastPathComponent)
+    }
+    completedSuccessfully = true
+  }
+
+  private func terminate(_ process: Process, waitingOn completion: DispatchSemaphore) {
+    guard process.isRunning else { return }
+    process.terminate()
+    if completion.wait(timeout: .now() + .seconds(1)) == .timedOut, process.isRunning {
+      #if canImport(Darwin)
+      _ = Darwin.kill(process.processIdentifier, SIGKILL)
+      #endif
+      _ = completion.wait(timeout: .now() + .seconds(1))
     }
   }
 
@@ -1196,6 +1401,33 @@ public struct SiteImageWorkbenchService {
 
   private func isSVGFilename(_ filename: String) -> Bool {
     URL(fileURLWithPath: filename).pathExtension.lowercased() == "svg"
+  }
+
+  private func stableSummaryIssues(
+    _ issues: [ImageWorkbenchIssue],
+    draftID: UUID
+  ) -> [ImageWorkbenchIssue] {
+    issues.enumerated().map { offset, issue in
+      var stableIssue = issue
+      let identity = [
+        draftID.uuidString,
+        issue.attachmentID?.uuidString ?? "",
+        issue.severity.rawValue,
+        issue.title,
+        issue.message,
+        String(offset),
+      ].joined(separator: "\u{1F}")
+      var bytes = Array(SHA256.hash(data: Data(identity.utf8)).prefix(16))
+      bytes[6] = (bytes[6] & 0x0F) | 0x50
+      bytes[8] = (bytes[8] & 0x3F) | 0x80
+      stableIssue.id = UUID(uuid: (
+        bytes[0], bytes[1], bytes[2], bytes[3],
+        bytes[4], bytes[5], bytes[6], bytes[7],
+        bytes[8], bytes[9], bytes[10], bytes[11],
+        bytes[12], bytes[13], bytes[14], bytes[15]
+      ))
+      return stableIssue
+    }
   }
 
   private func isWebPConvertibleFilename(_ filename: String) -> Bool {

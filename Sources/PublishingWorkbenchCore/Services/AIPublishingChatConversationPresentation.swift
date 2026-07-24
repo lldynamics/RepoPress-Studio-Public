@@ -104,54 +104,6 @@ public enum AIPublishingChatConversationPresentation {
     return "\(grade.title) · \(model)"
   }
 
-  public static func archivedConversationPresentation(
-    for conversation: AIPublishingChatArchivedConversation,
-    config: AIProviderConfig
-  ) -> AIPublishingArchivedChatConversationPresentation {
-    let messageCountText = "\(conversation.messages.count) 条消息"
-    let contextText = conversation.contextMode.displayName
-    let modelText = modelSummary(
-      grade: conversation.modelGrade,
-      config: config,
-      selectedModel: conversation.selectedModel
-    )
-    return AIPublishingArchivedChatConversationPresentation(
-      id: conversation.id,
-      title: archivedConversationTitle(for: conversation),
-      messageCountText: messageCountText,
-      contextText: contextText,
-      modelText: modelText,
-      subtitle: [messageCountText, contextText, modelText].joined(separator: " · ")
-    )
-  }
-
-  private static func archivedConversationTitle(
-    for conversation: AIPublishingChatArchivedConversation,
-    emptyTitle: String = "AI 对话"
-  ) -> String {
-    if let title = conversation.title.nilIfEmpty,
-       title != "新对话",
-       title != "New Chat" {
-      return title
-    }
-
-    if let firstUserMessage = conversation.messages
-      .first(where: { $0.role == .user })
-      .map(AIPublishingChatMessageCompositionService.displayContent(for:))?
-      .nilIfEmpty {
-      return title(fromUserText: firstUserMessage, fallbackTitle: emptyTitle)
-    }
-
-    return emptyTitle
-  }
-
-  public static func streamingStatus(tokenUsage: AIChatTokenUsage?) -> String {
-    guard let tokenUsage else {
-      return "AI 正在回复"
-    }
-    return "AI 正在回复 · \(tokenUsage.displayText)"
-  }
-
   public static func configurationIssue(
     config: AIProviderConfig,
     aiTokenAvailability: KeychainTokenAvailability,
@@ -267,6 +219,12 @@ public struct AIPublishingChatImageImportPresentation: Equatable, Sendable {
 public enum AIPublishingChatImageAttachmentPresentation {
   public static let maxSelectedImageCount = 4
   public static let maxAttachmentBytes = 8 * 1_024 * 1_024
+  public static let supportedMIMETypes: Set<String> = [
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+  ]
 
   public static func maximumSelectionMessage(
     maxSelectedImageCount: Int = Self.maxSelectedImageCount
@@ -276,6 +234,12 @@ public enum AIPublishingChatImageAttachmentPresentation {
 
   public static func isWithinAttachmentSizeLimit(_ byteSize: Int64) -> Bool {
     byteSize <= Int64(maxAttachmentBytes)
+  }
+
+  public static func isSupportedAttachment(mimeType: String, byteSize: Int64) -> Bool {
+    supportedMIMETypes.contains(mimeType.lowercased())
+      && byteSize > 0
+      && isWithinAttachmentSizeLimit(byteSize)
   }
 
   public static func attachmentSizeLimitText(
@@ -323,31 +287,6 @@ public enum AIPublishingChatImageAttachmentPresentation {
       skippedSizeCount: skippedSizeCount,
       message: message
     )
-  }
-}
-
-public struct AIPublishingArchivedChatConversationPresentation: Identifiable, Equatable, Sendable {
-  public var id: UUID
-  public var title: String
-  public var messageCountText: String
-  public var contextText: String
-  public var modelText: String
-  public var subtitle: String
-
-  public init(
-    id: UUID,
-    title: String,
-    messageCountText: String,
-    contextText: String,
-    modelText: String,
-    subtitle: String
-  ) {
-    self.id = id
-    self.title = title
-    self.messageCountText = messageCountText
-    self.contextText = contextText
-    self.modelText = modelText
-    self.subtitle = subtitle
   }
 }
 

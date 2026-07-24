@@ -1,0 +1,211 @@
+import AppKit
+import BrowserExtensionProtocolSupport
+import SafariServices
+import SwiftUI
+
+struct BrowserExtensionConnectionView: View {
+  @EnvironmentObject private var bridge: KnowledgeBrowserBridge
+  @Environment(\.dismiss) private var dismiss
+  @State private var isTokenVisible = false
+  @State private var isRotationConfirmationPresented = false
+  @State private var safariExtensionIsEnabled: Bool?
+  @State private var safariExtensionStatusMessage = "正在检查 Safari 扩展状态…"
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack {
+        VStack(alignment: .leading, spacing: 3) {
+          Text("浏览器资料采集")
+            .font(.title2.weight(.semibold))
+          Text("使用浏览器官方扩展，把网页归档和可检索正文保存到本机资料库。")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+        Spacer()
+        Button("关闭") { dismiss() }
+      }
+      .padding(20)
+
+      Divider()
+
+      Form {
+        Section("本机连接") {
+          LabeledContent("状态") {
+            Label(
+              bridge.state.localizedDisplayName,
+              systemImage: bridge.state == .ready
+                ? "checkmark.circle.fill"
+                : "circle.dotted"
+            )
+            .foregroundStyle(
+              bridge.state == .ready ? WorkbenchTheme.success : Color.secondary
+            )
+          }
+          LabeledContent("地址") {
+            Text(KnowledgeBrowserBridge.endpointURL)
+              .font(.system(.caption, design: .monospaced))
+              .textSelection(.enabled)
+          }
+          Text("连接只监听 127.0.0.1，不接受局域网或互联网访问；每次请求还必须携带下面的随机令牌。")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          if let lastMessage = bridge.lastMessage {
+            Text(lastMessage)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .textSelection(.enabled)
+          }
+        }
+
+        Section("扩展连接令牌") {
+          HStack(spacing: 10) {
+            Text(isTokenVisible ? bridge.connectionToken : maskedToken)
+              .font(.system(.body, design: .monospaced))
+              .lineLimit(1)
+              .textSelection(.enabled)
+            Spacer()
+            Button(isTokenVisible ? "隐藏" : "显示") {
+              isTokenVisible.toggle()
+            }
+            Button("复制") {
+              NSPasteboard.general.clearContents()
+              NSPasteboard.general.setString(bridge.connectionToken, forType: .string)
+            }
+          }
+          Text("令牌只用于你安装的浏览器扩展。不要粘贴到网页或发送给其他人。")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          LabeledContent("有效期") {
+            Text(
+              bridge.connectionTokenExpiresAt.formatted(
+                date: .abbreviated,
+                time: .shortened
+              )
+            )
+            .monospacedDigit()
+          }
+          Button("更换连接令牌…", role: .destructive) {
+            isRotationConfirmationPresented = true
+          }
+        }
+
+        Section("安装浏览器扩展") {
+          Text("当前版本只支持 Safari 和 Chrome。Safari Web Extension 已内嵌在应用中，Chrome 扩展由 Chrome 网上应用店安装和更新。")
+            .font(.callout)
+
+          LabeledContent("Safari") {
+            HStack(spacing: 10) {
+              Label(
+                safariExtensionStatusMessage,
+                systemImage: safariExtensionIsEnabled == true
+                  ? "checkmark.circle.fill"
+                  : "safari"
+              )
+              .foregroundStyle(
+                safariExtensionIsEnabled == true ? WorkbenchTheme.success : Color.secondary
+              )
+              Button("打开扩展设置") {
+                openSafariExtensionSettings()
+              }
+              Button {
+                refreshSafariExtensionState()
+              } label: {
+                Image(systemName: "arrow.clockwise")
+              }
+              .help("重新检查 Safari 扩展状态")
+            }
+          }
+
+          LabeledContent("Chrome") {
+            Button {
+              openChromeWebStore()
+            } label: {
+              Label("打开 Chrome 网上应用店", systemImage: "arrow.up.right.square")
+            }
+          }
+
+          Text("Safari 扩展随 RepoPress 一起安装，只需在 Safari 设置中启用；Chrome 扩展独立更新，但不需要另做一个 Mac 应用版本。")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+
+        Section("保存内容") {
+          Text("Chrome 优先生成自包含 MHTML；Safari 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。")
+            .font(.callout)
+        }
+      }
+      .formStyle(.grouped)
+    }
+    .frame(minWidth: 660, idealWidth: 760, minHeight: 600, idealHeight: 680)
+    .onAppear {
+      bridge.refreshExpiredConnectionToken()
+      refreshSafariExtensionState()
+    }
+    .onChange(of: bridge.lastOpenedDocumentID) { _, documentID in
+      if documentID != nil { dismiss() }
+    }
+    .confirmationDialog(
+      "更换连接令牌？",
+      isPresented: $isRotationConfirmationPresented,
+      titleVisibility: .visible
+    ) {
+      Button("更换令牌", role: .destructive) {
+        bridge.rotateConnectionToken()
+        isTokenVisible = true
+      }
+      Button("取消", role: .cancel) {}
+    } message: {
+      Text("现有浏览器扩展会立即断开，需要粘贴新令牌后重新连接。")
+    }
+  }
+
+  private var maskedToken: String {
+    String(repeating: "•", count: 24)
+  }
+
+  private func openChromeWebStore() {
+    guard let extensionID = BrowserExtensionProtocol.chromeProductionExtensionID,
+          let url = URL(
+            string: "https://chromewebstore.google.com/detail/\(extensionID)"
+          )
+    else {
+      return
+    }
+    NSWorkspace.shared.open(url)
+  }
+
+  private func refreshSafariExtensionState() {
+    safariExtensionStatusMessage = "正在检查 Safari 扩展状态…"
+    SFSafariExtensionManager.getStateOfSafariExtension(
+      withIdentifier: BrowserExtensionProtocol.safariWebExtensionBundleID
+    ) { state, error in
+      DispatchQueue.main.async {
+        if let error {
+          safariExtensionIsEnabled = nil
+          safariExtensionStatusMessage = "暂时无法读取状态：\(error.localizedDescription)"
+        } else if state?.isEnabled == true {
+          safariExtensionIsEnabled = true
+          safariExtensionStatusMessage = "已启用"
+        } else {
+          safariExtensionIsEnabled = false
+          safariExtensionStatusMessage = "已安装，尚未启用"
+        }
+      }
+    }
+  }
+
+  private func openSafariExtensionSettings() {
+    SFSafariApplication.showPreferencesForExtension(
+      withIdentifier: BrowserExtensionProtocol.safariWebExtensionBundleID
+    ) { error in
+      DispatchQueue.main.async {
+        if let error {
+          safariExtensionIsEnabled = nil
+          safariExtensionStatusMessage = "无法打开 Safari 设置：\(error.localizedDescription)"
+        } else {
+          refreshSafariExtensionState()
+        }
+      }
+    }
+  }
+}

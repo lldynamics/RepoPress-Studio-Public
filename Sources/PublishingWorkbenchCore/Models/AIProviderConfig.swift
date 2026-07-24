@@ -3,10 +3,13 @@ import Foundation
 public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Sendable {
   case openAICompatible
   case deepSeek
-  case deepSeekPro
   case openRouter
   case local
   case custom
+
+  public static let deepSeekHighQualityModel = "deepseek-v4-pro"
+
+  private static let legacyDeepSeekProRawValue = "deepSeekPro"
 
   public var id: String { rawValue }
 
@@ -16,8 +19,6 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
       return "OpenAI Compatible"
     case .deepSeek:
       return "DeepSeek"
-    case .deepSeekPro:
-      return "DeepSeek Pro"
     case .openRouter:
       return "OpenRouter"
     case .local:
@@ -31,7 +32,7 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
     switch self {
     case .openAICompatible:
       return "https://api.openai.com/v1"
-    case .deepSeek, .deepSeekPro:
+    case .deepSeek:
       return "https://api.deepseek.com"
     case .openRouter:
       return "https://openrouter.ai/api/v1"
@@ -48,13 +49,32 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
       return "gpt-4.1-mini"
     case .deepSeek:
       return "deepseek-v4-flash"
-    case .deepSeekPro:
-      return "deepseek-v4-pro"
     case .openRouter, .custom:
       return ""
     case .local:
       return "llama3.1"
     }
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    let rawValue = try container.decode(String.self)
+    if rawValue == Self.legacyDeepSeekProRawValue {
+      self = .deepSeek
+      return
+    }
+    guard let preset = Self(rawValue: rawValue) else {
+      throw DecodingError.dataCorruptedError(
+        in: container,
+        debugDescription: "Unsupported AI provider preset: \(rawValue)"
+      )
+    }
+    self = preset
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    try container.encode(rawValue)
   }
 }
 
@@ -106,6 +126,49 @@ public enum AIChatModelGrade: String, CaseIterable, Codable, Identifiable, Senda
       return "高质量"
     case .custom:
       return "自定义"
+    }
+  }
+}
+
+public enum AIChatReasoningLevel: String, CaseIterable, Codable, Identifiable, Sendable {
+  case quick
+  case standard
+  case deep
+
+  public var id: String { rawValue }
+
+  public var title: String {
+    switch self {
+    case .quick:
+      return "快速"
+    case .standard:
+      return "标准"
+    case .deep:
+      return "深度"
+    }
+  }
+
+  public func requestOptions(for config: AIProviderConfig) -> AIProviderChatRequestOptions? {
+    guard config.usesDeepSeekAPI else { return nil }
+    switch self {
+    case .quick:
+      return AIProviderChatRequestOptions(
+        temperature: nil,
+        thinking: AIProviderThinkingOption(type: "disabled"),
+        reasoningEffort: nil
+      )
+    case .standard:
+      return AIProviderChatRequestOptions(
+        temperature: nil,
+        thinking: AIProviderThinkingOption(type: "enabled"),
+        reasoningEffort: nil
+      )
+    case .deep:
+      return AIProviderChatRequestOptions(
+        temperature: nil,
+        thinking: AIProviderThinkingOption(type: "enabled"),
+        reasoningEffort: "high"
+      )
     }
   }
 }
@@ -220,7 +283,7 @@ public enum AIChatModelCatalog {
 
   private static func fastModel(for config: AIProviderConfig, fallback: String) -> String {
     switch config.preset {
-    case .deepSeek, .deepSeekPro:
+    case .deepSeek:
       return AIProviderPreset.deepSeek.defaultModel
     case .openAICompatible:
       return AIProviderPreset.openAICompatible.defaultModel
@@ -233,8 +296,8 @@ public enum AIChatModelCatalog {
 
   private static func highQualityModel(for config: AIProviderConfig, fallback: String) -> String {
     switch config.preset {
-    case .deepSeek, .deepSeekPro:
-      return AIProviderPreset.deepSeekPro.defaultModel
+    case .deepSeek:
+      return AIProviderPreset.deepSeekHighQualityModel
     case .openAICompatible:
       return "gpt-4.1"
     case .openRouter, .local, .custom:
@@ -340,9 +403,41 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
     requestModel(resolving: normalizedModel)
   }
 
+  public var dataSharingDestination: String {
+    guard let url = URL(string: normalizedBaseURL),
+          let host = url.host?.lowercased() else {
+      return normalizedBaseURL
+    }
+    if let port = url.port {
+      return "\(host):\(port)"
+    }
+    return host
+  }
+
+  public var isLocalEndpoint: Bool {
+    guard let host = URL(string: normalizedBaseURL)?.host?.lowercased() else {
+      return false
+    }
+    return host == "localhost"
+      || host == "127.0.0.1"
+      || host == "::1"
+      || host.hasSuffix(".localhost")
+  }
+
+  public var dataSharingConsentIdentifier: String {
+    guard let components = URLComponents(string: normalizedBaseURL),
+          let scheme = components.scheme?.lowercased(),
+          let host = components.host?.lowercased() else {
+      return "\(preset.rawValue)|\(normalizedBaseURL.lowercased())"
+    }
+    let port = components.port.map(String.init) ?? ""
+    let path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    return "\(preset.rawValue)|\(scheme)|\(host)|\(port)|\(path)"
+  }
+
   public var usesDeepSeekAPI: Bool {
     switch preset {
-    case .deepSeek, .deepSeekPro:
+    case .deepSeek:
       return true
     case .openAICompatible, .openRouter, .local, .custom:
       let rawBaseURL = normalizedBaseURL.lowercased()
@@ -385,7 +480,7 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
     case "deepseek-chat":
       return AIProviderPreset.deepSeek.defaultModel
     case "deepseek-reasoner":
-      return AIProviderPreset.deepSeekPro.defaultModel
+      return AIProviderPreset.deepSeekHighQualityModel
     default:
       return model
     }

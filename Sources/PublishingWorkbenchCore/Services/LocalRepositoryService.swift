@@ -290,6 +290,7 @@ public struct RepositoryCommitInfo: Identifiable, Codable, Hashable, Sendable {
 public enum LocalRepositoryServiceError: Error, LocalizedError, Sendable {
   case repositoryUnavailable
   case invalidBranchName
+  case workingTreeHasChanges
   case commandFailed(terminated: Int32, output: String)
 
   public var errorDescription: String? {
@@ -298,6 +299,8 @@ public enum LocalRepositoryServiceError: Error, LocalizedError, Sendable {
       return "未找到可用的本地仓库路径。"
     case .invalidBranchName:
       return "分支名无效。"
+    case .workingTreeHasChanges:
+      return "工作区存在未提交变更。请先提交、暂存处理或还原这些变更，再切换分支。"
     case .commandFailed(let terminated, let output):
       let normalizedOutput = output.isEmpty ? "请检查分支与权限设置。" : output
       return "Git 命令执行失败（退出码：\(terminated)）：\(normalizedOutput)"
@@ -488,10 +491,12 @@ public struct RepositoryScanReport: Codable, Hashable, Sendable {
   ) -> RepositoryChangedFileRole {
     let normalizedPath = effectiveChangedPath(path).normalizedRelativePath()
     let contentRoot = contentRoot.normalizedRelativePath()
+    let privateContentRoot = SiteProfile.privateContentRoot.normalizedRelativePath()
     let assetRoot = assetRoot.normalizedRelativePath()
     let pathExtension = (normalizedPath as NSString).pathExtension.lowercased()
 
-    if isWithin(normalizedPath, root: contentRoot), ["md", "markdown", "mdx"].contains(pathExtension) {
+    if (isWithin(normalizedPath, root: contentRoot) || isWithin(normalizedPath, root: privateContentRoot)),
+       ["md", "markdown", "mdx"].contains(pathExtension) {
       return .article
     }
 
@@ -585,15 +590,6 @@ public struct LocalRepositoryService: @unchecked Sendable {
     return report
   }
 
-  public func hasGitIgnoreFile(profile: SiteProfile) -> Bool {
-    guard let result = profile.withLocalRepositoryRootAccess({ rootURL in
-      fileManager.fileExists(atPath: rootURL.appendingPathComponent(".gitignore").path)
-    }) else {
-      return false
-    }
-    return result
-  }
-
   public func localBranches(profile: SiteProfile) -> [RepositoryBranch] {
     guard let branches = profile.withLocalRepositoryRootAccess({ rootURL in
       self.localBranches(rootURL: rootURL)
@@ -605,12 +601,13 @@ public struct LocalRepositoryService: @unchecked Sendable {
 
   public func switchLocalBranch(profile: SiteProfile, to branchName: String) throws {
     let branchName = branchName.trimmedForPublishing
-    guard !branchName.isEmpty else {
+    guard isValidBranchName(branchName) else {
       throw LocalRepositoryServiceError.invalidBranchName
     }
 
-    guard let result = profile.withLocalRepositoryRootAccess({ rootURL in
-      self.runGitCommand(["switch", branchName], rootURL: rootURL)
+    guard let result = try profile.withLocalRepositoryRootAccess({ rootURL in
+      try self.requireCleanWorkingTree(rootURL: rootURL)
+      return self.runGitCommand(["switch", "--", branchName], rootURL: rootURL)
     }) else {
       throw LocalRepositoryServiceError.repositoryUnavailable
     }
@@ -619,15 +616,23 @@ public struct LocalRepositoryService: @unchecked Sendable {
     }
   }
 
-  public func createLocalBranch(profile: SiteProfile, branchName: String, from sourceBranch: String?) throws {
+  public func createAndSwitchLocalBranch(
+    profile: SiteProfile,
+    branchName: String,
+    from sourceBranch: String?
+  ) throws {
     let branchName = branchName.trimmedForPublishing
-    guard !branchName.isEmpty else {
+    guard isValidBranchName(branchName) else {
+      throw LocalRepositoryServiceError.invalidBranchName
+    }
+    let sourceBranch = sourceBranch?.trimmedForPublishing.nilIfEmpty
+    if let sourceBranch, !isValidBranchName(sourceBranch) {
       throw LocalRepositoryServiceError.invalidBranchName
     }
 
-    let sourceBranch = sourceBranch?.trimmedForPublishing.nilIfEmpty
-    guard let result = profile.withLocalRepositoryRootAccess({ rootURL in
-      var arguments = ["branch", branchName]
+    guard let result = try profile.withLocalRepositoryRootAccess({ rootURL in
+      try self.requireCleanWorkingTree(rootURL: rootURL)
+      var arguments = ["switch", "-c", branchName]
       if let sourceBranch {
         arguments.append(sourceBranch)
       }
@@ -635,10 +640,38 @@ public struct LocalRepositoryService: @unchecked Sendable {
     }) else {
       throw LocalRepositoryServiceError.repositoryUnavailable
     }
-
     guard result.terminationStatus == 0 else {
       throw LocalRepositoryServiceError.commandFailed(terminated: result.terminationStatus, output: result.output)
     }
+  }
+
+  private func requireCleanWorkingTree(rootURL: URL) throws {
+    let result = runGitCommand(
+      ["status", "--porcelain", "--untracked-files=normal"],
+      rootURL: rootURL
+    )
+    guard result.terminationStatus == 0 else {
+      throw LocalRepositoryServiceError.commandFailed(
+        terminated: result.terminationStatus,
+        output: result.output
+      )
+    }
+    guard result.output.trimmedForPublishing.isEmpty else {
+      throw LocalRepositoryServiceError.workingTreeHasChanges
+    }
+  }
+
+  private func isValidBranchName(_ name: String) -> Bool {
+    !name.isEmpty
+      && !name.hasPrefix("-")
+      && !name.hasSuffix(".")
+      && !name.hasSuffix("/")
+      && !name.contains("..")
+      && !name.contains("@{")
+      && !name.unicodeScalars.contains(where: { scalar in
+        scalar.value < 0x20 || scalar.value == 0x7F
+      })
+      && name.rangeOfCharacter(from: CharacterSet(charactersIn: " ~^:?*[\\")) == nil
   }
 
   public func recentCommits(profile: SiteProfile, limit: Int = 20) -> [RepositoryCommitInfo] {
@@ -1251,7 +1284,11 @@ public struct LocalRepositoryService: @unchecked Sendable {
     }
 
     return RepositoryRemote(
-      remoteURL: trimmed,
+      remoteURL: sanitizedRepositoryRemoteURL(
+        trimmed,
+        host: remotePath.host,
+        path: remotePath.path
+      ),
       provider: provider,
       repositoryBaseURL: repositoryBaseURL(provider: provider, host: remotePath.host),
       owner: owner,
@@ -1261,7 +1298,7 @@ public struct LocalRepositoryService: @unchecked Sendable {
 
   private func remotePathComponents(from remoteURL: String) -> (host: String, path: String)? {
     if !remoteURL.contains("://"),
-       let colonIndex = remoteURL.firstIndex(of: ":") {
+       let colonIndex = scpHostPathSeparator(in: remoteURL) {
       let hostPart = String(remoteURL[..<colonIndex])
       let host = hostPart.components(separatedBy: "@").last ?? hostPart
       let pathStart = remoteURL.index(after: colonIndex)
@@ -1273,6 +1310,33 @@ public struct LocalRepositoryService: @unchecked Sendable {
       return nil
     }
     return (host: host, path: url.path)
+  }
+
+  private func scpHostPathSeparator(in remoteURL: String) -> String.Index? {
+    let searchStart = remoteURL.lastIndex(of: "@").map { remoteURL.index(after: $0) }
+      ?? remoteURL.startIndex
+    return remoteURL[searchStart...].firstIndex(of: ":")
+  }
+
+  private func sanitizedRepositoryRemoteURL(
+    _ remoteURL: String,
+    host: String,
+    path: String
+  ) -> String {
+    if remoteURL.contains("://"), var components = URLComponents(string: remoteURL) {
+      components.user = nil
+      components.password = nil
+      components.query = nil
+      components.fragment = nil
+      if let sanitized = components.string?.nilIfEmpty {
+        return sanitized
+      }
+    }
+
+    // SCP-style remotes have no standard URL representation. Retain only the
+    // host and repository path so usernames, passwords, and token-like user
+    // fields can never reach the model or selectable UI text.
+    return "\(host):\(path)"
   }
 
   private func repositoryProvider(forHost host: String) -> RepositoryProvider? {

@@ -1,0 +1,322 @@
+{
+  "需要时再查看 Git 分支、提交、远端和部署详情": {
+    "zh-Hans": "需要时再查看 Git 分支、提交、远端和部署详情",
+    "en": "View Git branches, commits, remote, and deployment details only when needed"
+  },
+  "自动同步、本地预览、路径规则和命令信息": {
+    "zh-Hans": "自动同步、本地预览、路径规则和命令信息",
+    "en": "Automatic sync, local preview, path rules, and command details"
+  },
+  "按提示完成下一步；文件变更和发布记录随时可查。": {
+    "zh-Hans": "按提示完成下一步；文件变更和发布记录随时可查。",
+    "en": "Follow the suggested next step; file changes and publishing history remain available at any time."
+  },
+  "同步概况": {
+    "zh-Hans": "同步概况",
+    "en": "Sync Overview"
+  },
+  "同步与发布": {
+    "zh-Hans": "同步与发布",
+    "en": "Sync and Publish"
+  },
+  "第一次使用，只需三步": {
+    "zh-Hans": "第一次使用，只需三步",
+    "en": "First time here? Just follow three steps"
+  },
+  "下一步": {
+    "zh-Hans": "下一步",
+    "en": "Next Step"
+  },
+  "展开高级选项并显示全部检查结果": {
+    "zh-Hans": "展开高级选项并显示全部检查结果",
+    "en": "Expand advanced options and show all checks"
+  },
+  "当前状态和下一步": {
+    "zh-Hans": "当前状态和下一步",
+    "en": "Current Status and Next Step"
+  },
+  "仓库与发布页面": {
+    "zh-Hans": "仓库与发布页面",
+    "en": "Repository and Publishing Page"
+  },
+  "发布记录": {
+    "zh-Hans": "发布记录",
+    "en": "Publishing History"
+  },
+  "发布准备": {
+    "zh-Hans": "发布准备",
+    "en": "Publishing Readiness"
+  },
+  "文件变化": {
+    "zh-Hans": "文件变化",
+    "en": "File Changes"
+  },
+  "需要处理": {
+    "zh-Hans": "需要处理",
+    "en": "Needs Attention"
+  },
+  "提醒": {
+    "zh-Hans": "提醒",
+    "en": "Notices"
+  },
+  "选择操作": {
+    "zh-Hans": "选择操作",
+    "en": "Choose an Action"
+  },
+  "本地变化": {
+    "zh-Hans": "本地变化",
+    "en": "Local Changes"
+  },
+  "网站更新": {
+    "zh-Hans": "网站更新",
+    "en": "Website Updates"
+  },
+  "第 %@ 步：": {
+    "zh-Hans": "第 %@ 步：",
+    "en": "Step %@: "
+  },
+  "生成快照后，这里会显示目标分支、文件清单、权限和发布检查。": {
+    "zh-Hans": "生成快照后，这里会显示目标分支、文件清单、权限和发布检查。",
+    "en": "After a snapshot is generated, this area shows the target branch, file list, permissions, and publishing checks."
+  },
+  "线上发布状态：": {
+    "zh-Hans": "线上发布状态：",
+    "en": "Online publishing status: "
+  },
+  "仓库权限、远端仓库和统一发布流程始终可用。": {
+    "zh-Hans": "仓库权限、远端仓库和统一发布流程始终可用。",
+    "en": "Repository permissions, remote repository management, and the unified publishing flow remain available."
+  },
+  "刷新当前文章快照，检查远端权限，管理仓库与发布历史。": {
+    "zh-Hans": "刷新当前文章快照，检查远端权限，管理仓库与发布历史。",
+    "en": "Refresh the current article snapshot, check remote access, and manage the repository and publishing history."
+  },
+  "。": {
+    "zh-Hans": "。",
+    "en": "."
+  },
+  "当前文章发布快照": {
+    "zh-Hans": "当前文章发布快照",
+    "en": "Current Article Publishing Snapshot"
+  },
+  "复制恢复包": {
+    "zh-Hans": "复制恢复包",
+    "en": "Copy Recovery Bundle"
+  },
+  "检查部署": {
+    "zh-Hans": "检查部署",
+    "en": "Check Deployment"
+  },
+  "交给 AI": {
+    "zh-Hans": "交给 AI",
+    "en": "Send to AI"
+  },
+  "复制 Commit": {
+    "zh-Hans": "复制 Commit",
+    "en": "Copy Commit"
+  },
+  "复制 PR/MR": {
+    "zh-Hans": "复制 PR/MR",
+    "en": "Copy PR/MR"
+  },
+  "打开 PR/MR": {
+    "zh-Hans": "打开 PR/MR",
+    "en": "Open PR/MR"
+  },
+  "复制回滚计划": {
+    "zh-Hans": "复制回滚计划",
+    "en": "Copy Rollback Plan"
+  },
+  "复制回滚 PR/MR": {
+    "zh-Hans": "复制回滚 PR/MR",
+    "en": "Copy Rollback PR/MR"
+  },
+  "打开回滚 PR/MR": {
+    "zh-Hans": "打开回滚 PR/MR",
+    "en": "Open Rollback PR/MR"
+  },
+  "打开远端回滚": {
+    "zh-Hans": "打开远端回滚",
+    "en": "Open Remote Rollback"
+  },
+  "撤回线上 Review": {
+    "zh-Hans": "撤回线上 Review",
+    "en": "Withdraw Online Review"
+  },
+  "执行线上回滚": {
+    "zh-Hans": "执行线上回滚",
+    "en": "Run Online Rollback"
+  },
+  "先选择站点文件夹": {
+    "zh-Hans": "先选择站点文件夹",
+    "en": "Choose a Site Folder First"
+  },
+  "正在扫描仓库": {
+    "zh-Hans": "正在扫描仓库",
+    "en": "Scanning Repository"
+  },
+  "需要先处理：%@": {
+    "zh-Hans": "需要先处理：%@",
+    "en": "Resolve first: %@"
+  },
+  "网站上有 %lld 个更新": {
+    "zh-Hans": "网站上有 %lld 个更新",
+    "en": "%lld Website Updates"
+  },
+  "这台 Mac 上有 %lld 个文件变化": {
+    "zh-Hans": "这台 Mac 上有 %lld 个文件变化",
+    "en": "%lld File Changes on This Mac"
+  },
+  "还没有读取站点文件": {
+    "zh-Hans": "还没有读取站点文件",
+    "en": "Site Files Have Not Been Read Yet"
+  },
+  "当前文章存在 %lld 个发布阻断项": {
+    "zh-Hans": "当前文章存在 %lld 个发布阻断项",
+    "en": "The Current Article Has %lld Publishing Blockers"
+  },
+  "可以继续保存或发布": {
+    "zh-Hans": "可以继续保存或发布",
+    "en": "Ready to Save or Publish"
+  },
+  "请选择一篇文章": {
+    "zh-Hans": "请选择一篇文章",
+    "en": "Select an Article"
+  },
+  "选择站点文件夹": {
+    "zh-Hans": "选择站点文件夹",
+    "en": "Choose Site Folder"
+  },
+  "检查文件变化": {
+    "zh-Hans": "检查文件变化",
+    "en": "Review File Changes"
+  },
+  "保存或发布": {
+    "zh-Hans": "保存或发布",
+    "en": "Save or Publish"
+  },
+  "尚未识别可用的本地预览命令。请先扫描仓库，或在站点配置中补充预览设置。": {
+    "zh-Hans": "尚未识别可用的本地预览命令。请先扫描仓库，或在站点配置中补充预览设置。",
+    "en": "No local preview command is available yet. Scan the repository or complete the preview settings for this site."
+  },
+  "尚未生成同步建议。请先扫描仓库，并确认当前分支已经设置 upstream。": {
+    "zh-Hans": "尚未生成同步建议。请先扫描仓库，并确认当前分支已经设置 upstream。",
+    "en": "No sync recommendation is available yet. Scan the repository and confirm that the current branch has an upstream."
+  },
+  "请选择保存网站文章和图片的文件夹。": {
+    "zh-Hans": "请选择保存网站文章和图片的文件夹。",
+    "en": "Choose the folder that stores the site's articles and images."
+  },
+  "先查看这些更新，避免覆盖其他设备或网站上的新内容。": {
+    "zh-Hans": "先查看这些更新，避免覆盖其他设备或网站上的新内容。",
+    "en": "Review these updates first to avoid overwriting newer content from another device or the website."
+  },
+  "可以先确认变化内容，再决定保存到本地或发布上线。": {
+    "zh-Hans": "可以先确认变化内容，再决定保存到本地或发布上线。",
+    "en": "Review the changes first, then decide whether to save locally or publish online."
+  },
+  "扫描只会检查文件和同步状态，不会修改任何内容。": {
+    "zh-Hans": "扫描只会检查文件和同步状态，不会修改任何内容。",
+    "en": "Scanning only checks files and sync status; it does not modify anything."
+  },
+  "先处理文章检查结果，再写入或线上发布。": {
+    "zh-Hans": "先处理文章检查结果，再写入或线上发布。",
+    "en": "Resolve the article checks before writing files or publishing online."
+  },
+  "打开发布流程后，只需选择“保存到本地”或“发布上线”。": {
+    "zh-Hans": "打开发布流程后，只需选择“保存到本地”或“发布上线”。",
+    "en": "Open the publishing flow, then choose Save Locally or Publish Online."
+  },
+  "选择文章后可生成发布包、审阅 diff 并执行发布。": {
+    "zh-Hans": "选择文章后可生成发布包、审阅 diff 并执行发布。",
+    "en": "Select an article to generate its publishing package, review the diff, and publish it."
+  },
+  "选择保存网站文章和图片的文件夹。": {
+    "zh-Hans": "选择保存网站文章和图片的文件夹。",
+    "en": "Choose the folder that stores the site's articles and images."
+  },
+  "软件会读取同步状态，不会自动修改文件。": {
+    "zh-Hans": "软件会读取同步状态，不会自动修改文件。",
+    "en": "The app reads sync status without modifying files automatically."
+  },
+  "选择文章后，可以只保存到本地，也可以直接发布上线。": {
+    "zh-Hans": "选择文章后，可以只保存到本地，也可以直接发布上线。",
+    "en": "After selecting an article, you can save it locally or publish it online."
+  },
+  "取消扫描": {
+    "zh-Hans": "取消扫描",
+    "en": "Cancel Scan"
+  },
+  "查看文件变更": {
+    "zh-Hans": "查看文件变更",
+    "en": "View File Changes"
+  },
+  "扫描站点": {
+    "zh-Hans": "扫描站点",
+    "en": "Scan Site"
+  },
+  "查看检查": {
+    "zh-Hans": "查看检查",
+    "en": "View Checks"
+  },
+  "打开发布": {
+    "zh-Hans": "打开发布",
+    "en": "Open Publishing"
+  },
+  "仓库工具": {
+    "zh-Hans": "仓库工具",
+    "en": "Repository Tools"
+  },
+  "仓库与发布": {
+    "zh-Hans": "仓库与发布",
+    "en": "Repository and Publishing"
+  },
+  "先处理网站更新，再审阅这台 Mac 上的变化，确认后进入统一发布流程。": {
+    "zh-Hans": "先处理网站更新，再审阅这台 Mac 上的变化，确认后进入统一发布流程。",
+    "en": "Review website updates first, then changes on this Mac, and continue to the unified publishing flow."
+  },
+  "自动检查、本地预览、同步建议和路径规则始终可见。": {
+    "zh-Hans": "自动检查、本地预览、同步建议和路径规则始终可见。",
+    "en": "Automatic checks, local preview, sync recommendations, and path rules remain visible."
+  },
+  "先确认状态和问题，再检查文件变化，最后从统一发布流程执行。": {
+    "zh-Hans": "先确认状态和问题，再检查文件变化，最后从统一发布流程执行。",
+    "en": "Confirm status and issues, review file changes, then use the unified publishing flow."
+  },
+  "更换仓库": {
+    "zh-Hans": "更换仓库",
+    "en": "Change Repository"
+  },
+  "重新扫描": {
+    "zh-Hans": "重新扫描",
+    "en": "Rescan"
+  },
+  "请先选择站点文件夹": {
+    "zh-Hans": "请先选择站点文件夹",
+    "en": "Choose a site folder first"
+  },
+  "重新读取仓库结构、Git 状态和文件变化": {
+    "zh-Hans": "重新读取仓库结构、Git 状态和文件变化",
+    "en": "Rescan repository structure, Git status, and file changes"
+  },
+  "将仓库中的文章导入写作列表": {
+    "zh-Hans": "将仓库中的文章导入写作列表",
+    "en": "Import repository articles into the writing list"
+  },
+  "无法准备运行时辅助功能测试仓库。": {
+    "zh-Hans": "无法准备运行时辅助功能测试仓库。",
+    "en": "Could not prepare the repository fixture for runtime accessibility testing."
+  },
+  "继续创建 PR/MR": {
+    "zh-Hans": "继续创建 PR/MR",
+    "en": "Continue Creating PR/MR"
+  },
+  "已确认内容写入：%@": {
+    "zh-Hans": "已确认内容写入：%@",
+    "en": "Content write confirmed: %@"
+  },
+  "未确认内容写入：%@": {
+    "zh-Hans": "未确认内容写入：%@",
+    "en": "Content write not confirmed: %@"
+  }
+}

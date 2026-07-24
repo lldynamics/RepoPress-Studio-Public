@@ -1,6 +1,22 @@
 import Combine
 import Foundation
 
+public struct AIChatManualRetryState: Equatable, Sendable {
+  public let draftID: UUID
+  public let requiresDuplicateChargeConfirmation: Bool
+  public let retryAfter: Date?
+
+  public init(
+    draftID: UUID,
+    requiresDuplicateChargeConfirmation: Bool,
+    retryAfter: Date? = nil
+  ) {
+    self.draftID = draftID
+    self.requiresDuplicateChargeConfirmation = requiresDuplicateChargeConfirmation
+    self.retryAfter = retryAfter
+  }
+}
+
 @MainActor
 public final class WorkbenchAIStore: ObservableObject {
   private unowned let store: WorkbenchStore
@@ -8,11 +24,21 @@ public final class WorkbenchAIStore: ObservableObject {
   private let aiPublishingAssistantService: AIPublishingAssistantService
   private let keychainTokenStore: KeychainTokenStore
   private let aiConnectionTestService: AIConnectionTestService
+  private let aiDataSharingConsentStore: AIDataSharingConsentStore
   private let imageWorkbenchService: SiteImageWorkbenchService
   private let seoAuditService: SEOAuditService
   private let seoSocialPreviewService: SEOSocialPreviewService
-  private var aiChatSessionsByDraftID: [UUID: AIPublishingChatSessionState] = [:]
+  /// Per-draft state exists only for the current process so a streaming reply
+  /// can finish safely after the user selects another draft.
+  private var transientAIChatSessionsByDraftID: [UUID: AIPublishingChatSessionState] = [:]
+  private var transientAIChatSessionAccessOrder: [UUID: UInt64] = [:]
+  private var transientAIChatSessionAccessSequence: UInt64 = 0
+  private let maximumTransientAIChatSessions = 12
+  private let maximumTransientAIChatImageBytes: Int64 = 48_000_000
+  private var activeAIChatOperationID: UUID?
   private var isAIChatCancellationRequested = false
+  private let aiChatStreamPublishInterval: Duration = .milliseconds(50)
+  @Published public private(set) var aiChatManualRetryState: AIChatManualRetryState? = nil
 
   init(
     store: WorkbenchStore,
@@ -20,6 +46,7 @@ public final class WorkbenchAIStore: ObservableObject {
     aiPublishingAssistantService: AIPublishingAssistantService = AIPublishingAssistantService(),
     keychainTokenStore: KeychainTokenStore = KeychainTokenStore(),
     aiConnectionTestService: AIConnectionTestService = AIConnectionTestService(),
+    aiDataSharingConsentStore: AIDataSharingConsentStore = AIDataSharingConsentStore(),
     imageWorkbenchService: SiteImageWorkbenchService = SiteImageWorkbenchService(),
     seoAuditService: SEOAuditService = SEOAuditService(),
     seoSocialPreviewService: SEOSocialPreviewService = SEOSocialPreviewService()
@@ -29,6 +56,7 @@ public final class WorkbenchAIStore: ObservableObject {
     self.aiPublishingAssistantService = aiPublishingAssistantService
     self.keychainTokenStore = keychainTokenStore
     self.aiConnectionTestService = aiConnectionTestService
+    self.aiDataSharingConsentStore = aiDataSharingConsentStore
     self.imageWorkbenchService = imageWorkbenchService
     self.seoAuditService = seoAuditService
     self.seoSocialPreviewService = seoSocialPreviewService
@@ -94,9 +122,19 @@ public final class WorkbenchAIStore: ObservableObject {
     set { workspace.aiChatContextMode = newValue }
   }
 
+  public var aiChatKnowledgePolicy: KnowledgeRetrievalPolicy {
+    get { workspace.aiChatKnowledgePolicy }
+    set { workspace.aiChatKnowledgePolicy = newValue }
+  }
+
   public var aiChatModelGrade: AIChatModelGrade {
     get { workspace.aiChatModelGrade }
     set { workspace.aiChatModelGrade = newValue }
+  }
+
+  public var aiChatReasoningLevel: AIChatReasoningLevel {
+    get { workspace.aiChatReasoningLevel }
+    set { workspace.aiChatReasoningLevel = newValue }
   }
 
   public var aiChatSelectedModel: String {
@@ -234,36 +272,69 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   public func refreshAIKeyAvailability() {
-    aiTokenAvailability = (try? keychainTokenStore.availability(for: store.activeProfile)) ?? KeychainTokenAvailability(hasToken: false)
+    refreshAIKeyAvailability(for: store.activeProfile)
   }
 
-  public func saveAIAPIKey(_ token: String) {
+  func refreshAIKeyAvailability(for profile: SiteProfile) {
+    guard DistributionFeaturePolicy.allowsExternalAIProviders else {
+      aiTokenAvailability = KeychainTokenAvailability(hasToken: false)
+      return
+    }
+    aiTokenAvailability = (try? keychainTokenStore.aiTokenAvailability(for: profile))
+      ?? KeychainTokenAvailability(hasToken: false)
+  }
+
+  @discardableResult
+  public func saveAIAPIKey(_ token: String) -> Bool {
+    guard DistributionFeaturePolicy.allowsExternalAIProviders else {
+      aiActionMessage = "此 App Store 版本不接受外部 AI API Key。"
+      return false
+    }
     do {
-      try keychainTokenStore.saveToken(token.trimmedForPublishing, for: store.activeProfile)
+      try keychainTokenStore.saveAIToken(token.trimmedForPublishing, for: store.activeProfile)
       refreshAIKeyAvailability()
       aiActionMessage = "AI API Key 已保存到 Keychain。"
+      aiChatMessage = "AI API Key 已就绪，可以发送消息。"
+      return true
     } catch {
-      aiActionMessage = "AI API Key 保存失败：\(error.localizedDescription)"
+      aiActionMessage = aiKeychainFailureMessage(action: "保存", error: error)
+      return false
     }
   }
 
   public func deleteAIAPIKey() {
     do {
-      try keychainTokenStore.deleteToken(for: store.activeProfile)
+      try keychainTokenStore.deleteAIToken(for: store.activeProfile)
       refreshAIKeyAvailability()
       aiActionMessage = "AI API Key 已删除。"
+      aiChatMessage = "AI API Key 已删除，请重新配置后再发送消息。"
     } catch {
-      aiActionMessage = "AI API Key 删除失败：\(error.localizedDescription)"
+      aiActionMessage = aiKeychainFailureMessage(action: "删除", error: error)
     }
   }
 
+  private func aiKeychainFailureMessage(action: String, error: Error) -> String {
+    var message = "AI API Key \(action)失败：\(error.localizedDescription)"
+    if let keychainError = error as? KeychainTokenStoreError,
+       let recoveryHint = keychainError.recoveryHint {
+      message += " \(recoveryHint)"
+    }
+    return message
+  }
+
   public func testAIConnection() async -> AIConnectionTestReport? {
+    guard DistributionFeaturePolicy.allowsExternalAIProviders else {
+      aiActionMessage = "此 App Store 版本不连接第三方 AI 服务。"
+      return nil
+    }
     isAIActionRunning = true
     defer { isAIActionRunning = false }
     do {
       let token = try aiChatAvailableAPIKey(for: store.activeProfile)
       let report = try await aiConnectionTestService.testConnection(config: store.activeProfile.aiProviderConfig, apiKey: token)
+      refreshAIKeyAvailability()
       aiActionMessage = report.headline
+      aiChatMessage = "AI 连接正常，可以发送消息。"
       return report
     } catch {
       aiActionMessage = "AI 连接测试失败：\(error.localizedDescription)"
@@ -271,60 +342,62 @@ public final class WorkbenchAIStore: ObservableObject {
     }
   }
 
-  func replaceAIChatSessions(_ sessions: [UUID: AIPublishingChatSessionState]) {
-    aiChatSessionsByDraftID = sessions
+  public var aiDataSharingConsentPresentation: AIDataSharingConsentPresentation {
+    aiDataSharingConsentStore.presentation(for: store.activeProfile.aiProviderConfig)
   }
 
-  func aiChatSessionsForPersistence() -> [UUID: AIPublishingChatSessionState] {
-    if let draftID = aiChatDraftID {
-      persistCurrentAIChatSession(for: draftID)
-    }
-    return aiChatSessionsByDraftID
+  public func grantAIDataSharingConsent() {
+    let config = store.activeProfile.aiProviderConfig
+    aiDataSharingConsentStore.grant(for: config)
+    aiActionMessage = config.isLocalEndpoint
+      ? "当前为本地 AI 服务，内容不会发送给第三方服务商。"
+      : "已允许向 \(config.normalizedDisplayName)（\(config.dataSharingDestination)）发送内容。"
+  }
+
+  public func revokeAIDataSharingConsent() {
+    let config = store.activeProfile.aiProviderConfig
+    aiDataSharingConsentStore.revoke(for: config)
+    aiActionMessage = "已撤销 \(config.normalizedDisplayName) 的内容发送授权。"
   }
 
   public func prepareAIChat(for draft: ArticleDraft) {
     if aiChatDraftID == draft.id {
       return
     }
+    aiChatManualRetryState = nil
     if let currentDraftID = aiChatDraftID {
-      persistCurrentAIChatSession(for: currentDraftID)
+      cacheCurrentAIChatSessionForTransition(for: currentDraftID)
     }
-    let state = aiChatSessionsByDraftID[draft.id] ?? AIPublishingChatSessionState()
+    let state = transientAIChatSessionsByDraftID.removeValue(forKey: draft.id)
+      ?? AIPublishingChatSessionState()
+    transientAIChatSessionAccessOrder.removeValue(forKey: draft.id)
     aiChatDraftID = draft.id
-    aiChatConversationTitle = state.conversationTitle
-    aiChatMessages = state.messages
-    aiChatContextMode = state.contextMode
-    aiChatModelGrade = state.modelGrade
-    aiChatSelectedModel = state.selectedModel
-    aiChatFocusedParagraphID = state.focusedParagraphID
+    applyCurrentAIChatSession(state)
   }
 
   func aiChatSessionState(for draftID: UUID) -> AIPublishingChatSessionState? {
     if aiChatDraftID == draftID {
       return currentAIChatSessionState()
     }
-    return aiChatSessionsByDraftID[draftID]
+    guard let state = transientAIChatSessionsByDraftID[draftID] else { return nil }
+    markTransientAIChatSessionAccessed(draftID)
+    return state
   }
 
   func setAIChatSessionState(_ state: AIPublishingChatSessionState, for draftID: UUID) {
     let prepared = state.prepared()
-    if prepared.shouldPersist {
-      aiChatSessionsByDraftID[draftID] = prepared
-    } else {
-      aiChatSessionsByDraftID.removeValue(forKey: draftID)
-    }
     if aiChatDraftID == draftID {
-      aiChatConversationTitle = prepared.conversationTitle
-      aiChatMessages = prepared.messages
-      aiChatContextMode = prepared.contextMode
-      aiChatModelGrade = prepared.modelGrade
-      aiChatSelectedModel = prepared.selectedModel
-      aiChatFocusedParagraphID = prepared.focusedParagraphID
+      applyCurrentAIChatSession(prepared)
+      transientAIChatSessionsByDraftID.removeValue(forKey: draftID)
+      transientAIChatSessionAccessOrder.removeValue(forKey: draftID)
+    } else {
+      cacheTransientAIChatSession(prepared, for: draftID)
     }
   }
 
   func removeAIChatSessionState(for draftID: UUID) {
-    aiChatSessionsByDraftID.removeValue(forKey: draftID)
+    transientAIChatSessionsByDraftID.removeValue(forKey: draftID)
+    transientAIChatSessionAccessOrder.removeValue(forKey: draftID)
     if aiChatDraftID == draftID {
       aiChatConversationTitle = nil
       aiChatMessages = []
@@ -332,65 +405,103 @@ public final class WorkbenchAIStore: ObservableObject {
     }
   }
 
-  func persistCurrentAIChatSessionForAIStore() {
+  func cacheCurrentAIChatSessionForAIStore() {
     guard let draftID = aiChatDraftID else { return }
-    persistCurrentAIChatSession(for: draftID)
+    let prepared = currentAIChatSessionState().prepared()
+    applyCurrentAIChatSession(prepared)
+    transientAIChatSessionsByDraftID.removeValue(forKey: draftID)
+    transientAIChatSessionAccessOrder.removeValue(forKey: draftID)
   }
 
-  private func persistCurrentAIChatSession(for draftID: UUID) {
+  private func cacheCurrentAIChatSessionForTransition(for draftID: UUID) {
     let state = currentAIChatSessionState().prepared()
-    if state.shouldPersist {
-      aiChatSessionsByDraftID[draftID] = state
-    } else {
-      aiChatSessionsByDraftID.removeValue(forKey: draftID)
-    }
+    cacheTransientAIChatSession(state, for: draftID)
   }
 
   private func currentAIChatSessionState() -> AIPublishingChatSessionState {
-    let archived = aiChatDraftID.flatMap { aiChatSessionsByDraftID[$0]?.archivedConversations } ?? []
     return AIPublishingChatSessionState(
       conversationTitle: aiChatConversationTitle,
       messages: aiChatMessages,
       contextMode: aiChatContextMode,
+      knowledgePolicy: aiChatKnowledgePolicy,
       modelGrade: aiChatModelGrade,
+      reasoningLevel: aiChatReasoningLevel,
       selectedModel: aiChatSelectedModel,
-      focusedParagraphID: aiChatFocusedParagraphID,
-      archivedConversations: archived
+      focusedParagraphID: aiChatFocusedParagraphID
     )
   }
 
-  func archivedAIChatConversations(for draftID: UUID) -> [AIPublishingChatArchivedConversation] {
-    aiChatSessionState(for: draftID)?.archivedConversations ?? []
+  private func applyCurrentAIChatSession(_ state: AIPublishingChatSessionState) {
+    aiChatConversationTitle = state.conversationTitle
+    aiChatMessages = state.messages
+    aiChatContextMode = state.contextMode
+    aiChatKnowledgePolicy = state.knowledgePolicy
+    aiChatModelGrade = state.modelGrade
+    aiChatReasoningLevel = state.reasoningLevel
+    aiChatSelectedModel = state.selectedModel
+    aiChatFocusedParagraphID = state.focusedParagraphID
   }
 
-  func archiveCurrentAIChatConversationIfNeeded(for draftID: UUID) {
-    let state = currentAIChatSessionState().prepared()
-    guard !state.messages.isEmpty else { return }
-    let title = state.conversationTitle?.nilIfEmpty
-      ?? state.messages.first(where: { $0.role == .user })?.content.trimmedForPublishing.nilIfEmpty.map { String($0.prefix(48)) }
-      ?? state.messages.first(where: { $0.role == .user })?.imageAttachments.first.map { "已附加图片：\($0.filename)" }
-      ?? "未命名对话"
-    let archived = AIPublishingChatArchivedConversation(
-      title: title,
-      messages: state.messages,
-      contextMode: state.contextMode,
-      modelGrade: state.modelGrade,
-      selectedModel: state.selectedModel,
-      focusedParagraphID: state.focusedParagraphID
-    )
-    var stored = aiChatSessionsByDraftID[draftID] ?? AIPublishingChatSessionState()
-    stored.archivedConversations.insert(archived, at: 0)
-    stored.archivedConversations = Array(stored.archivedConversations.prefix(20))
-    aiChatSessionsByDraftID[draftID] = stored.prepared()
+  private func cacheTransientAIChatSession(
+    _ state: AIPublishingChatSessionState,
+    for draftID: UUID
+  ) {
+    if state.shouldCache {
+      transientAIChatSessionsByDraftID[draftID] = state
+      markTransientAIChatSessionAccessed(draftID)
+      pruneTransientAIChatSessions()
+    } else {
+      transientAIChatSessionsByDraftID.removeValue(forKey: draftID)
+      transientAIChatSessionAccessOrder.removeValue(forKey: draftID)
+    }
+  }
+
+  private func markTransientAIChatSessionAccessed(_ draftID: UUID) {
+    transientAIChatSessionAccessSequence &+= 1
+    transientAIChatSessionAccessOrder[draftID] = transientAIChatSessionAccessSequence
+  }
+
+  private func pruneTransientAIChatSessions() {
+    while transientAIChatSessionsByDraftID.count > maximumTransientAIChatSessions,
+          let oldestDraftID = oldestTransientAIChatSessionID() {
+      transientAIChatSessionsByDraftID.removeValue(forKey: oldestDraftID)
+      transientAIChatSessionAccessOrder.removeValue(forKey: oldestDraftID)
+    }
+
+    var totalImageBytes = transientAIChatSessionsByDraftID.values.reduce(Int64(0)) {
+      $0 + $1.imageAttachmentByteCount
+    }
+    while totalImageBytes > maximumTransientAIChatImageBytes,
+          let oldestDraftID = oldestTransientAIChatSessionID(containingImages: true),
+          let state = transientAIChatSessionsByDraftID[oldestDraftID] {
+      let trimmed = state.prepared(maxTotalImageBytes: -1)
+      let removedBytes = state.imageAttachmentByteCount - trimmed.imageAttachmentByteCount
+      guard removedBytes > 0 else { break }
+      transientAIChatSessionsByDraftID[oldestDraftID] = trimmed
+      totalImageBytes -= removedBytes
+    }
+  }
+
+  private func oldestTransientAIChatSessionID(containingImages: Bool = false) -> UUID? {
+    transientAIChatSessionsByDraftID.keys
+      .filter { !containingImages || (transientAIChatSessionsByDraftID[$0]?.imageAttachmentByteCount ?? 0) > 0 }
+      .min {
+        (transientAIChatSessionAccessOrder[$0] ?? 0)
+          < (transientAIChatSessionAccessOrder[$1] ?? 0)
+      }
+  }
+
+  var transientAIChatSessionCount: Int {
+    transientAIChatSessionsByDraftID.count
   }
 
   func updateAIChatSession(for draftID: UUID, update: (inout [AIPublishingChatMessage]) -> Void) {
     if aiChatDraftID == draftID {
       update(&aiChatMessages)
-      persistCurrentAIChatSession(for: draftID)
+      cacheCurrentAIChatSessionForAIStore()
       return
     }
-    var state = aiChatSessionsByDraftID[draftID] ?? AIPublishingChatSessionState()
+    var state = transientAIChatSessionsByDraftID[draftID] ?? AIPublishingChatSessionState()
     update(&state.messages)
     setAIChatSessionState(state, for: draftID)
   }
@@ -400,19 +511,46 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   func aiChatCanStartFeatureUse(_ feature: PremiumFeature) -> FeatureAccessDecision {
-    store.canStartFeatureUse(feature)
+    if feature == .aiRequest {
+      return unmeteredAIRequestAccess()
+    }
+    return store.canStartFeatureUse(feature)
   }
 
   func aiChatConsumeFeatureUse(_ feature: PremiumFeature) -> FeatureAccessDecision {
-    store.consumeFeatureUse(feature)
+    if feature == .aiRequest {
+      return unmeteredAIRequestAccess()
+    }
+    return store.consumeFeatureUse(feature)
   }
 
   func aiChatAvailableAPIKey(for profile: SiteProfile) throws -> String? {
+    guard DistributionFeaturePolicy.allowsExternalAIProviders else {
+      throw AIPublishingAssistantError.externalAIUnavailable
+    }
+    let consent = aiDataSharingConsentStore.presentation(for: profile.aiProviderConfig)
+    guard consent.isGranted else {
+      throw AIPublishingAssistantError.dataSharingConsentRequired(
+        providerName: consent.providerName,
+        destination: consent.destination
+      )
+    }
     guard profile.aiProviderConfig.requiresAPIKey else { return nil }
-    guard let token = try keychainTokenStore.token(for: profile)?.nilIfEmpty else {
+    guard let token = try keychainTokenStore.aiToken(for: profile)?.nilIfEmpty else {
       throw AIPublishingAssistantError.missingAPIKey
     }
     return token
+  }
+
+  private func unmeteredAIRequestAccess() -> FeatureAccessDecision {
+    FeatureAccessDecision(
+      feature: .aiRequest,
+      isAllowed: true,
+      requiresPro: false,
+      remainingFreeUses: nil,
+      title: "用户自备 API Key",
+      message: "AI 请求由用户配置的服务商直接处理，应用不限制请求次数。"
+    )
   }
 
   func setAIChatCancellationRequested(_ value: Bool) {
@@ -424,35 +562,95 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   @discardableResult func requestAIChatCancellation() -> Bool {
-    guard isAIChatRunning else { return false }
+    guard isAIChatRunning, activeAIChatOperationID != nil else { return false }
     isAIChatCancellationRequested = true
     aiChatMessage = "正在停止 AI 回复..."
     return true
   }
 
-  func aiChatRequest(for draft: ArticleDraft) -> AIPublishingChatRequest {
-    let profile = store.profile(for: draft)
-    let focusedParagraph = aiChatFocusedParagraphID.flatMap { focusedID in
-      AIPublishingChatDraftParagraphParser.extract(from: draft.bodyMarkdown).first { $0.id == focusedID }
+  private func beginAIChatOperation(statusMessage: String) -> UUID? {
+    guard activeAIChatOperationID == nil else {
+      store.setAIChatMessage("AI 正在回复，请先停止当前回复后再试。")
+      return nil
     }
-    return AIPublishingChatRequest(
-      draft: draft,
-      profile: profile,
-      messages: aiChatMessages,
-      contextMode: aiChatContextMode,
-      modelGrade: aiChatModelGrade,
-      selectedModel: aiChatSelectedModel.nilIfEmpty,
-      preflightIssues: store.preflightIssues(for: draft),
-      publishPackage: store.publishingPackage(for: draft),
-      remoteReviewDraft: store.remoteReviewDraft(for: draft),
-      workflowContext: AIPublishingWorkflowContext(
-        publishPreview: store.localPublishPreview(for: draft),
-        localSitePreviewPlan: store.localSitePreviewPlan(for: draft),
-        imageReport: store.imageWorkbenchReport(for: draft)
+    let operationID = UUID()
+    aiChatManualRetryState = nil
+    activeAIChatOperationID = operationID
+    setAIChatCancellationRequested(false)
+    store.setAIChatRunning(true)
+    store.setAIChatMessage(statusMessage)
+    return operationID
+  }
+
+  private func finishAIChatOperation(_ operationID: UUID) {
+    guard activeAIChatOperationID == operationID else { return }
+    activeAIChatOperationID = nil
+    setAIChatCancellationRequested(false)
+    store.setAIChatRunning(false)
+    store.save()
+  }
+
+  private func checkAIChatOperation(_ operationID: UUID) throws {
+    try Task.checkCancellation()
+    guard activeAIChatOperationID == operationID,
+          !aiChatCancellationRequested() else {
+      throw CancellationError()
+    }
+  }
+
+  func aiChatRequest(for draft: ArticleDraft) async -> AIPublishingChatRequest {
+    let session = aiChatSessionState(for: draft.id) ?? AIPublishingChatSessionState()
+    let artifacts = await store.aiPublishingRequestArtifacts(for: draft)
+    let focusedParagraph = session.focusedParagraphID.flatMap { focusedID in
+      AIPublishingChatDraftParagraphParser.extract(from: artifacts.draft.bodyMarkdown).first { $0.id == focusedID }
+    }
+    let latestQuestion = session.messages.last(where: { $0.role == .user })?.content
+    let knowledgeContext = await store.knowledge.context(
+      query: knowledgeQuery(
+        draft: artifacts.draft,
+        selectedText: focusedParagraph?.text,
+        instruction: latestQuestion
       ),
-      focusedParagraph: focusedParagraph,
-      relatedSuggestions: store.relatedArticleSuggestions(for: draft)
+      policy: session.knowledgePolicy
     )
+    return AIPublishingChatRequest(
+      draft: artifacts.draft,
+      profile: artifacts.profile,
+      messages: session.messages,
+      contextMode: session.contextMode,
+      knowledgePolicy: session.knowledgePolicy,
+      knowledgeContext: knowledgeContext,
+      modelGrade: session.modelGrade,
+      reasoningLevel: session.reasoningLevel,
+      selectedModel: session.selectedModel.nilIfEmpty,
+      preflightIssues: artifacts.preflightIssues,
+      publishPackage: artifacts.publishPackage,
+      remoteReviewDraft: artifacts.remoteReviewDraft,
+      workflowContext: artifacts.workflowContext,
+      focusedParagraph: focusedParagraph,
+      relatedSuggestions: store.relatedArticleSuggestions(for: artifacts.draft)
+    )
+  }
+
+  private func knowledgeQuery(
+    draft: ArticleDraft,
+    selectedText: String? = nil,
+    instruction: String? = nil
+  ) -> String {
+    [
+      instruction?.trimmedForPublishing.nilIfEmpty,
+      draft.title.trimmedForPublishing.nilIfEmpty,
+      draft.summary.trimmedForPublishing.nilIfEmpty,
+      selectedText?.trimmedForPublishing.nilIfEmpty.map { String($0.prefix(1_500)) },
+      String(draft.bodyMarkdown.prefix(1_500)).trimmedForPublishing.nilIfEmpty,
+    ]
+    .compactMap { $0 }
+    .joined(separator: "\n")
+  }
+
+  public func setAIChatKnowledgePolicy(_ policy: KnowledgeRetrievalPolicy) {
+    aiChatKnowledgePolicy = policy
+    cacheCurrentAIChatSessionForAIStore()
   }
 
   public func setAIChatModelGrade(_ grade: AIChatModelGrade) {
@@ -463,30 +661,29 @@ public final class WorkbenchAIStore: ObservableObject {
       config: config,
       currentModel: aiChatSelectedModel
     )
-    persistCurrentAIChatSessionForAIStore()
+    cacheCurrentAIChatSessionForAIStore()
+  }
+
+  public func setAIChatReasoningLevel(_ level: AIChatReasoningLevel) {
+    aiChatReasoningLevel = level
+    cacheCurrentAIChatSessionForAIStore()
   }
 
   public func setAIChatCustomModel(_ model: String) {
     aiChatModelGrade = .custom
     aiChatSelectedModel = model
-    persistCurrentAIChatSessionForAIStore()
+    cacheCurrentAIChatSessionForAIStore()
   }
 
   public func resetAIChatModelToProfileDefault() {
     setAIChatModelGrade(.standard)
   }
 
-  public var aiChatArchivedConversations: [AIPublishingChatArchivedConversation] {
-    guard let draftID = aiChatDraftID else {
-      return []
-    }
-    return archivedAIChatConversations(for: draftID)
-  }
-
   public func clearAIChat() {
     aiChatConversationTitle = nil
     aiChatMessages = []
-    persistCurrentAIChatSessionForAIStore()
+    aiChatManualRetryState = nil
+    cacheCurrentAIChatSessionForAIStore()
     aiChatMessage = "AI 讨论已清空。"
     store.save()
   }
@@ -501,7 +698,7 @@ public final class WorkbenchAIStore: ObservableObject {
     }
 
     aiChatConversationTitle = title?.trimmedForPublishing.nilIfEmpty
-    persistCurrentAIChatSessionForAIStore()
+    cacheCurrentAIChatSessionForAIStore()
     aiChatMessage = aiChatConversationTitle == nil ? "已恢复自动对话标题。" : "已更新 AI 对话标题。"
     store.save()
   }
@@ -516,7 +713,7 @@ public final class WorkbenchAIStore: ObservableObject {
     }
 
     aiChatFocusedParagraphID = paragraphID?.nilIfEmpty
-    persistCurrentAIChatSessionForAIStore()
+    cacheCurrentAIChatSessionForAIStore()
     aiChatMessage = aiChatFocusedParagraphID == nil ? "AI 已恢复整篇文章上下文。" : "AI 已聚焦引用段落。"
     store.save()
   }
@@ -567,76 +764,14 @@ public final class WorkbenchAIStore: ObservableObject {
     if let draft {
       prepareAIChat(for: draft)
     }
-    guard let draftID = aiChatDraftID else {
+    guard aiChatDraftID != nil else {
       aiChatMessage = "请先选择一篇文章。"
       return
     }
-    archiveCurrentAIChatConversationIfNeeded(for: draftID)
     aiChatConversationTitle = nil
     aiChatMessages = []
-    persistCurrentAIChatSessionForAIStore()
+    cacheCurrentAIChatSessionForAIStore()
     aiChatMessage = "已新建 AI 对话。"
-    store.save()
-  }
-
-  public func restoreArchivedAIChatConversation(
-    _ conversationID: AIPublishingChatArchivedConversation.ID,
-    draft: ArticleDraft? = nil
-  ) {
-    if let draft {
-      prepareAIChat(for: draft)
-    }
-    guard let draftID = aiChatDraftID else {
-      aiChatMessage = "请先选择一篇文章。"
-      return
-    }
-    guard var state = aiChatSessionState(for: draftID),
-          let index = state.archivedConversations.firstIndex(where: { $0.id == conversationID })
-    else {
-      aiChatMessage = "找不到要恢复的历史对话。"
-      return
-    }
-
-    let archivedConversation = state.archivedConversations.remove(at: index)
-    setAIChatSessionState(state, for: draftID)
-    archiveCurrentAIChatConversationIfNeeded(for: draftID)
-    aiChatConversationTitle = archivedConversation.title.nilIfEmpty
-    aiChatMessages = archivedConversation.messages
-    aiChatContextMode = archivedConversation.contextMode
-    aiChatModelGrade = archivedConversation.modelGrade
-    aiChatSelectedModel = archivedConversation.selectedModel
-    aiChatFocusedParagraphID = archivedConversation.focusedParagraphID
-    persistCurrentAIChatSessionForAIStore()
-    aiChatMessage = "已恢复历史对话：\(archivedConversation.title)"
-    store.save()
-  }
-
-  public func deleteArchivedAIChatConversation(
-    _ conversationID: AIPublishingChatArchivedConversation.ID,
-    draft: ArticleDraft? = nil
-  ) {
-    if let draft {
-      prepareAIChat(for: draft)
-    }
-    guard let draftID = aiChatDraftID else {
-      aiChatMessage = "请先选择一篇文章。"
-      return
-    }
-    guard var state = aiChatSessionState(for: draftID),
-          let index = state.archivedConversations.firstIndex(where: { $0.id == conversationID })
-    else {
-      aiChatMessage = "找不到要删除的历史对话。"
-      return
-    }
-
-    let title = state.archivedConversations[index].title
-    state.archivedConversations.remove(at: index)
-    if state.shouldPersist {
-      setAIChatSessionState(state, for: draftID)
-    } else {
-      removeAIChatSessionState(for: draftID)
-    }
-    aiChatMessage = "已删除历史对话：\(title)"
     store.save()
   }
 
@@ -662,7 +797,7 @@ public final class WorkbenchAIStore: ObservableObject {
       }
 
       store.setAIChatMessages(updatedMessages)
-      persistCurrentAIChatSessionForAIStore()
+      cacheCurrentAIChatSessionForAIStore()
       store.setAIChatMessage("已删除 1 条 AI 消息。")
       store.save()
       return
@@ -680,7 +815,7 @@ public final class WorkbenchAIStore: ObservableObject {
       return
     }
 
-    if state.shouldPersist {
+    if state.shouldCache {
       setAIChatSessionState(state, for: draftID)
     } else {
       removeAIChatSessionState(for: draftID)
@@ -698,7 +833,7 @@ public final class WorkbenchAIStore: ObservableObject {
       prepareAIChat(for: draft)
     }
 
-    guard let draftID = store.aiChatDraftID else {
+    guard store.aiChatDraftID != nil else {
       store.setAIChatMessage("请先选择一篇文章。")
       return
     }
@@ -714,15 +849,43 @@ public final class WorkbenchAIStore: ObservableObject {
       return
     }
 
-    archiveCurrentAIChatConversationIfNeeded(for: draftID)
     store.setAIChatMessages(branchedMessages)
-    persistCurrentAIChatSessionForAIStore()
-    store.setAIChatMessage("已从所选消息创建分支，原对话已存入历史。")
+    cacheCurrentAIChatSessionForAIStore()
+    store.setAIChatMessage("已从所选消息创建分支。")
     store.save()
   }
 
   public func cancelAIChatReply() {
     _ = requestAIChatCancellation()
+  }
+
+  @discardableResult
+  public func retryLastFailedAIChatReply(
+    confirmingPossibleDuplicateCharge: Bool = false,
+    draft: ArticleDraft? = nil
+  ) async -> AIPublishingChatMessage? {
+    guard let retryState = aiChatManualRetryState else {
+      store.setAIChatMessage("当前没有可重试的 AI 请求。")
+      return nil
+    }
+    guard let chatDraft = draft ?? store.selectedDraft,
+          chatDraft.id == retryState.draftID else {
+      store.setAIChatMessage("请先返回发生错误的文章，再重试 AI 回复。")
+      return nil
+    }
+    if let retryAfter = retryState.retryAfter, retryAfter > Date() {
+      let remainingSeconds = max(1, Int(ceil(retryAfter.timeIntervalSinceNow)))
+      store.setAIChatMessage("服务器要求稍后重试，请等待约 \(remainingSeconds) 秒。")
+      return nil
+    }
+    if retryState.requiresDuplicateChargeConfirmation,
+       !confirmingPossibleDuplicateCharge {
+      store.setAIChatMessage("已保留部分回复。再次生成可能产生重复内容和费用，请确认后手动重新生成。")
+      return nil
+    }
+
+    aiChatManualRetryState = nil
+    return await regenerateLastAIChatReply(draft: chatDraft)
   }
 
   @discardableResult
@@ -752,6 +915,11 @@ public final class WorkbenchAIStore: ObservableObject {
       store.setAIChatMessage(access.message)
       return nil
     }
+    guard let operationID = beginAIChatOperation(
+      statusMessage: "AI 正在重新生成回复..."
+    ) else {
+      return nil
+    }
 
     let originalMessages = store.aiChatMessages
     var updatedMessages = aiChatMessages
@@ -759,12 +927,12 @@ public final class WorkbenchAIStore: ObservableObject {
       updatedMessages.removeLast()
     }
     aiChatMessages = updatedMessages
-    persistCurrentAIChatSessionForAIStore()
+    cacheCurrentAIChatSessionForAIStore()
 
-    let reply = await generateAIChatReply(for: chatDraft, statusMessage: "AI 正在重新生成回复...")
+    let reply = await generateAIChatReply(for: chatDraft, operationID: operationID)
     if reply == nil {
       store.setAIChatMessages(originalMessages)
-      persistCurrentAIChatSessionForAIStore()
+      cacheCurrentAIChatSessionForAIStore()
       store.save()
     }
     return reply
@@ -802,14 +970,19 @@ public final class WorkbenchAIStore: ObservableObject {
       store.setAIChatMessage(access.message)
       return nil
     }
+    guard let operationID = beginAIChatOperation(
+      statusMessage: "AI 正在重新生成此回复..."
+    ) else {
+      return nil
+    }
 
     let originalMessages = store.aiChatMessages
     store.setAIChatMessages(Array(store.aiChatMessages.prefix(userIndex + 1)))
-    persistCurrentAIChatSessionForAIStore()
-    let reply = await generateAIChatReply(for: chatDraft, statusMessage: "AI 正在重新生成此回复...")
+    cacheCurrentAIChatSessionForAIStore()
+    let reply = await generateAIChatReply(for: chatDraft, operationID: operationID)
     if reply == nil {
       store.setAIChatMessages(originalMessages)
-      persistCurrentAIChatSessionForAIStore()
+      cacheCurrentAIChatSessionForAIStore()
       store.save()
     }
     return reply
@@ -829,6 +1002,20 @@ public final class WorkbenchAIStore: ObservableObject {
     let trimmed = text.trimmedForPublishing
     guard !trimmed.isEmpty || !imageAttachments.isEmpty else {
       store.setAIChatMessage("请先输入要发送给 AI 的内容。")
+      return nil
+    }
+    let selectedImageAttachments = Array(
+      imageAttachments.prefix(AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount)
+    )
+    guard selectedImageAttachments.allSatisfy({ attachment in
+      AIPublishingChatImageAttachmentPresentation.isSupportedAttachment(
+        mimeType: attachment.mimeType,
+        byteSize: Int64(attachment.data.count)
+      )
+    }) else {
+      store.setAIChatMessage(
+        "图片附件仅支持 PNG、JPEG、GIF 或 WebP，且每张不能超过 \(AIPublishingChatImageAttachmentPresentation.attachmentSizeLimitText())。"
+      )
       return nil
     }
     guard let chatDraft = draft ?? store.selectedDraft else {
@@ -854,6 +1041,11 @@ public final class WorkbenchAIStore: ObservableObject {
       store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
       return nil
     }
+    guard let operationID = beginAIChatOperation(
+      statusMessage: "AI 正在结合当前文章回复..."
+    ) else {
+      return nil
+    }
 
     prepareAIChat(for: chatDraft)
 
@@ -861,21 +1053,22 @@ public final class WorkbenchAIStore: ObservableObject {
       role: .user,
       content: trimmed,
       contextMode: store.aiChatContextMode,
-      imageAttachments: Array(imageAttachments.prefix(4))
+      imageAttachments: selectedImageAttachments
     )
     var updatedMessages = aiChatMessages
     updatedMessages.append(userMessage)
     aiChatMessages = updatedMessages
-    persistCurrentAIChatSessionForAIStore()
+    cacheCurrentAIChatSessionForAIStore()
 
-    return await generateAIChatReply(for: chatDraft, statusMessage: "AI 正在结合当前文章回复...")
+    return await generateAIChatReply(for: chatDraft, operationID: operationID)
   }
 
   @discardableResult
   func generateAIChatReply(
     for chatDraft: ArticleDraft,
-    statusMessage: String
+    operationID: UUID
   ) async -> AIPublishingChatMessage? {
+    defer { finishAIChatOperation(operationID) }
     let profile = store.profile(for: chatDraft)
     let token: String?
     do {
@@ -884,27 +1077,26 @@ public final class WorkbenchAIStore: ObservableObject {
       store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
       return nil
     }
+    let request = await aiChatRequest(for: chatDraft)
+    await store.refreshSiteMaintenanceSnapshot()
+    do {
+      try checkAIChatOperation(operationID)
+    } catch {
+      store.setAIChatMessage("AI 回复已停止。")
+      return nil
+    }
     let access = aiChatConsumeFeatureUse(.aiRequest)
     guard access.isAllowed else {
       store.setAIChatMessage(access.message)
       return nil
     }
 
-    store.setAIChatRunning(true)
-    setAIChatCancellationRequested(false)
-    store.setAIChatMessage(statusMessage)
-    defer {
-      store.setAIChatRunning(false)
-      setAIChatCancellationRequested(false)
-      store.save()
-    }
-
     do {
-      let request = aiChatRequest(for: chatDraft)
       do {
         return try await generateStreamingAIChatReply(
           request: request,
           draftID: chatDraft.id,
+          operationID: operationID,
           config: profile.aiProviderConfig,
           apiKey: token
         )
@@ -912,13 +1104,21 @@ public final class WorkbenchAIStore: ObservableObject {
         return try await generateCompleteAIChatReply(
           request: request,
           draftID: chatDraft.id,
+          operationID: operationID,
           config: profile.aiProviderConfig,
           apiKey: token
         )
       }
     } catch is CancellationError {
       store.setAIChatMessage("AI 回复已停止。")
-      return store.aiChatMessages.last { $0.role == .assistant }
+      return aiChatSessionState(for: chatDraft.id)?.messages.last { $0.role == .assistant }
+    } catch let error as AIChatCompletionClientError {
+      configureManualRetry(for: error, draftID: chatDraft.id)
+      store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
+      if error.didReceivePartialContent {
+        return aiChatSessionState(for: chatDraft.id)?.messages.last { $0.role == .assistant }
+      }
+      return nil
     } catch {
       store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
       return nil
@@ -928,6 +1128,7 @@ public final class WorkbenchAIStore: ObservableObject {
   func generateStreamingAIChatReply(
     request: AIPublishingChatRequest,
     draftID: UUID,
+    operationID: UUID,
     config: AIProviderConfig,
     apiKey: String?
   ) async throws -> AIPublishingChatMessage {
@@ -936,50 +1137,71 @@ public final class WorkbenchAIStore: ObservableObject {
       config: config,
       apiKey: apiKey
     )
+    try checkAIChatOperation(operationID)
     var assistantMessage = replyStream.initialMessage
     updateAIChatSession(for: draftID) { messages in
       messages.append(assistantMessage)
     }
+    let clock = ContinuousClock()
+    var pendingContent = ""
+    var pendingTokenUsage: AIChatTokenUsage?
+    var nextPublishAt = clock.now.advanced(by: aiChatStreamPublishInterval)
 
-    do {
-      for try await update in replyStream.updates {
-        try Task.checkCancellation()
-        if aiChatCancellationRequested() {
-          throw CancellationError()
-        }
-        if !update.contentDelta.isEmpty {
-          assistantMessage.content += update.contentDelta
-        }
-        if let tokenUsage = update.tokenUsage {
-          assistantMessage.tokenUsage = tokenUsage
-        }
-        updateAIChatSession(for: draftID) { messages in
-          if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
-            messages[index] = assistantMessage
-          }
-        }
-        if update.isFinished {
-          break
-        }
-      }
+    func flushPendingStreamUpdate(force: Bool = false) {
+      guard !pendingContent.isEmpty || pendingTokenUsage != nil else { return }
+      guard force || clock.now >= nextPublishAt else { return }
 
-      if aiChatCancellationRequested() {
-        throw CancellationError()
+      assistantMessage.content += pendingContent
+      pendingContent = ""
+      if let tokenUsage = pendingTokenUsage {
+        assistantMessage.tokenUsage = tokenUsage
+        pendingTokenUsage = nil
       }
-
-      let finalContent = assistantMessage.content.trimmedForPublishing
-      guard !finalContent.isEmpty else {
-        throw AIChatCompletionClientError.emptyContent
-      }
-      assistantMessage.content = finalContent
       updateAIChatSession(for: draftID) { messages in
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
           messages[index] = assistantMessage
         }
       }
+      nextPublishAt = clock.now.advanced(by: aiChatStreamPublishInterval)
+    }
+
+    do {
+      for try await update in replyStream.updates {
+        try checkAIChatOperation(operationID)
+        if !update.contentDelta.isEmpty {
+          pendingContent += update.contentDelta
+        }
+        if let tokenUsage = update.tokenUsage {
+          pendingTokenUsage = tokenUsage
+        }
+        flushPendingStreamUpdate(force: update.isFinished)
+        if update.isFinished {
+          break
+        }
+      }
+
+      try checkAIChatOperation(operationID)
+
+      flushPendingStreamUpdate(force: true)
+      let finalContent = assistantMessage.content.trimmedForPublishing
+      guard !finalContent.isEmpty else {
+        throw AIChatCompletionClientError.emptyContent
+      }
+      assistantMessage.content = finalContent
+      assistantMessage = aiPublishingAssistantService.preparingAutomationPlan(
+        in: assistantMessage,
+        request: request
+      )
+      updateAIChatSession(for: draftID) { messages in
+        if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+          messages[index] = assistantMessage
+        }
+      }
+      recordAIResponseBacklinks(message: assistantMessage, request: request)
       store.setAIChatMessage("AI 已回复。")
       return assistantMessage
     } catch is CancellationError {
+      flushPendingStreamUpdate(force: true)
       let finalContent = assistantMessage.content.trimmedForPublishing
       guard !finalContent.isEmpty else {
         updateAIChatSession(for: draftID) { messages in
@@ -993,8 +1215,26 @@ public final class WorkbenchAIStore: ObservableObject {
           messages[index] = assistantMessage
         }
       }
+      recordAIResponseBacklinks(message: assistantMessage, request: request)
       store.setAIChatMessage("AI 回复已停止。")
       return assistantMessage
+    } catch let error as AIChatCompletionClientError where error.didReceivePartialContent {
+      flushPendingStreamUpdate(force: true)
+      let finalContent = assistantMessage.content.trimmedForPublishing
+      guard !finalContent.isEmpty else {
+        updateAIChatSession(for: draftID) { messages in
+          messages.removeAll { $0.id == assistantMessage.id }
+        }
+        throw error
+      }
+      assistantMessage.content = finalContent
+      updateAIChatSession(for: draftID) { messages in
+        if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+          messages[index] = assistantMessage
+        }
+      }
+      recordAIResponseBacklinks(message: assistantMessage, request: request)
+      throw error
     } catch {
       updateAIChatSession(for: draftID) { messages in
         messages.removeAll { $0.id == assistantMessage.id }
@@ -1006,6 +1246,7 @@ public final class WorkbenchAIStore: ObservableObject {
   func generateCompleteAIChatReply(
     request: AIPublishingChatRequest,
     draftID: UUID,
+    operationID: UUID,
     config: AIProviderConfig,
     apiKey: String?
   ) async throws -> AIPublishingChatMessage {
@@ -1014,11 +1255,44 @@ public final class WorkbenchAIStore: ObservableObject {
       config: config,
       apiKey: apiKey
     )
+    try checkAIChatOperation(operationID)
     updateAIChatSession(for: draftID) { messages in
       messages.append(assistantMessage)
     }
+    recordAIResponseBacklinks(message: assistantMessage, request: request)
     store.setAIChatMessage("AI 已回复。")
     return assistantMessage
+  }
+
+  private func recordAIResponseBacklinks(
+    message: AIPublishingChatMessage,
+    request: AIPublishingChatRequest
+  ) {
+    guard !message.knowledgeCitations.isEmpty else { return }
+    store.knowledge.recordBacklinks(
+      citations: message.knowledgeCitations,
+      target: KnowledgeBacklinkTarget(
+        kind: .aiResponse,
+        id: message.id.uuidString,
+        title: "AI 回复：\(request.draft.title)",
+        location: message.createdAt.formatted(date: .abbreviated, time: .shortened)
+      )
+    )
+  }
+
+  private func configureManualRetry(
+    for error: AIChatCompletionClientError,
+    draftID: UUID
+  ) {
+    guard error.supportsManualRetry else {
+      aiChatManualRetryState = nil
+      return
+    }
+    aiChatManualRetryState = AIChatManualRetryState(
+      draftID: draftID,
+      requiresDuplicateChargeConfirmation: error.didReceivePartialContent,
+      retryAfter: error.retryAfterSeconds.map { Date().addingTimeInterval($0) }
+    )
   }
 
   @discardableResult
@@ -1027,16 +1301,16 @@ public final class WorkbenchAIStore: ObservableObject {
     quickPrompt: AIPublishingQuickPrompt? = nil
   ) -> Bool {
     if let draftID {
-      guard store.focusDraft(draftID, section: .ai) else {
+      guard store.focusDraft(draftID, section: .writing) else {
         return false
       }
     } else if store.selectedDraftID == nil {
       _ = store.ensureEditableDraftSelected()
     }
 
-    store.selectSection(.ai)
+    store.selectSection(.writing)
     store.setInspectorPresented(true)
-    isAIPublishingAssistantPresented = false
+    isAIPublishingAssistantPresented = true
 
     if let draft = store.selectedDraft {
       pendingAIQuickPrompt = quickPrompt
@@ -1300,26 +1574,27 @@ public final class WorkbenchAIStore: ObservableObject {
     let profile = store.profile(for: draft)
     do {
       let token = try aiChatAvailableAPIKey(for: profile)
-      let access = store.consumeFeatureUse(.aiRequest)
-      guard access.isAllowed else {
-        aiActionMessage = access.message
-        return nil
-      }
       isAIActionRunning = true
       defer { isAIActionRunning = false }
+      let artifacts = await store.aiPublishingRequestArtifacts(for: draft)
+      let knowledgeContext = await store.knowledge.context(
+        query: knowledgeQuery(
+          draft: artifacts.draft,
+          selectedText: selectedText,
+          instruction: kind.displayName
+        ),
+        policy: aiChatKnowledgePolicy
+      )
       let request = AIPublishingActionRequest(
         kind: kind,
-        draft: draft,
-        profile: profile,
+        draft: artifacts.draft,
+        profile: artifacts.profile,
         selectedText: selectedText,
-        preflightIssues: store.preflightIssues(for: draft),
-        publishPackage: store.publishingPackage(for: draft),
-        remoteReviewDraft: store.remoteReviewDraft(for: draft),
-        workflowContext: AIPublishingWorkflowContext(
-          publishPreview: store.localPublishPreview(for: draft),
-          localSitePreviewPlan: store.localSitePreviewPlan(for: draft),
-          imageReport: store.imageWorkbenchReport(for: draft)
-        )
+        preflightIssues: artifacts.preflightIssues,
+        publishPackage: artifacts.publishPackage,
+        remoteReviewDraft: artifacts.remoteReviewDraft,
+        workflowContext: artifacts.workflowContext,
+        knowledgeContext: knowledgeContext
       )
       let result = try await aiPublishingAssistantService.perform(
         request,
@@ -1350,25 +1625,22 @@ public final class WorkbenchAIStore: ObservableObject {
     let profile = store.profile(for: draft)
     do {
       let token = try aiChatAvailableAPIKey(for: profile)
-      let access = store.consumeFeatureUse(.aiRequest)
-      guard access.isAllowed else {
-        aiActionMessage = access.message
-        return nil
-      }
       isAIMetadataSuggestionRunning = true
       defer { isAIMetadataSuggestionRunning = false }
+      let artifacts = await store.aiPublishingRequestArtifacts(for: draft)
+      let knowledgeContext = await store.knowledge.context(
+        query: knowledgeQuery(draft: artifacts.draft, instruction: "标题 摘要 标签 元数据"),
+        policy: aiChatKnowledgePolicy
+      )
       let request = AIPublishingActionRequest(
         kind: .draftFrontMatterPack,
-        draft: draft,
-        profile: profile,
-        preflightIssues: store.preflightIssues(for: draft),
-        publishPackage: store.publishingPackage(for: draft),
-        remoteReviewDraft: store.remoteReviewDraft(for: draft),
-        workflowContext: AIPublishingWorkflowContext(
-          publishPreview: store.localPublishPreview(for: draft),
-          localSitePreviewPlan: store.localSitePreviewPlan(for: draft),
-          imageReport: store.imageWorkbenchReport(for: draft)
-        )
+        draft: artifacts.draft,
+        profile: artifacts.profile,
+        preflightIssues: artifacts.preflightIssues,
+        publishPackage: artifacts.publishPackage,
+        remoteReviewDraft: artifacts.remoteReviewDraft,
+        workflowContext: artifacts.workflowContext,
+        knowledgeContext: knowledgeContext
       )
       let suggestion = try await aiPublishingAssistantService.suggestMetadata(
         for: request,
@@ -1490,6 +1762,7 @@ public final class WorkbenchAIStore: ObservableObject {
       aiChatMessage = "请先选择一篇文章。"
       return nil
     }
+    await store.refreshSiteMaintenanceSnapshot()
     prepareSEOSocialPreview(for: draft)
     guard let snapshot = seoSocialPreviewSnapshot(for: draft),
           openAIChatWorkspace(for: draft.id) else {
@@ -1504,29 +1777,60 @@ public final class WorkbenchAIStore: ObservableObject {
     return await sendAIChatMessage(prompt, draft: draft)
   }
 
-  public func aiChatImageAttachments(for draft: ArticleDraft, attachmentIDs: Set<UUID>) -> [AIChatImageAttachment] {
+  public func aiChatImageAttachments(
+    for draft: ArticleDraft,
+    attachmentIDs: Set<UUID>
+  ) async -> [AIChatImageAttachment] {
     let selectedAttachments = Array(
       draft.attachments
-      .filter { attachmentIDs.contains($0.id) }
+      .filter { attachmentIDs.contains($0.id) && $0.mediaKind == .image }
       .prefix(AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount)
     )
-    let images: [AIChatImageAttachment] = selectedAttachments.compactMap { attachment in
-        guard let path = attachment.sourceFilePath?.nilIfEmpty else { return nil }
-        let url = URL(fileURLWithPath: path)
-        guard let data = try? Data(contentsOf: url),
-              AIPublishingChatImageAttachmentPresentation.isWithinAttachmentSizeLimit(Int64(data.count)) else {
-          return nil
-        }
-        return AIChatImageAttachment(filename: attachment.originalFilename, mimeType: Self.mimeType(for: url), data: data)
-      }
-    let skippedCount = selectedAttachments.count - images.count
-    if skippedCount > 0 {
-      aiChatMessage = "已跳过 \(skippedCount) 个无法读取、格式不支持或超过 \(AIPublishingChatImageAttachmentPresentation.attachmentSizeLimitText()) 的图片附件。"
+    let result = await Task.detached(priority: .userInitiated) {
+      Self.loadAIChatImageAttachments(selectedAttachments)
+    }.value
+    guard !Task.isCancelled else { return [] }
+    if result.skippedCount > 0 {
+      aiChatMessage = "已跳过 \(result.skippedCount) 个无法读取、格式不支持或超过 \(AIPublishingChatImageAttachmentPresentation.attachmentSizeLimitText()) 的图片附件。"
     }
-    return images
+    return result.images
   }
 
-  private static func mimeType(for url: URL) -> String {
+  private nonisolated static func loadAIChatImageAttachments(
+    _ attachments: [DraftAttachment]
+  ) -> (images: [AIChatImageAttachment], skippedCount: Int) {
+    var images: [AIChatImageAttachment] = []
+    images.reserveCapacity(attachments.count)
+    for attachment in attachments {
+      guard let path = attachment.sourceFilePath?.nilIfEmpty else { continue }
+      let url = URL(fileURLWithPath: path)
+      let mimeType = mimeType(for: url)
+      guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
+            values.isRegularFile == true,
+            let fileSize = values.fileSize,
+            AIPublishingChatImageAttachmentPresentation.isSupportedAttachment(
+              mimeType: mimeType,
+              byteSize: Int64(fileSize)
+            ),
+            let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+            AIPublishingChatImageAttachmentPresentation.isSupportedAttachment(
+              mimeType: mimeType,
+              byteSize: Int64(data.count)
+            ) else {
+        continue
+      }
+      images.append(
+        AIChatImageAttachment(
+          filename: attachment.originalFilename,
+          mimeType: mimeType,
+          data: data
+        )
+      )
+    }
+    return (images, attachments.count - images.count)
+  }
+
+  private nonisolated static func mimeType(for url: URL) -> String {
     switch url.pathExtension.lowercased() {
     case "jpg", "jpeg": return "image/jpeg"
     case "png": return "image/png"

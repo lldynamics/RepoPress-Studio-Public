@@ -19,12 +19,12 @@ struct AIConnectionStatusCard: View {
         .foregroundStyle(aiConnectionStatusColor(presentation.level))
 
       Text(presentation.message)
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
 
       Text(presentation.footnote)
-        .font(.caption2)
+        .font(.workbenchMetadata)
         .foregroundStyle(.tertiary)
     }
     .padding(10)
@@ -38,9 +38,9 @@ struct AIConnectionStatusCard: View {
   private func aiConnectionStatusColor(_ level: AISettingsConnectionStatusLevel) -> Color {
     switch level {
     case .success:
-      return .green
+      return WorkbenchTheme.success
     case .warning:
-      return .orange
+      return WorkbenchTheme.warning
     case .info:
       return .secondary
     }

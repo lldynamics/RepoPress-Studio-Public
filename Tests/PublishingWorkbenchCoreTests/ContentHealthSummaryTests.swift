@@ -6,10 +6,12 @@ final class ContentHealthSummaryTests: XCTestCase {
   func testStoreSeparatesSiteIssuesFromDraftHealthSummaries() throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
 
-    XCTAssertTrue(store.sitePreflightIssues.contains { $0.title == "未选择本地仓库" })
+    XCTAssertTrue(store.sitePreflightIssues.contains { $0.title == CoreL10n.text("未选择本地仓库") })
     XCTAssertEqual(store.contentHealthSummaries.count, store.visibleDrafts.count)
     XCTAssertFalse(
-      store.contentHealthSummaries.flatMap(\.issues).contains { $0.title == "未选择本地仓库" }
+      store.contentHealthSummaries.flatMap(\.issues).contains {
+        $0.title == CoreL10n.text("未选择本地仓库")
+      }
     )
   }
 
@@ -59,6 +61,73 @@ final class ContentHealthSummaryTests: XCTestCase {
     XCTAssertTrue(brokenSummary.issues.contains { $0.field == "slug" })
   }
 
+  func testContentHealthReportDerivesRiskAndAIFixQueuesFromOneSummarySet() throws {
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "Needs review",
+      slug: "needs-review",
+      bodyMarkdown: "正文足够长，包含一个本机路径 /Users/example/site/content/posts/review.md。"
+    )
+    store.updateDraft(draft)
+
+    let report = store.contentHealthReport
+    let summary = try XCTUnwrap(report.draftSummaries.first { $0.draftID == draft.id })
+
+    XCTAssertEqual(report.draftSummaries.count, store.visibleDrafts.count)
+    XCTAssertEqual(report.publicRiskSummary, PublicRiskSummary(issues: report.draftSummaries.flatMap(\.issues)))
+    XCTAssertEqual(report.publicRiskDraftSummaries.map(\.draftID), report.draftSummaries.filter { !$0.publicRiskIssues.isEmpty }.map(\.draftID))
+    XCTAssertTrue(report.aiFixQueueItems.contains { $0.draftID == draft.id })
+    XCTAssertFalse(summary.issues.isEmpty)
+  }
+
+  func testContentHealthReportAsyncMatchesCurrentProfileSnapshot() async throws {
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "Async health",
+      slug: "async-health",
+      bodyMarkdown: "正文足够长，可以在后台单次扫描中生成内容健康报告并派生所有结果。"
+    )
+    store.updateDraft(draft)
+
+    let report = try await store.contentHealthReportAsync()
+
+    XCTAssertEqual(Set(report.draftSummaries.map(\.draftID)), Set(store.visibleDrafts.map(\.id)))
+    XCTAssertEqual(report.publicRiskSummary, PublicRiskSummary(issues: report.draftSummaries.flatMap(\.issues)))
+  }
+
+  func testContentHealthReportAsyncPropagatesCancellation() async {
+    let profile = SiteProfile.defaultProfile
+    let drafts = (0..<256).map { index in
+      ArticleDraft(
+        siteProfileID: profile.id,
+        title: "Draft \(index)",
+        slug: "draft-\(index)",
+        bodyMarkdown: String(repeating: "Content health cancellation check. ", count: 64)
+      )
+    }
+    let task = Task {
+      try await ContentHealthReportService().reportAsync(
+        drafts: drafts,
+        profile: profile,
+        sitePreflightIssues: [],
+        presentations: [:]
+      )
+    }
+
+    task.cancel()
+
+    do {
+      _ = try await task.value
+      XCTFail("Expected content health report cancellation to propagate")
+    } catch is CancellationError {
+      // Expected.
+    } catch {
+      XCTFail("Expected CancellationError, got \(error)")
+    }
+  }
+
   func testCanSuppressRepositoryReadinessForDraftOnlyChecks() {
     let profile = SiteProfile.defaultProfile
     let draft = ArticleDraft(
@@ -76,7 +145,7 @@ final class ContentHealthSummaryTests: XCTestCase {
       includeRepositoryReadiness: false
     )
 
-    XCTAssertFalse(issues.contains { $0.title == "未选择本地仓库" })
+    XCTAssertFalse(issues.contains { $0.title == CoreL10n.text("未选择本地仓库") })
   }
 
   func testDraftPreflightSummaryAggregatesPublicRiskIssues() throws {
@@ -108,7 +177,7 @@ final class ContentHealthSummaryTests: XCTestCase {
 
     XCTAssertEqual(summary.publicRiskErrorCount, 1)
     XCTAssertEqual(summary.publicRiskWarningCount, 2)
-    XCTAssertEqual(summary.publicRiskSummary.statusTitle, "公开风险阻塞")
+    XCTAssertEqual(summary.publicRiskSummary.statusTitle, CoreL10n.text("公开风险阻塞"))
     XCTAssertFalse(summary.publicRiskIssues.contains { $0.message.contains(secret) })
   }
 

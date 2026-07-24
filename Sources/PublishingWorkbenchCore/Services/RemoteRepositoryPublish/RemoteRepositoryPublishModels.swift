@@ -7,9 +7,9 @@ public enum RemoteRepositoryPublishMode: String, Codable, Sendable {
   public var displayName: String {
     switch self {
     case .directCommit:
-      return "线上直接提交"
+      return CoreL10n.text("线上直接提交")
     case .reviewRequest:
-      return "线上 PR/MR"
+      return CoreL10n.text("线上 PR/MR")
     }
   }
 }
@@ -26,19 +26,19 @@ public enum RemoteRepositoryPublishProgressStage: String, Codable, Sendable {
   public var displayName: String {
     switch self {
     case .preparing:
-      return "准备"
+      return CoreL10n.text("准备")
     case .validatingTarget:
-      return "校验"
+      return CoreL10n.text("校验")
     case .creatingBranch:
-      return "分支"
+      return CoreL10n.text("分支")
     case .uploadingFiles:
-      return "上传"
+      return CoreL10n.text("上传")
     case .creatingReview:
-      return "提交评审"
+      return CoreL10n.text("提交评审")
     case .completed:
-      return "完成"
+      return CoreL10n.text("完成")
     case .failed:
-      return "失败"
+      return CoreL10n.text("失败")
     }
   }
 }
@@ -95,9 +95,9 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     self.defaultBranch = defaultBranch
     self.canRead = canRead
     self.canWrite = canWrite
-    self.permissionSummary = permissionSummary ?? (canWrite ? "已确认写入权限。" : "未确认写入权限。")
+    self.permissionSummary = permissionSummary ?? CoreL10n.text(canWrite ? "已确认写入权限。" : "未确认写入权限。")
     self.tokenScopeSummary = tokenScopeSummary
-    self.minimumWritePermission = minimumWritePermission ?? "需要仓库写入权限。"
+    self.minimumWritePermission = minimumWritePermission ?? CoreL10n.text("需要仓库写入权限。")
     self.message = message
   }
 
@@ -123,51 +123,54 @@ public struct RemoteRepositoryAccessCheck: Codable, Hashable, Sendable {
     canRead = try container.decodeIfPresent(Bool.self, forKey: .canRead) ?? false
     canWrite = try container.decodeIfPresent(Bool.self, forKey: .canWrite) ?? false
     permissionSummary = try container.decodeIfPresent(String.self, forKey: .permissionSummary)
-      ?? (canWrite ? "已确认写入权限。" : "未确认写入权限。")
+      ?? CoreL10n.text(canWrite ? "已确认写入权限。" : "未确认写入权限。")
     tokenScopeSummary = try container.decodeIfPresent(String.self, forKey: .tokenScopeSummary)
     minimumWritePermission = try container.decodeIfPresent(String.self, forKey: .minimumWritePermission)
-      ?? "需要仓库写入权限。"
+      ?? CoreL10n.text("需要仓库写入权限。")
     message = try container.decodeIfPresent(String.self, forKey: .message)
-      ?? (canWrite ? "Token 具备写入权限。" : "Token 未确认写入权限。")
+      ?? CoreL10n.text(canWrite ? "Token 具备写入权限。" : "Token 未确认写入权限。")
   }
 }
 
 public extension RemoteRepositoryAccessCheck {
   var accessEvidenceMarkdown: String {
     var lines: [String] = [
-      "# \(provider.displayName) Token 权限证据包",
+      CoreL10n.format("# %@ Token 权限证据包", provider.displayName),
       "",
-      "- 平台：\(provider.displayName)",
-      "- 仓库：\(repositoryName)",
-      "- 可读取：\(canRead ? "是" : "否")",
-      "- 可写入：\(canWrite ? "是" : "否")",
-      "- 权限来源：\(permissionSummary)",
-      "- 最低写入要求：\(minimumWritePermission)",
-      "- 结论：\(message)"
+      CoreL10n.format("- 平台：%@", provider.displayName),
+      CoreL10n.format("- 仓库：%@", repositoryName),
+      CoreL10n.format("- 可读取：%@", CoreL10n.text(canRead ? "是" : "否")),
+      CoreL10n.format("- 可写入：%@", CoreL10n.text(canWrite ? "是" : "否")),
+      CoreL10n.format("- 权限来源：%@", permissionSummary),
+      CoreL10n.format("- 最低写入要求：%@", minimumWritePermission),
+      CoreL10n.format("- 结论：%@", message)
     ]
 
     if let apiBaseURL = apiBaseURL?.trimmedForPublishing.nilIfEmpty {
-      lines.append("- API 端点：\(apiBaseURL)")
+      lines.append(CoreL10n.format("- API 端点：%@", apiBaseURL))
     }
     if let defaultBranch = defaultBranch?.trimmedForPublishing.nilIfEmpty {
-      lines.append("- 默认分支：\(defaultBranch)")
+      lines.append(CoreL10n.format("- 默认分支：%@", defaultBranch))
     }
     if let tokenScopeSummary = tokenScopeSummary?.trimmedForPublishing.nilIfEmpty {
-      lines.append("- Token scope：\(tokenScopeSummary)")
+      lines.append(CoreL10n.format("- Token scope：%@", tokenScopeSummary))
     }
 
     lines.append("")
-    lines.append("## 发布前权限清单")
-    lines.append("- [\(canRead ? "x" : " ")] Token 可以读取仓库元数据")
-    lines.append("- [\(canWrite ? "x" : " ")] Token 满足线上直接提交或 PR/MR 所需写入权限")
-    lines.append("- [\(repositoryName.trimmedForPublishing.isEmpty ? " " : "x")] 权限检查仓库与当前发布仓库一致")
-    lines.append("- [ ] 使用最小权限 Token，未在截图、日志或证据包中暴露 Token 原文")
+    lines.append(CoreL10n.text("## 发布前权限清单"))
+    lines.append(CoreL10n.format("- [%@] Token 可以读取仓库元数据", canRead ? "x" : " "))
+    lines.append(CoreL10n.format("- [%@] Token 满足内容写入所需权限", canWrite ? "x" : " "))
+    if provider == .github {
+      lines.append(CoreL10n.text("- [ ] PR 创建权限需在实际创建时验证"))
+    }
+    lines.append(CoreL10n.format("- [%@] 权限检查仓库与当前发布仓库一致", repositoryName.trimmedForPublishing.isEmpty ? " " : "x"))
+    lines.append(CoreL10n.text("- [ ] 使用最小权限 Token，未在截图、日志或证据包中暴露 Token 原文"))
 
     lines.append("")
-    lines.append("## API 校验命令")
+    lines.append(CoreL10n.text("## API 校验命令"))
     let commands = accessVerificationCommands
     if commands.isEmpty {
-      lines.append("当前权限检查缺少仓库名，无法生成 API 校验命令。")
+      lines.append(CoreL10n.text("当前权限检查缺少仓库名，或 API 端点不符合 HTTPS 安全要求；未生成含 Token 的命令。"))
     } else {
       lines.append("```bash")
       lines.append(contentsOf: commands)
@@ -184,15 +187,23 @@ public extension RemoteRepositoryAccessCheck {
 
     switch provider {
     case .github:
-      let base = apiBaseURL?.trimmedForPublishing.nilIfEmpty ?? "https://api.github.com"
+      guard let base = secureVerificationAPIBaseURL(
+        apiBaseURL,
+        fallback: "https://api.github.com"
+      ) else { return [] }
+      let url = "\(base)/repos/\(encodedRepositoryPath(repositoryName, separator: "/"))"
       return [
-        "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \"\(base)/repos/\(encodedRepositoryPath(repositoryName, separator: "/"))\""
+        "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted(url))"
       ]
 
     case .gitlab:
-      let base = apiBaseURL?.trimmedForPublishing.nilIfEmpty ?? "https://gitlab.com/api/v4"
+      guard let base = secureVerificationAPIBaseURL(
+        apiBaseURL,
+        fallback: "https://gitlab.com/api/v4"
+      ) else { return [] }
+      let url = "\(base)/projects/\(encodedRepositoryPath(repositoryName, separator: "%2F"))"
       return [
-        "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \"\(base)/projects/\(encodedRepositoryPath(repositoryName, separator: "%2F"))\""
+        "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted(url))"
       ]
     }
   }
@@ -244,6 +255,7 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
   public var targetBranch: String
   public var changedPaths: [String]
   public var commitSHA: String?
+  public var remoteVersionsByPath: [String: String]?
   public var reviewURL: String?
   public var reviewTitle: String?
 
@@ -256,6 +268,7 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
     targetBranch: String,
     changedPaths: [String],
     commitSHA: String?,
+    remoteVersionsByPath: [String: String]? = nil,
     reviewURL: String? = nil,
     reviewTitle: String? = nil
   ) {
@@ -267,8 +280,93 @@ public struct RemoteRepositoryPublishResult: Codable, Hashable, Sendable {
     self.targetBranch = targetBranch
     self.changedPaths = changedPaths
     self.commitSHA = commitSHA
+    self.remoteVersionsByPath = remoteVersionsByPath
     self.reviewURL = reviewURL
     self.reviewTitle = reviewTitle
+  }
+
+  public func remoteVersion(for repositoryPath: String) -> String? {
+    remoteVersionsByPath?[repositoryPath.normalizedRelativePath()]?.trimmedForPublishing.nilIfEmpty
+  }
+}
+
+public struct RemoteRepositoryReviewRecoveryDraft: Codable, Hashable, Sendable {
+  public var recordID: UUID
+  public var branchName: String
+  public var targetBranch: String
+  public var title: String
+  public var body: String
+  public var changedPaths: [String]
+  public var recordedCommitSHA: String
+
+  public init(
+    recordID: UUID,
+    branchName: String,
+    targetBranch: String,
+    title: String,
+    body: String,
+    changedPaths: [String],
+    recordedCommitSHA: String
+  ) {
+    self.recordID = recordID
+    self.branchName = branchName
+    self.targetBranch = targetBranch
+    self.title = title
+    self.body = body
+    self.changedPaths = changedPaths
+    self.recordedCommitSHA = recordedCommitSHA
+  }
+}
+
+public extension RemoteRepositoryReviewRecoveryDraft {
+  static func make(record: ReleaseRecord) throws -> RemoteRepositoryReviewRecoveryDraft {
+    guard record.kind == .remotePublishFailure,
+          let branchName = record.branchName?.trimmedForPublishing.nilIfEmpty,
+          let targetBranch = record.targetBranch?.trimmedForPublishing.nilIfEmpty,
+          let commitSHA = record.commitSHA?.trimmedForPublishing.nilIfEmpty,
+          branchName != targetBranch else {
+      throw RemoteRepositoryPublishError.reviewRecoveryUnavailable(
+        CoreL10n.text("记录中没有可恢复的 Review 分支、目标分支或 commit。")
+      )
+    }
+
+    let title: String
+    if let recordedTitle = record.reviewTitle?.trimmedForPublishing.nilIfEmpty {
+      title = recordedTitle
+    } else if !record.batchItems.isEmpty {
+      title = "Publish \(record.batchItems.count) articles"
+    } else {
+      title = CoreL10n.format("发布：%@", record.draftTitle ?? record.title)
+    }
+
+    var bodyLines: [String] = [
+      CoreL10n.text("## 恢复发布"),
+      CoreL10n.format("- 站点：%@", record.siteName ?? CoreL10n.text("未命名站点")),
+      CoreL10n.format("- 目标分支：%@", targetBranch),
+      CoreL10n.format("- 发布分支：%@", branchName),
+      CoreL10n.format("- Commit：%@", commitSHA),
+      "",
+      CoreL10n.text("该分支的文件和 commit 已在之前的发布中写入；本次仅继续创建或获取 PR/MR，不重新上传文件。")
+    ]
+
+    if !record.batchItems.isEmpty {
+      bodyLines.append(contentsOf: ["", CoreL10n.text("## 文章")])
+      bodyLines.append(contentsOf: record.batchItems.map { "- \($0.draftTitle): `\($0.markdownPath)`" })
+    }
+    if !record.changedPaths.isEmpty {
+      bodyLines.append(contentsOf: ["", CoreL10n.text("## 文件")])
+      bodyLines.append(contentsOf: record.changedPaths.map { "- `\($0)`" })
+    }
+
+    return RemoteRepositoryReviewRecoveryDraft(
+      recordID: record.id,
+      branchName: branchName,
+      targetBranch: targetBranch,
+      title: title,
+      body: bodyLines.joined(separator: "\n"),
+      changedPaths: record.changedPaths,
+      recordedCommitSHA: commitSHA
+    )
   }
 }
 
@@ -400,24 +498,24 @@ public extension RemoteRepositoryPublishResult {
   var clipboardSummary: String {
     var lines = [
       "\(displayTitle)",
-      "分支：\(branchSummary)",
-      "文件：\(changedPaths.count)"
+      CoreL10n.format("分支：%@", branchSummary),
+      CoreL10n.format("文件：%@", String(changedPaths.count))
     ]
     if let repositoryName {
-      lines.insert("仓库：\(repositoryName)", at: 1)
+      lines.insert(CoreL10n.format("仓库：%@", repositoryName), at: 1)
     }
     if let commitSHA {
-      lines.append("Commit：\(commitSHA)")
+      lines.append(CoreL10n.format("Commit：%@", commitSHA))
     }
     if let reviewURL {
-      lines.append("PR/MR：\(reviewURL)")
+      lines.append(CoreL10n.format("PR/MR：%@", reviewURL))
     }
     if let reviewTitle {
-      lines.append("标题：\(reviewTitle)")
+      lines.append(CoreL10n.format("标题：%@", reviewTitle))
     }
     if !changedPaths.isEmpty {
       lines.append("")
-      lines.append("变更文件：")
+      lines.append(CoreL10n.text("变更文件："))
       lines.append(contentsOf: changedPaths.map { "- \($0)" })
     }
     return lines.joined(separator: "\n")
@@ -425,36 +523,36 @@ public extension RemoteRepositoryPublishResult {
 
   var remoteVerificationMarkdown: String {
     var lines = [
-      "# \(provider.displayName) 线上发布实测包",
+      CoreL10n.format("# %@ 线上发布实测包", provider.displayName),
       "",
-      "- 发布方式：\(mode.displayName)",
-      "- 分支：\(branchSummary)",
-      "- 文件：\(changedPaths.count)"
+      CoreL10n.format("- 发布方式：%@", mode.displayName),
+      CoreL10n.format("- 分支：%@", branchSummary),
+      CoreL10n.format("- 文件：%@", String(changedPaths.count))
     ]
     if let repositoryName = repositoryName?.trimmedForPublishing.nilIfEmpty {
-      lines.append("- 仓库：\(repositoryName)")
+      lines.append(CoreL10n.format("- 仓库：%@", repositoryName))
     }
     if let commitSHA = commitSHA?.trimmedForPublishing.nilIfEmpty {
-      lines.append("- Commit：\(commitSHA)")
+      lines.append(CoreL10n.format("- Commit：%@", commitSHA))
     }
     if let reviewURL = reviewURL?.trimmedForPublishing.nilIfEmpty {
-      lines.append("- PR/MR：\(reviewURL)")
+      lines.append(CoreL10n.format("- PR/MR：%@", reviewURL))
     }
     if let reviewTitle = reviewTitle?.trimmedForPublishing.nilIfEmpty {
-      lines.append("- 标题：\(reviewTitle)")
+      lines.append(CoreL10n.format("- 标题：%@", reviewTitle))
     }
 
     if !changedPaths.isEmpty {
       lines.append("")
-      lines.append("## 文件清单")
+      lines.append(CoreL10n.text("## 文件清单"))
       lines.append(contentsOf: changedPaths.map { "- \($0)" })
     }
 
     let commands = remoteVerificationCommands
     lines.append("")
-    lines.append("## API 实测命令")
+    lines.append(CoreL10n.text("## API 实测命令"))
     if commands.isEmpty {
-      lines.append("当前结果缺少仓库名或 commit，无法生成可直接运行的 API 校验命令。")
+      lines.append(CoreL10n.text("当前结果缺少仓库名或 commit，或 API 端点不符合 HTTPS 安全要求；未生成含 Token 的命令。"))
     } else {
       lines.append("```bash")
       lines.append(contentsOf: commands)
@@ -462,11 +560,11 @@ public extension RemoteRepositoryPublishResult {
     }
 
     lines.append("")
-    lines.append("## 发布后核对")
-    lines.append("- [ ] 远端 commit 或 PR/MR 可打开。")
-    lines.append("- [ ] 变更文件都在目标分支或 Review 分支。")
-    lines.append("- [ ] 部署状态面板已刷新到最新记录。")
-    lines.append("- [ ] 文章页面、Open Graph 和 Twitter 卡片已完成发布后检查。")
+    lines.append(CoreL10n.text("## 发布后核对"))
+    lines.append(CoreL10n.text("- [ ] 远端 commit 或 PR/MR 可打开。"))
+    lines.append(CoreL10n.text("- [ ] 变更文件都在目标分支或 Review 分支。"))
+    lines.append(CoreL10n.text("- [ ] 部署状态面板已刷新到最新记录。"))
+    lines.append(CoreL10n.text("- [ ] 文章页面、Open Graph 和 Twitter 卡片已完成发布后检查。"))
 
     return lines.joined(separator: "\n")
   }
@@ -479,31 +577,39 @@ public extension RemoteRepositoryPublishResult {
     let ref = mode == .reviewRequest ? branchName : targetBranch
     switch provider {
     case .github:
-      let base = apiBaseURL?.trimmedForPublishing.nilIfEmpty ?? "https://api.github.com"
+      guard let base = secureVerificationAPIBaseURL(
+        apiBaseURL,
+        fallback: "https://api.github.com"
+      ) else { return [] }
       var commands: [String] = []
       if let commitSHA = commitSHA?.trimmedForPublishing.nilIfEmpty {
-        commands.append("curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \"\(base)/repos/\(repositoryName)/commits/\(commitSHA)\"")
+        commands.append("curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted("\(base)/repos/\(repositoryName)/commits/\(commitSHA)"))")
       }
       if let reviewNumber = reviewNumber(from: reviewURL) {
-        commands.append("curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \"\(base)/repos/\(repositoryName)/pulls/\(reviewNumber)\"")
+        commands.append("curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted("\(base)/repos/\(repositoryName)/pulls/\(reviewNumber)"))")
       }
       commands.append(contentsOf: changedPaths.prefix(6).map { path in
-        "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \"\(base)/repos/\(repositoryName)/contents/\(encodedVerificationRepositoryPath(path))?ref=\(encodedVerificationPath(ref))\""
+        let url = "\(base)/repos/\(repositoryName)/contents/\(encodedVerificationRepositoryPath(path))?ref=\(encodedVerificationPath(ref))"
+        return "curl -fsS -H \"Authorization: Bearer $GITHUB_TOKEN\" \(shellSingleQuoted(url))"
       })
       return commands
 
     case .gitlab:
-      let base = apiBaseURL?.trimmedForPublishing.nilIfEmpty ?? "https://gitlab.com/api/v4"
+      guard let base = secureVerificationAPIBaseURL(
+        apiBaseURL,
+        fallback: "https://gitlab.com/api/v4"
+      ) else { return [] }
       let project = encodedVerificationPath(repositoryName)
       var commands: [String] = []
       if let commitSHA = commitSHA?.trimmedForPublishing.nilIfEmpty {
-        commands.append("curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \"\(base)/projects/\(project)/repository/commits/\(encodedVerificationPath(commitSHA))\"")
+        commands.append("curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted("\(base)/projects/\(project)/repository/commits/\(encodedVerificationPath(commitSHA))"))")
       }
       if let reviewNumber = reviewNumber(from: reviewURL) {
-        commands.append("curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \"\(base)/projects/\(project)/merge_requests/\(reviewNumber)\"")
+        commands.append("curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted("\(base)/projects/\(project)/merge_requests/\(reviewNumber)"))")
       }
       commands.append(contentsOf: changedPaths.prefix(6).map { path in
-        "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \"\(base)/projects/\(project)/repository/files/\(encodedVerificationPath(path))?ref=\(encodedVerificationPath(ref))\""
+        let url = "\(base)/projects/\(project)/repository/files/\(encodedVerificationPath(path))?ref=\(encodedVerificationPath(ref))"
+        return "curl -fsS --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \(shellSingleQuoted(url))"
       })
       return commands
     }
@@ -547,6 +653,19 @@ public extension RemoteRepositoryPublishResult {
   }
 }
 
+private func secureVerificationAPIBaseURL(_ candidate: String?, fallback: String) -> String? {
+  let text = candidate?.trimmedForPublishing.nilIfEmpty ?? fallback
+  guard let url = URL(string: text),
+        CredentialedEndpointPolicy.isSecureAPIBaseURL(url) else {
+    return nil
+  }
+  return url.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+}
+
+private func shellSingleQuoted(_ value: String) -> String {
+  "'" + value.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
+}
+
 public extension RemoteRepositoryRollbackDraft {
   static func make(record: ReleaseRecord) throws -> RemoteRepositoryRollbackDraft {
     guard let commitSHA = record.commitSHA?.trimmedForPublishing.nilIfEmpty else {
@@ -556,10 +675,11 @@ public extension RemoteRepositoryRollbackDraft {
       ?? record.branchName?.nilIfEmpty
       ?? "main"
     let displayTitle = record.draftTitle ?? record.title
+    let rollbackTitle = CoreL10n.format("回滚：%@", displayTitle)
     return RemoteRepositoryRollbackDraft(
       recordID: record.id,
-      title: "回滚：\(displayTitle)",
-      commitMessage: "Rollback: \(displayTitle)",
+      title: rollbackTitle,
+      commitMessage: rollbackTitle,
       targetBranch: targetBranch,
       commitSHA: commitSHA,
       changedPaths: record.changedPaths
@@ -577,7 +697,7 @@ public extension RemoteRepositoryReviewWithdrawalDraft {
     }
     return RemoteRepositoryReviewWithdrawalDraft(
       recordID: record.id,
-      title: "撤回 Review：\(record.draftTitle ?? record.title)",
+      title: CoreL10n.format("撤回 Review：%@", record.draftTitle ?? record.title),
       reviewURL: reviewURL,
       reviewNumber: reviewNumber,
       branchName: record.branchName?.nilIfEmpty,
@@ -603,4 +723,3 @@ public extension RemoteRepositoryReviewWithdrawalDraft {
     return nil
   }
 }
-

@@ -6,21 +6,21 @@ struct ProBlockNoticeRow: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Label("刚才受限：\(notice.feature.displayName)", systemImage: notice.feature.systemImage)
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.orange)
+      Label("刚才受限：\(notice.feature.localizedDisplayName)", systemImage: notice.feature.systemImage)
+        .font(.workbenchCardTitle)
+        .foregroundStyle(WorkbenchTheme.warning)
 
       Text(notice.message)
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
-        .lineLimit(3)
+        .fixedSize(horizontal: false, vertical: true)
 
       Text(notice.nextStep)
-        .font(.caption)
-        .foregroundStyle(.orange)
+        .font(.workbenchSupporting)
+        .foregroundStyle(WorkbenchTheme.warning)
     }
     .padding(8)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(.orange.opacity(WorkbenchOpacity.selectionBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchTheme.warning.opacity(WorkbenchOpacity.selectionBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 }

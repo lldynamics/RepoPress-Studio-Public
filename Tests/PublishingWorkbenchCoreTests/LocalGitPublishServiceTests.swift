@@ -59,6 +59,146 @@ final class LocalGitPublishServiceTests: XCTestCase {
     XCTAssertEqual(try git(["status", "--porcelain"], rootURL: rootURL), "")
   }
 
+  func testDirectCommitStagesPathMigrationAsAddAndDelete() throws {
+    let rootURL = try makeGitRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let oldURL = rootURL.appendingPathComponent("content/posts/old-name.md")
+    try "old article\n".write(to: oldURL, atomically: true, encoding: .utf8)
+    try git(["add", "content/posts/old-name.md"], rootURL: rootURL)
+    try git(["commit", "-m", "Seed old article"], rootURL: rootURL)
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "New Name",
+      slug: "new-name",
+      draft: false,
+      bodyMarkdown: "Updated article body after renaming the repository path.",
+      repositoryPath: "content/posts/old-name.md"
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+
+    let result = try LocalGitPublishService().publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit
+    )
+
+    XCTAssertEqual(result.committedPaths, ["content/posts/new-name.md", "content/posts/old-name.md"])
+    let nameStatus = try git(["show", "--no-renames", "--name-status", "--format="], rootURL: rootURL)
+    XCTAssertTrue(nameStatus.contains("A\tcontent/posts/new-name.md"))
+    XCTAssertTrue(nameStatus.contains("D\tcontent/posts/old-name.md"))
+  }
+
+  func testRejectsExistingStagedChangesWithoutWritingPackage() throws {
+    let rootURL = try makeGitRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try "keep staged\n".write(
+      to: rootURL.appendingPathComponent("notes.txt"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try git(["add", "notes.txt"], rootURL: rootURL)
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Protected Index",
+      slug: "protected-index",
+      bodyMarkdown: "Publishing must not consume unrelated staged content."
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+
+    XCTAssertThrowsError(
+      try LocalGitPublishService().publish(package: package, profile: profile, mode: .directCommit)
+    ) { error in
+      XCTAssertEqual(error as? LocalGitPublishError, .repositoryHasStagedChanges(["notes.txt"]))
+    }
+
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: rootURL.appendingPathComponent("content/posts/protected-index.md").path
+      )
+    )
+    XCTAssertEqual(try git(["diff", "--cached", "--name-only"], rootURL: rootURL), "notes.txt")
+  }
+
+  func testFailedReviewCommitRestoresFilesIndexAndOriginalBranch() throws {
+    let rootURL = try makeGitRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let articleURL = rootURL.appendingPathComponent("content/posts/rollback.md")
+    try "original article\n".write(to: articleURL, atomically: true, encoding: .utf8)
+    try git(["add", "content/posts/rollback.md"], rootURL: rootURL)
+    try git(["commit", "-m", "Seed rollback article"], rootURL: rootURL)
+    let hookURL = rootURL.appendingPathComponent(".git/hooks/pre-commit")
+    try "#!/bin/sh\nexit 1\n".write(to: hookURL, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hookURL.path)
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Rollback",
+      slug: "rollback",
+      bodyMarkdown: "updated article that must be rolled back after the hook rejects the commit"
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+
+    XCTAssertThrowsError(
+      try LocalGitPublishService().publish(package: package, profile: profile, mode: .reviewBranch)
+    )
+
+    XCTAssertEqual(try git(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL), "main")
+    XCTAssertEqual(try git(["status", "--porcelain"], rootURL: rootURL), "")
+    XCTAssertEqual(try String(contentsOf: articleURL, encoding: .utf8), "original article\n")
+    XCTAssertThrowsError(try git(["rev-parse", "--verify", package.reviewBranchName], rootURL: rootURL))
+  }
+
+  func testFailedCommitPreservesExternalEditInsteadOfRollingItBack() throws {
+    let rootURL = try makeGitRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let articleURL = rootURL.appendingPathComponent("content/posts/concurrent.md")
+    try "original article\n".write(to: articleURL, atomically: true, encoding: .utf8)
+    try git(["add", "content/posts/concurrent.md"], rootURL: rootURL)
+    try git(["commit", "-m", "Seed concurrent article"], rootURL: rootURL)
+    let hookURL = rootURL.appendingPathComponent(".git/hooks/pre-commit")
+    try """
+    #!/bin/sh
+    printf 'external editor content\\n' > content/posts/concurrent.md
+    exit 1
+    """.write(to: hookURL, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hookURL.path)
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Concurrent Edit",
+      slug: "concurrent",
+      bodyMarkdown: "publisher content"
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+
+    XCTAssertThrowsError(
+      try LocalGitPublishService().publish(package: package, profile: profile, mode: .directCommit)
+    ) { error in
+      guard case let .rollbackFailed(_, rollback) = error as? LocalGitPublishError else {
+        XCTFail("Expected rollbackFailed, got \(error)")
+        return
+      }
+      XCTAssertTrue(rollback.contains("检测到发布后的外部修改"))
+      XCTAssertTrue(rollback.contains("content/posts/concurrent.md"))
+    }
+
+    XCTAssertEqual(try String(contentsOf: articleURL, encoding: .utf8), "external editor content\n")
+  }
+
   func testFailsOutsideGitRepository() throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacNoGit-\(UUID().uuidString)", isDirectory: true)
@@ -82,6 +222,48 @@ final class LocalGitPublishServiceTests: XCTestCase {
       }
       XCTAssertEqual(normalizedTemporaryPath(path), normalizedTemporaryPath(rootURL.path))
     }
+  }
+
+  func testDirectCommitSupportsLinkedGitWorktree() throws {
+    let rootURL = try makeGitRepositoryFixture()
+    let linkedURL = rootURL
+      .deletingLastPathComponent()
+      .appendingPathComponent("PersonalSitePublisherMacLinked-\(UUID().uuidString)", isDirectory: true)
+    defer {
+      _ = try? git(["worktree", "remove", "--force", linkedURL.path], rootURL: rootURL)
+      try? FileManager.default.removeItem(at: linkedURL)
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+    try git(["worktree", "add", "-b", "linked-publish", linkedURL.path], rootURL: rootURL)
+    var isDirectory: ObjCBool = false
+    XCTAssertTrue(FileManager.default.fileExists(
+      atPath: linkedURL.appendingPathComponent(".git").path,
+      isDirectory: &isDirectory
+    ))
+    XCTAssertFalse(isDirectory.boolValue)
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(linkedURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Linked Worktree",
+      slug: "linked-worktree",
+      draft: false,
+      bodyMarkdown: "Publishing must support Git worktrees whose .git entry is a file."
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+
+    let result = try LocalGitPublishService().publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit
+    )
+
+    XCTAssertEqual(result.branchName, "linked-publish")
+    XCTAssertTrue(try git(["show", "--name-only", "--format="], rootURL: linkedURL).contains(
+      "content/posts/linked-worktree.md"
+    ))
   }
 
   private func makeGitRepositoryFixture() throws -> URL {

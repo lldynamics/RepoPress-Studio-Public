@@ -2,6 +2,51 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class LocalRepositoryServiceTests: XCTestCase {
+  func testSwitchLocalBranchChangesTheCheckedOutBranch() throws {
+    let (rootURL, profile) = try makeBranchOperationRepository()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try git(["branch", "release"], rootURL: rootURL)
+
+    try LocalRepositoryService().switchLocalBranch(profile: profile, to: "release")
+
+    XCTAssertEqual(try git(["branch", "--show-current"], rootURL: rootURL), "release")
+  }
+
+  func testSwitchLocalBranchRejectsDirtyWorkingTree() throws {
+    let (rootURL, profile) = try makeBranchOperationRepository()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try git(["branch", "release"], rootURL: rootURL)
+    try "changed\n".write(
+      to: rootURL.appendingPathComponent("README.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    XCTAssertThrowsError(
+      try LocalRepositoryService().switchLocalBranch(profile: profile, to: "release")
+    ) { error in
+      guard let serviceError = error as? LocalRepositoryServiceError,
+            case .workingTreeHasChanges = serviceError else {
+        return XCTFail("Expected workingTreeHasChanges, got \(error)")
+      }
+    }
+    XCTAssertEqual(try git(["branch", "--show-current"], rootURL: rootURL), "main")
+  }
+
+  func testCreateAndSwitchLocalBranchIsAtomic() throws {
+    let (rootURL, profile) = try makeBranchOperationRepository()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    try LocalRepositoryService().createAndSwitchLocalBranch(
+      profile: profile,
+      branchName: "review/article",
+      from: "main"
+    )
+
+    XCTAssertEqual(try git(["branch", "--show-current"], rootURL: rootURL), "review/article")
+    XCTAssertEqual(try git(["rev-parse", "review/article"], rootURL: rootURL), try git(["rev-parse", "main"], rootURL: rootURL))
+  }
+
   func testDetectsZolaRepositoryShapeAndCountsFiles() throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacTests-\(UUID().uuidString)", isDirectory: true)
@@ -338,6 +383,45 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertEqual(report.originRemote?.displayName, "GitHub jinfang/site")
   }
 
+  func testScanRedactsHTTPSOriginCredentialsAndQuerySecrets() throws {
+    let rootURL = try makeRemoteDetectionRepository(
+      remoteURL: "https://oauth-user:super-secret@github.com/owner/site.git?access_token=query-secret#fragment"
+    )
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+
+    let remote = try XCTUnwrap(LocalRepositoryService().scan(profile: profile).originRemote)
+
+    XCTAssertEqual(remote.provider, .github)
+    XCTAssertEqual(remote.owner, "owner")
+    XCTAssertEqual(remote.name, "site")
+    XCTAssertEqual(remote.remoteURL, "https://github.com/owner/site.git")
+    XCTAssertFalse(remote.remoteURL.contains("oauth-user"))
+    XCTAssertFalse(remote.remoteURL.contains("super-secret"))
+    XCTAssertFalse(remote.remoteURL.contains("query-secret"))
+  }
+
+  func testScanRedactsSCPOriginCredentialPrefix() throws {
+    let rootURL = try makeRemoteDetectionRepository(
+      remoteURL: "oauth2:super-secret@gitlab.com:group/site.git"
+    )
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+
+    let remote = try XCTUnwrap(LocalRepositoryService().scan(profile: profile).originRemote)
+
+    XCTAssertEqual(remote.provider, .gitlab)
+    XCTAssertEqual(remote.owner, "group")
+    XCTAssertEqual(remote.name, "site")
+    XCTAssertEqual(remote.remoteURL, "gitlab.com:group/site.git")
+    XCTAssertFalse(remote.remoteURL.contains("oauth2"))
+    XCTAssertFalse(remote.remoteURL.contains("super-secret"))
+  }
+
   func testReportsDetachedHeadAsRepositoryPreflightError() throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacDetachedTests-\(UUID().uuidString)", isDirectory: true)
@@ -440,6 +524,7 @@ final class LocalRepositoryServiceTests: XCTestCase {
       changedFiles: [
         RepositoryChangedFile(status: " M", path: "content/posts/mac-editor.md", kind: .modified),
         RepositoryChangedFile(status: "R ", path: "content/old.md -> content/posts/new-name.md", kind: .renamed),
+        RepositoryChangedFile(status: "??", path: "private/posts/private-note.md", kind: .untracked),
         RepositoryChangedFile(status: "??", path: "static/images/cover.webp", kind: .untracked),
         RepositoryChangedFile(status: " M", path: "config.toml", kind: .modified),
         RepositoryChangedFile(status: " M", path: "README.md", kind: .modified),
@@ -449,14 +534,14 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
     let summary = report.changeSummary(contentRoot: "content", assetRoot: "static")
 
-    XCTAssertEqual(summary.articleCount, 2)
+    XCTAssertEqual(summary.articleCount, 3)
     XCTAssertEqual(summary.imageCount, 1)
     XCTAssertEqual(summary.configurationCount, 1)
     XCTAssertEqual(summary.otherCount, 1)
-    XCTAssertEqual(summary.publishRelevantCount, 4)
+    XCTAssertEqual(summary.publishRelevantCount, 5)
     XCTAssertEqual(
       report.changedFiles(role: .article, contentRoot: "content", assetRoot: "static").map(\.path),
-      ["content/posts/mac-editor.md", "content/old.md -> content/posts/new-name.md"]
+      ["content/posts/mac-editor.md", "content/old.md -> content/posts/new-name.md", "private/posts/private-note.md"]
     )
   }
 
@@ -476,6 +561,7 @@ final class LocalRepositoryServiceTests: XCTestCase {
         RepositoryChangedFile(status: "??", path: "static/images/cover.webp", kind: .untracked),
         RepositoryChangedFile(status: " M", path: "content/posts/mac-editor.md", kind: .modified),
         RepositoryChangedFile(status: "R ", path: "content/old.md -> content/posts/new-name.md", kind: .renamed),
+        RepositoryChangedFile(status: "??", path: "private/posts/private-note.md", kind: .untracked),
       ],
       preflightIssues: []
     )
@@ -484,8 +570,8 @@ final class LocalRepositoryServiceTests: XCTestCase {
 
     XCTAssertEqual(sections.map(\.role), [.article, .image, .configuration, .other])
     XCTAssertEqual(sections.map(\.title), ["文章变更", "图片变更", "配置变更", "其他变更"])
-    XCTAssertEqual(sections.map(\.count), [2, 1, 1, 1])
-    XCTAssertEqual(sections.first?.files.map(\.displayPath), ["content/posts/mac-editor.md", "content/posts/new-name.md"])
+    XCTAssertEqual(sections.map(\.count), [3, 1, 1, 1])
+    XCTAssertEqual(sections.first?.files.map(\.displayPath), ["content/posts/mac-editor.md", "content/posts/new-name.md", "private/posts/private-note.md"])
     XCTAssertTrue(sections[0].role.isPublishRelevant)
     XCTAssertFalse(sections[3].role.isPublishRelevant)
   }
@@ -514,5 +600,44 @@ final class LocalRepositoryServiceTests: XCTestCase {
       )
     }
     return output.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private func makeBranchOperationRepository() throws -> (URL, SiteProfile) {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMacBranchOperationTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    do {
+      try git(["init", "-b", "main"], rootURL: rootURL)
+      try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
+      try git(["config", "user.name", "Tests"], rootURL: rootURL)
+      try "initial\n".write(
+        to: rootURL.appendingPathComponent("README.md"),
+        atomically: true,
+        encoding: .utf8
+      )
+      try git(["add", "README.md"], rootURL: rootURL)
+      try git(["commit", "-m", "Initial"], rootURL: rootURL)
+    } catch {
+      try? FileManager.default.removeItem(at: rootURL)
+      throw error
+    }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    return (rootURL, profile)
+  }
+
+  private func makeRemoteDetectionRepository(remoteURL: String) throws -> URL {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMacRemoteRedactionTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    do {
+      try git(["init", "-b", "main"], rootURL: rootURL)
+      try git(["remote", "add", "origin", remoteURL], rootURL: rootURL)
+      return rootURL
+    } catch {
+      try? FileManager.default.removeItem(at: rootURL)
+      throw error
+    }
   }
 }

@@ -2,16 +2,17 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct DefaultRuleSettingsView: View {
-  @Binding var defaultShowsInspector: Bool
   let autoRunPreflightBinding: Binding<Bool>
   @Binding var scanRepositoryOnLaunch: Bool
   let activeProfileBinding: Binding<SiteProfile>
   let siteKindBinding: Binding<SiteKind>
+  let healthDestination: SettingsConfigurationHealthDestination?
+  let healthNavigationRequestID: UUID
+  @State private var showsPathRules = false
 
   var body: some View {
     Form {
       DefaultRuleGeneralSection(
-        defaultShowsInspector: $defaultShowsInspector,
         autoRunPreflightBinding: autoRunPreflightBinding,
         scanRepositoryOnLaunch: $scanRepositoryOnLaunch
       )
@@ -21,11 +22,30 @@ struct DefaultRuleSettingsView: View {
         siteKindBinding: siteKindBinding
       )
 
-      DefaultRulePathSection(
-        activeProfileBinding: activeProfileBinding
-      )
+      Section {
+        DisclosureGroup(isExpanded: $showsPathRules) {
+          DefaultRulePathSection(
+            activeProfileBinding: activeProfileBinding,
+            shouldFocusPaths: healthDestination == .defaultRules,
+            navigationRequestID: healthNavigationRequestID
+          )
+        } label: {
+          Label("文件路径与模板", systemImage: "folder.badge.gearshape")
+        }
+      } footer: {
+        Text("仅在站点目录结构不同时调整；默认值适用于当前站点类型。")
+      }
     }
     .formStyle(.grouped)
     .padding()
+    .onAppear(perform: revealRequestedPathRules)
+    .onChange(of: healthNavigationRequestID) { _, _ in
+      revealRequestedPathRules()
+    }
+  }
+
+  private func revealRequestedPathRules() {
+    guard healthDestination == .defaultRules else { return }
+    showsPathRules = true
   }
 }

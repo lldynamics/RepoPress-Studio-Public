@@ -6,6 +6,32 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class SiteImageWorkbenchServiceTests: XCTestCase {
+  func testReportIgnoresVideoAttachments() {
+    let profile = SiteProfile.defaultProfile
+    let video = DraftAttachment(
+      originalFilename: "walkthrough.mp4",
+      relativePublishPath: "/videos/2026/walkthrough.mp4",
+      repositoryPath: "static/videos/2026/walkthrough.mp4",
+      altText: "",
+      caption: "",
+      sourceFilePath: "/tmp/missing-walkthrough.mp4"
+    )
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Video Only",
+      slug: "video-only",
+      bodyMarkdown: "<video controls src=\"/videos/2026/walkthrough.mp4\"></video>",
+      attachments: [video]
+    )
+
+    let report = SiteImageWorkbenchService().report(draft: draft, profile: profile)
+
+    XCTAssertTrue(report.items.isEmpty)
+    XCTAssertEqual(report.missingAltTextCount, 0)
+    XCTAssertEqual(report.missingCaptionCount, 0)
+    XCTAssertEqual(report.missingSourceCount, 0)
+  }
+
   func testReportInspectsImagePublishReadiness() throws {
     let directory = try makeTemporaryDirectory()
     let imageURL = directory.appendingPathComponent("cover.png")
@@ -48,7 +74,7 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertEqual(report.coverStatus.relativePublishPath, "/images/2026/cover.png")
     XCTAssertEqual(report.coverStatus.repositoryPath, "static/images/2026/cover.png")
     XCTAssertTrue(report.coverStatus.writesFrontMatter)
-    XCTAssertTrue(report.issues.contains { $0.title == "正文图片未登记" })
+    XCTAssertTrue(report.issues.contains { $0.title == CoreL10n.text("正文图片未登记") })
   }
 
   func testReportFlagsDuplicateImageReferences() throws {
@@ -194,6 +220,39 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertEqual(result.draft.attachments[1].caption, "Custom detail")
     XCTAssertTrue(result.draft.bodyMarkdown.contains("![hero image](/images/2026/hero-image.jpg)"))
     XCTAssertTrue(result.draft.bodyMarkdown.contains("![Keep this](/images/2026/detail.jpg)"))
+  }
+
+  func testFillMissingMetadataOnlyChangesIncludedAttachments() {
+    let profile = SiteProfile.defaultProfile
+    let included = DraftAttachment(
+      originalFilename: "included-image.jpg",
+      relativePublishPath: "/images/2026/included-image.jpg",
+      repositoryPath: "static/images/2026/included-image.jpg"
+    )
+    let excluded = DraftAttachment(
+      originalFilename: "excluded-image.jpg",
+      relativePublishPath: "/images/2026/excluded-image.jpg",
+      repositoryPath: "static/images/2026/excluded-image.jpg"
+    )
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Selective metadata",
+      slug: "selective-metadata",
+      bodyMarkdown: "![](/images/2026/included-image.jpg)\n![](/images/2026/excluded-image.jpg)",
+      attachments: [included, excluded]
+    )
+
+    let result = SiteImageWorkbenchService().fillMissingMetadata(
+      draft: draft,
+      includedAttachmentIDs: [included.id]
+    )
+
+    XCTAssertEqual(result.filledAltTextCount, 1)
+    XCTAssertEqual(result.filledCaptionCount, 1)
+    XCTAssertEqual(result.draft.attachments[0].altText, "included image")
+    XCTAssertEqual(result.draft.attachments[1].altText, "")
+    XCTAssertTrue(result.draft.bodyMarkdown.contains("![included image](/images/2026/included-image.jpg)"))
+    XCTAssertTrue(result.draft.bodyMarkdown.contains("![](/images/2026/excluded-image.jpg)"))
   }
 
   func testImageTextTargetsIncludeImagesMissingAltOrCaption() {
@@ -412,6 +471,46 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertEqual(try Data(contentsOf: sourceURL), originalData)
   }
 
+  func testOptimizeJPEGSkipsExcludedAttachment() throws {
+    let directory = try makeTemporaryDirectory()
+    let includedURL = directory.appendingPathComponent("included.jpg")
+    let excludedURL = directory.appendingPathComponent("excluded.jpg")
+    let optimizedDirectory = directory.appendingPathComponent("optimized", isDirectory: true)
+    try writeTestImage(at: includedURL, width: 360, height: 360, type: .jpeg, quality: 1)
+    try writeTestImage(at: excludedURL, width: 360, height: 360, type: .jpeg, quality: 1)
+
+    let profile = SiteProfile.defaultProfile
+    let included = DraftAttachment(
+      originalFilename: "included.jpg",
+      relativePublishPath: "/images/2026/included.jpg",
+      repositoryPath: "static/images/2026/included.jpg",
+      sourceFilePath: includedURL.path
+    )
+    let excluded = DraftAttachment(
+      originalFilename: "excluded.jpg",
+      relativePublishPath: "/images/2026/excluded.jpg",
+      repositoryPath: "static/images/2026/excluded.jpg",
+      sourceFilePath: excludedURL.path
+    )
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Selective optimization",
+      slug: "selective-optimization",
+      attachments: [included, excluded]
+    )
+
+    let result = try SiteImageWorkbenchService().optimizeJPEGAttachments(
+      draft: draft,
+      destinationDirectory: optimizedDirectory,
+      quality: 0.25,
+      includedAttachmentIDs: [included.id]
+    )
+
+    XCTAssertEqual(result.optimizedCount, 1)
+    XCTAssertNotEqual(result.draft.attachments[0].sourceFilePath, includedURL.path)
+    XCTAssertEqual(result.draft.attachments[1].sourceFilePath, excludedURL.path)
+  }
+
   func testConvertAttachmentsToWebPUpdatesPathsAndMarkdownReferences() throws {
     guard SiteImageWorkbenchService.supportsWebPEncoding else {
       throw XCTSkip("当前运行环境没有可用的 WebP 编码器。")
@@ -457,6 +556,97 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: result.draft.attachments[0].sourceFilePath ?? ""))
     XCTAssertTrue(result.draft.bodyMarkdown.contains("![Diagram](/images/2026/diagram.webp)"))
     XCTAssertTrue(result.draft.bodyMarkdown.contains("![Titled](/images/2026/diagram.webp \"diagram title\")"))
+  }
+
+  func testCWebPTimeoutStopsProcessAndCleansPartialOutput() throws {
+    let directory = try makeTemporaryDirectory()
+    let sourceURL = directory.appendingPathComponent("diagram.png")
+    let optimizedDirectory = directory.appendingPathComponent("optimized", isDirectory: true)
+    let executableURL = directory.appendingPathComponent("slow-cwebp")
+    try writeTestImage(at: sourceURL, width: 32, height: 24, type: .png)
+    try "#!/bin/sh\nsleep 3\n".write(to: executableURL, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+
+    let attachment = DraftAttachment(
+      originalFilename: "diagram.png",
+      relativePublishPath: "/images/2026/diagram.png",
+      repositoryPath: "static/images/2026/diagram.png",
+      sourceFilePath: sourceURL.path
+    )
+    let draft = ArticleDraft(
+      siteProfileID: SiteProfile.defaultProfile.id,
+      title: "Timeout",
+      slug: "timeout",
+      bodyMarkdown: "![Diagram](/images/2026/diagram.png)",
+      attachments: [attachment]
+    )
+    let service = SiteImageWorkbenchService(
+      cwebPExecutableURL: executableURL,
+      cwebPTimeout: 0.1,
+      prefersCWebP: true
+    )
+
+    let startedAt = Date()
+    XCTAssertThrowsError(
+      try service.convertAttachmentsToWebP(draft: draft, destinationDirectory: optimizedDirectory)
+    ) { error in
+      XCTAssertEqual((error as? ImageWorkbenchError)?.errorDescription, "cwebp 执行超时，已停止。")
+    }
+    XCTAssertLessThan(Date().timeIntervalSince(startedAt), 1.8)
+    let remainingFiles = try FileManager.default.contentsOfDirectory(atPath: optimizedDirectory.path)
+    XCTAssertTrue(remainingFiles.isEmpty)
+  }
+
+  func testImageBatchCancellationStopsCWebPAndCleansStagingDirectory() async throws {
+    let directory = try makeTemporaryDirectory()
+    let sourceURL = directory.appendingPathComponent("diagram.png")
+    let executableURL = directory.appendingPathComponent("slow-cwebp")
+    try writeTestImage(at: sourceURL, width: 32, height: 24, type: .png)
+    try "#!/bin/sh\nsleep 3\n".write(to: executableURL, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+
+    let attachment = DraftAttachment(
+      originalFilename: "diagram.png",
+      relativePublishPath: "/images/2026/diagram.png",
+      repositoryPath: "static/images/2026/diagram.png",
+      sourceFilePath: sourceURL.path
+    )
+    let draft = ArticleDraft(
+      siteProfileID: SiteProfile.defaultProfile.id,
+      title: "Cancellation",
+      slug: "cancellation",
+      bodyMarkdown: "![Diagram](/images/2026/diagram.png)",
+      attachments: [attachment]
+    )
+    let processor = ImageBatchProcessingActor(
+      service: SiteImageWorkbenchService(
+        cwebPExecutableURL: executableURL,
+        cwebPTimeout: 3,
+        prefersCWebP: true
+      )
+    )
+    let cancellationToken = ImageProcessingCancellationToken()
+    let task = Task {
+      try await processor.process(
+        operation: .convertWebP,
+        drafts: [draft],
+        destinationRoot: directory,
+        cancellationToken: cancellationToken,
+        progress: { _ in }
+      )
+    }
+
+    try await Task.sleep(for: .milliseconds(100))
+    cancellationToken.cancel()
+    do {
+      _ = try await task.value
+      XCTFail("Expected cancellation")
+    } catch is CancellationError {
+      // Expected: the token is observed while cwebp is running.
+    }
+
+    let remainingFiles = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+    XCTAssertFalse(remainingFiles.contains { $0.hasPrefix(".image-batch-") })
   }
 
   func testOptimizeSVGCreatesSmallerCopyWithoutChangingPublishPath() throws {
@@ -663,6 +853,16 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertEqual(summary.webPConvertibleCount, 1)
     XCTAssertEqual(summary.duplicateImageCount, 0)
     XCTAssertEqual(summary.draftSummaries.count, 2)
+    let firstDraftSummary = try XCTUnwrap(
+      summary.draftSummaries.first(where: { $0.draftID == firstDraft.id })
+    )
+    XCTAssertEqual(firstDraftSummary.items.map(\.attachmentID), [firstAttachment.id])
+    XCTAssertFalse(firstDraftSummary.issues.isEmpty)
+    let secondDraftSummary = try XCTUnwrap(
+      summary.draftSummaries.first(where: { $0.draftID == secondDraft.id })
+    )
+    XCTAssertEqual(secondDraftSummary.items.map(\.attachmentID), [secondAttachment.id])
+    XCTAssertTrue(secondDraftSummary.issues.contains { $0.attachmentID == secondAttachment.id })
   }
 
   func testSiteSummarySortsImageQueueBySeverity() throws {

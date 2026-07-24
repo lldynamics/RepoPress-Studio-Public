@@ -10,26 +10,28 @@ extension ReleaseHistoryDetailView {
     let recoveryPackage = entry.recoveryPackage
 
     return VStack(alignment: .leading, spacing: 12) {
-      HStack(alignment: .firstTextBaseline) {
-        Label(record.kind.displayName, systemImage: record.kind.systemImage)
-          .font(.caption.weight(.medium))
-          .foregroundStyle(.secondary)
-        Label(entry.status.displayName, systemImage: entry.status.systemImage)
-          .font(.caption.weight(.medium))
-          .foregroundStyle(ledgerStatusForeground(entry.status))
-        Spacer()
-        Text(record.createdAt.workbenchShortText)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+          releaseRecordStatusBadges(entry)
+          Spacer(minLength: 10)
+          releaseRecordTimestamp(record)
+        }
+
+        VStack(alignment: .leading, spacing: 6) {
+          releaseRecordStatusBadges(entry)
+          releaseRecordTimestamp(record)
+        }
       }
 
       VStack(alignment: .leading, spacing: 4) {
         Text(record.title)
           .font(.headline)
+          .accessibilityAddTraits(.isHeader)
         Text(record.summary)
+          .font(.callout)
           .foregroundStyle(.secondary)
         Text(entry.statusMessage)
-          .font(.caption)
+          .font(.callout)
           .foregroundStyle(ledgerStatusForeground(entry.status))
       }
 
@@ -57,13 +59,10 @@ extension ReleaseHistoryDetailView {
       if !record.changedPaths.isEmpty {
         VStack(alignment: .leading, spacing: 6) {
           Text("文件")
-            .font(.caption.weight(.medium))
+            .font(.callout.weight(.medium))
             .foregroundStyle(.secondary)
           ForEach(record.changedPaths, id: \.self) { path in
-            Text(path)
-              .font(.caption.monospaced())
-              .lineLimit(1)
-              .textSelection(.enabled)
+            WorkbenchPathIdentity(path: path)
           }
         }
       }
@@ -71,22 +70,21 @@ extension ReleaseHistoryDetailView {
       if !record.batchItems.isEmpty {
         VStack(alignment: .leading, spacing: 6) {
           Text("批量文章")
-            .font(.caption.weight(.medium))
+            .font(.callout.weight(.medium))
             .foregroundStyle(.secondary)
           ForEach(record.batchItems) { item in
             VStack(alignment: .leading, spacing: 2) {
               Text(item.draftTitle)
                 .font(.caption.weight(.medium))
-                .lineLimit(1)
+                .workbenchTruncatedIdentity(item.draftTitle)
               Text(item.markdownPath)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .textSelection(.enabled)
+                .workbenchTruncatedIdentity(item.markdownPath)
               if item.changedPaths.count > 1 {
                 Text("\(item.changedPaths.count) 个相关文件")
-                  .font(.caption2)
-                  .foregroundStyle(.tertiary)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
               }
             }
           }
@@ -95,38 +93,23 @@ extension ReleaseHistoryDetailView {
 
       if let deploymentStatus {
         VStack(alignment: .leading, spacing: 8) {
-          HStack(alignment: .firstTextBaseline) {
-            Label(deploymentStatus.title, systemImage: deploymentStatus.level.systemImage)
-              .font(.callout.weight(.medium))
-              .foregroundStyle(statusForeground(deploymentStatus.level))
-            Spacer()
-            Button {
-              copy(deploymentStatus.clipboardSummary, message: "已复制部署诊断。")
-            } label: {
-              Label("复制诊断", systemImage: "doc.on.doc")
+          ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+              deploymentStatusTitle(deploymentStatus)
+              Spacer(minLength: 10)
+              deploymentStatusActions(deploymentStatus, record: record)
             }
-            .controlSize(.small)
-            Button {
-              copy(deploymentStatus.postPublishChecklistMarkdown, message: "已复制发布后校验报告。")
-            } label: {
-              Label("复制报告", systemImage: "checklist.checked")
-            }
-            .controlSize(.small)
-            if let siteURLText = deploymentStatus.siteURLText,
-               let siteURL = URL(string: siteURLText) {
-              Button {
-                ExternalURLOpener.open(siteURL)
-              } label: {
-                Label("打开站点", systemImage: "safari")
-              }
-              .controlSize(.small)
+
+            VStack(alignment: .leading, spacing: 10) {
+              deploymentStatusTitle(deploymentStatus)
+              deploymentStatusActions(deploymentStatus, record: record)
             }
           }
           Text(deploymentStatus.message)
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
           Label("\(deploymentStatus.nextActionTitle)：\(deploymentStatus.nextActionMessage)", systemImage: "checklist")
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(statusForeground(deploymentStatus.level))
 
           if deploymentHistory.count > 1 {
@@ -142,23 +125,24 @@ extension ReleaseHistoryDetailView {
                 .foregroundStyle(statusForeground(signal.level))
                 .frame(width: 16)
               Text(signal.title)
-                .font(.caption.weight(.medium))
+                .font(.callout.weight(.medium))
               Text(signal.message)
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
               Spacer()
               if let urlText = signal.urlText,
                  let url = URL(string: urlText) {
                 Button {
                   ExternalURLOpener.open(url)
                 } label: {
-                  Image(systemName: "arrow.up.right.square")
+                  Label("打开信号", systemImage: "arrow.up.right.square")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.bordered)
                 .help("打开部署信号")
                 .accessibilityLabel("打开部署信号")
                 .accessibilityValue(signal.title)
+                .accessibilityIdentifier("release-record-\(record.id)-open-signal-\(signal.id)")
               }
             }
           }
@@ -179,7 +163,7 @@ extension ReleaseHistoryDetailView {
                 .foregroundStyle(.secondary)
                 .frame(width: 18, alignment: .trailing)
               Text(action)
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
@@ -194,7 +178,7 @@ extension ReleaseHistoryDetailView {
           Label("回滚计划", systemImage: "arrow.uturn.backward")
             .font(.callout.weight(.medium))
           Text(rollbackDraft.summary)
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
 
           ForEach(rollbackDraft.commandLines, id: \.self) { command in
@@ -207,7 +191,7 @@ extension ReleaseHistoryDetailView {
           if rollbackDraft.reviewTitle != nil || rollbackDraft.reviewBody != nil {
             VStack(alignment: .leading, spacing: 6) {
               Label("回滚 PR/MR 草稿", systemImage: "arrow.triangle.pull")
-                .font(.caption.weight(.medium))
+                .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
 
               if let branchName = rollbackDraft.reviewBranchName {
@@ -218,7 +202,7 @@ extension ReleaseHistoryDetailView {
               }
               if let reviewBody = rollbackDraft.reviewBody {
                 Text(reviewBody)
-                  .font(.caption2)
+                  .font(.callout)
                   .foregroundStyle(.secondary)
                   .textSelection(.enabled)
                   .lineLimit(8)
@@ -232,165 +216,240 @@ extension ReleaseHistoryDetailView {
         .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
 
-      HStack {
+      releaseRecordActions(entry)
+    }
+    .padding(14)
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("release-record-\(record.id)")
+  }
+
+  private func releaseRecordStatusBadges(_ entry: ReleaseLedgerEntry) -> some View {
+    HStack(spacing: 10) {
+      Label(entry.record.kind.localizedDisplayName, systemImage: entry.record.kind.systemImage)
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.secondary)
+      Label(entry.status.localizedDisplayName, systemImage: entry.status.systemImage)
+        .font(.caption.weight(.medium))
+        .foregroundStyle(ledgerStatusForeground(entry.status))
+    }
+  }
+
+  private func releaseRecordTimestamp(_ record: ReleaseRecord) -> some View {
+    Text(record.createdAt.workbenchShortText)
+      .font(.caption)
+      .foregroundStyle(.secondary)
+  }
+
+  private func deploymentStatusTitle(_ deploymentStatus: DeploymentStatusSnapshot) -> some View {
+    Label(deploymentStatus.title, systemImage: deploymentStatus.level.systemImage)
+      .font(.callout.weight(.medium))
+      .foregroundStyle(statusForeground(deploymentStatus.level))
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  private func deploymentStatusActions(
+    _ deploymentStatus: DeploymentStatusSnapshot,
+    record: ReleaseRecord
+  ) -> some View {
+    HStack(spacing: 8) {
+      Button {
+        copy(deploymentStatus.clipboardSummary, message: "已复制部署诊断。")
+      } label: {
+        Label("复制诊断", systemImage: "doc.on.doc")
+      }
+      .accessibilityIdentifier("release-record-\(record.id)-copy-diagnostics")
+
+      if let siteURLText = deploymentStatus.siteURLText,
+         let siteURL = URL(string: siteURLText) {
         Button {
-          copyRecoveryPackage(recoveryPackage)
+          ExternalURLOpener.open(siteURL)
         } label: {
-          Label("复制恢复包", systemImage: "shippingbox")
+          Label("打开站点", systemImage: "safari")
+        }
+        .accessibilityIdentifier("release-record-\(record.id)-open-site")
+      }
+    }
+    .buttonStyle(.bordered)
+    .controlSize(.regular)
+    .accessibilityElement(children: .contain)
+  }
+
+  func releaseRecordActions(_ entry: ReleaseLedgerEntry) -> some View {
+    let record = entry.record
+    let rollbackDraft = entry.rollbackDraft
+
+    return VStack(alignment: .leading, spacing: 10) {
+      Label("记录操作", systemImage: "slider.horizontal.3")
+        .font(.callout.weight(.semibold))
+        .accessibilityAddTraits(.isHeader)
+
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 150, maximum: 230), spacing: 8)],
+        alignment: .leading,
+        spacing: 8
+      ) {
+        Button {
+          copyRecoveryPackage(entry.recoveryPackage)
+        } label: {
+          releaseRecordActionLabel("复制恢复包", systemImage: "shippingbox")
         }
         .accessibilityLabel("复制发布恢复包")
-
-        Button {
-          copyRecoveryEvidence(recoveryPackage)
-        } label: {
-          Label("复制验证摘要", systemImage: "checklist.checked")
-        }
-        .accessibilityLabel("复制发布恢复验证摘要")
-
-        Button {
-          store.recordReleaseRecoveryExternalVerificationEvidence(from: recoveryPackage)
-        } label: {
-          Label("记录证据", systemImage: "checkmark.seal")
-        }
-        .accessibilityLabel("记录发布恢复证据")
-
-        Button {
-          Task {
-            await store.sendReleaseRecoveryPackageToAI(for: entry)
-          }
-        } label: {
-          Label("交给 AI", systemImage: "sparkles")
-        }
-        .disabled(record.draftID == nil || store.ai.isChatRunning)
-        .accessibilityLabel("把发布恢复包交给 AI")
-
-        if let commitSHA = record.commitSHA {
-          Button {
-            copy(commitSHA, message: "已复制 commit SHA。")
-          } label: {
-            Label("复制 Commit", systemImage: "number")
-          }
-          .accessibilityLabel("复制 Commit SHA")
-          .accessibilityValue(commitSHA)
-        }
-
-        if let reviewURL = record.reviewURL {
-          Button {
-            copy(reviewURL, message: "已复制 PR/MR 链接。")
-          } label: {
-            Label("复制 PR/MR", systemImage: "doc.on.doc")
-          }
-          .accessibilityLabel("复制 PR 或 MR 链接")
-          .accessibilityValue(reviewURL)
-        }
-
-        if let url = record.reviewWebURL {
-          Button {
-            ExternalURLOpener.open(url)
-          } label: {
-            Label("打开 PR/MR", systemImage: "arrow.up.right.square")
-          }
-          .accessibilityLabel("打开 PR 或 MR")
-        }
-
-        if hasReleaseRecordMoreActions(entry) {
-          releaseRecordMoreMenu(entry)
-        }
+        .accessibilityIdentifier("release-record-\(record.id)-copy-recovery")
 
         Button {
           Task {
             await store.refreshDeploymentStatus(for: record)
           }
         } label: {
-          Label("检查部署", systemImage: "checkmark.icloud")
+          releaseRecordActionLabel("检查部署", systemImage: "checkmark.icloud")
         }
         .disabled(store.isDeploymentStatusChecking || !store.canCheckDeploymentStatus(for: record))
         .accessibilityLabel("检查部署状态")
+        .accessibilityIdentifier("release-record-\(record.id)-check-deployment")
 
-        Spacer()
+        if DistributionFeaturePolicy.allowsExternalAIProviders {
+          Button {
+            Task {
+              await store.sendReleaseRecoveryPackageToAI(for: entry)
+            }
+          } label: {
+            releaseRecordActionLabel("交给 AI", systemImage: "sparkles")
+          }
+          .disabled(record.draftID == nil || store.ai.isChatRunning)
+          .accessibilityIdentifier("release-record-\(record.id)-send-to-ai")
+        }
+
+        if let commitSHA = record.commitSHA {
+          Button {
+            copy(commitSHA, message: "已复制 commit SHA。")
+          } label: {
+            releaseRecordActionLabel("复制 Commit", systemImage: "number")
+          }
+          .accessibilityIdentifier("release-record-\(record.id)-copy-commit")
+        }
+
+        if canResumeRemoteReview(record) {
+          Button {
+            pendingDangerousReleaseAction = .resumeReview(record)
+          } label: {
+            releaseRecordActionLabel("继续创建 PR/MR", systemImage: "arrow.triangle.pull")
+          }
+          .disabled(store.isRemoteRepositoryPublishing)
+          .accessibilityIdentifier("release-record-\(record.id)-resume-review")
+        }
+
+        if let reviewURL = record.reviewURL {
+          Button {
+            copy(reviewURL, message: "已复制 PR/MR 链接。")
+          } label: {
+            releaseRecordActionLabel("复制 PR/MR", systemImage: "doc.on.doc")
+          }
+          .accessibilityIdentifier("release-record-\(record.id)-copy-review")
+        }
+
+        if let url = record.reviewWebURL {
+          Button {
+            ExternalURLOpener.open(url)
+          } label: {
+            releaseRecordActionLabel("打开 PR/MR", systemImage: "arrow.up.right.square")
+          }
+          .accessibilityIdentifier("release-record-\(record.id)-open-review")
+        }
+
+        if let rollbackDraft {
+          Button {
+            copyRollbackDraft(rollbackDraft)
+          } label: {
+            releaseRecordActionLabel("复制回滚计划", systemImage: "arrow.uturn.backward")
+          }
+          .accessibilityIdentifier("release-record-\(record.id)-copy-rollback")
+
+          if rollbackDraft.reviewTitle != nil || rollbackDraft.reviewBody != nil {
+            Button {
+              copyRollbackReviewDraft(rollbackDraft)
+            } label: {
+              releaseRecordActionLabel("复制回滚 PR/MR", systemImage: "arrow.triangle.pull")
+            }
+            .accessibilityIdentifier("release-record-\(record.id)-copy-rollback-review")
+          }
+
+          if let reviewURL = rollbackDraft.reviewURL.flatMap(URL.init(string:)) {
+            Button {
+              ExternalURLOpener.open(reviewURL)
+            } label: {
+              releaseRecordActionLabel("打开回滚 PR/MR", systemImage: "arrow.triangle.pull")
+            }
+            .accessibilityIdentifier("release-record-\(record.id)-open-rollback-review")
+          }
+
+          if let remoteURL = rollbackDraft.remoteURL.flatMap(URL.init(string:)) {
+            Button {
+              ExternalURLOpener.open(remoteURL)
+            } label: {
+              releaseRecordActionLabel("打开远端回滚", systemImage: "arrow.up.right.square")
+            }
+            .accessibilityIdentifier("release-record-\(record.id)-open-remote-rollback")
+          }
+        }
+
+        if canWithdrawRemoteReview(record) {
+          Button(role: .destructive) {
+            pendingDangerousReleaseAction = .withdrawReview(record)
+          } label: {
+            releaseRecordActionLabel("撤回线上 Review", systemImage: "arrow.down.forward.and.arrow.up.backward.circle")
+          }
+          .disabled(store.isRemoteRepositoryPublishing)
+          .tint(WorkbenchTheme.risk)
+          .accessibilityIdentifier("release-record-\(record.id)-withdraw-review")
+        }
+
+        if canRollbackRemoteRelease(record) {
+          Button(role: .destructive) {
+            pendingDangerousReleaseAction = .rollbackRemote(record)
+          } label: {
+            releaseRecordActionLabel("执行线上回滚", systemImage: "arrow.uturn.backward.circle")
+          }
+          .disabled(store.isRemoteRepositoryPublishing)
+          .tint(WorkbenchTheme.risk)
+          .accessibilityIdentifier("release-record-\(record.id)-rollback-remote")
+        }
       }
+      .buttonStyle(.bordered)
+      .controlSize(.regular)
     }
-    .padding(14)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("release-record-\(record.id)-actions")
   }
 
-  func releaseRecordMoreMenu(_ entry: ReleaseLedgerEntry) -> some View {
-    let record = entry.record
-    let rollbackDraft = entry.rollbackDraft
-
-    return Menu {
-      if let rollbackDraft {
-        Button {
-          copyRollbackDraft(rollbackDraft)
-        } label: {
-          Label("复制回滚计划", systemImage: "arrow.uturn.backward")
-        }
-
-        if rollbackDraft.reviewTitle != nil || rollbackDraft.reviewBody != nil {
-          Button {
-            copyRollbackReviewDraft(rollbackDraft)
-          } label: {
-            Label("复制回滚 PR/MR", systemImage: "arrow.triangle.pull")
-          }
-        }
-
-        if let reviewURL = rollbackDraft.reviewURL.flatMap(URL.init(string:)) {
-          Button {
-            ExternalURLOpener.open(reviewURL)
-          } label: {
-            Label("打开回滚 PR/MR", systemImage: "arrow.triangle.pull")
-          }
-        }
-
-        if let remoteURL = rollbackDraft.remoteURL.flatMap(URL.init(string:)) {
-          Button {
-            ExternalURLOpener.open(remoteURL)
-          } label: {
-            Label("打开远端回滚", systemImage: "arrow.up.right.square")
-          }
-        }
-      }
-
-      if rollbackDraft != nil && (canWithdrawRemoteReview(record) || canRollbackRemoteRelease(record)) {
-        Divider()
-      }
-
-      if canWithdrawRemoteReview(record) {
-        Button(role: .destructive) {
-          pendingDangerousReleaseAction = .withdrawReview(record)
-        } label: {
-          Label("撤回线上 Review", systemImage: "arrow.down.forward.and.arrow.up.backward.circle")
-        }
-        .disabled(store.isRemoteRepositoryPublishing)
-      }
-
-      if canRollbackRemoteRelease(record) {
-        Button(role: .destructive) {
-          pendingDangerousReleaseAction = .rollbackRemote(record)
-        } label: {
-          Label("执行线上回滚", systemImage: "arrow.uturn.backward.circle")
-        }
-        .disabled(store.isRemoteRepositoryPublishing)
-      }
-    } label: {
-      Label("更多...", systemImage: "ellipsis.circle")
-    }
-    .accessibilityLabel("更多发布记录操作")
-  }
-
-  func hasReleaseRecordMoreActions(_ entry: ReleaseLedgerEntry) -> Bool {
-    entry.rollbackDraft != nil
-      || canWithdrawRemoteReview(entry.record)
-      || canRollbackRemoteRelease(entry.record)
+  private func releaseRecordActionLabel(
+    _ title: LocalizedStringKey,
+    systemImage: String
+  ) -> some View {
+    Label(title, systemImage: systemImage)
+      .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   func performDangerousReleaseAction(_ action: DangerousReleaseAction) async {
     switch action {
+    case let .resumeReview(record):
+      await store.resumeRemoteReview(record)
     case let .withdrawReview(record):
       await store.withdrawRemoteReview(record)
     case let .rollbackRemote(record):
       await store.rollbackRemoteRelease(record)
     }
+  }
+
+  func canResumeRemoteReview(_ record: ReleaseRecord) -> Bool {
+    guard record.kind == .remotePublishFailure,
+          record.reviewURL?.trimmedForPublishing.nilIfEmpty == nil,
+          record.commitSHA?.trimmedForPublishing.nilIfEmpty != nil,
+          let branchName = record.branchName?.trimmedForPublishing.nilIfEmpty,
+          let targetBranch = record.targetBranch?.trimmedForPublishing.nilIfEmpty else {
+      return false
+    }
+    return branchName != targetBranch
   }
 
   func canRollbackRemoteRelease(_ record: ReleaseRecord) -> Bool {

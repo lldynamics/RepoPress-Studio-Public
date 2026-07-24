@@ -15,10 +15,10 @@ struct InspectorScaffold<Content: View>: View {
           .frame(width: 18)
 
         VStack(alignment: .leading, spacing: 2) {
-          Text(title)
+          Text(LocalizedStringKey(title))
             .font(.headline)
-          Text(subtitle)
-            .font(.caption)
+          Text(LocalizedStringKey(subtitle))
+            .font(.workbenchSupporting)
             .foregroundStyle(.secondary)
             .lineLimit(2)
         }
@@ -52,12 +52,58 @@ struct InspectorSection<Content: View>: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 9) {
-      Text(title)
-        .font(.caption.weight(.semibold))
+      Text(LocalizedStringKey(title))
+        .font(.workbenchCardTitle)
         .foregroundStyle(.secondary)
+        .accessibilityAddTraits(.isHeader)
       content
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+    .accessibilityElement(children: .contain)
+  }
+}
+
+struct InspectorDisclosureSection<Content: View>: View {
+  let title: String
+  let detail: String?
+  @Binding var isExpanded: Bool
+  @ViewBuilder var content: Content
+
+  init(
+    _ title: String,
+    detail: String? = nil,
+    isExpanded: Binding<Bool>,
+    @ViewBuilder content: () -> Content
+  ) {
+    self.title = title
+    self.detail = detail
+    _isExpanded = isExpanded
+    self.content = content()
+  }
+
+  var body: some View {
+    DisclosureGroup(isExpanded: $isExpanded) {
+      VStack(alignment: .leading, spacing: 9) {
+        content
+      }
+      .padding(.top, 8)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    } label: {
+      HStack(spacing: 8) {
+        Text(LocalizedStringKey(title))
+          .font(.workbenchCardTitle)
+        Spacer(minLength: 8)
+        if let detail, !detail.isEmpty {
+          Text(detail)
+            .font(.workbenchMetadata.monospacedDigit())
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+        }
+      }
+      .foregroundStyle(.secondary)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .accessibilityElement(children: .contain)
   }
 }
 
@@ -71,14 +117,13 @@ struct InspectorStatRow: View {
       Image(systemName: systemImage)
         .foregroundStyle(.secondary)
         .frame(width: 16)
-      Text(title)
+      Text(LocalizedStringKey(title))
         .foregroundStyle(.secondary)
       Spacer()
       Text(value)
-        .lineLimit(1)
-        .truncationMode(.middle)
+        .workbenchTruncatedIdentity(value)
     }
-    .font(.caption)
+    .font(.workbenchSupporting)
   }
 }
 
@@ -86,7 +131,7 @@ struct InspectorStatRow: View {
 func actionMessage(_ message: String?) -> some View {
   if let message, !message.isEmpty {
     Text(message)
-      .font(.caption)
+      .font(.workbenchSupporting)
       .foregroundStyle(.secondary)
       .padding(8)
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -101,6 +146,8 @@ extension PublishFileDiffStatus {
       return "plus.circle"
     case .modified:
       return "pencil.circle"
+    case .deleted:
+      return "trash.circle"
     case .unchanged:
       return "equal.circle"
     case .missingSource:
@@ -113,13 +160,15 @@ extension PublishFileDiffStatus {
   var color: Color {
     switch self {
     case .added:
-      return .green
+      return WorkbenchTheme.success
     case .modified:
-      return .orange
+      return WorkbenchTheme.warning
+    case .deleted:
+      return WorkbenchTheme.risk
     case .unchanged:
       return .secondary
     case .missingSource, .unsafePath:
-      return .red
+      return WorkbenchTheme.risk
     }
   }
 }

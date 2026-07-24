@@ -1,18 +1,44 @@
 import Foundation
 
-public struct SiteStarterService {
-  private let fileManager: FileManager
+public struct SiteStarterService: Sendable {
+  typealias CreateSiteOperation = @Sendable (SiteStarterRequest) throws -> SiteStarterResult
+  typealias ImportExistingSiteOperation = @Sendable (SiteStarterImportRequest) throws -> SiteStarterImportResult
+
+  private let fileSystem: SendableFileManager
   private let gitCommandRunner: GitCommandRunner
+  private let createSiteOperation: CreateSiteOperation?
+  private let importExistingSiteOperation: ImportExistingSiteOperation?
+
+  private var fileManager: FileManager { fileSystem.value }
 
   public init(
     fileManager: FileManager = .default,
     gitCommandRunner: GitCommandRunner = GitCommandRunner(timeout: 60)
   ) {
-    self.fileManager = fileManager
+    self.fileSystem = SendableFileManager(fileManager)
     self.gitCommandRunner = gitCommandRunner
+    self.createSiteOperation = nil
+    self.importExistingSiteOperation = nil
+  }
+
+  /// Test seam for deterministic scheduling checks. Production callers use
+  /// the public initializer above and execute the real file-system workflow.
+  init(
+    fileManager: FileManager = .default,
+    gitCommandRunner: GitCommandRunner = GitCommandRunner(timeout: 60),
+    createSiteOperation: @escaping CreateSiteOperation,
+    importExistingSiteOperation: ImportExistingSiteOperation? = nil
+  ) {
+    self.fileSystem = SendableFileManager(fileManager)
+    self.gitCommandRunner = gitCommandRunner
+    self.createSiteOperation = createSiteOperation
+    self.importExistingSiteOperation = importExistingSiteOperation
   }
 
   public func createSite(request: SiteStarterRequest) throws -> SiteStarterResult {
+    if let createSiteOperation {
+      return try createSiteOperation(request)
+    }
     let template = try template(for: request.templateID)
     let rootURL = URL(fileURLWithPath: request.rootPath, isDirectory: true).standardizedFileURL
     let siteName = request.siteName.trimmedForPublishing.nilIfEmpty ?? "我的网站"
@@ -84,11 +110,21 @@ public struct SiteStarterService {
       initializedGit: initializedGit,
       configuredRemoteURL: request.configureOriginRemote ? remoteURL : nil,
       deploymentGuidePath: createdPaths.contains("DEPLOYMENT.md") ? "DEPLOYMENT.md" : nil,
-      nextCommands: nextCommands(rootURL: rootURL, branch: branch, owner: owner, repoName: repoName, remoteURL: remoteURL)
+      nextCommands: nextCommands(
+        rootURL: rootURL,
+        branch: branch,
+        owner: owner,
+        repoName: repoName,
+        remoteURL: remoteURL,
+        createdFilePaths: createdPaths
+      )
     )
   }
 
   public func importExistingSite(request: SiteStarterImportRequest) throws -> SiteStarterImportResult {
+    if let importExistingSiteOperation {
+      return try importExistingSiteOperation(request)
+    }
     let rootURL = URL(fileURLWithPath: request.rootPath, isDirectory: true).standardizedFileURL
     try validateExistingRootDirectory(rootURL)
 
@@ -140,8 +176,58 @@ public struct SiteStarterService {
     )
   }
 
+  /// Runs template generation, file writes, and optional Git initialization
+  /// away from the main actor. The returned value is immutable and Sendable,
+  /// so a store can safely decide on the main actor whether it is still current.
+  public func createSiteAsync(request: SiteStarterRequest) async throws -> SiteStarterResult {
+    let service = self
+    return try await Task.detached(priority: .userInitiated) {
+      try service.createSite(request: request)
+    }.value
+  }
+
+  /// Runs directory validation and Git metadata detection away from the main
+  /// actor. Article discovery is also dispatched separately by the store.
+  public func importExistingSiteAsync(
+    request: SiteStarterImportRequest
+  ) async throws -> SiteStarterImportResult {
+    let service = self
+    return try await Task.detached(priority: .userInitiated) {
+      try service.importExistingSite(request: request)
+    }.value
+  }
+
+  public func configureGitHubOriginRemoteAsync(profile: SiteProfile) async throws -> String {
+    guard let rootURL = profile.localRepositoryRootURL else {
+      throw SiteStarterError.missingRepositoryRoot
+    }
+    guard fileManager.fileExists(atPath: rootURL.appendingPathComponent(".git", isDirectory: true).path) else {
+      throw SiteStarterError.notGitRepository(rootURL.path)
+    }
+    guard let remoteURL = githubRemoteURL(
+      owner: profile.repoOwner.trimmedForPublishing,
+      repoName: profile.repoName.trimmedForPublishing
+    ) else {
+      throw SiteStarterError.missingOriginRemote
+    }
+
+    let existingRemote = await gitCommandRunner.runAsync(
+      ["remote", "get-url", "origin"],
+      rootURL: rootURL
+    )
+    let arguments = existingRemote.terminationStatus == 0
+      ? ["remote", "set-url", "origin", remoteURL]
+      : ["remote", "add", "origin", remoteURL]
+    let result = await gitCommandRunner.runAsync(arguments, rootURL: rootURL)
+    guard result.terminationStatus == 0 else {
+      throw SiteStarterError.gitFailed(result.output)
+    }
+    return remoteURL
+  }
+
   public func commitAndPushStarterSite(
     profile: SiteProfile,
+    createdFilePaths: [String],
     commitMessage: String = "Initial site"
   ) throws -> SiteStarterPushResult {
     guard let rootURL = profile.localRepositoryRootURL else {
@@ -158,8 +244,11 @@ public struct SiteStarterService {
       throw SiteStarterError.missingOriginRemote
     }
 
+    let starterPaths = try validatedStarterPaths(createdFilePaths)
+    try rejectUnrelatedStagedChanges(starterPaths: starterPaths, at: rootURL)
+
     var outputChunks: [String] = []
-    outputChunks.append(try runGitOutput(["add", "."], at: rootURL))
+    outputChunks.append(try runGitOutput(["add", "--"] + starterPaths, at: rootURL))
     let committedPaths = try runGitOutput(["diff", "--cached", "--name-only"], at: rootURL)
       .split(separator: "\n")
       .map { String($0).trimmedForPublishing }
@@ -171,6 +260,57 @@ public struct SiteStarterService {
     outputChunks.append(try runGitOutput(["commit", "-m", commitMessage], at: rootURL))
     let commitSHA = try runGitOutput(["rev-parse", "HEAD"], at: rootURL).trimmedForPublishing
     outputChunks.append(try runGitOutput(["push", "-u", "origin", branch], at: rootURL))
+
+    return SiteStarterPushResult(
+      rootPath: rootURL.path,
+      branch: branch,
+      remoteURL: remoteURL,
+      commitSHA: commitSHA,
+      committedPaths: committedPaths,
+      output: outputChunks.map { $0.trimmedForPublishing }.filter { !$0.isEmpty }.joined(separator: "\n")
+    )
+  }
+
+  public func commitAndPushStarterSiteAsync(
+    profile: SiteProfile,
+    createdFilePaths: [String],
+    commitMessage: String = "Initial site"
+  ) async throws -> SiteStarterPushResult {
+    guard let rootURL = profile.localRepositoryRootURL else {
+      throw SiteStarterError.missingRepositoryRoot
+    }
+    let didStartAccessing = rootURL.startAccessingSecurityScopedResource()
+    defer {
+      if didStartAccessing {
+        rootURL.stopAccessingSecurityScopedResource()
+      }
+    }
+    guard fileManager.fileExists(atPath: rootURL.appendingPathComponent(".git", isDirectory: true).path) else {
+      throw SiteStarterError.notGitRepository(rootURL.path)
+    }
+
+    let branch = profile.branch.trimmedForPublishing.nilIfEmpty ?? "main"
+    let remoteURL = try (await runGitOutputAsync(["remote", "get-url", "origin"], at: rootURL)).trimmedForPublishing
+    guard !remoteURL.isEmpty else {
+      throw SiteStarterError.missingOriginRemote
+    }
+
+    let starterPaths = try validatedStarterPaths(createdFilePaths)
+    try await rejectUnrelatedStagedChangesAsync(starterPaths: starterPaths, at: rootURL)
+
+    var outputChunks: [String] = []
+    outputChunks.append(try await runGitOutputAsync(["add", "--"] + starterPaths, at: rootURL))
+    let committedPaths = try await runGitOutputAsync(["diff", "--cached", "--name-only"], at: rootURL)
+      .split(separator: "\n")
+      .map { String($0).trimmedForPublishing }
+      .filter { !$0.isEmpty }
+    guard !committedPaths.isEmpty else {
+      throw SiteStarterError.noStarterChanges
+    }
+
+    outputChunks.append(try await runGitOutputAsync(["commit", "-m", commitMessage], at: rootURL))
+    let commitSHA = try (await runGitOutputAsync(["rev-parse", "HEAD"], at: rootURL)).trimmedForPublishing
+    outputChunks.append(try await runGitOutputAsync(["push", "-u", "origin", branch], at: rootURL))
 
     return SiteStarterPushResult(
       rootPath: rootURL.path,
@@ -288,7 +428,6 @@ public struct SiteStarterService {
         draft: draft,
         siteName: siteName,
         description: description,
-        author: author,
         baseURL: baseURL,
         deploymentTarget: deploymentTarget
       )
@@ -417,7 +556,6 @@ public struct SiteStarterService {
     draft: ArticleDraft,
     siteName: String,
     description: String,
-    author: String,
     baseURL: String,
     deploymentTarget: SiteStarterDeploymentTarget
   ) -> [StarterFile] {
@@ -529,6 +667,49 @@ public struct SiteStarterService {
     return result.output
   }
 
+  private func runGitOutputAsync(_ arguments: [String], at rootURL: URL) async throws -> String {
+    let result = await gitCommandRunner.runAsync(arguments, rootURL: rootURL)
+    guard result.terminationStatus == 0 else {
+      throw SiteStarterError.gitFailed(result.output)
+    }
+    return result.output
+  }
+
+  private func validatedStarterPaths(_ paths: [String]) throws -> [String] {
+    let normalized = Array(Set(paths.map { $0.trimmedForPublishing }))
+      .filter { !$0.isEmpty }
+      .sorted()
+    guard !normalized.isEmpty else {
+      throw SiteStarterError.missingStarterFileManifest
+    }
+    for path in normalized where !isSafeRelativePath(path) {
+      throw SiteStarterError.unsafePath(path)
+    }
+    return normalized
+  }
+
+  private func rejectUnrelatedStagedChanges(starterPaths: [String], at rootURL: URL) throws {
+    let stagedPaths = try runGitOutput(["diff", "--cached", "--name-only"], at: rootURL)
+      .split(separator: "\n")
+      .map { String($0).trimmedForPublishing }
+      .filter { !$0.isEmpty }
+    let unrelatedPaths = stagedPaths.filter { !starterPaths.contains($0) }
+    guard unrelatedPaths.isEmpty else {
+      throw SiteStarterError.unrelatedStagedChanges(unrelatedPaths.sorted())
+    }
+  }
+
+  private func rejectUnrelatedStagedChangesAsync(starterPaths: [String], at rootURL: URL) async throws {
+    let stagedPaths = try await runGitOutputAsync(["diff", "--cached", "--name-only"], at: rootURL)
+      .split(separator: "\n")
+      .map { String($0).trimmedForPublishing }
+      .filter { !$0.isEmpty }
+    let unrelatedPaths = stagedPaths.filter { !starterPaths.contains($0) }
+    guard unrelatedPaths.isEmpty else {
+      throw SiteStarterError.unrelatedStagedChanges(unrelatedPaths.sorted())
+    }
+  }
+
   private func optionalGitOutput(_ arguments: [String], at rootURL: URL) -> String? {
     (try? runGitOutput(arguments, at: rootURL))?.nilIfEmpty
   }
@@ -578,11 +759,15 @@ public struct SiteStarterService {
     branch: String,
     owner: String,
     repoName: String,
-    remoteURL: String?
+    remoteURL: String?,
+    createdFilePaths: [String]
   ) -> [String] {
+    let addCommand = (["git", "add", "--"] + createdFilePaths.sorted())
+      .map(posixShellQuote)
+      .joined(separator: " ")
     var commands = [
       "cd \(posixShellQuote(rootURL.path))",
-      "git add .",
+      addCommand,
       "git commit -m \(posixShellQuote("Initial site"))",
     ]
 
@@ -664,6 +849,8 @@ public enum SiteStarterError: LocalizedError, Equatable {
   case missingRepositoryRoot
   case notGitRepository(String)
   case missingOriginRemote
+  case missingStarterFileManifest
+  case unrelatedStagedChanges([String])
   case noStarterChanges
   case gitFailed(String)
 
@@ -683,6 +870,10 @@ public enum SiteStarterError: LocalizedError, Equatable {
       return "当前目录不是 Git 仓库：\(path)"
     case .missingOriginRemote:
       return "当前 Starter 仓库没有 origin remote。"
+    case .missingStarterFileManifest:
+      return "缺少 Starter 生成文件清单，已停止提交以避免暂存无关文件。"
+    case let .unrelatedStagedChanges(paths):
+      return "暂存区包含 Starter 清单外的文件，已停止提交：\(paths.joined(separator: "、"))"
     case .noStarterChanges:
       return "没有可提交和推送的 Starter 文件变化。"
     case let .gitFailed(message):

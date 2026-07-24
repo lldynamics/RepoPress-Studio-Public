@@ -1,0 +1,11 @@
+{
+  "name": "personal-site-publisher-browser-extension-tests",
+  "private": true,
+  "scripts": {
+    "install:browser-extension:e2e": "playwright-core install chromium",
+    "test:browser-extension:e2e": "node script/test_browser_extension_e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.61.1"
+  }
+}
