@@ -11,15 +11,25 @@ public struct ScreenshotDemoDataService {
 
   public init() {}
 
+  private static func demoUUID(_ value: String) -> UUID {
+    UUID(uuidString: value) ?? UUID(uuid: (
+      0, 0, 0, 0,
+      0, 0,
+      0, 0,
+      0, 0,
+      0, 0, 0, 0, 0, 0
+    ))
+  }
+
   public func makeSnapshot(now: Date = Date(timeIntervalSince1970: 1_900_000_000)) -> WorkbenchSnapshot {
-    let profileID = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
-    let articleID = UUID(uuidString: "22222222-2222-4222-8222-222222222222")!
-    let privateArticleID = UUID(uuidString: "33333333-3333-4333-8333-333333333333")!
-    let secondProfileID = UUID(uuidString: "44444444-4444-4444-8444-444444444444")!
-    let crossSiteDraftID = UUID(uuidString: "55555555-5555-4555-8555-555555555555")!
-    let directRecordID = UUID(uuidString: "66666666-6666-4666-8666-666666666666")!
-    let reviewRecordID = UUID(uuidString: "77777777-7777-4777-8777-777777777777")!
-    let failedRecordID = UUID(uuidString: "88888888-8888-4888-8888-888888888888")!
+    let profileID = Self.demoUUID("11111111-1111-4111-8111-111111111111")
+    let articleID = Self.demoUUID("22222222-2222-4222-8222-222222222222")
+    let privateArticleID = Self.demoUUID("33333333-3333-4333-8333-333333333333")
+    let secondProfileID = Self.demoUUID("44444444-4444-4444-8444-444444444444")
+    let crossSiteDraftID = Self.demoUUID("55555555-5555-4555-8555-555555555555")
+    let directRecordID = Self.demoUUID("66666666-6666-4666-8666-666666666666")
+    let reviewRecordID = Self.demoUUID("77777777-7777-4777-8777-777777777777")
+    let failedRecordID = Self.demoUUID("88888888-8888-4888-8888-888888888888")
 
     var profile = SiteProfile.defaultProfile
     profile.id = profileID
@@ -504,9 +514,12 @@ public struct ScreenshotDemoDataService {
   public static func seedKnowledgeLibraryIfEnabled(in knowledge: KnowledgeStore) async {
     guard isEnabledFromEnvironment,
           requestedSurfaceFromEnvironment == .knowledgeLibrary,
-          knowledge.documents.isEmpty else { return }
+          knowledge.documents.isEmpty,
+          let sourceURL = URL(string: "https://example.com/accessibility/knowledge-library") else {
+      return
+    }
     let capture = KnowledgeBrowserCapture(
-      sourceURL: URL(string: "https://example.com/accessibility/knowledge-library")!,
+      sourceURL: sourceURL,
       title: "资料库辅助功能演示",
       authors: ["Demo Author"],
       language: "zh-Hans",
@@ -534,9 +547,7 @@ public struct ScreenshotDemoDataService {
 
 public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable {
   case writing
-#if !APP_STORE_BUILD
   case aiChat = "ai-chat"
-#endif
   case syncAPIPublish = "sync-api-publish"
   case seoSocialPreview = "seo-social-preview"
   case deploymentStatus = "deployment-status"
@@ -560,7 +571,6 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
       store.selectSection(.writing)
       store.setEditorDisplayMode(.split)
       store.setPublishActionMessage(String(localized: "截图模式：写作工作区已载入演示文章。"))
-#if !APP_STORE_BUILD
     case .aiChat:
       _ = store.openAIChatWorkspace(for: preferredDraft(in: store)?.id)
       store.seedTransientAIChatPreview([
@@ -578,7 +588,6 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
       ])
       store.setInspectorPresented(false)
       store.setPublishActionMessage(String(localized: "截图模式：AI 助手 Inspector 已载入。"))
-#endif
     case .syncAPIPublish:
       store.selectSection(.sync)
       store.setPublishActionMessage(String(localized: "截图模式：同步/API 发布工作区已载入。"))

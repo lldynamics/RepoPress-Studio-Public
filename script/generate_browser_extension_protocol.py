@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate and verify Native Messaging constants from one protocol definition."""
+"""Generate and verify browser-extension loopback constants from one definition."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from pathlib import Path
 
 
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent
-HOST_NAME_PATTERN = re.compile(r"^[a-z0-9_]+(?:\.[a-z0-9_]+)+$")
 FIREFOX_ID_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+$")
 CHROMIUM_ID_PATTERN = re.compile(r"^[a-p]{32}$")
 BUNDLE_ID_PATTERN = re.compile(r"^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$")
@@ -62,7 +61,7 @@ def validated_definition(root: Path) -> dict:
     value = load_object(path)
     require_exact_keys(
         value,
-        {"documentVersion", "activeExtensions", "extensions", "loopback", "nativeMessaging"},
+        {"documentVersion", "activeExtensions", "extensions", "loopback", "captureProtocol"},
         "protocol",
     )
     if value["documentVersion"] != 1:
@@ -71,14 +70,14 @@ def validated_definition(root: Path) -> dict:
     extensions = value["extensions"]
     active_extensions = value["activeExtensions"]
     loopback = value["loopback"]
-    native = value["nativeMessaging"]
+    capture = value["captureProtocol"]
     if (
         not isinstance(extensions, dict)
         or not isinstance(loopback, dict)
-        or not isinstance(native, dict)
+        or not isinstance(capture, dict)
     ):
         raise ProtocolGenerationError(
-            "extensions, loopback and nativeMessaging must be JSON objects"
+            "extensions, loopback and captureProtocol must be JSON objects"
         )
     require_exact_keys(
         extensions,
@@ -101,9 +100,9 @@ def validated_definition(root: Path) -> dict:
         "loopback",
     )
     require_exact_keys(
-        native,
-        {"hostName", "maximumInputBytes", "maximumOutputBytes", "routes", "schemaVersion"},
-        "nativeMessaging",
+        capture,
+        {"maximumInputBytes", "routes"},
+        "captureProtocol",
     )
 
     if loopback["host"] != "127.0.0.1":
@@ -119,14 +118,6 @@ def validated_definition(root: Path) -> dict:
     if loopback["protocolHeaderValue"] != "1":
         raise ProtocolGenerationError("loopback.protocolHeaderValue is invalid")
 
-    if (
-        not isinstance(native["schemaVersion"], int)
-        or isinstance(native["schemaVersion"], bool)
-        or native["schemaVersion"] <= 0
-    ):
-        raise ProtocolGenerationError("nativeMessaging.schemaVersion must be a positive integer")
-    if not isinstance(native["hostName"], str) or not HOST_NAME_PATTERN.fullmatch(native["hostName"]):
-        raise ProtocolGenerationError("nativeMessaging.hostName is invalid")
     if not isinstance(extensions["firefoxID"], str) or not FIREFOX_ID_PATTERN.fullmatch(
         extensions["firefoxID"]
     ):
@@ -149,29 +140,29 @@ def validated_definition(root: Path) -> dict:
             not isinstance(extension_id, str) or not CHROMIUM_ID_PATTERN.fullmatch(extension_id)
         ):
             raise ProtocolGenerationError(f"extensions.{field} must be null or a Chromium ID")
-    for field, minimum, maximum in (
-        ("maximumInputBytes", 1_024, 100 * 1_024 * 1_024),
-        ("maximumOutputBytes", 1_024, 10 * 1_024 * 1_024),
+    size = capture["maximumInputBytes"]
+    if (
+        not isinstance(size, int)
+        or isinstance(size, bool)
+        or not 1_024 <= size <= 100 * 1_024 * 1_024
     ):
-        size = native[field]
-        if not isinstance(size, int) or isinstance(size, bool) or not minimum <= size <= maximum:
-            raise ProtocolGenerationError(f"nativeMessaging.{field} is outside the safety range")
-    if native["maximumOutputBytes"] > native["maximumInputBytes"]:
-        raise ProtocolGenerationError("maximumOutputBytes must not exceed maximumInputBytes")
+        raise ProtocolGenerationError(
+            "captureProtocol.maximumInputBytes is outside the safety range"
+        )
 
-    routes = native["routes"]
+    routes = capture["routes"]
     if not isinstance(routes, dict) or not routes:
-        raise ProtocolGenerationError("nativeMessaging.routes must be a non-empty object")
+        raise ProtocolGenerationError("captureProtocol.routes must be a non-empty object")
     for route, methods in routes.items():
         if not isinstance(route, str) or not route.startswith("/v1/"):
-            raise ProtocolGenerationError(f"Invalid Native Messaging route: {route!r}")
+            raise ProtocolGenerationError(f"Invalid capture route: {route!r}")
         if (
             not isinstance(methods, list)
             or not methods
             or any(not isinstance(method, str) or method not in ALLOWED_METHODS for method in methods)
             or len(set(methods)) != len(methods)
         ):
-            raise ProtocolGenerationError(f"Invalid method list for Native Messaging route {route}")
+            raise ProtocolGenerationError(f"Invalid method list for capture route {route}")
     return value
 
 
@@ -183,36 +174,20 @@ def swift_optional_string(value: str | None) -> str:
     return "nil" if value is None else swift_string(value)
 
 
-def chromium_origins(development_id: str, production_id: str | None) -> list[str]:
-    extension_ids = [development_id]
-    if production_id is not None and production_id not in extension_ids:
-        extension_ids.append(production_id)
-    return [f"chrome-extension://{extension_id}/" for extension_id in extension_ids]
-
-
 def render_swift(definition: dict) -> str:
-    native = definition["nativeMessaging"]
+    capture = definition["captureProtocol"]
     loopback = definition["loopback"]
     extensions = definition["extensions"]
     active_extensions = definition["activeExtensions"]
     routes = []
-    for route, methods in sorted(native["routes"].items()):
+    for route, methods in sorted(capture["routes"].items()):
         rendered_methods = ", ".join(swift_string(method) for method in sorted(methods))
         routes.append(f"    {swift_string(route)}: [{rendered_methods}],")
-    chrome_origins = chromium_origins(
-        extensions["chromiumDevelopmentID"], extensions["chromeProductionID"]
-    )
-    edge_origins = chromium_origins(
-        extensions["chromiumDevelopmentID"], extensions["edgeProductionID"]
-    )
     return "\n".join(
         [
             "// Generated by script/generate_browser_extension_protocol.py. Do not edit.",
             "",
-            "extension KnowledgeNativeMessagingProtocol {",
-            f"  public static let schemaVersion = {native['schemaVersion']}",
-            f"  public static let hostName = {swift_string(native['hostName'])}",
-            f"  public static let firefoxExtensionID = {swift_string(extensions['firefoxID'])}",
+            "extension BrowserExtensionProtocol {",
             "  public static let activeBrowserExtensions = [",
             *[f"    {swift_string(channel)}," for channel in active_extensions],
             "  ]",
@@ -220,12 +195,8 @@ def render_swift(definition: dict) -> str:
             f"    {swift_string(extensions['safariBundleID'])}",
             "  public static let chromiumDevelopmentExtensionID =",
             f"    {swift_string(extensions['chromiumDevelopmentID'])}",
-            "  public static let chromiumDevelopmentOrigin =",
-            '    "chrome-extension://\\(chromiumDevelopmentExtensionID)/"',
             "  public static let chromeProductionExtensionID: String? =",
             f"    {swift_optional_string(extensions['chromeProductionID'])}",
-            "  public static let edgeProductionExtensionID: String? =",
-            f"    {swift_optional_string(extensions['edgeProductionID'])}",
             f"  public static let loopbackHost = {swift_string(loopback['host'])}",
             f"  public static let loopbackPort: UInt16 = {loopback['port']}",
             "  public static let loopbackBaseURL =",
@@ -234,16 +205,9 @@ def render_swift(definition: dict) -> str:
             f"    {swift_string(loopback['protocolHeaderName'])}",
             "  public static let loopbackProtocolHeaderValue =",
             f"    {swift_string(loopback['protocolHeaderValue'])}",
-            "  public static let chromeAllowedOrigins = [",
-            *[f"    {swift_string(origin)}," for origin in chrome_origins],
-            "  ]",
-            "  public static let edgeAllowedOrigins = [",
-            *[f"    {swift_string(origin)}," for origin in edge_origins],
-            "  ]",
-            f"  public static let maximumInputBytes = {native['maximumInputBytes']:_}",
-            f"  public static let maximumOutputBytes = {native['maximumOutputBytes']:_}",
+            f"  public static let maximumInputBytes = {capture['maximumInputBytes']:_}",
             "",
-            "  static let allowedRoutes: [String: Set<String>] = [",
+            "  public static let allowedRoutes: [String: Set<String>] = [",
             *routes,
             "  ]",
             "}",
@@ -253,15 +217,15 @@ def render_swift(definition: dict) -> str:
 
 
 def render_javascript(definition: dict) -> str:
-    native = definition["nativeMessaging"]
+    capture = definition["captureProtocol"]
     loopback = definition["loopback"]
     payload = {
         "activeExtensions": definition["activeExtensions"],
-        "hostName": native["hostName"],
-        "maximumInputBytes": native["maximumInputBytes"],
-        "maximumOutputBytes": native["maximumOutputBytes"],
-        "routes": {route: sorted(methods) for route, methods in sorted(native["routes"].items())},
-        "schemaVersion": native["schemaVersion"],
+        "maximumInputBytes": capture["maximumInputBytes"],
+        "routes": {
+            route: sorted(methods)
+            for route, methods in sorted(capture["routes"].items())
+        },
         "loopback": {
             "baseURL": f"http://{loopback['host']}:{loopback['port']}",
             "protocolHeaderName": loopback["protocolHeaderName"],
@@ -277,7 +241,7 @@ def render_javascript(definition: dict) -> str:
         f"  const protocol = {rendered};\n"
         "  for (const methods of Object.values(protocol.routes)) Object.freeze(methods);\n"
         "  Object.freeze(protocol.routes);\n"
-        "  globalThis.KNOWLEDGE_NATIVE_MESSAGING_PROTOCOL = Object.freeze(protocol);\n"
+        "  globalThis.REPOPRESS_BROWSER_EXTENSION_PROTOCOL = Object.freeze(protocol);\n"
         "})();\n"
     )
 
@@ -328,8 +292,8 @@ def synchronize(root: Path, write: bool) -> None:
     outputs = {
         root
         / "Sources"
-        / "KnowledgeNativeMessagingSupport"
-        / "KnowledgeNativeMessagingGenerated.swift": render_swift(definition),
+        / "BrowserExtensionProtocolSupport"
+        / "BrowserExtensionProtocolGenerated.swift": render_swift(definition),
         extension_root / "protocol.generated.js": render_javascript(definition),
         firefox_root / "protocol.generated.js": render_javascript(definition),
         safari_root / "protocol.generated.js": render_javascript(definition),

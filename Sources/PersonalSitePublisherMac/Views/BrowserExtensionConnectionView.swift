@@ -1,5 +1,5 @@
 import AppKit
-import KnowledgeNativeMessagingSupport
+import BrowserExtensionProtocolSupport
 import SafariServices
 import SwiftUI
 
@@ -164,7 +164,7 @@ struct BrowserExtensionConnectionView: View {
   }
 
   private func openChromeWebStore() {
-    guard let extensionID = KnowledgeNativeMessagingProtocol.chromeProductionExtensionID,
+    guard let extensionID = BrowserExtensionProtocol.chromeProductionExtensionID,
           let url = URL(
             string: "https://chromewebstore.google.com/detail/\(extensionID)"
           )
@@ -177,7 +177,7 @@ struct BrowserExtensionConnectionView: View {
   private func refreshSafariExtensionState() {
     safariExtensionStatusMessage = "正在检查 Safari 扩展状态…"
     SFSafariExtensionManager.getStateOfSafariExtension(
-      withIdentifier: KnowledgeNativeMessagingProtocol.safariWebExtensionBundleID
+      withIdentifier: BrowserExtensionProtocol.safariWebExtensionBundleID
     ) { state, error in
       DispatchQueue.main.async {
         if let error {
@@ -196,7 +196,7 @@ struct BrowserExtensionConnectionView: View {
 
   private func openSafariExtensionSettings() {
     SFSafariApplication.showPreferencesForExtension(
-      withIdentifier: KnowledgeNativeMessagingProtocol.safariWebExtensionBundleID
+      withIdentifier: BrowserExtensionProtocol.safariWebExtensionBundleID
     ) { error in
       DispatchQueue.main.async {
         if let error {

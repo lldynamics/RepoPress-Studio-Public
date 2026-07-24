@@ -48,6 +48,14 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       freshWorkspaceSeedPolicy: .softwareGuides,
       knowledgeLibraryService: knowledgeLibraryService
     )
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    if ScreenshotDemoDataService.isEnabledFromEnvironment {
+      // Install the requested screenshot presentation before ContentView is
+      // mounted. Changing split-view and inspector state during AppKit's first
+      // layout cycle can raise an NSWindow constraint exception.
+      ScreenshotDemoDataService.applyRequestedSurfaceIfEnabled(to: workbenchStore)
+    }
+#endif
     workbenchStore.knowledge.reportStartupRestoreOutcome(preparation.restoreOutcome)
 
     self.store = workbenchStore

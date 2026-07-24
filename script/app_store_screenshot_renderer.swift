@@ -159,11 +159,15 @@ private struct Renderer {
     ).integral
   }
 
-  private static func draw(_ image: NSImage, in rect: NSRect) {
+  private static func draw(
+    _ image: NSImage,
+    in rect: NSRect,
+    operation: NSCompositingOperation = .copy
+  ) {
     image.draw(
       in: rect,
       from: NSRect(origin: .zero, size: image.size),
-      operation: .copy,
+      operation: operation,
       fraction: 1,
       respectFlipped: false,
       hints: [.interpolation: NSImageInterpolation.high]
@@ -216,7 +220,7 @@ private struct Renderer {
 
     NSGraphicsContext.saveGraphicsState()
     cardPath.addClip()
-    draw(image, in: rect)
+    draw(image, in: rect, operation: .sourceOver)
     NSGraphicsContext.restoreGraphicsState()
 
     try! RGBColor(hex: "B8C9C0").nsColor.withAlphaComponent(0.8).setStroke()

@@ -19,9 +19,7 @@ struct KnowledgeSettingsView: View {
 
   @AppStorage("knowledgeSavedCollectionsV1") private var savedCollectionsJSON = "[]"
   @State private var expansionState = KnowledgeAdvancedSettingsExpansionState()
-#if !APP_STORE_BUILD
   @State private var isBrowserConnectionPresented = false
-#endif
   @State private var restorePreview: KnowledgeLibraryBackupPreview?
 
   var body: some View {
@@ -72,18 +70,16 @@ struct KnowledgeSettingsView: View {
         }
         .accessibilityIdentifier("knowledge-settings-backup")
 
-#if !APP_STORE_BUILD
         DisclosureGroup(isExpanded: $expansionState.browserConnection) {
           browserConnectionSettings
         } label: {
           advancedGroupLabel(
             title: String(localized: "浏览器连接"),
-            detail: String(localized: "从 Chrome、Edge 或 Firefox 保存网页"),
+            detail: String(localized: "从 Safari 或 Chrome 保存网页"),
             systemImage: "puzzlepiece.extension"
           )
         }
         .accessibilityIdentifier("knowledge-settings-browser-connection")
-#endif
       }
     }
     .formStyle(.grouped)
@@ -91,14 +87,12 @@ struct KnowledgeSettingsView: View {
     .sheet(item: $restorePreview) { preview in
       KnowledgeLibraryRestorePreviewView(knowledge: knowledge, preview: preview)
     }
-#if !APP_STORE_BUILD
     .sheet(isPresented: $isBrowserConnectionPresented) {
       if let browserBridge {
         BrowserExtensionConnectionView()
           .environmentObject(browserBridge)
       }
     }
-#endif
     .onChange(of: expansionState.vectorSearch) { _, isExpanded in
       guard isExpanded, knowledge.healthSnapshot == nil, !knowledge.isLoadingHealth else { return }
       Task { await knowledge.refreshLibraryHealth() }
@@ -175,7 +169,6 @@ struct KnowledgeSettingsView: View {
     .padding(.vertical, 8)
   }
 
-#if !APP_STORE_BUILD
   private var browserConnectionSettings: some View {
     VStack(alignment: .leading, spacing: 10) {
       if let browserBridge {
@@ -202,7 +195,6 @@ struct KnowledgeSettingsView: View {
     .padding(.leading, 22)
     .padding(.vertical, 8)
   }
-#endif
 
   private func advancedGroupLabel(
     title: String,

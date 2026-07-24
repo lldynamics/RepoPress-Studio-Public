@@ -577,10 +577,11 @@ extension RepositoryWorkspaceView {
           .font(.headline)
           .accessibilityAddTraits(.isHeader)
 
-        Text(report.rootPath.isEmpty ? "未选择仓库" : report.rootPath)
+        let rootDisplayText = repositoryRootDisplayText(for: report)
+        Text(rootDisplayText)
           .font(.callout.monospaced())
           .textSelection(.enabled)
-          .workbenchTruncatedIdentity(report.rootPath, lineLimit: 2)
+          .workbenchTruncatedIdentity(rootDisplayText, lineLimit: 2)
 
         Label(report.detectedKind?.localizedDisplayName ?? "未识别", systemImage: "globe")
         Label("Markdown \(report.markdownFileCount) · 图片 \(report.imageFileCount)", systemImage: "doc.on.doc")
@@ -621,6 +622,15 @@ extension RepositoryWorkspaceView {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("repository-section-information")
     }
+  }
+
+  private func repositoryRootDisplayText(for report: RepositoryScanReport) -> String {
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    if ScreenshotDemoDataService.isEnabledFromEnvironment {
+      return "示例仓库（隔离演示数据）"
+    }
+#endif
+    return report.rootPath.isEmpty ? "未选择仓库" : report.rootPath
   }
 
   @ViewBuilder

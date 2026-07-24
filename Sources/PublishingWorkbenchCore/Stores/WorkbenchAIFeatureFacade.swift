@@ -145,20 +145,20 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
   }
 
   public func refreshKeyAvailability() {
-    store.aiRefreshKeyAvailability()
+    store.refreshAIKeyAvailability()
   }
 
   @discardableResult
   public func saveAPIKey(_ token: String) -> Bool {
-    store.aiSaveAPIKey(token)
+    store.saveAIAPIKey(token)
   }
 
   public func deleteAPIKey() {
-    store.aiDeleteAPIKey()
+    store.deleteAIAPIKey()
   }
 
   public func testConnection() async -> AIConnectionTestReport? {
-    await store.aiTestConnection()
+    await store.testAIConnection()
   }
 
   public func grantDataSharingConsent() {
@@ -174,7 +174,7 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     for draftID: UUID? = nil,
     quickPrompt: AIPublishingQuickPrompt? = nil
   ) -> Bool {
-    store.aiOpenChatWorkspace(for: draftID, quickPrompt: quickPrompt)
+    store.openAIChatWorkspace(for: draftID, quickPrompt: quickPrompt)
   }
 
   public func hideAssistant() {
@@ -187,23 +187,23 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
   }
 
   public func prepareChat(for draft: ArticleDraft) {
-    store.aiPrepareChat(for: draft)
+    store.prepareAIChat(for: draft)
   }
 
   public func setChatModelGrade(_ grade: AIChatModelGrade) {
-    store.aiSetChatModelGrade(grade)
+    store.setAIChatModelGrade(grade)
   }
 
   public func setChatReasoningLevel(_ level: AIChatReasoningLevel) {
-    store.aiSetChatReasoningLevel(level)
+    store.setAIChatReasoningLevel(level)
   }
 
   public func setChatCustomModel(_ model: String) {
-    store.aiSetChatCustomModel(model)
+    store.setAIChatCustomModel(model)
   }
 
   public func resetChatModelToProfileDefault() {
-    store.aiResetChatModelToProfileDefault()
+    store.resetAIChatModelToProfileDefault()
   }
 
   public func updateChatDraft(_ draft: ArticleDraft) {
@@ -270,19 +270,19 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   @discardableResult
   public func saveChatCustomPrompt(title: String, prompt: String) -> AIPublishingCustomPrompt? {
-    store.aiSaveChatCustomPrompt(title: title, prompt: prompt)
+    store.saveAIChatCustomPrompt(title: title, prompt: prompt)
   }
 
   public func deleteChatCustomPrompt(_ promptID: AIPublishingCustomPrompt.ID) {
-    store.aiDeleteChatCustomPrompt(promptID)
+    store.deleteAIChatCustomPrompt(promptID)
   }
 
   public func startNewChatConversation(draft: ArticleDraft? = nil) {
-    store.aiStartNewChatConversation(draft: draft)
+    store.startNewAIChatConversation(draft: draft)
   }
 
   public func cancelChatReply() {
-    store.aiCancelChatReply()
+    store.cancelAIChatReply()
   }
 
   @discardableResult
@@ -319,7 +319,7 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     confirmingPossibleDuplicateCharge: Bool,
     draft: ArticleDraft? = nil
   ) async -> AIPublishingChatMessage? {
-    await store.aiRetryLastFailedChatReply(
+    await store.retryLastFailedAIChatReply(
       confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
       draft: draft
     )
@@ -327,15 +327,15 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   @discardableResult
   public func sendChatMessage(_ text: String, draft: ArticleDraft? = nil, imageAttachments: [AIChatImageAttachment] = []) async -> AIPublishingChatMessage? {
-    await store.aiSendChatMessage(text, draft: draft, imageAttachments: imageAttachments)
+    await store.sendAIChatMessage(text, draft: draft, imageAttachments: imageAttachments)
   }
 
   public func consumePendingQuickPrompt() -> AIPublishingQuickPrompt? {
-    store.aiConsumePendingQuickPrompt()
+    store.consumePendingAIQuickPrompt()
   }
 
   public func focusedChatParagraph(for draft: ArticleDraft) -> AIPublishingChatDraftParagraph? {
-    store.aiFocusedChatParagraph(for: draft)
+    store.focusedAIChatParagraph(for: draft)
   }
 
   @discardableResult
@@ -344,7 +344,7 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     draft: ArticleDraft,
     selectedText: String? = nil
   ) async -> AIPublishingActionResult? {
-    await store.aiPerformAction(kind, draft: draft, selectedText: selectedText)
+    await store.performAIAction(kind, draft: draft, selectedText: selectedText)
   }
 
 }

@@ -4,15 +4,15 @@ import Foundation
 /// separate from file attributes so edit commits can decide whether an image
 /// cache revision changed without touching the file system.
 public struct ImageWorkbenchMarkdownReferenceSignature: Hashable, Sendable {
-  private static let markdownImageRegex = try! NSRegularExpression(
+  private static let markdownImageRegex = try? NSRegularExpression(
     pattern: #"!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)"#
   )
   private let references: [Reference]
 
   public init(markdown: String) {
     let range = NSRange(markdown.startIndex..<markdown.endIndex, in: markdown)
-    let counts = Self.markdownImageRegex
-      .matches(in: markdown, range: range)
+    let matches = Self.markdownImageRegex?.matches(in: markdown, range: range) ?? []
+    let counts = matches
       .reduce(into: [String: Int]()) { result, match in
         guard let matchRange = Range(match.range(at: 1), in: markdown) else { return }
         let path = String(markdown[matchRange])

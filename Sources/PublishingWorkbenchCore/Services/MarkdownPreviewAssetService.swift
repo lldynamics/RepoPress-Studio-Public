@@ -104,29 +104,29 @@ private extension MarkdownPreviewAssetService {
     let accessibleText: String?
   }
 
-  static let videoExpression = try! NSRegularExpression(
+  static let videoExpression = try? NSRegularExpression(
     pattern: #"<video\b[^>]*>.*?</video\s*>"#,
     options: [.caseInsensitive, .dotMatchesLineSeparators]
   )
-  static let rawImageExpression = try! NSRegularExpression(
+  static let rawImageExpression = try? NSRegularExpression(
     pattern: #"<img\b[^>]*>"#,
     options: [.caseInsensitive]
   )
-  static let markdownImageExpression = try! NSRegularExpression(
+  static let markdownImageExpression = try? NSRegularExpression(
     pattern: MarkdownPatterns.complexImagePattern
   )
-  static let sourceAttributeExpression = try! NSRegularExpression(
+  static let sourceAttributeExpression = try? NSRegularExpression(
     pattern: #"\b(?:src|href)\s*=\s*[\"']([^\"']+)[\"']"#,
     options: [.caseInsensitive]
   )
-  static let altAttributeExpression = try! NSRegularExpression(
+  static let altAttributeExpression = try? NSRegularExpression(
     pattern: #"\balt\s*=\s*[\"']([^\"']*)[\"']"#,
     options: [.caseInsensitive]
   )
-  static let fencedCodeExpression = try! NSRegularExpression(
+  static let fencedCodeExpression = try? NSRegularExpression(
     pattern: #"(?ms)^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n.*?^[ \t]{0,3}\1[ \t]*(?:\n|$)"#
   )
-  static let inlineCodeExpression = try! NSRegularExpression(
+  static let inlineCodeExpression = try? NSRegularExpression(
     pattern: #"(?m)(`+)[^`\n]*\1"#
   )
 
@@ -165,8 +165,15 @@ private extension MarkdownPreviewAssetService {
 
   static func protectedMarkdownRanges(in markdown: String) -> [NSRange] {
     let fullRange = NSRange(markdown.startIndex..<markdown.endIndex, in: markdown)
-    return fencedCodeExpression.matches(in: markdown, range: fullRange).map(\.range)
-      + inlineCodeExpression.matches(in: markdown, range: fullRange).map(\.range)
+    let fencedRanges = fencedCodeExpression?
+      .matches(in: markdown, range: fullRange)
+      .map(\.range)
+      ?? []
+    let inlineRanges = inlineCodeExpression?
+      .matches(in: markdown, range: fullRange)
+      .map(\.range)
+      ?? []
+    return fencedRanges + inlineRanges
   }
 
   static func videoCandidates(
@@ -174,6 +181,10 @@ private extension MarkdownPreviewAssetService {
     assetByReference: [String: Asset],
     protectedRanges: [NSRange]
   ) -> [Candidate] {
+    guard let videoExpression,
+          let sourceAttributeExpression else {
+      return []
+    }
     let fullRange = NSRange(markdown.startIndex..<markdown.endIndex, in: markdown)
     return videoExpression.matches(in: markdown, range: fullRange).compactMap { match in
       guard !intersects(match.range, any: protectedRanges),
@@ -201,6 +212,10 @@ private extension MarkdownPreviewAssetService {
     protectedRanges: [NSRange],
     excluding excludedRanges: [NSRange]
   ) -> [Candidate] {
+    guard let rawImageExpression,
+          let sourceAttributeExpression else {
+      return []
+    }
     let fullRange = NSRange(markdown.startIndex..<markdown.endIndex, in: markdown)
     return rawImageExpression.matches(in: markdown, range: fullRange).compactMap { match in
       guard !intersects(match.range, any: protectedRanges + excludedRanges),
@@ -217,11 +232,13 @@ private extension MarkdownPreviewAssetService {
         range: match.range,
         asset: asset,
         kind: .image,
-        accessibleText: firstAttributeValue(
-          in: markdown,
-          matchRange: match.range,
-          expression: altAttributeExpression
-        )
+        accessibleText: altAttributeExpression.flatMap {
+          firstAttributeValue(
+            in: markdown,
+            matchRange: match.range,
+            expression: $0
+          )
+        }
       )
     }
   }
@@ -232,6 +249,7 @@ private extension MarkdownPreviewAssetService {
     protectedRanges: [NSRange],
     excluding excludedRanges: [NSRange]
   ) -> [Candidate] {
+    guard let markdownImageExpression else { return [] }
     let fullRange = NSRange(markdown.startIndex..<markdown.endIndex, in: markdown)
     return markdownImageExpression.matches(in: markdown, range: fullRange).compactMap { match in
       guard !intersects(match.range, any: protectedRanges + excludedRanges),

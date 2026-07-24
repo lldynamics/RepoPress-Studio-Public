@@ -1,7 +1,7 @@
 import XCTest
 
 @testable import PersonalSitePublisherMac
-import KnowledgeNativeMessagingSupport
+import BrowserExtensionProtocolSupport
 
 final class BrowserExtensionOriginPolicyTests: XCTestCase {
   func testAllowsSafariPerInstallUUIDOrigin() {
@@ -23,14 +23,14 @@ final class BrowserExtensionOriginPolicyTests: XCTestCase {
 
   func testAllowsOnlyCurrentSafariAndChromeReleaseOrigins() {
     XCTAssertEqual(
-      KnowledgeNativeMessagingProtocol.activeBrowserExtensions,
+      BrowserExtensionProtocol.activeBrowserExtensions,
       ["safari", "chrome"]
     )
     XCTAssertTrue(BrowserExtensionOriginPolicy.allows(nil))
     XCTAssertFalse(BrowserExtensionOriginPolicy.allows("moz-extension://temporary-id"))
     XCTAssertTrue(
       BrowserExtensionOriginPolicy.allows(
-        "chrome-extension://\(KnowledgeNativeMessagingProtocol.chromiumDevelopmentExtensionID)"
+        "chrome-extension://\(BrowserExtensionProtocol.chromiumDevelopmentExtensionID)"
       )
     )
     XCTAssertFalse(

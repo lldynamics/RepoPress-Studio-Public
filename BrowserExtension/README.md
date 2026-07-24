@@ -149,7 +149,7 @@ profile；它仍属于同一个 RepoPress 应用，不产生独立浏览器商�
 `browser-extension-protocol.json` 是本版本启用渠道、回环地址、协议请求头、路由、大小上限、
 Safari bundle ID 及 Chrome 开发与生产扩展 ID 的唯一来源。Edge/Firefox 身份字段仅为以后恢复
 渠道保留，不在当前版本启用。保留的
-`nativeMessaging` 字段名仅用于旧协议生成物兼容，
+共享协议只生成回环接口的地址、请求头、路由和大小限制。
 当前扩展不会申请或调用 Native Messaging。`chromeProductionID` 与
 `edgeProductionID` 为 `null` 时表示商店尚未分配身份，不会自动回退成一个伪生产 ID。
 修改它之后执行：

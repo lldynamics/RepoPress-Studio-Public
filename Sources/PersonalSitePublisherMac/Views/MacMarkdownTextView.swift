@@ -178,7 +178,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
       }
     }
 
-    let didReplaceText = textView.string != text
+    let didReceiveChangedText = context.coordinator.updateRepresentedText(text)
+    let didReplaceText = didReceiveChangedText && textView.string != text
     if didReplaceText {
       let currentDocumentRange = textView.selectedRange()
       textView.string = text
@@ -266,6 +267,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     @Binding var isFrontMatterSelection: Bool
     private var bodyMarkdown: String
     private var bodyUTF16Offset: Int
+    private var representedText: String
     let onStatisticsChanged: (MarkdownEditorStatistics) -> Void
     let onPasteMessage: (String) -> Void
     let onScrollProgressChanged: (Double) -> Void
@@ -326,6 +328,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
       _text = text
       self.bodyMarkdown = bodyMarkdown
       self.bodyUTF16Offset = bodyUTF16Offset
+      representedText = text.wrappedValue
       _selectedRange = selectedRange
       _isFrontMatterSelection = isFrontMatterSelection
       self.comfortConfiguration = comfortConfiguration
@@ -346,6 +349,12 @@ struct MacMarkdownTextView: NSViewRepresentable {
     func updateDocumentContext(bodyMarkdown: String, bodyUTF16Offset: Int) {
       self.bodyMarkdown = bodyMarkdown
       self.bodyUTF16Offset = bodyUTF16Offset
+    }
+
+    func updateRepresentedText(_ text: String) -> Bool {
+      guard representedText != text else { return false }
+      representedText = text
+      return true
     }
 
     func handleDroppedFiles(_ urls: [URL], at documentRange: NSRange) {
@@ -719,6 +728,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
         bodyMarkdown = parts.bodyMarkdown
         bodyUTF16Offset = parts.bodyUTF16Offset
       }
+      representedText = updatedText
       text = updatedText
       updateSelectionBinding(from: textView.selectedRange())
       scheduleFullStatistics(for: bodyMarkdown)

@@ -94,7 +94,7 @@ extension WorkbenchStore {
     aiStore.startNewAIChatConversation(draft: draft)
   }
 
-  #if DEBUG
+  #if DEBUG || SCREENSHOT_CAPTURE_BUILD
   /// Seeds a runtime-only conversation for deterministic screenshot fixtures.
   public func seedTransientAIChatPreview(_ messages: [AIPublishingChatMessage]) {
     setAIChatMessages(messages)

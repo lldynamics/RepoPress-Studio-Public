@@ -98,11 +98,6 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
-#if !APP_STORE_BUILD
-    Task.detached(priority: .utility) {
-      _ = BrowserNativeMessagingInstaller.repairInstalledConnectionsAfterUpgrade()
-    }
-#endif
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

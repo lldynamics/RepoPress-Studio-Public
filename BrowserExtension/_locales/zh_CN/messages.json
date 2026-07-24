@@ -13,7 +13,7 @@
   "connectionTokenPlaceholder": { "message": "从资料库连接窗口复制" },
   "connectButton": { "message": "连接" },
   "connectingButton": { "message": "连接中…" },
-  "nativeConnectionHint": { "message": "令牌通过 127.0.0.1 本机回环接口发送给应用；连接不会离开此 Mac。" },
+  "loopbackConnectionHint": { "message": "令牌通过 127.0.0.1 本机回环接口发送给应用；连接不会离开此 Mac。" },
   "connectedSessionTitle": { "message": "已连接本机资料库" },
   "offlineSessionTitle": { "message": "已保存配对令牌，应用离线" },
   "readingTokenExpiry": { "message": "正在读取令牌有效期…" },

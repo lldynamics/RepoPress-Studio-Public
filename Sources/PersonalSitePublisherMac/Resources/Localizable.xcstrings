@@ -11041,6 +11041,22 @@
         }
       }
     },
+    "从 Safari 或 Chrome 保存网页": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save webpages from Safari or Chrome"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从 Safari 或 Chrome 保存网页"
+          }
+        }
+      }
+    },
     "从右侧导入第一份资料。": {
       "localizations": {
         "en": {
