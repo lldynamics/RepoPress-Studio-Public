@@ -40,6 +40,23 @@ required = {
             ],
         },
     },
+    "ai-chat": {
+        "target": "ai-chat.png",
+        "capture": ["ai-chat", "AI writing assistant", "user-supplied API-key guidance"],
+        "source": {
+            "Sources/PersonalSitePublisherMac/Views/ContentView.swift": [
+                "usesInlineAIScreenshotInspector",
+                "ScreenshotInlineAIInspector",
+                "AIChatContextInspectorView",
+            ],
+            "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift": [
+                "AIChatContextInspectorView",
+                "需要配置 AI API Key",
+                '.accessibilityLabel("AI 消息")',
+                'DisclosureGroup("文章上下文"',
+            ],
+        },
+    },
     "knowledge-library": {
         "target": "knowledge-library.png",
         "capture": ["local knowledge library", "import", "search", "cleaned reading content"],

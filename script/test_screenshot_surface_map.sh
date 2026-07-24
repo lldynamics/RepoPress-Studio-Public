@@ -26,6 +26,7 @@ create_fixture() {
 | ID | Target file | Screen | Purpose | Status |
 | --- | --- | --- | --- | --- |
 | `writing` | `writing.png` | Writing workspace | Markdown editing, preview, metadata, and contextual writing actions. | Pending capture |
+| `ai-chat` | `ai-chat.png` | BYOK AI writing assistant | Show the in-app AI assistant, safe demo conversation, article context, and user-supplied API-key boundary. | Pending capture |
 | `knowledge-library` | `knowledge-library.png` | Local knowledge library | Show local import, search, cleaned reading content, source details, and annotations without browser capture. | Pending capture |
 | `sync-api-publish` | `sync-api-publish.png` | Sync workspace | GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR flow. | Pending capture |
 | `seo-social-preview` | `seo-social-preview.png` | SEO/social preview | Search, Open Graph, Twitter card, cache state, and manual refresh. | Pending capture |
@@ -38,7 +39,7 @@ EOF_MANIFEST
 
   write_file "$root/script/capture_app_screenshots.sh" <<'EOF_CAPTURE'
 #!/usr/bin/env bash
-required_ids=(writing knowledge-library sync-api-publish seo-social-preview deployment-status maintenance general-drafts pro-settings privacy-lock)
+required_ids=(writing ai-chat knowledge-library sync-api-publish seo-social-preview deployment-status maintenance general-drafts pro-settings privacy-lock)
 FORCE_RELAUNCH=0
 --force-relaunch
 --auto-window
@@ -56,6 +57,7 @@ PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO=1 PERSONAL_SITE_PUBLISHER_SCREENSHOT_SUR
 screen_guidance() {
   case "$1" in
     writing) echo "Show the writing workspace with editor, preview, metadata, and contextual writing actions." ;;
+    ai-chat) echo "Show the in-app AI writing assistant with safe demo conversation, article context, and user-supplied API-key guidance." ;;
     knowledge-library) echo "Show the local knowledge library with import, search, cleaned reading content, source details, and annotations." ;;
     sync-api-publish) echo "Show GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR controls." ;;
     seo-social-preview) echo "Show search/Open Graph/Twitter card previews, cache state, manual refresh, and external debug links." ;;
@@ -70,7 +72,7 @@ EOF_CAPTURE
 
   write_file "$root/script/build_and_run.sh" <<'EOF_BUILD'
 #!/usr/bin/env bash
-required_screenshot_surfaces=(writing knowledge-library sync-api-publish seo-social-preview deployment-status maintenance general-drafts pro-settings privacy-lock)
+required_screenshot_surfaces=(writing ai-chat knowledge-library sync-api-publish seo-social-preview deployment-status maintenance general-drafts pro-settings privacy-lock)
 --screenshot-demo [id]
 --screenshot-surface <id>
 --list-screenshot-surfaces
@@ -148,6 +150,12 @@ let privacy = "PrivacyLockOverlay privacy-lock-overlay"
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/ContentView.swift" <<'EOF_SWIFT'
 let privacyState = "isPrivacyLocked lockPrivacy(reason canUseProtectedWorkbench"
+let aiScreenshot = "usesInlineAIScreenshotInspector ScreenshotInlineAIInspector AIChatContextInspectorView"
+EOF_SWIFT
+  write_file "$root/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" <<'EOF_SWIFT'
+let aiInspector = "AIChatContextInspectorView 需要配置 AI API Key"
+// .accessibilityLabel("AI 消息")
+// DisclosureGroup("文章上下文"
 EOF_SWIFT
 }
 

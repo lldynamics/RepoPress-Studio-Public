@@ -1,7 +1,7 @@
 import Combine
 import CryptoKit
 import Foundation
-import KnowledgeNativeMessagingSupport
+import BrowserExtensionProtocolSupport
 import Network
 import PublishingWorkbenchCore
 import Security
@@ -25,7 +25,7 @@ enum KnowledgeBrowserBridgeState: Equatable {
 @MainActor
 final class KnowledgeBrowserBridge: ObservableObject {
   nonisolated static var endpointURL: String {
-    KnowledgeNativeMessagingProtocol.loopbackBaseURL
+    BrowserExtensionProtocol.loopbackBaseURL
   }
 
   @Published private(set) var state: KnowledgeBrowserBridgeState = .stopped
@@ -97,12 +97,12 @@ final class KnowledgeBrowserBridge: ObservableObject {
       let parameters = NWParameters.tcp
       parameters.allowLocalEndpointReuse = true
       guard let port = NWEndpoint.Port(
-        rawValue: KnowledgeNativeMessagingProtocol.loopbackPort
+        rawValue: BrowserExtensionProtocol.loopbackPort
       ) else {
         throw KnowledgeBrowserBridgeStartError.invalidLoopbackPort
       }
       parameters.requiredLocalEndpoint = .hostPort(
-        host: NWEndpoint.Host(KnowledgeNativeMessagingProtocol.loopbackHost),
+        host: NWEndpoint.Host(BrowserExtensionProtocol.loopbackHost),
         port: port
       )
       let listener = try NWListener(using: parameters)
@@ -627,8 +627,8 @@ enum BrowserExtensionOriginPolicy {
     case "chrome-extension":
       let allowedIDs = Set(
         [
-          KnowledgeNativeMessagingProtocol.chromiumDevelopmentExtensionID,
-          KnowledgeNativeMessagingProtocol.chromeProductionExtensionID,
+          BrowserExtensionProtocol.chromiumDevelopmentExtensionID,
+          BrowserExtensionProtocol.chromeProductionExtensionID,
         ].compactMap { $0?.lowercased() }
       )
       return allowedIDs.contains(host)
@@ -674,8 +674,8 @@ private struct BrowserBridgeHTTPRequest {
   }
 
   var isLoopbackBridgeRequest: Bool {
-    headers[KnowledgeNativeMessagingProtocol.loopbackProtocolHeaderName.lowercased()]
-      == KnowledgeNativeMessagingProtocol.loopbackProtocolHeaderValue
+    headers[BrowserExtensionProtocol.loopbackProtocolHeaderName.lowercased()]
+      == BrowserExtensionProtocol.loopbackProtocolHeaderValue
       && isApprovedExtensionOrigin
   }
 
@@ -695,7 +695,7 @@ private struct BrowserBridgeHTTPRequest {
     )
     return headerNames.contains("authorization")
       && headerNames.contains(
-        KnowledgeNativeMessagingProtocol.loopbackProtocolHeaderName.lowercased()
+        BrowserExtensionProtocol.loopbackProtocolHeaderName.lowercased()
       )
   }
 

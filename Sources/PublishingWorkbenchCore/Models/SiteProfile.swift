@@ -1,7 +1,13 @@
 import Foundation
 
 public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
-  public static let defaultProfileID = UUID(uuidString: "F44F7DB7-8D6F-44A3-A4F3-1D0C05931F31")!
+  public static let defaultProfileID = UUID(uuid: (
+    0xF4, 0x4F, 0x7D, 0xB7,
+    0x8D, 0x6F,
+    0x44, 0xA3,
+    0xA4, 0xF3,
+    0x1D, 0x0C, 0x05, 0x93, 0x1F, 0x31
+  ))
   public static let privateContentRoot = "private"
 
   public var id: UUID

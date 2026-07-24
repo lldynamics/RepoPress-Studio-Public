@@ -17,7 +17,6 @@ assert.deepEqual(
   ["safari", "chrome"],
   "this release must expose only Safari and Chrome"
 );
-const nativeProtocol = protocolDefinition.nativeMessaging;
 const loopbackProtocol = protocolDefinition.loopback;
 const generatedProtocolSource = await readFile(
   path.join(extensionRoot, "protocol.generated.js"),
@@ -932,8 +931,6 @@ let postedBody;
 let bridgeAvailable = true;
 let bridgeStatus = 200;
 let bridgeErrorCode = null;
-let nativeHostAvailable = true;
-let nativeMessageRequest;
 let lastFetchURL;
 let lastFetchOptions;
 let fetchCount = 0;
@@ -982,94 +979,6 @@ const browser = {
     async sendMessage(message) {
       backgroundRuntimeMessages.push(message);
       return undefined;
-    },
-    sendNativeMessage(hostName, request, callback) {
-      const operation = (async () => {
-        nativeMessageRequest = { hostName, request };
-        if (!nativeHostAvailable) throw new Error("Native host not found");
-        const body = request.bodyJSON ? JSON.parse(request.bodyJSON) : null;
-        postedBody = body;
-        if (request.path === "/v1/open") return {
-          schemaVersion: nativeProtocol.schemaVersion,
-          ok: true,
-          status: 200,
-          payload: { documentID: body.documentID, opened: true },
-          transport: "native"
-        };
-        if (request.path === "/v1/folders") return {
-          schemaVersion: nativeProtocol.schemaVersion,
-          ok: true,
-          status: 200,
-          payload: { folders: [], tokenExpiresAt: "2026-08-18T00:00:00Z" },
-          transport: "native"
-        };
-        if (duplicateMode && !body?.duplicateResolution) return {
-          schemaVersion: nativeProtocol.schemaVersion,
-          ok: true,
-          status: 200,
-          payload: {
-            operationID: body.operationID,
-            requiresDuplicateResolution: true,
-            conflict: {
-              documentID: savedDocumentID,
-              title: page.title,
-              folder: { id: "22222222-2222-2222-2222-222222222222", name: "阅读" },
-              fileSizeBytes: 2048,
-              updatedAt: "2026-07-19T00:00:00Z",
-              incomingHasChanges: true
-            }
-          },
-          transport: "native"
-        };
-        const completedReceipt = completedImportReceipts.get(body?.operationID);
-        if (completedReceipt) return {
-          schemaVersion: nativeProtocol.schemaVersion,
-          ok: true,
-          status: 200,
-          payload: { ...completedReceipt, replayed: true },
-          transport: "native"
-        };
-        const successfulReceipt = {
-          operationID: body?.operationID,
-          insertedCount: 1,
-          updatedCount: 0,
-          skippedCount: 0,
-          action: body?.duplicateResolution === "move-only" ? "moved" : "inserted",
-          documentID: savedDocumentID,
-          title: page.title,
-          folder: { id: "22222222-2222-2222-2222-222222222222", name: "阅读" },
-          fileSizeBytes: 2048,
-          archiveType: page.archiveReport.format,
-          indexStatus: "ready",
-          allowsAIUse: true,
-          replayed: false
-        };
-        if (bridgeStatus >= 200 && bridgeStatus < 300) {
-          completedImportReceipts.set(body?.operationID, successfulReceipt);
-          if (loseNextImportResponseAfterCommit) {
-            loseNextImportResponseAfterCommit = false;
-            throw new Error("Native response was lost after commit");
-          }
-        }
-        return {
-        schemaVersion: nativeProtocol.schemaVersion,
-        ok: bridgeStatus >= 200 && bridgeStatus < 300,
-        status: bridgeStatus,
-        payload: bridgeStatus >= 200 && bridgeStatus < 300
-          ? successfulReceipt
-          : { error: "capture rejected", code: bridgeErrorCode },
-        transport: "native"
-        };
-      })();
-      if (typeof callback === "function") {
-        operation.then(callback, (error) => {
-          this.lastError = { message: error.message };
-          callback(undefined);
-          this.lastError = null;
-        });
-        return undefined;
-      }
-      return operation;
     },
     onStartup: { addListener() {} },
     onInstalled: { addListener() {} }
@@ -1871,7 +1780,6 @@ assert.equal(replayResponse.result.receipts[0].replayed, true);
 assert.equal(backgroundStorage.pendingKnowledgeCapturesV1.entries.length, 0);
 assert.equal(activeAlarms.has("retry-pending-knowledge-captures"), false);
 
-nativeHostAvailable = false;
 bridgeAvailable = false;
 for (let index = 0; index < 2; index += 1) {
   const queuedVersion = await new Promise((resolve, reject) => {
@@ -1897,7 +1805,6 @@ assert.equal(backgroundStorage.pendingKnowledgeCapturesV1.entries
   .every((entry) => entry.envelope.capture.sourceURL === page.sourceURL), true);
 assert.ok(fetchCount > 0, "Firefox must use the authenticated loopback bridge");
 
-nativeHostAvailable = true;
 bridgeAvailable = true;
 const retryResponse = await new Promise((resolve, reject) => {
   const timeout = setTimeout(() => reject(new Error("version retry response timed out")), 1_000);
@@ -2013,7 +1920,6 @@ assert.equal(cancelledConflict.result.queuedCount, 0);
 assert.equal(backgroundStorage.pendingKnowledgeCapturesV1.entries.length, 0);
 
 duplicateMode = false;
-nativeHostAvailable = false;
 bridgeAvailable = false;
 const originalPageURL = page.pageURL;
 const originalSourceURL = page.sourceURL;
@@ -2086,7 +1992,6 @@ assert.equal(disabledQueueCapture.ok, false);
 assert.equal(disabledQueueCapture.code, "capture-queue-disabled");
 assert.equal(backgroundStorage.pendingKnowledgeCapturesV1.entries.length, 0);
 
-nativeHostAvailable = true;
 bridgeAvailable = true;
 bridgeStatus = 422;
 const rejectedResponse = await new Promise((resolve, reject) => {

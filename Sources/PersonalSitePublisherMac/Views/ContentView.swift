@@ -101,7 +101,7 @@ struct ContentView: View {
         .disabled(shellState.isPrivacyLocked)
         .accessibilityHidden(shellState.isPrivacyLocked)
 
-#if (DEBUG || SCREENSHOT_CAPTURE_BUILD) && !APP_STORE_BUILD
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
         if usesInlineAIScreenshotInspector {
           ScreenshotInlineAIInspector(
             store: store,
@@ -280,7 +280,7 @@ struct ContentView: View {
     }
   }
 
-#if (DEBUG || SCREENSHOT_CAPTURE_BUILD) && !APP_STORE_BUILD
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
   private var usesInlineAIScreenshotInspector: Bool {
     ScreenshotDemoDataService.isEnabledFromEnvironment
       && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .aiChat
@@ -317,17 +317,10 @@ struct ContentView: View {
         Task { @MainActor in
           try? await Task.sleep(for: .seconds(1))
           guard !Task.isCancelled else { return }
-          var transaction = Transaction(animation: nil)
-          transaction.disablesAnimations = true
-          withTransaction(transaction) {
-            ScreenshotDemoDataService.applyRequestedSurfaceIfEnabled(to: store)
-          }
           ScreenshotDemoSettingsPresenter.openSettingsIfNeeded {
             openSettings()
           }
         }
-      } else {
-        ScreenshotDemoDataService.applyRequestedSurfaceIfEnabled(to: store)
       }
 #endif
       didApplyScreenshotDemoSurface = true
@@ -764,7 +757,7 @@ struct ContentView: View {
   }
 }
 
-#if (DEBUG || SCREENSHOT_CAPTURE_BUILD) && !APP_STORE_BUILD
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
 private struct ScreenshotInlineAIInspector: View {
   let store: WorkbenchStore
   let width: CGFloat

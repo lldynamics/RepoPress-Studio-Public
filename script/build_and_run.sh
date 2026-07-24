@@ -4,7 +4,6 @@ set -euo pipefail
 MODE="run"
 BUILD_CONFIGURATION="debug"
 APP_STORE_BUILD=0
-DIRECT_DISTRIBUTION_BUILD="${DIRECT_DISTRIBUTION_BUILD:-0}"
 APP_NAME="PersonalSitePublisherMac"
 BUNDLE_ID="${PERSONAL_SITE_PUBLISHER_BUNDLE_ID:-com.jinfang.PersonalSitePublisherMac}"
 MIN_SYSTEM_VERSION="14.0"
@@ -27,16 +26,12 @@ APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_PLUGINS="$APP_CONTENTS/PlugIns"
 APP_BINARY="$APP_MACOS/$APP_NAME"
-NATIVE_HOST_NAME="KnowledgeNativeMessagingHost"
-NATIVE_HOST_BINARY="$APP_MACOS/$NATIVE_HOST_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_ICON_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources/AppIcon.icns"
 LOCALIZATION_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources"
 LOCALIZATION_CATALOG="$LOCALIZATION_SOURCE/Localizable.xcstrings"
-BROWSER_EXTENSION_SOURCE="$ROOT_DIR/BrowserExtension"
 LOCAL_DEVELOPMENT_ENTITLEMENTS="$ROOT_DIR/Packaging/LocalDevelopment.entitlements"
 APP_STORE_ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
-DIRECT_DISTRIBUTION_ENTITLEMENTS="$ROOT_DIR/Packaging/DirectDistribution.entitlements"
 SAFARI_EXTENSION_ENTITLEMENTS="$ROOT_DIR/Packaging/SafariWebExtension.entitlements"
 SAFARI_EXTENSION_BUNDLE_ID="${SAFARI_WEB_EXTENSION_BUNDLE_ID:-$BUNDLE_ID.SafariExtension}"
 SAFARI_EXTENSION_BUILD_PRODUCT="$ROOT_DIR/.build/safari-web-extension/product/RepoPressSafariExtension.appex"
@@ -72,6 +67,7 @@ swift_build() {
 
 required_screenshot_surfaces=(
   writing
+  ai-chat
   knowledge-library
   sync-api-publish
   seo-social-preview
@@ -98,8 +94,8 @@ Modes:
   --screenshot-demo [id]    Build and launch screenshot demo data for a surface.
 
 Options:
-  --release                 Build with SwiftPM's Release configuration. Direct packages require a verified Mozilla-signed Firefox XPI.
-  --app-store               Build the Mac App Store Release variant without browser-extension assets.
+  --release                 Build with SwiftPM's Release configuration.
+  --app-store               Build the Mac App Store Release variant.
   --configuration <name>   Select debug or release (default: debug).
   --screenshot-surface <id> Select a screenshot demo surface and imply --screenshot-demo.
   --list-screenshot-surfaces
@@ -186,51 +182,16 @@ if [[ "$APP_STORE_BUILD" == "1" && "$BUILD_CONFIGURATION" != "release" ]]; then
   echo "App Store builds require the Release configuration" >&2
   exit 2
 fi
-if [[ "$DIRECT_DISTRIBUTION_BUILD" != "0" && "$DIRECT_DISTRIBUTION_BUILD" != "1" ]]; then
-  echo "DIRECT_DISTRIBUTION_BUILD must be 0 or 1" >&2
-  exit 2
-fi
-if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
-  if [[ "$APP_STORE_BUILD" == "1" || "$BUILD_CONFIGURATION" != "release" ]]; then
-    echo "Developer ID distribution mode requires a non-App-Store Release build" >&2
-    exit 2
-  fi
-  if [[ -z "${CODE_SIGN_IDENTITY:-}" || "${CODE_SIGN_IDENTITY:-}" == "-" \
-    || "${CODE_SIGN_IDENTITY:-}" == *$'\n'* || "${CODE_SIGN_IDENTITY:-}" == *$'\r'* ]]; then
-    echo "Developer ID distribution mode requires an explicit CODE_SIGN_IDENTITY" >&2
-    exit 2
-  fi
-  direct_distribution_identity_count="$(
-    "$SECURITY_TOOL" find-identity -v -p codesigning 2>/dev/null \
-      | /usr/bin/awk -v identity="$CODE_SIGN_IDENTITY" '
-          index($0, identity) > 0 && index($0, "\"Developer ID Application:") > 0 { count += 1 }
-          END { print count + 0 }
-        ' \
-      || true
-  )"
-  if [[ "$direct_distribution_identity_count" != "1" ]]; then
-    echo "Developer ID distribution mode requires one unique valid Developer ID Application identity" >&2
-    exit 2
-  fi
-fi
-
 if [[ "$APP_STORE_BUILD" == "1" ]]; then
   DISTRIBUTION_CHANNEL="AppStore"
-  BROWSER_EXTENSION_AVAILABLE_PLIST="  <false/>"
 else
-  DISTRIBUTION_CHANNEL="Direct"
-  BROWSER_EXTENSION_AVAILABLE_PLIST="  <true/>"
+  DISTRIBUTION_CHANNEL="Development"
 fi
 if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then
   SCREENSHOT_CAPTURE_BUILD_PLIST="  <true/>"
 else
   SCREENSHOT_CAPTURE_BUILD_PLIST="  <false/>"
 fi
-FIREFOX_SIGNED_PACKAGE_AVAILABLE_PLIST="  <false/>"
-HARDENED_RUNTIME_ENABLED_PLIST="  <false/>"
-firefox_extension_version=""
-signed_firefox_xpi=""
-signed_firefox_xpi_verified=0
 
 if [[ "$MODE" == "screenshot-demo" ]] && ! contains_screenshot_surface "$SCREENSHOT_SURFACE"; then
   echo "unknown screenshot surface: $SCREENSHOT_SURFACE" >&2
@@ -281,54 +242,17 @@ swift_build_options=(
   -c "$BUILD_CONFIGURATION"
   --disable-sandbox
 )
-if [[ "$APP_STORE_BUILD" == "1" ]]; then
-  swift_build_options+=(
-    -Xswiftc -D
-    -Xswiftc APP_STORE_BUILD
-  )
-fi
 if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then
   swift_build_options+=(
     -Xswiftc -D
     -Xswiftc SCREENSHOT_CAPTURE_BUILD
   )
 fi
-if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
-  HARDENED_RUNTIME_ENABLED_PLIST="  <true/>"
-fi
 python3 "$ROOT_DIR/script/generate_browser_extension_protocol.py" --check
 bash "$ROOT_DIR/script/sync_safari_browser_extension.sh" --check
 bash "$ROOT_DIR/script/build_safari_web_extension.sh" \
   --configuration "$BUILD_CONFIGURATION"
-if [[ "$APP_STORE_BUILD" != "1" && "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" != "1" ]]; then
-  [[ -f "$BROWSER_EXTENSION_SOURCE/manifest.json" ]] || {
-    echo "browser extension manifest is missing: $BROWSER_EXTENSION_SOURCE/manifest.json" >&2
-    exit 1
-  }
-  "$ROOT_DIR/script/sync_firefox_browser_extension.sh" --check
-  firefox_extension_version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("version", ""))' "$BROWSER_EXTENSION_SOURCE/Firefox/manifest.json")"
-  [[ -n "$firefox_extension_version" ]] || {
-    echo "Firefox extension manifest version is missing" >&2
-    exit 1
-  }
-  signed_firefox_xpi="$DIST_DIR/browser-extension/knowledge-capture-firefox-$firefox_extension_version.xpi"
-  if [[ -f "$signed_firefox_xpi" ]]; then
-    "$ROOT_DIR/script/firefox_extension_release.py" verify-signed --signed-xpi "$signed_firefox_xpi"
-    signed_firefox_xpi_verified=1
-  elif [[ "$BUILD_CONFIGURATION" == "release" ]]; then
-    echo "Direct Release packaging requires a verified Mozilla-signed Firefox XPI: $signed_firefox_xpi" >&2
-    echo "Run script/sign_firefox_extension.sh before building the Direct Release package." >&2
-    exit 1
-  else
-    echo "Debug Direct package: signed Firefox XPI is absent; Firefox long-term installation is not bundled." >&2
-  fi
-elif [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then
-  echo "Screenshot capture build: skipping browser-extension release synchronization." >&2
-fi
 swift_build build "${swift_build_options[@]}" --disable-index-store --product "$APP_NAME"
-if [[ "$APP_STORE_BUILD" != "1" ]]; then
-  swift_build build "${swift_build_options[@]}" --disable-index-store --product "$NATIVE_HOST_NAME"
-fi
 BUILD_BIN_DIR="$(swift_build build "${swift_build_options[@]}" --show-bin-path)"
 case "$BUILD_BIN_DIR" in
   */"$BUILD_CONFIGURATION") ;;
@@ -351,34 +275,8 @@ chmod +x "$APP_BINARY"
   exit 1
 }
 ditto "$SAFARI_EXTENSION_BUILD_PRODUCT" "$SAFARI_EXTENSION_BUNDLE"
-if [[ "$APP_STORE_BUILD" != "1" ]]; then
-  BUILD_NATIVE_HOST="$BUILD_BIN_DIR/$NATIVE_HOST_NAME"
-  [[ -x "$BUILD_NATIVE_HOST" ]] || {
-    echo "$BUILD_CONFIGURATION native messaging host is missing or not executable: $BUILD_NATIVE_HOST" >&2
-    exit 1
-  }
-  cp "$BUILD_NATIVE_HOST" "$NATIVE_HOST_BINARY"
-  chmod +x "$NATIVE_HOST_BINARY"
-fi
 cp "$APP_ICON_SOURCE" "$APP_RESOURCES/AppIcon.icns"
 cp -R "$LOCALIZATION_SOURCE"/*.lproj "$APP_RESOURCES"/
-if [[ "$APP_STORE_BUILD" != "1" ]]; then
-  cp -R "$BROWSER_EXTENSION_SOURCE" "$APP_RESOURCES/BrowserExtension"
-  firefox_release_resources="$APP_RESOURCES/BrowserExtension/Release"
-  rm -rf "$firefox_release_resources"
-  if [[ "$signed_firefox_xpi_verified" == "1" ]]; then
-    firefox_release_resources="$APP_RESOURCES/BrowserExtension/Release"
-    mkdir -p "$firefox_release_resources"
-    cp "$signed_firefox_xpi" "$firefox_release_resources/"
-    "$ROOT_DIR/script/firefox_extension_release.py" updates \
-      --signed-xpi "$signed_firefox_xpi" \
-      --output "$firefox_release_resources/updates.json"
-    "$ROOT_DIR/script/firefox_extension_release.py" verify-updates \
-      --signed-xpi "$firefox_release_resources/$(basename "$signed_firefox_xpi")" \
-      --updates "$firefox_release_resources/updates.json"
-    FIREFOX_SIGNED_PACKAGE_AVAILABLE_PLIST="  <true/>"
-  fi
-fi
 xcrun xcstringstool compile "$LOCALIZATION_CATALOG" --output-directory "$APP_RESOURCES"
 
 # Keep the Core target's localization bundle inside Contents/Resources so the
@@ -447,13 +345,9 @@ cat >"$INFO_PLIST" <<PLIST
   <key>PersonalSitePublisherScreenshotCaptureBuild</key>
 $SCREENSHOT_CAPTURE_BUILD_PLIST
   <key>PersonalSitePublisherBrowserExtensionAvailable</key>
-$BROWSER_EXTENSION_AVAILABLE_PLIST
+  <false/>
   <key>PersonalSitePublisherSafariWebExtensionAvailable</key>
   <true/>
-  <key>PersonalSitePublisherFirefoxSignedPackageAvailable</key>
-$FIREFOX_SIGNED_PACKAGE_AVAILABLE_PLIST
-  <key>PersonalSitePublisherHardenedRuntimeEnabled</key>
-$HARDENED_RUNTIME_ENABLED_PLIST
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>LSApplicationCategoryType</key>
@@ -534,31 +428,6 @@ elif [[ "$APP_STORE_BUILD" == "1" ]]; then
     exit 1
   }
   code_sign_arguments+=(--entitlements "$APP_STORE_ENTITLEMENTS")
-elif [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
-  [[ -f "$DIRECT_DISTRIBUTION_ENTITLEMENTS" ]] || {
-    echo "Direct distribution entitlements are missing: $DIRECT_DISTRIBUTION_ENTITLEMENTS" >&2
-    exit 1
-  }
-  code_sign_arguments+=(
-    --options runtime
-    --timestamp
-    --entitlements "$DIRECT_DISTRIBUTION_ENTITLEMENTS"
-  )
-fi
-if [[ "$APP_STORE_BUILD" != "1" ]]; then
-  native_code_sign_arguments=(
-    --force \
-    --sign "$resolved_code_sign_identity" \
-    --identifier "$BUNDLE_ID.KnowledgeNativeMessagingHost"
-  )
-  if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
-    native_code_sign_arguments+=(
-      --options runtime
-      --timestamp
-      --entitlements "$DIRECT_DISTRIBUTION_ENTITLEMENTS"
-    )
-  fi
-  "$CODESIGN_TOOL" "${native_code_sign_arguments[@]}" "$NATIVE_HOST_BINARY"
 fi
 [[ -f "$SAFARI_EXTENSION_ENTITLEMENTS" ]] || {
   echo "Safari Web Extension entitlements are missing: $SAFARI_EXTENSION_ENTITLEMENTS" >&2
@@ -570,9 +439,6 @@ safari_code_sign_arguments=(
   --identifier "$SAFARI_EXTENSION_BUNDLE_ID"
   --entitlements "$SAFARI_EXTENSION_ENTITLEMENTS"
 )
-if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
-  safari_code_sign_arguments+=(--options runtime --timestamp)
-fi
 "$CODESIGN_TOOL" "${safari_code_sign_arguments[@]}" "$SAFARI_EXTENSION_BUNDLE"
 "$CODESIGN_TOOL" --verify --strict --verbose=2 "$SAFARI_EXTENSION_BUNDLE"
 "$CODESIGN_TOOL" "${code_sign_arguments[@]}" "$APP_BUNDLE"

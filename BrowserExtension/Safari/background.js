@@ -1,9 +1,9 @@
-if (!globalThis.KNOWLEDGE_NATIVE_MESSAGING_PROTOCOL
+if (!globalThis.REPOPRESS_BROWSER_EXTENSION_PROTOCOL
     && typeof globalThis.importScripts === "function") {
   globalThis.importScripts("protocol.generated.js");
 }
-const NATIVE_MESSAGING_PROTOCOL = globalThis.KNOWLEDGE_NATIVE_MESSAGING_PROTOCOL;
-if (!NATIVE_MESSAGING_PROTOCOL) {
+const BROWSER_EXTENSION_PROTOCOL = globalThis.REPOPRESS_BROWSER_EXTENSION_PROTOCOL;
+if (!BROWSER_EXTENSION_PROTOCOL) {
   throw new Error("浏览器本机桥接协议常量未载入。");
 }
 const MAX_ARCHIVE_BYTES = 24 * 1024 * 1024;
@@ -914,7 +914,7 @@ async function bridgeRequestForPopup(message) {
 
 async function performBridgeRequest(path, method, token, body = null) {
   const normalizedMethod = String(method || "").toUpperCase();
-  if (!NATIVE_MESSAGING_PROTOCOL.routes[path]?.includes(normalizedMethod)) {
+  if (!BROWSER_EXTENSION_PROTOCOL.routes[path]?.includes(normalizedMethod)) {
     throw new Error("扩展请求了未允许的本机资料库接口。");
   }
   if (!token) {
@@ -929,17 +929,17 @@ async function performBridgeRequest(path, method, token, body = null) {
     const bodyJSON = body == null ? null : JSON.stringify(body);
     if (bodyJSON != null
         && new TextEncoder().encode(bodyJSON).length
-          > NATIVE_MESSAGING_PROTOCOL.maximumInputBytes) {
+          > BROWSER_EXTENSION_PROTOCOL.maximumInputBytes) {
       throw new Error("本机桥接请求正文超过协议上限。");
     }
     const headers = {
       "Authorization": `Bearer ${token}`,
-      [NATIVE_MESSAGING_PROTOCOL.loopback.protocolHeaderName]:
-        NATIVE_MESSAGING_PROTOCOL.loopback.protocolHeaderValue
+      [BROWSER_EXTENSION_PROTOCOL.loopback.protocolHeaderName]:
+        BROWSER_EXTENSION_PROTOCOL.loopback.protocolHeaderValue
     };
     if (bodyJSON != null) headers["Content-Type"] = "application/json";
     const response = await fetch(
-      `${NATIVE_MESSAGING_PROTOCOL.loopback.baseURL}${path}`,
+      `${BROWSER_EXTENSION_PROTOCOL.loopback.baseURL}${path}`,
       {
         method: normalizedMethod,
         headers,

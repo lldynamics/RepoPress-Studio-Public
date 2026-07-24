@@ -29,7 +29,7 @@ output="$(
     bash "$READINESS"
 )"
 grep -q "screenshot capture readiness: ready" <<<"$output" || fail "readiness did not print ready"
-grep -q "captured screenshots: 0/9" <<<"$output" || fail "readiness did not report missing screenshots"
+grep -q "captured screenshots: 0/10" <<<"$output" || fail "readiness did not report missing screenshots"
 grep -q "next capture command: script/capture_app_screenshots.sh --auto-window --force-relaunch" <<<"$output" \
   || fail "readiness did not print the auto capture command"
 

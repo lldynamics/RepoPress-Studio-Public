@@ -5,14 +5,12 @@
       "safari",
       "chrome"
     ],
-    "hostName": "com.jinfang.personal_site_publisher.knowledge",
     "loopback": {
       "baseURL": "http://127.0.0.1:17843",
       "protocolHeaderName": "X-RepoPress-Protocol",
       "protocolHeaderValue": "1"
     },
     "maximumInputBytes": 52428800,
-    "maximumOutputBytes": 1048576,
     "routes": {
       "/v1/folders": [
         "GET"
@@ -26,10 +24,9 @@
       "/v1/suggestions": [
         "POST"
       ]
-    },
-    "schemaVersion": 1
+    }
   };
   for (const methods of Object.values(protocol.routes)) Object.freeze(methods);
   Object.freeze(protocol.routes);
-  globalThis.KNOWLEDGE_NATIVE_MESSAGING_PROTOCOL = Object.freeze(protocol);
+  globalThis.REPOPRESS_BROWSER_EXTENSION_PROTOCOL = Object.freeze(protocol);
 })();

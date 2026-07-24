@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory(prefix="browser-extension-protocol-") as direct
     fixture = Path(directory)
     extension = fixture / "BrowserExtension"
     firefox = extension / "Firefox"
-    swift = fixture / "Sources" / "KnowledgeNativeMessagingSupport"
+    swift = fixture / "Sources" / "BrowserExtensionProtocolSupport"
     firefox.mkdir(parents=True)
     swift.mkdir(parents=True)
     for relative in (
@@ -95,13 +95,12 @@ with tempfile.TemporaryDirectory(prefix="browser-extension-protocol-") as direct
     generated_swift = (
         fixture
         / "Sources"
-        / "KnowledgeNativeMessagingSupport"
-        / "KnowledgeNativeMessagingGenerated.swift"
+        / "BrowserExtensionProtocolSupport"
+        / "BrowserExtensionProtocolGenerated.swift"
     ).read_text(encoding="utf-8")
     assert 'chromeProductionExtensionID: String? =\n    "' + "a" * 32 in generated_swift
-    assert 'edgeProductionExtensionID: String? =\n    "' + "b" * 32 in generated_swift
-    assert f'"chrome-extension://{"a" * 32}/"' in generated_swift
-    assert f'"chrome-extension://{"b" * 32}/"' in generated_swift
+    assert "edgeProductionExtensionID" not in generated_swift
+    assert "firefoxExtensionID" not in generated_swift
 
     definition["extensions"]["chromeProductionID"] = "q" * 32
     definition_path.write_text(

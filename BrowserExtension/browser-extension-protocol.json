@@ -17,10 +17,8 @@
     "protocolHeaderName": "X-RepoPress-Protocol",
     "protocolHeaderValue": "1"
   },
-  "nativeMessaging": {
-    "hostName": "com.jinfang.personal_site_publisher.knowledge",
+  "captureProtocol": {
     "maximumInputBytes": 52428800,
-    "maximumOutputBytes": 1048576,
     "routes": {
       "/v1/folders": [
         "GET"
@@ -34,7 +32,6 @@
       "/v1/suggestions": [
         "POST"
       ]
-    },
-    "schemaVersion": 1
+    }
   }
 }

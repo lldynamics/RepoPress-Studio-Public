@@ -124,11 +124,12 @@ public enum MarkdownInternalLinkService {
     .sorted { $0.sourceTitle.localizedStandardCompare($1.sourceTitle) == .orderedAscending }
   }
 
-  private static let markdownLinkDestinationExpression = try! NSRegularExpression(
+  private static let markdownLinkDestinationExpression = try? NSRegularExpression(
     pattern: #"(?<!!)\[[^\]\n]*\]\(\s*<?([^\s)>]+)>?"#
   )
 
   private static func markdownLinkDestinations(in markdown: String) -> [String] {
+    guard let markdownLinkDestinationExpression else { return [] }
     let source = markdown as NSString
     let matches = markdownLinkDestinationExpression.matches(
       in: markdown,

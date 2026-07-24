@@ -129,15 +129,9 @@ final class OperationalWorkspaceContextStageTests: XCTestCase {
   }
 
   func testContentHealthNavigationKeepsEveryActionScopeVisible() {
-#if APP_STORE_BUILD
-    let expectedFilters: [ContentHealthContextFilter] = [
-      .overview, .publicRisks, .siteIssues, .maintenance,
-    ]
-#else
     let expectedFilters: [ContentHealthContextFilter] = [
       .overview, .publicRisks, .aiFixes, .siteIssues, .maintenance,
     ]
-#endif
     XCTAssertEqual(
       ContentHealthContextFilter.navigationFilters,
       expectedFilters

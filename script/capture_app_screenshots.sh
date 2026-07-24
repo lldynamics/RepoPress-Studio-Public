@@ -70,6 +70,7 @@ load_required_ids() {
 screen_title() {
   case "$1" in
     writing) echo "Writing workspace" ;;
+    ai-chat) echo "BYOK AI writing assistant" ;;
     sync-api-publish) echo "Sync/API publishing workspace" ;;
     seo-social-preview) echo "SEO and social preview" ;;
     deployment-status) echo "Deployment status" ;;
@@ -85,6 +86,7 @@ screen_title() {
 screen_guidance() {
   case "$1" in
     writing) echo "Show the writing workspace with editor, preview, metadata, and contextual writing actions." ;;
+    ai-chat) echo "Show the in-app AI writing assistant with safe demo conversation, article context, and user-supplied API-key guidance." ;;
     sync-api-publish) echo "Show GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR controls." ;;
     seo-social-preview) echo "Show search/Open Graph/Twitter card previews, cache state, manual refresh, and external debug links." ;;
     deployment-status) echo "Show GitHub Pages/Actions, Netlify, Vercel, Cloudflare Pages, or custom endpoint validation status." ;;
@@ -144,10 +146,15 @@ launch_app() {
 
   echo "screenshot capture: launching $APP_PRODUCT"
   if [[ "$DEMO_DATA" == "1" ]]; then
-      /usr/bin/open -n "$APP_BUNDLE" \
+      /usr/bin/open -F -n "$APP_BUNDLE" \
         --env PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO=1 \
         --env PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE="$surface_id" \
         --env PERSONAL_SITE_PUBLISHER_SCREENSHOT_WINDOW_ID_FILE="$SCREENSHOT_WINDOW_ID_FILE"
+      # A fresh SwiftUI scene can launch without restoring or creating its
+      # default window. Send one reopen event after the process has registered
+      # so WindowGroup deterministically creates the requested workbench.
+      sleep 1
+      /usr/bin/open -a "$APP_BUNDLE"
     else
       /usr/bin/open -n "$APP_BUNDLE"
     fi
@@ -166,7 +173,6 @@ tell application "System Events"
     if not (exists window 1) then error "no visible $APP_PRODUCT window"
     set frontmost to true
     set position of window 1 to {64, 56}
-    set size of window 1 to {1280, 800}
   end tell
 end tell
 delay 0.6

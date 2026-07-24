@@ -80,10 +80,13 @@ private final class CaptureBridgeView: NSView {
     } ?? window.screen ?? NSScreen.main
     guard let targetScreen else { return }
     let visibleFrame = targetScreen.visibleFrame
-    let targetSize = NSSize(
-      width: min(1200, visibleFrame.width - 40),
-      height: min(800, visibleFrame.height - 40)
+    let targetContentSize = NSSize(
+      width: min(WorkbenchLayoutMode.defaultWindowWidth, visibleFrame.width - 40),
+      height: min(WorkbenchLayoutMode.defaultWindowHeight, visibleFrame.height - 40)
     )
+    let targetSize = window.frameRect(
+      forContentRect: NSRect(origin: .zero, size: targetContentSize)
+    ).size
     let targetFrame = NSRect(
       x: visibleFrame.midX - targetSize.width / 2,
       y: visibleFrame.midY - targetSize.height / 2,

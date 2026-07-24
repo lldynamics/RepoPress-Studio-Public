@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "script" / "release_checks.json"
 DEFAULT_RESULT_JSON = ROOT / ".build" / "release-gate-result.json"
-RELEASE_PROFILES = ("app-store", "direct", "chrome")
+RELEASE_PROFILES = ("app-store", "chrome")
 PROFILE_GROUPS = ("common", *RELEASE_PROFILES)
 
 
@@ -116,7 +116,7 @@ def load_manifest() -> tuple[list[dict[str, object]], dict[str, list[str]]]:
     raw_profiles = data.get("profiles")
     if not isinstance(raw_profiles, dict) or set(raw_profiles) != set(PROFILE_GROUPS):
         raise SystemExit(
-            "release gate: profiles must define exactly common, app-store, direct, chrome"
+            "release gate: profiles must define exactly common, app-store, chrome"
         )
     known_ids = set(ids)
     profile_check_ids: dict[str, list[str]] = {}
