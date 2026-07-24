@@ -1,0 +1,497 @@
+{
+  "schemaVersion": 1,
+  "releases": [
+    {
+      "version": "0.13.0",
+      "sourceSHA256": "32eb70eeade890fe75263b2a4883334d9922f164f86adaa6223a75cf973d636b",
+      "createdAt": "2026-07-19T07:21:12Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.13.0.zip",
+          "sha256": "bdeb6f058e9e48d099030769530488746c959bb18d808d210553f32b9e35b5b4",
+          "recordedAt": "2026-07-19T07:21:12Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.13.0.zip",
+          "sha256": "bdeb6f058e9e48d099030769530488746c959bb18d808d210553f32b9e35b5b4",
+          "recordedAt": "2026-07-19T07:21:12Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.13.0-unsigned.xpi",
+          "sha256": "338a8f2168cac978a1e992a246167191d49d511b384f412e77a8dc791f40a768",
+          "recordedAt": "2026-07-19T07:21:35Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.14.0",
+      "sourceSHA256": "a4d03f1c2593c5927d0dcc97c76932d08d5f53b33cc91d93c4ec06fca87ca0a6",
+      "createdAt": "2026-07-19T07:48:29Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.14.0.zip",
+          "sha256": "f93396db8888e714dd1bd22675307dbb54f6064ab97e214bf860293e6539c5f4",
+          "recordedAt": "2026-07-19T07:48:29Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.14.0.zip",
+          "sha256": "f93396db8888e714dd1bd22675307dbb54f6064ab97e214bf860293e6539c5f4",
+          "recordedAt": "2026-07-19T07:48:29Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.14.0-unsigned.xpi",
+          "sha256": "7da4bb481798202893d053a9b952e46a5b01838e536540189ec4a7c3339e3d30",
+          "recordedAt": "2026-07-19T07:48:38Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.15.0",
+      "sourceSHA256": "9a516b36bb4fcc7c028bad8d76c1c0e3ab821eda05f1a9493c4c09b1a83c31f8",
+      "createdAt": "2026-07-19T08:17:59Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.15.0.zip",
+          "sha256": "24b1608ac1aa0874e5082592b7cf8b8def6393fbbf0aa2bdee62cf9b70121402",
+          "recordedAt": "2026-07-19T08:17:59Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.15.0.zip",
+          "sha256": "24b1608ac1aa0874e5082592b7cf8b8def6393fbbf0aa2bdee62cf9b70121402",
+          "recordedAt": "2026-07-19T08:17:59Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.15.0-unsigned.xpi",
+          "sha256": "d1736a511f2f9fccfb45d4f9ace24185fad7f0f38fb2832e6e97d1da1f4b307c",
+          "recordedAt": "2026-07-19T08:18:05Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.16.0",
+      "sourceSHA256": "5c0d048c3306f668784dd2d348b39e5f74a8ae2c5a7fa529677fd49eef091b9d",
+      "createdAt": "2026-07-19T08:37:43Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.16.0.zip",
+          "sha256": "565e22d2c36856674f74a06638568ebbfb42921c7b0c26177decda9a73def2e6",
+          "recordedAt": "2026-07-19T08:37:43Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.16.0.zip",
+          "sha256": "565e22d2c36856674f74a06638568ebbfb42921c7b0c26177decda9a73def2e6",
+          "recordedAt": "2026-07-19T08:37:43Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.16.0-unsigned.xpi",
+          "sha256": "0928f713de758f5589eb12b8caf4f9b3849b1956b2c56d1f334d7f6723b9d8a3",
+          "recordedAt": "2026-07-19T08:37:48Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.17.0",
+      "sourceSHA256": "c0f776af3a28eaef86a7d7f0696807a3859ccdcd2a4a99028c86e23baf46b687",
+      "createdAt": "2026-07-19T08:56:03Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.17.0.zip",
+          "sha256": "2a92f3b2ef92e7efbebb1292a1a4b19d6e98317ba0093cce9718cdeaeb0f2902",
+          "recordedAt": "2026-07-19T08:56:03Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.17.0.zip",
+          "sha256": "2a92f3b2ef92e7efbebb1292a1a4b19d6e98317ba0093cce9718cdeaeb0f2902",
+          "recordedAt": "2026-07-19T08:56:03Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.17.0-unsigned.xpi",
+          "sha256": "ab0d392f21c35c93d431dff9623c8178e8a595c5ab41a624ae46a9848519a2db",
+          "recordedAt": "2026-07-19T08:56:13Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.18.0",
+      "sourceSHA256": "ced83386e00b41d06d6e525b92bbeaca9f2b17d93a880cf95eb43e8025b6c02e",
+      "createdAt": "2026-07-19T09:14:39Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.18.0.zip",
+          "sha256": "3fcacffa38130b4296b3f2fcb58c170d8415af4455d50962b5e9f6d41e6efa64",
+          "recordedAt": "2026-07-19T09:14:39Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.18.0.zip",
+          "sha256": "3fcacffa38130b4296b3f2fcb58c170d8415af4455d50962b5e9f6d41e6efa64",
+          "recordedAt": "2026-07-19T09:14:39Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.18.0-unsigned.xpi",
+          "sha256": "978326e11778b215d634f7aa417f9bb44a12fc4780b436566b03f6f09b4a6142",
+          "recordedAt": "2026-07-19T09:14:47Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.19.0",
+      "sourceSHA256": "5628f67b6b33b546145e03ac698d260351f0028426daa34c4b822a615c63d5b5",
+      "createdAt": "2026-07-19T09:25:43Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.19.0.zip",
+          "sha256": "3066e94bb2ea3e9f586849a2196101c0256b59004d7e822145205eb89f899b78",
+          "recordedAt": "2026-07-19T09:25:43Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.19.0.zip",
+          "sha256": "3066e94bb2ea3e9f586849a2196101c0256b59004d7e822145205eb89f899b78",
+          "recordedAt": "2026-07-19T09:25:43Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.19.0-unsigned.xpi",
+          "sha256": "297f40f212bb7226f83ff13aafade44a5c1b8d17874ab5dd9ed39834c303d8d6",
+          "recordedAt": "2026-07-19T09:25:47Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.20.0",
+      "sourceSHA256": "2f224a6777c67b55e0790918e702fa929e0aedeb38e2ef2fc65da5afa875eb84",
+      "createdAt": "2026-07-19T11:39:53Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.20.0.zip",
+          "sha256": "aaa5ef08c86ed7d3629233f355b3649f0bce85037f827f30a13d08cb2d1becd7",
+          "recordedAt": "2026-07-19T11:39:53Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.20.0.zip",
+          "sha256": "aaa5ef08c86ed7d3629233f355b3649f0bce85037f827f30a13d08cb2d1becd7",
+          "recordedAt": "2026-07-19T11:39:53Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.20.0-unsigned.xpi",
+          "sha256": "c27e81e3a1d2d96a7c0ff32a371c88d0871f2b18e7cdc8da51e163957ca1dc2b",
+          "recordedAt": "2026-07-19T11:39:53Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.21.0",
+      "sourceSHA256": "f0f44d359c6f42165964b7f29cd71c5a638eb15913a73038a7e1a718ae33d034",
+      "createdAt": "2026-07-19T13:32:41Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.21.0.zip",
+          "sha256": "e1f8bfce11faab528203f0f3a5afe0d3da7c8f6491a1703b0fb0826056ce2080",
+          "recordedAt": "2026-07-19T13:32:41Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.21.0.zip",
+          "sha256": "e1f8bfce11faab528203f0f3a5afe0d3da7c8f6491a1703b0fb0826056ce2080",
+          "recordedAt": "2026-07-19T13:32:41Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.21.0-unsigned.xpi",
+          "sha256": "46b9c6913246b416e638adad28044c863cc4d0f34606d1dd4c0924a09e637c92",
+          "recordedAt": "2026-07-19T13:32:51Z"
+        },
+        {
+          "kind": "firefox-amo-xpi",
+          "file": "knowledge-capture-firefox-0.21.0-amo.xpi",
+          "sha256": "94c7c9745b8f906913630041510427e4e8a7708aab875179b648ec6833702524",
+          "recordedAt": "2026-07-19T14:34:44Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.22.0",
+      "sourceSHA256": "0727be1bcfb29f322f80d6fb4b0207b57a69c3b4c4da67e80e316b6fa59ce95a",
+      "createdAt": "2026-07-19T14:58:26Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.22.0.zip",
+          "sha256": "80b39509163dd86ad27c5f6150b11d6c7623bc22d81d31f1ba6a7f1bd2863eba",
+          "recordedAt": "2026-07-19T14:58:26Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.22.0.zip",
+          "sha256": "80b39509163dd86ad27c5f6150b11d6c7623bc22d81d31f1ba6a7f1bd2863eba",
+          "recordedAt": "2026-07-19T14:58:26Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.22.0-unsigned.xpi",
+          "sha256": "6e578aa7cff5c93f9f7f785404dcf4ea0f38e6b39fc3f58cddcbcce05628bf52",
+          "recordedAt": "2026-07-19T14:58:26Z"
+        },
+        {
+          "kind": "firefox-amo-xpi",
+          "file": "knowledge-capture-firefox-0.22.0-amo.xpi",
+          "sha256": "5e122365460c5823bd2477ebccac007efcc98f5c1570544213307d6be457b75b",
+          "recordedAt": "2026-07-19T14:58:26Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.23.0",
+      "sourceSHA256": "1342bc88218ca750d5e815976bdd69e3d25c64f52cafc0d047fb05cdf86d8180",
+      "createdAt": "2026-07-20T06:49:44Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.23.0.zip",
+          "sha256": "e47050008da006442c42b48ea74b3505ef5f5d9d2931133003584ed15bfaa497",
+          "recordedAt": "2026-07-20T06:49:44Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.23.0.zip",
+          "sha256": "e47050008da006442c42b48ea74b3505ef5f5d9d2931133003584ed15bfaa497",
+          "recordedAt": "2026-07-20T06:49:44Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.23.0-unsigned.xpi",
+          "sha256": "4236b70a242fae3124573ccbb99bbea87736e537fe7b9a6cc73a06db8bfb1305",
+          "recordedAt": "2026-07-20T06:49:52Z"
+        },
+        {
+          "kind": "firefox-amo-xpi",
+          "file": "knowledge-capture-firefox-0.23.0-amo.xpi",
+          "sha256": "0f4c8345acc2229e13e0991012f3043c88cf689a60e169157cfa5fa6cb5b8328",
+          "recordedAt": "2026-07-20T06:49:52Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.24.0",
+      "sourceSHA256": "01b919a4070525085f04e79291e874e637104e5c39bc394918011916c0e3edd5",
+      "createdAt": "2026-07-20T06:59:48Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.24.0.zip",
+          "sha256": "ab5c38df25a08379738b4ada25242932e6bfc3bd87d535b0e4d0695a7f81233e",
+          "recordedAt": "2026-07-20T06:59:48Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.24.0.zip",
+          "sha256": "ab5c38df25a08379738b4ada25242932e6bfc3bd87d535b0e4d0695a7f81233e",
+          "recordedAt": "2026-07-20T06:59:48Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.24.0-unsigned.xpi",
+          "sha256": "9854eda63ce2db99d1de631b49f05ab1deff0b0918453d910b5a17ae5ade5a90",
+          "recordedAt": "2026-07-20T06:59:51Z"
+        },
+        {
+          "kind": "firefox-amo-xpi",
+          "file": "knowledge-capture-firefox-0.24.0-amo.xpi",
+          "sha256": "d92fd65b84581314e7316730ac89f29faf893d34f86fc8da2a7d1b975a9ba51d",
+          "recordedAt": "2026-07-20T06:59:55Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.25.0",
+      "sourceSHA256": "48c0c73419594758a4766f106ca595ab0790519cd4a3ff34ae8f3fecef67f2b0",
+      "createdAt": "2026-07-22T01:45:23Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.25.0.zip",
+          "sha256": "7df59da8e018bba9dd739a25db4906af7fbfc4b99e9f01af725918ad0ded59ab",
+          "recordedAt": "2026-07-22T01:45:23Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.25.0.zip",
+          "sha256": "7df59da8e018bba9dd739a25db4906af7fbfc4b99e9f01af725918ad0ded59ab",
+          "recordedAt": "2026-07-22T01:45:23Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.25.0-unsigned.xpi",
+          "sha256": "e52f983d31d6edef971986e6842f83c9ef70a7d3894702da9de4cd29c604aa4d",
+          "recordedAt": "2026-07-22T01:45:31Z"
+        },
+        {
+          "kind": "firefox-amo-xpi",
+          "file": "knowledge-capture-firefox-0.25.0-amo.xpi",
+          "sha256": "ef691f2bea7c3f05c6b98b4625cd9145581083920df2b062c36086290e101dad",
+          "recordedAt": "2026-07-22T01:45:35Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.26.0",
+      "sourceSHA256": "3cd566841d8e0878fde7a2d4171adb33849a76b3c52f6b279497fb8dc21b0247",
+      "createdAt": "2026-07-22T01:55:01Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.26.0.zip",
+          "sha256": "5864e8006916ad4dc878adf46bb15952413f644ba61aad66de90f0d5f1c81a92",
+          "recordedAt": "2026-07-22T01:55:01Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.26.0.zip",
+          "sha256": "5864e8006916ad4dc878adf46bb15952413f644ba61aad66de90f0d5f1c81a92",
+          "recordedAt": "2026-07-22T01:55:01Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.26.0-unsigned.xpi",
+          "sha256": "3da746f75c00f0a252b66549ee4cfae411e0c47b62379aac7296d7d1dae831dc",
+          "recordedAt": "2026-07-22T01:55:05Z"
+        },
+        {
+          "kind": "firefox-amo-xpi",
+          "file": "knowledge-capture-firefox-0.26.0-amo.xpi",
+          "sha256": "a74692bb82f49bd748bd480d5e178991207ed4d1f0fd794f1b65dc8b62fb5a9f",
+          "recordedAt": "2026-07-22T01:55:10Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.27.0",
+      "sourceSHA256": "b1c2d460d1d2714c61793558994c0a897c1e2369cc367279f81501714de1dbc1",
+      "createdAt": "2026-07-22T02:59:52Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.27.0.zip",
+          "sha256": "8e138af47c98bc86ac92488221f4324b94289eda1b71f2b42d0ccf67790e0a61",
+          "recordedAt": "2026-07-22T02:59:52Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.27.0.zip",
+          "sha256": "8e138af47c98bc86ac92488221f4324b94289eda1b71f2b42d0ccf67790e0a61",
+          "recordedAt": "2026-07-22T02:59:52Z"
+        },
+        {
+          "kind": "firefox-unsigned-xpi",
+          "file": "knowledge-capture-firefox-0.27.0-unsigned.xpi",
+          "sha256": "1a672b1534e19d0aab169435657029fa051efb806b0e0d6f903b131d4d382d94",
+          "recordedAt": "2026-07-22T03:00:02Z"
+        },
+        {
+          "kind": "firefox-amo-xpi",
+          "file": "knowledge-capture-firefox-0.27.0-amo.xpi",
+          "sha256": "057c73a04f74eda7f94ea78caf218a619cbbb9fa9a06cd89cecdc3a3615d09b8",
+          "recordedAt": "2026-07-22T03:00:08Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.28.0",
+      "sourceSHA256": "ede1f442deff1ca28af5abc3d5e177c8d700e21a7ad3364aad0f62f2d2dc9515",
+      "createdAt": "2026-07-22T04:43:13Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.28.0.zip",
+          "sha256": "5dc7e9df6fe581e701027fb0c09c03e7a9b0b5bdb1e2b9b2d8ba66ace273a6b2",
+          "recordedAt": "2026-07-22T04:43:13Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.28.0.zip",
+          "sha256": "5dc7e9df6fe581e701027fb0c09c03e7a9b0b5bdb1e2b9b2d8ba66ace273a6b2",
+          "recordedAt": "2026-07-22T04:43:13Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.29.0",
+      "sourceSHA256": "ad90a3b3a02dc513a369168a5a70f19f546cdc7a3449741a2360508f5173b6d5",
+      "createdAt": "2026-07-23T03:25:11Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.29.0.zip",
+          "sha256": "8973c5b9cec7099b6536045c228cf77373eef2f76f98e72b22ce95af349e058c",
+          "recordedAt": "2026-07-23T03:25:11Z"
+        },
+        {
+          "kind": "edge-zip",
+          "file": "knowledge-capture-edge-0.29.0.zip",
+          "sha256": "8973c5b9cec7099b6536045c228cf77373eef2f76f98e72b22ce95af349e058c",
+          "recordedAt": "2026-07-23T03:25:11Z"
+        },
+        {
+          "kind": "firefox-amo-xpi",
+          "file": "knowledge-capture-firefox-0.29.0-amo.xpi",
+          "sha256": "cce44aeddca76d362ca4b0f2cf0a6c478b867164092f70675a07db7c1d863177",
+          "recordedAt": "2026-07-23T03:25:12Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.30.0",
+      "sourceSHA256": "8cc3dbe90a69129d708cc1994537535f6a2b102dc1c5c8d91b4ed8783697b690",
+      "createdAt": "2026-07-23T04:44:49Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.30.0.zip",
+          "sha256": "73f5ffaee32c8a914dff6d7cb6293bd0eb5799ba413a83e5b8458fefc07b505d",
+          "recordedAt": "2026-07-23T04:44:49Z"
+        }
+      ],
+      "publications": []
+    }
+  ]
+}

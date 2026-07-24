@@ -18,6 +18,18 @@ fail() {
 
 cp "$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md" "$EVIDENCE_FILE"
 [[ -f "$ENV_TEMPLATE" ]] || fail "remote recovery env template is missing"
+grep -q "release_evidence_source_manifest.py" "$ROOT_DIR/script/record_remote_recovery_evidence.sh" \
+  || fail "remote recovery recorder does not use the shared source manifest"
+deployment_manifest_paths="$(python3 "$ROOT_DIR/script/release_evidence_source_manifest.py" \
+  "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore.swift" \
+  "refreshDeploymentStatus")"
+grep -q "WorkbenchStore+DeploymentCommands.swift" <<<"$deployment_manifest_paths" \
+  || fail "shared source manifest omits split deployment commands"
+remote_test_manifest_paths="$(python3 "$ROOT_DIR/script/release_evidence_source_manifest.py" \
+  "Tests/PublishingWorkbenchCoreTests/WorkbenchStoreProfileTests.swift" \
+  "testOnlineDirectPublishBlocksRemoteSamePathConflictBeforeCallingAPI")"
+grep -q "WorkbenchStoreRemotePublishingTests.swift" <<<"$remote_test_manifest_paths" \
+  || fail "shared source manifest omits split remote publishing tests"
 
 template_text="$(cat "$ENV_TEMPLATE")"
 template_required_markers=(

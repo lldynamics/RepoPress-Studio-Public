@@ -79,7 +79,7 @@ final class AIConnectionTestServiceTests: XCTestCase {
     XCTAssertEqual(missingToken.title, "AI API Key 未就绪")
     XCTAssertEqual(missingToken.level, .warning)
     XCTAssertEqual(missingToken.systemImage, "key")
-    XCTAssertTrue(missingToken.footnote.contains("DeepSeek 默认 base_url"))
+    XCTAssertTrue(missingToken.footnote.contains("DeepSeek 默认接口地址"))
 
     let untestedRemote = AISettingsConnectionPresentationService.presentation(
       config: remoteConfig,

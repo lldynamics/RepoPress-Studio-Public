@@ -14,73 +14,269 @@ struct WorkspaceTaskMetadataState {
 
 struct WorkspaceTaskMetadataSection: View {
   @Binding var draft: ArticleDraft
+  @ObservedObject private var ai: WorkbenchAIFeatureFacade
+  private let store: WorkbenchStore
   let state: WorkspaceTaskMetadataState
+  let tagSuggestions: [String]
+  let categorySuggestions: [String]
+  @State private var isGeneratingSummary = false
+  @State private var summaryGenerationMessage: String?
+  @State private var summaryGenerationSucceeded = false
+  @State private var summaryGenerationRequestID: UUID?
+  @State private var summaryGenerationTask: Task<Void, Never>?
+
+  init(
+    draft: Binding<ArticleDraft>,
+    store: WorkbenchStore,
+    state: WorkspaceTaskMetadataState,
+    tagSuggestions: [String],
+    categorySuggestions: [String]
+  ) {
+    _draft = draft
+    self.store = store
+    _ai = ObservedObject(wrappedValue: store.ai)
+    self.state = state
+    self.tagSuggestions = tagSuggestions
+    self.categorySuggestions = categorySuggestions
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       InspectorSection("基础字段") {
-        TextField("Title", text: $draft.title)
-          .accessibilityLabel("文章标题")
-          .accessibilityValue(draft.title.isEmpty ? "未填写" : draft.title)
-        TextField("Slug", text: $draft.slug)
-          .accessibilityLabel("文章 Slug")
-          .accessibilityValue(draft.slug.isEmpty ? "未填写" : draft.slug)
-        TextField("Summary", text: $draft.summary, axis: .vertical)
-          .lineLimit(2...5)
-          .accessibilityLabel("文章摘要")
-          .accessibilityValue(draft.summary.isEmpty ? "未填写" : draft.summary)
-        DatePicker("Date", selection: $draft.date, displayedComponents: [.date, .hourAndMinute])
-          .accessibilityLabel("文章日期")
-          .accessibilityValue(draft.date.formatted(date: .abbreviated, time: .shortened))
-        Picker("Visibility", selection: $draft.visibility) {
-          ForEach(ArticleVisibility.allCases) { visibility in
-            Label(visibility.displayName, systemImage: visibility.systemImage)
-              .tag(visibility)
-          }
+        metadataField("标题") {
+          TextField("输入文章标题", text: $draft.title)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("元数据标题")
+            .accessibilityValue(draft.title.isEmpty ? "未填写" : draft.title)
         }
-        .accessibilityLabel("文章可见性")
-        .accessibilityValue(draft.visibility.displayName)
-        Toggle("Draft", isOn: $draft.draft)
-          .accessibilityLabel("草稿状态")
-          .accessibilityValue(draft.draft ? "草稿" : "非草稿")
+        metadataField("固定链接（Slug）") {
+          TextField("例如 my-article", text: $draft.slug)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("文章固定链接")
+            .accessibilityValue(draft.slug.isEmpty ? "未填写" : draft.slug)
+        }
+        summaryField
       }
 
       InspectorSection("分类") {
-        TextField("Tags", text: tagsBinding)
-          .accessibilityLabel("文章标签")
-          .accessibilityValue(draft.tags.isEmpty ? "未填写" : draft.tags.joined(separator: "，"))
-        TextField("Categories", text: categoriesBinding)
-          .accessibilityLabel("文章分类")
-          .accessibilityValue(draft.categories.isEmpty ? "未填写" : draft.categories.joined(separator: "，"))
-        TextField("Authors", text: authorsBinding)
-          .accessibilityLabel("文章作者")
-          .accessibilityValue(draft.authors.isEmpty ? "未填写" : draft.authors.joined(separator: "，"))
+        TaxonomySuggestionField(
+          title: "标签",
+          values: $draft.tags,
+          suggestions: tagSuggestions
+        )
+        TaxonomySuggestionField(
+          title: "分类",
+          values: $draft.categories,
+          suggestions: categorySuggestions
+        )
       }
 
-      InspectorSection("发布路径") {
-        InspectorStatRow(title: "站点", value: state.siteName, systemImage: "globe")
-        InspectorStatRow(title: "状态", value: draft.status.displayName, systemImage: draft.status.systemImage)
-        Text(state.markdownPath)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-          .lineLimit(3)
-          .textSelection(.enabled)
+      InspectorSection("补充元数据") {
+        VStack(alignment: .leading, spacing: 14) {
+          InspectorSection("发布时间与可见性") {
+            metadataField("发布时间") {
+              DatePicker("发布时间", selection: $draft.date, displayedComponents: [.date, .hourAndMinute])
+                .labelsHidden()
+                .accessibilityLabel("文章发布时间")
+                .accessibilityValue(draft.date.formatted(date: .abbreviated, time: .shortened))
+            }
+            metadataField("可见性") {
+              Picker("可见性", selection: $draft.visibility) {
+                ForEach(ArticleVisibility.allCases) { visibility in
+                  Label(visibility.localizedDisplayName, systemImage: visibility.systemImage)
+                    .tag(visibility)
+                }
+              }
+              .labelsHidden()
+              .accessibilityLabel("文章可见性")
+              .accessibilityValue(draft.visibility.localizedDisplayName)
+            }
+            Toggle("标记为草稿", isOn: $draft.draft)
+              .accessibilityLabel("草稿状态")
+              .accessibilityValue(draft.draft ? "草稿" : "非草稿")
+          }
+
+          InspectorSection("作者") {
+            metadataField("作者") {
+              TextField("多位作者用逗号分隔", text: authorsBinding)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("文章作者")
+                .accessibilityValue(draft.authors.isEmpty ? "未填写" : draft.authors.joined(separator: "，"))
+            }
+          }
+
+          InspectorSection("发布路径") {
+            InspectorStatRow(title: "站点", value: state.siteName, systemImage: "globe")
+            InspectorStatRow(title: "状态", value: draft.status.localizedDisplayName, systemImage: draft.status.systemImage)
+            Text(state.markdownPath)
+              .font(.caption.monospaced())
+              .foregroundStyle(.secondary)
+              .workbenchTruncatedIdentity(state.markdownPath, lineLimit: 3)
+          }
+        }
       }
+    }
+    .onChange(of: draft.id) { _, _ in
+      cancelSummaryGeneration()
+      summaryGenerationMessage = nil
+    }
+    .onDisappear {
+      cancelSummaryGeneration()
     }
   }
 
-  private var tagsBinding: Binding<String> {
-    Binding(
-      get: { draft.tags.commaSeparated },
-      set: { draft.tags = parseList($0) }
+  private var summaryField: some View {
+    VStack(alignment: .leading, spacing: 5) {
+      HStack(alignment: .center, spacing: 8) {
+        Text("摘要")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+
+        Spacer(minLength: 0)
+
+        if DistributionFeaturePolicy.allowsExternalAIProviders {
+          Button(action: generateAISummary) {
+            if isGeneratingSummary {
+              HStack(spacing: 5) {
+                ProgressView()
+                  .controlSize(.small)
+                Text("生成中")
+              }
+            } else {
+              Label(summaryAIButtonTitle, systemImage: "sparkles")
+            }
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .disabled(!summaryAIAvailability.isEnabled)
+          .help(summaryAIAvailability.unavailableReason ?? summaryAIButtonHelp)
+          .accessibilityIdentifier("metadata-summary-ai-button")
+          .accessibilityLabel("AI 自动生成摘要")
+          .accessibilityValue(isGeneratingSummary ? "生成中" : summaryAIButtonTitle)
+        }
+      }
+
+      TextField("输入用于列表和搜索的文章摘要", text: $draft.summary, axis: .vertical)
+        .textFieldStyle(.roundedBorder)
+        .lineLimit(2...5)
+        .accessibilityLabel("文章摘要")
+        .accessibilityValue(draft.summary.isEmpty ? "未填写" : draft.summary)
+
+      if let summaryGenerationMessage {
+        Label {
+          Text(verbatim: summaryGenerationMessage)
+        } icon: {
+          Image(systemName: summaryGenerationSucceeded ? "checkmark.circle" : "exclamationmark.triangle")
+        }
+        .font(.caption)
+        .foregroundStyle(summaryGenerationSucceeded ? WorkbenchTheme.success : WorkbenchTheme.warning)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private var summaryAIButtonTitle: String {
+    draft.summary.trimmedForPublishing.isEmpty
+      ? String(localized: "AI 生成")
+      : String(localized: "AI 重写")
+  }
+
+  private var summaryAIButtonHelp: String {
+    draft.summary.trimmedForPublishing.isEmpty
+      ? String(localized: "根据文章标题和正文自动生成摘要")
+      : String(localized: "根据当前文章重新生成并替换摘要")
+  }
+
+  private var summaryAIAvailability: AIPublishingActionAvailabilityPresentation {
+    let profile = store.profile(for: draft)
+    let isAIEnabled = !profile.aiProviderConfig.requiresAPIKey || ai.tokenAvailability.hasToken
+    return AIPublishingActionAvailabilityService.presentation(
+      for: .suggestSummary,
+      draft: draft,
+      isAIEnabled: isAIEnabled,
+      activeAction: isGeneratingSummary || ai.isActionRunning ? .suggestSummary : nil
     )
   }
 
-  private var categoriesBinding: Binding<String> {
-    Binding(
-      get: { draft.categories.commaSeparated },
-      set: { draft.categories = parseList($0) }
-    )
+  private func generateAISummary() {
+    guard summaryAIAvailability.isEnabled else { return }
+
+    cancelSummaryGeneration()
+    let requestedDraft = draft
+    let originalSummary = requestedDraft.summary
+    let requestID = UUID()
+    summaryGenerationRequestID = requestID
+    isGeneratingSummary = true
+    summaryGenerationMessage = nil
+    summaryGenerationSucceeded = false
+
+    summaryGenerationTask = Task { @MainActor in
+      defer {
+        if summaryGenerationRequestID == requestID {
+          isGeneratingSummary = false
+          summaryGenerationRequestID = nil
+          summaryGenerationTask = nil
+        }
+      }
+
+      let result = await store.performAIAction(.suggestSummary, draft: requestedDraft)
+      guard !Task.isCancelled,
+            summaryGenerationRequestID == requestID,
+            draft.id == requestedDraft.id else {
+        return
+      }
+      guard let result,
+            let generatedSummary = AIPublishingMetadataActionSuggestionFactory
+              .suggestion(from: result)?
+              .summary else {
+        summaryGenerationMessage = ai.actionMessage
+          ?? String(localized: "AI 没有返回可用的摘要。")
+        return
+      }
+      guard let latestDraft = store.drafts.first(where: { $0.id == requestedDraft.id }) else {
+        summaryGenerationMessage = String(localized: "找不到当前文章，摘要未应用。")
+        return
+      }
+      guard latestDraft.summary == originalSummary else {
+        summaryGenerationMessage = String(localized: "摘要在生成期间已被修改，未自动覆盖。")
+        return
+      }
+      guard store.applyAIMetadataSuggestion(
+        field: .summary,
+        value: generatedSummary,
+        draft: latestDraft
+      ) != nil else {
+        summaryGenerationMessage = ai.actionMessage
+          ?? String(localized: "AI 没有返回新的摘要。")
+        return
+      }
+
+      summaryGenerationSucceeded = true
+      summaryGenerationMessage = String(localized: "摘要已自动生成并填写。")
+    }
+  }
+
+  private func cancelSummaryGeneration() {
+    summaryGenerationTask?.cancel()
+    summaryGenerationTask = nil
+    summaryGenerationRequestID = nil
+    isGeneratingSummary = false
+  }
+
+  private func metadataField<Content: View>(
+    _ title: String,
+    @ViewBuilder content: () -> Content
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 5) {
+      Text(LocalizedStringKey(title))
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      content()
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   private var authorsBinding: Binding<String> {
@@ -100,6 +296,26 @@ struct WorkspaceTaskMetadataSection: View {
 struct WorkspaceTaskSEOSection: View {
   let draft: ArticleDraft
   @ObservedObject var store: WorkbenchStore
+  @State private var showsAllFindings = false
+  @State private var showsSocialPreview = false
+  @State private var showsSocialCards = false
+  @State private var showsPlatformReadiness = false
+  @State private var showsShareCopy = false
+  @State private var showsExternalDebug = false
+  @State private var showsRelatedArticles = false
+  @State private var showsFrontMatter = false
+
+  init(draft: ArticleDraft, store: WorkbenchStore) {
+    self.draft = draft
+    self.store = store
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    let expandsScreenshotPreview = ScreenshotDemoDataService.isEnabledFromEnvironment
+      && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .seoSocialPreview
+    _showsSocialPreview = State(initialValue: expandsScreenshotPreview)
+    _showsSocialCards = State(initialValue: expandsScreenshotPreview)
+    _showsPlatformReadiness = State(initialValue: false)
+#endif
+  }
 
   var body: some View {
     let report = store.seoReport(for: draft)
@@ -124,60 +340,87 @@ struct WorkspaceTaskSEOSection: View {
 
         Label(cachePresentation.message, systemImage: cachePresentation.state.systemImage)
           .font(.caption)
-          .foregroundStyle(cachePresentation.needsManualRefresh ? .orange : .secondary)
+          .foregroundStyle(cachePresentation.needsManualRefresh ? WorkbenchTheme.warning : Color.secondary)
       }
 
-      InspectorSection("问题") {
-        ForEach(report.findings.prefix(6)) { finding in
-          seoFindingRow(finding)
+      if !prioritizesSocialPreviewForScreenshot {
+        InspectorSection("重点建议") {
+          Text(verbatim: "\(report.findings.count) 项")
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.tertiary)
+          if report.findings.isEmpty {
+            Label("未发现 SEO 问题", systemImage: "checkmark.seal")
+              .font(.caption)
+              .foregroundStyle(WorkbenchTheme.success)
+          } else {
+            ForEach(report.findings.prefix(3)) { finding in
+              seoFindingRow(finding)
+            }
+
+            if report.findings.count > 3 {
+              DisclosureGroup(
+                "查看其余 \(report.findings.count - 3) 项",
+                isExpanded: $showsAllFindings
+              ) {
+                VStack(alignment: .leading, spacing: 7) {
+                  ForEach(report.findings.dropFirst(3)) { finding in
+                    seoFindingRow(finding)
+                  }
+                }
+                .padding(.top, 7)
+              }
+              .font(.caption)
+            }
+          }
         }
       }
 
-      InspectorSection("社交预览") {
+      InspectorDisclosureSection(
+        "社交预览",
+        detail: socialPreviewDetail(snapshot),
+        isExpanded: $showsSocialPreview
+      ) {
         if let snapshot {
           InspectorStatRow(title: "标题", value: "\(snapshot.titleCharacterCount) 字", systemImage: "textformat.size")
           InspectorStatRow(title: "描述", value: "\(snapshot.descriptionCharacterCount) 字", systemImage: "text.alignleft")
-          InspectorStatRow(title: "图片", value: snapshot.imageDimensions?.displayName ?? (snapshot.imagePath == nil ? "未设置" : "已设置"), systemImage: "photo")
+          InspectorStatRow(title: "图片", value: snapshot.imageDimensions?.workbenchDimensionText ?? (snapshot.imagePath == nil ? "未设置" : "已设置"), systemImage: "photo")
           Text(snapshot.canonicalURLText)
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
-            .lineLimit(2)
-            .textSelection(.enabled)
+            .workbenchTruncatedIdentity(snapshot.canonicalURLText, lineLimit: 2)
 
-          socialPreviewReadinessSection(snapshot)
-          socialShareCopySection(snapshot.socialShareCopyItems)
-          socialDebugLinkSection(snapshot.externalDebugLinks)
+          InspectorDisclosureSection(
+            "平台就绪度",
+            detail: "\(snapshot.platformReadiness.count) 个平台",
+            isExpanded: $showsPlatformReadiness
+          ) {
+            socialPreviewReadinessSection(snapshot)
+          }
 
-          ForEach(snapshot.cards) { card in
-            VStack(alignment: .leading, spacing: 5) {
-              Label(card.kind.displayName, systemImage: card.kind.systemImage)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-              HStack(spacing: 8) {
-                Label(card.titleBudgetText, systemImage: card.isTitleWithinBudget ? "checkmark.circle" : "exclamationmark.triangle")
-                  .foregroundStyle(card.isTitleWithinBudget ? Color.secondary : Color.orange)
-                Label(card.descriptionBudgetText, systemImage: card.isDescriptionWithinBudget ? "checkmark.circle" : "exclamationmark.triangle")
-                  .foregroundStyle(card.isDescriptionWithinBudget ? Color.secondary : Color.orange)
-                if let imageAspectRatio = card.imageAspectRatio {
-                  Label(imageAspectRatio, systemImage: "aspectratio")
-                    .foregroundStyle(.secondary)
-                }
-                if let imageDimensions = card.imageDimensions {
-                  Label(imageDimensions.displayName, systemImage: "ruler")
-                    .foregroundStyle(.secondary)
-                }
-              }
-              .font(.caption2)
-              Text(card.title)
-                .font(.caption.weight(.semibold))
-                .lineLimit(2)
-              Text(card.description)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
+          InspectorDisclosureSection(
+            "卡片预览",
+            detail: "\(snapshot.cards.count) 张",
+            isExpanded: $showsSocialCards
+          ) {
+            ForEach(snapshot.cards) { card in
+              socialPreviewCard(card)
             }
-            .padding(8)
-            .background(WorkbenchBackgroundStyle.panel, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+          }
+
+          InspectorDisclosureSection(
+            "分享文案",
+            detail: "\(snapshot.socialShareCopyItems.count) 份",
+            isExpanded: $showsShareCopy
+          ) {
+            socialShareCopySection(snapshot.socialShareCopyItems)
+          }
+
+          InspectorDisclosureSection(
+            "外部调试",
+            detail: "\(snapshot.externalDebugLinks.count) 个工具",
+            isExpanded: $showsExternalDebug
+          ) {
+            socialDebugLinkSection(snapshot.externalDebugLinks)
           }
         } else {
           Text("还没有社交预览快照。")
@@ -188,7 +431,11 @@ struct WorkspaceTaskSEOSection: View {
 
       relatedArticleSuggestionSection
 
-      InspectorSection("Front Matter 预览") {
+      InspectorDisclosureSection(
+        "文章头信息",
+        detail: "Front Matter",
+        isExpanded: $showsFrontMatter
+      ) {
         Text(report.frontMatterPreview)
           .font(.caption.monospaced())
           .textSelection(.enabled)
@@ -204,11 +451,24 @@ struct WorkspaceTaskSEOSection: View {
     }
   }
 
+  private var prioritizesSocialPreviewForScreenshot: Bool {
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    ScreenshotDemoDataService.isEnabledFromEnvironment
+      && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .seoSocialPreview
+#else
+    false
+#endif
+  }
+
   @ViewBuilder
   private var relatedArticleSuggestionSection: some View {
     let suggestions = store.relatedArticleSuggestions(for: draft, limit: 3)
     if !suggestions.isEmpty {
-      InspectorSection("关联文章建议") {
+      InspectorDisclosureSection(
+        "关联文章",
+        detail: "\(suggestions.count) 项建议",
+        isExpanded: $showsRelatedArticles
+      ) {
         VStack(alignment: .leading, spacing: 9) {
           ForEach(suggestions) { suggestion in
             VStack(alignment: .leading, spacing: 6) {
@@ -219,23 +479,23 @@ struct WorkspaceTaskSEOSection: View {
                 VStack(alignment: .leading, spacing: 2) {
                   Text(suggestion.targetTitle)
                     .font(.caption.weight(.semibold))
-                    .lineLimit(1)
+                    .workbenchTruncatedIdentity(suggestion.targetTitle)
                   Text(suggestion.targetPath)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .workbenchTruncatedIdentity(suggestion.targetPath)
                 }
                 Spacer(minLength: 0)
               }
 
               Text(suggestion.reason)
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
 
               if !suggestion.sharedLabels.isEmpty {
                 Text(suggestion.sharedLabels.joined(separator: "、"))
-                  .font(.caption2)
+                  .font(.caption)
                   .foregroundStyle(.tertiary)
                   .lineLimit(1)
               }
@@ -257,17 +517,53 @@ struct WorkspaceTaskSEOSection: View {
     }
   }
 
+  private func socialPreviewDetail(_ snapshot: SEOSocialPreviewSnapshot?) -> String {
+    guard let snapshot else { return "未生成" }
+    return "\(snapshot.cards.count) 张卡片"
+  }
+
+  private func socialPreviewCard(_ card: SEOSocialPreviewCard) -> some View {
+    VStack(alignment: .leading, spacing: 5) {
+      Label(card.kind.localizedDisplayName, systemImage: card.kind.systemImage)
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+      HStack(spacing: 8) {
+        Label(card.titleBudgetText, systemImage: card.isTitleWithinBudget ? "checkmark.circle" : "exclamationmark.triangle")
+          .foregroundStyle(card.isTitleWithinBudget ? Color.secondary : WorkbenchTheme.warning)
+        Label(card.descriptionBudgetText, systemImage: card.isDescriptionWithinBudget ? "checkmark.circle" : "exclamationmark.triangle")
+          .foregroundStyle(card.isDescriptionWithinBudget ? Color.secondary : WorkbenchTheme.warning)
+        if let imageAspectRatio = card.imageAspectRatio {
+          Label(imageAspectRatio, systemImage: "aspectratio")
+            .foregroundStyle(.secondary)
+        }
+        if let imageDimensions = card.imageDimensions {
+          Label(imageDimensions.workbenchDimensionText, systemImage: "ruler")
+            .foregroundStyle(.secondary)
+        }
+      }
+      .font(.caption)
+      Text(card.title)
+        .font(.caption.weight(.semibold))
+        .workbenchTruncatedIdentity(card.title, lineLimit: 2)
+      Text(card.description)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(3)
+    }
+    .padding(8)
+    .background(WorkbenchBackgroundStyle.panel, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("社交卡片：\(card.kind.localizedDisplayName)")
+    .accessibilityValue("\(card.title)。\(card.description)")
+  }
+
   private func socialPreviewReadinessSection(_ snapshot: SEOSocialPreviewSnapshot) -> some View {
     VStack(alignment: .leading, spacing: 8) {
-      HStack(alignment: .firstTextBaseline) {
-        Label("平台就绪度", systemImage: "checklist.checked")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
-        Spacer()
+      HStack(spacing: 8) {
         Button {
           copy(snapshot.socialShareChecklistMarkdown, message: "已复制 SEO / Social 检查清单。")
         } label: {
-          Image(systemName: "doc.on.doc")
+          Label("复制清单", systemImage: "doc.on.doc")
         }
         .buttonStyle(.borderless)
         .help("复制 SEO / Social 检查清单")
@@ -276,13 +572,16 @@ struct WorkspaceTaskSEOSection: View {
         Button {
           copy(snapshot.metaTags.htmlBlock, message: "已复制社交预览 Meta HTML。")
         } label: {
-          Image(systemName: "curlybraces")
+          Label("复制 Meta", systemImage: "curlybraces")
         }
         .buttonStyle(.borderless)
         .disabled(snapshot.metaTags.isEmpty)
         .help("复制 Meta HTML")
         .accessibilityLabel("复制社交预览 Meta HTML")
+
+        Spacer(minLength: 0)
       }
+      .controlSize(.small)
 
       ForEach(snapshot.platformReadiness) { item in
         HStack(alignment: .top, spacing: 8) {
@@ -291,19 +590,22 @@ struct WorkspaceTaskSEOSection: View {
             .frame(width: 16)
           VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
-              Text(item.kind.displayName)
+              Text(item.kind.localizedDisplayName)
                 .font(.caption.weight(.semibold))
-              Text(item.status.displayName)
-                .font(.caption2.weight(.medium))
+              Text(item.status.localizedDisplayName)
+                .font(.caption.weight(.medium))
                 .foregroundStyle(socialPreviewReadinessForeground(item.status))
             }
             Text(item.message)
-              .font(.caption2)
+              .font(.caption)
               .foregroundStyle(.secondary)
               .lineLimit(2)
           }
           Spacer(minLength: 0)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(item.kind.localizedDisplayName)：\(item.status.localizedDisplayName)")
+        .accessibilityValue(item.message)
       }
     }
     .padding(8)
@@ -312,41 +614,37 @@ struct WorkspaceTaskSEOSection: View {
 
   private func socialShareCopySection(_ items: [SEOSocialShareCopyItem]) -> some View {
     VStack(alignment: .leading, spacing: 8) {
-      Label("分享文案", systemImage: "square.and.arrow.up")
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
-
       ForEach(items) { item in
         VStack(alignment: .leading, spacing: 5) {
           HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Label(item.kind.displayName, systemImage: item.kind.systemImage)
+            Label(item.kind.localizedDisplayName, systemImage: item.kind.systemImage)
               .font(.caption.weight(.semibold))
             Spacer()
             Button {
-              copy(item.clipboardText, message: "已复制 \(item.kind.displayName) 分享文案。")
+              copy(item.clipboardText, message: "已复制 \(item.kind.localizedDisplayName) 分享文案。")
             } label: {
               Image(systemName: "doc.on.doc")
             }
             .buttonStyle(.borderless)
             .help("复制分享文案")
             .accessibilityLabel("复制分享文案")
-            .accessibilityValue(item.kind.displayName)
+            .accessibilityValue(item.kind.localizedDisplayName)
           }
 
           Text(item.title)
             .font(.caption)
-            .lineLimit(2)
+            .workbenchTruncatedIdentity(item.title, lineLimit: 2)
           Text(item.body)
-            .font(.caption2)
+            .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(3)
           Text(item.urlText)
-            .font(.caption2.monospaced())
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
+            .font(.caption.monospaced())
+            .foregroundStyle(.secondary)
+            .workbenchTruncatedIdentity(item.urlText)
           if !item.hashtagText.isEmpty {
             Text(item.hashtagText)
-              .font(.caption2)
+              .font(.caption)
               .foregroundStyle(.secondary)
               .lineLimit(1)
           }
@@ -361,21 +659,19 @@ struct WorkspaceTaskSEOSection: View {
 
   private func socialDebugLinkSection(_ links: [SEOSocialPreviewDebugLink]) -> some View {
     VStack(alignment: .leading, spacing: 8) {
-      HStack(alignment: .firstTextBaseline) {
-        Label("外部调试", systemImage: "safari")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
-        Spacer()
+      HStack {
+        Spacer(minLength: 0)
         Button {
           copy(links.map(\.clipboardLine).joined(separator: "\n"), message: "已复制外部社交调试链接。")
         } label: {
-          Image(systemName: "doc.on.doc")
+          Label("复制全部", systemImage: "doc.on.doc")
         }
         .buttonStyle(.borderless)
         .disabled(links.isEmpty)
         .help("复制全部外部调试链接")
         .accessibilityLabel("复制全部外部调试链接")
       }
+      .controlSize(.small)
 
       ForEach(links) { link in
         VStack(alignment: .leading, spacing: 5) {
@@ -407,14 +703,13 @@ struct WorkspaceTaskSEOSection: View {
           }
 
           Text(link.purpose)
-            .font(.caption2)
+            .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(2)
           Text(link.urlText)
-            .font(.caption2.monospaced())
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
-            .textSelection(.enabled)
+            .font(.caption.monospaced())
+            .foregroundStyle(.secondary)
+            .workbenchTruncatedIdentity(link.urlText)
         }
         .padding(8)
         .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
@@ -427,11 +722,11 @@ struct WorkspaceTaskSEOSection: View {
   private func socialPreviewReadinessForeground(_ status: SEOSocialPreviewReadinessStatus) -> Color {
     switch status {
     case .ready:
-      return .green
+      return WorkbenchTheme.success
     case .warning:
-      return .orange
+      return WorkbenchTheme.warning
     case .missing:
-      return .red
+      return WorkbenchTheme.risk
     }
   }
 
@@ -448,6 +743,9 @@ struct WorkspaceTaskSEOSection: View {
         .lineLimit(3)
     }
     .padding(.vertical, 4)
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("\(finding.severity.localizedDisplayName)：\(finding.title)")
+    .accessibilityValue(finding.message)
   }
 
   private func copy(_ value: String, message: String) {
@@ -519,7 +817,7 @@ struct WorkspaceTaskChecksSection: View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 8) {
         Image(systemName: summary.isClear ? "lock.open" : "lock.shield")
-          .foregroundStyle(summary.isClear ? Color.secondary : (summary.errorCount > 0 ? Color.red : Color.orange))
+          .foregroundStyle(summary.isClear ? Color.secondary : (summary.errorCount > 0 ? WorkbenchTheme.risk : WorkbenchTheme.warning))
           .frame(width: 16)
         VStack(alignment: .leading, spacing: 2) {
           Text(summary.statusTitle)
@@ -534,206 +832,24 @@ struct WorkspaceTaskChecksSection: View {
       if !summary.isClear {
         HStack(spacing: 10) {
           Label("\(summary.errorCount) 错误", systemImage: "xmark.octagon")
-            .foregroundStyle(summary.errorCount > 0 ? .red : .secondary)
+            .foregroundStyle(summary.errorCount > 0 ? WorkbenchTheme.risk : Color.secondary)
           Label("\(summary.warningCount) 警告", systemImage: "exclamationmark.triangle")
-            .foregroundStyle(summary.warningCount > 0 ? .orange : .secondary)
+            .foregroundStyle(summary.warningCount > 0 ? WorkbenchTheme.warning : Color.secondary)
         }
-        .font(.caption2)
+        .font(.caption)
 
         ForEach(summary.issues.prefix(3)) { issue in
-          Text("\(issue.severity.displayName) · \(issue.title)")
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
+          let issueTitle = "\(issue.severity.localizedDisplayName) · \(issue.title)"
+          Text(issueTitle)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .workbenchTruncatedIdentity(issueTitle)
         }
       }
     }
     .padding(8)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
-  }
-}
-
-struct WorkspaceTaskPublishSection: View {
-  @Binding var draft: ArticleDraft
-  @ObservedObject var store: WorkbenchStore
-
-  var body: some View {
-    let package = store.publishingPackage(for: draft)
-    let preview = store.localPublishPreview(for: draft)
-    let readiness = store.localPublishReadiness
-    let profile = store.profile(for: draft)
-    let mode = store.preferredRemoteRepositoryPublishMode(for: profile)
-    let remotePreview = store.remoteRepositoryPublishPreview(for: draft)
-    let review = store.remoteReviewDraft(for: draft)
-    let ledger = store.activeProfileReleaseLedger
-    let latestEntry = ledger.entries.first
-
-    return VStack(alignment: .leading, spacing: 14) {
-      InspectorSection("发布包") {
-        InspectorStatRow(title: "文件", value: "\(package.files.count)", systemImage: "shippingbox")
-        InspectorStatRow(title: "变化", value: "\(preview.changedFileDiffs.count)", systemImage: "arrow.left.arrow.right")
-        InspectorStatRow(title: "本地策略", value: profile.repositoryPublishStrategy.displayName, systemImage: profile.repositoryPublishStrategy == .direct ? "checkmark.seal" : "arrow.triangle.branch")
-        InspectorStatRow(title: "线上策略", value: mode.displayName, systemImage: "network")
-
-        HStack {
-          Button {
-            store.runPreflight()
-            store.refreshPublishPreview(for: draft)
-          } label: {
-            Label("刷新", systemImage: "arrow.clockwise")
-          }
-
-          Button {
-            store.selectSection(.sync)
-          } label: {
-            Label("到同步页执行", systemImage: "arrow.right.circle")
-          }
-        }
-        .controlSize(.small)
-      }
-
-      InspectorSection("Diff") {
-        if preview.changedFileDiffs.isEmpty {
-          Label("没有待写入变化", systemImage: "equal.circle")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        } else {
-          ForEach(preview.changedFileDiffs.prefix(5)) { diff in
-            VStack(alignment: .leading, spacing: 4) {
-              HStack {
-                Label(diff.status.displayName, systemImage: diff.status.systemImage)
-                  .foregroundStyle(diff.status.color)
-                Spacer()
-                Text(diff.kind.displayName)
-                  .foregroundStyle(.secondary)
-              }
-              .font(.caption)
-
-              Text(diff.path)
-                .font(.caption.monospaced())
-                .lineLimit(2)
-                .textSelection(.enabled)
-            }
-            .padding(.vertical, 4)
-          }
-        }
-      }
-
-      InspectorSection("提交方式") {
-        InspectorStatRow(title: "写入", value: readiness?.writeReadiness.displayName ?? "待刷新", systemImage: readiness?.writeReadiness.systemImage ?? "clock")
-        InspectorStatRow(title: "提交", value: readiness?.commitReadiness.displayName ?? "待刷新", systemImage: readiness?.commitReadiness.systemImage ?? "clock")
-        if let readiness, readiness.blockingIssueCount > 0 {
-          ForEach((readiness.writeBlockingIssues + readiness.commitBlockingIssues).prefix(3)) { issue in
-            IssueCompactRow(issue: issue)
-          }
-        }
-      }
-
-      InspectorSection("线上发布预览") {
-        InspectorStatRow(title: "状态", value: remotePreview.readiness.displayName, systemImage: remotePreview.readiness.systemImage)
-        InspectorStatRow(title: "远端", value: remotePreview.repositoryName, systemImage: remotePreview.provider == .github ? "point.3.connected.trianglepath.dotted" : "point.3.filled.connected.trianglepath.dotted")
-        InspectorStatRow(title: "权限", value: remotePreview.accessSummary, systemImage: remotePreview.hasToken ? "person.badge.key" : "key")
-        InspectorStatRow(title: "目标", value: remotePreview.targetBranch, systemImage: "arrow.down.to.line")
-        InspectorStatRow(title: "分支", value: remotePreview.branchName, systemImage: "arrow.triangle.branch")
-
-        ForEach((remotePreview.blockingIssues + remotePreview.warningIssues).prefix(4)) { issue in
-          IssueCompactRow(issue: issue)
-        }
-
-        if remotePreview.blockingIssues.isEmpty && remotePreview.warningIssues.isEmpty {
-          Text(remotePreview.changedPaths.prefix(5).joined(separator: "\n"))
-            .font(.caption.monospaced())
-            .foregroundStyle(.secondary)
-            .lineLimit(5)
-            .textSelection(.enabled)
-        }
-      }
-
-      InspectorSection("PR/MR 描述") {
-        InspectorStatRow(title: "分支", value: review.branchName, systemImage: "arrow.triangle.branch")
-        InspectorStatRow(title: "目标", value: review.targetBranch, systemImage: "arrow.down.to.line")
-        Text(review.title)
-          .font(.callout.weight(.medium))
-          .lineLimit(2)
-        Text(review.body)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(8)
-          .textSelection(.enabled)
-        Button {
-          copy(review.body, message: "已复制 PR/MR 描述。")
-        } label: {
-          Label("复制描述", systemImage: "doc.on.doc")
-        }
-        .controlSize(.small)
-      }
-
-      InspectorSection("部署状态") {
-        InspectorStatRow(
-          title: "轮询",
-          value: store.deploymentPollingSettings.isEnabled ? store.deploymentPollingState.status.displayName : "已关闭",
-          systemImage: store.deploymentPollingState.status.systemImage
-        )
-        InspectorStatRow(title: "待检查", value: "\(store.deploymentPollingEligibleRecords.count)", systemImage: "hourglass")
-        InspectorStatRow(
-          title: "轮询需处理",
-          value: "\(store.deploymentPollingState.attentionCount)",
-          systemImage: store.deploymentPollingState.attentionCount > 0 ? DeploymentStatusLevel.failed.systemImage : "checkmark.circle"
-        )
-        InspectorStatRow(title: "待处理", value: "\(ledger.summary.actionItemCount)", systemImage: "checklist")
-
-        if let checkedRecord = store.deploymentPollingState.checkedRecords.first {
-          InspectorStatRow(
-            title: "最近检查",
-            value: "\(checkedRecord.provider.displayName) · \(checkedRecord.level.displayName)",
-            systemImage: checkedRecord.level.systemImage
-          )
-          Text(checkedRecord.title)
-            .font(.caption.weight(.semibold))
-            .lineLimit(1)
-          Text(checkedRecord.message)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(3)
-        }
-
-        if let latestEntry {
-          InspectorStatRow(title: "最近记录", value: latestEntry.status.displayName, systemImage: latestEntry.status.systemImage)
-          Text(latestEntry.statusMessage)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(3)
-        } else {
-          Text("还没有发布记录。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-
-        if let actionItem = ledger.actionItems.first {
-          Label("\(actionItem.priority.displayName) · \(actionItem.title)", systemImage: actionItem.systemImage)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-          Text(actionItem.summary)
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
-            .lineLimit(3)
-        }
-
-        Button {
-          store.selectSection(.releaseHistory)
-        } label: {
-          Label("查看发布记录", systemImage: "clock.arrow.circlepath")
-        }
-        .controlSize(.small)
-      }
-
-      actionMessage(store.publishActionMessage)
-    }
-  }
-
-  private func copy(_ value: String, message: String) {
-    ClipboardWriter.copy(value, successMessage: message) { store.setPublishActionMessage($0) }
   }
 }
 
@@ -755,9 +871,10 @@ private struct IssueCompactRow: View {
 }
 
 struct WorkspaceTaskImageState {
-  let report: ImageWorkbenchReport
-  let siteSummary: ImageWorkbenchSiteSummary
+  let report: ImageWorkbenchReport?
+  let siteSummary: ImageWorkbenchSiteSummary?
   let actionMessage: String?
+  let focusedAttachmentID: UUID?
 }
 
 struct WorkspaceTaskImageActions {
@@ -774,19 +891,26 @@ struct WorkspaceTaskImageSection: View {
 
   var body: some View {
     let report = state.report
-    let visibleIssues = report.issues.filter { $0.title != "还没有图片" }
+    let visibleIssues = report?.issues.filter { $0.title != "还没有图片" } ?? []
     let siteSummary = state.siteSummary
 
     return VStack(alignment: .leading, spacing: 14) {
       InspectorSection("当前文章") {
-        InspectorStatRow(title: "图片", value: "\(report.items.count)", systemImage: "photo")
-        InspectorStatRow(title: "缺 alt", value: "\(report.missingAltTextCount)", systemImage: "text.quote")
-        InspectorStatRow(title: "缺源图", value: "\(report.missingSourceCount)", systemImage: "xmark.octagon")
-        InspectorStatRow(title: "可压缩 JPEG", value: "\(report.optimizableJPEGCount)", systemImage: "arrow.down.forward")
-        Label(report.coverStatus.state.displayName, systemImage: report.coverStatus.state.systemImage)
-          .font(.caption)
-          .foregroundStyle(report.coverStatus.state.color)
-          .lineLimit(2)
+        if let report {
+          InspectorStatRow(title: "图片", value: "\(report.items.count)", systemImage: "photo")
+          InspectorStatRow(title: "缺 alt", value: "\(report.missingAltTextCount)", systemImage: "text.quote")
+          InspectorStatRow(title: "缺源图", value: "\(report.missingSourceCount)", systemImage: "xmark.octagon")
+          InspectorStatRow(title: "可压缩 JPEG", value: "\(report.optimizableJPEGCount)", systemImage: "arrow.down.forward")
+          Label(report.coverStatus.state.localizedDisplayName, systemImage: report.coverStatus.state.systemImage)
+            .font(.caption)
+            .foregroundStyle(report.coverStatus.state.color)
+            .lineLimit(2)
+        } else {
+          ProgressView {
+            Text("正在读取当前文章图片…")
+          }
+            .controlSize(.small)
+        }
       }
 
       InspectorSection("图片元数据") {
@@ -798,16 +922,24 @@ struct WorkspaceTaskImageSection: View {
           ForEach(draft.attachments) { attachment in
             ImageMetadataEditorRow(
               attachment: attachment,
-              item: report.items.first { $0.attachmentID == attachment.id },
+              item: report?.items.first { $0.attachmentID == attachment.id },
               altText: attachmentStringBinding(for: attachment.id, keyPath: \.altText),
-              caption: attachmentStringBinding(for: attachment.id, keyPath: \.caption)
+              caption: attachmentStringBinding(for: attachment.id, keyPath: \.caption),
+              isCover: attachmentCoverBinding(for: attachment.id),
+              isFocused: state.focusedAttachmentID == attachment.id
             )
+            .id(attachment.id)
           }
         }
       }
 
       InspectorSection("图片问题") {
-        if visibleIssues.isEmpty {
+        if report == nil {
+          ProgressView {
+            Text("正在检查…")
+          }
+            .controlSize(.small)
+        } else if visibleIssues.isEmpty {
           Label("图片检查通过", systemImage: "checkmark.circle")
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -819,24 +951,16 @@ struct WorkspaceTaskImageSection: View {
       }
 
       InspectorSection("批处理") {
-        InspectorStatRow(title: "站点图片", value: "\(siteSummary.imageCount)", systemImage: "photo.stack")
-        InspectorStatRow(title: "站点缺 alt", value: "\(siteSummary.missingAltTextCount)", systemImage: "text.quote")
-        InspectorStatRow(title: "可压缩 JPEG", value: "\(siteSummary.optimizableJPEGCount)", systemImage: "arrow.down.forward")
-
-        HStack {
-          Button {
-            actions.fillMissingMetadataForCurrentDraft()
-          } label: {
-            Label("补当前", systemImage: "text.badge.checkmark")
+        if let siteSummary {
+          InspectorStatRow(title: "站点图片", value: "\(siteSummary.imageCount)", systemImage: "photo.stack")
+          InspectorStatRow(title: "站点缺 alt", value: "\(siteSummary.missingAltTextCount)", systemImage: "text.quote")
+          InspectorStatRow(title: "可压缩 JPEG", value: "\(siteSummary.optimizableJPEGCount)", systemImage: "arrow.down.forward")
+        } else {
+          ProgressView {
+            Text("正在统计站点图片…")
           }
-
-          Button {
-            actions.optimizeJPEGForCurrentDraft()
-          } label: {
-            Label("压当前", systemImage: "arrow.down.forward")
-          }
+            .controlSize(.small)
         }
-        .controlSize(.small)
 
         Button {
           actions.openImageWorkbench()
@@ -867,6 +991,20 @@ struct WorkspaceTaskImageSection: View {
       }
     )
   }
+
+  private func attachmentCoverBinding(for attachmentID: UUID) -> Binding<Bool> {
+    Binding(
+      get: { draft.coverAttachmentID == attachmentID },
+      set: { isCover in
+        if isCover {
+          draft.coverAttachmentID = attachmentID
+        } else if draft.coverAttachmentID == attachmentID {
+          draft.coverAttachmentID = nil
+        }
+        actions.refreshReport()
+      }
+    )
+  }
 }
 
 private struct ImageMetadataEditorRow: View {
@@ -874,13 +1012,17 @@ private struct ImageMetadataEditorRow: View {
   let item: ImageWorkbenchItem?
   @Binding var altText: String
   @Binding var caption: String
+  @Binding var isCover: Bool
+  let isFocused: Bool
+
+  @FocusState private var isAltFocused: Bool
 
   var body: some View {
     VStack(alignment: .leading, spacing: 7) {
       HStack(alignment: .firstTextBaseline) {
         Text(attachment.originalFilename)
           .font(.callout.weight(.medium))
-          .lineLimit(1)
+          .workbenchTruncatedIdentity(attachment.originalFilename)
 
         if item?.isCover == true {
           Image(systemName: "star.fill")
@@ -890,17 +1032,17 @@ private struct ImageMetadataEditorRow: View {
         Spacer()
 
         Image(systemName: item?.fileExists == false ? "xmark.octagon" : "checkmark.circle")
-          .foregroundStyle(item?.fileExists == false ? .red : .secondary)
+          .foregroundStyle(item?.fileExists == false ? WorkbenchTheme.risk : Color.secondary)
       }
 
       Text(attachment.relativePublishPath)
         .font(.caption.monospaced())
         .foregroundStyle(.secondary)
-        .lineLimit(2)
-        .textSelection(.enabled)
+        .workbenchTruncatedIdentity(attachment.relativePublishPath, lineLimit: 2)
 
       TextField("Alt", text: $altText)
         .textFieldStyle(.roundedBorder)
+        .focused($isAltFocused)
         .accessibilityLabel("图片 Alt 文本")
         .accessibilityValue(altText.isEmpty ? "未填写" : altText)
 
@@ -908,8 +1050,32 @@ private struct ImageMetadataEditorRow: View {
         .textFieldStyle(.roundedBorder)
         .accessibilityLabel("图片 Caption")
         .accessibilityValue(caption.isEmpty ? "未填写" : caption)
+
+      Toggle("设为文章封面", isOn: $isCover)
+        .toggleStyle(.checkbox)
+        .controlSize(.small)
     }
-    .padding(.vertical, 6)
+    .padding(8)
+    .background(
+      isFocused ? Color.accentColor.opacity(0.10) : Color.clear,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
+    .overlay {
+      if isFocused {
+        RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+          .stroke(Color.accentColor.opacity(0.45), lineWidth: 1)
+      }
+    }
+    .onAppear {
+      if isFocused {
+        isAltFocused = true
+      }
+    }
+    .onChange(of: isFocused) { _, shouldFocus in
+      if shouldFocus {
+        isAltFocused = true
+      }
+    }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("图片元数据 \(attachment.originalFilename)")
     .accessibilityValue(item?.fileExists == false ? "源图缺失" : "源图可用")

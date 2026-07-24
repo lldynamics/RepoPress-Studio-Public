@@ -1,6 +1,24 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+enum RepositoryAccessibilityIdentifier {
+  /// Produces a short, deterministic token without exposing repository paths in the AX tree.
+  static func token(for value: String) -> String {
+    var hash: UInt64 = 14_695_981_039_346_656_037
+    for byte in value.utf8 {
+      hash ^= UInt64(byte)
+      hash &*= 1_099_511_628_211
+    }
+    return "\(value.utf8.count)-\(String(hash, radix: 16))"
+  }
+}
+
+extension RepositoryChangedFile {
+  var accessibilityIdentifierToken: String {
+    RepositoryAccessibilityIdentifier.token(for: path)
+  }
+}
+
 struct PublishReadinessTile: View {
   let title: String
   let readiness: LocalPublishActionReadiness
@@ -8,16 +26,16 @@ struct PublishReadinessTile: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       Label(title, systemImage: readiness.systemImage)
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
-      Text(readiness.displayName)
-        .font(.callout.weight(.semibold))
+      Text(readiness.localizedDisplayName)
+        .font(.workbenchCardTitle)
         .foregroundStyle(readiness.color)
         .lineLimit(1)
     }
     .padding(10)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 }
 
@@ -27,19 +45,19 @@ struct BatchPublishPlanRow: View {
 
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 12) {
-      Label(item.readiness.displayName, systemImage: item.readiness.systemImage)
+      Label(item.readiness.localizedDisplayName, systemImage: item.readiness.systemImage)
         .font(.caption.weight(.semibold))
         .foregroundStyle(readinessColor)
         .frame(width: 78, alignment: .leading)
 
       VStack(alignment: .leading, spacing: 4) {
         Text(item.draftTitle)
-          .font(.callout.weight(.medium))
-          .lineLimit(1)
+          .font(.workbenchItemTitle)
+          .workbenchTruncatedIdentity(item.draftTitle)
         Text(item.markdownPath)
           .font(.caption.monospaced())
           .foregroundStyle(.secondary)
-          .lineLimit(1)
+          .workbenchTruncatedIdentity(item.markdownPath)
       }
 
       Spacer()
@@ -67,11 +85,11 @@ struct BatchPublishPlanRow: View {
   private var readinessColor: Color {
     switch item.readiness {
     case .ready:
-      return .green
+      return WorkbenchTheme.success
     case .needsReview:
-      return .orange
+      return WorkbenchTheme.warning
     case .blocked:
-      return .red
+      return WorkbenchTheme.risk
     case .unchanged:
       return .secondary
     }
@@ -82,13 +100,19 @@ extension LocalPublishActionReadiness {
   var color: Color {
     switch self {
     case .ready:
-      return .green
+      return WorkbenchTheme.success
     case .needsReview:
-      return .orange
+      return WorkbenchTheme.warning
     case .blocked:
-      return .red
+      return WorkbenchTheme.risk
     case .unchanged:
       return .secondary
     }
+  }
+}
+
+extension RepositoryWorkspaceView {
+  var repositoryMetricGridColumns: [GridItem] {
+    [GridItem(.adaptive(minimum: 132, maximum: 220), spacing: 10)]
   }
 }

@@ -4,24 +4,68 @@ import SwiftUI
 
 struct SiteMaintenanceMetricGrid: View {
   let report: SiteMaintenanceReport
+  let latestRelease: ReleaseRecord?
+  let deploymentSnapshot: DeploymentStatusSnapshot?
+
+  private var blockingCount: Int {
+    report.actionItems.filter { $0.priority == .high }.count
+  }
+
+  private var onlineStatusText: String {
+    if deploymentSnapshot?.level == .success {
+      return String(localized: "已确认")
+    }
+    if latestRelease == nil {
+      return String(localized: "暂无")
+    }
+    return String(localized: "待确认")
+  }
 
   var body: some View {
-    LazyVGrid(
-      columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
-      spacing: 12
-    ) {
-      MetricTile(title: "文章", value: "\(report.draftCount)", systemImage: "doc.text")
-      MetricTile(title: "公开", value: "\(report.publicDraftCount)", systemImage: "globe")
-      MetricTile(title: "待发布", value: "\(report.readyCount)", systemImage: "paperplane")
-      MetricTile(title: "排期", value: "\(report.calendarScheduleItems.count)", systemImage: "calendar.badge.clock")
-      MetricTile(title: "旧文候选", value: "\(report.staleArticles.count)", systemImage: "clock.badge.exclamationmark")
-      MetricTile(title: "缺标签", value: "\(report.tagSummary.missingCount)", systemImage: "tag")
-      MetricTile(title: "缺分类", value: "\(report.categorySummary.missingCount)", systemImage: "folder")
-      MetricTile(title: "行动项", value: "\(report.actionItems.count)", systemImage: "checklist")
-      MetricTile(title: "内链机会", value: "\(report.internalLinkOpportunityCount)", systemImage: "point.3.connected.trianglepath.dotted")
-      MetricTile(title: "链接提示", value: "\(report.linkAuditItems.count)", systemImage: "link")
-      MetricTile(title: "操作记录", value: "\(report.operationLogEntries.count)", systemImage: "list.bullet.clipboard")
+    VStack(alignment: .leading, spacing: 10) {
+      PrimaryStatusMetricGrid {
+        MetricTile(
+          title: "阻断",
+          value: "\(blockingCount)",
+          semantic: blockingCount == 0 ? .passed : .blocking
+        )
+        MetricTile(
+          title: "待处理",
+          value: "\(report.actionItems.count)",
+          semantic: report.actionItems.isEmpty ? .passed : .warning
+        )
+        MetricTile(
+          title: "已上线",
+          value: onlineStatusText,
+          semantic: deploymentSnapshot?.level == .success ? .passed : .neutral
+        )
+      }
+
+      Label("站点指标", systemImage: "chart.bar.xaxis")
+        .font(.callout.weight(.medium))
+
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 138, maximum: 220))],
+        spacing: 10
+      ) {
+        MetricTile(title: "文章", value: "\(report.draftCount)", semantic: .neutral)
+        MetricTile(title: "待发布", value: "\(report.readyCount)", semantic: .progress)
+        MetricTile(title: "已发布", value: "\(report.publishedCount)", semantic: .passed)
+        MetricTile(
+          title: "旧文候选",
+          value: "\(report.staleArticles.count)",
+          semantic: report.staleArticles.isEmpty ? .passed : .warning
+        )
+        MetricTile(title: "内链机会", value: "\(report.internalLinkOpportunityCount)", semantic: .progress)
+        MetricTile(
+          title: "链接提示",
+          value: "\(report.linkAuditItems.count)",
+          semantic: report.linkAuditItems.isEmpty ? .passed : .warning
+        )
+      }
     }
+    .padding(12)
+    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 }
 
@@ -38,7 +82,7 @@ struct SiteMaintenanceHealthSection: View {
         Text("\(summary.score)/100")
           .font(.title3.weight(.semibold))
           .foregroundStyle(siteMaintenanceHealthForeground(summary.level))
-        Text(summary.level.displayName)
+        Text(summary.level.localizedDisplayName)
           .font(.caption.weight(.medium))
           .foregroundStyle(siteMaintenanceHealthForeground(summary.level))
       }
@@ -73,6 +117,9 @@ struct SiteMaintenanceActionQueueSection: View {
   let copyItem: (MaintenanceActionItem) -> Void
   let recordItem: (MaintenanceActionItem) -> Void
   let sendToAI: (MaintenanceActionItem) -> Void
+  var maximumVisibleCount = 8
+  var allowsExpansion = true
+  @State private var showsAllActions = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -89,8 +136,18 @@ struct SiteMaintenanceActionQueueSection: View {
         Label("当前没有需要优先处理的维护事项。", systemImage: "checkmark.circle")
           .foregroundStyle(.secondary)
       } else {
-        ForEach(report.actionItems.prefix(8)) { item in
+        let visibleActions = showsAllActions
+          ? report.actionItems
+          : Array(report.actionItems.prefix(maximumVisibleCount))
+        ForEach(visibleActions) { item in
           actionQueueRow(item)
+        }
+        if allowsExpansion, report.actionItems.count > maximumVisibleCount {
+          WorkbenchListDisclosureFooter(
+            visibleCount: visibleActions.count,
+            totalCount: report.actionItems.count,
+            showsAll: $showsAllActions
+          )
         }
       }
     }
@@ -103,7 +160,7 @@ struct SiteMaintenanceActionQueueSection: View {
     VStack(alignment: .leading, spacing: 8) {
       actionQueueRowContent(item)
 
-      HStack {
+      HStack(spacing: 8) {
         if let draftID = item.draftID {
           Button {
             openDraft(draftID)
@@ -113,25 +170,27 @@ struct SiteMaintenanceActionQueueSection: View {
         }
 
         Button {
-          copyItem(item)
-        } label: {
-          Label("复制任务", systemImage: "doc.on.doc")
-        }
-
-        Button {
           recordItem(item)
         } label: {
           Label("记录处理", systemImage: "checkmark.circle")
         }
 
         Button {
-          sendToAI(item)
+          copyItem(item)
         } label: {
-          Label("交给 AI", systemImage: "sparkles")
+          Label("复制任务", systemImage: "doc.on.doc")
         }
-        .disabled(item.draftID == nil || isAIChatRunning)
-        .accessibilityLabel("把维护动作交给 AI")
-        .accessibilityValue(item.title)
+
+        if DistributionFeaturePolicy.allowsExternalAIProviders {
+          Button {
+            sendToAI(item)
+          } label: {
+            Label("交给 AI", systemImage: "sparkles")
+          }
+          .disabled(item.draftID == nil || isAIChatRunning)
+        }
+
+        Spacer(minLength: 0)
       }
       .controlSize(.small)
     }
@@ -150,16 +209,16 @@ struct SiteMaintenanceActionQueueSection: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Text(item.title)
             .font(.callout.weight(.medium))
-            .lineLimit(1)
-          Text(item.kind.displayName)
-            .font(.caption2)
+            .workbenchTruncatedIdentity(item.title)
+          Text(item.kind.localizedDisplayName)
+            .font(.caption)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(WorkbenchBackgroundStyle.badge, in: Capsule())
           Spacer()
-          Text(item.priority.displayName)
-            .font(.caption2.weight(.semibold))
+          Text(item.priority.localizedDisplayName)
+            .font(.caption.weight(.semibold))
             .foregroundStyle(siteMaintenanceActionPriorityForeground(item.priority))
         }
 
@@ -170,9 +229,9 @@ struct SiteMaintenanceActionQueueSection: View {
 
         if !item.detail.isEmpty {
           Text(item.detail)
-            .font(.caption2.monospaced())
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
+            .font(.caption.monospaced())
+            .foregroundStyle(.secondary)
+            .workbenchTruncatedIdentity(item.detail)
         }
       }
     }
@@ -183,22 +242,22 @@ struct SiteMaintenanceActionQueueSection: View {
 private func siteMaintenanceHealthForeground(_ level: SiteMaintenanceHealthLevel) -> AnyShapeStyle {
   switch level {
   case .stable:
-    return AnyShapeStyle(.green)
+    return AnyShapeStyle(WorkbenchTheme.success)
   case .watch:
-    return AnyShapeStyle(.blue)
+    return AnyShapeStyle(WorkbenchTheme.primary)
   case .needsWork:
-    return AnyShapeStyle(.orange)
+    return AnyShapeStyle(WorkbenchTheme.warning)
   case .urgent:
-    return AnyShapeStyle(.red)
+    return AnyShapeStyle(WorkbenchTheme.risk)
   }
 }
 
 private func siteMaintenanceActionPriorityForeground(_ priority: MaintenanceActionPriority) -> AnyShapeStyle {
   switch priority {
   case .high:
-    return AnyShapeStyle(.red)
+    return AnyShapeStyle(WorkbenchTheme.risk)
   case .medium:
-    return AnyShapeStyle(.orange)
+    return AnyShapeStyle(WorkbenchTheme.warning)
   case .low:
     return AnyShapeStyle(.secondary)
   }

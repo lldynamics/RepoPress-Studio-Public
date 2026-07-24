@@ -17,58 +17,45 @@ struct SettingsProfileBar: View {
   @State private var isDeleteConfirmationPresented = false
 
   var body: some View {
-    HStack(spacing: 10) {
-      Label("Profile", systemImage: "person.crop.rectangle.stack")
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+    HStack(alignment: .center, spacing: 7) {
+      VStack(alignment: .trailing, spacing: 2) {
+        Text("当前站点")
+          .font(.caption.weight(.medium))
+          .foregroundStyle(.secondary)
 
-      Picker("当前 Profile", selection: activeProfileIDBinding) {
-        ForEach(profiles) { profile in
-          Text(profile.name).tag(profile.id)
+        Picker("当前站点", selection: activeProfileIDBinding) {
+          ForEach(profiles) { profile in
+            Text(profile.name).tag(profile.id)
+          }
         }
+        .labelsHidden()
+        .frame(width: 170)
+        .accessibilityLabel("当前站点")
+        .accessibilityValue(activeProfile.name)
       }
-      .labelsHidden()
-      .frame(minWidth: 180, idealWidth: 220, maxWidth: 260)
-      .accessibilityLabel("当前 Profile")
-      .accessibilityValue(activeProfile.name)
-
-      Text(activeProfile.purpose.displayName)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
-
-      Spacer()
 
       Button {
         isProfileManagementPresented.toggle()
       } label: {
-        Label("管理 Profile", systemImage: "slider.horizontal.3")
+        Image(systemName: "ellipsis.circle")
       }
+      .buttonStyle(.bordered)
+      .controlSize(.regular)
       .popover(isPresented: $isProfileManagementPresented, arrowEdge: .bottom) {
         profileManagementPopover
       }
-      .help("管理当前 Profile")
+      .help("管理站点")
+      .accessibilityLabel("管理站点")
     }
   }
 
   private var profileManagementPopover: some View {
     Form {
-      Section("当前 Profile") {
-        TextField("Profile 名称", text: activeProfileBinding.name)
-          .accessibilityLabel("Profile 名称")
+      Section("当前站点配置") {
+        TextField("站点配置名称", text: activeProfileBinding.name)
+          .accessibilityLabel("站点配置名称")
           .accessibilityValue(activeProfile.name)
 
-        Picker("用途", selection: activeProfileBinding.purpose) {
-          ForEach(SiteProfilePurpose.allCases) { purpose in
-            Text(purpose.displayName).tag(purpose)
-          }
-        }
-        .accessibilityLabel("Profile 用途")
-        .accessibilityValue(activeProfile.purpose.displayName)
-
-        Text(activeProfile.purpose.detail)
-          .font(.caption)
-          .foregroundStyle(.secondary)
       }
 
       Section {
@@ -78,14 +65,14 @@ struct SettingsProfileBar: View {
           } label: {
             Label("新增", systemImage: "plus")
           }
-          .accessibilityLabel("新增 Profile")
+          .accessibilityLabel("新增站点配置")
 
           Button {
             duplicateActiveProfile()
           } label: {
             Label("复制", systemImage: "doc.on.doc")
           }
-          .accessibilityLabel("复制当前 Profile")
+          .accessibilityLabel("复制当前站点配置")
 
           Button(role: .destructive) {
             isDeleteConfirmationPresented = true
@@ -93,7 +80,7 @@ struct SettingsProfileBar: View {
             Label("删除", systemImage: "trash")
           }
           .disabled(profiles.count <= 1)
-          .accessibilityLabel("删除当前 Profile")
+          .accessibilityLabel("删除当前站点配置")
         }
       }
 
@@ -110,11 +97,11 @@ struct SettingsProfileBar: View {
     .padding(12)
     .frame(width: 360)
     .confirmationDialog(
-      "删除当前 Profile？",
+      "删除当前站点配置？",
       isPresented: $isDeleteConfirmationPresented,
       titleVisibility: .visible
     ) {
-      Button("删除 Profile 和 \(activeProfileDraftCount) 篇草稿", role: .destructive) {
+      Button("删除站点配置和 \(activeProfileDraftCount) 篇草稿", role: .destructive) {
         deleteActiveProfile()
       }
       Button("取消", role: .cancel) {}

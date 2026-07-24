@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#endif
 
 public struct LocalSitePreviewPlan: Codable, Hashable, Sendable {
   public var siteKind: SiteKind
@@ -30,23 +33,29 @@ public struct LocalSitePreviewPlan: Codable, Hashable, Sendable {
 
 public struct LocalSitePreviewRuntimeStatus: Codable, Hashable, Sendable {
   public var isRunning: Bool
+  public var isReachable: Bool
   public var processIdentifier: Int32?
   public var previewURL: URL?
   public var message: String
   public var startedAt: Date?
+  public var recentLogLines: [String]
 
   public init(
     isRunning: Bool,
+    isReachable: Bool = false,
     processIdentifier: Int32? = nil,
     previewURL: URL? = nil,
     message: String,
-    startedAt: Date? = nil
+    startedAt: Date? = nil,
+    recentLogLines: [String] = []
   ) {
     self.isRunning = isRunning
+    self.isReachable = isReachable
     self.processIdentifier = processIdentifier
     self.previewURL = previewURL
     self.message = message
     self.startedAt = startedAt
+    self.recentLogLines = recentLogLines
   }
 
   public static let stopped = LocalSitePreviewRuntimeStatus(
@@ -55,38 +64,64 @@ public struct LocalSitePreviewRuntimeStatus: Codable, Hashable, Sendable {
   )
 }
 
-public final class LocalSitePreviewProcessService {
+public final class LocalSitePreviewProcessService: @unchecked Sendable {
   private var process: Process?
+  private var processGroupIdentifier: Int32?
   private var outputPipe: Pipe?
   private var errorPipe: Pipe?
   private var activePlan: LocalSitePreviewPlan?
   private var startedAt: Date?
+  private let processLock = NSLock()
+  private let logCollector = LocalSitePreviewLogCollector(maximumLineCount: 80)
 
   public init() {}
 
-  static func launchEnvironment(from baseEnvironment: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
-    var environment = baseEnvironment
-    let existingPaths = environment["PATH"]?.split(separator: ":").map(String.init) ?? []
-    let defaultToolPaths = [
+  static let trustedToolDirectories = [
       "/opt/homebrew/bin",
       "/usr/local/bin",
       "/usr/bin",
       "/bin",
       "/usr/sbin",
       "/sbin"
-    ]
+  ]
 
-    var seenPaths = Set<String>()
-    let mergedPaths = (existingPaths + defaultToolPaths).filter { path in
-      seenPaths.insert(path).inserted
-    }
-    environment["PATH"] = mergedPaths.joined(separator: ":")
+  static func launchEnvironment(from baseEnvironment: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+    let allowedKeys = [
+      "HOME",
+      "LANG",
+      "LC_ALL",
+      "LC_CTYPE",
+      "LOGNAME",
+      "SHELL",
+      "TMPDIR",
+      "USER",
+    ]
+    var environment = baseEnvironment.filter { allowedKeys.contains($0.key) }
+    environment["PATH"] = trustedToolDirectories.joined(separator: ":")
+    environment["NO_COLOR"] = "1"
     return environment
   }
 
   public var status: LocalSitePreviewRuntimeStatus {
-    guard let process, process.isRunning, let activePlan else {
+    processLock.lock()
+    defer { processLock.unlock() }
+    return statusLocked()
+  }
+
+  private func statusLocked() -> LocalSitePreviewRuntimeStatus {
+    guard let activePlan else {
       return .stopped
+    }
+
+    let logLines = capturedLogLines()
+    guard let process, process.isRunning else {
+      return LocalSitePreviewRuntimeStatus(
+        isRunning: false,
+        previewURL: activePlan.previewURL,
+        message: "本地预览进程已退出。",
+        startedAt: startedAt,
+        recentLogLines: logLines
+      )
     }
 
     return LocalSitePreviewRuntimeStatus(
@@ -94,14 +129,17 @@ public final class LocalSitePreviewProcessService {
       processIdentifier: process.processIdentifier,
       previewURL: activePlan.previewURL,
       message: "本地预览运行中：\(activePlan.previewURL.absoluteString)",
-      startedAt: startedAt
+      startedAt: startedAt,
+      recentLogLines: logLines
     )
   }
 
   @discardableResult
   public func start(plan: LocalSitePreviewPlan) throws -> LocalSitePreviewRuntimeStatus {
+    processLock.lock()
+    defer { processLock.unlock() }
     if let process, process.isRunning {
-      return status
+      return statusLocked()
     }
 
     let process = Process()
@@ -112,16 +150,27 @@ public final class LocalSitePreviewProcessService {
 
     let outputPipe = Pipe()
     let errorPipe = Pipe()
+    let logCollector = logCollector
     outputPipe.fileHandleForReading.readabilityHandler = { handle in
-      _ = handle.availableData
+      logCollector.append(handle.availableData)
     }
     errorPipe.fileHandleForReading.readabilityHandler = { handle in
-      _ = handle.availableData
+      logCollector.append(handle.availableData)
     }
     process.standardOutput = outputPipe
     process.standardError = errorPipe
 
+    logCollector.reset()
+
     try process.run()
+
+#if canImport(Darwin)
+    if Darwin.setpgid(process.processIdentifier, process.processIdentifier) == 0 {
+      processGroupIdentifier = process.processIdentifier
+    } else {
+      processGroupIdentifier = nil
+    }
+#endif
 
     self.process = process
     self.outputPipe = outputPipe
@@ -129,86 +178,209 @@ public final class LocalSitePreviewProcessService {
     activePlan = plan
     startedAt = Date()
 
-    return status
+    return statusLocked()
   }
 
   public func stop() {
+    processLock.lock()
+    defer { processLock.unlock() }
+    stopLocked()
+  }
+
+  public func stopAsync() async {
+    await withCheckedContinuation { continuation in
+      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        self?.stop()
+        continuation.resume()
+      }
+    }
+  }
+
+  private func stopLocked() {
     guard let process else {
-      clearProcess()
+      clearProcessLocked()
       return
     }
 
     if process.isRunning {
+#if canImport(Darwin)
+      if let processGroupIdentifier {
+        Darwin.kill(-processGroupIdentifier, SIGTERM)
+      } else {
+        process.terminate()
+      }
+#else
       process.terminate()
+#endif
+      let gracefulExitDeadline = Date().addingTimeInterval(1)
+      while process.isRunning, Date() < gracefulExitDeadline {
+        Thread.sleep(forTimeInterval: 0.02)
+      }
+      if process.isRunning {
+#if canImport(Darwin)
+        if let processGroupIdentifier {
+          Darwin.kill(-processGroupIdentifier, SIGKILL)
+        } else {
+          Darwin.kill(process.processIdentifier, SIGKILL)
+        }
+#endif
+      }
     }
 
-    clearProcess()
+    if process.isRunning {
+      process.waitUntilExit()
+    }
+
+    clearProcessLocked()
   }
 
-  private func clearProcess() {
+  private func clearProcessLocked() {
     outputPipe?.fileHandleForReading.readabilityHandler = nil
     errorPipe?.fileHandleForReading.readabilityHandler = nil
     outputPipe = nil
     errorPipe = nil
     process = nil
+    processGroupIdentifier = nil
     activePlan = nil
     startedAt = nil
+  }
+
+  private func capturedLogLines() -> [String] {
+    logCollector.lines()
+  }
+}
+
+private final class LocalSitePreviewLogCollector: @unchecked Sendable {
+  private let lock = NSLock()
+  private let maximumLineCount: Int
+  private var recentLogLines: [String] = []
+
+  init(maximumLineCount: Int) {
+    self.maximumLineCount = maximumLineCount
+  }
+
+  func append(_ data: Data) {
+    guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else {
+      return
+    }
+
+    let lines = output
+      .split(whereSeparator: \.isNewline)
+      .map(String.init)
+      .filter { !$0.isEmpty }
+    guard !lines.isEmpty else { return }
+
+    lock.lock()
+    recentLogLines.append(contentsOf: lines)
+    if recentLogLines.count > maximumLineCount {
+      recentLogLines.removeFirst(recentLogLines.count - maximumLineCount)
+    }
+    lock.unlock()
+  }
+
+  func reset() {
+    lock.lock()
+    recentLogLines = []
+    lock.unlock()
+  }
+
+  func lines() -> [String] {
+    lock.lock()
+    defer { lock.unlock() }
+    return recentLogLines
   }
 }
 
 public struct LocalSitePreviewService {
-  public init() {}
+  private let executableResolver: (String) -> String?
+
+  public init() {
+    executableResolver = Self.resolveTrustedExecutable(named:)
+  }
+
+  init(executableResolver: @escaping (String) -> String?) {
+    self.executableResolver = executableResolver
+  }
+
+  public func previewURL(for draft: ArticleDraft, profile: SiteProfile) -> URL? {
+    guard let plan = plan(profile: profile) else { return nil }
+    return SiteArticleURLResolver().url(
+      baseURL: plan.previewURL,
+      markdownPath: profile.markdownPath(for: draft),
+      siteKind: profile.siteKind
+    )
+  }
 
   public func plan(profile: SiteProfile) -> LocalSitePreviewPlan? {
     guard let rootPath = profile.localRepositoryRootURL?.path else {
       return nil
     }
 
-    let executablePath = "/usr/bin/env"
+    let executableName: String
     let arguments: [String]
     let urlString: String
     let notes: [String]
 
     switch profile.siteKind {
     case .zola:
-      arguments = ["zola", "serve", "--drafts"]
+      executableName = "zola"
+      arguments = ["serve", "--drafts"]
       urlString = "http://127.0.0.1:1111"
       notes = ["Zola 默认端口为 1111。", "如果项目自定义端口，请在终端按实际命令启动。"]
     case .hugo:
-      arguments = ["hugo", "server", "-D"]
+      executableName = "hugo"
+      arguments = ["server", "-D"]
       urlString = "http://127.0.0.1:1313"
       notes = ["Hugo 默认端口为 1313。", "包含草稿预览参数 -D。"]
     case .astro:
-      arguments = ["npm", "run", "dev"]
+      executableName = "npm"
+      arguments = ["run", "dev"]
       urlString = "http://127.0.0.1:4321"
-      notes = ["Astro 默认 dev server 端口为 4321。", "需要项目已安装 npm 依赖。"]
+      notes = ["Astro 默认 dev server 端口为 4321。", "需要项目已安装 npm 依赖。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
     case .hexo:
-      arguments = ["npm", "run", "server"]
+      executableName = "npm"
+      arguments = ["run", "server"]
       urlString = "http://127.0.0.1:4000"
-      notes = ["Hexo 常见本地端口为 4000。", "如果没有 server script，可改用 hexo server。"]
+      notes = ["Hexo 常见本地端口为 4000。", "如果没有 server script，可改用 hexo server。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
     case .jekyll:
-      arguments = ["bundle", "exec", "jekyll", "serve", "--drafts"]
+      executableName = "bundle"
+      arguments = ["exec", "jekyll", "serve", "--drafts"]
       urlString = "http://127.0.0.1:4000"
-      notes = ["Jekyll 常见本地端口为 4000。", "需要 Ruby bundle 环境可用。"]
+      notes = ["Jekyll 常见本地端口为 4000。", "需要 Ruby bundle 环境可用。", "本地预览会执行仓库脚本，请只启动可信仓库。"]
     }
 
     guard let previewURL = URL(string: urlString) else {
       return nil
     }
 
+    let executablePath = executableResolver(executableName)
+      ?? Self.trustedExecutableCandidates(named: executableName)[0]
+
     return LocalSitePreviewPlan(
       siteKind: profile.siteKind,
       rootPath: rootPath,
       executablePath: executablePath,
       arguments: arguments,
-      command: copyableCommand(rootPath: rootPath, arguments: arguments),
+      command: copyableCommand(rootPath: rootPath, executableName: executableName, arguments: arguments),
       previewURL: previewURL,
       notes: notes
     )
   }
 
-  private func copyableCommand(rootPath: String, arguments: [String]) -> String {
-    let command = arguments.map(posixShellQuote).joined(separator: " ")
+  private func copyableCommand(rootPath: String, executableName: String, arguments: [String]) -> String {
+    let command = ([executableName] + arguments).map(posixShellQuote).joined(separator: " ")
     return "cd \(posixShellQuote(rootPath)) && \(command)"
+  }
+
+  private static func resolveTrustedExecutable(named name: String) -> String? {
+    trustedExecutableCandidates(named: name).first {
+      FileManager.default.isExecutableFile(atPath: $0)
+    }
+  }
+
+  private static func trustedExecutableCandidates(named name: String) -> [String] {
+    LocalSitePreviewProcessService.trustedToolDirectories.map {
+      URL(fileURLWithPath: $0, isDirectory: true).appendingPathComponent(name).path
+    }
   }
 }

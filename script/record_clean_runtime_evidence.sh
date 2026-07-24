@@ -31,7 +31,7 @@ fail() {
 title_for_id() {
   case "$1" in
     clean-launch) echo 'App launched from `script/build_and_run.sh --verify` on a clean macOS account or equivalent test user.' ;;
-    privacy-settings-workspace) echo "First launch, privacy lock, settings, and workspace switching were verified without exposing private content." ;;
+    privacy-settings-workspace) echo "Quick hide, private-content masking, settings, and workspace switching were verified without exposing private content." ;;
     accessibility-keyboard-smoke) echo "Keyboard navigation, focus visibility, VoiceOver labels, and primary commands were smoke checked in the running app." ;;
     *) fail "unsupported item id: $1" ;;
   esac

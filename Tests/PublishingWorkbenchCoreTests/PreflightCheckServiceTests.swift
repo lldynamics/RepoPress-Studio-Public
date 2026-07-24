@@ -42,7 +42,72 @@ final class PreflightCheckServiceTests: XCTestCase {
       profile: profile
     )
 
-    XCTAssertTrue(issues.contains { $0.title == "发布路径重复" })
+    XCTAssertTrue(issues.contains { $0.title == CoreL10n.text("发布路径重复") })
+  }
+
+  func testDuplicateIndexMatchesPerDraftScanForCaseInsensitiveTitlesAndPaths() {
+    let profile = SiteProfile.defaultProfile
+    let first = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Case Sensitive Title",
+      slug: "shared-path",
+      bodyMarkdown: "This body is intentionally long enough for indexed preflight comparison."
+    )
+    let second = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "case sensitive title",
+      slug: "shared-path",
+      bodyMarkdown: "This second body is intentionally long enough for indexed preflight comparison."
+    )
+    let third = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Unique Title",
+      slug: "unique-path",
+      bodyMarkdown: "This third body is intentionally long enough for indexed preflight comparison."
+    )
+    let drafts = [first, second, third]
+    let service = PreflightCheckService()
+    let duplicateIndex = PreflightDuplicateIndex(drafts: drafts, profile: profile)
+
+    for draft in drafts {
+      let scanned = service.run(
+        draft: draft,
+        allDrafts: drafts,
+        profile: profile,
+        includeRepositoryReadiness: false
+      )
+      let indexed = service.run(
+        draft: draft,
+        allDrafts: drafts,
+        profile: profile,
+        includeRepositoryReadiness: false,
+        duplicateIndex: duplicateIndex
+      )
+
+      XCTAssertEqual(issueSignatures(indexed), issueSignatures(scanned))
+    }
+  }
+
+  func testDuplicateIndexDoesNotTreatRepeatedSameIDDraftAsAnotherDraft() {
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Repeated Snapshot",
+      slug: "repeated-snapshot",
+      bodyMarkdown: "This body is intentionally long enough for repeated snapshot duplicate checks."
+    )
+    let drafts = [draft, draft]
+    let service = PreflightCheckService()
+    let issues = service.run(
+      draft: draft,
+      allDrafts: drafts,
+      profile: profile,
+      includeRepositoryReadiness: false,
+      duplicateIndex: PreflightDuplicateIndex(drafts: drafts, profile: profile)
+    )
+
+    XCTAssertFalse(issues.contains { $0.title == CoreL10n.text("标题重复") })
+    XCTAssertFalse(issues.contains { $0.title == CoreL10n.text("发布路径重复") })
   }
 
   func testReportsMarkdownPathOutsideContentRoot() {
@@ -133,6 +198,34 @@ final class PreflightCheckServiceTests: XCTestCase {
     XCTAssertTrue(issues.contains { $0.title == "图片路径不安全" && $0.severity == .error })
   }
 
+  func testVideoAttachmentDoesNotRequireImageMetadata() {
+    let profile = SiteProfile.defaultProfile
+    let attachment = DraftAttachment(
+      originalFilename: "walkthrough.mp4",
+      relativePublishPath: "/videos/2026/walkthrough.mp4",
+      repositoryPath: "static/videos/2026/walkthrough.mp4",
+      altText: "",
+      caption: ""
+    )
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Video Attachment",
+      slug: "video-attachment",
+      bodyMarkdown: "This body is intentionally long enough to isolate video attachment preflight behavior.",
+      attachments: [attachment]
+    )
+
+    let issues = PreflightCheckService().run(
+      draft: draft,
+      allDrafts: [draft],
+      profile: profile,
+      includeRepositoryReadiness: false
+    )
+
+    XCTAssertFalse(issues.contains { $0.title == CoreL10n.text("图片缺少 alt") })
+    XCTAssertFalse(issues.contains { $0.field == "attachments" && $0.severity == .error })
+  }
+
   func testReportsPublicRiskWithoutEchoingSecretValue() {
     let profile = SiteProfile.defaultProfile
     let secret = "sk-12345678901234567890abcd"
@@ -150,7 +243,9 @@ final class PreflightCheckServiceTests: XCTestCase {
       includeRepositoryReadiness: false
     )
 
-    let issue = issues.first { $0.title == "疑似密钥泄露" && $0.field == "body" }
+    let issue = issues.first {
+      $0.title == CoreL10n.text("疑似密钥泄露") && $0.field == "body"
+    }
     XCTAssertEqual(issue?.severity, .error)
     XCTAssertFalse(issue?.message.contains(secret) ?? true)
   }
@@ -174,8 +269,12 @@ final class PreflightCheckServiceTests: XCTestCase {
       includeRepositoryReadiness: false
     )
 
-    XCTAssertTrue(issues.contains { $0.title == "内网地址疑似泄露" && $0.severity == .warning })
-    XCTAssertTrue(issues.contains { $0.title == "本机路径疑似泄露" && $0.severity == .warning })
+    XCTAssertTrue(issues.contains {
+      $0.title == CoreL10n.text("内网地址疑似泄露") && $0.severity == .warning
+    })
+    XCTAssertTrue(issues.contains {
+      $0.title == CoreL10n.text("本机路径疑似泄露") && $0.severity == .warning
+    })
   }
 
   func testRepositoryBackupPurposeSkipsDeploymentReadinessButKeepsRepositorySafety() {
@@ -221,7 +320,7 @@ final class PreflightCheckServiceTests: XCTestCase {
       repositoryReport: repositoryReportWithDeploymentAndGitIssues()
     )
 
-    XCTAssertFalse(issues.contains { $0.title == "未选择本地仓库" })
+    XCTAssertFalse(issues.contains { $0.title == CoreL10n.text("未选择本地仓库") })
     XCTAssertFalse(issues.contains { $0.field == "repository" })
     XCTAssertFalse(issues.contains { $0.field == "siteKind" })
     XCTAssertFalse(issues.contains { $0.field == "contentRoot" })
@@ -246,5 +345,11 @@ final class PreflightCheckServiceTests: XCTestCase {
         .init(severity: .warning, title: "图片目录不存在", message: "static", field: "assetRoot"),
       ]
     )
+  }
+
+  private func issueSignatures(_ issues: [PreflightIssue]) -> [String] {
+    issues.map {
+      "\($0.severity.rawValue)|\($0.title)|\($0.message)|\($0.field ?? "")"
+    }
   }
 }

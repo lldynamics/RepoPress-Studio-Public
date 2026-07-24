@@ -19,7 +19,7 @@ final class RepositoryDeploymentCoordinator {
 
   @discardableResult
   func tickOperationalPolling(store: WorkbenchStore, now: Date) async -> Bool {
-    let repositoryDidRun = repositoryStore.tickRepositoryAutoSync(store: store, now: now)
+    let repositoryDidRun = await repositoryStore.tickRepositoryAutoSync(store: store, now: now)
     let deploymentDidRun = await deploymentStore.tickDeploymentPolling(store: store, now: now)
     return repositoryDidRun || deploymentDidRun
   }

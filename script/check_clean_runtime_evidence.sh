@@ -52,7 +52,7 @@ strict = sys.argv[2] == "1"
 text = path.read_text(encoding="utf-8")
 required_titles = [
     "App launched from `script/build_and_run.sh --verify` on a clean macOS account or equivalent test user.",
-    "First launch, privacy lock, settings, and workspace switching were verified without exposing private content.",
+    "Quick hide, private-content masking, settings, and workspace switching were verified without exposing private content.",
     "Keyboard navigation, focus visibility, VoiceOver labels, and primary commands were smoke checked in the running app.",
 ]
 private_pattern = re.compile(

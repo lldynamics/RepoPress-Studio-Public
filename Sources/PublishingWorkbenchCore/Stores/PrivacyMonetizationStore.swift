@@ -1,13 +1,28 @@
 import Combine
 import Foundation
 
+struct FeatureUseReservation: Hashable, Sendable {
+  let id: UUID
+  let feature: PremiumFeature
+}
+
+struct FeatureUseReservationResult: Sendable {
+  let decision: FeatureAccessDecision
+  let reservation: FeatureUseReservation?
+}
+
 @MainActor
 public final class PrivacyMonetizationStore: ObservableObject {
+  private struct ActiveFeatureUseReservation {
+    let feature: PremiumFeature
+    let consumesFreeQuota: Bool
+  }
+
   private let monetizationService: MonetizationService
+  private var activeFeatureUseReservations: [UUID: ActiveFeatureUseReservation] = [:]
 
   @Published public internal(set) var privacySettings: PrivacyProtectionSettings
   @Published public internal(set) var isPrivacyLocked: Bool
-  @Published public internal(set) var privacyProtectionEvents: [PrivacyProtectionEvent]
   @Published public internal(set) var privacyLockReason: String?
   @Published public internal(set) var monetizationState: MonetizationState
   @Published public internal(set) var monetizationMessage: String?
@@ -16,19 +31,22 @@ public final class PrivacyMonetizationStore: ObservableObject {
   init(
     privacySettings: PrivacyProtectionSettings = .default,
     isPrivacyLocked: Bool = false,
-    privacyProtectionEvents: [PrivacyProtectionEvent] = [],
     privacyLockReason: String? = nil,
     monetizationState: MonetizationState = .default,
     monetizationMessage: String? = nil,
     latestProFeatureBlockNotice: ProFeatureBlockNotice? = nil,
-    monetizationService: MonetizationService = MonetizationService()
+    monetizationService: MonetizationService = MonetizationService(),
+    entitlementProvider: any ProEntitlementProviding = VerifiedStoreKitEntitlementProvider()
   ) {
     self.monetizationService = monetizationService
     self.privacySettings = privacySettings
     self.isPrivacyLocked = isPrivacyLocked
-    self.privacyProtectionEvents = privacyProtectionEvents
     self.privacyLockReason = privacyLockReason
-    self.monetizationState = monetizationState
+    var restoredMonetizationState = monetizationState
+    restoredMonetizationState.entitlement = entitlementProvider.entitlement(
+      restoring: monetizationState.entitlement
+    )
+    self.monetizationState = monetizationService.normalizedState(restoredMonetizationState)
     self.monetizationMessage = monetizationMessage
     self.latestProFeatureBlockNotice = latestProFeatureBlockNotice
   }
@@ -38,7 +56,7 @@ public final class PrivacyMonetizationStore: ObservableObject {
   }
 
   public var privacyLockedOperationMessage: String {
-    "工作台已锁定，请先解锁后再继续。"
+    "工作台内容已隐藏，请返回工作台后再继续。"
   }
 
   public var privacyProtectionStatus: PrivacyProtectionStatus {
@@ -49,24 +67,12 @@ public final class PrivacyMonetizationStore: ObservableObject {
     )
   }
 
-  public func privacyProtectionAudit(store: WorkbenchStore) -> PrivacyProtectionAudit {
-    PrivacyProtectionAudit.make(
-      settings: privacySettings,
-      status: privacyProtectionStatus,
-      privateDraftCount: store.visibleDrafts.filter(\.isPrivate).count
-    )
-  }
-
-  public func privacyProtectionEvidencePackage(store: WorkbenchStore) -> PrivacyProtectionEvidencePackage {
-    PrivacyProtectionEvidencePackage(
-      status: privacyProtectionStatus,
-      audit: privacyProtectionAudit(store: store),
-      recentEvents: privacyProtectionEvents
-    )
-  }
-
   public var proStatusSummary: ProStatusSummary {
     monetizationService.statusSummary(state: monetizationState)
+  }
+
+  public var currentFreePlanUsage: FreePlanUsage {
+    monetizationService.normalizedFreeUsage(monetizationState.freeUsage)
   }
 
   public var proUpgradePresentation: ProUpgradePresentation {
@@ -81,31 +87,8 @@ public final class PrivacyMonetizationStore: ObservableObject {
     monetizationService.upgradeRequirement(for: feature, state: monetizationState)
   }
 
-  public var proMonetizationAuditReport: ProMonetizationAuditReport {
-    ProMonetizationAuditReport(
-      state: monetizationState,
-      requirements: proUpgradeRequirements
-    )
-  }
-
-  public var proSandboxVerificationSummary: ProSandboxVerificationSummary {
-    ProSandboxVerificationSummary.make(
-      state: monetizationState,
-      requirements: proUpgradeRequirements
-    )
-  }
-
-  public var proStoreKitReviewEvidencePackage: ProStoreKitReviewEvidencePackage {
-    ProStoreKitReviewEvidencePackage(
-      statusSummary: proStatusSummary,
-      auditReport: proMonetizationAuditReport,
-      sandboxSummary: proSandboxVerificationSummary
-    )
-  }
-
   public func updatePrivacySettings(_ settings: PrivacyProtectionSettings, store: WorkbenchStore) {
-    privacySettings = settings
-    recordPrivacyEvent(.settingsUpdated, message: "已更新隐私界面遮罩和私密内容设置。")
+    privacySettings = settings.normalized
     store.save()
   }
 
@@ -113,7 +96,7 @@ public final class PrivacyMonetizationStore: ObservableObject {
     guard draft.isPrivate, privacySettings.masksPrivateContent else {
       return PrivateContentDisplay(title: draft.title, summary: draft.summary, isMasked: false)
     }
-    return PrivateContentDisplay(title: "私密文章", summary: "内容已遮挡", isMasked: true)
+    return PrivateContentDisplay(title: draft.title, summary: "内容已遮挡", isMasked: true)
   }
 
   public func matchesPrivacyProtectedDraftSearch(
@@ -124,7 +107,10 @@ public final class PrivacyMonetizationStore: ObservableObject {
     let trimmedQuery = query.trimmedForPublishing
     guard !trimmedQuery.isEmpty else { return true }
     if draft.isPrivate, privacySettings.masksPrivateContent {
-      return "私密文章 内容已遮挡".contains(trimmedQuery)
+      let protectedHaystack = [draft.title, "私密文章", "内容已遮挡"]
+        .joined(separator: " ")
+        .lowercased()
+      return protectedHaystack.contains(trimmedQuery.lowercased())
     }
     let haystack = [
       draft.title,
@@ -137,8 +123,26 @@ public final class PrivacyMonetizationStore: ObservableObject {
     return haystack.contains(trimmedQuery.lowercased())
   }
 
+  public func privacyProtectedSearchDraft(for draft: ArticleDraft) -> ArticleDraft {
+    guard draft.isPrivate, privacySettings.masksPrivateContent else {
+      return draft
+    }
+    var protectedDraft = draft
+    protectedDraft.slug = ""
+    protectedDraft.summary = ""
+    protectedDraft.bodyMarkdown = ""
+    protectedDraft.tags = []
+    protectedDraft.categories = []
+    protectedDraft.authors = []
+    protectedDraft.repositoryPath = nil
+    return protectedDraft
+  }
+
   public func accessDecision(for feature: PremiumFeature) -> FeatureAccessDecision {
-    monetizationService.accessDecision(for: feature, state: monetizationState)
+    monetizationService.accessDecision(
+      for: feature,
+      state: monetizationStateIncludingReservations(for: feature)
+    )
   }
 
   public func canStartFeatureUse(_ feature: PremiumFeature) -> FeatureAccessDecision {
@@ -146,21 +150,30 @@ public final class PrivacyMonetizationStore: ObservableObject {
   }
 
   @discardableResult
+  public func refreshDailyFreeUsageIfNeeded(
+    now: Date = Date(),
+    calendar: Calendar = .current
+  ) -> Bool {
+    let normalizedUsage = monetizationService.normalizedFreeUsage(
+      monetizationState.freeUsage,
+      at: now,
+      calendar: calendar
+    )
+    guard normalizedUsage != monetizationState.freeUsage else { return false }
+
+    monetizationState.freeUsage = normalizedUsage
+    latestProFeatureBlockNotice = nil
+    return true
+  }
+
+  @discardableResult
   public func consumeFeatureUse(_ feature: PremiumFeature, store: WorkbenchStore) -> FeatureAccessDecision {
-    let beforeUsage = monetizationState.freeUsage
+    refreshDailyFreeUsageIfNeeded()
     let decision = accessDecision(for: feature)
-    let outcome: MonetizationAccessEventOutcome
-    let remainingAfter: Int?
     if monetizationState.entitlement.isUnlocked {
-      outcome = .allowedProEntitlement
-      remainingAfter = nil
     } else if decision.isAllowed {
-      outcome = .allowedFreeUse
-      remainingAfter = max(0, (decision.remainingFreeUses ?? 0) - 1)
       monetizationState = monetizationService.consuming(feature, state: monetizationState)
     } else {
-      outcome = .blockedRequiresPro
-      remainingAfter = 0
       latestProFeatureBlockNotice = ProFeatureBlockNotice(
         feature: feature,
         title: decision.title,
@@ -168,37 +181,100 @@ public final class PrivacyMonetizationStore: ObservableObject {
         nextStep: "请在 Pro 设置中购买或恢复。"
       )
     }
-    var state = monetizationState
-    state.recordAccessEvent(
-      MonetizationAccessEvent(
-        feature: feature,
-        outcome: outcome,
-        usedFreeUsesBeforeAction: monetizationService.usedFreeUses(for: feature, usage: beforeUsage),
-        freeLimit: monetizationService.freeLimit(for: feature),
-        remainingFreeUsesAfterAction: remainingAfter,
-        message: decision.message
-      )
-    )
-    monetizationState = state
     store.save()
     return decision
+  }
+
+  func reserveFeatureUse(
+    _ feature: PremiumFeature,
+    store: WorkbenchStore
+  ) -> FeatureUseReservationResult {
+    refreshDailyFreeUsageIfNeeded()
+    let decision = accessDecision(for: feature)
+    guard decision.isAllowed else {
+      recordBlockedFeatureUse(decision, store: store)
+      return FeatureUseReservationResult(decision: decision, reservation: nil)
+    }
+
+    let reservation = FeatureUseReservation(id: UUID(), feature: feature)
+    activeFeatureUseReservations[reservation.id] = ActiveFeatureUseReservation(
+      feature: feature,
+      consumesFreeQuota: !monetizationState.entitlement.isUnlocked
+    )
+    return FeatureUseReservationResult(decision: decision, reservation: reservation)
+  }
+
+  @discardableResult
+  func commitFeatureUseReservation(
+    _ reservation: FeatureUseReservation,
+    store: WorkbenchStore
+  ) -> Bool {
+    guard let activeReservation = activeFeatureUseReservations.removeValue(forKey: reservation.id),
+          activeReservation.feature == reservation.feature
+    else {
+      return false
+    }
+
+    guard activeReservation.consumesFreeQuota else { return true }
+    refreshDailyFreeUsageIfNeeded()
+    let previousState = monetizationState
+    monetizationState = monetizationService.consuming(
+      activeReservation.feature,
+      state: monetizationState
+    )
+    if monetizationState != previousState {
+      store.save()
+    }
+    return true
+  }
+
+  @discardableResult
+  func releaseFeatureUseReservation(_ reservation: FeatureUseReservation) -> Bool {
+    activeFeatureUseReservations.removeValue(forKey: reservation.id) != nil
+  }
+
+  private func monetizationStateIncludingReservations(for feature: PremiumFeature) -> MonetizationState {
+    activeFeatureUseReservations.values.reduce(into: monetizationState) { state, reservation in
+      guard reservation.feature == feature, reservation.consumesFreeQuota else { return }
+      state = monetizationService.consuming(feature, state: state)
+    }
+  }
+
+  private func recordBlockedFeatureUse(
+    _ decision: FeatureAccessDecision,
+    store: WorkbenchStore
+  ) {
+    latestProFeatureBlockNotice = ProFeatureBlockNotice(
+      feature: decision.feature,
+      title: decision.title,
+      message: decision.message,
+      nextStep: "请在 Pro 设置中购买或恢复。"
+    )
+    monetizationMessage = decision.message
+    store.save()
   }
 
   public func remainingFreeUses(for feature: PremiumFeature) -> Int {
     max(0, accessDecision(for: feature).remainingFreeUses ?? 0)
   }
 
-  public func applyProEntitlement(productID: String? = nil, source: ProEntitlementSource, store: WorkbenchStore) {
+  public func applyVerifiedStoreKitEntitlement(productID: String, store: WorkbenchStore) {
     let now = Date()
     monetizationState.entitlement = ProEntitlementState(
       isUnlocked: true,
-      source: source,
+      source: .storeKit,
       productID: productID,
       unlockedAt: monetizationState.entitlement.unlockedAt ?? now,
       lastCheckedAt: now
     )
     latestProFeatureBlockNotice = nil
-    monetizationMessage = source == .storeKit ? "Pro 已通过 App Store 解锁。" : "Pro 已解锁。"
+    monetizationMessage = "Pro 已通过 App Store 解锁。"
+    store.save()
+  }
+
+  func applyEntitlement(from provider: any ProEntitlementProviding, store: WorkbenchStore) {
+    monetizationState.entitlement = provider.entitlement(restoring: monetizationState.entitlement)
+    latestProFeatureBlockNotice = nil
     store.save()
   }
 
@@ -234,34 +310,4 @@ public final class PrivacyMonetizationStore: ObservableObject {
     privacyLockReason = nil
   }
 
-  public func lockPrivacyIfNeededForInactiveScene() {
-    if privacySettings.locksWhenInactive {
-      lockPrivacy(reason: "应用进入非活跃状态，已显示隐私界面遮罩。")
-    }
-  }
-
-  public func showPrivacyMaskIfNeededOnLaunch() {
-    guard privacySettings.requiresUnlockOnLaunch else {
-      return
-    }
-    lockPrivacy(reason: "启动时已显示隐私界面遮罩。")
-    recordPrivacyEvent(.lockedOnLaunch, message: "启动时已显示隐私界面遮罩。")
-  }
-
-  public func recordManualPrivacyMaskShown(reason: String?) {
-    recordPrivacyEvent(.manualLock, message: reason?.nilIfEmpty ?? "已手动显示隐私界面遮罩。")
-  }
-
-  public func recordPrivacyMaskRemoved() {
-    recordPrivacyEvent(.unlocked, message: "已移除隐私界面遮罩。")
-  }
-
-  public func recordInactivePrivacyMaskShown() {
-    recordPrivacyEvent(.lockedWhenInactive, message: "应用进入非活跃状态，已显示隐私界面遮罩。")
-  }
-
-  private func recordPrivacyEvent(_ kind: PrivacyProtectionEventKind, message: String) {
-    privacyProtectionEvents.insert(PrivacyProtectionEvent(kind: kind, message: message), at: 0)
-    privacyProtectionEvents = Array(privacyProtectionEvents.prefix(50))
-  }
 }

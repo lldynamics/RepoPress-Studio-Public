@@ -7,13 +7,14 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     let snapshot = ScreenshotDemoDataService().makeSnapshot()
 
     XCTAssertEqual(snapshot.profiles.count, 2)
-    XCTAssertTrue(snapshot.profiles.contains { $0.purpose == .publishing })
-    XCTAssertTrue(snapshot.profiles.contains { $0.purpose == .generalDraftBackup })
+    XCTAssertTrue(snapshot.profiles.allSatisfy { $0.purpose == .publishing })
     XCTAssertEqual(snapshot.activeProfileID, snapshot.profiles.first?.id)
     XCTAssertTrue(snapshot.drafts.contains { $0.visibility == .private })
+    XCTAssertTrue(snapshot.drafts.contains(where: \.isGeneralDraft))
     XCTAssertTrue(snapshot.drafts.contains { $0.siteProfileID == snapshot.activeProfileID && $0.status == .ready })
     XCTAssertTrue(snapshot.drafts.contains { draft in
-      snapshot.profiles.contains { $0.id == draft.siteProfileID && $0.purpose == .generalDraftBackup }
+      draft.siteProfileID != snapshot.activeProfileID
+        && snapshot.profiles.contains { $0.id == draft.siteProfileID && $0.purpose == .publishing }
     })
 
     XCTAssertTrue(snapshot.releaseRecords.contains { $0.kind == .remoteDirectCommit })
@@ -23,12 +24,10 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertEqual(snapshot.deploymentStatusSnapshots.first?.level, .success)
     XCTAssertFalse(snapshot.seoSocialPreviewSnapshots.isEmpty)
     XCTAssertEqual(Set(snapshot.seoSocialPreviewSnapshots.first?.cards.map(\.kind) ?? []), Set(SEOSocialPreviewCardKind.allCases))
-    XCTAssertFalse(snapshot.aiChatSessionsByDraftID.values.flatMap(\.messages).isEmpty)
     XCTAssertTrue(snapshot.repositoryAutoSyncSettings.isEnabled)
     XCTAssertTrue(snapshot.repositoryAutoSyncSettings.fetchBeforeScan)
     XCTAssertTrue(snapshot.deploymentPollingSettings.isEnabled)
     XCTAssertTrue(snapshot.privacySettings.masksPrivateContent)
-    XCTAssertTrue(snapshot.privacySettings.locksWhenInactive)
     XCTAssertFalse(snapshot.monetizationState.entitlement.isUnlocked)
     XCTAssertEqual(snapshot.monetizationState.freeUsage.aiRequestCount, 9)
 
@@ -37,6 +36,7 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertFalse(encoded.localizedCaseInsensitiveContains("bearer "))
     XCTAssertFalse(encoded.localizedCaseInsensitiveContains("authorization"))
     XCTAssertFalse(encoded.contains("sk-"))
+    XCTAssertFalse(encoded.contains("aiChatSessionsByDraftID"))
   }
 
   func testScreenshotDemoSurfaceMapsRequiredScreenshotIDs() {
@@ -48,9 +48,9 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
       "deployment-status",
       "maintenance",
       "general-drafts",
+      "knowledge-library",
       "pro-settings",
       "privacy-lock",
-      "release-readiness",
     ]
 
     XCTAssertEqual(Set(ScreenshotDemoSurface.allCases.map(\.rawValue)), requiredIDs)
@@ -58,6 +58,7 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertEqual(ScreenshotDemoSurface(rawValue: "sync-api-publish"), .syncAPIPublish)
     XCTAssertEqual(ScreenshotDemoSurface(rawValue: "deployment-status"), .deploymentStatus)
     XCTAssertEqual(ScreenshotDemoSurface(rawValue: "general-drafts"), .generalDrafts)
+    XCTAssertEqual(ScreenshotDemoSurface(rawValue: "knowledge-library"), .knowledgeLibrary)
     XCTAssertEqual(ScreenshotDemoSurface(rawValue: "privacy-lock"), .privacyLock)
   }
 
@@ -82,12 +83,12 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
       try? FileManager.default.removeItem(at: directory)
     }
     let persistence = WorkbenchPersistence(fileURL: directory.appendingPathComponent("workbench.json"))
-    try persistence.save(ScreenshotDemoDataService().makeSnapshot())
+    _ = try persistence.save(ScreenshotDemoDataService().makeSnapshot())
 
     let store = WorkbenchStore(persistence: persistence)
 
     XCTAssertEqual(store.activeProfile.name, "示例个人网站")
-    XCTAssertTrue(store.visibleDrafts.contains { $0.title == "Mac 个人网站发布控制台发布流程" })
+    XCTAssertTrue(store.visibleDrafts.contains { $0.title == "Mac RepoPress发布流程" })
     XCTAssertTrue(store.visibleDrafts.contains { $0.visibility == .private })
     XCTAssertEqual(store.activeProfileReleaseLedger.summary.rollbackAvailableCount, 3)
     XCTAssertEqual(store.activeProfileDeploymentStatusSnapshots.count, 1)
@@ -102,7 +103,8 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     let store = try makeScreenshotStore()
 
     ScreenshotDemoSurface.aiChat.apply(to: store)
-    XCTAssertEqual(store.selectedSection, .ai)
+    XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
     XCTAssertFalse(store.aiChatMessages.isEmpty)
     XCTAssertFalse(store.isPrivacyLocked)
 
@@ -110,6 +112,16 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertEqual(store.selectedSection, .releaseHistory)
     XCTAssertEqual(store.activeProfileDeploymentStatusSnapshots.count, 1)
     XCTAssertEqual(store.deploymentStatusMessage, "截图模式：部署状态和轮询记录已载入。")
+
+    ScreenshotDemoSurface.seoSocialPreview.apply(to: store)
+    XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertTrue(store.isInspectorPresented)
+    XCTAssertEqual(store.seoSocialPreviewSnapshots.count, 1)
+
+    ScreenshotDemoSurface.generalDrafts.apply(to: store)
+    XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertEqual(store.draftListContentScope, .general)
+    XCTAssertEqual(store.publishActionMessage, "截图模式：通用草稿已载入。")
 
     ScreenshotDemoSurface.privacyLock.apply(to: store)
     XCTAssertEqual(store.selectedSection, .writing)
@@ -123,7 +135,7 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
       .appendingPathComponent("PersonalSitePublisherMacScreenshotDemoTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let persistence = WorkbenchPersistence(fileURL: directory.appendingPathComponent("workbench.json"))
-    try persistence.save(ScreenshotDemoDataService().makeSnapshot())
+    _ = try persistence.save(ScreenshotDemoDataService().makeSnapshot())
     return WorkbenchStore(persistence: persistence)
   }
 }

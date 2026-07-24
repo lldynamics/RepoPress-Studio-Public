@@ -8,20 +8,20 @@ struct PrivacySettingsCurrentStatusSection: View {
   let onUnlock: () -> Void
 
   var body: some View {
-    Section("当前状态") {
+    Section(String(localized: "锁定状态")) {
       Label(
         status.title,
         systemImage: status.isLocked ? "lock.shield" : "lock.open"
       )
-      .foregroundStyle(status.isLocked ? .orange : .secondary)
+      .foregroundStyle(status.isLocked ? WorkbenchTheme.warning : Color.secondary)
 
       Text(status.detail)
-        .font(.caption)
+        .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
 
       if !status.activeProtections.isEmpty {
         Text(status.activeProtections.joined(separator: " · "))
-          .font(.caption)
+          .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
       }
 
@@ -29,15 +29,18 @@ struct PrivacySettingsCurrentStatusSection: View {
         Button {
           onLock()
         } label: {
-          Label("显示遮罩", systemImage: "eye.slash")
+          Label(String(localized: "立即锁定软件"), systemImage: "lock.fill")
         }
+        .workbenchProminentActionStyle(tint: WorkbenchTheme.warningActionFill)
         .disabled(status.isLocked)
+        .help(String(localized: "快捷键：⌃⌘L"))
 
         Button {
           onUnlock()
         } label: {
-          Label("移除遮罩", systemImage: "eye")
+          Label("返回工作台", systemImage: "eye")
         }
+        .buttonStyle(.bordered)
         .disabled(!status.isLocked)
       }
     }

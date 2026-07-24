@@ -68,6 +68,7 @@ required_patterns=(
   "REMOTE_VERIFY_ALLOW_CUSTOM_BRANCH"
   "validate_disposable_path"
   "validate_disposable_review_branch"
+  "validate_https_base_url"
   "codex-live-verification/"
   "codex/live-verify-"
   "start_branch"
@@ -118,6 +119,27 @@ fi
 if bash "$VERIFIER" --provider github --mode direct --execute >/dev/null 2>&1; then
   fail "live verifier accepted --execute without token"
 fi
+
+FAKE_BIN="$TMP_DIR/fake-bin"
+CURL_MARKER="$TMP_DIR/curl-was-called"
+mkdir -p "$FAKE_BIN"
+cat >"$FAKE_BIN/curl" <<EOF_CURL
+#!/usr/bin/env bash
+touch "$CURL_MARKER"
+exit 99
+EOF_CURL
+chmod +x "$FAKE_BIN/curl"
+http_base_output="$TMP_DIR/http-base-output.txt"
+if PATH="$FAKE_BIN:$PATH" \
+  REMOTE_VERIFY_TOKEN="redacted-test-token" \
+  REMOTE_VERIFY_OWNER="owner" \
+  REMOTE_VERIFY_REPO="site" \
+  REMOTE_VERIFY_BASE_URL="http://api.example.com" \
+  bash "$VERIFIER" --provider github --mode direct --no-write-evidence --execute >"$http_base_output" 2>&1; then
+  fail "live verifier accepted an HTTP credential base URL"
+fi
+grep -q "must use HTTPS" "$http_base_output" || fail "HTTP base URL rejection omitted HTTPS guidance"
+[[ ! -e "$CURL_MARKER" ]] || fail "live verifier invoked curl before rejecting HTTP credential base URL"
 
 if REMOTE_VERIFY_PATH="content/posts/real-post.md" \
   bash "$VERIFIER" --provider github --mode direct >/dev/null 2>&1; then

@@ -29,8 +29,8 @@ extension RemoteRepositoryPublishService {
       canWrite: canWrite,
       permissionSummary: permissionSummary,
       tokenScopeSummary: scopeSummary,
-      minimumWritePermission: "GitHub 需要 repository permissions.push=true，或 fine-grained token 具备 Contents: Read and write。",
-      message: canWrite ? "GitHub Token 具备仓库写入权限。" : "GitHub Token 可读取仓库，但未确认写入权限。"
+      minimumWritePermission: CoreL10n.text("GitHub 写入内容需要 Contents: Read and write；使用 PR 发布时还需要 Pull requests: Read and write。"),
+      message: CoreL10n.text(canWrite ? "GitHub Token 已确认内容写入能力；PR 创建权限需在实际创建时验证。" : "GitHub Token 可读取仓库，但未确认内容写入能力。")
     )
   }
 
@@ -60,8 +60,8 @@ extension RemoteRepositoryPublishService {
       canWrite: canWrite,
       permissionSummary: gitLabPermissionSummary(metadata.permissions),
       tokenScopeSummary: nil,
-      minimumWritePermission: "GitLab 需要 Developer(30) 或更高项目/群组权限，才能通过 API commit 和创建 MR。",
-      message: canWrite ? "GitLab Token 具备项目写入权限。" : "GitLab Token 可读取项目，但未确认写入权限。"
+      minimumWritePermission: CoreL10n.text("GitLab 需要 Developer(30) 或更高项目/群组权限，才能通过 API commit 和创建 MR。"),
+      message: CoreL10n.text(canWrite ? "GitLab Token 具备项目写入权限。" : "GitLab Token 可读取项目，但未确认写入权限。")
     )
   }
 
@@ -171,6 +171,16 @@ extension RemoteRepositoryPublishService {
     token: String,
     onProgress: (@Sendable (RemoteRepositoryPublishProgress) -> Void)? = nil
   ) async throws -> RemoteRepositoryPublishResult {
+    if package.files.count > 1 {
+      return try await publishMultipleFilesToGitHub(
+        package: package,
+        repository: repository,
+        mode: mode,
+        token: token,
+        onProgress: onProgress
+      )
+    }
+
     let targetBranch = repository.branch
     let branchName = mode == .reviewRequest ? package.reviewBranchName : targetBranch
     let reviewDraft = RemoteReviewDraftBuilder().build(package: package, profile: repository.profile)
@@ -180,7 +190,7 @@ extension RemoteRepositoryPublishService {
       .init(
         stage: .validatingTarget,
         progress: 0.12,
-        message: "检查目标分支",
+        message: CoreL10n.text("检查目标分支"),
         detail: targetBranch
       )
     )
@@ -190,7 +200,7 @@ extension RemoteRepositoryPublishService {
         .init(
           stage: .creatingBranch,
           progress: 0.18,
-          message: "处理 PR/MR 分支",
+          message: CoreL10n.text("处理 PR/MR 分支"),
           detail: branchName
         )
       )
@@ -204,6 +214,7 @@ extension RemoteRepositoryPublishService {
     }
 
     var changedPaths: [String] = []
+    var remoteVersionsByPath: [String: String] = [:]
     var lastCommitSHA: String?
     var reviewURL: String?
     let totalFiles = max(1, package.files.count)
@@ -213,8 +224,8 @@ extension RemoteRepositoryPublishService {
           .init(
             stage: .uploadingFiles,
             progress: 0.2 + 0.7 * (Double(index) / Double(totalFiles)),
-            message: "提交文件",
-            detail: "第 \(index + 1)/\(package.files.count) 个文件",
+            message: CoreL10n.text("提交文件"),
+            detail: CoreL10n.format("第 %@/%@ 个文件", String(index + 1), String(package.files.count)),
             filePath: file.repositoryPath
           )
         )
@@ -231,6 +242,30 @@ extension RemoteRepositoryPublishService {
             actual: existingSHA
           )
         }
+
+        if file.operation == .delete {
+          guard let existingSHA else {
+            continue
+          }
+          let response: GitHubContentMutationResponse = try await send(
+            githubRequest(
+              repository: repository,
+              method: "DELETE",
+              path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/contents/\(encodedRepositoryPath(file.repositoryPath))",
+              token: token,
+              queryItems: nil,
+              body: GitHubDeleteContentsBody(
+                message: package.commitMessage,
+                branch: branchName,
+                sha: existingSHA
+              )
+            )
+          )
+          changedPaths.append(file.repositoryPath)
+          lastCommitSHA = response.commit.sha
+          continue
+        }
+
         let data = try contentData(for: file)
         let response: GitHubContentMutationResponse = try await send(
           githubRequest(
@@ -249,6 +284,9 @@ extension RemoteRepositoryPublishService {
         )
         changedPaths.append(file.repositoryPath)
         lastCommitSHA = response.commit.sha
+        if let contentSHA = response.content?.sha?.trimmedForPublishing.nilIfEmpty {
+          remoteVersionsByPath[file.repositoryPath.normalizedRelativePath()] = contentSHA
+        }
       }
 
       if mode == .reviewRequest {
@@ -256,7 +294,7 @@ extension RemoteRepositoryPublishService {
           .init(
             stage: .creatingReview,
             progress: 0.92,
-            message: "创建/获取 PR",
+            message: CoreL10n.text("创建/获取 PR"),
             detail: branchName
           )
         )
@@ -297,7 +335,7 @@ extension RemoteRepositoryPublishService {
         targetBranch: targetBranch,
         changedPaths: changedPaths,
         commitSHA: lastCommitSHA,
-        underlyingMessage: error.localizedDescription
+        underlyingMessage: reviewCreationFailureDescription(error, provider: .github)
       )
     } catch {
       guard !changedPaths.isEmpty else {
@@ -310,7 +348,7 @@ extension RemoteRepositoryPublishService {
         targetBranch: targetBranch,
         changedPaths: changedPaths,
         commitSHA: lastCommitSHA,
-        underlyingMessage: error.localizedDescription
+        underlyingMessage: reviewCreationFailureDescription(error, provider: .github)
       )
     }
 
@@ -318,8 +356,8 @@ extension RemoteRepositoryPublishService {
       .init(
         stage: .completed,
         progress: 1,
-        message: "发布完成",
-        detail: "共提交 \(changedPaths.count) 个文件"
+        message: CoreL10n.text("发布完成"),
+        detail: CoreL10n.format("共提交 %@ 个文件", String(changedPaths.count))
       )
     )
 
@@ -332,6 +370,253 @@ extension RemoteRepositoryPublishService {
       targetBranch: targetBranch,
       changedPaths: changedPaths,
       commitSHA: lastCommitSHA,
+      remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
+      reviewURL: reviewURL,
+      reviewTitle: mode == .reviewRequest ? reviewDraft.title : nil
+    )
+  }
+
+  private func publishMultipleFilesToGitHub(
+    package: PublishPackage,
+    repository: RemoteRepository,
+    mode: RemoteRepositoryPublishMode,
+    token: String,
+    onProgress: (@Sendable (RemoteRepositoryPublishProgress) -> Void)?
+  ) async throws -> RemoteRepositoryPublishResult {
+    let targetBranch = repository.branch
+    let branchName = mode == .reviewRequest ? package.reviewBranchName : targetBranch
+    let reviewDraft = RemoteReviewDraftBuilder().build(package: package, profile: repository.profile)
+    var didCreateReviewBranch = false
+    var didUpdateReference = false
+    var changedPaths: [String] = []
+    var remoteVersionsByPath: [String: String] = [:]
+    var commitSHA: String?
+    var reviewURL: String?
+
+    onProgress?(
+      .init(
+        stage: .validatingTarget,
+        progress: 0.12,
+        message: CoreL10n.text("检查目标分支"),
+        detail: targetBranch
+      )
+    )
+
+    let baseCommitSHA: String
+    if mode == .reviewRequest {
+      onProgress?(
+        .init(
+          stage: .creatingBranch,
+          progress: 0.18,
+          message: CoreL10n.text("处理 PR/MR 分支"),
+          detail: branchName
+        )
+      )
+      let targetSHA = try await githubBranchSHA(repository: repository, branch: targetBranch, token: token)
+      didCreateReviewBranch = try await githubCreateBranchIfNeeded(
+        repository: repository,
+        branch: branchName,
+        sha: targetSHA,
+        token: token
+      )
+      baseCommitSHA = didCreateReviewBranch
+        ? targetSHA
+        : try await githubBranchSHA(repository: repository, branch: branchName, token: token)
+    } else {
+      baseCommitSHA = try await githubBranchSHA(
+        repository: repository,
+        branch: branchName,
+        token: token
+      )
+    }
+
+    do {
+      let baseCommit = try await githubCommit(repository: repository, sha: baseCommitSHA, token: token)
+      var treeEntries: [GitHubTreeEntry] = []
+      let totalFiles = max(1, package.files.count)
+
+      for (index, file) in package.files.enumerated() {
+        onProgress?(
+          .init(
+            stage: .uploadingFiles,
+            progress: 0.2 + 0.55 * (Double(index) / Double(totalFiles)),
+            message: CoreL10n.text("构建原子提交"),
+            detail: CoreL10n.format("第 %@/%@ 个文件", String(index + 1), String(package.files.count)),
+            filePath: file.repositoryPath
+          )
+        )
+        let existingSHA = try await githubContentSHA(
+          repository: repository,
+          path: file.repositoryPath,
+          branch: branchName,
+          token: token
+        )
+        if mode == .directCommit {
+          try validateExpectedRemoteVersion(
+            path: file.repositoryPath,
+            expected: file.expectedRemoteSHA,
+            actual: existingSHA
+          )
+        }
+
+        if file.operation == .delete {
+          guard existingSHA != nil else { continue }
+          treeEntries.append(GitHubTreeEntry(path: file.repositoryPath, sha: nil))
+          changedPaths.append(file.repositoryPath)
+          continue
+        }
+
+        let content = try contentData(for: file)
+        let blob: GitHubBlobResponse = try await send(
+          githubRequest(
+            repository: repository,
+            method: "POST",
+            path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/git/blobs",
+            token: token,
+            body: GitHubCreateBlobBody(
+              content: content.base64EncodedString(),
+              encoding: "base64"
+            )
+          )
+        )
+        if existingSHA == blob.sha {
+          continue
+        }
+        treeEntries.append(GitHubTreeEntry(path: file.repositoryPath, sha: blob.sha))
+        changedPaths.append(file.repositoryPath)
+        remoteVersionsByPath[file.repositoryPath.normalizedRelativePath()] = blob.sha
+      }
+
+      guard !treeEntries.isEmpty else {
+        if didCreateReviewBranch {
+          try await githubDeleteBranch(repository: repository, branch: branchName, token: token)
+        }
+        return RemoteRepositoryPublishResult(
+          provider: .github,
+          repositoryName: repository.displayName,
+          apiBaseURL: normalizedAPIBaseURLString(repository.apiBaseURL),
+          mode: mode,
+          branchName: branchName,
+          targetBranch: targetBranch,
+          changedPaths: [],
+          commitSHA: nil,
+          remoteVersionsByPath: nil,
+          reviewURL: nil,
+          reviewTitle: mode == .reviewRequest ? reviewDraft.title : nil
+        )
+      }
+
+      onProgress?(
+        .init(
+          stage: .uploadingFiles,
+          progress: 0.78,
+          message: CoreL10n.text("提交原子变更"),
+          detail: CoreL10n.format("一次提交 %@ 个文件", String(treeEntries.count))
+        )
+      )
+      let tree: GitHubTreeResponse = try await send(
+        githubRequest(
+          repository: repository,
+          method: "POST",
+          path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/git/trees",
+          token: token,
+          body: GitHubCreateTreeBody(baseTree: baseCommit.tree.sha, tree: treeEntries)
+        )
+      )
+      let commit: GitHubCommitResponse = try await send(
+        githubRequest(
+          repository: repository,
+          method: "POST",
+          path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/git/commits",
+          token: token,
+          body: GitHubCreateCommitBody(
+            message: package.commitMessage,
+            tree: tree.sha,
+            parents: [baseCommitSHA]
+          )
+        )
+      )
+      let _: GitHubReferenceResponse = try await send(
+        githubRequest(
+          repository: repository,
+          method: "PATCH",
+          path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/git/refs/heads/\(encodedRepositoryPath(branchName))",
+          token: token,
+          body: GitHubUpdateReferenceBody(sha: commit.sha, force: false)
+        )
+      )
+      didUpdateReference = true
+      commitSHA = commit.sha
+
+      if mode == .reviewRequest {
+        onProgress?(
+          .init(
+            stage: .creatingReview,
+            progress: 0.92,
+            message: CoreL10n.text("创建/获取 PR"),
+            detail: branchName
+          )
+        )
+        if !didCreateReviewBranch,
+           let existingReviewURL = try await githubExistingPullRequestURL(
+             repository: repository,
+             sourceBranch: branchName,
+             targetBranch: targetBranch,
+             token: token
+           ) {
+          reviewURL = existingReviewURL
+        } else {
+          let pull: GitHubPullRequestResponse = try await send(
+            githubRequest(
+              repository: repository,
+              method: "POST",
+              path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/pulls",
+              token: token,
+              body: GitHubCreatePullRequestBody(
+                title: reviewDraft.title,
+                body: reviewDraft.body,
+                head: branchName,
+                base: targetBranch
+              )
+            )
+          )
+          reviewURL = pull.htmlURL
+        }
+      }
+    } catch {
+      if didCreateReviewBranch && !didUpdateReference {
+        try? await githubDeleteBranch(repository: repository, branch: branchName, token: token)
+      }
+      guard didUpdateReference else { throw error }
+      throw RemoteRepositoryPublishError.partialPublish(
+        provider: .github,
+        mode: mode,
+        branchName: branchName,
+        targetBranch: targetBranch,
+        changedPaths: changedPaths,
+        commitSHA: commitSHA,
+        underlyingMessage: reviewCreationFailureDescription(error, provider: .github)
+      )
+    }
+
+    onProgress?(
+      .init(
+        stage: .completed,
+        progress: 1,
+        message: CoreL10n.text("发布完成"),
+        detail: CoreL10n.format("一次提交 %@ 个文件", String(changedPaths.count))
+      )
+    )
+    return RemoteRepositoryPublishResult(
+      provider: .github,
+      repositoryName: repository.displayName,
+      apiBaseURL: normalizedAPIBaseURLString(repository.apiBaseURL),
+      mode: mode,
+      branchName: branchName,
+      targetBranch: targetBranch,
+      changedPaths: changedPaths,
+      commitSHA: commitSHA,
+      remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
       reviewURL: reviewURL,
       reviewTitle: mode == .reviewRequest ? reviewDraft.title : nil
     )
@@ -351,7 +636,7 @@ extension RemoteRepositoryPublishService {
       .init(
         stage: .validatingTarget,
         progress: 0.12,
-        message: "检查目标分支",
+        message: CoreL10n.text("检查目标分支"),
         detail: targetBranch
       )
     )
@@ -361,7 +646,7 @@ extension RemoteRepositoryPublishService {
           .init(
             stage: .creatingBranch,
             progress: 0.18,
-            message: "处理 PR/MR 分支",
+            message: CoreL10n.text("处理 PR/MR 分支"),
             detail: branchName
           )
         )
@@ -371,14 +656,15 @@ extension RemoteRepositoryPublishService {
     let existenceRef = mode == .reviewRequest && reviewBranchExists ? branchName : targetBranch
 
     var actions: [GitLabCommitAction] = []
+    var changedPaths: [String] = []
     let totalFiles = max(1, package.files.count)
     for (index, file) in package.files.enumerated() {
       onProgress?(
         .init(
           stage: .uploadingFiles,
           progress: 0.2 + 0.65 * (Double(index) / Double(totalFiles)),
-          message: "构建提交",
-          detail: "第 \(index + 1)/\(package.files.count) 个文件",
+          message: CoreL10n.text("构建提交"),
+          detail: CoreL10n.format("第 %@/%@ 个文件", String(index + 1), String(package.files.count)),
           filePath: file.repositoryPath
         )
       )
@@ -395,15 +681,53 @@ extension RemoteRepositoryPublishService {
           actual: remoteState.lastCommitID
         )
       }
+
+      if file.operation == .delete {
+        guard remoteState.exists else {
+          continue
+        }
+        actions.append(
+          GitLabCommitAction(
+            action: "delete",
+            filePath: file.repositoryPath,
+            content: nil,
+            encoding: nil,
+            lastCommitID: remoteState.lastCommitID
+          )
+        )
+        changedPaths.append(file.repositoryPath)
+        continue
+      }
+
       let data = try contentData(for: file)
+      if remoteState.content == data {
+        continue
+      }
       actions.append(
         GitLabCommitAction(
           action: remoteState.exists ? "update" : "create",
           filePath: file.repositoryPath,
-          content: file.kind == .image ? data.base64EncodedString() : String(data: data, encoding: .utf8) ?? "",
-          encoding: file.kind == .image ? "base64" : nil,
+          content: file.kind == .markdown ? String(data: data, encoding: .utf8) ?? "" : data.base64EncodedString(),
+          encoding: file.kind == .markdown ? nil : "base64",
           lastCommitID: remoteState.lastCommitID
         )
+      )
+      changedPaths.append(file.repositoryPath)
+    }
+
+    guard !actions.isEmpty else {
+      return RemoteRepositoryPublishResult(
+        provider: .gitlab,
+        repositoryName: repository.displayName,
+        apiBaseURL: normalizedAPIBaseURLString(repository.apiBaseURL),
+        mode: mode,
+        branchName: branchName,
+        targetBranch: targetBranch,
+        changedPaths: [],
+        commitSHA: nil,
+        remoteVersionsByPath: nil,
+        reviewURL: nil,
+        reviewTitle: mode == .reviewRequest ? reviewDraft.title : nil
       )
     }
 
@@ -411,8 +735,8 @@ extension RemoteRepositoryPublishService {
       .init(
         stage: .uploadingFiles,
         progress: 0.85,
-        message: "提交 Commit",
-        detail: "推送 \(actions.count) 个变更"
+        message: CoreL10n.text("提交 Commit"),
+        detail: CoreL10n.format("推送 %@ 个变更", String(actions.count))
       )
     )
 
@@ -432,14 +756,17 @@ extension RemoteRepositoryPublishService {
       )
     )
 
-    let changedPaths = package.files.map(\.repositoryPath)
+    var remoteVersionsByPath: [String: String] = [:]
+    for file in package.files where file.operation == .upsert && changedPaths.contains(file.repositoryPath) {
+      remoteVersionsByPath[file.repositoryPath.normalizedRelativePath()] = commit.id
+    }
     var reviewURL: String?
     if mode == .reviewRequest {
       onProgress?(
         .init(
           stage: .creatingReview,
           progress: 0.92,
-          message: "创建/获取 MR",
+          message: CoreL10n.text("创建/获取 MR"),
           detail: branchName
         )
       )
@@ -474,7 +801,7 @@ extension RemoteRepositoryPublishService {
           .init(
             stage: .failed,
             progress: nil,
-            message: "创建 MR 失败",
+            message: CoreL10n.text("创建 MR 失败"),
             detail: error.localizedDescription
           )
         )
@@ -485,14 +812,14 @@ extension RemoteRepositoryPublishService {
           targetBranch: targetBranch,
           changedPaths: changedPaths,
           commitSHA: commit.id,
-          underlyingMessage: error.localizedDescription
+          underlyingMessage: reviewCreationFailureDescription(error, provider: .gitlab)
         )
       } catch {
         onProgress?(
           .init(
             stage: .failed,
             progress: nil,
-            message: "创建 MR 失败",
+            message: CoreL10n.text("创建 MR 失败"),
             detail: error.localizedDescription
           )
         )
@@ -503,7 +830,7 @@ extension RemoteRepositoryPublishService {
           targetBranch: targetBranch,
           changedPaths: changedPaths,
           commitSHA: commit.id,
-          underlyingMessage: error.localizedDescription
+          underlyingMessage: reviewCreationFailureDescription(error, provider: .gitlab)
         )
       }
     }
@@ -512,8 +839,8 @@ extension RemoteRepositoryPublishService {
       .init(
         stage: .completed,
         progress: 1,
-        message: "发布完成",
-        detail: "共提交 \(changedPaths.count) 个文件"
+        message: CoreL10n.text("发布完成"),
+        detail: CoreL10n.format("共提交 %@ 个文件", String(changedPaths.count))
       )
     )
 
@@ -526,6 +853,7 @@ extension RemoteRepositoryPublishService {
       targetBranch: targetBranch,
       changedPaths: changedPaths,
       commitSHA: commit.id,
+      remoteVersionsByPath: remoteVersionsByPath.isEmpty ? nil : remoteVersionsByPath,
       reviewURL: reviewURL,
       reviewTitle: mode == .reviewRequest ? reviewDraft.title : nil
     )
@@ -726,6 +1054,22 @@ extension RemoteRepositoryPublishService {
       where isGitHubReferenceAlreadyExists(body) {
       return false
     }
+  }
+
+  func githubDeleteBranch(
+    repository: RemoteRepository,
+    branch: String,
+    token: String
+  ) async throws {
+    let response = try await data(
+      for: githubRequest(
+        repository: repository,
+        method: "DELETE",
+        path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/git/refs/heads/\(encodedRepositoryPath(branch))",
+        token: token
+      )
+    )
+    try validate(response)
   }
 
   func isGitHubReferenceAlreadyExists(_ body: String) -> Bool {

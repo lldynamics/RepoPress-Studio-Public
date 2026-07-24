@@ -3,13 +3,16 @@ import SwiftUI
 
 @MainActor
 struct SiteStarterInspectorState {
-  let hasGeneratedSite: Bool
+  let hasPreparedSite: Bool
+  let hasImportedSite: Bool
   let createdFileCount: Int
+  let importedDraftCount: Int
   let initializedGit: Bool
   let hasConfiguredRemote: Bool
   let deploymentGuidePath: String?
   let hasRepositoryToken: Bool
   let hasRemoteRepositoryCreationResult: Bool
+  let hasVerifiedExistingRepository: Bool
   let pushBranch: String?
   let pushCommitShortSHA: String?
   let pushedFileCount: Int
@@ -17,15 +20,24 @@ struct SiteStarterInspectorState {
 
   init(store: WorkbenchStore) {
     let result = store.siteStarterResult
+    let importResult = store.siteStarterImportResult
     let pushResult = store.siteStarterPushResult
 
-    hasGeneratedSite = result != nil
+    hasPreparedSite = result != nil || importResult != nil
+    hasImportedSite = importResult != nil
     createdFileCount = result?.createdFilePaths.count ?? 0
+    importedDraftCount = importResult?.importedDraftCount ?? 0
     initializedGit = result?.initializedGit == true
     hasConfiguredRemote = result?.configuredRemoteURL != nil
     deploymentGuidePath = result?.deploymentGuidePath
     hasRepositoryToken = store.repositoryTokenAvailability.hasToken
-    hasRemoteRepositoryCreationResult = store.remoteRepositoryCreationResult != nil
+    hasRemoteRepositoryCreationResult = store.remoteRepositoryCreationResult.map {
+      $0.provider == store.activeProfile.repositoryProvider
+        && $0.repositoryName.caseInsensitiveCompare(store.activeProfile.repositoryDisplayName) == .orderedSame
+    } ?? false
+    hasVerifiedExistingRepository = store.activeRemoteRepositoryAccessCheck.map {
+      $0.canRead && $0.canWrite
+    } ?? false
     pushBranch = pushResult?.branch
     pushCommitShortSHA = pushResult.map { String($0.commitSHA.prefix(8)) }
     pushedFileCount = pushResult?.committedPaths.count ?? 0
@@ -94,7 +106,7 @@ struct SiteStarterInspectorView: View {
         ForEach(risks, id: \.self) { risk in
           Label(risk, systemImage: "exclamationmark.triangle")
             .font(.caption)
-            .foregroundStyle(.orange)
+            .foregroundStyle(WorkbenchTheme.warning)
             .lineLimit(3)
         }
       }
@@ -103,11 +115,16 @@ struct SiteStarterInspectorView: View {
 
   @ViewBuilder
   private var artifactSection: some View {
-    if state.hasGeneratedSite {
+    if state.hasPreparedSite {
       InspectorSection("产物") {
-        InspectorStatRow(title: "文件", value: "\(state.createdFileCount)", systemImage: "doc.badge.plus")
-        InspectorStatRow(title: "Git", value: state.initializedGit ? "已初始化" : "未初始化", systemImage: "externaldrive")
-        InspectorStatRow(title: "origin", value: state.hasConfiguredRemote ? "已配置" : "未配置", systemImage: "point.3.connected.trianglepath.dotted")
+        if state.hasImportedSite {
+          InspectorStatRow(title: "方式", value: "导入已有仓库", systemImage: "tray.and.arrow.down")
+          InspectorStatRow(title: "文章", value: "\(state.importedDraftCount)", systemImage: "doc.text")
+        } else {
+          InspectorStatRow(title: "文件", value: "\(state.createdFileCount)", systemImage: "doc.badge.plus")
+          InspectorStatRow(title: "Git", value: state.initializedGit ? "已初始化" : "未初始化", systemImage: "externaldrive")
+          InspectorStatRow(title: "origin", value: state.hasConfiguredRemote ? "已配置" : "未配置", systemImage: "point.3.connected.trianglepath.dotted")
+        }
         if let guide = state.deploymentGuidePath {
           Text(guide)
             .font(.caption.monospaced())
@@ -129,11 +146,11 @@ struct SiteStarterInspectorView: View {
   private var currentStepFacts: [String] {
     switch selectedStep {
     case .template:
-      return ["模板会决定站点框架、默认 Front Matter 和首篇文章结构。"]
+      return ["模板会决定站点框架、默认文章头信息（Front Matter）和首篇文章结构。"]
     case .localDirectory:
       return ["目标目录必须是空文件夹；生成后会成为本地站点仓库。"]
     case .github:
-      return ["GitHub 仓库创建以向导里的 owner/repo/branch 为准；创建前会同步到当前 Profile。"]
+      return ["GitHub 仓库创建以向导里的所有者、仓库名和分支为准；创建前会同步到当前站点配置。"]
     case .generate:
       return ["生成会创建模板文件、部署工作流、部署说明和初始文章草稿。"]
     case .firstPush:
@@ -148,15 +165,15 @@ struct SiteStarterInspectorView: View {
     case .template:
       return []
     case .localDirectory:
-      return state.hasGeneratedSite ? [] : ["选择已有内容的目录会被拒绝；请准备空文件夹。"]
+      return state.hasPreparedSite ? [] : ["新建站点需要空文件夹；导入模式请选择现有仓库根目录。"]
     case .github:
       var risks: [String] = []
       if !state.hasRepositoryToken {
-        risks.append("未检测到 GitHub Token，创建仓库会失败。")
+        risks.append("未检测到 GitHub 访问令牌，创建仓库会失败。")
       }
       return risks
     case .generate:
-      return state.hasGeneratedSite ? [] : ["生成前请确认模板、目录、站点名称和分支。"]
+      return state.hasPreparedSite ? [] : ["继续前请确认模板、目录、站点名称和分支。"]
     case .firstPush:
       var risks: [String] = []
       if !state.initializedGit {
@@ -177,11 +194,14 @@ struct SiteStarterInspectorView: View {
   private func statusTitle(for step: SiteStarterWizardStep) -> String {
     switch step {
     case .template, .localDirectory:
-      return state.hasGeneratedSite ? "已完成" : "待确认"
+      return state.hasPreparedSite ? "已完成" : "待确认"
     case .github:
-      return state.hasConfiguredRemote || state.hasRemoteRepositoryCreationResult ? "已完成" : "未完成"
+      return state.hasRemoteRepositoryCreationResult || state.hasVerifiedExistingRepository ? "已完成" : "未完成"
     case .generate:
-      return state.hasGeneratedSite ? "已生成" : "未生成"
+      if state.hasImportedSite {
+        return "已导入"
+      }
+      return state.hasPreparedSite ? "已生成" : "未生成"
     case .firstPush:
       return state.pushBranch == nil ? "未推送" : "已推送"
     case .deployment:
@@ -191,7 +211,7 @@ struct SiteStarterInspectorView: View {
 
   private func statusSystemImage(for step: SiteStarterWizardStep) -> String {
     switch statusTitle(for: step) {
-    case "已完成", "已生成", "已推送":
+    case "已完成", "已生成", "已导入", "已推送":
       return "checkmark.circle"
     case "未完成", "未生成", "未推送":
       return "circle"

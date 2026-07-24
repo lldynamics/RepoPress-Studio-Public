@@ -173,7 +173,9 @@ public enum AIPublishingCapabilityCenterService {
       return AIPublishingCapabilityCenterSnapshot(
         mode: mode,
         promptSections: AIPublishingQuickPrompt.featuredCapabilitySections,
-        editorActionSections: AIPublishingWritingActionCatalog.promptLibrarySpotlightSections
+        editorActionSections: editorActionSections(
+          for: AIPublishingDefaultCapability.defaultActionKinds
+        )
       )
     case .all:
       return AIPublishingCapabilityCenterSnapshot(
@@ -430,7 +432,7 @@ public enum AIPublishingActionRecommendationService {
     if hasText(selectedText) {
       return AIPublishingActionRecommendation(
         title: "推荐动作",
-        description: "当前选区可直接润色、翻译、改语气或整理成结构化内容。",
+        description: "当前选区可直接改写、压缩或翻译。",
         actions: AIPublishingWritingActionCatalog.selectedTextRecommendedEditorActions.map(\.kind)
       )
     }
@@ -438,16 +440,12 @@ public enum AIPublishingActionRecommendationService {
     if hasText(draft.bodyMarkdown) {
       return AIPublishingActionRecommendation(
         title: "推荐动作",
-        description: "当前正文可继续写、提炼摘要、生成标题并做发布前检查。",
+        description: "当前正文可续写、生成元数据、引用资料并做发布检查。",
         actions: [
           .continueArticle,
-          .draftArticleTLDR,
-          .suggestArticleOutline,
-          .suggestTitles,
           .draftFrontMatterPack,
           .publishingReadiness,
-          .reviewSEOReadability,
-          .suggestInternalLinks,
+          .draftReferencesSection,
         ]
       )
     }
@@ -455,27 +453,18 @@ public enum AIPublishingActionRecommendationService {
     if hasText(draft.title) || hasText(draft.summary) {
       return AIPublishingActionRecommendation(
         title: "推荐动作",
-        description: "当前标题或摘要可扩展成大纲、开头和元数据候选。",
+        description: "当前标题或摘要可生成元数据并进入发布检查。",
         actions: [
-          .draftOpening,
-          .draftFullArticle,
-          .suggestArticleOutline,
-          .suggestTitles,
-          .suggestSummary,
-          .suggestTags,
+          .draftFrontMatterPack,
+          .publishingReadiness,
         ]
       )
     }
 
     return AIPublishingActionRecommendation(
       title: "推荐动作",
-      description: "先写标题、摘要或正文，AI 会给出更准确的写作动作。",
-      actions: [
-        .draftOpening,
-        .draftFullArticle,
-        .suggestArticleOutline,
-        .suggestTitles,
-      ]
+      description: "可先自由提问，或写下标题、摘要和正文后使用默认动作。",
+      actions: []
     )
   }
 
@@ -577,15 +566,10 @@ public enum AIPublishingWritingActionCatalog {
   ]
 
   public static let selectedTextRecommendedEditorActions: [AIPublishingActionMenuItem] = [
-    AIPublishingActionMenuItem(kind: .polishSelection, systemImage: "sparkles"),
-    AIPublishingActionMenuItem(kind: .fixSelectionGrammar, systemImage: "checkmark.seal"),
-    AIPublishingActionMenuItem(kind: .rewriteSelectionReaderFriendly, systemImage: "person.text.rectangle"),
+    AIPublishingActionMenuItem(kind: .rewriteSelection, systemImage: "wand.and.stars"),
+    AIPublishingActionMenuItem(kind: .condenseSelection, systemImage: "arrow.down.right.and.arrow.up.left"),
     AIPublishingActionMenuItem(kind: .translateSelectionToChinese, systemImage: "character.book.closed.zh"),
     AIPublishingActionMenuItem(kind: .translateSelectionToEnglish, systemImage: "character.book.closed"),
-    AIPublishingActionMenuItem(kind: .rewriteSelectionFormal, systemImage: "textformat"),
-    AIPublishingActionMenuItem(kind: .rewriteSelectionCasual, systemImage: "bubble.left.and.text.bubble.right"),
-    AIPublishingActionMenuItem(kind: .rewriteSelectionTechnical, systemImage: "chevron.left.forwardslash.chevron.right"),
-    AIPublishingActionMenuItem(kind: .summarizeSelection, systemImage: "text.badge.star"),
   ]
 
   public static let writingActions: [AIPublishingActionMenuItem] = [

@@ -104,7 +104,7 @@ if ! external_item_complete app-store-screenshots; then
     "app-store-screenshots.env" \
     "docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md" \
     "App Store screenshot capture, screenshot privacy, and strict screenshot gate evidence." \
-    "Capture writing, AI chat, sync/API publish, SEO/social preview, deployment status, maintenance, general drafts, Pro, privacy lock, and release gate screens; Verify screenshots contain no private content, local tokens, or personal paths."
+    "Capture the nine screens listed in the screenshot manifest; Verify screenshots contain no private content, local tokens, or personal paths."
 fi
 
 echo "remaining external verification: ${#target_rows[@]} target(s)"
@@ -112,8 +112,8 @@ echo "remaining external verification: ${#target_rows[@]} target(s)"
 if [[ "${#target_rows[@]}" -eq 0 ]]; then
   echo "- all external verification evidence is complete"
   echo
-  echo "final strict gate:"
-  echo "  ./script/check_release_gate.sh --strict"
+  echo "final App Store gate:"
+  echo "  ./script/check_release_gate.sh --profile app-store"
   exit 0
 fi
 

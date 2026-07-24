@@ -34,6 +34,36 @@ final class SiteProfilePublishingDefaultsTests: XCTestCase {
     XCTAssertEqual(profile.markdownPath(for: draft), "_posts/2026-08-29-jekyll-post.md")
     XCTAssertEqual(profile.imageRepositoryPath(filename: "cover.jpg", draft: draft), "assets/images/2026/cover.jpg")
     XCTAssertEqual(profile.publicImagePath(filename: "cover.jpg", draft: draft), "/assets/images/2026/cover.jpg")
+    XCTAssertEqual(profile.videoRepositoryPath(filename: "demo.mp4", draft: draft), "assets/videos/2026/demo.mp4")
+    XCTAssertEqual(profile.publicVideoPath(filename: "demo.mp4", draft: draft), "/assets/videos/2026/demo.mp4")
+  }
+
+  func testPrivateDraftUsesPrivateRepositoryRoot() {
+    var profile = SiteProfile.defaultProfile
+    profile.contentRoot = "content"
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Private Post",
+      slug: "private-post",
+      visibility: .private
+    )
+
+    XCTAssertEqual(profile.markdownPath(for: draft), "private/posts/private-post.md")
+  }
+
+  func testPrivateDraftPreservesExistingPrivateRepositoryPath() {
+    var profile = SiteProfile.defaultProfile
+    profile.markdownPathPattern = "content/posts/{year}/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Existing Private Post",
+      slug: "renamed-slug",
+      visibility: .private,
+      repositoryPath: "private/legacy/original-name.md"
+    )
+
+    XCTAssertEqual(profile.markdownPath(for: draft), "private/legacy/original-name.md")
   }
 
   func testStoreAppliesSiteKindDefaultsAndKeepsProfileIdentity() throws {

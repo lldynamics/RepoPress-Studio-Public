@@ -134,9 +134,6 @@ require_source_pattern "Sources/PersonalSitePublisherMac/Support/StoreKitProEnti
 require_source_pattern "Sources/PersonalSitePublisherMac/Support/StoreKitProEntitlementCoordinator.swift" "AppStore.sync()" "StoreKit restore entry point"
 require_source_pattern "Sources/PersonalSitePublisherMac/Support/StoreKitProEntitlementCoordinator.swift" "Transaction.currentEntitlements" "StoreKit entitlement refresh"
 require_source_pattern "Sources/PublishingWorkbenchCore/Models/MonetizationModels.swift" "externalVerificationEvidenceMarkdown" "StoreKit external evidence export"
-require_source_pattern_any_file "copyProSandboxEvidence" "StoreKit external evidence copy UI" \
-  "Sources/PersonalSitePublisherMac/Views/SettingsView.swift" \
-  "Sources/PersonalSitePublisherMac/Views/ProSettingsView.swift"
 require_source_pattern "Tests/PublishingWorkbenchCoreTests/MonetizationTests.swift" "testStatusSummaryShowsUnlockedStoreKitEntitlement" "StoreKit entitlement status regression test"
 require_source_pattern "Tests/PublishingWorkbenchCoreTests/MonetizationTests.swift" "testProSandboxVerificationSummaryIsVerifiedForCheckedStoreKitEntitlement" "StoreKit sandbox verification regression test"
 require_source_pattern "Tests/PublishingWorkbenchCoreTests/MonetizationTests.swift" "testProSandboxVerificationSummaryBuildsExternalEvidenceFields" "StoreKit external evidence regression test"

@@ -7,18 +7,7 @@ MANIFEST_FILE="${SCREENSHOT_MANIFEST_FILE:-$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.m
 CAPTURE_SCRIPT="${SCREENSHOT_CAPTURE_SCRIPT:-$ROOT_DIR/script/capture_app_screenshots.sh}"
 BUILD_SCRIPT="${SCREENSHOT_BUILD_SCRIPT:-$ROOT_DIR/script/build_and_run.sh}"
 
-required_ids=(
-  writing
-  ai-chat
-  sync-api-publish
-  seo-social-preview
-  deployment-status
-  maintenance
-  general-drafts
-  pro-settings
-  privacy-lock
-  release-readiness
-)
+required_ids=()
 
 fail() {
   echo "screenshot capture readiness: $*" >&2
@@ -58,6 +47,10 @@ expect_same_surface_list() {
 [[ -f "$MANIFEST_FILE" ]] || fail "screenshot manifest is missing: ${MANIFEST_FILE#$ROOT_DIR/}"
 [[ -f "$CAPTURE_SCRIPT" ]] || fail "capture script is missing: ${CAPTURE_SCRIPT#$ROOT_DIR/}"
 [[ -f "$BUILD_SCRIPT" ]] || fail "build script is missing: ${BUILD_SCRIPT#$ROOT_DIR/}"
+while IFS= read -r id; do
+  [[ -n "$id" ]] && required_ids+=("$id")
+done < <(sed -nE 's/^\| `([^`]+)` \|.*/\1/p' "$MANIFEST_FILE")
+[[ "${#required_ids[@]}" -gt 0 ]] || fail "screenshot manifest contains no required screenshot IDs"
 command -v sips >/dev/null 2>&1 || fail "sips is required for screenshot dimension checks"
 command -v screencapture >/dev/null 2>&1 || fail "screencapture is required for App Store screenshot capture"
 command -v osascript >/dev/null 2>&1 || fail "osascript is required for --auto-window screenshot capture"

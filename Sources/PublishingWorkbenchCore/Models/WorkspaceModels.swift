@@ -2,15 +2,13 @@ import Foundation
 
 public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Sendable {
   case writing
+  case library
   case siteStarter
   case sync
   case images
   case contentHealth
-  case ai
-  case generalDrafts
   case maintenance
   case releaseHistory
-  case releaseReadiness
 
   public var id: String { rawValue }
 
@@ -18,78 +16,32 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
     "workspace.\(rawValue)"
   }
 
-  public var displayName: String {
-    switch self {
-    case .writing:
-      return "写作"
-    case .siteStarter:
-      return "建站"
-    case .ai:
-      return "AI 对话"
-    case .sync:
-      return "同步"
-    case .contentHealth:
-      return "内容健康"
-    case .generalDrafts:
-      return "素材库"
-    case .maintenance:
-      return "维护"
-    case .images:
-      return "图片"
-    case .releaseHistory:
-      return "发布记录"
-    case .releaseReadiness:
-      return "上架门禁"
-    }
+  public var displayNameLocalizationKey: String {
+    localizationKey
   }
 
-  public var detail: String {
-    switch self {
-    case .writing:
-      return "草稿、正文、Front Matter"
-    case .siteStarter:
-      return "模板、本地仓库、首次部署"
-    case .ai:
-      return "文章对话、快捷提示、上下文"
-    case .sync:
-      return "远端变更、本地 diff、路径规则"
-    case .contentHealth:
-      return "发布前检查和公开风险"
-    case .generalDrafts:
-      return "跨文章复用素材"
-    case .maintenance:
-      return "日历、标签、旧文、链接"
-    case .images:
-      return "附件、封面、alt/caption"
-    case .releaseHistory:
-      return "提交、PR/MR、部署记录"
-    case .releaseReadiness:
-      return "本地化、截图、Runtime、App Store"
-    }
+  public var detailLocalizationKey: String {
+    "\(localizationKey).detail"
   }
 
   public var systemImage: String {
     switch self {
     case .writing:
       return "square.and.pencil"
+    case .library:
+      return "books.vertical"
     case .siteStarter:
       return "sparkles.rectangle.stack"
-    case .ai:
-      return "sparkles"
     case .sync:
       return "arrow.triangle.2.circlepath"
     case .contentHealth:
       return "checklist"
-    case .generalDrafts:
-      return "shippingbox"
     case .maintenance:
       return "wrench.and.screwdriver"
     case .images:
       return "photo.on.rectangle"
     case .releaseHistory:
       return "clock.arrow.circlepath"
-    case .releaseReadiness:
-      return "checklist.checked"
     }
   }
 
@@ -97,24 +49,20 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
     switch self {
     case .writing:
       return "1"
-    case .siteStarter:
-      return "2"
-    case .sync:
-      return "3"
-    case .images:
-      return "4"
-    case .contentHealth:
-      return "5"
-    case .ai:
-      return "6"
-    case .generalDrafts:
-      return "7"
-    case .maintenance:
-      return "8"
-    case .releaseHistory:
+    case .library:
       return "9"
-    case .releaseReadiness:
-      return "0"
+    case .siteStarter:
+      return "5"
+    case .sync:
+      return "2"
+    case .images:
+      return "3"
+    case .contentHealth:
+      return "4"
+    case .maintenance:
+      return "7"
+    case .releaseHistory:
+      return "8"
     }
   }
 
@@ -123,22 +71,107 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
   }
 }
 
-public enum WorkspaceNavigationSurface: String, CaseIterable, Sendable {
-  case topBar
-  case commandMenu
-  case sidebarList
-  case productReadiness
+public enum WorkspaceCenterSurface: String, CaseIterable, Sendable {
+  case editor
+  case knowledgeLibrary
+  case siteStarter
+  case repository
+  case images
+  case contentHealth
 }
 
-public enum WorkspaceSidebarPresentationMode: String, Sendable {
-  case writingDraftColumn
+public enum WorkspaceInspectorRoute: String, CaseIterable, Sendable {
+  case articleMetadata
+  case articleChecks
+  case articleImages
+  case repository
+  case siteStarter
+  case aiAssistant
+  case unavailable
+}
+
+/// Keeps Inspector routing testable outside SwiftUI. Context-only subpages
+/// such as maintenance and release history deliberately use their parent
+/// workspace without opening a second Inspector surface.
+public enum WorkspaceInspectorPresentation {
+  /// Resolves the visible Inspector state without changing the user's stored
+  /// preference while SwiftUI is measuring or rearranging the workspace.
+  public static func isPresented(
+    requested: Bool,
+    supportsInspector: Bool,
+    isFocusMode: Bool,
+    allowsInspector: Bool = true
+  ) -> Bool {
+    requested && supportsInspector && !isFocusMode && allowsInspector
+  }
+
+  public static func route(
+    for section: WorkspaceSection,
+    isAIAssistantPresented: Bool = false,
+    isRepositoryHistoryPresented: Bool = false,
+    isMaintenancePresented: Bool = false
+  ) -> WorkspaceInspectorRoute {
+    if isAIAssistantPresented && section == .writing {
+      return .aiAssistant
+    }
+
+    switch section {
+    case .writing:
+      return .articleMetadata
+    case .library:
+      return .unavailable
+    case .contentHealth:
+      return isMaintenancePresented ? .unavailable : .articleChecks
+    case .images:
+      return .articleImages
+    case .sync:
+      return isRepositoryHistoryPresented ? .unavailable : .repository
+    case .siteStarter:
+      return .siteStarter
+    case .maintenance, .releaseHistory:
+      return .unavailable
+    }
+  }
+
+  public static func supportsInspector(
+    for section: WorkspaceSection,
+    isAIAssistantPresented: Bool = false,
+    isRepositoryHistoryPresented: Bool = false,
+    isMaintenancePresented: Bool = false
+  ) -> Bool {
+    route(
+      for: section,
+      isAIAssistantPresented: isAIAssistantPresented,
+      isRepositoryHistoryPresented: isRepositoryHistoryPresented,
+      isMaintenancePresented: isMaintenancePresented
+    ) != .unavailable
+  }
+}
+
+public extension WorkspaceSection {
+  var centerSurface: WorkspaceCenterSurface {
+    switch self {
+    case .writing: .editor
+    case .library: .knowledgeLibrary
+    case .siteStarter: .siteStarter
+    case .sync: .repository
+    case .images: .images
+    case .contentHealth: .contentHealth
+    case .maintenance: .contentHealth
+    case .releaseHistory: .repository
+    }
+  }
+
+  var requiresEditableDraftForCenterSurface: Bool {
+    self == .writing
+  }
 }
 
 public struct WorkspaceNavigationItem: Identifiable, Hashable, Sendable {
   public var id: WorkspaceSection { section }
   public let section: WorkspaceSection
-  public let displayName: String
-  public let detail: String
+  public let displayNameLocalizationKey: String
+  public let detailLocalizationKey: String
   public let systemImage: String
   public let keyboardShortcutKey: Character
 
@@ -148,68 +181,58 @@ public struct WorkspaceNavigationItem: Identifiable, Hashable, Sendable {
 
   public init(section: WorkspaceSection) {
     self.section = section
-    self.displayName = section.displayName
-    self.detail = section.detail
+    self.displayNameLocalizationKey = section.displayNameLocalizationKey
+    self.detailLocalizationKey = section.detailLocalizationKey
     self.systemImage = section.systemImage
     self.keyboardShortcutKey = section.keyboardShortcutKey
   }
 }
 
 public enum WorkspaceVisibilityPolicy {
-  public static let dailyTopBarSections = WorkspaceSection.allCases.filter { section in
-    section != .writing
-      && section != .ai
-      && section != .siteStarter
-      && section != .generalDrafts
-      && section != .maintenance
-      && section != .releaseReadiness
-  }
+  public static let hiddenNavigationSections: [WorkspaceSection] = [
+    .maintenance,
+    .releaseHistory,
+  ]
 
-  public static let commandMenuPrimarySections = WorkspaceSection.allCases.filter { section in
-    section != .ai
-      && section != .siteStarter
-      && section != .generalDrafts
-      && section != .maintenance
-      && section != .releaseReadiness
-  }
+  /// Primary navigation is an explicit allowlist. New enum cases must never
+  /// become user-facing merely because they were added to `WorkspaceSection`.
+  public static let commandMenuPrimarySections: [WorkspaceSection] = [
+    .writing,
+    .library,
+    .sync,
+    .images,
+    .contentHealth,
+  ]
 
   public static let secondaryEntrySections: [WorkspaceSection] = [
     .siteStarter,
-    .generalDrafts,
-    .maintenance
   ]
 
-  public static let developerDiagnosticsSections: [WorkspaceSection] = [
-    .releaseReadiness
+  /// Keep this independent from `allCases` and the advanced command menu.
+  /// Advanced entries may be aliases or context-only routes that should not
+  /// be discoverable as standalone command-palette workspaces.
+  public static let commandPaletteSections: [WorkspaceSection] = [
+    .writing,
+    .library,
+    .sync,
+    .images,
+    .contentHealth,
+    .siteStarter,
   ]
-
-  public static let productReadinessSections = WorkspaceSection.allCases
 }
 
 public enum WorkspaceNavigationPresentation {
   public static let defaultSection: WorkspaceSection = .writing
-  public static let sidebarMode: WorkspaceSidebarPresentationMode = .writingDraftColumn
-  public static let topBarItems = items(for: .topBar)
-  public static let commandMenuItems = items(for: .commandMenu)
+  public static let commandMenuItems = WorkspaceVisibilityPolicy.commandMenuPrimarySections.map(
+    WorkspaceNavigationItem.init(section:)
+  )
   public static let secondaryEntryItems = WorkspaceVisibilityPolicy.secondaryEntrySections.map(WorkspaceNavigationItem.init(section:))
-  public static let productReadinessSections = WorkspaceVisibilityPolicy.productReadinessSections
+  public static let commandMenuAdvancedItems = (
+    WorkspaceVisibilityPolicy.secondaryEntrySections
+      + WorkspaceVisibilityPolicy.hiddenNavigationSections
+  ).map(WorkspaceNavigationItem.init(section:))
 
-  public static func sections(for surface: WorkspaceNavigationSurface) -> [WorkspaceSection] {
-    switch surface {
-    case .topBar:
-      return WorkspaceVisibilityPolicy.dailyTopBarSections
-    case .commandMenu:
-      return WorkspaceVisibilityPolicy.commandMenuPrimarySections
-    case .productReadiness:
-      return WorkspaceVisibilityPolicy.productReadinessSections
-    case .sidebarList:
-      return []
-    }
-  }
-
-  public static func items(for surface: WorkspaceNavigationSurface) -> [WorkspaceNavigationItem] {
-    sections(for: surface).map(WorkspaceNavigationItem.init(section:))
-  }
+  public static let commandPaletteSections = WorkspaceVisibilityPolicy.commandPaletteSections
 }
 
 public enum EditorDisplayMode: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -247,17 +270,32 @@ public struct EditorFocusRequest: Identifiable, Equatable, Sendable {
   public var draftID: UUID
   public var field: String?
   public var query: String?
+  public var selectedRange: NSRange?
 
   public init(
     id: UUID = UUID(),
     draftID: UUID,
     field: String?,
-    query: String? = nil
+    query: String? = nil,
+    selectedRange: NSRange? = nil
   ) {
     self.id = id
     self.draftID = draftID
     self.field = field
     self.query = query
+    self.selectedRange = selectedRange
+  }
+}
+
+public struct ImageInspectorFocusRequest: Identifiable, Equatable, Sendable {
+  public var id: UUID
+  public var draftID: UUID
+  public var attachmentID: UUID
+
+  public init(id: UUID = UUID(), draftID: UUID, attachmentID: UUID) {
+    self.id = id
+    self.draftID = draftID
+    self.attachmentID = attachmentID
   }
 }
 
@@ -351,23 +389,23 @@ public enum ReleaseRecordKind: String, CaseIterable, Codable, Identifiable, Send
   public var displayName: String {
     switch self {
     case .localWrite:
-      return "写入仓库"
+      return CoreL10n.text("写入仓库")
     case .batchLocalWrite:
-      return "批量写入"
+      return CoreL10n.text("批量写入")
     case .directCommit:
-      return "直接提交"
+      return CoreL10n.text("直接提交")
     case .reviewBranch:
-      return "发布分支"
+      return CoreL10n.text("发布分支")
     case .remoteDirectCommit:
-      return "线上提交"
+      return CoreL10n.text("线上提交")
     case .remoteReviewRequest:
-      return "线上 PR/MR"
+      return CoreL10n.text("线上 PR/MR")
     case .remotePublishFailure:
-      return "线上发布失败"
+      return CoreL10n.text("线上发布失败")
     case .remoteRollback:
-      return "线上回滚"
+      return CoreL10n.text("线上回滚")
     case .remoteReviewWithdrawal:
-      return "线上 Review 撤回"
+      return CoreL10n.text("线上 Review 撤回")
     }
   }
 
@@ -430,6 +468,8 @@ public struct ReleaseRecordBatchItem: Identifiable, Codable, Hashable, Sendable 
 }
 
 public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
+  public static let maximumRetainedRecords = 250
+
   public var id: UUID
   public var kind: ReleaseRecordKind
   public var title: String
@@ -506,6 +546,10 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
 
   public var shortCommitSHA: String? {
     commitSHA.map { String($0.prefix(8)) }
+  }
+
+  public static func limitedHistory(_ records: [ReleaseRecord]) -> [ReleaseRecord] {
+    Array(records.prefix(maximumRetainedRecords))
   }
 
   public var reviewWebURL: URL? {
@@ -718,6 +762,27 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
     )
   }
 
+  public static func resumedRemoteReview(
+    original: ReleaseRecord,
+    profile: SiteProfile,
+    result: RemoteRepositoryPublishResult
+  ) -> ReleaseRecord {
+    var recovered = original
+    recovered.kind = .remoteReviewRequest
+    recovered.title = "恢复线上 PR/MR：\(original.siteName ?? profile.name)"
+    recovered.summary = "已从部分完成的远端分支继续创建 PR/MR：\(result.branchName) -> \(result.targetBranch)"
+    recovered.repositoryProvider = result.provider
+    recovered.repositoryBaseURL = profile.repositoryBaseURL
+    recovered.repoOwner = profile.repoOwner
+    recovered.repoName = profile.repoName
+    recovered.branchName = result.branchName
+    recovered.targetBranch = result.targetBranch
+    recovered.commitSHA = result.commitSHA ?? original.commitSHA
+    recovered.reviewURL = result.reviewURL
+    recovered.reviewTitle = result.reviewTitle
+    return recovered
+  }
+
   public static func remoteRollback(
     original: ReleaseRecord,
     profile: SiteProfile,
@@ -726,8 +791,8 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
   ) -> ReleaseRecord {
     ReleaseRecord(
       kind: .remoteRollback,
-      title: "线上回滚：\(original.draftTitle ?? original.title)",
-      summary: "\(result.provider.displayName) · \(result.targetBranch) · 回滚 \(String(result.rolledBackCommitSHA.prefix(8))) -> \(String(result.rollbackCommitSHA.prefix(8)))",
+      title: CoreL10n.format("线上回滚：%@", original.draftTitle ?? original.title),
+      summary: CoreL10n.format("%@ · %@ · 回滚 %@ -> %@", result.provider.displayName, result.targetBranch, String(result.rolledBackCommitSHA.prefix(8)), String(result.rollbackCommitSHA.prefix(8))),
       siteProfileID: profile.id,
       siteName: profile.name,
       draftID: original.draftID,
@@ -744,7 +809,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       targetBranch: result.targetBranch,
       commitSHA: result.rollbackCommitSHA,
       reviewURL: result.remoteURL,
-      reviewTitle: "Rollback \(original.draftTitle ?? original.title)",
+      reviewTitle: CoreL10n.format("回滚 %@", original.draftTitle ?? original.title),
       batchItems: original.batchItems,
       createdAt: createdAt
     )
@@ -758,7 +823,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
   ) -> ReleaseRecord {
     ReleaseRecord(
       kind: .remoteReviewWithdrawal,
-      title: "线上 Review 撤回：\(original.draftTitle ?? original.title)",
+      title: CoreL10n.format("线上 Review 撤回：%@", original.draftTitle ?? original.title),
       summary: "\(result.provider.displayName) · #\(result.reviewNumber) · \(result.state)",
       siteProfileID: profile.id,
       siteName: profile.name,
@@ -776,7 +841,7 @@ public struct ReleaseRecord: Identifiable, Codable, Hashable, Sendable {
       targetBranch: result.targetBranch,
       commitSHA: original.commitSHA,
       reviewURL: result.reviewURL,
-      reviewTitle: "Closed \(original.reviewTitle ?? original.draftTitle ?? original.title)",
+      reviewTitle: CoreL10n.format("已关闭 %@", original.reviewTitle ?? original.draftTitle ?? original.title),
       batchItems: original.batchItems,
       createdAt: createdAt
     )

@@ -25,7 +25,7 @@ public struct AIConnectionTestReport: Equatable, Sendable {
   public var detailText: String {
     """
     模型：\(model)
-    Endpoint：\(endpoint.absoluteString)
+    接口地址：\(endpoint.absoluteString)
     响应：\(responsePreview)
     """
   }
@@ -69,7 +69,7 @@ public enum AISettingsConnectionPresentationService {
       return AISettingsConnectionPresentation(
         title: report.headline,
         message: report.detailText,
-        footnote: "连接测试已返回响应，当前 Provider、模型和 Endpoint 可用于 AI 功能。",
+        footnote: "连接测试已返回响应，当前服务、模型和接口地址可用于 AI 功能。",
         systemImage: "checkmark.circle",
         level: .success
       )
@@ -78,7 +78,7 @@ public enum AISettingsConnectionPresentationService {
     if config.requiresAPIKey && !tokenAvailability.hasToken {
       return AISettingsConnectionPresentation(
         title: "AI API Key 未就绪",
-        message: "请先保存当前 Profile 的 AI API Key，再测试连接。",
+        message: "请先保存当前站点的 AI API Key，再测试连接。",
         footnote: providerHelpText(config),
         systemImage: "key",
         level: .warning
@@ -87,7 +87,7 @@ public enum AISettingsConnectionPresentationService {
 
     return AISettingsConnectionPresentation(
       title: "AI 连接尚未测试",
-      message: "建议保存配置后测试一次连接，确认 base_url、模型和 API Key 都可用。",
+      message: "建议保存配置后测试一次连接，确认接口地址、模型和 API Key 都可用。",
       footnote: providerHelpText(config),
       systemImage: "network",
       level: .info
@@ -97,13 +97,11 @@ public enum AISettingsConnectionPresentationService {
   private static func providerHelpText(_ config: AIProviderConfig) -> String {
     switch config.preset {
     case .deepSeek:
-      return "DeepSeek 默认 base_url：https://api.deepseek.com，模型 deepseek-v4-flash；聊天请求会发送 thinking 与 reasoning_effort。"
-    case .deepSeekPro:
-      return "DeepSeek Pro 使用 https://api.deepseek.com，模型 deepseek-v4-pro；聊天请求会发送 thinking 与 reasoning_effort。"
+      return "DeepSeek 默认接口地址：https://api.deepseek.com；快速/标准档使用 deepseek-v4-flash，高质量档使用 deepseek-v4-pro。"
     case .local:
-      return "本地模型默认不需要 API Key，测试连接会请求本机 OpenAI-compatible /chat/completions 接口。"
+      return "本地模型默认不需要 API Key，测试连接会请求本机 OpenAI 兼容的 /chat/completions 接口。"
     default:
-      return "测试连接会向 OpenAI-compatible /chat/completions 接口发送一次最小请求。"
+      return "测试连接会向 OpenAI 兼容的 /chat/completions 接口发送一次最小请求。"
     }
   }
 }
@@ -116,7 +114,7 @@ public enum AIConnectionTestError: LocalizedError, Equatable {
   public var errorDescription: String? {
     switch self {
     case .invalidBaseURL(let value):
-      return "AI Base URL 无效：\(value)"
+      return "AI 接口地址无效：\(value)"
     case .missingModel:
       return "请先填写 AI 模型名称。"
     case .missingAPIKey:
@@ -125,7 +123,7 @@ public enum AIConnectionTestError: LocalizedError, Equatable {
   }
 }
 
-public struct AIConnectionTestService {
+public struct AIConnectionTestService: Sendable {
   private let client: AIChatCompletionClient
 
   public init(client: AIChatCompletionClient = AIChatCompletionClient()) {

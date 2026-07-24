@@ -92,6 +92,69 @@ final class BatchPublishPlanServiceTests: XCTestCase {
     })
   }
 
+  func testPlanBlocksDifferentImagePayloadsForSameDestination() throws {
+    let rootURL = try makeRepositoryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let firstImageURL = rootURL.appendingPathComponent("first-source.png")
+    let secondImageURL = rootURL.appendingPathComponent("second-source.png")
+    try Data([1, 2, 3, 4]).write(to: firstImageURL)
+    try Data([4, 3, 2, 1]).write(to: secondImageURL)
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    var firstDraft = longDraft(profile: profile, title: "First Image", slug: "first-image")
+    firstDraft.attachments = [sharedAttachment(sourceURL: firstImageURL)]
+    var secondDraft = longDraft(profile: profile, title: "Second Image", slug: "second-image")
+    secondDraft.attachments = [sharedAttachment(sourceURL: secondImageURL)]
+
+    let plan = BatchPublishPlanService().plan(
+      drafts: [firstDraft, secondDraft],
+      profile: profile,
+      repositoryReport: nil
+    )
+
+    XCTAssertEqual(plan.blockedCount, 2)
+    XCTAssertTrue(plan.remotePublishableItems.isEmpty)
+    XCTAssertTrue(plan.items.allSatisfy { item in
+      item.preflightIssues.contains {
+        $0.title == "批量目标路径冲突"
+          && $0.message.contains("static/images/shared.png")
+      }
+    })
+  }
+
+  func testEquivalentSharedImageIsAllowedAndDeduplicatedForRemotePublish() throws {
+    let rootURL = try makeRepositoryRoot()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let firstImageURL = rootURL.appendingPathComponent("first-source.png")
+    let secondImageURL = rootURL.appendingPathComponent("second-source.png")
+    let sharedData = Data([1, 2, 3, 4])
+    try sharedData.write(to: firstImageURL)
+    try sharedData.write(to: secondImageURL)
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    var firstDraft = longDraft(profile: profile, title: "First Image", slug: "first-image")
+    firstDraft.attachments = [sharedAttachment(sourceURL: firstImageURL)]
+    var secondDraft = longDraft(profile: profile, title: "Second Image", slug: "second-image")
+    secondDraft.attachments = [sharedAttachment(sourceURL: secondImageURL, repositorySHA: "image-sha")]
+
+    let plan = BatchPublishPlanService().plan(
+      drafts: [firstDraft, secondDraft],
+      profile: profile,
+      repositoryReport: nil
+    )
+    let mergedFiles = deduplicatedBatchPublishFiles(plan.remotePublishableItems.flatMap(\.package.files))
+    let sharedImages = mergedFiles.filter { $0.repositoryPath == "static/images/shared.png" }
+
+    XCTAssertEqual(plan.blockedCount, 0)
+    XCTAssertEqual(plan.remotePublishableItems.count, 2)
+    XCTAssertEqual(sharedImages.count, 1)
+    XCTAssertEqual(sharedImages.first?.expectedRemoteSHA, "image-sha")
+  }
+
   private func makeRepositoryRoot() throws -> URL {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacBatchPlanTests-\(UUID().uuidString)", isDirectory: true)
@@ -109,6 +172,18 @@ final class BatchPublishPlanServiceTests: XCTestCase {
       slug: slug,
       draft: false,
       bodyMarkdown: "This article body is intentionally longer than the preflight minimum so batch readiness is driven by repository diff state."
+    )
+  }
+
+  private func sharedAttachment(sourceURL: URL, repositorySHA: String? = nil) -> DraftAttachment {
+    DraftAttachment(
+      originalFilename: "shared.png",
+      relativePublishPath: "/images/shared.png",
+      repositoryPath: "static/images/shared.png",
+      altText: "Shared image",
+      byteSize: 4,
+      sourceFilePath: sourceURL.path,
+      repositorySHA: repositorySHA
     )
   }
 }
@@ -225,7 +300,7 @@ final class BatchPublishCommandBuilderTests: XCTestCase {
 
 @MainActor
 final class WorkbenchStoreBatchPublishTests: XCTestCase {
-  func testBatchWriteOnlyWritesWritableDraftsAndRecordsRelease() throws {
+  func testBatchWriteOnlyWritesWritableDraftsAndRecordsRelease() async throws {
     let rootURL = try makeRepositoryRoot()
     defer {
       try? FileManager.default.removeItem(at: rootURL)
@@ -252,7 +327,7 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
     store.setSelectedDraftID(readyDraft.id)
     store.runPreflight()
 
-    let result = store.writeBatchReadyDraftsToLocalRepository()
+    let result = await store.writeBatchReadyDraftsToLocalRepository()
 
     XCTAssertEqual(result.writtenDraftCount, 1)
     XCTAssertEqual(result.skippedCount, 2)
@@ -266,7 +341,34 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
       FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("content/posts/.md").path)
     )
     XCTAssertEqual(store.releaseRecords.first?.kind, .batchLocalWrite)
+    XCTAssertEqual(store.monetizationState.freeUsage.batchPublishCount, 1)
     XCTAssertTrue(store.publishActionMessage?.contains("已批量写入 1 篇") == true)
+    XCTAssertFalse(store.isLocalRepositoryMutationRunning)
+  }
+
+  func testBatchOnlinePublishStopsWhenReviewedFileScopeChanged() async throws {
+    let rootURL = try makeRepositoryRoot()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    store.updateActiveProfile(profile)
+
+    let draft = longDraft(profile: profile, title: "Reviewed Batch", slug: "reviewed-batch")
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+
+    let result = await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy(
+      expectedChangedPaths: Set(["content/posts/a-different-file.md"])
+    )
+
+    XCTAssertNil(result)
+    XCTAssertTrue(store.publishActionMessage?.contains("待发布文件已变化") == true)
+    XCTAssertFalse(store.isRemoteRepositoryPublishing)
   }
 
   private func temporaryPersistenceURL() throws -> URL {

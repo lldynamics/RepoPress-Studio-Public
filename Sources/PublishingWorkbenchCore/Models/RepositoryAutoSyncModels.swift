@@ -4,15 +4,18 @@ public struct RepositoryAutoSyncSettings: Codable, Hashable, Sendable {
   public var isEnabled: Bool
   public var intervalMinutes: Int
   public var fetchBeforeScan: Bool
+  public var autoImportRemoteArticles: Bool
 
   public init(
     isEnabled: Bool = false,
     intervalMinutes: Int = 15,
-    fetchBeforeScan: Bool = true
+    fetchBeforeScan: Bool = true,
+    autoImportRemoteArticles: Bool = false
   ) {
     self.isEnabled = isEnabled
     self.intervalMinutes = max(RepositoryAutoSyncSettings.minimumIntervalMinutes, intervalMinutes)
     self.fetchBeforeScan = fetchBeforeScan
+    self.autoImportRemoteArticles = autoImportRemoteArticles
   }
 
   public static let minimumIntervalMinutes = 5
@@ -48,6 +51,7 @@ public struct RepositoryAutoSyncSettings: Codable, Hashable, Sendable {
     case isEnabled
     case intervalMinutes
     case fetchBeforeScan
+    case autoImportRemoteArticles
   }
 
   public init(from decoder: Decoder) throws {
@@ -58,6 +62,43 @@ public struct RepositoryAutoSyncSettings: Codable, Hashable, Sendable {
       try container.decodeIfPresent(Int.self, forKey: .intervalMinutes) ?? 15
     )
     fetchBeforeScan = try container.decodeIfPresent(Bool.self, forKey: .fetchBeforeScan) ?? true
+    autoImportRemoteArticles = try container.decodeIfPresent(Bool.self, forKey: .autoImportRemoteArticles) ?? false
+  }
+}
+
+public struct RemoteArticleAutoImportSummary: Codable, Hashable, Sendable {
+  public var insertedCount: Int
+  public var updatedCount: Int
+  public var unchangedCount: Int
+  public var conflictPaths: [String]
+  public var deletionPaths: [String]
+  public var failedPaths: [String]
+  public var resolvedPaths: [String]
+
+  public init(
+    insertedCount: Int = 0,
+    updatedCount: Int = 0,
+    unchangedCount: Int = 0,
+    conflictPaths: [String] = [],
+    deletionPaths: [String] = [],
+    failedPaths: [String] = [],
+    resolvedPaths: [String] = []
+  ) {
+    self.insertedCount = insertedCount
+    self.updatedCount = updatedCount
+    self.unchangedCount = unchangedCount
+    self.conflictPaths = conflictPaths
+    self.deletionPaths = deletionPaths
+    self.failedPaths = failedPaths
+    self.resolvedPaths = resolvedPaths
+  }
+
+  public var importedCount: Int {
+    insertedCount + updatedCount
+  }
+
+  public var pendingReviewCount: Int {
+    conflictPaths.count + deletionPaths.count + failedPaths.count
   }
 }
 
@@ -65,6 +106,7 @@ public enum RepositoryAutoSyncStatus: String, Codable, Hashable, Sendable {
   case idle
   case disabled
   case waitingForRepository
+  case fetchFailed
   case scanned
 
   public var displayName: String {
@@ -75,6 +117,8 @@ public enum RepositoryAutoSyncStatus: String, Codable, Hashable, Sendable {
       return "已关闭"
     case .waitingForRepository:
       return "等待仓库"
+    case .fetchFailed:
+      return "Fetch 失败"
     case .scanned:
       return "已扫描"
     }
@@ -88,6 +132,8 @@ public enum RepositoryAutoSyncStatus: String, Codable, Hashable, Sendable {
       return "pause.circle"
     case .waitingForRepository:
       return "externaldrive.badge.questionmark"
+    case .fetchFailed:
+      return "exclamationmark.arrow.triangle.2.circlepath"
     case .scanned:
       return "arrow.triangle.2.circlepath.circle"
     }
@@ -105,6 +151,10 @@ public struct RepositoryAutoSyncState: Codable, Hashable, Sendable {
   public var lastFetchAt: Date?
   public var fetchSucceeded: Bool?
   public var fetchMessage: String?
+  public var lastAutoImportAt: Date?
+  public var lastAutoImportedArticleCount: Int
+  public var lastAutoImportConflictCount: Int
+  public var lastAutoImportDeletionCount: Int
   public var lastRemotePublishAt: Date?
   public var lastRemotePublishProvider: RepositoryProvider?
   public var lastRemotePublishMode: RemoteRepositoryPublishMode?
@@ -122,11 +172,15 @@ public struct RepositoryAutoSyncState: Codable, Hashable, Sendable {
     lastFetchAt: Date? = nil,
     fetchSucceeded: Bool? = nil,
     fetchMessage: String? = nil,
+    lastAutoImportAt: Date? = nil,
+    lastAutoImportedArticleCount: Int = 0,
+    lastAutoImportConflictCount: Int = 0,
+    lastAutoImportDeletionCount: Int = 0,
     lastRemotePublishAt: Date? = nil,
     lastRemotePublishProvider: RepositoryProvider? = nil,
     lastRemotePublishMode: RemoteRepositoryPublishMode? = nil,
     lastRemotePublishPaths: [String] = [],
-    message: String = "自动同步尚未运行。"
+    message: String? = nil
   ) {
     self.status = status
     self.lastRunAt = lastRunAt
@@ -138,11 +192,15 @@ public struct RepositoryAutoSyncState: Codable, Hashable, Sendable {
     self.lastFetchAt = lastFetchAt
     self.fetchSucceeded = fetchSucceeded
     self.fetchMessage = fetchMessage
+    self.lastAutoImportAt = lastAutoImportAt
+    self.lastAutoImportedArticleCount = lastAutoImportedArticleCount
+    self.lastAutoImportConflictCount = lastAutoImportConflictCount
+    self.lastAutoImportDeletionCount = lastAutoImportDeletionCount
     self.lastRemotePublishAt = lastRemotePublishAt
     self.lastRemotePublishProvider = lastRemotePublishProvider
     self.lastRemotePublishMode = lastRemotePublishMode
     self.lastRemotePublishPaths = Self.limitedRemotePublishPaths(lastRemotePublishPaths)
-    self.message = message
+    self.message = message ?? CoreL10n.text("自动检查远端尚未运行。")
   }
 
   public static var idle: RepositoryAutoSyncState {
@@ -160,6 +218,10 @@ public struct RepositoryAutoSyncState: Codable, Hashable, Sendable {
     case lastFetchAt
     case fetchSucceeded
     case fetchMessage
+    case lastAutoImportAt
+    case lastAutoImportedArticleCount
+    case lastAutoImportConflictCount
+    case lastAutoImportDeletionCount
     case lastRemotePublishAt
     case lastRemotePublishProvider
     case lastRemotePublishMode
@@ -179,13 +241,19 @@ public struct RepositoryAutoSyncState: Codable, Hashable, Sendable {
     lastFetchAt = try container.decodeIfPresent(Date.self, forKey: .lastFetchAt)
     fetchSucceeded = try container.decodeIfPresent(Bool.self, forKey: .fetchSucceeded)
     fetchMessage = try container.decodeIfPresent(String.self, forKey: .fetchMessage)
+    lastAutoImportAt = try container.decodeIfPresent(Date.self, forKey: .lastAutoImportAt)
+    lastAutoImportedArticleCount = try container.decodeIfPresent(Int.self, forKey: .lastAutoImportedArticleCount) ?? 0
+    lastAutoImportConflictCount = try container.decodeIfPresent(Int.self, forKey: .lastAutoImportConflictCount) ?? 0
+    lastAutoImportDeletionCount = try container.decodeIfPresent(Int.self, forKey: .lastAutoImportDeletionCount) ?? 0
     lastRemotePublishAt = try container.decodeIfPresent(Date.self, forKey: .lastRemotePublishAt)
     lastRemotePublishProvider = try container.decodeIfPresent(RepositoryProvider.self, forKey: .lastRemotePublishProvider)
     lastRemotePublishMode = try container.decodeIfPresent(RemoteRepositoryPublishMode.self, forKey: .lastRemotePublishMode)
     lastRemotePublishPaths = Self.limitedRemotePublishPaths(
       try container.decodeIfPresent([String].self, forKey: .lastRemotePublishPaths) ?? []
     )
-    message = try container.decodeIfPresent(String.self, forKey: .message) ?? "自动同步尚未运行。"
+    let decodedMessage = try container.decodeIfPresent(String.self, forKey: .message)
+      ?? CoreL10n.text("自动检查远端尚未运行。")
+    message = decodedMessage.replacingOccurrences(of: "自动同步", with: "自动检查远端")
   }
 
   public static func limitedRemotePublishPaths(_ paths: [String], limit: Int = 20) -> [String] {

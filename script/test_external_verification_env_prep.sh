@@ -5,6 +5,22 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PREP="$ROOT_DIR/script/prepare_external_verification_envs.sh"
 TMP_DIR="$(mktemp -d /private/tmp/mac-editor-env-prep.XXXXXX)"
 OUTPUT_DIR="$TMP_DIR/private-envs"
+EVIDENCE_FIXTURE="$TMP_DIR/external-verification-evidence.md"
+ARCHIVE_FIXTURE="$TMP_DIR/app-store-archive-evidence.md"
+
+printf '%s\n' \
+  '- [ ] `github-direct-publish`' \
+  '- [ ] `github-review-publish`' \
+  '- [ ] `gitlab-direct-publish`' \
+  '- [ ] `gitlab-review-publish`' \
+  '- [ ] `remote-conflict-deployment-rollback`' \
+  '- [ ] `storekit-sandbox`' \
+  '- [x] `app-store-screenshots`' >"$EVIDENCE_FIXTURE"
+printf '%s\n' \
+  '# App Store Archive Validation Evidence' \
+  '- [ ] Clean Release archive produced from a clean checkout.' >"$ARCHIVE_FIXTURE"
+export EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FIXTURE"
+export APP_STORE_ARCHIVE_EVIDENCE_FILE="$ARCHIVE_FIXTURE"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -42,8 +58,8 @@ for entry in "${required_templates[@]}"; do
     || fail "env template omits status-report-aware runner dry-run: $template"
   [[ "$template_text" == *"run_external_verification_from_envs.sh --env-dir /private/tmp/personal-site-publisher-release-envs --target $runner_target --env-status-report-file $env_status_report --execute"* ]] \
     || fail "env template omits status-report-aware runner execute: $template"
-  [[ "$template_text" == *"./script/check_release_gate.sh --strict"* ]] \
-    || fail "env template omits final strict gate: $template"
+  [[ "$template_text" == *"./script/check_release_gate.sh --profile app-store"* ]] \
+    || fail "env template omits final App Store gate: $template"
 done
 
 dry_output="$(bash "$PREP" --output-dir "$OUTPUT_DIR" --dry-run)"

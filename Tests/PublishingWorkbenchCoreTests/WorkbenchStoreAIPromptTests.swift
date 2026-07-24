@@ -5,7 +5,7 @@ import XCTest
 
 @MainActor
 final class WorkbenchStoreAIPromptTests: XCTestCase {
-  func testAIEntryOpensDedicatedChatWorkspaceWithoutMetadataAssistant() throws {
+  func testAIEntryOpensInspectorAssistantBesideWritingWorkspace() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
     )
@@ -14,11 +14,11 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertFalse(store.isAIPublishingAssistantPresented)
     store.setInspectorPresented(false)
 
-    store.openAIChatWorkspace(for: draft.id)
+    _ = store.openAIChatWorkspace(for: draft.id)
 
-    XCTAssertFalse(store.isAIPublishingAssistantPresented)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
     XCTAssertTrue(store.isInspectorPresented)
-    XCTAssertEqual(store.selectedSection, .ai)
+    XCTAssertEqual(store.selectedSection, .writing)
     XCTAssertEqual(store.selectedDraftID, draft.id)
     XCTAssertEqual(store.aiChatDraftID, draft.id)
 
@@ -27,23 +27,24 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertFalse(store.isAIPublishingAssistantPresented)
 
     store.showAIPublishingAssistant(for: draft.id)
-    XCTAssertFalse(store.isAIPublishingAssistantPresented)
-    XCTAssertEqual(store.selectedSection, .ai)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
+    XCTAssertEqual(store.selectedSection, .writing)
 
     store.selectDraft(nil)
 
     XCTAssertFalse(store.isAIPublishingAssistantPresented)
   }
 
-  func testAIEntryCanCarryQuickPromptIntoDedicatedChatWorkspace() throws {
+  func testAIEntryCanCarryQuickPromptIntoInspectorAssistant() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
     )
     let draft = try XCTUnwrap(store.selectedDraft)
 
-    store.openAIChatWorkspace(for: draft.id, quickPrompt: .frontMatterPack)
+    _ = store.openAIChatWorkspace(for: draft.id, quickPrompt: .frontMatterPack)
 
-    XCTAssertEqual(store.selectedSection, .ai)
+    XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
     XCTAssertEqual(store.selectedDraftID, draft.id)
     XCTAssertEqual(store.aiChatDraftID, draft.id)
     XCTAssertEqual(store.pendingAIQuickPrompt, .frontMatterPack)
@@ -52,7 +53,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertNil(store.consumePendingAIQuickPrompt())
   }
 
-  func testAIChatCustomPromptsPersistAndCanBeDeleted() throws {
+  func testAIChatCustomPromptsPersistAndCanBeDeleted() async throws {
     let persistenceURL = try temporaryPersistenceURL()
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL)
@@ -67,6 +68,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
 
     XCTAssertEqual(store.aiChatCustomPrompts.map(\.id), [saved.id])
     XCTAssertEqual(store.aiChatCustomPrompts.first?.title, "发布前检查")
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL)
@@ -80,7 +82,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertEqual(reloaded.aiChatMessage, "已删除自定义提示。")
   }
 
-  func testAIChatBranchArchivesOriginalConversationAndTruncatesAtSelectedMessage() throws {
+  func testAIChatBranchTruncatesAtSelectedMessageWithoutArchiving() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
     )
@@ -95,9 +97,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     store.branchAIChatConversation(after: second.id, draft: draft)
 
     XCTAssertEqual(store.aiChatMessages.map(\.id), [first.id, second.id])
-    XCTAssertEqual(store.aiChatArchivedConversations.count, 1)
-    XCTAssertEqual(store.aiChatArchivedConversations.first?.messages.map(\.id), [first.id, second.id, third.id, fourth.id])
-    XCTAssertEqual(store.aiChatMessage, "已从所选消息创建分支，原对话已存入历史。")
+    XCTAssertEqual(store.aiChatMessage, "已从所选消息创建分支。")
   }
 
   func testAIChatModelSelectionUsesMobileModelCandidatesAndDefaultReset() throws {
@@ -106,11 +106,13 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     )
     let draft = try XCTUnwrap(store.selectedDraft)
 
-    store.openAIChatWorkspace(for: draft.id)
+    _ = store.openAIChatWorkspace(for: draft.id)
     store.setAIChatModelGrade(.highQuality)
+    store.setAIChatReasoningLevel(.quick)
 
     XCTAssertEqual(store.aiChatModelGrade, .highQuality)
     XCTAssertEqual(store.aiChatSelectedModel, "deepseek-v4-pro")
+    XCTAssertEqual(store.aiChatReasoningLevel, .quick)
 
     store.setAIChatCustomModel("custom-chat-model")
 
@@ -137,6 +139,22 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertTrue(prompt.contains("本地预览："))
     XCTAssertTrue(prompt.contains("图片检查："))
     XCTAssertTrue(prompt.contains("PR/MR 描述草稿"))
+  }
+
+  func testBackgroundPublishingPromptMatchesMacWorkflowContext() async throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    let draft = try XCTUnwrap(store.selectedDraft)
+
+    let prompt = await store.publishingAIPromptInBackground(for: draft)
+
+    XCTAssertTrue(prompt.contains("发布准备建议"))
+    XCTAssertTrue(prompt.contains("Mac 发布上下文："))
+    XCTAssertTrue(prompt.contains("本地 diff："))
+    XCTAssertTrue(prompt.contains("图片检查："))
+    XCTAssertTrue(prompt.contains("正文"))
+    XCTAssertTrue(prompt.contains(draft.bodyMarkdown))
   }
 
   func testCopiedPublishingPromptIncludesRemoteSamePathRisk() throws {
@@ -254,8 +272,8 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertTrue(AIPublishingQuickPrompt.allCases.contains(.shortVideoScript))
     XCTAssertTrue(sections.allSatisfy { !$0.prompts.isEmpty })
     XCTAssertEqual(
-      AIPublishingQuickPrompt.featuredCapabilitySections.flatMap(\.prompts),
-      AIPublishingQuickPrompt.primaryPrompts
+      Set(AIPublishingQuickPrompt.featuredCapabilitySections.flatMap(\.prompts)),
+      Set(AIPublishingQuickPrompt.primaryPrompts)
     )
     XCTAssertEqual(AIPublishingQuickPrompt.inspectorPrompts, AIPublishingQuickPrompt.primaryPrompts)
   }
@@ -265,18 +283,12 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
       AIPublishingQuickPrompt.writingDashboardPrompts,
       [
         .continueWriting,
-        .outline,
-        .titleIdeas,
         .tone,
-        .grammar,
         .translateChinese,
         .translateEnglish,
         .frontMatterPack,
         .publishReview,
-        .internalLinks,
-        .imageCaptions,
-        .publishAssetPack,
-        .seriesPlan,
+        .sourceChecklist,
       ]
     )
 
@@ -285,8 +297,40 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertEqual(summary.prompts, AIPublishingQuickPrompt.writingDashboardPrompts)
     XCTAssertEqual(summary.promptCount, AIPublishingQuickPrompt.writingDashboardPrompts.count)
     XCTAssertTrue(summary.summaryText.contains("续写"))
-    XCTAssertTrue(summary.summaryText.contains("发布素材包"))
-    XCTAssertTrue(summary.summaryText.contains("系列选题"))
+    XCTAssertTrue(summary.summaryText.contains("发布检查"))
+    XCTAssertTrue(summary.summaryText.contains("来源清单"))
+  }
+
+  func testDefaultAICapabilitiesStayLimitedToEightStableChoices() {
+    XCTAssertEqual(
+      AIPublishingDefaultCapability.allCases,
+      [
+        .continueWriting,
+        .rewrite,
+        .condense,
+        .translate,
+        .generateMetadata,
+        .publishingCheck,
+        .citeKnowledge,
+        .askAnything,
+      ]
+    )
+    XCTAssertEqual(
+      AIPublishingDefaultCapability.defaultActionKinds,
+      [
+        .continueArticle,
+        .rewriteSelection,
+        .condenseSelection,
+        .translateSelectionToChinese,
+        .translateSelectionToEnglish,
+        .draftFrontMatterPack,
+        .publishingReadiness,
+        .draftReferencesSection,
+      ]
+    )
+    XCTAssertFalse(AIPublishingQuickPrompt.morePrompts.contains(.continueWriting))
+    XCTAssertTrue(AIPublishingQuickPrompt.morePrompts.contains(.outline))
+    XCTAssertTrue(AIPublishingActionKind.promptLibraryActions.contains(.pullRequestDescription))
   }
 
   func testQuickPromptsPreservePublishingSafetyBoundaries() {
@@ -490,13 +534,9 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
       bodyRecommendation.actions,
       [
         .continueArticle,
-        .draftArticleTLDR,
-        .suggestArticleOutline,
-        .suggestTitles,
         .draftFrontMatterPack,
         .publishingReadiness,
-        .reviewSEOReadability,
-        .suggestInternalLinks,
+        .draftReferencesSection,
       ]
     )
     XCTAssertEqual(bodyRecommendation.preferredScope, .all)
@@ -519,7 +559,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     )
     XCTAssertEqual(
       AIPublishingActionRecommendationService.recommendation(draft: seedDraft).actions,
-      [.draftOpening, .draftFullArticle, .suggestArticleOutline, .suggestTitles, .suggestSummary, .suggestTags]
+      [.draftFrontMatterPack, .publishingReadiness]
     )
 
     let emptyDraft = ArticleDraft(
@@ -530,7 +570,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     )
     XCTAssertEqual(
       AIPublishingActionRecommendationService.recommendation(draft: emptyDraft).actions,
-      [.draftOpening, .draftFullArticle, .suggestArticleOutline, .suggestTitles]
+      []
     )
   }
 
@@ -946,7 +986,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     )
   }
 
-  func testAIMetadataApplicationRecordPersistsAndRollsBackChangedFields() throws {
+  func testAIMetadataApplicationRecordPersistsAndRollsBackChangedFields() async throws {
     let persistenceURL = try temporaryPersistenceURL()
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL)
@@ -974,6 +1014,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertEqual(record.newSummary, "可回滚摘要")
     XCTAssertEqual(record.previousTags, draft.tags)
     XCTAssertEqual(record.newTags, ["AI", "回滚"])
+    await store.waitForPendingSave()
 
     let reloadedStore = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL)

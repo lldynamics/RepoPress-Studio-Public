@@ -1,5 +1,70 @@
+import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
+
+private struct WorkbenchTruncatedIdentityModifier: ViewModifier {
+  let value: String
+  let lineLimit: Int
+
+  func body(content: Content) -> some View {
+    content
+      .lineLimit(lineLimit)
+      .truncationMode(.middle)
+      .help(value)
+      .contextMenu {
+        Button(action: copyValue) {
+          Label("复制完整内容", systemImage: "doc.on.doc")
+        }
+      }
+      .accessibilityAction(named: Text("复制完整内容"), copyValue)
+  }
+
+  private func copyValue() {
+    ClipboardWriter.copy(
+      value,
+      successMessage: String(localized: "已复制到剪贴板。")
+    ) { message in
+      EditorAccessibilityAnnouncementCenter.announce(message)
+    }
+  }
+}
+
+extension View {
+  /// Applies the shared treatment for titles, paths, URLs, and identifiers that may truncate.
+  func workbenchTruncatedIdentity(_ value: String, lineLimit: Int = 1) -> some View {
+    modifier(WorkbenchTruncatedIdentityModifier(value: value, lineLimit: lineLimit))
+  }
+}
+
+/// Gives repository paths an independently readable primary label without hiding the full path.
+struct WorkbenchPathIdentity: View {
+  let path: String
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(fileName)
+        .font(.callout.weight(.medium))
+        .foregroundStyle(.primary)
+      if fileName != path {
+        Text(path)
+          .font(.caption.monospaced())
+          .foregroundStyle(.secondary)
+      }
+    }
+    .workbenchTruncatedIdentity(path)
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel(fileName)
+    .accessibilityValue(path)
+  }
+
+  private var fileName: String {
+    path
+      .split(whereSeparator: { $0 == "/" || $0 == "\\" })
+      .last
+      .map(String.init)
+      ?? path
+  }
+}
 
 struct MetricTile: View {
   let title: String
@@ -23,19 +88,51 @@ struct MetricTile: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Label(title, systemImage: systemImage)
-        .font(.caption)
+      Label(LocalizedStringKey(title), systemImage: systemImage)
+        .font(.workbenchSupporting)
         .foregroundStyle(tint ?? .secondary)
       Text(value)
-        .font(.title3.weight(.semibold))
+        .font(.workbenchMetricValue)
         .lineLimit(1)
     }
     .padding(10)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel(title)
+    .accessibilityLabel(Text(LocalizedStringKey(title)))
     .accessibilityValue(value)
+  }
+}
+
+/// Keeps the three primary status metrics aligned on normal windows, then reflows only when space is tight.
+struct PrimaryStatusMetricGrid<Content: View>: View {
+  private let spacing: CGFloat
+  private let content: () -> Content
+
+  init(spacing: CGFloat = 12, @ViewBuilder content: @escaping () -> Content) {
+    self.spacing = spacing
+    self.content = content
+  }
+
+  var body: some View {
+    ViewThatFits(in: .horizontal) {
+      LazyVGrid(
+        columns: Array(
+          repeating: GridItem(.flexible(minimum: 160), spacing: spacing),
+          count: 3
+        ),
+        spacing: spacing
+      ) {
+        content()
+      }
+
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 160, maximum: 240), spacing: spacing)],
+        spacing: spacing
+      ) {
+        content()
+      }
+    }
   }
 }
 
@@ -64,13 +161,13 @@ enum MetricTileSemantic {
   var color: Color {
     switch self {
     case .blocking:
-      return .red
+      return WorkbenchTheme.risk
     case .warning:
-      return .orange
+      return WorkbenchTheme.warning
     case .passed:
-      return .green
+      return WorkbenchTheme.success
     case .progress:
-      return .blue
+      return WorkbenchTheme.progress
     case .neutral:
       return .secondary
     }
@@ -81,7 +178,7 @@ struct SeverityBadge: View {
   let severity: PreflightSeverity
 
   var body: some View {
-    Label(severity.displayName, systemImage: systemImage)
+    Label(severity.localizedDisplayName, systemImage: systemImage)
       .font(.caption)
       .foregroundStyle(color)
       .labelStyle(.titleAndIcon)
@@ -101,34 +198,205 @@ struct SeverityBadge: View {
   private var color: Color {
     switch severity {
     case .error:
-      return .red
+      return WorkbenchTheme.risk
     case .warning:
-      return .orange
+      return WorkbenchTheme.warning
     case .info:
-      return .green
+      return WorkbenchTheme.success
     }
   }
 }
 
+enum EmptyStateDensity {
+  case fullPage
+  case compactPane
+  case inline
+}
+
 struct EmptyStateView: View {
-  let title: String
-  let message: String
+  let title: LocalizedStringKey
+  let message: LocalizedStringKey
   let systemImage: String
+  let density: EmptyStateDensity
+  let actionTitle: LocalizedStringKey?
+  let actionSystemImage: String
+  let action: (() -> Void)?
+
+  init(
+    title: LocalizedStringKey,
+    message: LocalizedStringKey,
+    systemImage: String,
+    density: EmptyStateDensity = .fullPage,
+    actionTitle: LocalizedStringKey? = nil,
+    actionSystemImage: String = "arrow.right.circle",
+    action: (() -> Void)? = nil
+  ) {
+    self.title = title
+    self.message = message
+    self.systemImage = systemImage
+    self.density = density
+    self.actionTitle = actionTitle
+    self.actionSystemImage = actionSystemImage
+    self.action = action
+  }
+
+  @ViewBuilder
+  var body: some View {
+    switch density {
+    case .fullPage:
+      VStack(spacing: 12) {
+        emptyStateIcon(size: 38)
+        emptyStateCopy(
+          titleFont: .headline,
+          messageFont: .callout,
+          messageWidth: 360,
+          alignment: .center
+        )
+        if let actionTitle, let action {
+          Button(action: action) {
+            Label(actionTitle, systemImage: actionSystemImage)
+          }
+          .workbenchProminentActionStyle()
+        }
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+    case .compactPane:
+      VStack(spacing: 9) {
+        emptyStateIcon(size: 28)
+        emptyStateCopy(
+          titleFont: .workbenchCardTitle,
+          messageFont: .workbenchSupporting,
+          messageWidth: 300,
+          alignment: .center
+        )
+        if let actionTitle, let action {
+          Button(action: action) {
+            Label(actionTitle, systemImage: actionSystemImage)
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+        }
+      }
+      .padding(.vertical, 12)
+      .frame(maxWidth: .infinity)
+      .frame(minHeight: 120, idealHeight: 132, maxHeight: 140)
+
+    case .inline:
+      HStack(alignment: .top, spacing: 9) {
+        emptyStateIcon(size: 17)
+          .frame(width: 20)
+        emptyStateCopy(
+          titleFont: .workbenchItemTitle,
+          messageFont: .workbenchMetadata,
+          messageWidth: nil,
+          alignment: .leading
+        )
+        Spacer(minLength: 4)
+        if let actionTitle, let action {
+          Button(action: action) {
+            Label(actionTitle, systemImage: actionSystemImage)
+          }
+          .buttonStyle(.borderless)
+          .controlSize(.small)
+        }
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  private func emptyStateIcon(size: CGFloat) -> some View {
+    Image(systemName: systemImage)
+      .font(.system(size: size))
+      .foregroundStyle(.secondary)
+      .accessibilityHidden(true)
+  }
+
+  private func emptyStateCopy(
+    titleFont: Font,
+    messageFont: Font,
+    messageWidth: CGFloat?,
+    alignment: TextAlignment
+  ) -> some View {
+    VStack(alignment: alignment == .leading ? .leading : .center, spacing: 3) {
+      Text(title)
+        .font(titleFont)
+      Text(message)
+        .font(messageFont)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(alignment)
+        .frame(maxWidth: messageWidth, alignment: alignment == .leading ? .leading : .center)
+    }
+  }
+}
+
+enum AccessibleStatusSeverity {
+  case info
+  case success
+  case warning
+  case error
+
+  fileprivate var systemImage: String {
+    switch self {
+    case .info:
+      return "info.circle"
+    case .success:
+      return "checkmark.circle"
+    case .warning:
+      return "exclamationmark.triangle"
+    case .error:
+      return "xmark.octagon"
+    }
+  }
+
+  fileprivate var color: Color {
+    switch self {
+    case .info:
+      return WorkbenchTheme.progress
+    case .success:
+      return WorkbenchTheme.success
+    case .warning:
+      return WorkbenchTheme.warning
+    case .error:
+      return WorkbenchTheme.risk
+    }
+  }
+
+  fileprivate var isUrgent: Bool {
+    self == .warning || self == .error
+  }
+}
+
+struct AccessibleStatusMessage: View {
+  let message: String
+  let severity: AccessibleStatusSeverity
+  @AccessibilityFocusState private var isAccessibilityFocused: Bool
 
   var body: some View {
-    VStack(spacing: 12) {
-      Image(systemName: systemImage)
-        .font(.system(size: 38))
-        .foregroundStyle(.secondary)
-      Text(title)
-        .font(.headline)
-      Text(message)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .multilineTextAlignment(.center)
-        .frame(maxWidth: 360)
+    Label(message, systemImage: severity.systemImage)
+      .font(.callout)
+      .foregroundStyle(severity.color)
+      .accessibilityElement(children: .combine)
+      .accessibilityFocused($isAccessibilityFocused)
+      .onAppear(perform: focusAndAnnounceIfNeeded)
+      .onChange(of: message) { _, _ in
+        focusAndAnnounceIfNeeded()
+      }
+  }
+
+  private func focusAndAnnounceIfNeeded() {
+    guard severity.isUrgent else { return }
+    DispatchQueue.main.async {
+      isAccessibilityFocused = true
+      NSAccessibility.post(
+        element: NSApp as Any,
+        notification: .announcementRequested,
+        userInfo: [
+          .announcement: message,
+          .priority: NSAccessibilityPriorityLevel.high.rawValue,
+        ]
+      )
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 }
 
@@ -169,7 +437,7 @@ struct PrivacyLockOverlay: View {
       Button {
         store.unlockPrivacy()
       } label: {
-        Label("移除隐私遮罩", systemImage: "eye")
+        Label("返回工作台", systemImage: "eye")
       }
       .keyboardShortcut(.return, modifiers: [])
       .focused($isUnlockButtonFocused)
@@ -226,13 +494,13 @@ extension ImageCoverPublishState {
   var color: Color {
     switch self {
     case .ready:
-      return .green
+      return WorkbenchTheme.success
     case .disabled, .privateSuppressed:
       return .secondary
     case .missingCover, .missingPublishPath:
-      return .orange
+      return WorkbenchTheme.warning
     case .missingAttachment, .missingSource:
-      return .red
+      return WorkbenchTheme.risk
     }
   }
 }

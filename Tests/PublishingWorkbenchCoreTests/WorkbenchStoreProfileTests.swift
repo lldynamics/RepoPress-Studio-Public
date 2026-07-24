@@ -3,6 +3,26 @@ import XCTest
 
 @MainActor
 final class WorkbenchStoreProfileTests: XCTestCase {
+  func testDraftVisitHistoryReturnsAcrossSitesAfterFocusedNavigation() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let firstSite = store.activeProfile
+    let secondSite = store.createProfile(named: "第二站点")
+    let firstDraft = ArticleDraft(siteProfileID: firstSite.id, title: "来源文章", slug: "source")
+    let secondDraft = ArticleDraft(siteProfileID: secondSite.id, title: "搜索结果", slug: "result")
+    store.setDrafts([firstDraft, secondDraft])
+
+    XCTAssertTrue(store.focusDraft(firstDraft.id, section: .writing))
+    XCTAssertTrue(store.focusDraft(secondDraft.id, section: .writing))
+    XCTAssertTrue(store.canNavigateBackwardInDraftHistory)
+    XCTAssertTrue(store.navigateBackwardInDraftHistory())
+    XCTAssertEqual(store.selectedDraftID, firstDraft.id)
+    XCTAssertEqual(store.activeProfileID, firstSite.id)
+    XCTAssertTrue(store.canNavigateForwardInDraftHistory)
+    XCTAssertTrue(store.navigateForwardInDraftHistory())
+    XCTAssertEqual(store.selectedDraftID, secondDraft.id)
+    XCTAssertEqual(store.activeProfileID, secondSite.id)
+  }
+
   func testCreateProfileSwitchesToAnEmptySiteProfile() throws {
     let store = try TestWorkbenchFactory.makeStore()
     let originalProfileID = store.activeProfileID
@@ -17,6 +37,27 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertNil(store.selectedDraft)
     XCTAssertNil(store.publishPackage)
     XCTAssertNil(store.localPublishPreview)
+  }
+
+  func testEmptyProfileWithRepositoryStillCreatesLocalPreviewPlan() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let rootURL = try temporaryDirectoryURL()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    let profile = store.createProfile(named: "工程站")
+    store.updateActiveProfile { profile in
+      profile.siteKind = .astro
+      profile.localRepositoryRootPath = rootURL.path
+    }
+
+    store.refreshPublishPreview()
+
+    let plan = try XCTUnwrap(store.localSitePreviewPlan)
+    XCTAssertEqual(store.activeProfileID, profile.id)
+    XCTAssertEqual(plan.rootPath, rootURL.path)
+    XCTAssertEqual(URL(fileURLWithPath: plan.executablePath).lastPathComponent, "npm")
+    XCTAssertEqual(plan.arguments, ["run", "dev"])
+    XCTAssertEqual(plan.previewURL.absoluteString, "http://127.0.0.1:4321")
   }
 
   func testEnsureEditableDraftSelectedCreatesDraftForEmptyProfile() throws {
@@ -48,11 +89,12 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.selectedDraftID, fallbackDraftID)
   }
 
-  func testUpdateDraftMarksWorkbenchUnsavedUntilExplicitSave() throws {
+  func testUpdateDraftMarksWorkbenchUnsavedUntilExplicitSave() async throws {
     let persistenceURL = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     let draft = try XCTUnwrap(store.ensureEditableDraftSelected())
     store.save()
+    await store.waitForPendingSave()
 
     var updated = draft
     updated.bodyMarkdown += "\nabc123"
@@ -61,11 +103,12 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.lastSaveStatus, "有未保存修改")
 
     store.save()
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertTrue(reloaded.drafts.first { $0.id == draft.id }?.bodyMarkdown.contains("abc123") == true)
   }
 
-  func testDeleteDraftByIDRemovesTargetDraftAndPreservesValidSelection() throws {
+  func testDeleteDraftByIDRemovesTargetDraftAndPreservesValidSelection() async throws {
     let persistenceURL = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     let profile = store.activeProfile
@@ -84,6 +127,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
 
     XCTAssertEqual(store.drafts.map(\.id), [third.id])
     XCTAssertEqual(store.selectedDraftID, third.id)
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.drafts.map(\.id), [third.id])
@@ -95,23 +139,35 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     let deletedProfile = store.createProfile(named: "待删除站点")
     store.createDraft()
     let draft = try XCTUnwrap(store.selectedDraft)
+    let snippet = try XCTUnwrap(MarkdownSnippetLibraryService.savingCustomSnippet(
+      title: "待恢复片段",
+      detail: "",
+      kind: .snippet,
+      markdown: "恢复内容",
+      siteProfileID: deletedProfile.id,
+      in: []
+    ).first)
+    store.saveCustomMarkdownSnippet(snippet)
 
     XCTAssertEqual(store.activeProfileDraftCount, 1)
     let recentlyDeleted = try XCTUnwrap(store.deleteActiveProfile())
 
     XCTAssertEqual(recentlyDeleted.profile.id, deletedProfile.id)
     XCTAssertEqual(recentlyDeleted.draftCount, 1)
+    XCTAssertEqual(recentlyDeleted.customMarkdownSnippets.map(\.id), [snippet.id])
     XCTAssertFalse(store.profiles.contains { $0.id == deletedProfile.id })
     XCTAssertFalse(store.drafts.contains { $0.id == draft.id })
+    XCTAssertFalse(store.customMarkdownSnippets.contains { $0.id == snippet.id })
     XCTAssertEqual(store.activeProfileID, originalProfileID)
 
     XCTAssertTrue(store.restoreRecentlyDeletedProfile())
     XCTAssertEqual(store.activeProfileID, deletedProfile.id)
     XCTAssertTrue(store.drafts.contains { $0.id == draft.id })
+    XCTAssertTrue(store.customMarkdownSnippets.contains { $0.id == snippet.id })
     XCTAssertNil(store.recentlyDeletedProfile)
   }
 
-  func testRelatedArticleSuggestionsReturnCurrentDraftOutgoingLinksOnly() throws {
+  func testRelatedArticleSuggestionsReturnCurrentDraftOutgoingLinksOnly() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let profile = store.activeProfile
     let sourceID = UUID()
@@ -148,6 +204,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
       status: .published
     )
     store.setDrafts([source, target, unrelated])
+    await store.refreshSiteMaintenanceSnapshot(force: true)
 
     let suggestions = store.relatedArticleSuggestions(for: source)
 
@@ -286,7 +343,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     store.deleteActiveProfile()
 
     XCTAssertEqual(store.profiles.count, 1)
-    XCTAssertEqual(store.publishActionMessage, "至少需要保留一个站点 Profile。")
+    XCTAssertEqual(store.publishActionMessage, "至少需要保留一个站点配置。")
   }
 
   func testCanDeferPreflightRefreshWhileEditing() throws {
@@ -396,7 +453,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertTrue(prompt.contains("发布路径：src/content/blog/astro-article.mdx"))
   }
 
-  func testFocusDraftSwitchesProfileAndRefreshesPublishingContext() throws {
+  func testFocusDraftSwitchesProfileAndRefreshesPublishingContext() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let originalProfileID = store.activeProfileID
 
@@ -415,6 +472,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     store.selectProfile(originalProfileID)
 
     let didFocus = store.focusDraft(draft.id, section: .contentHealth)
+    await store.publishingStore.waitForPublishPreviewRefresh()
 
     XCTAssertTrue(didFocus)
     XCTAssertEqual(store.activeProfileID, jekyllProfileID)
@@ -423,7 +481,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.publishPackage?.markdownPath, "_posts/2026-08-29-jekyll-article.md")
   }
 
-  func testWritingPackageFocusesDraftProfileAndUsesItsRepositoryRoot() throws {
+  func testWritingIgnoresStalePackageThenUsesSelectedDraftRepositoryRoot() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let originalProfileID = store.activeProfileID
     let astroRoot = try temporaryDirectoryURL()
@@ -446,6 +504,9 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     )
     store.setDrafts(store.drafts + [draft])
     store.selectProfile(originalProfileID)
+    _ = store.focusDraft(draft.id)
+    await store.scanRepositoryAsync()
+    store.selectProfile(originalProfileID)
     store.refreshPublishPreview(for: draft)
 
     XCTAssertEqual(store.localPublishReadiness?.writeReadiness, .needsReview)
@@ -453,16 +514,23 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.localPublishReadiness?.commitReadiness, .blocked)
     XCTAssertTrue(store.localPublishReadiness?.commitBlockingIssues.contains { $0.title == "未发现 .git" } == true)
 
-    store.writeSelectedDraftToLocalRepository()
+    await store.writeSelectedDraftToLocalRepository()
 
     let writtenURL = astroRoot.appendingPathComponent("src/content/blog/astro-write.mdx")
+    XCTAssertEqual(store.activeProfileID, originalProfileID)
+    XCTAssertNotEqual(store.selectedDraftID, draft.id)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: writtenURL.path))
+
+    XCTAssertTrue(store.focusDraft(draft.id))
+    await store.writeSelectedDraftToLocalRepository()
+
     XCTAssertEqual(store.activeProfileID, astroProfile.id)
     XCTAssertEqual(store.selectedDraftID, draft.id)
     XCTAssertTrue(FileManager.default.fileExists(atPath: writtenURL.path))
     XCTAssertTrue(store.releaseRecords.first?.changedPaths.contains("src/content/blog/astro-write.mdx") == true)
   }
 
-  func testSingleDraftPublishCommandsRequireCommitReadiness() throws {
+  func testSingleDraftPublishCommandsRequireCommitReadiness() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let rootURL = try temporaryDirectoryURL()
     defer {
@@ -499,7 +567,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertTrue(store.reviewBranchCommandsForSelectedDraft().isEmpty)
 
     try git(["init", "-b", "main"], rootURL: rootURL)
-    store.scanRepository()
+    await store.scanRepositoryAsync()
 
     XCTAssertEqual(store.localPublishReadiness?.canCommit, true)
     XCTAssertTrue(store.localCommitCommandForSelectedDraft()?.contains("git add 'content/posts/command-ready.md'") == true)
@@ -518,7 +586,39 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.localPublishReadiness?.commitReadiness, .unchanged)
   }
 
-  func testRepositoryBackupPurposeDoesNotBlockCommitReadinessOnMissingStaticSiteRoots() throws {
+  func testRepositoryReportAccessorDoesNotTriggerImplicitScan() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let rootURL = try temporaryDirectoryURL()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    store.updateActiveProfile(profile)
+
+    XCTAssertNil(store.repositoryReport(for: profile))
+    XCTAssertNil(store.repositoryReport)
+  }
+
+  func testLocalRepositoryMutationsAreSingleFlight() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let first = try XCTUnwrap(
+      store.publishingStore.beginLocalRepositoryMutation(profile: store.activeProfile)
+    )
+
+    XCTAssertTrue(store.isLocalRepositoryMutationRunning)
+    XCTAssertNil(store.publishingStore.beginLocalRepositoryMutation(profile: store.activeProfile))
+
+    store.publishingStore.finishLocalRepositoryMutation(first)
+    XCTAssertFalse(store.isLocalRepositoryMutationRunning)
+    let second = try XCTUnwrap(
+      store.publishingStore.beginLocalRepositoryMutation(profile: store.activeProfile)
+    )
+    store.publishingStore.finishLocalRepositoryMutation(second)
+    XCTAssertFalse(store.isLocalRepositoryMutationRunning)
+  }
+
+  func testRepositoryBackupPurposeDoesNotBlockCommitReadinessOnMissingStaticSiteRoots() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let rootURL = try temporaryDirectoryURL()
     defer {
@@ -547,20 +647,20 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
-    store.scanRepository()
+    await store.scanRepositoryAsync()
 
     XCTAssertEqual(store.localPublishReadiness?.commitReadiness, .blocked)
     XCTAssertTrue(store.localPublishReadiness?.commitBlockingIssues.contains { $0.title == "内容目录不存在" } == true)
 
     profile.purpose = .repositoryBackup
     store.updateActiveProfile(profile)
-    store.scanRepository()
+    await store.scanRepositoryAsync()
 
     XCTAssertEqual(store.localPublishReadiness?.commitReadiness, .ready)
     XCTAssertFalse(store.localPublishReadiness?.commitBlockingIssues.contains { $0.title == "内容目录不存在" } == true)
   }
 
-  func testPreferredPublishStrategyDirectCommitsOnCurrentBranch() throws {
+  func testPreferredPublishStrategyDirectCommitsOnCurrentBranch() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let rootURL = try preparedGitRepositoryRoot()
     defer {
@@ -583,17 +683,19 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
+    await store.scanRepositoryAsync()
     store.refreshPublishPreview(for: draft)
 
-    store.commitSelectedDraftUsingPreferredStrategy()
+    await store.commitSelectedDraftUsingPreferredStrategy()
 
     XCTAssertEqual(store.localGitPublishResult?.mode, .directCommit)
     XCTAssertEqual(store.localGitPublishResult?.branchName, "main")
     XCTAssertEqual(store.releaseRecords.first?.kind, .directCommit)
+    XCTAssertEqual(store.drafts.first?.repositoryPath, "content/posts/preferred-direct.md")
     XCTAssertEqual(try git(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL), "main")
   }
 
-  func testPreferredPublishStrategyCreatesReviewBranch() throws {
+  func testPreferredPublishStrategyCreatesReviewBranch() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let rootURL = try preparedGitRepositoryRoot()
     defer {
@@ -616,18 +718,23 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     )
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
+    await store.scanRepositoryAsync()
     store.refreshPublishPreview(for: draft)
 
-    store.commitSelectedDraftUsingPreferredStrategy()
+    await store.commitSelectedDraftUsingPreferredStrategy()
 
-    let result = try XCTUnwrap(store.localGitPublishResult)
+    let result = try XCTUnwrap(
+      store.localGitPublishResult,
+      store.publishActionMessage ?? "本地 Review 提交未返回结果"
+    )
     XCTAssertEqual(result.mode, .reviewBranch)
     XCTAssertEqual(result.branchName, "publish/preferred-review-20260829")
     XCTAssertEqual(store.releaseRecords.first?.kind, .reviewBranch)
+    XCTAssertNil(store.drafts.first?.repositoryPath)
     XCTAssertEqual(try git(["rev-parse", "--abbrev-ref", "HEAD"], rootURL: rootURL), result.branchName)
   }
 
-  func testWritingPackageBlocksPreflightErrorsBeforeRepositoryWrite() throws {
+  func testWritingPackageBlocksPreflightErrorsBeforeRepositoryWrite() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let rootURL = try temporaryDirectoryURL()
     defer {
@@ -648,19 +755,21 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     store.refreshPublishPreview(for: draft)
 
     XCTAssertEqual(store.localPublishReadiness?.writeReadiness, .blocked)
-    XCTAssertTrue(store.localPublishReadiness?.writeBlockingIssues.contains { $0.title == "标题为空" } == true)
+    XCTAssertTrue(store.localPublishReadiness?.writeBlockingIssues.contains {
+      $0.title == CoreL10n.text("标题为空")
+    } == true)
 
     let initialRecordCount = store.releaseRecords.count
-    store.writeSelectedDraftToLocalRepository()
+    await store.writeSelectedDraftToLocalRepository()
 
     let writtenURL = rootURL.appendingPathComponent("content/posts/blocked-write.md")
     XCTAssertFalse(FileManager.default.fileExists(atPath: writtenURL.path))
     XCTAssertEqual(store.releaseRecords.count, initialRecordCount)
     XCTAssertTrue(store.publishActionMessage?.contains("已停止写入") == true)
-    XCTAssertTrue(store.publishActionMessage?.contains("标题为空") == true)
+    XCTAssertTrue(store.publishActionMessage?.contains(CoreL10n.text("标题为空")) == true)
   }
 
-  func testWritingPackageBlocksMissingImageSourceBeforePartialMarkdownWrite() throws {
+  func testWritingPackageBlocksMissingImageSourceBeforePartialMarkdownWrite() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let rootURL = try temporaryDirectoryURL()
     defer {
@@ -696,10 +805,14 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     store.refreshPublishPreview(for: draft)
 
     XCTAssertEqual(store.localPublishReadiness?.writeReadiness, .blocked)
-    XCTAssertTrue(store.localPublishReadiness?.writeBlockingIssues.contains { $0.title == "图片源文件缺失" } == true)
+    XCTAssertTrue(
+      store.localPublishReadiness?.writeBlockingIssues.contains {
+        $0.title == CoreL10n.text("图片源文件缺失")
+      } == true
+    )
 
     let initialRecordCount = store.releaseRecords.count
-    store.writeSelectedDraftToLocalRepository()
+    await store.writeSelectedDraftToLocalRepository()
 
     let markdownURL = rootURL.appendingPathComponent("content/posts/missing-image-source.md")
     let imageURL = rootURL.appendingPathComponent("static/images/2026/missing-cover.jpg")
@@ -707,7 +820,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: imageURL.path))
     XCTAssertEqual(store.releaseRecords.count, initialRecordCount)
     XCTAssertTrue(store.publishActionMessage?.contains("已停止写入") == true)
-    XCTAssertTrue(store.publishActionMessage?.contains("图片源文件缺失") == true)
+    XCTAssertTrue(store.publishActionMessage?.contains(CoreL10n.text("图片源文件缺失")) == true)
   }
 
   func testPublishReadinessWarnsWhenRemoteChangedFileMatchesPackagePath() throws {

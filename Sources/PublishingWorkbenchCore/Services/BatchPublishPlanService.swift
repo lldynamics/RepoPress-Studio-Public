@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let logger = Logger(subsystem: "com.repopress", category: "BatchPublishPlanService")
 
 public enum BatchPublishReadiness: String, CaseIterable, Codable, Sendable {
   case ready
@@ -170,7 +173,7 @@ public struct BatchLocalWriteResult: Codable, Hashable, Sendable {
   }
 }
 
-public struct BatchPublishPlanService {
+public struct BatchPublishPlanService: Sendable {
   private let preflightService: PreflightCheckService
   private let publishPackageBuilder: PublishPackageBuilder
   private let localPublishPreviewService: LocalPublishPreviewService
@@ -193,7 +196,7 @@ public struct BatchPublishPlanService {
     profile: SiteProfile,
     repositoryReport: RepositoryScanReport?
   ) -> BatchPublishPlan {
-    let items = drafts.map { draft in
+    var items = drafts.map { draft in
       let package = publishPackageBuilder.build(draft: draft, profile: profile)
       let preview = localPublishPreviewService.preview(package: package, profile: profile)
       var issues = preflightService.run(
@@ -215,7 +218,91 @@ public struct BatchPublishPlanService {
       )
     }
 
+    applyBatchDestinationConflicts(to: &items)
+
     return BatchPublishPlan(profileID: profile.id, siteName: profile.name, items: items)
+  }
+
+  public func planAsync(
+    drafts: [ArticleDraft],
+    profile: SiteProfile,
+    repositoryReport: RepositoryScanReport?
+  ) async -> BatchPublishPlan {
+    await Task.detached(priority: .userInitiated) {
+      plan(drafts: drafts, profile: profile, repositoryReport: repositoryReport)
+    }.value
+  }
+
+  private func applyBatchDestinationConflicts(to items: inout [BatchPublishPlanItem]) {
+    var occurrencesByPath: [String: [(itemIndex: Int, file: PublishPackageFile)]] = [:]
+    for (itemIndex, item) in items.enumerated() {
+      for file in item.package.files {
+        let path = file.repositoryPath.normalizedRelativePath()
+        guard !path.isEmpty else { continue }
+        occurrencesByPath[path, default: []].append((itemIndex, file))
+      }
+    }
+
+    var conflictsByItemIndex: [Int: Set<String>] = [:]
+    for (path, occurrences) in occurrencesByPath where occurrences.count > 1 {
+      guard let first = occurrences.first else { continue }
+      let payloadsMatch = occurrences.dropFirst().allSatisfy {
+        publishFilesHaveEquivalentPayload(first.file, $0.file)
+      }
+      let expectedVersions = Set(
+        occurrences.compactMap { $0.file.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty }
+      )
+      guard !payloadsMatch || expectedVersions.count > 1 else { continue }
+      for occurrence in occurrences {
+        conflictsByItemIndex[occurrence.itemIndex, default: []].insert(path)
+      }
+    }
+
+    for (itemIndex, paths) in conflictsByItemIndex {
+      let sortedPaths = paths.sorted()
+      items[itemIndex].preflightIssues.append(
+        PreflightIssue(
+          severity: .error,
+          title: "批量目标路径冲突",
+          message: "以下路径被多个发布文件占用且内容或远端版本不一致：\(sortedPaths.joined(separator: "、"))。",
+          field: "attachments"
+        )
+      )
+      items[itemIndex].readiness = .blocked
+    }
+  }
+
+  private func publishFilesHaveEquivalentPayload(
+    _ lhs: PublishPackageFile,
+    _ rhs: PublishPackageFile
+  ) -> Bool {
+    guard lhs.kind == rhs.kind, lhs.operation == rhs.operation else { return false }
+    if lhs.operation == .delete { return true }
+    switch lhs.kind {
+    case .markdown:
+      return lhs.content == rhs.content
+    case .image, .video:
+      guard let lhsPath = lhs.sourceFilePath?.nilIfEmpty,
+            let rhsPath = rhs.sourceFilePath?.nilIfEmpty else {
+        return false
+      }
+      let lhsURL = URL(fileURLWithPath: lhsPath).standardizedFileURL
+      let rhsURL = URL(fileURLWithPath: rhsPath).standardizedFileURL
+      if lhsURL == rhsURL { return true }
+      if lhs.byteSize > 0, rhs.byteSize > 0, lhs.byteSize != rhs.byteSize {
+        return false
+      }
+      let lhsData: Data
+      let rhsData: Data
+      do {
+        lhsData = try Data(contentsOf: lhsURL)
+        rhsData = try Data(contentsOf: rhsURL)
+      } catch {
+        logger.warning("无法读取文件进行比较: \(error.localizedDescription, privacy: .public)")
+        return false
+      }
+      return lhsData == rhsData
+    }
   }
 
   private func readiness(
@@ -238,4 +325,22 @@ public struct BatchPublishPlanService {
     let hasWarning = (preflightIssues + preview.issues).contains { $0.severity == .warning }
     return hasWarning ? .needsReview : .ready
   }
+}
+
+func deduplicatedBatchPublishFiles(_ files: [PublishPackageFile]) -> [PublishPackageFile] {
+  var result: [PublishPackageFile] = []
+  var indexByPath: [String: Int] = [:]
+  for file in files {
+    let path = file.repositoryPath.normalizedRelativePath()
+    guard let existingIndex = indexByPath[path] else {
+      indexByPath[path] = result.count
+      result.append(file)
+      continue
+    }
+    if result[existingIndex].expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty == nil,
+       let expectedRemoteSHA = file.expectedRemoteSHA?.trimmedForPublishing.nilIfEmpty {
+      result[existingIndex].expectedRemoteSHA = expectedRemoteSHA
+    }
+  }
+  return result
 }

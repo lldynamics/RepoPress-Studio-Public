@@ -603,16 +603,17 @@ final class AIPublishingChatPromptTemplateServiceTests: XCTestCase {
     let all = AIPublishingCapabilityCenterService.snapshot(mode: .all)
 
     XCTAssertEqual(
-      featured.promptSections.flatMap(\.prompts),
-      AIPublishingQuickPrompt.primaryPrompts
+      Set(featured.promptSections.flatMap(\.prompts)),
+      Set(AIPublishingQuickPrompt.primaryPrompts)
     )
     XCTAssertEqual(
-      featured.editorActionSections,
-      AIPublishingWritingActionCatalog.promptLibrarySpotlightSections
+      Set(featured.editorActionSections.flatMap(\.actions)),
+      Set(AIPublishingDefaultCapability.defaultActionKinds)
     )
-    XCTAssertTrue(featured.editorActionSections.flatMap(\.actions).contains(.draftFullArticle))
-    XCTAssertTrue(featured.editorActionSections.flatMap(\.actions).contains(.polishSelection))
+    XCTAssertTrue(featured.editorActionSections.flatMap(\.actions).contains(.continueArticle))
+    XCTAssertTrue(featured.editorActionSections.flatMap(\.actions).contains(.rewriteSelection))
     XCTAssertTrue(featured.editorActionSections.flatMap(\.actions).contains(.publishingReadiness))
+    XCTAssertFalse(featured.editorActionSections.flatMap(\.actions).contains(.draftFullArticle))
 
     XCTAssertEqual(
       Set(all.promptSections.flatMap(\.prompts)),

@@ -31,29 +31,45 @@ required = {
         "source": {
             "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift": [
                 "MacMarkdownComposerView",
-                "markdownBlocks",
-                "pasteAIPromptToClipboard",
+                "MacMarkdownEditorToolbar",
+                "FindReplaceBar",
             ],
-            "Sources/PersonalSitePublisherMac/Views/EditorInspectorView.swift": [
-                "EditorFrontMatterSection",
-                "EditorSocialPreviewSection",
+            "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift": [
+                "WorkspaceTaskMetadataSection",
+                '.accessibilityLabel("元数据标题")',
             ],
         },
     },
     "ai-chat": {
         "target": "ai-chat.png",
-        "capture": ["ai-chat", "quick prompts", "context article", "regenerate"],
+        "capture": ["ai-chat", "AI writing assistant", "user-supplied API-key guidance"],
         "source": {
-            "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceView.swift": [
-                "ai-chat-workspace",
-                "AIChatPromptLibrarySheet",
+            "Sources/PersonalSitePublisherMac/Views/ContentView.swift": [
+                "usesInlineAIScreenshotInspector",
+                "ScreenshotInlineAIInspector",
+                "AIChatContextInspectorView",
             ],
-            "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInputSection.swift": [
-                "ai-chat-composer",
-                ".keyboardShortcut(.return, modifiers: [.command])",
+            "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift": [
+                "AIChatContextInspectorView",
+                "需要配置 AI API Key",
+                '.accessibilityLabel("AI 消息")',
+                'DisclosureGroup("文章上下文"',
             ],
-            "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore+PublicAICommands.swift": [
-                "regenerateLastAIChatReply",
+        },
+    },
+    "knowledge-library": {
+        "target": "knowledge-library.png",
+        "capture": ["local knowledge library", "import", "search", "cleaned reading content"],
+        "source": {
+            "Sources/PersonalSitePublisherMac/Views/KnowledgeLibraryDetailView.swift": [
+                "knowledge-library-detail",
+                "knowledge-library-reader",
+                "knowledge-library-import-button",
+            ],
+            "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift": [
+                "knowledge-document-list",
+                "knowledge-search-result-list",
+                "KnowledgeImportAssistantView",
             ],
         },
     },
@@ -68,7 +84,7 @@ required = {
             ],
             "Sources/PersonalSitePublisherMac/Views/TokenRepositoryTokenSection.swift": [
                 "TokenRepositoryTokenSection",
-                "仓库访问 Token",
+                '.accessibilityHint("仅用于仓库创建、权限检查、提交、PR/MR 和回滚")',
             ],
         },
     },
@@ -76,12 +92,11 @@ required = {
         "target": "seo-social-preview.png",
         "capture": ["seo-social-preview", "Open Graph", "Twitter card", "manual refresh", "external debug"],
         "source": {
-            "Sources/PersonalSitePublisherMac/Views/EditorInspectorSections.swift": [
-                "EditorSocialPreviewSection",
-                "Open Graph",
-                "Twitter/X",
+            "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSections.swift": [
+                "WorkspaceTaskSEOSection",
                 "refreshSEOSocialPreview",
                 "relatedArticleSuggestionSection",
+                '.accessibilityLabel("复制全部外部调试链接")',
             ],
             "Tests/PublishingWorkbenchCoreTests/SEOSocialPreviewServiceTests.swift": [
                 "testSnapshotBuildsSearchOpenGraphAndTwitterCards",
@@ -118,19 +133,17 @@ required = {
     },
     "general-drafts": {
         "target": "general-drafts.png",
-        "capture": ["general-drafts", "cross-site drafts", "backup repository", "reuse checklist"],
+        "capture": ["general-drafts", "general drafts", "writing workspace", "copy to site"],
         "source": {
-            "Sources/PersonalSitePublisherMac/Views/GeneralDraftLibraryDetailView.swift": [
-                "GeneralDraftLibraryDetailView",
-                "backupSection",
-                "reusePlanSection",
-                "crossSiteMaterialPackageMarkdown",
+            "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift": [
+                "contentScopePicker",
+                "draftOwnershipActions",
+                "复制到站点",
             ],
-            "Sources/PublishingWorkbenchCore/Services/GeneralDraftLibraryService.swift": [
-                "GeneralDraftBackupPlan",
-                "reusePlan",
-                "backupPlan",
-                "general-drafts/MANIFEST.md",
+            "Sources/PublishingWorkbenchCore/Stores/PublishingStore+DraftOwnershipTransferActions.swift": [
+                "draftOwnershipTransferPlan",
+                ".copyToSite",
+                ".moveToGeneral",
             ],
         },
     },
@@ -140,7 +153,8 @@ required = {
         "source": {
             "Sources/PersonalSitePublisherMac/Support/ScreenshotDemoSettingsPresenter.swift": [
                 "ScreenshotDemoSettingsPresenter",
-                "showSettingsWindow:",
+                "openSettingsIfNeeded",
+                "openSettings()",
                 "requestedSurfaceFromEnvironment == .proSettings",
             ],
             "Sources/PersonalSitePublisherMac/Support/StoreKitProEntitlementCoordinator.swift": [
@@ -153,14 +167,15 @@ required = {
                 "selectedSettingsTab",
                 "ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .proSettings ? .pro",
             ],
-            "Sources/PersonalSitePublisherMac/Views/ProSandboxVerificationSection.swift": [
-                "StoreKit 沙盒核验",
+            "Sources/PersonalSitePublisherMac/Views/ProSettingsView.swift": [
+                "ProPurchaseRestoreSection",
+                "ProQuotaSection",
             ],
         },
     },
     "privacy-lock": {
         "target": "privacy-lock.png",
-        "capture": ["privacy-lock", "locked workbench", "private-content masking"],
+        "capture": ["privacy-lock", "manually hidden workbench", "private-content masking"],
         "source": {
             "Sources/PersonalSitePublisherMac/Views/SharedViews.swift": [
                 "PrivacyLockOverlay",
@@ -168,30 +183,8 @@ required = {
             ],
             "Sources/PersonalSitePublisherMac/Views/ContentView.swift": [
                 "isPrivacyLocked",
-                "lockPrivacyIfNeededForInactiveScene",
+                "lockPrivacy(reason",
                 "canUseProtectedWorkbench",
-            ],
-        },
-    },
-    "release-readiness": {
-        "target": "release-readiness.png",
-        "capture": ["release-readiness", "localization", "UI runtime", "product-readiness gates"],
-        "source": {
-            "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspector.swift": [
-                "ReleaseQualityGateInspectorView",
-            ],
-            "Sources/PersonalSitePublisherMac/Views/WorkspaceTaskInspectorSectionsExtra.swift": [
-                "refreshReleaseQualityGate",
-            ],
-            "Sources/PersonalSitePublisherMac/Views/ReleaseQualityGateDetailView.swift": [
-                "releaseGateSection",
-                "releaseGateItemCard",
-            ],
-            "Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateReport.swift": [
-                "ReleaseQualityGateReport",
-            ],
-            "Sources/PublishingWorkbenchCore/Services/ReleaseQualityGateAppStoreChecklistReport.swift": [
-                "strictReadinessSummary",
             ],
         },
     },
@@ -235,10 +228,15 @@ for marker in [
     "AXWindowNumber",
     "capture_current_app_window",
     "screencapture -x -l",
+    "screencapture -x -R",
     "--auto-window with --real-data requires --only",
     "--auto-window with --skip-build requires --only",
     "pkill -TERM -x",
     "${ONLY_ID:-writing}",
+    "PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD=1",
+    "PERSONAL_SITE_PUBLISHER_DIST_DIR",
+    "dist/app-store-screenshot",
+    "--package-only --app-store",
 ]:
     if marker not in capture_text:
         errors.append(f"capture script missing demo launch marker {marker!r}")
@@ -251,6 +249,9 @@ for marker in [
     "--list-screenshot-surfaces",
     "contains_screenshot_surface",
     "required_screenshot_surfaces",
+    "SCREENSHOT_CAPTURE_BUILD",
+    "PersonalSitePublisherScreenshotCaptureBuild",
+    "PERSONAL_SITE_PUBLISHER_DIST_DIR",
 ]:
     if marker not in build_script_text:
         errors.append(f"build/run script missing screenshot surface marker {marker!r}")

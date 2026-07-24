@@ -1,11 +1,21 @@
+import Combine
 import Foundation
 
 @MainActor
-public final class WorkbenchPublishingFeatureFacade {
+public final class WorkbenchPublishingFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
+  private var cancellables = Set<AnyCancellable>()
+  public let editorDisplayModePublisher: AnyPublisher<EditorDisplayMode, Never>
 
   init(store: WorkbenchStore) {
     self.store = store
+    editorDisplayModePublisher = store.publishingStore.$editorDisplayMode.eraseToAnyPublisher()
+    store.publishingStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+    store.publishingStore.draftBodyEditorBufferWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
   }
 
   public var profiles: [SiteProfile] {
@@ -34,6 +44,18 @@ public final class WorkbenchPublishingFeatureFacade {
 
   public var selectedDraft: ArticleDraft? {
     store.selectedDraft
+  }
+
+  public var editorDisplayMode: EditorDisplayMode {
+    store.editorDisplayMode
+  }
+
+  public var editorFocusRequest: EditorFocusRequest? {
+    store.editorFocusRequest
+  }
+
+  public func draftBodyEditorBuffer(for draftID: UUID) -> DraftBodyEditorBuffer {
+    store.draftBodyEditorBuffer(for: draftID)
   }
 
   public var visibleDrafts: [ArticleDraft] {
@@ -76,6 +98,14 @@ public final class WorkbenchPublishingFeatureFacade {
 
   public func refreshPublishPreview(for draft: ArticleDraft? = nil) {
     store.refreshPublishPreview(for: draft)
+  }
+
+  public func refreshPublishPreviewInBackground(for draft: ArticleDraft? = nil) {
+    store.refreshPublishPreviewInBackground(for: draft)
+  }
+
+  public var isPublishPreviewRefreshing: Bool {
+    store.publishingStore.isPublishPreviewRefreshing
   }
 
   public func save() {

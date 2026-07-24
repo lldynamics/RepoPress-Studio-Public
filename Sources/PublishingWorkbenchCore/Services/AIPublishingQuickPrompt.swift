@@ -125,76 +125,14 @@ public enum AIPublishingQuickPrompt: String, CaseIterable, Identifiable, Sendabl
 
   public var id: String { rawValue }
 
-  public static let primaryPrompts: [AIPublishingQuickPrompt] = [
-    .continueWriting,
-    .outline,
-    .titleIdeas,
-    .slugIdeas,
-    .summary,
-    .tagIdeas,
-    .frontMatterPack,
-    .tone,
-    .grammar,
-    .translateEnglish,
-    .publishReview,
-    .internalLinks,
-    .imageCaptions,
-    .seriesPlan,
-  ]
+  public static let primaryPrompts = AIPublishingDefaultCapability.defaultQuickPrompts
 
-  public static let writingDashboardPrompts: [AIPublishingQuickPrompt] = [
-    .continueWriting,
-    .outline,
-    .titleIdeas,
-    .tone,
-    .grammar,
-    .translateChinese,
-    .translateEnglish,
-    .frontMatterPack,
-    .publishReview,
-    .internalLinks,
-    .imageCaptions,
-    .publishAssetPack,
-    .seriesPlan,
-  ]
+  public static let writingDashboardPrompts = primaryPrompts
 
-  public static let morePrompts: [AIPublishingQuickPrompt] = [
-    .bilingualMetadata,
-    .translateChinese,
-    .localizationDraft,
-    .contentGap,
-    .angleCompare,
-    .seo,
-    .privacyCheck,
-    .readerReview,
-    .factBoundary,
-    .sourceChecklist,
-    .linkAudit,
-    .imagePrivacy,
-    .ssgChecklist,
-    .publishRecoveryPlan,
-    .coverPrompt,
-    .socialShare,
-    .publishAssetPack,
-    .pullQuotes,
-    .publishNote,
-    .crossPlatformAnnouncement,
-    .shortVideoScript,
-    .tldr,
-    .faq,
-    .readerQuestions,
-    .stepGuide,
-    .checklist,
-    .structurePlan,
-    .counterpoint,
-    .caseStudy,
-    .oldArticleRefresh,
-    .mermaid,
-    .glossary,
-    .releaseSummary,
-    .updateNote,
-    .commentReply,
-  ]
+  public static let morePrompts: [AIPublishingQuickPrompt] = {
+    let defaults = Set(AIPublishingDefaultCapability.defaultQuickPrompts)
+    return allCases.filter { !defaults.contains($0) }
+  }()
 
   public static let inspectorPrompts: [AIPublishingQuickPrompt] = primaryPrompts
 

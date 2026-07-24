@@ -4,13 +4,25 @@ import SwiftUI
 
 struct PublishingConsoleCommands: Commands {
   @ObservedObject var store: WorkbenchStore
-  @Environment(\.openWindow) private var openWindow
   @FocusedValue(\.markdownEditorCommandActions) private var markdownEditorCommands
   @FocusedValue(\.publishDrawerCommandAction) private var publishDrawerCommandAction
   @FocusedValue(\.writingDraftCommandActions) private var writingDraftCommands
+  @FocusedValue(\.workspaceCommandPaletteAction) private var workspaceCommandPaletteAction
+  @FocusedValue(\.draftFullTextSearchAction) private var draftFullTextSearchAction
+  @FocusedValue(\.knowledgeLibraryCommandActions) private var knowledgeLibraryCommands
+  @FocusedValue(\.repositorySourceEditorCommandActions) private var repositorySourceEditorCommands
+  @FocusedValue(\.repositorySourceSessionCommandActions) private var repositorySourceSessionCommands
 
   var body: some Commands {
     CommandMenu("发布控制台") {
+      Button("命令面板与快速打开") {
+        workspaceCommandPaletteAction?.open()
+      }
+      .keyboardShortcut("p")
+      .disabled(!canUseProtectedWorkbench || workspaceCommandPaletteAction == nil)
+
+      Divider()
+
       Button("新建文章") {
         if let writingDraftCommands {
           writingDraftCommands.createDraft()
@@ -21,36 +33,56 @@ struct PublishingConsoleCommands: Commands {
       .keyboardShortcut("n")
       .disabled(!canUseProtectedWorkbench)
 
-      Button("保存工作台") {
-        store.save()
+      Button(
+        repositorySourceEditorCommands == nil
+          && repositorySourceSessionCommands?.hasUnsavedChanges != true
+          ? "保存工作台"
+          : "保存 HTML 源文件"
+      ) {
+        if let repositorySourceEditorCommands {
+          repositorySourceEditorCommands.save()
+        } else if let repositorySourceSessionCommands,
+                  repositorySourceSessionCommands.hasUnsavedChanges {
+          if repositorySourceSessionCommands.save() {
+            Task { await store.repository.scanAsync() }
+            EditorAccessibilityAnnouncementCenter.announce(
+              String(localized: "HTML 源文件已保存。"),
+              priority: .high
+            )
+          } else {
+            EditorAccessibilityAnnouncementCenter.announce(
+              repositorySourceSessionCommands.lastErrorMessage()
+                ?? String(localized: "未能保存 HTML 源文件。"),
+              priority: .high
+            )
+          }
+        } else {
+          store.save()
+        }
       }
       .keyboardShortcut("s")
-      .disabled(!canUseProtectedWorkbench)
+      .disabled(
+        !canUseProtectedWorkbench
+          || (repositorySourceEditorCommands != nil
+            && repositorySourceEditorCommands?.canSave != true)
+      )
 
-      Button("显示隐私遮罩") {
-        store.lockPrivacy(reason: "已手动显示隐私界面遮罩。")
+      Button(String(localized: "立即锁定软件")) {
+        store.lockPrivacy(reason: "已手动快速隐藏工作台内容。")
       }
       .keyboardShortcut("l", modifiers: [.command, .control])
       .disabled(store.isPrivacyLocked)
 
-      Button("移除隐私遮罩") {
+      Button("返回工作台") {
         store.unlockPrivacy()
       }
       .disabled(!store.isPrivacyLocked)
 
       Divider()
 
-      Button("在新窗口打开当前文章") {
-        if let draftID = commandDraftID {
-          openWindow(value: draftID)
-        }
-      }
-      .keyboardShortcut(.return, modifiers: [.command, .shift])
-      .disabled(!canUseProtectedWorkbench || commandDraftID == nil)
-
       Menu("切换工作区") {
         ForEach(WorkspaceNavigationPresentation.commandMenuItems) { item in
-          Button(item.displayName) {
+          Button(workspaceNavigationLocalizedKey(item.displayNameLocalizationKey)) {
             store.selectSection(item.section)
           }
           .keyboardShortcut(KeyEquivalent(item.keyboardShortcutKey), modifiers: [.command])
@@ -59,59 +91,133 @@ struct PublishingConsoleCommands: Commands {
 
         Divider()
 
-        Menu("站点工具") {
-          ForEach(WorkspaceNavigationPresentation.secondaryEntryItems) { item in
-            Button(item.displayName) {
+        Menu("高级工具") {
+          ForEach(WorkspaceNavigationPresentation.commandMenuAdvancedItems) { item in
+            Button(workspaceNavigationLocalizedKey(item.displayNameLocalizationKey)) {
               store.selectSection(item.section)
             }
+            .keyboardShortcut(KeyEquivalent(item.keyboardShortcutKey), modifiers: [.command])
             .disabled(!canUseProtectedWorkbench)
           }
         }
       }
 
-      Menu("诊断") {
-        Button("上架门禁") {
-          store.selectSection(.releaseReadiness)
-        }
-        .disabled(!canUseProtectedWorkbench)
-      }
-
       Divider()
 
-      Button(store.selectedSection == .writing ? "搜索草稿" : "查找/替换当前文章") {
-        if store.selectedSection == .writing {
-          writingDraftCommands?.focusSearch()
+      Button(searchCommandTitle) {
+        if let repositorySourceEditorCommands {
+          repositorySourceEditorCommands.showFind()
+        } else if let knowledgeLibraryCommands {
+          knowledgeLibraryCommands.focusSearch()
+        } else if let markdownEditorCommands {
+          markdownEditorCommands.showFindReplace()
         } else {
-          markdownEditorCommands?.showFindReplace()
+          writingDraftCommands?.focusSearch()
         }
       }
       .keyboardShortcut("f")
-      .disabled(!canUseProtectedWorkbench || (store.selectedSection == .writing && writingDraftCommands == nil) || (store.selectedSection != .writing && markdownEditorCommands == nil))
+      .disabled(
+        !canUseProtectedWorkbench
+          || (repositorySourceEditorCommands != nil
+            && repositorySourceEditorCommands?.hasDocument != true)
+          || (repositorySourceEditorCommands == nil
+            && knowledgeLibraryCommands == nil
+            && markdownEditorCommands == nil
+            && writingDraftCommands == nil)
+      )
 
-      if let writingDraftCommands {
-        Button("上一个草稿") {
-          writingDraftCommands.selectPreviousDraft()
+      Button("跨文章全文搜索") {
+        draftFullTextSearchAction?.open()
+      }
+      .keyboardShortcut("f", modifiers: [.command, .option])
+      .disabled(!canUseProtectedWorkbench || draftFullTextSearchAction == nil)
+
+      Button("搜索草稿列表") {
+        writingDraftCommands?.focusSearch()
+      }
+      .disabled(!canUseProtectedWorkbench || writingDraftCommands == nil)
+
+      Button("文章版本历史") {
+        writingDraftCommands?.openVersionHistory()
+      }
+      .disabled(!canUseProtectedWorkbench || writingDraftCommands == nil || commandDraftID == nil)
+
+      Button("文章后退") {
+        navigateDraftHistoryBackward()
+      }
+      .keyboardShortcut("[", modifiers: [.command])
+      .disabled(!canUseProtectedWorkbench || !store.canNavigateBackwardInDraftHistory)
+
+      Button("文章前进") {
+        navigateDraftHistoryForward()
+      }
+      .keyboardShortcut("]", modifiers: [.command])
+      .disabled(!canUseProtectedWorkbench || !store.canNavigateForwardInDraftHistory)
+
+      if knowledgeLibraryCommands != nil || writingDraftCommands != nil {
+        Button(knowledgeLibraryCommands == nil ? "上一个草稿" : "上一条资料") {
+          if let knowledgeLibraryCommands {
+            knowledgeLibraryCommands.selectPreviousDocument()
+          } else {
+            writingDraftCommands?.selectPreviousDraft()
+          }
         }
-        .keyboardShortcut(.upArrow)
+        .keyboardShortcut(.upArrow, modifiers: [.command, .option])
         .disabled(!canUseProtectedWorkbench)
 
-        Button("下一个草稿") {
-          writingDraftCommands.selectNextDraft()
+        Button(knowledgeLibraryCommands == nil ? "下一个草稿" : "下一条资料") {
+          if let knowledgeLibraryCommands {
+            knowledgeLibraryCommands.selectNextDocument()
+          } else {
+            writingDraftCommands?.selectNextDraft()
+          }
         }
-        .keyboardShortcut(.downArrow)
+        .keyboardShortcut(.downArrow, modifiers: [.command, .option])
         .disabled(!canUseProtectedWorkbench)
       }
 
       Button("查找下一个") {
-        markdownEditorCommands?.findNext()
+        if let repositorySourceEditorCommands {
+          repositorySourceEditorCommands.findNext()
+        } else {
+          markdownEditorCommands?.findNext()
+        }
       }
       .keyboardShortcut("g")
-      .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canUseFindReplace != true)
+      .disabled(
+        !canUseProtectedWorkbench
+          || (repositorySourceEditorCommands != nil
+            && repositorySourceEditorCommands?.hasDocument != true)
+          || (repositorySourceEditorCommands == nil
+            && markdownEditorCommands?.canUseFindReplace != true)
+      )
+
+      Button("查找上一个") {
+        if let repositorySourceEditorCommands {
+          repositorySourceEditorCommands.findPrevious()
+        } else {
+          markdownEditorCommands?.findPrevious()
+        }
+      }
+      .keyboardShortcut("g", modifiers: [.command, .shift])
+      .disabled(
+        !canUseProtectedWorkbench
+          || (repositorySourceEditorCommands != nil
+            && repositorySourceEditorCommands?.hasDocument != true)
+          || (repositorySourceEditorCommands == nil
+            && markdownEditorCommands?.canUseFindReplace != true)
+      )
+
+      if let repositorySourceEditorCommands {
+        Button("重新载入 HTML 源文件") {
+          repositorySourceEditorCommands.reload()
+        }
+        .disabled(!canUseProtectedWorkbench || !repositorySourceEditorCommands.hasDocument)
+      }
 
       Button("替换当前匹配") {
         markdownEditorCommands?.replaceCurrentOrNext()
       }
-      .keyboardShortcut("e", modifiers: [.command])
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canUseFindReplace != true)
 
       Button("全部替换") {
@@ -128,48 +234,82 @@ struct PublishingConsoleCommands: Commands {
       .keyboardShortcut("/", modifiers: [.command, .option])
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
 
-      Button("查看会话历史") {
-        markdownEditorCommands?.showRevisionHistory()
+      Button("Markdown 加粗") {
+        markdownEditorCommands?.applyFormatting(.bold)
       }
-      .keyboardShortcut("z", modifiers: [.option, .command])
+      .keyboardShortcut("b", modifiers: [.command])
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
 
-      Button("撤销会话快照") {
-        markdownEditorCommands?.undoRevision()
+      Button("Markdown 斜体") {
+        markdownEditorCommands?.applyFormatting(.italic)
       }
-      .keyboardShortcut("z", modifiers: [.command, .option, .shift])
-      .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canUndoRevision != true)
+      .keyboardShortcut("i", modifiers: [.command])
+      .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
 
-      Button("恢复会话快照") {
-        markdownEditorCommands?.redoRevision()
+      Button("插入 Markdown 链接") {
+        markdownEditorCommands?.applyFormatting(.link)
       }
-      .keyboardShortcut("z", modifiers: [.command, .option, .shift, .control])
-      .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canRedoRevision != true)
+      .keyboardShortcut("k", modifiers: [.command])
+      .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
 
-      Button("插入图片到当前文章") {
-        markdownEditorCommands?.insertImages()
+      Menu("Markdown 标题") {
+        Button("一级标题") {
+          markdownEditorCommands?.applyFormatting(.heading(level: 1))
+        }
+        .keyboardShortcut("1", modifiers: [.command, .option])
+
+        Button("二级标题") {
+          markdownEditorCommands?.applyFormatting(.heading(level: 2))
+        }
+        .keyboardShortcut("2", modifiers: [.command, .option])
+
+        Button("三级标题") {
+          markdownEditorCommands?.applyFormatting(.heading(level: 3))
+        }
+        .keyboardShortcut("3", modifiers: [.command, .option])
+      }
+      .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
+
+      Button(knowledgeLibraryCommands == nil ? "插入图片到当前文章" : "导入资料…") {
+        if let knowledgeLibraryCommands {
+          knowledgeLibraryCommands.importSources()
+        } else {
+          markdownEditorCommands?.insertImages()
+        }
       }
       .keyboardShortcut("i", modifiers: [.command, .shift])
+      .disabled(
+        !canUseProtectedWorkbench
+          || (knowledgeLibraryCommands == nil && markdownEditorCommands == nil)
+      )
+
+      Button("模板与片段") {
+        markdownEditorCommands?.showSnippets()
+      }
+      .keyboardShortcut("s", modifiers: [.command, .option])
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
 
-      Menu("AI 对话") {
-        Button("打开 AI 对话") {
-          openAIChatWorkspaceForCommandDraft()
-        }
-        .disabled(!canUseProtectedWorkbench || commandDraftID == nil)
+      if DistributionFeaturePolicy.allowsExternalAIProviders {
+        Menu("AI 对话") {
+          Button(isAIChatPanelVisible ? "关闭 AI 对话" : "打开 AI 对话") {
+            toggleAIChatWorkspaceForCommandDraft()
+          }
+          .keyboardShortcut("a", modifiers: [.command, .option])
+          .disabled(!canUseProtectedWorkbench || commandDraftID == nil)
 
-        Divider()
+          Divider()
 
-        Button("改写选中文本") {
-          markdownEditorCommands?.rewriteSelection()
-        }
-        .keyboardShortcut("r", modifiers: [.command, .option])
-        .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canRewriteSelection != true)
+          Button("改写选中文本") {
+            markdownEditorCommands?.rewriteSelection()
+          }
+          .keyboardShortcut("r", modifiers: [.command, .option])
+          .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canRewriteSelection != true)
 
-        Button("复制上下文 Prompt") {
-          markdownEditorCommands?.copyAIPrompt()
+          Button("复制上下文 Prompt") {
+            markdownEditorCommands?.copyAIPrompt()
+          }
+          .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
         }
-        .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
       }
 
       Divider()
@@ -180,99 +320,71 @@ struct PublishingConsoleCommands: Commands {
       .keyboardShortcut("r", modifiers: [.command, .shift])
       .disabled(!canUseProtectedWorkbench)
 
-      Button("打开本地预览") {
+      Menu(workspaceNavigationLocalizedKey("workspace.sync")) {
+        Button("打开本地预览") {
         focusCommandDraft(section: .sync)
         store.startLocalSitePreview()
         if let url = store.localSitePreviewPlan?.previewURL {
           ExternalURLOpener.open(url)
         }
-      }
-      .keyboardShortcut("p", modifiers: [.command, .shift])
-      .disabled(!canUseProtectedWorkbench)
+        }
+        .keyboardShortcut("p", modifiers: [.command, .shift])
+        .disabled(!canUseProtectedWorkbench)
 
-      Button("停止本地预览") {
-        store.stopLocalSitePreview()
-      }
-      .disabled(!canUseProtectedWorkbench || !store.localSitePreviewRuntimeStatus.isRunning)
+        Button("停止本地预览") {
+          store.stopLocalSitePreview()
+        }
+        .disabled(!canUseProtectedWorkbench || !store.localSitePreviewRuntimeStatus.isRunning)
 
-      Button("选择本地仓库...") {
-        focusCommandDraft(section: .sync)
-        if let url = RepositorySelectionPanel.chooseDirectory() {
-          Task {
-            await store.repository.rememberRootAsync(url)
+        Divider()
+
+        Button("选择本地仓库...") {
+          focusCommandDraft(section: .sync)
+          if let url = RepositorySelectionPanel.chooseDirectory() {
+            Task {
+              await store.repository.rememberRootAsync(url)
+            }
           }
         }
-      }
-      .keyboardShortcut("o", modifiers: [.command, .shift])
-      .disabled(!canUseProtectedWorkbench)
+        .keyboardShortcut("o", modifiers: [.command, .shift])
+        .disabled(!canUseProtectedWorkbench)
 
-      Button("从本地仓库导入文章") {
-        focusCommandDraft(section: .sync)
-        store.importDraftsFromLocalRepository()
-      }
-      .disabled(!canUseProtectedWorkbench)
-
-      Button("复制同步建议命令") {
-        focusCommandDraft(section: .sync)
-        copyRepositorySyncCommands()
-      }
-      .disabled(!canUseProtectedWorkbench)
-
-      Button("刷新待发布队列") {
-        focusCommandDraft(section: .sync)
-        store.refreshBatchPublishPlan()
-        store.selectSection(.sync)
-      }
-      .disabled(!canUseProtectedWorkbench)
-
-      Button("批量写入可发布文章") {
-        focusCommandDraft(section: .sync)
-        store.writeBatchReadyDraftsToLocalRepository()
-        store.selectSection(.sync)
-      }
-      .keyboardShortcut("b", modifiers: [.command, .shift])
-      .disabled(!canUseProtectedWorkbench)
-
-      Button("打开批量 PR/MR 创建页") {
-        focusCommandDraft(section: .sync)
-        if let url = store.batchRemoteReviewDraft?.webURL {
-          ExternalURLOpener.open(url)
-        } else {
-          store.setPublishActionMessage("填写仓库 owner/name 后才能打开批量 PR/MR 创建页。")
+        Button("从本地仓库导入文章") {
+          focusCommandDraft(section: .sync)
+          Task {
+            await store.importDraftsFromLocalRepositoryAsync()
+          }
         }
-      }
-      .disabled(!canUseProtectedWorkbench)
+        .disabled(!canUseProtectedWorkbench)
 
-      Button("打开 PR/MR 创建页") {
-        focusCommandDraft(section: .sync)
-        if let url = store.remoteReviewDraft?.webURL {
-          ExternalURLOpener.open(url)
+        Button("复制同步建议命令") {
+          focusCommandDraft(section: .sync)
+          copyRepositorySyncCommands()
         }
-      }
-      .keyboardShortcut("p", modifiers: [.command, .option])
-      .disabled(!canUseProtectedWorkbench || commandDraftID == nil)
+        .disabled(!canUseProtectedWorkbench)
 
-      Button("按 Profile 策略发布") {
-        openPublishDrawerForCommandDraft(message: "请在发布流程中确认检查结果、Diff 和写入方式后，再按 Profile 策略发布。")
       }
-      .disabled(!canUseProtectedWorkbench || commandDraftID == nil)
 
-      Button("直接提交到当前分支") {
-        openPublishDrawerForCommandDraft(message: "请在发布流程中确认检查结果和 Diff 后，再选择直接提交。")
-      }
-      .disabled(!canUseProtectedWorkbench || commandDraftID == nil)
-
-      Button("创建发布分支并提交") {
-        openPublishDrawerForCommandDraft(message: "请在发布流程中确认检查结果、Diff 和 PR/MR 描述后，再创建发布分支。")
+      Button("发布当前文章…") {
+        openPublishDrawerForCommandDraft(message: "请选择保存到本地或发布上线；需要时再展开高级选项。")
       }
       .disabled(!canUseProtectedWorkbench || commandDraftID == nil)
 
       Divider()
 
-      Button(store.isInspectorPresented ? "隐藏 Inspector" : "显示 Inspector") {
-        store.setInspectorPresented(!store.isInspectorPresented)
+      if supportsInspector {
+        Button(store.isInspectorPresented ? "隐藏 Inspector" : "显示 Inspector") {
+          store.setInspectorPresented(!store.isInspectorPresented)
+        }
+        .keyboardShortcut("i", modifiers: [.command, .option])
+        .disabled(!canUseProtectedWorkbench)
       }
-      .keyboardShortcut("i", modifiers: [.command, .option])
+    }
+
+    CommandGroup(after: .help) {
+      Button("添加软件使用指南") {
+        installSoftwareGuidesFromHelp()
+      }
       .disabled(!canUseProtectedWorkbench)
     }
   }
@@ -281,15 +393,56 @@ struct PublishingConsoleCommands: Commands {
     store.canUseProtectedWorkbench
   }
 
+  private var searchCommandTitle: String {
+    if repositorySourceEditorCommands != nil { return "查找 HTML 源码" }
+    if knowledgeLibraryCommands != nil { return "搜索资料库" }
+    return markdownEditorCommands == nil ? "搜索草稿" : "查找/替换当前文章"
+  }
+
   private var commandDraftID: UUID? {
-    markdownEditorCommands?.draftID ?? store.selectedDraftID
+    guard repositorySourceEditorCommands == nil else { return nil }
+    return markdownEditorCommands?.draftID ?? store.selectedDraftID
+  }
+
+  private var supportsInspector: Bool {
+    WorkspaceInspectorPresentation.supportsInspector(for: store.selectedSection)
   }
 
   private func focusCommandDraft(section: WorkspaceSection? = nil) {
     guard let draftID = commandDraftID else {
       return
     }
-    store.focusDraft(draftID, section: section)
+    _ = store.focusDraft(draftID, section: section)
+  }
+
+  private func installSoftwareGuidesFromHelp() {
+    let addedCount = store.installSoftwareGuides()
+    let message = addedCount == 0
+      ? String(localized: "使用指南已经全部存在。")
+      : String(localized: "已添加缺少的使用指南，工作台正在保存。")
+    EditorAccessibilityAnnouncementCenter.announce(message, priority: .high)
+
+    let alert = NSAlert()
+    alert.alertStyle = .informational
+    alert.messageText = message
+    alert.addButton(withTitle: String(localized: "关闭"))
+    alert.runModal()
+  }
+
+  private func navigateDraftHistoryBackward() {
+    guard store.navigateBackwardInDraftHistory(), let draft = store.selectedDraft else { return }
+    EditorAccessibilityAnnouncementCenter.announce(
+      String(localized: "已返回文章：\(draft.title)"),
+      priority: .high
+    )
+  }
+
+  private func navigateDraftHistoryForward() {
+    guard store.navigateForwardInDraftHistory(), let draft = store.selectedDraft else { return }
+    EditorAccessibilityAnnouncementCenter.announce(
+      String(localized: "已前进到文章：\(draft.title)"),
+      priority: .high
+    )
   }
 
   private func runPreflightForCommandDraft() {
@@ -309,6 +462,18 @@ struct PublishingConsoleCommands: Commands {
     store.ai.openChatWorkspace(for: draftID)
   }
 
+  private var isAIChatPanelVisible: Bool {
+    store.isAIPublishingAssistantPresented && store.isInspectorPresented
+  }
+
+  private func toggleAIChatWorkspaceForCommandDraft() {
+    if isAIChatPanelVisible {
+      store.ai.closeAssistantPanel()
+    } else {
+      openAIChatWorkspaceForCommandDraft()
+    }
+  }
+
   private func openPublishDrawerForCommandDraft(message: String) {
     guard commandDraftID != nil else {
       return
@@ -324,11 +489,11 @@ struct PublishingConsoleCommands: Commands {
 
   private func copyRepositorySyncCommands() {
     guard let plan = store.repositorySyncCommandPlan else {
-      store.setPublishActionMessage("选择本地仓库后才能生成同步建议命令。")
+      store.setPublishActionMessage(String(localized: "选择本地仓库后才能生成同步建议命令。"))
       return
     }
     copyToPasteboard(plan.commandText)
-    store.setPublishActionMessage("已复制同步建议命令。")
+    store.setPublishActionMessage(String(localized: "已复制同步建议命令。"))
   }
 
   private func copyToPasteboard(_ value: String) {

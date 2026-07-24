@@ -1,0 +1,95 @@
+name: Release Tooling CI
+
+on:
+  push:
+    paths:
+      - "script/**"
+      - ".github/workflows/**"
+      - "package.json"
+      - "package-lock.json"
+      - "Package.swift"
+      - "Packaging/**"
+      - "StoreKit/**"
+      - "BrowserExtension/**"
+      - "Sources/BrowserExtensionProtocolSupport/**"
+      - "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift"
+      - "Sources/PersonalSitePublisherMac/Views/BrowserExtensionConnectionView.swift"
+      - "Sources/PublishingWorkbenchCore/Stores/KnowledgeStore.swift"
+      - "Tests/PublishingWorkbenchCoreTests/BrowserExtensionProtocolTests.swift"
+      - "Tests/PublishingWorkbenchCoreTests/KnowledgeBrowserImportOperationLedgerTests.swift"
+      - "Tests/PublishingWorkbenchCoreTests/KnowledgeLibraryServiceTests.swift"
+      - "Sources/PersonalSitePublisherMac/AppStore.entitlements"
+      - "APP_STORE_CHECKLIST.md"
+      - "docs/release-evidence/**"
+      - "docs/app-store-screenshots/**"
+  pull_request:
+    paths:
+      - "script/**"
+      - ".github/workflows/**"
+      - "package.json"
+      - "package-lock.json"
+      - "Package.swift"
+      - "Packaging/**"
+      - "StoreKit/**"
+      - "BrowserExtension/**"
+      - "Sources/BrowserExtensionProtocolSupport/**"
+      - "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift"
+      - "Sources/PersonalSitePublisherMac/Views/BrowserExtensionConnectionView.swift"
+      - "Sources/PublishingWorkbenchCore/Stores/KnowledgeStore.swift"
+      - "Tests/PublishingWorkbenchCoreTests/BrowserExtensionProtocolTests.swift"
+      - "Tests/PublishingWorkbenchCoreTests/KnowledgeBrowserImportOperationLedgerTests.swift"
+      - "Tests/PublishingWorkbenchCoreTests/KnowledgeLibraryServiceTests.swift"
+      - "Sources/PersonalSitePublisherMac/AppStore.entitlements"
+      - "APP_STORE_CHECKLIST.md"
+      - "docs/release-evidence/**"
+      - "docs/app-store-screenshots/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-tooling-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tooling-self-tests:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Configure deterministic test language
+        run: |
+          defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"
+          defaults write NSGlobalDomain AppleLocale "zh_CN"
+      - name: Install pinned browser extension tooling
+        run: |
+          npm ci
+          npm install --no-save --no-package-lock web-ext@10.5.0
+          npx --no-install playwright-core install chromium
+      - name: Run browser extension release gate
+        run: ./script/check_release_gate.sh --check browser-extension-release --result-json .build/browser-extension-gate-result.json
+      - name: Upload real-browser extension evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-extension-e2e
+          path: output/playwright/browser-extension-e2e/
+          if-no-files-found: warn
+      - name: Build Chrome and Edge store submission ZIPs
+        run: python3 script/chromium_extension_release.py package --output-dir .build/chromium-store
+      - name: Run release-tooling self-tests
+        run: ./script/check_release_gate.sh --tooling --result-json .build/tooling-gate-result.json
+      - name: Upload Chrome and Edge store submission ZIPs
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-store-submission-zips
+          path: .build/chromium-store/*.zip
+          if-no-files-found: error
+      - name: Upload unified result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-tooling-result
+          path: .build/*gate-result.json

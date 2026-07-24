@@ -5,127 +5,163 @@ import SwiftUI
 @main
 struct PersonalSitePublisherMacApp: App {
   @NSApplicationDelegateAdaptor(PersonalSitePublisherMacAppDelegate.self) private var appDelegate
-  @StateObject private var store: WorkbenchStore
+  @StateObject private var launchCoordinator: WorkbenchLaunchCoordinator
   @StateObject private var storeKitProEntitlementCoordinator = StoreKitProEntitlementCoordinator()
 
   init() {
-    WindowRestorationPolicy.disableAutomaticRestoration()
-    let workbenchStore = WorkbenchStore(
-      persistence: ScreenshotDemoDataService.preparePersistenceIfEnabled()
+    // Earlier builds disabled AppKit restoration globally. Remove those sticky
+    // overrides now that the main workspace is owned by a native SwiftUI scene.
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    // Deterministic screenshot and XCUI launches pass temporary restoration
+    // overrides on the command line. Keep those volatile values for the
+    // automated run so AppKit cannot reopen a stale workspace window while the
+    // requested demo surface is being installed.
+    if ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"] != "1" {
+      UserDefaults.standard.removeObject(forKey: "ApplePersistenceIgnoreState")
+      UserDefaults.standard.removeObject(forKey: "NSQuitAlwaysKeepsWindows")
+    }
+#else
+    UserDefaults.standard.removeObject(forKey: "ApplePersistenceIgnoreState")
+    UserDefaults.standard.removeObject(forKey: "NSQuitAlwaysKeepsWindows")
+#endif
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    let knowledgeLibraryService = ScreenshotDemoDataService.prepareKnowledgeLibraryServiceIfEnabled()
+#else
+    let knowledgeLibraryService = KnowledgeLibraryService()
+#endif
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    let persistence = ScreenshotDemoDataService.preparePersistenceIfEnabled()
+#else
+    let persistence = WorkbenchPersistence()
+#endif
+    _launchCoordinator = StateObject(
+      wrappedValue: WorkbenchLaunchCoordinator(
+        persistence: persistence,
+        knowledgeLibraryService: knowledgeLibraryService
+      )
     )
-    _store = StateObject(
-      wrappedValue: workbenchStore
-    )
-    appDelegate.workbenchStore = workbenchStore
   }
 
   var body: some Scene {
-    Window("个人网站发布控制台", id: "main-workbench") {
-      ContentView(store: store)
-        .frame(minWidth: 980, minHeight: 720)
-        .task {
-          storeKitProEntitlementCoordinator.start(store: store)
+    WindowGroup("RepoPress", id: "main-workbench") {
+      WorkbenchLaunchRootView(
+        coordinator: launchCoordinator,
+        storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator,
+        onReady: { store, browserBridge in
+          appDelegate.workbenchStore = store
+          appDelegate.browserBridge = browserBridge
         }
+      )
+        .frame(
+          minWidth: WorkbenchLayoutMode.minimumWindowWidth,
+          minHeight: 720
+        )
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+        .background(ScreenshotCaptureWindowBridge())
+#endif
+        .tint(WorkbenchTheme.navigationSelection)
     }
+    .defaultSize(
+      width: WorkbenchLayoutMode.defaultWindowWidth,
+      height: WorkbenchLayoutMode.defaultWindowHeight
+    )
+    .windowToolbarStyle(.unified(showsTitle: false))
     .commands {
-      PublishingConsoleCommands(store: store)
-    }
-
-    WindowGroup("文章编辑", for: UUID.self) { $draftID in
-      DraftEditorWindowView(store: store, draftID: draftID)
-        .frame(minWidth: 980, minHeight: 680)
+      CommandGroup(replacing: .newItem) {}
+      if let store = launchCoordinator.store {
+        PublishingConsoleCommands(store: store)
+      }
     }
 
     Settings {
-      ProtectedSettingsView(
-        store: store,
-        storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator
-      )
+      Group {
+        if let store = launchCoordinator.store {
+          ProtectedSettingsView(
+            store: store,
+            browserBridge: launchCoordinator.browserBridge,
+            storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator
+          )
+        } else {
+          ProgressView()
+            .frame(width: 420, height: 300)
+        }
+      }
+        .tint(WorkbenchTheme.navigationSelection)
     }
   }
 }
 
+@MainActor
 final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate {
-  weak var workbenchStore: WorkbenchStore?
-  private var windowVisibilityObserver: NSObjectProtocol?
-
-  func applicationWillFinishLaunching(_ notification: Notification) {
-    WindowRestorationPolicy.disableAutomaticRestoration()
-  }
+  var workbenchStore: WorkbenchStore?
+  var browserBridge: KnowledgeBrowserBridge?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
-    WindowRestorationPolicy.disableAutomaticRestoration()
-    disableRestorationForVisibleWindows()
-    windowVisibilityObserver = NotificationCenter.default.addObserver(
-      forName: NSWindow.didBecomeKeyNotification,
-      object: nil,
-      queue: .main
-    ) { notification in
-      guard let window = notification.object as? NSWindow else {
-        return
-      }
-      window.isRestorable = false
-    }
-
     NSApp.setActivationPolicy(.regular)
-    DispatchQueue.main.async {
-      self.disableRestorationForVisibleWindows()
-      NSApp.activate(ignoringOtherApps: true)
-    }
-  }
-
-  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-    return true
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    if RepositoryHTMLSourceSessionRegistry.shared.hasUnsavedChanges {
+      let alert = NSAlert()
+      alert.messageText = String(localized: "HTML 源文件尚未保存")
+      alert.informativeText = String(localized: "保存后退出可保留源码更改；也可以返回编辑器继续处理。")
+      alert.alertStyle = .warning
+      alert.addButton(withTitle: String(localized: "保存并退出"))
+      alert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
+      alert.addButton(withTitle: String(localized: "不保存并退出"))
+      switch alert.runModal() {
+      case .alertFirstButtonReturn:
+        guard RepositoryHTMLSourceSessionRegistry.shared.saveBeforeTermination() else {
+          let failureAlert = NSAlert()
+          failureAlert.messageText = String(localized: "未能保存 HTML 源文件")
+          failureAlert.informativeText = RepositoryHTMLSourceSessionRegistry.shared.lastErrorMessage
+            ?? String(localized: "请返回编辑器检查文件权限或外部修改冲突。")
+          failureAlert.alertStyle = .warning
+          failureAlert.addButton(withTitle: String(localized: "继续编辑"))
+          failureAlert.runModal()
+          return .terminateCancel
+        }
+      case .alertSecondButtonReturn:
+        return .terminateCancel
+      case .alertThirdButtonReturn:
+        break
+      default:
+        return .terminateCancel
+      }
+    }
+
     guard let workbenchStore, !workbenchStore.flushPendingChanges() else {
       return .terminateNow
     }
 
     let alert = NSAlert()
-    alert.messageText = "未能保存工作台修改"
-    alert.informativeText = workbenchStore.lastSaveError ?? "请修复保存位置或权限后重试。应用将保持打开，避免丢失未保存修改。"
+    alert.messageText = String(localized: "未能保存工作台修改")
+    alert.informativeText = workbenchStore.lastSaveError
+      ?? String(localized: "请修复保存位置或权限后重试。应用将保持打开，避免丢失未保存修改。")
     alert.alertStyle = .warning
-    alert.addButton(withTitle: "继续编辑")
+    alert.addButton(withTitle: String(localized: "继续编辑"))
     alert.runModal()
     return .terminateCancel
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    browserBridge?.stop()
+    workbenchStore?.stopLocalSitePreviewImmediately()
     _ = workbenchStore?.flushPendingChanges()
   }
 
-  deinit {
-    if let windowVisibilityObserver {
-      NotificationCenter.default.removeObserver(windowVisibilityObserver)
-    }
-  }
-
-  private func disableRestorationForVisibleWindows() {
-    for window in NSApp.windows {
-      window.isRestorable = false
-    }
-  }
-}
-
-private enum WindowRestorationPolicy {
-  static func disableAutomaticRestoration() {
-    let defaults = UserDefaults.standard
-    defaults.set(true, forKey: "ApplePersistenceIgnoreState")
-    defaults.set(false, forKey: "NSQuitAlwaysKeepsWindows")
-  }
 }
 
 private struct ProtectedSettingsView: View {
   @ObservedObject var store: WorkbenchStore
+  let browserBridge: KnowledgeBrowserBridge?
   @ObservedObject var storeKitProEntitlementCoordinator: StoreKitProEntitlementCoordinator
-  @Environment(\.scenePhase) private var scenePhase
 
   var body: some View {
     ZStack {
       SettingsView(
         store: store,
+        browserBridge: browserBridge,
         storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator
       )
       .disabled(!store.canUseProtectedWorkbench)
@@ -135,10 +171,8 @@ private struct ProtectedSettingsView: View {
         PrivacyLockOverlay(store: store)
       }
     }
-    .onChange(of: scenePhase) { _, newValue in
-      if newValue != .active {
-        store.lockPrivacyIfNeededForInactiveScene()
-      }
-    }
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    .background(ScreenshotCaptureWindowBridge(role: .settings))
+#endif
   }
 }

@@ -24,9 +24,6 @@ for target in app-store-archive remote-publish storekit remote-recovery; do
   grep -q -- "- $target" <<<"$current_output" \
     || fail "current summary omitted $target"
 done
-if grep -q -- "- app-store-screenshots" <<<"$current_output"; then
-  fail "current summary included screenshots even though screenshot evidence is complete"
-fi
 grep -q "prepare_external_verification_envs.sh --output-dir /private/tmp/personal-site-publisher-release-envs --target remaining" <<<"$current_output" \
   || fail "current summary omitted target-aware prepare command"
 grep -q "check_external_verification_envs.sh --env-dir /private/tmp/personal-site-publisher-release-envs --mode filled --target remaining --report-file /private/tmp/personal-site-publisher-release-envs/ENV_STATUS.md" <<<"$current_output" \
@@ -67,7 +64,8 @@ perl -0pi -e 's/- \[ \] `github-direct-publish`/- [x] `github-direct-publish`/g;
               s/- \[ \] `gitlab-direct-publish`/- [x] `gitlab-direct-publish`/g;
               s/- \[ \] `gitlab-review-publish`/- [x] `gitlab-review-publish`/g;
               s/- \[ \] `remote-conflict-deployment-rollback`/- [x] `remote-conflict-deployment-rollback`/g;
-              s/- \[ \] `storekit-sandbox`/- [x] `storekit-sandbox`/g;' "$external_file"
+              s/- \[ \] `storekit-sandbox`/- [x] `storekit-sandbox`/g;
+              s/- \[ \] `app-store-screenshots`/- [x] `app-store-screenshots`/g;' "$external_file"
 cat >"$archive_file" <<'EOF_ARCHIVE'
 # App Store Archive Validation Evidence
 
@@ -84,7 +82,7 @@ grep -q "remaining external verification: 0 target(s)" <<<"$complete_output" \
   || fail "complete summary did not report 0 remaining targets"
 grep -q "all external verification evidence is complete" <<<"$complete_output" \
   || fail "complete summary omitted complete message"
-grep -q "./script/check_release_gate.sh --strict" <<<"$complete_output" \
-  || fail "complete summary omitted final strict gate"
+grep -q "./script/check_release_gate.sh --profile app-store" <<<"$complete_output" \
+  || fail "complete summary omitted final App Store gate"
 
 echo "remaining external verification summary test: passed"

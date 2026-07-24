@@ -25,17 +25,17 @@ make_fixture() {
   cat >"$TMP_DIR/docs/privacy-support-copy.md" <<'DOC'
 # Privacy And Support Copy Review
 
-The privacy lock covers launch protection and background auto lock before showing workbench content.
+Manual quick hide covers workbench content until the user returns.
 Private-content masking hides private article titles from list and release surfaces.
 Do not include local paths, access tokens, authorization headers, or private article body text in support requests.
-Use redacted screenshots for support. Online publishing, AI requests, deployment checks, and StoreKit may contact external services.
+Use redacted screenshots for support. Online publishing, repository API requests, deployment checks, and StoreKit may contact external services.
+External AI assistance requires explicit consent. The API key purchased and managed by the user is sent directly to the provider; the developer does not proxy or receive it.
+Browser extensions use authenticated browser capture through 127.0.0.1:17843. The app does not install a Native Messaging helper.
 DOC
 
   cat >"$TMP_DIR/Sources/PublishingWorkbenchCore/Models/PrivacyProtectionModels.swift" <<'SWIFT'
-let requiresUnlockOnLaunch = true
-let locksWhenInactive = true
 let masksPrivateContent = true
-let checklist = "设置窗口锁定时禁用设置项"
+let checklist = "工作台隐藏时禁用设置项"
 SWIFT
 
   cat >"$TMP_DIR/Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" <<'SWIFT'
@@ -46,13 +46,8 @@ struct ProtectedSettingsView {
 SWIFT
 
   cat >"$TMP_DIR/Sources/PersonalSitePublisherMac/Views/ContentView.swift" <<'SWIFT'
-func lockPrivacyIfNeededForInactiveScene() {}
 let overlay = "PrivacyLockOverlay(store: store)"
-SWIFT
-
-  cat >"$TMP_DIR/Sources/PersonalSitePublisherMac/Views/DraftEditorWindowView.swift" <<'SWIFT'
-func lockPrivacyIfNeededForInactiveScene() {}
-let overlay = "PrivacyLockOverlay(store: store)"
+let command = "快速隐藏"
 SWIFT
 
   cat >"$TMP_DIR/Sources/PersonalSitePublisherMac/Views/SharedViews.swift" <<'SWIFT'
@@ -83,6 +78,12 @@ make_fixture
 perl -0pi -e 's/Private-content masking//g' "$TMP_DIR/docs/privacy-support-copy.md"
 if PRIVACY_SUPPORT_ROOT="$TMP_DIR" bash "$ROOT_DIR/script/check_privacy_support_copy.sh" >/dev/null 2>&1; then
   fail "gate accepted copy missing private-content masking coverage"
+fi
+
+make_fixture
+perl -0pi -e 's/explicit consent//g' "$TMP_DIR/docs/privacy-support-copy.md"
+if PRIVACY_SUPPORT_ROOT="$TMP_DIR" bash "$ROOT_DIR/script/check_privacy_support_copy.sh" >/dev/null 2>&1; then
+  fail "gate accepted AI support copy without explicit consent"
 fi
 
 make_fixture

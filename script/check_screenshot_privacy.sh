@@ -32,8 +32,30 @@ for file in "${image_files[@]}"; do
   fi
 done
 
+OCR_HELPER="$ROOT_DIR/script/screenshot_privacy_ocr.swift"
+[[ -f "$OCR_HELPER" ]] || fail "Vision OCR helper is missing"
+if [[ -n "${SCREENSHOT_PRIVACY_OCR_EXECUTABLE:-}" ]]; then
+  ocr_command=("$SCREENSHOT_PRIVACY_OCR_EXECUTABLE")
+else
+  ocr_module_cache="${SCREENSHOT_PRIVACY_OCR_MODULE_CACHE:-/private/tmp/personal-site-publisher-ocr-module-cache}"
+  mkdir -p "$ocr_module_cache"
+  ocr_command=(/usr/bin/xcrun swift -module-cache-path "$ocr_module_cache" "$OCR_HELPER")
+fi
+
+set +e
+ocr_output="$("${ocr_command[@]}" "${image_files[@]}" 2>&1)"
+ocr_status=$?
+set -e
+if [[ "$ocr_status" -eq 2 ]]; then
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && blocked+=("$line")
+  done <<<"$ocr_output"
+elif [[ "$ocr_status" -ne 0 ]]; then
+  fail "Vision OCR could not audit screenshots: $ocr_output"
+fi
+
 if [[ "${#blocked[@]}" -gt 0 ]]; then
   fail "possible private content found: ${blocked[*]}"
 fi
 
-echo "screenshot privacy gate: audited ${#image_files[@]} screenshot image(s)"
+echo "screenshot privacy gate: audited ${#image_files[@]} screenshot image(s) with embedded-text scan and Vision OCR"

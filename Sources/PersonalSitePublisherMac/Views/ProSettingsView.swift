@@ -4,10 +4,10 @@ import SwiftUI
 struct ProSettingsState {
   let upgrade: ProUpgradePresentation
   let summary: ProStatusSummary
-  let sandboxSummary: ProSandboxVerificationSummary
   let latestBlockNotice: ProFeatureBlockNotice?
   let isUnlocked: Bool
-  let productID: String?
+  let productDisplayPrice: String?
+  let purchaseTypeDisplayName: String?
   let aiUsed: Int
   let aiRemaining: Int
   let publishingUsed: Int
@@ -16,19 +16,12 @@ struct ProSettingsState {
   let batchRemaining: Int
   let isPurchaseRestoreBusy: Bool
   let monetizationMessage: String?
-  let recentAccessEvents: [MonetizationAccessEvent]
-  let requirements: [ProUpgradeRequirement]
 }
 
 struct ProSettingsActions {
   let purchase: () async -> Void
   let restore: () async -> Void
   let copyStatusSummary: () -> Void
-  let copyAuditChecklist: () -> Void
-  let copyEvidencePackage: () -> Void
-  let copySandboxSummary: () -> Void
-  let copySandboxEvidence: () -> Void
-  let copySandboxRecordCommand: () -> Void
 }
 
 struct ProSettingsView: View {
@@ -47,19 +40,9 @@ struct ProSettingsView: View {
 
       ProSubscriptionSection(
         isUnlocked: state.isUnlocked,
-        productID: state.productID,
+        productDisplayPrice: state.productDisplayPrice,
+        purchaseTypeDisplayName: state.purchaseTypeDisplayName,
         upgradeMessage: state.upgrade.message
-      )
-
-      ProBenefitsSection()
-
-      ProQuotaSection(
-        aiUsed: state.aiUsed,
-        aiRemaining: state.aiRemaining,
-        publishingUsed: state.publishingUsed,
-        publishingRemaining: state.publishingRemaining,
-        batchUsed: state.batchUsed,
-        batchRemaining: state.batchRemaining
       )
 
       ProPurchaseRestoreSection(
@@ -74,26 +57,17 @@ struct ProSettingsView: View {
         message: state.monetizationMessage
       )
 
-      ProDeveloperDiagnosticsSection(
-        sandboxSummary: state.sandboxSummary,
-        recentAccessEvents: state.recentAccessEvents,
-        requirements: state.requirements,
-        onCopyAuditChecklist: {
-          actions.copyAuditChecklist()
-        },
-        onCopyEvidencePackage: {
-          actions.copyEvidencePackage()
-        },
-        onCopySandboxSummary: {
-          actions.copySandboxSummary()
-        },
-        onCopySandboxEvidence: {
-          actions.copySandboxEvidence()
-        },
-        onCopySandboxRecordCommand: {
-          actions.copySandboxRecordCommand()
-        }
+      ProQuotaSection(
+        aiUsed: state.aiUsed,
+        aiRemaining: state.aiRemaining,
+        publishingUsed: state.publishingUsed,
+        publishingRemaining: state.publishingRemaining,
+        batchUsed: state.batchUsed,
+        batchRemaining: state.batchRemaining
       )
+
+      ProBenefitsSection()
+
     }
     .formStyle(.grouped)
     .padding()

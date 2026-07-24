@@ -25,11 +25,12 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertFalse(snapshot.repositoryAutoSyncSettings.isEnabled)
     XCTAssertEqual(snapshot.repositoryAutoSyncSettings.normalizedIntervalMinutes, 15)
     XCTAssertTrue(snapshot.repositoryAutoSyncSettings.fetchBeforeScan)
+    XCTAssertFalse(snapshot.repositoryAutoSyncSettings.autoImportRemoteArticles)
     XCTAssertEqual(snapshot.repositoryAutoSyncState.status, .idle)
     XCTAssertTrue(snapshot.repositoryAutoSyncState.remoteChangedPaths.isEmpty)
   }
 
-  func testLegacySnapshotDecodesWithEmptyAIChatSessions() throws {
+  func testLegacyAIChatSessionFieldIsIgnoredAndNotReencoded() throws {
     let profile = SiteProfile.defaultProfile
     let draft = ArticleDraft(siteProfileID: profile.id, title: "Legacy", slug: "legacy")
     let encoded = try JSONEncoder.workbench.encode(
@@ -37,39 +38,41 @@ final class RepositoryAutoSyncTests: XCTestCase {
         profiles: [profile],
         activeProfileID: profile.id,
         drafts: [draft],
-        releaseRecords: [],
-        aiChatSessionsByDraftID: [
-          draft.id: AIPublishingChatSessionState(
-            messages: [AIPublishingChatMessage(role: .user, content: "旧会话")],
-            contextMode: .general
-          )
-        ]
+        releaseRecords: []
       )
     )
     var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-    object.removeValue(forKey: "aiChatSessionsByDraftID")
+    object["aiChatSessionsByDraftID"] = [draft.id.uuidString: ["messages": []]]
     let json = try JSONSerialization.data(withJSONObject: object)
 
     let snapshot = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: json)
 
-    XCTAssertTrue(snapshot.aiChatSessionsByDraftID.isEmpty)
+    let reencoded = try JSONEncoder.workbench.encode(snapshot)
+    XCTAssertFalse(String(decoding: reencoded, as: UTF8.self).contains("aiChatSessionsByDraftID"))
   }
 
-  func testStorePersistsAutoSyncSettings() throws {
+  func testStorePersistsAutoSyncSettings() async throws {
     let url = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 
     store.updateRepositoryAutoSyncSettings(
-      RepositoryAutoSyncSettings(isEnabled: true, intervalMinutes: 25, fetchBeforeScan: false)
+      RepositoryAutoSyncSettings(
+        isEnabled: true,
+        intervalMinutes: 25,
+        fetchBeforeScan: false,
+        autoImportRemoteArticles: true
+      )
     )
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     XCTAssertTrue(reloaded.repositoryAutoSyncSettings.isEnabled)
     XCTAssertEqual(reloaded.repositoryAutoSyncSettings.normalizedIntervalMinutes, 25)
     XCTAssertFalse(reloaded.repositoryAutoSyncSettings.fetchBeforeScan)
+    XCTAssertTrue(reloaded.repositoryAutoSyncSettings.autoImportRemoteArticles)
   }
 
-  func testStorePersistsAutoSyncRunState() throws {
+  func testStorePersistsAutoSyncRunState() async throws {
     let url = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     let now = Date(timeIntervalSince1970: 1_800_000_222)
@@ -77,17 +80,19 @@ final class RepositoryAutoSyncTests: XCTestCase {
       RepositoryAutoSyncSettings(isEnabled: true, intervalMinutes: 5)
     )
 
-    XCTAssertTrue(store.runRepositoryAutoSync(now: now))
+    let didRun = await store.runRepositoryAutoSync(now: now)
+    XCTAssertTrue(didRun)
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     XCTAssertTrue(reloaded.repositoryAutoSyncSettings.isEnabled)
     XCTAssertEqual(reloaded.repositoryAutoSyncState.status, .waitingForRepository)
     XCTAssertEqual(reloaded.repositoryAutoSyncState.lastRunAt, now)
     XCTAssertEqual(reloaded.repositoryAutoSyncState.nextRunAt, now.addingTimeInterval(5 * 60))
-    XCTAssertEqual(reloaded.repositoryAutoSyncState.message, "自动同步等待本地仓库路径。")
+    XCTAssertEqual(reloaded.repositoryAutoSyncState.message, "自动检查远端等待本地仓库路径。")
   }
 
-  func testAutoSyncTickRunsOnlyWhenDue() throws {
+  func testAutoSyncTickRunsOnlyWhenDue() async throws {
     let persistenceURL = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     store.updateRepositoryAutoSyncSettings(
@@ -95,15 +100,18 @@ final class RepositoryAutoSyncTests: XCTestCase {
     )
     let start = Date(timeIntervalSince1970: 1_800_000_000)
 
-    XCTAssertTrue(store.tickRepositoryAutoSync(now: start))
+    let didRunAtStart = await store.tickRepositoryAutoSync(now: start)
+    XCTAssertTrue(didRunAtStart)
     XCTAssertEqual(store.repositoryAutoSyncState.status, .waitingForRepository)
     XCTAssertEqual(store.repositoryAutoSyncState.lastRunAt, start)
 
-    XCTAssertFalse(store.tickRepositoryAutoSync(now: start.addingTimeInterval(60)))
+    let didRunBeforeDue = await store.tickRepositoryAutoSync(now: start.addingTimeInterval(60))
+    XCTAssertFalse(didRunBeforeDue)
     XCTAssertEqual(store.repositoryAutoSyncState.lastRunAt, start)
 
     let due = start.addingTimeInterval(TimeInterval(RepositoryAutoSyncSettings.minimumIntervalMinutes * 60))
-    XCTAssertTrue(store.tickRepositoryAutoSync(now: due))
+    let didRunWhenDue = await store.tickRepositoryAutoSync(now: due)
+    XCTAssertTrue(didRunWhenDue)
     XCTAssertEqual(store.repositoryAutoSyncState.lastRunAt, due)
   }
 
@@ -112,7 +120,7 @@ final class RepositoryAutoSyncTests: XCTestCase {
     {
       "status": "scanned",
       "remoteChangedFileCount": 2,
-      "message": "自动同步已扫描：发现 2 个远端待拉取变化。"
+      "message": "自动检查远端已扫描：发现 2 个远端待拉取变化。"
     }
     """.data(using: .utf8)!
 
@@ -123,6 +131,10 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertEqual(state.remoteChangedPaths, [])
     XCTAssertEqual(state.importableRemoteArticleCount, 0)
     XCTAssertEqual(state.nonArticleRemoteChangedFileCount, 0)
+    XCTAssertNil(state.lastAutoImportAt)
+    XCTAssertEqual(state.lastAutoImportedArticleCount, 0)
+    XCTAssertEqual(state.lastAutoImportConflictCount, 0)
+    XCTAssertEqual(state.lastAutoImportDeletionCount, 0)
   }
 
   func testAutoSyncStatePersistsRemoteChangedPathQueue() throws {
@@ -138,7 +150,7 @@ final class RepositoryAutoSyncTests: XCTestCase {
       lastFetchAt: Date(timeIntervalSince1970: 1_800_000_123),
       fetchSucceeded: true,
       fetchMessage: "已 fetch origin，upstream origin/main 已刷新。",
-      message: "自动同步已扫描：发现 2 个远端待拉取变化。"
+      message: "自动检查远端已扫描：发现 2 个远端待拉取变化。"
     )
 
     let reloaded = try JSONDecoder.workbench.decode(
@@ -165,10 +177,10 @@ final class RepositoryAutoSyncTests: XCTestCase {
       profile: .defaultProfile
     )
 
-    XCTAssertTrue(markdown.contains("# 远端自动同步审阅"))
+    XCTAssertTrue(markdown.contains("# 远端自动检查审阅"))
     XCTAssertTrue(markdown.contains("- 状态：已关闭"))
     XCTAssertTrue(markdown.contains("- 仓库：未扫描"))
-    XCTAssertTrue(markdown.contains("- 打开自动同步后再生成远端变更队列。"))
+    XCTAssertTrue(markdown.contains("- 启用自动检查远端后再生成远端变更队列；自动导入默认关闭。"))
   }
 
   func testAutoSyncReviewMarkdownBuildsRemoteChangeQueueAndActions() {
@@ -190,7 +202,7 @@ final class RepositoryAutoSyncTests: XCTestCase {
       lastFetchAt: Date(timeIntervalSince1970: 1_800_000_000),
       fetchSucceeded: true,
       fetchMessage: "已 fetch origin，upstream origin/main 已刷新。",
-      message: "自动同步已扫描：发现 3 个远端待拉取变化，其中 1 篇文章可导入。"
+      message: "自动检查远端已扫描：发现 3 个远端待拉取变化，其中 1 篇文章可导入。"
     )
     let report = autoSyncReport(
       branchStatus: RepositoryBranchStatus(
@@ -225,7 +237,109 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertTrue(markdown.contains("- 修改：config.toml"))
   }
 
-  func testAutoSyncFetchesUpstreamBeforeScanningRemoteChanges() throws {
+  func testAutomaticRemoteArticleImportNeverDeletesLocalDraft() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "Keep Me",
+      slug: "keep-me",
+      bodyMarkdown: "Local body.",
+      repositoryPath: "content/posts/keep-me.md"
+    )
+    store.setDrafts([draft])
+
+    let summary = store.autoImportRemoteArticleDrafts(
+      remoteFiles: [
+        RepositoryChangedFile(
+          status: "D",
+          path: "content/posts/keep-me.md",
+          kind: .deleted
+        )
+      ],
+      snapshots: [],
+      locallyChangedPaths: []
+    )
+
+    XCTAssertEqual(summary.importedCount, 0)
+    XCTAssertEqual(summary.deletionPaths, ["content/posts/keep-me.md"])
+    XCTAssertEqual(store.drafts, [draft])
+  }
+
+  func testAutomaticRemoteArticleImportIncludesPrivateDirectory() throws {
+    let persistenceURL = try temporaryPersistenceURL()
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+    )
+    var profile = store.activeProfile
+    profile.rememberLocalRepositoryRoot(persistenceURL.deletingLastPathComponent())
+    store.updateActiveProfile(profile)
+    let path = "private/posts/remote-secret.md"
+    let summary = store.autoImportRemoteArticleDrafts(
+      remoteFiles: [
+        RepositoryChangedFile(status: "A", path: path, kind: .added)
+      ],
+      snapshots: [
+        RepositoryFileSnapshot(
+          refName: "origin/main",
+          repositoryPath: path,
+          content: """
+          +++
+          title = "Remote Secret"
+          draft = false
+          +++
+
+          Private remote body.
+          """,
+          repositorySHA: "private-sha"
+        )
+      ],
+      locallyChangedPaths: []
+    )
+
+    XCTAssertEqual(summary.importedCount, 1)
+    let draft = try XCTUnwrap(store.drafts.first { $0.repositoryPath == path })
+    XCTAssertEqual(draft.title, "Remote Secret")
+    XCTAssertEqual(draft.visibility, .private)
+    XCTAssertEqual(draft.repositorySHA, "private-sha")
+  }
+
+  func testRepositoryContentFingerprintTracksEditableContentButIgnoresRuntimeIDs() {
+    let profileID = UUID()
+    let firstAttachment = DraftAttachment(
+      originalFilename: "cover.jpg",
+      relativePublishPath: "/images/cover.jpg",
+      repositoryPath: "static/images/cover.jpg",
+      altText: "Cover"
+    )
+    var first = ArticleDraft(
+      siteProfileID: profileID,
+      title: "Fingerprint",
+      date: Date(timeIntervalSince1970: 1_800_000_000),
+      slug: "fingerprint",
+      coverAttachmentID: firstAttachment.id,
+      bodyMarkdown: "Body",
+      attachments: [firstAttachment],
+      repositoryPath: "content/posts/fingerprint.md"
+    )
+    var secondAttachment = firstAttachment
+    secondAttachment.id = UUID()
+    var second = first
+    second.id = UUID()
+    second.coverAttachmentID = secondAttachment.id
+    second.attachments = [secondAttachment]
+    second.createdAt = second.createdAt.addingTimeInterval(100)
+    second.updatedAt = second.updatedAt.addingTimeInterval(100)
+    second.repositorySHA = "different-runtime-sha"
+
+    XCTAssertEqual(first.repositoryContentFingerprint, second.repositoryContentFingerprint)
+
+    first.bodyMarkdown = "Locally edited body"
+    XCTAssertNotEqual(first.repositoryContentFingerprint, second.repositoryContentFingerprint)
+  }
+
+  func testAutoSyncFetchesUpstreamBeforeScanningRemoteChanges() async throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("RepositoryAutoSyncGitTests-\(UUID().uuidString)", isDirectory: true)
     defer {
@@ -269,27 +383,135 @@ final class RepositoryAutoSyncTests: XCTestCase {
 
     let persistenceURL = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
-    store.rememberRepositoryRoot(localURL)
+    await store.rememberRepositoryRootAsync(localURL)
     store.updateRepositoryAutoSyncSettings(
-      RepositoryAutoSyncSettings(isEnabled: true, intervalMinutes: 5, fetchBeforeScan: true)
+      RepositoryAutoSyncSettings(
+        isEnabled: true,
+        intervalMinutes: 5,
+        fetchBeforeScan: true,
+        autoImportRemoteArticles: true
+      )
     )
     let now = Date(timeIntervalSince1970: 1_800_000_456)
 
-    XCTAssertTrue(store.runRepositoryAutoSync(now: now))
+    let didRun = await store.runRepositoryAutoSync(now: now)
+    XCTAssertTrue(didRun)
 
     XCTAssertEqual(store.repositoryAutoSyncState.status, .scanned)
     XCTAssertEqual(store.repositoryAutoSyncState.fetchSucceeded, true)
     XCTAssertEqual(store.repositoryAutoSyncState.lastFetchAt, now)
     XCTAssertTrue(store.repositoryAutoSyncState.fetchMessage?.contains("已 fetch origin") == true)
+    XCTAssertEqual(store.repositoryAutoSyncState.remoteChangedPaths, [])
+    XCTAssertEqual(store.repositoryAutoSyncState.importableRemoteArticleCount, 0)
+    XCTAssertEqual(store.repositoryAutoSyncState.lastAutoImportedArticleCount, 1)
+    XCTAssertEqual(store.repositoryAutoSyncState.lastAutoImportConflictCount, 0)
+    let imported = try XCTUnwrap(
+      store.drafts.first { $0.repositoryPath == "content/posts/remote.md" }
+    )
+    XCTAssertEqual(imported.title, "Remote Draft")
+    XCTAssertEqual(imported.bodyMarkdown, "Remote body.")
+    XCTAssertEqual(imported.repositoryImportFingerprint, imported.repositoryContentFingerprint)
+
+    try """
+    ---
+    title: Remote Draft Updated
+    ---
+
+    New remote body.
+    """.write(
+      to: contributorURL.appendingPathComponent("content/posts/remote.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try git(["add", "content/posts/remote.md"], rootURL: contributorURL)
+    try git(["commit", "-m", "Update remote draft"], rootURL: contributorURL)
+    try git(["push", "origin", "main"], rootURL: contributorURL)
+
+    let secondRunAt = now.addingTimeInterval(300)
+    let didRunSecondCheck = await store.runRepositoryAutoSync(now: secondRunAt)
+    XCTAssertTrue(didRunSecondCheck)
+    let automaticallyUpdated = try XCTUnwrap(
+      store.drafts.first { $0.repositoryPath == "content/posts/remote.md" }
+    )
+    XCTAssertEqual(automaticallyUpdated.title, "Remote Draft Updated")
+    XCTAssertEqual(automaticallyUpdated.bodyMarkdown, "New remote body.")
+    XCTAssertEqual(store.repositoryAutoSyncState.lastAutoImportedArticleCount, 1)
+    XCTAssertEqual(store.repositoryAutoSyncState.lastAutoImportConflictCount, 0)
+
+    var locallyEdited = automaticallyUpdated
+    locallyEdited.bodyMarkdown = "Local work must remain."
+    store.updateDraft(locallyEdited)
+
+    try """
+    ---
+    title: Remote Draft Final
+    ---
+
+    Final remote body.
+    """.write(
+      to: contributorURL.appendingPathComponent("content/posts/remote.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try git(["add", "content/posts/remote.md"], rootURL: contributorURL)
+    try git(["commit", "-m", "Update remote draft again"], rootURL: contributorURL)
+    try git(["push", "origin", "main"], rootURL: contributorURL)
+
+    let thirdRunAt = secondRunAt.addingTimeInterval(300)
+    let didRunThirdCheck = await store.runRepositoryAutoSync(now: thirdRunAt)
+    XCTAssertTrue(didRunThirdCheck)
+    let retained = try XCTUnwrap(
+      store.drafts.first { $0.repositoryPath == "content/posts/remote.md" }
+    )
+    XCTAssertEqual(retained.bodyMarkdown, "Local work must remain.")
+    XCTAssertEqual(store.repositoryAutoSyncState.lastAutoImportedArticleCount, 0)
+    XCTAssertEqual(store.repositoryAutoSyncState.lastAutoImportConflictCount, 1)
     XCTAssertEqual(store.repositoryAutoSyncState.remoteChangedPaths, ["content/posts/remote.md"])
-    XCTAssertEqual(store.repositoryAutoSyncState.importableRemoteArticleCount, 1)
+    XCTAssertTrue(store.repositoryAutoSyncState.message.contains("保留手动审阅"))
+    await store.waitForPendingSave()
 
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
     XCTAssertEqual(reloaded.repositoryAutoSyncState.status, .scanned)
     XCTAssertEqual(reloaded.repositoryAutoSyncState.fetchSucceeded, true)
-    XCTAssertEqual(reloaded.repositoryAutoSyncState.lastFetchAt, now)
+    XCTAssertEqual(reloaded.repositoryAutoSyncState.lastFetchAt, thirdRunAt)
     XCTAssertEqual(reloaded.repositoryAutoSyncState.remoteChangedPaths, ["content/posts/remote.md"])
     XCTAssertEqual(reloaded.repositoryAutoSyncState.importableRemoteArticleCount, 1)
+    XCTAssertTrue(reloaded.repositoryAutoSyncSettings.autoImportRemoteArticles)
+    XCTAssertEqual(
+      reloaded.drafts.first { $0.repositoryPath == "content/posts/remote.md" }?.bodyMarkdown,
+      "Local work must remain."
+    )
+  }
+
+  func testAutoSyncReportsFetchFailureInsteadOfClaimingScanCompleted() async throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("RepositoryAutoSyncFetchFailure-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    try git(["init", "--initial-branch=main"], rootURL: rootURL)
+    try git(["config", "user.email", "tests@example.com"], rootURL: rootURL)
+    try git(["config", "user.name", "Tests"], rootURL: rootURL)
+    try "initial\n".write(to: rootURL.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+    try git(["add", "README.md"], rootURL: rootURL)
+    try git(["commit", "-m", "Initial"], rootURL: rootURL)
+    try git(["remote", "add", "origin", rootURL.appendingPathComponent("missing.git").path], rootURL: rootURL)
+    try git(["config", "branch.main.remote", "origin"], rootURL: rootURL)
+    try git(["config", "branch.main.merge", "refs/heads/main"], rootURL: rootURL)
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    await store.rememberRepositoryRootAsync(rootURL)
+    store.updateRepositoryAutoSyncSettings(
+      RepositoryAutoSyncSettings(isEnabled: true, intervalMinutes: 5, fetchBeforeScan: true)
+    )
+    let now = Date(timeIntervalSince1970: 1_800_000_789)
+
+    let didRun = await store.runRepositoryAutoSync(now: now)
+
+    XCTAssertTrue(didRun)
+    XCTAssertEqual(store.repositoryAutoSyncState.status, .fetchFailed)
+    XCTAssertEqual(store.repositoryAutoSyncState.fetchSucceeded, false)
+    XCTAssertEqual(store.repositoryAutoSyncState.lastRunAt, now)
+    XCTAssertTrue(store.repositoryAutoSyncState.message.contains("Fetch 失败"))
+    XCTAssertFalse(store.repositoryAutoSyncState.message.contains("自动检查远端完成"))
   }
 
   private func temporaryPersistenceURL() throws -> URL {

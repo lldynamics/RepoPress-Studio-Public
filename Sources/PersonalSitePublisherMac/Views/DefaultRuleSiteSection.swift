@@ -6,58 +6,62 @@ struct DefaultRuleSiteSection: View {
   let siteKindBinding: Binding<SiteKind>
 
   var body: some View {
-    Section("站点规则") {
-      Picker("站点类型", selection: siteKindBinding) {
-        ForEach(SiteKind.allCases) { kind in
-          Text(kind.displayName).tag(kind)
+    Group {
+      Section("站点与文章默认") {
+        Picker("站点类型", selection: siteKindBinding) {
+          ForEach(SiteKind.allCases) { kind in
+            Text(kind.localizedDisplayName).tag(kind)
+          }
         }
-      }
-      .accessibilityLabel("站点类型")
-      .accessibilityValue(activeProfile.siteKind.displayName)
+        .accessibilityLabel("站点类型")
+        .accessibilityValue(activeProfile.siteKind.localizedDisplayName)
 
-      Picker("Front Matter", selection: activeProfileBinding.frontMatterStyle) {
-        ForEach(FrontMatterStyle.allCases) { style in
-          Text(style.displayName).tag(style)
+        Picker("文章头信息格式", selection: activeProfileBinding.frontMatterStyle) {
+          ForEach(FrontMatterStyle.allCases) { style in
+            Text(style.localizedDisplayName).tag(style)
+          }
         }
+        .accessibilityLabel("文章头信息格式")
+        .accessibilityValue(activeProfile.frontMatterStyle.localizedDisplayName)
+
+        TextField("默认作者", text: activeProfileBinding.defaultAuthor)
+          .accessibilityLabel("默认作者")
+          .accessibilityValue(activeProfile.defaultAuthor.isEmpty ? "未填写" : activeProfile.defaultAuthor)
+
+        TextField("默认标签", text: stringListBinding(\.defaultTags))
+          .accessibilityLabel("默认标签")
+          .accessibilityValue(activeProfile.defaultTags.isEmpty ? "未填写" : activeProfile.defaultTags.joined(separator: "，"))
+
+        TextField("默认分类", text: stringListBinding(\.defaultCategories))
+          .accessibilityLabel("默认分类")
+          .accessibilityValue(activeProfile.defaultCategories.isEmpty ? "未填写" : activeProfile.defaultCategories.joined(separator: "，"))
       }
-      .accessibilityLabel("Front Matter 格式")
-      .accessibilityValue(activeProfile.frontMatterStyle.displayName)
 
-      TextField("默认作者", text: activeProfileBinding.defaultAuthor)
-        .accessibilityLabel("默认作者")
-        .accessibilityValue(activeProfile.defaultAuthor.isEmpty ? "未填写" : activeProfile.defaultAuthor)
+      Section("文件名与头信息字段") {
+        TextField("日期格式", text: activeProfileBinding.dateFormat)
+          .accessibilityLabel("日期格式")
+          .accessibilityValue(activeProfile.dateFormat.isEmpty ? "未填写" : activeProfile.dateFormat)
 
-      TextField("默认标签", text: stringListBinding(\.defaultTags))
-        .accessibilityLabel("默认标签")
-        .accessibilityValue(activeProfile.defaultTags.isEmpty ? "未填写" : activeProfile.defaultTags.joined(separator: "，"))
-
-      TextField("默认分类", text: stringListBinding(\.defaultCategories))
-        .accessibilityLabel("默认分类")
-        .accessibilityValue(activeProfile.defaultCategories.isEmpty ? "未填写" : activeProfile.defaultCategories.joined(separator: "，"))
-
-      TextField("日期格式", text: activeProfileBinding.dateFormat)
-        .accessibilityLabel("日期格式")
-        .accessibilityValue(activeProfile.dateFormat.isEmpty ? "未填写" : activeProfile.dateFormat)
-
-      Picker("Slug 规则", selection: activeProfileBinding.slugValidationRule) {
-        ForEach(SiteSlugValidationRule.allCases) { rule in
-          Text(rule.displayName).tag(rule)
+        Picker("Slug 规则", selection: activeProfileBinding.slugValidationRule) {
+          ForEach(SiteSlugValidationRule.allCases) { rule in
+            Text(rule.localizedDisplayName).tag(rule)
+          }
         }
+        .accessibilityLabel("Slug 规则")
+        .accessibilityValue(activeProfile.slugValidationRule.localizedDisplayName)
+
+        Text(activeProfile.slugValidationRule.detail)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+
+        Toggle("包含 draft 字段", isOn: activeProfileBinding.includeDraftFlagInFrontMatter)
+          .accessibilityLabel("文章头信息包含 draft 字段")
+          .accessibilityValue(activeProfile.includeDraftFlagInFrontMatter ? "开启" : "关闭")
+
+        Toggle("包含封面图字段", isOn: activeProfileBinding.includeCoverInFrontMatter)
+          .accessibilityLabel("文章头信息包含封面图字段")
+          .accessibilityValue(activeProfile.includeCoverInFrontMatter ? "开启" : "关闭")
       }
-      .accessibilityLabel("Slug 规则")
-      .accessibilityValue(activeProfile.slugValidationRule.displayName)
-
-      Text(activeProfile.slugValidationRule.detail)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-
-      Toggle("Front Matter 包含 draft 字段", isOn: activeProfileBinding.includeDraftFlagInFrontMatter)
-        .accessibilityLabel("Front Matter 包含 draft 字段")
-        .accessibilityValue(activeProfile.includeDraftFlagInFrontMatter ? "开启" : "关闭")
-
-      Toggle("Front Matter 包含封面图字段", isOn: activeProfileBinding.includeCoverInFrontMatter)
-        .accessibilityLabel("Front Matter 包含封面图字段")
-        .accessibilityValue(activeProfile.includeCoverInFrontMatter ? "开启" : "关闭")
     }
   }
 

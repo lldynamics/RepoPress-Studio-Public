@@ -5,8 +5,21 @@ extension WorkbenchStore {
     publishingStore.stopLocalSitePreview()
   }
 
+  public func stopLocalSitePreviewImmediately() {
+    publishingStore.stopLocalSitePreviewImmediately()
+  }
+
   public func startLocalSitePreview() {
+    publishingStore.refreshLocalSitePreviewPlan(for: activeProfile)
     publishingStore.startLocalSitePreview()
+  }
+
+  public func refreshLocalSitePreviewRuntimeStatus() {
+    publishingStore.refreshLocalSitePreviewRuntimeStatus()
+  }
+
+  public func verifyLocalSitePreviewReachability() async {
+    await publishingStore.verifyLocalSitePreviewReachability()
   }
 
   public func updateActiveProfile(_ update: (inout SiteProfile) -> Void) {
@@ -20,23 +33,28 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func createSiteFromStarter(_ request: SiteStarterRequest) -> SiteStarterResult? {
-    publishingStore.createSiteFromStarter(request, store: self)
+  public func createSiteFromStarter(_ request: SiteStarterRequest) async -> SiteStarterResult? {
+    await publishingStore.createSiteFromStarter(request, store: self)
   }
 
   @discardableResult
-  public func importExistingSiteFromStarter(_ request: SiteStarterImportRequest) -> SiteStarterImportResult? {
-    publishingStore.importExistingSiteFromStarter(request, store: self)
+  public func importExistingSiteFromStarter(_ request: SiteStarterImportRequest) async -> SiteStarterImportResult? {
+    await publishingStore.importExistingSiteFromStarter(request, store: self)
   }
 
   @discardableResult
-  public func commitAndPushStarterSite() -> SiteStarterPushResult? {
-    publishingStore.commitAndPushStarterSite(store: self)
+  public func configureStarterSiteOrigin() async -> Bool {
+    await publishingStore.configureStarterSiteOrigin(store: self)
+  }
+
+  @discardableResult
+  public func commitAndPushStarterSite() async -> SiteStarterPushResult? {
+    await publishingStore.commitAndPushStarterSite(store: self)
   }
 
   @discardableResult
   public func createGitHubRepositoryForActiveProfile(
-    privateRepository: Bool = false
+    privateRepository: Bool = true
   ) async -> RemoteRepositoryCreationResult? {
     await publishingStore.createGitHubRepositoryForActiveProfile(privateRepository: privateRepository, store: self)
   }
@@ -48,6 +66,7 @@ extension WorkbenchStore {
   }
 
   public func selectSection(_ section: WorkspaceSection) {
+    aiStore.hideAIPublishingAssistant()
     publishingStore.selectSection(section)
   }
 

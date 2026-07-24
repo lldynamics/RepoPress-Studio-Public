@@ -3,6 +3,7 @@ import Foundation
 public enum PublishFileKind: String, Codable, Sendable {
   case markdown
   case image
+  case video
 
   public var displayName: String {
     switch self {
@@ -10,6 +11,22 @@ public enum PublishFileKind: String, Codable, Sendable {
       return "Markdown"
     case .image:
       return "图片"
+    case .video:
+      return "视频"
+    }
+  }
+}
+
+public enum PublishFileOperation: String, Codable, Sendable {
+  case upsert
+  case delete
+
+  public var displayName: String {
+    switch self {
+    case .upsert:
+      return "写入"
+    case .delete:
+      return "删除"
     }
   }
 }
@@ -17,6 +34,7 @@ public enum PublishFileKind: String, Codable, Sendable {
 public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
   public var id: String { repositoryPath }
   public var kind: PublishFileKind
+  public var operation: PublishFileOperation
   public var repositoryPath: String
   public var content: String?
   public var sourceFilePath: String?
@@ -25,6 +43,7 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
 
   public init(
     kind: PublishFileKind,
+    operation: PublishFileOperation = .upsert,
     repositoryPath: String,
     content: String? = nil,
     sourceFilePath: String? = nil,
@@ -32,11 +51,33 @@ public struct PublishPackageFile: Identifiable, Codable, Hashable, Sendable {
     expectedRemoteSHA: String? = nil
   ) {
     self.kind = kind
+    self.operation = operation
     self.repositoryPath = repositoryPath
     self.content = content
     self.sourceFilePath = sourceFilePath
     self.byteSize = byteSize
     self.expectedRemoteSHA = expectedRemoteSHA
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case kind
+    case operation
+    case repositoryPath
+    case content
+    case sourceFilePath
+    case byteSize
+    case expectedRemoteSHA
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    kind = try container.decode(PublishFileKind.self, forKey: .kind)
+    operation = try container.decodeIfPresent(PublishFileOperation.self, forKey: .operation) ?? .upsert
+    repositoryPath = try container.decode(String.self, forKey: .repositoryPath)
+    content = try container.decodeIfPresent(String.self, forKey: .content)
+    sourceFilePath = try container.decodeIfPresent(String.self, forKey: .sourceFilePath)
+    byteSize = try container.decodeIfPresent(Int64.self, forKey: .byteSize) ?? 0
+    expectedRemoteSHA = try container.decodeIfPresent(String.self, forKey: .expectedRemoteSHA)
   }
 }
 
@@ -87,7 +128,7 @@ public struct PublishPackage: Identifiable, Codable, Hashable, Sendable {
   }
 }
 
-public struct PublishPackageBuilder {
+public struct PublishPackageBuilder: Sendable {
   private let frontMatterRenderer: FrontMatterRenderer
 
   public init(frontMatterRenderer: FrontMatterRenderer = FrontMatterRenderer()) {
@@ -108,13 +149,25 @@ public struct PublishPackageBuilder {
     files.append(
       contentsOf: draft.attachments.map { attachment in
         PublishPackageFile(
-          kind: .image,
+          kind: attachment.mediaKind == .video ? .video : .image,
           repositoryPath: attachment.repositoryPath,
           sourceFilePath: attachment.sourceFilePath,
-          byteSize: attachment.byteSize
+          byteSize: attachment.byteSize,
+          expectedRemoteSHA: attachment.repositorySHA?.trimmedForPublishing.nilIfEmpty
         )
       }
     )
+
+    if let previousMarkdownPath = previousMarkdownPath(for: draft, currentPath: markdownPath) {
+      files.append(
+        PublishPackageFile(
+          kind: .markdown,
+          operation: .delete,
+          repositoryPath: previousMarkdownPath,
+          expectedRemoteSHA: draft.repositorySHA?.trimmedForPublishing.nilIfEmpty
+        )
+      )
+    }
 
     return PublishPackage(
       draftID: draft.id,
@@ -128,7 +181,7 @@ public struct PublishPackageBuilder {
       reviewTitle: "Publish \(draft.title)",
       reviewChecklist: [
         "Front Matter 已检查",
-        "图片路径和 alt/caption 已检查",
+        "图片、视频路径和 alt/caption 已检查",
         "本地预览已确认",
         "公开风险和私密内容已确认",
       ]
@@ -150,6 +203,14 @@ public struct PublishPackageBuilder {
       return nil
     }
     return draft.repositorySHA?.trimmedForPublishing.nilIfEmpty
+  }
+
+  private func previousMarkdownPath(for draft: ArticleDraft, currentPath: String) -> String? {
+    guard let previousPath = draft.repositoryPath?.normalizedRelativePath().nilIfEmpty,
+          previousPath != currentPath.normalizedRelativePath() else {
+      return nil
+    }
+    return previousPath
   }
 
   private func coverAltText(for draft: ArticleDraft) -> String? {

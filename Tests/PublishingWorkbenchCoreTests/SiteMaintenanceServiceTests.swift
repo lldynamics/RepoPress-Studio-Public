@@ -144,84 +144,6 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     XCTAssertEqual(report.healthSummary.nextAction, "保持当前维护节奏，发布后继续记录操作日志。")
   }
 
-  func testReportSummarizesContentPerformanceSnapshotsForCurrentProfile() {
-    var profile = SiteProfile.defaultProfile
-    profile.markdownPathPattern = "content/posts/{slug}.md"
-    let otherProfileID = UUID()
-    let firstID = UUID(uuidString: "E3B03517-8466-40D2-91F5-CE2E1D6FD212")!
-    let secondID = UUID(uuidString: "32D83ED0-3124-4314-A46E-FE2C901247A8")!
-    let first = ArticleDraft(
-      id: firstID,
-      siteProfileID: profile.id,
-      title: "高阅读文章",
-      date: date(year: 2026, month: 7, day: 1),
-      slug: "high-views",
-      bodyMarkdown: "正文",
-      status: .published
-    )
-    let second = ArticleDraft(
-      id: secondID,
-      siteProfileID: profile.id,
-      title: "普通文章",
-      date: date(year: 2026, month: 7, day: 2),
-      slug: "normal-views",
-      bodyMarkdown: "正文",
-      status: .published
-    )
-
-    let report = SiteMaintenanceService().report(
-      drafts: [second, first],
-      profile: profile,
-      releaseRecords: [],
-      contentPerformanceSnapshots: [
-        ContentPerformanceSnapshot(
-          profileID: profile.id,
-          draftID: firstID,
-          title: "高阅读文章",
-          markdownPath: "content/posts/high-views.md",
-          pageViews: 300,
-          visitors: 120,
-          sourceName: "Plausible",
-          capturedAt: date(year: 2026, month: 7, day: 6)
-        ),
-        ContentPerformanceSnapshot(
-          profileID: profile.id,
-          draftID: firstID,
-          title: "高阅读文章旧快照",
-          markdownPath: "content/posts/high-views.md",
-          pageViews: 200,
-          visitors: 80,
-          sourceName: "Plausible",
-          capturedAt: date(year: 2026, month: 7, day: 5)
-        ),
-        ContentPerformanceSnapshot(
-          profileID: profile.id,
-          draftID: secondID,
-          title: "普通文章",
-          markdownPath: "content/posts/normal-views.md",
-          pageViews: 40,
-          visitors: 25,
-          capturedAt: date(year: 2026, month: 7, day: 6)
-        ),
-        ContentPerformanceSnapshot(
-          profileID: otherProfileID,
-          title: "其他站点",
-          markdownPath: "content/posts/other.md",
-          pageViews: 999,
-          visitors: 999
-        ),
-      ],
-      now: date(year: 2026, month: 7, day: 6)
-    )
-
-    XCTAssertEqual(report.contentPerformanceSummary.trackedArticleCount, 2)
-    XCTAssertEqual(report.contentPerformanceSummary.totalPageViews, 340)
-    XCTAssertEqual(report.contentPerformanceSummary.totalVisitors, 145)
-    XCTAssertEqual(report.contentPerformanceSummary.topArticles.map(\.title), ["高阅读文章", "普通文章"])
-    XCTAssertTrue(report.maintenanceChecklistMarkdown.contains("## 内容表现"))
-    XCTAssertTrue(report.maintenanceChecklistMarkdown.contains("高阅读文章：300 阅读 / 120 访客"))
-  }
-
   func testMaintenanceActionItemClipboardMarkdownIncludesTaskChecklist() {
     let item = MaintenanceActionItem(
       id: "link-test",
@@ -566,10 +488,10 @@ final class SiteMaintenanceServiceTests: XCTestCase {
   }
 
   @MainActor
-  func testStoreRecordsMaintenanceOperationAndPersistsItAcrossReloads() throws {
+  func testStoreRecordsMaintenanceOperationAndPersistsItAcrossReloads() async throws {
     let url = try temporaryPersistenceURL()
     let profile = SiteProfile.defaultProfile
-    try WorkbenchPersistence(fileURL: url).save(
+    _ = try WorkbenchPersistence(fileURL: url).save(
       WorkbenchSnapshot(
         profiles: [profile],
         activeProfileID: profile.id,
@@ -595,64 +517,21 @@ final class SiteMaintenanceServiceTests: XCTestCase {
 
     XCTAssertEqual(store.publishActionMessage, "已记录维护操作。")
     XCTAssertEqual(store.maintenanceOperationRecords.first?.id, record.id)
-    store.refreshSiteMaintenanceSnapshot()
+    await store.refreshSiteMaintenanceSnapshot(force: true)
     let report = try XCTUnwrap(store.siteMaintenanceSnapshot?.report)
     XCTAssertTrue(report.operationLogEntries.contains { $0.id == record.id })
 
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     XCTAssertTrue(reloaded.maintenanceOperationRecords.contains { $0.id == record.id })
-    reloaded.refreshSiteMaintenanceSnapshot()
+    await reloaded.refreshSiteMaintenanceSnapshot(force: true)
     let reloadedReport = try XCTUnwrap(reloaded.siteMaintenanceSnapshot?.report)
     XCTAssertTrue(reloadedReport.maintenanceChecklistMarkdown.contains("维护处理：修复链接：旧文"))
     XCTAssertTrue(reloadedReport.maintenanceChecklistMarkdown.contains("已修复缺失内链。"))
   }
 
   @MainActor
-  func testStoreRecordsContentPerformanceSnapshotAndPersistsItAcrossReloads() throws {
-    let url = try temporaryPersistenceURL()
-    let profile = SiteProfile.defaultProfile
-    let draftID = UUID(uuidString: "83167435-6A4F-4802-A2A5-E40D12F0AB2A")!
-    let draft = ArticleDraft(
-      id: draftID,
-      siteProfileID: profile.id,
-      title: "表现文章",
-      date: date(year: 2026, month: 7, day: 6),
-      slug: "performance-note",
-      bodyMarkdown: "正文",
-      status: .published
-    )
-    try WorkbenchPersistence(fileURL: url).save(
-      WorkbenchSnapshot(
-        profiles: [profile],
-        activeProfileID: profile.id,
-        drafts: [draft],
-        releaseRecords: []
-      )
-    )
-
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
-    let snapshot = store.recordContentPerformanceSnapshot(
-      for: draft,
-      pageViews: 88,
-      visitors: 32,
-      sourceName: "Plausible"
-    )
-
-    XCTAssertEqual(store.publishActionMessage, "已记录 表现文章 的内容表现。")
-    XCTAssertEqual(store.contentPerformanceSnapshots.first?.id, snapshot.id)
-    store.refreshSiteMaintenanceSnapshot()
-    let report = try XCTUnwrap(store.siteMaintenanceSnapshot?.report)
-    XCTAssertEqual(report.contentPerformanceSummary.totalPageViews, 88)
-
-    let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
-    XCTAssertTrue(reloaded.contentPerformanceSnapshots.contains { $0.id == snapshot.id })
-    reloaded.refreshSiteMaintenanceSnapshot()
-    let reloadedReport = try XCTUnwrap(reloaded.siteMaintenanceSnapshot?.report)
-    XCTAssertEqual(reloadedReport.contentPerformanceSummary.totalVisitors, 32)
-  }
-
-  @MainActor
-  func testStoreAppliesSuggestedMaintenanceScheduleAndPersistsDraftDates() throws {
+  func testStoreAppliesSuggestedMaintenanceScheduleAndPersistsDraftDates() async throws {
     let url = try temporaryPersistenceURL()
     let profile = SiteProfile.defaultProfile
     let draftID = UUID(uuidString: "45AFB1C2-F2BB-4C03-8E1D-BC8892865F21")!
@@ -669,7 +548,7 @@ final class SiteMaintenanceServiceTests: XCTestCase {
       status: .ready,
       updatedAt: oldDate
     )
-    try WorkbenchPersistence(fileURL: url).save(
+    _ = try WorkbenchPersistence(fileURL: url).save(
       WorkbenchSnapshot(
         profiles: [profile],
         activeProfileID: profile.id,
@@ -679,16 +558,17 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     )
 
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
-    store.refreshSiteMaintenanceSnapshot()
+    await store.refreshSiteMaintenanceSnapshot(force: true)
     let report = try XCTUnwrap(store.siteMaintenanceSnapshot?.report)
     let suggestedDate = try XCTUnwrap(report.calendarScheduleItems.first?.scheduledDate)
 
-    store.applySuggestedMaintenanceSchedule()
+    await store.applySuggestedMaintenanceSchedule()
 
     let updatedDraft = try XCTUnwrap(store.drafts.first { $0.id == draftID })
     XCTAssertEqual(updatedDraft.date, suggestedDate)
     XCTAssertEqual(store.publishActionMessage, "已应用 1 篇待发布文章的建议排期。")
 
+    await store.waitForPendingSave()
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     XCTAssertEqual(reloaded.drafts.first { $0.id == draftID }?.date, suggestedDate)
   }
@@ -751,13 +631,11 @@ final class SiteMaintenanceServiceTests: XCTestCase {
     )
     var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
     object.removeValue(forKey: "maintenanceOperationRecords")
-    object.removeValue(forKey: "contentPerformanceSnapshots")
     let json = try JSONSerialization.data(withJSONObject: object)
 
     let snapshot = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: json)
 
     XCTAssertTrue(snapshot.maintenanceOperationRecords.isEmpty)
-    XCTAssertTrue(snapshot.contentPerformanceSnapshots.isEmpty)
   }
 
   private func date(year: Int, month: Int, day: Int) -> Date {

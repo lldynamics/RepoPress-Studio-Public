@@ -166,11 +166,7 @@ public extension SEOSocialPreviewMetaTag {
   }
 
   private func htmlEscaped(_ value: String) -> String {
-    value
-      .replacingOccurrences(of: "&", with: "&amp;")
-      .replacingOccurrences(of: "\"", with: "&quot;")
-      .replacingOccurrences(of: "<", with: "&lt;")
-      .replacingOccurrences(of: ">", with: "&gt;")
+    MarkupEscaping.htmlDoubleQuotedAttribute(value)
   }
 }
 
@@ -1108,7 +1104,7 @@ public struct SEOSocialPreviewService {
   ) -> SEOSitemapPreview {
     let sitemapURLText = sitemapURL(profile: profile, localPreviewURL: localPreviewURL)
     let eligibleDrafts = drafts
-      .filter { $0.siteProfileID == profile.id && !$0.isPrivate && !$0.draft }
+      .filter { $0.belongs(toSiteProfileID: profile.id) && !$0.isPrivate && !$0.draft }
       .sorted {
         if $0.date == $1.date {
           return $0.title < $1.title
@@ -1223,75 +1219,18 @@ public struct SEOSocialPreviewService {
     profile: SiteProfile,
     localPreviewURL: URL?
   ) -> String {
-    let relativeURLPath = webPath(from: markdownPath, siteKind: profile.siteKind)
+    let resolver = SiteArticleURLResolver()
+    let relativeURLPath = resolver.relativeWebPath(from: markdownPath, siteKind: profile.siteKind)
     let profileDeploymentURL = profile.deploymentSiteURL
       .flatMap { URL(string: $0.trimmedForPublishing) }
       .flatMap { url in
         url.scheme != nil && url.host != nil ? url : nil
       }
     if let baseURL = localPreviewURL ?? profileDeploymentURL {
-      return baseURL
-        .appendingPathComponent(relativeURLPath.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
-        .absoluteString
+      return resolver.url(baseURL: baseURL, markdownPath: markdownPath, siteKind: profile.siteKind)?.absoluteString ?? relativeURLPath
     }
 
     return relativeURLPath
-  }
-
-  private func webPath(from markdownPath: String, siteKind: SiteKind) -> String {
-    var path = markdownPath.normalizedRelativePath()
-    switch siteKind {
-    case .jekyll:
-      if path.hasPrefix("_posts/") {
-        path = String(path.dropFirst("_posts/".count))
-      }
-      if let datedPath = datedPostWebPath(from: path) {
-        return datedPath
-      }
-    case .hugo:
-      if path.hasPrefix("content/") {
-        path = String(path.dropFirst("content/".count))
-      }
-    case .hexo:
-      if path.hasPrefix("source/_posts/") {
-        path = String(path.dropFirst("source/_posts/".count))
-      }
-      if let datedPath = datedPostWebPath(from: path) {
-        return datedPath
-      }
-    case .zola, .astro:
-      for prefix in ["content/posts/", "content/", "src/content/blog/", "source/_posts/", "_posts/"] where path.hasPrefix(prefix) {
-        path = String(path.dropFirst(prefix.count))
-        break
-      }
-    }
-
-    for suffix in [".mdx", ".markdown", ".md"] where path.hasSuffix(suffix) {
-      path = String(path.dropLast(suffix.count))
-      break
-    }
-
-    return "/" + path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/"
-  }
-
-  private func datedPostWebPath(from path: String) -> String? {
-    var stem = path.normalizedRelativePath()
-    for suffix in [".mdx", ".markdown", ".md"] where stem.hasSuffix(suffix) {
-      stem = String(stem.dropLast(suffix.count))
-      break
-    }
-    let parts = stem.split(separator: "-", maxSplits: 3).map(String.init)
-    guard parts.count == 4,
-          parts[0].count == 4,
-          parts[1].count == 2,
-          parts[2].count == 2,
-          Int(parts[0]) != nil,
-          Int(parts[1]) != nil,
-          Int(parts[2]) != nil,
-          !parts[3].isEmpty else {
-      return nil
-    }
-    return "/\(parts[0])/\(parts[1])/\(parts[2])/\(parts[3])/"
   }
 
   private func displayURL(_ urlText: String) -> String {
@@ -1535,11 +1474,7 @@ public struct SEOSocialPreviewService {
   }
 
   private func xmlEscaped(_ value: String) -> String {
-    value
-      .replacingOccurrences(of: "&", with: "&amp;")
-      .replacingOccurrences(of: "\"", with: "&quot;")
-      .replacingOccurrences(of: "<", with: "&lt;")
-      .replacingOccurrences(of: ">", with: "&gt;")
+    MarkupEscaping.xmlText(value)
   }
 
   private func cardSpecification(

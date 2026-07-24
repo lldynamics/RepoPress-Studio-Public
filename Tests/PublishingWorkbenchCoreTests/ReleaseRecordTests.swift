@@ -346,7 +346,7 @@ final class ReleaseRecordTests: XCTestCase {
     XCTAssertEqual(record.summary, "直接提交失败：401")
   }
 
-  func testStoreCreatesReleaseRecordWhenWritingSelectedDraftToRepository() throws {
+  func testStoreCreatesReleaseRecordWhenWritingSelectedDraftToRepository() async throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacReleaseRecordTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
@@ -363,7 +363,7 @@ final class ReleaseRecordTests: XCTestCase {
 
     let draft = try XCTUnwrap(store.selectedDraft)
     store.refreshPublishPreview(for: draft)
-    store.writeSelectedDraftToLocalRepository()
+    await store.writeSelectedDraftToLocalRepository()
 
     let record = try XCTUnwrap(store.releaseRecords.first)
     XCTAssertEqual(record.kind, .localWrite)
@@ -377,6 +377,7 @@ final class ReleaseRecordTests: XCTestCase {
         atPath: rootURL.appendingPathComponent(expectedPath).path
       )
     )
+    XCTAssertFalse(store.isLocalRepositoryMutationRunning)
   }
 
   private func temporaryPersistenceURL() throws -> URL {

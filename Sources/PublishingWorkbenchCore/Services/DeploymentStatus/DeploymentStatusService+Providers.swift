@@ -9,12 +9,20 @@ extension DeploymentStatusService {
   ) async -> [DeploymentStatusSignal] {
     guard hasRepositoryConfiguration(profile) else {
       return [
-        DeploymentStatusSignal(level: .unknown, title: "GitHub 仓库未配置", message: "缺少 owner 或 repository。")
+        DeploymentStatusSignal(
+          level: .unknown,
+          title: CoreL10n.text("GitHub 仓库未配置"),
+          message: CoreL10n.text("缺少 owner 或 repository。")
+        )
       ]
     }
     guard let token = token?.trimmedForPublishing, !token.isEmpty else {
       return [
-        DeploymentStatusSignal(level: .unknown, title: "GitHub API 未检查", message: "缺少部署 Token，只能检查站点 URL。")
+        DeploymentStatusSignal(
+          level: .unknown,
+          title: CoreL10n.text("GitHub API 未检查"),
+          message: CoreL10n.text("缺少部署 Token，只能检查站点 URL。")
+        )
       ]
     }
 
@@ -30,12 +38,20 @@ extension DeploymentStatusService {
   ) async -> [DeploymentStatusSignal] {
     guard hasRepositoryConfiguration(profile) else {
       return [
-        DeploymentStatusSignal(level: .unknown, title: "GitLab 项目未配置", message: "缺少 namespace 或 project。")
+        DeploymentStatusSignal(
+          level: .unknown,
+          title: CoreL10n.text("GitLab 项目未配置"),
+          message: CoreL10n.text("缺少 namespace 或 project。")
+        )
       ]
     }
     guard let token = token?.trimmedForPublishing, !token.isEmpty else {
       return [
-        DeploymentStatusSignal(level: .unknown, title: "GitLab API 未检查", message: "缺少部署 Token，只能检查站点 URL。")
+        DeploymentStatusSignal(
+          level: .unknown,
+          title: CoreL10n.text("GitLab API 未检查"),
+          message: CoreL10n.text("缺少部署 Token，只能检查站点 URL。")
+        )
       ]
     }
 
@@ -54,8 +70,8 @@ extension DeploymentStatusService {
       return [
         DeploymentStatusSignal(
           level: .unknown,
-          title: "Netlify API 未检查",
-          message: "已配置 Netlify Site ID，但缺少部署 Token；只能检查站点 URL 或状态端点。"
+          title: CoreL10n.text("Netlify API 未检查"),
+          message: CoreL10n.text("已配置 Netlify Site ID，但缺少部署 Token；只能检查站点 URL 或状态端点。")
         )
       ]
     }
@@ -75,8 +91,8 @@ extension DeploymentStatusService {
       return [
         DeploymentStatusSignal(
           level: .unknown,
-          title: "Vercel API 未检查",
-          message: "已配置 Vercel Project ID，但缺少部署 Token；只能检查站点 URL 或状态端点。"
+          title: CoreL10n.text("Vercel API 未检查"),
+          message: CoreL10n.text("已配置 Vercel Project ID，但缺少部署 Token；只能检查站点 URL 或状态端点。")
         )
       ]
     }
@@ -97,8 +113,8 @@ extension DeploymentStatusService {
       return [
         DeploymentStatusSignal(
           level: .unknown,
-          title: "Cloudflare Pages API 未检查",
-          message: "已配置 Cloudflare Account ID 和项目名，但缺少部署 Token；只能检查站点 URL 或状态端点。"
+          title: CoreL10n.text("Cloudflare Pages API 未检查"),
+          message: CoreL10n.text("已配置 Cloudflare Account ID 和项目名，但缺少部署 Token；只能检查站点 URL 或状态端点。")
         )
       ]
     }
@@ -126,14 +142,15 @@ extension DeploymentStatusService {
       return DeploymentStatusSignal(
         level: githubPagesLevel(response.status),
         title: "GitHub Pages",
-        message: response.status?.nilIfEmpty.map { "Pages 状态：\($0)" } ?? "已读取 Pages 状态。",
+        message: response.status?.nilIfEmpty.map { CoreL10n.format("Pages 状态：%@", $0) }
+          ?? CoreL10n.text("已读取 Pages 状态。"),
         urlText: response.htmlURL
       )
     } catch {
       return DeploymentStatusSignal(
         level: .unknown,
         title: "GitHub Pages",
-        message: "读取 Pages 状态失败：\(error.localizedDescription)"
+        message: CoreL10n.format("读取 Pages 状态失败：%@", error.localizedDescription)
       )
     }
   }
@@ -160,7 +177,11 @@ extension DeploymentStatusService {
         )
       )
       guard let run = response.workflowRuns.first else {
-        return DeploymentStatusSignal(level: .unknown, title: "GitHub Actions", message: "没有找到最近的 Actions 运行记录。")
+        return DeploymentStatusSignal(
+          level: .unknown,
+          title: "GitHub Actions",
+          message: CoreL10n.text("没有找到最近的 Actions 运行记录。")
+        )
       }
       return DeploymentStatusSignal(
         level: githubActionLevel(status: run.status, conclusion: run.conclusion),
@@ -172,7 +193,7 @@ extension DeploymentStatusService {
       return DeploymentStatusSignal(
         level: .unknown,
         title: "GitHub Actions",
-        message: "读取 Actions 状态失败：\(error.localizedDescription)"
+        message: CoreL10n.format("读取 Actions 状态失败：%@", error.localizedDescription)
       )
     }
   }
@@ -195,19 +216,24 @@ extension DeploymentStatusService {
         )
       )
       guard let pipeline = response.first else {
-        return DeploymentStatusSignal(level: .unknown, title: "GitLab Pipeline", message: "没有找到最近的 Pipeline。")
+        return DeploymentStatusSignal(
+          level: .unknown,
+          title: "GitLab Pipeline",
+          message: CoreL10n.text("没有找到最近的 Pipeline。")
+        )
       }
       return DeploymentStatusSignal(
         level: gitLabPipelineLevel(pipeline.status),
         title: "GitLab Pipeline",
-        message: pipeline.status?.nilIfEmpty.map { "Pipeline 状态：\($0)" } ?? "已读取 Pipeline 状态。",
+        message: pipeline.status?.nilIfEmpty.map { CoreL10n.format("Pipeline 状态：%@", $0) }
+          ?? CoreL10n.text("已读取 Pipeline 状态。"),
         urlText: pipeline.webURL
       )
     } catch {
       return DeploymentStatusSignal(
         level: .unknown,
         title: "GitLab Pipeline",
-        message: "读取 Pipeline 状态失败：\(error.localizedDescription)"
+        message: CoreL10n.format("读取 Pipeline 状态失败：%@", error.localizedDescription)
       )
     }
   }
@@ -227,14 +253,18 @@ extension DeploymentStatusService {
         )
       )
       guard let deploy = response.first else {
-        return DeploymentStatusSignal(level: .unknown, title: "Netlify Deploy", message: "没有找到最近的部署记录。")
+        return DeploymentStatusSignal(
+          level: .unknown,
+          title: "Netlify Deploy",
+          message: CoreL10n.text("没有找到最近的部署记录。")
+        )
       }
 
       let title = deploy.name?.nilIfEmpty ?? deploy.title?.nilIfEmpty ?? "Netlify Deploy"
       let messageParts = [
-        deploy.state?.nilIfEmpty.map { "状态：\($0)" },
-        deploy.branch?.nilIfEmpty.map { "分支：\($0)" },
-        deploy.commitRef?.nilIfEmpty.map { "提交：\($0)" },
+        deploy.state?.nilIfEmpty.map { CoreL10n.format("状态：%@", $0) },
+        deploy.branch?.nilIfEmpty.map { CoreL10n.format("分支：%@", $0) },
+        deploy.commitRef?.nilIfEmpty.map { CoreL10n.format("提交：%@", $0) },
         deploy.errorMessage?.nilIfEmpty
       ].compactMap { $0 }
       let urlText = deploy.adminURL?.nilIfEmpty ?? deploy.deployURL?.nilIfEmpty ?? deploy.url?.nilIfEmpty
@@ -255,14 +285,16 @@ extension DeploymentStatusService {
       return DeploymentStatusSignal(
         level: netlifyDeployLevel(deploy.state),
         title: title,
-        message: messageParts.isEmpty ? "已读取最近一次 Netlify 部署。" : messageParts.joined(separator: " · "),
+        message: messageParts.isEmpty
+          ? CoreL10n.text("已读取最近一次 Netlify 部署。")
+          : messageParts.joined(separator: " · "),
         urlText: urlText
       )
     } catch {
       return DeploymentStatusSignal(
         level: .unknown,
         title: "Netlify Deploy",
-        message: "读取 Netlify 部署状态失败：\(error.localizedDescription)"
+        message: CoreL10n.format("读取 Netlify 部署状态失败：%@", error.localizedDescription)
       )
     }
   }
@@ -293,15 +325,19 @@ extension DeploymentStatusService {
         vercelRequest(path: "/v7/deployments", token: token, queryItems: queryItems)
       )
       guard let deployment = response.deployments.first else {
-        return DeploymentStatusSignal(level: .unknown, title: "Vercel Deployment", message: "没有找到最近的部署记录。")
+        return DeploymentStatusSignal(
+          level: .unknown,
+          title: "Vercel Deployment",
+          message: CoreL10n.text("没有找到最近的部署记录。")
+        )
       }
 
       let status = deployment.readyState?.nilIfEmpty ?? deployment.state?.nilIfEmpty
       let messageParts = [
-        status.map { "状态：\($0)" },
-        deployment.target?.nilIfEmpty.map { "目标：\($0)" },
-        deployment.meta?.branch?.nilIfEmpty.map { "分支：\($0)" },
-        deployment.meta?.commitSHA?.nilIfEmpty.map { "提交：\($0)" },
+        status.map { CoreL10n.format("状态：%@", $0) },
+        deployment.target?.nilIfEmpty.map { CoreL10n.format("目标：%@", $0) },
+        deployment.meta?.branch?.nilIfEmpty.map { CoreL10n.format("分支：%@", $0) },
+        deployment.meta?.commitSHA?.nilIfEmpty.map { CoreL10n.format("提交：%@", $0) },
         deployment.errorMessage?.nilIfEmpty
       ].compactMap { $0 }
       let urlText = deployment.inspectorURL?.nilIfEmpty ?? normalizedURLText(deployment.url)
@@ -322,14 +358,16 @@ extension DeploymentStatusService {
       return DeploymentStatusSignal(
         level: vercelDeploymentLevel(status),
         title: deployment.name?.nilIfEmpty ?? "Vercel Deployment",
-        message: messageParts.isEmpty ? "已读取最近一次 Vercel 部署。" : messageParts.joined(separator: " · "),
+        message: messageParts.isEmpty
+          ? CoreL10n.text("已读取最近一次 Vercel 部署。")
+          : messageParts.joined(separator: " · "),
         urlText: urlText
       )
     } catch {
       return DeploymentStatusSignal(
         level: .unknown,
         title: "Vercel Deployment",
-        message: "读取 Vercel 部署状态失败：\(error.localizedDescription)"
+        message: CoreL10n.format("读取 Vercel 部署状态失败：%@", error.localizedDescription)
       )
     }
   }
@@ -354,15 +392,19 @@ extension DeploymentStatusService {
         )
       )
       guard let deployment = response.result.first else {
-        return DeploymentStatusSignal(level: .unknown, title: "Cloudflare Pages", message: "没有找到最近的 Pages 部署记录。")
+        return DeploymentStatusSignal(
+          level: .unknown,
+          title: "Cloudflare Pages",
+          message: CoreL10n.text("没有找到最近的 Pages 部署记录。")
+        )
       }
 
       let status = deployment.latestStage?.status?.nilIfEmpty
       let trigger = deployment.deploymentTrigger?.metadata
       let messageParts = [
-        status.map { "状态：\($0)" },
-        trigger?.branch?.nilIfEmpty.map { "分支：\($0)" },
-        trigger?.commitHash?.nilIfEmpty.map { "提交：\($0)" },
+        status.map { CoreL10n.format("状态：%@", $0) },
+        trigger?.branch?.nilIfEmpty.map { CoreL10n.format("分支：%@", $0) },
+        trigger?.commitHash?.nilIfEmpty.map { CoreL10n.format("提交：%@", $0) },
         trigger?.commitMessage?.nilIfEmpty
       ].compactMap { $0 }
       let urlText = deployment.url?.nilIfEmpty ?? deployment.aliases.first?.nilIfEmpty
@@ -383,14 +425,16 @@ extension DeploymentStatusService {
       return DeploymentStatusSignal(
         level: cloudflarePagesDeploymentLevel(status),
         title: deployment.latestStage?.name?.nilIfEmpty ?? "Cloudflare Pages",
-        message: messageParts.isEmpty ? "已读取最近一次 Cloudflare Pages 部署。" : messageParts.joined(separator: " · "),
+        message: messageParts.isEmpty
+          ? CoreL10n.text("已读取最近一次 Cloudflare Pages 部署。")
+          : messageParts.joined(separator: " · "),
         urlText: urlText
       )
     } catch {
       return DeploymentStatusSignal(
         level: .unknown,
         title: "Cloudflare Pages",
-        message: "读取 Cloudflare Pages 部署状态失败：\(error.localizedDescription)"
+        message: CoreL10n.format("读取 Cloudflare Pages 部署状态失败：%@", error.localizedDescription)
       )
     }
   }
@@ -412,17 +456,23 @@ extension DeploymentStatusService {
     var mismatches: [String] = []
 
     if let expectedCommit, let actualCommit, !commitMatches(actualCommit, expectedCommit) {
-      mismatches.append("期望提交 \(shortCommit(expectedCommit))，实际 \(shortCommit(actualCommit))")
+      mismatches.append(
+        CoreL10n.format("期望提交 %@，实际 %@", shortCommit(expectedCommit), shortCommit(actualCommit))
+      )
     }
     if let expectedBranch, let actualBranch,
        actualBranch.compare(expectedBranch, options: [.caseInsensitive]) != .orderedSame {
-      mismatches.append("期望分支 \(expectedBranch)，实际 \(actualBranch)")
+      mismatches.append(CoreL10n.format("期望分支 %@，实际 %@", expectedBranch, actualBranch))
     }
 
     guard !mismatches.isEmpty else {
       return nil
     }
-    return "最近一次 \(provider.displayName) 部署不是当前发布：\(mismatches.joined(separator: "；"))。请等待目标 commit 部署完成或检查部署队列。"
+    return CoreL10n.format(
+      "最近一次 %@ 部署不是当前发布：%@。请等待目标 commit 部署完成或检查部署队列。",
+      provider.displayName,
+      mismatches.joined(separator: CoreL10n.text("；"))
+    )
   }
 
   func commitMatches(_ actual: String, _ expected: String) -> Bool {

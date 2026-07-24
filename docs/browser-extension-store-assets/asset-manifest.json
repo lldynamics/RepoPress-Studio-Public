@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "generationMode": "deterministic",
+  "generator": "script/generate_browser_extension_store_assets.mjs",
+  "extensionVersion": "0.22.0",
+  "privacy": "All depicted page content is synthetic and uses example.com. No user library or browsing data is read.",
+  "assets": [
+    {
+      "locale": "zh-CN",
+      "filename": "zh-CN/store-icon-128.png",
+      "kind": "store-icon",
+      "width": 128,
+      "height": 128,
+      "sha256": "fa448f4b95978796b12e0d6e5e4a32b721e138364d99b2f70ca7525832101a3e",
+      "provenance": "existing extension icon"
+    },
+    {
+      "locale": "zh-CN",
+      "filename": "zh-CN/edge-logo-300x300.png",
+      "kind": "edge-logo",
+      "width": 300,
+      "height": 300,
+      "sha256": "af127fadeff7a4c7f0ec87b633405d72add6c6645cfac9f6c1585506481e7749",
+      "provenance": "existing extension icon in a deterministic presentation frame"
+    },
+    {
+      "locale": "zh-CN",
+      "filename": "zh-CN/screenshot-01-capture.png",
+      "kind": "store-screenshot",
+      "width": 1280,
+      "height": 800,
+      "sha256": "bd555f3f5222fe6f08e7d4c91c46c53bb70678a9df373853f2c7012db8ac2fe9",
+      "provenance": "real extension popup capture composed with synthetic example.com content"
+    },
+    {
+      "locale": "zh-CN",
+      "filename": "zh-CN/screenshot-02-preview.png",
+      "kind": "store-screenshot",
+      "width": 1280,
+      "height": 800,
+      "sha256": "5ac8e0840dc2ba55f7d652d11c256f2d96b6a58e7c0256f27a20885ac4eef578",
+      "provenance": "real extension preview UI composed with synthetic example.com content"
+    },
+    {
+      "locale": "zh-CN",
+      "filename": "zh-CN/screenshot-03-library.png",
+      "kind": "store-screenshot",
+      "width": 1280,
+      "height": 800,
+      "sha256": "8674fdf70243bf8650c699c613d7a246958a4638b59efacf5bc936360bf750c7",
+      "provenance": "real extension receipt UI composed with a representative local-library view"
+    },
+    {
+      "locale": "zh-CN",
+      "filename": "zh-CN/promo-small-440x280.png",
+      "kind": "small-promo",
+      "width": 440,
+      "height": 280,
+      "sha256": "b2d68527eb337dd47d1e7eac15c8890650ff1b48d90402b65d620c3ec84be803",
+      "provenance": "deterministic brand composition"
+    },
+    {
+      "locale": "zh-CN",
+      "filename": "zh-CN/promo-marquee-1400x560.png",
+      "kind": "marquee-promo",
+      "width": 1400,
+      "height": 560,
+      "sha256": "6f45c5c64a73ad2c2549e4b89987bd95ecbbf86f3b78b903c0a2b817d5f9dcd0",
+      "provenance": "deterministic brand composition with real extension receipt UI"
+    },
+    {
+      "locale": "en-US",
+      "filename": "en-US/store-icon-128.png",
+      "kind": "store-icon",
+      "width": 128,
+      "height": 128,
+      "sha256": "fa448f4b95978796b12e0d6e5e4a32b721e138364d99b2f70ca7525832101a3e",
+      "provenance": "existing extension icon"
+    },
+    {
+      "locale": "en-US",
+      "filename": "en-US/edge-logo-300x300.png",
+      "kind": "edge-logo",
+      "width": 300,
+      "height": 300,
+      "sha256": "af127fadeff7a4c7f0ec87b633405d72add6c6645cfac9f6c1585506481e7749",
+      "provenance": "existing extension icon in a deterministic presentation frame"
+    },
+    {
+      "locale": "en-US",
+      "filename": "en-US/screenshot-01-capture.png",
+      "kind": "store-screenshot",
+      "width": 1280,
+      "height": 800,
+      "sha256": "0e214dc647f5078179d17621577d816d85375f8470da75ddaabccc48937a822a",
+      "provenance": "real extension popup capture composed with synthetic example.com content"
+    },
+    {
+      "locale": "en-US",
+      "filename": "en-US/screenshot-02-preview.png",
+      "kind": "store-screenshot",
+      "width": 1280,
+      "height": 800,
+      "sha256": "5ae9d6c25647714bea60edb84aaf35584331bfd8f90e7d5d2a07c29a847796d3",
+      "provenance": "real extension preview UI composed with synthetic example.com content"
+    },
+    {
+      "locale": "en-US",
+      "filename": "en-US/screenshot-03-library.png",
+      "kind": "store-screenshot",
+      "width": 1280,
+      "height": 800,
+      "sha256": "e7f2d851a0189f13ec8953645addff86c94c2135654a24945939272d8fdebce4",
+      "provenance": "real extension receipt UI composed with a representative local-library view"
+    },
+    {
+      "locale": "en-US",
+      "filename": "en-US/promo-small-440x280.png",
+      "kind": "small-promo",
+      "width": 440,
+      "height": 280,
+      "sha256": "d23fc3b5dee7eef2b9d09ce60fe478d9024d23d8812179fa58ef8d88c35d1926",
+      "provenance": "deterministic brand composition"
+    },
+    {
+      "locale": "en-US",
+      "filename": "en-US/promo-marquee-1400x560.png",
+      "kind": "marquee-promo",
+      "width": 1400,
+      "height": 560,
+      "sha256": "b6059fd8e2cc3fb243e6485440b036dc179f9e35026a7b0f6c829b77806263a4",
+      "provenance": "deterministic brand composition with real extension receipt UI"
+    }
+  ]
+}

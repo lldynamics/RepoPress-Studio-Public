@@ -59,6 +59,103 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     XCTAssertEqual(preview.fileDiffs.first(where: { $0.kind == .markdown })?.status, .modified)
   }
 
+  func testPreviewDiffCollapsesLongUnchangedRegions() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/large.md")
+    let oldLines = (0..<200).map { "line-\($0)" }
+    var newLines = oldLines
+    newLines[100] = "changed-line"
+    try oldLines.joined(separator: "\n").write(to: destinationURL, atomically: true, encoding: .utf8)
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          repositoryPath: "content/posts/large.md",
+          content: newLines.joined(separator: "\n")
+        )
+      ]
+    )
+
+    let preview = LocalPublishPreviewService().preview(package: package, rootURL: rootURL)
+    let lineDiff = try XCTUnwrap(preview.fileDiffs.first?.lineDiff)
+
+    XCTAssertTrue(lineDiff.contains("-line-100"))
+    XCTAssertTrue(lineDiff.contains("+changed-line"))
+    XCTAssertTrue(lineDiff.contains("unchanged line(s)"))
+    XCTAssertLessThan(lineDiff.components(separatedBy: "\n").count, 20)
+  }
+
+  func testPreviewAsyncMatchesSynchronousPreview() async throws {
+    let rootURL = try makeRepositoryFixture()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Async Preview",
+      slug: "existing",
+      draft: false,
+      bodyMarkdown: "Updated body that should produce the same preview off the caller's executor."
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let service = LocalPublishPreviewService()
+
+    let synchronousPreview = service.preview(package: package, profile: profile)
+    let asynchronousPreview = await service.previewAsync(package: package, profile: profile)
+
+    assertEquivalentPreview(asynchronousPreview, synchronousPreview)
+  }
+
+  func testPreviewAsyncMatchesSynchronousPreviewForUnsafeAndMissingFiles() async throws {
+    let rootURL = try makeRepositoryFixture()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    let package = publishPackage(
+      files: [
+        .init(kind: .markdown, repositoryPath: "../outside.md", content: "must not escape"),
+        .init(
+          kind: .image,
+          repositoryPath: "images/missing.jpg",
+          sourceFilePath: rootURL.appendingPathComponent("does-not-exist.jpg").path
+        ),
+      ]
+    )
+    let service = LocalPublishPreviewService()
+
+    let synchronousPreview = service.preview(package: package, profile: profile)
+    let asynchronousPreview = await service.previewAsync(package: package, profile: profile)
+
+    assertEquivalentPreview(asynchronousPreview, synchronousPreview)
+    XCTAssertEqual(asynchronousPreview.fileDiffs.map(\.status), [.unsafePath, .missingSource])
+  }
+
+  func testPreviewAsyncMatchesSynchronousPreviewWhenRepositoryIsMissing() async {
+    var profile = SiteProfile.defaultProfile
+    profile.localRepositoryRootPath = ""
+    profile.localRepositoryBookmarkData = nil
+    let package = publishPackage(
+      files: [.init(kind: .markdown, repositoryPath: "content/posts/test.md", content: "test")]
+    )
+    let service = LocalPublishPreviewService()
+
+    let synchronousPreview = service.preview(package: package, profile: profile)
+    let asynchronousPreview = await service.previewAsync(package: package, profile: profile)
+
+    assertEquivalentPreview(asynchronousPreview, synchronousPreview)
+    XCTAssertEqual(asynchronousPreview.fileDiffs.first?.status, .unsafePath)
+    XCTAssertEqual(asynchronousPreview.issues.first?.field, "repository")
+  }
+
   func testWritePackageCreatesMarkdownFileInsideRepository() throws {
     let rootURL = try makeRepositoryFixture()
     defer {
@@ -84,6 +181,168 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
 
     XCTAssertEqual(written, ["content/posts/new-draft.md"])
     XCTAssertTrue(content.contains("title = \"New Draft\""))
+  }
+
+  func testWritePackageAsyncCreatesMarkdownFileInsideRepository() async throws {
+    let rootURL = try makeRepositoryFixture()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Async Draft",
+      slug: "async-draft",
+      draft: false,
+      bodyMarkdown: "New body that should be written outside the main actor."
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+
+    let written = try await LocalPublishPreviewService().writeAsync(package: package, profile: profile)
+    let targetURL = rootURL.appendingPathComponent("content/posts/async-draft.md")
+    let content = try String(contentsOf: targetURL, encoding: .utf8)
+
+    XCTAssertEqual(written, ["content/posts/async-draft.md"])
+    XCTAssertTrue(content.contains("title = \"Async Draft\""))
+  }
+
+  func testPathMigrationPreviewAndWriteCreateNewFileAndDeleteOldFile() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Moved Draft",
+      slug: "moved-draft",
+      draft: false,
+      bodyMarkdown: "Updated body for the moved draft lifecycle test.",
+      repositoryPath: "content/posts/existing.md",
+      repositorySHA: "old-remote-sha"
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let service = LocalPublishPreviewService()
+
+    let preview = service.preview(package: package, profile: profile)
+
+    XCTAssertEqual(preview.fileDiffs.map(\.status), [.added, .deleted])
+    XCTAssertTrue(preview.fileDiffs[1].lineDiff?.contains("-old content") == true)
+
+    let changedPaths = try service.write(package: package, profile: profile)
+
+    XCTAssertEqual(changedPaths, ["content/posts/moved-draft.md", "content/posts/existing.md"])
+    XCTAssertTrue(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("content/posts/moved-draft.md").path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("content/posts/existing.md").path))
+  }
+
+  func testProtectedWriteRejectsExternalModificationAfterPreview() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/existing.md")
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          repositoryPath: "content/posts/existing.md",
+          content: "publisher content"
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+    guard case .fileDigest(_)? = preview.fileDiffs.first?.baselineState else {
+      return XCTFail("Expected the preview to record the existing file digest")
+    }
+    try "external editor content".write(to: destinationURL, atomically: true, encoding: .utf8)
+
+    XCTAssertThrowsError(try service.write(preview: preview, rootURL: rootURL)) { error in
+      guard case .previewOutdated("content/posts/existing.md")? = error as? LocalPublishPreviewError else {
+        return XCTFail("Expected previewOutdated, got \(error)")
+      }
+    }
+    XCTAssertEqual(
+      try String(contentsOf: destinationURL, encoding: .utf8),
+      "external editor content"
+    )
+  }
+
+  func testProtectedWriteRejectsFileCreatedAfterPreview() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/new-after-preview.md")
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          repositoryPath: "content/posts/new-after-preview.md",
+          content: "publisher content"
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+    XCTAssertEqual(preview.fileDiffs.first?.baselineState, .missing)
+    try "external new file".write(to: destinationURL, atomically: true, encoding: .utf8)
+
+    XCTAssertThrowsError(try service.write(preview: preview, rootURL: rootURL)) { error in
+      guard case .previewOutdated("content/posts/new-after-preview.md")? = error as? LocalPublishPreviewError else {
+        return XCTFail("Expected previewOutdated, got \(error)")
+      }
+    }
+    XCTAssertEqual(try String(contentsOf: destinationURL, encoding: .utf8), "external new file")
+  }
+
+  func testProtectedWriteAcceptsUnchangedPreviewBaseline() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/existing.md")
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          repositoryPath: "content/posts/existing.md",
+          content: "publisher content"
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+
+    XCTAssertEqual(
+      try service.write(preview: preview, rootURL: rootURL),
+      ["content/posts/existing.md"]
+    )
+    XCTAssertEqual(try String(contentsOf: destinationURL, encoding: .utf8), "publisher content")
+  }
+
+  func testDeleteOperationRejectsRepositorySymlink() throws {
+    let rootURL = try makeRepositoryFixture()
+    let outsideURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMacDeleteOutside-\(UUID().uuidString).md")
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+      try? FileManager.default.removeItem(at: outsideURL)
+    }
+    try "outside content".write(to: outsideURL, atomically: true, encoding: .utf8)
+    let linkURL = rootURL.appendingPathComponent("content/posts/delete-link.md")
+    try FileManager.default.createSymbolicLink(at: linkURL, withDestinationURL: outsideURL)
+    let package = publishPackage(
+      files: [
+        .init(kind: .markdown, operation: .delete, repositoryPath: "content/posts/delete-link.md")
+      ]
+    )
+
+    let preview = LocalPublishPreviewService().preview(package: package, rootURL: rootURL)
+
+    XCTAssertEqual(preview.fileDiffs.first?.status, .unsafePath)
+    XCTAssertThrowsError(try LocalPublishPreviewService().write(package: package, rootURL: rootURL))
+    XCTAssertEqual(try String(contentsOf: outsideURL, encoding: .utf8), "outside content")
   }
 
   func testPreviewRejectsUnsafeImageAttachmentPath() throws {
@@ -120,6 +379,28 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
 
     XCTAssertEqual(imageDiff.status, .unsafePath)
     XCTAssertTrue(preview.issues.contains { $0.title == "发布路径不安全" && $0.message == "/tmp/cover.jpg" })
+  }
+
+  func testPreviewMarksIdenticalExistingImageAsUnchanged() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceURL = rootURL.appendingPathComponent("source-cover.jpg")
+    let destinationDirectory = rootURL.appendingPathComponent("images", isDirectory: true)
+    let destinationURL = destinationDirectory.appendingPathComponent("cover.jpg")
+    try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+    let imageData = Data("identical image bytes".utf8)
+    try imageData.write(to: sourceURL)
+    try imageData.write(to: destinationURL)
+    let package = publishPackage(
+      files: [
+        .init(kind: .image, repositoryPath: "images/cover.jpg", sourceFilePath: sourceURL.path)
+      ]
+    )
+
+    let preview = LocalPublishPreviewService().preview(package: package, rootURL: rootURL)
+
+    XCTAssertEqual(preview.fileDiffs.first?.status, .unchanged)
+    XCTAssertTrue(preview.changedFileDiffs.isEmpty)
   }
 
   func testWriteRejectsRepositorySymlinkBeforeWritingOutsideRoot() throws {
@@ -175,6 +456,79 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     XCTAssertEqual(try String(contentsOf: outsideImageURL, encoding: .utf8), "outside original")
   }
 
+  func testWritePrevalidatesEveryDestinationBeforeChangingEarlierFiles() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let existingURL = rootURL.appendingPathComponent("content/posts/existing.md")
+    let sourceURL = rootURL.appendingPathComponent("source.jpg")
+    try "replacement image".write(to: sourceURL, atomically: true, encoding: .utf8)
+    try "not a directory".write(
+      to: rootURL.appendingPathComponent("blocked"),
+      atomically: true,
+      encoding: .utf8
+    )
+    let package = publishPackage(
+      files: [
+        .init(kind: .markdown, repositoryPath: "content/posts/existing.md", content: "new content"),
+        .init(kind: .image, repositoryPath: "blocked/image.jpg", sourceFilePath: sourceURL.path),
+      ]
+    )
+
+    XCTAssertThrowsError(try LocalPublishPreviewService().write(package: package, rootURL: rootURL))
+    XCTAssertEqual(try String(contentsOf: existingURL, encoding: .utf8), "old content\n")
+  }
+
+  func testWriteAtomicallyReplacesExistingImage() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let imagesURL = rootURL.appendingPathComponent("images", isDirectory: true)
+    try FileManager.default.createDirectory(at: imagesURL, withIntermediateDirectories: true)
+    let destinationURL = imagesURL.appendingPathComponent("cover.jpg")
+    let sourceURL = rootURL.appendingPathComponent("replacement.jpg")
+    try Data("old image".utf8).write(to: destinationURL)
+    try Data("new image".utf8).write(to: sourceURL)
+    let package = publishPackage(
+      files: [.init(kind: .image, repositoryPath: "images/cover.jpg", sourceFilePath: sourceURL.path)]
+    )
+
+    let written = try LocalPublishPreviewService().write(package: package, rootURL: rootURL)
+
+    XCTAssertEqual(written, ["images/cover.jpg"])
+    XCTAssertEqual(try Data(contentsOf: destinationURL), Data("new image".utf8))
+    XCTAssertFalse(
+      try FileManager.default.contentsOfDirectory(atPath: imagesURL.path)
+        .contains(where: { $0.contains("publisher-stage") })
+    )
+  }
+
+  func testPreviewAndWriteCopyVideoAsBinaryData() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceURL = rootURL.appendingPathComponent("walkthrough.mp4")
+    let videoData = Data([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0xFF, 0x00])
+    try videoData.write(to: sourceURL)
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .video,
+          repositoryPath: "static/videos/walkthrough.mp4",
+          sourceFilePath: sourceURL.path,
+          byteSize: Int64(videoData.count)
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+
+    let preview = service.preview(package: package, rootURL: rootURL)
+    let written = try service.write(package: package, rootURL: rootURL)
+    let destinationURL = rootURL.appendingPathComponent("static/videos/walkthrough.mp4")
+
+    XCTAssertEqual(preview.fileDiffs.first?.kind, .video)
+    XCTAssertEqual(preview.fileDiffs.first?.status, .added)
+    XCTAssertEqual(written, ["static/videos/walkthrough.mp4"])
+    XCTAssertEqual(try Data(contentsOf: destinationURL), videoData)
+  }
+
   private func publishPackage(files: [PublishPackageFile]) -> PublishPackage {
     PublishPackage(
       draftID: UUID(),
@@ -186,6 +540,25 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
       reviewTitle: "test",
       reviewChecklist: []
     )
+  }
+
+  private func assertEquivalentPreview(
+    _ actual: LocalPublishPreview,
+    _ expected: LocalPublishPreview,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    // Each independently generated preview records its own wall-clock time.
+    // Independently constructed issues also receive fresh identity values.
+    // Normalize only those generated metadata fields; every semantic field
+    // must otherwise match exactly.
+    XCTAssertEqual(actual.issues.count, expected.issues.count, file: file, line: line)
+    var normalizedActual = actual
+    normalizedActual.generatedAt = expected.generatedAt
+    for index in normalizedActual.issues.indices where expected.issues.indices.contains(index) {
+      normalizedActual.issues[index].id = expected.issues[index].id
+    }
+    XCTAssertEqual(normalizedActual, expected, file: file, line: line)
   }
 
   private func makeRepositoryFixture() throws -> URL {

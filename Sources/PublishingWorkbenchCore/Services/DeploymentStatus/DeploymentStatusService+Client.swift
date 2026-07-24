@@ -4,6 +4,11 @@ extension DeploymentStatusService {
 
   func send<Response: Decodable>(_ request: URLRequest) async throws -> Response {
     let (data, response) = try await transport.data(for: request)
+    try BoundedHTTPResponseLoader.validate(
+      data,
+      response: response,
+      maximumByteCount: URLSessionRemoteRepositoryHTTPTransport.maximumResponseByteCount
+    )
     guard let httpResponse = response as? HTTPURLResponse else {
       throw DeploymentStatusError.invalidResponse
     }
@@ -42,8 +47,11 @@ extension DeploymentStatusService {
     token: String,
     queryItems: [URLQueryItem]? = nil
   ) throws -> URLRequest {
+    guard let baseURL = URL(string: "https://api.netlify.com") else {
+      throw DeploymentStatusError.invalidURL("https://api.netlify.com")
+    }
     var request = try apiRequest(
-      baseURL: URL(string: "https://api.netlify.com")!,
+      baseURL: baseURL,
       path: path,
       queryItems: queryItems
     )
@@ -56,8 +64,11 @@ extension DeploymentStatusService {
     token: String,
     queryItems: [URLQueryItem]? = nil
   ) throws -> URLRequest {
+    guard let baseURL = URL(string: "https://api.vercel.com") else {
+      throw DeploymentStatusError.invalidURL("https://api.vercel.com")
+    }
     var request = try apiRequest(
-      baseURL: URL(string: "https://api.vercel.com")!,
+      baseURL: baseURL,
       path: path,
       queryItems: queryItems
     )
@@ -70,8 +81,11 @@ extension DeploymentStatusService {
     token: String,
     queryItems: [URLQueryItem]? = nil
   ) throws -> URLRequest {
+    guard let baseURL = URL(string: "https://api.cloudflare.com") else {
+      throw DeploymentStatusError.invalidURL("https://api.cloudflare.com")
+    }
     var request = try apiRequest(
-      baseURL: URL(string: "https://api.cloudflare.com")!,
+      baseURL: baseURL,
       path: path,
       queryItems: queryItems
     )
@@ -99,6 +113,9 @@ extension DeploymentStatusService {
     guard let url = URL(string: baseURLText), url.scheme != nil, url.host != nil else {
       throw DeploymentStatusError.invalidURL(baseURLText)
     }
+    guard CredentialedEndpointPolicy.isSecureAPIBaseURL(url) else {
+      throw DeploymentStatusError.insecureCredentialURL
+    }
     return url
   }
 
@@ -106,6 +123,9 @@ extension DeploymentStatusService {
     let baseURLText = profile.repositoryBaseURL.nilIfEmpty ?? RepositoryProvider.gitlab.defaultBaseURL
     guard let url = URL(string: baseURLText), url.scheme != nil, url.host != nil else {
       throw DeploymentStatusError.invalidURL(baseURLText)
+    }
+    guard CredentialedEndpointPolicy.isSecureAPIBaseURL(url) else {
+      throw DeploymentStatusError.insecureCredentialURL
     }
     if url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).hasSuffix("api/v4") {
       return url

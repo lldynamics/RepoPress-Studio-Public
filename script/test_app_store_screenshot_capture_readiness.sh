@@ -33,17 +33,12 @@ grep -q "captured screenshots: 0/10" <<<"$output" || fail "readiness did not rep
 grep -q "next capture command: script/capture_app_screenshots.sh --auto-window --force-relaunch" <<<"$output" \
   || fail "readiness did not print the auto capture command"
 
-broken_manifest="$TMP_DIR/broken-manifest.md"
-cp "$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" "$broken_manifest"
-perl -0pi -e 's/\| `release-readiness` \| `release-readiness\.png`[^\n]*\n//' "$broken_manifest"
-if SCREENSHOT_DIR="$SCREENSHOT_DIR" SCREENSHOT_MANIFEST_FILE="$broken_manifest" \
-  bash "$READINESS" >/dev/null 2>&1; then
-  fail "readiness accepted a manifest missing release-readiness"
-fi
-
 broken_capture="$TMP_DIR/capture_app_screenshots.sh"
 cp "$ROOT_DIR/script/capture_app_screenshots.sh" "$broken_capture"
-perl -0pi -e 's/seo-social-preview\n//' "$broken_capture"
+# Make the copied capture script advertise one fewer surface through its
+# public --list contract. The capture script now reads the manifest at
+# runtime, so deleting a bare ID literal no longer changes that contract.
+perl -0pi -e 's/(--list\)\n\s+)(printf [^\n]+)/$1$2 | grep -v "^seo-social-preview$"/' "$broken_capture"
 if SCREENSHOT_DIR="$SCREENSHOT_DIR" \
   SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \
   SCREENSHOT_CAPTURE_SCRIPT="$broken_capture" \

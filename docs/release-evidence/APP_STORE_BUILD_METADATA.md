@@ -8,6 +8,7 @@ or Transporter/App Store Connect validation evidence in
 ## Latest Local Metadata Check
 
 - Status: Local build metadata verified.
+- Version source: `Packaging/BuildVersion.xcconfig`.
 - Bundle identifier: `com.jinfang.PersonalSitePublisherMac`
 - Marketing version: `1.0`
 - Build number: `1`

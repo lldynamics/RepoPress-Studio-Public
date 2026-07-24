@@ -1,17 +1,21 @@
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
 import AppKit
 import PublishingWorkbenchCore
 
+@MainActor
 enum ScreenshotDemoSettingsPresenter {
-  static func openSettingsIfNeeded() {
+  static func openSettingsIfNeeded(openSettings: @escaping @MainActor () -> Void) {
     guard ScreenshotDemoDataService.isEnabledFromEnvironment,
           ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .proSettings
     else {
       return
     }
 
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+    Task { @MainActor in
+      try? await Task.sleep(for: .milliseconds(400))
+      openSettings()
       NSApp.activate(ignoringOtherApps: true)
-      NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
   }
 }
+#endif

@@ -10,7 +10,7 @@ Record only redacted evidence. Do not paste tokens, authorization headers, local
 - [ ] `gitlab-review-publish` - GitLab MR evidence: MR URL, provider API MR iid/state, source branch, target branch, file changes, deployment status, and rollback draft.
 - [ ] `remote-conflict-deployment-rollback` - Remote conflict, pending/offline deployment, retry, and rollback evidence.
 - [ ] `storekit-sandbox` - StoreKit sandbox purchase, restore, entitlement source, free quota, and Pro boundary event evidence.
-- [x] `app-store-screenshots` - App Store 截图和严格门禁: Ten App Store screenshots captured, screenshot privacy gate passed, and strict release gate output reviewed.
+- [x] `app-store-screenshots` - App Store 截图和严格门禁: 10 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
 
 ## Evidence Notes
 
@@ -144,10 +144,11 @@ script/record_remote_recovery_evidence.sh \
 
 script/record_external_verification_evidence.sh \
   --item app-store-screenshots \
-  --summary "Ten App Store screenshots captured, screenshot privacy gate passed, and strict release gate output reviewed." \
-  --screenshot-set "Captured writing, AI chat, sync/API publish, SEO/social preview, deployment, maintenance, general drafts, Pro, privacy lock, and release readiness screens." \
+  --summary "Nine manifest screenshots captured; screenshot privacy and strict screenshot gates passed." \
+  --screenshot-set "Captured manifest screenshot IDs: writing, ai-chat, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock." \
   --screenshot-privacy-gate "check_screenshot_privacy.sh passed with no local paths, tokens, or private article text." \
   --screenshot-strict-gate "STRICT_SCREENSHOTS=1 check_screenshots.sh and strict release gate output were reviewed." \
+  --screenshot-source-fingerprint "$(script/screenshot_evidence_fingerprint.py)" \
   --execute
 
 # Preferred shortcut after all screenshot files are captured:
@@ -155,7 +156,38 @@ script/record_app_store_screenshot_evidence.sh --execute
 ```
 
 ### App Store 截图和严格门禁
-- Ten App Store screenshots captured, screenshot privacy gate passed, and strict release gate output reviewed.
-- Screenshot set: Captured writing, AI chat, sync/API publish, SEO/social preview, deployment, maintenance, general drafts, Pro, privacy lock, and release readiness screens.
+- Nine manifest screenshots captured; screenshot privacy and strict screenshot gates passed.
+- Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
 - Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
 - Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
+- Screenshot source fingerprint: stale legacy evidence; recapture required.
+- 9 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
+- Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
+- Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
+- Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
+- Screenshot source fingerprint: sha256:64c53923544993c231c2ac6683e3b268b05ca53635398299965e24efe91c5a9f
+- 9 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
+- Screenshot set: Captured manifest screenshot IDs: writing, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
+- Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
+- Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
+- Screenshot source fingerprint: sha256:b16c650465d9acf349b13114cafdd65c59818ebfc51983dc02cedc16a7111953
+- 9 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
+- Screenshot set: Captured manifest screenshot IDs: writing, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
+- Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
+- Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
+- Screenshot source fingerprint: sha256:be62cbd7dc4a0515df0ed053d9733b8e272232e7add1381f5f98f9355ffb81d7
+- 9 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
+- Screenshot set: Captured manifest screenshot IDs: writing, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
+- Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
+- Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
+- Screenshot source fingerprint: sha256:5ebd59b16247b3408a194d9d192e09f905111a2918596365e5988c965605880e
+- 9 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
+- Screenshot set: Captured manifest screenshot IDs: writing, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
+- Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
+- Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
+- Screenshot source fingerprint: sha256:e1a74c08e164072cfd2a46a9de4f1fb591afba70030c68437e61d1516f6e379e
+- 10 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
+- Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
+- Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
+- Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
+- Screenshot source fingerprint: sha256:7ba3f5dbc31bf943cd555fc9af3ef5ea54e448649c4ce5190c9db3bb3734d304

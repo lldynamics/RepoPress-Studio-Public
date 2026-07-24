@@ -36,7 +36,8 @@ extension WorkbenchStore {
     aiStore.seoReport(for: draft)
   }
 
-  public func saveAIAPIKey(_ token: String) {
+  @discardableResult
+  public func saveAIAPIKey(_ token: String) -> Bool {
     aiStore.saveAIAPIKey(token)
   }
 
@@ -48,16 +49,20 @@ extension WorkbenchStore {
     await aiStore.testAIConnection()
   }
 
-  public var aiChatArchivedConversations: [AIPublishingChatArchivedConversation] {
-    aiStore.aiChatArchivedConversations
-  }
-
   public func clearAIChat() {
     aiStore.clearAIChat()
   }
 
   public func setAIChatModelGrade(_ grade: AIChatModelGrade) {
     aiStore.setAIChatModelGrade(grade)
+  }
+
+  public func setAIChatReasoningLevel(_ level: AIChatReasoningLevel) {
+    aiStore.setAIChatReasoningLevel(level)
+  }
+
+  public func setAIChatKnowledgePolicy(_ policy: KnowledgeRetrievalPolicy) {
+    aiStore.setAIChatKnowledgePolicy(policy)
   }
 
   public func setAIChatCustomModel(_ model: String) {
@@ -89,19 +94,13 @@ extension WorkbenchStore {
     aiStore.startNewAIChatConversation(draft: draft)
   }
 
-  public func restoreArchivedAIChatConversation(
-    _ conversationID: AIPublishingChatArchivedConversation.ID,
-    draft: ArticleDraft? = nil
-  ) {
-    aiStore.restoreArchivedAIChatConversation(conversationID, draft: draft)
+  #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+  /// Seeds a runtime-only conversation for deterministic screenshot fixtures.
+  public func seedTransientAIChatPreview(_ messages: [AIPublishingChatMessage]) {
+    setAIChatMessages(messages)
+    aiStore.cacheCurrentAIChatSessionForAIStore()
   }
-
-  public func deleteArchivedAIChatConversation(
-    _ conversationID: AIPublishingChatArchivedConversation.ID,
-    draft: ArticleDraft? = nil
-  ) {
-    aiStore.deleteArchivedAIChatConversation(conversationID, draft: draft)
-  }
+  #endif
 
   public func deleteAIChatMessage(_ messageID: AIPublishingChatMessage.ID, draft: ArticleDraft? = nil) {
     aiStore.deleteAIChatMessage(messageID, draft: draft)
@@ -113,6 +112,17 @@ extension WorkbenchStore {
 
   public func cancelAIChatReply() {
     aiStore.cancelAIChatReply()
+  }
+
+  @discardableResult
+  public func retryLastFailedAIChatReply(
+    confirmingPossibleDuplicateCharge: Bool = false,
+    draft: ArticleDraft? = nil
+  ) async -> AIPublishingChatMessage? {
+    await aiStore.retryLastFailedAIChatReply(
+      confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
+      draft: draft
+    )
   }
 
   @discardableResult
@@ -205,8 +215,8 @@ extension WorkbenchStore {
   public func aiChatImageAttachments(
     for draft: ArticleDraft,
     attachmentIDs: Set<UUID>
-  ) -> [AIChatImageAttachment] {
-    aiStore.aiChatImageAttachments(for: draft, attachmentIDs: attachmentIDs)
+  ) async -> [AIChatImageAttachment] {
+    await aiStore.aiChatImageAttachments(for: draft, attachmentIDs: attachmentIDs)
   }
 
   public func makeAttachment(from url: URL, draft: ArticleDraft) -> DraftAttachment {
@@ -238,8 +248,9 @@ extension WorkbenchStore {
     aiStore.seoSitemapPreview(for: draft)
   }
 
-  public func seoSocialPublishPackageMarkdown(for draft: ArticleDraft) -> String? {
-    aiStore.seoSocialPublishPackageMarkdown(for: draft)
+  public func seoSocialPublishPackageMarkdown(for draft: ArticleDraft) async -> String? {
+    await refreshSiteMaintenanceSnapshot()
+    return aiStore.seoSocialPublishPackageMarkdown(for: draft)
   }
 
   @discardableResult

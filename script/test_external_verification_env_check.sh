@@ -6,6 +6,22 @@ PREP="$ROOT_DIR/script/prepare_external_verification_envs.sh"
 CHECK="$ROOT_DIR/script/check_external_verification_envs.sh"
 TMP_DIR="$(mktemp -d /private/tmp/mac-editor-env-check.XXXXXX)"
 ENV_DIR="$TMP_DIR/private-envs"
+EVIDENCE_FIXTURE="$TMP_DIR/external-verification-evidence.md"
+ARCHIVE_FIXTURE="$TMP_DIR/app-store-archive-evidence.md"
+
+printf '%s\n' \
+  '- [ ] `github-direct-publish`' \
+  '- [ ] `github-review-publish`' \
+  '- [ ] `gitlab-direct-publish`' \
+  '- [ ] `gitlab-review-publish`' \
+  '- [ ] `remote-conflict-deployment-rollback`' \
+  '- [ ] `storekit-sandbox`' \
+  '- [x] `app-store-screenshots`' >"$EVIDENCE_FIXTURE"
+printf '%s\n' \
+  '# App Store Archive Validation Evidence' \
+  '- [ ] Clean Release archive produced from a clean checkout.' >"$ARCHIVE_FIXTURE"
+export EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FIXTURE"
+export APP_STORE_ARCHIVE_EVIDENCE_FILE="$ARCHIVE_FIXTURE"
 
 cleanup() {
   rm -rf "$TMP_DIR"

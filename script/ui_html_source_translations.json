@@ -1,0 +1,262 @@
+{
+  "HTML 源文件": {
+    "zh-Hans": "HTML 源文件",
+    "en": "HTML Source Files"
+  },
+  "HTML 源文件尚未保存": {
+    "zh-Hans": "HTML 源文件尚未保存",
+    "en": "HTML Source File Not Saved"
+  },
+  "HTML 源文件已保存。": {
+    "zh-Hans": "HTML 源文件已保存。",
+    "en": "HTML source file saved."
+  },
+  "HTML 源码 Inspector": {
+    "zh-Hans": "HTML 源码 Inspector",
+    "en": "HTML Source Inspector"
+  },
+  "HTML 源码编辑器": {
+    "zh-Hans": "HTML 源码编辑器",
+    "en": "HTML Source Editor"
+  },
+  "UTF-8": {
+    "zh-Hans": "UTF-8",
+    "en": "UTF-8"
+  },
+  "UTF-8 BOM": {
+    "zh-Hans": "UTF-8 BOM",
+    "en": "UTF-8 BOM"
+  },
+  "UTF-16 LE": {
+    "zh-Hans": "UTF-16 LE",
+    "en": "UTF-16 LE"
+  },
+  "UTF-16 BE": {
+    "zh-Hans": "UTF-16 BE",
+    "en": "UTF-16 BE"
+  },
+  "LF": {
+    "zh-Hans": "LF",
+    "en": "LF"
+  },
+  "CRLF": {
+    "zh-Hans": "CRLF",
+    "en": "CRLF"
+  },
+  "CR": {
+    "zh-Hans": "CR",
+    "en": "CR"
+  },
+  "HTML": {
+    "zh-Hans": "HTML",
+    "en": "HTML"
+  },
+  "Liquid": {
+    "zh-Hans": "Liquid",
+    "en": "Liquid"
+  },
+  "Tera": {
+    "zh-Hans": "Tera",
+    "en": "Tera"
+  },
+  "Go Template": {
+    "zh-Hans": "Go Template",
+    "en": "Go Template"
+  },
+  "Astro": {
+    "zh-Hans": "Astro",
+    "en": "Astro"
+  },
+  "不保存并退出": {
+    "zh-Hans": "不保存并退出",
+    "en": "Quit Without Saving"
+  },
+  "从资料库的“源码”阶段选择 HTML 文件后，这里会显示文件信息与诊断。": {
+    "zh-Hans": "从资料库的“源码”阶段选择 HTML 文件后，这里会显示文件信息与诊断。",
+    "en": "Select an HTML file in the repository's Source stage to view file information and diagnostics here."
+  },
+  "仓库中没有 HTML 或 HTM 文件。": {
+    "zh-Hans": "仓库中没有 HTML 或 HTM 文件。",
+    "en": "No HTML or HTM files were found in the repository."
+  },
+  "使用系统默认浏览器打开这个 HTML 文件。": {
+    "zh-Hans": "使用系统默认浏览器打开这个 HTML 文件。",
+    "en": "Open this HTML file in the default system browser."
+  },
+  "保存后退出可保留源码更改；也可以返回编辑器继续处理。": {
+    "zh-Hans": "保存后退出可保留源码更改；也可以返回编辑器继续处理。",
+    "en": "Save before quitting to keep your source changes, or return to the editor to continue working."
+  },
+  "保存并退出": {
+    "zh-Hans": "保存并退出",
+    "en": "Save and Quit"
+  },
+  "先保存更改，再用系统浏览器预览。": {
+    "zh-Hans": "先保存更改，再用系统浏览器预览。",
+    "en": "Save your changes before previewing in the system browser."
+  },
+  "关闭源码文件": {
+    "zh-Hans": "关闭源码文件",
+    "en": "Close Source File"
+  },
+  "刷新 HTML 文件列表": {
+    "zh-Hans": "刷新 HTML 文件列表",
+    "en": "Refresh HTML File List"
+  },
+  "搜索 HTML 源文件": {
+    "zh-Hans": "搜索 HTML 源文件",
+    "en": "Search HTML Source Files"
+  },
+  "按文件名或仓库相对路径筛选": {
+    "zh-Hans": "按文件名或仓库相对路径筛选",
+    "en": "Filter by file name or repository-relative path"
+  },
+  "另有 %@ 项": {
+    "zh-Hans": "另有 %@ 项",
+    "en": "%@ more"
+  },
+  "只显示 .html / .htm": {
+    "zh-Hans": "只显示 .html / .htm",
+    "en": "Showing .html / .htm only"
+  },
+  "当前文件还有未保存的更改。继续会丢弃这些更改。": {
+    "zh-Hans": "当前文件还有未保存的更改。继续会丢弃这些更改。",
+    "en": "The current file has unsaved changes. Continuing will discard them."
+  },
+  "当前：%@ · %@ 条": {
+    "zh-Hans": "当前：%1$@ · %2$@ 条",
+    "en": "Current: %1$@ · %2$@ items"
+  },
+  "打开 HTML 高级源码编辑器": {
+    "zh-Hans": "打开 HTML 高级源码编辑器",
+    "en": "Open Advanced HTML Source Editor"
+  },
+  "换行符": {
+    "zh-Hans": "换行符",
+    "en": "Line Endings"
+  },
+  "放弃并关闭": {
+    "zh-Hans": "放弃并关闭",
+    "en": "Discard and Close"
+  },
+  "放弃并打开": {
+    "zh-Hans": "放弃并打开",
+    "en": "Discard and Open"
+  },
+  "放弃并重新载入": {
+    "zh-Hans": "放弃并重新载入",
+    "en": "Discard and Reload"
+  },
+  "放弃更改并关闭文件？": {
+    "zh-Hans": "放弃更改并关闭文件？",
+    "en": "Discard Changes and Close File?"
+  },
+  "放弃更改并打开其他文件？": {
+    "zh-Hans": "放弃更改并打开其他文件？",
+    "en": "Discard Changes and Open Another File?"
+  },
+  "放弃更改并重新载入？": {
+    "zh-Hans": "放弃更改并重新载入？",
+    "en": "Discard Changes and Reload?"
+  },
+  "文件大小": {
+    "zh-Hans": "文件大小",
+    "en": "File Size"
+  },
+  "文件格式、诊断与 Git 差异": {
+    "zh-Hans": "文件格式、诊断与 Git 差异",
+    "en": "File format, diagnostics, and Git diff"
+  },
+  "未能保存 HTML 源文件": {
+    "zh-Hans": "未能保存 HTML 源文件",
+    "en": "Could Not Save HTML Source File"
+  },
+  "模板文件请使用资料库中的本地站点预览。": {
+    "zh-Hans": "模板文件请使用资料库中的本地站点预览。",
+    "en": "Use the repository's local site preview for template files."
+  },
+  "模板档位": {
+    "zh-Hans": "模板档位",
+    "en": "Template Dialect"
+  },
+  "没有打开源码文件": {
+    "zh-Hans": "没有打开源码文件",
+    "en": "No Source File Open"
+  },
+  "源码": {
+    "zh-Hans": "源码",
+    "en": "Source"
+  },
+  "磁盘修改": {
+    "zh-Hans": "磁盘修改",
+    "en": "Modified on Disk"
+  },
+  "第 %@ 行 · %@": {
+    "zh-Hans": "第 %1$@ 行 · %2$@",
+    "en": "Line %1$@ · %2$@"
+  },
+  "第 %@ 行：%@": {
+    "zh-Hans": "第 %1$@ 行：%2$@",
+    "en": "Line %1$@: %2$@"
+  },
+  "编码": {
+    "zh-Hans": "编码",
+    "en": "Encoding"
+  },
+  "行数": {
+    "zh-Hans": "行数",
+    "en": "Lines"
+  },
+  "请返回编辑器检查文件权限或外部修改冲突。": {
+    "zh-Hans": "请返回编辑器检查文件权限或外部修改冲突。",
+    "en": "Return to the editor and check file permissions or external modification conflicts."
+  },
+  "正在扫描 HTML 文件…": {
+    "zh-Hans": "正在扫描 HTML 文件…",
+    "en": "Scanning HTML files…"
+  },
+  "选择一个 HTML 文件": {
+    "zh-Hans": "选择一个 HTML 文件",
+    "en": "Select an HTML File"
+  },
+  "选择仓库中的 HTML 文件后，可在保留编码与换行符的前提下安全编辑。": {
+    "zh-Hans": "选择仓库中的 HTML 文件后，可在保留编码与换行符的前提下安全编辑。",
+    "en": "Select an HTML file in the repository to edit it safely while preserving its encoding and line endings."
+  },
+  "高级源码编辑会保留文件编码和换行符，并在保存前检查外部修改。": {
+    "zh-Hans": "高级源码编辑会保留文件编码和换行符，并在保存前检查外部修改。",
+    "en": "Advanced source editing preserves file encoding and line endings, and checks for external changes before saving."
+  },
+  "保存后关闭可保留源码更改；也可以返回编辑器继续处理。": {
+    "zh-Hans": "保存后关闭可保留源码更改；也可以返回编辑器继续处理。",
+    "en": "Save before closing to keep your source changes, or return to the editor to continue working."
+  },
+  "保存并关闭": {
+    "zh-Hans": "保存并关闭",
+    "en": "Save and Close"
+  },
+  "不保存并关闭": {
+    "zh-Hans": "不保存并关闭",
+    "en": "Close Without Saving"
+  },
+  "未能保存 HTML 源文件。": {
+    "zh-Hans": "未能保存 HTML 源文件。",
+    "en": "Could not save the HTML source file."
+  },
+  "载入期间源码发生了新的编辑；为避免丢失内容，本次打开已取消。": {
+    "zh-Hans": "载入期间源码发生了新的编辑；为避免丢失内容，本次打开已取消。",
+    "en": "The source changed while it was loading, so opening was cancelled to avoid losing edits."
+  },
+  "HTML 源文件仍在保存，请稍后再试。": {
+    "zh-Hans": "HTML 源文件仍在保存，请稍后再试。",
+    "en": "The HTML source file is still being saved. Try again in a moment."
+  },
+  "此文件混用了多种换行符。为避免产生整文件差异，源码编辑保持只读；请先在外部工具中统一换行符。": {
+    "zh-Hans": "此文件混用了多种换行符。为避免产生整文件差异，源码编辑保持只读；请先在外部工具中统一换行符。",
+    "en": "This file mixes multiple line-ending styles. Source editing is read-only to avoid a whole-file diff; normalize the line endings in an external tool first."
+  },
+  "混合（只读保护）": {
+    "zh-Hans": "混合（只读保护）",
+    "en": "Mixed (Read-only Protection)"
+  }
+}
