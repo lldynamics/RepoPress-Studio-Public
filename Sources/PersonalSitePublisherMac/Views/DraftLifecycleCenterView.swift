@@ -7,7 +7,7 @@ private struct DraftRepositoryCleanupConfirmation {
 }
 
 struct DraftLifecycleCenterView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
   @Environment(\.dismiss) private var dismiss
   @State private var draftPendingPermanentDeletion: RecycledDraft?
   @State private var cleanupPendingExecution: DraftRepositoryCleanupConfirmation?

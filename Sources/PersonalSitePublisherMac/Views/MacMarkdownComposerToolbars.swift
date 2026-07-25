@@ -74,7 +74,7 @@ struct MacMarkdownEditorToolbar: View {
       } label: {
         editorActionIcon("magnifyingglass")
       }
-      .help("查找与替换")
+      .help("查找与替换（⌘F）")
       .accessibilityLabel("查找与替换")
 
       Button {
@@ -99,7 +99,7 @@ struct MacMarkdownEditorToolbar: View {
       } label: {
         editorActionIcon("keyboard")
       }
-      .help("快捷键说明")
+      .help("快捷键说明（⌘/）")
       .accessibilityLabel("快捷键说明")
 
       if DistributionFeaturePolicy.allowsExternalAIProviders {

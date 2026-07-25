@@ -7,7 +7,7 @@ struct ProBenefitsSection: View {
       VStack(alignment: .leading, spacing: 10) {
         Label("全自动线上发布与 Git 库同步", systemImage: "paperplane.fill")
           .font(.body.weight(.medium))
-        Label("多仓库与 Hexo / Hugo / Astro 契约配置", systemImage: "folder.fill.badge.gearshape")
+        Label("多仓库与 Hexo / Hugo / Astro 建站框架配置", systemImage: "folder.fill.badge.gearshape")
           .font(.body.weight(.medium))
         Label("无限制素材与文章批量导出", systemImage: "square.and.arrow.up.on.square.fill")
           .font(.body.weight(.medium))

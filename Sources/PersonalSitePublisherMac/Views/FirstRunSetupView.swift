@@ -2,7 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct FirstRunSetupView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
   let finish: () -> Void
   let skip: () -> Void
 

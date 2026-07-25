@@ -17,7 +17,7 @@ This document is the release contract for the single RepoPress for macOS App Sto
 | Markdown editing, preview, metadata, content checks, local research, repository sync, and publishing | Included |
 | User-selected files, repositories, and explicit HTTPS article import | Included |
 
-The submitted app complies with App Store sandbox minimality principles, declaring `com.apple.security.network.client` for outbound connectivity and user-selected file access. It embeds and signs the Safari Web Extension in `Contents/PlugIns`, but does not bundle or install a Native Messaging helper executable. Chrome is independently installed and updated through the Chrome Web Store.
+The submitted app complies with App Store sandbox minimality principles, declaring `com.apple.security.network.client` for outbound connectivity, `com.apple.security.network.server` only for the authenticated loopback browser-capture bridge, and user-selected file access. It embeds and signs the Safari Web Extension in `Contents/PlugIns`, but does not bundle or install a Native Messaging helper executable. Chrome is independently installed and updated through the Chrome Web Store.
 
 ## AI data boundary
 

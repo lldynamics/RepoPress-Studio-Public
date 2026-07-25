@@ -58,6 +58,15 @@ extension RepositoryWorkspaceView {
         .accessibilityIdentifier("repository-action-refresh-publish-preview")
 
         Button {
+          isConflictResolverPresented = true
+        } label: {
+          Label("Git 冲突消解器", systemImage: "arrow.triangle.merge")
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.bordered)
+        .help("调起双栏可视化 Git 冲突对比与一键消解器")
+
+        Button {
           Task {
             await store.checkRepositoryTokenAccess()
             store.refreshPublishPreviewInBackground()

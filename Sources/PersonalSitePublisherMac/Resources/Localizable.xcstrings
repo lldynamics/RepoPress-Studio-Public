@@ -17553,6 +17553,22 @@
         }
       }
     },
+    "在此配置新建文章时需自动带出的自定义 YAML 属性（例如 Hexo / Hugo 主题拓展字段）：": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configure custom YAML attributes to automatically include when creating new articles:"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在此配置新建文章时需自动带出的自定义 YAML 属性（例如 Hexo / Hugo 主题拓展字段）："
+          }
+        }
+      }
+    },
     "在较小窗口中显示更多内容。": {
       "localizations": {
         "en": {
@@ -26513,6 +26529,22 @@
         }
       }
     },
+    "无 Git 冲突": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Git Conflicts"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无 Git 冲突"
+          }
+        }
+      }
+    },
     "无变化": {
       "localizations": {
         "en": {
@@ -29117,6 +29149,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "检查部署状态"
+          }
+        }
+      }
+    },
+    "检测到 %@ 个并发冲突文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ concurrent conflict files detected"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检测到 %@ 个并发冲突文件"
           }
         }
       }
@@ -34769,6 +34817,22 @@
         }
       }
     },
+    "请选择冲突文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Please Select a Conflict File"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选择冲突文件"
+          }
+        }
+      }
+    },
     "请选择当前站点中的目标文章。": {
       "localizations": {
         "en": {
@@ -35997,6 +36061,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "远端%@变更"
+          }
+        }
+      }
+    },
+    "远端与本地修改已同步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote and local modifications are in sync"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "远端与本地修改已同步"
           }
         }
       }

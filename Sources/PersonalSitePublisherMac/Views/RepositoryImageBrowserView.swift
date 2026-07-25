@@ -54,7 +54,7 @@ struct RepositoryImageBrowserView: View {
         loadingState
       }
     }
-    .padding(14)
+    .padding(WorkbenchPadding.card)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -474,8 +474,16 @@ private struct RepositoryImageRow: View {
             ? String(format: String(localized: "已登记 %d"), asset.references.count)
             : String(localized: "未登记")
         )
-          .font(.caption)
-          .foregroundStyle(asset.isRegisteredToArticle ? Color.secondary : WorkbenchTheme.warning)
+        .font(.caption.weight(.medium))
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(
+          asset.isRegisteredToArticle
+            ? Color.primary.opacity(0.06)
+            : WorkbenchTheme.warning.opacity(0.14),
+          in: Capsule()
+        )
+        .foregroundStyle(asset.isRegisteredToArticle ? Color.secondary : WorkbenchTheme.warning)
       }
     }
     .padding(.vertical, 3)
