@@ -12,8 +12,8 @@
     "en": "Local Model"
   },
   "display.ai-provider-preset.openai-compatible": {
-    "zh-Hans": "OpenAI Compatible",
-    "en": "OpenAI Compatible"
+    "zh-Hans": "自定义接口兼容",
+    "en": "Custom Compatible"
   },
   "display.ai-provider-preset.openrouter": {
     "zh-Hans": "OpenRouter",

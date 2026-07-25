@@ -743,8 +743,29 @@ struct MacMarkdownTextView: NSViewRepresentable {
     func textViewDidChangeSelection(_ notification: Notification) {
       guard let textView = notification.object as? NSTextView else { return }
       updateSelectionBinding(from: textView.selectedRange())
+      performTypewriterScrollIfNeeded(in: textView)
       updateCurrentParagraphHighlight(in: textView)
       centerSelectionIfNeeded(in: textView)
+    }
+
+    func performTypewriterScrollIfNeeded(in textView: NSTextView) {
+      guard comfortConfiguration.typewriterModeEnabled,
+            let layoutManager = textView.layoutManager,
+            let textContainer = textView.textContainer,
+            let clipView = textView.enclosingScrollView?.contentView else { return }
+
+      let selectedRange = textView.selectedRange()
+      let glyphRange = layoutManager.glyphRange(forCharacterRange: selectedRange, actualCharacterRange: nil)
+      let lineRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+
+      let targetY = lineRect.midY - (clipView.bounds.height / 2.2)
+      let clampedY = max(0, min(targetY, textView.bounds.height - clipView.bounds.height))
+
+      NSAnimationContext.runAnimationGroup { context in
+        context.duration = 0.10
+        context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        clipView.animator().setBoundsOrigin(NSPoint(x: 0, y: clampedY))
+      }
     }
 
     func textView(

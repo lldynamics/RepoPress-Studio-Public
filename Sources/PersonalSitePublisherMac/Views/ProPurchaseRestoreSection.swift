@@ -45,6 +45,14 @@ struct ProPurchaseRestoreSection: View {
           .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
       }
+
+      HStack(spacing: 8) {
+        Link("隐私政策", destination: URL(string: "https://apps.chengjinfang.com/personal-site-publisher/privacy/")!)
+        Text("·")
+        Link("使用条款", destination: URL(string: "https://apps.chengjinfang.com/personal-site-publisher/")!)
+      }
+      .font(.caption)
+      .foregroundStyle(.secondary)
     }
   }
 }

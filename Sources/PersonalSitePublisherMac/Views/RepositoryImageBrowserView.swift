@@ -241,11 +241,8 @@ struct RepositoryImageBrowserView: View {
   ) -> some View {
     if let asset = selectedAsset(in: assets) {
       VStack(alignment: .leading, spacing: 10) {
-        Image(nsImage: NSWorkspace.shared.icon(forFile: asset.absoluteFilePath))
-          .resizable()
-          .scaledToFit()
-          .frame(width: 64, height: 64)
-          .frame(maxWidth: .infinity, minHeight: 70)
+        WorkbenchThumbnailView(fileURL: asset.fileURL, maxPixelSize: 512, cornerRadius: 10)
+          .frame(maxWidth: .infinity, minHeight: 140, maxHeight: 180)
           .background(
             WorkbenchBackgroundStyle.control,
             in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
@@ -456,11 +453,12 @@ private struct RepositoryImageRow: View {
 
   var body: some View {
     HStack(spacing: 10) {
-      Image(systemName: "photo")
-        .foregroundStyle(.secondary)
-        .frame(width: 18)
+      WorkbenchThumbnailView(fileURL: asset.fileURL, maxPixelSize: 96, cornerRadius: 6)
+        .frame(width: 36, height: 36)
+
       VStack(alignment: .leading, spacing: 2) {
         Text(asset.filename)
+          .font(.body.weight(.medium))
           .lineLimit(1)
         Text(asset.repositoryPath)
           .font(.caption.monospaced())

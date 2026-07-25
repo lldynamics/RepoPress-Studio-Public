@@ -119,7 +119,7 @@ extension AIProviderPreset {
 
   var fallbackDisplayName: String {
     switch self {
-    case .openAICompatible: "OpenAI Compatible"
+    case .openAICompatible: "Custom Endpoint (Compatible)"
     case .deepSeek: "DeepSeek"
     case .openRouter: "OpenRouter"
     case .local: "本地模型"

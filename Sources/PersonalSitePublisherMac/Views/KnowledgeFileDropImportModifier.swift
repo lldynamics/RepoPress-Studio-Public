@@ -38,29 +38,60 @@ struct KnowledgeFileDropImportModifier: ViewModifier {
 
   private var dropOverlay: some View {
     ZStack {
-      Color.black.opacity(0.12)
+      Rectangle()
+        .fill(.ultraThinMaterial)
+        .overlay(Color.black.opacity(0.20))
 
-      VStack(spacing: 10) {
-        Image(systemName: "tray.and.arrow.down.fill")
-          .font(.system(size: 34, weight: .semibold))
-          .foregroundStyle(.tint)
-        Text(String(localized: "释放以导入资料"))
-          .font(.title3.weight(.semibold))
-        Text(destinationMessage)
-          .font(.callout)
+      VStack(spacing: 16) {
+        ZStack {
+          Circle()
+            .fill(Color.accentColor.opacity(0.18))
+            .frame(width: 76, height: 76)
+            .shadow(color: Color.accentColor.opacity(0.35), radius: 14)
+
+          Image(systemName: "square.and.arrow.down.on.square.fill")
+            .font(.system(size: 34, weight: .semibold))
+            .foregroundStyle(Color.accentColor)
+        }
+
+        VStack(spacing: 6) {
+          Text(String(localized: "松手立即导入素材"))
+            .font(.title2.weight(.bold))
+            .foregroundStyle(.primary)
+
+          Text(destinationMessage)
+            .font(.callout.weight(.medium))
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 380)
+
+          HStack(spacing: 10) {
+            Label("Markdown", systemImage: "doc.text")
+            Label("图片", systemImage: "photo")
+            Label("PDF", systemImage: "doc.richtext")
+            Label("EPUB", systemImage: "book")
+          }
+          .font(.caption.monospaced())
           .foregroundStyle(.secondary)
+          .padding(.top, 4)
+        }
       }
-      .padding(.horizontal, 30)
-      .padding(.vertical, 24)
-      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+      .padding(.horizontal, 36)
+      .padding(.vertical, 28)
+      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
       .overlay {
-        RoundedRectangle(cornerRadius: 16)
-          .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [8, 5]))
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+          .stroke(
+            Color.accentColor,
+            style: StrokeStyle(lineWidth: 2, dash: [10, 6])
+          )
+          .shadow(color: Color.accentColor.opacity(0.30), radius: 6)
       }
-      .shadow(radius: 14, y: 6)
+      .shadow(color: Color.black.opacity(0.20), radius: 20, y: 8)
     }
+    .ignoresSafeArea()
     .accessibilityElement(children: .combine)
-    .accessibilityLabel(Text("释放以导入资料"))
+    .accessibilityLabel(Text("松手立即导入素材"))
     .accessibilityValue(destinationMessage)
   }
 

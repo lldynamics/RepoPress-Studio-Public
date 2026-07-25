@@ -33,7 +33,6 @@ struct PrivacySettingsCurrentStatusSection: View {
         }
         .workbenchProminentActionStyle(tint: WorkbenchTheme.warningActionFill)
         .disabled(status.isLocked)
-        .help(String(localized: "快捷键：⌃⌘L"))
 
         Button {
           onUnlock()

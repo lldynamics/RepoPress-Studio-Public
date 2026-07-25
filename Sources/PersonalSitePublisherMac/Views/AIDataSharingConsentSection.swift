@@ -20,10 +20,6 @@ struct AIDataSharingConsentSection: View {
         Text("当你主动使用 AI 功能时，应用可能发送你的提示词、当前文章与站点上下文、选中的资料库片段，以及你主动添加的图片。服务商会按其隐私政策处理这些内容。")
           .font(.callout)
 
-        Text("API Key 保存在本机钥匙串中；请求由此 Mac 直接发送到所选服务商，应用开发者不代购 Key、不代理请求，也不会收到你的 Key 或 AI 内容。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-
         if presentation.isGranted {
           HStack {
             Label("已允许发送", systemImage: "checkmark.shield.fill")
@@ -49,10 +45,6 @@ struct AIDataSharingConsentSection: View {
         Text("当前地址是本机回环地址。内容只发送给此 Mac 上运行的模型服务，不需要第三方数据发送授权。")
           .font(.callout)
       }
-
-      Text("AI 请求使用你自己的服务商账户和 API Key，应用不限制 AI 请求次数，也不把 AI 请求次数作为 Pro 付费权益。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
     }
     .confirmationDialog(
       "撤销 \(presentation.providerName) 的 AI 数据发送授权？",

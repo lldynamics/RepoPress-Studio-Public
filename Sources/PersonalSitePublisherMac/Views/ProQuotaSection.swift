@@ -10,7 +10,7 @@ struct ProQuotaSection: View {
   let batchRemaining: Int
 
   var body: some View {
-    Section(String(localized: "每日免费额度")) {
+    Section(String(localized: "免费版功能限制")) {
       ProQuotaRow(
         title: PremiumFeature.onlinePublishing.localizedDisplayName,
         used: publishingUsed,
@@ -24,10 +24,7 @@ struct ProQuotaSection: View {
         systemImage: PremiumFeature.batchPublishing.systemImage
       )
 
-      Text(String(localized: "每天按设备当前日期自动重置。"))
-        .font(.caption)
-        .foregroundStyle(.secondary)
-      Text(String(localized: "AI 使用你自己的服务商账户和 API Key，不计入应用免费额度。"))
+      Text(String(localized: "每日试用额度随系统日期自动重置；购买 Pro 终身会员可彻底解除上述限制。"))
         .font(.caption)
         .foregroundStyle(.secondary)
     }
