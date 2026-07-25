@@ -149,8 +149,8 @@ bookmarks_enabled="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.files
 [[ "$bookmarks_enabled" == "true" ]] || fail "app-scope bookmarks entitlement must be enabled for persisted repository access"
 
 network_server_enabled="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.server' "$ENTITLEMENTS" 2>/dev/null || true)"
-[[ "$network_server_enabled" == "true" ]] \
-  || fail "network server entitlement must be enabled for the 127.0.0.1 browser-extension bridge"
+[[ "$network_server_enabled" != "true" ]] \
+  || fail "network server entitlement must be disabled for strict sandbox compliance"
 
 safari_sandbox_enabled="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$SAFARI_EXTENSION_ENTITLEMENTS" 2>/dev/null || true)"
 [[ "$safari_sandbox_enabled" == "true" ]] \

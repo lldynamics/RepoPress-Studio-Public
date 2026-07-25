@@ -50,10 +50,6 @@ struct DefaultRuleSiteSection: View {
         .accessibilityLabel("Slug 规则")
         .accessibilityValue(activeProfile.slugValidationRule.localizedDisplayName)
 
-        Text(activeProfile.slugValidationRule.detail)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-
         Toggle("包含 draft 字段", isOn: activeProfileBinding.includeDraftFlagInFrontMatter)
           .accessibilityLabel("文章头信息包含 draft 字段")
           .accessibilityValue(activeProfile.includeDraftFlagInFrontMatter ? "开启" : "关闭")

@@ -1345,6 +1345,22 @@
         }
       }
     },
+    "AI 写作辅助支持免 Key 演示与自定义接口，完全自主配置，永不扣除 Pro 权益。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI writing tools support built-in Demo mode and custom endpoints, managed entirely by you and never consuming Pro quota."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 写作辅助支持免 Key 演示与自定义接口，完全自主配置，永不扣除 Pro 权益。"
+          }
+        }
+      }
+    },
     "AI 写作风格预设": {
       "localizations": {
         "en": {
@@ -3037,6 +3053,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Pro"
+          }
+        }
+      }
+    },
+    "Pro 会员与权限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro Membership & Entitlements"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro 会员与权限"
           }
         }
       }
@@ -10081,6 +10113,22 @@
         }
       }
     },
+    "·": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "·"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "·"
+          }
+        }
+      }
+    },
     "· %@": {
       "localizations": {
         "en": {
@@ -11777,6 +11825,22 @@
         }
       }
     },
+    "价格与购买类型将在连接 App Store 后实时显示。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Price and purchase type will display after connecting to the App Store."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "价格与购买类型将在连接 App Store 后实时显示。"
+          }
+        }
+      }
+    },
     "任务列表": {
       "localizations": {
         "en": {
@@ -12845,6 +12909,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "先选择站点文件夹"
+          }
+        }
+      }
+    },
+    "免费版功能限制": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free Edition Limits"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "免费版功能限制"
           }
         }
       }
@@ -28273,6 +28353,22 @@
         }
       }
     },
+    "松手立即导入素材": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Release to import assets"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "松手立即导入素材"
+          }
+        }
+      }
+    },
     "查找": {
       "localizations": {
         "en": {
@@ -30013,6 +30109,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "每日免费额度"
+          }
+        }
+      }
+    },
+    "每日试用额度随系统日期自动重置；购买 Pro 终身会员可彻底解除上述限制。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daily trial limits reset automatically based on device date; purchasing Pro Lifetime removes all limits."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每日试用额度随系统日期自动重置；购买 Pro 终身会员可彻底解除上述限制。"
           }
         }
       }

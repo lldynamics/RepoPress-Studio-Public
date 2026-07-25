@@ -30,7 +30,6 @@ struct PublishDrawerCard<Content: View>: View {
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .contain)
     .accessibilityLabel(Text(LocalizedStringKey(title)))
-    .accessibilityHint("发布流程步骤内容")
   }
 }
 

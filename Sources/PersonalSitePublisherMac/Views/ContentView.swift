@@ -467,15 +467,15 @@ struct ContentView: View {
       if showsDraftEditingToolbar {
         Button(action: toggleFocusMode) {
           Label(
-            effectiveFocusMode ? "显示文章列表" : "专注写作",
+            effectiveFocusMode ? "退出禅意专注" : "禅意专注写作",
             systemImage: effectiveFocusMode
               ? "arrow.down.right.and.arrow.up.left"
-              : "arrow.up.left.and.arrow.down.right"
+              : "sparkle.magnifyingglass"
           )
         }
         .keyboardShortcut("f", modifiers: [.command, .shift])
         .disabled(!shellState.canUseProtectedWorkbench)
-        .accessibilityValue(effectiveFocusMode ? "文章列表已隐藏" : "文章列表已显示")
+        .accessibilityValue(effectiveFocusMode ? "已进入禅意专注模式" : "未进入禅意专注模式")
         .accessibilityIdentifier("workspace-focus-mode-toggle")
       }
 

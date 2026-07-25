@@ -88,10 +88,36 @@ struct EditorCenterColumn: View {
 
       MacMarkdownComposerView(draft: draft, store: store)
     } else {
-      EmptyStateView(
-        title: "还没有草稿",
-        message: "新建一篇文章后，中间区域只负责正文编辑；预览通过编辑器顶部按钮打开。",
-        systemImage: "doc.badge.plus"
+      GuidedEmptyStateView(
+        title: "创作你的首篇文章",
+        message: "随时新建草稿或从线上同步已有文章，在中央纯粹专注正文编辑。",
+        systemImage: "square.and.pencil",
+        actions: [
+          GuidedEmptyStateAction(
+            title: "新建 Markdown 草稿",
+            subtitle: "创建本地空白文章，开始文字与图文排版",
+            systemImage: "doc.badge.plus",
+            action: {
+              store.createDraft()
+            }
+          ),
+          GuidedEmptyStateAction(
+            title: "从 GitHub/GitLab 同步文章",
+            subtitle: "连接线上 Git 仓库，同步并导入远端草稿",
+            systemImage: "arrow.triangle.2.circlepath",
+            action: {
+              store.selectSection(.sync)
+            }
+          ),
+          GuidedEmptyStateAction(
+            title: "配置建站框架与规则",
+            subtitle: "选择 Hexo / Hugo / Astro 站点目录契约",
+            systemImage: "slider.horizontal.3",
+            action: {
+              store.selectSection(.siteStarter)
+            }
+          )
+        ]
       )
     }
   }

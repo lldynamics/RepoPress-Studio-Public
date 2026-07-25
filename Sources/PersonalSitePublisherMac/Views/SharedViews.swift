@@ -504,3 +504,100 @@ extension ImageCoverPublishState {
     }
   }
 }
+
+struct GuidedEmptyStateAction: Identifiable {
+  let id = UUID()
+  let title: LocalizedStringKey
+  let subtitle: LocalizedStringKey
+  let systemImage: String
+  let action: () -> Void
+}
+
+struct GuidedEmptyStateView: View {
+  let title: LocalizedStringKey
+  let message: LocalizedStringKey
+  let systemImage: String
+  let actions: [GuidedEmptyStateAction]
+  @State private var hoveredActionID: UUID?
+
+  var body: some View {
+    VStack(spacing: 24) {
+      VStack(spacing: 12) {
+        ZStack {
+          Circle()
+            .fill(Color.accentColor.opacity(0.12))
+            .frame(width: 72, height: 72)
+
+          Image(systemName: systemImage)
+            .font(.system(size: 32, weight: .medium))
+            .foregroundStyle(Color.accentColor)
+        }
+
+        VStack(spacing: 4) {
+          Text(title)
+            .font(.title2.weight(.bold))
+            .foregroundStyle(.primary)
+
+          Text(message)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 420)
+        }
+      }
+
+      if !actions.isEmpty {
+        VStack(spacing: 10) {
+          ForEach(actions) { item in
+            let isHovered = hoveredActionID == item.id
+
+            Button {
+              item.action()
+            } label: {
+              HStack(spacing: 14) {
+                Image(systemName: item.systemImage)
+                  .font(.system(size: 18, weight: .medium))
+                  .foregroundStyle(Color.accentColor)
+                  .frame(width: 28, height: 28)
+
+                VStack(alignment: .leading, spacing: 2) {
+                  Text(item.title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                  Text(item.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                  .font(.caption.weight(.semibold))
+                  .foregroundStyle(.tertiary)
+              }
+              .padding(.horizontal, 16)
+              .padding(.vertical, 12)
+              .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                  .fill(isHovered ? Color.primary.opacity(0.06) : Color.primary.opacity(0.03))
+              )
+              .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                  .strokeBorder(isHovered ? Color.accentColor.opacity(0.40) : Color.primary.opacity(0.08), lineWidth: 1)
+              )
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+              withAnimation(.easeInOut(duration: 0.15)) {
+                hoveredActionID = hovering ? item.id : nil
+              }
+            }
+          }
+        }
+        .frame(maxWidth: 440)
+      }
+    }
+    .padding(32)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+}

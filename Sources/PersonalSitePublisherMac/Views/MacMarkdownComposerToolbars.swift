@@ -51,17 +51,10 @@ struct MacMarkdownEditorToolbar: View {
             .foregroundStyle(WorkbenchTheme.warning)
             .accessibilityHidden(true)
         }
-        if hasUnsavedChanges {
-          Text(lastSaveStatus)
-            .font(.caption)
-            .foregroundStyle(WorkbenchTheme.warning)
-            .lineLimit(1)
-        } else {
-          Text(lastSaveStatus)
-            .font(.caption)
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
-        }
+        Text(lastSaveStatus)
+          .font(.caption)
+          .foregroundStyle(hasUnsavedChanges ? AnyShapeStyle(WorkbenchTheme.warning) : AnyShapeStyle(.tertiary))
+          .lineLimit(1)
       }
       .accessibilityLabel("保存状态")
       .accessibilityValue(lastSaveStatus)

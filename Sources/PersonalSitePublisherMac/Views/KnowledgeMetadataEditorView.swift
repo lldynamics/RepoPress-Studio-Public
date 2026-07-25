@@ -45,11 +45,11 @@ struct KnowledgeMetadataEditorView: View {
         }
         TextField("标题", text: $title)
           .accessibilityLabel("标题")
-        TextField("作者（用逗号分隔）", text: $authors)
+        TextField("作者", text: $authors)
           .accessibilityLabel("作者")
         TextField("语言", text: $language)
           .accessibilityLabel("语言")
-        TextField("标签（用逗号分隔）", text: $tags)
+        TextField("标签", text: $tags)
           .accessibilityLabel("标签")
         VStack(alignment: .leading, spacing: 6) {
           Text("摘要")

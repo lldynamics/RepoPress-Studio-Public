@@ -180,10 +180,7 @@ extension RepositoryWorkspaceView {
     VStack(alignment: .leading, spacing: 4) {
       Text("自动检查远端")
         .font(.headline)
-      Text(repositoryAutoSyncDescription)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-      Text(store.repositoryAutoSyncState.message)
+      Text(store.repositoryAutoSyncState.message.nilIfEmpty ?? repositoryAutoSyncDescription)
         .font(.callout)
         .foregroundStyle(.secondary)
     }
