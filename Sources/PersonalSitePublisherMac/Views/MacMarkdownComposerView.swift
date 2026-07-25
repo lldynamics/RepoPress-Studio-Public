@@ -224,6 +224,16 @@ struct MacMarkdownComposerView: View {
             .padding(.top, hasSelectedText ? 58 : 10)
             .zIndex(2)
         }
+        if !outlineItems.isEmpty {
+          HStack {
+            Spacer()
+            MarkdownFloatingOutlineHUD(
+              items: outlineItems,
+              onSelect: selectOutlineItem
+            )
+          }
+          .zIndex(3)
+        }
         if let metadata = activeInsertedImageMetadataBinding,
            let activeIndex = activeInsertedImageMetadataIndex {
           InsertedImageMetadataPanel(

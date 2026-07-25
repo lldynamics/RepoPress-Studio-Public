@@ -96,10 +96,21 @@ struct WorkspaceTaskNavigation: View {
         hoveredSection = hovering ? section : nil
       }
     }
-    .help(title)
+    .help(title + shortcutHint(for: section))
     .accessibilityLabel(workspaceNavigationLocalizedKey(section.displayNameLocalizationKey))
     .accessibilityAddTraits(isSelected ? .isSelected : [])
     .accessibilityIdentifier("workspace-sidebar-\(section.rawValue)")
+  }
+
+  private func shortcutHint(for section: WorkspaceSection) -> String {
+    switch section {
+    case .writing: return "（⌘1）"
+    case .library: return "（⌘2）"
+    case .sync: return "（⌘3）"
+    case .images: return "（⌘4）"
+    case .contentHealth: return "（⌘5）"
+    default: return ""
+    }
   }
 }
 

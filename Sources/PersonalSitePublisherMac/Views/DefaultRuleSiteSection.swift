@@ -58,6 +58,8 @@ struct DefaultRuleSiteSection: View {
           .accessibilityLabel("文章头信息包含封面图字段")
           .accessibilityValue(activeProfile.includeCoverInFrontMatter ? "开启" : "关闭")
       }
+
+      DefaultRuleCustomFrontMatterSection()
     }
   }
 

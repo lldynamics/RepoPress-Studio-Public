@@ -144,4 +144,16 @@ public final class WorkbenchPublishingFeatureFacade: ObservableObject {
   ) -> [SiteRelationSuggestion] {
     store.relatedArticleSuggestions(for: draft, limit: limit)
   }
+
+  public var preflightIssues: [PreflightIssue] {
+    store.preflightIssues
+  }
+
+  public func refreshBatchPublishPlanInBackground() {
+    store.refreshBatchPublishPlanInBackground()
+  }
+
+  public var batchPublishPlan: BatchPublishPlan? {
+    store.batchPublishPlan
+  }
 }

@@ -554,41 +554,11 @@ struct GuidedEmptyStateView: View {
             Button {
               item.action()
             } label: {
-              HStack(spacing: 14) {
-                Image(systemName: item.systemImage)
-                  .font(.system(size: 18, weight: .medium))
-                  .foregroundStyle(Color.accentColor)
-                  .frame(width: 28, height: 28)
-
-                VStack(alignment: .leading, spacing: 2) {
-                  Text(item.title)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                  Text(item.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                  .font(.caption.weight(.semibold))
-                  .foregroundStyle(.tertiary)
-              }
-              .padding(.horizontal, 16)
-              .padding(.vertical, 12)
-              .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                  .fill(isHovered ? Color.primary.opacity(0.06) : Color.primary.opacity(0.03))
-              )
-              .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                  .strokeBorder(isHovered ? Color.accentColor.opacity(0.40) : Color.primary.opacity(0.08), lineWidth: 1)
-              )
+              actionCard(for: item, isHovered: isHovered)
             }
             .buttonStyle(.plain)
             .onHover { hovering in
-              withAnimation(.easeInOut(duration: 0.15)) {
+              withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                 hoveredActionID = hovering ? item.id : nil
               }
             }
@@ -599,5 +569,43 @@ struct GuidedEmptyStateView: View {
     }
     .padding(32)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  private func actionCard(for item: GuidedEmptyStateAction, isHovered: Bool) -> some View {
+    HStack(spacing: 14) {
+      Image(systemName: item.systemImage)
+        .font(.system(size: 18, weight: .medium))
+        .foregroundStyle(Color.accentColor)
+        .scaleEffect(isHovered ? 1.12 : 1.0)
+        .frame(width: 28, height: 28)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(item.title)
+          .font(.body.weight(.semibold))
+          .foregroundStyle(.primary)
+        Text(item.subtitle)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      Spacer()
+
+      Image(systemName: "chevron.right")
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(isHovered ? Color.accentColor : Color.secondary.opacity(0.5))
+        .offset(x: isHovered ? 3 : 0)
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 12)
+    .background(
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .fill(isHovered ? Color.accentColor.opacity(0.06) : Color.primary.opacity(0.03))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .strokeBorder(isHovered ? Color.accentColor.opacity(0.45) : Color.primary.opacity(0.08), lineWidth: 1)
+    )
+    .shadow(color: Color.accentColor.opacity(isHovered ? 0.16 : 0), radius: 10, x: 0, y: 4)
+    .scaleEffect(isHovered ? 1.02 : 1.0)
   }
 }

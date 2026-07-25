@@ -14,6 +14,7 @@ struct RepositoryWorkspaceView: View {
   @State var createsPrivateRepository = true
   @State var repositoryCreationFailureMessage: String?
   @State var pendingRemoteArticleImportFiles: [RepositoryChangedFile] = []
+  @State var isConflictResolverPresented = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -30,6 +31,12 @@ struct RepositoryWorkspaceView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("repository-workspace")
       }
+    }
+    .sheet(isPresented: $isConflictResolverPresented) {
+      GitConflictResolverSheet(
+        conflicts: [],
+        onResolveConflict: { _, _ in }
+      )
     }
     .sheet(isPresented: $isContentMigrationPresented) {
       ContentMigrationAssistantView(store: store)

@@ -145,7 +145,7 @@ extension WorkbenchStore {
     draftBodyCommitTasks[draftID]?.cancel()
     draftBodyCommitTasks[draftID] = Task { [weak self] in
       do {
-        try await Task.sleep(nanoseconds: 350_000_000)
+        try await Task.sleep(nanoseconds: 1_000_000_000) // 1.0 秒防抖落盘队列
       } catch {
         return
       }

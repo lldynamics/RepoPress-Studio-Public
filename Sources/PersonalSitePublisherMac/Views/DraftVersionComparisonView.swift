@@ -7,7 +7,7 @@ private enum DraftVersionComparisonTarget: Hashable {
 }
 
 struct DraftVersionComparisonView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
   let sourceVersion: DraftVersionSnapshot
   @Environment(\.dismiss) private var dismiss
   @State private var target = DraftVersionComparisonTarget.current

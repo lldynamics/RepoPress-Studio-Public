@@ -432,6 +432,14 @@ struct ContentView: View {
         isActive: inspectorPresentation.wrappedValue && !presentationState.isAssistantPresented
       )
     )
+    .overlay(alignment: .topTrailing) {
+      if !inspectorPresentation.wrappedValue {
+        Circle()
+          .fill(Color.accentColor)
+          .frame(width: 6, height: 6)
+          .offset(x: 2, y: -2)
+      }
+    }
     .disabled(!shellState.canUseProtectedWorkbench || !canRequestInspectorInCurrentLayout)
     .help(inspectorToolbarHelp)
     .accessibilityLabel("工作区 Inspector")
@@ -474,6 +482,7 @@ struct ContentView: View {
           )
         }
         .keyboardShortcut("f", modifiers: [.command, .shift])
+        .help(effectiveFocusMode ? "退出禅意专注（⇧⌘F）" : "禅意专注写作（⇧⌘F）")
         .disabled(!shellState.canUseProtectedWorkbench)
         .accessibilityValue(effectiveFocusMode ? "已进入禅意专注模式" : "未进入禅意专注模式")
         .accessibilityIdentifier("workspace-focus-mode-toggle")
@@ -488,6 +497,7 @@ struct ContentView: View {
       } label: {
         Label("快速隐藏", systemImage: "eye.slash")
       }
+      .help("快速隐藏工作台（⌃⌘L）")
       .disabled(shellState.isPrivacyLocked)
 
       Divider()

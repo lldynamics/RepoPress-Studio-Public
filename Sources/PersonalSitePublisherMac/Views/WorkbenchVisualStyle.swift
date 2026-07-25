@@ -358,6 +358,15 @@ struct WorkbenchOperationalSplitLayout<Primary: View, Context: View>: View {
   }
 }
 
+enum WorkbenchPadding {
+  /// 8px: 用于小控件、微标签、紧凑按钮内边距
+  static let compact: CGFloat = 8
+  /// 12px: 用于容器卡片、表单 Section、弹窗组标准内边距
+  static let card: CGFloat = 12
+  /// 16px: 用于页面顶层 Margin、侧栏主边缘边距
+  static let page: CGFloat = 16
+}
+
 extension Font {
   /// Stable semantic roles keep page hierarchy consistent while preserving the
   /// user's macOS text-size and accessibility settings.

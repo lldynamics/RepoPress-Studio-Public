@@ -110,9 +110,9 @@ struct EditorCenterColumn: View {
             }
           ),
           GuidedEmptyStateAction(
-            title: "配置建站框架与规则",
-            subtitle: "选择 Hexo / Hugo / Astro 站点目录契约",
-            systemImage: "slider.horizontal.3",
+            title: "绑定站点仓库",
+            subtitle: "配置 Hexo / Hugo / Astro 静态建站框架目录",
+            systemImage: "folder.badge.gearshape",
             action: {
               store.selectSection(.siteStarter)
             }
