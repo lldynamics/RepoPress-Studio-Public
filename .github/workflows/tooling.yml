@@ -1,27 +1,6 @@
 name: Release Tooling CI
 
 on:
-  push:
-    paths:
-      - "script/**"
-      - ".github/workflows/**"
-      - "package.json"
-      - "package-lock.json"
-      - "Package.swift"
-      - "Packaging/**"
-      - "StoreKit/**"
-      - "BrowserExtension/**"
-      - "Sources/BrowserExtensionProtocolSupport/**"
-      - "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift"
-      - "Sources/PersonalSitePublisherMac/Views/BrowserExtensionConnectionView.swift"
-      - "Sources/PublishingWorkbenchCore/Stores/KnowledgeStore.swift"
-      - "Tests/PublishingWorkbenchCoreTests/BrowserExtensionProtocolTests.swift"
-      - "Tests/PublishingWorkbenchCoreTests/KnowledgeBrowserImportOperationLedgerTests.swift"
-      - "Tests/PublishingWorkbenchCoreTests/KnowledgeLibraryServiceTests.swift"
-      - "Sources/PersonalSitePublisherMac/AppStore.entitlements"
-      - "APP_STORE_CHECKLIST.md"
-      - "docs/release-evidence/**"
-      - "docs/app-store-screenshots/**"
   pull_request:
     paths:
       - "script/**"
