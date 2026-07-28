@@ -1,8 +1,14 @@
 import CryptoKit
 import Darwin
 import Foundation
+import OSLog
 
 final class KnowledgeLibraryBackupService: @unchecked Sendable {
+  private static let logger = Logger(
+    subsystem: "com.jinfang.PersonalSitePublisherMac",
+    category: "knowledge-library-backup"
+  )
+
   struct Limits: Sendable {
     var maximumManifestByteCount: Int
     var maximumFileCount: Int
@@ -225,20 +231,45 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
       do {
         try fileManager.moveItem(at: stagingURL, to: rootURL)
         shouldRemoveStaging = false
-      } catch {
+      } catch let replacementError {
         if let previousLibraryURL,
            !fileManager.fileExists(atPath: rootURL.path) {
-          try? fileManager.moveItem(at: previousLibraryURL, to: rootURL)
+          do {
+            try fileManager.moveItem(at: previousLibraryURL, to: rootURL)
+          } catch let rollbackError {
+            throw KnowledgeLibraryRollbackError(
+              operation: "替换知识库",
+              primaryError: replacementError,
+              rollbackError: rollbackError,
+              recoveryURL: previousLibraryURL
+            )
+          }
         }
-        throw error
+        throw replacementError
       }
-      try? fileManager.removeItem(at: applyingURL)
-    } catch {
+      do {
+        try fileManager.removeItem(at: applyingURL)
+      } catch {
+        Self.logger.warning(
+          "Knowledge restore succeeded but pending package cleanup failed: \(error.localizedDescription, privacy: .public)"
+        )
+      }
+    } catch let restoreError {
       if fileManager.fileExists(atPath: applyingURL.path),
          !fileManager.fileExists(atPath: pendingURL.path) {
-        try? fileManager.moveItem(at: applyingURL, to: pendingURL)
+        do {
+          try fileManager.moveItem(at: applyingURL, to: pendingURL)
+        } catch let rollbackError {
+          let combinedError = KnowledgeLibraryRollbackError(
+            operation: "应用知识库恢复",
+            primaryError: restoreError,
+            rollbackError: rollbackError,
+            recoveryURL: applyingURL
+          )
+          throw KnowledgeLibraryBackupError.restoreFailed(combinedError.localizedDescription)
+        }
       }
-      throw KnowledgeLibraryBackupError.restoreFailed(error.localizedDescription)
+      throw KnowledgeLibraryBackupError.restoreFailed(restoreError.localizedDescription)
     }
 
     var restoredPreview = validated.preview
@@ -620,12 +651,42 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
     try fileManager.moveItem(at: destinationURL, to: displacedURL)
     do {
       try fileManager.moveItem(at: sourceURL, to: destinationURL)
-      try? fileManager.removeItem(at: displacedURL)
-    } catch {
-      if !fileManager.fileExists(atPath: destinationURL.path) {
-        try? fileManager.moveItem(at: displacedURL, to: destinationURL)
+      do {
+        try fileManager.removeItem(at: displacedURL)
+      } catch {
+        Self.logger.warning(
+          "Replacement succeeded but displaced item cleanup failed: \(error.localizedDescription, privacy: .public)"
+        )
       }
-      throw error
+    } catch let replacementError {
+      if !fileManager.fileExists(atPath: destinationURL.path) {
+        do {
+          try fileManager.moveItem(at: displacedURL, to: destinationURL)
+        } catch let rollbackError {
+          throw KnowledgeLibraryRollbackError(
+            operation: "替换知识库文件",
+            primaryError: replacementError,
+            rollbackError: rollbackError,
+            recoveryURL: displacedURL
+          )
+        }
+      }
+      throw replacementError
     }
+  }
+}
+
+private struct KnowledgeLibraryRollbackError: LocalizedError {
+  let operation: String
+  let primaryError: Error
+  let rollbackError: Error
+  let recoveryURL: URL?
+
+  var errorDescription: String? {
+    var description = "\(operation)失败：\(primaryError.localizedDescription)；自动回滚失败：\(rollbackError.localizedDescription)。"
+    if let recoveryURL {
+      description += " 可恢复副本保留为 \(recoveryURL.lastPathComponent)。"
+    }
+    return description
   }
 }

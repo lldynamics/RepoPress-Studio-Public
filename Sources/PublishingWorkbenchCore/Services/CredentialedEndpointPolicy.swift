@@ -61,7 +61,7 @@ enum CredentialedEndpointPolicy {
     let host = rawHost
       .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
       .lowercased()
-    if host == "localhost" || host == "::1" {
+    if host == "localhost" || host.hasSuffix(".localhost") || host == "::1" {
       return true
     }
 

@@ -352,10 +352,25 @@ extension RemoteRepositoryPublishService {
     case .markdown:
       return Data((file.content ?? "").utf8)
     case .image, .video:
-      guard let sourceFilePath = file.sourceFilePath, fileManager.fileExists(atPath: sourceFilePath) else {
+      guard let sourceFilePath = file.sourceFilePath else {
         throw RemoteRepositoryPublishError.missingSourceFile(file.repositoryPath)
       }
-      return try Data(contentsOf: URL(fileURLWithPath: sourceFilePath))
+      do {
+        return try BoundedFileReader.data(
+          at: URL(fileURLWithPath: sourceFilePath),
+          maximumByteCount: WorkbenchFileReadLimits.maximumRemoteMediaUploadByteCount
+        )
+      } catch BoundedFileReadError.exceedsByteLimit(_, _) {
+        throw RemoteRepositoryPublishError.sourceFileTooLarge(
+          path: file.repositoryPath,
+          maximumByteCount: WorkbenchFileReadLimits.maximumRemoteMediaUploadByteCount
+        )
+      } catch {
+        throw RemoteRepositoryPublishError.invalidSourceFile(
+          path: file.repositoryPath,
+          reason: error.localizedDescription
+        )
+      }
     }
   }
 

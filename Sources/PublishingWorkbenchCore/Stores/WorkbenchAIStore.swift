@@ -28,15 +28,8 @@ public final class WorkbenchAIStore: ObservableObject {
   private let imageWorkbenchService: SiteImageWorkbenchService
   private let seoAuditService: SEOAuditService
   private let seoSocialPreviewService: SEOSocialPreviewService
-  /// Per-draft state exists only for the current process so a streaming reply
-  /// can finish safely after the user selects another draft.
-  private var transientAIChatSessionsByDraftID: [UUID: AIPublishingChatSessionState] = [:]
-  private var transientAIChatSessionAccessOrder: [UUID: UInt64] = [:]
-  private var transientAIChatSessionAccessSequence: UInt64 = 0
-  private let maximumTransientAIChatSessions = 12
-  private let maximumTransientAIChatImageBytes: Int64 = 48_000_000
-  private var activeAIChatOperationID: UUID?
-  private var isAIChatCancellationRequested = false
+  private let transientAIChatSessionCache = AIChatTransientSessionCache()
+  private let aiChatOperationCoordinator = AIChatOperationCoordinator()
   private let aiChatStreamPublishInterval: Duration = .milliseconds(50)
   @Published public private(set) var aiChatManualRetryState: AIChatManualRetryState? = nil
 
@@ -368,9 +361,7 @@ public final class WorkbenchAIStore: ObservableObject {
     if let currentDraftID = aiChatDraftID {
       cacheCurrentAIChatSessionForTransition(for: currentDraftID)
     }
-    let state = transientAIChatSessionsByDraftID.removeValue(forKey: draft.id)
-      ?? AIPublishingChatSessionState()
-    transientAIChatSessionAccessOrder.removeValue(forKey: draft.id)
+    let state = transientAIChatSessionCache.takeSession(for: draft.id)
     aiChatDraftID = draft.id
     applyCurrentAIChatSession(state)
   }
@@ -379,25 +370,21 @@ public final class WorkbenchAIStore: ObservableObject {
     if aiChatDraftID == draftID {
       return currentAIChatSessionState()
     }
-    guard let state = transientAIChatSessionsByDraftID[draftID] else { return nil }
-    markTransientAIChatSessionAccessed(draftID)
-    return state
+    return transientAIChatSessionCache.session(for: draftID)
   }
 
   func setAIChatSessionState(_ state: AIPublishingChatSessionState, for draftID: UUID) {
     let prepared = state.prepared()
     if aiChatDraftID == draftID {
       applyCurrentAIChatSession(prepared)
-      transientAIChatSessionsByDraftID.removeValue(forKey: draftID)
-      transientAIChatSessionAccessOrder.removeValue(forKey: draftID)
+      transientAIChatSessionCache.removeSession(for: draftID)
     } else {
-      cacheTransientAIChatSession(prepared, for: draftID)
+      transientAIChatSessionCache.store(prepared, for: draftID)
     }
   }
 
   func removeAIChatSessionState(for draftID: UUID) {
-    transientAIChatSessionsByDraftID.removeValue(forKey: draftID)
-    transientAIChatSessionAccessOrder.removeValue(forKey: draftID)
+    transientAIChatSessionCache.removeSession(for: draftID)
     if aiChatDraftID == draftID {
       aiChatConversationTitle = nil
       aiChatMessages = []
@@ -409,13 +396,12 @@ public final class WorkbenchAIStore: ObservableObject {
     guard let draftID = aiChatDraftID else { return }
     let prepared = currentAIChatSessionState().prepared()
     applyCurrentAIChatSession(prepared)
-    transientAIChatSessionsByDraftID.removeValue(forKey: draftID)
-    transientAIChatSessionAccessOrder.removeValue(forKey: draftID)
+    transientAIChatSessionCache.removeSession(for: draftID)
   }
 
   private func cacheCurrentAIChatSessionForTransition(for draftID: UUID) {
     let state = currentAIChatSessionState().prepared()
-    cacheTransientAIChatSession(state, for: draftID)
+    transientAIChatSessionCache.store(state, for: draftID)
   }
 
   private func currentAIChatSessionState() -> AIPublishingChatSessionState {
@@ -442,57 +428,8 @@ public final class WorkbenchAIStore: ObservableObject {
     aiChatFocusedParagraphID = state.focusedParagraphID
   }
 
-  private func cacheTransientAIChatSession(
-    _ state: AIPublishingChatSessionState,
-    for draftID: UUID
-  ) {
-    if state.shouldCache {
-      transientAIChatSessionsByDraftID[draftID] = state
-      markTransientAIChatSessionAccessed(draftID)
-      pruneTransientAIChatSessions()
-    } else {
-      transientAIChatSessionsByDraftID.removeValue(forKey: draftID)
-      transientAIChatSessionAccessOrder.removeValue(forKey: draftID)
-    }
-  }
-
-  private func markTransientAIChatSessionAccessed(_ draftID: UUID) {
-    transientAIChatSessionAccessSequence &+= 1
-    transientAIChatSessionAccessOrder[draftID] = transientAIChatSessionAccessSequence
-  }
-
-  private func pruneTransientAIChatSessions() {
-    while transientAIChatSessionsByDraftID.count > maximumTransientAIChatSessions,
-          let oldestDraftID = oldestTransientAIChatSessionID() {
-      transientAIChatSessionsByDraftID.removeValue(forKey: oldestDraftID)
-      transientAIChatSessionAccessOrder.removeValue(forKey: oldestDraftID)
-    }
-
-    var totalImageBytes = transientAIChatSessionsByDraftID.values.reduce(Int64(0)) {
-      $0 + $1.imageAttachmentByteCount
-    }
-    while totalImageBytes > maximumTransientAIChatImageBytes,
-          let oldestDraftID = oldestTransientAIChatSessionID(containingImages: true),
-          let state = transientAIChatSessionsByDraftID[oldestDraftID] {
-      let trimmed = state.prepared(maxTotalImageBytes: -1)
-      let removedBytes = state.imageAttachmentByteCount - trimmed.imageAttachmentByteCount
-      guard removedBytes > 0 else { break }
-      transientAIChatSessionsByDraftID[oldestDraftID] = trimmed
-      totalImageBytes -= removedBytes
-    }
-  }
-
-  private func oldestTransientAIChatSessionID(containingImages: Bool = false) -> UUID? {
-    transientAIChatSessionsByDraftID.keys
-      .filter { !containingImages || (transientAIChatSessionsByDraftID[$0]?.imageAttachmentByteCount ?? 0) > 0 }
-      .min {
-        (transientAIChatSessionAccessOrder[$0] ?? 0)
-          < (transientAIChatSessionAccessOrder[$1] ?? 0)
-      }
-  }
-
   var transientAIChatSessionCount: Int {
-    transientAIChatSessionsByDraftID.count
+    transientAIChatSessionCache.count
   }
 
   func updateAIChatSession(for draftID: UUID, update: (inout [AIPublishingChatMessage]) -> Void) {
@@ -501,7 +438,8 @@ public final class WorkbenchAIStore: ObservableObject {
       cacheCurrentAIChatSessionForAIStore()
       return
     }
-    var state = transientAIChatSessionsByDraftID[draftID] ?? AIPublishingChatSessionState()
+    var state = transientAIChatSessionCache.session(for: draftID)
+      ?? AIPublishingChatSessionState()
     update(&state.messages)
     setAIChatSessionState(state, for: draftID)
   }
@@ -554,48 +492,40 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   func setAIChatCancellationRequested(_ value: Bool) {
-    isAIChatCancellationRequested = value
+    aiChatOperationCoordinator.setCancellationRequested(value)
   }
 
   func aiChatCancellationRequested() -> Bool {
-    isAIChatCancellationRequested
+    aiChatOperationCoordinator.isCancellationRequested
   }
 
   @discardableResult func requestAIChatCancellation() -> Bool {
-    guard isAIChatRunning, activeAIChatOperationID != nil else { return false }
-    isAIChatCancellationRequested = true
+    guard aiChatOperationCoordinator.requestCancellation(
+      whileRunning: isAIChatRunning
+    ) else { return false }
     aiChatMessage = "正在停止 AI 回复..."
     return true
   }
 
   private func beginAIChatOperation(statusMessage: String) -> UUID? {
-    guard activeAIChatOperationID == nil else {
+    guard let operationID = aiChatOperationCoordinator.begin() else {
       store.setAIChatMessage("AI 正在回复，请先停止当前回复后再试。")
       return nil
     }
-    let operationID = UUID()
     aiChatManualRetryState = nil
-    activeAIChatOperationID = operationID
-    setAIChatCancellationRequested(false)
     store.setAIChatRunning(true)
     store.setAIChatMessage(statusMessage)
     return operationID
   }
 
   private func finishAIChatOperation(_ operationID: UUID) {
-    guard activeAIChatOperationID == operationID else { return }
-    activeAIChatOperationID = nil
-    setAIChatCancellationRequested(false)
+    guard aiChatOperationCoordinator.finish(operationID) else { return }
     store.setAIChatRunning(false)
     store.save()
   }
 
   private func checkAIChatOperation(_ operationID: UUID) throws {
-    try Task.checkCancellation()
-    guard activeAIChatOperationID == operationID,
-          !aiChatCancellationRequested() else {
-      throw CancellationError()
-    }
+    try aiChatOperationCoordinator.check(operationID)
   }
 
   func aiChatRequest(for draft: ArticleDraft) async -> AIPublishingChatRequest {
@@ -628,7 +558,10 @@ public final class WorkbenchAIStore: ObservableObject {
       remoteReviewDraft: artifacts.remoteReviewDraft,
       workflowContext: artifacts.workflowContext,
       focusedParagraph: focusedParagraph,
-      relatedSuggestions: store.relatedArticleSuggestions(for: artifacts.draft)
+      relatedSuggestions: store.relatedArticleSuggestions(for: artifacts.draft),
+      automationDraftVersions: Dictionary(
+        uniqueKeysWithValues: store.drafts.map { ($0.id, $0.updatedAt) }
+      )
     )
   }
 
@@ -1787,7 +1720,7 @@ public final class WorkbenchAIStore: ObservableObject {
       .prefix(AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount)
     )
     let result = await Task.detached(priority: .userInitiated) {
-      Self.loadAIChatImageAttachments(selectedAttachments)
+      AIChatImageAttachmentLoader.load(selectedAttachments)
     }.value
     guard !Task.isCancelled else { return [] }
     if result.skippedCount > 0 {
@@ -1796,51 +1729,4 @@ public final class WorkbenchAIStore: ObservableObject {
     return result.images
   }
 
-  private nonisolated static func loadAIChatImageAttachments(
-    _ attachments: [DraftAttachment]
-  ) -> (images: [AIChatImageAttachment], skippedCount: Int) {
-    var images: [AIChatImageAttachment] = []
-    images.reserveCapacity(attachments.count)
-    for attachment in attachments {
-      guard let path = attachment.sourceFilePath?.nilIfEmpty else { continue }
-      let url = URL(fileURLWithPath: path)
-      let mimeType = mimeType(for: url)
-      guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
-            values.isRegularFile == true,
-            let fileSize = values.fileSize,
-            AIPublishingChatImageAttachmentPresentation.isSupportedAttachment(
-              mimeType: mimeType,
-              byteSize: Int64(fileSize)
-            ),
-            let data = try? Data(contentsOf: url, options: .mappedIfSafe),
-            AIPublishingChatImageAttachmentPresentation.isSupportedAttachment(
-              mimeType: mimeType,
-              byteSize: Int64(data.count)
-            ) else {
-        continue
-      }
-      images.append(
-        AIChatImageAttachment(
-          filename: attachment.originalFilename,
-          mimeType: mimeType,
-          data: data
-        )
-      )
-    }
-    return (images, attachments.count - images.count)
-  }
-
-  private nonisolated static func mimeType(for url: URL) -> String {
-    switch url.pathExtension.lowercased() {
-    case "jpg", "jpeg": return "image/jpeg"
-    case "png": return "image/png"
-    case "webp": return "image/webp"
-    case "gif": return "image/gif"
-    case "svg": return "image/svg+xml"
-    case "avif": return "image/avif"
-    case "heic": return "image/heic"
-    case "tif", "tiff": return "image/tiff"
-    default: return "application/octet-stream"
-    }
-  }
 }

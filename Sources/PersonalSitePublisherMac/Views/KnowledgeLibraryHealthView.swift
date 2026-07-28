@@ -3,9 +3,15 @@ import SwiftUI
 
 struct KnowledgeLibraryHealthView: View {
   @Environment(\.dismiss) private var dismiss
-  @ObservedObject var knowledge: KnowledgeStore
+  @StateObject private var state: KnowledgeLibraryHealthFeatureFacade
   @State private var repairPreviews: [KnowledgeSourceRefreshPreview] = []
   @State private var didAnalyzeRepairs = false
+
+  init(knowledge: KnowledgeStore) {
+    _state = StateObject(
+      wrappedValue: KnowledgeLibraryHealthFeatureFacade(store: knowledge)
+    )
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -14,7 +20,7 @@ struct KnowledgeLibraryHealthView: View {
           .font(.headline)
         Spacer()
         Button("重新检查") { Task { await refresh() } }
-          .disabled(knowledge.isLoadingHealth || knowledge.isBusy)
+          .disabled(state.isLoading || state.isBusy)
         Button("完成") { dismiss() }
           .keyboardShortcut(.cancelAction)
       }
@@ -24,18 +30,18 @@ struct KnowledgeLibraryHealthView: View {
 
       ScrollView {
         VStack(alignment: .leading, spacing: 18) {
-          if let health = knowledge.healthSnapshot {
+          if let health = state.healthSnapshot {
             healthSummary(health)
             repairSection(health)
             semanticSection(health)
-          } else if knowledge.isLoadingHealth {
+          } else if state.isLoading {
             ProgressView("正在检查解析器、正文质量和本地语义索引…")
               .frame(maxWidth: .infinity, minHeight: 180)
           } else {
             ContentUnavailableView(
               "无法读取健康状态",
               systemImage: "exclamationmark.triangle",
-              description: Text(knowledge.lastError ?? "请重新检查资料库。")
+              description: Text(state.lastError ?? "请重新检查资料库。")
             )
           }
         }
@@ -96,7 +102,7 @@ struct KnowledgeLibraryHealthView: View {
         Button(didAnalyzeRepairs ? "重新分析" : "分析并预览") {
           Task { await analyzeRepairs() }
         }
-        .disabled(health.locallyRepairableDocumentCount == 0 || knowledge.isBusy)
+        .disabled(health.locallyRepairableDocumentCount == 0 || state.isBusy)
       }
       Text("使用资料库内保存的原始网页归档重新提取正文，不联网、不覆盖旧版本；完成后同时重建全文和本地语义索引。")
         .font(.callout)
@@ -131,15 +137,14 @@ struct KnowledgeLibraryHealthView: View {
             Task { await applyRepairs() }
           }
           .workbenchProminentActionStyle()
-          .disabled(knowledge.isBusy)
+          .disabled(state.isBusy)
         }
       }
     }
   }
 
   private func repairPreviewRow(_ preview: KnowledgeSourceRefreshPreview) -> some View {
-    let document = knowledge.documents.first { $0.id == preview.documentID }
-    let documentTitle = document?.title ?? "网页资料"
+    let documentTitle = state.documentTitle(for: preview.documentID) ?? "网页资料"
     return VStack(alignment: .leading, spacing: 7) {
       HStack {
         Text(documentTitle)
@@ -177,9 +182,9 @@ struct KnowledgeLibraryHealthView: View {
           .font(.headline)
         Spacer()
         Button("重建全部语义索引") {
-          Task { await knowledge.rebuildAllSemanticIndex() }
+          Task { await state.rebuildAllSemanticIndex() }
         }
-        .disabled(knowledge.documents.isEmpty || knowledge.isBusy)
+        .disabled(!state.hasDocuments || state.isBusy)
       }
       Text(
         health.semanticRepairChunkCount == 0
@@ -192,16 +197,16 @@ struct KnowledgeLibraryHealthView: View {
   }
 
   private func refresh() async {
-    _ = await knowledge.refreshLibraryHealth()
+    await state.refreshLibraryHealth()
   }
 
   private func analyzeRepairs() async {
     didAnalyzeRepairs = true
-    repairPreviews = await knowledge.localContentRepairPreviews() ?? []
+    repairPreviews = await state.localContentRepairPreviews() ?? []
   }
 
   private func applyRepairs() async {
-    guard await knowledge.applyLocalContentRepairs(repairPreviews) else { return }
+    guard await state.applyLocalContentRepairs(repairPreviews) else { return }
     repairPreviews = []
     didAnalyzeRepairs = true
   }

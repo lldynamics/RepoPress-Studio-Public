@@ -79,7 +79,7 @@ public enum WorkbenchAutomationExecutor {
             targetDraftID: step.arguments.draftID
           )
         )
-        continue
+        break
       }
 
       updatedPlan.steps[index].status = .running
@@ -125,11 +125,24 @@ public enum WorkbenchAutomationExecutor {
     record: WorkbenchAutomationRunRecord,
     in store: WorkbenchStore
   ) -> Int {
+    rollbackDetailed(record: record, in: store).restoredCount
+  }
+
+  public static func rollbackDetailed(
+    record: WorkbenchAutomationRunRecord,
+    in store: WorkbenchStore
+  ) -> WorkbenchAutomationRollbackResult {
     var restoredCount = 0
+    var failureMessages: [String] = []
     for step in record.steps.reversed() where step.status == .succeeded {
-      if let versionID = step.rollbackVersionID,
-         store.restoreDraftVersion(versionID) {
-        restoredCount += 1
+      if let versionID = step.rollbackVersionID {
+        if store.restoreDraftVersion(versionID) {
+          restoredCount += 1
+        } else {
+          failureMessages.append(
+            CoreL10n.format("无法恢复步骤 %@ 的修改前版本。", step.command.rawValue)
+          )
+        }
         continue
       }
       guard let draftID = step.targetDraftID else { continue }
@@ -137,20 +150,32 @@ public enum WorkbenchAutomationExecutor {
       case .createDraft:
         if store.drafts.contains(where: { $0.id == draftID }) {
           store.deleteDraft(id: draftID)
-          restoredCount += 1
+          if store.permanentlyDeleteRecycledDraft(draftID) {
+            restoredCount += 1
+          } else {
+            failureMessages.append(CoreL10n.text("无法完整移除自动化创建的文章。"))
+          }
         }
       case .deleteDraft:
         if store.restoreRecycledDraft(draftID) {
           restoredCount += 1
+        } else {
+          failureMessages.append(CoreL10n.text("无法从回收站恢复自动化删除的文章。"))
         }
+      case .updateMetadata, .appendToBody, .replaceBody:
+        failureMessages.append(
+          CoreL10n.format("步骤 %@ 缺少可用的修改前版本。", step.command.rawValue)
+        )
       default:
         break
       }
     }
-    if restoredCount > 0 {
-      store.save()
-    }
-    return restoredCount
+    let persistenceSucceeded = restoredCount == 0 || store.flushPendingChanges()
+    return WorkbenchAutomationRollbackResult(
+      restoredCount: restoredCount,
+      failureMessages: failureMessages,
+      persistenceSucceeded: persistenceSucceeded
+    )
   }
 
   private static func executeStep(
@@ -185,7 +210,22 @@ public enum WorkbenchAutomationExecutor {
         store.updateDraft(draft)
       }
       store.selectSection(.writing)
-      store.save()
+      do {
+        try saveWorkbenchOrThrow(in: store)
+      } catch let saveError {
+        store.deleteDraft(id: draft.id)
+        let didRemoveCreatedDraft = store.permanentlyDeleteRecycledDraft(draft.id)
+        _ = store.flushPendingChanges()
+        guard didRemoveCreatedDraft else {
+          throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+            CoreL10n.format(
+              "新建文章保存失败：%@；自动回滚也失败，请检查回收站。",
+              saveError.localizedDescription
+            )
+          )
+        }
+        throw saveError
+      }
       return WorkbenchAutomationStepRecord(
         command: step.command,
         status: .succeeded,
@@ -224,17 +264,35 @@ public enum WorkbenchAutomationExecutor {
       return success(step, CoreL10n.text("已刷新发布预览。"))
 
     case .saveWorkbench:
-      store.save()
+      try saveWorkbenchOrThrow(in: store)
       return success(step, CoreL10n.text("工作台已保存。"))
 
     case .updateMetadata, .appendToBody, .replaceBody:
       let draft = try targetDraft(for: step, in: store, checksVersion: true)
       let preview = try WorkbenchAutomationDraftMutationService.preview(step: step, draft: draft)
       let existingVersionIDs = Set(store.versions(for: draft.id).map(\.id))
-      _ = store.createManualVersion(for: draft.id)
-      let rollbackVersionID = store.versions(for: draft.id).first { !existingVersionIDs.contains($0.id) }?.id
+      guard store.createManualVersion(for: draft.id),
+            let rollbackVersionID = store.versions(for: draft.id)
+              .first(where: { !existingVersionIDs.contains($0.id) })?.id else {
+        throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+          CoreL10n.text("无法创建修改前版本，未执行文章变更。")
+        )
+      }
       store.updateDraft(preview.updatedDraft)
-      store.save()
+      do {
+        try saveWorkbenchOrThrow(in: store)
+      } catch let saveError {
+        guard store.restoreDraftVersion(rollbackVersionID) else {
+          throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+            CoreL10n.format(
+              "文章保存失败：%@；自动恢复修改前版本也失败。",
+              saveError.localizedDescription
+            )
+          )
+        }
+        _ = store.flushPendingChanges()
+        throw saveError
+      }
       return WorkbenchAutomationStepRecord(
         command: step.command,
         status: .succeeded,
@@ -246,6 +304,20 @@ public enum WorkbenchAutomationExecutor {
     case .deleteDraft:
       let draft = try targetDraft(for: step, in: store, checksVersion: true)
       store.deleteDraft(id: draft.id)
+      do {
+        try saveWorkbenchOrThrow(in: store)
+      } catch let saveError {
+        guard store.restoreRecycledDraft(draft.id) else {
+          throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+            CoreL10n.format(
+              "文章移入回收站后保存失败：%@；自动恢复文章也失败。",
+              saveError.localizedDescription
+            )
+          )
+        }
+        _ = store.flushPendingChanges()
+        throw saveError
+      }
       return success(step, CoreL10n.format("已将“%@”移到回收站。", draft.title.nilIfEmpty ?? CoreL10n.text("未命名文章")))
 
     case .writeLocalRepository:
@@ -253,11 +325,21 @@ public enum WorkbenchAutomationExecutor {
       guard store.focusDraft(draft.id, section: .sync) else {
         throw WorkbenchAutomationValidationError.draftNotFound
       }
-      await store.writeSelectedDraftToLocalRepository()
-      return success(
-        step,
-        store.publishActionMessage?.nilIfEmpty ?? CoreL10n.text("本地仓库写入流程已完成。")
-      )
+      let writeResult = await store.writeSelectedDraftToLocalRepository()
+      switch writeResult {
+      case .succeeded(let writtenPaths, let message):
+        return success(
+          step,
+          message.nilIfEmpty
+            ?? CoreL10n.format("已写入本地仓库，共处理 %lld 个文件。", writtenPaths.count)
+        )
+      case .writtenButRecordSaveFailed(_, let message):
+        throw WorkbenchAutomationExecutionError.externalEffectPartiallyCompleted(message)
+      case .failed(let message):
+        throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+          message.nilIfEmpty ?? CoreL10n.text("本地仓库写入未完成。")
+        )
+      }
 
     case .publishOnline:
       store.selectSection(.sync)
@@ -285,12 +367,21 @@ public enum WorkbenchAutomationExecutor {
     guard let draft = store.drafts.first(where: { $0.id == draftID }) else {
       throw WorkbenchAutomationValidationError.draftNotFound
     }
-    if checksVersion,
-       let expected = step.arguments.expectedDraftUpdatedAt,
-       expected != draft.updatedAt {
-      throw WorkbenchAutomationValidationError.staleDraft
+    if checksVersion {
+      guard let expected = step.arguments.expectedDraftUpdatedAt,
+            expected == draft.updatedAt else {
+        throw WorkbenchAutomationValidationError.staleDraft
+      }
     }
     return draft
+  }
+
+  private static func saveWorkbenchOrThrow(in store: WorkbenchStore) throws {
+    guard store.flushPendingChanges() else {
+      throw WorkbenchAutomationExecutionError.operationDidNotComplete(
+        CoreL10n.text("工作台保存失败，未将本步骤标记为成功。")
+      )
+    }
   }
 
   private static func success(
@@ -339,11 +430,34 @@ public enum WorkbenchAutomationExecutor {
 
 public enum WorkbenchAutomationExecutionError: Error, Equatable, LocalizedError, Sendable {
   case operationDidNotComplete(String)
+  case externalEffectPartiallyCompleted(String)
 
   public var errorDescription: String? {
     switch self {
     case .operationDidNotComplete(let message):
       return message
+    case .externalEffectPartiallyCompleted(let message):
+      return message
     }
+  }
+}
+
+public struct WorkbenchAutomationRollbackResult: Equatable, Sendable {
+  public var restoredCount: Int
+  public var failureMessages: [String]
+  public var persistenceSucceeded: Bool
+
+  public init(
+    restoredCount: Int,
+    failureMessages: [String],
+    persistenceSucceeded: Bool
+  ) {
+    self.restoredCount = restoredCount
+    self.failureMessages = failureMessages
+    self.persistenceSucceeded = persistenceSucceeded
+  }
+
+  public var completedWithoutFailures: Bool {
+    failureMessages.isEmpty && persistenceSucceeded
   }
 }

@@ -124,18 +124,14 @@ public struct SiteImageWorkbenchService: Sendable {
   }
 
   public func report(draft: ArticleDraft, profile: SiteProfile) -> ImageWorkbenchReport {
-    do {
-      return try makeReport(draft: draft, profile: profile, cancellationCheck: {})
-    } catch {
-      preconditionFailure("A non-cancellable image report unexpectedly failed: \(error)")
-    }
+    makeReport(draft: draft, profile: profile, cancellationCheck: {})
   }
 
   private func makeReport(
     draft: ArticleDraft,
     profile: SiteProfile,
     cancellationCheck: () throws -> Void
-  ) throws -> ImageWorkbenchReport {
+  ) rethrows -> ImageWorkbenchReport {
     try cancellationCheck()
     let imageAttachments = draft.attachments.filter { $0.mediaKind == .image }
     let markdownImagePathCounts = localMarkdownImagePathCounts(in: draft.bodyMarkdown)
@@ -462,18 +458,14 @@ public struct SiteImageWorkbenchService: Sendable {
   }
 
   public func siteSummary(drafts: [ArticleDraft], profile: SiteProfile) -> ImageWorkbenchSiteSummary {
-    do {
-      return try makeSiteSummary(drafts: drafts, profile: profile, cancellationCheck: {})
-    } catch {
-      preconditionFailure("A non-cancellable image summary unexpectedly failed: \(error)")
-    }
+    makeSiteSummary(drafts: drafts, profile: profile, cancellationCheck: {})
   }
 
   private func makeSiteSummary(
     drafts: [ArticleDraft],
     profile: SiteProfile,
     cancellationCheck: () throws -> Void
-  ) throws -> ImageWorkbenchSiteSummary {
+  ) rethrows -> ImageWorkbenchSiteSummary {
     try cancellationCheck()
     let reports = try drafts.map { draft in
       try cancellationCheck()
@@ -795,7 +787,10 @@ public struct SiteImageWorkbenchService: Sendable {
       }
 
       let sourceURL = URL(fileURLWithPath: sourceFilePath)
-      let originalData = try Data(contentsOf: sourceURL)
+      let originalData = try BoundedFileReader.data(
+        at: sourceURL,
+        maximumByteCount: WorkbenchFileReadLimits.maximumSVGOptimizationByteCount
+      )
       guard
         !originalData.isEmpty,
         let svgText = String(data: originalData, encoding: .utf8)

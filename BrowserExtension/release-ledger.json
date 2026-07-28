@@ -492,6 +492,34 @@
         }
       ],
       "publications": []
+    },
+    {
+      "version": "0.30.1",
+      "sourceSHA256": "0d4f040b713a127474d780adc40ff1b65443e43a8de392b4696389ce8debf2e6",
+      "createdAt": "2026-07-26T13:25:48Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.30.1.zip",
+          "sha256": "aa07759e46ec706cf7ab2ccc98404719dd79da523679c4281d5fae14248421d5",
+          "recordedAt": "2026-07-26T13:25:48Z"
+        }
+      ],
+      "publications": []
+    },
+    {
+      "version": "0.30.2",
+      "sourceSHA256": "1cfbd4935f22bd2af932c2b79b76cdb97b471f9610db073ced9f9917c99f7d99",
+      "createdAt": "2026-07-26T13:28:47Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.30.2.zip",
+          "sha256": "5f7a58805784e737aff0802ef8e84732e6b6b899e66525fccfa803a49bc35ae0",
+          "recordedAt": "2026-07-26T13:28:47Z"
+        }
+      ],
+      "publications": []
     }
   ]
 }

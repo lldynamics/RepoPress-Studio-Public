@@ -237,7 +237,10 @@ extension KnowledgeLibraryService {
     guard fileSize <= 50 * 1_024 * 1_024 else {
       throw KnowledgeLibraryError.sourceLimitExceeded("文件超过 50 MB：\(sourceURL.lastPathComponent)")
     }
-    guard let data = try? Data(contentsOf: sourceURL) else {
+    guard let data = try? BoundedFileReader.data(
+      at: sourceURL,
+      maximumByteCount: 50 * 1_024 * 1_024
+    ) else {
       throw KnowledgeLibraryError.unreadableSource(sourceURL.path)
     }
     return try candidate(

@@ -19,12 +19,16 @@ extension BrowserExtensionProtocol {
     "X-RepoPress-Protocol"
   public static let loopbackProtocolHeaderValue =
     "1"
-  public static let maximumInputBytes = 52_428_800
+  public static let maximumInputBytes = 50_331_648
+  public static let statusPayloadVersion = 6
+  public static let accessControlAllowHeaders =
+    "Authorization, Content-Type, \(loopbackProtocolHeaderName)"
 
   public static let allowedRoutes: [String: Set<String>] = [
     "/v1/folders": ["GET"],
     "/v1/import": ["POST"],
     "/v1/open": ["POST"],
+    "/v1/status": ["GET"],
     "/v1/suggestions": ["POST"],
   ]
 }

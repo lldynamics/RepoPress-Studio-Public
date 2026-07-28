@@ -283,7 +283,8 @@ public enum WorkbenchAutomationPlanParser {
 
   public static func parse(
     _ response: String,
-    currentDraft: ArticleDraft
+    currentDraft: ArticleDraft,
+    draftVersions: [UUID: Date] = [:]
   ) -> WorkbenchAutomationParsedResponse {
     guard let openingRange = response.range(of: openingMarker),
           let closingRange = response.range(
@@ -305,7 +306,11 @@ public enum WorkbenchAutomationPlanParser {
 
     guard let data = json.data(using: .utf8),
           let envelope = try? JSONDecoder().decode(PlanEnvelope.self, from: data),
-          let plan = makePlan(envelope, currentDraft: currentDraft),
+          let plan = makePlan(
+            envelope,
+            currentDraft: currentDraft,
+            draftVersions: draftVersions
+          ),
           (try? WorkbenchAutomationPlanValidator.validateStructure(plan)) != nil else {
       return WorkbenchAutomationParsedResponse(
         displayContent: response.trimmedForPublishing,
@@ -322,7 +327,8 @@ public enum WorkbenchAutomationPlanParser {
 
   private static func makePlan(
     _ envelope: PlanEnvelope,
-    currentDraft: ArticleDraft
+    currentDraft: ArticleDraft,
+    draftVersions: [UUID: Date]
   ) -> WorkbenchAutomationPlan? {
     let goal = envelope.goal.trimmedForPublishing
     guard !goal.isEmpty,
@@ -331,6 +337,8 @@ public enum WorkbenchAutomationPlanParser {
       return nil
     }
 
+    var resolvedDraftVersions = draftVersions
+    resolvedDraftVersions[currentDraft.id] = currentDraft.updatedAt
     var steps: [WorkbenchAutomationStep] = []
     for raw in envelope.steps {
       guard let command = WorkbenchAutomationCommandID(rawValue: raw.command),
@@ -340,12 +348,17 @@ public enum WorkbenchAutomationPlanParser {
       let suppliedDraftID = raw.arguments?.draftID.flatMap(UUID.init(uuidString:))
       let descriptor = WorkbenchAutomationRegistry.descriptor(for: command)
       let targetDraftID = suppliedDraftID ?? (descriptor?.requiresDraft == true ? currentDraft.id : nil)
+      let expectedDraftUpdatedAt = targetDraftID.flatMap { resolvedDraftVersions[$0] }
+      if descriptor?.requiresDraft == true,
+         expectedDraftUpdatedAt == nil {
+        return nil
+      }
       let section = raw.arguments?.section.flatMap(WorkspaceSection.init(rawValue:))
       let metadataField = raw.arguments?.metadataField.flatMap(AIPublishingMetadataField.init(rawValue:))
       let arguments = WorkbenchAutomationArguments(
         section: section,
         draftID: targetDraftID,
-        expectedDraftUpdatedAt: targetDraftID == currentDraft.id ? currentDraft.updatedAt : nil,
+        expectedDraftUpdatedAt: expectedDraftUpdatedAt,
         editorField: raw.arguments?.editorField,
         metadataField: metadataField,
         value: raw.arguments?.value,

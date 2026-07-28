@@ -79,7 +79,7 @@ struct MarkdownFloatingOutlineHUD: View {
   private func outlineRow(for item: MarkdownOutlineItem) -> some View {
     HStack(spacing: 5) {
       Text(String(repeating: "#", count: item.level))
-        .font(.caption2.monospaced())
+        .font(.workbenchMetadata.monospaced())
         .foregroundStyle(Color.accentColor)
       Text(item.title)
         .font(.caption)

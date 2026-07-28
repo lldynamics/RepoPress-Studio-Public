@@ -192,5 +192,6 @@
   "仅本地": "Local Only",
   "当前站点配置没有可统计的文章。": "The current site configuration has no articles to summarize.",
   "已发布": "Published",
-  "文章头信息预览": "Article Metadata Preview"
+  "文章头信息预览": "Article Metadata Preview",
+  "损坏账本会先保留为备份，然后创建空账本。已有资料不会被删除，但旧操作回执将不再用于去重。": "The corrupted ledger will be preserved as a backup before an empty ledger is created. Existing data will not be deleted, but old operation receipts will no longer be used for deduplication."
 }

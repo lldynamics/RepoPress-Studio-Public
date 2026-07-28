@@ -18,7 +18,8 @@
     "protocolHeaderValue": "1"
   },
   "captureProtocol": {
-    "maximumInputBytes": 52428800,
+    "maximumInputBytes": 50331648,
+    "statusPayloadVersion": 6,
     "routes": {
       "/v1/folders": [
         "GET"
@@ -28,6 +29,9 @@
       ],
       "/v1/open": [
         "POST"
+      ],
+      "/v1/status": [
+        "GET"
       ],
       "/v1/suggestions": [
         "POST"

@@ -369,6 +369,21 @@ public struct SiteRelationSuggestion: Identifiable, Hashable, Sendable {
   public var reason: String
 }
 
+struct SiteRelationScanMetrics: Hashable, Sendable {
+  var sourceDraftCount: Int
+  var publishedTargetDraftCount: Int
+  var indexedTargetDraftCount: Int
+  var indexedLabelCount: Int
+  var targetIndexEntryCount: Int
+  var candidateEvaluationCount: Int
+  var suggestionCount: Int
+}
+
+struct SiteRelationScanResult: Sendable {
+  var suggestions: [SiteRelationSuggestion]
+  var metrics: SiteRelationScanMetrics
+}
+
 public enum SiteLinkAuditSeverity: String, Hashable, Sendable {
   case info
   case warning
@@ -639,18 +654,14 @@ public struct SiteMaintenanceService: Sendable {
     maintenanceOperationRecords: [MaintenanceOperationRecord] = [],
     now: Date = Date()
   ) -> SiteMaintenanceReport {
-    do {
-      return try makeReport(
-        drafts: drafts,
-        profile: profile,
-        releaseRecords: releaseRecords,
-        maintenanceOperationRecords: maintenanceOperationRecords,
-        now: now,
-        cancellationCheck: {}
-      )
-    } catch {
-      preconditionFailure("A non-cancellable maintenance report unexpectedly failed: \(error)")
-    }
+    makeReport(
+      drafts: drafts,
+      profile: profile,
+      releaseRecords: releaseRecords,
+      maintenanceOperationRecords: maintenanceOperationRecords,
+      now: now,
+      cancellationCheck: {}
+    )
   }
 
   /// Generates the report away from the caller's actor. Cancellation checks
@@ -697,7 +708,7 @@ public struct SiteMaintenanceService: Sendable {
     maintenanceOperationRecords: [MaintenanceOperationRecord],
     now: Date,
     cancellationCheck: () throws -> Void
-  ) throws -> SiteMaintenanceReport {
+  ) rethrows -> SiteMaintenanceReport {
     try cancellationCheck()
     let calendarBuckets = calendarBuckets(drafts: drafts)
     try cancellationCheck()
@@ -1171,10 +1182,68 @@ public struct SiteMaintenanceService: Sendable {
     drafts: [ArticleDraft],
     profile: SiteProfile,
     cancellationCheck: () throws -> Void
-  ) throws -> [SiteRelationSuggestion] {
+  ) rethrows -> [SiteRelationSuggestion] {
+    try relationSuggestionScan(
+      drafts: drafts,
+      profile: profile,
+      cancellationCheck: cancellationCheck
+    ).suggestions
+  }
+
+  func relationSuggestionScan(
+    drafts: [ArticleDraft],
+    profile: SiteProfile
+  ) -> SiteRelationScanResult {
+    relationSuggestionScan(
+      drafts: drafts,
+      profile: profile,
+      cancellationCheck: {}
+    )
+  }
+
+  func relationSuggestionScan(
+    drafts: [ArticleDraft],
+    profile: SiteProfile,
+    cancellationCheck: () throws -> Void
+  ) rethrows -> SiteRelationScanResult {
     let sourceDrafts = drafts.filter { !$0.isPrivate && !$0.draft }
     let targetDrafts = drafts.filter { !$0.isPrivate && !$0.draft && $0.status == .published }
+    var targetsByID: [UUID: RelationTargetIndexEntry] = [:]
+    var targetIDsByLabel: [String: [UUID]] = [:]
+    var targetIndexEntryCount = 0
+
+    for (ordinal, target) in targetDrafts.enumerated() {
+      try cancellationCheck()
+      let labels = taxonomyLabels(for: target)
+      guard !labels.isEmpty else {
+        continue
+      }
+
+      let targetPath = canonicalWebPath(from: profile.markdownPath(for: target))
+      let slugPath = "/" + (target.slug.nilIfEmpty ?? SlugService.fallbackSlug(date: target.date)) + "/"
+      targetsByID[target.id] = RelationTargetIndexEntry(
+        draft: target,
+        targetPath: targetPath,
+        foldedTargetPath: targetPath.lowercased(),
+        foldedSlugPath: slugPath.lowercased(),
+        ordinal: ordinal
+      )
+      for label in labels {
+        targetIDsByLabel[label.normalizedName, default: []].append(target.id)
+        targetIndexEntryCount += 1
+      }
+    }
+
     var suggestions: [SiteRelationSuggestion] = []
+    var metrics = SiteRelationScanMetrics(
+      sourceDraftCount: sourceDrafts.count,
+      publishedTargetDraftCount: targetDrafts.count,
+      indexedTargetDraftCount: targetsByID.count,
+      indexedLabelCount: targetIDsByLabel.count,
+      targetIndexEntryCount: targetIndexEntryCount,
+      candidateEvaluationCount: 0,
+      suggestionCount: 0
+    )
 
     for source in sourceDrafts {
       try cancellationCheck()
@@ -1183,19 +1252,25 @@ public struct SiteMaintenanceService: Sendable {
         continue
       }
       let sourceBody = source.bodyMarkdown.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+      var sharedLabelsByTargetID: [UUID: [TaxonomyLabel]] = [:]
 
-      for target in targetDrafts where target.id != source.id {
-        try cancellationCheck()
-        let targetLabels = taxonomyLabels(for: target)
-        let shared = sharedTaxonomyLabels(sourceLabels, targetLabels)
-        guard !shared.isEmpty else {
-          continue
+      for label in sourceLabels {
+        for targetID in targetIDsByLabel[label.normalizedName] ?? [] where targetID != source.id {
+          try cancellationCheck()
+          sharedLabelsByTargetID[targetID, default: []].append(label)
         }
+      }
 
-        let targetPath = canonicalWebPath(from: profile.markdownPath(for: target))
-        let slugPath = "/" + (target.slug.nilIfEmpty ?? SlugService.fallbackSlug(date: target.date)) + "/"
-        guard !sourceBody.contains(targetPath.lowercased()),
-              !sourceBody.contains(slugPath.lowercased()) else {
+      let targets = sharedLabelsByTargetID.keys
+        .compactMap { targetsByID[$0] }
+        .sorted { $0.ordinal < $1.ordinal }
+
+      for target in targets {
+        try cancellationCheck()
+        metrics.candidateEvaluationCount += 1
+        guard !sourceBody.contains(target.foldedTargetPath),
+              !sourceBody.contains(target.foldedSlugPath),
+              let shared = sharedLabelsByTargetID[target.draft.id] else {
           continue
         }
 
@@ -1203,9 +1278,9 @@ public struct SiteMaintenanceService: Sendable {
           SiteRelationSuggestion(
             sourceDraftID: source.id,
             sourceTitle: source.title.nilIfEmpty ?? "未命名文章",
-            targetDraftID: target.id,
-            targetTitle: target.title.nilIfEmpty ?? "未命名文章",
-            targetPath: targetPath,
+            targetDraftID: target.draft.id,
+            targetTitle: target.draft.title.nilIfEmpty ?? "未命名文章",
+            targetPath: target.targetPath,
             sharedLabels: shared.map(\.displayName),
             reason: "共享 \(shared.map(\.displayName).joined(separator: "、"))，但正文还没有链接到目标文章。"
           )
@@ -1213,12 +1288,17 @@ public struct SiteMaintenanceService: Sendable {
       }
     }
 
-    return suggestions.sorted {
+    let sortedSuggestions = suggestions.sorted {
       if $0.sharedLabels.count == $1.sharedLabels.count {
         return $0.sourceTitle.localizedCaseInsensitiveCompare($1.sourceTitle) == .orderedAscending
       }
       return $0.sharedLabels.count > $1.sharedLabels.count
     }
+    metrics.suggestionCount = sortedSuggestions.count
+    return SiteRelationScanResult(
+      suggestions: sortedSuggestions,
+      metrics: metrics
+    )
   }
 
   private func taxonomySummary(
@@ -1315,7 +1395,7 @@ public struct SiteMaintenanceService: Sendable {
     drafts: [ArticleDraft],
     profile: SiteProfile,
     cancellationCheck: () throws -> Void
-  ) throws -> [SiteLinkAuditItem] {
+  ) rethrows -> [SiteLinkAuditItem] {
     let knownInternalPaths = Set(drafts.flatMap { draft in
       [
         canonicalWebPath(from: profile.markdownPath(for: draft)),
@@ -1478,23 +1558,18 @@ public struct SiteMaintenanceService: Sendable {
   }
 
   private func taxonomyLabels(for draft: ArticleDraft) -> [TaxonomyLabel] {
-    (draft.tags + draft.categories)
-      .map { name in
-        let displayName = name.trimmedForPublishing
-        return TaxonomyLabel(displayName: displayName, normalizedName: normalizedTaxonomyName(displayName))
-      }
-      .filter { !$0.normalizedName.isEmpty }
-  }
-
-  private func sharedTaxonomyLabels(_ lhs: [TaxonomyLabel], _ rhs: [TaxonomyLabel]) -> [TaxonomyLabel] {
-    let rhsKeys = Set(rhs.map(\.normalizedName))
     var seen: Set<String> = []
-    return lhs.filter { label in
-      guard rhsKeys.contains(label.normalizedName), !seen.contains(label.normalizedName) else {
-        return false
+    return (draft.tags + draft.categories).compactMap { name in
+      let displayName = name.trimmedForPublishing
+      let label = TaxonomyLabel(
+        displayName: displayName,
+        normalizedName: normalizedTaxonomyName(displayName)
+      )
+      guard !label.normalizedName.isEmpty,
+            seen.insert(label.normalizedName).inserted else {
+        return nil
       }
-      seen.insert(label.normalizedName)
-      return true
+      return label
     }
   }
 
@@ -1535,6 +1610,14 @@ public struct SiteMaintenanceService: Sendable {
 private struct MarkdownLink {
   var anchor: String
   var target: String
+}
+
+private struct RelationTargetIndexEntry {
+  var draft: ArticleDraft
+  var targetPath: String
+  var foldedTargetPath: String
+  var foldedSlugPath: String
+  var ordinal: Int
 }
 
 private struct TaxonomyLabel: Hashable {

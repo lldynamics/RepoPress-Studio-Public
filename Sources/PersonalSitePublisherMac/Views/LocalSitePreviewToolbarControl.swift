@@ -2,13 +2,20 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct LocalSitePreviewToolbarControl: View {
-  @ObservedObject var store: WorkbenchStore
+  @StateObject private var state: WorkbenchLocalSitePreviewFeatureFacade
   let isCompact: Bool
+
+  init(store: WorkbenchStore, isCompact: Bool) {
+    _state = StateObject(
+      wrappedValue: WorkbenchLocalSitePreviewFeatureFacade(store: store)
+    )
+    self.isCompact = isCompact
+  }
 
   var body: some View {
     Menu {
       Section {
-        Label(store.localSitePreviewRuntimeStatus.message, systemImage: statusSystemImage)
+        Label(state.runtimeStatus.message, systemImage: statusSystemImage)
 
         if let previewURL {
           Text(previewURL.absoluteString)
@@ -21,7 +28,7 @@ struct LocalSitePreviewToolbarControl: View {
       Divider()
 
       Toggle("启动本地预览", isOn: previewEnabled)
-        .disabled(store.localSitePreviewPlan == nil && !store.localSitePreviewRuntimeStatus.isRunning)
+        .disabled(state.plan == nil && !state.runtimeStatus.isRunning)
 
       Button {
         guard let previewURL else { return }
@@ -29,21 +36,21 @@ struct LocalSitePreviewToolbarControl: View {
       } label: {
         Label("在浏览器中打开", systemImage: "safari")
       }
-      .disabled(previewURL == nil || !store.localSitePreviewRuntimeStatus.isRunning)
+      .disabled(previewURL == nil || !state.runtimeStatus.isRunning)
 
       Button {
         Task {
-          await store.verifyLocalSitePreviewReachability()
+          await state.verifyReachability()
         }
       } label: {
         Label("检查预览连接", systemImage: "network")
       }
-      .disabled(!store.localSitePreviewRuntimeStatus.isRunning)
+      .disabled(!state.runtimeStatus.isRunning)
 
       Divider()
 
       Button {
-        store.selectSection(.sync)
+        state.openSettings()
       } label: {
         Label("预览设置与详情", systemImage: "slider.horizontal.3")
       }
@@ -58,82 +65,82 @@ struct LocalSitePreviewToolbarControl: View {
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
     .fixedSize()
-    .help("本地预览：\(statusTitle)。\(store.localSitePreviewRuntimeStatus.message)")
+    .help("本地预览：\(statusTitle)。\(state.runtimeStatus.message)")
     .accessibilityLabel("本地预览")
     .accessibilityValue(statusTitle)
     .accessibilityIdentifier("workspace-preview-menu")
-    .task(id: store.activeProfileID) {
-      store.refreshLocalSitePreviewRuntimeStatus()
+    .task(id: state.activeProfileID) {
+      state.refreshStatus()
       while !Task.isCancelled {
         do {
           try await Task.sleep(for: .seconds(3))
         } catch {
           return
         }
-        store.refreshLocalSitePreviewRuntimeStatus()
+        state.refreshStatus()
       }
     }
   }
 
   private var previewEnabled: Binding<Bool> {
     Binding(
-      get: { store.localSitePreviewRuntimeStatus.isRunning },
+      get: { state.runtimeStatus.isRunning },
       set: { shouldRun in
         if shouldRun {
-          store.startLocalSitePreview()
+          state.start()
         } else {
-          store.stopLocalSitePreview()
+          state.stop()
         }
       }
     )
   }
 
   private var previewURL: URL? {
-    store.localSitePreviewRuntimeStatus.previewURL ?? store.localSitePreviewPlan?.previewURL
+    state.runtimeStatus.previewURL ?? state.plan?.previewURL
   }
 
   private var isTransitioning: Bool {
-    let message = store.localSitePreviewRuntimeStatus.message
+    let message = state.runtimeStatus.message
     return message.contains("正在停止") || message.contains("正在等待")
   }
 
   private var statusTitle: String {
-    if store.localSitePreviewRuntimeStatus.isReachable {
+    if state.runtimeStatus.isReachable {
       return String(localized: "预览可用")
     }
-    if store.localSitePreviewRuntimeStatus.isRunning {
+    if state.runtimeStatus.isRunning {
       return String(localized: "预览运行中")
     }
     if isTransitioning {
       return String(localized: "预览处理中")
     }
-    if store.localSitePreviewPlan == nil {
+    if state.plan == nil {
       return String(localized: "预览未配置")
     }
     return String(localized: "预览已关闭")
   }
 
   private var statusSystemImage: String {
-    if store.localSitePreviewRuntimeStatus.isReachable {
+    if state.runtimeStatus.isReachable {
       return "checkmark.circle.fill"
     }
-    if store.localSitePreviewRuntimeStatus.isRunning {
+    if state.runtimeStatus.isRunning {
       return "play.circle.fill"
     }
     if isTransitioning {
       return "arrow.triangle.2.circlepath"
     }
-    if store.localSitePreviewPlan == nil {
+    if state.plan == nil {
       return "questionmark.circle"
     }
     return "stop.circle"
   }
 
   private var statusColor: Color {
-    if store.localSitePreviewRuntimeStatus.isReachable {
+    if state.runtimeStatus.isReachable {
       return WorkbenchTheme.success
     }
-    if store.localSitePreviewRuntimeStatus.isRunning {
+    if state.runtimeStatus.isRunning {
       return WorkbenchTheme.progress
     }
     if isTransitioning {

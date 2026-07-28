@@ -245,7 +245,12 @@ public struct ContentMigrationService: Sendable {
          sourceFileSize > limits.maximumMarkdownFileBytes {
         throw ContentMigrationError.sourceLimitExceeded("单个 Markdown 文件过大，请拆分文章后再导入。")
       }
-      let data = try Data(contentsOf: sourceURL)
+      let data = try BoundedFileReader.data(
+        at: sourceURL,
+        maximumByteCount: ["md", "markdown", "mdx"].contains(
+          sourceURL.pathExtension.lowercased()
+        ) ? limits.maximumMarkdownFileBytes : limits.maximumSourceFileBytes
+      )
       try Task.checkCancellation()
       let text = String(data: data, encoding: .utf8) ?? ""
       if sourceURL.pathExtension.lowercased() == "json" {
@@ -377,7 +382,10 @@ public struct ContentMigrationService: Sendable {
   private func markdownRecord(fileURL: URL) throws -> ContentMigrationRecord {
     let text: String
     do {
-      text = try String(contentsOf: fileURL, encoding: .utf8)
+      text = try BoundedFileReader.utf8String(
+        at: fileURL,
+        maximumByteCount: WorkbenchContentFileReadLimits.textDocumentByteCount
+      )
     } catch {
       logger.warning("无法读取文件 \(fileURL.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
       throw ContentMigrationError.unreadableSource(fileURL.path)

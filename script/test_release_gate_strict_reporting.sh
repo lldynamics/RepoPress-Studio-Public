@@ -176,6 +176,9 @@ cat >"$FIXTURE_ROOT/bin/swift" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 case "${1:-}" in
+  --version)
+    echo "Swift fixture 6.0"
+    ;;
   test)
     echo "swift test: ok"
     ;;
@@ -196,10 +199,13 @@ cat >"$FIXTURE_ROOT/APP_STORE_CHECKLIST.md" <<'MD'
 - [ ] Verify external evidence.
 MD
 
+STRICT_SUMMARY="$TMP_DIR/strict-summary.md"
 if output="$(
   PROFILE_LOG="$TMP_DIR/profile.log" \
     PATH="$FIXTURE_ROOT/bin:$PATH" \
-    bash "$FIXTURE_ROOT/script/check_release_gate.sh" --strict 2>&1
+    bash "$FIXTURE_ROOT/script/check_release_gate.sh" \
+      --strict \
+      --summary-markdown "$STRICT_SUMMARY" 2>&1
 )"; then
   fail "strict release gate fixture unexpectedly passed"
 fi
@@ -240,7 +246,14 @@ import sys
 payload = json.load(open(sys.argv[1], encoding="utf-8"))
 assert payload["mode"] == "strict", payload
 assert payload["profile"] == "all", payload
+assert payload["execution"]["toolchain"]["swiftVersion"] == "Swift fixture 6.0", payload
 PY
+grep -q '^# Release Gate Summary$' "$STRICT_SUMMARY" \
+  || fail "strict Markdown summary omitted its heading"
+grep -q 'Status: \\*\\*FAILED\\*\\*' "$STRICT_SUMMARY" \
+  || fail "strict Markdown summary omitted the failed status"
+grep -q 'APP_STORE_CHECKLIST.md (2 unchecked items)' "$STRICT_SUMMARY" \
+  || fail "strict Markdown summary omitted checklist blockers"
 
 chrome_json="$TMP_DIR/chrome-profile.json"
 if ! chrome_output="$(

@@ -229,9 +229,9 @@ curl_json() {
   output="$(mktemp "${TMPDIR:-/tmp}/remote-verify.XXXXXX")"
   local status
   if [[ -n "$body" ]]; then
-    status="$(curl -sS -o "$output" -w "%{http_code}" -X "$method" "$url" "${CURL_HEADERS[@]}" -H "Content-Type: application/json" --data "$body")"
+    status="$(curl -sS --connect-timeout 10 --max-time 60 -o "$output" -w "%{http_code}" -X "$method" "$url" "${CURL_HEADERS[@]}" -H "Content-Type: application/json" --data "$body")"
   else
-    status="$(curl -sS -o "$output" -w "%{http_code}" -X "$method" "$url" "${CURL_HEADERS[@]}")"
+    status="$(curl -sS --connect-timeout 10 --max-time 60 -o "$output" -w "%{http_code}" -X "$method" "$url" "${CURL_HEADERS[@]}")"
   fi
   if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
     echo "remote publish live verification: HTTP $status from $url" >&2
@@ -254,9 +254,9 @@ curl_json_optional() {
   output="$(mktemp "${TMPDIR:-/tmp}/remote-verify-optional.XXXXXX")"
   local status
   if [[ -n "$body" ]]; then
-    status="$(curl -sS -o "$output" -w "%{http_code}" -X "$method" "$url" "${CURL_HEADERS[@]}" -H "Content-Type: application/json" --data "$body" || true)"
+    status="$(curl -sS --connect-timeout 10 --max-time 60 -o "$output" -w "%{http_code}" -X "$method" "$url" "${CURL_HEADERS[@]}" -H "Content-Type: application/json" --data "$body" || true)"
   else
-    status="$(curl -sS -o "$output" -w "%{http_code}" -X "$method" "$url" "${CURL_HEADERS[@]}" || true)"
+    status="$(curl -sS --connect-timeout 10 --max-time 60 -o "$output" -w "%{http_code}" -X "$method" "$url" "${CURL_HEADERS[@]}" || true)"
   fi
   if [[ "$status" =~ ^[0-9]+$ && "$status" -ge 200 && "$status" -lt 300 ]]; then
     cat "$output"

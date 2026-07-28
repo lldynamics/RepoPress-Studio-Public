@@ -90,18 +90,36 @@ extension WorkbenchStore {
       setAIChatMessage(CoreL10n.text("找不到自动化执行记录。"))
       return 0
     }
-    let count = WorkbenchAutomationExecutor.rollback(record: record, in: self)
-    if count > 0,
+    let result = WorkbenchAutomationExecutor.rollbackDetailed(record: record, in: self)
+    if result.restoredCount > 0,
+       result.completedWithoutFailures,
        let index = aiWorkspaceStore.automationRunRecords.firstIndex(where: { $0.id == recordID }) {
       aiWorkspaceStore.automationRunRecords[index].rolledBackAt = Date()
-      save()
+      if !flushPendingChanges() {
+        setAIChatMessage(CoreL10n.text("本地修改已撤销，但撤销记录保存失败。"))
+        return result.restoredCount
+      }
     }
-    setAIChatMessage(
-      count > 0
-        ? CoreL10n.format("已撤销 %lld 项自动化修改。", count)
-        : CoreL10n.text("这条执行记录没有可自动撤销的本地修改。")
-    )
-    return count
+    if result.completedWithoutFailures {
+      setAIChatMessage(
+        result.restoredCount > 0
+          ? CoreL10n.format("已撤销 %lld 项自动化修改。", result.restoredCount)
+          : CoreL10n.text("这条执行记录没有可自动撤销的本地修改。")
+      )
+    } else {
+      var details = result.failureMessages
+      if !result.persistenceSucceeded {
+        details.append(CoreL10n.text("恢复后的工作台状态未能保存。"))
+      }
+      setAIChatMessage(
+        CoreL10n.format(
+          "已撤销 %lld 项，但仍有问题：%@",
+          result.restoredCount,
+          details.joined(separator: "；")
+        )
+      )
+    }
+    return result.restoredCount
   }
 
   private func recordAutomationRun(_ record: WorkbenchAutomationRunRecord) {

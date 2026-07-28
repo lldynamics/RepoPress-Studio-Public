@@ -479,22 +479,60 @@ public struct WorkbenchPersistence: Sendable {
   }
 
   public func commit(_ preparedSave: WorkbenchPreparedPersistenceSave) throws -> WorkbenchPersistenceSaveResult {
-    try FileManager.default.createDirectory(
+    let fileManager = FileManager.default
+    try fileManager.createDirectory(
       at: fileURL.deletingLastPathComponent(),
       withIntermediateDirectories: true
     )
-    try persistRetiredFeatureArchives(preparedSave.retiredFeatureArchives)
     let data = preparedSave.data
+    try validateSnapshotData(data)
+
+    let previousPrimaryExisted = fileManager.fileExists(atPath: fileURL.path)
+    let previousPrimaryData: Data?
+    let previousPrimaryWarning: String?
+    if previousPrimaryExisted {
+      do {
+        let previousData = try Data(contentsOf: fileURL, options: .mappedIfSafe)
+        try validateSnapshotData(previousData)
+        previousPrimaryData = previousData
+        previousPrimaryWarning = nil
+      } catch {
+        previousPrimaryData = nil
+        previousPrimaryWarning = "保存前的主快照无法验证：\(error.localizedDescription)"
+      }
+    } else {
+      previousPrimaryData = nil
+      previousPrimaryWarning = nil
+    }
+
+    try persistRetiredFeatureArchives(preparedSave.retiredFeatureArchives)
     try data.write(to: fileURL, options: [.atomic])
 
     do {
-      try data.write(to: lastKnownGoodURL, options: [.atomic])
+      if let previousPrimaryData {
+        try previousPrimaryData.write(to: lastKnownGoodURL, options: [.atomic])
+      } else if !previousPrimaryExisted
+        || !fileManager.fileExists(atPath: lastKnownGoodURL.path) {
+        try data.write(to: lastKnownGoodURL, options: [.atomic])
+      }
+      if let previousPrimaryWarning {
+        return .savedWithoutBackup(
+          "\(previousPrimaryWarning)；新主快照已保存，已有恢复点未被覆盖。"
+        )
+      }
       return .saved
     } catch {
       // The primary write succeeded. Surface the degraded recovery guarantee
       // instead of incorrectly reporting an unsaved document.
       return .savedWithoutBackup(error.localizedDescription)
     }
+  }
+
+  private func validateSnapshotData(_ data: Data) throws {
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let snapshot = try decoder.decode(WorkbenchSnapshot.self, from: data)
+    try WorkbenchSnapshotSemanticValidator.validate(snapshot)
   }
 
   public func save(_ snapshot: WorkbenchSnapshot) throws -> WorkbenchPersistenceSaveResult {
@@ -534,6 +572,24 @@ public struct WorkbenchPersistence: Sendable {
   /// uses this file so no state from the temporary blank workbench is merged in.
   @discardableResult
   public func installRecoverySnapshot(from sourceURL: URL) throws -> URL {
+    try installRecoverySnapshot(
+      from: sourceURL,
+      fileOperations: WorkbenchRecoveryFileOperations(
+        writeAtomically: { data, destinationURL in
+          try data.write(to: destinationURL, options: .atomic)
+        },
+        archiveExistingSnapshots: {
+          try archiveUnrecoverableSnapshotFiles()
+        }
+      )
+    )
+  }
+
+  @discardableResult
+  func installRecoverySnapshot(
+    from sourceURL: URL,
+    fileOperations: WorkbenchRecoveryFileOperations
+  ) throws -> URL {
     let didStartAccessing = sourceURL.startAccessingSecurityScopedResource()
     defer {
       if didStartAccessing {
@@ -541,21 +597,83 @@ public struct WorkbenchPersistence: Sendable {
       }
     }
 
-    let data = try Data(contentsOf: sourceURL)
+    let data: Data
     do {
-      _ = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: data)
+      data = try BoundedFileReader.data(
+        at: sourceURL,
+        maximumByteCount: WorkbenchFileReadLimits.maximumRecoverySnapshotByteCount
+      )
+    } catch {
+      throw WorkbenchPersistenceError.invalidRecoverySnapshot(error.localizedDescription)
+    }
+    do {
+      try validateSnapshotData(data)
     } catch {
       throw WorkbenchPersistenceError.invalidRecoverySnapshot(error.localizedDescription)
     }
 
-    let archiveURL = try archiveUnrecoverableSnapshotFiles()
-    try FileManager.default.createDirectory(
-      at: fileURL.deletingLastPathComponent(),
+    let fileManager = FileManager.default
+    let parentDirectoryURL = fileURL.deletingLastPathComponent()
+    try fileManager.createDirectory(
+      at: parentDirectoryURL,
       withIntermediateDirectories: true
     )
-    try data.write(to: fileURL, options: .atomic)
-    try data.write(to: lastKnownGoodURL, options: .atomic)
+
+    let stagingDirectoryURL = parentDirectoryURL.appendingPathComponent(
+      ".workbench-recovery-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    try fileManager.createDirectory(
+      at: stagingDirectoryURL,
+      withIntermediateDirectories: false
+    )
+    defer {
+      try? fileManager.removeItem(at: stagingDirectoryURL)
+    }
+
+    let stagedPrimaryURL = stagingDirectoryURL.appendingPathComponent(fileURL.lastPathComponent)
+    let stagedLastKnownGoodURL = stagingDirectoryURL.appendingPathComponent(
+      lastKnownGoodURL.lastPathComponent
+    )
+    do {
+      try fileOperations.writeAtomically(data, stagedPrimaryURL)
+      try fileOperations.writeAtomically(data, stagedLastKnownGoodURL)
+      try validateStagedRecoverySnapshot(at: stagedPrimaryURL, expectedData: data)
+      try validateStagedRecoverySnapshot(at: stagedLastKnownGoodURL, expectedData: data)
+    } catch let error as WorkbenchRecoveryTransactionError {
+      throw error
+    } catch {
+      throw WorkbenchRecoveryTransactionError.stagingFailed(error.localizedDescription)
+    }
+
+    let archiveURL: URL
+    do {
+      archiveURL = try fileOperations.archiveExistingSnapshots()
+    } catch {
+      throw WorkbenchRecoveryTransactionError.archiveFailed(error.localizedDescription)
+    }
+    do {
+      try fileOperations.writeAtomically(data, lastKnownGoodURL)
+    } catch {
+      throw WorkbenchRecoveryTransactionError.backupInstallFailed(error.localizedDescription)
+    }
+    do {
+      try fileOperations.writeAtomically(data, fileURL)
+    } catch {
+      throw WorkbenchRecoveryTransactionError.primaryInstallFailed(error.localizedDescription)
+    }
     return archiveURL
+  }
+
+  private func validateStagedRecoverySnapshot(at url: URL, expectedData: Data) throws {
+    let stagedData = try BoundedFileReader.data(
+      at: url,
+      maximumByteCount: WorkbenchFileReadLimits.maximumRecoverySnapshotByteCount
+    )
+    guard stagedData == expectedData else {
+      throw WorkbenchRecoveryTransactionError.stagedDataMismatch(url.lastPathComponent)
+    }
+    try validateSnapshotData(stagedData)
   }
 
   /// Preserves both unreadable persistence copies before an explicit reset.

@@ -106,7 +106,10 @@ extension KnowledgeLibraryService {
             includingCurrentParserVersion || revision.parserVersion < Self.parserVersion else { continue }
       guard let reference = revision.originalStorageReference?.nilIfEmpty,
             let fileURL = safeStorageFileURL(for: reference),
-            let data = try? Data(contentsOf: fileURL) else {
+            let data = try? BoundedFileReader.data(
+              at: fileURL,
+              maximumByteCount: WorkbenchContentFileReadLimits.binaryDocumentByteCount
+            ) else {
         continue
       }
       let sourceExtension = fileURL.pathExtension.nilIfEmpty ?? "html"

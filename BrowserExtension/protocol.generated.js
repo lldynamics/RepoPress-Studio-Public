@@ -10,7 +10,7 @@
       "protocolHeaderName": "X-RepoPress-Protocol",
       "protocolHeaderValue": "1"
     },
-    "maximumInputBytes": 52428800,
+    "maximumInputBytes": 50331648,
     "routes": {
       "/v1/folders": [
         "GET"
@@ -21,10 +21,14 @@
       "/v1/open": [
         "POST"
       ],
+      "/v1/status": [
+        "GET"
+      ],
       "/v1/suggestions": [
         "POST"
       ]
-    }
+    },
+    "statusPayloadVersion": 6
   };
   for (const methods of Object.values(protocol.routes)) Object.freeze(methods);
   Object.freeze(protocol.routes);

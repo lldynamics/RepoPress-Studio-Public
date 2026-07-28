@@ -8,6 +8,7 @@ struct BrowserExtensionConnectionView: View {
   @Environment(\.dismiss) private var dismiss
   @State private var isTokenVisible = false
   @State private var isRotationConfirmationPresented = false
+  @State private var isLedgerRebuildConfirmationPresented = false
   @State private var safariExtensionIsEnabled: Bool?
   @State private var safariExtensionStatusMessage = "正在检查 Safari 扩展状态…"
 
@@ -54,6 +55,21 @@ struct BrowserExtensionConnectionView: View {
               .font(.caption)
               .foregroundStyle(.secondary)
               .textSelection(.enabled)
+          }
+          if bridge.importOperationLedgerPersistenceIssue != nil {
+            HStack {
+              if bridge.requiresImportOperationLedgerRebuild {
+                Button("备份并重建账本…", role: .destructive) {
+                  isLedgerRebuildConfirmationPresented = true
+                }
+              } else {
+                Button("重试账本写入") {
+                  Task {
+                    await bridge.retryImportOperationLedgerPersistence()
+                  }
+                }
+              }
+            }
           }
         }
 
@@ -156,6 +172,20 @@ struct BrowserExtensionConnectionView: View {
       Button("取消", role: .cancel) {}
     } message: {
       Text("现有浏览器扩展会立即断开，需要粘贴新令牌后重新连接。")
+    }
+    .confirmationDialog(
+      "备份并重建浏览器保存账本？",
+      isPresented: $isLedgerRebuildConfirmationPresented,
+      titleVisibility: .visible
+    ) {
+      Button("备份并重建", role: .destructive) {
+        Task {
+          await bridge.rebuildImportOperationLedger()
+        }
+      }
+      Button("取消", role: .cancel) {}
+    } message: {
+      Text("损坏账本会先保留为备份，然后创建空账本。已有资料不会被删除，但旧操作回执将不再用于去重。")
     }
   }
 

@@ -218,8 +218,10 @@ extension KnowledgeLibraryService {
         folderAssignments: folderAssignments
       )
     } catch {
-      rollbackImportArtifacts(installedArtifacts)
-      throw error
+      try throwAfterRollingBackImportArtifacts(
+        installedArtifacts,
+        primaryError: error
+      )
     }
 
     return KnowledgeImportResult(
@@ -280,7 +282,10 @@ extension KnowledgeLibraryService {
           throw KnowledgeLibraryError.database("非法的内容存储路径：\(reference)")
         }
         if fileManager.fileExists(atPath: destinationURL.path),
-           (try? Data(contentsOf: destinationURL, options: .mappedIfSafe)) == data {
+           (try? BoundedFileReader.data(
+             at: destinationURL,
+             maximumByteCount: WorkbenchContentFileReadLimits.binaryDocumentByteCount
+           )) == data {
           continue
         }
 
@@ -309,26 +314,61 @@ extension KnowledgeLibraryService {
       }
       return installed
     } catch {
-      rollbackImportArtifacts(installed)
-      throw error
+      try throwAfterRollingBackImportArtifacts(
+        installed,
+        primaryError: error
+      )
     }
   }
 
-  func rollbackImportArtifacts(_ installed: [KnowledgeImportInstalledArtifact]) {
+  func throwAfterRollingBackImportArtifacts(
+    _ installed: [KnowledgeImportInstalledArtifact],
+    primaryError: Error
+  ) throws -> Never {
+    do {
+      try rollbackImportArtifacts(installed)
+    } catch let rollbackError {
+      throw KnowledgeLibraryError.database(
+        "导入失败：\(primaryError.localizedDescription)；自动回滚也失败：\(rollbackError.localizedDescription)"
+      )
+    }
+    throw primaryError
+  }
+
+  func rollbackImportArtifacts(
+    _ installed: [KnowledgeImportInstalledArtifact]
+  ) throws {
+    var rollbackFailures: [String] = []
     for artifact in installed.reversed() {
-      switch artifact {
-      case .created(let destinationURL):
-        try? fileManager.removeItem(at: destinationURL)
-      case .replaced(let destinationURL, let backupURL):
-        try? fileManager.removeItem(at: destinationURL)
-        if fileManager.fileExists(atPath: backupURL.path) {
-          try? fileManager.createDirectory(
+      do {
+        switch artifact {
+        case .created(let destinationURL):
+          if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+          }
+        case .replaced(let destinationURL, let backupURL):
+          if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+          }
+          guard fileManager.fileExists(atPath: backupURL.path) else {
+            throw KnowledgeLibraryError.database(
+              "回滚副本缺失：\(backupURL.lastPathComponent)"
+            )
+          }
+          try fileManager.createDirectory(
             at: destinationURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
           )
-          try? fileManager.moveItem(at: backupURL, to: destinationURL)
+          try fileManager.moveItem(at: backupURL, to: destinationURL)
         }
+      } catch {
+        rollbackFailures.append(error.localizedDescription)
       }
+    }
+    guard rollbackFailures.isEmpty else {
+      throw KnowledgeLibraryError.database(
+        rollbackFailures.joined(separator: "；")
+      )
     }
   }
 

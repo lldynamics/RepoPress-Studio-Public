@@ -1,27 +1,6 @@
 name: Release Tooling CI
 
 on:
-  push:
-    paths:
-      - "script/**"
-      - ".github/workflows/**"
-      - "package.json"
-      - "package-lock.json"
-      - "Package.swift"
-      - "Packaging/**"
-      - "StoreKit/**"
-      - "BrowserExtension/**"
-      - "Sources/BrowserExtensionProtocolSupport/**"
-      - "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift"
-      - "Sources/PersonalSitePublisherMac/Views/BrowserExtensionConnectionView.swift"
-      - "Sources/PublishingWorkbenchCore/Stores/KnowledgeStore.swift"
-      - "Tests/PublishingWorkbenchCoreTests/BrowserExtensionProtocolTests.swift"
-      - "Tests/PublishingWorkbenchCoreTests/KnowledgeBrowserImportOperationLedgerTests.swift"
-      - "Tests/PublishingWorkbenchCoreTests/KnowledgeLibraryServiceTests.swift"
-      - "Sources/PersonalSitePublisherMac/AppStore.entitlements"
-      - "APP_STORE_CHECKLIST.md"
-      - "docs/release-evidence/**"
-      - "docs/app-store-screenshots/**"
   pull_request:
     paths:
       - "script/**"
@@ -34,11 +13,15 @@ on:
       - "BrowserExtension/**"
       - "Sources/BrowserExtensionProtocolSupport/**"
       - "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift"
+      - "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserImportLedgerStore.swift"
       - "Sources/PersonalSitePublisherMac/Views/BrowserExtensionConnectionView.swift"
+      - "Sources/PublishingWorkbenchCore/Models/KnowledgeModels.swift"
+      - "Sources/PublishingWorkbenchCore/Services/KeychainTokenStore.swift"
       - "Sources/PublishingWorkbenchCore/Stores/KnowledgeStore.swift"
       - "Tests/PublishingWorkbenchCoreTests/BrowserExtensionProtocolTests.swift"
       - "Tests/PublishingWorkbenchCoreTests/KnowledgeBrowserImportOperationLedgerTests.swift"
       - "Tests/PublishingWorkbenchCoreTests/KnowledgeLibraryServiceTests.swift"
+      - "Tests/PersonalSitePublisherMacTests/KnowledgeBrowserImportLedgerStoreTests.swift"
       - "Sources/PersonalSitePublisherMac/AppStore.entitlements"
       - "APP_STORE_CHECKLIST.md"
       - "docs/release-evidence/**"
@@ -58,7 +41,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Configure deterministic test language
         run: |
           defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"
@@ -66,13 +49,16 @@ jobs:
       - name: Install pinned browser extension tooling
         run: |
           npm ci
-          npm install --no-save --no-package-lock web-ext@10.5.0
           npx --no-install playwright-core install chromium
       - name: Run browser extension release gate
-        run: ./script/check_release_gate.sh --check browser-extension-release --result-json .build/browser-extension-gate-result.json
+        run: |
+          ./script/check_release_gate.sh \
+            --check browser-extension-release \
+            --result-json .build/browser-extension-gate-result.json \
+            --summary-markdown .build/browser-extension-gate-summary.md
       - name: Upload real-browser extension evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: browser-extension-e2e
           path: output/playwright/browser-extension-e2e/
@@ -80,16 +66,32 @@ jobs:
       - name: Build Chrome and Edge store submission ZIPs
         run: python3 script/chromium_extension_release.py package --output-dir .build/chromium-store
       - name: Run release-tooling self-tests
-        run: ./script/check_release_gate.sh --tooling --result-json .build/tooling-gate-result.json
+        run: |
+          ./script/check_release_gate.sh \
+            --tooling \
+            --result-json .build/tooling-gate-result.json \
+            --summary-markdown .build/tooling-gate-summary.md
       - name: Upload Chrome and Edge store submission ZIPs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: chromium-store-submission-zips
           path: .build/chromium-store/*.zip
           if-no-files-found: error
       - name: Upload unified result
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-tooling-result
-          path: .build/*gate-result.json
+          path: |
+            .build/*gate-result.json
+            .build/*gate-summary.md
+      - name: Publish release-tooling summary
+        if: always()
+        run: |
+          for summary in \
+            .build/browser-extension-gate-summary.md \
+            .build/tooling-gate-summary.md; do
+            if [[ -f "$summary" ]]; then
+              cat "$summary" >>"$GITHUB_STEP_SUMMARY"
+            fi
+          done

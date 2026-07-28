@@ -427,6 +427,8 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
   case invalidResponse
   case httpStatus(Int, String)
   case missingSourceFile(String)
+  case sourceFileTooLarge(path: String, maximumByteCount: Int)
+  case invalidSourceFile(path: String, reason: String)
   case untrackedRemoteFile(path: String, actualSHA: String)
   case remoteVersionConflict(path: String, expectedSHA: String, actualSHA: String?)
   case partialPublish(
@@ -478,7 +480,15 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
     case .httpStatus(let status, let body):
       return remoteAPIHTTPStatusDescription(status: status, body: body)
     case .missingSourceFile(let path):
-      return CoreL10n.format("图片源文件缺失：%@", path)
+      return CoreL10n.format("媒体源文件缺失：%@", path)
+    case .sourceFileTooLarge(let path, let maximumByteCount):
+      return CoreL10n.format(
+        "媒体文件超过远端内联发布上限（%@ MB）：%@",
+        String(maximumByteCount / 1_024 / 1_024),
+        path
+      )
+    case .invalidSourceFile(let path, let reason):
+      return CoreL10n.format("媒体源文件无法安全读取：%@。%@", path, reason)
     case .untrackedRemoteFile(let path, let actualSHA):
       return CoreL10n.format("远端同路径文件已存在：%@ 的当前版本是 %@，但本地草稿没有记录远端版本。请先同步远端变更或改用 PR/MR。", path, actualSHA)
     case .remoteVersionConflict(let path, let expectedSHA, let actualSHA):

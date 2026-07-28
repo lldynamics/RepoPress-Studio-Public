@@ -18,17 +18,13 @@ public struct ContentHealthReportService: Sendable {
     sitePreflightIssues: [PreflightIssue],
     presentations: [UUID: ContentHealthDraftPresentation]
   ) -> ContentHealthReport {
-    do {
-      return try makeReport(
-        drafts: drafts,
-        profile: profile,
-        sitePreflightIssues: sitePreflightIssues,
-        presentations: presentations,
-        cancellationCheck: {}
-      )
-    } catch {
-      preconditionFailure("A non-cancellable content health report unexpectedly failed: \(error)")
-    }
+    makeReport(
+      drafts: drafts,
+      profile: profile,
+      sitePreflightIssues: sitePreflightIssues,
+      presentations: presentations,
+      cancellationCheck: {}
+    )
   }
 
   private func makeReport(
@@ -37,7 +33,7 @@ public struct ContentHealthReportService: Sendable {
     sitePreflightIssues: [PreflightIssue],
     presentations: [UUID: ContentHealthDraftPresentation],
     cancellationCheck: () throws -> Void
-  ) throws -> ContentHealthReport {
+  ) rethrows -> ContentHealthReport {
     try cancellationCheck()
     let duplicateIndex = PreflightDuplicateIndex(drafts: drafts, profile: profile)
     var draftSummaries: [DraftPreflightSummary] = []

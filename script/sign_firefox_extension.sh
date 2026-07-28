@@ -20,7 +20,7 @@ if [[ -x "$ROOT_DIR/node_modules/.bin/web-ext" ]]; then
 elif command -v web-ext >/dev/null 2>&1; then
   WEB_EXT="$(command -v web-ext)"
 else
-  echo "web-ext 10.5.0 is required. Install it locally with: npm install --no-save --no-package-lock web-ext@10.5.0" >&2
+  echo "web-ext 10.5.0 is locked as a development dependency. Install it with: npm ci" >&2
   exit 2
 fi
 

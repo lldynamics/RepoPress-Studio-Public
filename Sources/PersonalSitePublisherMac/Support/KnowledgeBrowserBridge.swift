@@ -36,10 +36,16 @@ final class KnowledgeBrowserBridge: ObservableObject {
 
   private let knowledge: KnowledgeStore
   private let defaults: UserDefaults
+  private let tokenStore: KeychainTokenStore
+  private let importOperationLedgerURL: URL?
   private let onOpenDocument: (UUID) -> Void
   private let now: () -> Date
   private var invalidatedExpiredToken: String?
   private var importOperationLedger: KnowledgeBrowserImportOperationLedger
+  @Published private(set) var importOperationLedgerPersistenceIssue: String?
+  private var connectionTokenPersistenceIssue: String?
+  private var importOperationLedgerIssueKind: KnowledgeBrowserImportLedgerIssueKind?
+  private let importOperationLedgerStore: KnowledgeBrowserImportLedgerStore
   private var activeImportOperations: [UUID: String] = [:]
   private let queue = DispatchQueue(label: "com.jinfang.PersonalSitePublisherMac.browser-bridge")
   private var listener: NWListener?
@@ -48,26 +54,87 @@ final class KnowledgeBrowserBridge: ObservableObject {
   init(
     knowledge: KnowledgeStore,
     defaults: UserDefaults = .standard,
+    tokenStore: KeychainTokenStore = KeychainTokenStore(
+      service: KeychainCredentialServices.browserBridge,
+      accountPrefix: "browser-bridge",
+      allowsAuthenticationInteraction: false
+    ),
+    importOperationLedgerURL: URL? = nil,
     now: @escaping () -> Date = Date.init,
     onOpenDocument: @escaping (UUID) -> Void = { _ in }
   ) {
     self.knowledge = knowledge
     self.defaults = defaults
+    self.tokenStore = tokenStore
+    let resolvedImportOperationLedgerURL = importOperationLedgerURL
+      ?? (defaults === UserDefaults.standard ? Self.defaultImportOperationLedgerURL : nil)
+    self.importOperationLedgerURL = resolvedImportOperationLedgerURL
+    self.importOperationLedgerStore = KnowledgeBrowserImportLedgerStore(
+      fileURL: resolvedImportOperationLedgerURL,
+      defaults: KnowledgeBrowserImportLedgerDefaults(defaults),
+      legacyDefaultsKey: Self.importOperationLedgerDefaultsKey
+    )
     self.now = now
     self.onOpenDocument = onOpenDocument
     let currentDate = now()
-    let storedOperationRecords = defaults.data(forKey: Self.importOperationLedgerDefaultsKey)
-      .flatMap { try? PropertyListDecoder().decode(
-        [KnowledgeBrowserImportOperationRecord].self,
-        from: $0
-      ) } ?? []
+    var storedOperationRecords: [KnowledgeBrowserImportOperationRecord] = []
+    var ledgerPersistenceIssue: String?
+    var ledgerIssueKind: KnowledgeBrowserImportLedgerIssueKind?
+    do {
+      if let ledgerURL = self.importOperationLedgerURL,
+         FileManager.default.fileExists(atPath: ledgerURL.path) {
+        storedOperationRecords = try PropertyListDecoder().decode(
+          [KnowledgeBrowserImportOperationRecord].self,
+          from: try BoundedFileReader.data(
+            at: ledgerURL,
+            maximumByteCount: WorkbenchFileReadLimits.maximumBrowserImportLedgerByteCount
+          )
+        )
+      } else if let legacyData = defaults.data(
+        forKey: Self.importOperationLedgerDefaultsKey
+      ) {
+        storedOperationRecords = try PropertyListDecoder().decode(
+          [KnowledgeBrowserImportOperationRecord].self,
+          from: legacyData
+        )
+      }
+    } catch {
+      ledgerPersistenceIssue = "浏览器保存幂等账本无法读取：\(error.localizedDescription)"
+      ledgerIssueKind = .unreadable
+    }
     var operationLedger = KnowledgeBrowserImportOperationLedger(records: storedOperationRecords)
     operationLedger.prune(at: currentDate)
     importOperationLedger = operationLedger
-    if let encodedLedger = try? PropertyListEncoder().encode(operationLedger.records) {
-      defaults.set(encodedLedger, forKey: Self.importOperationLedgerDefaultsKey)
+    if ledgerPersistenceIssue == nil {
+      do {
+        if let ledgerURL = self.importOperationLedgerURL {
+          try Self.writeImportOperationLedger(operationLedger.records, to: ledgerURL)
+          defaults.removeObject(forKey: Self.importOperationLedgerDefaultsKey)
+        } else {
+          defaults.set(
+            try PropertyListEncoder().encode(operationLedger.records),
+            forKey: Self.importOperationLedgerDefaultsKey
+          )
+        }
+      } catch {
+        ledgerPersistenceIssue = "浏览器保存幂等账本无法持久化：\(error.localizedDescription)"
+        ledgerIssueKind = .unwritable
+      }
     }
-    let storedToken = defaults.string(forKey: Self.tokenDefaultsKey)
+    importOperationLedgerPersistenceIssue = ledgerPersistenceIssue
+    importOperationLedgerIssueKind = ledgerIssueKind
+
+    var tokenPersistenceIssue: String?
+    let keychainToken: String?
+    do {
+      keychainToken = try tokenStore.token(
+        forAccountIdentifier: Self.connectionTokenAccountIdentifier
+      )
+    } catch {
+      keychainToken = nil
+      tokenPersistenceIssue = "浏览器连接令牌无法从 Keychain 读取：\(error.localizedDescription)"
+    }
+    let storedToken = keychainToken ?? defaults.string(forKey: Self.tokenDefaultsKey)
     let storedExpiry = defaults.object(forKey: Self.tokenExpiryDefaultsKey) as? Date
     invalidatedExpiredToken = if let storedToken, let storedExpiry, storedExpiry <= currentDate {
       storedToken
@@ -82,8 +149,20 @@ final class KnowledgeBrowserBridge: ObservableObject {
     )
     connectionToken = lease.token
     connectionTokenExpiresAt = lease.expiresAt
-    defaults.set(connectionToken, forKey: Self.tokenDefaultsKey)
+    do {
+      try tokenStore.saveToken(
+        connectionToken,
+        forAccountIdentifier: Self.connectionTokenAccountIdentifier
+      )
+      defaults.removeObject(forKey: Self.tokenDefaultsKey)
+      tokenPersistenceIssue = nil
+    } catch {
+      tokenPersistenceIssue = "浏览器连接令牌无法保存到 Keychain：\(error.localizedDescription)"
+    }
+    connectionTokenPersistenceIssue = tokenPersistenceIssue
     defaults.set(connectionTokenExpiresAt, forKey: Self.tokenExpiryDefaultsKey)
+    let warnings = [ledgerPersistenceIssue, tokenPersistenceIssue].compactMap { $0 }
+    lastMessage = warnings.isEmpty ? nil : warnings.joined(separator: "\n")
   }
 
   deinit {
@@ -116,7 +195,7 @@ final class KnowledgeBrowserBridge: ObservableObject {
           switch state {
           case .ready:
             self.state = .ready
-            self.lastMessage = String(
+            self.lastMessage = self.persistenceWarningMessage ?? String(
               localized: "浏览器扩展可通过本机回环地址连接，连接令牌仍为必需。"
             )
           case .failed(let error):
@@ -168,9 +247,20 @@ final class KnowledgeBrowserBridge: ObservableObject {
     connectionTokenExpiresAt = now().addingTimeInterval(
       KnowledgeBrowserConnectionTokenLease.defaultLifetime
     )
-    defaults.set(token, forKey: Self.tokenDefaultsKey)
     defaults.set(connectionTokenExpiresAt, forKey: Self.tokenExpiryDefaultsKey)
-    lastMessage = "连接令牌已更新，浏览器插件需要重新连接。"
+    do {
+      try tokenStore.saveToken(
+        token,
+        forAccountIdentifier: Self.connectionTokenAccountIdentifier
+      )
+      defaults.removeObject(forKey: Self.tokenDefaultsKey)
+      connectionTokenPersistenceIssue = nil
+      lastMessage = "连接令牌已更新，浏览器插件需要重新连接。"
+    } catch {
+      connectionTokenPersistenceIssue =
+        "浏览器连接令牌无法保存到 Keychain：\(error.localizedDescription)"
+      lastMessage = "\(connectionTokenPersistenceIssue!) 当前令牌仅在本次运行期间有效。"
+    }
   }
 
   @discardableResult
@@ -179,6 +269,61 @@ final class KnowledgeBrowserBridge: ObservableObject {
     rotateConnectionToken()
     lastMessage = "旧连接令牌已过期并失效，请用新令牌重新配对浏览器插件。"
     return true
+  }
+
+  var requiresImportOperationLedgerRebuild: Bool {
+    importOperationLedgerIssueKind == .unreadable
+  }
+
+  func retryImportOperationLedgerPersistence() async {
+    guard importOperationLedgerPersistenceIssue != nil else {
+      lastMessage = "浏览器保存幂等账本当前可用，无需重试。"
+      return
+    }
+    guard importOperationLedgerIssueKind == .unwritable else {
+      lastMessage = "账本内容无法读取，请先备份并重建损坏账本。"
+      return
+    }
+    do {
+      try await persistImportOperationLedger()
+      lastMessage = "浏览器保存幂等账本已恢复，可以继续导入。"
+    } catch {
+      recordImportOperationLedgerPersistenceFailure(error)
+    }
+  }
+
+  func rebuildImportOperationLedger() async {
+    guard importOperationLedgerIssueKind == .unreadable else {
+      await retryImportOperationLedgerPersistence()
+      return
+    }
+    guard activeImportOperations.isEmpty else {
+      lastMessage = "当前仍有浏览器导入操作，暂时不能重建账本。"
+      return
+    }
+    let backupURL: URL?
+    do {
+      backupURL = try await importOperationLedgerStore.archiveUnreadableLedger()
+    } catch {
+      importOperationLedgerPersistenceIssue =
+        "损坏账本备份失败：\(error.localizedDescription)"
+      importOperationLedgerIssueKind = .unreadable
+      lastMessage = importOperationLedgerPersistenceIssue
+      return
+    }
+
+    importOperationLedger = KnowledgeBrowserImportOperationLedger()
+    do {
+      try await persistImportOperationLedger()
+      if let backupURL {
+        lastMessage = "损坏账本已备份到 \(backupURL.lastPathComponent)，新账本已建立。"
+      } else {
+        lastMessage = "新浏览器保存幂等账本已建立。"
+      }
+    } catch {
+      recordImportOperationLedgerPersistenceFailure(error)
+      lastMessage = "损坏账本已备份，但新账本写入失败：\(error.localizedDescription)"
+    }
   }
 
   nonisolated private func receiveRequest(on connection: NWConnection) {
@@ -253,8 +398,10 @@ final class KnowledgeBrowserBridge: ObservableObject {
     if request.method == "GET", request.path == "/v1/status" {
       sendResponse(.json(status: 200, value: BrowserStatusResponse(
         ready: state == .ready,
-        protocolVersion: 6,
-        application: "PersonalSitePublisherMac"
+        protocolVersion: BrowserExtensionProtocol.statusPayloadVersion,
+        application: "PersonalSitePublisherMac",
+        importAvailable: importOperationLedgerPersistenceIssue == nil,
+        warning: persistenceWarningMessage
       )), on: connection)
       return
     }
@@ -349,11 +496,32 @@ final class KnowledgeBrowserBridge: ObservableObject {
         sendResponse(.error(status: 415, message: "只接受 JSON 页面数据。"), on: connection)
         return
       }
+      if importOperationLedgerIssueKind == .unwritable {
+        do {
+          try await persistImportOperationLedger()
+          lastMessage = "浏览器保存幂等账本已自动恢复。"
+        } catch {
+          recordImportOperationLedgerPersistenceFailure(error)
+        }
+      }
+      guard importOperationLedgerPersistenceIssue == nil else {
+        sendResponse(.error(
+          status: 503,
+          message: "浏览器保存幂等账本不可用，已暂停导入以避免重复写入。",
+          code: "operation-ledger-unavailable"
+        ), on: connection)
+        return
+      }
       do {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let envelope = try decoder.decode(BrowserImportEnvelope.self, from: request.body)
-        let operation = try browserImportOperationIdentity(envelope)
+        let requestBody = request.body
+        let preparedImport = try await Task.detached(priority: .userInitiated) {
+          try Self.prepareBrowserImport(from: requestBody)
+        }.value
+        let envelope = preparedImport.envelope
+        let operation = (
+          id: preparedImport.operationID,
+          fingerprint: preparedImport.requestFingerprint
+        )
         let lookup = importOperationLedger.lookup(
           operationID: operation.id,
           requestFingerprint: operation.fingerprint,
@@ -362,7 +530,17 @@ final class KnowledgeBrowserBridge: ObservableObject {
             knowledge.documents.contains(where: { $0.id == documentID })
           }
         )
-        persistImportOperationLedger()
+        do {
+          try await persistImportOperationLedger()
+        } catch {
+          recordImportOperationLedgerPersistenceFailure(error)
+          sendResponse(.error(
+            status: 503,
+            message: "浏览器保存幂等账本无法更新，已暂停导入以避免重复写入。",
+            code: "operation-ledger-unavailable"
+          ), on: connection)
+          return
+        }
         switch lookup {
         case .replay(let receipt):
           lastMessage = "已返回浏览器保存操作的既有回执，没有重复写入资料库。"
@@ -460,7 +638,17 @@ final class KnowledgeBrowserBridge: ObservableObject {
           receipt: receipt,
           completedAt: now()
         )
-        persistImportOperationLedger()
+        do {
+          try await persistImportOperationLedger()
+        } catch {
+          recordImportOperationLedgerPersistenceFailure(error)
+          sendResponse(.error(
+            status: 500,
+            message: "页面已保存，但保存回执未能持久化；请勿刷新页面或重复提交。",
+            code: "operation-receipt-persistence-failed"
+          ), on: connection)
+          return
+        }
         sendResponse(.json(status: 200, value: receipt), on: connection)
       } catch {
         lastMessage = error.localizedDescription
@@ -484,17 +672,61 @@ final class KnowledgeBrowserBridge: ObservableObject {
 
   private static let tokenDefaultsKey = "KnowledgeBrowserBridge.connectionToken.v1"
   private static let tokenExpiryDefaultsKey = "KnowledgeBrowserBridge.connectionTokenExpiresAt.v1"
+  private static let connectionTokenAccountIdentifier = "connection-token-v1"
   private static let importOperationLedgerDefaultsKey =
     "KnowledgeBrowserBridge.completedImportOperations.v1"
 
-  private func persistImportOperationLedger() {
-    guard let data = try? PropertyListEncoder().encode(importOperationLedger.records) else { return }
-    defaults.set(data, forKey: Self.importOperationLedgerDefaultsKey)
+  private nonisolated static var defaultImportOperationLedgerURL: URL {
+    let applicationSupport = FileManager.default.urls(
+      for: .applicationSupportDirectory,
+      in: .userDomainMask
+    ).first ?? FileManager.default.temporaryDirectory
+    return applicationSupport
+      .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true)
+      .appendingPathComponent("BrowserBridge", isDirectory: true)
+      .appendingPathComponent("import-operation-ledger-v1.plist")
   }
 
-  private func browserImportOperationIdentity(
-    _ envelope: BrowserImportEnvelope
-  ) throws -> (id: UUID, fingerprint: String) {
+  private nonisolated static func writeImportOperationLedger(
+    _ records: [KnowledgeBrowserImportOperationRecord],
+    to url: URL
+  ) throws {
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    let encoder = PropertyListEncoder()
+    encoder.outputFormat = .binary
+    try encoder.encode(records).write(to: url, options: .atomic)
+  }
+
+  private func persistImportOperationLedger() async throws {
+    try await importOperationLedgerStore.persist(importOperationLedger.records)
+    importOperationLedgerPersistenceIssue = nil
+    importOperationLedgerIssueKind = nil
+  }
+
+  private func recordImportOperationLedgerPersistenceFailure(_ error: Error) {
+    importOperationLedgerPersistenceIssue =
+      "浏览器保存幂等账本无法持久化：\(error.localizedDescription)"
+    importOperationLedgerIssueKind = .unwritable
+    lastMessage = importOperationLedgerPersistenceIssue
+  }
+
+  private var persistenceWarningMessage: String? {
+    let warnings = [
+      importOperationLedgerPersistenceIssue,
+      connectionTokenPersistenceIssue,
+    ].compactMap { $0 }
+    return warnings.isEmpty ? nil : warnings.joined(separator: "\n")
+  }
+
+  private nonisolated static func prepareBrowserImport(
+    from body: Data
+  ) throws -> BrowserPreparedImport {
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let envelope = try decoder.decode(BrowserImportEnvelope.self, from: body)
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .millisecondsSince1970
     encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -505,7 +737,11 @@ final class KnowledgeBrowserBridge: ObservableObject {
     ))
     let fingerprint = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     if let operationID = envelope.operationID {
-      return (operationID, fingerprint)
+      return BrowserPreparedImport(
+        envelope: envelope,
+        operationID: operationID,
+        requestFingerprint: fingerprint
+      )
     }
     let derivedID = "\(fingerprint.prefix(8))-\(fingerprint.dropFirst(8).prefix(4))-"
       + "\(fingerprint.dropFirst(12).prefix(4))-\(fingerprint.dropFirst(16).prefix(4))-"
@@ -513,7 +749,11 @@ final class KnowledgeBrowserBridge: ObservableObject {
     guard let operationID = UUID(uuidString: derivedID) else {
       throw KnowledgeLibraryError.invalidBrowserCapture("保存操作 ID 无效。")
     }
-    return (operationID, fingerprint)
+    return BrowserPreparedImport(
+      envelope: envelope,
+      operationID: operationID,
+      requestFingerprint: fingerprint
+    )
   }
 
   private static func makeConnectionToken() -> String {
@@ -525,6 +765,17 @@ final class KnowledgeBrowserBridge: ObservableObject {
       + UUID().uuidString.replacingOccurrences(of: "-", with: "")
   }
 
+}
+
+private enum KnowledgeBrowserImportLedgerIssueKind {
+  case unreadable
+  case unwritable
+}
+
+private struct BrowserPreparedImport: @unchecked Sendable {
+  var envelope: BrowserImportEnvelope
+  var operationID: UUID
+  var requestFingerprint: String
 }
 
 private struct BrowserImportEnvelope: Codable {
@@ -555,6 +806,8 @@ private struct BrowserStatusResponse: Encodable {
   var ready: Bool
   var protocolVersion: Int
   var application: String
+  var importAvailable: Bool
+  var warning: String?
 }
 
 private struct BrowserFolderResponse: Encodable {
@@ -639,7 +892,7 @@ enum BrowserExtensionOriginPolicy {
 }
 
 private struct BrowserBridgeHTTPRequest {
-  static let maximumRequestBytes = 48 * 1_024 * 1_024
+  static let maximumRequestBytes = BrowserExtensionProtocol.maximumInputBytes
   static let maximumHeaderBytes = 32 * 1_024
   private static let headerSeparator = Data("\r\n\r\n".utf8)
 
@@ -783,7 +1036,7 @@ private struct BrowserBridgeHTTPResponse {
     Cache-Control: no-store\r
     Access-Control-Allow-Origin: *\r
     Access-Control-Allow-Methods: GET, POST, OPTIONS\r
-    Access-Control-Allow-Headers: Authorization, Content-Type, X-RepoPress-Protocol\r
+    Access-Control-Allow-Headers: \(BrowserExtensionProtocol.accessControlAllowHeaders)\r
     Access-Control-Max-Age: 600\r
     Connection: close\r
     \r
