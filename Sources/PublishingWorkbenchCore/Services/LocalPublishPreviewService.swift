@@ -142,7 +142,10 @@ public struct LocalPublishPreviewService: Sendable {
         let exists = baselineState != .missing
 
         let existingContent = file.kind == .markdown
-          ? (try? String(contentsOf: destinationURL, encoding: .utf8)) ?? ""
+          ? (try? BoundedFileReader.utf8String(
+            at: destinationURL,
+            maximumByteCount: WorkbenchContentFileReadLimits.textDocumentByteCount
+          )) ?? ""
           : ""
         diffs.append(
           PublishFileDiff(
@@ -161,7 +164,10 @@ public struct LocalPublishPreviewService: Sendable {
       switch file.kind {
       case .markdown:
         let newContent = file.content ?? ""
-        let existingContent = (try? String(contentsOf: destinationURL, encoding: .utf8)) ?? ""
+        let existingContent = (try? BoundedFileReader.utf8String(
+          at: destinationURL,
+          maximumByteCount: WorkbenchContentFileReadLimits.textDocumentByteCount
+        )) ?? ""
         let exists = baselineState != .missing
         let status: PublishFileDiffStatus = exists
           ? (existingContent == newContent ? .unchanged : .modified)
@@ -712,6 +718,8 @@ func localPublishFileState(at url: URL, fileManager: FileManager) throws -> Loca
   guard !isDirectory.boolValue else {
     throw LocalPublishPreviewError.unsafePath(url.path)
   }
-  let data = try Data(contentsOf: url, options: .mappedIfSafe)
-  return .fileDigest(Data(SHA256.hash(data: data)))
+  return .fileDigest(try BoundedFileReader.sha256(
+    at: url,
+    maximumByteCount: WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount
+  ))
 }

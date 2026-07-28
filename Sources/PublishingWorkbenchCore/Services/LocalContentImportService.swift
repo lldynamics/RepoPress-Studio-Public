@@ -3,10 +3,35 @@ import Foundation
 public struct LocalContentImportResult: Codable, Hashable, Sendable {
   public var importedDrafts: [ArticleDraft]
   public var skippedPaths: [String]
+  public var issues: [LocalContentImportIssue]
 
-  public init(importedDrafts: [ArticleDraft], skippedPaths: [String]) {
+  public init(
+    importedDrafts: [ArticleDraft],
+    skippedPaths: [String],
+    issues: [LocalContentImportIssue] = []
+  ) {
     self.importedDrafts = importedDrafts
     self.skippedPaths = skippedPaths
+    self.issues = issues
+  }
+}
+
+public struct LocalContentImportIssue: Codable, Hashable, Sendable {
+  public enum Kind: String, Codable, Hashable, Sendable {
+    case invalidPath
+    case inaccessibleFile
+    case unreadableDocument
+    case repositoryAccessUnavailable
+  }
+
+  public var path: String
+  public var kind: Kind
+  public var message: String
+
+  public init(path: String, kind: Kind, message: String) {
+    self.path = path
+    self.kind = kind
+    self.message = message
   }
 }
 
@@ -38,26 +63,18 @@ public struct LocalContentImportService: Sendable {
   }
 
   public func importDrafts(profile: SiteProfile) -> LocalContentImportResult {
-    do {
-      return try importDrafts(profile: profile, cancellationCheck: {})
-    } catch {
-      preconditionFailure("A non-cancellable local import unexpectedly failed: \(error)")
-    }
+    importDrafts(profile: profile, cancellationCheck: {})
   }
 
   public func importDrafts(
     profile: SiteProfile,
     repositoryPaths: [String]
   ) -> LocalContentImportResult {
-    do {
-      return try importDrafts(
-        profile: profile,
-        repositoryPaths: repositoryPaths,
-        cancellationCheck: {}
-      )
-    } catch {
-      preconditionFailure("A non-cancellable path import unexpectedly failed: \(error)")
-    }
+    importDrafts(
+      profile: profile,
+      repositoryPaths: repositoryPaths,
+      cancellationCheck: {}
+    )
   }
 
   public func importDraftsAsync(profile: SiteProfile) async throws -> LocalContentImportResult {
@@ -149,18 +166,14 @@ public struct LocalContentImportService: Sendable {
   }
 
   func importDrafts(rootURL: URL, profile: SiteProfile) -> LocalContentImportResult {
-    do {
-      return try importDrafts(rootURL: rootURL, profile: profile, cancellationCheck: {})
-    } catch {
-      preconditionFailure("A non-cancellable local import unexpectedly failed: \(error)")
-    }
+    importDrafts(rootURL: rootURL, profile: profile, cancellationCheck: {})
   }
 
   private func importDrafts(
     profile: SiteProfile,
     excludingRepositoryPaths: Set<String> = [],
     cancellationCheck: () throws -> Void
-  ) throws -> LocalContentImportResult {
+  ) rethrows -> LocalContentImportResult {
     guard let result = try profile.withLocalRepositoryRootAccess({ rootURL in
       try importDrafts(
         rootURL: rootURL,
@@ -169,7 +182,17 @@ public struct LocalContentImportService: Sendable {
         cancellationCheck: cancellationCheck
       )
     }) else {
-      return LocalContentImportResult(importedDrafts: [], skippedPaths: [])
+      return LocalContentImportResult(
+        importedDrafts: [],
+        skippedPaths: [],
+        issues: [
+          LocalContentImportIssue(
+            path: profile.contentRoot,
+            kind: .repositoryAccessUnavailable,
+            message: "无法访问站点本地仓库。"
+          )
+        ]
+      )
     }
     return result
   }
@@ -179,10 +202,11 @@ public struct LocalContentImportService: Sendable {
     profile: SiteProfile,
     excludingRepositoryPaths: Set<String> = [],
     cancellationCheck: () throws -> Void
-  ) throws -> LocalContentImportResult {
+  ) rethrows -> LocalContentImportResult {
     try cancellationCheck()
     var importedDrafts: [ArticleDraft] = []
     var skippedPaths: [String] = []
+    var issues: [LocalContentImportIssue] = []
 
     var seenRoots = Set<String>()
     let importRoots = [profile.contentRoot, SiteProfile.privateContentRoot]
@@ -208,6 +232,13 @@ public struct LocalContentImportService: Sendable {
 
         guard let repositoryPath = repositoryRelativePath(rootURL: rootURL, fileURL: fileURL) else {
           skippedPaths.append(fileURL.path)
+          issues.append(
+            LocalContentImportIssue(
+              path: fileURL.path,
+              kind: .invalidPath,
+              message: "文件无法转换为仓库内相对路径。"
+            )
+          )
           continue
         }
 
@@ -218,6 +249,13 @@ public struct LocalContentImportService: Sendable {
         guard canonicalRepositoryDescendant(candidateURL: fileURL, rootURL: rootURL) != nil,
               isRegularFile(at: fileURL) else {
           skippedPaths.append(repositoryPath)
+          issues.append(
+            LocalContentImportIssue(
+              path: repositoryPath,
+              kind: .inaccessibleFile,
+              message: "文件不可访问、不是普通文件或超出仓库边界。"
+            )
+          )
           continue
         }
 
@@ -232,6 +270,13 @@ public struct LocalContentImportService: Sendable {
           )
         } catch {
           skippedPaths.append(repositoryPath)
+          issues.append(
+            LocalContentImportIssue(
+              path: repositoryPath,
+              kind: .unreadableDocument,
+              message: error.localizedDescription
+            )
+          )
         }
       }
     }
@@ -243,7 +288,8 @@ public struct LocalContentImportService: Sendable {
         }
         return $0.date > $1.date
       },
-      skippedPaths: skippedPaths.sorted()
+      skippedPaths: skippedPaths.sorted(),
+      issues: issues.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
     )
   }
 
@@ -251,7 +297,7 @@ public struct LocalContentImportService: Sendable {
     profile: SiteProfile,
     repositoryPaths: [String],
     cancellationCheck: () throws -> Void
-  ) throws -> LocalContentImportResult {
+  ) rethrows -> LocalContentImportResult {
     guard let result = try profile.withLocalRepositoryRootAccess({ rootURL in
       try importDrafts(
         rootURL: rootURL,
@@ -260,7 +306,17 @@ public struct LocalContentImportService: Sendable {
         cancellationCheck: cancellationCheck
       )
     }) else {
-      return LocalContentImportResult(importedDrafts: [], skippedPaths: repositoryPaths)
+      return LocalContentImportResult(
+        importedDrafts: [],
+        skippedPaths: repositoryPaths,
+        issues: repositoryPaths.map {
+          LocalContentImportIssue(
+            path: $0,
+            kind: .repositoryAccessUnavailable,
+            message: "无法访问站点本地仓库。"
+          )
+        }
+      )
     }
     return result
   }
@@ -270,16 +326,12 @@ public struct LocalContentImportService: Sendable {
     repositoryPaths: [String],
     profile: SiteProfile
   ) -> LocalContentImportResult {
-    do {
-      return try importDrafts(
-        rootURL: rootURL,
-        repositoryPaths: repositoryPaths,
-        profile: profile,
-        cancellationCheck: {}
-      )
-    } catch {
-      preconditionFailure("A non-cancellable path import unexpectedly failed: \(error)")
-    }
+    importDrafts(
+      rootURL: rootURL,
+      repositoryPaths: repositoryPaths,
+      profile: profile,
+      cancellationCheck: {}
+    )
   }
 
   private func importDrafts(
@@ -287,30 +339,53 @@ public struct LocalContentImportService: Sendable {
     repositoryPaths: [String],
     profile: SiteProfile,
     cancellationCheck: () throws -> Void
-  ) throws -> LocalContentImportResult {
+  ) rethrows -> LocalContentImportResult {
     var importedDrafts: [ArticleDraft] = []
     var skippedPaths: [String] = []
+    var issues: [LocalContentImportIssue] = []
     for path in repositoryPaths {
       try cancellationCheck()
       let result = importDraft(rootURL: rootURL, repositoryPath: path, profile: profile)
       importedDrafts.append(contentsOf: result.importedDrafts)
       skippedPaths.append(contentsOf: result.skippedPaths)
+      issues.append(contentsOf: result.issues)
     }
     return LocalContentImportResult(
       importedDrafts: importedDrafts,
-      skippedPaths: skippedPaths
+      skippedPaths: skippedPaths,
+      issues: issues
     )
   }
 
   func importDraft(rootURL: URL, repositoryPath: String, profile: SiteProfile) -> LocalContentImportResult {
     guard let safePath = safeMarkdownRepositoryPath(repositoryPath, profile: profile) else {
-      return LocalContentImportResult(importedDrafts: [], skippedPaths: [repositoryPath])
+      return LocalContentImportResult(
+        importedDrafts: [],
+        skippedPaths: [repositoryPath],
+        issues: [
+          LocalContentImportIssue(
+            path: repositoryPath,
+            kind: .invalidPath,
+            message: "路径不是站点内容目录中的安全 Markdown 路径。"
+          )
+        ]
+      )
     }
 
     let fileURL = rootURL.appendingPathComponent(safePath)
     guard canonicalRepositoryDescendant(candidateURL: fileURL, rootURL: rootURL) != nil,
           isRegularFile(at: fileURL) else {
-      return LocalContentImportResult(importedDrafts: [], skippedPaths: [safePath])
+      return LocalContentImportResult(
+        importedDrafts: [],
+        skippedPaths: [safePath],
+        issues: [
+          LocalContentImportIssue(
+            path: safePath,
+            kind: .inaccessibleFile,
+            message: "文件不可访问、不是普通文件或超出仓库边界。"
+          )
+        ]
+      )
     }
 
     do {
@@ -324,7 +399,17 @@ public struct LocalContentImportService: Sendable {
         skippedPaths: []
       )
     } catch {
-      return LocalContentImportResult(importedDrafts: [], skippedPaths: [safePath])
+      return LocalContentImportResult(
+        importedDrafts: [],
+        skippedPaths: [safePath],
+        issues: [
+          LocalContentImportIssue(
+            path: safePath,
+            kind: .unreadableDocument,
+            message: error.localizedDescription
+          )
+        ]
+      )
     }
   }
 

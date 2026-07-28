@@ -14,6 +14,7 @@
   "connectButton": { "message": "Connect" },
   "connectingButton": { "message": "Connecting…" },
   "loopbackConnectionHint": { "message": "The token is sent to the app through the 127.0.0.1 loopback interface; the connection never leaves this Mac." },
+  "nativeConnectionHint": { "message": "Keep RepoPress open and copy the connection token from the app's library connection window." },
   "connectedSessionTitle": { "message": "Connected to local library" },
   "offlineSessionTitle": { "message": "Pairing token saved; app is offline" },
   "readingTokenExpiry": { "message": "Reading token expiration…" },

@@ -1,7 +1,16 @@
 import Foundation
+import CryptoKit
 #if canImport(Darwin)
 import Darwin
 #endif
+
+public enum WorkbenchFileReadLimits {
+  public static let maximumRemoteMediaUploadByteCount = 50 * 1_024 * 1_024
+  public static let maximumSVGOptimizationByteCount = 32 * 1_024 * 1_024
+  public static let maximumRecoverySnapshotByteCount = 256 * 1_024 * 1_024
+  public static let maximumLocalPublishTrackedFileByteCount = 1_024 * 1_024 * 1_024
+  public static let maximumBrowserImportLedgerByteCount = 16 * 1_024 * 1_024
+}
 
 public enum BoundedFileReadError: Error, Equatable, LocalizedError, Sendable {
   case invalidByteLimit
@@ -152,6 +161,29 @@ public enum BoundedFileReader {
     }
     return string
   }
+
+  public static func sha256(at url: URL, maximumByteCount: Int) throws -> Data {
+    guard maximumByteCount > 0 else {
+      throw BoundedFileReadError.invalidByteLimit
+    }
+#if canImport(Darwin)
+    let path = url.path
+    let descriptor = path.withCString {
+      Darwin.open($0, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK)
+    }
+    guard descriptor >= 0 else {
+      throw BoundedFileReadError.cannotOpen(path, errno)
+    }
+    defer { Darwin.close(descriptor) }
+    return try sha256(
+      descriptor: descriptor,
+      displayPath: path,
+      maximumByteCount: maximumByteCount
+    )
+#else
+    return Data(SHA256.hash(data: try data(at: url, maximumByteCount: maximumByteCount)))
+#endif
+  }
 }
 
 private extension BoundedFileReader {
@@ -170,6 +202,46 @@ private extension BoundedFileReader {
   }
 
 #if canImport(Darwin)
+  static func sha256(
+    descriptor: Int32,
+    displayPath: String,
+    maximumByteCount: Int
+  ) throws -> Data {
+    var metadata = stat()
+    guard Darwin.fstat(descriptor, &metadata) == 0 else {
+      throw BoundedFileReadError.cannotInspect(displayPath, errno)
+    }
+    guard (metadata.st_mode & S_IFMT) == S_IFREG else {
+      throw BoundedFileReadError.notRegularFile(displayPath)
+    }
+    guard metadata.st_size >= 0,
+          metadata.st_size <= off_t(maximumByteCount) else {
+      throw BoundedFileReadError.exceedsByteLimit(displayPath, maximumByteCount)
+    }
+
+    var digest = SHA256()
+    var totalBytes = 0
+    var buffer = [UInt8](repeating: 0, count: min(64 * 1_024, maximumByteCount))
+    while true {
+      let bytesRead = buffer.withUnsafeMutableBytes { rawBuffer in
+        Darwin.read(descriptor, rawBuffer.baseAddress, rawBuffer.count)
+      }
+      if bytesRead == 0 {
+        break
+      }
+      if bytesRead < 0 {
+        if errno == EINTR { continue }
+        throw BoundedFileReadError.cannotRead(displayPath, errno)
+      }
+      totalBytes += bytesRead
+      guard totalBytes <= maximumByteCount else {
+        throw BoundedFileReadError.exceedsByteLimit(displayPath, maximumByteCount)
+      }
+      digest.update(data: Data(buffer.prefix(bytesRead)))
+    }
+    return Data(digest.finalize())
+  }
+
   static func readData(
     descriptor: Int32,
     displayPath: String,

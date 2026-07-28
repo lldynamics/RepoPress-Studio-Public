@@ -24529,6 +24529,22 @@
         }
       }
     },
+    "损坏账本会先保留为备份，然后创建空账本。已有资料不会被删除，但旧操作回执将不再用于去重。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The corrupted ledger will be preserved as a backup before an empty ledger is created. Existing data will not be deleted, but old operation receipts will no longer be used for deduplication."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "损坏账本会先保留为备份，然后创建空账本。已有资料不会被删除，但旧操作回执将不再用于去重。"
+          }
+        }
+      }
+    },
     "换行符": {
       "localizations": {
         "en": {

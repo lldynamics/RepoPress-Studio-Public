@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 import subprocess
 import sys
 import time
@@ -45,6 +46,40 @@ def repository_metadata() -> dict[str, object]:
         "commit": commit,
         "branch": branch,
         "isDirty": bool(status.strip()),
+    }
+
+
+def execution_metadata() -> dict[str, object]:
+    try:
+        swift_version = subprocess.check_output(
+            ["swift", "--version"],
+            text=True,
+            stderr=subprocess.STDOUT,
+            timeout=30,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        swift_version = None
+    github_actions = os.environ.get("GITHUB_ACTIONS") == "true"
+    ci: dict[str, object] = {"provider": "github-actions" if github_actions else None}
+    if github_actions:
+        ci.update({
+            "repository": os.environ.get("GITHUB_REPOSITORY"),
+            "workflow": os.environ.get("GITHUB_WORKFLOW"),
+            "job": os.environ.get("GITHUB_JOB"),
+            "runID": os.environ.get("GITHUB_RUN_ID"),
+            "runAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+            "ref": os.environ.get("GITHUB_REF"),
+            "sha": os.environ.get("GITHUB_SHA"),
+        })
+    return {
+        "toolchain": {
+            "pythonVersion": platform.python_version(),
+            "swiftVersion": swift_version,
+            "operatingSystem": platform.system(),
+            "operatingSystemVersion": platform.mac_ver()[0] or platform.release(),
+            "architecture": platform.machine(),
+        },
+        "ci": ci,
     }
 
 
@@ -217,7 +252,7 @@ def write_result_json(
     results: list[dict[str, object]],
     unchecked: int,
     blockers: list[str],
-) -> None:
+) -> dict[str, object]:
     failures = [item for item in results if item["status"] == "failed"]
     payload = {
         "schemaVersion": 1,
@@ -225,6 +260,7 @@ def write_result_json(
         "mode": mode,
         "profile": strict_profile,
         "repository": repository_metadata(),
+        "execution": execution_metadata(),
         "summary": {
             "status": "failed" if failures or blockers else "passed",
             "checkCount": len(results),
@@ -246,6 +282,62 @@ def write_result_json(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"release gate: result JSON {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}")
+    return payload
+
+
+def markdown_cell(value: object) -> str:
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def write_result_markdown(path: Path, payload: dict[str, object]) -> None:
+    summary = dict(payload["summary"])
+    repository = dict(payload["repository"])
+    execution = dict(payload["execution"])
+    toolchain = dict(execution["toolchain"])
+    profile = payload.get("profile") or "none"
+    commit = repository.get("commit")
+    commit_label = str(commit)[:12] if commit else "unavailable"
+    lines = [
+        "# Release Gate Summary",
+        "",
+        f"- Status: **{str(summary['status']).upper()}**",
+        f"- Mode: `{payload['mode']}`",
+        f"- Profile: `{profile}`",
+        f"- Commit: `{commit_label}`",
+        f"- Branch: `{repository.get('branch') or 'unavailable'}`",
+        f"- Dirty worktree: `{repository.get('isDirty')}`",
+        f"- Swift: `{markdown_cell(toolchain.get('swiftVersion') or 'unavailable')}`",
+        (
+            "- Checks: "
+            f"`{summary['passedCount']}/{summary['checkCount']}` passed, "
+            f"`{summary['failedCount']}` failed"
+        ),
+        "",
+    ]
+    blockers = list(payload["blockers"])
+    if blockers:
+        lines.extend(["## Blockers", ""])
+        lines.extend(f"- {blocker}" for blocker in blockers)
+        lines.append("")
+    lines.extend([
+        "## Checks",
+        "",
+        "| Check | Status | Duration |",
+        "| --- | --- | ---: |",
+    ])
+    for check in list(payload["checks"]):
+        lines.append(
+            f"| {markdown_cell(check['title'])} | "
+            f"{str(check['status']).upper()} | "
+            f"{check['durationSeconds']}s |"
+        )
+    lines.append("")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")
+    print(
+        "release gate: Markdown summary "
+        f"{path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}"
+    )
 
 
 def unchecked_checklist_count() -> int:
@@ -295,6 +387,12 @@ def main() -> int:
         type=Path,
         default=None,
         help="write the gate result JSON (profile runs default to .build/release-gate-<profile>-result.json)",
+    )
+    parser.add_argument(
+        "--summary-markdown",
+        type=Path,
+        default=None,
+        help="write a human-readable Markdown summary for CI and release review",
     )
     parser.add_argument(
         "--check",
@@ -382,7 +480,16 @@ def main() -> int:
         result_json = ROOT / ".build" / f"release-gate-{args.profile}-result.json"
     else:
         result_json = DEFAULT_RESULT_JSON
-    write_result_json(result_json, mode, strict_profile, results, unchecked, failures)
+    payload = write_result_json(
+        result_json,
+        mode,
+        strict_profile,
+        results,
+        unchecked,
+        failures,
+    )
+    if args.summary_markdown:
+        write_result_markdown(args.summary_markdown.resolve(), payload)
 
     if args.quick or args.tooling or args.check:
         if failures:

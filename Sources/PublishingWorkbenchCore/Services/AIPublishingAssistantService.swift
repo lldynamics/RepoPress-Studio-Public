@@ -109,7 +109,8 @@ public struct AIPublishingAssistantService: Sendable {
     guard request.contextMode == .site else { return message }
     let parsed = WorkbenchAutomationPlanParser.parse(
       message.content,
-      currentDraft: request.draft
+      currentDraft: request.draft,
+      draftVersions: request.automationDraftVersions
     )
     guard let plan = parsed.plan else { return message }
     var prepared = message

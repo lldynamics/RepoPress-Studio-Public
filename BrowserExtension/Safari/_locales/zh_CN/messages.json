@@ -14,6 +14,7 @@
   "connectButton": { "message": "连接" },
   "connectingButton": { "message": "连接中…" },
   "loopbackConnectionHint": { "message": "令牌通过 127.0.0.1 本机回环接口发送给应用；连接不会离开此 Mac。" },
+  "nativeConnectionHint": { "message": "请保持 RepoPress 已打开，并从应用的资料库连接窗口复制连接令牌。" },
   "connectedSessionTitle": { "message": "已连接本机资料库" },
   "offlineSessionTitle": { "message": "已保存配对令牌，应用离线" },
   "readingTokenExpiry": { "message": "正在读取令牌有效期…" },

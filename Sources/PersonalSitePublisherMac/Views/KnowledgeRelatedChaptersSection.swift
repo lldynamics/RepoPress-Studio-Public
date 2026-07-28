@@ -2,7 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct KnowledgeRelatedChaptersSection: View {
-  @ObservedObject var knowledge: KnowledgeStore
+  @StateObject private var state: KnowledgeRelatedChaptersFeatureFacade
   var showsHeader = true
   var maximumVisibleRecommendations: Int?
 
@@ -11,7 +11,9 @@ struct KnowledgeRelatedChaptersSection: View {
     showsHeader: Bool = true,
     maximumVisibleRecommendations: Int? = nil
   ) {
-    self.knowledge = knowledge
+    _state = StateObject(
+      wrappedValue: KnowledgeRelatedChaptersFeatureFacade(store: knowledge)
+    )
     self.showsHeader = showsHeader
     self.maximumVisibleRecommendations = maximumVisibleRecommendations
   }
@@ -23,11 +25,11 @@ struct KnowledgeRelatedChaptersSection: View {
           Label(sectionTitle, systemImage: "point.3.connected.trianglepath.dotted")
             .font(.headline)
           Spacer()
-          if knowledge.isLoadingRelatedChapters {
+          if state.isLoading {
             ProgressView()
               .controlSize(.small)
               .accessibilityLabel("正在查找\(sectionTitle)")
-          } else if !knowledge.relatedChapters.isEmpty {
+          } else if !state.recommendations.isEmpty {
             Text("本地智能推荐")
               .font(.caption)
               .foregroundStyle(.secondary)
@@ -35,11 +37,11 @@ struct KnowledgeRelatedChaptersSection: View {
         }
       }
 
-      if knowledge.isLoadingRelatedChapters, knowledge.relatedChapters.isEmpty {
+      if state.isLoading, state.recommendations.isEmpty {
         Text("正在结合语义、作者、标签和来源计算关联…")
           .font(.callout)
           .foregroundStyle(.secondary)
-      } else if knowledge.relatedChapters.isEmpty {
+      } else if state.recommendations.isEmpty {
         Text("暂时没有足够相关的其他内容。")
           .font(.callout)
           .foregroundStyle(.secondary)
@@ -47,7 +49,7 @@ struct KnowledgeRelatedChaptersSection: View {
         LazyVStack(spacing: 8) {
           ForEach(visibleRecommendations) { recommendation in
             Button {
-              knowledge.selectRelatedChapter(recommendation)
+              state.select(recommendation)
             } label: {
               relatedChapterRow(recommendation)
             }
@@ -62,16 +64,16 @@ struct KnowledgeRelatedChaptersSection: View {
   }
 
   private var sectionTitle: String {
-    knowledge.selectedDocument?.kind == .book
+    state.usesChapterTerminology
       ? String(localized: "相关章节")
       : String(localized: "相关内容")
   }
 
   private var visibleRecommendations: [KnowledgeRelatedChapter] {
     guard let maximumVisibleRecommendations else {
-      return knowledge.relatedChapters
+      return state.recommendations
     }
-    return Array(knowledge.relatedChapters.prefix(maximumVisibleRecommendations))
+    return Array(state.recommendations.prefix(maximumVisibleRecommendations))
   }
 
   private func relatedChapterRow(_ recommendation: KnowledgeRelatedChapter) -> some View {

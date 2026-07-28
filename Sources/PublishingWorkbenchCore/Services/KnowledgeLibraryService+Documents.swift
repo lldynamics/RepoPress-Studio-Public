@@ -11,15 +11,24 @@ extension KnowledgeLibraryService {
       guard let revision = try database.currentRevision(documentID: documents[index].id) else { continue }
       let references = [revision.originalStorageReference, revision.normalizedStorageReference]
         .compactMap { $0?.nilIfEmpty }
-      let byteCount = references.lazy.compactMap { reference -> Int64? in
-        guard let url = self.safeStorageFileURL(for: reference) else { return nil }
-        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-              size > 0 else { return nil }
-        return Int64(size)
-      }.first
+      var byteCount: Int64?
+      for reference in references {
+        guard let url = self.safeStorageFileURL(for: reference) else { continue }
+        do {
+          let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+          if size > 0 {
+            byteCount = Int64(size)
+            break
+          }
+        } catch {
+          logger.error(
+            "Knowledge source size lookup failed for document \(documents[index].id.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)"
+          )
+        }
+      }
       guard let byteCount else { continue }
       documents[index].sourceByteCount = byteCount
-      try? database.setSourceByteCount(byteCount, documentID: documents[index].id)
+      try database.setSourceByteCount(byteCount, documentID: documents[index].id)
     }
     return documents
   }
@@ -122,7 +131,10 @@ extension KnowledgeLibraryService {
     let url = rootURL.appendingPathComponent(revision.normalizedStorageReference)
     let text: String
     do {
-      text = try String(contentsOf: url, encoding: .utf8)
+      text = try BoundedFileReader.utf8String(
+        at: url,
+        maximumByteCount: WorkbenchContentFileReadLimits.textDocumentByteCount
+      )
     } catch {
       logger.warning("无法读取文件 \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
       throw KnowledgeLibraryError.unreadableSource(url.path)
@@ -149,7 +161,10 @@ extension KnowledgeLibraryService {
       }
       let text: String
       do {
-        text = try String(contentsOf: url, encoding: .utf8)
+        text = try BoundedFileReader.utf8String(
+          at: url,
+          maximumByteCount: WorkbenchContentFileReadLimits.textDocumentByteCount
+        )
       } catch {
         logger.warning("无法读取文件 \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
         throw KnowledgeLibraryError.unreadableSource(reference)
@@ -165,10 +180,16 @@ extension KnowledgeLibraryService {
     }
     let pathExtension = (reference as NSString).pathExtension.lowercased()
     if ["txt", "text"].contains(pathExtension) {
-      return try? String(contentsOf: url, encoding: .utf8)
+      return try? BoundedFileReader.utf8String(
+        at: url,
+        maximumByteCount: WorkbenchContentFileReadLimits.textDocumentByteCount
+      )
     }
     guard ["html", "htm", "mhtml", "mht"].contains(pathExtension),
-          let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+          let data = try? BoundedFileReader.data(
+            at: url,
+            maximumByteCount: WorkbenchContentFileReadLimits.binaryDocumentByteCount
+          ) else {
       return nil
     }
     return webContentSanitizer.readableOriginalText(from: data)
@@ -192,7 +213,10 @@ extension KnowledgeLibraryService {
     let url = rootURL.appendingPathComponent(revision.normalizedStorageReference)
     let text: String
     do {
-      text = try String(contentsOf: url, encoding: .utf8)
+      text = try BoundedFileReader.utf8String(
+        at: url,
+        maximumByteCount: WorkbenchContentFileReadLimits.textDocumentByteCount
+      )
     } catch {
       logger.warning("无法读取文件 \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
       throw KnowledgeLibraryError.unreadableSource(url.path)

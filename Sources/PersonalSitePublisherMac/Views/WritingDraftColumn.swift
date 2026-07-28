@@ -191,9 +191,9 @@ struct WritingDraftColumn: View {
       .overlay {
         HStack(spacing: 5) {
           Image(systemName: "plus")
-            .font(.system(size: 11, weight: .bold))
+            .font(.workbenchMetadata.weight(.bold))
           Text("新建")
-            .font(.system(size: 13, weight: .bold))
+            .font(.workbenchButtonLabel.weight(.bold))
         }
           .foregroundColor(.white)
           .allowsHitTesting(false)

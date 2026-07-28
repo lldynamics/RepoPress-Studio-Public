@@ -17,7 +17,7 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
   }
 
   func testPublishPlanTargetsAllPendingSiteChangesInsteadOfCurrentDraft() throws {
-    let store = WorkbenchStore()
+    let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationPublishPlan")
     let draft = try XCTUnwrap(store.selectedDraft)
     let response = """
     <workbench_automation_plan>
@@ -34,7 +34,7 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
   }
 
   func testParserExtractsValidatedPlanAndRemovesMachinePayloadFromVisibleReply() throws {
-    let store = WorkbenchStore()
+    let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationPlanParser")
     let draft = try XCTUnwrap(store.selectedDraft)
     let response = """
     我可以先检查文章，再等待你确认是否修改摘要。
@@ -60,7 +60,7 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
   }
 
   func testParserRejectsUnknownCommandInsteadOfGuessing() throws {
-    let store = WorkbenchStore()
+    let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationUnknownCommand")
     let draft = try XCTUnwrap(store.selectedDraft)
     let response = """
     <workbench_automation_plan>
@@ -75,7 +75,7 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
   }
 
   func testExecutorRunsSafeStepWithoutConfirmation() async throws {
-    let store = WorkbenchStore()
+    let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationSafeStep")
     let draft = try XCTUnwrap(store.selectedDraft)
     let step = WorkbenchAutomationStep(
       command: .runPreflight,
@@ -91,7 +91,7 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
   }
 
   func testContentMutationRequiresConfirmationAndCreatesRollbackVersion() async throws {
-    let store = WorkbenchStore()
+    let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationContentMutation")
     let draft = try XCTUnwrap(store.selectedDraft)
     let step = WorkbenchAutomationStep(
       command: .appendToBody,
@@ -123,7 +123,7 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
   }
 
   func testExecutorRejectsContentMutationWhenDraftChangedAfterPlanning() async throws {
-    let store = WorkbenchStore()
+    let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationStaleDraft")
     let original = try XCTUnwrap(store.selectedDraft)
     let step = WorkbenchAutomationStep(
       command: .updateMetadata,
@@ -152,7 +152,7 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
   }
 
   func testAutomationRunHistoryRoundTripsInWorkbenchSnapshot() throws {
-    let store = WorkbenchStore()
+    let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationHistory")
     let record = WorkbenchAutomationRunRecord(
       planID: UUID(),
       goal: "保存工作台",

@@ -101,7 +101,7 @@ def validated_definition(root: Path) -> dict:
     )
     require_exact_keys(
         capture,
-        {"maximumInputBytes", "routes"},
+        {"maximumInputBytes", "routes", "statusPayloadVersion"},
         "captureProtocol",
     )
 
@@ -148,6 +148,15 @@ def validated_definition(root: Path) -> dict:
     ):
         raise ProtocolGenerationError(
             "captureProtocol.maximumInputBytes is outside the safety range"
+        )
+    status_payload_version = capture["statusPayloadVersion"]
+    if (
+        not isinstance(status_payload_version, int)
+        or isinstance(status_payload_version, bool)
+        or not 1 <= status_payload_version <= 100
+    ):
+        raise ProtocolGenerationError(
+            "captureProtocol.statusPayloadVersion is outside the safety range"
         )
 
     routes = capture["routes"]
@@ -206,6 +215,9 @@ def render_swift(definition: dict) -> str:
             "  public static let loopbackProtocolHeaderValue =",
             f"    {swift_string(loopback['protocolHeaderValue'])}",
             f"  public static let maximumInputBytes = {capture['maximumInputBytes']:_}",
+            f"  public static let statusPayloadVersion = {capture['statusPayloadVersion']}",
+            "  public static let accessControlAllowHeaders =",
+            '    "Authorization, Content-Type, \\(loopbackProtocolHeaderName)"',
             "",
             "  public static let allowedRoutes: [String: Set<String>] = [",
             *routes,
@@ -222,6 +234,7 @@ def render_javascript(definition: dict) -> str:
     payload = {
         "activeExtensions": definition["activeExtensions"],
         "maximumInputBytes": capture["maximumInputBytes"],
+        "statusPayloadVersion": capture["statusPayloadVersion"],
         "routes": {
             route: sorted(methods)
             for route, methods in sorted(capture["routes"].items())

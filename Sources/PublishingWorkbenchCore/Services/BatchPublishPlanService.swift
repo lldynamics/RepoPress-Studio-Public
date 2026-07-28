@@ -292,16 +292,20 @@ public struct BatchPublishPlanService: Sendable {
       if lhs.byteSize > 0, rhs.byteSize > 0, lhs.byteSize != rhs.byteSize {
         return false
       }
-      let lhsData: Data
-      let rhsData: Data
       do {
-        lhsData = try Data(contentsOf: lhsURL)
-        rhsData = try Data(contentsOf: rhsURL)
+        let lhsDigest = try BoundedFileReader.sha256(
+          at: lhsURL,
+          maximumByteCount: WorkbenchFileReadLimits.maximumRemoteMediaUploadByteCount
+        )
+        let rhsDigest = try BoundedFileReader.sha256(
+          at: rhsURL,
+          maximumByteCount: WorkbenchFileReadLimits.maximumRemoteMediaUploadByteCount
+        )
+        return lhsDigest == rhsDigest
       } catch {
         logger.warning("无法读取文件进行比较: \(error.localizedDescription, privacy: .public)")
         return false
       }
-      return lhsData == rhsData
     }
   }
 

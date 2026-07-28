@@ -165,7 +165,7 @@ public struct KnowledgeSmartCollectionService: Sendable {
 
   private func countedCollections(
     documents: [KnowledgeDocument],
-    kind: KnowledgeSmartCollectionKind,
+    kind: CountedKnowledgeSmartCollectionKind,
     values: (KnowledgeDocument) -> [String]
   ) -> [KnowledgeSmartCollection] {
     var counts: [String: (displayValue: String, count: Int)] = [:]
@@ -185,8 +185,6 @@ public struct KnowledgeSmartCollectionService: Sendable {
       case .author: rule = .author(item.displayValue)
       case .tag: rule = .tag(item.displayValue)
       case .sourceDomain: rule = .sourceDomain(item.displayValue)
-      case .time, .aiPermission:
-        preconditionFailure("Time and AI permission collections are counted separately")
       }
       return KnowledgeSmartCollection(rule: rule, documentCount: item.count)
     }
@@ -196,6 +194,12 @@ public struct KnowledgeSmartCollectionService: Sendable {
       }
       return $0.rule.id.localizedStandardCompare($1.rule.id) == .orderedAscending
     }
+  }
+
+  private enum CountedKnowledgeSmartCollectionKind {
+    case author
+    case tag
+    case sourceDomain
   }
 
   private func matches(

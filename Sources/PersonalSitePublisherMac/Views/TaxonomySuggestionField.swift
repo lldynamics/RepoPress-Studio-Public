@@ -27,7 +27,7 @@ struct TaxonomySuggestionField: View {
               } label: {
                 HStack(spacing: 4) {
                   Image(systemName: selected ? "checkmark.circle.fill" : "tag")
-                    .font(.caption2)
+                    .font(.workbenchMetadata)
                   Text(suggestion)
                     .font(.caption.weight(.medium))
                 }

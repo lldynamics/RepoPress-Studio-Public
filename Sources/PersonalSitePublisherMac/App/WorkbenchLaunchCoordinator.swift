@@ -10,6 +10,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   private let persistence: WorkbenchPersistence
   private let knowledgeLibraryService: KnowledgeLibraryService
   private var didStart = false
+  private var didStartReadyServices = false
 
   init(
     persistence: WorkbenchPersistence,
@@ -41,7 +42,10 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       )
     }.value
 
-    guard !Task.isCancelled else { return }
+    guard !Task.isCancelled else {
+      didStart = false
+      return
+    }
     let workbenchStore = WorkbenchStore(
       persistence: persistence,
       initialSnapshotSource: preparation.snapshotSource,
@@ -68,6 +72,12 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       }
     )
     self.browserBridge = browserBridge
+  }
+
+  func beginReadyServicesIfNeeded() -> Bool {
+    guard !didStartReadyServices else { return false }
+    didStartReadyServices = true
+    return true
   }
 }
 
@@ -112,6 +122,7 @@ struct WorkbenchLaunchRootView: View {
       ContentView(store: store)
         .environmentObject(browserBridge)
         .task {
+          guard coordinator.beginReadyServicesIfNeeded() else { return }
           onReady(store, browserBridge)
           storeKitProEntitlementCoordinator.start(store: store)
           browserBridge.start()

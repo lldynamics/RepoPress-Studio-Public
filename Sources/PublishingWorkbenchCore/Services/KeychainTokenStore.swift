@@ -1,6 +1,12 @@
 import Foundation
 import LocalAuthentication
+import os
 import Security
+
+private let keychainTokenLogger = Logger(
+  subsystem: "com.jinfang.PersonalSitePublisherMac",
+  category: "KeychainTokenStore"
+)
 
 private final class KeychainTokenMutationCoordinator: @unchecked Sendable {
   static let shared = KeychainTokenMutationCoordinator()
@@ -55,6 +61,28 @@ public struct KeychainTokenAvailability: Codable, Hashable, Sendable {
   }
 }
 
+public struct KeychainTokenCleanupIssue: Hashable, Sendable {
+  public var credential: String
+  public var message: String
+
+  public init(credential: String, message: String) {
+    self.credential = credential
+    self.message = message
+  }
+}
+
+public struct KeychainTokenMutationReport: Hashable, Sendable {
+  public var cleanupIssues: [KeychainTokenCleanupIssue]
+
+  public init(cleanupIssues: [KeychainTokenCleanupIssue] = []) {
+    self.cleanupIssues = cleanupIssues
+  }
+
+  public var hasWarnings: Bool {
+    !cleanupIssues.isEmpty
+  }
+}
+
 public enum KeychainTokenScope: Hashable, Sendable {
   case repository(RepositoryProvider)
   case deployment(DeploymentProvider)
@@ -74,10 +102,12 @@ public enum KeychainCredentialServices {
   public static let ai = "PersonalSitePublisherMac.LocalDevelopment.AIProvider"
   public static let repository = "PersonalSitePublisherMac.LocalDevelopment.RepositoryProvider"
   public static let deployment = "PersonalSitePublisherMac.LocalDevelopment.DeploymentProvider"
+  public static let browserBridge = "PersonalSitePublisherMac.LocalDevelopment.BrowserBridge"
   #else
   public static let ai = "PersonalSitePublisherMac.AIProvider"
   public static let repository = "PersonalSitePublisherMac.RepositoryProvider"
   public static let deployment = "PersonalSitePublisherMac.DeploymentProvider"
+  public static let browserBridge = "PersonalSitePublisherMac.BrowserBridge"
   #endif
 }
 
@@ -139,6 +169,18 @@ public final class KeychainTokenStore: @unchecked Sendable {
     )
   }
 
+  public func token(forAccountIdentifier identifier: String) throws -> String? {
+    try token(forAccount: account(forAccountIdentifier: identifier))
+  }
+
+  public func saveToken(_ token: String, forAccountIdentifier identifier: String) throws {
+    try saveToken(token, forAccount: account(forAccountIdentifier: identifier))
+  }
+
+  public func deleteToken(forAccountIdentifier identifier: String) throws {
+    try deleteToken(forAccount: account(forAccountIdentifier: identifier))
+  }
+
   public func availability(for profile: SiteProfile) throws -> KeychainTokenAvailability {
     try availability(forAccount: account(for: profile))
   }
@@ -172,7 +214,11 @@ public final class KeychainTokenStore: @unchecked Sendable {
     )
   }
 
-  public func saveRepositoryToken(_ token: String, for profile: SiteProfile) throws {
+  @discardableResult
+  public func saveRepositoryToken(
+    _ token: String,
+    for profile: SiteProfile
+  ) throws -> KeychainTokenMutationReport {
     try KeychainTokenMutationCoordinator.shared.synchronized {
       try saveToken(
         token,
@@ -185,23 +231,49 @@ public final class KeychainTokenStore: @unchecked Sendable {
       // deliberately best effort: an ad-hoc rebuild can retain an item whose
       // old ACL refuses deletion, and that must not turn a successful save
       // into a false failure.
-      try? deleteToken(for: profile, scope: .repository(profile.repositoryProvider))
-      try? deleteToken(for: profile)
+      let cleanupIssues = [
+        legacyCleanupIssue("legacy scoped repository credential") {
+          try deleteToken(for: profile, scope: .repository(profile.repositoryProvider))
+        },
+        legacyCleanupIssue("legacy unscoped repository credential") {
+          try deleteToken(for: profile)
+        }
+      ].compactMap { $0 }
+      return KeychainTokenMutationReport(cleanupIssues: cleanupIssues)
     }
   }
 
-  public func deleteRepositoryToken(for profile: SiteProfile) throws {
+  @discardableResult
+  public func deleteRepositoryToken(
+    for profile: SiteProfile
+  ) throws -> KeychainTokenMutationReport {
     try KeychainTokenMutationCoordinator.shared.synchronized {
       try deleteToken(
         for: profile,
         scope: .repository(profile.repositoryProvider),
         originURLText: repositoryOriginURLText(for: profile)
       )
-      try? deleteToken(for: profile, scope: .repository(profile.repositoryProvider))
+      var cleanupIssues: [KeychainTokenCleanupIssue] = []
+      if let issue = legacyCleanupIssue(
+        "legacy scoped repository credential",
+        operation: {
+          try deleteToken(for: profile, scope: .repository(profile.repositoryProvider))
+        }
+      ) {
+        cleanupIssues.append(issue)
+      }
       // Older releases left this unscoped credential behind after migration.
       // It is no longer read by current releases, so a stale ACL must not make
       // deletion of the authoritative credential look unsuccessful.
-      try? deleteToken(for: profile)
+      if let issue = legacyCleanupIssue(
+        "legacy unscoped repository credential",
+        operation: {
+          try deleteToken(for: profile)
+        }
+      ) {
+        cleanupIssues.append(issue)
+      }
+      return KeychainTokenMutationReport(cleanupIssues: cleanupIssues)
     }
   }
 
@@ -229,12 +301,21 @@ public final class KeychainTokenStore: @unchecked Sendable {
     )
   }
 
-  public func saveAIToken(_ token: String, for profile: SiteProfile) throws {
+  @discardableResult
+  public func saveAIToken(
+    _ token: String,
+    for profile: SiteProfile
+  ) throws -> KeychainTokenMutationReport {
     try KeychainTokenMutationCoordinator.shared.synchronized {
       try saveToken(token, forAccount: aiCredentialAccount(for: profile))
       // See saveRepositoryToken(_:for:). The scoped item is authoritative;
       // stale unscoped cleanup must not invalidate the completed save.
-      try? deleteToken(for: profile)
+      let cleanupIssues = [
+        legacyCleanupIssue("legacy unscoped AI credential") {
+          try deleteToken(for: profile)
+        }
+      ].compactMap { $0 }
+      return KeychainTokenMutationReport(cleanupIssues: cleanupIssues)
     }
   }
 
@@ -258,10 +339,36 @@ public final class KeychainTokenStore: @unchecked Sendable {
     ))
   }
 
-  public func deleteAIToken(for profile: SiteProfile) throws {
+  @discardableResult
+  public func deleteAIToken(
+    for profile: SiteProfile
+  ) throws -> KeychainTokenMutationReport {
     try KeychainTokenMutationCoordinator.shared.synchronized {
       try deleteToken(forAccount: aiCredentialAccount(for: profile))
-      try? deleteToken(for: profile)
+      let cleanupIssues = [
+        legacyCleanupIssue("legacy unscoped AI credential") {
+          try deleteToken(for: profile)
+        }
+      ].compactMap { $0 }
+      return KeychainTokenMutationReport(cleanupIssues: cleanupIssues)
+    }
+  }
+
+  private func legacyCleanupIssue(
+    _ credential: String,
+    operation: () throws -> Void
+  ) -> KeychainTokenCleanupIssue? {
+    do {
+      try operation()
+      return nil
+    } catch {
+      keychainTokenLogger.error(
+        "Keychain cleanup failed for \(credential, privacy: .public): \(error.localizedDescription, privacy: .public)"
+      )
+      return KeychainTokenCleanupIssue(
+        credential: credential,
+        message: error.localizedDescription
+      )
     }
   }
 
@@ -414,6 +521,10 @@ public final class KeychainTokenStore: @unchecked Sendable {
 
   private func account(for profile: SiteProfile) -> String {
     "\(accountPrefix)-\(profile.id.uuidString)"
+  }
+
+  private func account(forAccountIdentifier identifier: String) -> String {
+    "\(accountPrefix)-named-\(identifier)"
   }
 
   private func account(for profile: SiteProfile, scope: KeychainTokenScope) -> String {

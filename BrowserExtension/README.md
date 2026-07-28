@@ -222,7 +222,7 @@ ZIP 根目录直接包含 `manifest.json` 和运行文件，不包含 README、�
 
 ## 暂缓渠道
 
-Edge 和 Firefox 不属于 0.30.0 当前发布范围，不在应用界面、支持页、App Store 文案或发布 profile
+Edge 和 Firefox 不属于 0.30.2 当前发布范围，不在应用界面、支持页、App Store 文案或发布 profile
 中承诺支持，也不会生成新的 Edge ZIP、Firefox XPI 或执行对应商店发布门禁。仓库暂时保留旧版适配源码、
 历史签名工具和不可变发布记录，方便以后重新评估时恢复；这些保留文件不表示本版本支持对应浏览器。
 

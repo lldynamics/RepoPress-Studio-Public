@@ -1,7 +1,6 @@
 name: Quality Gate
 
 on:
-  push:
   pull_request:
   workflow_dispatch:
 
@@ -20,7 +19,7 @@ jobs:
       SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-swift-home
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Configure deterministic test language
         run: |
           defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"
@@ -28,7 +27,11 @@ jobs:
       - name: Show toolchain
         run: swift --version
       - name: Run quick quality gate
-        run: ./script/check_release_gate.sh --quick --result-json .build/quality-gate-result.json
+        run: |
+          ./script/check_release_gate.sh \
+            --quick \
+            --result-json .build/quality-gate-result.json \
+            --summary-markdown .build/quality-gate-summary.md
       - name: Exercise distribution build and package path
         run: |
           ./script/check_release_gate.sh \
@@ -36,12 +39,53 @@ jobs:
             --check app-store-package-path \
             --check ui-runtime \
             --check swift-release-build \
-            --result-json .build/distribution-gate-result.json
+            --result-json .build/distribution-gate-result.json \
+            --summary-markdown .build/distribution-gate-summary.md
+      - name: Publish quality summary
+        if: always()
+        run: |
+          for summary in \
+            .build/quality-gate-summary.md \
+            .build/distribution-gate-summary.md; do
+            if [[ -f "$summary" ]]; then
+              cat "$summary" >>"$GITHUB_STEP_SUMMARY"
+            fi
+          done
+      - name: Run real launch and UI smoke
+        env:
+          PERSONAL_SITE_PUBLISHER_RUNTIME_HOME: ${{ runner.temp }}/repopress-ui-smoke-home
+          WORKBENCH_XCUI_DERIVED_DATA_PATH: ${{ github.workspace }}/.build/ui-smoke-derived-data
+        run: |
+          mkdir -p "$PERSONAL_SITE_PUBLISHER_RUNTIME_HOME" .build
+          exec > >(tee .build/ui-smoke.log) 2>&1
+          bash script/check_ui_runtime.sh --launch
+          WORKBENCH_XCUI_APP_PATH="$PWD/dist/PersonalSitePublisherMac.app" \
+            bash script/check_accessibility_runtime.sh
+          cat > .build/ui-smoke-summary.md <<'EOF'
+          # UI Smoke Summary
+
+          - Sandboxed Release app launch: passed
+          - Visible main-window verification: passed
+          - macOS accessibility XCUITest smoke: passed
+          EOF
+          cat .build/ui-smoke-summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload UI smoke evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ui-smoke-result
+          path: |
+            .build/ui-smoke.log
+            .build/ui-smoke-summary.md
+            .build/ui-smoke-derived-data/Logs/Test
+          if-no-files-found: warn
       - name: Upload unified result
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: quality-gate-result
           path: |
             .build/quality-gate-result.json
             .build/distribution-gate-result.json
+            .build/quality-gate-summary.md
+            .build/distribution-gate-summary.md

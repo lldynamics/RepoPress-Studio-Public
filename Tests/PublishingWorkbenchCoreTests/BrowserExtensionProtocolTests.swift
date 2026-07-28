@@ -21,7 +21,8 @@ final class BrowserExtensionProtocolTests: XCTestCase {
       "X-RepoPress-Protocol"
     )
     XCTAssertEqual(BrowserExtensionProtocol.loopbackProtocolHeaderValue, "1")
-    XCTAssertEqual(BrowserExtensionProtocol.maximumInputBytes, 50 * 1_024 * 1_024)
+    XCTAssertEqual(BrowserExtensionProtocol.maximumInputBytes, 48 * 1_024 * 1_024)
+    XCTAssertEqual(BrowserExtensionProtocol.statusPayloadVersion, 6)
   }
 
   func testCaptureRoutesRemainExplicitlyAllowlisted() {
@@ -31,6 +32,7 @@ final class BrowserExtensionProtocolTests: XCTestCase {
         "/v1/folders": ["GET"],
         "/v1/import": ["POST"],
         "/v1/open": ["POST"],
+        "/v1/status": ["GET"],
         "/v1/suggestions": ["POST"],
       ]
     )

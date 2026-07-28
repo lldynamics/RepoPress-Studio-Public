@@ -9,11 +9,16 @@ extension PublishingStore {
     return formatter.string(from: Date())
   }
 
-  public func writeSelectedDraftToLocalRepository(store: WorkbenchStore) async {
-    guard !blockPublishingIfGeneralDraftSelected(store: store) else { return }
+  @discardableResult
+  public func writeSelectedDraftToLocalRepository(
+    store: WorkbenchStore
+  ) async -> LocalRepositoryWriteResult {
+    guard !blockPublishingIfGeneralDraftSelected(store: store) else {
+      return .failed(message: publishActionMessage ?? "通用草稿不能直接写入站点仓库。")
+    }
     guard let package = publishPackageForSelectedDraft(store: store) else {
       publishActionMessage = "没有可写入的发布包。"
-      return
+      return .failed(message: publishActionMessage ?? "没有可写入的发布包。")
     }
 
     let profile = store.profile(for: package)
@@ -28,12 +33,12 @@ extension PublishingStore {
     localPublishReadiness = makeLocalPublishReadiness(package: package, profile: profile, preview: preview, store: store)
     guard blockingIssues.isEmpty else {
       publishActionMessage = blockedLocalPublishMessage(action: "写入", issues: blockingIssues)
-      return
+      return .failed(message: publishActionMessage ?? "本地仓库写入被发布检查阻止。")
     }
 
     guard let operation = beginLocalRepositoryMutation(profile: profile) else {
       publishActionMessage = "已有本地仓库写入或提交任务正在运行，请等待完成。"
-      return
+      return .failed(message: publishActionMessage ?? "本地仓库写入任务正在运行。")
     }
     defer { finishLocalRepositoryMutation(operation) }
     publishActionMessage = "正在后台写入本地仓库…"
@@ -55,10 +60,21 @@ extension PublishingStore {
       } else {
         publishActionMessage = "原站点已写入 \(writtenPaths.count) 个文件；当前站点已变化，未刷新当前仓库状态。"
       }
-      store.save()
+      guard store.flushPendingChanges() else {
+        publishActionMessage = "文件已写入本地仓库，但工作台发布记录保存失败，请先处理保存问题。"
+        return .writtenButRecordSaveFailed(
+          writtenPaths: writtenPaths,
+          message: publishActionMessage ?? "文件已写入，但工作台发布记录保存失败。"
+        )
+      }
+      return .succeeded(
+        writtenPaths: writtenPaths,
+        message: publishActionMessage ?? "本地仓库写入完成。"
+      )
     } catch {
       let prefix = store.activeProfileID == profile.id ? "写入失败" : "原站点写入失败"
       publishActionMessage = "\(prefix)：\(error.localizedDescription)"
+      return .failed(message: publishActionMessage ?? error.localizedDescription)
     }
   }
 

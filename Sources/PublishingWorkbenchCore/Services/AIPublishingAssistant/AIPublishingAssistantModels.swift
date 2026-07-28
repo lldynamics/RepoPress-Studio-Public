@@ -605,6 +605,7 @@ public struct AIPublishingChatRequest: Sendable {
   public var workflowContext: AIPublishingWorkflowContext?
   public var focusedParagraph: AIPublishingChatDraftParagraph?
   public var relatedSuggestions: [SiteRelationSuggestion]
+  public var automationDraftVersions: [UUID: Date]
 
   public init(
     draft: ArticleDraft,
@@ -621,7 +622,8 @@ public struct AIPublishingChatRequest: Sendable {
     remoteReviewDraft: RemoteReviewDraft? = nil,
     workflowContext: AIPublishingWorkflowContext? = nil,
     focusedParagraph: AIPublishingChatDraftParagraph? = nil,
-    relatedSuggestions: [SiteRelationSuggestion] = []
+    relatedSuggestions: [SiteRelationSuggestion] = [],
+    automationDraftVersions: [UUID: Date] = [:]
   ) {
     self.draft = draft
     self.profile = profile
@@ -638,6 +640,9 @@ public struct AIPublishingChatRequest: Sendable {
     self.workflowContext = workflowContext
     self.focusedParagraph = focusedParagraph
     self.relatedSuggestions = relatedSuggestions
+    var resolvedDraftVersions = automationDraftVersions
+    resolvedDraftVersions[draft.id] = draft.updatedAt
+    self.automationDraftVersions = resolvedDraftVersions
   }
 }
 
