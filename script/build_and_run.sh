@@ -5,6 +5,7 @@ MODE="run"
 BUILD_CONFIGURATION="debug"
 APP_STORE_BUILD=0
 APP_NAME="PersonalSitePublisherMac"
+APP_DISPLAY_NAME="RepoPress Studio"
 BUNDLE_ID="${PERSONAL_SITE_PUBLISHER_BUNDLE_ID:-com.jinfang.PersonalSitePublisherMac}"
 MIN_SYSTEM_VERSION="14.0"
 APP_CATEGORY="${APP_CATEGORY:-public.app-category.developer-tools}"
@@ -20,6 +21,7 @@ VERSION_VALUES="$(
 )"
 IFS=$'\t' read -r MARKETING_VERSION BUILD_NUMBER <<<"$VERSION_VALUES"
 DIST_DIR="${PERSONAL_SITE_PUBLISHER_DIST_DIR:-$ROOT_DIR/dist}"
+APP_STORE_SWIFT_SCRATCH_PATH="${APP_STORE_SWIFT_SCRATCH_PATH:-$ROOT_DIR/.build/app-store-swift}"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
@@ -184,8 +186,10 @@ if [[ "$APP_STORE_BUILD" == "1" && "$BUILD_CONFIGURATION" != "release" ]]; then
 fi
 if [[ "$APP_STORE_BUILD" == "1" ]]; then
   DISTRIBUTION_CHANNEL="AppStore"
+  EXTERNAL_AI_AVAILABLE_PLIST="  <true/>"
 else
   DISTRIBUTION_CHANNEL="Development"
+  EXTERNAL_AI_AVAILABLE_PLIST="  <true/>"
 fi
 if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then
   SCREENSHOT_CAPTURE_BUILD_PLIST="  <true/>"
@@ -242,6 +246,13 @@ swift_build_options=(
   -c "$BUILD_CONFIGURATION"
   --disable-sandbox
 )
+if [[ "$APP_STORE_BUILD" == "1" ]]; then
+  swift_build_options+=(
+    --scratch-path "$APP_STORE_SWIFT_SCRATCH_PATH"
+    -Xswiftc -D
+    -Xswiftc APP_STORE_BUILD
+  )
+fi
 if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then
   swift_build_options+=(
     -Xswiftc -D
@@ -325,9 +336,9 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundleIdentifier</key>
   <string>$BUNDLE_ID</string>
   <key>CFBundleName</key>
-  <string>$APP_NAME</string>
+  <string>$APP_DISPLAY_NAME</string>
   <key>CFBundleDisplayName</key>
-  <string>RepoPress</string>
+  <string>$APP_DISPLAY_NAME</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleIconFile</key>
@@ -342,6 +353,8 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$BUILD_CONFIGURATION_DISPLAY_NAME</string>
   <key>PersonalSitePublisherDistributionChannel</key>
   <string>$DISTRIBUTION_CHANNEL</string>
+  <key>PersonalSitePublisherExternalAIAvailable</key>
+$EXTERNAL_AI_AVAILABLE_PLIST
   <key>PersonalSitePublisherScreenshotCaptureBuild</key>
 $SCREENSHOT_CAPTURE_BUILD_PLIST
   <key>PersonalSitePublisherBrowserExtensionAvailable</key>

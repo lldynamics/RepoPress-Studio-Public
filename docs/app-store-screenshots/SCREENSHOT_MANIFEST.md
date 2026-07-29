@@ -5,8 +5,8 @@ Required Mac App Store screenshot set for the current product surface.
 | ID | Target file | Screen | Purpose | Status |
 | --- | --- | --- | --- | --- |
 | `writing` | `writing.png` | Writing workspace | Markdown editing, preview, metadata, and contextual writing actions. | Captured 2880x1800 |
-| `ai-chat` | `ai-chat.png` | BYOK AI writing assistant | Show the in-app AI assistant, safe demo conversation, article context, and user-supplied API-key boundary. | Captured 2880x1800 |
-| `knowledge-library` | `knowledge-library.png` | Local knowledge library | Show local import, search, cleaned reading content, source details, and annotations without browser capture. | Captured 2880x1800 |
+| `ai-chat` | `ai-chat.png` | Free BYOK AI writing assistant | Show the in-app AI assistant, safe demo conversation, article context, and user-supplied API-key boundary available without Pro. | Captured 2880x1800 |
+| `knowledge-library` | `knowledge-library.png` | Local knowledge library | Show local import, search, cleaned reading content, source details, and annotations without browser-capture credentials. | Captured 2880x1800 |
 | `sync-api-publish` | `sync-api-publish.png` | Sync workspace | GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR flow. | Captured 2880x1800 |
 | `seo-social-preview` | `seo-social-preview.png` | SEO/social preview | Search, Open Graph, Twitter card, cache state, and manual refresh. | Captured 2880x1800 |
 | `deployment-status` | `deployment-status.png` | Deployment status | GitHub Pages/Actions, Netlify, Vercel, Cloudflare Pages, or custom endpoint validation. | Captured 2880x1800 |

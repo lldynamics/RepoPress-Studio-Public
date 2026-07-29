@@ -702,6 +702,98 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertTrue(store.aiChatMessage?.contains("AI 讨论失败") == true)
   }
 
+  func testFailedSelectedRegenerationRestoresItsConversationAfterSwitchingDrafts() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data(#"{"error":"server"}"#.utf8),
+      statusCode: 500,
+      streamLines: [
+        #"data: {"error":"server"}"#,
+        "",
+      ],
+      streamLineDelayNanoseconds: 100_000_000
+    )
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("json")
+    defer {
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
+    let client = AIChatCompletionClient(
+      transport: transport,
+      networkRecoveryPolicy: AIChatNetworkRecoveryPolicy(
+        firstByteTimeout: 1,
+        resourceTimeout: 2,
+        maximumAutomaticRetryCount: 0,
+        automaticRetryBaseDelay: 0
+      )
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(client: client)
+    )
+    var profile = store.activeProfile
+    profile.aiProviderConfig = remoteAIConfig
+    store.updateActiveProfile(profile)
+    let firstDraft = try XCTUnwrap(store.selectedDraft)
+    let secondDraft = ArticleDraft(
+      siteProfileID: firstDraft.siteProfileID,
+      title: "异步期间切换的文章",
+      slug: "regeneration-switch-target"
+    )
+    store.setDrafts([firstDraft, secondDraft])
+    store.setSelectedDraftID(firstDraft.id)
+    store.prepareAIChat(for: firstDraft)
+    let firstUser = AIPublishingChatMessage(role: .user, content: "第一问题")
+    let firstAssistant = AIPublishingChatMessage(role: .assistant, content: "旧的第一条回复")
+    let secondUser = AIPublishingChatMessage(role: .user, content: "第二问题")
+    let secondAssistant = AIPublishingChatMessage(role: .assistant, content: "第二条回复")
+    let originalMessages = [firstUser, firstAssistant, secondUser, secondAssistant]
+    store.setAIChatMessages(originalMessages)
+    store.aiStore.cacheCurrentAIChatSessionForAIStore()
+    let originalConversationID = try XCTUnwrap(
+      store.activeAIChatConversationID(for: firstDraft.id)
+    )
+
+    let regeneration = Task {
+      await store.regenerateAIChatReply(
+        messageID: firstAssistant.id,
+        draft: firstDraft
+      )
+    }
+    for _ in 0..<200 {
+      if await transport.capturedRequestCount() > 0 {
+        break
+      }
+      await Task.yield()
+    }
+
+    XCTAssertTrue(store.isAIChatRunning)
+    XCTAssertFalse(
+      store.selectAIChatConversation(originalConversationID),
+      "运行期间同一入口会阻止切换对话"
+    )
+    store.ai.selectChatDraft(secondDraft.id)
+    XCTAssertEqual(store.selectedDraftID, secondDraft.id)
+    XCTAssertEqual(store.aiChatDraftID, secondDraft.id)
+    let currentMessages = [
+      AIPublishingChatMessage(role: .user, content: "当前文章不能被旧请求污染"),
+    ]
+    store.setAIChatMessages(currentMessages)
+    store.aiStore.cacheCurrentAIChatSessionForAIStore()
+
+    let reply = await regeneration.value
+
+    XCTAssertNil(reply)
+    XCTAssertEqual(store.aiChatDraftID, secondDraft.id)
+    XCTAssertEqual(store.aiChatMessages, currentMessages)
+    let restoredConversation = try XCTUnwrap(
+      store.aiChatConversations(for: firstDraft.id)
+        .first { $0.id == originalConversationID }
+    )
+    XCTAssertEqual(restoredConversation.messages, originalMessages)
+  }
+
   func testStoreRestoresTrailingAssistantsWhenLastRegenerationFails() async throws {
     let transport = RecordingAIChatTransport(
       data: Data(#"{"error":"server"}"#.utf8),
@@ -744,6 +836,88 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertNil(reply)
     XCTAssertEqual(store.aiChatMessages, originalMessages)
     XCTAssertTrue(store.aiChatMessage?.contains("AI 讨论失败") == true)
+  }
+
+  func testFailedLastRegenerationRestoresItsConversationAfterSwitchingDrafts() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data(#"{"error":"server"}"#.utf8),
+      statusCode: 500,
+      streamLines: [
+        #"data: {"error":"server"}"#,
+        "",
+      ],
+      streamLineDelayNanoseconds: 100_000_000
+    )
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("json")
+    defer {
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
+    let client = AIChatCompletionClient(
+      transport: transport,
+      networkRecoveryPolicy: AIChatNetworkRecoveryPolicy(
+        firstByteTimeout: 1,
+        resourceTimeout: 2,
+        maximumAutomaticRetryCount: 0,
+        automaticRetryBaseDelay: 0
+      )
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(client: client)
+    )
+    var profile = store.activeProfile
+    profile.aiProviderConfig = remoteAIConfig
+    store.updateActiveProfile(profile)
+    let firstDraft = try XCTUnwrap(store.selectedDraft)
+    let secondDraft = ArticleDraft(
+      siteProfileID: firstDraft.siteProfileID,
+      title: "最后回复生成期间切换",
+      slug: "last-regeneration-switch-target"
+    )
+    store.setDrafts([firstDraft, secondDraft])
+    store.setSelectedDraftID(firstDraft.id)
+    store.prepareAIChat(for: firstDraft)
+    let originalMessages = [
+      AIPublishingChatMessage(role: .user, content: "原问题"),
+      AIPublishingChatMessage(role: .assistant, content: "原回复"),
+    ]
+    store.setAIChatMessages(originalMessages)
+    store.aiStore.cacheCurrentAIChatSessionForAIStore()
+    let originalConversationID = try XCTUnwrap(
+      store.activeAIChatConversationID(for: firstDraft.id)
+    )
+
+    let regeneration = Task {
+      await store.regenerateLastAIChatReply(draft: firstDraft)
+    }
+    for _ in 0..<200 {
+      if await transport.capturedRequestCount() > 0 {
+        break
+      }
+      await Task.yield()
+    }
+
+    XCTAssertTrue(store.isAIChatRunning)
+    store.ai.selectChatDraft(secondDraft.id)
+    let currentMessages = [
+      AIPublishingChatMessage(role: .user, content: "切换后的对话仍保持原样"),
+    ]
+    store.setAIChatMessages(currentMessages)
+    store.aiStore.cacheCurrentAIChatSessionForAIStore()
+
+    let reply = await regeneration.value
+
+    XCTAssertNil(reply)
+    XCTAssertEqual(store.aiChatDraftID, secondDraft.id)
+    XCTAssertEqual(store.aiChatMessages, currentMessages)
+    let restoredConversation = try XCTUnwrap(
+      store.aiChatConversations(for: firstDraft.id)
+        .first { $0.id == originalConversationID }
+    )
+    XCTAssertEqual(restoredConversation.messages, originalMessages)
   }
 
   func testStoreRestoresAIChatMessagesWhenSwitchingBackToDraft() throws {
@@ -974,7 +1148,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(prepared.messages.map(\.content), ["active-2", "active-3", "active-4"])
   }
 
-  func testTransientAIChatSessionCachePrunesLeastRecentlyUsedDrafts() throws {
+  func testPersistedAIChatStorageSupportsMoreThanLegacyTransientLimit() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString)
@@ -993,13 +1167,20 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       ])
     }
 
-    XCTAssertEqual(store.aiStore.transientAIChatSessionCount, 12)
-    XCTAssertNil(store.aiStore.aiChatSessionState(for: drafts[0].id))
-    XCTAssertNotNil(store.aiStore.aiChatSessionState(for: drafts[1].id))
-    XCTAssertEqual(store.aiStore.transientAIChatSessionCount, 12)
+    store.aiStore.cacheCurrentAIChatSessionForAIStore()
+
+    XCTAssertEqual(store.aiConversations.count, drafts.count)
+    XCTAssertEqual(
+      store.aiStore.aiChatSessionState(for: drafts[0].id)?.messages.first?.content,
+      "session-0"
+    )
+    XCTAssertEqual(
+      store.aiStore.aiChatSessionState(for: drafts[13].id)?.messages.first?.content,
+      "session-13"
+    )
   }
 
-  func testStoreDoesNotPersistCurrentDraftAIChatSessionAcrossReloads() async throws {
+  func testStorePersistsCurrentDraftAIChatConversationAcrossReloads() async throws {
     let persistenceURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
       .appendingPathExtension("json")
@@ -1043,16 +1224,36 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let reloadedDraft = try XCTUnwrap(reloaded.drafts.first { $0.id == draft.id })
     reloaded.prepareAIChat(for: reloadedDraft)
 
-    XCTAssertNil(reloaded.aiChatConversationTitle)
-    XCTAssertTrue(reloaded.aiChatMessages.isEmpty)
-    XCTAssertEqual(reloaded.aiChatContextMode, .site)
-    XCTAssertEqual(reloaded.aiChatModelGrade, .standard)
-    XCTAssertTrue(reloaded.aiChatSelectedModel.isEmpty)
-    XCTAssertNil(reloaded.aiChatFocusedParagraphID)
+    let conversation = try XCTUnwrap(reloaded.activeAIChatConversation)
+    XCTAssertEqual(conversation.draftID, draft.id)
+    XCTAssertEqual(reloaded.aiChatConversationTitle, "重启后继续的审稿会话")
+    XCTAssertEqual(reloaded.aiChatMessages.map(\.id), [user.id, assistant.id])
+    XCTAssertEqual(
+      reloaded.aiChatMessages.map(\.content),
+      ["请检查这篇文章。", "可以先补摘要。"]
+    )
+    XCTAssertEqual(reloaded.aiChatMessages.last?.model, "deepseek-v4-pro")
+    XCTAssertEqual(reloaded.aiChatMessages.last?.contextMode, .general)
+    XCTAssertEqual(reloaded.aiChatContextMode, .general)
+    XCTAssertEqual(reloaded.aiChatModelGrade, .custom)
+    XCTAssertEqual(reloaded.aiChatSelectedModel, "deepseek-v4-pro")
+    XCTAssertEqual(reloaded.aiChatFocusedParagraphID, focusedParagraph.id)
+    XCTAssertEqual(
+      reloaded.activeAIChatConversationID(for: draft.id),
+      conversation.id
+    )
   }
 
-  func testStartingNewConversationDiscardsPreviousMessages() throws {
-    let store = WorkbenchStore()
+  func testStartingNewConversationPreservesPreviousConversation() throws {
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("json")
+    defer {
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+    )
     let draft = try XCTUnwrap(store.selectedDraft)
     store.prepareAIChat(for: draft)
     store.setAIChatMessages([
@@ -1061,8 +1262,28 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     ])
     store.setAIChatConversationTitle("临时对话", draft: draft)
 
-    store.startNewAIChatConversation(draft: draft)
+    let originalConversationID = try XCTUnwrap(
+      store.activeAIChatConversationID(for: draft.id)
+    )
+    let newConversation = try XCTUnwrap(
+      store.startNewAIChatConversation(draft: draft)
+    )
+    let conversations = store.aiChatConversations(for: draft.id)
+    let original = try XCTUnwrap(
+      conversations.first { $0.id == originalConversationID }
+    )
 
+    XCTAssertEqual(conversations.count, 2)
+    XCTAssertEqual(
+      original.messages.map(\.content),
+      ["第一轮问题", "第一轮回答"]
+    )
+    XCTAssertEqual(original.title, "临时对话")
+    XCTAssertTrue(newConversation.messages.isEmpty)
+    XCTAssertEqual(
+      store.activeAIChatConversationID(for: draft.id),
+      newConversation.id
+    )
     XCTAssertTrue(store.aiChatMessages.isEmpty)
     XCTAssertNil(store.aiChatConversationTitle)
     XCTAssertEqual(store.aiChatMessage, "已新建 AI 对话。")

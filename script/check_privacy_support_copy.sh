@@ -28,10 +28,13 @@ required_terms=(
   "repository API requests"
   "deployment checks"
   "StoreKit"
+  "available to every user"
+  "does not meter AI requests"
   "explicit consent"
-  "API key purchased and managed by the user"
+  "API keys are stored in macOS Keychain"
+  "developer does not proxy or receive"
   "127.0.0.1:17843"
-  "browser extensions"
+  "browser capture"
 )
 
 missing_terms=()
@@ -53,10 +56,15 @@ if grep -Eq '(github_pat_|ghp_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|sk-[A-Z
   fail "copy contains token-like or authorization-header content"
 fi
 
-grep -Fqi "developer does not proxy or receive" "$COPY_FILE" \
-  || fail "copy does not explain the developer AI data boundary"
+grep -Fqi "RepoPress Pro unlocks online publishing and batch publishing only" "$COPY_FILE" \
+  || fail "copy does not exclude AI from the Pro entitlement"
+if grep -Eqi '(AI (requires|needs) RepoPress Pro|Pro (unlocks|enables) AI|AI requests as a Pro benefit)' "$COPY_FILE"; then
+  fail "copy presents AI or custom API access as a Pro entitlement"
+fi
 grep -Fqi "does not install a Native Messaging helper" "$COPY_FILE" \
   || fail "copy does not explain the sandboxed browser-extension boundary"
+grep -Fqi "Chrome, Edge, and Firefox are not claimed as public features of this submission" "$COPY_FILE" \
+  || fail "copy does not exclude unpublished browser channels from the App Store submission"
 
 privacy_model="$PROJECT_ROOT/Sources/PublishingWorkbenchCore/Models/PrivacyProtectionModels.swift"
 app_file="$PROJECT_ROOT/Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift"

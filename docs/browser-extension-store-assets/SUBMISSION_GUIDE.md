@@ -1,6 +1,6 @@
 # Safari 与 Chrome 扩展提交说明
 
-本说明对应 RepoPress 唯一的 Mac App Store 应用版本。当前版本只支持 Safari 和 Chrome。
+本说明对应 RepoPress Studio 唯一的 Mac App Store 应用版本。当前版本只支持 Safari 和 Chrome。
 Chrome 扩展由 Chrome Web Store 独立安装；Safari Web Extension 作为签名 `.appex`
 随 Mac App Store 应用安装。Mac 应用不安装 Native Messaging 宿主、不写浏览器目录，
 也不下载或执行扩展代码。
@@ -41,7 +41,7 @@ App Store Connect 上传包必须同时满足：
 - 隐私政策：`https://apps.chengjinfang.com/personal-site-publisher/privacy/`
 - 中文支持：`https://apps.chengjinfang.com/personal-site-publisher/`
 - English support：`https://apps.chengjinfang.com/personal-site-publisher/en/`
-- Mac 配套应用：Apple Mac App Store 中的 RepoPress
+- Mac 配套应用：Apple Mac App Store 中的 RepoPress Studio
 
 最终提交前必须确认以上页面已部署，并且页面、扩展商店文案、应用审核说明与实际版本一致。
 
@@ -59,23 +59,23 @@ App Store Connect 上传包必须同时满足：
 
 ### 简体中文
 
-- 名称：`RepoPress · 资料采集`
+- 名称：`RepoPress Studio · 资料采集`
 - 简短说明：`将网页正文、完整页面、选中文字或链接保存到 Mac 本机资料库。`
-- 单一用途：`在用户确认后，将当前网页内容归档到 RepoPress 的本机资料库。`
-- 详细说明：`将当前网页的净化正文、完整页面、选中文字或链接保存到 RepoPress 的本机资料库。保存前可以预览并编辑标题、作者、标签、分类和 AI 检索权限；重复网页会要求明确选择处理方式。批量保存只临时授权用户所选标签页的网站，完成后撤销。扩展只通过 127.0.0.1 本机回环接口与同一台 Mac 上的应用通信，不向开发者服务器上传网页内容。`
+- 单一用途：`在用户确认后，将当前网页内容归档到 RepoPress Studio 的本机资料库。`
+- 详细说明：`将当前网页的净化正文、完整页面、选中文字或链接直接保存到 RepoPress Studio 的本机资料库。你可以展开保存选项，选择采集模式、分类和本地语义检索设置；标题、作者和标签由网页自动提取。重复网页会要求明确选择处理方式。批量保存只临时授权用户所选标签页的网站，完成后撤销。扩展只通过 127.0.0.1 本机回环接口与同一台 Mac 上的应用通信，不向开发者服务器上传网页内容。`
 
 ### English
 
-- Name: `RepoPress · Knowledge Capture`
+- Name: `RepoPress Studio · Knowledge Capture`
 - Short description: `Save articles, full pages, selections, or links to your local Mac knowledge library.`
-- Single purpose: `Archive the current page into RepoPress's local knowledge library after user confirmation.`
-- Description: `Save a cleaned article, a complete page, selected text, or a link to the local knowledge library in RepoPress. Preview and edit the title, author, tags, category, and AI access before saving. Duplicate pages always require an explicit choice. Batch capture temporarily grants only the sites of the selected tabs and removes that access afterward. The extension communicates only with the companion Mac app through the 127.0.0.1 loopback interface and does not upload page content to the developer's servers.`
+- Single purpose: `Archive the current page into RepoPress Studio's local knowledge library after user confirmation.`
+- Description: `Save a cleaned article, complete page, text selection, or link directly to the local knowledge library in RepoPress Studio. Expand Save Options to choose the capture mode, folder, and local semantic-search setting; the title, author, and tags are extracted from the page. Duplicate pages always require an explicit choice. Batch capture temporarily grants only the sites of the selected tabs and removes that access afterward. The extension communicates only with the companion app through the 127.0.0.1 loopback interface and does not upload page content to the developer's servers.`
 
 ## 隐私披露
 
 - 远程代码：否。所有可执行 JavaScript 都随扩展包提交。
 - 网站内容：用户主动采集后，扩展会读取所选网页正文、元数据、选中文字及可选的完整页面资源，
-  并只发送到同一台 Mac 的 RepoPress。
+  并只发送到同一台 Mac 的 RepoPress Studio。
 - 浏览活动：若商店将用户所选来源 URL 和标题归入此类，应如实申报；用途是来源识别、重复检测、
   回执和本地离线队列。
 - 身份验证信息：扩展保存一个本地随机连接令牌。它不是在线账户凭据，只发送到
@@ -97,7 +97,7 @@ App Store Connect 上传包必须同时满足：
 | `scripting` | 从用户授权页面提取正文、元数据和选中文字。 |
 | `storage` | 在浏览器本地保存偏好、连接状态、回执和有限离线队列。 |
 | `unlimitedStorage` | 容纳用户明确保存的完整网页；内部仍限制为 10 项或 96 MB。 |
-| `http://127.0.0.1:17843/*` | 只连接同一台 Mac 上的 RepoPress；仍必须提供随机令牌，不访问局域网或互联网主机。 |
+| `http://127.0.0.1:17843/*` | 只连接同一台 Mac 上的 RepoPress Studio；仍必须提供随机令牌，不访问局域网或互联网主机。 |
 | 可选 `tabs` | 临时读取用户所选标签页以生成批量确认列表，完成后撤销。 |
 | 可选 `http://*/*`、`https://*/*` | 仅向用户本次选定网站申请精确来源权限，批量任务结束后撤销。 |
 
@@ -105,15 +105,16 @@ App Store Connect 上传包必须同时满足：
 
 ## 审核备注模板
 
-> This extension works with the single Mac App Store edition of RepoPress. It
+> This extension works with the single Mac App Store edition of RepoPress Studio. It
 > does not require an online account and does not connect to a developer
-> backend. Install RepoPress from the Mac App Store and keep it running. In
-> RepoPress, open Library > Browser Capture and copy the displayed connection
+> backend. Install RepoPress Studio from the Mac App Store and keep it running. In
+> RepoPress Studio, open Library > Browser Capture and copy the displayed connection
 > token. Open an ordinary HTTP or HTTPS article in the browser, open the
-> extension, paste the token, and select Connect. Choose Cleaned Article,
-> Complete Page, Selected Text, or Link Only; select a local folder; generate
-> the preview; review the metadata; and confirm Save. The extension sends the
-> confirmed content only to `127.0.0.1:17843` on the review Mac. Choose Open in
+> extension, paste the token, and select Connect. Expand Save Options when
+> needed; choose Cleaned Article, Complete Page, Selected Text, or Link Only;
+> select a local folder and the local semantic-search setting; then choose Save
+> Current Page. The extension sends the confirmed content only to
+> `127.0.0.1:17843` on the review Mac. Choose Open in
 > Knowledge Library to reveal the saved item. No developer account or supplied
 > credential is required.
 

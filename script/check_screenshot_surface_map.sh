@@ -51,7 +51,7 @@ required = {
             ],
             "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift": [
                 "AIChatContextInspectorView",
-                "需要配置 AI API Key",
+                "未配置 API Key",
                 '.accessibilityLabel("AI 消息")',
                 'DisclosureGroup("文章上下文"',
             ],
@@ -231,7 +231,8 @@ for marker in [
     "screencapture -x -R",
     "--auto-window with --real-data requires --only",
     "--auto-window with --skip-build requires --only",
-    "pkill -TERM -x",
+    "screenshot_app_pids",
+    'kill -TERM "$pid"',
     "${ONLY_ID:-writing}",
     "PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD=1",
     "PERSONAL_SITE_PUBLISHER_DIST_DIR",
@@ -240,6 +241,13 @@ for marker in [
 ]:
     if marker not in capture_text:
         errors.append(f"capture script missing demo launch marker {marker!r}")
+
+for unsafe_marker in [
+    'pgrep -x "$APP_PRODUCT"',
+    'pkill -TERM -x "$APP_PRODUCT"',
+]:
+    if unsafe_marker in capture_text:
+        errors.append(f"capture script must not target every same-named app process via {unsafe_marker!r}")
 
 for marker in [
     "PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO",

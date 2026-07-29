@@ -500,8 +500,8 @@ public struct AIPublishingCustomPrompt: Codable, Hashable, Identifiable, Sendabl
   }
 }
 
-/// Runtime-only conversation state. AI conversations intentionally do not enter
-/// `WorkbenchSnapshot`; quitting the app discards them.
+/// The mutable state shared by an active AI conversation and its persisted
+/// ``AIConversation`` record.
 public struct AIPublishingChatSessionState: Hashable, Sendable {
   public var conversationTitle: String?
   public var messages: [AIPublishingChatMessage]
@@ -553,15 +553,45 @@ public struct AIPublishingChatSessionState: Hashable, Sendable {
 
   public func prepared(
     maxMessagesPerConversation: Int = 80,
-    maxTotalImageBytes: Int64 = 24_000_000
+    maxTotalImageBytes: Int64 = 8_000_000,
+    maxTotalTextCharacters: Int = 250_000
   ) -> AIPublishingChatSessionState {
     var prepared = self
     prepared.conversationTitle = prepared.conversationTitle?.trimmedForPublishing.nilIfEmpty
     if prepared.messages.count > maxMessagesPerConversation {
       prepared.messages = Array(prepared.messages.suffix(maxMessagesPerConversation))
     }
+    prepared.trimMessageContentToFit(
+      maxTotalTextCharacters: maxTotalTextCharacters
+    )
     prepared.trimImageAttachmentsToFit(maxTotalImageBytes: maxTotalImageBytes)
     return prepared
+  }
+
+  private mutating func trimMessageContentToFit(
+    maxTotalTextCharacters: Int
+  ) {
+    guard maxTotalTextCharacters > 0 else {
+      messages = []
+      return
+    }
+
+    var remainingCharacters = maxTotalTextCharacters
+    var retainedMessages: [AIPublishingChatMessage] = []
+    retainedMessages.reserveCapacity(messages.count)
+
+    // Keep the newest exchange history. If one message alone exceeds the
+    // budget, retain its beginning so the response remains readable.
+    for message in messages.reversed() {
+      guard remainingCharacters > 0 else { break }
+      var retained = message
+      if retained.content.count > remainingCharacters {
+        retained.content = String(retained.content.prefix(remainingCharacters))
+      }
+      remainingCharacters -= retained.content.count
+      retainedMessages.append(retained)
+    }
+    messages = Array(retainedMessages.reversed())
   }
 
   private mutating func trimImageAttachmentsToFit(maxTotalImageBytes: Int64) {

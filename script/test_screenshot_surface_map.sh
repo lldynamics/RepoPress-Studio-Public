@@ -26,7 +26,7 @@ create_fixture() {
 | ID | Target file | Screen | Purpose | Status |
 | --- | --- | --- | --- | --- |
 | `writing` | `writing.png` | Writing workspace | Markdown editing, preview, metadata, and contextual writing actions. | Pending capture |
-| `ai-chat` | `ai-chat.png` | BYOK AI writing assistant | Show the in-app AI assistant, safe demo conversation, article context, and user-supplied API-key boundary. | Pending capture |
+| `ai-chat` | `ai-chat.png` | Free BYOK AI writing assistant | Show the in-app AI assistant, safe demo conversation, article context, and user-supplied API-key boundary available without Pro. | Pending capture |
 | `knowledge-library` | `knowledge-library.png` | Local knowledge library | Show local import, search, cleaned reading content, source details, and annotations without browser capture. | Pending capture |
 | `sync-api-publish` | `sync-api-publish.png` | Sync workspace | GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR flow. | Pending capture |
 | `seo-social-preview` | `seo-social-preview.png` | SEO/social preview | Search, Open Graph, Twitter card, cache state, and manual refresh. | Pending capture |
@@ -50,14 +50,15 @@ screencapture -x -l
 screencapture -x -R
 --auto-window with --real-data requires --only
 --auto-window with --skip-build requires --only
-pkill -TERM -x "$APP_PRODUCT"
+screenshot_app_pids
+kill -TERM "$pid"
 SCREENSHOT_BUILD_DIST_DIR="$ROOT_DIR/dist/app-store-screenshot"
 PERSONAL_SITE_PUBLISHER_DIST_DIR="$SCREENSHOT_BUILD_DIST_DIR" PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD=1 bash "$ROOT_DIR/script/build_and_run.sh" --package-only --app-store
 PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO=1 PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE="${ONLY_ID:-writing}" ./PersonalSitePublisherMac
 screen_guidance() {
   case "$1" in
     writing) echo "Show the writing workspace with editor, preview, metadata, and contextual writing actions." ;;
-    ai-chat) echo "Show the in-app AI writing assistant with safe demo conversation, article context, and user-supplied API-key guidance." ;;
+    ai-chat) echo "Show the free in-app AI writing assistant with safe demo conversation, article context, and user-supplied API-key guidance." ;;
     knowledge-library) echo "Show the local knowledge library with import, search, cleaned reading content, source details, and annotations." ;;
     sync-api-publish) echo "Show GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR controls." ;;
     seo-social-preview) echo "Show search/Open Graph/Twitter card previews, cache state, manual refresh, and external debug links." ;;

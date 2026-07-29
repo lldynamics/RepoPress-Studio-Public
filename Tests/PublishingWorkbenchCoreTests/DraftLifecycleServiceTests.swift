@@ -161,6 +161,60 @@ final class DraftLifecycleServiceTests: XCTestCase {
     XCTAssertTrue(reloaded.recycledDrafts.isEmpty)
   }
 
+  func testRecycledDraftPreservesAllAIConversationsAcrossReloadAndRestore() async throws {
+    let persistenceURL = try temporaryPersistenceURL(prefix: "DraftRecycleAIConversations")
+    defer { try? FileManager.default.removeItem(at: persistenceURL.deletingLastPathComponent()) }
+    let persistence = WorkbenchPersistence(fileURL: persistenceURL)
+    let store = WorkbenchStore(persistence: persistence)
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "AI conversation article",
+      slug: "ai-conversation-article",
+      bodyMarkdown: "Body"
+    )
+    store.setDrafts([draft])
+    store.setSelectedDraftID(draft.id)
+    store.prepareAIChat(for: draft)
+    store.setAIChatMessages([
+      AIPublishingChatMessage(role: .user, content: "First conversation")
+    ])
+    store.setAIChatConversationTitle("First", draft: draft)
+    let firstConversationID = try XCTUnwrap(
+      store.activeAIChatConversationID(for: draft.id)
+    )
+    let secondConversation = try XCTUnwrap(
+      store.startNewAIChatConversation(draft: draft)
+    )
+    store.setAIChatMessages([
+      AIPublishingChatMessage(role: .user, content: "Second conversation")
+    ])
+    store.setAIChatConversationTitle("Second", draft: draft)
+
+    store.deleteDraft(id: draft.id)
+    await store.waitForPendingSave()
+
+    let reloaded = WorkbenchStore(persistence: persistence)
+    XCTAssertEqual(reloaded.recycledDrafts.map(\.id), [draft.id])
+    XCTAssertEqual(
+      Set(reloaded.aiChatConversations(for: draft.id).map(\.id)),
+      Set([firstConversationID, secondConversation.id])
+    )
+    XCTAssertEqual(
+      reloaded.activeAIChatConversationID(for: draft.id),
+      secondConversation.id
+    )
+
+    XCTAssertTrue(reloaded.restoreRecycledDraft(draft.id))
+    let restoredDraft = try XCTUnwrap(reloaded.drafts.first { $0.id == draft.id })
+    reloaded.prepareAIChat(for: restoredDraft)
+
+    XCTAssertEqual(reloaded.aiChatConversationTitle, "Second")
+    XCTAssertEqual(reloaded.aiChatMessages.map(\.content), ["Second conversation"])
+    XCTAssertTrue(reloaded.selectAIChatConversation(firstConversationID))
+    XCTAssertEqual(reloaded.aiChatConversationTitle, "First")
+    XCTAssertEqual(reloaded.aiChatMessages.map(\.content), ["First conversation"])
+  }
+
   func testPermanentDeletionKeepsRepositoryCleanupRequestButRemovesVersions() throws {
     let store = try TestWorkbenchFactory.makeStore(prefix: "DraftPermanentDeletion")
     let draft = ArticleDraft(

@@ -115,7 +115,7 @@ cp "$EVIDENCE_FILE" "$PENDING_EVIDENCE_FILE"
 cat >>"$PENDING_EVIDENCE_FILE" <<'MD'
 
 ### App Store 截图和严格门禁
-- Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
+- Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
 - Screenshot privacy gate: Pending privacy gate review.
 - Screenshot strict gate: TODO run STRICT_SCREENSHOTS=1 check_screenshots.sh.
 MD
@@ -135,7 +135,7 @@ grep -q "screenshot privacy gate: ready" <<<"$ready_output" || fail "dry-run did
 
 run_recorder --execute >/dev/null
 grep -q '^- \[x\] `app-store-screenshots`' "$EVIDENCE_FILE" || fail "screenshot evidence was not marked complete"
-grep -q 'Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.' "$EVIDENCE_FILE" \
+grep -q 'Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.' "$EVIDENCE_FILE" \
   || fail "structured screenshot set evidence missing"
 STRICT_EXTERNAL_STRUCTURE_ONLY=1 EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" \
   SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md" \

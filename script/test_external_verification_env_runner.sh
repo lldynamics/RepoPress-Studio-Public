@@ -6,6 +6,8 @@ PREP="$ROOT_DIR/script/prepare_external_verification_envs.sh"
 RUNNER="$ROOT_DIR/script/run_external_verification_from_envs.sh"
 TMP_DIR="$(mktemp -d /private/tmp/mac-editor-env-runner.XXXXXX)"
 ENV_DIR="$TMP_DIR/private-envs"
+version_values="$(bash "$ROOT_DIR/script/check_build_version.sh" --print-values)"
+IFS=$'\t' read -r marketing_version build_number <<<"$version_values"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -99,7 +101,7 @@ ENV
 cat >"$ENV_DIR/app-store-archive-validation.env" <<ENV
 APP_STORE_ARCHIVE_CLEAN_RELEASE_SUMMARY="Clean Release archive produced from a fresh checkout and reproducible release command."
 APP_STORE_ARCHIVE_SIGNING_RUNTIME_SUMMARY="Distribution signature and hardened runtime were verified on the archive."
-APP_STORE_ARCHIVE_TRANSPORTER_SUMMARY="Archive validated successfully before upload with no private account identifiers recorded."
+APP_STORE_ARCHIVE_TRANSPORTER_SUMMARY="App Store build $marketing_version ($build_number) validated successfully before upload with no private account identifiers recorded."
 APP_STORE_ARCHIVE_EVIDENCE_FILE="$TMP_DIR/APP_STORE_ARCHIVE_VALIDATION.md"
 ENV
 

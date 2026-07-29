@@ -10,6 +10,28 @@ struct PrivacySettingsView: View {
 
   var body: some View {
     Form {
+      Section {
+        HStack(spacing: 10) {
+          ZStack {
+            Circle()
+              .fill(Color.accentColor.opacity(0.14))
+              .frame(width: 32, height: 32)
+            Image(systemName: "keyboard")
+              .font(.system(size: 16, weight: .semibold))
+              .foregroundStyle(Color.accentColor)
+          }
+
+          VStack(alignment: .leading, spacing: 2) {
+            Text("快速隐藏 / 防偷窥保护")
+              .font(.subheadline.weight(.semibold))
+            Text("在软件任何界面按 ⌃⌘L 即可瞬间模糊马赛克全屏，保护您的私人笔记。")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+        }
+        .padding(.vertical, 4)
+      }
+
       PrivacySettingsVisibilitySection(
         masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent)
       )

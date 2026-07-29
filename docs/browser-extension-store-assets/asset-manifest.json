@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generationMode": "deterministic",
   "generator": "script/generate_browser_extension_store_assets.mjs",
-  "extensionVersion": "0.22.0",
+  "extensionVersion": "0.30.2",
   "privacy": "All depicted page content is synthetic and uses example.com. No user library or browsing data is read.",
   "assets": [
     {
@@ -29,7 +29,7 @@
       "kind": "store-screenshot",
       "width": 1280,
       "height": 800,
-      "sha256": "bd555f3f5222fe6f08e7d4c91c46c53bb70678a9df373853f2c7012db8ac2fe9",
+      "sha256": "512a9f00a25444e1067d317ec71d1ccf2766a08bc70f4725536151fd7f9d0d37",
       "provenance": "real extension popup capture composed with synthetic example.com content"
     },
     {
@@ -38,8 +38,8 @@
       "kind": "store-screenshot",
       "width": 1280,
       "height": 800,
-      "sha256": "5ac8e0840dc2ba55f7d652d11c256f2d96b6a58e7c0256f27a20885ac4eef578",
-      "provenance": "real extension preview UI composed with synthetic example.com content"
+      "sha256": "b3648f647e7f62454f729450b9b8b41ef66cc70abd99ecc0b76de2eea42b4ae6",
+      "provenance": "real extension save-options UI composed with synthetic example.com content"
     },
     {
       "locale": "zh-CN",
@@ -47,7 +47,7 @@
       "kind": "store-screenshot",
       "width": 1280,
       "height": 800,
-      "sha256": "8674fdf70243bf8650c699c613d7a246958a4638b59efacf5bc936360bf750c7",
+      "sha256": "367fed385b8923a5c4b30a50bf43d4696b2e1dec484edd026def1ca47568c307",
       "provenance": "real extension receipt UI composed with a representative local-library view"
     },
     {
@@ -56,7 +56,7 @@
       "kind": "small-promo",
       "width": 440,
       "height": 280,
-      "sha256": "b2d68527eb337dd47d1e7eac15c8890650ff1b48d90402b65d620c3ec84be803",
+      "sha256": "6eddc6c6e87ec7235ef54ab385aa57181e4da3116fb93441244f565ec5909037",
       "provenance": "deterministic brand composition"
     },
     {
@@ -65,7 +65,7 @@
       "kind": "marquee-promo",
       "width": 1400,
       "height": 560,
-      "sha256": "6f45c5c64a73ad2c2549e4b89987bd95ecbbf86f3b78b903c0a2b817d5f9dcd0",
+      "sha256": "a04ba85eded7f8a42eb1872a5cf2d74e0614af105c955bd3daf0b79e49c533e7",
       "provenance": "deterministic brand composition with real extension receipt UI"
     },
     {
@@ -92,7 +92,7 @@
       "kind": "store-screenshot",
       "width": 1280,
       "height": 800,
-      "sha256": "0e214dc647f5078179d17621577d816d85375f8470da75ddaabccc48937a822a",
+      "sha256": "80f2b3b32742ab368720e95afc417d1095c3d26242463f05e33c9089bee01c92",
       "provenance": "real extension popup capture composed with synthetic example.com content"
     },
     {
@@ -101,8 +101,8 @@
       "kind": "store-screenshot",
       "width": 1280,
       "height": 800,
-      "sha256": "5ae9d6c25647714bea60edb84aaf35584331bfd8f90e7d5d2a07c29a847796d3",
-      "provenance": "real extension preview UI composed with synthetic example.com content"
+      "sha256": "a418855f9c0e5bea758a91239a9001e80ff8f9151a4676005f1e043bf722af1b",
+      "provenance": "real extension save-options UI composed with synthetic example.com content"
     },
     {
       "locale": "en-US",
@@ -110,7 +110,7 @@
       "kind": "store-screenshot",
       "width": 1280,
       "height": 800,
-      "sha256": "e7f2d851a0189f13ec8953645addff86c94c2135654a24945939272d8fdebce4",
+      "sha256": "d217b2f00c272dcc1dc8200cad1a4bdd22af311664393f4756f590a050c3178e",
       "provenance": "real extension receipt UI composed with a representative local-library view"
     },
     {
@@ -119,7 +119,7 @@
       "kind": "small-promo",
       "width": 440,
       "height": 280,
-      "sha256": "d23fc3b5dee7eef2b9d09ce60fe478d9024d23d8812179fa58ef8d88c35d1926",
+      "sha256": "9711bf6b098ed1acfc0759a1160850bbbaf089950af5ea3060be90f7fdd45e9f",
       "provenance": "deterministic brand composition"
     },
     {
@@ -128,7 +128,7 @@
       "kind": "marquee-promo",
       "width": 1400,
       "height": 560,
-      "sha256": "b6059fd8e2cc3fb243e6485440b036dc179f9e35026a7b0f6c829b77806263a4",
+      "sha256": "b757594a6031fd48a0af863c14f97226859bc889732cd765e8bf786b4671b9c9",
       "provenance": "deterministic brand composition with real extension receipt UI"
     }
   ]

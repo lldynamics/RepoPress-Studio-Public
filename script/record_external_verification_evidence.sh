@@ -133,7 +133,7 @@ Examples:
   script/record_external_verification_evidence.sh \
     --item app-store-screenshots \
     --summary "Nine App Store screenshots captured and strict screenshot/privacy gates passed." \
-    --screenshot-set "Captured manifest screenshot IDs: writing, ai-chat, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock." \
+    --screenshot-set "Captured manifest screenshot IDs: writing, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock." \
     --screenshot-privacy-gate "check_screenshot_privacy.sh passed with no local paths, tokens, or private article text." \
     --screenshot-strict-gate "STRICT_SCREENSHOTS=1 check_screenshots.sh and strict release gate output were reviewed." \
     --screenshot-source-fingerprint "$(script/screenshot_evidence_fingerprint.py)" \

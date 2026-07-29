@@ -88,7 +88,7 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     let store = WorkbenchStore(persistence: persistence)
 
     XCTAssertEqual(store.activeProfile.name, "示例个人网站")
-    XCTAssertTrue(store.visibleDrafts.contains { $0.title == "Mac RepoPress发布流程" })
+    XCTAssertTrue(store.visibleDrafts.contains { $0.title == "RepoPress Studio 发布流程" })
     XCTAssertTrue(store.visibleDrafts.contains { $0.visibility == .private })
     XCTAssertEqual(store.activeProfileReleaseLedger.summary.rollbackAvailableCount, 3)
     XCTAssertEqual(store.activeProfileDeploymentStatusSnapshots.count, 1)
@@ -126,7 +126,7 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     ScreenshotDemoSurface.privacyLock.apply(to: store)
     XCTAssertEqual(store.selectedSection, .writing)
     XCTAssertTrue(store.isPrivacyLocked)
-    XCTAssertTrue(store.privacyLockReason?.contains("截图模式") == true)
+    XCTAssertTrue(store.privacyLockReason?.contains("私密内容已遮挡") == true)
   }
 
   @MainActor

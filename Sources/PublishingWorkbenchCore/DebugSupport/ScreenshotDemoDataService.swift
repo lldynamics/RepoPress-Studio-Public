@@ -46,6 +46,12 @@ public struct ScreenshotDemoDataService {
     profile.deploymentProjectID = "demo-site"
     profile.deploymentAccountID = "demo-team"
     profile.deploymentStatusEndpointUsesToken = true
+    profile.aiProviderConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.example.com/v1",
+      model: "custom-review-model",
+      requiresAPIKey: true
+    )
 
     var secondProfile = SiteProfile.defaultProfile
     secondProfile.id = secondProfileID
@@ -65,24 +71,24 @@ public struct ScreenshotDemoDataService {
     let article = ArticleDraft(
       id: articleID,
       siteProfileID: profileID,
-      title: "Mac RepoPress发布流程",
+      title: "RepoPress Studio 发布流程",
       date: now.addingTimeInterval(-86_400),
-      slug: "mac-publishing-console-flow",
-      tags: ["Mac", "发布", "SEO"],
+      slug: "repopress-studio-publishing-flow",
+      tags: ["发布", "SEO", "静态站点"],
       categories: ["Product"],
       authors: ["Demo Author"],
       draft: false,
-      summary: "演示写作、AI 对话、SEO 社交预览、GitHub API 发布和发布后部署校验的完整桌面流程。",
+      summary: "演示写作、SEO 社交预览、GitHub API 发布和发布后部署校验的完整桌面流程。",
       coverAttachmentID: cover.id,
       bodyMarkdown: """
-      # Mac RepoPress发布流程
+      # RepoPress Studio 发布流程
 
       这是一篇用于 App Store 截图的演示文章，所有账号、URL 和路径都是安全示例。
 
       ## 发布前检查
 
       - 通过 Front Matter、摘要、封面图和公开风险检查。
-      - 使用 AI 对话页审阅标题、摘要和关联文章。
+      - 在写作页审阅标题、摘要、元数据和关联文章。
       - 通过 GitHub/GitLab API 发布前预检确认权限和远端冲突。
 
       ## 发布后校验
@@ -93,7 +99,7 @@ public struct ScreenshotDemoDataService {
       status: .ready,
       createdAt: now.addingTimeInterval(-172_800),
       updatedAt: now.addingTimeInterval(-3_600),
-      repositoryPath: "content/posts/2026/mac-publishing-console-flow.md",
+      repositoryPath: "content/posts/2026/repopress-studio-publishing-flow.md",
       repositorySHA: "demo-local-sha"
     )
     let privateArticle = ArticleDraft(
@@ -134,15 +140,15 @@ public struct ScreenshotDemoDataService {
     let directRecord = ReleaseRecord(
       id: directRecordID,
       kind: .remoteDirectCommit,
-      title: "线上提交：Mac RepoPress发布流程",
+      title: "线上提交：RepoPress Studio 发布流程",
       summary: "GitHub · main · 2 个文件 · abc123de",
       siteProfileID: profileID,
       siteName: profile.name,
       draftID: articleID,
       draftTitle: article.title,
-      markdownPath: "content/posts/2026/mac-publishing-console-flow.md",
+      markdownPath: "content/posts/2026/repopress-studio-publishing-flow.md",
       changedPaths: [
-        "content/posts/2026/mac-publishing-console-flow.md",
+        "content/posts/2026/repopress-studio-publishing-flow.md",
         "static/images/2026/social-preview.png",
       ],
       repositoryProvider: .github,
@@ -220,7 +226,7 @@ public struct ScreenshotDemoDataService {
           level: .success,
           title: "发布页面内容",
           message: "已在发布页面找到文章标题：\(article.title)",
-          urlText: "https://demo.example.com/mac-publishing-console-flow"
+          urlText: "https://demo.example.com/repopress-studio-publishing-flow"
         ),
       ]
     )
@@ -228,8 +234,8 @@ public struct ScreenshotDemoDataService {
     let seoSnapshot = SEOSocialPreviewSnapshot(
       draftID: articleID,
       signature: "screenshot-demo",
-      markdownPath: "content/posts/2026/mac-publishing-console-flow.md",
-      canonicalURLText: "https://demo.example.com/mac-publishing-console-flow",
+      markdownPath: "content/posts/2026/repopress-studio-publishing-flow.md",
+      canonicalURLText: "https://demo.example.com/repopress-studio-publishing-flow",
       titleCharacterCount: article.title.count,
       descriptionCharacterCount: article.summary.count,
       imagePath: cover.relativePublishPath,
@@ -240,7 +246,7 @@ public struct ScreenshotDemoDataService {
           kind: .search,
           title: article.title,
           description: article.summary,
-          urlText: "https://demo.example.com/mac-publishing-console-flow",
+          urlText: "https://demo.example.com/repopress-studio-publishing-flow",
           imagePath: nil,
           imageAltText: nil,
           siteName: profile.name
@@ -249,7 +255,7 @@ public struct ScreenshotDemoDataService {
           kind: .openGraph,
           title: article.title,
           description: article.summary,
-          urlText: "https://demo.example.com/mac-publishing-console-flow",
+          urlText: "https://demo.example.com/repopress-studio-publishing-flow",
           imagePath: cover.relativePublishPath,
           imageAltText: cover.altText,
           imageDimensions: ImageDimensions(width: 1200, height: 630),
@@ -259,7 +265,7 @@ public struct ScreenshotDemoDataService {
           kind: .twitter,
           title: article.title,
           description: article.summary,
-          urlText: "https://demo.example.com/mac-publishing-console-flow",
+          urlText: "https://demo.example.com/repopress-studio-publishing-flow",
           imagePath: cover.relativePublishPath,
           imageAltText: cover.altText,
           imageDimensions: ImageDimensions(width: 1200, height: 630),
@@ -343,7 +349,7 @@ public struct ScreenshotDemoDataService {
   public static var defaultKnowledgeLibraryRootURL: URL {
     FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true)
-      .appendingPathComponent("screenshot-demo-knowledge-library", isDirectory: true)
+      .appendingPathComponent("screenshot-demo-knowledge-library-review-v2", isDirectory: true)
   }
 
   public static var defaultRepositoryRootURL: URL {
@@ -432,8 +438,8 @@ public struct ScreenshotDemoDataService {
         contents: "base_url = \"https://demo.example.com\"\ntitle = \"截图演示站点\"\n"
       )
       try writeFixtureFileIfMissing(
-        at: contentURL.appendingPathComponent("mac-publishing-console-flow.md"),
-        contents: "+++\ntitle = \"Mac RepoPress发布流程\"\ndraft = false\n+++\n\n# Mac RepoPress发布流程\n"
+        at: contentURL.appendingPathComponent("repopress-studio-publishing-flow.md"),
+        contents: "+++\ntitle = \"RepoPress Studio 发布流程\"\ndraft = false\n+++\n\n# RepoPress Studio 发布流程\n"
       )
     } catch {
       store.setPublishActionMessage(String(localized: "无法准备运行时辅助功能测试仓库。"))
@@ -461,7 +467,7 @@ public struct ScreenshotDemoDataService {
       tokenScopeSummary: "Repository contents: write",
       message: "截图演示：Token 权限检查已通过。"
     )
-    let conflictPath = "content/posts/2026/mac-publishing-console-flow.md"
+    let conflictPath = "content/posts/2026/repopress-studio-publishing-flow.md"
     let conflictWarning = PreflightIssue(
       severity: .warning,
       title: "远端同路径变更",
@@ -479,7 +485,7 @@ public struct ScreenshotDemoDataService {
       provider: profile.repositoryProvider,
       repositoryName: profile.repositoryDisplayName,
       mode: .reviewRequest,
-      branchName: "publish/mac-publishing-console-flow",
+      branchName: "publish/repopress-studio-publishing-flow",
       targetBranch: profile.branch,
       changedPaths: [
         conflictPath,
@@ -490,7 +496,7 @@ public struct ScreenshotDemoDataService {
       warningIssues: []
     )
     preview.mode = .reviewRequest
-    preview.branchName = "publish/mac-publishing-console-flow"
+    preview.branchName = "publish/repopress-studio-publishing-flow"
     preview.changedPaths = [
       conflictPath,
       "static/images/2026/social-preview.png",
@@ -532,10 +538,10 @@ public struct ScreenshotDemoDataService {
 
       ## 可访问性检查
 
-      标题、阅读区、检查器开关、固定到 AI、资料操作与导入按钮都应拥有唯一标识。
+      标题、阅读区、检查器开关、资料操作与导入按钮都应拥有唯一标识。
       """,
       captureMode: .cleanedArticle,
-      allowsAIUse: true
+      allowsAIUse: false
     )
     _ = try? await knowledge.importBrowserCapture(
       capture,
@@ -582,12 +588,12 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
         AIPublishingChatMessage(
           role: .assistant,
           content: "标题清晰，摘要覆盖写作、SEO、线上发布和部署校验。建议保留 Open Graph 图片，并在发布前确认远端冲突预览为空。",
-          model: "deepseek-v4-flash",
+          model: "custom-review-model",
           contextMode: .site
         ),
       ])
       store.setInspectorPresented(false)
-      store.setPublishActionMessage(String(localized: "截图模式：AI 助手 Inspector 已载入。"))
+      store.setPublishActionMessage(String(localized: "截图模式：免费自定义 API 的 AI 助手已载入。"))
     case .syncAPIPublish:
       store.selectSection(.sync)
       store.setPublishActionMessage(String(localized: "截图模式：同步/API 发布工作区已载入。"))
@@ -609,11 +615,11 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
       store.setPublishActionMessage(String(localized: "截图模式：通用草稿已载入。"))
     case .proSettings:
       store.selectSection(.writing)
-      store.setMonetizationMessage("截图模式：请打开 Settings > Pro 捕获免费额度、StoreKit 购买和恢复状态。")
+      store.setMonetizationMessage("可在此解锁 Pro，或恢复已完成的购买。")
     case .privacyLock:
       store.selectSection(.writing)
       store.setInspectorPresented(true)
-      store.lockPrivacy(reason: "截图模式：隐私锁已启用，工作台内容已遮挡。")
+      store.lockPrivacy(reason: "工作台已手动隐藏，私密内容已遮挡。")
     case .knowledgeLibrary:
       store.selectSection(.library)
       store.setInspectorPresented(false)

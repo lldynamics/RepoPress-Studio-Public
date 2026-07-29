@@ -8,9 +8,26 @@ struct ProOverviewSection: View {
 
   var body: some View {
     Section("Pro 概览") {
-      Label(summary.title, systemImage: summary.systemImage)
-        .font(.headline)
-        .foregroundStyle(summaryForeground(summary))
+      HStack {
+        Label(summary.title, systemImage: summary.entitlement.isUnlocked ? "crown.fill" : summary.systemImage)
+          .font(.headline)
+          .foregroundStyle(summaryForeground(summary))
+
+        Spacer()
+
+        if summary.entitlement.isUnlocked {
+          HStack(spacing: 4) {
+            Image(systemName: "sparkles")
+              .font(.workbenchMetadata)
+            Text("PRO UNLOCKED")
+              .font(.workbenchMetadata.weight(.bold).monospaced())
+          }
+          .padding(.horizontal, 8)
+          .padding(.vertical, 3)
+          .background(Color.orange.opacity(0.18), in: Capsule())
+          .foregroundStyle(Color.orange)
+        }
+      }
 
       Text(summary.message)
         .font(.workbenchSupporting)

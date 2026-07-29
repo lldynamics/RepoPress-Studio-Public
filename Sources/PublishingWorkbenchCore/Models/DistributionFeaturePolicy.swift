@@ -3,8 +3,9 @@ import Foundation
 /// Keeps App Store compliance decisions centralized instead of scattering
 /// assumptions about the distribution channel across individual features.
 public enum DistributionFeaturePolicy {
-  /// Users connect their own AI provider and supply their own API key. Remote
-  /// requests remain available in the App Store build after explicit consent.
+  /// Every distribution channel exposes the same free BYOK AI integration.
+  /// Users configure and fund their own provider account; RepoPress does not
+  /// meter AI requests or make provider access a Pro entitlement.
   public static var allowsExternalAIProviders: Bool {
     true
   }

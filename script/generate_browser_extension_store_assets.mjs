@@ -17,27 +17,26 @@ const BUILD_DIR = path.join(ROOT_DIR, ".build", "browser-extension-store-assets"
 const ICON_PATH = path.join(EXTENSION_DIR, "icons", "icon128.png");
 const MANIFEST_PATH = path.join(OUTPUT_DIR, "asset-manifest.json");
 const executablePath = process.env.CHROMIUM_EXECUTABLE_PATH || chromium.executablePath();
+const headless = process.env.PLAYWRIGHT_HEADLESS !== "0";
 
 const locales = {
   "zh-CN": {
     browserLocale: "zh-CN",
     pageTitle: "本地语义检索实践",
-    author: "示例作者",
-    tags: "资料库，语义检索，写作",
     folder: "产品研究",
     secondFolder: "待读",
     domain: "example.com",
-    preview: "当问题与原文的措辞不同时，混合检索会同时结合全文匹配与本地语义向量，并将最相关的书籍章节返回给写作助手。",
+    preview: "当问题与原文的措辞不同时，混合检索会同时结合全文匹配与本地语义向量，并返回最相关的书籍章节。",
     connected: "已连接本机资料库",
     expiry: "连接受本机令牌保护",
     captureTitle: "网页内容，一次确认，长期保存",
     captureSubtitle: "净化正文、完整网页、选中文字或仅链接",
-    previewTitle: "保存前先预览，分类与 AI 权限都由你决定",
-    previewSubtitle: "编辑标题、作者、标签和资料库分类",
+    optionsTitle: "采集方式、分类与本地语义检索都由你决定",
+    optionsSubtitle: "需要时展开保存选项，再直接保存当前网页",
     libraryTitle: "网页进入本地资料库，随时检索与引用",
     librarySubtitle: "回执显示分类、归档类型和索引状态",
     promoTitle: "网页 → 本地知识库",
-    promoSubtitle: "预览 · 分类 · AI 权限",
+    promoSubtitle: "采集 · 分类 · 本地语义检索",
     localFirst: "本地优先",
     library: "资料库",
     allSources: "所有资料",
@@ -52,22 +51,20 @@ const locales = {
   "en-US": {
     browserLocale: "en-US",
     pageTitle: "Local semantic search in practice",
-    author: "Example Author",
-    tags: "knowledge library, semantic search, writing",
     folder: "Product research",
     secondFolder: "Read later",
     domain: "example.com",
-    preview: "When a question uses different wording from the source, hybrid retrieval combines full-text matching with local semantic vectors and returns the most relevant book chapters to the writing assistant.",
+    preview: "When a question uses different wording from the source, hybrid retrieval combines full-text matching with local semantic vectors and returns the most relevant book chapters.",
     connected: "Connected to the local knowledge library",
     expiry: "Protected by a local pairing token",
     captureTitle: "Save web pages with one clear confirmation",
     captureSubtitle: "Clean articles, full pages, selected text, or links",
-    previewTitle: "Preview first. You control organization and AI access.",
-    previewSubtitle: "Edit the title, author, tags, and knowledge-library folder",
+    optionsTitle: "Choose the capture mode, folder, and local semantic search",
+    optionsSubtitle: "Expand save options when needed, then save the current page directly",
     libraryTitle: "Keep web research local, searchable, and ready to cite",
     librarySubtitle: "Receipts confirm the folder, archive type, and index status",
     promoTitle: "Web pages → local knowledge",
-    promoSubtitle: "Preview · Organize · AI access",
+    promoSubtitle: "Capture · Organize · Local semantic search",
     localFirst: "Local-first",
     library: "Knowledge Library",
     allSources: "All sources",
@@ -94,7 +91,7 @@ for (const [locale, copy] of Object.entries(locales)) {
   captures[locale] = await capturePopupStates(locale, copy);
 }
 
-const browser = await chromium.launch({ executablePath, headless: true });
+const browser = await chromium.launch({ executablePath, headless });
 try {
   for (const [locale, copy] of Object.entries(locales)) {
     const localeDir = path.join(OUTPUT_DIR, locale);
@@ -109,7 +106,7 @@ try {
     await render(browser, path.join(localeDir, "screenshot-01-capture.png"), 1280, 800,
       screenshotPage({ copy, iconDataURL, popupDataURL: popupImages.capture, variant: "capture" }));
     await render(browser, path.join(localeDir, "screenshot-02-preview.png"), 1280, 800,
-      screenshotPage({ copy, iconDataURL, popupDataURL: popupImages.preview, variant: "preview" }));
+      screenshotPage({ copy, iconDataURL, popupDataURL: popupImages.options, variant: "options" }));
     await render(browser, path.join(localeDir, "screenshot-03-library.png"), 1280, 800,
       screenshotPage({ copy, iconDataURL, popupDataURL: popupImages.receipt, variant: "library" }));
     await render(browser, path.join(localeDir, "promo-small-440x280.png"), 440, 280,
@@ -128,36 +125,41 @@ await fs.writeFile(MANIFEST_PATH, `${JSON.stringify(assetManifest, null, 2)}\n`,
 console.log(`Generated ${assetManifest.assets.length} verified assets in ${OUTPUT_DIR}`);
 
 async function capturePopupStates(locale, copy) {
-  const profileDir = path.join(BUILD_DIR, `profile-${locale}`);
   const sourceDir = path.join(SOURCE_DIR, locale);
   await fs.mkdir(sourceDir, { recursive: true });
-  const context = await chromium.launchPersistentContext(profileDir, {
+  await fs.rm(path.join(sourceDir, "popup-preview.png"), { force: true });
+  const localeKey = copy.browserLocale.startsWith("zh") ? "zh_CN" : "en";
+  const messagesPath = path.join(EXTENSION_DIR, "_locales", localeKey, "messages.json");
+  const popupHTMLPath = path.join(EXTENSION_DIR, "popup.html");
+  const popupCSSPath = path.join(EXTENSION_DIR, "popup.css");
+  const [popupHTMLSource, messagesSource] = await Promise.all([
+    fs.readFile(popupHTMLPath, "utf8"),
+    fs.readFile(messagesPath, "utf8")
+  ]);
+  const popupHTML = popupHTMLSource
+    .replace(/<link\b[^>]*href=["']popup\.css["'][^>]*>/i, "")
+    .replace(/<script\b[^>]*src=["']popup\.js["'][^>]*><\/script>/i, "");
+  const messages = JSON.parse(messagesSource);
+
+  const popupBrowser = await chromium.launch({
     executablePath,
-    headless: true,
+    headless
+  });
+  const context = await popupBrowser.newContext({
     locale: copy.browserLocale,
     viewport: { width: 420, height: 1100 },
-    colorScheme: "light",
-    args: [
-      `--disable-extensions-except=${EXTENSION_DIR}`,
-      `--load-extension=${EXTENSION_DIR}`,
-      `--lang=${copy.browserLocale}`,
-      "--no-first-run",
-      "--no-default-browser-check"
-    ]
+    colorScheme: "light"
   });
 
   try {
-    const worker = context.serviceWorkers()[0] || await context.waitForEvent("serviceworker");
-    const extensionID = new URL(worker.url()).host;
-    await worker.evaluate(() => chrome.storage.local.clear());
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionID}/popup.html`, { waitUntil: "domcontentloaded" });
-    await page.locator("#queue-panel[aria-busy='false']").waitFor({ timeout: 15_000 });
-    await page.waitForTimeout(150);
+    await page.setContent(popupHTML, { waitUntil: "domcontentloaded" });
+    await page.addStyleTag({ path: popupCSSPath });
+    await localizePopupSnapshot(page, messages, copy.browserLocale);
 
     const outputs = {};
-    for (const state of ["capture", "preview", "receipt"]) {
-      await configurePopup(page, state, copy, extensionID);
+    for (const state of ["capture", "options", "receipt"]) {
+      await configurePopup(page, state, copy, iconDataURL);
       const outputPath = path.join(sourceDir, `popup-${state}.png`);
       await page.locator("main").screenshot({ path: outputPath, animations: "disabled" });
       outputs[state] = outputPath;
@@ -166,16 +168,36 @@ async function capturePopupStates(locale, copy) {
     return outputs;
   } finally {
     await context.close();
+    await popupBrowser.close();
   }
 }
 
-async function configurePopup(page, state, copy, extensionID) {
-  await page.evaluate(({ state, copy, extensionID }) => {
+async function localizePopupSnapshot(page, messages, browserLocale) {
+  await page.evaluate(({ messages, browserLocale }) => {
+    document.documentElement.lang = browserLocale;
+    const localized = (key) => messages[key]?.message || "";
+    for (const element of document.querySelectorAll("[data-i18n]")) {
+      const value = localized(element.dataset.i18n);
+      if (value) element.textContent = value;
+    }
+    for (const element of document.querySelectorAll("[data-i18n-placeholder]")) {
+      const value = localized(element.dataset.i18nPlaceholder);
+      if (value) element.setAttribute("placeholder", value);
+    }
+    for (const element of document.querySelectorAll("[data-i18n-aria-label]")) {
+      const value = localized(element.dataset.i18nAriaLabel);
+      if (value) element.setAttribute("aria-label", value);
+    }
+  }, { messages, browserLocale });
+}
+
+async function configurePopup(page, state, copy, iconDataURL) {
+  await page.evaluate(({ state, copy, iconDataURL }) => {
     const byID = (id) => document.getElementById(id);
     const showOnly = (...ids) => {
       for (const id of [
         "connection-panel", "session-panel", "save-panel", "organization-panel",
-        "batch-review-panel", "preview-panel", "receipt-panel", "duplicate-panel", "queue-panel"
+        "batch-review-panel", "receipt-panel", "duplicate-panel", "queue-panel"
       ]) byID(id).hidden = !ids.includes(id);
     };
 
@@ -189,7 +211,7 @@ async function configurePopup(page, state, copy, extensionID) {
     byID("alert").textContent = "";
     const mark = document.querySelector(".mark");
     mark.textContent = "";
-    mark.style.background = `#eaf1ff url(chrome-extension://${extensionID}/icons/icon32.png) center / 28px 28px no-repeat`;
+    mark.style.background = `#eaf1ff url(${iconDataURL}) center / 28px 28px no-repeat`;
     byID("session-title").textContent = copy.connected;
     byID("token-expiry").textContent = copy.expiry;
     document.querySelector(".session-actions").hidden = true;
@@ -209,29 +231,14 @@ async function configurePopup(page, state, copy, extensionID) {
     byID("batch-save").hidden = true;
     byID("batch-hint").hidden = true;
 
+    const organizationPanel = byID("organization-panel");
     if (state === "capture") {
       showOnly("session-panel", "save-panel", "organization-panel");
-      byID("prepare-preview").disabled = false;
-    } else if (state === "preview") {
-      showOnly("organization-panel", "preview-panel");
-      for (const selector of [
-        "label[for='folder-search']", "#folder-search", "#folder-search-result",
-        "label[for='new-folder']", "#new-folder", "#folder-shortcuts"
-      ]) {
-        const element = document.querySelector(selector);
-        if (element) element.hidden = true;
-      }
-      byID("capture-title").value = copy.pageTitle;
-      byID("capture-authors").value = copy.author;
-      byID("capture-tags").value = copy.tags;
+      organizationPanel.open = false;
+    } else if (state === "options") {
+      showOnly("session-panel", "save-panel", "organization-panel");
+      organizationPanel.open = true;
       byID("capture-ai").checked = true;
-      byID("preview-mode").textContent = copy.browserLocale.startsWith("zh")
-        ? "净化正文 · 保存前可编辑" : "Cleaned article · Editable before saving";
-      byID("preview-size").textContent = "18.6 KB";
-      byID("preview-archive").textContent = copy.browserLocale.startsWith("zh")
-        ? "仅正文" : "Text only";
-      byID("capture-preview").value = copy.preview;
-      byID("organization-suggestions").hidden = true;
     } else {
       showOnly("receipt-panel");
       byID("receipt-title").textContent = copy.pageTitle;
@@ -245,25 +252,25 @@ async function configurePopup(page, state, copy, extensionID) {
       byID("receipt-index").textContent = copy.browserLocale.startsWith("zh")
         ? "全文与语义索引已就绪" : "Full-text and semantic indexes ready";
       byID("receipt-ai").textContent = copy.browserLocale.startsWith("zh")
-        ? "允许 AI 检索" : "Available to AI retrieval";
+        ? "已加入本地语义检索" : "Included in local semantic search";
     }
-  }, { state, copy, extensionID });
+  }, { state, copy, iconDataURL });
 }
 
 function screenshotPage({ copy, iconDataURL, popupDataURL, variant }) {
   const content = {
     capture: { title: copy.captureTitle, subtitle: copy.captureSubtitle },
-    preview: { title: copy.previewTitle, subtitle: copy.previewSubtitle },
+    options: { title: copy.optionsTitle, subtitle: copy.optionsSubtitle },
     library: { title: copy.libraryTitle, subtitle: copy.librarySubtitle }
   }[variant];
-  const popupClass = variant === "preview" ? "popup popup-preview" : "popup";
+  const popupClass = variant === "options" ? "popup popup-options" : "popup";
   const leftContent = variant === "library"
     ? libraryWindow(copy, iconDataURL)
     : featureCard(copy, variant);
   return htmlDocument(`
     <main class="store-shot ${variant}">
+      <div class="store-brand"><b class="product-name"><img src="${iconDataURL}" alt=""><span>RepoPress Studio</span></b><b class="local-pill">${escapeHTML(copy.localFirst)}</b></div>
       <div class="copy-block">
-        <div class="brand"><img src="${iconDataURL}" alt=""><span>RepoPress</span><b>${escapeHTML(copy.localFirst)}</b></div>
         <h1>${escapeHTML(content.title)}</h1>
         <p>${escapeHTML(content.subtitle)}</p>
       </div>
@@ -276,15 +283,15 @@ function screenshotPage({ copy, iconDataURL, popupDataURL, variant }) {
 }
 
 function featureCard(copy, variant) {
-  if (variant === "preview") {
+  if (variant === "options") {
     return `<div class="benefit-card">
       <div class="benefit-icon">✓</div>
       <h2>${escapeHTML(copy.pageTitle)}</h2>
       <div class="tag-row"><span>${escapeHTML(copy.folder)}</span><span>${escapeHTML(copy.reason)}</span></div>
       <ul>
-        <li>${escapeHTML(copy.browserLocale.startsWith("zh") ? "标题、作者与标签可编辑" : "Edit title, author, and tags")}</li>
+        <li>${escapeHTML(copy.browserLocale.startsWith("zh") ? "四种采集模式按需选择" : "Choose from four capture modes")}</li>
         <li>${escapeHTML(copy.browserLocale.startsWith("zh") ? "分类由你确认" : "Confirm the destination folder")}</li>
-        <li>${escapeHTML(copy.browserLocale.startsWith("zh") ? "AI 检索权限逐篇设置" : "Set AI access for each item")}</li>
+        <li>${escapeHTML(copy.browserLocale.startsWith("zh") ? "本地语义检索逐篇设置" : "Set local semantic search for each item")}</li>
       </ul>
     </div>`;
   }
@@ -305,7 +312,7 @@ function libraryWindow(copy, iconDataURL) {
     <div class="window-bar"><span class="dots">● ● ●</span><strong>${escapeHTML(copy.library)}</strong><span></span></div>
     <div class="app-body">
       <nav>
-        <div class="app-brand"><img src="${iconDataURL}" alt=""><b>PSP</b></div>
+        <div class="app-brand"><img src="${iconDataURL}" alt=""><b>RepoPress Studio</b></div>
         <span class="active">▣ ${escapeHTML(copy.allSources)}</span>
         <span>◷ ${escapeHTML(copy.recent)}</span>
         <span>★ ${escapeHTML(copy.favorites)}</span>
@@ -335,7 +342,7 @@ function promoPage({ copy, iconDataURL, wide, popupDataURL = null }) {
     <main class="promo ${wide ? "wide" : "small"}">
       <div class="promo-glow one"></div><div class="promo-glow two"></div>
       <div class="promo-copy">
-        <div class="promo-brand"><img src="${iconDataURL}" alt=""><span>RepoPress</span></div>
+        <div class="promo-brand"><img src="${iconDataURL}" alt=""><span>RepoPress Studio</span></div>
         <h1>${escapeHTML(copy.promoTitle)}</h1>
         <p>${escapeHTML(copy.promoSubtitle)}</p>
         <b>${escapeHTML(copy.localFirst)}</b>
@@ -367,14 +374,15 @@ function storeStyles() {
     body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;color:#17362f;background:#f4f5ed}
     .store-shot{position:relative;width:1280px;height:800px;overflow:hidden;background:radial-gradient(circle at 82% 8%,rgba(185,224,210,.76),transparent 31%),linear-gradient(132deg,#faf7ed 0%,#f1f5ed 49%,#dfeee7 100%)}
     .store-shot:after{content:"";position:absolute;right:-140px;bottom:-190px;width:590px;height:590px;border-radius:50%;background:rgba(68,126,112,.08)}
-    .copy-block{position:absolute;z-index:3;left:70px;top:48px;width:1020px}
-    .brand{display:flex;align-items:center;gap:10px;color:#36544d;font-size:15px;font-weight:650;letter-spacing:.01em}
-    .brand img{width:34px;height:34px;border-radius:8px}.brand b{margin-left:7px;padding:5px 10px;border:1px solid rgba(37,99,217,.18);border-radius:999px;color:#2458a8;background:rgba(255,255,255,.64);font-size:12px}
-    h1{max-width:980px;margin:22px 0 8px;font-size:44px;line-height:1.12;letter-spacing:-.035em;color:#1b493c}
+    .store-brand{position:absolute;z-index:5;left:70px;top:48px;display:flex;min-height:34px;align-items:center;gap:10px;letter-spacing:.01em}
+    .store-brand .product-name{display:flex;align-items:center;gap:10px;color:#36544d;font-size:15px;font-weight:650}.store-brand img{width:34px;height:34px;border-radius:8px}
+    .store-brand .local-pill{padding:5px 10px;border:1px solid rgba(37,99,217,.18);border-radius:999px;color:#2458a8;background:rgba(255,255,255,.64);font-size:12px}
+    .copy-block{position:absolute;z-index:3;left:70px;top:108px;width:1140px}
+    h1{max-width:1140px;margin:0 0 8px;font-size:42px;line-height:1.1;letter-spacing:-.035em;color:#1b493c}
     .copy-block>p{margin:0;color:#557069;font-size:20px;line-height:1.45}
-    .visual-stage{position:absolute;z-index:2;left:70px;right:70px;top:222px;bottom:42px}
+    .visual-stage{position:absolute;z-index:2;left:70px;right:70px;top:260px;bottom:42px}
     .popup{position:absolute;z-index:4;right:18px;bottom:0;width:310px;max-height:525px;overflow:hidden;border:1px solid rgba(44,67,61,.14);border-radius:20px;background:white;box-shadow:0 24px 65px rgba(40,67,58,.23)}
-    .popup img{display:block;width:100%;height:auto}.popup-preview{width:300px;max-height:535px}.library .popup{width:360px}
+    .popup img{display:block;width:100%;height:auto}.popup-options{width:300px;max-height:535px}.library .popup{width:360px}
     .flow-card,.benefit-card,.app-window{position:absolute;inset:0 260px 0 0;border:1px solid rgba(54,84,75,.14);border-radius:22px;background:rgba(255,255,255,.86);box-shadow:0 24px 60px rgba(45,72,63,.16);overflow:hidden}
     .browser-bar{display:flex;align-items:center;gap:7px;height:44px;padding:0 18px;border-bottom:1px solid #e3e8e5;background:#f9faf9}.browser-bar i{width:9px;height:9px;border-radius:50%;background:#d6ddd9}.browser-bar span{margin-left:16px;min-width:330px;padding:7px 14px;border-radius:9px;color:#70817b;background:#edf1ef;font-size:12px}
     .flow-card article{padding:48px 55px}.flow-card article small{color:#337464;font-weight:750;letter-spacing:.12em}.flow-card article h2{max-width:560px;margin:13px 0 15px;color:#203d35;font-size:30px}.flow-card article p{max-width:570px;color:#647a73;font-size:16px;line-height:1.65}.selection-line{width:78%;height:13px;margin-top:25px;border-radius:6px;background:linear-gradient(90deg,#dceee8,#edf4f1)}.selection-line.short{width:55%;margin-top:10px}.flow-arrow{position:absolute;right:28px;bottom:29px;display:grid;width:58px;height:58px;place-items:center;border-radius:50%;color:#fff;background:#2563d9;font-size:30px;box-shadow:0 12px 25px rgba(37,99,217,.24)}
@@ -432,7 +440,7 @@ async function buildAssetManifest() {
       ["store-icon-128.png", "store-icon", "existing extension icon"],
       ["edge-logo-300x300.png", "edge-logo", "existing extension icon in a deterministic presentation frame"],
       ["screenshot-01-capture.png", "store-screenshot", "real extension popup capture composed with synthetic example.com content"],
-      ["screenshot-02-preview.png", "store-screenshot", "real extension preview UI composed with synthetic example.com content"],
+      ["screenshot-02-preview.png", "store-screenshot", "real extension save-options UI composed with synthetic example.com content"],
       ["screenshot-03-library.png", "store-screenshot", "real extension receipt UI composed with a representative local-library view"],
       ["promo-small-440x280.png", "small-promo", "deterministic brand composition"],
       ["promo-marquee-1400x560.png", "marquee-promo", "deterministic brand composition with real extension receipt UI"]

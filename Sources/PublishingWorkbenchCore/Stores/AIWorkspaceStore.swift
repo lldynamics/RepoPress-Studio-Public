@@ -22,6 +22,8 @@ public final class AIWorkspaceStore: ObservableObject {
   @Published public internal(set) var aiChatSelectedModel: String
   @Published public internal(set) var aiChatFocusedParagraphID: String?
   @Published public internal(set) var aiChatCustomPrompts: [AIPublishingCustomPrompt]
+  @Published public internal(set) var aiConversations: [AIConversation]
+  @Published public internal(set) var activeAIConversationIDsByDraftID: [UUID: UUID]
   @Published public internal(set) var pendingAIQuickPrompt: AIPublishingQuickPrompt?
   @Published public internal(set) var aiChatMessage: String?
   @Published public internal(set) var isAIChatRunning: Bool
@@ -56,6 +58,8 @@ public final class AIWorkspaceStore: ObservableObject {
     aiChatSelectedModel: String = "",
     aiChatFocusedParagraphID: String? = nil,
     aiChatCustomPrompts: [AIPublishingCustomPrompt] = [],
+    aiConversations: [AIConversation] = [],
+    activeAIConversationIDsByDraftID: [UUID: UUID] = [:],
     pendingAIQuickPrompt: AIPublishingQuickPrompt? = nil,
     aiChatMessage: String? = nil,
     isAIChatRunning: Bool = false,
@@ -89,6 +93,8 @@ public final class AIWorkspaceStore: ObservableObject {
     self.aiChatSelectedModel = aiChatSelectedModel
     self.aiChatFocusedParagraphID = aiChatFocusedParagraphID
     self.aiChatCustomPrompts = aiChatCustomPrompts
+    self.aiConversations = aiConversations
+    self.activeAIConversationIDsByDraftID = activeAIConversationIDsByDraftID
     self.pendingAIQuickPrompt = pendingAIQuickPrompt
     self.aiChatMessage = aiChatMessage
     self.isAIChatRunning = isAIChatRunning

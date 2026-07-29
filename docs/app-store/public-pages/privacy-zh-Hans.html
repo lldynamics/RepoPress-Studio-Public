@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="RepoPress Studio 隐私政策 — 说明本地数据、仓库访问、浏览器采集、外部服务、诊断和 StoreKit 的处理方式。">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="RepoPress Studio 隐私政策">
+  <meta property="og:description" content="本地优先，不包含广告、行为跟踪或第三方分析 SDK；自定义 AI 请求由设备直连用户选择的服务商。">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://apps.chengjinfang.com/personal-site-publisher/privacy/">
+  <meta property="og:site_name" content="程锦方的软件">
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+  <title>RepoPress Studio 隐私政策</title>
+</head>
+<body>
+  <main>
+    <article>
+      <p>
+        <a href="../index.html">返回技术支持</a> |
+        <a href="../../index.html">返回软件列表</a> |
+        <a href="en/index.html">English</a> |
+        <a href="mailto:support@chengjinfang.com">联系支持</a>
+      </p>
+
+      <h1>RepoPress Studio 隐私政策</h1>
+      <p>生效及最后更新：2026-07-28</p>
+      <p>本政策适用于 RepoPress Studio App Store 版本及随应用内置的 Safari Web Extension，并说明本地草稿、资料库、仓库文件、浏览器采集、凭据、发布记录、诊断和购买状态的处理方式。</p>
+
+      <section>
+        <h2>1. 基本原则</h2>
+        <p>RepoPress Studio 采用本地优先设计，不包含广告、行为跟踪或第三方分析 SDK，不要求注册 RepoPress Studio 账号，也不会自动把草稿、仓库文件、浏览器采集或使用分析发送到开发者服务器。</p>
+        <p>所有用户都可以配置自己的本地模型或 OpenAI 兼容 HTTPS API。AI 功能不要求购买 RepoPress Pro，应用不限制 AI 请求次数、不销售 AI 额度或服务商访问权限，也不提供购买服务商账户的链接。</p>
+      </section>
+
+      <section>
+        <h2>2. 保存在设备上的数据</h2>
+        <ul>
+          <li>草稿、Markdown 正文、front matter、标签、分类、作者、摘要、私密标记和发布状态。</li>
+          <li>用户导入的 EPUB、PDF、Markdown、TXT、HTML 或网页内容，以及在本机生成的全文和语义索引、标注、引用和版本记录。</li>
+          <li>站点 Profile、仓库配置、同步设置、发布策略、发布与维护记录、部署状态和有限历史。</li>
+          <li>AI 服务商配置、端点授权状态、模型偏好和有限对话状态；API Key 保存在 macOS Keychain。</li>
+          <li>浏览器扩展的分类偏好、有限回执、配对令牌和受容量限制的离线队列。</li>
+          <li>快速隐藏、私密内容遮挡、语言偏好、备份和 StoreKit 权益状态。</li>
+        </ul>
+        <p>工作台数据主要保存在应用的 Application Support 数据中；扩展数据保存在对应浏览器的扩展本地存储中。普通工作台和扩展数据不等同于端到端加密存储。</p>
+      </section>
+
+      <section>
+        <h2>3. 文件、仓库与浏览器采集</h2>
+        <p>App Store 版本使用 App Sandbox，只访问用户通过系统面板选择的仓库、资料、图片和输出位置，并使用安全书签恢复已经授予的访问权。</p>
+        <p>内置 Safari Web Extension 只在用户点击扩展、菜单、快捷键或确认批量任务后处理所选网页。采集通过带随机配对令牌的固定 <code>127.0.0.1:17843</code> 本机回环连接进入同一台设备上的应用。连接不监听局域网或互联网地址，也不通过开发者服务器传输网页内容。</p>
+        <p>应用不安装 Native Messaging 宿主，也不向浏览器目录写入清单。完整网页归档可能包含采集时页面上可见的私密内容，用户应像保护其他本地文件一样保护这些归档。</p>
+      </section>
+
+      <section>
+        <h2>4. 网络访问</h2>
+        <p>本地写作、资料索引、内容检查、图片处理和大部分 Git 检查在设备上执行。以下用户配置或主动触发的功能会访问对应外部服务：</p>
+        <ul>
+          <li>GitHub、GitLab 或仓库远端：权限检查、同步、提交、PR/MR、状态读取和用户确认的回滚。</li>
+          <li>部署平台或用户配置的状态端点：部署状态检查和用户启用的轮询。</li>
+          <li>Apple StoreKit：产品查询、购买、恢复购买和权益验证。</li>
+          <li>用户配置的 AI 服务：只有在用户主动执行 AI 操作且已同意该远程地址时，才会发送提示词、当前文章或站点上下文、用户选择的资料片段、对话上下文和用户添加的图片。</li>
+          <li>用户主动打开的支持、隐私、仓库或部署网页。</li>
+        </ul>
+        <p>AI 请求由设备直接发送到用户选择的服务商，不经过开发者服务器。服务商按其条款和隐私政策处理数据。开发者不运营用于接收 AI 内容、仓库内容或浏览器采集的代理服务。</p>
+      </section>
+
+      <section>
+        <h2>5. 凭据与支付</h2>
+        <p>GitHub/GitLab Token、部署平台凭据和用户配置的 AI API Key 保存在 macOS Keychain，并按站点和用途区分。应用开发者不会收到这些凭据。</p>
+        <p>购买与恢复由 Apple StoreKit 处理。应用接收产品信息和已验证权益状态，不接收或处理银行卡信息。RepoPress Pro 只解锁线上发布和批量发布。</p>
+      </section>
+
+      <section>
+        <h2>6. 开发者收到的数据</h2>
+        <p>应用不会自动发送诊断。只有当用户主动发送支持邮件或分享经过检查的诊断时，开发者才会收到邮件地址、消息和用户选择的附件。这些信息只用于支持、安全和必要的法律义务，不用于广告或出售。</p>
+        <p>请不要发送完整仓库、完整 Token、授权头、账号密码、本机绝对路径或私密文章正文。</p>
+      </section>
+
+      <section>
+        <h2>7. 用户控制与删除</h2>
+        <p>用户可以删除本地草稿、资料、记录、站点 Profile、备份和凭据，清空扩展离线队列并断开配对，或卸载扩展。仅删除应用本体不一定会同时删除 Application Support、Keychain、浏览器扩展数据、备份或用户选择的仓库文件。</p>
+        <p>已提交到仓库或由外部服务保存的数据，需要在对应文件夹或服务中管理。开发者没有保存这些内容的账号服务器，因此无法代替用户删除设备、仓库或第三方服务中的数据。</p>
+      </section>
+
+      <section>
+        <h2>8. 快速隐藏与私密内容遮挡</h2>
+        <p>快速隐藏和私密内容遮挡用于减少屏幕暴露，不提供密码、Touch ID、磁盘加密或端到端加密，也不会自动删除文件或远端内容。</p>
+      </section>
+
+      <section>
+        <h2>9. 联系与更新</h2>
+        <p>如果应用、扩展、数据处理或 App Store 隐私声明发生重要变化，本页面会同步更新。隐私与支持邮箱：<a href="mailto:support@chengjinfang.com">support@chengjinfang.com</a>。</p>
+      </section>
+    </article>
+  </main>
+</body>
+</html>

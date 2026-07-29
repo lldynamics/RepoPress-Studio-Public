@@ -7,7 +7,7 @@ struct RepositoryWorkspaceView: View {
   @Binding var stage: RepositoryContextStage
   @ObservedObject var sourceSession: RepositoryHTMLSourceSession
   @Environment(\.openSettings) var openSettings
-  @FocusedValue(\.publishDrawerCommandAction) var publishDrawerCommandAction
+  @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
   @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
   @State var isContentMigrationPresented = false
   @State var isRepositoryCreationConfirmationPresented = false

@@ -14,12 +14,24 @@ Use `script/prepare_external_verification_envs.sh` to copy
 `docs/release-evidence/app-store-archive-validation.env.example` outside the
 repository before filling real archive validation notes.
 
-- [x] Clean Release archive produced from a clean checkout.
-  Evidence: Release app and signed installer were produced from a clean committed checkout using the release packaging command.
-- [x] Distribution signing and hardened runtime verified on the archive.
-  Evidence: Distribution signatures and hardened runtime were verified for the app and embedded Safari Web Extension; the installer signature and artifact hashes were also verified.
-- [x] Archive validated with App Store Connect or Transporter before upload.
-  Evidence: App Store build 1.0 (5) was delivered successfully through Transporter and accepted for App Store Connect processing on 2026-07-23.
+## Current Resubmission Target: 1.0 (9)
+
+- [ ] Clean Release archive produced from a clean checkout.
+  Evidence: Build 1.0 (9) has not yet been archived from a clean release-candidate checkout.
+- [ ] Distribution signing and hardened runtime verified on the archive.
+  Evidence: Build 1.0 (9) has not yet completed the local package gate or formal App Store distribution signing.
+- [ ] Archive validated with App Store Connect or Transporter before upload.
+  Evidence: Build 1.0 (9) has not yet been validated or uploaded.
+
+## Historical Evidence: 1.0 (7) and 1.0 (8)
+
+Build 1.0 (7) was produced from a disposable clean committed checkout. Its app,
+embedded Safari Web Extension, installer signature, hardened runtime, and
+artifact hashes passed the recorded distribution checks. Transporter delivered
+it to App Store Connect on 2026-07-28 at 17:02, and it became available for
+internal testing. Build 1.0 (8) passed the local App Store bundle gate with AI
+excluded, but it was not formally archived or uploaded. Neither is the current
+resubmission candidate because free user-configured AI now targets build 1.0 (9).
 
 ## Recording Commands
 

@@ -4,7 +4,6 @@ import Foundation
 import BrowserExtensionProtocolSupport
 import Network
 import PublishingWorkbenchCore
-import Security
 
 enum KnowledgeBrowserBridgeState: Equatable {
   case stopped
@@ -36,7 +35,7 @@ final class KnowledgeBrowserBridge: ObservableObject {
 
   private let knowledge: KnowledgeStore
   private let defaults: UserDefaults
-  private let tokenStore: KeychainTokenStore
+  private let connectionTokenStore: KnowledgeBrowserConnectionTokenStore
   private let importOperationLedgerURL: URL?
   private let onOpenDocument: (UUID) -> Void
   private let now: () -> Date
@@ -54,18 +53,20 @@ final class KnowledgeBrowserBridge: ObservableObject {
   init(
     knowledge: KnowledgeStore,
     defaults: UserDefaults = .standard,
-    tokenStore: KeychainTokenStore = KeychainTokenStore(
-      service: KeychainCredentialServices.browserBridge,
-      accountPrefix: "browser-bridge",
-      allowsAuthenticationInteraction: false
-    ),
+    connectionTokenURL: URL? = nil,
     importOperationLedgerURL: URL? = nil,
     now: @escaping () -> Date = Date.init,
     onOpenDocument: @escaping (UUID) -> Void = { _ in }
   ) {
     self.knowledge = knowledge
     self.defaults = defaults
-    self.tokenStore = tokenStore
+    let resolvedConnectionTokenURL = connectionTokenURL
+      ?? (defaults === UserDefaults.standard ? Self.defaultConnectionTokenURL : nil)
+    self.connectionTokenStore = KnowledgeBrowserConnectionTokenStore(
+      fileURL: resolvedConnectionTokenURL,
+      defaults: KnowledgeBrowserConnectionTokenDefaults(defaults),
+      legacyDefaultsKey: Self.tokenDefaultsKey
+    )
     let resolvedImportOperationLedgerURL = importOperationLedgerURL
       ?? (defaults === UserDefaults.standard ? Self.defaultImportOperationLedgerURL : nil)
     self.importOperationLedgerURL = resolvedImportOperationLedgerURL
@@ -125,16 +126,14 @@ final class KnowledgeBrowserBridge: ObservableObject {
     importOperationLedgerIssueKind = ledgerIssueKind
 
     var tokenPersistenceIssue: String?
-    let keychainToken: String?
+    let persistedToken: String?
     do {
-      keychainToken = try tokenStore.token(
-        forAccountIdentifier: Self.connectionTokenAccountIdentifier
-      )
+      persistedToken = try connectionTokenStore.token()
     } catch {
-      keychainToken = nil
-      tokenPersistenceIssue = "浏览器连接令牌无法从 Keychain 读取：\(error.localizedDescription)"
+      persistedToken = nil
+      tokenPersistenceIssue = "浏览器连接令牌无法从本地安全存储读取：\(error.localizedDescription)"
     }
-    let storedToken = keychainToken ?? defaults.string(forKey: Self.tokenDefaultsKey)
+    let storedToken = persistedToken ?? defaults.string(forKey: Self.tokenDefaultsKey)
     let storedExpiry = defaults.object(forKey: Self.tokenExpiryDefaultsKey) as? Date
     invalidatedExpiredToken = if let storedToken, let storedExpiry, storedExpiry <= currentDate {
       storedToken
@@ -150,14 +149,11 @@ final class KnowledgeBrowserBridge: ObservableObject {
     connectionToken = lease.token
     connectionTokenExpiresAt = lease.expiresAt
     do {
-      try tokenStore.saveToken(
-        connectionToken,
-        forAccountIdentifier: Self.connectionTokenAccountIdentifier
-      )
-      defaults.removeObject(forKey: Self.tokenDefaultsKey)
+      try connectionTokenStore.persist(connectionToken)
       tokenPersistenceIssue = nil
     } catch {
-      tokenPersistenceIssue = "浏览器连接令牌无法保存到 Keychain：\(error.localizedDescription)"
+      defaults.set(connectionToken, forKey: Self.tokenDefaultsKey)
+      tokenPersistenceIssue = "浏览器连接令牌无法写入本地安全存储：\(error.localizedDescription)"
     }
     connectionTokenPersistenceIssue = tokenPersistenceIssue
     defaults.set(connectionTokenExpiresAt, forKey: Self.tokenExpiryDefaultsKey)
@@ -249,17 +245,14 @@ final class KnowledgeBrowserBridge: ObservableObject {
     )
     defaults.set(connectionTokenExpiresAt, forKey: Self.tokenExpiryDefaultsKey)
     do {
-      try tokenStore.saveToken(
-        token,
-        forAccountIdentifier: Self.connectionTokenAccountIdentifier
-      )
-      defaults.removeObject(forKey: Self.tokenDefaultsKey)
+      try connectionTokenStore.persist(token)
       connectionTokenPersistenceIssue = nil
       lastMessage = "连接令牌已更新，浏览器插件需要重新连接。"
     } catch {
+      defaults.set(token, forKey: Self.tokenDefaultsKey)
       connectionTokenPersistenceIssue =
-        "浏览器连接令牌无法保存到 Keychain：\(error.localizedDescription)"
-      lastMessage = "\(connectionTokenPersistenceIssue!) 当前令牌仅在本次运行期间有效。"
+        "浏览器连接令牌无法写入本地安全存储：\(error.localizedDescription)"
+      lastMessage = "\(connectionTokenPersistenceIssue!) 已改用兼容存储。"
     }
   }
 
@@ -672,11 +665,20 @@ final class KnowledgeBrowserBridge: ObservableObject {
 
   private static let tokenDefaultsKey = "KnowledgeBrowserBridge.connectionToken.v1"
   private static let tokenExpiryDefaultsKey = "KnowledgeBrowserBridge.connectionTokenExpiresAt.v1"
-  private static let connectionTokenAccountIdentifier = "connection-token-v1"
   private static let importOperationLedgerDefaultsKey =
     "KnowledgeBrowserBridge.completedImportOperations.v1"
 
+  private nonisolated static var defaultConnectionTokenURL: URL {
+    defaultBrowserBridgeDirectoryURL
+      .appendingPathComponent("connection-token-v1", isDirectory: false)
+  }
+
   private nonisolated static var defaultImportOperationLedgerURL: URL {
+    defaultBrowserBridgeDirectoryURL
+      .appendingPathComponent("import-operation-ledger-v1.plist")
+  }
+
+  private nonisolated static var defaultBrowserBridgeDirectoryURL: URL {
     let applicationSupport = FileManager.default.urls(
       for: .applicationSupportDirectory,
       in: .userDomainMask
@@ -684,7 +686,6 @@ final class KnowledgeBrowserBridge: ObservableObject {
     return applicationSupport
       .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true)
       .appendingPathComponent("BrowserBridge", isDirectory: true)
-      .appendingPathComponent("import-operation-ledger-v1.plist")
   }
 
   private nonisolated static func writeImportOperationLedger(

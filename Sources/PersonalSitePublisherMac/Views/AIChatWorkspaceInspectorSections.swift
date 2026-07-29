@@ -6,7 +6,7 @@ struct AIChatConversationInspectorSection: View {
   let actions: AIChatContextInspectorActions
 
   var body: some View {
-    AIChatInspectorSection("对话") {
+    VStack(alignment: .leading, spacing: 9) {
       if context.messages.isEmpty {
         ContentUnavailableView(
           "开始对话",
@@ -76,9 +76,18 @@ struct AIChatConversationInspectorSection: View {
               .fill(message.role == .assistant ? WorkbenchTheme.primary.opacity(0.08) : Color.secondary.opacity(0.08))
           )
           .id(message.id)
+          .contextMenu {
+            Button {
+              actions.branchConversation(message.id, context.draft)
+            } label: {
+              Label("从这条消息处分支对话", systemImage: "arrow.triangle.branch")
+            }
+            .disabled(context.isChatRunning)
+          }
         }
       }
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   private var latestAssistantMessageID: AIPublishingChatMessage.ID? {

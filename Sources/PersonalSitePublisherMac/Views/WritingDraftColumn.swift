@@ -189,12 +189,9 @@ struct WritingDraftColumn: View {
         in: RoundedRectangle(cornerRadius: 7, style: .continuous)
       )
       .overlay {
-        HStack(spacing: 5) {
-          Image(systemName: "plus")
-            .font(.workbenchMetadata.weight(.bold))
-          Text("新建")
-            .font(.workbenchButtonLabel.weight(.bold))
-        }
+        Label("新建", systemImage: "plus")
+          .labelStyle(.titleAndIcon)
+          .font(.workbenchButtonLabel.weight(.bold))
           .foregroundColor(.white)
           .allowsHitTesting(false)
           .accessibilityHidden(true)

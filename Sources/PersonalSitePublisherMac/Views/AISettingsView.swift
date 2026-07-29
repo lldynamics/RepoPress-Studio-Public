@@ -23,6 +23,10 @@ struct AISettingsView: View {
 
   var body: some View {
     VStack(spacing: 0) {
+      aiStatusHeaderBanner
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+
       Picker("AI 设置范围", selection: $selectedSection) {
         ForEach(AISettingsSection.allCases) { section in
           Text(section.title).tag(section)
@@ -32,7 +36,7 @@ struct AISettingsView: View {
       .labelsHidden()
       .frame(maxWidth: 360)
       .padding(.horizontal, 18)
-      .padding(.vertical, 12)
+      .padding(.vertical, 10)
       .accessibilityLabel("AI 设置范围")
 
       Divider()
@@ -192,6 +196,61 @@ struct AISettingsView: View {
   private func invalidateConnectionReport() {
     guard aiConnectionReport != nil else { return }
     isConnectionReportStale = true
+  }
+
+  private var aiStatusHeaderBanner: some View {
+    HStack(spacing: 12) {
+      ZStack {
+        Circle()
+          .fill(Color.accentColor.opacity(0.15))
+          .frame(width: 36, height: 36)
+        Image(systemName: "sparkles")
+          .font(.system(size: 18, weight: .semibold))
+          .foregroundStyle(Color.accentColor)
+      }
+
+      VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 6) {
+          Text("AI 创作引擎")
+            .font(.subheadline.weight(.semibold))
+          Text(activeProfile.aiProviderConfig.preset.localizedDisplayName)
+            .font(.workbenchMetadata.weight(.medium))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.primary.opacity(0.08), in: Capsule())
+        }
+
+        Text("模型: \(activeProfile.aiProviderConfig.model.isEmpty ? "默认" : activeProfile.aiProviderConfig.model)")
+          .font(.caption.monospaced())
+          .foregroundStyle(.secondary)
+      }
+
+      Spacer()
+
+      HStack(spacing: 5) {
+        Circle()
+          .fill(tokenAvailability.hasToken ? WorkbenchTheme.success : WorkbenchTheme.warning)
+          .frame(width: 8, height: 8)
+        Text(tokenAvailability.hasToken ? "凭据就绪" : "待配置 Key")
+          .font(.workbenchMetadata.weight(.medium))
+          .foregroundStyle(tokenAvailability.hasToken ? WorkbenchTheme.success : WorkbenchTheme.warning)
+      }
+      .padding(.horizontal, 8)
+      .padding(.vertical, 4)
+      .background(
+        (tokenAvailability.hasToken ? WorkbenchTheme.success : WorkbenchTheme.warning).opacity(0.12),
+        in: Capsule()
+      )
+    }
+    .padding(12)
+    .background(
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .fill(.ultraThinMaterial)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+    )
   }
 }
 

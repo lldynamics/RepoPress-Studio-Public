@@ -22,11 +22,65 @@ struct AIWritingStyleSection: View {
       .accessibilityValue(presetDisplayName)
 
       DisclosureGroup(String(localized: "自定义写作规则"), isExpanded: $showsCustomRules) {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("常用语气预设：")
+            .font(.workbenchMetadata)
+            .foregroundStyle(.secondary)
+          ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+              ForEach(["专业严谨", "极简干货", "幽默风趣", "亲切随笔"], id: \.self) { pill in
+                Button {
+                  if toneText.wrappedValue.isEmpty {
+                    toneText.wrappedValue = pill
+                  } else if !toneText.wrappedValue.contains(pill) {
+                    toneText.wrappedValue += "，\(pill)"
+                  }
+                } label: {
+                  Text(pill)
+                    .font(.workbenchMetadata.weight(.medium))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.primary.opacity(0.06), in: Capsule())
+                }
+                .buttonStyle(.plain)
+              }
+            }
+          }
+        }
+        .padding(.vertical, 2)
+
         AIWritingStyleEditor(
           title: "语气",
           text: toneText,
           accessibilityValue: toneText.wrappedValue
         )
+
+        VStack(alignment: .leading, spacing: 6) {
+          Text("常用读者预设：")
+            .font(.workbenchMetadata)
+            .foregroundStyle(.secondary)
+          ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+              ForEach(["开发者与程序员", "技术小白与初学者", "独立博主与创作者"], id: \.self) { pill in
+                Button {
+                  if audienceText.wrappedValue.isEmpty {
+                    audienceText.wrappedValue = pill
+                  } else if !audienceText.wrappedValue.contains(pill) {
+                    audienceText.wrappedValue += "，\(pill)"
+                  }
+                } label: {
+                  Text(pill)
+                    .font(.workbenchMetadata.weight(.medium))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.primary.opacity(0.06), in: Capsule())
+                }
+                .buttonStyle(.plain)
+              }
+            }
+          }
+        }
+        .padding(.vertical, 2)
 
         AIWritingStyleEditor(
           title: "目标读者",

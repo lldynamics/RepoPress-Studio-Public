@@ -139,6 +139,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "repository-next-action",
       "repository-section-summary",
       "repository-section-information",
+      "repository-section-git-management",
       "repository-section-online-publish",
       "repository-section-auto-sync",
       "repository-section-local-preview",
@@ -195,6 +196,146 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       revealByScrolling(identifier)
       assertUniqueIdentifier(identifier)
     }
+  }
+
+  func testPublishDrawerKeepsDecisionChecksAndDiffOnly() throws {
+    launchApplication(surface: "sync-api-publish")
+    XCTAssertTrue(
+      element(identifier: "repository-workspace").waitForExistence(timeout: 10),
+      "The repository workspace did not appear for the publishing demo surface."
+    )
+
+    revealByScrolling("repository-action-open-publish")
+    element(identifier: "repository-action-open-publish")
+      .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+      .tap()
+
+    for identifier in [
+      "publish-drawer-header",
+      "publish-drawer-action-save-local",
+      "publish-drawer-action-publish-all",
+      "publish-drawer-action-publish-current",
+      "publish-drawer-review-disclosure",
+    ] {
+      assertUniqueIdentifier(identifier)
+    }
+
+    let drawer = application.sheets.firstMatch
+    XCTAssertTrue(
+      drawer.waitForExistence(timeout: 10),
+      "The publish drawer sheet did not remain visible."
+    )
+    let showAllChecks = drawer.buttons["publish-drawer-review-disclosure"]
+    XCTAssertTrue(
+      showAllChecks.waitForExistence(timeout: 10),
+      "The publish drawer did not expose the checks-and-diff disclosure button."
+    )
+    showAllChecks.click()
+    assertUniqueIdentifier("publish-drawer-check-results")
+    assertUniqueIdentifier("publish-drawer-diff")
+    Thread.sleep(forTimeInterval: 0.3)
+
+    let screenshot = XCTAttachment(screenshot: application.screenshot())
+    screenshot.name = "publish-drawer-simplified"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+
+    for removedSectionTitle in [
+      "分支管理",
+      "提交历史",
+      "线上发布预览",
+      "部署",
+    ] {
+      XCTAssertFalse(
+        drawer.descendants(matching: .staticText)[removedSectionTitle].exists,
+        "\(removedSectionTitle) must remain outside the publish drawer."
+      )
+    }
+  }
+
+  func testAppStoreEnglishMenusExposeFreeBYOKAIAndReopenMainWindow() throws {
+    let appURL = try runtimeAppURL()
+    let infoPlistURL = appURL.appendingPathComponent("Contents/Info.plist")
+    let infoData = try Data(contentsOf: infoPlistURL)
+    let info = try XCTUnwrap(
+      try PropertyListSerialization.propertyList(from: infoData, format: nil) as? [String: Any]
+    )
+    guard info["PersonalSitePublisherDistributionChannel"] as? String == "AppStore" else {
+      throw XCTSkip("This review regression test only applies to the App Store distribution.")
+    }
+
+    launchApplication(
+      surface: "writing",
+      additionalLaunchArguments: [
+        "-AppleLanguages", "(en)",
+        "-AppleLocale", "en_US",
+      ]
+    )
+    application.activate()
+
+    XCTAssertTrue(
+      application.menuBars.menuBarItems["RepoPress Studio"].waitForExistence(timeout: 15),
+      "The App Store build must use RepoPress Studio as the visible app and menu name."
+    )
+
+    let publishingConsole = application.menuBars.menuBarItems["Publishing Console"]
+    XCTAssertTrue(
+      publishingConsole.waitForExistence(timeout: 15),
+      "The English Publishing Console menu did not appear."
+    )
+    publishingConsole.click()
+    XCTAssertTrue(
+      application.menuItems["Command Palette and Quick Open"].waitForExistence(timeout: 5),
+      "The Publishing Console command titles were not localized to English."
+    )
+
+    let publishingMenu = publishingConsole.menus.firstMatch
+    XCTAssertTrue(
+      publishingMenu.waitForExistence(timeout: 5),
+      "The Publishing Console menu contents were unavailable."
+    )
+    let publishingMenuLabels = publishingMenu.menuItems.allElementsBoundByIndex
+      .map(\.label)
+      .filter { !$0.isEmpty }
+    let mixedLanguageLabels = publishingMenuLabels.filter(containsCJK)
+    XCTAssertTrue(
+      mixedLanguageLabels.isEmpty,
+      "The English Publishing Console contains Chinese labels: \(mixedLanguageLabels.joined(separator: ", "))."
+    )
+    XCTAssertTrue(
+      application.menuItems["AI Chat"].waitForExistence(timeout: 5),
+      "The App Store Publishing Console must expose free BYOK AI."
+    )
+
+    application.typeKey(.escape, modifierFlags: [])
+    let mainWindow = application.windows.firstMatch
+    let closeButton = mainWindow.buttons[XCUIIdentifierCloseWindow]
+    XCTAssertTrue(
+      closeButton.waitForExistence(timeout: 5),
+      "The main workbench window close button was unavailable."
+    )
+    closeButton.click()
+
+    let windowMenu = application.menuBars.menuBarItems["Window"]
+    XCTAssertTrue(
+      windowMenu.waitForExistence(timeout: 5),
+      "The Window menu was unavailable after closing the main window."
+    )
+    windowMenu.click()
+    let reopenItem = application.menuItems["Show RepoPress Studio"]
+    XCTAssertTrue(
+      reopenItem.waitForExistence(timeout: 5),
+      "Window > Show RepoPress Studio is missing."
+    )
+    reopenItem.click()
+    let reopenDeadline = Date().addingTimeInterval(10)
+    while !application.windows.firstMatch.isHittable, Date() < reopenDeadline {
+      RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+    }
+    XCTAssertTrue(
+      application.windows.firstMatch.isHittable,
+      "Window > Show RepoPress Studio did not reopen the main workbench window."
+    )
   }
 
   func testImageWorkbenchIdentifiersRemainUniqueAndDoNotOverrideChildControls() throws {
@@ -291,12 +432,15 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     }
   }
 
-  private func launchApplication(surface: String) {
+  private func launchApplication(
+    surface: String,
+    additionalLaunchArguments: [String] = []
+  ) {
     application.terminate()
     application.launchArguments = [
       "-ApplePersistenceIgnoreState", "YES",
       "-NSQuitAlwaysKeepsWindows", "NO",
-    ]
+    ] + additionalLaunchArguments
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO"] = "1"
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_SURFACE"] = surface
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_KNOWLEDGE_ROOT"] = knowledgeLibraryRootURL.path
@@ -310,6 +454,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       application.windows.firstMatch.waitForExistence(timeout: 15),
       "The main workbench window did not appear for the \(surface) surface."
     )
+  }
+
+  private func containsCJK(_ value: String) -> Bool {
+    value.unicodeScalars.contains { scalar in
+      (0x3400...0x4DBF).contains(scalar.value)
+        || (0x4E00...0x9FFF).contains(scalar.value)
+    }
   }
 
   private func assertUniqueIdentifier(

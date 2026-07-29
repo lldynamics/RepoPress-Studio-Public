@@ -435,7 +435,7 @@ struct MacMarkdownFormattingToolbar: View {
   }
 
   private var statisticsSummary: String {
-    "\(writingUnitCount) 字/词 · 目标 \(writingGoalProgressPercent)%"
+    "⏱️ 约 \(readingMinutes) 分钟 · \(writingUnitCount) 字/词 · 目标 \(writingGoalProgressPercent)%"
   }
 
   private var writingGoalProgressPercent: Int {

@@ -89,6 +89,29 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiChatCustomPrompts
   }
 
+  public var activeChatConversationID: UUID? {
+    guard let draftID = store.aiChatDraftID else { return nil }
+    return store.aiStore.activeAIChatConversationID(for: draftID)
+  }
+
+  public var activeChatConversation: AIConversation? {
+    store.aiStore.activeAIChatConversation()
+  }
+
+  public func activeChatConversationID(for draftID: UUID) -> UUID? {
+    store.aiStore.activeAIChatConversationID(for: draftID)
+  }
+
+  public func chatConversations(
+    for draftID: UUID,
+    includingArchived: Bool = false
+  ) -> [AIConversation] {
+    store.aiStore.aiChatConversations(
+      for: draftID,
+      includingArchived: includingArchived
+    )
+  }
+
   public var pendingQuickPrompt: AIPublishingQuickPrompt? {
     store.pendingAIQuickPrompt
   }
@@ -212,6 +235,9 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func selectChatDraft(_ id: UUID?) {
     store.selectDraft(id)
+    if let draft = store.selectedDraft {
+      store.prepareAIChat(for: draft)
+    }
   }
 
   public func saveChatDraftChanges() {
@@ -277,8 +303,54 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.deleteAIChatCustomPrompt(promptID)
   }
 
-  public func startNewChatConversation(draft: ArticleDraft? = nil) {
+  public func setChatConversationTitle(
+    _ title: String?,
+    draft: ArticleDraft? = nil
+  ) {
+    store.setAIChatConversationTitle(title, draft: draft)
+  }
+
+  @discardableResult
+  public func selectChatConversation(_ conversationID: UUID) -> Bool {
+    store.selectAIChatConversation(conversationID)
+  }
+
+  @discardableResult
+  public func startNewChatConversation(
+    draft: ArticleDraft? = nil
+  ) -> AIConversation? {
     store.startNewAIChatConversation(draft: draft)
+  }
+
+  @discardableResult
+  public func renameChatConversation(
+    _ conversationID: UUID,
+    title: String?
+  ) -> Bool {
+    store.renameAIChatConversation(conversationID, title: title)
+  }
+
+  @discardableResult
+  public func archiveChatConversation(_ conversationID: UUID) -> Bool {
+    store.archiveAIChatConversation(conversationID)
+  }
+
+  @discardableResult
+  public func restoreChatConversation(_ conversationID: UUID) -> Bool {
+    store.restoreAIChatConversation(conversationID)
+  }
+
+  @discardableResult
+  public func deleteChatConversation(_ conversationID: UUID) -> Bool {
+    store.deleteAIChatConversation(conversationID)
+  }
+
+  @discardableResult
+  public func branchChatConversation(
+    after messageID: AIPublishingChatMessage.ID,
+    draft: ArticleDraft? = nil
+  ) -> AIConversation? {
+    store.branchAIChatConversation(after: messageID, draft: draft)
   }
 
   public func cancelChatReply() {

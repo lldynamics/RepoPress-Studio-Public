@@ -17,7 +17,7 @@ struct ProBenefitsSection: View {
       .foregroundStyle(.primary)
       .padding(.vertical, 4)
 
-      Text("AI 写作辅助支持免 Key 演示与自定义接口，完全自主配置，永不扣除 Pro 权益。")
+      Text("AI 写作辅助与自定义 API 对所有用户开放；由你配置服务商，应用不按次数收费，也不要求 Pro。")
         .font(.caption)
         .foregroundStyle(.secondary)
     }

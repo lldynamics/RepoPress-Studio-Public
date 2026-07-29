@@ -3,7 +3,11 @@ import Foundation
 
 public struct WorkbenchSnapshot: Codable, Sendable {
   /// Bump this only together with a backwards-compatible decode migration.
-  public static let currentFormatVersion = 8
+  public static let currentFormatVersion = 9
+  public static let maximumAIConversationsPerDraft =
+    AIConversationRetentionPolicy.maximumConversationsPerDraft
+  public static let maximumAIConversationCount =
+    AIConversationRetentionPolicy.maximumConversationCount
 
   public var formatVersion: Int
   public var profiles: [SiteProfile]
@@ -19,6 +23,8 @@ public struct WorkbenchSnapshot: Codable, Sendable {
   public var aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord]
   public var automationRunRecords: [WorkbenchAutomationRunRecord]
   public var aiChatCustomPrompts: [AIPublishingCustomPrompt]
+  public var aiConversations: [AIConversation]
+  public var activeAIConversationIDsByDraftID: [UUID: UUID]
   public var seoSocialPreviewSnapshots: [SEOSocialPreviewSnapshot]
   public var privacySettings: PrivacyProtectionSettings
   public var privacyProtectionEvents: [PrivacyProtectionEvent]
@@ -45,6 +51,8 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord] = [],
     automationRunRecords: [WorkbenchAutomationRunRecord] = [],
     aiChatCustomPrompts: [AIPublishingCustomPrompt] = [],
+    aiConversations: [AIConversation] = [],
+    activeAIConversationIDsByDraftID: [UUID: UUID] = [:],
     seoSocialPreviewSnapshots: [SEOSocialPreviewSnapshot] = [],
     privacySettings: PrivacyProtectionSettings = .default,
     privacyProtectionEvents: [PrivacyProtectionEvent] = [],
@@ -84,6 +92,17 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     self.aiMetadataApplicationRecords = Self.limitedMetadataApplicationRecords(aiMetadataApplicationRecords)
     self.automationRunRecords = Self.limitedAutomationRunRecords(automationRunRecords)
     self.aiChatCustomPrompts = Self.limitedCustomPrompts(aiChatCustomPrompts)
+    let limitedAIConversations = Self.limitedAIConversations(
+      aiConversations,
+      drafts: drafts,
+      recycledDrafts: limitedRecycledDrafts,
+      preferredConversationIDs: Set(activeAIConversationIDsByDraftID.values)
+    )
+    self.aiConversations = limitedAIConversations
+    self.activeAIConversationIDsByDraftID = Self.validActiveAIConversationIDs(
+      activeAIConversationIDsByDraftID,
+      conversations: limitedAIConversations
+    )
     self.seoSocialPreviewSnapshots = Self.latestSEOSocialPreviewSnapshots(seoSocialPreviewSnapshots)
     self.privacySettings = privacySettings
     self.privacyProtectionEvents = Self.limitedPrivacyProtectionEvents(privacyProtectionEvents)
@@ -112,6 +131,8 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     case aiMetadataApplicationRecords
     case automationRunRecords
     case aiChatCustomPrompts
+    case aiConversations
+    case activeAIConversationIDsByDraftID
     case seoSocialPreviewSnapshots
     case privacySettings
     case privacyProtectionEvents
@@ -196,6 +217,24 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         [AIPublishingCustomPrompt].self,
         forKey: .aiChatCustomPrompts
       ) ?? []
+    )
+    let decodedActiveAIConversationIDs = try container.decodeIfPresent(
+      [UUID: UUID].self,
+      forKey: .activeAIConversationIDsByDraftID
+    ) ?? [:]
+    let decodedAIConversations = Self.limitedAIConversations(
+      try container.decodeIfPresent(
+        [AIConversation].self,
+        forKey: .aiConversations
+      ) ?? [],
+      drafts: drafts,
+      recycledDrafts: recycledDrafts,
+      preferredConversationIDs: Set(decodedActiveAIConversationIDs.values)
+    )
+    aiConversations = decodedAIConversations
+    activeAIConversationIDsByDraftID = Self.validActiveAIConversationIDs(
+      decodedActiveAIConversationIDs,
+      conversations: decodedAIConversations
     )
     seoSocialPreviewSnapshots = Self.latestSEOSocialPreviewSnapshots(
       try container.decodeIfPresent(
@@ -299,6 +338,30 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         .filter { !$0.prompt.trimmedForPublishing.isEmpty }
         .sorted { $0.updatedAt > $1.updatedAt }
         .prefix(80)
+    )
+  }
+
+  private static func limitedAIConversations(
+    _ conversations: [AIConversation],
+    drafts: [ArticleDraft],
+    recycledDrafts: [RecycledDraft],
+    preferredConversationIDs: Set<UUID>
+  ) -> [AIConversation] {
+    let validDraftIDs = Set(drafts.map(\.id) + recycledDrafts.map(\.id))
+    return AIConversationRetentionPolicy.limited(
+      conversations,
+      validDraftIDs: validDraftIDs,
+      preserving: preferredConversationIDs
+    )
+  }
+
+  private static func validActiveAIConversationIDs(
+    _ activeIDs: [UUID: UUID],
+    conversations: [AIConversation]
+  ) -> [UUID: UUID] {
+    AIConversationRetentionPolicy.validActiveConversationIDs(
+      activeIDs,
+      conversations: conversations
     )
   }
 
@@ -880,6 +943,8 @@ extension WorkbenchPersistence {
       aiMetadataApplicationRecords: store.aiMetadataApplicationRecords,
       automationRunRecords: store.automationRunRecords,
       aiChatCustomPrompts: store.aiChatCustomPrompts,
+      aiConversations: store.aiConversations,
+      activeAIConversationIDsByDraftID: store.activeAIConversationIDsByDraftID,
       seoSocialPreviewSnapshots: Array(store.seoSocialPreviewSnapshots.values),
       privacySettings: store.privacySettings,
       privacyProtectionEvents: [],

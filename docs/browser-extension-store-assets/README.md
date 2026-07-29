@@ -11,7 +11,7 @@ Each `zh-CN/` and `en-US/` directory contains:
 | `store-icon-128.png` | 128 x 128 | Chrome Web Store icon |
 | `edge-logo-300x300.png` | 300 x 300 | Deferred legacy Edge asset; do not upload for 0.30.0 |
 | `screenshot-01-capture.png` | 1280 x 800 | Capture-mode screenshot |
-| `screenshot-02-preview.png` | 1280 x 800 | Preview, organization, and AI-access screenshot |
+| `screenshot-02-preview.png` | 1280 x 800 | Save options, organization, and local semantic-search screenshot (legacy filename) |
 | `screenshot-03-library.png` | 1280 x 800 | Local-library receipt and retrieval screenshot |
 | `promo-small-440x280.png` | 440 x 280 | Small promotional tile |
 | `promo-marquee-1400x560.png` | 1400 x 560 | Marquee or large promotional tile |
@@ -30,6 +30,7 @@ node script/check_browser_extension_store_assets.mjs
 ```
 
 The generator loads the unpacked Chromium extension in a real browser, captures the localized popup, and composes the final PNG files at exact store dimensions. The checker then rejects missing files, wrong dimensions, extension-version drift, or SHA-256 mismatches. Generation requires the repository's pinned `playwright-core` runtime and a usable Chromium executable. Set `CHROMIUM_EXECUTABLE_PATH` only when the bundled executable is unavailable.
+If a system Chrome build does not load extensions in headless mode, set `PLAYWRIGHT_HEADLESS=0`; the generator still uses an isolated temporary profile and closes it after capture.
 
 Review every regenerated image before upload. Store copy remains sourced from `BrowserExtension/chromium-store-listing.json`; do not edit rendered images to introduce claims that are absent from the product.
 

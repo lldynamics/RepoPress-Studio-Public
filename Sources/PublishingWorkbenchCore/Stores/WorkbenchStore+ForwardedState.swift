@@ -98,6 +98,10 @@ extension WorkbenchStore {
   public var aiChatSelectedModel: String { aiWorkspaceStore.aiChatSelectedModel }
   public var aiChatFocusedParagraphID: String? { aiWorkspaceStore.aiChatFocusedParagraphID }
   public var aiChatCustomPrompts: [AIPublishingCustomPrompt] { aiWorkspaceStore.aiChatCustomPrompts }
+  public var aiConversations: [AIConversation] { aiWorkspaceStore.aiConversations }
+  public var activeAIConversationIDsByDraftID: [UUID: UUID] {
+    aiWorkspaceStore.activeAIConversationIDsByDraftID
+  }
   public var pendingAIQuickPrompt: AIPublishingQuickPrompt? { aiWorkspaceStore.pendingAIQuickPrompt }
   public var aiChatMessage: String? { aiWorkspaceStore.aiChatMessage }
   public var isAIChatRunning: Bool { aiWorkspaceStore.isAIChatRunning }

@@ -21,8 +21,8 @@ case "$id" in
     subtitle="专注 Markdown 内容，边写边确认最终呈现效果"
     ;;
   ai-chat)
-    title="让 AI 读懂当前文章，再给建议"
-    subtitle="基于正文与资料上下文，辅助结构、摘要与元数据"
+    title="免费接入你的 AI 服务"
+    subtitle="自备 API Key，不计次、不要求 Pro，基于文章上下文辅助写作"
     ;;
   sync-api-publish)
     title="从仓库检查到发布，流程清晰可控"

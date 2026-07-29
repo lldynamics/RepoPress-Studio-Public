@@ -17,6 +17,7 @@ ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
 FEATURE_POLICY="$ROOT_DIR/Sources/PublishingWorkbenchCore/Models/DistributionFeaturePolicy.swift"
 LAUNCH_COORDINATOR="$ROOT_DIR/Sources/PersonalSitePublisherMac/App/WorkbenchLaunchCoordinator.swift"
 LOCALIZED_INFO_PLIST_KEYS=(CFBundleDisplayName CFBundleName)
+EXPECTED_DISPLAY_NAME="RepoPress Studio"
 
 fail() {
   echo "app store metadata gate: $*" >&2
@@ -55,17 +56,21 @@ for language in zh-Hans en; do
     grep -Eq "^[[:space:]]*\"$required_key\"[[:space:]]*=" "$localized_info" \
       || fail "$language InfoPlist.strings is missing $required_key"
   done
-  grep -Eq '^[[:space:]]*"CFBundleDisplayName"[[:space:]]*=[[:space:]]*"RepoPress";' "$localized_info" \
-    || fail "$language CFBundleDisplayName must be RepoPress"
-  grep -Eq '^[[:space:]]*"CFBundleName"[[:space:]]*=[[:space:]]*"RepoPress";' "$localized_info" \
-    || fail "$language CFBundleName must be RepoPress"
+  grep -Eq '^[[:space:]]*"CFBundleDisplayName"[[:space:]]*=[[:space:]]*"RepoPress Studio";' "$localized_info" \
+    || fail "$language CFBundleDisplayName must be RepoPress Studio"
+  grep -Eq '^[[:space:]]*"CFBundleName"[[:space:]]*=[[:space:]]*"RepoPress Studio";' "$localized_info" \
+    || fail "$language CFBundleName must be RepoPress Studio"
 done
 
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO_PLIST")"
 [[ "$bundle_id" == "com.jinfang.PersonalSitePublisherMac" ]] || fail "unexpected bundle identifier: $bundle_id"
 
 display_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$INFO_PLIST" 2>/dev/null || true)"
-[[ "$display_name" == "RepoPress" ]] || fail "CFBundleDisplayName must be RepoPress"
+bundle_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$INFO_PLIST" 2>/dev/null || true)"
+[[ "$display_name" == "$EXPECTED_DISPLAY_NAME" ]] \
+  || fail "CFBundleDisplayName must be $EXPECTED_DISPLAY_NAME"
+[[ "$bundle_name" == "$EXPECTED_DISPLAY_NAME" ]] \
+  || fail "CFBundleName must be $EXPECTED_DISPLAY_NAME"
 
 core_resource_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$CORE_RESOURCE_INFO" 2>/dev/null || true)"
 [[ "$core_resource_bundle_id" == "$bundle_id.PublishingWorkbenchCoreResources" ]] \
@@ -96,6 +101,7 @@ marketing_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionStri
 build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST")"
 build_configuration="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBuildConfiguration' "$INFO_PLIST" 2>/dev/null || true)"
 distribution_channel="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherDistributionChannel' "$INFO_PLIST" 2>/dev/null || true)"
+external_ai_available="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherExternalAIAvailable' "$INFO_PLIST" 2>/dev/null || true)"
 screenshot_capture_build="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherScreenshotCaptureBuild' "$INFO_PLIST" 2>/dev/null || true)"
 browser_extension_available="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherBrowserExtensionAvailable' "$INFO_PLIST" 2>/dev/null || true)"
 safari_extension_available="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherSafariWebExtensionAvailable' "$INFO_PLIST" 2>/dev/null || true)"
@@ -103,6 +109,8 @@ safari_extension_available="$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePub
 [[ "$build_number" =~ ^[0-9]+$ ]] || fail "CFBundleVersion must be numeric, got: $build_number"
 [[ "$build_configuration" == "Release" ]] || fail "App Store metadata must come from a Release bundle, got: ${build_configuration:-missing configuration evidence}"
 [[ "$distribution_channel" == "AppStore" ]] || fail "App Store metadata must come from the AppStore distribution channel"
+[[ "$external_ai_available" == "true" ]] \
+  || fail "App Store metadata must declare free user-configured AI providers available"
 [[ "$screenshot_capture_build" == "false" ]] || fail "App Store submission bundle must not contain screenshot demo data"
 [[ "$browser_extension_available" == "false" ]] || fail "App Store metadata must disable the unpacked browser extension"
 [[ "$safari_extension_available" == "true" ]] \
@@ -128,6 +136,12 @@ codesign --verify --strict "$SAFARI_EXTENSION" \
   || fail "Safari Web Extension signature does not verify"
 grep -Fq "public static var allowsExternalAIProviders" "$FEATURE_POLICY" \
   || fail "distribution policy does not define the App Store AI boundary"
+grep -Fq "Every distribution channel exposes the same free BYOK AI integration" "$FEATURE_POLICY" \
+  || fail "distribution policy does not document the shared free BYOK AI boundary"
+grep -Fq "APP_STORE_BUILD" "$ROOT_DIR/script/build_and_run.sh" \
+  || fail "App Store packaging does not pass the compiled distribution boundary"
+grep -Fq "APP_STORE_SWIFT_SCRATCH_PATH" "$ROOT_DIR/script/build_and_run.sh" \
+  || fail "App Store packaging does not isolate SwiftPM artifacts by distribution channel"
 grep -Fq "public static var allowsBrowserCapture" "$FEATURE_POLICY" \
   || fail "distribution policy does not define the App Store browser-capture boundary"
 grep -Fq "let browserBridge = KnowledgeBrowserBridge(" "$LAUNCH_COORDINATOR" \
@@ -156,4 +170,4 @@ safari_sandbox_enabled="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.
 [[ "$safari_sandbox_enabled" == "true" ]] \
   || fail "Safari Web Extension App Sandbox entitlement must be enabled"
 
-echo "app store metadata gate: AppStore Release bundle id, version $marketing_version ($build_number), BYOK AI consent, embedded Safari Web Extension, sandboxed loopback browser capture, icon, localized display names, category, copyright, minimum macOS, and sandbox entitlements verified"
+echo "app store metadata gate: AppStore Release bundle id, version $marketing_version ($build_number), free BYOK AI enabled and excluded from Pro, embedded Safari Web Extension, sandboxed loopback browser capture, icon, RepoPress Studio display name, category, copyright, minimum macOS, and sandbox entitlements verified"

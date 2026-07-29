@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCREENSHOT_DIR="$ROOT_DIR/docs/app-store-screenshots"
+SCREENSHOT_DIR="${SCREENSHOT_DIR:-$ROOT_DIR/docs/app-store-screenshots}"
 MANIFEST_FILE="${SCREENSHOT_MANIFEST_FILE:-$SCREENSHOT_DIR/SCREENSHOT_MANIFEST.md}"
 APP_PRODUCT="PersonalSitePublisherMac"
 APP_BUNDLE_ID="com.jinfang.PersonalSitePublisherMac"
@@ -70,7 +70,7 @@ load_required_ids() {
 screen_title() {
   case "$1" in
     writing) echo "Writing workspace" ;;
-    ai-chat) echo "BYOK AI writing assistant" ;;
+    ai-chat) echo "Free BYOK AI writing assistant" ;;
     sync-api-publish) echo "Sync/API publishing workspace" ;;
     seo-social-preview) echo "SEO and social preview" ;;
     deployment-status) echo "Deployment status" ;;
@@ -86,7 +86,7 @@ screen_title() {
 screen_guidance() {
   case "$1" in
     writing) echo "Show the writing workspace with editor, preview, metadata, and contextual writing actions." ;;
-    ai-chat) echo "Show the in-app AI writing assistant with safe demo conversation, article context, and user-supplied API-key guidance." ;;
+    ai-chat) echo "Show the free in-app AI writing assistant with safe demo conversation, article context, and user-supplied API-key guidance." ;;
     sync-api-publish) echo "Show GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR controls." ;;
     seo-social-preview) echo "Show search/Open Graph/Twitter card previews, cache state, manual refresh, and external debug links." ;;
     deployment-status) echo "Show GitHub Pages/Actions, Netlify, Vercel, Cloudflare Pages, or custom endpoint validation status." ;;
@@ -121,23 +121,41 @@ contains_marketing_only_id() {
 
 load_required_ids
 
+screenshot_app_pids() {
+  pgrep -f "^${APP_BINARY}([[:space:]]|$)" 2>/dev/null || true
+}
+
+screenshot_app_pid() {
+  screenshot_app_pids | head -n 1
+}
+
+stop_screenshot_app() {
+  local pid
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    kill -TERM "$pid" 2>/dev/null || true
+  done < <(screenshot_app_pids)
+}
+
 launch_app() {
   local surface_id="${1:-writing}"
   local should_force="$FORCE_RELAUNCH"
+  local existing_pids
   [[ -x "$APP_BINARY" ]] || fail "app binary is missing after build: $APP_BINARY"
 
   if [[ "$AUTO_WINDOW" == "1" && "$DEMO_DATA" == "1" ]]; then
     should_force=1
   fi
 
-  if pgrep -x "$APP_PRODUCT" >/dev/null 2>&1; then
+  existing_pids="$(screenshot_app_pids)"
+  if [[ -n "$existing_pids" ]]; then
     if [[ "$DEMO_DATA" == "0" ]]; then
-      echo "screenshot capture: using existing $APP_PRODUCT window"
+      echo "screenshot capture: using existing screenshot bundle window"
       return 0
     fi
     if [[ "$DEMO_DATA" == "1" && "$should_force" == "1" ]]; then
-      echo "screenshot capture: quitting existing $APP_PRODUCT before opening $surface_id"
-      pkill -TERM -x "$APP_PRODUCT" || true
+      echo "screenshot capture: quitting existing screenshot bundle before opening $surface_id"
+      stop_screenshot_app
       sleep 1
     else
       fail "$APP_PRODUCT is already running; quit it first, or pass --force-relaunch so the requested screenshot surface can be opened cleanly"
@@ -162,20 +180,27 @@ launch_app() {
 }
 
 configure_screenshot_window() {
+  local app_pid
   if [[ -s "$SCREENSHOT_WINDOW_ID_FILE" ]]; then
     return
   fi
-  osascript <<OSA
-tell application "$APP_PRODUCT" to activate
-delay 0.5
-tell application "System Events"
-  tell process "$APP_PRODUCT"
-    if not (exists window 1) then error "no visible $APP_PRODUCT window"
-    set frontmost to true
-    set position of window 1 to {64, 56}
+  app_pid="$(screenshot_app_pid)"
+  [[ -n "$app_pid" ]] || fail "could not find the screenshot bundle process"
+  osascript - "$app_pid" <<'OSA'
+on run argv
+  set targetPID to (item 1 of argv) as integer
+  tell application "System Events"
+    set matchingProcesses to every application process whose unix id is targetPID
+    if (count of matchingProcesses) is 0 then error "screenshot bundle process is unavailable"
+    set targetProcess to item 1 of matchingProcesses
+    set frontmost of targetProcess to true
+    tell targetProcess
+      if not (exists window 1) then error "no visible screenshot bundle window"
+      set position of window 1 to {64, 56}
+    end tell
   end tell
-end tell
-delay 0.6
+  delay 0.6
+end run
 OSA
 }
 
@@ -190,7 +215,7 @@ frontmost_app_window_id() {
   fi
   if [[ -f "$WINDOW_ID_HELPER" ]]; then
     local app_pid helper_window_id
-    app_pid="$(pgrep -f "^${APP_BINARY}([[:space:]]|$)" 2>/dev/null | head -n 1 || true)"
+    app_pid="$(screenshot_app_pid)"
     if helper_window_id="$(xcrun swift \
       -module-cache-path "${CLANG_MODULE_CACHE_PATH:-${TMPDIR:-/tmp}/personal-site-publisher-clang-cache}" \
       "$WINDOW_ID_HELPER" "$app_pid" 2>/dev/null | tr -d '[:space:]')" \
@@ -199,32 +224,46 @@ frontmost_app_window_id() {
       return
     fi
   fi
-  osascript <<OSA
-tell application "$APP_PRODUCT" to activate
-delay 0.4
-tell application "System Events"
-  tell process "$APP_PRODUCT"
-    if not (exists window 1) then error "no visible $APP_PRODUCT window"
-    set frontmost to true
-    return value of attribute "AXWindowNumber" of window 1
+  local app_pid
+  app_pid="$(screenshot_app_pid)"
+  [[ -n "$app_pid" ]] || fail "could not find the screenshot bundle process"
+  osascript - "$app_pid" <<'OSA'
+on run argv
+  set targetPID to (item 1 of argv) as integer
+  tell application "System Events"
+    set matchingProcesses to every application process whose unix id is targetPID
+    if (count of matchingProcesses) is 0 then error "screenshot bundle process is unavailable"
+    set targetProcess to item 1 of matchingProcesses
+    set frontmost of targetProcess to true
+    tell targetProcess
+      if not (exists window 1) then error "no visible screenshot bundle window"
+      return value of attribute "AXWindowNumber" of window 1
+    end tell
   end tell
-end tell
+end run
 OSA
 }
 
 frontmost_app_window_rect() {
-  osascript <<OSA
-tell application "$APP_PRODUCT" to activate
-delay 0.4
-tell application "System Events"
-  tell process "$APP_PRODUCT"
-    if not (exists window 1) then error "no visible $APP_PRODUCT window"
-    set frontmost to true
-    set windowPosition to position of window 1
-    set windowSize to size of window 1
-    return (item 1 of windowPosition as text) & "," & (item 2 of windowPosition as text) & "," & (item 1 of windowSize as text) & "," & (item 2 of windowSize as text)
+  local app_pid
+  app_pid="$(screenshot_app_pid)"
+  [[ -n "$app_pid" ]] || fail "could not find the screenshot bundle process"
+  osascript - "$app_pid" <<'OSA'
+on run argv
+  set targetPID to (item 1 of argv) as integer
+  tell application "System Events"
+    set matchingProcesses to every application process whose unix id is targetPID
+    if (count of matchingProcesses) is 0 then error "screenshot bundle process is unavailable"
+    set targetProcess to item 1 of matchingProcesses
+    set frontmost of targetProcess to true
+    tell targetProcess
+      if not (exists window 1) then error "no visible screenshot bundle window"
+      set windowPosition to position of window 1
+      set windowSize to size of window 1
+      return (item 1 of windowPosition as text) & "," & (item 2 of windowPosition as text) & "," & (item 1 of windowSize as text) & "," & (item 2 of windowSize as text)
+    end tell
   end tell
-end tell
+end run
 OSA
 }
 

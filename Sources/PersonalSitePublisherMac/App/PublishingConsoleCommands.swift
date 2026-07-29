@@ -14,8 +14,8 @@ struct PublishingConsoleCommands: Commands {
   @FocusedValue(\.repositorySourceSessionCommandActions) private var repositorySourceSessionCommands
 
   var body: some Commands {
-    CommandMenu("发布控制台") {
-      Button("命令面板与快速打开") {
+    CommandMenu(String(localized: "发布控制台")) {
+      Button(String(localized: "命令面板与快速打开")) {
         workspaceCommandPaletteAction?.open()
       }
       .keyboardShortcut("p")
@@ -23,7 +23,7 @@ struct PublishingConsoleCommands: Commands {
 
       Divider()
 
-      Button("新建文章") {
+      Button(String(localized: "新建文章")) {
         if let writingDraftCommands {
           writingDraftCommands.createDraft()
         } else {
@@ -36,8 +36,8 @@ struct PublishingConsoleCommands: Commands {
       Button(
         repositorySourceEditorCommands == nil
           && repositorySourceSessionCommands?.hasUnsavedChanges != true
-          ? "保存工作台"
-          : "保存 HTML 源文件"
+          ? String(localized: "保存工作台")
+          : String(localized: "保存 HTML 源文件")
       ) {
         if let repositorySourceEditorCommands {
           repositorySourceEditorCommands.save()
@@ -73,14 +73,14 @@ struct PublishingConsoleCommands: Commands {
       .keyboardShortcut("l", modifiers: [.command, .control])
       .disabled(store.isPrivacyLocked)
 
-      Button("返回工作台") {
+      Button(String(localized: "返回工作台")) {
         store.unlockPrivacy()
       }
       .disabled(!store.isPrivacyLocked)
 
       Divider()
 
-      Menu("切换工作区") {
+      Menu(String(localized: "切换工作区")) {
         ForEach(WorkspaceNavigationPresentation.commandMenuItems) { item in
           Button(workspaceNavigationLocalizedKey(item.displayNameLocalizationKey)) {
             store.selectSection(item.section)
@@ -91,7 +91,7 @@ struct PublishingConsoleCommands: Commands {
 
         Divider()
 
-        Menu("高级工具") {
+        Menu(String(localized: "高级工具")) {
           ForEach(WorkspaceNavigationPresentation.commandMenuAdvancedItems) { item in
             Button(workspaceNavigationLocalizedKey(item.displayNameLocalizationKey)) {
               store.selectSection(item.section)
@@ -126,36 +126,40 @@ struct PublishingConsoleCommands: Commands {
             && writingDraftCommands == nil)
       )
 
-      Button("跨文章全文搜索") {
+      Button(String(localized: "跨文章全文搜索")) {
         draftFullTextSearchAction?.open()
       }
       .keyboardShortcut("f", modifiers: [.command, .option])
       .disabled(!canUseProtectedWorkbench || draftFullTextSearchAction == nil)
 
-      Button("搜索草稿列表") {
+      Button(String(localized: "搜索草稿列表")) {
         writingDraftCommands?.focusSearch()
       }
       .disabled(!canUseProtectedWorkbench || writingDraftCommands == nil)
 
-      Button("文章版本历史") {
+      Button(String(localized: "文章版本历史")) {
         writingDraftCommands?.openVersionHistory()
       }
       .disabled(!canUseProtectedWorkbench || writingDraftCommands == nil || commandDraftID == nil)
 
-      Button("文章后退") {
+      Button(String(localized: "文章后退")) {
         navigateDraftHistoryBackward()
       }
       .keyboardShortcut("[", modifiers: [.command])
       .disabled(!canUseProtectedWorkbench || !store.canNavigateBackwardInDraftHistory)
 
-      Button("文章前进") {
+      Button(String(localized: "文章前进")) {
         navigateDraftHistoryForward()
       }
       .keyboardShortcut("]", modifiers: [.command])
       .disabled(!canUseProtectedWorkbench || !store.canNavigateForwardInDraftHistory)
 
       if knowledgeLibraryCommands != nil || writingDraftCommands != nil {
-        Button(knowledgeLibraryCommands == nil ? "上一个草稿" : "上一条资料") {
+        Button(
+          knowledgeLibraryCommands == nil
+            ? String(localized: "上一个草稿")
+            : String(localized: "上一条资料")
+        ) {
           if let knowledgeLibraryCommands {
             knowledgeLibraryCommands.selectPreviousDocument()
           } else {
@@ -165,7 +169,11 @@ struct PublishingConsoleCommands: Commands {
         .keyboardShortcut(.upArrow, modifiers: [.command, .option])
         .disabled(!canUseProtectedWorkbench)
 
-        Button(knowledgeLibraryCommands == nil ? "下一个草稿" : "下一条资料") {
+        Button(
+          knowledgeLibraryCommands == nil
+            ? String(localized: "下一个草稿")
+            : String(localized: "下一条资料")
+        ) {
           if let knowledgeLibraryCommands {
             knowledgeLibraryCommands.selectNextDocument()
           } else {
@@ -176,7 +184,7 @@ struct PublishingConsoleCommands: Commands {
         .disabled(!canUseProtectedWorkbench)
       }
 
-      Button("查找下一个") {
+      Button(String(localized: "查找下一个")) {
         if let repositorySourceEditorCommands {
           repositorySourceEditorCommands.findNext()
         } else {
@@ -192,7 +200,7 @@ struct PublishingConsoleCommands: Commands {
             && markdownEditorCommands?.canUseFindReplace != true)
       )
 
-      Button("查找上一个") {
+      Button(String(localized: "查找上一个")) {
         if let repositorySourceEditorCommands {
           repositorySourceEditorCommands.findPrevious()
         } else {
@@ -209,18 +217,18 @@ struct PublishingConsoleCommands: Commands {
       )
 
       if let repositorySourceEditorCommands {
-        Button("重新载入 HTML 源文件") {
+        Button(String(localized: "重新载入 HTML 源文件")) {
           repositorySourceEditorCommands.reload()
         }
         .disabled(!canUseProtectedWorkbench || !repositorySourceEditorCommands.hasDocument)
       }
 
-      Button("替换当前匹配") {
+      Button(String(localized: "替换当前匹配")) {
         markdownEditorCommands?.replaceCurrentOrNext()
       }
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canUseFindReplace != true)
 
-      Button("全部替换") {
+      Button(String(localized: "全部替换")) {
         markdownEditorCommands?.replaceAll()
       }
       .keyboardShortcut("e", modifiers: [.command, .option])
@@ -228,49 +236,53 @@ struct PublishingConsoleCommands: Commands {
 
       Divider()
 
-      Button("查看快捷键说明") {
+      Button(String(localized: "查看快捷键说明")) {
         markdownEditorCommands?.showKeyboardShortcuts()
       }
       .keyboardShortcut("/", modifiers: [.command, .option])
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
 
-      Button("Markdown 加粗") {
+      Button(String(localized: "Markdown 加粗")) {
         markdownEditorCommands?.applyFormatting(.bold)
       }
       .keyboardShortcut("b", modifiers: [.command])
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
 
-      Button("Markdown 斜体") {
+      Button(String(localized: "Markdown 斜体")) {
         markdownEditorCommands?.applyFormatting(.italic)
       }
       .keyboardShortcut("i", modifiers: [.command])
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
 
-      Button("插入 Markdown 链接") {
+      Button(String(localized: "插入 Markdown 链接")) {
         markdownEditorCommands?.applyFormatting(.link)
       }
       .keyboardShortcut("k", modifiers: [.command])
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
 
-      Menu("Markdown 标题") {
-        Button("一级标题") {
+      Menu(String(localized: "Markdown 标题")) {
+        Button(String(localized: "一级标题")) {
           markdownEditorCommands?.applyFormatting(.heading(level: 1))
         }
         .keyboardShortcut("1", modifiers: [.command, .option])
 
-        Button("二级标题") {
+        Button(String(localized: "二级标题")) {
           markdownEditorCommands?.applyFormatting(.heading(level: 2))
         }
         .keyboardShortcut("2", modifiers: [.command, .option])
 
-        Button("三级标题") {
+        Button(String(localized: "三级标题")) {
           markdownEditorCommands?.applyFormatting(.heading(level: 3))
         }
         .keyboardShortcut("3", modifiers: [.command, .option])
       }
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
 
-      Button(knowledgeLibraryCommands == nil ? "插入图片到当前文章" : "导入资料…") {
+      Button(
+        knowledgeLibraryCommands == nil
+          ? String(localized: "插入图片到当前文章")
+          : String(localized: "导入资料…")
+      ) {
         if let knowledgeLibraryCommands {
           knowledgeLibraryCommands.importSources()
         } else {
@@ -283,15 +295,19 @@ struct PublishingConsoleCommands: Commands {
           || (knowledgeLibraryCommands == nil && markdownEditorCommands == nil)
       )
 
-      Button("模板与片段") {
+      Button(String(localized: "模板与片段")) {
         markdownEditorCommands?.showSnippets()
       }
       .keyboardShortcut("s", modifiers: [.command, .option])
       .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
 
       if DistributionFeaturePolicy.allowsExternalAIProviders {
-        Menu("AI 对话") {
-          Button(isAIChatPanelVisible ? "关闭 AI 对话" : "打开 AI 对话") {
+        Menu(String(localized: "AI 对话")) {
+          Button(
+            isAIChatPanelVisible
+              ? String(localized: "关闭 AI 对话")
+              : String(localized: "打开 AI 对话")
+          ) {
             toggleAIChatWorkspaceForCommandDraft()
           }
           .keyboardShortcut("a", modifiers: [.command, .option])
@@ -299,13 +315,13 @@ struct PublishingConsoleCommands: Commands {
 
           Divider()
 
-          Button("改写选中文本") {
+          Button(String(localized: "改写选中文本")) {
             markdownEditorCommands?.rewriteSelection()
           }
           .keyboardShortcut("r", modifiers: [.command, .option])
           .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canRewriteSelection != true)
 
-          Button("复制上下文 Prompt") {
+          Button(String(localized: "复制上下文 Prompt")) {
             markdownEditorCommands?.copyAIPrompt()
           }
           .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
@@ -314,14 +330,14 @@ struct PublishingConsoleCommands: Commands {
 
       Divider()
 
-      Button("运行发布检查") {
+      Button(String(localized: "运行发布检查")) {
         runPreflightForCommandDraft()
       }
       .keyboardShortcut("r", modifiers: [.command, .shift])
       .disabled(!canUseProtectedWorkbench)
 
       Menu(workspaceNavigationLocalizedKey("workspace.sync")) {
-        Button("打开本地预览") {
+        Button(String(localized: "打开本地预览")) {
         focusCommandDraft(section: .sync)
         store.startLocalSitePreview()
         if let url = store.localSitePreviewPlan?.previewURL {
@@ -331,14 +347,14 @@ struct PublishingConsoleCommands: Commands {
         .keyboardShortcut("p", modifiers: [.command, .shift])
         .disabled(!canUseProtectedWorkbench)
 
-        Button("停止本地预览") {
+        Button(String(localized: "停止本地预览")) {
           store.stopLocalSitePreview()
         }
         .disabled(!canUseProtectedWorkbench || !store.localSitePreviewRuntimeStatus.isRunning)
 
         Divider()
 
-        Button("选择本地仓库...") {
+        Button(String(localized: "选择本地仓库...")) {
           focusCommandDraft(section: .sync)
           if let url = RepositorySelectionPanel.chooseDirectory() {
             Task {
@@ -349,7 +365,7 @@ struct PublishingConsoleCommands: Commands {
         .keyboardShortcut("o", modifiers: [.command, .shift])
         .disabled(!canUseProtectedWorkbench)
 
-        Button("从本地仓库导入文章") {
+        Button(String(localized: "从本地仓库导入文章")) {
           focusCommandDraft(section: .sync)
           Task {
             await store.importDraftsFromLocalRepositoryAsync()
@@ -357,7 +373,7 @@ struct PublishingConsoleCommands: Commands {
         }
         .disabled(!canUseProtectedWorkbench)
 
-        Button("复制同步建议命令") {
+        Button(String(localized: "复制同步建议命令")) {
           focusCommandDraft(section: .sync)
           copyRepositorySyncCommands()
         }
@@ -365,15 +381,19 @@ struct PublishingConsoleCommands: Commands {
 
       }
 
-      Button("发布当前文章…") {
-        openPublishDrawerForCommandDraft(message: "请选择保存到本地或发布上线；需要时再展开高级选项。")
+      Button(String(localized: "发布当前文章…")) {
+        openPublishDrawerForCommandDraft(message: "请选择保存到本地或发布上线；需要时再展开检查结果和文件差异。")
       }
       .disabled(!canUseProtectedWorkbench || commandDraftID == nil)
 
       Divider()
 
       if supportsInspector {
-        Button(store.isInspectorPresented ? "隐藏 Inspector" : "显示 Inspector") {
+        Button(
+          store.isInspectorPresented
+            ? String(localized: "隐藏 Inspector")
+            : String(localized: "显示 Inspector")
+        ) {
           store.setInspectorPresented(!store.isInspectorPresented)
         }
         .keyboardShortcut("i", modifiers: [.command, .option])
@@ -382,7 +402,7 @@ struct PublishingConsoleCommands: Commands {
     }
 
     CommandGroup(after: .help) {
-      Button("添加软件使用指南") {
+      Button(String(localized: "添加软件使用指南")) {
         installSoftwareGuidesFromHelp()
       }
       .disabled(!canUseProtectedWorkbench)
@@ -394,9 +414,11 @@ struct PublishingConsoleCommands: Commands {
   }
 
   private var searchCommandTitle: String {
-    if repositorySourceEditorCommands != nil { return "查找 HTML 源码" }
-    if knowledgeLibraryCommands != nil { return "搜索资料库" }
-    return markdownEditorCommands == nil ? "搜索草稿" : "查找/替换当前文章"
+    if repositorySourceEditorCommands != nil { return String(localized: "查找 HTML 源码") }
+    if knowledgeLibraryCommands != nil { return String(localized: "搜索资料库") }
+    return markdownEditorCommands == nil
+      ? String(localized: "搜索草稿")
+      : String(localized: "查找/替换当前文章")
   }
 
   private var commandDraftID: UUID? {
