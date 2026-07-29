@@ -14,6 +14,9 @@ struct AIChatContextInspectorView: View {
   @State private var isFollowingLatestMessage = true
   @State private var messageAnchorToPreserve: AIPublishingChatMessage.ID?
   @State private var isPartialRetryConfirmationPresented = false
+  @State private var isConversationPopoverPresented = false
+  @State private var isModelPopoverPresented = false
+  @State private var customModelInput = ""
   @FocusState private var isComposerFocused: Bool
 
   init(store: WorkbenchStore) {
@@ -99,8 +102,12 @@ struct AIChatContextInspectorView: View {
       await ai.refreshChatImageWorkbenchReportInBackground(for: draft)
     }
     .onAppear {
+      synchronizeChatDraftWithSelection()
       applyPendingQuickPrompt()
       focusComposerIfAvailable()
+    }
+    .onChange(of: ai.selectedChatDraft?.id) { _, _ in
+      synchronizeChatDraftWithSelection()
     }
     .onChange(of: ai.pendingQuickPrompt?.id) { _, _ in
       applyPendingQuickPrompt()
@@ -111,6 +118,10 @@ struct AIChatContextInspectorView: View {
       }
     }
     .onChange(of: ai.chatDraftID) { _, _ in
+      visibleMessageLimit = 8
+      isFollowingLatestMessage = true
+    }
+    .onChange(of: ai.activeChatConversationID) { _, _ in
       visibleMessageLimit = 8
       isFollowingLatestMessage = true
     }
@@ -144,27 +155,27 @@ struct AIChatContextInspectorView: View {
       Image(systemName: "key.horizontal")
         .foregroundStyle(WorkbenchTheme.warning)
 
-      VStack(alignment: .leading, spacing: 2) {
-        Text("需要配置 AI API Key")
-          .font(.callout.weight(.medium))
-        Text("密钥仅保存在系统钥匙串中。")
-          .font(.workbenchSupporting)
-          .foregroundStyle(.secondary)
-      }
+      Text("未配置 API Key")
+        .font(.caption.weight(.semibold))
+
+      Text("仅存钥匙串")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
 
       Spacer(minLength: 8)
 
-      Button("打开 AI 设置") {
-        requestedSettingsTabID = SettingsTab.ai.id
-        openSettings()
+      Button("配置") {
+        openAISettings()
       }
-      .controlSize(.regular)
+      .controlSize(.small)
     }
     .padding(.horizontal, 14)
-    .padding(.vertical, 10)
+    .padding(.vertical, 7)
     .background(WorkbenchTheme.warning.opacity(WorkbenchOpacity.noticeBackground))
     .accessibilityElement(children: .contain)
-    .accessibilityLabel("需要配置 AI API Key")
+    .accessibilityLabel("未配置 API Key")
+    .accessibilityHint("密钥仅保存在系统钥匙串中。")
   }
 
   private var isAIKeyMissing: Bool {
@@ -174,108 +185,371 @@ struct AIChatContextInspectorView: View {
   }
 
   private var inspectorHeader: some View {
-    VStack(alignment: .leading, spacing: 9) {
-      HStack(spacing: 10) {
-        Image(systemName: "sparkles")
-          .foregroundStyle(WorkbenchTheme.primary)
-
-        Text("AI 助手")
-          .font(.headline)
-
-        Spacer(minLength: 8)
-
-        assistantOptionsMenu
-
-        Button {
-          ai.closeAssistantPanel()
-        } label: {
-          Image(systemName: "xmark")
-        }
-        .buttonStyle(.plain)
-        .help("关闭 AI 助手")
-        .accessibilityLabel("关闭 AI 助手")
-      }
-
-      HStack(spacing: 7) {
-        modelSelectionMenu
-        reasoningLevelMenu
-        Spacer(minLength: 0)
-      }
+    VStack(spacing: 8) {
+      conversationNavigationRow
+      configurationRow
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 11)
+    .padding(.horizontal, 12)
+    .padding(.vertical, 10)
   }
 
-  private var modelSelectionMenu: some View {
-    Menu {
-      Picker("模型档位", selection: modelGradeBinding) {
-        ForEach(AIChatModelGrade.allCases) { grade in
-          Text(grade.title).tag(grade)
-        }
-      }
+  @State private var isHeaderTitleHovered = false
 
-      if let modelSelection {
-        Divider()
+  private var conversationNavigationRow: some View {
+    let conversationCount = ai.selectedChatDraft != nil ? ai.chatConversations(for: ai.selectedChatDraft!.id, includingArchived: false).count : 0
 
-        ForEach(modelSelection.modelCandidates, id: \.self) { model in
-          Button {
-            selectModel(model)
-          } label: {
-            Label(
-              model,
-              systemImage: model == modelSelection.activeModel ? "checkmark" : "cpu"
-            )
+    return HStack(spacing: 8) {
+      Button {
+        isConversationPopoverPresented.toggle()
+      } label: {
+        HStack(spacing: 6) {
+          Image(systemName: "sparkles")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Color.accentColor)
+
+          Text(conversationNavigationTitle)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+
+          if conversationCount > 1 {
+            Text("\(conversationCount)")
+              .font(.workbenchMetadata.weight(.bold).monospacedDigit())
+              .padding(.horizontal, 5)
+              .padding(.vertical, 1)
+              .background(Color.primary.opacity(0.08), in: Capsule())
+              .foregroundStyle(.secondary)
           }
+
+          Image(systemName: "chevron.down")
+            .font(.workbenchMetadata.weight(.bold))
+            .foregroundStyle(isHeaderTitleHovered ? Color.primary.opacity(0.7) : Color.secondary.opacity(0.5))
         }
-
-        Divider()
-
-        Button {
-          ai.resetChatModelToProfileDefault()
-        } label: {
-          Label("恢复站点默认模型", systemImage: "arrow.counterclockwise")
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+          Color.primary.opacity(isHeaderTitleHovered ? 0.08 : 0.04),
+          in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+        )
+      }
+      .buttonStyle(.plain)
+      .onHover { isHovered in
+        withAnimation(.easeOut(duration: 0.15)) {
+          isHeaderTitleHovered = isHovered
         }
       }
-    } label: {
-      Label(modelMenuTitle, systemImage: "cpu")
-        .workbenchTruncatedIdentity(modelMenuTitle)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .disabled(ai.selectedChatDraft == nil)
+      .help("点击切换对话历史（当前草稿共 \(conversationCount) 条对话）")
+      .accessibilityLabel("当前对话")
+      .accessibilityValue(conversationNavigationTitle)
+      .accessibilityIdentifier("ai-assistant-conversation-picker")
+      .popover(isPresented: $isConversationPopoverPresented, arrowEdge: .top) {
+        conversationPickerContent
+      }
+
+      Button {
+        ai.startNewChatConversation(draft: ai.selectedChatDraft)
+      } label: {
+        Image(systemName: "square.and.pencil")
+          .font(.caption.weight(.semibold))
+      }
+      .buttonStyle(.bordered)
+      .controlSize(.small)
+      .disabled(isSending || ai.selectedChatDraft == nil)
+      .help("新对话")
+
+      Button {
+        ai.closeAssistantPanel()
+      } label: {
+        Image(systemName: "xmark")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.secondary)
+          .frame(width: 20, height: 20)
+      }
+      .buttonStyle(.plain)
+      .help("关闭 AI 助手")
     }
-    .controlSize(.small)
-    .help(state.draft?.modelSummary ?? "更换 AI 模型")
-    .accessibilityLabel("AI 模型")
-    .accessibilityValue(state.draft?.modelSummary ?? "未选择")
   }
 
-  private var reasoningLevelMenu: some View {
-    Menu {
-      Picker("思考级别", selection: reasoningLevelBinding) {
-        ForEach(AIChatReasoningLevel.allCases) { level in
-          Text(localizedReasoningLevelTitle(level)).tag(level)
+  @ViewBuilder
+  private var conversationPickerContent: some View {
+    if let draft = ai.selectedChatDraft {
+      AIChatConversationPicker(
+        draft: draft,
+        conversations: ai.chatConversations(
+          for: draft.id,
+          includingArchived: true
+        ),
+        activeConversationID: ai.activeChatConversationID(for: draft.id),
+        isBusy: isSending,
+        selectConversation: { conversationID in
+          if ai.selectChatConversation(conversationID) {
+            isConversationPopoverPresented = false
+          }
+        },
+        createConversation: {
+          if ai.startNewChatConversation(draft: draft) != nil {
+            isConversationPopoverPresented = false
+          }
+        },
+        renameConversation: { conversationID, title in
+          _ = ai.renameChatConversation(conversationID, title: title)
+        },
+        archiveConversation: { conversationID in
+          _ = ai.archiveChatConversation(conversationID)
+        },
+        restoreConversation: { conversationID in
+          _ = ai.restoreChatConversation(conversationID)
+        },
+        deleteConversation: { conversationID in
+          _ = ai.deleteChatConversation(conversationID)
         }
-      }
-    } label: {
-      Label(
-        "思考 \(localizedReasoningLevelTitle(ai.chatReasoningLevel))",
-        systemImage: "brain.head.profile"
       )
     }
-    .controlSize(.small)
-    .disabled(ai.selectedChatDraft == nil || !supportsSelectableReasoningLevel)
-    .help(
-      supportsSelectableReasoningLevel
-        ? "切换当前对话的思考级别"
-        : "当前 AI 服务暂不支持单独切换思考级别"
-    )
-    .accessibilityLabel("AI 思考级别")
-    .accessibilityValue(localizedReasoningLevelTitle(ai.chatReasoningLevel))
   }
 
-  private var assistantOptionsMenu: some View {
+  private var configurationRow: some View {
+    HStack(spacing: 6) {
+      contextSelectionMenu
+
+      modelSelectionPopoverButton
+
+      Spacer(minLength: 0)
+
+      assistantOptionsMenu
+    }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 4)
+    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+  }
+
+  private var contextSelectionMenu: some View {
     Menu {
       Picker("上下文", selection: contextModeBinding) {
         ForEach(AIPublishingChatContextMode.allCases) { mode in
           Text(mode.localizedDisplayNameKey).tag(mode)
         }
+      }
+    } label: {
+      HStack(spacing: 5) {
+        Label(
+          AIChatInspectorHeaderPresentation.contextTitle(for: ai.chatContextMode),
+          systemImage: ai.chatContextMode.systemImage
+        )
+        .lineLimit(1)
+
+        Image(systemName: "chevron.down")
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.secondary)
+      }
+      .padding(.horizontal, 6)
+      .frame(minHeight: 24)
+      .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+    }
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .controlSize(.small)
+    .help(ai.chatContextMode.detail)
+    .accessibilityLabel("上下文")
+    .accessibilityValue(ai.chatContextMode.localizedDisplayName)
+  }
+
+  private var modelSelectionPopoverButton: some View {
+    Button {
+      synchronizeCustomModelInput()
+      isModelPopoverPresented.toggle()
+    } label: {
+      HStack(spacing: 7) {
+        Image(systemName: "cpu")
+          .foregroundStyle(WorkbenchTheme.primary)
+
+        VStack(alignment: .leading, spacing: 1) {
+          Text(providerMenuTitle)
+            .font(.caption.weight(.semibold))
+            .lineLimit(1)
+          Text(activeModelTitle)
+            .font(.workbenchMetadata)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+        }
+
+        Image(systemName: "chevron.down")
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.secondary)
+      }
+      .padding(.horizontal, 6)
+      .frame(minHeight: 24)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+    }
+    .buttonStyle(.borderless)
+    .controlSize(.small)
+    .disabled(modelSelection == nil)
+    .help(modelMenuSummary)
+    .accessibilityLabel("AI 模型")
+    .accessibilityValue(modelMenuSummary)
+    .accessibilityIdentifier("ai-assistant-model-popover")
+    .popover(isPresented: $isModelPopoverPresented, arrowEdge: .top) {
+      modelSelectionPopoverContent
+    }
+  }
+
+  private var modelSelectionPopoverContent: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        Label("AI 模型", systemImage: "cpu")
+          .font(.headline)
+        Spacer()
+        Button {
+          isModelPopoverPresented = false
+        } label: {
+          Image(systemName: "xmark")
+        }
+        .buttonStyle(.plain)
+        .help("关闭模型选择")
+        .accessibilityLabel("关闭模型选择")
+      }
+
+      VStack(alignment: .leading, spacing: 5) {
+        modelPopoverInfoRow(
+          title: String(localized: "服务商"),
+          value: providerMenuTitle
+        )
+        modelPopoverInfoRow(
+          title: String(localized: "当前模型"),
+          value: activeModelTitle
+        )
+      }
+
+      Divider()
+
+      VStack(alignment: .leading, spacing: 6) {
+        Text("常用档位")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.secondary)
+
+        ForEach(modelGradeCandidates) { candidate in
+          Button {
+            ai.setChatModelGrade(candidate.grade)
+            synchronizeCustomModelInput()
+          } label: {
+            HStack(spacing: 8) {
+              Image(systemName: ai.chatModelGrade == candidate.grade ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(
+                  ai.chatModelGrade == candidate.grade ? WorkbenchTheme.primary : Color.secondary
+                )
+              VStack(alignment: .leading, spacing: 1) {
+                Text(candidate.title)
+                  .font(.callout.weight(.medium))
+                Text(candidate.model)
+                  .font(.caption.monospaced())
+                  .foregroundStyle(.secondary)
+                  .lineLimit(1)
+                  .truncationMode(.middle)
+              }
+              Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .accessibilityLabel("\(candidate.title)模型")
+          .accessibilityValue(candidate.model)
+          .accessibilityAddTraits(
+            ai.chatModelGrade == candidate.grade ? .isSelected : []
+          )
+        }
+
+        Button {
+          activateCustomModelEditing()
+        } label: {
+          HStack(spacing: 8) {
+            Image(systemName: ai.chatModelGrade == .custom ? "checkmark.circle.fill" : "circle")
+              .foregroundStyle(
+                ai.chatModelGrade == .custom ? WorkbenchTheme.primary : Color.secondary
+              )
+            Text("自定义模型")
+              .font(.callout.weight(.medium))
+            Spacer(minLength: 0)
+          }
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(
+          ai.chatModelGrade == .custom ? .isSelected : []
+        )
+      }
+
+      if AIChatInspectorHeaderPresentation.showsCustomModelInput(selection: modelSelection) {
+        HStack(spacing: 8) {
+          TextField("自定义模型", text: $customModelInput)
+            .textFieldStyle(.roundedBorder)
+            .onSubmit(applyCustomModelInput)
+            .accessibilityLabel("自定义模型")
+
+          Button(String(localized: "应用"), action: applyCustomModelInput)
+            .disabled(trimmedCustomModelInput.isEmpty)
+        }
+        .accessibilityElement(children: .contain)
+      }
+
+      Divider()
+
+      HStack(spacing: 8) {
+        Button {
+          ai.resetChatModelToProfileDefault()
+          synchronizeCustomModelInput()
+        } label: {
+          Label(
+            String(localized: "恢复站点默认模型"),
+            systemImage: "arrow.counterclockwise"
+          )
+        }
+
+        Spacer(minLength: 4)
+
+        Button {
+          isModelPopoverPresented = false
+          openAISettings()
+        } label: {
+          Label("打开 AI 设置", systemImage: "gearshape")
+        }
+      }
+      .controlSize(.small)
+    }
+    .padding(14)
+    .frame(width: 340)
+  }
+
+  private func modelPopoverInfoRow(
+    title: String,
+    value: String
+  ) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Text(title)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      Spacer(minLength: 8)
+      Text(value)
+        .font(.caption.monospaced())
+        .workbenchTruncatedIdentity(value)
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(title)
+    .accessibilityValue(value)
+  }
+
+  private var assistantOptionsMenu: some View {
+    Menu {
+      if supportsSelectableReasoningLevel {
+        Picker("思考级别", selection: reasoningLevelBinding) {
+          ForEach(AIChatReasoningLevel.allCases) { level in
+            Text(localizedReasoningLevelTitle(level)).tag(level)
+          }
+        }
+
+        Divider()
       }
 
       Picker("资料库", selection: knowledgePolicyBinding) {
@@ -283,15 +557,6 @@ struct AIChatContextInspectorView: View {
           Text(localizedKnowledgePolicyTitle(policy)).tag(policy)
         }
       }
-
-      Divider()
-
-      Button {
-        ai.startNewChatConversation(draft: ai.selectedChatDraft)
-      } label: {
-        Label("新对话", systemImage: "square.and.pencil")
-      }
-      .disabled(isSending)
 
       Divider()
 
@@ -326,12 +591,24 @@ struct AIChatContextInspectorView: View {
         }
         .disabled(trimmedInput.isEmpty)
       }
+
+      Divider()
+
+      Button {
+        openAISettings()
+      } label: {
+        Label("打开 AI 设置", systemImage: "gearshape")
+      }
     } label: {
-      Image(systemName: "slider.horizontal.3")
+      Image(systemName: "gearshape")
+        .frame(width: 28, height: 24)
+        .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
     }
+    .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
-    .help("上下文、资料库与自定义提示")
-    .accessibilityLabel("AI 助手选项")
+    .controlSize(.small)
+    .help("AI 助手设置")
+    .accessibilityLabel("AI 助手设置")
   }
 
   private var messageComposer: some View {
@@ -364,6 +641,23 @@ struct AIChatContextInspectorView: View {
             }
           }
         }
+      }
+
+      quickActionChips
+
+      if isSending {
+        HStack(spacing: 6) {
+          Image(systemName: "sparkles")
+            .font(.workbenchMetadata)
+            .foregroundStyle(Color.accentColor)
+          Text("AI 思考中...")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(Color.accentColor)
+          Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
       }
 
       VStack(alignment: .leading, spacing: 10) {
@@ -423,6 +717,63 @@ struct AIChatContextInspectorView: View {
     .padding(12)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("ai-assistant-composer")
+  }
+
+  @State private var chipsDragOffset: CGFloat = 0
+  @State private var chipsAccumulatedOffset: CGFloat = 0
+
+  private var quickActionChips: some View {
+    ZStack(alignment: .leading) {
+      HStack(spacing: 6) {
+        ForEach([
+          ("✨ 润色全文", "请帮我润色优化整篇文章的表达，保持专业顺畅，纠正错别字与语病。"),
+          ("🏷️ 提取标签", "请分析当前文章内容，推荐 3-5 个最精准的 Front-matter 标签和分类。"),
+          ("📝 生成摘要", "请为当前文章生成一段 100 字左右吸睛的 SEO 简短摘要。"),
+          ("🔍 检查错别字", "请检查当前草稿中是否有错别字、标点误用或病句，并逐一列出修正建议。"),
+          ("🌐 翻译为英文", "请将当前文章的高光段落优雅地翻译为地道的英文表达。")
+        ], id: \.0) { chip, prompt in
+          Button {
+            inputText = prompt
+            isComposerFocused = true
+          } label: {
+            Text(chip)
+              .font(.workbenchMetadata.weight(.medium))
+              .lineLimit(1)
+              .fixedSize(horizontal: true, vertical: false)
+              .padding(.horizontal, 8)
+              .padding(.vertical, 4)
+              .background(Color.primary.opacity(0.06), in: Capsule())
+              .overlay(Capsule().stroke(Color.primary.opacity(0.12), lineWidth: 1))
+          }
+          .buttonStyle(.plain)
+        }
+      }
+      .offset(x: chipsAccumulatedOffset + chipsDragOffset)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .clipped()
+    .contentShape(Rectangle())
+    .gesture(
+      DragGesture(minimumDistance: 2)
+        .onChanged { value in
+          chipsDragOffset = value.translation.width
+        }
+        .onEnded { value in
+          let total = chipsAccumulatedOffset + value.translation.width
+          chipsDragOffset = 0
+          withAnimation(.easeOut(duration: 0.25)) {
+            if total > 0 {
+              chipsAccumulatedOffset = 0
+            } else if total < -240 {
+              chipsAccumulatedOffset = -240
+            } else {
+              chipsAccumulatedOffset = total
+            }
+          }
+        }
+    )
+    .padding(.horizontal, 2)
+    .padding(.bottom, 4)
   }
 
   private var state: AIChatContextInspectorState {
@@ -516,6 +867,9 @@ struct AIChatContextInspectorView: View {
       appendReply: { message, draft in
         append(message, to: draft)
       },
+      branchConversation: { messageID, draft in
+        _ = ai.branchChatConversation(after: messageID, draft: draft)
+      },
       loadEarlierMessages: {
         loadEarlierMessages()
       },
@@ -589,17 +943,11 @@ struct AIChatContextInspectorView: View {
   private var activeManualRetryState: AIChatManualRetryState? {
     guard let draftID = ai.selectedChatDraft?.id,
           let retryState = ai.chatManualRetryState,
-          retryState.draftID == draftID else {
+          retryState.draftID == draftID,
+          retryState.conversationID == ai.activeChatConversationID(for: draftID) else {
       return nil
     }
     return retryState
-  }
-
-  private var modelGradeBinding: Binding<AIChatModelGrade> {
-    Binding(
-      get: { ai.chatModelGrade },
-      set: { ai.setChatModelGrade($0) }
-    )
   }
 
   private var reasoningLevelBinding: Binding<AIChatReasoningLevel> {
@@ -618,18 +966,49 @@ struct AIChatContextInspectorView: View {
     )
   }
 
-  private var modelMenuTitle: String {
-    guard let activeModel = modelSelection?.activeModel.nilIfEmpty else {
-      return "选择模型"
-    }
-    let maximumLength = 22
-    guard activeModel.count > maximumLength else { return activeModel }
-    return "\(activeModel.prefix(maximumLength))…"
+  private var conversationNavigationTitle: String {
+    AIChatInspectorHeaderPresentation.conversationTitle(state.draft?.conversationTitle)
+  }
+
+  private var currentAIProviderConfig: AIProviderConfig {
+    guard let draft = ai.selectedChatDraft else { return AIProviderConfig() }
+    return ai.chatProfile(for: draft).aiProviderConfig
+  }
+
+  private var providerMenuTitle: String {
+    guard ai.selectedChatDraft != nil else { return String(localized: "选择模型") }
+    return AIChatInspectorHeaderPresentation.providerTitle(for: currentAIProviderConfig)
+  }
+
+  private var activeModelTitle: String {
+    modelSelection?.activeModel.nilIfEmpty ?? String(localized: "未选择")
+  }
+
+  private var modelMenuSummary: String {
+    guard ai.selectedChatDraft != nil else { return String(localized: "未选择") }
+    return AIChatInspectorHeaderPresentation.modelSummary(
+      for: currentAIProviderConfig,
+      activeModel: modelSelection?.activeModel
+    )
+  }
+
+  private var modelGradeCandidates: [AIChatInspectorModelGradeCandidate] {
+    guard ai.selectedChatDraft != nil else { return [] }
+    return AIChatInspectorHeaderPresentation.modelGradeCandidates(
+      for: currentAIProviderConfig,
+      currentModel: ai.chatSelectedModel
+    )
+  }
+
+  private var trimmedCustomModelInput: String {
+    customModelInput.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   private var supportsSelectableReasoningLevel: Bool {
-    guard let draft = ai.selectedChatDraft else { return false }
-    return ai.chatProfile(for: draft).aiProviderConfig.usesDeepSeekAPI
+    AIChatInspectorHeaderPresentation.supportsSelectableReasoningLevel(
+      config: currentAIProviderConfig,
+      hasDraft: ai.selectedChatDraft != nil
+    )
   }
 
   private func localizedReasoningLevelTitle(_ level: AIChatReasoningLevel) -> String {
@@ -654,20 +1033,26 @@ struct AIChatContextInspectorView: View {
     }
   }
 
-  private func selectModel(_ model: String) {
-    guard let draft = ai.selectedChatDraft else { return }
-    let config = ai.chatProfile(for: draft).aiProviderConfig
-    for grade in [AIChatModelGrade.standard, .highQuality, .fast] {
-      let gradeModel = AIChatModelCatalog.model(
-        for: grade,
-        config: config,
-        currentModel: ai.chatSelectedModel
-      )
-      if gradeModel == model {
-        ai.setChatModelGrade(grade)
-        return
-      }
-    }
+  private func openAISettings() {
+    requestedSettingsTabID = SettingsTab.ai.id
+    openSettings()
+  }
+
+  private func synchronizeCustomModelInput() {
+    customModelInput = ai.chatSelectedModel.nilIfEmpty
+      ?? modelSelection?.activeModel
+      ?? ""
+  }
+
+  private func activateCustomModelEditing() {
+    synchronizeCustomModelInput()
+    ai.setChatModelGrade(.custom)
+  }
+
+  private func applyCustomModelInput() {
+    let model = trimmedCustomModelInput
+    guard !model.isEmpty else { return }
+    customModelInput = model
     ai.setChatCustomModel(model)
   }
 
@@ -770,6 +1155,12 @@ struct AIChatContextInspectorView: View {
     DispatchQueue.main.async {
       isComposerFocused = true
     }
+  }
+
+  private func synchronizeChatDraftWithSelection() {
+    guard let draft = ai.selectedChatDraft,
+          ai.chatDraftID != draft.id else { return }
+    ai.prepareChat(for: draft)
   }
 
   private func scrollToLatestMessage(

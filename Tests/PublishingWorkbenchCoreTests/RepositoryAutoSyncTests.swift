@@ -30,7 +30,7 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertTrue(snapshot.repositoryAutoSyncState.remoteChangedPaths.isEmpty)
   }
 
-  func testLegacyAIChatSessionFieldIsIgnoredAndNotReencoded() throws {
+  func testLegacyAIChatSnapshotDefaultsToEmptyPersistentConversations() throws {
     let profile = SiteProfile.defaultProfile
     let draft = ArticleDraft(siteProfileID: profile.id, title: "Legacy", slug: "legacy")
     let encoded = try JSONEncoder.workbench.encode(
@@ -42,11 +42,16 @@ final class RepositoryAutoSyncTests: XCTestCase {
       )
     )
     var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+    object["formatVersion"] = 8
+    object.removeValue(forKey: "aiConversations")
+    object.removeValue(forKey: "activeAIConversationIDsByDraftID")
     object["aiChatSessionsByDraftID"] = [draft.id.uuidString: ["messages": []]]
     let json = try JSONSerialization.data(withJSONObject: object)
 
     let snapshot = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: json)
 
+    XCTAssertTrue(snapshot.aiConversations.isEmpty)
+    XCTAssertTrue(snapshot.activeAIConversationIDsByDraftID.isEmpty)
     let reencoded = try JSONEncoder.workbench.encode(snapshot)
     XCTAssertFalse(String(decoding: reencoded, as: UTF8.self).contains("aiChatSessionsByDraftID"))
   }

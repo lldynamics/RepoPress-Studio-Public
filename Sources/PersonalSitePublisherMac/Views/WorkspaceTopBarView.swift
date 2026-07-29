@@ -29,6 +29,7 @@ struct WorkspaceToolbarMenuLabel: View {
   let systemImage: String
   let showsTitle: Bool
   var iconColor: Color = .secondary
+  var siteKindDisplayName: String = ""
 
   var body: some View {
     HStack(spacing: 5) {
@@ -38,6 +39,14 @@ struct WorkspaceToolbarMenuLabel: View {
         Text(title)
           .foregroundStyle(.primary)
           .workbenchTruncatedIdentity(title)
+        if !siteKindDisplayName.isEmpty {
+          Text(siteKindDisplayName)
+            .font(.workbenchMetadata.weight(.medium))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Color.primary.opacity(0.06), in: Capsule())
+            .foregroundStyle(.secondary)
+        }
       }
     }
     .font(.caption.weight(.medium))
@@ -45,6 +54,67 @@ struct WorkspaceToolbarMenuLabel: View {
     .padding(.horizontal, showsTitle ? 6 : 0)
     .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
     .accessibilityHidden(true)
+  }
+}
+
+struct WorkspaceToolbarIconButton: View {
+  let systemImage: String
+  let title: String
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: systemImage)
+    }
+    .buttonStyle(.plain)
+    .help(title)
+  }
+}
+
+struct OmniCommandSearchBar: View {
+  let isCompact: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 6) {
+        Image(systemName: "magnifyingglass")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.secondary)
+
+        if !isCompact {
+          Text("搜索草稿、标签与指令…")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+
+        Spacer(minLength: 4)
+
+        HStack(spacing: 2) {
+          Text("⌘")
+            .font(.workbenchMetadata.weight(.bold))
+          Text("K")
+            .font(.workbenchMetadata.weight(.bold))
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 1)
+        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
+        .foregroundStyle(.tertiary)
+      }
+      .padding(.horizontal, 8)
+      .frame(height: 26)
+      .frame(minWidth: isCompact ? 70 : 180, maxWidth: 240)
+      .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+          .stroke(Color.primary.opacity(0.08), lineWidth: 0.8)
+      }
+      .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+    .buttonStyle(.plain)
+    .help("唤起命令面板与全局搜索 (⌘K)")
+    .accessibilityLabel("全局搜索")
   }
 }
 
@@ -98,9 +168,10 @@ struct WorkspaceToolbarLeadingContent: View {
         WorkspaceToolbarMenuLabel(
           title: store.activeProfile.name,
           systemImage: "globe",
-          showsTitle: !isCompact
+          showsTitle: !isCompact,
+          siteKindDisplayName: store.activeProfile.siteKind.localizedDisplayName
         )
-        .frame(maxWidth: isCompact ? nil : 150, alignment: .leading)
+        .frame(maxWidth: isCompact ? nil : 200, alignment: .leading)
       }
       .menuStyle(.borderlessButton)
       .menuIndicator(.hidden)
@@ -177,22 +248,23 @@ struct PublishingStatusToolbarControl: View {
       isPresented.toggle()
     } label: {
       HStack(spacing: 6) {
-        Image(systemName: toolbarStatus.statusImage)
-          .foregroundStyle(toolbarStatus.color)
+        Circle()
+          .fill(toolbarStatus.color)
+          .frame(width: 7, height: 7)
         Text(toolbarStatus.value)
           .foregroundStyle(.primary)
       }
-        .font(.caption.weight(.semibold))
-        .lineLimit(1)
-        .accessibilityLabel("发布状态")
-        .padding(.horizontal, 8)
-        .frame(height: 26)
-        .background(WorkbenchBackgroundStyle.page, in: Capsule())
-        .overlay {
-          Capsule()
-            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
-        }
-        .contentShape(Capsule())
+      .font(.caption.weight(.semibold))
+      .lineLimit(1)
+      .accessibilityLabel("发布状态")
+      .padding(.horizontal, 9)
+      .frame(height: 26)
+      .background(toolbarStatus.color.opacity(0.12), in: Capsule())
+      .overlay {
+        Capsule()
+          .stroke(toolbarStatus.color.opacity(0.2), lineWidth: 0.8)
+      }
+      .contentShape(Capsule())
     }
     .buttonStyle(.plain)
     .disabled(!canUseProtectedWorkbench)

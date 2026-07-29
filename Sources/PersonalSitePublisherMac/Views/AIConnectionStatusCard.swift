@@ -14,9 +14,26 @@ struct AIConnectionStatusCard: View {
     )
 
     return VStack(alignment: .leading, spacing: 6) {
-      Label(presentation.title, systemImage: presentation.systemImage)
-        .font(.callout.weight(.semibold))
-        .foregroundStyle(aiConnectionStatusColor(presentation.level))
+      HStack {
+        Label(presentation.title, systemImage: presentation.systemImage)
+          .font(.callout.weight(.semibold))
+          .foregroundStyle(aiConnectionStatusColor(presentation.level))
+
+        Spacer()
+
+        if report != nil {
+          HStack(spacing: 4) {
+            Image(systemName: "bolt.fill")
+              .font(.workbenchMetadata)
+            Text("HTTP 200 OK")
+              .font(.workbenchMetadata.weight(.bold).monospaced())
+          }
+          .padding(.horizontal, 6)
+          .padding(.vertical, 2)
+          .background(WorkbenchTheme.success.opacity(0.15), in: Capsule())
+          .foregroundStyle(WorkbenchTheme.success)
+        }
+      }
 
       Text(presentation.message)
         .font(.workbenchSupporting)

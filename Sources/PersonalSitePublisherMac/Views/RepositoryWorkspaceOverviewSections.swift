@@ -56,7 +56,10 @@ extension RepositoryWorkspaceView {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.bordered)
-        .disabled(store.repository.scanState.isScanning)
+        .disabled(
+          store.repository.scanState.isScanning
+            || store.isLocalRepositoryBranchOperationRunning
+        )
         .accessibilityIdentifier("repository-action-select-folder")
 
         if store.repository.scanState.isScanning {
@@ -79,11 +82,18 @@ extension RepositoryWorkspaceView {
               .frame(maxWidth: .infinity, alignment: .leading)
           }
           .buttonStyle(.bordered)
-          .disabled(!hasSelectedRepository)
+          .disabled(
+            !hasSelectedRepository
+              || store.isLocalRepositoryBranchOperationRunning
+          )
           .help(
-            hasSelectedRepository
-              ? String(localized: "重新读取仓库结构、Git 状态和文件变化")
-              : String(localized: "请先选择站点文件夹")
+            store.isLocalRepositoryBranchOperationRunning
+              ? String(localized: "正在处理分支")
+              : (
+                hasSelectedRepository
+                  ? String(localized: "重新读取仓库结构、Git 状态和文件变化")
+                  : String(localized: "请先选择站点文件夹")
+              )
           )
           .accessibilityIdentifier("repository-action-scan")
         }
@@ -97,7 +107,11 @@ extension RepositoryWorkspaceView {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.bordered)
-        .disabled(!hasSelectedRepository || store.repository.scanState.isScanning)
+        .disabled(
+          !hasSelectedRepository
+            || store.repository.scanState.isScanning
+            || store.isLocalRepositoryBranchOperationRunning
+        )
         .help(
           hasSelectedRepository
             ? String(localized: "将仓库中的文章导入写作列表")
@@ -179,6 +193,7 @@ extension RepositoryWorkspaceView {
   private var repositoryOverviewContextColumn: some View {
     VStack(alignment: .leading, spacing: 16) {
       repositoryInformationSection
+      RepositoryWorkspaceGitManagementSection(store: store)
       repositoryOverviewLocalPreviewSection
       repositoryOverviewSyncPlanSection
       pathRules
@@ -413,7 +428,7 @@ extension RepositoryWorkspaceView {
   func openUnifiedPublishFlow() {
     if let publishDrawerCommandAction {
       publishDrawerCommandAction.open(
-        "选择保存到本地或发布上线；需要时再展开检查与高级选项。"
+        "选择保存到本地或发布上线；需要时再展开检查结果和文件差异。"
       )
     } else {
       store.runPreflight()
@@ -494,6 +509,7 @@ extension RepositoryWorkspaceView {
   }
 
   func chooseRepository() {
+    guard !store.isLocalRepositoryBranchOperationRunning else { return }
     guard let url = RepositorySelectionPanel.chooseDirectory() else { return }
     Task {
       await store.repository.rememberRootAsync(url)
@@ -501,6 +517,7 @@ extension RepositoryWorkspaceView {
   }
 
   func scanRepository() {
+    guard !store.isLocalRepositoryBranchOperationRunning else { return }
     Task {
       await store.repository.scanAsync()
     }

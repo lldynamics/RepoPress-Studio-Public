@@ -86,7 +86,7 @@
 
         <label class="check-row">
           <input id="capture-ai" type="checkbox" checked>
-          <span data-i18n="allowAILabel">允许 AI 在写作和对话时检索此资料</span>
+          <span data-i18n="allowAILabel">加入本地语义检索</span>
         </label>
 
         <button id="batch-save" class="secondary" type="button" aria-describedby="batch-hint" aria-keyshortcuts="Control+Shift+B Meta+Shift+B" disabled data-i18n="batchSaveButton">批量保存已选择标签页</button>
@@ -120,7 +120,7 @@
           <div><dt data-i18n="fileSizeLabel">文件大小</dt><dd id="receipt-size"></dd></div>
           <div><dt data-i18n="archiveTypeLabel">归档类型</dt><dd id="receipt-archive"></dd></div>
           <div><dt data-i18n="indexStatusLabel">索引状态</dt><dd id="receipt-index"></dd></div>
-          <div><dt data-i18n="aiPermissionLabel">AI 权限</dt><dd id="receipt-ai"></dd></div>
+          <div><dt data-i18n="aiPermissionLabel">语义检索</dt><dd id="receipt-ai"></dd></div>
         </dl>
         <button id="open-document" class="secondary" data-i18n="openDocumentButton">在资料库中打开</button>
       </section>
@@ -143,7 +143,7 @@
           <button id="duplicate-copy" class="secondary" data-i18n="keepCopyButton">保留副本</button>
           <button id="duplicate-cancel" class="secondary" data-i18n="cancelButton">取消</button>
         </div>
-        <p class="hint" data-i18n="moveOnlyHint">“仅移动分类”不会修改原资料的正文、元数据或 AI 权限。</p>
+        <p class="hint" data-i18n="moveOnlyHint">“仅移动分类”不会修改原资料的正文、元数据或语义检索设置。</p>
       </section>
 
       <details id="queue-panel" class="queue-panel" aria-labelledby="queue-title" aria-busy="true">

@@ -228,6 +228,8 @@ public final class WorkbenchStore: ObservableObject {
       aiMetadataApplicationRecords: snapshot?.aiMetadataApplicationRecords ?? [],
       automationRunRecords: snapshot?.automationRunRecords ?? [],
       aiChatCustomPrompts: snapshot?.aiChatCustomPrompts ?? [],
+      aiConversations: snapshot?.aiConversations ?? [],
+      activeAIConversationIDsByDraftID: snapshot?.activeAIConversationIDsByDraftID ?? [:],
       seoSocialPreviewSnapshots: Dictionary(
         (snapshot?.seoSocialPreviewSnapshots ?? []).map { ($0.draftID, $0) },
         uniquingKeysWith: { current, candidate in

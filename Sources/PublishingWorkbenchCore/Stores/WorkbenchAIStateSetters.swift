@@ -19,6 +19,7 @@ extension WorkbenchStore {
 
   public func setAIChatContextMode(_ mode: AIPublishingChatContextMode) {
     aiWorkspaceStore.aiChatContextMode = mode
+    aiStore.cacheCurrentAIChatSessionForAIStore()
   }
 
   func setAIChatModelGradeState(_ grade: AIChatModelGrade) {

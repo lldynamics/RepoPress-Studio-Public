@@ -13,6 +13,8 @@ SAFARI_EXTENSION_BUNDLE_ID="com.jinfang.PersonalSitePublisherMac.SafariExtension
 ARCHIVE_EVIDENCE="${APP_STORE_ARCHIVE_EVIDENCE_FILE:-$ROOT_DIR/docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md}"
 STRICT=0
 DRY_RUN=0
+EXPECTED_MARKETING_VERSION=""
+EXPECTED_BUILD_NUMBER=""
 
 usage() {
   cat <<'USAGE'
@@ -48,13 +50,20 @@ warn() {
 
 validate_archive_evidence() {
   local require_complete="$1"
-  python3 - "$ARCHIVE_EVIDENCE" "$require_complete" <<'PY'
+  python3 - \
+    "$ARCHIVE_EVIDENCE" \
+    "$require_complete" \
+    "$EXPECTED_MARKETING_VERSION" \
+    "$EXPECTED_BUILD_NUMBER" <<'PY'
 from pathlib import Path
 import re
 import sys
 
 path = Path(sys.argv[1])
 require_complete = sys.argv[2] == "1"
+expected_marketing_version = sys.argv[3]
+expected_build_number = sys.argv[4]
+expected_release = f"{expected_marketing_version} ({expected_build_number})"
 text = path.read_text()
 required_titles = [
     "Clean Release archive produced from a clean checkout.",
@@ -95,11 +104,19 @@ if private_evidence_lines:
 
 missing = []
 empty_evidence = []
+stale_transporter_evidence = []
+transporter_title = "Archive validated with App Store Connect or Transporter before upload."
 for title in required_titles:
     if title not in checked:
         missing.append(title)
     elif not checked[title]:
         empty_evidence.append(title)
+    elif (
+        require_complete
+        and title == transporter_title
+        and expected_release not in checked[title]
+    ):
+        stale_transporter_evidence.append(title)
 
 if empty_evidence:
     print(
@@ -112,6 +129,14 @@ if require_complete and missing:
     print(
         "app store archive readiness: strict mode requires completed archive validation item(s): "
         + "; ".join(missing),
+        file=sys.stderr,
+    )
+    sys.exit(1)
+if stale_transporter_evidence:
+    print(
+        "app store archive readiness: strict mode requires App Store Connect or "
+        f"Transporter evidence for the current build {expected_release}; "
+        "the recorded evidence is older or does not identify the validated build",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -158,7 +183,9 @@ done
 [[ -f "$SAFARI_EXTENSION_ENTITLEMENTS" ]] \
   || fail "missing Packaging/SafariWebExtension.entitlements"
 [[ -f "$ARCHIVE_EVIDENCE" ]] || fail "missing docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md"
-bash "$ROOT_DIR/script/check_build_version.sh" >/dev/null
+expected_version_values="$(bash "$ROOT_DIR/script/check_build_version.sh" --print-values)"
+IFS=$'\t' read -r EXPECTED_MARKETING_VERSION EXPECTED_BUILD_NUMBER \
+  <<<"$expected_version_values"
 
 if [[ "$DRY_RUN" == "1" ]]; then
   validate_archive_evidence "${STRICT_ARCHIVE_EVIDENCE_ONLY:-0}"
@@ -279,6 +306,10 @@ fi
 unchecked_archive_items="$(grep -c '^- \[ \]' "$ARCHIVE_EVIDENCE" || true)"
 checked_archive_items="$(grep -Ec '^- \[[xX]\]' "$ARCHIVE_EVIDENCE" || true)"
 validate_archive_evidence 0
+archive_evidence_matches_current_build=0
+if validate_archive_evidence 1 >/dev/null 2>&1; then
+  archive_evidence_matches_current_build=1
+fi
 
 if [[ "$signed" == "1" ]]; then
   echo "app store archive readiness: code signature verifies ($identity_summary)"
@@ -302,8 +333,12 @@ else
   warn "Safari Web Extension hardened runtime flag is not proven on the current bundle"
 fi
 
-if [[ "$unchecked_archive_items" -eq 0 && "$checked_archive_items" -gt 0 ]]; then
-  echo "app store archive readiness: archive validation evidence is complete"
+if [[ "$unchecked_archive_items" -eq 0 \
+   && "$checked_archive_items" -gt 0 \
+   && "$archive_evidence_matches_current_build" == "1" ]]; then
+  echo "app store archive readiness: archive validation evidence is complete for the current build $EXPECTED_MARKETING_VERSION ($EXPECTED_BUILD_NUMBER)"
+elif [[ "$unchecked_archive_items" -eq 0 && "$checked_archive_items" -gt 0 ]]; then
+  warn "archive validation evidence is checked but does not prove current build $EXPECTED_MARKETING_VERSION ($EXPECTED_BUILD_NUMBER)"
 else
   warn "archive validation evidence still has $unchecked_archive_items unchecked item(s)"
 fi

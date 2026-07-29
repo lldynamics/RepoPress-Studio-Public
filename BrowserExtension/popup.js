@@ -603,7 +603,7 @@ function renderBatchReview() {
     localizedText("batchModeSummary", "模式：{mode}", {
       mode: captureModeShortLabel(configuration.captureMode)
     }),
-    localizedText("batchAISummary", "AI 权限：{permission}", {
+    localizedText("batchAISummary", "语义检索：{permission}", {
       permission: configuration.allowsAIUse
         ? localizedText("aiAllowedShort", "允许检索")
         : localizedText("aiDeniedShort", "不允许使用")
@@ -1436,8 +1436,8 @@ function showReceipt(receipt) {
     ? localizedText("indexReady", "全文与语义索引已就绪")
     : localizedText("indexPending", "等待建立索引");
   receiptAI.textContent = receipt.allowsAIUse === false
-    ? localizedText("aiDeniedReceipt", "不允许 AI 使用")
-    : localizedText("aiAllowedReceipt", "允许 AI 检索");
+    ? localizedText("aiDeniedReceipt", "未加入语义检索")
+    : localizedText("aiAllowedReceipt", "已加入本地语义检索");
   return true;
 }
 
@@ -1918,7 +1918,7 @@ function readableError(error) {
   if (/failed to fetch|networkerror|network request failed|load failed|connection refused/i.test(message)) {
     return localizedText(
       "cannotConnectError",
-      "无法连接应用。请先打开“RepoPress”，再检查令牌。"
+      "无法连接应用。请先打开“RepoPress Studio”，再检查令牌。"
     );
   }
   return error?.message || String(error);

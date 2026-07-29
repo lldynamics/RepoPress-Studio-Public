@@ -16,6 +16,30 @@ struct DefaultRuleSiteSection: View {
         .accessibilityLabel("站点类型")
         .accessibilityValue(activeProfile.siteKind.localizedDisplayName)
 
+        HStack {
+          Text("快捷套用框架规范：")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+          Button("Hexo 规范") {
+            activeProfileBinding.frontMatterStyle.wrappedValue = .yaml
+            activeProfileBinding.dateFormat.wrappedValue = "yyyy-MM-dd HH:mm:ss"
+            activeProfileBinding.slugValidationRule.wrappedValue = .lowercaseKebab
+            activeProfileBinding.includeDraftFlagInFrontMatter.wrappedValue = false
+          }
+          .buttonStyle(.borderless)
+          .font(.caption.weight(.medium))
+
+          Button("Hugo 规范") {
+            activeProfileBinding.frontMatterStyle.wrappedValue = .yaml
+            activeProfileBinding.dateFormat.wrappedValue = "yyyy-MM-dd'T'HH:mm:ssXXX"
+            activeProfileBinding.includeDraftFlagInFrontMatter.wrappedValue = true
+          }
+          .buttonStyle(.borderless)
+          .font(.caption.weight(.medium))
+        }
+        .padding(.vertical, 2)
+
         Picker("文章头信息格式", selection: activeProfileBinding.frontMatterStyle) {
           ForEach(FrontMatterStyle.allCases) { style in
             Text(style.localizedDisplayName).tag(style)

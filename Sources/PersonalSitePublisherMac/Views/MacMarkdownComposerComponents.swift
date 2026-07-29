@@ -268,8 +268,16 @@ struct SelectionActionBar: View {
   let availabilityForSelectionAction: (AIPublishingActionKind) -> AIPublishingActionAvailabilityPresentation
 
   var body: some View {
-    HStack(spacing: 6) {
+    HStack(spacing: 8) {
       if DistributionFeaturePolicy.allowsExternalAIProviders {
+        HStack(spacing: 4) {
+          Image(systemName: "sparkles")
+            .font(.workbenchMetadata)
+            .foregroundStyle(Color.accentColor)
+          Text("AI 选区魔法")
+            .font(.caption.weight(.semibold))
+        }
+
         Menu {
           selectionActionButton(.rewrite, kind: .rewriteSelection)
           selectionActionButton(.condense, kind: .condenseSelection)
@@ -292,7 +300,7 @@ struct SelectionActionBar: View {
             Label("搜索模板库…", systemImage: "magnifyingglass")
           }
         } label: {
-          Label(activeSelectionActionName ?? "AI 编辑", systemImage: "sparkles")
+          Label(activeSelectionActionName ?? "✨ 改写选区", systemImage: "sparkles")
         }
         .disabled(isSelectionAIActionRunning)
 

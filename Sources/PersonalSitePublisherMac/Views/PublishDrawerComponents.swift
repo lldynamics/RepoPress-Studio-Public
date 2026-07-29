@@ -150,9 +150,11 @@ struct RemotePublishConfirmationView: View {
   let targetLabel: String
   let targetTitle: String
   let preview: RemoteRepositoryPublishPreview
+  let reviewDraft: RemoteReviewDraft?
   let isPublishing: Bool
   let cancelAction: () -> Void
   let confirmAction: () -> Void
+  @State private var copyMessage: String?
 
   var body: some View {
     VStack(spacing: 0) {
@@ -176,6 +178,38 @@ struct RemotePublishConfirmationView: View {
             PublishDrawerInfoRow(title: "发布分支", value: preview.branchName, systemImage: "arrow.triangle.branch")
             PublishDrawerInfoRow(title: "目标分支", value: preview.targetBranch, systemImage: "arrow.down.to.line")
             PublishDrawerInfoRow(title: "权限", value: preview.accessSummary, systemImage: "person.badge.key")
+          }
+
+          if preview.mode == .reviewRequest, let reviewDraft {
+            PublishDrawerCard(title: "PR/MR 描述", systemImage: "text.page") {
+              Text(reviewDraft.title)
+                .font(.caption.weight(.semibold))
+                .workbenchTruncatedIdentity(reviewDraft.title, lineLimit: 2)
+              Text(reviewDraft.body)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineSpacing(2)
+                .lineLimit(8)
+                .textSelection(.enabled)
+              Button {
+                ClipboardWriter.copy(
+                  reviewDraft.body,
+                  successMessage: "已复制 PR/MR 描述。",
+                  setMessage: { copyMessage = $0 }
+                )
+              } label: {
+                Label("复制描述", systemImage: "doc.on.doc")
+              }
+              .controlSize(.small)
+              .accessibilityLabel("复制 PR 或 MR 描述")
+
+              if let copyMessage {
+                Text(copyMessage)
+                  .font(.caption)
+                  .foregroundStyle(WorkbenchTheme.success)
+                  .accessibilityLabel(copyMessage)
+              }
+            }
           }
 
           PublishDrawerCard(title: "完整文件清单", systemImage: "doc.on.doc") {
@@ -288,101 +322,6 @@ extension PublishFileDiffStatus {
       return .secondary
     case .missingSource, .unsafePath:
       return WorkbenchTheme.risk
-    }
-  }
-}
-
-struct PublishDrawerFlowStep: Identifiable {
-  let id = UUID()
-  let title: String
-  let detail: String
-  let systemImage: String
-  let state: PublishDrawerFlowStepState
-}
-
-struct PublishDrawerFinalAction {
-  let title: String
-  let summary: String
-  let systemImage: String
-  let isDeploymentSuccessful: Bool
-}
-
-enum PublishDrawerFlowCard: CaseIterable, Hashable, Identifiable {
-  case checks
-  case diff
-  case write
-  case remote
-  case deployment
-
-  var id: Self { self }
-
-  var title: String {
-    switch self {
-    case .checks:
-      return "检查"
-    case .diff:
-      return WorkbenchUITerminology.difference
-    case .write:
-      return "写入"
-    case .remote:
-      return "远端"
-    case .deployment:
-      return "部署"
-    }
-  }
-}
-
-enum PublishDrawerFlowStepState: Equatable {
-  case complete
-  case active
-  case blocked
-  case pending
-
-  var color: Color {
-    switch self {
-    case .complete:
-      return WorkbenchTheme.success
-    case .active:
-      return WorkbenchTheme.progress
-    case .blocked:
-      return WorkbenchTheme.risk
-    case .pending:
-      return .secondary
-    }
-  }
-
-  var connectorColor: Color {
-    switch self {
-    case .complete, .active:
-      return color.opacity(0.75)
-    case .blocked, .pending:
-      return Color(nsColor: .separatorColor)
-    }
-  }
-
-  var backgroundColor: Color {
-    switch self {
-    case .complete:
-      return WorkbenchTheme.success.opacity(0.10)
-    case .active:
-      return WorkbenchTheme.progress.opacity(0.12)
-    case .blocked:
-      return WorkbenchTheme.risk.opacity(0.10)
-    case .pending:
-      return Color(nsColor: .controlBackgroundColor).opacity(0.65)
-    }
-  }
-
-  var borderColor: Color {
-    switch self {
-    case .active:
-      return WorkbenchTheme.progress.opacity(0.55)
-    case .blocked:
-      return WorkbenchTheme.risk.opacity(0.45)
-    case .complete:
-      return WorkbenchTheme.success.opacity(0.35)
-    case .pending:
-      return Color(nsColor: .separatorColor).opacity(0.45)
     }
   }
 }

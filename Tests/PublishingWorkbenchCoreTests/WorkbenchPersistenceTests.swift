@@ -97,6 +97,83 @@ final class WorkbenchPersistenceTests: XCTestCase {
     XCTAssertEqual(store.seoSocialPreviewSnapshots[draft.id]?.signature, "newer")
   }
 
+  func testSnapshotKeepsAIConversationsForLiveAndRecycledDraftsButDropsOrphans() throws {
+    let profile = SiteProfile.defaultProfile
+    let liveDraft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Live",
+      slug: "live"
+    )
+    let recycledDraft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Recycled",
+      slug: "recycled"
+    )
+    let liveConversation = AIConversation(draftID: liveDraft.id, title: "Live")
+    let recycledConversation = AIConversation(draftID: recycledDraft.id, title: "Recycled")
+    let orphanConversation = AIConversation(draftID: UUID(), title: "Orphan")
+    let snapshot = WorkbenchSnapshot(
+      profiles: [profile],
+      activeProfileID: profile.id,
+      drafts: [liveDraft],
+      recycledDrafts: [RecycledDraft(draft: recycledDraft)],
+      releaseRecords: [],
+      aiConversations: [liveConversation, recycledConversation, orphanConversation],
+      activeAIConversationIDsByDraftID: [
+        liveDraft.id: liveConversation.id,
+        recycledDraft.id: recycledConversation.id,
+        orphanConversation.draftID: orphanConversation.id,
+      ]
+    )
+
+    XCTAssertEqual(
+      Set(snapshot.aiConversations.map(\.id)),
+      Set([liveConversation.id, recycledConversation.id])
+    )
+    XCTAssertEqual(
+      snapshot.activeAIConversationIDsByDraftID,
+      [
+        liveDraft.id: liveConversation.id,
+        recycledDraft.id: recycledConversation.id,
+      ]
+    )
+
+    var encodedObject = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: JSONEncoder.workbench.encode(snapshot)) as? [String: Any]
+    )
+    encodedObject["aiConversations"] = try JSONSerialization.jsonObject(
+      with: JSONEncoder.workbench.encode([
+        liveConversation,
+        recycledConversation,
+        orphanConversation,
+      ])
+    )
+    encodedObject["activeAIConversationIDsByDraftID"] = try JSONSerialization.jsonObject(
+      with: JSONEncoder.workbench.encode([
+        liveDraft.id: liveConversation.id,
+        recycledDraft.id: recycledConversation.id,
+        orphanConversation.draftID: orphanConversation.id,
+      ])
+    )
+
+    let decoded = try JSONDecoder.workbench.decode(
+      WorkbenchSnapshot.self,
+      from: JSONSerialization.data(withJSONObject: encodedObject)
+    )
+
+    XCTAssertEqual(
+      Set(decoded.aiConversations.map(\.id)),
+      Set([liveConversation.id, recycledConversation.id])
+    )
+    XCTAssertEqual(
+      decoded.activeAIConversationIDsByDraftID,
+      [
+        liveDraft.id: liveConversation.id,
+        recycledDraft.id: recycledConversation.id,
+      ]
+    )
+  }
+
   func testSoftwareGuideSeedPolicyCreatesSafeGuidesForFreshWorkspace() async {
     let url = temporaryPersistenceURL()
     defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

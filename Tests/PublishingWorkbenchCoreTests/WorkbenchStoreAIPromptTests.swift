@@ -82,7 +82,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertEqual(reloaded.aiChatMessage, "已删除自定义提示。")
   }
 
-  func testAIChatBranchTruncatesAtSelectedMessageWithoutArchiving() throws {
+  func testAIChatBranchCreatesNewConversationAndPreservesOriginal() throws {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
     )
@@ -94,10 +94,132 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     let fourth = AIPublishingChatMessage(role: .assistant, content: "第二答")
     store.setAIChatMessages([first, second, third, fourth])
 
-    store.branchAIChatConversation(after: second.id, draft: draft)
+    let branch = try XCTUnwrap(
+      store.branchAIChatConversation(after: second.id, draft: draft)
+    )
+    let conversations = store.aiChatConversations(for: draft.id)
+    let original = try XCTUnwrap(
+      conversations.first { $0.id != branch.id }
+    )
 
+    XCTAssertEqual(conversations.count, 2)
+    XCTAssertEqual(original.messages.map(\.id), [first.id, second.id, third.id, fourth.id])
+    XCTAssertEqual(branch.messages.map(\.id), [first.id, second.id])
+    XCTAssertEqual(store.activeAIChatConversationID(for: draft.id), branch.id)
     XCTAssertEqual(store.aiChatMessages.map(\.id), [first.id, second.id])
     XCTAssertEqual(store.aiChatMessage, "已从所选消息创建分支。")
+  }
+
+  func testAIChatConversationManagementSelectsRenamesArchivesAndDeletes() throws {
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("json")
+    defer {
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+    )
+    let draft = try XCTUnwrap(store.selectedDraft)
+    let firstMessage = AIPublishingChatMessage(role: .user, content: "第一条对话")
+
+    store.prepareAIChat(for: draft)
+    store.setAIChatMessages([firstMessage])
+    store.setAIChatConversationTitle("第一条", draft: draft)
+    let firstConversationID = try XCTUnwrap(
+      store.activeAIChatConversationID(for: draft.id)
+    )
+    let secondConversation = try XCTUnwrap(
+      store.startNewAIChatConversation(draft: draft)
+    )
+
+    XCTAssertTrue(
+      store.renameAIChatConversation(secondConversation.id, title: "第二条")
+    )
+    XCTAssertTrue(store.selectAIChatConversation(firstConversationID))
+    XCTAssertEqual(store.aiChatMessages.map(\.id), [firstMessage.id])
+
+    XCTAssertTrue(store.archiveAIChatConversation(firstConversationID))
+    XCTAssertEqual(
+      store.activeAIChatConversationID(for: draft.id),
+      secondConversation.id
+    )
+    XCTAssertEqual(store.aiChatConversationTitle, "第二条")
+    XCTAssertEqual(store.aiChatConversations(for: draft.id).count, 1)
+    XCTAssertEqual(
+      store.aiChatConversations(for: draft.id, includingArchived: true).count,
+      2
+    )
+
+    XCTAssertTrue(store.restoreAIChatConversation(firstConversationID))
+    XCTAssertEqual(
+      store.activeAIChatConversationID(for: draft.id),
+      firstConversationID
+    )
+    XCTAssertEqual(store.aiChatConversationTitle, "第一条")
+    XCTAssertEqual(store.aiChatConversations(for: draft.id).count, 2)
+
+    XCTAssertTrue(store.archiveAIChatConversation(firstConversationID))
+    XCTAssertTrue(store.deleteAIChatConversation(firstConversationID))
+    XCTAssertEqual(
+      store.aiChatConversations(for: draft.id, includingArchived: true).map(\.id),
+      [secondConversation.id]
+    )
+  }
+
+  func testAIChatContextModePersistsWithActiveConversation() async throws {
+    let persistenceURL = try temporaryPersistenceURL()
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+    )
+    let draft = try XCTUnwrap(store.selectedDraft)
+
+    store.prepareAIChat(for: draft)
+    store.setAIChatContextMode(.general)
+    XCTAssertEqual(store.aiChatConversations(for: draft.id).count, 1)
+    XCTAssertTrue(store.flushPendingChanges())
+
+    let reloaded = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL)
+    )
+    let conversation = try XCTUnwrap(
+      reloaded.aiChatConversations(for: draft.id).first
+    )
+
+    XCTAssertEqual(conversation.contextMode, .general)
+    reloaded.prepareAIChat(for: draft)
+    XCTAssertEqual(reloaded.aiChatContextMode, .general)
+  }
+
+  func testSelectingChatDraftPreparesItsActiveConversationBeforeChangingConfiguration() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    let firstDraft = try XCTUnwrap(store.selectedDraft)
+    let secondDraft = ArticleDraft(
+      siteProfileID: firstDraft.siteProfileID,
+      title: "第二篇文章",
+      slug: "second-ai-conversation",
+      bodyMarkdown: "第二篇文章正文"
+    )
+    store.setDrafts([firstDraft, secondDraft])
+    store.setSelectedDraftID(firstDraft.id)
+    store.prepareAIChat(for: firstDraft)
+    store.setAIChatCustomModel("first-model")
+
+    store.ai.selectChatDraft(secondDraft.id)
+    store.setAIChatCustomModel("second-model")
+
+    XCTAssertEqual(store.selectedDraftID, secondDraft.id)
+    XCTAssertEqual(store.aiChatDraftID, secondDraft.id)
+    XCTAssertEqual(
+      store.aiChatConversations(for: firstDraft.id).first?.selectedModel,
+      "first-model"
+    )
+    XCTAssertEqual(
+      store.aiChatConversations(for: secondDraft.id).first?.selectedModel,
+      "second-model"
+    )
   }
 
   func testAIChatModelSelectionUsesMobileModelCandidatesAndDefaultReset() throws {

@@ -25,7 +25,7 @@ Examples:
 
   script/record_app_store_archive_validation_evidence.sh \
     --item transporter-validation \
-    --summary "Archive validated successfully in Transporter; no account identifiers or receipt IDs recorded." \
+    --summary "App Store build <version> (<build>) validated successfully in Transporter; no account identifiers or receipt IDs recorded." \
     --execute
 USAGE
 }
@@ -101,6 +101,13 @@ fi
 TITLE="$(title_for_id "$ITEM_ID")"
 [[ -n "${SUMMARY//[[:space:]]/}" ]] || fail "--summary is required"
 reject_private_content "$SUMMARY" "summary"
+if [[ "$ITEM_ID" == "transporter-validation" ]]; then
+  version_values="$(bash "$ROOT_DIR/script/check_build_version.sh" --print-values)"
+  IFS=$'\t' read -r marketing_version build_number <<<"$version_values"
+  required_release="$marketing_version ($build_number)"
+  [[ "$SUMMARY" == *"$required_release"* ]] \
+    || fail "transporter validation summary must identify the current build $required_release"
+fi
 
 if [[ "$EXECUTE" != "1" ]]; then
   echo "app store archive evidence recorder: dry-run"

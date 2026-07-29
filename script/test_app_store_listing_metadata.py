@@ -36,15 +36,21 @@ def main() -> None:
         local_result = run(path)
         expect(local_result.returncode == 0, local_result.stderr)
         strict_result = run(path, "--strict")
-        expect(strict_result.returncode == 0, strict_result.stderr)
+        expect(strict_result.returncode != 0, "strict mode accepted a missing AI review credential")
 
-        pending = json.loads(json.dumps(payload))
+        ready = json.loads(json.dumps(payload))
+        ready["appReview"]["aiDemoCredentialConfiguredInAppStoreConnect"] = True
+        path.write_text(json.dumps(ready, ensure_ascii=False), encoding="utf-8")
+        ready_result = run(path, "--strict")
+        expect(ready_result.returncode == 0, ready_result.stderr)
+
+        pending = json.loads(json.dumps(ready))
         pending["appReview"]["contact"]["configuredInAppStoreConnect"] = False
         path.write_text(json.dumps(pending, ensure_ascii=False), encoding="utf-8")
         pending_result = run(path, "--strict")
         expect(pending_result.returncode != 0, "strict mode accepted an unconfirmed review contact")
 
-        complete = json.loads(json.dumps(payload))
+        complete = json.loads(json.dumps(ready))
         complete["privacyPolicyURL"] = "https://example.com/privacy"
         for localization in complete["localizations"].values():
             localization["supportURL"] = "https://example.com/support"
@@ -72,14 +78,18 @@ def main() -> None:
         keyword_result = run(path)
         expect(keyword_result.returncode != 0, "checker accepted keywords over 100 bytes")
 
-        missing_ai_consent = json.loads(json.dumps(payload))
-        missing_ai_consent["localizations"]["en-US"]["description"] = (
-            missing_ai_consent["localizations"]["en-US"]["description"]
-            .replace("Explicit consent", "Permission")
+        missing_ai_boundary = json.loads(json.dumps(payload))
+        missing_ai_boundary["localizations"]["en-US"]["promotionalText"] = (
+            missing_ai_boundary["localizations"]["en-US"]["promotionalText"]
+            .replace("every user", "some users")
         )
-        path.write_text(json.dumps(missing_ai_consent, ensure_ascii=False), encoding="utf-8")
+        missing_ai_boundary["localizations"]["en-US"]["description"] = (
+            missing_ai_boundary["localizations"]["en-US"]["description"]
+            .replace("Every user", "Some users")
+        )
+        path.write_text(json.dumps(missing_ai_boundary, ensure_ascii=False), encoding="utf-8")
         ai_result = run(path)
-        expect(ai_result.returncode != 0, "checker accepted AI copy without explicit consent")
+        expect(ai_result.returncode != 0, "checker accepted listing without the free AI boundary")
 
         missing_loopback = json.loads(json.dumps(payload))
         missing_loopback["localizations"]["zh-Hans"]["description"] = (

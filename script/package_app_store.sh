@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="PersonalSitePublisherMac"
+APP_DISPLAY_NAME="RepoPress Studio"
 BUNDLE_ID="com.jinfang.PersonalSitePublisherMac"
 ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
 SAFARI_EXTENSION_ENTITLEMENTS="$ROOT_DIR/Packaging/SafariWebExtension.entitlements"
@@ -136,8 +137,8 @@ python3 "$ROOT_DIR/script/resolve_app_store_entitlements.py" \
 
 version_values="$(bash "$ROOT_DIR/script/check_build_version.sh" --print-values)"
 IFS=$'\t' read -r marketing_version build_number <<<"$version_values"
-artifact_base="$APP_NAME-$marketing_version-$build_number"
-signed_app="$OUTPUT_DIR/$artifact_base.app"
+artifact_base="RepoPress-Studio-$marketing_version-$build_number"
+signed_app="$OUTPUT_DIR/$artifact_base/$APP_DISPLAY_NAME.app"
 installer_pkg="$OUTPUT_DIR/$artifact_base.pkg"
 hash_file="$OUTPUT_DIR/$artifact_base.sha256"
 
@@ -150,6 +151,7 @@ for artifact_path in "$signed_app" "$installer_pkg" "$hash_file"; do
 done
 rm -rf "$signed_app"
 rm -f "$installer_pkg" "$hash_file"
+mkdir -p "$(dirname "$signed_app")"
 bash "$ROOT_DIR/script/build_and_run.sh" --package-only --app-store >/dev/null
 ditto "$ROOT_DIR/dist/$APP_NAME.app" "$signed_app"
 cp "$PROVISIONING_PROFILE" "$signed_app/Contents/embedded.provisionprofile"

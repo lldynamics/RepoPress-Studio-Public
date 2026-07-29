@@ -126,6 +126,12 @@ struct ContentView: View {
       }
     }
     .background(WorkbenchAccessibilityStatusAnnouncer(store: store))
+    .environment(
+      \.publishDrawerCommandAction,
+      PublishDrawerCommandAction { message in
+        openPublishDrawer(message: message)
+      }
+    )
     .focusedSceneValue(
       \.publishDrawerCommandAction,
       PublishDrawerCommandAction { message in
@@ -170,6 +176,11 @@ struct ContentView: View {
             store.selectSection(.sync)
           }
         )
+
+        OmniCommandSearchBar(isCompact: isCompactLayout) {
+          guard shellState.canUseProtectedWorkbench else { return }
+          isCommandPalettePresented = true
+        }
 
         workspaceToolbarActionCluster
       }
@@ -402,7 +413,7 @@ struct ContentView: View {
         inspectorToolbarButton
       }
 
-      workspaceMoreToolbarMenu
+      workspaceDirectToolbarActions
     }
   }
 
@@ -470,8 +481,8 @@ struct ContentView: View {
     return isAIAssistantVisible ? "关闭 AI 对话（⌥⌘A）" : "打开 AI 对话（⌥⌘A）"
   }
 
-  private var workspaceMoreToolbarMenu: some View {
-    Menu {
+  private var workspaceDirectToolbarActions: some View {
+    HStack(spacing: 2) {
       if showsDraftEditingToolbar {
         Button(action: toggleFocusMode) {
           Label(
@@ -481,15 +492,13 @@ struct ContentView: View {
               : "sparkle.magnifyingglass"
           )
         }
+        .buttonStyle(WorkspaceToolbarIconButtonStyle(isActive: effectiveFocusMode))
         .keyboardShortcut("f", modifiers: [.command, .shift])
         .help(effectiveFocusMode ? "退出禅意专注（⇧⌘F）" : "禅意专注写作（⇧⌘F）")
         .disabled(!shellState.canUseProtectedWorkbench)
+        .accessibilityLabel(effectiveFocusMode ? "退出禅意专注" : "禅意专注写作")
         .accessibilityValue(effectiveFocusMode ? "已进入禅意专注模式" : "未进入禅意专注模式")
         .accessibilityIdentifier("workspace-focus-mode-toggle")
-      }
-
-      if showsDraftEditingToolbar {
-        Divider()
       }
 
       Button {
@@ -497,28 +506,19 @@ struct ContentView: View {
       } label: {
         Label("快速隐藏", systemImage: "eye.slash")
       }
+      .buttonStyle(WorkspaceToolbarIconButtonStyle(isActive: false))
       .help("快速隐藏工作台（⌃⌘L）")
       .disabled(shellState.isPrivacyLocked)
+      .accessibilityLabel("快速隐藏")
+      .accessibilityIdentifier("workspace-quick-hide")
 
-      Divider()
-
-      AdvancedWorkspaceMenu(
+      AdvancedWorkspaceToolbarActions(
         store: store,
         canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
         isFirstRunSetupComplete: didCompleteFirstRunSetup,
         presentFirstRunSetup: { isFirstRunSetupPresented = true }
       )
-    } label: {
-      WorkspaceToolbarMenuLabel(
-        title: "更多",
-        systemImage: "ellipsis",
-        showsTitle: false
-      )
     }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .help("专注写作与高级操作")
-    .accessibilityIdentifier("workspace-more-menu")
   }
 
   private var supportsInspector: Bool {

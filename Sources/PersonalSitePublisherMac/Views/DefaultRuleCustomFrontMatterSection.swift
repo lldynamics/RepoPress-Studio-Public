@@ -18,6 +18,7 @@ struct DefaultRuleCustomFrontMatterSection: View {
         TextEditor(text: $customFrontMatterPreset)
           .font(.caption.monospaced())
           .frame(minHeight: 90)
+          .accessibilityLabel("自定义 Front-matter 预设字段")
           .overlay(
             RoundedRectangle(cornerRadius: 6)
               .stroke(Color.primary.opacity(0.15), lineWidth: 1)

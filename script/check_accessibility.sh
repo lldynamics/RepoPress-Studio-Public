@@ -560,7 +560,6 @@ sheet_action_files=(
   "Sources/PersonalSitePublisherMac/Views/RemoteArticleImportPreviewView.swift"
   "Sources/PersonalSitePublisherMac/Views/RemoteRepositoryCreationConfirmationView.swift"
   "Sources/PersonalSitePublisherMac/Views/PublishDrawerComponents.swift"
-  "Sources/PersonalSitePublisherMac/Views/PublishDrawerView.swift"
   "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchBatchSupport.swift"
   "Sources/PersonalSitePublisherMac/Views/KnowledgeLibraryRestorePreviewView.swift"
 )
@@ -574,6 +573,40 @@ for sheet_action_file in "${sheet_action_files[@]}"; do
     ".keyboardShortcut(.defaultAction)" \
     "submission sheet must support Return: $sheet_action_file"
 done
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/PublishDrawerView.swift" \
+  ".keyboardShortcut(.cancelAction)" \
+  "publish drawer must support Escape"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/PublishDrawerView.swift" \
+  "@Environment(\\.accessibilityReduceMotion)" \
+  "publish drawer disclosure motion must respect Reduce Motion"
+
+for publish_drawer_identifier in \
+  publish-drawer-header \
+  publish-drawer-action-save-local \
+  publish-drawer-action-publish-all \
+  publish-drawer-action-publish-current \
+  publish-drawer-review-disclosure \
+  publish-drawer-diff; do
+  require_literal \
+    "Sources/PersonalSitePublisherMac/Views/PublishDrawerView.swift" \
+    "\"$publish_drawer_identifier\"" \
+    "publish drawer must expose $publish_drawer_identifier"
+done
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/PublishDrawerPresentationComponents.swift" \
+  ".accessibilityIdentifier(\"publish-drawer-check-results\")" \
+  "publish drawer must expose its check results"
+
+require_literal_any_file \
+  ".keyboardShortcut(.defaultAction)" \
+  "publish drawer must expose a visible Return action through its composed controls" \
+  "Sources/PersonalSitePublisherMac/Views/PublishDrawerPresentationComponents.swift" \
+  "Sources/PersonalSitePublisherMac/Views/PublishDrawerComponents.swift"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
@@ -701,6 +734,21 @@ for operational_navigation_identifier in \
     ".accessibilityIdentifier(\"$operational_navigation_identifier\")" \
     "operational stage navigation must expose $operational_navigation_identifier"
 done
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceGitManagementSection.swift" \
+  ".accessibilityIdentifier(\"repository-section-git-management\")" \
+  "repository overview must expose repository-section-git-management"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceGitManagementSection.swift" \
+  ".accessibilityLabel(switchBranchLabel(branch.name))" \
+  "repository branch controls must identify their target branch"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceGitManagementSection.swift" \
+  "store.repository.scanState.isScanning" \
+  "repository branch operations must not race repository scans"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceQuickSearchView.swift" \
@@ -1021,7 +1069,7 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
-  "if knowledgeLibraryCommands != nil { return \"搜索资料库\" }" \
+  "if knowledgeLibraryCommands != nil { return String(localized: \"搜索资料库\") }" \
   "command-f must route to knowledge search while the library is active"
 
 textfield_gaps="$(

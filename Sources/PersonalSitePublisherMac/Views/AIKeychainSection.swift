@@ -18,13 +18,33 @@ struct AIKeychainSection: View {
   let onTestConnection: () -> Void
   @FocusState private var isAPIKeyFocused: Bool
   @State private var isDeleteConfirmationPresented = false
+  @State private var isKeyRevealed = false
 
   var body: some View {
     Section("API 凭据") {
-      SecureField("API Key", text: aiAPIKeyInput)
-        .focused($isAPIKeyFocused)
-        .accessibilityLabel("AI API Key")
-        .accessibilityHint("输入后可保存到钥匙串")
+      HStack(spacing: 8) {
+        if isKeyRevealed {
+          TextField("API Key", text: aiAPIKeyInput)
+            .focused($isAPIKeyFocused)
+            .font(.body.monospaced())
+            .accessibilityLabel("AI API Key")
+        } else {
+          SecureField("API Key", text: aiAPIKeyInput)
+            .focused($isAPIKeyFocused)
+            .accessibilityLabel("AI API Key")
+        }
+
+        Button {
+          isKeyRevealed.toggle()
+        } label: {
+          Image(systemName: isKeyRevealed ? "eye.slash" : "eye")
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(isKeyRevealed ? "隐藏 API Key" : "显示 API Key 明文")
+      }
+      .accessibilityLabel("AI API Key")
+      .accessibilityHint("输入后可保存到钥匙串")
 
       AIConnectionStatusCard(
         config: config,
@@ -84,6 +104,16 @@ struct AIKeychainSection: View {
           .font(.caption)
           .foregroundStyle(.secondary)
       }
+
+      HStack(spacing: 6) {
+        Image(systemName: "lock.shield.fill")
+          .font(.caption)
+          .foregroundStyle(Color.accentColor)
+        Text("API Key 使用 macOS 系统 Keychain (AES-256) 本地安全加密保存，请求直接直连目标 API，绝无云端中转。")
+          .font(.workbenchMetadata)
+          .foregroundStyle(.secondary)
+      }
+      .padding(.top, 4)
     }
     .task(id: navigationRequestID) {
       guard shouldFocusInput else { return }

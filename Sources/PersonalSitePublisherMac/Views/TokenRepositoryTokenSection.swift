@@ -13,13 +13,55 @@ struct TokenRepositoryTokenSection: View {
   let onOpenRepositoryPermission: () -> Void
   @FocusState private var isRepositoryTokenFocused: Bool
   @State private var isDeleteConfirmationPresented = false
+  @State private var isTokenRevealed = false
+  @State private var showsPATGuide = false
 
   var body: some View {
     Section("仓库凭据") {
-      SecureField(String(localized: "仓库平台访问令牌（GitHub / GitLab）"), text: repositoryTokenInput)
-        .focused($isRepositoryTokenFocused)
-        .accessibilityLabel("仓库访问令牌")
-        .accessibilityHint("仅用于仓库创建、权限检查、提交、PR/MR 和回滚")
+      DisclosureGroup(isExpanded: $showsPATGuide) {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("创建 Token 时请注意勾选 repo (全权控制私有仓库) 与 workflow 权限。")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+          Button {
+            NSWorkspace.shared.open(URL(string: "https://github.com/settings/tokens/new?scopes=repo,workflow&description=RepoPressMac")!)
+          } label: {
+            Label("前往 GitHub 打开 Token 创建页", systemImage: "arrow.up.right.square")
+              .font(.caption.weight(.medium))
+          }
+          .buttonStyle(.borderless)
+        }
+        .padding(.vertical, 4)
+      } label: {
+        Label("如何创建 GitHub 个人访问令牌 (PAT)？", systemImage: "questionmark.circle")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(Color.accentColor)
+      }
+
+      HStack(spacing: 8) {
+        if isTokenRevealed {
+          TextField(String(localized: "仓库平台访问令牌（GitHub / GitLab）"), text: repositoryTokenInput)
+            .focused($isRepositoryTokenFocused)
+            .font(.body.monospaced())
+            .accessibilityLabel("仓库访问令牌")
+        } else {
+          SecureField(String(localized: "仓库平台访问令牌（GitHub / GitLab）"), text: repositoryTokenInput)
+            .focused($isRepositoryTokenFocused)
+            .accessibilityLabel("仓库访问令牌")
+        }
+
+        Button {
+          isTokenRevealed.toggle()
+        } label: {
+          Image(systemName: isTokenRevealed ? "eye.slash" : "eye")
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(isTokenRevealed ? "隐藏令牌" : "显示令牌明文")
+      }
+      .accessibilityLabel("仓库访问令牌")
+      .accessibilityHint("仅用于仓库创建、权限检查、提交、PR/MR 和回滚")
 
       HStack {
         Button(String(localized: "保存令牌")) {

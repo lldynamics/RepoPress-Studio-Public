@@ -11,6 +11,7 @@ struct PublishDrawerActionChoice: View {
   let isPrimary: Bool
   let actionTitle: String
   let actionSystemImage: String
+  let actionIdentifier: String
   let action: () -> Void
 
   var body: some View {
@@ -38,12 +39,14 @@ struct PublishDrawerActionChoice: View {
         .workbenchProminentActionStyle()
         .keyboardShortcut(.defaultAction)
         .disabled(!isEnabled)
+        .accessibilityIdentifier(actionIdentifier)
       } else {
         Button(action: action) {
           Label(actionTitle, systemImage: actionSystemImage)
         }
         .buttonStyle(.bordered)
         .disabled(!isEnabled)
+        .accessibilityIdentifier(actionIdentifier)
       }
     }
     .padding(14)
@@ -59,68 +62,6 @@ struct PublishDrawerActionChoice: View {
     .accessibilityElement(children: .contain)
     .accessibilityLabel(title)
     .accessibilityValue(status)
-  }
-}
-
-struct PublishDrawerFlowStepper: View {
-  let steps: [PublishDrawerFlowStep]
-  @Binding var selection: PublishDrawerFlowCard
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack(alignment: .firstTextBaseline) {
-        Label("发布流程", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
-          .font(.caption.weight(.semibold))
-        if let summaryStep {
-          Label(summary, systemImage: summaryStep.systemImage)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(summaryStep.state.color)
-            .lineLimit(1)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(summaryStep.state.backgroundColor, in: Capsule())
-            .overlay {
-              Capsule()
-                .stroke(summaryStep.state.borderColor, lineWidth: 1)
-            }
-        }
-        Spacer()
-      }
-
-      Picker("发布步骤", selection: $selection) {
-        ForEach(PublishDrawerFlowCard.allCases) { step in
-          Text(step.title).tag(step)
-        }
-      }
-      .pickerStyle(.segmented)
-      .tint(WorkbenchTheme.navigationSelection)
-      .labelsHidden()
-      .accessibilityLabel("发布步骤")
-      .accessibilityValue(selection.title)
-    }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 10)
-    .background(.bar)
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("发布流程")
-    .accessibilityValue(summary)
-  }
-
-  private var summary: String {
-    if let blocked = steps.first(where: { $0.state == .blocked }) {
-      return "阻断在 \(blocked.title)：\(blocked.detail)"
-    }
-    if let active = steps.first(where: { $0.state == .active }) {
-      return "当前步骤：\(active.title) · \(active.detail)"
-    }
-    return "发布流程已准备就绪"
-  }
-
-  private var summaryStep: PublishDrawerFlowStep? {
-    steps.first(where: { $0.state == .blocked })
-      ?? steps.first(where: { $0.state == .active })
-      ?? steps.last(where: { $0.state == .complete })
-      ?? steps.first
   }
 }
 
@@ -174,6 +115,7 @@ struct PublishDrawerCheckResultsCard: View {
         }
       }
     }
+    .accessibilityIdentifier("publish-drawer-check-results")
   }
 }
 

@@ -15,6 +15,10 @@ fail() {
   exit 1
 }
 
+version_values="$(bash "$ROOT_DIR/script/check_build_version.sh" --print-values)"
+IFS=$'\t' read -r marketing_version build_number <<<"$version_values"
+current_release="$marketing_version ($build_number)"
+
 cp "$ROOT_DIR/docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md" "$EVIDENCE_FILE"
 
 if APP_STORE_ARCHIVE_EVIDENCE_FILE="$EVIDENCE_FILE" bash "$ROOT_DIR/script/record_app_store_archive_validation_evidence.sh" \
@@ -28,11 +32,15 @@ legacy_file="$TMP_DIR/legacy.md"
 cp "$ROOT_DIR/docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md" "$legacy_file"
 python3 - "$legacy_file" <<'PY'
 from pathlib import Path
+import re
 
 path = Path(__import__("sys").argv[1])
-text = path.read_text().replace(
-    "- [ ] Archive validated with App Store Connect or Transporter before upload.\n  Evidence:",
-    "- [x] Archive validated with App Store Connect or Transporter before upload.\n  Evidence:",
+text = re.sub(
+    r"^- \[[ xX]\] Archive validated with App Store Connect or Transporter before upload\.\n(?:[ \t]*Evidence:.*\n?)?",
+    "- [x] Archive validated with App Store Connect or Transporter before upload.\n  Evidence:\n",
+    path.read_text(),
+    count=1,
+    flags=re.MULTILINE,
 )
 path.write_text(text)
 PY
@@ -44,6 +52,39 @@ if STRICT_ARCHIVE_EVIDENCE_ONLY=1 APP_STORE_ARCHIVE_EVIDENCE_FILE="$legacy_file"
   fail "archive evidence strict check accepted an empty Evidence field"
 fi
 
+stale_file="$TMP_DIR/stale.md"
+cp "$ROOT_DIR/docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md" "$stale_file"
+python3 - "$stale_file" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+title = "Archive validated with App Store Connect or Transporter before upload."
+pattern = re.compile(
+    rf"^- \[[ xX]\] {re.escape(title)}\n(?:[ \t]*Evidence:.*\n?)?",
+    re.MULTILINE,
+)
+replacement = (
+    f"- [x] {title}\n"
+    "  Evidence: App Store build 0.0 (0) was validated successfully in Transporter.\n"
+)
+path.write_text(pattern.sub(replacement, text, count=1))
+PY
+if STRICT_ARCHIVE_EVIDENCE_ONLY=1 APP_STORE_ARCHIVE_EVIDENCE_FILE="$stale_file" \
+  bash "$ROOT_DIR/script/check_app_store_archive_readiness.sh" --dry-run >/dev/null 2>&1; then
+  fail "archive evidence strict check accepted Transporter evidence for an older build"
+fi
+
+if APP_STORE_ARCHIVE_EVIDENCE_FILE="$EVIDENCE_FILE" \
+  bash "$ROOT_DIR/script/record_app_store_archive_validation_evidence.sh" \
+    --item transporter-validation \
+    --summary "Archive validated successfully in Transporter before upload." \
+    --dry-run >/dev/null 2>&1; then
+  fail "archive evidence recorder accepted Transporter evidence without the current build"
+fi
+
 record() {
   APP_STORE_ARCHIVE_EVIDENCE_FILE="$EVIDENCE_FILE" bash "$ROOT_DIR/script/record_app_store_archive_validation_evidence.sh" "$@" --execute >/dev/null
 }
@@ -53,7 +94,7 @@ record --item clean-release-archive \
 record --item distribution-signing-runtime \
   --summary "Distribution signature verified and hardened runtime flag confirmed on the archive."
 record --item transporter-validation \
-  --summary "Archive validated successfully in Transporter before upload; no private account identifiers recorded."
+  --summary "App Store build $current_release validated successfully in Transporter before upload; no private account identifiers recorded."
 
 STRICT_ARCHIVE_EVIDENCE_ONLY=1 APP_STORE_ARCHIVE_EVIDENCE_FILE="$EVIDENCE_FILE" \
   bash "$ROOT_DIR/script/check_app_store_archive_readiness.sh" --dry-run >/dev/null

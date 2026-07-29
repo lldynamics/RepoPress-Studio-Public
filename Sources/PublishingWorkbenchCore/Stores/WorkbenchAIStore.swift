@@ -3,18 +3,26 @@ import Foundation
 
 public struct AIChatManualRetryState: Equatable, Sendable {
   public let draftID: UUID
+  public let conversationID: UUID
   public let requiresDuplicateChargeConfirmation: Bool
   public let retryAfter: Date?
 
   public init(
     draftID: UUID,
+    conversationID: UUID,
     requiresDuplicateChargeConfirmation: Bool,
     retryAfter: Date? = nil
   ) {
     self.draftID = draftID
+    self.conversationID = conversationID
     self.requiresDuplicateChargeConfirmation = requiresDuplicateChargeConfirmation
     self.retryAfter = retryAfter
   }
+}
+
+private struct AIChatConversationIdentity: Equatable, Sendable {
+  let draftID: UUID
+  let conversationID: UUID
 }
 
 @MainActor
@@ -28,7 +36,6 @@ public final class WorkbenchAIStore: ObservableObject {
   private let imageWorkbenchService: SiteImageWorkbenchService
   private let seoAuditService: SEOAuditService
   private let seoSocialPreviewService: SEOSocialPreviewService
-  private let transientAIChatSessionCache = AIChatTransientSessionCache()
   private let aiChatOperationCoordinator = AIChatOperationCoordinator()
   private let aiChatStreamPublishInterval: Duration = .milliseconds(50)
   @Published public private(set) var aiChatManualRetryState: AIChatManualRetryState? = nil
@@ -143,6 +150,27 @@ public final class WorkbenchAIStore: ObservableObject {
   public var aiChatCustomPrompts: [AIPublishingCustomPrompt] {
     get { workspace.aiChatCustomPrompts }
     set { workspace.aiChatCustomPrompts = newValue }
+  }
+
+  public var aiConversations: [AIConversation] {
+    get { workspace.aiConversations }
+    set {
+      let limitedConversations = AIConversationRetentionPolicy.limited(
+        newValue,
+        preserving: Set(workspace.activeAIConversationIDsByDraftID.values)
+      )
+      workspace.aiConversations = limitedConversations
+      workspace.activeAIConversationIDsByDraftID =
+        AIConversationRetentionPolicy.validActiveConversationIDs(
+          workspace.activeAIConversationIDsByDraftID,
+          conversations: limitedConversations
+        )
+    }
+  }
+
+  public var activeAIConversationIDsByDraftID: [UUID: UUID] {
+    get { workspace.activeAIConversationIDsByDraftID }
+    set { workspace.activeAIConversationIDsByDraftID = newValue }
   }
 
   public var pendingAIQuickPrompt: AIPublishingQuickPrompt? {
@@ -358,37 +386,127 @@ public final class WorkbenchAIStore: ObservableObject {
       return
     }
     aiChatManualRetryState = nil
-    if let currentDraftID = aiChatDraftID {
-      cacheCurrentAIChatSessionForTransition(for: currentDraftID)
-    }
-    let state = transientAIChatSessionCache.takeSession(for: draft.id)
+    cacheCurrentAIChatSessionForAIStore()
     aiChatDraftID = draft.id
-    applyCurrentAIChatSession(state)
+    applyCurrentAIChatSession(
+      activeAIChatConversation(for: draft.id)?.sessionState
+        ?? AIPublishingChatSessionState()
+    )
+  }
+
+  public func aiChatConversations(
+    for draftID: UUID,
+    includingArchived: Bool = false
+  ) -> [AIConversation] {
+    aiConversations
+      .filter {
+        $0.draftID == draftID && (includingArchived || !$0.isArchived)
+      }
+      .sorted {
+        if $0.updatedAt != $1.updatedAt {
+          return $0.updatedAt > $1.updatedAt
+        }
+        return $0.createdAt > $1.createdAt
+      }
+  }
+
+  public func activeAIChatConversationID(for draftID: UUID) -> UUID? {
+    guard let conversationID = activeAIConversationIDsByDraftID[draftID],
+          aiConversations.contains(where: {
+            $0.id == conversationID && $0.draftID == draftID && !$0.isArchived
+          }) else {
+      return nil
+    }
+    return conversationID
+  }
+
+  public func activeAIChatConversation(
+    for draftID: UUID? = nil
+  ) -> AIConversation? {
+    guard let resolvedDraftID = draftID ?? aiChatDraftID,
+          let conversationID = activeAIChatConversationID(for: resolvedDraftID) else {
+      return nil
+    }
+    return aiConversations.first { $0.id == conversationID }
   }
 
   func aiChatSessionState(for draftID: UUID) -> AIPublishingChatSessionState? {
     if aiChatDraftID == draftID {
       return currentAIChatSessionState()
     }
-    return transientAIChatSessionCache.session(for: draftID)
+    return activeAIChatConversation(for: draftID)?.sessionState
+  }
+
+  private func aiChatConversationIdentity(
+    for draftID: UUID
+  ) -> AIChatConversationIdentity? {
+    guard let conversationID = activeAIChatConversationID(for: draftID) else {
+      return nil
+    }
+    return AIChatConversationIdentity(
+      draftID: draftID,
+      conversationID: conversationID
+    )
+  }
+
+  private func aiChatSessionState(
+    for identity: AIChatConversationIdentity
+  ) -> AIPublishingChatSessionState? {
+    if aiChatDraftID == identity.draftID,
+       activeAIChatConversationID(for: identity.draftID) == identity.conversationID {
+      return currentAIChatSessionState()
+    }
+    return aiConversations.first {
+      $0.id == identity.conversationID && $0.draftID == identity.draftID
+    }?.sessionState
   }
 
   func setAIChatSessionState(_ state: AIPublishingChatSessionState, for draftID: UUID) {
     let prepared = state.prepared()
     if aiChatDraftID == draftID {
       applyCurrentAIChatSession(prepared)
-      transientAIChatSessionCache.removeSession(for: draftID)
+      cacheCurrentAIChatSessionForAIStore()
     } else {
-      transientAIChatSessionCache.store(prepared, for: draftID)
+      upsertAIChatConversation(
+        state: prepared,
+        draftID: draftID,
+        createIfNeeded: prepared.shouldCache
+      )
     }
   }
 
+  private func setAIChatSessionState(
+    _ state: AIPublishingChatSessionState,
+    for identity: AIChatConversationIdentity
+  ) {
+    guard let index = aiConversations.firstIndex(where: {
+      $0.id == identity.conversationID && $0.draftID == identity.draftID
+    }) else {
+      return
+    }
+
+    var updatedConversations = aiConversations
+    updatedConversations[index].apply(state.prepared())
+    aiConversations = updatedConversations
+    if aiChatDraftID == identity.draftID,
+       activeAIChatConversationID(for: identity.draftID) == identity.conversationID,
+       let updatedConversation = aiConversations.first(where: {
+         $0.id == identity.conversationID
+       }) {
+      applyCurrentAIChatSession(updatedConversation.sessionState)
+    }
+    store.scheduleAutosave()
+  }
+
   func removeAIChatSessionState(for draftID: UUID) {
-    transientAIChatSessionCache.removeSession(for: draftID)
+    if let activeConversationID = activeAIConversationIDsByDraftID.removeValue(
+      forKey: draftID
+    ) {
+      aiConversations.removeAll { $0.id == activeConversationID }
+      store.scheduleAutosave()
+    }
     if aiChatDraftID == draftID {
-      aiChatConversationTitle = nil
-      aiChatMessages = []
-      aiChatFocusedParagraphID = nil
+      applyCurrentAIChatSession(AIPublishingChatSessionState())
     }
   }
 
@@ -396,12 +514,11 @@ public final class WorkbenchAIStore: ObservableObject {
     guard let draftID = aiChatDraftID else { return }
     let prepared = currentAIChatSessionState().prepared()
     applyCurrentAIChatSession(prepared)
-    transientAIChatSessionCache.removeSession(for: draftID)
-  }
-
-  private func cacheCurrentAIChatSessionForTransition(for draftID: UUID) {
-    let state = currentAIChatSessionState().prepared()
-    transientAIChatSessionCache.store(state, for: draftID)
+    upsertAIChatConversation(
+      state: prepared,
+      draftID: draftID,
+      createIfNeeded: prepared.shouldCache
+    )
   }
 
   private func currentAIChatSessionState() -> AIPublishingChatSessionState {
@@ -428,8 +545,53 @@ public final class WorkbenchAIStore: ObservableObject {
     aiChatFocusedParagraphID = state.focusedParagraphID
   }
 
-  var transientAIChatSessionCount: Int {
-    transientAIChatSessionCache.count
+  private func upsertAIChatConversation(
+    state: AIPublishingChatSessionState,
+    draftID: UUID,
+    createIfNeeded: Bool,
+    updatedAt: Date = Date()
+  ) {
+    if let conversationID = activeAIChatConversationID(for: draftID),
+       let index = aiConversations.firstIndex(where: { $0.id == conversationID }) {
+      aiConversations[index].apply(state, updatedAt: updatedAt)
+      store.scheduleAutosave()
+      return
+    }
+
+    activeAIConversationIDsByDraftID.removeValue(forKey: draftID)
+    guard createIfNeeded else { return }
+    let conversation = AIConversation(
+      draftID: draftID,
+      title: state.conversationTitle,
+      messages: state.messages,
+      contextMode: state.contextMode,
+      knowledgePolicy: state.knowledgePolicy,
+      modelGrade: state.modelGrade,
+      reasoningLevel: state.reasoningLevel,
+      selectedModel: state.selectedModel,
+      focusedParagraphID: state.focusedParagraphID,
+      createdAt: updatedAt
+    ).prepared()
+    aiConversations.append(conversation)
+    activeAIConversationIDsByDraftID[draftID] = conversation.id
+    store.scheduleAutosave()
+  }
+
+  private func activateMostRecentAIChatConversation(for draftID: UUID) {
+    if let conversation = aiChatConversations(for: draftID).first {
+      activeAIConversationIDsByDraftID[draftID] = conversation.id
+      if aiChatDraftID == draftID {
+        applyCurrentAIChatSession(conversation.sessionState)
+        aiChatManualRetryState = nil
+      }
+      return
+    }
+
+    activeAIConversationIDsByDraftID.removeValue(forKey: draftID)
+    if aiChatDraftID == draftID {
+      applyCurrentAIChatSession(AIPublishingChatSessionState())
+      aiChatManualRetryState = nil
+    }
   }
 
   func updateAIChatSession(for draftID: UUID, update: (inout [AIPublishingChatMessage]) -> Void) {
@@ -438,10 +600,19 @@ public final class WorkbenchAIStore: ObservableObject {
       cacheCurrentAIChatSessionForAIStore()
       return
     }
-    var state = transientAIChatSessionCache.session(for: draftID)
+    var state = activeAIChatConversation(for: draftID)?.sessionState
       ?? AIPublishingChatSessionState()
     update(&state.messages)
     setAIChatSessionState(state, for: draftID)
+  }
+
+  private func updateAIChatSession(
+    for identity: AIChatConversationIdentity,
+    update: (inout [AIPublishingChatMessage]) -> Void
+  ) {
+    guard var state = aiChatSessionState(for: identity) else { return }
+    update(&state.messages)
+    setAIChatSessionState(state, for: identity)
   }
 
   func aiChatPrivacyLockedOperationMessage() -> String {
@@ -528,8 +699,12 @@ public final class WorkbenchAIStore: ObservableObject {
     try aiChatOperationCoordinator.check(operationID)
   }
 
-  func aiChatRequest(for draft: ArticleDraft) async -> AIPublishingChatRequest {
-    let session = aiChatSessionState(for: draft.id) ?? AIPublishingChatSessionState()
+  private func aiChatRequest(
+    for draft: ArticleDraft,
+    conversationIdentity: AIChatConversationIdentity
+  ) async -> AIPublishingChatRequest {
+    let session = aiChatSessionState(for: conversationIdentity)
+      ?? AIPublishingChatSessionState()
     let artifacts = await store.aiPublishingRequestArtifacts(for: draft)
     let focusedParagraph = session.focusedParagraphID.flatMap { focusedID in
       AIPublishingChatDraftParagraphParser.extract(from: artifacts.draft.bodyMarkdown).first { $0.id == focusedID }
@@ -636,6 +811,151 @@ public final class WorkbenchAIStore: ObservableObject {
     store.save()
   }
 
+  @discardableResult
+  public func renameAIChatConversation(
+    _ conversationID: UUID,
+    title: String?
+  ) -> Bool {
+    guard let index = aiConversations.firstIndex(where: { $0.id == conversationID }) else {
+      aiChatMessage = "找不到要重命名的 AI 对话。"
+      return false
+    }
+
+    let resolvedTitle = title?.trimmedForPublishing.nilIfEmpty
+    let draftID = aiConversations[index].draftID
+    if activeAIChatConversationID(for: draftID) == conversationID,
+       aiChatDraftID == draftID {
+      aiChatConversationTitle = resolvedTitle
+      cacheCurrentAIChatSessionForAIStore()
+    } else {
+      var updatedConversations = aiConversations
+      updatedConversations[index].title = resolvedTitle
+      updatedConversations[index].updatedAt = Date()
+      aiConversations = updatedConversations
+    }
+    aiChatMessage = resolvedTitle == nil ? "已恢复自动对话标题。" : "已更新 AI 对话标题。"
+    store.save()
+    return true
+  }
+
+  @discardableResult
+  public func selectAIChatConversation(_ conversationID: UUID) -> Bool {
+    guard !isAIChatRunning else {
+      aiChatMessage = "请先停止当前 AI 回复，再切换对话。"
+      return false
+    }
+    guard let conversation = aiConversations.first(where: {
+      $0.id == conversationID && !$0.isArchived
+    }) else {
+      aiChatMessage = "找不到可切换的 AI 对话。"
+      return false
+    }
+    guard store.drafts.contains(where: { $0.id == conversation.draftID }) else {
+      aiChatMessage = "这条 AI 对话对应的文章已不存在。"
+      return false
+    }
+
+    if aiChatDraftID == conversation.draftID,
+       activeAIChatConversationID(for: conversation.draftID) == conversationID {
+      return true
+    }
+
+    cacheCurrentAIChatSessionForAIStore()
+    if store.selectedDraftID != conversation.draftID {
+      guard store.focusDraft(conversation.draftID, section: .writing) else {
+        aiChatMessage = "无法打开这条 AI 对话对应的文章。"
+        return false
+      }
+    }
+    aiChatDraftID = conversation.draftID
+    activeAIConversationIDsByDraftID[conversation.draftID] = conversation.id
+    applyCurrentAIChatSession(conversation.sessionState)
+    aiChatManualRetryState = nil
+    aiChatMessage = "已切换 AI 对话。"
+    store.save()
+    return true
+  }
+
+  @discardableResult
+  public func archiveAIChatConversation(_ conversationID: UUID) -> Bool {
+    guard let index = aiConversations.firstIndex(where: { $0.id == conversationID }) else {
+      aiChatMessage = "找不到要归档的 AI 对话。"
+      return false
+    }
+    let draftID = aiConversations[index].draftID
+    let isActive = activeAIChatConversationID(for: draftID) == conversationID
+    guard !isActive || !isAIChatRunning else {
+      aiChatMessage = "请先停止当前 AI 回复，再归档这条对话。"
+      return false
+    }
+    if aiConversations[index].isArchived {
+      return true
+    }
+
+    let now = Date()
+    var updatedConversations = aiConversations
+    updatedConversations[index].archivedAt = now
+    updatedConversations[index].updatedAt = now
+    aiConversations = updatedConversations
+    if isActive {
+      activateMostRecentAIChatConversation(for: draftID)
+    }
+    aiChatMessage = "已归档 AI 对话。"
+    store.save()
+    return true
+  }
+
+  @discardableResult
+  public func restoreAIChatConversation(_ conversationID: UUID) -> Bool {
+    guard !isAIChatRunning else {
+      aiChatMessage = "请先停止当前 AI 回复，再恢复对话。"
+      return false
+    }
+    guard let index = aiConversations.firstIndex(where: {
+      $0.id == conversationID && $0.isArchived
+    }) else {
+      aiChatMessage = "找不到要恢复的 AI 对话。"
+      return false
+    }
+
+    let now = Date()
+    let draftID = aiConversations[index].draftID
+    var updatedConversations = aiConversations
+    updatedConversations[index].archivedAt = nil
+    updatedConversations[index].updatedAt = now
+    aiConversations = updatedConversations
+    activeAIConversationIDsByDraftID[draftID] = conversationID
+    if aiChatDraftID == draftID,
+       let restored = aiConversations.first(where: { $0.id == conversationID }) {
+      applyCurrentAIChatSession(restored.sessionState)
+      aiChatManualRetryState = nil
+    }
+    aiChatMessage = "已恢复 AI 对话。"
+    store.save()
+    return true
+  }
+
+  @discardableResult
+  public func deleteAIChatConversation(_ conversationID: UUID) -> Bool {
+    guard let conversation = aiConversations.first(where: { $0.id == conversationID }) else {
+      aiChatMessage = "找不到要删除的 AI 对话。"
+      return false
+    }
+    let isActive = activeAIChatConversationID(for: conversation.draftID) == conversationID
+    guard !isActive || !isAIChatRunning else {
+      aiChatMessage = "请先停止当前 AI 回复，再删除这条对话。"
+      return false
+    }
+
+    aiConversations.removeAll { $0.id == conversationID }
+    if isActive {
+      activateMostRecentAIChatConversation(for: conversation.draftID)
+    }
+    aiChatMessage = "已删除 AI 对话。"
+    store.save()
+    return true
+  }
+
   public func setAIChatFocusedParagraph(_ paragraphID: String?, draft: ArticleDraft? = nil) {
     if let draft {
       prepareAIChat(for: draft)
@@ -693,19 +1013,40 @@ public final class WorkbenchAIStore: ObservableObject {
     store.save()
   }
 
-  public func startNewAIChatConversation(draft: ArticleDraft? = nil) {
+  @discardableResult
+  public func startNewAIChatConversation(
+    draft: ArticleDraft? = nil
+  ) -> AIConversation? {
+    guard !isAIChatRunning else {
+      aiChatMessage = "请先停止当前 AI 回复，再新建对话。"
+      return nil
+    }
     if let draft {
       prepareAIChat(for: draft)
     }
-    guard aiChatDraftID != nil else {
+    guard let draftID = aiChatDraftID else {
       aiChatMessage = "请先选择一篇文章。"
-      return
+      return nil
     }
-    aiChatConversationTitle = nil
-    aiChatMessages = []
+
     cacheCurrentAIChatSessionForAIStore()
+    let now = Date()
+    let conversation = AIConversation(
+      draftID: draftID,
+      contextMode: aiChatContextMode,
+      knowledgePolicy: aiChatKnowledgePolicy,
+      modelGrade: aiChatModelGrade,
+      reasoningLevel: aiChatReasoningLevel,
+      selectedModel: aiChatSelectedModel,
+      focusedParagraphID: aiChatFocusedParagraphID,
+      createdAt: now
+    )
+    aiConversations.append(conversation)
+    activeAIConversationIDsByDraftID[draftID] = conversation.id
+    applyCurrentAIChatSession(conversation.sessionState)
     aiChatMessage = "已新建 AI 对话。"
     store.save()
+    return conversation
   }
 
   public func deleteAIChatMessage(
@@ -758,34 +1099,51 @@ public final class WorkbenchAIStore: ObservableObject {
     store.save()
   }
 
+  @discardableResult
   public func branchAIChatConversation(
     after messageID: AIPublishingChatMessage.ID,
     draft: ArticleDraft? = nil
-  ) {
+  ) -> AIConversation? {
+    guard !isAIChatRunning else {
+      store.setAIChatMessage("请先停止当前 AI 回复，再创建对话分支。")
+      return nil
+    }
     if let draft {
       prepareAIChat(for: draft)
     }
 
-    guard store.aiChatDraftID != nil else {
+    guard let draftID = store.aiChatDraftID else {
       store.setAIChatMessage("请先选择一篇文章。")
-      return
+      return nil
     }
     guard let index = store.aiChatMessages.firstIndex(where: { $0.id == messageID }) else {
       store.setAIChatMessage("找不到要分支的 AI 消息。")
-      return
+      return nil
     }
 
-    let originalMessages = store.aiChatMessages
-    let branchedMessages = Array(originalMessages.prefix(index + 1))
-    guard branchedMessages.count < originalMessages.count else {
-      store.setAIChatMessage("已在最新消息处，无需回退分支。")
-      return
-    }
-
-    store.setAIChatMessages(branchedMessages)
     cacheCurrentAIChatSessionForAIStore()
+    let now = Date()
+    let branchTitle = aiChatConversationTitle.map {
+      String("\($0) · 分支".prefix(80))
+    }
+    let conversation = AIConversation(
+      draftID: draftID,
+      title: branchTitle,
+      messages: Array(store.aiChatMessages.prefix(index + 1)),
+      contextMode: aiChatContextMode,
+      knowledgePolicy: aiChatKnowledgePolicy,
+      modelGrade: aiChatModelGrade,
+      reasoningLevel: aiChatReasoningLevel,
+      selectedModel: aiChatSelectedModel,
+      focusedParagraphID: aiChatFocusedParagraphID,
+      createdAt: now
+    ).prepared()
+    aiConversations.append(conversation)
+    activeAIConversationIDsByDraftID[draftID] = conversation.id
+    applyCurrentAIChatSession(conversation.sessionState)
     store.setAIChatMessage("已从所选消息创建分支。")
     store.save()
+    return conversation
   }
 
   public func cancelAIChatReply() {
@@ -804,6 +1162,10 @@ public final class WorkbenchAIStore: ObservableObject {
     guard let chatDraft = draft ?? store.selectedDraft,
           chatDraft.id == retryState.draftID else {
       store.setAIChatMessage("请先返回发生错误的文章，再重试 AI 回复。")
+      return nil
+    }
+    guard activeAIChatConversationID(for: chatDraft.id) == retryState.conversationID else {
+      store.setAIChatMessage("请先切回发生错误的 AI 对话，再重试回复。")
       return nil
     }
     if let retryAfter = retryState.retryAfter, retryAfter > Date() {
@@ -843,6 +1205,11 @@ public final class WorkbenchAIStore: ObservableObject {
       store.setAIChatMessage("当前对话还没有用户消息。")
       return nil
     }
+    cacheCurrentAIChatSessionForAIStore()
+    guard let conversationIdentity = aiChatConversationIdentity(for: chatDraft.id) else {
+      store.setAIChatMessage("找不到可重新生成的 AI 对话。")
+      return nil
+    }
     let access = aiChatCanStartFeatureUse(.aiRequest)
     guard access.isAllowed else {
       store.setAIChatMessage(access.message)
@@ -854,18 +1221,23 @@ public final class WorkbenchAIStore: ObservableObject {
       return nil
     }
 
-    let originalMessages = store.aiChatMessages
-    var updatedMessages = aiChatMessages
-    while updatedMessages.last?.role == .assistant {
-      updatedMessages.removeLast()
+    let originalMessages = aiChatSessionState(for: conversationIdentity)?.messages
+      ?? store.aiChatMessages
+    updateAIChatSession(for: conversationIdentity) { messages in
+      while messages.last?.role == .assistant {
+        messages.removeLast()
+      }
     }
-    aiChatMessages = updatedMessages
-    cacheCurrentAIChatSessionForAIStore()
 
-    let reply = await generateAIChatReply(for: chatDraft, operationID: operationID)
+    let reply = await generateAIChatReply(
+      for: chatDraft,
+      conversationIdentity: conversationIdentity,
+      operationID: operationID
+    )
     if reply == nil {
-      store.setAIChatMessages(originalMessages)
-      cacheCurrentAIChatSessionForAIStore()
+      updateAIChatSession(for: conversationIdentity) { messages in
+        messages = originalMessages
+      }
       store.save()
     }
     return reply
@@ -898,6 +1270,11 @@ public final class WorkbenchAIStore: ObservableObject {
       store.setAIChatMessage("找不到可重新生成的用户问题。")
       return nil
     }
+    cacheCurrentAIChatSessionForAIStore()
+    guard let conversationIdentity = aiChatConversationIdentity(for: chatDraft.id) else {
+      store.setAIChatMessage("找不到可重新生成的 AI 对话。")
+      return nil
+    }
     let access = aiChatCanStartFeatureUse(.aiRequest)
     guard access.isAllowed else {
       store.setAIChatMessage(access.message)
@@ -909,13 +1286,20 @@ public final class WorkbenchAIStore: ObservableObject {
       return nil
     }
 
-    let originalMessages = store.aiChatMessages
-    store.setAIChatMessages(Array(store.aiChatMessages.prefix(userIndex + 1)))
-    cacheCurrentAIChatSessionForAIStore()
-    let reply = await generateAIChatReply(for: chatDraft, operationID: operationID)
+    let originalMessages = aiChatSessionState(for: conversationIdentity)?.messages
+      ?? store.aiChatMessages
+    updateAIChatSession(for: conversationIdentity) { messages in
+      messages = Array(messages.prefix(userIndex + 1))
+    }
+    let reply = await generateAIChatReply(
+      for: chatDraft,
+      conversationIdentity: conversationIdentity,
+      operationID: operationID
+    )
     if reply == nil {
-      store.setAIChatMessages(originalMessages)
-      cacheCurrentAIChatSessionForAIStore()
+      updateAIChatSession(for: conversationIdentity) { messages in
+        messages = originalMessages
+      }
       store.save()
     }
     return reply
@@ -992,13 +1376,23 @@ public final class WorkbenchAIStore: ObservableObject {
     updatedMessages.append(userMessage)
     aiChatMessages = updatedMessages
     cacheCurrentAIChatSessionForAIStore()
+    guard let conversationIdentity = aiChatConversationIdentity(for: chatDraft.id) else {
+      finishAIChatOperation(operationID)
+      store.setAIChatMessage("无法保存当前 AI 对话，请重试。")
+      return nil
+    }
 
-    return await generateAIChatReply(for: chatDraft, operationID: operationID)
+    return await generateAIChatReply(
+      for: chatDraft,
+      conversationIdentity: conversationIdentity,
+      operationID: operationID
+    )
   }
 
   @discardableResult
-  func generateAIChatReply(
+  private func generateAIChatReply(
     for chatDraft: ArticleDraft,
+    conversationIdentity: AIChatConversationIdentity,
     operationID: UUID
   ) async -> AIPublishingChatMessage? {
     defer { finishAIChatOperation(operationID) }
@@ -1010,7 +1404,10 @@ public final class WorkbenchAIStore: ObservableObject {
       store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
       return nil
     }
-    let request = await aiChatRequest(for: chatDraft)
+    let request = await aiChatRequest(
+      for: chatDraft,
+      conversationIdentity: conversationIdentity
+    )
     await store.refreshSiteMaintenanceSnapshot()
     do {
       try checkAIChatOperation(operationID)
@@ -1028,7 +1425,7 @@ public final class WorkbenchAIStore: ObservableObject {
       do {
         return try await generateStreamingAIChatReply(
           request: request,
-          draftID: chatDraft.id,
+          conversationIdentity: conversationIdentity,
           operationID: operationID,
           config: profile.aiProviderConfig,
           apiKey: token
@@ -1036,7 +1433,7 @@ public final class WorkbenchAIStore: ObservableObject {
       } catch AIChatCompletionClientError.streamingUnsupported {
         return try await generateCompleteAIChatReply(
           request: request,
-          draftID: chatDraft.id,
+          conversationIdentity: conversationIdentity,
           operationID: operationID,
           config: profile.aiProviderConfig,
           apiKey: token
@@ -1044,12 +1441,14 @@ public final class WorkbenchAIStore: ObservableObject {
       }
     } catch is CancellationError {
       store.setAIChatMessage("AI 回复已停止。")
-      return aiChatSessionState(for: chatDraft.id)?.messages.last { $0.role == .assistant }
+      return aiChatSessionState(for: conversationIdentity)?
+        .messages.last { $0.role == .assistant }
     } catch let error as AIChatCompletionClientError {
-      configureManualRetry(for: error, draftID: chatDraft.id)
+      configureManualRetry(for: error, conversationIdentity: conversationIdentity)
       store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
       if error.didReceivePartialContent {
-        return aiChatSessionState(for: chatDraft.id)?.messages.last { $0.role == .assistant }
+        return aiChatSessionState(for: conversationIdentity)?
+          .messages.last { $0.role == .assistant }
       }
       return nil
     } catch {
@@ -1058,9 +1457,9 @@ public final class WorkbenchAIStore: ObservableObject {
     }
   }
 
-  func generateStreamingAIChatReply(
+  private func generateStreamingAIChatReply(
     request: AIPublishingChatRequest,
-    draftID: UUID,
+    conversationIdentity: AIChatConversationIdentity,
     operationID: UUID,
     config: AIProviderConfig,
     apiKey: String?
@@ -1072,7 +1471,7 @@ public final class WorkbenchAIStore: ObservableObject {
     )
     try checkAIChatOperation(operationID)
     var assistantMessage = replyStream.initialMessage
-    updateAIChatSession(for: draftID) { messages in
+    updateAIChatSession(for: conversationIdentity) { messages in
       messages.append(assistantMessage)
     }
     let clock = ContinuousClock()
@@ -1090,7 +1489,7 @@ public final class WorkbenchAIStore: ObservableObject {
         assistantMessage.tokenUsage = tokenUsage
         pendingTokenUsage = nil
       }
-      updateAIChatSession(for: draftID) { messages in
+      updateAIChatSession(for: conversationIdentity) { messages in
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
           messages[index] = assistantMessage
         }
@@ -1125,7 +1524,7 @@ public final class WorkbenchAIStore: ObservableObject {
         in: assistantMessage,
         request: request
       )
-      updateAIChatSession(for: draftID) { messages in
+      updateAIChatSession(for: conversationIdentity) { messages in
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
           messages[index] = assistantMessage
         }
@@ -1137,13 +1536,13 @@ public final class WorkbenchAIStore: ObservableObject {
       flushPendingStreamUpdate(force: true)
       let finalContent = assistantMessage.content.trimmedForPublishing
       guard !finalContent.isEmpty else {
-        updateAIChatSession(for: draftID) { messages in
+        updateAIChatSession(for: conversationIdentity) { messages in
           messages.removeAll { $0.id == assistantMessage.id }
         }
         throw CancellationError()
       }
       assistantMessage.content = finalContent
-      updateAIChatSession(for: draftID) { messages in
+      updateAIChatSession(for: conversationIdentity) { messages in
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
           messages[index] = assistantMessage
         }
@@ -1155,13 +1554,13 @@ public final class WorkbenchAIStore: ObservableObject {
       flushPendingStreamUpdate(force: true)
       let finalContent = assistantMessage.content.trimmedForPublishing
       guard !finalContent.isEmpty else {
-        updateAIChatSession(for: draftID) { messages in
+        updateAIChatSession(for: conversationIdentity) { messages in
           messages.removeAll { $0.id == assistantMessage.id }
         }
         throw error
       }
       assistantMessage.content = finalContent
-      updateAIChatSession(for: draftID) { messages in
+      updateAIChatSession(for: conversationIdentity) { messages in
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
           messages[index] = assistantMessage
         }
@@ -1169,16 +1568,16 @@ public final class WorkbenchAIStore: ObservableObject {
       recordAIResponseBacklinks(message: assistantMessage, request: request)
       throw error
     } catch {
-      updateAIChatSession(for: draftID) { messages in
+      updateAIChatSession(for: conversationIdentity) { messages in
         messages.removeAll { $0.id == assistantMessage.id }
       }
       throw error
     }
   }
 
-  func generateCompleteAIChatReply(
+  private func generateCompleteAIChatReply(
     request: AIPublishingChatRequest,
-    draftID: UUID,
+    conversationIdentity: AIChatConversationIdentity,
     operationID: UUID,
     config: AIProviderConfig,
     apiKey: String?
@@ -1189,7 +1588,7 @@ public final class WorkbenchAIStore: ObservableObject {
       apiKey: apiKey
     )
     try checkAIChatOperation(operationID)
-    updateAIChatSession(for: draftID) { messages in
+    updateAIChatSession(for: conversationIdentity) { messages in
       messages.append(assistantMessage)
     }
     recordAIResponseBacklinks(message: assistantMessage, request: request)
@@ -1215,14 +1614,15 @@ public final class WorkbenchAIStore: ObservableObject {
 
   private func configureManualRetry(
     for error: AIChatCompletionClientError,
-    draftID: UUID
+    conversationIdentity: AIChatConversationIdentity
   ) {
     guard error.supportsManualRetry else {
       aiChatManualRetryState = nil
       return
     }
     aiChatManualRetryState = AIChatManualRetryState(
-      draftID: draftID,
+      draftID: conversationIdentity.draftID,
+      conversationID: conversationIdentity.conversationID,
       requiresDuplicateChargeConfirmation: error.didReceivePartialContent,
       retryAfter: error.retryAfterSeconds.map { Date().addingTimeInterval($0) }
     )

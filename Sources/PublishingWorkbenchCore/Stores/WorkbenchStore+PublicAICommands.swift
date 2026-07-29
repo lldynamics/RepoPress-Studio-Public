@@ -77,6 +77,52 @@ extension WorkbenchStore {
     aiStore.setAIChatConversationTitle(title, draft: draft)
   }
 
+  public func aiChatConversations(
+    for draftID: UUID,
+    includingArchived: Bool = false
+  ) -> [AIConversation] {
+    aiStore.aiChatConversations(
+      for: draftID,
+      includingArchived: includingArchived
+    )
+  }
+
+  public func activeAIChatConversationID(for draftID: UUID) -> UUID? {
+    aiStore.activeAIChatConversationID(for: draftID)
+  }
+
+  public var activeAIChatConversation: AIConversation? {
+    aiStore.activeAIChatConversation()
+  }
+
+  @discardableResult
+  public func selectAIChatConversation(_ conversationID: UUID) -> Bool {
+    aiStore.selectAIChatConversation(conversationID)
+  }
+
+  @discardableResult
+  public func renameAIChatConversation(
+    _ conversationID: UUID,
+    title: String?
+  ) -> Bool {
+    aiStore.renameAIChatConversation(conversationID, title: title)
+  }
+
+  @discardableResult
+  public func archiveAIChatConversation(_ conversationID: UUID) -> Bool {
+    aiStore.archiveAIChatConversation(conversationID)
+  }
+
+  @discardableResult
+  public func restoreAIChatConversation(_ conversationID: UUID) -> Bool {
+    aiStore.restoreAIChatConversation(conversationID)
+  }
+
+  @discardableResult
+  public func deleteAIChatConversation(_ conversationID: UUID) -> Bool {
+    aiStore.deleteAIChatConversation(conversationID)
+  }
+
   public func setAIChatFocusedParagraph(_ paragraphID: String?, draft: ArticleDraft? = nil) {
     aiStore.setAIChatFocusedParagraph(paragraphID, draft: draft)
   }
@@ -90,7 +136,10 @@ extension WorkbenchStore {
     aiStore.deleteAIChatCustomPrompt(promptID)
   }
 
-  public func startNewAIChatConversation(draft: ArticleDraft? = nil) {
+  @discardableResult
+  public func startNewAIChatConversation(
+    draft: ArticleDraft? = nil
+  ) -> AIConversation? {
     aiStore.startNewAIChatConversation(draft: draft)
   }
 
@@ -106,7 +155,11 @@ extension WorkbenchStore {
     aiStore.deleteAIChatMessage(messageID, draft: draft)
   }
 
-  public func branchAIChatConversation(after messageID: AIPublishingChatMessage.ID, draft: ArticleDraft? = nil) {
+  @discardableResult
+  public func branchAIChatConversation(
+    after messageID: AIPublishingChatMessage.ID,
+    draft: ArticleDraft? = nil
+  ) -> AIConversation? {
     aiStore.branchAIChatConversation(after: messageID, draft: draft)
   }
 

@@ -43,7 +43,7 @@ struct PersonalSitePublisherMacApp: App {
   }
 
   var body: some Scene {
-    WindowGroup("RepoPress", id: "main-workbench") {
+    WindowGroup("RepoPress Studio", id: "main-workbench") {
       WorkbenchLaunchRootView(
         coordinator: launchCoordinator,
         storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator,
@@ -59,6 +59,11 @@ struct PersonalSitePublisherMacApp: App {
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
         .background(ScreenshotCaptureWindowBridge())
 #endif
+        .background(
+          MainWindowOpenActionRegistration { action in
+            appDelegate.openMainWindowAction = action
+          }
+        )
         .tint(WorkbenchTheme.navigationSelection)
     }
     .defaultSize(
@@ -91,13 +96,154 @@ struct PersonalSitePublisherMacApp: App {
   }
 }
 
+private struct MainWindowOpenActionRegistration: View {
+  @Environment(\.openWindow) private var openWindow
+  let register: (@escaping () -> Void) -> Void
+
+  var body: some View {
+    Color.clear
+      .frame(width: 0, height: 0)
+      .onAppear {
+        register {
+          openWindow(id: "main-workbench")
+        }
+      }
+  }
+}
+
 @MainActor
 final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate {
   var workbenchStore: WorkbenchStore?
   var browserBridge: KnowledgeBrowserBridge?
+  var openMainWindowAction: (() -> Void)?
+
+  private let reopenMenuItemIdentifier = NSUserInterfaceItemIdentifier(
+    "com.jinfang.repopress-studio.show-main-window"
+  )
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(mainWindowWillClose(_:)),
+      name: NSWindow.willCloseNotification,
+      object: nil
+    )
+    installPersistentWindowCommands()
+    normalizeVisibleApplicationName()
+    scheduleMainWindowRecoveryIfNeeded()
+  }
+
+  func applicationDidBecomeActive(_ notification: Notification) {
+    installPersistentWindowCommands()
+    normalizeVisibleApplicationName()
+    scheduleMainWindowRecoveryIfNeeded()
+  }
+
+  func applicationDidUpdate(_ notification: Notification) {
+    installPersistentWindowCommands()
+  }
+
+  func applicationShouldHandleReopen(
+    _ sender: NSApplication,
+    hasVisibleWindows flag: Bool
+  ) -> Bool {
+    guard !flag else { return true }
+    if restoreMainWindow(in: sender) {
+      return false
+    }
+    return true
+  }
+
+  @objc
+  private func showMainWindow(_ sender: Any?) {
+    NSApp.activate(ignoringOtherApps: true)
+    _ = restoreMainWindow(in: NSApp)
+  }
+
+  @objc
+  private func mainWindowWillClose(_ notification: Notification) {
+    // SwiftUI removes scene-scoped command contributions after the last
+    // WindowGroup window closes. Reinstall this AppKit-owned command after
+    // that scene teardown so the Window menu remains actionable.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+      self?.installPersistentWindowCommands()
+      self?.normalizeVisibleApplicationName()
+    }
+  }
+
+  private func restoreMainWindow(in application: NSApplication) -> Bool {
+    if let mainWindow = application.windows.first(where: isMainWorkbenchWindow) {
+      if mainWindow.isMiniaturized {
+        mainWindow.deminiaturize(nil)
+      }
+      mainWindow.makeKeyAndOrderFront(nil)
+      return true
+    }
+    guard let openMainWindowAction else { return false }
+    openMainWindowAction()
+    return true
+  }
+
+  private func scheduleMainWindowRecoveryIfNeeded() {
+    // AppKit finishes restoring SwiftUI scene windows after the application
+    // delegate launch callbacks. A previously closed or hidden restoration
+    // record can therefore leave a healthy process with no visible UI. Wait
+    // for that restoration pass, then surface the existing workbench window
+    // (or ask the WindowGroup to create one once its open action is ready).
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+      guard let self,
+            !NSApp.windows.contains(where: \.isVisible)
+      else {
+        return
+      }
+      _ = self.restoreMainWindow(in: NSApp)
+    }
+  }
+
+  private func isMainWorkbenchWindow(_ window: NSWindow) -> Bool {
+    if let identifier = window.identifier?.rawValue,
+       identifier.contains("main-workbench") {
+      return true
+    }
+    return window.title == "RepoPress Studio" || window.title == "RepoPress"
+  }
+
+  private func installPersistentWindowCommands() {
+    guard let windowMenu = resolveWindowMenu() else { return }
+    if windowMenu.items.contains(where: { $0.identifier == reopenMenuItemIdentifier }) {
+      return
+    }
+
+    let reopenItem = NSMenuItem(
+      title: String(localized: "显示 RepoPress Studio"),
+      action: #selector(showMainWindow(_:)),
+      keyEquivalent: "0"
+    )
+    reopenItem.identifier = reopenMenuItemIdentifier
+    reopenItem.keyEquivalentModifierMask = [.command]
+    reopenItem.target = self
+    windowMenu.insertItem(reopenItem, at: 0)
+    windowMenu.insertItem(.separator(), at: 1)
+  }
+
+  private func resolveWindowMenu() -> NSMenu? {
+    if let windowsMenu = NSApp.windowsMenu {
+      return windowsMenu
+    }
+    return NSApp.mainMenu?.items.compactMap(\.submenu).first { menu in
+      menu.items.contains {
+        $0.action == #selector(NSWindow.performMiniaturize(_:))
+      } && menu.items.contains {
+        $0.action == #selector(NSWindow.performZoom(_:))
+      }
+    }
+  }
+
+  private func normalizeVisibleApplicationName() {
+    guard let applicationMenuItem = NSApp.mainMenu?.items.first else { return }
+    applicationMenuItem.title = "RepoPress Studio"
+    applicationMenuItem.submenu?.title = "RepoPress Studio"
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

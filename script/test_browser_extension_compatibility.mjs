@@ -551,7 +551,7 @@ vm.runInContext("resetCaptureFlow()", popupContext);
 assert.equal(popupElements.get("#save-panel").hidden, false);
 assert.equal(
   vm.runInContext('readableError(new Error("NetworkError when attempting to fetch resource."))', popupContext),
-  "无法连接应用。请先打开“RepoPress”，再检查令牌。"
+  "无法连接应用。请先打开“RepoPress Studio”，再检查令牌。"
 );
 vm.runInContext('showStatus("无法连接", "error")', popupContext);
 assert.equal(popupElements.get("#status").textContent, "");
@@ -646,7 +646,7 @@ assert.equal(popupElements.get("#receipt-folder").textContent, "阅读");
 assert.equal(popupElements.get("#receipt-size").textContent, "2.0 KB");
 assert.equal(popupElements.get("#receipt-archive").textContent, "离线 HTML");
 assert.equal(popupElements.get("#receipt-index").textContent, "全文与语义索引已就绪");
-assert.equal(popupElements.get("#receipt-ai").textContent, "允许 AI 检索");
+assert.equal(popupElements.get("#receipt-ai").textContent, "已加入本地语义检索");
 vm.runInContext(`
   activeTab = { url: "https://other.example/article" };
   showReceipt({
@@ -739,7 +739,7 @@ assert.notEqual(
 assert.equal(popupElements.get("#batch-review-panel").hidden, false);
 assert.match(popupElements.get("#batch-settings-summary").textContent, /分类：产品研究/);
 assert.match(popupElements.get("#batch-settings-summary").textContent, /模式：净化正文/);
-assert.match(popupElements.get("#batch-settings-summary").textContent, /AI 权限：允许检索/);
+assert.match(popupElements.get("#batch-settings-summary").textContent, /语义检索：允许检索/);
 assert.equal(popupElements.get("#batch-items").children.length, 3);
 assert.equal(popupElements.get("#batch-items").children[0].children[0].textContent, "已有权限");
 assert.equal(popupElements.get("#batch-items").children[0].children[1].textContent, "already.example");

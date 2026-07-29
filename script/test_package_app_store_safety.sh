@@ -29,6 +29,11 @@ fi
 grep -Fq 'xattr -cr "$signed_app"' "$PACKAGE_SCRIPT" \
   || fail "package script does not strip App Store-rejected extended attributes before signing"
 
+grep -Fq 'APP_DISPLAY_NAME="RepoPress Studio"' "$PACKAGE_SCRIPT" \
+  || fail "package script does not define the approved visible App Store name"
+grep -Fq 'signed_app="$OUTPUT_DIR/$artifact_base/$APP_DISPLAY_NAME.app"' "$PACKAGE_SCRIPT" \
+  || fail "installed application filename is not derived from the approved visible name"
+
 python3 "$ROOT_DIR/script/test_resolve_app_store_entitlements.py"
 
 echo "app store package safety test: passed"

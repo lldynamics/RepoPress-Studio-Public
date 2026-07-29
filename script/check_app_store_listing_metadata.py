@@ -14,15 +14,15 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_METADATA = ROOT / "docs" / "app-store" / "metadata.json"
 REQUIRED_LOCALES = {"zh-Hans", "en-US"}
-EXPECTED_NAME = "RepoPress"
+EXPECTED_NAME = "RepoPress Studio"
 EXPECTED_SUBTITLES = {
     "zh-Hans": "Markdown 写作与仓库同步",
     "en-US": "Markdown Repository Workspace",
 }
 PENDING_PREFIX = "PENDING_"
 REQUIRED_FULL_FEATURE_DISCLOSURES = {
-    "zh-Hans": ("明确同意", "127.0.0.1", "用户自行购买和管理"),
-    "en-US": ("Explicit consent", "127.0.0.1", "purchase and manage"),
+    "zh-Hans": ("所有用户", "明确同意", "不作为 Pro 权益", "127.0.0.1"),
+    "en-US": ("Every user", "Explicit consent", "not a Pro benefit", "127.0.0.1"),
 }
 
 
@@ -69,7 +69,7 @@ def validate_listing_text(localization: dict[str, object], locale: str, strict: 
     if not 2 <= len(name) <= 30:
         fail(f"{locale}.name must contain 2 to 30 characters, got {len(name)}")
     if name != EXPECTED_NAME:
-        fail(f"{locale}.name must use the shared RepoPress brand")
+        fail(f"{locale}.name must be RepoPress Studio")
     if len(subtitle) > 30:
         fail(f"{locale}.subtitle exceeds 30 characters: {len(subtitle)}")
     if subtitle != EXPECTED_SUBTITLES[locale]:
@@ -163,12 +163,18 @@ def validate(metadata_path: Path, strict: bool) -> list[str]:
     contact_complete = configured_in_connect or embedded_contact_complete
     if strict and not contact_complete:
         fail("App Review contact must be completed in App Store Connect")
+    ai_review_credential = review.get("aiDemoCredentialConfiguredInAppStoreConnect", False)
+    if not isinstance(ai_review_credential, bool):
+        fail("appReview.aiDemoCredentialConfiguredInAppStoreConnect must be a boolean")
+    if strict and not ai_review_credential:
+        fail("A private AI review credential must be configured in App Store Connect")
 
     notes_file = require_string(review, "notesFile", "appReview")
     notes_path = resolve_document(notes_file, "appReview.notesFile", byte_limit=4000)
     notes_text = notes_path.read_text(encoding="utf-8")
     for required_boundary in (
-        "explicit consent is required",
+        "available to every user",
+        "private review-only provider credential",
         "127.0.0.1:17843",
         "does not bundle a Native Messaging executable",
     ):
@@ -198,6 +204,8 @@ def validate(metadata_path: Path, strict: bool) -> list[str]:
                 blockers.append(f"{locale} support URL")
         if not contact_complete:
             blockers.append("App Review contact name and phone")
+        if not ai_review_credential:
+            blockers.append("private AI review credential in App Store Connect")
     return blockers
 
 
