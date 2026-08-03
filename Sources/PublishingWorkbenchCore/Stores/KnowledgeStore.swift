@@ -10,14 +10,17 @@ public final class KnowledgeStore: ObservableObject {
   private var selectedCapturedTextTask: Task<Void, Never>?
   private var relatedChaptersTask: Task<Void, Never>?
   private var documentInsightsTask: Task<Void, Never>?
+  private var articleBacklinksTask: Task<Void, Never>?
+  private var articleBacklinksTargetID: String?
+  private var lastImportRetryAction: (@MainActor () async -> Void)?
   private var visibleDocumentsCacheRevision: UInt64?
   private var visibleDocumentsCache: [KnowledgeDocument] = []
   private var visibleSearchResultsCacheRevision: UInt64?
   private var visibleSearchResultsCache: [KnowledgeSearchResult] = []
-#if DEBUG
-  private(set) var visibleDocumentsSnapshotBuildCount = 0
-  private(set) var visibleSearchResultsSnapshotBuildCount = 0
-#endif
+  #if DEBUG
+    private(set) var visibleDocumentsSnapshotBuildCount = 0
+    private(set) var visibleSearchResultsSnapshotBuildCount = 0
+  #endif
 
   @Published public private(set) var listPresentationRevision: UInt64 = 0
   @Published public private(set) var documents: [KnowledgeDocument] = [] {
@@ -51,6 +54,10 @@ public final class KnowledgeStore: ObservableObject {
   }
   @Published public private(set) var isSearching = false
   @Published public private(set) var isBusy = false
+  @Published public private(set) var isImporting = false
+  @Published public private(set) var importProgress: Double?
+  @Published public private(set) var importOperationTitle: String?
+  @Published public private(set) var lastImportFailure: String?
   @Published public private(set) var statusMessage: String?
   @Published public private(set) var lastError: String?
   @Published public private(set) var pinnedDocumentIDs: Set<UUID> = []
@@ -58,6 +65,8 @@ public final class KnowledgeStore: ObservableObject {
   @Published public private(set) var isLoadingRelatedChapters = false
   @Published public private(set) var annotations: [KnowledgeAnnotation] = []
   @Published public private(set) var backlinks: [KnowledgeBacklink] = []
+  @Published public private(set) var articleBacklinks: [KnowledgeBacklink] = []
+  @Published public private(set) var isLoadingArticleBacklinks = false
   @Published public private(set) var revisions: [KnowledgeDocumentRevision] = []
   @Published public private(set) var healthSnapshot: KnowledgeLibraryHealthSnapshot?
   @Published public private(set) var isLoadingHealth = false
@@ -67,12 +76,17 @@ public final class KnowledgeStore: ObservableObject {
     Task { await reload() }
   }
 
+  public var rootURL: URL {
+    service.rootURL
+  }
+
   deinit {
     searchTask?.cancel()
     selectedTextTask?.cancel()
     selectedCapturedTextTask?.cancel()
     relatedChaptersTask?.cancel()
     documentInsightsTask?.cancel()
+    articleBacklinksTask?.cancel()
   }
 
   public var selectedDocument: KnowledgeDocument? {
@@ -121,13 +135,14 @@ public final class KnowledgeStore: ObservableObject {
         seen.insert(result.document.id).inserted ? result.document : nil
       }
     }
-    let filtered = searchText.trimmedForPublishing.isEmpty
+    let filtered =
+      searchText.trimmedForPublishing.isEmpty
       ? candidates.filter(isIncludedInCurrentScope)
       : candidates
     let result = documentSort.sorted(filtered)
-#if DEBUG
-    visibleDocumentsSnapshotBuildCount += 1
-#endif
+    #if DEBUG
+      visibleDocumentsSnapshotBuildCount += 1
+    #endif
     visibleDocumentsCache = result
     visibleDocumentsCacheRevision = listPresentationRevision
     return result
@@ -141,9 +156,9 @@ public final class KnowledgeStore: ObservableObject {
       searchResults,
       isInCurrentCollection: isIncludedInCurrentScope
     )
-#if DEBUG
-    visibleSearchResultsSnapshotBuildCount += 1
-#endif
+    #if DEBUG
+      visibleSearchResultsSnapshotBuildCount += 1
+    #endif
     visibleSearchResultsCache = result
     visibleSearchResultsCacheRevision = listPresentationRevision
     return result
@@ -168,11 +183,13 @@ public final class KnowledgeStore: ObservableObject {
       folders = try await loadedFolders
       pinnedDocumentIDs = try await loadedPinnedDocumentIDs
       if case .folder(let folderID) = folderScope,
-         !folders.contains(where: { $0.id == folderID }) {
+        !folders.contains(where: { $0.id == folderID })
+      {
         folderScope = .all
       }
       if case .smartCollection(let rule) = folderScope,
-         !smartCollections.contains(where: { $0.rule == rule }) {
+        !smartCollections.contains(where: { $0.rule == rule })
+      {
         folderScope = .all
       }
       lastError = nil
@@ -186,6 +203,31 @@ public final class KnowledgeStore: ObservableObject {
       lastError = error.localizedDescription
       statusMessage = "资料库读取失败：\(error.localizedDescription)"
     }
+  }
+
+  public func retryLastImport() async {
+    guard let lastImportRetryAction else {
+      statusMessage = "当前没有可重试的资料导入任务。"
+      return
+    }
+    await lastImportRetryAction()
+  }
+
+  private func beginImport(
+    title: String,
+    retry: @escaping @MainActor () async -> Void
+  ) {
+    isImporting = true
+    importProgress = 0
+    importOperationTitle = title
+    lastImportFailure = nil
+    lastImportRetryAction = retry
+  }
+
+  private func finishImport(failure: String? = nil) {
+    isImporting = false
+    importProgress = failure == nil ? 1 : nil
+    lastImportFailure = failure
   }
 
   public func selectDocument(_ documentID: UUID?) {
@@ -218,7 +260,8 @@ public final class KnowledgeStore: ObservableObject {
     loadDocument(result.document.id)
     loadRelatedChapters(documentID: result.document.id, anchorChunkID: result.chunk.id)
     loadDocumentInsights(documentID: result.document.id)
-    let location = result.chunk.locator?.nilIfEmpty
+    let location =
+      result.chunk.locator?.nilIfEmpty
       ?? result.chunk.headingPath?.nilIfEmpty
       ?? "正文段落"
     statusMessage = "已定位到“\(result.document.title)”的\(location)。"
@@ -256,7 +299,8 @@ public final class KnowledgeStore: ObservableObject {
   }
 
   public func selectRelatedChapter(_ recommendation: KnowledgeRelatedChapter) {
-    let signals: Set<KnowledgeRetrievalSignal> = recommendation.reasons.contains(.semantic)
+    let signals: Set<KnowledgeRetrievalSignal> =
+      recommendation.reasons.contains(.semantic)
       ? [.semantic]
       : []
     selectedSearchResult = KnowledgeSearchResult(
@@ -272,7 +316,8 @@ public final class KnowledgeStore: ObservableObject {
       anchorChunkID: recommendation.chunk.id
     )
     loadDocumentInsights(documentID: recommendation.document.id)
-    let location = recommendation.chunk.locator?.nilIfEmpty
+    let location =
+      recommendation.chunk.locator?.nilIfEmpty
       ?? recommendation.chunk.headingPath?.nilIfEmpty
       ?? "相关段落"
     statusMessage = "已打开关联推荐：\(recommendation.document.title) · \(location)。"
@@ -282,10 +327,47 @@ public final class KnowledgeStore: ObservableObject {
     visibleSearchResults.first { $0.id == id }
   }
 
+  /// Returns a citation backed by a real indexed chunk when one can be found.
+  /// Callers may still use their own clipped excerpt for presentation, but the
+  /// chunk identity keeps backlinks valid instead of inventing an orphan ID.
+  public func makeCitationForDocument(
+    documentID: UUID,
+    excerpt: String
+  ) async -> KnowledgeCitation? {
+    let trimmedExcerpt = excerpt.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedExcerpt.isEmpty,
+          let document = documents.first(where: { $0.id == documentID })
+    else { return nil }
+
+    let query = String(trimmedExcerpt.prefix(240))
+    do {
+      let result = try await service.searchAsync(
+        query: query,
+        limit: 12,
+        documentIDs: Set([documentID]),
+        requiredSignal: .fullText
+      ).first { $0.document.id == documentID }
+      guard let result else { return nil }
+      return KnowledgeCitation(
+        id: "\(document.id.uuidString.prefix(8))-\(result.chunk.id.uuidString.prefix(8))",
+        documentID: document.id,
+        chunkID: result.chunk.id,
+        title: document.title,
+        authors: document.authors,
+        locator: result.chunk.locator?.nilIfEmpty ?? result.chunk.headingPath?.nilIfEmpty,
+        excerpt: trimmedExcerpt,
+        sourceURL: document.sourceURL
+      )
+    } catch {
+      return nil
+    }
+  }
+
   private func loadDocument(_ documentID: UUID?) {
     if selectedDocumentID == documentID,
-       documentID != nil,
-       !selectedDocumentText.isEmpty {
+      documentID != nil,
+      !selectedDocumentText.isEmpty
+    {
       return
     }
     selectedDocumentID = documentID
@@ -307,7 +389,8 @@ public final class KnowledgeStore: ObservableObject {
       do {
         let text = try await service.normalizedTextAsync(documentID: documentID)
         guard !Task.isCancelled, self?.selectedDocumentID == documentID else { return }
-        self?.selectedDocumentText = documentKind == .webpage
+        self?.selectedDocumentText =
+          documentKind == .webpage
           ? KnowledgeWebContentSanitizer().sanitizeExtractedReadingText(text)
           : text
         self?.isLoadingSelectedDocumentText = false
@@ -398,6 +481,42 @@ public final class KnowledgeStore: ObservableObject {
     }
   }
 
+  /// Loads the knowledge sources cited by one article. This is the reverse
+  /// direction of `backlinks(documentID:)`, which is used by the library
+  /// inspector to show where a source was cited.
+  public func loadArticleBacklinks(for draftID: UUID?) {
+    articleBacklinksTask?.cancel()
+    articleBacklinks = []
+    isLoadingArticleBacklinks = false
+    guard let draftID else {
+      articleBacklinksTargetID = nil
+      return
+    }
+
+    let targetID = draftID.uuidString
+    articleBacklinksTargetID = targetID
+    isLoadingArticleBacklinks = true
+    let service = self.service
+    articleBacklinksTask = Task { [weak self] in
+      do {
+        let loaded = try await service.backlinksAsync(
+          targetKind: .articleDraft,
+          targetID: targetID
+        )
+        guard !Task.isCancelled, self?.articleBacklinksTargetID == targetID else { return }
+        self?.articleBacklinks = loaded
+        self?.isLoadingArticleBacklinks = false
+      } catch is CancellationError {
+        return
+      } catch {
+        guard !Task.isCancelled, self?.articleBacklinksTargetID == targetID else { return }
+        self?.articleBacklinks = []
+        self?.isLoadingArticleBacklinks = false
+        self?.lastError = error.localizedDescription
+      }
+    }
+  }
+
   public func updateSearchText(_ value: String) {
     searchText = value
     selectedSearchResult = nil
@@ -416,7 +535,8 @@ public final class KnowledgeStore: ObservableObject {
     let service = self.service
     let searchScope = searchFilter.scope
     let requiredSignal = searchFilter.signal.signal
-    let documentIDs: Set<UUID>? = searchScope == .currentCollection
+    let documentIDs: Set<UUID>? =
+      searchScope == .currentCollection
       ? Set(documents.filter(isIncludedInCurrentScope).map(\.id))
       : nil
     searchTask = Task { [weak self] in
@@ -429,14 +549,16 @@ public final class KnowledgeStore: ObservableObject {
           requiredSignal: requiredSignal
         )
         guard !Task.isCancelled,
-              self?.searchText.trimmedForPublishing == query,
-              self?.searchFilter.scope == searchScope,
-              self?.searchFilter.signal.signal == requiredSignal else { return }
+          self?.searchText.trimmedForPublishing == query,
+          self?.searchFilter.scope == searchScope,
+          self?.searchFilter.signal.signal == requiredSignal
+        else { return }
         self?.searchResults = results
         self?.isSearching = false
         let semanticCount = results.filter { $0.signals.contains(.semantic) }.count
         let documentCount = Set(results.map { $0.document.id }).count
-        self?.statusMessage = results.isEmpty
+        self?.statusMessage =
+          results.isEmpty
           ? "全文与本地语义检索均未找到相关资料。"
           : "混合检索显示 \(documentCount) 条资料、\(results.count) 个片段，其中 \(semanticCount) 个获得语义召回。"
         self?.lastError = nil
@@ -454,7 +576,8 @@ public final class KnowledgeStore: ObservableObject {
   public func setFolderScope(_ scope: KnowledgeFolderScope) {
     folderScope = scope
     if searchFilter.scope == .currentCollection,
-       !searchText.trimmedForPublishing.isEmpty {
+      !searchText.trimmedForPublishing.isEmpty
+    {
       updateSearchText(searchText)
     }
     ensureVisibleSelection()
@@ -618,10 +741,12 @@ public final class KnowledgeStore: ObservableObject {
       try service.addTags(tags, documentIDs: documentIDs)
       let now = Date()
       for index in documents.indices where documentIDs.contains(documents[index].id) {
-        for tag in tags.map({ $0.trimmedForPublishing }).filter({ !$0.isEmpty }) where
+        for tag in tags.map({ $0.trimmedForPublishing }).filter({ !$0.isEmpty })
+        where
           !documents[index].tags.contains(where: {
             $0.compare(tag, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
-          }) {
+          })
+        {
           documents[index].tags.append(tag)
         }
         documents[index].updatedAt = now
@@ -719,16 +844,25 @@ public final class KnowledgeStore: ObservableObject {
     _ preview: KnowledgeImportPreview,
     destination: KnowledgeImportDestination = .preserveExisting
   ) async throws -> KnowledgeImportResult {
+    beginImport(title: "保存并建立索引") { [weak self] in
+      guard let self else { return }
+      _ = try? await self.commit(preview, destination: destination)
+    }
     isBusy = true
     statusMessage = "正在保存并建立索引…"
     defer { isBusy = false }
     do {
+      importProgress = 0.35
       let result = try await service.commit(preview, destination: destination)
+      importProgress = 0.72
       await reload()
-      statusMessage = "资料导入完成：新增 \(result.insertedCount)，更新 \(result.updatedCount)，跳过 \(result.skippedCount)。"
+      finishImport()
+      statusMessage =
+        "资料导入完成：新增 \(result.insertedCount)，更新 \(result.updatedCount)，跳过 \(result.skippedCount)。"
       lastError = nil
       return result
     } catch {
+      finishImport(failure: error.localizedDescription)
       lastError = error.localizedDescription
       statusMessage = "资料导入失败：\(error.localizedDescription)"
       throw error
@@ -741,10 +875,20 @@ public final class KnowledgeStore: ObservableObject {
     newFolderName: String?,
     duplicateResolution: KnowledgeBrowserDuplicateResolution? = nil
   ) async throws -> KnowledgeBrowserImportOutcome {
+    beginImport(title: "保存浏览器页面") { [weak self] in
+      guard let self else { return }
+      _ = try? await self.importBrowserCapture(
+        capture,
+        folderID: folderID,
+        newFolderName: newFolderName,
+        duplicateResolution: duplicateResolution
+      )
+    }
     isBusy = true
     statusMessage = "正在保存浏览器页面并建立索引…"
     defer { isBusy = false }
     do {
+      importProgress = 0.25
       var preview = try await service.makeBrowserImportPreview(capture: capture)
       guard var candidate = preview.candidates.first else {
         throw KnowledgeLibraryError.invalidBrowserCapture("浏览器页面没有可保存的内容。")
@@ -754,18 +898,21 @@ public final class KnowledgeStore: ObservableObject {
       let existingDocument = candidate.existingDocumentID.flatMap { documentID in
         currentDocuments.first(where: { $0.id == documentID })
       }
-      let hasSameURL = existingDocument?.sourceURL?.absoluteString == candidate.sourceURL?.absoluteString
+      let hasSameURL =
+        existingDocument?.sourceURL?.absoluteString == candidate.sourceURL?.absoluteString
       if let existingDocument, hasSameURL, duplicateResolution == nil {
         let existingFolder = existingDocument.folderID.flatMap { existingFolderID in
           currentFolders.first(where: { $0.id == existingFolderID })
         }
         statusMessage = "检测到同网址资料，请选择处理方式。"
         lastError = nil
-        return .requiresDuplicateResolution(KnowledgeBrowserDuplicateConflict(
-          document: existingDocument,
-          folder: existingFolder,
-          incomingHasChanges: candidate.disposition == .update
-        ))
+        finishImport()
+        return .requiresDuplicateResolution(
+          KnowledgeBrowserDuplicateConflict(
+            document: existingDocument,
+            folder: existingFolder,
+            incomingHasChanges: candidate.disposition == .update
+          ))
       }
 
       let destination = try browserImportDestination(
@@ -774,6 +921,7 @@ public final class KnowledgeStore: ObservableObject {
       )
       let result: KnowledgeImportResult
       let action: KnowledgeBrowserImportAction
+      importProgress = 0.62
       if let existingDocument, hasSameURL, duplicateResolution == .moveOnly {
         try service.setFolder(destination.folderID, documentID: existingDocument.id)
         result = KnowledgeImportResult(
@@ -807,12 +955,15 @@ public final class KnowledgeStore: ObservableObject {
       // 新版本和副本的 AI 权限已由导入候选项带入数据库事务。
       // “仅移动分类”不提交候选项，因此仍只更新分类并保留原 AI 权限。
       await reload(selecting: result.documentIDs.first)
-      statusMessage = action == .moved
+      finishImport()
+      statusMessage =
+        action == .moved
         ? "已将原资料移到选定分类；正文、元数据和 AI 权限均保持不变。"
         : "浏览器页面已保存到资料库。"
       lastError = nil
       return .saved(result: result, action: action)
     } catch {
+      finishImport(failure: error.localizedDescription)
       lastError = error.localizedDescription
       statusMessage = "浏览器页面保存失败：\(error.localizedDescription)"
       throw error
@@ -825,7 +976,8 @@ public final class KnowledgeStore: ObservableObject {
   ) throws -> (importDestination: KnowledgeImportDestination, folderID: UUID?) {
     if let requestedName = newFolderName?.trimmedForPublishing.nilIfEmpty {
       if let existing = try service.folders().first(where: {
-        $0.name.compare(requestedName, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        $0.name.compare(requestedName, options: [.caseInsensitive, .diacriticInsensitive])
+          == .orderedSame
       }) {
         return (.folder(existing.id), existing.id)
       }
@@ -838,21 +990,23 @@ public final class KnowledgeStore: ObservableObject {
     return (.unfiled, nil)
   }
 
-  public func setAllowsAIUse(_ allowsAIUse: Bool, documentID: UUID) {
+  public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentID: UUID) {
     do {
-      try service.setAllowsAIUse(allowsAIUse, documentID: documentID)
+      try service.setAllowsLocalSemanticIndex(allowsLocalSemanticIndex, documentID: documentID)
       if let index = documents.firstIndex(where: { $0.id == documentID }) {
-        documents[index].allowsAIUse = allowsAIUse
+        documents[index].allowsLocalSemanticIndex = allowsLocalSemanticIndex
         documents[index].updatedAt = Date()
       }
       searchResults = searchResults.map { result in
         guard result.document.id == documentID else { return result }
         var updated = result
-        updated.document.allowsAIUse = allowsAIUse
+        updated.document.allowsLocalSemanticIndex = allowsLocalSemanticIndex
         return updated
       }
       ensureVisibleSelection()
-      statusMessage = allowsAIUse ? "这条资料已允许 AI 检索。" : "这条资料已从 AI 检索范围排除。"
+      statusMessage = allowsLocalSemanticIndex
+        ? "这条资料已建立本地语义索引。"
+        : "这条资料已关闭本地语义索引。"
       lastError = nil
     } catch {
       lastError = error.localizedDescription
@@ -860,31 +1014,93 @@ public final class KnowledgeStore: ObservableObject {
     }
   }
 
-  public func setAllowsAIUse(_ allowsAIUse: Bool, documentIDs: Set<UUID>) {
+  public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentIDs: Set<UUID>) {
     guard !documentIDs.isEmpty else { return }
     do {
-      try service.setAllowsAIUse(allowsAIUse, documentIDs: documentIDs)
+      try service.setAllowsLocalSemanticIndex(allowsLocalSemanticIndex, documentIDs: documentIDs)
       let now = Date()
       for index in documents.indices where documentIDs.contains(documents[index].id) {
-        documents[index].allowsAIUse = allowsAIUse
+        documents[index].allowsLocalSemanticIndex = allowsLocalSemanticIndex
         documents[index].updatedAt = now
       }
       searchResults = searchResults.map { result in
         guard documentIDs.contains(result.document.id) else { return result }
         var updated = result
-        updated.document.allowsAIUse = allowsAIUse
+        updated.document.allowsLocalSemanticIndex = allowsLocalSemanticIndex
         updated.document.updatedAt = now
         return updated
       }
       ensureVisibleSelection()
-      statusMessage = allowsAIUse
-        ? "已允许 AI 使用 \(documentIDs.count) 条资料。"
-        : "已将 \(documentIDs.count) 条资料排除在 AI 检索范围外。"
+      statusMessage =
+        allowsLocalSemanticIndex
+        ? "已为 \(documentIDs.count) 条资料建立本地语义索引。"
+        : "已关闭 \(documentIDs.count) 条资料的本地语义索引。"
       lastError = nil
     } catch {
       lastError = error.localizedDescription
-      statusMessage = "批量 AI 权限设置失败：\(error.localizedDescription)"
+      statusMessage = "批量本地语义索引设置失败：\(error.localizedDescription)"
     }
+  }
+
+  public func setAllowsRemoteAIUse(_ allowsRemoteAIUse: Bool, documentID: UUID) {
+    do {
+      try service.setAllowsRemoteAIUse(allowsRemoteAIUse, documentID: documentID)
+      if let index = documents.firstIndex(where: { $0.id == documentID }) {
+        documents[index].allowsRemoteAIUse = allowsRemoteAIUse
+        documents[index].updatedAt = Date()
+      }
+      searchResults = searchResults.map { result in
+        guard result.document.id == documentID else { return result }
+        var updated = result
+        updated.document.allowsRemoteAIUse = allowsRemoteAIUse
+        return updated
+      }
+      ensureVisibleSelection()
+      statusMessage = allowsRemoteAIUse
+        ? "这条资料已允许发送给远程 AI。"
+        : "这条资料已禁止发送给远程 AI。"
+      lastError = nil
+    } catch {
+      lastError = error.localizedDescription
+      statusMessage = "资料远程 AI 权限保存失败：\(error.localizedDescription)"
+    }
+  }
+
+  public func setAllowsRemoteAIUse(_ allowsRemoteAIUse: Bool, documentIDs: Set<UUID>) {
+    guard !documentIDs.isEmpty else { return }
+    do {
+      try service.setAllowsRemoteAIUse(allowsRemoteAIUse, documentIDs: documentIDs)
+      let now = Date()
+      for index in documents.indices where documentIDs.contains(documents[index].id) {
+        documents[index].allowsRemoteAIUse = allowsRemoteAIUse
+        documents[index].updatedAt = now
+      }
+      searchResults = searchResults.map { result in
+        guard documentIDs.contains(result.document.id) else { return result }
+        var updated = result
+        updated.document.allowsRemoteAIUse = allowsRemoteAIUse
+        updated.document.updatedAt = now
+        return updated
+      }
+      ensureVisibleSelection()
+      statusMessage = allowsRemoteAIUse
+        ? "已允许发送给远程 AI 的资料：\(documentIDs.count) 条。"
+        : "已禁止发送给远程 AI 的资料：\(documentIDs.count) 条。"
+      lastError = nil
+    } catch {
+      lastError = error.localizedDescription
+      statusMessage = "批量远程 AI 权限设置失败：\(error.localizedDescription)"
+    }
+  }
+
+  @available(*, deprecated, message: "请使用 setAllowsRemoteAIUse")
+  public func setAllowsAIUse(_ allowsAIUse: Bool, documentID: UUID) {
+    setAllowsRemoteAIUse(allowsAIUse, documentID: documentID)
+  }
+
+  @available(*, deprecated, message: "请使用 setAllowsRemoteAIUse")
+  public func setAllowsAIUse(_ allowsAIUse: Bool, documentIDs: Set<UUID>) {
+    setAllowsRemoteAIUse(allowsAIUse, documentIDs: documentIDs)
   }
 
   @discardableResult
@@ -896,12 +1112,13 @@ public final class KnowledgeStore: ObservableObject {
       try service.moveToRecycleBin(documentIDs: documentIDs)
       documents.removeAll { documentIDs.contains($0.id) }
       searchResults.removeAll { documentIDs.contains($0.document.id) }
-      recycledDocuments.insert(contentsOf: movingDocuments.map { document in
-        var archived = document
-        archived.isArchived = true
-        archived.updatedAt = now
-        return KnowledgeRecycledDocument(document: archived, deletedAt: now)
-      }, at: 0)
+      recycledDocuments.insert(
+        contentsOf: movingDocuments.map { document in
+          var archived = document
+          archived.isArchived = true
+          archived.updatedAt = now
+          return KnowledgeRecycledDocument(document: archived, deletedAt: now)
+        }, at: 0)
       ensureVisibleSelection()
       statusMessage = "已将 \(documentIDs.count) 条资料移到回收站，可随时恢复。"
       lastError = nil
@@ -921,12 +1138,13 @@ public final class KnowledgeStore: ObservableObject {
       let restoring = recycledDocuments.filter { documentIDs.contains($0.id) }
       try service.restoreFromRecycleBin(documentIDs: documentIDs)
       recycledDocuments.removeAll { documentIDs.contains($0.id) }
-      documents.append(contentsOf: restoring.map { recycled in
-        var document = recycled.document
-        document.isArchived = false
-        document.updatedAt = now
-        return document
-      })
+      documents.append(
+        contentsOf: restoring.map { recycled in
+          var document = recycled.document
+          document.isArchived = false
+          document.updatedAt = now
+          return document
+        })
       statusMessage = "已从回收站恢复 \(documentIDs.count) 条资料。"
       lastError = nil
       if let firstID = documentIDs.first { selectDocument(firstID) }
@@ -995,8 +1213,13 @@ public final class KnowledgeStore: ObservableObject {
   ) {
     do {
       try service.recordBacklinks(citations: citations, target: target)
-      if let selectedDocumentID, citations.contains(where: { $0.documentID == selectedDocumentID }) {
+      if let selectedDocumentID, citations.contains(where: { $0.documentID == selectedDocumentID })
+      {
         backlinks = try service.backlinks(documentID: selectedDocumentID)
+      }
+      if target.kind == .articleDraft,
+         articleBacklinksTargetID == target.id {
+        loadArticleBacklinks(for: UUID(uuidString: target.id))
       }
     } catch {
       lastError = error.localizedDescription
@@ -1010,7 +1233,8 @@ public final class KnowledgeStore: ObservableObject {
     statusMessage = "正在检查资料来源更新…"
     do {
       let preview = try await service.makeSourceRefreshPreview(documentID: documentID)
-      statusMessage = preview.difference.hasChanges
+      statusMessage =
+        preview.difference.hasChanges
         ? "已发现来源内容变化，可预览后更新。"
         : "来源内容与当前版本一致。"
       lastError = nil
@@ -1039,7 +1263,8 @@ public final class KnowledgeStore: ObservableObject {
     do {
       let result = try await service.applySourceRefresh(preview)
       await reload(selecting: preview.documentID)
-      statusMessage = result.updatedCount > 0
+      statusMessage =
+        result.updatedCount > 0
         ? "来源更新已保存为新版本，可在版本历史中恢复旧内容。"
         : "来源内容未变化，没有创建重复版本。"
       lastError = nil
@@ -1139,7 +1364,8 @@ public final class KnowledgeStore: ObservableObject {
     defer { isBusy = false }
     do {
       let report = try await service.repairSemanticVectors(documentIDs: documentIDs)
-      statusMessage = "语义索引重建完成：扫描 \(report.scannedChunkCount) 个片段，生成 \(report.regeneratedVectorCount) 个向量。"
+      statusMessage =
+        "语义索引重建完成：扫描 \(report.scannedChunkCount) 个片段，生成 \(report.regeneratedVectorCount) 个向量。"
       lastError = nil
       await refreshLibraryHealth()
     } catch {
@@ -1154,7 +1380,8 @@ public final class KnowledgeStore: ObservableObject {
     defer { isBusy = false }
     do {
       let report = try await service.repairSemanticVectors()
-      statusMessage = "语义索引重建完成：扫描 \(report.scannedChunkCount) 个片段，生成 \(report.regeneratedVectorCount) 个向量，并清理旧模型。"
+      statusMessage =
+        "语义索引重建完成：扫描 \(report.scannedChunkCount) 个片段，生成 \(report.regeneratedVectorCount) 个向量，并清理旧模型。"
       lastError = nil
       await refreshLibraryHealth()
     } catch {
@@ -1191,7 +1418,8 @@ public final class KnowledgeStore: ObservableObject {
         documentIDs: documentIDs,
         includingCurrentParserVersion: includingCurrentParserVersion
       )
-      statusMessage = previews.isEmpty
+      statusMessage =
+        previews.isEmpty
         ? "没有找到可使用本机原始归档重新净化的网页资料。"
         : "发现 \(previews.count) 条可在本机重新净化的网页资料，请预览后修复。"
       lastError = nil
@@ -1263,9 +1491,10 @@ public final class KnowledgeStore: ObservableObject {
     case .none:
       break
     case .restored(let result):
-      let recoveryMessage = result.previousLibraryURL.map {
-        "恢复前资料库已保留在 \($0.path)。"
-      } ?? "恢复前没有现有资料库。"
+      let recoveryMessage =
+        result.previousLibraryURL.map {
+          "恢复前资料库已保留在 \($0.path)。"
+        } ?? "恢复前没有现有资料库。"
       statusMessage = "资料库已从备份恢复，共 \(result.restoredPreview.documentCount) 条资料。\(recoveryMessage)"
       lastError = nil
     case .failed(let detail):
@@ -1277,7 +1506,8 @@ public final class KnowledgeStore: ObservableObject {
   private func ensureVisibleSelection() {
     if !searchText.trimmedForPublishing.isEmpty {
       if let selectedSearchResult,
-         visibleSearchResults.contains(where: { $0.id == selectedSearchResult.id }) {
+        visibleSearchResults.contains(where: { $0.id == selectedSearchResult.id })
+      {
         return
       }
       if let result = visibleSearchResults.first {
@@ -1288,7 +1518,8 @@ public final class KnowledgeStore: ObservableObject {
       return
     }
     if let selectedDocumentID,
-       visibleDocuments.contains(where: { $0.id == selectedDocumentID }) {
+      visibleDocuments.contains(where: { $0.id == selectedDocumentID })
+    {
       return
     }
     selectDocument(visibleDocuments.first?.id)
@@ -1341,6 +1572,61 @@ public final class KnowledgeStore: ObservableObject {
     } catch {
       lastError = error.localizedDescription
       statusMessage = "资料库检索失败：\(error.localizedDescription)"
+      return nil
+    }
+  }
+
+  /// Retrieves local-only recommendations for the article context card.
+  ///
+  /// This path intentionally does not require `allowsRemoteAIUse`: showing a
+  /// local recommendation is different from transmitting the source to a
+  /// remote provider. Documents that opted out of the local semantic index are
+  /// excluded by the database and by the final guard below.
+  public func contextRecommendations(
+    query: String,
+    limit: Int = 6
+  ) async throws -> [KnowledgeSearchResult] {
+    let trimmedQuery = query.trimmedForPublishing
+    guard !trimmedQuery.isEmpty, limit > 0 else { return [] }
+    let localDocumentIDs = Set<UUID>(
+      documents.compactMap { document in
+        guard !document.isArchived, document.allowsLocalSemanticIndex else { return nil }
+        return document.id
+      }
+    )
+    guard !localDocumentIDs.isEmpty else { return [] }
+    let results = try await service.searchAsync(
+      query: trimmedQuery,
+      limit: max(limit, 12),
+      onlyRemoteAIAllowed: false,
+      documentIDs: localDocumentIDs
+    )
+    return results
+      .filter { !$0.document.isArchived && $0.document.allowsLocalSemanticIndex }
+      .prefix(limit)
+      .map { $0 }
+  }
+
+  /// Resolves one user-selected knowledge document for an explicit AI @
+  /// reference. This does not change library selection and refuses documents
+  /// that are archived or not authorized for AI use.
+  public func explicitAIContextText(documentID: UUID) async -> String? {
+    guard
+      let document = documents.first(where: {
+        $0.id == documentID && !$0.isArchived && $0.allowsRemoteAIUse
+      })
+    else {
+      return nil
+    }
+    do {
+      let text = try await service.normalizedTextAsync(documentID: documentID)
+      if document.kind == .webpage {
+        return KnowledgeWebContentSanitizer().sanitizeExtractedReadingText(text)
+      }
+      return text
+    } catch {
+      lastError = error.localizedDescription
+      statusMessage = "读取 @ 资料失败：\(error.localizedDescription)"
       return nil
     }
   }

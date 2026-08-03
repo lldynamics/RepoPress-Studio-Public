@@ -36,7 +36,6 @@ final class KnowledgeBrowserBridge: ObservableObject {
   private let knowledge: KnowledgeStore
   private let defaults: UserDefaults
   private let connectionTokenStore: KnowledgeBrowserConnectionTokenStore
-  private let importOperationLedgerURL: URL?
   private let onOpenDocument: (UUID) -> Void
   private let now: () -> Date
   private var invalidatedExpiredToken: String?
@@ -47,29 +46,30 @@ final class KnowledgeBrowserBridge: ObservableObject {
   private let importOperationLedgerStore: KnowledgeBrowserImportLedgerStore
   private var activeImportOperations: [UUID: String] = [:]
   private let queue = DispatchQueue(label: "com.jinfang.PersonalSitePublisherMac.browser-bridge")
+  private var importOperationLedgerLoadTask: Task<Void, Never>?
   private var listener: NWListener?
   private var listenerGeneration: UUID?
 
   init(
     knowledge: KnowledgeStore,
     defaults: UserDefaults = .standard,
-    connectionTokenURL: URL? = nil,
+    connectionTokenKeychainStore: KeychainTokenStore? = nil,
     importOperationLedgerURL: URL? = nil,
     now: @escaping () -> Date = Date.init,
     onOpenDocument: @escaping (UUID) -> Void = { _ in }
   ) {
     self.knowledge = knowledge
     self.defaults = defaults
-    let resolvedConnectionTokenURL = connectionTokenURL
-      ?? (defaults === UserDefaults.standard ? Self.defaultConnectionTokenURL : nil)
-    self.connectionTokenStore = KnowledgeBrowserConnectionTokenStore(
-      fileURL: resolvedConnectionTokenURL,
-      defaults: KnowledgeBrowserConnectionTokenDefaults(defaults),
-      legacyDefaultsKey: Self.tokenDefaultsKey
-    )
+    Self.removeLegacyConnectionTokenCopies(from: defaults)
+    if let connectionTokenKeychainStore {
+      self.connectionTokenStore = KnowledgeBrowserConnectionTokenStore(
+        keychain: connectionTokenKeychainStore
+      )
+    } else {
+      self.connectionTokenStore = KnowledgeBrowserConnectionTokenStore()
+    }
     let resolvedImportOperationLedgerURL = importOperationLedgerURL
       ?? (defaults === UserDefaults.standard ? Self.defaultImportOperationLedgerURL : nil)
-    self.importOperationLedgerURL = resolvedImportOperationLedgerURL
     self.importOperationLedgerStore = KnowledgeBrowserImportLedgerStore(
       fileURL: resolvedImportOperationLedgerURL,
       defaults: KnowledgeBrowserImportLedgerDefaults(defaults),
@@ -78,52 +78,7 @@ final class KnowledgeBrowserBridge: ObservableObject {
     self.now = now
     self.onOpenDocument = onOpenDocument
     let currentDate = now()
-    var storedOperationRecords: [KnowledgeBrowserImportOperationRecord] = []
-    var ledgerPersistenceIssue: String?
-    var ledgerIssueKind: KnowledgeBrowserImportLedgerIssueKind?
-    do {
-      if let ledgerURL = self.importOperationLedgerURL,
-         FileManager.default.fileExists(atPath: ledgerURL.path) {
-        storedOperationRecords = try PropertyListDecoder().decode(
-          [KnowledgeBrowserImportOperationRecord].self,
-          from: try BoundedFileReader.data(
-            at: ledgerURL,
-            maximumByteCount: WorkbenchFileReadLimits.maximumBrowserImportLedgerByteCount
-          )
-        )
-      } else if let legacyData = defaults.data(
-        forKey: Self.importOperationLedgerDefaultsKey
-      ) {
-        storedOperationRecords = try PropertyListDecoder().decode(
-          [KnowledgeBrowserImportOperationRecord].self,
-          from: legacyData
-        )
-      }
-    } catch {
-      ledgerPersistenceIssue = "浏览器保存幂等账本无法读取：\(error.localizedDescription)"
-      ledgerIssueKind = .unreadable
-    }
-    var operationLedger = KnowledgeBrowserImportOperationLedger(records: storedOperationRecords)
-    operationLedger.prune(at: currentDate)
-    importOperationLedger = operationLedger
-    if ledgerPersistenceIssue == nil {
-      do {
-        if let ledgerURL = self.importOperationLedgerURL {
-          try Self.writeImportOperationLedger(operationLedger.records, to: ledgerURL)
-          defaults.removeObject(forKey: Self.importOperationLedgerDefaultsKey)
-        } else {
-          defaults.set(
-            try PropertyListEncoder().encode(operationLedger.records),
-            forKey: Self.importOperationLedgerDefaultsKey
-          )
-        }
-      } catch {
-        ledgerPersistenceIssue = "浏览器保存幂等账本无法持久化：\(error.localizedDescription)"
-        ledgerIssueKind = .unwritable
-      }
-    }
-    importOperationLedgerPersistenceIssue = ledgerPersistenceIssue
-    importOperationLedgerIssueKind = ledgerIssueKind
+    importOperationLedger = KnowledgeBrowserImportOperationLedger()
 
     var tokenPersistenceIssue: String?
     let persistedToken: String?
@@ -133,7 +88,7 @@ final class KnowledgeBrowserBridge: ObservableObject {
       persistedToken = nil
       tokenPersistenceIssue = "浏览器连接令牌无法从本地安全存储读取：\(error.localizedDescription)"
     }
-    let storedToken = persistedToken ?? defaults.string(forKey: Self.tokenDefaultsKey)
+    let storedToken = persistedToken
     let storedExpiry = defaults.object(forKey: Self.tokenExpiryDefaultsKey) as? Date
     invalidatedExpiredToken = if let storedToken, let storedExpiry, storedExpiry <= currentDate {
       storedToken
@@ -152,22 +107,42 @@ final class KnowledgeBrowserBridge: ObservableObject {
       try connectionTokenStore.persist(connectionToken)
       tokenPersistenceIssue = nil
     } catch {
-      defaults.set(connectionToken, forKey: Self.tokenDefaultsKey)
       tokenPersistenceIssue = "浏览器连接令牌无法写入本地安全存储：\(error.localizedDescription)"
     }
     connectionTokenPersistenceIssue = tokenPersistenceIssue
     defaults.set(connectionTokenExpiresAt, forKey: Self.tokenExpiryDefaultsKey)
-    let warnings = [ledgerPersistenceIssue, tokenPersistenceIssue].compactMap { $0 }
+    let warnings = [tokenPersistenceIssue].compactMap { $0 }
     lastMessage = warnings.isEmpty ? nil : warnings.joined(separator: "\n")
   }
 
   deinit {
+    importOperationLedgerLoadTask?.cancel()
     listener?.cancel()
   }
 
   func start() {
-    guard listener == nil else { return }
+    guard listener == nil, importOperationLedgerLoadTask == nil else { return }
     state = .starting
+    let generation = UUID()
+    listenerGeneration = generation
+    let ledgerStore = importOperationLedgerStore
+    let currentDate = now()
+    importOperationLedgerLoadTask = Task { [weak self] in
+      let loadResult = await ledgerStore.loadPruned(at: currentDate)
+      guard let self,
+            !Task.isCancelled,
+            self.listenerGeneration == generation else { return }
+      self.importOperationLedger = loadResult.ledger
+      self.importOperationLedgerPersistenceIssue = loadResult.persistenceIssue
+      self.importOperationLedgerIssueKind = loadResult.issueKind
+      self.lastMessage = self.persistenceWarningMessage
+      self.importOperationLedgerLoadTask = nil
+      self.startListener(generation: generation)
+    }
+  }
+
+  private func startListener(generation: UUID) {
+    guard listenerGeneration == generation, listener == nil else { return }
     do {
       let parameters = NWParameters.tcp
       parameters.allowLocalEndpointReuse = true
@@ -181,7 +156,6 @@ final class KnowledgeBrowserBridge: ObservableObject {
         port: port
       )
       let listener = try NWListener(using: parameters)
-      let generation = UUID()
       listener.newConnectionHandler = { [weak self] connection in
         self?.receiveRequest(on: connection)
       }
@@ -206,7 +180,6 @@ final class KnowledgeBrowserBridge: ObservableObject {
           }
         }
       }
-      self.listenerGeneration = generation
       self.listener = listener
       listener.start(queue: queue)
     } catch {
@@ -221,6 +194,8 @@ final class KnowledgeBrowserBridge: ObservableObject {
 
   func stop() {
     listenerGeneration = nil
+    importOperationLedgerLoadTask?.cancel()
+    importOperationLedgerLoadTask = nil
     let listener = listener
     self.listener = nil
     listener?.cancel()
@@ -249,10 +224,9 @@ final class KnowledgeBrowserBridge: ObservableObject {
       connectionTokenPersistenceIssue = nil
       lastMessage = "连接令牌已更新，浏览器插件需要重新连接。"
     } catch {
-      defaults.set(token, forKey: Self.tokenDefaultsKey)
       connectionTokenPersistenceIssue =
         "浏览器连接令牌无法写入本地安全存储：\(error.localizedDescription)"
-      lastMessage = "\(connectionTokenPersistenceIssue!) 已改用兼容存储。"
+      lastMessage = connectionTokenPersistenceIssue
     }
   }
 
@@ -622,7 +596,8 @@ final class KnowledgeBrowserBridge: ObservableObject {
           fileSizeBytes: document.sourceByteCount,
           archiveType: envelope.capture.archiveFormat?.lowercased() ?? "none",
           indexStatus: "ready",
-          allowsAIUse: document.allowsAIUse,
+          allowsLocalSemanticIndex: document.allowsLocalSemanticIndex,
+          allowsRemoteAIUse: document.allowsRemoteAIUse,
           savedAt: document.updatedAt
         )
         importOperationLedger.record(
@@ -663,12 +638,12 @@ final class KnowledgeBrowserBridge: ObservableObject {
     })
   }
 
-  private static let tokenDefaultsKey = "KnowledgeBrowserBridge.connectionToken.v1"
+  private static let legacyTokenDefaultsKey = "KnowledgeBrowserBridge.connectionToken.v1"
   private static let tokenExpiryDefaultsKey = "KnowledgeBrowserBridge.connectionTokenExpiresAt.v1"
   private static let importOperationLedgerDefaultsKey =
     "KnowledgeBrowserBridge.completedImportOperations.v1"
 
-  private nonisolated static var defaultConnectionTokenURL: URL {
+  private nonisolated static var legacyConnectionTokenURL: URL {
     defaultBrowserBridgeDirectoryURL
       .appendingPathComponent("connection-token-v1", isDirectory: false)
   }
@@ -688,17 +663,13 @@ final class KnowledgeBrowserBridge: ObservableObject {
       .appendingPathComponent("BrowserBridge", isDirectory: true)
   }
 
-  private nonisolated static func writeImportOperationLedger(
-    _ records: [KnowledgeBrowserImportOperationRecord],
-    to url: URL
-  ) throws {
-    try FileManager.default.createDirectory(
-      at: url.deletingLastPathComponent(),
-      withIntermediateDirectories: true
-    )
-    let encoder = PropertyListEncoder()
-    encoder.outputFormat = .binary
-    try encoder.encode(records).write(to: url, options: .atomic)
+  private static func removeLegacyConnectionTokenCopies(from defaults: UserDefaults) {
+    // Older builds wrote the token to UserDefaults or Application Support.
+    // Remove those copies without reading or migrating them; Keychain is the
+    // only supported persistence backend for the app-side pairing token.
+    defaults.removeObject(forKey: legacyTokenDefaultsKey)
+    guard defaults === UserDefaults.standard else { return }
+    try? FileManager.default.removeItem(at: legacyConnectionTokenURL)
   }
 
   private func persistImportOperationLedger() async throws {
@@ -766,11 +737,6 @@ final class KnowledgeBrowserBridge: ObservableObject {
       + UUID().uuidString.replacingOccurrences(of: "-", with: "")
   }
 
-}
-
-private enum KnowledgeBrowserImportLedgerIssueKind {
-  case unreadable
-  case unwritable
 }
 
 private struct BrowserPreparedImport: @unchecked Sendable {
@@ -873,7 +839,9 @@ enum BrowserExtensionOriginPolicy {
     }
     switch scheme {
     case "moz-extension":
-      return false
+      // Firefox assigns each installed extension a per-profile UUID origin;
+      // the manifest add-on ID cannot be used as the URL host.
+      return UUID(uuidString: host) != nil
     case "safari-web-extension":
       // Safari assigns each installed web extension a per-install UUID origin,
       // so the signed bundle identifier cannot be used as the URL host.

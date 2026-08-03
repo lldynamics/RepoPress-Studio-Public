@@ -1,7 +1,7 @@
 import Foundation
 import PublishingWorkbenchCore
 
-enum ContentHealthArticleGrouping: String, CaseIterable, Identifiable {
+enum ContentHealthArticleGrouping: String, CaseIterable, Identifiable, Sendable {
   case actionQueue
   case automaticFix
   case site
@@ -81,7 +81,7 @@ enum ContentHealthArticleGrouping: String, CaseIterable, Identifiable {
   }
 }
 
-enum ContentHealthArticleGroupKind: Equatable {
+enum ContentHealthArticleGroupKind: Equatable, Sendable {
   case standard
   case blocking
   case highestRisk
@@ -91,7 +91,7 @@ enum ContentHealthArticleGroupKind: Equatable {
   var isActionQueue: Bool { self != .standard }
 }
 
-struct ContentHealthArticleGroup: Identifiable {
+struct ContentHealthArticleGroup: Identifiable, Sendable {
   let id: String
   let title: String
   let systemImage: String
@@ -122,7 +122,7 @@ struct ContentHealthArticleGroup: Identifiable {
   }
 }
 
-struct ContentHealthArticleRowModel: Identifiable {
+struct ContentHealthArticleRowModel: Identifiable, Sendable {
   let draftID: UUID
   let draftTitle: String
   let markdownPath: String
@@ -163,7 +163,7 @@ struct ContentHealthArticleRowModel: Identifiable {
   }
 }
 
-struct ContentHealthActionQueue {
+struct ContentHealthActionQueue: Sendable {
   static let highestRiskLimit = 10
 
   let blockingRows: [ContentHealthArticleRowModel]

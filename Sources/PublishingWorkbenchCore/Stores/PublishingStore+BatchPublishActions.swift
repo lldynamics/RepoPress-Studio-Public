@@ -97,13 +97,6 @@ extension PublishingStore {
       )
     }
 
-    let reservationResult = store.reserveFeatureUse(.batchPublishing)
-    guard let reservation = reservationResult.reservation else {
-      publishActionMessage = reservationResult.decision.message
-      return BatchLocalWriteResult(writtenDraftCount: 0, writtenPaths: [], skippedCount: batchPublishPlan.items.count)
-    }
-    defer { store.releaseFeatureUseReservation(reservation) }
-
     let profile = store.activeProfile
     guard let operation = beginLocalRepositoryMutation(profile: profile) else {
       publishActionMessage = "已有本地仓库写入或提交任务正在运行，请等待完成。"
@@ -134,7 +127,6 @@ extension PublishingStore {
     }
 
     if !writtenItems.isEmpty {
-      store.commitFeatureUseReservation(reservation)
       prependReleaseRecord(
         .batchLocalWrite(profile: profile, items: writtenItems, writtenPaths: writtenPaths)
       )
@@ -171,7 +163,7 @@ extension PublishingStore {
     expectedChangedPaths: Set<String>? = nil
   ) async -> RemoteRepositoryPublishResult? {
     guard store.canUseProtectedWorkbench else {
-      publishActionMessage = store.privacyLockedOperationMessage
+      publishActionMessage = store.quickHideOperationMessage
       return nil
     }
 
@@ -207,6 +199,13 @@ extension PublishingStore {
       publishActionMessage = CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。")
       return nil
     }
+    if let tokenAccessFailureMessage = preview.tokenAccessFailureMessage {
+      publishActionMessage = CoreL10n.format(
+        "仓库 Token 状态读取失败：%@",
+        tokenAccessFailureMessage
+      )
+      return nil
+    }
     guard preview.hasToken else {
       publishActionMessage = "仓库访问 Token 未保存，无法批量线上发布。"
       return nil
@@ -228,20 +227,6 @@ extension PublishingStore {
       publishActionMessage = "已有远端仓库操作正在运行，请等待完成。"
       return nil
     }
-    let batchReservationResult = store.reserveFeatureUse(.batchPublishing)
-    guard let batchReservation = batchReservationResult.reservation else {
-      publishActionMessage = batchReservationResult.decision.message
-      return nil
-    }
-    defer { store.releaseFeatureUseReservation(batchReservation) }
-
-    let onlineReservationResult = store.reserveFeatureUse(.onlinePublishing)
-    guard let onlineReservation = onlineReservationResult.reservation else {
-      publishActionMessage = onlineReservationResult.decision.message
-      return nil
-    }
-    defer { store.releaseFeatureUseReservation(onlineReservation) }
-
     selectedSection = .sync
     guard let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
       publishActionMessage = "已有远端仓库操作正在运行，请等待完成。"
@@ -269,8 +254,6 @@ extension PublishingStore {
         token: token,
         onProgress: progressHandler
       )
-      store.commitFeatureUseReservation(batchReservation)
-      store.commitFeatureUseReservation(onlineReservation)
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       store.setRemoteRepositoryPublishResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))

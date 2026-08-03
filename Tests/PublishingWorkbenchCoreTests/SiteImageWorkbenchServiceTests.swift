@@ -800,6 +800,132 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
     XCTAssertEqual(croppedDimensions, ImageDimensions(width: 300, height: 168))
   }
 
+  func testCropRejectsOversizedImageMetadataBeforePixelDecode() throws {
+    let unsafeDimensions = [
+      (width: SiteImageWorkbenchService.maximumSafeInputPixelDimension + 1, height: 10),
+      (width: 10_000, height: 10_000),
+    ]
+
+    for dimensions in unsafeDimensions {
+      let directory = try makeTemporaryDirectory()
+      defer { try? FileManager.default.removeItem(at: directory) }
+      let sourceURL = directory.appendingPathComponent("oversized.jpg")
+      let optimizedDirectory = directory.appendingPathComponent("optimized", isDirectory: true)
+      try writeJPEGWithPatchedDimensions(
+        at: sourceURL,
+        width: dimensions.width,
+        height: dimensions.height
+      )
+      let attachment = DraftAttachment(
+        originalFilename: "oversized.jpg",
+        relativePublishPath: "/images/oversized.jpg",
+        repositoryPath: "static/images/oversized.jpg",
+        altText: "Oversized",
+        caption: "Oversized",
+        byteSize: Int64((try Data(contentsOf: sourceURL)).count),
+        sourceFilePath: sourceURL.path
+      )
+      let draft = ArticleDraft(
+        siteProfileID: SiteProfile.defaultProfile.id,
+        title: "Oversized",
+        slug: "oversized",
+        bodyMarkdown: "![Oversized](/images/oversized.jpg)",
+        attachments: [attachment]
+      )
+
+      XCTAssertThrowsError(
+        try SiteImageWorkbenchService().cropAttachmentToAspectRatio(
+          draft: draft,
+          attachmentID: attachment.id,
+          destinationDirectory: optimizedDirectory
+        )
+      ) { error in
+        guard case let .unsafeImageDimensions(filename, width, height)? = error as? ImageWorkbenchError else {
+          return XCTFail("Expected unsafeImageDimensions, got \(error)")
+        }
+        XCTAssertEqual(filename, "oversized.jpg")
+        XCTAssertEqual(width, dimensions.width)
+        XCTAssertEqual(height, dimensions.height)
+      }
+    }
+  }
+
+  func testCropRejectsInvalidAspectBeforeOversizedImageDecode() throws {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let sourceURL = directory.appendingPathComponent("oversized.jpg")
+    try writeJPEGWithPatchedDimensions(
+      at: sourceURL,
+      width: SiteImageWorkbenchService.maximumSafeInputPixelDimension + 1,
+      height: 10
+    )
+    let attachment = DraftAttachment(
+      originalFilename: "oversized.jpg",
+      relativePublishPath: "/images/oversized.jpg",
+      repositoryPath: "static/images/oversized.jpg",
+      sourceFilePath: sourceURL.path
+    )
+    let draft = ArticleDraft(
+      siteProfileID: SiteProfile.defaultProfile.id,
+      title: "Invalid crop",
+      slug: "invalid-crop",
+      attachments: [attachment]
+    )
+
+    XCTAssertThrowsError(
+      try SiteImageWorkbenchService().cropAttachmentToAspectRatio(
+        draft: draft,
+        attachmentID: attachment.id,
+        destinationDirectory: directory.appendingPathComponent("optimized"),
+        aspectWidth: 0,
+        aspectHeight: 9
+      )
+    ) { error in
+      guard case .cannotCreateOptimizedImage("oversized.jpg")? = error as? ImageWorkbenchError else {
+        return XCTFail("Expected invalid aspect to fail before dimension validation, got \(error)")
+      }
+    }
+  }
+
+  func testCropDownsamplesLargeSourceToBoundedWorkingDimension() throws {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let sourceURL = directory.appendingPathComponent("wide.jpg")
+    try writeTestImage(at: sourceURL, width: 5_000, height: 100, type: .jpeg)
+    let attachment = DraftAttachment(
+      originalFilename: "wide.jpg",
+      relativePublishPath: "/images/wide.jpg",
+      repositoryPath: "static/images/wide.jpg",
+      sourceFilePath: sourceURL.path
+    )
+    let draft = ArticleDraft(
+      siteProfileID: SiteProfile.defaultProfile.id,
+      title: "Bounded crop",
+      slug: "bounded-crop",
+      attachments: [attachment]
+    )
+
+    let result = try SiteImageWorkbenchService().cropAttachmentToAspectRatio(
+      draft: draft,
+      attachmentID: attachment.id,
+      destinationDirectory: directory.appendingPathComponent("optimized"),
+      aspectWidth: 50,
+      aspectHeight: 1
+    )
+    let outputPath = try XCTUnwrap(result.draft.attachments.first?.sourceFilePath)
+    let outputURL = URL(fileURLWithPath: outputPath)
+    let source = try XCTUnwrap(CGImageSourceCreateWithURL(outputURL as CFURL, nil))
+    let properties = try XCTUnwrap(
+      CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+    )
+    let width = try XCTUnwrap(properties[kCGImagePropertyPixelWidth] as? NSNumber).intValue
+    let height = try XCTUnwrap(properties[kCGImagePropertyPixelHeight] as? NSNumber).intValue
+
+    XCTAssertEqual(result.optimizedCount, 1)
+    XCTAssertLessThanOrEqual(max(width, height), SiteImageWorkbenchService.maximumCropWorkingPixelDimension)
+    XCTAssertEqual(width, SiteImageWorkbenchService.maximumCropWorkingPixelDimension)
+  }
+
   func testSiteSummaryAggregatesImagesAcrossDrafts() throws {
     let directory = try makeTemporaryDirectory()
     let imageURL = directory.appendingPathComponent("hero.jpg")
@@ -935,6 +1061,58 @@ final class SiteImageWorkbenchServiceTests: XCTestCase {
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
+  }
+
+  private func writeJPEGWithPatchedDimensions(at url: URL, width: Int, height: Int) throws {
+    try writeTestImage(at: url, width: 1, height: 1, type: .jpeg)
+    var data = try Data(contentsOf: url)
+    guard data.count >= 12, data[0] == 0xFF, data[1] == 0xD8 else {
+      throw CocoaError(.fileReadCorruptFile)
+    }
+    var offset = 2
+    var didPatchDimensions = false
+    let startOfFrameMarkers: Set<UInt8> = [
+      0xC0, 0xC1, 0xC2, 0xC3,
+      0xC5, 0xC6, 0xC7,
+      0xC9, 0xCA, 0xCB,
+      0xCD, 0xCE, 0xCF,
+    ]
+    while offset + 9 < data.count {
+      guard data[offset] == 0xFF else {
+        offset += 1
+        continue
+      }
+      let marker = data[offset + 1]
+      if marker == 0xD9 || marker == 0xDA { break }
+      if marker == 0xD8 || marker == 0x01 || (0xD0...0xD7).contains(marker) {
+        offset += 2
+        continue
+      }
+      let segmentLength = Int(data[offset + 2]) << 8 | Int(data[offset + 3])
+      guard segmentLength >= 2, offset + 2 + segmentLength <= data.count else {
+        throw CocoaError(.fileReadCorruptFile)
+      }
+      if startOfFrameMarkers.contains(marker) {
+        writeJPEGUInt16(UInt16(height), to: &data, at: offset + 5)
+        writeJPEGUInt16(UInt16(width), to: &data, at: offset + 7)
+        didPatchDimensions = true
+        break
+      }
+      offset += 2 + segmentLength
+    }
+    guard didPatchDimensions else {
+      throw CocoaError(.fileReadCorruptFile)
+    }
+    try data.write(to: url)
+  }
+
+  private func writeJPEGUInt16(
+    _ value: UInt16,
+    to data: inout Data,
+    at offset: Int
+  ) {
+    data[offset] = UInt8(value >> 8)
+    data[offset + 1] = UInt8(value & 0xFF)
   }
 
   private func writeTestImage(

@@ -72,6 +72,7 @@ extension MacMarkdownComposerView {
     isFindRegularExpression = editorSession.isFindRegularExpression
     editorScrollProgress = editorSession.editorScrollProgress
     previewScrollProgress = editorSession.previewScrollProgress
+    visibleBodyRange = NSRange(location: 0, length: 0)
     scrollSyncUpdate = nil
     editorScrollRestorationUpdate = MarkdownScrollSyncUpdate(
       source: .editor,

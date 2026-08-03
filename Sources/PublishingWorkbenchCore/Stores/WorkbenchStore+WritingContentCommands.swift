@@ -1,16 +1,35 @@
 import Foundation
 
 extension WorkbenchStore {
-  public func makeVideoAttachment(from url: URL, draft: ArticleDraft) -> DraftAttachment {
+  public func makeVideoAttachment(
+    from url: URL,
+    draft: ArticleDraft,
+    fileStore: ManagedAttachmentFileStore? = nil
+  ) async throws -> DraftAttachment {
+    let resolvedFileStore = fileStore ?? managedAttachmentFileStore
+    let attachmentID = UUID()
     let filename = url.lastPathComponent.nilIfEmpty ?? "video-\(UUID().uuidString).mp4"
-    let byteSize = ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)) ?? 0
+    let managedURL = try await Task.detached(priority: .userInitiated) {
+      try resolvedFileStore.storeFile(at: url, attachmentID: attachmentID)
+    }.value
+    do {
+      try Task.checkCancellation()
+    } catch {
+      resolvedFileStore.discardStoredFile(at: managedURL)
+      throw error
+    }
+    let byteSize = (
+      (try? managedURL.resourceValues(forKeys: [.fileSizeKey]).fileSize)
+        .map(Int64.init)
+    ) ?? 0
     let profile = profile(for: draft)
     return DraftAttachment(
+      id: attachmentID,
       originalFilename: filename,
       relativePublishPath: profile.publicVideoPath(filename: filename, draft: draft),
       repositoryPath: profile.videoRepositoryPath(filename: filename, draft: draft),
       byteSize: byteSize,
-      sourceFilePath: url.path
+      sourceFilePath: managedURL.path
     )
   }
 
@@ -137,52 +156,42 @@ extension WorkbenchStore {
     publishingStore.ensureEditableDraftSelected(store: self)
   }
 
-  /// Adds any missing software guides to the active site without replacing
-  /// user content. Guide identity is independent from editable slugs, and a
-  /// colliding user slug is resolved by suffixing the new guide.
+  /// Restores missing guides and refreshes unmodified built-in guides in the
+  /// general draft library without replacing customized user content. Guide identity is
+  /// independent from editable slugs, and a colliding user slug is resolved by
+  /// suffixing the new guide.
   @discardableResult
   public func installSoftwareGuides() -> Int {
     flushDraftBodyEditorBuffers()
     let guides = ArticleDraft.samples(profile: activeProfile)
-    let installedGuideIDs = Set(visibleDrafts.compactMap(\.softwareGuideID))
-    var occupiedSlugs = Set(visibleDrafts.map { normalizedSoftwareGuideSlug($0.slug) })
-    let missingGuides = guides
-      .filter { guide in
-        guard let guideID = guide.softwareGuideID else { return false }
-        return !installedGuideIDs.contains(guideID)
-      }
-      .map { guide in
-        var resolvedGuide = guide
-        let baseSlug = guide.slug
-        var candidateSlug = baseSlug
-        var suffix = 2
-        while occupiedSlugs.contains(normalizedSoftwareGuideSlug(candidateSlug)) {
-          candidateSlug = "\(baseSlug)-\(suffix)"
-          suffix += 1
-        }
-        resolvedGuide.slug = candidateSlug
-        occupiedSlugs.insert(normalizedSoftwareGuideSlug(candidateSlug))
-        return resolvedGuide
-      }
+    let synchronization = ArticleDraft.synchronizeSoftwareGuides(
+      in: publishingStore.drafts,
+      profile: activeProfile,
+      previousSeedVersion: softwareGuideSeedVersion,
+      restorePreviouslyRemovedGuides: true
+    )
+    let shouldPersistSeedVersion =
+      softwareGuideSeedVersion < ArticleDraft.currentSoftwareGuideSeedVersion
 
-    if !missingGuides.isEmpty {
-      publishingStore.drafts.insert(contentsOf: missingGuides, at: 0)
+    if synchronization.drafts != publishingStore.drafts {
+      publishingStore.drafts = synchronization.drafts
+      invalidateDraftDerivedCaches()
     }
 
+    setDraftListContentScope(.general)
     if let firstGuideID = guides.first?.softwareGuideID,
-       let firstGuide = visibleDrafts.first(where: { $0.softwareGuideID == firstGuideID }) {
+       let firstGuide = writingDrafts.first(where: { $0.softwareGuideID == firstGuideID }) {
       setAIPublishingAssistantPresented(false)
       _ = publishingStore.focusDraft(firstGuide.id, section: .writing, store: self)
     }
 
-    if !missingGuides.isEmpty {
+    softwareGuideSeedVersion = ArticleDraft.currentSoftwareGuideSeedVersion
+    if synchronization.addedGuideCount > 0
+        || synchronization.refreshedGuideCount > 0
+        || shouldPersistSeedVersion {
       save()
     }
-    return missingGuides.count
-  }
-
-  private func normalizedSoftwareGuideSlug(_ slug: String) -> String {
-    slug.trimmedForPublishing.lowercased()
+    return synchronization.addedGuideCount
   }
 
   public func requestEditorFocus(
@@ -257,6 +266,7 @@ extension WorkbenchStore {
   }
 
   public func setInspectorPresented(_ isPresented: Bool) {
+    guard publishingStore.isInspectorPresented != isPresented else { return }
     publishingStore.isInspectorPresented = isPresented
   }
 
@@ -355,6 +365,7 @@ extension WorkbenchStore {
 
   public func deleteDraft(id draftID: UUID) {
     discardDraftBodyEditorBuffer(for: draftID)
+    cancelSiteDraftFileAutosave(for: draftID)
     publishingStore.deleteDraft(id: draftID, store: self)
     invalidateDraftDerivedCaches()
   }

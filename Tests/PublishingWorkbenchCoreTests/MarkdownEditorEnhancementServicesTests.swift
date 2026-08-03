@@ -276,6 +276,78 @@ final class MarkdownEditorEnhancementServicesTests: XCTestCase {
     XCTAssertTrue(result.contains("第 3 页"))
   }
 
+  func testKnowledgeContextQueryUsesDraftMetadataAndHeadings() {
+    let draft = ArticleDraft(
+      siteProfileID: UUID(),
+      title: "React Server Components 实践",
+      slug: "react-server-components",
+      tags: ["React", "架构"],
+      summary: "整理服务端组件的边界与数据流。",
+      bodyMarkdown: """
+      # React Server Components
+
+      ## 数据获取
+
+      这里讨论服务端渲染、客户端边界和缓存策略。
+      """
+    )
+
+    let query = KnowledgeContextQueryService.query(
+      for: draft,
+      maximumCharacters: 600
+    )
+
+    XCTAssertTrue(query.contains("标题：React Server Components 实践"))
+    XCTAssertTrue(query.contains("摘要：整理服务端组件的边界与数据流。"))
+    XCTAssertTrue(query.contains("标签：React、架构"))
+    XCTAssertTrue(query.contains("章节：# React Server Components、## 数据获取"))
+    XCTAssertTrue(query.contains("服务端渲染、客户端边界和缓存策略"))
+  }
+
+  func testKnowledgeContextQueryPrioritizesParagraphAtCaret() {
+    let draft = ArticleDraft(
+      siteProfileID: UUID(),
+      title: "段落上下文",
+      slug: "paragraph-context",
+      bodyMarkdown: """
+      第一段讨论导入流程和资料整理。
+
+      第二段讨论本地语义索引和向量检索。
+      """
+    )
+    let body = draft.bodyMarkdown as NSString
+    let caret = body.range(of: "向量检索").location
+
+    let query = KnowledgeContextQueryService.query(
+      for: draft,
+      selectedRange: NSRange(location: caret, length: 0)
+    )
+
+    XCTAssertTrue(query.contains("当前段落：第二段讨论本地语义索引和向量检索。"))
+  }
+
+  func testKnowledgeCitationFootnoteReferenceAndDefinitionAreStable() {
+    let citation = KnowledgeCitation(
+      id: "react-source",
+      documentID: UUID(),
+      chunkID: UUID(),
+      title: "React 官方文档",
+      authors: [],
+      locator: "Server Components",
+      excerpt: "服务端组件可以在服务端执行并向客户端传递结果。",
+      sourceURL: URL(string: "https://react.dev/reference/rsc/server-components")
+    )
+
+    XCTAssertEqual(
+      KnowledgeCitationMarkdownService.footnoteReference(for: citation),
+      "[^kb-react-source]"
+    )
+    let definition = KnowledgeCitationMarkdownService.footnoteDefinition(for: citation)
+    XCTAssertTrue(definition.hasPrefix("[^kb-react-source]: React 官方文档"))
+    XCTAssertTrue(definition.contains("Server Components"))
+    XCTAssertTrue(definition.contains("https://react.dev/reference/rsc/server-components"))
+  }
+
   func testExtendedPreviewExtractsFootnotesAndParsesBasicMermaid() throws {
     let markdown = """
     正文[^a]

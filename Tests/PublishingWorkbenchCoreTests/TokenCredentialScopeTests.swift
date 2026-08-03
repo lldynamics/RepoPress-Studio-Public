@@ -42,6 +42,113 @@ final class TokenCredentialScopeTests: XCTestCase {
     XCTAssertFalse(KeychainTokenStore.isRecoverableDeletionOwnershipStatus(errSecAuthFailed))
   }
 
+  func testTokenAvailabilityDistinguishesMissingFromAccessFailure() throws {
+    let available = KeychainTokenAvailability(hasToken: true)
+    let missing = KeychainTokenAvailability(hasToken: false)
+    let failure = KeychainTokenAvailability(
+      accessFailure: KeychainTokenStoreError.unhandledStatus(errSecAuthFailed)
+    )
+
+    XCTAssertEqual(available.accessState, .available)
+    XCTAssertEqual(missing.accessState, .missing)
+    XCTAssertEqual(failure.accessState, .accessFailed)
+    XCTAssertFalse(failure.hasToken)
+    XCTAssertTrue(failure.accessFailureMessage?.contains("\(errSecAuthFailed)") == true)
+
+    let legacyData = Data(#"{"hasToken":false,"updatedAt":null}"#.utf8)
+    let decoded = try JSONDecoder().decode(
+      KeychainTokenAvailability.self,
+      from: legacyData
+    )
+    XCTAssertEqual(decoded.accessState, .missing)
+    XCTAssertNil(decoded.accessFailureMessage)
+  }
+
+  func testEmptyCredentialOriginUsesExplicitUnconfiguredMessage() {
+    let error = KeychainTokenStoreError.invalidCredentialOrigin("")
+
+    XCTAssertEqual(error.localizedDescription, "API Base URL 尚未配置。")
+    XCTAssertFalse(error.localizedDescription.hasSuffix(":"))
+  }
+
+  func testStoresPreserveCredentialReadFailureInsteadOfReportingMissingToken() throws {
+    let persistenceURL = try temporaryPersistenceURL(prefix: "KeychainAccessFailure")
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: KeychainTokenStore(
+        service: "PersonalSitePublisherMac.Tests.AIAccessFailure",
+        accountPrefix: "ai-access-failure",
+        inMemory: true
+      ),
+      repositoryTokenStore: KeychainTokenStore(
+        service: "PersonalSitePublisherMac.Tests.RepositoryAccessFailure",
+        accountPrefix: "repository-access-failure",
+        inMemory: true
+      ),
+      deploymentTokenStore: KeychainTokenStore(
+        service: "PersonalSitePublisherMac.Tests.DeploymentAccessFailure",
+        accountPrefix: "deployment-access-failure",
+        inMemory: true
+      )
+    )
+    store.updateActiveProfile { profile in
+      profile.repositoryBaseURL = "http://insecure.example.test"
+      profile.aiProviderConfig.baseURL = "http://insecure.example.test"
+      profile.aiProviderConfig.requiresAPIKey = true
+      profile.deploymentProvider = .githubPages
+    }
+
+    store.refreshRepositoryTokenAvailability(updatesMessage: true)
+    store.refreshDeploymentTokenAvailability()
+    store.refreshAIKeyAvailability()
+
+    XCTAssertEqual(store.repositoryTokenAvailability.accessState, .accessFailed)
+    XCTAssertEqual(store.deploymentTokenAvailability.accessState, .accessFailed)
+    XCTAssertEqual(store.aiTokenAvailability.accessState, .accessFailed)
+    XCTAssertFalse(store.publishActionMessage?.contains("未配置") == true)
+    XCTAssertTrue(store.publishActionMessage?.contains("读取失败") == true)
+    XCTAssertTrue(store.deploymentStatusMessage?.contains("读取失败") == true)
+  }
+
+  func testAIPresentationsExposeKeychainFailureInsteadOfMissingKey() throws {
+    let config = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
+      requiresAPIKey: true
+    )
+    let failure = KeychainTokenAvailability(
+      accessFailure: KeychainTokenStoreError.unhandledStatus(errSecInteractionNotAllowed)
+    )
+
+    let chatIssue = try XCTUnwrap(
+      AIPublishingChatConversationPresentation.configurationIssue(
+        config: config,
+        aiTokenAvailability: failure,
+        grade: .standard,
+        selectedModel: config.normalizedModel
+      )
+    )
+    XCTAssertTrue(chatIssue.contains("读取失败"))
+    XCTAssertFalse(chatIssue.contains("未保存"))
+
+    let connection = AISettingsConnectionPresentationService.presentation(
+      config: config,
+      tokenAvailability: failure,
+      report: nil
+    )
+    XCTAssertTrue(connection.title.contains("读取失败"))
+
+    let image = AIImageTextGenerationAvailabilityService.presentation(
+      targetCount: 1,
+      isGenerating: false,
+      aiProviderConfig: config,
+      aiTokenAvailability: failure
+    )
+    XCTAssertFalse(image.isEnabled)
+    XCTAssertTrue(image.unavailableReason?.contains("读取失败") == true)
+  }
+
   func testKeychainScopesKeepRepositoryAndDeploymentTokensSeparate() throws {
     let tokenStore = KeychainTokenStore(
       service: "PersonalSitePublisherMac.Tests.TokenScope",

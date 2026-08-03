@@ -1,0 +1,270 @@
+{
+  "%@ 第 %@ 行，%@，%@": {
+    "zh-Hans": "%@ 第 %@ 行，%@，%@",
+    "en": "%@, line %@, %@, %@"
+  },
+  "%@缩略预览": {
+    "zh-Hans": "%@缩略预览",
+    "en": "%@ thumbnail preview"
+  },
+  "%@，%@。%@": {
+    "zh-Hans": "%@，%@。%@",
+    "en": "%@, %@. %@"
+  },
+  "%@，%lld，%lld 个 Markdown 引用": {
+    "zh-Hans": "%@，%lld，%lld 个 Markdown 引用",
+    "en": "%@, %lld, %lld Markdown references"
+  },
+  "AI 审阅": {
+    "zh-Hans": "AI 审阅",
+    "en": "AI Review"
+  },
+  "AI 设置分类": {
+    "zh-Hans": "AI 设置分类",
+    "en": "AI Settings Categories"
+  },
+  "AI 预测续写": {
+    "zh-Hans": "AI 预测续写",
+    "en": "AI Predictive Completion"
+  },
+  "SSG 组件、文章模板与正文片段": {
+    "zh-Hans": "SSG 组件、文章模板与正文片段",
+    "en": "SSG Components, Article Templates, and Body Snippets"
+  },
+  "SSG 组件缩略预览，共 %lld 个": {
+    "zh-Hans": "SSG 组件缩略预览，共 %lld 个",
+    "en": "SSG Component Thumbnail Preview, %lld Total"
+  },
+  "{{< component >}}": {
+    "zh-Hans": "{{< component >}}",
+    "en": "{{< component >}}"
+  },
+  "上下文面板": {
+    "zh-Hans": "上下文面板",
+    "en": "Context Panel"
+  },
+  "专业 Markdown": {
+    "zh-Hans": "专业 Markdown",
+    "en": "Professional Markdown"
+  },
+  "仓库提示": {
+    "zh-Hans": "仓库提示",
+    "en": "Repository Tips"
+  },
+  "关闭 AI 行内工具": {
+    "zh-Hans": "关闭 AI 行内工具",
+    "en": "Close Inline AI Tools"
+  },
+  "写入标题、摘要或正文后，这里会自动关联本地资料。": {
+    "zh-Hans": "写入标题、摘要或正文后，这里会自动关联本地资料。",
+    "en": "Related local knowledge will appear here automatically after you add a title, summary, or body text."
+  },
+  "切换基础写作或专业 Markdown 工具密度": {
+    "zh-Hans": "切换基础写作或专业 Markdown 工具密度",
+    "en": "Switch between the Basic Writing and Professional Markdown tool sets"
+  },
+  "在这里输入提示内容": {
+    "zh-Hans": "在这里输入提示内容",
+    "en": "Enter callout content here"
+  },
+  "在选区工具、AI 审阅、图片信息和文章大纲之间切换": {
+    "zh-Hans": "在选区工具、AI 审阅、图片信息和文章大纲之间切换",
+    "en": "Switch among Selection Tools, AI Review, Image Details, and Article Outline"
+  },
+  "复制代码块": {
+    "zh-Hans": "复制代码块",
+    "en": "Copy Code Block"
+  },
+  "孤立资源": {
+    "zh-Hans": "孤立资源",
+    "en": "Orphaned Assets"
+  },
+  "定位到%@": {
+    "zh-Hans": "定位到%@",
+    "en": "Go to %@"
+  },
+  "将把 %@ 个未被 Markdown 引用的资源移入废纸篓。文件不会被永久删除；失效引用和扫描期间发生变化的文件会保留并标记为需复核。": {
+    "zh-Hans": "将把 %@ 个未被 Markdown 引用的资源移入废纸篓。文件不会被永久删除；失效引用和扫描期间发生变化的文件会保留并标记为需复核。",
+    "en": "Move %@ resources that are not referenced by Markdown to the Trash. Files will not be permanently deleted; broken references and files changed during the scan will be kept and flagged for review."
+  },
+  "已复制完整 Markdown 代码块。": {
+    "zh-Hans": "已复制完整 Markdown 代码块。",
+    "en": "Copied the complete Markdown code block."
+  },
+  "建站工作区": {
+    "zh-Hans": "建站工作区",
+    "en": "Site Setup Workspace"
+  },
+  "引用块": {
+    "zh-Hans": "引用块",
+    "en": "Blockquote"
+  },
+  "当前扫描到的本地图片和附件路径都能定位到资源目录中的文件。": {
+    "zh-Hans": "当前扫描到的本地图片和附件路径都能定位到资源目录中的文件。",
+    "en": "All local image and attachment paths found in the current scan resolve to files in the asset directory."
+  },
+  "当前站点资源": {
+    "zh-Hans": "当前站点资源",
+    "en": "Current Site Assets"
+  },
+  "恢复默认占位": {
+    "zh-Hans": "恢复默认值",
+    "en": "Restore Default"
+  },
+  "批量设置资料权限": {
+    "zh-Hans": "批量设置资料权限",
+    "en": "Set Knowledge Permissions in Bulk"
+  },
+  "拖入正文将插入引用块": {
+    "zh-Hans": "拖入正文将插入引用块",
+    "en": "Drag into the body to insert a blockquote"
+  },
+  "插入到光标处": {
+    "zh-Hans": "插入到光标处",
+    "en": "Insert at Cursor"
+  },
+  "改变选中文本的语气": {
+    "zh-Hans": "改变选中文本的语气",
+    "en": "Change the tone of the selected text"
+  },
+  "放弃": {
+    "zh-Hans": "放弃",
+    "en": "Discard"
+  },
+  "文章导语": {
+    "zh-Hans": "文章导语",
+    "en": "Article Lead"
+  },
+  "显示": {
+    "zh-Hans": "显示",
+    "en": "Show"
+  },
+  "未建立本地语义索引": {
+    "zh-Hans": "未建立本地语义索引",
+    "en": "Local Semantic Index Not Built"
+  },
+  "未配置 Endpoint / Base URL": {
+    "zh-Hans": "未配置 Endpoint / Base URL",
+    "en": "Endpoint / Base URL Not Configured"
+  },
+  "未配置模型": {
+    "zh-Hans": "未配置模型",
+    "en": "No Model Configured"
+  },
+  "本地 Whisper 模型路径": {
+    "zh-Hans": "本地 Whisper 模型路径",
+    "en": "Local Whisper Model Path"
+  },
+  "本地 Whisper 转写": {
+    "zh-Hans": "本地 Whisper 转写",
+    "en": "Local Whisper Transcription"
+  },
+  "正在扫描资源和 Markdown 引用…": {
+    "zh-Hans": "正在扫描资源和 Markdown 引用…",
+    "en": "Scanning Assets and Markdown References…"
+  },
+  "正在更新资料库推荐": {
+    "zh-Hans": "正在更新资料库推荐",
+    "en": "Updating Knowledge Recommendations"
+  },
+  "正在查找相关网页、摘录和参考代码…": {
+    "zh-Hans": "正在查找相关网页、摘录和参考代码…",
+    "en": "Searching for Related Web Pages, Excerpts, and Reference Code…"
+  },
+  "正在生成 AI 行内建议": {
+    "zh-Hans": "正在生成 AI 行内建议",
+    "en": "Generating Inline AI Suggestion"
+  },
+  "润色": {
+    "zh-Hans": "润色",
+    "en": "Polish"
+  },
+  "清空 AI Base URL": {
+    "zh-Hans": "清空 AI Base URL",
+    "en": "Clear AI Base URL"
+  },
+  "禁止发送给远程 AI": {
+    "zh-Hans": "禁止发送给远程 AI",
+    "en": "Do Not Send to Remote AI"
+  },
+  "粘贴剪贴板模型": {
+    "zh-Hans": "粘贴剪贴板中的模型名",
+    "en": "Paste Model Name from Clipboard"
+  },
+  "精简": {
+    "zh-Hans": "精简",
+    "en": "Condense"
+  },
+  "脚手架参考": {
+    "zh-Hans": "脚手架参考",
+    "en": "Scaffold Reference"
+  },
+  "自动": {
+    "zh-Hans": "自动",
+    "en": "Automatic"
+  },
+  "自定义短代码": {
+    "zh-Hans": "自定义短代码",
+    "en": "Custom Shortcode"
+  },
+  "语气": {
+    "zh-Hans": "语气",
+    "en": "Tone"
+  },
+  "语言（auto / zh / en）": {
+    "zh-Hans": "语言（auto / zh / en）",
+    "en": "Language (auto / zh / en)"
+  },
+  "资料库中的“允许发送给远程 AI”是独立的逐条权限，默认关闭；只有资料权限和本处授权同时满足时，资料片段才会发送。": {
+    "zh-Hans": "资料库中的“允许发送给远程 AI”是独立的逐条权限，默认关闭；只有资料权限和本处授权同时满足时，资料片段才会发送。",
+    "en": "The “Allow Sending to Remote AI” permission in the knowledge library is set independently for each item and is off by default. Knowledge excerpts are sent only when both the item permission and this authorization are enabled."
+  },
+  "资源总数": {
+    "zh-Hans": "资源总数",
+    "en": "Total Assets"
+  },
+  "资源管理": {
+    "zh-Hans": "资源管理",
+    "en": "Asset Management"
+  },
+  "资源范围": {
+    "zh-Hans": "资源范围",
+    "en": "Asset Scope"
+  },
+  "输入模型名": {
+    "zh-Hans": "输入模型名",
+    "en": "Enter Model Name"
+  },
+  "还没有可复用的连接档案。": {
+    "zh-Hans": "还没有可复用的连接档案。",
+    "en": "There are no reusable connection profiles yet."
+  },
+  "这些引用来自 Markdown 或正文 HTML；请打开对应文件修复路径。资源管理器不会自动改写文章。": {
+    "zh-Hans": "这些引用来自 Markdown 或正文 HTML；请打开对应文件修复路径。资源管理器不会自动改写文章。",
+    "en": "These references come from Markdown or body HTML. Open the corresponding file to fix the path. The asset manager does not rewrite articles automatically."
+  },
+  "远程 AI 权限": {
+    "zh-Hans": "远程 AI 权限",
+    "en": "Remote AI Permission"
+  },
+  "连接设置": {
+    "zh-Hans": "连接设置",
+    "en": "Connection Settings"
+  },
+  "采用": {
+    "zh-Hans": "采用",
+    "en": "Apply"
+  },
+  "用于检查材质、边框与明暗外观。": {
+    "zh-Hans": "用于检查材质、边框与明暗外观。",
+    "en": "Use this to inspect materials, borders, and light and dark appearances."
+  },
+  "空态": {
+    "zh-Hans": "空态",
+    "en": "Empty States"
+  },
+  "语义色": {
+    "zh-Hans": "语义色",
+    "en": "Semantic Colors"
+  }
+}

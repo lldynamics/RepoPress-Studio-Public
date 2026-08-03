@@ -53,7 +53,7 @@ required = {
                 "AIChatContextInspectorView",
                 "未配置 API Key",
                 '.accessibilityLabel("AI 消息")',
-                'DisclosureGroup("文章上下文"',
+                "AIChatConversationInspectorSection",
             ],
         },
     },
@@ -147,43 +147,17 @@ required = {
             ],
         },
     },
-    "pro-settings": {
-        "target": "pro-settings.png",
-        "capture": ["pro-settings", "free quota", "Pro unlock", "purchase", "restore"],
-        "source": {
-            "Sources/PersonalSitePublisherMac/Support/ScreenshotDemoSettingsPresenter.swift": [
-                "ScreenshotDemoSettingsPresenter",
-                "openSettingsIfNeeded",
-                "openSettings()",
-                "requestedSurfaceFromEnvironment == .proSettings",
-            ],
-            "Sources/PersonalSitePublisherMac/Support/StoreKitProEntitlementCoordinator.swift": [
-                "purchasePro(store:",
-                "restorePro(store:",
-                "Product.products(for: [productID])",
-                "Transaction.currentEntitlements",
-            ],
-            "Sources/PersonalSitePublisherMac/Views/SettingsView.swift": [
-                "selectedSettingsTab",
-                "ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .proSettings ? .pro",
-            ],
-            "Sources/PersonalSitePublisherMac/Views/ProSettingsView.swift": [
-                "ProPurchaseRestoreSection",
-                "ProQuotaSection",
-            ],
-        },
-    },
     "privacy-lock": {
         "target": "privacy-lock.png",
         "capture": ["privacy-lock", "manually hidden workbench", "private-content masking"],
         "source": {
             "Sources/PersonalSitePublisherMac/Views/SharedViews.swift": [
-                "PrivacyLockOverlay",
-                "privacy-lock-overlay",
+                "QuickHideOverlay",
+                "quick-hide-overlay",
             ],
             "Sources/PersonalSitePublisherMac/Views/ContentView.swift": [
-                "isPrivacyLocked",
-                "lockPrivacy(reason",
+                "isQuickHideActive",
+                "shellState.canUseProtectedWorkbench",
                 "canUseProtectedWorkbench",
             ],
         },

@@ -69,10 +69,23 @@ for path in \
   "$ROOT_DIR/Package.swift" \
   "$ROOT_DIR/script/build_and_run.sh" \
   "$ROOT_DIR/script/release_checks.json"; do
-  if grep -Eq 'KnowledgeNativeMessagingHost|DIRECT_DISTRIBUTION_BUILD|package_direct_release' "$path"; then
-    fail "${path#$ROOT_DIR/} still exposes a deleted distribution path"
+  if grep -Eq 'KnowledgeNativeMessagingHost' "$path"; then
+    fail "${path#$ROOT_DIR/} still exposes the deleted Native Messaging host"
   fi
 done
+[[ -f "$ROOT_DIR/Packaging/DirectDistribution.entitlements" ]] \
+  || fail "DirectDistribution.entitlements is missing"
+[[ -x "$ROOT_DIR/script/package_direct_release.sh" ]] \
+  || fail "Developer ID packaging entrypoint is missing"
+grep -Fq 'DIRECT_DISTRIBUTION_BUILD' "$ROOT_DIR/script/build_and_run.sh" \
+  || fail "build_and_run.sh does not expose the Direct Release compile boundary"
+grep -Fq 'APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"' "$ROOT_DIR/script/build_and_run.sh" \
+  || fail "build_and_run.sh does not create the standard Frameworks directory"
+grep -Fq 'SPARKLE_FRAMEWORK_BUNDLE="$APP_FRAMEWORKS/Sparkle.framework"' \
+  "$ROOT_DIR/script/build_and_run.sh" \
+  || fail "build_and_run.sh does not stage Sparkle.framework"
+grep -Fq 'SUEnableInstallerLauncherService' "$ROOT_DIR/script/build_and_run.sh" \
+  || fail "Direct Release Info.plist omits Sparkle installer launcher support"
 
 for gate in check_app_store_metadata.sh check_app_store_archive_readiness.sh; do
   grep -Fq 'build_and_run.sh" --package-only --app-store' "$ROOT_DIR/script/$gate" \
@@ -91,7 +104,17 @@ chrome_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --profile chrome 
 grep -q $'^chrome-extension-store-readiness\tstrict\t' <<<"$chrome_checks" \
   || fail "Chrome profile omitted Chrome Web Store readiness"
 
-for removed_profile in direct edge firefox; do
+direct_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --profile direct --list)"
+grep -q $'^direct-release-package-path\talways\t' <<<"$direct_checks" \
+  || fail "Direct profile omitted the Developer ID package workflow"
+grep -q $'^direct-release-notarization-readiness\tstrict\t' <<<"$direct_checks" \
+  || fail "Direct profile omitted signed/notarized artifact validation"
+if grep -Eq '^(archive-readiness-strict|chrome-extension-store-readiness)\t' \
+  <<<"$direct_checks"; then
+  fail "Direct profile included an App Store or Chrome-only release check"
+fi
+
+for removed_profile in edge firefox; do
   if bash "$ROOT_DIR/script/check_release_gate.sh" \
     --profile "$removed_profile" --list >/dev/null 2>&1; then
     fail "removed $removed_profile channel still has a release profile"

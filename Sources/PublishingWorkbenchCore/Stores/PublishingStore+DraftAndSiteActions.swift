@@ -41,6 +41,7 @@ extension PublishingStore {
     store.runPreflight()
     store.scheduleImageWorkbenchReportRefresh(for: draft)
     store.save()
+    store.scheduleSiteDraftFileAutosave(for: draft, immediate: true)
     return draft
   }
 
@@ -108,6 +109,7 @@ extension PublishingStore {
     store.runPreflight()
     store.scheduleImageWorkbenchReportRefresh(for: draft)
     store.save()
+    store.scheduleSiteDraftFileAutosave(for: draft, immediate: true)
   }
 
   public func createGeneralDraft(store: WorkbenchStore) {
@@ -142,6 +144,12 @@ extension PublishingStore {
     let existingIndex = drafts.firstIndex { $0.id == draft.id }
     let hasUnsavedDraftChange = existingIndex.map { drafts[$0] != draft } ?? true
     var updated = draft
+    if hasUnsavedDraftChange,
+       let existingIndex,
+       drafts[existingIndex].softwareGuideID != nil,
+       updated.softwareGuideID == drafts[existingIndex].softwareGuideID {
+      updated.softwareGuideTemplateVersion = 0
+    }
     updated.touch()
     if let index = existingIndex {
       if hasUnsavedDraftChange {
@@ -159,6 +167,7 @@ extension PublishingStore {
     }
     if hasUnsavedDraftChange {
       store.scheduleAutosave()
+      store.scheduleSiteDraftFileAutosave(for: updated)
     }
   }
 
@@ -262,6 +271,7 @@ extension PublishingStore {
     update(&profile)
     store.updateActiveProfile(profile)
     store.save()
+    store.scheduleMissingSiteDraftFileWrites()
   }
 
   public func applySiteKindDefaults(_ siteKind: SiteKind, store: WorkbenchStore) {
@@ -352,21 +362,90 @@ extension PublishingStore {
     }
     let removed = activeProfileID
     guard let profile = profiles.first(where: { $0.id == removed }) else { return nil }
+    // Capture the editor's latest debounced body in the reversible deletion
+    // payload instead of restoring the older baseline after an undo.
+    store.flushDraftBodyEditorBuffers()
     let removedDrafts = drafts.filter { $0.belongs(toSiteProfileID: removed) }
     let removedSnippets = customMarkdownSnippets.filter { $0.siteProfileID == removed }
+    let removedRecycledDrafts = recycledDrafts.filter {
+      $0.draft.belongs(toSiteProfileID: removed)
+    }
+    let removedDraftIDs = Set(
+      removedDrafts.map(\.id) + removedRecycledDrafts.map(\.id)
+    )
+    let survivingDraftsByID = Dictionary(
+      (drafts + recycledDrafts.map(\.draft))
+        .filter { !removedDraftIDs.contains($0.id) }
+        .map { ($0.id, $0) },
+      uniquingKeysWith: { active, _ in active }
+    )
+    let referencesRemovedProfile: (ArticleDraft) -> Bool = { draft in
+      draft.siteProfileID == removed || draft.belongs(toSiteProfileID: removed)
+    }
+    let removedDraftVersions = draftVersions.filter { version in
+      removedDraftIDs.contains(version.draftID)
+        || (referencesRemovedProfile(version.draft)
+          && survivingDraftsByID[version.draftID] == nil)
+    }
+    let removedDraftVersionIDs = Set(removedDraftVersions.map(\.id))
+    let removedCleanupRequests = draftRepositoryCleanupRequests.filter {
+      $0.siteProfileID == removed
+    }
+    let removedEditorSessionStates = markdownEditorSessionStates.filter {
+      removedDraftIDs.contains($0.key)
+    }
     recentlyDeletedProfile = RecentlyDeletedProfile(
       profile: profile,
       drafts: removedDrafts,
       customMarkdownSnippets: removedSnippets,
+      draftVersions: removedDraftVersions,
+      recycledDrafts: removedRecycledDrafts,
+      draftRepositoryCleanupRequests: removedCleanupRequests,
+      markdownEditorSessionStates: removedEditorSessionStates,
       deletedAt: Date()
     )
     profiles.removeAll { $0.id == removed }
     drafts.removeAll { $0.belongs(toSiteProfileID: removed) }
     customMarkdownSnippets.removeAll { $0.siteProfileID == removed }
+    draftVersions.removeAll { removedDraftVersionIDs.contains($0.id) }
+    recycledDrafts.removeAll { $0.draft.belongs(toSiteProfileID: removed) }
+    draftRepositoryCleanupRequests.removeAll { $0.siteProfileID == removed }
+    for draftID in removedDraftIDs {
+      markdownEditorSessionStates.removeValue(forKey: draftID)
+      draftNavigationHistory.remove(draftID)
+      store.discardDraftBodyEditorBuffer(for: draftID)
+    }
+    if let activeEditorSelection,
+       removedDraftIDs.contains(activeEditorSelection.draftID) {
+      self.activeEditorSelection = nil
+    }
     activeProfileID = profiles[0].id
     for index in drafts.indices
     where drafts[index].isGeneralDraft && drafts[index].siteProfileID == removed {
       drafts[index].assignToGeneralDraft(editingProfileID: activeProfileID)
+    }
+    for index in recycledDrafts.indices
+    where recycledDrafts[index].draft.isGeneralDraft
+      && recycledDrafts[index].draft.siteProfileID == removed {
+      recycledDrafts[index].draft.assignToGeneralDraft(editingProfileID: activeProfileID)
+    }
+    let reboundDraftsByID = Dictionary(
+      (drafts + recycledDrafts.map(\.draft)).map { ($0.id, $0) },
+      uniquingKeysWith: { active, _ in active }
+    )
+    for index in draftVersions.indices
+    where referencesRemovedProfile(draftVersions[index].draft) {
+      guard let currentDraft = reboundDraftsByID[draftVersions[index].draftID] else {
+        continue
+      }
+      switch currentDraft.scope {
+      case .general:
+        draftVersions[index].draft.assignToGeneralDraft(
+          editingProfileID: currentDraft.siteProfileID
+        )
+      case .site(let profileID):
+        draftVersions[index].draft.assignToSite(profileID)
+      }
     }
     selectedDraftID = writingDrafts.first?.id
     store.runPreflight()
@@ -385,6 +464,15 @@ extension PublishingStore {
     profiles.append(recentlyDeletedProfile.profile)
     drafts.append(contentsOf: recentlyDeletedProfile.drafts)
     customMarkdownSnippets.append(contentsOf: recentlyDeletedProfile.customMarkdownSnippets)
+    draftVersions.append(contentsOf: recentlyDeletedProfile.draftVersions)
+    recycledDrafts.append(contentsOf: recentlyDeletedProfile.recycledDrafts)
+    draftRepositoryCleanupRequests.append(
+      contentsOf: recentlyDeletedProfile.draftRepositoryCleanupRequests
+    )
+    markdownEditorSessionStates.merge(
+      recentlyDeletedProfile.markdownEditorSessionStates,
+      uniquingKeysWith: { _, restored in restored }
+    )
     activeProfileID = recentlyDeletedProfile.profile.id
     draftListContentScope = .currentSite
     selectedDraftID = recentlyDeletedProfile.drafts.first?.id

@@ -1,0 +1,18 @@
+{
+  "Starter 已提交并推送：%@。": "Starter committed and pushed: %@.",
+  "Starter 文件已生成，但工作台内容在操作期间发生变化，未覆盖当前状态。": "Starter files were generated, but the workspace changed during the operation, so the current state was not overwritten.",
+  "Starter 提交推送失败：%@": "Failed to commit and push the starter: %@",
+  "创建 Starter 站点失败：%@": "Failed to create the starter site: %@",
+  "已创建 Starter 站点：%@。": "Created starter site: %@.",
+  "已导入已有站点：%@。": "Imported existing site: %@.",
+  "已配置 Starter 远端：%@。": "Configured starter remote: %@.",
+  "导入已有站点失败：%@": "Failed to import the existing site: %@",
+  "正在后台创建 Starter 站点…": "Creating the starter site in the background…",
+  "正在后台读取并导入已有站点…": "Reading and importing the existing site in the background…",
+  "正在提交并推送 Starter…": "Committing and pushing the starter…",
+  "正在配置 Starter 的 origin remote…": "Configuring the starter's origin remote…",
+  "没有可提交的 Starter 生成结果，请先创建站点。": "No generated starter site is available to commit. Create a site first.",
+  "没有可配置远端的 Starter 生成结果，请先创建站点。": "No generated starter site is available for remote configuration. Create a site first.",
+  "站点读取完成，但工作台内容在操作期间发生变化，未覆盖当前状态。": "The site was read successfully, but the workspace changed during the operation, so the current state was not overwritten.",
+  "配置 Starter 远端失败：%@": "Failed to configure the starter remote: %@"
+}

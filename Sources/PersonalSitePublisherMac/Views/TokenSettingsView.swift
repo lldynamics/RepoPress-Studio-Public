@@ -4,10 +4,12 @@ import SwiftUI
 struct TokenSettingsView<RepositoryPermissionContent: View>: View {
   let activeProfileBinding: Binding<SiteProfile>
   let readiness: DeploymentStatusProviderReadiness
-  let hasRepositoryToken: Bool
-  let hasDeploymentToken: Bool
+  let repositoryTokenAvailability: KeychainTokenAvailability
+  let deploymentTokenAvailability: KeychainTokenAvailability
+  let siteAnalyticsTokenAvailability: KeychainTokenAvailability
   let publishActionMessage: String?
   let deploymentStatusMessage: String?
+  let siteAnalyticsMessage: String?
   let shouldFocusRepositoryToken: Bool
   let navigationRequestID: UUID
   let setRepositoryProvider: (RepositoryProvider) -> Void
@@ -17,39 +19,37 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
   let saveDeploymentAccessToken: (String) -> Bool
   let deleteDeploymentAccessToken: () -> Void
   let refreshDeploymentTokenAvailability: () -> Void
+  let saveSiteAnalyticsAccessToken: (String) -> Bool
+  let deleteSiteAnalyticsAccessToken: () -> Void
+  let refreshSiteAnalyticsTokenAvailability: () -> Void
   let repositoryPermissionContent: (Binding<Bool>) -> RepositoryPermissionContent
 
   @State private var repositoryTokenInput = ""
   @State private var deploymentTokenInput = ""
+  @State private var siteAnalyticsTokenInput = ""
   @State private var isRepositoryPermissionPresented = false
   @State private var selectedScope: ConnectionSettingsScope = .repository
 
   var body: some View {
     VStack(spacing: 0) {
-      Picker("设置范围", selection: $selectedScope) {
-        ForEach(ConnectionSettingsScope.allCases) { scope in
-          Text(scope.title).tag(scope)
-        }
-      }
-      .pickerStyle(.segmented)
-      .labelsHidden()
-      .frame(maxWidth: 360)
-      .padding(.horizontal, 18)
-      .padding(.vertical, 12)
-      .accessibilityLabel("仓库与部署设置范围")
+      HStack(spacing: 0) {
+        connectionSettingsSidebar
+        Divider()
 
-      Divider()
-
-      Form {
-        switch selectedScope {
-        case .repository:
-          repositorySections
-        case .deployment:
-          deploymentSections
+        Form {
+          switch selectedScope {
+          case .repository:
+            repositorySections
+          case .deployment:
+            deploymentSections
+          case .analytics:
+            analyticsSections
+          }
         }
+        .formStyle(.grouped)
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
-      .formStyle(.grouped)
-      .padding()
     }
     .sheet(isPresented: $isRepositoryPermissionPresented) {
       repositoryPermissionContent($isRepositoryPermissionPresented)
@@ -64,6 +64,25 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     .onChange(of: activeDeploymentProvider) { _, _ in
       refreshDeploymentTokenAvailability()
     }
+    .onChange(of: activeAnalyticsProvider) { _, _ in
+      refreshSiteAnalyticsTokenAvailability()
+    }
+  }
+
+  private var connectionSettingsSidebar: some View {
+    List(selection: $selectedScope) {
+      Section("连接设置") {
+        ForEach(ConnectionSettingsScope.allCases) { scope in
+          Label(scope.title, systemImage: scope.systemImage)
+            .tag(scope)
+        }
+      }
+    }
+    .listStyle(.sidebar)
+    .scrollContentBackground(.hidden)
+    .frame(width: 164)
+    .background(.thinMaterial)
+    .accessibilityLabel("仓库与部署设置分类")
   }
 
   @ViewBuilder
@@ -73,7 +92,7 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
       repositoryTokenInput: $repositoryTokenInput,
       shouldFocusInput: shouldFocusRepositoryToken,
       navigationRequestID: navigationRequestID,
-      hasRepositoryToken: hasRepositoryToken,
+      tokenAvailability: repositoryTokenAvailability,
       onSaveToken: {
         guard saveRepositoryAccessToken(repositoryTokenInput) else { return }
         repositoryTokenInput = ""
@@ -117,7 +136,7 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     TokenDeploymentTokenSection(
       deploymentProvider: activeDeploymentProvider,
       deploymentTokenInput: $deploymentTokenInput,
-      hasDeploymentToken: hasDeploymentToken,
+      tokenAvailability: deploymentTokenAvailability,
       onSaveToken: {
         guard saveDeploymentAccessToken(deploymentTokenInput) else { return }
         deploymentTokenInput = ""
@@ -153,6 +172,32 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
     }
   }
 
+  @ViewBuilder
+  private var analyticsSections: some View {
+    TokenAnalyticsSettingsSection(
+      settings: analyticsSettingsBinding,
+      tokenInput: $siteAnalyticsTokenInput,
+      tokenAvailability: siteAnalyticsTokenAvailability,
+      onSaveToken: {
+        guard saveSiteAnalyticsAccessToken(siteAnalyticsTokenInput) else { return }
+        siteAnalyticsTokenInput = ""
+      },
+      onDeleteToken: {
+        deleteSiteAnalyticsAccessToken()
+        siteAnalyticsTokenInput = ""
+      },
+      onRefreshTokenState: refreshSiteAnalyticsTokenAvailability
+    )
+
+    if let siteAnalyticsMessage {
+      Section("最近结果") {
+        Text(siteAnalyticsMessage)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+  }
+
   private var activeProfile: SiteProfile {
     activeProfileBinding.wrappedValue
   }
@@ -160,6 +205,22 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
   private var activeDeploymentProvider: DeploymentProvider {
     activeProfile.deploymentProvider
       ?? (activeProfile.repositoryProvider == .github ? .githubPages : .gitlabPages)
+  }
+
+  private var activeAnalyticsProvider: SiteAnalyticsProvider {
+    activeProfile.siteAnalytics?.provider ?? .plausible
+  }
+
+  private var analyticsSettingsBinding: Binding<SiteAnalyticsSettings> {
+    Binding(
+      get: { activeProfileBinding.wrappedValue.siteAnalytics ?? .default },
+      set: { settings in
+        var profile = activeProfileBinding.wrappedValue
+        profile.siteAnalytics = settings
+        activeProfileBinding.wrappedValue = profile
+        refreshSiteAnalyticsTokenAvailability()
+      }
+    )
   }
 
   private var repositoryProviderBinding: Binding<RepositoryProvider> {
@@ -208,6 +269,7 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
 private enum ConnectionSettingsScope: String, CaseIterable, Identifiable {
   case repository
   case deployment
+  case analytics
 
   var id: String { rawValue }
 
@@ -217,6 +279,19 @@ private enum ConnectionSettingsScope: String, CaseIterable, Identifiable {
       return String(localized: "仓库")
     case .deployment:
       return String(localized: "部署")
+    case .analytics:
+      return String(localized: "阅读数据")
+    }
+  }
+
+  var systemImage: String {
+    switch self {
+    case .repository:
+      return "shippingbox"
+    case .deployment:
+      return "arrow.up.right.square"
+    case .analytics:
+      return "chart.bar.xaxis"
     }
   }
 }

@@ -19,15 +19,11 @@ public struct AIConnectionTestReport: Equatable, Sendable {
   }
 
   public var headline: String {
-    "\(providerName) 连接正常"
+    CoreL10n.format("%@ 连接正常", providerName)
   }
 
   public var detailText: String {
-    """
-    模型：\(model)
-    接口地址：\(endpoint.absoluteString)
-    响应：\(responsePreview)
-    """
+    CoreL10n.format("模型：%@\n接口地址：%@\n响应：%@", model, endpoint.absoluteString, responsePreview)
   }
 }
 
@@ -65,20 +61,41 @@ public enum AISettingsConnectionPresentationService {
     tokenAvailability: KeychainTokenAvailability,
     report: AIConnectionTestReport?
   ) -> AISettingsConnectionPresentation {
+    if config.normalizedBaseURL.isEmpty {
+      return AISettingsConnectionPresentation(
+        title: CoreL10n.text("AI 服务尚未配置"),
+        message: CoreL10n.text("API Base URL 尚未配置。"),
+        footnote: CoreL10n.text("请先填写 API Base URL 和模型，再保存凭据并测试连接。"),
+        systemImage: "gearshape",
+        level: .warning
+      )
+    }
+
     if let report {
       return AISettingsConnectionPresentation(
         title: report.headline,
         message: report.detailText,
-        footnote: "连接测试已返回响应，当前服务、模型和接口地址可用于 AI 功能。",
+        footnote: CoreL10n.text("连接测试已返回响应，当前服务、模型和接口地址可用于 AI 功能。"),
         systemImage: "checkmark.circle",
         level: .success
       )
     }
 
+    if config.requiresAPIKey,
+       let accessFailureMessage = tokenAvailability.accessFailureMessage {
+      return AISettingsConnectionPresentation(
+        title: CoreL10n.text("AI Keychain 读取失败"),
+        message: accessFailureMessage,
+        footnote: providerHelpText(config),
+        systemImage: "exclamationmark.triangle",
+        level: .warning
+      )
+    }
+
     if config.requiresAPIKey && !tokenAvailability.hasToken {
       return AISettingsConnectionPresentation(
-        title: "AI API Key 未就绪",
-        message: "请先保存当前站点的 AI API Key，再测试连接。",
+        title: CoreL10n.text("AI API Key 未就绪"),
+        message: CoreL10n.text("请先保存当前站点的 AI API Key，再测试连接。"),
         footnote: providerHelpText(config),
         systemImage: "key",
         level: .warning
@@ -86,8 +103,8 @@ public enum AISettingsConnectionPresentationService {
     }
 
     return AISettingsConnectionPresentation(
-      title: "AI 连接尚未测试",
-      message: "建议保存配置后测试一次连接，确认接口地址、模型和 API Key 都可用。",
+      title: CoreL10n.text("AI 连接尚未测试"),
+      message: CoreL10n.text("建议保存配置后测试一次连接，确认接口地址、模型和 API Key 都可用。"),
       footnote: providerHelpText(config),
       systemImage: "network",
       level: .info
@@ -97,28 +114,31 @@ public enum AISettingsConnectionPresentationService {
   private static func providerHelpText(_ config: AIProviderConfig) -> String {
     switch config.preset {
     case .deepSeek:
-      return "DeepSeek 默认接口地址：https://api.deepseek.com；快速/标准档使用 deepseek-v4-flash，高质量档使用 deepseek-v4-pro。"
+      return CoreL10n.text("DeepSeek 默认接口地址：https://api.deepseek.com；快速/标准档使用 deepseek-v4-flash，高质量档使用 deepseek-v4-pro。")
     case .local:
-      return "本地模型默认不需要 API Key，测试连接会请求本机 OpenAI 兼容的 /chat/completions 接口。"
+      return CoreL10n.text("本地模型默认不需要 API Key，测试连接会请求本机开放AI兼容接口的 /chat/completions。")
     default:
-      return "测试连接会向 OpenAI 兼容的 /chat/completions 接口发送一次最小请求。"
+      return CoreL10n.text("测试连接会向开放AI兼容接口的 /chat/completions 发送一次最小请求。")
     }
   }
 }
 
 public enum AIConnectionTestError: LocalizedError, Equatable {
+  case missingBaseURL
   case invalidBaseURL(String)
   case missingModel
   case missingAPIKey
 
   public var errorDescription: String? {
     switch self {
+    case .missingBaseURL:
+      return CoreL10n.text("API Base URL 尚未配置。")
     case .invalidBaseURL(let value):
-      return "AI 接口地址无效：\(value)"
+      return CoreL10n.format("AI 接口地址无效：%@", value)
     case .missingModel:
-      return "请先填写 AI 模型名称。"
+      return CoreL10n.text("请先填写 AI 模型名称。")
     case .missingAPIKey:
-      return "请先保存 AI API Key，或关闭“需要 API Key”。"
+      return CoreL10n.text("请先保存 AI API Key，或关闭“需要 API Key”。")
     }
   }
 }
@@ -134,6 +154,10 @@ public struct AIConnectionTestService: Sendable {
     config: AIProviderConfig,
     apiKey: String?
   ) async throws -> AIConnectionTestReport {
+    guard !config.normalizedBaseURL.isEmpty else {
+      throw AIConnectionTestError.missingBaseURL
+    }
+
     let model = config.normalizedModel
     guard !model.isEmpty else {
       throw AIConnectionTestError.missingModel

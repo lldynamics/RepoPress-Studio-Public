@@ -15,7 +15,7 @@ Usage: script/sync_app_store_checklist.sh [--execute]
 
 Synchronizes APP_STORE_CHECKLIST.md with evidence-backed local gates and
 external verification records. By default it previews the changes and does not
-write. It never marks clean runtime, archive/upload, StoreKit sandbox,
+write. It never marks clean runtime, archive/upload,
 GitHub/GitLab live publishing, or screenshot capture items complete unless the
 matching evidence is already recorded. The localization gate covers the app UI
 and selected semantic model keys; it does not prove that Core-generated
@@ -66,7 +66,6 @@ run_gate "unified release result" bash "$ROOT_DIR/script/check_release_gate.sh" 
   --check app-store-listing \
   --check ui-runtime \
   --check privacy-copy \
-  --check storekit \
   --check screenshot-map \
   --check screenshots \
   --check screenshot-privacy
@@ -84,7 +83,6 @@ required = {
     "app-store-listing",
     "ui-runtime",
     "privacy-copy",
-    "storekit",
     "screenshot-map",
     "screenshots",
     "screenshot-privacy",
@@ -211,7 +209,7 @@ evidence_for_title() {
   if [[ "$title_lc" == *"keyboard navigation"* ||
         "$title_lc" == *"focus rings"* ||
         "$title_lc" == *"voiceover labels"* ||
-        "$title_lc" == *"privacy lock behavior"* ]]; then
+        "$title_lc" == *"quick hide behavior"* ]]; then
     echo "UI runtime/accessibility 门禁已通过。"
     return 0
   fi
@@ -234,14 +232,6 @@ evidence_for_title() {
         "$title_lc" == *"private-content behavior"* ]]; then
     echo "隐私/支持文案门禁已通过，已覆盖快速隐藏、私密内容遮挡和敏感信息 redaction 规则。"
     return 0
-  fi
-  if [[ "$title_lc" == *"storekit"* ||
-        "$title_lc" == *"free quota"* ]]; then
-    has_external_id "storekit-sandbox" && {
-      echo "已记录 StoreKit sandbox 外部验收证据。"
-      return 0
-    }
-    return 1
   fi
   if [[ "$title_lc" == *"github direct"* ]]; then
     has_external_id "github-direct-publish" && has_external_id "github-review-publish" && {

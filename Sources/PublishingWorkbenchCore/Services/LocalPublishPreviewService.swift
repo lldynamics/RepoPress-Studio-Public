@@ -1,5 +1,8 @@
 import CryptoKit
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#endif
 
 public enum PublishFileDiffStatus: String, Codable, Sendable {
   case added
@@ -27,6 +30,25 @@ public enum PublishFileDiffStatus: String, Codable, Sendable {
   }
 }
 
+public struct LocalPublishSourceFileState: Codable, Hashable, Sendable {
+  public var byteSize: Int64
+  public var sha256: Data
+  public var deviceIdentifier: UInt64
+  public var fileIdentifier: UInt64
+
+  public init(
+    byteSize: Int64,
+    sha256: Data,
+    deviceIdentifier: UInt64,
+    fileIdentifier: UInt64
+  ) {
+    self.byteSize = byteSize
+    self.sha256 = sha256
+    self.deviceIdentifier = deviceIdentifier
+    self.fileIdentifier = fileIdentifier
+  }
+}
+
 public struct PublishFileDiff: Identifiable, Codable, Hashable, Sendable {
   public var id: String { path }
   public var path: String
@@ -35,6 +57,7 @@ public struct PublishFileDiff: Identifiable, Codable, Hashable, Sendable {
   public var lineDiff: String?
   public var byteSize: Int64
   public var baselineState: LocalPublishFileState?
+  public var sourceState: LocalPublishSourceFileState?
 
   public init(
     path: String,
@@ -42,7 +65,8 @@ public struct PublishFileDiff: Identifiable, Codable, Hashable, Sendable {
     status: PublishFileDiffStatus,
     lineDiff: String? = nil,
     byteSize: Int64 = 0,
-    baselineState: LocalPublishFileState? = nil
+    baselineState: LocalPublishFileState? = nil,
+    sourceState: LocalPublishSourceFileState? = nil
   ) {
     self.path = path
     self.kind = kind
@@ -50,6 +74,7 @@ public struct PublishFileDiff: Identifiable, Codable, Hashable, Sendable {
     self.lineDiff = lineDiff
     self.byteSize = byteSize
     self.baselineState = baselineState
+    self.sourceState = sourceState
   }
 }
 
@@ -116,7 +141,14 @@ public struct LocalPublishPreviewService: Sendable {
         diffs.append(
           PublishFileDiff(path: file.repositoryPath, kind: file.kind, status: .unsafePath, byteSize: file.byteSize)
         )
-        issues.append(.init(severity: .error, title: "发布路径不安全", message: file.repositoryPath, field: "repositoryPath"))
+        issues.append(
+          .init(
+            severity: .error,
+            title: CoreL10n.text("发布路径不安全"),
+            message: file.repositoryPath,
+            field: "repositoryPath"
+          )
+        )
         continue
       }
 
@@ -130,7 +162,7 @@ public struct LocalPublishPreviewService: Sendable {
         issues.append(
           .init(
             severity: .error,
-            title: "无法读取发布目标",
+            title: CoreL10n.text("无法读取发布目标"),
             message: file.repositoryPath,
             field: "repositoryPath"
           )
@@ -141,12 +173,31 @@ public struct LocalPublishPreviewService: Sendable {
       if file.operation == .delete {
         let exists = baselineState != .missing
 
-        let existingContent = file.kind == .markdown
-          ? (try? BoundedFileReader.utf8String(
-            at: destinationURL,
-            maximumByteCount: WorkbenchContentFileReadLimits.textDocumentByteCount
-          )) ?? ""
-          : ""
+        let existingContent: String
+        if file.kind == .markdown, exists {
+          do {
+            existingContent = try readExistingMarkdownContent(at: destinationURL)
+          } catch {
+            diffs.append(
+              PublishFileDiff(
+                path: file.repositoryPath,
+                kind: file.kind,
+                status: .deleted,
+                byteSize: file.byteSize,
+                baselineState: nil
+              )
+            )
+            issues.append(
+              unreadableMarkdownIssue(
+                repositoryPath: file.repositoryPath,
+                error: error
+              )
+            )
+            continue
+          }
+        } else {
+          existingContent = ""
+        }
         diffs.append(
           PublishFileDiff(
             path: file.repositoryPath,
@@ -164,11 +215,32 @@ public struct LocalPublishPreviewService: Sendable {
       switch file.kind {
       case .markdown:
         let newContent = file.content ?? ""
-        let existingContent = (try? BoundedFileReader.utf8String(
-          at: destinationURL,
-          maximumByteCount: WorkbenchContentFileReadLimits.textDocumentByteCount
-        )) ?? ""
         let exists = baselineState != .missing
+        let existingContent: String
+        if exists {
+          do {
+            existingContent = try readExistingMarkdownContent(at: destinationURL)
+          } catch {
+            diffs.append(
+              PublishFileDiff(
+                path: file.repositoryPath,
+                kind: file.kind,
+                status: .modified,
+                byteSize: Int64(newContent.utf8.count),
+                baselineState: nil
+              )
+            )
+            issues.append(
+              unreadableMarkdownIssue(
+                repositoryPath: file.repositoryPath,
+                error: error
+              )
+            )
+            continue
+          }
+        } else {
+          existingContent = ""
+        }
         let status: PublishFileDiffStatus = exists
           ? (existingContent == newContent ? .unchanged : .modified)
           : .added
@@ -183,9 +255,7 @@ public struct LocalPublishPreviewService: Sendable {
           )
         )
       case .image, .video:
-        guard let sourceFilePath = file.sourceFilePath,
-              fileManager.fileExists(atPath: sourceFilePath)
-        else {
+        guard let sourceFilePath = file.sourceFilePath else {
           diffs.append(
             PublishFileDiff(
               path: file.repositoryPath,
@@ -197,8 +267,42 @@ public struct LocalPublishPreviewService: Sendable {
           )
           issues.append(.init(
             severity: .error,
-            title: "\(file.kind.displayName)源文件缺失",
+            title: CoreL10n.format("%@源文件缺失", file.kind.displayName),
             message: file.repositoryPath,
+            field: "attachments"
+          ))
+          continue
+        }
+
+        let sourceState: LocalPublishSourceFileState
+        do {
+          sourceState = try localPublishSourceFileState(
+            at: URL(fileURLWithPath: sourceFilePath),
+            repositoryPath: file.repositoryPath
+          )
+        } catch {
+          let status: PublishFileDiffStatus
+          let title: String
+          if case LocalPublishPreviewError.missingSource = error {
+            status = .missingSource
+            title = CoreL10n.format("%@源文件缺失", file.kind.displayName)
+          } else {
+            status = .unsafePath
+            title = CoreL10n.format("%@源文件不安全", file.kind.displayName)
+          }
+          diffs.append(
+            PublishFileDiff(
+              path: file.repositoryPath,
+              kind: file.kind,
+              status: status,
+              byteSize: file.byteSize,
+              baselineState: baselineState
+            )
+          )
+          issues.append(.init(
+            severity: .error,
+            title: title,
+            message: CoreL10n.format("%@：%@", file.repositoryPath, error.localizedDescription),
             field: "attachments"
           ))
           continue
@@ -208,7 +312,7 @@ public struct LocalPublishPreviewService: Sendable {
         let status: PublishFileDiffStatus
         if !exists {
           status = .added
-        } else if fileManager.contentsEqual(atPath: sourceFilePath, andPath: destinationURL.path) {
+        } else if baselineState == .fileDigest(sourceState.sha256) {
           status = .unchanged
         } else {
           status = .modified
@@ -218,14 +322,34 @@ public struct LocalPublishPreviewService: Sendable {
             path: file.repositoryPath,
             kind: file.kind,
             status: status,
-            byteSize: file.byteSize,
-            baselineState: baselineState
+            byteSize: sourceState.byteSize,
+            baselineState: baselineState,
+            sourceState: sourceState
           )
         )
       }
     }
 
     return LocalPublishPreview(package: package, fileDiffs: diffs, issues: issues)
+  }
+
+  private func readExistingMarkdownContent(at url: URL) throws -> String {
+    try BoundedFileReader.utf8String(
+      at: url,
+      maximumByteCount: WorkbenchContentFileReadLimits.textDocumentByteCount
+    )
+  }
+
+  private func unreadableMarkdownIssue(
+    repositoryPath: String,
+    error: Error
+  ) -> PreflightIssue {
+    PreflightIssue(
+      severity: .error,
+      title: CoreL10n.text("无法读取现有 Markdown 文件"),
+      message: CoreL10n.format("%@：%@", repositoryPath, error.localizedDescription),
+      field: "repositoryPath"
+    )
   }
 
   public func write(package: PublishPackage, profile: SiteProfile) throws -> [String] {
@@ -296,10 +420,13 @@ public struct LocalPublishPreviewService: Sendable {
     preview: LocalPublishPreview? = nil
   ) throws -> LocalPublishWriteResult {
     let previewBaseStates: [String: LocalPublishFileState]?
+    let previewSourceStates: [String: LocalPublishSourceFileState]?
     if let preview {
       previewBaseStates = try expectedBaseStates(for: package, preview: preview)
+      previewSourceStates = try expectedSourceStates(for: package, preview: preview)
     } else {
       previewBaseStates = nil
+      previewSourceStates = nil
     }
     var seenDestinationPaths = Set<String>()
     let preparedWrites = try package.files.map { file -> PreparedLocalPublishWrite in
@@ -312,26 +439,42 @@ public struct LocalPublishPreviewService: Sendable {
       }
 
       if file.operation == .delete {
-        return PreparedLocalPublishWrite(file: file, destinationURL: destinationURL, sourceURL: nil)
+        return PreparedLocalPublishWrite(
+          file: file,
+          destinationURL: destinationURL,
+          sourceURL: nil,
+          expectedSourceState: nil
+        )
       }
 
       let sourceURL: URL?
+      let expectedSourceState: LocalPublishSourceFileState?
       switch file.kind {
       case .markdown:
         sourceURL = nil
+        expectedSourceState = nil
       case .image, .video:
         guard let sourceFilePath = file.sourceFilePath else {
           throw LocalPublishPreviewError.missingSource(file.repositoryPath)
         }
         let candidate = URL(fileURLWithPath: sourceFilePath)
-        var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
-              !isDirectory.boolValue else {
-          throw LocalPublishPreviewError.missingSource(file.repositoryPath)
+        let currentSourceState = try localPublishSourceFileState(
+          at: candidate,
+          repositoryPath: file.repositoryPath
+        )
+        let normalizedPath = file.repositoryPath.normalizedRelativePath()
+        expectedSourceState = previewSourceStates?[normalizedPath]
+        if let expectedSourceState, currentSourceState != expectedSourceState {
+          throw LocalPublishPreviewError.sourcePreviewOutdated(file.repositoryPath)
         }
         sourceURL = candidate
       }
-      return PreparedLocalPublishWrite(file: file, destinationURL: destinationURL, sourceURL: sourceURL)
+      return PreparedLocalPublishWrite(
+        file: file,
+        destinationURL: destinationURL,
+        sourceURL: sourceURL,
+        expectedSourceState: expectedSourceState
+      )
     }
 
     for prepared in preparedWrites {
@@ -376,7 +519,8 @@ public struct LocalPublishPreviewService: Sendable {
           LocalPublishRollbackEntry(
             destinationURL: destinationURL,
             backupURL: backupURL,
-            appliedState: nil
+            appliedState: nil,
+            didMutateDestination: false
           )
         )
 
@@ -384,6 +528,7 @@ public struct LocalPublishPreviewService: Sendable {
         case .delete:
           if fileManager.fileExists(atPath: destinationURL.path) {
             try fileManager.removeItem(at: destinationURL)
+            rollbackEntries[rollbackEntries.count - 1].didMutateDestination = true
           }
         case .upsert:
           switch prepared.file.kind {
@@ -393,8 +538,14 @@ public struct LocalPublishPreviewService: Sendable {
             guard let sourceURL = prepared.sourceURL else {
               throw LocalPublishPreviewError.missingSource(prepared.file.repositoryPath)
             }
-            try replaceBinaryFileAtomically(sourceURL: sourceURL, destinationURL: destinationURL)
+            try replaceBinaryFileAtomically(
+              sourceURL: sourceURL,
+              expectedSourceState: prepared.expectedSourceState,
+              destinationURL: destinationURL,
+              repositoryPath: prepared.file.repositoryPath
+            )
           }
+          rollbackEntries[rollbackEntries.count - 1].didMutateDestination = true
         }
 
         let appliedState = try localPublishFileState(at: destinationURL, fileManager: fileManager)
@@ -459,6 +610,25 @@ public struct LocalPublishPreviewService: Sendable {
     return result
   }
 
+  private func expectedSourceStates(
+    for package: PublishPackage,
+    preview: LocalPublishPreview
+  ) throws -> [String: LocalPublishSourceFileState] {
+    var result: [String: LocalPublishSourceFileState] = [:]
+    for file in package.files where file.operation == .upsert && file.kind != .markdown {
+      let normalizedPath = file.repositoryPath.normalizedRelativePath()
+      guard result[normalizedPath] == nil,
+            let diff = preview.fileDiffs.first(where: {
+              $0.path.normalizedRelativePath() == normalizedPath
+            }),
+            let sourceState = diff.sourceState else {
+        throw LocalPublishPreviewError.invalidPreview(file.repositoryPath)
+      }
+      result[normalizedPath] = sourceState
+    }
+    return result
+  }
+
   private func validatePreviewBaseline(
     for file: PublishPackageFile,
     destinationURL: URL,
@@ -482,7 +652,12 @@ public struct LocalPublishPreviewService: Sendable {
         PublishFileDiff(path: $0.repositoryPath, kind: $0.kind, status: .unsafePath, byteSize: $0.byteSize)
       },
       issues: [
-        .init(severity: .warning, title: "未选择本地仓库", message: "选择仓库后才能生成真实文件 diff。", field: "repository")
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("未选择本地仓库"),
+          message: CoreL10n.text("选择仓库后才能生成真实文件 diff。"),
+          field: "repository"
+        )
       ]
     )
   }
@@ -576,12 +751,68 @@ public struct LocalPublishPreviewService: Sendable {
     return destinationURL
   }
 
-  private func replaceBinaryFileAtomically(sourceURL: URL, destinationURL: URL) throws {
+  private func replaceBinaryFileAtomically(
+    sourceURL: URL,
+    expectedSourceState: LocalPublishSourceFileState?,
+    destinationURL: URL,
+    repositoryPath: String
+  ) throws {
     let stagingURL = destinationURL
       .deletingLastPathComponent()
       .appendingPathComponent(".\(destinationURL.lastPathComponent).publisher-stage-\(UUID().uuidString)")
     defer { try? fileManager.removeItem(at: stagingURL) }
-    try fileManager.copyItem(at: sourceURL, to: stagingURL)
+
+#if canImport(Darwin)
+    let stagingDescriptor = stagingURL.path.withCString {
+      Darwin.open(
+        $0,
+        O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+        mode_t(S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
+      )
+    }
+    guard stagingDescriptor >= 0 else {
+      throw LocalPublishPreviewError.unsafePath(repositoryPath)
+    }
+    var stagingDescriptorIsOpen = true
+    defer {
+      if stagingDescriptorIsOpen {
+        Darwin.close(stagingDescriptor)
+      }
+    }
+
+    let copiedSourceState = try withLocalPublishSourceDescriptor(
+      at: sourceURL,
+      repositoryPath: repositoryPath
+    ) { sourceDescriptor in
+      try readLocalPublishSource(
+        descriptor: sourceDescriptor,
+        repositoryPath: repositoryPath,
+        destinationDescriptor: stagingDescriptor
+      )
+    }
+    if let expectedSourceState, copiedSourceState != expectedSourceState {
+      throw LocalPublishPreviewError.sourcePreviewOutdated(repositoryPath)
+    }
+    guard Darwin.fsync(stagingDescriptor) == 0 else {
+      throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+    }
+    Darwin.close(stagingDescriptor)
+    stagingDescriptorIsOpen = false
+#else
+    let data = try BoundedFileReader.data(
+      at: sourceURL,
+      maximumByteCount: WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount
+    )
+    let copiedSourceState = try localPublishSourceFileState(
+      at: sourceURL,
+      repositoryPath: repositoryPath
+    )
+    guard expectedSourceState == nil || copiedSourceState == expectedSourceState else {
+      throw LocalPublishPreviewError.sourcePreviewOutdated(repositoryPath)
+    }
+    try data.write(to: stagingURL, options: .withoutOverwriting)
+#endif
+
     if fileManager.fileExists(atPath: destinationURL.path) {
       _ = try fileManager.replaceItemAt(destinationURL, withItemAt: stagingURL)
     } else {
@@ -591,11 +822,13 @@ public struct LocalPublishPreviewService: Sendable {
 
   private func rollbackLocalPublishWrites(_ entries: [LocalPublishRollbackEntry]) throws {
     for entry in entries.reversed() {
-      if let appliedState = entry.appliedState {
-        let currentState = try localPublishFileState(at: entry.destinationURL, fileManager: fileManager)
-        guard currentState == appliedState else {
-          throw LocalPublishPreviewError.rollbackConflict(entry.destinationURL.path)
-        }
+      guard entry.didMutateDestination else { continue }
+      guard let appliedState = entry.appliedState else {
+        throw LocalPublishPreviewError.rollbackConflict(entry.destinationURL.path)
+      }
+      let currentState = try localPublishFileState(at: entry.destinationURL, fileManager: fileManager)
+      guard currentState == appliedState else {
+        throw LocalPublishPreviewError.rollbackConflict(entry.destinationURL.path)
       }
       if fileManager.fileExists(atPath: entry.destinationURL.path) {
         try fileManager.removeItem(at: entry.destinationURL)
@@ -663,27 +896,37 @@ public enum LocalPublishPreviewError: LocalizedError {
   case missingRepositoryRoot
   case unsafePath(String)
   case missingSource(String)
+  case unsafeSource(String)
   case invalidPreview(String)
   case previewOutdated(String)
+  case sourcePreviewOutdated(String)
   case rollbackConflict(String)
   case rollbackFailed(original: String, rollback: String)
 
   public var errorDescription: String? {
     switch self {
     case .missingRepositoryRoot:
-      return "未选择本地仓库。"
+      return CoreL10n.text("未选择本地仓库。")
     case .unsafePath(let path):
-      return "发布路径不安全：\(path)"
+      return CoreL10n.format("发布路径不安全：%@", path)
     case .missingSource(let path):
-      return "源文件缺失：\(path)"
+      return CoreL10n.format("源文件缺失：%@", path)
+    case .unsafeSource(let path):
+      return CoreL10n.format("源文件不是可安全读取的普通文件：%@", path)
     case .invalidPreview(let path):
-      return "发布预览缺少有效的文件基线，请重新生成预览：\(path)"
+      return CoreL10n.format("发布预览缺少有效的文件基线，请重新生成预览：%@", path)
     case .previewOutdated(let path):
-      return "目标文件在预览后已被外部修改，已停止写入：\(path)"
+      return CoreL10n.format("目标文件在预览后已被外部修改，已停止写入：%@", path)
+    case .sourcePreviewOutdated(let path):
+      return CoreL10n.format("媒体源文件在预览后已变化，已停止写入：%@", path)
     case .rollbackConflict(let path):
-      return "检测到外部修改，已停止自动恢复并保留当前文件：\(path)"
+      return CoreL10n.format("检测到外部修改，已停止自动恢复并保留当前文件：%@", path)
     case .rollbackFailed(let original, let rollback):
-      return "本地写入失败，且自动恢复未完整完成：\(original)；恢复错误：\(rollback)"
+      return CoreL10n.format(
+        "本地写入失败，且自动恢复未完整完成：%@；恢复错误：%@",
+        original,
+        rollback
+      )
     }
   }
 }
@@ -692,12 +935,14 @@ private struct PreparedLocalPublishWrite {
   let file: PublishPackageFile
   let destinationURL: URL
   let sourceURL: URL?
+  let expectedSourceState: LocalPublishSourceFileState?
 }
 
 private struct LocalPublishRollbackEntry {
   let destinationURL: URL
   let backupURL: URL?
   var appliedState: LocalPublishFileState?
+  var didMutateDestination: Bool
 }
 
 struct LocalPublishWriteResult {
@@ -709,6 +954,147 @@ public enum LocalPublishFileState: Codable, Hashable, Sendable {
   case missing
   case fileDigest(Data)
 }
+
+private func localPublishSourceFileState(
+  at url: URL,
+  repositoryPath: String
+) throws -> LocalPublishSourceFileState {
+#if canImport(Darwin)
+  return try withLocalPublishSourceDescriptor(
+    at: url,
+    repositoryPath: repositoryPath
+  ) { descriptor in
+    try readLocalPublishSource(
+      descriptor: descriptor,
+      repositoryPath: repositoryPath,
+      destinationDescriptor: nil
+    )
+  }
+#else
+  let values = try url.resourceValues(forKeys: [
+    .isRegularFileKey,
+    .isSymbolicLinkKey,
+    .fileSizeKey,
+    .fileResourceIdentifierKey,
+  ])
+  guard values.isRegularFile == true, values.isSymbolicLink != true else {
+    throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+  }
+  let digest = try BoundedFileReader.sha256(
+    at: url,
+    maximumByteCount: WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount
+  )
+  let identifier = UInt64(bitPattern: Int64(values.fileResourceIdentifier?.hashValue ?? 0))
+  return LocalPublishSourceFileState(
+    byteSize: Int64(values.fileSize ?? 0),
+    sha256: digest,
+    deviceIdentifier: 0,
+    fileIdentifier: identifier
+  )
+#endif
+}
+
+#if canImport(Darwin)
+private func withLocalPublishSourceDescriptor<Result>(
+  at url: URL,
+  repositoryPath: String,
+  operation: (Int32) throws -> Result
+) throws -> Result {
+  let descriptor = url.path.withCString {
+    Darwin.open($0, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK)
+  }
+  guard descriptor >= 0 else {
+    if errno == ENOENT {
+      throw LocalPublishPreviewError.missingSource(repositoryPath)
+    }
+    throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+  }
+  defer { Darwin.close(descriptor) }
+  return try operation(descriptor)
+}
+
+private func readLocalPublishSource(
+  descriptor: Int32,
+  repositoryPath: String,
+  destinationDescriptor: Int32?
+) throws -> LocalPublishSourceFileState {
+  var initialMetadata = stat()
+  guard Darwin.fstat(descriptor, &initialMetadata) == 0,
+        (initialMetadata.st_mode & S_IFMT) == S_IFREG,
+        initialMetadata.st_size >= 0,
+        initialMetadata.st_size <= off_t(WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount) else {
+    throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+  }
+
+  var digest = SHA256()
+  var totalBytes: Int64 = 0
+  var buffer = [UInt8](repeating: 0, count: 64 * 1_024)
+  while true {
+    let bytesRead = buffer.withUnsafeMutableBytes { rawBuffer in
+      Darwin.read(descriptor, rawBuffer.baseAddress, rawBuffer.count)
+    }
+    if bytesRead == 0 {
+      break
+    }
+    if bytesRead < 0 {
+      if errno == EINTR { continue }
+      throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+    }
+
+    totalBytes += Int64(bytesRead)
+    guard totalBytes <= Int64(WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount) else {
+      throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+    }
+
+    if let destinationDescriptor {
+      try buffer.withUnsafeBytes { rawBuffer in
+        guard let baseAddress = rawBuffer.baseAddress else { return }
+        var writtenByteCount = 0
+        while writtenByteCount < bytesRead {
+          let result = Darwin.write(
+            destinationDescriptor,
+            baseAddress.advanced(by: writtenByteCount),
+            bytesRead - writtenByteCount
+          )
+          if result < 0 {
+            if errno == EINTR { continue }
+            throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+          }
+          guard result > 0 else {
+            throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+          }
+          writtenByteCount += result
+        }
+      }
+    }
+    digest.update(data: Data(buffer.prefix(bytesRead)))
+  }
+
+  var finalMetadata = stat()
+  guard Darwin.fstat(descriptor, &finalMetadata) == 0,
+        totalBytes == Int64(initialMetadata.st_size),
+        localPublishSourceMetadataIsUnchanged(initialMetadata, finalMetadata) else {
+    throw LocalPublishPreviewError.unsafeSource(repositoryPath)
+  }
+
+  return LocalPublishSourceFileState(
+    byteSize: totalBytes,
+    sha256: Data(digest.finalize()),
+    deviceIdentifier: UInt64(initialMetadata.st_dev),
+    fileIdentifier: UInt64(initialMetadata.st_ino)
+  )
+}
+
+private func localPublishSourceMetadataIsUnchanged(_ lhs: stat, _ rhs: stat) -> Bool {
+  lhs.st_dev == rhs.st_dev
+    && lhs.st_ino == rhs.st_ino
+    && lhs.st_size == rhs.st_size
+    && lhs.st_mtimespec.tv_sec == rhs.st_mtimespec.tv_sec
+    && lhs.st_mtimespec.tv_nsec == rhs.st_mtimespec.tv_nsec
+    && lhs.st_ctimespec.tv_sec == rhs.st_ctimespec.tv_sec
+    && lhs.st_ctimespec.tv_nsec == rhs.st_ctimespec.tv_nsec
+}
+#endif
 
 func localPublishFileState(at url: URL, fileManager: FileManager) throws -> LocalPublishFileState {
   var isDirectory: ObjCBool = false

@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct MarkdownEditorComfortControl: View {
+  let showsTitle: Bool
+
   @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
   private var fontSize = MarkdownEditorComfortConfiguration.defaultFontSize
   @AppStorage(MarkdownEditorComfortPreferences.lineSpacingKey)
@@ -15,19 +17,34 @@ struct MarkdownEditorComfortControl: View {
   private var isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration.defaultCurrentParagraphHighlightEnabled
   @AppStorage(MarkdownEditorComfortPreferences.warmPaperBackgroundEnabledKey)
   private var isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
+  @AppStorage(MarkdownEditorComfortPreferences.automaticPairingEnabledKey)
+  private var isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
   @AppStorage(MarkdownEditorComfortPreferences.writingGoalKey)
   private var writingGoal = MarkdownEditorComfortConfiguration.defaultWritingGoal
   @State private var isPresented = false
+
+  init(showsTitle: Bool = false) {
+    self.showsTitle = showsTitle
+  }
 
   var body: some View {
     Button {
       isPresented.toggle()
     } label: {
-      Image(systemName: "textformat.size.smaller")
-        .frame(width: 28, height: 28)
+      if showsTitle {
+        Label("编辑显示与辅助功能", systemImage: "textformat.size.smaller")
+          .labelStyle(.titleAndIcon)
+          .font(.workbenchButtonLabel)
+          .fixedSize(horizontal: true, vertical: false)
+          .padding(.horizontal, 6)
+          .frame(minHeight: 28)
+      } else {
+        Image(systemName: "textformat.size.smaller")
+          .frame(width: 28, height: 28)
+      }
     }
     .foregroundStyle(.secondary)
-    .help("编辑显示与辅助功能")
+    .help(String(localized: "编辑显示与辅助功能"))
     .accessibilityLabel("编辑显示与辅助功能")
     .accessibilityValue(accessibilitySummary)
     .popover(isPresented: $isPresented, arrowEdge: .top) {
@@ -77,11 +94,15 @@ struct MarkdownEditorComfortControl: View {
         .toggleStyle(.switch)
         .help("为编辑器使用自适应的暖白或暖黑背景。")
 
+      Toggle("自动补全括号、引号与代码标记", isOn: $isAutomaticPairingEnabled)
+        .toggleStyle(.switch)
+        .help("输入左侧符号时自动补全右侧符号；可随时撤销。")
+
       Stepper(value: $writingGoal, in: 100...20_000, step: 100) {
         HStack {
           Text("写作目标")
           Spacer()
-          Text("\(writingGoal) 字/词")
+          Text(String(localized: "\(writingGoal) 字/词"))
             .foregroundStyle(.secondary)
             .monospacedDigit()
         }
@@ -146,6 +167,7 @@ struct MarkdownEditorComfortControl: View {
     isTypewriterModeEnabled = MarkdownEditorComfortConfiguration.defaultTypewriterModeEnabled
     isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration.defaultCurrentParagraphHighlightEnabled
     isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
+    isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
     writingGoal = MarkdownEditorComfortConfiguration.defaultWritingGoal
   }
 }

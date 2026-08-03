@@ -14,7 +14,6 @@ printf '%s\n' \
   '- [ ] `gitlab-direct-publish`' \
   '- [ ] `gitlab-review-publish`' \
   '- [ ] `remote-conflict-deployment-rollback`' \
-  '- [ ] `storekit-sandbox`' \
   '- [x] `app-store-screenshots`' >"$EVIDENCE_FIXTURE"
 printf '%s\n' \
   '# App Store Archive Validation Evidence' \
@@ -37,7 +36,6 @@ fail() {
 required_templates=(
   "docs/release-evidence/remote-publish-live.env.example:remote-publish-live.env:remote-publish"
   "docs/release-evidence/remote-recovery.env.example:remote-recovery.env:remote-recovery"
-  "docs/release-evidence/storekit-sandbox.env.example:storekit-sandbox.env:storekit"
   "docs/release-evidence/app-store-screenshots.env.example:app-store-screenshots.env:app-store-screenshots"
   "docs/release-evidence/app-store-archive-validation.env.example:app-store-archive-validation.env:app-store-archive"
 )

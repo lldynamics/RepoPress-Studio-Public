@@ -48,6 +48,7 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
   public var remoteConflictPaths: [String]
   public var remoteRiskState: RemotePublishRiskState
   public var hasToken: Bool
+  public var tokenAccessFailureMessage: String?
   public var accessCheck: RemoteRepositoryAccessCheck?
   public var blockingIssues: [PreflightIssue]
   public var warningIssues: [PreflightIssue]
@@ -62,6 +63,7 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     remoteConflictPaths: [String] = [],
     remoteRiskState: RemotePublishRiskState = .unknown,
     hasToken: Bool,
+    tokenAccessFailureMessage: String? = nil,
     accessCheck: RemoteRepositoryAccessCheck? = nil,
     blockingIssues: [PreflightIssue],
     warningIssues: [PreflightIssue]
@@ -74,14 +76,18 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     self.changedPaths = changedPaths
     self.remoteConflictPaths = remoteConflictPaths
     self.remoteRiskState = remoteRiskState
-    self.hasToken = hasToken
+    let normalizedAccessFailure = tokenAccessFailureMessage?
+      .trimmedForPublishing
+      .nilIfEmpty
+    self.hasToken = normalizedAccessFailure == nil && hasToken
+    self.tokenAccessFailureMessage = normalizedAccessFailure
     self.accessCheck = accessCheck
     self.blockingIssues = blockingIssues
     self.warningIssues = warningIssues
   }
 
   public var readiness: RemoteRepositoryPublishReadiness {
-    if !blockingIssues.isEmpty {
+    if tokenAccessFailureMessage != nil || !blockingIssues.isEmpty {
       return .blocked
     }
     if !hasToken {
@@ -101,12 +107,19 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
 
   public var canPublish: Bool {
     blockingIssues.isEmpty
+      && tokenAccessFailureMessage == nil
       && hasToken
       && accessCheck?.canWrite == true
       && (mode != .directCommit || remoteRiskState != .conflict)
   }
 
   public var accessSummary: String {
+    if let tokenAccessFailureMessage {
+      return CoreL10n.format(
+        "仓库 Token 状态读取失败：%@",
+        tokenAccessFailureMessage
+      )
+    }
     guard hasToken else {
       return CoreL10n.text("未保存 Token")
     }
@@ -135,7 +148,7 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
       CoreL10n.format("- 发布分支：%@", branchName),
       CoreL10n.format("- 目标分支：%@", targetBranch),
       CoreL10n.format("- 状态：%@", readiness.displayName),
-      CoreL10n.format("- Token：%@", CoreL10n.text(hasToken ? "已保存" : "未保存")),
+      CoreL10n.format("- Token：%@", tokenStatusSummary),
       CoreL10n.format("- 权限：%@", accessSummary),
       CoreL10n.format("- 远端风险：%@", remoteRiskState.displayName),
     ]
@@ -160,7 +173,17 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
 
     lines.append("")
     lines.append(CoreL10n.text("## 发布前检查"))
-    lines.append(CoreL10n.format("- [%@] 已保存 %@ Token", hasToken ? "x" : " ", provider.displayName))
+    if let tokenAccessFailureMessage {
+      lines.append(
+        CoreL10n.format(
+          "- [ ] %@ Token 状态读取失败：%@",
+          provider.displayName,
+          tokenAccessFailureMessage
+        )
+      )
+    } else {
+      lines.append(CoreL10n.format("- [%@] 已保存 %@ Token", hasToken ? "x" : " ", provider.displayName))
+    }
     lines.append(CoreL10n.format("- [%@] 已确认 Token 对 %@ 具备内容写入权限", accessCheck?.canWrite == true ? "x" : " ", repositoryName))
     if provider == .github && mode == .reviewRequest {
       lines.append(CoreL10n.text("- [ ] PR 创建权限将在实际创建时验证"))
@@ -199,6 +222,13 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     return lines.joined(separator: "\n")
   }
 
+  private var tokenStatusSummary: String {
+    if tokenAccessFailureMessage != nil {
+      return CoreL10n.text("读取失败")
+    }
+    return CoreL10n.text(hasToken ? "已保存" : "未保存")
+  }
+
   private enum CodingKeys: String, CodingKey {
     case provider
     case repositoryName
@@ -209,6 +239,7 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     case remoteConflictPaths
     case remoteRiskState
     case hasToken
+    case tokenAccessFailureMessage
     case accessCheck
     case blockingIssues
     case warningIssues
@@ -225,7 +256,15 @@ public struct RemoteRepositoryPublishPreview: Codable, Hashable, Sendable {
     remoteConflictPaths = try container.decodeIfPresent([String].self, forKey: .remoteConflictPaths) ?? []
     remoteRiskState = try container.decodeIfPresent(RemotePublishRiskState.self, forKey: .remoteRiskState)
       ?? (remoteConflictPaths.isEmpty ? .unknown : .conflict)
-    hasToken = try container.decode(Bool.self, forKey: .hasToken)
+    let decodedAccessFailure = try container.decodeIfPresent(
+      String.self,
+      forKey: .tokenAccessFailureMessage
+    )?
+      .trimmedForPublishing
+      .nilIfEmpty
+    let decodedHasToken = try container.decode(Bool.self, forKey: .hasToken)
+    hasToken = decodedAccessFailure == nil && decodedHasToken
+    tokenAccessFailureMessage = decodedAccessFailure
     accessCheck = try container.decodeIfPresent(RemoteRepositoryAccessCheck.self, forKey: .accessCheck)
     blockingIssues = try container.decode([PreflightIssue].self, forKey: .blockingIssues)
     warningIssues = try container.decode([PreflightIssue].self, forKey: .warningIssues)

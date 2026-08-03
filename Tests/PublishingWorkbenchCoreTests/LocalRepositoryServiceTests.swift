@@ -47,6 +47,23 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertEqual(try git(["rev-parse", "review/article"], rootURL: rootURL), try git(["rev-parse", "main"], rootURL: rootURL))
   }
 
+  func testIgnoredRepositoryPathsUsesNULTerminatedStandardInput() throws {
+    let (rootURL, profile) = try makeBranchOperationRepository()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try ".build/\n".write(
+      to: rootURL.appendingPathComponent(".gitignore"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    let ignored = LocalRepositoryService().ignoredRepositoryPaths(
+      profile: profile,
+      paths: [".build/cache/artifact", "content/posts/article.md"]
+    )
+
+    XCTAssertEqual(ignored, [".build/cache/artifact"])
+  }
+
   func testDetectsZolaRepositoryShapeAndCountsFiles() throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("PersonalSitePublisherMacTests-\(UUID().uuidString)", isDirectory: true)
@@ -89,6 +106,41 @@ final class LocalRepositoryServiceTests: XCTestCase {
     XCTAssertTrue(report.assetRootExists)
     XCTAssertEqual(report.markdownFileCount, 1)
     XCTAssertEqual(report.imageFileCount, 3)
+  }
+
+  func testScanStopsFileEnumerationWhenCancellationIsRequested() throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(
+        "PersonalSitePublisherMacCancelledScanTests-\(UUID().uuidString)",
+        isDirectory: true
+      )
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    let contentURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    let imageURL = rootURL.appendingPathComponent("static/images", isDirectory: true)
+    try FileManager.default.createDirectory(at: contentURL, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: imageURL, withIntermediateDirectories: true)
+    try "# Article".write(
+      to: contentURL.appendingPathComponent("article.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    try Data([0, 1, 2]).write(to: imageURL.appendingPathComponent("cover.png"))
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.contentRoot = "content"
+    profile.assetRoot = "static"
+
+    let report = LocalRepositoryService().scan(
+      profile: profile,
+      cancellationCheck: { true }
+    )
+
+    XCTAssertTrue(report.contentRootExists)
+    XCTAssertTrue(report.assetRootExists)
+    XCTAssertEqual(report.markdownFileCount, 0)
+    XCTAssertEqual(report.imageFileCount, 0)
   }
 
   func testReportsBranchUpstreamAheadBehindFromGitStatus() throws {

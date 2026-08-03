@@ -38,8 +38,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "workspace-task-navigation",
       "workspace-sidebar-writing",
       "workspace-sidebar-library",
+      "workspace-sidebar-rss",
       "workspace-sidebar-sync",
-      "workspace-sidebar-images",
       "workspace-sidebar-contentHealth",
     ]
     let writingIdentifiers = [
@@ -63,6 +63,33 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     ] {
       assertUniqueIdentifier(identifier)
     }
+  }
+
+  func testRSSReaderUsesTheMainWorkspaceFramework() throws {
+    launchApplication(surface: "writing")
+    let windowCountBeforeSelection = application.windows.count
+
+    select(
+      "workspace-sidebar-rss",
+      revealing: "rss-reader-workspace"
+    )
+
+    for identifier in [
+      "workspace-sidebar",
+      "workspace-task-navigation",
+      "workspace-sidebar-rss",
+      "rss-reader-sidebar",
+      "rss-reader-workspace",
+      "rss-article-list",
+      "rss-reader-detail",
+    ] {
+      assertUniqueIdentifier(identifier)
+    }
+    XCTAssertEqual(
+      application.windows.count,
+      windowCountBeforeSelection,
+      "Selecting RSS must reuse the main workspace instead of opening another window."
+    )
   }
 
   func testKnowledgeDetailIdentifiersRemainUniqueAndActionSpecific() throws {
@@ -135,6 +162,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "repository-action-scan",
       "repository-action-import",
       "repository-action-migrate",
+      "repository-action-open-images",
       "repository-action-open-publish",
       "repository-next-action",
       "repository-section-summary",
@@ -195,6 +223,38 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     for identifier in historyIdentifiers {
       revealByScrolling(identifier)
       assertUniqueIdentifier(identifier)
+    }
+  }
+
+  func testRepeatedWritingAndRepositoryNavigationRemainsResponsive() throws {
+    launchApplication(surface: "writing")
+
+    for iteration in 1...3 {
+      let repositoryButton = element(identifier: "workspace-sidebar-sync")
+      XCTAssertTrue(
+        repositoryButton.waitForExistence(timeout: 5),
+        "The repository navigation button disappeared before pass \(iteration)."
+      )
+      repositoryButton
+        .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        .tap()
+      XCTAssertTrue(
+        element(identifier: "repository-section-summary").waitForExistence(timeout: 5),
+        "The repository overview did not remain responsive on pass \(iteration)."
+      )
+
+      let writingButton = element(identifier: "workspace-sidebar-writing")
+      XCTAssertTrue(
+        writingButton.waitForExistence(timeout: 5),
+        "The writing navigation button disappeared after repository pass \(iteration)."
+      )
+      writingButton
+        .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        .tap()
+      XCTAssertTrue(
+        element(identifier: "writing-draft-list").waitForExistence(timeout: 5),
+        "Writing did not become responsive again after repository pass \(iteration)."
+      )
     }
   }
 
@@ -278,33 +338,71 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "The App Store build must use RepoPress Studio as the visible app and menu name."
     )
 
-    let publishingConsole = application.menuBars.menuBarItems["Publishing Console"]
+    let goMenuItem = application.menuBars.menuBarItems["Go"]
     XCTAssertTrue(
-      publishingConsole.waitForExistence(timeout: 15),
-      "The English Publishing Console menu did not appear."
+      goMenuItem.waitForExistence(timeout: 15),
+      "The English Go menu did not appear."
     )
-    publishingConsole.click()
+    goMenuItem.click()
     XCTAssertTrue(
       application.menuItems["Command Palette and Quick Open"].waitForExistence(timeout: 5),
-      "The Publishing Console command titles were not localized to English."
+      "The Go menu command titles were not localized to English."
     )
 
-    let publishingMenu = publishingConsole.menus.firstMatch
+    let goMenu = goMenuItem.menus.firstMatch
     XCTAssertTrue(
-      publishingMenu.waitForExistence(timeout: 5),
-      "The Publishing Console menu contents were unavailable."
+      goMenu.waitForExistence(timeout: 5),
+      "The Go menu contents were unavailable."
     )
-    let publishingMenuLabels = publishingMenu.menuItems.allElementsBoundByIndex
+    let goMenuLabels = goMenu.menuItems.allElementsBoundByIndex
       .map(\.label)
       .filter { !$0.isEmpty }
-    let mixedLanguageLabels = publishingMenuLabels.filter(containsCJK)
+    let mixedGoMenuLabels = goMenuLabels.filter(containsCJK)
     XCTAssertTrue(
-      mixedLanguageLabels.isEmpty,
-      "The English Publishing Console contains Chinese labels: \(mixedLanguageLabels.joined(separator: ", "))."
+      mixedGoMenuLabels.isEmpty,
+      "The English Go menu contains Chinese labels: \(mixedGoMenuLabels.joined(separator: ", "))."
     )
+
+    application.typeKey(.escape, modifierFlags: [])
+    let publishMenuItem = application.menuBars.menuBarItems["Publish"]
     XCTAssertTrue(
-      application.menuItems["AI Chat"].waitForExistence(timeout: 5),
-      "The App Store Publishing Console must expose free BYOK AI."
+      publishMenuItem.waitForExistence(timeout: 5),
+      "The English Publish menu did not appear."
+    )
+    publishMenuItem.click()
+    let publishMenuLabels = publishMenuItem.menus.firstMatch.menuItems.allElementsBoundByIndex
+      .map(\.label)
+      .filter { !$0.isEmpty }
+    let mixedPublishMenuLabels = publishMenuLabels.filter(containsCJK)
+    XCTAssertTrue(
+      mixedPublishMenuLabels.isEmpty,
+      "The English Publish menu contains Chinese labels: \(mixedPublishMenuLabels.joined(separator: ", "))."
+    )
+
+    application.typeKey(.escape, modifierFlags: [])
+    let aiMenuItem = application.menuBars.menuBarItems["AI"]
+    XCTAssertTrue(
+      aiMenuItem.waitForExistence(timeout: 5),
+      "The App Store build must expose the free BYOK AI menu."
+    )
+    aiMenuItem.click()
+    let openAIChatItem = application.menuItems["Open AI Chat"]
+    let closeAIChatItem = application.menuItems["Close AI Chat"]
+    let aiChatDeadline = Date().addingTimeInterval(5)
+    while !openAIChatItem.exists && !closeAIChatItem.exists && Date() < aiChatDeadline {
+      RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+    }
+    XCTAssertTrue(
+      openAIChatItem.exists || closeAIChatItem.exists,
+      "The App Store AI menu must expose free BYOK AI chat."
+    )
+    let aiMenuLabels = aiMenuItem.menus.firstMatch.menuItems.allElementsBoundByIndex
+      .map(\.label)
+      .filter { !$0.isEmpty }
+    let mixedAIMenuLabels = aiMenuLabels.filter(containsCJK)
+    XCTAssertTrue(
+      mixedAIMenuLabels.isEmpty,
+      "The English AI menu contains Chinese labels: \(mixedAIMenuLabels.joined(separator: ", "))."
     )
 
     application.typeKey(.escape, modifierFlags: [])
@@ -341,7 +439,11 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
   func testImageWorkbenchIdentifiersRemainUniqueAndDoNotOverrideChildControls() throws {
     launchApplication(surface: "writing")
     select(
-      "workspace-sidebar-images",
+      "workspace-sidebar-sync",
+      revealing: "repository-workspace"
+    )
+    select(
+      "repository-action-open-images",
       revealing: "image-workbench-overview"
     )
 

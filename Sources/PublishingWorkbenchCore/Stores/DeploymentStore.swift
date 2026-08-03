@@ -61,17 +61,57 @@ public final class DeploymentStore: ObservableObject {
   }
 
   public func deploymentStatusReadiness(
+    for profile: SiteProfile,
+    tokenAvailability: KeychainTokenAvailability
+  ) -> DeploymentStatusProviderReadiness {
+    var readiness = deploymentStatusReadiness(
+      for: profile,
+      hasToken: tokenAvailability.hasToken
+    )
+    guard let accessFailureMessage = tokenAvailability.accessFailureMessage else {
+      return readiness
+    }
+
+    let accessFailureRequirement = CoreL10n.format(
+      "部署 Token 状态读取失败：%@",
+      accessFailureMessage
+    )
+    readiness.missingRequirements.removeAll {
+      $0 == CoreL10n.text("部署 Token")
+    }
+    readiness.missingRequirements.insert(accessFailureRequirement, at: 0)
+    if readiness.canCheckAnyStatus {
+      readiness.nextStep = accessFailureRequirement
+    } else {
+      readiness.nextStep = CoreL10n.format(
+        "先补齐 %@。",
+        readiness.missingRequirements.joined(separator: CoreL10n.text("、"))
+      )
+      readiness.fallbackMessage = [
+        readiness.fallbackMessage,
+        accessFailureRequirement,
+      ].joined(separator: " ")
+    }
+    return readiness
+  }
+
+  public func deploymentStatusReadiness(
     for record: ReleaseRecord,
     store: WorkbenchStore
   ) -> DeploymentStatusProviderReadiness {
     deploymentStatusReadiness(
       for: store.profile(for: record),
-      hasToken: hasDeploymentToken(for: store.profile(for: record))
+      tokenAvailability: resolvedDeploymentTokenAvailability(
+        for: store.profile(for: record)
+      )
     )
   }
 
   public func activeDeploymentStatusReadiness(store: WorkbenchStore) -> DeploymentStatusProviderReadiness {
-    deploymentStatusReadiness(for: store.activeProfile, hasToken: hasDeploymentToken(for: store.activeProfile))
+    deploymentStatusReadiness(
+      for: store.activeProfile,
+      tokenAvailability: deploymentTokenAvailability
+    )
   }
 
   public func shouldRefreshDeploymentStatusAfterRemoteOperation(
@@ -370,7 +410,29 @@ public final class DeploymentStore: ObservableObject {
     }
 
     let profile = store.profile(for: record)
-    let token = try? deploymentAccessToken(for: profile)
+    let token: String?
+    let tokenAccessFailureMessage: String?
+    do {
+      token = try deploymentAccessToken(for: profile)
+      tokenAccessFailureMessage = nil
+    } catch {
+      token = nil
+      tokenAccessFailureMessage = CoreL10n.format(
+        "部署 Token 状态读取失败：%@",
+        error.localizedDescription
+      )
+      if profile.id == store.activeProfile.id {
+        deploymentTokenAvailability = KeychainTokenAvailability(accessFailure: error)
+      }
+      deploymentStatusMessage = tokenAccessFailureMessage
+      let fallbackReadiness = deploymentStatusReadiness(
+        for: profile,
+        hasToken: false
+      )
+      guard fallbackReadiness.canCheckAnyStatus else {
+        return nil
+      }
+    }
     let snapshot = await deploymentStatusService.check(
       profile: profile,
       releaseRecord: record,
@@ -381,11 +443,14 @@ public final class DeploymentStore: ObservableObject {
     }
     recordDeploymentStatusSnapshot(snapshot, for: record)
     if updatesMessage {
-      deploymentStatusMessage = CoreL10n.format(
+      let statusMessage = CoreL10n.format(
         "%@：%@",
         snapshot.provider.displayName,
         snapshot.level.displayName
       )
+      deploymentStatusMessage = [tokenAccessFailureMessage, statusMessage]
+        .compactMap { $0 }
+        .joined(separator: "\n")
     }
     store.save()
     return snapshot
@@ -440,19 +505,27 @@ public final class DeploymentStore: ObservableObject {
 
   public func refreshDeploymentTokenAvailability(store: WorkbenchStore) {
     let profile = store.activeProfile
-    deploymentTokenAvailability = (try? deploymentTokenStore.availability(
-      for: profile,
-      scope: deploymentTokenScope(for: profile),
-      originURLText: deploymentCredentialOriginURLText(for: profile)
-    )) ?? KeychainTokenAvailability(hasToken: false)
+    deploymentTokenAvailability = resolvedDeploymentTokenAvailability(for: profile)
+    if let accessFailureMessage = deploymentTokenAvailability.accessFailureMessage {
+      deploymentStatusMessage = CoreL10n.format(
+        "部署 Token 状态读取失败：%@",
+        accessFailureMessage
+      )
+    }
   }
 
-  private func hasDeploymentToken(for profile: SiteProfile) -> Bool {
-    (try? deploymentTokenStore.availability(
-      for: profile,
-      scope: deploymentTokenScope(for: profile),
-      originURLText: deploymentCredentialOriginURLText(for: profile)
-    ).hasToken) == true
+  private func resolvedDeploymentTokenAvailability(
+    for profile: SiteProfile
+  ) -> KeychainTokenAvailability {
+    do {
+      return try deploymentTokenStore.availability(
+        for: profile,
+        scope: deploymentTokenScope(for: profile),
+        originURLText: deploymentCredentialOriginURLText(for: profile)
+      )
+    } catch {
+      return KeychainTokenAvailability(accessFailure: error)
+    }
   }
 
   private func deploymentAccessToken(for profile: SiteProfile) throws -> String? {

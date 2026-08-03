@@ -14,6 +14,7 @@ struct DraftFullTextSearchPanel: View {
   @State private var searchTask: Task<Void, Never>?
   @State private var savedQueries: [DraftFullTextSavedQuery] = []
   @State private var selectedHitID: DraftFullTextSearchHitID?
+  @State private var isBatchReplacePresented = false
   @FocusState private var isSearchFocused: Bool
 
   init(store: WorkbenchStore) {
@@ -66,6 +67,12 @@ struct DraftFullTextSearchPanel: View {
     }
     .onExitCommand {
       dismiss()
+    }
+    .sheet(isPresented: $isBatchReplacePresented) {
+      MarkdownBatchFindReplacePanel(
+        store: store,
+        siteProfileID: scope == .currentSite ? publishing.activeProfileID : nil
+      )
     }
     .accessibilityLabel("跨文章全文搜索")
     .accessibilityIdentifier("draft-full-text-search-panel")
@@ -130,6 +137,14 @@ struct DraftFullTextSearchPanel: View {
       .accessibilityLabel("全文搜索范围")
 
       savedQueriesMenu
+
+      Button {
+        isBatchReplacePresented = true
+      } label: {
+        Label("批量替换", systemImage: "arrow.triangle.2.circlepath")
+      }
+      .help("预览并安全替换多篇文章的正文")
+      .accessibilityLabel("跨文章批量查找替换")
 
       Spacer()
 
@@ -216,7 +231,7 @@ struct DraftFullTextSearchPanel: View {
         .listStyle(.inset)
         .onChange(of: selectedHitID) { _, hitID in
           guard let hitID else { return }
-          withAnimation(.easeOut(duration: 0.12)) {
+          withAnimation(WorkbenchMotion.quick) {
             proxy.scrollTo(hitID, anchor: .center)
           }
         }

@@ -106,7 +106,7 @@ struct BrowserExtensionConnectionView: View {
         }
 
         Section("安装浏览器扩展") {
-          Text("当前版本只支持 Safari 和 Chrome。Safari Web Extension 已内嵌在应用中，Chrome 扩展由 Chrome 网上应用店安装和更新。")
+          Text("当前版本支持 Safari、Chrome 和 Firefox。Safari Web Extension 随应用内置；Chrome 和 Firefox 扩展独立安装和更新。")
             .font(.callout)
 
           LabeledContent("Safari") {
@@ -140,13 +140,27 @@ struct BrowserExtensionConnectionView: View {
             }
           }
 
-          Text("Safari 扩展随 RepoPress 一起安装，只需在 Safari 设置中启用；Chrome 扩展独立更新，但不需要另做一个 Mac 应用版本。")
+          LabeledContent("Firefox") {
+            VStack(alignment: .leading, spacing: 6) {
+              Button {
+                openFirefoxDebugging()
+              } label: {
+                Label("打开 Firefox 调试页", systemImage: "wrench.and.screwdriver")
+              }
+              Text("Firefox 在 about:debugging 中选择“临时载入附加组件”，再选中 BrowserExtension/Firefox/manifest.json。加载后把上面的令牌粘贴到插件中。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+          }
+
+          Text("Safari 扩展随应用安装；Chrome 和 Firefox 扩展独立更新，均通过本机回环接口连接。")
             .font(.caption)
             .foregroundStyle(.secondary)
         }
 
         Section("保存内容") {
-          Text("Chrome 优先生成自包含 MHTML；Safari 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。")
+          Text("Chrome 优先生成自包含 MHTML；Safari 和 Firefox 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。")
             .font(.callout)
         }
       }
@@ -199,6 +213,13 @@ struct BrowserExtensionConnectionView: View {
             string: "https://chromewebstore.google.com/detail/\(extensionID)"
           )
     else {
+      return
+    }
+    NSWorkspace.shared.open(url)
+  }
+
+  private func openFirefoxDebugging() {
+    guard let url = URL(string: "about:debugging#/runtime/this-firefox") else {
       return
     }
     NSWorkspace.shared.open(url)

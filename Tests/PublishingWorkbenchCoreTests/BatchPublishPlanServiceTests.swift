@@ -341,7 +341,6 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
       FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("content/posts/.md").path)
     )
     XCTAssertEqual(store.releaseRecords.first?.kind, .batchLocalWrite)
-    XCTAssertEqual(store.monetizationState.freeUsage.batchPublishCount, 1)
     XCTAssertTrue(store.publishActionMessage?.contains("已批量写入 1 篇") == true)
     XCTAssertFalse(store.isLocalRepositoryMutationRunning)
   }

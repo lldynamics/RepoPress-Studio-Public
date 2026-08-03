@@ -90,9 +90,9 @@ def validated_definition(root: Path) -> dict:
         },
         "extensions",
     )
-    if active_extensions != ["safari", "chrome"]:
+    if active_extensions != ["safari", "chrome", "firefox"]:
         raise ProtocolGenerationError(
-            "activeExtensions must be exactly ['safari', 'chrome'] for this release"
+            "activeExtensions must be exactly ['safari', 'chrome', 'firefox'] for this release"
         )
     require_exact_keys(
         loopback,

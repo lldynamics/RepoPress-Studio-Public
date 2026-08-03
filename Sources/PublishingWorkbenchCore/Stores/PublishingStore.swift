@@ -5,6 +5,10 @@ public struct RecentlyDeletedProfile: Sendable {
   public let profile: SiteProfile
   public let drafts: [ArticleDraft]
   public let customMarkdownSnippets: [MarkdownSnippet]
+  public let draftVersions: [DraftVersionSnapshot]
+  public let recycledDrafts: [RecycledDraft]
+  public let draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest]
+  public let markdownEditorSessionStates: [UUID: MarkdownEditorSessionState]
   public let deletedAt: Date
 
   public var draftCount: Int { drafts.count }
@@ -80,6 +84,8 @@ public final class PublishingStore: ObservableObject {
   var localSitePreviewStopTask: Task<Void, Never>?
   var localSitePreviewStopOperationID: UUID?
   var localSitePreviewGeneration: UInt64 = 0
+  var localSitePreviewFileWatcher: LocalSitePreviewFileWatcher?
+  var localSitePreviewRefreshTask: Task<Void, Never>?
   var publishPreviewRefreshTask: Task<Void, Never>?
   var publishPreviewRefreshGeneration: UInt64 = 0
   var batchPublishPlanRefreshTask: Task<Void, Never>?
@@ -111,6 +117,7 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var batchRemotePublishPreviewSnapshot: RemoteRepositoryPublishPreview?
   @Published public internal(set) var localSitePreviewPlan: LocalSitePreviewPlan?
   @Published public internal(set) var localSitePreviewRuntimeStatus: LocalSitePreviewRuntimeStatus
+  @Published public internal(set) var localSitePreviewRefreshToken: UInt64 = 0
   @Published public internal(set) var remoteReviewDraft: RemoteReviewDraft?
   @Published public internal(set) var batchRemoteReviewDraft: RemoteReviewDraft?
   @Published public internal(set) var siteStarterResult: SiteStarterResult?
@@ -207,7 +214,8 @@ public final class PublishingStore: ObservableObject {
     localSitePreviewService: LocalSitePreviewService = LocalSitePreviewService(),
     localSitePreviewProcessService: LocalSitePreviewProcessService = LocalSitePreviewProcessService(),
     siteMaintenanceService: SiteMaintenanceService = SiteMaintenanceService(),
-    draftLifecycleService: DraftLifecycleService = DraftLifecycleService()
+    draftLifecycleService: DraftLifecycleService = DraftLifecycleService(),
+    imageWorkbenchService: SiteImageWorkbenchService = SiteImageWorkbenchService()
   ) {
     self.preflightService = preflightService
     self.publishPackageBuilder = publishPackageBuilder
@@ -227,7 +235,10 @@ public final class PublishingStore: ObservableObject {
     self.localSitePreviewProcessService = localSitePreviewProcessService
     self.siteMaintenanceService = siteMaintenanceService
     self.draftLifecycleService = draftLifecycleService
-    self.contentHealthReportService = ContentHealthReportService(preflightService: preflightService)
+    self.contentHealthReportService = ContentHealthReportService(
+      preflightService: preflightService,
+      imageWorkbenchService: imageWorkbenchService
+    )
     self.aiFixQueueService = AIPublishingFixQueueService()
     self.profiles = profiles
     self.activeProfileID = activeProfileID

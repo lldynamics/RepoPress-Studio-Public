@@ -24,32 +24,12 @@ cp "$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md" "$EXTERNA
 cp "$ROOT_DIR/docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md" "$ARCHIVE_FILE"
 mkdir -p "$SCREENSHOT_DIR"
 cp "$ROOT_DIR/docs/app-store-screenshots/SCREENSHOT_MANIFEST.md" "$SCREENSHOT_MANIFEST_FILE"
+cp "$ROOT_DIR/docs/app-store-screenshots/"*.png "$SCREENSHOT_DIR/"
 
-python3 - "$EXTERNAL_FILE" <<'PY'
-from pathlib import Path
-import re
-import sys
-
-path = Path(sys.argv[1])
-text = path.read_text()
-text = re.sub(
-    r"^- \[ \] `storekit-sandbox` - .*$",
-    "- [x] `storekit-sandbox` - Legacy StoreKit evidence without structured fields.",
-    text,
-    count=1,
-    flags=re.MULTILINE,
-)
-path.write_text(text)
-PY
-
-if APP_STORE_CHECKLIST_FILE="$CHECKLIST_FILE" \
-  EXTERNAL_VERIFY_EVIDENCE_FILE="$EXTERNAL_FILE" \
-  APP_STORE_ARCHIVE_EVIDENCE_FILE="$ARCHIVE_FILE" \
-  SCREENSHOT_DIR="$SCREENSHOT_DIR" \
-  SCREENSHOT_MANIFEST_FILE="$SCREENSHOT_MANIFEST_FILE" \
-  bash "$ROOT_DIR/script/sync_app_store_checklist.sh" --dry-run >/dev/null 2>&1; then
-  fail "checklist sync accepted legacy external evidence without structured fields"
-fi
+OCR_STUB="$TMP_DIR/screenshot-privacy-ocr-stub"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$OCR_STUB"
+chmod 700 "$OCR_STUB"
+export SCREENSHOT_PRIVACY_OCR_EXECUTABLE="$OCR_STUB"
 
 cp "$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md" "$EXTERNAL_FILE"
 cat >"$CHECKLIST_FILE" <<'MD'

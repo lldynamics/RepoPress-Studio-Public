@@ -8,7 +8,7 @@ extension KnowledgeSmartCollectionKind {
     case .tag: String(localized: "标签")
     case .sourceDomain: String(localized: "来源域名")
     case .time: String(localized: "添加时间")
-    case .aiPermission: String(localized: "AI 权限")
+    case .aiPermission: String(localized: "远程 AI 权限")
     }
   }
 
@@ -31,9 +31,9 @@ extension KnowledgeSmartCollectionRule {
     case .time(let bucket):
       bucket.localizedDisplayName
     case .aiPermission(true):
-      String(localized: "允许 AI 使用")
+      String(localized: "允许发送给远程 AI")
     case .aiPermission(false):
-      String(localized: "不允许 AI 使用")
+      String(localized: "禁止发送给远程 AI")
     }
   }
 

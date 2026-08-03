@@ -84,11 +84,11 @@ public enum SiteSlugValidationRule: String, Codable, CaseIterable, Identifiable,
   public var detail: String {
     switch self {
     case .lowercaseKebab:
-      return "允许小写字母、数字、CJK 字符和连字符。"
+      return CoreL10n.text("允许小写字母、数字、CJK 字符和连字符。")
     case .relaxed:
-      return "允许英文大小写、数字、CJK 字符、下划线和连字符。"
+      return CoreL10n.text("允许英文大小写、数字、CJK 字符、下划线和连字符。")
     case .disabled:
-      return "只要求 slug 非空，适合沿用旧仓库路径。"
+      return CoreL10n.text("只要求 slug 非空，适合沿用旧仓库路径。")
     }
   }
 }

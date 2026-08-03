@@ -51,6 +51,33 @@ public enum MarkdownCodeRangeScanner {
     return MarkdownCodeRangeScanResult(blockRanges: blocks, inlineRanges: inline)
   }
 
+  /// Returns true only when at least one line begins with a CommonMark-style
+  /// fenced-code marker (up to three leading spaces, then 3+ backticks/tildes).
+  public static func containsFenceLine(in markdown: String) -> Bool {
+    let source = markdown as NSString
+    guard source.length > 0 else { return false }
+    var location = 0
+    while location < source.length {
+      var lineStart = 0
+      var lineEnd = 0
+      var contentsEnd = 0
+      source.getLineStart(
+        &lineStart,
+        end: &lineEnd,
+        contentsEnd: &contentsEnd,
+        for: NSRange(location: location, length: 0)
+      )
+      if openingFence(
+        source: source,
+        lineRange: NSRange(location: lineStart, length: contentsEnd - lineStart)
+      ) != nil {
+        return true
+      }
+      location = max(lineEnd, location + 1)
+    }
+    return false
+  }
+
   private struct Fence {
     var marker: unichar
     var length: Int

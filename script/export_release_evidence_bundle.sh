@@ -14,8 +14,8 @@ Usage: script/export_release_evidence_bundle.sh [--output <path>] [--include-tes
 
 Exports a redacted local release evidence bundle. This summarizes local gates,
 known strict-release gaps, screenshot manifest status, external evidence status,
-and App Store checklist progress. It does not mark external GitHub/GitLab,
-StoreKit sandbox, or screenshot evidence as complete.
+and App Store checklist progress. It does not mark external GitHub/GitLab or
+screenshot evidence as complete.
 
 Options:
   --output <path>   Write the bundle to a custom path. Defaults to a timestamped snapshot under docs/release-evidence/snapshots/.
@@ -66,9 +66,6 @@ required_files=(
   "script/test_clean_runtime_evidence.sh"
   "script/check_privacy_support_copy.sh"
   "script/test_privacy_support_copy.sh"
-  "script/check_storekit.sh"
-  "script/record_storekit_sandbox_evidence.sh"
-  "script/test_storekit_sandbox_evidence.sh"
   "script/prepare_external_verification_envs.sh"
   "script/check_external_verification_envs.sh"
   "script/print_remaining_external_verification.sh"
@@ -102,7 +99,6 @@ required_files=(
   "docs/release-evidence/app-store-screenshots.env.example"
   "docs/release-evidence/remote-publish-live.env.example"
   "docs/release-evidence/remote-recovery.env.example"
-  "docs/release-evidence/storekit-sandbox.env.example"
   "APP_STORE_CHECKLIST.md"
 )
 
@@ -142,7 +138,6 @@ gate_args=(
   --check ui-runtime
   --check clean-runtime
   --check privacy-copy
-  --check storekit
   --check screenshot-map
   --check screenshots
   --check external-evidence
@@ -194,13 +189,13 @@ check_section() {
   echo "## Current Strict-Release Gaps"
   echo
   echo "- Screenshot images: $screenshot_count/9 captured"
-  echo "- External verification evidence: $external_completed_count/7 completed"
+  echo "- External verification evidence: $external_completed_count/6 completed"
   echo "- App Store archive validation: $unchecked_archive_validation_count unchecked item(s)"
   echo "- Clean runtime validation: $unchecked_clean_runtime_count unchecked item(s)"
   echo "- App Store checklist: $unchecked_checklist_count unchecked item(s)"
   echo "- Final App Store command: \`./script/check_release_gate.sh --profile app-store\`"
   echo
-  echo "This bundle does not replace the required live GitHub/GitLab, StoreKit sandbox, screenshot, or App Store upload validation evidence."
+  echo "This bundle does not replace the required live GitHub/GitLab, screenshot, or App Store upload validation evidence."
   echo
   echo "## Local Gate Outputs"
   echo
@@ -227,7 +222,6 @@ check_section() {
   echo "- \`docs/release-evidence/remote-publish-live.env.example\`"
   echo "- \`script/record_external_verification_evidence.sh\`"
   echo "- \`docs/release-evidence/remote-recovery.env.example\`"
-  echo "- \`docs/release-evidence/storekit-sandbox.env.example\`"
   echo "- \`docs/release-evidence/app-store-screenshots.env.example\`"
   echo "- \`script/sync_app_store_checklist.sh\`"
   echo "- \`docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md\`"

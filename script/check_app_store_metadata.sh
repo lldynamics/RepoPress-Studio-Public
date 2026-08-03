@@ -136,8 +136,8 @@ codesign --verify --strict "$SAFARI_EXTENSION" \
   || fail "Safari Web Extension signature does not verify"
 grep -Fq "public static var allowsExternalAIProviders" "$FEATURE_POLICY" \
   || fail "distribution policy does not define the App Store AI boundary"
-grep -Fq "Every distribution channel exposes the same free BYOK AI integration" "$FEATURE_POLICY" \
-  || fail "distribution policy does not document the shared free BYOK AI boundary"
+grep -Fq "allowsExternalAIProviders" "$FEATURE_POLICY" \
+  || fail "distribution policy does not expose the BYOK AI capability"
 grep -Fq "APP_STORE_BUILD" "$ROOT_DIR/script/build_and_run.sh" \
   || fail "App Store packaging does not pass the compiled distribution boundary"
 grep -Fq "APP_STORE_SWIFT_SCRATCH_PATH" "$ROOT_DIR/script/build_and_run.sh" \
@@ -170,4 +170,4 @@ safari_sandbox_enabled="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.
 [[ "$safari_sandbox_enabled" == "true" ]] \
   || fail "Safari Web Extension App Sandbox entitlement must be enabled"
 
-echo "app store metadata gate: AppStore Release bundle id, version $marketing_version ($build_number), free BYOK AI enabled and excluded from Pro, embedded Safari Web Extension, sandboxed loopback browser capture, icon, RepoPress Studio display name, category, copyright, minimum macOS, and sandbox entitlements verified"
+echo "app store metadata gate: AppStore Release bundle id, version $marketing_version ($build_number), BYOK AI, embedded Safari Web Extension, sandboxed loopback browser capture, icon, RepoPress Studio display name, category, copyright, minimum macOS, and sandbox entitlements verified"

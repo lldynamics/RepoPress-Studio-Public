@@ -263,8 +263,11 @@ public struct BatchPublishPlanService: Sendable {
       items[itemIndex].preflightIssues.append(
         PreflightIssue(
           severity: .error,
-          title: "批量目标路径冲突",
-          message: "以下路径被多个发布文件占用且内容或远端版本不一致：\(sortedPaths.joined(separator: "、"))。",
+          title: CoreL10n.text("批量目标路径冲突"),
+          message: CoreL10n.format(
+            "以下路径被多个发布文件占用且内容或远端版本不一致：%@。",
+            sortedPaths.joined(separator: "、")
+          ),
           field: "attachments"
         )
       )

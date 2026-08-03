@@ -138,7 +138,7 @@ extension RepositoryWorkspaceView {
     .buttonStyle(.bordered)
     .disabled(importableArticleCount == 0)
     .accessibilityLabel("导入本地文章变更")
-    .accessibilityValue("\(importableArticleCount) 篇可导入")
+    .accessibilityValue(String(localized: "\(importableArticleCount) 篇可导入"))
     .accessibilityIdentifier("repository-local-import-articles")
   }
 
@@ -147,7 +147,7 @@ extension RepositoryWorkspaceView {
       .font(.callout)
       .foregroundStyle(.secondary)
       .accessibilityLabel("发布相关本地变更")
-      .accessibilityValue("\(count) 个")
+      .accessibilityValue(String(localized: "\(count) 个"))
       .accessibilityIdentifier("repository-local-publish-relevant-count")
   }
 

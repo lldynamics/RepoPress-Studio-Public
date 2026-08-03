@@ -1,0 +1,222 @@
+{
+  "%lld 节": {
+    "zh-Hans": "%lld 节",
+    "en": "%lld sections"
+  },
+  "/%@": {
+    "zh-Hans": "/%@",
+    "en": "/%@"
+  },
+  "AI 行内操作状态：%@": {
+    "zh-Hans": "AI 行内操作状态：%@",
+    "en": "Inline AI action status: %@"
+  },
+  "Apply": {
+    "zh-Hans": "应用",
+    "en": "Apply"
+  },
+  "https://example.com": {
+    "zh-Hans": "https://example.com",
+    "en": "https://example.com"
+  },
+  "whisper-cli / whisper.cpp 路径": {
+    "zh-Hans": "whisper-cli / whisper.cpp 路径",
+    "en": "Path to whisper-cli / whisper.cpp"
+  },
+  "使用本机 whisper.cpp-compatible CLI 和本地模型，不上传音频。当前支持从音频生成纯文本并追加到所选文章。": {
+    "zh-Hans": "使用本机与 whisper.cpp 兼容的 CLI 和本地模型，不会上传音频。目前支持将音频转写为纯文本并追加到所选文章。",
+    "en": "Uses a local whisper.cpp-compatible CLI and model without uploading audio. It currently supports transcribing audio to plain text and appending it to the selected article."
+  },
+  "依赖与脚本": {
+    "zh-Hans": "依赖与脚本",
+    "en": "Dependencies and Scripts"
+  },
+  "关闭上下文面板": {
+    "zh-Hans": "关闭上下文面板",
+    "en": "Close Context Panel"
+  },
+  "写作上下文面板": {
+    "zh-Hans": "写作上下文面板",
+    "en": "Writing Context Panel"
+  },
+  "发送内容：当你主动使用 AI 功能时，应用可能发送你的提示词、当前文章与站点上下文、已允许发送的资料库片段，以及你主动添加的图片。服务商会按其隐私政策处理这些内容。": {
+    "zh-Hans": "发送内容：当你主动使用 AI 功能时，应用可能发送你的提示词、当前文章与站点上下文、已允许发送的资料库片段，以及你主动添加的图片。服务商会按其隐私政策处理这些内容。",
+    "en": "Data sent: When you actively use AI features, the app may send your prompts, the current article and site context, knowledge-base excerpts you have allowed to be sent, and images you add. The provider handles this content under its privacy policy."
+  },
+  "可瘦身": {
+    "zh-Hans": "可压缩",
+    "en": "Compressible"
+  },
+  "可瘦身图片": {
+    "zh-Hans": "可压缩图片",
+    "en": "Compressible Images"
+  },
+  "启动命令": {
+    "zh-Hans": "启动命令",
+    "en": "Launch Command"
+  },
+  "图片信息": {
+    "zh-Hans": "图片信息",
+    "en": "Image Details"
+  },
+  "在应用内预览": {
+    "zh-Hans": "在应用内预览",
+    "en": "Preview in App"
+  },
+  "基础写作": {
+    "zh-Hans": "基础写作",
+    "en": "Basic Writing"
+  },
+  "失效的本地相对路径": {
+    "zh-Hans": "失效的本地相对路径",
+    "en": "Broken Local Relative Paths"
+  },
+  "定位到第 %@ 行的%@": {
+    "zh-Hans": "定位到第 %@ 行的%@",
+    "en": "Go to line %@: %@"
+  },
+  "将尝试压缩 %lld 张图片。只有生成结果更小、且原文件自扫描后未变化时才会原位替换。": {
+    "zh-Hans": "将尝试压缩 %lld 张图片。只有生成结果更小、且原文件自扫描后未变化时才会原位替换。",
+    "en": "The app will attempt to compress %lld images. A file will be replaced in place only if the result is smaller and the original has not changed since the scan."
+  },
+  "尚未识别可启动的本地站点": {
+    "zh-Hans": "尚未识别可启动的本地站点",
+    "en": "No Launchable Local Site Detected"
+  },
+  "展开悬浮大纲": {
+    "zh-Hans": "展开悬浮大纲",
+    "en": "Expand Floating Outline"
+  },
+  "已完成发布前检查，发布准备已打开。": {
+    "zh-Hans": "已完成发布前检查，发布准备已打开。",
+    "en": "Pre-publish checks are complete, and Publishing Readiness is now open."
+  },
+  "已扫描 %@ 个 Markdown 文件；远程 URL、代码块和行内代码不会被当作本地资源。": {
+    "zh-Hans": "已扫描 %@ 个 Markdown 文件；远程 URL、代码块和行内代码不会被当作本地资源。",
+    "en": "Scanned %@ Markdown files; remote URLs, code blocks, and inline code are not treated as local resources."
+  },
+  "建议已生成，确认后替换选中文本": {
+    "zh-Hans": "建议已生成，确认后替换选中文本",
+    "en": "Suggestion ready. Confirm to replace the selected text."
+  },
+  "开始瘦身": {
+    "zh-Hans": "开始压缩",
+    "en": "Start Compression"
+  },
+  "快捷键（可选，如 /callout）": {
+    "zh-Hans": "快捷键（可选，如 /callout）",
+    "en": "Shortcut (optional, e.g. /callout)"
+  },
+  "打开设置向导…": {
+    "zh-Hans": "打开设置向导…",
+    "en": "Open Setup Assistant…"
+  },
+  "打开资源管理大总管": {
+    "zh-Hans": "打开资源管理器",
+    "en": "Open Resource Manager"
+  },
+  "扫描全仓库 Markdown 引用，识别孤立图片/附件、失效本地相对路径和可瘦身图片。": {
+    "zh-Hans": "扫描全仓库 Markdown 引用，识别孤立图片/附件、失效本地相对路径和可压缩图片。",
+    "en": "Scan Markdown references across the repository to identify orphaned images and attachments, broken local relative paths, and compressible images."
+  },
+  "检查当前文章并打开发布准备": {
+    "zh-Hans": "检查当前文章并打开发布准备",
+    "en": "Check the Current Article and Open Publishing Readiness"
+  },
+  "正在生成行内建议…": {
+    "zh-Hans": "正在生成行内建议…",
+    "en": "Generating Inline Suggestion…"
+  },
+  "正式": {
+    "zh-Hans": "正式",
+    "en": "Formal"
+  },
+  "没有发现失效引用": {
+    "zh-Hans": "没有发现失效引用",
+    "en": "No Broken References Found"
+  },
+  "测试中…": {
+    "zh-Hans": "测试中…",
+    "en": "Testing…"
+  },
+  "浏览器打开": {
+    "zh-Hans": "在浏览器中打开",
+    "en": "Open in Browser"
+  },
+  "清理孤立资源（%lld）": {
+    "zh-Hans": "清理孤立资源（%lld）",
+    "en": "Clean Up Orphaned Resources (%lld)"
+  },
+  "清空 AI 模型": {
+    "zh-Hans": "清空 AI 模型",
+    "en": "Clear AI Model"
+  },
+  "点击卡片定位源码": {
+    "zh-Hans": "点击卡片定位源码",
+    "en": "Click a card to locate it in the source"
+  },
+  "站点片段快捷键": {
+    "zh-Hans": "站点片段快捷键",
+    "en": "Site Snippet Shortcuts"
+  },
+  "粘贴剪贴板地址": {
+    "zh-Hans": "粘贴剪贴板地址",
+    "en": "Paste URL from Clipboard"
+  },
+  "纠错": {
+    "zh-Hans": "纠错",
+    "en": "Fix Grammar"
+  },
+  "组件与片段": {
+    "zh-Hans": "组件与片段",
+    "en": "Components and Snippets"
+  },
+  "语义": {
+    "zh-Hans": "语义",
+    "en": "Semantic"
+  },
+  "资料库推荐暂时不可用": {
+    "zh-Hans": "资料库推荐暂时不可用",
+    "en": "Knowledge Recommendations Are Temporarily Unavailable"
+  },
+  "资料库（仅允许发送给远程 AI）": {
+    "zh-Hans": "资料库（仅限已允许发送给远程 AI 的资料）",
+    "en": "Knowledge Base (Only Items Allowed for Remote AI)"
+  },
+  "资源扫描摘要": {
+    "zh-Hans": "资源扫描摘要",
+    "en": "Resource Scan Summary"
+  },
+  "轻松": {
+    "zh-Hans": "轻松",
+    "en": "Casual"
+  },
+  "还有 %@ 个相关片段，可在资料库中查看全部结果。": {
+    "zh-Hans": "还有 %@ 个相关片段，可在资料库中查看全部结果。",
+    "en": "Additional related excerpts: %@. View all results in the knowledge base."
+  },
+  "还有 %lld 个相关片段，可在资料库中查看全部结果。": {
+    "zh-Hans": "还有 %lld 个相关片段，可在资料库中查看全部结果。",
+    "en": "Additional related excerpts: %lld. View all results in the knowledge base."
+  },
+  "远程 AI 发送当前未启用": {
+    "zh-Hans": "远程 AI 发送当前未启用",
+    "en": "Sending to Remote AI Is Currently Disabled"
+  },
+  "连接配置已就绪": {
+    "zh-Hans": "连接配置已就绪",
+    "en": "Connection Ready"
+  },
+  "选区工具": {
+    "zh-Hans": "选区工具",
+    "en": "Selection Tools"
+  },
+  "统一弹窗表面": {
+    "zh-Hans": "统一弹窗表面",
+    "en": "Unified Modal Surface"
+  },
+  "（空代码块）": {
+    "zh-Hans": "（空代码块）",
+    "en": "(Empty Code Block)"
+  }
+}

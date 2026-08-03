@@ -20,6 +20,16 @@ fail() {
 mkdir -p "$FIXTURE_ROOT/script" "$FIXTURE_ROOT/bin" "$FIXTURE_ROOT/.build/debug"
 cp "$CHECK" "$FIXTURE_ROOT/script/check_browser_extension_release.sh"
 
+cat >"$FIXTURE_ROOT/script/check_node_toolchain_security.py" <<'PY'
+#!/usr/bin/env python3
+import os
+
+with open(os.environ["COMMAND_LOG"], "a", encoding="utf-8") as handle:
+    handle.write("node-security\n")
+if os.environ.get("FAIL_STAGE") == "node-security":
+    raise SystemExit(1)
+PY
+
 cat >"$FIXTURE_ROOT/script/generate_browser_extension_protocol.py" <<'PY'
 #!/usr/bin/env python3
 import os
@@ -71,6 +81,14 @@ echo "safari-sync:$*" >>"$COMMAND_LOG"
 STUB
 chmod +x "$FIXTURE_ROOT/script/sync_safari_browser_extension.sh"
 
+cat >"$FIXTURE_ROOT/script/sync_firefox_browser_extension.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "firefox-sync:$*" >>"$COMMAND_LOG"
+[[ "${FAIL_STAGE:-}" != "firefox-sync" ]]
+STUB
+chmod +x "$FIXTURE_ROOT/script/sync_firefox_browser_extension.sh"
+
 cat >"$FIXTURE_ROOT/script/build_safari_web_extension.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -114,10 +132,16 @@ bash "$FIXTURE_ROOT/script/check_browser_extension_release.sh" >/dev/null \
 
 grep -Fq "node:test_browser_extension_compatibility.mjs:" "$LOG_PATH" \
   || fail "browser compatibility test was omitted"
+grep -Fq "node-security" "$LOG_PATH" \
+  || fail "Node dependency security check was omitted"
 grep -Fq "node:test_browser_extension_e2e.mjs:--browser=chromium" "$LOG_PATH" \
   || fail "real-browser extension E2E test was omitted"
+grep -Fq "node:test_browser_extension_e2e.mjs:--browser=firefox" "$LOG_PATH" \
+  || fail "Firefox real-browser extension E2E test was omitted"
 grep -Fq "protocol-generation:--check" "$LOG_PATH" \
   || fail "cross-language protocol generation check was omitted"
+grep -Fq "firefox-sync:--check" "$LOG_PATH" \
+  || fail "Firefox shared-resource synchronization check was omitted"
 grep -Fq "safari-sync:--check" "$LOG_PATH" \
   || fail "Safari shared-resource synchronization check was omitted"
 grep -Fq "safari-build:--check" "$LOG_PATH" \
@@ -134,6 +158,18 @@ grep -Fq "swift:test --disable-sandbox --filter KnowledgeBrowserImportOperationL
   || fail "browser import idempotency tests were omitted"
 grep -Fq "swift:test --disable-sandbox --filter KnowledgeLibraryServiceTests.testBrowserDuplicateResolutionSupportsVersionMoveCopyAndCancelWithoutSilentMutation" "$LOG_PATH" \
   || fail "browser duplicate resolution mutation tests were omitted"
+
+: >"$LOG_PATH"
+if COMMAND_LOG="$LOG_PATH" \
+  FIXTURE_SWIFT_BIN_DIR="$FIXTURE_ROOT/.build/debug" \
+  FAIL_STAGE="node-security" \
+  PATH="$FIXTURE_ROOT/bin:$PATH" \
+  bash "$FIXTURE_ROOT/script/check_browser_extension_release.sh" >/dev/null 2>&1; then
+  fail "Node dependency security failure was not propagated"
+fi
+if grep -Fq "protocol-generation" "$LOG_PATH"; then
+  fail "gate continued after the Node dependency security check failed"
+fi
 
 : >"$LOG_PATH"
 if COMMAND_LOG="$LOG_PATH" \

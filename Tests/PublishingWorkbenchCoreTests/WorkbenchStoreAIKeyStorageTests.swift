@@ -4,33 +4,60 @@ import XCTest
 
 @MainActor
 final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
-  func testInitializationRestoresExistingAIKeyAvailability() throws {
-    let persistenceURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("WorkbenchStoreAIKeyRestoreTests-\(UUID().uuidString)")
-      .appendingPathExtension("json")
-    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+  func testEmptyAIBaseURLIsUnconfiguredInsteadOfKeychainFailure() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      keychainTokenStore: KeychainTokenStore(
+        service: "PersonalSitePublisherMac.Tests.EmptyAIBaseURL.\(UUID().uuidString)",
+        accountPrefix: "empty-ai-base-url-tests",
+        inMemory: true
+      )
+    )
+
+    store.updateActiveProfile { profile in
+      profile.aiProviderConfig = AIProviderConfig(
+        preset: .custom,
+        baseURL: "",
+        model: "",
+        requiresAPIKey: true
+      )
+    }
+    store.refreshAIKeyAvailability()
+
+    XCTAssertEqual(store.aiTokenAvailability.accessState, .missing)
+    XCTAssertNil(store.aiTokenAvailability.accessFailureMessage)
+    XCTAssertFalse(store.saveAIAPIKey("sk-should-not-save"))
+    XCTAssertEqual(store.aiActionMessage, "API Base URL 尚未配置。")
+  }
+
+  func testInitializationRestoresExistingAIKeyAvailability() async throws {
+    let persistenceURL = try temporaryPersistenceURL()
     let tokenStore = KeychainTokenStore(
       service: "PersonalSitePublisherMac.Tests.AIKeyRestore.\(UUID().uuidString)",
       accountPrefix: "ai-key-restore-tests",
       inMemory: true
     )
-    try tokenStore.saveAIToken("persisted-token", for: .defaultProfile)
+    var profile = SiteProfile.defaultProfile
+    profile.aiProviderConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
+      requiresAPIKey: true
+    )
+    try tokenStore.saveAIToken("persisted-token", for: profile)
 
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
       keychainTokenStore: tokenStore
     )
+    store.updateActiveProfile { $0.aiProviderConfig = profile.aiProviderConfig }
+    store.refreshAIKeyAvailability()
 
     XCTAssertTrue(store.aiTokenAvailability.hasToken)
   }
 
   func testSaveAIAPIKeyStoresTokenAndUpdatesAvailability() throws {
-    let persistenceURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("WorkbenchStoreAIKeyStorageTests-\(UUID().uuidString)")
-      .appendingPathExtension("json")
-    defer {
-      try? FileManager.default.removeItem(at: persistenceURL)
-    }
+    let persistenceURL = try temporaryPersistenceURL()
     let tokenStore = KeychainTokenStore(
       service: "PersonalSitePublisherMac.Tests.AIKey.\(UUID().uuidString)",
       accountPrefix: "ai-key-tests",
@@ -41,6 +68,14 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
       keychainTokenStore: tokenStore
     )
 
+    store.updateActiveProfile { profile in
+      profile.aiProviderConfig = AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        requiresAPIKey: true
+      )
+    }
     store.saveAIAPIKey("  sk-test-token  ")
 
     XCTAssertEqual(store.aiActionMessage, "AI API Key 已保存到 Keychain。")
@@ -49,12 +84,7 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
   }
 
   func testDeleteAIAPIKeyClearsStoredTokenAndAvailability() throws {
-    let persistenceURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("WorkbenchStoreAIKeyDeleteTests-\(UUID().uuidString)")
-      .appendingPathExtension("json")
-    defer {
-      try? FileManager.default.removeItem(at: persistenceURL)
-    }
+    let persistenceURL = try temporaryPersistenceURL()
     let tokenStore = KeychainTokenStore(
       service: "PersonalSitePublisherMac.Tests.AIKey.\(UUID().uuidString)",
       accountPrefix: "ai-key-tests",
@@ -64,6 +94,14 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
       keychainTokenStore: tokenStore
     )
+    store.updateActiveProfile { profile in
+      profile.aiProviderConfig = AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        requiresAPIKey: true
+      )
+    }
     store.saveAIAPIKey("sk-test-token")
 
     store.deleteAIAPIKey()
@@ -75,10 +113,7 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
   }
 
   func testChangingAIEndpointRequiresTokenToBeSavedAgain() throws {
-    let persistenceURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("WorkbenchStoreAIOriginTests-\(UUID().uuidString)")
-      .appendingPathExtension("json")
-    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let persistenceURL = try temporaryPersistenceURL()
     let tokenStore = KeychainTokenStore(
       service: "PersonalSitePublisherMac.Tests.AIOrigin.\(UUID().uuidString)",
       accountPrefix: "ai-origin-tests",
@@ -88,6 +123,14 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
       keychainTokenStore: tokenStore
     )
+    store.updateActiveProfile { profile in
+      profile.aiProviderConfig = AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        requiresAPIKey: true
+      )
+    }
     store.saveAIAPIKey("deepseek-token")
     XCTAssertTrue(store.aiTokenAvailability.hasToken)
 
@@ -101,10 +144,7 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
   }
 
   func testSwitchingProfilesRefreshesAIKeyAvailabilityAutomatically() throws {
-    let persistenceURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("WorkbenchStoreAIKeyProfileSwitchTests-\(UUID().uuidString)")
-      .appendingPathExtension("json")
-    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let persistenceURL = try temporaryPersistenceURL()
     let tokenStore = KeychainTokenStore(
       service: "PersonalSitePublisherMac.Tests.AIKeyProfileSwitch.\(UUID().uuidString)",
       accountPrefix: "ai-key-profile-switch-tests",
@@ -115,6 +155,14 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
       keychainTokenStore: tokenStore
     )
     let originalProfileID = store.activeProfileID
+    store.updateActiveProfile { profile in
+      profile.aiProviderConfig = AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        requiresAPIKey: true
+      )
+    }
     store.saveAIAPIKey("original-profile-token")
     XCTAssertTrue(store.aiTokenAvailability.hasToken)
 
@@ -129,10 +177,7 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
   }
 
   func testSuccessfulConnectionSynchronizesAvailabilityAndChatStatus() async throws {
-    let persistenceURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("WorkbenchStoreAIKeyConnectionSyncTests-\(UUID().uuidString)")
-      .appendingPathExtension("json")
-    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let persistenceURL = try temporaryPersistenceURL()
     let tokenStore = KeychainTokenStore(
       service: "PersonalSitePublisherMac.Tests.AIKeyConnectionSync.\(UUID().uuidString)",
       accountPrefix: "ai-key-connection-sync-tests",
@@ -154,6 +199,14 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
         client: AIChatCompletionClient(transport: transport)
       )
     )
+    store.updateActiveProfile { profile in
+      profile.aiProviderConfig = AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        requiresAPIKey: true
+      )
+    }
     try tokenStore.saveAIToken("externally-restored-token", for: store.activeProfile)
     store.aiStore.grantAIDataSharingConsent()
     store.setAIChatMessage("AI 讨论失败：请先在 Settings 的 AI 页保存 API Key。")
@@ -164,5 +217,12 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
     XCTAssertNotNil(report)
     XCTAssertTrue(store.aiTokenAvailability.hasToken)
     XCTAssertEqual(store.aiChatMessage, "AI 连接正常，可以发送消息。")
+  }
+
+  private func temporaryPersistenceURL() throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return directory.appendingPathComponent("workbench.json")
   }
 }

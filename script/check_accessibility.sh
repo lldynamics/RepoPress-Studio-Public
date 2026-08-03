@@ -78,8 +78,28 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
-  "WorkspaceNavigationPresentation.commandMenuAdvancedItems" \
-  "every advertised advanced workspace shortcut must remain available from the command menu"
+  "WorkspaceNavigationPresentation.secondaryEntryItems" \
+  "the Go menu must expose every secondary workspace without an extra advanced submenu"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  "store.selectSection(.maintenance)" \
+  "site maintenance must remain directly reachable from the Go menu"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  "store.selectSection(.releaseHistory)" \
+  "release history must remain directly reachable from the Publish menu"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  "CommandGroup(replacing: .newItem)" \
+  "the File menu must expose the app's new-article command"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  "CommandGroup(after: .pasteboard)" \
+  "the Edit menu must contain the app's find and Markdown commands"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkbenchVisualStyle.swift" \
@@ -121,8 +141,8 @@ fi
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
-  "isCommandPalettePresented = false" \
-  "quick hide must close the command palette"
+  "modalPresentation.dismiss()" \
+  "quick hide must close all transient presentations"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WritingDraftListComponents.swift" \
@@ -191,7 +211,7 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
-  ".accessibilityIdentifier(\"privacy-lock-overlay\")" \
+  ".accessibilityIdentifier(\"quick-hide-overlay\")" \
   "quick-hide overlay must expose an accessibility identifier"
 
 require_literal \
@@ -216,7 +236,7 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
-  "PrivacyLockOverlay(store: store)" \
+  "QuickHideOverlay(store: store)" \
   "settings scene must show the quick-hide overlay"
 
 require_literal \
@@ -271,7 +291,7 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
-  "!trimmedInput.isEmpty && !isComposerInputUnavailable && !isAIKeyMissing" \
+  "&& !isAIKeyMissing" \
   "a missing AI key may block sending but must not block composing text"
 
 require_literal \
@@ -363,14 +383,14 @@ require_literal \
   "each repository image reference must expose a unique open-article accessibility identifier"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
-  ".accessibilityIdentifier(\"image-issue-open-article-\(draft.draftID.uuidString)\")" \
-  "each problem article must expose a unique open-article accessibility identifier"
+  "Sources/PersonalSitePublisherMac/Views/ContentHealthDetailView.swift" \
+  "content-health-select-article-\(row.draftID.uuidString)" \
+  "each problem article in Checks must expose a unique selection accessibility identifier"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
-  ".accessibilityIdentifier(\"image-issue-locate-\(issue.id.uuidString)\")" \
-  "each image issue must expose a unique locate-in-article accessibility identifier"
+  "Sources/PersonalSitePublisherMac/Views/ContentHealthDetailView.swift" \
+  "content-health-open-article-\(selectedRow.draftID.uuidString)" \
+  "each selected problem article in Checks must expose a unique open-article accessibility identifier"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/PublishDrawerView.swift" \
@@ -684,12 +704,42 @@ require_literal \
   '.accessibilityIdentifier("workspace-sidebar-\(section.rawValue)")' \
   "workspace task navigation buttons must expose stable accessibility identifiers"
 
-for workspace_section in writing library sync images contentHealth; do
+for workspace_section in writing library rss sync contentHealth; do
   require_literal \
     "Sources/PersonalSitePublisherMac/Views/WorkspaceRailView.swift" \
     "sectionButton(.$workspace_section" \
     "workspace task navigation must keep the $workspace_section entry"
 done
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RSSReaderView.swift" \
+  '.accessibilityIdentifier("rss-reader-sidebar")' \
+  "RSS subscriptions must remain inside the main workspace sidebar"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RSSReaderView.swift" \
+  '.accessibilityIdentifier("rss-reader-workspace")' \
+  "RSS articles must remain inside the main workspace content area"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
+  'openWindow(id: "rss-reader")' \
+  "RSS must not reopen as an auxiliary window"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
+  'Window("RSS 阅读器"' \
+  "RSS must not declare a separate scene"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceRailView.swift" \
+  "sectionButton(.images" \
+  "image resources must remain contextual to the site instead of returning to primary navigation"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift" \
+  '.accessibilityIdentifier("repository-action-open-images")' \
+  "site workspace must expose the contextual image resources entry"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceContextSidebarView.swift" \
@@ -788,6 +838,21 @@ require_absent_literal \
   "repositoryStageNavigation" \
   "repository navigation must not return to the top of the center content"
 
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceContextNavigation.swift" \
+  "case checks" \
+  "repository navigation must not restore the unreachable duplicate checks stage"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceView.swift" \
+  "GitConflictResolverSheet(" \
+  "repository workspace must not expose a conflict resolver backed by empty data"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspacePublishingSections.swift" \
+  "repositoryPublishPreviewSection" \
+  "repository workspace must leave publish preview and final confirmation to PublishDrawer"
+
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift" \
   "onlinePublishCenterSection" \
@@ -827,6 +892,7 @@ for repository_primary_identifier in \
   repository-action-scan \
   repository-action-import \
   repository-action-migrate \
+  repository-action-open-images \
   repository-action-open-publish \
   repository-section-summary \
   repository-section-information; do
@@ -1008,6 +1074,36 @@ require_literal \
   "the single editor AI entry must expose its running state"
 
 require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
+  "label.labelStyle(.titleAndIcon)" \
+  "workspace toolbar actions must show text when the layout has room"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
+  "@Environment(\\.isFocused) private var isFocused" \
+  "workspace toolbar actions must expose a visible keyboard focus state"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkbenchVisualStyle.swift" \
+  "struct WorkbenchFocusRingButtonStyle: ButtonStyle" \
+  "custom/plain buttons must retain a visible keyboard focus ring"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "editorActionGroup(showsTitle: true)" \
+  "editor actions must prefer readable text labels before the compact icon fallback"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  ".buttonStyle(WorkbenchFocusRingButtonStyle())" \
+  "formatting toolbar buttons must expose a visible keyboard focus state"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MarkdownEditorComfortControl.swift" \
+  "Label(\"编辑显示与辅助功能\", systemImage: \"textformat.size.smaller\")" \
+  "editor display accessibility control must expose text when space permits"
+
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
   ".accessibilityAddTraits(editorDisplayMode == mode ? .isSelected : [])" \
   "editor display modes must expose selected accessibility traits"
@@ -1091,4 +1187,4 @@ prominent_style_gaps="$(
 )"
 [[ -z "$prominent_style_gaps" ]] || fail "prominent buttons bypassing the shared high-contrast style: $prominent_style_gaps"
 
-echo "accessibility gate: labels, values, hints, text editors, semantic knowledge headings, VoiceOver status announcements, selection traits, keyboard shortcuts, command routing, prominent-action contrast, first-run setup, status light, settings, editor, site starter, diff review, and publish recovery verified"
+echo "accessibility gate: labels, values, hints, text editors, semantic knowledge headings, VoiceOver status announcements, selection traits, keyboard shortcuts, command routing, visible focus states, responsive text labels, prominent-action contrast, first-run setup, status light, settings, editor, site starter, diff review, and publish recovery verified"

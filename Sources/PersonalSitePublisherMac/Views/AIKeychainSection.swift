@@ -11,6 +11,7 @@ struct AIKeychainSection: View {
   let connectionReport: AIConnectionTestReport?
   let isConnectionReportStale: Bool
   let isAIActionRunning: Bool
+  let isConnectionTestRunning: Bool
   let actionMessage: String?
   let onSaveAPIKey: () -> Void
   let onDeleteAPIKey: () -> Void
@@ -41,7 +42,11 @@ struct AIKeychainSection: View {
             .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
-        .help(isKeyRevealed ? "隐藏 API Key" : "显示 API Key 明文")
+        .help(
+          isKeyRevealed
+            ? String(localized: "隐藏 API Key")
+            : String(localized: "显示 API Key 明文")
+        )
       }
       .accessibilityLabel("AI API Key")
       .accessibilityHint("输入后可保存到钥匙串")
@@ -69,19 +74,23 @@ struct AIKeychainSection: View {
         Button {
           onTestConnection()
         } label: {
-          Label("测试连接", systemImage: "network")
+          HStack(spacing: 5) {
+            Image(systemName: "network")
+              .workbenchSyncSymbolEffect(trigger: isConnectionTestRunning ? 1 : 0)
+            Text("测试连接")
+          }
         }
         .buttonStyle(.bordered)
-        .disabled(isAIActionRunning)
+        .disabled(isAIActionRunning || isConnectionTestRunning)
         .accessibilityLabel("测试 AI 连接")
       }
 
       HStack {
         Label(
           tokenStatusTitle,
-          systemImage: tokenAvailability.hasToken ? "checkmark.seal" : "key"
+          systemImage: tokenStatusSystemImage
         )
-        .foregroundStyle(tokenAvailability.hasToken ? WorkbenchTheme.success : .secondary)
+        .foregroundStyle(tokenStatusColor)
 
         Spacer()
 
@@ -103,6 +112,13 @@ struct AIKeychainSection: View {
         Text(message)
           .font(.caption)
           .foregroundStyle(.secondary)
+      }
+
+      if let accessFailureMessage = tokenAvailability.accessFailureMessage {
+        Text("操作失败：\(accessFailureMessage)")
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.warning)
+          .textSelection(.enabled)
       }
 
       HStack(spacing: 6) {
@@ -134,6 +150,35 @@ struct AIKeychainSection: View {
   }
 
   private var tokenStatusTitle: LocalizedStringKey {
-    tokenAvailability.hasToken ? "已保存 API Key" : "未保存 API Key"
+    switch tokenAvailability.accessState {
+    case .available:
+      return "已保存 API Key"
+    case .missing:
+      return "未保存 API Key"
+    case .accessFailed:
+      return "Keychain 读取失败"
+    }
+  }
+
+  private var tokenStatusSystemImage: String {
+    switch tokenAvailability.accessState {
+    case .available:
+      return "checkmark.seal"
+    case .missing:
+      return "key"
+    case .accessFailed:
+      return "exclamationmark.triangle"
+    }
+  }
+
+  private var tokenStatusColor: Color {
+    switch tokenAvailability.accessState {
+    case .available:
+      return WorkbenchTheme.success
+    case .missing:
+      return .secondary
+    case .accessFailed:
+      return WorkbenchTheme.warning
+    }
   }
 }

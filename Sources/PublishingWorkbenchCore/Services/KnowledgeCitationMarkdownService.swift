@@ -13,18 +13,37 @@ public enum KnowledgeCitationMarkdownService {
       }
       result.append(citation)
     }
-    let definitions = unique.enumerated().map { index, citation in
-      let key = footnoteKey(for: citation, fallbackIndex: index + 1)
-      let authors = citation.authors.joined(separator: "、")
-      let location = citation.locator?.trimmedForPublishing.nilIfEmpty
-      let metadata = [authors.nilIfEmpty, location].compactMap { $0 }.joined(separator: "，")
-      let source = citation.sourceURL.map { "[来源](\($0.absoluteString))" }
-      let suffix = [metadata.nilIfEmpty, source].compactMap { $0 }.joined(separator: "；")
-      return "[^\(key)]: \(citation.title)\(suffix.isEmpty ? "" : "（\(suffix)）")。\(citation.excerpt.trimmedForPublishing)"
+    let newCitations = unique.filter { citation in
+      let key = footnoteKey(for: citation, fallbackIndex: 1)
+      return !content.contains("[^\(key)]:")
+    }
+    guard !newCitations.isEmpty else { return content }
+    let definitions = newCitations.enumerated().map { index, citation in
+      footnoteDefinition(for: citation, fallbackIndex: index + 1)
     }
     return [content, "## 资料来源\n\n" + definitions.joined(separator: "\n")]
       .filter { !$0.isEmpty }
       .joined(separator: "\n\n")
+  }
+
+  public static func footnoteReference(
+    for citation: KnowledgeCitation,
+    fallbackIndex: Int = 1
+  ) -> String {
+    "[^\(footnoteKey(for: citation, fallbackIndex: fallbackIndex))]"
+  }
+
+  public static func footnoteDefinition(
+    for citation: KnowledgeCitation,
+    fallbackIndex: Int = 1
+  ) -> String {
+    let key = footnoteKey(for: citation, fallbackIndex: fallbackIndex)
+    let authors = citation.authors.joined(separator: "、")
+    let location = citation.locator?.trimmedForPublishing.nilIfEmpty
+    let metadata = [authors.nilIfEmpty, location].compactMap { $0 }.joined(separator: "，")
+    let source = citation.sourceURL.map { "[来源](\($0.absoluteString))" }
+    let suffix = [metadata.nilIfEmpty, source].compactMap { $0 }.joined(separator: "；")
+    return "[^\(key)]: \(citation.title)\(suffix.isEmpty ? "" : "（\(suffix)）")。\(citation.excerpt.trimmedForPublishing)"
   }
 
   public static func footnoteKey(for citation: KnowledgeCitation, fallbackIndex: Int) -> String {

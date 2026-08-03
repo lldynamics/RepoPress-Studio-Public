@@ -8,13 +8,13 @@ struct RepositoryWorkspaceView: View {
   @ObservedObject var sourceSession: RepositoryHTMLSourceSession
   @Environment(\.openSettings) var openSettings
   @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
+  @Environment(\.localSitePreviewCommandAction) var localSitePreviewCommandAction
   @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
   @State var isContentMigrationPresented = false
   @State var isRepositoryCreationConfirmationPresented = false
   @State var createsPrivateRepository = true
   @State var repositoryCreationFailureMessage: String?
   @State var pendingRemoteArticleImportFiles: [RepositoryChangedFile] = []
-  @State var isConflictResolverPresented = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -31,12 +31,6 @@ struct RepositoryWorkspaceView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("repository-workspace")
       }
-    }
-    .sheet(isPresented: $isConflictResolverPresented) {
-      GitConflictResolverSheet(
-        conflicts: [],
-        onResolveConflict: { _, _ in }
-      )
     }
     .sheet(isPresented: $isContentMigrationPresented) {
       ContentMigrationAssistantView(store: store)
@@ -94,10 +88,8 @@ struct RepositoryWorkspaceView: View {
     switch stage {
     case .changes:
       return "文件变更"
-    case .checks:
-      return "仓库工具"
     case .overview, .source, .history:
-      return "仓库与发布"
+      return "站点"
     }
   }
 
@@ -105,10 +97,8 @@ struct RepositoryWorkspaceView: View {
     switch stage {
     case .changes:
       return "先处理网站更新，再审阅这台 Mac 上的变化，确认后进入统一发布流程。"
-    case .checks:
-      return "自动检查、本地预览、同步建议和路径规则始终可见。"
     case .overview, .source, .history:
-      return "先确认状态和问题，再检查文件变化，最后从统一发布流程执行。"
+      return "管理仓库、图片资源和发布记录；最终写入与发布统一在发布流程中确认。"
     }
   }
 

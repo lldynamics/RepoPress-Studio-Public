@@ -130,6 +130,81 @@ extension MacMarkdownComposerView {
     return true
   }
 
+  /// Routes programmatic body-only changes through the live `NSTextView`.
+  /// AppKit then registers the edit in the same undo stack as keyboard input.
+  @discardableResult
+  func requestUndoableBodyUpdate(
+    _ updated: ArticleDraft,
+    selectionOverride: NSRange? = nil
+  ) -> Bool {
+    guard updated.id == draft.id else { return false }
+    guard let edit = MarkdownTextMutationService.edit(
+      from: editorBody,
+      to: updated.bodyMarkdown,
+      selectedRange: selectionOverride ?? selectedRange
+    ) else {
+      return updated.bodyMarkdown == editorBody
+    }
+    if editorState.editorDisplayMode == .preview {
+      store.setEditorDisplayMode(.edit)
+    }
+    editorEditRequest = MarkdownTextEditRequest(
+      expectedText: editorBody,
+      edit: edit
+    )
+    return true
+  }
+
+  @discardableResult
+  func insertKnowledgeMarkdown(
+    _ markdown: String,
+    at range: NSRange,
+    citation: KnowledgeCitation? = nil
+  ) -> Bool {
+    guard requireBodyEditingContext() else { return false }
+    let normalized = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
+    let source = editorBody as NSString
+    guard !normalized.isEmpty,
+          range.location >= 0,
+          range.length >= 0,
+          range.location <= source.length,
+          NSMaxRange(range) <= source.length else {
+      return false
+    }
+
+    let before = source.substring(with: NSRange(location: 0, length: range.location))
+    let afterStart = NSMaxRange(range)
+    let after = source.substring(
+      with: NSRange(location: afterStart, length: source.length - afterStart)
+    )
+    let leadingSeparator = before.isEmpty || before.hasSuffix("\n") ? "" : "\n\n"
+    let trailingSeparator = after.isEmpty || after.hasPrefix("\n") ? "" : "\n\n"
+    let replacement = leadingSeparator + normalized + trailingSeparator
+    var updated = draft
+    updated.bodyMarkdown = source.replacingCharacters(in: range, with: replacement)
+    let insertionEndRange = NSRange(
+      location: range.location
+        + (leadingSeparator as NSString).length
+        + (normalized as NSString).length,
+      length: 0
+    )
+    guard requestUndoableBodyUpdate(updated, selectionOverride: range) else { return false }
+    selectedRange = insertionEndRange
+    if let citation {
+      store.knowledge.recordBacklinks(
+        citations: [citation],
+        target: KnowledgeBacklinkTarget(
+          kind: .articleDraft,
+          id: draft.id.uuidString,
+          title: draft.title.nilIfEmpty ?? "当前文章",
+          location: "正文"
+        )
+      )
+    }
+    selectionActionMessage = "已从资料库插入引用块。"
+    return true
+  }
+
   func applyEditorFocusRequest() {
     guard let request = editorState.editorFocusRequest, request.draftID == draft.id else {
       return
@@ -185,12 +260,14 @@ extension MacMarkdownComposerView {
   func focusMarkdownText(
     for requestID: UUID,
     selectedRange: NSRange,
-    message: String
+    message: String,
+    isAnimated: Bool = false
   ) {
     self.selectedRange = selectedRange
     markdownTextFocusRequest = MarkdownTextFocusRequest(
       id: requestID,
-      selectedRange: selectedRange
+      selectedRange: selectedRange,
+      isAnimated: isAnimated
     )
     selectionActionMessage = message
   }

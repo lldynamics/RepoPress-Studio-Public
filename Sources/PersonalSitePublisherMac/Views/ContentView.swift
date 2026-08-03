@@ -19,7 +19,7 @@ private enum ContentViewBodyPerformanceProbe {
 }
 #endif
 
-private struct WorkspaceResponsiveLayoutSnapshot: Equatable {
+struct WorkspaceResponsiveLayoutSnapshot: Equatable {
   let width: CGFloat
   let editorDisplayMode: EditorDisplayMode
 
@@ -27,13 +27,56 @@ private struct WorkspaceResponsiveLayoutSnapshot: Equatable {
     width: WorkbenchLayoutMode.expandedWorkspaceWidth,
     editorDisplayMode: .edit
   )
+
+  static func == (
+    lhs: WorkspaceResponsiveLayoutSnapshot,
+    rhs: WorkspaceResponsiveLayoutSnapshot
+  ) -> Bool {
+    lhs.layoutIdentity == rhs.layoutIdentity
+  }
+
+  private var layoutIdentity: LayoutIdentity {
+    LayoutIdentity(
+      editorDisplayMode: editorDisplayMode,
+      isCompact: WorkbenchLayoutMode.isCompact(width: width),
+      allowsStandardInspector: WorkbenchLayoutMode.allowsInspector(width: width),
+      allowsEditorInspector: WorkbenchLayoutMode.allowsInspector(
+        width: width,
+        editorDisplayMode: editorDisplayMode
+      ),
+      allowsHTMLSourceInspector:
+        width >= WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth,
+      canOverrideSplitInspector:
+        editorDisplayMode == .split
+          && width >= WorkbenchLayoutMode.minimumInspectorWorkspaceWidth
+          && !WorkbenchLayoutMode.allowsInspector(
+            width: width,
+            editorDisplayMode: editorDisplayMode
+          ),
+      prefersFocusedWriting: WorkbenchLayoutMode.prefersFocusedWriting(
+        width: width,
+        editorDisplayMode: editorDisplayMode
+      )
+    )
+  }
+
+  private struct LayoutIdentity: Equatable {
+    let editorDisplayMode: EditorDisplayMode
+    let isCompact: Bool
+    let allowsStandardInspector: Bool
+    let allowsEditorInspector: Bool
+    let allowsHTMLSourceInspector: Bool
+    let canOverrideSplitInspector: Bool
+    let prefersFocusedWriting: Bool
+  }
 }
 
 struct ContentView: View {
   let store: WorkbenchStore
+  let rssStore: RSSReaderStore
   @ObservedObject private var shellState: WorkbenchShellFeatureFacade
   @ObservedObject private var presentationState: WorkbenchContentPresentationFeatureFacade
-  @Environment(\.openSettings) private var openSettings
+  @FocusedValue(\.markdownEditorCommandActions) private var focusedMarkdownEditorCommands
   @Environment(\.scenePhase) private var scenePhase
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
@@ -43,31 +86,36 @@ struct ContentView: View {
   @SceneStorage("workspace.revealInspectorInNarrowSplit") private var revealsInspectorInNarrowSplit = false
   @State private var didApplyInitialWorkbenchPreferences = false
   @State private var didApplyScreenshotDemoSurface = false
-  @State private var didOpenAIAssistantByDefault = false
   @State private var isRefreshingExternallyCreatedDrafts = false
-  @State private var isPublishDrawerPresented = false
-  @State private var isFirstRunSetupPresented = false
-  @State private var isCommandPalettePresented = false
-  @State private var isDraftFullTextSearchPresented = false
+  @State private var isDraftRecoveryPresented = false
+  @State private var modalPresentation = WorkspaceModalPresentationState()
+  @State private var commandPaletteEditorCommands: MarkdownEditorCommandActions?
   @State private var responsiveLayout = WorkspaceResponsiveLayoutSnapshot.initial
   @State private var contentHealthFilter: ContentHealthContextFilter = .overview
   @State private var imageWorkbenchContextStage: ImageWorkbenchContextStage = .overview
   @State private var repositoryContextStage: RepositoryContextStage = .overview
   @StateObject private var repositorySourceSession: RepositoryHTMLSourceSession
+  @StateObject private var rssPresentation: RSSReaderPresentationState
   private let repositoryAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
-  init(store: WorkbenchStore) {
+  init(store: WorkbenchStore, rssStore: RSSReaderStore) {
     self.store = store
+    self.rssStore = rssStore
     _shellState = ObservedObject(wrappedValue: store.shell)
     _presentationState = ObservedObject(wrappedValue: store.contentPresentation)
     _repositorySourceSession = StateObject(wrappedValue: RepositoryHTMLSourceSession())
+    _rssPresentation = StateObject(wrappedValue: RSSReaderPresentationState())
   }
 
   var body: some View {
+    contentView
+  }
+
+  private var contentView: some View {
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
     let _ = ContentViewBodyPerformanceProbe.record()
 #endif
-    GeometryReader { geometry in
+    return GeometryReader { geometry in
       let compactLayout = WorkbenchLayoutMode.isCompact(width: geometry.size.width)
       let responsiveLayoutSnapshot = WorkspaceResponsiveLayoutSnapshot(
         width: geometry.size.width,
@@ -86,20 +134,23 @@ struct ContentView: View {
           imageWorkbenchContextStage: $imageWorkbenchContextStage,
           repositoryContextStage: $repositoryContextStage,
           repositorySourceSession: repositorySourceSession,
-          onSelectSection: { store.selectSection($0) }
+          rssStore: rssStore,
+          rssPresentation: rssPresentation,
+          onSelectSection: selectWorkspaceSection
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .inspector(isPresented: inspectorPresentation) {
           MetadataColumn(
             store: store,
+            rssStore: rssStore,
             repositoryContextStage: repositoryContextStage,
             repositorySourceSession: repositorySourceSession,
             prioritizesChecks: compactLayout
           )
             .inspectorColumnWidth(min: 320, ideal: 360, max: 460)
         }
-        .disabled(shellState.isPrivacyLocked)
-        .accessibilityHidden(shellState.isPrivacyLocked)
+        .disabled(shellState.isQuickHideActive)
+        .accessibilityHidden(shellState.isQuickHideActive)
 
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
         if usesInlineAIScreenshotInspector {
@@ -111,8 +162,8 @@ struct ContentView: View {
         }
 #endif
 
-        if shellState.isPrivacyLocked {
-          PrivacyLockOverlay(store: store)
+        if shellState.isQuickHideActive {
+          QuickHideOverlay(store: store)
             .zIndex(2)
         }
       }
@@ -126,12 +177,23 @@ struct ContentView: View {
       }
     }
     .background(WorkbenchAccessibilityStatusAnnouncer(store: store))
+    .safeAreaInset(edge: .top, spacing: 0) {
+      if store.isSafeMode {
+        WorkbenchSafeModeBanner()
+      }
+    }
     .environment(
       \.publishDrawerCommandAction,
       PublishDrawerCommandAction { message in
         openPublishDrawer(message: message)
       }
     )
+    .environment(
+      \.localSitePreviewCommandAction,
+      LocalSitePreviewCommandAction {
+        openLocalSitePreview()
+      }
+    )
     .focusedSceneValue(
       \.publishDrawerCommandAction,
       PublishDrawerCommandAction { message in
@@ -139,15 +201,38 @@ struct ContentView: View {
       }
     )
     .focusedSceneValue(
+      \.localSitePreviewCommandAction,
+      LocalSitePreviewCommandAction {
+        openLocalSitePreview()
+      }
+    )
+    .focusedSceneValue(
       \.workspaceCommandPaletteAction,
       WorkspaceCommandPaletteAction {
         guard shellState.canUseProtectedWorkbench else { return }
-        isCommandPalettePresented = true
+        commandPaletteEditorCommands = focusedMarkdownEditorCommands
+        modalPresentation.present(.commandPalette)
+      }
+    )
+    .focusedSceneValue(
+      \.workspaceFirstRunSetupCommandAction,
+      WorkspaceFirstRunSetupCommandAction {
+        guard shellState.canUseProtectedWorkbench else { return }
+        modalPresentation.present(.firstRunSetup)
       }
     )
     .focusedSceneValue(
       \.draftFullTextSearchAction,
       DraftFullTextSearchAction(open: openDraftFullTextSearch)
+    )
+    .focusedSceneValue(
+      \.workspaceFocusModeCommandAction,
+      WorkspaceFocusModeCommandAction(
+        isActive: effectiveFocusMode,
+        canToggle: shellState.canUseProtectedWorkbench
+          && shellState.selectedSection == .writing,
+        toggle: toggleFocusMode
+      )
     )
     .toolbar {
       ToolbarItemGroup(placement: .navigation) {
@@ -156,7 +241,7 @@ struct ContentView: View {
           isCompact: isCompactLayout
         )
         .disabled(!shellState.canUseProtectedWorkbench)
-        .accessibilityHidden(shellState.isPrivacyLocked)
+        .accessibilityHidden(shellState.isQuickHideActive)
 
         PublishingStatusToolbarControl(
           store: store,
@@ -165,24 +250,38 @@ struct ContentView: View {
           openPublishFlow: { openPublishDrawer(message: nil) },
           openRepositoryOverview: {
             repositoryContextStage = .overview
-            store.selectSection(.sync)
+            selectWorkspaceSection(.sync)
           },
           openContentHealthOverview: {
             contentHealthFilter = .overview
-            store.selectSection(.contentHealth)
+            selectWorkspaceSection(.contentHealth)
           },
           openReleaseHistory: {
             repositoryContextStage = .history
-            store.selectSection(.sync)
+            selectWorkspaceSection(.sync)
           }
         )
 
+        WorkspaceTaskCenterToolbarButton(
+          store: store,
+          isCompact: isCompactLayout,
+          action: { modalPresentation.present(.taskCenter) }
+        )
+        .disabled(!shellState.canUseProtectedWorkbench || shellState.isQuickHideActive)
+      }
+
+      ToolbarItem(placement: .principal) {
         OmniCommandSearchBar(isCompact: isCompactLayout) {
           guard shellState.canUseProtectedWorkbench else { return }
-          isCommandPalettePresented = true
+          commandPaletteEditorCommands = focusedMarkdownEditorCommands
+          modalPresentation.present(.commandPalette)
         }
+      }
 
-        workspaceToolbarActionCluster
+      ToolbarItem(placement: .primaryAction) {
+        if supportsInspector {
+          inspectorToolbarButton
+        }
       }
     }
     .background(
@@ -201,32 +300,29 @@ struct ContentView: View {
         lastErrorMessage: { repositorySourceSession.errorMessage }
       )
     )
-    .onAppear {
-      applyWorkbenchPreferences()
-      RepositoryHTMLSourceSessionRegistry.shared.register(
-        session: repositorySourceSession,
-        profileProvider: { store.activeProfile }
+    .onAppear(perform: handleContentViewAppear)
+    .onChange(of: autoRunPreflight) { _, newValue in
+      store.setAutomaticallyRefreshPreflightOnEdit(
+        store.isSafeMode ? false : newValue
       )
     }
-    .onChange(of: autoRunPreflight) { _, newValue in
-      store.setAutomaticallyRefreshPreflightOnEdit(newValue)
-    }
-    .onChange(of: shellState.isPrivacyLocked) { _, isLocked in
-      if isLocked {
-        isPublishDrawerPresented = false
-        isFirstRunSetupPresented = false
-        isCommandPalettePresented = false
-        isDraftFullTextSearchPresented = false
-      } else {
+    .onChange(of: shellState.isQuickHideActive) { _, isActive in
+      if isActive {
+        modalPresentation.dismiss()
+      } else if !store.isSafeMode {
         refreshExternallyCreatedDrafts()
       }
     }
     .onChange(of: scenePhase) { _, newPhase in
-      guard newPhase == .active else { return }
+      guard newPhase == .active, !store.isSafeMode else { return }
       refreshExternallyCreatedDrafts()
+      refreshStaleRSSIfNeeded()
     }
     .onChange(of: shellState.selectedSection) { _, section in
       normalizeWorkspacePresentation(for: section)
+      if section == .rss {
+        refreshStaleRSSIfNeeded()
+      }
     }
     .onChange(of: repositoryContextStage) { _, stage in
       if stage == .history {
@@ -240,53 +336,132 @@ struct ContentView: View {
     }
     .onReceive(repositoryAutoSyncTimer, perform: handleRepositoryAutoSyncTick)
     .alert(
-      "工作台数据恢复",
-      isPresented: Binding(
-        get: { shellState.persistenceRecoveryMessage != nil },
-        set: {
-          if !$0 && !shellState.isPersistenceRecoveryWriteProtected {
-            store.dismissPersistenceRecoveryMessage()
-          }
-        }
-      )
-    ) {
-      if shellState.isPersistenceRecoveryWriteProtected {
-        Button(String(localized: "恢复其他备份…")) {
-          guard let sourceURL = WorkbenchRecoverySelectionPanel.chooseSnapshot() else { return }
-          if store.installPersistenceRecoverySnapshot(from: sourceURL) {
-            NSApp.terminate(nil)
-          }
-        }
-        Button(String(localized: "导出故障文件…")) {
-          guard let directoryURL = WorkbenchRecoverySelectionPanel.chooseExportDirectory() else { return }
-          _ = store.exportPersistenceRecoveryFiles(to: directoryURL)
-        }
-        Button(String(localized: "重置为空白工作台"), role: .destructive) {
-          _ = store.resetPersistenceAfterUnrecoverableSnapshot()
-        }
-      } else {
-        Button("继续") {
+      String(localized: "工作台数据恢复"),
+      isPresented: persistenceRecoveryAlertPresented,
+      actions: persistenceRecoveryAlertActions,
+      message: persistenceRecoveryAlertMessage
+    )
+    .sheet(isPresented: $isDraftRecoveryPresented, content: draftRecoveryPanel)
+    .sheet(item: modalPresentationBinding, content: modalContent)
+  }
+
+  private func handleContentViewAppear() {
+    applyWorkbenchPreferences()
+    if !store.pendingDraftRecoveries.isEmpty {
+      isDraftRecoveryPresented = true
+    }
+    registerRepositorySourceSession()
+    refreshStaleRSSIfNeeded()
+  }
+
+  private func refreshStaleRSSIfNeeded() {
+    guard scenePhase == .active,
+          !store.isSafeMode,
+          shellState.selectedSection == .rss
+    else { return }
+    Task { @MainActor in
+      await rssStore.refreshStaleFeeds()
+    }
+  }
+
+  private var modalPresentationBinding: Binding<WorkspaceModalPresentation?> {
+    Binding(
+      get: { modalPresentation.presented },
+      set: { modalPresentation.replace(with: $0) }
+    )
+  }
+
+  private func draftRecoveryPanel() -> some View {
+    DraftRecoveryPanel(store: store)
+  }
+
+  private var persistenceRecoveryAlertPresented: Binding<Bool> {
+    Binding(
+      get: { shellState.persistenceRecoveryMessage != nil },
+      set: {
+        if !$0 && !shellState.isPersistenceRecoveryWriteProtected {
           store.dismissPersistenceRecoveryMessage()
         }
       }
-    } message: {
-      Text(persistenceRecoveryMessage)
+    )
+  }
+
+  @ViewBuilder
+  private func persistenceRecoveryAlertActions() -> some View {
+    if shellState.isPersistenceRecoveryWriteProtected {
+      Button(String(localized: "恢复其他备份…")) {
+        guard let sourceURL = WorkbenchRecoverySelectionPanel.chooseSnapshot() else { return }
+        if store.installPersistenceRecoverySnapshot(from: sourceURL) {
+          NSApp.terminate(nil)
+        }
+      }
+      Button(String(localized: "导出故障文件…")) {
+        guard let directoryURL = WorkbenchRecoverySelectionPanel.chooseExportDirectory() else { return }
+        _ = store.exportPersistenceRecoveryFiles(to: directoryURL)
+      }
+      Button(String(localized: "重置为空白工作台"), role: .destructive) {
+        _ = store.resetPersistenceAfterUnrecoverableSnapshot()
+      }
+    } else {
+      Button(String(localized: "继续")) {
+        store.dismissPersistenceRecoveryMessage()
+      }
     }
-    .sheet(isPresented: $isPublishDrawerPresented) {
-      PublishDrawerView(publishingFacade: store.publishing, store: store, isPresented: $isPublishDrawerPresented)
-        .frame(minWidth: 680, idealWidth: 780, minHeight: 600, idealHeight: 720)
+  }
+
+  private func persistenceRecoveryAlertMessage() -> some View {
+    Text(persistenceRecoveryMessage)
+  }
+
+  private func modalIsPresentedBinding(
+    _ presentation: WorkspaceModalPresentation
+  ) -> Binding<Bool> {
+    Binding(
+      get: { modalPresentation.presented == presentation },
+      set: { isPresented in
+        if isPresented {
+          modalPresentation.present(presentation)
+        } else {
+          modalPresentation.dismiss(presentation)
+        }
+      }
+    )
+  }
+
+  @ViewBuilder
+  private func modalContent(_ presentation: WorkspaceModalPresentation) -> some View {
+    WorkbenchModalSurface {
+      modalContentBody(presentation)
     }
-    .sheet(isPresented: $isFirstRunSetupPresented) {
+  }
+
+  @ViewBuilder
+  private func modalContentBody(_ presentation: WorkspaceModalPresentation) -> some View {
+    switch presentation {
+    case .publishDrawer:
+      PublishDrawerView(
+        publishingFacade: store.publishing,
+        store: store,
+        isPresented: modalIsPresentedBinding(.publishDrawer)
+      )
+      .frame(minWidth: 680, idealWidth: 780, minHeight: 600, idealHeight: 720)
+    case .taskCenter:
+      WorkspaceTaskCenterView(store: store)
+    case .localSitePreview:
+      LocalSitePreviewPanelView(store: store)
+    case .firstRunSetup:
       FirstRunSetupView(
         store: store,
         finish: finishFirstRunSetup,
         skip: skipFirstRunSetup
       )
-    }
-    .sheet(isPresented: $isCommandPalettePresented) {
-      WorkspaceCommandPalette(store: store, onToggleFocusMode: toggleFocusMode)
-    }
-    .sheet(isPresented: $isDraftFullTextSearchPresented) {
+    case .commandPalette:
+      WorkspaceCommandPalette(
+        store: store,
+        editorCommands: commandPaletteEditorCommands,
+        onToggleFocusMode: toggleFocusMode
+      )
+    case .draftFullTextSearch:
       DraftFullTextSearchPanel(store: store)
     }
   }
@@ -299,8 +474,7 @@ struct ContentView: View {
 #endif
 
   private func handleRepositoryAutoSyncTick(_ date: Date) {
-    guard scenePhase == .active else { return }
-    store.refreshDailyFreeUsageIfNeeded(now: date)
+    guard scenePhase == .active, !store.isSafeMode else { return }
     Task {
       await store.tickRepositoryAndDeploymentPolling(now: date)
     }
@@ -309,41 +483,47 @@ struct ContentView: View {
   private func openDraftFullTextSearch() {
     guard shellState.canUseProtectedWorkbench else { return }
     store.flushDraftBodyEditorBuffers()
-    isDraftFullTextSearchPresented = true
+    modalPresentation.present(.draftFullTextSearch)
+  }
+
+  private func openLocalSitePreview() {
+    guard shellState.canUseProtectedWorkbench else { return }
+    store.selectSection(.sync)
+    if !store.localSitePreviewRuntimeStatus.isRunning {
+      store.startLocalSitePreview()
+    }
+    modalPresentation.present(.localSitePreview)
   }
 
   private func applyWorkbenchPreferences() {
     if !didApplyInitialWorkbenchPreferences {
-      if scanRepositoryOnLaunch {
+      // AI is an explicit writing tool; a previous session must not reclaim the Inspector on launch.
+      presentationState.hideAssistant()
+      if scanRepositoryOnLaunch, !store.isSafeMode {
         Task {
           await store.repository.scanAsync()
         }
       }
-      refreshExternallyCreatedDrafts()
+      if !store.isSafeMode {
+        refreshExternallyCreatedDrafts()
+      }
       didApplyInitialWorkbenchPreferences = true
     }
     if !didApplyScreenshotDemoSurface {
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-      if ScreenshotDemoDataService.isEnabledFromEnvironment {
-        Task { @MainActor in
-          try? await Task.sleep(for: .seconds(1))
-          guard !Task.isCancelled else { return }
-          ScreenshotDemoSettingsPresenter.openSettingsIfNeeded {
-            openSettings()
-          }
-        }
-      }
-#endif
       didApplyScreenshotDemoSurface = true
     }
-    store.setAutomaticallyRefreshPreflightOnEdit(autoRunPreflight)
+    store.setAutomaticallyRefreshPreflightOnEdit(
+      store.isSafeMode ? false : autoRunPreflight
+    )
     normalizeWorkspacePresentation(for: shellState.selectedSection)
-    openAIAssistantByDefaultIfNeeded()
-    presentFirstRunSetupIfNeeded()
+    if !store.isSafeMode {
+      presentFirstRunSetupIfNeeded()
+    }
   }
 
   private func refreshExternallyCreatedDrafts() {
-    guard shellState.canUseProtectedWorkbench,
+    guard !store.isSafeMode,
+          shellState.canUseProtectedWorkbench,
           !isRefreshingExternallyCreatedDrafts else { return }
     isRefreshingExternallyCreatedDrafts = true
     Task { @MainActor in
@@ -352,7 +532,15 @@ struct ContentView: View {
     }
   }
 
+  private func registerRepositorySourceSession() {
+    RepositoryHTMLSourceSessionRegistry.shared.register(
+      session: repositorySourceSession,
+      profileProvider: { store.activeProfile }
+    )
+  }
+
   private func presentFirstRunSetupIfNeeded() {
+    guard !store.isSafeMode else { return }
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
     let isScreenshotDemo = ScreenshotDemoDataService.isEnabledFromEnvironment
 #else
@@ -366,159 +554,32 @@ struct ContentView: View {
       profile: store.activeProfile,
       isScreenshotDemo: isScreenshotDemo
     ) else { return }
-    isFirstRunSetupPresented = true
+    modalPresentation.present(.firstRunSetup)
   }
 
-  private func finishFirstRunSetup() {
+  private func finishFirstRunSetup(_ path: FirstRunSetupPath) {
     didCompleteFirstRunSetup = true
-    isFirstRunSetupPresented = false
-    store.selectSection(.sync)
-    Task {
-      await store.repository.scanAsync()
+    modalPresentation.dismiss(.firstRunSetup)
+
+    switch path {
+    case .connectExistingRepository:
+      store.selectSection(.sync)
+      Task {
+        await store.repository.scanAsync()
+      }
+    case .createNewSite:
+      store.selectSection(.siteStarter)
+    case .localDrafts:
+      store.prepareLocalDraftWorkspace()
     }
   }
 
   private func skipFirstRunSetup() {
-    isFirstRunSetupPresented = false
+    modalPresentation.dismiss(.firstRunSetup)
   }
 
   private var persistenceRecoveryMessage: String {
     shellState.persistenceRecoveryMessage ?? ""
-  }
-
-  private var showsDraftEditingToolbar: Bool {
-    shellState.selectedSection == .writing
-  }
-
-  private var workspaceToolbarActionCluster: some View {
-    HStack(spacing: 2) {
-      if showsDraftEditingToolbar {
-        Button(action: openDraftFullTextSearch) {
-          Label("跨文章搜索", systemImage: "doc.text.magnifyingglass")
-        }
-        .buttonStyle(WorkspaceToolbarIconButtonStyle(isActive: false))
-        .disabled(!shellState.canUseProtectedWorkbench)
-        .help("跨文章全文搜索（⌥⌘F）")
-        .accessibilityLabel("跨文章全文搜索")
-        .accessibilityIdentifier("workspace-full-text-search")
-      }
-
-      if DistributionFeaturePolicy.allowsExternalAIProviders,
-         showsDraftEditingToolbar,
-         !effectiveFocusMode {
-        aiToolbarButton
-      }
-
-      if supportsInspector {
-        inspectorToolbarButton
-      }
-
-      workspaceDirectToolbarActions
-    }
-  }
-
-  private var aiToolbarButton: some View {
-    Button(action: toggleAIAssistant) {
-      Label(
-        "AI",
-        systemImage: isAIAssistantVisible
-          ? "bubble.left.and.text.bubble.right.fill"
-          : "bubble.left.and.text.bubble.right"
-      )
-    }
-    .buttonStyle(WorkspaceToolbarIconButtonStyle(isActive: isAIAssistantVisible))
-    .disabled(!shellState.canUseProtectedWorkbench || !canRequestInspectorInCurrentLayout)
-    .help(aiToolbarHelp)
-    .accessibilityLabel(isAIAssistantVisible ? "关闭 AI 对话" : "打开 AI 对话")
-    .accessibilityValue(isAIAssistantVisible ? "已打开" : "已关闭")
-    .accessibilityIdentifier("workspace-ai-chat-toggle")
-  }
-
-  private var inspectorToolbarButton: some View {
-    Button(action: toggleArticleInspector) {
-      Label("Inspector", systemImage: "sidebar.right")
-    }
-    .buttonStyle(
-      WorkspaceToolbarIconButtonStyle(
-        isActive: inspectorPresentation.wrappedValue && !presentationState.isAssistantPresented
-      )
-    )
-    .overlay(alignment: .topTrailing) {
-      if !inspectorPresentation.wrappedValue {
-        Circle()
-          .fill(Color.accentColor)
-          .frame(width: 6, height: 6)
-          .offset(x: 2, y: -2)
-      }
-    }
-    .disabled(!shellState.canUseProtectedWorkbench || !canRequestInspectorInCurrentLayout)
-    .help(inspectorToolbarHelp)
-    .accessibilityLabel("工作区 Inspector")
-    .accessibilityValue(inspectorAccessibilityValue)
-    .accessibilityIdentifier("workspace-inspector-toggle")
-  }
-
-  private var inspectorToolbarHelp: String {
-    if canOverrideSplitInspector && !allowsInspectorInCurrentLayout {
-      return "分屏空间较窄；点击仍显示 Inspector"
-    }
-    guard allowsInspectorInCurrentLayout else {
-      return "扩大窗口后可使用 Inspector"
-    }
-    if presentationState.isAssistantPresented {
-      return "切换到文章 Inspector"
-    }
-    return shellState.isInspectorPresented ? "隐藏 Inspector" : "显示 Inspector"
-  }
-
-  private var aiToolbarHelp: String {
-    if canOverrideSplitInspector && !allowsInspectorInCurrentLayout {
-      return "分屏空间较窄；点击仍打开 AI 对话"
-    }
-    guard allowsInspectorInCurrentLayout else {
-      return "扩大窗口后可使用 AI 对话"
-    }
-    return isAIAssistantVisible ? "关闭 AI 对话（⌥⌘A）" : "打开 AI 对话（⌥⌘A）"
-  }
-
-  private var workspaceDirectToolbarActions: some View {
-    HStack(spacing: 2) {
-      if showsDraftEditingToolbar {
-        Button(action: toggleFocusMode) {
-          Label(
-            effectiveFocusMode ? "退出禅意专注" : "禅意专注写作",
-            systemImage: effectiveFocusMode
-              ? "arrow.down.right.and.arrow.up.left"
-              : "sparkle.magnifyingglass"
-          )
-        }
-        .buttonStyle(WorkspaceToolbarIconButtonStyle(isActive: effectiveFocusMode))
-        .keyboardShortcut("f", modifiers: [.command, .shift])
-        .help(effectiveFocusMode ? "退出禅意专注（⇧⌘F）" : "禅意专注写作（⇧⌘F）")
-        .disabled(!shellState.canUseProtectedWorkbench)
-        .accessibilityLabel(effectiveFocusMode ? "退出禅意专注" : "禅意专注写作")
-        .accessibilityValue(effectiveFocusMode ? "已进入禅意专注模式" : "未进入禅意专注模式")
-        .accessibilityIdentifier("workspace-focus-mode-toggle")
-      }
-
-      Button {
-        store.lockPrivacy(reason: "已手动快速隐藏工作台内容。")
-      } label: {
-        Label("快速隐藏", systemImage: "eye.slash")
-      }
-      .buttonStyle(WorkspaceToolbarIconButtonStyle(isActive: false))
-      .help("快速隐藏工作台（⌃⌘L）")
-      .disabled(shellState.isPrivacyLocked)
-      .accessibilityLabel("快速隐藏")
-      .accessibilityIdentifier("workspace-quick-hide")
-
-      AdvancedWorkspaceToolbarActions(
-        store: store,
-        canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
-        isFirstRunSetupComplete: didCompleteFirstRunSetup,
-        presentFirstRunSetup: { isFirstRunSetupPresented = true }
-      )
-    }
   }
 
   private var supportsInspector: Bool {
@@ -531,17 +592,51 @@ struct ContentView: View {
     )
   }
 
-  private var inspectorAccessibilityValue: String {
+  private var inspectorToolbarButton: some View {
+    Button(action: toggleArticleInspector) {
+      Label(String(localized: "Inspector"), systemImage: "sidebar.right")
+    }
+    .buttonStyle(
+      WorkspaceToolbarIconButtonStyle(
+        isActive: inspectorPresentation.wrappedValue
+          && !presentationState.isAssistantPresented
+      )
+    )
+    .disabled(!shellState.canUseProtectedWorkbench || !canRequestInspectorInCurrentLayout)
+    .help(inspectorToolbarHelp)
+    .accessibilityLabel(String(localized: "工作区 Inspector"))
+    .accessibilityValue(inspectorAccessibilityValue)
+    .accessibilityIdentifier("workspace-inspector-toggle")
+  }
+
+  private var inspectorToolbarHelp: String {
     if canOverrideSplitInspector && !allowsInspectorInCurrentLayout {
-      return "分屏空间较窄，已临时隐藏；可以手动显示"
+      return String(localized: "分屏空间较窄；点击仍显示 Inspector")
     }
     guard allowsInspectorInCurrentLayout else {
-      return "窗口过窄，已临时隐藏"
+      return String(localized: "扩大窗口后可使用 Inspector")
     }
     if presentationState.isAssistantPresented {
-      return "AI 助手已显示"
+      return String(localized: "切换到文章 Inspector")
     }
-    return shellState.isInspectorPresented ? "已显示" : "已隐藏"
+    return inspectorPresentation.wrappedValue
+      ? String(localized: "隐藏 Inspector")
+      : String(localized: "显示 Inspector")
+  }
+
+  private var inspectorAccessibilityValue: String {
+    if canOverrideSplitInspector && !allowsInspectorInCurrentLayout {
+      return String(localized: "分屏空间较窄，已临时隐藏；可以手动显示")
+    }
+    guard allowsInspectorInCurrentLayout else {
+      return String(localized: "窗口过窄，已临时隐藏")
+    }
+    if presentationState.isAssistantPresented {
+      return String(localized: "AI 助手已显示")
+    }
+    return inspectorPresentation.wrappedValue
+      ? String(localized: "已显示")
+      : String(localized: "已隐藏")
   }
 
   private var inspectorPresentation: Binding<Bool> {
@@ -562,12 +657,6 @@ struct ContentView: View {
         }
       }
     )
-  }
-
-  private var isAIAssistantVisible: Bool {
-    DistributionFeaturePolicy.allowsExternalAIProviders
-      && presentationState.isAssistantPresented
-      && inspectorPresentation.wrappedValue
   }
 
   private func normalizeWorkspacePresentation(for section: WorkspaceSection) {
@@ -591,46 +680,24 @@ struct ContentView: View {
       store.selectSection(.sync)
     case .siteStarter:
       break
-    case .sync, .images, .contentHealth:
+    case .sync, .images, .contentHealth, .rss:
       hideInspectorIfNeeded()
     case .writing, .library:
       break
     }
   }
 
-  private func openAIInspector() {
-    guard DistributionFeaturePolicy.allowsExternalAIProviders else { return }
-    guard prepareInspectorForUserRequest() else { return }
-    guard let draft = store.ensureEditableDraftSelected() else { return }
-    guard store.openAIChatWorkspace(for: draft.id) else { return }
-    store.setInspectorPresented(true)
-  }
+  private func selectWorkspaceSection(_ section: WorkspaceSection) {
+    guard shellState.selectedSection != section else { return }
 
-  private func openAIAssistantByDefaultIfNeeded() {
-    guard !didOpenAIAssistantByDefault else { return }
-    didOpenAIAssistantByDefault = true
-    guard DistributionFeaturePolicy.allowsExternalAIProviders else {
-      if presentationState.isAssistantPresented {
-        presentationState.hideAssistant()
+    var transaction = Transaction(animation: nil)
+    transaction.disablesAnimations = true
+    withTransaction(transaction) {
+      if section != .writing {
+        hideInspectorIfNeeded()
       }
-      return
+      store.selectSection(section)
     }
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    guard !ScreenshotDemoDataService.isEnabledFromEnvironment else { return }
-#endif
-    guard !effectiveFocusMode,
-          !isCompactLayout,
-          allowsInspectorByWidth,
-          shellState.canUseProtectedWorkbench else { return }
-    openAIInspector()
-  }
-
-  private func toggleAIAssistant() {
-    if isAIAssistantVisible {
-      presentationState.closeAssistantPanel()
-      return
-    }
-    openAIInspector()
   }
 
   private func toggleArticleInspector() {
@@ -670,8 +737,10 @@ struct ContentView: View {
   private func openPublishDrawer(message: String?) {
     store.ensureEditableDraftSelected()
     store.runPreflight()
-    isPublishDrawerPresented = true
-    store.setPublishActionMessage(message ?? "发布流程已打开，请选择保存到本地或发布上线。")
+    modalPresentation.present(.publishDrawer)
+    store.setPublishActionMessage(
+      message ?? String(localized: "发布流程已打开，请选择保存到本地或发布上线。")
+    )
   }
 
   private var isCompactLayout: Bool {
@@ -816,7 +885,7 @@ private struct WorkbenchAccessibilityStatusAnnouncer: View {
   }
 
   private var status: WorkbenchAccessibilityStatus {
-    if activityStatus.isPrivacyLocked { return .privacyLocked }
+    if activityStatus.isQuickHideActive { return .quickHideActive }
     if activityStatus.repositoryScanState.isScanning {
       return .repositoryScanning(activityStatus.repositoryScanState.message)
     }
@@ -829,7 +898,7 @@ private struct WorkbenchAccessibilityStatusAnnouncer: View {
 }
 
 private enum WorkbenchAccessibilityStatus: Equatable {
-  case privacyLocked
+  case quickHideActive
   case repositoryScanning(String)
   case remotePublishing
   case aiReplying
@@ -839,7 +908,7 @@ private enum WorkbenchAccessibilityStatus: Equatable {
 
   var message: String {
     switch self {
-    case .privacyLocked: return String(localized: "隐私界面遮罩已启用。")
+    case .quickHideActive: return String(localized: "快速隐藏已启用（仅界面遮挡）。")
     case let .repositoryScanning(message):
       return String(format: String(localized: "仓库状态更新：%@"), message)
     case .remotePublishing: return String(localized: "正在执行线上发布。")

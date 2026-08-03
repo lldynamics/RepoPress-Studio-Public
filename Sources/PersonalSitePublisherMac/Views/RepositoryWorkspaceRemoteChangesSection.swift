@@ -115,7 +115,7 @@ extension RepositoryWorkspaceView {
   }
 
   private func remoteChangesHeading(_ report: RepositoryScanReport) -> some View {
-    let upstreamName = report.branchStatus?.upstreamName ?? "当前分支未设置 upstream"
+    let upstreamName = report.branchStatus?.upstreamName ?? String(localized: "当前分支未设置 upstream")
     return VStack(alignment: .leading, spacing: 3) {
       Text("远端文件变更")
         .font(.headline)
@@ -160,7 +160,7 @@ extension RepositoryWorkspaceView {
     .buttonStyle(.bordered)
     .disabled(importableArticleCount == 0)
     .accessibilityLabel("导入远端文章")
-    .accessibilityValue("\(importableArticleCount) 篇可导入")
+    .accessibilityValue(String(localized: "\(importableArticleCount) 篇可导入"))
     .accessibilityIdentifier("repository-remote-import-articles")
   }
 
@@ -169,7 +169,7 @@ extension RepositoryWorkspaceView {
       .font(.callout)
       .foregroundStyle(.secondary)
       .accessibilityLabel("发布相关远端变更")
-      .accessibilityValue("\(count) 个")
+      .accessibilityValue(String(localized: "\(count) 个"))
       .accessibilityIdentifier("repository-remote-publish-relevant-count")
   }
 

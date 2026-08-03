@@ -19,7 +19,7 @@ struct KnowledgeCollectionNavigationView: View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 8) {
         Button {
-          withAnimation(.easeInOut(duration: 0.18)) {
+          withAnimation(WorkbenchMotion.standard) {
             isNavigationExpanded.toggle()
           }
         } label: {
@@ -43,7 +43,11 @@ struct KnowledgeCollectionNavigationView: View {
         .buttonStyle(.plain)
         .help(isNavigationExpanded ? "收起资料整理" : "展开资料整理")
         .accessibilityLabel(isNavigationExpanded ? "收起资料整理" : "展开资料整理")
-        .accessibilityValue("当前范围：\(selectedNavigationItem.title)，\(selectedNavigationItem.count) 条资料")
+        .accessibilityValue(
+          String(
+            localized: "当前范围：\(selectedNavigationItem.title)，\(selectedNavigationItem.count) 条资料"
+          )
+        )
         Spacer()
         Button(action: onCreateFolder) {
           Image(systemName: "folder.badge.plus")

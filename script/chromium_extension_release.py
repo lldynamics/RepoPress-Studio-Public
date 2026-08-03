@@ -225,8 +225,8 @@ def validated_release(
     extension_root = root / "BrowserExtension"
     manifest = load_json(extension_root / "manifest.json")
     definition = load_json(extension_root / "browser-extension-protocol.json")
-    if definition.get("activeExtensions") != ["safari", "chrome"]:
-        raise ReleaseError("This release must enable exactly Safari and Chrome")
+    if definition.get("activeExtensions") != ["safari", "chrome", "firefox"]:
+        raise ReleaseError("This release must enable exactly Safari, Chrome, and Firefox")
     extensions = definition.get("extensions")
     if not isinstance(extensions, dict):
         raise ReleaseError("browser-extension-protocol.json extensions must be an object")

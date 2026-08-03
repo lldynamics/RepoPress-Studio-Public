@@ -28,6 +28,7 @@ public struct AIPublishingSelectionEditPreview: Identifiable, Hashable, Sendable
   public var application: AIPublishingSelectionEditApplication
   public var providerName: String
   public var model: String
+  public var knowledgeCitations: [KnowledgeCitation]
 
   public init(
     id: UUID = UUID(),
@@ -39,7 +40,8 @@ public struct AIPublishingSelectionEditPreview: Identifiable, Hashable, Sendable
     replacementText: String,
     application: AIPublishingSelectionEditApplication = .replaceRange,
     providerName: String = "",
-    model: String = ""
+    model: String = "",
+    knowledgeCitations: [KnowledgeCitation] = []
   ) {
     self.id = id
     self.draftID = draftID
@@ -51,6 +53,7 @@ public struct AIPublishingSelectionEditPreview: Identifiable, Hashable, Sendable
     self.application = application
     self.providerName = providerName
     self.model = model
+    self.knowledgeCitations = knowledgeCitations
   }
 
   public var trimmedReplacementText: String {

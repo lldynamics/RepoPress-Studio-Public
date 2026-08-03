@@ -12,13 +12,6 @@ extension RepositoryWorkspaceView {
       repositoryScanProgress
       remoteChangedFiles
       changedFiles
-    case .checks:
-      VStack(alignment: .leading, spacing: 16) {
-        repositoryAutoSyncSection
-        localPreviewSection
-        repositorySyncPlan
-        pathRules
-      }
     case .source:
       EmptyView()
     case .history:
@@ -34,7 +27,7 @@ extension RepositoryWorkspaceView {
     VStack(alignment: .leading, spacing: 12) {
       VStack(alignment: .leading, spacing: 3) {
         Text("常用操作")
-          .font(.headline)
+          .font(.workbenchSectionTitle)
           .accessibilityAddTraits(.isHeader)
         Text("仓库管理与发布入口始终显示；实际写入和线上发布仍在统一发布流程中确认。")
           .font(.callout)
@@ -129,6 +122,16 @@ extension RepositoryWorkspaceView {
         .accessibilityIdentifier("repository-action-migrate")
 
         Button {
+          store.selectSection(.images)
+        } label: {
+          Label("图片资源", systemImage: "photo.on.rectangle")
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.bordered)
+        .help("管理站点图片、问题引用与批量优化")
+        .accessibilityIdentifier("repository-action-open-images")
+
+        Button {
           openUnifiedPublishFlow()
         } label: {
           Label("打开发布流程", systemImage: "paperplane")
@@ -151,43 +154,35 @@ extension RepositoryWorkspaceView {
   }
 
   var repositoryOverviewLayout: some View {
-    ViewThatFits(in: .horizontal) {
-      HStack(alignment: .top, spacing: 16) {
-        repositoryOverviewPrimaryColumn
-          .frame(minWidth: 620, maxWidth: .infinity, alignment: .topLeading)
-        repositoryOverviewContextColumn
-          .frame(width: WorkbenchPageMetrics.operationalContextWidth, alignment: .topLeading)
-      }
-
-      VStack(alignment: .leading, spacing: 16) {
-        repositoryOverviewPrimaryColumn
-        repositoryOverviewContextColumn
-      }
+    // Keep one stable layout tree while the native Inspector split item is
+    // collapsing or expanding. ViewThatFits measured two complete repository
+    // dashboards and could enter an AppKit/SwiftUI layout feedback loop.
+    LazyVGrid(
+      columns: [
+        GridItem(
+          .adaptive(minimum: 460, maximum: 720),
+          spacing: 16,
+          alignment: .top
+        ),
+      ],
+      alignment: .leading,
+      spacing: 16
+    ) {
+      repositoryOverviewPrimaryColumn
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+      repositoryOverviewContextColumn
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
   }
 
   private var repositoryOverviewPrimaryColumn: some View {
     VStack(alignment: .leading, spacing: 16) {
       repositoryScanProgress
-      if prioritizesOnlinePublishForScreenshot {
-        onlinePublishCenterSection
-      }
       repositorySummary
       repositoryProblemsSection
-      if !prioritizesOnlinePublishForScreenshot {
-        onlinePublishCenterSection
-      }
+      onlinePublishCenterSection
       repositoryAutoSyncSection
     }
-  }
-
-  private var prioritizesOnlinePublishForScreenshot: Bool {
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    ScreenshotDemoDataService.isEnabledFromEnvironment
-      && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .syncAPIPublish
-#else
-    false
-#endif
   }
 
   private var repositoryOverviewContextColumn: some View {
@@ -345,7 +340,7 @@ extension RepositoryWorkspaceView {
   var repositoryGettingStartedGuide: some View {
     VStack(alignment: .leading, spacing: 14) {
       Text("第一次使用，只需三步")
-        .font(.headline)
+        .font(.workbenchSectionTitle)
 
       repositoryOnboardingStep(
         number: 1,
@@ -379,12 +374,6 @@ extension RepositoryWorkspaceView {
         String(localized: "扫描后查看仓库变更"),
         String(localized: "扫描会读取 Git 状态、远端差异和发布相关文件，不会修改仓库。"),
         "arrow.left.arrow.right"
-      )
-    case .checks:
-      content = (
-        String(localized: "扫描后运行仓库检查"),
-        String(localized: "先识别项目类型、远端状态和预览命令，再集中显示异常与验证入口。"),
-        "checkmark.shield"
       )
     case .source:
       content = (
@@ -557,7 +546,7 @@ extension RepositoryWorkspaceView {
       VStack(alignment: .leading, spacing: 12) {
         HStack {
           Text("同步概况")
-            .font(.headline)
+            .font(.workbenchSectionTitle)
             .accessibilityAddTraits(.isHeader)
           Spacer()
           Label(report.syncStatusTitle, systemImage: "arrow.up.arrow.down")
@@ -591,7 +580,7 @@ extension RepositoryWorkspaceView {
     if let report = store.repositoryReport {
       VStack(alignment: .leading, spacing: 10) {
         Label("仓库信息", systemImage: "externaldrive")
-          .font(.headline)
+          .font(.workbenchSectionTitle)
           .accessibilityAddTraits(.isHeader)
 
         let rootDisplayText = repositoryRootDisplayText(for: report)
@@ -600,7 +589,7 @@ extension RepositoryWorkspaceView {
           .textSelection(.enabled)
           .workbenchTruncatedIdentity(rootDisplayText, lineLimit: 2)
 
-        Label(report.detectedKind?.localizedDisplayName ?? "未识别", systemImage: "globe")
+        Label(report.detectedKind?.localizedDisplayName ?? String(localized: "未识别"), systemImage: "globe")
         Label("Markdown \(report.markdownFileCount) · 图片 \(report.imageFileCount)", systemImage: "doc.on.doc")
 
         if let branchStatus = report.branchStatus {
@@ -610,7 +599,10 @@ extension RepositoryWorkspaceView {
               : (branchStatus.branchName ?? String(localized: "未识别分支")),
             systemImage: "arrow.triangle.branch"
           )
-          Label(branchStatus.upstreamName ?? "未设置 upstream", systemImage: "arrow.up.arrow.down")
+          Label(
+            branchStatus.upstreamName ?? String(localized: "未设置 upstream"),
+            systemImage: "arrow.up.arrow.down"
+          )
         }
 
         if let remote = report.originRemote {
@@ -647,7 +639,7 @@ extension RepositoryWorkspaceView {
       return "示例仓库（隔离演示数据）"
     }
 #endif
-    return report.rootPath.isEmpty ? "未选择仓库" : report.rootPath
+    return report.rootPath.isEmpty ? String(localized: "未选择仓库") : report.rootPath
   }
 
   @ViewBuilder
@@ -655,7 +647,7 @@ extension RepositoryWorkspaceView {
     if let report = store.repositoryReport, !report.preflightIssues.isEmpty {
       VStack(alignment: .leading, spacing: 10) {
         Label("需要处理", systemImage: "checklist")
-          .font(.headline)
+          .font(.workbenchSectionTitle)
           .accessibilityAddTraits(.isHeader)
 
         ForEach(report.preflightIssues) { issue in

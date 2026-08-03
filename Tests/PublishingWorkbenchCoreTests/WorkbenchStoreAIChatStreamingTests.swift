@@ -17,7 +17,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
 
   private var remoteAIConfig: AIProviderConfig {
     AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -51,7 +51,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -98,7 +98,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -143,7 +143,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -214,7 +214,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -274,7 +274,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -336,7 +336,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -406,7 +406,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -511,7 +511,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -562,7 +562,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -623,7 +623,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -680,7 +680,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -818,7 +818,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -1316,7 +1316,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     var profile = store.activeProfile
     profile.aiProviderConfig = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false

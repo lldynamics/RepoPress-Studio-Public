@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SUMMARY="$ROOT_DIR/script/print_remaining_external_verification.sh"
 TMP_DIR="$(mktemp -d /private/tmp/mac-editor-remaining-external.XXXXXX)"
+version_values="$(bash "$ROOT_DIR/script/check_build_version.sh" --print-values)"
+IFS=$'\t' read -r marketing_version build_number <<<"$version_values"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -18,9 +20,9 @@ fail() {
 [[ -f "$SUMMARY" ]] || fail "print_remaining_external_verification.sh is missing"
 
 current_output="$(bash "$SUMMARY")"
-grep -q "remaining external verification: 4 target(s)" <<<"$current_output" \
-  || fail "current summary did not report 4 remaining targets"
-for target in app-store-archive remote-publish storekit remote-recovery; do
+grep -q "remaining external verification: 2 target(s)" <<<"$current_output" \
+  || fail "current summary did not report 2 remaining targets"
+for target in remote-publish remote-recovery; do
   grep -q -- "- $target" <<<"$current_output" \
     || fail "current summary omitted $target"
 done
@@ -33,10 +35,6 @@ grep -q "run_external_verification_from_envs.sh --env-dir /private/tmp/personal-
 grep -q "run_external_verification_from_envs.sh --env-dir /private/tmp/personal-site-publisher-release-envs --target remaining --env-status-report-file /private/tmp/personal-site-publisher-release-envs/ENV_STATUS.md --execute" <<<"$current_output" \
   || fail "current summary omitted execute command"
 for checklist_item in \
-  "Confirm distribution signing team and hardened runtime on the archived app" \
-  "Produce a clean Release archive from a clean checkout" \
-  "Validate the archive with App Store Connect or Transporter before upload" \
-  "Verify StoreKit product ID, purchase, restore, and free quota behavior in sandbox" \
   "Verify GitHub direct commit and PR publishing with a least-privilege token" \
   "Verify GitLab direct commit and MR publishing with a least-privilege token" \
   "Verify remote conflict preview, pending/offline states, deployment checks, and rollback guidance"
@@ -64,9 +62,8 @@ perl -0pi -e 's/- \[ \] `github-direct-publish`/- [x] `github-direct-publish`/g;
               s/- \[ \] `gitlab-direct-publish`/- [x] `gitlab-direct-publish`/g;
               s/- \[ \] `gitlab-review-publish`/- [x] `gitlab-review-publish`/g;
               s/- \[ \] `remote-conflict-deployment-rollback`/- [x] `remote-conflict-deployment-rollback`/g;
-              s/- \[ \] `storekit-sandbox`/- [x] `storekit-sandbox`/g;
               s/- \[ \] `app-store-screenshots`/- [x] `app-store-screenshots`/g;' "$external_file"
-cat >"$archive_file" <<'EOF_ARCHIVE'
+cat >"$archive_file" <<EOF_ARCHIVE
 # App Store Archive Validation Evidence
 
 - [x] Clean Release archive produced from a clean checkout.
@@ -74,7 +71,7 @@ cat >"$archive_file" <<'EOF_ARCHIVE'
 - [x] Distribution signing and hardened runtime verified on the archive.
   Evidence: Distribution signature and hardened runtime were verified on the archived app.
 - [x] Archive validated with App Store Connect or Transporter before upload.
-  Evidence: Transporter validation completed successfully before upload.
+  Evidence: Transporter validation completed successfully for build $marketing_version ($build_number).
 EOF_ARCHIVE
 
 complete_output="$(EXTERNAL_VERIFY_EVIDENCE_FILE="$external_file" APP_STORE_ARCHIVE_EVIDENCE_FILE="$archive_file" APP_STORE_CHECKLIST_FILE="$checklist_file" bash "$SUMMARY")"

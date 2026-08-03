@@ -28,8 +28,6 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertTrue(snapshot.repositoryAutoSyncSettings.fetchBeforeScan)
     XCTAssertTrue(snapshot.deploymentPollingSettings.isEnabled)
     XCTAssertTrue(snapshot.privacySettings.masksPrivateContent)
-    XCTAssertFalse(snapshot.monetizationState.entitlement.isUnlocked)
-    XCTAssertEqual(snapshot.monetizationState.freeUsage.aiRequestCount, 9)
 
     let encoded = String(data: try JSONEncoder.workbench.encode(snapshot), encoding: .utf8) ?? ""
     XCTAssertFalse(encoded.contains("/Users/"))
@@ -49,7 +47,6 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
       "maintenance",
       "general-drafts",
       "knowledge-library",
-      "pro-settings",
       "privacy-lock",
     ]
 
@@ -59,7 +56,7 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertEqual(ScreenshotDemoSurface(rawValue: "deployment-status"), .deploymentStatus)
     XCTAssertEqual(ScreenshotDemoSurface(rawValue: "general-drafts"), .generalDrafts)
     XCTAssertEqual(ScreenshotDemoSurface(rawValue: "knowledge-library"), .knowledgeLibrary)
-    XCTAssertEqual(ScreenshotDemoSurface(rawValue: "privacy-lock"), .privacyLock)
+    XCTAssertEqual(ScreenshotDemoSurface(rawValue: "privacy-lock"), .quickHide)
   }
 
   func testScreenshotDemoSurfaceCanBeReadFromEnvironment() {
@@ -95,7 +92,6 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertEqual(store.seoSocialPreviewSnapshots.count, 1)
     XCTAssertTrue(store.repositoryAutoSyncSettings.isEnabled)
     XCTAssertTrue(store.deploymentPollingSettings.isEnabled)
-    XCTAssertEqual(store.proStatusSummary.entitlement.source, .none)
   }
 
   @MainActor
@@ -106,7 +102,7 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertEqual(store.selectedSection, .writing)
     XCTAssertTrue(store.isAIPublishingAssistantPresented)
     XCTAssertFalse(store.aiChatMessages.isEmpty)
-    XCTAssertFalse(store.isPrivacyLocked)
+    XCTAssertFalse(store.isQuickHideActive)
 
     ScreenshotDemoSurface.deploymentStatus.apply(to: store)
     XCTAssertEqual(store.selectedSection, .releaseHistory)
@@ -123,10 +119,10 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertEqual(store.draftListContentScope, .general)
     XCTAssertEqual(store.publishActionMessage, "截图模式：通用草稿已载入。")
 
-    ScreenshotDemoSurface.privacyLock.apply(to: store)
+    ScreenshotDemoSurface.quickHide.apply(to: store)
     XCTAssertEqual(store.selectedSection, .writing)
-    XCTAssertTrue(store.isPrivacyLocked)
-    XCTAssertTrue(store.privacyLockReason?.contains("私密内容已遮挡") == true)
+    XCTAssertTrue(store.isQuickHideActive)
+    XCTAssertTrue(store.quickHideReason?.contains("私密内容已遮挡") == true)
   }
 
   @MainActor

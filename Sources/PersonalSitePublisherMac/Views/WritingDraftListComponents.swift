@@ -8,12 +8,11 @@ enum DraftListFilter: String, CaseIterable, Identifiable {
   case ready
   case published
   case privateArticles
-  case imageIssues
 
   var id: String { rawValue }
 
   static let primaryFilters: [DraftListFilter] = [.all, .draft, .ready]
-  static let overflowFilters: [DraftListFilter] = [.privateArticles, .checkFailed, .published, .imageIssues]
+  static let overflowFilters: [DraftListFilter] = [.privateArticles, .checkFailed, .published]
 
   var displayName: String {
     switch self {
@@ -29,14 +28,12 @@ enum DraftListFilter: String, CaseIterable, Identifiable {
       return "已上线"
     case .privateArticles:
       return "私密文章"
-    case .imageIssues:
-      return "有图片问题"
     }
   }
 
   var requiresTaskQueueState: Bool {
     switch self {
-    case .checkFailed, .imageIssues:
+    case .checkFailed:
       return true
     case .all, .draft, .ready, .published, .privateArticles:
       return false
@@ -60,8 +57,6 @@ enum DraftListFilter: String, CaseIterable, Identifiable {
       return draft.status == .published
     case .privateArticles:
       return draft.isPrivate
-    case .imageIssues:
-      return taskState?.hasImageIssues == true
     }
   }
 }

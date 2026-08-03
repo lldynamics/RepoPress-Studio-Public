@@ -61,6 +61,33 @@ final class ContentHealthSummaryTests: XCTestCase {
     XCTAssertTrue(brokenSummary.issues.contains { $0.field == "slug" })
   }
 
+  func testImageResourceProblemsAreIncludedInArticleChecks() throws {
+    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
+    let attachment = DraftAttachment(
+      originalFilename: "hero.jpg",
+      relativePublishPath: "/images/hero.jpg",
+      repositoryPath: "static/images/hero.jpg",
+      altText: "Hero",
+      byteSize: 2_000_000
+    )
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "Image checks",
+      slug: "image-checks",
+      bodyMarkdown: "![Hero](/images/hero.jpg)",
+      attachments: [attachment]
+    )
+    store.updateDraft(draft)
+
+    let summary = try XCTUnwrap(
+      store.contentHealthReport.draftSummaries.first { $0.draftID == draft.id }
+    )
+
+    XCTAssertTrue(summary.issues.contains { $0.title == "源文件不可用" })
+    XCTAssertTrue(summary.issues.contains { $0.title == "图片体积偏大" })
+    XCTAssertFalse(summary.issues.contains { $0.title == "还没有图片" })
+  }
+
   func testContentHealthReportDerivesRiskAndAIFixQueuesFromOneSummarySet() throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     let draft = ArticleDraft(

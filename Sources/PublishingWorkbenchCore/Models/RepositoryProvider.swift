@@ -119,11 +119,11 @@ public enum SiteProfilePurpose: String, Codable, CaseIterable, Identifiable, Sen
   public var repositoryRootMissingMessage: String {
     switch self {
     case .publishing:
-      return "Mac 版发布链路建议先选择真实站点仓库。"
+      return CoreL10n.text("Mac 版发布链路建议先选择真实站点仓库。")
     case .repositoryBackup:
-      return "仓库备份 Profile 需要先选择本地仓库。"
+      return CoreL10n.text("仓库备份 Profile 需要先选择本地仓库。")
     case .generalDraftBackup:
-      return "素材库不要求连接本地仓库。"
+      return CoreL10n.text("素材库不要求连接本地仓库。")
     }
   }
 

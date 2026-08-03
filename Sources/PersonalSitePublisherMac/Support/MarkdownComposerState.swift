@@ -72,6 +72,7 @@ struct MarkdownComposerEditorSessionState {
   var scrollSyncUpdate: MarkdownScrollSyncUpdate?
   var editorScrollRestorationUpdate: MarkdownScrollSyncUpdate?
   var previewScrollRestorationUpdate: MarkdownScrollSyncUpdate?
+  var visibleBodyRange = NSRange(location: 0, length: 0)
   var editorScrollProgress: Double
   var previewScrollProgress: Double
   var editorBodyRevision: UInt64
@@ -81,21 +82,88 @@ struct MarkdownComposerAttachmentState {
   var isImageDropTargeted = false
   var insertedImageMetadataDrafts: [InsertedImageMetadataDraft] = []
   var activeInsertedImageMetadataID: UUID?
+  var importTask: Task<Void, Never>?
+  var importRequestID: UUID?
 }
 
 struct MarkdownComposerSelectionActionState {
   var activeSelectionAIAction: AIPublishingActionKind?
   var selectionAIActionTask: Task<Void, Never>?
   var selectionAIActionRequestID: UUID?
+  var isInlineSelectionAIAction = false
+  var isInlineSelectionPaletteDismissed = false
+  var inlineGhostText = ""
+  var inlineGhostTask: Task<Void, Never>?
+  var inlineGhostRequestID: UUID?
   var aiPromptClipboardTask: Task<Void, Never>?
   var aiPromptClipboardRequestID: UUID?
   var selectionActionMessage = ""
   var selectionEditPreview: AIPublishingSelectionEditPreview?
 }
 
+enum MarkdownWritingContextPanel: String, CaseIterable, Identifiable {
+  case selectionTools
+  case aiReview
+  case imageInfo
+  case outline
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .selectionTools:
+      return String(localized: "选区工具")
+    case .aiReview:
+      return String(localized: "AI 审阅")
+    case .imageInfo:
+      return String(localized: "图片信息")
+    case .outline:
+      return String(localized: "文章大纲")
+    }
+  }
+
+  var systemImage: String {
+    switch self {
+    case .selectionTools:
+      return "text.cursor"
+    case .aiReview:
+      return "sparkles.rectangle.stack"
+    case .imageInfo:
+      return "photo.badge.checkmark"
+    case .outline:
+      return "list.bullet.indent"
+    }
+  }
+}
+
+enum MarkdownWritingToolDensity: String, CaseIterable, Identifiable {
+  case basic
+  case professional
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .basic:
+      return String(localized: "基础写作")
+    case .professional:
+      return String(localized: "专业 Markdown")
+    }
+  }
+
+  var systemImage: String {
+    switch self {
+    case .basic:
+      return "pencil.line"
+    case .professional:
+      return "chevron.left.forwardslash.chevron.right"
+    }
+  }
+}
+
 struct MarkdownComposerPresentationState {
   var isShortcutHelpPresented = false
-  var isOutlinePresented = false
+  var activeWritingContextPanel: MarkdownWritingContextPanel?
   var isInternalLinkPickerPresented = false
   var isDiagnosticsPresented = false
   var isSnippetLibraryPresented = false
@@ -210,6 +278,11 @@ extension MacMarkdownComposerView {
     nonmutating set { editorSessionState.previewScrollRestorationUpdate = newValue }
   }
 
+  var visibleBodyRange: NSRange {
+    get { editorSessionState.visibleBodyRange }
+    nonmutating set { editorSessionState.visibleBodyRange = newValue }
+  }
+
   var editorScrollProgress: Double {
     get { editorSessionState.editorScrollProgress }
     nonmutating set { editorSessionState.editorScrollProgress = newValue }
@@ -240,6 +313,16 @@ extension MacMarkdownComposerView {
     nonmutating set { attachmentState.activeInsertedImageMetadataID = newValue }
   }
 
+  var attachmentImportTask: Task<Void, Never>? {
+    get { attachmentState.importTask }
+    nonmutating set { attachmentState.importTask = newValue }
+  }
+
+  var attachmentImportRequestID: UUID? {
+    get { attachmentState.importRequestID }
+    nonmutating set { attachmentState.importRequestID = newValue }
+  }
+
   var activeSelectionAIAction: AIPublishingActionKind? {
     get { selectionActionState.activeSelectionAIAction }
     nonmutating set { selectionActionState.activeSelectionAIAction = newValue }
@@ -253,6 +336,31 @@ extension MacMarkdownComposerView {
   var selectionAIActionRequestID: UUID? {
     get { selectionActionState.selectionAIActionRequestID }
     nonmutating set { selectionActionState.selectionAIActionRequestID = newValue }
+  }
+
+  var isInlineSelectionAIAction: Bool {
+    get { selectionActionState.isInlineSelectionAIAction }
+    nonmutating set { selectionActionState.isInlineSelectionAIAction = newValue }
+  }
+
+  var isInlineSelectionPaletteDismissed: Bool {
+    get { selectionActionState.isInlineSelectionPaletteDismissed }
+    nonmutating set { selectionActionState.isInlineSelectionPaletteDismissed = newValue }
+  }
+
+  var inlineGhostText: String {
+    get { selectionActionState.inlineGhostText }
+    nonmutating set { selectionActionState.inlineGhostText = newValue }
+  }
+
+  var inlineGhostTask: Task<Void, Never>? {
+    get { selectionActionState.inlineGhostTask }
+    nonmutating set { selectionActionState.inlineGhostTask = newValue }
+  }
+
+  var inlineGhostRequestID: UUID? {
+    get { selectionActionState.inlineGhostRequestID }
+    nonmutating set { selectionActionState.inlineGhostRequestID = newValue }
   }
 
   var aiPromptClipboardTask: Task<Void, Never>? {
@@ -280,9 +388,9 @@ extension MacMarkdownComposerView {
     nonmutating set { presentationState.isShortcutHelpPresented = newValue }
   }
 
-  var isOutlinePresented: Bool {
-    get { presentationState.isOutlinePresented }
-    nonmutating set { presentationState.isOutlinePresented = newValue }
+  var activeWritingContextPanel: MarkdownWritingContextPanel? {
+    get { presentationState.activeWritingContextPanel }
+    nonmutating set { presentationState.activeWritingContextPanel = newValue }
   }
 
   var isInternalLinkPickerPresented: Bool {

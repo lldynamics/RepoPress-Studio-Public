@@ -269,7 +269,8 @@ async function quickSaveTab(tab, captureMode) {
     folderID: settings.folderID,
     newFolderName: null,
     captureMode,
-    allowsAIUse: settings.allowsAIUse
+    allowsLocalSemanticIndex: settings.allowsLocalSemanticIndex,
+    allowsRemoteAIUse: settings.allowsRemoteAIUse
   });
   await rememberBackgroundReceipt(result);
   await reflectCaptureResult(result);
@@ -278,7 +279,8 @@ async function quickSaveTab(tab, captureMode) {
 
 async function quickSavePreparedCapture(tab, capture) {
   const settings = await quickSaveSettings(capture.sourceURL || tab.url);
-  capture.allowsAIUse = settings.allowsAIUse;
+  capture.allowsLocalSemanticIndex = settings.allowsLocalSemanticIndex;
+  capture.allowsRemoteAIUse = settings.allowsRemoteAIUse;
   await setToolbarState("saving");
   const result = await savePreparedCapture({
     tabId: tab.id,
@@ -298,6 +300,8 @@ async function quickSaveSettings(sourceURL) {
     "bridgeToken",
     "selectedKnowledgeFolderID",
     "knowledgeDomainFoldersV1",
+    "defaultKnowledgeAllowsLocalSemanticIndexV1",
+    "defaultKnowledgeAllowsRemoteAIUseV1",
     "defaultKnowledgeAllowsAIUseV1"
   ]);
   if (!stored.bridgeToken) throw new Error("请先打开插件并连接本机资料库。");
@@ -307,7 +311,13 @@ async function quickSaveSettings(sourceURL) {
     folderID: stored.knowledgeDomainFoldersV1?.[domain]
       || stored.selectedKnowledgeFolderID
       || null,
-    allowsAIUse: stored.defaultKnowledgeAllowsAIUseV1 !== false
+    allowsLocalSemanticIndex: Object.prototype.hasOwnProperty.call(
+      stored,
+      "defaultKnowledgeAllowsLocalSemanticIndexV1"
+    )
+      ? stored.defaultKnowledgeAllowsLocalSemanticIndexV1 !== false
+      : stored.defaultKnowledgeAllowsAIUseV1 !== false,
+    allowsRemoteAIUse: stored.defaultKnowledgeAllowsRemoteAIUseV1 === true
   };
 }
 
@@ -329,7 +339,8 @@ function contextCapture({ sourceURL, title, contentText, captureMode }) {
     archiveMissingResourceCount: null,
     archiveWasTruncated: null,
     captureMode,
-    allowsAIUse: true
+    allowsLocalSemanticIndex: true,
+    allowsRemoteAIUse: false
   };
 }
 
@@ -422,7 +433,8 @@ async function captureAndSave(message) {
     captureMode,
     expectedPageIdentity: message.expectedPageIdentity || null
   });
-  prepared.capture.allowsAIUse = message.allowsAIUse !== false;
+  prepared.capture.allowsLocalSemanticIndex = message.allowsLocalSemanticIndex !== false;
+  prepared.capture.allowsRemoteAIUse = message.allowsRemoteAIUse === true;
   return savePreparedCapture({
     ...message,
     captureMode,
@@ -480,7 +492,8 @@ async function performCaptureTabsBatch(message) {
         folderID: message.folderID || null,
         newFolderName: message.newFolderName || null,
         captureMode,
-        allowsAIUse: message.allowsAIUse !== false
+        allowsLocalSemanticIndex: message.allowsLocalSemanticIndex !== false,
+        allowsRemoteAIUse: message.allowsRemoteAIUse === true
       });
       let status;
       let receipt = null;
@@ -788,7 +801,8 @@ function captureFromPage(page, captureMode) {
     archiveMissingResourceCount: null,
     archiveWasTruncated: null,
     captureMode,
-    allowsAIUse: true
+    allowsLocalSemanticIndex: true,
+    allowsRemoteAIUse: false
   };
 }
 
@@ -835,7 +849,10 @@ function sanitizedPreparedCapture(value, captureMode) {
     archiveMissingResourceCount: null,
     archiveWasTruncated: null,
     captureMode,
-    allowsAIUse: value.allowsAIUse !== false
+    allowsLocalSemanticIndex: value.allowsLocalSemanticIndex === undefined
+      ? value.allowsAIUse !== false
+      : value.allowsLocalSemanticIndex !== false,
+    allowsRemoteAIUse: value.allowsRemoteAIUse === true
   };
 }
 

@@ -9,18 +9,33 @@ public enum FreshWorkspaceSeedPolicy: Sendable {
 @MainActor
 public final class WorkbenchStore: ObservableObject {
   private let imageWorkbenchService: SiteImageWorkbenchService
-  private let keychainTokenStore: KeychainTokenStore
+  let keychainTokenStore: KeychainTokenStore
+  let siteAnalyticsService: SiteAnalyticsService
+  let siteAnalyticsTokenStore: KeychainTokenStore
   private let aiPublishingAssistantService: AIPublishingAssistantService
   private let aiConnectionTestService: AIConnectionTestService
   private let aiDataSharingConsentStore: AIDataSharingConsentStore
   private let seoAuditService: SEOAuditService
   private let seoSocialPreviewService: SEOSocialPreviewService
+  public let managedAttachmentFileStore: ManagedAttachmentFileStore
+  public let rssReaderFileURL: URL?
+  public let workspaceBackupDirectoryURL: URL?
+  let siteDraftFileStore: SiteDraftFileStore
+  let draftRecoveryJournal: DraftRecoveryJournal
+  let draftRecoveryWriteCoordinator = DraftRecoveryJournalWriteCoordinator()
+  var draftRecoveryRecords: [UUID: DraftRecoveryRecord]
+  var draftRecoveryWriteTask: Task<Void, Never>?
+  var draftRecoveryWriteGeneration: UInt64 = 0
+
+  /// Safe mode keeps the persisted workspace available while skipping
+  /// automatic preflight, preview, maintenance, and browser startup work.
+  public let isSafeMode: Bool
 
   let publishingStore: PublishingStore
   let aiWorkspaceStore: AIWorkspaceStore
   let repositoryStore: RepositoryStore
   let deploymentStore: DeploymentStore
-  let privacyMonetizationStore: PrivacyMonetizationStore
+  let privacyProtectionStore: PrivacyProtectionStore
   let siteMaintenanceStore: SiteMaintenanceStore
   public let knowledge: KnowledgeStore
   let persistenceStore: WorkbenchPersistenceStore
@@ -37,17 +52,37 @@ public final class WorkbenchStore: ObservableObject {
   public lazy var activityStatus: WorkbenchActivityStatusFacade = WorkbenchActivityStatusFacade(store: self)
   public lazy var workspaceLayout: WorkbenchWorkspaceLayoutFeatureFacade =
     WorkbenchWorkspaceLayoutFeatureFacade(store: self)
+  public lazy var workspaceBackupScheduler: WorkspaceBackupScheduler =
+    WorkspaceBackupScheduler(
+      store: self,
+      defaultDestinationFolderURL: workspaceBackupDirectoryURL
+    )
   @Published public private(set) var contentHealthSnapshotVersion = 0
   @Published public private(set) var draftTaskQueueStateVersion = 0
   @Published public private(set) var draftListPresentationRevision: UInt64 = 0
   @Published public private(set) var imageWorkbenchInputRevision: UInt64 = 0
+  @Published public internal(set) var aiConnectionProfiles: [AIConnectionProfile]
+  @Published public internal(set) var siteDraftFileSaveStates: [UUID: SiteDraftFileSaveState] = [:]
+  @Published public internal(set) var pendingDraftRecoveries: [DraftRecoveryRecord] = []
+  @Published public private(set) var draftRecoveryJournalErrorMessage: String?
+  @Published public internal(set) var siteAnalyticsSummaries: [UUID: SiteAnalyticsSummary] = [:]
+  @Published public internal(set) var isSiteAnalyticsLoading = false
+  @Published public internal(set) var siteAnalyticsLoadingDraftID: UUID?
+  @Published public internal(set) var siteAnalyticsMessage: String?
+  @Published public internal(set) var siteAnalyticsTokenAvailability = KeychainTokenAvailability(hasToken: false)
   private var draftTaskQueueStateCache: [UUID: DraftTaskQueueState] = [:]
   private var childStoreCancellables = Set<AnyCancellable>()
   var preflightRefreshTask: Task<Void, Never>?
   var draftBodyCommitTasks: [UUID: Task<Void, Never>] = [:]
+  var siteDraftFileAutosaveTasks: [UUID: Task<Void, Never>] = [:]
+  var siteDraftFileWritesInProgress: Set<UUID> = []
+  var siteDraftFileSaveGenerations: [UUID: UInt64] = [:]
   var siteMaintenanceRefreshTask: Task<SiteMaintenanceReport, Error>?
   var siteMaintenanceRefreshScheduleTask: Task<Void, Never>?
   var siteMaintenanceRefreshGeneration: UInt64 = 0
+  var siteAnalyticsRefreshTask: Task<Void, Never>?
+  var siteAnalyticsRefreshRequestID = UUID()
+  var softwareGuideSeedVersion: Int
 
   lazy var aiStore: WorkbenchAIStore = WorkbenchAIStore(
     store: self,
@@ -86,6 +121,7 @@ public final class WorkbenchStore: ObservableObject {
   public init(
     persistence: WorkbenchPersistence = WorkbenchPersistence(),
     initialSnapshotSource: WorkbenchInitialSnapshotSource = .persistence,
+    safeMode: Bool = false,
     freshWorkspaceSeedPolicy: FreshWorkspaceSeedPolicy = .blank,
     preflightService: PreflightCheckService = PreflightCheckService(),
     repositoryService: LocalRepositoryService = LocalRepositoryService(),
@@ -103,31 +139,74 @@ public final class WorkbenchStore: ObservableObject {
     remoteRepositoryPublishService: RemoteRepositoryPublishService = RemoteRepositoryPublishService(),
     deploymentStatusService: DeploymentStatusService = DeploymentStatusService(),
     deploymentWebhookService: DeploymentWebhookService = DeploymentWebhookService(),
+    siteAnalyticsService: SiteAnalyticsService = SiteAnalyticsService(),
     siteStarterService: SiteStarterService = SiteStarterService(),
     imageWorkbenchService: SiteImageWorkbenchService = SiteImageWorkbenchService(),
     seoAuditService: SEOAuditService = SEOAuditService(),
     seoSocialPreviewService: SEOSocialPreviewService = SEOSocialPreviewService(),
     siteMaintenanceService: SiteMaintenanceService = SiteMaintenanceService(),
     knowledgeLibraryService: KnowledgeLibraryService = KnowledgeLibraryService(),
+    managedAttachmentFileStore: ManagedAttachmentFileStore = ManagedAttachmentFileStore(),
+    rssReaderFileURL: URL? = nil,
+    workspaceBackupDirectoryURL: URL? = nil,
     releaseLedgerService: ReleaseLedgerService = ReleaseLedgerService(),
     generalDraftLibraryService: GeneralDraftLibraryService = GeneralDraftLibraryService(),
-    monetizationService: MonetizationService = MonetizationService(),
-    proEntitlementProvider: any ProEntitlementProviding = VerifiedStoreKitEntitlementProvider(),
     keychainTokenStore: KeychainTokenStore = KeychainTokenStore(),
     repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.repository, accountPrefix: "repository-provider"),
     deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.deployment, accountPrefix: "deployment-provider"),
+    siteAnalyticsTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.analytics, accountPrefix: "analytics-provider"),
     aiPublishingAssistantService: AIPublishingAssistantService = AIPublishingAssistantService(),
     aiConnectionTestService: AIConnectionTestService = AIConnectionTestService(),
     aiDataSharingConsentStore: AIDataSharingConsentStore = AIDataSharingConsentStore()
   ) {
+    self.isSafeMode = safeMode
+    let draftRecoveryJournal = DraftRecoveryJournal(
+      fileURL: persistence.draftRecoveryJournalURL
+    )
+    let loadedDraftRecoveryRecords: [DraftRecoveryRecord]
+    let draftRecoveryLoadErrorMessage: String?
+    do {
+      loadedDraftRecoveryRecords = try draftRecoveryJournal.load()
+      draftRecoveryLoadErrorMessage = nil
+    } catch {
+      loadedDraftRecoveryRecords = []
+      if let quarantineURL = try? draftRecoveryJournal.quarantineUnreadableFile() {
+        draftRecoveryLoadErrorMessage = CoreL10n.format(
+          "未保存草稿恢复日志无法读取，原文件已隔离：%@（%@）",
+          error.localizedDescription,
+          quarantineURL.path
+        )
+      } else {
+        draftRecoveryLoadErrorMessage = CoreL10n.format(
+          "未保存草稿恢复日志无法读取，原文件保持不变：%@",
+          error.localizedDescription
+        )
+      }
+    }
     self.persistenceStore = WorkbenchPersistenceStore(persistence: persistence)
     self.imageWorkbenchService = imageWorkbenchService
     self.keychainTokenStore = keychainTokenStore
+    self.siteAnalyticsService = siteAnalyticsService
+    self.siteAnalyticsTokenStore = siteAnalyticsTokenStore
     self.aiPublishingAssistantService = aiPublishingAssistantService
     self.aiConnectionTestService = aiConnectionTestService
     self.aiDataSharingConsentStore = aiDataSharingConsentStore
     self.seoAuditService = seoAuditService
     self.seoSocialPreviewService = seoSocialPreviewService
+    self.managedAttachmentFileStore = managedAttachmentFileStore
+    self.rssReaderFileURL = rssReaderFileURL
+    self.workspaceBackupDirectoryURL = workspaceBackupDirectoryURL
+    self.siteDraftFileStore = SiteDraftFileStore(
+      packageBuilder: publishPackageBuilder,
+      previewService: localPublishPreviewService
+    )
+    self.draftRecoveryJournal = draftRecoveryJournal
+    self.draftRecoveryRecords = Dictionary(
+      loadedDraftRecoveryRecords.map { ($0.draftID, $0) },
+      uniquingKeysWith: { lhs, rhs in
+        lhs.capturedAt >= rhs.capturedAt ? lhs : rhs
+      }
+    )
     self.siteMaintenanceStore = SiteMaintenanceStore()
     self.knowledge = KnowledgeStore(service: knowledgeLibraryService)
 
@@ -158,9 +237,34 @@ public final class WorkbenchStore: ObservableObject {
     let snapshot = snapshotLoad.snapshot
     let snapshotProfiles = snapshot?.profiles ?? []
     let restoredProfiles = snapshotProfiles.isEmpty ? [SiteProfile.defaultProfile] : snapshotProfiles
-    let initialProfiles = restoredProfiles.contains(where: { $0.purpose == .publishing })
+    var initialProfiles = restoredProfiles.contains(where: { $0.purpose == .publishing })
       ? restoredProfiles
       : restoredProfiles + [SiteProfile.defaultProfile]
+    var initialAIConnectionProfiles = snapshot?.aiConnectionProfiles ?? []
+    var didMigrateAIConnectionProfiles = false
+    for index in initialProfiles.indices {
+      let siteProfile = initialProfiles[index]
+      if let selectedID = siteProfile.aiConnectionProfileID,
+         initialAIConnectionProfiles.contains(where: { $0.id == selectedID }) {
+        continue
+      }
+
+      if let matchingProfile = initialAIConnectionProfiles.first(where: {
+        $0.config == siteProfile.aiProviderConfig
+      }) {
+        initialProfiles[index].aiConnectionProfileID = matchingProfile.id
+        didMigrateAIConnectionProfiles = true
+      } else {
+        let connectionProfile = AIConnectionProfile(
+          name: siteProfile.aiProviderConfig.normalizedDisplayName,
+          config: siteProfile.aiProviderConfig
+        )
+        initialAIConnectionProfiles.append(connectionProfile)
+        initialProfiles[index].aiConnectionProfileID = connectionProfile.id
+        didMigrateAIConnectionProfiles = true
+      }
+    }
+    self.aiConnectionProfiles = Array(initialAIConnectionProfiles.prefix(64))
     let initialPublishingProfiles = initialProfiles.filter { $0.purpose == .publishing }
     let restoredActiveProfileID = (snapshot?.activeProfileID).flatMap { candidate in
       initialPublishingProfiles.contains(where: { $0.id == candidate }) ? candidate : nil
@@ -168,31 +272,72 @@ public final class WorkbenchStore: ObservableObject {
     let initialActiveProfileID = restoredActiveProfileID ?? initialPublishingProfiles[0].id
     let activeProfile = initialProfiles.first { $0.id == initialActiveProfileID } ?? initialProfiles[0]
     let snapshotDrafts = snapshot?.drafts ?? []
-    let initialDrafts: [ArticleDraft]
-    var didSeedFreshWorkspace = false
+    let shouldInstallDefaultSoftwareGuides: Bool
+    switch freshWorkspaceSeedPolicy {
+    case .blank:
+      shouldInstallDefaultSoftwareGuides = false
+    case .softwareGuides:
+      shouldInstallDefaultSoftwareGuides =
+        snapshotLoad.recoveryMessage == nil
+        && (snapshot?.softwareGuideSeedVersion ?? 0)
+          < ArticleDraft.currentSoftwareGuideSeedVersion
+    }
+    var initialDrafts: [ArticleDraft]
     if !snapshotDrafts.isEmpty {
       initialDrafts = snapshotDrafts.map { draft in
         var normalized = draft
         normalized.normalizeLegacyScope()
         return normalized
       }
-    } else if snapshot == nil, snapshotLoad.recoveryMessage == nil {
-      switch freshWorkspaceSeedPolicy {
-      case .blank:
-        initialDrafts = [ArticleDraft.empty(profile: activeProfile)]
-      case .softwareGuides:
-        initialDrafts = ArticleDraft.samples(profile: activeProfile)
-        didSeedFreshWorkspace = true
-      }
+    } else if shouldInstallDefaultSoftwareGuides {
+      initialDrafts = []
     } else {
       initialDrafts = [ArticleDraft.empty(profile: activeProfile)]
     }
+    var initialSoftwareGuideSeedVersion = snapshot?.softwareGuideSeedVersion ?? 0
+    var didInstallDefaultSoftwareGuides = false
+    if shouldInstallDefaultSoftwareGuides {
+      let synchronization = ArticleDraft.synchronizeSoftwareGuides(
+        in: initialDrafts,
+        profile: activeProfile,
+        previousSeedVersion: initialSoftwareGuideSeedVersion
+      )
+      initialDrafts = synchronization.drafts
+      initialSoftwareGuideSeedVersion = ArticleDraft.currentSoftwareGuideSeedVersion
+      didInstallDefaultSoftwareGuides = true
+    }
+    let unresolvedDraftRecoveryRecords = loadedDraftRecoveryRecords.filter { record in
+      guard let draft = initialDrafts.first(where: { $0.id == record.draftID }) else {
+        return true
+      }
+      return draft.bodyMarkdown != record.recoveredBodyMarkdown
+    }
+    self.draftRecoveryRecords = Dictionary(
+      unresolvedDraftRecoveryRecords.map { ($0.draftID, $0) },
+      uniquingKeysWith: { lhs, rhs in
+        lhs.capturedAt >= rhs.capturedAt ? lhs : rhs
+      }
+    )
+    self.pendingDraftRecoveries = unresolvedDraftRecoveryRecords.sorted {
+      $0.capturedAt > $1.capturedAt
+    }
+    self.draftRecoveryJournalErrorMessage = draftRecoveryLoadErrorMessage
+    self.softwareGuideSeedVersion = initialSoftwareGuideSeedVersion
+    let initialDraftListContentScope: DraftListContentScope =
+      initialDrafts.contains { $0.belongs(toSiteProfileID: initialActiveProfileID) }
+        ? .currentSite
+        : .general
+    let initialSelectedDraftID = initialDrafts.first { draft in
+      switch initialDraftListContentScope {
+      case .currentSite:
+        return draft.belongs(toSiteProfileID: initialActiveProfileID)
+      case .general:
+        return draft.isGeneralDraft
+      }
+    }?.id
 
-    self.privacyMonetizationStore = PrivacyMonetizationStore(
-      privacySettings: snapshot?.privacySettings ?? .default,
-      monetizationState: snapshot?.monetizationState ?? .default,
-      monetizationService: monetizationService,
-      entitlementProvider: proEntitlementProvider
+    self.privacyProtectionStore = PrivacyProtectionStore(
+      privacySettings: snapshot?.privacySettings ?? .default
     )
     self.repositoryStore = RepositoryStore(
       remoteRepositoryAccessCheck: snapshot?.remoteRepositoryAccessCheck,
@@ -246,7 +391,8 @@ public final class WorkbenchStore: ObservableObject {
       recycledDrafts: snapshot?.recycledDrafts ?? [],
       draftRepositoryCleanupRequests: snapshot?.draftRepositoryCleanupRequests ?? [],
       releaseRecords: snapshot?.releaseRecords ?? [],
-      selectedDraftID: initialDrafts.first?.id,
+      selectedDraftID: initialSelectedDraftID,
+      draftListContentScope: initialDraftListContentScope,
       markdownEditorSessionStates: snapshot?.markdownEditorSessionStates ?? [:],
       maintenanceOperationRecords: snapshot?.maintenanceOperationRecords ?? [],
       preflightService: preflightService,
@@ -264,7 +410,8 @@ public final class WorkbenchStore: ObservableObject {
       generalDraftLibraryService: generalDraftLibraryService,
       localSitePreviewService: localSitePreviewService,
       localSitePreviewProcessService: localSitePreviewProcessService,
-      siteMaintenanceService: siteMaintenanceService
+      siteMaintenanceService: siteMaintenanceService,
+      imageWorkbenchService: imageWorkbenchService
     )
     publishingStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
@@ -278,6 +425,7 @@ public final class WorkbenchStore: ObservableObject {
           return
         }
         self.aiStore.refreshAIKeyAvailability(for: profile)
+        self.refreshSiteAnalyticsTokenAvailability(for: profile)
       }
       .store(in: &childStoreCancellables)
     repositoryStore.objectWillChange
@@ -286,10 +434,10 @@ public final class WorkbenchStore: ObservableObject {
     deploymentStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStoreCancellables)
-    privacyMonetizationStore.objectWillChange
+    privacyProtectionStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &childStoreCancellables)
-    privacyMonetizationStore.$isPrivacyLocked
+    privacyProtectionStore.$isQuickHideActive
       .removeDuplicates()
       .dropFirst()
       .sink { [weak self] _ in
@@ -310,21 +458,32 @@ public final class WorkbenchStore: ObservableObject {
       .store(in: &childStoreCancellables)
     repositoryDeploymentCoordinator.refreshTokenAvailability(store: self)
     aiStore.refreshAIKeyAvailability()
+    refreshSiteAnalyticsTokenAvailability()
     if let recoveryMessage = snapshotLoad.recoveryMessage {
       if requiresPersistenceRecoveryDecision {
         persistenceStore.protectWritesForUnrecoverableSnapshot(message: recoveryMessage)
       } else {
         persistenceStore.setRecoveryMessage(recoveryMessage)
-        setLastSaveStatus("需要检查工作台数据")
+        setLastSaveStatus(CoreL10n.text("需要检查工作台数据"))
       }
     }
-    if didSeedFreshWorkspace {
+    if didInstallDefaultSoftwareGuides {
       save()
+    } else if didMigrateAIConnectionProfiles {
+      // Central AI connection IDs are normalized in memory during startup.
+      // Mark the snapshot dirty so the normal exit/autosave path persists the
+      // migration without writing through a preloaded snapshot immediately.
+      persistenceStore.markUnsavedChanges()
     }
-    runPreflight()
-    refreshPublishPreviewInBackground(for: selectedDraft)
-    aiStore.restoreSEOSocialPreviewSnapshotForCurrentSelection()
-    scheduleSiteMaintenanceSnapshotRefresh()
+    if isSafeMode {
+      setLastSaveStatus(CoreL10n.text("安全模式：已暂停自动工作区服务"))
+    } else {
+      runPreflight()
+      refreshPublishPreviewInBackground(for: selectedDraft)
+      aiStore.restoreSEOSocialPreviewSnapshotForCurrentSelection()
+      scheduleSiteMaintenanceSnapshotRefresh()
+      scheduleMissingSiteDraftFileWrites()
+    }
   }
 
   public var activeProfile: SiteProfile { publishingStore.activeProfile }
@@ -354,13 +513,109 @@ public final class WorkbenchStore: ObservableObject {
   @discardableResult
   public func flushPendingChanges() -> Bool {
     flushDraftBodyEditorBuffers()
-    return persistenceStore.flush(snapshot: persistenceStore.persistence.snapshot(from: self))
+    let siteDraftFilesSucceeded = flushPendingSiteDraftFileWrites()
+    let persistenceSucceeded = persistenceStore.flush(
+      snapshot: persistenceStore.persistence.snapshot(from: self)
+    )
+    let primarySaveSucceeded = siteDraftFilesSucceeded
+      && persistenceSucceeded
+      && !persistenceStore.isRecoveryWriteProtected
+    let draftRecoverySucceeded = flushDraftRecoveryJournal(
+      pruningResolvedRecords: primarySaveSucceeded
+    )
+    return siteDraftFilesSucceeded && persistenceSucceeded && draftRecoverySucceeded
   }
 
   func scheduleAutosave() {
     persistenceStore.scheduleAutosave { [weak self] in
       guard let self else { return nil }
       return self.persistenceStore.persistence.snapshot(from: self)
+    }
+  }
+
+  func scheduleDraftRecoveryJournalWrite() {
+    draftRecoveryWriteTask?.cancel()
+    draftRecoveryWriteGeneration &+= 1
+    let generation = draftRecoveryWriteGeneration
+    let journal = draftRecoveryJournal
+    let coordinator = draftRecoveryWriteCoordinator
+    let records = draftRecoveryRecords.values.sorted { $0.capturedAt > $1.capturedAt }
+    draftRecoveryWriteTask = Task { [weak self] in
+      do {
+        try await Task.sleep(nanoseconds: 250_000_000)
+        try Task.checkCancellation()
+        _ = try await Task.detached(priority: .utility) {
+          try coordinator.save(records, to: journal, generation: generation)
+        }.value
+        try Task.checkCancellation()
+        self?.finishDraftRecoveryJournalWrite(
+          generation: generation,
+          failureDescription: nil
+        )
+      } catch is CancellationError {
+        return
+      } catch {
+        guard !Task.isCancelled else { return }
+        self?.finishDraftRecoveryJournalWrite(
+          generation: generation,
+          failureDescription: error.localizedDescription
+        )
+      }
+    }
+  }
+
+  func waitForPendingDraftRecoveryJournalWrite() async {
+    let task = draftRecoveryWriteTask
+    await task?.value
+  }
+
+  @discardableResult
+  func flushDraftRecoveryJournal(pruningResolvedRecords: Bool = true) -> Bool {
+    draftRecoveryWriteTask?.cancel()
+    draftRecoveryWriteTask = nil
+    draftRecoveryWriteGeneration &+= 1
+    let generation = draftRecoveryWriteGeneration
+    if pruningResolvedRecords {
+      let resolvedDraftIDs = draftRecoveryRecords.compactMap { draftID, record -> UUID? in
+        guard let draft = drafts.first(where: { $0.id == draftID }),
+              draft.bodyMarkdown == record.recoveredBodyMarkdown else {
+          return nil
+        }
+        return draftID
+      }
+      for draftID in resolvedDraftIDs {
+        draftRecoveryRecords.removeValue(forKey: draftID)
+      }
+    }
+    refreshPendingDraftRecoveries()
+    do {
+      try draftRecoveryWriteCoordinator.save(
+        Array(draftRecoveryRecords.values),
+        to: draftRecoveryJournal,
+        generation: generation
+      )
+      finishDraftRecoveryJournalWrite(
+        generation: generation,
+        failureDescription: nil
+      )
+      return true
+    } catch {
+      finishDraftRecoveryJournalWrite(
+        generation: generation,
+        failureDescription: error.localizedDescription
+      )
+      return false
+    }
+  }
+
+  private func finishDraftRecoveryJournalWrite(
+    generation: UInt64,
+    failureDescription: String?
+  ) {
+    guard draftRecoveryWriteGeneration == generation else { return }
+    draftRecoveryWriteTask = nil
+    draftRecoveryJournalErrorMessage = failureDescription.map {
+      CoreL10n.format("未保存草稿恢复日志写入失败：%@", $0)
     }
   }
 

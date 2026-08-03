@@ -5,15 +5,16 @@ final class WorkspaceModelsTests: XCTestCase {
   func testWorkspaceSectionsExposeStableCommandNumberShortcuts() {
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.displayNameLocalizationKey),
-      ["workspace.writing", "workspace.library", "workspace.siteStarter", "workspace.sync", "workspace.images", "workspace.contentHealth", "workspace.maintenance", "workspace.releaseHistory"]
+      ["workspace.writing", "workspace.library", "workspace.rss", "workspace.siteStarter", "workspace.sync", "workspace.images", "workspace.contentHealth", "workspace.maintenance", "workspace.releaseHistory"]
     )
-    XCTAssertEqual(WorkspaceSection.allCases.map { String($0.keyboardShortcutKey) }, ["1", "9", "5", "2", "3", "4", "7", "8"])
-    XCTAssertEqual(WorkspaceSection.allCases.map(\.keyboardShortcutLabel), ["⌘1", "⌘9", "⌘5", "⌘2", "⌘3", "⌘4", "⌘7", "⌘8"])
+    XCTAssertEqual(WorkspaceSection.allCases.map { String($0.keyboardShortcutKey) }, ["1", "2", "9", "5", "3", "6", "4", "7", "8"])
+    XCTAssertEqual(WorkspaceSection.allCases.map(\.keyboardShortcutLabel), ["⌘1", "⌘2", "⌘9", "⌘5", "⌘3", "⌘6", "⌘4", "⌘7", "⌘8"])
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.localizationKey),
       [
         "workspace.writing",
         "workspace.library",
+        "workspace.rss",
         "workspace.siteStarter",
         "workspace.sync",
         "workspace.images",
@@ -25,7 +26,7 @@ final class WorkspaceModelsTests: XCTestCase {
     XCTAssertEqual(Set(WorkspaceSection.allCases.map(\.keyboardShortcutKey)).count, WorkspaceSection.allCases.count)
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.detailLocalizationKey),
-      ["workspace.writing.detail", "workspace.library.detail", "workspace.siteStarter.detail", "workspace.sync.detail", "workspace.images.detail", "workspace.contentHealth.detail", "workspace.maintenance.detail", "workspace.releaseHistory.detail"]
+      ["workspace.writing.detail", "workspace.library.detail", "workspace.rss.detail", "workspace.siteStarter.detail", "workspace.sync.detail", "workspace.images.detail", "workspace.contentHealth.detail", "workspace.maintenance.detail", "workspace.releaseHistory.detail"]
     )
   }
 
@@ -33,7 +34,7 @@ final class WorkspaceModelsTests: XCTestCase {
     XCTAssertEqual(WorkspaceNavigationPresentation.defaultSection, .writing)
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuItems.map(\.section),
-      [.writing, .library, .sync, .images, .contentHealth]
+      [.writing, .library, .rss, .sync, .contentHealth]
     )
     XCTAssertEqual(
       WorkspaceNavigationPresentation.secondaryEntryItems.map(\.section),
@@ -54,11 +55,12 @@ final class WorkspaceModelsTests: XCTestCase {
     XCTAssertEqual(WorkspaceVisibilityPolicy.hiddenNavigationSections, [.maintenance, .releaseHistory])
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuItems.map(\.keyboardShortcutLabel),
-      ["⌘1", "⌘9", "⌘2", "⌘3", "⌘4"]
+      ["⌘1", "⌘2", "⌘9", "⌘3", "⌘4"]
     )
+    XCTAssertEqual(WorkspaceVisibilityPolicy.siteResourceSections, [.images])
     XCTAssertEqual(
       WorkspaceNavigationPresentation.commandPaletteSections,
-      [.writing, .library, .sync, .images, .contentHealth, .siteStarter]
+      [.writing, .library, .rss, .sync, .contentHealth, .siteStarter]
     )
   }
 
@@ -70,12 +72,14 @@ final class WorkspaceModelsTests: XCTestCase {
     XCTAssertTrue(Set(sections).isDisjoint(with: WorkspaceVisibilityPolicy.hiddenNavigationSections))
     XCTAssertFalse(sections.contains(.maintenance))
     XCTAssertFalse(sections.contains(.releaseHistory))
+    XCTAssertFalse(sections.contains(.images))
+    XCTAssertTrue(Set(sections).isDisjoint(with: WorkspaceVisibilityPolicy.siteResourceSections))
   }
 
   func testEveryWorkspaceSectionHasAnExplicitCenterSurfaceRoute() {
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.centerSurface),
-      [.editor, .knowledgeLibrary, .siteStarter, .repository, .images, .contentHealth, .contentHealth, .repository]
+      [.editor, .knowledgeLibrary, .rssReader, .siteStarter, .repository, .images, .contentHealth, .contentHealth, .repository]
     )
     XCTAssertEqual(
       WorkspaceSection.allCases.filter(\.requiresEditableDraftForCenterSurface),
@@ -89,6 +93,7 @@ final class WorkspaceModelsTests: XCTestCase {
       WorkspaceSection.allCases.map { WorkspaceInspectorPresentation.route(for: $0) },
       [
         .articleMetadata,
+        .unavailable,
         .unavailable,
         .siteStarter,
         .repository,
@@ -170,25 +175,25 @@ final class WorkspaceModelsTests: XCTestCase {
     XCTAssertTrue(style.promptInstructions.contains("技术对象、关键步骤和适用边界"))
   }
 
-  func testAIChatModelCatalogMapsDeepSeekGradesForTaskKinds() {
+  func testAIChatModelCatalogMapsOpenAICompatibleGradesForTaskKinds() {
     let config = AIProviderConfig(
-      preset: .deepSeek,
-      baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
-      model: AIProviderPreset.deepSeek.defaultModel,
+      preset: .custom,
+      baseURL: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
       requiresAPIKey: true
     )
 
     XCTAssertEqual(
       AIChatModelCatalog.config(for: .prePublishReview, baseConfig: config).normalizedRequestModel,
-      "deepseek-v4-pro"
+      "gpt-4.1-mini"
     )
     XCTAssertEqual(
       AIChatModelCatalog.config(for: .batchMetadataRepair, baseConfig: config).normalizedRequestModel,
-      "deepseek-v4-flash"
+      "gpt-4.1-mini"
     )
     XCTAssertEqual(
       AIChatModelCatalog.config(for: .textEditing, baseConfig: config).normalizedRequestModel,
-      "deepseek-v4-flash"
+      "gpt-4.1-mini"
     )
     XCTAssertEqual(AIModelTaskKind.prePublishReview.preferredGrade, .highQuality)
     XCTAssertEqual(AIModelTaskKind.batchMetadataRepair.preferredGrade, .fast)
@@ -196,23 +201,23 @@ final class WorkspaceModelsTests: XCTestCase {
 
   func testAIChatModelCatalogBuildsUniqueCandidates() {
     let config = AIProviderConfig(
-      preset: .deepSeek,
-      baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
+      preset: .custom,
+      baseURL: "https://api.openai.com/v1",
       model: "custom-model",
       requiresAPIKey: true
     )
 
     XCTAssertEqual(
       AIChatModelCatalog.modelCandidates(activeModel: " custom-model ", config: config),
-      ["custom-model", "deepseek-v4-flash", "deepseek-v4-pro"]
+      ["custom-model"]
     )
   }
 
   func testAIChatModelSelectionPresentationMirrorsMobileModelMenu() {
     let config = AIProviderConfig(
-      preset: .deepSeek,
-      baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
-      model: AIProviderPreset.deepSeek.defaultModel,
+      preset: .custom,
+      baseURL: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
       requiresAPIKey: true
     )
 
@@ -222,9 +227,9 @@ final class WorkspaceModelsTests: XCTestCase {
       config: config
     )
 
-    XCTAssertEqual(standard.activeModel, "deepseek-v4-flash")
-    XCTAssertEqual(standard.defaultModel, "deepseek-v4-flash")
-    XCTAssertEqual(standard.modelCandidates, ["deepseek-v4-flash", "deepseek-v4-pro"])
+    XCTAssertEqual(standard.activeModel, "gpt-4.1-mini")
+    XCTAssertEqual(standard.defaultModel, "gpt-4.1-mini")
+    XCTAssertEqual(standard.modelCandidates, ["gpt-4.1-mini"])
     XCTAssertFalse(standard.canEditCustomModel)
 
     let custom = AIChatModelSelectionPresentationService.presentation(
@@ -234,39 +239,39 @@ final class WorkspaceModelsTests: XCTestCase {
     )
 
     XCTAssertEqual(custom.activeModel, "custom-chat-model")
-    XCTAssertEqual(custom.defaultModel, "deepseek-v4-flash")
-    XCTAssertEqual(custom.modelCandidates, ["custom-chat-model", "deepseek-v4-flash", "deepseek-v4-pro"])
+    XCTAssertEqual(custom.defaultModel, "gpt-4.1-mini")
+    XCTAssertEqual(custom.modelCandidates, ["custom-chat-model", "gpt-4.1-mini"])
     XCTAssertTrue(custom.canEditCustomModel)
   }
 
   func testAIProviderConfigMatchesMobileImageInputSupportPolicy() {
-    XCTAssertFalse(
-      AIProviderConfig(
-        preset: .deepSeek,
-        baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
-        model: AIProviderPreset.deepSeek.defaultModel,
-        requiresAPIKey: true
-      ).supportsImageInput
-    )
-    XCTAssertFalse(
+    XCTAssertTrue(
       AIProviderConfig(
         preset: .custom,
-        baseURL: "https://api.deepseek.com",
-        model: "deepseek-v4-flash",
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
         requiresAPIKey: true
       ).supportsImageInput
     )
     XCTAssertTrue(
       AIProviderConfig(
-        preset: .openAICompatible,
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        requiresAPIKey: true
+      ).supportsImageInput
+    )
+    XCTAssertTrue(
+      AIProviderConfig(
+        preset: .custom,
         baseURL: "https://api.openai.example/v1",
         model: "gpt-4.1",
         requiresAPIKey: true
       ).supportsImageInput
     )
     XCTAssertEqual(
-      AIProviderConfig(preset: .openAICompatible).normalizedDisplayName,
-      AIProviderPreset.openAICompatible.displayName
+      AIProviderConfig(preset: .custom).normalizedDisplayName,
+      AIProviderPreset.custom.displayName
     )
   }
 
@@ -298,6 +303,39 @@ final class WorkspaceModelsTests: XCTestCase {
     XCTAssertTrue(preview.checklistMarkdown.contains("- 状态：\(CoreL10n.text("已阻塞"))"))
     XCTAssertTrue(preview.checklistMarkdown.contains("- 权限检查端点：https://api.github.com"))
     XCTAssertTrue(preview.checklistMarkdown.contains("- [ ] 已确认 Token 对 owner/site 具备内容写入权限"))
+  }
+
+  func testRemoteRepositoryPreviewDistinguishesTokenAccessFailureFromMissingToken() {
+    let preview = RemoteRepositoryPublishPreview(
+      provider: .github,
+      repositoryName: "owner/site",
+      mode: .directCommit,
+      branchName: "main",
+      targetBranch: "main",
+      changedPaths: ["content/posts/keychain-failure.md"],
+      hasToken: true,
+      tokenAccessFailureMessage: "Keychain interaction is not allowed",
+      blockingIssues: [],
+      warningIssues: []
+    )
+
+    XCTAssertFalse(preview.hasToken)
+    XCTAssertEqual(preview.readiness, .blocked)
+    XCTAssertFalse(preview.canPublish)
+    XCTAssertEqual(
+      preview.accessSummary,
+      CoreL10n.format(
+        "仓库 Token 状态读取失败：%@",
+        "Keychain interaction is not allowed"
+      )
+    )
+    XCTAssertFalse(preview.accessSummary.contains(CoreL10n.text("未保存 Token")))
+    XCTAssertTrue(preview.checklistMarkdown.contains("- Token：\(CoreL10n.text("读取失败"))"))
+    XCTAssertTrue(
+      preview.checklistMarkdown.contains(
+        "- [ ] GitHub Token 状态读取失败：Keychain interaction is not allowed"
+      )
+    )
   }
 
   func testRemoteRepositoryPreviewDecodesLegacyPayloadAsUnknownRemoteRisk() throws {

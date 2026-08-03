@@ -1,6 +1,9 @@
 name: Quality Gate
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
 
@@ -12,7 +15,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  main-push-quick:
+    if: github.event_name == 'push'
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-swift-home
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcrun swift-format --version
+      - name: Run main push quick gate
+        run: |
+          ./script/check_release_gate.sh \
+            --quick \
+            --result-json .build/main-push-quick-result.json \
+            --summary-markdown .build/main-push-quick-summary.md
+          cat .build/main-push-quick-summary.md >>"$GITHUB_STEP_SUMMARY"
+      - name: Upload main push result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: main-push-quick-result
+          path: |
+            .build/main-push-quick-result.json
+            .build/main-push-quick-summary.md
+
   quality:
+    if: github.event_name != 'push'
     runs-on: macos-15
     timeout-minutes: 45
     env:
@@ -32,6 +65,12 @@ jobs:
             --quick \
             --result-json .build/quality-gate-result.json \
             --summary-markdown .build/quality-gate-summary.md
+      - name: Measure Swift Sources line coverage
+        run: |
+          ./script/check_release_gate.sh \
+            --check swift-coverage \
+            --result-json .build/coverage-gate-result.json \
+            --summary-markdown .build/coverage-gate-summary.md
       - name: Exercise distribution build and package path
         run: |
           ./script/check_release_gate.sh \
@@ -46,6 +85,7 @@ jobs:
         run: |
           for summary in \
             .build/quality-gate-summary.md \
+            .build/coverage-gate-summary.md \
             .build/distribution-gate-summary.md; do
             if [[ -f "$summary" ]]; then
               cat "$summary" >>"$GITHUB_STEP_SUMMARY"
@@ -53,20 +93,23 @@ jobs:
           done
       - name: Run real launch and UI smoke
         env:
+          RELEASE_GATE_PROFILE: app-store
           PERSONAL_SITE_PUBLISHER_RUNTIME_HOME: ${{ runner.temp }}/repopress-ui-smoke-home
           WORKBENCH_XCUI_DERIVED_DATA_PATH: ${{ github.workspace }}/.build/ui-smoke-derived-data
         run: |
           mkdir -p "$PERSONAL_SITE_PUBLISHER_RUNTIME_HOME" .build
           exec > >(tee .build/ui-smoke.log) 2>&1
           bash script/check_ui_runtime.sh --launch
+          env -u RELEASE_GATE_PROFILE bash script/check_accessibility_runtime.sh
           WORKBENCH_XCUI_APP_PATH="$PWD/dist/PersonalSitePublisherMac.app" \
-            bash script/check_accessibility_runtime.sh
+            bash script/check_accessibility_runtime.sh --require-app-store
           cat > .build/ui-smoke-summary.md <<'EOF'
           # UI Smoke Summary
 
-          - Sandboxed Release app launch: passed
+          - Sandboxed App Store Release app launch: passed
           - Visible main-window verification: passed
-          - macOS accessibility XCUITest smoke: passed
+          - Complete isolated macOS accessibility XCUITest suite: passed
+          - App Store-specific non-screenshot XCUITest regression: passed
           EOF
           cat .build/ui-smoke-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload UI smoke evidence
@@ -86,6 +129,41 @@ jobs:
           name: quality-gate-result
           path: |
             .build/quality-gate-result.json
+            .build/coverage-gate-result.json
             .build/distribution-gate-result.json
             .build/quality-gate-summary.md
+            .build/coverage-gate-summary.md
             .build/distribution-gate-summary.md
+
+  swift6-migration:
+    if: github.event_name != 'push'
+    continue-on-error: true
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-swift6-home
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Verify migration diagnostic contract
+        run: bash script/test_swift6_migration_gate.sh
+      - name: Build in true Swift 6 language mode
+        run: |
+          mkdir -p .build
+          set -o pipefail
+          bash script/check_swift6_migration.sh 2>&1 | tee .build/swift6-migration.log
+      - name: Publish migration status
+        if: always()
+        run: |
+          {
+            echo "# Swift 6 Migration Diagnostic"
+            echo
+            echo "This non-blocking job compiles with \`-swift-version 6\`; the required gate remains Swift 5 complete-concurrency until migration blockers are removed."
+          } >>"$GITHUB_STEP_SUMMARY"
+      - name: Upload Swift 6 migration diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: swift6-migration-diagnostic
+          path: .build/swift6-migration.log
+          if-no-files-found: error

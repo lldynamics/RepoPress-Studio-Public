@@ -21,7 +21,6 @@ required_ids=(
   gitlab-direct-publish
   gitlab-review-publish
   remote-conflict-deployment-rollback
-  storekit-sandbox
   app-store-screenshots
 )
 
@@ -174,28 +173,6 @@ if grep -Eq "^- \[[xX]\][[:space:]]+\`remote-conflict-deployment-rollback\`" "$E
   remote_evidence_section="$(section_for_heading "### 远端冲突、部署和回滚")"
   if requires_structured_evidence && printf "%s" "$remote_evidence_section" | grep -Eiq '(todo|not verified|not checked|not confirmed|waiting for|missing rollback|missing deployment|missing conflict|待填写|待验证|未验证|未确认)'; then
     fail "remote-conflict-deployment-rollback evidence still contains pending recovery verification placeholder text"
-  fi
-fi
-
-if grep -Eq "^- \[[xX]\][[:space:]]+\`storekit-sandbox\`" "$EVIDENCE_FILE"; then
-  storekit_labels=(
-    "StoreKit product lookup:"
-    "StoreKit purchase:"
-    "StoreKit restore:"
-    "StoreKit free quota:"
-    "StoreKit boundary events:"
-  )
-  missing_storekit_labels=()
-  for label in "${storekit_labels[@]}"; do
-    if ! grep -q "$label" "$EVIDENCE_FILE"; then
-      missing_storekit_labels+=("$label")
-    fi
-  done
-  if requires_structured_evidence && [[ "${#missing_storekit_labels[@]}" -gt 0 ]]; then
-    fail "storekit-sandbox evidence is missing structured field(s): ${missing_storekit_labels[*]}"
-  fi
-  if requires_structured_evidence && grep -Eiq '(pending sandbox purchase|pending restore check|pending sandbox|confirm app store sandbox|confirm entitlement source changes|confirm pro unlock|use the pro settings purchase button|use restore purchase|待核验|待验证)' "$EVIDENCE_FILE"; then
-    fail "storekit-sandbox evidence still contains pending sandbox verification placeholder text"
   fi
 fi
 

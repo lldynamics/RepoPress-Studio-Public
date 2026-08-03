@@ -15,41 +15,95 @@ extension MacMarkdownComposerView {
       return
     }
 
-    var updated = previewDraft
-    var markdownBlocks: [String] = []
-    var insertedMetadata: [InsertedImageMetadataDraft] = []
-    for url in imageURLs {
-      let selectedAlt = selectedText(in: updated.bodyMarkdown).trimmedForPublishing
-      var attachment = store.makeAttachment(from: url, draft: updated)
-      if !selectedAlt.isEmpty {
-        attachment.altText = selectedAlt
+    cancelAttachmentImport()
+    let requestID = UUID()
+    let expectedDraftID = draft.id
+    let sourceDraft = previewDraft
+    let selectedAlt = selectedText(in: sourceDraft.bodyMarkdown).trimmedForPublishing
+    let fileStore = store.managedAttachmentFileStore
+    attachmentImportRequestID = requestID
+    attachmentImportTask = Task { @MainActor in
+      var importedAttachments: [DraftAttachment] = []
+      var failureMessages: [String] = []
+      defer {
+        if attachmentImportRequestID == requestID {
+          attachmentImportTask = nil
+          attachmentImportRequestID = nil
+        }
       }
-      updated.attachments.append(attachment)
-      markdownBlocks.append(
+
+      for url in imageURLs {
+        do {
+          var attachment = try await store.makeAttachment(
+            from: url,
+            draft: sourceDraft,
+            fileStore: fileStore
+          )
+          if !selectedAlt.isEmpty {
+            attachment.altText = selectedAlt
+          }
+          importedAttachments.append(attachment)
+        } catch is CancellationError {
+          discardManagedAttachments(importedAttachments, fileStore: fileStore)
+          return
+        } catch {
+          failureMessages.append(error.localizedDescription)
+        }
+      }
+
+      guard !Task.isCancelled,
+            attachmentImportRequestID == requestID,
+            draft.id == expectedDraftID,
+            requireBodyEditingContext() else {
+        discardManagedAttachments(importedAttachments, fileStore: fileStore)
+        return
+      }
+      guard !importedAttachments.isEmpty else {
+        let message = failureMessages.first
+          ?? String(localized: "没有可插入的图片文件。")
+        selectionActionMessage = message
+        EditorAccessibilityAnnouncementCenter.announce(message, priority: .high)
+        return
+      }
+
+      var updated = previewDraft
+      updated.attachments.append(contentsOf: importedAttachments)
+      let markdownBlocks = importedAttachments.map { attachment in
         imageMetadataEditingService.markdownReference(
           altText: attachment.altText,
           imagePath: attachment.relativePublishPath
         )
+      }
+      let insertedDraft = replacingSelection(
+        in: updated,
+        with: markdownBlocks.joined(separator: "\n")
       )
-      insertedMetadata.append(
+      guard applyDraftUpdate(insertedDraft) else {
+        discardManagedAttachments(importedAttachments, fileStore: fileStore)
+        return
+      }
+
+      let insertedMetadata = importedAttachments.map { attachment in
         InsertedImageMetadataDraft(
           attachment: attachment,
           coverAttachmentID: updated.coverAttachmentID
         )
+      }
+
+      insertedImageMetadataDrafts = insertedMetadata
+      activeInsertedImageMetadataID = insertedMetadata.first?.id
+      showWritingContextPanel(.imageInfo)
+      store.scheduleImageWorkbenchCachesRefresh(for: insertedDraft)
+      let successMessage = String(
+        format: String(localized: "已插入 %@ 张图片，请完善图片信息。"),
+        "\(importedAttachments.count)"
+      )
+      selectionActionMessage = ([successMessage] + failureMessages)
+        .joined(separator: "\n")
+      EditorAccessibilityAnnouncementCenter.announceImageInsertion(
+        count: importedAttachments.count
       )
     }
-
-    let insertedDraft = replacingSelection(
-      in: updated,
-      with: markdownBlocks.joined(separator: "\n")
-    )
-    guard applyDraftUpdate(insertedDraft) else { return }
-
-    insertedImageMetadataDrafts = insertedMetadata
-    activeInsertedImageMetadataID = insertedMetadata.first?.id
-    store.scheduleImageWorkbenchCachesRefresh(for: insertedDraft)
-    selectionActionMessage = "已在光标位置插入 \(imageURLs.count) 张图片，请完善图片信息。"
-    EditorAccessibilityAnnouncementCenter.announceImageInsertion(count: imageURLs.count)
   }
 
   func insertVideoReferences(_ urls: [URL]) {
@@ -64,30 +118,108 @@ extension MacMarkdownComposerView {
       return
     }
 
-    var updated = previewDraft
-    let selectedTitle = selectedText(in: updated.bodyMarkdown).trimmedForPublishing
-    let htmlBlocks = videoURLs.map { url in
-      let attachment = store.makeVideoAttachment(from: url, draft: updated)
-      updated.attachments.append(attachment)
-      let accessibleTitle = videoURLs.count == 1 && !selectedTitle.isEmpty
-        ? selectedTitle
-        : VideoFileSupport.accessibleTitle(for: url)
-      return VideoFileSupport.htmlEmbed(
-        publicPath: attachment.relativePublishPath,
-        accessibleTitle: accessibleTitle
+    cancelAttachmentImport()
+    let requestID = UUID()
+    let expectedDraftID = draft.id
+    let sourceDraft = previewDraft
+    let selectedTitle = selectedText(in: sourceDraft.bodyMarkdown).trimmedForPublishing
+    let fileStore = store.managedAttachmentFileStore
+    attachmentImportRequestID = requestID
+    attachmentImportTask = Task { @MainActor in
+      var importedAttachments: [(attachment: DraftAttachment, sourceURL: URL)] = []
+      var failureMessages: [String] = []
+      defer {
+        if attachmentImportRequestID == requestID {
+          attachmentImportTask = nil
+          attachmentImportRequestID = nil
+        }
+      }
+
+      for url in videoURLs {
+        do {
+          let attachment = try await store.makeVideoAttachment(
+            from: url,
+            draft: sourceDraft,
+            fileStore: fileStore
+          )
+          importedAttachments.append((attachment, url))
+        } catch is CancellationError {
+          discardManagedAttachments(
+            importedAttachments.map { $0.attachment },
+            fileStore: fileStore
+          )
+          return
+        } catch {
+          failureMessages.append(error.localizedDescription)
+        }
+      }
+
+      guard !Task.isCancelled,
+            attachmentImportRequestID == requestID,
+            draft.id == expectedDraftID,
+            requireBodyEditingContext() else {
+        discardManagedAttachments(
+          importedAttachments.map { $0.attachment },
+          fileStore: fileStore
+        )
+        return
+      }
+      guard !importedAttachments.isEmpty else {
+        let message = failureMessages.first
+          ?? String(localized: "没有可插入的视频文件。")
+        selectionActionMessage = message
+        EditorAccessibilityAnnouncementCenter.announce(message, priority: .high)
+        return
+      }
+
+      var updated = previewDraft
+      updated.attachments.append(contentsOf: importedAttachments.map { $0.attachment })
+      let htmlBlocks = importedAttachments.map { item in
+        let accessibleTitle = importedAttachments.count == 1 && !selectedTitle.isEmpty
+          ? selectedTitle
+          : VideoFileSupport.accessibleTitle(for: item.sourceURL)
+        return VideoFileSupport.htmlEmbed(
+          publicPath: item.attachment.relativePublishPath,
+          accessibleTitle: accessibleTitle
+        )
+      }
+      let insertedDraft = replacingSelection(
+        in: updated,
+        with: htmlBlocks.joined(separator: "\n\n")
+      )
+      guard applyDraftUpdate(insertedDraft) else {
+        discardManagedAttachments(
+          importedAttachments.map { $0.attachment },
+          fileStore: fileStore
+        )
+        return
+      }
+      let successMessage = String(
+        format: String(localized: "已在光标位置插入 %@ 个视频。"),
+        "\(importedAttachments.count)"
+      )
+      selectionActionMessage = ([successMessage] + failureMessages)
+        .joined(separator: "\n")
+      EditorAccessibilityAnnouncementCenter.announceVideoInsertion(
+        count: importedAttachments.count
       )
     }
+  }
 
-    let insertedDraft = replacingSelection(
-      in: updated,
-      with: htmlBlocks.joined(separator: "\n\n")
-    )
-    guard applyDraftUpdate(insertedDraft) else { return }
-    selectionActionMessage = String(
-      format: String(localized: "已在光标位置插入 %@ 个视频。"),
-      "\(videoURLs.count)"
-    )
-    EditorAccessibilityAnnouncementCenter.announceVideoInsertion(count: videoURLs.count)
+  func cancelAttachmentImport() {
+    attachmentImportRequestID = nil
+    attachmentImportTask?.cancel()
+    attachmentImportTask = nil
+  }
+
+  private func discardManagedAttachments(
+    _ attachments: [DraftAttachment],
+    fileStore: ManagedAttachmentFileStore
+  ) {
+    for attachment in attachments {
+      guard let sourceFilePath = attachment.sourceFilePath else { continue }
+      fileStore.discardStoredFile(at: URL(fileURLWithPath: sourceFilePath))
+    }
   }
 
   var activeInsertedImageMetadataIndex: Int? {
@@ -181,5 +313,8 @@ extension MacMarkdownComposerView {
   func dismissInsertedImageMetadata() {
     insertedImageMetadataDrafts = []
     activeInsertedImageMetadataID = nil
+    if activeWritingContextPanel == .imageInfo {
+      activeWritingContextPanel = nil
+    }
   }
 }

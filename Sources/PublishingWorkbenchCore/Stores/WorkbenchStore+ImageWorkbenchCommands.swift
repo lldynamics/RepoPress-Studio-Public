@@ -29,7 +29,7 @@ extension WorkbenchStore {
   /// Starts an observation refresh without making selection/navigation wait on
   /// file-backed image inspection. The image store owns cancellation and stale
   /// result rejection for overlapping requests.
-  func scheduleImageWorkbenchReportRefresh(
+  public func scheduleImageWorkbenchReportRefresh(
     for draft: ArticleDraft? = nil,
     force: Bool = false
   ) {

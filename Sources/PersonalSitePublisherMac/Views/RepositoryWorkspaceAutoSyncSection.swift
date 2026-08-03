@@ -49,12 +49,19 @@ extension RepositoryWorkspaceView {
       LazyVGrid(columns: repositoryMetricGridColumns, spacing: 10) {
         MetricTile(
           title: "状态",
-          value: store.repositoryAutoSyncSettings.isEnabled ? store.repositoryAutoSyncState.status.localizedDisplayName : "已关闭",
+          value: store.repositoryAutoSyncSettings.isEnabled
+            ? store.repositoryAutoSyncState.status.localizedDisplayName
+            : String(localized: "已关闭"),
           systemImage: store.repositoryAutoSyncState.status.systemImage
         )
         MetricTile(
           title: "间隔",
-          value: store.repositoryAutoSyncSettings.isEnabled ? "\(store.repositoryAutoSyncSettings.normalizedIntervalMinutes) 分钟" : "-",
+          value: store.repositoryAutoSyncSettings.isEnabled
+            ? String(
+              format: String(localized: "%d 分钟"),
+              store.repositoryAutoSyncSettings.normalizedIntervalMinutes
+            )
+            : "-",
           systemImage: "timer"
         )
         MetricTile(
@@ -203,7 +210,7 @@ extension RepositoryWorkspaceView {
         }
       } label: {
         Label(
-          store.repositoryScanState.isScanning ? "检查中" : "立即检查",
+          store.repositoryScanState.isScanning ? String(localized: "检查中") : String(localized: "立即检查"),
           systemImage: "arrow.clockwise"
         )
       }
@@ -218,7 +225,9 @@ extension RepositoryWorkspaceView {
     Toggle("启用自动检查远端", isOn: repositoryAutoSyncEnabledBinding)
       .toggleStyle(.switch)
       .accessibilityLabel("启用自动检查远端")
-      .accessibilityValue(store.repositoryAutoSyncSettings.isEnabled ? "开启" : "关闭")
+      .accessibilityValue(
+        store.repositoryAutoSyncSettings.isEnabled ? String(localized: "开启") : String(localized: "关闭")
+      )
       .accessibilityIdentifier("repository-auto-sync-enabled")
   }
 
@@ -227,7 +236,9 @@ extension RepositoryWorkspaceView {
       .toggleStyle(.checkbox)
       .disabled(!store.repositoryAutoSyncSettings.isEnabled)
       .accessibilityLabel("检查前 fetch upstream")
-      .accessibilityValue(store.repositoryAutoSyncSettings.fetchBeforeScan ? "开启" : "关闭")
+      .accessibilityValue(
+        store.repositoryAutoSyncSettings.fetchBeforeScan ? String(localized: "开启") : String(localized: "关闭")
+      )
       .accessibilityIdentifier("repository-auto-sync-fetch-upstream")
   }
 
@@ -242,7 +253,12 @@ extension RepositoryWorkspaceView {
     .frame(maxWidth: 360)
     .disabled(!store.repositoryAutoSyncSettings.isEnabled)
     .accessibilityLabel("远端自动检查间隔")
-    .accessibilityValue("\(store.repositoryAutoSyncSettings.normalizedIntervalMinutes) 分钟")
+    .accessibilityValue(
+      String(
+        format: String(localized: "%d 分钟"),
+        store.repositoryAutoSyncSettings.normalizedIntervalMinutes
+      )
+    )
     .accessibilityIdentifier("repository-auto-sync-interval")
   }
 
@@ -251,7 +267,11 @@ extension RepositoryWorkspaceView {
       .toggleStyle(.checkbox)
       .disabled(!store.repositoryAutoSyncSettings.isEnabled)
       .accessibilityLabel("自动导入远端文章")
-      .accessibilityValue(store.repositoryAutoSyncSettings.autoImportRemoteArticles ? "开启" : "关闭")
+      .accessibilityValue(
+        store.repositoryAutoSyncSettings.autoImportRemoteArticles
+          ? String(localized: "开启")
+          : String(localized: "关闭")
+      )
       .accessibilityIdentifier("repository-auto-sync-auto-import")
   }
 

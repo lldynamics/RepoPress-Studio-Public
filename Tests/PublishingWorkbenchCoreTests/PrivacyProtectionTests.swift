@@ -45,7 +45,7 @@ final class PrivacyProtectionTests: XCTestCase {
 
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 
-    XCTAssertFalse(store.isPrivacyLocked)
+    XCTAssertFalse(store.isQuickHideActive)
     XCTAssertTrue(store.privacySettings.masksPrivateContent)
   }
 
@@ -62,11 +62,11 @@ final class PrivacyProtectionTests: XCTestCase {
     let url = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
 
-    XCTAssertFalse(store.isPrivacyLocked)
-    store.lockPrivacy(reason: "Manual review")
-    XCTAssertTrue(store.isPrivacyLocked)
-    store.unlockPrivacy()
-    XCTAssertFalse(store.isPrivacyLocked)
+    XCTAssertFalse(store.isQuickHideActive)
+    store.activateQuickHide(reason: "Manual review")
+    XCTAssertTrue(store.isQuickHideActive)
+    store.deactivateQuickHide()
+    XCTAssertFalse(store.isQuickHideActive)
   }
 
   func testPrivacyProtectionEventsAreNotPersisted() async throws {
@@ -83,8 +83,8 @@ final class PrivacyProtectionTests: XCTestCase {
       )
     )
     let store = WorkbenchStore(persistence: persistence)
-    store.lockPrivacy(reason: "Manual review")
-    store.unlockPrivacy()
+    store.activateQuickHide(reason: "Manual review")
+    store.deactivateQuickHide()
     await store.waitForPendingSave()
 
     let snapshot = try XCTUnwrap(try persistence.load())
@@ -114,28 +114,31 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertTrue(snapshot.privacyProtectionEvents.isEmpty)
   }
 
-  func testProtectedWorkbenchAvailabilityFollowsPrivacyLockState() throws {
+  func testProtectedWorkbenchAvailabilityFollowsQuickHideState() throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     store.setAIPublishingAssistantPresented(true)
 
     XCTAssertTrue(store.canUseProtectedWorkbench)
 
-    store.lockPrivacy(reason: "Manual")
-    XCTAssertTrue(store.isPrivacyLocked)
+    store.activateQuickHide(reason: "Manual")
+    XCTAssertTrue(store.isQuickHideActive)
     XCTAssertFalse(store.canUseProtectedWorkbench)
     XCTAssertFalse(store.isAIPublishingAssistantPresented)
-    XCTAssertEqual(store.privacyProtectionStatus.title, "工作台内容已隐藏")
-    XCTAssertEqual(store.privacyProtectionStatus.detail, "Manual")
+    XCTAssertEqual(store.privacyProtectionStatus.title, "快速隐藏已启用")
+    XCTAssertEqual(
+      store.privacyProtectionStatus.detail,
+      "Manual 快速隐藏仅遮挡当前界面，不加密本地数据。"
+    )
 
-    store.unlockPrivacy()
-    XCTAssertFalse(store.isPrivacyLocked)
+    store.deactivateQuickHide()
+    XCTAssertFalse(store.isQuickHideActive)
     XCTAssertTrue(store.canUseProtectedWorkbench)
-    XCTAssertEqual(store.privacyProtectionStatus.title, "工作台内容可见")
+    XCTAssertEqual(store.privacyProtectionStatus.title, "快速隐藏未启用")
   }
 
-  func testPrivacyLockBlocksRemotePublishingBeforeQuotaOrAPIUse() async throws {
+  func testQuickHideBlocksRemotePublishingBeforeRepositoryAPIUse() async throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
-    store.lockPrivacy(reason: "Manual")
+    store.activateQuickHide(reason: "Manual")
 
     let selectedResult = await store.publishSelectedDraftOnlineUsingPreferredStrategy()
     let batchResult = await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy()
@@ -146,17 +149,15 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertNil(batchResult)
     XCTAssertNil(accessCheck)
     XCTAssertNil(creationResult)
-    XCTAssertEqual(store.publishActionMessage, "工作台内容已隐藏，请返回工作台后再继续。")
-    XCTAssertEqual(store.monetizationState.freeUsage.onlinePublishAttemptCount, 0)
-    XCTAssertEqual(store.monetizationState.freeUsage.batchPublishCount, 0)
+    XCTAssertEqual(store.publishActionMessage, "快速隐藏已启用，请返回工作台后再继续。")
     XCTAssertFalse(store.isRemoteRepositoryPublishing)
     XCTAssertFalse(store.isRemoteRepositoryChecking)
   }
 
-  func testPrivacyLockBlocksAIRequestsBeforeQuotaOrConversationChanges() async throws {
+  func testQuickHideBlocksAIRequestsBeforeConversationChanges() async throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
     let draft = try XCTUnwrap(store.selectedDraft)
-    store.lockPrivacy(reason: "Manual")
+    store.activateQuickHide(reason: "Manual")
 
     let action = await store.performAIAction(.privacyReview, draft: draft)
     let metadataSuggestion = await store.generateAIMetadataSuggestions(draft: draft)
@@ -167,15 +168,14 @@ final class PrivacyProtectionTests: XCTestCase {
     XCTAssertNil(metadataSuggestion)
     XCTAssertNil(chatReply)
     XCTAssertTrue(imageSuggestions.isEmpty)
-    XCTAssertEqual(store.monetizationState.freeUsage.aiRequestCount, 0)
     XCTAssertTrue(store.aiChatMessages.isEmpty)
     XCTAssertFalse(store.isAIActionRunning)
     XCTAssertFalse(store.isAIMetadataSuggestionRunning)
     XCTAssertFalse(store.isAIChatRunning)
     XCTAssertFalse(store.isAIImageTextRunning)
-    XCTAssertEqual(store.aiActionMessage, "工作台内容已隐藏，请返回工作台后再继续。")
-    XCTAssertEqual(store.aiChatMessage, "工作台内容已隐藏，请返回工作台后再继续。")
-    XCTAssertEqual(store.imageActionMessage, "工作台内容已隐藏，请返回工作台后再继续。")
+    XCTAssertEqual(store.aiActionMessage, "快速隐藏已启用，请返回工作台后再继续。")
+    XCTAssertEqual(store.aiChatMessage, "快速隐藏已启用，请返回工作台后再继续。")
+    XCTAssertEqual(store.imageActionMessage, "快速隐藏已启用，请返回工作台后再继续。")
   }
 
   func testPrivacyProtectionStatusSummarizesEnabledProtections() throws {
@@ -188,7 +188,7 @@ final class PrivacyProtectionTests: XCTestCase {
 
     let status = store.privacyProtectionStatus
 
-    XCTAssertFalse(status.isLocked)
+    XCTAssertFalse(status.isQuickHideActive)
     XCTAssertEqual(status.activeProtections, ["私密内容遮挡"])
     XCTAssertTrue(status.detail.contains("⌃⌘L"))
   }
@@ -198,14 +198,14 @@ final class PrivacyProtectionTests: XCTestCase {
       settings: PrivacyProtectionSettings(
         masksPrivateContent: true
       ),
-      isLocked: true,
+      isQuickHideActive: true,
       reason: "已手动快速隐藏。"
     )
 
     let markdown = status.checklistMarkdown
 
     XCTAssertTrue(markdown.contains("# 快速隐藏和私密内容保护"))
-    XCTAssertTrue(markdown.contains("- 当前状态：工作台内容已隐藏"))
+    XCTAssertTrue(markdown.contains("- 当前状态：快速隐藏已启用"))
     XCTAssertTrue(markdown.contains("私密内容遮挡"))
     XCTAssertTrue(markdown.contains("手动快速隐藏后"))
     XCTAssertTrue(markdown.contains("写作、AI、同步和发布操作不可用"))

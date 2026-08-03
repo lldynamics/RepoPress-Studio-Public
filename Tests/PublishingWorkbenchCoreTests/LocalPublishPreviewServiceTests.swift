@@ -29,6 +29,42 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     XCTAssertTrue(markdownDiff.lineDiff?.contains("+title = \"Updated\"") == true)
   }
 
+  func testPreviewBlocksUnreadableExistingMarkdownInsteadOfTreatingItAsEmpty() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/existing.md")
+    let invalidUTF8 = Data([0xFF, 0xFE, 0xFD])
+    try invalidUTF8.write(to: destinationURL)
+    let package = publishPackage(
+      files: [
+        .init(
+          kind: .markdown,
+          repositoryPath: "content/posts/existing.md",
+          content: "replacement content"
+        )
+      ]
+    )
+    let service = LocalPublishPreviewService()
+
+    let preview = service.preview(package: package, rootURL: rootURL)
+    let diff = try XCTUnwrap(preview.fileDiffs.first)
+
+    XCTAssertEqual(diff.status, .modified)
+    XCTAssertNil(diff.lineDiff)
+    XCTAssertNil(diff.baselineState)
+    XCTAssertTrue(preview.issues.contains {
+      $0.severity == .error
+        && $0.title == "无法读取现有 Markdown 文件"
+        && $0.field == "repositoryPath"
+    })
+    XCTAssertThrowsError(try service.write(preview: preview, rootURL: rootURL)) { error in
+      guard case .invalidPreview("content/posts/existing.md")? = error as? LocalPublishPreviewError else {
+        return XCTFail("Expected invalidPreview, got \(error)")
+      }
+    }
+    XCTAssertEqual(try Data(contentsOf: destinationURL), invalidUTF8)
+  }
+
   func testPreviewUsesRepositoryBookmarkWhenStoredPathIsStale() throws {
     let rootURL = try makeRepositoryFixture()
     defer {
@@ -401,6 +437,132 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
 
     XCTAssertEqual(preview.fileDiffs.first?.status, .unchanged)
     XCTAssertTrue(preview.changedFileDiffs.isEmpty)
+  }
+
+  func testMediaPreviewRecordsSourceHashSizeAndFileIdentity() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceURL = rootURL.appendingPathComponent("source-cover.jpg")
+    let sourceData = Data("source identity bytes".utf8)
+    try sourceData.write(to: sourceURL)
+    let package = publishPackage(
+      files: [
+        .init(kind: .image, repositoryPath: "images/cover.jpg", sourceFilePath: sourceURL.path)
+      ]
+    )
+
+    let preview = LocalPublishPreviewService().preview(package: package, rootURL: rootURL)
+    let sourceState = try XCTUnwrap(preview.fileDiffs.first?.sourceState)
+
+    XCTAssertEqual(sourceState.byteSize, Int64(sourceData.count))
+    XCTAssertEqual(
+      sourceState.sha256,
+      try BoundedFileReader.sha256(
+        at: sourceURL,
+        maximumByteCount: WorkbenchFileReadLimits.maximumLocalPublishTrackedFileByteCount
+      )
+    )
+    XCTAssertNotEqual(sourceState.fileIdentifier, 0)
+  }
+
+  func testProtectedMediaWriteRejectsSourceContentChangedAfterPreview() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceURL = rootURL.appendingPathComponent("source-cover.jpg")
+    try Data("first image bytes".utf8).write(to: sourceURL)
+    let package = publishPackage(
+      files: [
+        .init(kind: .image, repositoryPath: "images/cover.jpg", sourceFilePath: sourceURL.path)
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+    try Data("other image bytes".utf8).write(to: sourceURL)
+
+    XCTAssertThrowsError(try service.write(preview: preview, rootURL: rootURL)) { error in
+      guard case .sourcePreviewOutdated("images/cover.jpg")? = error as? LocalPublishPreviewError else {
+        return XCTFail("Expected sourcePreviewOutdated, got \(error)")
+      }
+    }
+    XCTAssertFalse(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("images/cover.jpg").path))
+  }
+
+  func testProtectedMediaWriteRejectsSameBytesFromDifferentFileIdentity() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceURL = rootURL.appendingPathComponent("source-cover.jpg")
+    let replacementURL = rootURL.appendingPathComponent("replacement-cover.jpg")
+    let sourceData = Data("same image bytes".utf8)
+    try sourceData.write(to: sourceURL)
+    try sourceData.write(to: replacementURL)
+    let package = publishPackage(
+      files: [
+        .init(kind: .image, repositoryPath: "images/cover.jpg", sourceFilePath: sourceURL.path)
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+    try FileManager.default.removeItem(at: sourceURL)
+    try FileManager.default.moveItem(at: replacementURL, to: sourceURL)
+
+    XCTAssertThrowsError(try service.write(preview: preview, rootURL: rootURL)) { error in
+      guard case .sourcePreviewOutdated("images/cover.jpg")? = error as? LocalPublishPreviewError else {
+        return XCTFail("Expected sourcePreviewOutdated, got \(error)")
+      }
+    }
+  }
+
+  func testProtectedMediaWriteRejectsSourceReplacedBySymlinkAfterPreview() throws {
+    let rootURL = try makeRepositoryFixture()
+    let outsideURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMediaSource-\(UUID().uuidString).jpg")
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+      try? FileManager.default.removeItem(at: outsideURL)
+    }
+    let sourceURL = rootURL.appendingPathComponent("source-cover.jpg")
+    try Data("preview image bytes".utf8).write(to: sourceURL)
+    try Data("outside image bytes".utf8).write(to: outsideURL)
+    let package = publishPackage(
+      files: [
+        .init(kind: .image, repositoryPath: "images/cover.jpg", sourceFilePath: sourceURL.path)
+      ]
+    )
+    let service = LocalPublishPreviewService()
+    let preview = service.preview(package: package, rootURL: rootURL)
+    try FileManager.default.removeItem(at: sourceURL)
+    try FileManager.default.createSymbolicLink(at: sourceURL, withDestinationURL: outsideURL)
+
+    XCTAssertThrowsError(try service.write(preview: preview, rootURL: rootURL)) { error in
+      guard case .unsafeSource("images/cover.jpg")? = error as? LocalPublishPreviewError else {
+        return XCTFail("Expected unsafeSource, got \(error)")
+      }
+    }
+    XCTAssertFalse(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("images/cover.jpg").path))
+  }
+
+  func testDirectMediaWriteRejectsSymlinkSource() throws {
+    let rootURL = try makeRepositoryFixture()
+    let outsideURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherDirectMedia-\(UUID().uuidString).jpg")
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+      try? FileManager.default.removeItem(at: outsideURL)
+    }
+    try Data("outside image bytes".utf8).write(to: outsideURL)
+    let sourceURL = rootURL.appendingPathComponent("source-link.jpg")
+    try FileManager.default.createSymbolicLink(at: sourceURL, withDestinationURL: outsideURL)
+    let package = publishPackage(
+      files: [
+        .init(kind: .image, repositoryPath: "images/cover.jpg", sourceFilePath: sourceURL.path)
+      ]
+    )
+
+    XCTAssertThrowsError(try LocalPublishPreviewService().write(package: package, rootURL: rootURL)) { error in
+      guard case .unsafeSource("images/cover.jpg")? = error as? LocalPublishPreviewError else {
+        return XCTFail("Expected unsafeSource, got \(error)")
+      }
+    }
   }
 
   func testWriteRejectsRepositorySymlinkBeforeWritingOutsideRoot() throws {

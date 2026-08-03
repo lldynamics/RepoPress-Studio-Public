@@ -167,6 +167,7 @@ extension PublishingStore {
       targetProfileName: targetProfile?.name
     )
     store.save()
+    store.refreshSiteDraftFileAutosave(for: affectedDraftIDs)
     return DraftOwnershipTransferResult(
       operation: refreshedPlan.operation,
       affectedDraftIDs: affectedDraftIDs,

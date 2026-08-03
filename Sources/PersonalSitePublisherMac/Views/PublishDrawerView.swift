@@ -19,8 +19,14 @@ struct PublishDrawerView: View {
       publishingFacade.ensureEditableDraftSelected()
       publishingFacade.runPreflight()
       if let draft = publishingFacade.selectedDraft {
+        store.prepareSEOSocialPreview(for: draft)
+        store.scheduleImageWorkbenchReportRefresh(for: draft)
         publishingFacade.refreshPublishPreviewInBackground(for: draft)
         store.refreshBatchPublishPlanInBackground()
+        if draft.siteProfileID == store.activeProfileID,
+           store.activeProfile.siteAnalytics?.isEnabled == true {
+          store.refreshSiteAnalytics(for: draft)
+        }
       }
     }
     .sheet(isPresented: $isAllChangesPublishConfirmationPresented) {
@@ -42,7 +48,8 @@ struct PublishDrawerView: View {
           VStack(alignment: .leading, spacing: 14) {
             publishDecisionSummary(draft: draft, issues: issues)
             publishPrimaryActions(draft: draft, issues: issues)
-            advancedPublishOptions(draft: draft, issues: issues)
+            postPublishAnalytics(draft: draft)
+            advancedPublishOptions(draft: draft)
           }
           .padding(16)
         }
@@ -84,15 +91,21 @@ struct PublishDrawerView: View {
 
       Button {
         publishingFacade.runPreflight()
+        store.prepareSEOSocialPreview(for: draft)
+        store.scheduleImageWorkbenchReportRefresh(for: draft, force: true)
         publishingFacade.refreshPublishPreviewInBackground(for: draft)
         store.refreshBatchPublishPlanInBackground()
+        if draft.siteProfileID == store.activeProfileID,
+           store.activeProfile.siteAnalytics?.isEnabled == true {
+          store.refreshSiteAnalytics(for: draft)
+        }
       } label: {
         Label("刷新", systemImage: "arrow.clockwise")
       }
       .accessibilityLabel("刷新发布检查和差异")
 
     }
-    .padding(.horizontal, 14)
+    .padding(.horizontal, WorkbenchSpacing.section)
     .padding(.vertical, 10)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("publish-drawer-header")
@@ -104,70 +117,24 @@ struct PublishDrawerView: View {
     draft: ArticleDraft,
     issues: [PreflightIssue]
   ) -> some View {
-    let blocking = issues.filter { $0.severity == .error }
-    let warnings = issues.filter { $0.severity == .warning }
-    let changedCount = store.cachedLocalPublishPreview(for: draft)?.changedFileDiffs.count
-    let status: (title: String, detail: String, systemImage: String, color: Color)
+    let imageReport = store.cachedImageWorkbenchReport(for: draft)
+    return VStack(alignment: .leading, spacing: 8) {
+      PublishDrawerReadinessChecklist(
+        preflightIssues: issues,
+        imageReport: imageReport,
+        isImageReportLoading: imageReport == nil || store.isImageWorkbenchReportLoading(for: draft),
+        seoReport: store.seoReport(for: draft),
+        socialSnapshot: store.seoSocialPreviewSnapshot(for: draft),
+        isSocialPreviewStale: store.isSEOSocialPreviewStale(for: draft)
+      )
 
-    if publishingFacade.isPublishPreviewRefreshing {
-      status = ("正在准备发布信息", "正在检查文章、文件变化和线上发布条件。", "arrow.clockwise", .secondary)
-    } else if !blocking.isEmpty {
-      status = ("还需处理 \(blocking.count) 个问题", "处理后即可保存到本地或发布上线。", "xmark.octagon", WorkbenchTheme.risk)
-    } else if changedCount == nil {
-      status = ("发布信息待刷新", "刷新后会显示可以执行的操作。", "clock.arrow.circlepath", .secondary)
-    } else if changedCount == 0 {
-      status = ("没有需要保存的文件变化", "没有待写入变化。", "checkmark.circle", WorkbenchTheme.success)
-    } else {
-      status = ("可以选择下一步", "当前文章有 \(changedCount ?? 0) 个文件变化。", "checkmark.circle", WorkbenchTheme.success)
-    }
-
-    return PublishDrawerCard(title: "发布准备", systemImage: "checklist") {
-      HStack(alignment: .top, spacing: 10) {
-        Image(systemName: status.systemImage)
-          .foregroundStyle(status.color)
-          .font(.title3)
-          .frame(width: 24)
-        VStack(alignment: .leading, spacing: 3) {
-          Text(status.title)
-            .font(.headline)
-          Text(status.detail)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        }
+      Button {
+        isAdvancedFlowExpanded = true
+      } label: {
+        Label("审阅文件差异", systemImage: "doc.text.magnifyingglass")
       }
-
-      HStack(spacing: 8) {
-        PublishDrawerStat(
-          title: "文件变化",
-          value: changedCount.map(String.init) ?? "—",
-          systemImage: "doc.on.doc",
-          color: .secondary
-        )
-        PublishDrawerStat(
-          title: "需要处理",
-          value: "\(blocking.count)",
-          systemImage: "xmark.octagon",
-          color: blocking.isEmpty ? .secondary : WorkbenchTheme.risk
-        )
-        PublishDrawerStat(
-          title: "提醒",
-          value: "\(warnings.count)",
-          systemImage: "exclamationmark.triangle",
-          color: warnings.isEmpty ? .secondary : WorkbenchTheme.warning
-        )
-      }
-
-      ForEach(blocking.prefix(3)) { issue in
-        PublishDrawerIssueRow(issue: issue)
-      }
-
-      if !blocking.isEmpty || !warnings.isEmpty {
-        Button("查看全部检查") {
-          isAdvancedFlowExpanded = true
-        }
-        .buttonStyle(.link)
-        .accessibilityHint("展开检查结果和文件差异")
-      }
+      .buttonStyle(.link)
+      .accessibilityHint("展开发布文件差异")
     }
   }
 
@@ -197,8 +164,8 @@ struct PublishDrawerView: View {
         spacing: 12
       ) {
         PublishDrawerActionChoice(
-          title: "保存到本地",
-          detail: "只更新站点文件，不提交到 Git，也不会上传到网站。",
+          title: String(localized: "保存到本地"),
+          detail: String(localized: "只更新站点文件，不提交到 Git，也不会上传到网站。"),
           status: localActionStatus(
             blockingCount: blockingCount,
             readiness: localReadiness
@@ -207,7 +174,7 @@ struct PublishDrawerView: View {
           tint: WorkbenchTheme.navigationSelection,
           isEnabled: canSaveLocally,
           isPrimary: false,
-          actionTitle: "保存到本地",
+          actionTitle: String(localized: "保存到本地"),
           actionSystemImage: "square.and.arrow.down",
           actionIdentifier: "publish-drawer-action-save-local"
         ) {
@@ -215,8 +182,8 @@ struct PublishDrawerView: View {
         }
 
         PublishDrawerActionChoice(
-          title: "发布所有变更",
-          detail: "把当前站点中所有通过检查且有变化的文章合并为一次提交和推送；执行前会显示完整文件清单。",
+          title: String(localized: "发布所有变更"),
+          detail: String(localized: "把当前站点中所有通过检查且有变化的文章合并为一次提交和推送；执行前会显示完整文件清单。"),
           status: batchOnlineActionStatus(
             plan: batchPlan,
             preview: remotePreview
@@ -225,7 +192,7 @@ struct PublishDrawerView: View {
           tint: WorkbenchTheme.success,
           isEnabled: canPublishOnline,
           isPrimary: true,
-          actionTitle: "发布所有变更…",
+          actionTitle: String(localized: "发布所有变更…"),
           actionSystemImage: "paperplane.fill",
           actionIdentifier: "publish-drawer-action-publish-all"
         ) {
@@ -244,8 +211,8 @@ struct PublishDrawerView: View {
       .accessibilityLabel("仅发布当前文章")
       .accessibilityHint(
         canPublishCurrentArticle
-          ? "打开当前文章的最终发布确认页"
-          : "当前文章的线上发布预览未通过"
+          ? String(localized: "打开当前文章的最终发布确认页")
+          : String(localized: "当前文章的线上发布预览未通过")
       )
     }
   }
@@ -255,12 +222,12 @@ struct PublishDrawerView: View {
     readiness: LocalPublishReadiness?
   ) -> String {
     if blockingCount > 0 {
-      return "请先处理上方问题"
+      return String(localized: "请先处理上方问题")
     }
     if store.isLocalRepositoryMutationRunning {
-      return "正在保存"
+      return String(localized: "正在保存")
     }
-    return readiness?.writeReadiness.localizedDisplayName ?? "正在准备"
+    return readiness?.writeReadiness.localizedDisplayName ?? String(localized: "正在准备")
   }
 
   private func batchOnlineActionStatus(
@@ -268,27 +235,44 @@ struct PublishDrawerView: View {
     preview: RemoteRepositoryPublishPreview?
   ) -> String {
     if store.isBatchPublishPlanRefreshing {
-      return "正在汇总全部变更"
+      return String(localized: "正在汇总全部变更")
     }
     if store.isRemoteRepositoryPublishing {
-      return "正在发布"
+      return String(localized: "正在发布")
     }
     if let firstIssue = preview?.blockingIssues.first {
       return firstIssue.title
     }
     guard let plan else {
-      return "正在准备"
+      return String(localized: "正在准备")
     }
     let count = plan.remotePublishableItems.count
     guard count > 0 else {
-      return "没有待发布变更"
+      return String(localized: "没有待发布变更")
     }
-    return "待发布 \(count) 篇 · \(preview?.changedPaths.count ?? plan.changedFileCount) 个文件"
+    return String(
+      format: String(localized: "待发布 %d 篇 · %d 个文件"),
+      count,
+      preview?.changedPaths.count ?? plan.changedFileCount
+    )
+  }
+
+  private func postPublishAnalytics(draft: ArticleDraft) -> some View {
+    PublishDrawerAnalyticsCard(
+      draft: draft,
+      settings: store.profile(for: draft).siteAnalytics,
+      summary: store.siteAnalyticsSummary(for: draft),
+      isLoading: store.isSiteAnalyticsLoading(for: draft),
+      tokenAvailability: store.siteAnalyticsTokenAvailability,
+      message: store.siteAnalyticsMessage,
+      refreshAction: {
+        store.refreshSiteAnalytics(for: draft)
+      }
+    )
   }
 
   private func advancedPublishOptions(
-    draft: ArticleDraft,
-    issues: [PreflightIssue]
+    draft: ArticleDraft
   ) -> some View {
     let disclosureValue = isAdvancedFlowExpanded
       ? String(localized: "已展开")
@@ -302,16 +286,16 @@ struct PublishDrawerView: View {
         if accessibilityReduceMotion {
           isAdvancedFlowExpanded.toggle()
         } else {
-          withAnimation(.easeInOut(duration: 0.2)) {
+          withAnimation(WorkbenchMotion.deliberate) {
             isAdvancedFlowExpanded.toggle()
           }
         }
       } label: {
         HStack(spacing: 12) {
           VStack(alignment: .leading, spacing: 2) {
-            Label("检查文件变化", systemImage: "doc.text.magnifyingglass")
+          Label("检查文件变化", systemImage: "doc.text.magnifyingglass")
               .font(.headline)
-            Text("发布前请审阅本地差异。")
+            Text("发布前请审阅本地文件差异。")
               .font(.caption)
               .foregroundStyle(.secondary)
           }
@@ -333,14 +317,13 @@ struct PublishDrawerView: View {
 
       if isAdvancedFlowExpanded {
         VStack(alignment: .leading, spacing: 12) {
-          PublishDrawerCheckResultsCard(issues: issues)
           diffCard(draft: draft)
         }
         .padding(.top, 10)
         .transition(.opacity.combined(with: .move(edge: .top)))
       }
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.section)
     .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
@@ -355,7 +338,7 @@ struct PublishDrawerView: View {
         ProgressView()
           .controlSize(.small)
           .accessibilityLabel("正在发布")
-        Text(store.remoteRepositoryPublishProgress?.message ?? "正在发布")
+        Text(store.remoteRepositoryPublishProgress?.message ?? String(localized: "正在发布"))
           .font(.caption)
           .foregroundStyle(.secondary)
           .lineLimit(2)
@@ -462,8 +445,11 @@ struct PublishDrawerView: View {
     if let preview = store.batchRemotePublishPreviewSnapshot,
        let plan = store.batchPublishPlan {
       RemotePublishConfirmationView(
-        targetLabel: "发布范围",
-        targetTitle: "全部待发布变更（\(plan.remotePublishableItems.count) 篇文章）",
+        targetLabel: String(localized: "发布范围"),
+        targetTitle: String(
+          format: String(localized: "全部待发布变更（%d 篇文章）"),
+          plan.remotePublishableItems.count
+        ),
         preview: preview,
         reviewDraft: store.batchRemoteReviewDraft,
         isPublishing: store.isRemoteRepositoryPublishing,
@@ -489,7 +475,7 @@ struct PublishDrawerView: View {
         }
       }
       .frame(minWidth: 420, minHeight: 260)
-      .padding(24)
+      .padding(WorkbenchSpacing.spacious)
     }
   }
 
@@ -497,7 +483,7 @@ struct PublishDrawerView: View {
   private func singleArticleOnlinePublishConfirmation(draft: ArticleDraft) -> some View {
     if let preview = store.cachedRemotePublishPreview(for: draft) {
       RemotePublishConfirmationView(
-        targetLabel: "文章",
+        targetLabel: String(localized: "文章"),
         targetTitle: draft.title,
         preview: preview,
         reviewDraft: store.cachedRemoteReviewDraft(for: draft),
@@ -524,7 +510,7 @@ struct PublishDrawerView: View {
         }
       }
       .frame(minWidth: 420, minHeight: 260)
-      .padding(24)
+      .padding(WorkbenchSpacing.spacious)
     }
   }
 

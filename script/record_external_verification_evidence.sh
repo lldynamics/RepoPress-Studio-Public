@@ -23,11 +23,6 @@ REMOTE_CONFLICT_PREVIEW=""
 PENDING_OFFLINE_STATE=""
 DEPLOYMENT_RETRY=""
 ROLLBACK_PACKAGE=""
-STOREKIT_PRODUCT_LOOKUP=""
-STOREKIT_PURCHASE=""
-STOREKIT_RESTORE=""
-STOREKIT_FREE_QUOTA=""
-STOREKIT_BOUNDARY_EVENTS=""
 SCREENSHOT_SET=""
 SCREENSHOT_PRIVACY_GATE=""
 SCREENSHOT_STRICT_GATE=""
@@ -71,13 +66,6 @@ For remote-conflict-deployment-rollback, include:
   --deployment-retry <text>
   --rollback-package <text>
 
-For storekit-sandbox, include:
-  --storekit-product-lookup <text>
-  --storekit-purchase <text>
-  --storekit-restore <text>
-  --storekit-free-quota <text>
-  --storekit-boundary-events <text>
-
 For app-store-screenshots, include:
   --screenshot-set <text>
   --screenshot-privacy-gate <text>
@@ -95,21 +83,10 @@ Allowed item IDs:
   gitlab-direct-publish
   gitlab-review-publish
   remote-conflict-deployment-rollback
-  storekit-sandbox
   app-store-screenshots
 
 Examples:
   script/record_external_verification_evidence.sh --dry-run
-
-  script/record_external_verification_evidence.sh \
-    --item storekit-sandbox \
-    --summary "StoreKit sandbox purchase, restore, entitlement, and free quota boundary verified with redacted sandbox account." \
-    --storekit-product-lookup "Sandbox loaded product personal.site.publisher.pro with localized price and copy." \
-    --storekit-purchase "Purchase completed and entitlement source changed to StoreKit." \
-    --storekit-restore "Restore reapplied Pro entitlement after clearing local state." \
-    --storekit-free-quota "Free quota boundary showed upgrade copy before purchase and no quota consumption after Pro unlock." \
-    --storekit-boundary-events "Recent Pro boundary events showed free-plan block before purchase and Pro no-quota allow after unlock." \
-    --execute
 
   script/record_external_verification_evidence.sh \
     --item github-direct-publish \
@@ -132,8 +109,8 @@ Examples:
 
   script/record_external_verification_evidence.sh \
     --item app-store-screenshots \
-    --summary "Nine App Store screenshots captured and strict screenshot/privacy gates passed." \
-    --screenshot-set "Captured manifest screenshot IDs: writing, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock." \
+    --summary "Eight App Store screenshots captured and strict screenshot/privacy gates passed." \
+    --screenshot-set "Captured manifest screenshot IDs: writing, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, privacy-lock." \
     --screenshot-privacy-gate "check_screenshot_privacy.sh passed with no local paths, tokens, or private article text." \
     --screenshot-strict-gate "STRICT_SCREENSHOTS=1 check_screenshots.sh and strict release gate output were reviewed." \
     --screenshot-source-fingerprint "$(script/screenshot_evidence_fingerprint.py)" \
@@ -152,7 +129,6 @@ allowed_ids=(
   gitlab-direct-publish
   gitlab-review-publish
   remote-conflict-deployment-rollback
-  storekit-sandbox
   app-store-screenshots
 )
 
@@ -171,7 +147,6 @@ title_for_id() {
     gitlab-direct-publish) echo "GitLab API 直接提交" ;;
     gitlab-review-publish) echo "GitLab MR 发布" ;;
     remote-conflict-deployment-rollback) echo "远端冲突、部署和回滚" ;;
-    storekit-sandbox) echo "StoreKit sandbox 购买与恢复" ;;
     app-store-screenshots) echo "App Store 截图和严格门禁" ;;
     *) fail "unsupported item id: $1" ;;
   esac
@@ -344,31 +319,6 @@ while [[ "$#" -gt 0 ]]; do
       ROLLBACK_PACKAGE="$2"
       shift 2
       ;;
-    --storekit-product-lookup)
-      [[ "$#" -ge 2 ]] || fail "--storekit-product-lookup requires text"
-      STOREKIT_PRODUCT_LOOKUP="$2"
-      shift 2
-      ;;
-    --storekit-purchase)
-      [[ "$#" -ge 2 ]] || fail "--storekit-purchase requires text"
-      STOREKIT_PURCHASE="$2"
-      shift 2
-      ;;
-    --storekit-restore)
-      [[ "$#" -ge 2 ]] || fail "--storekit-restore requires text"
-      STOREKIT_RESTORE="$2"
-      shift 2
-      ;;
-    --storekit-free-quota)
-      [[ "$#" -ge 2 ]] || fail "--storekit-free-quota requires text"
-      STOREKIT_FREE_QUOTA="$2"
-      shift 2
-      ;;
-    --storekit-boundary-events)
-      [[ "$#" -ge 2 ]] || fail "--storekit-boundary-events requires text"
-      STOREKIT_BOUNDARY_EVENTS="$2"
-      shift 2
-      ;;
     --screenshot-set)
       [[ "$#" -ge 2 ]] || fail "--screenshot-set requires text"
       SCREENSHOT_SET="$2"
@@ -507,18 +457,6 @@ if [[ "$ITEM_ID" == "remote-conflict-deployment-rollback" ]]; then
   reject_remote_recovery_placeholder_content "$DEPLOYMENT_RETRY" "deployment retry"
   reject_remote_recovery_placeholder_content "$ROLLBACK_PACKAGE" "rollback package"
 fi
-if [[ "$ITEM_ID" == "storekit-sandbox" ]]; then
-  [[ -n "${STOREKIT_PRODUCT_LOOKUP//[[:space:]]/}" ]] || fail "--storekit-product-lookup is required for storekit-sandbox"
-  [[ -n "${STOREKIT_PURCHASE//[[:space:]]/}" ]] || fail "--storekit-purchase is required for storekit-sandbox"
-  [[ -n "${STOREKIT_RESTORE//[[:space:]]/}" ]] || fail "--storekit-restore is required for storekit-sandbox"
-  [[ -n "${STOREKIT_FREE_QUOTA//[[:space:]]/}" ]] || fail "--storekit-free-quota is required for storekit-sandbox"
-  [[ -n "${STOREKIT_BOUNDARY_EVENTS//[[:space:]]/}" ]] || fail "--storekit-boundary-events is required for storekit-sandbox"
-  reject_private_content "$STOREKIT_PRODUCT_LOOKUP" "StoreKit product lookup"
-  reject_private_content "$STOREKIT_PURCHASE" "StoreKit purchase"
-  reject_private_content "$STOREKIT_RESTORE" "StoreKit restore"
-  reject_private_content "$STOREKIT_FREE_QUOTA" "StoreKit free quota"
-  reject_private_content "$STOREKIT_BOUNDARY_EVENTS" "StoreKit boundary events"
-fi
 if [[ "$ITEM_ID" == "app-store-screenshots" ]]; then
   [[ -n "${SCREENSHOT_SET//[[:space:]]/}" ]] || fail "--screenshot-set is required for app-store-screenshots"
   [[ -n "${SCREENSHOT_PRIVACY_GATE//[[:space:]]/}" ]] || fail "--screenshot-privacy-gate is required for app-store-screenshots"
@@ -570,13 +508,6 @@ if [[ "$EXECUTE" != "1" ]]; then
     echo "- deployment retry: recorded"
     echo "- rollback package: recorded"
   fi
-  if [[ "$ITEM_ID" == "storekit-sandbox" ]]; then
-    echo "- StoreKit product lookup: recorded"
-    echo "- StoreKit purchase: recorded"
-    echo "- StoreKit restore: recorded"
-    echo "- StoreKit free quota: recorded"
-    echo "- StoreKit boundary events: recorded"
-  fi
   if [[ "$ITEM_ID" == "app-store-screenshots" ]]; then
     echo "- screenshot set: recorded"
     echo "- screenshot privacy gate: recorded"
@@ -587,7 +518,7 @@ if [[ "$EXECUTE" != "1" ]]; then
   exit 0
 fi
 
-python3 - "$EVIDENCE_FILE" "$ITEM_ID" "$TITLE" "$SUMMARY" "$EVIDENCE_URL" "$TOKEN_SCOPE" "$COMMIT_SHA" "$DEPLOYMENT_STATUS" "$RELEASE_LEDGER" "$PR_URL" "$MR_URL" "$PROVIDER_REVIEW_ARTIFACT" "$REVIEW_BRANCH" "$SOURCE_BRANCH" "$TARGET_BRANCH" "$FILE_CHANGES" "$ROLLBACK_DRAFT" "$REMOTE_CONFLICT_PREVIEW" "$PENDING_OFFLINE_STATE" "$DEPLOYMENT_RETRY" "$ROLLBACK_PACKAGE" "$STOREKIT_PRODUCT_LOOKUP" "$STOREKIT_PURCHASE" "$STOREKIT_RESTORE" "$STOREKIT_FREE_QUOTA" "$STOREKIT_BOUNDARY_EVENTS" "$SCREENSHOT_SET" "$SCREENSHOT_PRIVACY_GATE" "$SCREENSHOT_STRICT_GATE" "$SCREENSHOT_SOURCE_FINGERPRINT" <<'PY'
+python3 - "$EVIDENCE_FILE" "$ITEM_ID" "$TITLE" "$SUMMARY" "$EVIDENCE_URL" "$TOKEN_SCOPE" "$COMMIT_SHA" "$DEPLOYMENT_STATUS" "$RELEASE_LEDGER" "$PR_URL" "$MR_URL" "$PROVIDER_REVIEW_ARTIFACT" "$REVIEW_BRANCH" "$SOURCE_BRANCH" "$TARGET_BRANCH" "$FILE_CHANGES" "$ROLLBACK_DRAFT" "$REMOTE_CONFLICT_PREVIEW" "$PENDING_OFFLINE_STATE" "$DEPLOYMENT_RETRY" "$ROLLBACK_PACKAGE" "$SCREENSHOT_SET" "$SCREENSHOT_PRIVACY_GATE" "$SCREENSHOT_STRICT_GATE" "$SCREENSHOT_SOURCE_FINGERPRINT" <<'PY'
 from pathlib import Path
 import re
 import sys
@@ -614,16 +545,11 @@ path = Path(sys.argv[1])
     pending_offline_state,
     deployment_retry,
     rollback_package,
-    storekit_product_lookup,
-    storekit_purchase,
-    storekit_restore,
-    storekit_free_quota,
-    storekit_boundary_events,
     screenshot_set,
     screenshot_privacy_gate,
     screenshot_strict_gate,
     screenshot_source_fingerprint,
-) = sys.argv[2:31]
+) = sys.argv[2:26]
 text = path.read_text()
 pattern = re.compile(rf"^- \[[ xX]\] `{re.escape(item_id)}` - .*$", re.MULTILINE)
 replacement = f"- [x] `{item_id}` - {title}: {summary}"
@@ -670,14 +596,6 @@ if item_id == "remote-conflict-deployment-rollback":
         f"- Pending/offline state: {pending_offline_state}",
         f"- Deployment retry: {deployment_retry}",
         f"- Rollback package: {rollback_package}",
-    ])
-if item_id == "storekit-sandbox":
-    note_lines.extend([
-        f"- StoreKit product lookup: {storekit_product_lookup}",
-        f"- StoreKit purchase: {storekit_purchase}",
-        f"- StoreKit restore: {storekit_restore}",
-        f"- StoreKit free quota: {storekit_free_quota}",
-        f"- StoreKit boundary events: {storekit_boundary_events}",
     ])
 if item_id == "app-store-screenshots":
     note_lines.extend([

@@ -80,7 +80,8 @@ const batchReviewPanel = document.querySelector("#batch-review-panel");
 const batchSettingsSummary = document.querySelector("#batch-settings-summary");
 const batchItemsList = document.querySelector("#batch-items");
 const batchRetryFailedButton = document.querySelector("#batch-retry-failed");
-const captureAIInput = document.querySelector("#capture-ai");
+const captureLocalIndexInput = document.querySelector("#capture-local-index");
+const captureRemoteAIInput = document.querySelector("#capture-remote-ai");
 const statusLabel = document.querySelector("#status");
 const alertLabel = document.querySelector("#alert");
 const pageTitle = document.querySelector("#page-title");
@@ -104,7 +105,8 @@ const receiptFolder = document.querySelector("#receipt-folder");
 const receiptSize = document.querySelector("#receipt-size");
 const receiptArchive = document.querySelector("#receipt-archive");
 const receiptIndex = document.querySelector("#receipt-index");
-const receiptAI = document.querySelector("#receipt-ai");
+const receiptLocalIndex = document.querySelector("#receipt-local-index");
+const receiptRemoteAI = document.querySelector("#receipt-remote-ai");
 const openDocumentButton = document.querySelector("#open-document");
 const duplicatePanel = document.querySelector("#duplicate-panel");
 const duplicateMessage = document.querySelector("#duplicate-message");
@@ -126,7 +128,8 @@ let allKnowledgeFolders = [];
 let favoriteFolderIDs = new Set();
 let recentFolderIDs = [];
 let domainFolderMap = {};
-let defaultAllowsAIUse = true;
+let defaultAllowsLocalSemanticIndex = true;
+let defaultAllowsRemoteAIUse = false;
 let highlightedTabs = [];
 let pendingBatchPermissionPlan = null;
 let batchTabsPermissionWasGranted = false;
@@ -161,6 +164,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       "favoriteKnowledgeFolderIDsV1",
       "recentKnowledgeFolderIDsV1",
       "knowledgeDomainFoldersV1",
+      "defaultKnowledgeAllowsLocalSemanticIndexV1",
+      "defaultKnowledgeAllowsRemoteAIUseV1",
       "defaultKnowledgeAllowsAIUseV1",
       "lastKnowledgeSaveReceiptV1"
     ]);
@@ -172,8 +177,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       ? stored.recentKnowledgeFolderIDsV1
       : [];
     domainFolderMap = stored.knowledgeDomainFoldersV1 || {};
-    defaultAllowsAIUse = stored.defaultKnowledgeAllowsAIUseV1 !== false;
-    captureAIInput.checked = defaultAllowsAIUse;
+    const hasLocalSemanticIndexPreference = Object.prototype.hasOwnProperty.call(
+      stored,
+      "defaultKnowledgeAllowsLocalSemanticIndexV1"
+    );
+    defaultAllowsLocalSemanticIndex = hasLocalSemanticIndexPreference
+      ? stored.defaultKnowledgeAllowsLocalSemanticIndexV1 !== false
+      : stored.defaultKnowledgeAllowsAIUseV1 !== false;
+    defaultAllowsRemoteAIUse = stored.defaultKnowledgeAllowsRemoteAIUseV1 === true;
+    captureLocalIndexInput.checked = defaultAllowsLocalSemanticIndex;
+    captureRemoteAIInput.checked = defaultAllowsRemoteAIUse;
     allKnowledgeFolders = stored.cachedKnowledgeFolders || [];
     const rememberedFolderID = domainFolderMap[currentPageDomain()] || "";
     populateFolderOptions(
@@ -249,10 +262,12 @@ for (const input of captureModeInputs) {
     updateBatchReviewConfiguration();
   });
 }
-captureAIInput.addEventListener("change", () => {
-  updateSaveOptionsSummary();
-  updateBatchReviewConfiguration();
-});
+for (const input of [captureLocalIndexInput, captureRemoteAIInput]) {
+  input.addEventListener("change", () => {
+    updateSaveOptionsSummary();
+    updateBatchReviewConfiguration();
+  });
+}
 document.addEventListener("keydown", handlePopupKeyboardShortcut);
 extensionAPI.tabs.onHighlighted?.addListener(() => {
   pendingBatchPermissionPlan = null;
@@ -513,13 +528,16 @@ function updateSaveOptionsSummary() {
     || localizedText("uncategorized", "未分类");
   saveOptionsSummary.textContent = localizedText(
     "saveOptionsSummary",
-    "{mode} · {folder} · {permission}",
+    "{mode} · {folder} · 本地索引：{localPermission} · 远程 AI：{remotePermission}",
     {
       mode: captureModeShortLabel(selectedCaptureMode()),
       folder: folderName,
-      permission: captureAIInput.checked
-        ? localizedText("aiAllowedShort", "允许检索")
-        : localizedText("aiDeniedShort", "不允许使用")
+      localPermission: captureLocalIndexInput.checked
+        ? localizedText("localIndexAllowedShort", "已建立")
+        : localizedText("localIndexDeniedShort", "未建立"),
+      remotePermission: captureRemoteAIInput.checked
+        ? localizedText("remoteAIAllowedShort", "允许发送")
+        : localizedText("remoteAIDeniedShort", "禁止发送")
     }
   );
 }
@@ -538,7 +556,8 @@ function currentBatchConfiguration(captureMode = selectedCaptureMode()) {
     folderID: newFolderName ? null : (folderSelect.value || null),
     newFolderName: newFolderName || null,
     folderName: selectedBatchFolderName(),
-    allowsAIUse: defaultAllowsAIUse
+    allowsLocalSemanticIndex: defaultAllowsLocalSemanticIndex,
+    allowsRemoteAIUse: defaultAllowsRemoteAIUse
   };
 }
 
@@ -603,10 +622,13 @@ function renderBatchReview() {
     localizedText("batchModeSummary", "模式：{mode}", {
       mode: captureModeShortLabel(configuration.captureMode)
     }),
-    localizedText("batchAISummary", "语义检索：{permission}", {
-      permission: configuration.allowsAIUse
-        ? localizedText("aiAllowedShort", "允许检索")
-        : localizedText("aiDeniedShort", "不允许使用")
+    localizedText("batchPermissionSummary", "本地索引：{localPermission} · 远程 AI：{remotePermission}", {
+      localPermission: configuration.allowsLocalSemanticIndex
+        ? localizedText("localIndexAllowedShort", "已建立")
+        : localizedText("localIndexDeniedShort", "未建立"),
+      remotePermission: configuration.allowsRemoteAIUse
+        ? localizedText("remoteAIAllowedShort", "允许发送")
+        : localizedText("remoteAIDeniedShort", "禁止发送")
     })
   ].join(localizedText("metadataSeparator", " · "));
   batchItemsList.replaceChildren(...batchReviewItemsState.map((item) => {
@@ -1008,7 +1030,8 @@ async function runBatchSaveWithPermissionPlan(plan, permissionRequest, configura
       captureMode: configuration.captureMode,
       folderID: configuration.folderID,
       newFolderName: configuration.newFolderName,
-      allowsAIUse: configuration.allowsAIUse
+      allowsLocalSemanticIndex: configuration.allowsLocalSemanticIndex,
+      allowsRemoteAIUse: configuration.allowsRemoteAIUse
     });
     mergeBatchResultItems(result, plannedTabIDs);
     batchReviewPhase = "result";
@@ -1106,16 +1129,19 @@ async function saveCurrentPage() {
     : localizedText("capturingAndSavingStatus", "正在读取页面、保存并建立索引…"));
   try {
     const token = tokenInput.value.trim();
-    defaultAllowsAIUse = captureAIInput.checked;
+    defaultAllowsLocalSemanticIndex = captureLocalIndexInput.checked;
+    defaultAllowsRemoteAIUse = captureRemoteAIInput.checked;
     await extensionAPI.storage.local.set({
-      defaultKnowledgeAllowsAIUseV1: defaultAllowsAIUse
+      defaultKnowledgeAllowsLocalSemanticIndexV1: defaultAllowsLocalSemanticIndex,
+      defaultKnowledgeAllowsRemoteAIUseV1: defaultAllowsRemoteAIUse
     }).catch(() => {});
     const result = await sendRuntimeMessage({
       type: "capture-and-save",
       tabId: activeTab.id,
       token,
       captureMode,
-      allowsAIUse: captureAIInput.checked,
+      allowsLocalSemanticIndex: captureLocalIndexInput.checked,
+      allowsRemoteAIUse: captureRemoteAIInput.checked,
       folderID: newFolderInput.value.trim() ? null : (folderSelect.value || null),
       newFolderName: newFolderInput.value.trim() || null
     });
@@ -1435,9 +1461,12 @@ function showReceipt(receipt) {
   receiptIndex.textContent = receipt.indexStatus === "ready"
     ? localizedText("indexReady", "全文与语义索引已就绪")
     : localizedText("indexPending", "等待建立索引");
-  receiptAI.textContent = receipt.allowsAIUse === false
-    ? localizedText("aiDeniedReceipt", "未加入语义检索")
-    : localizedText("aiAllowedReceipt", "已加入本地语义检索");
+  receiptLocalIndex.textContent = receipt.allowsLocalSemanticIndex === false
+    ? localizedText("localIndexDeniedReceipt", "未建立")
+    : localizedText("localIndexAllowedReceipt", "已建立");
+  receiptRemoteAI.textContent = receipt.allowsRemoteAIUse === true
+    ? localizedText("remoteAIAllowedReceipt", "允许发送")
+    : localizedText("remoteAIDeniedReceipt", "已禁止发送");
   return true;
 }
 

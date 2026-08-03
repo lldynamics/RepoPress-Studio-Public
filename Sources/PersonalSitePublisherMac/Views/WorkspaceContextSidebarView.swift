@@ -58,6 +58,8 @@ struct WorkspacePrimarySidebar: View {
   @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
   @Binding var repositoryContextStage: RepositoryContextStage
   let contentHealthSidebarProjection: ContentHealthSidebarProjection
+  let rssStore: RSSReaderStore
+  let rssPresentation: RSSReaderPresentationState
   let onSelectSection: (WorkspaceSection) -> Void
 
   init(
@@ -66,6 +68,8 @@ struct WorkspacePrimarySidebar: View {
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
     repositoryContextStage: Binding<RepositoryContextStage>,
     contentHealthSidebarProjection: ContentHealthSidebarProjection,
+    rssStore: RSSReaderStore,
+    rssPresentation: RSSReaderPresentationState,
     onSelectSection: @escaping (WorkspaceSection) -> Void
   ) {
     self.store = store
@@ -74,6 +78,8 @@ struct WorkspacePrimarySidebar: View {
     _imageWorkbenchContextStage = imageWorkbenchContextStage
     _repositoryContextStage = repositoryContextStage
     self.contentHealthSidebarProjection = contentHealthSidebarProjection
+    self.rssStore = rssStore
+    self.rssPresentation = rssPresentation
     self.onSelectSection = onSelectSection
   }
 
@@ -111,22 +117,24 @@ struct WorkspacePrimarySidebar: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(.bar)
+    .workbenchGlassContainer(material: .thinMaterial, drawsBorder: false)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("workspace-sidebar")
   }
 
   private var showsContextList: Bool {
-    shell.selectedSection == .writing || shell.selectedSection == .library
+    shell.selectedSection == .writing
+      || shell.selectedSection == .library
+      || shell.selectedSection == .rss
   }
 
   private var quickSearchScope: WorkspaceQuickSearchScope {
     switch shell.selectedSection {
     case .images:
-      return .imageIssues
+      return .imageResources
     case .contentHealth:
       return .aiFixes
-    case .writing, .library, .siteStarter, .sync, .maintenance, .releaseHistory:
+    case .writing, .library, .rss, .siteStarter, .sync, .maintenance, .releaseHistory:
       return .recent
     }
   }
@@ -145,7 +153,9 @@ struct WorkspacePrimarySidebar: View {
     case .writing:
       WritingDraftColumn(store: store, isCompact: true)
     case .library:
-      KnowledgeSourceListColumn(knowledge: store.knowledge)
+      KnowledgeSourceListColumn(store: store, knowledge: store.knowledge)
+    case .rss:
+      RSSReaderWorkspaceSidebar(store: rssStore, presentation: rssPresentation)
     default:
       EmptyView()
     }

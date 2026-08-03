@@ -35,6 +35,9 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   public var includeDraftFlagInFrontMatter: Bool
   public var includeCoverInFrontMatter: Bool
   public var slugValidationRule: SiteSlugValidationRule
+  /// The reusable AI connection selected by this site. The legacy config is
+  /// retained for decoding older workbench files and non-store clients.
+  public var aiConnectionProfileID: UUID?
   public var aiProviderConfig: AIProviderConfig
   public var aiWritingStyle: AIWritingStyleConfig?
   public var deploymentProvider: DeploymentProvider?
@@ -43,6 +46,9 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   public var deploymentStatusEndpointUsesToken: Bool?
   public var deploymentProjectID: String?
   public var deploymentAccountID: String?
+  /// Optional read-only traffic reporting configuration. Access tokens stay
+  /// in the Keychain and are never serialized into the profile.
+  public var siteAnalytics: SiteAnalyticsSettings?
 
   public init(
     id: UUID = UUID(),
@@ -70,6 +76,7 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     includeDraftFlagInFrontMatter: Bool = true,
     includeCoverInFrontMatter: Bool = true,
     slugValidationRule: SiteSlugValidationRule = .lowercaseKebab,
+    aiConnectionProfileID: UUID? = nil,
     aiProviderConfig: AIProviderConfig = AIProviderConfig(),
     aiWritingStyle: AIWritingStyleConfig? = .default,
     deploymentProvider: DeploymentProvider? = nil,
@@ -77,7 +84,8 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     deploymentStatusEndpointURL: String? = nil,
     deploymentStatusEndpointUsesToken: Bool = false,
     deploymentProjectID: String? = nil,
-    deploymentAccountID: String? = nil
+    deploymentAccountID: String? = nil,
+    siteAnalytics: SiteAnalyticsSettings? = nil
   ) {
     self.id = id
     self.name = name
@@ -104,6 +112,7 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     self.includeDraftFlagInFrontMatter = includeDraftFlagInFrontMatter
     self.includeCoverInFrontMatter = includeCoverInFrontMatter
     self.slugValidationRule = slugValidationRule
+    self.aiConnectionProfileID = aiConnectionProfileID
     self.aiProviderConfig = aiProviderConfig
     self.aiWritingStyle = aiWritingStyle
     self.deploymentProvider = deploymentProvider
@@ -112,6 +121,7 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     self.deploymentStatusEndpointUsesToken = deploymentStatusEndpointUsesToken
     self.deploymentProjectID = deploymentProjectID
     self.deploymentAccountID = deploymentAccountID
+    self.siteAnalytics = siteAnalytics
   }
 
   public var resolvedAIWritingStyle: AIWritingStyleConfig {

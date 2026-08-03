@@ -26,10 +26,15 @@ public enum MarkdownHTMLRenderingService {
   /// Renders the explicit, sanitized HTML subset used by the in-app article preview.
   /// The default `renderBody` API intentionally continues to escape all raw HTML.
   public static func renderPreviewBodyAllowingSanitizedHTML(_ markdown: String) -> String {
-    let prepared = MarkdownEmbeddedHTMLService.prepare(markdown: markdown)
-    return MarkdownEmbeddedHTMLService.restore(
+    let mathPrepared = LocalKaTeXPreviewService.prepare(markdown: markdown)
+    let prepared = MarkdownEmbeddedHTMLService.prepare(markdown: mathPrepared.markdown)
+    let embeddedHTML = MarkdownEmbeddedHTMLService.restore(
       renderedHTML: renderBody(prepared.markdown),
       replacements: prepared.replacements
+    )
+    return LocalKaTeXPreviewService.restore(
+      renderedHTML: embeddedHTML,
+      replacements: mathPrepared.replacements
     )
   }
 }

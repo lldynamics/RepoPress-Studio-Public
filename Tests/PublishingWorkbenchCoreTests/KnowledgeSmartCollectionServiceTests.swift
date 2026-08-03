@@ -305,7 +305,7 @@ final class KnowledgeSmartCollectionServiceTests: XCTestCase {
       authors: authors,
       tags: tags,
       sourceURL: sourceURL,
-      allowsAIUse: allowsAIUse,
+      allowsRemoteAIUse: allowsAIUse,
       importedAt: importedAt,
       updatedAt: importedAt
     )

@@ -4,7 +4,7 @@ import SwiftUI
 struct TokenDeploymentTokenSection: View {
   let deploymentProvider: DeploymentProvider
   let deploymentTokenInput: Binding<String>
-  let hasDeploymentToken: Bool
+  let tokenAvailability: KeychainTokenAvailability
   let onSaveToken: () -> Void
   let onDeleteToken: () -> Void
   let onRefreshTokenState: () -> Void
@@ -23,8 +23,8 @@ struct TokenDeploymentTokenSection: View {
       }
 
       HStack {
-        Label(deploymentTokenStatusText, systemImage: hasDeploymentToken ? "checkmark.seal" : "key")
-          .foregroundStyle(hasDeploymentToken ? WorkbenchTheme.success : Color.secondary)
+        Label(deploymentTokenStatusText, systemImage: tokenStatusSystemImage)
+          .foregroundStyle(tokenStatusColor)
 
         Spacer()
 
@@ -35,7 +35,14 @@ struct TokenDeploymentTokenSection: View {
           isDeleteConfirmationPresented = true
         }
         .buttonStyle(.borderless)
-        .disabled(!hasDeploymentToken)
+        .disabled(!tokenAvailability.hasToken)
+      }
+
+      if let accessFailureMessage = tokenAvailability.accessFailureMessage {
+        Text("操作失败：\(accessFailureMessage)")
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.warning)
+          .textSelection(.enabled)
       }
 
       Text("部署访问令牌与仓库访问令牌使用独立的钥匙串项；切换部署平台后需要保存该平台自己的令牌。旧共用令牌不会自动作为部署访问令牌使用，需要重新保存。")
@@ -57,9 +64,31 @@ struct TokenDeploymentTokenSection: View {
   }
 
   private var deploymentTokenStatusText: String {
-    hasDeploymentToken
-      ? String(localized: "已保存部署访问令牌")
-      : String(localized: "未保存部署访问令牌")
+    switch tokenAvailability.accessState {
+    case .available:
+      return String(localized: "已保存部署访问令牌")
+    case .missing:
+      return String(localized: "未保存部署访问令牌")
+    case .accessFailed:
+      return String(localized: "Keychain 读取失败")
+    }
+  }
+
+  private var tokenStatusSystemImage: String {
+    tokenAvailability.accessState == .accessFailed
+      ? "exclamationmark.triangle"
+      : (tokenAvailability.hasToken ? "checkmark.seal" : "key")
+  }
+
+  private var tokenStatusColor: Color {
+    switch tokenAvailability.accessState {
+    case .available:
+      return WorkbenchTheme.success
+    case .missing:
+      return .secondary
+    case .accessFailed:
+      return WorkbenchTheme.warning
+    }
   }
 
   private var deploymentTokenHint: String {

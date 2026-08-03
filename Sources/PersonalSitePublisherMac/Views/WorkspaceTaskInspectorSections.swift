@@ -191,7 +191,8 @@ struct WorkspaceTaskMetadataSection: View {
 
   private var summaryAIAvailability: AIPublishingActionAvailabilityPresentation {
     let profile = store.profile(for: draft)
-    let isAIEnabled = !profile.aiProviderConfig.requiresAPIKey || ai.tokenAvailability.hasToken
+    let config = store.aiProviderConfig(for: profile)
+    let isAIEnabled = !config.requiresAPIKey || ai.tokenAvailability.hasToken
     return AIPublishingActionAvailabilityService.presentation(
       for: .suggestSummary,
       draft: draft,
@@ -866,6 +867,11 @@ private struct IssueCompactRow: View {
           .foregroundStyle(.secondary)
           .lineLimit(2)
       }
+      Spacer(minLength: 8)
+      Label("定位到\(issue.contentHealthFocusTargetTitle)", systemImage: "arrow.right.circle")
+        .font(.caption)
+        .foregroundStyle(Color.accentColor)
+        .fixedSize(horizontal: true, vertical: false)
     }
   }
 }
@@ -891,7 +897,6 @@ struct WorkspaceTaskImageSection: View {
 
   var body: some View {
     let report = state.report
-    let visibleIssues = report?.issues.filter { $0.title != "还没有图片" } ?? []
     let siteSummary = state.siteSummary
 
     return VStack(alignment: .leading, spacing: 14) {
@@ -929,23 +934,6 @@ struct WorkspaceTaskImageSection: View {
               isFocused: state.focusedAttachmentID == attachment.id
             )
             .id(attachment.id)
-          }
-        }
-      }
-
-      InspectorSection("图片问题") {
-        if report == nil {
-          ProgressView {
-            Text("正在检查…")
-          }
-            .controlSize(.small)
-        } else if visibleIssues.isEmpty {
-          Label("图片检查通过", systemImage: "checkmark.circle")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        } else {
-          ForEach(visibleIssues.prefix(5)) { issue in
-            ImageIssueCompactRow(issue: issue)
           }
         }
       }
@@ -1079,23 +1067,5 @@ private struct ImageMetadataEditorRow: View {
     .accessibilityElement(children: .contain)
     .accessibilityLabel("图片元数据 \(attachment.originalFilename)")
     .accessibilityValue(item?.fileExists == false ? "源图缺失" : "源图可用")
-  }
-}
-
-private struct ImageIssueCompactRow: View {
-  let issue: ImageWorkbenchIssue
-
-  var body: some View {
-    HStack(alignment: .top, spacing: 8) {
-      SeverityBadge(severity: issue.severity)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(issue.title)
-          .font(.caption.weight(.semibold))
-        Text(issue.message)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
-      }
-    }
   }
 }

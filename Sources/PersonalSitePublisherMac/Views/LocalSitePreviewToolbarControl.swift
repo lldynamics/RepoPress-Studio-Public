@@ -3,6 +3,7 @@ import SwiftUI
 
 struct LocalSitePreviewToolbarControl: View {
   @StateObject private var state: WorkbenchLocalSitePreviewFeatureFacade
+  @Environment(\.localSitePreviewCommandAction) private var localSitePreviewCommandAction
   let isCompact: Bool
 
   init(store: WorkbenchStore, isCompact: Bool) {
@@ -29,6 +30,13 @@ struct LocalSitePreviewToolbarControl: View {
 
       Toggle("启动本地预览", isOn: previewEnabled)
         .disabled(state.plan == nil && !state.runtimeStatus.isRunning)
+
+      Button {
+        localSitePreviewCommandAction?.open()
+      } label: {
+        Label("在应用内预览", systemImage: "rectangle.inset.filled")
+      }
+      .disabled(localSitePreviewCommandAction == nil || state.plan == nil)
 
       Button {
         guard let previewURL else { return }
@@ -65,7 +73,7 @@ struct LocalSitePreviewToolbarControl: View {
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
     .fixedSize()
-    .help("本地预览：\(statusTitle)。\(state.runtimeStatus.message)")
+    .help(String(localized: "本地预览：\(statusTitle)。\(state.runtimeStatus.message)"))
     .accessibilityLabel("本地预览")
     .accessibilityValue(statusTitle)
     .accessibilityIdentifier("workspace-preview-menu")

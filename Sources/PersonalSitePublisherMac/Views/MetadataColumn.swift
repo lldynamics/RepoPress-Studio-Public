@@ -2,20 +2,27 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct MetadataColumn: View {
-  @ObservedObject var store: WorkbenchStore
+  private let store: WorkbenchStore
+  @ObservedObject private var navigation: WorkbenchEditorNavigationFeatureFacade
   @ObservedObject private var ai: WorkbenchAIFeatureFacade
+  let rssStore: RSSReaderStore
   let repositoryContextStage: RepositoryContextStage
   @ObservedObject var repositorySourceSession: RepositoryHTMLSourceSession
   let prioritizesChecks: Bool
 
   init(
     store: WorkbenchStore,
+    rssStore: RSSReaderStore,
     repositoryContextStage: RepositoryContextStage,
     repositorySourceSession: RepositoryHTMLSourceSession,
     prioritizesChecks: Bool = false
   ) {
     self.store = store
+    _navigation = ObservedObject(
+      wrappedValue: WorkbenchEditorNavigationFeatureFacade(store: store)
+    )
     _ai = ObservedObject(wrappedValue: store.ai)
+    self.rssStore = rssStore
     self.repositoryContextStage = repositoryContextStage
     _repositorySourceSession = ObservedObject(wrappedValue: repositorySourceSession)
     self.prioritizesChecks = prioritizesChecks
@@ -24,7 +31,7 @@ struct MetadataColumn: View {
   var body: some View {
     Group {
       switch WorkspaceInspectorPresentation.route(
-        for: store.selectedSection,
+        for: navigation.selectedSection,
         isAIAssistantPresented: DistributionFeaturePolicy.allowsExternalAIProviders
           && ai.isAssistantPresented
       ) {
@@ -64,15 +71,16 @@ struct MetadataColumn: View {
 
   @ViewBuilder
   private var articleInspector: some View {
-    if let fallbackDraft = store.selectedDraft {
+    if let fallbackDraft = navigation.selectedDraft {
       let draft = Binding<ArticleDraft>(
-        get: { store.selectedDraft ?? fallbackDraft },
+        get: { navigation.selectedDraft ?? fallbackDraft },
         set: { store.updateDraftFromEditor($0) }
       )
       WorkspaceTaskInspector(
-        section: store.selectedSection,
+        section: navigation.selectedSection,
         draft: draft,
         store: store,
+        rssStore: rssStore,
         prioritizesChecks: prioritizesChecks
       )
     } else {

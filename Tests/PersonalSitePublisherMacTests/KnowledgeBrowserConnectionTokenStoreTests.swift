@@ -1,54 +1,43 @@
 import Foundation
+import PublishingWorkbenchCore
 import XCTest
 @testable import PersonalSitePublisherMac
 
 final class KnowledgeBrowserConnectionTokenStoreTests: XCTestCase {
-  func testPersistWritesOwnerOnlyFileAndRemovesLegacyDefaults() throws {
+  func testPersistUsesKeychainAndLeavesLegacyCopiesUntouched() throws {
     let fixture = try makeFixture()
     defer { fixture.cleanup() }
     fixture.defaults.set("legacy-token", forKey: fixture.legacyKey)
-    let fileURL = fixture.rootURL.appendingPathComponent("connection-token")
-    let store = makeStore(fileURL: fileURL, fixture: fixture)
+    let legacyFileURL = fixture.rootURL.appendingPathComponent("connection-token")
+    try Data("legacy-file-token".utf8).write(to: legacyFileURL)
 
-    try store.persist("new-token")
+    let store = makeStore()
+    try store.persist("keychain-token")
 
-    XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), "new-token")
-    XCTAssertNil(fixture.defaults.object(forKey: fixture.legacyKey))
-    let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
-    let permissions = try XCTUnwrap(attributes[.posixPermissions] as? NSNumber)
-    XCTAssertEqual(permissions.intValue & 0o777, 0o600)
-  }
-
-  func testTokenReadsLegacyDefaultsBeforeFirstFileMigration() throws {
-    let fixture = try makeFixture()
-    defer { fixture.cleanup() }
-    fixture.defaults.set("legacy-token", forKey: fixture.legacyKey)
-    let store = makeStore(
-      fileURL: fixture.rootURL.appendingPathComponent("connection-token"),
-      fixture: fixture
+    XCTAssertEqual(try store.token(), "keychain-token")
+    XCTAssertEqual(fixture.defaults.string(forKey: fixture.legacyKey), "legacy-token")
+    XCTAssertEqual(
+      try String(contentsOf: legacyFileURL, encoding: .utf8),
+      "legacy-file-token"
     )
-
-    XCTAssertEqual(try store.token(), "legacy-token")
   }
 
-  func testPersistFallsBackToDefaultsWhenFileURLIsUnavailable() throws {
+  func testTokenDoesNotReadLegacyFileOrDefaults() throws {
     let fixture = try makeFixture()
     defer { fixture.cleanup() }
-    let store = makeStore(fileURL: nil, fixture: fixture)
+    fixture.defaults.set("legacy-token", forKey: fixture.legacyKey)
+    let legacyFileURL = fixture.rootURL.appendingPathComponent("connection-token")
+    try Data("legacy-file-token".utf8).write(to: legacyFileURL)
 
-    try store.persist("fallback-token")
+    let store = makeStore()
 
-    XCTAssertEqual(try store.token(), "fallback-token")
+    XCTAssertNil(try store.token())
   }
 
-  func testInvalidTokenFileIsRejected() throws {
-    let fixture = try makeFixture()
-    defer { fixture.cleanup() }
-    let fileURL = fixture.rootURL.appendingPathComponent("connection-token")
-    try Data().write(to: fileURL)
-    let store = makeStore(fileURL: fileURL, fixture: fixture)
+  func testEmptyTokenIsRejected() throws {
+    let store = makeStore()
 
-    XCTAssertThrowsError(try store.token()) { error in
+    XCTAssertThrowsError(try store.persist("")) { error in
       XCTAssertEqual(
         error as? KnowledgeBrowserConnectionTokenStoreError,
         .invalidData
@@ -56,14 +45,13 @@ final class KnowledgeBrowserConnectionTokenStoreTests: XCTestCase {
     }
   }
 
-  private func makeStore(
-    fileURL: URL?,
-    fixture: ConnectionTokenFixture
-  ) -> KnowledgeBrowserConnectionTokenStore {
+  private func makeStore() -> KnowledgeBrowserConnectionTokenStore {
     KnowledgeBrowserConnectionTokenStore(
-      fileURL: fileURL,
-      defaults: KnowledgeBrowserConnectionTokenDefaults(fixture.defaults),
-      legacyDefaultsKey: fixture.legacyKey
+      keychain: KeychainTokenStore(
+        service: KeychainCredentialServices.browserBridge,
+        accountPrefix: "browser-connection-token-test-\(UUID().uuidString)",
+        inMemory: true
+      )
     )
   }
 

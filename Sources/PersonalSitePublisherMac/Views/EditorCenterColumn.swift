@@ -8,6 +8,8 @@ struct EditorCenterColumn: View {
   @Binding var repositoryContextStage: RepositoryContextStage
   let contentHealthSidebarProjection: ContentHealthSidebarProjection
   let repositorySourceSession: RepositoryHTMLSourceSession
+  let rssStore: RSSReaderStore
+  let rssPresentation: RSSReaderPresentationState
   @StateObject private var editorState: WorkbenchEditorNavigationFeatureFacade
   @ObservedObject private var knowledge: KnowledgeStore
 
@@ -17,7 +19,9 @@ struct EditorCenterColumn: View {
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
     repositoryContextStage: Binding<RepositoryContextStage>,
     contentHealthSidebarProjection: ContentHealthSidebarProjection,
-    repositorySourceSession: RepositoryHTMLSourceSession
+    repositorySourceSession: RepositoryHTMLSourceSession,
+    rssStore: RSSReaderStore,
+    rssPresentation: RSSReaderPresentationState
   ) {
     self.store = store
     _contentHealthFilter = contentHealthFilter
@@ -25,6 +29,8 @@ struct EditorCenterColumn: View {
     _repositoryContextStage = repositoryContextStage
     self.contentHealthSidebarProjection = contentHealthSidebarProjection
     self.repositorySourceSession = repositorySourceSession
+    self.rssStore = rssStore
+    self.rssPresentation = rssPresentation
     _editorState = StateObject(
       wrappedValue: WorkbenchEditorNavigationFeatureFacade(store: store)
     )
@@ -36,6 +42,12 @@ struct EditorCenterColumn: View {
       switch editorState.selectedSection.centerSurface {
       case .knowledgeLibrary:
         KnowledgeLibraryDetailView(knowledge: store.knowledge)
+      case .rssReader:
+        RSSReaderView(
+          store: rssStore,
+          workbenchStore: store,
+          presentation: rssPresentation
+        )
       case .repository:
         RepositoryWorkspaceView(
           store: store,
@@ -94,6 +106,7 @@ struct EditorCenterColumn: View {
         systemImage: "square.and.pencil",
         actions: [
           GuidedEmptyStateAction(
+            id: "create-markdown-draft",
             title: "新建 Markdown 草稿",
             subtitle: "创建本地空白文章，开始文字与图文排版",
             systemImage: "doc.badge.plus",
@@ -102,6 +115,7 @@ struct EditorCenterColumn: View {
             }
           ),
           GuidedEmptyStateAction(
+            id: "sync-remote-drafts",
             title: "从 GitHub/GitLab 同步文章",
             subtitle: "连接线上 Git 仓库，同步并导入远端草稿",
             systemImage: "arrow.triangle.2.circlepath",
@@ -110,6 +124,7 @@ struct EditorCenterColumn: View {
             }
           ),
           GuidedEmptyStateAction(
+            id: "configure-site-repository",
             title: "绑定站点仓库",
             subtitle: "配置 Hexo / Hugo / Astro 静态建站框架目录",
             systemImage: "folder.badge.gearshape",

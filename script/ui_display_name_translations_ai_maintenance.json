@@ -7,6 +7,36 @@
   "display.ai-publishing-default-capability.publishing-check": { "zh-Hans": "发布检查", "en": "Publishing Check" },
   "display.ai-publishing-default-capability.cite-knowledge": { "zh-Hans": "引用资料", "en": "Cite Sources" },
   "display.ai-publishing-default-capability.ask-anything": { "zh-Hans": "自由提问", "en": "Ask Anything" },
+  "display.ai-publishing-chat-quick-action.polish-suggestions": { "zh-Hans": "润色建议", "en": "Polish Suggestions" },
+  "display.ai-publishing-chat-quick-action.tag-suggestions": { "zh-Hans": "标签建议", "en": "Tag Suggestions" },
+  "display.ai-publishing-chat-quick-action.summary": { "zh-Hans": "生成摘要", "en": "Generate Summary" },
+  "display.ai-publishing-chat-quick-action.proofread": { "zh-Hans": "校对文章", "en": "Proofread Post" },
+  "display.ai-publishing-chat-quick-action.english-summary": { "zh-Hans": "英文摘要", "en": "English Summary" },
+  "display.ai-publishing-chat-quick-action.polish-suggestions.compact": { "zh-Hans": "润色", "en": "Polish" },
+  "display.ai-publishing-chat-quick-action.tag-suggestions.compact": { "zh-Hans": "标签", "en": "Tags" },
+  "display.ai-publishing-chat-quick-action.summary.compact": { "zh-Hans": "摘要", "en": "Summary" },
+  "display.ai-publishing-chat-quick-action.proofread.compact": { "zh-Hans": "校对", "en": "Proofread" },
+  "display.ai-publishing-chat-quick-action.english-summary.compact": { "zh-Hans": "英文", "en": "English" },
+  "display.ai-publishing-chat-quick-action.polish-suggestions.prompt": {
+    "zh-Hans": "请校对当前文章并给出最多 5 条润色建议。每条按“原文片段 / 建议改写 / 原因”输出；只引用必要短句，不要重写整篇文章，不要改变事实、代码、链接或 Front Matter。没有明显问题时直接说明。",
+    "en": "Proofread the current article and provide up to five polishing suggestions. Format each as “Original / Suggested Revision / Reason.” Quote only the necessary short excerpt. Do not rewrite the full article or change facts, code, links, or Front Matter. If there are no clear issues, say so directly."
+  },
+  "display.ai-publishing-chat-quick-action.tag-suggestions.prompt": {
+    "zh-Hans": "请基于当前文章推荐 3 到 8 个稳定、可复用的 tags。只返回一行逗号分隔的标签，不要编号、引号、Markdown、分类或额外解释，不要编造文章没有涉及的主题。",
+    "en": "Recommend 3–8 stable, reusable tags based on the current article. Return one comma-separated line only, with no numbering, quotation marks, Markdown, categories, or extra explanation. Do not invent topics the article does not cover."
+  },
+  "display.ai-publishing-chat-quick-action.summary.prompt": {
+    "zh-Hans": "请基于当前文章生成一条可直接写入 Front Matter 的 summary/description，控制在 60 到 160 个中文字符；英文文章控制在 25 到 45 个英文单词。忠实原文、保持克制、不新增事实。如果正文只有标题、占位语、写作引导或无法判断主题，只返回“当前内容不足，无法生成有效摘要，请补充正文后重试。”不要为占位内容强行生成摘要。其他情况下只返回摘要正文，不要标题、编号、引号、解释、分析或推理过程。",
+    "en": "Create a summary or description that can be written directly to the current article’s Front Matter. Use 60–160 Chinese characters for Chinese articles or 25–45 English words for English articles. Stay faithful to the source, remain concise, and add no new facts. If the body contains only a title, placeholder, writing guidance, or too little content to identify the topic, return only: “There is not enough content to generate a useful summary. Add article content and try again.” Otherwise return only the summary text, without a title, numbering, quotation marks, explanation, analysis, or reasoning."
+  },
+  "display.ai-publishing-chat-quick-action.proofread.prompt": {
+    "zh-Hans": "请校对当前文章中的错别字、标点误用和病句。只列出明确发现的问题，按“原文 / 建议 / 原因”三列表格输出，不要重写没有问题的段落；若无明显问题，直接回复“未发现明显的文字问题”。",
+    "en": "Proofread the current article for typos, punctuation errors, and unclear sentences. List only definite issues in a three-column table: “Original / Suggestion / Reason.” Do not rewrite paragraphs without problems. If there are no clear issues, reply: “No obvious writing issues found.”"
+  },
+  "display.ai-publishing-chat-quick-action.english-summary.prompt": {
+    "zh-Hans": "请基于当前文章生成自然英文标题和英文摘要。使用 TITLE: 和 SUMMARY: 两个字段；摘要控制在 25 到 45 个英文单词，保留专有名词，忠实原文，不新增事实。不要翻译整篇正文，不要添加解释。",
+    "en": "Generate a natural English title and summary for the current article. Use the fields TITLE: and SUMMARY:. Keep the summary between 25 and 45 English words, preserve proper nouns, stay faithful to the source, and add no new facts. Do not translate the full article or add explanations."
+  },
   "display.ai-publishing-prompt-library-scope.all": { "zh-Hans": "全部", "en": "All" },
   "display.ai-publishing-prompt-library-scope.writing": { "zh-Hans": "写作生成", "en": "Writing" },
   "display.ai-publishing-prompt-library-scope.editing": { "zh-Hans": "选区编辑", "en": "Editing" },
@@ -20,6 +50,11 @@
   "display.ai-publishing-quick-prompt-group.publishing": { "zh-Hans": "发布检查", "en": "Pre-publish Checks" },
   "display.ai-publishing-quick-prompt-group.distribution": { "zh-Hans": "分发素材", "en": "Distribution Assets" },
   "display.ai-publishing-quick-prompt-group.maintenance": { "zh-Hans": "内容维护", "en": "Content Maintenance" },
+  "display.ai-publishing-quick-prompt-group.writing.detail": { "zh-Hans": "从主题、草稿或选区生成后续正文、提纲和章节。", "en": "Generate follow-up copy, outlines, and sections from a topic, draft, or selection." },
+  "display.ai-publishing-quick-prompt-group.editing.detail": { "zh-Hans": "对段落做润色、翻译、语气、语法和结构整理。", "en": "Polish, translate, retone, proofread, and restructure selected passages." },
+  "display.ai-publishing-quick-prompt-group.publishing.detail": { "zh-Hans": "检查发布风险、SEO、隐私、链接和 SSG 兼容性。", "en": "Check publishing risks, SEO, privacy, links, and SSG compatibility." },
+  "display.ai-publishing-quick-prompt-group.distribution.detail": { "zh-Hans": "生成分享文案、封面提示词、Newsletter 和发布摘要。", "en": "Create share copy, cover prompts, newsletters, and release summaries." },
+  "display.ai-publishing-quick-prompt-group.maintenance.detail": { "zh-Hans": "规划系列文章、旧文更新、更新说明和读者回复。", "en": "Plan article series, refresh old posts, and draft update notes and reader replies." },
   "display.ai-publishing-quick-prompt.continue-writing": { "zh-Hans": "续写", "en": "Continue Writing" },
   "display.ai-publishing-quick-prompt.outline": { "zh-Hans": "大纲", "en": "Outline" },
   "display.ai-publishing-quick-prompt.title-ideas": { "zh-Hans": "标题建议", "en": "Title Ideas" },
@@ -73,6 +108,12 @@
   "display.ai-publishing-chat-role.assistant": { "zh-Hans": "AI", "en": "AI" },
   "display.ai-publishing-chat-context-mode.site": { "zh-Hans": "站点上下文", "en": "Site Context" },
   "display.ai-publishing-chat-context-mode.general": { "zh-Hans": "通用聊天", "en": "General Chat" },
+  "display.ai-context-reference-kind.current-selection": { "zh-Hans": "当前选区", "en": "Current Selection" },
+  "display.ai-context-reference-kind.current-article": { "zh-Hans": "当前文章", "en": "Current Article" },
+  "display.ai-context-reference-kind.specified-article": { "zh-Hans": "指定文章", "en": "Selected Article" },
+  "display.ai-context-reference-kind.site-profile": { "zh-Hans": "站点配置", "en": "Site Configuration" },
+  "display.ai-context-reference-kind.knowledge-entry": { "zh-Hans": "资料条目", "en": "Knowledge Entry" },
+  "display.ai-context-reference-kind.publish-check": { "zh-Hans": "发布检查", "en": "Publishing Check" },
   "display.ai-publishing-chat-draft-application-mode.replace-selection": { "zh-Hans": "替换选中文本", "en": "Replace Selection" },
   "display.ai-publishing-chat-draft-application-mode.replace-body": { "zh-Hans": "替换整篇正文", "en": "Replace Entire Body" },
   "display.ai-publishing-chat-draft-application-mode.append-to-body": { "zh-Hans": "追加到文章末尾", "en": "Append to Article" },

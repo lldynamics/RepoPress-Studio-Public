@@ -65,6 +65,15 @@ enum WorkbenchTheme {
   static var success: Color { `default`.success }
   static var warning: Color { `default`.warning }
   static var risk: Color { `default`.risk }
+  /// Informational status that is neither an in-progress operation nor a navigation accent.
+  static let info = adaptive(
+    light: (0.14, 0.42, 0.68),
+    dark: (0.42, 0.68, 0.92),
+    lightHighContrast: (0.05, 0.31, 0.56),
+    darkHighContrast: (0.56, 0.79, 1.00)
+  )
+  /// Neutral status copy follows the system label hierarchy in every appearance.
+  static var neutral: Color { Color(nsColor: .secondaryLabelColor) }
   /// Active work uses a cooler hue so it remains distinct from completed/success states.
   static let progress = adaptive(
     light: (0.16, 0.48, 0.44),
@@ -85,6 +94,8 @@ enum WorkbenchTheme {
     lightHighContrast: (0.53, 0.18, 0.00),
     darkHighContrast: (0.48, 0.16, 0.00)
   )
+  /// Foreground for semantic prominent fills. These fills are intentionally dark in every appearance.
+  static var primaryActionForeground: Color { .white }
   /// Navigation and selection follow the user's macOS accent; brand green remains reserved for actions and status.
   static var navigationSelection: Color { Color(nsColor: .controlAccentColor) }
   static var document: Color { `default`.document }
@@ -228,8 +239,8 @@ enum WorkbenchCornerRadius {
 }
 
 enum WorkbenchPageMetrics {
-  static let horizontalPadding: CGFloat = 20
-  static let verticalPadding: CGFloat = 20
+  static let horizontalPadding = WorkbenchSpacing.page
+  static let verticalPadding = WorkbenchSpacing.page
   static let readingWidth: CGFloat = 980
   static let operationalSplitMinimumWidth: CGFloat = 1_080
   static let operationalContextWidth: CGFloat = 320
@@ -237,6 +248,64 @@ enum WorkbenchPageMetrics {
   static func usesOperationalSplit(for availableWidth: CGFloat) -> Bool {
     availableWidth >= operationalSplitMinimumWidth
   }
+}
+
+/// Shared spatial rhythm. Names describe layout roles instead of individual call sites.
+enum WorkbenchSpacing {
+  /// Dense control contents, compact rows, and small gaps.
+  static let control: CGFloat = 8
+  /// Card contents and grouped form controls.
+  static let card: CGFloat = 12
+  /// Section rhythm and editor chrome that need a little more breathing room.
+  static let section: CGFloat = 14
+  /// Standard content insets and split-layout gaps.
+  static let content: CGFloat = 16
+  /// Page-level insets.
+  static let page: CGFloat = 20
+  /// Prominent empty states and modal headers.
+  static let spacious: CGFloat = 24
+}
+
+enum WorkbenchMotion {
+  static let quick = Animation.easeOut(duration: 0.12)
+  static let standard = Animation.easeInOut(duration: 0.16)
+  static let deliberate = Animation.easeInOut(duration: 0.20)
+  static let hoverSpring = Animation.spring(response: 0.25, dampingFraction: 0.75)
+  static let gentleSpring = Animation.spring(response: 0.25, dampingFraction: 0.80)
+  static let emphasisSpring = Animation.spring(response: 0.20, dampingFraction: 0.70)
+  static let ambientPulse = Animation.easeInOut(duration: 1.35).repeatForever(autoreverses: true)
+}
+
+enum WorkbenchSheetMetrics {
+  struct Size {
+    let minWidth: CGFloat
+    let idealWidth: CGFloat
+    let minHeight: CGFloat
+    let idealHeight: CGFloat
+  }
+
+  enum Preset {
+    case compact
+    case detail
+    case wide
+    case full
+
+    fileprivate var size: Size {
+      switch self {
+      case .compact:
+        Size(minWidth: 560, idealWidth: 640, minHeight: 420, idealHeight: 520)
+      case .detail:
+        Size(minWidth: 680, idealWidth: 780, minHeight: 520, idealHeight: 640)
+      case .wide:
+        Size(minWidth: 760, idealWidth: 900, minHeight: 580, idealHeight: 700)
+      case .full:
+        Size(minWidth: 900, idealWidth: 1_120, minHeight: 620, idealHeight: 760)
+      }
+    }
+  }
+
+  /// Upper bound for hosts that calculate a sheet height from the visible screen.
+  static let maxHeightRatio: CGFloat = 0.90
 }
 
 enum WorkbenchOpacity {
@@ -296,6 +365,104 @@ enum WorkbenchBackgroundStyle {
   }
 }
 
+private enum WorkbenchGlassBorder {
+  static func gradient(for colorScheme: ColorScheme) -> LinearGradient {
+    let colors: [Color]
+    if colorScheme == .dark {
+      colors = [
+        Color.white.opacity(0.10),
+        Color.white.opacity(0.04),
+      ]
+    } else {
+      colors = [
+        Color.black.opacity(0.08),
+        Color.black.opacity(0.03),
+      ]
+    }
+
+    return LinearGradient(
+      colors: colors,
+      startPoint: .topLeading,
+      endPoint: .bottomTrailing
+    )
+  }
+}
+
+private struct WorkbenchGlassSurfaceModifier<SurfaceShape: InsettableShape>: ViewModifier {
+  let material: Material
+  let shape: SurfaceShape
+
+  @Environment(\.colorScheme) private var colorScheme
+
+  func body(content: Content) -> some View {
+    content
+      .background(material, in: shape)
+      .overlay {
+        shape.strokeBorder(
+          WorkbenchGlassBorder.gradient(for: colorScheme),
+          lineWidth: 1
+        )
+        .allowsHitTesting(false)
+      }
+  }
+}
+
+private struct WorkbenchGlassContainerModifier: ViewModifier {
+  let material: Material
+  let drawsBorder: Bool
+
+  @Environment(\.colorScheme) private var colorScheme
+
+  func body(content: Content) -> some View {
+    content
+      .background(material)
+      .overlay {
+        if drawsBorder {
+          Rectangle()
+            .strokeBorder(
+              WorkbenchGlassBorder.gradient(for: colorScheme),
+              lineWidth: 1
+            )
+            .allowsHitTesting(false)
+        }
+      }
+  }
+}
+
+extension View {
+  func workbenchGlassSurface<S: InsettableShape>(
+    material: Material,
+    in shape: S
+  ) -> some View {
+    modifier(WorkbenchGlassSurfaceModifier(material: material, shape: shape))
+  }
+
+  func workbenchGlassContainer(
+    material: Material = .thinMaterial,
+    drawsBorder: Bool = true
+  ) -> some View {
+    modifier(
+      WorkbenchGlassContainerModifier(
+        material: material,
+        drawsBorder: drawsBorder
+      )
+    )
+  }
+}
+
+struct WorkbenchModalSurface<Content: View>: View {
+  private let content: Content
+
+  init(@ViewBuilder content: () -> Content) {
+    self.content = content()
+  }
+
+  var body: some View {
+    content
+      .workbenchGlassContainer(material: .regularMaterial)
+  }
+}
+
 struct WorkbenchListDisclosureFooter: View {
   let visibleCount: Int
   let totalCount: Int
@@ -303,15 +470,15 @@ struct WorkbenchListDisclosureFooter: View {
 
   var body: some View {
     if totalCount > visibleCount || showsAll {
-      HStack(spacing: 8) {
+      HStack(spacing: WorkbenchSpacing.control) {
         Text("已显示 \(visibleCount)/\(totalCount)")
           .font(.caption.monospacedDigit())
           .foregroundStyle(.secondary)
-        Spacer(minLength: 8)
+        Spacer(minLength: WorkbenchSpacing.control)
         Button(
           showsAll ? String(localized: "收起") : String(localized: "显示全部")
         ) {
-          withAnimation(.easeInOut(duration: 0.16)) {
+          withAnimation(WorkbenchMotion.standard) {
             showsAll.toggle()
           }
         }
@@ -320,8 +487,30 @@ struct WorkbenchListDisclosureFooter: View {
       }
       .accessibilityElement(children: .contain)
       .accessibilityLabel("列表显示进度")
-      .accessibilityValue("已显示 \(visibleCount) 项，共 \(totalCount) 项")
+      .accessibilityValue(String(localized: "已显示 \(visibleCount) 项，共 \(totalCount) 项"))
     }
+  }
+}
+
+/// Keeps custom/plain buttons visible in the macOS full-keyboard navigation path.
+/// Native focus rings are easy to lose when a view supplies its own background,
+/// so the ring is rendered by the shared button style instead.
+struct WorkbenchFocusRingButtonStyle: ButtonStyle {
+  var cornerRadius: CGFloat = WorkbenchCornerRadius.control
+
+  @Environment(\.isFocused) private var isFocused
+
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .overlay {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+          .stroke(
+            isFocused ? Color.accentColor : Color.clear,
+            lineWidth: isFocused ? 2 : 0
+          )
+      }
+      .opacity(configuration.isPressed ? 0.82 : 1)
+      .animation(WorkbenchMotion.quick, value: configuration.isPressed)
   }
 }
 
@@ -343,14 +532,14 @@ struct WorkbenchOperationalSplitLayout<Primary: View, Context: View>: View {
   @ViewBuilder
   var body: some View {
     if usesSplitLayout {
-      HStack(alignment: .top, spacing: 16) {
+      HStack(alignment: .top, spacing: WorkbenchSpacing.content) {
         primary
           .frame(maxWidth: .infinity, alignment: .topLeading)
         context
           .frame(width: WorkbenchPageMetrics.operationalContextWidth, alignment: .topLeading)
       }
     } else {
-      VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: WorkbenchSpacing.content) {
         context
         primary
       }
@@ -360,11 +549,13 @@ struct WorkbenchOperationalSplitLayout<Primary: View, Context: View>: View {
 
 enum WorkbenchPadding {
   /// 8px: 用于小控件、微标签、紧凑按钮内边距
-  static let compact: CGFloat = 8
+  static let compact = WorkbenchSpacing.control
   /// 12px: 用于容器卡片、表单 Section、弹窗组标准内边距
-  static let card: CGFloat = 12
-  /// 16px: 用于页面顶层 Margin、侧栏主边缘边距
-  static let page: CGFloat = 16
+  static let card = WorkbenchSpacing.card
+  /// 16px: 用于普通内容容器内边距
+  static let content = WorkbenchSpacing.content
+  /// 20px: 用于页面顶层边距
+  static let page = WorkbenchSpacing.page
 }
 
 extension Font {
@@ -385,6 +576,16 @@ extension Font {
 }
 
 extension View {
+  func workbenchSheetSize(_ preset: WorkbenchSheetMetrics.Preset) -> some View {
+    let size = preset.size
+    return frame(
+      minWidth: size.minWidth,
+      idealWidth: size.idealWidth,
+      minHeight: size.minHeight,
+      idealHeight: size.idealHeight
+    )
+  }
+
   func workbenchPageLayout(
     maxWidth: CGFloat = WorkbenchPageMetrics.readingWidth
   ) -> some View {

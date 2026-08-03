@@ -3,8 +3,8 @@ import SwiftUI
 
 struct SettingsView: View {
   @ObservedObject var store: WorkbenchStore
+  let rssStore: RSSReaderStore?
   let browserBridge: KnowledgeBrowserBridge?
-  @ObservedObject var storeKitProEntitlementCoordinator: StoreKitProEntitlementCoordinator
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
   @AppStorage("settingsRequestedTabID") private var requestedSettingsTabID = ""
@@ -16,11 +16,11 @@ struct SettingsView: View {
   init(
     store: WorkbenchStore,
     browserBridge: KnowledgeBrowserBridge?,
-    storeKitProEntitlementCoordinator: StoreKitProEntitlementCoordinator
+    rssStore: RSSReaderStore? = nil
   ) {
     self.store = store
     self.browserBridge = browserBridge
-    self.storeKitProEntitlementCoordinator = storeKitProEntitlementCoordinator
+    self.rssStore = rssStore
     _selectedSettingsTab = State(initialValue: Self.initialSettingsTab())
   }
 
@@ -35,11 +35,14 @@ struct SettingsView: View {
         Divider()
 
         selectedSettingsTab.makeContent(context: settingsContext)
+          .scrollIndicators(.hidden)
           .frame(maxWidth: selectedSettingsTab.contentMaxWidth)
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
       }
+      .background(Color(nsColor: .underPageBackgroundColor))
+      .accessibilityIdentifier("settings-content")
     }
-    .frame(minWidth: 820, idealWidth: 940, minHeight: 580, idealHeight: 700)
+    .frame(minWidth: 980, idealWidth: 1120, minHeight: 620, idealHeight: 760)
     .background(Color(nsColor: .windowBackgroundColor))
     .navigationTitle("设置")
     .onAppear {
@@ -76,7 +79,7 @@ struct SettingsView: View {
           }
         }
 
-        Section("应用") {
+        Section("应用设置") {
           ForEach(SettingsTab.applicationSettings) { tab in
             settingsSidebarRow(tab)
           }
@@ -86,8 +89,9 @@ struct SettingsView: View {
       .scrollContentBackground(.hidden)
       .padding(.top, 8)
     }
-    .frame(width: 208)
-    .background(.thinMaterial)
+    .frame(width: 220)
+    .workbenchGlassContainer(material: .thinMaterial, drawsBorder: false)
+    .accessibilityIdentifier("settings-sidebar")
   }
 
   private func settingsSidebarRow(_ tab: SettingsTab) -> some View {
@@ -154,8 +158,8 @@ struct SettingsView: View {
   private var settingsContext: SettingsContext {
     SettingsContext(
       store: store,
+      rssStore: rssStore,
       browserBridge: browserBridge,
-      storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator,
       activeProfileBinding: activeProfileBinding,
       autoRunPreflightBinding: autoRunPreflightBinding,
       scanRepositoryOnLaunch: $scanRepositoryOnLaunch,
@@ -167,11 +171,7 @@ struct SettingsView: View {
   }
 
   private static func initialSettingsTab() -> SettingsTab {
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .proSettings ? .pro : .defaultRules
-#else
     .defaultRules
-#endif
   }
 
   private var activeProfileBinding: Binding<SiteProfile> {
@@ -228,16 +228,17 @@ struct SettingsView: View {
       selectedSettingsTab = DistributionFeaturePolicy.allowsExternalAIProviders ? .ai : .configurationStatus
     case .privacy:
       selectedSettingsTab = .privacy
-    case .pro:
-      selectedSettingsTab = .pro
     }
   }
 
   private func applyRequestedSettingsTab(_ requestedTabID: String) {
-    guard !requestedTabID.isEmpty,
-          let tab = SettingsTab.allCases.first(where: {
-            $0.id == requestedTabID && $0.isAvailableInCurrentDistribution
-          }) else {
+    guard !requestedTabID.isEmpty else {
+      return
+    }
+    guard let tab = SettingsTab.allCases.first(where: {
+      $0.id == requestedTabID && $0.isAvailableInCurrentDistribution
+    }) else {
+      requestedSettingsTabID = ""
       return
     }
 

@@ -118,12 +118,24 @@ struct SiteStarterInspectorView: View {
     if state.hasPreparedSite {
       InspectorSection("产物") {
         if state.hasImportedSite {
-          InspectorStatRow(title: "方式", value: "导入已有仓库", systemImage: "tray.and.arrow.down")
+          InspectorStatRow(
+            title: "方式",
+            value: String(localized: "导入已有仓库"),
+            systemImage: "tray.and.arrow.down"
+          )
           InspectorStatRow(title: "文章", value: "\(state.importedDraftCount)", systemImage: "doc.text")
         } else {
           InspectorStatRow(title: "文件", value: "\(state.createdFileCount)", systemImage: "doc.badge.plus")
-          InspectorStatRow(title: "Git", value: state.initializedGit ? "已初始化" : "未初始化", systemImage: "externaldrive")
-          InspectorStatRow(title: "origin", value: state.hasConfiguredRemote ? "已配置" : "未配置", systemImage: "point.3.connected.trianglepath.dotted")
+          InspectorStatRow(
+            title: "Git",
+            value: state.initializedGit ? String(localized: "已初始化") : String(localized: "未初始化"),
+            systemImage: "externaldrive"
+          )
+          InspectorStatRow(
+            title: "origin",
+            value: state.hasConfiguredRemote ? String(localized: "已配置") : String(localized: "未配置"),
+            systemImage: "point.3.connected.trianglepath.dotted"
+          )
         }
         if let guide = state.deploymentGuidePath {
           Text(guide)
@@ -137,7 +149,11 @@ struct SiteStarterInspectorView: View {
     if let pushBranch = state.pushBranch {
       InspectorSection("首次推送") {
         InspectorStatRow(title: "分支", value: pushBranch, systemImage: "arrow.triangle.branch")
-        InspectorStatRow(title: "提交", value: state.pushCommitShortSHA ?? "未知", systemImage: "number")
+        InspectorStatRow(
+          title: "提交",
+          value: state.pushCommitShortSHA ?? String(localized: "未知"),
+          systemImage: "number"
+        )
         InspectorStatRow(title: "文件", value: "\(state.pushedFileCount)", systemImage: "shippingbox")
       }
     }
@@ -146,17 +162,17 @@ struct SiteStarterInspectorView: View {
   private var currentStepFacts: [String] {
     switch selectedStep {
     case .template:
-      return ["模板会决定站点框架、默认文章头信息（Front Matter）和首篇文章结构。"]
+      return [String(localized: "新建站点固定使用 Zola 写作起点；导入模式按已有站点类型读取内容目录和 Front Matter。")]
     case .localDirectory:
-      return ["目标目录必须是空文件夹；生成后会成为本地站点仓库。"]
+      return [String(localized: "目标目录必须是空文件夹；生成后会成为本地站点仓库。")]
     case .github:
-      return ["GitHub 仓库创建以向导里的所有者、仓库名和分支为准；创建前会同步到当前站点配置。"]
+      return [String(localized: "GitHub 仓库创建以向导里的所有者、仓库名和分支为准；创建前会同步到当前站点配置。")]
     case .generate:
-      return ["生成会创建模板文件、部署工作流、部署说明和初始文章草稿。"]
+      return [String(localized: "生成会创建模板文件、部署工作流、部署说明和初始文章草稿。")]
     case .firstPush:
-      return ["首次推送会提交 Starter 文件，并把分支推送到 origin。"]
+      return [String(localized: "首次推送会提交 Starter 文件，并把分支推送到 origin。")]
     case .deployment:
-      return ["GitHub Pages 首次部署通常需要到仓库 Settings > Pages 确认来源。"]
+      return [String(localized: "GitHub Pages 首次部署通常需要到仓库 Settings > Pages 确认来源。")]
     }
   }
 
@@ -165,27 +181,31 @@ struct SiteStarterInspectorView: View {
     case .template:
       return []
     case .localDirectory:
-      return state.hasPreparedSite ? [] : ["新建站点需要空文件夹；导入模式请选择现有仓库根目录。"]
+      return state.hasPreparedSite
+        ? []
+        : [String(localized: "新建站点需要空文件夹；导入模式请选择现有仓库根目录。")]
     case .github:
       var risks: [String] = []
       if !state.hasRepositoryToken {
-        risks.append("未检测到 GitHub 访问令牌，创建仓库会失败。")
+        risks.append(String(localized: "未检测到 GitHub 访问令牌，创建仓库会失败。"))
       }
       return risks
     case .generate:
-      return state.hasPreparedSite ? [] : ["继续前请确认模板、目录、站点名称和分支。"]
+      return state.hasPreparedSite
+        ? []
+        : [String(localized: "继续前请确认新建/导入方式、目录、站点名称和分支。")]
     case .firstPush:
       var risks: [String] = []
       if !state.initializedGit {
-        risks.append("未初始化 Git，不能执行首次推送。")
+        risks.append(String(localized: "未初始化 Git，不能执行首次推送。"))
       }
       if !state.hasConfiguredRemote {
-        risks.append("origin remote 未配置，首次推送会失败。")
+        risks.append(String(localized: "origin remote 未配置，首次推送会失败。"))
       }
       return risks
     case .deployment:
       if state.pushBranch == nil {
-        return ["还没有首次推送，GitHub Pages 不会开始构建。"]
+        return [String(localized: "还没有首次推送，GitHub Pages 不会开始构建。")]
       }
       return []
     }
@@ -194,28 +214,36 @@ struct SiteStarterInspectorView: View {
   private func statusTitle(for step: SiteStarterWizardStep) -> String {
     switch step {
     case .template, .localDirectory:
-      return state.hasPreparedSite ? "已完成" : "待确认"
+      return state.hasPreparedSite ? String(localized: "已完成") : String(localized: "待确认")
     case .github:
-      return state.hasRemoteRepositoryCreationResult || state.hasVerifiedExistingRepository ? "已完成" : "未完成"
+      return state.hasRemoteRepositoryCreationResult || state.hasVerifiedExistingRepository
+        ? String(localized: "已完成")
+        : String(localized: "未完成")
     case .generate:
       if state.hasImportedSite {
-        return "已导入"
+        return String(localized: "已导入")
       }
-      return state.hasPreparedSite ? "已生成" : "未生成"
+      return state.hasPreparedSite ? String(localized: "已生成") : String(localized: "未生成")
     case .firstPush:
-      return state.pushBranch == nil ? "未推送" : "已推送"
+      return state.pushBranch == nil ? String(localized: "未推送") : String(localized: "已推送")
     case .deployment:
-      return state.pushBranch == nil ? "待推送" : "待检查"
+      return state.pushBranch == nil ? String(localized: "待推送") : String(localized: "待检查")
     }
   }
 
   private func statusSystemImage(for step: SiteStarterWizardStep) -> String {
-    switch statusTitle(for: step) {
-    case "已完成", "已生成", "已导入", "已推送":
-      return "checkmark.circle"
-    case "未完成", "未生成", "未推送":
-      return "circle"
-    default:
+    switch step {
+    case .template, .localDirectory:
+      return state.hasPreparedSite ? "checkmark.circle" : "clock"
+    case .github:
+      return state.hasRemoteRepositoryCreationResult || state.hasVerifiedExistingRepository
+        ? "checkmark.circle"
+        : "circle"
+    case .generate:
+      return state.hasPreparedSite ? "checkmark.circle" : "circle"
+    case .firstPush:
+      return state.pushBranch == nil ? "circle" : "checkmark.circle"
+    case .deployment:
       return "clock"
     }
   }

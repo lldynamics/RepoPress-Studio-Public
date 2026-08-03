@@ -13,7 +13,7 @@ public final class WorkbenchShellFeatureFacade: ObservableObject {
     observe(store.publishingStore.$selectedDraftID)
     observe(store.publishingStore.$selectedSection)
     observe(store.publishingStore.$isInspectorPresented)
-    observe(store.privacyMonetizationStore.$isPrivacyLocked)
+    observe(store.privacyProtectionStore.$isQuickHideActive)
     observe(store.repositoryStore.$repositoryScanState)
     observe(store.persistenceStore.$recoveryMessage)
     observe(store.persistenceStore.$isRecoveryWriteProtected)
@@ -21,6 +21,10 @@ public final class WorkbenchShellFeatureFacade: ObservableObject {
 
   public var activeProfileName: String {
     store.activeProfile.name
+  }
+
+  public var activeProfile: SiteProfile {
+    store.activeProfile
   }
 
   public var selectedDraftID: UUID? {
@@ -35,12 +39,12 @@ public final class WorkbenchShellFeatureFacade: ObservableObject {
     store.isInspectorPresented
   }
 
-  public var isPrivacyLocked: Bool {
-    store.isPrivacyLocked
+  public var isQuickHideActive: Bool {
+    store.isQuickHideActive
   }
 
   public var canUseProtectedWorkbench: Bool {
-    !isPrivacyLocked
+    !isQuickHideActive
   }
 
   public var isRepositoryScanning: Bool {
@@ -53,6 +57,10 @@ public final class WorkbenchShellFeatureFacade: ObservableObject {
 
   public var isPersistenceRecoveryWriteProtected: Bool {
     store.isPersistenceRecoveryWriteProtected
+  }
+
+  public func selectSection(_ section: WorkspaceSection) {
+    store.selectSection(section)
   }
 
   private func observe<P: Publisher>(_ publisher: P)

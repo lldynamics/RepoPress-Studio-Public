@@ -8,6 +8,8 @@ final class MarkdownSmartEditingServiceTests: XCTestCase {
     try assertNewline("- item", becomes: "- item\n- ")
     try assertNewline("- [x] done", becomes: "- [x] done\n- [ ] ")
     try assertNewline("9. item", becomes: "9. item\n10. ")
+    try assertNewline("1、第一项", becomes: "1、第一项\n2、")
+    try assertNewline("9、 第九项", becomes: "9、 第九项\n10、 ")
     try assertNewline("> quote", becomes: "> quote\n> ")
   }
 
@@ -24,6 +26,22 @@ final class MarkdownSmartEditingServiceTests: XCTestCase {
     XCTAssertEqual(edit.selectedRange, NSRange(location: 8, length: 0))
   }
 
+  func testEmptyChineseOrderedListItemExitsList() throws {
+    let markdown = "1、第一项\n2、"
+    let edit = try XCTUnwrap(
+      service.newlineEdit(
+        in: markdown,
+        selectedRange: NSRange(location: (markdown as NSString).length, length: 0)
+      )
+    )
+
+    XCTAssertEqual(applying(edit, to: markdown), "1、第一项\n")
+    XCTAssertEqual(
+      edit.selectedRange,
+      NSRange(location: ("1、第一项\n" as NSString).length, length: 0)
+    )
+  }
+
   func testDoesNotContinuePlainTextOrMarkersInsideCodeFence() {
     let plain = "plain text"
     XCTAssertNil(
@@ -38,6 +56,17 @@ final class MarkdownSmartEditingServiceTests: XCTestCase {
       service.newlineEdit(
         in: code,
         selectedRange: NSRange(location: (code as NSString).length, length: 0)
+      )
+    )
+  }
+
+  func testDoesNotOverflowLargestOrderedListNumber() {
+    let markdown = "\(Int.max)、内容"
+
+    XCTAssertNil(
+      service.newlineEdit(
+        in: markdown,
+        selectedRange: NSRange(location: (markdown as NSString).length, length: 0)
       )
     )
   }

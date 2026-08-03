@@ -15,7 +15,6 @@ printf '%s\n' \
   '- [ ] `gitlab-direct-publish`' \
   '- [ ] `gitlab-review-publish`' \
   '- [ ] `remote-conflict-deployment-rollback`' \
-  '- [ ] `storekit-sandbox`' \
   '- [x] `app-store-screenshots`' >"$EVIDENCE_FIXTURE"
 printf '%s\n' \
   '# App Store Archive Validation Evidence' \
@@ -46,8 +45,6 @@ grep -q "remote-publish-live.env has empty or placeholder value for REMOTE_VERIF
   || fail "empty env output omitted GitHub token field"
 grep -q "remote-publish-live.env has empty or placeholder value for REMOTE_VERIFY_GITLAB_TOKEN" <<<"$empty_output" \
   || fail "empty env output omitted GitLab token field"
-grep -q "storekit-sandbox.env has empty or placeholder value for STOREKIT_SANDBOX_PURCHASE_SUMMARY" <<<"$empty_output" \
-  || fail "empty env output omitted StoreKit purchase summary"
 grep -q "app-store-archive-validation.env has empty or placeholder value for APP_STORE_ARCHIVE_TRANSPORTER_SUMMARY" <<<"$empty_output" \
   || fail "empty env output omitted archive transporter summary"
 
@@ -114,17 +111,6 @@ REMOTE_RECOVERY_EVIDENCE_URL=""
 EXTERNAL_VERIFY_EVIDENCE_FILE=""
 ENV
 
-cat >"$ENV_DIR/storekit-sandbox.env" <<'ENV'
-STOREKIT_PRODUCT_ID="personal.site.publisher.pro"
-STOREKIT_SANDBOX_PRODUCT_LOOKUP_SUMMARY="Sandbox product lookup loaded personal.site.publisher.pro from App Store sandbox catalog."
-STOREKIT_SANDBOX_PURCHASE_SUMMARY="Sandbox purchase completed and entitlement source changed to StoreKit."
-STOREKIT_SANDBOX_RESTORE_SUMMARY="Sandbox restore reapplied Pro entitlement after clearing local state."
-STOREKIT_SANDBOX_FREE_QUOTA_SUMMARY="Free quota boundary showed upgrade copy before purchase and no quota consumption after Pro unlock."
-STOREKIT_SANDBOX_BOUNDARY_EVENTS_SUMMARY="Recent StoreKit boundary events showed free-plan block before purchase and Pro no-quota allow after unlock."
-STOREKIT_SANDBOX_EVIDENCE_URL=""
-EXTERNAL_VERIFY_EVIDENCE_FILE=""
-ENV
-
 cat >"$ENV_DIR/app-store-screenshots.env" <<'ENV'
 APP_STORE_SCREENSHOT_SET_SUMMARY="Captured all required App Store screenshot surfaces with redacted demo content."
 APP_STORE_SCREENSHOT_PRIVACY_GATE_SUMMARY="Screenshot privacy gate passed without local paths or token-like strings."
@@ -180,13 +166,13 @@ grep -q "app-store-screenshots.env has empty or placeholder value for APP_STORE_
   || fail "specific screenshot target did not report missing screenshot summary"
 perl -0pi -e 's/APP_STORE_SCREENSHOT_SET_SUMMARY=""/APP_STORE_SCREENSHOT_SET_SUMMARY="Captured all required App Store screenshot surfaces with redacted demo content."/' "$ENV_DIR/app-store-screenshots.env"
 
-chmod 644 "$ENV_DIR/storekit-sandbox.env"
+chmod 644 "$ENV_DIR/remote-recovery.env"
 if weak_mode_output="$(bash "$CHECK" --env-dir "$ENV_DIR" --mode filled 2>&1)"; then
   fail "filled mode accepted weak env file permissions"
 fi
-grep -q "storekit-sandbox.env mode is 644, expected 600" <<<"$weak_mode_output" \
+grep -q "remote-recovery.env mode is 644, expected 600" <<<"$weak_mode_output" \
   || fail "weak permission output did not name the offending env file"
-chmod 600 "$ENV_DIR/storekit-sandbox.env"
+chmod 600 "$ENV_DIR/remote-recovery.env"
 
 perl -0pi -e 's/REMOTE_RECOVERY_ROLLBACK_PACKAGE_SUMMARY="[^"]+"/REMOTE_RECOVERY_ROLLBACK_PACKAGE_SUMMARY="TODO: fill rollback"/' "$ENV_DIR/remote-recovery.env"
 if placeholder_output="$(bash "$CHECK" --env-dir "$ENV_DIR" --mode filled 2>&1)"; then

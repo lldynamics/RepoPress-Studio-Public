@@ -68,7 +68,11 @@ struct ReleaseHistoryDetailView: View {
     } icon: {
       Image(systemName: isFailure ? "xmark.octagon.fill" : isProgress ? "arrow.trianglehead.2.clockwise.rotate.90" : "checkmark.circle.fill")
     }
-    .foregroundStyle(isFailure ? Color.red : isProgress ? Color.accentColor : Color.green)
+    .foregroundStyle(
+      isFailure
+        ? WorkbenchTheme.risk
+        : isProgress ? WorkbenchTheme.progress : WorkbenchTheme.success
+    )
     .padding(12)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -179,7 +183,7 @@ struct ReleaseHistoryDetailView: View {
     LazyVStack(alignment: .leading, spacing: 12) {
       HStack {
         Label("发布记录", systemImage: "clock.arrow.circlepath")
-          .font(.headline)
+          .font(.workbenchSectionTitle)
           .accessibilityAddTraits(.isHeader)
         Spacer()
         Text("\(ledger.entries.count) 条")
@@ -240,7 +244,7 @@ struct ReleaseHistoryDetailView: View {
   private func releaseSecondaryMetrics(_ summary: ReleaseLedgerSummary) -> some View {
     VStack(alignment: .leading, spacing: 10) {
       Label("台账指标", systemImage: "chart.bar.xaxis")
-        .font(.headline)
+        .font(.workbenchSectionTitle)
         .accessibilityAddTraits(.isHeader)
 
       LazyVGrid(
@@ -269,7 +273,7 @@ struct ReleaseHistoryDetailView: View {
     LazyVStack(alignment: .leading, spacing: 10) {
       HStack {
         Label("发布行动队列", systemImage: "checklist")
-          .font(.headline)
+          .font(.workbenchSectionTitle)
           .accessibilityAddTraits(.isHeader)
         Spacer()
         Text("\(ledger.actionItems.count) 项")
@@ -488,7 +492,7 @@ struct ReleaseHistoryDetailView: View {
   private func deploymentOverviewSummary(_ overview: ReleaseDeploymentOverview) -> some View {
     VStack(alignment: .leading, spacing: 12) {
       Label(overview.title, systemImage: overview.level.systemImage)
-        .font(.headline)
+        .font(.workbenchSectionTitle)
         .foregroundStyle(statusForeground(overview.level))
         .accessibilityAddTraits(.isHeader)
       Text(overview.message)
@@ -557,7 +561,7 @@ struct ReleaseHistoryDetailView: View {
   private var deploymentPollingSummary: some View {
     VStack(alignment: .leading, spacing: 10) {
       Text("部署轮询")
-        .font(.headline)
+        .font(.workbenchSectionTitle)
         .accessibilityAddTraits(.isHeader)
       Text(store.deploymentPollingState.message)
         .font(.callout)
@@ -741,7 +745,7 @@ struct ReleaseHistoryDetailView: View {
 
     VStack(alignment: .leading, spacing: 10) {
       Text("部署状态")
-        .font(.headline)
+        .font(.workbenchSectionTitle)
         .accessibilityAddTraits(.isHeader)
       Text("检查 GitHub Pages / Actions、GitLab Pipeline，或 Netlify、Vercel、Cloudflare Pages、自定义状态端点。")
         .font(.callout)

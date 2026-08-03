@@ -115,9 +115,9 @@ public struct AIPublishingFixQueueService: Sendable {
     let issues = summary?.blockingIssues ?? []
     let metadataIssues = issues.filter(Self.isAIFixableMetadataIssue)
     let needsSummary = draft.summary.trimmedForPublishing.isEmpty
-      || metadataIssues.contains { $0.field == "summary" }
+      || metadataIssues.contains { $0.structuredField == .summary }
     let needsTags = draft.tags.isEmpty
-      || metadataIssues.contains { $0.field == "tags" }
+      || metadataIssues.contains { $0.structuredField == .tags }
 
     guard needsSummary || needsTags || !metadataIssues.isEmpty else {
       return nil
@@ -169,7 +169,9 @@ public struct AIPublishingFixQueueService: Sendable {
     if needsTags {
       return .suggestTags
     }
-    if issues.contains(where: { $0.field == "title" || $0.field == "slug" || $0.field == "cover" }) {
+    if issues.contains(where: {
+      $0.structuredField == .title || $0.structuredField == .slug || $0.structuredField == .cover
+    }) {
       return .draftFrontMatterPack
     }
     return .reviewSEOReadability
@@ -179,14 +181,11 @@ public struct AIPublishingFixQueueService: Sendable {
     guard issue.severity != .info else {
       return false
     }
-    switch issue.field {
-    case "title", "slug", "summary", "tags", "cover":
+    switch issue.structuredField {
+    case .title, .slug, .summary, .tags, .cover:
       return true
     default:
-      return issue.title.contains("摘要")
-        || issue.title.contains("Tags")
-        || issue.title.contains("标题")
-        || issue.title.contains("封面")
+      return false
     }
   }
 }

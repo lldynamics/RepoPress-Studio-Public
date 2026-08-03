@@ -146,6 +146,7 @@ repository_identifier_sources=(
   "RepositoryWorkspaceOverviewSections.swift:repository-action-scan"
   "RepositoryWorkspaceOverviewSections.swift:repository-action-import"
   "RepositoryWorkspaceOverviewSections.swift:repository-action-migrate"
+  "RepositoryWorkspaceOverviewSections.swift:repository-action-open-images"
   "RepositoryWorkspaceOverviewSections.swift:repository-action-open-publish"
   "RepositoryWorkspaceOverviewSections.swift:repository-section-summary"
   "RepositoryWorkspaceOverviewSections.swift:repository-section-information"

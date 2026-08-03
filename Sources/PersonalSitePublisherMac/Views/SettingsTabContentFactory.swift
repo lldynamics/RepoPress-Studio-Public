@@ -10,11 +10,10 @@ struct SettingsTabContentFactory {
     case .configurationStatus:
       SettingsConfigurationHealthCard(
         profile: context.store.activeProfile,
+        aiProviderConfig: context.store.aiProviderConfig(for: context.store.activeProfile),
         repositoryTokenAvailability: context.store.repositoryTokenAvailability,
         aiTokenAvailability: context.store.ai.tokenAvailability,
         privacySettings: context.store.privacySettings,
-        isProUnlocked: context.store.monetizationState.entitlement.isUnlocked,
-        proSource: context.store.monetizationState.entitlement.source.localizedDisplayName,
         selectDestination: context.selectConfigurationHealthDestination
       )
     case .defaultRules:
@@ -38,8 +37,22 @@ struct SettingsTabContentFactory {
           systemImage: "checkmark.shield"
         )
       }
+    case .language:
+      AppLanguageSettingsView()
+    case .rss:
+      if let rssStore = context.rssStore {
+        RSSMaintenanceSettingsView(store: rssStore)
+      } else {
+        EmptyStateView(
+          title: "RSS 暂不可用",
+          message: "请先在主窗口完成数据文件夹设置。",
+          systemImage: "dot.radiowaves.left.and.right"
+        )
+      }
     case .knowledge:
       KnowledgeSettingsView(
+        store: context.store,
+        backupScheduler: context.store.workspaceBackupScheduler,
         knowledge: context.store.knowledge,
         browserBridge: context.browserBridge,
         onOpenLibrary: {
@@ -51,8 +64,6 @@ struct SettingsTabContentFactory {
       )
     case .privacy:
       SettingsPrivacyTabFactory.make(context: context)
-    case .pro:
-      SettingsProTabFactory.make(context: context)
     }
   }
 }

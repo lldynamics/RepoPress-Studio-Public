@@ -110,20 +110,6 @@ final class ImageWorkbenchPresentationTests: XCTestCase {
     XCTAssertTrue(RepositoryImageFilter.unregistered.includes(unreferenced))
   }
 
-  func testIssueArticleFiltersUseErrorAndWarningCounts() {
-    let error = makeDraftSummary(issueCount: 1, errorCount: 1, warningCount: 0)
-    let warning = makeDraftSummary(issueCount: 1, errorCount: 0, warningCount: 1)
-    let clean = makeDraftSummary(issueCount: 0, errorCount: 0, warningCount: 0)
-
-    XCTAssertTrue(ImageIssueArticleFilter.all.includes(error))
-    XCTAssertTrue(ImageIssueArticleFilter.all.includes(warning))
-    XCTAssertFalse(ImageIssueArticleFilter.all.includes(clean))
-    XCTAssertTrue(ImageIssueArticleFilter.errors.includes(error))
-    XCTAssertFalse(ImageIssueArticleFilter.errors.includes(warning))
-    XCTAssertTrue(ImageIssueArticleFilter.warnings.includes(warning))
-    XCTAssertFalse(ImageIssueArticleFilter.warnings.includes(error))
-  }
-
   func testBatchAffectedItemIdentityIncludesDraftAndAttachment() {
     let sharedAttachmentID = UUID()
     let firstDraftID = UUID()

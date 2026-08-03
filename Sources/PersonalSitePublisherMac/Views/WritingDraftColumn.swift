@@ -117,7 +117,7 @@ struct WritingDraftColumn: View {
   private var writingHeader: some View {
     WorkspaceContextListHeader(title: "文章") {
       HStack(spacing: 6) {
-        Text("\(filteredDraftCount) / \(visibleDraftCount) 篇")
+        Text(String(localized: "\(filteredDraftCount) / \(visibleDraftCount) 篇"))
 
         if let delta = draftCountDelta {
           Text(delta > 0 ? "+\(delta)" : "\(delta)")
@@ -131,7 +131,7 @@ struct WritingDraftColumn: View {
               in: Capsule()
             )
             .scaleEffect(isDraftCountPunching ? 1.06 : 1)
-            .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isDraftCountPunching)
+            .animation(WorkbenchMotion.emphasisSpring, value: isDraftCountPunching)
             .transition(.scale.combined(with: .opacity))
         }
       }
@@ -139,7 +139,7 @@ struct WritingDraftColumn: View {
       if isDraftListLoading && visibleDraftSnapshot.isEmpty {
         ProgressView()
           .controlSize(.small)
-          .help("加载草稿中…")
+          .help(String(localized: "加载草稿中…"))
       }
 
       if store.canUndoLatestDraftOwnershipTransfer {
@@ -162,7 +162,7 @@ struct WritingDraftColumn: View {
       .buttonStyle(.bordered)
       .controlSize(.regular)
       .fixedSize()
-      .help("版本历史与回收站")
+      .help(String(localized: "打开版本历史与回收站"))
       .accessibilityLabel("打开版本历史与回收站")
 
       Menu {
@@ -192,7 +192,7 @@ struct WritingDraftColumn: View {
         Label("新建", systemImage: "plus")
           .labelStyle(.titleAndIcon)
           .font(.workbenchButtonLabel.weight(.bold))
-          .foregroundColor(.white)
+          .foregroundStyle(WorkbenchTheme.primaryActionForeground)
           .allowsHitTesting(false)
           .accessibilityHidden(true)
       }
@@ -219,7 +219,7 @@ struct WritingDraftColumn: View {
           .textFieldStyle(.plain)
           .focused($isSearchFieldFocused)
           .accessibilityLabel("搜索草稿")
-          .accessibilityValue(searchText.nilIfEmpty ?? "未输入")
+          .accessibilityValue(searchText.nilIfEmpty ?? String(localized: "未输入"))
           .accessibilityIdentifier("writing-draft-search")
 
         if !searchText.isEmpty {
@@ -230,7 +230,7 @@ struct WritingDraftColumn: View {
           }
           .buttonStyle(.plain)
           .foregroundStyle(.secondary)
-          .help("清除搜索")
+          .help(String(localized: "清除搜索"))
           .accessibilityLabel("清除草稿搜索")
         }
       }
@@ -286,7 +286,7 @@ struct WritingDraftColumn: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .help("排序：\(sortOrder.localizedDisplayName)")
+        .help(String(localized: "排序：\(sortOrder.localizedDisplayName)"))
         .accessibilityLabel("文章排序")
         .accessibilityValue(sortOrder.localizedDisplayName)
       }
@@ -296,7 +296,7 @@ struct WritingDraftColumn: View {
   private var contentScopePicker: some View {
     Picker("内容范围", selection: contentScopeSelection) {
       Text("当前站点").tag(DraftListContentScope.currentSite)
-      Text("通用草稿").tag(DraftListContentScope.general)
+      Text("draft.scope.general").tag(DraftListContentScope.general)
     }
     .pickerStyle(.segmented)
     .labelsHidden()
@@ -307,7 +307,9 @@ struct WritingDraftColumn: View {
   }
 
   private var overflowFilterLabel: String {
-    DraftListFilter.primaryFilters.contains(filter) ? "更多" : filter.localizedDisplayName
+    DraftListFilter.primaryFilters.contains(filter)
+      ? String(localized: "更多")
+      : filter.localizedDisplayName
   }
 
   private var draftFilterMenu: some View {
@@ -323,7 +325,7 @@ struct WritingDraftColumn: View {
     .controlSize(.small)
     .accessibilityLabel("草稿筛选")
     .accessibilityValue(filter.localizedDisplayName)
-    .help("筛选草稿")
+    .help(String(localized: "筛选草稿"))
   }
 
   @ViewBuilder
@@ -345,7 +347,7 @@ struct WritingDraftColumn: View {
   }
 
   private var draftListAccessibilityValue: String {
-    "已显示 \(paginatedDrafts.count) 篇，共 \(filteredDrafts.count) 篇"
+    String(localized: "已显示 \(paginatedDrafts.count) 篇，共 \(filteredDrafts.count) 篇")
   }
 
   private var draftListBase: some View {
@@ -483,8 +485,10 @@ struct WritingDraftColumn: View {
     .listRowSeparator(.hidden)
     .listRowBackground(Color.clear)
     .accessibilityLabel("显示更多文章")
-    .accessibilityValue("当前显示 \(paginatedDrafts.count) 篇，共 \(filteredDrafts.count) 篇")
-    .accessibilityHint("每次再显示最多 \(draftPageStep) 篇文章")
+    .accessibilityValue(
+      String(localized: "当前显示 \(paginatedDrafts.count) 篇，共 \(filteredDrafts.count) 篇")
+    )
+    .accessibilityHint(String(localized: "每次再显示最多 \(draftPageStep) 篇文章"))
   }
 
   private func maybeLoadMoreDraftsIfNeeded(
@@ -536,6 +540,12 @@ struct WritingDraftColumn: View {
       } label: {
         Label("查看发布检查", systemImage: "checklist")
       }
+    } else {
+      Button {
+        exportGeneralDraft(draft)
+      } label: {
+        Label("导出 Markdown…", systemImage: "square.and.arrow.up")
+      }
     }
 
     Divider()
@@ -560,7 +570,7 @@ struct WritingDraftColumn: View {
   private var bulkSelectionBar: some View {
     HStack(spacing: 8) {
       Label {
-        Text("已选择 \(selectedDraftIDs.count) 篇")
+        Text(String(localized: "已选择 \(selectedDraftIDs.count) 篇"))
       } icon: {
         Image(systemName: "checkmark.circle.fill")
       }
@@ -590,6 +600,32 @@ struct WritingDraftColumn: View {
     .padding(.horizontal, 8)
     .padding(.vertical, 6)
     .background(Color.accentColor.opacity(WorkbenchOpacity.accentBackground), in: RoundedRectangle(cornerRadius: 8))
+  }
+
+  @MainActor
+  private func exportGeneralDraft(_ draft: ArticleDraft) {
+    do {
+      let document = try GeneralDraftExportService().document(
+        for: draft,
+        profile: store.profile(for: draft)
+      )
+      guard let destinationURL = try GeneralDraftExportPanel.export(document) else {
+        return
+      }
+      store.setPublishActionMessage(
+        String(
+          format: String(localized: "通用草稿已导出：%@"),
+          destinationURL.lastPathComponent
+        )
+      )
+    } catch {
+      store.setPublishActionMessage(
+        String(
+          format: String(localized: "通用草稿导出失败：%@"),
+          error.localizedDescription
+        )
+      )
+    }
   }
 
   @ViewBuilder
@@ -710,7 +746,7 @@ struct WritingDraftColumn: View {
       draftListLimit = totalCount
       return
     }
-    withAnimation(.easeInOut(duration: 0.15)) {
+    withAnimation(WorkbenchMotion.standard) {
       draftListLimit = nextLimit
     }
   }
@@ -795,7 +831,7 @@ struct WritingDraftColumn: View {
         return
       }
       await MainActor.run {
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withAnimation(WorkbenchMotion.deliberate) {
           isDraftCountPunching = false
           draftCountDelta = nil
         }

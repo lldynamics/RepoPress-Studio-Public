@@ -72,6 +72,7 @@ final class MarkdownEditorScrollView: NSScrollView {
 final class DroppableMarkdownTextView: NSTextView {
   var fileDropTargetChangedHandler: ((Bool) -> Void)?
   var fileDropHandler: (([URL], NSRange) -> Void)?
+  var knowledgeMarkdownDropHandler: ((String, NSRange, KnowledgeCitation?) -> Void)?
   var smartPasteHandler: ((NSTextView, NSPasteboard) -> Bool)?
   var markdownFormattingHandler: ((NSTextView, MarkdownFormattingCommand) -> Bool)?
   var markdownTableContextProvider: ((NSTextView) -> MarkdownTableEditingContext?)?
@@ -80,12 +81,20 @@ final class DroppableMarkdownTextView: NSTextView {
 
   override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
     super.init(frame: frameRect, textContainer: container)
-    registerForDraggedTypes([.fileURL])
+    registerForDraggedTypes([
+      .fileURL,
+      KnowledgeArticleInsertionService.knowledgeMarkdownPasteboardType,
+      KnowledgeArticleInsertionService.knowledgeCitationPasteboardType
+    ])
   }
 
   required init?(coder: NSCoder) {
     super.init(coder: coder)
-    registerForDraggedTypes([.fileURL])
+    registerForDraggedTypes([
+      .fileURL,
+      KnowledgeArticleInsertionService.knowledgeMarkdownPasteboardType,
+      KnowledgeArticleInsertionService.knowledgeCitationPasteboardType
+    ])
   }
 
   override var acceptsFirstResponder: Bool { true }
@@ -272,15 +281,29 @@ final class DroppableMarkdownTextView: NSTextView {
 
   override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
     !imageFileURLs(from: sender.draggingPasteboard).isEmpty
+      || knowledgeMarkdown(from: sender.draggingPasteboard) != nil
   }
 
   override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
     defer { setFileDropTargeted(false) }
     let urls = imageFileURLs(from: sender.draggingPasteboard)
-    guard !urls.isEmpty else { return false }
+    if !urls.isEmpty {
+      let dropRange = insertionRange(for: sender)
+      setSelectedRange(dropRange)
+      fileDropHandler?(urls, dropRange)
+      return true
+    }
+
+    guard let markdown = knowledgeMarkdown(from: sender.draggingPasteboard) else {
+      return false
+    }
     let dropRange = insertionRange(for: sender)
     setSelectedRange(dropRange)
-    fileDropHandler?(urls, dropRange)
+    knowledgeMarkdownDropHandler?(
+      markdown,
+      dropRange,
+      KnowledgeArticleInsertionService.citation(from: sender.draggingPasteboard)
+    )
     return true
   }
 
@@ -297,8 +320,10 @@ final class DroppableMarkdownTextView: NSTextView {
 
   private func updateFileDropTarget(using sender: NSDraggingInfo) -> NSDragOperation {
     let acceptsImages = !imageFileURLs(from: sender.draggingPasteboard).isEmpty
-    setFileDropTargeted(acceptsImages)
-    return acceptsImages ? .copy : []
+    let acceptsKnowledgeMarkdown = knowledgeMarkdown(from: sender.draggingPasteboard) != nil
+    let acceptsDrop = acceptsImages || acceptsKnowledgeMarkdown
+    setFileDropTargeted(acceptsDrop)
+    return acceptsDrop ? .copy : []
   }
 
   private func setFileDropTargeted(_ isTargeted: Bool) {
@@ -309,6 +334,17 @@ final class DroppableMarkdownTextView: NSTextView {
 
   private func imageFileURLs(from pasteboard: NSPasteboard) -> [URL] {
     MarkdownPasteboardReader.imageFileURLs(from: pasteboard)
+  }
+
+  private func knowledgeMarkdown(from pasteboard: NSPasteboard) -> String? {
+    guard let data = pasteboard.data(
+      forType: KnowledgeArticleInsertionService.knowledgeMarkdownPasteboardType
+    ) else {
+      return nil
+    }
+    return String(data: data, encoding: .utf8)?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .nilIfEmpty
   }
 }
 

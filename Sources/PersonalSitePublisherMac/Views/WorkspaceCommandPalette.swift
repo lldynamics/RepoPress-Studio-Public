@@ -6,13 +6,21 @@ struct WorkspaceCommandPalette: View {
   @ObservedObject private var publishing: WorkbenchPublishingFeatureFacade
   @ObservedObject private var shell: WorkbenchShellFeatureFacade
   let store: WorkbenchStore
+  let editorCommands: MarkdownEditorCommandActions?
   let onToggleFocusMode: () -> Void
+  @AppStorage("workspaceCommandPaletteRecentAIPromptIDs")
+  private var recentAIPromptIDs = ""
   @State private var query = ""
   @State private var selectedResultID: String?
   @FocusState private var isSearchFocused: Bool
 
-  init(store: WorkbenchStore, onToggleFocusMode: @escaping () -> Void) {
+  init(
+    store: WorkbenchStore,
+    editorCommands: MarkdownEditorCommandActions? = nil,
+    onToggleFocusMode: @escaping () -> Void
+  ) {
     self.store = store
+    self.editorCommands = editorCommands
     self.onToggleFocusMode = onToggleFocusMode
     _publishing = ObservedObject(wrappedValue: store.publishing)
     _shell = ObservedObject(wrappedValue: store.shell)
@@ -23,11 +31,11 @@ struct WorkspaceCommandPalette: View {
       HStack(spacing: 10) {
         Image(systemName: "command")
           .foregroundStyle(.secondary)
-        TextField("搜索文章、工作区或命令…", text: $query)
+        TextField("搜索文章、AI 功能、工作区或命令…", text: $query)
           .textFieldStyle(.plain)
           .font(.title3)
           .focused($isSearchFocused)
-          .accessibilityLabel("搜索文章、工作区或命令…")
+          .accessibilityLabel("搜索文章、AI 功能、工作区或命令…")
           .onSubmit(performSelectedResult)
         Text("⌘P")
           .font(.caption.monospaced())
@@ -50,6 +58,20 @@ struct WorkspaceCommandPalette: View {
                     systemImage: command.systemImage,
                     shortcut: command.shortcut,
                     action: command.action
+                  )
+                }
+              }
+            }
+
+            if !matchingAIPrompts.isEmpty {
+              paletteSection(String(localized: "AI 功能")) {
+                ForEach(matchingAIPrompts) { prompt in
+                  row(
+                    id: aiPromptResultID(prompt),
+                    title: prompt.localizedDisplayName,
+                    detail: prompt.group.localizedDisplayName + " · " + prompt.group.localizedDetail,
+                    systemImage: prompt.systemImage,
+                    action: { openAIPrompt(prompt) }
                   )
                 }
               }
@@ -93,14 +115,13 @@ struct WorkspaceCommandPalette: View {
         }
         .onChange(of: selectedResultID) { _, resultID in
           guard let resultID else { return }
-          withAnimation(.easeOut(duration: 0.12)) {
+          withAnimation(WorkbenchMotion.quick) {
             proxy.scrollTo(resultID, anchor: .center)
           }
         }
       }
     }
     .frame(width: 620, height: 560)
-    .background(.regularMaterial)
     .onAppear {
       isSearchFocused = true
       synchronizeSelection()
@@ -108,8 +129,8 @@ struct WorkspaceCommandPalette: View {
     .onChange(of: query) { _, _ in
       synchronizeSelection()
     }
-    .onChange(of: shell.isPrivacyLocked) { _, isLocked in
-      if isLocked {
+    .onChange(of: shell.isQuickHideActive) { _, isActive in
+      if isActive {
         dismiss()
       }
     }
@@ -167,6 +188,27 @@ struct WorkspaceCommandPalette: View {
     }
   }
 
+  private var matchingAIPrompts: [AIPublishingQuickPrompt] {
+    let candidates: [AIPublishingQuickPrompt]
+    if normalizedQuery.isEmpty {
+      let editing = editorCommands?.canRewriteSelection == true
+        ? AIPublishingQuickPrompt.allCases.filter { $0.group == .editing }
+        : []
+      candidates = Array(
+        stablyRankedAIPrompts(editing + AIPublishingQuickPrompt.primaryPrompts)
+          .prefix(8)
+      )
+    } else {
+      candidates = AIPublishingQuickPrompt.allCases.filter { prompt in
+        prompt.localizedDisplayName.localizedStandardContains(normalizedQuery)
+          || prompt.group.localizedDisplayName.localizedStandardContains(normalizedQuery)
+          || prompt.group.localizedDetail.localizedStandardContains(normalizedQuery)
+          || prompt.prompt.localizedStandardContains(normalizedQuery)
+      }
+    }
+    return stablyRankedAIPrompts(candidates)
+  }
+
   private var commands: [PaletteCommand] {
     var items: [PaletteCommand] = [
       registeredAutomationCommand(.createDraft, shortcut: "⌘N") {
@@ -209,6 +251,86 @@ struct WorkspaceCommandPalette: View {
         dismiss()
       },
     ]
+
+    if let editorCommands {
+      items.append(contentsOf: [
+        PaletteCommand(
+          title: String(localized: "查找与替换"),
+          detail: String(localized: "在当前文章中查找或替换文本"),
+          systemImage: "text.magnifyingglass",
+          shortcut: "⌘F"
+        ) {
+          editorCommands.showFindReplace()
+          dismiss()
+        },
+        PaletteCommand(
+          title: String(localized: "打开片段库"),
+          detail: String(localized: "插入正文片段或文章模板"),
+          systemImage: "text.badge.plus"
+        ) {
+          editorCommands.showSnippets()
+          dismiss()
+        },
+        PaletteCommand(
+          title: String(localized: "插入图片"),
+          detail: String(localized: "把本地图片导入当前文章"),
+          systemImage: "photo.badge.plus"
+        ) {
+          editorCommands.insertImages()
+          dismiss()
+        },
+        PaletteCommand(
+          title: String(localized: "运行当前文章发布检查"),
+          detail: String(localized: "检查元数据、链接、图片与公开风险"),
+          systemImage: "checkmark.shield"
+        ) {
+          editorCommands.runPreflight()
+          dismiss()
+        },
+        PaletteCommand(
+          title: String(localized: "切换粗体"),
+          detail: String(localized: "为当前选区添加或移除粗体"),
+          systemImage: "bold",
+          shortcut: "⌘B"
+        ) {
+          editorCommands.applyFormatting(.bold)
+          dismiss()
+        },
+        PaletteCommand(
+          title: String(localized: "切换斜体"),
+          detail: String(localized: "为当前选区添加或移除斜体"),
+          systemImage: "italic",
+          shortcut: "⌘I"
+        ) {
+          editorCommands.applyFormatting(.italic)
+          dismiss()
+        },
+        PaletteCommand(
+          title: String(localized: "插入或移除链接"),
+          detail: String(localized: "切换当前选区的 Markdown 链接"),
+          systemImage: "link",
+          shortcut: "⌘K"
+        ) {
+          editorCommands.applyFormatting(.link)
+          dismiss()
+        },
+      ])
+
+      if editorCommands.canRewriteSelection {
+        items.insert(
+          PaletteCommand(
+            title: String(localized: "AI 改写当前选区"),
+            detail: String(localized: "生成可预览、可拒绝的选区改写"),
+            systemImage: "wand.and.stars",
+            shortcut: "⌥⌘R"
+          ) {
+            editorCommands.rewriteSelection()
+            dismiss()
+          },
+          at: 0
+        )
+      }
+    }
 
     if DistributionFeaturePolicy.allowsExternalAIProviders {
       items.insert(
@@ -323,6 +445,9 @@ struct WorkspaceCommandPalette: View {
     matchingCommands.map { command in
       PaletteResult(id: commandResultID(command), action: command.action)
     }
+      + matchingAIPrompts.map { prompt in
+        PaletteResult(id: aiPromptResultID(prompt), action: { openAIPrompt(prompt) })
+      }
       + visibleDrafts.map { draft in
         PaletteResult(id: draftResultID(draft), action: { openDraft(draft.id) })
       }
@@ -337,6 +462,10 @@ struct WorkspaceCommandPalette: View {
 
   private func draftResultID(_ draft: ArticleDraft) -> String {
     "draft:\(draft.id.uuidString)"
+  }
+
+  private func aiPromptResultID(_ prompt: AIPublishingQuickPrompt) -> String {
+    "ai-prompt:\(prompt.rawValue)"
   }
 
   private func sectionResultID(_ section: WorkspaceSection) -> String {
@@ -385,6 +514,50 @@ struct WorkspaceCommandPalette: View {
 
   private func openSection(_ section: WorkspaceSection) {
     store.selectSection(section)
+    dismiss()
+  }
+
+  private var recentAIPromptIDList: [String] {
+    recentAIPromptIDs
+      .split(separator: ",")
+      .map(String.init)
+  }
+
+  private func stablyRankedAIPrompts(
+    _ prompts: [AIPublishingQuickPrompt]
+  ) -> [AIPublishingQuickPrompt] {
+    let unique = Dictionary(grouping: prompts, by: \.id)
+      .compactMap(\.value.first)
+    let recentOrder = Dictionary(
+      uniqueKeysWithValues: recentAIPromptIDList.enumerated().map {
+        ($0.element, $0.offset)
+      }
+    )
+    return unique.sorted { lhs, rhs in
+      let lhsRecent = recentOrder[lhs.rawValue] ?? Int.max
+      let rhsRecent = recentOrder[rhs.rawValue] ?? Int.max
+      if lhsRecent != rhsRecent {
+        return lhsRecent < rhsRecent
+      }
+      let lhsPrimary = AIPublishingQuickPrompt.primaryPrompts.contains(lhs)
+      let rhsPrimary = AIPublishingQuickPrompt.primaryPrompts.contains(rhs)
+      if lhsPrimary != rhsPrimary {
+        return lhsPrimary
+      }
+      return
+        lhs.localizedDisplayName.localizedStandardCompare(rhs.localizedDisplayName)
+        == .orderedAscending
+    }
+  }
+
+  private func openAIPrompt(_ prompt: AIPublishingQuickPrompt) {
+    var recents = recentAIPromptIDList.filter { $0 != prompt.rawValue }
+    recents.insert(prompt.rawValue, at: 0)
+    recentAIPromptIDs = recents.prefix(12).joined(separator: ",")
+    _ = store.ai.openChatWorkspace(
+      for: publishing.selectedDraftID,
+      quickPrompt: prompt
+    )
     dismiss()
   }
 }

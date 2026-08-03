@@ -51,19 +51,14 @@ public struct DeploymentWebhookHTTPRequest: Equatable, Sendable {
       return nil
     }
 
-    let headers = Dictionary(
-      uniqueKeysWithValues: head
-        .split(separator: "\r\n")
+    guard let headers = parseHeaders(
+      head
+        .split(separator: "\r\n", omittingEmptySubsequences: false)
         .dropFirst()
-        .compactMap { line -> (String, String)? in
-          guard let separator = line.firstIndex(of: ":") else { return nil }
-          return (
-            line[..<separator].trimmingCharacters(in: .whitespaces).lowercased(),
-            line[line.index(after: separator)...].trimmingCharacters(in: .whitespaces)
-          )
-        }
-    )
-    guard let rawContentLength = headers["content-length"],
+    ) else {
+      return nil
+    }
+    guard let rawContentLength = headers["content-length"]?.first,
           let contentLength = Int(rawContentLength),
           contentLength >= 0,
           contentLength == body.lengthOfBytes(using: .utf8) else {
@@ -79,6 +74,40 @@ public struct DeploymentWebhookHTTPRequest: Equatable, Sendable {
     }
 
     return DeploymentWebhookHTTPRequest(provider: provider, payloadText: body)
+  }
+
+  private static func parseHeaders(
+    _ lines: ArraySlice<Substring>
+  ) -> [String: [String]]? {
+    var headers: [String: [String]] = [:]
+    for line in lines {
+      guard !line.isEmpty,
+            let separator = line.firstIndex(of: ":") else {
+        return nil
+      }
+      let name = line[..<separator]
+        .trimmingCharacters(in: .whitespaces)
+        .lowercased()
+      guard !name.isEmpty else {
+        return nil
+      }
+      let value = line[line.index(after: separator)...]
+        .trimmingCharacters(in: .whitespaces)
+      headers[name, default: []].append(value)
+    }
+
+    let nonRepeatableHeaders = [
+      "content-length",
+      "content-type",
+      "host",
+      "transfer-encoding",
+    ]
+    guard nonRepeatableHeaders.allSatisfy({
+      headers[$0, default: []].count <= 1
+    }) else {
+      return nil
+    }
+    return headers
   }
 
   private static func provider(from rawValue: String) -> DeploymentProvider? {

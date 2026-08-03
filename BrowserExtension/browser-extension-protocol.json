@@ -2,7 +2,8 @@
   "documentVersion": 1,
   "activeExtensions": [
     "safari",
-    "chrome"
+    "chrome",
+    "firefox"
   ],
   "extensions": {
     "chromiumDevelopmentID": "lnibkmfhfikfbkeehcjbiaalhkiankam",

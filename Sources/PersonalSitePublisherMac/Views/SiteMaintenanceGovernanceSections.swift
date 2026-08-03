@@ -11,7 +11,7 @@ struct SiteMaintenanceTaxonomySection: View {
     VStack(alignment: .leading, spacing: 10) {
       HStack {
         Label(title, systemImage: systemImage)
-          .font(.headline)
+          .font(.workbenchSectionTitle)
         Spacer()
         Text("缺失 \(summary.missingCount) · 单篇 \(summary.singletonCount)")
           .font(.caption)
@@ -112,7 +112,7 @@ struct SiteMaintenanceStaleArticleSection: View {
     VStack(alignment: .leading, spacing: 10) {
       HStack {
         Text("旧文整理")
-          .font(.headline)
+          .font(.workbenchSectionTitle)
         Spacer()
         Text("\(report.staleArticles.count) 篇")
           .font(.caption)
@@ -169,7 +169,7 @@ struct SiteMaintenanceRelationSuggestionSection: View {
     VStack(alignment: .leading, spacing: 10) {
       HStack {
         Text("文章关系")
-          .font(.headline)
+          .font(.workbenchSectionTitle)
         Spacer()
         Text("\(report.relationSuggestions.count) 项")
           .font(.caption)
@@ -210,7 +210,7 @@ struct SiteMaintenanceRelationSuggestionSection: View {
           }
           .buttonStyle(.plain)
           .accessibilityLabel("打开链接建议来源文章")
-          .accessibilityValue("\(item.sourceTitle) 到 \(item.targetTitle)")
+          .accessibilityValue(String(localized: "\(item.sourceTitle) 到 \(item.targetTitle)"))
           .padding(10)
           .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
         }
@@ -229,7 +229,7 @@ struct SiteMaintenanceLinkAuditSection: View {
     VStack(alignment: .leading, spacing: 10) {
       HStack {
         Text("链接审计")
-          .font(.headline)
+          .font(.workbenchSectionTitle)
         Spacer()
         Text("\(report.linkAuditItems.count) 项")
           .font(.caption)
@@ -283,7 +283,7 @@ struct SiteMaintenanceOperationLogSection: View {
     VStack(alignment: .leading, spacing: 10) {
       HStack {
         Text("操作日志")
-          .font(.headline)
+          .font(.workbenchSectionTitle)
         Spacer()
         Text("\(report.operationLogEntries.count) 条")
           .font(.caption)

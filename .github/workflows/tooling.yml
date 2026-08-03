@@ -48,8 +48,13 @@ jobs:
           defaults write NSGlobalDomain AppleLocale "zh_CN"
       - name: Install pinned browser extension tooling
         run: |
-          npm ci
+          npm ci --ignore-scripts
           npx --no-install playwright-core install chromium
+      - name: Verify Node dependency security
+        run: |
+          python3 script/check_node_toolchain_security.py
+          python3 script/test_node_toolchain_security.py
+          npm audit --audit-level=high --omit=optional
       - name: Run browser extension release gate
         run: |
           ./script/check_release_gate.sh \

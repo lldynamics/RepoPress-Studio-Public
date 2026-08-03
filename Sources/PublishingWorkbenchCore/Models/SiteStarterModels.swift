@@ -2,13 +2,33 @@ import Foundation
 
 public enum SiteStarterTemplateID: String, Codable, CaseIterable, Identifiable, Sendable {
   case zolaPersonalBlog
-  case zolaPortfolio
-  case astroPersonalBlog
-  case hugoPersonalBlog
-  case hexoPersonalBlog
-  case jekyllPersonalBlog
 
   public var id: String { rawValue }
+
+  public init(from decoder: Decoder) throws {
+    let value = try decoder.singleValueContainer().decode(String.self)
+    switch value {
+    case Self.zolaPersonalBlog.rawValue,
+      "zolaPortfolio",
+      "astroPersonalBlog",
+      "hugoPersonalBlog",
+      "hexoPersonalBlog",
+      "jekyllPersonalBlog":
+      // Older requests selected one of six built-in variants. They now all
+      // resolve to the single maintained Zola starting point.
+      self = .zolaPersonalBlog
+    default:
+      throw DecodingError.dataCorruptedError(
+        in: try decoder.singleValueContainer(),
+        debugDescription: "Unknown Site Starter template ID: \(value)"
+      )
+    }
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    try container.encode(rawValue)
+  }
 }
 
 public struct SiteStarterTemplatePreview: Codable, Hashable, Sendable {
@@ -63,92 +83,17 @@ public struct SiteStarterTemplate: Identifiable, Codable, Hashable, Sendable {
   public static let builtIn: [SiteStarterTemplate] = [
     SiteStarterTemplate(
       id: .zolaPersonalBlog,
-      name: "个人博客",
+      name: CoreL10n.text("Zola 写作起点"),
       siteKind: .zola,
-      summary: "Zola 博客模板，适合写文章、随笔和技术记录。",
-      defaultTags: ["写作"],
+      summary: CoreL10n.text("一套可直接发布的 Zola 写作起点，包含文章、RSS、搜索和部署工作流。"),
+      defaultTags: [CoreL10n.text("写作")],
       defaultCategories: ["Blog"],
       preview: SiteStarterTemplatePreview(
-        headline: "最新文章优先",
-        subtitle: "清爽首页、文章列表、独立文章页，适合长期写作。",
-        primarySectionTitle: "最新文章",
-        sampleItems: ["欢迎文章", "工程记录", "读书笔记"],
-        accentName: "蓝绿"
-      )
-    ),
-    SiteStarterTemplate(
-      id: .zolaPortfolio,
-      name: "作品集",
-      siteKind: .zola,
-      summary: "Zola 作品集模板，首页突出个人介绍和项目入口。",
-      defaultTags: ["作品"],
-      defaultCategories: ["Portfolio"],
-      preview: SiteStarterTemplatePreview(
-        headline: "作品与记录",
-        subtitle: "首页突出个人介绍、精选项目和后续文章入口。",
-        primarySectionTitle: "精选项目",
-        sampleItems: ["项目案例", "关于我", "近期记录"],
-        accentName: "靛蓝"
-      )
-    ),
-    SiteStarterTemplate(
-      id: .astroPersonalBlog,
-      name: "Astro 博客",
-      siteKind: .astro,
-      summary: "Astro 内容集合模板，适合轻量博客和后续组件化扩展。",
-      defaultTags: ["写作"],
-      defaultCategories: ["Blog"],
-      preview: SiteStarterTemplatePreview(
-        headline: "组件化内容站",
-        subtitle: "Markdown/MDX 内容、简洁布局和前端扩展空间。",
-        primarySectionTitle: "Blog",
-        sampleItems: ["MDX 文章", "组件示例", "静态页面"],
-        accentName: "橙红"
-      )
-    ),
-    SiteStarterTemplate(
-      id: .hugoPersonalBlog,
-      name: "Hugo 博客",
-      siteKind: .hugo,
-      summary: "Hugo 博客模板，适合需要快速构建和传统内容目录的站点。",
-      defaultTags: ["写作"],
-      defaultCategories: ["Blog"],
-      preview: SiteStarterTemplatePreview(
-        headline: "高速静态博客",
-        subtitle: "内容目录清晰、构建快，适合文章量增长后的维护。",
-        primarySectionTitle: "Posts",
-        sampleItems: ["第一篇文章", "归档入口", "标签页"],
-        accentName: "青色"
-      )
-    ),
-    SiteStarterTemplate(
-      id: .hexoPersonalBlog,
-      name: "Hexo 博客",
-      siteKind: .hexo,
-      summary: "Hexo 博客模板，适合 Node.js 生态和传统博客迁移。",
-      defaultTags: ["写作"],
-      defaultCategories: ["Blog"],
-      preview: SiteStarterTemplatePreview(
-        headline: "传统博客工作流",
-        subtitle: "Source 目录、文章列表和 Hexo 构建脚本开箱可用。",
-        primarySectionTitle: "Archives",
-        sampleItems: ["Hello World", "分类", "归档"],
-        accentName: "紫蓝"
-      )
-    ),
-    SiteStarterTemplate(
-      id: .jekyllPersonalBlog,
-      name: "Jekyll 博客",
-      siteKind: .jekyll,
-      summary: "Jekyll 博客模板，适合 GitHub Pages 的传统 Markdown 工作流。",
-      defaultTags: ["写作"],
-      defaultCategories: ["Blog"],
-      preview: SiteStarterTemplatePreview(
-        headline: "GitHub Pages 友好",
-        subtitle: "Jekyll 默认目录、Gemfile 和 Pages 工作流齐备。",
-        primarySectionTitle: "Posts",
-        sampleItems: ["欢迎文章", "页面模板", "日期归档"],
-        accentName: "深灰"
+        headline: CoreL10n.text("最新文章优先"),
+        subtitle: CoreL10n.text("清爽首页、文章列表、独立文章页，适合长期写作。"),
+        primarySectionTitle: CoreL10n.text("最新文章"),
+        sampleItems: [CoreL10n.text("欢迎文章"), CoreL10n.text("工程记录"), CoreL10n.text("读书笔记")],
+        accentName: CoreL10n.text("蓝绿")
       )
     ),
   ]

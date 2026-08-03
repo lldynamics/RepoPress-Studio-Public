@@ -10,7 +10,10 @@ extension WorkbenchStore {
   }
 
   public func startLocalSitePreview() {
-    publishingStore.refreshLocalSitePreviewPlan(for: activeProfile)
+    publishingStore.refreshLocalSitePreviewPlan(
+      for: activeProfile,
+      repositoryReport: repositoryReport(for: activeProfile)
+    )
     publishingStore.startLocalSitePreview()
   }
 
@@ -72,6 +75,70 @@ extension WorkbenchStore {
 
   public func createProfile(named name: String? = nil) -> SiteProfile {
     publishingStore.createProfile(named: name, store: self)
+  }
+
+  /// Switches the first-run workspace to a repository-free general-draft mode.
+  ///
+  /// A brand-new workbench reuses its empty default profile so the user does
+  /// not get an extra, unconfigured site profile. If the app already contains
+  /// a configured site or site drafts, keep that profile intact and create a
+  /// separate general-draft profile instead.
+  public func prepareLocalDraftWorkspace() {
+    let untouchedInitialDraftID = drafts.first { draft in
+      draft.belongs(toSiteProfileID: activeProfileID)
+        && isUntouchedInitialSiteDraft(draft)
+    }?.id
+    let hasActiveProfileContent = drafts.contains { draft in
+      draft.belongs(toSiteProfileID: activeProfileID)
+        && !isUntouchedInitialSiteDraft(draft)
+    }
+    let canReuseActiveProfile = activeProfile.purpose == .generalDraftBackup
+      || (
+        profiles.count == 1
+          && activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty
+          && !hasActiveProfileContent
+      )
+
+    if !canReuseActiveProfile {
+      _ = createProfile(named: "本地草稿")
+    }
+
+    updateActiveProfile { profile in
+      profile.name = "本地草稿"
+      profile.purpose = .generalDraftBackup
+      profile.localRepositoryRootPath = ""
+      profile.localRepositoryBookmarkData = nil
+      profile.repoOwner = ""
+      profile.repoName = ""
+      profile.deploymentProvider = nil
+      profile.deploymentSiteURL = nil
+      profile.deploymentStatusEndpointURL = nil
+      profile.deploymentStatusEndpointUsesToken = nil
+      profile.deploymentProjectID = nil
+      profile.deploymentAccountID = nil
+    }
+
+    if canReuseActiveProfile,
+       let untouchedInitialDraftID,
+       var draft = drafts.first(where: { $0.id == untouchedInitialDraftID }) {
+      draft.assignToGeneralDraft(editingProfileID: activeProfileID)
+      updateDraft(draft)
+    }
+
+    setDraftListContentScope(.general)
+    if let draft = writingDrafts.first {
+      _ = focusDraft(draft.id, section: .writing)
+    } else {
+      createGeneralDraft()
+    }
+  }
+
+  private func isUntouchedInitialSiteDraft(_ draft: ArticleDraft) -> Bool {
+    !draft.isGeneralDraft
+      && draft.title == "未命名文章"
+      && draft.bodyMarkdown == "# 未命名文章\n\n从这里开始写作。\n"
+      && draft.summary.isEmpty
+      && draft.attachments.isEmpty
   }
 
   public func duplicateActiveProfile() -> SiteProfile {

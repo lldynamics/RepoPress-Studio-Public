@@ -21,13 +21,13 @@ final class AIDataSharingConsentStoreTests: XCTestCase {
   func testRemoteProviderRequiresExplicitConsentAndCanBeRevoked() {
     let store = AIDataSharingConsentStore(defaults: defaults)
     let config = AIProviderConfig(
-      preset: .deepSeek,
-      baseURL: "https://api.deepseek.com",
-      model: "deepseek-v4-flash",
+      preset: .custom,
+      baseURL: "https://api.custom-ai.com/v1",
+      model: "custom-model",
       requiresAPIKey: true
     )
 
-    XCTAssertEqual(config.dataSharingDestination, "api.deepseek.com")
+    XCTAssertEqual(config.dataSharingDestination, "api.custom-ai.com")
     XCTAssertFalse(store.presentation(for: config).isGranted)
 
     store.grant(for: config)
@@ -39,17 +39,22 @@ final class AIDataSharingConsentStoreTests: XCTestCase {
 
   func testConsentDoesNotCarryAcrossRemoteDestinations() {
     let store = AIDataSharingConsentStore(defaults: defaults)
-    let deepSeek = AIProviderConfig()
+    let customAI = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.custom-ai.com/v1",
+      model: "custom-model",
+      requiresAPIKey: true
+    )
     let openAI = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.com/v1",
       model: "gpt-4.1-mini",
       requiresAPIKey: true
     )
 
-    store.grant(for: deepSeek)
+    store.grant(for: customAI)
 
-    XCTAssertTrue(store.presentation(for: deepSeek).isGranted)
+    XCTAssertTrue(store.presentation(for: customAI).isGranted)
     XCTAssertFalse(store.presentation(for: openAI).isGranted)
   }
 
@@ -63,7 +68,26 @@ final class AIDataSharingConsentStoreTests: XCTestCase {
     )
 
     let presentation = store.presentation(for: config)
+    XCTAssertEqual(presentation.destinationState, .local)
     XCTAssertFalse(presentation.requiresConsent)
     XCTAssertTrue(presentation.isGranted)
+  }
+
+  func testEmptyDestinationIsUnconfiguredInsteadOfLocalOrGranted() {
+    let store = AIDataSharingConsentStore(defaults: defaults)
+    let config = AIProviderConfig(
+      preset: .custom,
+      baseURL: "",
+      model: "",
+      requiresAPIKey: true
+    )
+
+    let presentation = store.presentation(for: config)
+
+    XCTAssertEqual(presentation.destination, "")
+    XCTAssertEqual(presentation.destinationState, .unconfigured)
+    XCTAssertFalse(presentation.requiresConsent)
+    XCTAssertFalse(presentation.isGranted)
+    XCTAssertFalse(store.grant(for: config))
   }
 }

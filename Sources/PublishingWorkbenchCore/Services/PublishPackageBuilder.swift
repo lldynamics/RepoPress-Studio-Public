@@ -10,9 +10,9 @@ public enum PublishFileKind: String, Codable, Sendable {
     case .markdown:
       return "Markdown"
     case .image:
-      return "图片"
+      return CoreL10n.text("图片")
     case .video:
-      return "视频"
+      return CoreL10n.text("视频")
     }
   }
 }

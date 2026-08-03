@@ -6,14 +6,14 @@ extension WorkbenchStore {
     await repositoryDeploymentCoordinator.tickOperationalPolling(store: self, now: now)
   }
 
-  public func lockPrivacy(reason: String? = nil) {
-    privacyMonetizationStore.lockPrivacy(reason: reason)
+  public func activateQuickHide(reason: String? = nil) {
+    privacyProtectionStore.activateQuickHide(reason: reason)
     setAIPublishingAssistantPresented(false)
     save()
   }
 
-  public func unlockPrivacy() {
-    privacyMonetizationStore.unlockPrivacy()
+  public func deactivateQuickHide() {
+    privacyProtectionStore.deactivateQuickHide()
     save()
   }
 

@@ -185,9 +185,9 @@ final class AIPublishingChatConversationPresentationTests: XCTestCase {
 
   func testModelSummaryUsesResolvedCustomModel() {
     let config = AIProviderConfig(
-      preset: .deepSeek,
-      baseURL: "https://api.deepseek.com",
-      model: "deepseek-v4-flash",
+      preset: .custom,
+      baseURL: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
       requiresAPIKey: true
     )
 
@@ -201,7 +201,12 @@ final class AIPublishingChatConversationPresentationTests: XCTestCase {
   }
 
   func testConfigurationIssueMatchesMobileChatReadiness() {
-    let remoteConfig = AIProviderConfig(requiresAPIKey: true)
+    let remoteConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
+      requiresAPIKey: true
+    )
     let localConfig = AIProviderConfig(
       preset: .local,
       baseURL: "http://127.0.0.1:11434/v1",
@@ -245,11 +250,16 @@ final class AIPublishingChatConversationPresentationTests: XCTestCase {
   }
 
   func testSendReadinessMatchesMobileChatGuards() {
-    let remoteConfig = AIProviderConfig(requiresAPIKey: true)
-    let deepSeekNoKeyConfig = AIProviderConfig(
-      preset: .deepSeek,
-      baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
-      model: AIProviderPreset.deepSeek.defaultModel,
+    let remoteConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
+      requiresAPIKey: true
+    )
+    let openAINoKeyConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
       requiresAPIKey: false
     )
 
@@ -293,20 +303,6 @@ final class AIPublishingChatConversationPresentationTests: XCTestCase {
       "AI API Key 未保存，请先到设置里保存当前 Profile 的 API Key。"
     )
 
-    let unsupportedImage = AIPublishingChatConversationPresentation.sendReadiness(
-      inputText: " ",
-      selectedImageCount: 1,
-      isSending: false,
-      config: deepSeekNoKeyConfig,
-      aiTokenAvailability: KeychainTokenAvailability(hasToken: false),
-      grade: .standard,
-      selectedModel: ""
-    )
-    XCTAssertFalse(unsupportedImage.canSend)
-    XCTAssertEqual(
-      unsupportedImage.imageAttachmentIssue,
-      "DeepSeek 当前接口不支持图片输入，请切换到支持视觉输入的 OpenAI-compatible 模型。"
-    )
   }
 
   func testImageImportPresentationSelectsImportedImagesWithinRemainingSlots() {

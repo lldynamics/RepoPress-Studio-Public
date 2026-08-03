@@ -122,7 +122,7 @@
   "选择要导入的文章。相同仓库路径的现有草稿会先保存版本快照，再使用远端内容更新。": "Select the articles to import. Existing drafts at the same repository path are snapshotted before being updated with remote content.",
   "选择要插入的图片": "Choose Images to Insert",
   "通过发布控制台菜单进入": "Open from the Publishing Console menu",
-  "隐私界面遮罩已启用。": "Privacy screen masking is enabled.",
+  "快速隐藏已启用（仅界面遮挡）。": "Quick Hide is enabled (interface masking only).",
   "先完成一次仓库扫描，才会显示变更、自动化和本地预览模块。上方主操作可开始扫描。": "Complete one repository scan first to show changes, automation, and local preview. Use the primary action above to start.",
   "原始图片不会被覆盖，处理结果以新副本保存并更新草稿引用。": "Original images are not overwritten. Results are saved as new copies and draft references are updated.",
   "取消与恢复": "Cancellation and Recovery",

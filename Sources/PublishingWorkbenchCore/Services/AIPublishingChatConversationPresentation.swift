@@ -127,6 +127,14 @@ public enum AIPublishingChatConversationPresentation {
       return "AI API Base URL 为空，请先到设置里填写。"
     }
 
+    if config.requiresAPIKey,
+       let accessFailureMessage = aiTokenAvailability.accessFailureMessage {
+      return CoreL10n.format(
+        "AI Keychain 读取失败：%@",
+        accessFailureMessage
+      )
+    }
+
     if config.requiresAPIKey && !aiTokenAvailability.hasToken {
       return "AI API Key 未保存，请先到设置里保存当前 Profile 的 API Key。"
     }
@@ -152,7 +160,7 @@ public enum AIPublishingChatConversationPresentation {
     )
     let imageIssue: String?
     if selectedImageCount > 0 && !config.supportsImageInput {
-      imageIssue = "\(config.normalizedDisplayName) 当前接口不支持图片输入，请切换到支持视觉输入的 OpenAI-compatible 模型。"
+      imageIssue = "\(config.normalizedDisplayName) 当前接口不支持图片输入，请切换到支持视觉输入的模型。"
     } else {
       imageIssue = nil
     }

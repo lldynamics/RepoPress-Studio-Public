@@ -144,7 +144,7 @@ public struct RemotePublishRiskService: Sendable {
   private static func pathSummary(_ paths: [String]) -> String {
     let visiblePaths = paths.prefix(3).joined(separator: "、")
     if paths.count > 3 {
-      return "\(visiblePaths) 等 \(paths.count) 个文件"
+      return CoreL10n.format("%@ 等 %d 个文件", visiblePaths, paths.count)
     }
     return visiblePaths
   }

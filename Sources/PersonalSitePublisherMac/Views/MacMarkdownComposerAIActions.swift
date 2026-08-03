@@ -26,7 +26,8 @@ extension MacMarkdownComposerView {
 
   var isAIEnabledForDraft: Bool {
     let profile = editorState.profile(for: draft)
-    return !profile.aiProviderConfig.requiresAPIKey || editorState.aiTokenAvailability.hasToken
+    let config = store.aiProviderConfig(for: profile)
+    return !config.requiresAPIKey || editorState.aiTokenAvailability.hasToken
   }
 
   func articleAIActionAvailability(
@@ -107,6 +108,13 @@ extension MacMarkdownComposerView {
   }
 
   func performSelectionAIAction(_ kind: AIPublishingActionKind) {
+    performSelectionAIAction(kind, presentsInlineResult: false)
+  }
+
+  func performSelectionAIAction(
+    _ kind: AIPublishingActionKind,
+    presentsInlineResult: Bool = false
+  ) {
     let rawSelectedText = selectedText(in: editorBody)
     let promptSelectedText = rawSelectedText.trimmedForPublishing
     let availability = selectionAIActionAvailability(kind, respectActiveAction: false)
@@ -120,7 +128,11 @@ extension MacMarkdownComposerView {
     let requestID = UUID()
     activeSelectionAIAction = kind
     selectionAIActionRequestID = requestID
+    isInlineSelectionAIAction = presentsInlineResult
     selectionActionMessage = "\(kind.localizedDisplayName)处理中..."
+    if !presentsInlineResult {
+      showWritingContextPanel(.selectionTools)
+    }
     let previewRange = clamped(selectedRange, length: (editorBody as NSString).length)
     selectionEditPreview = nil
     selectionAIActionTask = Task { @MainActor in
@@ -143,9 +155,13 @@ extension MacMarkdownComposerView {
           replacementText: result.content,
           application: selectionEditApplication(for: result.kind),
           providerName: result.providerName,
-          model: result.model
+          model: result.model,
+          knowledgeCitations: result.knowledgeCitations
         )
         selectionEditPreview = preview
+        if !presentsInlineResult {
+          showWritingContextPanel(.aiReview)
+        }
         selectionActionMessage = result.kind.localizedDisplayName + "预览已生成。"
         EditorAccessibilityAnnouncementCenter.announceAIPreview(
           kind: result.kind.localizedDisplayName,
@@ -196,9 +212,11 @@ extension MacMarkdownComposerView {
             replacementText: result.content,
             application: .insertAtRange,
             providerName: result.providerName,
-            model: result.model
+            model: result.model,
+            knowledgeCitations: result.knowledgeCitations
           )
           selectionEditPreview = preview
+          showWritingContextPanel(.aiReview)
           selectionActionMessage = result.kind.localizedDisplayName + "预览已生成。"
           EditorAccessibilityAnnouncementCenter.announceAIPreview(
             kind: result.kind.localizedDisplayName,
@@ -220,7 +238,11 @@ extension MacMarkdownComposerView {
     selectionAIActionTask = nil
     selectionAIActionRequestID = nil
     activeSelectionAIAction = nil
+    isInlineSelectionAIAction = false
     selectionEditPreview = nil
+    if activeWritingContextPanel == .aiReview {
+      activeWritingContextPanel = hasSelectedText ? .selectionTools : nil
+    }
   }
 
   func finishSelectionAIAction(requestID: UUID) {
@@ -299,8 +321,12 @@ extension MacMarkdownComposerView {
     }
 
     let replacementLength = (message.content.trimmedForPublishing as NSString).length
-    applyDraftUpdate(result.draft)
+    guard requestUndoableBodyUpdate(result.draft, selectionOverride: range) else { return }
     selectedRange = NSRange(location: range.location + replacementLength, length: 0)
+    recordKnowledgeCitations(
+      message.knowledgeCitations,
+      for: result.draft
+    )
     selectionActionMessage = result.action.statusMessage
   }
 
@@ -335,9 +361,15 @@ extension MacMarkdownComposerView {
       case .insertAtRange:
         newSelectionLocation = preview.range.location + insertedLength
       }
-      applyDraftUpdate(updated)
+      guard requestUndoableBodyUpdate(updated, selectionOverride: preview.range) else { return }
       selectedRange = NSRange(location: newSelectionLocation, length: 0)
+      recordKnowledgeCitations(
+        preview.knowledgeCitations,
+        for: updated
+      )
       selectionEditPreview = nil
+      isInlineSelectionAIAction = false
+      activeWritingContextPanel = hasSelectedText ? .selectionTools : nil
       selectionActionMessage = "\(preview.kind.localizedDisplayName)已应用。"
     } catch {
       selectionActionMessage = error.localizedDescription
@@ -346,6 +378,24 @@ extension MacMarkdownComposerView {
 
   func discardSelectionEditPreview() {
     selectionEditPreview = nil
+    isInlineSelectionAIAction = false
+    activeWritingContextPanel = hasSelectedText ? .selectionTools : nil
     selectionActionMessage = "已丢弃 AI 预览。"
+  }
+
+  private func recordKnowledgeCitations(
+    _ citations: [KnowledgeCitation],
+    for draft: ArticleDraft
+  ) {
+    guard !citations.isEmpty else { return }
+    store.knowledge.recordBacklinks(
+      citations: citations,
+      target: KnowledgeBacklinkTarget(
+        kind: .articleDraft,
+        id: draft.id.uuidString,
+        title: draft.title.nilIfEmpty ?? "当前文章",
+        location: "正文"
+      )
+    )
   }
 }

@@ -21,8 +21,8 @@ EXPECTED_SUBTITLES = {
 }
 PENDING_PREFIX = "PENDING_"
 REQUIRED_FULL_FEATURE_DISCLOSURES = {
-    "zh-Hans": ("所有用户", "明确同意", "不作为 Pro 权益", "127.0.0.1"),
-    "en-US": ("Every user", "Explicit consent", "not a Pro benefit", "127.0.0.1"),
+    "zh-Hans": ("所有用户", "明确同意", "不限制 AI 请求次数", "127.0.0.1"),
+    "en-US": ("Every user", "Explicit consent", "does not meter AI requests", "127.0.0.1"),
 }
 
 

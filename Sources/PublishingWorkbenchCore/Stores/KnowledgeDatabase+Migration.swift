@@ -31,7 +31,8 @@ extension KnowledgeDatabase {
       source_name TEXT NOT NULL,
       folder_id TEXT REFERENCES knowledge_folders(id) ON DELETE SET NULL,
       source_byte_count INTEGER NOT NULL DEFAULT 0,
-      allows_ai_use INTEGER NOT NULL DEFAULT 1,
+      allows_ai_use INTEGER NOT NULL DEFAULT 0,
+      allows_local_semantic_index INTEGER NOT NULL DEFAULT 1,
       is_archived INTEGER NOT NULL DEFAULT 0,
       imported_at REAL NOT NULL,
       updated_at REAL NOT NULL,
@@ -159,11 +160,20 @@ extension KnowledgeDatabase {
       ADD COLUMN source_byte_count INTEGER NOT NULL DEFAULT 0;
       """)
       }
+      if try !columnExists("allows_local_semantic_index", in: "knowledge_documents") {
+        try execute("""
+      ALTER TABLE knowledge_documents
+      ADD COLUMN allows_local_semantic_index INTEGER NOT NULL DEFAULT 1;
+      """)
+      }
       if try !columnExists("captured_text_storage_ref", in: "knowledge_revisions") {
         try execute("""
       ALTER TABLE knowledge_revisions
       ADD COLUMN captured_text_storage_ref TEXT;
       """)
+      }
+      if existingUserVersion < 8 {
+        try execute("UPDATE knowledge_documents SET allows_ai_use = 0;")
       }
       try execute("""
       CREATE INDEX IF NOT EXISTS knowledge_documents_folder_idx

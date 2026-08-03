@@ -4,33 +4,39 @@ import SwiftUI
 struct WorkspaceTaskInspector: View {
   let section: WorkspaceSection
   @Binding var draft: ArticleDraft
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  let rssStore: RSSReaderStore
   let prioritizesChecks: Bool
-  @State private var selectedTab: ArticleInspectorTab = .metadata
+  @State private var selectedTab: ArticleInspectorTab
 
   init(
     section: WorkspaceSection,
     draft: Binding<ArticleDraft>,
     store: WorkbenchStore,
+    rssStore: RSSReaderStore,
     prioritizesChecks: Bool = false
   ) {
     self.section = section
     _draft = draft
     self.store = store
+    self.rssStore = rssStore
     self.prioritizesChecks = prioritizesChecks
+    _selectedTab = State(initialValue: ArticleInspectorTab.defaultTab(for: section))
   }
 
   var body: some View {
     switch section {
     case .sync, .releaseHistory:
       RepositoryContextInspectorView(store: store)
-    case .library:
+    case .library, .rss:
       EmptyView()
     case .writing, .contentHealth, .images, .maintenance:
       ArticleInspectorTabs(
         selectedTab: $selectedTab,
         draft: $draft,
         store: store,
+        rssStore: rssStore,
+        section: section,
         availableTabs: availableTabs
       )
       .onAppear {
@@ -52,27 +58,14 @@ struct WorkspaceTaskInspector: View {
       return .seo
     }
 #endif
-    if prioritizesChecks && availableTabs.contains(.checks) {
+    if prioritizesChecks && ArticleInspectorTab.availableTabs(for: section).contains(.checks) {
       return .checks
     }
     return ArticleInspectorTab.defaultTab(for: section)
   }
 
   private var availableTabs: [ArticleInspectorTab] {
-    switch section {
-    case .writing, .maintenance:
-      return [.metadata, .seo]
-    case .contentHealth:
-      return [.checks]
-    case .images:
-      return [.images]
-    case .sync, .releaseHistory:
-      return []
-    case .library:
-      return []
-    case .siteStarter:
-      return [.metadata]
-    }
+    ArticleInspectorTab.availableTabs(for: section)
   }
 }
 

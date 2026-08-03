@@ -84,8 +84,9 @@ final class MainWindowSizingView: NSView {
     defaults.set(true, forKey: Self.migrationKey)
 
     guard window.contentLayoutRect.width < WorkbenchLayoutMode.defaultWindowWidth,
-          let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame,
-          visibleFrame.width >= WorkbenchLayoutMode.minimumInspectorWorkspaceWidth else {
+      let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame,
+      visibleFrame.width >= WorkbenchLayoutMode.minimumInspectorWorkspaceWidth
+    else {
       return
     }
 
@@ -119,6 +120,39 @@ final class MainWindowSizingView: NSView {
     }
     protectedWindow = nil
     closeProtectionProxy = nil
+  }
+}
+
+enum MainWindowUnsavedCloseChoice: Equatable {
+  case saveAndClose
+  case continueEditing
+  case discardAndClose
+}
+
+enum MainWindowCloseDecision: Equatable {
+  case close
+  case keepEditing
+  case saveFailed
+}
+
+struct MainWindowClosePolicy {
+  static func decide(
+    hasUnsavedChanges: Bool,
+    isSaving: Bool,
+    choice: MainWindowUnsavedCloseChoice?,
+    save: () -> Bool
+  ) -> MainWindowCloseDecision {
+    guard hasUnsavedChanges else { return .close }
+    guard !isSaving else { return .keepEditing }
+
+    switch choice {
+    case .saveAndClose:
+      return save() ? .close : .saveFailed
+    case .discardAndClose:
+      return .close
+    case .continueEditing, nil:
+      return .keepEditing
+    }
   }
 }
 
@@ -162,24 +196,37 @@ private final class MainWindowCloseProtectionProxy: NSObject, NSWindowDelegate {
     alert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
     alert.addButton(withTitle: String(localized: "不保存并关闭"))
 
+    let choice: MainWindowUnsavedCloseChoice?
     switch alert.runModal() {
     case .alertFirstButtonReturn:
-      guard sourceSession.saveSynchronously(profile: profileProvider()) else {
-        let failureAlert = NSAlert()
-        failureAlert.messageText = String(localized: "未能保存 HTML 源文件")
-        failureAlert.informativeText = sourceSession.errorMessage
-          ?? String(localized: "请返回编辑器检查文件权限或外部修改冲突。")
-        failureAlert.alertStyle = .warning
-        failureAlert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
-        failureAlert.runModal()
-        return false
-      }
-      return originalDelegate?.windowShouldClose?(sender) ?? true
+      choice = .saveAndClose
     case .alertSecondButtonReturn:
-      return false
+      choice = .continueEditing
     case .alertThirdButtonReturn:
-      return originalDelegate?.windowShouldClose?(sender) ?? true
+      choice = .discardAndClose
     default:
+      choice = nil
+    }
+
+    switch MainWindowClosePolicy.decide(
+      hasUnsavedChanges: sourceSession.hasUnsavedChanges,
+      isSaving: sourceSession.isSaving,
+      choice: choice,
+      save: { sourceSession.saveSynchronously(profile: profileProvider()) }
+    ) {
+    case .close:
+      return originalDelegate?.windowShouldClose?(sender) ?? true
+    case .keepEditing:
+      return false
+    case .saveFailed:
+      let failureAlert = NSAlert()
+      failureAlert.messageText = String(localized: "未能保存 HTML 源文件")
+      failureAlert.informativeText =
+        sourceSession.errorMessage
+        ?? String(localized: "请返回编辑器检查文件权限或外部修改冲突。")
+      failureAlert.alertStyle = .warning
+      failureAlert.addButton(withTitle: String(localized: "继续编辑")).keyEquivalent = "\u{1b}"
+      failureAlert.runModal()
       return false
     }
   }

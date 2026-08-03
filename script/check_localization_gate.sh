@@ -36,6 +36,7 @@ required_info_plist_keys=(CFBundleDisplayName CFBundleName)
 required_localizable_keys=(
   app.name
   workspace.writing
+  workspace.rss
   workspace.siteStarter
   workspace.sync
   workspace.images
@@ -93,6 +94,9 @@ for language in zh-Hans en; do
   [[ -f "$compiled_file" ]] || fail "xcstringstool did not produce $language Localizable.strings"
   plutil -lint "$compiled_file" >/dev/null || fail "compiled $language Localizable.strings is invalid"
 done
+
+python3 "$ROOT_DIR/script/test_sync_ui_localizations.py" \
+  || fail "localization extraction regression tests failed"
 
 python3 "$ROOT_DIR/script/sync_ui_localizations.py" --check \
   || fail "declared UI-scope keys are missing complete zh-Hans/en catalog coverage"

@@ -1,5 +1,30 @@
 import PublishingWorkbenchCore
 
+extension WorkspaceBackupComponent {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .workbenchState: "display.workspace-backup-component.workbench-state"
+    case .draftAttachments: "display.workspace-backup-component.draft-attachments"
+    case .knowledgeLibrary: "display.workspace-backup-component.knowledge-library"
+    case .rssReader: "display.workspace-backup-component.rss-reader"
+    }
+  }
+
+  var fallbackDisplayName: String { rawValue }
+}
+
+extension WorkspaceBackupFrequency {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .off: "display.workspace-backup-frequency.off"
+    case .daily: "display.workspace-backup-frequency.daily"
+    case .weekly: "display.workspace-backup-frequency.weekly"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
 extension SiteKind {
   var workbenchDisplayNameSemanticKey: String {
     switch self {
@@ -49,9 +74,9 @@ extension SiteSlugValidationRule {
 
   var fallbackDisplayName: String {
     switch self {
-    case .lowercaseKebab: "小写/CJK 连字符"
-    case .relaxed: "宽松英文/CJK"
-    case .disabled: "只检查非空"
+    case .lowercaseKebab: "Lowercase/CJK Hyphenated"
+    case .relaxed: "Relaxed Alphanumeric/CJK"
+    case .disabled: "Non-empty Only"
     }
   }
 }
@@ -82,8 +107,8 @@ extension RepositoryPublishStrategy {
 
   var fallbackDisplayName: String {
     switch self {
-    case .direct: "直接提交"
-    case .reviewRequest: "分支 + PR/MR"
+    case .direct: "Direct Commit"
+    case .reviewRequest: "Branch + Pull Request"
     }
   }
 }
@@ -99,9 +124,9 @@ extension SiteProfilePurpose {
 
   var fallbackDisplayName: String {
     switch self {
-    case .publishing: "连接仓库并发布"
-    case .repositoryBackup: "连接仓库备份"
-    case .generalDraftBackup: "素材库"
+    case .publishing: "Publishing Workspace"
+    case .repositoryBackup: "Repository Backup"
+    case .generalDraftBackup: "Draft Library"
     }
   }
 }
@@ -119,11 +144,11 @@ extension AIProviderPreset {
 
   var fallbackDisplayName: String {
     switch self {
-    case .openAICompatible: "Custom Endpoint (Compatible)"
+    case .openAICompatible: displayName
     case .deepSeek: "DeepSeek"
     case .openRouter: "OpenRouter"
-    case .local: "本地模型"
-    case .custom: "自定义"
+    case .local: "Local Model"
+    case .custom: "Custom"
     }
   }
 }
@@ -140,10 +165,10 @@ extension AIWritingStylePreset {
 
   var fallbackDisplayName: String {
     switch self {
-    case .jinfangZola: "锦方 Zola"
-    case .technicalNote: "技术笔记"
-    case .personalEssay: "个人随笔"
-    case .custom: "自定义"
+    case .jinfangZola: "Jinfang Zola"
+    case .technicalNote: "Technical Note"
+    case .personalEssay: "Personal Essay"
+    case .custom: "Custom"
     }
   }
 }
@@ -167,7 +192,7 @@ extension DeploymentProvider {
     case .netlify: "Netlify"
     case .vercel: "Vercel"
     case .cloudflarePages: "Cloudflare Pages"
-    case .custom: "自定义端点"
+    case .custom: "Custom Endpoint"
     }
   }
 }
@@ -189,7 +214,7 @@ extension SiteStarterDeploymentTarget {
     case .netlify: "Netlify"
     case .vercel: "Vercel"
     case .cloudflarePages: "Cloudflare Pages"
-    case .none: "暂不部署"
+    case .none: "Do Not Deploy"
     }
   }
 }

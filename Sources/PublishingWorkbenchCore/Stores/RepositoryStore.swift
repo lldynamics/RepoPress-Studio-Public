@@ -32,7 +32,7 @@ public final class RepositoryStore: ObservableObject {
   @Published public internal(set) var repositoryAutoSyncSettings: RepositoryAutoSyncSettings
   @Published public internal(set) var repositoryAutoSyncState: RepositoryAutoSyncState
   private var repositoryScanTask: Task<Void, Never>?
-  private var repositoryScanWorkTask: Task<RepositoryScanSnapshot, Never>?
+  private var repositoryScanWorkTask: Task<RepositoryScanSnapshot?, Never>?
   private var repositoryScanWorkGeneration: UInt64 = 0
   private var repositoryScanGeneration: UInt64 = 0
   private var repositoryAutoSyncTask: Task<Bool, Never>?
@@ -107,6 +107,7 @@ public final class RepositoryStore: ObservableObject {
       invalidateRepositoryAutoSyncRun()
     }
     repositoryScanTask?.cancel()
+    repositoryScanWorkTask?.cancel()
     repositoryScanGeneration &+= 1
     let scanGeneration = repositoryScanGeneration
     repositoryScanState = .scanning()
@@ -116,14 +117,26 @@ public final class RepositoryStore: ObservableObject {
     let previousScanWork = repositoryScanWorkTask
     repositoryScanWorkGeneration &+= 1
     let scanWorkGeneration = repositoryScanWorkGeneration
-    let scanWork = Task.detached(priority: .utility) {
+    let scanWork: Task<RepositoryScanSnapshot?, Never> = Task.detached(priority: .utility) {
       if let previousScanWork {
         _ = await previousScanWork.value
       }
+      guard !Task.isCancelled else { return nil }
+      let report = repositoryService.scan(
+        profile: profile,
+        cancellationCheck: {
+          withUnsafeCurrentTask { $0?.isCancelled == true }
+        }
+      )
+      guard !Task.isCancelled else { return nil }
+      let branches = repositoryService.localBranches(profile: profile)
+      guard !Task.isCancelled else { return nil }
+      let recentCommits = repositoryService.recentCommits(profile: profile)
+      guard !Task.isCancelled else { return nil }
       return RepositoryScanSnapshot(
-        report: repositoryService.scan(profile: profile),
-        branches: repositoryService.localBranches(profile: profile),
-        recentCommits: repositoryService.recentCommits(profile: profile)
+        report: report,
+        branches: branches,
+        recentCommits: recentCommits
       )
     }
     repositoryScanWorkTask = scanWork
@@ -131,6 +144,7 @@ public final class RepositoryStore: ObservableObject {
       let snapshot = await scanWork.value
       guard let self else { return }
       self.finishRepositoryScanWorkIfCurrent(generation: scanWorkGeneration)
+      guard let snapshot else { return }
       guard self.isCurrentRepositoryScan(
         generation: scanGeneration,
         operation: operation,
@@ -144,6 +158,10 @@ public final class RepositoryStore: ObservableObject {
       localRepositoryBranches = snapshot.branches
       localRepositoryRecentCommits = snapshot.recentCommits
       repositoryScanState = .finished(report: snapshot.report)
+      store.publishingStore.refreshLocalSitePreviewPlan(
+        for: store.activeProfile,
+        repositoryReport: snapshot.report
+      )
       store.runPreflight()
       store.refreshPublishPreviewInBackground(for: store.selectedDraft)
       await store.publishingStore.waitForPublishPreviewRefresh()
@@ -156,6 +174,7 @@ public final class RepositoryStore: ObservableObject {
   public func cancelRepositoryScan() {
     invalidateRepositoryAutoSyncRun()
     repositoryScanTask?.cancel()
+    repositoryScanWorkTask?.cancel()
     repositoryScanTask = nil
     repositoryScanGeneration &+= 1
     repositoryScanState = .cancelled()
@@ -595,13 +614,29 @@ public final class RepositoryStore: ObservableObject {
   }
 
   public func refreshRepositoryTokenAvailability(store: WorkbenchStore) {
-    repositoryTokenAvailability = (try? repositoryTokenAvailability(for: store.activeProfile)) ?? KeychainTokenAvailability(hasToken: false)
+    do {
+      repositoryTokenAvailability = try repositoryTokenAvailability(for: store.activeProfile)
+    } catch {
+      repositoryTokenAvailability = KeychainTokenAvailability(accessFailure: error)
+    }
   }
 
   public func refreshRepositoryTokenAvailability(updatesMessage: Bool, store: WorkbenchStore) {
     refreshRepositoryTokenAvailability(store: store)
     if updatesMessage {
-      store.setPublishActionMessage(CoreL10n.text(repositoryTokenAvailability.hasToken ? "仓库 Token 已配置。" : "仓库 Token 未配置。"))
+      switch repositoryTokenAvailability.accessState {
+      case .available:
+        store.setPublishActionMessage(CoreL10n.text("仓库 Token 已配置。"))
+      case .missing:
+        store.setPublishActionMessage(CoreL10n.text("仓库 Token 未配置。"))
+      case .accessFailed:
+        store.setPublishActionMessage(
+          CoreL10n.format(
+            "仓库 Token 状态读取失败：%@",
+            repositoryTokenAvailability.accessFailureMessage ?? CoreL10n.text("未知错误")
+          )
+        )
+      }
     }
   }
 
@@ -620,7 +655,7 @@ public final class RepositoryStore: ObservableObject {
   @discardableResult
   public func checkRepositoryTokenAccess(store: WorkbenchStore) async -> RemoteRepositoryAccessCheck? {
     guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.privacyLockedOperationMessage)
+      store.setPublishActionMessage(store.quickHideOperationMessage)
       return nil
     }
     let profile = store.activeProfile
@@ -690,7 +725,7 @@ public final class RepositoryStore: ObservableObject {
     store: WorkbenchStore
   ) async -> RemoteRepositoryCreationResult? {
     guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.privacyLockedOperationMessage)
+      store.setPublishActionMessage(store.quickHideOperationMessage)
       return nil
     }
     let profile = store.activeProfile

@@ -146,7 +146,7 @@ struct KnowledgeLibraryDetailView: View {
           .task(id: readerScrollTarget) {
             guard let target = readerScrollTarget else { return }
             await Task.yield()
-            withAnimation(.easeInOut(duration: 0.24)) {
+            withAnimation(WorkbenchMotion.deliberate) {
               proxy.scrollTo(target.blockID, anchor: .center)
             }
           }
@@ -264,15 +264,25 @@ struct KnowledgeLibraryDetailView: View {
         } label: {
           Label("来源更新与版本…", systemImage: "clock.arrow.circlepath")
         }
+        Divider()
+        Toggle(
+          String(localized: "建立本地语义索引"),
+          isOn: Binding(
+            get: { document.allowsLocalSemanticIndex },
+            set: { knowledge.setAllowsLocalSemanticIndex($0, documentID: document.id) }
+          )
+        )
         if DistributionFeaturePolicy.allowsExternalAIProviders {
-          Divider()
           Toggle(
-            String(localized: "允许 AI 检索"),
+            String(localized: "允许发送给远程 AI"),
             isOn: Binding(
-              get: { knowledge.selectedDocument?.allowsAIUse ?? false },
-              set: { knowledge.setAllowsAIUse($0, documentID: document.id) }
+              get: { document.allowsRemoteAIUse },
+              set: { knowledge.setAllowsRemoteAIUse($0, documentID: document.id) }
             )
           )
+        } else {
+          Label("远程 AI 发送当前未启用", systemImage: "hand.raised.fill")
+            .foregroundStyle(.secondary)
         }
         documentFolderMenu(document)
         Divider()
@@ -421,15 +431,20 @@ struct KnowledgeLibraryDetailView: View {
       if !document.tags.isEmpty {
         Label(document.tags.joined(separator: "、"), systemImage: "tag")
       }
-      if DistributionFeaturePolicy.allowsExternalAIProviders {
-        Label(
-          document.allowsAIUse
-            ? String(localized: "允许 AI 检索命中片段")
-            : String(localized: "不会提供给 AI"),
-          systemImage: document.allowsAIUse ? "sparkles" : "sparkles.slash"
-        )
-        .foregroundStyle(document.allowsAIUse ? Color.primary : Color.secondary)
-      }
+      Label(
+        document.allowsLocalSemanticIndex
+          ? String(localized: "已建立本地语义索引")
+          : String(localized: "未建立本地语义索引"),
+        systemImage: document.allowsLocalSemanticIndex ? "point.3.connected.trianglepath.dotted" : "slash.circle"
+      )
+      .foregroundStyle(document.allowsLocalSemanticIndex ? Color.primary : Color.secondary)
+      Label(
+        document.allowsRemoteAIUse
+          ? String(localized: "允许发送给远程 AI")
+          : String(localized: "禁止发送给远程 AI"),
+        systemImage: document.allowsRemoteAIUse ? "arrow.up.shield" : "hand.raised"
+      )
+      .foregroundStyle(document.allowsRemoteAIUse ? Color.primary : Color.secondary)
     }
     .font(.callout)
   }

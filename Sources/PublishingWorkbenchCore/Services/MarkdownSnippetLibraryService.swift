@@ -13,6 +13,9 @@ public struct MarkdownSnippet: Identifiable, Codable, Hashable, Sendable {
   public var kind: MarkdownSnippetKind
   public var markdown: String
   public var siteProfileID: UUID?
+  public var shortcut: String?
+  public var previewKind: MarkdownSSGComponentKind?
+  public var selectionToken: String?
 
   public init(
     id: String,
@@ -21,7 +24,10 @@ public struct MarkdownSnippet: Identifiable, Codable, Hashable, Sendable {
     systemImage: String,
     kind: MarkdownSnippetKind,
     markdown: String,
-    siteProfileID: UUID? = nil
+    siteProfileID: UUID? = nil,
+    shortcut: String? = nil,
+    previewKind: MarkdownSSGComponentKind? = nil,
+    selectionToken: String? = nil
   ) {
     self.id = id
     self.title = title
@@ -30,10 +36,17 @@ public struct MarkdownSnippet: Identifiable, Codable, Hashable, Sendable {
     self.kind = kind
     self.markdown = markdown
     self.siteProfileID = siteProfileID
+    self.shortcut = shortcut
+    self.previewKind = previewKind
+    self.selectionToken = selectionToken
   }
 
   public var isSiteScoped: Bool {
     siteProfileID != nil
+  }
+
+  public var isSSGComponent: Bool {
+    previewKind != nil
   }
 }
 
@@ -130,7 +143,7 @@ public enum MarkdownSnippetLibraryService {
     ),
     MarkdownSnippet(
       id: "snippet-mermaid",
-      title: "Mermaid 流程图",
+      title: "Mermaid 基础流程图预览",
       detail: "插入可在预览中渲染的流程图",
       systemImage: "point.3.connected.trianglepath.dotted",
       kind: .snippet,
@@ -142,7 +155,7 @@ public enum MarkdownSnippetLibraryService {
       ```
       """
     ),
-  ]
+  ] + MarkdownSSGComponentLibraryService.builtInSnippets
 
   public static func expandedMarkdown(
     for snippet: MarkdownSnippet,
@@ -171,6 +184,9 @@ public enum MarkdownSnippetLibraryService {
     kind: MarkdownSnippetKind,
     markdown: String,
     siteProfileID: UUID,
+    shortcut: String? = nil,
+    previewKind: MarkdownSSGComponentKind? = nil,
+    selectionToken: String? = nil,
     in existing: [MarkdownSnippet]
   ) -> [MarkdownSnippet] {
     let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -181,6 +197,8 @@ public enum MarkdownSnippetLibraryService {
     }
 
     let snippetID = id ?? "custom-\(UUID().uuidString.lowercased())"
+    let resolvedPreviewKind = previewKind
+      ?? MarkdownSSGComponentLibraryService.inferredPreviewKind(for: normalizedMarkdown)
     let snippet = MarkdownSnippet(
       id: snippetID,
       title: normalizedTitle,
@@ -188,7 +206,10 @@ public enum MarkdownSnippetLibraryService {
       systemImage: kind == .articleTemplate ? "doc.text" : "text.badge.plus",
       kind: kind,
       markdown: normalizedMarkdown,
-      siteProfileID: siteProfileID
+      siteProfileID: siteProfileID,
+      shortcut: normalizedShortcut(shortcut),
+      previewKind: resolvedPreviewKind,
+      selectionToken: selectionToken?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     )
     let remaining = existing.filter { $0.id != snippetID }
     return Array(([snippet] + remaining).prefix(maximumCustomSnippetCount))
@@ -199,6 +220,23 @@ public enum MarkdownSnippetLibraryService {
     from existing: [MarkdownSnippet]
   ) -> [MarkdownSnippet] {
     existing.filter { $0.id != id }
+  }
+
+  public static func normalizedShortcut(_ value: String?) -> String? {
+    guard var value else { return nil }
+    value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    while value.hasPrefix("/") {
+      value.removeFirst()
+    }
+    guard !value.isEmpty,
+          !value.contains(where: { $0.isWhitespace }),
+          !value.contains("/") else {
+      return nil
+    }
+    let isValid = value.unicodeScalars.allSatisfy { scalar in
+      CharacterSet.alphanumerics.contains(scalar) || scalar == "_" || scalar == "-"
+    }
+    return isValid ? value.lowercased() : nil
   }
 
 }

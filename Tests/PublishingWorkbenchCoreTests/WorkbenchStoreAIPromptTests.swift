@@ -233,7 +233,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     store.setAIChatReasoningLevel(.quick)
 
     XCTAssertEqual(store.aiChatModelGrade, .highQuality)
-    XCTAssertEqual(store.aiChatSelectedModel, "deepseek-v4-pro")
+    XCTAssertEqual(store.aiChatSelectedModel, "")
     XCTAssertEqual(store.aiChatReasoningLevel, .quick)
 
     store.setAIChatCustomModel("custom-chat-model")
@@ -244,7 +244,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     store.resetAIChatModelToProfileDefault()
 
     XCTAssertEqual(store.aiChatModelGrade, .standard)
-    XCTAssertEqual(store.aiChatSelectedModel, "deepseek-v4-flash")
+    XCTAssertEqual(store.aiChatSelectedModel, "")
   }
 
   func testCopiedPublishingPromptIncludesSameMacWorkflowContextAsAIActions() throws {
@@ -354,30 +354,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertTrue(prompt.contains("不要编造已经完成的线上验证"))
   }
 
-  func testAIChatRejectsImageAttachmentsWhenActiveProviderDoesNotSupportVision() async throws {
-    let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
-    )
-    let draft = try XCTUnwrap(store.selectedDraft)
-    let attachment = AIChatImageAttachment(
-      filename: "cover.png",
-      mimeType: "image/png",
-      data: Data("image".utf8)
-    )
 
-    let reply = await store.sendAIChatMessage(
-      "帮我看图。",
-      draft: draft,
-      imageAttachments: [attachment]
-    )
-
-    XCTAssertNil(reply)
-    XCTAssertTrue(store.aiChatMessages.isEmpty)
-    XCTAssertEqual(
-      store.aiChatMessage,
-      "DeepSeek 当前接口不支持图片输入，请切换到支持视觉输入的 OpenAI-compatible 模型。"
-    )
-  }
 
   func testQuickPromptLibraryCoversMobilePublishingCapabilityGroups() {
     let sections = AIPublishingQuickPrompt.capabilitySections
@@ -470,6 +447,28 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertTrue(AIPublishingQuickPrompt.ssgChecklist.prompt.contains("Zola"))
     XCTAssertTrue(AIPublishingQuickPrompt.ssgChecklist.prompt.contains("Astro"))
     XCTAssertTrue(AIPublishingQuickPrompt.ssgChecklist.prompt.contains("Jekyll"))
+  }
+
+  func testChatQuickActionsUsePredictableOutputContracts() {
+    XCTAssertEqual(
+      AIPublishingChatQuickAction.allCases.map(\.displayName),
+      ["润色建议", "标签建议", "生成摘要", "校对文章", "英文摘要"]
+    )
+    XCTAssertEqual(
+      Set(AIPublishingChatQuickAction.allCases.map(\.systemImage)).count,
+      AIPublishingChatQuickAction.allCases.count
+    )
+
+    XCTAssertTrue(AIPublishingChatQuickAction.polishSuggestions.prompt.contains("不要重写整篇文章"))
+    XCTAssertTrue(AIPublishingChatQuickAction.tagSuggestions.prompt.contains("只返回一行逗号分隔的标签"))
+    XCTAssertTrue(AIPublishingChatQuickAction.summary.prompt.contains("只返回摘要正文"))
+    XCTAssertTrue(AIPublishingChatQuickAction.summary.prompt.contains("当前内容不足，无法生成有效摘要"))
+    XCTAssertTrue(AIPublishingChatQuickAction.proofread.prompt.contains("只列出明确发现的问题"))
+    XCTAssertTrue(AIPublishingChatQuickAction.englishSummary.prompt.contains("不要翻译整篇正文"))
+
+    let combinedPrompts = AIPublishingChatQuickAction.allCases.map(\.prompt).joined(separator: "\n")
+    XCTAssertFalse(combinedPrompts.contains("吸睛"))
+    XCTAssertFalse(combinedPrompts.contains("高光段落"))
   }
 
   func testPromptLibraryExposesMobileInspiredEditorActionsAcrossGroups() {

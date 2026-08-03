@@ -14,8 +14,8 @@ const protocolDefinition = JSON.parse(await readFile(
 ));
 assert.deepEqual(
   protocolDefinition.activeExtensions,
-  ["safari", "chrome"],
-  "this release must expose only Safari and Chrome"
+  ["safari", "chrome", "firefox"],
+  "this release must expose Safari, Chrome, and Firefox"
 );
 const loopbackProtocol = protocolDefinition.loopback;
 const generatedProtocolSource = await readFile(
@@ -44,6 +44,10 @@ assert.deepEqual(manifest.action.default_icon, {
   "32": "icons/icon32.png"
 });
 assert.equal(manifest.action.default_title, "__MSG_actionTitle__");
+const expectedExtensionCSP = {
+  extension_pages: "script-src 'self'; object-src 'self'"
+};
+assert.deepEqual(manifest.content_security_policy, expectedExtensionCSP);
 const localeMessageKeys = new Map();
 for (const locale of ["zh_CN", "en"]) {
   const messages = JSON.parse(await readFile(
@@ -70,6 +74,7 @@ assert.equal(firefoxManifest.name, "__MSG_extensionName__");
 assert.equal(firefoxManifest.description, "__MSG_extensionDescription__");
 assert.equal(firefoxManifest.default_locale, "zh_CN");
 assert.equal(firefoxManifest.action.default_title, "__MSG_actionTitle__");
+assert.deepEqual(firefoxManifest.content_security_policy, expectedExtensionCSP);
 assert.deepEqual(firefoxManifest.icons, manifest.icons);
 assert.deepEqual(firefoxManifest.action.default_icon, manifest.action.default_icon);
 assert.deepEqual(
@@ -100,6 +105,7 @@ assert.equal(safariManifest.version, manifest.version);
 assert.deepEqual(safariManifest.icons, manifest.icons);
 assert.deepEqual(safariManifest.action, manifest.action);
 assert.deepEqual(safariManifest.background, { service_worker: "background.js" });
+assert.deepEqual(safariManifest.content_security_policy, expectedExtensionCSP);
 assert.equal(safariManifest.key, undefined);
 assert.equal(safariManifest.minimum_chrome_version, undefined);
 assert.equal(safariManifest.permissions.includes("pageCapture"), false);
@@ -281,13 +287,13 @@ for (const selector of [
   "#new-folder", "#save-now",
   "#batch-save", "#batch-hint",
   "#batch-review-panel", "#batch-settings-summary", "#batch-items", "#batch-retry-failed",
-  "#capture-ai", "#status", "#alert", "#page-title", "main",
+  "#capture-local-index", "#capture-remote-ai", "#status", "#alert", "#page-title", "main",
   "#queue-panel", "#queue-count", "#queue-state", "#queue-summary", "#queue-retention",
   "#queue-privacy-mode", "#queue-allow-private-sites",
   "#queue-items", "#retry-queue", "#export-queue", "#discard-queue",
   "#receipt-panel", "#receipt-title", "#receipt-source", "#receipt-saved-at",
   "#receipt-folder", "#receipt-size",
-  "#receipt-archive", "#receipt-index", "#receipt-ai", "#open-document",
+  "#receipt-archive", "#receipt-index", "#receipt-local-index", "#receipt-remote-ai", "#open-document",
   "#duplicate-panel", "#duplicate-message", "#duplicate-document", "#duplicate-folder",
   "#duplicate-size", "#duplicate-updated", "#duplicate-target",
   "#duplicate-new-version", "#duplicate-move", "#duplicate-copy", "#duplicate-cancel"
@@ -393,7 +399,8 @@ const popupBrowser = {
             fileSizeBytes: 1024,
             archiveType: "none",
             indexStatus: "ready",
-            allowsAIUse: message.allowsAIUse,
+            allowsLocalSemanticIndex: message.allowsLocalSemanticIndex,
+            allowsRemoteAIUse: message.allowsRemoteAIUse,
             insertedCount: 1,
             updatedCount: 0,
             skippedCount: 0
@@ -536,7 +543,8 @@ vm.runInContext(`handlePopupKeyboardShortcut({
   preventDefault() {}
 })`, popupContext);
 assert.equal(popupElements.get("#save-now").clicked, true);
-popupElements.get("#capture-ai").checked = true;
+popupElements.get("#capture-local-index").checked = true;
+popupElements.get("#capture-remote-ai").checked = false;
 await vm.runInContext("saveCurrentPage()", popupContext);
 const directSaveMessage = [...popupRuntimeMessages]
   .reverse()
@@ -545,7 +553,8 @@ assert.ok(directSaveMessage);
 assert.equal(directSaveMessage.tabId, 42);
 assert.equal(directSaveMessage.captureMode, "cleaned-article");
 assert.equal(directSaveMessage.folderID, "folder-a");
-assert.equal(directSaveMessage.allowsAIUse, true);
+assert.equal(directSaveMessage.allowsLocalSemanticIndex, true);
+assert.equal(directSaveMessage.allowsRemoteAIUse, false);
 assert.equal(popupElements.get("#receipt-panel").hidden, false);
 vm.runInContext("resetCaptureFlow()", popupContext);
 assert.equal(popupElements.get("#save-panel").hidden, false);
@@ -633,7 +642,8 @@ vm.runInContext(`showReceipt({
   fileSizeBytes: 2048,
   archiveType: "html",
   indexStatus: "ready",
-  allowsAIUse: true
+  allowsLocalSemanticIndex: true,
+  allowsRemoteAIUse: true
 })`, popupContext);
 assert.equal(popupElements.get("#receipt-panel").hidden, false);
 assert.equal(popupElements.get("#save-panel").hidden, true);
@@ -646,7 +656,8 @@ assert.equal(popupElements.get("#receipt-folder").textContent, "阅读");
 assert.equal(popupElements.get("#receipt-size").textContent, "2.0 KB");
 assert.equal(popupElements.get("#receipt-archive").textContent, "离线 HTML");
 assert.equal(popupElements.get("#receipt-index").textContent, "全文与语义索引已就绪");
-assert.equal(popupElements.get("#receipt-ai").textContent, "已加入本地语义检索");
+assert.equal(popupElements.get("#receipt-local-index").textContent, "已建立");
+assert.equal(popupElements.get("#receipt-remote-ai").textContent, "允许发送");
 vm.runInContext(`
   activeTab = { url: "https://other.example/article" };
   showReceipt({
@@ -739,7 +750,8 @@ assert.notEqual(
 assert.equal(popupElements.get("#batch-review-panel").hidden, false);
 assert.match(popupElements.get("#batch-settings-summary").textContent, /分类：产品研究/);
 assert.match(popupElements.get("#batch-settings-summary").textContent, /模式：净化正文/);
-assert.match(popupElements.get("#batch-settings-summary").textContent, /语义检索：允许检索/);
+assert.match(popupElements.get("#batch-settings-summary").textContent, /本地索引：已建立/);
+assert.match(popupElements.get("#batch-settings-summary").textContent, /远程 AI：禁止发送/);
 assert.equal(popupElements.get("#batch-items").children.length, 3);
 assert.equal(popupElements.get("#batch-items").children[0].children[0].textContent, "已有权限");
 assert.equal(popupElements.get("#batch-items").children[0].children[1].textContent, "already.example");
@@ -1145,7 +1157,8 @@ const context = vm.createContext({
       fileSizeBytes: 2048,
       archiveType: page.archiveReport.format,
       indexStatus: "ready",
-      allowsAIUse: true,
+      allowsLocalSemanticIndex: postedBody?.capture?.allowsLocalSemanticIndex !== false,
+      allowsRemoteAIUse: postedBody?.capture?.allowsRemoteAIUse === true,
       replayed: false
     };
     if (bridgeStatus >= 200 && bridgeStatus < 300) {
@@ -1475,7 +1488,8 @@ const editedCapture = {
   title: "编辑后的标题",
   authors: ["作者甲", "作者乙"],
   tags: ["研究", "写作"],
-  allowsAIUse: false
+  allowsLocalSemanticIndex: false,
+  allowsRemoteAIUse: false
 };
 const preparedSaveResponse = await new Promise((resolve, reject) => {
   const timeout = setTimeout(() => reject(new Error("prepared save response timed out")), 1_000);
@@ -1505,7 +1519,8 @@ assert.equal(
 assert.equal(postedBody.capture.title, "编辑后的标题");
 assert.deepEqual(postedBody.capture.authors, ["作者甲", "作者乙"]);
 assert.deepEqual(postedBody.capture.tags, ["研究", "写作"]);
-assert.equal(postedBody.capture.allowsAIUse, false);
+assert.equal(postedBody.capture.allowsLocalSemanticIndex, false);
+assert.equal(postedBody.capture.allowsRemoteAIUse, false);
 assert.equal(postedBody.capture.captureMode, "selection");
 assert.equal(postedBody.capture.archiveFormat, null);
 assert.equal(postedBody.operationID, previewResponse.result.operationID);
@@ -1569,7 +1584,8 @@ const batchResponse = await new Promise((resolve, reject) => {
     tabIdentities: backgroundBatchTabIdentities,
     token: "test-token",
     captureMode: "link-only",
-    allowsAIUse: false,
+    allowsLocalSemanticIndex: false,
+    allowsRemoteAIUse: false,
     temporaryPermissionOrigins: [
       "https://example.com/*",
       "https://*/*",
@@ -1593,7 +1609,8 @@ assert.deepEqual(Array.from(batchResponse.result.unreleasedTemporaryOrigins), []
 assert.deepEqual(backgroundPermissionRemovals.at(-1), ["https://example.com/*"]);
 assert.equal(backgroundGrantedOrigins.has("https://example.com/*"), false);
 assert.equal(postedBody.capture.captureMode, "link-only");
-assert.equal(postedBody.capture.allowsAIUse, false);
+assert.equal(postedBody.capture.allowsLocalSemanticIndex, false);
+assert.equal(postedBody.capture.allowsRemoteAIUse, false);
 assert.equal(toolbarState.text, "✓");
 const progressMessages = backgroundRuntimeMessages.filter((message) =>
   message.type === "capture-tabs-batch-progress"

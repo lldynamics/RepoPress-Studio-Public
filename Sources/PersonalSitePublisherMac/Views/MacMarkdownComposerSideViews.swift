@@ -95,6 +95,7 @@ struct SelectionEditPreviewPanel: View {
 
 struct MarkdownShortcutHelpPanel: View {
   @Environment(\.dismiss) private var dismiss
+  @State private var searchText = ""
 
   private var shortcutGroups: [(String, [(String, String)])] {
     var groups: [(String, [(String, String)])] = [
@@ -118,6 +119,7 @@ struct MarkdownShortcutHelpPanel: View {
         (String(localized: "插入图片"), "⇧⌘I"),
         (String(localized: "模板与片段"), "⌥⌘S"),
         (String(localized: "文章大纲"), "⌥⌘O"),
+        (String(localized: "跳转到行"), "⌘L"),
         (String(localized: "文章后退"), "⌘["),
         (String(localized: "文章前进"), "⌘]"),
         (String(localized: "粘贴 URL 为链接"), String(localized: "选中文字后按 ⌘V")),
@@ -136,7 +138,10 @@ struct MarkdownShortcutHelpPanel: View {
         (String(localized: "续写列表或引用"), "Return"),
         (String(localized: "退出空列表项"), String(localized: "空项再按 Return")),
         (String(localized: "增加列表层级"), "Tab"),
-        (String(localized: "减少列表层级"), "Shift-Tab")
+        (String(localized: "减少列表层级"), "Shift-Tab"),
+        (String(localized: "表格、代码、图片、脚注补全"), "/表格、/代码、/图片、/脚注"),
+        (String(localized: "文章链接补全"), "[[文章]]"),
+        (String(localized: "代码语言补全"), "```swift")
       ]
     ),
   ]
@@ -146,8 +151,8 @@ struct MarkdownShortcutHelpPanel: View {
           String(localized: "AI 与工具"),
           [
             (String(localized: "改写选中文本"), "⌥⌘R"),
-            (String(localized: "打开 AI 对话"), String(localized: "通过发布控制台菜单进入")),
-            (String(localized: "复制上下文 Prompt"), String(localized: "通过发布控制台菜单进入")),
+            (String(localized: "打开 AI 对话"), String(localized: "AI > 打开 AI 对话")),
+            (String(localized: "复制上下文 Prompt"), String(localized: "AI > 复制上下文 Prompt")),
           ]
         )
       )
@@ -157,25 +162,52 @@ struct MarkdownShortcutHelpPanel: View {
 
   var body: some View {
     NavigationStack {
-      Form {
-        ForEach(shortcutGroups.indices, id: \.self) { groupIndex in
-          let group = shortcutGroups[groupIndex]
-          Section(group.0) {
-            ForEach(group.1.indices, id: \.self) { row in
-              let shortcut = group.1[row]
-              HStack {
-                Text(shortcut.0)
-                  .font(.body)
-                Spacer()
-                Text(shortcut.1)
-                  .font(.body.monospacedDigit())
-                  .foregroundStyle(.secondary)
+      VStack(spacing: 0) {
+        HStack(spacing: 8) {
+          Image(systemName: "magnifyingglass")
+            .foregroundStyle(.secondary)
+          TextField("搜索命令或按键", text: $searchText)
+            .textFieldStyle(.plain)
+            .accessibilityLabel("搜索命令或按键")
+          if !searchText.isEmpty {
+            Button {
+              searchText = ""
+            } label: {
+              Image(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("清除快捷键搜索")
+          }
+        }
+        .padding(10)
+
+        Divider()
+
+        if filteredShortcutGroups.isEmpty {
+          ContentUnavailableView.search(text: searchText)
+        } else {
+          Form {
+            ForEach(filteredShortcutGroups.indices, id: \.self) { groupIndex in
+              let group = filteredShortcutGroups[groupIndex]
+              Section(group.0) {
+                ForEach(group.1.indices, id: \.self) { row in
+                  let shortcut = group.1[row]
+                  HStack {
+                    Text(shortcut.0)
+                      .font(.body)
+                    Spacer()
+                    Text(shortcut.1)
+                      .font(.body.monospacedDigit())
+                      .foregroundStyle(.secondary)
+                  }
+                }
               }
             }
           }
+          .formStyle(.grouped)
         }
       }
-      .formStyle(.grouped)
       .navigationTitle("快捷键说明")
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
@@ -186,5 +218,18 @@ struct MarkdownShortcutHelpPanel: View {
       }
     }
     .frame(width: 430, height: 360)
+  }
+
+  private var filteredShortcutGroups: [(String, [(String, String)])] {
+    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty else { return shortcutGroups }
+    return shortcutGroups.compactMap { group in
+      let rows = group.1.filter {
+        group.0.localizedCaseInsensitiveContains(query)
+          || $0.0.localizedCaseInsensitiveContains(query)
+          || $0.1.localizedCaseInsensitiveContains(query)
+      }
+      return rows.isEmpty ? nil : (group.0, rows)
+    }
   }
 }

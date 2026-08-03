@@ -95,6 +95,51 @@ final class KnowledgeBrowserImportLedgerStoreTests: XCTestCase {
     XCTAssertNil(fixture.defaults.object(forKey: fixture.legacyKey))
   }
 
+  func testLoadPrunedDecodesAndMigratesLedgerOffTheCaller() async throws {
+    let fixture = try makeFixture()
+    defer { fixture.cleanup() }
+    let fileURL = fixture.rootURL.appendingPathComponent("ledger.plist")
+    let record = makeRecord(seed: 4)
+    try PropertyListEncoder().encode([record]).write(to: fileURL)
+    fixture.defaults.set(Data("legacy".utf8), forKey: fixture.legacyKey)
+    let store = KnowledgeBrowserImportLedgerStore(
+      fileURL: fileURL,
+      defaults: KnowledgeBrowserImportLedgerDefaults(fixture.defaults),
+      legacyDefaultsKey: fixture.legacyKey
+    )
+
+    let result = await store.loadPruned(
+      at: record.completedAt.addingTimeInterval(60)
+    )
+
+    XCTAssertEqual(result.ledger.records, [record])
+    XCTAssertNil(result.persistenceIssue)
+    XCTAssertNil(result.issueKind)
+    XCTAssertNil(fixture.defaults.object(forKey: fixture.legacyKey))
+  }
+
+  func testLoadPrunedReportsUnreadableLedgerWithoutOverwritingIt() async throws {
+    let fixture = try makeFixture()
+    defer { fixture.cleanup() }
+    let fileURL = fixture.rootURL.appendingPathComponent("ledger.plist")
+    let corruptData = Data("not a property list".utf8)
+    try corruptData.write(to: fileURL)
+    let store = KnowledgeBrowserImportLedgerStore(
+      fileURL: fileURL,
+      defaults: KnowledgeBrowserImportLedgerDefaults(fixture.defaults),
+      legacyDefaultsKey: fixture.legacyKey
+    )
+
+    let result = await store.loadPruned(at: Date())
+
+    XCTAssertTrue(result.ledger.records.isEmpty)
+    XCTAssertNotNil(result.persistenceIssue)
+    guard case .unreadable? = result.issueKind else {
+      return XCTFail("Expected an unreadable ledger issue")
+    }
+    XCTAssertEqual(try Data(contentsOf: fileURL), corruptData)
+  }
+
   private func makeRecord(seed: Int) -> KnowledgeBrowserImportOperationRecord {
     let operationID = UUID()
     var ledger = KnowledgeBrowserImportOperationLedger()

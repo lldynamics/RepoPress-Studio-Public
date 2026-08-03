@@ -4,13 +4,13 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class WorkspaceQuickSearchPresentationTests: XCTestCase {
-  func testImageWorkspaceUsesProblemArticlesTitleBeforeSearching() {
+  func testImageWorkspaceUsesImageResourcesTitleBeforeSearching() {
     XCTAssertEqual(
       WorkspaceQuickSearchPresentation.resultSectionTitle(
         query: "",
-        scope: .imageIssues
+        scope: .imageResources
       ),
-      "问题文章"
+      "图片资源"
     )
     XCTAssertEqual(
       WorkspaceQuickSearchPresentation.resultSectionTitle(
@@ -22,7 +22,7 @@ final class WorkspaceQuickSearchPresentationTests: XCTestCase {
     XCTAssertEqual(
       WorkspaceQuickSearchPresentation.resultSectionTitle(
         query: "  图片  ",
-        scope: .imageIssues
+        scope: .imageResources
       ),
       "搜索结果"
     )
@@ -103,27 +103,6 @@ final class WorkspaceQuickSearchPresentationTests: XCTestCase {
         .ready([highPriorityDraftID, lowPriorityDraftID])
       )
     }
-  }
-
-  func testImageWorkspaceScopesSidebarToDraftsWithImageIssues() {
-    let profileID = UUID()
-    let issueDraft = ArticleDraft(siteProfileID: profileID, title: "Issue")
-    let healthyDraft = ArticleDraft(siteProfileID: profileID, title: "Healthy")
-
-    XCTAssertEqual(
-      WorkspaceQuickSearchPresentation.scopedDrafts(
-        [issueDraft, healthyDraft],
-        includedDraftIDs: [issueDraft.id]
-      ).map(\.id),
-      [issueDraft.id]
-    )
-    XCTAssertEqual(
-      WorkspaceQuickSearchPresentation.scopedDrafts(
-        [issueDraft, healthyDraft],
-        includedDraftIDs: nil
-      ).map(\.id),
-      [issueDraft.id, healthyDraft.id]
-    )
   }
 
   func testEmptyAIFixScopeDoesNotFallBackToRecentDrafts() {

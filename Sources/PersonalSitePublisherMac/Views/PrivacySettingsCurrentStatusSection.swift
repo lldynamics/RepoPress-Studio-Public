@@ -4,16 +4,16 @@ import SwiftUI
 
 struct PrivacySettingsCurrentStatusSection: View {
   let status: PrivacyProtectionStatus
-  let onLock: () -> Void
-  let onUnlock: () -> Void
+  let onQuickHide: () -> Void
+  let onReturnToWorkbench: () -> Void
 
   var body: some View {
-    Section(String(localized: "锁定状态")) {
+    Section(String(localized: "快速隐藏状态")) {
       Label(
         status.title,
-        systemImage: status.isLocked ? "lock.shield" : "lock.open"
+        systemImage: status.isQuickHideActive ? "eye.slash" : "eye"
       )
-      .foregroundStyle(status.isLocked ? WorkbenchTheme.warning : Color.secondary)
+      .foregroundStyle(status.isQuickHideActive ? WorkbenchTheme.warning : Color.secondary)
 
       Text(status.detail)
         .font(.workbenchSupporting)
@@ -27,20 +27,20 @@ struct PrivacySettingsCurrentStatusSection: View {
 
       HStack {
         Button {
-          onLock()
+          onQuickHide()
         } label: {
-          Label(String(localized: "立即锁定软件"), systemImage: "lock.fill")
+          Label(String(localized: "立即快速隐藏"), systemImage: "eye.slash")
         }
         .workbenchProminentActionStyle(tint: WorkbenchTheme.warningActionFill)
-        .disabled(status.isLocked)
+        .disabled(status.isQuickHideActive)
 
         Button {
-          onUnlock()
+          onReturnToWorkbench()
         } label: {
           Label("返回工作台", systemImage: "eye")
         }
         .buttonStyle(.bordered)
-        .disabled(!status.isLocked)
+        .disabled(!status.isQuickHideActive)
       }
     }
   }

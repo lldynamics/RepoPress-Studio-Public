@@ -6,7 +6,7 @@ struct TokenRepositoryTokenSection: View {
   let repositoryTokenInput: Binding<String>
   let shouldFocusInput: Bool
   let navigationRequestID: UUID
-  let hasRepositoryToken: Bool
+  let tokenAvailability: KeychainTokenAvailability
   let onSaveToken: () -> Void
   let onDeleteToken: () -> Void
   let onRefreshTokenState: () -> Void
@@ -80,8 +80,8 @@ struct TokenRepositoryTokenSection: View {
       }
 
       HStack {
-        Label(repositoryTokenStatusText, systemImage: hasRepositoryToken ? "checkmark.seal" : "key")
-          .foregroundStyle(hasRepositoryToken ? WorkbenchTheme.success : Color.secondary)
+        Label(repositoryTokenStatusText, systemImage: tokenStatusSystemImage)
+          .foregroundStyle(tokenStatusColor)
 
         Spacer()
 
@@ -95,8 +95,15 @@ struct TokenRepositoryTokenSection: View {
           isDeleteConfirmationPresented = true
         }
         .buttonStyle(.borderless)
-        .disabled(!hasRepositoryToken)
+        .disabled(!tokenAvailability.hasToken)
         .accessibilityLabel("删除仓库访问令牌")
+      }
+
+      if let accessFailureMessage = tokenAvailability.accessFailureMessage {
+        Text("操作失败：\(accessFailureMessage)")
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.warning)
+          .textSelection(.enabled)
       }
     }
     .task(id: navigationRequestID) {
@@ -118,8 +125,30 @@ struct TokenRepositoryTokenSection: View {
   }
 
   private var repositoryTokenStatusText: String {
-    hasRepositoryToken
-      ? String(localized: "已保存仓库访问令牌")
-      : String(localized: "未保存仓库访问令牌")
+    switch tokenAvailability.accessState {
+    case .available:
+      return String(localized: "已保存仓库访问令牌")
+    case .missing:
+      return String(localized: "未保存仓库访问令牌")
+    case .accessFailed:
+      return String(localized: "Keychain 读取失败")
+    }
+  }
+
+  private var tokenStatusSystemImage: String {
+    tokenAvailability.accessState == .accessFailed
+      ? "exclamationmark.triangle"
+      : (tokenAvailability.hasToken ? "checkmark.seal" : "key")
+  }
+
+  private var tokenStatusColor: Color {
+    switch tokenAvailability.accessState {
+    case .available:
+      return WorkbenchTheme.success
+    case .missing:
+      return .secondary
+    case .accessFailed:
+      return WorkbenchTheme.warning
+    }
   }
 }

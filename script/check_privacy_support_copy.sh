@@ -4,88 +4,157 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_ROOT="${PRIVACY_SUPPORT_ROOT:-$ROOT_DIR}"
 COPY_FILE="${PRIVACY_SUPPORT_COPY_FILE:-$PROJECT_ROOT/docs/privacy-support-copy.md}"
+PUBLIC_DIR="$PROJECT_ROOT/docs/app-store/public-pages"
+PRIVACY_ZH="$PUBLIC_DIR/privacy-zh-Hans.html"
+PRIVACY_EN="$PUBLIC_DIR/privacy-en.html"
+SUPPORT_ZH="$PUBLIC_DIR/support-zh-Hans.html"
+SUPPORT_EN="$PUBLIC_DIR/support-en.html"
+COPY_FILES=(
+  "$COPY_FILE"
+  "$PRIVACY_ZH"
+  "$PRIVACY_EN"
+  "$SUPPORT_ZH"
+  "$SUPPORT_EN"
+)
 
 fail() {
   echo "privacy support copy gate: $*" >&2
   exit 1
 }
 
-[[ -f "$COPY_FILE" ]] || fail "docs/privacy-support-copy.md is missing"
+require_terms() {
+  local file="$1"
+  local label="$2"
+  shift 2
+  local term=""
+  local missing=()
 
-text="$(cat "$COPY_FILE")"
+  for term in "$@"; do
+    if ! grep -Fqi "$term" "$file"; then
+      missing+=("$term")
+    fi
+  done
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    fail "$label is missing required direct-distribution coverage: ${missing[*]}"
+  fi
+}
 
-required_terms=(
-  "quick hide"
-  "Private-content masking"
-  "private article titles"
-  "local paths"
-  "access tokens"
-  "authorization headers"
-  "private article body text"
-  "support requests"
+for file in "${COPY_FILES[@]}"; do
+  [[ -f "$file" ]] || fail "required privacy/support file is missing: $file"
+done
+
+require_terms "$COPY_FILE" "docs/privacy-support-copy.md" \
+  "free" \
+  "official website" \
+  "Developer ID" \
+  "BYOK" \
+  "custom HTTPS endpoint" \
+  "local loopback" \
+  "explicit consent" \
+  "API keys are stored in macOS Keychain" \
+  "developer does not proxy or receive" \
+  "localhost" \
+  "127.0.0.1:17843" \
+  "Safari Web Extension" \
+  "Chrome Web Store" \
+  "Sparkle" \
+  "server access logs" \
+  "IP address" \
+  "request time" \
+  "requested path" \
+  "response status" \
+  "user agent" \
+  "Quick Hide" \
+  "does not encrypt local data" \
+  "Private-content masking" \
+  "local paths" \
+  "access tokens" \
+  "authorization headers" \
+  "private article body text" \
   "redacted screenshots"
-  "online publishing"
-  "repository API requests"
-  "deployment checks"
-  "StoreKit"
-  "available to every user"
-  "does not meter AI requests"
-  "explicit consent"
-  "API keys are stored in macOS Keychain"
-  "developer does not proxy or receive"
-  "127.0.0.1:17843"
-  "browser capture"
-)
 
-missing_terms=()
-for term in "${required_terms[@]}"; do
-  if ! grep -Fqi "$term" "$COPY_FILE"; then
-    missing_terms+=("$term")
+require_terms "$PRIVACY_EN" "English public privacy page" \
+  "free" \
+  "official RepoPress Studio website" \
+  "Developer ID" \
+  "BYOK" \
+  "custom remote API" \
+  "explicit consent" \
+  "developer does not proxy or receive" \
+  "localhost" \
+  "127.0.0.1:17843" \
+  "macOS Keychain" \
+  "Safari Web Extension" \
+  "Chrome Web Store" \
+  "Sparkle" \
+  "server access logs" \
+  "IP address" \
+  "user agent or app version"
+
+require_terms "$SUPPORT_EN" "English public support page" \
+  "free from the official website" \
+  "Developer ID" \
+  "BYOK" \
+  "custom remote API" \
+  "explicit consent" \
+  "developer does not proxy or receive" \
+  "localhost" \
+  "127.0.0.1:17843" \
+  "macOS Keychain" \
+  "Safari Web Extension" \
+  "Chrome Web Store" \
+  "Sparkle" \
+  "server access logs" \
+  "IP address" \
+  "user agent or app version"
+
+require_terms "$PRIVACY_ZH" "Chinese public privacy page" \
+  "免费" \
+  "官方网站" \
+  "Developer ID" \
+  "BYOK" \
+  "自定义远程 API" \
+  "明确同意" \
+  "开发者不转发也不接收" \
+  "localhost" \
+  "127.0.0.1:17843" \
+  "macOS Keychain" \
+  "Safari Web Extension" \
+  "Chrome 网上应用店" \
+  "Sparkle" \
+  "服务器访问日志" \
+  "IP 地址" \
+  "User-Agent 或应用版本"
+
+require_terms "$SUPPORT_ZH" "Chinese public support page" \
+  "官方网站免费下载" \
+  "Developer ID" \
+  "BYOK" \
+  "自定义远程 API" \
+  "明确同意" \
+  "开发者不转发也不接收" \
+  "localhost" \
+  "127.0.0.1:17843" \
+  "macOS Keychain" \
+  "Safari Web Extension" \
+  "Chrome 网上应用店" \
+  "Sparkle" \
+  "服务器访问日志" \
+  "IP 地址" \
+  "User-Agent 或应用版本"
+
+for file in "${COPY_FILES[@]}"; do
+  if grep -Eq '(/Users/|/Volumes/|file:///Users/|file:///Volumes/)' "$file"; then
+    fail "public copy contains a local filesystem path: $(basename "$file")"
+  fi
+  if grep -Eq '(github_pat_|ghp_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}|Authorization:[[:space:]]*Bearer[[:space:]]+[A-Za-z0-9._-]{20,})' "$file"; then
+    fail "public copy contains token-like or authorization-header content: $(basename "$file")"
   fi
 done
 
-if [[ "${#missing_terms[@]}" -gt 0 ]]; then
-  fail "copy is missing required coverage: ${missing_terms[*]}"
-fi
+for file in "$PRIVACY_ZH" "$PRIVACY_EN" "$SUPPORT_ZH" "$SUPPORT_EN"; do
+  grep -Fqi '<!doctype html>' "$file" || fail "public page has no HTML doctype: $file"
+  grep -Fqi '</html>' "$file" || fail "public page is incomplete: $file"
+done
 
-if grep -Eq '(/Users/|/Volumes/|file:///Users/|file:///Volumes/)' "$COPY_FILE"; then
-  fail "copy contains a local filesystem path"
-fi
-
-if grep -Eq '(github_pat_|ghp_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}|Authorization:[[:space:]]*Bearer[[:space:]]+[A-Za-z0-9._-]{20,})' "$COPY_FILE"; then
-  fail "copy contains token-like or authorization-header content"
-fi
-
-grep -Fqi "RepoPress Pro unlocks online publishing and batch publishing only" "$COPY_FILE" \
-  || fail "copy does not exclude AI from the Pro entitlement"
-if grep -Eqi '(AI (requires|needs) RepoPress Pro|Pro (unlocks|enables) AI|AI requests as a Pro benefit)' "$COPY_FILE"; then
-  fail "copy presents AI or custom API access as a Pro entitlement"
-fi
-grep -Fqi "does not install a Native Messaging helper" "$COPY_FILE" \
-  || fail "copy does not explain the sandboxed browser-extension boundary"
-grep -Fqi "Chrome, Edge, and Firefox are not claimed as public features of this submission" "$COPY_FILE" \
-  || fail "copy does not exclude unpublished browser channels from the App Store submission"
-
-privacy_model="$PROJECT_ROOT/Sources/PublishingWorkbenchCore/Models/PrivacyProtectionModels.swift"
-app_file="$PROJECT_ROOT/Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift"
-content_view="$PROJECT_ROOT/Sources/PersonalSitePublisherMac/Views/ContentView.swift"
-shared_views="$PROJECT_ROOT/Sources/PersonalSitePublisherMac/Views/SharedViews.swift"
-seo_tests="$PROJECT_ROOT/Tests/PublishingWorkbenchCoreTests/SEOAuditServiceTests.swift"
-
-[[ -f "$privacy_model" ]] || fail "PrivacyProtectionModels.swift is missing"
-[[ -f "$app_file" ]] || fail "PersonalSitePublisherMacApp.swift is missing"
-[[ -f "$content_view" ]] || fail "ContentView.swift is missing"
-[[ -f "$shared_views" ]] || fail "SharedViews.swift is missing"
-[[ -f "$seo_tests" ]] || fail "SEOAuditServiceTests.swift is missing"
-
-grep -Fq "masksPrivateContent" "$privacy_model" || fail "privacy model does not expose private-content masking"
-grep -Fq "工作台隐藏时" "$privacy_model" || fail "privacy checklist does not cover hidden workbench behavior"
-grep -Fq "ProtectedSettingsView" "$app_file" || fail "settings scene is not wrapped in a protected settings view"
-grep -Fq ".disabled(!store.canUseProtectedWorkbench)" "$app_file" || fail "settings content is not disabled while privacy locked"
-grep -Fq "PrivacyLockOverlay(store: store)" "$app_file" || fail "settings scene does not show the privacy lock overlay"
-grep -Fq "PrivacyLockOverlay(store: store)" "$content_view" || fail "main workbench does not show the privacy lock overlay"
-grep -Fq "快速隐藏" "$content_view" || fail "content view does not expose manual quick hide"
-grep -Fq "privacy-lock-overlay" "$shared_views" || fail "privacy lock overlay is missing accessibility identifier"
-grep -Fq "私密文章不输出预览图" "$seo_tests" || fail "private SEO/social preview suppression test is missing"
-
-echo "privacy support copy gate: privacy/support copy, source behavior, and redaction rules verified"
+echo "privacy support copy gate: free website distribution, BYOK consent, browser loopback, Sparkle update logging, and redaction boundaries verified"

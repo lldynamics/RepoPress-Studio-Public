@@ -313,12 +313,30 @@ extension KnowledgeLibraryService {
     return try await commit(preview.importPreview, destination: .preserveExisting)
   }
 
-  public func setAllowsAIUse(_ allowsAIUse: Bool, documentID: UUID) throws {
-    try database().setAllowsAIUse(allowsAIUse, documentID: documentID)
+  public func setAllowsRemoteAIUse(_ allowsRemoteAIUse: Bool, documentID: UUID) throws {
+    try database().setAllowsRemoteAIUse(allowsRemoteAIUse, documentID: documentID)
   }
 
+  public func setAllowsRemoteAIUse(_ allowsRemoteAIUse: Bool, documentIDs: Set<UUID>) throws {
+    try database().setAllowsRemoteAIUse(allowsRemoteAIUse, documentIDs: documentIDs)
+  }
+
+  public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentID: UUID) throws {
+    try database().setAllowsLocalSemanticIndex(allowsLocalSemanticIndex, documentID: documentID)
+  }
+
+  public func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentIDs: Set<UUID>) throws {
+    try database().setAllowsLocalSemanticIndex(allowsLocalSemanticIndex, documentIDs: documentIDs)
+  }
+
+  @available(*, deprecated, message: "请使用 setAllowsRemoteAIUse")
+  public func setAllowsAIUse(_ allowsAIUse: Bool, documentID: UUID) throws {
+    try setAllowsRemoteAIUse(allowsAIUse, documentID: documentID)
+  }
+
+  @available(*, deprecated, message: "请使用 setAllowsRemoteAIUse")
   public func setAllowsAIUse(_ allowsAIUse: Bool, documentIDs: Set<UUID>) throws {
-    try database().setAllowsAIUse(allowsAIUse, documentIDs: documentIDs)
+    try setAllowsRemoteAIUse(allowsAIUse, documentIDs: documentIDs)
   }
 
   public func moveToRecycleBin(documentIDs: Set<UUID>) throws {
@@ -356,6 +374,28 @@ extension KnowledgeLibraryService {
 
   public func backlinks(documentID: UUID) throws -> [KnowledgeBacklink] {
     try database().backlinks(documentID: documentID)
+  }
+
+  public func backlinks(
+    targetKind: KnowledgeBacklinkTargetKind,
+    targetID: String
+  ) throws -> [KnowledgeBacklink] {
+    let normalizedTargetID = targetID.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !normalizedTargetID.isEmpty else { return [] }
+    return try database().backlinks(
+      targetKind: targetKind,
+      targetID: normalizedTargetID
+    )
+  }
+
+  public func backlinksAsync(
+    targetKind: KnowledgeBacklinkTargetKind,
+    targetID: String
+  ) async throws -> [KnowledgeBacklink] {
+    let service = self
+    return try await Task.detached(priority: .utility) {
+      try service.backlinks(targetKind: targetKind, targetID: targetID)
+    }.value
   }
 
   public func recordBacklinks(

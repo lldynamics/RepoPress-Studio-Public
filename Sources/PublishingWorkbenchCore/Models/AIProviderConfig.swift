@@ -16,15 +16,15 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
   public var displayName: String {
     switch self {
     case .openAICompatible:
-      return "OpenAI Compatible"
+      return CoreL10n.text("OpenAI 兼容")
     case .deepSeek:
       return "DeepSeek"
     case .openRouter:
       return "OpenRouter"
     case .local:
-      return "本地模型"
+      return CoreL10n.text("本地模型")
     case .custom:
-      return "自定义"
+      return CoreL10n.text("自定义")
     }
   }
 
@@ -64,10 +64,8 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
       return
     }
     guard let preset = Self(rawValue: rawValue) else {
-      throw DecodingError.dataCorruptedError(
-        in: container,
-        debugDescription: "Unsupported AI provider preset: \(rawValue)"
-      )
+      self = .custom
+      return
     }
     self = preset
   }
@@ -119,13 +117,13 @@ public enum AIChatModelGrade: String, CaseIterable, Codable, Identifiable, Senda
   public var title: String {
     switch self {
     case .fast:
-      return "快速"
+      return CoreL10n.text("快速")
     case .standard:
-      return "标准"
+      return CoreL10n.text("标准")
     case .highQuality:
-      return "高质量"
+      return CoreL10n.text("高质量")
     case .custom:
-      return "自定义"
+      return CoreL10n.text("自定义")
     }
   }
 }
@@ -140,11 +138,11 @@ public enum AIChatReasoningLevel: String, CaseIterable, Codable, Identifiable, S
   public var title: String {
     switch self {
     case .quick:
-      return "快速"
+      return CoreL10n.text("快速")
     case .standard:
-      return "标准"
+      return CoreL10n.text("标准")
     case .deep:
-      return "深度"
+      return CoreL10n.text("深度")
     }
   }
 
@@ -191,27 +189,27 @@ public enum AIModelTaskKind: String, CaseIterable, Codable, Identifiable, Sendab
   public var displayName: String {
     switch self {
     case .chat:
-      return "普通对话"
+      return CoreL10n.text("普通对话")
     case .articleContextChat:
-      return "文章上下文对话"
+      return CoreL10n.text("文章上下文对话")
     case .textEditing:
-      return "正文润色"
+      return CoreL10n.text("正文润色")
     case .metadataRepair:
-      return "当前文章 metadata 修复"
+      return CoreL10n.text("当前文章 metadata 修复")
     case .titleRewrite:
-      return "标题 SEO 重写"
+      return CoreL10n.text("标题 SEO 重写")
     case .articleStructure:
-      return "文章结构检查"
+      return CoreL10n.text("文章结构检查")
     case .articleRelations:
-      return "站内关联建议"
+      return CoreL10n.text("站内关联建议")
     case .imageAltCaption:
-      return "图片 alt / caption"
+      return CoreL10n.text("图片 alt / caption")
     case .publishCopy:
-      return "发布文案生成"
+      return CoreL10n.text("发布文案生成")
     case .prePublishReview:
-      return "发布前审稿"
+      return CoreL10n.text("发布前审稿")
     case .batchMetadataRepair:
-      return "批量旧文 metadata 修复"
+      return CoreL10n.text("批量旧文 metadata 修复")
     }
   }
 
@@ -239,7 +237,6 @@ public enum AIChatModelCatalog {
       model(for: .standard, config: config, currentModel: activeModel),
       model(for: .highQuality, config: config, currentModel: activeModel),
       config.normalizedModel,
-      config.preset.defaultModel,
     ])
   }
 
@@ -262,6 +259,10 @@ public enum AIChatModelCatalog {
     config: AIProviderConfig,
     currentModel: String
   ) -> String {
+    let trimmedCurrentModel = currentModel.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !config.normalizedModel.isEmpty || !trimmedCurrentModel.isEmpty else {
+      return ""
+    }
     let standardModel = defaultModel(for: config)
     switch grade {
     case .fast:
@@ -271,14 +272,12 @@ public enum AIChatModelCatalog {
     case .highQuality:
       return highQualityModel(for: config, fallback: standardModel)
     case .custom:
-      let trimmed = currentModel.trimmingCharacters(in: .whitespacesAndNewlines)
-      return trimmed.isEmpty ? standardModel : trimmed
+      return trimmedCurrentModel.isEmpty ? standardModel : trimmedCurrentModel
     }
   }
 
   private static func defaultModel(for config: AIProviderConfig) -> String {
-    let configured = config.normalizedModel
-    return configured.isEmpty ? config.preset.defaultModel : configured
+    config.normalizedModel
   }
 
   private static func fastModel(for config: AIProviderConfig, fallback: String) -> String {
@@ -372,27 +371,32 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
   public var baseURL: String
   public var model: String
   public var requiresAPIKey: Bool
+  public var advancedSettings: AIProviderAdvancedSettings?
 
   public init(
-    preset: AIProviderPreset = .deepSeek,
-    baseURL: String = AIProviderPreset.deepSeek.defaultBaseURL,
-    model: String = AIProviderPreset.deepSeek.defaultModel,
-    requiresAPIKey: Bool = true
+    preset: AIProviderPreset = .custom,
+    baseURL: String = "",
+    model: String = "",
+    requiresAPIKey: Bool = true,
+    advancedSettings: AIProviderAdvancedSettings? = nil
   ) {
     self.preset = preset
     self.baseURL = baseURL
     self.model = model
     self.requiresAPIKey = requiresAPIKey
+    self.advancedSettings = advancedSettings
+  }
+
+  public var resolvedAdvancedSettings: AIProviderAdvancedSettings {
+    advancedSettings ?? AIProviderAdvancedSettings()
   }
 
   public var normalizedBaseURL: String {
-    let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? preset.defaultBaseURL : trimmed
+    baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   public var normalizedModel: String {
-    let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? preset.defaultModel : trimmed
+    model.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   public var normalizedDisplayName: String {
@@ -404,9 +408,13 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
   }
 
   public var dataSharingDestination: String {
-    guard let url = URL(string: normalizedBaseURL),
+    let resolvedBaseURL = normalizedBaseURL
+    if resolvedBaseURL.isEmpty {
+      return ""
+    }
+    guard let url = URL(string: resolvedBaseURL),
           let host = url.host?.lowercased() else {
-      return normalizedBaseURL
+      return resolvedBaseURL
     }
     if let port = url.port {
       return "\(host):\(port)"
@@ -526,13 +534,13 @@ public enum AIWritingStylePreset: String, Codable, CaseIterable, Identifiable, S
   public var displayName: String {
     switch self {
     case .jinfangZola:
-      return "锦方 Zola"
+      return CoreL10n.text("锦方 Zola")
     case .technicalNote:
-      return "技术笔记"
+      return CoreL10n.text("技术笔记")
     case .personalEssay:
-      return "个人随笔"
+      return CoreL10n.text("个人随笔")
     case .custom:
-      return "自定义"
+      return CoreL10n.text("自定义")
     }
   }
 

@@ -141,18 +141,19 @@ extension KnowledgeDatabase {
     }
   }
 
-  func setAllowsAIUse(_ allowsAIUse: Bool, documentID: UUID) throws {
+  func setAllowsRemoteAIUse(_ allowsRemoteAIUse: Bool, documentID: UUID) throws {
     try withLock {
       let statement = try prepare("UPDATE knowledge_documents SET allows_ai_use = ?, updated_at = ? WHERE id = ?;")
       defer { sqlite3_finalize(statement) }
-      sqlite3_bind_int(statement, 1, allowsAIUse ? 1 : 0)
+      sqlite3_bind_int(statement, 1, allowsRemoteAIUse ? 1 : 0)
       sqlite3_bind_double(statement, 2, Date().timeIntervalSince1970)
       bind(documentID.uuidString, at: 3, to: statement)
       guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+      guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
     }
   }
 
-  func setAllowsAIUse(_ allowsAIUse: Bool, documentIDs: Set<UUID>) throws {
+  func setAllowsRemoteAIUse(_ allowsRemoteAIUse: Bool, documentIDs: Set<UUID>) throws {
     guard !documentIDs.isEmpty else { return }
     try withLock {
       try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
@@ -167,7 +168,7 @@ extension KnowledgeDatabase {
         for documentID in documentIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
           sqlite3_reset(statement)
           sqlite3_clear_bindings(statement)
-          sqlite3_bind_int(statement, 1, allowsAIUse ? 1 : 0)
+          sqlite3_bind_int(statement, 1, allowsRemoteAIUse ? 1 : 0)
           sqlite3_bind_double(statement, 2, now)
           bind(documentID.uuidString, at: 3, to: statement)
           guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
@@ -179,6 +180,74 @@ extension KnowledgeDatabase {
         throw error
       }
     }
+  }
+
+  func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentID: UUID) throws {
+    try withLock {
+      try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
+      do {
+        let statement = try prepare("""
+        UPDATE knowledge_documents
+        SET allows_local_semantic_index = ?, updated_at = ?
+        WHERE id = ?;
+        """)
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_int(statement, 1, allowsLocalSemanticIndex ? 1 : 0)
+        sqlite3_bind_double(statement, 2, Date().timeIntervalSince1970)
+        bind(documentID.uuidString, at: 3, to: statement)
+        guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+        guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
+        if !allowsLocalSemanticIndex {
+          try deleteSemanticEmbeddingsUnlocked(documentIDs: [documentID])
+        }
+        try executeUnlocked("COMMIT;")
+      } catch {
+        try? executeUnlocked("ROLLBACK;")
+        throw error
+      }
+    }
+  }
+
+  func setAllowsLocalSemanticIndex(_ allowsLocalSemanticIndex: Bool, documentIDs: Set<UUID>) throws {
+    guard !documentIDs.isEmpty else { return }
+    try withLock {
+      try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
+      do {
+        let statement = try prepare("""
+        UPDATE knowledge_documents
+        SET allows_local_semantic_index = ?, updated_at = ?
+        WHERE id = ? AND is_archived = 0;
+        """)
+        defer { sqlite3_finalize(statement) }
+        let now = Date().timeIntervalSince1970
+        for documentID in documentIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
+          sqlite3_reset(statement)
+          sqlite3_clear_bindings(statement)
+          sqlite3_bind_int(statement, 1, allowsLocalSemanticIndex ? 1 : 0)
+          sqlite3_bind_double(statement, 2, now)
+          bind(documentID.uuidString, at: 3, to: statement)
+          guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+          guard sqlite3_changes(handle) == 1 else { throw KnowledgeLibraryError.missingDocument }
+        }
+        if !allowsLocalSemanticIndex {
+          try deleteSemanticEmbeddingsUnlocked(documentIDs: documentIDs)
+        }
+        try executeUnlocked("COMMIT;")
+      } catch {
+        try? executeUnlocked("ROLLBACK;")
+        throw error
+      }
+    }
+  }
+
+  @available(*, deprecated, message: "请使用 setAllowsRemoteAIUse")
+  func setAllowsAIUse(_ allowsAIUse: Bool, documentID: UUID) throws {
+    try setAllowsRemoteAIUse(allowsAIUse, documentID: documentID)
+  }
+
+  @available(*, deprecated, message: "请使用 setAllowsRemoteAIUse")
+  func setAllowsAIUse(_ allowsAIUse: Bool, documentIDs: Set<UUID>) throws {
+    try setAllowsRemoteAIUse(allowsAIUse, documentIDs: documentIDs)
   }
 
   func moveToRecycleBin(documentIDs: Set<UUID>) throws {
@@ -266,8 +335,13 @@ extension KnowledgeDatabase {
       defer { sqlite3_finalize(statement) }
       var output = Set<UUID>()
       while sqlite3_step(statement) == SQLITE_ROW {
-        guard let value = text(statement, 0), let id = UUID(uuidString: value) else { continue }
-        output.insert(id)
+        output.insert(
+          try requiredUUID(
+            statement,
+            0,
+            field: "knowledge_pinned_documents.document_id"
+          )
+        )
       }
       try checkStatementCompletion(statement)
       return output
@@ -307,7 +381,7 @@ extension KnowledgeDatabase {
       bind(documentID.uuidString, at: 1, to: statement)
       var output: [KnowledgeAnnotation] = []
       while sqlite3_step(statement) == SQLITE_ROW {
-        output.append(decodeAnnotation(statement))
+        output.append(try decodeAnnotation(statement))
       }
       try checkStatementCompletion(statement)
       return output
@@ -398,7 +472,33 @@ extension KnowledgeDatabase {
       bind(documentID.uuidString, at: 1, to: statement)
       var output: [KnowledgeBacklink] = []
       while sqlite3_step(statement) == SQLITE_ROW {
-        output.append(decodeBacklink(statement))
+        output.append(try decodeBacklink(statement))
+      }
+      try checkStatementCompletion(statement)
+      return output
+    }
+  }
+
+  func backlinks(
+    targetKind: KnowledgeBacklinkTargetKind,
+    targetID: String
+  ) throws -> [KnowledgeBacklink] {
+    try withLock {
+      let statement = try prepare("""
+      SELECT b.id, b.cited_document_id, b.chunk_id, b.target_kind, b.target_id,
+             b.target_title, b.target_location, b.created_at,
+             COALESCE(c.locator, c.heading_path), c.content
+      FROM knowledge_backlinks b
+      JOIN knowledge_chunks c ON c.id = b.chunk_id
+      WHERE b.target_kind = ? AND b.target_id = ?
+      ORDER BY b.created_at DESC, b.target_title COLLATE NOCASE ASC, c.ordinal ASC;
+      """)
+      defer { sqlite3_finalize(statement) }
+      bind(targetKind.rawValue, at: 1, to: statement)
+      bind(targetID, at: 2, to: statement)
+      var output: [KnowledgeBacklink] = []
+      while sqlite3_step(statement) == SQLITE_ROW {
+        output.append(try decodeBacklink(statement))
       }
       try checkStatementCompletion(statement)
       return output

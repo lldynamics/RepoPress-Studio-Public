@@ -141,20 +141,23 @@ final class AIChatCompletionClientTests: XCTestCase {
     XCTAssertEqual(result.tokenUsage?.displayText, "17 tokens · 输入 12 · 输出 5")
   }
 
-  func testDecodesReasoningContentWhenFinalContentIsNull() async throws {
+  func testRejectsReasoningContentWhenFinalContentIsNull() async throws {
     let transport = RecordingAIChatTransport(
       data: responseData(content: #"{"role":"assistant","content":null,"reasoning_content":"先给一个简短回复。"}"#),
       statusCode: 200
     )
     let client = AIChatCompletionClient(transport: transport)
 
-    let result = try await client.complete(
-      request: AIChatCompletionRequest(model: "model", messages: []),
-      config: AIProviderConfig(preset: .local, baseURL: "http://127.0.0.1:11434/v1", model: "model", requiresAPIKey: false),
-      apiKey: nil
-    )
-
-    XCTAssertEqual(result.content, "先给一个简短回复。")
+    do {
+      _ = try await client.complete(
+        request: AIChatCompletionRequest(model: "model", messages: []),
+        config: AIProviderConfig(preset: .local, baseURL: "http://127.0.0.1:11434/v1", model: "model", requiresAPIKey: false),
+        apiKey: nil
+      )
+      XCTFail("Reasoning content must never be exposed as the final assistant reply.")
+    } catch {
+      XCTAssertEqual(error as? AIChatCompletionClientError, .emptyContent)
+    }
   }
 
   func testPrefersFinalContentOverReasoningContent() async throws {
@@ -173,17 +176,56 @@ final class AIChatCompletionClientTests: XCTestCase {
     XCTAssertEqual(result.content, "这是最终回复。")
   }
 
+  func testStreamingIgnoresReasoningContentAndEmitsOnlyFinalContent() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200,
+      streamLines: [
+        #"data: {"choices":[{"delta":{"reasoning_content":"这是思考过程。"}}]}"#,
+        "",
+        #"data: {"choices":[{"delta":{"content":"这是最终回复。"},"finish_reason":"stop"}]}"#,
+        "",
+        "data: [DONE]",
+        "",
+      ]
+    )
+    let client = AIChatCompletionClient(transport: transport)
+    let config = AIProviderConfig(
+      preset: .local,
+      baseURL: "http://127.0.0.1:11434/v1",
+      model: "model",
+      requiresAPIKey: false
+    )
+
+    let stream = try await client.stream(
+      request: AIChatCompletionRequest(
+        model: "model",
+        messages: [AIChatMessage(role: "user", content: "请直接回答。")]
+      ),
+      config: config,
+      apiKey: nil
+    )
+
+    var visibleContent = ""
+    for try await update in stream {
+      visibleContent += update.contentDelta
+    }
+
+    XCTAssertEqual(visibleContent, "这是最终回复。")
+    XCTAssertFalse(visibleContent.contains("思考过程"))
+  }
+
   func testDeepSeekInteractiveChatUsesThinkingAndMapsLegacyModel() async throws {
     let transport = RecordingAIChatTransport(
-      data: responseData(content: #"{"role":"assistant","content":"已按 DeepSeek 接口回复。"}"#),
+      data: responseData(content: #"{"role":"assistant","content":"已按 OpenAI 兼容接口回复。"}"#),
       statusCode: 200
     )
     let client = AIChatCompletionClient(transport: transport)
     let config = AIProviderConfig(
-      preset: .deepSeek,
-      baseURL: "https://api.deepseek.com",
-      model: "deepseek-reasoner",
-      requiresAPIKey: false
+      preset: .custom,
+      baseURL: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
+      requiresAPIKey: true
     )
 
     _ = try await client.complete(
@@ -201,23 +243,20 @@ final class AIChatCompletionClientTests: XCTestCase {
     let capturedRequest = try XCTUnwrap(requestFromTransport)
     let body = try XCTUnwrap(capturedRequest.httpBody)
     let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
-    XCTAssertEqual(payload["model"] as? String, "deepseek-v4-pro")
-    XCTAssertNil(payload["temperature"])
-    XCTAssertEqual(payload["reasoning_effort"] as? String, "high")
-    let thinking = try XCTUnwrap(payload["thinking"] as? [String: Any])
-    XCTAssertEqual(thinking["type"] as? String, "enabled")
+    XCTAssertEqual(payload["model"] as? String, "gpt-4.1-mini")
+    XCTAssertEqual(payload["temperature"] as? Double, 0.4)
   }
 
-  func testExplicitQuickReasoningOverridesDeepSeekInteractiveDefaults() async throws {
+  func testExplicitQuickReasoningOverridesInteractiveDefaults() async throws {
     let transport = RecordingAIChatTransport(
       data: responseData(content: #"{"role":"assistant","content":"快速回复。"}"#),
       statusCode: 200
     )
     let client = AIChatCompletionClient(transport: transport)
     let config = AIProviderConfig(
-      preset: .deepSeek,
-      baseURL: "https://api.deepseek.com",
-      model: AIProviderPreset.deepSeek.defaultModel,
+      preset: .custom,
+      baseURL: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
       requiresAPIKey: false
     )
 
@@ -253,7 +292,7 @@ final class AIChatCompletionClientTests: XCTestCase {
       data: Data("image-bytes".utf8)
     )
     let config = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -312,7 +351,7 @@ final class AIChatCompletionClientTests: XCTestCase {
     )
     let client = AIChatCompletionClient(transport: transport)
     let config = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "gpt-4.1",
       requiresAPIKey: false
@@ -359,7 +398,12 @@ final class AIChatCompletionClientTests: XCTestCase {
     await XCTAssertThrowsErrorAsync(
       try await client.complete(
         request: AIChatCompletionRequest(model: "model", messages: []),
-        config: AIProviderConfig(),
+        config: AIProviderConfig(
+          preset: .custom,
+          baseURL: "https://api.openai.com/v1",
+          model: "gpt-4.1-mini",
+          requiresAPIKey: true
+        ),
         apiKey: "bad"
       )
     ) { error in
@@ -385,7 +429,12 @@ final class AIChatCompletionClientTests: XCTestCase {
     )
     _ = try await successClient.complete(
       request: AIChatCompletionRequest(model: "model", messages: []),
-      config: AIProviderConfig(),
+      config: AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        requiresAPIKey: true
+      ),
       apiKey: "key"
     )
     let capturedRequest = await successTransport.capturedRequest()
@@ -409,7 +458,12 @@ final class AIChatCompletionClientTests: XCTestCase {
     await XCTAssertThrowsErrorAsync(
       try await timeoutClient.complete(
         request: AIChatCompletionRequest(model: "model", messages: []),
-        config: AIProviderConfig(),
+        config: AIProviderConfig(
+          preset: .custom,
+          baseURL: "https://api.openai.com/v1",
+          model: "gpt-4.1-mini",
+          requiresAPIKey: true
+        ),
         apiKey: "key"
       )
     ) { error in
@@ -436,7 +490,12 @@ final class AIChatCompletionClientTests: XCTestCase {
     )
     let stream = try await client.stream(
       request: AIChatCompletionRequest(model: "model", messages: []),
-      config: AIProviderConfig(),
+      config: AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        requiresAPIKey: true
+      ),
       apiKey: "key"
     )
 
@@ -477,7 +536,12 @@ final class AIChatCompletionClientTests: XCTestCase {
     )
     let stream = try await client.stream(
       request: AIChatCompletionRequest(model: "model", messages: []),
-      config: AIProviderConfig(),
+      config: AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        requiresAPIKey: true
+      ),
       apiKey: "key"
     )
 
@@ -513,7 +577,12 @@ final class AIChatCompletionClientTests: XCTestCase {
     )
     let stream = try await client.stream(
       request: AIChatCompletionRequest(model: "model", messages: []),
-      config: AIProviderConfig(),
+      config: AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        requiresAPIKey: true
+      ),
       apiKey: "key"
     )
 
@@ -545,7 +614,12 @@ final class AIChatCompletionClientTests: XCTestCase {
     await XCTAssertThrowsErrorAsync(
       try await client.complete(
         request: AIChatCompletionRequest(model: "model", messages: []),
-        config: AIProviderConfig(),
+        config: AIProviderConfig(
+          preset: .custom,
+          baseURL: "https://api.openai.com/v1",
+          model: "gpt-4.1-mini",
+          requiresAPIKey: true
+        ),
         apiKey: "key"
       )
     ) { error in
@@ -583,7 +657,12 @@ final class AIChatCompletionClientTests: XCTestCase {
     )
     let stream = try await client.stream(
       request: AIChatCompletionRequest(model: "model", messages: []),
-      config: AIProviderConfig(),
+      config: AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        requiresAPIKey: true
+      ),
       apiKey: "key"
     )
 
@@ -623,7 +702,12 @@ final class AIChatCompletionClientTests: XCTestCase {
     await XCTAssertThrowsErrorAsync(
       try await client.complete(
         request: AIChatCompletionRequest(model: "model", messages: []),
-        config: AIProviderConfig(),
+        config: AIProviderConfig(
+          preset: .custom,
+          baseURL: "https://api.openai.com/v1",
+          model: "gpt-4.1-mini",
+          requiresAPIKey: true
+        ),
         apiKey: apiKey
       )
     ) { error in
@@ -653,7 +737,12 @@ final class AIChatCompletionClientTests: XCTestCase {
     let client = AIChatCompletionClient(transport: transport)
     let stream = try await client.stream(
       request: AIChatCompletionRequest(model: "model", messages: []),
-      config: AIProviderConfig(),
+      config: AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        requiresAPIKey: true
+      ),
       apiKey: apiKey
     )
 
@@ -722,7 +811,7 @@ final class AIChatCompletionClientTests: XCTestCase {
     let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
     let client = AIChatCompletionClient(transport: transport)
     let config = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "http://192.0.2.10:8080/v1",
       model: "model",
       requiresAPIKey: false
@@ -748,7 +837,7 @@ final class AIChatCompletionClientTests: XCTestCase {
     let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
     let client = AIChatCompletionClient(transport: transport)
     let config = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "http://ai.internal.example/v1",
       model: "model",
       requiresAPIKey: false
