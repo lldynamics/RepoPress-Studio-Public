@@ -257,11 +257,13 @@ extension WorkbenchStore {
   private func setSiteDraftFileFailureMessage(_ error: Error) {
     if case LocalPublishPreviewError.missingRepositoryRoot = error {
       setPublishActionMessage(
-        CoreL10n.text("当前站点未选择本地项目；站点草稿暂存在软件中，选择项目后会自动写入。")
+        CoreL10n.text("当前站点未选择本地项目；站点草稿暂存在软件中，选择项目后会自动写入。"),
+        status: .warning
       )
     } else {
       setPublishActionMessage(
-        CoreL10n.format("站点草稿写入项目失败：%@", error.localizedDescription)
+        CoreL10n.format("站点草稿写入项目失败：%@", error.localizedDescription),
+        status: .failure
       )
     }
   }

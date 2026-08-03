@@ -85,7 +85,9 @@ struct ContentView: View {
   @SceneStorage("workspace.revealSidebarInNarrowSplit") private var revealsSidebarInNarrowSplit = false
   @SceneStorage("workspace.revealInspectorInNarrowSplit") private var revealsInspectorInNarrowSplit = false
   @State private var didApplyInitialWorkbenchPreferences = false
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
   @State private var didApplyScreenshotDemoSurface = false
+#endif
   @State private var isRefreshingExternallyCreatedDrafts = false
   @State private var isDraftRecoveryPresented = false
   @State private var modalPresentation = WorkspaceModalPresentationState()
@@ -208,11 +210,15 @@ struct ContentView: View {
     )
     .focusedSceneValue(
       \.workspaceCommandPaletteAction,
-      WorkspaceCommandPaletteAction {
-        guard shellState.canUseProtectedWorkbench else { return }
-        commandPaletteEditorCommands = focusedMarkdownEditorCommands
-        modalPresentation.present(.commandPalette)
-      }
+      WorkspaceCommandPaletteAction(
+        open: {
+          guard shellState.canUseProtectedWorkbench else { return }
+          commandPaletteEditorCommands = focusedMarkdownEditorCommands
+          modalPresentation.present(.commandPalette)
+        },
+        openMaintenance: openMaintenanceSubpage,
+        openReleaseHistory: openReleaseHistorySubpage
+      )
     )
     .focusedSceneValue(
       \.workspaceFirstRunSetupCommandAction,
@@ -243,24 +249,26 @@ struct ContentView: View {
         .disabled(!shellState.canUseProtectedWorkbench)
         .accessibilityHidden(shellState.isQuickHideActive)
 
-        PublishingStatusToolbarControl(
-          store: store,
-          canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
-          selectedDraftID: shellState.selectedDraftID,
-          openPublishFlow: { openPublishDrawer(message: nil) },
-          openRepositoryOverview: {
-            repositoryContextStage = .overview
-            selectWorkspaceSection(.sync)
-          },
-          openContentHealthOverview: {
-            contentHealthFilter = .overview
-            selectWorkspaceSection(.contentHealth)
-          },
-          openReleaseHistory: {
-            repositoryContextStage = .history
-            selectWorkspaceSection(.sync)
-          }
-        )
+        if shellState.selectedSection != .rss {
+          PublishingStatusToolbarControl(
+            store: store,
+            canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
+            selectedDraftID: shellState.selectedDraftID,
+            openPublishFlow: { openPublishDrawer(message: nil) },
+            openRepositoryOverview: {
+              repositoryContextStage = .overview
+              selectWorkspaceSection(.sync)
+            },
+            openContentHealthOverview: {
+              contentHealthFilter = .overview
+              selectWorkspaceSection(.contentHealth)
+            },
+            openReleaseHistory: {
+              repositoryContextStage = .history
+              selectWorkspaceSection(.sync)
+            }
+          )
+        }
 
         WorkspaceTaskCenterToolbarButton(
           store: store,
@@ -509,9 +517,9 @@ struct ContentView: View {
       }
       didApplyInitialWorkbenchPreferences = true
     }
-    if !didApplyScreenshotDemoSurface {
-      didApplyScreenshotDemoSurface = true
-    }
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    applyScreenshotRequestedSubpageIfNeeded()
+#endif
     store.setAutomaticallyRefreshPreflightOnEdit(
       store.isSafeMode ? false : autoRunPreflight
     )
@@ -585,8 +593,7 @@ struct ContentView: View {
   private var supportsInspector: Bool {
     WorkspaceInspectorPresentation.supportsInspector(
       for: shellState.selectedSection,
-      isAIAssistantPresented: DistributionFeaturePolicy.allowsExternalAIProviders
-        && presentationState.isAssistantPresented,
+      isAIAssistantPresented: presentationState.isAssistantPresented,
       isRepositoryHistoryPresented: repositoryContextStage == .history,
       isMaintenancePresented: contentHealthFilter == .maintenance
     )
@@ -670,14 +677,6 @@ struct ContentView: View {
     }
 
     switch section {
-    case .maintenance:
-      contentHealthFilter = .maintenance
-      hideInspectorIfNeeded()
-      store.selectSection(.contentHealth)
-    case .releaseHistory:
-      repositoryContextStage = .history
-      hideInspectorIfNeeded()
-      store.selectSection(.sync)
     case .siteStarter:
       break
     case .sync, .images, .contentHealth, .rss:
@@ -686,6 +685,31 @@ struct ContentView: View {
       break
     }
   }
+
+  private func openMaintenanceSubpage() {
+    contentHealthFilter = .maintenance
+    selectWorkspaceSection(.contentHealth)
+  }
+
+  private func openReleaseHistorySubpage() {
+    repositoryContextStage = .history
+    selectWorkspaceSection(.sync)
+  }
+
+#if DEBUG || SCREENSHOT_CAPTURE_BUILD
+  private func applyScreenshotRequestedSubpageIfNeeded() {
+    guard !didApplyScreenshotDemoSurface else { return }
+    didApplyScreenshotDemoSurface = true
+    switch ScreenshotDemoDataService.requestedSurfaceFromEnvironment {
+    case .some(.deploymentStatus):
+      repositoryContextStage = .history
+    case .some(.maintenance):
+      contentHealthFilter = .maintenance
+    default:
+      break
+    }
+  }
+#endif
 
   private func selectWorkspaceSection(_ section: WorkspaceSection) {
     guard shellState.selectedSection != section else { return }
@@ -739,7 +763,8 @@ struct ContentView: View {
     store.runPreflight()
     modalPresentation.present(.publishDrawer)
     store.setPublishActionMessage(
-      message ?? String(localized: "发布流程已打开，请选择保存到本地或发布上线。")
+      message ?? String(localized: "发布流程已打开，请选择保存到本地或发布上线。"),
+      status: .information
     )
   }
 

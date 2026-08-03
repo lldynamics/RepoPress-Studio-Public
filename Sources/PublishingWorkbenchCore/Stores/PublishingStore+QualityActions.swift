@@ -26,7 +26,7 @@ extension PublishingStore {
       targetPath: item.targetPath
     )
     maintenanceOperationRecords.insert(record, at: 0)
-    publishActionMessage = "已记录维护操作。"
+    setPublishActionMessage("已记录维护操作。", status: .success)
     store.save()
     return record
   }
@@ -48,9 +48,12 @@ extension PublishingStore {
       drafts[index].date = suggestedDate
       appliedCount += 1
     }
-    publishActionMessage = appliedCount == 0
-      ? "没有需要应用的维护排期。"
-      : "已应用 \(appliedCount) 篇待发布文章的建议排期。"
+    setPublishActionMessage(
+      appliedCount == 0
+        ? "没有需要应用的维护排期。"
+        : "已应用 \(appliedCount) 篇待发布文章的建议排期。",
+      status: appliedCount == 0 ? .warning : .success
+    )
     if appliedCount > 0 {
       store.save()
     }
@@ -113,7 +116,7 @@ extension PublishingStore {
 
   public func commitSelectedDraftUsingPreferredStrategy(store: WorkbenchStore) async {
     guard let package = publishPackageForSelectedDraft(store: store) else {
-      publishActionMessage = "没有可提交的发布包。"
+      setPublishActionMessage("没有可提交的发布包。", status: .warning)
       return
     }
 

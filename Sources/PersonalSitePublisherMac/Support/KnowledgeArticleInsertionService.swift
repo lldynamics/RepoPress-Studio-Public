@@ -24,7 +24,10 @@ enum KnowledgeArticleInsertionService {
   ) -> Bool {
     let content = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !content.isEmpty else {
-      store.setPublishActionMessage("当前资料正文尚未加载完成，请稍后再试。")
+      store.setPublishActionMessage(
+        "当前资料正文尚未加载完成，请稍后再试。",
+        status: .warning
+      )
       return false
     }
 
@@ -50,7 +53,10 @@ enum KnowledgeArticleInsertionService {
       selectedResult: selectedResult,
       fallbackText: fallbackText
     ) else {
-      store.setPublishActionMessage("当前资料没有可插入的引用片段。")
+      store.setPublishActionMessage(
+        "当前资料没有可插入的引用片段。",
+        status: .warning
+      )
       return false
     }
 
@@ -93,6 +99,7 @@ enum KnowledgeArticleInsertionService {
     summary: String,
     excerpt: String,
     citation: KnowledgeCitation?,
+    appendingFootnote: Bool = false,
     into store: WorkbenchStore
   ) -> Bool {
     let fragment = RSSArticleWorkflow.safeReferenceMarkdown(
@@ -101,10 +108,20 @@ enum KnowledgeArticleInsertionService {
       excerpt: excerpt,
       sourceURL: citation?.sourceURL ?? article.link
     )
+    let postProcess: ((String) -> String)? = appendingFootnote
+      ? { body in
+        RSSArticleWorkflow.appendingFootnote(
+          to: body,
+          article: article,
+          highlight: nil
+        )
+      }
+      : nil
     let inserted = insert(
       fragment,
       message: "已插入“\(article.title)”的摘要、摘录和来源；未复制全文。",
-      into: store
+      into: store,
+      postProcess: postProcess
     )
     guard inserted, let citation, let draft = store.selectedDraft else { return inserted }
     store.knowledge.recordBacklinks(
@@ -132,7 +149,10 @@ enum KnowledgeArticleInsertionService {
       style: style
     )
     guard !fragment.isEmpty else {
-      store.setPublishActionMessage("当前 RSS 收藏没有可插入的正文片段。")
+      store.setPublishActionMessage(
+        "当前 RSS 收藏没有可插入的正文片段。",
+        status: .warning
+      )
       return false
     }
 
@@ -292,13 +312,19 @@ enum KnowledgeArticleInsertionService {
     postProcess: ((String) -> String)? = nil
   ) -> Bool {
     guard let selectedDraft = store.selectedDraft ?? store.ensureEditableDraftSelected() else {
-      store.setPublishActionMessage("请先创建或选择一篇当前文章。")
+      store.setPublishActionMessage(
+        "请先创建或选择一篇当前文章。",
+        status: .warning
+      )
       return false
     }
 
     store.flushDraftBodyEditorBuffer(for: selectedDraft.id)
     guard let draft = store.drafts.first(where: { $0.id == selectedDraft.id }) else {
-      store.setPublishActionMessage("当前文章已变化，请重新选择后再插入。")
+      store.setPublishActionMessage(
+        "当前文章已变化，请重新选择后再插入。",
+        status: .warning
+      )
       return false
     }
 
@@ -323,7 +349,10 @@ enum KnowledgeArticleInsertionService {
       for: draft.id,
       expectedRevision: buffer.revision
     ), staged.wasAccepted else {
-      store.setPublishActionMessage("当前文章在插入前已被其他窗口修改，请重新尝试。")
+      store.setPublishActionMessage(
+        "当前文章在插入前已被其他窗口修改，请重新尝试。",
+        status: .warning
+      )
       return false
     }
 
@@ -338,7 +367,7 @@ enum KnowledgeArticleInsertionService {
         length: 0
       )
     )
-    store.setPublishActionMessage(message)
+    store.setPublishActionMessage(message, status: .success)
     return true
   }
 }

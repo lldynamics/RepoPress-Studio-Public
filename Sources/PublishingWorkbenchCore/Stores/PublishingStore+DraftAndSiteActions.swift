@@ -194,7 +194,8 @@ extension PublishingStore {
     store.setPublishActionMessage(
       draft.repositoryPath?.trimmedForPublishing.nilIfEmpty == nil
         ? "已将文章移到回收站。"
-        : "已将文章移到回收站，并加入仓库待清理队列。"
+        : "已将文章移到回收站，并加入仓库待清理队列。",
+      status: .success
     )
     store.save()
   }
@@ -357,7 +358,10 @@ extension PublishingStore {
   @discardableResult
   public func deleteActiveProfile(store: WorkbenchStore) -> RecentlyDeletedProfile? {
     guard profiles.count > 1 else {
-      store.setPublishActionMessage(CoreL10n.text("至少需要保留一个站点 Profile。"))
+      store.setPublishActionMessage(
+        CoreL10n.text("至少需要保留一个站点 Profile。"),
+        status: .warning
+      )
       return nil
     }
     let removed = activeProfileID

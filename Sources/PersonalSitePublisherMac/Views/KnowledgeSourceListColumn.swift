@@ -190,11 +190,7 @@ struct KnowledgeSourceListColumn: View {
         documentPendingDeletion = nil
       }
     } message: {
-      Text(
-        DistributionFeaturePolicy.allowsExternalAIProviders
-          ? String(localized: "资料会移到回收站并停止参与搜索与 AI 检索；本地副本会保留，之后可以恢复。")
-          : String(localized: "资料会移到回收站并停止参与本地搜索；本地副本会保留，之后可以恢复。")
-      )
+      Text("资料会移到回收站并停止参与搜索与 AI 检索；本地副本会保留，之后可以恢复。")
     }
     .alert("批量添加标签", isPresented: $isBatchTagEditorPresented) {
       TextField("标签，用逗号分隔", text: $batchTags)
@@ -645,7 +641,7 @@ struct KnowledgeSourceListColumn: View {
           .foregroundStyle(.secondary)
           .accessibilityLabel("未建立本地语义索引")
       }
-      if DistributionFeaturePolicy.allowsExternalAIProviders && !document.allowsRemoteAIUse {
+      if !document.allowsRemoteAIUse {
         Image(systemName: "hand.raised")
           .font(.caption)
           .foregroundStyle(.secondary)
@@ -699,23 +695,21 @@ struct KnowledgeSourceListColumn: View {
         documentID: document.id
       )
     }
-    if DistributionFeaturePolicy.allowsExternalAIProviders {
-      Button(
-        knowledge.isPinned(document.id)
-          ? String(localized: "取消固定")
-          : String(localized: "固定到 AI 对话")
-      ) {
-        knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)
-      }
-      Button(
-        document.allowsRemoteAIUse
-          ? String(localized: "禁止发送给远程 AI")
-          : String(localized: "允许发送给远程 AI")
-      ) {
-        knowledge.setAllowsRemoteAIUse(!document.allowsRemoteAIUse, documentID: document.id)
-      }
-      Divider()
+    Button(
+      knowledge.isPinned(document.id)
+        ? String(localized: "取消固定")
+        : String(localized: "固定到 AI 对话")
+    ) {
+      knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)
     }
+    Button(
+      document.allowsRemoteAIUse
+        ? String(localized: "禁止发送给远程 AI")
+        : String(localized: "允许发送给远程 AI")
+    ) {
+      knowledge.setAllowsRemoteAIUse(!document.allowsRemoteAIUse, documentID: document.id)
+    }
+    Divider()
     Button("移到回收站…", role: .destructive) {
       requestDocumentDeletion(document)
     }
@@ -776,18 +770,16 @@ struct KnowledgeSourceListColumn: View {
               .tag(result.id)
               .contextMenu {
                 documentFolderMenu(result.document)
-                if DistributionFeaturePolicy.allowsExternalAIProviders {
-                  Divider()
-                  Button(
-                    knowledge.isPinned(result.document.id)
-                      ? String(localized: "取消固定")
-                      : String(localized: "固定到 AI 对话")
-                  ) {
-                    knowledge.setPinned(
-                      !knowledge.isPinned(result.document.id),
-                      documentID: result.document.id
-                    )
-                  }
+                Divider()
+                Button(
+                  knowledge.isPinned(result.document.id)
+                    ? String(localized: "取消固定")
+                    : String(localized: "固定到 AI 对话")
+                ) {
+                  knowledge.setPinned(
+                    !knowledge.isPinned(result.document.id),
+                    documentID: result.document.id
+                  )
                 }
                 Divider()
                 Button("移到回收站…", role: .destructive) {
@@ -913,14 +905,12 @@ struct KnowledgeSourceListColumn: View {
         Button("关闭本地语义索引") {
           knowledge.setAllowsLocalSemanticIndex(false, documentIDs: selectedDocumentIDs)
         }
-        if DistributionFeaturePolicy.allowsExternalAIProviders {
-          Divider()
-          Button("允许发送给远程 AI") {
-            knowledge.setAllowsRemoteAIUse(true, documentIDs: selectedDocumentIDs)
-          }
-          Button("禁止发送给远程 AI") {
-            knowledge.setAllowsRemoteAIUse(false, documentIDs: selectedDocumentIDs)
-          }
+        Divider()
+        Button("允许发送给远程 AI") {
+          knowledge.setAllowsRemoteAIUse(true, documentIDs: selectedDocumentIDs)
+        }
+        Button("禁止发送给远程 AI") {
+          knowledge.setAllowsRemoteAIUse(false, documentIDs: selectedDocumentIDs)
         }
       } label: {
         Image(systemName: "slider.horizontal.3")

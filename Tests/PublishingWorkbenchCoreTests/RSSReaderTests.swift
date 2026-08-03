@@ -38,6 +38,18 @@ final class RSSReaderTests: XCTestCase {
     XCTAssertFalse(RSSHTMLTextSanitizer.plainText(from: article.contentHTML).contains("不要执行"))
   }
 
+  func testLongHTMLUsesBoundedPreviewSanitizer() {
+    let source = String(
+      repeating: "<p>正文 &amp; &#x4E2D;&#25991; <script>不应出现</script></p>",
+      count: 160
+    )
+
+    let preview = RSSHTMLTextSanitizer.previewText(from: source)
+
+    XCTAssertTrue(preview.contains("正文 & 中文"))
+    XCTAssertFalse(preview.contains("不应出现"))
+  }
+
   func testParsesAtomEntryAndUsesAlternateLink() throws {
     let feedURL = try XCTUnwrap(URL(string: "https://example.com/atom.xml"))
     let xml = """
@@ -175,6 +187,45 @@ final class RSSReaderTests: XCTestCase {
     let loadedArticle = try XCTUnwrap(database.article(id: article.id))
     XCTAssertEqual(loadedArticle.summaryHTML, article.summaryHTML)
     XCTAssertEqual(loadedArticle.contentHTML, fullPayload)
+  }
+
+  func testSQLiteHeaderPreviewFallsBackToContentWhenSummaryIsMissing() throws {
+    let rootURL = temporaryDirectory(named: "rss-header-content-preview")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let fileURL = rootURL.appendingPathComponent("reader.sqlite")
+    let feed = RSSFeed(
+      title: "正文摘要回退",
+      url: try XCTUnwrap(URL(string: "https://example.com/content-preview.xml"))
+    )
+    let article = RSSArticle(
+      id: "content-preview-article",
+      feedID: feed.id,
+      title: "使用正文作为摘要",
+      summaryHTML: "",
+      contentHTML: "<p>正文也应显示为列表摘要。</p>"
+    )
+    let database = try RSSReaderDatabase(fileURL: fileURL)
+    try database.upsertFeed(feed)
+    try database.upsertArticles([article])
+
+    let header = try XCTUnwrap(database.articleHeaders().first)
+    XCTAssertEqual(header.readableSummary, "正文也应显示为列表摘要。")
+  }
+
+  func testInMemoryArticleHeaderBoundsLargeHTMLPreview() throws {
+    let feedID = UUID()
+    let article = RSSArticle(
+      id: "large-preview",
+      feedID: feedID,
+      title: "大摘要",
+      summaryHTML: "<p>\(String(repeating: "preview-marker ", count: 20_000))</p>",
+      contentHTML: "<p>正文</p>"
+    )
+
+    let header = RSSArticleHeader(article: article)
+
+    XCTAssertLessThanOrEqual(header.readableSummary.count, 1_001)
+    XCTAssertTrue(header.readableSummary.contains("preview-marker"))
   }
 
   func testReaderStoreLazyPayloadCacheIsBoundedAndKeepsHeaderStateInSync() async throws {
@@ -626,6 +677,16 @@ final class RSSReaderTests: XCTestCase {
     XCTAssertEqual(
       RSSFeedDiscoveryService.feedURLs(in: html, relativeTo: baseURL).map(\.absoluteString),
       ["https://example.com/feed.xml", "https://example.com/atom.xml"]
+    )
+
+    let ordinaryPageHTML = """
+      <a href="/feeds/news.xml">News</a>
+      <a href="/rss.xml#latest">RSS</a>
+      <a href="/feeds/news.xml">Duplicate</a>
+      """
+    XCTAssertEqual(
+      RSSFeedDiscoveryService.feedURLs(in: ordinaryPageHTML, relativeTo: baseURL).map(\.absoluteString),
+      ["https://example.com/feeds/news.xml", "https://example.com/rss.xml"]
     )
   }
 

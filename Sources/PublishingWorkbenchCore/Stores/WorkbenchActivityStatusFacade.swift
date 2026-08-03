@@ -29,7 +29,7 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
     observe(store.knowledge.$lastImportFailure)
     observe(store.knowledge.$statusMessage)
     observe(store.publishingStore.$isLocalRepositoryMutationRunning)
-    observe(store.publishingStore.$publishActionMessage)
+    observe(store.publishingStore.$publishActionFeedback)
     observe(store.publishingStore.$releaseRecords)
     observe(store.imageStore.$imageBatchProgress)
     observe(store.imageStore.$isImageBatchProcessing)
@@ -270,13 +270,15 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
         canRetry: true
       )
     }
-    guard let failure = failureReason(in: publishing.publishActionMessage) else { return nil }
+    guard let feedback = publishing.publishActionFeedback,
+      feedback.status == .failure
+    else { return nil }
     return WorkbenchTaskItem(
       id: "git-push",
       kind: .gitPush,
-      detail: failure,
+      detail: feedback.message,
       state: .failed,
-      failureReason: failure,
+      failureReason: feedback.message,
       canRetry: store.selectedDraft != nil
     )
   }

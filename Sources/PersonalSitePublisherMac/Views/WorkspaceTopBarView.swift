@@ -53,20 +53,6 @@ struct WorkspaceToolbarMenuLabel: View {
   }
 }
 
-struct WorkspaceToolbarIconButton: View {
-  let systemImage: String
-  let title: String
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      Image(systemName: systemImage)
-    }
-    .buttonStyle(.plain)
-    .help(title)
-  }
-}
-
 struct WorkspaceTaskCenterToolbarButton: View {
   @ObservedObject private var activityStatus: WorkbenchActivityStatusFacade
   let isCompact: Bool

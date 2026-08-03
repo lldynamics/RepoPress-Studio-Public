@@ -65,14 +65,14 @@
         <li>Custom AI, AI chat, writing assistance, content review, and local-model connections.</li>
         <li>Content-health, SEO, social-preview, link, image, taxonomy, and maintenance checks.</li>
         <li>Local change and remote-difference review, followed by user-confirmed GitHub or GitLab sync and publishing.</li>
-        <li>User-initiated browser capture through the Safari Web Extension or the Chrome Web Store extension.</li>
+        <li>User-initiated browser capture through the Safari Web Extension, the Chrome Web Store extension, or an independently loaded Firefox extension.</li>
       </ul>
     </section>
 
     <section>
       <h2>Frequently Asked Questions</h2>
       <h3>Where do browser captures go?</h3>
-      <p>The Safari extension is embedded in the Mac app, and the Chrome extension is installed separately. Each captures only after a user action and writes to the local library through the authenticated <code>127.0.0.1:17843</code> loopback connection on the same Mac. Captures do not pass through the developer's servers. The app-side connection token stays only in macOS Keychain.</p>
+      <p>The Safari extension is embedded in the Mac app, the Chrome extension is installed separately, and the Firefox extension is loaded temporarily from the repository manifest. Each captures only after a user action and writes to the local library through the authenticated <code>127.0.0.1:17843</code> loopback connection on the same Mac. Captures do not pass through the developer's servers. The app-side connection token stays only in macOS Keychain.</p>
 
       <h3>Why does the app request folder access?</h3>
       <p>The app uses the macOS sandbox. It accesses only repositories, research sources, and output locations selected through system panels and restores previously granted access with security-scoped bookmarks.</p>

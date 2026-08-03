@@ -17,12 +17,7 @@ struct SettingsConfigurationHealthCard: View {
   }
 
   private var allItems: [SettingsConfigurationHealthItem] {
-    var items = requiredItems + [repositoryTokenItem]
-    if DistributionFeaturePolicy.allowsExternalAIProviders {
-      items.append(aiKeyItem)
-    }
-    items.append(privacyItem)
-    return items
+    requiredItems + [repositoryTokenItem, aiKeyItem, privacyItem]
   }
 
   private var supportingItems: [SettingsConfigurationHealthItem] {

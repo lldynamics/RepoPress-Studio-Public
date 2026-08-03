@@ -718,6 +718,17 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertFalse(store.localPublishReadiness?.commitBlockingIssues.contains { $0.title == "内容目录不存在" } == true)
   }
 
+  func testPreferredPublishStrategyReportsMissingPackageAsWarning() async throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    store.setDrafts([])
+    store.setSelectedDraftID(nil)
+
+    await store.commitSelectedDraftUsingPreferredStrategy()
+
+    XCTAssertEqual(store.publishActionMessage, "没有可提交的发布包。")
+    XCTAssertEqual(store.publishActionFeedback?.status, .warning)
+  }
+
   func testPreferredPublishStrategyDirectCommitsOnCurrentBranch() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let rootURL = try preparedGitRepositoryRoot()

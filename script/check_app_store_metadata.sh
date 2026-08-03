@@ -14,8 +14,11 @@ SAFARI_EXTENSION_ENTITLEMENTS="$ROOT_DIR/Packaging/SafariWebExtension.entitlemen
 SAFARI_EXTENSION_BUNDLE_ID="com.jinfang.PersonalSitePublisherMac.SafariExtension"
 CORE_RESOURCE_INFO="$APP_BUNDLE/Contents/Resources/${APP_NAME}_PublishingWorkbenchCore.bundle/Info.plist"
 ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
-FEATURE_POLICY="$ROOT_DIR/Sources/PublishingWorkbenchCore/Models/DistributionFeaturePolicy.swift"
+AI_SETTINGS="$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/AISettingsView.swift"
+SETTINGS_TAB="$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/SettingsTab.swift"
+SETTINGS_FACTORY="$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/SettingsTabContentFactory.swift"
 LAUNCH_COORDINATOR="$ROOT_DIR/Sources/PersonalSitePublisherMac/App/WorkbenchLaunchCoordinator.swift"
+BUILD_SCRIPT="$ROOT_DIR/script/build_and_run.sh"
 LOCALIZED_INFO_PLIST_KEYS=(CFBundleDisplayName CFBundleName)
 EXPECTED_DISPLAY_NAME="RepoPress Studio"
 
@@ -23,6 +26,26 @@ fail() {
   echo "app store metadata gate: $*" >&2
   exit 1
 }
+
+for source_path in "$AI_SETTINGS" "$SETTINGS_TAB" "$SETTINGS_FACTORY" "$LAUNCH_COORDINATOR"; do
+  [[ -f "$source_path" ]] || fail "${source_path#$ROOT_DIR/} is missing"
+done
+grep -Eq '^[[:space:]]*AIProviderSection\($' "$AI_SETTINGS" \
+  || fail "AI settings do not render the configured-provider capability"
+grep -Fq 'static let siteSettings: [SettingsTab] = [.configurationStatus, .defaultRules, .token, .ai]' \
+  "$SETTINGS_TAB" || fail "AI settings are not reachable from the site settings navigation"
+grep -Fq 'case .ai:' "$SETTINGS_FACTORY" \
+  || fail "settings content routing does not handle the AI tab"
+grep -Fq 'SettingsAITabFactory.make(context: context)' "$SETTINGS_FACTORY" \
+  || fail "the AI settings route does not render its content factory"
+if grep -r -E '(^|[^[:alnum:]_])(DistributionFeaturePolicy|APP_STORE_BUILD|DIRECT_DISTRIBUTION_BUILD)([^[:alnum:]_]|$)' \
+  "$ROOT_DIR/Sources" >/dev/null; then
+  fail "source must use one compiled capability set across distribution channels"
+fi
+if grep -Eq '^[[:space:]]*-Xswiftc[[:space:]]+(APP_STORE_BUILD|DIRECT_DISTRIBUTION_BUILD)[[:space:]]*$' \
+  "$BUILD_SCRIPT"; then
+  fail "packaging must not inject distribution-specific Swift compilation flags"
+fi
 
 bash "$ROOT_DIR/script/build_and_run.sh" --package-only --app-store >/dev/null
 
@@ -34,8 +57,6 @@ bash "$ROOT_DIR/script/build_and_run.sh" --package-only --app-store >/dev/null
 [[ -f "$SAFARI_EXTENSION_MANIFEST" ]] || fail "Safari Web Extension manifest is missing"
 [[ -f "$ENTITLEMENTS" ]] || fail "AppStore.entitlements is missing"
 [[ -f "$SAFARI_EXTENSION_ENTITLEMENTS" ]] || fail "SafariWebExtension.entitlements is missing"
-[[ -f "$FEATURE_POLICY" ]] || fail "DistributionFeaturePolicy.swift is missing"
-[[ -f "$LAUNCH_COORDINATOR" ]] || fail "WorkbenchLaunchCoordinator.swift is missing"
 
 plutil -lint "$INFO_PLIST" >/dev/null || fail "Info.plist is invalid"
 plutil -lint "$SAFARI_EXTENSION_INFO" >/dev/null \
@@ -134,16 +155,8 @@ safari_minimum_system="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersi
   || fail "unexpected Safari Web Extension minimum system: $safari_minimum_system"
 codesign --verify --strict "$SAFARI_EXTENSION" \
   || fail "Safari Web Extension signature does not verify"
-grep -Fq "public static var allowsExternalAIProviders" "$FEATURE_POLICY" \
-  || fail "distribution policy does not define the App Store AI boundary"
-grep -Fq "allowsExternalAIProviders" "$FEATURE_POLICY" \
-  || fail "distribution policy does not expose the BYOK AI capability"
-grep -Fq "APP_STORE_BUILD" "$ROOT_DIR/script/build_and_run.sh" \
-  || fail "App Store packaging does not pass the compiled distribution boundary"
 grep -Fq "APP_STORE_SWIFT_SCRATCH_PATH" "$ROOT_DIR/script/build_and_run.sh" \
   || fail "App Store packaging does not isolate SwiftPM artifacts by distribution channel"
-grep -Fq "public static var allowsBrowserCapture" "$FEATURE_POLICY" \
-  || fail "distribution policy does not define the App Store browser-capture boundary"
 grep -Fq "let browserBridge = KnowledgeBrowserBridge(" "$LAUNCH_COORDINATOR" \
   || fail "App Store launch path does not construct the sandboxed browser bridge"
 grep -Fq "browserBridge.start()" "$LAUNCH_COORDINATOR" \

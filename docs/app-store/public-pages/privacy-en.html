@@ -56,8 +56,8 @@
       <section>
         <h2>4. Files, Repositories, And Browser Capture</h2>
         <p>The app uses the macOS sandbox. It accesses only repositories, research sources, images, and output locations selected through system panels and restores previously granted access with security-scoped bookmarks.</p>
-        <p>The Safari Web Extension is embedded in the Mac app. The Chrome extension is installed and updated separately through the Chrome Web Store. Each processes a page only after a user-initiated extension, menu, or shortcut action. Captures enter RepoPress Studio on the same Mac through the authenticated <code>127.0.0.1:17843</code> loopback connection and do not pass through the developer's servers.</p>
-        <p>The app-side browser connection token is stored only in macOS Keychain. The Chrome extension stores its pairing token, preferences, limited receipts, and a bounded offline queue in extension-local storage. The current Safari and Chrome channels do not install a Native Messaging helper.</p>
+        <p>The Safari Web Extension is embedded in the Mac app. The Chrome extension is installed and updated separately through the Chrome Web Store, while the Firefox extension is loaded independently from the repository manifest for local use. Each processes a page only after a user-initiated extension, menu, or shortcut action. Captures enter RepoPress Studio on the same Mac through the authenticated <code>127.0.0.1:17843</code> loopback connection and do not pass through the developer's servers.</p>
+        <p>The app-side browser connection token is stored only in macOS Keychain. The Chrome and Firefox extensions store their pairing token, preferences, limited receipts, and a bounded offline queue in extension-local storage. The current Safari, Chrome, and Firefox channels do not install a Native Messaging helper.</p>
       </section>
 
       <section>

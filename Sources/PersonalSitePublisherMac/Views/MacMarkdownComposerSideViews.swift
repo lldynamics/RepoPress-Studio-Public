@@ -145,18 +145,16 @@ struct MarkdownShortcutHelpPanel: View {
       ]
     ),
   ]
-    if DistributionFeaturePolicy.allowsExternalAIProviders {
-      groups.append(
-        (
-          String(localized: "AI 与工具"),
-          [
-            (String(localized: "改写选中文本"), "⌥⌘R"),
-            (String(localized: "打开 AI 对话"), String(localized: "AI > 打开 AI 对话")),
-            (String(localized: "复制上下文 Prompt"), String(localized: "AI > 复制上下文 Prompt")),
-          ]
-        )
+    groups.append(
+      (
+        String(localized: "AI 与工具"),
+        [
+          (String(localized: "改写选中文本"), "⌥⌘R"),
+          (String(localized: "打开 AI 对话"), String(localized: "AI > 打开 AI 对话")),
+          (String(localized: "复制上下文 Prompt"), String(localized: "AI > 复制上下文 Prompt")),
+        ]
       )
-    }
+    )
     return groups
   }
 

@@ -10,9 +10,7 @@ enum ContentHealthArticleGrouping: String, CaseIterable, Identifiable, Sendable 
   var id: String { rawValue }
 
   static var visibleCases: [Self] {
-    allCases.filter {
-      DistributionFeaturePolicy.allowsExternalAIProviders || $0 != .automaticFix
-    }
+    allCases
   }
 
   var title: String {

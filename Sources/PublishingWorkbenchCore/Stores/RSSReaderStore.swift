@@ -232,6 +232,11 @@ public final class RSSReaderStore: ObservableObject {
   }
 
   static let articlePayloadCacheCapacity = 16
+  private static let persistedDateComparisonTolerance: TimeInterval = 0.000001
+
+  private static func persistedDatesMatch(_ lhs: Date, _ rhs: Date) -> Bool {
+    abs(lhs.timeIntervalSince(rhs)) <= persistedDateComparisonTolerance
+  }
 
   public init(
     fileURL: URL? = nil,
@@ -481,17 +486,24 @@ public final class RSSReaderStore: ObservableObject {
       task = pending
     }
 
-    let loaded: RSSArticle?
+    var loaded: RSSArticle?
     do {
       loaded = try await task.value
     } catch {
       articleLoadTasks[id] = nil
-      throw error
+      // A second SQLite connection can briefly observe a busy or just-closed
+      // WAL while a refresh is committing. The store's already-open handle is
+      // the authoritative fallback and avoids turning a valid header into a
+      // blank reader pane.
+      loaded = try database?.article(id: id)
     }
     articleLoadTasks[id] = nil
+    if loaded == nil {
+      loaded = try database?.article(id: id)
+    }
     guard var loaded else { return nil }
     guard let currentHeader = articleHeader(id: id) else { return nil }
-    guard loaded.fetchedAt == currentHeader.fetchedAt else {
+    guard Self.persistedDatesMatch(loaded.fetchedAt, currentHeader.fetchedAt) else {
       return try await loadFreshArticleAfterRevisionChange(id: id)
     }
     loaded.apply(header: currentHeader)
@@ -959,6 +971,23 @@ public final class RSSReaderStore: ObservableObject {
     await refreshFeeds(feeds, force: force, now: Date())
   }
 
+  public func refreshFailedFeeds() async {
+    let now = Date()
+    let failedFeeds = feeds.filter { feed in
+      switch feed.healthStatus(now: now) {
+      case .failing, .backingOff:
+        true
+      case .never, .healthy:
+        false
+      }
+    }
+    guard !failedFeeds.isEmpty else {
+      statusMessage = "没有需要重试的失败订阅。"
+      return
+    }
+    await refreshFeeds(failedFeeds, force: true, now: Date())
+  }
+
   public func refresh(feedID: UUID, force: Bool = true) async {
     guard let feed = feeds.first(where: { $0.id == feedID }) else { return }
     guard !refreshingFeedIDs.contains(feedID) else {
@@ -973,6 +1002,10 @@ public final class RSSReaderStore: ObservableObject {
     maxAge: TimeInterval = 30 * 60,
     now: Date = Date()
   ) async {
+    // Let SwiftUI render the cached headers before an automatic refresh starts.
+    // Entering RSS must remain useful even when several stale feeds need work.
+    await Task.yield()
+    guard !Task.isCancelled else { return }
     let threshold = max(0, maxAge)
     let staleFeeds = feeds.filter { feed in
       guard let lastUpdatedAt = feed.lastUpdatedAt else { return true }
@@ -1477,20 +1510,32 @@ public final class RSSReaderStore: ObservableObject {
   }
 
   private func loadFreshArticleAfterRevisionChange(id: String) async throws -> RSSArticle? {
-    guard let payloadLoader else { return nil }
+    guard database != nil || payloadLoader != nil else { return nil }
     for _ in 0..<2 {
-      guard let expectedHeader = articleHeader(id: id),
-            var article = try await payloadLoader.article(id: id)
-      else { return nil }
-      guard let currentHeader = articleHeader(id: id),
-            currentHeader.fetchedAt == expectedHeader.fetchedAt,
-            article.fetchedAt == currentHeader.fetchedAt
-      else { continue }
+      guard let expectedHeader = articleHeader(id: id) else { return nil }
+      let article = try await authoritativeArticle(id: id)
+      guard var article else {
+        return nil
+      }
+      guard let currentHeader = articleHeader(id: id) else { return nil }
+      guard Self.persistedDatesMatch(currentHeader.fetchedAt, expectedHeader.fetchedAt) else {
+        continue
+      }
+      guard Self.persistedDatesMatch(article.fetchedAt, currentHeader.fetchedAt) else {
+        continue
+      }
       article.apply(header: currentHeader)
       payloadCache.insert(article)
       return article
     }
     return nil
+  }
+
+  private func authoritativeArticle(id: String) async throws -> RSSArticle? {
+    if let database {
+      return try database.article(id: id)
+    }
+    return try await payloadLoader?.article(id: id)
   }
 
   private func scheduleMediaArchive(for articleID: String) {

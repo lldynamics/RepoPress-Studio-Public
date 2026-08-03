@@ -14,8 +14,11 @@ extension WorkbenchStore {
     publishingStore.imageActionMessage = message
   }
 
-  public func setPublishActionMessage(_ message: String?) {
-    publishingStore.publishActionMessage = message
+  public func setPublishActionMessage(
+    _ message: String?,
+    status: PublishActionMessageStatus = .information
+  ) {
+    publishingStore.setPublishActionMessage(message, status: status)
   }
 
 }

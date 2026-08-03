@@ -26,11 +26,11 @@ struct WorkspaceTaskInspector: View {
 
   var body: some View {
     switch section {
-    case .sync, .releaseHistory:
+    case .sync:
       RepositoryContextInspectorView(store: store)
     case .library, .rss:
       EmptyView()
-    case .writing, .contentHealth, .images, .maintenance:
+    case .writing, .contentHealth, .images:
       ArticleInspectorTabs(
         selectedTab: $selectedTab,
         draft: $draft,

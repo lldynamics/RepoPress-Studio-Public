@@ -62,9 +62,9 @@ final class WorkspaceTaskInspectorIssuePresentationTests: XCTestCase {
       ArticleInspectorTab.availableTabs(for: .writing),
       [.knowledge, .metadata, .seo]
     )
-    XCTAssertEqual(ArticleInspectorTab.knowledge.title, "资料库")
-    XCTAssertEqual(ArticleInspectorTab.knowledge.pickerTitle, "资料库")
-    XCTAssertFalse(ArticleInspectorTab.availableTabs(for: .maintenance).contains(.knowledge))
+    XCTAssertEqual(ArticleInspectorTab.knowledge.title, "上下文知识建议")
+    XCTAssertEqual(ArticleInspectorTab.knowledge.pickerTitle, "知识建议")
+    XCTAssertFalse(ArticleInspectorTab.availableTabs(for: .contentHealth).contains(.knowledge))
   }
 
   private func issue(field: String) -> PreflightIssue {

@@ -2,54 +2,6 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
-enum ContentHealthIssueScopeFilter: String, CaseIterable, Identifiable, Sendable {
-  case all
-  case publicRisks
-  case aiFixes
-  case siteIssues
-
-  var id: String { rawValue }
-
-  init(legacyFilter: ContentHealthContextFilter) {
-    switch legacyFilter {
-    case .publicRisks:
-      self = .publicRisks
-    case .aiFixes:
-      self = .aiFixes
-    case .siteIssues:
-      self = .siteIssues
-    case .overview, .maintenance:
-      self = .all
-    }
-  }
-
-  var title: String {
-    switch self {
-    case .all:
-      return String(localized: "全部问题")
-    case .publicRisks:
-      return String(localized: "公开风险")
-    case .aiFixes:
-      return String(localized: "AI 可修复")
-    case .siteIssues:
-      return String(localized: "站点级问题")
-    }
-  }
-
-  var systemImage: String {
-    switch self {
-    case .all:
-      return "checklist"
-    case .publicRisks:
-      return "exclamationmark.shield"
-    case .aiFixes:
-      return "sparkles"
-    case .siteIssues:
-      return "globe.badge.chevron.backward"
-    }
-  }
-}
-
 enum ContentHealthSeverityFilter: String, CaseIterable, Identifiable, Sendable {
   case all
   case errors
@@ -82,7 +34,7 @@ enum ContentHealthSeverityFilter: String, CaseIterable, Identifiable, Sendable {
 
 struct ContentHealthArticlePresentation: Sendable {
   let snapshotID: UUID
-  let issueScope: ContentHealthIssueScopeFilter
+  let filter: ContentHealthContextFilter
   let severityFilter: ContentHealthSeverityFilter
   let rows: [ContentHealthArticleRowModel]
   let rowByDraftID: [UUID: ContentHealthArticleRowModel]
@@ -93,19 +45,17 @@ struct ContentHealthArticlePresentation: Sendable {
 
   init(
     snapshot: ContentHealthSnapshot,
-    issueScope: ContentHealthIssueScopeFilter,
+    filter: ContentHealthContextFilter,
     severityFilter: ContentHealthSeverityFilter
   ) {
     var aiFixItemByDraftID: [UUID: AIPublishingFixQueueItem] = [:]
-    if DistributionFeaturePolicy.allowsExternalAIProviders {
-      for item in snapshot.aiFixQueueItems where aiFixItemByDraftID[item.draftID] == nil {
-        aiFixItemByDraftID[item.draftID] = item
-      }
+    for item in snapshot.aiFixQueueItems where aiFixItemByDraftID[item.draftID] == nil {
+      aiFixItemByDraftID[item.draftID] = item
     }
 
     let sourceSummaries: [DraftPreflightSummary]
-    switch issueScope {
-    case .all:
+    switch filter {
+    case .overview, .maintenance:
       sourceSummaries = snapshot.contentHealthSummaries
     case .publicRisks:
       sourceSummaries = snapshot.publicRiskDraftSummaries
@@ -119,10 +69,10 @@ struct ContentHealthArticlePresentation: Sendable {
 
     let rows = sourceSummaries.compactMap { summary -> ContentHealthArticleRowModel? in
       let sourceIssues: [PreflightIssue]
-      switch issueScope {
+      switch filter {
       case .publicRisks:
         sourceIssues = summary.publicRiskIssues
-      case .all, .aiFixes, .siteIssues:
+      case .overview, .aiFixes, .siteIssues, .maintenance:
         sourceIssues = summary.blockingIssues
       }
       let issues = severityFilter.filter(sourceIssues)
@@ -143,7 +93,7 @@ struct ContentHealthArticlePresentation: Sendable {
       .mapValues(\.count)
 
     snapshotID = snapshot.id
-    self.issueScope = issueScope
+    self.filter = filter
     self.severityFilter = severityFilter
     self.rows = rows
     self.rowByDraftID = rowByDraftID
@@ -156,19 +106,18 @@ struct ContentHealthArticlePresentation: Sendable {
       duplicateMarkdownPaths: duplicateMarkdownPaths
     )
     siteIssues = severityFilter.filter(snapshot.sitePreflightIssues)
-    recommendedAIFixItem =
-      DistributionFeaturePolicy.allowsExternalAIProviders
-      ? snapshot.aiFixQueueItems.first { visibleDraftIDs.contains($0.draftID) }
-      : nil
+    recommendedAIFixItem = snapshot.aiFixQueueItems.first {
+      visibleDraftIDs.contains($0.draftID)
+    }
   }
 
   func matches(
     snapshotID: UUID,
-    issueScope: ContentHealthIssueScopeFilter,
+    filter: ContentHealthContextFilter,
     severityFilter: ContentHealthSeverityFilter
   ) -> Bool {
     self.snapshotID == snapshotID
-      && self.issueScope == issueScope
+      && self.filter == filter
       && self.severityFilter == severityFilter
   }
 }
@@ -245,14 +194,14 @@ struct ContentHealthPresentationService: Sendable {
 
   func articlePresentation(
     snapshot: ContentHealthSnapshot,
-    issueScope: ContentHealthIssueScopeFilter,
+    filter: ContentHealthContextFilter,
     severityFilter: ContentHealthSeverityFilter
   ) async throws -> ContentHealthArticlePresentation {
     let task = Task.detached(priority: .utility) {
       try Task.checkCancellation()
       return ContentHealthArticlePresentation(
         snapshot: snapshot,
-        issueScope: issueScope,
+        filter: filter,
         severityFilter: severityFilter
       )
     }

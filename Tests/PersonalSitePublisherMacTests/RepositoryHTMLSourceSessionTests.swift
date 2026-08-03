@@ -118,7 +118,7 @@ final class OperationalWorkspaceContextStageTests: XCTestCase {
   func testImageWorkbenchNavigationKeepsTaskOrderStable() {
     XCTAssertEqual(
       ImageWorkbenchContextStage.navigationStages,
-      [.overview, .repository, .manager]
+      [.overview, .resources]
     )
     XCTAssertEqual(
       Set(ImageWorkbenchContextStage.navigationStages.map(\.id)).count,

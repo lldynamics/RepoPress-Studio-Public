@@ -342,6 +342,7 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
     )
     XCTAssertEqual(store.releaseRecords.first?.kind, .batchLocalWrite)
     XCTAssertTrue(store.publishActionMessage?.contains("已批量写入 1 篇") == true)
+    XCTAssertEqual(store.publishActionFeedback?.status, .success)
     XCTAssertFalse(store.isLocalRepositoryMutationRunning)
   }
 
@@ -367,6 +368,7 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
 
     XCTAssertNil(result)
     XCTAssertTrue(store.publishActionMessage?.contains("待发布文件已变化") == true)
+    XCTAssertEqual(store.publishActionFeedback?.status, .warning)
     XCTAssertFalse(store.isRemoteRepositoryPublishing)
   }
 

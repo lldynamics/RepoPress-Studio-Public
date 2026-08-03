@@ -205,6 +205,7 @@ final class SiteStarterServiceTests: XCTestCase {
     XCTAssertEqual(store.activeProfileID, result.profile.id)
     XCTAssertEqual(store.visibleDrafts.map(\.title), ["Imported Starter"])
     XCTAssertEqual(store.siteStarterImportResult?.importedDraftCount, 1)
+    XCTAssertEqual(store.publishActionFeedback?.status, .success)
   }
 
   @MainActor
@@ -314,6 +315,7 @@ final class SiteStarterServiceTests: XCTestCase {
       store.publishActionMessage,
       "Starter 文件已生成，但工作台内容在操作期间发生变化，未覆盖当前状态。"
     )
+    XCTAssertEqual(store.publishActionFeedback?.status, .warning)
   }
 
   func testRejectsNonEmptyTargetDirectory() throws {

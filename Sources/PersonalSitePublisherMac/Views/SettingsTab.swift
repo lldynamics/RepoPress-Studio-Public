@@ -5,7 +5,6 @@ import SwiftUI
 struct SettingsContext {
   let store: WorkbenchStore
   let rssStore: RSSReaderStore?
-  let browserBridge: KnowledgeBrowserBridge?
   let activeProfileBinding: Binding<SiteProfile>
   let autoRunPreflightBinding: Binding<Bool>
   let scanRepositoryOnLaunch: Binding<Bool>
@@ -26,7 +25,6 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
   case ai
   case language
   case rss
-  case knowledge
   case privacy
 
   var id: String {
@@ -43,8 +41,6 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return "language"
     case .rss:
       return "rss"
-    case .knowledge:
-      return "knowledge"
     case .privacy:
       return "privacy"
     }
@@ -64,8 +60,6 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return String(localized: "语言")
     case .rss:
       return String(localized: "RSS 阅读")
-    case .knowledge:
-      return String(localized: "资料库")
     case .privacy:
       return String(localized: "隐私")
     }
@@ -85,8 +79,6 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return "globe"
     case .rss:
       return "dot.radiowaves.left.and.right"
-    case .knowledge:
-      return "books.vertical"
     case .privacy:
       return "hand.raised"
     }
@@ -106,11 +98,6 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return String(localized: "选择界面语言，并控制 RepoPress 如何跟随 macOS。")
     case .rss:
       return String(localized: "管理本地图片缓存、刷新并发和历史文章清理。")
-    case .knowledge:
-      if DistributionFeaturePolicy.allowsBrowserCapture {
-        return String(localized: "管理本地检索、智能集合、备份与浏览器连接。")
-      }
-      return String(localized: "管理本地检索、智能集合与资料备份。")
     case .privacy:
       return String(localized: "控制离席时的快速隐藏和私密文章遮挡。")
     }
@@ -120,7 +107,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
     switch self {
     case .configurationStatus, .defaultRules, .token, .ai:
       return true
-    case .language, .rss, .knowledge, .privacy:
+    case .language, .rss, .privacy:
       return false
     }
   }
@@ -129,26 +116,13 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
     switch self {
     case .language, .rss, .privacy:
       return 640
-    case .configurationStatus, .defaultRules, .token, .ai, .knowledge:
+    case .configurationStatus, .defaultRules, .token, .ai:
       return 760
     }
   }
 
-  static var siteSettings: [SettingsTab] {
-    var tabs: [SettingsTab] = [.configurationStatus, .defaultRules, .token]
-    if DistributionFeaturePolicy.allowsExternalAIProviders {
-      tabs.append(.ai)
-    }
-    return tabs
-  }
-  // The library's management and settings entry point now lives in the
-  // library header menu. Keep the enum/factory for legacy deep links, but do
-  // not present a second, disconnected sidebar destination.
+  static let siteSettings: [SettingsTab] = [.configurationStatus, .defaultRules, .token, .ai]
   static let applicationSettings: [SettingsTab] = [.language, .rss, .privacy]
-
-  var isAvailableInCurrentDistribution: Bool {
-    self != .ai || DistributionFeaturePolicy.allowsExternalAIProviders
-  }
 
   @ViewBuilder
   @MainActor

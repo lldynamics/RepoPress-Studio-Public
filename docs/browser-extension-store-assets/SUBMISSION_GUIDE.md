@@ -1,8 +1,8 @@
-# Safari 与 Chrome 扩展提交说明
+# Safari、Chrome 与 Firefox 扩展提交说明
 
-本说明对应 RepoPress Studio 唯一的 Mac App Store 应用版本。当前版本只支持 Safari 和 Chrome。
+本说明对应 RepoPress Studio 唯一的 Mac App Store 应用版本。当前版本支持 Safari、Chrome 和 Firefox。
 Chrome 扩展由 Chrome Web Store 独立安装；Safari Web Extension 作为签名 `.appex`
-随 Mac App Store 应用安装。Mac 应用不安装 Native Messaging 宿主、不写浏览器目录，
+随 Mac App Store 应用安装；Firefox 扩展从仓库清单独立临时加载。Mac 应用不安装 Native Messaging 宿主、不写浏览器目录，
 也不下载或执行扩展代码。
 
 ## 当前边界
@@ -10,7 +10,8 @@ Chrome 扩展由 Chrome Web Store 独立安装；Safari Web Extension 作为签�
 - 当前扩展版本以 `BrowserExtension/manifest.json` 为准。
 - Chrome 正式 ID：`ginjcibepmeobaaadmfiagigcpcebmcc`。
 - Safari 子扩展 Bundle ID：`com.jinfang.PersonalSitePublisherMac.SafariExtension`。
-- Edge 和 Firefox 暂缓，不生成新包、不提交商店，也不在本版本审核文案中声明支持。
+- Firefox 支持本机临时加载和真实浏览器验收，但不随 App Store 应用嵌入，也不宣称已提交 AMO。
+- Edge 暂缓，不生成新包、不提交商店，也不在本版本审核文案中声明支持。
 - 扩展仅向 `http://127.0.0.1:17843/` 发送用户确认的采集内容。
 - 每个请求都必须包含应用生成的随机连接令牌和 `X-RepoPress-Protocol` 协议头。
 - 扩展不连接开发者后端；开发者不接收网页、URL、连接令牌、目录或离线队列。
@@ -140,5 +141,6 @@ git diff --check
 
 ## 暂缓渠道
 
-Edge 与 Firefox 适配源码和旧版发布记录暂时保留，但不属于 0.30.0 发布范围。除非以后明确恢复，
-不要创建 Edge 草稿、Firefox XPI、AMO 提交或对应宣传材料。
+Edge 适配源码和旧版发布记录暂时保留，但不属于当前发布范围。除非以后明确恢复，
+不要创建 Edge 草稿或对应宣传材料。Firefox 的本机临时加载不等于 Firefox XPI/AMO 发布；
+如需正式提交，必须另行建立签名、审核和不可变产物记录。

@@ -353,7 +353,7 @@ struct AIChatModelQuickSwitchSheet: View {
       }
       .buttonStyle(.plain)
 
-      if currentSelection?.canEditCustomModel == true {
+      if AIChatInspectorHeaderPresentation.showsCustomModelInput(selection: currentSelection) {
         HStack(spacing: 8) {
           TextField(String(localized: "输入模型名"), text: $customModelInput)
             .textFieldStyle(.roundedBorder)

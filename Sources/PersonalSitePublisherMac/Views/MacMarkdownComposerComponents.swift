@@ -272,48 +272,46 @@ struct SelectionActionBar: View {
 
   var body: some View {
     HStack(spacing: 8) {
-      if DistributionFeaturePolicy.allowsExternalAIProviders {
-        HStack(spacing: 4) {
-          Image(systemName: "sparkles")
-            .font(.workbenchMetadata)
-            .foregroundStyle(Color.accentColor)
-          Text("AI 选区魔法")
-            .font(.caption.weight(.semibold))
-        }
+      HStack(spacing: 4) {
+        Image(systemName: "sparkles")
+          .font(.workbenchMetadata)
+          .foregroundStyle(Color.accentColor)
+        Text("AI 选区魔法")
+          .font(.caption.weight(.semibold))
+      }
+
+      Menu {
+        selectionActionButton(.rewrite, kind: .rewriteSelection)
+        selectionActionButton(.condense, kind: .condenseSelection)
 
         Menu {
-          selectionActionButton(.rewrite, kind: .rewriteSelection)
-          selectionActionButton(.condense, kind: .condenseSelection)
-
-          Menu {
-            selectionActionButton(.translate, kind: .translateSelectionToChinese)
-            selectionActionButton(.translate, kind: .translateSelectionToEnglish)
-          } label: {
-            Label(
-              AIPublishingDefaultCapability.translate.localizedDisplayName,
-              systemImage: AIPublishingDefaultCapability.translate.systemImage
-            )
-          }
-
-          Divider()
-
-          Button {
-            onOpenAITemplateLibrary()
-          } label: {
-            Label("搜索模板库…", systemImage: "magnifyingglass")
-          }
+          selectionActionButton(.translate, kind: .translateSelectionToChinese)
+          selectionActionButton(.translate, kind: .translateSelectionToEnglish)
         } label: {
-          Label(activeSelectionActionName ?? "✨ 改写选区", systemImage: "sparkles")
+          Label(
+            AIPublishingDefaultCapability.translate.localizedDisplayName,
+            systemImage: AIPublishingDefaultCapability.translate.systemImage
+          )
         }
-        .disabled(isSelectionAIActionRunning)
+
+        Divider()
 
         Button {
-          onApplyLatestAIReply()
+          onOpenAITemplateLibrary()
         } label: {
-          Label("应用 AI 回复", systemImage: "text.badge.checkmark")
+          Label("搜索模板库…", systemImage: "magnifyingglass")
         }
-        .disabled(!hasLatestAssistantMessage)
+      } label: {
+        Label(activeSelectionActionName ?? "✨ 改写选区", systemImage: "sparkles")
       }
+      .disabled(isSelectionAIActionRunning)
+
+      Button {
+        onApplyLatestAIReply()
+      } label: {
+        Label("应用 AI 回复", systemImage: "text.badge.checkmark")
+      }
+      .disabled(!hasLatestAssistantMessage)
 
       Button {
         onInsertImages()

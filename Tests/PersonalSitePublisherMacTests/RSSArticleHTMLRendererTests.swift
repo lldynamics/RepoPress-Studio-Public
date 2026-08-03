@@ -5,6 +5,48 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class RSSArticleHTMLRendererTests: XCTestCase {
+  func testHasRenderableBodyRejectsOnlyNonRenderableMarkup() {
+    let feedID = UUID()
+    let articles = [
+      RSSArticle(id: "blank", feedID: feedID, title: "Blank", contentHTML: "  \n  "),
+      RSSArticle(
+        id: "blocked",
+        feedID: feedID,
+        title: "Blocked",
+        contentHTML: "<script>alert(1)</script><style>body { display: none }</style>"
+      ),
+      RSSArticle(
+        id: "structure-only",
+        feedID: feedID,
+        title: "Structure",
+        contentHTML: "<div><br></div>"
+      ),
+    ]
+
+    for article in articles {
+      XCTAssertFalse(
+        RSSArticleHTMLRenderer.hasRenderableBody(article: article),
+        "Expected \(article.id) to remain an empty-body state"
+      )
+    }
+  }
+
+  func testRenderableBodyFallsBackToSafeSummary() {
+    let article = RSSArticle(
+      id: "summary-fallback",
+      feedID: UUID(),
+      title: "Summary fallback",
+      summaryHTML: "<p>摘要正文</p>",
+      contentHTML: "<script>alert(1)</script>"
+    )
+
+    XCTAssertTrue(RSSArticleHTMLRenderer.hasRenderableBody(article: article))
+    XCTAssertTrue(
+      RSSArticleHTMLRenderer.render(article: article, allowRemoteImages: false)
+        .contains("<p>摘要正文</p>")
+    )
+  }
+
   func testKeepsReadableStructureAndRemovesExecutableContent() throws {
     let article = RSSArticle(
       id: "rich-article",

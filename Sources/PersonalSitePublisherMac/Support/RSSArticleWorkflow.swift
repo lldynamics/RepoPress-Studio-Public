@@ -12,6 +12,37 @@ enum RSSArticleWorkflow {
     clipped(article.readableText, maximumCharacters: maximumCharacters)
   }
 
+  static func sourceDomain(for article: RSSArticle) -> String? {
+    guard let link = article.link else { return nil }
+    return KnowledgeSmartCollectionService().sourceDomain(for: link)
+  }
+
+  /// Reuses the same source-domain organization signal as browser captures.
+  /// If there is no prior folder history for this domain, the imported
+  /// document still participates in the existing source-domain smart
+  /// collection through its source URL.
+  static func preferredImportDestination(
+    article: RSSArticle,
+    documents: [KnowledgeDocument],
+    folders: [KnowledgeFolder]
+  ) -> KnowledgeImportDestination {
+    guard let sourceURL = article.link else { return .preserveExisting }
+    let suggestions = KnowledgeSmartCollectionService().browserOrganizationSuggestions(
+      sourceURL: sourceURL,
+      authors: article.author.map { [$0] } ?? [],
+      tags: article.tags,
+      documents: documents,
+      folders: folders,
+      limit: 3
+    )
+    guard let suggestion = suggestions.folders.first(where: {
+      $0.reasons.contains(.sourceDomain)
+    }) else {
+      return .preserveExisting
+    }
+    return .folder(suggestion.folder.id)
+  }
+
   static func safeReferenceMarkdown(
     article: RSSArticle,
     summary: String,

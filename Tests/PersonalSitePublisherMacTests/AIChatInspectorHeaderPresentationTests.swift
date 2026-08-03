@@ -54,7 +54,7 @@ final class AIChatInspectorHeaderPresentationTests: XCTestCase {
     )
   }
 
-  func testModelPopoverBuildsFastStandardAndHighQualityCandidates() {
+  func testQuickSwitchSheetBuildsFastStandardAndHighQualityCandidates() {
     let config = AIProviderConfig(
       preset: .custom,
       baseURL: "https://api.example.com/v1",
@@ -70,7 +70,7 @@ final class AIChatInspectorHeaderPresentationTests: XCTestCase {
     XCTAssertEqual(candidates.map(\.title), ["快速", "标准", "高质量"])
   }
 
-  func testCustomModelInputOnlyAppearsForEditableSelection() {
+  func testQuickSwitchSheetShowsCustomModelInputOnlyForEditableSelection() {
     let config = AIProviderConfig(
       preset: .custom,
       baseURL: "https://example.com/v1",

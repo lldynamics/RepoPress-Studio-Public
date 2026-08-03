@@ -558,6 +558,8 @@ struct SiteStarterWorkspaceView: View {
     ClipboardWriter.copy(
       commands.joined(separator: "\n"),
       successMessage: "已复制建站命令。"
-    ) { store.setPublishActionMessage($0) }
+    ) { message, status in
+      store.setPublishActionMessage(message, status: status)
+    }
   }
 }

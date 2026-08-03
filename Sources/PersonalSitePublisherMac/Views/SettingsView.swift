@@ -4,7 +4,6 @@ import SwiftUI
 struct SettingsView: View {
   @ObservedObject var store: WorkbenchStore
   let rssStore: RSSReaderStore?
-  let browserBridge: KnowledgeBrowserBridge?
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
   @AppStorage("settingsRequestedTabID") private var requestedSettingsTabID = ""
@@ -15,11 +14,9 @@ struct SettingsView: View {
 
   init(
     store: WorkbenchStore,
-    browserBridge: KnowledgeBrowserBridge?,
     rssStore: RSSReaderStore? = nil
   ) {
     self.store = store
-    self.browserBridge = browserBridge
     self.rssStore = rssStore
     _selectedSettingsTab = State(initialValue: Self.initialSettingsTab())
   }
@@ -159,7 +156,6 @@ struct SettingsView: View {
     SettingsContext(
       store: store,
       rssStore: rssStore,
-      browserBridge: browserBridge,
       activeProfileBinding: activeProfileBinding,
       autoRunPreflightBinding: autoRunPreflightBinding,
       scanRepositoryOnLaunch: $scanRepositoryOnLaunch,
@@ -225,7 +221,7 @@ struct SettingsView: View {
     case .repositoryToken:
       selectedSettingsTab = .token
     case .aiKey:
-      selectedSettingsTab = DistributionFeaturePolicy.allowsExternalAIProviders ? .ai : .configurationStatus
+      selectedSettingsTab = .ai
     case .privacy:
       selectedSettingsTab = .privacy
     }
@@ -235,9 +231,7 @@ struct SettingsView: View {
     guard !requestedTabID.isEmpty else {
       return
     }
-    guard let tab = SettingsTab.allCases.first(where: {
-      $0.id == requestedTabID && $0.isAvailableInCurrentDistribution
-    }) else {
+    guard let tab = SettingsTab.allCases.first(where: { $0.id == requestedTabID }) else {
       requestedSettingsTabID = ""
       return
     }

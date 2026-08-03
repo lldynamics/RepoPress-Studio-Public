@@ -14,7 +14,7 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
   var title: String {
     switch self {
     case .knowledge:
-      return String(localized: "资料库")
+      return String(localized: "上下文知识建议")
     case .metadata:
       return String(localized: "元数据")
     case .seo:
@@ -44,7 +44,7 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
   var pickerTitle: String {
     switch self {
     case .knowledge:
-      return String(localized: "资料库")
+      return String(localized: "知识建议")
     case .metadata, .seo, .images, .checks:
       return title
     }
@@ -54,13 +54,13 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
     switch section {
     case .writing:
       return .knowledge
-    case .sync, .releaseHistory:
+    case .sync:
       return .metadata
     case .contentHealth:
       return .checks
     case .images:
       return .images
-    case .siteStarter, .library, .rss, .maintenance:
+    case .siteStarter, .library, .rss:
       return .metadata
     }
   }
@@ -69,13 +69,11 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
     switch section {
     case .writing:
       return [.knowledge, .metadata, .seo]
-    case .maintenance:
-      return [.metadata, .seo]
     case .contentHealth:
       return [.checks]
     case .images:
       return [.images]
-    case .sync, .releaseHistory, .library, .rss:
+    case .sync, .library, .rss:
       return []
     case .siteStarter:
       return [.metadata]

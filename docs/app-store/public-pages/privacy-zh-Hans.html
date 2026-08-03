@@ -56,8 +56,8 @@
       <section>
         <h2>4. 文件、仓库与浏览器采集</h2>
         <p>应用使用 macOS 沙盒，只访问用户通过系统面板选择的仓库、资料、图片和输出位置，并通过安全范围书签恢复已经授予的访问权。</p>
-        <p>Safari Web Extension 随 Mac 应用内置；Chrome 扩展由 Chrome 网上应用店单独安装和更新。两者只在用户主动点击扩展、菜单或快捷键后处理网页。采集通过带随机配对令牌的 <code>127.0.0.1:17843</code> 回环连接进入同一台 Mac，不经过开发者服务器。</p>
-        <p>应用侧浏览器连接令牌只保存在 macOS Keychain。Chrome 扩展的配对令牌、偏好、有限回执和受容量限制的离线队列保存在扩展本地存储中。当前 Safari 和 Chrome 渠道不安装 Native Messaging 辅助程序。</p>
+        <p>Safari Web Extension 随 Mac 应用内置；Chrome 扩展由 Chrome 网上应用店单独安装和更新，Firefox 扩展从仓库清单独立加载供本机使用。三者只在用户主动点击扩展、菜单或快捷键后处理网页。采集通过带随机配对令牌的 <code>127.0.0.1:17843</code> 回环连接进入同一台 Mac，不经过开发者服务器。</p>
+        <p>应用侧浏览器连接令牌只保存在 macOS Keychain。Chrome 和 Firefox 扩展的配对令牌、偏好、有限回执和受容量限制的离线队列保存在扩展本地存储中。当前 Safari、Chrome 和 Firefox 渠道不安装 Native Messaging 辅助程序。</p>
       </section>
 
       <section>

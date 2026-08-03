@@ -67,4 +67,48 @@ final class RSSArticleWorkflowTests: XCTestCase {
     XCTAssertTrue(firstBody.contains("可核对的摘录"))
     XCTAssertEqual(secondBody, firstBody)
   }
+
+  func testPreferredImportDestinationReusesFolderFromSourceDomainHistory() throws {
+    let folder = KnowledgeFolder(name: "开发资料")
+    let existingDocument = KnowledgeDocument(
+      kind: .webpage,
+      title: "旧文章",
+      sourceURL: try XCTUnwrap(URL(string: "https://example.com/old")),
+      folderID: folder.id
+    )
+    let article = RSSArticle(
+      id: "news-2",
+      feedID: UUID(),
+      title: "新文章",
+      link: try XCTUnwrap(URL(string: "https://www.example.com/new")),
+      contentHTML: "<p>正文</p>"
+    )
+
+    let destination = RSSArticleWorkflow.preferredImportDestination(
+      article: article,
+      documents: [existingDocument],
+      folders: [folder]
+    )
+
+    XCTAssertEqual(destination, .folder(folder.id))
+  }
+
+  func testPreferredImportDestinationFallsBackToSmartSourceCollection() throws {
+    let article = RSSArticle(
+      id: "news-3",
+      feedID: UUID(),
+      title: "没有历史分类的文章",
+      link: try XCTUnwrap(URL(string: "https://new.example.org/post")),
+      contentHTML: "<p>正文</p>"
+    )
+
+    let destination = RSSArticleWorkflow.preferredImportDestination(
+      article: article,
+      documents: [],
+      folders: []
+    )
+
+    XCTAssertEqual(destination, .preserveExisting)
+    XCTAssertEqual(RSSArticleWorkflow.sourceDomain(for: article), "new.example.org")
+  }
 }

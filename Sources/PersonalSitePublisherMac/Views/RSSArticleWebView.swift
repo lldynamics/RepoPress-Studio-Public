@@ -5,6 +5,11 @@ import SwiftUI
 import WebKit
 
 enum RSSArticleHTMLRenderer {
+  private struct SanitizedBody {
+    let html: String
+    let hasRenderableContent: Bool
+  }
+
   private static let allowedTags: Set<String> = [
     "a", "blockquote", "br", "code", "del", "div", "em", "h1", "h2", "h3",
     "h4", "h5", "h6", "i", "li", "ol", "p", "pre", "s", "strong", "table",
@@ -16,19 +21,35 @@ enum RSSArticleHTMLRenderer {
     article: RSSArticle,
     allowRemoteImages: Bool,
     mediaAssets: [RSSMediaAsset] = [],
-    mediaCacheDirectoryURL: URL? = nil
+    mediaCacheDirectoryURL: URL? = nil,
+    fontSize: Double = RSSReadingComfortConfiguration.defaultFontSize,
+    lineSpacing: Double = RSSReadingComfortConfiguration.defaultLineSpacing,
+    theme: RSSReadingTheme = .system,
+    initialReadingProgress: Double = 0
   ) -> String {
-    let source = article.contentHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      ? article.summaryHTML
-      : article.contentHTML
-    return render(
-      source: source,
-      baseURL: article.link,
+    let body = preferredSanitizedBody(
+      for: article,
       allowRemoteImages: allowRemoteImages,
       mediaAssets: mediaAssets,
-      mediaCacheDirectoryURL: mediaCacheDirectoryURL,
-      languageTag: RSSArticleLanguageResolver.languageTag(for: article)
+      mediaCacheDirectoryURL: mediaCacheDirectoryURL
     )
+    return renderDocument(
+      body: body.html,
+      languageTag: RSSArticleLanguageResolver.languageTag(for: article),
+      fontSize: fontSize,
+      lineSpacing: lineSpacing,
+      theme: theme,
+      initialReadingProgress: initialReadingProgress
+    )
+  }
+
+  static func hasRenderableBody(article: RSSArticle) -> Bool {
+    preferredSanitizedBody(
+      for: article,
+      allowRemoteImages: false,
+      mediaAssets: [],
+      mediaCacheDirectoryURL: nil
+    ).hasRenderableContent
   }
 
   static func render(
@@ -37,8 +58,109 @@ enum RSSArticleHTMLRenderer {
     allowRemoteImages: Bool,
     mediaAssets: [RSSMediaAsset] = [],
     mediaCacheDirectoryURL: URL? = nil,
-    languageTag: String = "und"
+    languageTag: String = "und",
+    fontSize: Double = RSSReadingComfortConfiguration.defaultFontSize,
+    lineSpacing: Double = RSSReadingComfortConfiguration.defaultLineSpacing,
+    theme: RSSReadingTheme = .system,
+    initialReadingProgress: Double = 0
   ) -> String {
+    let body = sanitizedBody(
+      source: source,
+      baseURL: baseURL,
+      allowRemoteImages: allowRemoteImages,
+      mediaAssets: mediaAssets,
+      mediaCacheDirectoryURL: mediaCacheDirectoryURL
+    )
+    return renderDocument(
+      body: body.html,
+      languageTag: languageTag,
+      fontSize: fontSize,
+      lineSpacing: lineSpacing,
+      theme: theme,
+      initialReadingProgress: initialReadingProgress
+    )
+  }
+
+  private static func renderDocument(
+    body: String,
+    languageTag: String,
+    fontSize: Double,
+    lineSpacing: Double,
+    theme: RSSReadingTheme,
+    initialReadingProgress: Double
+  ) -> String {
+    let normalizedFontSize = min(
+      max(fontSize.isFinite ? fontSize : RSSReadingComfortConfiguration.defaultFontSize,
+          RSSReadingComfortConfiguration.fontSizeRange.lowerBound),
+      RSSReadingComfortConfiguration.fontSizeRange.upperBound
+    )
+    let normalizedLineSpacing = min(
+      max(lineSpacing.isFinite ? lineSpacing : RSSReadingComfortConfiguration.defaultLineSpacing,
+          RSSReadingComfortConfiguration.lineSpacingRange.lowerBound),
+      RSSReadingComfortConfiguration.lineSpacingRange.upperBound
+    )
+    let normalizedProgress = min(max(initialReadingProgress.isFinite ? initialReadingProgress : 0, 0), 1)
+    return """
+    <!doctype html>
+    <html lang="\(escapeAttribute(languageTag))">
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: http: file:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';">
+      <style>
+        :root { color-scheme: \(theme.cssColorScheme); }
+        html, body { width: 100%; min-height: 100%; }
+        body { display: block; visibility: visible; opacity: 1; margin: 0; min-height: 100vh; padding: 4px 2px 28px; color: \(theme.cssForeground) !important; background: \(theme.cssBackground) !important; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; font-size: \(normalizedFontSize)px; line-height: \(normalizedLineSpacing); overflow-wrap: anywhere; -webkit-text-fill-color: \(theme.cssForeground); }
+        #rss-article-body { display: block; visibility: visible; opacity: 1; color: \(theme.cssForeground) !important; }
+        h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 1.1em 0 0.55em; }
+        p, div, blockquote, pre, ul, ol, table { margin: 0.75em 0; }
+        ul, ol { padding-left: 1.6em; }
+        blockquote { margin-left: 0; padding: 0.1em 1em; border-left: 3px solid \(theme.cssSecondaryForeground); color: \(theme.cssSecondaryForeground); }
+        pre { padding: 0.85em 1em; border-radius: 8px; background: rgba(127, 127, 127, 0.14); overflow-x: auto; white-space: pre-wrap; }
+        code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid rgba(127, 127, 127, 0.35); padding: 0.35em 0.55em; text-align: left; vertical-align: top; }
+        a { color: \(theme.cssLink); }
+        img { max-width: 100%; height: auto; border-radius: 8px; }
+        .remote-image-disabled { display: inline-block; padding: 0.55em 0.8em; border: 1px dashed \(theme.cssSecondaryForeground); border-radius: 7px; color: \(theme.cssSecondaryForeground); }
+        mark.rss-highlight { background: color-mix(in srgb, #ffd60a 55%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
+      </style>
+    </head>
+    <body data-initial-reading-progress="\(normalizedProgress)"><main id="rss-article-body">\(body)</main></body>
+    </html>
+    """
+  }
+
+  private static func preferredSanitizedBody(
+    for article: RSSArticle,
+    allowRemoteImages: Bool,
+    mediaAssets: [RSSMediaAsset],
+    mediaCacheDirectoryURL: URL?
+  ) -> SanitizedBody {
+    let content = sanitizedBody(
+      source: article.contentHTML,
+      baseURL: article.link,
+      allowRemoteImages: allowRemoteImages,
+      mediaAssets: mediaAssets,
+      mediaCacheDirectoryURL: mediaCacheDirectoryURL
+    )
+    guard !content.hasRenderableContent else { return content }
+    let summary = sanitizedBody(
+      source: article.summaryHTML,
+      baseURL: article.link,
+      allowRemoteImages: allowRemoteImages,
+      mediaAssets: mediaAssets,
+      mediaCacheDirectoryURL: mediaCacheDirectoryURL
+    )
+    return summary.hasRenderableContent ? summary : content
+  }
+
+  private static func sanitizedBody(
+    source: String,
+    baseURL: URL?,
+    allowRemoteImages: Bool,
+    mediaAssets: [RSSMediaAsset],
+    mediaCacheDirectoryURL: URL?
+  ) -> SanitizedBody {
     let withoutDangerousBlocks = source
       .replacingOccurrences(
         of: "<!--([\\s\\S]*?)-->",
@@ -81,33 +203,14 @@ enum RSSArticleHTMLRenderer {
       output += escapeText(String(withoutDangerousBlocks[cursor...]))
     }
 
-    let body = output.trimmingCharacters(in: .whitespacesAndNewlines)
-    return """
-    <!doctype html>
-    <html lang="\(escapeAttribute(languageTag))">
-    <head>
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: http: file:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';">
-      <style>
-        :root { color-scheme: light dark; }
-        body { margin: 0; padding: 4px 2px 28px; color: -apple-system-label; background: transparent; font: -apple-system-body; line-height: 1.65; overflow-wrap: anywhere; }
-        h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 1.1em 0 0.55em; }
-        p, div, blockquote, pre, ul, ol, table { margin: 0.75em 0; }
-        ul, ol { padding-left: 1.6em; }
-        blockquote { margin-left: 0; padding: 0.1em 1em; border-left: 3px solid -apple-system-secondary-label; color: -apple-system-secondary-label; }
-        pre { padding: 0.85em 1em; border-radius: 8px; background: rgba(127, 127, 127, 0.14); overflow-x: auto; white-space: pre-wrap; }
-        code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid rgba(127, 127, 127, 0.35); padding: 0.35em 0.55em; text-align: left; vertical-align: top; }
-        a { color: -apple-system-link; }
-        img { max-width: 100%; height: auto; border-radius: 8px; }
-        .remote-image-disabled { display: inline-block; padding: 0.55em 0.8em; border: 1px dashed -apple-system-secondary-label; border-radius: 7px; color: -apple-system-secondary-label; }
-        mark.rss-highlight { background: color-mix(in srgb, #ffd60a 55%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
-      </style>
-    </head>
-    <body>\(body)</body>
-    </html>
-    """
+    let html = output.trimmingCharacters(in: .whitespacesAndNewlines)
+    let readableText = RSSHTMLTextSanitizer.plainText(from: html)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let hasImage = html.range(of: "(?is)<img\\b", options: .regularExpression) != nil
+    return SanitizedBody(
+      html: html,
+      hasRenderableContent: !readableText.isEmpty || hasImage
+    )
   }
 
   private static func sanitizeTag(
@@ -240,7 +343,12 @@ struct RSSArticleWebView: NSViewRepresentable {
   let highlights: [RSSArticleHighlight]
   let mediaAssets: [RSSMediaAsset]
   let mediaCacheDirectoryURL: URL?
+  let fontSize: Double
+  let lineSpacing: Double
+  let theme: RSSReadingTheme
+  let initialReadingProgress: Double
   let onSelectionChanged: (String) -> Void
+  let onReadingProgress: (Double) -> Void
   let onNavigationError: (String) -> Void
 
   init(
@@ -249,7 +357,12 @@ struct RSSArticleWebView: NSViewRepresentable {
     highlights: [RSSArticleHighlight],
     mediaAssets: [RSSMediaAsset] = [],
     mediaCacheDirectoryURL: URL? = nil,
+    fontSize: Double = RSSReadingComfortConfiguration.defaultFontSize,
+    lineSpacing: Double = RSSReadingComfortConfiguration.defaultLineSpacing,
+    theme: RSSReadingTheme = .system,
+    initialReadingProgress: Double = 0,
     onSelectionChanged: @escaping (String) -> Void,
+    onReadingProgress: @escaping (Double) -> Void = { _ in },
     onNavigationError: @escaping (String) -> Void
   ) {
     self.article = article
@@ -257,7 +370,12 @@ struct RSSArticleWebView: NSViewRepresentable {
     self.highlights = highlights
     self.mediaAssets = mediaAssets
     self.mediaCacheDirectoryURL = mediaCacheDirectoryURL
+    self.fontSize = fontSize
+    self.lineSpacing = lineSpacing
+    self.theme = theme
+    self.initialReadingProgress = initialReadingProgress
     self.onSelectionChanged = onSelectionChanged
+    self.onReadingProgress = onReadingProgress
     self.onNavigationError = onNavigationError
   }
 
@@ -265,14 +383,18 @@ struct RSSArticleWebView: NSViewRepresentable {
   final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     var lastRenderToken: String?
     var pendingHighlights: [RSSArticleHighlight] = []
+    var pendingReadingProgress = 0.0
     let onSelectionChanged: (String) -> Void
+    let onReadingProgress: (Double) -> Void
     let onNavigationError: (String) -> Void
 
     init(
       onSelectionChanged: @escaping (String) -> Void,
+      onReadingProgress: @escaping (Double) -> Void,
       onNavigationError: @escaping (String) -> Void
     ) {
       self.onSelectionChanged = onSelectionChanged
+      self.onReadingProgress = onReadingProgress
       self.onNavigationError = onNavigationError
       super.init()
     }
@@ -281,8 +403,11 @@ struct RSSArticleWebView: NSViewRepresentable {
       _ userContentController: WKUserContentController,
       didReceive message: WKScriptMessage
     ) {
-      guard message.name == "rssSelection", let value = message.body as? String else { return }
-      onSelectionChanged(value.trimmingCharacters(in: .whitespacesAndNewlines))
+      if message.name == "rssSelection", let value = message.body as? String {
+        onSelectionChanged(value.trimmingCharacters(in: .whitespacesAndNewlines))
+      } else if message.name == "rssProgress", let value = message.body as? NSNumber {
+        onReadingProgress(min(max(value.doubleValue, 0), 1))
+      }
     }
 
     func webView(
@@ -317,6 +442,10 @@ struct RSSArticleWebView: NSViewRepresentable {
       didFinish navigation: WKNavigation!
     ) {
       applyHighlights(to: webView)
+      let progress = min(max(pendingReadingProgress, 0), 1)
+      webView.evaluateJavaScript(
+        "window.rssApplyReadingProgress && window.rssApplyReadingProgress(\(progress));"
+      )
     }
 
     func webView(
@@ -346,6 +475,7 @@ struct RSSArticleWebView: NSViewRepresentable {
   func makeCoordinator() -> Coordinator {
     Coordinator(
       onSelectionChanged: onSelectionChanged,
+      onReadingProgress: onReadingProgress,
       onNavigationError: onNavigationError
     )
   }
@@ -387,20 +517,46 @@ struct RSSArticleWebView: NSViewRepresentable {
       injectionTime: .atDocumentEnd,
       forMainFrameOnly: true
     )
+    let progressScript = WKUserScript(
+      source: """
+      (() => {
+        const report = () => {
+          const documentHeight = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0);
+          const maximum = Math.max(0, documentHeight - window.innerHeight);
+          const progress = maximum > 0 ? window.scrollY / maximum : 0;
+          window.webkit.messageHandlers.rssProgress.postMessage(progress);
+        };
+        window.rssApplyReadingProgress = (value) => {
+          const documentHeight = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0);
+          const maximum = Math.max(0, documentHeight - window.innerHeight);
+          window.scrollTo(0, maximum * Math.min(1, Math.max(0, Number(value) || 0)));
+          report();
+        };
+        window.addEventListener('scroll', report, { passive: true });
+        window.addEventListener('resize', report);
+        report();
+      })();
+      """,
+      injectionTime: .atDocumentEnd,
+      forMainFrameOnly: true
+    )
     configuration.userContentController.addUserScript(selectionScript)
+    configuration.userContentController.addUserScript(progressScript)
     configuration.userContentController.add(context.coordinator, name: "rssSelection")
+    configuration.userContentController.add(context.coordinator, name: "rssProgress")
     let webView = WKWebView(frame: .zero, configuration: configuration)
     webView.navigationDelegate = context.coordinator
     webView.allowsMagnification = true
-    webView.setValue(false, forKey: "drawsBackground")
+    webView.setValue(true, forKey: "drawsBackground")
     return webView
   }
 
   func updateNSView(_ nsView: WKWebView, context: Context) {
     let highlightsToken = highlights.map { "\($0.id.uuidString):\($0.updatedAt.timeIntervalSince1970)" }.joined(separator: ",")
     let mediaToken = mediaAssets.map(\.id).joined(separator: ",")
-    let token = "\(article.id)|\(allowRemoteImages)|\(highlightsToken)|\(mediaToken)"
+    let token = "\(article.id)|\(allowRemoteImages)|\(highlightsToken)|\(mediaToken)|\(fontSize)|\(lineSpacing)|\(theme.rawValue)"
     context.coordinator.pendingHighlights = highlights
+    context.coordinator.pendingReadingProgress = initialReadingProgress
     guard context.coordinator.lastRenderToken != token else { return }
     context.coordinator.lastRenderToken = token
     nsView.loadHTMLString(
@@ -408,7 +564,11 @@ struct RSSArticleWebView: NSViewRepresentable {
         article: article,
         allowRemoteImages: allowRemoteImages,
         mediaAssets: mediaAssets,
-        mediaCacheDirectoryURL: mediaCacheDirectoryURL
+        mediaCacheDirectoryURL: mediaCacheDirectoryURL,
+        fontSize: fontSize,
+        lineSpacing: lineSpacing,
+        theme: theme,
+        initialReadingProgress: initialReadingProgress
       ),
       baseURL: article.link
     )

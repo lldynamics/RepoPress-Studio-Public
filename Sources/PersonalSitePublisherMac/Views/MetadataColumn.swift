@@ -32,15 +32,10 @@ struct MetadataColumn: View {
     Group {
       switch WorkspaceInspectorPresentation.route(
         for: navigation.selectedSection,
-        isAIAssistantPresented: DistributionFeaturePolicy.allowsExternalAIProviders
-          && ai.isAssistantPresented
+        isAIAssistantPresented: ai.isAssistantPresented
       ) {
       case .aiAssistant:
-        if DistributionFeaturePolicy.allowsExternalAIProviders {
-          AIChatContextInspectorView(store: store)
-        } else {
-          articleInspector
-        }
+        AIChatContextInspectorView(store: store)
       case .siteStarter:
         SiteStarterInspectorView(state: SiteStarterInspectorState(store: store))
       case .repository:

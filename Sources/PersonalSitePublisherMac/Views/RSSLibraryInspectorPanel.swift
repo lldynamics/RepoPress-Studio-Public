@@ -18,7 +18,7 @@ private struct RSSLibraryInspectorEntry: Identifiable {
   var isStarred: Bool { article.isStarred }
 
   var kindTitle: String {
-    highlight == nil ? String(localized: "收藏文章") : String(localized: "RSS 高亮")
+    highlight == nil ? String(localized: "稍后阅读") : String(localized: "RSS 高亮")
   }
 }
 
@@ -65,7 +65,7 @@ struct RSSLibraryInspectorPanel: View {
 
       if entries.isEmpty {
         Label(
-          "RSS 资料库中还没有收藏或高亮。",
+          "RSS 资料库中还没有稍后阅读文章或高亮。",
           systemImage: "tray"
         )
         .font(.workbenchSupporting)
@@ -88,7 +88,7 @@ struct RSSLibraryInspectorPanel: View {
         }
 
         if entries.count > 30 {
-          Text("仅显示最近 30 条 RSS 收藏与高亮。")
+          Text("仅显示最近 30 条 RSS 稍后阅读文章与高亮。")
             .font(.workbenchMetadata)
             .foregroundStyle(.secondary)
         }
@@ -114,7 +114,7 @@ struct RSSLibraryInspectorPanel: View {
 
   private var header: some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Label("RSS 收藏与高亮", systemImage: "dot.radiowaves.left.and.right")
+      Label("RSS 稍后阅读与高亮", systemImage: "dot.radiowaves.left.and.right")
         .font(.workbenchCardTitle)
       Spacer(minLength: 6)
       if !entries.isEmpty {
@@ -124,7 +124,7 @@ struct RSSLibraryInspectorPanel: View {
       }
     }
     .accessibilityElement(children: .combine)
-    .accessibilityLabel("RSS 收藏与高亮")
+    .accessibilityLabel("RSS 稍后阅读与高亮")
   }
 
   private func entryRow(_ entry: RSSLibraryInspectorEntry) -> some View {
@@ -150,7 +150,7 @@ struct RSSLibraryInspectorPanel: View {
                 Image(systemName: "star.fill")
                   .font(.caption2)
                   .foregroundStyle(WorkbenchTheme.warning)
-                  .accessibilityLabel("已收藏")
+                  .accessibilityLabel("已加入稍后阅读")
               }
             }
             Text(entry.article.title)

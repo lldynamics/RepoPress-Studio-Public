@@ -131,11 +131,6 @@ struct PublishingConsoleCommands: Commands {
     }
 
     CommandMenu(String(localized: "前往")) {
-      Button(String(localized: "建站工作区")) {
-        store.selectSection(.siteStarter)
-      }
-      .disabled(!canUseProtectedWorkbench)
-
       Button(
         workspaceFirstRunSetupCommandAction == nil
           ? String(localized: "首次设置…")
@@ -184,10 +179,10 @@ struct PublishingConsoleCommands: Commands {
       }
 
       Button(workspaceNavigationLocalizedKey("workspace.maintenance")) {
-        store.selectSection(.maintenance)
+        workspaceCommandPaletteAction?.openMaintenance()
       }
       .keyboardShortcut("7")
-      .disabled(!canUseProtectedWorkbench)
+      .disabled(!canUseProtectedWorkbench || workspaceCommandPaletteAction == nil)
     }
 
     CommandMenu(String(localized: "发布")) {
@@ -221,37 +216,35 @@ struct PublishingConsoleCommands: Commands {
       }
 
       Button(workspaceNavigationLocalizedKey("workspace.releaseHistory")) {
-        store.selectSection(.releaseHistory)
+        workspaceCommandPaletteAction?.openReleaseHistory()
       }
       .keyboardShortcut("8")
-      .disabled(!canUseProtectedWorkbench)
+      .disabled(!canUseProtectedWorkbench || workspaceCommandPaletteAction == nil)
     }
 
-    if DistributionFeaturePolicy.allowsExternalAIProviders {
-      CommandMenu(String(localized: "AI")) {
-        Button(
-          isAIChatPanelVisible
-            ? String(localized: "关闭 AI 对话")
-            : String(localized: "打开 AI 对话")
-        ) {
-          toggleAIChatWorkspaceForCommandDraft()
-        }
-        .keyboardShortcut("a", modifiers: [.command, .option])
-        .disabled(!canUseProtectedWorkbench || commandDraftID == nil)
-
-        Divider()
-
-        Button(String(localized: "改写选中文本")) {
-          markdownEditorCommands?.rewriteSelection()
-        }
-        .keyboardShortcut("r", modifiers: [.command, .option])
-        .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canRewriteSelection != true)
-
-        Button(String(localized: "复制上下文 Prompt")) {
-          markdownEditorCommands?.copyAIPrompt()
-        }
-        .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
+    CommandMenu(String(localized: "AI")) {
+      Button(
+        isAIChatPanelVisible
+          ? String(localized: "关闭 AI 对话")
+          : String(localized: "打开 AI 对话")
+      ) {
+        toggleAIChatWorkspaceForCommandDraft()
       }
+      .keyboardShortcut("a", modifiers: [.command, .option])
+      .disabled(!canUseProtectedWorkbench || commandDraftID == nil)
+
+      Divider()
+
+      Button(String(localized: "改写选中文本")) {
+        markdownEditorCommands?.rewriteSelection()
+      }
+      .keyboardShortcut("r", modifiers: [.command, .option])
+      .disabled(!canUseProtectedWorkbench || markdownEditorCommands?.canRewriteSelection != true)
+
+      Button(String(localized: "复制上下文 Prompt")) {
+        markdownEditorCommands?.copyAIPrompt()
+      }
+      .disabled(!canUseProtectedWorkbench || markdownEditorCommands == nil)
     }
 
     CommandGroup(after: .help) {
@@ -712,20 +705,24 @@ struct PublishingConsoleCommands: Commands {
       publishDrawerCommandAction.open(message)
     } else {
       store.runPreflight()
-      store.setPublishActionMessage(message)
+      store.setPublishActionMessage(message, status: .information)
     }
   }
 
   private func copyRepositorySyncCommands() {
     guard let plan = store.repositorySyncCommandPlan else {
-      store.setPublishActionMessage(String(localized: "选择本地仓库后才能生成同步建议命令。"))
+      store.setPublishActionMessage(
+        String(localized: "选择本地仓库后才能生成同步建议命令。"),
+        status: .warning
+      )
       return
     }
-    copyToPasteboard(plan.commandText)
-    store.setPublishActionMessage(String(localized: "已复制同步建议命令。"))
+    copyToPasteboard(plan.commandText, successMessage: "已复制同步建议命令。")
   }
 
-  private func copyToPasteboard(_ value: String) {
-    ClipboardWriter.copy(value, successMessage: "已复制到剪贴板。") { store.setPublishActionMessage($0) }
+  private func copyToPasteboard(_ value: String, successMessage: String) {
+    ClipboardWriter.copy(value, successMessage: successMessage) { message, status in
+      store.setPublishActionMessage(message, status: status)
+    }
   }
 }

@@ -12,13 +12,12 @@ final class KnowledgeSettingsPresentationTests: XCTestCase {
     XCTAssertFalse(state.browserConnection)
   }
 
-  func testKnowledgeSettingsAppearWithApplicationSettings() {
-    XCTAssertEqual(SettingsTab.applicationSettings, [.language, .privacy])
+  func testApplicationSettingsExcludeTheLibraryManagedSettingsSheet() {
+    XCTAssertEqual(SettingsTab.applicationSettings, [.language, .rss, .privacy])
     XCTAssertEqual(SettingsTab.language.title, "语言")
     XCTAssertEqual(SettingsTab.language.systemImage, "globe")
     XCTAssertFalse(SettingsTab.language.isSiteScoped)
-    XCTAssertEqual(SettingsTab.knowledge.title, "资料库")
-    XCTAssertEqual(SettingsTab.knowledge.systemImage, "books.vertical")
-    XCTAssertFalse(SettingsTab.knowledge.isSiteScoped)
+    XCTAssertEqual(SettingsTab.rss.title, "RSS 阅读")
+    XCTAssertFalse(SettingsTab.rss.isSiteScoped)
   }
 }

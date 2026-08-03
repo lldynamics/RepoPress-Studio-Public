@@ -303,7 +303,10 @@ public struct LocalContentImportService: Sendable {
           continue
         }
 
-        let sourceMetadataBeforeRead = LocalContentImportFileMetadata.read(from: fileURL)
+        let sourceMetadataBeforeRead = LocalContentImportFileMetadata.read(
+          from: fileURL,
+          includingContentSample: true
+        )
         do {
           let document = try BoundedFileReader.utf8String(
             relativePath: repositoryPath,

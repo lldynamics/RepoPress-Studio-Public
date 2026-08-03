@@ -21,9 +21,7 @@ struct KnowledgeLibraryDetailView: View {
       } else {
         EmptyStateView(
           title: "资料库",
-          message: DistributionFeaturePolicy.allowsExternalAIProviders
-            ? LocalizedStringKey("导入你读过的 EPUB 书籍、文章、网页或 PDF，写作和对话时 AI 可以按需引用。")
-            : LocalizedStringKey("导入 EPUB、Markdown、TXT、HTML 或 PDF，建立只保存在本机的可检索资料库。"),
+          message: LocalizedStringKey("导入你读过的 EPUB 书籍、文章、网页或 PDF，写作和对话时 AI 可以按需引用。"),
           systemImage: "books.vertical",
           density: .fullPage,
           actionTitle: "导入资料",
@@ -68,11 +66,7 @@ struct KnowledgeLibraryDetailView: View {
         documentPendingDeletion = nil
       }
     } message: {
-      Text(
-        DistributionFeaturePolicy.allowsExternalAIProviders
-          ? String(localized: "资料会移到回收站并停止参与搜索与 AI 检索；之后可以恢复。")
-          : String(localized: "资料会移到回收站并停止参与本地搜索；之后可以恢复。")
-      )
+      Text("资料会移到回收站并停止参与搜索与 AI 检索；之后可以恢复。")
     }
     .onChange(of: knowledge.selectedDocumentID) { _, _ in
       contentPresentation = .cleaned
@@ -226,19 +220,17 @@ struct KnowledgeLibraryDetailView: View {
       .keyboardShortcut("i", modifiers: [.command, .option])
       .accessibilityIdentifier("knowledge-library-inspector-toggle")
 
-      if DistributionFeaturePolicy.allowsExternalAIProviders {
-        Button {
-          knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)
-        } label: {
-          Label(
-            knowledge.isPinned(document.id)
-              ? String(localized: "取消固定")
-              : String(localized: "固定到 AI"),
-            systemImage: knowledge.isPinned(document.id) ? "pin.slash" : "pin"
-          )
-        }
-        .accessibilityIdentifier("knowledge-library-pin-toggle")
+      Button {
+        knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)
+      } label: {
+        Label(
+          knowledge.isPinned(document.id)
+            ? String(localized: "取消固定")
+            : String(localized: "固定到 AI"),
+          systemImage: knowledge.isPinned(document.id) ? "pin.slash" : "pin"
+        )
       }
+      .accessibilityIdentifier("knowledge-library-pin-toggle")
 
       Menu {
         Button {
@@ -272,18 +264,13 @@ struct KnowledgeLibraryDetailView: View {
             set: { knowledge.setAllowsLocalSemanticIndex($0, documentID: document.id) }
           )
         )
-        if DistributionFeaturePolicy.allowsExternalAIProviders {
-          Toggle(
-            String(localized: "允许发送给远程 AI"),
-            isOn: Binding(
-              get: { document.allowsRemoteAIUse },
-              set: { knowledge.setAllowsRemoteAIUse($0, documentID: document.id) }
-            )
+        Toggle(
+          String(localized: "允许发送给远程 AI"),
+          isOn: Binding(
+            get: { document.allowsRemoteAIUse },
+            set: { knowledge.setAllowsRemoteAIUse($0, documentID: document.id) }
           )
-        } else {
-          Label("远程 AI 发送当前未启用", systemImage: "hand.raised.fill")
-            .foregroundStyle(.secondary)
-        }
+        )
         documentFolderMenu(document)
         Divider()
         Button(role: .destructive) {
@@ -576,17 +563,11 @@ struct KnowledgeLibraryDetailView: View {
             Text("清洗规则已升级")
               .font(.callout.weight(.semibold))
             Text(
-              DistributionFeaturePolicy.allowsExternalAIProviders
-                ? String(
-                  format: String(localized: "当前正文使用清洗规则 v%@，新版 v%@ 可进一步过滤社交平台界面噪声。重新清洗后，阅读、搜索与 AI 检索会改用新版内容。"),
-                  String(currentRevision.parserVersion),
-                  String(KnowledgeLibraryService.parserVersion)
-                )
-                : String(
-                  format: String(localized: "当前正文使用清洗规则 v%@，新版 v%@ 可进一步过滤社交平台界面噪声。重新清洗后，阅读与本地搜索会改用新版内容。"),
-                  String(currentRevision.parserVersion),
-                  String(KnowledgeLibraryService.parserVersion)
-                )
+              String(
+                format: String(localized: "当前正文使用清洗规则 v%@，新版 v%@ 可进一步过滤社交平台界面噪声。重新清洗后，阅读、搜索与 AI 检索会改用新版内容。"),
+                String(currentRevision.parserVersion),
+                String(KnowledgeLibraryService.parserVersion)
+              )
             )
             .font(.workbenchSupporting)
             .foregroundStyle(.secondary)
@@ -610,11 +591,7 @@ struct KnowledgeLibraryDetailView: View {
           .font(.workbenchSupporting)
           .foregroundStyle(WorkbenchTheme.risk)
       } else {
-        Text(
-          DistributionFeaturePolicy.allowsExternalAIProviders
-            ? String(localized: "清洗内容用于阅读、搜索与 AI 检索；原始抓取正文仅供核对，不会进入 AI 索引。")
-            : String(localized: "清洗内容用于阅读与本地搜索；原始抓取正文仅供核对，不会进入搜索索引。")
-        )
+        Text("清洗内容用于阅读、搜索与 AI 检索；原始抓取正文仅供核对，不会进入 AI 索引。")
           .font(.workbenchSupporting)
           .foregroundStyle(.secondary)
       }

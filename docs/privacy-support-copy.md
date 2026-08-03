@@ -20,9 +20,9 @@ Connections to `localhost`, `127.0.0.1`, and `::1` are local loopback connection
 
 ### Browser Capture
 
-The Safari Web Extension is embedded in the Mac app. The Chrome extension is installed and updated separately through the Chrome Web Store. Both process a page only after a user-initiated capture action. Captures reach RepoPress Studio through the authenticated `127.0.0.1:17843` loopback connection on the same Mac and do not pass through the developer's servers.
+The Safari Web Extension is embedded in the Mac app. The Chrome extension is installed and updated separately through the Chrome Web Store, while the Firefox extension is loaded independently from the repository's manifest for local use. All three process a page only after a user-initiated capture action. Captures reach RepoPress Studio through the authenticated `127.0.0.1:17843` loopback connection on the same Mac and do not pass through the developer's servers.
 
-The app-side browser connection token is stored only in macOS Keychain. The Chrome extension keeps its pairing token, preferences, limited receipts, and a bounded offline queue in extension-local storage. RepoPress Studio does not install a Native Messaging helper for these current Safari and Chrome channels.
+The app-side browser connection token is stored only in macOS Keychain. The Chrome and Firefox extensions keep their pairing token, preferences, limited receipts, and a bounded offline queue in extension-local storage. RepoPress Studio does not install a Native Messaging helper for these Safari, Chrome, and Firefox channels.
 
 ### Other Network Requests And Updates
 
@@ -40,7 +40,7 @@ Users can delete local drafts, research, records, site profiles, backups, and cr
 
 ## Support Copy
 
-For support requests, ask for the RepoPress Studio version, macOS version, selected site framework, steps to reproduce, and whether the issue involves a BYOK provider, custom remote API consent, local loopback model, local publishing, GitHub or GitLab sync, deployment status, Safari or Chrome capture, Sparkle updates, Quick Hide, or private-content masking.
+For support requests, ask for the RepoPress Studio version, macOS version, selected site framework, steps to reproduce, and whether the issue involves a BYOK provider, custom remote API consent, local loopback model, local publishing, GitHub or GitLab sync, deployment status, Safari, Chrome, or Firefox capture, Sparkle updates, Quick Hide, or private-content masking.
 
 Never ask the user to send an API key, access token, authorization header, account password, complete repository, local filesystem path, private article text, or unreviewed diagnostic archive. If evidence is needed, ask for a redacted screenshot or reviewed diagnostic output.
 

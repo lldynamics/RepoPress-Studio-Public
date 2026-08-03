@@ -7,8 +7,7 @@ extension MacMarkdownComposerView {
   }
 
   var shouldShowInlineSelectionPalette: Bool {
-    DistributionFeaturePolicy.allowsExternalAIProviders
-      && activeWritingContextPanel == nil
+    activeWritingContextPanel == nil
       && !isInlineSelectionPaletteDismissed
       && (isInlineSelectionAIAction || (hasSelectedText && selectionEditPreview == nil))
   }
@@ -26,8 +25,7 @@ extension MacMarkdownComposerView {
 
   func scheduleInlineGhostText() {
     cancelInlineGhostText()
-    guard DistributionFeaturePolicy.allowsExternalAIProviders,
-          !isFrontMatterSelection,
+    guard !isFrontMatterSelection,
           selectedRange.length == 0,
           !isSelectionAIActionRunning,
           isAIEnabledForDraft else {

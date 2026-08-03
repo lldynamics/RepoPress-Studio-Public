@@ -139,13 +139,10 @@ struct KnowledgeCollectionNavigationView: View {
     )
     .sheet(isPresented: $isCollectionBuilderPresented) {
       KnowledgeSavedCollectionBuilderView(
-        collections: knowledge.smartCollections.filter {
-          DistributionFeaturePolicy.allowsExternalAIProviders || $0.rule.kind != .aiPermission
-        },
+        collections: knowledge.smartCollections,
         onSave: saveCollection
       )
     }
-    .onAppear(perform: normalizeDistributionScope)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("资料文件夹与智能集合")
   }
@@ -292,9 +289,7 @@ struct KnowledgeCollectionNavigationView: View {
   }
 
   private var visibleSmartCollectionKinds: [KnowledgeSmartCollectionKind] {
-    KnowledgeSmartCollectionKind.allCases.filter {
-      DistributionFeaturePolicy.allowsExternalAIProviders || $0 != .aiPermission
-    }
+    KnowledgeSmartCollectionKind.allCases
   }
 
   private var selectedNavigationItem: CollectionNavigationItem {
@@ -313,28 +308,11 @@ struct KnowledgeCollectionNavigationView: View {
   }
 
   private var savedCollections: [KnowledgeSavedCollection] {
-    let collections = allSavedCollections
-    guard !DistributionFeaturePolicy.allowsExternalAIProviders else { return collections }
-    return collections.filter { collection in
-      !collection.rules.contains { $0.kind == .aiPermission }
-    }
+    allSavedCollections
   }
 
   private var allSavedCollections: [KnowledgeSavedCollection] {
     decode([KnowledgeSavedCollection].self, from: savedCollectionsJSON) ?? []
-  }
-
-  private func normalizeDistributionScope() {
-    guard !DistributionFeaturePolicy.allowsExternalAIProviders else { return }
-    switch knowledge.folderScope {
-    case .smartCollection(let rule) where rule.kind == .aiPermission:
-      knowledge.setFolderScope(.all)
-    case .savedCollection(let collection)
-      where collection.rules.contains(where: { $0.kind == .aiPermission }):
-      knowledge.setFolderScope(.all)
-    default:
-      break
-    }
   }
 
   private var favoriteIDs: Set<String> {
@@ -509,8 +487,6 @@ private struct KnowledgeSavedCollectionBuilderView: View {
   }
 
   private var visibleSmartCollectionKinds: [KnowledgeSmartCollectionKind] {
-    KnowledgeSmartCollectionKind.allCases.filter {
-      DistributionFeaturePolicy.allowsExternalAIProviders || $0 != .aiPermission
-    }
+    KnowledgeSmartCollectionKind.allCases
   }
 }

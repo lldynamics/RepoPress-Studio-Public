@@ -1,18 +1,5 @@
 {
   "智能集合根据作者、标签、来源、时间和检索权限自动更新，不会复制资料。": "Smart collections update automatically by author, tag, source, time, and search permission without duplicating sources.",
-  "还没有标注或引用记录。添加笔记或在文章中引用资料后，这里会显示关联。": "There are no annotations or reference records yet. Add a note or cite this source in an article to show the relationship here.",
-  "导入 EPUB、Markdown、TXT、HTML 或 PDF，建立只保存在本机的可检索资料库。": "Import EPUB, Markdown, TXT, HTML, or PDF files into a searchable library stored only on this Mac.",
-  "资料会移到回收站并停止参与本地搜索；之后可以恢复。": "The source will move to the recycle bin and stop appearing in local search. You can restore it later.",
-  "清洗内容用于阅读与本地搜索；原始抓取正文仅供核对，不会进入搜索索引。": "Cleaned content is used for reading and local search. The original captured text is only for comparison and is not added to the search index.",
-  "资料会移到回收站并停止参与本地搜索；本地副本会保留，之后可以恢复。": "The source will move to the recycle bin and stop appearing in local search. Its local copy is retained and can be restored later.",
-  "管理本地检索、智能集合与资料备份。": "Manage local search, smart collections, and knowledge-library backups.",
-  "可修复内容": "Fixable Content",
-  "正在生成可修复内容队列": "Building the Fixable Content Queue",
-  "内容健康快照完成后，这里只显示摘要、标签或 Front Matter 需要处理的文章。": "When the content-health snapshot finishes, this list shows only articles whose summary, tags, or Front Matter need attention.",
-  "可修复内容队列暂时不可用": "The Fixable Content Queue Is Unavailable",
-  "当前没有待修复的文章": "No Articles Need Repair",
-  "当前站点的摘要、标签和 Front Matter 暂无需要处理的问题。": "This site's summaries, tags, and Front Matter currently have no issues that need attention.",
-  "当前正文使用清洗规则 v%@，新版 v%@ 可进一步过滤社交平台界面噪声。重新清洗后，阅读与本地搜索会改用新版内容。": "This content uses cleaning rules v%@. Version v%@ can remove more social-platform interface noise. After recleaning, reading and local search will use the updated content.",
   "先提取并预览，再确认保存。预览阶段不会修改资料库索引。": "Extract and preview first, then confirm saving. Previewing does not change the knowledge-library index.",
   "只会保存你确认的内容；搜索索引在本机建立。": "Only confirmed content is saved, and the search index is built on this Mac.",
   "组合集合会随作者、标签、来源和时间变化自动更新。": "Combined collections update automatically when authors, tags, sources, or dates change.",
@@ -25,7 +12,7 @@
   "现有浏览器扩展会立即断开，需要粘贴新令牌后重新连接。": "The current browser extensions will disconnect immediately. Paste the new token into each extension to reconnect.",
   "应用只有一个 App Store 版本。Chrome、Edge 和 Firefox 扩展分别由对应浏览器商店安装和更新，扩展不向应用安装额外程序。": "There is one App Store edition. Chrome, Edge, and Firefox extensions are installed and updated through their browser stores and do not install extra programs into the app.",
   "应用只有一个 App Store 版本。Safari Web Extension 已内嵌在应用中；Chrome、Edge 和 Firefox 扩展由对应浏览器商店安装和更新。": "There is one App Store edition. The Safari Web Extension is embedded in the app; Chrome, Edge, and Firefox extensions are installed and updated through their browser stores.",
-  "当前版本只支持 Safari 和 Chrome。Safari Web Extension 已内嵌在应用中，Chrome 扩展由 Chrome 网上应用店安装和更新。": "This release supports Safari and Chrome only. The Safari Web Extension is embedded in the app, and the Chrome extension is installed and updated through the Chrome Web Store.",
+  "当前版本支持 Safari、Chrome 和 Firefox。Safari Web Extension 随应用内置；Chrome 和 Firefox 扩展独立安装和更新。": "This release supports Safari, Chrome, and Firefox. The Safari Web Extension is bundled with the app; Chrome and Firefox extensions are installed and updated separately.",
   "Safari 扩展随 RepoPress 一起安装，只需在 Safari 设置中启用；其他浏览器扩展仍保持独立更新，但不需要另做一个 Mac 应用版本。": "The Safari extension is installed with RepoPress and only needs to be enabled in Safari Settings. Other browser extensions continue to update independently, with no separate Mac app edition.",
   "Safari 扩展随 RepoPress 一起安装，只需在 Safari 设置中启用；Chrome 扩展独立更新，但不需要另做一个 Mac 应用版本。": "The Safari extension is installed with RepoPress and only needs to be enabled in Safari Settings. The Chrome extension updates independently, with no separate Mac app edition.",
   "使用浏览器官方扩展，把网页归档和可检索正文保存到本机资料库。": "Use official browser-store extensions to save page archives and searchable text to the local knowledge library.",
@@ -33,7 +20,5 @@
   "API Key 保存在本机钥匙串中；请求由此 Mac 直接发送到所选服务商，应用开发者不代购 Key、不代理请求，也不会收到你的 Key 或 AI 内容。": "The API key is stored in Keychain on this Mac. Requests go directly from this Mac to the selected provider; the app developer does not purchase keys, proxy requests, or receive your key or AI content.",
   "撤销后，测试连接、AI 对话、写作建议和图片文案等功能都会停止发送请求，直到你再次明确同意。": "After revocation, connection tests, AI chat, writing suggestions, image copy, and other AI features stop sending requests until you explicitly consent again.",
   "当你主动使用 AI 功能时，应用可能发送你的提示词、当前文章与站点上下文、选中的资料库片段，以及你主动添加的图片。服务商会按其隐私政策处理这些内容。": "When you initiate an AI feature, the app may send your prompt, current article and site context, selected knowledge-library excerpts, and images you add. The provider handles this content under its privacy policy.",
-  "浏览器扩展可通过本机回环地址连接，连接令牌仍为必需。": "Browser extensions can connect through the local loopback address. A pairing token is still required.",
-  "AI 服务当前不可用": "AI Service Is Currently Unavailable",
-  "请重新打开设置；如果问题仍然存在，请检查应用版本和服务配置。": "Reopen Settings. If the issue continues, check the app version and service configuration."
+  "浏览器扩展可通过本机回环地址连接，连接令牌仍为必需。": "Browser extensions can connect through the local loopback address. A pairing token is still required."
 }

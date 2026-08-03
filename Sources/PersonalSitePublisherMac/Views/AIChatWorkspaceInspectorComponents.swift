@@ -15,9 +15,7 @@ struct AIChatContextInspectorView: View {
   @State private var messageAnchorToPreserve: AIPublishingChatMessage.ID?
   @State private var isPartialRetryConfirmationPresented = false
   @State private var isConversationPopoverPresented = false
-  @State private var isModelPopoverPresented = false
   @State private var isModelQuickSwitchPresented = false
-  @State private var customModelInput = ""
   @State private var selectedImageAttachmentIDs: Set<UUID> = []
   @State private var selectedContextReferences: [AIContextReference] = []
   @State private var isAdvancedSettingsExpanded = false
@@ -271,7 +269,6 @@ struct AIChatContextInspectorView: View {
         ai: ai,
         draft: ai.selectedChatDraft
       ) {
-        synchronizeCustomModelInput()
         isModelQuickSwitchPresented = true
       }
 
@@ -341,7 +338,7 @@ struct AIChatContextInspectorView: View {
       VStack(alignment: .leading, spacing: 6) {
         HStack(spacing: 6) {
           contextSelectionMenu
-          modelSelectionPopoverButton
+          modelQuickSwitchButton
           Spacer(minLength: 0)
           assistantOptionsMenu
         }
@@ -400,10 +397,9 @@ struct AIChatContextInspectorView: View {
     .accessibilityValue(ai.chatContextMode.localizedDisplayName)
   }
 
-  private var modelSelectionPopoverButton: some View {
+  private var modelQuickSwitchButton: some View {
     Button {
-      synchronizeCustomModelInput()
-      isModelPopoverPresented.toggle()
+      isModelQuickSwitchPresented = true
     } label: {
       HStack(spacing: 7) {
         Image(systemName: "cpu")
@@ -435,162 +431,7 @@ struct AIChatContextInspectorView: View {
     .help(modelMenuSummary)
     .accessibilityLabel(String(localized: "AI 模型"))
     .accessibilityValue(modelMenuSummary)
-    .accessibilityIdentifier("ai-assistant-model-popover")
-    .popover(isPresented: $isModelPopoverPresented, arrowEdge: .top) {
-      modelSelectionPopoverContent
-    }
-  }
-
-  private var modelSelectionPopoverContent: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack {
-        Label("AI 模型", systemImage: "cpu")
-          .font(.headline)
-        Spacer()
-        Button {
-          isModelPopoverPresented = false
-        } label: {
-          Image(systemName: "xmark")
-        }
-        .buttonStyle(.plain)
-        .help(String(localized: "关闭模型选择"))
-        .accessibilityLabel(String(localized: "关闭模型选择"))
-      }
-
-      VStack(alignment: .leading, spacing: 5) {
-        modelPopoverInfoRow(
-          title: String(localized: "服务商"),
-          value: providerMenuTitle
-        )
-        modelPopoverInfoRow(
-          title: String(localized: "当前模型"),
-          value: activeModelTitle
-        )
-      }
-
-      Divider()
-
-      VStack(alignment: .leading, spacing: 6) {
-        Text("常用档位")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
-
-        ForEach(modelGradeCandidates) { candidate in
-          Button {
-            ai.setChatModelGrade(candidate.grade)
-            synchronizeCustomModelInput()
-          } label: {
-            HStack(spacing: 8) {
-              Image(
-                systemName: ai.chatModelGrade == candidate.grade
-                  ? "checkmark.circle.fill" : "circle"
-              )
-              .foregroundStyle(
-                ai.chatModelGrade == candidate.grade ? WorkbenchTheme.primary : Color.secondary
-              )
-              VStack(alignment: .leading, spacing: 1) {
-                Text(candidate.title)
-                  .font(.callout.weight(.medium))
-                Text(candidate.model)
-                  .font(.caption.monospaced())
-                  .foregroundStyle(.secondary)
-                  .lineLimit(1)
-                  .truncationMode(.middle)
-              }
-              Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-          .accessibilityLabel(
-            String(
-              format: String(localized: "%@ 模型"),
-              candidate.title
-            )
-          )
-          .accessibilityValue(candidate.model)
-          .accessibilityAddTraits(
-            ai.chatModelGrade == candidate.grade ? .isSelected : []
-          )
-        }
-
-        Button {
-          activateCustomModelEditing()
-        } label: {
-          HStack(spacing: 8) {
-            Image(systemName: ai.chatModelGrade == .custom ? "checkmark.circle.fill" : "circle")
-              .foregroundStyle(
-                ai.chatModelGrade == .custom ? WorkbenchTheme.primary : Color.secondary
-              )
-            Text("自定义模型")
-              .font(.callout.weight(.medium))
-            Spacer(minLength: 0)
-          }
-          .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(
-          ai.chatModelGrade == .custom ? .isSelected : []
-        )
-      }
-
-      if AIChatInspectorHeaderPresentation.showsCustomModelInput(selection: modelSelection) {
-        HStack(spacing: 8) {
-          TextField("自定义模型", text: $customModelInput)
-            .textFieldStyle(.roundedBorder)
-            .onSubmit(applyCustomModelInput)
-            .accessibilityLabel("自定义模型")
-
-          Button(String(localized: "应用"), action: applyCustomModelInput)
-            .disabled(trimmedCustomModelInput.isEmpty)
-        }
-        .accessibilityElement(children: .contain)
-      }
-
-      Divider()
-
-      HStack(spacing: 8) {
-        Button {
-          ai.resetChatModelToProfileDefault()
-          synchronizeCustomModelInput()
-        } label: {
-          Label(
-            String(localized: "恢复站点默认模型"),
-            systemImage: "arrow.counterclockwise"
-          )
-        }
-
-        Spacer(minLength: 4)
-
-        Button {
-          isModelPopoverPresented = false
-          openAISettings()
-        } label: {
-          Label("打开 AI 设置", systemImage: "gearshape")
-        }
-      }
-      .controlSize(.small)
-    }
-    .padding(14)
-    .frame(width: 340)
-  }
-
-  private func modelPopoverInfoRow(
-    title: String,
-    value: String
-  ) -> some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Text(title)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-      Spacer(minLength: 8)
-      Text(value)
-        .font(.caption.monospaced())
-        .workbenchTruncatedIdentity(value)
-    }
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel(title)
-    .accessibilityValue(value)
+    .accessibilityIdentifier("ai-assistant-model-quick-switch")
   }
 
   private var assistantOptionsMenu: some View {
@@ -1308,18 +1149,6 @@ struct AIChatContextInspectorView: View {
     )
   }
 
-  private var modelGradeCandidates: [AIChatInspectorModelGradeCandidate] {
-    guard ai.selectedChatDraft != nil else { return [] }
-    return AIChatInspectorHeaderPresentation.modelGradeCandidates(
-      for: currentAIProviderConfig,
-      currentModel: ai.chatSelectedModel
-    )
-  }
-
-  private var trimmedCustomModelInput: String {
-    customModelInput.trimmingCharacters(in: .whitespacesAndNewlines)
-  }
-
   private var supportsSelectableReasoningLevel: Bool {
     AIChatInspectorHeaderPresentation.supportsSelectableReasoningLevel(
       config: currentAIProviderConfig,
@@ -1352,25 +1181,6 @@ struct AIChatContextInspectorView: View {
   private func openAISettings() {
     requestedSettingsTabID = SettingsTab.ai.id
     openSettings()
-  }
-
-  private func synchronizeCustomModelInput() {
-    customModelInput =
-      ai.chatSelectedModel.nilIfEmpty
-      ?? modelSelection?.activeModel
-      ?? ""
-  }
-
-  private func activateCustomModelEditing() {
-    synchronizeCustomModelInput()
-    ai.setChatModelGrade(.custom)
-  }
-
-  private func applyCustomModelInput() {
-    let model = trimmedCustomModelInput
-    guard !model.isEmpty else { return }
-    customModelInput = model
-    ai.setChatCustomModel(model)
   }
 
   private var contextModeBinding: Binding<AIPublishingChatContextMode> {

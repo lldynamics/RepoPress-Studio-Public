@@ -35,7 +35,7 @@ extension MacMarkdownComposerView {
     if let publishDrawerCommandAction {
       publishDrawerCommandAction.open(message)
     } else {
-      store.setPublishActionMessage(message)
+      store.setPublishActionMessage(message, status: .success)
     }
   }
 

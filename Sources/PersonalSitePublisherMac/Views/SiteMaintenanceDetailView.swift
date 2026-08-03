@@ -133,6 +133,8 @@ struct SiteMaintenanceDetailView: View {
   }
 
   private func copy(_ value: String, message: String) {
-    ClipboardWriter.copy(value, successMessage: message) { store.setPublishActionMessage($0) }
+    ClipboardWriter.copy(value, successMessage: message) { message, status in
+      store.setPublishActionMessage(message, status: status)
+    }
   }
 }

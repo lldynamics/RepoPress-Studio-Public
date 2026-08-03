@@ -21,9 +21,7 @@ enum WorkspaceQuickSearchPresentation {
     case .imageResources:
       return "图片资源"
     case .aiFixes:
-      return DistributionFeaturePolicy.allowsExternalAIProviders
-        ? String(localized: "AI 可修复")
-        : String(localized: "可修复内容")
+      return String(localized: "AI 可修复")
     }
   }
 
@@ -497,17 +495,9 @@ struct WorkspaceQuickSearchView: View {
     VStack(spacing: 10) {
       ProgressView()
         .controlSize(.small)
-      Text(
-        DistributionFeaturePolicy.allowsExternalAIProviders
-          ? String(localized: "正在生成 AI 可修复队列")
-          : String(localized: "正在生成可修复内容队列")
-      )
+      Text("正在生成 AI 可修复队列")
         .font(.workbenchItemTitle)
-      Text(
-        DistributionFeaturePolicy.allowsExternalAIProviders
-          ? String(localized: "内容健康快照完成后，这里只显示可由 AI 协助修复的文章。")
-          : String(localized: "内容健康快照完成后，这里只显示摘要、标签或 Front Matter 需要处理的文章。")
-      )
+      Text("内容健康快照完成后，这里只显示可由 AI 协助修复的文章。")
         .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
@@ -526,11 +516,7 @@ struct WorkspaceQuickSearchView: View {
         .font(.title2)
         .foregroundStyle(WorkbenchTheme.warning)
         .accessibilityHidden(true)
-      Text(
-        DistributionFeaturePolicy.allowsExternalAIProviders
-          ? String(localized: "AI 可修复队列暂时不可用")
-          : String(localized: "可修复内容队列暂时不可用")
-      )
+      Text("AI 可修复队列暂时不可用")
         .font(.workbenchItemTitle)
       Text("请在右侧重新检查内容健康快照。")
         .font(.workbenchSupporting)
@@ -551,17 +537,9 @@ struct WorkspaceQuickSearchView: View {
         .font(.title2)
         .foregroundStyle(WorkbenchTheme.success)
         .accessibilityHidden(true)
-      Text(
-        DistributionFeaturePolicy.allowsExternalAIProviders
-          ? String(localized: "当前没有可由 AI 修复的文章")
-          : String(localized: "当前没有待修复的文章")
-      )
+      Text("当前没有可由 AI 修复的文章")
         .font(.workbenchItemTitle)
-      Text(
-        DistributionFeaturePolicy.allowsExternalAIProviders
-          ? String(localized: "当前站点的摘要、标签和 Front Matter 暂无可由 AI 协助修复的问题。")
-          : String(localized: "当前站点的摘要、标签和 Front Matter 暂无需要处理的问题。")
-      )
+      Text("当前站点的摘要、标签和 Front Matter 暂无可由 AI 协助修复的问题。")
         .font(.workbenchSupporting)
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)

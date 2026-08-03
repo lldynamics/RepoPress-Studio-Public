@@ -543,6 +543,11 @@ public struct RSSArticle: Codable, Hashable, Identifiable, Sendable {
 /// without retaining every article body. Call `RSSReaderStore.loadArticle(id:)`
 /// when a reader surface needs the full `RSSArticle`.
 public struct RSSArticleHeader: Codable, Hashable, Identifiable, Sendable {
+  /// The list never needs the complete HTML payload. Keeping this bound here
+  /// also protects refreshes that build headers before SQLite truncates the
+  /// persisted preview.
+  public static let previewHTMLCharacterLimit = 8_192
+
   public let id: String
   public let feedID: UUID
   public var title: String
@@ -582,6 +587,9 @@ public struct RSSArticleHeader: Codable, Hashable, Identifiable, Sendable {
   }
 
   public init(article: RSSArticle) {
+    let previewHTML = article.summaryHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      ? article.contentHTML
+      : article.summaryHTML
     self.init(
       id: article.id,
       feedID: article.feedID,
@@ -589,7 +597,9 @@ public struct RSSArticleHeader: Codable, Hashable, Identifiable, Sendable {
       link: article.link,
       author: article.author,
       publishedAt: article.publishedAt,
-      readableSummary: article.readableSummary,
+      readableSummary: RSSHTMLTextSanitizer.plainText(
+        from: String(previewHTML.prefix(Self.previewHTMLCharacterLimit))
+      ),
       fetchedAt: article.fetchedAt,
       readAt: article.readAt,
       isStarred: article.isStarred,
@@ -946,7 +956,9 @@ public enum RSSHTMLTextSanitizer {
       )
 
     let plainText: String
-    if let attributed = try? NSAttributedString(
+    if sanitized.utf8.count > 4_096 {
+      plainText = fastPlainText(from: sanitized)
+    } else if let attributed = try? NSAttributedString(
       data: Data(sanitized.utf8),
       options: [
         .documentType: NSAttributedString.DocumentType.html,
@@ -963,6 +975,102 @@ public enum RSSHTMLTextSanitizer {
       )
     }
 
+    return normalizedText(plainText)
+  }
+
+  /// Converts bounded list previews without invoking AppKit's HTML importer.
+  ///
+  /// Feed archives can contain thousands of large, legacy HTML documents. The
+  /// full HTML importer is useful for small user-facing snippets, but it is
+  /// too expensive for the database header query that runs during launch.
+  static func previewText(from source: String) -> String {
+    guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      return ""
+    }
+
+    let sanitized = source
+      .replacingOccurrences(
+        of: "<script\\b[\\s\\S]*?</script>",
+        with: " ",
+        options: [.regularExpression, .caseInsensitive]
+      )
+      .replacingOccurrences(
+        of: "<style\\b[\\s\\S]*?</style>",
+        with: " ",
+        options: [.regularExpression, .caseInsensitive]
+      )
+      .replacingOccurrences(
+        of: "<br\\s*/?>",
+        with: "\n",
+        options: [.regularExpression, .caseInsensitive]
+      )
+      .replacingOccurrences(
+        of: "</(p|div|li|h[1-6]|blockquote)>",
+        with: "\n",
+        options: [.regularExpression, .caseInsensitive]
+      )
+
+    return normalizedText(fastPlainText(from: sanitized))
+  }
+
+  private static func fastPlainText(from source: String) -> String {
+    let withoutTags = source.replacingOccurrences(
+      of: "<[^>]+>",
+      with: " ",
+      options: .regularExpression
+    )
+    return decodeHTMLEntities(withoutTags)
+      .replacingOccurrences(of: "\u{00A0}", with: " ")
+  }
+
+  private static func decodeHTMLEntities(_ source: String) -> String {
+    var decoded = source
+    let namedEntities = [
+      "&nbsp;": " ",
+      "&amp;": "&",
+      "&quot;": "\"",
+      "&apos;": "'",
+      "&#39;": "'",
+      "&lt;": "<",
+      "&gt;": ">",
+    ]
+    for (entity, value) in namedEntities {
+      decoded = decoded.replacingOccurrences(of: entity, with: value, options: .caseInsensitive)
+    }
+
+    guard let expression = try? NSRegularExpression(
+      pattern: "&#(?:x([0-9a-fA-F]+)|([0-9]+));",
+      options: .caseInsensitive
+    ) else {
+      return decoded
+    }
+
+    let range = NSRange(decoded.startIndex..., in: decoded)
+    var output = ""
+    var cursor = decoded.startIndex
+    expression.enumerateMatches(in: decoded, range: range) { match, _, _ in
+      guard let match,
+            let matchRange = Range(match.range, in: decoded)
+      else { return }
+      output += String(decoded[cursor..<matchRange.lowerBound])
+      let hexValueRange = Range(match.range(at: 1), in: decoded)
+      let valueRange = hexValueRange ?? Range(match.range(at: 2), in: decoded)
+      let rawValue = valueRange.map { String(decoded[$0]) } ?? ""
+      let radix = hexValueRange == nil ? 10 : 16
+      if let value = UInt32(rawValue, radix: radix), let scalar = UnicodeScalar(value) {
+        output.append(Character(String(scalar)))
+      } else {
+        output += String(decoded[matchRange])
+      }
+      cursor = matchRange.upperBound
+    }
+    if cursor < decoded.endIndex {
+      output += String(decoded[cursor...])
+    }
+    return output
+  }
+
+  private static func normalizedText(_ plainText: String) -> String {
     let normalizedLines = plainText
       .replacingOccurrences(of: "\r\n", with: "\n")
       .replacingOccurrences(of: "\r", with: "\n")

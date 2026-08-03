@@ -332,21 +332,19 @@ struct WorkspaceCommandPalette: View {
       }
     }
 
-    if DistributionFeaturePolicy.allowsExternalAIProviders {
-      items.insert(
-        PaletteCommand(
-          title: String(localized: "打开 AI 对话"),
-          detail: String(localized: "在右侧继续当前文章的 AI 对话"),
-          systemImage: "sparkles",
-          shortcut: "⌥⌘A"
-        ) {
-          guard let draftID = publishing.selectedDraftID else { return }
-          store.ai.openChatWorkspace(for: draftID)
-          dismiss()
-        },
-        at: min(3, items.count)
-      )
-    }
+    items.insert(
+      PaletteCommand(
+        title: String(localized: "打开 AI 对话"),
+        detail: String(localized: "在右侧继续当前文章的 AI 对话"),
+        systemImage: "sparkles",
+        shortcut: "⌥⌘A"
+      ) {
+        guard let draftID = publishing.selectedDraftID else { return }
+        store.ai.openChatWorkspace(for: draftID)
+        dismiss()
+      },
+      at: min(3, items.count)
+    )
 
     return items
   }

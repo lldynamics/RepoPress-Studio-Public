@@ -83,12 +83,12 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
-  "store.selectSection(.maintenance)" \
+  "workspaceCommandPaletteAction?.openMaintenance()" \
   "site maintenance must remain directly reachable from the Go menu"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
-  "store.selectSection(.releaseHistory)" \
+  "workspaceCommandPaletteAction?.openReleaseHistory()" \
   "release history must remain directly reachable from the Publish menu"
 
 require_literal \
