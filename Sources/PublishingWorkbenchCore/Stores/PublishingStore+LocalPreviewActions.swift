@@ -138,7 +138,10 @@ extension PublishingStore {
   public func startLocalSitePreview() {
     guard let plan = localSitePreviewPlan else {
       localSitePreviewRuntimeStatus = .stopped
-      publishActionMessage = "请先为当前站点选择本地仓库，才能启动本地预览。"
+      setPublishActionMessage(
+        "请先为当前站点选择本地仓库，才能启动本地预览。",
+        status: .warning
+      )
       return
     }
 
@@ -150,7 +153,7 @@ extension PublishingStore {
         previewURL: plan.previewURL,
         message: "正在等待原来的本地预览停止。"
       )
-      publishActionMessage = localSitePreviewRuntimeStatus.message
+      setPublishActionMessage(localSitePreviewRuntimeStatus.message, status: .inProgress)
       Task { [weak self] in
         await stopTask.value
         guard let self, self.localSitePreviewGeneration == generation else { return }
@@ -166,7 +169,7 @@ extension PublishingStore {
     do {
       localSitePreviewRuntimeStatus = try localSitePreviewProcessService.start(plan: plan)
       startLocalSitePreviewFileWatcher(for: plan, generation: generation)
-      publishActionMessage = localSitePreviewRuntimeStatus.message
+      setPublishActionMessage(localSitePreviewRuntimeStatus.message, status: .inProgress)
       Task { [weak self] in
         for _ in 0..<5 {
           try? await Task.sleep(for: .seconds(1))
@@ -186,7 +189,7 @@ extension PublishingStore {
         previewURL: plan.previewURL,
         message: message
       )
-      publishActionMessage = message
+      setPublishActionMessage(message, status: .failure)
     }
   }
 
@@ -226,14 +229,17 @@ extension PublishingStore {
             self.localSitePreviewRuntimeStatus.isRunning else { return }
       self.localSitePreviewRefreshToken &+= 1
       self.localSitePreviewRuntimeStatus.message = "检测到仓库文件变更，预览已刷新。"
-      self.publishActionMessage = self.localSitePreviewRuntimeStatus.message
+      self.setPublishActionMessage(
+        self.localSitePreviewRuntimeStatus.message,
+        status: .success
+      )
       self.localSitePreviewRefreshTask = nil
     }
   }
 
   private func requestLocalSitePreviewStop(message: String) {
     guard localSitePreviewStopTask == nil else {
-      publishActionMessage = message
+      setPublishActionMessage(message, status: .inProgress)
       return
     }
 
@@ -248,7 +254,7 @@ extension PublishingStore {
       previewURL: previewURL,
       message: "正在停止本地预览。"
     )
-    publishActionMessage = message
+    setPublishActionMessage(message, status: .inProgress)
 
     let processService = localSitePreviewProcessService
     localSitePreviewStopTask = Task { [weak self] in

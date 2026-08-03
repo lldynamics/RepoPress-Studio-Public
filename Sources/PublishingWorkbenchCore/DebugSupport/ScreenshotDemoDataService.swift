@@ -434,7 +434,7 @@ public struct ScreenshotDemoDataService {
         contents: "+++\ntitle = \"RepoPress Studio 发布流程\"\ndraft = false\n+++\n\n# RepoPress Studio 发布流程\n"
       )
     } catch {
-      store.setPublishActionMessage(String(localized: "无法准备运行时辅助功能测试仓库。"))
+      store.setPublishActionMessage(String(localized: "无法准备运行时辅助功能测试仓库。"), status: .failure)
       return
     }
 
@@ -567,7 +567,7 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
     case .writing:
       store.selectSection(.writing)
       store.setEditorDisplayMode(.split)
-      store.setPublishActionMessage(String(localized: "截图模式：写作工作区已载入演示文章。"))
+      store.setPublishActionMessage(String(localized: "截图模式：写作工作区已载入演示文章。"), status: .information)
     case .aiChat:
       _ = store.openAIChatWorkspace(for: preferredDraft(in: store)?.id)
       store.seedTransientAIChatPreview([
@@ -584,10 +584,12 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
         ),
       ])
       store.setInspectorPresented(false)
-      store.setPublishActionMessage(String(localized: "截图模式：免费自定义 API 的 AI 助手已载入。"))
+      store.setPublishActionMessage(
+          String(localized: "截图模式：免费自定义 API 的 AI 助手已载入。"), status: .information)
     case .syncAPIPublish:
       store.selectSection(.sync)
-      store.setPublishActionMessage(String(localized: "截图模式：同步/API 发布工作区已载入。"))
+      store.setPublishActionMessage(
+          String(localized: "截图模式：同步/API 发布工作区已载入。"), status: .information)
     case .seoSocialPreview:
       store.selectSection(.writing)
       store.setInspectorPresented(true)
@@ -595,15 +597,15 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
         store.refreshSEOSocialPreview(for: draft, message: "截图模式：SEO / 社交预览快照已载入。")
       }
     case .deploymentStatus:
-      store.selectSection(.releaseHistory)
+      store.selectSection(.sync)
       store.setDeploymentStatusMessage("截图模式：部署状态和轮询记录已载入。")
     case .maintenance:
-      store.selectSection(.maintenance)
-      store.setPublishActionMessage(String(localized: "截图模式：站点维护工作台已载入。"))
+      store.selectSection(.contentHealth)
+      store.setPublishActionMessage(String(localized: "截图模式：站点维护工作台已载入。"), status: .information)
     case .generalDrafts:
       store.selectSection(.writing)
       store.setDraftListContentScope(.general)
-      store.setPublishActionMessage(String(localized: "截图模式：通用草稿已载入。"))
+      store.setPublishActionMessage(String(localized: "截图模式：通用草稿已载入。"), status: .information)
     case .quickHide:
       store.selectSection(.writing)
       store.setInspectorPresented(true)
@@ -611,7 +613,7 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
     case .knowledgeLibrary:
       store.selectSection(.library)
       store.setInspectorPresented(false)
-      store.setPublishActionMessage(String(localized: "截图模式：本地资料库已载入。"))
+      store.setPublishActionMessage(String(localized: "截图模式：本地资料库已载入。"), status: .information)
     }
   }
 

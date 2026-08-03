@@ -5,6 +5,39 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class RSSReaderPresentationSupportTests: XCTestCase {
+  @MainActor
+  func testReaderMetricsAllowsLargeImageOnlyArticleToRender() throws {
+    let padding = String(repeating: "<!-- image-only padding -->", count: 200)
+    let article = RSSArticle(
+      id: "large-image-only",
+      feedID: UUID(),
+      title: "Image only",
+      link: try XCTUnwrap(URL(string: "https://example.com/posts/image-only")),
+      contentHTML: padding + "<article><img src=\"https://cdn.example.com/image.jpg\"></article>"
+    )
+    XCTAssertGreaterThan(article.contentHTML.utf8.count, 4_096)
+    XCTAssertTrue(article.readableText.isEmpty)
+
+    let metrics = RSSReaderPresentationState().readerMetrics(for: article)
+
+    XCTAssertTrue(metrics.hasRenderableBody)
+    XCTAssertEqual(metrics.readingMinutes, 1)
+  }
+
+  func testSubscriptionDiscoveryKeepsPrimaryAndOtherFeedsInSourceOrder() throws {
+    let sourceURL = try XCTUnwrap(URL(string: "https://example.com/blog/"))
+    let primaryURL = try XCTUnwrap(URL(string: "https://example.com/feed.xml"))
+    let alternateURL = try XCTUnwrap(URL(string: "https://example.com/atom.xml"))
+
+    let discovery = RSSSubscriptionDiscovery(
+      sourceURL: sourceURL,
+      feedURLs: [primaryURL, alternateURL, primaryURL]
+    )
+
+    XCTAssertEqual(discovery.primaryURL, primaryURL)
+    XCTAssertEqual(discovery.alternativeURLs, [alternateURL])
+  }
+
   func testFiltersBySourceAuthorTagAndDateThenSortsOldestFirst() {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     var calendar = Calendar(identifier: .gregorian)

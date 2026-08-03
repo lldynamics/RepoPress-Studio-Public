@@ -199,10 +199,6 @@
     "zh-Hans": "还有 %lld 个相关片段，可在资料库中查看全部结果。",
     "en": "Additional related excerpts: %lld. View all results in the knowledge base."
   },
-  "远程 AI 发送当前未启用": {
-    "zh-Hans": "远程 AI 发送当前未启用",
-    "en": "Sending to Remote AI Is Currently Disabled"
-  },
   "连接配置已就绪": {
     "zh-Hans": "连接配置已就绪",
     "en": "Connection Ready"

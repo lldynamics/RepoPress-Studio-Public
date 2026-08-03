@@ -30,13 +30,19 @@ extension PublishingStore {
       targetProfileID: plan.targetProfileID
     )
     guard refreshedPlan.canApply else {
-      publishActionMessage = CoreL10n.text("归属变更已停止：请先处理确认面板中的冲突。")
+      setPublishActionMessage(
+        CoreL10n.text("归属变更已停止：请先处理确认面板中的冲突。"),
+        status: .warning
+      )
       return nil
     }
 
     let expectedUpdates = Dictionary(uniqueKeysWithValues: plan.items.map { ($0.draftID, $0.sourceUpdatedAt) })
     guard refreshedPlan.items.allSatisfy({ expectedUpdates[$0.draftID] == $0.sourceUpdatedAt }) else {
-      publishActionMessage = CoreL10n.text("文章在确认期间发生了变化，请重新打开归属变更面板。")
+      setPublishActionMessage(
+        CoreL10n.text("文章在确认期间发生了变化，请重新打开归属变更面板。"),
+        status: .warning
+      )
       return nil
     }
 
@@ -58,7 +64,10 @@ extension PublishingStore {
 
     for item in refreshedPlan.items {
       guard let sourceIndex = drafts.firstIndex(where: { $0.id == item.draftID }) else {
-        publishActionMessage = CoreL10n.text("归属变更已停止：文章已不存在。")
+        setPublishActionMessage(
+          CoreL10n.text("归属变更已停止：文章已不存在。"),
+          status: .warning
+        )
         return nil
       }
       let source = drafts[sourceIndex]
@@ -161,10 +170,13 @@ extension PublishingStore {
     store.runPreflight()
     store.scheduleImageWorkbenchReportRefresh(for: store.selectedDraft)
     store.refreshPublishPreviewInBackground(for: store.selectedDraft)
-    publishActionMessage = successMessage(
-      operation: refreshedPlan.operation,
-      count: affectedDraftIDs.count,
-      targetProfileName: targetProfile?.name
+    setPublishActionMessage(
+      successMessage(
+        operation: refreshedPlan.operation,
+        count: affectedDraftIDs.count,
+        targetProfileName: targetProfile?.name
+      ),
+      status: .success
     )
     store.save()
     store.refreshSiteDraftFileAutosave(for: affectedDraftIDs)
@@ -182,7 +194,10 @@ extension PublishingStore {
   ) -> Bool {
     guard let undoState = latestDraftOwnershipTransferUndoState,
           expectedUndoID == nil || expectedUndoID == undoState.id else {
-      publishActionMessage = CoreL10n.text("没有可撤销的草稿归属变更。")
+      setPublishActionMessage(
+        CoreL10n.text("没有可撤销的草稿归属变更。"),
+        status: .warning
+      )
       return false
     }
 
@@ -191,7 +206,10 @@ extension PublishingStore {
       currentDraftsByID[id] == expected
     }) else {
       latestDraftOwnershipTransferUndoState = nil
-      publishActionMessage = CoreL10n.text("无法撤销：归属变更后有文章继续被编辑。")
+      setPublishActionMessage(
+        CoreL10n.text("无法撤销：归属变更后有文章继续被编辑。"),
+        status: .warning
+      )
       return false
     }
 
@@ -218,7 +236,10 @@ extension PublishingStore {
     store.runPreflight()
     store.scheduleImageWorkbenchReportRefresh(for: store.selectedDraft)
     store.refreshPublishPreviewInBackground(for: store.selectedDraft)
-    publishActionMessage = CoreL10n.text("已撤销上一次草稿归属变更。")
+    setPublishActionMessage(
+      CoreL10n.text("已撤销上一次草稿归属变更。"),
+      status: .success
+    )
     store.save()
     return true
   }

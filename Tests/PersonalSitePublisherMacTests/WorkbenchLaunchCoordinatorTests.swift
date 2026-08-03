@@ -25,6 +25,35 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     XCTAssertNil(coordinator.rssStore)
   }
 
+  func testRememberedRootResolvesBookmarkOffMainActor() async throws {
+    let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "launch-off-main-data-root-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: false)
+    let manifest = try WorkbenchDataRootManifestStore().initializeNewRoot(
+      at: rootURL,
+      appVersion: "test"
+    )
+    let harness = try makeHarness(
+      rootURL: rootURL,
+      resolveMustBeOffMainActor: true
+    )
+    defer { harness.cleanup() }
+    try harness.bookmarkStore.rememberSelectedRoot(rootURL, dataID: manifest.dataID)
+    harness.sessionRecovery.requestSafeModeOnNextLaunch()
+    let coordinator = WorkbenchLaunchCoordinator(
+      bookmarkStore: harness.bookmarkStore,
+      sessionRecovery: harness.sessionRecovery
+    )
+
+    await coordinator.start()
+
+    XCTAssertEqual(coordinator.phase, .ready)
+    XCTAssertEqual(coordinator.dataRootPath, rootURL.path)
+  }
+
   func testCreatingFreshRootFromSelectedParentEntersReadyAndReopens() async throws {
     let parentURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "launch-create-data-root-\(UUID().uuidString)",
@@ -360,7 +389,8 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
 
   private func makeHarness(
     rootURL: URL?,
-    bookmarkResolvedURL: URL? = nil
+    bookmarkResolvedURL: URL? = nil,
+    resolveMustBeOffMainActor: Bool = false
   ) throws -> LaunchCoordinatorHarness {
     let suiteName = "WorkbenchLaunchCoordinatorTests.\(UUID().uuidString)"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -370,6 +400,13 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
       codec: WorkbenchDataRootBookmarkCodec(
         create: { _ in Data("bookmark".utf8) },
         resolve: { _ in
+          if resolveMustBeOffMainActor, Thread.isMainThread {
+            throw NSError(
+              domain: "WorkbenchLaunchCoordinatorTests",
+              code: 1,
+              userInfo: [NSLocalizedDescriptionKey: "bookmark resolution ran on the main thread"]
+            )
+          }
           guard let resolvedURL = bookmarkResolvedURL ?? rootURL else {
             throw CocoaError(.fileNoSuchFile)
           }

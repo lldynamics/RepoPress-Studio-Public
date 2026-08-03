@@ -8,8 +8,6 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
   case sync
   case images
   case contentHealth
-  case maintenance
-  case releaseHistory
 
   public var id: String { rawValue }
 
@@ -39,12 +37,8 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
       return "arrow.triangle.2.circlepath"
     case .contentHealth:
       return "checklist"
-    case .maintenance:
-      return "wrench.and.screwdriver"
     case .images:
       return "photo.on.rectangle"
-    case .releaseHistory:
-      return "clock.arrow.circlepath"
     }
   }
 
@@ -64,10 +58,6 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
       return "6"
     case .contentHealth:
       return "4"
-    case .maintenance:
-      return "7"
-    case .releaseHistory:
-      return "8"
     }
   }
 
@@ -96,9 +86,8 @@ public enum WorkspaceInspectorRoute: String, CaseIterable, Sendable {
   case unavailable
 }
 
-/// Keeps Inspector routing testable outside SwiftUI. Context-only subpages
-/// such as maintenance and release history deliberately use their parent
-/// workspace without opening a second Inspector surface.
+/// Keeps Inspector routing testable outside SwiftUI. Parent-workspace subpages
+/// can suppress the Inspector without introducing placeholder workspace cases.
 public enum WorkspaceInspectorPresentation {
   /// Resolves the visible Inspector state without changing the user's stored
   /// preference while SwiftUI is measuring or rearranging the workspace.
@@ -136,8 +125,6 @@ public enum WorkspaceInspectorPresentation {
       return isRepositoryHistoryPresented ? .unavailable : .repository
     case .siteStarter:
       return .siteStarter
-    case .maintenance, .releaseHistory:
-      return .unavailable
     }
   }
 
@@ -166,8 +153,6 @@ public extension WorkspaceSection {
     case .sync: .repository
     case .images: .images
     case .contentHealth: .contentHealth
-    case .maintenance: .contentHealth
-    case .releaseHistory: .repository
     }
   }
 
@@ -198,11 +183,6 @@ public struct WorkspaceNavigationItem: Identifiable, Hashable, Sendable {
 }
 
 public enum WorkspaceVisibilityPolicy {
-  public static let hiddenNavigationSections: [WorkspaceSection] = [
-    .maintenance,
-    .releaseHistory,
-  ]
-
   /// Primary navigation is an explicit allowlist. New enum cases must never
   /// become user-facing merely because they were added to `WorkspaceSection`.
   public static let commandMenuPrimarySections: [WorkspaceSection] = [
@@ -223,9 +203,8 @@ public enum WorkspaceVisibilityPolicy {
     .siteStarter,
   ]
 
-  /// Keep this independent from `allCases` and the advanced command menu.
-  /// Advanced entries may be aliases or context-only routes that should not
-  /// be discoverable as standalone command-palette workspaces.
+  /// Keep this independent from `allCases`; context-only subpages are routed
+  /// by their owning workspace and are not command-palette workspaces.
   public static let commandPaletteSections: [WorkspaceSection] = [
     .writing,
     .library,
@@ -242,11 +221,6 @@ public enum WorkspaceNavigationPresentation {
     WorkspaceNavigationItem.init(section:)
   )
   public static let secondaryEntryItems = WorkspaceVisibilityPolicy.secondaryEntrySections.map(WorkspaceNavigationItem.init(section:))
-  public static let commandMenuAdvancedItems = (
-    WorkspaceVisibilityPolicy.secondaryEntrySections
-      + WorkspaceVisibilityPolicy.hiddenNavigationSections
-  ).map(WorkspaceNavigationItem.init(section:))
-
   public static let commandPaletteSections = WorkspaceVisibilityPolicy.commandPaletteSections
 }
 

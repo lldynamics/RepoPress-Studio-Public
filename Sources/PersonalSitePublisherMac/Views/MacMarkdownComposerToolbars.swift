@@ -14,57 +14,210 @@ struct MacMarkdownEditorToolbar: View {
 
   var body: some View {
     HStack(spacing: 8) {
-      VStack(alignment: .leading, spacing: 2) {
-        TextField("文章标题", text: $title)
-          .textFieldStyle(.plain)
-          .font(.headline)
-          .lineLimit(1)
-          .help(title.nilIfEmpty ?? String(localized: "未命名文章"))
-          .accessibilityLabel("文章标题")
-          .accessibilityValue(title.nilIfEmpty ?? String(localized: "未命名文章"))
+      titleArea
 
-        Text(markdownPath)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-          .workbenchTruncatedIdentity(markdownPath)
+      Spacer(minLength: 8)
+
+      ViewThatFits(in: .horizontal) {
+        expandedToolbarControls
+        compactToolbarControls(showsPrepareTitle: true)
+        compactToolbarControls(showsPrepareTitle: false)
       }
-      .frame(minWidth: 220, idealWidth: 320, maxWidth: 460, alignment: .leading)
-
-      Spacer()
-
-      HStack(spacing: 5) {
-        if hasUnsavedChanges {
-          Image(systemName: "circle.fill")
-            .font(.system(size: 6))
-            .foregroundStyle(WorkbenchTheme.warning)
-            .accessibilityHidden(true)
-        }
-        Text(lastSaveStatus)
-          .font(.caption)
-          .foregroundStyle(hasUnsavedChanges ? AnyShapeStyle(WorkbenchTheme.warning) : AnyShapeStyle(.tertiary))
-          .fixedSize(horizontal: true, vertical: false)
-      }
-      .accessibilityLabel("保存状态")
-      .accessibilityValue(lastSaveStatus)
-
-      editorDisplayModeControl
-
-      writingToolDensityControl
-
-      Button {
-        actions.onPreparePublish()
-      } label: {
-        Label("准备发布", systemImage: "paperplane")
-      }
-      .workbenchProminentActionStyle()
-      .help(String(localized: "检查当前文章并打开发布准备"))
-      .accessibilityLabel("准备发布")
-      .accessibilityIdentifier("markdown-prepare-publish")
-
-      expandedEditorActions
     }
     .padding(.horizontal, WorkbenchSpacing.section)
     .padding(.vertical, 9)
+  }
+
+  private var titleArea: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      TextField("文章标题", text: $title)
+        .textFieldStyle(.plain)
+        .font(.headline)
+        .lineLimit(1)
+        .help(title.nilIfEmpty ?? String(localized: "未命名文章"))
+        .accessibilityLabel("文章标题")
+        .accessibilityValue(title.nilIfEmpty ?? String(localized: "未命名文章"))
+
+      Text(markdownPath)
+        .font(.caption.monospaced())
+        .foregroundStyle(.secondary)
+        .workbenchTruncatedIdentity(markdownPath)
+    }
+    .frame(minWidth: 220, idealWidth: 320, maxWidth: 460, alignment: .leading)
+  }
+
+  private var expandedToolbarControls: some View {
+    HStack(spacing: 5) {
+      expandedSaveStatus
+      editorDisplayModeControl
+      writingToolDensityControl
+      preparePublishButton(showsTitle: true)
+      expandedEditorActions
+    }
+  }
+
+  private func compactToolbarControls(showsPrepareTitle: Bool) -> some View {
+    HStack(spacing: 4) {
+      compactSaveStatus
+      compactEditorDisplayModeControl
+      preparePublishButton(showsTitle: showsPrepareTitle)
+      compactEditorActionsMenu
+    }
+  }
+
+  private var expandedSaveStatus: some View {
+    HStack(spacing: 5) {
+      if hasUnsavedChanges {
+        Image(systemName: "circle.fill")
+          .font(.system(size: 6))
+          .foregroundStyle(WorkbenchTheme.warning)
+          .accessibilityHidden(true)
+      }
+      Text(lastSaveStatus)
+        .font(.caption)
+        .foregroundStyle(
+          hasUnsavedChanges
+            ? AnyShapeStyle(WorkbenchTheme.warning)
+            : AnyShapeStyle(.tertiary)
+        )
+        .fixedSize(horizontal: true, vertical: false)
+    }
+    .accessibilityLabel("保存状态")
+    .accessibilityValue(lastSaveStatus)
+  }
+
+  private var compactSaveStatus: some View {
+    Image(systemName: hasUnsavedChanges ? "circle.fill" : "checkmark.circle")
+      .font(hasUnsavedChanges ? .system(size: 7) : .caption)
+      .foregroundStyle(
+        hasUnsavedChanges
+          ? AnyShapeStyle(WorkbenchTheme.warning)
+          : AnyShapeStyle(.tertiary)
+      )
+      .frame(minWidth: 18, minHeight: 30)
+      .help(lastSaveStatus)
+      .accessibilityLabel("保存状态")
+      .accessibilityValue(lastSaveStatus)
+  }
+
+  @ViewBuilder
+  private func preparePublishButton(showsTitle: Bool) -> some View {
+    Button {
+      actions.onPreparePublish()
+    } label: {
+      if showsTitle {
+        Label("准备发布", systemImage: "paperplane")
+      } else {
+        Image(systemName: "paperplane")
+          .accessibilityHidden(true)
+      }
+    }
+    .workbenchProminentActionStyle()
+    .help(String(localized: "检查当前文章并打开发布准备"))
+    .accessibilityLabel("准备发布")
+    .accessibilityIdentifier("markdown-prepare-publish")
+  }
+
+  private var compactEditorDisplayModeControl: some View {
+    Menu {
+      ForEach(EditorDisplayMode.allCases) { mode in
+        Button {
+          actions.onSetEditorDisplayMode(mode)
+        } label: {
+          if editorDisplayMode == mode {
+            Label(mode.localizedDisplayName, systemImage: "checkmark")
+          } else {
+            Label(mode.localizedDisplayName, systemImage: mode.systemImage)
+          }
+        }
+        .accessibilityValue(
+          editorDisplayMode == mode ? String(localized: "已选择") : String(localized: "未选择")
+        )
+        .accessibilityAddTraits(editorDisplayMode == mode ? .isSelected : [])
+      }
+    } label: {
+      Image(systemName: editorDisplayMode.systemImage)
+        .accessibilityHidden(true)
+    }
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: false))
+    .help(String(localized: "编辑器模式：\(editorDisplayMode.localizedDisplayName)"))
+    .accessibilityLabel(
+      String(localized: "编辑器模式：\(editorDisplayMode.localizedDisplayName)")
+    )
+    .accessibilityValue(editorDisplayMode.localizedDisplayName)
+    .accessibilityIdentifier("markdown-editor-display-mode-menu")
+  }
+
+  private var compactEditorActionsMenu: some View {
+    Menu {
+      Button {
+        actions.onShowFindReplace()
+      } label: {
+        Label("查找与替换", systemImage: "magnifyingglass")
+      }
+
+      Button {
+        actions.onShowOutline()
+      } label: {
+        Label("文章大纲", systemImage: "list.bullet.indent")
+      }
+      .keyboardShortcut("o", modifiers: [.command, .option])
+      .accessibilityIdentifier("markdown-outline-button")
+
+      Menu {
+        contextPanelActions
+      } label: {
+        Label("上下文面板", systemImage: "sidebar.right")
+      }
+      .accessibilityLabel("写作上下文面板")
+      .accessibilityValue(availableWritingContextPanels.map(\.title).joined(separator: "、"))
+      .accessibilityIdentifier("markdown-writing-context-panel-menu")
+
+      Button {
+        actions.onShowShortcutHelp()
+      } label: {
+        Label("快捷键说明", systemImage: "keyboard")
+      }
+
+      Menu {
+        exportActions
+      } label: {
+        Label("导出文章", systemImage: "square.and.arrow.up")
+      }
+      .accessibilityLabel("导出文章")
+      .accessibilityIdentifier("markdown-document-export-menu")
+
+      Divider()
+
+      Menu {
+        writingToolDensityActions
+      } label: {
+        Label("写作工具密度", systemImage: "slider.horizontal.3")
+      }
+      .accessibilityLabel("写作工具密度")
+      .accessibilityValue(writingToolDensity.title)
+      .accessibilityIdentifier("markdown-writing-tool-density")
+
+      Menu {
+        aiActions
+      } label: {
+        Label("AI 常用操作", systemImage: "sparkles")
+      }
+      .accessibilityLabel("AI 常用操作")
+      .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
+    } label: {
+      Image(systemName: "ellipsis.circle")
+        .accessibilityHidden(true)
+    }
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: false))
+    .help(String(localized: "更多编辑器操作"))
+    .accessibilityLabel("更多编辑器操作")
+    .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
+    .accessibilityIdentifier("markdown-editor-more-actions-menu")
   }
 
   private var expandedEditorActions: some View {
@@ -109,12 +262,7 @@ struct MacMarkdownEditorToolbar: View {
       .accessibilityLabel("快捷键说明")
 
       Menu {
-        exportButton("Markdown…", systemImage: "doc.plaintext", format: .markdown)
-        exportButton("HTML…", systemImage: "chevron.left.forwardslash.chevron.right", format: .html)
-        exportButton("PDF…", systemImage: "doc.richtext", format: .pdf)
-        Divider()
-        exportButton("打印…", systemImage: "printer", format: .print)
-        exportButton("分享…", systemImage: "square.and.arrow.up", format: .share)
+        exportActions
       } label: {
         editorActionLabel(String(localized: "导出文章"), systemName: "square.and.arrow.up", showsTitle: showsTitle)
       }
@@ -123,75 +271,24 @@ struct MacMarkdownEditorToolbar: View {
       .accessibilityLabel("导出文章")
       .accessibilityIdentifier("markdown-document-export-menu")
 
-      if DistributionFeaturePolicy.allowsExternalAIProviders {
-        Divider()
-          .frame(height: 18)
+      Divider()
+        .frame(height: 18)
 
-        Menu {
-          articleAIActionButton(.continueWriting, kind: .continueArticle)
-          selectionAIActionButton(.rewrite, kind: .rewriteSelection)
-          selectionAIActionButton(.condense, kind: .condenseSelection)
-
-          Menu {
-            selectionAIActionButton(.translate, kind: .translateSelectionToChinese)
-            selectionAIActionButton(.translate, kind: .translateSelectionToEnglish)
-          } label: {
-            Label(
-              AIPublishingDefaultCapability.translate.localizedDisplayName,
-              systemImage: AIPublishingDefaultCapability.translate.systemImage
-            )
-          }
-
-          articleAIActionButton(.generateMetadata, kind: .draftFrontMatterPack)
-          articleAIActionButton(.publishingCheck, kind: .publishingReadiness)
-          articleAIActionButton(.citeKnowledge, kind: .draftReferencesSection)
-
-          Button {
-            actions.onOpenAIContextInspector()
-          } label: {
-            Label(
-              AIPublishingDefaultCapability.askAnything.localizedDisplayName,
-              systemImage: AIPublishingDefaultCapability.askAnything.systemImage
-            )
-          }
-
-          Divider()
-
-          Button {
-            actions.onOpenAITemplateLibrary()
-          } label: {
-            Label("搜索模板库…", systemImage: "magnifyingglass")
-          }
-
-          Button {
-            actions.onPasteAIPromptToClipboard()
-          } label: {
-            Label("复制上下文 Prompt", systemImage: "doc.on.doc")
-          }
-        } label: {
-          editorActionLabel("AI 常用操作", systemName: "sparkles", showsTitle: showsTitle)
-        }
-        .menuIndicator(.hidden)
-        .help("AI 常用操作")
-        .accessibilityLabel("AI 常用操作")
-        .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
+      Menu {
+        aiActions
+      } label: {
+        editorActionLabel("AI 常用操作", systemName: "sparkles", showsTitle: showsTitle)
       }
+      .menuIndicator(.hidden)
+      .help("AI 常用操作")
+      .accessibilityLabel("AI 常用操作")
+      .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
     }
   }
 
   private var writingToolDensityControl: some View {
     Menu {
-      ForEach(MarkdownWritingToolDensity.allCases) { density in
-        Button {
-          actions.onSetWritingToolDensity(density)
-        } label: {
-          if density == writingToolDensity {
-            Label(density.title, systemImage: "checkmark")
-          } else {
-            Label(density.title, systemImage: density.systemImage)
-          }
-        }
-      }
+      writingToolDensityActions
     } label: {
       Label(writingToolDensity.title, systemImage: "slider.horizontal.3")
     }
@@ -205,14 +302,7 @@ struct MacMarkdownEditorToolbar: View {
 
   private func contextPanelMenu(showsTitle: Bool) -> some View {
     Menu {
-      ForEach(MarkdownWritingContextPanel.allCases) { panel in
-        Button {
-          actions.onOpenWritingContextPanel(panel)
-        } label: {
-          Label(panel.title, systemImage: panel.systemImage)
-        }
-        .disabled(!availableWritingContextPanels.contains(panel))
-      }
+      contextPanelActions
     } label: {
       editorActionLabel("上下文面板", systemName: "sidebar.right", showsTitle: showsTitle)
     }
@@ -221,6 +311,87 @@ struct MacMarkdownEditorToolbar: View {
     .accessibilityLabel("写作上下文面板")
     .accessibilityValue(availableWritingContextPanels.map(\.title).joined(separator: "、"))
     .accessibilityIdentifier("markdown-writing-context-panel-menu")
+  }
+
+  @ViewBuilder
+  private var writingToolDensityActions: some View {
+    ForEach(MarkdownWritingToolDensity.allCases) { density in
+      Button {
+        actions.onSetWritingToolDensity(density)
+      } label: {
+        if density == writingToolDensity {
+          Label(density.title, systemImage: "checkmark")
+        } else {
+          Label(density.title, systemImage: density.systemImage)
+        }
+      }
+    }
+  }
+
+  @ViewBuilder
+  private var contextPanelActions: some View {
+    ForEach(MarkdownWritingContextPanel.allCases) { panel in
+      Button {
+        actions.onOpenWritingContextPanel(panel)
+      } label: {
+        Label(panel.title, systemImage: panel.systemImage)
+      }
+      .disabled(!availableWritingContextPanels.contains(panel))
+    }
+  }
+
+  @ViewBuilder
+  private var exportActions: some View {
+    exportButton("Markdown…", systemImage: "doc.plaintext", format: .markdown)
+    exportButton("HTML…", systemImage: "chevron.left.forwardslash.chevron.right", format: .html)
+    exportButton("PDF…", systemImage: "doc.richtext", format: .pdf)
+    Divider()
+    exportButton("打印…", systemImage: "printer", format: .print)
+    exportButton("分享…", systemImage: "square.and.arrow.up", format: .share)
+  }
+
+  @ViewBuilder
+  private var aiActions: some View {
+    articleAIActionButton(.continueWriting, kind: .continueArticle)
+    selectionAIActionButton(.rewrite, kind: .rewriteSelection)
+    selectionAIActionButton(.condense, kind: .condenseSelection)
+
+    Menu {
+      selectionAIActionButton(.translate, kind: .translateSelectionToChinese)
+      selectionAIActionButton(.translate, kind: .translateSelectionToEnglish)
+    } label: {
+      Label(
+        AIPublishingDefaultCapability.translate.localizedDisplayName,
+        systemImage: AIPublishingDefaultCapability.translate.systemImage
+      )
+    }
+
+    articleAIActionButton(.generateMetadata, kind: .draftFrontMatterPack)
+    articleAIActionButton(.publishingCheck, kind: .publishingReadiness)
+    articleAIActionButton(.citeKnowledge, kind: .draftReferencesSection)
+
+    Button {
+      actions.onOpenAIContextInspector()
+    } label: {
+      Label(
+        AIPublishingDefaultCapability.askAnything.localizedDisplayName,
+        systemImage: AIPublishingDefaultCapability.askAnything.systemImage
+      )
+    }
+
+    Divider()
+
+    Button {
+      actions.onOpenAITemplateLibrary()
+    } label: {
+      Label("搜索模板库…", systemImage: "magnifyingglass")
+    }
+
+    Button {
+      actions.onPasteAIPromptToClipboard()
+    } label: {
+      Label("复制上下文 Prompt", systemImage: "doc.on.doc")
+    }
   }
 
   private var editorDisplayModeControl: some View {

@@ -17,10 +17,16 @@ extension PublishingStore {
       in: draftVersions
     )
     guard draftVersions.count != previousCount else {
-      store.setPublishActionMessage(CoreL10n.text("当前内容与最新版本相同，无需重复保存。"))
+      store.setPublishActionMessage(
+        CoreL10n.text("当前内容与最新版本相同，无需重复保存。"),
+        status: .warning
+      )
       return false
     }
-    store.setPublishActionMessage(CoreL10n.text("已保存手动版本快照。"))
+    store.setPublishActionMessage(
+      CoreL10n.text("已保存手动版本快照。"),
+      status: .success
+    )
     store.save()
     return true
   }
@@ -87,7 +93,8 @@ extension PublishingStore {
       CoreL10n.format(
         "已恢复到 %@ 的版本。",
         version.capturedAt.formatted(date: .abbreviated, time: .shortened)
-      )
+      ),
+      status: .success
     )
     store.save()
     return true
@@ -103,7 +110,10 @@ extension PublishingStore {
     let recycled = recycledDrafts[recycledIndex]
     guard recycled.draft.isGeneralDraft
       || profiles.contains(where: { $0.id == recycled.draft.siteProfileID }) else {
-      store.setPublishActionMessage(CoreL10n.text("原站点 Profile 已不存在，无法恢复这篇文章。"))
+      store.setPublishActionMessage(
+        CoreL10n.text("原站点 Profile 已不存在，无法恢复这篇文章。"),
+        status: .warning
+      )
       return false
     }
 
@@ -131,7 +141,8 @@ extension PublishingStore {
       CoreL10n.format(
         "已从回收站恢复「%@」。",
         restored.title.nilIfEmpty ?? CoreL10n.text("未命名文章")
-      )
+      ),
+      status: .success
     )
     store.save()
     return true
@@ -143,7 +154,10 @@ extension PublishingStore {
     recycledDrafts.removeAll { $0.id == draftID }
     draftVersions.removeAll { $0.draftID == draftID }
     markdownEditorSessionStates.removeValue(forKey: draftID)
-    store.setPublishActionMessage(CoreL10n.text("已永久删除回收站中的文章；待处理的仓库清理记录仍保留。"))
+    store.setPublishActionMessage(
+      CoreL10n.text("已永久删除回收站中的文章；待处理的仓库清理记录仍保留。"),
+      status: .success
+    )
     store.save()
     return true
   }
@@ -184,7 +198,10 @@ extension PublishingStore {
     let package = draftLifecycleService.cleanupPackage(for: request)
     let preview = providedPreview ?? localPublishPreviewService.preview(package: package, profile: profile)
     guard !preview.issues.contains(where: { $0.severity == .error }) else {
-      store.setPublishActionMessage(CoreL10n.text("本地仓库清理被阻止：请先检查仓库路径和安全性问题。"))
+      store.setPublishActionMessage(
+        CoreL10n.text("本地仓库清理被阻止：请先检查仓库路径和安全性问题。"),
+        status: .warning
+      )
       return false
     }
 
@@ -196,12 +213,16 @@ extension PublishingStore {
         CoreL10n.format(
           "已从本地仓库清理 %@；可在同步工作区检查并提交该删除。",
           request.repositoryPath
-        )
+        ),
+        status: .success
       )
       store.save()
       return true
     } catch {
-      store.setPublishActionMessage(CoreL10n.format("本地仓库清理失败：%@", error.localizedDescription))
+      store.setPublishActionMessage(
+        CoreL10n.format("本地仓库清理失败：%@", error.localizedDescription),
+        status: .failure
+      )
       return false
     }
   }
@@ -215,7 +236,10 @@ extension PublishingStore {
     }
     draftRepositoryCleanupRequests[index].status = .kept
     draftRepositoryCleanupRequests[index].resolvedAt = Date()
-    store.setPublishActionMessage(CoreL10n.text("已保留仓库文件，该记录不再等待清理。"))
+    store.setPublishActionMessage(
+      CoreL10n.text("已保留仓库文件，该记录不再等待清理。"),
+      status: .success
+    )
     store.save()
     return true
   }

@@ -308,17 +308,15 @@ extension ReleaseHistoryDetailView {
         .accessibilityLabel("检查部署状态")
         .accessibilityIdentifier("release-record-\(record.id)-check-deployment")
 
-        if DistributionFeaturePolicy.allowsExternalAIProviders {
-          Button {
-            Task {
-              await store.sendReleaseRecoveryPackageToAI(for: entry)
-            }
-          } label: {
-            releaseRecordActionLabel("交给 AI", systemImage: "sparkles")
+        Button {
+          Task {
+            await store.sendReleaseRecoveryPackageToAI(for: entry)
           }
-          .disabled(record.draftID == nil || store.ai.isChatRunning)
-          .accessibilityIdentifier("release-record-\(record.id)-send-to-ai")
+        } label: {
+          releaseRecordActionLabel("交给 AI", systemImage: "sparkles")
         }
+        .disabled(record.draftID == nil || store.ai.isChatRunning)
+        .accessibilityIdentifier("release-record-\(record.id)-send-to-ai")
 
         if let commitSHA = record.commitSHA {
           Button {

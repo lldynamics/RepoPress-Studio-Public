@@ -9,7 +9,6 @@ struct ContentHealthDetailView: View {
   @StateObject private var healthState: WorkbenchContentHealthFeatureFacade
   @State private var healthSnapshot: ContentHealthSnapshot?
   @State private var severityFilter: ContentHealthSeverityFilter = .all
-  @State private var issueScope: ContentHealthIssueScopeFilter = .all
   @State private var articleGrouping: ContentHealthArticleGrouping = .actionQueue
   @State private var healthSnapshotTask: Task<Void, Never>?
   @State private var articlePresentationTask: Task<Void, Never>?
@@ -33,23 +32,21 @@ struct ContentHealthDetailView: View {
     _healthState = StateObject(
       wrappedValue: WorkbenchContentHealthFeatureFacade(store: store)
     )
+    _articleGrouping = State(initialValue: Self.preferredGrouping(for: filter.wrappedValue))
   }
 
   var body: some View {
     detailContent
     .task {
-      applyStagePresentation(filter)
       refreshContentHealthSnapshotIfNeeded()
     }
     .onChange(of: healthState.snapshotVersion) { _, _ in
       refreshContentHealthSnapshot()
     }
     .onChange(of: filter) { _, newFilter in
-      applyStagePresentation(newFilter)
-      refreshContentHealthSnapshotIfNeeded()
-    }
-    .onChange(of: issueScope) { _, _ in
+      applyPreferredGrouping(for: newFilter)
       rebuildArticlePresentation()
+      refreshContentHealthSnapshotIfNeeded()
     }
     .onChange(of: severityFilter) { _, _ in
       rebuildArticlePresentation()
@@ -69,22 +66,22 @@ struct ContentHealthDetailView: View {
     .accessibilityIdentifier("content-health-workspace")
   }
 
-  private func applyStagePresentation(_ newFilter: ContentHealthContextFilter) {
-    issueScope = ContentHealthIssueScopeFilter(legacyFilter: newFilter)
-    switch newFilter {
+  private func applyPreferredGrouping(for newFilter: ContentHealthContextFilter) {
+    articleGrouping = Self.preferredGrouping(for: newFilter)
+  }
+
+  private static func preferredGrouping(
+    for filter: ContentHealthContextFilter
+  ) -> ContentHealthArticleGrouping {
+    switch filter {
     case .overview, .publicRisks:
-      articleGrouping = .actionQueue
+      return .actionQueue
     case .aiFixes:
-      if DistributionFeaturePolicy.allowsExternalAIProviders {
-        articleGrouping = .automaticFix
-      } else {
-        issueScope = .all
-        articleGrouping = .actionQueue
-      }
+      return .automaticFix
     case .siteIssues:
-      articleGrouping = .site
+      return .site
     case .maintenance:
-      break
+      return .actionQueue
     }
   }
 
@@ -121,7 +118,7 @@ struct ContentHealthDetailView: View {
               let presentation = articlePresentation,
               presentation.matches(
                 snapshotID: snapshot.id,
-                issueScope: issueScope,
+                filter: filter,
                 severityFilter: severityFilter
               ) {
       content(
@@ -133,9 +130,7 @@ struct ContentHealthDetailView: View {
     } else {
       EmptyStateView(
         title: "正在准备检查快照",
-        message: DistributionFeaturePolicy.allowsExternalAIProviders
-          ? "内容健康页会先生成一次快照，再渲染公开风险、AI 修复队列和文章级问题。"
-          : "内容健康页会先生成一次快照，再渲染公开风险和文章级问题。",
+        message: "内容健康页会先生成一次快照，再渲染公开风险、AI 修复队列和文章级问题。",
         systemImage: "checklist"
       )
       .frame(maxWidth: .infinity, minHeight: 360)
@@ -281,7 +276,7 @@ struct ContentHealthDetailView: View {
     }
     .pickerStyle(.menu)
     .fixedSize(horizontal: true, vertical: false)
-    .disabled(issueScope == .siteIssues)
+    .disabled(filter == .siteIssues)
     .accessibilityLabel("文章分组方式")
   }
 
@@ -291,7 +286,7 @@ struct ContentHealthDetailView: View {
     selectedDraftID: UUID?,
     profileName: String
   ) -> some View {
-    if issueScope == .siteIssues {
+    if filter == .siteIssues {
       siteIssuesSection(presentation.siteIssues)
     } else {
       articleHealthFlow(
@@ -317,7 +312,7 @@ struct ContentHealthDetailView: View {
       return
     }
     let expectedSnapshotID = healthSnapshot.id
-    let expectedIssueScope = issueScope
+    let expectedFilter = filter
     let expectedSeverityFilter = severityFilter
     let requestID = UUID()
     articlePresentationRequestID = requestID
@@ -328,13 +323,13 @@ struct ContentHealthDetailView: View {
       do {
         let presentation = try await service.articlePresentation(
           snapshot: healthSnapshot,
-          issueScope: expectedIssueScope,
+          filter: expectedFilter,
           severityFilter: expectedSeverityFilter
         )
         guard !Task.isCancelled,
               articlePresentationRequestID == requestID,
               self.healthSnapshot?.id == expectedSnapshotID,
-              issueScope == expectedIssueScope,
+              filter == expectedFilter,
               severityFilter == expectedSeverityFilter else { return }
         articlePresentation = presentation
         articlePresentationTask = nil
@@ -446,14 +441,12 @@ struct ContentHealthDetailView: View {
         systemImage: "exclamationmark.triangle",
         color: WorkbenchTheme.warning
       )
-      if DistributionFeaturePolicy.allowsExternalAIProviders {
-        healthSummaryBadge(
-          title: "AI",
-          value: snapshot.aiFixQueueItems.count,
-          systemImage: "sparkles",
-          color: WorkbenchTheme.inventoryForeground
-        )
-      }
+      healthSummaryBadge(
+        title: "AI",
+        value: snapshot.aiFixQueueItems.count,
+        systemImage: "sparkles",
+        color: WorkbenchTheme.inventoryForeground
+      )
       healthSummaryBadge(
         title: "通过",
         value: snapshot.passingDraftCount,
@@ -507,8 +500,7 @@ struct ContentHealthDetailView: View {
         Label(recommendationTitle, systemImage: "arrow.right.circle")
           .workbenchTruncatedIdentity(recommendationTitle)
       }
-    } else if DistributionFeaturePolicy.allowsExternalAIProviders,
-              let item = presentation.recommendedAIFixItem {
+    } else if let item = presentation.recommendedAIFixItem {
       let recommendationTitle = "推荐：用 AI 修复 \(item.draftTitle)"
       Button {
         runAIFixQueueItem(item)
@@ -542,7 +534,7 @@ struct ContentHealthDetailView: View {
       Label("问题详情", systemImage: "sidebar.right")
         .font(.workbenchSectionTitle)
 
-      if issueScope == .siteIssues {
+      if filter == .siteIssues {
         if let siteIssue = presentation.siteIssues.first {
           ContentHealthIssueCard(issue: siteIssue)
         } else {
@@ -585,8 +577,7 @@ struct ContentHealthDetailView: View {
           }
         }
 
-        if DistributionFeaturePolicy.allowsExternalAIProviders,
-           let aiItem = selectedRow.aiFixItem {
+        if let aiItem = selectedRow.aiFixItem {
           Button {
             runAIFixQueueItem(aiItem)
           } label: {
@@ -901,8 +892,7 @@ struct ContentHealthDetailView: View {
       }
     }
 
-    if DistributionFeaturePolicy.allowsExternalAIProviders,
-       group.kind == .automaticFix,
+    if group.kind == .automaticFix,
        group.totalCount > group.rows.count {
       Button {
         filter = .aiFixes

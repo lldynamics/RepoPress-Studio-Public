@@ -92,7 +92,6 @@ struct WorkspaceShellSplitLayout: View {
           rssPresentation: rssPresentation
         )
         .frame(minWidth: centerMinimumWidth, maxWidth: .infinity, maxHeight: .infinity)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
     .knowledgeFileDropImport(

@@ -316,12 +316,6 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     guard let bookmarkStore else { return }
     phase = .preparing(String(localized: "正在检查数据文件夹…"))
     do {
-      guard try bookmarkStore.storedRecord() != nil else {
-        showDataRootSetup(
-          message: String(localized: "请恢复以前的数据文件夹，或新建一个工作区。")
-        )
-        return
-      }
       try await openStoredRootAndPrepare(using: bookmarkStore)
     } catch {
       showDataRootSetup(message: friendlyMessage(for: error))
@@ -331,9 +325,12 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   private func openStoredRootAndPrepare(
     using bookmarkStore: WorkbenchDataRootBookmarkStore
   ) async throws {
-    guard let session = try bookmarkStore.openStoredRoot() else {
+    let session = try await Task.detached(priority: .utility) {
+      try bookmarkStore.openStoredRoot()
+    }.value
+    guard let session else {
       showDataRootSetup(
-        message: String(localized: "找不到之前的数据文件夹，请重新选择。")
+        message: String(localized: "请恢复以前的数据文件夹，或新建一个工作区。")
       )
       return
     }

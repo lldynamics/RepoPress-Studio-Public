@@ -421,7 +421,10 @@ extension RepositoryWorkspaceView {
       )
     } else {
       store.runPreflight()
-      store.setPublishActionMessage(String(localized: "请从顶部发布状态打开统一发布流程。"))
+      store.setPublishActionMessage(
+        String(localized: "请从顶部发布状态打开统一发布流程。"),
+        status: .information
+      )
     }
   }
 

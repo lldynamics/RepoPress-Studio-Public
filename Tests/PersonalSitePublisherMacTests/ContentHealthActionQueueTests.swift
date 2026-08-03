@@ -155,7 +155,7 @@ final class ContentHealthActionQueueTests: XCTestCase {
     )
     let presentation = try await service.articlePresentation(
       snapshot: snapshot,
-      issueScope: .all,
+      filter: .overview,
       severityFilter: .errors
     )
 

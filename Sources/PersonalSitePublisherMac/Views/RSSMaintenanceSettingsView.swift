@@ -16,18 +16,7 @@ struct RSSMaintenanceSettingsView: View {
         LabeledContent("订阅数量", value: store.feeds.count.formatted())
         LabeledContent("本机文章", value: store.articleHeaders.count.formatted())
         LabeledContent("已归档图片", value: store.mediaAssets.count.formatted())
-        Text("收藏文章或添加高亮后，文章中的图片会在后台保存到本机。遇到防盗链时会先带文章 Referer 重试，再降级为无 Referer 请求。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-
-      Section(String(localized: "刷新性能")) {
-        LabeledContent(
-          "刷新并发上限",
-          value: "\(RSSReaderStore.maximumRefreshConcurrency) 个订阅"
-        )
-        Text("后台刷新会限制同时请求的订阅数量；超时或暂时不可用的来源会按指数退避等待重试，最长等待 6 小时。")
+        Text("将文章加入稍后阅读或添加高亮后，文章中的图片会在后台保存到本机。遇到防盗链时会先带文章 Referer 重试，再降级为无 Referer 请求。")
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -49,7 +38,7 @@ struct RSSMaintenanceSettingsView: View {
         }
         .disabled(!automaticPruningEnabled)
 
-        Text("只会清理超过保留期限、已读、未收藏且没有高亮的文章；收藏、批注和已归档图片不会被误删。")
+        Text("只会清理超过保留期限、已读、未加入稍后阅读且没有高亮的文章；稍后阅读文章、批注和已归档图片不会被误删。")
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)

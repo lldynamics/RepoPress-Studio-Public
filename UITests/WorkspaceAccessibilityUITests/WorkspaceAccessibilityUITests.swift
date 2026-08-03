@@ -452,8 +452,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "workspace-quick-search-field",
       "image-sidebar-stage-navigation",
       "image-sidebar-stage-overview",
-      "image-sidebar-stage-issues",
-      "image-sidebar-stage-repository",
+      "image-sidebar-stage-resources",
       "image-workbench",
       "image-workbench-open-folder",
       "image-workbench-open-writing",
@@ -470,24 +469,13 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     }
 
     select(
-      "image-sidebar-stage-issues",
-      revealing: "image-issue-workspace"
-    )
-    for identifier in [
-      "image-workbench",
-      "image-issue-workspace",
-      "image-issue-search",
-      "image-issue-filter",
-    ] {
-      assertUniqueIdentifier(identifier)
-    }
-
-    select(
-      "image-sidebar-stage-repository",
+      "image-sidebar-stage-resources",
       revealing: "repository-image-browser"
     )
     for identifier in [
       "image-workbench",
+      "image-workbench-resources",
+      "image-resource-mode-picker",
       "repository-image-browser",
     ] {
       assertUniqueIdentifier(identifier)

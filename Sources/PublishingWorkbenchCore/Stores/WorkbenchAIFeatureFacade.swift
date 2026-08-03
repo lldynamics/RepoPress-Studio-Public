@@ -277,7 +277,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
   ) -> Bool {
     store.flushDraftBodyEditorBuffer(for: draft.id)
     guard let currentDraft = store.drafts.first(where: { $0.id == draft.id }) else {
-      store.setPublishActionMessage(CoreL10n.text("当前文章已变化，请重新选择后再应用。"))
+      store.setPublishActionMessage(
+        CoreL10n.text("当前文章已变化，请重新选择后再应用。"),
+        status: .warning
+      )
       return false
     }
 
@@ -288,7 +291,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
       mode: mode
     )
     guard let insertion else {
-      store.setPublishActionMessage(CoreL10n.text("代码块内容为空或当前编辑位置已失效。"))
+      store.setPublishActionMessage(
+        CoreL10n.text("代码块内容为空或当前编辑位置已失效。"),
+        status: .warning
+      )
       return false
     }
 
@@ -298,7 +304,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
       for: currentDraft.id,
       expectedRevision: buffer.revision
     ), staged.wasAccepted else {
-      store.setPublishActionMessage(CoreL10n.text("当前文章在应用前已被其他窗口修改，请重新尝试。"))
+      store.setPublishActionMessage(
+        CoreL10n.text("当前文章在应用前已被其他窗口修改，请重新尝试。"),
+        status: .warning
+      )
       return false
     }
 
@@ -311,9 +320,15 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     )
     switch mode {
     case .applyToCurrentEditor:
-      store.setPublishActionMessage(CoreL10n.text("已将代码块应用到当前编辑器。"))
+      store.setPublishActionMessage(
+        CoreL10n.text("已将代码块应用到当前编辑器。"),
+        status: .success
+      )
     case .insertAtCursor:
-      store.setPublishActionMessage(CoreL10n.text("已将代码块插入到光标处。"))
+      store.setPublishActionMessage(
+        CoreL10n.text("已将代码块插入到光标处。"),
+        status: .success
+      )
     }
     return true
   }
@@ -628,6 +643,13 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     selectedText: String? = nil
   ) async -> AIPublishingActionResult? {
     await store.performAIAction(kind, draft: draft, selectedText: selectedText)
+  }
+
+  public func translateRSSArticle(
+    _ article: RSSArticle,
+    target: RSSArticleTranslationTarget
+  ) async throws -> RSSArticleTranslationResult {
+    try await store.aiStore.translateRSSArticle(article, target: target)
   }
 
   private func feedbackActionIdentifier(

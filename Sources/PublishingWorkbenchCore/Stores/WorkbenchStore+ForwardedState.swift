@@ -40,6 +40,9 @@ extension WorkbenchStore {
   public var persistenceRecoveryMessage: String? { persistenceStore.recoveryMessage }
   public var isPersistenceRecoveryWriteProtected: Bool { persistenceStore.isRecoveryWriteProtected }
   public var pendingDraftRecoveryCount: Int { pendingDraftRecoveries.count }
+  public var publishActionFeedback: PublishActionFeedback? {
+    publishingStore.publishActionFeedback
+  }
   public var publishActionMessage: String? { publishingStore.publishActionMessage }
   public var isLocalRepositoryMutationRunning: Bool { publishingStore.isLocalRepositoryMutationRunning }
   public var imageActionMessage: String? { publishingStore.imageActionMessage }

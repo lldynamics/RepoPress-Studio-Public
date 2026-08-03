@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 
@@ -9,8 +10,12 @@ struct LocalContentImportFileMetadata: Codable, Equatable, Sendable {
   var modifiedNanoseconds: Int64
   var changedSeconds: Int64
   var changedNanoseconds: Int64
+  var contentSampleSHA256: Data?
 
-  static func read(from fileURL: URL) -> LocalContentImportFileMetadata? {
+  static func read(
+    from fileURL: URL,
+    includingContentSample: Bool = false
+  ) -> LocalContentImportFileMetadata? {
     let descriptor: Int32 = fileURL.withUnsafeFileSystemRepresentation { path in
       guard let path else { return Int32(-1) }
       return Darwin.open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
@@ -20,8 +25,23 @@ struct LocalContentImportFileMetadata: Codable, Equatable, Sendable {
 
     var fileStatus = stat()
     guard Darwin.fstat(descriptor, &fileStatus) == 0,
-          (fileStatus.st_mode & S_IFMT) == S_IFREG else {
+      (fileStatus.st_mode & S_IFMT) == S_IFREG
+    else {
       return nil
+    }
+    let contentSampleSHA256: Data?
+    if includingContentSample {
+      guard
+        let fingerprint = sampledContentSHA256(
+          descriptor: descriptor,
+          byteSize: Int64(fileStatus.st_size)
+        )
+      else {
+        return nil
+      }
+      contentSampleSHA256 = fingerprint
+    } else {
+      contentSampleSHA256 = nil
     }
     return LocalContentImportFileMetadata(
       byteSize: Int64(fileStatus.st_size),
@@ -30,8 +50,27 @@ struct LocalContentImportFileMetadata: Codable, Equatable, Sendable {
       modifiedSeconds: Int64(fileStatus.st_mtimespec.tv_sec),
       modifiedNanoseconds: Int64(fileStatus.st_mtimespec.tv_nsec),
       changedSeconds: Int64(fileStatus.st_ctimespec.tv_sec),
-      changedNanoseconds: Int64(fileStatus.st_ctimespec.tv_nsec)
+      changedNanoseconds: Int64(fileStatus.st_ctimespec.tv_nsec),
+      contentSampleSHA256: contentSampleSHA256
     )
+  }
+
+  /// Reads one bounded 2 KiB prefix instead of hashing the whole document.
+  /// This catches common front-matter replacements on coarse-timestamp
+  /// external volumes without adding extra seeks within every cached file.
+  private static func sampledContentSHA256(
+    descriptor: Int32,
+    byteSize: Int64
+  ) -> Data? {
+    let sampleByteCount = 2_048
+    let boundedByteCount = min(Int64(sampleByteCount), max(0, byteSize))
+    var buffer = [UInt8](repeating: 0, count: Int(boundedByteCount))
+    let readCount = buffer.withUnsafeMutableBytes { bytes -> Int in
+      guard let baseAddress = bytes.baseAddress else { return 0 }
+      return Darwin.pread(descriptor, baseAddress, bytes.count, 0)
+    }
+    guard readCount >= 0 else { return nil }
+    return Data(SHA256.hash(data: Data(buffer.prefix(readCount))))
   }
 }
 
@@ -46,7 +85,12 @@ struct LocalContentImportIndexEntry: Codable, Equatable, Sendable {
   var draft: ArticleDraft
 
   func isCurrent(rootURL: URL, sourceURL: URL) -> Bool {
-    guard LocalContentImportFileMetadata.read(from: sourceURL) == sourceMetadata else {
+    guard
+      LocalContentImportFileMetadata.read(
+        from: sourceURL,
+        includingContentSample: true
+      ) == sourceMetadata
+    else {
       return false
     }
     return referencedAssets.allSatisfy { asset in
@@ -58,7 +102,7 @@ struct LocalContentImportIndexEntry: Codable, Equatable, Sendable {
 }
 
 struct LocalContentImportIndexSnapshot: Codable, Sendable {
-  static let currentSchemaVersion = 2
+  static let currentSchemaVersion = 3
 
   var schemaVersion: Int
   var profileID: UUID
@@ -115,20 +159,21 @@ final class LocalContentImportIndexStore: @unchecked Sendable {
     defer { Self.mutationLock.unlock() }
 
     guard let attributes = try? fileManager.attributesOfItem(atPath: indexURL.path),
-          let size = (attributes[.size] as? NSNumber)?.intValue,
-          size > 0,
-          size <= Self.maximumIndexByteCount,
-          let data = try? Data(contentsOf: indexURL, options: .mappedIfSafe),
-          let decoded = try? JSONDecoder.localContentImportIndex.decode(
-            LocalContentImportIndexSnapshot.self,
-            from: data
-          ),
-          decoded.schemaVersion == LocalContentImportIndexSnapshot.currentSchemaVersion,
-          decoded.profileID == profile.id,
-          decoded.repositoryRootPath == rootPath,
-          decoded.configurationSignature == signature,
-          decoded.entries.count <= Self.maximumEntryCount,
-          Self.hasValidEntries(decoded.entries, profileID: profile.id) else {
+      let size = (attributes[.size] as? NSNumber)?.intValue,
+      size > 0,
+      size <= Self.maximumIndexByteCount,
+      let data = try? Data(contentsOf: indexURL, options: .mappedIfSafe),
+      let decoded = try? JSONDecoder.localContentImportIndex.decode(
+        LocalContentImportIndexSnapshot.self,
+        from: data
+      ),
+      decoded.schemaVersion == LocalContentImportIndexSnapshot.currentSchemaVersion,
+      decoded.profileID == profile.id,
+      decoded.repositoryRootPath == rootPath,
+      decoded.configurationSignature == signature,
+      decoded.entries.count <= Self.maximumEntryCount,
+      Self.hasValidEntries(decoded.entries, profileID: profile.id)
+    else {
       return empty
     }
     return decoded
@@ -136,8 +181,9 @@ final class LocalContentImportIndexStore: @unchecked Sendable {
 
   func save(_ snapshot: LocalContentImportIndexSnapshot) {
     guard snapshot.entries.count <= Self.maximumEntryCount,
-          let data = try? JSONEncoder.localContentImportIndex.encode(snapshot),
-          data.count <= Self.maximumIndexByteCount else {
+      let data = try? JSONEncoder.localContentImportIndex.encode(snapshot),
+      data.count <= Self.maximumIndexByteCount
+    else {
       return
     }
 
@@ -158,8 +204,13 @@ final class LocalContentImportIndexStore: @unchecked Sendable {
     rootURL: URL,
     expectedSourceMetadata: LocalContentImportFileMetadata
   ) -> LocalContentImportIndexEntry? {
-    guard let sourceMetadata = LocalContentImportFileMetadata.read(from: sourceURL),
-          sourceMetadata == expectedSourceMetadata else {
+    guard
+      let sourceMetadata = LocalContentImportFileMetadata.read(
+        from: sourceURL,
+        includingContentSample: true
+      ),
+      sourceMetadata == expectedSourceMetadata
+    else {
       return nil
     }
     let assets = draft.attachments
@@ -211,6 +262,7 @@ final class LocalContentImportIndexStore: @unchecked Sendable {
   ) -> Bool {
     entries.allSatisfy { repositoryPath, entry in
       isSafeRepositoryPath(repositoryPath)
+        && entry.sourceMetadata.contentSampleSHA256 != nil
         && entry.draft.repositoryPath == repositoryPath
         && entry.draft.belongs(toSiteProfileID: profileID)
         && entry.referencedAssets.allSatisfy {
@@ -221,10 +273,11 @@ final class LocalContentImportIndexStore: @unchecked Sendable {
 
   private static func isSafeRepositoryPath(_ path: String) -> Bool {
     guard !path.isEmpty,
-          !path.hasPrefix("/"),
-          !path.contains("\\"),
-          !path.contains("\0"),
-          path == path.normalizedRelativePath() else {
+      !path.hasPrefix("/"),
+      !path.contains("\\"),
+      !path.contains("\0"),
+      path == path.normalizedRelativePath()
+    else {
       return false
     }
     return !path.split(separator: "/", omittingEmptySubsequences: false)
@@ -232,18 +285,20 @@ final class LocalContentImportIndexStore: @unchecked Sendable {
   }
 
   private static func defaultDirectoryURL(fileManager: FileManager) -> URL {
-    let cacheURL = fileManager.urls(
-      for: .cachesDirectory,
-      in: .userDomainMask
-    ).first ?? fileManager.temporaryDirectory
-    return cacheURL
+    let cacheURL =
+      fileManager.urls(
+        for: .cachesDirectory,
+        in: .userDomainMask
+      ).first ?? fileManager.temporaryDirectory
+    return
+      cacheURL
       .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true)
       .appendingPathComponent("ContentImportIndex", isDirectory: true)
   }
 }
 
-private extension JSONEncoder {
-  static var localContentImportIndex: JSONEncoder {
+extension JSONEncoder {
+  fileprivate static var localContentImportIndex: JSONEncoder {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
     encoder.dateEncodingStrategy = .millisecondsSince1970
@@ -251,8 +306,8 @@ private extension JSONEncoder {
   }
 }
 
-private extension JSONDecoder {
-  static var localContentImportIndex: JSONDecoder {
+extension JSONDecoder {
+  fileprivate static var localContentImportIndex: JSONDecoder {
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .millisecondsSince1970
     return decoder

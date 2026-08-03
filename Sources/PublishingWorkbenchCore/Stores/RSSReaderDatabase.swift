@@ -808,7 +808,7 @@ final class RSSReaderDatabase {
       link: optionalURL(statement, 3),
       author: text(statement, 4),
       publishedAt: optionalDate(statement, 5),
-      readableSummary: RSSHTMLTextSanitizer.plainText(from: text(statement, 6) ?? ""),
+      readableSummary: RSSHTMLTextSanitizer.previewText(from: text(statement, 6) ?? ""),
       fetchedAt: date(statement, 7),
       readAt: optionalDate(statement, 8),
       isStarred: sqlite3_column_int(statement, 9) != 0,

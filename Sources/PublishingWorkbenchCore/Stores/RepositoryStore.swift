@@ -268,7 +268,10 @@ public final class RepositoryStore: ObservableObject {
 
   public func applyDetectedRepositoryRemote(store: WorkbenchStore) {
     guard let remote = repositoryReport?.originRemote else {
-      store.setPublishActionMessage(CoreL10n.text("没有检测到 origin 远端。"))
+      store.setPublishActionMessage(
+        CoreL10n.text("没有检测到 origin 远端。"),
+        status: .warning
+      )
       return
     }
     var profile = store.activeProfile
@@ -280,7 +283,10 @@ public final class RepositoryStore: ObservableObject {
       profile.branch = detectedBranch
     }
     store.updateActiveProfile(profile)
-    store.setPublishActionMessage(CoreL10n.format("已使用 %@ 更新 PR/MR 配置。", remote.displayName))
+    store.setPublishActionMessage(
+      CoreL10n.format("已使用 %@ 更新 PR/MR 配置。", remote.displayName),
+      status: .success
+    )
     store.save()
   }
 
@@ -321,13 +327,22 @@ public final class RepositoryStore: ObservableObject {
     case .success:
       if alignPublishTarget(profileID: profile.id, branchName: branchName, store: store) {
         await scanRepositoryAsync(store: store)
-        store.setPublishActionMessage(CoreL10n.format("已切换本地工作分支并将发布目标设为 %@。", branchName))
+        store.setPublishActionMessage(
+          CoreL10n.format("已切换本地工作分支并将发布目标设为 %@。", branchName),
+          status: .success
+        )
       } else {
-        store.setPublishActionMessage(CoreL10n.format("原站点仓库已切换到 %@；当前站点已变化，未覆盖当前界面状态。", branchName))
+        store.setPublishActionMessage(
+          CoreL10n.format("原站点仓库已切换到 %@；当前站点已变化，未覆盖当前界面状态。", branchName),
+          status: .warning
+        )
       }
     case .failure(let error):
       let prefix = operation.stillMatches(store.activeProfile) ? "切换分支失败" : "原站点切换分支失败"
-      store.setPublishActionMessage(CoreL10n.format("%@：%@", prefix, error.localizedDescription))
+      store.setPublishActionMessage(
+        CoreL10n.format("%@：%@", prefix, error.localizedDescription),
+        status: .failure
+      )
     }
   }
 
@@ -363,13 +378,22 @@ public final class RepositoryStore: ObservableObject {
     case .success:
       if alignPublishTarget(profileID: profile.id, branchName: branchName, store: store) {
         await scanRepositoryAsync(store: store)
-        store.setPublishActionMessage(CoreL10n.format("已创建并切换本地工作分支：%@。", branchName))
+        store.setPublishActionMessage(
+          CoreL10n.format("已创建并切换本地工作分支：%@。", branchName),
+          status: .success
+        )
       } else {
-        store.setPublishActionMessage(CoreL10n.format("原站点仓库已创建并切换到 %@；当前站点已变化，未覆盖当前界面状态。", branchName))
+        store.setPublishActionMessage(
+          CoreL10n.format("原站点仓库已创建并切换到 %@；当前站点已变化，未覆盖当前界面状态。", branchName),
+          status: .warning
+        )
       }
     case .failure(let error):
       let prefix = operation.stillMatches(store.activeProfile) ? "创建分支失败" : "原站点创建分支失败"
-      store.setPublishActionMessage(CoreL10n.format("%@：%@", prefix, error.localizedDescription))
+      store.setPublishActionMessage(
+        CoreL10n.format("%@：%@", prefix, error.localizedDescription),
+        status: .failure
+      )
     }
   }
 
@@ -604,11 +628,17 @@ public final class RepositoryStore: ObservableObject {
       )
       remoteRepositoryAccessCheck = nil
       repositoryTokenAvailability = try repositoryTokenAvailability(for: store.activeProfile)
-      store.setPublishActionMessage(CoreL10n.text("仓库访问 Token 已保存到 Keychain。"))
+      store.setPublishActionMessage(
+        CoreL10n.text("仓库访问 Token 已保存到 Keychain。"),
+        status: .success
+      )
       store.save()
       return true
     } catch {
-      store.setPublishActionMessage(CoreL10n.format("仓库 Token 保存失败：%@", error.localizedDescription))
+      store.setPublishActionMessage(
+        CoreL10n.format("仓库 Token 保存失败：%@", error.localizedDescription),
+        status: .failure
+      )
       return false
     }
   }
@@ -626,15 +656,22 @@ public final class RepositoryStore: ObservableObject {
     if updatesMessage {
       switch repositoryTokenAvailability.accessState {
       case .available:
-        store.setPublishActionMessage(CoreL10n.text("仓库 Token 已配置。"))
+        store.setPublishActionMessage(
+          CoreL10n.text("仓库 Token 已配置。"),
+          status: .success
+        )
       case .missing:
-        store.setPublishActionMessage(CoreL10n.text("仓库 Token 未配置。"))
+        store.setPublishActionMessage(
+          CoreL10n.text("仓库 Token 未配置。"),
+          status: .warning
+        )
       case .accessFailed:
         store.setPublishActionMessage(
           CoreL10n.format(
             "仓库 Token 状态读取失败：%@",
             repositoryTokenAvailability.accessFailureMessage ?? CoreL10n.text("未知错误")
-          )
+          ),
+          status: .failure
         )
       }
     }
@@ -645,22 +682,31 @@ public final class RepositoryStore: ObservableObject {
       try repositoryTokenStore.deleteRepositoryToken(for: store.activeProfile)
       remoteRepositoryAccessCheck = nil
       refreshRepositoryTokenAvailability(store: store)
-      store.setPublishActionMessage(CoreL10n.text("仓库 Token 已删除。"))
+      store.setPublishActionMessage(
+        CoreL10n.text("仓库 Token 已删除。"),
+        status: .success
+      )
       store.save()
     } catch {
-      store.setPublishActionMessage(CoreL10n.format("仓库 Token 删除失败：%@", error.localizedDescription))
+      store.setPublishActionMessage(
+        CoreL10n.format("仓库 Token 删除失败：%@", error.localizedDescription),
+        status: .failure
+      )
     }
   }
 
   @discardableResult
   public func checkRepositoryTokenAccess(store: WorkbenchStore) async -> RemoteRepositoryAccessCheck? {
     guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage)
+      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
       return nil
     }
     let profile = store.activeProfile
     guard let operation = beginRemoteRepositoryCheck(profile: profile) else {
-      store.setPublishActionMessage(CoreL10n.text("已有仓库权限检查或建仓任务正在运行，请等待完成。"))
+      store.setPublishActionMessage(
+        CoreL10n.text("已有仓库权限检查或建仓任务正在运行，请等待完成。"),
+        status: .warning
+      )
       return nil
     }
     defer { finishRemoteRepositoryCheck(operation) }
@@ -670,12 +716,18 @@ public final class RepositoryStore: ObservableObject {
       guard remoteRepositoryCheckIsCurrent(operation, store: store) else { return nil }
       remoteRepositoryAccessCheck = check
       repositoryTokenAvailability = try repositoryTokenAvailability(for: profile)
-      store.setPublishActionMessage(check.message)
+      store.setPublishActionMessage(
+        check.message,
+        status: check.canWrite ? .success : .warning
+      )
       store.save()
       return check
     } catch {
       guard remoteRepositoryCheckIsCurrent(operation, store: store) else { return nil }
-      store.setPublishActionMessage(CoreL10n.format("仓库权限检查失败：%@", error.localizedDescription))
+      store.setPublishActionMessage(
+        CoreL10n.format("仓库权限检查失败：%@", error.localizedDescription),
+        status: .failure
+      )
       return nil
     }
   }
@@ -725,12 +777,15 @@ public final class RepositoryStore: ObservableObject {
     store: WorkbenchStore
   ) async -> RemoteRepositoryCreationResult? {
     guard store.canUseProtectedWorkbench else {
-      store.setPublishActionMessage(store.quickHideOperationMessage)
+      store.setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
       return nil
     }
     let profile = store.activeProfile
     guard let operation = beginRemoteRepositoryCheck(profile: profile) else {
-      store.setPublishActionMessage(CoreL10n.text("已有仓库权限检查或建仓任务正在运行，请等待完成。"))
+      store.setPublishActionMessage(
+        CoreL10n.text("已有仓库权限检查或建仓任务正在运行，请等待完成。"),
+        status: .warning
+      )
       return nil
     }
     defer { finishRemoteRepositoryCheck(operation) }
@@ -744,12 +799,18 @@ public final class RepositoryStore: ObservableObject {
       guard remoteRepositoryCheckIsCurrent(operation, store: store) else { return nil }
       remoteRepositoryCreationResult = result
       repositoryTokenAvailability = try repositoryTokenAvailability(for: profile)
-      store.setPublishActionMessage(CoreL10n.format("%@ 仓库已创建：%@。", result.provider.displayName, result.repositoryName))
+      store.setPublishActionMessage(
+        CoreL10n.format("%@ 仓库已创建：%@。", result.provider.displayName, result.repositoryName),
+        status: .success
+      )
       store.save()
       return result
     } catch {
       guard remoteRepositoryCheckIsCurrent(operation, store: store) else { return nil }
-      store.setPublishActionMessage(CoreL10n.format("远端仓库创建失败：%@", error.localizedDescription))
+      store.setPublishActionMessage(
+        CoreL10n.format("远端仓库创建失败：%@", error.localizedDescription),
+        status: .failure
+      )
       return nil
     }
   }

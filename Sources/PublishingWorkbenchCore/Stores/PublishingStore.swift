@@ -1,6 +1,24 @@
 import Combine
 import Foundation
 
+public enum PublishActionMessageStatus: String, Hashable, Sendable {
+  case information
+  case inProgress
+  case success
+  case warning
+  case failure
+}
+
+public struct PublishActionFeedback: Hashable, Sendable {
+  public let message: String
+  public let status: PublishActionMessageStatus
+
+  public init(message: String, status: PublishActionMessageStatus) {
+    self.message = message
+    self.status = status
+  }
+}
+
 public struct RecentlyDeletedProfile: Sendable {
   public let profile: SiteProfile
   public let drafts: [ArticleDraft]
@@ -136,7 +154,15 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var activeEditorSelection: ActiveEditorSelection?
   @Published public internal(set) var automaticallyRefreshPreflightOnEdit: Bool
   @Published public internal(set) var lastSaveStatus: String
-  @Published public internal(set) var publishActionMessage: String?
+  @Published public internal(set) var publishActionFeedback: PublishActionFeedback?
+  public internal(set) var publishActionMessage: String? {
+    get { publishActionFeedback?.message }
+    set {
+      publishActionFeedback = newValue.map {
+        PublishActionFeedback(message: $0, status: .information)
+      }
+    }
+  }
   @Published public internal(set) var isLocalRepositoryMutationRunning = false
   @Published public internal(set) var imageActionMessage: String?
   @Published public internal(set) var maintenanceOperationRecords: [MaintenanceOperationRecord]
@@ -276,11 +302,22 @@ public final class PublishingStore: ObservableObject {
     self.activeEditorSelection = activeEditorSelection
     self.automaticallyRefreshPreflightOnEdit = automaticallyRefreshPreflightOnEdit
     self.lastSaveStatus = lastSaveStatus
-    self.publishActionMessage = publishActionMessage
+    self.publishActionFeedback = publishActionMessage.map {
+      PublishActionFeedback(message: $0, status: .information)
+    }
     self.imageActionMessage = imageActionMessage
     self.maintenanceOperationRecords = maintenanceOperationRecords
     self.latestGeneralDraftReusePlan = latestGeneralDraftReusePlan
     self.recentlyDeletedProfile = recentlyDeletedProfile
+  }
+
+  func setPublishActionMessage(
+    _ message: String?,
+    status: PublishActionMessageStatus
+  ) {
+    publishActionFeedback = message.map {
+      PublishActionFeedback(message: $0, status: status)
+    }
   }
 
 }

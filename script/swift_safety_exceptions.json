@@ -122,6 +122,11 @@
       "rationale": "Mutable repository-path cache access is serialized by the instance lock; immutable publishing dependencies conform to Sendable."
     },
     {
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchDataRootBookmark.swift",
+      "declaration": "WorkbenchDataRootBookmarkStore",
+      "rationale": "Launch config is immutable; UserDefaults and the injected Sendable bookmark/security-scope callbacks support moving blocking root resolution and probing off the main actor."
+    },
+    {
       "file": "Sources/PublishingWorkbenchCore/Services/SendableFoundationDependencies.swift",
       "declaration": "SendableFileManager",
       "rationale": "Wrapper exposes only documented thread-safe FileManager operations and has no mutable state."

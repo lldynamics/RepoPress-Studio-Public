@@ -6,6 +6,7 @@ public enum WorkbenchLayoutMode {
   public static let defaultWindowHeight: CGFloat = 768
   public static let defaultSidebarWidth: CGFloat = 300
   public static let expandedWorkspaceWidth: CGFloat = 1180
+  public static let minimumRSSReaderSplitWidth: CGFloat = 900
   public static let minimumInspectorWorkspaceWidth: CGFloat = 1180
   public static let minimumHTMLSourceInspectorWorkspaceWidth: CGFloat = 1240
   public static let minimumSplitInspectorWorkspaceWidth: CGFloat = 1580
@@ -13,6 +14,10 @@ public enum WorkbenchLayoutMode {
 
   public static func isCompact(width: CGFloat) -> Bool {
     width < expandedWorkspaceWidth
+  }
+
+  public static func isCompactRSSReader(width: CGFloat) -> Bool {
+    width < minimumRSSReaderSplitWidth
   }
 
   public static func allowsInspector(

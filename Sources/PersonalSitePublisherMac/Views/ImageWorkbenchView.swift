@@ -15,6 +15,7 @@ struct ImageWorkbenchView: View {
   @State private var repositoryTargetDraftID: UUID?
   @State private var repositoryRefreshRequestID = UUID()
   @State private var activeRepositoryInventoryTaskID: UUID?
+  @State private var resourceMode: ImageWorkbenchResourceMode = .repository
 
   init(store: WorkbenchStore, stage: Binding<ImageWorkbenchContextStage>) {
     self.store = store
@@ -49,7 +50,7 @@ struct ImageWorkbenchView: View {
       await store.refreshImageWorkbenchSiteSummaryInBackground()
     }
     .task(id: repositoryInventoryRefreshInput) {
-      guard stage == .repository else { return }
+      guard stage == .resources, resourceMode == .repository else { return }
       await refreshRepositoryInventory()
     }
     .sheet(item: $pendingBatchPreview) { preview in
@@ -79,22 +80,44 @@ struct ImageWorkbenchView: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("image-workbench-overview")
 
-    case .repository:
-      RepositoryImageBrowserView(
-        inventory: repositoryInventory,
-        isLoading: isRepositoryInventoryLoading,
-        errorMessage: repositoryInventoryErrorMessage,
-        targetDrafts: store.visibleDrafts,
-        targetDraftID: $repositoryTargetDraftID,
-        selectedRepositoryPath: $selectedRepositoryPath,
-        onAttachToSelectedDraft: attachRepositoryImage,
-        onOpenReferencedDraft: openDraft,
-        onOpenRepositorySettings: { store.selectSection(.sync) }
-      )
-
-    case .manager:
-      AssetResourceManagerView(store: store)
+    case .resources:
+      resourceWorkspace
     }
+  }
+
+  private var resourceWorkspace: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      Picker("图片资源功能", selection: $resourceMode) {
+        ForEach(ImageWorkbenchResourceMode.allCases) { mode in
+          Label(mode.title, systemImage: mode.systemImage)
+            .tag(mode)
+        }
+      }
+      .pickerStyle(.segmented)
+      .frame(maxWidth: 360)
+      .accessibilityLabel("图片资源功能")
+      .accessibilityValue(resourceMode.accessibilityTitle)
+      .accessibilityIdentifier("image-resource-mode-picker")
+
+      switch resourceMode {
+      case .repository:
+        RepositoryImageBrowserView(
+          inventory: repositoryInventory,
+          isLoading: isRepositoryInventoryLoading,
+          errorMessage: repositoryInventoryErrorMessage,
+          targetDrafts: store.visibleDrafts,
+          targetDraftID: $repositoryTargetDraftID,
+          selectedRepositoryPath: $selectedRepositoryPath,
+          onAttachToSelectedDraft: attachRepositoryImage,
+          onOpenReferencedDraft: openDraft,
+          onOpenRepositorySettings: { store.selectSection(.sync) }
+        )
+      case .manager:
+        AssetResourceManagerView(store: store)
+      }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("image-workbench-resources")
   }
 
   @ViewBuilder
@@ -135,10 +158,8 @@ struct ImageWorkbenchView: View {
     switch stage {
     case .overview:
       return "管理站点图片资源，并在预览影响范围后执行批量处理。"
-    case .repository:
-      return "浏览仓库中的图片、查看引用关系，并把图片加入目标文章。"
-    case .manager:
-      return "扫描全仓库 Markdown 引用，清理孤立资源并安全压缩大图。"
+    case .resources:
+      return resourceMode.description
     }
   }
 
@@ -167,7 +188,8 @@ struct ImageWorkbenchView: View {
         .accessibilityIdentifier("image-workbench-open-writing")
 
         Button {
-          stage = .manager
+          stage = .resources
+          resourceMode = .manager
         } label: {
           Label("资源管理", systemImage: "archivebox")
         }
@@ -364,7 +386,8 @@ struct ImageWorkbenchView: View {
       profileID: store.activeProfile.id,
       repositoryRootPath: store.activeProfile.localRepositoryRootPath,
       assetRoot: store.activeProfile.assetRoot,
-      stage: stage
+      stage: stage,
+      resourceMode: resourceMode
     )
   }
 
@@ -531,4 +554,48 @@ private struct RepositoryInventoryRefreshInput: Hashable {
   let repositoryRootPath: String
   let assetRoot: String
   let stage: ImageWorkbenchContextStage
+  let resourceMode: ImageWorkbenchResourceMode
+}
+
+private enum ImageWorkbenchResourceMode: String, CaseIterable, Identifiable, Hashable {
+  case repository
+  case manager
+
+  var id: String { rawValue }
+
+  var title: LocalizedStringKey {
+    switch self {
+    case .repository:
+      return "仓库图片"
+    case .manager:
+      return "资源管理"
+    }
+  }
+
+  var accessibilityTitle: String {
+    switch self {
+    case .repository:
+      return String(localized: "仓库图片")
+    case .manager:
+      return String(localized: "资源管理")
+    }
+  }
+
+  var systemImage: String {
+    switch self {
+    case .repository:
+      return "photo.stack"
+    case .manager:
+      return "archivebox"
+    }
+  }
+
+  var description: LocalizedStringKey {
+    switch self {
+    case .repository:
+      return "浏览仓库中的图片、查看引用关系，并把图片加入目标文章。"
+    case .manager:
+      return "扫描全仓库 Markdown 引用，清理孤立资源并安全压缩大图。"
+    }
+  }
 }

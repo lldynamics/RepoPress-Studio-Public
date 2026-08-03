@@ -1,7 +1,7 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
-enum ContentHealthContextFilter: String, CaseIterable, Identifiable {
+enum ContentHealthContextFilter: String, CaseIterable, Identifiable, Sendable {
   case overview
   case publicRisks
   case aiFixes
@@ -11,12 +11,7 @@ enum ContentHealthContextFilter: String, CaseIterable, Identifiable {
   var id: String { rawValue }
 
   static var navigationFilters: [Self] {
-    var filters: [Self] = [.overview, .publicRisks]
-    if DistributionFeaturePolicy.allowsExternalAIProviders {
-      filters.append(.aiFixes)
-    }
-    filters.append(contentsOf: [.siteIssues, .maintenance])
-    return filters
+    [.overview, .publicRisks, .aiFixes, .siteIssues, .maintenance]
   }
 
   var title: LocalizedStringKey {
@@ -67,25 +62,21 @@ enum ContentHealthContextFilter: String, CaseIterable, Identifiable {
 
 enum ImageWorkbenchContextStage: String, Identifiable, Hashable {
   case overview
-  case repository
-  case manager
+  case resources
 
   var id: String { rawValue }
 
   static let navigationStages: [Self] = [
     .overview,
-    .repository,
-    .manager,
+    .resources,
   ]
 
   var title: LocalizedStringKey {
     switch self {
     case .overview:
       return "概览与批量处理"
-    case .repository:
-      return "仓库图片"
-    case .manager:
-      return "资源管理"
+    case .resources:
+      return "图片资源"
     }
   }
 
@@ -93,10 +84,8 @@ enum ImageWorkbenchContextStage: String, Identifiable, Hashable {
     switch self {
     case .overview:
       return String(localized: "概览与批量处理")
-    case .repository:
-      return String(localized: "仓库图片")
-    case .manager:
-      return String(localized: "资源管理")
+    case .resources:
+      return String(localized: "图片资源")
     }
   }
 
@@ -104,10 +93,8 @@ enum ImageWorkbenchContextStage: String, Identifiable, Hashable {
     switch self {
     case .overview:
       return "rectangle.grid.2x2"
-    case .repository:
+    case .resources:
       return "photo.stack"
-    case .manager:
-      return "archivebox"
     }
   }
 }

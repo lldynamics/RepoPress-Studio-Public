@@ -134,26 +134,24 @@ struct WorkspaceTaskMetadataSection: View {
 
         Spacer(minLength: 0)
 
-        if DistributionFeaturePolicy.allowsExternalAIProviders {
-          Button(action: generateAISummary) {
-            if isGeneratingSummary {
-              HStack(spacing: 5) {
-                ProgressView()
-                  .controlSize(.small)
-                Text("生成中")
-              }
-            } else {
-              Label(summaryAIButtonTitle, systemImage: "sparkles")
+        Button(action: generateAISummary) {
+          if isGeneratingSummary {
+            HStack(spacing: 5) {
+              ProgressView()
+                .controlSize(.small)
+              Text("生成中")
             }
+          } else {
+            Label(summaryAIButtonTitle, systemImage: "sparkles")
           }
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-          .disabled(!summaryAIAvailability.isEnabled)
-          .help(summaryAIAvailability.unavailableReason ?? summaryAIButtonHelp)
-          .accessibilityIdentifier("metadata-summary-ai-button")
-          .accessibilityLabel("AI 自动生成摘要")
-          .accessibilityValue(isGeneratingSummary ? "生成中" : summaryAIButtonTitle)
         }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .disabled(!summaryAIAvailability.isEnabled)
+        .help(summaryAIAvailability.unavailableReason ?? summaryAIButtonHelp)
+        .accessibilityIdentifier("metadata-summary-ai-button")
+        .accessibilityLabel("AI 自动生成摘要")
+        .accessibilityValue(isGeneratingSummary ? "生成中" : summaryAIButtonTitle)
       }
 
       TextField("输入用于列表和搜索的文章摘要", text: $draft.summary, axis: .vertical)
@@ -750,7 +748,9 @@ struct WorkspaceTaskSEOSection: View {
   }
 
   private func copy(_ value: String, message: String) {
-    ClipboardWriter.copy(value, successMessage: message) { store.setPublishActionMessage($0) }
+    ClipboardWriter.copy(value, successMessage: message) { message, status in
+      store.setPublishActionMessage(message, status: status)
+    }
   }
 }
 

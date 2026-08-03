@@ -350,7 +350,10 @@ extension WorkbenchStore {
       return true
     }
     guard draft.updatedAt == current.updatedAt else {
-      setPublishActionMessage(CoreL10n.text("另一窗口已更新这篇文章，刚才的陈旧元数据未写入；编辑器已同步到最新版本。"))
+      setPublishActionMessage(
+        CoreL10n.text("另一窗口已更新这篇文章，刚才的陈旧元数据未写入；编辑器已同步到最新版本。"),
+        status: .warning
+      )
       persistenceStore.markStatus("编辑冲突：已保留另一窗口的最新版本")
       return false
     }

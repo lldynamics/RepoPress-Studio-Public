@@ -3,7 +3,8 @@
   const protocol = {
     "activeExtensions": [
       "safari",
-      "chrome"
+      "chrome",
+      "firefox"
     ],
     "loopback": {
       "baseURL": "http://127.0.0.1:17843",

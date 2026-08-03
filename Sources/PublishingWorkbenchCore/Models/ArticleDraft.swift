@@ -741,7 +741,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       slug: "personal-site-publisher-knowledge-library",
       tags: ["使用指南", "资料库", "研究"],
       categories: ["指南"],
-      summary: "导入本地文档或通过 Safari、Chrome 保存网页，建立可搜索、可引用且保留来源的长期资料库。",
+      summary: "导入本地文档或通过 Safari、Chrome、Firefox 保存网页，建立可搜索、可引用且保留来源的长期资料库。",
       bodyMarkdown: """
       # 资料库：整理并引用长期资料
 
@@ -756,12 +756,13 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
       ## 从浏览器保存网页
 
-      打开“浏览器资料采集”查看本机连接和令牌。当前版本支持 Safari 与 Chrome：
+      打开“浏览器资料采集”查看本机连接和令牌。当前版本支持 Safari、Chrome 与 Firefox：
 
       - **Safari 扩展**已内嵌在 RepoPress App 包内，只需到 Safari 设置中启用。
       - **Chrome 扩展**不包含在 App 包内，需要从 Chrome 网上应用店单独安装和更新。
+      - **Firefox 扩展**不包含在 App 包内，从 `about:debugging` 临时加载 `BrowserExtension/Firefox/manifest.json`。
 
-      扩展只连接 `127.0.0.1` 本机地址，并使用随机令牌验证。令牌只粘贴到你安装的扩展中，不要放到网页、文章或截图。Chrome 优先保存自包含 MHTML；Safari 在大小上限内保存离线 HTML。应用暂时关闭时，扩展会在浏览器本地排队并稍后重试。
+      扩展只连接 `127.0.0.1` 本机地址，并使用随机令牌验证。令牌只粘贴到你安装的扩展中，不要放到网页、文章或截图。Chrome 优先保存自包含 MHTML；Safari 和 Firefox 在大小上限内保存离线 HTML。应用暂时关闭时，扩展会在浏览器本地排队并稍后重试。
 
       ## 搜索与引用
 
@@ -982,7 +983,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       slug: "personal-site-publisher-knowledge-library",
       tags: ["Guide", "Library", "Research"],
       categories: ["Guides"],
-      summary: "Import local documents or save pages from Safari and Chrome to build a searchable, citable library with clear provenance.",
+      summary: "Import local documents or save pages from Safari, Chrome, and Firefox to build a searchable, citable library with clear provenance.",
       bodyMarkdown: """
       # Library: Organize and Cite Long-Term Sources
 
@@ -997,12 +998,13 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
       ## Save pages from a browser
 
-      Open Browser Capture to see the local connection and token. This release supports Safari and Chrome:
+      Open Browser Capture to see the local connection and token. This release supports Safari, Chrome, and Firefox:
 
       - The **Safari extension** is embedded in the RepoPress app bundle; enable it in Safari Settings.
       - The **Chrome extension is not included in the app bundle**. Install and update it separately through the Chrome Web Store.
+      - The **Firefox extension is not included in the app bundle**. Load `BrowserExtension/Firefox/manifest.json` temporarily from `about:debugging`.
 
-      Extensions connect only to `127.0.0.1` and authenticate with a random token. Paste that token only into your installed extension—never into a webpage, article, or screenshot. Chrome prefers self-contained MHTML; Safari saves offline HTML within its size limit. If RepoPress is closed, the extension queues the item locally and retries later.
+      Extensions connect only to `127.0.0.1` and authenticate with a random token. Paste that token only into your installed extension—never into a webpage, article, or screenshot. Chrome prefers self-contained MHTML; Safari and Firefox save offline HTML within their size limit. If RepoPress is closed, the extension queues the item locally and retries later.
 
       ## Search and cite
 

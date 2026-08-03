@@ -105,9 +105,12 @@ final class ScreenshotDemoDataServiceTests: XCTestCase {
     XCTAssertFalse(store.isQuickHideActive)
 
     ScreenshotDemoSurface.deploymentStatus.apply(to: store)
-    XCTAssertEqual(store.selectedSection, .releaseHistory)
+    XCTAssertEqual(store.selectedSection, .sync)
     XCTAssertEqual(store.activeProfileDeploymentStatusSnapshots.count, 1)
     XCTAssertEqual(store.deploymentStatusMessage, "截图模式：部署状态和轮询记录已载入。")
+
+    ScreenshotDemoSurface.maintenance.apply(to: store)
+    XCTAssertEqual(store.selectedSection, .contentHealth)
 
     ScreenshotDemoSurface.seoSocialPreview.apply(to: store)
     XCTAssertEqual(store.selectedSection, .writing)

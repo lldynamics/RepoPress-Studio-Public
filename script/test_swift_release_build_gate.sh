@@ -78,7 +78,11 @@ done
 [[ -x "$ROOT_DIR/script/package_direct_release.sh" ]] \
   || fail "Developer ID packaging entrypoint is missing"
 grep -Fq 'DIRECT_DISTRIBUTION_BUILD' "$ROOT_DIR/script/build_and_run.sh" \
-  || fail "build_and_run.sh does not expose the Direct Release compile boundary"
+  || fail "build_and_run.sh does not expose the Direct Release packaging channel"
+if grep -Eq '^[[:space:]]*-Xswiftc[[:space:]]+(APP_STORE_BUILD|DIRECT_DISTRIBUTION_BUILD)[[:space:]]*$' \
+  "$ROOT_DIR/script/build_and_run.sh"; then
+  fail "distribution packaging must not change the compiled Swift capability set"
+fi
 grep -Fq 'APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"' "$ROOT_DIR/script/build_and_run.sh" \
   || fail "build_and_run.sh does not create the standard Frameworks directory"
 grep -Fq 'SPARKLE_FRAMEWORK_BUNDLE="$APP_FRAMEWORKS/Sparkle.framework"' \

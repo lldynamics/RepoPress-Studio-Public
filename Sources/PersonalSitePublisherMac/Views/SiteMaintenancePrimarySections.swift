@@ -181,14 +181,12 @@ struct SiteMaintenanceActionQueueSection: View {
           Label("复制任务", systemImage: "doc.on.doc")
         }
 
-        if DistributionFeaturePolicy.allowsExternalAIProviders {
-          Button {
-            sendToAI(item)
-          } label: {
-            Label("交给 AI", systemImage: "sparkles")
-          }
-          .disabled(item.draftID == nil || isAIChatRunning)
+        Button {
+          sendToAI(item)
+        } label: {
+          Label("交给 AI", systemImage: "sparkles")
         }
+        .disabled(item.draftID == nil || isAIChatRunning)
 
         Spacer(minLength: 0)
       }

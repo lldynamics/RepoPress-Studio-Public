@@ -1361,3 +1361,6 @@
 "备份必须为单文件，但发现侧车文件 %@" = "The backup must be a single file, but sidecar file %@ was found";
 "替换 RSS 备份失败：%@；自动回滚失败：%@；旧备份保留在 %@" = "Replacing the RSS backup failed: %@; automatic rollback failed: %@; the previous backup remains at %@";
 "RSS 备份无效：%@" = "The RSS backup is invalid: %@";
+"这篇文章没有可翻译的本地正文。" = "This article has no local body available to translate.";
+"翻译服务返回的内容无法安全解析，请稍后重试。" = "The translation service returned content that could not be parsed safely. Try again later.";
+"快速隐藏已启用，请返回工作台后再继续翻译。" = "Quick Hide is enabled. Return to the workbench before translating.";

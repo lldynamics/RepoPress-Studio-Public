@@ -1097,7 +1097,7 @@ final class LocalContentImportServiceTests: XCTestCase {
       importService.importDrafts(rootURL: rootURL, profile: profile).importedDrafts.first
     )
     let metadataBeforeChange = try XCTUnwrap(
-      LocalContentImportFileMetadata.read(from: articleURL)
+      LocalContentImportFileMetadata.read(from: articleURL, includingContentSample: true)
     )
     try "New body with a different size".write(
       to: articleURL,
@@ -1112,7 +1112,9 @@ final class LocalContentImportServiceTests: XCTestCase {
       expectedSourceMetadata: metadataBeforeChange
     ))
 
-    let currentMetadata = try XCTUnwrap(LocalContentImportFileMetadata.read(from: articleURL))
+    let currentMetadata = try XCTUnwrap(
+      LocalContentImportFileMetadata.read(from: articleURL, includingContentSample: true)
+    )
     var pollutedDraft = draft
     pollutedDraft.repositoryPath = "../outside.md"
     let pollutedEntry = LocalContentImportIndexEntry(
@@ -1129,6 +1131,42 @@ final class LocalContentImportServiceTests: XCTestCase {
       entries: ["content/posts/race.md": pollutedEntry]
     ))
     XCTAssertTrue(indexStore.snapshot(profile: profile, rootURL: rootURL).entries.isEmpty)
+  }
+
+  func testContentIndexSampleFingerprintRejectsSameMetadataCollision() throws {
+    let rootURL = try temporaryDirectory()
+    let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    let articleURL = postsURL.appendingPathComponent("collision.md")
+    try "Old body".write(to: articleURL, atomically: true, encoding: .utf8)
+
+    var profile = SiteProfile.defaultProfile
+    profile.contentRoot = "content"
+    let service = LocalContentImportService(isContentIndexEnabled: false)
+    let oldDraft = try XCTUnwrap(
+      service.importDrafts(rootURL: rootURL, profile: profile).importedDrafts.first
+    )
+    let oldMetadata = try XCTUnwrap(
+      LocalContentImportFileMetadata.read(from: articleURL, includingContentSample: true)
+    )
+
+    try "New body".write(to: articleURL, atomically: true, encoding: .utf8)
+    var simulatedCollidingMetadata = try XCTUnwrap(
+      LocalContentImportFileMetadata.read(from: articleURL, includingContentSample: true)
+    )
+    XCTAssertEqual(simulatedCollidingMetadata.byteSize, oldMetadata.byteSize)
+    XCTAssertNotEqual(
+      simulatedCollidingMetadata.contentSampleSHA256,
+      oldMetadata.contentSampleSHA256
+    )
+    simulatedCollidingMetadata.contentSampleSHA256 = oldMetadata.contentSampleSHA256
+
+    let staleEntry = LocalContentImportIndexEntry(
+      sourceMetadata: simulatedCollidingMetadata,
+      referencedAssets: [],
+      draft: oldDraft
+    )
+    XCTAssertFalse(staleEntry.isCurrent(rootURL: rootURL, sourceURL: articleURL))
   }
 
   func testStoreImportRequiresLocalRepositoryRoot() throws {

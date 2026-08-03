@@ -17,8 +17,9 @@ struct ReleaseHistoryDetailView: View {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 16) {
           releaseHistoryHeader(ledger)
-          if let message = store.publishActionMessage?.nilIfEmpty {
-            releaseHistoryActionMessage(message)
+          if let feedback = store.publishActionFeedback,
+            feedback.message.nilIfEmpty != nil {
+            releaseHistoryActionMessage(feedback)
           }
           releasePrimaryMetrics(ledger.summary)
           releaseSecondaryMetrics(ledger.summary)
@@ -51,28 +52,16 @@ struct ReleaseHistoryDetailView: View {
     .accessibilityIdentifier("repository-section-release-history")
   }
 
-  private func releaseHistoryActionMessage(_ message: String) -> some View {
-    let isFailure = message.contains("失败")
-      || message.contains("不可用")
-      || message.contains("未保存")
-      || message.localizedCaseInsensitiveContains("failed")
-      || message.localizedCaseInsensitiveContains("unavailable")
-      || message.localizedCaseInsensitiveContains("not saved")
-    let isProgress = message.contains("正在")
-
-    return Label {
-      Text(message)
+  private func releaseHistoryActionMessage(_ feedback: PublishActionFeedback) -> some View {
+    Label {
+      Text(feedback.message)
         .font(.callout)
         .fixedSize(horizontal: false, vertical: true)
         .textSelection(.enabled)
     } icon: {
-      Image(systemName: isFailure ? "xmark.octagon.fill" : isProgress ? "arrow.trianglehead.2.clockwise.rotate.90" : "checkmark.circle.fill")
+      Image(systemName: feedback.status.releaseHistorySystemImage)
     }
-    .foregroundStyle(
-      isFailure
-        ? WorkbenchTheme.risk
-        : isProgress ? WorkbenchTheme.progress : WorkbenchTheme.success
-    )
+    .foregroundStyle(feedback.status.releaseHistoryForeground)
     .padding(12)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -841,7 +830,9 @@ struct ReleaseHistoryDetailView: View {
   }
 
   func copy(_ value: String, message: String) {
-    ClipboardWriter.copy(value, successMessage: message) { store.setPublishActionMessage($0) }
+    ClipboardWriter.copy(value, successMessage: message) { message, status in
+      store.setPublishActionMessage(message, status: status)
+    }
   }
 
   func statusForeground(_ level: DeploymentStatusLevel) -> AnyShapeStyle {
@@ -906,4 +897,36 @@ struct ReleaseHistoryDetailView: View {
     copy(package.clipboardMarkdown, message: "已复制发布恢复包。")
   }
 
+}
+
+extension PublishActionMessageStatus {
+  fileprivate var releaseHistorySystemImage: String {
+    switch self {
+    case .information:
+      return "info.circle.fill"
+    case .inProgress:
+      return "arrow.trianglehead.2.clockwise.rotate.90"
+    case .success:
+      return "checkmark.circle.fill"
+    case .warning:
+      return "exclamationmark.triangle.fill"
+    case .failure:
+      return "xmark.octagon.fill"
+    }
+  }
+
+  fileprivate var releaseHistoryForeground: Color {
+    switch self {
+    case .information:
+      return WorkbenchTheme.info
+    case .inProgress:
+      return WorkbenchTheme.progress
+    case .success:
+      return WorkbenchTheme.success
+    case .warning:
+      return WorkbenchTheme.warning
+    case .failure:
+      return WorkbenchTheme.risk
+    }
+  }
 }

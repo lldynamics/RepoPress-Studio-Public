@@ -99,7 +99,6 @@ struct PersonalSitePublisherMacApp: App {
         if let store = launchCoordinator.store {
           ProtectedSettingsView(
             store: store,
-            browserBridge: launchCoordinator.browserBridge,
             rssStore: launchCoordinator.rssStore
           )
         } else {
@@ -325,14 +324,12 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
 
 private struct ProtectedSettingsView: View {
   @ObservedObject var store: WorkbenchStore
-  let browserBridge: KnowledgeBrowserBridge?
   let rssStore: RSSReaderStore?
 
   var body: some View {
     ZStack {
       SettingsView(
         store: store,
-        browserBridge: browserBridge,
         rssStore: rssStore
       )
       .disabled(!store.canUseProtectedWorkbench)

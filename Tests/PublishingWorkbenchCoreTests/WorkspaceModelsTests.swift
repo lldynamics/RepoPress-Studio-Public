@@ -5,10 +5,10 @@ final class WorkspaceModelsTests: XCTestCase {
   func testWorkspaceSectionsExposeStableCommandNumberShortcuts() {
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.displayNameLocalizationKey),
-      ["workspace.writing", "workspace.library", "workspace.rss", "workspace.siteStarter", "workspace.sync", "workspace.images", "workspace.contentHealth", "workspace.maintenance", "workspace.releaseHistory"]
+      ["workspace.writing", "workspace.library", "workspace.rss", "workspace.siteStarter", "workspace.sync", "workspace.images", "workspace.contentHealth"]
     )
-    XCTAssertEqual(WorkspaceSection.allCases.map { String($0.keyboardShortcutKey) }, ["1", "2", "9", "5", "3", "6", "4", "7", "8"])
-    XCTAssertEqual(WorkspaceSection.allCases.map(\.keyboardShortcutLabel), ["⌘1", "⌘2", "⌘9", "⌘5", "⌘3", "⌘6", "⌘4", "⌘7", "⌘8"])
+    XCTAssertEqual(WorkspaceSection.allCases.map { String($0.keyboardShortcutKey) }, ["1", "2", "9", "5", "3", "6", "4"])
+    XCTAssertEqual(WorkspaceSection.allCases.map(\.keyboardShortcutLabel), ["⌘1", "⌘2", "⌘9", "⌘5", "⌘3", "⌘6", "⌘4"])
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.localizationKey),
       [
@@ -19,14 +19,12 @@ final class WorkspaceModelsTests: XCTestCase {
         "workspace.sync",
         "workspace.images",
         "workspace.contentHealth",
-        "workspace.maintenance",
-        "workspace.releaseHistory",
       ]
     )
     XCTAssertEqual(Set(WorkspaceSection.allCases.map(\.keyboardShortcutKey)).count, WorkspaceSection.allCases.count)
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.detailLocalizationKey),
-      ["workspace.writing.detail", "workspace.library.detail", "workspace.rss.detail", "workspace.siteStarter.detail", "workspace.sync.detail", "workspace.images.detail", "workspace.contentHealth.detail", "workspace.maintenance.detail", "workspace.releaseHistory.detail"]
+      ["workspace.writing.detail", "workspace.library.detail", "workspace.rss.detail", "workspace.siteStarter.detail", "workspace.sync.detail", "workspace.images.detail", "workspace.contentHealth.detail"]
     )
   }
 
@@ -45,15 +43,6 @@ final class WorkspaceModelsTests: XCTestCase {
       ["⌘5"]
     )
     XCTAssertEqual(
-      WorkspaceNavigationPresentation.commandMenuAdvancedItems.map(\.section),
-      [.siteStarter, .maintenance, .releaseHistory]
-    )
-    XCTAssertEqual(
-      WorkspaceNavigationPresentation.commandMenuAdvancedItems.map(\.keyboardShortcutLabel),
-      ["⌘5", "⌘7", "⌘8"]
-    )
-    XCTAssertEqual(WorkspaceVisibilityPolicy.hiddenNavigationSections, [.maintenance, .releaseHistory])
-    XCTAssertEqual(
       WorkspaceNavigationPresentation.commandMenuItems.map(\.keyboardShortcutLabel),
       ["⌘1", "⌘2", "⌘9", "⌘3", "⌘4"]
     )
@@ -69,9 +58,6 @@ final class WorkspaceModelsTests: XCTestCase {
 
     XCTAssertEqual(sections, WorkspaceVisibilityPolicy.commandPaletteSections)
     XCTAssertEqual(Set(sections).count, sections.count)
-    XCTAssertTrue(Set(sections).isDisjoint(with: WorkspaceVisibilityPolicy.hiddenNavigationSections))
-    XCTAssertFalse(sections.contains(.maintenance))
-    XCTAssertFalse(sections.contains(.releaseHistory))
     XCTAssertFalse(sections.contains(.images))
     XCTAssertTrue(Set(sections).isDisjoint(with: WorkspaceVisibilityPolicy.siteResourceSections))
   }
@@ -79,7 +65,7 @@ final class WorkspaceModelsTests: XCTestCase {
   func testEveryWorkspaceSectionHasAnExplicitCenterSurfaceRoute() {
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.centerSurface),
-      [.editor, .knowledgeLibrary, .rssReader, .siteStarter, .repository, .images, .contentHealth, .contentHealth, .repository]
+      [.editor, .knowledgeLibrary, .rssReader, .siteStarter, .repository, .images, .contentHealth]
     )
     XCTAssertEqual(
       WorkspaceSection.allCases.filter(\.requiresEditableDraftForCenterSurface),
@@ -99,8 +85,6 @@ final class WorkspaceModelsTests: XCTestCase {
         .repository,
         .articleImages,
         .articleChecks,
-        .unavailable,
-        .unavailable,
       ]
     )
   }

@@ -616,14 +616,16 @@ struct WritingDraftColumn: View {
         String(
           format: String(localized: "通用草稿已导出：%@"),
           destinationURL.lastPathComponent
-        )
+        ),
+        status: .success
       )
     } catch {
       store.setPublishActionMessage(
         String(
           format: String(localized: "通用草稿导出失败：%@"),
           error.localizedDescription
-        )
+        ),
+        status: .failure
       )
     }
   }

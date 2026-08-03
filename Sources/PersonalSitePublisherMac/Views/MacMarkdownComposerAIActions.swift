@@ -69,7 +69,10 @@ extension MacMarkdownComposerView {
     let requestedBody = requestedDraft.bodyMarkdown
     let requestID = UUID()
     aiPromptClipboardRequestID = requestID
-    store.setPublishActionMessage(String(localized: "正在生成 AI Prompt…"))
+    store.setPublishActionMessage(
+      String(localized: "正在生成 AI Prompt…"),
+      status: .inProgress
+    )
     aiPromptClipboardTask = Task { @MainActor in
       let prompt = await store.publishingAIPromptInBackground(for: requestedDraft)
       guard !Task.isCancelled,
@@ -80,13 +83,18 @@ extension MacMarkdownComposerView {
       aiPromptClipboardRequestID = nil
       guard draft.id == requestedDraft.id,
             editorBody == requestedBody else {
-        store.setPublishActionMessage(String(localized: "文章已变化，未复制陈旧 AI Prompt；请重试。"))
+        store.setPublishActionMessage(
+          String(localized: "文章已变化，未复制陈旧 AI Prompt；请重试。"),
+          status: .warning
+        )
         return
       }
       ClipboardWriter.copy(
         prompt,
         successMessage: "已复制 AI Prompt。"
-      ) { store.setPublishActionMessage($0) }
+      ) { message, status in
+        store.setPublishActionMessage(message, status: status)
+      }
     }
   }
 

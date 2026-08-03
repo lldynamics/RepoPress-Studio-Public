@@ -107,11 +107,7 @@ struct KnowledgeDocumentInsightsSection: View {
       }
 
       if annotations.isEmpty && backlinkGroups.isEmpty {
-        Text(
-          DistributionFeaturePolicy.allowsExternalAIProviders
-            ? String(localized: "还没有标注或引用记录。添加笔记，或让 AI 把资料引用写入文章后，这里会显示关联。")
-            : String(localized: "还没有标注或引用记录。添加笔记或在文章中引用资料后，这里会显示关联。")
-        )
+        Text("还没有标注或引用记录。添加笔记，或让 AI 把资料引用写入文章后，这里会显示关联。")
           .font(.callout)
           .foregroundStyle(.secondary)
       }

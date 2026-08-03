@@ -47,7 +47,7 @@ extension PublishingStore {
   @discardableResult
   func blockPublishingIfGeneralDraftSelected(store: WorkbenchStore) -> Bool {
     guard store.selectedDraft?.isGeneralDraft == true else { return false }
-    publishActionMessage = generalDraftPublishingIssue.message
+    setPublishActionMessage(generalDraftPublishingIssue.message, status: .warning)
     return true
   }
 

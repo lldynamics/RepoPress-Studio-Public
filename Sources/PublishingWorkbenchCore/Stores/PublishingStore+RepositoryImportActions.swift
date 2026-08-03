@@ -32,7 +32,7 @@ extension PublishingStore {
     -> LocalContentImportMergeSummary
   {
     guard !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty else {
-      publishActionMessage = "选择本地仓库后才能导入文章。"
+      setPublishActionMessage("选择本地仓库后才能导入文章。", status: .warning)
       return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
     }
     store.flushDraftBodyEditorBuffers()
@@ -47,7 +47,7 @@ extension PublishingStore {
     store.flushDraftBodyEditorBuffers()
     let profile = store.activeProfile
     guard !profile.localRepositoryRootPath.trimmedForPublishing.isEmpty else {
-      publishActionMessage = "选择本地仓库后才能导入文章。"
+      setPublishActionMessage("选择本地仓库后才能导入文章。", status: .warning)
       return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
     }
 
@@ -61,20 +61,23 @@ extension PublishingStore {
 
     let operation = LocalRepositoryOperationContext(profile: profile)
     localImportOperationContext = operation
-    publishActionMessage = "正在从本地仓库导入文章…"
+    setPublishActionMessage("正在从本地仓库导入文章…", status: .inProgress)
     let result: LocalContentImportResult
     do {
       result = try await localContentImportService.importDraftsAsync(profile: profile)
     } catch is CancellationError {
       if localImportOperationContext == operation {
         localImportOperationContext = nil
-        publishActionMessage = "已取消从本地仓库导入文章。"
+        setPublishActionMessage("已取消从本地仓库导入文章。", status: .warning)
       }
       return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
     } catch {
       if localImportOperationContext == operation {
         localImportOperationContext = nil
-        publishActionMessage = "导入本地文章失败：\(error.localizedDescription)"
+        setPublishActionMessage(
+          "导入本地文章失败：\(error.localizedDescription)",
+          status: .failure
+        )
       }
       return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
     }
@@ -185,7 +188,10 @@ extension PublishingStore {
       store.schedulePreflightRefresh()
     }
     if announcesInsertions {
-      publishActionMessage = "已发现并加入本地列表 \(missingDrafts.count) 篇外部新文章。"
+      setPublishActionMessage(
+        "已发现并加入本地列表 \(missingDrafts.count) 篇外部新文章。",
+        status: .success
+      )
     }
     store.save()
     return missingDrafts.count
@@ -425,8 +431,10 @@ extension PublishingStore {
       selectedDraftID = imported.id
     }
     selectedSection = .writing
-    publishActionMessage =
-      "已导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇；已生成 \(refreshed.imageMappings.count) 条图片路径映射和 \(refreshed.redirects.count) 条重定向候选。"
+    setPublishActionMessage(
+      "已导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇；已生成 \(refreshed.imageMappings.count) 条图片路径映射和 \(refreshed.redirects.count) 条重定向候选。",
+      status: .success
+    )
     store.save()
     return summary
   }
@@ -436,7 +444,7 @@ extension PublishingStore {
     -> LocalContentImportMergeSummary
   {
     guard !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty else {
-      publishActionMessage = "选择本地仓库后才能导入文章。"
+      setPublishActionMessage("选择本地仓库后才能导入文章。", status: .warning)
       return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
     }
     let profile = store.activeProfile
@@ -469,10 +477,13 @@ extension PublishingStore {
     } catch {
       if localImportOperationContext == operation {
         localImportOperationContext = nil
-        publishActionMessage =
-          error is CancellationError
-          ? "已取消导入本地文章变更。"
-          : "导入本地文章变更失败：\(error.localizedDescription)"
+        let wasCancelled = error is CancellationError
+        setPublishActionMessage(
+          wasCancelled
+            ? "已取消导入本地文章变更。"
+            : "导入本地文章变更失败：\(error.localizedDescription)",
+          status: wasCancelled ? .warning : .failure
+        )
       }
       return LocalContentImportMergeSummary(insertedCount: 0, updatedCount: 0, skippedCount: 0)
     }
@@ -490,7 +501,10 @@ extension PublishingStore {
       store: store
     )
     selectedSection = .writing
-    publishActionMessage = "已从文章变更导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇。"
+    setPublishActionMessage(
+      "已从文章变更导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇。",
+      status: .success
+    )
     store.save()
     return summary
   }
@@ -530,7 +544,10 @@ extension PublishingStore {
     {
       selectedDraftID = imported.id
     }
-    publishActionMessage = "已从远端文章变更导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇。"
+    setPublishActionMessage(
+      "已从远端文章变更导入 \(summary.insertedCount) 篇、更新 \(summary.updatedCount) 篇。",
+      status: .success
+    )
     store.save()
     return summary
   }
@@ -555,9 +572,12 @@ extension PublishingStore {
       profile: profile, repositoryPath: normalizedPath),
       summary.changedCount > 0
     {
-      publishActionMessage = "已从 \(snapshot.refName) 导入远端文章 \(normalizedPath)。"
+      setPublishActionMessage(
+        "已从 \(snapshot.refName) 导入远端文章 \(normalizedPath)。",
+        status: .success
+      )
     } else {
-      publishActionMessage = "未能导入远端文章：\(normalizedPath)。"
+      setPublishActionMessage("未能导入远端文章：\(normalizedPath)。", status: .failure)
     }
     store.save()
     return summary
@@ -725,7 +745,10 @@ extension PublishingStore {
     let generation = siteStarterOperationGeneration
     let baseline = SiteStarterOperationBaseline(store: self)
     isSiteStarterOperationRunning = true
-    publishActionMessage = CoreL10n.text("正在后台创建 Starter 站点…")
+    setPublishActionMessage(
+      CoreL10n.text("正在后台创建 Starter 站点…"),
+      status: .inProgress
+    )
     defer {
       if siteStarterOperationGeneration == generation {
         isSiteStarterOperationRunning = false
@@ -736,8 +759,11 @@ extension PublishingStore {
       let result = try await siteStarterService.createSiteAsync(request: request)
       guard siteStarterOperationGeneration == generation else { return nil }
       guard baseline.stillMatches(self) else {
-        publishActionMessage = CoreL10n.text(
-          "Starter 文件已生成，但工作台内容在操作期间发生变化，未覆盖当前状态。"
+        setPublishActionMessage(
+          CoreL10n.text(
+            "Starter 文件已生成，但工作台内容在操作期间发生变化，未覆盖当前状态。"
+          ),
+          status: .warning
         )
         return nil
       }
@@ -748,14 +774,20 @@ extension PublishingStore {
       activeProfileID = result.profile.id
       drafts.append(result.initialDraft)
       selectedDraftID = result.initialDraft.id
-      publishActionMessage = CoreL10n.format("已创建 Starter 站点：%@。", result.profile.name)
+      setPublishActionMessage(
+        CoreL10n.format("已创建 Starter 站点：%@。", result.profile.name),
+        status: .success
+      )
       store.save()
       return result
     } catch {
       guard siteStarterOperationGeneration == generation else { return nil }
-      publishActionMessage = CoreL10n.format(
-        "创建 Starter 站点失败：%@",
-        error.localizedDescription
+      setPublishActionMessage(
+        CoreL10n.format(
+          "创建 Starter 站点失败：%@",
+          error.localizedDescription
+        ),
+        status: .failure
       )
       return nil
     }
@@ -770,7 +802,10 @@ extension PublishingStore {
     let generation = siteStarterOperationGeneration
     let baseline = SiteStarterOperationBaseline(store: self)
     isSiteStarterOperationRunning = true
-    publishActionMessage = CoreL10n.text("正在后台读取并导入已有站点…")
+    setPublishActionMessage(
+      CoreL10n.text("正在后台读取并导入已有站点…"),
+      status: .inProgress
+    )
     defer {
       if siteStarterOperationGeneration == generation {
         isSiteStarterOperationRunning = false
@@ -783,8 +818,11 @@ extension PublishingStore {
         profile: result.profile)
       guard siteStarterOperationGeneration == generation else { return nil }
       guard baseline.stillMatches(self) else {
-        publishActionMessage = CoreL10n.text(
-          "站点读取完成，但工作台内容在操作期间发生变化，未覆盖当前状态。"
+        setPublishActionMessage(
+          CoreL10n.text(
+            "站点读取完成，但工作台内容在操作期间发生变化，未覆盖当前状态。"
+          ),
+          status: .warning
         )
         return nil
       }
@@ -798,14 +836,20 @@ extension PublishingStore {
       siteStarterResult = nil
       siteStarterPushResult = nil
       selectedDraftID = store.visibleDrafts.first?.id
-      publishActionMessage = CoreL10n.format("已导入已有站点：%@。", result.profile.name)
+      setPublishActionMessage(
+        CoreL10n.format("已导入已有站点：%@。", result.profile.name),
+        status: .success
+      )
       store.save()
       return result
     } catch {
       guard siteStarterOperationGeneration == generation else { return nil }
-      publishActionMessage = CoreL10n.format(
-        "导入已有站点失败：%@",
-        error.localizedDescription
+      setPublishActionMessage(
+        CoreL10n.format(
+          "导入已有站点失败：%@",
+          error.localizedDescription
+        ),
+        status: .failure
       )
       return nil
     }
@@ -816,18 +860,27 @@ extension PublishingStore {
     guard var starterResult = siteStarterResult,
       starterResult.profile.id == store.activeProfileID
     else {
-      publishActionMessage = CoreL10n.text(
-        "没有可配置远端的 Starter 生成结果，请先创建站点。"
+      setPublishActionMessage(
+        CoreL10n.text(
+          "没有可配置远端的 Starter 生成结果，请先创建站点。"
+        ),
+        status: .warning
       )
       return false
     }
     let profile = store.activeProfile
     guard let operation = beginLocalRepositoryMutation(profile: profile) else {
-      publishActionMessage = CoreL10n.text("已有本地仓库写入或提交任务正在运行，请等待完成。")
+      setPublishActionMessage(
+        CoreL10n.text("已有本地仓库写入或提交任务正在运行，请等待完成。"),
+        status: .warning
+      )
       return false
     }
     defer { finishLocalRepositoryMutation(operation) }
-    publishActionMessage = CoreL10n.text("正在配置 Starter 的 origin remote…")
+    setPublishActionMessage(
+      CoreL10n.text("正在配置 Starter 的 origin remote…"),
+      status: .inProgress
+    )
 
     do {
       let remoteURL = try await siteStarterService.configureGitHubOriginRemoteAsync(
@@ -840,9 +893,12 @@ extension PublishingStore {
       starterResult.profile = profile
       starterResult.configuredRemoteURL = remoteURL
       siteStarterResult = starterResult
-      publishActionMessage = CoreL10n.format(
-        "已配置 Starter 远端：%@。",
-        profile.repositoryDisplayName
+      setPublishActionMessage(
+        CoreL10n.format(
+          "已配置 Starter 远端：%@。",
+          profile.repositoryDisplayName
+        ),
+        status: .success
       )
       store.save()
       return true
@@ -852,9 +908,12 @@ extension PublishingStore {
       else {
         return false
       }
-      publishActionMessage = CoreL10n.format(
-        "配置 Starter 远端失败：%@",
-        error.localizedDescription
+      setPublishActionMessage(
+        CoreL10n.format(
+          "配置 Starter 远端失败：%@",
+          error.localizedDescription
+        ),
+        status: .failure
       )
       return false
     }
@@ -863,18 +922,27 @@ extension PublishingStore {
   @discardableResult
   public func commitAndPushStarterSite(store: WorkbenchStore) async -> SiteStarterPushResult? {
     guard let starterResult = siteStarterResult else {
-      publishActionMessage = CoreL10n.text(
-        "没有可提交的 Starter 生成结果，请先创建站点。"
+      setPublishActionMessage(
+        CoreL10n.text(
+          "没有可提交的 Starter 生成结果，请先创建站点。"
+        ),
+        status: .warning
       )
       return nil
     }
     let profile = starterResult.profile
     guard let operation = beginLocalRepositoryMutation(profile: profile) else {
-      publishActionMessage = CoreL10n.text("已有本地仓库写入或提交任务正在运行，请等待完成。")
+      setPublishActionMessage(
+        CoreL10n.text("已有本地仓库写入或提交任务正在运行，请等待完成。"),
+        status: .warning
+      )
       return nil
     }
     defer { finishLocalRepositoryMutation(operation) }
-    publishActionMessage = CoreL10n.text("正在提交并推送 Starter…")
+    setPublishActionMessage(
+      CoreL10n.text("正在提交并推送 Starter…"),
+      status: .inProgress
+    )
     do {
       let result = try await siteStarterService.commitAndPushStarterSiteAsync(
         profile: profile,
@@ -885,9 +953,12 @@ extension PublishingStore {
         return nil
       }
       siteStarterPushResult = result
-      publishActionMessage = CoreL10n.format(
-        "Starter 已提交并推送：%@。",
-        String(result.commitSHA.prefix(8))
+      setPublishActionMessage(
+        CoreL10n.format(
+          "Starter 已提交并推送：%@。",
+          String(result.commitSHA.prefix(8))
+        ),
+        status: .success
       )
       store.save()
       return result
@@ -896,9 +967,12 @@ extension PublishingStore {
       else {
         return nil
       }
-      publishActionMessage = CoreL10n.format(
-        "Starter 提交推送失败：%@",
-        error.localizedDescription
+      setPublishActionMessage(
+        CoreL10n.format(
+          "Starter 提交推送失败：%@",
+          error.localizedDescription
+        ),
+        status: .failure
       )
       return nil
     }
@@ -950,11 +1024,15 @@ extension PublishingStore {
       store.schedulePreflightRefresh()
     }
     if plan.conflictCount > 0 {
-      publishActionMessage =
-        "导入完成：新增 \(plan.summary.insertedCount) 篇、更新 \(plan.summary.updatedCount) 篇；\(plan.conflictCount) 篇在导入期间被本地修改，已保留本地版本。"
+      setPublishActionMessage(
+        "导入完成：新增 \(plan.summary.insertedCount) 篇、更新 \(plan.summary.updatedCount) 篇；\(plan.conflictCount) 篇在导入期间被本地修改，已保留本地版本。",
+        status: .warning
+      )
     } else {
-      publishActionMessage =
-        "导入完成：新增 \(plan.summary.insertedCount) 篇、更新 \(plan.summary.updatedCount) 篇、跳过 \(result.skippedPaths.count) 个文件。"
+      setPublishActionMessage(
+        "导入完成：新增 \(plan.summary.insertedCount) 篇、更新 \(plan.summary.updatedCount) 篇、跳过 \(result.skippedPaths.count) 个文件。",
+        status: .success
+      )
     }
     store.save()
     return plan.summary

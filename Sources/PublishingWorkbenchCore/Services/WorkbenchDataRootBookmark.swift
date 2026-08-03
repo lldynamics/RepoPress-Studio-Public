@@ -188,7 +188,11 @@ public enum WorkbenchDataRootBookmarkError: Error, Equatable, Sendable {
 ///
 /// `openStoredRoot` returns a session that owns the security-scope lease. Keep
 /// that session alive for as long as services use paths below the selected root.
-public final class WorkbenchDataRootBookmarkStore {
+/// The store is configured once during launch. Its dependencies are immutable,
+/// UserDefaults serializes its own access, and the injected codec/security-scope
+/// callbacks are Sendable, so the blocking resolve/probe operation can run off
+/// the main actor without changing the store's public API.
+public final class WorkbenchDataRootBookmarkStore: @unchecked Sendable {
   public static let defaultStorageKey = "RepoPress.WorkbenchDataRootBookmark.v1"
 
   private let defaults: UserDefaults

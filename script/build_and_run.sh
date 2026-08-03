@@ -331,14 +331,6 @@ swift_build_options=(
 if [[ "$APP_STORE_BUILD" == "1" ]]; then
   swift_build_options+=(
     --scratch-path "$APP_STORE_SWIFT_SCRATCH_PATH"
-    -Xswiftc -D
-    -Xswiftc APP_STORE_BUILD
-  )
-fi
-if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
-  swift_build_options+=(
-    -Xswiftc -D
-    -Xswiftc DIRECT_DISTRIBUTION_BUILD
   )
 fi
 if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then

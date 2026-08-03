@@ -956,6 +956,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertNil(store.remoteRepositoryAccessCheck)
     XCTAssertTrue(store.repositoryTokenAvailability.hasToken)
     XCTAssertEqual(store.publishActionMessage, CoreL10n.text("仓库访问 Token 已保存到 Keychain。"))
+    XCTAssertEqual(store.publishActionFeedback?.status, .success)
     let reloaded = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
       repositoryTokenStore: tokenStore
@@ -1024,6 +1025,7 @@ extension WorkbenchStoreProfileTests {
 
     XCTAssertEqual(check?.repositoryName, "owner/site")
     XCTAssertTrue(check?.canWrite == true)
+    XCTAssertEqual(store.publishActionFeedback?.status, .success)
     await store.waitForPendingSave()
     let reloaded = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
@@ -1041,6 +1043,38 @@ extension WorkbenchStoreProfileTests {
     XCTAssertFalse(preview.checklistMarkdown.contains(CoreL10n.text("PR 创建权限将在实际创建时验证")))
     XCTAssertTrue(preview.warningIssues.contains { $0.title == CoreL10n.text("远端状态待确认") })
     XCTAssertTrue(preview.checklistMarkdown.contains(CoreL10n.text("## 远端状态待确认")))
+  }
+
+  func testRepositoryPermissionCheckFailureUsesStructuredFailureStatus() async throws {
+    let transport = SequencedWorkbenchRemoteRepositoryTransport(responses: [
+      workbenchRemoteResponse(
+        statusCode: 403,
+        json: #"{"message":"token rejected"}"#
+      )
+    ])
+    let tokenStore = repositoryTokenStoreForTest()
+    let store = WorkbenchStore(
+      persistence: try TestWorkbenchFactory.persistence(),
+      remoteRepositoryPublishService: RemoteRepositoryPublishService(transport: transport),
+      repositoryTokenStore: tokenStore
+    )
+
+    var profile = store.activeProfile
+    profile.repositoryProvider = .github
+    profile.repositoryBaseURL = RepositoryProvider.github.defaultBaseURL
+    profile.repoOwner = "owner"
+    profile.repoName = "site"
+    store.updateActiveProfile(profile)
+    defer { try? tokenStore.deleteToken(for: profile) }
+    try tokenStore.saveRepositoryToken("github-token", for: profile)
+
+    let check = await store.checkRepositoryTokenAccess()
+
+    XCTAssertNil(check)
+    XCTAssertEqual(store.publishActionFeedback?.status, .failure)
+    XCTAssertNotNil(
+      store.activityStatus.taskCenterItems.first { $0.kind == .gitPush }
+    )
   }
 
   func testRepositoryPermissionCheckDiscardsResultAfterRepositoryConfigurationChanges() async throws {
@@ -1405,6 +1439,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertNil(store.remoteRepositoryPublishResult)
     XCTAssertEqual(requestCount, 0)
     XCTAssertEqual(store.publishActionMessage, CoreL10n.text("Token 无写入权限，无法线上发布。"))
+    XCTAssertEqual(store.publishActionFeedback?.status, .failure)
   }
 
   func testCreateGitHubRepositoryForActiveProfileDefaultsToPrivateAndUpdatesProfile() async throws {
@@ -1441,6 +1476,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertEqual(store.activeProfile.repoName, "site")
     XCTAssertEqual(store.repositoryTokenAvailability.hasToken, true)
     XCTAssertTrue(store.publishActionMessage?.contains("GitHub 仓库已创建：owner/site") == true)
+    XCTAssertEqual(store.publishActionFeedback?.status, .success)
 
     let requests = await transport.capturedRequests()
     XCTAssertEqual(requests.map(\.httpMethod), ["GET", "POST"])
@@ -1735,6 +1771,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertTrue(store.releaseRecords.first?.title.contains("批量线上提交") == true)
     XCTAssertTrue(store.releaseRecords.first?.summary.contains("2 篇文章") == true)
     XCTAssertTrue(store.publishActionMessage?.contains("批量线上直接提交完成") == true)
+    XCTAssertEqual(store.publishActionFeedback?.status, .success)
     XCTAssertEqual(store.drafts.map(\.status), [.published, .published])
     XCTAssertTrue(store.drafts.allSatisfy { !$0.draft })
     XCTAssertEqual(store.repositoryAutoSyncState.remoteChangedPaths, ["config.toml"])
@@ -1835,6 +1872,7 @@ extension WorkbenchStoreProfileTests {
     XCTAssertNil(store.remoteRepositoryPublishResult)
     XCTAssertTrue(store.publishActionMessage?.contains("批量线上直接提交失败") == true)
     XCTAssertFalse(store.publishActionMessage?.contains("部分完成后失败") == true)
+    XCTAssertEqual(store.publishActionFeedback?.status, .failure)
 
     let record = try XCTUnwrap(store.releaseRecords.first)
     XCTAssertEqual(record.kind, .remotePublishFailure)

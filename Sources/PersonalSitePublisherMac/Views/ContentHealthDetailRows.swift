@@ -118,7 +118,6 @@ extension ContentHealthDetailView {
   }
 
   func runAIFixQueueItem(_ item: AIPublishingFixQueueItem) {
-    guard DistributionFeaturePolicy.allowsExternalAIProviders else { return }
     guard let draft = store.publishing.visibleDrafts.first(where: { $0.id == item.draftID }) else {
       return
     }
@@ -141,9 +140,7 @@ extension ContentHealthDetailView {
       "\(snapshot.errorCount) 个错误",
       "\(snapshot.warningCount) 个警告",
     ]
-    if DistributionFeaturePolicy.allowsExternalAIProviders {
-      parts.append("\(snapshot.aiFixQueueItems.count) 项可用 AI 修复")
-    }
+    parts.append("\(snapshot.aiFixQueueItems.count) 项可用 AI 修复")
     parts.append("\(snapshot.passingDraftCount) 篇文章通过")
     return parts.joined(separator: "，")
   }
