@@ -146,5 +146,17 @@
   "display.site-starter-deployment-target.vercel": {
     "zh-Hans": "Vercel",
     "en": "Vercel"
+  },
+  "display.workspace-backup-frequency.daily": {
+    "zh-Hans": "每天",
+    "en": "Daily"
+  },
+  "display.workspace-backup-frequency.off": {
+    "zh-Hans": "关闭",
+    "en": "Off"
+  },
+  "display.workspace-backup-frequency.weekly": {
+    "zh-Hans": "每周",
+    "en": "Weekly"
   }
 }

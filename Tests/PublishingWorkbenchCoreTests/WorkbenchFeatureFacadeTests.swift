@@ -117,6 +117,23 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     withExtendedLifetime(cancellable) {}
   }
 
+  func testShellFacadeRoutesNavigationWithoutObservingUnrelatedPublishingProgress() {
+    let store = WorkbenchStore()
+    let shell = store.shell
+    var shellChanges = 0
+    let cancellable = shell.objectWillChange.sink { shellChanges += 1 }
+
+    store.setPublishActionMessage("正在生成发布预览…")
+    XCTAssertEqual(shellChanges, 0)
+
+    let section: WorkspaceSection = shell.selectedSection == .sync ? .writing : .sync
+    shell.selectSection(section)
+
+    XCTAssertEqual(shell.selectedSection, section)
+    XCTAssertEqual(shellChanges, 1)
+    withExtendedLifetime(cancellable) {}
+  }
+
   func testAIFacadeUsesNarrowActionsAndReadsAIWorkspaceState() {
     let store = WorkbenchStore()
     let draft = ArticleDraft.empty(profile: store.activeProfile)

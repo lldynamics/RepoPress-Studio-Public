@@ -67,12 +67,12 @@ final class KnowledgeLibraryManagementTests: XCTestCase {
     let folder = try service.createFolder(name: "批量归档")
 
     try service.setFolder(folder.id, documentIDs: ids)
-    try service.setAllowsAIUse(false, documentIDs: ids)
+    try service.setAllowsRemoteAIUse(false, documentIDs: ids)
     try service.addTags(["量子花园标签"], documentIDs: ids)
 
     var updatedDocuments = try service.documents()
     XCTAssertTrue(updatedDocuments.allSatisfy { $0.folderID == folder.id })
-    XCTAssertTrue(updatedDocuments.allSatisfy { !$0.allowsAIUse })
+    XCTAssertTrue(updatedDocuments.allSatisfy { !$0.allowsRemoteAIUse })
     XCTAssertTrue(updatedDocuments.allSatisfy { $0.tags.contains("量子花园标签") })
 
     let first = try XCTUnwrap(updatedDocuments.first { $0.sourceURL == firstURL })
@@ -140,13 +140,19 @@ final class KnowledgeLibraryManagementTests: XCTestCase {
     let backlinks = try service.backlinks(documentID: first.id)
     XCTAssertEqual(backlinks.count, 2)
     XCTAssertEqual(Set(backlinks.map(\.targetKind)), [.articleDraft, .aiResponse])
+    let articleBacklinks = try service.backlinks(
+      targetKind: .articleDraft,
+      targetID: target.id
+    )
+    XCTAssertEqual(articleBacklinks.count, 1)
+    XCTAssertEqual(articleBacklinks.first?.targetTitle, "正在写的文章")
 
     try service.deleteAnnotation(id: annotation.id)
     XCTAssertTrue(try service.annotations(documentID: first.id).isEmpty)
 
-    try service.setAllowsAIUse(true, documentIDs: ids)
+    try service.setAllowsRemoteAIUse(true, documentIDs: ids)
     updatedDocuments = try service.documents()
-    XCTAssertTrue(updatedDocuments.allSatisfy(\.allowsAIUse))
+    XCTAssertTrue(updatedDocuments.allSatisfy(\.allowsRemoteAIUse))
     XCTAssertFalse(try service.search(query: "量子花园标签").isEmpty)
 
     let repair = try await service.repairSemanticVectors(documentIDs: ids)

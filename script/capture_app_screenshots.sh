@@ -70,13 +70,12 @@ load_required_ids() {
 screen_title() {
   case "$1" in
     writing) echo "Writing workspace" ;;
-    ai-chat) echo "Free BYOK AI writing assistant" ;;
+    ai-chat) echo "BYOK AI writing assistant" ;;
     sync-api-publish) echo "Sync/API publishing workspace" ;;
     seo-social-preview) echo "SEO and social preview" ;;
     deployment-status) echo "Deployment status" ;;
     maintenance) echo "Site maintenance" ;;
     general-drafts) echo "General drafts" ;;
-    pro-settings) echo "Pro settings" ;;
     privacy-lock) echo "Quick hide" ;;
     knowledge-library) echo "Local knowledge library" ;;
     *) echo "$1" ;;
@@ -86,13 +85,12 @@ screen_title() {
 screen_guidance() {
   case "$1" in
     writing) echo "Show the writing workspace with editor, preview, metadata, and contextual writing actions." ;;
-    ai-chat) echo "Show the free in-app AI writing assistant with safe demo conversation, article context, and user-supplied API-key guidance." ;;
+    ai-chat) echo "Show the in-app BYOK AI writing assistant with safe demo conversation, model selection, and user-supplied API-key guidance." ;;
     sync-api-publish) echo "Show GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR controls." ;;
     seo-social-preview) echo "Show search/Open Graph/Twitter card previews, cache state, manual refresh, and external debug links." ;;
     deployment-status) echo "Show GitHub Pages/Actions, Netlify, Vercel, Cloudflare Pages, or custom endpoint validation status." ;;
     maintenance) echo "Show content calendar, taxonomy governance, stale articles, links, and operation log." ;;
     general-drafts) echo "Show general drafts in the writing workspace with move and copy to site actions." ;;
-    pro-settings) echo "Show free quota, Pro unlock, purchase, and restore state without real payment or account secrets." ;;
     privacy-lock) echo "Show the manually hidden workbench and private-content masking state." ;;
     knowledge-library) echo "Show the local knowledge library with import, search, cleaned reading content, source details, and annotations." ;;
     *) echo "Arrange the app for this required App Store screenshot." ;;

@@ -84,10 +84,19 @@
           <span id="remember-domain-label" data-i18n="rememberDomainDefault">记住此网站的分类选择</span>
         </label>
 
-        <label class="check-row">
-          <input id="capture-ai" type="checkbox" checked>
-          <span data-i18n="allowAILabel">加入本地语义检索</span>
-        </label>
+        <fieldset class="permission-group">
+          <legend data-i18n="knowledgePermissionsTitle">资料权限</legend>
+          <label class="check-row">
+            <input id="capture-local-index" type="checkbox" checked>
+            <span data-i18n="allowLocalSemanticIndexLabel">建立本地语义索引</span>
+          </label>
+          <p class="hint permission-hint" data-i18n="allowLocalSemanticIndexHint">只在本机生成并保存向量，不会把资料发送给远程服务商。</p>
+          <label class="check-row">
+            <input id="capture-remote-ai" type="checkbox">
+            <span data-i18n="allowRemoteAILabel">允许发送给远程 AI</span>
+          </label>
+          <p class="hint permission-hint" data-i18n="allowRemoteAIHint">默认关闭。开启后，发送范围、服务商和撤销入口请在应用的 AI 设置中确认。</p>
+        </fieldset>
 
         <button id="batch-save" class="secondary" type="button" aria-describedby="batch-hint" aria-keyshortcuts="Control+Shift+B Meta+Shift+B" disabled data-i18n="batchSaveButton">批量保存已选择标签页</button>
         <p id="batch-hint" class="hint" data-i18n="batchSelectionHint">在浏览器标签栏按住 Command/Ctrl 选择多个标签页。</p>
@@ -120,7 +129,8 @@
           <div><dt data-i18n="fileSizeLabel">文件大小</dt><dd id="receipt-size"></dd></div>
           <div><dt data-i18n="archiveTypeLabel">归档类型</dt><dd id="receipt-archive"></dd></div>
           <div><dt data-i18n="indexStatusLabel">索引状态</dt><dd id="receipt-index"></dd></div>
-          <div><dt data-i18n="aiPermissionLabel">语义检索</dt><dd id="receipt-ai"></dd></div>
+          <div><dt data-i18n="localSemanticIndexLabel">本地语义索引</dt><dd id="receipt-local-index"></dd></div>
+          <div><dt data-i18n="remoteAIPermissionLabel">远程 AI 权限</dt><dd id="receipt-remote-ai"></dd></div>
         </dl>
         <button id="open-document" class="secondary" data-i18n="openDocumentButton">在资料库中打开</button>
       </section>

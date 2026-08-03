@@ -189,15 +189,23 @@ final class WorkbenchPersistenceTests: XCTestCase {
       [
         "personal-site-publisher-getting-started",
         "personal-site-publisher-writing-preview",
+        "personal-site-publisher-ai-assistant",
         "personal-site-publisher-knowledge-library",
         "personal-site-publisher-safe-publishing",
         "personal-site-publisher-maintenance",
       ]
     )
     XCTAssertEqual(store.selectedDraft?.id, store.drafts.first?.id)
+    XCTAssertEqual(store.draftListContentScope, .general)
+    XCTAssertTrue(store.drafts.allSatisfy(\.isGeneralDraft))
     XCTAssertTrue(store.drafts.allSatisfy(\.draft))
     XCTAssertTrue(store.drafts.allSatisfy { $0.status == .draft })
     XCTAssertTrue(store.drafts.allSatisfy { $0.repositoryPath == nil && $0.repositorySHA == nil })
+    XCTAssertTrue(
+      store.drafts.allSatisfy {
+        $0.softwareGuideTemplateVersion == ArticleDraft.currentSoftwareGuideSeedVersion
+      }
+    )
     XCTAssertEqual(Set(store.drafts.map(\.slug)).count, store.drafts.count)
     XCTAssertEqual(Set(store.drafts.compactMap(\.softwareGuideID)).count, store.drafts.count)
 
@@ -230,13 +238,118 @@ final class WorkbenchPersistenceTests: XCTestCase {
     XCTAssertEqual(chinese.map(\.softwareGuideID), english.map(\.softwareGuideID))
     XCTAssertEqual(chinese.first?.title, "开始使用：认识发布工作台")
     XCTAssertEqual(english.first?.title, "Getting Started: Meet Your Publishing Workbench")
-    XCTAssertTrue(chinese[2].bodyMarkdown.contains("资料库"))
-    XCTAssertTrue(english[2].bodyMarkdown.contains("Library"))
+    XCTAssertTrue(chinese[2].bodyMarkdown.contains("独立免费版中直接开放"))
+    XCTAssertTrue(english[2].bodyMarkdown.contains("available directly in the free standalone edition"))
+    XCTAssertTrue(chinese[3].bodyMarkdown.contains("不包含在 App 包内"))
+    XCTAssertTrue(english[3].bodyMarkdown.contains("Chrome extension is not included"))
+    XCTAssertTrue(chinese[4].bodyMarkdown.contains("保存到本地"))
+    XCTAssertTrue(english[4].bodyMarkdown.contains("Save Locally"))
     XCTAssertTrue((chinese + english).allSatisfy { !$0.summary.isEmpty && !$0.bodyMarkdown.isEmpty })
     XCTAssertTrue((chinese + english).allSatisfy { $0.authors == [profile.defaultAuthor] })
+    XCTAssertTrue((chinese + english).allSatisfy(\.isGeneralDraft))
   }
 
-  func testSoftwareGuideSeedPolicyDoesNotRefillExistingEmptySnapshot() throws {
+  func testSoftwareGuideVersionUpgradeRefreshesManagedGuidesAndAddsOnlyNewGuide() async throws {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let persistence = WorkbenchPersistence(fileURL: url)
+    let profile = SiteProfile.defaultProfile
+    var legacyGuides = ArticleDraft.samples(
+      profile: profile,
+      preferredLanguage: "zh-Hans"
+    ).filter { $0.softwareGuideID != "ai-assistant" }
+    let legacyIDs = legacyGuides.map(\.id)
+    for index in legacyGuides.indices {
+      legacyGuides[index].assignToSite(profile.id)
+      legacyGuides[index].title = "旧版指南"
+      legacyGuides[index].bodyMarkdown = "# 旧版指南\n"
+      legacyGuides[index].softwareGuideTemplateVersion = 1
+    }
+    _ = try persistence.save(
+      WorkbenchSnapshot(
+        profiles: [profile],
+        activeProfileID: profile.id,
+        drafts: legacyGuides,
+        softwareGuideSeedVersion: 1,
+        releaseRecords: []
+      )
+    )
+
+    let store = WorkbenchStore(
+      persistence: persistence,
+      freshWorkspaceSeedPolicy: .softwareGuides
+    )
+
+    XCTAssertEqual(Set(store.drafts.compactMap(\.softwareGuideID)).count, 6)
+    XCTAssertEqual(
+      store.drafts.compactMap(\.softwareGuideID),
+      [
+        "getting-started",
+        "writing-preview",
+        "ai-assistant",
+        "knowledge-library",
+        "safe-publishing",
+        "maintenance-recovery",
+      ]
+    )
+    XCTAssertTrue(legacyIDs.allSatisfy { legacyID in store.drafts.contains { $0.id == legacyID } })
+    XCTAssertTrue(store.drafts.contains { $0.softwareGuideID == "ai-assistant" })
+    XCTAssertTrue(store.drafts.allSatisfy(\.isGeneralDraft))
+    XCTAssertNotEqual(
+      try XCTUnwrap(
+        store.drafts.first { $0.softwareGuideID == "getting-started" }
+      ).bodyMarkdown,
+      "# 旧版指南\n"
+    )
+    XCTAssertTrue(
+      store.drafts.allSatisfy {
+        $0.softwareGuideTemplateVersion == ArticleDraft.currentSoftwareGuideSeedVersion
+      }
+    )
+    await store.waitForPendingSave()
+  }
+
+  func testSoftwareGuideVersionUpgradePreservesCustomizedAndRemovedGuides() throws {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let persistence = WorkbenchPersistence(fileURL: url)
+    let profile = SiteProfile.defaultProfile
+    var customizedGuide = ArticleDraft.samples(
+      profile: profile,
+      preferredLanguage: "zh-Hans"
+    )[0]
+    customizedGuide.bodyMarkdown = "# 我的发布手册\n"
+    customizedGuide.softwareGuideTemplateVersion = 0
+    _ = try persistence.save(
+      WorkbenchSnapshot(
+        profiles: [profile],
+        activeProfileID: profile.id,
+        drafts: [customizedGuide],
+        softwareGuideSeedVersion: 1,
+        releaseRecords: []
+      )
+    )
+
+    let store = WorkbenchStore(
+      persistence: persistence,
+      freshWorkspaceSeedPolicy: .softwareGuides
+    )
+    let guideIDs = Set(store.drafts.compactMap(\.softwareGuideID))
+
+    XCTAssertEqual(guideIDs, Set(["getting-started", "ai-assistant"]))
+    XCTAssertFalse(guideIDs.contains("writing-preview"))
+    XCTAssertEqual(
+      store.drafts.first { $0.softwareGuideID == "getting-started" }?.bodyMarkdown,
+      "# 我的发布手册\n"
+    )
+    XCTAssertEqual(
+      store.drafts.first { $0.softwareGuideID == "getting-started" }?
+        .softwareGuideTemplateVersion,
+      0
+    )
+  }
+
+  func testSoftwareGuideSeedPolicyInstallsGuidesOnceForExistingEmptySnapshot() async throws {
     let url = temporaryPersistenceURL()
     defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
     let persistence = WorkbenchPersistence(fileURL: url)
@@ -255,32 +368,80 @@ final class WorkbenchPersistenceTests: XCTestCase {
       freshWorkspaceSeedPolicy: .softwareGuides
     )
 
-    XCTAssertEqual(store.drafts.count, 1)
-    XCTAssertEqual(store.selectedDraft?.title, "未命名文章")
-    XCTAssertFalse(store.drafts.contains { $0.softwareGuideID != nil })
+    XCTAssertEqual(Set(store.drafts.compactMap(\.softwareGuideID)).count, 6)
+    XCTAssertEqual(store.selectedDraft?.softwareGuideID, "getting-started")
+    XCTAssertEqual(store.draftListContentScope, .general)
+    XCTAssertTrue(store.drafts.allSatisfy(\.isGeneralDraft))
+    XCTAssertEqual(
+      store.softwareGuideSeedVersion,
+      ArticleDraft.currentSoftwareGuideSeedVersion
+    )
+    await store.waitForPendingSave()
+
+    _ = try persistence.save(
+      WorkbenchSnapshot(
+        profiles: [profile],
+        activeProfileID: profile.id,
+        drafts: [],
+        softwareGuideSeedVersion: ArticleDraft.currentSoftwareGuideSeedVersion,
+        releaseRecords: []
+      )
+    )
+
+    let reopenedAfterUserRemoval = WorkbenchStore(
+      persistence: persistence,
+      freshWorkspaceSeedPolicy: .softwareGuides
+    )
+    XCTAssertEqual(reopenedAfterUserRemoval.drafts.count, 1)
+    XCTAssertEqual(reopenedAfterUserRemoval.selectedDraft?.title, "未命名文章")
+    XCTAssertFalse(reopenedAfterUserRemoval.drafts.contains { $0.softwareGuideID != nil })
   }
 
-  func testInstallingSoftwareGuidesIsIdempotentAndPreservesExistingDraft() async {
+  func testInstallingSoftwareGuidesIsIdempotentAndPreservesExistingDraft() async throws {
     let url = temporaryPersistenceURL()
     defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
     let originalDraftID = store.drafts[0].id
 
-    XCTAssertEqual(store.installSoftwareGuides(), 5)
+    XCTAssertEqual(store.installSoftwareGuides(), 6)
     await store.waitForPendingSave()
 
-    XCTAssertEqual(store.drafts.count, 6)
+    XCTAssertEqual(store.drafts.count, 7)
     XCTAssertTrue(store.drafts.contains { $0.id == originalDraftID })
     XCTAssertEqual(store.selectedDraft?.softwareGuideID, "getting-started")
     XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertEqual(store.draftListContentScope, .general)
+    XCTAssertTrue(
+      store.drafts.filter { $0.softwareGuideID != nil }.allSatisfy(\.isGeneralDraft)
+    )
+    XCTAssertEqual(
+      store.softwareGuideSeedVersion,
+      ArticleDraft.currentSoftwareGuideSeedVersion
+    )
 
     XCTAssertEqual(store.installSoftwareGuides(), 0)
-    XCTAssertEqual(store.drafts.count, 6)
+    XCTAssertEqual(store.drafts.count, 7)
     XCTAssertEqual(Set(store.drafts.map(\.slug)).count, store.drafts.count)
 
+    var customizedGuide = try XCTUnwrap(
+      store.drafts.first { $0.softwareGuideID == "getting-started" }
+    )
+    customizedGuide.bodyMarkdown = "# My customized guide\n"
+    store.updateDraft(customizedGuide)
+    XCTAssertEqual(
+      store.drafts.first { $0.id == customizedGuide.id }?.softwareGuideTemplateVersion,
+      0
+    )
+    XCTAssertEqual(store.installSoftwareGuides(), 0)
+    XCTAssertEqual(
+      store.drafts.first { $0.id == customizedGuide.id }?.bodyMarkdown,
+      "# My customized guide\n"
+    )
+    await store.waitForPendingSave()
+
     let reloaded = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
-    XCTAssertEqual(reloaded.drafts.count, 6)
-    XCTAssertEqual(Set(reloaded.drafts.compactMap(\.softwareGuideID)).count, 5)
+    XCTAssertEqual(reloaded.drafts.count, 7)
+    XCTAssertEqual(Set(reloaded.drafts.compactMap(\.softwareGuideID)).count, 6)
   }
 
   func testInstallingSoftwareGuidesResolvesUserSlugCollisionWithoutMisidentification() async throws {
@@ -292,7 +453,7 @@ final class WorkbenchPersistenceTests: XCTestCase {
     userDraft.slug = "personal-site-publisher-getting-started"
     store.updateDraft(userDraft)
 
-    XCTAssertEqual(store.installSoftwareGuides(), 5)
+    XCTAssertEqual(store.installSoftwareGuides(), 6)
     await store.waitForPendingSave()
 
     let preservedUserDraft = try XCTUnwrap(store.drafts.first(where: { $0.id == userDraft.id }))
@@ -322,10 +483,10 @@ final class WorkbenchPersistenceTests: XCTestCase {
     )
     let store = WorkbenchStore(persistence: persistence)
 
-    XCTAssertEqual(store.installSoftwareGuides(), 4)
+    XCTAssertEqual(store.installSoftwareGuides(), 5)
     await store.waitForPendingSave()
 
-    XCTAssertEqual(Set(store.drafts.compactMap(\.softwareGuideID)).count, 5)
+    XCTAssertEqual(Set(store.drafts.compactMap(\.softwareGuideID)).count, 6)
     XCTAssertEqual(store.drafts.filter { $0.softwareGuideID == existingGuide.softwareGuideID }.count, 1)
     XCTAssertEqual(store.selectedDraft?.softwareGuideID, "getting-started")
   }
@@ -420,6 +581,63 @@ final class WorkbenchPersistenceTests: XCTestCase {
     let result = try persistence.loadWithRecovery()
     XCTAssertEqual(result.snapshot?.drafts.first?.id, snapshot.drafts.first?.id)
     XCTAssertEqual(result.snapshot?.drafts.first?.title, snapshot.drafts.first?.title)
+    XCTAssertNotNil(result.recoveryMessage)
+  }
+
+  func testSemanticallyInvalidPrimaryRecoversLastKnownGoodSnapshot() throws {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let persistence = WorkbenchPersistence(fileURL: url)
+    let snapshot = makeSnapshot()
+    _ = try persistence.save(snapshot)
+    var invalidSnapshot = snapshot
+    invalidSnapshot.drafts.append(snapshot.drafts[0])
+    try JSONEncoder.workbench.encode(invalidSnapshot).write(to: url, options: .atomic)
+
+    let result = try persistence.loadWithRecovery()
+
+    XCTAssertEqual(result.snapshot?.drafts.map(\.id), snapshot.drafts.map(\.id))
+    XCTAssertNotNil(result.recoveryMessage)
+  }
+
+  func testSemanticallyInvalidPrimaryAndBackupAreUnrecoverable() throws {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let persistence = WorkbenchPersistence(fileURL: url)
+    var invalidSnapshot = makeSnapshot()
+    invalidSnapshot.drafts.append(invalidSnapshot.drafts[0])
+    let invalidData = try JSONEncoder.workbench.encode(invalidSnapshot)
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try invalidData.write(to: url, options: .atomic)
+    try invalidData.write(to: persistence.lastKnownGoodURL, options: .atomic)
+
+    XCTAssertThrowsError(try persistence.loadWithRecovery()) { error in
+      guard case let WorkbenchPersistenceError.unrecoverableSnapshot(primary, backup) = error else {
+        return XCTFail("Expected unrecoverable snapshot, got \(error)")
+      }
+      XCTAssertTrue(primary.contains("重复"))
+      XCTAssertTrue(backup?.contains("重复") == true)
+    }
+  }
+
+  func testOversizedPrimaryRecoversBackupWithoutReadingWholeFile() throws {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let persistence = WorkbenchPersistence(fileURL: url)
+    let snapshot = makeSnapshot()
+    _ = try persistence.save(snapshot)
+    let handle = try FileHandle(forWritingTo: url)
+    try handle.truncate(
+      atOffset: UInt64(WorkbenchFileReadLimits.maximumRecoverySnapshotByteCount) + 1
+    )
+    try handle.close()
+
+    let result = try persistence.loadWithRecovery()
+
+    XCTAssertEqual(result.snapshot?.drafts.map(\.id), snapshot.drafts.map(\.id))
     XCTAssertNotNil(result.recoveryMessage)
   }
 
@@ -558,10 +776,13 @@ final class WorkbenchPersistenceTests: XCTestCase {
     let encoded = try JSONEncoder.workbench.encode(makeSnapshot())
     var object = try XCTUnwrap(try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
     object.removeValue(forKey: "formatVersion")
+    object.removeValue(forKey: "softwareGuideSeedVersion")
     try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     try JSONSerialization.data(withJSONObject: object).write(to: url, options: .atomic)
 
-    XCTAssertEqual(try persistence.load()?.formatVersion, WorkbenchSnapshot.currentFormatVersion)
+    let loaded = try XCTUnwrap(persistence.load())
+    XCTAssertEqual(loaded.formatVersion, WorkbenchSnapshot.currentFormatVersion)
+    XCTAssertEqual(loaded.softwareGuideSeedVersion, 0)
   }
 
   func testSavingV2SnapshotArchivesRetiredFeatureDataBeforeUpgrade() throws {

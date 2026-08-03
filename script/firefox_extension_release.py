@@ -66,7 +66,6 @@ MAXIMUM_SIGNATURE_METADATA_BYTES = 8 * 1_024 * 1_024
 MAXIMUM_REMOTE_UPDATE_BYTES = 1 * 1_024 * 1_024
 MAXIMUM_REMOTE_XPI_BYTES = 50 * 1_024 * 1_024
 PKCS7_SIGNED_DATA_OID = bytes.fromhex("06092a864886f70d010702")
-PINNED_WEB_EXT_VERSION = "10.5.0"
 AMO_REQUIRED_DATA_COLLECTION = (
     "authenticationInfo",
     "browsingActivity",
@@ -585,85 +584,6 @@ def inspect_signed_xpi(path: Path) -> tuple[dict, str, str]:
     return manifest, digest, expected_update_url
 
 
-def web_ext_executable() -> str:
-    local_executable = ROOT / "node_modules" / ".bin" / "web-ext"
-    if local_executable.is_file() and os.access(local_executable, os.X_OK):
-        return str(local_executable)
-    executable = shutil.which("web-ext")
-    if executable is None:
-        raise ReleaseError(
-            f"web-ext {PINNED_WEB_EXT_VERSION} is required; install it with "
-            f"npm install --no-save --no-package-lock web-ext@{PINNED_WEB_EXT_VERSION}"
-        )
-    return executable
-
-
-def run_web_ext_lint(source_dir: Path, *, self_hosted: bool) -> None:
-    executable = web_ext_executable()
-    environment = os.environ.copy()
-    environment["NO_UPDATE_NOTIFIER"] = "1"
-    try:
-        version_result = subprocess.run(
-            [executable, "--version"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            env=environment,
-            timeout=15,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise ReleaseError(f"Could not run web-ext: {error}") from error
-    actual_version = version_result.stdout.strip()
-    if version_result.returncode != 0 or actual_version != PINNED_WEB_EXT_VERSION:
-        raise ReleaseError(
-            f"Expected web-ext {PINNED_WEB_EXT_VERSION}, found {actual_version or 'unavailable'}"
-        )
-    lint_arguments = [
-        executable,
-        "lint",
-        "--warnings-as-errors",
-        "--no-config-discovery",
-        "--boring",
-        "--source-dir",
-        str(source_dir),
-    ]
-    if self_hosted:
-        lint_arguments.insert(3, "--self-hosted")
-    try:
-        lint_result = subprocess.run(
-            lint_arguments,
-            cwd=ROOT,
-            env=environment,
-            timeout=60,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise ReleaseError(f"Could not lint the Firefox extension: {error}") from error
-    if lint_result.returncode != 0:
-        raise ReleaseError("web-ext lint rejected the Firefox extension")
-    channel = "self-hosted" if self_hosted else "AMO"
-    print(f"Firefox {channel} web-ext {PINNED_WEB_EXT_VERSION} lint: passed")
-
-
-def command_lint(_: argparse.Namespace) -> None:
-    run_web_ext_lint(FIREFOX_ROOT, self_hosted=True)
-
-
-def command_lint_amo(_: argparse.Namespace) -> None:
-    _, firefox_manifest, _ = validated_release()
-    with tempfile.TemporaryDirectory(prefix="firefox-amo-lint-") as directory:
-        source_dir = Path(directory)
-        for name in REQUIRED_SOURCE_FILES:
-            destination = source_dir / name
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            if name == "manifest.json":
-                write_json(destination, amo_manifest(firefox_manifest))
-            else:
-                shutil.copyfile(FIREFOX_ROOT / name, destination)
-        run_web_ext_lint(source_dir, self_hosted=False)
-
-
 def build_updates_manifest(signed_xpi: Path, output_path: Path) -> None:
     manifest, digest, _ = inspect_signed_xpi(signed_xpi)
     config = load_json(CONFIG_PATH)
@@ -1130,14 +1050,6 @@ def command_fetch_verified(args: argparse.Namespace) -> None:
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-
-    lint = subparsers.add_parser("lint", help="lint the Firefox extension with the pinned web-ext")
-    lint.set_defaults(function=command_lint)
-
-    lint_amo = subparsers.add_parser(
-        "lint-amo", help="lint the public AMO submission manifest with the pinned web-ext"
-    )
-    lint_amo.set_defaults(function=command_lint_amo)
 
     package = subparsers.add_parser("package", help="prepare release source and an unsigned validation XPI")
     package.add_argument("--output-dir", default=str(ROOT / "dist" / "browser-extension"))

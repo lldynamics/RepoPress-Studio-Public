@@ -3,7 +3,8 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct RepositoryHTMLSourceWorkspaceView: View {
-  @ObservedObject var store: WorkbenchStore
+  private let store: WorkbenchStore
+  @ObservedObject private var shell: WorkbenchShellFeatureFacade
   @ObservedObject var session: RepositoryHTMLSourceSession
   @State private var searchQuery = ""
   @State private var displayedFiles: [RepositoryHTMLFileDescriptor] = []
@@ -13,6 +14,12 @@ struct RepositoryHTMLSourceWorkspaceView: View {
   @State private var findRequest: HTMLSourceFindRequest?
   @State private var pendingAction: PendingAction?
   @FocusState private var isFileListFocused: Bool
+
+  init(store: WorkbenchStore, session: RepositoryHTMLSourceSession) {
+    self.store = store
+    _shell = ObservedObject(wrappedValue: store.shell)
+    _session = ObservedObject(wrappedValue: session)
+  }
 
   var body: some View {
     HSplitView {
@@ -27,11 +34,11 @@ struct RepositoryHTMLSourceWorkspaceView: View {
     .focusedSceneValue(\.repositorySourceEditorCommandActions, commandActions)
     .task(id: repositoryIdentity) {
       if session.activeDocument == nil || !session.hasUnsavedChanges {
-        if !session.isDocumentFromCurrentRepository(store.activeProfile) {
+        if !session.isDocumentFromCurrentRepository(shell.activeProfile) {
           session.close()
         }
       }
-      await session.refreshFiles(profile: store.activeProfile)
+      await session.refreshFiles(profile: shell.activeProfile)
       scheduleFileFilter()
       handleQueuedOpenRequest()
     }
@@ -110,7 +117,7 @@ struct RepositoryHTMLSourceWorkspaceView: View {
             .controlSize(.small)
         } else {
           Button {
-            Task { await session.refreshFiles(profile: store.activeProfile) }
+            Task { await session.refreshFiles(profile: shell.activeProfile) }
           } label: {
             Image(systemName: "arrow.clockwise")
               .frame(width: 22, height: 22)
@@ -234,7 +241,7 @@ struct RepositoryHTMLSourceWorkspaceView: View {
         sourceEditorToolbar(document)
         Divider()
 
-        if !session.isDocumentFromCurrentRepository(store.activeProfile) {
+        if !session.isDocumentFromCurrentRepository(shell.activeProfile) {
           Label(
             "当前站点已切换。此文件仍保留在编辑器中，但必须切回原仓库才能保存。",
             systemImage: "exclamationmark.triangle.fill"
@@ -288,7 +295,7 @@ struct RepositoryHTMLSourceWorkspaceView: View {
             }
           ),
           isEditable: !session.isOpeningDocument
-            && session.isDocumentFromCurrentRepository(store.activeProfile)
+            && session.isDocumentFromCurrentRepository(shell.activeProfile)
             && !document.hasMixedLineEndings,
           findRequest: findRequest
         )
@@ -392,14 +399,14 @@ struct RepositoryHTMLSourceWorkspaceView: View {
   }
 
   private var repositoryIdentity: String {
-    "\(store.activeProfile.id.uuidString)|\(store.activeProfile.localRepositoryRootPath)"
+    "\(shell.activeProfile.id.uuidString)|\(shell.activeProfile.localRepositoryRootPath)"
   }
 
   private var canSave: Bool {
     session.hasUnsavedChanges
       && !session.isSaving
       && session.activeDocument?.hasMixedLineEndings != true
-      && session.isDocumentFromCurrentRepository(store.activeProfile)
+      && session.isDocumentFromCurrentRepository(shell.activeProfile)
   }
 
   private var commandActions: RepositorySourceEditorCommandActions {
@@ -490,7 +497,7 @@ struct RepositoryHTMLSourceWorkspaceView: View {
     if session.hasUnsavedChanges {
       pendingAction = .reload
     } else {
-      Task { await session.reload(profile: store.activeProfile) }
+      Task { await session.reload(profile: shell.activeProfile) }
     }
   }
 
@@ -510,14 +517,14 @@ struct RepositoryHTMLSourceWorkspaceView: View {
     case let .open(path):
       Task { await open(path) }
     case .reload:
-      Task { await session.reload(profile: store.activeProfile) }
+      Task { await session.reload(profile: shell.activeProfile) }
     case .close:
       session.close()
     }
   }
 
   private func open(_ path: String) async {
-    await session.open(path: path, profile: store.activeProfile)
+    await session.open(path: path, profile: shell.activeProfile)
     if session.activeDocument?.repositoryPath == path {
       store.setInspectorPresented(true)
       EditorAccessibilityAnnouncementCenter.announce(
@@ -530,13 +537,13 @@ struct RepositoryHTMLSourceWorkspaceView: View {
   private func save() {
     guard canSave else { return }
     Task {
-      if await session.save(profile: store.activeProfile) {
+      if await session.save(profile: shell.activeProfile) {
         EditorAccessibilityAnnouncementCenter.announce(
           String(localized: "HTML 源文件已保存。"),
           priority: .high
         )
         await store.repository.scanAsync()
-        await session.refreshFiles(profile: store.activeProfile)
+        await session.refreshFiles(profile: shell.activeProfile)
       }
     }
   }
@@ -545,7 +552,7 @@ struct RepositoryHTMLSourceWorkspaceView: View {
     guard document.dialect == .html, !session.hasUnsavedChanges else { return }
     do {
       _ = try HTMLSourceEditingService().withResolvedFileURL(
-        profile: store.activeProfile,
+        profile: shell.activeProfile,
         repositoryPath: document.repositoryPath
       ) { url in
         NSWorkspace.shared.open(url)

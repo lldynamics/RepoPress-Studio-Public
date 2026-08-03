@@ -1,0 +1,190 @@
+{
+  "%@ 篇可替换，共 %@ 处": {
+    "zh-Hans": "%1$@ 篇可替换，共 %2$@ 处",
+    "en": "%1$@ articles can be changed, with %2$@ matches in total"
+  },
+  "当前文章没有可发送的图片": {
+    "zh-Hans": "当前文章没有可发送的图片",
+    "en": "The current article has no images available to send"
+  },
+  "跳转到行": {
+    "zh-Hans": "跳转到行",
+    "en": "Go to Line"
+  },
+  "这条回复有帮助吗？": {
+    "zh-Hans": "这条回复有帮助吗？",
+    "en": "Was this response helpful?"
+  },
+  "正文不会立即修改。预览会记录每篇文章的内容快照，执行前再次检查冲突。": {
+    "zh-Hans": "正文不会立即修改。预览会记录每篇文章的内容快照，执行前再次检查冲突。",
+    "en": "The article body is not changed immediately. The preview records a content snapshot for each article and checks for conflicts again before applying."
+  },
+  "当前范围内没有站点文章。": {
+    "zh-Hans": "当前范围内没有站点文章。",
+    "en": "There are no site articles in the current scope."
+  },
+  "目标语言：%@ · 新草稿默认保持未发布": {
+    "zh-Hans": "目标语言：%@ · 新草稿默认保持未发布",
+    "en": "Target language: %@ · The new draft remains unpublished by default"
+  },
+  "正文共 %@ 行": {
+    "zh-Hans": "正文共 %@ 行",
+    "en": "%@ lines in the article body"
+  },
+  "选择导出文件的保存位置。": {
+    "zh-Hans": "选择导出文件的保存位置。",
+    "en": "Choose where to save the exported file."
+  },
+  "导出 Markdown": {
+    "zh-Hans": "导出 Markdown",
+    "en": "Export Markdown"
+  },
+  "导出 HTML": {
+    "zh-Hans": "导出 HTML",
+    "en": "Export HTML"
+  },
+  "导出 PDF": {
+    "zh-Hans": "导出 PDF",
+    "en": "Export PDF"
+  },
+  "打印文章": {
+    "zh-Hans": "打印文章",
+    "en": "Print Article"
+  },
+  "分享文章": {
+    "zh-Hans": "分享文章",
+    "en": "Share Article"
+  },
+  "本次不发送额外上下文。": {
+    "zh-Hans": "本次不发送额外上下文。",
+    "en": "No additional context will be sent with this request."
+  },
+  "%@（约 %lld 字）": {
+    "zh-Hans": "%@（约 %lld 字）",
+    "en": "%@ (about %lld characters)"
+  },
+  "将发送 %lld 项上下文，共约 %lld 字：%@": {
+    "zh-Hans": "将发送 %lld 项上下文，共约 %lld 字：%@",
+    "en": "%lld context items will be sent, about %lld characters total: %@"
+  },
+  "本次 AI 上下文": {
+    "zh-Hans": "本次 AI 上下文",
+    "en": "AI Context for This Request"
+  },
+  "待发送图片": {
+    "zh-Hans": "待发送图片",
+    "en": "Images to Send"
+  },
+  "添加图片": {
+    "zh-Hans": "添加图片",
+    "en": "Add Images"
+  },
+  "@ 上下文": {
+    "zh-Hans": "@ 上下文",
+    "en": "@ Context"
+  },
+  "已接受所选 AI 修改。": {
+    "zh-Hans": "已接受所选 AI 修改。",
+    "en": "The selected AI changes were applied."
+  },
+  "跨文章批量查找替换": {
+    "zh-Hans": "跨文章批量查找替换",
+    "en": "Batch Find and Replace Across Articles"
+  },
+  "真实站点 CSS": {
+    "zh-Hans": "真实站点 CSS",
+    "en": "Live Site CSS"
+  },
+  "表格、代码、图片、脚注补全": {
+    "zh-Hans": "表格、代码、图片、脚注补全",
+    "en": "Table, Code, Image, and Footnote Completion"
+  },
+  "文章链接补全": {
+    "zh-Hans": "文章链接补全",
+    "en": "Article Link Completion"
+  },
+  "代码语言补全": {
+    "zh-Hans": "代码语言补全",
+    "en": "Code Language Completion"
+  },
+  "清除快捷键搜索": {
+    "zh-Hans": "清除快捷键搜索",
+    "en": "Clear Shortcut Search"
+  },
+  "导出文章": {
+    "zh-Hans": "导出文章",
+    "en": "Export Article"
+  },
+  "光标位置": {
+    "zh-Hans": "光标位置",
+    "en": "Cursor Position"
+  },
+  "Markdown 智能补全": {
+    "zh-Hans": "Markdown 智能补全",
+    "en": "Markdown Smart Completion"
+  },
+  "搜索文章、AI 功能、工作区或命令…": {
+    "zh-Hans": "搜索文章、AI 功能、工作区或命令…",
+    "en": "Search articles, AI features, workspaces, or commands…"
+  },
+  "AI 功能": {
+    "zh-Hans": "AI 功能",
+    "en": "AI Features"
+  },
+  "在当前文章中查找或替换文本": {
+    "zh-Hans": "在当前文章中查找或替换文本",
+    "en": "Find or replace text in the current article"
+  },
+  "打开片段库": {
+    "zh-Hans": "打开片段库",
+    "en": "Open Snippet Library"
+  },
+  "插入正文片段或文章模板": {
+    "zh-Hans": "插入正文片段或文章模板",
+    "en": "Insert a body snippet or article template"
+  },
+  "把本地图片导入当前文章": {
+    "zh-Hans": "把本地图片导入当前文章",
+    "en": "Import local images into the current article"
+  },
+  "运行当前文章发布检查": {
+    "zh-Hans": "运行当前文章发布检查",
+    "en": "Run publishing checks for the current article"
+  },
+  "检查元数据、链接、图片与公开风险": {
+    "zh-Hans": "检查元数据、链接、图片与公开风险",
+    "en": "Check metadata, links, images, and public exposure risks"
+  },
+  "切换粗体": {
+    "zh-Hans": "切换粗体",
+    "en": "Toggle Bold"
+  },
+  "为当前选区添加或移除粗体": {
+    "zh-Hans": "为当前选区添加或移除粗体",
+    "en": "Add or remove bold formatting for the current selection"
+  },
+  "切换斜体": {
+    "zh-Hans": "切换斜体",
+    "en": "Toggle Italic"
+  },
+  "为当前选区添加或移除斜体": {
+    "zh-Hans": "为当前选区添加或移除斜体",
+    "en": "Add or remove italic formatting for the current selection"
+  },
+  "插入或移除链接": {
+    "zh-Hans": "插入或移除链接",
+    "en": "Insert or Remove Link"
+  },
+  "切换当前选区的 Markdown 链接": {
+    "zh-Hans": "切换当前选区的 Markdown 链接",
+    "en": "Toggle a Markdown link for the current selection"
+  },
+  "AI 改写当前选区": {
+    "zh-Hans": "AI 改写当前选区",
+    "en": "Rewrite Current Selection with AI"
+  },
+  "生成可预览、可拒绝的选区改写": {
+    "zh-Hans": "生成可预览、可拒绝的选区改写",
+    "en": "Generate a selection rewrite that can be previewed or rejected"
+  }
+}

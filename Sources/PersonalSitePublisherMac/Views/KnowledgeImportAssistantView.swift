@@ -47,13 +47,13 @@ struct KnowledgeImportAssistantView: View {
             .frame(maxWidth: .infinity, minHeight: 260)
           }
         }
-        .padding(20)
+        .padding(WorkbenchSpacing.page)
       }
 
       Divider()
       footer
     }
-    .frame(minWidth: 760, idealWidth: 900, minHeight: 580, idealHeight: 700)
+    .workbenchSheetSize(.wide)
     .onAppear {
       guard !didAnalyzeInitialSources, !initialSourceURLs.isEmpty else { return }
       didAnalyzeInitialSources = true
@@ -76,7 +76,7 @@ struct KnowledgeImportAssistantView: View {
       }
       Spacer()
     }
-    .padding(20)
+    .padding(WorkbenchSpacing.page)
   }
 
   private var sourceSection: some View {
@@ -300,7 +300,7 @@ struct KnowledgeImportAssistantView: View {
         .disabled(isCommitting || isAnalyzing || preview.importableCount == 0)
       }
     }
-    .padding(16)
+    .padding(WorkbenchSpacing.content)
   }
 
   private var webURL: URL? {

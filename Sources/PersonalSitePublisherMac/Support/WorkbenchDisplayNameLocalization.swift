@@ -55,6 +55,16 @@ extension ImageDimensions {
   var workbenchDimensionText: String { displayName }
 }
 
+extension AssetResourceKind {
+  /// Asset resource names are already localized by CoreL10n.
+  var workbenchLocalizedDisplayName: String { displayName }
+}
+
+extension AssetResourceReferenceIssueKind {
+  /// Asset reference issue names are already localized by CoreL10n.
+  var workbenchLocalizedDisplayName: String { displayName }
+}
+
 extension SiteKind: WorkbenchDisplayNameLocalizable {}
 extension FrontMatterStyle: WorkbenchDisplayNameLocalizable {}
 extension SiteSlugValidationRule: WorkbenchDisplayNameLocalizable {}
@@ -65,6 +75,21 @@ extension AIProviderPreset: WorkbenchDisplayNameLocalizable {}
 extension AIWritingStylePreset: WorkbenchDisplayNameLocalizable {}
 extension DeploymentProvider: WorkbenchDisplayNameLocalizable {}
 extension SiteStarterDeploymentTarget: WorkbenchDisplayNameLocalizable {}
+
+extension SiteAnalyticsProvider: WorkbenchDisplayNameLocalizable {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .plausible:
+      return "display.site-analytics-provider.plausible"
+    case .umami:
+      return "display.site-analytics-provider.umami"
+    case .cloudflare:
+      return "display.site-analytics-provider.cloudflare"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
 
 extension EditorDisplayMode: WorkbenchDisplayNameLocalizable {}
 extension DraftStatus: WorkbenchDisplayNameLocalizable {}
@@ -86,8 +111,10 @@ extension ReleaseLedgerActionKind: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingPromptLibraryScope: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingCapabilityCenterMode: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingDefaultCapability: WorkbenchDisplayNameLocalizable {}
+extension AIPublishingChatQuickAction: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingQuickPromptGroup: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingQuickPrompt: WorkbenchDisplayNameLocalizable {}
+extension AIContextReferenceKind: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingChatRole: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingChatContextMode: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingChatDraftApplicationMode: WorkbenchDisplayNameLocalizable {}
@@ -104,9 +131,7 @@ extension DeploymentPollingStatus: WorkbenchDisplayNameLocalizable {}
 extension GeneralDraftReuseRiskLevel: WorkbenchDisplayNameLocalizable {}
 extension ImageCoverPublishState: WorkbenchDisplayNameLocalizable {}
 extension LocalGitPublishMode: WorkbenchDisplayNameLocalizable {}
-extension PremiumFeature: WorkbenchDisplayNameLocalizable {}
 extension PrivacyProtectionEventKind: WorkbenchDisplayNameLocalizable {}
-extension ProEntitlementSource: WorkbenchDisplayNameLocalizable {}
 extension RemoteRepositoryPublishProgressStage: WorkbenchDisplayNameLocalizable {}
 extension RemoteRepositoryPublishReadiness: WorkbenchDisplayNameLocalizable {}
 extension RepositoryAutoSyncStatus: WorkbenchDisplayNameLocalizable {}
@@ -121,3 +146,5 @@ extension KnowledgeDocumentKind: WorkbenchDisplayNameLocalizable {}
 extension KnowledgeImportDisposition: WorkbenchDisplayNameLocalizable {}
 extension KnowledgeDocumentSortField: WorkbenchDisplayNameLocalizable {}
 extension KnowledgeSortDirection: WorkbenchDisplayNameLocalizable {}
+extension WorkspaceBackupComponent: WorkbenchDisplayNameLocalizable {}
+extension WorkspaceBackupFrequency: WorkbenchDisplayNameLocalizable {}

@@ -347,7 +347,9 @@ private struct MaintenanceCalendarBucketChart: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(bucket.title)，\(bucket.articleCount) 篇文章，\(bucket.readyCount) 篇待发布")
-        .accessibilityValue("文章总数 \(bucket.articleCount)，待发布 \(bucket.readyCount)")
+        .accessibilityValue(
+          String(localized: "文章总数 \(bucket.articleCount)，待发布 \(bucket.readyCount)")
+        )
       }
 
       HStack(spacing: 10) {

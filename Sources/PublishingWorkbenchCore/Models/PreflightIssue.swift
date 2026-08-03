@@ -32,6 +32,32 @@ public enum PreflightSeverity: String, Codable, CaseIterable, Identifiable, Send
 
 public enum PreflightIssueCategory: String, Codable, Hashable, Sendable {
   case publicRisk
+  case missingMediaAlt
+  case missingMediaPublishPath
+  case unsafeMediaRepositoryPath
+  case unregisteredBodyImage
+}
+
+public enum PreflightIssueField: String, Codable, Hashable, Sendable {
+  case scope
+  case title
+  case slug
+  case summary
+  case tags
+  case cover
+  case coverAlt
+  case date
+  case draft
+  case body
+  case attachments
+  case repository
+  case repositoryPath
+  case repositoryToken
+  case contentRoot
+  case assetRoot
+  case markdownPathPattern
+  case siteKind
+  case jsonLD
 }
 
 public struct PreflightIssue: Identifiable, Codable, Hashable, Sendable {
@@ -41,6 +67,7 @@ public struct PreflightIssue: Identifiable, Codable, Hashable, Sendable {
   public var message: String
   public var field: String?
   public var category: PreflightIssueCategory?
+  public var relatedValue: String?
 
   public init(
     id: UUID = UUID(),
@@ -48,7 +75,8 @@ public struct PreflightIssue: Identifiable, Codable, Hashable, Sendable {
     title: String,
     message: String,
     field: String? = nil,
-    category: PreflightIssueCategory? = nil
+    category: PreflightIssueCategory? = nil,
+    relatedValue: String? = nil
   ) {
     self.id = id
     self.severity = severity
@@ -56,6 +84,7 @@ public struct PreflightIssue: Identifiable, Codable, Hashable, Sendable {
     self.message = message
     self.field = field
     self.category = category
+    self.relatedValue = relatedValue
   }
 }
 
@@ -116,12 +145,12 @@ public struct PublicRiskSummary: Codable, Hashable, Sendable {
 }
 
 public extension PreflightIssue {
+  var structuredField: PreflightIssueField? {
+    field.flatMap(PreflightIssueField.init(rawValue:))
+  }
+
   var isPublicRiskIssue: Bool {
     category == .publicRisk
-      || title.contains("疑似泄露")
-      || title.contains("密钥泄露")
-      || title.contains("私钥")
-      || title.contains("公开风险")
   }
 }
 

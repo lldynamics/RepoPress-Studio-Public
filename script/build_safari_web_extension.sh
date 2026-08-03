@@ -131,6 +131,18 @@ fi
 [[ -f "$PROJECT_PATH/project.pbxproj" ]] \
   || fail "Apple packager did not create the expected Xcode project"
 
+# Xcode's clean action refuses to remove custom OBJROOT directories that were
+# created by an earlier invocation without its CreatedByBuildSystem xattr. The
+# two directories below are disposable outputs owned by this script, so clear
+# them explicitly and run a clean build without relying on Xcode's ownership
+# metadata.
+case "$BUILD_ROOT" in
+  */safari-web-extension) ;;
+  *) fail "refusing unsafe build root: $BUILD_ROOT" ;;
+esac
+rm -rf "$SYMROOT" "$OBJROOT"
+mkdir -p "$SYMROOT" "$OBJROOT"
+
 xcodebuild \
   -project "$PROJECT_PATH" \
   -target "$SAFARI_TARGET" \
@@ -144,7 +156,7 @@ xcodebuild \
   MARKETING_VERSION="$MARKETING_VERSION" \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
   INFOPLIST_KEY_CFBundleDisplayName="RepoPress Safari Capture" \
-  clean build >/dev/null
+  build >/dev/null
 
 built_product="$SYMROOT/$CONFIGURATION/$SAFARI_TARGET.appex"
 [[ -d "$built_product" ]] || fail "Xcode did not create the Safari .appex"

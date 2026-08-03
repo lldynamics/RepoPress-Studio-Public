@@ -46,6 +46,16 @@ public struct AIPublishingImageTextTarget: Identifiable, Hashable, Sendable {
   }
 }
 
+public struct AIPublishingImageTextVisionInput: Hashable, Sendable {
+  public var targetID: String
+  public var attachment: AIChatImageAttachment
+
+  public init(targetID: String, attachment: AIChatImageAttachment) {
+    self.targetID = targetID
+    self.attachment = attachment
+  }
+}
+
 public struct AIPublishingImageTextSuggestion: Identifiable, Hashable, Sendable {
   public var id: String
   public var draftID: UUID

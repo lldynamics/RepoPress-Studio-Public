@@ -167,18 +167,6 @@ extension LocalGitPublishMode {
   var fallbackDisplayName: String { displayName }
 }
 
-extension PremiumFeature {
-  var workbenchDisplayNameSemanticKey: String {
-    switch self {
-    case .aiRequest: "display.premium-feature.ai-request"
-    case .onlinePublishing: "display.premium-feature.online-publishing"
-    case .batchPublishing: "display.premium-feature.batch-publishing"
-    }
-  }
-
-  var fallbackDisplayName: String { displayName }
-}
-
 extension PrivacyProtectionEventKind {
   var workbenchDisplayNameSemanticKey: String {
     switch self {
@@ -186,17 +174,6 @@ extension PrivacyProtectionEventKind {
     case .manualLock: "display.privacy-protection-event-kind.manual-lock"
     case .unlocked: "display.privacy-protection-event-kind.unlocked"
     case .settingsUpdated: "display.privacy-protection-event-kind.settings-updated"
-    }
-  }
-
-  var fallbackDisplayName: String { displayName }
-}
-
-extension ProEntitlementSource {
-  var workbenchDisplayNameSemanticKey: String {
-    switch self {
-    case .none: "display.pro-entitlement-source.none"
-    case .storeKit: "display.pro-entitlement-source.store-kit"
     }
   }
 
@@ -320,7 +297,6 @@ extension DraftListFilter {
     case .ready: "display.draft-list-filter.ready"
     case .published: "display.draft-list-filter.published"
     case .privateArticles: "display.draft-list-filter.private-articles"
-    case .imageIssues: "display.draft-list-filter.image-issues"
     }
   }
 

@@ -13,14 +13,13 @@ Usage: script/prepare_external_verification_envs.sh [--output-dir <path>] [--for
 
 Copies release verification .env templates to a private directory outside the
 repository. Fill the copied files, not the repo templates, before running live
-GitHub/GitLab, StoreKit sandbox, remote recovery, screenshot, or App Store
-archive checks.
+GitHub/GitLab, remote recovery, screenshot, or App Store archive checks.
 
 Options:
   --output-dir <path>  Destination outside the repository.
   --force             Overwrite existing copied env files.
   --dry-run           Validate and print the planned copies without writing.
-  --target <name>      all, remaining, remote-publish, storekit, remote-recovery,
+  --target <name>      all, remaining, remote-publish, remote-recovery,
                        app-store-screenshots, or app-store-archive.
 USAGE
 }
@@ -71,14 +70,13 @@ case "$OUTPUT_DIR" in
 esac
 
 case "$TARGET" in
-  all|remaining|remote-publish|storekit|remote-recovery|app-store-screenshots|app-store-archive) ;;
-  *) fail "--target must be all, remaining, remote-publish, storekit, remote-recovery, app-store-screenshots, or app-store-archive" ;;
+  all|remaining|remote-publish|remote-recovery|app-store-screenshots|app-store-archive) ;;
+  *) fail "--target must be all, remaining, remote-publish, remote-recovery, app-store-screenshots, or app-store-archive" ;;
 esac
 
 templates=(
   "remote-publish:docs/release-evidence/remote-publish-live.env.example:remote-publish-live.env"
   "remote-recovery:docs/release-evidence/remote-recovery.env.example:remote-recovery.env"
-  "storekit:docs/release-evidence/storekit-sandbox.env.example:storekit-sandbox.env"
   "app-store-screenshots:docs/release-evidence/app-store-screenshots.env.example:app-store-screenshots.env"
   "app-store-archive:docs/release-evidence/app-store-archive-validation.env.example:app-store-archive-validation.env"
 )
@@ -116,9 +114,6 @@ target_is_remaining() {
         || ! external_item_complete github-review-publish \
         || ! external_item_complete gitlab-direct-publish \
         || ! external_item_complete gitlab-review-publish
-      ;;
-    storekit)
-      ! external_item_complete storekit-sandbox
       ;;
     remote-recovery)
       ! external_item_complete remote-conflict-deployment-rollback

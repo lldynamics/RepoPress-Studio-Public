@@ -66,6 +66,8 @@ public final class WorkbenchMarkdownEditorFeatureFacade: ObservableObject {
     observeValue(store.publishingStore.$editorFocusRequest)
     observeValue(store.persistenceStore.$hasUnsavedChanges)
     observeValue(store.persistenceStore.$status)
+    observeValue(store.$siteDraftFileSaveStates)
+    observeValue(store.$draftRecoveryJournalErrorMessage)
     observeValue(store.aiWorkspaceStore.$aiTokenAvailability)
     observeValue(store.aiWorkspaceStore.$isAIActionRunning)
 
@@ -105,11 +107,47 @@ public final class WorkbenchMarkdownEditorFeatureFacade: ObservableObject {
   }
 
   public var lastSaveStatus: String {
-    store.lastSaveStatus
+    if let recoveryError = store.draftRecoveryJournalErrorMessage?.nilIfEmpty {
+      return recoveryError
+    }
+    guard let draft = store.drafts.first(where: { $0.id == trackedDraftID }) else {
+      return store.lastSaveStatus
+    }
+    if draft.isGeneralDraft {
+      return store.hasUnsavedChanges
+        ? CoreL10n.text("正在保存到软件…")
+        : CoreL10n.text("已保存在软件")
+    }
+    switch store.siteDraftFileSaveStates[trackedDraftID] {
+    case .pending:
+      return CoreL10n.text("正在保存到项目…")
+    case .saved:
+      return CoreL10n.text("已保存到项目")
+    case .failed:
+      return CoreL10n.text("项目保存失败")
+    case nil:
+      return draft.repositoryPath?.nilIfEmpty == nil
+        ? CoreL10n.text("尚未写入项目")
+        : CoreL10n.text("已保存到项目")
+    }
   }
 
   public var hasUnsavedChanges: Bool {
-    store.hasUnsavedChanges
+    if store.draftRecoveryJournalErrorMessage?.nilIfEmpty != nil {
+      return true
+    }
+    guard let draft = store.drafts.first(where: { $0.id == trackedDraftID }) else {
+      return store.hasUnsavedChanges
+    }
+    if draft.isGeneralDraft {
+      return store.hasUnsavedChanges
+    }
+    switch store.siteDraftFileSaveStates[trackedDraftID] {
+    case .pending, .failed:
+      return true
+    case .saved, nil:
+      return store.hasUnsavedChanges
+    }
   }
 
   public var isAIActionRunning: Bool {

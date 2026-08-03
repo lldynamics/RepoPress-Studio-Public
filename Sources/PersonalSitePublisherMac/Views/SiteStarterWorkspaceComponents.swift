@@ -48,7 +48,7 @@ enum SiteStarterWizardStep: String, CaseIterable, Identifiable {
   var summary: String {
     switch self {
     case .template:
-      return String(localized: "选择 Zola/Jekyll 模板，并填写站点名称、描述、作者和 URL。")
+      return String(localized: "新建站点使用 Zola 写作起点；导入已有站点时选择其类型，并填写站点名称、描述、作者和 URL。")
     case .localDirectory:
       return String(localized: "选择一个空文件夹作为本地静态站点仓库。")
     case .github:
@@ -181,9 +181,11 @@ struct SiteStarterWizardStepNavigation: View {
           }
           .buttonStyle(.plain)
           .disabled(!isEnabled(step))
-          .help(isEnabled(step) ? step.summary : "请先完成前面的步骤")
+          .help(isEnabled(step) ? step.summary : String(localized: "请先完成前面的步骤"))
           .accessibilityLabel("\(step.title)，\(stepStatus.title)")
-          .accessibilityHint(isEnabled(step) ? step.summary : "请先完成前面的步骤")
+          .accessibilityHint(
+            isEnabled(step) ? step.summary : String(localized: "请先完成前面的步骤")
+          )
           .accessibilityAddTraits(selection == step ? .isSelected : [])
         }
       }
@@ -208,16 +210,15 @@ struct SiteStarterWizardStatusBadge: View {
 
 struct SiteStarterTemplateStep: View {
   let mode: Binding<SiteStarterMode>
-  let templateID: Binding<SiteStarterTemplateID>
   let selectedTemplate: SiteStarterTemplate?
+  let importedSiteKind: Binding<SiteKind>
   let siteName: Binding<String>
   let siteDescription: Binding<String>
   let author: Binding<String>
   let baseURL: Binding<String>
-  let templateIndexDescription: (SiteStarterTemplate) -> String
 
   var body: some View {
-    SiteStarterWizardPanel(title: "选择模板", systemImage: "sparkles.rectangle.stack") {
+    SiteStarterWizardPanel(title: String(localized: "选择模板"), systemImage: "sparkles.rectangle.stack") {
       Picker("模式", selection: mode) {
         ForEach(SiteStarterMode.allCases) { mode in
           Text(mode.title).tag(mode)
@@ -228,46 +229,78 @@ struct SiteStarterTemplateStep: View {
       .accessibilityLabel("建站模式")
       .accessibilityValue(mode.wrappedValue.title)
 
-      Picker("站点模板", selection: templateID) {
-        ForEach(SiteStarterTemplate.builtIn) { template in
-          Text("\(template.name) · \(template.siteKind.localizedDisplayName)").tag(template.id)
-        }
-      }
-      .accessibilityLabel("站点模板")
-      .accessibilityValue(selectedTemplate?.name ?? "未选择模板")
-
-      if let template = selectedTemplate {
-        VStack(alignment: .leading, spacing: 10) {
-          HStack {
-            Label(template.summary, systemImage: template.siteKind == .jekyll ? "diamond" : "bolt")
-            Spacer()
-            Text("模板 \(templateIndexDescription(template))")
-              .font(.caption.monospacedDigit())
-              .foregroundStyle(.secondary)
+      if mode.wrappedValue == .create {
+        if let template = selectedTemplate {
+          VStack(alignment: .leading, spacing: 10) {
+            HStack {
+              Label(template.summary, systemImage: "bolt")
+              Spacer()
+              Text("唯一官方起点")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            }
+            Text("默认标签：\(template.defaultTags.joined(separator: ", "))")
+            Text("默认分类：\(template.defaultCategories.joined(separator: ", "))")
+            SiteStarterTemplatePreviewCard(template: template)
           }
-          Text("默认标签：\(template.defaultTags.joined(separator: ", "))")
-          Text("默认分类：\(template.defaultCategories.joined(separator: ", "))")
-          SiteStarterTemplatePreviewCard(template: template)
+          .font(.caption)
+          .foregroundStyle(.secondary)
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
+      } else {
+        Picker("站点类型", selection: importedSiteKind) {
+          ForEach(SiteKind.allCases) { siteKind in
+            Text(siteKind.localizedDisplayName).tag(siteKind)
+          }
+        }
+        .accessibilityLabel("已有站点类型")
+        .accessibilityValue(importedSiteKind.wrappedValue.localizedDisplayName)
+        Text("导入已有站点不会改写文件；这里的类型只用于选择内容目录和 Front Matter 规则。")
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
+
+      SiteStarterThemeCloneGuide()
 
       Divider()
 
       TextField("网站名称", text: siteName)
         .accessibilityLabel("网站名称")
-        .accessibilityValue(siteName.wrappedValue.nilIfEmpty ?? "未填写")
+        .accessibilityValue(siteName.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
       TextField("描述", text: siteDescription)
         .accessibilityLabel("网站描述")
-        .accessibilityValue(siteDescription.wrappedValue.nilIfEmpty ?? "未填写")
+        .accessibilityValue(siteDescription.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
       TextField("作者", text: author)
         .accessibilityLabel("网站作者")
-        .accessibilityValue(author.wrappedValue.nilIfEmpty ?? "未填写")
+        .accessibilityValue(author.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
       TextField("生产站 URL", text: baseURL)
         .accessibilityLabel("生产站 URL")
-        .accessibilityValue(baseURL.wrappedValue.nilIfEmpty ?? "未填写")
+        .accessibilityValue(baseURL.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
     }
+  }
+}
+
+struct SiteStarterThemeCloneGuide: View {
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Label("想直接使用现成主题？", systemImage: "arrow.down.doc")
+        .font(.callout.weight(.semibold))
+        .foregroundStyle(.primary)
+      Text("先克隆主题仓库，再回到这里选择“导入已有站点”。导入会保留主题文件，不会把主题改造成 Starter。")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      Text("git clone <主题仓库地址> <本地站点目录>")
+        .font(.caption.monospaced())
+        .textSelection(.enabled)
+        .foregroundStyle(.secondary)
+      Text("推荐流程：克隆主题 → 导入已有站点 → 选择对应的站点类型 → 开始写作。")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+    .padding(12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("现成主题导入指引")
   }
 }
 
@@ -283,11 +316,20 @@ struct SiteStarterLocalDirectoryStep: View {
   let selectDirectory: () -> Void
 
   var body: some View {
-    SiteStarterWizardPanel(title: "本地目录", systemImage: "folder") {
+    SiteStarterWizardPanel(title: String(localized: "本地目录"), systemImage: "folder") {
       HStack {
-        TextField(mode == .create ? "空文件夹路径" : "已有站点仓库路径", text: rootPath)
-          .accessibilityLabel(mode == .create ? "空文件夹路径" : "已有站点仓库路径")
-          .accessibilityValue(rootPath.wrappedValue.nilIfEmpty ?? "未选择")
+        TextField(
+          mode == .create
+            ? String(localized: "空文件夹路径")
+            : String(localized: "已有站点仓库路径"),
+          text: rootPath
+        )
+        .accessibilityLabel(
+          mode == .create
+            ? String(localized: "空文件夹路径")
+            : String(localized: "已有站点仓库路径")
+        )
+          .accessibilityValue(rootPath.wrappedValue.nilIfEmpty ?? String(localized: "未选择"))
         Button {
           selectDirectory()
         } label: {
@@ -299,11 +341,15 @@ struct SiteStarterLocalDirectoryStep: View {
       if mode == .create {
         Toggle("初始化 Git 仓库", isOn: initializesGit)
           .accessibilityLabel("初始化 Git 仓库")
-          .accessibilityValue(initializesGit.wrappedValue ? "开启" : "关闭")
+          .accessibilityValue(
+            initializesGit.wrappedValue ? String(localized: "开启") : String(localized: "关闭")
+          )
         Toggle("生成后配置 origin remote", isOn: configuresOrigin)
           .disabled(!initializesGit.wrappedValue)
           .accessibilityLabel("生成后配置 origin remote")
-          .accessibilityValue(configuresOrigin.wrappedValue ? "开启" : "关闭")
+          .accessibilityValue(
+            configuresOrigin.wrappedValue ? String(localized: "开启") : String(localized: "关闭")
+          )
       } else {
         Label("导入模式会保留已有文件，只创建工作台站点配置并导入内容目录里的 Markdown/MDX。", systemImage: "tray.and.arrow.down")
           .font(.caption)
@@ -312,7 +358,7 @@ struct SiteStarterLocalDirectoryStep: View {
 
       if let path = siteStarterResultProfilePath {
         Divider()
-        let generatedPathLabel = "已生成到 \(path)"
+        let generatedPathLabel = String(format: String(localized: "已生成到 %@"), path)
         Label(generatedPathLabel, systemImage: "checkmark.circle")
           .foregroundStyle(WorkbenchTheme.success)
           .font(.caption)
@@ -321,7 +367,7 @@ struct SiteStarterLocalDirectoryStep: View {
 
       if let importPath = siteStarterImportProfilePath {
         Divider()
-        let importedPathLabel = "已导入 \(importPath)"
+        let importedPathLabel = String(format: String(localized: "已导入 %@"), importPath)
         Label(importedPathLabel, systemImage: "checkmark.circle")
           .foregroundStyle(WorkbenchTheme.success)
           .font(.caption)
@@ -352,18 +398,18 @@ struct SiteStarterGitHubStep: View {
   let verifyExistingAction: () -> Void
 
   var body: some View {
-    SiteStarterWizardPanel(title: "GitHub", systemImage: "point.3.connected.trianglepath.dotted") {
+    SiteStarterWizardPanel(title: String(localized: "GitHub"), systemImage: "point.3.connected.trianglepath.dotted") {
       HStack {
         TextField("Owner", text: githubOwner)
           .accessibilityLabel("GitHub Owner")
-          .accessibilityValue(githubOwner.wrappedValue.nilIfEmpty ?? "未填写")
+          .accessibilityValue(githubOwner.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
         TextField("Repo", text: githubRepo)
           .accessibilityLabel("GitHub Repo")
-          .accessibilityValue(githubRepo.wrappedValue.nilIfEmpty ?? "未填写")
+          .accessibilityValue(githubRepo.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
         TextField("Branch", text: branch)
           .frame(width: 120)
           .accessibilityLabel("Git 分支")
-          .accessibilityValue(branch.wrappedValue.nilIfEmpty ?? "未填写")
+          .accessibilityValue(branch.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
       }
 
       Picker("部署", selection: deploymentTarget) {
@@ -377,28 +423,30 @@ struct SiteStarterGitHubStep: View {
       if deploymentTarget.wrappedValue == .netlify {
         TextField("Netlify Site ID（可稍后补）", text: deploymentProjectID)
           .accessibilityLabel("Netlify Site ID")
-          .accessibilityValue(deploymentProjectID.wrappedValue.nilIfEmpty ?? "未填写")
+          .accessibilityValue(deploymentProjectID.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
       }
       if deploymentTarget.wrappedValue == .vercel {
         TextField("Vercel Project ID（可稍后补）", text: deploymentProjectID)
           .accessibilityLabel("Vercel Project ID")
-          .accessibilityValue(deploymentProjectID.wrappedValue.nilIfEmpty ?? "未填写")
+          .accessibilityValue(deploymentProjectID.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
         TextField("Vercel Team ID（可选）", text: deploymentAccountID)
           .accessibilityLabel("Vercel Team ID")
-          .accessibilityValue(deploymentAccountID.wrappedValue.nilIfEmpty ?? "未填写")
+          .accessibilityValue(deploymentAccountID.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
       }
       if deploymentTarget.wrappedValue == .cloudflarePages {
         TextField("Cloudflare Account ID（可稍后补）", text: deploymentAccountID)
           .accessibilityLabel("Cloudflare Account ID")
-          .accessibilityValue(deploymentAccountID.wrappedValue.nilIfEmpty ?? "未填写")
+          .accessibilityValue(deploymentAccountID.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
         TextField("Cloudflare Pages Project", text: deploymentProjectID)
           .accessibilityLabel("Cloudflare Pages Project")
-          .accessibilityValue(deploymentProjectID.wrappedValue.nilIfEmpty ?? "未填写")
+          .accessibilityValue(deploymentProjectID.wrappedValue.nilIfEmpty ?? String(localized: "未填写"))
       }
 
       Toggle("创建为私有仓库", isOn: createsPrivateRepository)
         .accessibilityLabel("创建为私有仓库")
-        .accessibilityValue(createsPrivateRepository.wrappedValue ? "开启" : "关闭")
+        .accessibilityValue(
+          createsPrivateRepository.wrappedValue ? String(localized: "开启") : String(localized: "关闭")
+        )
 
       if !createsPrivateRepository.wrappedValue {
         Label {
@@ -467,11 +515,14 @@ struct SiteStarterGenerateStep: View {
   let skippedPathCount: Int?
 
   var body: some View {
-    SiteStarterWizardPanel(title: isCreateMode ? "生成站点" : "导入仓库", systemImage: isCreateMode ? "wand.and.stars" : "tray.and.arrow.down") {
+    SiteStarterWizardPanel(
+      title: isCreateMode ? String(localized: "生成站点") : String(localized: "导入仓库"),
+      systemImage: isCreateMode ? "wand.and.stars" : "tray.and.arrow.down"
+    ) {
       Text(
         isCreateMode
-          ? "生成 Starter 会写入模板文件、示例文章、部署说明，并把新站点配置加入工作台。"
-          : "导入已有仓库不会改写文件；会按所选 SSG 默认内容目录导入文章。"
+          ? String(localized: "生成 Starter 会写入模板文件、示例文章、部署说明，并把新站点配置加入工作台。")
+          : String(localized: "导入已有仓库不会改写文件；会按所选 SSG 默认内容目录导入文章。")
       )
       .font(.callout)
       .foregroundStyle(.secondary)
@@ -483,10 +534,17 @@ struct SiteStarterGenerateStep: View {
           HStack(spacing: 8) {
             ProgressView()
               .controlSize(.small)
-            Text(isCreateMode ? "正在生成站点…" : "正在导入已有仓库…")
+            Text(
+              isCreateMode
+                ? String(localized: "正在生成站点…")
+                : String(localized: "正在导入已有仓库…")
+            )
           }
         } else {
-          Label(isCreateMode ? "生成站点" : "导入已有仓库", systemImage: isCreateMode ? "wand.and.stars" : "tray.and.arrow.down")
+          Label(
+            isCreateMode ? String(localized: "生成站点") : String(localized: "导入已有仓库"),
+            systemImage: isCreateMode ? "wand.and.stars" : "tray.and.arrow.down"
+          )
         }
       }
       .workbenchProminentActionStyle()
@@ -509,7 +567,9 @@ struct SiteStarterGenerateStep: View {
 
       if let importedArticleCount {
         Divider()
-        Label("\(createdProfileText ?? "仓库") · \(createdProfileKindText ?? "站点")", systemImage: "checkmark.circle")
+        let profileText = createdProfileText ?? String(localized: "仓库")
+        let profileKindText = createdProfileKindText ?? String(localized: "站点")
+        Label("\(profileText) · \(profileKindText)", systemImage: "checkmark.circle")
           .foregroundStyle(WorkbenchTheme.success)
         InspectorStatRow(title: "导入文章", value: "\(importedArticleCount)", systemImage: "doc.text")
         if let skippedPathCount {
@@ -529,7 +589,7 @@ struct SiteStarterFirstPushStep: View {
   let remoteURL: String?
 
   var body: some View {
-    SiteStarterWizardPanel(title: "首次推送", systemImage: "arrow.up.circle") {
+    SiteStarterWizardPanel(title: String(localized: "首次推送"), systemImage: "arrow.up.circle") {
       Text("首次推送会提交生成的 Starter 文件，并推送到 origin 的目标分支。")
         .font(.callout)
         .foregroundStyle(.secondary)
@@ -568,7 +628,7 @@ struct SiteStarterDeploymentStep: View {
   let copyCommands: ([String]) -> Void
 
   var body: some View {
-    SiteStarterWizardPanel(title: "部署状态", systemImage: "checkmark.icloud") {
+    SiteStarterWizardPanel(title: String(localized: "部署状态"), systemImage: "checkmark.icloud") {
       if deploymentTarget == .none {
         Label("当前选择暂不部署。", systemImage: "pause.circle")
           .font(.callout)

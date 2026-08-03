@@ -44,7 +44,11 @@ struct KnowledgeRecycleBinView: View {
           }
         }
         .accessibilityLabel("资料回收站列表")
-        .accessibilityValue("共 \(knowledge.recycledDocuments.count) 条，已选择 \(selection.count) 条")
+        .accessibilityValue(
+          String(
+            localized: "共 \(knowledge.recycledDocuments.count) 条，已选择 \(selection.count) 条"
+          )
+        )
       }
 
       Divider()

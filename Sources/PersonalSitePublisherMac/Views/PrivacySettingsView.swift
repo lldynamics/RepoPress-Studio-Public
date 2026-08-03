@@ -4,8 +4,8 @@ import SwiftUI
 struct PrivacySettingsView: View {
   let privacySettings: PrivacyProtectionSettings
   let status: PrivacyProtectionStatus
-  let onLock: () -> Void
-  let onUnlock: () -> Void
+  let onQuickHide: () -> Void
+  let onReturnToWorkbench: () -> Void
   let updatePrivacySettings: (PrivacyProtectionSettings) -> Void
 
   var body: some View {
@@ -24,7 +24,7 @@ struct PrivacySettingsView: View {
           VStack(alignment: .leading, spacing: 2) {
             Text("快速隐藏 / 防偷窥保护")
               .font(.subheadline.weight(.semibold))
-            Text("在软件任何界面按 ⌃⌘L 即可瞬间模糊马赛克全屏，保护您的私人笔记。")
+            Text("在软件任何界面按 ⌃⌘L 即可快速隐藏工作台。此功能仅遮挡界面，不加密本地数据。")
               .font(.caption)
               .foregroundStyle(.secondary)
           }
@@ -38,11 +38,11 @@ struct PrivacySettingsView: View {
 
       PrivacySettingsCurrentStatusSection(
         status: status,
-        onLock: {
-          onLock()
+        onQuickHide: {
+          onQuickHide()
         },
-        onUnlock: {
-          onUnlock()
+        onReturnToWorkbench: {
+          onReturnToWorkbench()
         }
       )
 

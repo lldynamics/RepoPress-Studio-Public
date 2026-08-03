@@ -31,7 +31,7 @@ struct GitConflictResolverSheet: View {
         VStack(spacing: 8) {
           Image(systemName: "checkmark.circle")
             .font(.system(size: 32))
-            .foregroundStyle(.green)
+            .foregroundStyle(WorkbenchTheme.success)
           Text("无 Git 冲突")
             .font(.headline)
           Text("远端与本地修改已同步")
@@ -112,11 +112,11 @@ struct GitConflictResolverSheet: View {
         VStack(alignment: .leading, spacing: 4) {
           Label("远端分支 (Remote / Upstream)", systemImage: "icloud.and.arrow.down")
             .font(.caption.weight(.semibold))
-            .foregroundStyle(.purple)
+            .foregroundStyle(WorkbenchTheme.info)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
-        .background(Color.purple.opacity(0.08))
+        .background(WorkbenchTheme.info.opacity(0.08))
       }
 
       Divider()

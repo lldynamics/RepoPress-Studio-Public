@@ -28,7 +28,9 @@ extension WorkbenchStore {
     aiStore.seoSocialPreviewSnapshot(for: draft)
   }
 
-  public func seoSocialPreviewCachePresentation(for draft: ArticleDraft) -> SEOSocialPreviewCachePresentation {
+  public func seoSocialPreviewCachePresentation(for draft: ArticleDraft)
+    -> SEOSocialPreviewCachePresentation
+  {
     aiStore.seoSocialPreviewCachePresentation(for: draft)
   }
 
@@ -144,14 +146,16 @@ extension WorkbenchStore {
   }
 
   #if DEBUG || SCREENSHOT_CAPTURE_BUILD
-  /// Seeds a runtime-only conversation for deterministic screenshot fixtures.
-  public func seedTransientAIChatPreview(_ messages: [AIPublishingChatMessage]) {
-    setAIChatMessages(messages)
-    aiStore.cacheCurrentAIChatSessionForAIStore()
-  }
+    /// Seeds a runtime-only conversation for deterministic screenshot fixtures.
+    public func seedTransientAIChatPreview(_ messages: [AIPublishingChatMessage]) {
+      setAIChatMessages(messages)
+      aiStore.cacheCurrentAIChatSessionForAIStore()
+    }
   #endif
 
-  public func deleteAIChatMessage(_ messageID: AIPublishingChatMessage.ID, draft: ArticleDraft? = nil) {
+  public func deleteAIChatMessage(
+    _ messageID: AIPublishingChatMessage.ID, draft: ArticleDraft? = nil
+  ) {
     aiStore.deleteAIChatMessage(messageID, draft: draft)
   }
 
@@ -179,7 +183,9 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func regenerateLastAIChatReply(draft: ArticleDraft? = nil) async -> AIPublishingChatMessage? {
+  public func regenerateLastAIChatReply(draft: ArticleDraft? = nil) async
+    -> AIPublishingChatMessage?
+  {
     await aiStore.regenerateLastAIChatReply(draft: draft)
   }
 
@@ -195,9 +201,15 @@ extension WorkbenchStore {
   public func sendAIChatMessage(
     _ text: String,
     draft: ArticleDraft? = nil,
-    imageAttachments: [AIChatImageAttachment] = []
+    imageAttachments: [AIChatImageAttachment] = [],
+    contextReferences: [AIContextReference] = []
   ) async -> AIPublishingChatMessage? {
-    await aiStore.sendAIChatMessage(text, draft: draft, imageAttachments: imageAttachments)
+    await aiStore.sendAIChatMessage(
+      text,
+      draft: draft,
+      imageAttachments: imageAttachments,
+      contextReferences: contextReferences
+    )
   }
 
   public func consumePendingAIQuickPrompt() -> AIPublishingQuickPrompt? {
@@ -272,8 +284,16 @@ extension WorkbenchStore {
     await aiStore.aiChatImageAttachments(for: draft, attachmentIDs: attachmentIDs)
   }
 
-  public func makeAttachment(from url: URL, draft: ArticleDraft) -> DraftAttachment {
-    imageStore.makeAttachment(from: url, draft: draft)
+  public func makeAttachment(
+    from url: URL,
+    draft: ArticleDraft,
+    fileStore: ManagedAttachmentFileStore? = nil
+  ) async throws -> DraftAttachment {
+    try await imageStore.makeAttachment(
+      from: url,
+      draft: draft,
+      fileStore: fileStore ?? managedAttachmentFileStore
+    )
   }
 
   public func prepareAIImageTextSuggestions(for draft: ArticleDraft) {
@@ -281,7 +301,9 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func generateAIImageTextSuggestions(draft: ArticleDraft) async -> [AIPublishingImageTextSuggestion] {
+  public func generateAIImageTextSuggestions(draft: ArticleDraft) async
+    -> [AIPublishingImageTextSuggestion]
+  {
     await aiStore.generateAIImageTextSuggestions(draft: draft)
   }
 
@@ -323,17 +345,23 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func sendMaintenanceActionToAI(_ item: MaintenanceActionItem) async -> AIPublishingChatMessage? {
+  public func sendMaintenanceActionToAI(_ item: MaintenanceActionItem) async
+    -> AIPublishingChatMessage?
+  {
     await aiStore.sendMaintenanceActionToAI(item)
   }
 
   @discardableResult
-  public func sendReleaseRecoveryPackageToAI(for entry: ReleaseLedgerEntry) async -> AIPublishingChatMessage? {
+  public func sendReleaseRecoveryPackageToAI(for entry: ReleaseLedgerEntry) async
+    -> AIPublishingChatMessage?
+  {
     await aiStore.sendReleaseRecoveryPackageToAI(for: entry)
   }
 
   @discardableResult
-  public func sendSEOSocialPreviewToAI(for draft: ArticleDraft? = nil) async -> AIPublishingChatMessage? {
+  public func sendSEOSocialPreviewToAI(for draft: ArticleDraft? = nil) async
+    -> AIPublishingChatMessage?
+  {
     await aiStore.sendSEOSocialPreviewToAI(for: draft)
   }
 }

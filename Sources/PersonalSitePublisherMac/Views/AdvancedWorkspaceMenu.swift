@@ -2,16 +2,31 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct AdvancedWorkspaceToolbarActions: View {
-  @ObservedObject var store: WorkbenchStore
+  @ObservedObject private var shell: WorkbenchShellFeatureFacade
   let canUseProtectedWorkbench: Bool
+  let showsTitle: Bool
   let isFirstRunSetupComplete: Bool
   let presentFirstRunSetup: () -> Void
+
+  init(
+    store: WorkbenchStore,
+    canUseProtectedWorkbench: Bool,
+    isCompact: Bool,
+    isFirstRunSetupComplete: Bool,
+    presentFirstRunSetup: @escaping () -> Void
+  ) {
+    _shell = ObservedObject(wrappedValue: store.shell)
+    self.canUseProtectedWorkbench = canUseProtectedWorkbench
+    self.showsTitle = !isCompact
+    self.isFirstRunSetupComplete = isFirstRunSetupComplete
+    self.presentFirstRunSetup = presentFirstRunSetup
+  }
 
   var body: some View {
     HStack(spacing: 2) {
       ForEach(WorkspaceNavigationPresentation.secondaryEntryItems) { item in
         Button {
-          store.selectSection(item.section)
+          shell.selectSection(item.section)
         } label: {
           Label(
             workspaceNavigationLocalizedKey(item.displayNameLocalizationKey),
@@ -20,7 +35,8 @@ struct AdvancedWorkspaceToolbarActions: View {
         }
         .buttonStyle(
           WorkspaceToolbarIconButtonStyle(
-            isActive: store.selectedSection == item.section
+            isActive: shell.selectedSection == item.section,
+            showsTitle: showsTitle
           )
         )
         .help(workspaceNavigationLocalizedString(item.displayNameLocalizationKey))
@@ -40,7 +56,12 @@ struct AdvancedWorkspaceToolbarActions: View {
           systemImage: "wand.and.stars"
         )
       }
-      .buttonStyle(WorkspaceToolbarIconButtonStyle(isActive: false))
+      .buttonStyle(
+        WorkspaceToolbarIconButtonStyle(
+          isActive: false,
+          showsTitle: showsTitle
+        )
+      )
       .help(
         isFirstRunSetupComplete
           ? String(localized: "重新运行设置向导…")

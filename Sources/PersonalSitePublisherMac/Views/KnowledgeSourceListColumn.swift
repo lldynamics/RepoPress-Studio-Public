@@ -55,6 +55,7 @@ private struct KnowledgeSourceListPresentationSnapshot {
 }
 
 struct KnowledgeSourceListColumn: View {
+  let store: WorkbenchStore
   @ObservedObject var knowledge: KnowledgeStore
   @EnvironmentObject private var browserBridge: KnowledgeBrowserBridge
   @State private var searchText = ""
@@ -71,6 +72,7 @@ struct KnowledgeSourceListColumn: View {
   @State private var selectedDocumentIDs = Set<UUID>()
   @State private var isRecycleBinPresented = false
   @State private var isHealthPresented = false
+  @State private var isSettingsPresented = false
   @State private var isBatchRecycleConfirmationPresented = false
   @State private var isBatchTagEditorPresented = false
   @State private var batchTags = ""
@@ -79,7 +81,8 @@ struct KnowledgeSourceListColumn: View {
   @AppStorage("knowledgeSidebarDensityV1") private var sidebarDensity: KnowledgeSidebarDensity = .comfortable
   @FocusState private var isSearchFocused: Bool
 
-  init(knowledge: KnowledgeStore) {
+  init(store: WorkbenchStore, knowledge: KnowledgeStore) {
+    self.store = store
     self.knowledge = knowledge
     _listPresentation = State(
       initialValue: KnowledgeSourceListPresentationSnapshot.make(knowledge: knowledge)
@@ -91,6 +94,8 @@ struct KnowledgeSourceListColumn: View {
       knowledgeHeader
         .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
         .padding(.vertical, WorkspaceSidebarMetrics.headerVerticalPadding)
+
+      knowledgeInsertionActions
 
       Divider()
 
@@ -126,6 +131,18 @@ struct KnowledgeSourceListColumn: View {
     }
     .sheet(isPresented: $isHealthPresented) {
       KnowledgeLibraryHealthView(knowledge: knowledge)
+    }
+    .sheet(isPresented: $isSettingsPresented) {
+      KnowledgeSettingsView(
+        store: store,
+        backupScheduler: store.workspaceBackupScheduler,
+        knowledge: knowledge,
+        browserBridge: browserBridge,
+        onOpenLibrary: {
+          isSettingsPresented = false
+        }
+      )
+      .frame(minWidth: 720, minHeight: 560)
     }
     .alert(folderEditorTitle, isPresented: $isFolderEditorPresented) {
       TextField(String(localized: "文件夹名称"), text: $folderName)
@@ -243,6 +260,12 @@ struct KnowledgeSourceListColumn: View {
     } actions: {
       Menu {
         Button {
+          isSettingsPresented = true
+        } label: {
+          Label("资料库设置…", systemImage: "gearshape")
+        }
+        Divider()
+        Button {
           isBrowserExtensionPresented = true
         } label: {
           Label("连接浏览器插件", systemImage: "puzzlepiece.extension")
@@ -277,13 +300,13 @@ struct KnowledgeSourceListColumn: View {
           }
         }
       } label: {
-        Label("管理", systemImage: "ellipsis.circle")
+        Label("管理与设置", systemImage: "ellipsis.circle")
       }
       .menuStyle(.button)
       .menuIndicator(.hidden)
       .controlSize(.regular)
       .fixedSize()
-      .help("回收站、备份与恢复")
+      .help("资料库设置、回收站、备份与恢复")
       .accessibilityLabel("资料库管理")
       .disabled(knowledge.isBusy)
       Button {
@@ -295,6 +318,51 @@ struct KnowledgeSourceListColumn: View {
       .controlSize(.regular)
       .help("导入资料")
       .accessibilityLabel("导入资料")
+    }
+  }
+
+  @ViewBuilder
+  private var knowledgeInsertionActions: some View {
+    if let document = knowledge.selectedDocument {
+      HStack(spacing: 8) {
+        Button {
+          _ = KnowledgeArticleInsertionService.insertCurrentArticle(
+            document: document,
+            text: knowledge.selectedDocumentText,
+            into: store
+          )
+        } label: {
+          Label("插入当前文章", systemImage: "text.insert")
+        }
+        .workbenchProminentActionStyle()
+        .controlSize(.small)
+        .disabled(knowledge.selectedDocumentText.trimmedForPublishing.isEmpty || knowledge.isBusy)
+        .help("将当前资料正文插入正在编辑的文章")
+        .accessibilityIdentifier("knowledge-insert-current-article")
+
+        Button {
+          _ = KnowledgeArticleInsertionService.insertCitation(
+            document: document,
+            selectedResult: knowledge.selectedSearchResult,
+            fallbackText: knowledge.selectedDocumentText,
+            into: store
+          )
+        } label: {
+          Label("插入引用", systemImage: "quote.opening")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .disabled(knowledge.selectedDocumentText.trimmedForPublishing.isEmpty || knowledge.isBusy)
+        .help("将当前选中片段作为引用插入正在编辑的文章")
+        .accessibilityIdentifier("knowledge-insert-citation")
+
+        Spacer(minLength: 0)
+      }
+      .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
+      .padding(.vertical, 8)
+      .background(WorkbenchBackgroundStyle.subtle)
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel("插入当前资料")
     }
   }
 
@@ -566,18 +634,22 @@ struct KnowledgeSourceListColumn: View {
 
       Spacer(minLength: 4)
 
-      if DistributionFeaturePolicy.allowsExternalAIProviders {
-        if knowledge.isPinned(document.id) {
-          Image(systemName: "pin.fill")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .accessibilityLabel("已固定到 AI")
-        } else if !document.allowsAIUse {
-          Image(systemName: "sparkles.slash")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .accessibilityLabel("不允许 AI 使用")
-        }
+      if knowledge.isPinned(document.id) {
+        Image(systemName: "pin.fill")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .accessibilityLabel("已固定到 AI")
+      } else if !document.allowsLocalSemanticIndex {
+        Image(systemName: "slash.circle")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .accessibilityLabel("未建立本地语义索引")
+      }
+      if DistributionFeaturePolicy.allowsExternalAIProviders && !document.allowsRemoteAIUse {
+        Image(systemName: "hand.raised")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .accessibilityLabel("禁止发送给远程 AI")
       }
 
       if hoveredDocumentID == document.id || selectedDocumentIDs.contains(document.id) {
@@ -617,6 +689,16 @@ struct KnowledgeSourceListColumn: View {
   private func documentActionItems(_ document: KnowledgeDocument) -> some View {
     documentFolderMenu(document)
     Divider()
+    Button(
+      document.allowsLocalSemanticIndex
+        ? String(localized: "关闭本地语义索引")
+        : String(localized: "建立本地语义索引")
+    ) {
+      knowledge.setAllowsLocalSemanticIndex(
+        !document.allowsLocalSemanticIndex,
+        documentID: document.id
+      )
+    }
     if DistributionFeaturePolicy.allowsExternalAIProviders {
       Button(
         knowledge.isPinned(document.id)
@@ -626,11 +708,11 @@ struct KnowledgeSourceListColumn: View {
         knowledge.setPinned(!knowledge.isPinned(document.id), documentID: document.id)
       }
       Button(
-        document.allowsAIUse
-          ? String(localized: "不允许 AI 使用")
-          : String(localized: "允许 AI 使用")
+        document.allowsRemoteAIUse
+          ? String(localized: "禁止发送给远程 AI")
+          : String(localized: "允许发送给远程 AI")
       ) {
-        knowledge.setAllowsAIUse(!document.allowsAIUse, documentID: document.id)
+        knowledge.setAllowsRemoteAIUse(!document.allowsRemoteAIUse, documentID: document.id)
       }
       Divider()
     }
@@ -734,7 +816,9 @@ struct KnowledgeSourceListColumn: View {
       .scrollContentBackground(.hidden)
       .background(Color.clear)
       .accessibilityLabel("资料搜索命中片段")
-      .accessibilityValue("共 \(listPresentation.searchResults.count) 个片段")
+      .accessibilityValue(
+        String(localized: "共 \(listPresentation.searchResults.count) 个片段")
+      )
       .accessibilityIdentifier("knowledge-search-result-list")
     }
   }
@@ -822,20 +906,27 @@ struct KnowledgeSourceListColumn: View {
       .help("批量添加标签")
       .accessibilityLabel("批量添加标签")
 
-      if DistributionFeaturePolicy.allowsExternalAIProviders {
-        Menu {
-          Button("允许 AI 使用") {
-            knowledge.setAllowsAIUse(true, documentIDs: selectedDocumentIDs)
-          }
-          Button("不允许 AI 使用") {
-            knowledge.setAllowsAIUse(false, documentIDs: selectedDocumentIDs)
-          }
-        } label: {
-          Image(systemName: "sparkles")
+      Menu {
+        Button("建立本地语义索引") {
+          knowledge.setAllowsLocalSemanticIndex(true, documentIDs: selectedDocumentIDs)
         }
-        .help("批量设置 AI 权限")
-        .accessibilityLabel("批量设置 AI 权限")
+        Button("关闭本地语义索引") {
+          knowledge.setAllowsLocalSemanticIndex(false, documentIDs: selectedDocumentIDs)
+        }
+        if DistributionFeaturePolicy.allowsExternalAIProviders {
+          Divider()
+          Button("允许发送给远程 AI") {
+            knowledge.setAllowsRemoteAIUse(true, documentIDs: selectedDocumentIDs)
+          }
+          Button("禁止发送给远程 AI") {
+            knowledge.setAllowsRemoteAIUse(false, documentIDs: selectedDocumentIDs)
+          }
+        }
+      } label: {
+        Image(systemName: "slider.horizontal.3")
       }
+      .help("批量设置资料权限")
+      .accessibilityLabel("批量设置资料权限")
 
       Menu {
         Button {

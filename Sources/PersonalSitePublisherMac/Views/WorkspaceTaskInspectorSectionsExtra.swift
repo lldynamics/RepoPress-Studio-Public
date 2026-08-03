@@ -3,6 +3,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 enum ArticleInspectorTab: String, CaseIterable, Identifiable {
+  case knowledge
   case metadata
   case seo
   case images
@@ -12,6 +13,8 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
 
   var title: String {
     switch self {
+    case .knowledge:
+      return String(localized: "资料库")
     case .metadata:
       return String(localized: "元数据")
     case .seo:
@@ -25,6 +28,8 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
 
   var systemImage: String {
     switch self {
+    case .knowledge:
+      return "books.vertical"
     case .metadata:
       return "slider.horizontal.3"
     case .seo:
@@ -36,33 +41,56 @@ enum ArticleInspectorTab: String, CaseIterable, Identifiable {
     }
   }
 
+  var pickerTitle: String {
+    switch self {
+    case .knowledge:
+      return String(localized: "资料库")
+    case .metadata, .seo, .images, .checks:
+      return title
+    }
+  }
+
   static func defaultTab(for section: WorkspaceSection) -> ArticleInspectorTab {
     switch section {
     case .writing:
-      return .metadata
+      return .knowledge
     case .sync, .releaseHistory:
       return .metadata
     case .contentHealth:
       return .checks
     case .images:
       return .images
-    case .siteStarter, .library, .maintenance:
+    case .siteStarter, .library, .rss, .maintenance:
       return .metadata
+    }
+  }
+
+  static func availableTabs(for section: WorkspaceSection) -> [ArticleInspectorTab] {
+    switch section {
+    case .writing:
+      return [.knowledge, .metadata, .seo]
+    case .maintenance:
+      return [.metadata, .seo]
+    case .contentHealth:
+      return [.checks]
+    case .images:
+      return [.images]
+    case .sync, .releaseHistory, .library, .rss:
+      return []
+    case .siteStarter:
+      return [.metadata]
     }
   }
 }
 
 extension PreflightIssue {
   var editorQuery: String? {
-    guard field == "body" else {
+    guard structuredField == .body,
+          category == .unregisteredBodyImage
+    else {
       return nil
     }
-
-    if title == "正文图片未登记" {
-      return message.components(separatedBy: " 不在").first
-    }
-
-    return nil
+    return relatedValue
   }
 }
 
@@ -70,6 +98,8 @@ struct ArticleInspectorTabs: View {
   @Binding var selectedTab: ArticleInspectorTab
   @Binding var draft: ArticleDraft
   @ObservedObject var store: WorkbenchStore
+  @ObservedObject var rssStore: RSSReaderStore
+  let section: WorkspaceSection
   let availableTabs: [ArticleInspectorTab]
 
   var body: some View {
@@ -115,8 +145,12 @@ struct ArticleInspectorTabs: View {
       prepareSelectedTab()
     }
     .task(id: imageRefreshID) {
-      guard selectedTab == .images else { return }
+      guard selectedTab == .images || selectedTab == .checks else { return }
       await store.refreshImageWorkbenchCachesInBackground(for: draft)
+    }
+    .task(id: knowledgeRefreshID) {
+      guard let draftID = knowledgeRefreshID else { return }
+      store.knowledge.loadArticleBacklinks(for: draftID)
     }
   }
 
@@ -144,7 +178,7 @@ struct ArticleInspectorTabs: View {
   private var tabPicker: some View {
     Picker("Inspector", selection: $selectedTab) {
       ForEach(availableTabs) { tab in
-        Label(tab.title, systemImage: tab.systemImage)
+        Label(tab.pickerTitle, systemImage: tab.systemImage)
           .tag(tab)
       }
     }
@@ -194,7 +228,7 @@ struct ArticleInspectorTabs: View {
     }
     Task { @MainActor in
       await Task.yield()
-      withAnimation(.easeInOut(duration: 0.2)) {
+      withAnimation(WorkbenchMotion.deliberate) {
         proxy.scrollTo(request.attachmentID, anchor: .center)
       }
     }
@@ -203,6 +237,10 @@ struct ArticleInspectorTabs: View {
   @ViewBuilder
   private var selectedContent: some View {
     switch selectedTab {
+    case .knowledge:
+      if section == .writing {
+        knowledgeContent
+      }
     case .metadata:
       metadataContent
     case .seo:
@@ -212,6 +250,28 @@ struct ArticleInspectorTabs: View {
     case .checks:
       checkContent
     }
+  }
+
+  private var knowledgeContent: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      RSSLibraryInspectorPanel(
+        rssStore: rssStore,
+        workbenchStore: store
+      )
+      KnowledgeContextRecommendationCard(
+        draft: draft,
+        store: store
+      )
+      KnowledgeArticleBacklinksSection(
+        draft: draft,
+        knowledge: store.knowledge,
+        onOpenDocument: { documentID in
+          store.knowledge.selectDocument(documentID)
+          store.selectSection(.library)
+        }
+      )
+    }
+    .accessibilityIdentifier("article-inspector-knowledge-page")
   }
 
   private var metadataContent: some View {
@@ -265,9 +325,18 @@ struct ArticleInspectorTabs: View {
   }
 
   private var checkContent: some View {
-    let issues = draft.id == store.selectedDraftID
+    let preflightIssues = draft.id == store.selectedDraftID
       ? store.preflightIssues
       : store.preflightIssues(for: draft)
+    let imageIssues = store.cachedImageWorkbenchReport(for: draft)?.issues
+      .filter { !$0.isCovered(by: preflightIssues) }
+      .compactMap(\.preflightIssue) ?? []
+    let issues = (preflightIssues + imageIssues).sorted {
+      if $0.severity.sortRank == $1.severity.sortRank {
+        return $0.title < $1.title
+      }
+      return $0.severity.sortRank < $1.severity.sortRank
+    }
     return WorkspaceTaskChecksSection(
       state: WorkspaceTaskChecksState(
         issues: issues,
@@ -276,6 +345,7 @@ struct ArticleInspectorTabs: View {
       actions: WorkspaceTaskChecksActions(
         rerunPreflight: {
           store.runPreflight()
+          store.scheduleImageWorkbenchCachesRefresh(for: draft, force: true)
         },
         focusIssue: focus
       )
@@ -283,12 +353,12 @@ struct ArticleInspectorTabs: View {
   }
 
   private func focus(_ issue: PreflightIssue) {
-    switch issue.field {
-    case "body":
+    switch issue.structuredField {
+    case .body:
       store.requestEditorFocus(draftID: draft.id, field: issue.field, query: issue.editorQuery)
-    case "attachments", "cover":
+    case .attachments, .cover:
       selectedTab = .images
-    case "repository", "contentRoot", "assetRoot", "markdownPathPattern":
+    case .repository, .contentRoot, .assetRoot, .markdownPathPattern:
       store.selectSection(.sync)
     default:
       selectedTab = .metadata
@@ -297,6 +367,8 @@ struct ArticleInspectorTabs: View {
 
   private func prepareSelectedTab() {
     switch selectedTab {
+    case .knowledge:
+      break
     case .seo:
       store.prepareSEOSocialPreview(for: draft)
     case .images:
@@ -314,8 +386,12 @@ struct ArticleInspectorTabs: View {
   }
 
   private var imageRefreshID: WorkspaceTaskImageRefreshID? {
-    guard selectedTab == .images else { return nil }
+    guard selectedTab == .images || selectedTab == .checks else { return nil }
     return WorkspaceTaskImageRefreshID(draft: draft, profile: store.profile(for: draft))
+  }
+
+  private var knowledgeRefreshID: UUID? {
+    selectedTab == .knowledge ? draft.id : nil
   }
 }
 

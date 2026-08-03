@@ -43,12 +43,12 @@ struct RepositoryWorkspaceGitManagementSection: View {
       )
       repositoryInfoRow(
         title: "目标分支",
-        value: store.activeProfile.branch.nilIfEmpty ?? "未配置",
+        value: store.activeProfile.branch.nilIfEmpty ?? String(localized: "未配置"),
         systemImage: "flag"
       )
       repositoryInfoRow(
         title: "上游",
-        value: currentBranchUpstream ?? "未配置",
+        value: currentBranchUpstream ?? String(localized: "未配置"),
         systemImage: "link"
       )
 
@@ -103,7 +103,7 @@ struct RepositoryWorkspaceGitManagementSection: View {
       TextField("新建分支名", text: $newBranchName)
         .textFieldStyle(.roundedBorder)
         .accessibilityLabel("新建分支名")
-        .accessibilityValue(newBranchName.isEmpty ? "未填写" : newBranchName)
+        .accessibilityValue(newBranchName.isEmpty ? String(localized: "未填写") : newBranchName)
 
       Button {
         Task {
@@ -166,14 +166,16 @@ struct RepositoryWorkspaceGitManagementSection: View {
           }
 
           if store.localRepositoryRecentCommits.count > defaultCount {
-            Button(showAllCommits ? "收起" : "显示更多") {
+            Button(showAllCommits ? String(localized: "收起") : String(localized: "显示更多")) {
               showAllCommits.toggle()
             }
             .buttonStyle(.borderless)
             .font(.caption)
             .foregroundStyle(WorkbenchTheme.documentForeground)
             .padding(.top, 4)
-            .accessibilityLabel(showAllCommits ? "收起提交历史" : "显示更多提交历史")
+            .accessibilityLabel(
+              showAllCommits ? String(localized: "收起提交历史") : String(localized: "显示更多提交历史")
+            )
           }
         }
       }
@@ -183,7 +185,7 @@ struct RepositoryWorkspaceGitManagementSection: View {
   private var currentBranch: String {
     store.repositoryReport?.branchStatus?.branchName
       ?? store.localRepositoryBranches.first(where: \.isCurrent)?.name
-      ?? "未识别"
+      ?? String(localized: "未识别")
   }
 
   private var currentBranchUpstream: String? {

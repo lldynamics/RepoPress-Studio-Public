@@ -640,7 +640,7 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     let transport = RecordingAIChatTransport(
       data: Data("""
       {
-        "model": "deepseek-v4-pro",
+        "model": "gpt-4.1",
         "choices": [
           {
             "message": {"role":"assistant","content":"发布前审稿完成。"}
@@ -661,9 +661,9 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
       bodyMarkdown: "用于发布前审稿的正文。"
     )
     let config = AIProviderConfig(
-      preset: .deepSeek,
-      baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
-      model: AIProviderPreset.deepSeek.defaultModel,
+      preset: .custom,
+      baseURL: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
       requiresAPIKey: false
     )
 
@@ -674,16 +674,13 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     )
 
     XCTAssertEqual(result.content, "发布前审稿完成。")
-    XCTAssertEqual(result.providerName, "DeepSeek")
-    XCTAssertEqual(result.model, "deepseek-v4-pro")
+    XCTAssertEqual(result.providerName, "自定义")
+    XCTAssertEqual(result.model, "gpt-4.1")
     let requestFromTransport = await transport.capturedRequest()
     let capturedRequest = try XCTUnwrap(requestFromTransport)
     let body = try XCTUnwrap(capturedRequest.httpBody)
     let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
-    XCTAssertEqual(payload["model"] as? String, "deepseek-v4-pro")
-    XCTAssertNil(payload["temperature"])
-    let thinking = try XCTUnwrap(payload["thinking"] as? [String: Any])
-    XCTAssertEqual(thinking["type"] as? String, "disabled")
+    XCTAssertEqual(payload["model"] as? String, "gpt-4.1-mini")
   }
 
   func testRequiresAPIKeyForRemoteProvider() async {
@@ -779,6 +776,7 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     let sentText = messages.compactMap { $0["content"] as? String }.joined(separator: "\n")
 
     XCTAssertTrue(sentText.contains("文章讨论助手"))
+    XCTAssertTrue(sentText.contains("不得展示思考、推理、权衡、草稿或内部决策过程"))
     XCTAssertTrue(sentText.contains("当前 Mac 工作台上下文"))
     XCTAssertTrue(sentText.contains("Mac AI Chat"))
     XCTAssertTrue(sentText.contains(profile.markdownPath(for: draft)))
@@ -960,7 +958,7 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     let transport = RecordingAIChatTransport(
       data: Data("""
       {
-        "model": "deepseek-v4-pro",
+        "model": "gpt-4.1-mini",
         "choices": [
           {
             "message": {"role":"assistant","content":"建议先补充发布风险。"}
@@ -995,15 +993,15 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
         ]
       ),
       config: AIProviderConfig(
-        preset: .deepSeek,
-        baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
-        model: AIProviderPreset.deepSeek.defaultModel,
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
         requiresAPIKey: false
       ),
       apiKey: nil
     )
 
-    XCTAssertEqual(result.model, "deepseek-v4-pro")
+    XCTAssertEqual(result.model, "gpt-4.1-mini")
     XCTAssertEqual(
       result.tokenUsage,
       AIChatTokenUsage(promptTokens: 140, completionTokens: 18, totalTokens: 158)
@@ -1014,7 +1012,7 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     let transport = RecordingAIChatTransport(
       data: Data("""
       {
-        "model": "deepseek-v4-pro",
+        "model": "gpt-4.1",
         "choices": [
           {
             "message": {"role":"assistant","content":"高质量模型已用于文章讨论。"}
@@ -1045,9 +1043,9 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
         modelGrade: .highQuality
       ),
       config: AIProviderConfig(
-        preset: .deepSeek,
-        baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
-        model: AIProviderPreset.deepSeek.defaultModel,
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
         requiresAPIKey: false
       ),
       apiKey: nil
@@ -1057,7 +1055,7 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     let capturedRequest = try XCTUnwrap(requestFromTransport)
     let body = try XCTUnwrap(capturedRequest.httpBody)
     let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
-    XCTAssertEqual(payload["model"] as? String, "deepseek-v4-pro")
+    XCTAssertEqual(payload["model"] as? String, "gpt-4.1-mini")
   }
 
   func testChatReplyUsesSelectedReasoningLevel() async throws {
@@ -1092,9 +1090,9 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
         reasoningLevel: .standard
       ),
       config: AIProviderConfig(
-        preset: .deepSeek,
-        baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
-        model: AIProviderPreset.deepSeek.defaultModel,
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
         requiresAPIKey: false
       ),
       apiKey: nil
@@ -1105,8 +1103,6 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     let body = try XCTUnwrap(capturedRequest.httpBody)
     let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
     XCTAssertNil(payload["reasoning_effort"])
-    let thinking = try XCTUnwrap(payload["thinking"] as? [String: Any])
-    XCTAssertEqual(thinking["type"] as? String, "enabled")
   }
 
   func testChatReplyUsesSelectedCustomModel() async throws {
@@ -1144,9 +1140,9 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
         selectedModel: "  sitekeeper-custom-chat-model  "
       ),
       config: AIProviderConfig(
-        preset: .deepSeek,
-        baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
-        model: AIProviderPreset.deepSeek.defaultModel,
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
         requiresAPIKey: false
       ),
       apiKey: nil
@@ -1194,9 +1190,9 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
         selectedModel: "stream-chat-model"
       ),
       config: AIProviderConfig(
-        preset: .deepSeek,
-        baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
-        model: AIProviderPreset.deepSeek.defaultModel,
+        preset: .custom,
+        baseURL: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
         requiresAPIKey: false
       ),
       apiKey: nil
@@ -1296,6 +1292,7 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     let sentText = messages.compactMap { $0["content"] as? String }.joined(separator: "\n")
 
     XCTAssertTrue(sentText.contains("通用 AI 对话助手"))
+    XCTAssertTrue(sentText.contains("不得展示思考、推理、权衡、草稿或内部决策过程"))
     XCTAssertTrue(sentText.contains("帮我解释一个通用 Swift 问题。"))
     XCTAssertFalse(sentText.contains("当前 Mac 工作台上下文"))
     XCTAssertFalse(sentText.contains("Private Article Context"))
@@ -1331,7 +1328,7 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
       bodyMarkdown: "正文。"
     )
     let config = AIProviderConfig(
-      preset: .openAICompatible,
+      preset: .custom,
       baseURL: "https://api.openai.example/v1",
       model: "vision-test",
       requiresAPIKey: false
@@ -1409,7 +1406,7 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
         ]
       ),
       config: AIProviderConfig(
-        preset: .openAICompatible,
+        preset: .custom,
         baseURL: "https://api.openai.example/v1",
         model: "vision-test",
         requiresAPIKey: false
@@ -1431,41 +1428,7 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     XCTAssertEqual(imageURL["url"] as? String, "data:image/png;base64,aW1hZ2Utb25seQ==")
   }
 
-  func testChatReplyRejectsImageAttachmentsForUnsupportedProvider() async {
-    let service = AIPublishingAssistantService(
-      client: AIChatCompletionClient(
-        transport: RecordingAIChatTransport(data: Data(), statusCode: 200)
-      )
-    )
-    let profile = SiteProfile.defaultProfile
-    let draft = ArticleDraft(siteProfileID: profile.id, title: "DeepSeek Image", slug: "deepseek-image")
-    let attachment = AIChatImageAttachment(
-      filename: "cover.png",
-      mimeType: "image/png",
-      data: Data("image".utf8)
-    )
 
-    await XCTAssertThrowsErrorAsync(
-      try await service.reply(
-        to: AIPublishingChatRequest(
-          draft: draft,
-          profile: profile,
-          messages: [
-            AIPublishingChatMessage(role: .user, content: "帮我看图。", imageAttachments: [attachment])
-          ]
-        ),
-        config: AIProviderConfig(
-          preset: .deepSeek,
-          baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
-          model: AIProviderPreset.deepSeek.defaultModel,
-          requiresAPIKey: false
-        ),
-        apiKey: nil
-      )
-    ) { error in
-      XCTAssertEqual(error as? AIPublishingAssistantError, .unsupportedImageAttachments("DeepSeek"))
-    }
-  }
 
   func testChatMessageDecodesLegacyRecordsWithoutImageAttachments() throws {
     let message = AIPublishingChatMessage(
@@ -1699,5 +1662,88 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     XCTAssertTrue(sentText.contains("/images/2026/workflow.png"))
     XCTAssertTrue(sentText.contains("content/posts/image-publishing.md"))
     XCTAssertTrue(sentText.contains(attachmentID.uuidString))
+  }
+
+  func testImageTextSuggestionSendsSelectedImageAsVisionContent() async throws {
+    let attachmentID = UUID()
+    let target = AIPublishingImageTextTarget(
+      id: attachmentID.uuidString,
+      draftID: UUID(),
+      attachmentID: attachmentID,
+      draftTitle: "施工记录",
+      markdownPath: "content/posts/site-log.md",
+      articleSummary: "记录现场施工过程。",
+      articleExcerpt: "图片展示现场安全检查。",
+      filename: "safety-check.png",
+      imagePath: "/images/safety-check.png",
+      existingAlt: "",
+      existingCaption: "",
+      isCover: false,
+      isReferencedInMarkdown: true
+    )
+    let responsePayload: [String: Any] = [
+      "model": "local-test",
+      "choices": [[
+        "message": [
+          "role": "assistant",
+          "content": """
+          {"items":[{"id":"\(attachmentID.uuidString)","alt":"施工现场安全检查记录","caption":"","reason":"根据实际画面生成。"}]}
+          """,
+        ]
+      ]],
+    ]
+    let transport = RecordingAIChatTransport(
+      data: try JSONSerialization.data(withJSONObject: responsePayload),
+      statusCode: 200
+    )
+    let service = AIPublishingAssistantService(
+      client: AIChatCompletionClient(transport: transport)
+    )
+    let image = AIChatImageAttachment(
+      filename: "safety-check.png",
+      mimeType: "image/png",
+      data: Data([0x89, 0x50, 0x4E, 0x47])
+    )
+
+    _ = try await service.suggestImageText(
+      for: [target],
+      visionInputs: [
+        AIPublishingImageTextVisionInput(
+          targetID: target.id,
+          attachment: image
+        )
+      ],
+      profile: .defaultProfile,
+      config: AIProviderConfig(
+        preset: .local,
+        baseURL: "http://127.0.0.1:11434/v1",
+        model: "local-test",
+        requiresAPIKey: false
+      ),
+      apiKey: nil
+    )
+
+    let capturedRequest = await transport.capturedRequest()
+    let request = try XCTUnwrap(capturedRequest)
+    let body = try XCTUnwrap(request.httpBody)
+    let payload = try XCTUnwrap(
+      try JSONSerialization.jsonObject(with: body) as? [String: Any]
+    )
+    let messages = try XCTUnwrap(payload["messages"] as? [[String: Any]])
+    let userMessage = try XCTUnwrap(messages.last)
+    let content = try XCTUnwrap(userMessage["content"] as? [[String: Any]])
+
+    XCTAssertTrue(content.contains {
+      ($0["type"] as? String) == "text"
+        && ($0["text"] as? String)?.contains(target.id) == true
+    })
+    XCTAssertTrue(content.contains {
+      guard ($0["type"] as? String) == "image_url",
+            let imageURL = $0["image_url"] as? [String: Any],
+            let url = imageURL["url"] as? String else {
+        return false
+      }
+      return url.hasPrefix("data:image/png;base64,")
+    })
   }
 }

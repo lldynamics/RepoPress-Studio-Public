@@ -235,6 +235,56 @@ final class CoreLocalizationTests: XCTestCase {
     )
   }
 
+  func testWorkspaceBackupCopyResolvesInEnglish() {
+    let english = Locale(identifier: "en")
+
+    XCTAssertEqual(
+      CoreL10n.format(
+        "已校验 %d 个自动备份；%d 个校验失败",
+        locale: english,
+        arguments: [3, 1]
+      ),
+      "Validated 3 automatic backups; 1 failed validation."
+    )
+    XCTAssertEqual(
+      CoreL10n.format(
+        "工作区备份完成：%d 篇草稿、%d 个历史版本",
+        locale: english,
+        arguments: [2, 5]
+      ),
+      "Workspace backup completed: 2 drafts and 5 historical versions."
+    )
+    XCTAssertEqual(
+      CoreL10n.format(
+        "工作区备份清单无效：%@",
+        locale: english,
+        arguments: ["File count does not match the manifest."]
+      ),
+      "The workspace backup manifest is invalid: File count does not match the manifest."
+    )
+    XCTAssertEqual(
+      CoreL10n.format(
+        "备份文件超过允许大小（%lld MB）：%@",
+        locale: english,
+        arguments: [Int64(10), "workbench.json"]
+      ),
+      "A backup file exceeds the allowed size (10 MB): workbench.json"
+    )
+    XCTAssertEqual(
+      CoreL10n.format(
+        "实际文件与清单不同；缺少 %@，多出 %@",
+        locale: english,
+        arguments: ["none", "extra.json"]
+      ),
+      "Actual files differ from the manifest; missing: none; extra: extra.json."
+    )
+    XCTAssertEqual(CoreL10n.text("无", locale: english), "none")
+    XCTAssertEqual(
+      CoreL10n.text("工作区恢复包已安全暂存，应用重新启动后生效", locale: english),
+      "The workspace restore package has been safely staged and will take effect after the app restarts."
+    )
+  }
+
   func testPublicRiskCategorySurvivesLocalizationAndLegacyDecoding() throws {
     let issue = PreflightIssue(
       severity: .error,

@@ -130,8 +130,6 @@ def expanded_source_paths(relative_path: str, marker: str) -> list[str]:
         return unique(
             [
                 relative_path,
-                "Sources/PersonalSitePublisherMac/Views/ProSettingsView.swift",
-                "Sources/PersonalSitePublisherMac/Views/ProBenefitsSection.swift",
                 "Sources/PersonalSitePublisherMac/Views/TokenSettingsView.swift",
                 "Sources/PersonalSitePublisherMac/Views/TokenRepositoryTokenSection.swift",
                 "Sources/PersonalSitePublisherMac/Views/RepositoryPermissionSettingsView.swift",

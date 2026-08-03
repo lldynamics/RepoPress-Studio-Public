@@ -21,7 +21,10 @@ extension WorkbenchStore {
   }
 
   public func deploymentStatusReadiness(for profile: SiteProfile) -> DeploymentStatusProviderReadiness {
-    deploymentStore.deploymentStatusReadiness(for: profile, hasToken: deploymentTokenAvailability.hasToken)
+    deploymentStore.deploymentStatusReadiness(
+      for: profile,
+      tokenAvailability: deploymentTokenAvailability
+    )
   }
 
   @discardableResult

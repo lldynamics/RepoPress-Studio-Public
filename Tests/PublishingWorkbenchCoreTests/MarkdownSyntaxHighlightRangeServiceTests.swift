@@ -113,6 +113,116 @@ final class MarkdownSyntaxHighlightRangeServiceTests: XCTestCase {
     )
   }
 
+  func testInlineCodeAndMidParagraphTildesRemainLocalEdits() throws {
+    let inlinePrevious = "before\ninline `code` here\nafter"
+    let inlineRange = (inlinePrevious as NSString).range(of: "code")
+    let inlineCurrent = (inlinePrevious as NSString).replacingCharacters(
+      in: NSRange(location: inlineRange.location, length: 1),
+      with: "C"
+    )
+    let inlinePlan = MarkdownSyntaxHighlightRangeService.plan(
+      accumulating: nil,
+      previousText: inlinePrevious,
+      currentText: inlineCurrent,
+      replacedRange: NSRange(location: inlineRange.location, length: 1),
+      knownCodeBlockRanges: []
+    )
+
+    XCTAssertEqual(
+      (inlineCurrent as NSString).substring(with: inlinePlan.range),
+      "inline `Code` here\n"
+    )
+
+    let tildePrevious = "before\ntext ~~~ marker\nafter"
+    let tildeRange = (tildePrevious as NSString).range(of: "marker")
+    let tildeCurrent = (tildePrevious as NSString).replacingCharacters(
+      in: NSRange(location: tildeRange.location, length: 1),
+      with: "M"
+    )
+    let tildePlan = MarkdownSyntaxHighlightRangeService.plan(
+      accumulating: nil,
+      previousText: tildePrevious,
+      currentText: tildeCurrent,
+      replacedRange: NSRange(location: tildeRange.location, length: 1),
+      knownCodeBlockRanges: []
+    )
+
+    XCTAssertEqual(
+      (tildeCurrent as NSString).substring(with: tildePlan.range),
+      "text ~~~ Marker\n"
+    )
+    XCTAssertFalse(MarkdownCodeRangeScanner.containsFenceLine(in: "text ~~~ marker"))
+    XCTAssertFalse(MarkdownCodeRangeScanner.containsFenceLine(in: "    ```swift"))
+    XCTAssertTrue(MarkdownCodeRangeScanner.containsFenceLine(in: "   ~~~~ swift"))
+  }
+
+  func testPaddedVisibleRangeAddsRequestedContextLines() {
+    let markdown = (0...120)
+      .map { String(format: "line-%03d", $0) }
+      .joined(separator: "\n")
+    let visibleRange = (markdown as NSString).range(of: "line-060")
+
+    let paddedRange = MarkdownSyntaxHighlightRangeService.paddedLineRange(
+      in: markdown,
+      visibleRange: visibleRange,
+      contextLineCount: 50
+    )
+    let padded = (markdown as NSString).substring(with: paddedRange)
+
+    XCTAssertTrue(padded.hasPrefix("line-010\n"))
+    XCTAssertTrue(padded.contains("line-060"))
+    XCTAssertTrue(padded.hasSuffix("line-110\n"))
+    XCTAssertFalse(padded.contains("line-009"))
+    XCTAssertFalse(padded.contains("line-111"))
+  }
+
+  func testPaddedVisibleRangePreservesCRLFAndUTF16Coordinates() {
+    let markdown = "甲\r\n🙂\r\n乙\r\n丁"
+    let visibleRange = (markdown as NSString).range(of: "🙂")
+    let paddedRange = MarkdownSyntaxHighlightRangeService.paddedLineRange(
+      in: markdown,
+      visibleRange: visibleRange,
+      contextLineCount: 1
+    )
+
+    XCTAssertEqual(
+      (markdown as NSString).substring(with: paddedRange),
+      "甲\r\n🙂\r\n乙\r\n"
+    )
+  }
+
+  func testPaddedVisibleRangeClampsAtDocumentEdgesAndRejectsInvalidRanges() {
+    let markdown = "one\ntwo\nthree"
+    let source = markdown as NSString
+
+    XCTAssertEqual(
+      MarkdownSyntaxHighlightRangeService.paddedLineRange(
+        in: markdown,
+        visibleRange: source.range(of: "one"),
+        contextLineCount: 50
+      ),
+      NSRange(location: 0, length: source.length)
+    )
+    XCTAssertEqual(
+      MarkdownSyntaxHighlightRangeService.paddedLineRange(
+        in: markdown,
+        visibleRange: NSRange(location: source.length, length: 0),
+        contextLineCount: 1
+      ),
+      NSUnionRange(
+        source.lineRange(for: source.range(of: "two")),
+        source.lineRange(for: source.range(of: "three"))
+      )
+    )
+    XCTAssertEqual(
+      MarkdownSyntaxHighlightRangeService.paddedLineRange(
+        in: markdown,
+        visibleRange: NSRange(location: source.length + 1, length: 0)
+      ),
+      NSRange(location: 0, length: 0)
+    )
+  }
+
   func testResolvingUnknownCodeBlockRangesBuildsReusableCache() {
     let markdown = "before\n```swift\nlet x = 1\n```\nafter"
     let unresolved = MarkdownSyntaxHighlightPlan.fullDocument(for: markdown)

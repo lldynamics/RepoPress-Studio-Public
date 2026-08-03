@@ -55,11 +55,42 @@ public struct LocalContentImportService: Sendable {
   static let maximumMarkdownDocumentByteCount = 16 * 1024 * 1024
 
   private let fileSystem: SendableFileManager
+  private let contentIndexStore: LocalContentImportIndexStore?
+  private let frontMatterParseObserver: (@Sendable () -> Void)?
+  private let imageReferenceScanObserver: (@Sendable () -> Void)?
 
   private var fileManager: FileManager { fileSystem.value }
 
-  public init(fileManager: FileManager = .default) {
+  public init(
+    fileManager: FileManager = .default,
+    contentIndexDirectoryURL: URL? = nil,
+    isContentIndexEnabled: Bool = true
+  ) {
+    self.init(
+      fileManager: fileManager,
+      contentIndexDirectoryURL: contentIndexDirectoryURL,
+      isContentIndexEnabled: isContentIndexEnabled,
+      frontMatterParseObserver: nil,
+      imageReferenceScanObserver: nil
+    )
+  }
+
+  init(
+    fileManager: FileManager,
+    contentIndexDirectoryURL: URL?,
+    isContentIndexEnabled: Bool,
+    frontMatterParseObserver: (@Sendable () -> Void)?,
+    imageReferenceScanObserver: (@Sendable () -> Void)?
+  ) {
     self.fileSystem = SendableFileManager(fileManager)
+    self.contentIndexStore = isContentIndexEnabled
+      ? LocalContentImportIndexStore(
+        fileManager: fileManager,
+        directoryURL: contentIndexDirectoryURL
+      )
+      : nil
+    self.frontMatterParseObserver = frontMatterParseObserver
+    self.imageReferenceScanObserver = imageReferenceScanObserver
   }
 
   public func importDrafts(profile: SiteProfile) -> LocalContentImportResult {
@@ -207,6 +238,8 @@ public struct LocalContentImportService: Sendable {
     var importedDrafts: [ArticleDraft] = []
     var skippedPaths: [String] = []
     var issues: [LocalContentImportIssue] = []
+    let contentIndex = contentIndexStore?.snapshot(profile: profile, rootURL: rootURL)
+    var refreshedIndexEntries: [String: LocalContentImportIndexEntry] = [:]
 
     var seenRoots = Set<String>()
     let importRoots = [profile.contentRoot, SiteProfile.privateContentRoot]
@@ -243,6 +276,10 @@ public struct LocalContentImportService: Sendable {
         }
 
         guard !excludingRepositoryPaths.contains(repositoryPath.normalizedRelativePath()) else {
+          if let cached = contentIndex?.entries[repositoryPath],
+             cached.isCurrent(rootURL: rootURL, sourceURL: fileURL) {
+            refreshedIndexEntries[repositoryPath] = cached
+          }
           continue
         }
 
@@ -259,15 +296,39 @@ public struct LocalContentImportService: Sendable {
           continue
         }
 
+        if let cached = contentIndex?.entries[repositoryPath],
+           cached.isCurrent(rootURL: rootURL, sourceURL: fileURL) {
+          importedDrafts.append(cached.draft)
+          refreshedIndexEntries[repositoryPath] = cached
+          continue
+        }
+
+        let sourceMetadataBeforeRead = LocalContentImportFileMetadata.read(from: fileURL)
         do {
           let document = try BoundedFileReader.utf8String(
             relativePath: repositoryPath,
             under: rootURL,
             maximumByteCount: Self.maximumMarkdownDocumentByteCount
           )
-          importedDrafts.append(
-            draft(from: document, rootURL: rootURL, fileURL: fileURL, repositoryPath: repositoryPath, profile: profile)
+          let parsedDocument = parseImportDocument(document)
+          let importedDraft = draft(
+            from: parsedDocument,
+            rootURL: rootURL,
+            fileURL: fileURL,
+            repositoryPath: repositoryPath,
+            profile: profile
           )
+          importedDrafts.append(importedDraft)
+          if isCacheableImportedDraft(importedDraft, parsedDocument: parsedDocument),
+             let sourceMetadataBeforeRead,
+             let entry = contentIndexStore?.entry(
+            draft: importedDraft,
+            sourceURL: fileURL,
+            rootURL: rootURL,
+            expectedSourceMetadata: sourceMetadataBeforeRead
+          ) {
+            refreshedIndexEntries[repositoryPath] = entry
+          }
         } catch {
           skippedPaths.append(repositoryPath)
           issues.append(
@@ -279,6 +340,11 @@ public struct LocalContentImportService: Sendable {
           )
         }
       }
+    }
+
+    if var contentIndex, contentIndex.entries != refreshedIndexEntries {
+      contentIndex.entries = refreshedIndexEntries
+      contentIndexStore?.save(contentIndex)
     }
 
     return LocalContentImportResult(
@@ -448,8 +514,25 @@ public struct LocalContentImportService: Sendable {
     profile: SiteProfile,
     repositorySHA: String? = nil
   ) -> ArticleDraft {
-    let parsed = parseFrontMatter(document)
-    let values = parsed.values
+    draft(
+      from: parseImportDocument(document),
+      rootURL: rootURL,
+      fileURL: fileURL,
+      repositoryPath: repositoryPath,
+      profile: profile,
+      repositorySHA: repositorySHA
+    )
+  }
+
+  private func draft(
+    from parsedDocument: ParsedImportDocument,
+    rootURL: URL,
+    fileURL: URL,
+    repositoryPath: String,
+    profile: SiteProfile,
+    repositorySHA: String? = nil
+  ) -> ArticleDraft {
+    let values = parsedDocument.values
     let fileModificationDate = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
     let date = parsedDate(values["date"]?.first, profile: profile) ?? dateFromPath(repositoryPath) ?? fileModificationDate
     let title = values["title"]?.first?.nilIfEmpty ?? humanizedTitle(from: repositoryPath)
@@ -463,7 +546,7 @@ public struct LocalContentImportService: Sendable {
     let authors = values["authors"] ?? values["author"] ?? profile.defaultAuthor.nilIfEmpty.map { [$0] } ?? []
     let attachments = importedAttachments(
       values: values,
-      body: parsed.body,
+      imageReferences: parsedDocument.imageReferences,
       rootURL: rootURL,
       articleRepositoryPath: repositoryPath,
       profile: profile
@@ -481,7 +564,7 @@ public struct LocalContentImportService: Sendable {
       visibility: visibility,
       summary: summary,
       coverAttachmentID: attachments.coverAttachmentID,
-      bodyMarkdown: parsed.body.trimmingCharacters(in: .whitespacesAndNewlines),
+      bodyMarkdown: parsedDocument.body.trimmingCharacters(in: .whitespacesAndNewlines),
       attachments: attachments.attachments,
       status: draftFlag ? .draft : .published,
       createdAt: date,
@@ -495,7 +578,7 @@ public struct LocalContentImportService: Sendable {
 
   private func importedAttachments(
     values: [String: [String]],
-    body: String,
+    imageReferences: [ImportedMarkdownImageReference],
     rootURL: URL,
     articleRepositoryPath: String,
     profile: SiteProfile
@@ -503,7 +586,7 @@ public struct LocalContentImportService: Sendable {
     var attachments: [DraftAttachment] = []
     var indexesByPublishPath: [String: Int] = [:]
 
-    for reference in markdownImageReferences(in: body) {
+    for reference in imageReferences {
       guard let metadata = attachmentMetadata(
         imagePath: reference.path,
         altText: reference.altText,
@@ -535,6 +618,31 @@ public struct LocalContentImportService: Sendable {
     return (attachments, coverAttachmentID)
   }
 
+  private func isCacheableImportedDraft(
+    _ draft: ArticleDraft,
+    parsedDocument: ParsedImportDocument
+  ) -> Bool {
+    var localPublishPaths = Set(parsedDocument.imageReferences.map {
+      $0.path.trimmedForPublishing
+    })
+    if let coverPath = importedCoverPath(parsedDocument.values),
+       let localCoverPath = markdownImagePath(coverPath) {
+      localPublishPaths.insert(localCoverPath.trimmedForPublishing)
+    }
+
+    let attachmentsByPublishPath = Dictionary(
+      draft.attachments.map { ($0.relativePublishPath, $0) },
+      uniquingKeysWith: { first, _ in first }
+    )
+    return localPublishPaths.allSatisfy { publishPath in
+      guard let attachment = attachmentsByPublishPath[publishPath],
+            attachment.sourceFilePath?.nilIfEmpty != nil else {
+        return false
+      }
+      return true
+    }
+  }
+
   @discardableResult
   private func append(
     _ attachment: DraftAttachment,
@@ -552,9 +660,14 @@ public struct LocalContentImportService: Sendable {
     return index
   }
 
-  private func parseFrontMatter(_ document: String) -> (values: [String: [String]], body: String) {
+  private func parseImportDocument(_ document: String) -> ParsedImportDocument {
+    frontMatterParseObserver?()
     guard let parsed = DelimitedFrontMatterParser().split(document) else {
-      return ([:], document)
+      return ParsedImportDocument(
+        values: [:],
+        body: document,
+        imageReferences: markdownImageReferences(in: document)
+      )
     }
     let values: [String: [String]]
     switch parsed.delimiter {
@@ -563,7 +676,11 @@ public struct LocalContentImportService: Sendable {
     case .toml:
       values = parseTOMLFrontMatter(parsed.contentLines)
     }
-    return (values, parsed.body)
+    return ParsedImportDocument(
+      values: values,
+      body: parsed.body,
+      imageReferences: markdownImageReferences(in: parsed.body)
+    )
   }
 
   private func parseYAMLFrontMatter(_ lines: [String]) -> [String: [String]] {
@@ -751,7 +868,14 @@ public struct LocalContentImportService: Sendable {
     var path: String
   }
 
+  private struct ParsedImportDocument {
+    var values: [String: [String]]
+    var body: String
+    var imageReferences: [ImportedMarkdownImageReference]
+  }
+
   private func markdownImageReferences(in markdown: String) -> [ImportedMarkdownImageReference] {
+    imageReferenceScanObserver?()
     let pattern = MarkdownPatterns.imagePattern
     guard let regex = try? NSRegularExpression(pattern: pattern) else {
       return []

@@ -4,7 +4,7 @@ import SwiftUI
 
 enum WorkspaceQuickSearchScope: Equatable {
   case recent
-  case imageIssues
+  case imageResources
   case aiFixes
 }
 
@@ -18,8 +18,8 @@ enum WorkspaceQuickSearchPresentation {
     switch scope {
     case .recent:
       return "最近变更"
-    case .imageIssues:
-      return "问题文章"
+    case .imageResources:
+      return "图片资源"
     case .aiFixes:
       return DistributionFeaturePolicy.allowsExternalAIProviders
         ? String(localized: "AI 可修复")
@@ -111,9 +111,11 @@ struct WorkspaceQuickSearchView: View {
     let snapshot = searchSnapshot
 
     VStack(spacing: 0) {
-      searchField
-        .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
-        .padding(.vertical, WorkspaceSidebarMetrics.toolbarVerticalPadding)
+      if scope != .imageResources {
+        searchField
+          .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
+          .padding(.vertical, WorkspaceSidebarMetrics.toolbarVerticalPadding)
+      }
 
       if let repositoryContextStage {
         repositoryStageNavigation(repositoryContextStage)
@@ -285,8 +287,6 @@ struct WorkspaceQuickSearchView: View {
       return "arrow.left.arrow.right"
     case .history:
       return "clock.arrow.circlepath"
-    case .checks:
-      return "checkmark.shield"
     case .source:
       return "chevron.left.forwardslash.chevron.right"
     }
@@ -340,7 +340,9 @@ struct WorkspaceQuickSearchView: View {
 
   @ViewBuilder
   private func searchResultsContent(_ snapshot: WorkspaceQuickSearchSnapshot) -> some View {
-    if store.visibleDrafts.isEmpty {
+    if scope == .imageResources {
+      imageResourceState
+    } else if store.visibleDrafts.isEmpty {
       noArticlesState
     } else if scope == .aiFixes {
       switch contentHealthQueueState {
@@ -364,6 +366,27 @@ struct WorkspaceQuickSearchView: View {
     } else {
       resultList(snapshot)
     }
+  }
+
+  private var imageResourceState: some View {
+    VStack(spacing: 10) {
+      Image(systemName: "photo.stack")
+        .font(.title2)
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+      Text("图片资源")
+        .font(.workbenchItemTitle)
+      Text("图片工作区只管理图片资源。文章缺图、无效引用、过大图片等问题请到“检查”处理。")
+        .font(.workbenchSupporting)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .padding(.horizontal, WorkbenchSpacing.page)
+    .padding(.top, 28)
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("image-resource-sidebar-state")
   }
 
   private func resultList(_ snapshot: WorkspaceQuickSearchSnapshot) -> some View {
@@ -491,7 +514,7 @@ struct WorkspaceQuickSearchView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .padding(.horizontal, 20)
+    .padding(.horizontal, WorkbenchSpacing.page)
     .padding(.top, 28)
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("content-health-sidebar-ai-fix-loading")
@@ -516,7 +539,7 @@ struct WorkspaceQuickSearchView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .padding(.horizontal, 20)
+    .padding(.horizontal, WorkbenchSpacing.page)
     .padding(.top, 28)
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("content-health-sidebar-ai-fix-failure")
@@ -545,7 +568,7 @@ struct WorkspaceQuickSearchView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .padding(.horizontal, 20)
+    .padding(.horizontal, WorkbenchSpacing.page)
     .padding(.top, 28)
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("content-health-sidebar-ai-fix-empty")
@@ -593,8 +616,8 @@ struct WorkspaceQuickSearchView: View {
     switch scope {
     case .recent:
       return nil
-    case .imageIssues:
-      return imageIssueDraftIDs
+    case .imageResources:
+      return []
     case .aiFixes:
       switch contentHealthQueueState {
       case .ready(let orderedDraftIDs):
@@ -615,18 +638,6 @@ struct WorkspaceQuickSearchView: View {
 
   private var contentHealthQueueState: ContentHealthSidebarProjection.QueueState {
     contentHealthSidebarProjection.queueState(for: store.activeProfile.id)
-  }
-
-  private var imageIssueDraftIDs: Set<UUID>? {
-    guard imageWorkbenchContextStage != nil,
-          let summary = store.cachedImageWorkbenchSiteSummary else {
-      return nil
-    }
-    return Set(
-      summary.draftSummaries.lazy
-        .filter { $0.issueCount > 0 }
-        .map(\.draftID)
-    )
   }
 
   private func resultCountLabel(for snapshot: WorkspaceQuickSearchSnapshot) -> String {

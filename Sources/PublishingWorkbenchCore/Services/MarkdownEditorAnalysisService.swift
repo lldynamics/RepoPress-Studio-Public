@@ -26,25 +26,39 @@ public struct MarkdownEditorAnalysisService: Sendable {
 
   public func analyze(
     _ markdown: String,
+    diagnosticContext: MarkdownInlineDiagnosticContext = .empty,
     includeOutline: Bool = true
   ) -> MarkdownEditorAnalysisSnapshot {
-    Self.makeSnapshot(markdown, includeOutline: includeOutline)
+    Self.makeSnapshot(
+      markdown,
+      diagnosticContext: diagnosticContext,
+      includeOutline: includeOutline
+    )
   }
 
   public func analyzeInBackground(
     _ markdown: String,
+    diagnosticContext: MarkdownInlineDiagnosticContext = .empty,
     includeOutline: Bool = true
   ) async -> MarkdownEditorAnalysisSnapshot {
     await Task.detached(priority: .userInitiated) {
-      Self.makeSnapshot(markdown, includeOutline: includeOutline)
+      Self.makeSnapshot(
+        markdown,
+        diagnosticContext: diagnosticContext,
+        includeOutline: includeOutline
+      )
     }.value
   }
 
   private static func makeSnapshot(
     _ markdown: String,
+    diagnosticContext: MarkdownInlineDiagnosticContext,
     includeOutline: Bool
   ) -> MarkdownEditorAnalysisSnapshot {
-    let diagnostics = MarkdownInlineDiagnosticService.diagnostics(in: markdown)
+    let diagnostics = MarkdownInlineDiagnosticService.diagnostics(
+      in: markdown,
+      context: diagnosticContext
+    )
     guard !Task.isCancelled else {
       return MarkdownEditorAnalysisSnapshot(diagnostics: diagnostics, outlineItems: [])
     }

@@ -42,7 +42,7 @@ struct KnowledgeDatabaseFolderAssignment: Sendable {
 }
 
 final class KnowledgeDatabase: @unchecked Sendable {
-  static let currentSchemaVersion = 7
+  static let currentSchemaVersion = 8
 
   let lock = NSLock()
   var handle: OpaquePointer?

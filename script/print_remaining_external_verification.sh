@@ -80,15 +80,6 @@ if ! external_item_complete github-direct-publish \
     "Verify GitHub direct commit and PR publishing with a least-privilege token; Verify GitLab direct commit and MR publishing with a least-privilege token."
 fi
 
-if ! external_item_complete storekit-sandbox; then
-  add_target \
-    "storekit" \
-    "storekit-sandbox.env" \
-    "docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md" \
-    "StoreKit sandbox product lookup, purchase, restore, free quota, and Pro boundary evidence." \
-    "Verify StoreKit product ID, purchase, restore, and free quota behavior in sandbox."
-fi
-
 if ! external_item_complete remote-conflict-deployment-rollback; then
   add_target \
     "remote-recovery" \

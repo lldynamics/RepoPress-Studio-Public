@@ -3,6 +3,7 @@ import Foundation
 public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Sendable {
   case writing
   case library
+  case rss
   case siteStarter
   case sync
   case images
@@ -30,6 +31,8 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
       return "square.and.pencil"
     case .library:
       return "books.vertical"
+    case .rss:
+      return "dot.radiowaves.left.and.right"
     case .siteStarter:
       return "sparkles.rectangle.stack"
     case .sync:
@@ -50,13 +53,15 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
     case .writing:
       return "1"
     case .library:
+      return "2"
+    case .rss:
       return "9"
     case .siteStarter:
       return "5"
     case .sync:
-      return "2"
-    case .images:
       return "3"
+    case .images:
+      return "6"
     case .contentHealth:
       return "4"
     case .maintenance:
@@ -74,6 +79,7 @@ public enum WorkspaceSection: String, CaseIterable, Codable, Identifiable, Senda
 public enum WorkspaceCenterSurface: String, CaseIterable, Sendable {
   case editor
   case knowledgeLibrary
+  case rssReader
   case siteStarter
   case repository
   case images
@@ -120,6 +126,8 @@ public enum WorkspaceInspectorPresentation {
       return .articleMetadata
     case .library:
       return .unavailable
+    case .rss:
+      return .unavailable
     case .contentHealth:
       return isMaintenancePresented ? .unavailable : .articleChecks
     case .images:
@@ -153,6 +161,7 @@ public extension WorkspaceSection {
     switch self {
     case .writing: .editor
     case .library: .knowledgeLibrary
+    case .rss: .rssReader
     case .siteStarter: .siteStarter
     case .sync: .repository
     case .images: .images
@@ -199,9 +208,15 @@ public enum WorkspaceVisibilityPolicy {
   public static let commandMenuPrimarySections: [WorkspaceSection] = [
     .writing,
     .library,
+    .rss,
     .sync,
-    .images,
     .contentHealth,
+  ]
+
+  /// Feature workspaces reached from their owning primary workspace rather
+  /// than presented as another top-level destination.
+  public static let siteResourceSections: [WorkspaceSection] = [
+    .images,
   ]
 
   public static let secondaryEntrySections: [WorkspaceSection] = [
@@ -214,8 +229,8 @@ public enum WorkspaceVisibilityPolicy {
   public static let commandPaletteSections: [WorkspaceSection] = [
     .writing,
     .library,
+    .rss,
     .sync,
-    .images,
     .contentHealth,
     .siteStarter,
   ]

@@ -31,16 +31,17 @@ public struct RemoteReviewDraftBuilder {
   public func build(package: PublishPackage, profile: SiteProfile) -> RemoteReviewDraft {
     let body = reviewBody(package: package, profile: profile)
     let targetBranch = profile.branch.nilIfEmpty ?? "main"
+    let title = localizedReviewTitle(for: package)
     return RemoteReviewDraft(
       provider: profile.repositoryProvider,
       branchName: package.reviewBranchName,
       targetBranch: targetBranch,
-      title: package.reviewTitle,
+      title: title,
       body: body,
       webURL: reviewWebURL(
         branchName: package.reviewBranchName,
         targetBranch: targetBranch,
-        title: package.reviewTitle,
+        title: title,
         profile: profile,
         body: body
       )
@@ -55,7 +56,7 @@ public struct RemoteReviewDraftBuilder {
 
     let branchName = BatchPublishCommandBuilder().reviewBranchName(for: items, now: plan.generatedAt)
     let targetBranch = profile.branch.nilIfEmpty ?? "main"
-    let title = "Publish \(items.count) articles"
+    let title = CoreL10n.format("发布 %d 篇文章", items.count)
     let body = batchReviewBody(items: items, plan: plan, profile: profile, targetBranch: targetBranch)
 
     return RemoteReviewDraft(
@@ -98,27 +99,26 @@ public struct RemoteReviewDraftBuilder {
 
   private func reviewBody(package: PublishPackage, profile: SiteProfile) -> String {
     let checklist = package.reviewChecklist
-      .map { "- [ ] \($0)" }
+      .map { "- [ ] \(localizedChecklistItem($0))" }
       .joined(separator: "\n")
     let files = package.files
       .map { file in
-        let action = file.operation == .delete ? file.operation.displayName : file.kind.displayName
-        return "- \(action): `\(file.repositoryPath)`"
+        CoreL10n.format("- %@：`%@`", localizedReviewAction(for: file), file.repositoryPath)
       }
       .joined(separator: "\n")
 
-    return """
-    ## 发布内容
-    - 站点：\(profile.name)
-    - 目标分支：\(profile.branch.nilIfEmpty ?? "main")
-    - 文章路径：`\(package.markdownPath)`
-
-    ## 文件
-    \(files)
-
-    ## 检查清单
-    \(checklist)
-    """
+    return [
+      CoreL10n.text("## 发布内容"),
+      CoreL10n.format("- 站点：%@", profile.name),
+      CoreL10n.format("- 目标分支：%@", profile.branch.nilIfEmpty ?? "main"),
+      CoreL10n.format("- 文章路径：`%@`", package.markdownPath),
+      "",
+      CoreL10n.text("## 文件"),
+      files,
+      "",
+      CoreL10n.text("## 检查清单"),
+      checklist,
+    ].joined(separator: "\n")
   }
 
   private func batchReviewBody(
@@ -128,36 +128,84 @@ public struct RemoteReviewDraftBuilder {
     targetBranch: String
   ) -> String {
     let articles = items
-      .map { "- \($0.draftTitle): `\($0.markdownPath)`（\($0.changedFileCount) 个变化）" }
+      .map {
+        CoreL10n.format("- %@：`%@`（%d 个变化）", $0.draftTitle, $0.markdownPath, $0.changedFileCount)
+      }
       .joined(separator: "\n")
     let files = items
       .flatMap { item in
         item.package.files.map { file in
-          let action = file.operation == .delete ? file.operation.displayName : file.kind.displayName
-          return "- \(action): `\(file.repositoryPath)`"
+          CoreL10n.format("- %@：`%@`", localizedReviewAction(for: file), file.repositoryPath)
         }
       }
       .joined(separator: "\n")
 
-    return """
-    ## 批量发布内容
-    - 站点：\(profile.name)
-    - 目标分支：\(targetBranch)
-    - 文章数：\(items.count)
-    - 文件变化：\(plan.changedFileCount)
+    return [
+      CoreL10n.text("## 批量发布内容"),
+      CoreL10n.format("- 站点：%@", profile.name),
+      CoreL10n.format("- 目标分支：%@", targetBranch),
+      CoreL10n.format("- 文章数：%d", items.count),
+      CoreL10n.format("- 文件变化：%d", plan.changedFileCount),
+      "",
+      CoreL10n.text("## 文章"),
+      articles,
+      "",
+      CoreL10n.text("## 文件"),
+      files,
+      "",
+      CoreL10n.text("## 检查清单"),
+      "- [ ] \(CoreL10n.text("Front Matter 已检查"))",
+      "- [ ] \(CoreL10n.text("图片路径和 alt/caption 已检查"))",
+      "- [ ] \(CoreL10n.text("本地预览已确认"))",
+      "- [ ] \(CoreL10n.text("公开风险和私密内容已确认"))",
+    ].joined(separator: "\n")
+  }
 
-    ## 文章
-    \(articles)
+  private func localizedReviewTitle(for package: PublishPackage) -> String {
+    if package.reviewTitle == "Publish \(package.title)" {
+      return CoreL10n.format("发布 %@", package.title)
+    }
+    if package.reviewTitle == "Delete \(package.title)" {
+      return CoreL10n.format("删除 %@", package.title)
+    }
+    return package.reviewTitle
+  }
 
-    ## 文件
-    \(files)
+  private func localizedReviewAction(for file: PublishPackageFile) -> String {
+    if file.operation == .delete {
+      return CoreL10n.text("删除")
+    }
+    switch file.kind {
+    case .markdown:
+      return "Markdown"
+    case .image:
+      return CoreL10n.text("图片")
+    case .video:
+      return CoreL10n.text("视频")
+    }
+  }
 
-    ## 检查清单
-    - [ ] Front Matter 已检查
-    - [ ] 图片路径和 alt/caption 已检查
-    - [ ] 本地预览已确认
-    - [ ] 公开风险和私密内容已确认
-    """
+  private func localizedChecklistItem(_ item: String) -> String {
+    switch item {
+    case "Front Matter 已检查":
+      return CoreL10n.text("Front Matter 已检查")
+    case "图片、视频路径和 alt/caption 已检查":
+      return CoreL10n.text("图片、视频路径和 alt/caption 已检查")
+    case "图片路径和 alt/caption 已检查":
+      return CoreL10n.text("图片路径和 alt/caption 已检查")
+    case "本地预览已确认":
+      return CoreL10n.text("本地预览已确认")
+    case "公开风险和私密内容已确认":
+      return CoreL10n.text("公开风险和私密内容已确认")
+    case "已确认文章仍在回收站或已永久删除":
+      return CoreL10n.text("已确认文章仍在回收站或已永久删除")
+    case "已核对待删除的仓库路径":
+      return CoreL10n.text("已核对待删除的仓库路径")
+    case "批量发布清单已确认":
+      return CoreL10n.text("批量发布清单已确认")
+    default:
+      return item
+    }
   }
 
   private func reviewWebURL(

@@ -6,6 +6,13 @@ import XCTest
 final class AIPublishingSelectionEditPreviewTests: XCTestCase {
   func testSelectionEditPreviewExposesModelSummary() {
     let draftID = UUID()
+    let citation = KnowledgeCitation(
+      id: "preview-citation",
+      documentID: UUID(),
+      chunkID: UUID(),
+      title: "本地资料",
+      excerpt: "引用片段"
+    )
     let preview = AIPublishingSelectionEditPreview(
       draftID: draftID,
       sourceBodyMarkdown: "text",
@@ -14,7 +21,8 @@ final class AIPublishingSelectionEditPreviewTests: XCTestCase {
       originalText: "text",
       replacementText: "polished text",
       providerName: "DeepSeek",
-      model: "deepseek-v4-pro"
+      model: "deepseek-v4-pro",
+      knowledgeCitations: [citation]
     )
     let legacyPreview = AIPublishingSelectionEditPreview(
       draftID: draftID,
@@ -26,7 +34,9 @@ final class AIPublishingSelectionEditPreviewTests: XCTestCase {
     )
 
     XCTAssertEqual(preview.modelSummary, "DeepSeek · deepseek-v4-pro")
+    XCTAssertEqual(preview.knowledgeCitations, [citation])
     XCTAssertNil(legacyPreview.modelSummary)
+    XCTAssertTrue(legacyPreview.knowledgeCitations.isEmpty)
   }
 
   func testApplySelectionEditPreviewReplacesOriginalRange() throws {

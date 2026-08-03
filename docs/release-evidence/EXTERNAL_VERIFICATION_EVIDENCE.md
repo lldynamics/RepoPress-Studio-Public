@@ -9,8 +9,7 @@ Record only redacted evidence. Do not paste tokens, authorization headers, local
 - [ ] `gitlab-direct-publish` - GitLab direct commit evidence: test project, token scope summary, commit SHA, Pipeline or Pages status, and release ledger entry.
 - [ ] `gitlab-review-publish` - GitLab MR evidence: MR URL, provider API MR iid/state, source branch, target branch, file changes, deployment status, and rollback draft.
 - [ ] `remote-conflict-deployment-rollback` - Remote conflict, pending/offline deployment, retry, and rollback evidence.
-- [ ] `storekit-sandbox` - StoreKit sandbox purchase, restore, entitlement source, free quota, and Pro boundary event evidence.
-- [x] `app-store-screenshots` - App Store 截图和严格门禁: 10 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
+- [x] `app-store-screenshots` - App Store 截图和严格门禁: 9 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
 
 ## Evidence Notes
 
@@ -61,9 +60,9 @@ For review-mode live verification, `script/verify_remote_publish_live.sh` genera
 ## Manual Evidence Commands
 
 Use this only after the external action has actually been performed. Do not use it to mark planned work as complete.
-Use `script/prepare_external_verification_envs.sh` to create private copies of
-`storekit-sandbox.env.example` and `remote-recovery.env.example` outside the
-repository before filling sandbox or recovery summaries.
+Use `script/prepare_external_verification_envs.sh` to create a private copy of
+`remote-recovery.env.example` outside the repository before filling recovery
+summaries.
 
 ```sh
 script/record_external_verification_evidence.sh --dry-run
@@ -112,22 +111,6 @@ script/record_external_verification_evidence.sh \
   --rollback-draft "Rollback draft listed the source branch, file path, and revert path." \
   --execute
 
-script/record_storekit_sandbox_evidence.sh \
-  --product-lookup "Sandbox product lookup loaded personal.site.publisher.pro from the App Store sandbox product catalog." \
-  --purchase "Purchase completed and entitlement source changed to StoreKit." \
-  --restore "Restore reapplied Pro entitlement after clearing local state." \
-  --free-quota "Free quota boundary showed upgrade copy before purchase and no quota consumption after Pro unlock." \
-  --boundary-events "Recent Pro boundary events showed free-plan block before purchase and Pro no-quota allow after unlock." \
-  --dry-run
-
-script/record_storekit_sandbox_evidence.sh \
-  --product-lookup "Sandbox product lookup loaded personal.site.publisher.pro from the App Store sandbox product catalog." \
-  --purchase "Purchase completed and entitlement source changed to StoreKit." \
-  --restore "Restore reapplied Pro entitlement after clearing local state." \
-  --free-quota "Free quota boundary showed upgrade copy before purchase and no quota consumption after Pro unlock." \
-  --boundary-events "Recent Pro boundary events showed free-plan block before purchase and Pro no-quota allow after unlock." \
-  --execute
-
 script/record_remote_recovery_evidence.sh \
   --remote-conflict-preview "Direct publish was blocked after a same-path remote edit; conflict package listed the changed path." \
   --pending-offline-state "Failed or unknown deployment state was kept as pending retry in the release ledger." \
@@ -144,8 +127,8 @@ script/record_remote_recovery_evidence.sh \
 
 script/record_external_verification_evidence.sh \
   --item app-store-screenshots \
-  --summary "Ten manifest screenshots captured; screenshot privacy and strict screenshot gates passed." \
-  --screenshot-set "Captured manifest screenshot IDs: writing, ai-chat, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock." \
+  --summary "Eight manifest screenshots captured; screenshot privacy and strict screenshot gates passed." \
+  --screenshot-set "Captured manifest screenshot IDs: writing, ai-chat, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, privacy-lock." \
   --screenshot-privacy-gate "check_screenshot_privacy.sh passed with no local paths, tokens, or private article text." \
   --screenshot-strict-gate "STRICT_SCREENSHOTS=1 check_screenshots.sh and strict release gate output were reviewed." \
   --screenshot-source-fingerprint "$(script/screenshot_evidence_fingerprint.py)" \
@@ -157,17 +140,17 @@ script/record_app_store_screenshot_evidence.sh --execute
 
 ### App Store 截图和严格门禁
 - 9 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
-- Screenshot set: Captured manifest screenshot IDs: writing, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
+- Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, privacy-lock.
 - Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
 - Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
 - Screenshot source fingerprint: sha256:6a62585b18f6092a7a4ba34e2587a2d8fde8b8d2a6d8615dabae00c182f259b8
-- 10 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
-- Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
+- 9 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
+- Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, privacy-lock.
 - Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
 - Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
 - Screenshot source fingerprint: sha256:02c1f6dff6e546a27dc05fb446b1e1825212e640ba765be60277b31722a44e16
-- 10 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
-- Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock.
+- 9 App Store screenshots captured; screenshot privacy and strict screenshot gates passed.
+- Screenshot set: Captured manifest screenshot IDs: writing, ai-chat, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, privacy-lock.
 - Screenshot privacy gate: check_screenshot_privacy.sh passed with no local paths, tokens, or private article text.
 - Screenshot strict gate: STRICT_SCREENSHOTS=1 check_screenshots.sh and screenshot manifest sync passed.
 - Screenshot source fingerprint: sha256:51e1a801f99bc808013db380af6b6000b1b73c4d19704f69f165767df7c86260

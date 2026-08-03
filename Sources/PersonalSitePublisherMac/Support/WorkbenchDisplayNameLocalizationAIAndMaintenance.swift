@@ -1,4 +1,6 @@
+import Foundation
 import PublishingWorkbenchCore
+import SwiftUI
 
 extension AIPublishingDefaultCapability {
   var workbenchDisplayNameSemanticKey: String {
@@ -15,6 +17,54 @@ extension AIPublishingDefaultCapability {
   }
 
   var fallbackDisplayName: String { displayName }
+}
+
+extension AIPublishingChatQuickAction {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .polishSuggestions: "display.ai-publishing-chat-quick-action.polish-suggestions"
+    case .tagSuggestions: "display.ai-publishing-chat-quick-action.tag-suggestions"
+    case .summary: "display.ai-publishing-chat-quick-action.summary"
+    case .proofread: "display.ai-publishing-chat-quick-action.proofread"
+    case .englishSummary: "display.ai-publishing-chat-quick-action.english-summary"
+    }
+  }
+
+  var compactWorkbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .polishSuggestions: "display.ai-publishing-chat-quick-action.polish-suggestions.compact"
+    case .tagSuggestions: "display.ai-publishing-chat-quick-action.tag-suggestions.compact"
+    case .summary: "display.ai-publishing-chat-quick-action.summary.compact"
+    case .proofread: "display.ai-publishing-chat-quick-action.proofread.compact"
+    case .englishSummary: "display.ai-publishing-chat-quick-action.english-summary.compact"
+    }
+  }
+
+  var localizedCompactDisplayNameKey: LocalizedStringKey {
+    LocalizedStringKey(compactWorkbenchDisplayNameSemanticKey)
+  }
+
+  var fallbackDisplayName: String { displayName }
+
+  var workbenchPromptSemanticKey: String {
+    switch self {
+    case .polishSuggestions: "display.ai-publishing-chat-quick-action.polish-suggestions.prompt"
+    case .tagSuggestions: "display.ai-publishing-chat-quick-action.tag-suggestions.prompt"
+    case .summary: "display.ai-publishing-chat-quick-action.summary.prompt"
+    case .proofread: "display.ai-publishing-chat-quick-action.proofread.prompt"
+    case .englishSummary: "display.ai-publishing-chat-quick-action.english-summary.prompt"
+    }
+  }
+
+  var localizedPrompt: String {
+    NSLocalizedString(
+      workbenchPromptSemanticKey,
+      tableName: nil,
+      bundle: .main,
+      value: prompt,
+      comment: "AI assistant quick-action prompt"
+    )
+  }
 }
 
 extension AIPublishingPromptLibraryScope {
@@ -55,6 +105,26 @@ extension AIPublishingQuickPromptGroup {
   }
 
   var fallbackDisplayName: String { displayName }
+
+  var workbenchDetailSemanticKey: String {
+    switch self {
+    case .writing: "display.ai-publishing-quick-prompt-group.writing.detail"
+    case .editing: "display.ai-publishing-quick-prompt-group.editing.detail"
+    case .publishing: "display.ai-publishing-quick-prompt-group.publishing.detail"
+    case .distribution: "display.ai-publishing-quick-prompt-group.distribution.detail"
+    case .maintenance: "display.ai-publishing-quick-prompt-group.maintenance.detail"
+    }
+  }
+
+  var localizedDetail: String {
+    NSLocalizedString(
+      workbenchDetailSemanticKey,
+      tableName: nil,
+      bundle: .main,
+      value: detail,
+      comment: "AI prompt group detail"
+    )
+  }
 }
 
 extension AIPublishingQuickPrompt {
@@ -113,6 +183,26 @@ extension AIPublishingQuickPrompt {
   }
 
   var fallbackDisplayName: String { displayName }
+}
+
+extension AIContextReferenceKind {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .currentSelection: "display.ai-context-reference-kind.current-selection"
+    case .currentArticle: "display.ai-context-reference-kind.current-article"
+    case .specifiedArticle: "display.ai-context-reference-kind.specified-article"
+    case .siteProfile: "display.ai-context-reference-kind.site-profile"
+    case .knowledgeEntry: "display.ai-context-reference-kind.knowledge-entry"
+    case .publishCheck: "display.ai-context-reference-kind.publish-check"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
+extension AIContextReference {
+  /// User-authored resource names are identifiers, not localizable model labels.
+  var workbenchResourceName: String { displayName }
 }
 
 extension AIPublishingChatRole {

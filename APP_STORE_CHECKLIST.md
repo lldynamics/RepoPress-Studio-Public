@@ -24,7 +24,6 @@
 - [x] Complete age rating, availability, pricing, tax, banking, and agreement fields in the owner account.
   Evidence: Live App Store Connect review on 2026-07-19; content rights remains a separate unchecked legal declaration below.
 - [ ] Complete the content-rights declaration in the owner account.
-- [ ] Create and submit **RepoPress Pro** (`personal.site.publisher.pro`) with the first app version if it is not already approved.
 
 ## Localization
 
@@ -48,18 +47,17 @@
 ## Screenshots
 
 - [x] Add a repeatable screenshot capture or verification script.
-- [x] Capture the nine App Store manifest screens: writing, local knowledge library, sync/API publish, SEO/social preview, deployment status, maintenance, general drafts, Pro settings, and quick hide.
-  Evidence: 9 个清单截图已重新采集；截图来源指纹、隐私扫描、尺寸/透明通道和界面映射门禁均已通过。
+- [x] Capture the nine App Store manifest screens: writing, BYOK AI, local knowledge library, sync/API publish, SEO/social preview, deployment status, maintenance, general drafts, and quick hide.
+  Evidence: 8 个清单截图已重新采集；截图来源指纹、隐私扫描、尺寸/透明通道和界面映射门禁均已通过。
 - [x] Verify screenshots contain no private content, local tokens, or personal paths.
   Evidence: 截图隐私门禁已通过。
 
-## Privacy And Monetization
+## Privacy And Product Boundaries
 
 - [x] Review privacy policy/support copy against in-app quick hide and private-content behavior.
   Evidence: 隐私/支持文案门禁已通过，已覆盖快速隐藏、私密内容遮挡和敏感信息 redaction 规则。
-- [ ] Verify StoreKit product ID, purchase, restore, and free quota behavior in sandbox.
-- [x] Confirm free users see clear upgrade copy before blocked online publishing or batch publishing actions.
-  Evidence: `MonetizationTests` and `script/check_storekit.sh` verify GitHub/GitLab online publishing and batch publishing expose quota, upgrade reason, and purchase/restore next steps; provider-funded AI requests remain outside the Pro quota.
+- [x] Confirm the product has no in-app purchase, entitlement, usage quota, or paid-feature surface.
+  Evidence: the Swift source and screenshot surface map contain no commercial state, configuration, or settings route; BYOK AI and publishing checks remain available through their existing safety gates.
 
 ## Publishing Workflow
 

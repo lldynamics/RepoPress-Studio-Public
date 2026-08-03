@@ -118,6 +118,7 @@ public final class WorkbenchLocalSitePreviewFeatureFacade: ObservableObject {
     observe(store.publishingStore.$activeProfileID)
     observe(store.publishingStore.$localSitePreviewPlan)
     observe(store.publishingStore.$localSitePreviewRuntimeStatus)
+    observe(store.publishingStore.$localSitePreviewRefreshToken)
   }
 
   public var activeProfileID: UUID {
@@ -132,6 +133,10 @@ public final class WorkbenchLocalSitePreviewFeatureFacade: ObservableObject {
     store.localSitePreviewRuntimeStatus
   }
 
+  public var refreshToken: UInt64 {
+    store.publishingStore.localSitePreviewRefreshToken
+  }
+
   public func start() {
     store.startLocalSitePreview()
   }
@@ -142,6 +147,10 @@ public final class WorkbenchLocalSitePreviewFeatureFacade: ObservableObject {
 
   public func refreshStatus() {
     store.refreshLocalSitePreviewRuntimeStatus()
+  }
+
+  public func reload() {
+    store.publishingStore.reloadLocalSitePreview()
   }
 
   public func verifyReachability() async {

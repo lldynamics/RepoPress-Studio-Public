@@ -82,6 +82,7 @@ struct SiteKindChangeConfirmationView: View {
       .padding(16)
     }
     .frame(minWidth: 660, idealWidth: 760, minHeight: 520, idealHeight: 620)
+    .workbenchGlassContainer(material: .regularMaterial)
   }
 
   private var proposedProfile: SiteProfile {

@@ -31,6 +31,39 @@ final class LocalGitPublishServiceTests: XCTestCase {
     XCTAssertTrue(try git(["show", "--name-only", "--format="], rootURL: rootURL).contains("content/posts/direct-commit.md"))
   }
 
+  func testDirectCommitIgnoresSuccessfulStatusWarningOnStandardError() throws {
+    let rootURL = try makeGitRepositoryFixture()
+    let wrapperURL = try makeGitWrapperEmittingStatusWarning()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+      try? FileManager.default.removeItem(at: wrapperURL.deletingLastPathComponent())
+    }
+
+    var profile = SiteProfile.defaultProfile
+    profile.rememberLocalRepositoryRoot(rootURL)
+    profile.markdownPathPattern = "content/posts/{slug}.md"
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Standard Error Warning",
+      slug: "stderr-warning",
+      draft: false,
+      bodyMarkdown: "A successful Git warning must not be parsed as porcelain status output."
+    )
+    let package = PublishPackageBuilder().build(draft: draft, profile: profile)
+    let service = LocalGitPublishService(
+      gitCommandRunner: GitCommandRunner(executableURL: wrapperURL)
+    )
+
+    let result = try service.publish(
+      package: package,
+      profile: profile,
+      mode: .directCommit
+    )
+
+    XCTAssertEqual(result.committedPaths, ["content/posts/stderr-warning.md"])
+    XCTAssertEqual(try git(["status", "--porcelain"], rootURL: rootURL), "")
+  }
+
   func testReviewBranchCommitCreatesBranchWithoutPushing() throws {
     let rootURL = try makeGitRepositoryFixture()
     defer {
@@ -284,6 +317,23 @@ final class LocalGitPublishServiceTests: XCTestCase {
     try git(["add", "README.md"], rootURL: rootURL)
     try git(["commit", "-m", "Initial"], rootURL: rootURL)
     return rootURL
+  }
+
+  private func makeGitWrapperEmittingStatusWarning() throws -> URL {
+    let directoryURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("PersonalSitePublisherMacGitWrapper-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+    let scriptURL = directoryURL.appendingPathComponent("git")
+    let script = """
+    #!/bin/sh
+    if [ "$3" = "status" ]; then
+      printf 'warning: simulated fsmonitor failure\n' >&2
+    fi
+    exec /usr/bin/git "$@"
+    """
+    try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+    return scriptURL
   }
 
   @discardableResult

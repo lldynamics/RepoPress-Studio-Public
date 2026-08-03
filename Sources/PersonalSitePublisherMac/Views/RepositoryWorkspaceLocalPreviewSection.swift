@@ -16,6 +16,12 @@ extension RepositoryWorkspaceView {
             .font(.callout.monospaced())
             .foregroundStyle(.secondary)
             .textSelection(.enabled)
+          Label(
+            plan.usesDynamicPort ? "已自动切换动态端口" : "使用默认端口",
+            systemImage: plan.usesDynamicPort ? "arrow.triangle.2.circlepath" : "network"
+          )
+            .font(.caption)
+            .foregroundStyle(plan.usesDynamicPort ? WorkbenchTheme.warning : .secondary)
         }
 
         let currentArticleURL = store.selectedDraft.flatMap { store.localSitePreviewURL(for: $0) }
@@ -24,6 +30,16 @@ extension RepositoryWorkspaceView {
           alignment: .leading,
           spacing: 8
         ) {
+          Button {
+            localSitePreviewCommandAction?.open()
+          } label: {
+            Label("在应用内预览", systemImage: "rectangle.inset.filled")
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .workbenchProminentActionStyle()
+          .disabled(localSitePreviewCommandAction == nil || !plan.diagnostics.isReadyToStart)
+          .accessibilityIdentifier("repository-preview-open-in-app")
+
           Button {
             store.startLocalSitePreview()
           } label: {
@@ -88,6 +104,10 @@ extension RepositoryWorkspaceView {
           .font(.caption)
           .foregroundStyle(store.localSitePreviewRuntimeStatus.isReachable ? WorkbenchTheme.success : Color.secondary)
           .accessibilityIdentifier("repository-preview-runtime-status")
+
+        Label(plan.diagnostics.statusTitle, systemImage: plan.diagnostics.isReadyToStart ? "checkmark.seal" : "exclamationmark.triangle")
+          .font(.caption)
+          .foregroundStyle(plan.diagnostics.isReadyToStart ? WorkbenchTheme.success : WorkbenchTheme.warning)
 
         ForEach(plan.notes, id: \.self) { note in
           Label(note, systemImage: "info.circle")

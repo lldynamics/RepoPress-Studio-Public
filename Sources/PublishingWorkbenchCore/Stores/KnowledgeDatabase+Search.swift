@@ -5,7 +5,7 @@ extension KnowledgeDatabase {
   func search(
     query: String,
     limit: Int,
-    onlyAIAllowed: Bool,
+    onlyRemoteAIAllowed: Bool,
     documentIDs: Set<UUID>? = nil
   ) throws -> [KnowledgeSearchResult] {
     try Task.checkCancellation()
@@ -17,7 +17,7 @@ extension KnowledgeDatabase {
         let ftsResults = try searchFTS(
           query: trimmed,
           limit: limit,
-          onlyAIAllowed: onlyAIAllowed,
+          onlyRemoteAIAllowed: onlyRemoteAIAllowed,
           documentIDs: documentIDs
         )
         if !ftsResults.isEmpty {
@@ -27,7 +27,7 @@ extension KnowledgeDatabase {
         return try searchLike(
           query: trimmed,
           limit: limit,
-          onlyAIAllowed: onlyAIAllowed,
+          onlyRemoteAIAllowed: onlyRemoteAIAllowed,
           documentIDs: documentIDs
         )
       }
@@ -40,7 +40,8 @@ extension KnowledgeDatabase {
         let sql = """
       SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
              d.tags_json, d.source_url, d.source_name, d.folder_id,
-             d.source_byte_count, d.allows_ai_use, d.is_archived,
+             d.source_byte_count, d.allows_ai_use, d.allows_local_semantic_index,
+             d.is_archived,
              d.imported_at, d.updated_at, d.current_revision_id,
              c.id, c.document_id, c.revision_id, c.ordinal, c.heading_path,
              c.locator, c.content, c.token_estimate, c.content_hash
@@ -48,6 +49,7 @@ extension KnowledgeDatabase {
       JOIN knowledge_documents d ON d.id = c.document_id
       WHERE c.revision_id = d.current_revision_id
         AND d.is_archived = 0
+        AND d.allows_local_semantic_index = 1
       ORDER BY d.updated_at DESC, c.ordinal ASC;
       """
         let statement = try prepare(sql)
@@ -56,8 +58,8 @@ extension KnowledgeDatabase {
         while sqlite3_step(statement) == SQLITE_ROW {
           try Task.checkCancellation()
           output.append(KnowledgeSemanticIndexRecord(
-            document: decodeDocument(statement, offset: 0),
-            chunk: decodeChunk(statement, offset: 16)
+            document: try decodeDocument(statement, offset: 0),
+            chunk: try decodeChunk(statement, offset: 17)
           ))
         }
         try Task.checkCancellation()
@@ -77,7 +79,8 @@ extension KnowledgeDatabase {
         let sql = """
       SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
              d.tags_json, d.source_url, d.source_name, d.folder_id,
-             d.source_byte_count, d.allows_ai_use, d.is_archived,
+             d.source_byte_count, d.allows_ai_use, d.allows_local_semantic_index,
+             d.is_archived,
              d.imported_at, d.updated_at, d.current_revision_id,
              c.id, c.document_id, c.revision_id, c.ordinal, c.heading_path,
              c.locator, c.content, c.token_estimate, c.content_hash,
@@ -88,6 +91,7 @@ extension KnowledgeDatabase {
         ON e.chunk_id = c.id AND e.model_id = ?
       WHERE c.revision_id = d.current_revision_id
         AND d.is_archived = 0
+        AND d.allows_local_semantic_index = 1
       ORDER BY d.updated_at DESC, c.ordinal ASC;
       """
         let statement = try prepare(sql)
@@ -96,16 +100,20 @@ extension KnowledgeDatabase {
         var output: [KnowledgeSemanticIndexRecord] = []
         while sqlite3_step(statement) == SQLITE_ROW {
           try Task.checkCancellation()
-          let chunk = decodeChunk(statement, offset: 16)
-          let storedRevisionID = text(statement, 25).flatMap(UUID.init(uuidString:))
-          let storedDimension = Int(sqlite3_column_int64(statement, 26))
-          let storedVector = KnowledgeSemanticVectorStorage.decodeVector(statement, index: 27, dimension: expectedDimension)
+          let chunk = try decodeChunk(statement, offset: 17)
+          let storedRevisionID = try optionalUUID(
+            statement,
+            26,
+            field: "knowledge_chunk_embeddings.revision_id"
+          )
+          let storedDimension = Int(sqlite3_column_int64(statement, 27))
+          let storedVector = KnowledgeSemanticVectorStorage.decodeVector(statement, index: 28, dimension: expectedDimension)
           let needsRepair = storedRevisionID != chunk.revisionID
             || storedDimension != expectedDimension
             || !KnowledgeSemanticVectorStorage.isValidStoredSemanticVector(storedVector, expectedDimension: expectedDimension)
           guard needsRepair else { continue }
           output.append(KnowledgeSemanticIndexRecord(
-            document: decodeDocument(statement, offset: 0),
+            document: try decodeDocument(statement, offset: 0),
             chunk: chunk
           ))
         }
@@ -128,10 +136,16 @@ extension KnowledgeDatabase {
         var output: [String: Set<UUID>] = [:]
         while sqlite3_step(statement) == SQLITE_ROW {
           try Task.checkCancellation()
-          guard let modelIdentifier = text(statement, 0)?.nilIfEmpty,
-                let chunkID = text(statement, 1).flatMap(UUID.init(uuidString:)) else {
-            continue
+          guard let modelIdentifier = text(statement, 0)?.nilIfEmpty else {
+            throw KnowledgeLibraryError.databaseIntegrity(
+              "knowledge_chunk_embeddings.model_id 为空。"
+            )
           }
+          let chunkID = try requiredUUID(
+            statement,
+            1,
+            field: "knowledge_chunk_embeddings.chunk_id"
+          )
           output[modelIdentifier, default: []].insert(chunkID)
         }
         try Task.checkCancellation()
@@ -197,7 +211,7 @@ extension KnowledgeDatabase {
   func semanticSearch(
     queryVector: KnowledgeSemanticVector,
     limit: Int,
-    onlyAIAllowed: Bool,
+    onlyRemoteAIAllowed: Bool,
     documentIDs: Set<UUID>? = nil
   ) throws -> [KnowledgeSearchResult] {
     guard !queryVector.isEmpty, limit > 0 else { return [] }
@@ -208,7 +222,8 @@ extension KnowledgeDatabase {
         let sql = """
       SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
              d.tags_json, d.source_url, d.source_name, d.folder_id,
-             d.source_byte_count, d.allows_ai_use, d.is_archived,
+             d.source_byte_count, d.allows_ai_use, d.allows_local_semantic_index,
+             d.is_archived,
              d.imported_at, d.updated_at, d.current_revision_id,
              c.id, c.document_id, c.revision_id, c.ordinal, c.heading_path,
              c.locator, c.content, c.token_estimate, c.content_hash,
@@ -221,6 +236,7 @@ extension KnowledgeDatabase {
         AND e.revision_id = c.revision_id
         AND c.revision_id = d.current_revision_id
         AND d.is_archived = 0
+        AND d.allows_local_semantic_index = 1
         AND (? = 0 OR d.allows_ai_use = 1)
         \(idClause.sql)
       """
@@ -231,7 +247,7 @@ extension KnowledgeDatabase {
         index += 1
         sqlite3_bind_int64(statement, index, sqlite3_int64(queryVector.values.count))
         index += 1
-        sqlite3_bind_int(statement, index, onlyAIAllowed ? 1 : 0)
+        sqlite3_bind_int(statement, index, onlyRemoteAIAllowed ? 1 : 0)
         index += 1
         for id in idClause.ids {
           bind(id.uuidString, at: index, to: statement)
@@ -241,7 +257,7 @@ extension KnowledgeDatabase {
         var output: [KnowledgeSearchResult] = []
         while sqlite3_step(statement) == SQLITE_ROW {
           try Task.checkCancellation()
-          let storedVector = KnowledgeSemanticVectorStorage.decodeVector(statement, index: 25, dimension: queryVector.values.count)
+          let storedVector = KnowledgeSemanticVectorStorage.decodeVector(statement, index: 26, dimension: queryVector.values.count)
           guard KnowledgeSemanticVectorStorage.isValidStoredSemanticVector(
             storedVector,
             expectedDimension: queryVector.values.count
@@ -249,8 +265,8 @@ extension KnowledgeDatabase {
           let similarity = KnowledgeSemanticVectorStorage.cosineSimilarity(queryVector.values, storedVector)
           guard similarity >= queryVector.minimumSimilarity else { continue }
           output.append(KnowledgeSearchResult(
-            document: decodeDocument(statement, offset: 0),
-            chunk: decodeChunk(statement, offset: 16),
+            document: try decodeDocument(statement, offset: 0),
+            chunk: try decodeChunk(statement, offset: 17),
             score: similarity,
             signals: [.semantic]
           ))
@@ -391,14 +407,15 @@ extension KnowledgeDatabase {
   func searchFTS(
     query: String,
     limit: Int,
-    onlyAIAllowed: Bool,
+    onlyRemoteAIAllowed: Bool,
     documentIDs: Set<UUID>?
   ) throws -> [KnowledgeSearchResult] {
     let idClause = documentIDClause(documentIDs)
     let sql = """
     SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
            d.tags_json, d.source_url, d.source_name, d.folder_id,
-           d.source_byte_count, d.allows_ai_use, d.is_archived,
+           d.source_byte_count, d.allows_ai_use, d.allows_local_semantic_index,
+           d.is_archived,
            d.imported_at, d.updated_at, d.current_revision_id,
            c.id, c.document_id, c.revision_id, c.ordinal, c.heading_path,
            c.locator, c.content, c.token_estimate, c.content_hash,
@@ -419,7 +436,7 @@ extension KnowledgeDatabase {
     var index: Int32 = 1
     bind(ftsQuery(query), at: index, to: statement)
     index += 1
-    sqlite3_bind_int(statement, index, onlyAIAllowed ? 1 : 0)
+      sqlite3_bind_int(statement, index, onlyRemoteAIAllowed ? 1 : 0)
     index += 1
     for id in idClause.ids {
       bind(id.uuidString, at: index, to: statement)
@@ -432,14 +449,15 @@ extension KnowledgeDatabase {
   func searchLike(
     query: String,
     limit: Int,
-    onlyAIAllowed: Bool,
+    onlyRemoteAIAllowed: Bool,
     documentIDs: Set<UUID>?
   ) throws -> [KnowledgeSearchResult] {
     let idClause = documentIDClause(documentIDs)
     let sql = """
     SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
            d.tags_json, d.source_url, d.source_name, d.folder_id,
-           d.source_byte_count, d.allows_ai_use, d.is_archived,
+           d.source_byte_count, d.allows_ai_use, d.allows_local_semantic_index,
+           d.is_archived,
            d.imported_at, d.updated_at, d.current_revision_id,
            c.id, c.document_id, c.revision_id, c.ordinal, c.heading_path,
            c.locator, c.content, c.token_estimate, c.content_hash,
@@ -457,7 +475,7 @@ extension KnowledgeDatabase {
         OR c.heading_path LIKE ? ESCAPE '\\'
         OR c.content LIKE ? ESCAPE '\\')
       \(idClause.sql)
-    ORDER BY 26 ASC, d.updated_at DESC, c.ordinal ASC
+    ORDER BY 27 ASC, d.updated_at DESC, c.ordinal ASC
     LIMIT ?;
     """
     let statement = try prepare(sql)
@@ -468,7 +486,7 @@ extension KnowledgeDatabase {
     index += 1
     bind(like, at: index, to: statement)
     index += 1
-    sqlite3_bind_int(statement, index, onlyAIAllowed ? 1 : 0)
+    sqlite3_bind_int(statement, index, onlyRemoteAIAllowed ? 1 : 0)
     index += 1
     bind(like, at: index, to: statement)
     index += 1
@@ -488,12 +506,12 @@ extension KnowledgeDatabase {
     var output: [KnowledgeSearchResult] = []
     while sqlite3_step(statement) == SQLITE_ROW {
       try Task.checkCancellation()
-      let document = decodeDocument(statement, offset: 0)
-      let chunk = decodeChunk(statement, offset: 16)
+      let document = try decodeDocument(statement, offset: 0)
+      let chunk = try decodeChunk(statement, offset: 17)
       output.append(KnowledgeSearchResult(
         document: document,
         chunk: chunk,
-        score: sqlite3_column_double(statement, 25),
+        score: sqlite3_column_double(statement, 26),
         signals: [.fullText]
       ))
     }

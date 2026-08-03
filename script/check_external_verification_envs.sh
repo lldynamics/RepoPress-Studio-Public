@@ -22,7 +22,6 @@ Targets:
   all
   remaining
   remote-publish
-  storekit
   remote-recovery
   app-store-screenshots
   app-store-archive
@@ -79,8 +78,8 @@ fi
 
 [[ "$MODE" == "template" || "$MODE" == "filled" ]] || fail "--mode must be template or filled"
 case "$TARGET" in
-  all|remaining|remote-publish|storekit|remote-recovery|app-store-screenshots|app-store-archive) ;;
-  *) fail "--target must be all, remaining, remote-publish, storekit, remote-recovery, app-store-screenshots, or app-store-archive" ;;
+  all|remaining|remote-publish|remote-recovery|app-store-screenshots|app-store-archive) ;;
+  *) fail "--target must be all, remaining, remote-publish, remote-recovery, app-store-screenshots, or app-store-archive" ;;
 esac
 
 if [[ "$MODE" == "filled" ]]; then
@@ -105,7 +104,6 @@ fi
 env_specs=(
   "remote-publish:remote-publish-live.env:docs/release-evidence/remote-publish-live.env.example:REMOTE_VERIFY_GITHUB_TOKEN,REMOTE_VERIFY_GITHUB_OWNER,REMOTE_VERIFY_GITHUB_REPO,REMOTE_VERIFY_GITHUB_DIRECT_RELEASE_LEDGER,REMOTE_VERIFY_GITHUB_REVIEW_RELEASE_LEDGER,REMOTE_VERIFY_GITLAB_TOKEN,REMOTE_VERIFY_GITLAB_OWNER,REMOTE_VERIFY_GITLAB_REPO,REMOTE_VERIFY_GITLAB_DIRECT_RELEASE_LEDGER,REMOTE_VERIFY_GITLAB_REVIEW_RELEASE_LEDGER"
   "remote-recovery:remote-recovery.env:docs/release-evidence/remote-recovery.env.example:REMOTE_RECOVERY_CONFLICT_PREVIEW_SUMMARY,REMOTE_RECOVERY_PENDING_OFFLINE_SUMMARY,REMOTE_RECOVERY_DEPLOYMENT_RETRY_SUMMARY,REMOTE_RECOVERY_ROLLBACK_PACKAGE_SUMMARY"
-  "storekit:storekit-sandbox.env:docs/release-evidence/storekit-sandbox.env.example:STOREKIT_PRODUCT_ID,STOREKIT_SANDBOX_PRODUCT_LOOKUP_SUMMARY,STOREKIT_SANDBOX_PURCHASE_SUMMARY,STOREKIT_SANDBOX_RESTORE_SUMMARY,STOREKIT_SANDBOX_FREE_QUOTA_SUMMARY,STOREKIT_SANDBOX_BOUNDARY_EVENTS_SUMMARY"
   "app-store-screenshots:app-store-screenshots.env:docs/release-evidence/app-store-screenshots.env.example:APP_STORE_SCREENSHOT_SET_SUMMARY,APP_STORE_SCREENSHOT_PRIVACY_GATE_SUMMARY,APP_STORE_SCREENSHOT_STRICT_GATE_SUMMARY"
   "app-store-archive:app-store-archive-validation.env:docs/release-evidence/app-store-archive-validation.env.example:APP_STORE_ARCHIVE_CLEAN_RELEASE_SUMMARY,APP_STORE_ARCHIVE_SIGNING_RUNTIME_SUMMARY,APP_STORE_ARCHIVE_TRANSPORTER_SUMMARY"
 )
@@ -148,9 +146,6 @@ target_is_remaining() {
         || ! external_item_complete github-review-publish \
         || ! external_item_complete gitlab-direct-publish \
         || ! external_item_complete gitlab-review-publish
-      ;;
-    storekit)
-      ! external_item_complete storekit-sandbox
       ;;
     remote-recovery)
       ! external_item_complete remote-conflict-deployment-rollback
@@ -224,9 +219,6 @@ evidence_records_for_target() {
     remote-recovery)
       printf '%s' '`remote-conflict-deployment-rollback`'
       ;;
-    storekit)
-      printf '%s' '`storekit-sandbox`'
-      ;;
     app-store-screenshots)
       printf '%s' '`app-store-screenshots`'
       ;;
@@ -278,9 +270,6 @@ evidence_status_lines_for_target() {
       ;;
     remote-recovery)
       external_evidence_status_line remote-conflict-deployment-rollback
-      ;;
-    storekit)
-      external_evidence_status_line storekit-sandbox
       ;;
     app-store-screenshots)
       external_evidence_status_line app-store-screenshots

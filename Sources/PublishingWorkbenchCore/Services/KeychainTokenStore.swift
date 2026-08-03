@@ -51,13 +51,70 @@ private final class InMemoryTokenBackend: @unchecked Sendable {
   }
 }
 
+public enum KeychainTokenAccessState: String, Codable, Hashable, Sendable {
+  case available
+  case missing
+  case accessFailed
+}
+
 public struct KeychainTokenAvailability: Codable, Hashable, Sendable {
   public var hasToken: Bool
   public var updatedAt: Date?
+  public var accessFailureMessage: String?
 
-  public init(hasToken: Bool, updatedAt: Date? = nil) {
-    self.hasToken = hasToken
+  private enum CodingKeys: String, CodingKey {
+    case hasToken
+    case updatedAt
+    case accessFailureMessage
+  }
+
+  public init(
+    hasToken: Bool,
+    updatedAt: Date? = nil,
+    accessFailureMessage: String? = nil
+  ) {
+    let normalizedAccessFailure = accessFailureMessage?
+      .trimmedForPublishing
+      .nilIfEmpty
+    self.hasToken = normalizedAccessFailure == nil && hasToken
     self.updatedAt = updatedAt
+    self.accessFailureMessage = normalizedAccessFailure
+  }
+
+  public init(accessFailure error: Error) {
+    self.init(
+      hasToken: false,
+      accessFailureMessage: error.localizedDescription
+    )
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(
+      hasToken: try container.decodeIfPresent(Bool.self, forKey: .hasToken) ?? false,
+      updatedAt: try container.decodeIfPresent(Date.self, forKey: .updatedAt),
+      accessFailureMessage: try container.decodeIfPresent(
+        String.self,
+        forKey: .accessFailureMessage
+      )
+    )
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(hasToken, forKey: .hasToken)
+    try container.encodeIfPresent(updatedAt, forKey: .updatedAt)
+    try container.encodeIfPresent(
+      accessFailureMessage,
+      forKey: .accessFailureMessage
+    )
+  }
+
+  public var accessState: KeychainTokenAccessState {
+    if accessFailureMessage != nil {
+      return .accessFailed
+    }
+    return hasToken ? .available : .missing
   }
 }
 
@@ -86,6 +143,7 @@ public struct KeychainTokenMutationReport: Hashable, Sendable {
 public enum KeychainTokenScope: Hashable, Sendable {
   case repository(RepositoryProvider)
   case deployment(DeploymentProvider)
+  case analytics(SiteAnalyticsProvider)
 
   var accountComponent: String {
     switch self {
@@ -93,6 +151,8 @@ public enum KeychainTokenScope: Hashable, Sendable {
       return "repository-\(provider.rawValue)"
     case .deployment(let provider):
       return "deployment-\(provider.rawValue)"
+    case .analytics(let provider):
+      return "analytics-\(provider.rawValue)"
     }
   }
 }
@@ -102,11 +162,13 @@ public enum KeychainCredentialServices {
   public static let ai = "PersonalSitePublisherMac.LocalDevelopment.AIProvider"
   public static let repository = "PersonalSitePublisherMac.LocalDevelopment.RepositoryProvider"
   public static let deployment = "PersonalSitePublisherMac.LocalDevelopment.DeploymentProvider"
+  public static let analytics = "PersonalSitePublisherMac.LocalDevelopment.SiteAnalytics"
   public static let browserBridge = "PersonalSitePublisherMac.LocalDevelopment.BrowserBridge"
   #else
   public static let ai = "PersonalSitePublisherMac.AIProvider"
   public static let repository = "PersonalSitePublisherMac.RepositoryProvider"
   public static let deployment = "PersonalSitePublisherMac.DeploymentProvider"
+  public static let analytics = "PersonalSitePublisherMac.SiteAnalytics"
   public static let browserBridge = "PersonalSitePublisherMac.BrowserBridge"
   #endif
 }
@@ -116,6 +178,7 @@ public final class KeychainTokenStore: @unchecked Sendable {
   private let accountPrefix: String
   private let allowsAuthenticationInteraction: Bool
   private let inMemoryBackend: InMemoryTokenBackend?
+  private let deletionStatusOverrideForTesting: (@Sendable (String) -> OSStatus?)?
 
   public convenience init(
     service: String = KeychainCredentialServices.ai,
@@ -124,16 +187,33 @@ public final class KeychainTokenStore: @unchecked Sendable {
     self.init(service: service, accountPrefix: accountPrefix, inMemory: false)
   }
 
-  public init(
+  public convenience init(
     service: String,
     accountPrefix: String,
     inMemory: Bool = false,
     allowsAuthenticationInteraction: Bool = true
   ) {
+    self.init(
+      service: service,
+      accountPrefix: accountPrefix,
+      inMemory: inMemory,
+      allowsAuthenticationInteraction: allowsAuthenticationInteraction,
+      deletionStatusOverrideForTesting: nil
+    )
+  }
+
+  init(
+    service: String,
+    accountPrefix: String,
+    inMemory: Bool,
+    allowsAuthenticationInteraction: Bool = true,
+    deletionStatusOverrideForTesting: (@Sendable (String) -> OSStatus?)?
+  ) {
     self.service = service
     self.accountPrefix = accountPrefix
     self.allowsAuthenticationInteraction = allowsAuthenticationInteraction
     self.inMemoryBackend = inMemory ? InMemoryTokenBackend() : nil
+    self.deletionStatusOverrideForTesting = deletionStatusOverrideForTesting
   }
 
   public func token(for profile: SiteProfile) throws -> String? {
@@ -157,7 +237,17 @@ public final class KeychainTokenStore: @unchecked Sendable {
   }
 
   public func aiToken(for profile: SiteProfile) throws -> String? {
-    try token(forAccount: aiCredentialAccount(for: profile))
+    if let connectionID = profile.aiConnectionProfileID,
+       let sharedToken = try aiToken(forConnectionProfileID: connectionID),
+       !sharedToken.isEmpty {
+      return sharedToken
+    }
+    return try token(forAccount: aiCredentialAccount(for: profile))
+  }
+
+  /// Reads the API key shared by every site that selects this connection.
+  public func aiToken(forConnectionProfileID id: UUID) throws -> String? {
+    try token(forAccountIdentifier: aiConnectionProfileAccountIdentifier(id))
   }
 
   public func repositoryToken(for profile: SiteProfile) throws -> String? {
@@ -171,6 +261,10 @@ public final class KeychainTokenStore: @unchecked Sendable {
 
   public func token(forAccountIdentifier identifier: String) throws -> String? {
     try token(forAccount: account(forAccountIdentifier: identifier))
+  }
+
+  public func availability(forAccountIdentifier identifier: String) throws -> KeychainTokenAvailability {
+    try availability(forAccount: account(forAccountIdentifier: identifier))
   }
 
   public func saveToken(_ token: String, forAccountIdentifier identifier: String) throws {
@@ -202,7 +296,17 @@ public final class KeychainTokenStore: @unchecked Sendable {
   }
 
   public func aiTokenAvailability(for profile: SiteProfile) throws -> KeychainTokenAvailability {
-    try availability(forAccount: aiCredentialAccount(for: profile))
+    if let connectionID = profile.aiConnectionProfileID {
+      let sharedAvailability = try aiTokenAvailability(forConnectionProfileID: connectionID)
+      if sharedAvailability.hasToken || sharedAvailability.accessFailureMessage != nil {
+        return sharedAvailability
+      }
+    }
+    return try availability(forAccount: aiCredentialAccount(for: profile))
+  }
+
+  public func aiTokenAvailability(forConnectionProfileID id: UUID) throws -> KeychainTokenAvailability {
+    try availability(forAccount: account(forAccountIdentifier: aiConnectionProfileAccountIdentifier(id)))
   }
 
   public func repositoryTokenAvailability(for profile: SiteProfile) throws -> KeychainTokenAvailability {
@@ -219,7 +323,7 @@ public final class KeychainTokenStore: @unchecked Sendable {
     _ token: String,
     for profile: SiteProfile
   ) throws -> KeychainTokenMutationReport {
-    try KeychainTokenMutationCoordinator.shared.synchronized {
+    return try KeychainTokenMutationCoordinator.shared.synchronized {
       try saveToken(
         token,
         for: profile,
@@ -247,7 +351,7 @@ public final class KeychainTokenStore: @unchecked Sendable {
   public func deleteRepositoryToken(
     for profile: SiteProfile
   ) throws -> KeychainTokenMutationReport {
-    try KeychainTokenMutationCoordinator.shared.synchronized {
+    return try KeychainTokenMutationCoordinator.shared.synchronized {
       try deleteToken(
         for: profile,
         scope: .repository(profile.repositoryProvider),
@@ -306,7 +410,10 @@ public final class KeychainTokenStore: @unchecked Sendable {
     _ token: String,
     for profile: SiteProfile
   ) throws -> KeychainTokenMutationReport {
-    try KeychainTokenMutationCoordinator.shared.synchronized {
+    if let connectionID = profile.aiConnectionProfileID {
+      return try saveAIToken(token, forConnectionProfileID: connectionID)
+    }
+    return try KeychainTokenMutationCoordinator.shared.synchronized {
       try saveToken(token, forAccount: aiCredentialAccount(for: profile))
       // See saveRepositoryToken(_:for:). The scoped item is authoritative;
       // stale unscoped cleanup must not invalidate the completed save.
@@ -316,6 +423,33 @@ public final class KeychainTokenStore: @unchecked Sendable {
         }
       ].compactMap { $0 }
       return KeychainTokenMutationReport(cleanupIssues: cleanupIssues)
+    }
+  }
+
+  /// Removes the origin-bound AI credential created before reusable
+  /// connection profiles were introduced. The shared profile credential is
+  /// managed by `saveAIToken(_:forConnectionProfileID:)` instead.
+  @discardableResult
+  public func deleteLegacyAIToken(
+    for profile: SiteProfile
+  ) throws -> KeychainTokenMutationReport {
+    return try KeychainTokenMutationCoordinator.shared.synchronized {
+      try deleteToken(forAccount: aiCredentialAccount(for: profile))
+      return KeychainTokenMutationReport()
+    }
+  }
+
+  @discardableResult
+  public func saveAIToken(
+    _ token: String,
+    forConnectionProfileID id: UUID
+  ) throws -> KeychainTokenMutationReport {
+    try KeychainTokenMutationCoordinator.shared.synchronized {
+      try saveToken(
+        token,
+        forAccountIdentifier: aiConnectionProfileAccountIdentifier(id)
+      )
+      return KeychainTokenMutationReport()
     }
   }
 
@@ -343,7 +477,10 @@ public final class KeychainTokenStore: @unchecked Sendable {
   public func deleteAIToken(
     for profile: SiteProfile
   ) throws -> KeychainTokenMutationReport {
-    try KeychainTokenMutationCoordinator.shared.synchronized {
+    if let connectionID = profile.aiConnectionProfileID {
+      return try deleteAIToken(forConnectionProfileID: connectionID)
+    }
+    return try KeychainTokenMutationCoordinator.shared.synchronized {
       try deleteToken(forAccount: aiCredentialAccount(for: profile))
       let cleanupIssues = [
         legacyCleanupIssue("legacy unscoped AI credential") {
@@ -351,6 +488,16 @@ public final class KeychainTokenStore: @unchecked Sendable {
         }
       ].compactMap { $0 }
       return KeychainTokenMutationReport(cleanupIssues: cleanupIssues)
+    }
+  }
+
+  @discardableResult
+  public func deleteAIToken(
+    forConnectionProfileID id: UUID
+  ) throws -> KeychainTokenMutationReport {
+    try KeychainTokenMutationCoordinator.shared.synchronized {
+      try deleteToken(forAccountIdentifier: aiConnectionProfileAccountIdentifier(id))
+      return KeychainTokenMutationReport()
     }
   }
 
@@ -488,6 +635,9 @@ public final class KeychainTokenStore: @unchecked Sendable {
 
   private func deleteToken(forAccount account: String) throws {
     try KeychainTokenMutationCoordinator.shared.synchronized {
+      if let status = deletionStatusOverrideForTesting?(account) {
+        throw KeychainTokenStoreError.unhandledStatus(status)
+      }
       if let inMemoryBackend {
         inMemoryBackend.deleteToken(for: account)
         return
@@ -537,6 +687,10 @@ public final class KeychainTokenStore: @unchecked Sendable {
       component: "ai-\(profile.aiProviderConfig.preset.rawValue)",
       originURLText: profile.aiProviderConfig.normalizedBaseURL
     )
+  }
+
+  private func aiConnectionProfileAccountIdentifier(_ id: UUID) -> String {
+    "ai-connection-profile-" + id.uuidString
   }
 
   private func repositoryOriginURLText(for profile: SiteProfile) -> String {
@@ -598,6 +752,9 @@ public enum KeychainTokenStoreError: LocalizedError, Equatable {
     case .invalidData:
       return CoreL10n.text("Keychain 返回了不可解析的 token 数据。")
     case .invalidCredentialOrigin(let value):
+      guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return CoreL10n.text("API Base URL 尚未配置。")
+      }
       return CoreL10n.format("凭据端点必须是有效的 HTTPS 地址：%@", value)
     case .unhandledStatus(let status):
       return CoreL10n.format(

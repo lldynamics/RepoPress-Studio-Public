@@ -3,11 +3,10 @@ import SwiftUI
 
 struct SettingsConfigurationHealthCard: View {
   let profile: SiteProfile
+  let aiProviderConfig: AIProviderConfig
   let repositoryTokenAvailability: KeychainTokenAvailability
   let aiTokenAvailability: KeychainTokenAvailability
   let privacySettings: PrivacyProtectionSettings
-  let isProUnlocked: Bool
-  let proSource: String
   let selectDestination: (SettingsConfigurationHealthDestination) -> Void
 
   private var requiredItems: [SettingsConfigurationHealthItem] {
@@ -22,7 +21,7 @@ struct SettingsConfigurationHealthCard: View {
     if DistributionFeaturePolicy.allowsExternalAIProviders {
       items.append(aiKeyItem)
     }
-    items.append(contentsOf: [privacyItem, proItem])
+    items.append(privacyItem)
     return items
   }
 
@@ -49,7 +48,9 @@ struct SettingsConfigurationHealthCard: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("配置状态")
-    .accessibilityValue("\(readyRequiredCount)/\(requiredItems.count) 项基础配置已就绪")
+    .accessibilityValue(
+      String(localized: "\(readyRequiredCount)/\(requiredItems.count) 项基础配置已就绪")
+    )
   }
 
   private var statusSummary: some View {
@@ -116,29 +117,57 @@ struct SettingsConfigurationHealthCard: View {
   }
 
   private var repositoryTokenItem: SettingsConfigurationHealthItem {
-    SettingsConfigurationHealthItem(
+    let detail: Text
+    let state: SettingsConfigurationHealthState
+    switch repositoryTokenAvailability.accessState {
+    case .available:
+      detail = Text("已保存，可用于线上发布")
+      state = .ready
+    case .missing:
+      detail = Text("未保存，线上发布会受限")
+      state = .info
+    case .accessFailed:
+      detail = Text(
+        "操作失败：\(credentialAccessFailureMessage(repositoryTokenAvailability))"
+      )
+      state = .warning
+    }
+    return SettingsConfigurationHealthItem(
       title: "仓库访问令牌",
-      detail: repositoryTokenAvailability.hasToken ? Text("已保存，可用于线上发布") : Text("未保存，线上发布会受限"),
+      detail: detail,
       systemImage: "key",
-      state: repositoryTokenAvailability.hasToken ? .ready : .info,
+      state: state,
       destination: .repositoryToken,
       actionTitle: String(localized: "打开访问令牌设置")
     )
   }
 
   private var aiKeyItem: SettingsConfigurationHealthItem {
-    let requiresKey = profile.aiProviderConfig.requiresAPIKey
+    let requiresKey = aiProviderConfig.requiresAPIKey
     let isReady = !requiresKey || aiTokenAvailability.hasToken
+    let hasAccessFailure = requiresKey && aiTokenAvailability.accessState == .accessFailed
     return SettingsConfigurationHealthItem(
       title: "AI Key",
-      detail: isReady
-        ? (requiresKey ? Text("已保存，可生成建议") : Text("当前配置无需 API Key"))
-        : Text("未保存，AI 功能会受限"),
+      detail: hasAccessFailure
+        ? Text(
+          "操作失败：\(credentialAccessFailureMessage(aiTokenAvailability))"
+        )
+        : (
+          isReady
+            ? (requiresKey ? Text("已保存，可生成建议") : Text("当前配置无需 API Key"))
+            : Text("未保存，AI 功能会受限")
+        ),
       systemImage: "sparkles",
-      state: isReady ? .ready : .info,
+      state: hasAccessFailure ? .warning : (isReady ? .ready : .info),
       destination: .aiKey,
       actionTitle: String(localized: "打开 AI 设置")
     )
+  }
+
+  private func credentialAccessFailureMessage(
+    _ availability: KeychainTokenAvailability
+  ) -> String {
+    availability.accessFailureMessage ?? "Keychain"
   }
 
   private var defaultRulesItem: SettingsConfigurationHealthItem {
@@ -166,17 +195,6 @@ struct SettingsConfigurationHealthCard: View {
       state: privacySettings.masksPrivateContent ? .ready : .info,
       destination: .privacy,
       actionTitle: String(localized: "打开隐私设置")
-    )
-  }
-
-  private var proItem: SettingsConfigurationHealthItem {
-    SettingsConfigurationHealthItem(
-      title: "Pro 状态",
-      detail: isProUnlocked ? Text("\(proSource) 权益已生效") : Text("免费版，可按需升级"),
-      systemImage: isProUnlocked ? "crown.fill" : "crown",
-      state: isProUnlocked ? .ready : .info,
-      destination: .pro,
-      actionTitle: String(localized: "打开 Pro 设置")
     )
   }
 
@@ -299,7 +317,6 @@ enum SettingsConfigurationHealthDestination: Hashable {
   case aiKey
   case defaultRules
   case privacy
-  case pro
 }
 
 private enum SettingsConfigurationHealthState {

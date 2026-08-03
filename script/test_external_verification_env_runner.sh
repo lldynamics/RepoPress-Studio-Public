@@ -24,7 +24,7 @@ fail() {
 bash "$PREP" --output-dir "$ENV_DIR" >/dev/null
 cp "$ROOT_DIR/docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md" "$TMP_DIR/EXTERNAL_VERIFICATION_EVIDENCE.md"
 cp "$ROOT_DIR/docs/release-evidence/APP_STORE_ARCHIVE_VALIDATION.md" "$TMP_DIR/APP_STORE_ARCHIVE_VALIDATION.md"
-perl -0pi -e 's/- \[[xX]\] `(github-direct-publish|github-review-publish|gitlab-direct-publish|gitlab-review-publish|remote-conflict-deployment-rollback|storekit-sandbox)`/- [ ] `$1`/g;
+perl -0pi -e 's/- \[[xX]\] `(github-direct-publish|github-review-publish|gitlab-direct-publish|gitlab-review-publish|remote-conflict-deployment-rollback)`/- [ ] `$1`/g;
               s/- \[ \] `app-store-screenshots`/- [x] `app-store-screenshots`/g;' "$TMP_DIR/EXTERNAL_VERIFICATION_EVIDENCE.md"
 perl -0pi -e 's/- \[[xX]\]/- [ ]/g' "$TMP_DIR/APP_STORE_ARCHIVE_VALIDATION.md"
 export EXTERNAL_VERIFY_EVIDENCE_FILE="$TMP_DIR/EXTERNAL_VERIFICATION_EVIDENCE.md"
@@ -87,17 +87,6 @@ REMOTE_RECOVERY_EVIDENCE_URL=""
 EXTERNAL_VERIFY_EVIDENCE_FILE="$TMP_DIR/EXTERNAL_VERIFICATION_EVIDENCE.md"
 ENV
 
-cat >"$ENV_DIR/storekit-sandbox.env" <<ENV
-STOREKIT_PRODUCT_ID="personal.site.publisher.pro"
-STOREKIT_SANDBOX_PRODUCT_LOOKUP_SUMMARY="Sandbox product lookup loaded personal.site.publisher.pro from App Store sandbox catalog."
-STOREKIT_SANDBOX_PURCHASE_SUMMARY="Sandbox purchase completed and entitlement source changed to StoreKit."
-STOREKIT_SANDBOX_RESTORE_SUMMARY="Sandbox restore reapplied Pro entitlement after clearing local state."
-STOREKIT_SANDBOX_FREE_QUOTA_SUMMARY="Free quota boundary showed upgrade copy before purchase and no quota consumption after Pro unlock."
-STOREKIT_SANDBOX_BOUNDARY_EVENTS_SUMMARY="Recent StoreKit boundary events showed free-plan block before purchase and Pro no-quota allow after unlock."
-STOREKIT_SANDBOX_EVIDENCE_URL=""
-EXTERNAL_VERIFY_EVIDENCE_FILE="$TMP_DIR/EXTERNAL_VERIFICATION_EVIDENCE.md"
-ENV
-
 cat >"$ENV_DIR/app-store-archive-validation.env" <<ENV
 APP_STORE_ARCHIVE_CLEAN_RELEASE_SUMMARY="Clean Release archive produced from a fresh checkout and reproducible release command."
 APP_STORE_ARCHIVE_SIGNING_RUNTIME_SUMMARY="Distribution signature and hardened runtime were verified on the archive."
@@ -153,14 +142,8 @@ if grep -q "gh-runner-private-token" "$DEFAULT_RUNNER_REPORT"; then
   fail "runner default env status report leaked a token value"
 fi
 
-storekit_output="$(bash "$RUNNER" --env-dir "$ENV_DIR" --target storekit)"
-grep -q "external verification runner: storekit dry-run" <<<"$storekit_output" \
-  || fail "storekit target did not run dry-run"
-grep -q "shared external recorder validation: ready" <<<"$storekit_output" \
-  || fail "storekit target did not validate recorder"
-
 archive_output="$(bash "$RUNNER" --env-dir "$ENV_DIR" --target app-store-archive)"
-[[ "$(grep -c "app store archive evidence recorder: ready" <<<"$archive_output")" == "3" ]] \
+[[ "$(grep -c "app store archive evidence recorder: dry-run" <<<"$archive_output")" == "3" ]] \
   || fail "archive target did not record all three archive evidence items"
 
 screenshots_output="$(bash "$RUNNER" --env-dir "$ENV_DIR" --target app-store-screenshots)"
@@ -181,21 +164,17 @@ if grep -q "private-token" <<<"$all_output"; then
 fi
 
 remaining_output="$(EXTERNAL_VERIFY_EVIDENCE_FILE="$TMP_DIR/EXTERNAL_VERIFICATION_EVIDENCE.md" bash "$RUNNER" --env-dir "$ENV_DIR" --target remaining)"
-grep -q "external verification runner: remaining targets: app-store-archive remote-publish storekit remote-recovery" <<<"$remaining_output" \
+grep -q "external verification runner: remaining targets: app-store-archive remote-publish remote-recovery" <<<"$remaining_output" \
   || fail "remaining target did not summarize the expected incomplete targets"
 grep -q "external verification runner: execution plan (dry-run)" <<<"$remaining_output" \
   || fail "remaining target did not print execution plan"
 grep -q "records: remote-conflict-deployment-rollback" <<<"$remaining_output" \
   || fail "remaining target plan omitted remote recovery record"
-grep -q "Verify StoreKit product ID, purchase, restore, and free quota behavior in sandbox" <<<"$remaining_output" \
-  || fail "remaining target plan omitted storekit checklist mapping"
 grep -q "external verification runner: remote-publish dry-run" <<<"$remaining_output" \
   || fail "remaining target did not run remote publish"
-grep -q "external verification runner: storekit dry-run" <<<"$remaining_output" \
-  || fail "remaining target did not run storekit"
 grep -q "external verification runner: remote-recovery dry-run" <<<"$remaining_output" \
   || fail "remaining target did not run remote recovery"
-grep -q "app store archive evidence bundle: dry-run" <<<"$remaining_output" \
+grep -q "app store archive evidence recorder: dry-run" <<<"$remaining_output" \
   || fail "remaining target did not run app store archive"
 if grep -q "app-store-screenshots" <<<"$remaining_output"; then
   fail "remaining target ran screenshots even though screenshot evidence is already complete"
@@ -208,9 +187,8 @@ perl -0pi -e 's/- \[ \] `github-direct-publish`/- [x] `github-direct-publish`/g;
               s/- \[ \] `github-review-publish`/- [x] `github-review-publish`/g;
               s/- \[ \] `gitlab-direct-publish`/- [x] `gitlab-direct-publish`/g;
               s/- \[ \] `gitlab-review-publish`/- [x] `gitlab-review-publish`/g;
-              s/- \[ \] `remote-conflict-deployment-rollback`/- [x] `remote-conflict-deployment-rollback`/g;
-              s/- \[ \] `storekit-sandbox`/- [x] `storekit-sandbox`/g;' "$complete_external_file"
-cat >"$complete_archive_file" <<'EOF_ARCHIVE'
+              s/- \[ \] `remote-conflict-deployment-rollback`/- [x] `remote-conflict-deployment-rollback`/g;' "$complete_external_file"
+cat >"$complete_archive_file" <<EOF_ARCHIVE
 # App Store Archive Validation Evidence
 
 - [x] Clean Release archive produced from a clean checkout.
@@ -218,7 +196,7 @@ cat >"$complete_archive_file" <<'EOF_ARCHIVE'
 - [x] Distribution signing and hardened runtime verified on the archive.
   Evidence: Distribution signature and hardened runtime were verified on the archived app.
 - [x] Archive validated with App Store Connect or Transporter before upload.
-  Evidence: Transporter validation completed successfully before upload.
+  Evidence: Transporter validation completed successfully for build $marketing_version ($build_number).
 EOF_ARCHIVE
 complete_remaining_output="$(
   EXTERNAL_VERIFY_EVIDENCE_FILE="$complete_external_file" \
@@ -258,7 +236,7 @@ if grep -q "gl-runner-private-token" "$RUNNER_REPORT"; then
   fail "runner env status report leaked a token value"
 fi
 
-if bash "$RUNNER" --env-dir "$ROOT_DIR/docs/release-evidence" --target storekit >/dev/null 2>&1; then
+if bash "$RUNNER" --env-dir "$ROOT_DIR/docs/release-evidence" --target remote-recovery >/dev/null 2>&1; then
   fail "runner accepted env directory inside repository"
 fi
 

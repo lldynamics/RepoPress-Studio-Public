@@ -48,6 +48,17 @@ public enum AIImageTextGenerationAvailabilityService {
       )
     }
 
+    if aiProviderConfig.requiresAPIKey,
+       let accessFailureMessage = aiTokenAvailability.accessFailureMessage {
+      return AIImageTextGenerationAvailabilityPresentation(
+        isEnabled: false,
+        unavailableReason: CoreL10n.format(
+          "AI Keychain 读取失败：%@",
+          accessFailureMessage
+        )
+      )
+    }
+
     if aiProviderConfig.requiresAPIKey && !aiTokenAvailability.hasToken {
       return AIImageTextGenerationAvailabilityPresentation(
         isEnabled: false,
@@ -59,25 +70,120 @@ public enum AIImageTextGenerationAvailabilityService {
   }
 }
 
+public enum ImageWorkbenchIssueKind: String, Codable, Hashable, Sendable {
+  case missingAltText
+  case missingCaption
+  case missingSource
+  case missingPublishPath
+  case unsafeRepositoryPath
+  case largeFile
+  case largeDimensions
+  case unreferencedAttachment
+  case duplicatePublishPath
+  case duplicateSource
+  case duplicateMarkdownReference
+  case missingCoverAttachment
+  case unregisteredMarkdownImage
+  case noImages
+  case other
+
+  fileprivate var preflightCategory: PreflightIssueCategory? {
+    switch self {
+    case .missingAltText:
+      return .missingMediaAlt
+    case .missingPublishPath:
+      return .missingMediaPublishPath
+    case .unsafeRepositoryPath:
+      return .unsafeMediaRepositoryPath
+    case .unregisteredMarkdownImage:
+      return .unregisteredBodyImage
+    default:
+      return nil
+    }
+  }
+}
+
 public struct ImageWorkbenchIssue: Identifiable, Codable, Hashable, Sendable {
   public var id: UUID
   public var severity: PreflightSeverity
+  public var kind: ImageWorkbenchIssueKind
   public var title: String
   public var message: String
   public var attachmentID: UUID?
+  public var relatedValue: String?
 
   public init(
     id: UUID = UUID(),
     severity: PreflightSeverity,
+    kind: ImageWorkbenchIssueKind = .other,
     title: String,
     message: String,
-    attachmentID: UUID? = nil
+    attachmentID: UUID? = nil,
+    relatedValue: String? = nil
   ) {
     self.id = id
     self.severity = severity
+    self.kind = kind
     self.title = title
     self.message = message
     self.attachmentID = attachmentID
+    self.relatedValue = relatedValue
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id
+    case severity
+    case kind
+    case title
+    case message
+    case attachmentID
+    case relatedValue
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decode(UUID.self, forKey: .id)
+    severity = try container.decode(PreflightSeverity.self, forKey: .severity)
+    kind = try container.decodeIfPresent(ImageWorkbenchIssueKind.self, forKey: .kind) ?? .other
+    title = try container.decode(String.self, forKey: .title)
+    message = try container.decode(String.self, forKey: .message)
+    attachmentID = try container.decodeIfPresent(UUID.self, forKey: .attachmentID)
+    relatedValue = try container.decodeIfPresent(String.self, forKey: .relatedValue)
+  }
+}
+
+public extension ImageWorkbenchIssue {
+  func isCovered(by preflightIssues: [PreflightIssue]) -> Bool {
+    guard let category = kind.preflightCategory else { return false }
+    return preflightIssues.contains { $0.category == category }
+  }
+
+  /// Adapts resource findings to the article-wide check queue. The neutral
+  /// no-images state is inventory information, not an article problem.
+  var preflightIssue: PreflightIssue? {
+    guard kind != .noImages else { return nil }
+    let field: String?
+    switch kind {
+    case .unregisteredMarkdownImage:
+      field = "body"
+    case .duplicateMarkdownReference:
+      field = attachmentID == nil ? "body" : "attachments"
+    case .noImages:
+      field = nil
+    case .other:
+      field = attachmentID == nil ? "body" : "attachments"
+    default:
+      field = "attachments"
+    }
+    return PreflightIssue(
+      id: id,
+      severity: severity,
+      title: title,
+      message: message,
+      field: field,
+      category: kind.preflightCategory,
+      relatedValue: relatedValue
+    )
   }
 }
 
@@ -439,6 +545,7 @@ public struct ImageTextSuggestionApplyResult: Sendable {
 public enum ImageWorkbenchError: LocalizedError {
   case cannotCreateOptimizedImage(String)
   case cannotFinalizeOptimizedImage(String)
+  case unsafeImageDimensions(filename: String, width: Int, height: Int)
   case externalToolTimedOut(String)
 
   public var errorDescription: String? {
@@ -447,6 +554,8 @@ public enum ImageWorkbenchError: LocalizedError {
       return "无法创建优化图片：\(filename)"
     case .cannotFinalizeOptimizedImage(let filename):
       return "无法写入优化图片：\(filename)"
+    case .unsafeImageDimensions(let filename, let width, let height):
+      return "图片尺寸超过安全处理上限：\(filename)（\(width) × \(height)）"
     case .externalToolTimedOut(let tool):
       return "\(tool) 执行超时，已停止。"
     }

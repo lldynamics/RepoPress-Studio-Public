@@ -14,7 +14,7 @@ extension PublishingStore {
     store: WorkbenchStore
   ) async -> RemoteRepositoryPublishResult? {
     guard store.canUseProtectedWorkbench else {
-      publishActionMessage = store.privacyLockedOperationMessage
+      publishActionMessage = store.quickHideOperationMessage
       return nil
     }
 
@@ -27,12 +27,23 @@ extension PublishingStore {
       return nil
     }
 
-    guard store.repositoryTokenAvailability.hasToken || (try? repositoryAccessToken(for: profile)) != nil else {
+    guard remoteRepositoryMutationContext == nil else {
+      publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
+      return nil
+    }
+
+    let token: String?
+    do {
+      token = try repositoryAccessToken(for: profile)
+    } catch {
+      publishActionMessage = CoreL10n.format("继续创建 PR/MR 失败：%@", error.localizedDescription)
+      return nil
+    }
+    guard token != nil else {
       publishActionMessage = CoreL10n.text("仓库访问 Token 未保存，无法继续创建 PR/MR。")
       return nil
     }
-    guard remoteRepositoryMutationContext == nil,
-          let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
+    guard let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
       publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
       return nil
     }
@@ -41,7 +52,6 @@ extension PublishingStore {
     defer { finishRemoteRepositoryMutation(operation, store: store) }
 
     do {
-      let token = try repositoryAccessToken(for: profile)
       let result = try await remoteRepositoryPublishService.resumeReview(
         draft: draft,
         profile: profile,
@@ -89,15 +99,23 @@ extension PublishingStore {
       return nil
     }
 
-    guard store.repositoryTokenAvailability.hasToken || (try? repositoryAccessToken(for: profile)) != nil else {
-      publishActionMessage = CoreL10n.text("仓库访问 Token 未保存，无法撤回线上 Review。")
-      return nil
-    }
-
     guard remoteRepositoryMutationContext == nil else {
       publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
       return nil
     }
+
+    let token: String?
+    do {
+      token = try repositoryAccessToken(for: profile)
+    } catch {
+      publishActionMessage = CoreL10n.format("线上 Review 撤回失败：%@", error.localizedDescription)
+      return nil
+    }
+    guard token != nil else {
+      publishActionMessage = CoreL10n.text("仓库访问 Token 未保存，无法撤回线上 Review。")
+      return nil
+    }
+
     guard let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
       publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
       return nil
@@ -106,7 +124,6 @@ extension PublishingStore {
     defer { finishRemoteRepositoryMutation(operation, store: store) }
 
     do {
-      let token = try repositoryAccessToken(for: profile)
       let result = try await remoteRepositoryPublishService.withdrawReview(
         draft: draft,
         profile: profile,
@@ -209,7 +226,7 @@ extension PublishingStore {
   ) async -> RemoteRepositoryPublishResult? {
     guard !blockPublishingIfGeneralDraftSelected(store: store) else { return nil }
     guard store.canUseProtectedWorkbench else {
-      publishActionMessage = store.privacyLockedOperationMessage
+      publishActionMessage = store.quickHideOperationMessage
       return nil
     }
 
@@ -221,6 +238,13 @@ extension PublishingStore {
     let profile = store.profile(for: package)
     let mode = preferredRemoteRepositoryPublishMode(for: profile)
     let preview = remoteRepositoryPublishPreview(package: package, profile: profile, mode: mode, store: store)
+    if let tokenAccessFailureMessage = preview.tokenAccessFailureMessage {
+      publishActionMessage = CoreL10n.format(
+        "仓库 Token 状态读取失败：%@",
+        tokenAccessFailureMessage
+      )
+      return nil
+    }
     guard preview.hasToken else {
       publishActionMessage = CoreL10n.text("仓库访问 Token 未保存，无法线上发布。")
       return nil
@@ -242,13 +266,6 @@ extension PublishingStore {
       publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
       return nil
     }
-    let reservationResult = store.reserveFeatureUse(.onlinePublishing)
-    guard let reservation = reservationResult.reservation else {
-      publishActionMessage = reservationResult.decision.message
-      return nil
-    }
-    defer { store.releaseFeatureUseReservation(reservation) }
-
     guard let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
       publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
       return nil
@@ -275,7 +292,6 @@ extension PublishingStore {
         token: token,
         onProgress: progressHandler
       )
-      store.commitFeatureUseReservation(reservation)
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       store.setRemoteRepositoryPublishResult(result)
       store.setRepositoryTokenAvailability(KeychainTokenAvailability(hasToken: true))
@@ -334,7 +350,7 @@ extension PublishingStore {
     store: WorkbenchStore
   ) async -> RemoteRepositoryRollbackResult? {
     guard store.canUseProtectedWorkbench else {
-      publishActionMessage = store.privacyLockedOperationMessage
+      publishActionMessage = store.quickHideOperationMessage
       return nil
     }
 
@@ -347,15 +363,23 @@ extension PublishingStore {
       return nil
     }
 
-    guard store.repositoryTokenAvailability.hasToken || (try? repositoryAccessToken(for: profile)) != nil else {
-      publishActionMessage = CoreL10n.text("仓库访问 Token 未保存，无法执行线上回滚。")
-      return nil
-    }
-
     guard remoteRepositoryMutationContext == nil else {
       publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
       return nil
     }
+
+    let token: String?
+    do {
+      token = try repositoryAccessToken(for: profile)
+    } catch {
+      publishActionMessage = CoreL10n.format("线上回滚失败：%@", error.localizedDescription)
+      return nil
+    }
+    guard token != nil else {
+      publishActionMessage = CoreL10n.text("仓库访问 Token 未保存，无法执行线上回滚。")
+      return nil
+    }
+
     guard let operation = beginRemoteRepositoryMutation(profile: profile, store: store) else {
       publishActionMessage = CoreL10n.text("已有远端仓库操作正在运行，请等待完成。")
       return nil
@@ -364,7 +388,6 @@ extension PublishingStore {
     defer { finishRemoteRepositoryMutation(operation, store: store) }
 
     do {
-      let token = try repositoryAccessToken(for: profile)
       let result = try await remoteRepositoryPublishService.rollback(
         draft: draft,
         profile: profile,

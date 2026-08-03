@@ -46,6 +46,40 @@ public enum MarkdownSyntaxHighlightSchedulingPolicy {
 }
 
 public enum MarkdownSyntaxHighlightRangeService {
+  public static let defaultViewportContextLineCount = 50
+
+  public static func paddedLineRange(
+    in markdown: String,
+    visibleRange: NSRange,
+    contextLineCount: Int = defaultViewportContextLineCount
+  ) -> NSRange {
+    let source = markdown as NSString
+    guard source.length > 0,
+          visibleRange.location != NSNotFound,
+          visibleRange.location >= 0,
+          visibleRange.length >= 0,
+          visibleRange.location <= source.length,
+          visibleRange.length <= source.length - visibleRange.location else {
+      return NSRange(location: 0, length: 0)
+    }
+
+    let safeContextLineCount = max(0, contextLineCount)
+    var paddedRange = source.lineRange(for: visibleRange)
+    for _ in 0..<safeContextLineCount where paddedRange.location > 0 {
+      let previousLineRange = source.lineRange(
+        for: NSRange(location: paddedRange.location - 1, length: 0)
+      )
+      paddedRange = NSUnionRange(previousLineRange, paddedRange)
+    }
+    for _ in 0..<safeContextLineCount where NSMaxRange(paddedRange) < source.length {
+      let nextLineRange = source.lineRange(
+        for: NSRange(location: NSMaxRange(paddedRange), length: 0)
+      )
+      paddedRange = NSUnionRange(paddedRange, nextLineRange)
+    }
+    return paddedRange
+  }
+
   public static func plan(
     accumulating previousPlan: MarkdownSyntaxHighlightPlan?,
     previousText: String,
@@ -209,7 +243,7 @@ public enum MarkdownSyntaxHighlightRangeService {
       return true
     }
     let changedLines = text.substring(with: text.lineRange(for: range))
-    return changedLines.contains("`") || changedLines.contains("~~~")
+    return MarkdownCodeRangeScanner.containsFenceLine(in: changedLines)
   }
 
   private static func codeBlockRanges(in text: NSString) -> [NSRange] {

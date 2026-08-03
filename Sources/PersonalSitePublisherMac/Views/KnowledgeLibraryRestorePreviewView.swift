@@ -14,7 +14,7 @@ struct KnowledgeLibraryRestorePreviewView: View {
       HStack(alignment: .top, spacing: 12) {
         Image(systemName: "checkmark.shield.fill")
           .font(.system(size: 30))
-          .foregroundStyle(.green)
+          .foregroundStyle(WorkbenchTheme.success)
         VStack(alignment: .leading, spacing: 4) {
           Text("备份完整性校验通过")
             .font(.title2.weight(.semibold))
@@ -52,15 +52,15 @@ struct KnowledgeLibraryRestorePreviewView: View {
         Text("恢复会替换当前资料库并重新启动应用。当前资料库会先完整保留在恢复目录，可用于手动回退。")
       } icon: {
         Image(systemName: "exclamationmark.triangle.fill")
-          .foregroundStyle(.orange)
+          .foregroundStyle(WorkbenchTheme.warning)
       }
       .padding(12)
-      .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+      .background(WorkbenchTheme.warning.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
 
       if let lastError = knowledge.lastError {
         Text(lastError)
           .font(.callout)
-          .foregroundStyle(.red)
+          .foregroundStyle(WorkbenchTheme.risk)
           .textSelection(.enabled)
       }
 

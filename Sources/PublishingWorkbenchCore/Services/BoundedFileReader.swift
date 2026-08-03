@@ -25,21 +25,21 @@ public enum BoundedFileReadError: Error, Equatable, LocalizedError, Sendable {
   public var errorDescription: String? {
     switch self {
     case .invalidByteLimit:
-      return "文件读取上限必须大于 0。"
+      return CoreL10n.text("文件读取上限必须大于 0。")
     case let .unsafeRelativePath(path):
-      return "文件路径不安全：\(path)"
+      return CoreL10n.format("文件路径不安全：%@", path)
     case let .cannotOpen(path, code):
-      return "无法安全打开文件：\(path)（错误 \(code)）"
+      return CoreL10n.format("无法安全打开文件：%@（错误 %d）", path, code)
     case let .cannotInspect(path, code):
-      return "无法检查文件：\(path)（错误 \(code)）"
+      return CoreL10n.format("无法检查文件：%@（错误 %d）", path, code)
     case let .notRegularFile(path):
-      return "只允许读取普通文件：\(path)"
+      return CoreL10n.format("只允许读取普通文件：%@", path)
     case let .exceedsByteLimit(path, limit):
-      return "文件超过允许的 \(limit) 字节：\(path)"
+      return CoreL10n.format("文件超过允许的 %d 字节：%@", limit, path)
     case let .cannotRead(path, code):
-      return "读取文件失败：\(path)（错误 \(code)）"
+      return CoreL10n.format("读取文件失败：%@（错误 %d）", path, code)
     case let .invalidUTF8(path):
-      return "文件不是有效的 UTF-8 文本：\(path)"
+      return CoreL10n.format("文件不是有效的 UTF-8 文本：%@", path)
     }
   }
 }

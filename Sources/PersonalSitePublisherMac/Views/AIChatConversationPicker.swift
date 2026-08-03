@@ -33,21 +33,23 @@ struct AIChatConversationPicker: View {
         }
         .controlSize(.small)
         .disabled(isBusy)
-        .help("保留当前对话并新建")
+        .help(String(localized: "保留当前对话并新建"))
       }
 
-      TextField("搜索对话", text: $searchText)
+      TextField(String(localized: "搜索对话"), text: $searchText)
         .textFieldStyle(.roundedBorder)
         .accessibilityLabel("搜索 AI 对话")
 
       if filteredConversations.isEmpty {
         ContentUnavailableView(
-          searchText.trimmedForPublishing.isEmpty ? "还没有对话" : "没有匹配的对话",
+          searchText.trimmedForPublishing.isEmpty
+            ? String(localized: "还没有对话")
+            : String(localized: "没有匹配的对话"),
           systemImage: "bubble.left.and.text.bubble.right",
           description: Text(
             searchText.trimmedForPublishing.isEmpty
-              ? "新建对话后，当前对话会保留在这里。"
-              : "尝试修改搜索内容。"
+              ? String(localized: "新建对话后，当前对话会保留在这里。")
+              : String(localized: "尝试修改搜索内容。")
           )
         )
         .frame(maxWidth: .infinity, minHeight: 180)
@@ -63,7 +65,7 @@ struct AIChatConversationPicker: View {
                 .padding(.vertical, 4)
 
               HStack {
-                Label("已归档", systemImage: "archivebox")
+                Label(String(localized: "已归档"), systemImage: "archivebox")
                   .font(.caption.weight(.semibold))
                   .foregroundStyle(.secondary)
                 Spacer()
@@ -83,7 +85,10 @@ struct AIChatConversationPicker: View {
         .frame(maxHeight: 300)
       }
 
-      Label("对话内容保存在本机；API Key 仍只存于钥匙串。", systemImage: "lock")
+      Label(
+        String(localized: "对话内容保存在本机；API Key 仍只存于钥匙串。"),
+        systemImage: "lock"
+      )
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -94,7 +99,7 @@ struct AIChatConversationPicker: View {
       renameSheet(conversation)
     }
     .confirmationDialog(
-      "删除这个对话？",
+      String(localized: "删除这个对话？"),
       isPresented: Binding(
         get: { conversationPendingDeletion != nil },
         set: { isPresented in
@@ -106,7 +111,7 @@ struct AIChatConversationPicker: View {
       titleVisibility: .visible,
       presenting: conversationPendingDeletion
     ) { conversation in
-      Button("删除对话", role: .destructive) {
+      Button(String(localized: "删除对话"), role: .destructive) {
         deleteConversation(conversation.id)
         conversationPendingDeletion = nil
       }
@@ -114,7 +119,12 @@ struct AIChatConversationPicker: View {
         conversationPendingDeletion = nil
       }
     } message: { conversation in
-      Text("“\(title(for: conversation))”及其中的消息将从本机删除。")
+      Text(
+        String(
+          format: String(localized: "“%@”及其中的消息将从本机删除。"),
+          title(for: conversation)
+        )
+      )
     }
   }
 
@@ -151,12 +161,12 @@ struct AIChatConversationPicker: View {
             .frame(width: 16)
 
           VStack(alignment: .leading, spacing: 3) {
-            Text(title(for: conversation))
+            Text(verbatim: title(for: conversation))
               .font(.callout.weight(.medium))
               .foregroundStyle(.primary)
               .lineLimit(1)
 
-            Text(preview(for: conversation))
+            Text(verbatim: preview(for: conversation))
               .font(.caption)
               .foregroundStyle(.secondary)
               .lineLimit(1)
@@ -187,8 +197,12 @@ struct AIChatConversationPicker: View {
       .accessibilityLabel(title(for: conversation))
       .accessibilityValue(
         conversation.isArchived
-          ? "已归档"
-          : (conversation.id == activeConversationID ? "当前对话" : preview(for: conversation))
+          ? String(localized: "已归档")
+          : (
+            conversation.id == activeConversationID
+              ? String(localized: "当前对话")
+              : preview(for: conversation)
+          )
       )
 
       Menu {
@@ -196,20 +210,20 @@ struct AIChatConversationPicker: View {
           Button {
             restoreConversation(conversation.id)
           } label: {
-            Label("恢复", systemImage: "arrow.uturn.backward")
+            Label(String(localized: "恢复"), systemImage: "arrow.uturn.backward")
           }
         } else {
           Button {
             renameText = title(for: conversation)
             conversationPendingRename = conversation
           } label: {
-            Label("重命名", systemImage: "pencil")
+            Label(String(localized: "重命名"), systemImage: "pencil")
           }
 
           Button {
             archiveConversation(conversation.id)
           } label: {
-            Label("归档", systemImage: "archivebox")
+            Label(String(localized: "归档"), systemImage: "archivebox")
           }
         }
 
@@ -224,8 +238,13 @@ struct AIChatConversationPicker: View {
       }
       .menuIndicator(.hidden)
       .disabled(isBusy)
-      .help("更多对话操作")
-      .accessibilityLabel("\(title(for: conversation))的更多操作")
+      .help(String(localized: "更多对话操作"))
+      .accessibilityLabel(
+        String(
+          format: String(localized: "%@ 的更多操作"),
+          title(for: conversation)
+        )
+      )
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 7)
@@ -249,7 +268,7 @@ struct AIChatConversationPicker: View {
         .accessibilityLabel("对话名称")
 
       HStack {
-        Button("恢复自动标题") {
+        Button(String(localized: "恢复自动标题")) {
           renameConversation(conversation.id, nil)
           conversationPendingRename = nil
         }
@@ -280,7 +299,8 @@ struct AIChatConversationPicker: View {
     return AIPublishingChatConversationPresentation.displayTitle(
       conversationTitle: conversation.title,
       messages: conversation.messages,
-      draft: draft
+      draft: draft,
+      emptyTitle: String(localized: "AI 对话")
     )
   }
 

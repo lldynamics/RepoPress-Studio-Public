@@ -114,6 +114,58 @@ final class ContentHealthActionQueueTests: XCTestCase {
     )
   }
 
+  func testPresentationServiceBuildsSnapshotAndFilteredRowsAsynchronously() async throws {
+    let draftID = UUID()
+    let error = PreflightIssue(
+      severity: .error,
+      title: "路径无效",
+      message: "需要修正"
+    )
+    let warning = PreflightIssue(
+      severity: .warning,
+      title: "公开风险",
+      message: "需要确认",
+      category: .publicRisk
+    )
+    let passing = DraftPreflightSummary(
+      draftID: UUID(),
+      draftTitle: "Passing",
+      markdownPath: "content/passing.md",
+      issues: []
+    )
+    let failing = DraftPreflightSummary(
+      draftID: draftID,
+      draftTitle: "Failing",
+      markdownPath: "content/failing.md",
+      issues: [error, warning]
+    )
+    let report = ContentHealthReport(
+      sitePreflightIssues: [],
+      draftSummaries: [failing, passing],
+      publicRiskSummary: PublicRiskSummary(issues: [warning]),
+      publicRiskDraftSummaries: [failing],
+      aiFixQueueItems: []
+    )
+    let service = ContentHealthPresentationService()
+
+    let snapshot = try await service.snapshot(
+      profileID: UUID(),
+      profileName: "Test",
+      report: report
+    )
+    let presentation = try await service.articlePresentation(
+      snapshot: snapshot,
+      issueScope: .all,
+      severityFilter: .errors
+    )
+
+    XCTAssertEqual(snapshot.errorCount, 1)
+    XCTAssertEqual(snapshot.warningCount, 1)
+    XCTAssertEqual(snapshot.passingDraftCount, 1)
+    XCTAssertEqual(presentation.rows.map(\.draftID), [draftID])
+    XCTAssertEqual(presentation.rows.first?.issues, [error])
+  }
+
   private func makeRow(
     title: String,
     path: String? = nil,

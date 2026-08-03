@@ -170,10 +170,20 @@ public struct MarkdownSmartEditingService: Sendable {
     if let captures = captures(
       pattern: #"^([ \t]*)([0-9]+)([.)])[ \t]+(.*)$"#,
       in: line
-    ), let number = Int(captures[1]) {
+    ), let number = nextOrderedListNumber(after: captures[1]) {
       return MarkdownLineMarker(
-        continuation: "\(captures[0])\(number + 1)\(captures[2]) ",
+        continuation: "\(captures[0])\(number)\(captures[2]) ",
         content: captures[3]
+      )
+    }
+
+    if let captures = captures(
+      pattern: #"^([ \t]*)([0-9]+)(、)([ \t]*)(.*)$"#,
+      in: line
+    ), let number = nextOrderedListNumber(after: captures[1]) {
+      return MarkdownLineMarker(
+        continuation: "\(captures[0])\(number)\(captures[2])\(captures[3])",
+        content: captures[4]
       )
     }
 
@@ -198,6 +208,12 @@ public struct MarkdownSmartEditingService: Sendable {
     }
 
     return nil
+  }
+
+  private func nextOrderedListNumber(after value: String) -> Int? {
+    guard let number = Int(value) else { return nil }
+    let (nextNumber, overflow) = number.addingReportingOverflow(1)
+    return overflow ? nil : nextNumber
   }
 
   private func captures(pattern: String, in text: String) -> [String]? {

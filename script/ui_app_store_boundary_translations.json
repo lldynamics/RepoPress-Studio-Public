@@ -23,7 +23,6 @@
   "Chrome/Edge 优先生成自包含 MHTML；Safari 和 Firefox 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。": "Chrome and Edge prefer self-contained MHTML, while Safari and Firefox create offline HTML within the size limit. If the app is closed, the extension keeps pending imports in its browser-local queue and retries when the app is available.",
   "Chrome 优先生成自包含 MHTML；Safari 在大小上限内生成离线 HTML。应用未打开时，扩展会把待导入内容保留在浏览器本地队列，应用恢复后再重试。": "Chrome prefers self-contained MHTML, while Safari creates offline HTML within the size limit. If the app is closed, the extension keeps pending imports in its browser-local queue and retries when the app is available.",
   "现有浏览器扩展会立即断开，需要粘贴新令牌后重新连接。": "The current browser extensions will disconnect immediately. Paste the new token into each extension to reconnect.",
-  "AI 请求使用你自己的服务商账户和 API Key，应用不限制 AI 请求次数，也不把 AI 请求次数作为 Pro 付费权益。": "AI requests use your own provider account and API key. The app does not limit AI request count or sell additional AI requests as a Pro benefit.",
   "应用只有一个 App Store 版本。Chrome、Edge 和 Firefox 扩展分别由对应浏览器商店安装和更新，扩展不向应用安装额外程序。": "There is one App Store edition. Chrome, Edge, and Firefox extensions are installed and updated through their browser stores and do not install extra programs into the app.",
   "应用只有一个 App Store 版本。Safari Web Extension 已内嵌在应用中；Chrome、Edge 和 Firefox 扩展由对应浏览器商店安装和更新。": "There is one App Store edition. The Safari Web Extension is embedded in the app; Chrome, Edge, and Firefox extensions are installed and updated through their browser stores.",
   "当前版本只支持 Safari 和 Chrome。Safari Web Extension 已内嵌在应用中，Chrome 扩展由 Chrome 网上应用店安装和更新。": "This release supports Safari and Chrome only. The Safari Web Extension is embedded in the app, and the Chrome extension is installed and updated through the Chrome Web Store.",
@@ -35,7 +34,6 @@
   "撤销后，测试连接、AI 对话、写作建议和图片文案等功能都会停止发送请求，直到你再次明确同意。": "After revocation, connection tests, AI chat, writing suggestions, image copy, and other AI features stop sending requests until you explicitly consent again.",
   "当你主动使用 AI 功能时，应用可能发送你的提示词、当前文章与站点上下文、选中的资料库片段，以及你主动添加的图片。服务商会按其隐私政策处理这些内容。": "When you initiate an AI feature, the app may send your prompt, current article and site context, selected knowledge-library excerpts, and images you add. The provider handles this content under its privacy policy.",
   "浏览器扩展可通过本机回环地址连接，连接令牌仍为必需。": "Browser extensions can connect through the local loopback address. A pairing token is still required.",
-  "AI 使用你自己的服务商账户和 API Key，不计入应用免费额度。": "AI uses your own provider account and API key and does not count against the app's free quota.",
   "AI 服务当前不可用": "AI Service Is Currently Unavailable",
   "请重新打开设置；如果问题仍然存在，请检查应用版本和服务配置。": "Reopen Settings. If the issue continues, check the app version and service configuration."
 }

@@ -1,0 +1,202 @@
+{
+  "%lld": {
+    "zh-Hans": "%lld",
+    "en": "%lld"
+  },
+  "%lld/%lld": {
+    "zh-Hans": "%lld/%lld",
+    "en": "%lld/%lld"
+  },
+  "AI %@": {
+    "zh-Hans": "AI %@",
+    "en": "AI %@"
+  },
+  "AI 请求、资料导入、图片处理、站点扫描、Git 推送和部署状态会集中显示在这里。": {
+    "zh-Hans": "AI 请求、资料导入、图片处理、站点扫描、Git 推送和部署状态会集中显示在这里。",
+    "en": "AI requests, knowledge imports, image processing, site scans, Git pushes, and deployment status are shown here."
+  },
+  "上次运行未正常结束": {
+    "zh-Hans": "上次运行未正常结束",
+    "en": "The app did not exit normally last time"
+  },
+  "下次以安全模式启动": {
+    "zh-Hans": "下次以安全模式启动",
+    "en": "Start in Safe Mode Next Time"
+  },
+  "下次启动仍可从这三个入口开始。": {
+    "zh-Hans": "下次启动仍可从这三个入口开始。",
+    "en": "You can still choose from these three options the next time you open the app."
+  },
+  "从模板开始创建站点，目录、Git 和部署可以在建站向导中逐步完成。": {
+    "zh-Hans": "从模板开始创建站点，目录、Git 和部署可以在建站向导中逐步完成。",
+    "en": "Start a site from a template, then configure its folders, Git repository, and deployment step by step in the setup assistant."
+  },
+  "先写本地 Markdown 草稿，不要求仓库、站点类型或发布配置。": {
+    "zh-Hans": "先写本地 Markdown 草稿，不要求仓库、站点类型或发布配置。",
+    "en": "Start with local Markdown drafts without configuring a repository, site type, or publishing settings."
+  },
+  "先选择你现在要做的事，站点配置可以稍后补充。": {
+    "zh-Hans": "先选择你现在要做的事，站点配置可以稍后补充。",
+    "en": "Choose what you want to do now. You can finish the site setup later."
+  },
+  "元数据变化 %lld 项，新增 %lld 行，删除 %lld 行": {
+    "zh-Hans": "元数据变化 %lld 项，新增 %lld 行，删除 %lld 行",
+    "en": "%lld metadata changes, %lld lines added, and %lld lines removed"
+  },
+  "只会创建用户主动选择的脱敏 ZIP；不包含草稿正文、附件、API Key 或钥匙串内容。": {
+    "zh-Hans": "只会创建用户主动选择的脱敏 ZIP；不包含草稿正文、附件、API Key 或钥匙串内容。",
+    "en": "Only a redacted ZIP that you explicitly choose to create will be exported. It does not include draft text, attachments, API keys, or Keychain data."
+  },
+  "只配置当前路径需要的信息，之后可以随时在设置中修改。": {
+    "zh-Hans": "只配置当前路径需要的信息，之后可以随时在设置中修改。",
+    "en": "Configure only what this path requires. You can change these settings at any time."
+  },
+  "发现未保存草稿": {
+    "zh-Hans": "发现未保存草稿",
+    "en": "Unsaved Drafts Found"
+  },
+  "完成并检查仓库": {
+    "zh-Hans": "完成并检查仓库",
+    "en": "Finish and Check Repository"
+  },
+  "安全模式启动": {
+    "zh-Hans": "安全模式启动",
+    "en": "Start in Safe Mode"
+  },
+  "导出脱敏诊断包…": {
+    "zh-Hans": "导出脱敏诊断包…",
+    "en": "Export Redacted Diagnostics…"
+  },
+  "导出脱敏诊断包失败": {
+    "zh-Hans": "导出脱敏诊断包失败",
+    "en": "Failed to Export Redacted Diagnostics"
+  },
+  "已保存 %@": {
+    "zh-Hans": "已保存 %@",
+    "en": "Saved %@"
+  },
+  "已打开 %@": {
+    "zh-Hans": "已打开 %@",
+    "en": "Opened %@"
+  },
+  "已找到 %lld 个 HTML 源文件。": {
+    "zh-Hans": "已找到 %lld 个 HTML 源文件。",
+    "en": "Found %lld HTML source files."
+  },
+  "已选择": {
+    "zh-Hans": "已选择",
+    "en": "Selected"
+  },
+  "当前工作台没有可恢复的未保存编辑。": {
+    "zh-Hans": "当前工作台没有可恢复的未保存编辑。",
+    "en": "There are no recoverable unsaved edits in the current workspace."
+  },
+  "当前路径的设置会保留，可稍后在设置中继续修改。": {
+    "zh-Hans": "当前路径的设置会保留，可稍后在设置中继续修改。",
+    "en": "The settings for this path will be preserved, and you can continue editing them later in Settings."
+  },
+  "忽略 %@ 的恢复内容": {
+    "zh-Hans": "忽略 %@ 的恢复内容",
+    "en": "Ignore recovery content for %@"
+  },
+  "恢复 %@": {
+    "zh-Hans": "恢复 %@",
+    "en": "Restore %@"
+  },
+  "开始使用": {
+    "zh-Hans": "开始使用",
+    "en": "Get Started"
+  },
+  "引用片段：%@。": {
+    "zh-Hans": "引用片段：%@。",
+    "en": "Referenced passage: %@."
+  },
+  "找到 %lld 个匹配": {
+    "zh-Hans": "找到 %lld 个匹配",
+    "en": "Found %lld matches"
+  },
+  "更换本地仓库": {
+    "zh-Hans": "更换本地仓库",
+    "en": "Change Local Repository"
+  },
+  "未保存草稿恢复": {
+    "zh-Hans": "未保存草稿恢复",
+    "en": "Unsaved Draft Recovery"
+  },
+  "未命名站点": {
+    "zh-Hans": "未命名站点",
+    "en": "Unnamed Site"
+  },
+  "标注：%@": {
+    "zh-Hans": "标注：%@",
+    "en": "Annotation: %@"
+  },
+  "正常启动": {
+    "zh-Hans": "正常启动",
+    "en": "Start Normally"
+  },
+  "移除上下文 %@": {
+    "zh-Hans": "移除上下文 %@",
+    "en": "Remove context %@"
+  },
+  "移除图片 %@": {
+    "zh-Hans": "移除图片 %@",
+    "en": "Remove image %@"
+  },
+  "第 %@ 步，共 %lld 步：%@": {
+    "zh-Hans": "第 %@ 步，共 %lld 步：%@",
+    "en": "Step %@ of %lld: %@"
+  },
+  "稍后再选": {
+    "zh-Hans": "稍后再选",
+    "en": "Choose Later"
+  },
+  "统一任务中心": {
+    "zh-Hans": "统一任务中心",
+    "en": "Unified Task Center"
+  },
+  "脱敏诊断包已导出": {
+    "zh-Hans": "脱敏诊断包已导出",
+    "en": "Redacted Diagnostics Exported"
+  },
+  "自动预检、预览、后台维护和浏览器连接已暂停；关闭应用后重新打开即可退出安全模式。": {
+    "zh-Hans": "自动预检、预览、后台维护和浏览器连接已暂停；关闭应用后重新打开即可退出安全模式。",
+    "en": "Automatic preflight checks, previews, background maintenance, and browser connections are paused. Quit and reopen the app to exit Safe Mode."
+  },
+  "这些内容来自上次异常结束前的编辑缓冲区。恢复已有草稿时，如果当前内容已经变化，会自动创建恢复副本。": {
+    "zh-Hans": "这些内容来自上次异常结束前的编辑缓冲区。恢复已有草稿时，如果当前内容已经变化，会自动创建恢复副本。",
+    "en": "This content comes from the editing buffer saved before the app last exited unexpectedly. If an existing draft has changed, restoring it creates a recovery copy automatically."
+  },
+  "连接已有仓库": {
+    "zh-Hans": "连接已有仓库",
+    "en": "Connect Existing Repository"
+  },
+  "选择 %@ 查看问题详情": {
+    "zh-Hans": "选择 %@ 查看问题详情",
+    "en": "Select %@ to view issue details"
+  },
+  "选择已有的本地站点仓库，应用会读取配置并导入文章。": {
+    "zh-Hans": "选择已有的本地站点仓库，应用会读取配置并导入文章。",
+    "en": "Select an existing local site repository. The app will read its configuration and import its articles."
+  },
+  "选择诊断包导出位置": {
+    "zh-Hans": "选择诊断包导出位置",
+    "en": "Choose Diagnostics Export Location"
+  },
+  "退出安全模式并关闭应用": {
+    "zh-Hans": "退出安全模式并关闭应用",
+    "en": "Exit Safe Mode and Quit App"
+  },
+  "创建新站点": {
+    "zh-Hans": "创建新站点",
+    "en": "Create New Site"
+  },
+  "暂不配置站点": {
+    "zh-Hans": "暂不配置站点",
+    "en": "Skip Site Setup"
+  },
+  "应用检测到上次运行可能因崩溃或被强制结束。安全模式会暂停自动预检、预览、后台维护和浏览器连接，便于先恢复草稿并导出诊断信息。": {
+    "zh-Hans": "应用检测到上次运行可能因崩溃或被强制结束。安全模式会暂停自动预检、预览、后台维护和浏览器连接，便于先恢复草稿并导出诊断信息。",
+    "en": "The app detected that its previous run may have ended because of a crash or force quit. Safe Mode pauses automatic preflight checks, previews, background maintenance, and browser connections so you can recover drafts and export diagnostics first."
+  }
+}

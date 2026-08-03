@@ -34,9 +34,12 @@ extension WorkbenchStore {
   public var automaticallyRefreshPreflightOnEdit: Bool { publishingStore.automaticallyRefreshPreflightOnEdit }
   public var lastSaveStatus: String { persistenceStore.status }
   public var hasUnsavedChanges: Bool { persistenceStore.hasUnsavedChanges }
-  public var lastSaveError: String? { persistenceStore.lastSaveError }
+  public var lastSaveError: String? {
+    draftRecoveryJournalErrorMessage ?? persistenceStore.lastSaveError
+  }
   public var persistenceRecoveryMessage: String? { persistenceStore.recoveryMessage }
   public var isPersistenceRecoveryWriteProtected: Bool { persistenceStore.isRecoveryWriteProtected }
+  public var pendingDraftRecoveryCount: Int { pendingDraftRecoveries.count }
   public var publishActionMessage: String? { publishingStore.publishActionMessage }
   public var isLocalRepositoryMutationRunning: Bool { publishingStore.isLocalRepositoryMutationRunning }
   public var imageActionMessage: String? { publishingStore.imageActionMessage }
@@ -116,10 +119,7 @@ extension WorkbenchStore {
 }
 
 extension WorkbenchStore {
-  public var privacySettings: PrivacyProtectionSettings { privacyMonetizationStore.privacySettings }
-  public var isPrivacyLocked: Bool { privacyMonetizationStore.isPrivacyLocked }
-  public var privacyLockReason: String? { privacyMonetizationStore.privacyLockReason }
-  public var monetizationState: MonetizationState { privacyMonetizationStore.monetizationState }
-  public var monetizationMessage: String? { privacyMonetizationStore.monetizationMessage }
-  public var latestProFeatureBlockNotice: ProFeatureBlockNotice? { privacyMonetizationStore.latestProFeatureBlockNotice }
+  public var privacySettings: PrivacyProtectionSettings { privacyProtectionStore.privacySettings }
+  public var isQuickHideActive: Bool { privacyProtectionStore.isQuickHideActive }
+  public var quickHideReason: String? { privacyProtectionStore.quickHideReason }
 }

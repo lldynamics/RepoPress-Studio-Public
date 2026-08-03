@@ -104,7 +104,7 @@ final class ReleaseRecordTests: XCTestCase {
     XCTAssertEqual(record.targetBranch, "main")
     XCTAssertEqual(record.commitSHA, "abcdef1234567890")
     XCTAssertEqual(record.shortCommitSHA, "abcdef12")
-    XCTAssertEqual(record.reviewTitle, package.reviewTitle)
+    XCTAssertEqual(record.reviewTitle, review.title)
     XCTAssertTrue(try XCTUnwrap(record.reviewURL).contains("github.com/jinfang/site"))
   }
 

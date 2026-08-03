@@ -6,9 +6,10 @@ import SwiftUI
 struct PersonalSitePublisherMacApp: App {
   @NSApplicationDelegateAdaptor(PersonalSitePublisherMacAppDelegate.self) private var appDelegate
   @StateObject private var launchCoordinator: WorkbenchLaunchCoordinator
-  @StateObject private var storeKitProEntitlementCoordinator = StoreKitProEntitlementCoordinator()
+  @StateObject private var appUpdateController = AppUpdateController()
 
   init() {
+    AppLanguagePreference.prepareForLaunch()
     // Earlier builds disabled AppKit restoration globally. Remove those sticky
     // overrides now that the main workspace is owned by a native SwiftUI scene.
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
@@ -25,28 +26,43 @@ struct PersonalSitePublisherMacApp: App {
     UserDefaults.standard.removeObject(forKey: "NSQuitAlwaysKeepsWindows")
 #endif
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    let knowledgeLibraryService = ScreenshotDemoDataService.prepareKnowledgeLibraryServiceIfEnabled()
-#else
-    let knowledgeLibraryService = KnowledgeLibraryService()
-#endif
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    let persistence = ScreenshotDemoDataService.preparePersistenceIfEnabled()
-#else
-    let persistence = WorkbenchPersistence()
-#endif
-    _launchCoordinator = StateObject(
-      wrappedValue: WorkbenchLaunchCoordinator(
-        persistence: persistence,
-        knowledgeLibraryService: knowledgeLibraryService
+    if ScreenshotDemoDataService.isEnabledFromEnvironment {
+      let persistence = ScreenshotDemoDataService.preparePersistenceIfEnabled()
+      let demoRootURL = persistence.fileURL.deletingLastPathComponent()
+      let knowledgeLibraryService = KnowledgeLibraryService(
+        rootURL: demoRootURL.appendingPathComponent("KnowledgeLibrary", isDirectory: true)
       )
-    )
+      _launchCoordinator = StateObject(
+        wrappedValue: WorkbenchLaunchCoordinator(
+          persistence: persistence,
+          knowledgeLibraryService: knowledgeLibraryService,
+          rssReaderFileURL: demoRootURL
+            .appendingPathComponent("RSSReader", isDirectory: true)
+            .appendingPathComponent("reader.sqlite", isDirectory: false),
+          managedAttachmentFileStore: ManagedAttachmentFileStore(
+            rootDirectoryURL: demoRootURL.appendingPathComponent(
+              "ManagedAttachments",
+              isDirectory: true
+            )
+          ),
+          workspaceBackupDirectoryURL: demoRootURL.appendingPathComponent(
+            WorkspaceBackupService.automaticBackupDirectoryName,
+            isDirectory: true
+          )
+        )
+      )
+    } else {
+      _launchCoordinator = StateObject(wrappedValue: WorkbenchLaunchCoordinator())
+    }
+#else
+    _launchCoordinator = StateObject(wrappedValue: WorkbenchLaunchCoordinator())
+#endif
   }
 
   var body: some Scene {
     WindowGroup("RepoPress Studio", id: "main-workbench") {
       WorkbenchLaunchRootView(
         coordinator: launchCoordinator,
-        storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator,
         onReady: { store, browserBridge in
           appDelegate.workbenchStore = store
           appDelegate.browserBridge = browserBridge
@@ -72,7 +88,7 @@ struct PersonalSitePublisherMacApp: App {
     )
     .windowToolbarStyle(.unified(showsTitle: false))
     .commands {
-      CommandGroup(replacing: .newItem) {}
+      AppUpdateCommands(controller: appUpdateController)
       if let store = launchCoordinator.store {
         PublishingConsoleCommands(store: store)
       }
@@ -84,11 +100,17 @@ struct PersonalSitePublisherMacApp: App {
           ProtectedSettingsView(
             store: store,
             browserBridge: launchCoordinator.browserBridge,
-            storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator
+            rssStore: launchCoordinator.rssStore
           )
         } else {
-          ProgressView()
-            .frame(width: 420, height: 300)
+          VStack(spacing: 12) {
+            Image(systemName: "externaldrive.fill.badge.plus")
+              .font(.title)
+              .foregroundStyle(.secondary)
+            Text("请先在主窗口完成数据文件夹设置。")
+              .foregroundStyle(.secondary)
+          }
+          .frame(width: 420, height: 300)
         }
       }
         .tint(WorkbenchTheme.navigationSelection)
@@ -293,7 +315,10 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   func applicationWillTerminate(_ notification: Notification) {
     browserBridge?.stop()
     workbenchStore?.stopLocalSitePreviewImmediately()
-    _ = workbenchStore?.flushPendingChanges()
+    let didFlush = workbenchStore?.flushPendingChanges() ?? true
+    if didFlush {
+      WorkbenchSessionRecovery.shared.markCleanExit()
+    }
   }
 
 }
@@ -301,20 +326,20 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
 private struct ProtectedSettingsView: View {
   @ObservedObject var store: WorkbenchStore
   let browserBridge: KnowledgeBrowserBridge?
-  @ObservedObject var storeKitProEntitlementCoordinator: StoreKitProEntitlementCoordinator
+  let rssStore: RSSReaderStore?
 
   var body: some View {
     ZStack {
       SettingsView(
         store: store,
         browserBridge: browserBridge,
-        storeKitProEntitlementCoordinator: storeKitProEntitlementCoordinator
+        rssStore: rssStore
       )
       .disabled(!store.canUseProtectedWorkbench)
-      .accessibilityHidden(store.isPrivacyLocked)
+      .accessibilityHidden(store.isQuickHideActive)
 
-      if store.isPrivacyLocked {
-        PrivacyLockOverlay(store: store)
+      if store.isQuickHideActive {
+        QuickHideOverlay(store: store)
       }
     }
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD

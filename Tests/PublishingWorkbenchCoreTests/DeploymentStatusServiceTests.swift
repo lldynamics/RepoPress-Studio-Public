@@ -1185,6 +1185,50 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(reloaded.releaseLedger.entries.first?.deploymentStatus?.provider, .custom)
   }
 
+  func testStoreRefreshDeploymentStatusContinuesPublicFallbackAfterKeychainReadFailure() async throws {
+    let transport = SequencedDeploymentTransport(responses: [
+      deploymentResponse(statusCode: 200, json: #"{"status":"ok"}"#),
+    ])
+    let deploymentTokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.DeploymentFallbackAccessFailure",
+      accountPrefix: "deployment-fallback-access-failure",
+      inMemory: true
+    )
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
+      deploymentStatusService: DeploymentStatusService(transport: transport),
+      deploymentTokenStore: deploymentTokenStore
+    )
+    store.updateActiveProfile { profile in
+      profile.repositoryProvider = .github
+      profile.repositoryBaseURL = "http://insecure.example.test"
+      profile.repoOwner = "owner"
+      profile.repoName = "site"
+      profile.deploymentProvider = .githubPages
+      profile.deploymentSiteURL = "https://owner.github.io/site/"
+    }
+    let record = ReleaseRecord(
+      kind: .remoteDirectCommit,
+      title: "线上发布：Fallback",
+      summary: "github-pages",
+      siteProfileID: store.activeProfileID,
+      branchName: "main",
+      commitSHA: "abc123"
+    )
+    store.setReleaseRecords([record])
+
+    let snapshot = await store.refreshDeploymentStatus(for: record)
+
+    XCTAssertNotNil(snapshot)
+    XCTAssertEqual(store.deploymentTokenAvailability.accessState, .accessFailed)
+    XCTAssertTrue(store.deploymentStatusMessage?.contains(CoreL10n.text("部署 Token 状态读取失败")) == true)
+    XCTAssertFalse(store.deploymentStatusMessage?.contains(CoreL10n.text("未保存 Token")) == true)
+    let requests = await transport.capturedRequests()
+    XCTAssertEqual(requests.count, 1)
+    XCTAssertEqual(requests.first?.url?.absoluteString, "https://owner.github.io/site/")
+    XCTAssertNil(requests.first?.value(forHTTPHeaderField: "Authorization"))
+  }
+
   func testStoreRefreshDeploymentStatusKeepsHistoryForRecord() async throws {
     let transport = SequencedDeploymentTransport(responses: [
       deploymentResponse(statusCode: 200, json: #"{"status":"error","message":"Deploy failed"}"#),
@@ -1656,6 +1700,38 @@ final class DeploymentStatusServiceTests: XCTestCase {
     let parsed = try XCTUnwrap(DeploymentWebhookHTTPRequest.parse(Data(request.utf8)))
 
     XCTAssertEqual(parsed.provider, .cloudflarePages)
+    XCTAssertEqual(parsed.payloadText, body)
+  }
+
+  func testDeploymentWebhookHTTPRequestRejectsDuplicateContentLengthWithoutTrapping() {
+    let body = #"{"state":"ready"}"#
+    let request = """
+    POST /deployment-webhook/vercel HTTP/1.1\r
+    Host: 127.0.0.1:8787\r
+    Content-Length: \(body.utf8.count)\r
+    Content-Length: \(body.utf8.count)\r
+    \r
+    \(body)
+    """
+
+    XCTAssertNil(DeploymentWebhookHTTPRequest.parse(Data(request.utf8)))
+  }
+
+  func testDeploymentWebhookHTTPRequestAllowsRepeatedExtensionHeaders() throws {
+    let body = #"{"state":"ready"}"#
+    let request = """
+    POST /deployment-webhook/vercel HTTP/1.1\r
+    Host: 127.0.0.1:8787\r
+    X-Debug-Trace: first\r
+    X-Debug-Trace: second\r
+    Content-Length: \(body.utf8.count)\r
+    \r
+    \(body)
+    """
+
+    let parsed = try XCTUnwrap(DeploymentWebhookHTTPRequest.parse(Data(request.utf8)))
+
+    XCTAssertEqual(parsed.provider, .vercel)
     XCTAssertEqual(parsed.payloadText, body)
   }
 

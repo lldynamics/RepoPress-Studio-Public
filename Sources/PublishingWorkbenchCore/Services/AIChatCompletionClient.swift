@@ -156,6 +156,7 @@ public struct AIChatCompletionRequest: Codable, Hashable, Sendable {
   public var model: String
   public var messages: [AIChatMessage]
   public var temperature: Double?
+  public var maximumOutputTokens: Int?
   public var thinking: AIProviderThinkingOption?
   public var reasoningEffort: String?
   public var stream: Bool?
@@ -165,6 +166,7 @@ public struct AIChatCompletionRequest: Codable, Hashable, Sendable {
     model: String,
     messages: [AIChatMessage],
     temperature: Double? = nil,
+    maximumOutputTokens: Int? = nil,
     thinking: AIProviderThinkingOption? = nil,
     reasoningEffort: String? = nil,
     stream: Bool? = nil,
@@ -173,6 +175,7 @@ public struct AIChatCompletionRequest: Codable, Hashable, Sendable {
     self.model = model
     self.messages = messages
     self.temperature = temperature
+    self.maximumOutputTokens = maximumOutputTokens
     self.thinking = thinking
     self.reasoningEffort = reasoningEffort
     self.stream = stream
@@ -183,6 +186,7 @@ public struct AIChatCompletionRequest: Codable, Hashable, Sendable {
     case model
     case messages
     case temperature
+    case maximumOutputTokens = "max_tokens"
     case thinking
     case reasoningEffort = "reasoning_effort"
     case stream
@@ -824,22 +828,109 @@ public struct AIChatCompletionClient: Sendable {
     config: AIProviderConfig,
     purpose: AIProviderRequestPurpose
   ) -> AIChatCompletionRequest {
+    let advancedSettings = config.resolvedAdvancedSettings
+    let appliesInteractiveOverrides = purpose == .interactiveChat
+    let requestedTemperature = appliesInteractiveOverrides
+      ? (advancedSettings.normalizedTemperature ?? request.temperature)
+      : request.temperature
     let requestOptions = config.chatRequestOptions(
-      temperature: request.temperature,
+      temperature: requestedTemperature,
       purpose: purpose
     )
-    let hasExplicitReasoningOptions = request.thinking != nil || request.reasoningEffort != nil
+    let reasoningSupport = config.capabilitySupport(for: .reasoningControl)
+    let explicitThinking = reasoningSupport == .unsupported ? nil : request.thinking
+    let explicitReasoningEffort = reasoningSupport == .unsupported
+      ? nil
+      : request.reasoningEffort
+    let hasExplicitReasoningOptions = explicitThinking != nil || explicitReasoningEffort != nil
+    let advancedReasoningPreference = reasoningSupport == .unsupported
+      ? AIProviderReasoningPreference.automatic
+      : advancedSettings.reasoningPreference
+    let reasoningOptions = normalizedReasoningOptions(
+      explicitThinking: explicitThinking,
+      explicitReasoningEffort: explicitReasoningEffort,
+      fallback: requestOptions,
+      preference: appliesInteractiveOverrides
+        ? advancedReasoningPreference
+        : .automatic,
+      config: config
+    )
     return AIChatCompletionRequest(
       model: config.requestModel(resolving: request.model),
-      messages: request.messages,
+      messages: appliesInteractiveOverrides
+        ? messages(
+          request.messages,
+          appendingSystemPrompt: advancedSettings.normalizedSystemPrompt
+        )
+        : request.messages,
       temperature: requestOptions.temperature,
-      thinking: request.thinking ?? requestOptions.thinking,
+      maximumOutputTokens: request.maximumOutputTokens
+        ?? (appliesInteractiveOverrides
+          ? advancedSettings.normalizedMaximumOutputTokens
+          : nil),
+      thinking: reasoningOptions.thinking,
       reasoningEffort: hasExplicitReasoningOptions
-        ? request.reasoningEffort
-        : requestOptions.reasoningEffort,
+        ? explicitReasoningEffort
+        : reasoningOptions.reasoningEffort,
       stream: request.stream,
       streamOptions: request.streamOptions
     )
+  }
+
+  private func messages(
+    _ messages: [AIChatMessage],
+    appendingSystemPrompt systemPrompt: String
+  ) -> [AIChatMessage] {
+    guard !systemPrompt.isEmpty else { return messages }
+    var updated = messages
+    if let index = updated.firstIndex(where: { $0.role == "system" }),
+       case .text(let existingPrompt) = updated[index].content {
+      updated[index].content = .text(
+        [existingPrompt.trimmedForPublishing, systemPrompt]
+          .filter { !$0.isEmpty }
+          .joined(separator: "\n\n")
+      )
+    } else {
+      updated.insert(AIChatMessage(role: "system", content: systemPrompt), at: 0)
+    }
+    return updated
+  }
+
+  private func normalizedReasoningOptions(
+    explicitThinking: AIProviderThinkingOption?,
+    explicitReasoningEffort: String?,
+    fallback: AIProviderChatRequestOptions,
+    preference: AIProviderReasoningPreference,
+    config: AIProviderConfig
+  ) -> AIProviderChatRequestOptions {
+    if explicitThinking != nil || explicitReasoningEffort != nil {
+      return AIProviderChatRequestOptions(
+        temperature: fallback.temperature,
+        thinking: explicitThinking ?? fallback.thinking,
+        reasoningEffort: explicitReasoningEffort
+      )
+    }
+
+    switch preference {
+    case .automatic:
+      return fallback
+    case .disabled:
+      return AIProviderChatRequestOptions(
+        temperature: fallback.temperature,
+        thinking: config.usesDeepSeekAPI
+          ? AIProviderThinkingOption(type: "disabled")
+          : nil,
+        reasoningEffort: nil
+      )
+    case .low, .medium, .high:
+      return AIProviderChatRequestOptions(
+        temperature: fallback.temperature,
+        thinking: config.usesDeepSeekAPI
+          ? AIProviderThinkingOption(type: "enabled")
+          : nil,
+        reasoningEffort: preference.rawValue
+      )
+    }
   }
 
   private func streamUpdates(
@@ -1139,10 +1230,7 @@ struct AIChatCompletionResponse: Decodable, Hashable {
     var reasoningContent: AIResponseContent?
 
     var contentText: String {
-      if let contentText = content?.text.nilIfEmpty {
-        return contentText
-      }
-      return reasoningContent?.text ?? ""
+      content?.text ?? ""
     }
 
     private enum CodingKeys: String, CodingKey {

@@ -109,10 +109,18 @@ final class RemoteReviewDraftBuilderTests: XCTestCase {
 
     XCTAssertEqual(review.branchName, "publish/batch-20260829-1040-2-articles")
     XCTAssertEqual(review.targetBranch, "main")
-    XCTAssertEqual(review.title, "Publish 2 articles")
-    XCTAssertTrue(review.body.contains("- 文章数：2"))
-    XCTAssertTrue(review.body.contains("First: `content/posts/first.md`"))
-    XCTAssertTrue(review.body.contains("Second: `content/posts/second.md`"))
+    XCTAssertEqual(review.title, CoreL10n.format("发布 %d 篇文章", 2))
+    XCTAssertTrue(review.body.contains(CoreL10n.format("- 文章数：%d", 2)))
+    XCTAssertTrue(
+      review.body.contains(
+        CoreL10n.format("- %@：`%@`（%d 个变化）", "First", "content/posts/first.md", 1)
+      )
+    )
+    XCTAssertTrue(
+      review.body.contains(
+        CoreL10n.format("- %@：`%@`（%d 个变化）", "Second", "content/posts/second.md", 1)
+      )
+    )
     XCTAssertTrue(review.webURL?.absoluteString.contains("/owner/site/compare/main...publish/batch-20260829-1040-2-articles") == true)
   }
 

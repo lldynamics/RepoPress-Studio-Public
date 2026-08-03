@@ -1,20 +1,30 @@
 import Foundation
 
+public enum AIDataSharingDestinationState: Equatable, Sendable {
+  case unconfigured
+  case local
+  case remote
+}
+
 public struct AIDataSharingConsentPresentation: Equatable, Sendable {
   public let providerName: String
   public let destination: String
-  public let requiresConsent: Bool
+  public let destinationState: AIDataSharingDestinationState
   public let isGranted: Bool
+
+  public var requiresConsent: Bool {
+    destinationState == .remote
+  }
 
   public init(
     providerName: String,
     destination: String,
-    requiresConsent: Bool,
+    destinationState: AIDataSharingDestinationState,
     isGranted: Bool
   ) {
     self.providerName = providerName
     self.destination = destination
-    self.requiresConsent = requiresConsent
+    self.destinationState = destinationState
     self.isGranted = isGranted
   }
 }
@@ -34,17 +44,28 @@ public final class AIDataSharingConsentStore {
   public func presentation(
     for config: AIProviderConfig
   ) -> AIDataSharingConsentPresentation {
-    let requiresConsent = !config.isLocalEndpoint
+    let destination = config.dataSharingDestination
+    let destinationState: AIDataSharingDestinationState
+    if destination.isEmpty {
+      destinationState = .unconfigured
+    } else if config.isLocalEndpoint {
+      destinationState = .local
+    } else {
+      destinationState = .remote
+    }
     return AIDataSharingConsentPresentation(
       providerName: config.normalizedDisplayName,
-      destination: config.dataSharingDestination,
-      requiresConsent: requiresConsent,
-      isGranted: !requiresConsent || grantedIdentifiers.contains(config.dataSharingConsentIdentifier)
+      destination: destination,
+      destinationState: destinationState,
+      isGranted: destinationState == .local
+        || (destinationState == .remote
+          && grantedIdentifiers.contains(config.dataSharingConsentIdentifier))
     )
   }
 
   @discardableResult
   public func grant(for config: AIProviderConfig) -> Bool {
+    guard !config.dataSharingDestination.isEmpty else { return false }
     guard !config.isLocalEndpoint else { return true }
     var identifiers = grantedIdentifiers
     identifiers.insert(config.dataSharingConsentIdentifier)

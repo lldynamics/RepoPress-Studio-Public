@@ -74,7 +74,10 @@ function minimizedQueueCapture(capture) {
     archiveMissingResourceCount: null,
     archiveWasTruncated: null,
     captureMode: "link-only",
-    allowsAIUse: capture?.allowsAIUse !== false
+    allowsLocalSemanticIndex: capture?.allowsLocalSemanticIndex === undefined
+      ? capture?.allowsAIUse !== false
+      : capture.allowsLocalSemanticIndex !== false,
+    allowsRemoteAIUse: capture?.allowsRemoteAIUse === true
   };
 }
 
@@ -425,7 +428,10 @@ function captureQueueItemSummary(entry, retentionDays) {
     title: String(capture.title || "未命名网页").slice(0, 300),
     sourceURL: normalizedPageIdentityURL(capture.sourceURL),
     captureMode: capture.captureMode || "cleaned-article",
-    allowsAIUse: capture.allowsAIUse !== false,
+    allowsLocalSemanticIndex: capture.allowsLocalSemanticIndex === undefined
+      ? capture.allowsAIUse !== false
+      : capture.allowsLocalSemanticIndex !== false,
+    allowsRemoteAIUse: capture.allowsRemoteAIUse === true,
     storedContentMode: entry.storedContentMode === "links-only"
       ? "links-only"
       : "full-content",

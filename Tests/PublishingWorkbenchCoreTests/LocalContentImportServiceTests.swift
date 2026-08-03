@@ -834,6 +834,303 @@ final class LocalContentImportServiceTests: XCTestCase {
     XCTAssertEqual(store.drafts.first { $0.repositoryPath == "content/posts/second.md" }?.title, "Second Updated")
   }
 
+  func testPersistentContentIndexReusesUnchangedParsedDraftAndRemovesDeletedEntry() throws {
+    let rootURL = try temporaryDirectory()
+    let indexURL = try temporaryDirectory()
+    let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    let articleURL = postsURL.appendingPathComponent("cached.md")
+    try """
+    ---
+    title: "Cached Article"
+    slug: cached
+    ---
+
+    Cached body
+    """.write(to: articleURL, atomically: true, encoding: .utf8)
+
+    var profile = SiteProfile.defaultProfile
+    profile.contentRoot = "content"
+    let service = LocalContentImportService(
+      contentIndexDirectoryURL: indexURL
+    )
+
+    let first = service.importDrafts(rootURL: rootURL, profile: profile)
+    let second = service.importDrafts(rootURL: rootURL, profile: profile)
+    let firstDraft = try XCTUnwrap(first.importedDrafts.first)
+    let secondDraft = try XCTUnwrap(second.importedDrafts.first)
+
+    XCTAssertEqual(secondDraft.id, firstDraft.id)
+    XCTAssertEqual(secondDraft.bodyMarkdown, "Cached body")
+
+    try FileManager.default.removeItem(at: articleURL)
+    let afterDeletion = service.importDrafts(rootURL: rootURL, profile: profile)
+    XCTAssertTrue(afterDeletion.importedDrafts.isEmpty)
+    let snapshot = LocalContentImportIndexStore(
+      directoryURL: indexURL
+    ).snapshot(profile: profile, rootURL: rootURL)
+    XCTAssertTrue(snapshot.entries.isEmpty)
+  }
+
+  func testContentIndexCacheMissParsesFrontMatterAndImageReferencesOnce() throws {
+    let rootURL = try temporaryDirectory()
+    let indexURL = try temporaryDirectory()
+    let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    let imagesURL = rootURL.appendingPathComponent("static/images", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: imagesURL, withIntermediateDirectories: true)
+    try Data([1, 2, 3]).write(to: imagesURL.appendingPathComponent("cover.png"))
+    try """
+    ---
+    title: "Parsed Once"
+    slug: parsed-once
+    ---
+
+    ![Cover](/images/cover.png)
+    """.write(
+      to: postsURL.appendingPathComponent("parsed-once.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    var profile = SiteProfile.defaultProfile
+    profile.contentRoot = "content"
+    profile.assetRoot = "static"
+    let frontMatterCounter = LocalContentImportInvocationCounter()
+    let imageReferenceCounter = LocalContentImportInvocationCounter()
+    let service = LocalContentImportService(
+      fileManager: .default,
+      contentIndexDirectoryURL: indexURL,
+      isContentIndexEnabled: true,
+      frontMatterParseObserver: { frontMatterCounter.increment() },
+      imageReferenceScanObserver: { imageReferenceCounter.increment() }
+    )
+
+    let result = service.importDrafts(rootURL: rootURL, profile: profile)
+
+    XCTAssertEqual(result.importedDrafts.map(\.title), ["Parsed Once"])
+    XCTAssertEqual(result.importedDrafts.first?.attachments.count, 1)
+    XCTAssertEqual(frontMatterCounter.value, 1)
+    XCTAssertEqual(imageReferenceCounter.value, 1)
+  }
+
+  func testPersistentContentIndexDoesNotRewriteUnchangedEntries() throws {
+    let rootURL = try temporaryDirectory()
+    let indexURL = try temporaryDirectory()
+    let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    try """
+    ---
+    title: "Stable Cache"
+    slug: stable-cache
+    ---
+
+    Stable body
+    """.write(
+      to: postsURL.appendingPathComponent("stable-cache.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+
+    var profile = SiteProfile.defaultProfile
+    profile.contentRoot = "content"
+    let service = LocalContentImportService(contentIndexDirectoryURL: indexURL)
+    _ = service.importDrafts(rootURL: rootURL, profile: profile)
+    let persistedIndexURL = indexURL.appendingPathComponent(
+      "\(profile.id.uuidString.lowercased()).json",
+      isDirectory: false
+    )
+    let metadataBeforeWarmImport = try XCTUnwrap(
+      LocalContentImportFileMetadata.read(from: persistedIndexURL)
+    )
+
+    _ = service.importDrafts(rootURL: rootURL, profile: profile)
+
+    let metadataAfterWarmImport = try XCTUnwrap(
+      LocalContentImportFileMetadata.read(from: persistedIndexURL)
+    )
+    XCTAssertEqual(metadataAfterWarmImport, metadataBeforeWarmImport)
+  }
+
+  func testPersistentContentIndexInvalidatesWhenArticleAssetOrProfileChanges() throws {
+    let rootURL = try temporaryDirectory()
+    let indexURL = try temporaryDirectory()
+    let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    let imagesURL = rootURL.appendingPathComponent("static/images", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: imagesURL, withIntermediateDirectories: true)
+    let articleURL = postsURL.appendingPathComponent("indexed.md")
+    let imageURL = imagesURL.appendingPathComponent("cover.png")
+    try Data([1]).write(to: imageURL)
+    try """
+    ---
+    title: "Indexed Article"
+    slug: indexed
+    ---
+
+    ![Cover](/images/cover.png)
+    """.write(to: articleURL, atomically: true, encoding: .utf8)
+
+    var profile = SiteProfile.defaultProfile
+    profile.contentRoot = "content"
+    profile.assetRoot = "static"
+    profile.defaultAuthor = "First Author"
+    let service = LocalContentImportService(
+      contentIndexDirectoryURL: indexURL
+    )
+
+    let firstDraft = try XCTUnwrap(
+      service.importDrafts(rootURL: rootURL, profile: profile).importedDrafts.first
+    )
+    XCTAssertEqual(firstDraft.attachments.first?.byteSize, 1)
+    XCTAssertEqual(firstDraft.authors, ["First Author"])
+
+    try Data([1, 2, 3, 4]).write(to: imageURL, options: .atomic)
+    let assetRefreshedDraft = try XCTUnwrap(
+      service.importDrafts(rootURL: rootURL, profile: profile).importedDrafts.first
+    )
+    XCTAssertNotEqual(assetRefreshedDraft.id, firstDraft.id)
+    XCTAssertEqual(assetRefreshedDraft.attachments.first?.byteSize, 4)
+
+    profile.defaultAuthor = "Second Author"
+    let profileRefreshedDraft = try XCTUnwrap(
+      service.importDrafts(rootURL: rootURL, profile: profile).importedDrafts.first
+    )
+    XCTAssertNotEqual(profileRefreshedDraft.id, assetRefreshedDraft.id)
+    XCTAssertEqual(profileRefreshedDraft.authors, ["Second Author"])
+  }
+
+  func testPersistentContentIndexDoesNotCacheUnresolvedFallbackImageCandidate() throws {
+    let rootURL = try temporaryDirectory()
+    let indexURL = try temporaryDirectory()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+      try? FileManager.default.removeItem(at: indexURL)
+    }
+    let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    try "![Photo](photo.png)".write(
+      to: postsURL.appendingPathComponent("fallback.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    var profile = SiteProfile.defaultProfile
+    profile.contentRoot = "content"
+    let service = LocalContentImportService(contentIndexDirectoryURL: indexURL)
+
+    let unresolved = try XCTUnwrap(
+      service.importDrafts(rootURL: rootURL, profile: profile).importedDrafts.first
+    )
+    XCTAssertNil(unresolved.attachments.first?.sourceFilePath)
+    XCTAssertTrue(
+      LocalContentImportIndexStore(directoryURL: indexURL)
+        .snapshot(profile: profile, rootURL: rootURL)
+        .entries
+        .isEmpty
+    )
+
+    let fallbackImageURL = postsURL.appendingPathComponent("photo.png")
+    try Data([1, 2, 3]).write(to: fallbackImageURL)
+    let resolved = try XCTUnwrap(
+      service.importDrafts(rootURL: rootURL, profile: profile).importedDrafts.first
+    )
+    XCTAssertEqual(resolved.attachments.first?.sourceFilePath, fallbackImageURL.path)
+    XCTAssertEqual(resolved.attachments.first?.byteSize, 3)
+  }
+
+  func testPersistentContentIndexDoesNotCacheUnsafeImageSymlink() throws {
+    let rootURL = try temporaryDirectory()
+    let outsideURL = try temporaryDirectory()
+    let indexURL = try temporaryDirectory()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+      try? FileManager.default.removeItem(at: outsideURL)
+      try? FileManager.default.removeItem(at: indexURL)
+    }
+    let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    try "![Photo](photo.png)".write(
+      to: postsURL.appendingPathComponent("symlink.md"),
+      atomically: true,
+      encoding: .utf8
+    )
+    let outsideImageURL = outsideURL.appendingPathComponent("photo.png")
+    try Data([9]).write(to: outsideImageURL)
+    let imageURL = postsURL.appendingPathComponent("photo.png")
+    try FileManager.default.createSymbolicLink(at: imageURL, withDestinationURL: outsideImageURL)
+    var profile = SiteProfile.defaultProfile
+    profile.contentRoot = "content"
+    let service = LocalContentImportService(contentIndexDirectoryURL: indexURL)
+
+    _ = service.importDrafts(rootURL: rootURL, profile: profile)
+    XCTAssertTrue(
+      LocalContentImportIndexStore(directoryURL: indexURL)
+        .snapshot(profile: profile, rootURL: rootURL)
+        .entries
+        .isEmpty
+    )
+
+    try FileManager.default.removeItem(at: imageURL)
+    try Data([4, 5]).write(to: imageURL)
+    let resolved = try XCTUnwrap(
+      service.importDrafts(rootURL: rootURL, profile: profile).importedDrafts.first
+    )
+    XCTAssertEqual(resolved.attachments.first?.sourceFilePath, imageURL.path)
+    XCTAssertEqual(resolved.attachments.first?.byteSize, 2)
+  }
+
+  func testContentIndexEntryRejectsSourceChangedAfterReadAndSemanticPollution() throws {
+    let rootURL = try temporaryDirectory()
+    let indexURL = try temporaryDirectory()
+    defer {
+      try? FileManager.default.removeItem(at: rootURL)
+      try? FileManager.default.removeItem(at: indexURL)
+    }
+    let postsURL = rootURL.appendingPathComponent("content/posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: postsURL, withIntermediateDirectories: true)
+    let articleURL = postsURL.appendingPathComponent("race.md")
+    try "Old body".write(to: articleURL, atomically: true, encoding: .utf8)
+    var profile = SiteProfile.defaultProfile
+    profile.contentRoot = "content"
+    let importService = LocalContentImportService(isContentIndexEnabled: false)
+    let draft = try XCTUnwrap(
+      importService.importDrafts(rootURL: rootURL, profile: profile).importedDrafts.first
+    )
+    let metadataBeforeChange = try XCTUnwrap(
+      LocalContentImportFileMetadata.read(from: articleURL)
+    )
+    try "New body with a different size".write(
+      to: articleURL,
+      atomically: true,
+      encoding: .utf8
+    )
+    let indexStore = LocalContentImportIndexStore(directoryURL: indexURL)
+    XCTAssertNil(indexStore.entry(
+      draft: draft,
+      sourceURL: articleURL,
+      rootURL: rootURL,
+      expectedSourceMetadata: metadataBeforeChange
+    ))
+
+    let currentMetadata = try XCTUnwrap(LocalContentImportFileMetadata.read(from: articleURL))
+    var pollutedDraft = draft
+    pollutedDraft.repositoryPath = "../outside.md"
+    let pollutedEntry = LocalContentImportIndexEntry(
+      sourceMetadata: currentMetadata,
+      referencedAssets: [],
+      draft: pollutedDraft
+    )
+    indexStore.save(LocalContentImportIndexSnapshot(
+      profileID: profile.id,
+      repositoryRootPath: rootURL.standardizedFileURL.resolvingSymlinksInPath().path,
+      configurationSignature: LocalContentImportIndexStore(directoryURL: indexURL)
+        .snapshot(profile: profile, rootURL: rootURL)
+        .configurationSignature,
+      entries: ["content/posts/race.md": pollutedEntry]
+    ))
+    XCTAssertTrue(indexStore.snapshot(profile: profile, rootURL: rootURL).entries.isEmpty)
+  }
+
   func testStoreImportRequiresLocalRepositoryRoot() throws {
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
 
@@ -852,5 +1149,22 @@ final class LocalContentImportServiceTests: XCTestCase {
 
   private func temporaryPersistenceURL() throws -> URL {
     try temporaryDirectory().appendingPathComponent("workbench.json")
+  }
+}
+
+private final class LocalContentImportInvocationCounter: @unchecked Sendable {
+  private let lock = NSLock()
+  private var count = 0
+
+  var value: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return count
+  }
+
+  func increment() {
+    lock.lock()
+    count += 1
+    lock.unlock()
   }
 }

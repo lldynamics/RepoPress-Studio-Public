@@ -23,7 +23,6 @@ required_templates=(
   "docs/release-evidence/app-store-screenshots.env.example"
   "docs/release-evidence/remote-publish-live.env.example"
   "docs/release-evidence/remote-recovery.env.example"
-  "docs/release-evidence/storekit-sandbox.env.example"
 )
 required_scripts=(
   "script/record_app_store_build_metadata_evidence.sh"

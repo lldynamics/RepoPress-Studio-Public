@@ -3,14 +3,28 @@ import XCTest
 
 final class SiteStarterServiceTests: XCTestCase {
   func testBuiltInTemplatesCoverSupportedSiteKindsAndPreviewMetadata() {
-    XCTAssertEqual(SiteStarterTemplate.builtIn.count, 6)
-    XCTAssertTrue(Set(SiteStarterTemplate.builtIn.map(\.siteKind)).isSuperset(of: Set(SiteKind.allCases)))
+    XCTAssertEqual(SiteStarterTemplate.builtIn.count, 1)
+    XCTAssertEqual(SiteStarterTemplate.builtIn.first?.id, .zolaPersonalBlog)
+    XCTAssertEqual(SiteStarterTemplate.builtIn.first?.siteKind, .zola)
     XCTAssertEqual(Set(SiteStarterTemplate.builtIn.map(\.id)).count, SiteStarterTemplate.builtIn.count)
 
     for template in SiteStarterTemplate.builtIn {
       XCTAssertFalse(template.preview.headline.isEmpty)
       XCTAssertFalse(template.preview.sampleItems.isEmpty)
     }
+  }
+
+  func testLegacyTemplateIDsDecodeToTheMaintainedZolaStarter() throws {
+    for legacyID in ["zolaPortfolio", "astroPersonalBlog", "hugoPersonalBlog", "hexoPersonalBlog", "jekyllPersonalBlog"] {
+      let decoded = try JSONDecoder().decode(
+        SiteStarterTemplateID.self,
+        from: Data("\"\(legacyID)\"".utf8)
+      )
+      XCTAssertEqual(decoded, .zolaPersonalBlog, legacyID)
+    }
+
+    let encoded = try JSONEncoder().encode(SiteStarterTemplateID.zolaPersonalBlog)
+    XCTAssertEqual(String(data: encoded, encoding: .utf8), "\"zolaPersonalBlog\"")
   }
 
   func testCreatesZolaStarterWithGitHubPagesWorkflowAndRemote() throws {
@@ -58,48 +72,12 @@ final class SiteStarterServiceTests: XCTestCase {
     XCTAssertTrue(workflow.contains("zola build"))
     XCTAssertTrue(workflow.contains("actions/deploy-pages@v4"))
 
+    let readme = try read("README.md", rootURL: rootURL)
+    XCTAssertTrue(readme.contains("git clone <主题仓库地址> <本地站点目录>"))
+
     let article = try read("content/posts/2026/welcome.md", rootURL: rootURL)
     XCTAssertTrue(article.contains("欢迎来到 工程笔记"))
     XCTAssertTrue(article.contains("由 Site Starter 生成的第一篇内容。"))
-  }
-
-  func testCreatesJekyllStarterWithoutGitWhenDisabled() throws {
-    let rootURL = try temporaryDirectoryURL()
-    defer {
-      try? FileManager.default.removeItem(at: rootURL)
-    }
-
-    let result = try SiteStarterService().createSite(
-      request: SiteStarterRequest(
-        templateID: .jekyllPersonalBlog,
-        rootPath: rootURL.path,
-        siteName: "个人网站",
-        siteDescription: "我的公开主页。",
-        author: "Jinfang",
-        branch: "main",
-        deploymentTarget: .githubPages,
-        initializeGit: false,
-        configureOriginRemote: false,
-        now: fixedDate
-      )
-    )
-
-    XCTAssertEqual(result.profile.siteKind, .jekyll)
-    XCTAssertEqual(result.profile.frontMatterStyle, .yaml)
-    XCTAssertEqual(result.initialDraft.repositoryPath, "_posts/2026-07-06-welcome.md")
-    XCTAssertFalse(result.initializedGit)
-    XCTAssertNil(result.configuredRemoteURL)
-    XCTAssertTrue(result.createdFilePaths.contains("_config.yml"))
-    XCTAssertTrue(result.createdFilePaths.contains("Gemfile"))
-    XCTAssertTrue(result.createdFilePaths.contains(".github/workflows/pages.yml"))
-    XCTAssertFalse(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent(".git").path))
-
-    let workflow = try read(".github/workflows/pages.yml", rootURL: rootURL)
-    XCTAssertTrue(workflow.contains("actions/jekyll-build-pages@v1"))
-
-    let post = try read("_posts/2026-07-06-welcome.md", rootURL: rootURL)
-    XCTAssertTrue(post.contains("title: \"欢迎来到 个人网站\""))
-    XCTAssertTrue(post.contains("欢迎来到 个人网站"))
   }
 
   func testConfiguresGitHubOriginAfterStarterGeneration() async throws {
@@ -130,92 +108,56 @@ final class SiteStarterServiceTests: XCTestCase {
     )
   }
 
-  func testCreatesAstroStarterWithNetlifyConfiguration() throws {
+  func testImportSanitizesCredentialedOriginRemote() throws {
     let rootURL = try temporaryDirectoryURL()
-    defer {
-      try? FileManager.default.removeItem(at: rootURL)
-    }
+    defer { try? FileManager.default.removeItem(at: rootURL) }
 
-    let result = try SiteStarterService().createSite(
-      request: SiteStarterRequest(
-        templateID: .astroPersonalBlog,
+    try git(["init", "-b", "main"], rootURL: rootURL)
+    try git(
+      [
+        "remote",
+        "add",
+        "origin",
+        "https://alice:remote-secret@github.com/lldynamics/imported-site.git?token=url-token",
+      ],
+      rootURL: rootURL
+    )
+
+    let result = try SiteStarterService().importExistingSite(
+      request: SiteStarterImportRequest(
         rootPath: rootURL.path,
-        siteName: "Astro Notes",
-        baseURL: "https://example.net",
-        deploymentTarget: .netlify,
-        deploymentProjectID: "site-id",
-        initializeGit: false,
-        configureOriginRemote: false,
-        now: fixedDate
+        siteName: "Imported Site",
+        siteKind: .zola
       )
     )
 
-    XCTAssertEqual(result.profile.siteKind, .astro)
-    XCTAssertEqual(result.profile.deploymentProvider, .netlify)
-    XCTAssertEqual(result.profile.deploymentSiteURL, "https://example.net")
-    XCTAssertEqual(result.profile.deploymentProjectID, "site-id")
-    XCTAssertTrue(result.createdFilePaths.contains("package.json"))
-    XCTAssertTrue(result.createdFilePaths.contains("astro.config.mjs"))
-    XCTAssertTrue(result.createdFilePaths.contains("netlify.toml"))
-    XCTAssertTrue(try read("netlify.toml", rootURL: rootURL).contains("publish = \"dist\""))
+    XCTAssertEqual(
+      result.detectedRemoteURL,
+      "https://github.com/lldynamics/imported-site.git"
+    )
+    XCTAssertEqual(result.profile.repoOwner, "lldynamics")
+    XCTAssertEqual(result.profile.repoName, "imported-site")
+    XCTAssertFalse(result.detectedRemoteURL?.contains("alice") == true)
+    XCTAssertFalse(result.detectedRemoteURL?.contains("remote-secret") == true)
+    XCTAssertFalse(result.detectedRemoteURL?.contains("url-token") == true)
   }
 
-  func testCreatesHugoStarterWithVercelConfiguration() throws {
-    let rootURL = try temporaryDirectoryURL()
-    defer {
-      try? FileManager.default.removeItem(at: rootURL)
-    }
+  func testImportKeepsEveryExistingSiteKindIndependentFromStarterTemplates() throws {
+    for siteKind in SiteKind.allCases {
+      let rootURL = try temporaryDirectoryURL()
+      defer { try? FileManager.default.removeItem(at: rootURL) }
 
-    let result = try SiteStarterService().createSite(
-      request: SiteStarterRequest(
-        templateID: .hugoPersonalBlog,
-        rootPath: rootURL.path,
-        siteName: "Hugo Notes",
-        deploymentTarget: .vercel,
-        deploymentProjectID: "prj_123",
-        deploymentAccountID: "team_123",
-        initializeGit: false,
-        configureOriginRemote: false,
-        now: fixedDate
+      let result = try SiteStarterService().importExistingSite(
+        request: SiteStarterImportRequest(
+          rootPath: rootURL.path,
+          siteName: "Imported \(siteKind.displayName)",
+          siteKind: siteKind
+        )
       )
-    )
 
-    XCTAssertEqual(result.profile.siteKind, .hugo)
-    XCTAssertEqual(result.profile.deploymentProvider, .vercel)
-    XCTAssertEqual(result.profile.deploymentProjectID, "prj_123")
-    XCTAssertEqual(result.profile.deploymentAccountID, "team_123")
-    XCTAssertTrue(result.createdFilePaths.contains("hugo.toml"))
-    XCTAssertTrue(result.createdFilePaths.contains("vercel.json"))
-    XCTAssertTrue(try read("vercel.json", rootURL: rootURL).contains("\"outputDirectory\": \"public\""))
-  }
-
-  func testCreatesHexoStarterWithCloudflarePagesConfiguration() throws {
-    let rootURL = try temporaryDirectoryURL()
-    defer {
-      try? FileManager.default.removeItem(at: rootURL)
+      XCTAssertEqual(result.profile.siteKind, siteKind)
+      XCTAssertEqual(result.profile.localRepositoryRootPath, rootURL.path)
     }
-
-    let result = try SiteStarterService().createSite(
-      request: SiteStarterRequest(
-        templateID: .hexoPersonalBlog,
-        rootPath: rootURL.path,
-        siteName: "Hexo Notes",
-        deploymentTarget: .cloudflarePages,
-        deploymentProjectID: "hexo-notes",
-        deploymentAccountID: "account-123",
-        initializeGit: false,
-        configureOriginRemote: false,
-        now: fixedDate
-      )
-    )
-
-    XCTAssertEqual(result.profile.siteKind, .hexo)
-    XCTAssertEqual(result.profile.deploymentProvider, .cloudflarePages)
-    XCTAssertEqual(result.profile.deploymentProjectID, "hexo-notes")
-    XCTAssertEqual(result.profile.deploymentAccountID, "account-123")
-    XCTAssertTrue(result.createdFilePaths.contains("package.json"))
-    XCTAssertTrue(result.createdFilePaths.contains("wrangler.toml"))
-    XCTAssertTrue(try read("wrangler.toml", rootURL: rootURL).contains("pages_build_output_dir = \"public\""))
   }
 
   @MainActor
@@ -405,7 +347,7 @@ final class SiteStarterServiceTests: XCTestCase {
     let service = SiteStarterService()
     let starter = try service.createSite(
       request: SiteStarterRequest(
-        templateID: .zolaPortfolio,
+        templateID: .zolaPersonalBlog,
         rootPath: rootURL.path,
         siteName: "作品集",
         branch: "main",

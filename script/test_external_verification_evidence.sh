@@ -165,12 +165,6 @@ if EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" bash "$ROOT_DIR/script/record_
   fail "remote conflict evidence accepted without structured fields"
 fi
 if EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" bash "$ROOT_DIR/script/record_external_verification_evidence.sh" \
-  --item storekit-sandbox \
-  --summary "StoreKit sandbox purchase, restore, entitlement source, and free quota boundary verified with redacted sandbox account." \
-  --dry-run >/dev/null 2>&1; then
-  fail "StoreKit evidence accepted without structured fields"
-fi
-if EXTERNAL_VERIFY_EVIDENCE_FILE="$EVIDENCE_FILE" bash "$ROOT_DIR/script/record_external_verification_evidence.sh" \
   --item app-store-screenshots \
   --summary "Nine manifest screenshots captured; screenshot privacy and strict screenshot gates passed." \
   --dry-run >/dev/null 2>&1; then
@@ -276,7 +270,6 @@ assert_strict_rejects_legacy_item github-review-publish
 assert_strict_rejects_legacy_item gitlab-direct-publish
 assert_strict_rejects_legacy_item gitlab-review-publish
 assert_strict_rejects_legacy_item remote-conflict-deployment-rollback
-assert_strict_rejects_legacy_item storekit-sandbox
 assert_strict_rejects_legacy_item app-store-screenshots
 assert_strict_rejects_pending_item github-direct-publish
 assert_strict_rejects_pending_item github-review-publish
@@ -376,14 +369,12 @@ text = re.sub(
     r"^- Screenshot set:.*$",
     "- Screenshot set: Captured manifest screenshot IDs: writing, custom-screen.",
     text,
-    count=1,
     flags=re.MULTILINE,
 )
 text = re.sub(
     r"^- Screenshot source fingerprint:.*$",
     f"- Screenshot source fingerprint: {fingerprint}",
     text,
-    count=1,
     flags=re.MULTILINE,
 )
 path.write_text(text)
@@ -438,16 +429,9 @@ record --item remote-conflict-deployment-rollback \
   --pending-offline-state "Failed or unknown deployment state was kept as pending retry in the release ledger." \
   --deployment-retry "Deployment polling and manual retry refreshed the provider status." \
   --rollback-package "Rollback package included branch, files, and PR/MR draft URL."
-record --item storekit-sandbox \
-  --summary "StoreKit sandbox purchase, restore, entitlement source, and free quota boundary verified with redacted sandbox account." \
-  --storekit-product-lookup "Sandbox loaded product personal.site.publisher.pro with localized price and copy." \
-  --storekit-purchase "Purchase completed and entitlement source changed to StoreKit." \
-  --storekit-restore "Restore reapplied Pro entitlement after clearing local state." \
-  --storekit-free-quota "Free quota boundary showed upgrade copy before purchase and no quota consumption after Pro unlock." \
-  --storekit-boundary-events "Recent Pro boundary events showed free-plan block before purchase and Pro no-quota allow after unlock."
 record --item app-store-screenshots \
   --summary "Nine manifest screenshots captured; screenshot privacy and strict screenshot gates passed." \
-  --screenshot-set "Captured manifest screenshot IDs: writing, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, pro-settings, privacy-lock." \
+  --screenshot-set "Captured manifest screenshot IDs: writing, ai-chat, knowledge-library, sync-api-publish, seo-social-preview, deployment-status, maintenance, general-drafts, privacy-lock." \
   --screenshot-privacy-gate "check_screenshot_privacy.sh passed with no local paths, tokens, or private article text." \
   --screenshot-strict-gate "STRICT_SCREENSHOTS=1 check_screenshots.sh and strict release gate output were reviewed." \
   --screenshot-source-fingerprint "$SCREENSHOT_FINGERPRINT"

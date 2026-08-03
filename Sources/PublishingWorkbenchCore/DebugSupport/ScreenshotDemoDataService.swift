@@ -292,14 +292,6 @@ public struct ScreenshotDemoDataService {
       privacySettings: PrivacyProtectionSettings(
         masksPrivateContent: true
       ),
-      monetizationState: MonetizationState(
-        entitlement: .locked,
-        freeUsage: FreePlanUsage(
-          aiRequestCount: 9,
-          onlinePublishAttemptCount: 0,
-          batchPublishCount: 1
-        )
-      ),
       repositoryAutoSyncSettings: RepositoryAutoSyncSettings(
         isEnabled: true,
         intervalMinutes: 15,
@@ -559,15 +551,14 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
   case deploymentStatus = "deployment-status"
   case maintenance
   case generalDrafts = "general-drafts"
-  case proSettings = "pro-settings"
-  case privacyLock = "privacy-lock"
+  case quickHide = "privacy-lock"
   case knowledgeLibrary = "knowledge-library"
 
   public var id: String { rawValue }
 
   @MainActor
   public func apply(to store: WorkbenchStore) {
-    store.unlockPrivacy()
+    store.deactivateQuickHide()
     if let draft = preferredDraft(in: store) {
       store.selectDraft(draft.id)
     }
@@ -613,13 +604,10 @@ public enum ScreenshotDemoSurface: String, CaseIterable, Identifiable, Sendable 
       store.selectSection(.writing)
       store.setDraftListContentScope(.general)
       store.setPublishActionMessage(String(localized: "截图模式：通用草稿已载入。"))
-    case .proSettings:
-      store.selectSection(.writing)
-      store.setMonetizationMessage("可在此解锁 Pro，或恢复已完成的购买。")
-    case .privacyLock:
+    case .quickHide:
       store.selectSection(.writing)
       store.setInspectorPresented(true)
-      store.lockPrivacy(reason: "工作台已手动隐藏，私密内容已遮挡。")
+      store.activateQuickHide(reason: "工作台已手动隐藏，私密内容已遮挡。")
     case .knowledgeLibrary:
       store.selectSection(.library)
       store.setInspectorPresented(false)

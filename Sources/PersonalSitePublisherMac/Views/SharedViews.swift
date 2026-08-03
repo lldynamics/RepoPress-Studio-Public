@@ -400,7 +400,7 @@ struct AccessibleStatusMessage: View {
   }
 }
 
-struct PrivacyLockOverlay: View {
+struct QuickHideOverlay: View {
   @ObservedObject var store: WorkbenchStore
   @FocusState private var isUnlockButtonFocused: Bool
   @AccessibilityFocusState private var isOverlayFocused: Bool
@@ -409,7 +409,7 @@ struct PrivacyLockOverlay: View {
     let status = store.privacyProtectionStatus
 
     VStack(spacing: 14) {
-      Image(systemName: "lock.shield")
+      Image(systemName: "eye.slash")
         .font(.system(size: 42))
         .foregroundStyle(.secondary)
 
@@ -435,7 +435,7 @@ struct PrivacyLockOverlay: View {
       }
 
       Button {
-        store.unlockPrivacy()
+        store.deactivateQuickHide()
       } label: {
         Label("返回工作台", systemImage: "eye")
       }
@@ -447,7 +447,7 @@ struct PrivacyLockOverlay: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(.regularMaterial)
     .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("privacy-lock-overlay")
+    .accessibilityIdentifier("quick-hide-overlay")
     .accessibilityLabel(status.title)
     .accessibilityHint(status.detail)
     .onAppear {
@@ -506,7 +506,7 @@ extension ImageCoverPublishState {
 }
 
 struct GuidedEmptyStateAction: Identifiable {
-  let id = UUID()
+  let id: String
   let title: LocalizedStringKey
   let subtitle: LocalizedStringKey
   let systemImage: String
@@ -518,7 +518,7 @@ struct GuidedEmptyStateView: View {
   let message: LocalizedStringKey
   let systemImage: String
   let actions: [GuidedEmptyStateAction]
-  @State private var hoveredActionID: UUID?
+  @State private var hoveredActionID: String?
 
   var body: some View {
     VStack(spacing: 24) {
@@ -558,7 +558,7 @@ struct GuidedEmptyStateView: View {
             }
             .buttonStyle(.plain)
             .onHover { hovering in
-              withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+              withAnimation(WorkbenchMotion.hoverSpring) {
                 hoveredActionID = hovering ? item.id : nil
               }
             }

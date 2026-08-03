@@ -421,9 +421,26 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.activeProfile.repositoryBaseURL, "https://git.example.com")
   }
 
-  func testDraftScopedPublishingUsesDraftProfileWhenActiveProfileDiffers() throws {
+  func testDraftScopedPublishingUsesDraftProfileWhenActiveProfileDiffers() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     let originalProfileID = store.activeProfileID
+    let attachmentRoot = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "WorkbenchStoreProfileAttachment-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    defer { try? FileManager.default.removeItem(at: attachmentRoot) }
+    try FileManager.default.createDirectory(
+      at: attachmentRoot,
+      withIntermediateDirectories: true
+    )
+    let sourceURL = attachmentRoot.appendingPathComponent("cover.jpg")
+    try Data("cover".utf8).write(to: sourceURL)
+    let fileStore = ManagedAttachmentFileStore(
+      rootDirectoryURL: attachmentRoot.appendingPathComponent(
+        "Managed",
+        isDirectory: true
+      )
+    )
 
     _ = store.createProfile(named: "Astro Site")
     store.applySiteKindDefaults(.astro)
@@ -441,16 +458,57 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     store.selectProfile(originalProfileID)
 
     let package = store.publishingPackage(for: draft)
-    let attachment = store.makeAttachment(
-      from: URL(fileURLWithPath: "/tmp/cover.jpg"),
-      draft: draft
+    let attachment = try await store.makeAttachment(
+      from: sourceURL,
+      draft: draft,
+      fileStore: fileStore
     )
     let prompt = store.publishingAIPrompt(for: draft)
 
     XCTAssertEqual(store.activeProfileID, originalProfileID)
     XCTAssertEqual(package.markdownPath, "src/content/blog/astro-article.mdx")
     XCTAssertEqual(attachment.repositoryPath, "public/images/2026/cover.jpg")
+    XCTAssertNotEqual(attachment.sourceFilePath, sourceURL.path)
+    XCTAssertTrue(
+      FileManager.default.fileExists(atPath: try XCTUnwrap(attachment.sourceFilePath))
+    )
     XCTAssertTrue(prompt.contains("发布路径：src/content/blog/astro-article.mdx"))
+  }
+
+  func testVideoAttachmentUsesManagedCopyAfterSourceIsRemoved() async throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    let temporaryRoot = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "WorkbenchVideoAttachment-\(UUID().uuidString)",
+      isDirectory: true
+    )
+    defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+    try FileManager.default.createDirectory(
+      at: temporaryRoot,
+      withIntermediateDirectories: true
+    )
+    let sourceURL = temporaryRoot.appendingPathComponent("walkthrough.mp4")
+    let expectedData = Data("video".utf8)
+    try expectedData.write(to: sourceURL)
+    let fileStore = ManagedAttachmentFileStore(
+      rootDirectoryURL: temporaryRoot.appendingPathComponent("Managed")
+    )
+    let draft = ArticleDraft(
+      siteProfileID: store.activeProfileID,
+      title: "Video",
+      slug: "video"
+    )
+
+    let attachment = try await store.makeVideoAttachment(
+      from: sourceURL,
+      draft: draft,
+      fileStore: fileStore
+    )
+    try FileManager.default.removeItem(at: sourceURL)
+    let managedPath = try XCTUnwrap(attachment.sourceFilePath)
+
+    XCTAssertNotEqual(managedPath, sourceURL.path)
+    XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: managedPath)), expectedData)
+    XCTAssertEqual(attachment.mediaKind, .video)
   }
 
   func testFocusDraftSwitchesProfileAndRefreshesPublishingContext() async throws {

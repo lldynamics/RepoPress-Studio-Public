@@ -15,7 +15,9 @@ mkdir -p "$HOME" "$XDG_CACHE_HOME" "$CLANG_MODULE_CACHE_PATH" "$SWIFT_MODULE_CAC
 
 cd "$ROOT_DIR"
 
+python3 script/check_node_toolchain_security.py
 python3 script/generate_browser_extension_protocol.py --check
+bash script/sync_firefox_browser_extension.sh --check
 bash script/sync_safari_browser_extension.sh --check
 bash script/build_safari_web_extension.sh --check
 python3 script/browser_extension_release_ledger.py check
@@ -23,9 +25,10 @@ python3 script/test_browser_extension_release_ledger.py
 python3 script/chromium_extension_release.py check
 node script/test_browser_extension_compatibility.mjs
 node script/test_browser_extension_e2e.mjs --browser=chromium
+node script/test_browser_extension_e2e.mjs --browser=firefox
 
 swift build --disable-sandbox --product PersonalSitePublisherMac
 swift test --disable-sandbox --filter KnowledgeBrowserImportOperationLedgerTests
 swift test --disable-sandbox --filter KnowledgeLibraryServiceTests.testBrowserDuplicateResolutionSupportsVersionMoveCopyAndCancelWithoutSilentMutation
 
-echo "Safari Web Extension, Chrome and authenticated loopback release gate: passed"
+echo "Safari Web Extension, Chrome, Firefox, and authenticated loopback release gate: passed"

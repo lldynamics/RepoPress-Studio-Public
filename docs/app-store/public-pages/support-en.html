@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="RepoPress Studio support — Markdown writing, local research, browser capture, Git repository sync, privacy, and purchase help.">
+  <meta name="description" content="RepoPress Studio support — website installation, custom AI, browser capture, Git repository sync, privacy, and Sparkle updates.">
   <meta name="robots" content="index,follow">
   <meta property="og:title" content="RepoPress Studio · Support">
-  <meta property="og:description" content="A local-first writing, research, and repository-sync workspace for authors of Git-based static sites.">
+  <meta property="og:description" content="A free, local-first writing, research, and repository-sync workspace for authors of Git-based static sites.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://apps.chengjinfang.com/personal-site-publisher/en/">
   <meta property="og:site_name" content="Cheng Jinfang's Apps">
@@ -20,7 +20,7 @@
     "name": "RepoPress Studio",
     "operatingSystem": "macOS 14 or later",
     "applicationCategory": "DeveloperApplication",
-    "description": "A local-first Markdown writing, research, and repository-sync workspace for authors of Git-based static sites.",
+    "description": "A free, local-first Markdown writing, research, and repository-sync workspace for authors of Git-based static sites.",
     "supportingData": "https://apps.chengjinfang.com/personal-site-publisher/privacy/en/"
   }
   </script>
@@ -42,20 +42,19 @@
     <section>
       <h2>App Information</h2>
       <ul>
-        <li>Name: RepoPress Studio</li>
-        <li>Platform: macOS 14 or later</li>
-        <li>Category: Developer Tools</li>
-        <li>Site generators: Zola, Hugo, Astro, Jekyll, and Hexo</li>
-        <li>Account: local features require no RepoPress Studio account</li>
-        <li>Privacy: no advertising, behavioral tracking, or third-party analytics SDK</li>
+        <li>Platform: macOS 14 or later.</li>
+        <li>Distribution: free from the official website; the Mac app is Developer ID signed and notarized by Apple.</li>
+        <li>Account: no RepoPress Studio account and no paid feature tier.</li>
+        <li>Privacy: no advertising, behavioral tracking, or third-party analytics SDK.</li>
+        <li>Site generators: Zola, Hugo, Astro, Jekyll, and Hexo.</li>
       </ul>
     </section>
 
     <section>
-      <h2>Current App Store Edition</h2>
-      <p>Every user can configure a local model or an OpenAI-compatible HTTPS API and use AI chat, rewriting, summaries, metadata, and review assistance. AI does not require RepoPress Pro. The app does not meter AI requests, sell AI credits or provider access, or link to provider purchases.</p>
-      <p>Before the first remote AI request, the app shows the destination and possible data categories and requires explicit consent. API keys stay in macOS Keychain, and requests travel directly from this Mac to the provider selected by the user; the developer does not receive keys, prompts, or responses.</p>
-      <p>Full-text and semantic indexes are generated locally. Browser captures enter the app on the same device only through the authenticated <code>127.0.0.1:17843</code> loopback connection and are not sent to the developer's servers.</p>
+      <h2>AI And Data Consent</h2>
+      <p>AI features support BYOK (Bring Your Own Key), a custom HTTPS endpoint, or a local model. API keys stay in macOS Keychain. Users select and fund any remote provider themselves; RepoPress Studio does not sell provider keys, access, or usage bundles.</p>
+      <p>Before the first request to each custom remote API destination, the app shows the full destination and possible data categories and requires explicit consent. Requests go directly from this Mac to the selected provider; the developer does not proxy or receive keys, prompts, requests, or responses.</p>
+      <p><code>localhost</code>, <code>127.0.0.1</code>, and <code>::1</code> are local loopback destinations and do not transfer AI content to a remote provider.</p>
     </section>
 
     <section>
@@ -63,27 +62,27 @@
       <ul>
         <li>Markdown editing, live preview, structured metadata, images, and general drafts.</li>
         <li>A local library for EPUB, PDF, Markdown, TXT, HTML, and web content selected by the user.</li>
-        <li>Custom AI APIs, AI chat, writing assistance, and content review for every user, with no app-defined request quota.</li>
+        <li>Custom AI, AI chat, writing assistance, content review, and local-model connections.</li>
         <li>Content-health, SEO, social-preview, link, image, taxonomy, and maintenance checks.</li>
         <li>Local change and remote-difference review, followed by user-confirmed GitHub or GitLab sync and publishing.</li>
-        <li>User-initiated browser capture through the embedded Safari Web Extension.</li>
-        <li>Quick Hide and masking for articles marked private.</li>
+        <li>User-initiated browser capture through the Safari Web Extension or the Chrome Web Store extension.</li>
       </ul>
     </section>
 
     <section>
       <h2>Frequently Asked Questions</h2>
-      <h3>Do reviewers or users need a demo account or API key?</h3>
-      <p>Local writing, research, and repository features need no account or API key. Remote AI requires a key for the user's own provider account; an unauthenticated loopback model needs no key. RepoPress Studio does not sell or purchase provider access.</p>
+      <h3>Where do browser captures go?</h3>
+      <p>The Safari extension is embedded in the Mac app, and the Chrome extension is installed separately. Each captures only after a user action and writes to the local library through the authenticated <code>127.0.0.1:17843</code> loopback connection on the same Mac. Captures do not pass through the developer's servers. The app-side connection token stays only in macOS Keychain.</p>
 
       <h3>Why does the app request folder access?</h3>
-      <p>The App Store edition uses App Sandbox. It accesses only repositories, research sources, and output locations selected through system panels and restores previously granted access with security-scoped bookmarks.</p>
+      <p>The app uses the macOS sandbox. It accesses only repositories, research sources, and output locations selected through system panels and restores previously granted access with security-scoped bookmarks.</p>
 
-      <h3>How do I reopen the main window?</h3>
-      <p>Choose Window &gt; Show RepoPress Studio, or press Command-0.</p>
+      <h3>How do software updates work?</h3>
+      <p>The website edition uses Sparkle. You can check manually or decide whether to allow automatic checks when Sparkle asks. The app reads an HTTPS update feed and downloads a signed update archive. Update requests do not contain drafts, research, browser captures, credentials, or AI content.</p>
+      <p>The update host or CDN may retain necessary server access logs containing an IP address, request time, requested path, response status, and user agent or app version. These logs are used only for update delivery, reliability, abuse prevention, and security.</p>
 
       <h3>When does the app use the network?</h3>
-      <p>Network access is limited to user-configured and initiated AI requests, GitHub/GitLab actions, repository remotes, deployment checks, StoreKit purchase or restore, browser-extension installation, and pages you choose to open. Remote AI also requires endpoint-specific explicit consent. The app does not upload drafts or library content automatically.</p>
+      <p>User-initiated remote AI, GitHub, GitLab, repository-remote, deployment-status, browser-extension installation, software-update, and opened-page actions contact their corresponding services. The app does not automatically upload drafts or library content.</p>
 
       <h3>Does Quick Hide encrypt files?</h3>
       <p>No. Quick Hide and private-content masking reduce on-screen exposure. They are not password or Touch ID authentication, disk encryption, or end-to-end encryption.</p>
@@ -92,11 +91,11 @@
     <section>
       <h2>Contact Support</h2>
       <p><a href="mailto:support@chengjinfang.com">support@chengjinfang.com</a></p>
-      <p>Please include the macOS version, RepoPress Studio version, site generator, steps to reproduce, and a short problem description. Do not send a complete repository, token, authorization header, local absolute path, or private article body.</p>
+      <p>Please include the macOS version, RepoPress Studio version, site generator, steps to reproduce, and a short problem description. Do not send a complete repository, API key, token, authorization header, local absolute path, private article body, or unreviewed diagnostic archive.</p>
     </section>
 
     <footer>
-      <p>Last updated: July 28, 2026</p>
+      <p>Last updated: August 1, 2026</p>
     </footer>
   </main>
 </body>

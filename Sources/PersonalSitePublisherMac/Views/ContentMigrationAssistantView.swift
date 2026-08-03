@@ -59,12 +59,12 @@ struct ContentMigrationAssistantView: View {
             .frame(maxWidth: .infinity, minHeight: 260)
           }
         }
-        .padding(20)
+        .padding(WorkbenchSpacing.page)
       }
       Divider()
       footer
     }
-    .frame(minWidth: 760, idealWidth: 900, minHeight: 580, idealHeight: 700)
+    .workbenchSheetSize(.wide)
   }
 
   private var header: some View {
@@ -78,7 +78,7 @@ struct ContentMigrationAssistantView: View {
       }
       Spacer()
     }
-    .padding(20)
+    .padding(WorkbenchSpacing.page)
   }
 
   private var sourceSection: some View {
@@ -432,7 +432,7 @@ struct ContentMigrationAssistantView: View {
         Spacer()
       }
     }
-    .padding(16)
+    .padding(WorkbenchSpacing.content)
   }
 
   private func selectSource() {

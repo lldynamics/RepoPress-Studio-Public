@@ -428,7 +428,14 @@ public struct KnowledgeBrowserCapture: Codable, Hashable, Sendable {
   public var archiveMissingResourceCount: Int?
   public var archiveWasTruncated: Bool?
   public var captureMode: KnowledgeBrowserCaptureMode?
-  public var allowsAIUse: Bool?
+  public var allowsLocalSemanticIndex: Bool?
+  public var allowsRemoteAIUse: Bool?
+
+  @available(*, deprecated, message: "请使用 allowsLocalSemanticIndex 或 allowsRemoteAIUse")
+  public var allowsAIUse: Bool? {
+    get { allowsRemoteAIUse }
+    set { allowsRemoteAIUse = newValue }
+  }
 
   public init(
     schemaVersion: Int = Self.currentSchemaVersion,
@@ -447,6 +454,8 @@ public struct KnowledgeBrowserCapture: Codable, Hashable, Sendable {
     archiveMissingResourceCount: Int? = nil,
     archiveWasTruncated: Bool? = nil,
     captureMode: KnowledgeBrowserCaptureMode? = nil,
+    allowsLocalSemanticIndex: Bool? = nil,
+    allowsRemoteAIUse: Bool? = nil,
     allowsAIUse: Bool? = nil
   ) {
     self.schemaVersion = schemaVersion
@@ -465,7 +474,85 @@ public struct KnowledgeBrowserCapture: Codable, Hashable, Sendable {
     self.archiveMissingResourceCount = archiveMissingResourceCount
     self.archiveWasTruncated = archiveWasTruncated
     self.captureMode = captureMode
-    self.allowsAIUse = allowsAIUse
+    self.allowsLocalSemanticIndex = allowsLocalSemanticIndex
+    self.allowsRemoteAIUse = allowsRemoteAIUse ?? allowsAIUse
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case sourceURL
+    case title
+    case authors
+    case language
+    case summary
+    case tags
+    case capturedAt
+    case contentText
+    case originalHTML
+    case archiveFormat
+    case archiveData
+    case archiveEmbeddedResourceCount
+    case archiveMissingResourceCount
+    case archiveWasTruncated
+    case captureMode
+    case allowsLocalSemanticIndex
+    case allowsRemoteAIUse
+    case allowsAIUse
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+    sourceURL = try container.decode(URL.self, forKey: .sourceURL)
+    title = try container.decode(String.self, forKey: .title)
+    authors = try container.decode([String].self, forKey: .authors)
+    language = try container.decodeIfPresent(String.self, forKey: .language)
+    summary = try container.decode(String.self, forKey: .summary)
+    tags = try container.decode([String].self, forKey: .tags)
+    capturedAt = try container.decode(Date.self, forKey: .capturedAt)
+    contentText = try container.decode(String.self, forKey: .contentText)
+    originalHTML = try container.decodeIfPresent(String.self, forKey: .originalHTML)
+    archiveFormat = try container.decodeIfPresent(String.self, forKey: .archiveFormat)
+    archiveData = try container.decodeIfPresent(Data.self, forKey: .archiveData)
+    archiveEmbeddedResourceCount = try container.decodeIfPresent(
+      Int.self,
+      forKey: .archiveEmbeddedResourceCount
+    )
+    archiveMissingResourceCount = try container.decodeIfPresent(
+      Int.self,
+      forKey: .archiveMissingResourceCount
+    )
+    archiveWasTruncated = try container.decodeIfPresent(Bool.self, forKey: .archiveWasTruncated)
+    captureMode = try container.decodeIfPresent(KnowledgeBrowserCaptureMode.self, forKey: .captureMode)
+    let legacyPermission = try container.decodeIfPresent(Bool.self, forKey: .allowsAIUse)
+    allowsLocalSemanticIndex = try container.decodeIfPresent(
+      Bool.self,
+      forKey: .allowsLocalSemanticIndex
+    ) ?? legacyPermission
+    allowsRemoteAIUse = try container.decodeIfPresent(Bool.self, forKey: .allowsRemoteAIUse)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(schemaVersion, forKey: .schemaVersion)
+    try container.encode(sourceURL, forKey: .sourceURL)
+    try container.encode(title, forKey: .title)
+    try container.encode(authors, forKey: .authors)
+    try container.encodeIfPresent(language, forKey: .language)
+    try container.encode(summary, forKey: .summary)
+    try container.encode(tags, forKey: .tags)
+    try container.encode(capturedAt, forKey: .capturedAt)
+    try container.encode(contentText, forKey: .contentText)
+    try container.encodeIfPresent(originalHTML, forKey: .originalHTML)
+    try container.encodeIfPresent(archiveFormat, forKey: .archiveFormat)
+    try container.encodeIfPresent(archiveData, forKey: .archiveData)
+    try container.encodeIfPresent(archiveEmbeddedResourceCount, forKey: .archiveEmbeddedResourceCount)
+    try container.encodeIfPresent(archiveMissingResourceCount, forKey: .archiveMissingResourceCount)
+    try container.encodeIfPresent(archiveWasTruncated, forKey: .archiveWasTruncated)
+    try container.encodeIfPresent(captureMode, forKey: .captureMode)
+    try container.encodeIfPresent(allowsLocalSemanticIndex, forKey: .allowsLocalSemanticIndex)
+    try container.encodeIfPresent(allowsRemoteAIUse, forKey: .allowsRemoteAIUse)
+    try container.encode(allowsRemoteAIUse ?? false, forKey: .allowsAIUse)
   }
 }
 
@@ -527,9 +614,16 @@ public struct KnowledgeBrowserImportReceipt: Codable, Hashable, Sendable {
   public var fileSizeBytes: Int64
   public var archiveType: String
   public var indexStatus: String
-  public var allowsAIUse: Bool
+  public var allowsLocalSemanticIndex: Bool
+  public var allowsRemoteAIUse: Bool
   public var savedAt: Date
   public var replayed: Bool
+
+  @available(*, deprecated, message: "请使用 allowsLocalSemanticIndex 或 allowsRemoteAIUse")
+  public var allowsAIUse: Bool {
+    get { allowsRemoteAIUse }
+    set { allowsRemoteAIUse = newValue }
+  }
 
   public init(
     operationID: UUID,
@@ -544,7 +638,9 @@ public struct KnowledgeBrowserImportReceipt: Codable, Hashable, Sendable {
     fileSizeBytes: Int64,
     archiveType: String,
     indexStatus: String,
-    allowsAIUse: Bool,
+    allowsLocalSemanticIndex: Bool = true,
+    allowsRemoteAIUse: Bool = false,
+    allowsAIUse: Bool? = nil,
     savedAt: Date,
     replayed: Bool = false
   ) {
@@ -560,9 +656,77 @@ public struct KnowledgeBrowserImportReceipt: Codable, Hashable, Sendable {
     self.fileSizeBytes = fileSizeBytes
     self.archiveType = archiveType
     self.indexStatus = indexStatus
-    self.allowsAIUse = allowsAIUse
+    self.allowsLocalSemanticIndex = allowsLocalSemanticIndex
+    self.allowsRemoteAIUse = allowsAIUse ?? allowsRemoteAIUse
     self.savedAt = savedAt
     self.replayed = replayed
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case operationID
+    case insertedCount
+    case updatedCount
+    case skippedCount
+    case action
+    case documentID
+    case title
+    case sourceURL
+    case folder
+    case fileSizeBytes
+    case archiveType
+    case indexStatus
+    case allowsLocalSemanticIndex
+    case allowsRemoteAIUse
+    case allowsAIUse
+    case savedAt
+    case replayed
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    operationID = try container.decode(UUID.self, forKey: .operationID)
+    insertedCount = try container.decode(Int.self, forKey: .insertedCount)
+    updatedCount = try container.decode(Int.self, forKey: .updatedCount)
+    skippedCount = try container.decode(Int.self, forKey: .skippedCount)
+    action = try container.decode(String.self, forKey: .action)
+    documentID = try container.decode(UUID.self, forKey: .documentID)
+    title = try container.decode(String.self, forKey: .title)
+    sourceURL = try container.decodeIfPresent(URL.self, forKey: .sourceURL)
+    folder = try container.decodeIfPresent(KnowledgeBrowserReceiptFolder.self, forKey: .folder)
+    fileSizeBytes = try container.decode(Int64.self, forKey: .fileSizeBytes)
+    archiveType = try container.decode(String.self, forKey: .archiveType)
+    indexStatus = try container.decode(String.self, forKey: .indexStatus)
+    let legacyPermission = try container.decodeIfPresent(Bool.self, forKey: .allowsAIUse)
+    allowsLocalSemanticIndex = try container.decodeIfPresent(
+      Bool.self,
+      forKey: .allowsLocalSemanticIndex
+    ) ?? true
+    allowsRemoteAIUse = try container.decodeIfPresent(Bool.self, forKey: .allowsRemoteAIUse)
+      ?? legacyPermission
+      ?? false
+    savedAt = try container.decode(Date.self, forKey: .savedAt)
+    replayed = try container.decodeIfPresent(Bool.self, forKey: .replayed) ?? false
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(operationID, forKey: .operationID)
+    try container.encode(insertedCount, forKey: .insertedCount)
+    try container.encode(updatedCount, forKey: .updatedCount)
+    try container.encode(skippedCount, forKey: .skippedCount)
+    try container.encode(action, forKey: .action)
+    try container.encode(documentID, forKey: .documentID)
+    try container.encode(title, forKey: .title)
+    try container.encodeIfPresent(sourceURL, forKey: .sourceURL)
+    try container.encodeIfPresent(folder, forKey: .folder)
+    try container.encode(fileSizeBytes, forKey: .fileSizeBytes)
+    try container.encode(archiveType, forKey: .archiveType)
+    try container.encode(indexStatus, forKey: .indexStatus)
+    try container.encode(allowsLocalSemanticIndex, forKey: .allowsLocalSemanticIndex)
+    try container.encode(allowsRemoteAIUse, forKey: .allowsRemoteAIUse)
+    try container.encode(allowsRemoteAIUse, forKey: .allowsAIUse)
+    try container.encode(savedAt, forKey: .savedAt)
+    try container.encode(replayed, forKey: .replayed)
   }
 }
 
@@ -718,11 +882,18 @@ public struct KnowledgeDocument: Identifiable, Codable, Hashable, Sendable {
   public var sourceName: String
   public var folderID: UUID?
   public var sourceByteCount: Int64
-  public var allowsAIUse: Bool
+  public var allowsLocalSemanticIndex: Bool
+  public var allowsRemoteAIUse: Bool
   public var isArchived: Bool
   public var importedAt: Date
   public var updatedAt: Date
   public var currentRevisionID: UUID
+
+  @available(*, deprecated, message: "请使用 allowsLocalSemanticIndex 或 allowsRemoteAIUse")
+  public var allowsAIUse: Bool {
+    get { allowsRemoteAIUse }
+    set { allowsRemoteAIUse = newValue }
+  }
 
   public init(
     id: UUID = UUID(),
@@ -736,7 +907,9 @@ public struct KnowledgeDocument: Identifiable, Codable, Hashable, Sendable {
     sourceName: String = "",
     folderID: UUID? = nil,
     sourceByteCount: Int64 = 0,
-    allowsAIUse: Bool = true,
+    allowsLocalSemanticIndex: Bool = true,
+    allowsRemoteAIUse: Bool = false,
+    allowsAIUse: Bool? = nil,
     isArchived: Bool = false,
     importedAt: Date = Date(),
     updatedAt: Date = Date(),
@@ -753,11 +926,81 @@ public struct KnowledgeDocument: Identifiable, Codable, Hashable, Sendable {
     self.sourceName = sourceName
     self.folderID = folderID
     self.sourceByteCount = max(0, sourceByteCount)
-    self.allowsAIUse = allowsAIUse
+    self.allowsLocalSemanticIndex = allowsLocalSemanticIndex
+    self.allowsRemoteAIUse = allowsAIUse ?? allowsRemoteAIUse
     self.isArchived = isArchived
     self.importedAt = importedAt
     self.updatedAt = updatedAt
     self.currentRevisionID = currentRevisionID
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id
+    case kind
+    case title
+    case authors
+    case language
+    case summary
+    case tags
+    case sourceURL
+    case sourceName
+    case folderID
+    case sourceByteCount
+    case allowsLocalSemanticIndex
+    case allowsRemoteAIUse
+    case allowsAIUse
+    case isArchived
+    case importedAt
+    case updatedAt
+    case currentRevisionID
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decode(UUID.self, forKey: .id)
+    kind = try container.decode(KnowledgeDocumentKind.self, forKey: .kind)
+    title = try container.decode(String.self, forKey: .title)
+    authors = try container.decode([String].self, forKey: .authors)
+    language = try container.decodeIfPresent(String.self, forKey: .language)
+    summary = try container.decode(String.self, forKey: .summary)
+    tags = try container.decode([String].self, forKey: .tags)
+    sourceURL = try container.decodeIfPresent(URL.self, forKey: .sourceURL)
+    sourceName = try container.decode(String.self, forKey: .sourceName)
+    folderID = try container.decodeIfPresent(UUID.self, forKey: .folderID)
+    sourceByteCount = max(0, try container.decodeIfPresent(Int64.self, forKey: .sourceByteCount) ?? 0)
+    allowsLocalSemanticIndex = try container.decodeIfPresent(
+      Bool.self,
+      forKey: .allowsLocalSemanticIndex
+    ) ?? true
+    allowsRemoteAIUse = try container.decodeIfPresent(Bool.self, forKey: .allowsRemoteAIUse)
+      ?? container.decodeIfPresent(Bool.self, forKey: .allowsAIUse)
+      ?? false
+    isArchived = try container.decode(Bool.self, forKey: .isArchived)
+    importedAt = try container.decode(Date.self, forKey: .importedAt)
+    updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    currentRevisionID = try container.decode(UUID.self, forKey: .currentRevisionID)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(id, forKey: .id)
+    try container.encode(kind, forKey: .kind)
+    try container.encode(title, forKey: .title)
+    try container.encode(authors, forKey: .authors)
+    try container.encodeIfPresent(language, forKey: .language)
+    try container.encode(summary, forKey: .summary)
+    try container.encode(tags, forKey: .tags)
+    try container.encodeIfPresent(sourceURL, forKey: .sourceURL)
+    try container.encode(sourceName, forKey: .sourceName)
+    try container.encodeIfPresent(folderID, forKey: .folderID)
+    try container.encode(sourceByteCount, forKey: .sourceByteCount)
+    try container.encode(allowsLocalSemanticIndex, forKey: .allowsLocalSemanticIndex)
+    try container.encode(allowsRemoteAIUse, forKey: .allowsRemoteAIUse)
+    try container.encode(allowsRemoteAIUse, forKey: .allowsAIUse)
+    try container.encode(isArchived, forKey: .isArchived)
+    try container.encode(importedAt, forKey: .importedAt)
+    try container.encode(updatedAt, forKey: .updatedAt)
+    try container.encode(currentRevisionID, forKey: .currentRevisionID)
   }
 }
 
@@ -1241,7 +1484,14 @@ public struct KnowledgeImportCandidate: Identifiable, Hashable, Sendable {
   public var sourceURL: URL?
   public var sourceName: String
   public var sourceModifiedAt: Date?
-  public var allowsAIUse: Bool?
+  public var allowsLocalSemanticIndex: Bool?
+  public var allowsRemoteAIUse: Bool?
+
+  @available(*, deprecated, message: "请使用 allowsLocalSemanticIndex 或 allowsRemoteAIUse")
+  public var allowsAIUse: Bool? {
+    get { allowsRemoteAIUse }
+    set { allowsRemoteAIUse = newValue }
+  }
   public var originalFilenameExtension: String?
   public var originalData: Data?
   public var capturedText: String?
@@ -1264,6 +1514,8 @@ public struct KnowledgeImportCandidate: Identifiable, Hashable, Sendable {
     sourceURL: URL? = nil,
     sourceName: String,
     sourceModifiedAt: Date? = nil,
+    allowsLocalSemanticIndex: Bool? = nil,
+    allowsRemoteAIUse: Bool? = nil,
     allowsAIUse: Bool? = nil,
     originalFilenameExtension: String? = nil,
     originalData: Data? = nil,
@@ -1286,7 +1538,8 @@ public struct KnowledgeImportCandidate: Identifiable, Hashable, Sendable {
     self.sourceURL = sourceURL
     self.sourceName = sourceName
     self.sourceModifiedAt = sourceModifiedAt
-    self.allowsAIUse = allowsAIUse
+    self.allowsLocalSemanticIndex = allowsLocalSemanticIndex
+    self.allowsRemoteAIUse = allowsRemoteAIUse ?? allowsAIUse
     self.originalFilenameExtension = originalFilenameExtension
     self.originalData = originalData
     self.capturedText = capturedText
@@ -1366,6 +1619,7 @@ public enum KnowledgeLibraryError: LocalizedError, Sendable {
   case invalidWebURL
   case networkFailure(String)
   case database(String)
+  case databaseIntegrity(String)
   case unsupportedDatabaseVersion(found: Int, supported: Int)
   case missingDocument
   case invalidFolderName
@@ -1388,6 +1642,7 @@ public enum KnowledgeLibraryError: LocalizedError, Sendable {
     case .invalidWebURL: "请输入有效的 HTTPS 网页地址。"
     case .networkFailure(let message): "网页读取失败：\(message)"
     case .database(let message): "资料库数据库错误：\(message)"
+    case .databaseIntegrity(let message): "资料库数据完整性错误：\(message)"
     case .unsupportedDatabaseVersion(let found, let supported):
       "此资料库由更新版本的软件创建（数据库版本 \(found)），当前版本最高支持 \(supported)。为避免损坏，已拒绝打开。"
     case .missingDocument: "找不到这条资料。"

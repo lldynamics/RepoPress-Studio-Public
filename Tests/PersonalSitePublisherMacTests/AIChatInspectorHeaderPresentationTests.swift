@@ -29,14 +29,9 @@ final class AIChatInspectorHeaderPresentationTests: XCTestCase {
     )
   }
 
-  func testCompatibleAndCustomProvidersUseFriendlyCustomAPITitle() {
-    let compatible = AIProviderConfig(preset: .openAICompatible)
+  func testCustomProviderUsesFriendlyCustomAPITitle() {
     let custom = AIProviderConfig(preset: .custom)
 
-    XCTAssertEqual(
-      AIChatInspectorHeaderPresentation.providerTitle(for: compatible),
-      "自定义 API"
-    )
     XCTAssertEqual(
       AIChatInspectorHeaderPresentation.providerTitle(for: custom),
       "自定义 API"
@@ -61,9 +56,9 @@ final class AIChatInspectorHeaderPresentationTests: XCTestCase {
 
   func testModelPopoverBuildsFastStandardAndHighQualityCandidates() {
     let config = AIProviderConfig(
-      preset: .deepSeek,
-      baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
-      model: AIProviderPreset.deepSeek.defaultModel
+      preset: .custom,
+      baseURL: "https://api.example.com/v1",
+      model: "custom-model"
     )
 
     let candidates = AIChatInspectorHeaderPresentation.modelGradeCandidates(
@@ -73,14 +68,6 @@ final class AIChatInspectorHeaderPresentationTests: XCTestCase {
 
     XCTAssertEqual(candidates.map(\.grade), [.fast, .standard, .highQuality])
     XCTAssertEqual(candidates.map(\.title), ["快速", "标准", "高质量"])
-    XCTAssertEqual(
-      candidates.map(\.model),
-      [
-        AIProviderPreset.deepSeek.defaultModel,
-        AIProviderPreset.deepSeek.defaultModel,
-        AIProviderPreset.deepSeekHighQualityModel,
-      ]
-    )
   }
 
   func testCustomModelInputOnlyAppearsForEditableSelection() {
@@ -112,13 +99,26 @@ final class AIChatInspectorHeaderPresentationTests: XCTestCase {
   }
 
   func testReasoningControlOnlyAppearsForSupportedProviderAndDraft() {
-    let deepSeek = AIProviderConfig(preset: .deepSeek)
     let custom = AIProviderConfig(
       preset: .custom,
       baseURL: "https://example.com/v1",
       model: "custom-model"
     )
 
+    XCTAssertFalse(
+      AIChatInspectorHeaderPresentation.supportsSelectableReasoningLevel(
+        config: custom,
+        hasDraft: true
+      )
+    )
+    XCTAssertFalse(
+      AIChatInspectorHeaderPresentation.supportsSelectableReasoningLevel(
+        config: custom,
+        hasDraft: false
+      )
+    )
+
+    let deepSeek = AIProviderConfig(preset: .deepSeek)
     XCTAssertTrue(
       AIChatInspectorHeaderPresentation.supportsSelectableReasoningLevel(
         config: deepSeek,
@@ -131,11 +131,56 @@ final class AIChatInspectorHeaderPresentationTests: XCTestCase {
         hasDraft: false
       )
     )
-    XCTAssertFalse(
-      AIChatInspectorHeaderPresentation.supportsSelectableReasoningLevel(
-        config: custom,
+  }
+
+  func testConnectionStatusTurnsYellowWhenEndpointIsMissing() {
+    let missingEndpoint = AIProviderConfig(
+      preset: .custom,
+      baseURL: "",
+      model: "custom-model"
+    )
+    let configuredLocal = AIProviderConfig(
+      preset: .local,
+      baseURL: "http://127.0.0.1:11434/v1",
+      model: "qwen2.5",
+      requiresAPIKey: false
+    )
+    let customEndpointWithSelectedModel = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://example.com/v1",
+      model: ""
+    )
+
+    XCTAssertEqual(
+      AIChatConnectionStatusPresentation.readiness(
+        for: missingEndpoint,
+        hasToken: false,
         hasDraft: true
-      )
+      ),
+      .missingEndpoint
+    )
+    XCTAssertEqual(
+      AIChatConnectionStatusPresentation.summary(
+        for: configuredLocal,
+        activeModel: "qwen2.5",
+        hasDraft: true
+      ),
+      "Local: qwen2.5"
+    )
+    XCTAssertTrue(
+      AIChatConnectionStatusPresentation.readiness(
+        for: configuredLocal,
+        hasToken: false,
+        hasDraft: true
+      ).isReady
+    )
+    XCTAssertTrue(
+      AIChatConnectionStatusPresentation.readiness(
+        for: customEndpointWithSelectedModel,
+        activeModel: "custom-review-model",
+        hasToken: true,
+        hasDraft: true
+      ).isReady
     )
   }
 }

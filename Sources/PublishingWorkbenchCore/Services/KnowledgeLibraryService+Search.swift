@@ -4,7 +4,7 @@ extension KnowledgeLibraryService {
   public func search(
     query: String,
     limit: Int = 30,
-    onlyAIAllowed: Bool = false,
+    onlyRemoteAIAllowed: Bool = false,
     documentIDs: Set<UUID>? = nil,
     requiredSignal: KnowledgeRetrievalSignal? = nil
   ) throws -> [KnowledgeSearchResult] {
@@ -17,7 +17,7 @@ extension KnowledgeLibraryService {
     let rawFullTextResults = try database.search(
       query: trimmedQuery,
       limit: candidateLimit,
-      onlyAIAllowed: onlyAIAllowed,
+      onlyRemoteAIAllowed: onlyRemoteAIAllowed,
       documentIDs: documentIDs
     )
     var fullTextResults: [KnowledgeSearchResult] = []
@@ -43,7 +43,7 @@ extension KnowledgeLibraryService {
       let ranking = try database.semanticSearch(
         queryVector: queryVector,
         limit: candidateLimit,
-        onlyAIAllowed: onlyAIAllowed,
+        onlyRemoteAIAllowed: onlyRemoteAIAllowed,
         documentIDs: documentIDs
       )
       try checkSearchCancellation()
@@ -96,7 +96,7 @@ extension KnowledgeLibraryService {
   public func searchAsync(
     query: String,
     limit: Int = 30,
-    onlyAIAllowed: Bool = false,
+    onlyRemoteAIAllowed: Bool = false,
     documentIDs: Set<UUID>? = nil,
     requiredSignal: KnowledgeRetrievalSignal? = nil
   ) async throws -> [KnowledgeSearchResult] {
@@ -109,7 +109,7 @@ extension KnowledgeLibraryService {
       return try service.search(
         query: query,
         limit: limit,
-        onlyAIAllowed: onlyAIAllowed,
+        onlyRemoteAIAllowed: onlyRemoteAIAllowed,
         documentIDs: documentIDs,
         requiredSignal: requiredSignal
       )
@@ -156,7 +156,7 @@ extension KnowledgeLibraryService {
       let matches = try database.semanticSearch(
         queryVector: queryVector,
         limit: min(max(records.count, limit * 12), 240),
-        onlyAIAllowed: false
+      onlyRemoteAIAllowed: false
       )
       for match in matches {
         semanticScores[match.chunk.id] = max(
@@ -198,7 +198,7 @@ extension KnowledgeLibraryService {
     let candidates = try search(
       query: query,
       limit: max(maximumCitations * 4, 16),
-      onlyAIAllowed: true,
+      onlyRemoteAIAllowed: true,
       documentIDs: documentIDs
     )
     guard !candidates.isEmpty else { return nil }

@@ -13,14 +13,10 @@ struct WorkspaceToolbarControlCluster<Content: View>: View {
       content
     }
     .padding(2)
-    .background(
-      WorkbenchBackgroundStyle.page,
+    .workbenchGlassSurface(
+      material: .ultraThinMaterial,
       in: RoundedRectangle(cornerRadius: 7, style: .continuous)
     )
-    .overlay {
-      RoundedRectangle(cornerRadius: 7, style: .continuous)
-        .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
-    }
   }
 }
 
@@ -71,6 +67,55 @@ struct WorkspaceToolbarIconButton: View {
   }
 }
 
+struct WorkspaceTaskCenterToolbarButton: View {
+  @ObservedObject private var activityStatus: WorkbenchActivityStatusFacade
+  let isCompact: Bool
+  let action: () -> Void
+
+  init(store: WorkbenchStore, isCompact: Bool, action: @escaping () -> Void) {
+    _activityStatus = ObservedObject(wrappedValue: store.activityStatus)
+    self.isCompact = isCompact
+    self.action = action
+  }
+
+  var body: some View {
+    Button(action: action) {
+      Label("任务", systemImage: activityStatus.activeTaskCount > 0
+        ? "list.bullet.rectangle.fill"
+        : "list.bullet.rectangle")
+    }
+    .buttonStyle(
+      WorkspaceToolbarIconButtonStyle(
+        isActive: activityStatus.activeTaskCount > 0,
+        showsTitle: !isCompact
+      )
+    )
+    .overlay(alignment: .topTrailing) {
+      if activityStatus.failedTaskCount > 0 {
+        Text("\(min(activityStatus.failedTaskCount, 9))")
+          .font(.workbenchMetadata.weight(.bold).monospacedDigit())
+          .foregroundStyle(.white)
+          .frame(minWidth: 14, minHeight: 14)
+          .background(WorkbenchTheme.risk, in: Circle())
+          .offset(x: 4, y: -4)
+      }
+    }
+    .help(String(localized: "统一任务中心"))
+    .accessibilityLabel("统一任务中心")
+    .accessibilityValue(taskCenterAccessibilityValue)
+    .accessibilityIdentifier("workspace-task-center-toggle")
+  }
+
+  private var taskCenterAccessibilityValue: String {
+    if activityStatus.activeTaskCount == 0, activityStatus.failedTaskCount == 0 {
+      return String(localized: "无进行中或失败任务")
+    }
+    return String(
+      localized: "进行中 \(activityStatus.activeTaskCount)，失败 \(activityStatus.failedTaskCount)"
+    )
+  }
+}
+
 struct OmniCommandSearchBar: View {
   let isCompact: Bool
   let action: () -> Void
@@ -94,7 +139,7 @@ struct OmniCommandSearchBar: View {
         HStack(spacing: 2) {
           Text("⌘")
             .font(.workbenchMetadata.weight(.bold))
-          Text("K")
+          Text("P")
             .font(.workbenchMetadata.weight(.bold))
         }
         .padding(.horizontal, 4)
@@ -105,34 +150,58 @@ struct OmniCommandSearchBar: View {
       .padding(.horizontal, 8)
       .frame(height: 26)
       .frame(minWidth: isCompact ? 70 : 180, maxWidth: 240)
-      .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-      .overlay {
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
-          .stroke(Color.primary.opacity(0.08), lineWidth: 0.8)
-      }
+      .workbenchGlassSurface(
+        material: .ultraThinMaterial,
+        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+      )
       .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
     .buttonStyle(.plain)
-    .help("唤起命令面板与全局搜索 (⌘K)")
+    .help(String(localized: "唤起命令面板与全局搜索 (⌘P)"))
     .accessibilityLabel("全局搜索")
   }
 }
 
 struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
   let isActive: Bool
+  let showsTitle: Bool
+
+  @Environment(\.isFocused) private var isFocused
+
+  init(isActive: Bool, showsTitle: Bool = false) {
+    self.isActive = isActive
+    self.showsTitle = showsTitle
+  }
 
   func makeBody(configuration: Configuration) -> some View {
-    configuration.label
-      .labelStyle(.iconOnly)
-      .font(.system(size: 13, weight: .medium))
+    styledLabel(configuration.label)
+      .font(.workbenchButtonLabel)
       .symbolVariant(isActive ? .fill : .none)
       .foregroundStyle(isActive ? WorkbenchTheme.navigationSelection : Color.secondary)
-      .frame(width: 28, height: 24)
+      .frame(minWidth: showsTitle ? nil : 28, minHeight: 28)
+      .padding(.horizontal, showsTitle ? 8 : 6)
+      .fixedSize(horizontal: showsTitle, vertical: false)
       .background {
         RoundedRectangle(cornerRadius: 5, style: .continuous)
           .fill(backgroundColor(isPressed: configuration.isPressed))
       }
+      .overlay {
+        RoundedRectangle(cornerRadius: 5, style: .continuous)
+          .stroke(
+            isFocused ? Color.accentColor : Color.clear,
+            lineWidth: isFocused ? 2 : 0
+          )
+      }
       .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+  }
+
+  @ViewBuilder
+  private func styledLabel(_ label: Configuration.Label) -> some View {
+    if showsTitle {
+      label.labelStyle(.titleAndIcon)
+    } else {
+      label.labelStyle(.iconOnly)
+    }
   }
 
   private func backgroundColor(isPressed: Bool) -> Color {
@@ -175,12 +244,15 @@ struct WorkspaceToolbarLeadingContent: View {
       }
       .menuStyle(.borderlessButton)
       .menuIndicator(.hidden)
-      .help("个人网站：\(store.activeProfile.name) · \(store.activeProfile.siteKind.localizedDisplayName)")
+      .help(
+        String(
+          localized: "个人网站：\(store.activeProfile.name) · \(store.activeProfile.siteKind.localizedDisplayName)"
+        )
+      )
       .accessibilityLabel("切换个人网站")
       .accessibilityValue(store.activeProfile.name)
       .accessibilityIdentifier("workspace-profile-menu")
 
-      LocalSitePreviewToolbarControl(store: store, isCompact: isCompact)
     }
   }
 }
@@ -242,6 +314,7 @@ struct PublishingStatusToolbarControl: View {
   let openContentHealthOverview: () -> Void
   let openReleaseHistory: () -> Void
   @State private var isPresented = false
+  @State private var syncAnimationTrigger = 0
 
   var body: some View {
     Button {
@@ -254,8 +327,8 @@ struct PublishingStatusToolbarControl: View {
         Text(toolbarStatus.value)
           .foregroundStyle(.primary)
       }
-      .font(.caption.weight(.semibold))
-      .lineLimit(1)
+      .font(.workbenchButtonLabel)
+      .fixedSize(horizontal: true, vertical: false)
       .accessibilityLabel("发布状态")
       .padding(.horizontal, 9)
       .frame(height: 26)
@@ -268,14 +341,18 @@ struct PublishingStatusToolbarControl: View {
     }
     .buttonStyle(.plain)
     .disabled(!canUseProtectedWorkbench)
-    .help("发布状态：\(toolbarStatus.area.title) · \(toolbarStatus.value)。点击查看状态和发布操作。")
+    .help(
+      String(
+        localized: "发布状态：\(toolbarStatus.area.title) · \(toolbarStatus.value)。点击查看状态和发布操作。"
+      )
+    )
     .accessibilityLabel("发布状态")
     .accessibilityValue("\(toolbarStatus.area.title)：\(toolbarStatus.value)")
     .popover(isPresented: $isPresented, arrowEdge: .bottom) {
       VStack(alignment: .leading, spacing: 0) {
         Label("发布状态", systemImage: "paperplane.circle")
           .font(.headline)
-          .padding(.horizontal, 14)
+          .padding(.horizontal, WorkbenchSpacing.section)
           .padding(.vertical, 12)
 
         Divider()
@@ -289,14 +366,14 @@ struct PublishingStatusToolbarControl: View {
           .buttonStyle(.plain)
           if item.id != statusItems.last?.id {
             Divider()
-              .padding(.leading, 14)
+              .padding(.leading, WorkbenchSpacing.section)
           }
         }
 
         Divider()
 
         publishingActions
-          .padding(14)
+          .padding(WorkbenchSpacing.section)
       }
       .frame(width: 380)
       .accessibilityElement(children: .contain)
@@ -504,11 +581,7 @@ struct PublishingStatusToolbarControl: View {
             openPublishFlow()
           }
         } label: {
-          if publishBlockingItem == nil {
-            Label("发布当前文章…", systemImage: "paperplane")
-          } else {
-            Label("处理发布阻断项", systemImage: "exclamationmark.triangle")
-          }
+          Label("准备发布", systemImage: "paperplane")
         }
         .workbenchProminentActionStyle()
         .disabled(selectedDraftID == nil)
@@ -526,9 +599,14 @@ struct PublishingStatusToolbarControl: View {
       HStack(spacing: 14) {
         Button {
           isPresented = false
+          syncAnimationTrigger &+= 1
           openRepositoryOverview()
         } label: {
-          Label(workspaceNavigationLocalizedKey("workspace.sync"), systemImage: "arrow.triangle.2.circlepath")
+          HStack(spacing: 5) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+              .workbenchSyncSymbolEffect(trigger: syncAnimationTrigger)
+            Text(workspaceNavigationLocalizedKey("workspace.sync"))
+          }
         }
 
         Button {
@@ -573,7 +651,6 @@ struct PublishingStatusToolbarControl: View {
         Label(item.value, systemImage: item.statusImage)
           .font(.callout.weight(.medium))
           .foregroundStyle(item.color)
-          .lineLimit(1)
 
         Text(item.detail)
           .font(.caption)
@@ -583,7 +660,7 @@ struct PublishingStatusToolbarControl: View {
       }
 
     }
-    .padding(.horizontal, 14)
+    .padding(.horizontal, WorkbenchSpacing.section)
     .padding(.vertical, 11)
     .accessibilityElement(children: .combine)
     .accessibilityLabel(item.area.title)

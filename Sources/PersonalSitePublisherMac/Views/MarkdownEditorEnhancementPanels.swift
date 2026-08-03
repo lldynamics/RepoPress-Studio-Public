@@ -93,7 +93,7 @@ struct MarkdownInternalLinkPicker: View {
             Label("插入外部链接模板", systemImage: "globe")
           }
         }
-        .padding(14)
+        .padding(WorkbenchSpacing.section)
         .frame(minWidth: 220, maxWidth: 280, maxHeight: .infinity, alignment: .topLeading)
       }
     }
@@ -122,7 +122,7 @@ struct MarkdownInternalLinkPicker: View {
       Spacer()
       Button("完成") { dismiss() }
     }
-    .padding(14)
+    .padding(WorkbenchSpacing.section)
   }
 }
 
@@ -144,7 +144,7 @@ struct MarkdownDiagnosticsPanel: View {
           .foregroundStyle(.secondary)
         Button("完成") { dismiss() }
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.section)
       Divider()
 
       if diagnostics.isEmpty {
@@ -194,6 +194,28 @@ struct MarkdownDiagnosticsPanel: View {
   }
 }
 
+private enum MarkdownSnippetLibraryFilter: String, CaseIterable, Identifiable {
+  case all
+  case components
+  case templates
+  case snippets
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .all:
+      return "全部"
+    case .components:
+      return "SSG 组件"
+    case .templates:
+      return "文章模板"
+    case .snippets:
+      return "正文片段"
+    }
+  }
+}
+
 struct MarkdownSnippetLibraryPanel: View {
   @Environment(\.dismiss) private var dismiss
   let draft: ArticleDraft
@@ -203,6 +225,7 @@ struct MarkdownSnippetLibraryPanel: View {
   let onSaveCustomSnippet: (MarkdownSnippet) -> Void
   let onDeleteCustomSnippet: (MarkdownSnippet) -> Void
   @State private var query = ""
+  @State private var selectedFilter: MarkdownSnippetLibraryFilter = .all
   @State private var selectedKind: MarkdownSnippetKind?
   @State private var customSnippets: [MarkdownSnippet] = []
   @State private var snippetBeingEdited: MarkdownSnippet?
@@ -213,7 +236,7 @@ struct MarkdownSnippetLibraryPanel: View {
   var body: some View {
     VStack(spacing: 0) {
       HStack {
-        Label("文章模板与正文片段", systemImage: "doc.on.clipboard")
+        Label("SSG 组件、模板与正文片段", systemImage: "rectangle.3.group")
           .font(.headline)
         Spacer()
         Button {
@@ -226,7 +249,7 @@ struct MarkdownSnippetLibraryPanel: View {
         .accessibilityLabel("新建当前站点片段")
         Button("完成") { dismiss() }
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.section)
       Divider()
       HStack(spacing: 10) {
         TextField("搜索模板或片段", text: $query)
@@ -239,16 +262,32 @@ struct MarkdownSnippetLibraryPanel: View {
           Text("正文片段").tag(MarkdownSnippetKind?.some(.snippet))
         }
         .frame(width: 140)
+        Picker("显示", selection: $selectedFilter) {
+          ForEach(MarkdownSnippetLibraryFilter.allCases) { filter in
+            Text(filter.title).tag(filter)
+          }
+        }
+        .frame(width: 120)
       }
       .padding(12)
       Divider()
 
       List(filteredSnippets) { snippet in
         HStack(spacing: 12) {
-          Image(systemName: snippet.systemImage)
-            .font(.title3)
-            .frame(width: 28)
-            .foregroundStyle(WorkbenchTheme.primary)
+          if let previewKind = snippet.previewKind {
+            MarkdownSSGComponentThumbnail(
+              kind: previewKind,
+              title: snippet.title,
+              previewText: MarkdownSnippetLibraryService.expandedMarkdown(for: snippet, draft: draft)
+            )
+            .scaleEffect(0.74)
+            .frame(width: 126, height: 60)
+          } else {
+            Image(systemName: snippet.systemImage)
+              .font(.title3)
+              .frame(width: 28)
+              .foregroundStyle(WorkbenchTheme.primary)
+          }
           VStack(alignment: .leading, spacing: 3) {
             Text(snippet.title)
               .font(.callout.weight(.medium))
@@ -264,6 +303,11 @@ struct MarkdownSnippetLibraryPanel: View {
               .font(.caption.monospaced())
               .foregroundStyle(.tertiary)
               .lineLimit(2)
+            if let shortcut = snippet.shortcut {
+              Label("/\(shortcut)", systemImage: "keyboard")
+                .font(.caption)
+                .foregroundStyle(WorkbenchTheme.primary)
+            }
           }
           Spacer()
           Button("插入") {
@@ -319,7 +363,7 @@ struct MarkdownSnippetLibraryPanel: View {
     } message: {
       Text("删除后不会影响已经插入文章的内容。")
     }
-    .accessibilityLabel("文章模板与正文片段")
+    .accessibilityLabel("SSG 组件、文章模板与正文片段")
   }
 
   private var filteredSnippets: [MarkdownSnippet] {
@@ -328,10 +372,24 @@ struct MarkdownSnippetLibraryPanel: View {
       customSnippets: customSnippets
     ).filter { snippet in
       (selectedKind == nil || snippet.kind == selectedKind)
+        && filterMatches(snippet)
         && (query.trimmedForPublishing.isEmpty
           || snippet.title.localizedStandardContains(query)
           || snippet.detail.localizedStandardContains(query)
           || snippet.markdown.localizedStandardContains(query))
+    }
+  }
+
+  private func filterMatches(_ snippet: MarkdownSnippet) -> Bool {
+    switch selectedFilter {
+    case .all:
+      return true
+    case .components:
+      return snippet.isSSGComponent
+    case .templates:
+      return snippet.kind == .articleTemplate
+    case .snippets:
+      return snippet.kind == .snippet && !snippet.isSSGComponent
     }
   }
 
@@ -381,6 +439,7 @@ private struct MarkdownCustomSnippetEditorPanel: View {
   @State private var detail: String
   @State private var kind: MarkdownSnippetKind
   @State private var markdown: String
+  @State private var shortcut: String
   @FocusState private var isTitleFocused: Bool
 
   init(
@@ -397,6 +456,7 @@ private struct MarkdownCustomSnippetEditorPanel: View {
     _detail = State(initialValue: snippet?.detail ?? "")
     _kind = State(initialValue: snippet?.kind ?? .snippet)
     _markdown = State(initialValue: snippet?.markdown ?? "")
+    _shortcut = State(initialValue: snippet?.shortcut.map { "/\($0)" } ?? "")
   }
 
   var body: some View {
@@ -406,7 +466,7 @@ private struct MarkdownCustomSnippetEditorPanel: View {
           .font(.headline)
         Spacer()
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.section)
       Divider()
 
       Form {
@@ -422,6 +482,8 @@ private struct MarkdownCustomSnippetEditorPanel: View {
             Text("文章模板").tag(MarkdownSnippetKind.articleTemplate)
             Text("正文片段").tag(MarkdownSnippetKind.snippet)
           }
+          TextField("快捷键（可选，如 /callout）", text: $shortcut)
+            .accessibilityLabel("站点片段快捷键")
         }
         Section("Markdown 内容") {
           TextEditor(text: $markdown)
@@ -446,7 +508,7 @@ private struct MarkdownCustomSnippetEditorPanel: View {
           .keyboardShortcut(.defaultAction)
           .disabled(!canSave)
       }
-      .padding(14)
+      .padding(WorkbenchSpacing.section)
     }
     .frame(width: 560, height: 520)
     .onAppear { isTitleFocused = true }
@@ -466,6 +528,7 @@ private struct MarkdownCustomSnippetEditorPanel: View {
       kind: kind,
       markdown: markdown,
       siteProfileID: siteProfileID,
+      shortcut: shortcut,
       in: []
     ).first else {
       return

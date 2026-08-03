@@ -8,6 +8,7 @@ enum MarkdownEditorComfortPreferences {
   static let typewriterModeEnabledKey = "markdownEditorTypewriterModeEnabled"
   static let currentParagraphHighlightEnabledKey = "markdownEditorCurrentParagraphHighlightEnabled"
   static let warmPaperBackgroundEnabledKey = "markdownEditorWarmPaperBackgroundEnabled"
+  static let automaticPairingEnabledKey = "markdownEditorAutomaticPairingEnabled"
   static let writingGoalKey = "markdownEditorWritingGoal"
 }
 
@@ -23,6 +24,7 @@ struct MarkdownEditorComfortConfiguration: Equatable {
   static let defaultTypewriterModeEnabled = false
   static let defaultCurrentParagraphHighlightEnabled = true
   static let defaultWarmPaperBackgroundEnabled = false
+  static let defaultAutomaticPairingEnabled = true
   static let defaultWritingGoal = 1_500
 
   let fontSize: Double
@@ -32,6 +34,7 @@ struct MarkdownEditorComfortConfiguration: Equatable {
   let typewriterModeEnabled: Bool
   let currentParagraphHighlightEnabled: Bool
   let warmPaperBackgroundEnabled: Bool
+  let automaticPairingEnabled: Bool
 
   init(
     fontSize: Double = defaultFontSize,
@@ -40,7 +43,8 @@ struct MarkdownEditorComfortConfiguration: Equatable {
     spellCheckEnabled: Bool = defaultSpellCheckEnabled,
     typewriterModeEnabled: Bool = defaultTypewriterModeEnabled,
     currentParagraphHighlightEnabled: Bool = defaultCurrentParagraphHighlightEnabled,
-    warmPaperBackgroundEnabled: Bool = defaultWarmPaperBackgroundEnabled
+    warmPaperBackgroundEnabled: Bool = defaultWarmPaperBackgroundEnabled,
+    automaticPairingEnabled: Bool = defaultAutomaticPairingEnabled
   ) {
     self.fontSize = fontSize.clamped(to: Self.fontSizeRange)
     self.lineSpacing = lineSpacing.clamped(to: Self.lineSpacingRange)
@@ -49,6 +53,7 @@ struct MarkdownEditorComfortConfiguration: Equatable {
     self.typewriterModeEnabled = typewriterModeEnabled
     self.currentParagraphHighlightEnabled = currentParagraphHighlightEnabled
     self.warmPaperBackgroundEnabled = warmPaperBackgroundEnabled
+    self.automaticPairingEnabled = automaticPairingEnabled
   }
 }
 

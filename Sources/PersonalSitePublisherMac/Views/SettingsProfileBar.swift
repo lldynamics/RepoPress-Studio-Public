@@ -17,36 +17,36 @@ struct SettingsProfileBar: View {
   @State private var isDeleteConfirmationPresented = false
 
   var body: some View {
-    HStack(alignment: .center, spacing: 7) {
-      VStack(alignment: .trailing, spacing: 2) {
-        Text("当前站点")
-          .font(.caption.weight(.medium))
-          .foregroundStyle(.secondary)
+    HStack(alignment: .center, spacing: 8) {
+      Text("当前站点")
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.secondary)
+        .fixedSize()
 
-        Picker("当前站点", selection: activeProfileIDBinding) {
-          ForEach(profiles) { profile in
-            Text(profile.name).tag(profile.id)
-          }
+      Picker("当前站点", selection: activeProfileIDBinding) {
+        ForEach(profiles) { profile in
+          Text(profile.name).tag(profile.id)
         }
-        .labelsHidden()
-        .frame(width: 170)
-        .accessibilityLabel("当前站点")
-        .accessibilityValue(activeProfile.name)
       }
+      .labelsHidden()
+      .frame(width: 170)
+      .accessibilityLabel("当前站点")
+      .accessibilityValue(activeProfile.name)
 
       Button {
         isProfileManagementPresented.toggle()
       } label: {
-        Image(systemName: "ellipsis.circle")
+        Image(systemName: "ellipsis")
+          .frame(width: 16, height: 16)
       }
       .buttonStyle(.bordered)
-      .controlSize(.regular)
       .popover(isPresented: $isProfileManagementPresented, arrowEdge: .bottom) {
         profileManagementPopover
       }
       .help("管理站点")
       .accessibilityLabel("管理站点")
     }
+    .controlSize(.small)
   }
 
   private var profileManagementPopover: some View {

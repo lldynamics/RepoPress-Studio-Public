@@ -145,7 +145,12 @@ extension KnowledgeLibraryService {
           }
         }(),
         sourceByteCount: Int64(candidate.originalData?.count ?? candidate.normalizedText.utf8.count),
-        allowsAIUse: candidate.allowsAIUse ?? existingDocument?.allowsAIUse ?? true,
+        allowsLocalSemanticIndex: candidate.allowsLocalSemanticIndex
+          ?? existingDocument?.allowsLocalSemanticIndex
+          ?? true,
+        allowsRemoteAIUse: candidate.allowsRemoteAIUse
+          ?? existingDocument?.allowsRemoteAIUse
+          ?? false,
         isArchived: existingDocument?.isArchived ?? false,
         importedAt: existingDocument?.importedAt ?? now,
         updatedAt: now,

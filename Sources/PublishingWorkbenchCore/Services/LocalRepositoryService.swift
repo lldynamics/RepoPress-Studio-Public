@@ -566,8 +566,19 @@ public struct LocalRepositoryService: @unchecked Sendable {
   }
 
   public func scan(profile: SiteProfile) -> RepositoryScanReport {
+    scan(profile: profile, cancellationCheck: { false })
+  }
+
+  func scan(
+    profile: SiteProfile,
+    cancellationCheck: @escaping @Sendable () -> Bool
+  ) -> RepositoryScanReport {
     guard let report = profile.withLocalRepositoryRootAccess({ rootURL in
-      scan(rootURL: rootURL, profile: profile)
+      scan(
+        rootURL: rootURL,
+        profile: profile,
+        cancellationCheck: cancellationCheck
+      )
     }) else {
       return RepositoryScanReport(
         rootPath: "",
@@ -582,7 +593,12 @@ public struct LocalRepositoryService: @unchecked Sendable {
         changedFiles: [],
         remoteChangedFiles: [],
         preflightIssues: [
-          .init(severity: .warning, title: "未选择本地仓库", message: "请选择 Zola/Hugo/Astro/Jekyll/Hexo 仓库根目录。", field: "repository")
+          .init(
+            severity: .warning,
+            title: CoreL10n.text("未选择本地仓库"),
+            message: CoreL10n.text("请选择 Zola/Hugo/Astro/Jekyll/Hexo 仓库根目录。"),
+            field: "repository"
+          )
         ]
       )
     }
@@ -656,7 +672,7 @@ public struct LocalRepositoryService: @unchecked Sendable {
         output: result.output
       )
     }
-    guard result.output.trimmedForPublishing.isEmpty else {
+    guard result.standardOutput.trimmedForPublishing.isEmpty else {
       throw LocalRepositoryServiceError.workingTreeHasChanges
     }
   }
@@ -734,7 +750,11 @@ public struct LocalRepositoryService: @unchecked Sendable {
     return result
   }
 
-  private func scan(rootURL: URL, profile: SiteProfile) -> RepositoryScanReport {
+  private func scan(
+    rootURL: URL,
+    profile: SiteProfile,
+    cancellationCheck: @escaping @Sendable () -> Bool
+  ) -> RepositoryScanReport {
     let rootPath = rootURL.path
     var isDirectory: ObjCBool = false
     guard fileManager.fileExists(atPath: rootPath, isDirectory: &isDirectory), isDirectory.boolValue else {
@@ -751,7 +771,12 @@ public struct LocalRepositoryService: @unchecked Sendable {
         changedFiles: [],
         remoteChangedFiles: [],
         preflightIssues: [
-          .init(severity: .error, title: "仓库路径不可读", message: rootPath, field: "repository")
+          .init(
+            severity: .error,
+            title: CoreL10n.text("仓库路径不可读"),
+            message: rootPath,
+            field: "repository"
+          )
         ]
       )
     }
@@ -769,23 +794,62 @@ public struct LocalRepositoryService: @unchecked Sendable {
 
     var issues: [PreflightIssue] = []
     if detectedKind == nil {
-      issues.append(.init(severity: .warning, title: "未识别静态站点类型", message: "没有发现常见配置文件；仍可继续使用自定义路径规则。", field: "siteKind"))
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("未识别静态站点类型"),
+          message: CoreL10n.text("没有发现常见配置文件；仍可继续使用自定义路径规则。"),
+          field: "siteKind"
+        )
+      )
     } else if detectedKind != profile.siteKind {
-      issues.append(.init(severity: .warning, title: "站点类型可能不一致", message: "配置为 \(profile.siteKind.displayName)，扫描到 \(detectedKind?.displayName ?? "未知")。", field: "siteKind"))
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("站点类型可能不一致"),
+          message: CoreL10n.format(
+            "配置为 %@，扫描到 %@。",
+            profile.siteKind.displayName,
+            detectedKind?.displayName ?? CoreL10n.text("未知")
+          ),
+          field: "siteKind"
+        )
+      )
     }
 
     if !hasGitDirectory {
-      issues.append(.init(severity: .warning, title: "未发现 .git", message: "当前目录不是 Git 工作树，diff 和提交入口暂不可用。", field: "repository"))
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("未发现 .git"),
+          message: CoreL10n.text("当前目录不是 Git 工作树，diff 和提交入口暂不可用。"),
+          field: "repository"
+        )
+      )
     } else {
       issues.append(contentsOf: branchSyncIssues(gitStatus.branchStatus))
     }
 
     if !contentRootExists {
-      issues.append(.init(severity: .error, title: "内容目录不存在", message: profile.contentRoot, field: "contentRoot"))
+      issues.append(
+        .init(
+          severity: .error,
+          title: CoreL10n.text("内容目录不存在"),
+          message: profile.contentRoot,
+          field: "contentRoot"
+        )
+      )
     }
 
     if !assetRootExists {
-      issues.append(.init(severity: .warning, title: "图片目录不存在", message: profile.assetRoot, field: "assetRoot"))
+      issues.append(
+        .init(
+          severity: .warning,
+          title: CoreL10n.text("图片目录不存在"),
+          message: profile.assetRoot,
+          field: "assetRoot"
+        )
+      )
     }
 
     return RepositoryScanReport(
@@ -795,8 +859,20 @@ public struct LocalRepositoryService: @unchecked Sendable {
       hasGitDirectory: hasGitDirectory,
       contentRootExists: contentRootExists,
       assetRootExists: assetRootExists,
-      markdownFileCount: contentRootExists ? countFiles(in: contentRootURL, extensions: ["md", "markdown", "mdx"]) : 0,
-      imageFileCount: assetRootExists ? countFiles(in: assetRootURL, extensions: ImageFileSupport.supportedExtensions) : 0,
+      markdownFileCount: contentRootExists
+        ? countFiles(
+          in: contentRootURL,
+          extensions: ["md", "markdown", "mdx"],
+          cancellationCheck: cancellationCheck
+        )
+        : 0,
+      imageFileCount: assetRootExists
+        ? countFiles(
+          in: assetRootURL,
+          extensions: ImageFileSupport.supportedExtensions,
+          cancellationCheck: cancellationCheck
+        )
+        : 0,
       branchStatus: gitStatus.branchStatus,
       originRemote: originRemote,
       changedFiles: gitStatus.changedFiles,
@@ -839,7 +915,11 @@ public struct LocalRepositoryService: @unchecked Sendable {
     return nil
   }
 
-  private func countFiles(in rootURL: URL, extensions allowedExtensions: Set<String>) -> Int {
+  private func countFiles(
+    in rootURL: URL,
+    extensions allowedExtensions: Set<String>,
+    cancellationCheck: @escaping @Sendable () -> Bool
+  ) -> Int {
     guard let enumerator = fileManager.enumerator(
       at: rootURL,
       includingPropertiesForKeys: [.isRegularFileKey],
@@ -850,6 +930,7 @@ public struct LocalRepositoryService: @unchecked Sendable {
 
     var count = 0
     for case let fileURL as URL in enumerator {
+      if cancellationCheck() { break }
       guard allowedExtensions.contains(fileURL.pathExtension.lowercased()) else { continue }
       count += 1
     }
@@ -861,8 +942,8 @@ public struct LocalRepositoryService: @unchecked Sendable {
       return [
         .init(
           severity: .warning,
-          title: "未识别 Git 分支",
-          message: "无法读取当前分支同步状态；发布前建议在终端确认 git status。",
+          title: CoreL10n.text("未识别 Git 分支"),
+          message: CoreL10n.text("无法读取当前分支同步状态；发布前建议在终端确认 git status。"),
           field: "repository"
         )
       ]
@@ -872,8 +953,8 @@ public struct LocalRepositoryService: @unchecked Sendable {
       return [
         .init(
           severity: .error,
-          title: "当前是 Detached HEAD",
-          message: "请切回可发布分支后再写入、提交或创建 PR/MR。",
+          title: CoreL10n.text("当前是 Detached HEAD"),
+          message: CoreL10n.text("请切回可发布分支后再写入、提交或创建 PR/MR。"),
           field: "repository"
         )
       ]
@@ -883,8 +964,8 @@ public struct LocalRepositoryService: @unchecked Sendable {
       return [
         .init(
           severity: .info,
-          title: "未设置上游分支",
-          message: "可以继续本地写入；创建 PR/MR 或判断远端差异前建议设置 upstream。",
+          title: CoreL10n.text("未设置上游分支"),
+          message: CoreL10n.text("可以继续本地写入；创建 PR/MR 或判断远端差异前建议设置 upstream。"),
           field: "repository"
         )
       ]
@@ -894,8 +975,13 @@ public struct LocalRepositoryService: @unchecked Sendable {
       return [
         .init(
           severity: .warning,
-          title: "本地分支与远端分叉",
-          message: "\(branchStatus.displayName) 本地领先 \(branchStatus.aheadCount)，落后 \(branchStatus.behindCount)；发布前建议先同步远端变更。",
+          title: CoreL10n.text("本地分支与远端分叉"),
+          message: CoreL10n.format(
+            "%@ 本地领先 %d，落后 %d；发布前建议先同步远端变更。",
+            branchStatus.displayName,
+            branchStatus.aheadCount,
+            branchStatus.behindCount
+          ),
           field: "repository"
         )
       ]
@@ -905,8 +991,12 @@ public struct LocalRepositoryService: @unchecked Sendable {
       return [
         .init(
           severity: .warning,
-          title: "本地分支落后远端",
-          message: "\(branchStatus.displayName) 落后远端 \(branchStatus.behindCount) 个提交；发布前建议先拉取最新站点内容。",
+          title: CoreL10n.text("本地分支落后远端"),
+          message: CoreL10n.format(
+            "%@ 落后远端 %d 个提交；发布前建议先拉取最新站点内容。",
+            branchStatus.displayName,
+            branchStatus.behindCount
+          ),
           field: "repository"
         )
       ]
@@ -921,7 +1011,7 @@ public struct LocalRepositoryService: @unchecked Sendable {
       return RepositoryGitStatus(branchStatus: nil, changedFiles: [], remoteChangedFiles: [])
     }
 
-    let output = result.output
+    let output = result.standardOutput
     guard !output.isEmpty else {
       return RepositoryGitStatus(branchStatus: nil, changedFiles: [], remoteChangedFiles: [])
     }
@@ -1224,12 +1314,17 @@ public struct LocalRepositoryService: @unchecked Sendable {
   }
 
   private func ignoredRepositoryPaths(rootURL: URL, paths: [String]) -> [String] {
-    let result = runGitCommand(["check-ignore", "--stdin", "-z"], rootURL: rootURL, inputLines: paths)
+    let result = runGitCommand(
+      ["check-ignore", "--stdin", "-z"],
+      rootURL: rootURL,
+      inputLines: paths,
+      inputDelimiter: .nul
+    )
     guard result.terminationStatus == 0 || result.terminationStatus == 1 else {
       return []
     }
 
-    let output = result.output
+    let output = result.standardOutput
     guard !output.isEmpty else {
       return []
     }
@@ -1245,10 +1340,15 @@ public struct LocalRepositoryService: @unchecked Sendable {
   private func runGitCommand(
     _ arguments: [String],
     rootURL: URL,
-    inputLines: [String]? = nil
-  ) -> (terminationStatus: Int32, output: String) {
-    let result = gitCommandRunner.run(arguments, rootURL: rootURL, inputLines: inputLines)
-    return (result.terminationStatus, result.output)
+    inputLines: [String]? = nil,
+    inputDelimiter: GitCommandInputDelimiter = .newline
+  ) -> GitCommandResult {
+    gitCommandRunner.run(
+      arguments,
+      rootURL: rootURL,
+      inputLines: inputLines,
+      inputDelimiter: inputDelimiter
+    )
   }
 
   private func runGitOutput(_ arguments: [String], rootURL: URL) -> String? {
@@ -1256,7 +1356,7 @@ public struct LocalRepositoryService: @unchecked Sendable {
     guard result.terminationStatus == 0 else {
       return nil
     }
-    return result.output
+    return result.standardOutput
   }
 
   private func parseRepositoryRemote(_ remoteURL: String) -> RepositoryRemote? {
@@ -1436,7 +1536,7 @@ public struct LocalRepositoryService: @unchecked Sendable {
     guard result.terminationStatus == 0 || result.terminationStatus == 1 else {
       return nil
     }
-    return limitedDiff(result.output)
+    return limitedDiff(result.standardOutput)
   }
 
   private func limitedDiff(_ diff: String) -> String? {

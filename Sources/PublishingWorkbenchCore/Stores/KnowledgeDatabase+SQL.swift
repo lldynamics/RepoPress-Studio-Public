@@ -7,8 +7,9 @@ extension KnowledgeDatabase {
     INSERT INTO knowledge_documents (
       id, kind, title, authors_json, language, summary, tags_json,
       source_url, source_name, folder_id, source_byte_count,
-      allows_ai_use, is_archived, imported_at, updated_at, current_revision_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      allows_ai_use, allows_local_semantic_index, is_archived,
+      imported_at, updated_at, current_revision_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       kind = excluded.kind,
       title = excluded.title,
@@ -21,6 +22,7 @@ extension KnowledgeDatabase {
       folder_id = excluded.folder_id,
       source_byte_count = excluded.source_byte_count,
       allows_ai_use = excluded.allows_ai_use,
+      allows_local_semantic_index = excluded.allows_local_semantic_index,
       is_archived = excluded.is_archived,
       updated_at = excluded.updated_at,
       current_revision_id = excluded.current_revision_id;
@@ -38,11 +40,12 @@ extension KnowledgeDatabase {
     bind(document.sourceName, at: 9, to: statement)
     bindOptional(document.folderID?.uuidString, at: 10, to: statement)
     sqlite3_bind_int64(statement, 11, sqlite3_int64(document.sourceByteCount))
-    sqlite3_bind_int(statement, 12, document.allowsAIUse ? 1 : 0)
-    sqlite3_bind_int(statement, 13, document.isArchived ? 1 : 0)
-    sqlite3_bind_double(statement, 14, document.importedAt.timeIntervalSince1970)
-    sqlite3_bind_double(statement, 15, document.updatedAt.timeIntervalSince1970)
-    bind(document.currentRevisionID.uuidString, at: 16, to: statement)
+    sqlite3_bind_int(statement, 12, document.allowsRemoteAIUse ? 1 : 0)
+    sqlite3_bind_int(statement, 13, document.allowsLocalSemanticIndex ? 1 : 0)
+    sqlite3_bind_int(statement, 14, document.isArchived ? 1 : 0)
+    sqlite3_bind_double(statement, 15, document.importedAt.timeIntervalSince1970)
+    sqlite3_bind_double(statement, 16, document.updatedAt.timeIntervalSince1970)
+    bind(document.currentRevisionID.uuidString, at: 17, to: statement)
     guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
   }
 
@@ -50,14 +53,14 @@ extension KnowledgeDatabase {
     let statement = try prepare("""
     SELECT id, kind, title, authors_json, language, summary, tags_json,
            source_url, source_name, folder_id, source_byte_count,
-           allows_ai_use, is_archived,
+           allows_ai_use, allows_local_semantic_index, is_archived,
            imported_at, updated_at, current_revision_id
     FROM knowledge_documents WHERE id = ? LIMIT 1;
     """)
     defer { sqlite3_finalize(statement) }
     bind(id.uuidString, at: 1, to: statement)
     let result = sqlite3_step(statement)
-    if result == SQLITE_ROW { return decodeDocument(statement, offset: 0) }
+    if result == SQLITE_ROW { return try decodeDocument(statement, offset: 0) }
     guard result == SQLITE_DONE else { throw databaseError() }
     return nil
   }
@@ -85,23 +88,45 @@ extension KnowledgeDatabase {
     guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
   }
 
-  func decodeDocument(_ statement: OpaquePointer?, offset: Int32) -> KnowledgeDocument {
-    let id = UUID(uuidString: text(statement, offset) ?? "") ?? UUID()
+  func decodeDocument(
+    _ statement: OpaquePointer?,
+    offset: Int32
+  ) throws -> KnowledgeDocument {
+    let id = try requiredUUID(
+      statement,
+      offset,
+      field: "knowledge_documents.id"
+    )
     let kind = KnowledgeDocumentKind(rawValue: text(statement, offset + 1) ?? "") ?? .other
     let title = text(statement, offset + 2) ?? "未命名资料"
-    let authors: [String] = decodeJSON(text(statement, offset + 3))
+    let authors = try decodeStringArrayJSON(
+      text(statement, offset + 3),
+      field: "knowledge_documents.authors_json"
+    )
     let language = text(statement, offset + 4)
     let summary = text(statement, offset + 5) ?? ""
-    let tags: [String] = decodeJSON(text(statement, offset + 6))
+    let tags = try decodeStringArrayJSON(
+      text(statement, offset + 6),
+      field: "knowledge_documents.tags_json"
+    )
     let sourceURL = text(statement, offset + 7).flatMap(URL.init(string:))
     let sourceName = text(statement, offset + 8) ?? ""
-    let folderID = text(statement, offset + 9).flatMap(UUID.init(uuidString:))
+    let folderID = try optionalUUID(
+      statement,
+      offset + 9,
+      field: "knowledge_documents.folder_id"
+    )
     let sourceByteCount = max(0, sqlite3_column_int64(statement, offset + 10))
-    let allowsAIUse = sqlite3_column_int(statement, offset + 11) != 0
-    let isArchived = sqlite3_column_int(statement, offset + 12) != 0
-    let importedAt = Date(timeIntervalSince1970: sqlite3_column_double(statement, offset + 13))
-    let updatedAt = Date(timeIntervalSince1970: sqlite3_column_double(statement, offset + 14))
-    let revisionID = UUID(uuidString: text(statement, offset + 15) ?? "") ?? UUID()
+    let allowsRemoteAIUse = sqlite3_column_int(statement, offset + 11) != 0
+    let allowsLocalSemanticIndex = sqlite3_column_int(statement, offset + 12) != 0
+    let isArchived = sqlite3_column_int(statement, offset + 13) != 0
+    let importedAt = Date(timeIntervalSince1970: sqlite3_column_double(statement, offset + 14))
+    let updatedAt = Date(timeIntervalSince1970: sqlite3_column_double(statement, offset + 15))
+    let revisionID = try requiredUUID(
+      statement,
+      offset + 16,
+      field: "knowledge_documents.current_revision_id"
+    )
     return KnowledgeDocument(
       id: id,
       kind: kind,
@@ -114,7 +139,8 @@ extension KnowledgeDatabase {
       sourceName: sourceName,
       folderID: folderID,
       sourceByteCount: sourceByteCount,
-      allowsAIUse: allowsAIUse,
+      allowsLocalSemanticIndex: allowsLocalSemanticIndex,
+      allowsRemoteAIUse: allowsRemoteAIUse,
       isArchived: isArchived,
       importedAt: importedAt,
       updatedAt: updatedAt,
@@ -122,9 +148,9 @@ extension KnowledgeDatabase {
     )
   }
 
-  func decodeFolder(_ statement: OpaquePointer?) -> KnowledgeFolder {
+  func decodeFolder(_ statement: OpaquePointer?) throws -> KnowledgeFolder {
     KnowledgeFolder(
-      id: UUID(uuidString: text(statement, 0) ?? "") ?? UUID(),
+      id: try requiredUUID(statement, 0, field: "knowledge_folders.id"),
       name: text(statement, 1) ?? "未命名文件夹",
       createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
       updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 3))
@@ -179,10 +205,16 @@ extension KnowledgeDatabase {
     return result == SQLITE_ROW
   }
 
-  func decodeRevision(_ statement: OpaquePointer?) -> KnowledgeDocumentRevision {
+  func decodeRevision(
+    _ statement: OpaquePointer?
+  ) throws -> KnowledgeDocumentRevision {
     KnowledgeDocumentRevision(
-      id: UUID(uuidString: text(statement, 0) ?? "") ?? UUID(),
-      documentID: UUID(uuidString: text(statement, 1) ?? "") ?? UUID(),
+      id: try requiredUUID(statement, 0, field: "knowledge_revisions.id"),
+      documentID: try requiredUUID(
+        statement,
+        1,
+        field: "knowledge_revisions.document_id"
+      ),
       originalContentHash: text(statement, 2) ?? "",
       normalizedContentHash: text(statement, 3) ?? "",
       parserVersion: Int(sqlite3_column_int(statement, 4)),
@@ -196,12 +228,26 @@ extension KnowledgeDatabase {
     )
   }
 
-  func decodeAnnotation(_ statement: OpaquePointer?) -> KnowledgeAnnotation {
+  func decodeAnnotation(
+    _ statement: OpaquePointer?
+  ) throws -> KnowledgeAnnotation {
     KnowledgeAnnotation(
-      id: UUID(uuidString: text(statement, 0) ?? "") ?? UUID(),
-      documentID: UUID(uuidString: text(statement, 1) ?? "") ?? UUID(),
-      revisionID: text(statement, 2).flatMap(UUID.init(uuidString:)),
-      chunkID: text(statement, 3).flatMap(UUID.init(uuidString:)),
+      id: try requiredUUID(statement, 0, field: "knowledge_annotations.id"),
+      documentID: try requiredUUID(
+        statement,
+        1,
+        field: "knowledge_annotations.document_id"
+      ),
+      revisionID: try optionalUUID(
+        statement,
+        2,
+        field: "knowledge_annotations.revision_id"
+      ),
+      chunkID: try optionalUUID(
+        statement,
+        3,
+        field: "knowledge_annotations.chunk_id"
+      ),
       locator: text(statement, 4),
       highlightedText: text(statement, 5) ?? "",
       note: text(statement, 6) ?? "",
@@ -210,11 +256,21 @@ extension KnowledgeDatabase {
     )
   }
 
-  func decodeBacklink(_ statement: OpaquePointer?) -> KnowledgeBacklink {
+  func decodeBacklink(
+    _ statement: OpaquePointer?
+  ) throws -> KnowledgeBacklink {
     KnowledgeBacklink(
-      id: UUID(uuidString: text(statement, 0) ?? "") ?? UUID(),
-      documentID: UUID(uuidString: text(statement, 1) ?? "") ?? UUID(),
-      chunkID: UUID(uuidString: text(statement, 2) ?? "") ?? UUID(),
+      id: try requiredUUID(statement, 0, field: "knowledge_backlinks.id"),
+      documentID: try requiredUUID(
+        statement,
+        1,
+        field: "knowledge_backlinks.cited_document_id"
+      ),
+      chunkID: try requiredUUID(
+        statement,
+        2,
+        field: "knowledge_backlinks.chunk_id"
+      ),
       targetKind: KnowledgeBacklinkTargetKind(rawValue: text(statement, 3) ?? "") ?? .articleDraft,
       targetID: text(statement, 4) ?? "",
       targetTitle: text(statement, 5) ?? "未命名目标",
@@ -225,11 +281,26 @@ extension KnowledgeDatabase {
     )
   }
 
-  func decodeChunk(_ statement: OpaquePointer?, offset: Int32) -> KnowledgeChunk {
+  func decodeChunk(
+    _ statement: OpaquePointer?,
+    offset: Int32
+  ) throws -> KnowledgeChunk {
     KnowledgeChunk(
-      id: UUID(uuidString: text(statement, offset) ?? "") ?? UUID(),
-      documentID: UUID(uuidString: text(statement, offset + 1) ?? "") ?? UUID(),
-      revisionID: UUID(uuidString: text(statement, offset + 2) ?? "") ?? UUID(),
+      id: try requiredUUID(
+        statement,
+        offset,
+        field: "knowledge_chunks.id"
+      ),
+      documentID: try requiredUUID(
+        statement,
+        offset + 1,
+        field: "knowledge_chunks.document_id"
+      ),
+      revisionID: try requiredUUID(
+        statement,
+        offset + 2,
+        field: "knowledge_chunks.revision_id"
+      ),
       ordinal: Int(sqlite3_column_int64(statement, offset + 3)),
       headingPath: text(statement, offset + 4),
       locator: text(statement, offset + 5),
@@ -261,13 +332,48 @@ extension KnowledgeDatabase {
     return String(decoding: data, as: UTF8.self)
   }
 
-  func decodeJSON(_ value: String?) -> [String] {
-    guard let value,
-          let data = value.data(using: .utf8),
-          let decoded = try? JSONDecoder().decode([String].self, from: data) else {
-      return []
+  func requiredUUID(
+    _ statement: OpaquePointer?,
+    _ index: Int32,
+    field: String
+  ) throws -> UUID {
+    guard let rawValue = text(statement, index),
+          let value = UUID(uuidString: rawValue) else {
+      throw KnowledgeLibraryError.databaseIntegrity(
+        "\(field) 包含无效 UUID。"
+      )
     }
-    return decoded
+    return value
+  }
+
+  func optionalUUID(
+    _ statement: OpaquePointer?,
+    _ index: Int32,
+    field: String
+  ) throws -> UUID? {
+    guard sqlite3_column_type(statement, index) != SQLITE_NULL else {
+      return nil
+    }
+    return try requiredUUID(statement, index, field: field)
+  }
+
+  func decodeStringArrayJSON(
+    _ value: String?,
+    field: String
+  ) throws -> [String] {
+    guard let value,
+          let data = value.data(using: .utf8) else {
+      throw KnowledgeLibraryError.databaseIntegrity(
+        "\(field) 缺少有效的 UTF-8 JSON。"
+      )
+    }
+    do {
+      return try JSONDecoder().decode([String].self, from: data)
+    } catch {
+      throw KnowledgeLibraryError.databaseIntegrity(
+        "\(field) 不是字符串数组 JSON。"
+      )
+    }
   }
 
   func columnExists(_ column: String, in table: String) throws -> Bool {

@@ -25,22 +25,30 @@ CORE_RESOURCE_ROOT = CORE_SOURCE_ROOT / "Resources"
 WORKSPACE_MODELS_PATH = ROOT / "Sources" / "PublishingWorkbenchCore" / "Models" / "WorkspaceModels.swift"
 CATALOG_PATH = SOURCE_ROOT / "Resources" / "Localizable.xcstrings"
 TRANSLATION_PATHS = tuple(sorted((ROOT / "script").glob("ui_*translations*.json")))
-FORMAT_PATTERN = re.compile(r"%(?:\d+\$)?(?:@|[-+0-9.]*[a-zA-Z])")
+FORMAT_PATTERN = re.compile(
+    r"%(?:\d+\$)?(?:@|[-+0-9.#]*(?:hh|h|ll|l|z|t|j)?[a-zA-Z])"
+)
 CJK_PATTERN = re.compile(r"[\u3400-\u9fff]")
-SWIFT_INTERPOLATION_PATTERN = re.compile(r"\\\((.*?)\)")
+SUSPICIOUS_LITERAL_EXPRESSION_PATTERN = re.compile(
+    r"\([a-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*"
+    r"(?:\s*[-+*/]\s*\d+)?\)"
+)
 WORKSPACE_SECTION_PATTERN = re.compile(
     r"public enum WorkspaceSection.*?(?=public enum WorkspaceCenterSurface)",
     re.DOTALL,
 )
 WORKSPACE_SECTION_CASE_PATTERN = re.compile(r"^\s*case\s+([A-Za-z][A-Za-z0-9_]*)\s*$", re.MULTILINE)
-LITERAL_LOCALIZATION_CALL_PATTERN = re.compile(
-    r'(?:String\s*\(\s*localized:\s*|LocalizedStringKey\s*\(\s*|\.accessibility(?:Label|Hint)\s*\(\s*)'
-    r'"((?:\\.|[^"\\])*)"'
+LITERAL_LOCALIZATION_CALL_PREFIX_PATTERN = re.compile(
+    r'(?:String\s*\(\s*localized:\s*|LocalizedStringKey\s*\(\s*|'
+    r'(?:Text|Label|Button|Toggle|Picker|Section|Menu|GroupBox|LabeledContent|TextField|SecureField)\s*\(\s*|'
+    r'\.(?:navigationTitle|help|alert|confirmationDialog)\s*\(\s*|'
+    r'\.accessibility(?:Label|Hint|Value)\s*\(\s*)'
+    r'"'
 )
 DISPLAY_NAME_SEMANTIC_KEY_PATTERN = re.compile(r'"(display\.[a-z0-9.-]+)"')
 DIRECT_DISPLAY_NAME_PATTERN = re.compile(r"\.displayName\b")
 NAMED_COMPONENT_TITLE_PATTERN = re.compile(
-    r"\b(?:MetricTile|InspectorScaffold|InspectorStatRow|AIChatInspectorStatRow|"
+    r"\b(?:MetricTile|InspectorScaffold|InspectorStatRow|"
     r"PublishDrawerCard|PublishDrawerStat|PublishDrawerInfoRow|SettingsConfigurationHealthItem|EmptyStateView)"
     r"\s*\([\s\S]{0,240}?\btitle:\s*\"((?:\\.|[^\"\\])*)\""
 )
@@ -76,23 +84,78 @@ CORE_LOCALIZATION_CALL_PATTERN = re.compile(
 )
 
 
+def swift_interpolation_end(value: str, expression_start: int) -> int:
+    """Return the balanced closing parenthesis for a Swift interpolation."""
+    depth = 1
+    index = expression_start
+    in_string = False
+    while index < len(value):
+        character = value[index]
+        if in_string:
+            if character == "\\":
+                index += 2
+                continue
+            if character == '"':
+                in_string = False
+            index += 1
+            continue
+        if character == '"':
+            in_string = True
+        elif character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    raise ValueError("unterminated Swift string interpolation")
+
+
+def swift_string_literal_content(source: str, opening_quote: int) -> str:
+    """Read one ordinary Swift string literal, including balanced interpolations."""
+    if opening_quote >= len(source) or source[opening_quote] != '"':
+        raise ValueError("Swift string literal must start with a quote")
+    index = opening_quote + 1
+    while index < len(source):
+        if source.startswith(r"\(", index):
+            index = swift_interpolation_end(source, index + 2) + 1
+            continue
+        character = source[index]
+        if character == "\\":
+            index += 2
+            continue
+        if character == '"':
+            return source[opening_quote + 1:index]
+        index += 1
+    raise ValueError("unterminated Swift string literal")
+
+
 def normalized_swiftui_literal(raw_value: str) -> str:
-    """Decode a Swift literal and normalize simple LocalizedStringKey interpolation."""
-    value = (
-        raw_value
+    """Decode a Swift literal and normalize balanced LocalizedStringKey interpolation."""
+    normalized: list[str] = []
+    index = 0
+    while index < len(raw_value):
+        interpolation_start = raw_value.find(r"\(", index)
+        if interpolation_start < 0:
+            normalized.append(raw_value[index:])
+            break
+        normalized.append(raw_value[index:interpolation_start])
+        expression_start = interpolation_start + 2
+        interpolation_end = swift_interpolation_end(raw_value, expression_start)
+        expression = raw_value[expression_start:interpolation_end]
+        if re.search(r"(?:count|Count)\b", expression) or re.search(r"\bInt\s*\(", expression):
+            normalized.append("%lld")
+        else:
+            normalized.append("%@")
+        index = interpolation_end + 1
+
+    return (
+        "".join(normalized)
         .replace(r'\"', '"')
         .replace(r"\n", "\n")
         .replace(r"\t", "\t")
         .replace(r"\\", "\\")
     )
-
-    def placeholder(match: re.Match[str]) -> str:
-        expression = match.group(1)
-        if re.search(r"(?:count|Count)\b", expression):
-            return "%lld"
-        return "%@"
-
-    return SWIFT_INTERPOLATION_PATTERN.sub(placeholder, value)
 
 
 def extract_swiftui_strings() -> dict[str, str]:
@@ -153,18 +216,11 @@ def extract_literal_localization_calls() -> dict[str, str]:
         for path in source_root.rglob("*.swift")
     ):
         source = source_path.read_text(encoding="utf-8")
-        for match in LITERAL_LOCALIZATION_CALL_PATTERN.finditer(source):
-            raw_value = match.group(1)
-            if "\\(" in raw_value:
-                continue
-            value = (
-                raw_value
-                .replace(r'\"', '"')
-                .replace(r"\n", "\n")
-                .replace(r"\t", "\t")
-                .replace(r"\\", "\\")
-            )
-            extracted[value] = value
+        for match in LITERAL_LOCALIZATION_CALL_PREFIX_PATTERN.finditer(source):
+            raw_value = swift_string_literal_content(source, match.end() - 1)
+            value = normalized_swiftui_literal(raw_value)
+            if value:
+                extracted[value] = value
     return extracted
 
 
@@ -270,7 +326,10 @@ def direct_display_name_localization_gaps() -> list[str]:
 
 
 def placeholders(value: str) -> list[str]:
-    return FORMAT_PATTERN.findall(value)
+    return [
+        re.sub(r"^%\d+\$", "%", placeholder)
+        for placeholder in FORMAT_PATTERN.findall(value)
+    ]
 
 
 def localized_value(entry: dict, language: str) -> str | None:
@@ -295,6 +354,9 @@ def validate(catalog: dict, extracted: dict[str, str], model_keys: set[str]) -> 
     missing: list[str] = []
     strings = catalog.get("strings", {})
     for key, source_value in extracted.items():
+        if CJK_PATTERN.search(key) and SUSPICIOUS_LITERAL_EXPRESSION_PATTERN.search(key):
+            missing.append(f"{key}: looks like an unescaped Swift interpolation")
+            continue
         entry = strings.get(key, {})
         zh_value = localized_value(entry, "zh-Hans")
         en_value = localized_value(entry, "en")
@@ -308,9 +370,19 @@ def validate(catalog: dict, extracted: dict[str, str], model_keys: set[str]) -> 
             missing.append(f"{key}: zh-Hans placeholders differ")
         if sorted(placeholders(en_value)) != source_placeholders:
             missing.append(f"{key}: en placeholders differ")
-        if key in model_keys and CJK_PATTERN.search(en_value):
+        if CJK_PATTERN.search(en_value):
             missing.append(f"{key}: English value contains CJK text")
     return missing
+
+
+def unregistered_cjk_ui_keys(catalog: dict, extracted: dict[str, str]) -> list[str]:
+    """Return every extracted Chinese UI key that is absent from the catalog."""
+    registered_keys = set(catalog.get("strings", {}))
+    return sorted(
+        key
+        for key in extracted
+        if CJK_PATTERN.search(key) and key not in registered_keys
+    )
 
 
 def load_reviewed_translations() -> dict:
@@ -318,7 +390,7 @@ def load_reviewed_translations() -> dict:
     for translations_path in TRANSLATION_PATHS:
         if not translations_path.exists():
             continue
-        entries = json.loads(translations_path.read_text(encoding="utf-8"))
+        entries = load_reviewed_translation_file(translations_path)
         duplicates = sorted(set(translations).intersection(entries))
         if duplicates:
             raise RuntimeError(
@@ -328,13 +400,47 @@ def load_reviewed_translations() -> dict:
     return translations
 
 
+def load_reviewed_translation_file(path: Path) -> dict:
+    """Load one reviewed translation file without silently collapsing JSON keys."""
+    duplicate_keys: list[str] = []
+
+    def unique_object(pairs: list[tuple[str, object]]) -> dict:
+        value: dict = {}
+        for key, item in pairs:
+            if key in value:
+                duplicate_keys.append(key)
+            value[key] = item
+        return value
+
+    entries = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=unique_object,
+    )
+    if duplicate_keys:
+        raise RuntimeError(
+            f"duplicate JSON key in {path.name}: {sorted(set(duplicate_keys))[0]}"
+        )
+    if not isinstance(entries, dict):
+        raise RuntimeError(f"{path.name} must contain a JSON object")
+    return entries
+
+
 def synchronize(catalog: dict, extracted: dict[str, str]) -> dict:
     strings = catalog.setdefault("strings", {})
     translations = load_reviewed_translations()
 
     for key, source_value in extracted.items():
         entry = strings.get(key, {})
-        if localized_value(entry, "zh-Hans") and localized_value(entry, "en"):
+        source_placeholders = sorted(placeholders(source_value))
+        existing_values_are_valid = (
+            localized_value(entry, "zh-Hans")
+            and localized_value(entry, "en")
+            and localized_state(entry, "zh-Hans") == "translated"
+            and localized_state(entry, "en") == "translated"
+            and sorted(placeholders(localized_value(entry, "zh-Hans") or "")) == source_placeholders
+            and sorted(placeholders(localized_value(entry, "en") or "")) == source_placeholders
+        )
+        if existing_values_are_valid:
             continue
         reviewed_translation = translations.get(key)
         if isinstance(reviewed_translation, dict):
@@ -396,15 +502,31 @@ def main() -> int:
     core_failures = validate_core_localizations(core_extracted)
 
     if arguments.check:
-        failures = validate(catalog, extracted, model_keys) + core_failures
+        unregistered_cjk_keys = unregistered_cjk_ui_keys(catalog, extracted)
+        unregistered_cjk_key_set = set(unregistered_cjk_keys)
+        registered_or_non_cjk = {
+            key: value
+            for key, value in extracted.items()
+            if key not in unregistered_cjk_key_set
+        }
+        failures = [
+            f"{key}: unregistered CJK UI key"
+            for key in unregistered_cjk_keys
+        ]
+        failures += validate(catalog, registered_or_non_cjk, model_keys) + core_failures
         if failures:
-            print(f"ui-scoped localization catalog: {len(failures)} coverage issue(s)")
+            print(
+                "ui-scoped localization catalog: "
+                f"{len(unregistered_cjk_keys)} unregistered CJK UI key(s); "
+                f"{len(failures)} total coverage issue(s)"
+            )
             for failure in failures:
                 print(f"- {failure}")
             return 1
         print(
             f"ui-scoped localization catalog: {len(extracted)} SwiftUI/selected-model keys "
-            f"and {len(core_extracted)} migrated Core presentation keys have valid zh-Hans/en values"
+            f"and {len(core_extracted)} migrated Core presentation keys have valid zh-Hans/en values; "
+            "no extracted CJK UI key is unregistered"
         )
         return 0
 

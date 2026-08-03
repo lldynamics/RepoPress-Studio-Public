@@ -16,7 +16,85 @@ final class GitCommandRunnerTests: XCTestCase {
     XCTAssertFalse(result.didTimeOut)
     XCTAssertTrue(result.wasOutputTruncated)
     XCTAssertLessThanOrEqual(result.output.utf8.count, 4_200)
+    XCTAssertLessThanOrEqual(
+      result.standardOutput.utf8.count + result.standardError.utf8.count,
+      4_096
+    )
     XCTAssertTrue(result.output.contains("[Git output truncated after 4096 bytes]"))
+  }
+
+  func testSuccessfulCommandKeepsStandardErrorOutOfMachineReadableOutput() throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+
+    let result = GitCommandRunner(executableURL: scriptURL).run(
+      ["stderr-warning"],
+      rootURL: FileManager.default.temporaryDirectory
+    )
+
+    XCTAssertEqual(result.terminationStatus, 0)
+    XCTAssertEqual(result.standardOutput, "")
+    XCTAssertEqual(result.standardError, "warning: simulated fsmonitor failure")
+    XCTAssertTrue(result.output.contains("warning: simulated fsmonitor failure"))
+  }
+
+  func testAsyncSuccessfulCommandKeepsStandardErrorOutOfMachineReadableOutput() async throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+
+    let result = await GitCommandRunner(executableURL: scriptURL).runAsync(
+      ["stderr-warning"],
+      rootURL: FileManager.default.temporaryDirectory
+    )
+
+    XCTAssertEqual(result.terminationStatus, 0)
+    XCTAssertEqual(result.standardOutput, "")
+    XCTAssertEqual(result.standardError, "warning: simulated fsmonitor failure")
+    XCTAssertTrue(result.output.contains("warning: simulated fsmonitor failure"))
+  }
+
+  func testDiagnosticOutputRedactsRemoteURLsAndCredentialValues() throws {
+    let scriptURL = try makeFakeGitExecutable()
+    defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+
+    let result = GitCommandRunner(executableURL: scriptURL).run(
+      ["redaction"],
+      rootURL: FileManager.default.temporaryDirectory
+    )
+
+    XCTAssertEqual(result.terminationStatus, 1)
+    XCTAssertTrue(result.standardOutput.contains("stdout-token"))
+    XCTAssertFalse(result.standardError.contains("stderr-secret"))
+    XCTAssertFalse(result.standardError.contains("stderr-token"))
+    XCTAssertFalse(result.output.contains("alice"))
+    XCTAssertFalse(result.output.contains("url-secret"))
+    XCTAssertFalse(result.output.contains("stdout-secret"))
+    XCTAssertFalse(result.output.contains("stderr-secret"))
+    XCTAssertFalse(result.output.contains("stderr-token"))
+    XCTAssertTrue(result.output.contains("https://github.com/owner/site.git"))
+    XCTAssertTrue(result.output.contains("[REDACTED]"))
+  }
+
+  func testCommandDescriptionRedactsRemoteURLsUsernamesAndTokenFlags() {
+    let command = GitCommandRunner.redactedCommandDescription([
+      "remote",
+      "add",
+      "origin",
+      "https://alice:url-secret@github.com/owner/site.git?token=url-token",
+      "--token",
+      "flag-token",
+      "--header",
+      "Authorization: Bearer header-token",
+    ])
+
+    XCTAssertFalse(command.contains("alice"))
+    XCTAssertFalse(command.contains("url-secret"))
+    XCTAssertFalse(command.contains("url-token"))
+    XCTAssertFalse(command.contains("flag-token"))
+    XCTAssertFalse(command.contains("header-token"))
+    XCTAssertTrue(command.contains("https://github.com/owner/site.git"))
+    XCTAssertTrue(command.contains("--token"))
+    XCTAssertTrue(command.contains("[REDACTED]"))
   }
 
   func testTimeoutDiagnosticQuotesArgumentsAsPOSIXShellValues() throws {
@@ -72,6 +150,15 @@ final class GitCommandRunnerTests: XCTestCase {
     if [ "$1" = "sleep" ]; then
       sleep 2
       exit 0
+    fi
+    if [ "$1" = "stderr-warning" ]; then
+      printf 'warning: simulated fsmonitor failure\n' >&2
+      exit 0
+    fi
+    if [ "$1" = "redaction" ]; then
+      printf 'remote=https://alice:url-secret@github.com/owner/site.git?token=stdout-token\n'
+      printf 'Authorization: Bearer stderr-secret token=stderr-token\n' >&2
+      exit 1
     fi
     count=0
     while [ "$count" -lt 512 ]; do

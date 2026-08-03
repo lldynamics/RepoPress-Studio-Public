@@ -170,4 +170,159 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     XCTAssertEqual(plan.executablePath, "/trusted/tools/zola")
     XCTAssertEqual(plan.arguments, ["serve", "--drafts"])
   }
+
+  func testPortAllocatorUsesDynamicPortWhenPreferredPortIsUnavailable() {
+    let allocator = LocalSitePreviewPortAllocator(
+      isPortAvailable: { $0 == 23_456 },
+      dynamicPort: { 23_456 }
+    )
+
+    let allocation = allocator.allocate(preferredPort: 1_111)
+
+    XCTAssertEqual(allocation?.port, 23_456)
+    XCTAssertEqual(allocation?.usesDynamicPort, true)
+  }
+
+  func testDynamicPreviewPlanAddsFrameworkPortArguments() throws {
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .zola
+    profile.localRepositoryRootPath = "/tmp/site"
+    let allocator = LocalSitePreviewPortAllocator(
+      isPortAvailable: { $0 == 23_456 },
+      dynamicPort: { 23_456 }
+    )
+    let service = LocalSitePreviewService(
+      executableResolver: { name in "/trusted/\(name)" },
+      portAllocator: allocator
+    )
+
+    let plan = try XCTUnwrap(service.plan(profile: profile))
+
+    XCTAssertTrue(plan.usesDynamicPort)
+    XCTAssertEqual(
+      plan.arguments,
+      ["serve", "--drafts", "--interface", "127.0.0.1", "--port", "23456"]
+    )
+    XCTAssertEqual(plan.previewURL.port, 23_456)
+    XCTAssertTrue(plan.command.contains("'--port' '23456'"))
+  }
+
+  func testPreviewPlanUsesRepositoryDetectedKindAndStartupScript() throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("local-preview-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let packageJSON = "{\"scripts\":{\"dev\":\"astro dev\"}}"
+    try Data(packageJSON.utf8).write(to: rootURL.appendingPathComponent("package.json"))
+
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .zola
+    profile.localRepositoryRootPath = rootURL.path
+    let report = RepositoryScanReport(
+      rootPath: rootURL.path,
+      detectedKind: .astro,
+      expectedKind: .zola,
+      hasGitDirectory: false,
+      contentRootExists: true,
+      assetRootExists: true,
+      markdownFileCount: 1,
+      imageFileCount: 0,
+      changedFiles: [],
+      preflightIssues: []
+    )
+    let allocator = LocalSitePreviewPortAllocator(
+      isPortAvailable: { $0 == 4_321 },
+      dynamicPort: { 4_321 }
+    )
+    let service = LocalSitePreviewService(
+      executableResolver: { name in "/trusted/\(name)" },
+      portAllocator: allocator
+    )
+
+    let plan = try XCTUnwrap(service.plan(profile: profile, repositoryReport: report))
+
+    XCTAssertEqual(plan.siteKind, .astro)
+    XCTAssertEqual(plan.arguments, ["run", "dev"])
+    XCTAssertEqual(plan.previewURL.port, 4_321)
+    XCTAssertEqual(plan.diagnostics.detectedSiteKind, .astro)
+    XCTAssertEqual(plan.diagnostics.scriptName, "dev")
+    XCTAssertTrue(plan.diagnostics.isReadyToStart)
+  }
+
+  func testPreviewPlanReportsMissingNodeScriptAndExecutable() throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("local-preview-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    var profile = SiteProfile.defaultProfile
+    profile.siteKind = .astro
+    profile.localRepositoryRootPath = rootURL.path
+    let allocator = LocalSitePreviewPortAllocator(
+      isPortAvailable: { $0 == 4_322 },
+      dynamicPort: { 4_322 }
+    )
+    let service = LocalSitePreviewService(
+      executableResolver: { _ in nil },
+      portAllocator: allocator
+    )
+
+    let plan = try XCTUnwrap(service.plan(profile: profile))
+
+    XCTAssertFalse(plan.diagnostics.isReadyToStart)
+    XCTAssertTrue(plan.diagnostics.dependencies.contains { $0.status == .missing })
+    XCTAssertTrue(plan.diagnostics.dependencies.contains { $0.id == "package-json" })
+    XCTAssertTrue(plan.diagnostics.blockingMessages.contains { $0.contains("package.json") })
+  }
+
+  func testPreviewFileWatcherIgnoresGeneratedAndDependencyDirectories() async throws {
+    let rootURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("local-preview-watcher-\(UUID().uuidString)", isDirectory: true)
+    let sourceURL = rootURL.appendingPathComponent("content", isDirectory: true)
+    let nodeModulesURL = rootURL.appendingPathComponent("node_modules", isDirectory: true)
+    try FileManager.default.createDirectory(at: sourceURL, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: nodeModulesURL, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    let changeExpectation = expectation(description: "source change is observed")
+    let state = LockedWatcherTestState()
+    let watcher = LocalSitePreviewFileWatcher(rootPath: rootURL.path) {
+      let shouldFulfill = state.recordChange()
+      if shouldFulfill {
+        changeExpectation.fulfill()
+      }
+    }
+    watcher.start()
+    try await Task.sleep(for: .milliseconds(250))
+    XCTAssertLessThanOrEqual(watcher.watchedDirectoryCount, 2)
+
+    try Data("# post".utf8).write(to: sourceURL.appendingPathComponent("post.md"))
+    await fulfillment(of: [changeExpectation], timeout: 2)
+    let sourceChangeCount = state.changeCount
+
+    try Data("dependency".utf8).write(to: nodeModulesURL.appendingPathComponent("package.js"))
+    try await Task.sleep(for: .milliseconds(450))
+    XCTAssertEqual(state.changeCount, sourceChangeCount)
+    watcher.stop()
+  }
+}
+
+private final class LockedWatcherTestState: @unchecked Sendable {
+  private let lock = NSLock()
+  private var count = 0
+  private var didFulfill = false
+
+  var changeCount: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return count
+  }
+
+  func recordChange() -> Bool {
+    lock.lock()
+    count += 1
+    let shouldFulfill = !didFulfill
+    didFulfill = true
+    lock.unlock()
+    return shouldFulfill
+  }
 }

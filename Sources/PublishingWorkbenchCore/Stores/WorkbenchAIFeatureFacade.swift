@@ -248,6 +248,76 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.profile(for: draft)
   }
 
+  public func chatProviderConfig(for draft: ArticleDraft) -> AIProviderConfig {
+    store.aiProviderConfig(for: store.profile(for: draft))
+  }
+
+  /// The reusable profiles are exposed to the chat shortcut sheet so changing
+  /// an endpoint does not require leaving the writing workspace.
+  public var chatConnectionProfiles: [AIConnectionProfile] {
+    store.aiConnectionProfiles
+  }
+
+  public var activeChatConnectionProfile: AIConnectionProfile {
+    store.activeAIConnectionProfile
+  }
+
+  public func selectChatConnectionProfile(_ connectionID: UUID) {
+    store.selectAIConnectionProfile(connectionID)
+  }
+
+  /// Applies a fenced code/Markdown block through the same revisioned body
+  /// buffer used by the live editor. The editor is focused only after the
+  /// staged write succeeds, so a stale concurrent edit cannot be overwritten.
+  @discardableResult
+  public func applyChatMarkdown(
+    _ markdown: String,
+    to draft: ArticleDraft,
+    mode: AIChatMarkdownInsertionMode
+  ) -> Bool {
+    store.flushDraftBodyEditorBuffer(for: draft.id)
+    guard let currentDraft = store.drafts.first(where: { $0.id == draft.id }) else {
+      store.setPublishActionMessage(CoreL10n.text("当前文章已变化，请重新选择后再应用。"))
+      return false
+    }
+
+    let insertion = AIChatMarkdownInsertionService.inserting(
+      markdown,
+      into: currentDraft.bodyMarkdown,
+      selection: store.activeEditorSelectionRange(for: currentDraft),
+      mode: mode
+    )
+    guard let insertion else {
+      store.setPublishActionMessage(CoreL10n.text("代码块内容为空或当前编辑位置已失效。"))
+      return false
+    }
+
+    let buffer = store.draftBodyEditorBuffer(for: currentDraft.id)
+    guard let staged = store.replaceDraftBody(
+      insertion.updatedBodyMarkdown,
+      for: currentDraft.id,
+      expectedRevision: buffer.revision
+    ), staged.wasAccepted else {
+      store.setPublishActionMessage(CoreL10n.text("当前文章在应用前已被其他窗口修改，请重新尝试。"))
+      return false
+    }
+
+    store.save()
+    store.selectSection(.writing)
+    store.requestEditorFocus(
+      draftID: currentDraft.id,
+      field: "body",
+      selectedRange: insertion.insertedRange
+    )
+    switch mode {
+    case .applyToCurrentEditor:
+      store.setPublishActionMessage(CoreL10n.text("已将代码块应用到当前编辑器。"))
+    case .insertAtCursor:
+      store.setPublishActionMessage(CoreL10n.text("已将代码块插入到光标处。"))
+    }
+    return true
+  }
+
   public func chatPublishingPackage(for draft: ArticleDraft) -> PublishPackage {
     store.publishingPackage(for: draft)
   }
@@ -398,8 +468,149 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
   }
 
   @discardableResult
-  public func sendChatMessage(_ text: String, draft: ArticleDraft? = nil, imageAttachments: [AIChatImageAttachment] = []) async -> AIPublishingChatMessage? {
-    await store.sendAIChatMessage(text, draft: draft, imageAttachments: imageAttachments)
+  public func sendChatMessage(
+    _ text: String,
+    draft: ArticleDraft? = nil,
+    imageAttachments: [AIChatImageAttachment] = [],
+    contextReferences: [AIContextReference] = []
+  ) async -> AIPublishingChatMessage? {
+    await store.sendAIChatMessage(
+      text,
+      draft: draft,
+      imageAttachments: imageAttachments,
+      contextReferences: contextReferences
+    )
+  }
+
+  public func chatImageAttachments(
+    for draft: ArticleDraft,
+    attachmentIDs: Set<UUID>
+  ) async -> [AIChatImageAttachment] {
+    await store.aiChatImageAttachments(
+      for: draft,
+      attachmentIDs: attachmentIDs
+    )
+  }
+
+  public func availableChatContextReferences(
+    for draft: ArticleDraft
+  ) -> [AIContextReference] {
+    store.aiStore.availableAIChatContextReferences(for: draft)
+  }
+
+  public func reviewedStructuredEditDraft(
+    message: AIPublishingChatMessage,
+    review: AIStructuredEditReview
+  ) -> ArticleDraft? {
+    guard
+      let payload = message.structuredEditPayload,
+      payload.document == review.document,
+      let current = store.drafts.first(where: { $0.id == payload.sourceDraftID })
+    else {
+      store.setAIChatMessage("找不到这份结构化修改对应的原稿。")
+      return nil
+    }
+    guard current.repositoryContentFingerprint == payload.sourceContentFingerprint else {
+      store.setAIChatMessage("文章已变化，结构化修改未应用；请重新校对。")
+      return nil
+    }
+
+    do {
+      let result = try AIStructuredEditReviewService.apply(
+        review,
+        to: current.bodyMarkdown
+      )
+      guard result.hasAppliedChanges else {
+        store.setAIChatMessage("尚未接受任何修改。")
+        return nil
+      }
+      var updated = current
+      updated.bodyMarkdown = result.finalBody
+      store.setAIChatMessage("已生成结构化修改差异，确认后才会写入文章。")
+      return updated
+    } catch {
+      store.setAIChatMessage("结构化修改未通过陈旧检查：\(error.localizedDescription)")
+      return nil
+    }
+  }
+
+  @discardableResult
+  public func createLinkedTranslationDraft(
+    from plan: AITranslationDraftPlan
+  ) -> ArticleDraft? {
+    guard let source = store.drafts.first(where: { $0.id == plan.sourceDraftID }) else {
+      store.setAIChatMessage("找不到翻译计划对应的原稿。")
+      return nil
+    }
+    if let existing = store.drafts.first(where: { $0.id == plan.translatedDraft.id }) {
+      store.selectDraft(existing.id)
+      store.setAIChatMessage("这份关联翻译草稿已经创建，已为你打开。")
+      return existing
+    }
+
+    do {
+      let translated = try AITranslationDraftPlanningService.materialize(
+        plan,
+        currentSource: source
+      )
+      store.updateDraft(translated)
+      store.selectDraft(translated.id)
+      store.save()
+      store.setAIChatMessage("已创建关联翻译草稿；原稿保持不变。")
+      return translated
+    } catch {
+      store.setAIChatMessage("关联翻译草稿未创建：\(error.localizedDescription)")
+      return nil
+    }
+  }
+
+  public func localFeedbackDecision(
+    for message: AIPublishingChatMessage
+  ) -> AILocalEditFeedbackDecision? {
+    let actionIdentifier = feedbackActionIdentifier(for: message)
+    return localFeedbackRecords()
+      .filter {
+        $0.actionIdentifier == actionIdentifier
+          && $0.modelIdentifier == feedbackModelIdentifier(for: message)
+      }
+      .max(by: { $0.recordedAt < $1.recordedAt })?
+      .decision
+  }
+
+  public func recordLocalFeedback(
+    _ decision: AILocalEditFeedbackDecision,
+    for message: AIPublishingChatMessage
+  ) {
+    let actionIdentifier = feedbackActionIdentifier(for: message)
+    let modelIdentifier = feedbackModelIdentifier(for: message)
+    var records = localFeedbackRecords().filter {
+      !($0.actionIdentifier == actionIdentifier && $0.modelIdentifier == modelIdentifier)
+    }
+    records.append(
+      AILocalEditFeedbackRecord(
+        decision: decision,
+        actionIdentifier: actionIdentifier,
+        modelIdentifier: modelIdentifier
+      )
+    )
+    persistLocalFeedbackRecords(records)
+  }
+
+  public func recordStructuredEditFeedback(
+    _ decision: AILocalEditFeedbackDecision,
+    proposal: AIStructuredEditProposal,
+    model: String?
+  ) {
+    var records = localFeedbackRecords()
+    records.append(
+      AILocalEditFeedbackRecord(
+        decision: decision,
+        actionIdentifier: "structured.edit.\(proposal.category.rawValue)",
+        modelIdentifier: model?.nilIfEmpty ?? "unknown",
+        category: proposal.category
+      )
+    )
+    persistLocalFeedbackRecords(records)
   }
 
   public func consumePendingQuickPrompt() -> AIPublishingQuickPrompt? {
@@ -417,6 +628,41 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     selectedText: String? = nil
   ) async -> AIPublishingActionResult? {
     await store.performAIAction(kind, draft: draft, selectedText: selectedText)
+  }
+
+  private func feedbackActionIdentifier(
+    for message: AIPublishingChatMessage
+  ) -> String {
+    "chat.reply.\(message.id.uuidString)"
+  }
+
+  private func feedbackModelIdentifier(
+    for message: AIPublishingChatMessage
+  ) -> String {
+    message.model?.nilIfEmpty ?? "unknown"
+  }
+
+  private func localFeedbackRecords() -> [AILocalEditFeedbackRecord] {
+    guard
+      let data = UserDefaults.standard.data(
+        forKey: "aiLocalContentFreeFeedbackRecords"
+      ),
+      let records = try? JSONDecoder().decode(
+        [AILocalEditFeedbackRecord].self,
+        from: data
+      )
+    else {
+      return []
+    }
+    return AILocalEditFeedbackService().boundedRecords(records)
+  }
+
+  private func persistLocalFeedbackRecords(
+    _ records: [AILocalEditFeedbackRecord]
+  ) {
+    let bounded = AILocalEditFeedbackService().boundedRecords(records)
+    guard let data = try? JSONEncoder().encode(bounded) else { return }
+    UserDefaults.standard.set(data, forKey: "aiLocalContentFreeFeedbackRecords")
   }
 
 }

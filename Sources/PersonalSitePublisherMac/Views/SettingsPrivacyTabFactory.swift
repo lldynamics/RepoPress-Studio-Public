@@ -7,11 +7,11 @@ struct SettingsPrivacyTabFactory {
     PrivacySettingsView(
       privacySettings: context.store.privacySettings,
       status: context.store.privacyProtectionStatus,
-      onLock: {
-        context.actions.lockPrivacyFromSettings()
+      onQuickHide: {
+        context.actions.quickHideFromSettings()
       },
-      onUnlock: {
-        context.actions.unlockPrivacyFromSettings()
+      onReturnToWorkbench: {
+        context.actions.exitQuickHideFromSettings()
       },
       updatePrivacySettings: { settings in
         context.actions.updatePrivacySettings(settings)

@@ -32,7 +32,6 @@ critical_paths=(
   Package.swift
   Packaging
   Config
-  StoreKit
   BrowserExtension
   Sources
   Tests

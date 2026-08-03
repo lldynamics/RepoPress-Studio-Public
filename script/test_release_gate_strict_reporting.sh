@@ -37,7 +37,12 @@ for python_script in \
   test_browser_extension_protocol_generation.py \
   test_chromium_extension_release.py \
   check_typography.py \
-  test_typography_gate.py; do
+  test_typography_gate.py \
+  check_swift_safety.py \
+  test_swift_safety_gate.py \
+  check_swift_coverage.py \
+  test_swift_coverage_gate.py \
+  test_release_gate_runner_contract.py; do
   cat >"$FIXTURE_ROOT/script/$python_script" <<'PY'
 #!/usr/bin/env python3
 print("App Store listing fixture: ok")
@@ -53,6 +58,8 @@ stub_scripts=(
   test_build_version_gate.sh
   check_app_store_metadata.sh
   package_app_store.sh
+  package_direct_release.sh
+  test_package_direct_release.sh
   test_package_app_store_safety.sh
   record_app_store_build_metadata_evidence.sh
   test_app_store_build_metadata_evidence.sh
@@ -61,14 +68,12 @@ stub_scripts=(
   test_app_store_archive_artifact_selection.sh
   check_ui_runtime.sh
   check_accessibility_runtime.sh
+  test_accessibility_runtime_app_store.sh
   check_clean_runtime_evidence.sh
   record_clean_runtime_evidence.sh
   test_clean_runtime_evidence.sh
   check_privacy_support_copy.sh
   test_privacy_support_copy.sh
-  check_storekit.sh
-  record_storekit_sandbox_evidence.sh
-  test_storekit_sandbox_evidence.sh
   prepare_external_verification_envs.sh
   check_external_verification_envs.sh
   print_remaining_external_verification.sh
@@ -99,8 +104,11 @@ stub_scripts=(
   test_browser_extension_release_gate.sh
   test_release_gate_strict_reporting.sh
   check_ci_quality_workflow.sh
+  check_swift_format.sh
+  test_swift_format_gate.sh
   check_swift_strict_build.sh
   test_swift_strict_build_gate.sh
+  test_swift6_migration_gate.sh
   check_swift_release_build.sh
   test_swift_release_build_gate.sh
   sync_screenshot_manifest_status.sh
@@ -168,8 +176,6 @@ set -euo pipefail
 echo "remaining external verification: 2 target(s)"
 echo "- remote-publish"
 echo "  checklist: Verify GitHub direct commit and PR publishing with a least-privilege token; Verify GitLab direct commit and MR publishing with a least-privilege token."
-echo "- storekit"
-echo "  checklist: Verify StoreKit product ID, purchase, restore, and free quota behavior in sandbox."
 STUB
 
 cat >"$FIXTURE_ROOT/bin/swift" <<'STUB'
@@ -244,13 +250,17 @@ import json
 import sys
 
 payload = json.load(open(sys.argv[1], encoding="utf-8"))
+assert payload["schemaVersion"] == 2, payload
+assert payload["runState"] == "complete", payload
 assert payload["mode"] == "strict", payload
 assert payload["profile"] == "all", payload
 assert payload["execution"]["toolchain"]["swiftVersion"] == "Swift fixture 6.0", payload
+assert "releaseIdentity" in payload, payload
+assert all("timeoutSeconds" in check for check in payload["checks"]), payload
 PY
 grep -q '^# Release Gate Summary$' "$STRICT_SUMMARY" \
   || fail "strict Markdown summary omitted its heading"
-grep -q 'Status: \\*\\*FAILED\\*\\*' "$STRICT_SUMMARY" \
+grep -q 'Status: \*\*FAILED\*\*' "$STRICT_SUMMARY" \
   || fail "strict Markdown summary omitted the failed status"
 grep -q 'APP_STORE_CHECKLIST.md (2 unchecked items)' "$STRICT_SUMMARY" \
   || fail "strict Markdown summary omitted checklist blockers"
@@ -279,6 +289,31 @@ assert "chrome-extension-store-readiness" in check_ids, payload
 assert "edge-extension-store-readiness" not in check_ids, payload
 assert "firefox-extension-remote-release" not in check_ids, payload
 assert "archive-readiness-strict" not in check_ids, payload
+PY
+
+direct_json="$TMP_DIR/direct-profile.json"
+if ! direct_output="$(
+  PATH="$FIXTURE_ROOT/bin:$PATH" \
+  bash "$FIXTURE_ROOT/script/check_release_gate.sh" \
+    --profile direct \
+    --result-json "$direct_json" 2>&1
+)"; then
+  fail "Direct profile was blocked by another distribution channel: $direct_output"
+fi
+grep -q "release gate: direct profile passed" <<<"$direct_output" \
+  || fail "Direct profile did not report its independent success"
+python3 - "$direct_json" <<'PY'
+import json
+import sys
+
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+assert payload["profile"] == "direct", payload
+assert payload["summary"]["uncheckedChecklistCount"] == 0, payload
+check_ids = {check["id"] for check in payload["checks"]}
+assert "direct-release-package-path" in check_ids, payload
+assert "direct-release-notarization-readiness" in check_ids, payload
+assert "archive-readiness-strict" not in check_ids, payload
+assert "chrome-extension-store-readiness" not in check_ids, payload
 PY
 
 for script_name in check_app_store_archive_readiness.sh check_screenshots.sh check_external_verification_evidence.sh; do

@@ -5,7 +5,7 @@ public enum WorkbenchAutomationRegistry {
     WorkbenchAutomationCommandDescriptor(
       id: .openSection,
       title: CoreL10n.text("打开工作区"),
-      detail: CoreL10n.text("切换到写作、资料库、同步、图片或内容健康页面"),
+      detail: CoreL10n.text("切换到写作、资料库、RSS、同步、图片或内容健康页面"),
       systemImage: "sidebar.left",
       risk: .readOnly
     ),
@@ -130,7 +130,7 @@ public enum WorkbenchAutomationRegistry {
   private static func argumentPrompt(for command: WorkbenchAutomationCommandID) -> String {
     switch command {
     case .openSection:
-      return #"section: writing|library|sync|images|contentHealth|siteStarter"#
+      return #"section: writing|library|rss|sync|images|contentHealth|siteStarter"#
     case .selectDraft:
       return "draftID: UUID"
     case .createDraft:

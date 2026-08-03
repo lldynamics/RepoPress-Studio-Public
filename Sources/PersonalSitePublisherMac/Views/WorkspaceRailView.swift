@@ -29,9 +29,10 @@ struct WorkspaceTaskNavigation: View {
 
       HStack(spacing: 6) {
         sectionButton(.sync, prominence: .compact)
-        sectionButton(.images, prominence: .compact)
         sectionButton(.contentHealth, prominence: .compact)
       }
+
+      sectionButton(.rss, prominence: .compact)
     }
     .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
     .padding(.vertical, WorkspaceSidebarMetrics.headerVerticalPadding)
@@ -62,11 +63,12 @@ struct WorkspaceTaskNavigation: View {
 
         Text(title)
           .font(prominence.font)
-          .lineLimit(1)
+          .lineLimit(2)
+          .multilineTextAlignment(.leading)
       }
       .foregroundStyle(isSelected ? WorkbenchTheme.navigationSelection : Color.primary)
       .scaleEffect(isHovered ? 1.03 : 1.0)
-      .animation(.easeInOut(duration: 0.15), value: isHovered)
+      .animation(WorkbenchMotion.standard, value: isHovered)
       .frame(maxWidth: .infinity, minHeight: 32)
       .padding(.horizontal, prominence.horizontalPadding)
       .background {
@@ -90,9 +92,9 @@ struct WorkspaceTaskNavigation: View {
       }
       .contentShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     }
-    .buttonStyle(.plain)
+    .buttonStyle(WorkbenchFocusRingButtonStyle())
     .onHover { hovering in
-      withAnimation(.easeInOut(duration: 0.15)) {
+      withAnimation(WorkbenchMotion.standard) {
         hoveredSection = hovering ? section : nil
       }
     }
@@ -103,14 +105,12 @@ struct WorkspaceTaskNavigation: View {
   }
 
   private func shortcutHint(for section: WorkspaceSection) -> String {
-    switch section {
-    case .writing: return "（⌘1）"
-    case .library: return "（⌘2）"
-    case .sync: return "（⌘3）"
-    case .images: return "（⌘4）"
-    case .contentHealth: return "（⌘5）"
-    default: return ""
+    guard WorkspaceNavigationPresentation.commandMenuItems.contains(where: {
+      $0.section == section
+    }) else {
+      return ""
     }
+    return "（\(section.keyboardShortcutLabel)）"
   }
 }
 

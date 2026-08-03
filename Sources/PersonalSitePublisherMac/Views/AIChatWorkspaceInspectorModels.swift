@@ -13,6 +13,90 @@ struct AIChatInspectorModelGradeCandidate: Equatable, Identifiable {
   var id: String { grade.rawValue }
 }
 
+enum AIChatConnectionReadiness: Equatable {
+  case ready
+  case missingEndpoint
+  case missingModel
+  case missingAPIKey
+  case noDraft
+
+  var isReady: Bool {
+    self == .ready
+  }
+
+  var title: String {
+    switch self {
+    case .ready:
+      return String(localized: "连接配置已就绪")
+    case .missingEndpoint:
+      return String(localized: "未配置 Endpoint")
+    case .missingModel:
+      return String(localized: "未配置模型")
+    case .missingAPIKey:
+      return String(localized: "未配置 API Key")
+    case .noDraft:
+      return String(localized: "请先选择文章")
+    }
+  }
+
+  var detail: String {
+    switch self {
+    case .ready:
+      return String(localized: "连接配置已就绪，点击查看快捷切换")
+    case .missingEndpoint:
+      return String(localized: "未配置 Endpoint / Base URL")
+    case .missingModel:
+      return String(localized: "未配置模型")
+    case .missingAPIKey:
+      return String(localized: "未配置 API Key")
+    case .noDraft:
+      return String(localized: "请先选择一篇文章，再切换 AI 连接和模型。")
+    }
+  }
+}
+
+enum AIChatConnectionStatusPresentation {
+  static func readiness(
+    for config: AIProviderConfig,
+    activeModel: String? = nil,
+    hasToken: Bool,
+    hasDraft: Bool
+  ) -> AIChatConnectionReadiness {
+    guard hasDraft else { return .noDraft }
+    guard !config.normalizedBaseURL.isEmpty else { return .missingEndpoint }
+    let model = activeModel?.trimmingCharacters(in: .whitespacesAndNewlines)
+      .nilIfEmpty ?? config.normalizedModel
+    guard !model.isEmpty else { return .missingModel }
+    guard !config.requiresAPIKey || hasToken else { return .missingAPIKey }
+    return .ready
+  }
+
+  static func shortProviderName(for config: AIProviderConfig) -> String {
+    switch config.preset {
+    case .local:
+      return "Local"
+    case .custom:
+      return "Custom"
+    case .deepSeek:
+      return "DeepSeek"
+    case .openRouter:
+      return "OpenRouter"
+    case .openAICompatible:
+      return "OpenAI"
+    }
+  }
+
+  static func summary(
+    for config: AIProviderConfig,
+    activeModel: String?,
+    hasDraft: Bool
+  ) -> String {
+    guard hasDraft else { return String(localized: "选择模型") }
+    let model = activeModel?.nilIfEmpty ?? String(localized: "未选择")
+    return shortProviderName(for: config) + ": " + model
+  }
+}
+
 enum AIChatInspectorHeaderPresentation {
   static func conversationTitle(_ title: String?) -> String {
     title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
@@ -30,10 +114,10 @@ enum AIChatInspectorHeaderPresentation {
 
   static func providerTitle(for config: AIProviderConfig) -> String {
     switch config.preset {
-    case .openAICompatible, .custom:
-      return String(localized: "自定义 API")
-    case .deepSeek, .openRouter, .local:
+    case .openAICompatible, .deepSeek, .openRouter, .local:
       return config.preset.localizedDisplayName
+    case .custom:
+      return String(localized: "自定义 API")
     }
   }
 
@@ -84,26 +168,12 @@ enum AIChatInspectorHeaderPresentation {
 struct AIChatInspectorDraftContext {
   let draft: ArticleDraft
   let conversationTitle: String
-  let contextSummary: String
-  let contextSystemImage: String
-  let retrievalBasis: String
-  let publicCandidateCount: Int
-  let relatedSuggestionCount: Int
-  let modelSummary: String
-  let markdownPath: String
-  let publishFileCount: Int
-  let preflightIssueCount: Int
-  let imageCount: Int?
-  let selectedParagraphTitle: String?
-  let selectedParagraphPreview: String?
-  let chatMessage: String?
   let messages: [AIPublishingChatMessage]
   let totalMessageCount: Int
   let relatedSuggestions: [AIChatRelatedSuggestionPresentation]
   let isChatRunning: Bool
   let isAutomationRunning: Bool
   let automationRunRecords: [WorkbenchAutomationRunRecord]
-  let latestReply: AIPublishingChatMessage?
 }
 
 struct AIChatRelatedSuggestionPresentation: Identifiable {
@@ -119,9 +189,19 @@ struct AIChatContextInspectorActions {
   let sendMessage: (String, ArticleDraft) -> Void
   let selectDraft: (UUID) -> Void
   let appendReply: (AIPublishingChatMessage, ArticleDraft) -> Void
+  let applyCodeBlock: (AIChatCodeBlock, ArticleDraft) -> Void
+  let insertCodeBlockAtCursor: (AIChatCodeBlock, ArticleDraft) -> Void
+  let copyCodeBlock: (AIChatCodeBlock) -> Void
   let branchConversation: (AIPublishingChatMessage.ID, ArticleDraft) -> Void
   let loadEarlierMessages: () -> Void
   let openCitation: (KnowledgeCitation) -> Void
+  let previewStructuredEdits:
+    (AIPublishingChatMessage, AIStructuredEditReview, ArticleDraft) -> Void
+  let recordStructuredEditFeedback:
+    (AILocalEditFeedbackDecision, AIStructuredEditProposal, String?) -> Void
+  let createTranslationDraft: (AITranslationDraftPlan) -> Void
+  let localFeedbackDecision: (AIPublishingChatMessage) -> AILocalEditFeedbackDecision?
+  let recordLocalFeedback: (AILocalEditFeedbackDecision, AIPublishingChatMessage) -> Void
   let executeAutomationPlan: (AIPublishingChatMessage.ID) -> Void
   let executeAutomationStep: (AIPublishingChatMessage.ID, UUID) -> Void
   let previewAutomationStep: (AIPublishingChatMessage.ID, UUID) -> WorkbenchAutomationDraftPreview?

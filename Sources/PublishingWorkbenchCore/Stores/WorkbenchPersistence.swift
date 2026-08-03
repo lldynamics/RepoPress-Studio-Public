@@ -3,7 +3,7 @@ import Foundation
 
 public struct WorkbenchSnapshot: Codable, Sendable {
   /// Bump this only together with a backwards-compatible decode migration.
-  public static let currentFormatVersion = 9
+  public static let currentFormatVersion = 11
   public static let maximumAIConversationsPerDraft =
     AIConversationRetentionPolicy.maximumConversationsPerDraft
   public static let maximumAIConversationCount =
@@ -11,8 +11,10 @@ public struct WorkbenchSnapshot: Codable, Sendable {
 
   public var formatVersion: Int
   public var profiles: [SiteProfile]
+  public var aiConnectionProfiles: [AIConnectionProfile]
   public var activeProfileID: UUID
   public var drafts: [ArticleDraft]
+  public var softwareGuideSeedVersion: Int
   public var customMarkdownSnippets: [MarkdownSnippet]
   public var markdownEditorSessionStates: [UUID: MarkdownEditorSessionState]
   public var draftVersions: [DraftVersionSnapshot]
@@ -28,7 +30,6 @@ public struct WorkbenchSnapshot: Codable, Sendable {
   public var seoSocialPreviewSnapshots: [SEOSocialPreviewSnapshot]
   public var privacySettings: PrivacyProtectionSettings
   public var privacyProtectionEvents: [PrivacyProtectionEvent]
-  public var monetizationState: MonetizationState
   public var repositoryAutoSyncSettings: RepositoryAutoSyncSettings
   public var repositoryAutoSyncState: RepositoryAutoSyncState
   public var remoteRepositoryAccessCheck: RemoteRepositoryAccessCheck?
@@ -39,8 +40,10 @@ public struct WorkbenchSnapshot: Codable, Sendable {
 
   public init(
     profiles: [SiteProfile],
+    aiConnectionProfiles: [AIConnectionProfile] = [],
     activeProfileID: UUID,
     drafts: [ArticleDraft],
+    softwareGuideSeedVersion: Int = 0,
     customMarkdownSnippets: [MarkdownSnippet] = [],
     markdownEditorSessionStates: [UUID: MarkdownEditorSessionState] = [:],
     draftVersions: [DraftVersionSnapshot] = [],
@@ -56,7 +59,6 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     seoSocialPreviewSnapshots: [SEOSocialPreviewSnapshot] = [],
     privacySettings: PrivacyProtectionSettings = .default,
     privacyProtectionEvents: [PrivacyProtectionEvent] = [],
-    monetizationState: MonetizationState = .default,
     repositoryAutoSyncSettings: RepositoryAutoSyncSettings = .default,
     repositoryAutoSyncState: RepositoryAutoSyncState = .idle,
     remoteRepositoryAccessCheck: RemoteRepositoryAccessCheck? = nil,
@@ -67,8 +69,10 @@ public struct WorkbenchSnapshot: Codable, Sendable {
   ) {
     self.formatVersion = Self.currentFormatVersion
     self.profiles = profiles
+    self.aiConnectionProfiles = Array(aiConnectionProfiles.prefix(64))
     self.activeProfileID = activeProfileID
     self.drafts = drafts
+    self.softwareGuideSeedVersion = max(0, softwareGuideSeedVersion)
     self.customMarkdownSnippets = Array(
       customMarkdownSnippets.prefix(MarkdownSnippetLibraryService.maximumCustomSnippetCount)
     )
@@ -106,7 +110,6 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     self.seoSocialPreviewSnapshots = Self.latestSEOSocialPreviewSnapshots(seoSocialPreviewSnapshots)
     self.privacySettings = privacySettings
     self.privacyProtectionEvents = Self.limitedPrivacyProtectionEvents(privacyProtectionEvents)
-    self.monetizationState = monetizationState
     self.repositoryAutoSyncSettings = repositoryAutoSyncSettings
     self.repositoryAutoSyncState = repositoryAutoSyncState
     self.remoteRepositoryAccessCheck = remoteRepositoryAccessCheck
@@ -119,8 +122,10 @@ public struct WorkbenchSnapshot: Codable, Sendable {
   private enum CodingKeys: String, CodingKey {
     case formatVersion
     case profiles
+    case aiConnectionProfiles
     case activeProfileID
     case drafts
+    case softwareGuideSeedVersion
     case customMarkdownSnippets
     case markdownEditorSessionStates
     case draftVersions
@@ -136,7 +141,6 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     case seoSocialPreviewSnapshots
     case privacySettings
     case privacyProtectionEvents
-    case monetizationState
     case repositoryAutoSyncSettings
     case repositoryAutoSyncState
     case remoteRepositoryAccessCheck
@@ -161,8 +165,16 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     // stable defaults; retired feature data is archived before the next save.
     formatVersion = Self.currentFormatVersion
     profiles = try container.decode([SiteProfile].self, forKey: .profiles)
+    aiConnectionProfiles = Array(
+      (try container.decodeIfPresent([AIConnectionProfile].self, forKey: .aiConnectionProfiles) ?? [])
+        .prefix(64)
+    )
     activeProfileID = try container.decode(UUID.self, forKey: .activeProfileID)
     drafts = try container.decode([ArticleDraft].self, forKey: .drafts)
+    softwareGuideSeedVersion = max(
+      0,
+      try container.decodeIfPresent(Int.self, forKey: .softwareGuideSeedVersion) ?? 0
+    )
     customMarkdownSnippets = Array(
       (try container.decodeIfPresent([MarkdownSnippet].self, forKey: .customMarkdownSnippets) ?? [])
         .prefix(MarkdownSnippetLibraryService.maximumCustomSnippetCount)
@@ -249,7 +261,6 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         forKey: .privacyProtectionEvents
       ) ?? []
     )
-    monetizationState = try container.decodeIfPresent(MonetizationState.self, forKey: .monetizationState) ?? .default
     repositoryAutoSyncSettings = try container.decodeIfPresent(
       RepositoryAutoSyncSettings.self,
       forKey: .repositoryAutoSyncSettings
@@ -492,8 +503,7 @@ public struct WorkbenchPersistence: Sendable {
       }
 
       do {
-        let backupData = try Data(contentsOf: lastKnownGoodURL)
-        let snapshot = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: backupData)
+        let snapshot = try decodeValidatedSnapshot(at: lastKnownGoodURL)
         return WorkbenchSnapshotLoadResult(
           snapshot: snapshot,
           recoveryMessage: "工作台数据文件缺失，已从上次有效备份恢复。"
@@ -507,8 +517,7 @@ public struct WorkbenchPersistence: Sendable {
     }
 
     do {
-      let data = try Data(contentsOf: fileURL)
-      return WorkbenchSnapshotLoadResult(snapshot: try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: data))
+      return WorkbenchSnapshotLoadResult(snapshot: try decodeValidatedSnapshot(at: fileURL))
     } catch {
       let primaryError = error.localizedDescription
       guard FileManager.default.fileExists(atPath: lastKnownGoodURL.path) else {
@@ -516,8 +525,7 @@ public struct WorkbenchPersistence: Sendable {
       }
 
       do {
-        let backupData = try Data(contentsOf: lastKnownGoodURL)
-        let snapshot = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: backupData)
+        let snapshot = try decodeValidatedSnapshot(at: lastKnownGoodURL)
         return WorkbenchSnapshotLoadResult(
           snapshot: snapshot,
           recoveryMessage: "工作台数据文件损坏，已从上次有效备份恢复。原始文件保留在原处。"
@@ -591,11 +599,23 @@ public struct WorkbenchPersistence: Sendable {
     }
   }
 
-  private func validateSnapshotData(_ data: Data) throws {
-    let decoder = JSONDecoder()
-    decoder.dateDecodingStrategy = .iso8601
-    let snapshot = try decoder.decode(WorkbenchSnapshot.self, from: data)
+  private func decodeValidatedSnapshot(at url: URL) throws -> WorkbenchSnapshot {
+    let data = try BoundedFileReader.data(
+      at: url,
+      maximumByteCount: WorkbenchFileReadLimits.maximumRecoverySnapshotByteCount
+    )
+    return try decodeValidatedSnapshot(from: data)
+  }
+
+  @discardableResult
+  private func decodeValidatedSnapshot(from data: Data) throws -> WorkbenchSnapshot {
+    let snapshot = try JSONDecoder.workbench.decode(WorkbenchSnapshot.self, from: data)
     try WorkbenchSnapshotSemanticValidator.validate(snapshot)
+    return snapshot
+  }
+
+  private func validateSnapshotData(_ data: Data) throws {
+    try decodeValidatedSnapshot(from: data)
   }
 
   public func save(_ snapshot: WorkbenchSnapshot) throws -> WorkbenchPersistenceSaveResult {
@@ -606,6 +626,15 @@ public struct WorkbenchPersistence: Sendable {
     fileURL
       .deletingPathExtension()
       .appendingPathExtension("last-known-good.json")
+  }
+
+  /// A small independent journal for editor buffers that have not reached the
+  /// main workbench snapshot yet. It is intentionally separate so a damaged
+  /// snapshot cannot also erase the latest unsaved writing buffer.
+  public var draftRecoveryJournalURL: URL {
+    fileURL
+      .deletingPathExtension()
+      .appendingPathExtension("draft-recovery.json")
   }
 
   public var recoveryArchiveDirectoryURL: URL {
@@ -931,8 +960,10 @@ extension WorkbenchPersistence {
   func snapshot(from store: WorkbenchStore) -> WorkbenchSnapshot {
     WorkbenchSnapshot(
       profiles: store.profiles,
+      aiConnectionProfiles: store.aiConnectionProfiles,
       activeProfileID: store.activeProfileID,
       drafts: store.drafts,
+      softwareGuideSeedVersion: store.softwareGuideSeedVersion,
       customMarkdownSnippets: store.customMarkdownSnippets,
       markdownEditorSessionStates: store.markdownEditorSessionStates,
       draftVersions: store.draftVersions,
@@ -948,7 +979,6 @@ extension WorkbenchPersistence {
       seoSocialPreviewSnapshots: Array(store.seoSocialPreviewSnapshots.values),
       privacySettings: store.privacySettings,
       privacyProtectionEvents: [],
-      monetizationState: store.monetizationState,
       repositoryAutoSyncSettings: store.repositoryAutoSyncSettings,
       repositoryAutoSyncState: store.repositoryAutoSyncState,
       remoteRepositoryAccessCheck: store.remoteRepositoryAccessCheck,

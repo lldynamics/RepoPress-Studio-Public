@@ -21,12 +21,17 @@ final class BrowserExtensionOriginPolicyTests: XCTestCase {
     XCTAssertFalse(BrowserExtensionOriginPolicy.allows("safari-web-extension://"))
   }
 
-  func testAllowsOnlyCurrentSafariAndChromeReleaseOrigins() {
+  func testAllowsCurrentSafariChromeAndFirefoxReleaseOrigins() {
     XCTAssertEqual(
       BrowserExtensionProtocol.activeBrowserExtensions,
-      ["safari", "chrome"]
+      ["safari", "chrome", "firefox"]
     )
     XCTAssertTrue(BrowserExtensionOriginPolicy.allows(nil))
+    XCTAssertTrue(
+      BrowserExtensionOriginPolicy.allows(
+        "moz-extension://E522689D-94A6-4561-90F3-BF22C7848965"
+      )
+    )
     XCTAssertFalse(BrowserExtensionOriginPolicy.allows("moz-extension://temporary-id"))
     XCTAssertTrue(
       BrowserExtensionOriginPolicy.allows(

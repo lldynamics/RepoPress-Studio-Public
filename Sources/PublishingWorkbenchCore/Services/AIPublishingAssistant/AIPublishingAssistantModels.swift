@@ -250,8 +250,8 @@ public enum AIPublishingActionKind: String, Codable, CaseIterable, Identifiable,
   }
 }
 
-public extension AIPublishingActionKind {
-  var aiModelTaskKind: AIModelTaskKind {
+extension AIPublishingActionKind {
+  public var aiModelTaskKind: AIModelTaskKind {
     switch self {
     case .publishingReadiness, .privacyReview, .flagUnsupportedClaims, .auditLinkQuality,
       .auditImagePrivacy, .reviewSSGCompatibility, .reviewReaderClarity, .reviewTechnicalAccuracy:
@@ -261,7 +261,8 @@ public extension AIPublishingActionKind {
     case .titleSummaryTags, .suggestTitles, .suggestSlug, .suggestSummary, .suggestTags,
       .draftFrontMatterPack, .draftBilingualMetadata:
       return .metadataRepair
-    case .continueArticle, .draftOpening, .draftOpeningHooks, .draftFullArticle, .suggestArticleOutline,
+    case .continueArticle, .draftOpening, .draftOpeningHooks, .draftFullArticle,
+      .suggestArticleOutline,
       .compareWritingAngles, .expandOutlineToDraft, .draftConclusion, .draftArticleTLDR,
       .draftArticleFAQ, .draftReaderQuestions, .draftTransitionSection, .draftExampleSection,
       .draftStepByStepGuide, .draftTutorialVersion, .draftChecklistSection,
@@ -403,8 +404,12 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
   public var tokenUsage: AIChatTokenUsage?
   public var contextMode: AIPublishingChatContextMode
   public var imageAttachments: [AIChatImageAttachment]
+  public var contextReferences: [AIContextReference]
   public var knowledgeCitations: [KnowledgeCitation]
   public var automationPlan: WorkbenchAutomationPlan?
+  public var structuredEditPayload: AIPublishingChatStructuredEditPayload?
+  public var translationDraftPlan: AITranslationDraftPlan?
+  public var allowsDraftAppend: Bool
   public var createdAt: Date
 
   public init(
@@ -415,8 +420,12 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     tokenUsage: AIChatTokenUsage? = nil,
     contextMode: AIPublishingChatContextMode = .site,
     imageAttachments: [AIChatImageAttachment] = [],
+    contextReferences: [AIContextReference] = [],
     knowledgeCitations: [KnowledgeCitation] = [],
     automationPlan: WorkbenchAutomationPlan? = nil,
+    structuredEditPayload: AIPublishingChatStructuredEditPayload? = nil,
+    translationDraftPlan: AITranslationDraftPlan? = nil,
+    allowsDraftAppend: Bool = true,
     createdAt: Date = Date()
   ) {
     self.id = id
@@ -426,8 +435,12 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     self.tokenUsage = tokenUsage
     self.contextMode = contextMode
     self.imageAttachments = imageAttachments
+    self.contextReferences = contextReferences
     self.knowledgeCitations = knowledgeCitations
     self.automationPlan = automationPlan
+    self.structuredEditPayload = structuredEditPayload
+    self.translationDraftPlan = translationDraftPlan
+    self.allowsDraftAppend = allowsDraftAppend
     self.createdAt = createdAt
   }
 
@@ -439,8 +452,12 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     case tokenUsage
     case contextMode
     case imageAttachments
+    case contextReferences
     case knowledgeCitations
     case automationPlan
+    case structuredEditPayload
+    case translationDraftPlan
+    case allowsDraftAppend
     case createdAt
   }
 
@@ -451,10 +468,27 @@ public struct AIPublishingChatMessage: Identifiable, Codable, Hashable, Sendable
     content = try container.decode(String.self, forKey: .content)
     model = try container.decodeIfPresent(String.self, forKey: .model)
     tokenUsage = try container.decodeIfPresent(AIChatTokenUsage.self, forKey: .tokenUsage)
-    contextMode = try container.decodeIfPresent(AIPublishingChatContextMode.self, forKey: .contextMode) ?? .site
-    imageAttachments = try container.decodeIfPresent([AIChatImageAttachment].self, forKey: .imageAttachments) ?? []
-    knowledgeCitations = try container.decodeIfPresent([KnowledgeCitation].self, forKey: .knowledgeCitations) ?? []
-    automationPlan = try container.decodeIfPresent(WorkbenchAutomationPlan.self, forKey: .automationPlan)
+    contextMode =
+      try container.decodeIfPresent(AIPublishingChatContextMode.self, forKey: .contextMode) ?? .site
+    imageAttachments =
+      try container.decodeIfPresent([AIChatImageAttachment].self, forKey: .imageAttachments) ?? []
+    contextReferences =
+      try container.decodeIfPresent([AIContextReference].self, forKey: .contextReferences) ?? []
+    knowledgeCitations =
+      try container.decodeIfPresent([KnowledgeCitation].self, forKey: .knowledgeCitations) ?? []
+    automationPlan = try container.decodeIfPresent(
+      WorkbenchAutomationPlan.self, forKey: .automationPlan)
+    structuredEditPayload =
+      try container.decodeIfPresent(
+        AIPublishingChatStructuredEditPayload.self,
+        forKey: .structuredEditPayload
+      )
+    translationDraftPlan =
+      try container.decodeIfPresent(
+        AITranslationDraftPlan.self,
+        forKey: .translationDraftPlan
+      )
+    allowsDraftAppend = try container.decodeIfPresent(Bool.self, forKey: .allowsDraftAppend) ?? true
     createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
   }
 }
@@ -491,7 +525,8 @@ public struct AIPublishingCustomPrompt: Codable, Hashable, Identifiable, Sendabl
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-    title = try container.decodeIfPresent(String.self, forKey: .title)?
+    title =
+      try container.decodeIfPresent(String.self, forKey: .title)?
       .trimmedForPublishing
       .nilIfEmpty ?? "自定义提示"
     prompt = try container.decode(String.self, forKey: .prompt).trimmedForPublishing
@@ -545,9 +580,10 @@ public struct AIPublishingChatSessionState: Hashable, Sendable {
 
   public var imageAttachmentByteCount: Int64 {
     messages.reduce(Int64(0)) { messageTotal, message in
-      messageTotal + message.imageAttachments.reduce(Int64(0)) { attachmentTotal, attachment in
-        attachmentTotal + max(attachment.byteCount, Int64(attachment.data.count))
-      }
+      messageTotal
+        + message.imageAttachments.reduce(Int64(0)) { attachmentTotal, attachment in
+          attachmentTotal + max(attachment.byteCount, Int64(attachment.data.count))
+        }
     }
   }
 
@@ -634,6 +670,9 @@ public struct AIPublishingChatRequest: Sendable {
   public var remoteReviewDraft: RemoteReviewDraft?
   public var workflowContext: AIPublishingWorkflowContext?
   public var focusedParagraph: AIPublishingChatDraftParagraph?
+  public var editorSelection: ActiveEditorSelection?
+  public var explicitContextReferences: [AIContextReference]
+  public var explicitContextPrompt: String?
   public var relatedSuggestions: [SiteRelationSuggestion]
   public var automationDraftVersions: [UUID: Date]
 
@@ -652,6 +691,9 @@ public struct AIPublishingChatRequest: Sendable {
     remoteReviewDraft: RemoteReviewDraft? = nil,
     workflowContext: AIPublishingWorkflowContext? = nil,
     focusedParagraph: AIPublishingChatDraftParagraph? = nil,
+    editorSelection: ActiveEditorSelection? = nil,
+    explicitContextReferences: [AIContextReference] = [],
+    explicitContextPrompt: String? = nil,
     relatedSuggestions: [SiteRelationSuggestion] = [],
     automationDraftVersions: [UUID: Date] = [:]
   ) {
@@ -669,6 +711,9 @@ public struct AIPublishingChatRequest: Sendable {
     self.remoteReviewDraft = remoteReviewDraft
     self.workflowContext = workflowContext
     self.focusedParagraph = focusedParagraph
+    self.editorSelection = editorSelection
+    self.explicitContextReferences = explicitContextReferences
+    self.explicitContextPrompt = explicitContextPrompt
     self.relatedSuggestions = relatedSuggestions
     var resolvedDraftVersions = automationDraftVersions
     resolvedDraftVersions[draft.id] = draft.updatedAt

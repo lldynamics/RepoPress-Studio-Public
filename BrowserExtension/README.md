@@ -1,7 +1,7 @@
 # 保存到资料库浏览器扩展
 
 这是“RepoPress Studio”的本机网页采集扩展。它会提取当前网页的正文、标题、作者、
-摘要、标签和语言，并可同时保存一份离线页面归档。当前版本只支持 Safari 和 Chrome，两者都通过
+摘要、标签和语言，并可同时保存一份离线页面归档。当前版本支持 Safari、Chrome 和 Firefox，三者都通过
 带随机令牌的 `127.0.0.1:17843` 本机回环接口写入资料库，不安装 Native Messaging 宿主，
 也不经过云端服务。
 
@@ -13,8 +13,11 @@
    - Safari：运行 `./script/build_and_run.sh` 后，在 Safari 设置的“扩展”中启用
      “RepoPress Studio · 资料采集”；正式版扩展随 Mac App Store 应用安装。
    - Chrome：打开扩展管理页，启用“开发者模式”，点击“加载已解压的扩展”。
+   - Firefox：打开 `about:debugging#/runtime/this-firefox`，选择“临时载入附加组件”，
+     再选中 `BrowserExtension/Firefox/manifest.json`。
 4. Chrome 选择 `BrowserExtension` 文件夹。
-5. 打开一个普通网页，点击扩展图标，粘贴令牌并连接。
+5. Firefox 选择 `BrowserExtension/Firefox/manifest.json`，打开一个普通网页，点击扩展图标，
+   粘贴令牌并连接。
 
 连接成功后，可以选择现有资料库分类，也可以在保存时直接创建新分类。再次保存同一网址
 会按资料库的导入规则更新或去重，并可重新归类。
@@ -30,7 +33,8 @@
 - **选中文字**：只保存用户当前选中的文字；没有选择内容时会明确拒绝空内容。
 - **仅链接**：保存页面标题和原始网址，适合稍后阅读或轻量引用。
 
-“保存选项”内可选择分类、新建分类、记住来源网站，并设定是否加入本地语义检索。
+“保存选项”内可选择分类、新建分类、记住来源网站，并分别设定“建立本地语义索引”和“允许发送给远程 AI”。
+本地索引默认开启，远程 AI 默认关闭；两项互不替代。
 完整网页的离线归档会在直接保存时生成。
 
 ## 智能分类选择
@@ -63,7 +67,10 @@
 - 资料 ID 和标题。
 - 实际保存到的分类（未归类时明确显示“未分类”）。
 - 存储文件大小与 MHTML、离线 HTML 或仅正文归档类型。
-- 全文和本地语义索引状态，以及是否加入本地语义检索。
+- 全文和本地语义索引状态，以及是否允许发送给远程 AI。
+
+远程 AI 发送权限只在应用内明确开启的资料上生效。应用的 AI 设置会显示当前服务商、发送内容范围和撤销授权入口；
+资料库条目本身也可单独撤销远程 AI 权限。浏览器扩展不会把旧的“加入本地语义检索”偏好迁移成远程发送许可。
 
 回执会保留在扩展本地存储中。点击“在资料库中打开”后，插件通过已鉴权的本机接口请求应用
 切换到资料库、清除会隐藏该资料的搜索/分类范围，并选中准确文档。该接口不接受未鉴权请求。
@@ -97,7 +104,7 @@
 
 ## 数据边界
 
-- Safari 和 Chrome 扩展都只访问固定的 `http://127.0.0.1:17843/*`。应用的沙盒监听器只绑定 IPv4 回环地址，
+- Safari、Chrome 和 Firefox 扩展都只访问固定的 `http://127.0.0.1:17843/*`。应用的沙盒监听器只绑定 IPv4 回环地址，
   不接受局域网或互联网连接。
 - 每个请求必须携带协议专用请求头和随机配对令牌。应用会拒绝普通网页 Origin；Chrome 会校验已登记的
   开发或商店扩展 ID，Safari 会校验浏览器分配的 UUID 扩展来源。
@@ -107,8 +114,8 @@
 - 连接令牌有效 30 天；旧版长期令牌会平滑获得首次有效期。过期或在应用中手动更换后，旧令牌立即失效，
   插件会清除浏览器端副本并要求重新配对。
 - 插件提供“断开并清除令牌”和“重新配对”；这些操作只删除令牌，不删除离线待保存队列和分类偏好。
-- 鉴权接口拒绝普通 `http/https` 网页 Origin，只接受 Chrome `chrome-extension://` 或 Safari
-  `safari-web-extension://` 扩展来源；本机状态探测接口不返回令牌或资料内容。
+- 鉴权接口拒绝普通 `http/https` 网页 Origin，只接受 Chrome `chrome-extension://`、Safari
+  `safari-web-extension://` 或 Firefox `moz-extension://<UUID>` 扩展来源；本机状态探测接口不返回令牌或资料内容。
 - `alarms` 只用于本机待保存队列的定时重试；`unlimitedStorage` 用于保留可能较大的离线页面归档，
   插件自身仍强制 10 项/96 MB 上限。
 - Chrome 默认保存 MHTML；超过 24 MB 时自动退回到清理后的 HTML。
@@ -120,11 +127,12 @@
 - `chrome://`、扩展商店页面等浏览器受保护页面无法采集。
 
 RepoPress 只维护一个 Mac App Store 应用版本。Safari Web Extension 以签名 `.appex` 内置于该应用，
-由用户在 Safari 设置中启用；Chrome 版本从 Chrome Web Store 安装。Mac 应用不把扩展文件写入
+由用户在 Safari 设置中启用；Chrome 版本从 Chrome Web Store 安装，Firefox 版本从
+`BrowserExtension/Firefox/manifest.json` 临时加载。Mac 应用不把扩展文件写入
 浏览器目录，也不安装额外宿主。Chrome 清单中的公开开发密钥只用于让开发者模式下的未打包扩展
 保持固定 ID；商店正式 ID 写入协议身份源，以便应用校验扩展 Origin。
 
-Safari 与 Chrome 使用各自最小化的 Manifest V3 清单，并通过同步脚本共享同一套采集与弹窗代码。
+Safari、Chrome 与 Firefox 使用各自最小化的 Manifest V3 清单，并通过同步脚本共享同一套采集与弹窗代码。
 Safari 清单不申请不受支持的 `pageCapture`，完整网页使用自包含 HTML 回退。
 
 ## Safari Web Extension
@@ -147,7 +155,7 @@ profile；它仍属于同一个 RepoPress 应用，不产生独立浏览器商�
 ## 协议身份与生成物
 
 `browser-extension-protocol.json` 是本版本启用渠道、回环地址、协议请求头、路由、大小上限、
-Safari bundle ID 及 Chrome 开发与生产扩展 ID 的唯一来源。Edge/Firefox 身份字段仅为以后恢复
+Safari bundle ID、Chrome 开发与生产扩展 ID 及 Firefox add-on ID 的唯一来源。Edge 身份字段仅为以后恢复
 渠道保留，不在当前版本启用。保留的
 共享协议只生成回环接口的地址、请求头、路由和大小限制。
 当前扩展不会申请或调用 Native Messaging。`chromeProductionID` 与
@@ -165,8 +173,9 @@ Chromium 清单公钥实际派生的固定 ID。生成文件被手动修改、�
 
 ## 不可变发布账本
 
-`release-ledger.json` 保留各版本的历史发布记录。当前版本只生成 Chrome ZIP；旧版 Edge/Firefox
-记录保持不可变。打包器会对清单、共享脚本、弹窗资源、图标和语言包计算统一的源码 SHA-256，并记录
+`release-ledger.json` 保留各版本的历史发布记录。当前正式商店账本仍只登记 Chrome ZIP；旧版 Edge/Firefox
+记录保持不可变。Firefox 的临时加载和真实浏览器验证不等同于 AMO 发布，也不会在本次修改中伪造签名或发布时间。
+打包器会对清单、共享脚本、弹窗资源、图标和语言包计算统一的源码 SHA-256，并记录
 版本、Chrome ZIP 文件名、产物 SHA-256 和候选生成时间。已存在的同版本产物只能按相同字节复用；脚本会
 拒绝版本倒退、版本数字别名、同版本不同源码，以及用不同字节覆盖已有 ZIP/XPI。
 
@@ -220,11 +229,21 @@ ZIP 根目录直接包含 `manifest.json` 和运行文件，不包含 README、�
 商店新版本仍使用同一打包命令；提交前必须先递增扩展版本。打包成功后 Chrome ZIP 会原子安装
 到输出目录并追加到账本，不再覆盖同名版本产物。
 
+## Firefox 独立扩展
+
+Firefox 是独立于 Mac App Store 应用的浏览器扩展路径。开发和本机验收使用
+`BrowserExtension/Firefox/manifest.json` 的临时加载方式；应用设置页会打开
+`about:debugging#/runtime/this-firefox`，并说明加载清单和粘贴连接令牌的位置。
+
+协议生成、共享资源同步、兼容性回归和真实 Firefox BiDi E2E 会把 Firefox 作为启用渠道验证。
+这不宣称已经提交或通过 Mozilla Add-ons（AMO），也不生成可长期安装的签名 XPI。根 Node 工具链不安装
+`web-ext`，旧 Firefox 签名入口保持拒绝执行；以后要做 AMO 发布，必须在独立、无仓库 secrets 的受限流程中
+重新建立 lint、签名、审核和不可变产物记录。
+
 ## 暂缓渠道
 
-Edge 和 Firefox 不属于 0.30.2 当前发布范围，不在应用界面、支持页、App Store 文案或发布 profile
-中承诺支持，也不会生成新的 Edge ZIP、Firefox XPI 或执行对应商店发布门禁。仓库暂时保留旧版适配源码、
-历史签名工具和不可变发布记录，方便以后重新评估时恢复；这些保留文件不表示本版本支持对应浏览器。
+Edge 仍不属于当前发布范围，不在应用界面、支持页、App Store 文案或发布 profile 中承诺支持，也不会生成新的
+Edge ZIP 或执行对应商店发布门禁。仓库保留旧版 Edge 适配源码和不可变记录，方便以后重新评估；这些文件不表示当前支持 Edge。
 
 当前正式发布只包含随 Mac App Store 应用签名的 Safari Web Extension 和提交到 Chrome Web Store
-的 Chrome ZIP，不捆绑 Firefox XPI、Edge ZIP、未打包扩展或 Native Messaging 宿主。
+的 Chrome ZIP。Firefox 扩展不嵌入 Mac App Store 应用，Edge ZIP、未打包扩展和 Native Messaging 宿主也不随应用分发。

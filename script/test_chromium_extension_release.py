@@ -157,8 +157,8 @@ with tempfile.TemporaryDirectory(prefix="chromium-store-release-test-") as direc
         encoding="utf-8",
     )
     unsupported_channel = run(fixture, "check", succeeds=False)
-    assert "exactly Safari and Chrome" in unsupported_channel.stdout
-    definition["activeExtensions"] = ["safari", "chrome"]
+    assert "exactly Safari, Chrome, and Firefox" in unsupported_channel.stdout
+    definition["activeExtensions"] = ["safari", "chrome", "firefox"]
     definition["extensions"]["chromeProductionID"] = None
     definition_path.write_text(
         json.dumps(definition, ensure_ascii=False, indent=2) + "\n",

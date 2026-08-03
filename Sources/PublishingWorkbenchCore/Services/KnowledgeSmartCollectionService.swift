@@ -22,11 +22,11 @@ public struct KnowledgeSmartCollectionService: Sendable {
         ? KnowledgeSmartCollection(rule: .time(bucket), documentCount: count)
         : nil
     }
-    output += [true, false].compactMap { allowsAIUse in
-      let count = documents.count { $0.allowsAIUse == allowsAIUse }
+    output += [true, false].compactMap { allowsRemoteAIUse in
+      let count = documents.count { $0.allowsRemoteAIUse == allowsRemoteAIUse }
       return count > 0
         ? KnowledgeSmartCollection(
-          rule: .aiPermission(allowsAIUse),
+          rule: .aiPermission(allowsRemoteAIUse),
           documentCount: count
         )
         : nil
@@ -49,8 +49,8 @@ public struct KnowledgeSmartCollectionService: Sendable {
       return sourceDomain(for: document).map { equivalent($0, domain) } ?? false
     case .time(let bucket):
       return matches(document.importedAt, bucket: bucket, now: now, calendar: calendar)
-    case .aiPermission(let allowsAIUse):
-      return document.allowsAIUse == allowsAIUse
+    case .aiPermission(let allowsRemoteAIUse):
+      return document.allowsRemoteAIUse == allowsRemoteAIUse
     }
   }
 

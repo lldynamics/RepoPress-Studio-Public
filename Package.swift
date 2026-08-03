@@ -18,6 +18,12 @@ let package = Package(
       targets: ["PersonalSitePublisherMac"]
     ),
   ],
+  dependencies: [
+    .package(
+      url: "https://github.com/sparkle-project/Sparkle",
+      from: "2.9.2"
+    )
+  ],
   targets: [
     .target(
       name: "PublishingWorkbenchCore",
@@ -36,6 +42,7 @@ let package = Package(
       dependencies: [
         "BrowserExtensionProtocolSupport",
         "PublishingWorkbenchCore",
+        .product(name: "Sparkle", package: "Sparkle"),
       ],
       exclude: [
         "AppStore.entitlements"

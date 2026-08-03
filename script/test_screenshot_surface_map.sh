@@ -26,20 +26,19 @@ create_fixture() {
 | ID | Target file | Screen | Purpose | Status |
 | --- | --- | --- | --- | --- |
 | `writing` | `writing.png` | Writing workspace | Markdown editing, preview, metadata, and contextual writing actions. | Pending capture |
-| `ai-chat` | `ai-chat.png` | Free BYOK AI writing assistant | Show the in-app AI assistant, safe demo conversation, article context, and user-supplied API-key boundary available without Pro. | Pending capture |
+| `ai-chat` | `ai-chat.png` | BYOK AI writing assistant | Show the in-app AI assistant, safe demo conversation, model selection, and user-supplied API-key boundary. | Pending capture |
 | `knowledge-library` | `knowledge-library.png` | Local knowledge library | Show local import, search, cleaned reading content, source details, and annotations without browser capture. | Pending capture |
 | `sync-api-publish` | `sync-api-publish.png` | Sync workspace | GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR flow. | Pending capture |
 | `seo-social-preview` | `seo-social-preview.png` | SEO/social preview | Search, Open Graph, Twitter card, cache state, and manual refresh. | Pending capture |
 | `deployment-status` | `deployment-status.png` | Deployment status | GitHub Pages/Actions, Netlify, Vercel, Cloudflare Pages, or custom endpoint validation. | Pending capture |
 | `maintenance` | `maintenance.png` | Site maintenance | Calendar, taxonomy governance, stale articles, links, and operation log. | Pending capture |
 | `general-drafts` | `general-drafts.png` | General drafts | Filter general drafts and manage article ownership from the writing list. | Pending capture |
-| `pro-settings` | `pro-settings.png` | Pro settings | Free quota, Pro unlock, purchase, and restore state. | Pending capture |
 | `privacy-lock` | `privacy-lock.png` | Quick hide | Manually hidden workbench and private-content masking. | Pending capture |
 EOF_MANIFEST
 
   write_file "$root/script/capture_app_screenshots.sh" <<'EOF_CAPTURE'
 #!/usr/bin/env bash
-required_ids=(writing ai-chat knowledge-library sync-api-publish seo-social-preview deployment-status maintenance general-drafts pro-settings privacy-lock)
+  required_ids=(writing ai-chat knowledge-library sync-api-publish seo-social-preview deployment-status maintenance general-drafts privacy-lock)
 FORCE_RELAUNCH=0
 --force-relaunch
 --auto-window
@@ -58,14 +57,13 @@ PERSONAL_SITE_PUBLISHER_SCREENSHOT_DEMO=1 PERSONAL_SITE_PUBLISHER_SCREENSHOT_SUR
 screen_guidance() {
   case "$1" in
     writing) echo "Show the writing workspace with editor, preview, metadata, and contextual writing actions." ;;
-    ai-chat) echo "Show the free in-app AI writing assistant with safe demo conversation, article context, and user-supplied API-key guidance." ;;
+    ai-chat) echo "Show the in-app BYOK AI writing assistant with safe demo conversation, model selection, and user-supplied API-key guidance." ;;
     knowledge-library) echo "Show the local knowledge library with import, search, cleaned reading content, source details, and annotations." ;;
     sync-api-publish) echo "Show GitHub/GitLab token check, remote conflict preview, direct API publish, and PR/MR controls." ;;
     seo-social-preview) echo "Show search/Open Graph/Twitter card previews, cache state, manual refresh, and external debug links." ;;
     deployment-status) echo "Show GitHub Pages/Actions, Netlify, Vercel, Cloudflare Pages, or custom endpoint validation status." ;;
     maintenance) echo "Show content calendar, taxonomy governance, stale articles, links, and operation log." ;;
     general-drafts) echo "Show general drafts in the writing workspace with move and copy to site actions." ;;
-    pro-settings) echo "Show free quota, Pro unlock, purchase, and restore state without real payment or account secrets." ;;
     privacy-lock) echo "Show the manually hidden workbench and private-content masking state." ;;
   esac
 }
@@ -73,7 +71,7 @@ EOF_CAPTURE
 
   write_file "$root/script/build_and_run.sh" <<'EOF_BUILD'
 #!/usr/bin/env bash
-required_screenshot_surfaces=(writing ai-chat knowledge-library sync-api-publish seo-social-preview deployment-status maintenance general-drafts pro-settings privacy-lock)
+required_screenshot_surfaces=(writing ai-chat knowledge-library sync-api-publish seo-social-preview deployment-status maintenance general-drafts privacy-lock)
 --screenshot-demo [id]
 --screenshot-surface <id>
 --list-screenshot-surfaces
@@ -122,9 +120,6 @@ EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift" <<'EOF_SWIFT'
 let releaseHistory = "deploymentPollingSummary refreshDeploymentStatus GitHub Pages / Actions Netlify Vercel Cloudflare Pages"
 EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/SettingsView.swift" <<'EOF_SWIFT'
-let settings = "selectedSettingsTab ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .proSettings ? .pro"
-EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/TokenRepositoryTokenSection.swift" <<'EOF_SWIFT'
 let token = "TokenRepositoryTokenSection"
 // .accessibilityHint("仅用于仓库创建、权限检查、提交、PR/MR 和回滚")
@@ -132,31 +127,20 @@ EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/TokenSettingsView.swift" <<'EOF_SWIFT'
 let tokenSettings = "deploymentProviderBinding"
 EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Views/ProSettingsView.swift" <<'EOF_SWIFT'
-let proSettings = "ProPurchaseRestoreSection ProQuotaSection"
-EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Support/ScreenshotDemoSettingsPresenter.swift" <<'EOF_SWIFT'
-let screenshotSettings = "ScreenshotDemoSettingsPresenter openSettingsIfNeeded openSettings() requestedSurfaceFromEnvironment == .proSettings"
-EOF_SWIFT
   write_file "$root/Tests/PublishingWorkbenchCoreTests/SEOSocialPreviewServiceTests.swift" <<'EOF_SWIFT'
 func testSnapshotBuildsSearchOpenGraphAndTwitterCards() {}
 EOF_SWIFT
-  write_file "$root/Sources/PersonalSitePublisherMac/Support/StoreKitProEntitlementCoordinator.swift" <<'EOF_SWIFT'
-func purchasePro(store: String) {}
-func restorePro(store: String) {}
-let storeKitMarkers = "Product.products(for: [productID]) Transaction.currentEntitlements"
-EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/SharedViews.swift" <<'EOF_SWIFT'
-let privacy = "PrivacyLockOverlay privacy-lock-overlay"
+let privacy = "QuickHideOverlay quick-hide-overlay"
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/ContentView.swift" <<'EOF_SWIFT'
-let privacyState = "isPrivacyLocked lockPrivacy(reason canUseProtectedWorkbench"
+let privacyState = "isQuickHideActive shellState.canUseProtectedWorkbench canUseProtectedWorkbench"
 let aiScreenshot = "usesInlineAIScreenshotInspector ScreenshotInlineAIInspector AIChatContextInspectorView"
 EOF_SWIFT
   write_file "$root/Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" <<'EOF_SWIFT'
-let aiInspector = "AIChatContextInspectorView 需要配置 AI API Key"
+let aiInspector = "AIChatContextInspectorView 未配置 API Key"
 // .accessibilityLabel("AI 消息")
-// DisclosureGroup("文章上下文"
+// AIChatConversationInspectorSection
 EOF_SWIFT
 }
 

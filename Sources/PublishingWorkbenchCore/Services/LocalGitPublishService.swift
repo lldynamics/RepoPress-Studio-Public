@@ -123,7 +123,13 @@ public struct LocalGitPublishService: Sendable {
         try ensureBranchDoesNotExist(package.reviewBranchName, rootURL: rootURL)
         let switchResult = try runGit(["switch", "-c", package.reviewBranchName], rootURL: rootURL)
         branchCreated = true
-        commandLog.append("git switch -c \(posixShellQuote(package.reviewBranchName))")
+        commandLog.append(
+          GitCommandRunner.redactedCommandDescription([
+            "switch",
+            "-c",
+            package.reviewBranchName,
+          ])
+        )
         outputChunks.append(switchResult.output)
       }
 
@@ -135,7 +141,9 @@ public struct LocalGitPublishService: Sendable {
       let writtenPaths = writeResult.writtenPaths
       appliedStatesByRepositoryPath = writeResult.appliedStatesByRepositoryPath
       let addResult = try runGit(["add", "--"] + packagePaths, rootURL: rootURL)
-      commandLog.append("git add -- \(packagePaths.map(posixShellQuote).joined(separator: " "))")
+      commandLog.append(
+        GitCommandRunner.redactedCommandDescription(["add", "--"] + packagePaths)
+      )
       outputChunks.append(addResult.output)
 
       let diffResult = try runGit(
@@ -153,7 +161,9 @@ public struct LocalGitPublishService: Sendable {
       )
       didCommit = true
       commandLog.append(
-        "git commit -m \(posixShellQuote(package.commitMessage)) -- \(packagePaths.map(posixShellQuote).joined(separator: " "))"
+        GitCommandRunner.redactedCommandDescription(
+          ["commit", "-m", package.commitMessage, "--"] + packagePaths
+        )
       )
       outputChunks.append(commitResult.output)
 
@@ -212,7 +222,13 @@ public struct LocalGitPublishService: Sendable {
         try await ensureBranchDoesNotExistAsync(package.reviewBranchName, rootURL: rootURL)
         let switchResult = try await runGitAsync(["switch", "-c", package.reviewBranchName], rootURL: rootURL)
         branchCreated = true
-        commandLog.append("git switch -c \(posixShellQuote(package.reviewBranchName))")
+        commandLog.append(
+          GitCommandRunner.redactedCommandDescription([
+            "switch",
+            "-c",
+            package.reviewBranchName,
+          ])
+        )
         outputChunks.append(switchResult.output)
       }
 
@@ -224,7 +240,9 @@ public struct LocalGitPublishService: Sendable {
       let writtenPaths = writeResult.writtenPaths
       appliedStatesByRepositoryPath = writeResult.appliedStatesByRepositoryPath
       let addResult = try await runGitAsync(["add", "--"] + packagePaths, rootURL: rootURL)
-      commandLog.append("git add -- \(packagePaths.map(posixShellQuote).joined(separator: " "))")
+      commandLog.append(
+        GitCommandRunner.redactedCommandDescription(["add", "--"] + packagePaths)
+      )
       outputChunks.append(addResult.output)
 
       let diffResult = try await runGitAsync(
@@ -242,7 +260,9 @@ public struct LocalGitPublishService: Sendable {
       )
       didCommit = true
       commandLog.append(
-        "git commit -m \(posixShellQuote(package.commitMessage)) -- \(packagePaths.map(posixShellQuote).joined(separator: " "))"
+        GitCommandRunner.redactedCommandDescription(
+          ["commit", "-m", package.commitMessage, "--"] + packagePaths
+        )
       )
       outputChunks.append(commitResult.output)
 
@@ -339,7 +359,9 @@ public struct LocalGitPublishService: Sendable {
     func attempt(_ arguments: [String], allowsExitCodes: Set<Int32> = [0]) -> GitCommandResult {
       let result = gitCommandRunner.run(arguments, rootURL: rootURL)
       if !allowsExitCodes.contains(result.terminationStatus) {
-        failures.append("git \(arguments.map(posixShellQuote).joined(separator: " ")): \(result.output)")
+        failures.append(
+          "\(GitCommandRunner.redactedCommandDescription(arguments)): \(result.output)"
+        )
       }
       return result
     }
@@ -358,7 +380,7 @@ public struct LocalGitPublishService: Sendable {
     if !appliedStatesByRepositoryPath.isEmpty {
       _ = attempt(["reset", "--quiet", initialHEAD, "--"] + packagePaths)
       let originalPathsResult = attempt(["ls-tree", "-r", "--name-only", initialHEAD, "--"] + packagePaths)
-      let originalPaths = originalPathsResult.output.split(separator: "\n").map(String.init)
+      let originalPaths = originalPathsResult.standardOutput.split(separator: "\n").map(String.init)
       if !originalPaths.isEmpty {
         _ = attempt(["restore", "--source", initialHEAD, "--worktree", "--"] + originalPaths)
       }
@@ -390,7 +412,9 @@ public struct LocalGitPublishService: Sendable {
     func attempt(_ arguments: [String], allowsExitCodes: Set<Int32> = [0]) async -> GitCommandResult {
       let result = await gitCommandRunner.runAsync(arguments, rootURL: rootURL)
       if !allowsExitCodes.contains(result.terminationStatus) {
-        failures.append("git \(arguments.map(posixShellQuote).joined(separator: " ")): \(result.output)")
+        failures.append(
+          "\(GitCommandRunner.redactedCommandDescription(arguments)): \(result.output)"
+        )
       }
       return result
     }
@@ -409,7 +433,7 @@ public struct LocalGitPublishService: Sendable {
     if !appliedStatesByRepositoryPath.isEmpty {
       _ = await attempt(["reset", "--quiet", initialHEAD, "--"] + packagePaths)
       let originalPathsResult = await attempt(["ls-tree", "-r", "--name-only", initialHEAD, "--"] + packagePaths)
-      let originalPaths = originalPathsResult.output.split(separator: "\n").map(String.init)
+      let originalPaths = originalPathsResult.standardOutput.split(separator: "\n").map(String.init)
       if !originalPaths.isEmpty {
         _ = await attempt(["restore", "--source", initialHEAD, "--worktree", "--"] + originalPaths)
       }
@@ -481,7 +505,7 @@ public struct LocalGitPublishService: Sendable {
   }
 
   private func trimmedOutput(_ result: GitCommandResult) -> String {
-    result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+    result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   private func runGit(
@@ -496,7 +520,7 @@ public struct LocalGitPublishService: Sendable {
 
     guard allowsExitCodes.contains(result.terminationStatus) else {
       throw LocalGitPublishError.gitCommandFailed(
-        command: (["git", "-C", rootURL.path] + arguments).map(posixShellQuote).joined(separator: " "),
+        command: GitCommandRunner.redactedCommandDescription(arguments),
         output: result.output
       )
     }
@@ -515,7 +539,7 @@ public struct LocalGitPublishService: Sendable {
     }
     guard allowsExitCodes.contains(result.terminationStatus) else {
       throw LocalGitPublishError.gitCommandFailed(
-        command: (["git", "-C", rootURL.path] + arguments).map(posixShellQuote).joined(separator: " "),
+        command: GitCommandRunner.redactedCommandDescription(arguments),
         output: result.output
       )
     }

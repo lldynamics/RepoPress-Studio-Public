@@ -310,6 +310,7 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     let documents = try service.documents()
     XCTAssertEqual(documents.count, 1)
     XCTAssertEqual(documents.first?.title, "本地优先写作")
+    try service.setAllowsRemoteAIUse(true, documentID: try XCTUnwrap(documents.first?.id))
 
     let matches = try service.search(query: "命中的片段", limit: 10)
     XCTAssertFalse(matches.isEmpty)
@@ -733,12 +734,14 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       tags: ["研究", "写作"],
       contentText: "[保存前预览资料](https://example.com/reference-link)",
       captureMode: .linkOnly,
-      allowsAIUse: false
+      allowsLocalSemanticIndex: false,
+      allowsRemoteAIUse: false
     )
 
     let preview = try await service.makeBrowserImportPreview(capture: capture)
     let candidate = try XCTUnwrap(preview.candidates.first)
-    XCTAssertEqual(candidate.allowsAIUse, false)
+    XCTAssertFalse(candidate.allowsLocalSemanticIndex ?? true)
+    XCTAssertFalse(candidate.allowsRemoteAIUse ?? true)
     XCTAssertTrue(candidate.warnings.contains {
       $0.contains("仅保存页面标题和原始链接")
     })
@@ -758,7 +761,8 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertEqual(document.title, "保存前编辑后的标题")
     XCTAssertEqual(document.authors, ["作者甲", "作者乙"])
     XCTAssertEqual(document.tags, ["研究", "写作"])
-    XCTAssertFalse(document.allowsAIUse)
+    XCTAssertFalse(document.allowsLocalSemanticIndex)
+    XCTAssertFalse(document.allowsRemoteAIUse)
     XCTAssertTrue(try service.normalizedText(documentID: document.id).contains("reference-link"))
   }
 
@@ -784,7 +788,8 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       sourceURL: try XCTUnwrap(URL(string: "https://example.com/transactional-ai-permission")),
       title: "AI 权限事务导入",
       contentText: "这段正文用于验证不允许 AI 的选择与文档在同一事务中提交。",
-      allowsAIUse: false
+      allowsLocalSemanticIndex: true,
+      allowsRemoteAIUse: false
     )
 
     let outcome = try await store.importBrowserCapture(
@@ -797,7 +802,7 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     }
     XCTAssertEqual(action, .inserted)
     let documentID = try XCTUnwrap(result.documentIDs.first)
-    XCTAssertFalse(try XCTUnwrap(service.documents().first { $0.id == documentID }).allowsAIUse)
+    XCTAssertFalse(try XCTUnwrap(service.documents().first { $0.id == documentID }).allowsRemoteAIUse)
   }
 
   @MainActor
@@ -842,7 +847,8 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
       authors: ["原作者"],
       tags: ["原标签"],
       contentText: "这是用于验证重复网页处理选项的长期参考正文。",
-      allowsAIUse: true
+      allowsLocalSemanticIndex: true,
+      allowsRemoteAIUse: true
     )
 
     let firstOutcome = try await store.importBrowserCapture(
@@ -877,7 +883,7 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     moveOnlyCapture.authors = ["不应写入的作者"]
     moveOnlyCapture.tags = ["不应写入的标签"]
     moveOnlyCapture.contentText += " 这段新内容不应被仅移动分类写入。"
-    moveOnlyCapture.allowsAIUse = false
+    moveOnlyCapture.allowsRemoteAIUse = false
     let moved = try await store.importBrowserCapture(
       moveOnlyCapture,
       folderID: referenceFolder.id,
@@ -894,7 +900,7 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     XCTAssertEqual(movedDocument.title, capture.title)
     XCTAssertEqual(movedDocument.authors, capture.authors)
     XCTAssertEqual(movedDocument.tags, capture.tags)
-    XCTAssertTrue(movedDocument.allowsAIUse)
+    XCTAssertTrue(movedDocument.allowsRemoteAIUse)
     XCTAssertFalse(
       try service.normalizedText(documentID: originalDocumentID)
         .contains("这段新内容不应被仅移动分类写入")
@@ -1128,6 +1134,7 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     let matches = try service.search(query: "semantic retrieval", limit: 10)
     XCTAssertFalse(matches.isEmpty)
     XCTAssertEqual(matches.first?.chunk.locator, "第 1 章 · Second Principles")
+    try service.setAllowsRemoteAIUse(true, documentIDs: Set(result.documentIDs))
     let context = try service.context(query: "semantic retrieval")
     XCTAssertEqual(context?.citations.first?.locator, "第 1 章 · Second Principles")
 
@@ -1306,7 +1313,8 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     )
 
     let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
-    _ = try await service.commit(try await service.makeImportPreview(sourceURL: sourceDirectory))
+    let result = try await service.commit(try await service.makeImportPreview(sourceURL: sourceDirectory))
+    try service.setAllowsRemoteAIUse(true, documentIDs: Set(result.documentIDs))
 
     let results = try service.search(query: "有什么办法可以省钱", limit: 10)
     let first = try XCTUnwrap(results.first)
@@ -1350,21 +1358,57 @@ final class KnowledgeLibraryServiceTests: XCTestCase {
     _ = try await service.commit(try await service.makeImportPreview(sourceURL: sourceURL))
     let document = try XCTUnwrap(service.documents().first)
 
+    XCTAssertTrue(document.allowsLocalSemanticIndex)
+    XCTAssertFalse(document.allowsRemoteAIUse)
+    try service.setAllowsRemoteAIUse(true, documentID: document.id)
     XCTAssertFalse(try service.search(
       query: "省钱方法",
-      onlyAIAllowed: true,
+      onlyRemoteAIAllowed: true,
       documentIDs: [document.id]
     ).isEmpty)
-    try service.setAllowsAIUse(false, documentID: document.id)
+    try service.setAllowsRemoteAIUse(false, documentID: document.id)
     XCTAssertTrue(try service.search(
       query: "省钱方法",
-      onlyAIAllowed: true,
+      onlyRemoteAIAllowed: true,
       documentIDs: [document.id]
     ).isEmpty)
     XCTAssertTrue(try service.search(
       query: "省钱方法",
       documentIDs: [UUID()]
     ).isEmpty)
+  }
+
+  func testLegacyBrowserPermissionBecomesLocalIndexOnlyAndRemoteAIStaysOff() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-permission-split")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let sourceURL = try XCTUnwrap(URL(string: "https://example.com/legacy-permission"))
+    let currentCapture = KnowledgeBrowserCapture(
+      sourceURL: sourceURL,
+      title: "旧权限网页",
+      contentText: "旧版浏览器扩展把本地索引和远程 AI 权限混在一起。"
+    )
+    var legacyPayload = try XCTUnwrap(
+      JSONSerialization.jsonObject(
+        with: JSONEncoder().encode(currentCapture),
+        options: []
+      ) as? [String: Any]
+    )
+    legacyPayload.removeValue(forKey: "allowsLocalSemanticIndex")
+    legacyPayload.removeValue(forKey: "allowsRemoteAIUse")
+    legacyPayload["allowsAIUse"] = true
+    let legacyCapture = try JSONDecoder().decode(
+      KnowledgeBrowserCapture.self,
+      from: JSONSerialization.data(withJSONObject: legacyPayload)
+    )
+
+    XCTAssertTrue(legacyCapture.allowsLocalSemanticIndex ?? false)
+    XCTAssertNil(legacyCapture.allowsRemoteAIUse)
+
+    let service = KnowledgeLibraryService(rootURL: rootURL.appendingPathComponent("store"))
+    _ = try await service.commit(try await service.makeBrowserImportPreview(capture: legacyCapture))
+    let document = try XCTUnwrap(service.documents().first)
+    XCTAssertTrue(document.allowsLocalSemanticIndex)
+    XCTAssertFalse(document.allowsRemoteAIUse)
   }
 
   func testVersionTwoDatabaseLazilyBackfillsSemanticVectors() async throws {

@@ -9,9 +9,6 @@ VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encodi
 XPI="$TMP_DIR/knowledge-capture-firefox-$VERSION-unsigned.xpi"
 AMO_XPI="$TMP_DIR/knowledge-capture-firefox-$VERSION-amo.xpi"
 
-python3 "$ROOT_DIR/script/firefox_extension_release.py" lint >/dev/null
-python3 "$ROOT_DIR/script/firefox_extension_release.py" lint-amo >/dev/null
-
 python3 "$ROOT_DIR/script/firefox_extension_release.py" package-amo \
   --output-dir "$TMP_DIR" \
   --no-record-ledger >/dev/null

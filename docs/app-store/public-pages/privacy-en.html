@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="RepoPress Studio Privacy Policy — local data, repository access, browser capture, external services, diagnostics, and StoreKit.">
+  <meta name="description" content="RepoPress Studio Privacy Policy — website distribution, local data, custom AI, browser capture, software updates, and necessary server logs.">
   <meta name="robots" content="index,follow">
   <meta property="og:title" content="RepoPress Studio Privacy Policy">
-  <meta property="og:description" content="Local-first, with no advertising, behavioral tracking, or third-party analytics SDK; custom AI requests go directly to the provider selected by the user.">
+  <meta property="og:description" content="Free and local-first; remote AI requests go directly to the provider selected by the user.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://apps.chengjinfang.com/personal-site-publisher/privacy/en/">
   <meta property="og:site_name" content="Cheng Jinfang's Apps">
@@ -25,74 +25,63 @@
       </p>
 
       <h1>RepoPress Studio Privacy Policy</h1>
-      <p>Effective and last updated: July 28, 2026</p>
-      <p>This policy covers the RepoPress Studio App Store edition and its embedded Safari Web Extension. It explains how local drafts, research, repository files, browser captures, credentials, publishing records, diagnostics, and purchase status are handled.</p>
+      <p>Effective and last updated: August 1, 2026</p>
+      <p>This policy covers the free macOS edition downloaded from the official RepoPress Studio website and its embedded Safari Web Extension. The Mac app is Developer ID signed and notarized by Apple.</p>
 
       <section>
         <h2>1. Core Principles</h2>
         <p>RepoPress Studio is local-first. It has no advertising, behavioral tracking, or third-party analytics SDK, requires no RepoPress Studio account, and does not automatically send drafts, repository files, browser captures, or usage analytics to the developer's servers.</p>
-        <p>Every user can configure a local model or an OpenAI-compatible HTTPS API. AI does not require RepoPress Pro. The app does not meter AI requests, sell AI credits or provider access, or link to provider purchases.</p>
+        <p>The current website edition has no paid feature tier. RepoPress Studio does not sell AI service access, provider API keys, or usage bundles. Users select and fund any remote AI provider themselves.</p>
       </section>
 
       <section>
-        <h2>2. Data Stored on the Device</h2>
+        <h2>2. Data Stored On The Device</h2>
         <ul>
-          <li>Drafts, Markdown content, front matter, tags, categories, authors, summaries, private flags, and publishing status.</li>
+          <li>Drafts, Markdown content, metadata, tags, categories, authors, summaries, private flags, and publishing status.</li>
           <li>EPUB, PDF, Markdown, TXT, HTML, or web content selected by the user, plus locally generated full-text and semantic indexes, annotations, citations, and revisions.</li>
-          <li>Site profiles, repository configuration, sync settings, publishing strategies, publishing and maintenance records, deployment status, and limited history.</li>
-          <li>AI provider configuration, endpoint-consent state, model preferences, and limited conversation state. API keys are stored in macOS Keychain.</li>
-          <li>Browser-extension preferences, limited receipts, the pairing token, and a bounded offline queue.</li>
-          <li>Quick Hide, private-content masking, language preferences, backups, and StoreKit entitlement state.</li>
+          <li>Site and repository configuration, sync settings, publishing and maintenance records, deployment status, and limited history.</li>
+          <li>AI provider configuration, remote-endpoint consent state, model preferences, and limited conversation state. API keys are stored in macOS Keychain and are not written to workspace backups.</li>
+          <li>Quick Hide, private-content masking, language preferences, backups, and browser-extension local settings.</li>
         </ul>
-        <p>App workspace data is primarily stored in local Application Support data. Extension data is stored in the corresponding browser's local extension storage. Ordinary app and extension data is not equivalent to end-to-end encrypted storage.</p>
+        <p>Ordinary app and extension data is not equivalent to end-to-end encrypted storage. Quick Hide and private-content masking reduce on-screen exposure; they are not password or Touch ID authentication, disk encryption, or end-to-end encryption.</p>
       </section>
 
       <section>
-        <h2>3. Files, Repositories, and Browser Capture</h2>
-        <p>The App Store edition uses App Sandbox. It accesses only repositories, research sources, images, and output locations selected through system panels and restores previously granted access with security-scoped bookmarks.</p>
-        <p>The embedded Safari Web Extension processes a selected page only after the user clicks the extension, a menu item, a shortcut, or confirms a batch task. Captures enter the app on the same device through the authenticated <code>127.0.0.1:17843</code> loopback connection. The connection does not listen on LAN or Internet addresses and does not use a developer server to transport page content.</p>
-        <p>The app does not install a Native Messaging host or write manifests into browser directories. A complete archive can contain private content visible on a signed-in page at capture time and should be protected like any other local file.</p>
+        <h2>3. BYOK, Custom Remote APIs, And Local Models</h2>
+        <p>AI features support BYOK (Bring Your Own Key), a custom HTTPS endpoint, or a local model. Before the first request to each custom remote API destination, RepoPress Studio shows the full destination and possible data categories and requires explicit consent. The user can revoke consent for that destination.</p>
+        <p>Depending on the action, a request can include the user's prompt, current article or site context, selected research excerpts, conversation context, and images added by the user. Requests go directly from this Mac to the selected provider; the developer does not proxy or receive API keys, prompts, requests, or responses. The provider processes data under its own terms and privacy policy.</p>
+        <p><code>localhost</code>, <code>127.0.0.1</code>, and <code>::1</code> are local loopback destinations on this Mac and do not transfer AI content to a remote provider. The user separately controls any storage or logging performed by the local service.</p>
       </section>
 
       <section>
-        <h2>4. Network Access</h2>
-        <p>Local writing, research indexing, content checks, image processing, and most Git inspection happen on the device. The following user-configured or initiated features contact their corresponding services:</p>
-        <ul>
-          <li>GitHub, GitLab, or repository remotes for access checks, sync, commits, pull or merge requests, status reads, and user-confirmed rollback.</li>
-          <li>Deployment providers or custom status endpoints for deployment checks and polling enabled by the user.</li>
-          <li>Apple StoreKit for product lookup, purchase, restore, and entitlement verification.</li>
-          <li>User-configured AI services only after the user initiates an AI action and has consented to that remote endpoint. The transfer can include prompts, current article or site context, selected research excerpts, conversation context, and images added by the user.</li>
-          <li>Support, privacy, repository, or deployment pages opened by the user.</li>
-        </ul>
-        <p>AI requests travel directly from the device to the provider selected by the user and do not pass through the developer's servers. Those services process data under their own terms and privacy policies. The developer does not operate a proxy that receives AI content, repository content, or browser captures.</p>
+        <h2>4. Files, Repositories, And Browser Capture</h2>
+        <p>The app uses the macOS sandbox. It accesses only repositories, research sources, images, and output locations selected through system panels and restores previously granted access with security-scoped bookmarks.</p>
+        <p>The Safari Web Extension is embedded in the Mac app. The Chrome extension is installed and updated separately through the Chrome Web Store. Each processes a page only after a user-initiated extension, menu, or shortcut action. Captures enter RepoPress Studio on the same Mac through the authenticated <code>127.0.0.1:17843</code> loopback connection and do not pass through the developer's servers.</p>
+        <p>The app-side browser connection token is stored only in macOS Keychain. The Chrome extension stores its pairing token, preferences, limited receipts, and a bounded offline queue in extension-local storage. The current Safari and Chrome channels do not install a Native Messaging helper.</p>
       </section>
 
       <section>
-        <h2>5. Credentials and Payments</h2>
-        <p>GitHub or GitLab tokens, deployment credentials, and user-configured AI API keys are stored in macOS Keychain and separated by site and purpose. The app developer does not receive these credentials.</p>
-        <p>Apple StoreKit handles purchases and restore. The app receives product information and verified entitlement status; it does not receive or process payment-card details. RepoPress Pro unlocks online publishing and batch publishing only.</p>
+        <h2>5. Other Network Requests And Sparkle Updates</h2>
+        <p>Local writing, research indexing, content checks, and image processing happen primarily on the device. User-initiated GitHub, GitLab, repository-remote, deployment-status, support-page, and privacy-page actions contact their corresponding services.</p>
+        <p>The website edition uses Sparkle for software updates. When the user manually checks for updates, or allows Sparkle to check automatically, the app retrieves an HTTPS update feed and, after user confirmation where applicable, downloads a signed update archive from the configured update host. Update requests do not contain drafts, research, browser captures, credentials, AI prompts, or AI responses.</p>
+        <p>The update host or its CDN may retain necessary server access logs containing an IP address, request time, requested path, response status, and user agent or app version. These logs are used only for update delivery, reliability, abuse prevention, and security, not advertising or cross-service tracking, and are retained according to the hosting provider's operational policy.</p>
       </section>
 
       <section>
-        <h2>6. Data Received by the Developer</h2>
+        <h2>6. Data Received By The Developer</h2>
         <p>The app does not automatically send diagnostics. The developer receives an email address, message, and attachments only when the user sends a support request or shares reviewed diagnostics. This information is used for support, security, and necessary legal obligations, not advertising or sale.</p>
-        <p>Do not send a complete repository, full token, authorization header, account password, local absolute path, or private article body.</p>
+        <p>Do not send a complete repository, full token, authorization header, account password, local absolute path, private article body, or unreviewed diagnostic archive.</p>
       </section>
 
       <section>
-        <h2>7. User Controls and Deletion</h2>
-        <p>Users can delete local drafts, research, records, site profiles, backups, and credentials; clear the extension queue and disconnect pairing; or uninstall the extension. Deleting the app itself may not remove Application Support data, Keychain items, browser-extension data, backups, or files in selected repositories.</p>
-        <p>Data committed to a repository or retained by an external service must be managed in the corresponding folder or service. The developer does not operate an account server that stores this content and cannot delete it from a device, repository, or third-party service on the user's behalf.</p>
+        <h2>7. User Controls And Deletion</h2>
+        <p>Users can delete local drafts, research, records, site profiles, backups, and credentials; revoke consent for a remote AI destination; clear the extension queue and disconnect pairing; or uninstall an extension. Deleting the app may not remove Application Support data, macOS Keychain items, extension-local data, backups, or files in user-selected repositories.</p>
+        <p>Data sent to an external service or committed to a repository must be managed with that service or in that repository. The developer does not operate an account server that stores workspace content and cannot delete it from a device, repository, or third-party service on the user's behalf.</p>
       </section>
 
       <section>
-        <h2>8. Quick Hide and Private-Content Masking</h2>
-        <p>Quick Hide and private-content masking reduce on-screen exposure. They are not password or Touch ID authentication, disk encryption, or end-to-end encryption, and they do not automatically delete files or remote content.</p>
-      </section>
-
-      <section>
-        <h2>9. Contact and Changes</h2>
-        <p>If the app, extension, data handling, or App Store privacy disclosures change materially, this page will be updated. Privacy and support contact: <a href="mailto:support@chengjinfang.com">support@chengjinfang.com</a>.</p>
+        <h2>8. Contact And Changes</h2>
+        <p>If the app, extension, or data handling changes materially, this page will be updated. Privacy and support contact: <a href="mailto:support@chengjinfang.com">support@chengjinfang.com</a>.</p>
       </section>
     </article>
   </main>

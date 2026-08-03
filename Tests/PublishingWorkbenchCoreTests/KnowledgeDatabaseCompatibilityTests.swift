@@ -80,6 +80,54 @@ final class KnowledgeDatabaseCompatibilityTests: XCTestCase {
     XCTAssertEqual(try querySQLiteText("PRAGMA journal_mode;", at: databaseURL), "delete")
   }
 
+  func testInvalidStoredDocumentUUIDThrowsStableIntegrityError() throws {
+    let rootURL = temporaryDirectory(named: "knowledge-invalid-document-uuid")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let database = try KnowledgeDatabase(
+      fileURL: rootURL.appendingPathComponent("library.sqlite")
+    )
+    try insertDocumentRow(
+      database: database,
+      id: "not-a-uuid",
+      authorsJSON: "[]",
+      tagsJSON: "[]"
+    )
+
+    XCTAssertThrowsError(try database.documents()) { error in
+      guard case .databaseIntegrity(let message)? = error as? KnowledgeLibraryError else {
+        return XCTFail("应报告稳定的数据完整性错误，实际为：\(error)")
+      }
+      XCTAssertEqual(
+        message,
+        "knowledge_documents.id 包含无效 UUID。"
+      )
+    }
+  }
+
+  func testInvalidStoredDocumentMetadataJSONThrowsIntegrityError() throws {
+    let rootURL = temporaryDirectory(named: "knowledge-invalid-document-metadata")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let database = try KnowledgeDatabase(
+      fileURL: rootURL.appendingPathComponent("library.sqlite")
+    )
+    try insertDocumentRow(
+      database: database,
+      id: UUID().uuidString,
+      authorsJSON: "{invalid-json",
+      tagsJSON: "[]"
+    )
+
+    XCTAssertThrowsError(try database.documents()) { error in
+      guard case .databaseIntegrity(let message)? = error as? KnowledgeLibraryError else {
+        return XCTFail("应报告元数据完整性错误，实际为：\(error)")
+      }
+      XCTAssertEqual(
+        message,
+        "knowledge_documents.authors_json 不是字符串数组 JSON。"
+      )
+    }
+  }
+
   func testBackupManifestWithFutureDatabaseVersionIsRejectedBeforeRestore() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-future-backup")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -117,6 +165,33 @@ final class KnowledgeDatabaseCompatibilityTests: XCTestCase {
       }
       XCTAssertEqual(found, KnowledgeDatabase.currentSchemaVersion + 1)
       XCTAssertEqual(supported, KnowledgeDatabase.currentSchemaVersion)
+    }
+  }
+
+  private func insertDocumentRow(
+    database: KnowledgeDatabase,
+    id: String,
+    authorsJSON: String,
+    tagsJSON: String
+  ) throws {
+    let statement = try database.prepare("""
+    INSERT INTO knowledge_documents (
+      id, kind, title, authors_json, language, summary, tags_json,
+      source_url, source_name, folder_id, source_byte_count,
+      allows_ai_use, is_archived, imported_at, updated_at, current_revision_id
+    ) VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, ?, NULL, 0, 1, 0, 0, 0, ?);
+    """)
+    defer { sqlite3_finalize(statement) }
+    database.bind(id, at: 1, to: statement)
+    database.bind(KnowledgeDocumentKind.markdown.rawValue, at: 2, to: statement)
+    database.bind("Corrupt fixture", at: 3, to: statement)
+    database.bind(authorsJSON, at: 4, to: statement)
+    database.bind("", at: 5, to: statement)
+    database.bind(tagsJSON, at: 6, to: statement)
+    database.bind("fixture.md", at: 7, to: statement)
+    database.bind(UUID().uuidString, at: 8, to: statement)
+    guard sqlite3_step(statement) == SQLITE_DONE else {
+      throw database.databaseError()
     }
   }
 

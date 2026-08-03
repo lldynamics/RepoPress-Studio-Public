@@ -1,0 +1,236 @@
+{
+  "被%@“%@”引用，": {
+    "zh-Hans": "被%1$@“%2$@”引用，",
+    "en": "Referenced by %1$@ “%2$@”,"
+  },
+  "当前范围：%@，%lld 条资料": {
+    "zh-Hans": "当前范围：%@，%lld 条资料",
+    "en": "Current scope: %@, %lld items"
+  },
+  "%@，%lld 条资料": {
+    "zh-Hans": "%@，%lld 条资料",
+    "en": "%@, %lld items"
+  },
+  "已跳转到命中段落，%@，": {
+    "zh-Hans": "已跳转到命中段落，%@，",
+    "en": "Jumped to the matching passage, %@,"
+  },
+  "引用：%@": {
+    "zh-Hans": "引用：%@",
+    "en": "Reference: %@"
+  },
+  "列表项：%@": {
+    "zh-Hans": "列表项：%@",
+    "en": "List item: %@"
+  },
+  "代码块：%@": {
+    "zh-Hans": "代码块：%@",
+    "en": "Code block: %@"
+  },
+  "原文位置：%@": {
+    "zh-Hans": "原文位置：%@",
+    "en": "Source location: %@"
+  },
+  "正在查找%@": {
+    "zh-Hans": "正在查找%@",
+    "en": "Searching %@"
+  },
+  "共 %lld 条，已选择 %lld 条": {
+    "zh-Hans": "共 %lld 条，已选择 %lld 条",
+    "en": "%lld items total, %lld selected"
+  },
+  "%@，移除于 %@": {
+    "zh-Hans": "%1$@，移除于 %2$@",
+    "en": "%1$@, removed on %2$@"
+  },
+  "%@推荐": {
+    "zh-Hans": "%@推荐",
+    "en": "%@ recommended"
+  },
+  "%@，": {
+    "zh-Hans": "%@，",
+    "en": "%@,"
+  },
+  "来源检查结果：%@": {
+    "zh-Hans": "来源检查结果：%@",
+    "en": "Source check result: %@"
+  },
+  "版本 %@": {
+    "zh-Hans": "版本 %@",
+    "en": "Version %@"
+  },
+  "新增 %lld 行，删除 %lld 行，": {
+    "zh-Hans": "新增 %lld 行，删除 %lld 行，",
+    "en": "%lld lines added, %lld lines deleted,"
+  },
+  "移除筛选：%@": {
+    "zh-Hans": "移除筛选：%@",
+    "en": "Remove filter: %@"
+  },
+  "%@，%@": {
+    "zh-Hans": "%1$@，%2$@",
+    "en": "%1$@, %2$@"
+  },
+  "%@的资料操作": {
+    "zh-Hans": "%@的资料操作",
+    "en": "Actions for %@"
+  },
+  "%@，%lld 个命中片段": {
+    "zh-Hans": "%@，%lld 个命中片段",
+    "en": "%@, %lld matching passages"
+  },
+  "共 %lld 个片段": {
+    "zh-Hans": "共 %lld 个片段",
+    "en": "%lld passages total"
+  },
+  "批量操作，已选择 %lld 条资料": {
+    "zh-Hans": "批量操作，已选择 %lld 条资料",
+    "en": "Batch actions, %lld items selected"
+  },
+  "%@ 级标题：%@": {
+    "zh-Hans": "%1$@ 级标题：%2$@",
+    "en": "Level %1$@ heading: %2$@"
+  },
+  "文章预览：%@": {
+    "zh-Hans": "文章预览：%@",
+    "en": "Article preview: %@"
+  },
+  "编辑器模式：%@": {
+    "zh-Hans": "编辑器模式：%@",
+    "en": "Editor mode: %@"
+  },
+  "%lld 个汉字，%lld 个西文词，合计 %lld 字词，%lld 行，预计阅读 %@ 分钟，写作目标 %@ 字词，已完成 %@%": {
+    "zh-Hans": "%lld 个汉字，%lld 个西文词，合计 %lld 字词，%lld 行，预计阅读 %@ 分钟，写作目标 %@ 字词，已完成 %@%",
+    "en": "%lld Chinese characters, %lld non-Chinese words, %lld words total, %lld lines, about %@ minutes to read, %@-word target, %@% complete"
+  },
+  "%@ 的逐行差异": {
+    "zh-Hans": "%@ 的逐行差异",
+    "en": "Line-by-line diff for %@"
+  },
+  "%@ 的部署状态": {
+    "zh-Hans": "%@ 的部署状态",
+    "en": "Deployment status for %@"
+  },
+  "%@：%@": {
+    "zh-Hans": "%1$@：%2$@",
+    "en": "%1$@: %2$@"
+  },
+  "共 %lld 条部署状态记录": {
+    "zh-Hans": "共 %lld 条部署状态记录",
+    "en": "%lld deployment status records"
+  },
+  "已打开 HTML 源文件：%@": {
+    "zh-Hans": "已打开 HTML 源文件：%@",
+    "en": "Opened HTML source file: %@"
+  },
+  "%lld 篇可导入": {
+    "zh-Hans": "%lld 篇可导入",
+    "en": "%lld articles available to import"
+  },
+  "%lld 个": {
+    "zh-Hans": "%lld 个",
+    "en": "%lld items"
+  },
+  "第 %@ 步": {
+    "zh-Hans": "第 %@ 步",
+    "en": "Step %@"
+  },
+  "%lld/%lld 项基础配置已就绪": {
+    "zh-Hans": "%lld/%lld 项基础配置已就绪",
+    "en": "%lld/%lld basic settings ready"
+  },
+  "%@，%lld 篇文章，%lld 篇待发布": {
+    "zh-Hans": "%@，%lld 篇文章，%lld 篇待发布",
+    "en": "%@, %lld articles, %lld pending publication"
+  },
+  "文章总数 %lld，待发布 %lld": {
+    "zh-Hans": "文章总数 %lld，待发布 %lld",
+    "en": "%lld articles total, %lld pending publication"
+  },
+  "%@，%lld 篇文章": {
+    "zh-Hans": "%@，%lld 篇文章",
+    "en": "%@, %lld articles"
+  },
+  "%@ 到 %@": {
+    "zh-Hans": "%1$@ 到 %2$@",
+    "en": "%1$@ to %2$@"
+  },
+  "文章%@": {
+    "zh-Hans": "文章%@",
+    "en": "Article %@"
+  },
+  "安全模式": "Safe Mode",
+  "自动预检、预览、后台维护和浏览器连接已暂停": "Automatic checks, previews, background maintenance, and browser connections are paused",
+  "已显示 %lld 项，共 %lld 项": {
+    "zh-Hans": "已显示 %lld 项，共 %lld 项",
+    "en": "%lld of %lld items shown"
+  },
+  "%lld 点": {
+    "zh-Hans": "%lld 点",
+    "en": "%lld points"
+  },
+  "所有后台任务均已完成": "All Background Tasks Completed",
+  "进行中 %@ · 失败待处理 %@": {
+    "zh-Hans": "进行中 %@ · 失败待处理 %@",
+    "en": "In progress %@ · Failed %@"
+  },
+  "任务进度": "Task Progress",
+  "%lld%": {
+    "zh-Hans": "%lld%",
+    "en": "%lld%"
+  },
+  "任务进行中": "Task in Progress",
+  "失败原因：%@": {
+    "zh-Hans": "失败原因：%@",
+    "en": "Failure reason: %@"
+  },
+  "社交卡片：%@": {
+    "zh-Hans": "社交卡片：%@",
+    "en": "Social card: %@"
+  },
+  "%@。%@": {
+    "zh-Hans": "%1$@。%2$@",
+    "en": "%1$@. %2$@"
+  },
+  "图片元数据 %@": {
+    "zh-Hans": "图片元数据 %@",
+    "en": "Image metadata %@"
+  },
+  "无进行中或失败任务": "No Running or Failed Tasks",
+  "进行中 %lld，失败 %lld": {
+    "zh-Hans": "进行中 %lld，失败 %lld",
+    "en": "%lld in progress, %lld failed"
+  },
+  "个人网站：%@ · %@": {
+    "zh-Hans": "个人网站：%1$@ · %2$@",
+    "en": "Personal website: %1$@ · %2$@"
+  },
+  "发布状态：%@ · %@。点击查看状态和发布操作。": {
+    "zh-Hans": "发布状态：%1$@ · %2$@。点击查看状态和发布操作。",
+    "en": "Publishing status: %1$@ · %2$@. Click to view status and publishing actions."
+  },
+  "远端有 %lld 项变化": {
+    "zh-Hans": "远端有 %lld 项变化",
+    "en": "%lld remote changes"
+  },
+  "本地有 %lld 项变化": {
+    "zh-Hans": "本地有 %lld 项变化",
+    "en": "%lld local changes"
+  },
+  "%lld 个阻断项": {
+    "zh-Hans": "%lld 个阻断项",
+    "en": "%lld blockers"
+  },
+  "%lld 个待确认项": {
+    "zh-Hans": "%lld 个待确认项",
+    "en": "%lld items awaiting confirmation"
+  },
+  "当前显示 %lld 篇，共 %lld 篇": {
+    "zh-Hans": "当前显示 %lld 篇，共 %lld 篇",
+    "en": "%lld of %lld articles shown"
+  },
+  "每次再显示最多 %@ 篇文章": {
+    "zh-Hans": "每次再显示最多 %@ 篇文章",
+    "en": "Show up to %@ more articles at a time"
+  }
+}

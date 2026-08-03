@@ -102,8 +102,7 @@ final class RepositoryContextStageTests: XCTestCase {
     )
   }
 
-  func testAdvancedToolsAndSourceEditorRemainContextualDestinations() {
-    XCTAssertEqual(RepositoryContextStage.checks.primaryNavigationStage, .overview)
+  func testSourceEditorRemainsAContextualDestination() {
     XCTAssertEqual(RepositoryContextStage.source.primaryNavigationStage, .changes)
   }
 
@@ -111,7 +110,6 @@ final class RepositoryContextStageTests: XCTestCase {
     XCTAssertFalse(RepositoryContextStage.overview.requiresRepository)
     XCTAssertFalse(RepositoryContextStage.history.requiresRepository)
     XCTAssertTrue(RepositoryContextStage.changes.requiresRepository)
-    XCTAssertTrue(RepositoryContextStage.checks.requiresRepository)
     XCTAssertTrue(RepositoryContextStage.source.requiresRepository)
   }
 }
@@ -120,7 +118,7 @@ final class OperationalWorkspaceContextStageTests: XCTestCase {
   func testImageWorkbenchNavigationKeepsTaskOrderStable() {
     XCTAssertEqual(
       ImageWorkbenchContextStage.navigationStages,
-      [.overview, .issues, .repository]
+      [.overview, .repository, .manager]
     )
     XCTAssertEqual(
       Set(ImageWorkbenchContextStage.navigationStages.map(\.id)).count,

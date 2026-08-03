@@ -14,24 +14,25 @@ Use `script/prepare_external_verification_envs.sh` to copy
 `docs/release-evidence/app-store-archive-validation.env.example` outside the
 repository before filling real archive validation notes.
 
-## Current Resubmission Target: 1.0 (9)
+## Current Resubmission Target: 1.0 (12)
 
-- [ ] Clean Release archive produced from a clean checkout.
-  Evidence: Build 1.0 (9) has not yet been archived from a clean release-candidate checkout.
-- [ ] Distribution signing and hardened runtime verified on the archive.
-  Evidence: Build 1.0 (9) has not yet completed the local package gate or formal App Store distribution signing.
-- [ ] Archive validated with App Store Connect or Transporter before upload.
-  Evidence: Build 1.0 (9) has not yet been validated or uploaded.
+- [x] Clean Release archive produced from a clean checkout.
+  Evidence: Build 1.0 (12) was produced from an isolated clean committed release snapshot containing the complete current local source state.
+- [x] Distribution signing and hardened runtime verified on the archive.
+  Evidence: Build 1.0 (12) main app, embedded Safari Web Extension, installer signature, artifact hashes, and hardened runtime flags were verified.
+- [x] Archive validated with App Store Connect or Transporter before upload.
+  Evidence: App Store build 1.0 (12) was delivered successfully through Transporter and accepted for processing; no private account identifiers recorded.
 
-## Historical Evidence: 1.0 (7) and 1.0 (8)
+## Historical Evidence: 1.0 (7) through 1.0 (11)
 
 Build 1.0 (7) was produced from a disposable clean committed checkout. Its app,
 embedded Safari Web Extension, installer signature, hardened runtime, and
 artifact hashes passed the recorded distribution checks. Transporter delivered
 it to App Store Connect on 2026-07-28 at 17:02, and it became available for
-internal testing. Build 1.0 (8) passed the local App Store bundle gate with AI
-excluded, but it was not formally archived or uploaded. Neither is the current
-resubmission candidate because free user-configured AI now targets build 1.0 (9).
+internal testing. Build 1.0 (8) passed the local App Store bundle gate, but it
+was not formally archived or uploaded. Builds 1.0 (9) through 1.0 (11) were
+delivered on 2026-07-29 and were superseded by build 1.0 (12), which also
+matches the current visible capabilities and release evidence.
 
 ## Recording Commands
 

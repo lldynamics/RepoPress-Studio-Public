@@ -87,6 +87,9 @@ extension WorkbenchStore {
       revision: current.revision &+ 1,
       isDirty: true
     )
+    if let draft = drafts.first(where: { $0.id == draftID }) {
+      recordDraftRecovery(for: draft, bodyMarkdown: bodyMarkdown)
+    }
     publishingStore.setDraftBodyEditorBuffer(staged, for: draftID)
     persistenceStore.markUnsavedChanges()
     scheduleDraftBodyCommit(for: draftID)

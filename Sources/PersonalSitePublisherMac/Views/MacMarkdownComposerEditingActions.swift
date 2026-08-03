@@ -4,8 +4,7 @@ import SwiftUI
 
 extension MacMarkdownComposerView {
   func showOutline() {
-    isOutlinePresented = true
-    scheduleMarkdownAnalysis(immediate: true, includeOutline: true)
+    showWritingContextPanel(.outline)
   }
 
   func showDiagnostics() {
@@ -23,7 +22,18 @@ extension MacMarkdownComposerView {
     let generation = markdownAnalysisGeneration
     let requestedMarkdown = editorBody
     let requestedDraftID = draft.id
-    let shouldIncludeOutline = includeOutline ?? isOutlinePresented
+    let shouldIncludeOutline = includeOutline ?? true
+    let diagnosticContext = MarkdownInlineDiagnosticContext(
+      knownArticleTitles: Set(
+        store.drafts.compactMap { $0.title.trimmedForPublishing.nilIfEmpty }
+      ),
+      attachmentPaths: Set(
+        draft.attachments.flatMap {
+          [$0.relativePublishPath, $0.repositoryPath]
+            .compactMap { $0.trimmedForPublishing.nilIfEmpty }
+        }
+      )
+    )
 
     markdownAnalysisTask = Task { @MainActor in
       if !immediate {
@@ -36,6 +46,7 @@ extension MacMarkdownComposerView {
       guard !Task.isCancelled else { return }
       let snapshot = await markdownAnalysisService.analyzeInBackground(
         requestedMarkdown,
+        diagnosticContext: diagnosticContext,
         includeOutline: shouldIncludeOutline
       )
       guard !Task.isCancelled,
@@ -58,6 +69,12 @@ extension MacMarkdownComposerView {
       length: 0
     )
     selectionActionMessage = ""
+    focusMarkdownText(
+      for: UUID(),
+      selectedRange: selectedRange,
+      message: "已平滑定位到「\(item.title)」。",
+      isAnimated: true
+    )
   }
 
   func performOutlineAction(
@@ -238,7 +255,7 @@ extension MacMarkdownComposerView {
 
     var updated = previewDraft
     updated.bodyMarkdown = mutation.text
-    applyDraftUpdate(updated)
+    requestUndoableBodyUpdate(updated)
     selectedRange = mutation.selectedRange
   }
 
@@ -277,8 +294,50 @@ extension MacMarkdownComposerView {
       in: edit.replacedRange,
       with: edit.replacement
     )
-    applyDraftUpdate(updated)
     selectedRange = edit.selectedRange
+    requestUndoableBodyUpdate(updated)
+  }
+
+  func applyAdvancedMarkdownFormatting(
+    _ command: MarkdownAdvancedFormattingCommand
+  ) {
+    guard requireBodyEditingContext() else { return }
+    guard
+      let edit = MarkdownAdvancedEditingService().formattingEdit(
+        in: editorBody,
+        selectedRange: selectedRange,
+        command: command
+      )
+    else {
+      return
+    }
+    applyAdvancedMarkdownEdit(edit)
+  }
+
+  func applyMarkdownLineEditing(_ command: MarkdownLineEditingCommand) {
+    guard requireBodyEditingContext() else { return }
+    guard
+      let edit = MarkdownAdvancedEditingService().lineEdit(
+        in: editorBody,
+        selectedRange: selectedRange,
+        command: command
+      )
+    else {
+      selectionActionMessage = "当前选区不能执行这项行操作。"
+      return
+    }
+    applyAdvancedMarkdownEdit(edit)
+  }
+
+  private func applyAdvancedMarkdownEdit(_ edit: MarkdownSmartEdit) {
+    if editorState.editorDisplayMode == .preview {
+      store.setEditorDisplayMode(.edit)
+    }
+    selectedRange = edit.selectedRange
+    editorEditRequest = MarkdownTextEditRequest(
+      expectedText: editorBody,
+      edit: edit
+    )
   }
 
   func wrapSelection(prefix: String, suffix: String, placeholder: String) {
@@ -290,8 +349,8 @@ extension MacMarkdownComposerView {
       suffix: suffix,
       placeholder: placeholder
     )
-    _ = applyDraftUpdate(mutation.draft)
     selectedRange = mutation.selectedRange
+    _ = requestUndoableBodyUpdate(mutation.draft)
   }
 
   func prefixCurrentLine(_ prefix: String) {
@@ -307,15 +366,17 @@ extension MacMarkdownComposerView {
       selectedRange: selectedRange,
       transform: transform
     )
-    _ = applyDraftUpdate(mutation.draft)
     selectedRange = mutation.selectedRange
+    _ = requestUndoableBodyUpdate(mutation.draft)
   }
 
   func insertCodeBlock() {
     guard requireBodyEditingContext() else { return }
     let selected = selectedText(in: editorBody).trimmedForPublishing
     let body = selected.isEmpty ? "code" : selected
-    applyDraftUpdate(replacingSelection(in: previewDraft, with: "```\n\(body)\n```"))
+    requestUndoableBodyUpdate(
+      replacingSelection(in: previewDraft, with: "```\n\(body)\n```")
+    )
   }
 
   func insertTable() {
@@ -328,7 +389,6 @@ extension MacMarkdownComposerView {
     let source = editorBody as NSString
     let insertionRange = editingRange(in: source)
     let updated = replacingSelection(in: previewDraft, with: table)
-    guard applyDraftUpdate(updated) else { return }
 
     let updatedSource = updated.bodyMarkdown as NSString
     let searchStart = min(insertionRange.location, updatedSource.length)
@@ -340,20 +400,22 @@ extension MacMarkdownComposerView {
       )
     )
     let insertedTableRange = updatedSource.range(of: table, options: [], range: searchRange)
-    guard insertedTableRange.location != NSNotFound else { return }
-    let firstHeaderRange = updatedSource.range(
-      of: "列 1",
-      options: [],
-      range: insertedTableRange
-    )
-    if firstHeaderRange.location != NSNotFound {
-      selectedRange = firstHeaderRange
+    if insertedTableRange.location != NSNotFound {
+      let firstHeaderRange = updatedSource.range(
+        of: "列 1",
+        options: [],
+        range: insertedTableRange
+      )
+      if firstHeaderRange.location != NSNotFound {
+        selectedRange = firstHeaderRange
+      }
     }
+    _ = requestUndoableBodyUpdate(updated)
   }
 
   func insertHorizontalRule() {
     guard requireBodyEditingContext() else { return }
-    applyDraftUpdate(replacingSelection(in: previewDraft, with: "---"))
+    requestUndoableBodyUpdate(replacingSelection(in: previewDraft, with: "---"))
   }
 
   func insertInternalLink(_ suggestion: MarkdownInternalLinkSuggestion) {
@@ -362,14 +424,18 @@ extension MacMarkdownComposerView {
       to: suggestion,
       selectedText: selectedText(in: editorBody)
     )
-    guard applyDraftUpdate(replacingRawSelection(in: previewDraft, with: markdown)) else { return }
+    guard requestUndoableBodyUpdate(
+      replacingRawSelection(in: previewDraft, with: markdown)
+    ) else { return }
     selectionActionMessage = "已插入站内链接：\(suggestion.title)"
   }
 
   func insertSnippet(_ snippet: MarkdownSnippet) {
     guard requireBodyEditingContext() else { return }
     let markdown = MarkdownSnippetLibraryService.expandedMarkdown(for: snippet, draft: previewDraft)
-    guard applyDraftUpdate(replacingSelection(in: previewDraft, with: markdown)) else { return }
+    guard requestUndoableBodyUpdate(
+      replacingSelection(in: previewDraft, with: markdown)
+    ) else { return }
     let kindName = snippet.kind == .articleTemplate ? "文章模板" : "正文片段"
     selectionActionMessage = "已插入\(kindName)：\(snippet.title)"
   }

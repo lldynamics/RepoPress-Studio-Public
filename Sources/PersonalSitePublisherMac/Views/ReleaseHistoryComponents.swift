@@ -27,7 +27,9 @@ struct DeploymentStatusTrendChart: View {
       .frame(height: 42, alignment: .bottom)
       .accessibilityElement(children: .contain)
       .accessibilityLabel("部署趋势")
-      .accessibilityValue("共 \(orderedHistory.count) 条部署状态记录")
+      .accessibilityValue(
+        String(localized: "共 \(orderedHistory.count) 条部署状态记录")
+      )
 
       HStack(spacing: 10) {
         trendLegend("正常", color: WorkbenchTheme.success)

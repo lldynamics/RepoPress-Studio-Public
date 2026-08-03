@@ -65,27 +65,27 @@ enum ContentHealthContextFilter: String, CaseIterable, Identifiable {
   }
 }
 
-enum ImageWorkbenchContextStage: String, Identifiable {
+enum ImageWorkbenchContextStage: String, Identifiable, Hashable {
   case overview
-  case issues
   case repository
+  case manager
 
   var id: String { rawValue }
 
   static let navigationStages: [Self] = [
     .overview,
-    .issues,
     .repository,
+    .manager,
   ]
 
   var title: LocalizedStringKey {
     switch self {
     case .overview:
       return "概览与批量处理"
-    case .issues:
-      return "问题文章"
     case .repository:
       return "仓库图片"
+    case .manager:
+      return "资源管理"
     }
   }
 
@@ -93,10 +93,10 @@ enum ImageWorkbenchContextStage: String, Identifiable {
     switch self {
     case .overview:
       return String(localized: "概览与批量处理")
-    case .issues:
-      return String(localized: "问题文章")
     case .repository:
       return String(localized: "仓库图片")
+    case .manager:
+      return String(localized: "资源管理")
     }
   }
 
@@ -104,10 +104,10 @@ enum ImageWorkbenchContextStage: String, Identifiable {
     switch self {
     case .overview:
       return "rectangle.grid.2x2"
-    case .issues:
-      return "photo.badge.exclamationmark"
     case .repository:
       return "photo.stack"
+    case .manager:
+      return "archivebox"
     }
   }
 }
@@ -115,7 +115,6 @@ enum ImageWorkbenchContextStage: String, Identifiable {
 enum RepositoryContextStage: String, Identifiable {
   case overview
   case changes
-  case checks
   case source
   case history
 
@@ -131,8 +130,6 @@ enum RepositoryContextStage: String, Identifiable {
     switch self {
     case .source:
       return .changes
-    case .checks:
-      return .overview
     case .overview, .changes, .history:
       return self
     }
@@ -144,8 +141,6 @@ enum RepositoryContextStage: String, Identifiable {
       return "概览"
     case .changes:
       return "文件变更"
-    case .checks:
-      return "高级工具"
     case .source:
       return "源码"
     case .history:
@@ -159,8 +154,6 @@ enum RepositoryContextStage: String, Identifiable {
       return String(localized: "概览")
     case .changes:
       return String(localized: "文件变更")
-    case .checks:
-      return String(localized: "高级工具")
     case .source:
       return String(localized: "源码")
     case .history:
@@ -172,7 +165,7 @@ enum RepositoryContextStage: String, Identifiable {
     switch self {
     case .overview, .history:
       return false
-    case .changes, .checks, .source:
+    case .changes, .source:
       return true
     }
   }

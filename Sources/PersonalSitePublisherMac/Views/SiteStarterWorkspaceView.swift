@@ -6,7 +6,7 @@ struct SiteStarterWorkspaceView: View {
   @ObservedObject var store: WorkbenchStore
   @SceneStorage("siteStarterSelectedStep") private var selectedStepRaw = SiteStarterWizardStep.template.rawValue
   @SceneStorage("siteStarterMode") private var modeRaw = SiteStarterMode.create.rawValue
-  @State private var templateID: SiteStarterTemplateID = .zolaPersonalBlog
+  @State private var importedSiteKind: SiteKind = .zola
   @State private var rootPath = ""
   @State private var siteName = ""
   @State private var siteDescription = ""
@@ -150,13 +150,12 @@ struct SiteStarterWorkspaceView: View {
           get: { mode },
           set: { mode = $0 }
         ),
-        templateID: $templateID,
         selectedTemplate: selectedTemplate,
+        importedSiteKind: $importedSiteKind,
         siteName: $siteName,
         siteDescription: $siteDescription,
         author: $author,
-        baseURL: $baseURL,
-        templateIndexDescription: templateIndexDescription
+        baseURL: $baseURL
       )
     case .localDirectory:
       SiteStarterLocalDirectoryStep(
@@ -264,7 +263,7 @@ struct SiteStarterWorkspaceView: View {
   }
 
   private var selectedTemplate: SiteStarterTemplate? {
-    SiteStarterTemplate.builtIn.first { $0.id == templateID }
+    SiteStarterTemplate.builtIn.first
   }
 
   private var workflowSteps: [SiteStarterWizardStep] {
@@ -390,11 +389,15 @@ struct SiteStarterWorkspaceView: View {
   private func detail(for step: SiteStarterWizardStep) -> String {
     switch step {
     case .template:
-      return selectedTemplate.map { "\($0.name) · \($0.siteKind.localizedDisplayName)" } ?? "选择 Starter 模板"
+      if mode == .importExisting {
+        return String(format: String(localized: "导入已有站点 · %@"), importedSiteKind.localizedDisplayName)
+      }
+      return selectedTemplate.map { "\($0.name) · \($0.siteKind.localizedDisplayName)" }
+        ?? String(localized: "选择 Starter 模板")
     case .localDirectory:
       return store.siteStarterResult?.profile.localRepositoryRootPath.nilIfEmpty
         ?? rootPath.nilIfEmpty
-        ?? "选择空文件夹"
+        ?? String(localized: "选择空文件夹")
     case .github:
       if let remote = store.siteStarterResult?.configuredRemoteURL {
         return remote
@@ -403,21 +406,30 @@ struct SiteStarterWorkspaceView: View {
         return creation.repositoryName
       }
       if hasVerifiedExistingGitHubRepository {
-        return "\(expectedGitHubRepositoryName) · 已验证可写"
+        return String(format: String(localized: "%@ · 已验证可写"), expectedGitHubRepositoryName)
       }
       if githubOwner.isEmpty && githubRepo.isEmpty {
-        return deploymentTarget == .none ? "暂不部署" : "填写 owner/repo"
+        return deploymentTarget == .none
+          ? String(localized: "暂不部署")
+          : String(localized: "填写 owner/repo")
       }
       return "\(githubOwner)/\(githubRepo)"
     case .generate:
       if mode == .create {
-        return store.siteStarterResult.map { "\($0.createdFilePaths.count) 个文件" } ?? "生成模板和首篇文章"
+        return store.siteStarterResult.map {
+          String(format: String(localized: "%d 个文件"), $0.createdFilePaths.count)
+        } ?? String(localized: "生成模板和首篇文章")
       }
-      return store.siteStarterImportResult.map { "\($0.importedDraftCount) 篇文章" } ?? "导入已有仓库"
+      return store.siteStarterImportResult.map {
+        String(format: String(localized: "%d 篇文章"), $0.importedDraftCount)
+      } ?? String(localized: "导入已有仓库")
     case .firstPush:
-      return store.siteStarterPushResult.map { "\($0.branch) · \($0.commitSHA.prefix(8))" } ?? "提交并推送 Starter"
+      return store.siteStarterPushResult.map { "\($0.branch) · \($0.commitSHA.prefix(8))" }
+        ?? String(localized: "提交并推送 Starter")
     case .deployment:
-      return deploymentTarget == .none ? "未启用部署" : deploymentTarget.localizedDisplayName
+      return deploymentTarget == .none
+        ? String(localized: "未启用部署")
+        : deploymentTarget.localizedDisplayName
     }
   }
 
@@ -444,7 +456,7 @@ struct SiteStarterWorkspaceView: View {
 
   private func createStarterSite() {
     let request = SiteStarterRequest(
-      templateID: templateID,
+      templateID: .zolaPersonalBlog,
       rootPath: rootPath,
       siteName: siteName,
       siteDescription: siteDescription,
@@ -472,7 +484,7 @@ struct SiteStarterWorkspaceView: View {
     let request = SiteStarterImportRequest(
       rootPath: rootPath,
       siteName: siteName,
-      siteKind: selectedTemplate?.siteKind ?? .zola,
+      siteKind: importedSiteKind,
       author: author,
       branch: branch,
       githubOwner: githubOwner,
@@ -488,13 +500,6 @@ struct SiteStarterWorkspaceView: View {
         selectedStep = .deployment
       }
     }
-  }
-
-  private func templateIndexDescription(_ template: SiteStarterTemplate) -> String {
-    guard let index = SiteStarterTemplate.builtIn.firstIndex(where: { $0.id == template.id }) else {
-      return "\(SiteStarterTemplate.builtIn.count) 个"
-    }
-    return "\(index + 1)/\(SiteStarterTemplate.builtIn.count)"
   }
 
   private func presentGitHubRepositoryConfirmation() {

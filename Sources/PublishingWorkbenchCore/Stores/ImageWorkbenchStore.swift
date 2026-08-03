@@ -19,9 +19,12 @@ public final class ImageWorkbenchStore: ObservableObject {
   private var siteSummaryGeneration: UInt64 = 0
   private var siteSummaryBaseline: ImageWorkbenchSiteSummaryInputSignature?
   private var siteSummaryBaselineRevision: UInt64?
+  private var lastBatchRetryAction: (@MainActor () -> Void)?
 
   @Published public private(set) var imageBatchProgress: ImageBatchProgress?
   @Published public private(set) var isImageBatchProcessing = false
+  @Published public private(set) var lastBatchFailure: String?
+  @Published public private(set) var lastBatchOperation: ImageBatchOperation?
   @Published public private(set) var backgroundImageReport: ImageWorkbenchReport?
   @Published public private(set) var imageReportLoadingDraftID: UUID?
   @Published public private(set) var backgroundSiteSummary: ImageWorkbenchSiteSummary?
@@ -128,6 +131,15 @@ public final class ImageWorkbenchStore: ObservableObject {
       totalDraftCount: currentDrafts.count
     )
     isImageBatchProcessing = true
+    lastBatchFailure = nil
+    lastBatchOperation = operation
+    lastBatchRetryAction = { [weak self] in
+      self?.startImageBatch(
+        operation,
+        drafts: currentDrafts,
+        includedAttachmentIDsByDraftID: includedAttachmentIDsByDraftID
+      )
+    }
     imageActionMessage = CoreL10n.format("正在%@：0/%d 篇文章。", operation.progressTitle, currentDrafts.count)
 
     imageBatchTask = Task { [weak self] in
@@ -157,12 +169,14 @@ public final class ImageWorkbenchStore: ObservableObject {
       } catch is CancellationError {
         self?.finishImageBatch(
           operationID: operationID,
-          message: CoreL10n.format("已取消%@，临时文件已清理。", operation.progressTitle)
+          message: CoreL10n.format("已取消%@，临时文件已清理。", operation.progressTitle),
+          failure: nil
         )
       } catch {
         self?.finishImageBatch(
           operationID: operationID,
-          message: CoreL10n.format("%@失败：%@", operation.progressTitle, error.localizedDescription)
+          message: CoreL10n.format("%@失败：%@", operation.progressTitle, error.localizedDescription),
+          failure: error.localizedDescription
         )
       }
     }
@@ -185,7 +199,8 @@ public final class ImageWorkbenchStore: ObservableObject {
         message: CoreL10n.format(
           "有 %d 篇文章在图片处理期间被修改，本次结果未应用；请确认编辑内容后重新运行。",
           conflictingDraftIDs.count
-        )
+        ),
+        failure: "有文章在图片处理期间被修改，请确认编辑内容后重新运行。"
       )
       return
     }
@@ -223,10 +238,10 @@ public final class ImageWorkbenchStore: ObservableObject {
         message = CoreL10n.format("已裁剪封面图为 16:9，预计减少 %@。", saved)
       }
     }
-    finishImageBatch(operationID: imageBatchOperationID, message: message)
+    finishImageBatch(operationID: imageBatchOperationID, message: message, failure: nil)
   }
 
-  private func finishImageBatch(operationID: UUID?, message: String) {
+  private func finishImageBatch(operationID: UUID?, message: String, failure: String? = nil) {
     guard operationID == imageBatchOperationID else { return }
     imageBatchTask = nil
     imageBatchCancellationToken = nil
@@ -234,7 +249,16 @@ public final class ImageWorkbenchStore: ObservableObject {
     imageBatchDraftBaselines = [:]
     imageBatchProgress = nil
     isImageBatchProcessing = false
+    lastBatchFailure = failure
     imageActionMessage = message
+  }
+
+  public func retryLastBatch() {
+    guard !isImageBatchProcessing, let lastBatchRetryAction else {
+      imageActionMessage = CoreL10n.text("当前没有可重试的图片处理任务。")
+      return
+    }
+    lastBatchRetryAction()
   }
 
   public func refreshImageWorkbenchReport() {
@@ -645,17 +669,35 @@ public final class ImageWorkbenchStore: ObservableObject {
     startImageBatch(.cropCover16By9, drafts: [selectedDraft])
   }
 
-  public func makeAttachment(from url: URL, draft: ArticleDraft) -> DraftAttachment {
+  public func makeAttachment(
+    from url: URL,
+    draft: ArticleDraft,
+    fileStore: ManagedAttachmentFileStore = ManagedAttachmentFileStore()
+  ) async throws -> DraftAttachment {
+    let attachmentID = UUID()
     let filename = url.lastPathComponent.nilIfEmpty ?? "image-\(UUID().uuidString).jpg"
-    let byteSize = ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)) ?? 0
+    let managedURL = try await Task.detached(priority: .userInitiated) {
+      try fileStore.storeFile(at: url, attachmentID: attachmentID)
+    }.value
+    do {
+      try Task.checkCancellation()
+    } catch {
+      fileStore.discardStoredFile(at: managedURL)
+      throw error
+    }
+    let byteSize = (
+      (try? managedURL.resourceValues(forKeys: [.fileSizeKey]).fileSize)
+        .map(Int64.init)
+    ) ?? 0
     let profile = profile(for: draft)
     let repositoryPath = profile.imageRepositoryPath(filename: filename, draft: draft)
     return DraftAttachment(
+      id: attachmentID,
       originalFilename: filename,
       relativePublishPath: profile.publicImagePath(filename: filename, draft: draft),
       repositoryPath: repositoryPath,
       byteSize: byteSize,
-      sourceFilePath: url.path
+      sourceFilePath: managedURL.path
     )
   }
 

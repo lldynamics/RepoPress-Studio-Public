@@ -1,43 +1,25 @@
 import Foundation
 import PublishingWorkbenchCore
 
-struct KnowledgeBrowserConnectionTokenDefaults: @unchecked Sendable {
-  let value: UserDefaults
-
-  init(_ value: UserDefaults) {
-    self.value = value
-  }
-}
-
 struct KnowledgeBrowserConnectionTokenStore {
-  private let fileURL: URL?
-  private let defaults: UserDefaults
-  private let legacyDefaultsKey: String
+  private static let accountIdentifier = "connection-token-v1"
+
+  private let keychain: KeychainTokenStore
 
   init(
-    fileURL: URL?,
-    defaults: KnowledgeBrowserConnectionTokenDefaults,
-    legacyDefaultsKey: String
+    keychain: KeychainTokenStore = KeychainTokenStore(
+      service: KeychainCredentialServices.browserBridge,
+      accountPrefix: "browser-bridge"
+    )
   ) {
-    self.fileURL = fileURL
-    self.defaults = defaults.value
-    self.legacyDefaultsKey = legacyDefaultsKey
+    self.keychain = keychain
   }
 
   func token() throws -> String? {
-    guard let fileURL else {
-      return defaults.string(forKey: legacyDefaultsKey)
+    guard let token = try keychain.token(forAccountIdentifier: Self.accountIdentifier) else {
+      return nil
     }
-    guard FileManager.default.fileExists(atPath: fileURL.path) else {
-      return defaults.string(forKey: legacyDefaultsKey)
-    }
-
-    let data = try BoundedFileReader.data(
-      at: fileURL,
-      maximumByteCount: 4_096
-    )
-    guard let token = String(data: data, encoding: .utf8),
-          !token.isEmpty else {
+    guard !token.isEmpty else {
       throw KnowledgeBrowserConnectionTokenStoreError.invalidData
     }
     return token
@@ -47,36 +29,17 @@ struct KnowledgeBrowserConnectionTokenStore {
     guard !token.isEmpty else {
       throw KnowledgeBrowserConnectionTokenStoreError.invalidData
     }
-    guard let fileURL else {
-      defaults.set(token, forKey: legacyDefaultsKey)
-      return
-    }
-
-    let directoryURL = fileURL.deletingLastPathComponent()
-    try FileManager.default.createDirectory(
-      at: directoryURL,
-      withIntermediateDirectories: true
-    )
-    try FileManager.default.setAttributes(
-      [.posixPermissions: 0o700],
-      ofItemAtPath: directoryURL.path
-    )
-    try Data(token.utf8).write(to: fileURL, options: .atomic)
-    try FileManager.default.setAttributes(
-      [.posixPermissions: 0o600],
-      ofItemAtPath: fileURL.path
-    )
-    defaults.removeObject(forKey: legacyDefaultsKey)
+    try keychain.saveToken(token, forAccountIdentifier: Self.accountIdentifier)
   }
 }
 
-enum KnowledgeBrowserConnectionTokenStoreError: LocalizedError {
+enum KnowledgeBrowserConnectionTokenStoreError: LocalizedError, Equatable {
   case invalidData
 
   var errorDescription: String? {
     switch self {
     case .invalidData:
-      return "浏览器连接令牌文件内容无效。"
+      return "Keychain 中的浏览器连接令牌内容无效。"
     }
   }
 }

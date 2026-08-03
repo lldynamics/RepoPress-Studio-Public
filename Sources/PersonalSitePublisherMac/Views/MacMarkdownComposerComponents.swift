@@ -4,6 +4,9 @@ import PublishingWorkbenchCore
 import SwiftUI
 import UniformTypeIdentifiers
 import WebKit
+#if canImport(Darwin)
+import Darwin
+#endif
 
 enum MarkdownOutlineSectionAction {
   case moveUp
@@ -29,7 +32,7 @@ struct MarkdownOutlinePopover: View {
 
         Spacer()
 
-        Text("章节 \(items.count)")
+        Text(String(localized: "章节 \(items.count)"))
           .font(.caption)
           .foregroundStyle(.secondary)
       }
@@ -107,7 +110,7 @@ struct MarkdownOutlinePopover: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
-      .accessibilityLabel("\(item.level) 级标题：\(item.title)")
+      .accessibilityLabel(String(localized: "\(item.level) 级标题：\(item.title)"))
       .accessibilityValue(item.publicRiskSummary.statusTitle)
 
       outlineActionMenu(for: item)
@@ -200,7 +203,7 @@ struct MarkdownOutlinePopover: View {
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
     .fixedSize()
-    .help("更多章节操作")
+    .help(String(localized: "更多章节操作"))
     .accessibilityLabel(Text("更多章节操作"))
   }
 
@@ -446,7 +449,7 @@ struct FindReplaceBar: View {
       .frame(minWidth: 100, idealWidth: 170, maxWidth: maxWidth)
       .focused($isFindFieldFocused)
       .accessibilityLabel("查找文本")
-      .accessibilityValue(findQuery.nilIfEmpty ?? "未输入")
+      .accessibilityValue(findQuery.nilIfEmpty ?? String(localized: "未输入"))
   }
 
   private func replacementField(maxWidth: CGFloat) -> some View {
@@ -454,7 +457,7 @@ struct FindReplaceBar: View {
       .textFieldStyle(.roundedBorder)
       .frame(minWidth: 100, idealWidth: 170, maxWidth: maxWidth)
       .accessibilityLabel("替换文本")
-      .accessibilityValue(replacementText.nilIfEmpty ?? "未输入")
+      .accessibilityValue(replacementText.nilIfEmpty ?? String(localized: "未输入"))
   }
 
   private var findControls: some View {
@@ -472,7 +475,7 @@ struct FindReplaceBar: View {
         Image(systemName: "chevron.up")
       }
       .disabled(!canUseFindReplace)
-      .help("查找上一个（Shift+Return）")
+      .help(String(localized: "查找上一个（Shift+Return）"))
       .accessibilityLabel("查找上一个")
 
       Button {
@@ -481,7 +484,7 @@ struct FindReplaceBar: View {
         Image(systemName: "chevron.down")
       }
       .disabled(!canUseFindReplace)
-      .help("查找下一个（Return）")
+      .help(String(localized: "查找下一个（Return）"))
       .accessibilityLabel("查找下一个")
 
       Menu {
@@ -493,7 +496,7 @@ struct FindReplaceBar: View {
       }
       .menuStyle(.borderlessButton)
       .fixedSize()
-      .help("查找模式")
+      .help(String(localized: "查找模式"))
       .accessibilityLabel("查找模式")
     }
     .fixedSize()
@@ -527,18 +530,20 @@ struct FindReplaceBar: View {
       Image(systemName: "xmark")
     }
     .buttonStyle(.borderless)
-    .help("关闭查找替换")
+    .help(String(localized: "关闭查找替换"))
     .accessibilityLabel("关闭查找替换")
   }
 }
 
 struct MarkdownPreviewPane: View {
   let draft: ArticleDraft
+  let profile: SiteProfile
   let showsSynchronizedScrollingControl: Bool
   @Binding var isSynchronizedScrollingEnabled: Bool
   let scrollSyncUpdate: MarkdownScrollSyncUpdate?
   let scrollRestorationUpdate: MarkdownScrollSyncUpdate?
   let onScrollProgressChanged: (Double) -> Void
+  let onSourceLocationSelected: (Int) -> Void
   @Environment(\.colorScheme) private var colorScheme
   @AppStorage("markdownEditorPreviewTheme") private var previewThemeRaw = MarkdownPreviewTheme.system.rawValue
   @State private var htmlDocument = ""
@@ -548,6 +553,7 @@ struct MarkdownPreviewPane: View {
   @State private var renderGeneration: UInt64 = 0
   @State private var isRendering = false
   @State private var renderErrorMessage: String?
+  @State private var siteStyleSourcePaths: [String] = []
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -572,6 +578,22 @@ struct MarkdownPreviewPane: View {
           }
         }
 
+        if previewTheme == .site {
+          if siteStyleSourcePaths.isEmpty {
+            Label("未找到站点 CSS", systemImage: "exclamationmark.triangle")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          } else {
+            Label(
+              String(localized: "\(siteStyleSourcePaths.count) 个站点样式"),
+              systemImage: "paintbrush"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .help(siteStyleSourcePaths.joined(separator: "\n"))
+          }
+        }
+
         Picker("预览主题", selection: previewThemeBinding) {
           ForEach(MarkdownPreviewTheme.allCases) { theme in
             Text(theme.title).tag(theme)
@@ -591,7 +613,7 @@ struct MarkdownPreviewPane: View {
       previewContent
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    .accessibilityLabel("文章预览：\(draft.title)")
+    .accessibilityLabel(String(localized: "文章预览：\(draft.title)"))
     .onAppear {
       scheduleHTMLRender(immediate: true)
     }
@@ -613,9 +635,15 @@ struct MarkdownPreviewPane: View {
       }
     }
     .toggleStyle(.button)
-    .help(isSynchronizedScrollingEnabled ? "关闭编辑与预览同步滚动" : "开启编辑与预览同步滚动")
+    .help(
+      isSynchronizedScrollingEnabled
+        ? String(localized: "关闭编辑与预览同步滚动")
+        : String(localized: "开启编辑与预览同步滚动")
+    )
     .accessibilityLabel("编辑与预览同步滚动")
-    .accessibilityValue(isSynchronizedScrollingEnabled ? "开启" : "关闭")
+    .accessibilityValue(
+      isSynchronizedScrollingEnabled ? String(localized: "开启") : String(localized: "关闭")
+    )
   }
 
   private var previewTheme: MarkdownPreviewTheme {
@@ -634,6 +662,7 @@ struct MarkdownPreviewPane: View {
       title: draft.title.trimmedForPublishing.nilIfEmpty ?? String(localized: "未命名文章"),
       markdown: draft.bodyMarkdown,
       attachments: draft.attachments,
+      profile: profile,
       theme: previewTheme,
       isDarkAppearance: colorScheme == .dark
     )
@@ -677,7 +706,8 @@ struct MarkdownPreviewPane: View {
           assetResources: assetResources,
           scrollSyncUpdate: isSynchronizedScrollingEnabled ? scrollSyncUpdate : nil,
           scrollRestorationUpdate: scrollRestorationUpdate,
-          onScrollProgressChanged: onScrollProgressChanged
+          onScrollProgressChanged: onScrollProgressChanged,
+          onSourceLocationSelected: onSourceLocationSelected
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
@@ -740,6 +770,7 @@ struct MarkdownPreviewPane: View {
         renderID = snapshot.id
         assetResources = snapshot.assetResources
         htmlDocument = snapshot.html
+        siteStyleSourcePaths = snapshot.siteStyleSourcePaths
         renderErrorMessage = nil
       } catch is CancellationError {
         return
@@ -755,6 +786,7 @@ private struct MarkdownPreviewRenderInput: Hashable, Sendable {
   let title: String
   let markdown: String
   let attachments: [DraftAttachment]
+  let profile: SiteProfile
   let theme: MarkdownPreviewTheme
   let isDarkAppearance: Bool
 }
@@ -762,12 +794,14 @@ private struct MarkdownPreviewRenderInput: Hashable, Sendable {
 private struct MarkdownPreviewRenderCacheKey: Hashable, Sendable {
   let input: MarkdownPreviewRenderInput
   let assetResources: [MarkdownPreviewAssetResource]
+  let siteStylesheet: SitePreviewStylesheet?
 }
 
 private struct MarkdownPreviewRenderSnapshot: Sendable {
   let id: UUID
   let html: String
   let assetResources: [MarkdownPreviewAssetResource]
+  let siteStyleSourcePaths: [String]
 }
 
 private actor MarkdownPreviewRenderEngine {
@@ -780,9 +814,13 @@ private actor MarkdownPreviewRenderEngine {
   func render(_ input: MarkdownPreviewRenderInput) throws -> MarkdownPreviewRenderSnapshot {
     try Task.checkCancellation()
     let resources = MarkdownPreviewAssetResource.resources(for: input.attachments)
+    let siteStylesheet = input.theme == .site
+      ? SitePreviewStyleService.load(for: input.profile)
+      : nil
     let cacheKey = MarkdownPreviewRenderCacheKey(
       input: input,
-      assetResources: resources
+      assetResources: resources,
+      siteStylesheet: siteStylesheet
     )
     if let cachedSnapshot = cache.snapshot(for: cacheKey) {
       return cachedSnapshot
@@ -797,13 +835,15 @@ private actor MarkdownPreviewRenderEngine {
         uniqueKeysWithValues: resources.map { ($0.attachmentID, $0.previewURLString) }
       ),
       theme: input.theme,
-      isDarkAppearance: input.isDarkAppearance
+      isDarkAppearance: input.isDarkAppearance,
+      siteStylesheet: siteStylesheet
     )
     try Task.checkCancellation()
     let snapshot = MarkdownPreviewRenderSnapshot(
       id: UUID(),
       html: html,
-      assetResources: resources
+      assetResources: resources,
+      siteStyleSourcePaths: siteStylesheet?.sourcePaths ?? []
     )
     cache.insert(snapshot, for: cacheKey)
     return snapshot
@@ -817,7 +857,8 @@ private enum MarkdownPreviewHTMLRenderer {
     attachments: [DraftAttachment],
     previewURLByAttachmentID: [UUID: String],
     theme: MarkdownPreviewTheme,
-    isDarkAppearance: Bool
+    isDarkAppearance: Bool,
+    siteStylesheet: SitePreviewStylesheet?
   ) throws -> String {
     var renderedBlocks: [String] = []
     let bodyMarkdown = MarkdownPreviewTitleService.bodyMarkdown(
@@ -842,8 +883,15 @@ private enum MarkdownPreviewHTMLRenderer {
       }
     }
     try Task.checkCancellation()
-    let body = theme.decorate(renderedBlocks.joined(separator: "\n"))
+    let body = MarkdownPreviewSourceLinkService.annotatingHeadingLinks(
+      in: theme.decorate(renderedBlocks.joined(separator: "\n")),
+      sourceMarkdown: bodyMarkdown
+    )
     let escapedTitle = escapeHTML(title)
+    let previewStyles = theme.styles(
+      isDarkAppearance: isDarkAppearance,
+      siteStylesheet: siteStylesheet
+    )
     return """
     <!doctype html>
     <html>
@@ -852,7 +900,7 @@ private enum MarkdownPreviewHTMLRenderer {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: publisher-asset:; font-src 'none'; media-src publisher-asset:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
         <title>\(escapedTitle)</title>
-        <style>\(theme.styles(isDarkAppearance: isDarkAppearance))</style>
+        <style>\(previewStyles)</style>
       </head>
       <body>
         <article class="markdown-content">
@@ -883,7 +931,7 @@ private enum MarkdownPreviewHTMLRenderer {
 
   private static func mermaidHTML(for diagram: MarkdownMermaidDiagram) -> String {
     guard !diagram.nodes.isEmpty else {
-      return "<section class=\"mermaid-diagram mermaid-fallback\"><strong>Mermaid 图示</strong>\(preformattedFallback(from: diagram.source))</section>"
+      return "<section class=\"mermaid-diagram mermaid-fallback\"><strong>Mermaid 基础流程图预览</strong><span class=\"mermaid-note\">当前不是完整 Mermaid 渲染。</span>\(preformattedFallback(from: diagram.source))</section>"
     }
 
     let nodeWidth = 180.0
@@ -930,8 +978,9 @@ private enum MarkdownPreviewHTMLRenderer {
     .joined()
 
     return """
-    <section class="mermaid-diagram" aria-label="Mermaid 图示">
-      <div class="mermaid-title">Mermaid 图示</div>
+    <section class="mermaid-diagram" aria-label="Mermaid 基础流程图预览">
+      <div class="mermaid-title">Mermaid 基础流程图预览</div>
+      <div class="mermaid-note">当前仅支持基础流程图预览，不是完整 Mermaid。</div>
       <svg viewBox="0 0 \(width) \(height)" role="img" aria-label="\(escapeHTML(diagram.nodes.map(\.label).joined(separator: "，")))">
         <defs><marker id="mermaid-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker></defs>
         \(edges)
@@ -949,6 +998,7 @@ private enum MarkdownPreviewHTMLRenderer {
 
 enum MarkdownPreviewTheme: String, CaseIterable, Identifiable, Hashable, Sendable {
   case system
+  case site
   case github
   case githubDark
   case simple
@@ -959,6 +1009,8 @@ enum MarkdownPreviewTheme: String, CaseIterable, Identifiable, Hashable, Sendabl
     switch self {
     case .system:
       return String(localized: "跟随系统")
+    case .site:
+      return String(localized: "真实站点 CSS")
     case .github:
       return "GitHub"
     case .githubDark:
@@ -968,7 +1020,10 @@ enum MarkdownPreviewTheme: String, CaseIterable, Identifiable, Hashable, Sendabl
     }
   }
 
-  func styles(isDarkAppearance: Bool) -> String {
+  func styles(
+    isDarkAppearance: Bool,
+    siteStylesheet: SitePreviewStylesheet? = nil
+  ) -> String {
     switch self {
     case .system:
       if isDarkAppearance {
@@ -997,6 +1052,19 @@ enum MarkdownPreviewTheme: String, CaseIterable, Identifiable, Hashable, Sendabl
       .markdown-content blockquote { border-left: 4px solid #6f9b65; margin: 12px 0; padding: 8px 12px; background: #e9f1e5; color: #4d624f; }
       \(extendedPreviewStyles)
       """
+    case .site:
+      let base = """
+      :root { color-scheme: light dark; }
+      body { margin: 0; padding: 22px; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; line-height: 1.7; }
+      .markdown-content { max-width: 960px; margin: 0 auto; }
+      .markdown-content img, .markdown-content video { max-width: 100%; height: auto; }
+      .markdown-content table { border-collapse: collapse; }
+      \(extendedPreviewStyles)
+      """
+      guard let siteStylesheet else {
+        return base
+      }
+      return base + "\n\n" + siteStylesheet.css
     case .github:
       return """
       :root { color-scheme: light; }
@@ -1047,15 +1115,29 @@ enum MarkdownPreviewTheme: String, CaseIterable, Identifiable, Hashable, Sendabl
     .article-title { margin: 0; font-size: clamp(1.75em, 4vw, 2.25em); line-height: 1.18; letter-spacing: -.02em; overflow-wrap: anywhere; }
     .mermaid-diagram { margin: 18px 0; padding: 14px; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 10px; overflow-x: auto; }
     .mermaid-title { font-weight: 600; margin-bottom: 8px; }
+    .mermaid-note { display: block; margin: 0 0 8px; color: color-mix(in srgb, currentColor 66%, transparent); font-size: .88em; }
     .mermaid-diagram svg { width: 100%; min-width: 320px; max-height: 720px; }
     .mermaid-diagram .node rect { fill: color-mix(in srgb, currentColor 8%, transparent); stroke: color-mix(in srgb, currentColor 55%, transparent); stroke-width: 1.5; }
     .mermaid-diagram .node text, .mermaid-diagram .edge-label { fill: currentColor; font: 13px -apple-system, BlinkMacSystemFont, sans-serif; }
     .mermaid-diagram .edge { stroke: color-mix(in srgb, currentColor 65%, transparent); stroke-width: 1.6; }
     .mermaid-diagram marker path { fill: currentColor; }
     .mermaid-diagram details { margin-top: 8px; color: inherit; opacity: .75; }
+    .local-katex { color: inherit; }
+    .local-katex-inline { display: inline-block; padding: 0 .12em; font-family: STIX Two Math, Cambria Math, serif; }
+    .local-katex-display { display: block; margin: 1em 0; text-align: center; font-family: STIX Two Math, Cambria Math, serif; font-size: 1.15em; overflow-x: auto; }
+    .math-fraction { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; line-height: 1.05; margin: 0 .12em; }
+    .math-numerator { border-bottom: 1px solid currentColor; padding: 0 .18em .08em; }
+    .math-denominator { padding: .08em .18em 0; }
+    .math-root { display: inline-flex; align-items: flex-start; }
+    .math-root-sign { font-size: 1.2em; line-height: .9; margin-right: .08em; }
+    .math-text, .math-mathrm, .math-operatorname { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-style: normal; }
+    .math-mathit { font-style: italic; }
+    .math-mathbf { font-weight: 700; }
     .local-asset { display: block; margin: 18px 0; max-width: 100%; }
     .local-asset img, .local-asset video { display: block; max-width: 100%; height: auto; border-radius: 8px; }
     .local-asset-caption { display: block; margin-top: 7px; color: color-mix(in srgb, currentColor 68%, transparent); font-size: .9em; line-height: 1.45; }
+    .repopress-source-jump { margin-left: .28em; color: currentColor; opacity: .32; text-decoration: none; font-size: .72em; }
+    .repopress-source-jump:hover, .repopress-source-jump:focus { opacity: .9; text-decoration: underline; }
     """
   }
 }
@@ -1109,21 +1191,275 @@ struct MarkdownPreviewAssetResource: Hashable, Sendable {
   }
 }
 
+struct MarkdownPreviewAssetByteRange: Equatable, Sendable {
+  let lowerBound: Int64
+  let upperBound: Int64
+
+  var count: Int64 { upperBound - lowerBound + 1 }
+
+  static func resolve(header: String?, fileSize: Int64) throws -> Self? {
+    guard let header = header?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !header.isEmpty else {
+      return nil
+    }
+    guard fileSize > 0,
+          header.lowercased().hasPrefix("bytes="),
+          !header.contains(",") else {
+      throw MarkdownPreviewAssetRangeError.unsatisfiable
+    }
+
+    let value = String(header.dropFirst("bytes=".count))
+    let bounds = value.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
+    guard bounds.count == 2 else {
+      throw MarkdownPreviewAssetRangeError.unsatisfiable
+    }
+
+    if bounds[0].isEmpty {
+      guard let suffixCount = Int64(bounds[1]), suffixCount > 0 else {
+        throw MarkdownPreviewAssetRangeError.unsatisfiable
+      }
+      let count = min(suffixCount, fileSize)
+      return Self(lowerBound: fileSize - count, upperBound: fileSize - 1)
+    }
+
+    guard let lowerBound = Int64(bounds[0]),
+          lowerBound >= 0,
+          lowerBound < fileSize else {
+      throw MarkdownPreviewAssetRangeError.unsatisfiable
+    }
+    let upperBound: Int64
+    if bounds[1].isEmpty {
+      upperBound = fileSize - 1
+    } else {
+      guard let requestedUpperBound = Int64(bounds[1]),
+            requestedUpperBound >= lowerBound else {
+        throw MarkdownPreviewAssetRangeError.unsatisfiable
+      }
+      upperBound = min(requestedUpperBound, fileSize - 1)
+    }
+    return Self(lowerBound: lowerBound, upperBound: upperBound)
+  }
+}
+
+private enum MarkdownPreviewAssetRangeError: Error {
+  case unsatisfiable
+}
+
+@MainActor
+private final class MarkdownPreviewAssetTaskSink {
+  private let urlSchemeTask: WKURLSchemeTask
+  private let onCompletion: @MainActor () -> Void
+  private var isActive = true
+
+  init(
+    urlSchemeTask: WKURLSchemeTask,
+    onCompletion: @escaping @MainActor () -> Void
+  ) {
+    self.urlSchemeTask = urlSchemeTask
+    self.onCompletion = onCompletion
+  }
+
+  func sendResponse(
+    url: URL,
+    statusCode: Int,
+    headers: [String: String]
+  ) -> Bool {
+    guard isActive else { return false }
+    guard let response = HTTPURLResponse(
+      url: url,
+      statusCode: statusCode,
+      httpVersion: "HTTP/1.1",
+      headerFields: headers
+    ) else {
+      fail(.badServerResponse)
+      return false
+    }
+    urlSchemeTask.didReceive(response)
+    return true
+  }
+
+  func sendData(_ data: Data) -> Bool {
+    guard isActive else { return false }
+    urlSchemeTask.didReceive(data)
+    return true
+  }
+
+  func finish() {
+    guard isActive else { return }
+    isActive = false
+    urlSchemeTask.didFinish()
+    onCompletion()
+  }
+
+  func fail(_ code: URLError.Code) {
+    guard isActive else { return }
+    isActive = false
+    urlSchemeTask.didFailWithError(URLError(code))
+    onCompletion()
+  }
+
+  func cancel() {
+    isActive = false
+  }
+}
+
+@MainActor
+private final class MarkdownPreviewAssetLoadOperation {
+  let id: UUID
+  let sink: MarkdownPreviewAssetTaskSink
+  var worker: Task<Void, Never>?
+
+  init(id: UUID, sink: MarkdownPreviewAssetTaskSink) {
+    self.id = id
+    self.sink = sink
+  }
+
+  func cancel() {
+    worker?.cancel()
+    sink.cancel()
+  }
+}
+
+private enum MarkdownPreviewAssetFileStreamer {
+  static func stream(
+    resource: MarkdownPreviewAssetResource,
+    rangeHeader: String?,
+    requestURL: URL,
+    maximumByteCount: Int,
+    chunkByteCount: Int,
+    sink: MarkdownPreviewAssetTaskSink
+  ) async {
+#if canImport(Darwin)
+    guard !Task.isCancelled else { return }
+    let descriptor = resource.sourceURL.path.withCString {
+      Darwin.open($0, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK)
+    }
+    guard descriptor >= 0 else {
+      let code: URLError.Code = errno == ENOENT ? .fileDoesNotExist : .noPermissionsToReadFile
+      await sink.fail(code)
+      return
+    }
+    defer { Darwin.close(descriptor) }
+
+    var metadata = stat()
+    guard Darwin.fstat(descriptor, &metadata) == 0,
+          (metadata.st_mode & S_IFMT) == S_IFREG,
+          metadata.st_size >= 0,
+          metadata.st_size <= off_t(maximumByteCount) else {
+      await sink.fail(.dataLengthExceedsMaximum)
+      return
+    }
+
+    let fileSize = Int64(metadata.st_size)
+    let requestedRange: MarkdownPreviewAssetByteRange?
+    do {
+      requestedRange = try MarkdownPreviewAssetByteRange.resolve(
+        header: rangeHeader,
+        fileSize: fileSize
+      )
+    } catch {
+      guard await sink.sendResponse(
+        url: requestURL,
+        statusCode: 416,
+        headers: [
+          "Accept-Ranges": "bytes",
+          "Content-Range": "bytes */\(fileSize)",
+          "Content-Length": "0",
+        ]
+      ) else {
+        return
+      }
+      await sink.finish()
+      return
+    }
+
+    let transferRange = requestedRange
+      ?? (fileSize > 0
+        ? MarkdownPreviewAssetByteRange(lowerBound: 0, upperBound: fileSize - 1)
+        : nil)
+    guard await sink.sendResponse(
+      url: requestURL,
+      statusCode: requestedRange == nil ? 200 : 206,
+      headers: responseHeaders(
+        mimeType: resource.mimeType,
+        fileSize: fileSize,
+        range: requestedRange
+      )
+    ) else {
+      return
+    }
+
+    if let transferRange {
+      var offset = transferRange.lowerBound
+      var remainingByteCount = transferRange.count
+      var buffer = [UInt8](repeating: 0, count: chunkByteCount)
+      while remainingByteCount > 0 {
+        guard !Task.isCancelled else { return }
+        let requestedByteCount = min(Int64(buffer.count), remainingByteCount)
+        let bytesRead = buffer.withUnsafeMutableBytes { rawBuffer in
+          Darwin.pread(
+            descriptor,
+            rawBuffer.baseAddress,
+            Int(requestedByteCount),
+            off_t(offset)
+          )
+        }
+        if bytesRead < 0 {
+          if errno == EINTR { continue }
+          await sink.fail(.cannotDecodeRawData)
+          return
+        }
+        guard bytesRead > 0 else {
+          await sink.fail(.cannotDecodeRawData)
+          return
+        }
+        guard await sink.sendData(Data(buffer.prefix(bytesRead))) else {
+          return
+        }
+        offset += Int64(bytesRead)
+        remainingByteCount -= Int64(bytesRead)
+      }
+    }
+
+    await sink.finish()
+#else
+    await sink.fail(.unsupportedURL)
+#endif
+  }
+
+  private static func responseHeaders(
+    mimeType: String,
+    fileSize: Int64,
+    range: MarkdownPreviewAssetByteRange?
+  ) -> [String: String] {
+    var headers = [
+      "Accept-Ranges": "bytes",
+      "Cache-Control": "no-store",
+      "Content-Length": String(range?.count ?? fileSize),
+      "Content-Type": mimeType,
+    ]
+    if let range {
+      headers["Content-Range"] = "bytes \(range.lowerBound)-\(range.upperBound)/\(fileSize)"
+    }
+    return headers
+  }
+}
+
+@MainActor
 final class MarkdownPreviewAssetSchemeHandler: NSObject, WKURLSchemeHandler {
   private static let maximumImageByteCount = 64 * 1024 * 1024
   private static let maximumVideoByteCount = 256 * 1024 * 1024
+  private static let streamChunkByteCount = 64 * 1024
 
-  private let lock = NSLock()
   private var resourceByAttachmentID: [String: MarkdownPreviewAssetResource] = [:]
+  private var loadOperationByTaskID: [ObjectIdentifier: MarkdownPreviewAssetLoadOperation] = [:]
 
   func update(resources: [MarkdownPreviewAssetResource]) {
-    lock.lock()
     resourceByAttachmentID = Dictionary(
       uniqueKeysWithValues: resources.map {
         ($0.attachmentID.uuidString.lowercased(), $0)
       }
     )
-    lock.unlock()
   }
 
   func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
@@ -1136,34 +1472,44 @@ final class MarkdownPreviewAssetSchemeHandler: NSObject, WKURLSchemeHandler {
       return
     }
 
-    do {
-      let maximumByteCount = resource.mimeType.hasPrefix("video/")
-        ? Self.maximumVideoByteCount
-        : Self.maximumImageByteCount
-      let data = try BoundedFileReader.data(
-        at: resource.sourceURL,
-        maximumByteCount: maximumByteCount
+    let taskID = ObjectIdentifier(urlSchemeTask)
+    loadOperationByTaskID.removeValue(forKey: taskID)?.cancel()
+    let operationID = UUID()
+    let sink = MarkdownPreviewAssetTaskSink(
+      urlSchemeTask: urlSchemeTask
+    ) { [weak self] in
+      self?.finishLoad(taskID: taskID, operationID: operationID)
+    }
+    let operation = MarkdownPreviewAssetLoadOperation(id: operationID, sink: sink)
+    loadOperationByTaskID[taskID] = operation
+    let rangeHeader = urlSchemeTask.request.value(forHTTPHeaderField: "Range")
+    let maximumByteCount = resource.mimeType.hasPrefix("video/")
+      ? Self.maximumVideoByteCount
+      : Self.maximumImageByteCount
+    operation.worker = Task.detached(priority: .utility) {
+      await MarkdownPreviewAssetFileStreamer.stream(
+        resource: resource,
+        rangeHeader: rangeHeader,
+        requestURL: requestURL,
+        maximumByteCount: maximumByteCount,
+        chunkByteCount: Self.streamChunkByteCount,
+        sink: sink
       )
-      let response = URLResponse(
-        url: requestURL,
-        mimeType: resource.mimeType,
-        expectedContentLength: data.count,
-        textEncodingName: nil
-      )
-      urlSchemeTask.didReceive(response)
-      urlSchemeTask.didReceive(data)
-      urlSchemeTask.didFinish()
-    } catch {
-      urlSchemeTask.didFailWithError(error)
     }
   }
 
-  func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
+  func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {
+    let taskID = ObjectIdentifier(urlSchemeTask)
+    loadOperationByTaskID.removeValue(forKey: taskID)?.cancel()
+  }
 
   private func resource(for attachmentID: String) -> MarkdownPreviewAssetResource? {
-    lock.lock()
-    defer { lock.unlock() }
-    return resourceByAttachmentID[attachmentID]
+    resourceByAttachmentID[attachmentID]
+  }
+
+  private func finishLoad(taskID: ObjectIdentifier, operationID: UUID) {
+    guard loadOperationByTaskID[taskID]?.id == operationID else { return }
+    loadOperationByTaskID.removeValue(forKey: taskID)
   }
 }
 
@@ -1174,6 +1520,7 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
   let scrollSyncUpdate: MarkdownScrollSyncUpdate?
   let scrollRestorationUpdate: MarkdownScrollSyncUpdate?
   let onScrollProgressChanged: (Double) -> Void
+  let onSourceLocationSelected: (Int) -> Void
 
   @MainActor
   final class Coordinator: NSObject, WKNavigationDelegate {
@@ -1181,13 +1528,18 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
     var latestScrollSyncUpdate: MarkdownScrollSyncUpdate?
     var latestScrollRestorationUpdate: MarkdownScrollSyncUpdate?
     private let scrollSyncBridge: MarkdownScrollViewSyncBridge
+    private let onSourceLocationSelected: (Int) -> Void
     let assetSchemeHandler = MarkdownPreviewAssetSchemeHandler()
 
-    init(onScrollProgressChanged: @escaping (Double) -> Void) {
+    init(
+      onScrollProgressChanged: @escaping (Double) -> Void,
+      onSourceLocationSelected: @escaping (Int) -> Void
+    ) {
       scrollSyncBridge = MarkdownScrollViewSyncBridge(
         source: .preview,
         onProgressChanged: onScrollProgressChanged
       )
+      self.onSourceLocationSelected = onSourceLocationSelected
       super.init()
     }
 
@@ -1252,6 +1604,11 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
         decisionHandler(.cancel)
         return
       }
+      if let sourceLocation = MarkdownPreviewSourceLinkService.sourceLocation(from: url) {
+        onSourceLocationSelected(sourceLocation)
+        decisionHandler(.cancel)
+        return
+      }
       if navigationAction.navigationType == .linkActivated {
         _ = ExternalURLOpener.open(url)
       }
@@ -1260,7 +1617,10 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
   }
 
   func makeCoordinator() -> Coordinator {
-    Coordinator(onScrollProgressChanged: onScrollProgressChanged)
+    Coordinator(
+      onScrollProgressChanged: onScrollProgressChanged,
+      onSourceLocationSelected: onSourceLocationSelected
+    )
   }
 
   func makeNSView(context: Context) -> WKWebView {

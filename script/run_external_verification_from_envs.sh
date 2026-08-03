@@ -19,7 +19,6 @@ Targets:
   all
   remaining
   remote-publish
-  storekit
   remote-recovery
   app-store-screenshots
   app-store-archive
@@ -110,7 +109,7 @@ case "$ENV_DIR" in
 esac
 
 case "$TARGET" in
-  all|remaining|remote-publish|storekit|remote-recovery|app-store-screenshots|app-store-archive) ;;
+  all|remaining|remote-publish|remote-recovery|app-store-screenshots|app-store-archive) ;;
   *) fail "unsupported target: $TARGET" ;;
 esac
 
@@ -158,9 +157,6 @@ remaining_targets() {
     || ! external_item_complete gitlab-direct-publish \
     || ! external_item_complete gitlab-review-publish; then
     targets+=(remote-publish)
-  fi
-  if ! external_item_complete storekit-sandbox; then
-    targets+=(storekit)
   fi
   if ! external_item_complete remote-conflict-deployment-rollback; then
     targets+=(remote-recovery)
@@ -216,14 +212,6 @@ PLAN
   evidence: docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md
   records: github-direct-publish; github-review-publish; gitlab-direct-publish; gitlab-review-publish
   checklist: Verify GitHub direct commit and PR publishing with a least-privilege token; Verify GitLab direct commit and MR publishing with a least-privilege token.
-PLAN
-      ;;
-    storekit)
-      cat <<'PLAN'
-  env: storekit-sandbox.env
-  evidence: docs/release-evidence/EXTERNAL_VERIFICATION_EVIDENCE.md
-  records: storekit-sandbox
-  checklist: Verify StoreKit product ID, purchase, restore, and free quota behavior in sandbox.
 PLAN
       ;;
     remote-recovery)
@@ -312,32 +300,6 @@ run_remote_publish() {
   fi
 }
 
-run_storekit() {
-  source_env_file "storekit-sandbox.env"
-  require_value STOREKIT_PRODUCT_ID
-  require_value STOREKIT_SANDBOX_PRODUCT_LOOKUP_SUMMARY
-  require_value STOREKIT_SANDBOX_PURCHASE_SUMMARY
-  require_value STOREKIT_SANDBOX_RESTORE_SUMMARY
-  require_value STOREKIT_SANDBOX_FREE_QUOTA_SUMMARY
-  require_value STOREKIT_SANDBOX_BOUNDARY_EVENTS_SUMMARY
-
-  args=(
-    --product-lookup "$STOREKIT_SANDBOX_PRODUCT_LOOKUP_SUMMARY"
-    --purchase "$STOREKIT_SANDBOX_PURCHASE_SUMMARY"
-    --restore "$STOREKIT_SANDBOX_RESTORE_SUMMARY"
-    --free-quota "$STOREKIT_SANDBOX_FREE_QUOTA_SUMMARY"
-    --boundary-events "$STOREKIT_SANDBOX_BOUNDARY_EVENTS_SUMMARY"
-  )
-  if [[ -n "${STOREKIT_SANDBOX_EVIDENCE_URL:-}" ]]; then
-    args+=(--evidence-url "$STOREKIT_SANDBOX_EVIDENCE_URL")
-  fi
-  args+=("$(execute_flag)")
-
-  echo "external verification runner: storekit $([[ "$EXECUTE" == "1" ]] && echo execute || echo dry-run)"
-  STOREKIT_PRODUCT_ID="$STOREKIT_PRODUCT_ID" EXTERNAL_VERIFY_EVIDENCE_FILE="${EXTERNAL_VERIFY_EVIDENCE_FILE:-}" \
-    bash "$ROOT_DIR/script/record_storekit_sandbox_evidence.sh" "${args[@]}"
-}
-
 run_remote_recovery() {
   source_env_file "remote-recovery.env"
   require_value REMOTE_RECOVERY_CONFLICT_PREVIEW_SUMMARY
@@ -407,9 +369,8 @@ run_app_store_archive() {
 case "$TARGET" in
   all)
     print_execution_plan "$([[ "$EXECUTE" == "1" ]] && echo execute || echo dry-run)" \
-      remote-publish storekit remote-recovery app-store-screenshots app-store-archive
+      remote-publish remote-recovery app-store-screenshots app-store-archive
     run_remote_publish
-    run_storekit
     run_remote_recovery
     run_app_store_screenshots
     run_app_store_archive
@@ -421,7 +382,6 @@ case "$TARGET" in
       case "$target" in
         app-store-archive) run_app_store_archive ;;
         remote-publish) run_remote_publish ;;
-        storekit) run_storekit ;;
         remote-recovery) run_remote_recovery ;;
         app-store-screenshots) run_app_store_screenshots ;;
       esac
@@ -430,10 +390,6 @@ case "$TARGET" in
   remote-publish)
     print_execution_plan "$([[ "$EXECUTE" == "1" ]] && echo execute || echo dry-run)" remote-publish
     run_remote_publish
-    ;;
-  storekit)
-    print_execution_plan "$([[ "$EXECUTE" == "1" ]] && echo execute || echo dry-run)" storekit
-    run_storekit
     ;;
   remote-recovery)
     print_execution_plan "$([[ "$EXECUTE" == "1" ]] && echo execute || echo dry-run)" remote-recovery

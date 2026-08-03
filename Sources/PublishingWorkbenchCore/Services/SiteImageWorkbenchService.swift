@@ -6,7 +6,17 @@ import UniformTypeIdentifiers
 #if canImport(Darwin)
 import Darwin
 #endif
+
+private struct ValidatedImageSource {
+  let source: CGImageSource
+  let dimensions: ImageDimensions
+}
+
 public struct SiteImageWorkbenchService: Sendable {
+  public static let maximumSafeInputPixelDimension = 16_384
+  public static let maximumSafeInputPixelCount = 64_000_000
+  public static let maximumCropWorkingPixelDimension = 4_096
+
   public typealias AsyncReportOperation = @Sendable (ArticleDraft, SiteProfile) async throws -> ImageWorkbenchReport
   public typealias AsyncSiteSummaryOperation = @Sendable ([ArticleDraft], SiteProfile) async throws -> ImageWorkbenchSiteSummary
 
@@ -176,8 +186,9 @@ public struct SiteImageWorkbenchService: Sendable {
         issues.append(
           ImageWorkbenchIssue(
             severity: .warning,
-            title: "缺少 alt 文本",
-            message: "\(attachment.originalFilename) 需要可发布的替代文本。",
+            kind: .missingAltText,
+            title: CoreL10n.text("缺少 alt 文本"),
+            message: CoreL10n.format("%@ 需要可发布的替代文本。", attachment.originalFilename),
             attachmentID: attachment.id
           )
         )
@@ -187,8 +198,9 @@ public struct SiteImageWorkbenchService: Sendable {
         issues.append(
           ImageWorkbenchIssue(
             severity: .info,
-            title: "缺少 caption",
-            message: "\(attachment.originalFilename) 还没有图片说明。",
+            kind: .missingCaption,
+            title: CoreL10n.text("缺少 caption"),
+            message: CoreL10n.format("%@ 还没有图片说明。", attachment.originalFilename),
             attachmentID: attachment.id
           )
         )
@@ -198,8 +210,9 @@ public struct SiteImageWorkbenchService: Sendable {
         issues.append(
           ImageWorkbenchIssue(
             severity: .error,
-            title: "源文件不可用",
-            message: "\(attachment.originalFilename) 的本地源文件不存在，发布时无法复制。",
+            kind: .missingSource,
+            title: CoreL10n.text("源文件不可用"),
+            message: CoreL10n.format("%@ 的本地源文件不存在，发布时无法复制。", attachment.originalFilename),
             attachmentID: attachment.id
           )
         )
@@ -209,8 +222,9 @@ public struct SiteImageWorkbenchService: Sendable {
         issues.append(
           ImageWorkbenchIssue(
             severity: .error,
-            title: "发布引用为空",
-            message: "\(attachment.originalFilename) 缺少 Markdown 中可用的公开图片路径。",
+            kind: .missingPublishPath,
+            title: CoreL10n.text("发布引用为空"),
+            message: CoreL10n.format("%@ 缺少 Markdown 中可用的公开图片路径。", attachment.originalFilename),
             attachmentID: attachment.id
           )
         )
@@ -220,8 +234,9 @@ public struct SiteImageWorkbenchService: Sendable {
         issues.append(
           ImageWorkbenchIssue(
             severity: .error,
-            title: "仓库路径不安全",
-            message: "\(attachment.repositoryPath) 不能包含 ..。",
+            kind: .unsafeRepositoryPath,
+            title: CoreL10n.text("仓库路径不安全"),
+            message: CoreL10n.format("%@ 不能包含 ..。", attachment.repositoryPath),
             attachmentID: attachment.id
           )
         )
@@ -231,8 +246,9 @@ public struct SiteImageWorkbenchService: Sendable {
         issues.append(
           ImageWorkbenchIssue(
             severity: .warning,
-            title: "图片体积偏大",
-            message: "\(attachment.originalFilename) 超过 1.5 MB，建议发布前压缩。",
+            kind: .largeFile,
+            title: CoreL10n.text("图片体积偏大"),
+            message: CoreL10n.format("%@ 超过 1.5 MB，建议发布前压缩。", attachment.originalFilename),
             attachmentID: attachment.id
           )
         )
@@ -242,8 +258,13 @@ public struct SiteImageWorkbenchService: Sendable {
         issues.append(
           ImageWorkbenchIssue(
             severity: .info,
-            title: "尺寸偏大",
-            message: "\(attachment.originalFilename) 为 \(dimensions.displayName)，确认是否需要这么大的发布尺寸。",
+            kind: .largeDimensions,
+            title: CoreL10n.text("尺寸偏大"),
+            message: CoreL10n.format(
+              "%@ 为 %@，确认是否需要这么大的发布尺寸。",
+              attachment.originalFilename,
+              dimensions.displayName
+            ),
             attachmentID: attachment.id
           )
         )
@@ -253,8 +274,9 @@ public struct SiteImageWorkbenchService: Sendable {
         issues.append(
           ImageWorkbenchIssue(
             severity: .info,
-            title: "正文未引用",
-            message: "\(attachment.originalFilename) 不在正文 Markdown 中，也不是封面图。",
+            kind: .unreferencedAttachment,
+            title: CoreL10n.text("正文未引用"),
+            message: CoreL10n.format("%@ 不在正文 Markdown 中，也不是封面图。", attachment.originalFilename),
             attachmentID: attachment.id
           )
         )
@@ -264,8 +286,13 @@ public struct SiteImageWorkbenchService: Sendable {
         issues.append(
           ImageWorkbenchIssue(
             severity: .warning,
-            title: "图片发布路径重复",
-            message: "\(attachment.relativePublishPath) 被 \(duplicatePublishCount) 个附件共用，发布时可能覆盖或重复引用同一张图片。",
+            kind: .duplicatePublishPath,
+            title: CoreL10n.text("图片发布路径重复"),
+            message: CoreL10n.format(
+              "%@ 被 %d 个附件共用，发布时可能覆盖或重复引用同一张图片。",
+              attachment.relativePublishPath,
+              duplicatePublishCount
+            ),
             attachmentID: attachment.id
           )
         )
@@ -275,8 +302,12 @@ public struct SiteImageWorkbenchService: Sendable {
         issues.append(
           ImageWorkbenchIssue(
             severity: .warning,
-            title: "源图重复使用",
-            message: "\(attachment.originalFilename) 与其他附件指向同一个本地源文件，确认是否需要合并引用。",
+            kind: .duplicateSource,
+            title: CoreL10n.text("源图重复使用"),
+            message: CoreL10n.format(
+              "%@ 与其他附件指向同一个本地源文件，确认是否需要合并引用。",
+              attachment.originalFilename
+            ),
             attachmentID: attachment.id
           )
         )
@@ -286,8 +317,13 @@ public struct SiteImageWorkbenchService: Sendable {
         issues.append(
           ImageWorkbenchIssue(
             severity: .info,
-            title: "正文重复引用图片",
-            message: "\(attachment.relativePublishPath) 在正文中出现 \(duplicateMarkdownCount) 次，确认是否为有意重复。",
+            kind: .duplicateMarkdownReference,
+            title: CoreL10n.text("正文重复引用图片"),
+            message: CoreL10n.format(
+              "%@ 在正文中出现 %d 次，确认是否为有意重复。",
+              attachment.relativePublishPath,
+              duplicateMarkdownCount
+            ),
             attachmentID: attachment.id
           )
         )
@@ -319,8 +355,9 @@ public struct SiteImageWorkbenchService: Sendable {
         issues.append(
           ImageWorkbenchIssue(
             severity: .error,
-            title: "封面附件丢失",
-            message: "Front Matter 指向的封面图片不在当前附件列表中。",
+            kind: .missingCoverAttachment,
+            title: CoreL10n.text("封面附件丢失"),
+            message: CoreL10n.text("Front Matter 指向的封面图片不在当前附件列表中。"),
             attachmentID: coverID
           )
         )
@@ -332,8 +369,10 @@ public struct SiteImageWorkbenchService: Sendable {
       issues.append(
         ImageWorkbenchIssue(
           severity: .warning,
-          title: "正文图片未登记",
-          message: "\(markdownPath) 在正文中使用，但不在附件列表里。"
+          kind: .unregisteredMarkdownImage,
+          title: CoreL10n.text("正文图片未登记"),
+          message: CoreL10n.format("%@ 在正文中使用，但不在附件列表里。", markdownPath),
+          relatedValue: markdownPath
         )
       )
     }
@@ -342,8 +381,10 @@ public struct SiteImageWorkbenchService: Sendable {
       issues.append(
         ImageWorkbenchIssue(
           severity: .info,
-          title: "正文重复引用图片",
-          message: "\(markdownPath) 在正文中出现 \(count) 次，但还没有登记为图片附件。"
+          kind: .duplicateMarkdownReference,
+          title: CoreL10n.text("正文重复引用图片"),
+          message: CoreL10n.format("%@ 在正文中出现 %d 次，但还没有登记为图片附件。", markdownPath, count),
+          relatedValue: markdownPath
         )
       )
     }
@@ -352,8 +393,9 @@ public struct SiteImageWorkbenchService: Sendable {
       issues.append(
         ImageWorkbenchIssue(
           severity: .info,
-          title: "还没有图片",
-          message: "当前文章没有图片附件。"
+          kind: .noImages,
+          title: CoreL10n.text("还没有图片"),
+          message: CoreL10n.text("当前文章没有图片附件。")
         )
       )
     }
@@ -623,7 +665,9 @@ public struct SiteImageWorkbenchService: Sendable {
         continue
       }
 
-      try writeOptimizedJPEG(from: sourceURL, to: optimizedURL, quality: quality)
+      try autoreleasepool {
+        try writeOptimizedJPEG(from: sourceURL, to: optimizedURL, quality: quality)
+      }
       if cancellationToken?.isCancelled == true {
         try? fileManager.removeItem(at: optimizedURL)
         throw CancellationError()
@@ -702,12 +746,14 @@ public struct SiteImageWorkbenchService: Sendable {
         continue
       }
 
-      try writeConvertedWebP(
-        from: sourceURL,
-        to: webPURL,
-        quality: quality,
-        cancellationToken: cancellationToken
-      )
+      try autoreleasepool {
+        try writeConvertedWebP(
+          from: sourceURL,
+          to: webPURL,
+          quality: quality,
+          cancellationToken: cancellationToken
+        )
+      }
       if cancellationToken?.isCancelled == true {
         try? fileManager.removeItem(at: webPURL)
         throw CancellationError()
@@ -895,12 +941,14 @@ public struct SiteImageWorkbenchService: Sendable {
         continue
       }
 
-      try writeResizedImage(
-        from: sourceURL,
-        to: resizedURL,
-        maxPixelDimension: maxPixelDimension,
-        quality: quality
-      )
+      try autoreleasepool {
+        try writeResizedImage(
+          from: sourceURL,
+          to: resizedURL,
+          maxPixelDimension: maxPixelDimension,
+          quality: quality
+        )
+      }
       if cancellationToken?.isCancelled == true {
         try? fileManager.removeItem(at: resizedURL)
         throw CancellationError()
@@ -1024,7 +1072,7 @@ public struct SiteImageWorkbenchService: Sendable {
 
   private func visibleIssueCount(_ report: ImageWorkbenchReport, severity: PreflightSeverity? = nil) -> Int {
     report.issues.filter { issue in
-      issue.title != "还没有图片" && (severity == nil || issue.severity == severity)
+      issue.kind != .noImages && (severity == nil || issue.severity == severity)
     }.count
   }
 
@@ -1090,7 +1138,10 @@ public struct SiteImageWorkbenchService: Sendable {
 
   private func imageDimensions(at url: URL) -> ImageDimensions? {
     guard
-      let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+      let source = CGImageSourceCreateWithURL(
+        url as CFURL,
+        [kCGImageSourceShouldCache: false] as CFDictionary
+      ),
       let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
       let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
       let height = properties[kCGImagePropertyPixelHeight] as? NSNumber
@@ -1101,11 +1152,72 @@ public struct SiteImageWorkbenchService: Sendable {
     return ImageDimensions(width: width.intValue, height: height.intValue)
   }
 
+  private func validatedImageSource(at url: URL) throws -> ValidatedImageSource {
+    guard
+      let source = CGImageSourceCreateWithURL(
+        url as CFURL,
+        [kCGImageSourceShouldCache: false] as CFDictionary
+      ),
+      CGImageSourceGetCount(source) > 0,
+      let dimensions = imageDimensions(from: source)
+    else {
+      throw ImageWorkbenchError.cannotCreateOptimizedImage(url.lastPathComponent)
+    }
+
+    let width = dimensions.width
+    let height = dimensions.height
+    let (pixelCount, overflow) = width.multipliedReportingOverflow(by: height)
+    guard
+      width > 0,
+      height > 0,
+      width <= Self.maximumSafeInputPixelDimension,
+      height <= Self.maximumSafeInputPixelDimension,
+      !overflow,
+      pixelCount <= Self.maximumSafeInputPixelCount
+    else {
+      throw ImageWorkbenchError.unsafeImageDimensions(
+        filename: url.lastPathComponent,
+        width: width,
+        height: height
+      )
+    }
+
+    return ValidatedImageSource(source: source, dimensions: dimensions)
+  }
+
+  private func imageDimensions(from source: CGImageSource) -> ImageDimensions? {
+    guard
+      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+      let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+      let height = properties[kCGImagePropertyPixelHeight] as? NSNumber
+    else {
+      return nil
+    }
+    return ImageDimensions(width: width.intValue, height: height.intValue)
+  }
+
+  private func thumbnail(
+    from source: CGImageSource,
+    maximumPixelSize: Int,
+    filename: String
+  ) throws -> CGImage {
+    let options = [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceCreateThumbnailWithTransform: true,
+      kCGImageSourceShouldCacheImmediately: true,
+      kCGImageSourceThumbnailMaxPixelSize: max(1, maximumPixelSize),
+    ] as CFDictionary
+    guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else {
+      throw ImageWorkbenchError.cannotCreateOptimizedImage(filename)
+    }
+    return image
+  }
+
   private func writeOptimizedJPEG(from sourceURL: URL, to destinationURL: URL, quality: CGFloat) throws {
     try? fileManager.removeItem(at: destinationURL)
 
+    let validatedSource = try validatedImageSource(at: sourceURL)
     guard
-      let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil),
       let destination = CGImageDestinationCreateWithURL(
         destinationURL as CFURL,
         UTType.jpeg.identifier as CFString,
@@ -1119,7 +1231,7 @@ public struct SiteImageWorkbenchService: Sendable {
     let options = [
       kCGImageDestinationLossyCompressionQuality: quality
     ] as CFDictionary
-    CGImageDestinationAddImageFromSource(destination, source, 0, options)
+    CGImageDestinationAddImageFromSource(destination, validatedSource.source, 0, options)
 
     if !CGImageDestinationFinalize(destination) {
       throw ImageWorkbenchError.cannotFinalizeOptimizedImage(sourceURL.lastPathComponent)
@@ -1159,8 +1271,8 @@ public struct SiteImageWorkbenchService: Sendable {
   }
 
   private func writeConvertedWebPWithImageIO(from sourceURL: URL, to destinationURL: URL, quality: CGFloat) throws {
+    let validatedSource = try validatedImageSource(at: sourceURL)
     guard
-      let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil),
       let destination = CGImageDestinationCreateWithURL(
         destinationURL as CFURL,
         UTType.webP.identifier as CFString,
@@ -1174,7 +1286,7 @@ public struct SiteImageWorkbenchService: Sendable {
     let options = [
       kCGImageDestinationLossyCompressionQuality: quality
     ] as CFDictionary
-    CGImageDestinationAddImageFromSource(destination, source, 0, options)
+    CGImageDestinationAddImageFromSource(destination, validatedSource.source, 0, options)
 
     if !CGImageDestinationFinalize(destination) {
       throw ImageWorkbenchError.cannotFinalizeOptimizedImage(sourceURL.lastPathComponent)
@@ -1253,9 +1365,13 @@ public struct SiteImageWorkbenchService: Sendable {
   private func writePNGIntermediate(from sourceURL: URL, to destinationURL: URL) throws {
     try? fileManager.removeItem(at: destinationURL)
 
+    let validatedSource = try validatedImageSource(at: sourceURL)
+    let image = try thumbnail(
+      from: validatedSource.source,
+      maximumPixelSize: max(validatedSource.dimensions.width, validatedSource.dimensions.height),
+      filename: sourceURL.lastPathComponent
+    )
     guard
-      let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil),
-      let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
       let destination = CGImageDestinationCreateWithURL(
         destinationURL as CFURL,
         UTType.png.identifier as CFString,
@@ -1281,39 +1397,22 @@ public struct SiteImageWorkbenchService: Sendable {
   ) throws {
     try? fileManager.removeItem(at: destinationURL)
 
+    let validatedSource = try validatedImageSource(at: sourceURL)
+    let image = try thumbnail(
+      from: validatedSource.source,
+      maximumPixelSize: min(
+        max(1, maxPixelDimension),
+        max(validatedSource.dimensions.width, validatedSource.dimensions.height)
+      ),
+      filename: sourceURL.lastPathComponent
+    )
     guard
-      let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil),
-      let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
-      let destinationType = CGImageSourceGetType(source)
+      let destinationType = CGImageSourceGetType(validatedSource.source)
     else {
       throw ImageWorkbenchError.cannotCreateOptimizedImage(sourceURL.lastPathComponent)
     }
 
-    let width = image.width
-    let height = image.height
-    let scale = min(1, CGFloat(maxPixelDimension) / CGFloat(max(width, height)))
-    let targetWidth = max(1, Int((CGFloat(width) * scale).rounded()))
-    let targetHeight = max(1, Int((CGFloat(height) * scale).rounded()))
-    let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
     guard
-      let context = CGContext(
-        data: nil,
-        width: targetWidth,
-        height: targetHeight,
-        bitsPerComponent: 8,
-        bytesPerRow: 0,
-        space: colorSpace,
-        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-      )
-    else {
-      throw ImageWorkbenchError.cannotCreateOptimizedImage(sourceURL.lastPathComponent)
-    }
-
-    context.interpolationQuality = .high
-    context.draw(image, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
-
-    guard
-      let resizedImage = context.makeImage(),
       let destination = CGImageDestinationCreateWithURL(destinationURL as CFURL, destinationType, 1, nil)
     else {
       throw ImageWorkbenchError.cannotCreateOptimizedImage(sourceURL.lastPathComponent)
@@ -1322,7 +1421,7 @@ public struct SiteImageWorkbenchService: Sendable {
     let options = [
       kCGImageDestinationLossyCompressionQuality: quality
     ] as CFDictionary
-    CGImageDestinationAddImage(destination, resizedImage, options)
+    CGImageDestinationAddImage(destination, image, options)
 
     if !CGImageDestinationFinalize(destination) {
       throw ImageWorkbenchError.cannotFinalizeOptimizedImage(sourceURL.lastPathComponent)
@@ -1336,14 +1435,22 @@ public struct SiteImageWorkbenchService: Sendable {
     aspectHeight: CGFloat,
     quality: CGFloat
   ) throws {
+    guard aspectWidth > 0, aspectHeight > 0 else {
+      throw ImageWorkbenchError.cannotCreateOptimizedImage(sourceURL.lastPathComponent)
+    }
     try? fileManager.removeItem(at: destinationURL)
 
+    let validatedSource = try validatedImageSource(at: sourceURL)
+    let image = try thumbnail(
+      from: validatedSource.source,
+      maximumPixelSize: min(
+        Self.maximumCropWorkingPixelDimension,
+        max(validatedSource.dimensions.width, validatedSource.dimensions.height)
+      ),
+      filename: sourceURL.lastPathComponent
+    )
     guard
-      aspectWidth > 0,
-      aspectHeight > 0,
-      let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil),
-      let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
-      let destinationType = CGImageSourceGetType(source)
+      let destinationType = CGImageSourceGetType(validatedSource.source)
     else {
       throw ImageWorkbenchError.cannotCreateOptimizedImage(sourceURL.lastPathComponent)
     }

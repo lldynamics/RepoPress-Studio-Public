@@ -72,6 +72,61 @@ public struct AIPublishingQuickPromptSection: Equatable, Identifiable, Sendable 
   }
 }
 
+public enum AIPublishingChatQuickAction: String, CaseIterable, Identifiable, Sendable {
+  case polishSuggestions
+  case tagSuggestions
+  case summary
+  case proofread
+  case englishSummary
+
+  public var id: String { rawValue }
+
+  public var displayName: String {
+    switch self {
+    case .polishSuggestions:
+      return "润色建议"
+    case .tagSuggestions:
+      return "标签建议"
+    case .summary:
+      return "生成摘要"
+    case .proofread:
+      return "校对文章"
+    case .englishSummary:
+      return "英文摘要"
+    }
+  }
+
+  public var systemImage: String {
+    switch self {
+    case .polishSuggestions:
+      return "wand.and.stars"
+    case .tagSuggestions:
+      return "tag"
+    case .summary:
+      return "text.quote"
+    case .proofread:
+      return "text.magnifyingglass"
+    case .englishSummary:
+      return "character.book.closed"
+    }
+  }
+
+  public var prompt: String {
+    switch self {
+    case .polishSuggestions:
+      return "请校对当前文章并给出最多 5 条润色建议。每条按“原文片段 / 建议改写 / 原因”输出；只引用必要短句，不要重写整篇文章，不要改变事实、代码、链接或 Front Matter。没有明显问题时直接说明。"
+    case .tagSuggestions:
+      return "请基于当前文章推荐 3 到 8 个稳定、可复用的 tags。只返回一行逗号分隔的标签，不要编号、引号、Markdown、分类或额外解释，不要编造文章没有涉及的主题。"
+    case .summary:
+      return "请基于当前文章生成一条可直接写入 Front Matter 的 summary/description，控制在 60 到 160 个中文字符；英文文章控制在 25 到 45 个英文单词。忠实原文、保持克制、不新增事实。如果正文只有标题、占位语、写作引导或无法判断主题，只返回“当前内容不足，无法生成有效摘要，请补充正文后重试。”不要为占位内容强行生成摘要。其他情况下只返回摘要正文，不要标题、编号、引号、解释、分析或推理过程。"
+    case .proofread:
+      return "请校对当前文章中的错别字、标点误用和病句。只列出明确发现的问题，按“原文 / 建议 / 原因”三列表格输出，不要重写没有问题的段落；若无明显问题，直接回复“未发现明显的文字问题”。"
+    case .englishSummary:
+      return "请基于当前文章生成自然英文标题和英文摘要。使用 TITLE: 和 SUMMARY: 两个字段；摘要控制在 25 到 45 个英文单词，保留专有名词，忠实原文，不新增事实。不要翻译整篇正文，不要添加解释。"
+    }
+  }
+}
+
 public enum AIPublishingQuickPrompt: String, CaseIterable, Identifiable, Sendable {
   case continueWriting
   case outline

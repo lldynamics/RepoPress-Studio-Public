@@ -1,13 +1,42 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+enum AIChatDraftDiffApplicationKind {
+  case appendedReply
+  case structuredEdit
+}
+
 struct AIChatDraftDiffPreview: Identifiable {
   let id = UUID()
   let originalDraft: ArticleDraft
   let updatedDraft: ArticleDraft
   let citations: [KnowledgeCitation]
+  let applicationKind: AIChatDraftDiffApplicationKind
+
+  init(
+    originalDraft: ArticleDraft,
+    updatedDraft: ArticleDraft,
+    citations: [KnowledgeCitation],
+    applicationKind: AIChatDraftDiffApplicationKind = .appendedReply
+  ) {
+    self.originalDraft = originalDraft
+    self.updatedDraft = updatedDraft
+    self.citations = citations
+    self.applicationKind = applicationKind
+  }
 
   var citationCount: Int { citations.count }
+}
+
+enum AIChatDraftDiffApplicationPolicy {
+  static func canApply(
+    currentDraft: ArticleDraft,
+    preview: AIChatDraftDiffPreview
+  ) -> Bool {
+    currentDraft.id == preview.originalDraft.id
+      && currentDraft.repositoryContentFingerprint
+        == preview.originalDraft.repositoryContentFingerprint
+  }
 }
 
 struct AIChatDraftDiffPreviewSheet: View {
@@ -113,6 +142,7 @@ struct AIChatDraftDiffPreviewSheet: View {
       .padding(12)
     }
     .frame(minWidth: 820, idealWidth: 1_020, minHeight: 620, idealHeight: 760)
+    .workbenchGlassContainer(material: .regularMaterial)
     .accessibilityLabel("AI 修改 Diff 预览")
   }
 

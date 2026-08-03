@@ -12,6 +12,8 @@ struct WorkspaceShellSplitLayout: View {
   @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
   @Binding var repositoryContextStage: RepositoryContextStage
   let repositorySourceSession: RepositoryHTMLSourceSession
+  let rssStore: RSSReaderStore
+  let rssPresentation: RSSReaderPresentationState
   let onSelectSection: (WorkspaceSection) -> Void
   @AppStorage("workspacePrimarySidebarWidthV2")
   private var storedSidebarWidth = Double(WorkbenchLayoutMode.defaultSidebarWidth)
@@ -28,6 +30,8 @@ struct WorkspaceShellSplitLayout: View {
     imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
     repositoryContextStage: Binding<RepositoryContextStage>,
     repositorySourceSession: RepositoryHTMLSourceSession,
+    rssStore: RSSReaderStore,
+    rssPresentation: RSSReaderPresentationState,
     onSelectSection: @escaping (WorkspaceSection) -> Void
   ) {
     self.store = store
@@ -40,6 +44,8 @@ struct WorkspaceShellSplitLayout: View {
     _imageWorkbenchContextStage = imageWorkbenchContextStage
     _repositoryContextStage = repositoryContextStage
     self.repositorySourceSession = repositorySourceSession
+    self.rssStore = rssStore
+    self.rssPresentation = rssPresentation
     self.onSelectSection = onSelectSection
   }
 
@@ -52,6 +58,8 @@ struct WorkspaceShellSplitLayout: View {
           imageWorkbenchContextStage: $imageWorkbenchContextStage,
           repositoryContextStage: $repositoryContextStage,
           contentHealthSidebarProjection: contentHealthSidebarProjection,
+          rssStore: rssStore,
+          rssPresentation: rssPresentation,
           onSelectSection: onSelectSection
         )
         .frame(width: sidebarWidth)
@@ -67,7 +75,9 @@ struct WorkspaceShellSplitLayout: View {
           imageWorkbenchContextStage: $imageWorkbenchContextStage,
           repositoryContextStage: $repositoryContextStage,
           contentHealthSidebarProjection: contentHealthSidebarProjection,
-          repositorySourceSession: repositorySourceSession
+          repositorySourceSession: repositorySourceSession,
+          rssStore: rssStore,
+          rssPresentation: rssPresentation
         )
         .frame(minWidth: 680, maxWidth: .infinity, maxHeight: .infinity)
       } else {
@@ -77,7 +87,9 @@ struct WorkspaceShellSplitLayout: View {
           imageWorkbenchContextStage: $imageWorkbenchContextStage,
           repositoryContextStage: $repositoryContextStage,
           contentHealthSidebarProjection: contentHealthSidebarProjection,
-          repositorySourceSession: repositorySourceSession
+          repositorySourceSession: repositorySourceSession,
+          rssStore: rssStore,
+          rssPresentation: rssPresentation
         )
         .frame(minWidth: centerMinimumWidth, maxWidth: .infinity, maxHeight: .infinity)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -90,12 +102,14 @@ struct WorkspaceShellSplitLayout: View {
   }
 
   private var sidebarWidth: CGFloat {
-    WorkbenchLayoutMode.sidebarWidth(
+    let width = WorkbenchLayoutMode.sidebarWidth(
       storedWidth: CGFloat(storedSidebarWidth),
       workspaceWidth: workspaceWidth,
       centerMinimumWidth: centerMinimumWidth,
       inspectorPresented: isInspectorPresented
     )
+    guard layoutState.selectedSection == .rss, !isCompact else { return width }
+    return min(max(width, 260), 300)
   }
 
   private var centerMinimumWidth: CGFloat {
@@ -106,12 +120,14 @@ struct WorkspaceShellSplitLayout: View {
   }
 
   private var sidebarMaximumWidth: CGFloat {
-    WorkbenchLayoutMode.sidebarWidth(
+    let width = WorkbenchLayoutMode.sidebarWidth(
       storedWidth: 380,
       workspaceWidth: workspaceWidth,
       centerMinimumWidth: centerMinimumWidth,
       inspectorPresented: isInspectorPresented
     )
+    guard layoutState.selectedSection == .rss, !isCompact else { return width }
+    return min(max(width, 260), 300)
   }
 
   private var workspaceSidebarResizeHandle: some View {
@@ -136,7 +152,7 @@ struct WorkspaceShellSplitLayout: View {
       }
       .accessibilityElement()
       .accessibilityLabel("调整工作区侧栏宽度")
-      .accessibilityValue("\(Int(sidebarWidth)) 点")
+      .accessibilityValue(String(localized: "\(Int(sidebarWidth)) 点"))
       .accessibilityAdjustableAction { direction in
         switch direction {
         case .increment:

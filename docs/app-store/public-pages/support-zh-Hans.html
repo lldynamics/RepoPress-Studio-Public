@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="RepoPress Studio 技术支持 — Markdown 写作、本地资料库、浏览器采集、Git 仓库同步、隐私和购买帮助。">
+  <meta name="description" content="RepoPress Studio 技术支持 — 官网安装、自定义 AI、浏览器采集、Git 仓库同步、隐私和 Sparkle 更新帮助。">
   <meta name="robots" content="index,follow">
   <meta property="og:title" content="RepoPress Studio · 技术支持">
-  <meta property="og:description" content="面向 Git 静态站点作者的本地优先写作、资料整理和仓库同步工作台。">
+  <meta property="og:description" content="面向 Git 静态站点作者的免费、本地优先写作、资料整理和仓库同步工作台。">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://apps.chengjinfang.com/personal-site-publisher/">
   <meta property="og:site_name" content="程锦方的软件">
@@ -20,7 +20,7 @@
     "name": "RepoPress Studio",
     "operatingSystem": "macOS 14 or later",
     "applicationCategory": "DeveloperApplication",
-    "description": "面向 Git 驱动静态站点作者的本地优先 Markdown 写作、资料整理与仓库同步工作台。",
+    "description": "面向 Git 驱动静态站点作者的免费、本地优先 Markdown 写作、资料整理与仓库同步工作台。",
     "supportingData": "https://apps.chengjinfang.com/personal-site-publisher/privacy/"
   }
   </script>
@@ -42,48 +42,47 @@
     <section>
       <h2>应用信息</h2>
       <ul>
-        <li>名称：RepoPress Studio</li>
-        <li>平台：macOS 14 或更高版本</li>
-        <li>类别：开发者工具</li>
-        <li>支持站点：Zola、Hugo、Astro、Jekyll 和 Hexo</li>
-        <li>账号：本地功能不要求注册 RepoPress Studio 账号</li>
-        <li>隐私：不包含广告、行为跟踪或第三方分析 SDK</li>
+        <li>平台：macOS 14 或更高版本。</li>
+        <li>分发：从官方网站免费下载；Mac 应用使用 Developer ID 签名并经过 Apple 公证。</li>
+        <li>账号：不要求注册 RepoPress Studio 账号，也没有付费功能层级。</li>
+        <li>隐私：不包含广告、行为跟踪或第三方分析 SDK。</li>
+        <li>站点框架：Zola、Hugo、Astro、Jekyll 和 Hexo。</li>
       </ul>
     </section>
 
     <section>
-      <h2>当前 App Store 版本</h2>
-      <p>所有用户都可以配置自己的本地模型或 OpenAI 兼容 HTTPS API，并使用 AI 对话、改写、摘要、元数据和检查辅助。AI 不要求购买 RepoPress Pro，应用不限制 AI 请求次数、不销售 AI 额度或服务商访问权限，也不提供购买服务商账户的链接。</p>
-      <p>远程 AI 请求首次发送前会显示目标地址和可能发送的数据并要求明确同意。API Key 保存在 macOS 钥匙串，请求由此 Mac 直接发送到用户选择的服务商；开发者不会收到 Key、提示词或回复。</p>
-      <p>资料库中的全文和语义索引都在本机生成。浏览器采集仅通过带随机配对令牌的 <code>127.0.0.1:17843</code> 回环连接进入同一台设备上的应用，不会发送到开发者服务器。</p>
+      <h2>AI 与数据授权</h2>
+      <p>AI 功能支持 BYOK（用户自备 Key）、自定义 HTTPS 地址和本机模型。API Key 保存在 macOS Keychain。使用远程服务时，用户自行选择并承担服务商费用；RepoPress Studio 不销售服务商 Key、访问权限或调用包。</p>
+      <p>首次向每个自定义远程 API 地址发送请求前，应用会显示完整目标地址和可能发送的数据类别，并要求用户明确同意。请求由这台 Mac 直接发送给所选服务商，开发者不转发也不接收 Key、提示词、请求或回复。</p>
+      <p><code>localhost</code>、<code>127.0.0.1</code> 和 <code>::1</code> 是本机回环地址，不会把 AI 内容发送给远程服务商。</p>
     </section>
 
     <section>
       <h2>主要功能</h2>
       <ul>
         <li>Markdown 编辑、实时预览、元数据、图片和通用草稿管理。</li>
-        <li>导入 EPUB、PDF、Markdown、TXT、HTML 和网页内容，建立本地资料库。</li>
-        <li>面向所有用户开放自定义 AI API、AI 对话、写作辅助和内容检查，不计应用内使用次数。</li>
+        <li>导入 EPUB、PDF、Markdown、TXT、HTML 和网页内容并建立本地资料库。</li>
+        <li>自定义 AI、AI 对话、写作辅助、内容检查和本机模型连接。</li>
         <li>内容健康、SEO、社交预览、链接、图片、分类和维护检查。</li>
-        <li>查看本地变更和远端差异，并在用户确认后执行 GitHub/GitLab 同步或发布。</li>
-        <li>使用内置 Safari Web Extension 采集用户主动选择的网页。</li>
-        <li>快速隐藏工作区，并遮挡标记为私密的文章信息。</li>
+        <li>查看本地变更和远端差异，并在用户确认后执行 GitHub 或 GitLab 同步与发布。</li>
+        <li>通过 Safari Web Extension 或 Chrome 网上应用店扩展采集用户主动选择的网页。</li>
       </ul>
     </section>
 
     <section>
       <h2>常见问题</h2>
-      <h3>需要演示账号或 API Key 吗？</h3>
-      <p>本地写作、资料库和仓库功能不需要账号或 API Key。使用远程 AI 时，用户需要填写自己服务商账户的 API Key；使用不要求认证的本机回环模型时不需要 Key。RepoPress Studio 不出售或代购服务商访问权限。</p>
+      <h3>浏览器采集的数据去哪里？</h3>
+      <p>Safari 扩展随 Mac 应用内置，Chrome 扩展单独安装。两者只在用户主动触发后采集，并通过带随机配对令牌的 <code>127.0.0.1:17843</code> 回环连接写入同一台 Mac 上的资料库，不经过开发者服务器。应用侧连接令牌只保存在 macOS Keychain。</p>
 
       <h3>为什么需要文件夹权限？</h3>
-      <p>App Store 版本使用 App Sandbox，只访问你通过系统面板选择的仓库、资料和输出位置，并通过安全书签恢复你已经授予的访问权。</p>
+      <p>应用使用 macOS 沙盒，只访问你通过系统面板选择的仓库、资料和输出位置，并通过安全范围书签恢复已经授予的访问权。</p>
 
-      <h3>关闭主窗口后如何重新打开？</h3>
-      <p>在菜单栏选择“窗口 > 显示 RepoPress Studio”，或按 Command-0。</p>
+      <h3>如何更新软件？</h3>
+      <p>官网版本使用 Sparkle。你可以手动检查更新，也可以在 Sparkle 提示时选择是否允许自动检查。应用通过 HTTPS 读取更新源并下载已签名更新包。更新请求不包含草稿、资料、浏览器采集、凭据或 AI 内容。</p>
+      <p>更新主机或 CDN 可能保存必要的服务器访问日志，包括 IP 地址、请求时间、请求路径、响应状态、User-Agent 或应用版本，仅用于更新交付、稳定性、防滥用和安全。</p>
 
       <h3>什么时候会访问网络？</h3>
-      <p>只有用户配置并触发的 AI 请求、GitHub/GitLab 操作、仓库远端同步、部署状态检查、StoreKit 购买或恢复、浏览器扩展安装，以及主动打开的网页会访问对应服务。远程 AI 请求还要求按端点明确同意。应用不会自动上传草稿或资料库内容。</p>
+      <p>用户主动触发的远程 AI、GitHub、GitLab、仓库远端、部署状态、浏览器扩展安装、软件更新，以及主动打开的网页会访问对应服务。应用不会自动上传草稿或资料库内容。</p>
 
       <h3>快速隐藏是否等于文件加密？</h3>
       <p>不是。快速隐藏和私密内容遮挡只减少屏幕暴露，不提供密码、Touch ID、磁盘加密或端到端加密。</p>
@@ -92,11 +91,11 @@
     <section>
       <h2>联系支持</h2>
       <p><a href="mailto:support@chengjinfang.com">support@chengjinfang.com</a></p>
-      <p>请提供 macOS 版本、RepoPress Studio 版本、站点框架、操作步骤和简短问题描述。不要发送完整仓库、Token、授权头、本机绝对路径或私密文章正文。</p>
+      <p>请提供 macOS 版本、RepoPress Studio 版本、站点框架、操作步骤和简短问题描述。不要发送完整仓库、API Key、Token、授权头、本机绝对路径、私密文章正文或未经检查的诊断归档。</p>
     </section>
 
     <footer>
-      <p>最后更新：2026-07-28</p>
+      <p>最后更新：2026-08-01</p>
     </footer>
   </main>
 </body>

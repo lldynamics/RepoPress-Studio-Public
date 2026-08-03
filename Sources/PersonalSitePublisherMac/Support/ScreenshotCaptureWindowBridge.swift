@@ -97,9 +97,6 @@ private final class CaptureBridgeView: NSView {
   }
 
   private var shouldCaptureRequestedSurface: Bool {
-    if ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .proSettings {
-      return role == .settings
-    }
     return role == .workbench
   }
 

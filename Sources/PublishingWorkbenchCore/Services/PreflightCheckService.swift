@@ -227,7 +227,8 @@ public struct PreflightCheckService: Sendable {
           severity: .warning,
           title: CoreL10n.text("图片缺少 alt"),
           message: CoreL10n.format("%@ 还没有可发布的 alt 文本。", attachment.originalFilename),
-          field: "attachments"
+          field: "attachments",
+          category: .missingMediaAlt
         ))
       }
 
@@ -239,7 +240,8 @@ public struct PreflightCheckService: Sendable {
             isVideo ? "%@ 缺少视频发布路径。" : "%@ 缺少发布路径。",
             attachment.originalFilename
           ),
-          field: "attachments"
+          field: "attachments",
+          category: .missingMediaPublishPath
         ))
       }
 
@@ -249,7 +251,8 @@ public struct PreflightCheckService: Sendable {
           path: attachment.repositoryPath,
           field: "attachments",
           requiredRoot: profile.assetRoot,
-          rootLabel: CoreL10n.text(isVideo ? "视频目录" : "图片目录")
+          rootLabel: CoreL10n.text(isVideo ? "视频目录" : "图片目录"),
+          category: .unsafeMediaRepositoryPath
         )
       )
       issues.append(contentsOf: publicPathIssues(path: attachment.relativePublishPath, filename: attachment.originalFilename))
@@ -260,7 +263,9 @@ public struct PreflightCheckService: Sendable {
         severity: .warning,
         title: CoreL10n.text("正文图片未登记"),
         message: CoreL10n.format("%@ 不在当前文章附件列表中。", missingImagePath),
-        field: "body"
+        field: "body",
+        category: .unregisteredBodyImage,
+        relatedValue: missingImagePath
       ))
     }
 
@@ -285,7 +290,8 @@ public struct PreflightCheckService: Sendable {
     path: String,
     field: String,
     requiredRoot: String,
-    rootLabel: String
+    rootLabel: String,
+    category: PreflightIssueCategory? = nil
   ) -> [PreflightIssue] {
     var issues: [PreflightIssue] = []
     let value = path.trimmedForPublishing
@@ -295,7 +301,8 @@ public struct PreflightCheckService: Sendable {
         severity: .error,
         title: CoreL10n.format("%@为空", label),
         message: CoreL10n.text("路径规则渲染结果为空。"),
-        field: field
+        field: field,
+        category: category
       ))
       return issues
     }
@@ -306,7 +313,8 @@ public struct PreflightCheckService: Sendable {
         severity: .error,
         title: CoreL10n.format("%@不安全", label),
         message: CoreL10n.format("%@ 必须是仓库内的相对路径，且不能包含 ..、反斜杠或 URL。", value),
-        field: field
+        field: field,
+        category: category
       ))
       return issues
     }
@@ -318,7 +326,8 @@ public struct PreflightCheckService: Sendable {
           severity: .error,
           title: CoreL10n.format("%@不在%@", label, rootLabel),
           message: CoreL10n.format("%@ 不在 %@ 下，请检查站点路径规则。", normalizedPath, root),
-          field: field
+          field: field,
+          category: category
         )
       )
     }

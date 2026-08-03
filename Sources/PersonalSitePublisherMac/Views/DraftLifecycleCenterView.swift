@@ -184,9 +184,9 @@ struct DraftLifecycleCenterView: View {
                 draftPendingPermanentDeletion = recycled
               } label: {
                 Label("永久删除", systemImage: "trash")
-                  .foregroundStyle(.red)
+                  .foregroundStyle(WorkbenchTheme.risk)
               }
-              .tint(.red)
+              .tint(WorkbenchTheme.risk)
               .help(Text("永久删除回收站副本和版本历史"))
             }
 

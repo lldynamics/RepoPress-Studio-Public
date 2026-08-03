@@ -7,7 +7,7 @@ extension KnowledgeDatabase {
       let sql = """
       SELECT id, kind, title, authors_json, language, summary, tags_json,
              source_url, source_name, folder_id, source_byte_count,
-             allows_ai_use, is_archived,
+             allows_ai_use, allows_local_semantic_index, is_archived,
              imported_at, updated_at, current_revision_id
       FROM knowledge_documents
       WHERE is_archived = 0
@@ -17,7 +17,7 @@ extension KnowledgeDatabase {
       defer { sqlite3_finalize(statement) }
       var output: [KnowledgeDocument] = []
       while sqlite3_step(statement) == SQLITE_ROW {
-        output.append(decodeDocument(statement, offset: 0))
+        output.append(try decodeDocument(statement, offset: 0))
       }
       try checkStatementCompletion(statement)
       return output
@@ -29,7 +29,8 @@ extension KnowledgeDatabase {
       let sql = """
       SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
              d.tags_json, d.source_url, d.source_name, d.folder_id,
-             d.source_byte_count, d.allows_ai_use, d.is_archived,
+             d.source_byte_count, d.allows_ai_use, d.allows_local_semantic_index,
+             d.is_archived,
              d.imported_at, d.updated_at, d.current_revision_id,
              r.deleted_at
       FROM knowledge_recycle_bin r
@@ -42,8 +43,8 @@ extension KnowledgeDatabase {
       var output: [KnowledgeRecycledDocument] = []
       while sqlite3_step(statement) == SQLITE_ROW {
         output.append(KnowledgeRecycledDocument(
-          document: decodeDocument(statement, offset: 0),
-          deletedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 16))
+          document: try decodeDocument(statement, offset: 0),
+          deletedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 17))
         ))
       }
       try checkStatementCompletion(statement)
@@ -56,7 +57,7 @@ extension KnowledgeDatabase {
       let sql = """
       SELECT id, kind, title, authors_json, language, summary, tags_json,
              source_url, source_name, folder_id, source_byte_count,
-             allows_ai_use, is_archived,
+             allows_ai_use, allows_local_semantic_index, is_archived,
              imported_at, updated_at, current_revision_id
       FROM knowledge_documents WHERE id = ? LIMIT 1;
       """
@@ -65,7 +66,7 @@ extension KnowledgeDatabase {
       bind(id.uuidString, at: 1, to: statement)
       let result = sqlite3_step(statement)
       if result == SQLITE_ROW {
-        return decodeDocument(statement, offset: 0)
+        return try decodeDocument(statement, offset: 0)
       }
       guard result == SQLITE_DONE else { throw databaseError() }
       return nil
@@ -82,7 +83,7 @@ extension KnowledgeDatabase {
       defer { sqlite3_finalize(statement) }
       var output: [KnowledgeFolder] = []
       while sqlite3_step(statement) == SQLITE_ROW {
-        output.append(decodeFolder(statement))
+        output.append(try decodeFolder(statement))
       }
       try checkStatementCompletion(statement)
       return output
@@ -290,7 +291,10 @@ extension KnowledgeDatabase {
           guard sqlite3_step(selectStatement) == SQLITE_ROW else {
             throw KnowledgeLibraryError.missingDocument
           }
-          var merged = decodeJSON(text(selectStatement, 0))
+          var merged = try decodeStringArrayJSON(
+            text(selectStatement, 0),
+            field: "knowledge_documents.tags_json"
+          )
           for tag in tags where !merged.contains(where: {
             $0.compare(tag, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
           }) {
@@ -338,7 +342,7 @@ extension KnowledgeDatabase {
       bind(documentID.uuidString, at: 1, to: statement)
       let result = sqlite3_step(statement)
       if result == SQLITE_ROW {
-        return decodeRevision(statement)
+        return try decodeRevision(statement)
       }
       guard result == SQLITE_DONE else { throw databaseError() }
       return nil
@@ -360,7 +364,7 @@ extension KnowledgeDatabase {
       bind(documentID.uuidString, at: 1, to: statement)
       var output: [KnowledgeDocumentRevision] = []
       while sqlite3_step(statement) == SQLITE_ROW {
-        output.append(decodeRevision(statement))
+        output.append(try decodeRevision(statement))
       }
       try checkStatementCompletion(statement)
       return output
@@ -393,7 +397,7 @@ extension KnowledgeDatabase {
       defer { sqlite3_finalize(statement) }
       bind(id.uuidString, at: 1, to: statement)
       let result = sqlite3_step(statement)
-      if result == SQLITE_ROW { return decodeRevision(statement) }
+      if result == SQLITE_ROW { return try decodeRevision(statement) }
       guard result == SQLITE_DONE else { throw databaseError() }
       return nil
     }
@@ -410,7 +414,8 @@ extension KnowledgeDatabase {
       let sql = """
       SELECT d.id, d.kind, d.title, d.authors_json, d.language, d.summary,
              d.tags_json, d.source_url, d.source_name, d.folder_id,
-             d.source_byte_count, d.allows_ai_use, d.is_archived,
+             d.source_byte_count, d.allows_ai_use, d.allows_local_semantic_index,
+             d.is_archived,
              d.imported_at, d.updated_at, d.current_revision_id,
              r.original_hash, r.normalized_hash, r.parser_version
       FROM knowledge_documents d
@@ -432,10 +437,10 @@ extension KnowledgeDatabase {
       bindOptional(source, at: 6, to: statement)
       let result = sqlite3_step(statement)
       if result == SQLITE_ROW {
-        let document = decodeDocument(statement, offset: 0)
-        let storedOriginalHash = text(statement, 16) ?? ""
-        let storedNormalizedHash = text(statement, 17) ?? ""
-        let storedParserVersion = Int(sqlite3_column_int64(statement, 18))
+        let document = try decodeDocument(statement, offset: 0)
+        let storedOriginalHash = text(statement, 17) ?? ""
+        let storedNormalizedHash = text(statement, 18) ?? ""
+        let storedParserVersion = Int(sqlite3_column_int64(statement, 19))
         return (
           document,
           storedParserVersion == parserVersion

@@ -4,6 +4,7 @@ set -euo pipefail
 MODE="run"
 BUILD_CONFIGURATION="debug"
 APP_STORE_BUILD=0
+DIRECT_DISTRIBUTION_BUILD=0
 APP_NAME="PersonalSitePublisherMac"
 APP_DISPLAY_NAME="RepoPress Studio"
 BUNDLE_ID="${PERSONAL_SITE_PUBLISHER_BUNDLE_ID:-com.jinfang.PersonalSitePublisherMac}"
@@ -27,6 +28,7 @@ APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_PLUGINS="$APP_CONTENTS/PlugIns"
+APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_ICON_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources/AppIcon.icns"
@@ -34,12 +36,21 @@ LOCALIZATION_SOURCE="$ROOT_DIR/Sources/PersonalSitePublisherMac/Resources"
 LOCALIZATION_CATALOG="$LOCALIZATION_SOURCE/Localizable.xcstrings"
 LOCAL_DEVELOPMENT_ENTITLEMENTS="$ROOT_DIR/Packaging/LocalDevelopment.entitlements"
 APP_STORE_ENTITLEMENTS="$ROOT_DIR/Sources/PersonalSitePublisherMac/AppStore.entitlements"
+DIRECT_DISTRIBUTION_ENTITLEMENTS="$ROOT_DIR/Packaging/DirectDistribution.entitlements"
 SAFARI_EXTENSION_ENTITLEMENTS="$ROOT_DIR/Packaging/SafariWebExtension.entitlements"
 SAFARI_EXTENSION_BUNDLE_ID="${SAFARI_WEB_EXTENSION_BUNDLE_ID:-$BUNDLE_ID.SafariExtension}"
 SAFARI_EXTENSION_BUILD_PRODUCT="$ROOT_DIR/.build/safari-web-extension/product/RepoPressSafariExtension.appex"
 SAFARI_EXTENSION_BUNDLE="$APP_PLUGINS/RepoPressSafariExtension.appex"
+SPARKLE_FRAMEWORK_BUNDLE="$APP_FRAMEWORKS/Sparkle.framework"
+SPARKLE_LICENSE_SOURCE="$ROOT_DIR/Packaging/ThirdPartyNotices/Sparkle-LICENSE.txt"
+SPARKLE_LICENSE_BUNDLE="$APP_RESOURCES/ThirdPartyNotices/Sparkle-LICENSE.txt"
 CODESIGN_TOOL="${CODESIGN_TOOL:-/usr/bin/codesign}"
+INSTALL_NAME_TOOL="${INSTALL_NAME_TOOL:-/usr/bin/install_name_tool}"
+OTOOL_TOOL="${OTOOL_TOOL:-/usr/bin/otool}"
 SECURITY_TOOL="${SECURITY_TOOL:-/usr/bin/security}"
+UPDATE_FEED_URL="${REPOPRESS_UPDATE_FEED_URL:-}"
+UPDATE_PUBLIC_ED_KEY="${REPOPRESS_UPDATE_PUBLIC_ED_KEY:-}"
+UPDATE_CHANNEL="${REPOPRESS_UPDATE_CHANNEL:-stable}"
 WINDOW_VISIBILITY_PROBE_SOURCE="$ROOT_DIR/script/window_visibility_probe.swift"
 WINDOW_VISIBILITY_PROBE_BINARY="${WINDOW_VISIBILITY_PROBE_BINARY:-$ROOT_DIR/.build/window-visibility-probe/window_visibility_probe}"
 
@@ -67,6 +78,15 @@ swift_build() {
     swift "$@"
 }
 
+xml_escape() {
+  python3 - "$1" <<'PY'
+import html
+import sys
+
+print(html.escape(sys.argv[1], quote=True))
+PY
+}
+
 required_screenshot_surfaces=(
   writing
   ai-chat
@@ -76,7 +96,6 @@ required_screenshot_surfaces=(
   deployment-status
   maintenance
   general-drafts
-  pro-settings
   privacy-lock
 )
 
@@ -98,6 +117,7 @@ Modes:
 Options:
   --release                 Build with SwiftPM's Release configuration.
   --app-store               Build the Mac App Store Release variant.
+  --direct                  Build the Developer ID direct-distribution Release variant.
   --configuration <name>   Select debug or release (default: debug).
   --screenshot-surface <id> Select a screenshot demo surface and imply --screenshot-demo.
   --list-screenshot-surfaces
@@ -126,6 +146,11 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --app-store)
       APP_STORE_BUILD=1
+      BUILD_CONFIGURATION="release"
+      shift
+      ;;
+    --direct)
+      DIRECT_DISTRIBUTION_BUILD=1
       BUILD_CONFIGURATION="release"
       shift
       ;;
@@ -184,12 +209,69 @@ if [[ "$APP_STORE_BUILD" == "1" && "$BUILD_CONFIGURATION" != "release" ]]; then
   echo "App Store builds require the Release configuration" >&2
   exit 2
 fi
+if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" && "$BUILD_CONFIGURATION" != "release" ]]; then
+  echo "direct-distribution builds require the Release configuration" >&2
+  exit 2
+fi
+if [[ "$APP_STORE_BUILD" == "1" && "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
+  echo "--app-store and --direct are mutually exclusive" >&2
+  exit 2
+fi
 if [[ "$APP_STORE_BUILD" == "1" ]]; then
   DISTRIBUTION_CHANNEL="AppStore"
+  EXTERNAL_AI_AVAILABLE_PLIST="  <true/>"
+elif [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
+  if [[ "$BUNDLE_ID" != "com.jinfang.PersonalSitePublisherMac" ]]; then
+    echo "DirectDistribution.entitlements is bound to com.jinfang.PersonalSitePublisherMac" >&2
+    exit 2
+  fi
+  case "$UPDATE_CHANNEL" in
+    stable|beta) ;;
+    *)
+      echo "REPOPRESS_UPDATE_CHANNEL must be stable or beta" >&2
+      exit 2
+      ;;
+  esac
+  if [[ -n "$UPDATE_FEED_URL" || -n "$UPDATE_PUBLIC_ED_KEY" ]]; then
+    [[ -n "$UPDATE_FEED_URL" && -n "$UPDATE_PUBLIC_ED_KEY" ]] || {
+      echo "Direct update configuration requires both REPOPRESS_UPDATE_FEED_URL and REPOPRESS_UPDATE_PUBLIC_ED_KEY" >&2
+      exit 2
+    }
+    python3 - "$UPDATE_FEED_URL" "$UPDATE_PUBLIC_ED_KEY" <<'PY'
+from urllib.parse import urlparse
+import sys
+
+feed_url, public_key = sys.argv[1:]
+parsed = urlparse(feed_url)
+if feed_url != feed_url.strip() or parsed.scheme.lower() != "https" or not parsed.netloc:
+    raise SystemExit("REPOPRESS_UPDATE_FEED_URL must be an absolute https URL")
+if public_key != public_key.strip() or not public_key or any(character.isspace() for character in public_key):
+    raise SystemExit("REPOPRESS_UPDATE_PUBLIC_ED_KEY must be a non-empty single-line EdDSA public key")
+PY
+  fi
+  DISTRIBUTION_CHANNEL="Direct"
   EXTERNAL_AI_AVAILABLE_PLIST="  <true/>"
 else
   DISTRIBUTION_CHANNEL="Development"
   EXTERNAL_AI_AVAILABLE_PLIST="  <true/>"
+fi
+if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
+  escaped_update_feed_url="$(xml_escape "$UPDATE_FEED_URL")"
+  escaped_update_public_key="$(xml_escape "$UPDATE_PUBLIC_ED_KEY")"
+  escaped_update_channel="$(xml_escape "$UPDATE_CHANNEL")"
+  SPARKLE_UPDATE_INFO_PLIST="$(cat <<PLIST
+  <key>SUEnableInstallerLauncherService</key>
+  <true/>
+  <key>SUFeedURL</key>
+  <string>$escaped_update_feed_url</string>
+  <key>SUPublicEDKey</key>
+  <string>$escaped_update_public_key</string>
+  <key>RepoPressUpdateChannel</key>
+  <string>$escaped_update_channel</string>
+PLIST
+)"
+else
+  SPARKLE_UPDATE_INFO_PLIST=""
 fi
 if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then
   SCREENSHOT_CAPTURE_BUILD_PLIST="  <true/>"
@@ -253,6 +335,12 @@ if [[ "$APP_STORE_BUILD" == "1" ]]; then
     -Xswiftc APP_STORE_BUILD
   )
 fi
+if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
+  swift_build_options+=(
+    -Xswiftc -D
+    -Xswiftc DIRECT_DISTRIBUTION_BUILD
+  )
+fi
 if [[ "${PERSONAL_SITE_PUBLISHER_CAPTURE_BUILD:-0}" == "1" ]]; then
   swift_build_options+=(
     -Xswiftc -D
@@ -278,9 +366,49 @@ BUILD_BINARY="$BUILD_BIN_DIR/$APP_NAME"
   exit 1
 }
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_MACOS" "$APP_RESOURCES" "$APP_PLUGINS"
+mkdir -p \
+  "$APP_MACOS" \
+  "$APP_RESOURCES/ThirdPartyNotices" \
+  "$APP_PLUGINS" \
+  "$APP_FRAMEWORKS"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
+[[ -f "$SPARKLE_LICENSE_SOURCE" ]] || {
+  echo "Sparkle third-party notice is missing: $SPARKLE_LICENSE_SOURCE" >&2
+  exit 1
+}
+cp "$SPARKLE_LICENSE_SOURCE" "$SPARKLE_LICENSE_BUNDLE"
+grep -Fq 'Copyright (c) 2006-2013 Andy Matuschak.' "$SPARKLE_LICENSE_BUNDLE" || {
+  echo "packaged Sparkle notice is incomplete" >&2
+  exit 1
+}
+grep -Fq 'EXTERNAL LICENSES' "$SPARKLE_LICENSE_BUNDLE" || {
+  echo "packaged Sparkle external-license notices are incomplete" >&2
+  exit 1
+}
+SPARKLE_FRAMEWORK_BUILD_PRODUCT="$BUILD_BIN_DIR/Sparkle.framework"
+[[ -d "$SPARKLE_FRAMEWORK_BUILD_PRODUCT" ]] || {
+  echo "SwiftPM Sparkle.framework is missing: $SPARKLE_FRAMEWORK_BUILD_PRODUCT" >&2
+  exit 1
+}
+ditto "$SPARKLE_FRAMEWORK_BUILD_PRODUCT" "$SPARKLE_FRAMEWORK_BUNDLE"
+[[ -L "$SPARKLE_FRAMEWORK_BUNDLE/Versions/Current" ]] || {
+  echo "Sparkle.framework Versions/Current symlink was not preserved" >&2
+  exit 1
+}
+[[ -L "$SPARKLE_FRAMEWORK_BUNDLE/Sparkle" ]] || {
+  echo "Sparkle.framework binary symlink was not preserved" >&2
+  exit 1
+}
+app_linked_libraries="$($OTOOL_TOOL -L "$APP_BINARY")"
+grep -Fq 'Sparkle.framework' <<<"$app_linked_libraries" || {
+  echo "app executable is not linked to Sparkle.framework" >&2
+  exit 1
+}
+app_load_commands="$($OTOOL_TOOL -l "$APP_BINARY")"
+if ! grep -Fq 'path @executable_path/../Frameworks ' <<<"$app_load_commands"; then
+  "$INSTALL_NAME_TOOL" -add_rpath '@executable_path/../Frameworks' "$APP_BINARY"
+fi
 [[ -d "$SAFARI_EXTENSION_BUILD_PRODUCT" ]] || {
   echo "Safari Web Extension build product is missing: $SAFARI_EXTENSION_BUILD_PRODUCT" >&2
   exit 1
@@ -361,6 +489,7 @@ $SCREENSHOT_CAPTURE_BUILD_PLIST
   <false/>
   <key>PersonalSitePublisherSafariWebExtensionAvailable</key>
   <true/>
+$SPARKLE_UPDATE_INFO_PLIST
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>LSApplicationCategoryType</key>
@@ -441,6 +570,15 @@ elif [[ "$APP_STORE_BUILD" == "1" ]]; then
     exit 1
   }
   code_sign_arguments+=(--entitlements "$APP_STORE_ENTITLEMENTS")
+elif [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
+  [[ -f "$DIRECT_DISTRIBUTION_ENTITLEMENTS" ]] || {
+    echo "direct-distribution entitlements are missing: $DIRECT_DISTRIBUTION_ENTITLEMENTS" >&2
+    exit 1
+  }
+  code_sign_arguments+=(
+    --options runtime
+    --entitlements "$DIRECT_DISTRIBUTION_ENTITLEMENTS"
+  )
 fi
 [[ -f "$SAFARI_EXTENSION_ENTITLEMENTS" ]] || {
   echo "Safari Web Extension entitlements are missing: $SAFARI_EXTENSION_ENTITLEMENTS" >&2
@@ -452,6 +590,12 @@ safari_code_sign_arguments=(
   --identifier "$SAFARI_EXTENSION_BUNDLE_ID"
   --entitlements "$SAFARI_EXTENSION_ENTITLEMENTS"
 )
+if [[ "$DIRECT_DISTRIBUTION_BUILD" == "1" ]]; then
+  safari_code_sign_arguments+=(--options runtime)
+fi
+bash "$ROOT_DIR/script/sign_sparkle_framework.sh" \
+  --framework "$SPARKLE_FRAMEWORK_BUNDLE" \
+  --identity "$resolved_code_sign_identity" >/dev/null
 "$CODESIGN_TOOL" "${safari_code_sign_arguments[@]}" "$SAFARI_EXTENSION_BUNDLE"
 "$CODESIGN_TOOL" --verify --strict --verbose=2 "$SAFARI_EXTENSION_BUNDLE"
 "$CODESIGN_TOOL" "${code_sign_arguments[@]}" "$APP_BUNDLE"

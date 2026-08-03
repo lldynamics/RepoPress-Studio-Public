@@ -4,7 +4,7 @@
 
 `public-pages/` contains the exact RepoPress Studio support and privacy page sources that must be copied to the public `apps.chengjinfang.com/personal-site-publisher/` site before review. These pages disclose free user-configured AI, Keychain storage, endpoint-specific consent, and direct provider transfers.
 
-`FEATURE_BOUNDARY.md` is the App Store edition contract. The App Store build makes user-configured AI available without Pro, does not meter AI requests or sell provider access, and requires endpoint-specific consent before remote transfers. It includes browser capture through an authenticated loopback bridge and excludes Native Messaging helpers, unpacked extension assets, and browser-directory installers. Any change to this boundary must update code, review notes, privacy responses, StoreKit copy, extension listings, and screenshots together.
+`FEATURE_BOUNDARY.md` is the App Store edition contract. The App Store build includes user-configured AI, does not meter AI requests or sell provider access, and requires endpoint-specific consent before remote transfers. It includes browser capture through an authenticated loopback bridge and excludes Native Messaging helpers, unpacked extension assets, and browser-directory installers. Any change to this boundary must update code, review notes, privacy responses, extension listings, and screenshots together.
 
 Run the local structural check while editing:
 

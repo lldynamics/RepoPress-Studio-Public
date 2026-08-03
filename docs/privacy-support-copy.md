@@ -1,29 +1,47 @@
 # Privacy And Support Copy Review
 
-This copy is the redacted privacy/support baseline for the RepoPress Studio App Store edition. It must stay aligned with the App Store feature boundary, authenticated browser capture, in-app quick hide, private-content masking, screenshot privacy gate, and the local repository workflow before release.
+This is the redacted privacy and support baseline for the free RepoPress Studio website edition. The app is downloaded from the official website as a Developer ID signed and notarized macOS app. It requires no RepoPress Studio account or paid feature tier. RepoPress Studio does not sell AI service access, provider keys, or usage bundles.
 
 ## Privacy Policy Copy
 
-RepoPress Studio works with repositories, drafts, images, publishing metadata, and deployment status that the user chooses to open or configure. It does not provide a public article catalog, user-submission platform, or hosted content service. Repository files and drafts stay on this Mac unless the user explicitly starts a repository API, deployment-status, or StoreKit action.
+RepoPress Studio works with repositories, drafts, images, publishing metadata, research material, browser captures, and deployment status that the user chooses to open or configure. The workspace is local-first and does not include advertising, behavioral tracking, or a third-party analytics SDK. Repository files and drafts stay on this Mac unless the user deliberately starts an external operation.
 
-The app includes a manual quick hide action for local screen protection. It immediately covers writing, research, repository, deployment, release, and settings content until the user returns to the workbench. The app does not automatically hide content at launch or when it moves to the background.
+The app includes a manual Quick Hide action for local screen protection. It covers writing, research, repository, deployment, release, and settings content until the user returns to the workbench. Quick Hide only covers the interface; it does not provide Touch ID or password authentication, and it does not encrypt local data. Private-content masking hides private article titles, summaries, paths, and previews in lists, search, overview panels, and release-facing surfaces.
 
-Private-content masking hides private article titles, summaries, paths, and previews in lists, search, overview panels, and release-facing surfaces. Private articles are excluded from repair queues and public SEO/social preview image output.
+Public screenshots, support copy, release evidence, and shared diagnostics must not contain local paths, access tokens, authorization headers, private article body text, or personal account identifiers. Ask users to send only redacted screenshots and diagnostics they have reviewed.
 
-The app must not include local paths, access tokens, authorization headers, private article body text, or personal account identifiers in App Store screenshots, support copy, release evidence, or public diagnostics. Screenshot and release-evidence gates are used before release to check for local paths, Token values, and authorization headers.
+### User-configured AI
 
-External AI assistance is optional and available to every user without RepoPress Pro. Users configure and fund their own local or remote provider account; RepoPress Studio does not meter AI requests, sell AI credits, sell provider access, or use an API key as an app license. Before the first request to each remote provider or custom endpoint, RepoPress Studio identifies the destination and possible data categories and requires explicit consent. Requests go directly to the selected provider; the developer does not proxy or receive the API key, prompts, requests, or responses. API keys are stored in macOS Keychain. RepoPress Pro unlocks online publishing and batch publishing only.
+AI assistance uses BYOK (Bring Your Own Key), a custom HTTPS endpoint, or a local loopback model. Users obtain and fund any remote provider account themselves. API keys are stored in macOS Keychain and are not included in workspace backups.
 
-This App Store review build supports browser capture through the embedded Safari Web Extension. Captures reach RepoPress Studio only through an authenticated `127.0.0.1:17843` loopback connection on the same Mac. Chrome, Edge, and Firefox are not claimed as public features of this submission. The app does not install a Native Messaging helper or write a manifest into browser directories.
+Before the first request to each custom remote API destination, RepoPress Studio shows the destination URL and the possible data categories, then requires explicit consent. The consent can be revoked. Depending on the action, a request can contain the user's prompt, current article or site context, selected research excerpts, conversation context, and images the user adds. Requests go directly from this Mac to the selected provider; the developer does not proxy or receive API keys, prompts, requests, or responses. The provider processes the data under its own terms and privacy policy.
+
+Connections to `localhost`, `127.0.0.1`, and `::1` are local loopback connections on this Mac and are not transfers to a remote AI provider. A local service may still apply its own storage or logging behavior, which the user controls separately.
+
+### Browser Capture
+
+The Safari Web Extension is embedded in the Mac app. The Chrome extension is installed and updated separately through the Chrome Web Store. Both process a page only after a user-initiated capture action. Captures reach RepoPress Studio through the authenticated `127.0.0.1:17843` loopback connection on the same Mac and do not pass through the developer's servers.
+
+The app-side browser connection token is stored only in macOS Keychain. The Chrome extension keeps its pairing token, preferences, limited receipts, and a bounded offline queue in extension-local storage. RepoPress Studio does not install a Native Messaging helper for these current Safari and Chrome channels.
+
+### Other Network Requests And Updates
+
+User-initiated GitHub, GitLab, repository-remote, deployment-status, support-page, and privacy-page actions contact the corresponding service. RepoPress Studio does not upload drafts or research automatically.
+
+The website edition uses Sparkle for software updates. A request is made when the user manually checks for updates or allows Sparkle to perform automatic checks. Sparkle retrieves an HTTPS update feed and, after user confirmation where applicable, downloads the signed update archive from the configured update host. Update requests do not contain drafts, research, browser captures, credentials, AI prompts, or AI responses.
+
+The update host or its CDN may keep necessary server access logs containing an IP address, request time, requested path, response status, and user agent or app version. These logs are used only for update delivery, reliability, abuse prevention, and security, not advertising or cross-service tracking, and are retained according to the hosting provider's operational policy.
+
+### Developer Data And Deletion
+
+The app does not automatically send diagnostics. The developer receives an email address, message, and attachments only when the user sends a support request or shares reviewed diagnostics. This information is used for support, security, and necessary legal obligations, not advertising or sale.
+
+Users can delete local drafts, research, records, site profiles, backups, and credentials; clear the browser-extension queue and disconnect pairing; or uninstall an extension. Deleting the app may not remove Application Support data, macOS Keychain items, extension-local data, backups, or files in user-selected repositories. Data sent to a remote provider or committed to a repository must be managed with that provider or in that repository.
 
 ## Support Copy
 
-For support requests, ask the user to describe the issue, app version, macOS version, selected site framework, and whether the issue involves AI provider configuration, endpoint consent, local publishing, GitHub/GitLab API publishing, deployment status, browser extension pairing, StoreKit, quick hide, or private-content masking behavior.
+For support requests, ask for the RepoPress Studio version, macOS version, selected site framework, steps to reproduce, and whether the issue involves a BYOK provider, custom remote API consent, local loopback model, local publishing, GitHub or GitLab sync, deployment status, Safari or Chrome capture, Sparkle updates, Quick Hide, or private-content masking.
 
-Support replies should not request raw repository archives, local filesystem paths, access tokens, authorization headers, private article text, or personal account identifiers. If debugging evidence is needed, ask for redacted screenshots or release gate output with sensitive values removed.
+Never ask the user to send an API key, access token, authorization header, account password, complete repository, local filesystem path, private article text, or unreviewed diagnostic archive. If evidence is needed, ask for a redacted screenshot or reviewed diagnostic output.
 
-If a user reports exposed private content, first ask them to enable private-content masking and use quick hide when leaving the screen. Then check whether the content is marked Private, whether the view is a list/search/overview/release surface, and whether any screenshot or copied diagnostic text contains local paths or tokens.
-
-If a user reports an online operation issue, confirm whether they intentionally configured the repository or deployment provider. Explain that online publishing, repository API requests, deployment checks, and StoreKit may contact external services, while local editing, research, and local repository checks are performed on this Mac.
-
-If a user reports an AI issue, confirm the selected provider host, whether the endpoint requires an API key, whether Keychain reports a saved credential, and whether consent was granted for that exact endpoint. Never ask the user to send the API key. Explain that AI requests are processed under the selected provider's terms and privacy policy.
+For update issues, ask whether the user started a manual check or enabled automatic checks, the app version and channel, the visible error, and whether the configured update host is reachable. Explain that the update host may receive the standard server access log fields listed above, but not workspace or AI content.
