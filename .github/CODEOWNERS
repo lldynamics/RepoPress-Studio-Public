@@ -1,0 +1,10 @@
+* @lldynamics
+
+/.github/ @lldynamics
+/Package.swift @lldynamics
+/Package.resolved @lldynamics
+/package-lock.json @lldynamics
+/BrowserExtension/browser-extension-protocol.json @lldynamics
+/BrowserExtension/manifest.json @lldynamics
+/Packaging/ @lldynamics
+/script/ @lldynamics

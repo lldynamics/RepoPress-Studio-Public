@@ -1,0 +1,166 @@
+import PublishingWorkbenchCore
+import SwiftUI
+
+struct WorkspaceShellSplitLayout: View {
+  let store: WorkbenchStore
+  @ObservedObject private var layoutState: WorkbenchWorkspaceLayoutFeatureFacade
+  let isCompact: Bool
+  let isFocusMode: Bool
+  let workspaceWidth: CGFloat
+  let isInspectorPresented: Bool
+  @Binding var contentHealthFilter: ContentHealthContextFilter
+  @Binding var imageWorkbenchContextStage: ImageWorkbenchContextStage
+  @Binding var repositoryContextStage: RepositoryContextStage
+  let repositorySourceSession: RepositoryHTMLSourceSession
+  let rssStore: RSSReaderStore
+  let rssPresentation: RSSReaderPresentationState
+  let onSelectSection: (WorkspaceSection) -> Void
+  @AppStorage("workspacePrimarySidebarWidthV2")
+  private var storedSidebarWidth = Double(WorkbenchLayoutMode.defaultSidebarWidth)
+  @State private var sidebarResizeStartWidth: CGFloat?
+  @StateObject private var contentHealthSidebarProjection = ContentHealthSidebarProjection()
+
+  init(
+    store: WorkbenchStore,
+    isCompact: Bool,
+    isFocusMode: Bool,
+    workspaceWidth: CGFloat,
+    isInspectorPresented: Bool,
+    contentHealthFilter: Binding<ContentHealthContextFilter>,
+    imageWorkbenchContextStage: Binding<ImageWorkbenchContextStage>,
+    repositoryContextStage: Binding<RepositoryContextStage>,
+    repositorySourceSession: RepositoryHTMLSourceSession,
+    rssStore: RSSReaderStore,
+    rssPresentation: RSSReaderPresentationState,
+    onSelectSection: @escaping (WorkspaceSection) -> Void
+  ) {
+    self.store = store
+    _layoutState = ObservedObject(wrappedValue: store.workspaceLayout)
+    self.isCompact = isCompact
+    self.isFocusMode = isFocusMode
+    self.workspaceWidth = workspaceWidth
+    self.isInspectorPresented = isInspectorPresented
+    _contentHealthFilter = contentHealthFilter
+    _imageWorkbenchContextStage = imageWorkbenchContextStage
+    _repositoryContextStage = repositoryContextStage
+    self.repositorySourceSession = repositorySourceSession
+    self.rssStore = rssStore
+    self.rssPresentation = rssPresentation
+    self.onSelectSection = onSelectSection
+  }
+
+  var body: some View {
+    HStack(spacing: 0) {
+      if !isFocusMode {
+        WorkspacePrimarySidebar(
+          store: store,
+          contentHealthFilter: $contentHealthFilter,
+          imageWorkbenchContextStage: $imageWorkbenchContextStage,
+          repositoryContextStage: $repositoryContextStage,
+          contentHealthSidebarProjection: contentHealthSidebarProjection,
+          rssStore: rssStore,
+          rssPresentation: rssPresentation,
+          onSelectSection: onSelectSection
+        )
+        .frame(width: sidebarWidth)
+        .frame(maxHeight: .infinity)
+
+        workspaceSidebarResizeHandle
+      }
+
+      if isFocusMode {
+        EditorCenterColumn(
+          store: store,
+          contentHealthFilter: $contentHealthFilter,
+          imageWorkbenchContextStage: $imageWorkbenchContextStage,
+          repositoryContextStage: $repositoryContextStage,
+          contentHealthSidebarProjection: contentHealthSidebarProjection,
+          repositorySourceSession: repositorySourceSession,
+          rssStore: rssStore,
+          rssPresentation: rssPresentation
+        )
+        .frame(minWidth: 680, maxWidth: .infinity, maxHeight: .infinity)
+      } else {
+        EditorCenterColumn(
+          store: store,
+          contentHealthFilter: $contentHealthFilter,
+          imageWorkbenchContextStage: $imageWorkbenchContextStage,
+          repositoryContextStage: $repositoryContextStage,
+          contentHealthSidebarProjection: contentHealthSidebarProjection,
+          repositorySourceSession: repositorySourceSession,
+          rssStore: rssStore,
+          rssPresentation: rssPresentation
+        )
+        .frame(minWidth: centerMinimumWidth, maxWidth: .infinity, maxHeight: .infinity)
+      }
+    }
+    .knowledgeFileDropImport(
+      knowledge: store.knowledge,
+      isEnabled: layoutState.selectedSection == .library
+    )
+  }
+
+  private var sidebarWidth: CGFloat {
+    let width = WorkbenchLayoutMode.sidebarWidth(
+      storedWidth: CGFloat(storedSidebarWidth),
+      workspaceWidth: workspaceWidth,
+      centerMinimumWidth: centerMinimumWidth,
+      inspectorPresented: isInspectorPresented
+    )
+    guard layoutState.selectedSection == .rss, !isCompact else { return width }
+    return min(max(width, 260), 300)
+  }
+
+  private var centerMinimumWidth: CGFloat {
+    if layoutState.selectedSection == .sync, repositoryContextStage == .source {
+      return 680
+    }
+    return isCompact ? 460 : 560
+  }
+
+  private var sidebarMaximumWidth: CGFloat {
+    let width = WorkbenchLayoutMode.sidebarWidth(
+      storedWidth: 380,
+      workspaceWidth: workspaceWidth,
+      centerMinimumWidth: centerMinimumWidth,
+      inspectorPresented: isInspectorPresented
+    )
+    guard layoutState.selectedSection == .rss, !isCompact else { return width }
+    return min(max(width, 260), 300)
+  }
+
+  private var workspaceSidebarResizeHandle: some View {
+    Divider()
+      .overlay {
+        Color.clear
+          .frame(width: 10)
+          .contentShape(Rectangle())
+          .gesture(
+            DragGesture(minimumDistance: 1)
+              .onChanged { value in
+                let startWidth = sidebarResizeStartWidth ?? sidebarWidth
+                sidebarResizeStartWidth = startWidth
+                storedSidebarWidth = Double(
+                  min(max(startWidth + value.translation.width, 240), sidebarMaximumWidth)
+                )
+              }
+              .onEnded { _ in
+                sidebarResizeStartWidth = nil
+              }
+          )
+      }
+      .accessibilityElement()
+      .accessibilityLabel("调整工作区侧栏宽度")
+      .accessibilityValue(String(localized: "\(Int(sidebarWidth)) 点"))
+      .accessibilityAdjustableAction { direction in
+        switch direction {
+        case .increment:
+          storedSidebarWidth = Double(min(sidebarWidth + 20, sidebarMaximumWidth))
+        case .decrement:
+          storedSidebarWidth = Double(max(sidebarWidth - 20, 240))
+        @unknown default:
+          break
+        }
+      }
+  }
+}

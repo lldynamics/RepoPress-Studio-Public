@@ -1,0 +1,270 @@
+{
+  "display.article-visibility.private": {
+    "en": "Private",
+    "zh-Hans": "私密"
+  },
+  "display.article-visibility.public": {
+    "en": "Public",
+    "zh-Hans": "公开"
+  },
+  "display.deployment-status-level.failed": {
+    "en": "Failed",
+    "zh-Hans": "失败"
+  },
+  "display.deployment-status-level.running": {
+    "en": "Deploying",
+    "zh-Hans": "部署中"
+  },
+  "display.deployment-status-level.success": {
+    "en": "Healthy",
+    "zh-Hans": "正常"
+  },
+  "display.deployment-status-level.unknown": {
+    "en": "Unknown",
+    "zh-Hans": "未知"
+  },
+  "display.draft-repository-cleanup-status.completed": {
+    "en": "Cleaned",
+    "zh-Hans": "已清理"
+  },
+  "display.draft-repository-cleanup-status.kept": {
+    "en": "File Kept",
+    "zh-Hans": "保留文件"
+  },
+  "display.draft-repository-cleanup-status.pending": {
+    "en": "Pending Cleanup",
+    "zh-Hans": "待清理"
+  },
+  "display.draft-status.draft": {
+    "en": "Draft",
+    "zh-Hans": "草稿"
+  },
+  "display.draft-status.failed": {
+    "en": "Failed",
+    "zh-Hans": "失败"
+  },
+  "display.draft-status.published": {
+    "en": "Published",
+    "zh-Hans": "已发布"
+  },
+  "display.draft-status.ready": {
+    "en": "Ready to Publish",
+    "zh-Hans": "待发布"
+  },
+  "display.draft-version-reason.automatic": {
+    "en": "Automatic",
+    "zh-Hans": "自动保存"
+  },
+  "display.draft-version-reason.before-deletion": {
+    "en": "Before Deletion",
+    "zh-Hans": "删除前"
+  },
+  "display.draft-version-reason.before-restore": {
+    "en": "Before Restore",
+    "zh-Hans": "恢复前"
+  },
+  "display.draft-version-reason.manual": {
+    "en": "Manual Snapshot",
+    "zh-Hans": "手动快照"
+  },
+  "display.editor-display-mode.edit": {
+    "en": "Edit",
+    "zh-Hans": "编辑"
+  },
+  "display.editor-display-mode.preview": {
+    "en": "Preview",
+    "zh-Hans": "预览"
+  },
+  "display.editor-display-mode.split": {
+    "en": "Split View",
+    "zh-Hans": "分屏"
+  },
+  "display.local-publish-action-readiness.blocked": {
+    "en": "Blocked",
+    "zh-Hans": "已阻塞"
+  },
+  "display.local-publish-action-readiness.needs-review": {
+    "en": "Review Required",
+    "zh-Hans": "需确认"
+  },
+  "display.local-publish-action-readiness.ready": {
+    "en": "Ready",
+    "zh-Hans": "可执行"
+  },
+  "display.local-publish-action-readiness.unchanged": {
+    "en": "No Changes",
+    "zh-Hans": "无变化"
+  },
+  "display.preflight-severity.error": {
+    "en": "Error",
+    "zh-Hans": "错误"
+  },
+  "display.preflight-severity.info": {
+    "en": "Info",
+    "zh-Hans": "提示"
+  },
+  "display.preflight-severity.warning": {
+    "en": "Warning",
+    "zh-Hans": "警告"
+  },
+  "display.publish-file-diff-status.added": {
+    "en": "Added",
+    "zh-Hans": "新增"
+  },
+  "display.publish-file-diff-status.deleted": {
+    "en": "Deleted",
+    "zh-Hans": "删除"
+  },
+  "display.publish-file-diff-status.missing-source": {
+    "en": "Source File Missing",
+    "zh-Hans": "源文件缺失"
+  },
+  "display.publish-file-diff-status.modified": {
+    "en": "Modified",
+    "zh-Hans": "修改"
+  },
+  "display.publish-file-diff-status.unchanged": {
+    "en": "Unchanged",
+    "zh-Hans": "未变化"
+  },
+  "display.publish-file-diff-status.unsafe-path": {
+    "en": "Unsafe Path",
+    "zh-Hans": "路径不安全"
+  },
+  "display.publish-file-kind.image": {
+    "en": "Image",
+    "zh-Hans": "图片"
+  },
+  "display.publish-file-kind.markdown": {
+    "en": "Markdown",
+    "zh-Hans": "Markdown"
+  },
+  "display.publish-file-operation.delete": {
+    "en": "Delete",
+    "zh-Hans": "删除"
+  },
+  "display.publish-file-operation.upsert": {
+    "en": "Write",
+    "zh-Hans": "写入"
+  },
+  "display.release-ledger-action-kind.complete-review": {
+    "en": "Merge Review",
+    "zh-Hans": "合并 Review"
+  },
+  "display.release-ledger-action-kind.failed-release": {
+    "en": "Handle Failure",
+    "zh-Hans": "失败处理"
+  },
+  "display.release-ledger-action-kind.keep-rollback-ready": {
+    "en": "Prepare Rollback",
+    "zh-Hans": "回滚预案"
+  },
+  "display.release-ledger-action-kind.observe-deployment": {
+    "en": "Monitor Deployment",
+    "zh-Hans": "部署观察"
+  },
+  "display.release-ledger-action-kind.publish-local-changes": {
+    "en": "Commit Local Changes",
+    "zh-Hans": "提交本地"
+  },
+  "display.release-ledger-action-kind.recover-partial-remote-publish": {
+    "en": "Recover Remote Publish",
+    "zh-Hans": "远端恢复"
+  },
+  "display.release-ledger-action-kind.retry-deployment-check": {
+    "en": "Retry Check",
+    "zh-Hans": "重试检查"
+  },
+  "display.release-ledger-action-priority.high": {
+    "en": "High",
+    "zh-Hans": "高"
+  },
+  "display.release-ledger-action-priority.low": {
+    "en": "Low",
+    "zh-Hans": "低"
+  },
+  "display.release-ledger-action-priority.medium": {
+    "en": "Medium",
+    "zh-Hans": "中"
+  },
+  "display.release-ledger-status.deploying": {
+    "en": "Deploying",
+    "zh-Hans": "部署中"
+  },
+  "display.release-ledger-status.failed": {
+    "en": "Failed",
+    "zh-Hans": "失败"
+  },
+  "display.release-ledger-status.local-only": {
+    "en": "Pending Local Action",
+    "zh-Hans": "本地待处理"
+  },
+  "display.release-ledger-status.pending-deployment": {
+    "en": "Awaiting Deployment Check",
+    "zh-Hans": "等待部署检查"
+  },
+  "display.release-ledger-status.pending-remote-recovery": {
+    "en": "Remote Confirmation Required",
+    "zh-Hans": "远端待确认"
+  },
+  "display.release-ledger-status.pending-retry": {
+    "en": "Retry Pending",
+    "zh-Hans": "待重试"
+  },
+  "display.release-ledger-status.pending-review": {
+    "en": "Awaiting Merge",
+    "zh-Hans": "等待合并"
+  },
+  "display.release-ledger-status.succeeded": {
+    "en": "Live",
+    "zh-Hans": "已上线"
+  },
+  "display.release-ledger-status.unknown": {
+    "en": "Unknown",
+    "zh-Hans": "未知"
+  },
+  "display.release-record-kind.batch-local-write": {
+    "en": "Batch Write",
+    "zh-Hans": "批量写入"
+  },
+  "display.release-record-kind.direct-commit": {
+    "en": "Direct Commit",
+    "zh-Hans": "直接提交"
+  },
+  "display.release-record-kind.local-write": {
+    "en": "Write to Repository",
+    "zh-Hans": "写入仓库"
+  },
+  "display.release-record-kind.remote-direct-commit": {
+    "en": "Remote Direct Commit",
+    "zh-Hans": "线上提交"
+  },
+  "display.release-record-kind.remote-publish-failure": {
+    "en": "Remote Publish Failed",
+    "zh-Hans": "线上发布失败"
+  },
+  "display.release-record-kind.remote-review-request": {
+    "en": "Remote PR/MR",
+    "zh-Hans": "线上 PR/MR"
+  },
+  "display.release-record-kind.remote-review-withdrawal": {
+    "en": "Remote Review Withdrawal",
+    "zh-Hans": "线上 Review 撤回"
+  },
+  "display.release-record-kind.remote-rollback": {
+    "en": "Remote Rollback",
+    "zh-Hans": "线上回滚"
+  },
+  "display.release-record-kind.review-branch": {
+    "en": "Publish Branch",
+    "zh-Hans": "发布分支"
+  },
+  "display.remote-repository-publish-mode.direct-commit": {
+    "en": "Remote Direct Commit",
+    "zh-Hans": "线上直接提交"
+  },
+  "display.remote-repository-publish-mode.review-request": {
+    "en": "Remote PR/MR",
+    "zh-Hans": "线上 PR/MR"
+  }
+}

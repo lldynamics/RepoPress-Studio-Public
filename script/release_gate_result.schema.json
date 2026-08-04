@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "script/release_gate_result.schema.json",
+  "title": "RepoPress Release Gate Evidence",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runState",
+    "startedAt",
+    "generatedAt",
+    "mode",
+    "repository",
+    "releaseIdentity",
+    "summary",
+    "artifacts",
+    "checks"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 2
+    },
+    "runState": {
+      "enum": [
+        "partial",
+        "complete"
+      ]
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "releaseIdentity": {
+      "type": "object",
+      "required": [
+        "marketingVersion",
+        "buildNumber",
+        "sourceCommit",
+        "sourceDirty",
+        "observedAt"
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "status",
+        "expectedCheckCount",
+        "completedCheckCount",
+        "passedCount",
+        "failedCount"
+      ]
+    },
+    "artifacts": {
+      "type": "object",
+      "required": [
+        "packagedApp"
+      ],
+      "properties": {
+        "packagedApp": {
+          "type": "object",
+          "required": [
+            "status",
+            "appBundle",
+            "identity",
+            "codeSignature",
+            "content"
+          ]
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "returnCode",
+          "timeoutSeconds",
+          "durationSeconds"
+        ]
+      }
+    }
+  },
+  "additionalProperties": true
+}

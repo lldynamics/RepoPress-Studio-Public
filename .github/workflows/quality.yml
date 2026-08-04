@@ -1,0 +1,33 @@
+name: Public Source Gate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-source-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Verify public repository boundary
+        run: bash script/check_public_snapshot.sh .
+      - name: Show toolchain
+        run: swift --version
+      - name: Build and test
+        run: swift test
+      - name: Verify pinned Node dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high --omit=optional

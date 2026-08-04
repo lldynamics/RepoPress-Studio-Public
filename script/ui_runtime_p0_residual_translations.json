@@ -1,0 +1,34 @@
+{
+  "GitHub": {
+    "en": "GitHub",
+    "zh-Hans": "GitHub"
+  },
+  "保存到本地": {
+    "en": "Save Locally",
+    "zh-Hans": "保存到本地"
+  },
+  "全部待发布变更（%d 篇文章）": {
+    "en": "All Pending Changes (%d Articles)",
+    "zh-Hans": "全部待发布变更（%d 篇文章）"
+  },
+  "发布所有变更": {
+    "en": "Publish All Changes",
+    "zh-Hans": "发布所有变更"
+  },
+  "发布范围": {
+    "en": "Publishing Scope",
+    "zh-Hans": "发布范围"
+  },
+  "只更新站点文件，不提交到 Git，也不会上传到网站。": {
+    "en": "Updates site files only. Does not commit to Git or upload to the website.",
+    "zh-Hans": "只更新站点文件，不提交到 Git，也不会上传到网站。"
+  },
+  "把当前站点中所有通过检查且有变化的文章合并为一次提交和推送；执行前会显示完整文件清单。": {
+    "en": "Combines all changed articles in the current site that pass checks into a single commit and push. The complete file list will be shown before publishing.",
+    "zh-Hans": "把当前站点中所有通过检查且有变化的文章合并为一次提交和推送；执行前会显示完整文件清单。"
+  },
+  "选择模板": {
+    "en": "Choose a Template",
+    "zh-Hans": "选择模板"
+  }
+}

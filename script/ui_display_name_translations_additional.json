@@ -1,0 +1,622 @@
+{
+  "display.ai-publishing-action-kind.audit-image-privacy": {
+    "en": "Audit Image Privacy",
+    "zh-Hans": "图片隐私检查"
+  },
+  "display.ai-publishing-action-kind.audit-link-quality": {
+    "en": "Audit Link Quality",
+    "zh-Hans": "链接质量检查"
+  },
+  "display.ai-publishing-action-kind.checklist-selection": {
+    "en": "Convert Selection to Checklist",
+    "zh-Hans": "选区转清单"
+  },
+  "display.ai-publishing-action-kind.compare-writing-angles": {
+    "en": "Compare Writing Angles",
+    "zh-Hans": "写作角度对比"
+  },
+  "display.ai-publishing-action-kind.comparison-table-selection": {
+    "en": "Convert Selection to Comparison Table",
+    "zh-Hans": "选区转对比表"
+  },
+  "display.ai-publishing-action-kind.condense-selection": {
+    "en": "Condense Selection",
+    "zh-Hans": "压缩选中文本"
+  },
+  "display.ai-publishing-action-kind.continue-after-selection": {
+    "en": "Continue After Selection",
+    "zh-Hans": "续写选区后文"
+  },
+  "display.ai-publishing-action-kind.continue-article": {
+    "en": "Continue Article",
+    "zh-Hans": "续写正文"
+  },
+  "display.ai-publishing-action-kind.draft-article-faq": {
+    "en": "Draft Article FAQ",
+    "zh-Hans": "生成 FAQ"
+  },
+  "display.ai-publishing-action-kind.draft-article-tldr": {
+    "en": "Draft Article TL;DR",
+    "zh-Hans": "生成 TL;DR"
+  },
+  "display.ai-publishing-action-kind.draft-bilingual-metadata": {
+    "en": "Draft Bilingual Metadata",
+    "zh-Hans": "中英元数据候选"
+  },
+  "display.ai-publishing-action-kind.draft-bilingual-rewrite": {
+    "en": "Draft Bilingual Rewrite",
+    "zh-Hans": "选区双语改写"
+  },
+  "display.ai-publishing-action-kind.draft-case-study-section": {
+    "en": "Draft Case Study Section",
+    "zh-Hans": "生成案例小节"
+  },
+  "display.ai-publishing-action-kind.draft-checklist-section": {
+    "en": "Draft Checklist Section",
+    "zh-Hans": "生成检查清单"
+  },
+  "display.ai-publishing-action-kind.draft-code-example": {
+    "en": "Draft Code Example",
+    "zh-Hans": "生成代码示例"
+  },
+  "display.ai-publishing-action-kind.draft-comment-reply": {
+    "en": "Draft Comment Reply",
+    "zh-Hans": "评论回复草稿"
+  },
+  "display.ai-publishing-action-kind.draft-conclusion": {
+    "en": "Draft Conclusion",
+    "zh-Hans": "生成结尾"
+  },
+  "display.ai-publishing-action-kind.draft-content-refresh-plan": {
+    "en": "Draft Content Refresh Plan",
+    "zh-Hans": "旧文升级计划"
+  },
+  "display.ai-publishing-action-kind.draft-counterpoint-section": {
+    "en": "Draft Counterpoint Section",
+    "zh-Hans": "生成反方观点"
+  },
+  "display.ai-publishing-action-kind.draft-cover-image-prompt": {
+    "en": "Draft Cover Image Prompt",
+    "zh-Hans": "封面图提示词"
+  },
+  "display.ai-publishing-action-kind.draft-cross-platform-announcement": {
+    "en": "Draft Cross-platform Announcement",
+    "zh-Hans": "跨平台发布摘要"
+  },
+  "display.ai-publishing-action-kind.draft-example-section": {
+    "en": "Draft Example Section",
+    "zh-Hans": "生成示例小节"
+  },
+  "display.ai-publishing-action-kind.draft-front-matter-pack": {
+    "en": "Draft Front Matter Pack",
+    "zh-Hans": "Front Matter 套餐"
+  },
+  "display.ai-publishing-action-kind.draft-full-article": {
+    "en": "Draft Full Article",
+    "zh-Hans": "生成全文初稿"
+  },
+  "display.ai-publishing-action-kind.draft-glossary": {
+    "en": "Draft Glossary",
+    "zh-Hans": "生成术语表"
+  },
+  "display.ai-publishing-action-kind.draft-image-alt-captions": {
+    "en": "Draft Image Alt Text and Captions",
+    "zh-Hans": "图片 alt/caption 建议"
+  },
+  "display.ai-publishing-action-kind.draft-interview-qa": {
+    "en": "Draft Interview Q&A",
+    "zh-Hans": "生成访谈问答"
+  },
+  "display.ai-publishing-action-kind.draft-mermaid-diagram": {
+    "en": "Draft Mermaid Diagram",
+    "zh-Hans": "生成 Mermaid 图示"
+  },
+  "display.ai-publishing-action-kind.draft-newsletter-summary": {
+    "en": "Draft Newsletter Summary",
+    "zh-Hans": "Newsletter 摘要"
+  },
+  "display.ai-publishing-action-kind.draft-opening": {
+    "en": "Draft Opening",
+    "zh-Hans": "生成开头"
+  },
+  "display.ai-publishing-action-kind.draft-opening-hooks": {
+    "en": "Draft Opening Hooks",
+    "zh-Hans": "生成开头钩子"
+  },
+  "display.ai-publishing-action-kind.draft-publish-asset-pack": {
+    "en": "Draft Publishing Asset Pack",
+    "zh-Hans": "发布素材包"
+  },
+  "display.ai-publishing-action-kind.draft-publish-note": {
+    "en": "Draft Publish Note",
+    "zh-Hans": "发布说明"
+  },
+  "display.ai-publishing-action-kind.draft-pull-quotes": {
+    "en": "Draft Pull Quotes",
+    "zh-Hans": "可引用摘录"
+  },
+  "display.ai-publishing-action-kind.draft-reader-questions": {
+    "en": "Draft Reader Questions",
+    "zh-Hans": "生成读者问题"
+  },
+  "display.ai-publishing-action-kind.draft-references-section": {
+    "en": "Draft References Section",
+    "zh-Hans": "生成参考资料清单"
+  },
+  "display.ai-publishing-action-kind.draft-short-video-script": {
+    "en": "Draft Short Video Script",
+    "zh-Hans": "短视频口播稿"
+  },
+  "display.ai-publishing-action-kind.draft-social-share": {
+    "en": "Draft Social Share Copy",
+    "zh-Hans": "社交分享文案"
+  },
+  "display.ai-publishing-action-kind.draft-source-checklist": {
+    "en": "Draft Source Checklist",
+    "zh-Hans": "来源补充清单"
+  },
+  "display.ai-publishing-action-kind.draft-step-by-step-guide": {
+    "en": "Draft Step-by-step Guide",
+    "zh-Hans": "生成步骤指南"
+  },
+  "display.ai-publishing-action-kind.draft-transition-section": {
+    "en": "Draft Transition Section",
+    "zh-Hans": "生成过渡段"
+  },
+  "display.ai-publishing-action-kind.draft-troubleshooting-section": {
+    "en": "Draft Troubleshooting Section",
+    "zh-Hans": "生成故障排查"
+  },
+  "display.ai-publishing-action-kind.draft-tutorial-version": {
+    "en": "Draft Tutorial Version",
+    "zh-Hans": "改成教程版"
+  },
+  "display.ai-publishing-action-kind.draft-update-note": {
+    "en": "Draft Update Note",
+    "zh-Hans": "更新说明"
+  },
+  "display.ai-publishing-action-kind.expand-outline-to-draft": {
+    "en": "Expand Outline into Draft",
+    "zh-Hans": "按大纲扩写"
+  },
+  "display.ai-publishing-action-kind.expand-selection": {
+    "en": "Expand Selection",
+    "zh-Hans": "扩写选中文本"
+  },
+  "display.ai-publishing-action-kind.explain-selection": {
+    "en": "Explain Selection",
+    "zh-Hans": "解释选中文本"
+  },
+  "display.ai-publishing-action-kind.extract-article-action-items": {
+    "en": "Extract Article Action Items",
+    "zh-Hans": "提取行动项"
+  },
+  "display.ai-publishing-action-kind.extract-article-key-points": {
+    "en": "Extract Article Key Points",
+    "zh-Hans": "提取要点"
+  },
+  "display.ai-publishing-action-kind.fix-selection-grammar": {
+    "en": "Fix Selection Grammar",
+    "zh-Hans": "修正选区语法"
+  },
+  "display.ai-publishing-action-kind.flag-unsupported-claims": {
+    "en": "Flag Unsupported Claims",
+    "zh-Hans": "事实边界提醒"
+  },
+  "display.ai-publishing-action-kind.polish-selection": {
+    "en": "Polish Selection",
+    "zh-Hans": "润色选中文本"
+  },
+  "display.ai-publishing-action-kind.privacy-review": {
+    "en": "Review Public Exposure Risks",
+    "zh-Hans": "公开风险检查"
+  },
+  "display.ai-publishing-action-kind.publishing-readiness": {
+    "en": "Publishing Readiness",
+    "zh-Hans": "发布准备建议"
+  },
+  "display.ai-publishing-action-kind.pull-request-description": {
+    "en": "PR/MR Description",
+    "zh-Hans": "PR/MR 描述"
+  },
+  "display.ai-publishing-action-kind.remove-redundancy-selection": {
+    "en": "Remove Redundancy from Selection",
+    "zh-Hans": "删减选区冗余"
+  },
+  "display.ai-publishing-action-kind.reorganize-structure": {
+    "en": "Reorganize Structure",
+    "zh-Hans": "结构重排建议"
+  },
+  "display.ai-publishing-action-kind.review-content-gaps": {
+    "en": "Review Content Gaps",
+    "zh-Hans": "内容缺口检查"
+  },
+  "display.ai-publishing-action-kind.review-reader-clarity": {
+    "en": "Review Reader Clarity",
+    "zh-Hans": "读者清晰度检查"
+  },
+  "display.ai-publishing-action-kind.review-seo-readability": {
+    "en": "Review SEO and Readability",
+    "zh-Hans": "SEO 与可读性检查"
+  },
+  "display.ai-publishing-action-kind.review-ssg-compatibility": {
+    "en": "Review SSG Compatibility",
+    "zh-Hans": "SSG 兼容检查"
+  },
+  "display.ai-publishing-action-kind.review-technical-accuracy": {
+    "en": "Review Technical Accuracy",
+    "zh-Hans": "技术准确性检查"
+  },
+  "display.ai-publishing-action-kind.rewrite-selection": {
+    "en": "Rewrite Selection",
+    "zh-Hans": "改写选中文本"
+  },
+  "display.ai-publishing-action-kind.rewrite-selection-casual": {
+    "en": "Rewrite Selection Casually",
+    "zh-Hans": "轻松语气改写"
+  },
+  "display.ai-publishing-action-kind.rewrite-selection-formal": {
+    "en": "Rewrite Selection Formally",
+    "zh-Hans": "正式语气改写"
+  },
+  "display.ai-publishing-action-kind.rewrite-selection-reader-friendly": {
+    "en": "Rewrite Selection for Readers",
+    "zh-Hans": "读者友好改写"
+  },
+  "display.ai-publishing-action-kind.rewrite-selection-technical": {
+    "en": "Rewrite Selection Technically",
+    "zh-Hans": "技术语气改写"
+  },
+  "display.ai-publishing-action-kind.sharpen-opening-selection": {
+    "en": "Sharpen Opening Selection",
+    "zh-Hans": "优化开头段"
+  },
+  "display.ai-publishing-action-kind.simplify-selection": {
+    "en": "Simplify Selection",
+    "zh-Hans": "降低理解门槛"
+  },
+  "display.ai-publishing-action-kind.suggest-article-outline": {
+    "en": "Suggest Article Outline",
+    "zh-Hans": "生成大纲"
+  },
+  "display.ai-publishing-action-kind.suggest-internal-links": {
+    "en": "Suggest Internal Links",
+    "zh-Hans": "内链建议"
+  },
+  "display.ai-publishing-action-kind.suggest-series-plan": {
+    "en": "Suggest Series Plan",
+    "zh-Hans": "系列文章建议"
+  },
+  "display.ai-publishing-action-kind.suggest-slug": {
+    "en": "Suggest Slug",
+    "zh-Hans": "Slug 建议"
+  },
+  "display.ai-publishing-action-kind.suggest-summary": {
+    "en": "Suggest Summary",
+    "zh-Hans": "摘要建议"
+  },
+  "display.ai-publishing-action-kind.suggest-tags": {
+    "en": "Suggest Tags",
+    "zh-Hans": "Tags 建议"
+  },
+  "display.ai-publishing-action-kind.suggest-titles": {
+    "en": "Suggest Titles",
+    "zh-Hans": "标题建议"
+  },
+  "display.ai-publishing-action-kind.summarize-selection": {
+    "en": "Summarize Selection",
+    "zh-Hans": "选区摘要"
+  },
+  "display.ai-publishing-action-kind.title-summary-tags": {
+    "en": "Title, Summary, and Tags",
+    "zh-Hans": "标题摘要标签"
+  },
+  "display.ai-publishing-action-kind.translate-selection-to-chinese": {
+    "en": "Translate Selection to Chinese",
+    "zh-Hans": "选区翻译中文"
+  },
+  "display.ai-publishing-action-kind.translate-selection-to-english": {
+    "en": "Translate Selection to English",
+    "zh-Hans": "选区翻译英文"
+  },
+  "display.batch-publish-readiness.blocked": {
+    "en": "Blocked",
+    "zh-Hans": "已阻塞"
+  },
+  "display.batch-publish-readiness.needs-review": {
+    "en": "Review Required",
+    "zh-Hans": "需确认"
+  },
+  "display.batch-publish-readiness.ready": {
+    "en": "Ready to Write",
+    "zh-Hans": "可写入"
+  },
+  "display.batch-publish-readiness.unchanged": {
+    "en": "No Changes",
+    "zh-Hans": "无变化"
+  },
+  "display.content-migration-source-kind.generic-json": {
+    "en": "Generic JSON Export",
+    "zh-Hans": "通用 JSON 导出"
+  },
+  "display.content-migration-source-kind.markdown-folder": {
+    "en": "Markdown Folder",
+    "zh-Hans": "Markdown 文件夹"
+  },
+  "display.content-migration-source-kind.rss": {
+    "en": "RSS / Atom",
+    "zh-Hans": "RSS / Atom"
+  },
+  "display.content-migration-source-kind.wordpress-wxr": {
+    "en": "WordPress WXR",
+    "zh-Hans": "WordPress WXR"
+  },
+  "display.deployment-polling-status.checked": {
+    "en": "Checked",
+    "zh-Hans": "已检查"
+  },
+  "display.deployment-polling-status.disabled": {
+    "en": "Disabled",
+    "zh-Hans": "已关闭"
+  },
+  "display.deployment-polling-status.idle": {
+    "en": "Not Run",
+    "zh-Hans": "未运行"
+  },
+  "display.deployment-polling-status.no-eligible-records": {
+    "en": "Nothing to Check",
+    "zh-Hans": "无待检查"
+  },
+  "display.draft-list-filter.all": {
+    "en": "All Tasks",
+    "zh-Hans": "全部任务"
+  },
+  "display.draft-list-filter.check-failed": {
+    "en": "Checks Failed",
+    "zh-Hans": "检查失败"
+  },
+  "display.draft-list-filter.draft": {
+    "en": "To Write",
+    "zh-Hans": "待写作"
+  },
+  "display.draft-list-filter.private-articles": {
+    "en": "Private Articles",
+    "zh-Hans": "私密文章"
+  },
+  "display.draft-list-filter.published": {
+    "en": "Published",
+    "zh-Hans": "已上线"
+  },
+  "display.draft-list-filter.ready": {
+    "en": "Ready to Publish",
+    "zh-Hans": "待发布"
+  },
+  "display.general-draft-reuse-risk-level.high": {
+    "en": "High Risk",
+    "zh-Hans": "高风险"
+  },
+  "display.general-draft-reuse-risk-level.ready": {
+    "en": "Ready to Reuse",
+    "zh-Hans": "可复用"
+  },
+  "display.general-draft-reuse-risk-level.review": {
+    "en": "Review Required",
+    "zh-Hans": "需复查"
+  },
+  "display.image-cover-publish-state.disabled": {
+    "en": "Not Written to Front Matter",
+    "zh-Hans": "未写入 Front Matter"
+  },
+  "display.image-cover-publish-state.missing-attachment": {
+    "en": "Cover Attachment Missing",
+    "zh-Hans": "封面附件丢失"
+  },
+  "display.image-cover-publish-state.missing-cover": {
+    "en": "Cover Not Set",
+    "zh-Hans": "未设置封面"
+  },
+  "display.image-cover-publish-state.missing-publish-path": {
+    "en": "Cover Publish Path Missing",
+    "zh-Hans": "封面发布路径为空"
+  },
+  "display.image-cover-publish-state.missing-source": {
+    "en": "Cover Source Image Missing",
+    "zh-Hans": "封面源图缺失"
+  },
+  "display.image-cover-publish-state.private-suppressed": {
+    "en": "Suppressed for Private Article",
+    "zh-Hans": "私密文章已抑制"
+  },
+  "display.image-cover-publish-state.ready": {
+    "en": "Cover Ready to Publish",
+    "zh-Hans": "封面可发布"
+  },
+  "display.local-git-publish-mode.direct-commit": {
+    "en": "Direct Commit",
+    "zh-Hans": "直接提交"
+  },
+  "display.local-git-publish-mode.review-branch": {
+    "en": "Publish via Review Branch",
+    "zh-Hans": "发布分支提交"
+  },
+  "display.privacy-protection-event-kind.locked-on-launch": {
+    "en": "Masked on Launch",
+    "zh-Hans": "启动显示遮罩"
+  },
+  "display.privacy-protection-event-kind.manual-lock": {
+    "en": "Masked Manually",
+    "zh-Hans": "手动显示遮罩"
+  },
+  "display.privacy-protection-event-kind.settings-updated": {
+    "en": "Settings Updated",
+    "zh-Hans": "设置已更新"
+  },
+  "display.privacy-protection-event-kind.unlocked": {
+    "en": "Mask Removed",
+    "zh-Hans": "已移除遮罩"
+  },
+  "display.remote-repository-publish-progress-stage.completed": {
+    "en": "Completed",
+    "zh-Hans": "完成"
+  },
+  "display.remote-repository-publish-progress-stage.creating-branch": {
+    "en": "Creating Branch",
+    "zh-Hans": "分支"
+  },
+  "display.remote-repository-publish-progress-stage.creating-review": {
+    "en": "Creating Review",
+    "zh-Hans": "提交评审"
+  },
+  "display.remote-repository-publish-progress-stage.failed": {
+    "en": "Failed",
+    "zh-Hans": "失败"
+  },
+  "display.remote-repository-publish-progress-stage.preparing": {
+    "en": "Preparing",
+    "zh-Hans": "准备"
+  },
+  "display.remote-repository-publish-progress-stage.uploading-files": {
+    "en": "Uploading Files",
+    "zh-Hans": "上传"
+  },
+  "display.remote-repository-publish-progress-stage.validating-target": {
+    "en": "Validating Target",
+    "zh-Hans": "校验"
+  },
+  "display.remote-repository-publish-readiness.blocked": {
+    "en": "Blocked",
+    "zh-Hans": "已阻塞"
+  },
+  "display.remote-repository-publish-readiness.needs-permission-check": {
+    "en": "Permission Check Recommended",
+    "zh-Hans": "建议检查权限"
+  },
+  "display.remote-repository-publish-readiness.needs-token": {
+    "en": "Token Required",
+    "zh-Hans": "缺少 Token"
+  },
+  "display.remote-repository-publish-readiness.ready": {
+    "en": "Ready for Online Publishing",
+    "zh-Hans": "可线上发布"
+  },
+  "display.repository-auto-sync-status.disabled": {
+    "en": "Disabled",
+    "zh-Hans": "已关闭"
+  },
+  "display.repository-auto-sync-status.fetch-failed": {
+    "en": "Fetch Failed",
+    "zh-Hans": "Fetch 失败"
+  },
+  "display.repository-auto-sync-status.idle": {
+    "en": "Not Run",
+    "zh-Hans": "未运行"
+  },
+  "display.repository-auto-sync-status.scanned": {
+    "en": "Scanned",
+    "zh-Hans": "已扫描"
+  },
+  "display.repository-auto-sync-status.waiting-for-repository": {
+    "en": "Waiting for Repository",
+    "zh-Hans": "等待仓库"
+  },
+  "display.repository-change-kind.added": {
+    "en": "Added",
+    "zh-Hans": "新增"
+  },
+  "display.repository-change-kind.deleted": {
+    "en": "Deleted",
+    "zh-Hans": "删除"
+  },
+  "display.repository-change-kind.modified": {
+    "en": "Modified",
+    "zh-Hans": "修改"
+  },
+  "display.repository-change-kind.other": {
+    "en": "Other",
+    "zh-Hans": "其他"
+  },
+  "display.repository-change-kind.renamed": {
+    "en": "Renamed",
+    "zh-Hans": "重命名"
+  },
+  "display.repository-change-kind.untracked": {
+    "en": "Untracked",
+    "zh-Hans": "未跟踪"
+  },
+  "display.repository-changed-file-role.article": {
+    "en": "Article",
+    "zh-Hans": "文章"
+  },
+  "display.repository-changed-file-role.configuration": {
+    "en": "Configuration",
+    "zh-Hans": "配置"
+  },
+  "display.repository-changed-file-role.image": {
+    "en": "Image",
+    "zh-Hans": "图片"
+  },
+  "display.repository-changed-file-role.other": {
+    "en": "Other",
+    "zh-Hans": "其他"
+  },
+  "display.seo-social-preview-cache-state.fresh": {
+    "en": "Cache Available",
+    "zh-Hans": "缓存可用"
+  },
+  "display.seo-social-preview-cache-state.missing": {
+    "en": "Snapshot Not Generated",
+    "zh-Hans": "未生成快照"
+  },
+  "display.seo-social-preview-cache-state.stale": {
+    "en": "Cache Expired",
+    "zh-Hans": "缓存已过期"
+  },
+  "display.seo-social-preview-card-kind.open-graph": {
+    "en": "Open Graph",
+    "zh-Hans": "Open Graph"
+  },
+  "display.seo-social-preview-card-kind.search": {
+    "en": "Search Result",
+    "zh-Hans": "搜索结果"
+  },
+  "display.seo-social-preview-card-kind.twitter": {
+    "en": "Twitter/X",
+    "zh-Hans": "Twitter/X"
+  },
+  "display.seo-social-preview-readiness-status.missing": {
+    "en": "Missing Fields",
+    "zh-Hans": "缺字段"
+  },
+  "display.seo-social-preview-readiness-status.ready": {
+    "en": "Ready to Publish",
+    "zh-Hans": "可发布"
+  },
+  "display.seo-social-preview-readiness-status.warning": {
+    "en": "Review Required",
+    "zh-Hans": "需确认"
+  },
+  "display.writing-draft-sort-order.article-date-newest": {
+    "en": "Article Date: Newest",
+    "zh-Hans": "文章日期：最新"
+  },
+  "display.writing-draft-sort-order.article-date-oldest": {
+    "en": "Article Date: Oldest",
+    "zh-Hans": "文章日期：最早"
+  },
+  "display.writing-draft-sort-order.title-ascending": {
+    "en": "Title: A–Z",
+    "zh-Hans": "标题：A–Z"
+  },
+  "display.writing-draft-sort-order.title-descending": {
+    "en": "Title: Z–A",
+    "zh-Hans": "标题：Z–A"
+  },
+  "display.writing-draft-sort-order.updated-newest": {
+    "en": "Recently Updated",
+    "zh-Hans": "最近更新"
+  },
+  "display.writing-draft-sort-order.updated-oldest": {
+    "en": "Least Recently Updated",
+    "zh-Hans": "最早更新"
+  }
+}

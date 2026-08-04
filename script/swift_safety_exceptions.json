@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 1,
+  "uncheckedSendable": [
+    {
+      "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift",
+      "declaration": "BrowserPreparedImport",
+      "rationale": "Immutable transfer object whose Foundation payload is created before crossing the task boundary."
+    },
+    {
+      "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserImportLedgerStore.swift",
+      "declaration": "KnowledgeBrowserImportLedgerDefaults",
+      "rationale": "Value wrapper delegates access to the thread-safe UserDefaults implementation and stores no mutable reference state."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/AIChatCompletionClient.swift",
+      "declaration": "AIChatSendableError",
+      "rationale": "Error snapshot is immutable and only carries value descriptions across the task boundary."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/CredentialSafeURLSession.swift",
+      "declaration": "CredentialSafeURLSessionDelegate",
+      "rationale": "URLSession owns delegate callbacks and the implementation has no mutable instance state."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/DeploymentStatusService.swift",
+      "declaration": "DeploymentStatusJSONDecoder",
+      "rationale": "All JSONDecoder access is serialized by the wrapper lock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/DeploymentWebhookHTTPReceiver.swift",
+      "declaration": "DeploymentWebhookConnectionState",
+      "rationale": "Connection mutations are serialized on the receiver queue."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/DeploymentWebhookHTTPReceiver.swift",
+      "declaration": "DeploymentWebhookHTTPReceiver",
+      "rationale": "Listener and connection state are confined to the receiver queue."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/GitCommandRunner.swift",
+      "declaration": "BoundedOutputCollector",
+      "rationale": "Collected output is protected by an internal lock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/GitCommandRunner.swift",
+      "declaration": "GitCommandAsyncOperation",
+      "rationale": "Process lifecycle state is protected by an internal lock and single completion path."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/ImageBatchProcessingActor.swift",
+      "declaration": "ImageProcessingCancellationToken",
+      "rationale": "Cancellation state is synchronized by the token lock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/KeychainTokenStore.swift",
+      "declaration": "InMemoryTokenBackend",
+      "rationale": "Testable in-memory credential storage is protected by the coordinator lock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/KeychainTokenStore.swift",
+      "declaration": "KeychainTokenMutationCoordinator",
+      "rationale": "The coordinator is the serialization primitive for token mutations."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/KeychainTokenStore.swift",
+      "declaration": "KeychainTokenStore",
+      "rationale": "All mutable credential operations are serialized by the mutation coordinator."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeLibraryBackupService.swift",
+      "declaration": "KnowledgeLibraryBackupService",
+      "rationale": "Service dependencies are immutable and each operation uses isolated local state."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeLibraryService.swift",
+      "declaration": "KnowledgeLibraryService",
+      "rationale": "Mutable database access is delegated to its serialized database boundary."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgePDFOCRService.swift",
+      "declaration": "KnowledgePDFOCRService",
+      "rationale": "Service is stateless; request-local Vision and PDF objects never escape an operation."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeSemanticEmbeddingService.swift",
+      "declaration": "KnowledgeSemanticEmbeddingService",
+      "rationale": "Service configuration is immutable and request work is operation-local."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeWebDownloadClient.swift",
+      "declaration": "KnowledgePinnedHTTPSOperation",
+      "rationale": "URLSession operation state is synchronized by its lock and single completion path."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalAIEngineDiscoveryService.swift",
+      "declaration": "LocalAIEngineDiscoveryURLSessionDelegate",
+      "rationale": "URLSession owns delegate callbacks and the implementation is final, stateless, and only rejects redirects."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalRepositoryService.swift",
+      "declaration": "LocalRepositoryService",
+      "rationale": "Value service stores immutable sendable command dependencies; filesystem objects remain operation-local."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalSitePreviewService.swift",
+      "declaration": "LocalSitePreviewLogCollector",
+      "rationale": "Preview output buffers are protected by the collector lock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalSitePreviewService.swift",
+      "declaration": "LocalSitePreviewProcessService",
+      "rationale": "Process lifecycle mutations are protected by the service lock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/PublicRiskScanner.swift",
+      "declaration": "Rule",
+      "rationale": "Rule values are immutable; the regular expression is constructed once and only used for matching."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/SiteDraftFileStore.swift",
+      "declaration": "SiteDraftFileStore",
+      "rationale": "Mutable repository-path cache access is serialized by the instance lock; immutable publishing dependencies conform to Sendable."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchDataRootBookmark.swift",
+      "declaration": "WorkbenchDataRootBookmarkStore",
+      "rationale": "Launch config is immutable; UserDefaults and the injected Sendable bookmark/security-scope callbacks support moving blocking root resolution and probing off the main actor."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/SendableFoundationDependencies.swift",
+      "declaration": "SendableFileManager",
+      "rationale": "Wrapper exposes only documented thread-safe FileManager operations and has no mutable state."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/SendableFoundationDependencies.swift",
+      "declaration": "SerializedJSONDecoder",
+      "rationale": "JSONDecoder access is serialized by the wrapper lock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/SendableFoundationDependencies.swift",
+      "declaration": "SerializedJSONEncoder",
+      "rationale": "JSONEncoder access is serialized by the wrapper lock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/KnowledgeDatabase.swift",
+      "declaration": "KnowledgeDatabase",
+      "rationale": "SQLite access and mutable database state are confined to the database queue."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchPersistenceStore.swift",
+      "declaration": "WorkbenchPersistenceCommitCoordinator",
+      "rationale": "Commit sequencing state is protected by the coordinator lock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchPersistenceStore.swift",
+      "declaration": "WorkbenchPersistenceRevisionState",
+      "rationale": "Revision counters are protected by the state lock."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/KnowledgeLibraryServiceTests.swift",
+      "declaration": "KnowledgeSearchCancellationProbe",
+      "rationale": "Test probe state is protected by its lock and is only used to assert cancellation."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/KnowledgeWebDownloadClientTests.swift",
+      "declaration": "TransportProbe",
+      "rationale": "Test transport observations are protected by the probe lock."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/SiteStarterServiceTests.swift",
+      "declaration": "SiteStarterBlockingGate",
+      "rationale": "Test gate state is protected by its synchronization primitive."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/TokenCredentialScopeTests.swift",
+      "declaration": "ConcurrentTokenFailureRecorder",
+      "rationale": "Test recorder mutations are protected by its lock."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchPersistenceTests.swift",
+      "declaration": "ControlledPersistenceCommit",
+      "rationale": "Test commit coordination state is protected by its lock and continuation handoff."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Models/DraftRecoveryModels.swift",
+      "declaration": "DraftRecoveryJournalWriteCoordinator",
+      "rationale": "Journal generation state and the synchronous write path are serialized by the coordinator lock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalContentImportIndexStore.swift",
+      "declaration": "LocalContentImportIndexStore",
+      "rationale": "Index mutations are serialized by the static lock; instance dependencies are immutable and filesystem access uses the SendableFileManager boundary."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalSitePreviewFileWatcher.swift",
+      "declaration": "LocalSitePreviewFileWatcher",
+      "rationale": "Mutable watcher sources are confined to its serial queue and lifecycle flags are protected by the state lock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalWhisperTranscriptionService.swift",
+      "declaration": "LocalWhisperTerminationController",
+      "rationale": "Process lifecycle and termination-request state are protected by the controller lock; signal delivery occurs after unlocking."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchDataRootBookmark.swift",
+      "declaration": "WorkbenchDataRootAccessLease",
+      "rationale": "The lease carries immutable Sendable values and releases the security scope exactly once from deinit through the Sendable callback."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchDataRootBookmark.swift",
+      "declaration": "WorkbenchDataRootSession",
+      "rationale": "The session contains immutable Sendable snapshots and one Sendable access lease whose lifecycle remains tied to the session."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/LocalContentImportServiceTests.swift",
+      "declaration": "LocalContentImportInvocationCounter",
+      "rationale": "Test invocation state is protected by its NSLock while callbacks may cross task boundaries."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/LocalSitePreviewServiceTests.swift",
+      "declaration": "LockedWatcherTestState",
+      "rationale": "Test watcher observations and fulfillment state are protected by the state lock."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchDataRootTests.swift",
+      "declaration": "SecurityScopeRecorder",
+      "rationale": "Test security-scope callback observations are stored behind one NSLock and exposed through atomic helpers."
+    }
+  ],
+  "forcedOperations": [
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/AIPublishingAssistantServiceTests.swift",
+      "kind": "try!",
+      "contains": "JSONSerialization.data(withJSONObject: responsePayload)",
+      "rationale": "The test fixture is a fixed JSON-compatible dictionary and setup failure should abort the test immediately."
+    },
+    {
+      "file": "script/app_store_screenshot_renderer.swift",
+      "kind": "try!",
+      "contains": "RGBColor(hex: \"F8F5ED\")",
+      "rationale": "Compile-time literal was design-reviewed and invalid renderer constants are programmer errors."
+    },
+    {
+      "file": "script/app_store_screenshot_renderer.swift",
+      "kind": "try!",
+      "contains": "RGBColor(hex: \"E2EEE8\")",
+      "rationale": "Compile-time literal was design-reviewed and invalid renderer constants are programmer errors."
+    },
+    {
+      "file": "script/app_store_screenshot_renderer.swift",
+      "kind": "try!",
+      "contains": "RGBColor(hex: \"183B2E\")",
+      "rationale": "Compile-time literal was design-reviewed and invalid renderer constants are programmer errors."
+    },
+    {
+      "file": "script/app_store_screenshot_renderer.swift",
+      "kind": "try!",
+      "contains": "RGBColor(hex: \"4D675D\")",
+      "rationale": "Compile-time literal was design-reviewed and invalid renderer constants are programmer errors."
+    },
+    {
+      "file": "script/app_store_screenshot_renderer.swift",
+      "kind": "try!",
+      "contains": "RGBColor(hex: \"B8C9C0\")",
+      "rationale": "Compile-time literal was design-reviewed and invalid renderer constants are programmer errors."
+    }
+  ]
+}

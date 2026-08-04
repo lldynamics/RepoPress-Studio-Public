@@ -1,0 +1,42 @@
+{
+  "documentVersion": 1,
+  "activeExtensions": [
+    "safari",
+    "chrome",
+    "firefox"
+  ],
+  "extensions": {
+    "chromiumDevelopmentID": "lnibkmfhfikfbkeehcjbiaalhkiankam",
+    "firefoxID": "knowledge-capture@jinfang.local",
+    "safariBundleID": "com.jinfang.PersonalSitePublisherMac.SafariExtension",
+    "chromeProductionID": "ginjcibepmeobaaadmfiagigcpcebmcc",
+    "edgeProductionID": null
+  },
+  "loopback": {
+    "host": "127.0.0.1",
+    "port": 17843,
+    "protocolHeaderName": "X-RepoPress-Protocol",
+    "protocolHeaderValue": "1"
+  },
+  "captureProtocol": {
+    "maximumInputBytes": 50331648,
+    "statusPayloadVersion": 6,
+    "routes": {
+      "/v1/folders": [
+        "GET"
+      ],
+      "/v1/import": [
+        "POST"
+      ],
+      "/v1/open": [
+        "POST"
+      ],
+      "/v1/status": [
+        "GET"
+      ],
+      "/v1/suggestions": [
+        "POST"
+      ]
+    }
+  }
+}

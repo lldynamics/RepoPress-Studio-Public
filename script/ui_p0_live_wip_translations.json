@@ -1,0 +1,230 @@
+{
+  "%@ 条资料 · %@ 个片段": {
+    "en": "%@ knowledge items · %@ excerpts",
+    "zh-Hans": "%@ 条资料 · %@ 个片段"
+  },
+  "%lld 条资料 · %lld 个片段": {
+    "en": "%lld knowledge items · %lld excerpts",
+    "zh-Hans": "%lld 条资料 · %lld 个片段"
+  },
+  "上一条 RSS 文章": {
+    "en": "Previous RSS Article",
+    "zh-Hans": "上一条 RSS 文章"
+  },
+  "上一篇": {
+    "en": "Previous",
+    "zh-Hans": "上一篇"
+  },
+  "上下文知识建议": {
+    "en": "Contextual Knowledge Suggestions",
+    "zh-Hans": "上下文知识建议"
+  },
+  "下一条 RSS 文章": {
+    "en": "Next RSS Article",
+    "zh-Hans": "下一条 RSS 文章"
+  },
+  "下一篇": {
+    "en": "Next",
+    "zh-Hans": "下一篇"
+  },
+  "为 RSS 高亮添加批注": {
+    "en": "Add Note to RSS Highlight",
+    "zh-Hans": "为 RSS 高亮添加批注"
+  },
+  "保存高亮与批注": {
+    "en": "Save Highlight and Note",
+    "zh-Hans": "保存高亮与批注"
+  },
+  "保留标题、列表、引用、代码块和链接的文章正文": {
+    "en": "Article body preserving headings, lists, block quotes, code blocks, and links",
+    "zh-Hans": "保留标题、列表、引用、代码块和链接的文章正文"
+  },
+  "允许加载当前文章的远程图片": {
+    "en": "Allow Loading Remote Images in the Current Article",
+    "zh-Hans": "允许加载当前文章的远程图片"
+  },
+  "内容保存在本机；有批注时会同步到资料库。": {
+    "en": "Highlights are stored locally; highlights with notes are synced to the knowledge library.",
+    "zh-Hans": "内容保存在本机；有批注时会同步到资料库。"
+  },
+  "删除高亮": {
+    "en": "Delete Highlight",
+    "zh-Hans": "删除高亮"
+  },
+  "删除高亮：%@": {
+    "en": "Delete Highlight: %@",
+    "zh-Hans": "删除高亮：%@"
+  },
+  "加载远程图片": {
+    "en": "Load Remote Images",
+    "zh-Hans": "加载远程图片"
+  },
+  "在右侧知识建议中插入引用后，这里会自动显示资料反向链接。": {
+    "en": "After you insert a citation from the knowledge suggestions on the right, backlinks to the knowledge item will appear here automatically.",
+    "zh-Hans": "在右侧知识建议中插入引用后，这里会自动显示资料反向链接。"
+  },
+  "在资料库中打开“%@”": {
+    "en": "Open “%@” in the Knowledge Library",
+    "zh-Hans": "在资料库中打开“%@”"
+  },
+  "已选择正文文字，可高亮或添加批注": {
+    "en": "Body text selected. You can highlight it or add a note.",
+    "zh-Hans": "已选择正文文字，可高亮或添加批注"
+  },
+  "已选文本": {
+    "en": "Selected Text",
+    "zh-Hans": "已选文本"
+  },
+  "引用 %@": {
+    "en": "References: %@",
+    "zh-Hans": "引用 %@"
+  },
+  "引用 %lld": {
+    "en": "References: %lld",
+    "zh-Hans": "引用 %lld"
+  },
+  "打开 RSS 原文": {
+    "en": "Open Original RSS Article",
+    "zh-Hans": "打开 RSS 原文"
+  },
+  "打开资料：%@": {
+    "en": "Open Knowledge Item: %@",
+    "zh-Hans": "打开资料：%@"
+  },
+  "批注（可选）": {
+    "en": "Note (Optional)",
+    "zh-Hans": "批注（可选）"
+  },
+  "搜索 RSS 文章": {
+    "en": "Search RSS Articles",
+    "zh-Hans": "搜索 RSS 文章"
+  },
+  "收藏/取消收藏 RSS 文章": {
+    "en": "Star/Unstar RSS Article",
+    "zh-Hans": "收藏/取消收藏 RSS 文章"
+  },
+  "文章标签已保存。": {
+    "en": "Article tags saved.",
+    "zh-Hans": "文章标签已保存。"
+  },
+  "本地 Whisper 可执行文件路径": {
+    "en": "Local Whisper Executable Path",
+    "zh-Hans": "本地 Whisper 可执行文件路径"
+  },
+  "本地 Whisper 转写语言": {
+    "en": "Local Whisper Transcription Language",
+    "zh-Hans": "本地 Whisper 转写语言"
+  },
+  "本文引用的资料": {
+    "en": "Knowledge Cited by This Article",
+    "zh-Hans": "本文引用的资料"
+  },
+  "本篇高亮与批注": {
+    "en": "Highlights and Notes in This Article",
+    "zh-Hans": "本篇高亮与批注"
+  },
+  "来源图标": {
+    "en": "Source Icon",
+    "zh-Hans": "来源图标"
+  },
+  "标签用于后续检索与资料整理。": {
+    "en": "Tags help you find and organize content later.",
+    "zh-Hans": "标签用于后续检索与资料整理。"
+  },
+  "标签，用逗号分隔（可选）": {
+    "en": "Tags, separated by commas (optional)",
+    "zh-Hans": "标签，用逗号分隔（可选）"
+  },
+  "标记 RSS 文章已读/未读": {
+    "en": "Mark RSS Article as Read/Unread",
+    "zh-Hans": "标记 RSS 文章已读/未读"
+  },
+  "正在读取本文引用": {
+    "en": "Loading Citations in This Article",
+    "zh-Hans": "正在读取本文引用"
+  },
+  "正在读取本文引用…": {
+    "en": "Loading Citations in This Article…",
+    "zh-Hans": "正在读取本文引用…"
+  },
+  "添加批注": {
+    "en": "Add Note",
+    "zh-Hans": "添加批注"
+  },
+  "知识建议": {
+    "en": "Knowledge",
+    "zh-Hans": "知识建议"
+  },
+  "编辑 RSS 文章标签": {
+    "en": "Edit RSS Article Tags",
+    "zh-Hans": "编辑 RSS 文章标签"
+  },
+  "编辑文章标签": {
+    "en": "Edit Article Tags",
+    "zh-Hans": "编辑文章标签"
+  },
+  "编辑标签": {
+    "en": "Edit Tags",
+    "zh-Hans": "编辑标签"
+  },
+  "自定义模型名称": {
+    "en": "Custom Model Name",
+    "zh-Hans": "自定义模型名称"
+  },
+  "资料正文": {
+    "en": "Knowledge Item Body",
+    "zh-Hans": "资料正文"
+  },
+  "还有 %@ 个片段": {
+    "en": "%@ more excerpts",
+    "zh-Hans": "还有 %@ 个片段"
+  },
+  "还有 %lld 个片段": {
+    "en": "%lld more excerpts",
+    "zh-Hans": "还有 %lld 个片段"
+  },
+  "还没有标签": {
+    "en": "No Tags Yet",
+    "zh-Hans": "还没有标签"
+  },
+  "阅读上一篇文章": {
+    "en": "Read Previous Article",
+    "zh-Hans": "阅读上一篇文章"
+  },
+  "阅读下一篇文章": {
+    "en": "Read Next Article",
+    "zh-Hans": "阅读下一篇文章"
+  },
+  "高亮": {
+    "en": "Highlight",
+    "zh-Hans": "高亮"
+  },
+  "高亮保存失败：%@": {
+    "en": "Failed to save highlight: %@",
+    "zh-Hans": "高亮保存失败：%@"
+  },
+  "高亮和批注已保存，并已同步到资料库。": {
+    "en": "Highlight and note saved and synced to the knowledge library.",
+    "zh-Hans": "高亮和批注已保存，并已同步到资料库。"
+  },
+  "高亮已保存；可继续添加批注或标签。": {
+    "en": "Highlight saved. You can continue by adding a note or tags.",
+    "zh-Hans": "高亮已保存；可继续添加批注或标签。"
+  },
+  "高亮所选 RSS 文本": {
+    "en": "Highlight Selected RSS Text",
+    "zh-Hans": "高亮所选 RSS 文本"
+  },
+  "高亮批注": {
+    "en": "Highlight Note",
+    "zh-Hans": "高亮批注"
+  },
+  "高亮文字": {
+    "en": "Highlighted Text",
+    "zh-Hans": "高亮文字"
+  },
+  "高亮标签": {
+    "en": "Highlight Tags",
+    "zh-Hans": "高亮标签"
+  }
+}
