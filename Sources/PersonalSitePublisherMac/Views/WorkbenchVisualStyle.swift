@@ -308,6 +308,16 @@ enum WorkbenchSheetMetrics {
   static let maxHeightRatio: CGFloat = 0.90
 }
 
+enum WorkbenchSettingsMetrics {
+  static let minimumWidth: CGFloat = 820
+  static let idealWidth: CGFloat = 1_120
+  static let minimumHeight: CGFloat = 560
+  static let idealHeight: CGFloat = 760
+  static let sidebarWidth: CGFloat = 204
+  static let focusedContentWidth: CGFloat = 640
+  static let detailedContentWidth: CGFloat = 760
+}
+
 enum WorkbenchOpacity {
   static let subtleBackground = 0.20
   static let panelBackground = 0.28
@@ -576,6 +586,15 @@ extension Font {
 }
 
 extension View {
+  func workbenchSettingsWindowSize() -> some View {
+    frame(
+      minWidth: WorkbenchSettingsMetrics.minimumWidth,
+      idealWidth: WorkbenchSettingsMetrics.idealWidth,
+      minHeight: WorkbenchSettingsMetrics.minimumHeight,
+      idealHeight: WorkbenchSettingsMetrics.idealHeight
+    )
+  }
+
   func workbenchSheetSize(_ preset: WorkbenchSheetMetrics.Preset) -> some View {
     let size = preset.size
     return frame(

@@ -1,7 +1,10 @@
 {
   "RepoPress 会在所选位置中新建一个“RepoPress Data”文件夹。": "RepoPress will create a \"RepoPress Data\" folder in the selected location.",
   "RepoPress 数据根标记的类型不正确。": "The RepoPress data-root marker has an invalid type.",
-  "上次更新 %@": "Last updated %@",
+  "display.workspace-backup-component.rss-reader": {
+    "en": "RSS Reader",
+    "zh-Hans": "RSS 阅读器"
+  },
   "下次重试：%@": "Next retry: %@",
   "不能使用替身或符号链接作为数据文件夹。": "Aliases and symbolic links cannot be used as the data folder.",
   "不限日期": "Any Date",
@@ -21,7 +24,6 @@
   "所选文件夹是空的。如果要使用它，请选择“新建数据文件夹”。": "The selected folder is empty. To use it, choose \"Create New Data Folder.\"",
   "所选路径中的数据已变成另一个工作区。为避免打开错误数据，请手动重新选择。": "The data at the saved path now belongs to a different workspace. Select it manually to avoid opening the wrong data.",
   "所选项不是文件夹。": "The selected item is not a folder.",
-  "找不到之前的数据文件夹，请重新选择。": "The previous data folder could not be found. Select it again.",
   "数据文件夹不包含 API Key。凭据仍由 macOS 钥匙串单独保护。": "The data folder does not contain API keys. Credentials remain separately protected by macOS Keychain.",
   "数据文件夹已创建，但无法保存持续访问权限。请点击“恢复已有数据文件夹…”并选择刚创建的“RepoPress Data”文件夹。": "The data folder was created, but persistent access could not be saved. Choose Restore Existing Data Folder and select the newly created RepoPress Data folder.",
   "数据文件夹无法校验：%@": "The data folder could not be validated: %@",
@@ -34,7 +36,6 @@
   "新数据文件夹未能完成初始化，未安装不完整的数据。": "The new data folder could not be initialized. Incomplete data was not installed.",
   "无法新建数据文件夹：%@": "Could not create the data folder: %@",
   "无法获得数据文件夹的持续访问权限：%@": "Could not retain access to the data folder: %@",
-  "系统未授予数据文件夹的持续访问权限，请重新选择该文件夹。": "The system did not grant persistent access to the data folder. Select the folder again.",
   "旧数据未能通过完整性校验，原文件保持不变。": "The legacy data did not pass integrity validation. The original files remain unchanged.",
   "旧版数据迁移失败：%@": "Legacy data migration failed: %@",
   "更早": "Earlier",
@@ -48,6 +49,7 @@
   "正在检查数据文件夹…": "Checking the data folder…",
   "没有未读文章": "No Unread Articles",
   "目标位置已存在同名文件夹，请换一个位置。": "A folder with that name already exists at the destination. Choose another location.",
+  "系统未授予数据文件夹的持续访问权限，请重新选择该文件夹。": "The system did not grant persistent access to the data folder. Select the folder again.",
   "订阅刷新失败": "Subscription Refresh Failed",
   "订阅正在等待重试": "Subscription Waiting to Retry",
   "订阅正常": "Subscription Healthy",
@@ -63,9 +65,5 @@
   "这是旧版备份：恢复会替换当前工作台、资料库和应用内附件，但会保留现有 RSS 数据。当前数据会先保留在恢复目录。": "This is an older backup: restoring replaces the current workspace, library, and managed attachments but preserves existing RSS data. Current data is first kept in a recovery folder.",
   "选择数据保存位置": "Choose Data Storage Location",
   "选择此位置": "Choose This Location",
-  "选择迁移目的地": "Choose Migration Destination",
-  "display.workspace-backup-component.rss-reader": {
-    "en": "RSS Reader",
-    "zh-Hans": "RSS 阅读器"
-  }
+  "选择迁移目的地": "Choose Migration Destination"
 }

@@ -7,7 +7,9 @@ struct AIConnectionProfilesSection: View {
   let updateProfile: (AIConnectionProfile) -> Void
   let createProfile: (String, AIProviderPreset) -> AIConnectionProfile
   let deleteProfile: (UUID) -> Void
-  let canDeleteProfile: Bool
+  let deletableProfiles: [AIConnectionProfile]
+  @State private var profilePendingDeletion: AIConnectionProfile?
+  @State private var isDeleteConfirmationPresented = false
 
   private var selectedProfile: AIConnectionProfile? {
     profiles.first { $0.id == selectedProfileID.wrappedValue }
@@ -59,23 +61,45 @@ struct AIConnectionProfilesSection: View {
 
         Spacer(minLength: 0)
 
-        if selectedProfile != nil {
-          Button("删除档案", role: .destructive) {
-            deleteProfile(selectedProfileID.wrappedValue)
+        Menu {
+          ForEach(deletableProfiles) { profile in
+            Button(profile.name, role: .destructive) {
+              profilePendingDeletion = profile
+              isDeleteConfirmationPresented = true
+            }
           }
-          .buttonStyle(.borderless)
-          .disabled(!canDeleteProfile)
-          .help(
-            canDeleteProfile
-              ? String(localized: "删除当前连接档案")
-              : String(localized: "至少保留一个档案，且已被站点使用的档案不能删除")
-          )
+        } label: {
+          Label("删除未使用档案", systemImage: "trash")
         }
+        .menuStyle(.borderlessButton)
+        .disabled(deletableProfiles.isEmpty)
+        .help(
+          deletableProfiles.isEmpty
+            ? String(localized: "至少保留一个档案，且已被站点使用的档案不能删除")
+            : String(localized: "删除未被任何站点使用的连接档案")
+        )
       }
     } header: {
       Text("AI 连接配置档案")
     } footer: {
       Text("站点只保存所选档案；切换站点时不会重复填写服务地址、模型或密钥。")
+    }
+    .confirmationDialog(
+      "删除 AI 连接档案？",
+      isPresented: $isDeleteConfirmationPresented,
+      titleVisibility: .visible
+    ) {
+      if let profilePendingDeletion {
+        Button("删除“\(profilePendingDeletion.name)”", role: .destructive) {
+          deleteProfile(profilePendingDeletion.id)
+          self.profilePendingDeletion = nil
+        }
+      }
+      Button("取消", role: .cancel) {
+        profilePendingDeletion = nil
+      }
+    } message: {
+      Text("将一并删除该连接档案保存在钥匙串中的 API Key；正在被站点使用的档案不会出现在此列表中。")
     }
   }
 

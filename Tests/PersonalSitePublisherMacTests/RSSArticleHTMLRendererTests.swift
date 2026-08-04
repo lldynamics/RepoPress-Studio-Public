@@ -47,6 +47,104 @@ final class RSSArticleHTMLRendererTests: XCTestCase {
     )
   }
 
+  func testMalformedDangerousBlockCannotSuppressSafeSummary() {
+    let article = RSSArticle(
+      id: "truncated-script",
+      feedID: UUID(),
+      title: "Fallback",
+      summaryHTML: "<p>这是一段安全的中文摘要，应当被正常显示。</p>",
+      contentHTML: "<script>alert('truncated')"
+    )
+
+    let rendered = RSSArticleHTMLRenderer.render(article: article, allowRemoteImages: false)
+
+    XCTAssertTrue(RSSArticleHTMLRenderer.hasRenderableBody(article: article))
+    XCTAssertTrue(rendered.contains("这是一段安全的中文摘要"))
+    XCTAssertTrue(rendered.contains("<html lang=\"zh-CN\">"))
+    XCTAssertFalse(rendered.contains("alert('truncated')"))
+  }
+
+  func testSelfClosingDangerousTagDoesNotConsumeFollowingBody() {
+    let article = RSSArticle(
+      id: "self-closing-iframe",
+      feedID: UUID(),
+      title: "Self-closing iframe",
+      contentHTML: "<iframe src=\"https://embed.invalid\"/><p>自闭合标签后的正文必须保留。</p>"
+    )
+
+    let rendered = RSSArticleHTMLRenderer.render(article: article, allowRemoteImages: false)
+
+    XCTAssertTrue(RSSArticleHTMLRenderer.hasRenderableBody(article: article))
+    XCTAssertTrue(rendered.contains("<p>自闭合标签后的正文必须保留。</p>"))
+    XCTAssertFalse(rendered.contains("<iframe"))
+  }
+
+  func testAttributeSanitizerDoesNotPromoteNestedOrDataAttributes() throws {
+    let article = RSSArticle(
+      id: "attribute-boundaries",
+      feedID: UUID(),
+      title: "Attribute boundaries",
+      link: try XCTUnwrap(URL(string: "https://example.com/article")),
+      contentHTML: """
+        <a data-href="https://data.invalid/promoted">data</a>
+        <a title='label href="https://nested.invalid/promoted"'>nested</a>
+        <a href="/real">real</a>
+        """
+    )
+
+    let rendered = RSSArticleHTMLRenderer.render(article: article, allowRemoteImages: false)
+
+    XCTAssertFalse(rendered.contains("data.invalid"))
+    XCTAssertFalse(rendered.contains("nested.invalid"))
+    XCTAssertTrue(rendered.contains("href=\"https://example.com/real\""))
+  }
+
+  func testAttributeEntitiesAreDecodedBeforeURLValidationAndEscapedOnce() throws {
+    let article = RSSArticle(
+      id: "attribute-entities",
+      feedID: UUID(),
+      title: "Attribute entities",
+      link: try XCTUnwrap(URL(string: "https://example.com/article")),
+      contentHTML: """
+        <a href="/search?a=1&amp;b=2">query</a>
+        <a href="&#106;avascript:alert(1)">unsafe</a>
+        """
+    )
+
+    let rendered = RSSArticleHTMLRenderer.render(article: article, allowRemoteImages: false)
+
+    XCTAssertTrue(rendered.contains("href=\"https://example.com/search?a=1&amp;b=2\""))
+    XCTAssertFalse(rendered.contains("amp;amp"))
+    XCTAssertFalse(rendered.contains("javascript:"))
+  }
+
+  func testZeroWidthEntitiesDoNotCountAsRenderableBody() {
+    let article = RSSArticle(
+      id: "zero-width-only",
+      feedID: UUID(),
+      title: "Zero width",
+      contentHTML: "<span>&#8203;&zwnj;&#x200D;&#65279;</span>"
+    )
+
+    XCTAssertFalse(RSSArticleHTMLRenderer.hasRenderableBody(article: article))
+  }
+
+  func testInvalidImageFallsBackToSummaryInsteadOfShowingRemotePlaceholder() {
+    let article = RSSArticle(
+      id: "invalid-image",
+      feedID: UUID(),
+      title: "Invalid image",
+      summaryHTML: "<p>图片地址失效时仍应显示摘要。</p>",
+      contentHTML: "<img src=\"javascript:alert(1)\">"
+    )
+
+    let rendered = RSSArticleHTMLRenderer.render(article: article, allowRemoteImages: false)
+
+    XCTAssertTrue(rendered.contains("图片地址失效时仍应显示摘要"))
+    XCTAssertFalse(rendered.contains("远程图片已关闭"))
+    XCTAssertFalse(rendered.contains("javascript:"))
+  }
+
   func testKeepsReadableStructureAndRemovesExecutableContent() throws {
     let article = RSSArticle(
       id: "rich-article",
@@ -135,6 +233,57 @@ final class RSSArticleHTMLRendererTests: XCTestCase {
 
     XCTAssertTrue(rendered.contains("src=\"\(localURL.absoluteString)\""))
     XCTAssertFalse(rendered.contains("远程图片已关闭"))
+  }
+
+  func testUnknownContainersKeepTheirReadableText() {
+    let article = RSSArticle(
+      id: "unknown-containers",
+      feedID: UUID(),
+      title: "Unknown containers",
+      contentHTML: "<custom-shell><legacy-wrap>正文 <strong>重点</strong></legacy-wrap></custom-shell>"
+    )
+
+    let rendered = RSSArticleHTMLRenderer.render(article: article, allowRemoteImages: false)
+
+    XCTAssertTrue(RSSArticleHTMLRenderer.hasRenderableBody(article: article))
+    XCTAssertTrue(rendered.contains("正文 <strong>重点</strong>"))
+    XCTAssertFalse(rendered.contains("<custom-shell"))
+    XCTAssertFalse(rendered.contains("<legacy-wrap"))
+  }
+
+  func testSemanticHTML5TagsKeepStructureButDropSourceAttributes() {
+    let article = RSSArticle(
+      id: "semantic-html",
+      feedID: UUID(),
+      title: "Semantic HTML",
+      contentHTML: """
+        <article id="post" style="display:none" onclick="alert(1)">
+          <section><span class="lede" data-source="feed">正文 <b>重点</b></span></section>
+          <figure><img src="https://cdn.example.com/image.jpg"><figcaption>图注</figcaption></figure>
+          <hr><main>内层主体</main><small>补充说明</small>
+          <details open><summary>展开阅读</summary><p>隐藏段落</p></details>
+          <mark>来源标记</mark><script>alert('xss')</script>
+        </article>
+        """
+    )
+
+    let rendered = RSSArticleHTMLRenderer.render(article: article, allowRemoteImages: false)
+
+    XCTAssertTrue(rendered.contains("<article>"))
+    XCTAssertTrue(rendered.contains("<section><span>正文 <b>重点</b></span></section>"))
+    XCTAssertTrue(rendered.contains("<figure>"))
+    XCTAssertTrue(rendered.contains("<figcaption>图注</figcaption>"))
+    XCTAssertTrue(rendered.contains("<hr>"))
+    XCTAssertTrue(rendered.contains("<div>内层主体</div>"))
+    XCTAssertTrue(rendered.contains("<details><summary>展开阅读</summary>"))
+    XCTAssertTrue(rendered.contains("<mark>来源标记</mark>"))
+    XCTAssertFalse(rendered.contains("id=\"post\""))
+    XCTAssertFalse(rendered.contains("style=\"display:none\""))
+    XCTAssertFalse(rendered.contains("onclick="))
+    XCTAssertFalse(rendered.contains("class=\"lede\""))
+    XCTAssertFalse(rendered.contains("data-source="))
+    XCTAssertFalse(rendered.contains("<details open"))
+    XCTAssertFalse(rendered.contains("<script"))
   }
 
   func testDocumentLanguageComesFromArticleContent() {

@@ -640,6 +640,54 @@ final class LocalPublishPreviewServiceTests: XCTestCase {
     XCTAssertEqual(try String(contentsOf: existingURL, encoding: .utf8), "old content\n")
   }
 
+  func testWriteRecoversDurableInterruptedTransactionBeforeApplyingNextPublish() throws {
+    let rootURL = try makeRepositoryFixture()
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let destinationURL = rootURL.appendingPathComponent("content/posts/existing.md")
+    let rollbackDirectory = rootURL.appendingPathComponent(
+      ".repopress-local-publish-rollback-fixture",
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: rollbackDirectory, withIntermediateDirectories: true)
+    try Data("old content\n".utf8).write(
+      to: rollbackDirectory.appendingPathComponent("0-backup")
+    )
+    try "partially applied content".write(
+      to: destinationURL,
+      atomically: true,
+      encoding: .utf8
+    )
+    let transaction = [
+      "phase": "applying",
+      "rollbackDirectoryPath": rollbackDirectory.path,
+      "entries": [[
+        "repositoryPath": "content/posts/existing.md",
+        "backupFileName": "0-backup"
+      ]]
+    ] as [String: Any]
+    let transactionURL = rootURL.appendingPathComponent(
+      ".repopress-local-publish-transaction.json"
+    )
+    try JSONSerialization.data(withJSONObject: transaction, options: [.sortedKeys])
+      .write(to: transactionURL, options: .atomic)
+
+    let package = publishPackage(files: [
+      .init(
+        kind: .markdown,
+        repositoryPath: "content/posts/existing.md",
+        content: "final published content"
+      )
+    ])
+    try LocalPublishPreviewService().write(package: package, rootURL: rootURL)
+
+    XCTAssertEqual(
+      try String(contentsOf: destinationURL, encoding: .utf8),
+      "final published content"
+    )
+    XCTAssertFalse(FileManager.default.fileExists(atPath: transactionURL.path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: rollbackDirectory.path))
+  }
+
   func testWriteAtomicallyReplacesExistingImage() throws {
     let rootURL = try makeRepositoryFixture()
     defer { try? FileManager.default.removeItem(at: rootURL) }

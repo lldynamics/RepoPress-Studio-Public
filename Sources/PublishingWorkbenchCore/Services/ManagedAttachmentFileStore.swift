@@ -99,6 +99,13 @@ public struct ManagedAttachmentFileStore: Sendable {
       try fileManager.moveItem(at: stagingURL, to: destinationURL)
       return destinationURL
     } catch {
+      // Two callers can import the same attachment ID at the same time. The
+      // first atomic move wins; the losing move reports “file exists”, which
+      // is a successful idempotent result once the winner's regular file is
+      // visible.
+      if isRegularFile(at: destinationURL, fileManager: fileManager) {
+        return destinationURL
+      }
       removeDirectoryIfEmpty(attachmentDirectoryURL, fileManager: fileManager)
       throw ManagedAttachmentFileStoreError.storageFailed(
         path: standardizedSourceURL.path,

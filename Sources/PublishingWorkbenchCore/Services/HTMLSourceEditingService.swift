@@ -360,7 +360,10 @@ public struct HTMLSourceEditingService: Sendable {
     guard Darwin.fcntl(descriptor, F_GETPATH, &pathBuffer) == 0 else {
       throw posixError(fallback: .repositoryUnavailable)
     }
-    let descriptorPath = String(cString: pathBuffer)
+    let descriptorPath = String(
+      decoding: pathBuffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) },
+      as: UTF8.self
+    )
     var canonicalBuffer = [CChar](repeating: 0, count: Int(PATH_MAX))
     let didResolve = descriptorPath.withCString {
       Darwin.realpath($0, &canonicalBuffer) != nil
@@ -368,7 +371,10 @@ public struct HTMLSourceEditingService: Sendable {
     guard didResolve else {
       throw posixError(fallback: .repositoryUnavailable)
     }
-    return String(cString: canonicalBuffer)
+    return String(
+      decoding: canonicalBuffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) },
+      as: UTF8.self
+    )
   }
 
   private func withOpenRegularFile<T>(

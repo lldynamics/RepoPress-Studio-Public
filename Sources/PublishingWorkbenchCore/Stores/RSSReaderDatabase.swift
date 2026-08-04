@@ -10,7 +10,7 @@ struct RSSReaderDatabaseStatistics: Equatable, Sendable {
 }
 
 final class RSSReaderDatabase {
-  static let currentSchemaVersion = 3
+  static let currentSchemaVersion = 4
 
   let fileURL: URL
   private var handle: OpaquePointer?
@@ -282,6 +282,25 @@ final class RSSReaderDatabase {
     }
   }
 
+  /// Replaces the compatibility JSON snapshot in one SQLite transaction.
+  ///
+  /// The old migration wrote each table independently. A process stop between
+  /// those writes made the database look migrated even when highlights or
+  /// media were still missing. Keeping the delete and all inserts inside the
+  /// same transaction makes the migration retryable after any interruption.
+  func replaceSnapshot(_ snapshot: RSSReaderSnapshot) throws {
+    try withLock {
+      try transactionUnlocked {
+        try executeUnlocked("DELETE FROM rss_feeds;")
+        try executeUnlocked("DELETE FROM rss_articles_fts;")
+        for feed in snapshot.feeds { try upsertFeedUnlocked(feed) }
+        for article in snapshot.articles { try upsertArticleUnlocked(article) }
+        for highlight in snapshot.highlights { try saveHighlightUnlocked(highlight) }
+        for asset in snapshot.mediaAssets { try upsertMediaAssetUnlocked(asset) }
+      }
+    }
+  }
+
   func eligibleArticleIDsForPruning(before cutoff: Date) throws -> Set<String> {
     try withLock {
       let statement = try prepareUnlocked("""
@@ -473,7 +492,10 @@ final class RSSReaderDatabase {
       var ids = Set<String>()
       let ftsQuery = normalized
         .split(whereSeparator: { $0.isWhitespace })
-        .map { "\"\(String($0).replacingOccurrences(of: "\"", with: ""))\"" }
+        .map {
+          let term = String($0).replacingOccurrences(of: "\"", with: "")
+          return "\"\(term)\"*"
+        }
         .joined(separator: " OR ")
       let ftsStatement = try prepareUnlocked("SELECT article_id FROM rss_articles_fts WHERE rss_articles_fts MATCH ?;")
       defer { sqlite3_finalize(ftsStatement) }
@@ -482,28 +504,16 @@ final class RSSReaderDatabase {
         if let value = text(ftsStatement, 0) { ids.insert(value) }
       }
       try checkStatementCompletion(ftsStatement)
-
-      let likeStatement = try prepareUnlocked("""
-      SELECT id FROM rss_articles
-      WHERE title LIKE '%' || ? || '%'
-         OR summary_html LIKE '%' || ? || '%'
-         OR content_html LIKE '%' || ? || '%';
-      """)
-      defer { sqlite3_finalize(likeStatement) }
-      bind(normalized, at: 1, to: likeStatement)
-      bind(normalized, at: 2, to: likeStatement)
-      bind(normalized, at: 3, to: likeStatement)
-      while sqlite3_step(likeStatement) == SQLITE_ROW {
-        if let value = text(likeStatement, 0) { ids.insert(value) }
-      }
-      try checkStatementCompletion(likeStatement)
+      // Keep this path bounded by the maintained FTS index. A wildcard LIKE
+      // fallback over content_html turns every search into a full scan as the archive grows.
       return ids
     }
   }
 
   private let articleSelectSQL = """
   SELECT id, feed_id, title, link, author, published_at, summary_html,
-         content_html, fetched_at, read_at, is_starred, tags_json
+         content_html, web_page_snapshot_html, fetched_at, read_at,
+         is_starred, tags_json
   FROM rss_articles
   """
 
@@ -511,7 +521,8 @@ final class RSSReaderDatabase {
   SELECT id, feed_id, title, link, author, published_at,
          CASE
            WHEN TRIM(summary_html) != '' THEN SUBSTR(summary_html, 1, 8192)
-           ELSE SUBSTR(content_html, 1, 8192)
+           WHEN TRIM(content_html) != '' THEN SUBSTR(content_html, 1, 8192)
+           ELSE SUBSTR(web_page_snapshot_html, 1, 8192)
          END AS preview_html,
          fetched_at, read_at, is_starred, tags_json
   FROM rss_articles
@@ -548,6 +559,7 @@ final class RSSReaderDatabase {
           published_at REAL,
           summary_html TEXT NOT NULL DEFAULT '',
           content_html TEXT NOT NULL DEFAULT '',
+          web_page_snapshot_html TEXT,
           fetched_at REAL NOT NULL,
           read_at REAL,
           is_starred INTEGER NOT NULL DEFAULT 0,
@@ -598,6 +610,12 @@ final class RSSReaderDatabase {
         }
         if version < 2 {
           try migrateLegacyFeedIssuesUnlocked()
+        }
+        if version < 4,
+           try !columnExistsUnlocked(table: "rss_articles", column: "web_page_snapshot_html") {
+          try executeUnlocked(
+            "ALTER TABLE rss_articles ADD COLUMN web_page_snapshot_html TEXT;"
+          )
         }
         if version == 0 {
           try executeUnlocked("""
@@ -660,8 +678,8 @@ final class RSSReaderDatabase {
     let statement = try prepareUnlocked("""
     INSERT INTO rss_articles (
       id, feed_id, title, link, author, published_at, summary_html,
-      content_html, fetched_at, read_at, is_starred, tags_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      content_html, web_page_snapshot_html, fetched_at, read_at, is_starred, tags_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       feed_id = excluded.feed_id,
       title = excluded.title,
@@ -670,6 +688,10 @@ final class RSSReaderDatabase {
       published_at = excluded.published_at,
       summary_html = excluded.summary_html,
       content_html = excluded.content_html,
+      web_page_snapshot_html = COALESCE(
+        excluded.web_page_snapshot_html,
+        rss_articles.web_page_snapshot_html
+      ),
       fetched_at = excluded.fetched_at,
       read_at = excluded.read_at,
       is_starred = excluded.is_starred,
@@ -684,10 +706,11 @@ final class RSSReaderDatabase {
     bindOptional(article.publishedAt?.timeIntervalSince1970, at: 6, to: statement)
     bind(article.summaryHTML, at: 7, to: statement)
     bind(article.contentHTML, at: 8, to: statement)
-    sqlite3_bind_double(statement, 9, article.fetchedAt.timeIntervalSince1970)
-    bindOptional(article.readAt?.timeIntervalSince1970, at: 10, to: statement)
-    sqlite3_bind_int(statement, 11, article.isStarred ? 1 : 0)
-    bind(json(article.tags), at: 12, to: statement)
+    bindOptional(article.webPageSnapshotHTML, at: 9, to: statement)
+    sqlite3_bind_double(statement, 10, article.fetchedAt.timeIntervalSince1970)
+    bindOptional(article.readAt?.timeIntervalSince1970, at: 11, to: statement)
+    sqlite3_bind_int(statement, 12, article.isStarred ? 1 : 0)
+    bind(json(article.tags), at: 13, to: statement)
     guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseErrorUnlocked() }
 
     let deleteFTS = try prepareUnlocked("DELETE FROM rss_articles_fts WHERE article_id = ?;")
@@ -793,10 +816,11 @@ final class RSSReaderDatabase {
       publishedAt: optionalDate(statement, 5),
       summaryHTML: text(statement, 6) ?? "",
       contentHTML: text(statement, 7) ?? "",
-      fetchedAt: date(statement, 8),
-      readAt: optionalDate(statement, 9),
-      isStarred: sqlite3_column_int(statement, 10) != 0,
-      tags: decodeStringArray(text(statement, 11))
+      webPageSnapshotHTML: text(statement, 8),
+      fetchedAt: date(statement, 9),
+      readAt: optionalDate(statement, 10),
+      isStarred: sqlite3_column_int(statement, 11) != 0,
+      tags: decodeStringArray(text(statement, 12))
     )
   }
 

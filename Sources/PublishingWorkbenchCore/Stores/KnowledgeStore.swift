@@ -1179,6 +1179,78 @@ public final class KnowledgeStore: ObservableObject {
     }
   }
 
+  /// Permanently deletes every item currently in the recycle bin on a utility
+  /// task, then reconciles in-memory presentation state on the main actor.
+  public func emptyRecycleBin() async -> KnowledgeRecycleBinCleanupSummary {
+    let documentIDs = recycledDocuments.map(\.id)
+    guard !documentIDs.isEmpty, !isBusy else {
+      return KnowledgeRecycleBinCleanupSummary(
+        requestedDocumentCount: documentIDs.count,
+        removedDocumentCount: 0,
+        failedDocumentCount: 0,
+        removedStoredFileCount: 0,
+        failedStoredFileCount: 0
+      )
+    }
+
+    isBusy = true
+    defer { isBusy = false }
+    let service = self.service
+    let result = await Task.detached(priority: .utility) {
+      var removedIDs: [UUID] = []
+      var failedDocumentCount = 0
+      var removedStoredFileCount = 0
+      var failedStoredFileCount = 0
+      for documentID in documentIDs {
+        do {
+          let report = try service.deleteDocument(id: documentID)
+          removedIDs.append(documentID)
+          removedStoredFileCount += report.removedStoredFileCount
+          failedStoredFileCount += report.failedStoredFileCount
+        } catch {
+          failedDocumentCount += 1
+        }
+      }
+      return (
+        removedIDs,
+        failedDocumentCount,
+        removedStoredFileCount,
+        failedStoredFileCount
+      )
+    }.value
+
+    let removedIDSet = Set(result.0)
+    documents.removeAll { removedIDSet.contains($0.id) }
+    recycledDocuments.removeAll { removedIDSet.contains($0.id) }
+    searchResults.removeAll { removedIDSet.contains($0.document.id) }
+    pinnedDocumentIDs.subtract(removedIDSet)
+    ensureVisibleSelection()
+
+    let summary = KnowledgeRecycleBinCleanupSummary(
+      requestedDocumentCount: documentIDs.count,
+      removedDocumentCount: removedIDSet.count,
+      failedDocumentCount: result.1,
+      removedStoredFileCount: result.2,
+      failedStoredFileCount: result.3
+    )
+    if summary.failedDocumentCount == 0, summary.failedStoredFileCount == 0 {
+      statusMessage = CoreL10n.format(
+        "资料库回收站已清空：永久删除 %d 条资料。",
+        summary.removedDocumentCount
+      )
+      lastError = nil
+    } else {
+      statusMessage = CoreL10n.format(
+        "资料库回收站已清理：删除 %d 条，%d 条未能删除，%d 个本地文件未能移除。",
+        summary.removedDocumentCount,
+        summary.failedDocumentCount,
+        summary.failedStoredFileCount
+      )
+      lastError = statusMessage
+    }
+    return summary
+  }
+
   @discardableResult
   public func saveAnnotation(_ annotation: KnowledgeAnnotation) -> Bool {
     do {

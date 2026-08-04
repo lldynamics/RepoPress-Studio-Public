@@ -356,28 +356,6 @@ extension MacMarkdownTextView.Coordinator {
     appliedDiagnosticOverlays = overlays
   }
 
-  func centerSelectionIfNeeded(in textView: NSTextView) {
-    guard comfortConfiguration.typewriterModeEnabled,
-      let scrollView = textView.enclosingScrollView,
-      let layoutManager = textView.layoutManager,
-      let textContainer = textView.textContainer
-    else { return }
-    let length = (textView.string as NSString).length
-    guard length > 0 else { return }
-    let location = min(textView.selectedRange().location, length - 1)
-    let glyphRange = layoutManager.glyphRange(
-      forCharacterRange: NSRange(location: location, length: 1),
-      actualCharacterRange: nil
-    )
-    let rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-    let clipView = scrollView.contentView
-    let documentHeight = textView.bounds.height
-    let targetY = rect.midY + textView.textContainerInset.height - clipView.bounds.height / 2
-    let maximumY = max(0, documentHeight - clipView.bounds.height)
-    clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: min(max(0, targetY), maximumY)))
-    scrollView.reflectScrolledClipView(clipView)
-  }
-
   private func updateStatistics(afterEditing updatedText: String) {
     defer { pendingTextEdit = nil }
     guard let pendingTextEdit,

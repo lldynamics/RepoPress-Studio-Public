@@ -174,6 +174,56 @@ class SwiftLocalizationExtractionTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "duplicate JSON key"):
                 SYNC.load_reviewed_translation_file(path)
 
+    def test_dynamic_allowlist_rejects_duplicate_key_across_groups(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "dynamic.json"
+            path.write_text(
+                '{"runtime": ["app.name"], "sourceLiterals": ["app.name"]}',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(RuntimeError, "duplicate dynamic localization key"):
+                SYNC.load_dynamic_key_allowlist(path)
+
+    def test_dynamic_allowlist_requires_source_backed_key_to_remain_live(self) -> None:
+        failures = SYNC.validate_dynamic_key_allowlist(
+            {"runtime": {"app.name"}, "sourceLiterals": {"Removed title"}},
+            set(),
+            {"Current title"},
+        )
+        self.assertEqual(
+            failures,
+            ["Removed title: dynamic source literal no longer exists in Swift sources"],
+        )
+
+    def test_dynamic_allowlist_rejects_key_now_covered_by_static_extraction(self) -> None:
+        failures = SYNC.validate_dynamic_key_allowlist(
+            {"runtime": set(), "sourceLiterals": {"Dynamic title"}},
+            {"Dynamic title"},
+            {"Dynamic title"},
+        )
+        self.assertEqual(
+            failures,
+            ["Dynamic title: dynamic allowlist entry is now statically extracted"],
+        )
+
+    def test_stale_entries_are_reported_and_pruned_without_touching_managed_keys(self) -> None:
+        catalog = {
+            "strings": {
+                "managed": SYNC.catalog_entry("保留", "Keep"),
+                "stale": SYNC.catalog_entry("移除", "Remove"),
+            }
+        }
+        self.assertEqual(SYNC.stale_catalog_keys(catalog, {"managed"}), ["stale"])
+        self.assertEqual(SYNC.prune_catalog(catalog, {"managed"}), ["stale"])
+        self.assertEqual(set(catalog["strings"]), {"managed"})
+        self.assertEqual(
+            SYNC.stale_reviewed_translation_keys(
+                {"managed": "Keep", "stale": "Remove"},
+                {"managed"},
+            ),
+            ["stale"],
+        )
+
     def test_positional_placeholders_match_source_types(self) -> None:
         self.assertEqual(
             SYNC.placeholders("%2$@ then %1$lld"),

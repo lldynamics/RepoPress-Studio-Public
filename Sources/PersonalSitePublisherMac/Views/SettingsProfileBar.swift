@@ -17,7 +17,7 @@ struct SettingsProfileBar: View {
   @State private var isDeleteConfirmationPresented = false
 
   var body: some View {
-    HStack(alignment: .center, spacing: 8) {
+    HStack(alignment: .center, spacing: WorkbenchSpacing.control) {
       Text("当前站点")
         .font(.caption.weight(.medium))
         .foregroundStyle(.secondary)
@@ -29,7 +29,7 @@ struct SettingsProfileBar: View {
         }
       }
       .labelsHidden()
-      .frame(width: 170)
+      .frame(minWidth: 120, idealWidth: 150, maxWidth: 170)
       .accessibilityLabel("当前站点")
       .accessibilityValue(activeProfile.name)
 
@@ -94,7 +94,7 @@ struct SettingsProfileBar: View {
       }
     }
     .formStyle(.grouped)
-    .padding(12)
+    .padding(WorkbenchSpacing.card)
     .frame(width: 360)
     .confirmationDialog(
       "删除当前站点配置？",

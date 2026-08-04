@@ -39,20 +39,22 @@ struct SettingsConfigurationHealthCard: View {
         configurationSection(title: String(localized: "发布基础"), items: requiredItems)
         configurationSection(title: String(localized: "功能与权限"), items: supportingItems)
       }
-      .padding(18)
+      .padding(WorkbenchSpacing.content)
     }
+    .background(Color(nsColor: .windowBackgroundColor))
     .accessibilityElement(children: .contain)
     .accessibilityLabel("配置状态")
     .accessibilityValue(
       String(localized: "\(readyRequiredCount)/\(requiredItems.count) 项基础配置已就绪")
     )
+    .accessibilityIdentifier("configuration-health-settings")
   }
 
   private var statusSummary: some View {
     HStack(alignment: .firstTextBaseline, spacing: 12) {
       VStack(alignment: .leading, spacing: 3) {
         Text("当前站点")
-          .font(.headline)
+          .font(.workbenchSectionTitle)
         summaryText
           .font(.callout)
           .foregroundStyle(.secondary)
@@ -81,7 +83,7 @@ struct SettingsConfigurationHealthCard: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: 10) {
       Text(title)
-        .font(.headline)
+        .font(.workbenchSectionTitle)
 
       LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], spacing: 10) {
         ForEach(items) { item in
@@ -90,7 +92,9 @@ struct SettingsConfigurationHealthCard: View {
           } label: {
             SettingsConfigurationHealthTile(item: item, showsActionIndicator: true)
           }
-          .buttonStyle(.plain)
+          .buttonStyle(
+            WorkbenchFocusRingButtonStyle(cornerRadius: WorkbenchCornerRadius.card)
+          )
           .accessibilityHint(item.actionTitle)
         }
       }

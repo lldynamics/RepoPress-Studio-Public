@@ -1,162 +1,162 @@
 {
   "display.ai-provider-preset.custom": {
-    "zh-Hans": "自定义",
-    "en": "Custom"
+    "en": "Custom",
+    "zh-Hans": "自定义"
   },
   "display.ai-provider-preset.deepseek": {
-    "zh-Hans": "DeepSeek",
-    "en": "DeepSeek"
+    "en": "DeepSeek",
+    "zh-Hans": "DeepSeek"
   },
   "display.ai-provider-preset.local": {
-    "zh-Hans": "本地模型",
-    "en": "Local Model"
+    "en": "Local Model",
+    "zh-Hans": "本地模型"
   },
   "display.ai-provider-preset.openai-compatible": {
-    "zh-Hans": "自定义接口兼容",
-    "en": "Custom Compatible"
+    "en": "Custom Compatible",
+    "zh-Hans": "自定义接口兼容"
   },
   "display.ai-provider-preset.openrouter": {
-    "zh-Hans": "OpenRouter",
-    "en": "OpenRouter"
+    "en": "OpenRouter",
+    "zh-Hans": "OpenRouter"
   },
   "display.ai-writing-style-preset.custom": {
-    "zh-Hans": "自定义",
-    "en": "Custom"
+    "en": "Custom",
+    "zh-Hans": "自定义"
   },
   "display.ai-writing-style-preset.jinfang-zola": {
-    "zh-Hans": "锦方 Zola",
-    "en": "Jinfang Zola"
+    "en": "Jinfang Zola",
+    "zh-Hans": "锦方 Zola"
   },
   "display.ai-writing-style-preset.personal-essay": {
-    "zh-Hans": "个人随笔",
-    "en": "Personal Essay"
+    "en": "Personal Essay",
+    "zh-Hans": "个人随笔"
   },
   "display.ai-writing-style-preset.technical-note": {
-    "zh-Hans": "技术笔记",
-    "en": "Technical Notes"
+    "en": "Technical Notes",
+    "zh-Hans": "技术笔记"
   },
   "display.deployment-provider.cloudflare-pages": {
-    "zh-Hans": "Cloudflare Pages",
-    "en": "Cloudflare Pages"
+    "en": "Cloudflare Pages",
+    "zh-Hans": "Cloudflare Pages"
   },
   "display.deployment-provider.custom": {
-    "zh-Hans": "自定义端点",
-    "en": "Custom Endpoint"
+    "en": "Custom Endpoint",
+    "zh-Hans": "自定义端点"
   },
   "display.deployment-provider.github-pages": {
-    "zh-Hans": "GitHub Pages",
-    "en": "GitHub Pages"
+    "en": "GitHub Pages",
+    "zh-Hans": "GitHub Pages"
   },
   "display.deployment-provider.gitlab-pages": {
-    "zh-Hans": "GitLab Pages",
-    "en": "GitLab Pages"
+    "en": "GitLab Pages",
+    "zh-Hans": "GitLab Pages"
   },
   "display.deployment-provider.netlify": {
-    "zh-Hans": "Netlify",
-    "en": "Netlify"
+    "en": "Netlify",
+    "zh-Hans": "Netlify"
   },
   "display.deployment-provider.vercel": {
-    "zh-Hans": "Vercel",
-    "en": "Vercel"
+    "en": "Vercel",
+    "zh-Hans": "Vercel"
   },
   "display.front-matter-style.toml": {
-    "zh-Hans": "TOML",
-    "en": "TOML"
+    "en": "TOML",
+    "zh-Hans": "TOML"
   },
   "display.front-matter-style.yaml": {
-    "zh-Hans": "YAML",
-    "en": "YAML"
+    "en": "YAML",
+    "zh-Hans": "YAML"
   },
   "display.repository-provider.github": {
-    "zh-Hans": "GitHub",
-    "en": "GitHub"
+    "en": "GitHub",
+    "zh-Hans": "GitHub"
   },
   "display.repository-provider.gitlab": {
-    "zh-Hans": "GitLab",
-    "en": "GitLab"
+    "en": "GitLab",
+    "zh-Hans": "GitLab"
   },
   "display.repository-publish-strategy.direct": {
-    "zh-Hans": "直接提交",
-    "en": "Direct Commit"
+    "en": "Direct Commit",
+    "zh-Hans": "直接提交"
   },
   "display.repository-publish-strategy.review-request": {
-    "zh-Hans": "分支 + PR/MR",
-    "en": "Branch + PR/MR"
+    "en": "Branch + PR/MR",
+    "zh-Hans": "分支 + PR/MR"
   },
   "display.site-kind.astro": {
-    "zh-Hans": "Astro",
-    "en": "Astro"
+    "en": "Astro",
+    "zh-Hans": "Astro"
   },
   "display.site-kind.hexo": {
-    "zh-Hans": "Hexo",
-    "en": "Hexo"
+    "en": "Hexo",
+    "zh-Hans": "Hexo"
   },
   "display.site-kind.hugo": {
-    "zh-Hans": "Hugo",
-    "en": "Hugo"
+    "en": "Hugo",
+    "zh-Hans": "Hugo"
   },
   "display.site-kind.jekyll": {
-    "zh-Hans": "Jekyll",
-    "en": "Jekyll"
+    "en": "Jekyll",
+    "zh-Hans": "Jekyll"
   },
   "display.site-kind.zola": {
-    "zh-Hans": "Zola",
-    "en": "Zola"
+    "en": "Zola",
+    "zh-Hans": "Zola"
   },
   "display.site-profile-purpose.general-draft-backup": {
-    "zh-Hans": "素材库",
-    "en": "Asset Library"
+    "en": "Asset Library",
+    "zh-Hans": "素材库"
   },
   "display.site-profile-purpose.publishing": {
-    "zh-Hans": "连接仓库并发布",
-    "en": "Connect Repository and Publish"
+    "en": "Connect Repository and Publish",
+    "zh-Hans": "连接仓库并发布"
   },
   "display.site-profile-purpose.repository-backup": {
-    "zh-Hans": "连接仓库备份",
-    "en": "Connect Repository for Backup"
+    "en": "Connect Repository for Backup",
+    "zh-Hans": "连接仓库备份"
   },
   "display.site-slug-validation-rule.disabled": {
-    "zh-Hans": "只检查非空",
-    "en": "Non-empty Only"
+    "en": "Non-empty Only",
+    "zh-Hans": "只检查非空"
   },
   "display.site-slug-validation-rule.lowercase-kebab": {
-    "zh-Hans": "小写/CJK 连字符",
-    "en": "Lowercase/CJK with Hyphens"
+    "en": "Lowercase/CJK with Hyphens",
+    "zh-Hans": "小写/CJK 连字符"
   },
   "display.site-slug-validation-rule.relaxed": {
-    "zh-Hans": "宽松英文/CJK",
-    "en": "Relaxed Latin/CJK"
+    "en": "Relaxed Latin/CJK",
+    "zh-Hans": "宽松英文/CJK"
   },
   "display.site-starter-deployment-target.cloudflare-pages": {
-    "zh-Hans": "Cloudflare Pages",
-    "en": "Cloudflare Pages"
+    "en": "Cloudflare Pages",
+    "zh-Hans": "Cloudflare Pages"
   },
   "display.site-starter-deployment-target.github-pages": {
-    "zh-Hans": "GitHub Pages",
-    "en": "GitHub Pages"
+    "en": "GitHub Pages",
+    "zh-Hans": "GitHub Pages"
   },
   "display.site-starter-deployment-target.netlify": {
-    "zh-Hans": "Netlify",
-    "en": "Netlify"
+    "en": "Netlify",
+    "zh-Hans": "Netlify"
   },
   "display.site-starter-deployment-target.none": {
-    "zh-Hans": "暂不部署",
-    "en": "Not Now"
+    "en": "Not Now",
+    "zh-Hans": "暂不部署"
   },
   "display.site-starter-deployment-target.vercel": {
-    "zh-Hans": "Vercel",
-    "en": "Vercel"
+    "en": "Vercel",
+    "zh-Hans": "Vercel"
   },
   "display.workspace-backup-frequency.daily": {
-    "zh-Hans": "每天",
-    "en": "Daily"
+    "en": "Daily",
+    "zh-Hans": "每天"
   },
   "display.workspace-backup-frequency.off": {
-    "zh-Hans": "关闭",
-    "en": "Off"
+    "en": "Off",
+    "zh-Hans": "关闭"
   },
   "display.workspace-backup-frequency.weekly": {
-    "zh-Hans": "每周",
-    "en": "Weekly"
+    "en": "Weekly",
+    "zh-Hans": "每周"
   }
 }

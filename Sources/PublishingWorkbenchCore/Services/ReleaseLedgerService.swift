@@ -1335,10 +1335,11 @@ public struct ReleaseLedgerService {
 
     return ReleaseRollbackDraft(
       title: CoreL10n.format("恢复本地写入：%@", record.draftTitle ?? record.title),
-      summary: CoreL10n.text("把本次写入的文件从工作树恢复到仓库当前版本。执行前先确认没有其他手动编辑混在这些路径里。"),
-      commandLines: [
-        "git checkout -- \(paths.map(quotedShellPath).joined(separator: " "))"
-      ],
+      summary: CoreL10n.text("跟踪文件恢复到 HEAD 并同步取消暂存；本次新增且未跟踪的文件会按记录路径删除。执行前先确认没有其他手动编辑混在这些路径里。"),
+      commandLines: paths.map { path in
+        let quotedPath = quotedShellPath(path)
+        return "if git cat-file -e HEAD:\(quotedPath) >/dev/null 2>&1; then git restore --source=HEAD --staged --worktree -- \(quotedPath); else git restore --staged -- \(quotedPath) >/dev/null 2>&1 || true; git clean -fd -- \(quotedPath); fi"
+      },
       changedPaths: paths
     )
   }

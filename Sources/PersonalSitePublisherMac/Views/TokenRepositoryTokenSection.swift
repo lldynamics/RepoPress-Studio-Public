@@ -2,7 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct TokenRepositoryTokenSection: View {
-  let repositoryProviderName: String
+  let repositoryProvider: RepositoryProvider
   let repositoryTokenInput: Binding<String>
   let shouldFocusInput: Bool
   let navigationRequestID: UUID
@@ -18,25 +18,27 @@ struct TokenRepositoryTokenSection: View {
 
   var body: some View {
     Section("仓库凭据") {
-      DisclosureGroup(isExpanded: $showsPATGuide) {
-        VStack(alignment: .leading, spacing: 6) {
-          Text("创建 Token 时请注意勾选 repo (全权控制私有仓库) 与 workflow 权限。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+      if repositoryProvider == .github {
+        DisclosureGroup(isExpanded: $showsPATGuide) {
+          VStack(alignment: .leading, spacing: 6) {
+            Text("创建 Token 时请注意勾选 repo (全权控制私有仓库) 与 workflow 权限。")
+              .font(.caption)
+              .foregroundStyle(.secondary)
 
-          Button {
-            NSWorkspace.shared.open(URL(string: "https://github.com/settings/tokens/new?scopes=repo,workflow&description=RepoPressMac")!)
-          } label: {
-            Label("前往 GitHub 打开 Token 创建页", systemImage: "arrow.up.right.square")
-              .font(.caption.weight(.medium))
+            Button {
+              NSWorkspace.shared.open(URL(string: "https://github.com/settings/tokens/new?scopes=repo,workflow&description=RepoPressMac")!)
+            } label: {
+              Label("前往 GitHub 打开 Token 创建页", systemImage: "arrow.up.right.square")
+                .font(.caption.weight(.medium))
+            }
+            .buttonStyle(.borderless)
           }
-          .buttonStyle(.borderless)
+          .padding(.vertical, 4)
+        } label: {
+          Label("如何创建 GitHub 个人访问令牌 (PAT)？", systemImage: "questionmark.circle")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color.accentColor)
         }
-        .padding(.vertical, 4)
-      } label: {
-        Label("如何创建 GitHub 个人访问令牌 (PAT)？", systemImage: "questionmark.circle")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(Color.accentColor)
       }
 
       HStack(spacing: 8) {
@@ -59,6 +61,7 @@ struct TokenRepositoryTokenSection: View {
         }
         .buttonStyle(.plain)
         .help(isTokenRevealed ? "隐藏令牌" : "显示令牌明文")
+        .accessibilityLabel(isTokenRevealed ? "隐藏仓库访问令牌" : "显示仓库访问令牌明文")
       }
       .accessibilityLabel("仓库访问令牌")
       .accessibilityHint("仅用于仓库创建、权限检查、提交、PR/MR 和回滚")
@@ -111,16 +114,16 @@ struct TokenRepositoryTokenSection: View {
       isRepositoryTokenFocused = true
     }
     .confirmationDialog(
-      "删除\(repositoryProviderName)仓库访问令牌？",
+      "删除\(repositoryProvider.localizedDisplayName)仓库访问令牌？",
       isPresented: $isDeleteConfirmationPresented,
       titleVisibility: .visible
     ) {
-      Button("删除\(repositoryProviderName)仓库访问令牌", role: .destructive) {
+      Button("删除\(repositoryProvider.localizedDisplayName)仓库访问令牌", role: .destructive) {
         onDeleteToken()
       }
       Button("取消", role: .cancel) {}
     } message: {
-      Text("删除后，\(repositoryProviderName) 的仓库创建、权限检查、线上发布与回滚将不可用，直到重新保存令牌。")
+      Text("删除后，\(repositoryProvider.localizedDisplayName) 的仓库创建、权限检查、线上发布与回滚将不可用，直到重新保存令牌。")
     }
   }
 

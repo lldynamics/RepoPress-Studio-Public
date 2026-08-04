@@ -142,7 +142,7 @@ struct KnowledgeSourceListColumn: View {
           isSettingsPresented = false
         }
       )
-      .frame(minWidth: 720, minHeight: 560)
+      .workbenchSheetSize(.detail)
     }
     .alert(folderEditorTitle, isPresented: $isFolderEditorPresented) {
       TextField(String(localized: "文件夹名称"), text: $folderName)

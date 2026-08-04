@@ -39,6 +39,22 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
     "captured",
     "normalized",
   ]
+  private static let restoreTransactionFileName = ".KnowledgeLibraryRestoreTransaction.json"
+
+  private enum RestoreTransactionPhase: String, Codable {
+    case prepared
+    case pendingMoved
+    case currentMoved
+    case installed
+  }
+
+  private struct RestoreTransaction: Codable {
+    var phase: RestoreTransactionPhase
+    var pendingPath: String
+    var applyingPath: String
+    var stagingPath: String
+    var previousLibraryPath: String?
+  }
 
   private let rootURL: URL
   private let fileManager: FileManager
@@ -169,6 +185,7 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
   }
 
   func applyPendingRestoreIfNeeded() throws -> KnowledgeLibraryRestoreStartupResult? {
+    try recoverInterruptedRestoreIfNeeded()
     let pendingURL = Self.pendingRestoreURL(for: rootURL)
     guard fileManager.fileExists(atPath: pendingURL.path) else { return nil }
 
@@ -183,6 +200,20 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
       ".KnowledgeLibraryApplying-\(UUID().uuidString).pslibrarybackup",
       isDirectory: true
     )
+    let previousLibraryURL: URL?
+    if fileManager.fileExists(atPath: rootURL.path) {
+      let recoveryDirectory = parentURL.appendingPathComponent(
+        "KnowledgeLibraryRecovery",
+        isDirectory: true
+      )
+      try fileManager.createDirectory(at: recoveryDirectory, withIntermediateDirectories: true)
+      previousLibraryURL = recoveryDirectory.appendingPathComponent(
+        "BeforeRestore-\(UUID().uuidString)",
+        isDirectory: true
+      )
+    } else {
+      previousLibraryURL = nil
+    }
     var shouldRemoveStaging = true
     defer {
       if shouldRemoveStaging { try? fileManager.removeItem(at: stagingURL) }
@@ -208,25 +239,29 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
       at: stagingURL.appendingPathComponent(Self.databaseFileName)
     )
 
-    try fileManager.moveItem(at: pendingURL, to: applyingURL)
-    var previousLibraryURL: URL?
+    var transaction = RestoreTransaction(
+      phase: .prepared,
+      pendingPath: pendingURL.path,
+      applyingPath: applyingURL.path,
+      stagingPath: stagingURL.path,
+      previousLibraryPath: previousLibraryURL?.path
+    )
+    try persistRestoreTransaction(transaction)
     do {
+      try fileManager.moveItem(at: pendingURL, to: applyingURL)
+      transaction.phase = .pendingMoved
+      try persistRestoreTransaction(transaction)
+
+      // The old library is moved only after the pending package has a durable
+      // transaction record. A restart can therefore restore either side.
       if fileManager.fileExists(atPath: rootURL.path) {
-        let recoveryDirectory = parentURL.appendingPathComponent(
-          "KnowledgeLibraryRecovery",
-          isDirectory: true
-        )
-        try fileManager.createDirectory(at: recoveryDirectory, withIntermediateDirectories: true)
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let recoveryURL = recoveryDirectory.appendingPathComponent(
-          "BeforeRestore-\(formatter.string(from: Date()))-\(UUID().uuidString)",
-          isDirectory: true
-        )
-        try fileManager.moveItem(at: rootURL, to: recoveryURL)
-        previousLibraryURL = recoveryURL
+        guard let previousLibraryURL else {
+          throw KnowledgeLibraryBackupError.restoreFailed("未能记录旧知识库恢复副本")
+        }
+        try fileManager.moveItem(at: rootURL, to: previousLibraryURL)
       }
+      transaction.phase = .currentMoved
+      try persistRestoreTransaction(transaction)
 
       do {
         try fileManager.moveItem(at: stagingURL, to: rootURL)
@@ -247,6 +282,8 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
         }
         throw replacementError
       }
+      transaction.phase = .installed
+      try persistRestoreTransaction(transaction)
       do {
         try fileManager.removeItem(at: applyingURL)
       } catch {
@@ -254,20 +291,14 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
           "Knowledge restore succeeded but pending package cleanup failed: \(error.localizedDescription, privacy: .public)"
         )
       }
+      try clearRestoreTransaction()
     } catch let restoreError {
-      if fileManager.fileExists(atPath: applyingURL.path),
-         !fileManager.fileExists(atPath: pendingURL.path) {
-        do {
-          try fileManager.moveItem(at: applyingURL, to: pendingURL)
-        } catch let rollbackError {
-          let combinedError = KnowledgeLibraryRollbackError(
-            operation: "应用知识库恢复",
-            primaryError: restoreError,
-            rollbackError: rollbackError,
-            recoveryURL: applyingURL
-          )
-          throw KnowledgeLibraryBackupError.restoreFailed(combinedError.localizedDescription)
-        }
+      do {
+        try recoverInterruptedRestoreIfNeeded()
+      } catch let recoveryError {
+        throw KnowledgeLibraryBackupError.restoreFailed(
+          "\(restoreError.localizedDescription)；启动恢复也失败：\(recoveryError.localizedDescription)"
+        )
       }
       throw KnowledgeLibraryBackupError.restoreFailed(restoreError.localizedDescription)
     }
@@ -285,6 +316,83 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
       ".KnowledgeLibraryPendingRestore.pslibrarybackup",
       isDirectory: true
     )
+  }
+
+  private var restoreTransactionURL: URL {
+    rootURL.deletingLastPathComponent()
+      .appendingPathComponent(Self.restoreTransactionFileName)
+  }
+
+  private func persistRestoreTransaction(_ transaction: RestoreTransaction) throws {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    let data = try encoder.encode(transaction)
+    try fileManager.createDirectory(
+      at: restoreTransactionURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try data.write(to: restoreTransactionURL, options: [.atomic])
+    let handle = try FileHandle(forWritingTo: restoreTransactionURL)
+    try handle.synchronize()
+    try handle.close()
+  }
+
+  private func clearRestoreTransaction() throws {
+    if fileManager.fileExists(atPath: restoreTransactionURL.path) {
+      try fileManager.removeItem(at: restoreTransactionURL)
+    }
+  }
+
+  private func recoverInterruptedRestoreIfNeeded() throws {
+    guard fileManager.fileExists(atPath: restoreTransactionURL.path) else { return }
+    let data = try Data(contentsOf: restoreTransactionURL)
+    let transaction = try JSONDecoder().decode(RestoreTransaction.self, from: data)
+    let parentURL = rootURL.deletingLastPathComponent().standardizedFileURL
+    let pendingURL = try validatedTransactionURL(transaction.pendingPath, parent: parentURL)
+    let applyingURL = try validatedTransactionURL(transaction.applyingPath, parent: parentURL)
+    let stagingURL = try validatedTransactionURL(transaction.stagingPath, parent: parentURL)
+    let previousLibraryURL = try transaction.previousLibraryPath.map {
+      try validatedTransactionURL(
+        $0,
+        parent: parentURL.appendingPathComponent("KnowledgeLibraryRecovery")
+      )
+    }
+
+    switch transaction.phase {
+    case .prepared:
+      if fileManager.fileExists(atPath: applyingURL.path),
+         !fileManager.fileExists(atPath: pendingURL.path) {
+        try fileManager.moveItem(at: applyingURL, to: pendingURL)
+      }
+      try? fileManager.removeItem(at: stagingURL)
+
+    case .pendingMoved, .currentMoved:
+      if !fileManager.fileExists(atPath: rootURL.path),
+         let previousLibraryURL,
+         fileManager.fileExists(atPath: previousLibraryURL.path) {
+        try fileManager.moveItem(at: previousLibraryURL, to: rootURL)
+      }
+      if fileManager.fileExists(atPath: applyingURL.path),
+         !fileManager.fileExists(atPath: pendingURL.path) {
+        try fileManager.moveItem(at: applyingURL, to: pendingURL)
+      }
+      try? fileManager.removeItem(at: stagingURL)
+
+    case .installed:
+      // The new library is already visible. Keep the previous-library copy as
+      // an explicit recovery point, but remove only exact temporary artifacts.
+      try? fileManager.removeItem(at: applyingURL)
+      try? fileManager.removeItem(at: stagingURL)
+    }
+    try clearRestoreTransaction()
+  }
+
+  private func validatedTransactionURL(_ path: String, parent: URL) throws -> URL {
+    let candidate = URL(fileURLWithPath: path).standardizedFileURL
+    guard candidate.deletingLastPathComponent().standardizedFileURL == parent.standardizedFileURL else {
+      throw KnowledgeLibraryBackupError.invalidPath(candidate.path)
+    }
+    return candidate
   }
 
   private func validatedBackup(

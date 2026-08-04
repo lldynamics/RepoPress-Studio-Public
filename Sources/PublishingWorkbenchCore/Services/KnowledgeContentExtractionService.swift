@@ -259,7 +259,7 @@ struct KnowledgeContentExtractionService {
   }
 
   private func firstMarkdownHeading(_ source: String) -> String? {
-    source.components(separatedBy: .newlines).compactMap { line in
+    source.components(separatedBy: .newlines).compactMap { line -> String? in
       let trimmed = line.trimmingCharacters(in: .whitespaces)
       guard trimmed.hasPrefix("# ") else { return nil }
       return String(trimmed.dropFirst(2)).trimmedForPublishing.nilIfEmpty

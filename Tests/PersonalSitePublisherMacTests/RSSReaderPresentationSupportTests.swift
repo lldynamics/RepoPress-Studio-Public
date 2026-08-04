@@ -24,6 +24,22 @@ final class RSSReaderPresentationSupportTests: XCTestCase {
     XCTAssertEqual(metrics.readingMinutes, 1)
   }
 
+  @MainActor
+  func testReaderMetricsUsesDisplayedSummaryAfterUnsafeContentIsRemoved() {
+    let article = RSSArticle(
+      id: "summary-reading-time",
+      feedID: UUID(),
+      title: "Summary reading time",
+      summaryHTML: "<p>\(String(repeating: "中文摘要内容", count: 80))</p>",
+      contentHTML: "<script>\(String(repeating: "ignored ", count: 500))</script>"
+    )
+
+    let metrics = RSSReaderPresentationState().readerMetrics(for: article)
+
+    XCTAssertTrue(metrics.hasRenderableBody)
+    XCTAssertGreaterThan(metrics.readingMinutes, 1)
+  }
+
   func testSubscriptionDiscoveryKeepsPrimaryAndOtherFeedsInSourceOrder() throws {
     let sourceURL = try XCTUnwrap(URL(string: "https://example.com/blog/"))
     let primaryURL = try XCTUnwrap(URL(string: "https://example.com/feed.xml"))

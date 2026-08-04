@@ -88,6 +88,16 @@ final class RSSFeedIssueTests: XCTestCase {
     XCTAssertEqual(unavailable.retryAt, serviceRetryAt)
   }
 
+  func testPrivateNetworkBlockRequiresUserActionInsteadOfAutomaticRetry() {
+    let issue = RSSReaderError.privateNetworkAccessDenied.asFeedIssue()
+
+    XCTAssertEqual(issue.stage, .validation)
+    XCTAssertEqual(issue.category, .permissionDenied)
+    XCTAssertEqual(issue.retryStrategy, .requiresAction)
+    XCTAssertFalse(issue.shouldRetryAutomatically)
+    XCTAssertTrue(issue.userMessage.contains("局域网"))
+  }
+
   func testURLErrorClassificationSeparatesOfflineTimeoutTLSAndCancellation() {
     XCTAssertEqual(
       RSSFeedIssue.from(urlError: URLError(.notConnectedToInternet)).category,

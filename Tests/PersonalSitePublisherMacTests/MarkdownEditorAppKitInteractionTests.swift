@@ -169,22 +169,16 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
   func testDragAcceptsSupportedImagesAndDeliversOnlyFilteredFileURLs() throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture.root) }
-    let pasteboard = NSPasteboard(
-      name: .init("MarkdownEditorAppKitInteractionTests.\(UUID().uuidString)")
-    )
-    pasteboard.clearContents()
-    XCTAssertTrue(
-      pasteboard.writeObjects([
-        fixture.imageURL as NSURL,
-        fixture.textURL as NSURL,
-      ])
-    )
+    let pasteboard = NSPasteboard.general
 
     let textView = DroppableMarkdownTextView(
       frame: NSRect(x: 0, y: 0, width: 320, height: 180),
       textContainer: nil
     )
     textView.string = "Draft"
+    textView.fileDropImageURLsProvider = { _ in
+      ImageFileSupport.supportedImageURLs(in: [fixture.imageURL, fixture.textURL])
+    }
     var targetedStates: [Bool] = []
     var droppedURLs: [URL] = []
     textView.fileDropTargetChangedHandler = { targetedStates.append($0) }
@@ -201,17 +195,14 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
   func testDragRejectsUnsupportedFilesWithoutCallingDropHandler() throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture.root) }
-    let pasteboard = NSPasteboard(
-      name: .init("MarkdownEditorAppKitInteractionTests.\(UUID().uuidString)")
-    )
-    pasteboard.clearContents()
-    XCTAssertTrue(pasteboard.writeObjects([fixture.textURL as NSURL]))
+    let pasteboard = NSPasteboard.general
 
     let textView = DroppableMarkdownTextView(
       frame: NSRect(x: 0, y: 0, width: 320, height: 180),
       textContainer: nil
     )
     var didDrop = false
+    textView.fileDropImageURLsProvider = { _ in [] }
     textView.fileDropHandler = { _, _ in didDrop = true }
     let draggingInfo = MarkdownDraggingInfoStub(pasteboard: pasteboard)
 
@@ -230,24 +221,15 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
       locator: "第二章",
       excerpt: "用于写作的资料片段"
     )
-    let pasteboard = NSPasteboard(
-      name: .init("MarkdownEditorAppKitInteractionTests.\(UUID().uuidString)")
-    )
-    pasteboard.clearContents()
-    pasteboard.setData(
-      Data("> 引用片段".utf8),
-      forType: KnowledgeArticleInsertionService.knowledgeMarkdownPasteboardType
-    )
-    pasteboard.setData(
-      try JSONEncoder().encode(citation),
-      forType: KnowledgeArticleInsertionService.knowledgeCitationPasteboardType
-    )
+    let pasteboard = NSPasteboard.general
 
     let textView = DroppableMarkdownTextView(
       frame: NSRect(x: 0, y: 0, width: 320, height: 180),
       textContainer: nil
     )
     textView.string = "Draft"
+    textView.knowledgeMarkdownProvider = { _ in "> 引用片段" }
+    textView.knowledgeCitationProvider = { _ in citation }
     var receivedMarkdown: String?
     var receivedCitation: KnowledgeCitation?
     textView.knowledgeMarkdownDropHandler = { markdown, _, citation in
@@ -263,12 +245,12 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
   }
 
   func testRichHTMLPasteboardKeepsTrustedWebBaseURL() {
-    let pasteboard = NSPasteboard(
-      name: .init("MarkdownEditorAppKitInteractionTests.\(UUID().uuidString)")
+    let pasteboard = TestMarkdownPasteboardSource(
+      strings: [
+        .html: "<p><strong>Hello</strong></p>",
+        .URL: "https://example.com/articles/1",
+      ]
     )
-    pasteboard.clearContents()
-    pasteboard.setString("<p><strong>Hello</strong></p>", forType: .html)
-    pasteboard.setString("https://example.com/articles/1", forType: .URL)
 
     let content = MarkdownPasteboardReader.richTextContent(from: pasteboard)
 
@@ -321,6 +303,36 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     try Data("notes".utf8).write(to: textURL)
     return (root, imageURL, textURL)
   }
+}
+
+struct TestMarkdownPasteboardSource: MarkdownPasteboardSource {
+  let strings: [NSPasteboard.PasteboardType: String]
+  let dataByType: [NSPasteboard.PasteboardType: Data]
+
+  init(
+    strings: [NSPasteboard.PasteboardType: String] = [:],
+    data: [NSPasteboard.PasteboardType: Data] = [:]
+  ) {
+    self.strings = strings
+    self.dataByType = data
+  }
+
+  func readObjects(
+    forClasses classArray: [AnyClass],
+    options: [NSPasteboard.ReadingOptionKey: Any]? = nil
+  ) -> [Any]? {
+    nil
+  }
+
+  func data(forType dataType: NSPasteboard.PasteboardType) -> Data? {
+    dataByType[dataType]
+  }
+
+  func string(forType dataType: NSPasteboard.PasteboardType) -> String? {
+    strings[dataType]
+  }
+
+  var appKitPasteboard: NSPasteboard? { nil }
 }
 
 @MainActor

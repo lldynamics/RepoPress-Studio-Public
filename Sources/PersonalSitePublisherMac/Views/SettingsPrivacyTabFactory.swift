@@ -10,9 +10,6 @@ struct SettingsPrivacyTabFactory {
       onQuickHide: {
         context.actions.quickHideFromSettings()
       },
-      onReturnToWorkbench: {
-        context.actions.exitQuickHideFromSettings()
-      },
       updatePrivacySettings: { settings in
         context.actions.updatePrivacySettings(settings)
       }

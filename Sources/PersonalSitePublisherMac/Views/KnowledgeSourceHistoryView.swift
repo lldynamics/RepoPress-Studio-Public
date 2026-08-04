@@ -244,7 +244,8 @@ struct KnowledgeSourceHistoryView: View {
             }
           }
           .padding(.vertical, 5)
-          .accessibilityElement(children: .combine)
+          // “比较”和“恢复”必须保留为可单独聚焦的操作。
+          .accessibilityElement(children: .contain)
           .accessibilityLabel(
             "版本 \(revision.importedAt.formatted(date: .abbreviated, time: .standard))"
               + (revision.id == document?.currentRevisionID ? "，当前版本" : "")

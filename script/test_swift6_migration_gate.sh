@@ -28,12 +28,14 @@ chmod +x "$BIN_DIR/swift"
 SWIFT6_ARGS_FILE="$ARGS_FILE" \
 PATH="$BIN_DIR:$PATH" \
 SWIFT_BUILD_HOME="$TMP_DIR/swift-home" \
+SWIFT_PACKAGE_CACHE_PATH="$TMP_DIR/swift-cache" \
+SWIFT6_MIGRATION_SCRATCH_PATH="$TMP_DIR/swift6-migration" \
   bash "$ROOT_DIR/script/check_swift6_migration.sh" >/dev/null
 
 grep -Fxq "build" "$ARGS_FILE" || fail "diagnostic did not run swift build"
 grep -Fxq -- "--disable-sandbox" "$ARGS_FILE" || fail "diagnostic omitted --disable-sandbox"
-grep -Fxq "$ROOT_DIR/.build/swift6-migration" "$ARGS_FILE" || fail "diagnostic used an unexpected scratch path"
-grep -Fxq "$TMP_DIR/swift-home/Library/Caches/org.swift.swiftpm" "$ARGS_FILE" || fail "diagnostic omitted isolated SwiftPM cache path"
+grep -Fxq "$TMP_DIR/swift6-migration" "$ARGS_FILE" || fail "diagnostic used an unexpected scratch path"
+grep -Fxq "$TMP_DIR/swift-cache" "$ARGS_FILE" || fail "diagnostic omitted isolated SwiftPM cache path"
 grep -Fxq -- "-swift-version" "$ARGS_FILE" || fail "diagnostic omitted -swift-version"
 grep -Fxq -- "6" "$ARGS_FILE" || fail "diagnostic did not use true Swift 6 language mode"
 grep -Fxq -- "-strict-concurrency=complete" "$ARGS_FILE" || fail "diagnostic omitted complete concurrency"
@@ -43,6 +45,8 @@ if SWIFT6_ARGS_FILE="$ARGS_FILE" \
   SWIFT6_STUB_EXIT=23 \
   PATH="$BIN_DIR:$PATH" \
   SWIFT_BUILD_HOME="$TMP_DIR/swift-home-failure" \
+  SWIFT_PACKAGE_CACHE_PATH="$TMP_DIR/swift-cache-failure" \
+  SWIFT6_MIGRATION_SCRATCH_PATH="$TMP_DIR/swift6-migration-failure" \
   bash "$ROOT_DIR/script/check_swift6_migration.sh" >/dev/null 2>&1; then
   fail "diagnostic accepted a failing Swift 6 build"
 fi

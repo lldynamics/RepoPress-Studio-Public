@@ -102,6 +102,7 @@ public struct LocalPublishPreview: Codable, Hashable, Sendable {
 }
 
 public struct LocalPublishPreviewService: Sendable {
+  private static let transactionFileName = ".repopress-local-publish-transaction.json"
   private let fileSystem: SendableFileManager
 
   private var fileManager: FileManager { fileSystem.value }
@@ -419,6 +420,7 @@ public struct LocalPublishPreviewService: Sendable {
     rootURL: URL,
     preview: LocalPublishPreview? = nil
   ) throws -> LocalPublishWriteResult {
+    try recoverInterruptedTransaction(at: rootURL)
     let previewBaseStates: [String: LocalPublishFileState]?
     let previewSourceStates: [String: LocalPublishSourceFileState]?
     if let preview {
@@ -485,22 +487,32 @@ public struct LocalPublishPreviewService: Sendable {
       )
     }
 
-    let rollbackDirectory = fileManager.temporaryDirectory
-      .appendingPathComponent("personal-site-publisher-write-\(UUID().uuidString)", isDirectory: true)
+    // Keep the rollback payload beside the journal in the repository. A
+    // process restart cannot rely on the system temporary directory, and the
+    // journal can validate that this directory is still app-owned.
+    let rollbackDirectory = rootURL.standardizedFileURL
+      .appendingPathComponent(
+        ".repopress-local-publish-rollback-\(UUID().uuidString)",
+        isDirectory: true
+      )
     try fileManager.createDirectory(at: rollbackDirectory, withIntermediateDirectories: true)
-    defer { try? fileManager.removeItem(at: rollbackDirectory) }
+    var shouldRemoveRollbackDirectory = true
+    defer {
+      if shouldRemoveRollbackDirectory {
+        try? fileManager.removeItem(at: rollbackDirectory)
+      }
+    }
 
     var writtenPaths: [String] = []
     var rollbackEntries: [LocalPublishRollbackEntry] = []
     var appliedStates: [LocalPublishFileState] = []
+    let transactionURL = localPublishTransactionURL(for: rootURL)
     do {
+      // Prepare every backup before the first destination is changed, then
+      // persist the journal. A process stop at any later point can restore all
+      // paths, including files that did not exist before this publish.
       for (index, prepared) in preparedWrites.enumerated() {
-        let destinationURL = prepared.file.operation == .delete
-          ? prepared.destinationURL
-          : try safeDestinationURLForWrite(
-            rootURL: rootURL,
-            repositoryPath: prepared.file.repositoryPath
-          )
+        let destinationURL = prepared.destinationURL
         try validatePreviewBaseline(
           for: prepared.file,
           destinationURL: destinationURL,
@@ -514,7 +526,6 @@ public struct LocalPublishPreviewService: Sendable {
         } else {
           backupURL = nil
         }
-
         rollbackEntries.append(
           LocalPublishRollbackEntry(
             destinationURL: destinationURL,
@@ -523,12 +534,38 @@ public struct LocalPublishPreviewService: Sendable {
             didMutateDestination: false
           )
         )
+      }
+      try persistLocalPublishTransaction(
+        LocalPublishTransaction(
+          phase: .applying,
+          rollbackDirectoryPath: rollbackDirectory.path,
+          entries: rollbackEntries.enumerated().map { index, entry in
+            LocalPublishTransactionEntry(
+              repositoryPath: preparedWrites[index].file.repositoryPath.normalizedRelativePath(),
+              backupFileName: entry.backupURL?.lastPathComponent
+            )
+          }
+        ),
+        at: transactionURL
+      )
 
+      for (index, prepared) in preparedWrites.enumerated() {
+        let destinationURL = prepared.file.operation == .delete
+          ? prepared.destinationURL
+          : try safeDestinationURLForWrite(
+            rootURL: rootURL,
+            repositoryPath: prepared.file.repositoryPath
+          )
+        try validatePreviewBaseline(
+          for: prepared.file,
+          destinationURL: destinationURL,
+          expectedBaseStates: previewBaseStates
+        )
         switch prepared.file.operation {
         case .delete:
           if fileManager.fileExists(atPath: destinationURL.path) {
             try fileManager.removeItem(at: destinationURL)
-            rollbackEntries[rollbackEntries.count - 1].didMutateDestination = true
+            rollbackEntries[index].didMutateDestination = true
           }
         case .upsert:
           switch prepared.file.kind {
@@ -545,23 +582,43 @@ public struct LocalPublishPreviewService: Sendable {
               repositoryPath: prepared.file.repositoryPath
             )
           }
-          rollbackEntries[rollbackEntries.count - 1].didMutateDestination = true
+          rollbackEntries[index].didMutateDestination = true
         }
 
         let appliedState = try localPublishFileState(at: destinationURL, fileManager: fileManager)
-        rollbackEntries[rollbackEntries.count - 1].appliedState = appliedState
+        rollbackEntries[index].appliedState = appliedState
         appliedStates.append(appliedState)
         writtenPaths.append(prepared.file.repositoryPath)
       }
+      try persistLocalPublishTransaction(
+        LocalPublishTransaction(
+          phase: .committed,
+          rollbackDirectoryPath: rollbackDirectory.path,
+          entries: rollbackEntries.enumerated().map { index, entry in
+            LocalPublishTransactionEntry(
+              repositoryPath: preparedWrites[index].file.repositoryPath.normalizedRelativePath(),
+              backupFileName: entry.backupURL?.lastPathComponent
+            )
+          }
+        ),
+        at: transactionURL
+      )
+      try? fileManager.removeItem(at: transactionURL)
     } catch {
       do {
-        try rollbackLocalPublishWrites(rollbackEntries)
+        if fileManager.fileExists(atPath: transactionURL.path) {
+          try recoverInterruptedTransaction(at: rootURL)
+        } else {
+          try rollbackLocalPublishWrites(rollbackEntries)
+        }
       } catch let rollbackError {
+        shouldRemoveRollbackDirectory = false
         throw LocalPublishPreviewError.rollbackFailed(
           original: error.localizedDescription,
           rollback: rollbackError.localizedDescription
         )
       }
+      try? fileManager.removeItem(at: transactionURL)
       throw error
     }
     return LocalPublishWriteResult(
@@ -820,6 +877,77 @@ public struct LocalPublishPreviewService: Sendable {
     }
   }
 
+  private func localPublishTransactionURL(for rootURL: URL) -> URL {
+    rootURL.standardizedFileURL.appendingPathComponent(Self.transactionFileName)
+  }
+
+  private func persistLocalPublishTransaction(
+    _ transaction: LocalPublishTransaction,
+    at url: URL
+  ) throws {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    try encoder.encode(transaction).write(to: url, options: [.atomic])
+    let handle = try FileHandle(forWritingTo: url)
+    try handle.synchronize()
+    try handle.close()
+  }
+
+  private func recoverInterruptedTransaction(at rootURL: URL) throws {
+    let transactionURL = localPublishTransactionURL(for: rootURL)
+    guard fileManager.fileExists(atPath: transactionURL.path) else { return }
+    do {
+      let data = try Data(contentsOf: transactionURL)
+      let transaction = try JSONDecoder().decode(LocalPublishTransaction.self, from: data)
+      let root = rootURL.standardizedFileURL
+      let rollbackDirectory = URL(fileURLWithPath: transaction.rollbackDirectoryPath).standardizedFileURL
+      guard rollbackDirectory.deletingLastPathComponent() == root,
+            rollbackDirectory.lastPathComponent.hasPrefix(".repopress-local-publish-rollback-"),
+            !isSymbolicLink(rollbackDirectory) else {
+        throw LocalPublishPreviewError.recoveryFailed("恢复目录不在本地仓库内")
+      }
+
+      if transaction.phase == .committed {
+        try? fileManager.removeItem(at: rollbackDirectory)
+        try fileManager.removeItem(at: transactionURL)
+        return
+      }
+
+      for entry in transaction.entries.reversed() {
+        let destinationURL = try validatedDestinationURLForWrite(
+          rootURL: root,
+          repositoryPath: entry.repositoryPath
+        )
+        if fileManager.fileExists(atPath: destinationURL.path) {
+          try fileManager.removeItem(at: destinationURL)
+        }
+        if let backupFileName = entry.backupFileName {
+          guard !backupFileName.contains("/"),
+                !backupFileName.contains("\\"),
+                !backupFileName.contains("..") else {
+            throw LocalPublishPreviewError.recoveryFailed("恢复备份路径不安全")
+          }
+          let backupURL = rollbackDirectory.appendingPathComponent(backupFileName).standardizedFileURL
+          guard backupURL.deletingLastPathComponent() == rollbackDirectory,
+                fileManager.fileExists(atPath: backupURL.path) else {
+            throw LocalPublishPreviewError.recoveryFailed("恢复备份文件缺失：\(entry.repositoryPath)")
+          }
+          try fileManager.createDirectory(
+            at: destinationURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+          )
+          try fileManager.copyItem(at: backupURL, to: destinationURL)
+        }
+      }
+      try fileManager.removeItem(at: rollbackDirectory)
+      try fileManager.removeItem(at: transactionURL)
+    } catch let error as LocalPublishPreviewError {
+      throw error
+    } catch {
+      throw LocalPublishPreviewError.recoveryFailed(error.localizedDescription)
+    }
+  }
+
   private func rollbackLocalPublishWrites(_ entries: [LocalPublishRollbackEntry]) throws {
     for entry in entries.reversed() {
       guard entry.didMutateDestination else { continue }
@@ -900,6 +1028,7 @@ public enum LocalPublishPreviewError: LocalizedError {
   case invalidPreview(String)
   case previewOutdated(String)
   case sourcePreviewOutdated(String)
+  case recoveryFailed(String)
   case rollbackConflict(String)
   case rollbackFailed(original: String, rollback: String)
 
@@ -919,6 +1048,8 @@ public enum LocalPublishPreviewError: LocalizedError {
       return CoreL10n.format("目标文件在预览后已被外部修改，已停止写入：%@", path)
     case .sourcePreviewOutdated(let path):
       return CoreL10n.format("媒体源文件在预览后已变化，已停止写入：%@", path)
+    case .recoveryFailed(let message):
+      return CoreL10n.format("上一次本地发布未完成，自动恢复失败：%@", message)
     case .rollbackConflict(let path):
       return CoreL10n.format("检测到外部修改，已停止自动恢复并保留当前文件：%@", path)
     case .rollbackFailed(let original, let rollback):
@@ -943,6 +1074,22 @@ private struct LocalPublishRollbackEntry {
   let backupURL: URL?
   var appliedState: LocalPublishFileState?
   var didMutateDestination: Bool
+}
+
+private enum LocalPublishTransactionPhase: String, Codable {
+  case applying
+  case committed
+}
+
+private struct LocalPublishTransactionEntry: Codable {
+  var repositoryPath: String
+  var backupFileName: String?
+}
+
+private struct LocalPublishTransaction: Codable {
+  var phase: LocalPublishTransactionPhase
+  var rollbackDirectoryPath: String
+  var entries: [LocalPublishTransactionEntry]
 }
 
 struct LocalPublishWriteResult {

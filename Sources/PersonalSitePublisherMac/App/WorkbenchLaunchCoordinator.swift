@@ -294,6 +294,78 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     }
   }
 
+  /// Copies the active managed root into a newly created child directory and
+  /// switches the persisted bookmark only after the copy has been verified.
+  /// The old root is deliberately retained as a user-controlled fallback.
+  func relocateCurrentDataRoot(in parentURL: URL) async -> WorkbenchDataRootMigrationResult? {
+    guard let bookmarkStore,
+          let sourceSession = dataRootSession,
+          let store,
+          let rssStore else {
+      dataRootMessage = String(localized: "当前数据文件夹尚未准备完成，无法更改位置。")
+      return nil
+    }
+    guard !store.knowledge.isBusy,
+          !rssStore.isRefreshing,
+          !store.workspaceBackupScheduler.isRunning else {
+      dataRootMessage = String(localized: "资料库、RSS 刷新或备份仍在运行，请完成后再更改存储位置。")
+      return nil
+    }
+    guard store.flushPendingChanges() else {
+      dataRootMessage = String(localized: "仍有修改未能保存，未更改存储位置。请先解决保存错误。")
+      return nil
+    }
+
+    phase = .preparing(String(localized: "正在复制并校验当前数据…"))
+    dataRootMessage = nil
+    rssStore.stopBackgroundRefresh()
+    store.workspaceBackupScheduler.stop()
+    browserBridge?.stop()
+
+    let didAccess = parentURL.startAccessingSecurityScopedResource()
+    defer {
+      if didAccess { parentURL.stopAccessingSecurityScopedResource() }
+    }
+    let destinationRootURL = Self.availableDataRootURL(
+      in: parentURL,
+      reuseEmptyExistingRoot: false
+    )
+    let appVersion = Self.currentApplicationVersion
+    var installedResult: WorkbenchDataRootMigrationResult?
+    do {
+      let result = try await Task.detached(priority: .utility) {
+        try WorkbenchDataRootMigrator().copyExistingRoot(
+          from: sourceSession.layout.rootURL,
+          to: destinationRootURL,
+          appVersion: appVersion
+        )
+      }.value
+      installedResult = result
+      try bookmarkStore.rememberSelectedRoot(
+        destinationRootURL,
+        accessURL: parentURL,
+        dataID: result.manifest.dataID
+      )
+      dataRootPath = destinationRootURL.path
+      return result
+    } catch {
+      if let installedResult {
+        dataRootMessage = String(
+          format: String(localized: "数据已安全复制到 %@，但应用未能切换到新位置：%@。当前仍使用原文件夹。"),
+          installedResult.destinationRootURL.path,
+          friendlyMessage(for: error)
+        )
+      } else {
+        dataRootMessage = String(
+          format: String(localized: "更改存储位置失败：%@。原文件夹保持不变。"),
+          friendlyMessage(for: error)
+        )
+      }
+      resumeReadyServicesAfterRelocationFailure(store: store, rssStore: rssStore)
+      return nil
+    }
+  }
+
   func continueNormally() {
     launchRecoveryChoiceRequired = false
     isSafeMode = false
@@ -479,6 +551,17 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     phase = .needsDataRoot
   }
 
+  private func resumeReadyServicesAfterRelocationFailure(
+    store: WorkbenchStore,
+    rssStore: RSSReaderStore
+  ) {
+    phase = .ready
+    guard !isSafeMode else { return }
+    store.workspaceBackupScheduler.start()
+    rssStore.startBackgroundRefresh()
+    browserBridge?.start()
+  }
+
   nonisolated static func availableDataRootURL(
     in parentURL: URL,
     reuseEmptyExistingRoot: Bool
@@ -612,6 +695,8 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
         return String(localized: "未在本机找到可迁移的旧版工作台、资料库或 RSS 数据。")
       case .destinationAlreadyExists:
         return String(localized: "目标位置已存在同名文件夹，请换一个位置。")
+      case .sourceRootIsIncompatible(let incompatibility):
+        return friendlyMessage(for: incompatibility)
       default:
         return String(localized: "旧数据未能通过完整性校验，原文件保持不变。")
       }

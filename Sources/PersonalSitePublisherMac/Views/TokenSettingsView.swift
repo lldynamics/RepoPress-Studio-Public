@@ -32,24 +32,23 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      HStack(spacing: 0) {
-        connectionSettingsSidebar
-        Divider()
+      connectionSettingsHeader
 
-        Form {
-          switch selectedScope {
-          case .repository:
-            repositorySections
-          case .deployment:
-            deploymentSections
-          case .analytics:
-            analyticsSections
-          }
+      Divider()
+
+      Form {
+        switch selectedScope {
+        case .repository:
+          repositorySections
+        case .deployment:
+          deploymentSections
+        case .analytics:
+          analyticsSections
         }
-        .formStyle(.grouped)
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
+      .formStyle(.grouped)
+      .padding(WorkbenchSpacing.content)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     .sheet(isPresented: $isRepositoryPermissionPresented) {
       repositoryPermissionContent($isRepositoryPermissionPresented)
@@ -59,36 +58,46 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
       selectedScope = .repository
     }
     .onChange(of: activeProfile.repositoryProvider) { _, _ in
+      repositoryTokenInput = ""
       refreshRepositoryTokenAvailability()
     }
     .onChange(of: activeDeploymentProvider) { _, _ in
+      deploymentTokenInput = ""
       refreshDeploymentTokenAvailability()
     }
     .onChange(of: activeAnalyticsProvider) { _, _ in
+      siteAnalyticsTokenInput = ""
       refreshSiteAnalyticsTokenAvailability()
+    }
+    .accessibilityIdentifier("token-settings")
+  }
+
+  private var connectionSettingsHeader: some View {
+    SettingsScopeHeader {
+      Label(selectedScope.title, systemImage: selectedScope.systemImage)
+        .font(.workbenchItemTitle)
+        .foregroundStyle(.secondary)
+    } scopeControl: {
+      connectionSettingsPicker
     }
   }
 
-  private var connectionSettingsSidebar: some View {
-    List(selection: $selectedScope) {
-      Section("连接设置") {
-        ForEach(ConnectionSettingsScope.allCases) { scope in
-          Label(scope.title, systemImage: scope.systemImage)
-            .tag(scope)
-        }
+  private var connectionSettingsPicker: some View {
+    Picker("仓库与部署设置分类", selection: $selectedScope) {
+      ForEach(ConnectionSettingsScope.allCases) { scope in
+        Text(scope.title).tag(scope)
       }
     }
-    .listStyle(.sidebar)
-    .scrollContentBackground(.hidden)
-    .frame(width: 164)
-    .background(.thinMaterial)
+    .pickerStyle(.segmented)
+    .labelsHidden()
     .accessibilityLabel("仓库与部署设置分类")
+    .accessibilityIdentifier("settings-connection-scope-picker")
   }
 
   @ViewBuilder
   private var repositorySections: some View {
     TokenRepositoryTokenSection(
-      repositoryProviderName: activeProfile.repositoryProvider.localizedDisplayName,
+      repositoryProvider: activeProfile.repositoryProvider,
       repositoryTokenInput: $repositoryTokenInput,
       shouldFocusInput: shouldFocusRepositoryToken,
       navigationRequestID: navigationRequestID,

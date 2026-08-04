@@ -31,13 +31,15 @@ STRICT_BUILD_ARGS_FILE="$ARGS_FILE" \
 STRICT_BUILD_ENV_FILE="$ENV_FILE" \
 PATH="$BIN_DIR:$PATH" \
 SWIFT_BUILD_HOME="$TMP_DIR/swift-home" \
+SWIFT_PACKAGE_CACHE_PATH="$TMP_DIR/swift-cache" \
+STRICT_BUILD_SCRATCH_PATH="$TMP_DIR/strict-concurrency" \
   bash "$ROOT_DIR/script/check_swift_strict_build.sh" >/dev/null
 
 grep -Fxq "build" "$ARGS_FILE" || fail "gate did not run swift build"
 grep -Fxq -- "--disable-sandbox" "$ARGS_FILE" || fail "gate omitted --disable-sandbox"
 grep -Fxq -- "--scratch-path" "$ARGS_FILE" || fail "gate omitted isolated strict-build scratch path"
-grep -Fxq "$ROOT_DIR/.build/strict-concurrency" "$ARGS_FILE" || fail "gate used an unexpected strict-build scratch path"
-grep -Fxq "$TMP_DIR/swift-home/Library/Caches/org.swift.swiftpm" "$ARGS_FILE" || fail "gate omitted isolated SwiftPM cache path"
+grep -Fxq "$TMP_DIR/strict-concurrency" "$ARGS_FILE" || fail "gate used an unexpected strict-build scratch path"
+grep -Fxq "$TMP_DIR/swift-cache" "$ARGS_FILE" || fail "gate omitted isolated SwiftPM cache path"
 grep -Fxq "$TMP_DIR/swift-home/Library/org.swift.swiftpm/configuration" "$ARGS_FILE" || fail "gate omitted isolated SwiftPM configuration path"
 grep -Fxq "$TMP_DIR/swift-home/Library/org.swift.swiftpm/security" "$ARGS_FILE" || fail "gate omitted isolated SwiftPM security path"
 grep -Fxq -- "-swift-version" "$ARGS_FILE" || fail "gate omitted an explicit Swift language mode"
@@ -51,6 +53,8 @@ if STRICT_BUILD_ARGS_FILE="$ARGS_FILE" \
   STRICT_BUILD_STUB_EXIT=17 \
   PATH="$BIN_DIR:$PATH" \
   SWIFT_BUILD_HOME="$TMP_DIR/swift-home-failure" \
+  SWIFT_PACKAGE_CACHE_PATH="$TMP_DIR/swift-cache-failure" \
+  STRICT_BUILD_SCRATCH_PATH="$TMP_DIR/strict-concurrency-failure" \
   bash "$ROOT_DIR/script/check_swift_strict_build.sh" >/dev/null 2>&1; then
   fail "gate accepted a failing Swift build"
 fi

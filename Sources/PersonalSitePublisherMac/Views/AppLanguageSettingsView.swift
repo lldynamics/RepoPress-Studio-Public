@@ -46,7 +46,7 @@ struct AppLanguageSettingsView: View {
       }
     }
     .formStyle(.grouped)
-    .padding()
+    .padding(WorkbenchSpacing.content)
     .accessibilityIdentifier("app-language-settings")
   }
 

@@ -1,8 +1,25 @@
 import Combine
+import CryptoKit
 import Foundation
 
+private actor RSSReaderNetworkAccessState {
+  private var value: Bool
+
+  init(_ value: Bool) {
+    self.value = value
+  }
+
+  func get() -> Bool {
+    value
+  }
+
+  func set(_ value: Bool) {
+    self.value = value
+  }
+}
+
 public struct RSSReaderSnapshot: Codable, Sendable {
-  public static let currentSchemaVersion = 3
+  public static let currentSchemaVersion = 4
 
   public var schemaVersion: Int
   public var feeds: [RSSFeed]
@@ -113,8 +130,21 @@ private actor RSSArticlePayloadLoader {
 public final class RSSReaderStore: ObservableObject {
   public static let retentionDaysDefaultsKey = "rssArticleRetentionDays"
   public static let automaticPruningDefaultsKey = "rssAutomaticPruningEnabled"
+  public static let feedBodyOfflineCacheDefaultsKey = "rssFeedBodyOfflineCacheEnabled"
+  public static let webPageSnapshotDefaultsKey = "rssWebPageSnapshotEnabled"
+  public static let automaticMediaCacheDefaultsKey = "rssAutomaticMediaCacheEnabled"
+  /// Kept for migration and source compatibility with the previous single
+  /// switch. New UI must use the three explicit policy keys above.
+  public static let automaticOfflineCacheDefaultsKey = "rssAutomaticOfflineCacheEnabled"
+  public static let privateNetworkAccessDefaultsKey = "rssPrivateNetworkAccessEnabled"
   public static let lastPruneDateDefaultsKey = "rssLastAutomaticPruneDate"
   public static let defaultRetentionDays = 60
+  public static let defaultFeedBodyOfflineCacheEnabled = true
+  public static let defaultWebPageSnapshotEnabled = false
+  public static let defaultAutomaticMediaCacheEnabled = false
+  @available(*, deprecated, message: "Use defaultFeedBodyOfflineCacheEnabled")
+  public static let defaultAutomaticOfflineCacheEnabled = true
+  public static let defaultPrivateNetworkAccessEnabled = false
   public static let maximumRefreshConcurrency = 6
 
   nonisolated public static func defaultFileURL(fileManager: FileManager = .default) -> URL {
@@ -160,7 +190,14 @@ public final class RSSReaderStore: ObservableObject {
   @Published public private(set) var canUndoLastBatchRead = false
   @Published public private(set) var retentionDays: Int
   @Published public private(set) var automaticPruningEnabled: Bool
+  @Published public private(set) var feedBodyOfflineCacheEnabled: Bool
+  @Published public private(set) var webPageSnapshotEnabled: Bool
+  @Published public private(set) var automaticMediaCacheEnabled: Bool
+  @Published public private(set) var privateNetworkAccessEnabled: Bool
   @Published public private(set) var lastPruneSummary: RSSArticlePruneSummary?
+
+  @available(*, deprecated, message: "Use feedBodyOfflineCacheEnabled")
+  public var automaticOfflineCacheEnabled: Bool { feedBodyOfflineCacheEnabled }
 
   public let fileURL: URL
 
@@ -173,16 +210,19 @@ public final class RSSReaderStore: ObservableObject {
   private let fetchOperation: FeedFetchOperation
   private let fileManager: FileManager
   private let userDefaults: UserDefaults
+  private let networkAccessState: RSSReaderNetworkAccessState
   private let databaseURL: URL
   private let legacyURL: URL
   private let mediaArchiver: RSSMediaArchiver
+  private var webPageSnapshotArchiver: RSSWebPageSnapshotArchiver
   private var database: RSSReaderDatabase?
   private var payloadLoader: RSSArticlePayloadLoader?
   private var payloadCache = RSSArticlePayloadLRU(capacity: 16)
   private var articleLoadTasks: [String: Task<RSSArticle?, Error>] = [:]
   private var legacyArticles: [RSSArticle] = []
   private var mediaArchiveArticleIDs = Set<String>()
-  private var lastDeletedFeedSnapshot: DeletedFeedSnapshot?
+  private var webPageSnapshotArticleIDs = Set<String>()
+  private var deletedFeedSnapshots: [DeletedFeedSnapshot] = []
   private var lastBatchReadSnapshot: BatchReadSnapshot?
   private var backgroundRefreshTimer: Timer?
   private var retryTimer: Timer?
@@ -194,6 +234,8 @@ public final class RSSReaderStore: ObservableObject {
     var highlights: [RSSArticleHighlight]
     var mediaAssets: [RSSMediaAsset]
   }
+
+  private static let maximumDeletionUndoSnapshots = 8
 
   private struct RefreshRequest: Sendable {
     var feedID: UUID
@@ -244,12 +286,23 @@ public final class RSSReaderStore: ObservableObject {
     fileManager: FileManager = .default,
     fetchOperation: FeedFetchOperation? = nil,
     userDefaults: UserDefaults = .standard,
-    mediaArchiver: RSSMediaArchiver? = nil
+    mediaArchiver: RSSMediaArchiver? = nil,
+    webPageSnapshotArchiver: RSSWebPageSnapshotArchiver? = nil
   ) {
     let requestedFileURL = fileURL ?? Self.defaultFileURL(fileManager: fileManager)
     self.fileURL = requestedFileURL
+    let resolvedPrivateNetworkAccessEnabled = userDefaults.object(
+      forKey: Self.privateNetworkAccessDefaultsKey
+    ) as? Bool ?? client.allowsPrivateNetworkAccess
+    let networkAccessState = RSSReaderNetworkAccessState(resolvedPrivateNetworkAccessEnabled)
+    self.networkAccessState = networkAccessState
     self.fetchOperation = fetchOperation ?? { feedURL, etag, lastModified in
-      try await client.fetch(feedURL: feedURL, etag: etag, lastModified: lastModified)
+      return try await client.fetch(
+        feedURL: feedURL,
+        etag: etag,
+        lastModified: lastModified,
+        allowsPrivateNetworkAccess: await networkAccessState.get()
+      )
     }
     self.fileManager = fileManager
     self.userDefaults = userDefaults
@@ -262,9 +315,24 @@ public final class RSSReaderStore: ObservableObject {
     self.automaticPruningEnabled = userDefaults.object(
       forKey: Self.automaticPruningDefaultsKey
     ) as? Bool ?? false
+    self.feedBodyOfflineCacheEnabled = userDefaults.object(
+      forKey: Self.feedBodyOfflineCacheDefaultsKey
+    ) as? Bool
+      ?? userDefaults.object(forKey: Self.automaticOfflineCacheDefaultsKey) as? Bool
+      ?? Self.defaultFeedBodyOfflineCacheEnabled
+    self.webPageSnapshotEnabled = userDefaults.object(
+      forKey: Self.webPageSnapshotDefaultsKey
+    ) as? Bool ?? Self.defaultWebPageSnapshotEnabled
+    self.automaticMediaCacheEnabled = userDefaults.object(
+      forKey: Self.automaticMediaCacheDefaultsKey
+    ) as? Bool ?? Self.defaultAutomaticMediaCacheEnabled
+    self.privateNetworkAccessEnabled = resolvedPrivateNetworkAccessEnabled
     self.mediaArchiver = mediaArchiver ?? RSSMediaArchiver(
       cacheDirectoryURL: Self.mediaCacheDirectoryURL(for: requestedFileURL),
-      fileManager: fileManager
+      allowsPrivateNetworkAccess: resolvedPrivateNetworkAccessEnabled
+    )
+    self.webPageSnapshotArchiver = webPageSnapshotArchiver ?? RSSWebPageSnapshotArchiver(
+      allowsPrivateNetworkAccess: resolvedPrivateNetworkAccessEnabled
     )
 
     do {
@@ -276,13 +344,18 @@ public final class RSSReaderStore: ObservableObject {
       self.lastError = "RSS 将使用兼容缓存：SQLite 数据库不可用。\n\(error.localizedDescription)"
     }
 
-    load()
-  }
-
-  deinit {
-    backgroundRefreshTimer?.invalidate()
-    retryTimer?.invalidate()
-    for task in articleLoadTasks.values { task.cancel() }
+    let didLoadStorage = load()
+    if didLoadStorage {
+      let mediaArchiver = self.mediaArchiver
+      let knownAssets = self.mediaAssets
+      Task {
+        await mediaArchiver.recoverPendingDeletions()
+        await mediaArchiver.removeOrphans(knownAssets: knownAssets)
+      }
+      if automaticMediaCacheEnabled || webPageSnapshotEnabled {
+        scheduleOfflineEnrichment(for: articleHeaders.map(\.id))
+      }
+    }
   }
 
   /// Payload-free compatibility view for call sites that have not migrated to
@@ -330,6 +403,41 @@ public final class RSSReaderStore: ObservableObject {
     }
   }
 
+  public func updateFeedBodyOfflineCacheSettings(enabled: Bool) {
+    feedBodyOfflineCacheEnabled = enabled
+    userDefaults.set(enabled, forKey: Self.feedBodyOfflineCacheDefaultsKey)
+    userDefaults.set(enabled, forKey: Self.automaticOfflineCacheDefaultsKey)
+  }
+
+  @available(*, deprecated, message: "Use updateFeedBodyOfflineCacheSettings(enabled:)")
+  public func updateAutomaticOfflineCacheSettings(enabled: Bool) {
+    updateFeedBodyOfflineCacheSettings(enabled: enabled)
+  }
+
+  public func updateWebPageSnapshotSettings(enabled: Bool) {
+    webPageSnapshotEnabled = enabled
+    userDefaults.set(enabled, forKey: Self.webPageSnapshotDefaultsKey)
+    if enabled {
+      scheduleOfflineEnrichment(for: articleHeaders.map(\.id))
+    }
+  }
+
+  public func updateAutomaticMediaCacheSettings(enabled: Bool) {
+    automaticMediaCacheEnabled = enabled
+    userDefaults.set(enabled, forKey: Self.automaticMediaCacheDefaultsKey)
+    if enabled {
+      scheduleOfflineEnrichment(for: articleHeaders.map(\.id))
+    }
+  }
+
+  public func updatePrivateNetworkAccessSettings(enabled: Bool) {
+    privateNetworkAccessEnabled = enabled
+    Task { await networkAccessState.set(enabled) }
+    userDefaults.set(enabled, forKey: Self.privateNetworkAccessDefaultsKey)
+    Task { await mediaArchiver.updateNetworkAccess(enabled: enabled) }
+    webPageSnapshotArchiver = webPageSnapshotArchiver.updateNetworkAccess(enabled: enabled)
+  }
+
   @discardableResult
   public func pruneReadArticles(
     olderThanDays days: Int? = nil,
@@ -337,6 +445,7 @@ public final class RSSReaderStore: ObservableObject {
   ) -> RSSArticlePruneSummary {
     let normalizedDays = Self.normalizedRetentionDays(days ?? retentionDays)
     let cutoff = now.addingTimeInterval(-TimeInterval(normalizedDays) * 86_400)
+    lastError = nil
     let candidateIDs: Set<String>
     do {
       if let database {
@@ -366,18 +475,30 @@ public final class RSSReaderStore: ObservableObject {
     }
 
     let removedAssets = mediaAssets.filter { candidateIDs.contains($0.articleID) }
+    let nextHeaders = articleHeaders.filter { !candidateIDs.contains($0.id) }
+    let nextLegacyArticles = legacyArticles.filter { !candidateIDs.contains($0.id) }
+    let nextHighlights = highlights.filter { !candidateIDs.contains($0.articleID) }
+    let nextMediaAssets = mediaAssets.filter { !candidateIDs.contains($0.articleID) }
     do {
-      try database?.deleteArticles(ids: candidateIDs)
-      articleHeaders.removeAll { candidateIDs.contains($0.id) }
-      legacyArticles.removeAll { candidateIDs.contains($0.id) }
-      highlights.removeAll { candidateIDs.contains($0.articleID) }
-      mediaAssets.removeAll { candidateIDs.contains($0.articleID) }
+      if let database {
+        try database.deleteArticles(ids: candidateIDs)
+      } else {
+        try persistLegacySnapshotIfNeeded(
+          feeds: feeds,
+          articles: nextLegacyArticles,
+          highlights: nextHighlights,
+          mediaAssets: nextMediaAssets
+        )
+      }
+      articleHeaders = nextHeaders
+      legacyArticles = nextLegacyArticles
+      highlights = nextHighlights
+      mediaAssets = nextMediaAssets
       payloadCache.remove(ids: candidateIDs)
       for articleID in candidateIDs {
         articleLoadTasks[articleID]?.cancel()
         articleLoadTasks[articleID] = nil
       }
-      try persistLegacyIfNeeded()
       let summary = RSSArticlePruneSummary(
         removedArticleCount: candidateIDs.count,
         removedMediaAssetCount: removedAssets.count,
@@ -666,50 +787,59 @@ public final class RSSReaderStore: ObservableObject {
       lastError = error.localizedDescription
       return
     }
-    let deletedHeaders = articleHeaders.filter { $0.feedID == id }
     let deletedArticleIDs = Set(deletedArticles.map(\.id))
     let deletedHighlights = highlights.filter { deletedArticleIDs.contains($0.articleID) }
     let deletedMediaAssets = mediaAssets.filter { deletedArticleIDs.contains($0.articleID) }
-    let feedIndex = feeds.firstIndex { $0.id == id }
-    feeds.removeAll { $0.id == id }
-    articleHeaders.removeAll { $0.feedID == id }
-    legacyArticles.removeAll { $0.feedID == id }
-    payloadCache.remove(ids: deletedArticleIDs)
-    for articleID in deletedArticleIDs {
-      articleLoadTasks.removeValue(forKey: articleID)?.cancel()
-    }
-    highlights.removeAll { deletedArticleIDs.contains($0.articleID) }
-    mediaAssets.removeAll { deletedArticleIDs.contains($0.articleID) }
+    let nextFeeds = feeds.filter { $0.id != id }
+    let nextHeaders = articleHeaders.filter { $0.feedID != id }
+    let nextLegacyArticles = legacyArticles.filter { $0.feedID != id }
+    let nextHighlights = highlights.filter { !deletedArticleIDs.contains($0.articleID) }
+    let nextMediaAssets = mediaAssets.filter { !deletedArticleIDs.contains($0.articleID) }
     do {
-      try database?.deleteFeed(id: id)
-      try persistLegacyIfNeeded()
-      lastDeletedFeedSnapshot = DeletedFeedSnapshot(
+      if let database {
+        try database.deleteFeed(id: id)
+      } else {
+        try persistLegacySnapshotIfNeeded(
+          feeds: nextFeeds,
+          articles: nextLegacyArticles,
+          highlights: nextHighlights,
+          mediaAssets: nextMediaAssets
+        )
+      }
+      feeds = nextFeeds
+      articleHeaders = nextHeaders
+      legacyArticles = nextLegacyArticles
+      highlights = nextHighlights
+      mediaAssets = nextMediaAssets
+      payloadCache.remove(ids: deletedArticleIDs)
+      for articleID in deletedArticleIDs {
+        articleLoadTasks.removeValue(forKey: articleID)?.cancel()
+      }
+      let snapshot = DeletedFeedSnapshot(
         feed: feed,
         articles: deletedArticles,
         highlights: deletedHighlights,
         mediaAssets: deletedMediaAssets
       )
-      canUndoLastDeletion = true
+      deletedFeedSnapshots.append(snapshot)
+      if deletedFeedSnapshots.count > Self.maximumDeletionUndoSnapshots {
+        let expiredSnapshot = deletedFeedSnapshots.removeFirst()
+        Task { await mediaArchiver.remove(assets: expiredSnapshot.mediaAssets) }
+      }
+      canUndoLastDeletion = !deletedFeedSnapshots.isEmpty
       lastRefreshSummary = nil
       bumpMutationRevision()
       statusMessage = "已删除“\(feed.displayTitle)”及 \(deletedArticles.count) 篇本地缓存，可立即撤销。"
       rescheduleRetryTimer()
     } catch {
-      if let feedIndex, !feeds.contains(where: { $0.id == id }) {
-        feeds.insert(feed, at: min(feedIndex, feeds.count))
-      }
-      articleHeaders.append(contentsOf: deletedHeaders)
-      if database == nil { legacyArticles.append(contentsOf: deletedArticles) }
-      highlights.append(contentsOf: deletedHighlights)
-      mediaAssets.append(contentsOf: deletedMediaAssets)
       lastError = error.localizedDescription
     }
   }
 
   public func undoLastDeletion() {
-    guard let snapshot = lastDeletedFeedSnapshot else { return }
+    guard let snapshot = deletedFeedSnapshots.popLast() else { return }
     guard !feeds.contains(where: { $0.id == snapshot.feed.id }) else {
-      clearDeletionUndo()
+      canUndoLastDeletion = !deletedFeedSnapshots.isEmpty
       return
     }
     feeds.append(snapshot.feed)
@@ -725,7 +855,7 @@ public final class RSSReaderStore: ObservableObject {
       )
       mediaAssets.append(contentsOf: snapshot.mediaAssets)
       try persistLegacyIfNeeded()
-      clearDeletionUndo()
+      canUndoLastDeletion = !deletedFeedSnapshots.isEmpty
       lastRefreshSummary = nil
       bumpMutationRevision()
       statusMessage = "已撤销删除，恢复“\(snapshot.feed.displayTitle)”及 \(snapshot.articles.count) 篇本地缓存。"
@@ -737,6 +867,8 @@ public final class RSSReaderStore: ObservableObject {
       let articleIDs = Set(snapshot.articles.map(\.id))
       highlights.removeAll { articleIDs.contains($0.articleID) }
       mediaAssets.removeAll { articleIDs.contains($0.articleID) }
+      deletedFeedSnapshots.append(snapshot)
+      canUndoLastDeletion = true
       lastError = error.localizedDescription
     }
   }
@@ -1075,6 +1207,7 @@ public final class RSSReaderStore: ObservableObject {
       invalidatePayloads(for: result.articlesToUpsert.map(\.id))
       lastError = nil
       bumpMutationRevision()
+      scheduleOfflineEnrichment(for: result.articlesToUpsert.map(\.id))
     } catch {
       lastError = error.localizedDescription
     }
@@ -1257,6 +1390,7 @@ public final class RSSReaderStore: ObservableObject {
       invalidatePayloads(for: articlesToUpsert.map(\.id))
       lastError = nil
       bumpMutationRevision()
+      scheduleOfflineEnrichment(for: articlesToUpsert.map(\.id))
       return RefreshOutcome(succeeded: true, skipped: false, message: nil, issue: nil)
     } catch {
       return failRefresh(
@@ -1337,16 +1471,46 @@ public final class RSSReaderStore: ObservableObject {
     existingPayloads: [String: RSSArticle],
     baseHighlights: [RSSArticleHighlight],
     now: Date
-  ) -> MergeResult {
+    ) -> MergeResult {
     let existingHeaders = baseHeaders.filter { $0.feedID == feed.id }
     var headersByID = Dictionary(
       existingHeaders.map { ($0.id, $0) },
       uniquingKeysWith: { newer, _ in newer }
     )
+    let incomingLinksByParsedID = Dictionary(
+      grouping: parsedArticles.compactMap { parsed -> (String, String)? in
+        guard let link = parsed.link else { return nil }
+        return (parsed.id, normalizedArticleLink(link))
+      },
+      by: \.0
+    ).mapValues { values in
+      Set(values.map(\.1))
+    }
+    let firstIncomingLinkByParsedID = Dictionary(
+      parsedArticles.compactMap { parsed -> (String, String)? in
+        guard let link = parsed.link else { return nil }
+        return (parsed.id, normalizedArticleLink(link))
+      },
+      uniquingKeysWith: { first, _ in first }
+    )
     var articlesToUpsertByID: [String: RSSArticle] = [:]
     for parsed in parsedArticles {
-      let articleID = "\(feed.id.uuidString):\(parsed.id)"
+      let articleID = articleStorageID(
+        feedID: feed.id,
+        parsedID: parsed.id,
+        link: parsed.link,
+        existingHeaders: existingHeaders,
+        incomingLinksByParsedID: incomingLinksByParsedID,
+        firstIncomingLinkByParsedID: firstIncomingLinkByParsedID
+      )
       let existingHeader = headersByID[articleID]
+      let existingPayload = existingPayloads[articleID]
+      let summaryHTML = feedBodyOfflineCacheEnabled
+        ? parsed.summaryHTML
+        : existingPayload?.summaryHTML ?? offlineSummaryHTML(for: parsed)
+      let contentHTML = feedBodyOfflineCacheEnabled
+        ? parsed.contentHTML
+        : existingPayload?.contentHTML ?? ""
       let incoming = RSSArticle(
         id: articleID,
         feedID: feed.id,
@@ -1354,14 +1518,15 @@ public final class RSSReaderStore: ObservableObject {
         link: parsed.link,
         author: parsed.author,
         publishedAt: parsed.publishedAt,
-        summaryHTML: parsed.summaryHTML,
-        contentHTML: parsed.contentHTML,
+        summaryHTML: summaryHTML,
+        contentHTML: contentHTML,
+        webPageSnapshotHTML: existingPayload?.webPageSnapshotHTML,
         fetchedAt: now,
         readAt: existingHeader?.readAt,
         isStarred: existingHeader?.isStarred ?? false,
         tags: existingHeader?.tags ?? []
       )
-      guard existingPayloads[articleID]?.hasSameRemoteContent(as: incoming) != true else { continue }
+      guard existingPayload?.hasSameRemoteContent(as: incoming) != true else { continue }
       headersByID[articleID] = RSSArticleHeader(article: incoming)
       articlesToUpsertByID[articleID] = incoming
     }
@@ -1384,20 +1549,25 @@ public final class RSSReaderStore: ObservableObject {
     )
   }
 
-  private func load() {
+  private func offlineSummaryHTML(for parsed: RSSParsedArticle) -> String {
+    let summary = parsed.summaryHTML.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard summary.isEmpty else { return parsed.summaryHTML }
+    let readableText = RSSHTMLTextSanitizer.plainText(from: parsed.contentHTML)
+    return String(readableText.prefix(1_000))
+  }
+
+  @discardableResult
+  private func load() -> Bool {
     if let database {
       do {
         if database.isEmpty, fileManager.fileExists(atPath: legacyURL.path) {
           let snapshot = try loadLegacySnapshot()
+          try database.replaceSnapshot(snapshot)
           feeds = snapshot.feeds
           articleHeaders = snapshot.articles.map(RSSArticleHeader.init(article:))
           legacyArticles = []
           highlights = snapshot.highlights
           mediaAssets = snapshot.mediaAssets
-          try database.upsertFeeds(snapshot.feeds)
-          try database.upsertArticles(snapshot.articles)
-          for highlight in snapshot.highlights { try database.saveHighlight(highlight) }
-          try database.upsertMediaAssets(snapshot.mediaAssets)
           statusMessage = "已将旧版 RSS 缓存迁移到 SQLite，原 JSON 已保留为备份。"
         } else {
           feeds = try database.feeds()
@@ -1407,7 +1577,7 @@ public final class RSSReaderStore: ObservableObject {
           mediaAssets = try database.mediaAssets()
         }
         if lastError == nil { lastError = nil }
-        return
+        return true
       } catch {
         self.database = nil
         self.payloadLoader = nil
@@ -1417,11 +1587,11 @@ public final class RSSReaderStore: ObservableObject {
         lastError = "RSS SQLite 缓存读取失败，将尝试兼容 JSON：\(error.localizedDescription)"
       }
     }
-    loadLegacyFallback()
+    return loadLegacyFallback()
   }
 
-  private func loadLegacyFallback() {
-    guard fileManager.fileExists(atPath: legacyURL.path) else { return }
+  private func loadLegacyFallback() -> Bool {
+    guard fileManager.fileExists(atPath: legacyURL.path) else { return false }
     do {
       let snapshot = try loadLegacySnapshot()
       feeds = snapshot.feeds
@@ -1429,8 +1599,10 @@ public final class RSSReaderStore: ObservableObject {
       articleHeaders = snapshot.articles.map(RSSArticleHeader.init(article:))
       highlights = snapshot.highlights
       mediaAssets = snapshot.mediaAssets
+      return true
     } catch {
       lastError = "RSS 本地缓存读取失败：\(error.localizedDescription)"
+      return false
     }
   }
 
@@ -1449,18 +1621,69 @@ public final class RSSReaderStore: ObservableObject {
     for parsedArticles: [RSSParsedArticle],
     in feed: RSSFeed
   ) throws -> [String: RSSArticle] {
-    let articleIDs = Set(parsedArticles.map { "\(feed.id.uuidString):\($0.id)" })
-    guard !articleIDs.isEmpty else { return [:] }
     let articles: [RSSArticle]
     if let database {
-      articles = try database.articles(ids: articleIDs)
+      // A reused GUID can resolve to a link-specific collision ID. Loading
+      // the current feed's payloads lets the merge preserve the correct
+      // read/star/tag state for both the original and the collision record.
+      articles = try database.articles(feedID: feed.id)
     } else {
-      articles = legacyArticles.filter { articleIDs.contains($0.id) }
+      articles = legacyArticles.filter { $0.feedID == feed.id }
     }
     return Dictionary(
       articles.map { ($0.id, $0) },
       uniquingKeysWith: { newer, _ in newer }
     )
+  }
+
+  private func articleStorageID(
+    feedID: UUID,
+    parsedID: String,
+    link: URL?,
+    existingHeaders: [RSSArticleHeader],
+    incomingLinksByParsedID: [String: Set<String>],
+    firstIncomingLinkByParsedID: [String: String]
+  ) -> String {
+    let baseID = "\(feedID.uuidString):\(parsedID)"
+    guard let link else { return baseID }
+    let normalizedLink = normalizedArticleLink(link)
+    if let existingCollision = existingHeaders.first(where: {
+      $0.id.hasPrefix(baseID + ":link-")
+        && $0.link.map(normalizedArticleLink) == normalizedLink
+    }) {
+      return existingCollision.id
+    }
+
+    let incomingLinks = incomingLinksByParsedID[parsedID] ?? []
+    guard incomingLinks.count > 1 else {
+      // A single item whose URL moved is treated as a normal publisher update.
+      // A collision is only provable when the same feed snapshot contains
+      // multiple different URLs for the same GUID.
+      return baseID
+    }
+
+    let existingBaseLink = existingHeaders
+      .first(where: { $0.id == baseID })?
+      .link
+      .map(normalizedArticleLink)
+    if existingBaseLink == normalizedLink
+      || (existingBaseLink == nil && firstIncomingLinkByParsedID[parsedID] == normalizedLink) {
+      return baseID
+    }
+    return collisionArticleID(baseID: baseID, normalizedLink: normalizedLink)
+  }
+
+  private func normalizedArticleLink(_ url: URL) -> String {
+    var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+    components?.fragment = nil
+    return components?.url?.absoluteString ?? url.absoluteString
+  }
+
+  private func collisionArticleID(baseID: String, normalizedLink: String) -> String {
+    let digest = SHA256.hash(data: Data(normalizedLink.utf8))
+      .map { String(format: "%02x", $0) }
+      .joined()
+    return "\(baseID):link-\(String(digest.prefix(24)))"
   }
 
   private func mergingLegacyArticles(
@@ -1538,6 +1761,71 @@ public final class RSSReaderStore: ObservableObject {
     return try await payloadLoader?.article(id: id)
   }
 
+  private func scheduleOfflineEnrichment(for articleIDs: [String]) {
+    if webPageSnapshotEnabled {
+      for articleID in articleIDs {
+        scheduleWebPageSnapshot(for: articleID)
+      }
+    } else if automaticMediaCacheEnabled {
+      for articleID in articleIDs {
+        scheduleMediaArchive(for: articleID)
+      }
+    }
+  }
+
+  private func scheduleWebPageSnapshot(for articleID: String) {
+    guard webPageSnapshotArticleIDs.insert(articleID).inserted else { return }
+    let archiver = webPageSnapshotArchiver
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer {
+        self.webPageSnapshotArticleIDs.remove(articleID)
+        if self.automaticMediaCacheEnabled {
+          self.scheduleMediaArchive(for: articleID)
+        }
+      }
+      guard self.webPageSnapshotEnabled else { return }
+
+      let article: RSSArticle?
+      do {
+        article = try await self.loadArticle(id: articleID)
+      } catch {
+        self.lastError = "RSS 网页快照读取文章失败：\(error.localizedDescription)"
+        return
+      }
+      guard var article,
+            let pageURL = article.link,
+            article.webPageSnapshotHTML?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false else {
+        return
+      }
+
+      do {
+        let snapshot = try await archiver.snapshot(for: pageURL)
+        guard self.webPageSnapshotEnabled else { return }
+        article.webPageSnapshotHTML = snapshot.html
+        try self.database?.upsertArticles([article])
+        self.legacyArticles = self.mergingLegacyArticles(
+          self.legacyArticles,
+          changedArticles: [article]
+        )
+        try self.persistLegacySnapshotIfNeeded(
+          feeds: self.feeds,
+          articles: self.legacyArticles,
+          highlights: self.highlights,
+          mediaAssets: self.mediaAssets
+        )
+        self.payloadCache.insert(article)
+        if let index = self.articleHeaders.firstIndex(where: { $0.id == articleID }) {
+          self.articleHeaders[index] = RSSArticleHeader(article: article)
+        }
+        self.lastError = nil
+        self.bumpMutationRevision()
+      } catch {
+        self.lastError = "RSS 网页全文快照保存失败：\(error.localizedDescription)"
+      }
+    }
+  }
+
   private func scheduleMediaArchive(for articleID: String) {
     guard mediaArchiveArticleIDs.insert(articleID).inserted else { return }
     Task { @MainActor [weak self] in
@@ -1547,14 +1835,22 @@ public final class RSSReaderStore: ObservableObject {
       do {
         article = try await self.loadArticle(id: articleID)
       } catch {
-        self.lastError = "RSS 图片缓存读取失败：\(error.localizedDescription)"
+        self.lastError = "RSS 媒体缓存读取失败：\(error.localizedDescription)"
         return
       }
       guard let article else { return }
-      let result = await self.mediaArchiver.archive(article: article)
+      let existingURLs = Set(
+        self.mediaAssets
+          .filter { $0.articleID == articleID }
+          .map(\.remoteURL)
+      )
+      let result = await self.mediaArchiver.archive(
+        article: article,
+        excludingURLs: existingURLs
+      )
       guard !result.assets.isEmpty else {
         if !result.failedURLs.isEmpty {
-          self.statusMessage = "已尝试缓存文章图片，但有 \(result.failedURLs.count) 张图片暂时不可用。"
+          self.statusMessage = "已尝试缓存文章媒体，但有 \(result.failedURLs.count) 项暂时不可用。"
         }
         return
       }
@@ -1565,28 +1861,39 @@ public final class RSSReaderStore: ObservableObject {
           uniquingKeysWith: { existing, _ in existing }
         )
         for asset in result.assets { assetsByID[asset.id] = asset }
-        self.mediaAssets = assetsByID.values.sorted {
+        let updatedMediaAssets = assetsByID.values.sorted {
           $0.archivedAt > $1.archivedAt
         }
-        try self.persistLegacyIfNeeded()
+        try self.persistLegacySnapshotIfNeeded(
+          feeds: self.feeds,
+          articles: self.legacyArticles,
+          highlights: self.highlights,
+          mediaAssets: updatedMediaAssets
+        )
+        self.mediaAssets = updatedMediaAssets
         self.lastError = nil
         self.bumpMutationRevision()
         let failureSuffix = result.failedURLs.isEmpty
           ? ""
-          : "，另有 \(result.failedURLs.count) 张暂时不可用"
-        self.statusMessage = "已将 \(result.assets.count) 张图片保存到本机缓存\(failureSuffix)。"
+          : "，另有 \(result.failedURLs.count) 项暂时不可用"
+        self.statusMessage = "已将 \(result.assets.count) 项媒体保存到本机缓存\(failureSuffix)。"
       } catch {
-        self.lastError = "RSS 图片缓存保存失败：\(error.localizedDescription)"
+        self.lastError = "RSS 媒体缓存保存失败：\(error.localizedDescription)"
       }
     }
   }
 
   private func scheduleMediaArchiveForProtectedArticles() {
-    let protectedIDs = Set(
-      articleHeaders.filter { $0.isStarred }.map(\.id)
-        + highlights.map(\.articleID)
-    )
-    for articleID in protectedIDs {
+    let articleIDs: Set<String>
+    if automaticMediaCacheEnabled {
+      articleIDs = Set(articleHeaders.map(\.id))
+    } else {
+      articleIDs = Set(
+        articleHeaders.filter { $0.isStarred }.map(\.id)
+          + highlights.map(\.articleID)
+      )
+    }
+    for articleID in articleIDs {
       scheduleMediaArchive(for: articleID)
     }
   }
@@ -1601,26 +1908,15 @@ public final class RSSReaderStore: ObservableObject {
   }
 
   private func validateFeedURL(_ url: URL) throws {
-    guard let scheme = url.scheme?.lowercased(), !url.absoluteString.isEmpty else {
-      throw RSSReaderError.invalidFeedURL
-    }
-    guard scheme == "http" || scheme == "https" else {
-      throw RSSReaderError.unsupportedFeedURL
-    }
-    guard let host = url.host,
-          !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    else {
-      throw RSSReaderError.invalidFeedURL
-    }
-    guard !RSSSubscriptionURLPrivacy.containsUserInfo(url) else {
-      throw RSSReaderError.issue(
-        RSSFeedIssue(
-          stage: .validation,
-          category: .invalidAddress,
-          retryStrategy: .requiresAction,
-          userMessage: "订阅地址不得包含 URL 用户名或密码。"
-        )
+    do {
+      _ = try RSSNetworkURLPolicy.syntacticallyValidatedURL(
+        url,
+        allowsPrivateNetworkAccess: privateNetworkAccessEnabled
       )
+    } catch let error as RSSReaderError {
+      throw error
+    } catch {
+      throw RSSReaderError.invalidFeedURL
     }
   }
 
@@ -1705,11 +2001,6 @@ public final class RSSReaderStore: ObservableObject {
     } catch {
       throw RSSReaderError.persistence(error.localizedDescription)
     }
-  }
-
-  private func clearDeletionUndo() {
-    lastDeletedFeedSnapshot = nil
-    canUndoLastDeletion = false
   }
 
   private func clearBatchReadUndo() {

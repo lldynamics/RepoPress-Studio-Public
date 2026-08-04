@@ -5,7 +5,7 @@ final class BrowserExtensionProtocolTests: XCTestCase {
   func testActiveReleaseSupportsOnlySafariAndChrome() {
     XCTAssertEqual(
       BrowserExtensionProtocol.activeBrowserExtensions,
-      ["safari", "chrome"]
+      ["safari", "chrome", "firefox"]
     )
   }
 

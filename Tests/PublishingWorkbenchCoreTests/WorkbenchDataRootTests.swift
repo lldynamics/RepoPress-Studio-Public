@@ -124,10 +124,10 @@ struct WorkbenchDataRootTests {
     let recorder = SecurityScopeRecorder()
     let securityScope = WorkbenchDataRootSecurityScope(
       start: { url in
-        recorder.startedPaths.append(url.path)
+        recorder.recordStartedPath(url.path)
         return true
       },
-      stop: { url in recorder.stoppedPaths.append(url.path) }
+      stop: { url in recorder.recordStoppedPath(url.path) }
     )
     let store = WorkbenchDataRootBookmarkStore(
       defaults: defaults,
@@ -173,7 +173,7 @@ struct WorkbenchDataRootTests {
       storageKey: "selected-root",
       codec: WorkbenchDataRootBookmarkCodec(
         create: { url in
-          recorder.bookmarkedPath = url.path
+          recorder.setBookmarkedPath(url.path)
           return Data("parent-bookmark".utf8)
         },
         resolve: { _ in
@@ -182,10 +182,10 @@ struct WorkbenchDataRootTests {
       ),
       securityScope: WorkbenchDataRootSecurityScope(
         start: { url in
-          recorder.startedPaths.append(url.path)
+          recorder.recordStartedPath(url.path)
           return true
         },
-        stop: { url in recorder.stoppedPaths.append(url.path) }
+        stop: { url in recorder.recordStoppedPath(url.path) }
       )
     )
 
@@ -236,10 +236,10 @@ struct WorkbenchDataRootTests {
       storageKey: storageKey,
       codec: WorkbenchDataRootBookmarkCodec(
         create: { _ in
-          guard recorder.activeAccessCount > 0 else {
+          guard recorder.hasActiveAccess else {
             throw CocoaError(.fileReadNoPermission)
           }
-          recorder.bookmarkCreateCount += 1
+          recorder.incrementBookmarkCreateCount()
           return refreshedBookmark
         },
         resolve: { _ in
@@ -248,10 +248,10 @@ struct WorkbenchDataRootTests {
       ),
       securityScope: WorkbenchDataRootSecurityScope(
         start: { _ in
-          recorder.activeAccessCount += 1
+          recorder.incrementActiveAccessCount()
           return true
         },
-        stop: { _ in recorder.activeAccessCount -= 1 }
+        stop: { _ in recorder.decrementActiveAccessCount() }
       )
     )
 
@@ -292,7 +292,7 @@ struct WorkbenchDataRootTests {
       storageKey: storageKey,
       codec: WorkbenchDataRootBookmarkCodec(
         create: { _ in
-          recorder.bookmarkCreateCount += 1
+          recorder.incrementBookmarkCreateCount()
           return Data("unexpected-refresh".utf8)
         },
         resolve: { _ in
@@ -301,10 +301,10 @@ struct WorkbenchDataRootTests {
       ),
       securityScope: WorkbenchDataRootSecurityScope(
         start: { _ in
-          recorder.activeAccessCount += 1
+          recorder.incrementActiveAccessCount()
           return true
         },
-        stop: { _ in recorder.activeAccessCount -= 1 }
+        stop: { _ in recorder.decrementActiveAccessCount() }
       )
     )
 
@@ -347,7 +347,7 @@ struct WorkbenchDataRootTests {
       storageKey: storageKey,
       codec: WorkbenchDataRootBookmarkCodec(
         create: { _ in
-          recorder.bookmarkCreateCount += 1
+          recorder.incrementBookmarkCreateCount()
           return Data("unexpected-refresh".utf8)
         },
         resolve: { _ in
@@ -356,10 +356,10 @@ struct WorkbenchDataRootTests {
       ),
       securityScope: WorkbenchDataRootSecurityScope(
         start: { _ in
-          recorder.activeAccessCount += 1
+          recorder.incrementActiveAccessCount()
           return true
         },
-        stop: { _ in recorder.activeAccessCount -= 1 }
+        stop: { _ in recorder.decrementActiveAccessCount() }
       )
     )
 
@@ -435,10 +435,10 @@ struct WorkbenchDataRootTests {
       codec: codec,
       securityScope: WorkbenchDataRootSecurityScope(
         start: { _ in
-          recorder.startCount += 1
+          recorder.incrementStartCount()
           return true
         },
-        stop: { _ in recorder.stopCount += 1 }
+        stop: { _ in recorder.incrementStopCount() }
       )
     )
     try store.rememberSelectedRoot(rootURL, dataID: expectedDataID)
@@ -481,11 +481,59 @@ struct WorkbenchDataRootTests {
 }
 
 private final class SecurityScopeRecorder: @unchecked Sendable {
-  var bookmarkedPath: String?
-  var startedPaths: [String] = []
-  var stoppedPaths: [String] = []
-  var startCount = 0
-  var stopCount = 0
-  var activeAccessCount = 0
-  var bookmarkCreateCount = 0
+  private let lock = NSLock()
+  private var storedBookmarkedPath: String?
+  private var storedStartedPaths: [String] = []
+  private var storedStoppedPaths: [String] = []
+  private var storedStartCount = 0
+  private var storedStopCount = 0
+  private var storedActiveAccessCount = 0
+  private var storedBookmarkCreateCount = 0
+
+  var bookmarkedPath: String? { withLock { storedBookmarkedPath } }
+  var startedPaths: [String] { withLock { storedStartedPaths } }
+  var stoppedPaths: [String] { withLock { storedStoppedPaths } }
+  var startCount: Int { withLock { storedStartCount } }
+  var stopCount: Int { withLock { storedStopCount } }
+  var activeAccessCount: Int { withLock { storedActiveAccessCount } }
+  var bookmarkCreateCount: Int { withLock { storedBookmarkCreateCount } }
+  var hasActiveAccess: Bool { withLock { storedActiveAccessCount > 0 } }
+
+  func setBookmarkedPath(_ path: String) {
+    withLock { storedBookmarkedPath = path }
+  }
+
+  func recordStartedPath(_ path: String) {
+    withLock { storedStartedPaths.append(path) }
+  }
+
+  func recordStoppedPath(_ path: String) {
+    withLock { storedStoppedPaths.append(path) }
+  }
+
+  func incrementStartCount() {
+    withLock { storedStartCount += 1 }
+  }
+
+  func incrementStopCount() {
+    withLock { storedStopCount += 1 }
+  }
+
+  func incrementActiveAccessCount() {
+    withLock { storedActiveAccessCount += 1 }
+  }
+
+  func decrementActiveAccessCount() {
+    withLock { storedActiveAccessCount -= 1 }
+  }
+
+  func incrementBookmarkCreateCount() {
+    withLock { storedBookmarkCreateCount += 1 }
+  }
+
+  private func withLock<T>(_ body: () -> T) -> T {
+    lock.lock()
+    defer { lock.unlock() }
+    return body()
+  }
 }

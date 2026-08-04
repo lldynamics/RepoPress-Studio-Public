@@ -66,7 +66,7 @@ struct MacHTMLSourceTextView: NSViewRepresentable {
     scrollView.rulersVisible = true
     context.coordinator.lineNumberRuler = lineNumberRuler
 
-    MacHTMLSourceSyntaxHighlighter.apply(to: textView)
+    context.coordinator.refreshPresentation(in: textView)
     context.coordinator.handleFindRequest(findRequest, in: textView)
     return scrollView
   }
@@ -98,8 +98,9 @@ struct MacHTMLSourceTextView: NSViewRepresentable {
   }
 
   private func configure(_ textView: NSTextView) {
+    let preferredBodyFont = NSFont.preferredFont(forTextStyle: .body)
     let sourceFont = NSFont.monospacedSystemFont(
-      ofSize: 15,
+      ofSize: preferredBodyFont.pointSize,
       weight: .regular
     )
     textView.isEditable = isEditable
@@ -175,8 +176,7 @@ struct MacHTMLSourceTextView: NSViewRepresentable {
     }
 
     func refreshPresentation(in textView: NSTextView) {
-      MacHTMLSourceSyntaxHighlighter.apply(to: textView)
-      lineNumberRuler?.rebuildLineStarts()
+      schedulePresentationRefresh(in: textView, editedRange: nil)
     }
 
     func textView(
@@ -227,15 +227,34 @@ struct MacHTMLSourceTextView: NSViewRepresentable {
       pendingPresentationTask = nil
     }
 
-    private func schedulePresentationRefresh(in textView: NSTextView, editedRange: NSRange) {
+    private func schedulePresentationRefresh(in textView: NSTextView, editedRange: NSRange?) {
       pendingPresentationTask?.cancel()
       presentationGeneration += 1
       let generation = presentationGeneration
+      _ = MacHTMLSourceSyntaxHighlighter.clear(
+        in: textView,
+        around: editedRange
+      )
       pendingPresentationTask = Task { @MainActor [weak self, weak textView] in
         try? await Task.sleep(for: .milliseconds(180))
         guard !Task.isCancelled, let self, let textView else { return }
-        MacHTMLSourceSyntaxHighlighter.apply(to: textView, around: editedRange)
         let source = textView.string
+        let highlightRange = MacHTMLSourceSyntaxHighlighter.highlightRange(
+          around: editedRange,
+          source: source
+        )
+        let highlightSpans = await Task.detached(priority: .utility) {
+          MacHTMLSourceSyntaxHighlighter.highlightSpans(
+            in: source,
+            range: highlightRange
+          )
+        }.value
+        guard !Task.isCancelled, self.presentationGeneration == generation else { return }
+        MacHTMLSourceSyntaxHighlighter.apply(
+          highlightSpans,
+          to: textView,
+          sourceLength: (source as NSString).length
+        )
         let lineStarts = await Task.detached(priority: .utility) {
           MacHTMLSourceLineNumberRulerView.lineStarts(for: source)
         }.value
@@ -246,92 +265,177 @@ struct MacHTMLSourceTextView: NSViewRepresentable {
   }
 }
 
-@MainActor
+private struct MacHTMLSourceHighlightSpan: Sendable {
+  enum Style: Sendable {
+    case tag
+    case tagName
+    case attributeName
+    case attributeValue
+    case declaration
+    case entity
+    case template
+    case comment
+  }
+
+  let location: Int
+  let length: Int
+  let style: Style
+
+  init?(range: NSRange, style: Style) {
+    guard range.location != NSNotFound, range.length > 0 else { return nil }
+    self.location = range.location
+    self.length = range.length
+    self.style = style
+  }
+
+  var nsRange: NSRange {
+    NSRange(location: location, length: length)
+  }
+}
+
 private enum MacHTMLSourceSyntaxHighlighter {
-  private static let maximumLiveHighlightLength = 1_000_000
-  private static let tagExpression = try? NSRegularExpression(
-    pattern: #"</?([A-Za-z][A-Za-z0-9:-]*)(?:\s+(?:[^\"'<>]|\"[^\"]*\"|'[^']*')*)?\s*/?>"#
-  )
-  private static let attributeExpression = try? NSRegularExpression(
-    pattern: #"\s+([A-Za-z_:][A-Za-z0-9_:.\-]*)(?:\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+))?"#
-  )
-  private static let commentExpression = try? NSRegularExpression(
-    pattern: #"<!--[\s\S]*?-->"#
-  )
-  private static let declarationExpression = try? NSRegularExpression(
-    pattern: #"<!DOCTYPE\b[^>]*>|<\?[\s\S]*?\?>"#,
-    options: [.caseInsensitive]
-  )
-  private static let entityExpression = try? NSRegularExpression(
-    pattern: #"&(?:#[0-9]+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);"#
-  )
-  private static let templateExpression = try? NSRegularExpression(
-    pattern: #"\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}|<%[\s\S]*?%>"#
-  )
+  // Large source files remain editable, but syntax coloring is deliberately
+  // capped and computed off the main actor so typing stays responsive.
+  private static let maximumLiveHighlightLength = 250_000
+  private static let tagPattern = #"</?([A-Za-z][A-Za-z0-9:-]*)(?:\s+(?:[^\"'<>]|\"[^\"]*\"|'[^']*')*)?\s*/?>"#
+  private static let attributePattern = #"\s+([A-Za-z_:][A-Za-z0-9_:.\-]*)(?:\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+))?"#
+  private static let commentPattern = #"<!--[\s\S]*?-->"#
+  private static let declarationPattern = #"<!DOCTYPE\b[^>]*>|<\?[\s\S]*?\?>"#
+  private static let entityPattern = #"&(?:#[0-9]+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);"#
+  private static let templatePattern = #"\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}|<%[\s\S]*?%>"#
 
-  static func apply(to textView: NSTextView, around editedRange: NSRange? = nil) {
-    guard let layoutManager = textView.layoutManager else { return }
+  @MainActor
+  static func clear(in textView: NSTextView, around editedRange: NSRange?) -> NSRange? {
+    guard let layoutManager = textView.layoutManager else { return nil }
     let source = textView.string as NSString
+    let range = highlightRange(around: editedRange, source: source as String)
+    guard range.length > 0 else { return range }
+    layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: range)
+    return range
+  }
+
+  @MainActor
+  static func apply(
+    _ spans: [MacHTMLSourceHighlightSpan],
+    to textView: NSTextView,
+    sourceLength: Int
+  ) {
+    guard sourceLength > 0,
+          sourceLength <= maximumLiveHighlightLength,
+          let layoutManager = textView.layoutManager,
+          (textView.string as NSString).length == sourceLength else {
+      return
+    }
+
+    for span in spans {
+      let color: NSColor
+      switch span.style {
+      case .tag: color = .systemBlue
+      case .tagName: color = .systemPurple
+      case .attributeName: color = .systemOrange
+      case .attributeValue: color = .systemRed
+      case .declaration: color = .systemBrown
+      case .entity: color = .systemTeal
+      case .template: color = .systemIndigo
+      case .comment: color = .secondaryLabelColor
+      }
+      layoutManager.addTemporaryAttribute(
+        .foregroundColor,
+        value: color,
+        forCharacterRange: span.nsRange
+      )
+    }
+  }
+
+  static func highlightRange(
+    around editedRange: NSRange?,
+    source: String
+  ) -> NSRange {
+    let source = source as NSString
     let fullRange = NSRange(location: 0, length: source.length)
-    let highlightRange = editedRange.map {
-      expandedHighlightRange(around: $0, source: source)
-    } ?? fullRange
-    layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: highlightRange)
-    guard source.length > 0, source.length <= maximumLiveHighlightLength else { return }
+    guard let editedRange else { return fullRange }
+    return expandedHighlightRange(around: editedRange, source: source)
+  }
 
-    if let tagExpression {
-      for match in tagExpression.matches(in: source as String, range: highlightRange) {
-        addColor(.systemBlue, range: match.range, layoutManager: layoutManager)
-        addColor(.systemPurple, range: match.range(at: 1), layoutManager: layoutManager)
+  static func highlightSpans(
+    in source: String,
+    range: NSRange
+  ) -> [MacHTMLSourceHighlightSpan] {
+    let sourceNSString = source as NSString
+    guard sourceNSString.length > 0,
+          sourceNSString.length <= maximumLiveHighlightLength,
+          range.length > 0 else {
+      return []
+    }
 
-        if let attributeExpression {
-          for attribute in attributeExpression.matches(
-            in: source as String,
-            range: match.range
-          ) {
-            addColor(
-              .systemOrange,
-              range: attribute.range(at: 1),
-              layoutManager: layoutManager
-            )
-            addColor(
-              .systemRed,
-              range: attribute.range(at: 2),
-              layoutManager: layoutManager
-            )
-          }
+    guard let tagExpression = try? NSRegularExpression(pattern: tagPattern),
+          let attributeExpression = try? NSRegularExpression(pattern: attributePattern),
+          let commentExpression = try? NSRegularExpression(pattern: commentPattern),
+          let declarationExpression = try? NSRegularExpression(
+            pattern: declarationPattern,
+            options: [.caseInsensitive]
+          ),
+          let entityExpression = try? NSRegularExpression(pattern: entityPattern),
+          let templateExpression = try? NSRegularExpression(pattern: templatePattern) else {
+      return []
+    }
+
+    var spans = [MacHTMLSourceHighlightSpan]()
+    for match in tagExpression.matches(in: source, range: range) {
+      if let span = MacHTMLSourceHighlightSpan(range: match.range, style: .tag) {
+        spans.append(span)
+      }
+      if let span = MacHTMLSourceHighlightSpan(
+        range: match.range(at: 1),
+        style: .tagName
+      ) {
+        spans.append(span)
+      }
+      for attribute in attributeExpression.matches(in: source, range: match.range) {
+        if let span = MacHTMLSourceHighlightSpan(
+          range: attribute.range(at: 1),
+          style: .attributeName
+        ) {
+          spans.append(span)
+        }
+        if let span = MacHTMLSourceHighlightSpan(
+          range: attribute.range(at: 2),
+          style: .attributeValue
+        ) {
+          spans.append(span)
         }
       }
     }
 
-    apply(
+    appendMatches(
       declarationExpression,
-      color: .systemBrown,
+      style: .declaration,
       source: source,
-      range: highlightRange,
-      layoutManager: layoutManager
+      range: range,
+      to: &spans
     )
-    apply(
+    appendMatches(
       entityExpression,
-      color: .systemTeal,
+      style: .entity,
       source: source,
-      range: highlightRange,
-      layoutManager: layoutManager
+      range: range,
+      to: &spans
     )
-    apply(
+    appendMatches(
       templateExpression,
-      color: .systemIndigo,
+      style: .template,
       source: source,
-      range: highlightRange,
-      layoutManager: layoutManager
+      range: range,
+      to: &spans
     )
-    apply(
+    appendMatches(
       commentExpression,
-      color: .secondaryLabelColor,
+      style: .comment,
       source: source,
-      range: highlightRange,
-      layoutManager: layoutManager
+      range: range,
+      to: &spans
     )
+    return spans
   }
 
   private static func expandedHighlightRange(
@@ -346,30 +450,18 @@ private enum MacHTMLSourceSyntaxHighlighter {
     return NSRange(location: start, length: end - start)
   }
 
-  private static func apply(
-    _ expression: NSRegularExpression?,
-    color: NSColor,
-    source: NSString,
+  private static func appendMatches(
+    _ expression: NSRegularExpression,
+    style: MacHTMLSourceHighlightSpan.Style,
+    source: String,
     range: NSRange,
-    layoutManager: NSLayoutManager
+    to spans: inout [MacHTMLSourceHighlightSpan]
   ) {
-    guard let expression else { return }
-    for match in expression.matches(in: source as String, range: range) {
-      addColor(color, range: match.range, layoutManager: layoutManager)
+    for match in expression.matches(in: source, range: range) {
+      if let span = MacHTMLSourceHighlightSpan(range: match.range, style: style) {
+        spans.append(span)
+      }
     }
-  }
-
-  private static func addColor(
-    _ color: NSColor,
-    range: NSRange,
-    layoutManager: NSLayoutManager
-  ) {
-    guard range.location != NSNotFound, range.length > 0 else { return }
-    layoutManager.addTemporaryAttribute(
-      .foregroundColor,
-      value: color,
-      forCharacterRange: range
-    )
   }
 }
 
@@ -396,7 +488,6 @@ private final class MacHTMLSourceLineNumberRulerView: NSRulerView {
       name: NSView.boundsDidChangeNotification,
       object: scrollView.contentView
     )
-    rebuildLineStarts()
   }
 
   required init(coder: NSCoder) {

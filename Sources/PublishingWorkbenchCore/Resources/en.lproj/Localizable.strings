@@ -1364,3 +1364,9 @@
 "这篇文章没有可翻译的本地正文。" = "This article has no local body available to translate.";
 "翻译服务返回的内容无法安全解析，请稍后重试。" = "The translation service returned content that could not be parsed safely. Try again later.";
 "快速隐藏已启用，请返回工作台后再继续翻译。" = "Quick Hide is enabled. Return to the workbench before translating.";
+"数据文件夹不可读取。" = "The data folder cannot be read.";
+"存储空间统计失败：%@" = "Could not calculate storage usage: %@";
+"资料库回收站已清空：永久删除 %d 条资料。" = "The library recycle bin was emptied: %d items were permanently deleted.";
+"资料库回收站已清理：删除 %d 条，%d 条未能删除，%d 个本地文件未能移除。" = "Library recycle bin cleanup finished: %d items deleted, %d items could not be deleted, and %d local files could not be removed.";
+"上一次本地发布未完成，自动恢复失败：%@" = "The previous local publish did not finish, and automatic recovery failed: %@";
+"跟踪文件恢复到 HEAD 并同步取消暂存；本次新增且未跟踪的文件会按记录路径删除。执行前先确认没有其他手动编辑混在这些路径里。" = "Tracked files will be restored to HEAD and unstaged; newly added and untracked files will be deleted at their recorded paths. Confirm that no manual edits are mixed into these paths before continuing.";

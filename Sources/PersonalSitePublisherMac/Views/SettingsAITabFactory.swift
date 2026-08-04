@@ -20,9 +20,9 @@ struct SettingsAITabFactory {
       deleteConnectionProfile: { profileID in
         context.store.deleteAIConnectionProfile(profileID)
       },
-      canDeleteSelectedConnectionProfile: context.store.canDeleteAIConnectionProfile(
-        context.store.activeAIConnectionProfile.id
-      ),
+      deletableConnectionProfiles: context.store.aiConnectionProfiles.filter {
+        context.store.canDeleteAIConnectionProfile($0.id)
+      },
       tokenAvailability: context.store.ai.tokenAvailability,
       isActionRunning: context.store.ai.isActionRunning,
       actionMessage: context.store.ai.actionMessage,

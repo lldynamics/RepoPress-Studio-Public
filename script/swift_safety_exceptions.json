@@ -180,6 +180,56 @@
       "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchPersistenceTests.swift",
       "declaration": "ControlledPersistenceCommit",
       "rationale": "Test commit coordination state is protected by its lock and continuation handoff."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Models/DraftRecoveryModels.swift",
+      "declaration": "DraftRecoveryJournalWriteCoordinator",
+      "rationale": "Journal generation state and the synchronous write path are serialized by the coordinator lock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/ExternalLinkHTTPCheckService.swift",
+      "declaration": "ExternalLinkNoRedirectDelegate",
+      "rationale": "The URLSession redirect delegate is stateless and only rejects redirects through its callback."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalContentImportIndexStore.swift",
+      "declaration": "LocalContentImportIndexStore",
+      "rationale": "Index mutations are serialized by the static lock; instance dependencies are immutable and filesystem access uses the SendableFileManager boundary."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalSitePreviewFileWatcher.swift",
+      "declaration": "LocalSitePreviewFileWatcher",
+      "rationale": "Mutable watcher sources are confined to its serial queue and lifecycle flags are protected by the state lock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalWhisperTranscriptionService.swift",
+      "declaration": "LocalWhisperTerminationController",
+      "rationale": "Process lifecycle and termination-request state are protected by the controller lock; signal delivery occurs after unlocking."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchDataRootBookmark.swift",
+      "declaration": "WorkbenchDataRootAccessLease",
+      "rationale": "The lease carries immutable Sendable values and releases the security scope exactly once from deinit through the Sendable callback."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchDataRootBookmark.swift",
+      "declaration": "WorkbenchDataRootSession",
+      "rationale": "The session contains immutable Sendable snapshots and one Sendable access lease whose lifecycle remains tied to the session."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/LocalContentImportServiceTests.swift",
+      "declaration": "LocalContentImportInvocationCounter",
+      "rationale": "Test invocation state is protected by its NSLock while callbacks may cross task boundaries."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/LocalSitePreviewServiceTests.swift",
+      "declaration": "LockedWatcherTestState",
+      "rationale": "Test watcher observations and fulfillment state are protected by the state lock."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchDataRootTests.swift",
+      "declaration": "SecurityScopeRecorder",
+      "rationale": "Test security-scope callback observations are stored behind one NSLock and exposed through atomic helpers."
     }
   ],
   "forcedOperations": [

@@ -9,6 +9,7 @@ struct AIChatContextInspectorView: View {
   @State private var inputText = ""
   @State private var isSubmitting = false
   @State private var sendTask: Task<Void, Never>?
+  @State private var latestMessageScrollTask: Task<Void, Never>?
   @State private var draftDiffPreview: AIChatDraftDiffPreview?
   @State private var visibleMessageLimit = 8
   @State private var isFollowingLatestMessage = true
@@ -78,11 +79,18 @@ struct AIChatContextInspectorView: View {
           }
           .onChange(of: latestMessageID) { _, _ in
             guard isFollowingLatestMessage else { return }
-            scrollToLatestMessage(using: proxy)
+            scheduleLatestMessageScroll(
+              using: proxy,
+              animated: !isSending
+            )
           }
           .onChange(of: latestMessageContent) { _, _ in
             guard isFollowingLatestMessage else { return }
-            scrollToLatestMessage(using: proxy)
+            scheduleLatestMessageScroll(
+              using: proxy,
+              animated: false,
+              delayNanoseconds: 75_000_000
+            )
           }
           .onChange(of: visibleMessageLimit) { _, _ in
             guard let anchor = messageAnchorToPreserve else { return }
@@ -106,6 +114,9 @@ struct AIChatContextInspectorView: View {
       synchronizeChatDraftWithSelection()
       applyPendingQuickPrompt()
       focusComposerIfAvailable()
+    }
+    .onDisappear {
+      latestMessageScrollTask?.cancel()
     }
     .onChange(of: ai.selectedChatDraft?.id) { _, _ in
       selectedImageAttachmentIDs = []
@@ -282,6 +293,9 @@ struct AIChatContextInspectorView: View {
       .controlSize(.small)
       .disabled(isSending || ai.selectedChatDraft == nil)
       .help(String(localized: "新对话"))
+      .accessibilityLabel(String(localized: "新建 AI 对话"))
+      .accessibilityHint(String(localized: "开始一段新的 AI 对话"))
+      .accessibilityIdentifier("ai-assistant-new-conversation")
 
       Button {
         ai.closeAssistantPanel()
@@ -293,6 +307,8 @@ struct AIChatContextInspectorView: View {
       }
       .buttonStyle(.plain)
       .help(String(localized: "关闭 AI 助手"))
+      .accessibilityLabel(String(localized: "关闭 AI 助手"))
+      .accessibilityIdentifier("ai-assistant-close")
     }
   }
 
@@ -1328,6 +1344,32 @@ struct AIChatContextInspectorView: View {
       } else {
         proxy.scrollTo(latestMessageID, anchor: .bottom)
       }
+    }
+  }
+
+  private func scheduleLatestMessageScroll(
+    using proxy: ScrollViewProxy,
+    animated: Bool,
+    delayNanoseconds: UInt64 = 0
+  ) {
+    latestMessageScrollTask?.cancel()
+    let targetID = latestMessageID
+    latestMessageScrollTask = Task { @MainActor in
+      if delayNanoseconds > 0 {
+        try? await Task.sleep(nanoseconds: delayNanoseconds)
+      }
+      guard !Task.isCancelled,
+        isFollowingLatestMessage,
+        let targetID
+      else { return }
+      if animated {
+        withAnimation(WorkbenchMotion.standard) {
+          proxy.scrollTo(targetID, anchor: .bottom)
+        }
+      } else {
+        proxy.scrollTo(targetID, anchor: .bottom)
+      }
+      latestMessageScrollTask = nil
     }
   }
 

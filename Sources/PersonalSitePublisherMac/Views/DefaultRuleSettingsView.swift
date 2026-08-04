@@ -37,11 +37,12 @@ struct DefaultRuleSettingsView: View {
       }
     }
     .formStyle(.grouped)
-    .padding()
+    .padding(WorkbenchSpacing.content)
     .onAppear(perform: revealRequestedPathRules)
     .onChange(of: healthNavigationRequestID) { _, _ in
       revealRequestedPathRules()
     }
+    .accessibilityIdentifier("default-rule-settings")
   }
 
   private func revealRequestedPathRules() {

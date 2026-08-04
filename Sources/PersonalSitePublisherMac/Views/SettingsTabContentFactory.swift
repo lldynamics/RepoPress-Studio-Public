@@ -30,6 +30,20 @@ struct SettingsTabContentFactory {
       SettingsAITabFactory.make(context: context)
     case .language:
       AppLanguageSettingsView()
+    case .storage:
+      if let rssStore = context.rssStore {
+        StorageManagementView(
+          store: context.store,
+          rssStore: rssStore,
+          coordinator: context.launchCoordinator
+        )
+      } else {
+        EmptyStateView(
+          title: "存储管理暂不可用",
+          message: "请先在主窗口完成数据文件夹设置。",
+          systemImage: "externaldrive"
+        )
+      }
     case .rss:
       if let rssStore = context.rssStore {
         RSSMaintenanceSettingsView(store: rssStore)

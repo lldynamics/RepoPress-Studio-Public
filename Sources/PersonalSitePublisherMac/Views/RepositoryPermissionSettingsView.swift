@@ -102,8 +102,8 @@ struct RepositoryPermissionSettingsView: View {
         }
       }
       .formStyle(.grouped)
-      .padding()
+      .padding(WorkbenchSpacing.content)
     }
-    .frame(width: 520, height: 420)
+    .workbenchSheetSize(.compact)
   }
 }

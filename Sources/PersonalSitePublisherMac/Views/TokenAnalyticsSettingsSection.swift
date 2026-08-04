@@ -8,6 +8,7 @@ struct TokenAnalyticsSettingsSection: View {
   let onSaveToken: () -> Void
   let onDeleteToken: () -> Void
   let onRefreshTokenState: () -> Void
+  @State private var isDeleteConfirmationPresented = false
 
   var body: some View {
     Section("阅读数据回流") {
@@ -54,14 +55,17 @@ struct TokenAnalyticsSettingsSection: View {
 
         HStack(spacing: 8) {
           Button("保存令牌", action: onSaveToken)
-            .buttonStyle(.borderedProminent)
+            .workbenchProminentActionStyle()
             .controlSize(.small)
             .disabled(tokenInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-          Button("删除令牌", action: onDeleteToken)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(!tokenAvailability.hasToken)
+          Button("删除令牌", role: .destructive) {
+            isDeleteConfirmationPresented = true
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .disabled(!tokenAvailability.hasToken)
+          .accessibilityLabel("删除阅读数据只读访问令牌")
 
           Button(action: onRefreshTokenState) {
             Label("刷新状态", systemImage: "arrow.clockwise")
@@ -84,6 +88,18 @@ struct TokenAnalyticsSettingsSection: View {
       Text("发布抽屉会按当前文章的公开 URL 路径读取页面级数据；不会写入统计服务、上传内容或把令牌保存到工作区文件。")
         .font(.caption)
         .foregroundStyle(.secondary)
+    }
+    .confirmationDialog(
+      "删除阅读数据只读访问令牌？",
+      isPresented: $isDeleteConfirmationPresented,
+      titleVisibility: .visible
+    ) {
+      Button("删除 \(settings.wrappedValue.provider.localizedDisplayName) 只读令牌", role: .destructive) {
+        onDeleteToken()
+      }
+      Button("取消", role: .cancel) {}
+    } message: {
+      Text("删除后，发布抽屉将无法读取该统计服务的数据，直到重新保存令牌。")
     }
   }
 }

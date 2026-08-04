@@ -13,9 +13,9 @@ final class WorkbenchLayoutModeTests: XCTestCase {
     XCTAssertFalse(WorkbenchLayoutMode.isCompact(width: WorkbenchLayoutMode.defaultWindowWidth))
   }
 
-  func testRuntimeLayoutUsesCompactShellAtMinimum980Width() {
-    XCTAssertEqual(WorkbenchLayoutMode.minimumWindowWidth, 980)
-    XCTAssertTrue(WorkbenchLayoutMode.isCompact(width: 980))
+  func testRuntimeLayoutUsesCompactShellAtMinimum900Width() {
+    XCTAssertEqual(WorkbenchLayoutMode.minimumWindowWidth, 900)
+    XCTAssertTrue(WorkbenchLayoutMode.isCompact(width: 900))
   }
 
   func testRuntimeLayoutUsesExpandedShellAt1180Width() {

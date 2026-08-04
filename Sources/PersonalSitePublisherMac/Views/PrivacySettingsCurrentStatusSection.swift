@@ -5,7 +5,6 @@ import SwiftUI
 struct PrivacySettingsCurrentStatusSection: View {
   let status: PrivacyProtectionStatus
   let onQuickHide: () -> Void
-  let onReturnToWorkbench: () -> Void
 
   var body: some View {
     Section(String(localized: "快速隐藏状态")) {
@@ -25,23 +24,13 @@ struct PrivacySettingsCurrentStatusSection: View {
           .foregroundStyle(.secondary)
       }
 
-      HStack {
-        Button {
-          onQuickHide()
-        } label: {
-          Label(String(localized: "立即快速隐藏"), systemImage: "eye.slash")
-        }
-        .workbenchProminentActionStyle(tint: WorkbenchTheme.warningActionFill)
-        .disabled(status.isQuickHideActive)
-
-        Button {
-          onReturnToWorkbench()
-        } label: {
-          Label("返回工作台", systemImage: "eye")
-        }
-        .buttonStyle(.bordered)
-        .disabled(!status.isQuickHideActive)
+      Button {
+        onQuickHide()
+      } label: {
+        Label(String(localized: "立即快速隐藏"), systemImage: "eye.slash")
       }
+      .workbenchProminentActionStyle(tint: WorkbenchTheme.warningActionFill)
+      .disabled(status.isQuickHideActive)
     }
   }
 }

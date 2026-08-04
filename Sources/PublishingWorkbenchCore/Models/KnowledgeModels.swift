@@ -1600,6 +1600,28 @@ public struct KnowledgeDocumentDeletionReport: Hashable, Sendable {
   }
 }
 
+public struct KnowledgeRecycleBinCleanupSummary: Hashable, Sendable {
+  public var requestedDocumentCount: Int
+  public var removedDocumentCount: Int
+  public var failedDocumentCount: Int
+  public var removedStoredFileCount: Int
+  public var failedStoredFileCount: Int
+
+  public init(
+    requestedDocumentCount: Int,
+    removedDocumentCount: Int,
+    failedDocumentCount: Int,
+    removedStoredFileCount: Int,
+    failedStoredFileCount: Int
+  ) {
+    self.requestedDocumentCount = max(0, requestedDocumentCount)
+    self.removedDocumentCount = max(0, removedDocumentCount)
+    self.failedDocumentCount = max(0, failedDocumentCount)
+    self.removedStoredFileCount = max(0, removedStoredFileCount)
+    self.failedStoredFileCount = max(0, failedStoredFileCount)
+  }
+}
+
 public struct KnowledgeBatchExportReport: Hashable, Sendable {
   public var exportedDocumentCount: Int
   public var destinationDirectory: URL

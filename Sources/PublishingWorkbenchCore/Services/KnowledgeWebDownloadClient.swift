@@ -207,7 +207,12 @@ enum KnowledgeWebDownloadPolicy {
           0,
           NI_NUMERICHOST
         ) == 0,
-           let address = KnowledgeResolvedAddress(presentation: String(cString: buffer)) {
+           let address = KnowledgeResolvedAddress(
+             presentation: String(
+               decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) },
+               as: UTF8.self
+             )
+           ) {
           addresses.insert(address)
         }
       }
@@ -431,28 +436,37 @@ private final class KnowledgePinnedHTTPSOperation: @unchecked Sendable {
     address: KnowledgeResolvedAddress,
     requestData: Data,
     maximumBodyByteCount: Int,
-    timeout: TimeInterval
+    timeout: TimeInterval,
+    usesTLS: Bool
   ) throws {
+    let resolvedPort = url.port ?? (usesTLS ? 443 : 80)
     guard let host = url.host,
-          let port = NWEndpoint.Port(rawValue: UInt16(url.port ?? 443)) else {
+          let portValue = UInt16(exactly: resolvedPort),
+          portValue > 0,
+          let port = NWEndpoint.Port(rawValue: portValue) else {
       throw KnowledgeWebDownloadError.invalidURL
-    }
-    let tlsOptions = NWProtocolTLS.Options()
-    host.withCString {
-      sec_protocol_options_set_tls_server_name(
-        tlsOptions.securityProtocolOptions,
-        $0
-      )
-    }
-    "http/1.1".withCString {
-      sec_protocol_options_add_tls_application_protocol(
-        tlsOptions.securityProtocolOptions,
-        $0
-      )
     }
     let tcpOptions = NWProtocolTCP.Options()
     tcpOptions.noDelay = true
-    let parameters = NWParameters(tls: tlsOptions, tcp: tcpOptions)
+    let parameters: NWParameters
+    if usesTLS {
+      let tlsOptions = NWProtocolTLS.Options()
+      host.withCString {
+        sec_protocol_options_set_tls_server_name(
+          tlsOptions.securityProtocolOptions,
+          $0
+        )
+      }
+      "http/1.1".withCString {
+        sec_protocol_options_add_tls_application_protocol(
+          tlsOptions.securityProtocolOptions,
+          $0
+        )
+      }
+      parameters = NWParameters(tls: tlsOptions, tcp: tcpOptions)
+    } else {
+      parameters = NWParameters(tls: nil, tcp: tcpOptions)
+    }
     parameters.allowLocalEndpointReuse = false
     connection = NWConnection(
       host: NWEndpoint.Host(address.presentation),
@@ -555,6 +569,8 @@ enum KnowledgePinnedHTTPSClient {
     maximumByteCount: Int
   ) async throws -> KnowledgePinnedHTTPResponse {
     guard let url = request.url,
+          let scheme = url.scheme?.lowercased(),
+          scheme == "http" || scheme == "https",
           (request.httpMethod?.uppercased() ?? "GET") == "GET",
           request.httpBody == nil,
           request.httpBodyStream == nil else {
@@ -572,7 +588,8 @@ enum KnowledgePinnedHTTPSClient {
           address: address,
           requestData: requestData,
           maximumBodyByteCount: maximumByteCount,
-          timeout: request.timeoutInterval
+          timeout: request.timeoutInterval,
+          usesTLS: scheme == "https"
         ).execute()
       } catch is CancellationError {
         throw CancellationError()
@@ -583,11 +600,15 @@ enum KnowledgePinnedHTTPSClient {
     throw lastError
   }
 
-  private static func encodedRequest(_ request: URLRequest, url: URL) throws -> Data {
+  static func encodedRequest(_ request: URLRequest, url: URL) throws -> Data {
     guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-          let host = components.host else {
+          let rawHost = components.host,
+          let scheme = components.scheme?.lowercased(),
+          scheme == "http" || scheme == "https" else {
       throw KnowledgeWebDownloadError.invalidURL
     }
+    let host = rawHost.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+    guard !host.isEmpty else { throw KnowledgeWebDownloadError.invalidURL }
     var target = components.percentEncodedPath
     if target.isEmpty { target = "/" }
     if let query = components.percentEncodedQuery { target += "?\(query)" }
@@ -597,7 +618,8 @@ enum KnowledgePinnedHTTPSClient {
 
     let renderedHost = host.contains(":") ? "[\(host)]" : host
     let hostHeader: String
-    if let port = components.port, port != 443 {
+    let defaultPort = scheme == "https" ? 443 : 80
+    if let port = components.port, port != defaultPort {
       hostHeader = "\(renderedHost):\(port)"
     } else {
       hostHeader = renderedHost
@@ -608,7 +630,9 @@ enum KnowledgePinnedHTTPSClient {
       "Connection: close",
       "Accept-Encoding: identity",
     ]
-    for name in ["Accept", "Accept-Language", "User-Agent"] {
+    for name in [
+      "Accept", "Accept-Language", "User-Agent", "If-None-Match", "If-Modified-Since"
+    ] {
       guard let value = request.value(forHTTPHeaderField: name) else { continue }
       guard !value.contains("\r"), !value.contains("\n") else {
         throw KnowledgeWebDownloadError.invalidURL

@@ -11,6 +11,28 @@ struct AIProviderSection: View {
   let modelDisplayValue: String
   let requiresAPIKeyBinding: Binding<Bool>
   let requiresAPIKeyDisplayValue: String
+  @State private var baseURLDraft: String
+
+  init(
+    presetBinding: Binding<AIProviderPreset>,
+    presetDisplayName: String,
+    baseURL: Binding<String>,
+    baseURLDisplayValue: String,
+    model: Binding<String>,
+    modelDisplayValue: String,
+    requiresAPIKeyBinding: Binding<Bool>,
+    requiresAPIKeyDisplayValue: String
+  ) {
+    self.presetBinding = presetBinding
+    self.presetDisplayName = presetDisplayName
+    self.baseURL = baseURL
+    self.baseURLDisplayValue = baseURLDisplayValue
+    self.model = model
+    self.modelDisplayValue = modelDisplayValue
+    self.requiresAPIKeyBinding = requiresAPIKeyBinding
+    self.requiresAPIKeyDisplayValue = requiresAPIKeyDisplayValue
+    _baseURLDraft = State(initialValue: baseURL.wrappedValue)
+  }
 
   var body: some View {
     Section {
@@ -44,16 +66,24 @@ struct AIProviderSection: View {
       Text(String(localized: "AI 服务配置"))
     } footer: {
       if presetBinding.wrappedValue == .custom {
-        Text(String(localized: "自定义模式下，基础地址与模型默认为空，您可以直接粘贴自己的服务地址与模型标号。"))
+        Text(String(localized: "自定义模式下，基础地址与模型默认为空。基础地址会在点击“应用地址”后生效，避免编辑过程中提前替换钥匙串凭据。"))
       }
+    }
+    .onChange(of: baseURL.wrappedValue) { _, newValue in
+      baseURLDraft = newValue
     }
   }
 
   private var isPresetModifiedFromDefault: Bool {
     let preset = presetBinding.wrappedValue
     guard preset != .custom else { return false }
-    return baseURL.wrappedValue != preset.defaultBaseURL
+    return baseURLDraft != preset.defaultBaseURL
       || model.wrappedValue != preset.defaultModel
+  }
+
+  private var hasUnappliedBaseURL: Bool {
+    baseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+      != baseURL.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   private var baseURLField: some View {
@@ -61,16 +91,16 @@ struct AIProviderSection: View {
       ZStack(alignment: .trailing) {
         TextField(
           String(localized: "API 基础地址"),
-          text: baseURL
+          text: $baseURLDraft
         )
         .padding(.trailing, 24)
         .textContentType(.URL)
         .accessibilityLabel(String(localized: "AI Base URL"))
-        .accessibilityValue(baseURLDisplayValue)
+        .accessibilityValue(baseURLDraft.nilIfEmpty ?? String(localized: "未填写"))
 
-        if !baseURL.wrappedValue.trimmedForPublishing.isEmpty {
+        if !baseURLDraft.trimmedForPublishing.isEmpty {
           Button {
-            baseURL.wrappedValue = ""
+            baseURLDraft = ""
           } label: {
             Image(systemName: "xmark.circle.fill")
               .foregroundStyle(.secondary)
@@ -86,16 +116,37 @@ struct AIProviderSection: View {
         Button(String(localized: "粘贴剪贴板地址")) {
           pasteBaseURLFromClipboard()
         }
-        .font(.caption2)
+        .font(.workbenchMetadata)
         .buttonStyle(.borderless)
         .accessibilityIdentifier("ai-base-url-paste")
 
         Button(String(localized: "恢复默认占位")) {
           restoreBaseURLPlaceholder()
         }
-        .font(.caption2)
+        .font(.workbenchMetadata)
         .buttonStyle(.borderless)
         .accessibilityIdentifier("ai-base-url-restore-default")
+      }
+
+      if hasUnappliedBaseURL {
+        HStack(spacing: WorkbenchSpacing.control) {
+          Label("地址修改尚未应用", systemImage: "pencil.and.outline")
+            .font(.workbenchMetadata)
+            .foregroundStyle(WorkbenchTheme.warning)
+
+          Spacer(minLength: WorkbenchSpacing.control)
+
+          Button("取消修改") {
+            baseURLDraft = baseURL.wrappedValue
+          }
+          .controlSize(.small)
+
+          Button("应用地址") {
+            applyBaseURLDraft()
+          }
+          .workbenchProminentActionStyle()
+          .controlSize(.small)
+        }
       }
     }
   }
@@ -129,14 +180,14 @@ struct AIProviderSection: View {
         Button(String(localized: "粘贴剪贴板模型")) {
           pasteModelFromClipboard()
         }
-        .font(.caption2)
+        .font(.workbenchMetadata)
         .buttonStyle(.borderless)
         .accessibilityIdentifier("ai-model-paste")
 
         Button(String(localized: "恢复默认占位")) {
           restoreModelPlaceholder()
         }
-        .font(.caption2)
+        .font(.workbenchMetadata)
         .buttonStyle(.borderless)
         .accessibilityIdentifier("ai-model-restore-default")
       }
@@ -147,7 +198,7 @@ struct AIProviderSection: View {
     let value = NSPasteboard.general.string(forType: .URL)
       ?? NSPasteboard.general.string(forType: .string)
     guard let value, !value.trimmedForPublishing.isEmpty else { return }
-    baseURL.wrappedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    baseURLDraft = value.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   private func pasteModelFromClipboard() {
@@ -161,7 +212,7 @@ struct AIProviderSection: View {
   }
 
   private func restoreBaseURLPlaceholder() {
-    baseURL.wrappedValue = presetBinding.wrappedValue.defaultBaseURL
+    baseURLDraft = presetBinding.wrappedValue.defaultBaseURL
   }
 
   private func restoreModelPlaceholder() {
@@ -170,8 +221,14 @@ struct AIProviderSection: View {
 
   private func restorePresetDefaults() {
     let preset = presetBinding.wrappedValue
+    baseURLDraft = preset.defaultBaseURL
     baseURL.wrappedValue = preset.defaultBaseURL
     model.wrappedValue = preset.defaultModel
     requiresAPIKeyBinding.wrappedValue = (preset != .local)
+  }
+
+  private func applyBaseURLDraft() {
+    baseURL.wrappedValue = baseURLDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    baseURLDraft = baseURL.wrappedValue
   }
 }

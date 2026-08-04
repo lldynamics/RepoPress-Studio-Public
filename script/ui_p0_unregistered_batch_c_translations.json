@@ -1,294 +1,282 @@
 {
   "%@ · 127.0.0.1:%@": {
-    "zh-Hans": "%@ · 127.0.0.1:%@",
-    "en": "%@ · 127.0.0.1:%@"
+    "en": "%@ · 127.0.0.1:%@",
+    "zh-Hans": "%@ · 127.0.0.1:%@"
   },
   "%@:%@ · %@": {
-    "zh-Hans": "%@:%@ · %@",
-    "en": "%@:%@ · %@"
+    "en": "%@:%@ · %@",
+    "zh-Hans": "%@:%@ · %@"
   },
   "/images/example.jpg": {
-    "zh-Hans": "/images/example.jpg",
-    "en": "/images/example.jpg"
+    "en": "/images/example.jpg",
+    "zh-Hans": "/images/example.jpg"
   },
   "AI 快捷切换": {
-    "zh-Hans": "AI 快捷切换",
-    "en": "AI Quick Switch"
+    "en": "AI Quick Switch",
+    "zh-Hans": "AI 快捷切换"
   },
   "AI 行内工具": {
-    "zh-Hans": "AI 行内工具",
-    "en": "Inline AI Tools"
-  },
-  "AI 设置": {
-    "zh-Hans": "AI 设置",
-    "en": "AI Settings"
+    "en": "Inline AI Tools",
+    "zh-Hans": "AI 行内工具"
   },
   "AI 连接与模型": {
-    "zh-Hans": "AI 连接与模型",
-    "en": "AI Connection and Model"
+    "en": "AI Connection and Model",
+    "zh-Hans": "AI 连接与模型"
   },
   "Endpoint：": {
-    "zh-Hans": "Endpoint：",
-    "en": "Endpoint:"
+    "en": "Endpoint:",
+    "zh-Hans": "Endpoint："
   },
   "H(item.level)": {
-    "zh-Hans": "H(item.level)",
-    "en": "H(item.level)"
+    "en": "H(item.level)",
+    "zh-Hans": "H(item.level)"
   },
   "MARKDOWN": {
-    "zh-Hans": "MARKDOWN",
-    "en": "MARKDOWN"
+    "en": "MARKDOWN",
+    "zh-Hans": "MARKDOWN"
   },
   "Modal surface": {
-    "zh-Hans": "模态界面",
-    "en": "Modal Surface"
+    "en": "Modal Surface",
+    "zh-Hans": "模态界面"
   },
   "RepoPress Design System": {
-    "zh-Hans": "RepoPress 设计系统",
-    "en": "RepoPress Design System"
+    "en": "RepoPress Design System",
+    "zh-Hans": "RepoPress 设计系统"
   },
   "SSG 组件、模板与正文片段": {
-    "zh-Hans": "SSG 组件、模板与正文片段",
-    "en": "SSG Components, Templates, and Content Snippets"
+    "en": "SSG Components, Templates, and Content Snippets",
+    "zh-Hans": "SSG 组件、模板与正文片段"
   },
   "VIDEO_ID": {
-    "zh-Hans": "VIDEO_ID",
-    "en": "VIDEO_ID"
+    "en": "VIDEO_ID",
+    "zh-Hans": "VIDEO_ID"
   },
   "WorkbenchBackgroundStyle.card": {
-    "zh-Hans": "WorkbenchBackgroundStyle.card",
-    "en": "WorkbenchBackgroundStyle.card"
+    "en": "WorkbenchBackgroundStyle.card",
+    "zh-Hans": "WorkbenchBackgroundStyle.card"
   },
   "https://example.com/feed.xml": {
-    "zh-Hans": "https://example.com/feed.xml",
-    "en": "https://example.com/feed.xml"
+    "en": "https://example.com/feed.xml",
+    "zh-Hans": "https://example.com/feed.xml"
   },
   "owner/repo": {
-    "zh-Hans": "owner/repo",
-    "en": "owner/repo"
+    "en": "owner/repo",
+    "zh-Hans": "owner/repo"
   },
   "· ": {
-    "zh-Hans": "· ",
-    "en": "· "
+    "en": "· ",
+    "zh-Hans": "· "
   },
   "一键应用到当前编辑器": {
-    "zh-Hans": "一键应用到当前编辑器",
-    "en": "Apply to Current Editor"
+    "en": "Apply to Current Editor",
+    "zh-Hans": "一键应用到当前编辑器"
   },
   "仓库与部署设置分类": {
-    "zh-Hans": "仓库与部署设置分类",
-    "en": "Repository and Deployment Settings Category"
+    "en": "Repository and Deployment Settings Category",
+    "zh-Hans": "仓库与部署设置分类"
   },
   "允许发送给远程 AI": {
-    "zh-Hans": "允许发送给远程 AI",
-    "en": "Allow Sending to Remote AI"
+    "en": "Allow Sending to Remote AI",
+    "zh-Hans": "允许发送给远程 AI"
   },
   "关闭 AI 快捷切换": {
-    "zh-Hans": "关闭 AI 快捷切换",
-    "en": "Close AI Quick Switch"
+    "en": "Close AI Quick Switch",
+    "zh-Hans": "关闭 AI 快捷切换"
   },
   "关闭本地语义索引": {
-    "zh-Hans": "关闭本地语义索引",
-    "en": "Disable Local Semantic Index"
-  },
-  "创建第一篇文章后会显示在这里。": {
-    "zh-Hans": "创建第一篇文章后会显示在这里。",
-    "en": "Your first article will appear here after you create it."
+    "en": "Disable Local Semantic Index",
+    "zh-Hans": "关闭本地语义索引"
   },
   "写作工具密度": {
-    "zh-Hans": "写作工具密度",
-    "en": "Writing Tool Density"
+    "en": "Writing Tool Density",
+    "zh-Hans": "写作工具密度"
   },
   "准备发布": {
-    "zh-Hans": "准备发布",
-    "en": "Prepare to Publish"
+    "en": "Prepare to Publish",
+    "zh-Hans": "准备发布"
+  },
+  "创建第一篇文章后会显示在这里。": {
+    "en": "Your first article will appear here after you create it.",
+    "zh-Hans": "创建第一篇文章后会显示在这里。"
   },
   "图片瘦身（%lld）": {
-    "zh-Hans": "图片瘦身（%lld）",
-    "en": "Optimize Images (%lld)"
+    "en": "Optimize Images (%lld)",
+    "zh-Hans": "图片瘦身（%lld）"
   },
   "在这里输入文章导语": {
-    "zh-Hans": "在这里输入文章导语",
-    "en": "Enter the Article Introduction Here"
+    "en": "Enter the Article Introduction Here",
+    "zh-Hans": "在这里输入文章导语"
   },
   "复制完整 Markdown 代码块": {
-    "zh-Hans": "复制完整 Markdown 代码块",
-    "en": "Copy Full Markdown Code Block"
+    "en": "Copy Full Markdown Code Block",
+    "zh-Hans": "复制完整 Markdown 代码块"
   },
   "失效引用": {
-    "zh-Hans": "失效引用",
-    "en": "Broken References"
+    "en": "Broken References",
+    "zh-Hans": "失效引用"
   },
   "失效本地资源引用": {
-    "zh-Hans": "失效本地资源引用",
-    "en": "Broken Local Resource References"
+    "en": "Broken Local Resource References",
+    "zh-Hans": "失效本地资源引用"
   },
   "定位到标题：%@": {
-    "zh-Hans": "定位到标题：%@",
-    "en": "Jump to Heading: %@"
+    "en": "Jump to Heading: %@",
+    "zh-Hans": "定位到标题：%@"
   },
   "将尝试压缩 %@ 张图片。只有生成结果更小、且原文件自扫描后未变化时才会原位替换。": {
-    "zh-Hans": "将尝试压缩 %@ 张图片。只有生成结果更小、且原文件自扫描后未变化时才会原位替换。",
-    "en": "This will try to compress %@ images. An original is replaced only if the result is smaller and the file has not changed since the scan."
+    "en": "This will try to compress %@ images. An original is replaced only if the result is smaller and the file has not changed since the scan.",
+    "zh-Hans": "将尝试压缩 %@ 张图片。只有生成结果更小、且原文件自扫描后未变化时才会原位替换。"
   },
   "将把 %lld 个未被 Markdown 引用的资源移入废纸篓。文件不会被永久删除；失效引用和扫描期间发生变化的文件会保留并标记为需复核。": {
-    "zh-Hans": "将把 %lld 个未被 Markdown 引用的资源移入废纸篓。文件不会被永久删除；失效引用和扫描期间发生变化的文件会保留并标记为需复核。",
-    "en": "This will move %lld resources not referenced by Markdown to the Trash. Files will not be permanently deleted; broken references and files changed during the scan will be kept and marked for review."
-  },
-  "已建立本地语义索引": {
-    "zh-Hans": "已建立本地语义索引",
-    "en": "Local Semantic Index Ready"
-  },
-  "已扫描 %lld 个 Markdown 文件；远程 URL、代码块和行内代码不会被当作本地资源。": {
-    "zh-Hans": "已扫描 %lld 个 Markdown 文件；远程 URL、代码块和行内代码不会被当作本地资源。",
-    "en": "Scanned %lld Markdown files. Remote URLs, code blocks, and inline code are not treated as local resources."
+    "en": "This will move %lld resources not referenced by Markdown to the Trash. Files will not be permanently deleted; broken references and files changed during the scan will be kept and marked for review.",
+    "zh-Hans": "将把 %lld 个未被 Markdown 引用的资源移入废纸篓。文件不会被永久删除；失效引用和扫描期间发生变化的文件会保留并标记为需复核。"
   },
   "工具栏与卡片": {
-    "zh-Hans": "工具栏与卡片",
-    "en": "Toolbars and Cards"
+    "en": "Toolbars and Cards",
+    "zh-Hans": "工具栏与卡片"
+  },
+  "已建立本地语义索引": {
+    "en": "Local Semantic Index Ready",
+    "zh-Hans": "已建立本地语义索引"
+  },
+  "已扫描 %lld 个 Markdown 文件；远程 URL、代码块和行内代码不会被当作本地资源。": {
+    "en": "Scanned %lld Markdown files. Remote URLs, code blocks, and inline code are not treated as local resources.",
+    "zh-Hans": "已扫描 %lld 个 Markdown 文件；远程 URL、代码块和行内代码不会被当作本地资源。"
   },
   "建立本地语义索引": {
-    "zh-Hans": "建立本地语义索引",
-    "en": "Build Local Semantic Index"
+    "en": "Build Local Semantic Index",
+    "zh-Hans": "建立本地语义索引"
   },
   "当前连接档案没有 Base URL，点击下方档案即可快速切换到已配置服务。": {
-    "zh-Hans": "当前连接档案没有 Base URL，点击下方档案即可快速切换到已配置服务。",
-    "en": "The current connection profile has no Base URL. Select a profile below to switch quickly to a configured service."
+    "en": "The current connection profile has no Base URL. Select a profile below to switch quickly to a configured service.",
+    "zh-Hans": "当前连接档案没有 Base URL，点击下方档案即可快速切换到已配置服务。"
   },
   "打开资源目录": {
-    "zh-Hans": "打开资源目录",
-    "en": "Open Resource Folder"
+    "en": "Open Resource Folder",
+    "zh-Hans": "打开资源目录"
   },
   "扩写": {
-    "zh-Hans": "扩写",
-    "en": "Expand"
+    "en": "Expand",
+    "zh-Hans": "扩写"
   },
   "扫描全仓库 Markdown 引用，清理孤立资源并安全压缩大图。": {
-    "zh-Hans": "扫描全仓库 Markdown 引用，清理孤立资源并安全压缩大图。",
-    "en": "Scan Markdown references across the repository, clean up orphaned resources, and safely compress large images."
+    "en": "Scan Markdown references across the repository, clean up orphaned resources, and safely compress large images.",
+    "zh-Hans": "扫描全仓库 Markdown 引用，清理孤立资源并安全压缩大图。"
   },
   "技术": {
-    "zh-Hans": "技术",
-    "en": "Technical"
+    "en": "Technical",
+    "zh-Hans": "技术"
   },
   "拖入正文插入引用块": {
-    "zh-Hans": "拖入正文插入引用块",
-    "en": "Drag into the Article to Insert a Quote Block"
+    "en": "Drag into the Article to Insert a Quote Block",
+    "zh-Hans": "拖入正文插入引用块"
   },
   "收起悬浮大纲": {
-    "zh-Hans": "收起悬浮大纲",
-    "en": "Collapse Floating Outline"
+    "en": "Collapse Floating Outline",
+    "zh-Hans": "收起悬浮大纲"
   },
   "文章大纲悬浮导航": {
-    "zh-Hans": "文章大纲悬浮导航",
-    "en": "Floating Article Outline Navigation"
+    "en": "Floating Article Outline Navigation",
+    "zh-Hans": "文章大纲悬浮导航"
   },
   "暂无内容": {
-    "zh-Hans": "暂无内容",
-    "en": "No Content Yet"
+    "en": "No Content Yet",
+    "zh-Hans": "暂无内容"
   },
   "服务商：%@%@": {
-    "zh-Hans": "服务商：%@%@",
-    "en": "Provider: %@%@"
-  },
-  "本地站点预览": {
-    "zh-Hans": "本地站点预览",
-    "en": "Local Site Preview"
-  },
-  "本机语义 %@": {
-    "zh-Hans": "本机语义 %@",
-    "en": "Local Semantic %@"
-  },
-  "本机语义 %lld": {
-    "zh-Hans": "本机语义 %lld",
-    "en": "Local Semantic %lld"
-  },
-  "模型档位": {
-    "zh-Hans": "模型档位",
-    "en": "Model Tier"
-  },
-  "清除筛选": {
-    "zh-Hans": "清除筛选",
-    "en": "Clear Filters"
-  },
-  "目标文章：%@": {
-    "zh-Hans": "目标文章：%@",
-    "en": "Target Article: %@"
-  },
-  "移入废纸篓": {
-    "zh-Hans": "移入废纸篓",
-    "en": "Move to Trash"
-  },
-  "组件缩略预览": {
-    "zh-Hans": "组件缩略预览",
-    "en": "Component Thumbnail Preview"
-  },
-  "设置…": {
-    "zh-Hans": "设置…",
-    "en": "Settings…"
-  },
-  "请先为当前站点选择本地仓库，然后扫描仓库以识别启动命令。": {
-    "zh-Hans": "请先为当前站点选择本地仓库，然后扫描仓库以识别启动命令。",
-    "en": "Choose a local repository for the current site, then scan it to detect the startup command."
-  },
-  "请先在写作区选择文章。": {
-    "zh-Hans": "请先在写作区选择文章。",
-    "en": "Select an article in the writing workspace first."
-  },
-  "请先选择一篇文章，再切换 AI 连接和模型。": {
-    "zh-Hans": "请先选择一篇文章，再切换 AI 连接和模型。",
-    "en": "Select an article before switching the AI connection and model."
-  },
-  "调整搜索条件，或清除筛选后再试一次。": {
-    "zh-Hans": "调整搜索条件，或清除筛选后再试一次。",
-    "en": "Adjust your search criteria, or clear the filters and try again."
-  },
-  "资料库推荐": {
-    "zh-Hans": "资料库推荐",
-    "en": "Knowledge Recommendations"
-  },
-  "资源扫描失败": {
-    "zh-Hans": "资源扫描失败",
-    "en": "Resource Scan Failed"
-  },
-  "资源管理器需要读取本地仓库，才能扫描 static/images 或当前站点配置的资源目录。": {
-    "zh-Hans": "资源管理器需要读取本地仓库，才能扫描 static/images 或当前站点配置的资源目录。",
-    "en": "The resource manager needs access to the local repository to scan static/images or the resource directory configured for the current site."
+    "en": "Provider: %@%@",
+    "zh-Hans": "服务商：%@%@"
   },
   "未配置 Endpoint": {
-    "zh-Hans": "未配置 Endpoint",
-    "en": "Endpoint Not Configured"
+    "en": "Endpoint Not Configured",
+    "zh-Hans": "未配置 Endpoint"
+  },
+  "本地站点预览": {
+    "en": "Local Site Preview",
+    "zh-Hans": "本地站点预览"
+  },
+  "本机语义 %@": {
+    "en": "Local Semantic %@",
+    "zh-Hans": "本机语义 %@"
+  },
+  "本机语义 %lld": {
+    "en": "Local Semantic %lld",
+    "zh-Hans": "本机语义 %lld"
+  },
+  "模型档位": {
+    "en": "Model Tier",
+    "zh-Hans": "模型档位"
+  },
+  "清除筛选": {
+    "en": "Clear Filters",
+    "zh-Hans": "清除筛选"
+  },
+  "目标文章：%@": {
+    "en": "Target Article: %@",
+    "zh-Hans": "目标文章：%@"
+  },
+  "移入废纸篓": {
+    "en": "Move to Trash",
+    "zh-Hans": "移入废纸篓"
+  },
+  "组件缩略预览": {
+    "en": "Component Thumbnail Preview",
+    "zh-Hans": "组件缩略预览"
+  },
+  "设置…": {
+    "en": "Settings…",
+    "zh-Hans": "设置…"
+  },
+  "请先为当前站点选择本地仓库，然后扫描仓库以识别启动命令。": {
+    "en": "Choose a local repository for the current site, then scan it to detect the startup command.",
+    "zh-Hans": "请先为当前站点选择本地仓库，然后扫描仓库以识别启动命令。"
+  },
+  "请先在写作区选择文章。": {
+    "en": "Select an article in the writing workspace first.",
+    "zh-Hans": "请先在写作区选择文章。"
+  },
+  "请先选择一篇文章，再切换 AI 连接和模型。": {
+    "en": "Select an article before switching the AI connection and model.",
+    "zh-Hans": "请先选择一篇文章，再切换 AI 连接和模型。"
+  },
+  "调整搜索条件，或清除筛选后再试一次。": {
+    "en": "Adjust your search criteria, or clear the filters and try again.",
+    "zh-Hans": "调整搜索条件，或清除筛选后再试一次。"
+  },
+  "资源扫描失败": {
+    "en": "Resource Scan Failed",
+    "zh-Hans": "资源扫描失败"
+  },
+  "资源管理器需要读取本地仓库，才能扫描 static/images 或当前站点配置的资源目录。": {
+    "en": "The resource manager needs access to the local repository to scan static/images or the resource directory configured for the current site.",
+    "zh-Hans": "资源管理器需要读取本地仓库，才能扫描 static/images 或当前站点配置的资源目录。"
   },
   "资源管理大总管": {
-    "zh-Hans": "资源管理大总管",
-    "en": "Resource Manager"
-  },
-  "连接配置": {
-    "zh-Hans": "连接配置",
-    "en": "Connection Settings"
+    "en": "Resource Manager",
+    "zh-Hans": "资源管理大总管"
   },
   "连接配置已就绪，点击查看快捷切换": {
-    "zh-Hans": "连接配置已就绪，点击查看快捷切换",
-    "en": "Connection Ready; Click to Open Quick Switch"
+    "en": "Connection Ready; Click to Open Quick Switch",
+    "zh-Hans": "连接配置已就绪，点击查看快捷切换"
   },
   "连接配置档案": {
-    "zh-Hans": "连接配置档案",
-    "en": "Connection Profiles"
+    "en": "Connection Profiles",
+    "zh-Hans": "连接配置档案"
   },
   "选择…": {
-    "zh-Hans": "选择…",
-    "en": "Choose…"
+    "en": "Choose…",
+    "zh-Hans": "选择…"
   },
   "选择音频并插入转写": {
-    "zh-Hans": "选择音频并插入转写",
-    "en": "Choose Audio and Insert Transcription"
+    "en": "Choose Audio and Insert Transcription",
+    "zh-Hans": "选择音频并插入转写"
   },
   "重新扫描资源和 Markdown 引用": {
-    "zh-Hans": "重新扫描资源和 Markdown 引用",
-    "en": "Rescan Resources and Markdown References"
+    "en": "Rescan Resources and Markdown References",
+    "zh-Hans": "重新扫描资源和 Markdown 引用"
   },
   "钥匙串凭据": {
-    "zh-Hans": "钥匙串凭据",
-    "en": "Keychain Credentials"
+    "en": "Keychain Credentials",
+    "zh-Hans": "钥匙串凭据"
   }
 }

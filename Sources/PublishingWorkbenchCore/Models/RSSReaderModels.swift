@@ -428,6 +428,8 @@ public struct RSSArticle: Codable, Hashable, Identifiable, Sendable {
   public var publishedAt: Date?
   public var summaryHTML: String
   public var contentHTML: String
+  /// A separately fetched, bounded snapshot of the linked web page.
+  public var webPageSnapshotHTML: String?
   public var fetchedAt: Date
   public var readAt: Date?
   public var isStarred: Bool
@@ -442,6 +444,7 @@ public struct RSSArticle: Codable, Hashable, Identifiable, Sendable {
     publishedAt: Date? = nil,
     summaryHTML: String = "",
     contentHTML: String = "",
+    webPageSnapshotHTML: String? = nil,
     fetchedAt: Date = Date(),
     readAt: Date? = nil,
     isStarred: Bool = false,
@@ -455,6 +458,7 @@ public struct RSSArticle: Codable, Hashable, Identifiable, Sendable {
     self.publishedAt = publishedAt
     self.summaryHTML = summaryHTML
     self.contentHTML = contentHTML
+    self.webPageSnapshotHTML = webPageSnapshotHTML
     self.fetchedAt = fetchedAt
     self.readAt = readAt
     self.isStarred = isStarred
@@ -464,16 +468,20 @@ public struct RSSArticle: Codable, Hashable, Identifiable, Sendable {
   public var isRead: Bool { readAt != nil }
 
   public var readableText: String {
-    RSSHTMLTextSanitizer.plainText(
-      from: contentHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        ? summaryHTML
+    let content = contentHTML.trimmingCharacters(in: .whitespacesAndNewlines)
+    let summary = summaryHTML.trimmingCharacters(in: .whitespacesAndNewlines)
+    return RSSHTMLTextSanitizer.plainText(
+      from: content.isEmpty
+        ? (summary.isEmpty ? webPageSnapshotHTML ?? "" : summaryHTML)
         : contentHTML
     )
   }
 
   public var readableSummary: String {
     let summary = RSSHTMLTextSanitizer.plainText(from: summaryHTML)
-    return summary.isEmpty ? readableText : summary
+    if !summary.isEmpty { return summary }
+    let snapshot = webPageSnapshotHTML.map { RSSHTMLTextSanitizer.plainText(from: $0) } ?? ""
+    return snapshot.isEmpty ? readableText : snapshot
   }
 
   public var estimatedReadingMinutes: Int {
@@ -511,6 +519,7 @@ public struct RSSArticle: Codable, Hashable, Identifiable, Sendable {
     case publishedAt
     case summaryHTML
     case contentHTML
+    case webPageSnapshotHTML
     case fetchedAt
     case readAt
     case isStarred
@@ -528,6 +537,7 @@ public struct RSSArticle: Codable, Hashable, Identifiable, Sendable {
       publishedAt: try container.decodeIfPresent(Date.self, forKey: .publishedAt),
       summaryHTML: try container.decodeIfPresent(String.self, forKey: .summaryHTML) ?? "",
       contentHTML: try container.decodeIfPresent(String.self, forKey: .contentHTML) ?? "",
+      webPageSnapshotHTML: try container.decodeIfPresent(String.self, forKey: .webPageSnapshotHTML),
       fetchedAt: try container.decode(Date.self, forKey: .fetchedAt),
       readAt: try container.decodeIfPresent(Date.self, forKey: .readAt),
       isStarred: try container.decodeIfPresent(Bool.self, forKey: .isStarred) ?? false,
@@ -590,6 +600,9 @@ public struct RSSArticleHeader: Codable, Hashable, Identifiable, Sendable {
     let previewHTML = article.summaryHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       ? article.contentHTML
       : article.summaryHTML
+    let previewSource = previewHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      ? article.webPageSnapshotHTML ?? previewHTML
+      : previewHTML
     self.init(
       id: article.id,
       feedID: article.feedID,
@@ -598,7 +611,7 @@ public struct RSSArticleHeader: Codable, Hashable, Identifiable, Sendable {
       author: article.author,
       publishedAt: article.publishedAt,
       readableSummary: RSSHTMLTextSanitizer.plainText(
-        from: String(previewHTML.prefix(Self.previewHTMLCharacterLimit))
+        from: String(previewSource.prefix(Self.previewHTMLCharacterLimit))
       ),
       fetchedAt: article.fetchedAt,
       readAt: article.readAt,
@@ -632,6 +645,7 @@ public extension RSSArticle {
       publishedAt: header.publishedAt,
       summaryHTML: header.readableSummary,
       contentHTML: "",
+      webPageSnapshotHTML: nil,
       fetchedAt: header.fetchedAt,
       readAt: header.readAt,
       isStarred: header.isStarred,
@@ -804,6 +818,7 @@ public struct RSSParsedFeed: Equatable, Sendable {
 public enum RSSReaderError: Error, Equatable, LocalizedError, Sendable {
   case invalidFeedURL
   case unsupportedFeedURL
+  case privateNetworkAccessDenied
   case network(String)
   case invalidHTTPResponse
   case httpStatus(Int)
@@ -820,6 +835,8 @@ public enum RSSReaderError: Error, Equatable, LocalizedError, Sendable {
       return "订阅地址无效。"
     case .unsupportedFeedURL:
       return "订阅地址必须使用 http 或 https。"
+    case .privateNetworkAccessDenied:
+      return "已阻止访问本机或局域网地址。"
     case let .network(message):
       return "读取订阅失败：\(message)"
     case .invalidHTTPResponse:
@@ -857,6 +874,15 @@ public enum RSSReaderError: Error, Equatable, LocalizedError, Sendable {
         category: .unsupportedAddress,
         retryStrategy: .requiresAction,
         userMessage: localizedDescription,
+        occurredAt: occurredAt
+      )
+    case .privateNetworkAccessDenied:
+      return RSSFeedIssue(
+        stage: .validation,
+        category: .permissionDenied,
+        retryStrategy: .requiresAction,
+        userMessage: "已阻止访问本机或局域网地址；如确认订阅可信，可在 RSS 设置中允许局域网访问。",
+        technicalDetail: localizedDescription,
         occurredAt: occurredAt
       )
     case let .network(message):
