@@ -3,6 +3,39 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class KnowledgeLibraryManagementTests: XCTestCase {
+  @MainActor
+  func testStoreCanEmptyRecycleBinWithoutDeletingOriginalSources() async throws {
+    let rootURL = temporaryDirectory(named: "knowledge-empty-recycle-bin")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let storeURL = rootURL.appendingPathComponent("store", isDirectory: true)
+    let service = KnowledgeLibraryService(rootURL: storeURL)
+    var originalURLs: [URL] = []
+    for index in 1...2 {
+      let sourceURL = rootURL.appendingPathComponent("source-\(index).md")
+      try "# 资料 \(index)\n\n用于回收站批量清理测试。".write(
+        to: sourceURL,
+        atomically: true,
+        encoding: .utf8
+      )
+      originalURLs.append(sourceURL)
+      _ = try await service.commit(try await service.makeImportPreview(sourceURL: sourceURL))
+    }
+    let documentIDs = Set(try service.documents().map(\.id))
+    try service.moveToRecycleBin(documentIDs: documentIDs)
+    let store = KnowledgeStore(service: service)
+    await store.reload()
+
+    let summary = await store.emptyRecycleBin()
+
+    XCTAssertEqual(summary.requestedDocumentCount, 2)
+    XCTAssertEqual(summary.removedDocumentCount, 2)
+    XCTAssertEqual(summary.failedDocumentCount, 0)
+    XCTAssertEqual(summary.failedStoredFileCount, 0)
+    XCTAssertTrue(store.recycledDocuments.isEmpty)
+    XCTAssertTrue(try service.recycledDocuments().isEmpty)
+    XCTAssertTrue(originalURLs.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
+  }
+
   func testRecycleRestoreAndPermanentDeletePreserveThenCleanOwnedFiles() async throws {
     let rootURL = temporaryDirectory(named: "knowledge-recycle")
     defer { try? FileManager.default.removeItem(at: rootURL) }

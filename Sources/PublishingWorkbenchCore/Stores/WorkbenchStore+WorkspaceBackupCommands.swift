@@ -3,7 +3,8 @@ import Foundation
 extension WorkbenchStore {
   public func createWorkspaceBackup(
     at destinationURL: URL,
-    applicationVersion: String? = nil
+    applicationVersion: String? = nil,
+    limits: WorkspaceBackupService.Limits = .init()
   ) async -> WorkspaceBackupPreview? {
     guard flushPendingChanges() else {
       setLastSaveStatus(CoreL10n.text("工作区备份失败：仍有草稿或站点文件未能保存"))
@@ -13,6 +14,9 @@ extension WorkbenchStore {
     let snapshot = persistenceStore.persistence.snapshot(from: self)
     let knowledgeRootURL = knowledge.rootURL
     let rssDatabaseURL = rssReaderFileURL
+    let rssMediaDirectoryURL = rssDatabaseURL.map {
+      RSSReaderStore.mediaCacheDirectoryURL(for: $0)
+    }
     let resolvedApplicationVersion = applicationVersion
       ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
       ?? "development"
@@ -20,11 +24,12 @@ extension WorkbenchStore {
     setLastSaveStatus(CoreL10n.text("正在创建完整工作区备份…"))
     do {
       let preview = try await Task.detached(priority: .utility) {
-        try WorkspaceBackupService().createBackup(
+        try WorkspaceBackupService(limits: limits).createBackup(
           at: destinationURL,
           snapshot: snapshot,
           knowledgeRootURL: knowledgeRootURL,
           rssDatabaseURL: rssDatabaseURL,
+          rssMediaDirectoryURL: rssMediaDirectoryURL,
           applicationVersion: resolvedApplicationVersion,
           currentApplicationVersion: resolvedApplicationVersion
         )

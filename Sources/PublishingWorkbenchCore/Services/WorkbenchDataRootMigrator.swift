@@ -5,6 +5,7 @@ public enum WorkbenchDataRootMigrationError: Error, Equatable, Sendable {
   case sourceIsSymbolicLink
   case sourceIsNotDirectory
   case sourceAlreadyHasManifest
+  case sourceRootIsIncompatible(WorkbenchDataRootIncompatibility)
   case sourceContainsNoSupportedComponents
   case sourceComponentHasUnexpectedType(WorkbenchDataRootComponent)
   case sourceAndDestinationOverlap
@@ -54,6 +55,58 @@ public struct WorkbenchDataRootMigrationResult: Equatable, Sendable {
 public struct WorkbenchDataRootMigrator: Sendable {
   public init() {}
 
+  /// Copies a complete managed data root to a new location without removing
+  /// or modifying the source. The data identity and original creation date
+  /// are preserved so a relocated root remains the same workspace.
+  public func copyExistingRoot(
+    from sourceRootURL: URL,
+    to destinationRootURL: URL,
+    appVersion: String
+  ) throws -> WorkbenchDataRootMigrationResult {
+    let fileManager = FileManager.default
+    let sourceLayout = WorkbenchDataRootLayout(rootURL: sourceRootURL)
+    let destinationLayout = WorkbenchDataRootLayout(rootURL: destinationRootURL)
+    let sourceManifest: WorkbenchDataRootManifest
+    switch WorkbenchDataRootInspector().probe(at: sourceLayout.rootURL) {
+    case .existing(let manifest):
+      sourceManifest = manifest
+    case .incompatible(let incompatibility):
+      throw WorkbenchDataRootMigrationError.sourceRootIsIncompatible(incompatibility)
+    case .new:
+      throw WorkbenchDataRootMigrationError.sourceDoesNotExist
+    }
+
+    try validateDisjointRoots(sourceLayout.rootURL, destinationLayout.rootURL)
+    guard !itemExists(at: destinationLayout.rootURL, fileManager: fileManager) else {
+      throw WorkbenchDataRootMigrationError.destinationAlreadyExists
+    }
+    let destinationParentURL = try prepareDestinationParent(
+      for: destinationLayout,
+      fileManager: fileManager
+    )
+    let components = sourceManifest.components.sorted { $0.rawValue < $1.rawValue }
+    let sourceInventory = try inventory(
+      layout: sourceLayout,
+      components: components,
+      fileManager: fileManager
+    )
+    let preparation = Preparation(
+      sourceLayout: sourceLayout,
+      destinationLayout: destinationLayout,
+      destinationParentURL: destinationParentURL,
+      components: components,
+      sourceInventory: sourceInventory,
+      expectedSourceManifest: sourceManifest
+    )
+    return try installPreparedCopy(
+      preparation,
+      appVersion: appVersion,
+      dataID: sourceManifest.dataID,
+      createdAt: sourceManifest.createdAt,
+      fileManager: fileManager
+    )
+  }
+
   public func copyLegacyRoot(
     from sourceRootURL: URL,
     to destinationRootURL: URL,
@@ -84,6 +137,7 @@ public struct WorkbenchDataRootMigrator: Sendable {
     var destinationParentURL: URL
     var components: [WorkbenchDataRootComponent]
     var sourceInventory: [InventoryEntry]
+    var expectedSourceManifest: WorkbenchDataRootManifest?
   }
 
   private func prepare(
@@ -114,7 +168,8 @@ public struct WorkbenchDataRootMigrator: Sendable {
       destinationLayout: destinationLayout,
       destinationParentURL: destinationParentURL,
       components: components,
-      sourceInventory: sourceInventory
+      sourceInventory: sourceInventory,
+      expectedSourceManifest: nil
     )
   }
 
@@ -216,6 +271,12 @@ public struct WorkbenchDataRootMigrator: Sendable {
     )
     guard sourceInventoryAfter == preparation.sourceInventory else {
       throw WorkbenchDataRootMigrationError.sourceChangedDuringCopy
+    }
+    if let expectedManifest = preparation.expectedSourceManifest {
+      guard WorkbenchDataRootInspector().probe(at: preparation.sourceLayout.rootURL)
+        == .existing(expectedManifest) else {
+        throw WorkbenchDataRootMigrationError.sourceChangedDuringCopy
+      }
     }
   }
 

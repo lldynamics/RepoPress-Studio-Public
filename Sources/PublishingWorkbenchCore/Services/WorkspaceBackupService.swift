@@ -48,6 +48,7 @@ public final class WorkspaceBackupService: Sendable {
   public static let knowledgePackageName = "knowledge.pslibrarybackup"
   public static let rssDirectoryName = "rss"
   public static let rssDatabaseRelativePath = "rss/reader.sqlite"
+  public static let rssMediaRelativePrefix = "rss/RSSMedia"
   public static let attachmentsDirectoryName = "attachments"
   public static let attachmentMarkerPrefix = WorkspaceBackupManifest.attachmentMarkerPrefix
   public static let automaticBackupDirectoryName = "WorkspaceBackups"
@@ -100,6 +101,7 @@ public final class WorkspaceBackupService: Sendable {
     snapshot: WorkbenchSnapshot,
     knowledgeRootURL: URL,
     rssDatabaseURL: URL? = nil,
+    rssMediaDirectoryURL: URL? = nil,
     applicationVersion: String,
     currentApplicationVersion: String? = nil
   ) throws -> WorkspaceBackupPreview {
@@ -198,6 +200,19 @@ public final class WorkspaceBackupService: Sendable {
         component: .rssReader,
         under: temporaryURL
       ))
+      let sourceMediaURL = rssMediaDirectoryURL
+        ?? RSSReaderStore.mediaCacheDirectoryURL(for: rssDatabaseURL)
+      for sourceFileURL in try regularFileURLs(in: sourceMediaURL)
+        where !sourceFileURL.lastPathComponent.hasPrefix(".") {
+        let relativeMediaPath = try relativePath(of: sourceFileURL, under: sourceMediaURL)
+        let archivePath = "\(Self.rssMediaRelativePrefix)/\(relativeMediaPath)"
+        records.append(try copyRegularFile(
+          from: sourceFileURL,
+          to: temporaryURL.appendingPathComponent(archivePath),
+          relativePath: archivePath,
+          component: .rssReader
+        ))
+      }
       formatVersion = WorkspaceBackupManifest.currentFormatVersion
     } else {
       // Preserve the v1 contract for callers that intentionally create a
@@ -478,6 +493,25 @@ public final class WorkspaceBackupService: Sendable {
         )
       } catch {
         throw WorkspaceBackupError.rssReaderInvalid(error.localizedDescription)
+      }
+      for record in validated.manifest.files where record.relativePath.hasPrefix(
+        Self.rssMediaRelativePrefix + "/"
+      ) {
+        let relativePath = String(
+          record.relativePath.dropFirst(Self.rssMediaRelativePrefix.count + 1)
+        )
+        let destinationURL = stagedRSSDirectoryURL
+          .appendingPathComponent("RSSMedia", isDirectory: true)
+          .appendingPathComponent(relativePath)
+        let copiedRecord = try copyRegularFile(
+          from: pendingURL.appendingPathComponent(record.relativePath),
+          to: destinationURL,
+          relativePath: record.relativePath,
+          component: .rssReader
+        )
+        guard copiedRecord == record else {
+          throw WorkspaceBackupError.checksumMismatch(record.relativePath)
+        }
       }
     }
 
@@ -1299,7 +1333,8 @@ public final class WorkspaceBackupService: Sendable {
     if relativePath.hasPrefix(Self.knowledgePackageName + "/") {
       return .knowledgeLibrary
     }
-    if relativePath == Self.rssDatabaseRelativePath {
+    if relativePath == Self.rssDatabaseRelativePath
+      || relativePath.hasPrefix(Self.rssMediaRelativePrefix + "/") {
       return .rssReader
     }
     return nil

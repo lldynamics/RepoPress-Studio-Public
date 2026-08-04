@@ -4,6 +4,9 @@ import Foundation
 @MainActor
 public final class WorkspaceBackupScheduler: ObservableObject {
   public static let settingsKey = "workspaceBackupScheduleV1"
+  public static let automaticRetentionCount = 12
+  public static let automaticRetentionAge: TimeInterval = 90 * 24 * 60 * 60
+  public static let automaticRetentionTotalByteCount: Int64 = 4 * 1_024 * 1_024 * 1_024
 
   @Published public private(set) var settings: WorkspaceBackupScheduleSettings
   @Published public private(set) var recentBackups: [WorkspaceBackupPreview] = []
@@ -112,6 +115,7 @@ public final class WorkspaceBackupScheduler: ObservableObject {
         invalidRecentBackupCount = 0
         return
       }
+      _ = pruneAutomaticBackups(in: folderURL, keeping: nil, now: Date())
       let urls = try fileManager.contentsOfDirectory(
         at: folderURL,
         includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
@@ -197,9 +201,13 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     do {
       try fileManager.createDirectory(at: folderURL, withIntermediateDirectories: true)
       let backupURL = folderURL.appendingPathComponent(automaticBackupFilename())
+      let schedulerBackupLimits = WorkspaceBackupService.Limits(
+        maximumTotalByteCount: Self.automaticRetentionTotalByteCount
+      )
       guard let createdPreview = await store.createWorkspaceBackup(
         at: backupURL,
-        applicationVersion: currentApplicationVersion
+        applicationVersion: currentApplicationVersion,
+        limits: schedulerBackupLimits
       ) else {
         throw WorkspaceBackupError.sourceUnavailable(
           CoreL10n.text("工作台未能保存，自动备份未创建")
@@ -213,12 +221,29 @@ public final class WorkspaceBackupScheduler: ObservableObject {
         )
       }.value
 
+      let removedURLs = pruneAutomaticBackups(
+        in: folderURL,
+        keeping: verifiedPreview.backupURL,
+        now: Date()
+      )
+
+      let removedPaths = Set(removedURLs.map { $0.standardizedFileURL.path })
+      var cachedBackups = recentBackups.filter { preview in
+        let path = preview.backupURL.standardizedFileURL.path
+        return !removedPaths.contains(path)
+          && fileManager.fileExists(atPath: path)
+      }
+      cachedBackups.removeAll {
+        $0.backupURL.standardizedFileURL.path == verifiedPreview.backupURL.standardizedFileURL.path
+      }
+      cachedBackups.append(verifiedPreview)
+      recentBackups = cachedBackups.sorted { $0.createdAt > $1.createdAt }
+
       settings.lastBackupAt = Date()
       settings.lastValidationAt = Date()
       settings.lastBackupPath = verifiedPreview.backupURL.path
       settings.lastError = nil
       persistSettings()
-      await refreshRecentBackups()
       statusMessage = isAutomatic
         ? CoreL10n.format(
           "自动备份完成并校验：%@",
@@ -272,6 +297,79 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     let suffix = UUID().uuidString.prefix(8).lowercased()
     let timestamp = formatter.string(from: Date())
     return "\(WorkspaceBackupService.automaticBackupFilePrefix)\(timestamp)-\(suffix).psworkspacebackup"
+  }
+
+  private func pruneAutomaticBackups(
+    in folderURL: URL,
+    keeping currentURL: URL?,
+    now: Date
+  ) -> [URL] {
+    guard let urls = try? fileManager.contentsOfDirectory(
+      at: folderURL,
+      includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+      options: [.skipsHiddenFiles]
+    ) else { return [] }
+
+    let candidates = urls.filter { url in
+      url.pathExtension.lowercased() == "psworkspacebackup"
+        && url.lastPathComponent.hasPrefix(WorkspaceBackupService.automaticBackupFilePrefix)
+        && url.deletingLastPathComponent().standardizedFileURL == folderURL.standardizedFileURL
+    }.sorted { lhs, rhs in
+      let leftDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+        ?? .distantPast
+      let rightDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+        ?? .distantPast
+      return leftDate > rightDate
+    }
+
+    let cutoff = now.addingTimeInterval(-Self.automaticRetentionAge)
+    let currentPath = currentURL?.standardizedFileURL.path
+    var keptCount = 0
+    var keptByteCount: Int64 = 0
+    var removedURLs: [URL] = []
+    for url in candidates {
+      let isCurrent = url.standardizedFileURL.path == currentPath
+      let modifiedAt = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+        ?? .distantPast
+      let byteCount = directoryByteCount(url)
+      let exceedsCount = keptCount >= Self.automaticRetentionCount
+      let exceedsAge = modifiedAt < cutoff
+      let totalAddition = keptByteCount.addingReportingOverflow(byteCount)
+      let exceedsTotal = keptByteCount > 0
+        && (totalAddition.overflow || totalAddition.partialValue > Self.automaticRetentionTotalByteCount)
+      if !isCurrent && (exceedsCount || exceedsAge || exceedsTotal) {
+        // The scheduler owns only its explicit automatic-backup prefix. Keep
+        // manual/user-named packages outside this bounded cleanup scope.
+        do {
+          try fileManager.removeItem(at: url)
+          removedURLs.append(url)
+        } catch {
+          // A failed cleanup is left visible for the next maintenance pass.
+        }
+        continue
+      }
+      keptCount += 1
+      let addition = keptByteCount.addingReportingOverflow(byteCount)
+      keptByteCount = addition.overflow ? Int64.max : addition.partialValue
+    }
+    return removedURLs
+  }
+
+  private func directoryByteCount(_ url: URL) -> Int64 {
+    guard let enumerator = fileManager.enumerator(
+      at: url,
+      includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+      options: []
+    ) else { return 0 }
+    var total: Int64 = 0
+    for case let fileURL as URL in enumerator {
+      guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+            values.isRegularFile == true else { continue }
+      let size = Int64(values.fileSize ?? 0)
+      let addition = total.addingReportingOverflow(size)
+      total = addition.overflow ? Int64.max : addition.partialValue
+    }
+    return total
   }
 
   private var currentApplicationVersion: String {

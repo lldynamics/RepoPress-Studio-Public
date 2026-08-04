@@ -1,138 +1,486 @@
 {
-  "display.ai-publishing-default-capability.continue-writing": { "zh-Hans": "续写", "en": "Continue" },
-  "display.ai-publishing-default-capability.rewrite": { "zh-Hans": "改写", "en": "Rewrite" },
-  "display.ai-publishing-default-capability.condense": { "zh-Hans": "压缩", "en": "Condense" },
-  "display.ai-publishing-default-capability.translate": { "zh-Hans": "翻译", "en": "Translate" },
-  "display.ai-publishing-default-capability.generate-metadata": { "zh-Hans": "生成元数据", "en": "Generate Metadata" },
-  "display.ai-publishing-default-capability.publishing-check": { "zh-Hans": "发布检查", "en": "Publishing Check" },
-  "display.ai-publishing-default-capability.cite-knowledge": { "zh-Hans": "引用资料", "en": "Cite Sources" },
-  "display.ai-publishing-default-capability.ask-anything": { "zh-Hans": "自由提问", "en": "Ask Anything" },
-  "display.ai-publishing-chat-quick-action.polish-suggestions": { "zh-Hans": "润色建议", "en": "Polish Suggestions" },
-  "display.ai-publishing-chat-quick-action.tag-suggestions": { "zh-Hans": "标签建议", "en": "Tag Suggestions" },
-  "display.ai-publishing-chat-quick-action.summary": { "zh-Hans": "生成摘要", "en": "Generate Summary" },
-  "display.ai-publishing-chat-quick-action.proofread": { "zh-Hans": "校对文章", "en": "Proofread Post" },
-  "display.ai-publishing-chat-quick-action.english-summary": { "zh-Hans": "英文摘要", "en": "English Summary" },
-  "display.ai-publishing-chat-quick-action.polish-suggestions.compact": { "zh-Hans": "润色", "en": "Polish" },
-  "display.ai-publishing-chat-quick-action.tag-suggestions.compact": { "zh-Hans": "标签", "en": "Tags" },
-  "display.ai-publishing-chat-quick-action.summary.compact": { "zh-Hans": "摘要", "en": "Summary" },
-  "display.ai-publishing-chat-quick-action.proofread.compact": { "zh-Hans": "校对", "en": "Proofread" },
-  "display.ai-publishing-chat-quick-action.english-summary.compact": { "zh-Hans": "英文", "en": "English" },
-  "display.ai-publishing-chat-quick-action.polish-suggestions.prompt": {
-    "zh-Hans": "请校对当前文章并给出最多 5 条润色建议。每条按“原文片段 / 建议改写 / 原因”输出；只引用必要短句，不要重写整篇文章，不要改变事实、代码、链接或 Front Matter。没有明显问题时直接说明。",
-    "en": "Proofread the current article and provide up to five polishing suggestions. Format each as “Original / Suggested Revision / Reason.” Quote only the necessary short excerpt. Do not rewrite the full article or change facts, code, links, or Front Matter. If there are no clear issues, say so directly."
+  "display.ai-context-reference-kind.current-article": {
+    "en": "Current Article",
+    "zh-Hans": "当前文章"
   },
-  "display.ai-publishing-chat-quick-action.tag-suggestions.prompt": {
-    "zh-Hans": "请基于当前文章推荐 3 到 8 个稳定、可复用的 tags。只返回一行逗号分隔的标签，不要编号、引号、Markdown、分类或额外解释，不要编造文章没有涉及的主题。",
-    "en": "Recommend 3–8 stable, reusable tags based on the current article. Return one comma-separated line only, with no numbering, quotation marks, Markdown, categories, or extra explanation. Do not invent topics the article does not cover."
+  "display.ai-context-reference-kind.current-selection": {
+    "en": "Current Selection",
+    "zh-Hans": "当前选区"
   },
-  "display.ai-publishing-chat-quick-action.summary.prompt": {
-    "zh-Hans": "请基于当前文章生成一条可直接写入 Front Matter 的 summary/description，控制在 60 到 160 个中文字符；英文文章控制在 25 到 45 个英文单词。忠实原文、保持克制、不新增事实。如果正文只有标题、占位语、写作引导或无法判断主题，只返回“当前内容不足，无法生成有效摘要，请补充正文后重试。”不要为占位内容强行生成摘要。其他情况下只返回摘要正文，不要标题、编号、引号、解释、分析或推理过程。",
-    "en": "Create a summary or description that can be written directly to the current article’s Front Matter. Use 60–160 Chinese characters for Chinese articles or 25–45 English words for English articles. Stay faithful to the source, remain concise, and add no new facts. If the body contains only a title, placeholder, writing guidance, or too little content to identify the topic, return only: “There is not enough content to generate a useful summary. Add article content and try again.” Otherwise return only the summary text, without a title, numbering, quotation marks, explanation, analysis, or reasoning."
+  "display.ai-context-reference-kind.knowledge-entry": {
+    "en": "Knowledge Entry",
+    "zh-Hans": "资料条目"
   },
-  "display.ai-publishing-chat-quick-action.proofread.prompt": {
-    "zh-Hans": "请校对当前文章中的错别字、标点误用和病句。只列出明确发现的问题，按“原文 / 建议 / 原因”三列表格输出，不要重写没有问题的段落；若无明显问题，直接回复“未发现明显的文字问题”。",
-    "en": "Proofread the current article for typos, punctuation errors, and unclear sentences. List only definite issues in a three-column table: “Original / Suggestion / Reason.” Do not rewrite paragraphs without problems. If there are no clear issues, reply: “No obvious writing issues found.”"
+  "display.ai-context-reference-kind.publish-check": {
+    "en": "Publishing Check",
+    "zh-Hans": "发布检查"
+  },
+  "display.ai-context-reference-kind.site-profile": {
+    "en": "Site Configuration",
+    "zh-Hans": "站点配置"
+  },
+  "display.ai-context-reference-kind.specified-article": {
+    "en": "Selected Article",
+    "zh-Hans": "指定文章"
+  },
+  "display.ai-publishing-capability-center-mode.all": {
+    "en": "All Capabilities",
+    "zh-Hans": "全部能力"
+  },
+  "display.ai-publishing-capability-center-mode.featured": {
+    "en": "Featured",
+    "zh-Hans": "精选"
+  },
+  "display.ai-publishing-chat-context-mode.general": {
+    "en": "General Chat",
+    "zh-Hans": "通用聊天"
+  },
+  "display.ai-publishing-chat-context-mode.site": {
+    "en": "Site Context",
+    "zh-Hans": "站点上下文"
+  },
+  "display.ai-publishing-chat-draft-application-mode.append-to-body": {
+    "en": "Append to Article",
+    "zh-Hans": "追加到文章末尾"
+  },
+  "display.ai-publishing-chat-draft-application-mode.replace-body": {
+    "en": "Replace Entire Body",
+    "zh-Hans": "替换整篇正文"
+  },
+  "display.ai-publishing-chat-draft-application-mode.replace-selection": {
+    "en": "Replace Selection",
+    "zh-Hans": "替换选中文本"
+  },
+  "display.ai-publishing-chat-quick-action.english-summary": {
+    "en": "English Summary",
+    "zh-Hans": "英文摘要"
+  },
+  "display.ai-publishing-chat-quick-action.english-summary.compact": {
+    "en": "English",
+    "zh-Hans": "英文"
   },
   "display.ai-publishing-chat-quick-action.english-summary.prompt": {
-    "zh-Hans": "请基于当前文章生成自然英文标题和英文摘要。使用 TITLE: 和 SUMMARY: 两个字段；摘要控制在 25 到 45 个英文单词，保留专有名词，忠实原文，不新增事实。不要翻译整篇正文，不要添加解释。",
-    "en": "Generate a natural English title and summary for the current article. Use the fields TITLE: and SUMMARY:. Keep the summary between 25 and 45 English words, preserve proper nouns, stay faithful to the source, and add no new facts. Do not translate the full article or add explanations."
+    "en": "Generate a natural English title and summary for the current article. Use the fields TITLE: and SUMMARY:. Keep the summary between 25 and 45 English words, preserve proper nouns, stay faithful to the source, and add no new facts. Do not translate the full article or add explanations.",
+    "zh-Hans": "请基于当前文章生成自然英文标题和英文摘要。使用 TITLE: 和 SUMMARY: 两个字段；摘要控制在 25 到 45 个英文单词，保留专有名词，忠实原文，不新增事实。不要翻译整篇正文，不要添加解释。"
   },
-  "display.ai-publishing-prompt-library-scope.all": { "zh-Hans": "全部", "en": "All" },
-  "display.ai-publishing-prompt-library-scope.writing": { "zh-Hans": "写作生成", "en": "Writing" },
-  "display.ai-publishing-prompt-library-scope.editing": { "zh-Hans": "选区编辑", "en": "Editing" },
-  "display.ai-publishing-prompt-library-scope.publishing": { "zh-Hans": "发布检查", "en": "Publishing" },
-  "display.ai-publishing-prompt-library-scope.distribution": { "zh-Hans": "分发素材", "en": "Distribution" },
-  "display.ai-publishing-prompt-library-scope.maintenance": { "zh-Hans": "内容维护", "en": "Maintenance" },
-  "display.ai-publishing-capability-center-mode.featured": { "zh-Hans": "精选", "en": "Featured" },
-  "display.ai-publishing-capability-center-mode.all": { "zh-Hans": "全部能力", "en": "All Capabilities" },
-  "display.ai-publishing-quick-prompt-group.writing": { "zh-Hans": "写作生成", "en": "Writing & Generation" },
-  "display.ai-publishing-quick-prompt-group.editing": { "zh-Hans": "选区编辑", "en": "Selection Editing" },
-  "display.ai-publishing-quick-prompt-group.publishing": { "zh-Hans": "发布检查", "en": "Pre-publish Checks" },
-  "display.ai-publishing-quick-prompt-group.distribution": { "zh-Hans": "分发素材", "en": "Distribution Assets" },
-  "display.ai-publishing-quick-prompt-group.maintenance": { "zh-Hans": "内容维护", "en": "Content Maintenance" },
-  "display.ai-publishing-quick-prompt-group.writing.detail": { "zh-Hans": "从主题、草稿或选区生成后续正文、提纲和章节。", "en": "Generate follow-up copy, outlines, and sections from a topic, draft, or selection." },
-  "display.ai-publishing-quick-prompt-group.editing.detail": { "zh-Hans": "对段落做润色、翻译、语气、语法和结构整理。", "en": "Polish, translate, retone, proofread, and restructure selected passages." },
-  "display.ai-publishing-quick-prompt-group.publishing.detail": { "zh-Hans": "检查发布风险、SEO、隐私、链接和 SSG 兼容性。", "en": "Check publishing risks, SEO, privacy, links, and SSG compatibility." },
-  "display.ai-publishing-quick-prompt-group.distribution.detail": { "zh-Hans": "生成分享文案、封面提示词、Newsletter 和发布摘要。", "en": "Create share copy, cover prompts, newsletters, and release summaries." },
-  "display.ai-publishing-quick-prompt-group.maintenance.detail": { "zh-Hans": "规划系列文章、旧文更新、更新说明和读者回复。", "en": "Plan article series, refresh old posts, and draft update notes and reader replies." },
-  "display.ai-publishing-quick-prompt.continue-writing": { "zh-Hans": "续写", "en": "Continue Writing" },
-  "display.ai-publishing-quick-prompt.outline": { "zh-Hans": "大纲", "en": "Outline" },
-  "display.ai-publishing-quick-prompt.title-ideas": { "zh-Hans": "标题建议", "en": "Title Ideas" },
-  "display.ai-publishing-quick-prompt.slug-ideas": { "zh-Hans": "Slug 建议", "en": "Slug Ideas" },
-  "display.ai-publishing-quick-prompt.tag-ideas": { "zh-Hans": "Tags 建议", "en": "Tag Ideas" },
-  "display.ai-publishing-quick-prompt.front-matter-pack": { "zh-Hans": "元数据套装", "en": "Front Matter Pack" },
-  "display.ai-publishing-quick-prompt.bilingual-metadata": { "zh-Hans": "双语元数据", "en": "Bilingual Metadata" },
-  "display.ai-publishing-quick-prompt.summary": { "zh-Hans": "摘要", "en": "Summary" },
-  "display.ai-publishing-quick-prompt.content-gap": { "zh-Hans": "内容缺口", "en": "Content Gaps" },
-  "display.ai-publishing-quick-prompt.angle-compare": { "zh-Hans": "写作角度对比", "en": "Compare Angles" },
-  "display.ai-publishing-quick-prompt.translate-chinese": { "zh-Hans": "翻译中文", "en": "Translate to Chinese" },
-  "display.ai-publishing-quick-prompt.translate-english": { "zh-Hans": "翻译英文", "en": "Translate to English" },
-  "display.ai-publishing-quick-prompt.grammar": { "zh-Hans": "语法修正", "en": "Fix Grammar" },
-  "display.ai-publishing-quick-prompt.tone": { "zh-Hans": "语气改写", "en": "Rewrite Tone" },
-  "display.ai-publishing-quick-prompt.localization-draft": { "zh-Hans": "双语改写", "en": "Bilingual Rewrite" },
-  "display.ai-publishing-quick-prompt.seo": { "zh-Hans": "SEO 建议", "en": "SEO Suggestions" },
-  "display.ai-publishing-quick-prompt.publish-review": { "zh-Hans": "发布检查", "en": "Pre-publish Review" },
-  "display.ai-publishing-quick-prompt.privacy-check": { "zh-Hans": "隐私检查", "en": "Privacy Check" },
-  "display.ai-publishing-quick-prompt.reader-review": { "zh-Hans": "读者校对", "en": "Reader Review" },
-  "display.ai-publishing-quick-prompt.fact-boundary": { "zh-Hans": "事实边界", "en": "Fact Boundaries" },
-  "display.ai-publishing-quick-prompt.source-checklist": { "zh-Hans": "来源清单", "en": "Source Checklist" },
-  "display.ai-publishing-quick-prompt.internal-links": { "zh-Hans": "内链建议", "en": "Internal Link Ideas" },
-  "display.ai-publishing-quick-prompt.link-audit": { "zh-Hans": "链接体检", "en": "Link Audit" },
-  "display.ai-publishing-quick-prompt.image-privacy": { "zh-Hans": "图片隐私检查", "en": "Image Privacy Check" },
-  "display.ai-publishing-quick-prompt.ssg-checklist": { "zh-Hans": "SSG 适配检查", "en": "SSG Compatibility Check" },
-  "display.ai-publishing-quick-prompt.publish-recovery-plan": { "zh-Hans": "失败修复建议", "en": "Publishing Recovery Plan" },
-  "display.ai-publishing-quick-prompt.image-captions": { "zh-Hans": "图片文案", "en": "Image Captions" },
-  "display.ai-publishing-quick-prompt.cover-prompt": { "zh-Hans": "封面提示词", "en": "Cover Image Prompts" },
-  "display.ai-publishing-quick-prompt.social-share": { "zh-Hans": "分享文案", "en": "Social Copy" },
-  "display.ai-publishing-quick-prompt.publish-asset-pack": { "zh-Hans": "发布素材包", "en": "Publishing Asset Pack" },
-  "display.ai-publishing-quick-prompt.pull-quotes": { "zh-Hans": "摘录卡片", "en": "Pull Quotes" },
-  "display.ai-publishing-quick-prompt.publish-note": { "zh-Hans": "发布说明", "en": "Release Notes" },
-  "display.ai-publishing-quick-prompt.cross-platform-announcement": { "zh-Hans": "跨平台摘要", "en": "Cross-platform Announcement" },
-  "display.ai-publishing-quick-prompt.short-video-script": { "zh-Hans": "短视频口播稿", "en": "Short Video Script" },
-  "display.ai-publishing-quick-prompt.tldr": { "zh-Hans": "TL;DR", "en": "TL;DR" },
-  "display.ai-publishing-quick-prompt.faq": { "zh-Hans": "FAQ", "en": "FAQ" },
-  "display.ai-publishing-quick-prompt.reader-questions": { "zh-Hans": "读者追问", "en": "Reader Questions" },
-  "display.ai-publishing-quick-prompt.step-guide": { "zh-Hans": "步骤指南", "en": "Step-by-step Guide" },
-  "display.ai-publishing-quick-prompt.checklist": { "zh-Hans": "检查清单", "en": "Checklist" },
-  "display.ai-publishing-quick-prompt.structure-plan": { "zh-Hans": "结构重组", "en": "Restructure Content" },
-  "display.ai-publishing-quick-prompt.counterpoint": { "zh-Hans": "反方观点", "en": "Counterpoint" },
-  "display.ai-publishing-quick-prompt.case-study": { "zh-Hans": "案例分析", "en": "Case Study" },
-  "display.ai-publishing-quick-prompt.old-article-refresh": { "zh-Hans": "旧文更新", "en": "Refresh Old Article" },
-  "display.ai-publishing-quick-prompt.mermaid": { "zh-Hans": "Mermaid 图示", "en": "Mermaid Diagram" },
-  "display.ai-publishing-quick-prompt.glossary": { "zh-Hans": "术语表", "en": "Glossary" },
-  "display.ai-publishing-quick-prompt.release-summary": { "zh-Hans": "发布摘要", "en": "Release Summary" },
-  "display.ai-publishing-quick-prompt.series-plan": { "zh-Hans": "系列选题", "en": "Series Plan" },
-  "display.ai-publishing-quick-prompt.update-note": { "zh-Hans": "更新说明", "en": "Update Note" },
-  "display.ai-publishing-quick-prompt.comment-reply": { "zh-Hans": "评论回复", "en": "Comment Reply" },
-  "display.ai-publishing-chat-role.user": { "zh-Hans": "你", "en": "You" },
-  "display.ai-publishing-chat-role.assistant": { "zh-Hans": "AI", "en": "AI" },
-  "display.ai-publishing-chat-context-mode.site": { "zh-Hans": "站点上下文", "en": "Site Context" },
-  "display.ai-publishing-chat-context-mode.general": { "zh-Hans": "通用聊天", "en": "General Chat" },
-  "display.ai-context-reference-kind.current-selection": { "zh-Hans": "当前选区", "en": "Current Selection" },
-  "display.ai-context-reference-kind.current-article": { "zh-Hans": "当前文章", "en": "Current Article" },
-  "display.ai-context-reference-kind.specified-article": { "zh-Hans": "指定文章", "en": "Selected Article" },
-  "display.ai-context-reference-kind.site-profile": { "zh-Hans": "站点配置", "en": "Site Configuration" },
-  "display.ai-context-reference-kind.knowledge-entry": { "zh-Hans": "资料条目", "en": "Knowledge Entry" },
-  "display.ai-context-reference-kind.publish-check": { "zh-Hans": "发布检查", "en": "Publishing Check" },
-  "display.ai-publishing-chat-draft-application-mode.replace-selection": { "zh-Hans": "替换选中文本", "en": "Replace Selection" },
-  "display.ai-publishing-chat-draft-application-mode.replace-body": { "zh-Hans": "替换整篇正文", "en": "Replace Entire Body" },
-  "display.ai-publishing-chat-draft-application-mode.append-to-body": { "zh-Hans": "追加到文章末尾", "en": "Append to Article" },
-  "display.ai-publishing-selection-edit-application.replace-range": { "zh-Hans": "替换选区", "en": "Replace Selection" },
-  "display.ai-publishing-selection-edit-application.insert-after-range": { "zh-Hans": "插入到选区后", "en": "Insert After Selection" },
-  "display.ai-publishing-selection-edit-application.insert-at-range": { "zh-Hans": "插入到当前位置", "en": "Insert at Current Position" },
-  "display.site-maintenance-health-level.stable": { "zh-Hans": "稳定", "en": "Stable" },
-  "display.site-maintenance-health-level.watch": { "zh-Hans": "关注", "en": "Watch" },
-  "display.site-maintenance-health-level.needs-work": { "zh-Hans": "需整理", "en": "Needs Work" },
-  "display.site-maintenance-health-level.urgent": { "zh-Hans": "需优先处理", "en": "Urgent" },
-  "display.maintenance-action-priority.high": { "zh-Hans": "高", "en": "High" },
-  "display.maintenance-action-priority.medium": { "zh-Hans": "中", "en": "Medium" },
-  "display.maintenance-action-priority.low": { "zh-Hans": "低", "en": "Low" },
-  "display.maintenance-action-kind.stale-article": { "zh-Hans": "旧文整理", "en": "Stale Article Cleanup" },
-  "display.maintenance-action-kind.link-audit": { "zh-Hans": "链接审计", "en": "Link Audit" },
-  "display.maintenance-action-kind.taxonomy": { "zh-Hans": "分类治理", "en": "Taxonomy Cleanup" },
-  "display.maintenance-action-kind.relation-suggestion": { "zh-Hans": "内链建议", "en": "Internal Link Suggestions" },
-  "display.workbench-automation-risk.read-only": { "zh-Hans": "只读", "en": "Read Only" },
-  "display.workbench-automation-risk.reversible": { "zh-Hans": "可撤销", "en": "Reversible" },
-  "display.workbench-automation-risk.content-change": { "zh-Hans": "修改内容", "en": "Content Change" },
-  "display.workbench-automation-risk.external-effect": { "zh-Hans": "外部操作", "en": "External Action" }
+  "display.ai-publishing-chat-quick-action.polish-suggestions": {
+    "en": "Polish Suggestions",
+    "zh-Hans": "润色建议"
+  },
+  "display.ai-publishing-chat-quick-action.polish-suggestions.compact": {
+    "en": "Polish",
+    "zh-Hans": "润色"
+  },
+  "display.ai-publishing-chat-quick-action.polish-suggestions.prompt": {
+    "en": "Proofread the current article and provide up to five polishing suggestions. Format each as “Original / Suggested Revision / Reason.” Quote only the necessary short excerpt. Do not rewrite the full article or change facts, code, links, or Front Matter. If there are no clear issues, say so directly.",
+    "zh-Hans": "请校对当前文章并给出最多 5 条润色建议。每条按“原文片段 / 建议改写 / 原因”输出；只引用必要短句，不要重写整篇文章，不要改变事实、代码、链接或 Front Matter。没有明显问题时直接说明。"
+  },
+  "display.ai-publishing-chat-quick-action.proofread": {
+    "en": "Proofread Post",
+    "zh-Hans": "校对文章"
+  },
+  "display.ai-publishing-chat-quick-action.proofread.compact": {
+    "en": "Proofread",
+    "zh-Hans": "校对"
+  },
+  "display.ai-publishing-chat-quick-action.proofread.prompt": {
+    "en": "Proofread the current article for typos, punctuation errors, and unclear sentences. List only definite issues in a three-column table: “Original / Suggestion / Reason.” Do not rewrite paragraphs without problems. If there are no clear issues, reply: “No obvious writing issues found.”",
+    "zh-Hans": "请校对当前文章中的错别字、标点误用和病句。只列出明确发现的问题，按“原文 / 建议 / 原因”三列表格输出，不要重写没有问题的段落；若无明显问题，直接回复“未发现明显的文字问题”。"
+  },
+  "display.ai-publishing-chat-quick-action.summary": {
+    "en": "Generate Summary",
+    "zh-Hans": "生成摘要"
+  },
+  "display.ai-publishing-chat-quick-action.summary.compact": {
+    "en": "Summary",
+    "zh-Hans": "摘要"
+  },
+  "display.ai-publishing-chat-quick-action.summary.prompt": {
+    "en": "Create a summary or description that can be written directly to the current article’s Front Matter. Use 60–160 Chinese characters for Chinese articles or 25–45 English words for English articles. Stay faithful to the source, remain concise, and add no new facts. If the body contains only a title, placeholder, writing guidance, or too little content to identify the topic, return only: “There is not enough content to generate a useful summary. Add article content and try again.” Otherwise return only the summary text, without a title, numbering, quotation marks, explanation, analysis, or reasoning.",
+    "zh-Hans": "请基于当前文章生成一条可直接写入 Front Matter 的 summary/description，控制在 60 到 160 个中文字符；英文文章控制在 25 到 45 个英文单词。忠实原文、保持克制、不新增事实。如果正文只有标题、占位语、写作引导或无法判断主题，只返回“当前内容不足，无法生成有效摘要，请补充正文后重试。”不要为占位内容强行生成摘要。其他情况下只返回摘要正文，不要标题、编号、引号、解释、分析或推理过程。"
+  },
+  "display.ai-publishing-chat-quick-action.tag-suggestions": {
+    "en": "Tag Suggestions",
+    "zh-Hans": "标签建议"
+  },
+  "display.ai-publishing-chat-quick-action.tag-suggestions.compact": {
+    "en": "Tags",
+    "zh-Hans": "标签"
+  },
+  "display.ai-publishing-chat-quick-action.tag-suggestions.prompt": {
+    "en": "Recommend 3–8 stable, reusable tags based on the current article. Return one comma-separated line only, with no numbering, quotation marks, Markdown, categories, or extra explanation. Do not invent topics the article does not cover.",
+    "zh-Hans": "请基于当前文章推荐 3 到 8 个稳定、可复用的 tags。只返回一行逗号分隔的标签，不要编号、引号、Markdown、分类或额外解释，不要编造文章没有涉及的主题。"
+  },
+  "display.ai-publishing-chat-role.assistant": {
+    "en": "AI",
+    "zh-Hans": "AI"
+  },
+  "display.ai-publishing-chat-role.user": {
+    "en": "You",
+    "zh-Hans": "你"
+  },
+  "display.ai-publishing-default-capability.ask-anything": {
+    "en": "Ask Anything",
+    "zh-Hans": "自由提问"
+  },
+  "display.ai-publishing-default-capability.cite-knowledge": {
+    "en": "Cite Sources",
+    "zh-Hans": "引用资料"
+  },
+  "display.ai-publishing-default-capability.condense": {
+    "en": "Condense",
+    "zh-Hans": "压缩"
+  },
+  "display.ai-publishing-default-capability.continue-writing": {
+    "en": "Continue",
+    "zh-Hans": "续写"
+  },
+  "display.ai-publishing-default-capability.generate-metadata": {
+    "en": "Generate Metadata",
+    "zh-Hans": "生成元数据"
+  },
+  "display.ai-publishing-default-capability.publishing-check": {
+    "en": "Publishing Check",
+    "zh-Hans": "发布检查"
+  },
+  "display.ai-publishing-default-capability.rewrite": {
+    "en": "Rewrite",
+    "zh-Hans": "改写"
+  },
+  "display.ai-publishing-default-capability.translate": {
+    "en": "Translate",
+    "zh-Hans": "翻译"
+  },
+  "display.ai-publishing-prompt-library-scope.all": {
+    "en": "All",
+    "zh-Hans": "全部"
+  },
+  "display.ai-publishing-prompt-library-scope.distribution": {
+    "en": "Distribution",
+    "zh-Hans": "分发素材"
+  },
+  "display.ai-publishing-prompt-library-scope.editing": {
+    "en": "Editing",
+    "zh-Hans": "选区编辑"
+  },
+  "display.ai-publishing-prompt-library-scope.maintenance": {
+    "en": "Maintenance",
+    "zh-Hans": "内容维护"
+  },
+  "display.ai-publishing-prompt-library-scope.publishing": {
+    "en": "Publishing",
+    "zh-Hans": "发布检查"
+  },
+  "display.ai-publishing-prompt-library-scope.writing": {
+    "en": "Writing",
+    "zh-Hans": "写作生成"
+  },
+  "display.ai-publishing-quick-prompt-group.distribution": {
+    "en": "Distribution Assets",
+    "zh-Hans": "分发素材"
+  },
+  "display.ai-publishing-quick-prompt-group.distribution.detail": {
+    "en": "Create share copy, cover prompts, newsletters, and release summaries.",
+    "zh-Hans": "生成分享文案、封面提示词、Newsletter 和发布摘要。"
+  },
+  "display.ai-publishing-quick-prompt-group.editing": {
+    "en": "Selection Editing",
+    "zh-Hans": "选区编辑"
+  },
+  "display.ai-publishing-quick-prompt-group.editing.detail": {
+    "en": "Polish, translate, retone, proofread, and restructure selected passages.",
+    "zh-Hans": "对段落做润色、翻译、语气、语法和结构整理。"
+  },
+  "display.ai-publishing-quick-prompt-group.maintenance": {
+    "en": "Content Maintenance",
+    "zh-Hans": "内容维护"
+  },
+  "display.ai-publishing-quick-prompt-group.maintenance.detail": {
+    "en": "Plan article series, refresh old posts, and draft update notes and reader replies.",
+    "zh-Hans": "规划系列文章、旧文更新、更新说明和读者回复。"
+  },
+  "display.ai-publishing-quick-prompt-group.publishing": {
+    "en": "Pre-publish Checks",
+    "zh-Hans": "发布检查"
+  },
+  "display.ai-publishing-quick-prompt-group.publishing.detail": {
+    "en": "Check publishing risks, SEO, privacy, links, and SSG compatibility.",
+    "zh-Hans": "检查发布风险、SEO、隐私、链接和 SSG 兼容性。"
+  },
+  "display.ai-publishing-quick-prompt-group.writing": {
+    "en": "Writing & Generation",
+    "zh-Hans": "写作生成"
+  },
+  "display.ai-publishing-quick-prompt-group.writing.detail": {
+    "en": "Generate follow-up copy, outlines, and sections from a topic, draft, or selection.",
+    "zh-Hans": "从主题、草稿或选区生成后续正文、提纲和章节。"
+  },
+  "display.ai-publishing-quick-prompt.angle-compare": {
+    "en": "Compare Angles",
+    "zh-Hans": "写作角度对比"
+  },
+  "display.ai-publishing-quick-prompt.bilingual-metadata": {
+    "en": "Bilingual Metadata",
+    "zh-Hans": "双语元数据"
+  },
+  "display.ai-publishing-quick-prompt.case-study": {
+    "en": "Case Study",
+    "zh-Hans": "案例分析"
+  },
+  "display.ai-publishing-quick-prompt.checklist": {
+    "en": "Checklist",
+    "zh-Hans": "检查清单"
+  },
+  "display.ai-publishing-quick-prompt.comment-reply": {
+    "en": "Comment Reply",
+    "zh-Hans": "评论回复"
+  },
+  "display.ai-publishing-quick-prompt.content-gap": {
+    "en": "Content Gaps",
+    "zh-Hans": "内容缺口"
+  },
+  "display.ai-publishing-quick-prompt.continue-writing": {
+    "en": "Continue Writing",
+    "zh-Hans": "续写"
+  },
+  "display.ai-publishing-quick-prompt.counterpoint": {
+    "en": "Counterpoint",
+    "zh-Hans": "反方观点"
+  },
+  "display.ai-publishing-quick-prompt.cover-prompt": {
+    "en": "Cover Image Prompts",
+    "zh-Hans": "封面提示词"
+  },
+  "display.ai-publishing-quick-prompt.cross-platform-announcement": {
+    "en": "Cross-platform Announcement",
+    "zh-Hans": "跨平台摘要"
+  },
+  "display.ai-publishing-quick-prompt.fact-boundary": {
+    "en": "Fact Boundaries",
+    "zh-Hans": "事实边界"
+  },
+  "display.ai-publishing-quick-prompt.faq": {
+    "en": "FAQ",
+    "zh-Hans": "FAQ"
+  },
+  "display.ai-publishing-quick-prompt.front-matter-pack": {
+    "en": "Front Matter Pack",
+    "zh-Hans": "元数据套装"
+  },
+  "display.ai-publishing-quick-prompt.glossary": {
+    "en": "Glossary",
+    "zh-Hans": "术语表"
+  },
+  "display.ai-publishing-quick-prompt.grammar": {
+    "en": "Fix Grammar",
+    "zh-Hans": "语法修正"
+  },
+  "display.ai-publishing-quick-prompt.image-captions": {
+    "en": "Image Captions",
+    "zh-Hans": "图片文案"
+  },
+  "display.ai-publishing-quick-prompt.image-privacy": {
+    "en": "Image Privacy Check",
+    "zh-Hans": "图片隐私检查"
+  },
+  "display.ai-publishing-quick-prompt.internal-links": {
+    "en": "Internal Link Ideas",
+    "zh-Hans": "内链建议"
+  },
+  "display.ai-publishing-quick-prompt.link-audit": {
+    "en": "Link Audit",
+    "zh-Hans": "链接体检"
+  },
+  "display.ai-publishing-quick-prompt.localization-draft": {
+    "en": "Bilingual Rewrite",
+    "zh-Hans": "双语改写"
+  },
+  "display.ai-publishing-quick-prompt.mermaid": {
+    "en": "Mermaid Diagram",
+    "zh-Hans": "Mermaid 图示"
+  },
+  "display.ai-publishing-quick-prompt.old-article-refresh": {
+    "en": "Refresh Old Article",
+    "zh-Hans": "旧文更新"
+  },
+  "display.ai-publishing-quick-prompt.outline": {
+    "en": "Outline",
+    "zh-Hans": "大纲"
+  },
+  "display.ai-publishing-quick-prompt.privacy-check": {
+    "en": "Privacy Check",
+    "zh-Hans": "隐私检查"
+  },
+  "display.ai-publishing-quick-prompt.publish-asset-pack": {
+    "en": "Publishing Asset Pack",
+    "zh-Hans": "发布素材包"
+  },
+  "display.ai-publishing-quick-prompt.publish-note": {
+    "en": "Release Notes",
+    "zh-Hans": "发布说明"
+  },
+  "display.ai-publishing-quick-prompt.publish-recovery-plan": {
+    "en": "Publishing Recovery Plan",
+    "zh-Hans": "失败修复建议"
+  },
+  "display.ai-publishing-quick-prompt.publish-review": {
+    "en": "Pre-publish Review",
+    "zh-Hans": "发布检查"
+  },
+  "display.ai-publishing-quick-prompt.pull-quotes": {
+    "en": "Pull Quotes",
+    "zh-Hans": "摘录卡片"
+  },
+  "display.ai-publishing-quick-prompt.reader-questions": {
+    "en": "Reader Questions",
+    "zh-Hans": "读者追问"
+  },
+  "display.ai-publishing-quick-prompt.reader-review": {
+    "en": "Reader Review",
+    "zh-Hans": "读者校对"
+  },
+  "display.ai-publishing-quick-prompt.release-summary": {
+    "en": "Release Summary",
+    "zh-Hans": "发布摘要"
+  },
+  "display.ai-publishing-quick-prompt.seo": {
+    "en": "SEO Suggestions",
+    "zh-Hans": "SEO 建议"
+  },
+  "display.ai-publishing-quick-prompt.series-plan": {
+    "en": "Series Plan",
+    "zh-Hans": "系列选题"
+  },
+  "display.ai-publishing-quick-prompt.short-video-script": {
+    "en": "Short Video Script",
+    "zh-Hans": "短视频口播稿"
+  },
+  "display.ai-publishing-quick-prompt.slug-ideas": {
+    "en": "Slug Ideas",
+    "zh-Hans": "Slug 建议"
+  },
+  "display.ai-publishing-quick-prompt.social-share": {
+    "en": "Social Copy",
+    "zh-Hans": "分享文案"
+  },
+  "display.ai-publishing-quick-prompt.source-checklist": {
+    "en": "Source Checklist",
+    "zh-Hans": "来源清单"
+  },
+  "display.ai-publishing-quick-prompt.ssg-checklist": {
+    "en": "SSG Compatibility Check",
+    "zh-Hans": "SSG 适配检查"
+  },
+  "display.ai-publishing-quick-prompt.step-guide": {
+    "en": "Step-by-step Guide",
+    "zh-Hans": "步骤指南"
+  },
+  "display.ai-publishing-quick-prompt.structure-plan": {
+    "en": "Restructure Content",
+    "zh-Hans": "结构重组"
+  },
+  "display.ai-publishing-quick-prompt.summary": {
+    "en": "Summary",
+    "zh-Hans": "摘要"
+  },
+  "display.ai-publishing-quick-prompt.tag-ideas": {
+    "en": "Tag Ideas",
+    "zh-Hans": "Tags 建议"
+  },
+  "display.ai-publishing-quick-prompt.title-ideas": {
+    "en": "Title Ideas",
+    "zh-Hans": "标题建议"
+  },
+  "display.ai-publishing-quick-prompt.tldr": {
+    "en": "TL;DR",
+    "zh-Hans": "TL;DR"
+  },
+  "display.ai-publishing-quick-prompt.tone": {
+    "en": "Rewrite Tone",
+    "zh-Hans": "语气改写"
+  },
+  "display.ai-publishing-quick-prompt.translate-chinese": {
+    "en": "Translate to Chinese",
+    "zh-Hans": "翻译中文"
+  },
+  "display.ai-publishing-quick-prompt.translate-english": {
+    "en": "Translate to English",
+    "zh-Hans": "翻译英文"
+  },
+  "display.ai-publishing-quick-prompt.update-note": {
+    "en": "Update Note",
+    "zh-Hans": "更新说明"
+  },
+  "display.ai-publishing-selection-edit-application.insert-after-range": {
+    "en": "Insert After Selection",
+    "zh-Hans": "插入到选区后"
+  },
+  "display.ai-publishing-selection-edit-application.insert-at-range": {
+    "en": "Insert at Current Position",
+    "zh-Hans": "插入到当前位置"
+  },
+  "display.ai-publishing-selection-edit-application.replace-range": {
+    "en": "Replace Selection",
+    "zh-Hans": "替换选区"
+  },
+  "display.maintenance-action-kind.link-audit": {
+    "en": "Link Audit",
+    "zh-Hans": "链接审计"
+  },
+  "display.maintenance-action-kind.relation-suggestion": {
+    "en": "Internal Link Suggestions",
+    "zh-Hans": "内链建议"
+  },
+  "display.maintenance-action-kind.stale-article": {
+    "en": "Stale Article Cleanup",
+    "zh-Hans": "旧文整理"
+  },
+  "display.maintenance-action-kind.taxonomy": {
+    "en": "Taxonomy Cleanup",
+    "zh-Hans": "分类治理"
+  },
+  "display.maintenance-action-priority.high": {
+    "en": "High",
+    "zh-Hans": "高"
+  },
+  "display.maintenance-action-priority.low": {
+    "en": "Low",
+    "zh-Hans": "低"
+  },
+  "display.maintenance-action-priority.medium": {
+    "en": "Medium",
+    "zh-Hans": "中"
+  },
+  "display.site-maintenance-health-level.needs-work": {
+    "en": "Needs Work",
+    "zh-Hans": "需整理"
+  },
+  "display.site-maintenance-health-level.stable": {
+    "en": "Stable",
+    "zh-Hans": "稳定"
+  },
+  "display.site-maintenance-health-level.urgent": {
+    "en": "Urgent",
+    "zh-Hans": "需优先处理"
+  },
+  "display.site-maintenance-health-level.watch": {
+    "en": "Watch",
+    "zh-Hans": "关注"
+  },
+  "display.workbench-automation-risk.content-change": {
+    "en": "Content Change",
+    "zh-Hans": "修改内容"
+  },
+  "display.workbench-automation-risk.external-effect": {
+    "en": "External Action",
+    "zh-Hans": "外部操作"
+  },
+  "display.workbench-automation-risk.read-only": {
+    "en": "Read Only",
+    "zh-Hans": "只读"
+  },
+  "display.workbench-automation-risk.reversible": {
+    "en": "Reversible",
+    "zh-Hans": "可撤销"
+  }
 }

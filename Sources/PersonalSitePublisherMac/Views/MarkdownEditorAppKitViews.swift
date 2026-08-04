@@ -73,7 +73,24 @@ final class DroppableMarkdownTextView: NSTextView {
   var fileDropTargetChangedHandler: ((Bool) -> Void)?
   var fileDropHandler: (([URL], NSRange) -> Void)?
   var knowledgeMarkdownDropHandler: ((String, NSRange, KnowledgeCitation?) -> Void)?
-  var smartPasteHandler: ((NSTextView, NSPasteboard) -> Bool)?
+  var smartPasteHandler: ((NSTextView, any MarkdownPasteboardSource) -> Bool)?
+  var pasteboardProvider: () -> any MarkdownPasteboardSource = { NSPasteboard.general }
+  var fileDropImageURLsProvider: (NSPasteboard) -> [URL] = {
+    MarkdownPasteboardReader.imageFileURLs(from: $0)
+  }
+  var knowledgeMarkdownProvider: (NSPasteboard) -> String? = { pasteboard in
+    guard let data = pasteboard.data(
+      forType: KnowledgeArticleInsertionService.knowledgeMarkdownPasteboardType
+    ) else {
+      return nil
+    }
+    return String(data: data, encoding: .utf8)?.trimmingCharacters(
+      in: .whitespacesAndNewlines
+    ).nilIfEmpty
+  }
+  var knowledgeCitationProvider: (NSPasteboard) -> KnowledgeCitation? = {
+    KnowledgeArticleInsertionService.citation(from: $0)
+  }
   var markdownFormattingHandler: ((NSTextView, MarkdownFormattingCommand) -> Bool)?
   var markdownTableContextProvider: ((NSTextView) -> MarkdownTableEditingContext?)?
   var markdownTableEditingHandler: ((NSTextView, MarkdownTableEditingCommand) -> Bool)?
@@ -126,7 +143,7 @@ final class DroppableMarkdownTextView: NSTextView {
   }
 
   override func paste(_ sender: Any?) {
-    guard smartPasteHandler?(self, .general) == true else {
+    guard smartPasteHandler?(self, pasteboardProvider()) == true else {
       super.paste(sender)
       return
     }
@@ -302,7 +319,7 @@ final class DroppableMarkdownTextView: NSTextView {
     knowledgeMarkdownDropHandler?(
       markdown,
       dropRange,
-      KnowledgeArticleInsertionService.citation(from: sender.draggingPasteboard)
+      knowledgeCitationProvider(sender.draggingPasteboard)
     )
     return true
   }
@@ -333,18 +350,11 @@ final class DroppableMarkdownTextView: NSTextView {
   }
 
   private func imageFileURLs(from pasteboard: NSPasteboard) -> [URL] {
-    MarkdownPasteboardReader.imageFileURLs(from: pasteboard)
+    fileDropImageURLsProvider(pasteboard)
   }
 
   private func knowledgeMarkdown(from pasteboard: NSPasteboard) -> String? {
-    guard let data = pasteboard.data(
-      forType: KnowledgeArticleInsertionService.knowledgeMarkdownPasteboardType
-    ) else {
-      return nil
-    }
-    return String(data: data, encoding: .utf8)?
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-      .nilIfEmpty
+    knowledgeMarkdownProvider(pasteboard)
   }
 }
 

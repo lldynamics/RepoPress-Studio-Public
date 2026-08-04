@@ -97,20 +97,12 @@ final class LocalSitePreviewServiceTests: XCTestCase {
 
   func testPreviewProcessServiceStartsAndStopsControlledProcess() throws {
     let service = LocalSitePreviewProcessService()
-    let plan = LocalSitePreviewPlan(
-      siteKind: .zola,
-      rootPath: FileManager.default.temporaryDirectory.path,
-      executablePath: "/bin/sleep",
-      arguments: ["5"],
-      command: "sleep 5",
-      previewURL: try XCTUnwrap(URL(string: "http://127.0.0.1:1111")),
-      notes: []
-    )
+    let plan = try makeSleepPreviewPlan()
 
     let started = try service.start(plan: plan)
     XCTAssertTrue(started.isRunning)
     XCTAssertNotNil(started.processIdentifier)
-    XCTAssertEqual(started.previewURL?.absoluteString, "http://127.0.0.1:1111")
+    XCTAssertEqual(started.previewURL, plan.previewURL)
 
     service.stop()
     XCTAssertFalse(service.status.isRunning)
@@ -122,15 +114,7 @@ final class LocalSitePreviewServiceTests: XCTestCase {
 
   func testPreviewProcessServiceStopsAsynchronously() async throws {
     let service = LocalSitePreviewProcessService()
-    let plan = LocalSitePreviewPlan(
-      siteKind: .zola,
-      rootPath: FileManager.default.temporaryDirectory.path,
-      executablePath: "/bin/sleep",
-      arguments: ["5"],
-      command: "sleep 5",
-      previewURL: try XCTUnwrap(URL(string: "http://127.0.0.1:1111")),
-      notes: []
-    )
+    let plan = try makeSleepPreviewPlan()
 
     let started = try service.start(plan: plan)
     await service.stopAsync()
@@ -140,6 +124,18 @@ final class LocalSitePreviewServiceTests: XCTestCase {
     XCTAssertEqual(Darwin.kill(try XCTUnwrap(started.processIdentifier), 0), -1)
     XCTAssertEqual(errno, ESRCH)
 #endif
+  }
+
+  private func makeSleepPreviewPlan() throws -> LocalSitePreviewPlan {
+    return LocalSitePreviewPlan(
+      siteKind: .zola,
+      rootPath: FileManager.default.temporaryDirectory.path,
+      executablePath: "/bin/sleep",
+      arguments: ["5"],
+      command: "sleep 5",
+      previewURL: try XCTUnwrap(URL(string: "http://127.0.0.1")),
+      notes: []
+    )
   }
 
   func testPreviewProcessEnvironmentUsesTrustedPathsAndDropsSecrets() {

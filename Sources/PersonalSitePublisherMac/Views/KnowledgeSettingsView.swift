@@ -13,6 +13,7 @@ struct KnowledgeAdvancedSettingsExpansionState: Equatable {
 }
 
 struct KnowledgeSettingsView: View {
+  @Environment(\.dismiss) private var dismiss
   @ObservedObject var store: WorkbenchStore
   @ObservedObject var backupScheduler: WorkspaceBackupScheduler
   @ObservedObject var knowledge: KnowledgeStore
@@ -24,69 +25,78 @@ struct KnowledgeSettingsView: View {
   @State private var isBrowserConnectionPresented = false
   @State private var restorePreview: KnowledgeLibraryBackupPreview?
   @State private var workspaceBackupPreview: WorkspaceBackupPreview?
+  @State private var isWorkspaceOperationRunning = false
+  @State private var workspaceOperationMessage: String?
+  @State private var workspaceOperationIsError = false
 
   var body: some View {
-    Form {
-      Section(String(localized: "资料库概览")) {
-        LabeledContent("资料", value: knowledge.documents.count.formatted())
-        LabeledContent("文件夹", value: knowledge.folders.count.formatted())
-        LabeledContent("已存智能集合", value: savedCollectionCount.formatted())
-        if let statusMessage = knowledge.statusMessage, !statusMessage.isEmpty {
-          Text(statusMessage)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
+    VStack(spacing: 0) {
+      knowledgeSettingsHeader
+
+      Divider()
+
+      Form {
+        Section(String(localized: "资料库概览")) {
+          LabeledContent("资料", value: knowledge.documents.count.formatted())
+          LabeledContent("文件夹", value: knowledge.folders.count.formatted())
+          LabeledContent("已存智能集合", value: savedCollectionCount.formatted())
+          if let statusMessage = knowledge.statusMessage, !statusMessage.isEmpty {
+            Text(statusMessage)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .textSelection(.enabled)
+          }
+        }
+
+        Section(String(localized: "高级功能")) {
+          DisclosureGroup(isExpanded: $expansionState.vectorSearch) {
+            vectorSearchSettings
+          } label: {
+            advancedGroupLabel(
+              title: String(localized: "向量搜索"),
+              detail: String(localized: "本地语义检索与索引维护"),
+              systemImage: "point.3.connected.trianglepath.dotted"
+            )
+          }
+          .accessibilityIdentifier("knowledge-settings-vector-search")
+
+          DisclosureGroup(isExpanded: $expansionState.smartCollections) {
+            smartCollectionSettings
+          } label: {
+            advancedGroupLabel(
+              title: String(localized: "智能集合"),
+              detail: String(localized: "作者、标签、来源与时间规则"),
+              systemImage: "wand.and.stars"
+            )
+          }
+          .accessibilityIdentifier("knowledge-settings-smart-collections")
+
+          DisclosureGroup(isExpanded: $expansionState.backup) {
+            backupSettings
+          } label: {
+            advancedGroupLabel(
+              title: String(localized: "备份"),
+              detail: String(localized: "完整性校验、恢复预览与安全回退"),
+              systemImage: "externaldrive"
+            )
+          }
+          .accessibilityIdentifier("knowledge-settings-backup")
+
+          DisclosureGroup(isExpanded: $expansionState.browserConnection) {
+            browserConnectionSettings
+          } label: {
+            advancedGroupLabel(
+              title: String(localized: "浏览器连接"),
+              detail: String(localized: "从 Safari、Chrome 或 Firefox 保存网页"),
+              systemImage: "puzzlepiece.extension"
+            )
+          }
+          .accessibilityIdentifier("knowledge-settings-browser-connection")
         }
       }
-
-      Section(String(localized: "高级功能")) {
-        DisclosureGroup(isExpanded: $expansionState.vectorSearch) {
-          vectorSearchSettings
-        } label: {
-          advancedGroupLabel(
-            title: String(localized: "向量搜索"),
-            detail: String(localized: "本地语义检索与索引维护"),
-            systemImage: "point.3.connected.trianglepath.dotted"
-          )
-        }
-        .accessibilityIdentifier("knowledge-settings-vector-search")
-
-        DisclosureGroup(isExpanded: $expansionState.smartCollections) {
-          smartCollectionSettings
-        } label: {
-          advancedGroupLabel(
-            title: String(localized: "智能集合"),
-            detail: String(localized: "作者、标签、来源与时间规则"),
-            systemImage: "wand.and.stars"
-          )
-        }
-        .accessibilityIdentifier("knowledge-settings-smart-collections")
-
-        DisclosureGroup(isExpanded: $expansionState.backup) {
-          backupSettings
-        } label: {
-          advancedGroupLabel(
-            title: String(localized: "备份"),
-            detail: String(localized: "完整性校验、恢复预览与安全回退"),
-            systemImage: "externaldrive"
-          )
-        }
-        .accessibilityIdentifier("knowledge-settings-backup")
-
-        DisclosureGroup(isExpanded: $expansionState.browserConnection) {
-          browserConnectionSettings
-        } label: {
-          advancedGroupLabel(
-            title: String(localized: "浏览器连接"),
-            detail: String(localized: "从 Safari、Chrome 或 Firefox 保存网页"),
-            systemImage: "puzzlepiece.extension"
-          )
-        }
-        .accessibilityIdentifier("knowledge-settings-browser-connection")
-      }
+      .formStyle(.grouped)
+      .padding(WorkbenchSpacing.content)
     }
-    .formStyle(.grouped)
-    .padding()
     .sheet(item: $restorePreview) { preview in
       KnowledgeLibraryRestorePreviewView(knowledge: knowledge, preview: preview)
     }
@@ -107,6 +117,43 @@ struct KnowledgeSettingsView: View {
       await backupScheduler.refreshRecentBackups()
     }
     .accessibilityIdentifier("knowledge-settings")
+  }
+
+  private var knowledgeSettingsHeader: some View {
+    HStack(spacing: WorkbenchSpacing.section) {
+      Image(systemName: "books.vertical")
+        .font(.title3.weight(.semibold))
+        .foregroundStyle(WorkbenchTheme.brand)
+        .frame(width: 36, height: 36)
+        .background(
+          WorkbenchTheme.brand.opacity(WorkbenchOpacity.selectionBackground),
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+        )
+        .accessibilityHidden(true)
+
+      VStack(alignment: .leading, spacing: 3) {
+        Text("资料库设置")
+          .font(.workbenchPageTitle)
+          .accessibilityAddTraits(.isHeader)
+        Text("管理本地检索、智能集合、备份和浏览器连接。")
+          .font(.workbenchPageSubtitle)
+          .foregroundStyle(.secondary)
+      }
+
+      Spacer(minLength: WorkbenchSpacing.content)
+
+      Button {
+        dismiss()
+      } label: {
+        Image(systemName: "xmark")
+      }
+      .buttonStyle(.borderless)
+      .help("关闭资料库设置")
+      .accessibilityLabel("关闭资料库设置")
+    }
+    .padding(.horizontal, WorkbenchSpacing.page)
+    .padding(.vertical, WorkbenchSpacing.card)
+    .background(Color(nsColor: .windowBackgroundColor))
   }
 
   private var vectorSearchSettings: some View {
@@ -193,7 +240,22 @@ struct KnowledgeSettingsView: View {
           Label(String(localized: "恢复完整工作区…"), systemImage: "arrow.counterclockwise")
         }
       }
-      .disabled(knowledge.isBusy)
+      .disabled(knowledge.isBusy || isWorkspaceOperationRunning)
+
+      if isWorkspaceOperationRunning {
+        ProgressView("正在校验完整工作区备份…")
+          .controlSize(.small)
+      }
+      if let workspaceOperationMessage {
+        Label(
+          workspaceOperationMessage,
+          systemImage: workspaceOperationIsError ? "exclamationmark.triangle" : "checkmark.circle"
+        )
+        .font(.caption)
+        .foregroundStyle(workspaceOperationIsError ? WorkbenchTheme.warning : Color.secondary)
+        .textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
+      }
 
       automaticWorkspaceBackupSettings
     }
@@ -355,6 +417,12 @@ struct KnowledgeSettingsView: View {
               Button(String(localized: "一键恢复")) {
                 restoreAutomaticBackup(preview)
               }
+              .accessibilityLabel(
+                String(
+                  format: String(localized: "恢复 %@ 创建的自动备份"),
+                  preview.createdAt.formatted(date: .abbreviated, time: .shortened)
+                )
+              )
             }
             .padding(9)
             .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: 8))
@@ -407,12 +475,37 @@ struct KnowledgeSettingsView: View {
 
   private func createWorkspaceBackup() {
     guard let destinationURL = WorkspaceBackupSelectionPanel.chooseBackupDestination() else { return }
-    Task { _ = await store.createWorkspaceBackup(at: destinationURL) }
+    isWorkspaceOperationRunning = true
+    workspaceOperationMessage = nil
+    workspaceOperationIsError = false
+    Task {
+      let preview = await store.createWorkspaceBackup(at: destinationURL)
+      if let preview {
+        workspaceOperationMessage = String(
+          format: String(localized: "完整工作区备份已创建：%@"),
+          preview.backupURL.lastPathComponent
+        )
+      } else {
+        workspaceOperationMessage = store.lastSaveStatus
+        workspaceOperationIsError = true
+      }
+      isWorkspaceOperationRunning = false
+    }
   }
 
   private func chooseWorkspaceBackupForRestore() {
     guard let backupURL = WorkspaceBackupSelectionPanel.chooseBackupForRestore() else { return }
-    Task { workspaceBackupPreview = await store.workspaceBackupPreview(from: backupURL) }
+    isWorkspaceOperationRunning = true
+    workspaceOperationMessage = nil
+    workspaceOperationIsError = false
+    Task {
+      workspaceBackupPreview = await store.workspaceBackupPreview(from: backupURL)
+      if workspaceBackupPreview == nil {
+        workspaceOperationMessage = store.lastSaveStatus
+        workspaceOperationIsError = true
+      }
+      isWorkspaceOperationRunning = false
+    }
   }
 
   private func chooseAutomaticBackupDirectory() {
@@ -420,12 +513,13 @@ struct KnowledgeSettingsView: View {
     do {
       try backupScheduler.setDestinationFolder(folderURL)
     } catch {
-      store.setLastSaveStatus(
-        String(
-          format: String(localized: "自动备份目录不可用：%@"),
-          error.localizedDescription
-        )
+      let message = String(
+        format: String(localized: "自动备份目录不可用：%@"),
+        error.localizedDescription
       )
+      store.setLastSaveStatus(message)
+      workspaceOperationMessage = message
+      workspaceOperationIsError = true
     }
   }
 

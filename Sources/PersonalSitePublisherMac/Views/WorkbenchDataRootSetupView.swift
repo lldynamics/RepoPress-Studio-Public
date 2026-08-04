@@ -37,7 +37,7 @@ struct WorkbenchDataRootSetupView: View {
           Label("恢复已有数据文件夹…", systemImage: "arrow.clockwise.circle")
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .workbenchProminentActionStyle()
         .controlSize(.large)
 
         Button {

@@ -292,6 +292,23 @@ final class WorkspaceBackupServiceTests: XCTestCase {
       feedTitle: "需要恢复的 RSS",
       articleID: "source-rss-article"
     )
+    let sourceArticle = try XCTUnwrap(sourceDatabase.articles().first)
+    let mediaRelativePath = "source-rss-article/cover.png"
+    let mediaAsset = RSSMediaAsset(
+      articleID: sourceArticle.id,
+      remoteURL: try XCTUnwrap(URL(string: "https://cdn.example.com/cover.png")),
+      relativePath: mediaRelativePath,
+      contentType: "image/png",
+      byteCount: 4
+    )
+    try sourceDatabase.upsertMediaAssets([mediaAsset])
+    let sourceMediaURL = RSSReaderStore.mediaCacheDirectoryURL(for: sourceRSSURL)
+      .appendingPathComponent(mediaRelativePath)
+    try FileManager.default.createDirectory(
+      at: sourceMediaURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try Data([0x89, 0x50, 0x4E, 0x47]).write(to: sourceMediaURL)
     let profile = SiteProfile.defaultProfile
     let sourceSnapshot = WorkbenchSnapshot(
       profiles: [profile],
@@ -316,12 +333,16 @@ final class WorkspaceBackupServiceTests: XCTestCase {
     let rssComponent = try XCTUnwrap(
       created.components.first { $0.component == .rssReader }
     )
-    XCTAssertEqual(rssComponent.fileCount, 1)
+    XCTAssertEqual(rssComponent.fileCount, 2)
     XCTAssertGreaterThan(rssComponent.byteCount, 0)
     let archivedRSSURL = archiveURL.appendingPathComponent(
       WorkspaceBackupService.rssDatabaseRelativePath
     )
     XCTAssertTrue(FileManager.default.fileExists(atPath: archivedRSSURL.path))
+    let archivedMediaURL = archiveURL.appendingPathComponent(
+      "\(WorkspaceBackupService.rssMediaRelativePrefix)/\(mediaRelativePath)"
+    )
+    XCTAssertEqual(try Data(contentsOf: archivedMediaURL), Data([0x89, 0x50, 0x4E, 0x47]))
     let archivedRSS = try RSSReaderBackupService().inspectBackup(at: archivedRSSURL)
     XCTAssertEqual(archivedRSS.feedCount, 1)
     XCTAssertEqual(archivedRSS.articleCount, 1)
@@ -376,6 +397,9 @@ final class WorkspaceBackupServiceTests: XCTestCase {
     XCTAssertEqual(try restoredDatabase.feeds().map(\.title), ["需要恢复的 RSS"])
     XCTAssertEqual(try restoredDatabase.articles().map(\.id), ["source-rss-article"])
     XCTAssertEqual(try restoredDatabase.highlights().map(\.note), ["RSS 备份恢复测试"])
+    let restoredMediaURL = RSSReaderStore.mediaCacheDirectoryURL(for: targetRSSURL)
+      .appendingPathComponent(mediaRelativePath)
+    XCTAssertEqual(try Data(contentsOf: restoredMediaURL), Data([0x89, 0x50, 0x4E, 0x47]))
   }
 
   func testV1RestoreDoesNotTouchExistingRSSDatabase() throws {

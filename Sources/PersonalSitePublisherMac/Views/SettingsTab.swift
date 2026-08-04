@@ -5,6 +5,7 @@ import SwiftUI
 struct SettingsContext {
   let store: WorkbenchStore
   let rssStore: RSSReaderStore?
+  let launchCoordinator: WorkbenchLaunchCoordinator
   let activeProfileBinding: Binding<SiteProfile>
   let autoRunPreflightBinding: Binding<Bool>
   let scanRepositoryOnLaunch: Binding<Bool>
@@ -24,6 +25,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
   case token
   case ai
   case language
+  case storage
   case rss
   case privacy
 
@@ -39,6 +41,8 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return "ai"
     case .language:
       return "language"
+    case .storage:
+      return "storage"
     case .rss:
       return "rss"
     case .privacy:
@@ -58,6 +62,8 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return String(localized: "AI 写作")
     case .language:
       return String(localized: "语言")
+    case .storage:
+      return String(localized: "存储管理")
     case .rss:
       return String(localized: "RSS 阅读")
     case .privacy:
@@ -77,6 +83,8 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return "sparkles"
     case .language:
       return "globe"
+    case .storage:
+      return "externaldrive"
     case .rss:
       return "dot.radiowaves.left.and.right"
     case .privacy:
@@ -96,8 +104,10 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return String(localized: "选择 AI 服务、模型和当前站点的写作风格。")
     case .language:
       return String(localized: "选择界面语言，并控制 RepoPress 如何跟随 macOS。")
+    case .storage:
+      return String(localized: "管理资料库与 RSS 的本地文件、备份、导入和存储位置。")
     case .rss:
-      return String(localized: "管理本地图片缓存、刷新并发和历史文章清理。")
+      return String(localized: "管理 RSS 离线缓存、图片缓存、刷新并发和历史文章清理。")
     case .privacy:
       return String(localized: "控制离席时的快速隐藏和私密文章遮挡。")
     }
@@ -107,7 +117,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
     switch self {
     case .configurationStatus, .defaultRules, .token, .ai:
       return true
-    case .language, .rss, .privacy:
+    case .language, .storage, .rss, .privacy:
       return false
     }
   }
@@ -115,14 +125,14 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
   var contentMaxWidth: CGFloat {
     switch self {
     case .language, .rss, .privacy:
-      return 640
-    case .configurationStatus, .defaultRules, .token, .ai:
-      return 760
+      return WorkbenchSettingsMetrics.focusedContentWidth
+    case .configurationStatus, .defaultRules, .token, .ai, .storage:
+      return WorkbenchSettingsMetrics.detailedContentWidth
     }
   }
 
   static let siteSettings: [SettingsTab] = [.configurationStatus, .defaultRules, .token, .ai]
-  static let applicationSettings: [SettingsTab] = [.language, .rss, .privacy]
+  static let applicationSettings: [SettingsTab] = [.language, .storage, .rss, .privacy]
 
   @ViewBuilder
   @MainActor

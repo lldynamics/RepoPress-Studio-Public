@@ -1,170 +1,170 @@
 {
-  "display.site-analytics-provider.cloudflare": {
-    "zh-Hans": "Cloudflare Analytics",
-    "en": "Cloudflare Analytics"
-  },
-  "display.site-analytics-provider.plausible": {
-    "zh-Hans": "Plausible",
-    "en": "Plausible"
-  },
-  "display.site-analytics-provider.umami": {
-    "zh-Hans": "Umami",
-    "en": "Umami"
-  },
   "Cloudflare Analytics 使用官方 GraphQL 只读接口。": {
-    "zh-Hans": "Cloudflare Analytics 使用官方 GraphQL 只读接口。",
-    "en": "Cloudflare Analytics uses the official read-only GraphQL API."
+    "en": "Cloudflare Analytics uses the official read-only GraphQL API.",
+    "zh-Hans": "Cloudflare Analytics 使用官方 GraphQL 只读接口。"
   },
   "Preflight、图片、SEO 和社交卡片在同一处复核，发布前只需要看这一张清单。": {
-    "zh-Hans": "Preflight、图片、SEO 和社交卡片在同一处复核，发布前只需要看这一张清单。",
-    "en": "Review preflight checks, images, SEO, and social cards in one place—one checklist is all you need before publishing."
+    "en": "Review preflight checks, images, SEO, and social cards in one place—one checklist is all you need before publishing.",
+    "zh-Hans": "Preflight、图片、SEO 和社交卡片在同一处复核，发布前只需要看这一张清单。"
+  },
+  "display.site-analytics-provider.cloudflare": {
+    "en": "Cloudflare Analytics",
+    "zh-Hans": "Cloudflare Analytics"
+  },
+  "display.site-analytics-provider.plausible": {
+    "en": "Plausible",
+    "zh-Hans": "Plausible"
+  },
+  "display.site-analytics-provider.umami": {
+    "en": "Umami",
+    "zh-Hans": "Umami"
   },
   "「%@」已按文章公开路径读取页面级数据。": {
-    "zh-Hans": "「%@」已按文章公开路径读取页面级数据。",
-    "en": "Page-level data for “%@” was retrieved using the article's public path."
+    "en": "Page-level data for “%@” was retrieved using the article's public path.",
+    "zh-Hans": "「%@」已按文章公开路径读取页面级数据。"
   },
   "删除令牌": {
-    "zh-Hans": "删除令牌",
-    "en": "Delete Token"
+    "en": "Delete Token",
+    "zh-Hans": "删除令牌"
   },
   "发布前请审阅本地文件差异。": {
-    "zh-Hans": "发布前请审阅本地文件差异。",
-    "en": "Review local file changes before publishing."
+    "en": "Review local file changes before publishing.",
+    "zh-Hans": "发布前请审阅本地文件差异。"
   },
   "发布后阅读回流": {
-    "zh-Hans": "发布后阅读回流",
-    "en": "Post-Publish Analytics"
+    "en": "Post-Publish Analytics",
+    "zh-Hans": "发布后阅读回流"
   },
   "发布就绪清单": {
-    "zh-Hans": "发布就绪清单",
-    "en": "Publishing Readiness Checklist"
+    "en": "Publishing Readiness Checklist",
+    "zh-Hans": "发布就绪清单"
   },
   "发布抽屉会按当前文章的公开 URL 路径读取页面级数据；不会写入统计服务、上传内容或把令牌保存到工作区文件。": {
-    "zh-Hans": "发布抽屉会按当前文章的公开 URL 路径读取页面级数据；不会写入统计服务、上传内容或把令牌保存到工作区文件。",
-    "en": "The publish drawer retrieves page-level data for the current article's public URL path. It does not write to the analytics service, upload content, or save tokens in workspace files."
+    "en": "The publish drawer retrieves page-level data for the current article's public URL path. It does not write to the analytics service, upload content, or save tokens in workspace files.",
+    "zh-Hans": "发布抽屉会按当前文章的公开 URL 路径读取页面级数据；不会写入统计服务、上传内容或把令牌保存到工作区文件。"
   },
   "只读访问令牌": {
-    "zh-Hans": "只读访问令牌",
-    "en": "Read-Only Access Token"
+    "en": "Read-Only Access Token",
+    "zh-Hans": "只读访问令牌"
   },
   "启用只读阅读数据": {
-    "zh-Hans": "启用只读阅读数据",
-    "en": "Enable Read-Only Analytics"
+    "en": "Enable Read-Only Analytics",
+    "zh-Hans": "启用只读阅读数据"
   },
   "启用只读阅读数据回流": {
-    "zh-Hans": "启用只读阅读数据回流",
-    "en": "Enable Read-Only Analytics Retrieval"
+    "en": "Enable Read-Only Analytics Retrieval",
+    "zh-Hans": "启用只读阅读数据回流"
   },
   "在“设置 → 仓库与部署 → 阅读数据”启用只读统计。": {
-    "zh-Hans": "在“设置 → 仓库与部署 → 阅读数据”启用只读统计。",
-    "en": "Enable read-only analytics under “Settings → Repository & Deployment → Analytics.”"
+    "en": "Enable read-only analytics under “Settings → Repository & Deployment → Analytics.”",
+    "zh-Hans": "在“设置 → 仓库与部署 → 阅读数据”启用只读统计。"
   },
   "审阅文件差异": {
-    "zh-Hans": "审阅文件差异",
-    "en": "Review File Changes"
+    "en": "Review File Changes",
+    "zh-Hans": "审阅文件差异"
   },
   "尚未启用阅读数据": {
-    "zh-Hans": "尚未启用阅读数据",
-    "en": "Analytics Not Enabled"
+    "en": "Analytics Not Enabled",
+    "zh-Hans": "尚未启用阅读数据"
   },
   "展开发布文件差异": {
-    "zh-Hans": "展开发布文件差异",
-    "en": "Expand Publish File Changes"
+    "en": "Expand Publish File Changes",
+    "zh-Hans": "展开发布文件差异"
   },
   "最近 %@ 天": {
-    "zh-Hans": "最近 %@ 天",
-    "en": "Last %@ Days"
+    "en": "Last %@ Days",
+    "zh-Hans": "最近 %@ 天"
   },
   "最近 14 天": {
-    "zh-Hans": "最近 14 天",
-    "en": "Last 14 Days"
+    "en": "Last 14 Days",
+    "zh-Hans": "最近 14 天"
   },
   "最近 28 天": {
-    "zh-Hans": "最近 28 天",
-    "en": "Last 28 Days"
+    "en": "Last 28 Days",
+    "zh-Hans": "最近 28 天"
   },
   "最近 7 天": {
-    "zh-Hans": "最近 7 天",
-    "en": "Last 7 Days"
+    "en": "Last 7 Days",
+    "zh-Hans": "最近 7 天"
   },
   "最近 90 天": {
-    "zh-Hans": "最近 90 天",
-    "en": "Last 90 Days"
+    "en": "Last 90 Days",
+    "zh-Hans": "最近 90 天"
   },
   "检查项": {
-    "zh-Hans": "检查项",
-    "en": "Checks"
+    "en": "Checks",
+    "zh-Hans": "检查项"
   },
   "正在刷新阅读数据": {
-    "zh-Hans": "正在刷新阅读数据",
-    "en": "Refreshing Analytics"
+    "en": "Refreshing Analytics",
+    "zh-Hans": "正在刷新阅读数据"
   },
   "正在读取最新检查结果…": {
-    "zh-Hans": "正在读取最新检查结果…",
-    "en": "Loading Latest Check Results…"
+    "en": "Loading Latest Check Results…",
+    "zh-Hans": "正在读取最新检查结果…"
   },
   "统计接口 URL": {
-    "zh-Hans": "统计接口 URL",
-    "en": "Analytics API URL"
+    "en": "Analytics API URL",
+    "zh-Hans": "统计接口 URL"
   },
   "统计时间": {
-    "zh-Hans": "统计时间",
-    "en": "Reporting Period"
+    "en": "Reporting Period",
+    "zh-Hans": "统计时间"
   },
   "统计时间窗": {
-    "zh-Hans": "统计时间窗",
-    "en": "Reporting Window"
+    "en": "Reporting Window",
+    "zh-Hans": "统计时间窗"
   },
   "统计服务": {
-    "zh-Hans": "统计服务",
-    "en": "Analytics Service"
+    "en": "Analytics Service",
+    "zh-Hans": "统计服务"
   },
   "统计服务配置尚未完整。": {
-    "zh-Hans": "统计服务配置尚未完整。",
-    "en": "Analytics service setup is incomplete."
+    "en": "Analytics service setup is incomplete.",
+    "zh-Hans": "统计服务配置尚未完整。"
   },
   "访客": {
-    "zh-Hans": "访客",
-    "en": "Visitors"
+    "en": "Visitors",
+    "zh-Hans": "访客"
   },
   "访问": {
-    "zh-Hans": "访问",
-    "en": "Visits"
+    "en": "Visits",
+    "zh-Hans": "访问"
   },
   "请在“设置 → 仓库与部署 → 阅读数据”保存令牌，发布后即可在这里刷新表现。": {
-    "zh-Hans": "请在“设置 → 仓库与部署 → 阅读数据”保存令牌，发布后即可在这里刷新表现。",
-    "en": "Save a token under “Settings → Repository & Deployment → Analytics.” After publishing, you can refresh performance data here."
+    "en": "Save a token under “Settings → Repository & Deployment → Analytics.” After publishing, you can refresh performance data here.",
+    "zh-Hans": "请在“设置 → 仓库与部署 → 阅读数据”保存令牌，发布后即可在这里刷新表现。"
   },
   "请求": {
-    "zh-Hans": "请求",
-    "en": "Requests"
+    "en": "Requests",
+    "zh-Hans": "请求"
   },
   "跳出率": {
-    "zh-Hans": "跳出率",
-    "en": "Bounce Rate"
+    "en": "Bounce Rate",
+    "zh-Hans": "跳出率"
   },
   "还没有阅读数据快照。": {
-    "zh-Hans": "还没有阅读数据快照。",
-    "en": "No analytics snapshot is available yet."
+    "en": "No analytics snapshot is available yet.",
+    "zh-Hans": "还没有阅读数据快照。"
   },
   "连接 Plausible、Umami 或 Cloudflare Analytics 后，发布抽屉会按当前文章路径回流阅读、访客和访问数据。": {
-    "zh-Hans": "连接 Plausible、Umami 或 Cloudflare Analytics 后，发布抽屉会按当前文章路径回流阅读、访客和访问数据。",
-    "en": "Connect Plausible, Umami, or Cloudflare Analytics to retrieve views, visitors, and visits for the current article path in the publish drawer."
+    "en": "Connect Plausible, Umami, or Cloudflare Analytics to retrieve views, visitors, and visits for the current article path in the publish drawer.",
+    "zh-Hans": "连接 Plausible、Umami 或 Cloudflare Analytics 后，发布抽屉会按当前文章路径回流阅读、访客和访问数据。"
   },
   "阅读数据": {
-    "zh-Hans": "阅读数据",
-    "en": "Analytics"
+    "en": "Analytics",
+    "zh-Hans": "阅读数据"
   },
   "阅读数据只读访问令牌": {
-    "zh-Hans": "阅读数据只读访问令牌",
-    "en": "Analytics Read-Only Access Token"
+    "en": "Analytics Read-Only Access Token",
+    "zh-Hans": "阅读数据只读访问令牌"
   },
   "阅读数据回流": {
-    "zh-Hans": "阅读数据回流",
-    "en": "Analytics Retrieval"
+    "en": "Analytics Retrieval",
+    "zh-Hans": "阅读数据回流"
   },
   "阅读数据统计服务": {
-    "zh-Hans": "阅读数据统计服务",
-    "en": "Analytics Service"
+    "en": "Analytics Service",
+    "zh-Hans": "阅读数据统计服务"
   }
 }

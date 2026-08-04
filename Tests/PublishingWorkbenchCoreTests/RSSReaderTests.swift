@@ -38,6 +38,28 @@ final class RSSReaderTests: XCTestCase {
     XCTAssertFalse(RSSHTMLTextSanitizer.plainText(from: article.contentHTML).contains("不要执行"))
   }
 
+  func testParsesRSS2CoreElementsInFeedSpecificDefaultNamespace() throws {
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/namespaced-rss.xml"))
+    let xml = """
+      <rss xmlns="https://example.com/rss2" version="2.0">
+        <channel>
+          <title>Namespaced RSS</title>
+          <item>
+            <guid>namespaced-item</guid>
+            <title>兼容文章</title>
+            <description><![CDATA[<p>兼容正文</p>]]></description>
+          </item>
+        </channel>
+      </rss>
+      """
+
+    let feed = try RSSFeedParser.parse(data: Data(xml.utf8), feedURL: feedURL)
+
+    XCTAssertEqual(feed.title, "Namespaced RSS")
+    XCTAssertEqual(feed.articles.first?.id, "namespaced-item")
+    XCTAssertEqual(feed.articles.first?.summaryHTML, "<p>兼容正文</p>")
+  }
+
   func testLongHTMLUsesBoundedPreviewSanitizer() {
     let source = String(
       repeating: "<p>正文 &amp; &#x4E2D;&#25991; <script>不应出现</script></p>",
@@ -79,6 +101,228 @@ final class RSSReaderTests: XCTestCase {
     XCTAssertEqual(article.link?.absoluteString, "https://example.com/posts/atom")
     XCTAssertEqual(article.author, "作者")
     XCTAssertEqual(article.contentHTML, "<p>Atom 正文</p>")
+  }
+
+  func testAtomEntryIgnoresNestedSourceFieldsAndUsesAuthorNameOnly() throws {
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/atom.xml"))
+    let xml = """
+      <feed xmlns="http://www.w3.org/2005/Atom">
+        <title>Atom Source Isolation</title>
+        <entry>
+          <source>
+            <id>nested-source-id</id>
+            <title>错误的来源标题</title>
+            <updated>2001-01-01T00:00:00Z</updated>
+            <author><name>错误的来源作者</name></author>
+            <link rel="alternate" href="/wrong-source-link"/>
+            <summary>错误的来源摘要</summary>
+            <content>错误的来源正文</content>
+          </source>
+          <id>direct-entry-id</id>
+          <title>正确的文章标题</title>
+          <updated>2026-08-04T10:00:00Z</updated>
+          <author>
+            <name>正确作者</name>
+            <email>should-not-be-part-of-author@example.com</email>
+          </author>
+          <link rel="alternate" href="/correct-entry-link"/>
+          <summary type="html"><![CDATA[<p>正确摘要</p>]]></summary>
+          <content type="html"><![CDATA[<p>正确正文</p>]]></content>
+        </entry>
+      </feed>
+      """
+
+    let feed = try RSSFeedParser.parse(data: Data(xml.utf8), feedURL: feedURL)
+    let article = try XCTUnwrap(feed.articles.first)
+
+    XCTAssertEqual(article.id, "direct-entry-id")
+    XCTAssertEqual(article.title, "正确的文章标题")
+    XCTAssertEqual(article.link?.absoluteString, "https://example.com/correct-entry-link")
+    XCTAssertEqual(article.author, "正确作者")
+    XCTAssertEqual(article.summaryHTML, "<p>正确摘要</p>")
+    XCTAssertEqual(article.contentHTML, "<p>正确正文</p>")
+    XCTAssertEqual(
+      Calendar(identifier: .gregorian).component(
+        .year,
+        from: try XCTUnwrap(article.publishedAt)
+      ),
+      2026
+    )
+  }
+
+  func testMediaRSSFieldsDoNotOverrideCoreArticleFields() throws {
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/feed.xml"))
+    let xml = """
+      <rss version="2.0"
+           xmlns:content="http://purl.org/rss/1.0/modules/content/"
+           xmlns:media="http://search.yahoo.com/mrss/">
+        <channel>
+          <title>核心订阅标题</title>
+          <item>
+            <title>核心文章标题</title>
+            <guid>namespace-collision</guid>
+            <description><![CDATA[<p>核心摘要</p>]]></description>
+            <content:encoded><![CDATA[<p>完整正文</p>]]></content:encoded>
+            <media:title>媒体标题不应覆盖</media:title>
+            <media:description>媒体描述不应覆盖</media:description>
+            <media:content url="https://cdn.example.com/video.mp4"/>
+          </item>
+        </channel>
+      </rss>
+      """
+
+    let feed = try RSSFeedParser.parse(data: Data(xml.utf8), feedURL: feedURL)
+    let article = try XCTUnwrap(feed.articles.first)
+
+    XCTAssertEqual(article.title, "核心文章标题")
+    XCTAssertEqual(article.summaryHTML, "<p>核心摘要</p>")
+    XCTAssertEqual(article.contentHTML, "<p>完整正文</p>")
+  }
+
+  func testRSSCoreFieldsIgnoreNestedSameNamespaceElements() throws {
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/feed.xml"))
+    let xml = """
+      <rss version="2.0">
+        <channel>
+          <title>Nested field isolation</title>
+          <item>
+            <container>
+              <title>错误的嵌套标题</title>
+              <link>https://example.com/wrong</link>
+              <description>错误的嵌套摘要</description>
+            </container>
+            <guid>direct-rss-id</guid>
+            <title>正确的文章标题</title>
+            <link>https://example.com/correct</link>
+            <description><![CDATA[<p>正确摘要</p>]]></description>
+          </item>
+        </channel>
+      </rss>
+      """
+
+    let feed = try RSSFeedParser.parse(data: Data(xml.utf8), feedURL: feedURL)
+    let article = try XCTUnwrap(feed.articles.first)
+
+    XCTAssertEqual(article.id, "direct-rss-id")
+    XCTAssertEqual(article.title, "正确的文章标题")
+    XCTAssertEqual(article.link?.absoluteString, "https://example.com/correct")
+    XCTAssertEqual(article.summaryHTML, "<p>正确摘要</p>")
+  }
+
+  func testParsesPrefixedAtomXHTMLContentAndPreservesInnerMarkup() throws {
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/atom.xml"))
+    let xml = """
+      <atom:feed xmlns:atom="http://www.w3.org/2005/Atom"
+                 xmlns:xhtml="http://www.w3.org/1999/xhtml">
+        <atom:title>Atom XHTML</atom:title>
+        <atom:entry>
+          <atom:id>xhtml-entry</atom:id>
+          <atom:title>文章标题</atom:title>
+          <atom:content type="xhtml">
+            <xhtml:div>
+              <xhtml:p>正文 <xhtml:a href="https://example.com/source">来源</xhtml:a></xhtml:p>
+              <xhtml:img src="https://cdn.example.com/image.jpg" alt="配图"/>
+              <xhtml:title>正文内标题</xhtml:title>
+            </xhtml:div>
+          </atom:content>
+        </atom:entry>
+      </atom:feed>
+      """
+
+    let feed = try RSSFeedParser.parse(data: Data(xml.utf8), feedURL: feedURL)
+    let article = try XCTUnwrap(feed.articles.first)
+
+    XCTAssertEqual(feed.title, "Atom XHTML")
+    XCTAssertEqual(article.title, "文章标题")
+    XCTAssertTrue(article.contentHTML.contains("<p>正文 <a href=\"https://example.com/source\">来源</a></p>"))
+    XCTAssertTrue(article.contentHTML.contains("<img alt=\"配图\" src=\"https://cdn.example.com/image.jpg\">"))
+    XCTAssertTrue(article.contentHTML.contains("<title>正文内标题</title>"))
+    XCTAssertFalse(article.contentHTML.contains("<div"))
+  }
+
+  func testParsesAtomXMLMediaTypesAsMarkupWithoutStrippingTheirRoot() throws {
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/atom.xml"))
+    let xml = """
+      <feed xmlns="http://www.w3.org/2005/Atom"
+            xmlns:xhtml="http://www.w3.org/1999/xhtml"
+            xmlns:example="urn:example:payload">
+        <title>Atom XML Content</title>
+        <entry>
+          <id>application-xhtml</id>
+          <title>Application XHTML</title>
+          <content type="application/xhtml+xml; charset=utf-8"><xhtml:article><xhtml:p>XHTML XML 正文</xhtml:p></xhtml:article></content>
+        </entry>
+        <entry>
+          <id>vendor-xml</id>
+          <title>Vendor XML</title>
+          <content type="application/vnd.example+xml"><example:payload><example:message>扩展 XML 正文</example:message></example:payload></content>
+        </entry>
+      </feed>
+      """
+
+    let feed = try RSSFeedParser.parse(data: Data(xml.utf8), feedURL: feedURL)
+
+    XCTAssertEqual(
+      feed.articles.first(where: { $0.id == "application-xhtml" })?.contentHTML,
+      "<article><p>XHTML XML 正文</p></article>"
+    )
+    XCTAssertEqual(
+      feed.articles.first(where: { $0.id == "vendor-xml" })?.contentHTML,
+      "<payload><message>扩展 XML 正文</message></payload>"
+    )
+  }
+
+  func testParsesDirectXHTMLBodyAsCompatibilityFallback() throws {
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/atom.xml"))
+    let xml = """
+      <feed xmlns="http://www.w3.org/2005/Atom"
+            xmlns:xhtml="http://www.w3.org/1999/xhtml">
+        <title>Compatibility</title>
+        <entry>
+          <id>xhtml-body-entry</id>
+          <title>Body fallback</title>
+          <xhtml:body><xhtml:div class="body-shell"><xhtml:p>兼容正文</xhtml:p></xhtml:div></xhtml:body>
+        </entry>
+      </feed>
+      """
+
+    let feed = try RSSFeedParser.parse(data: Data(xml.utf8), feedURL: feedURL)
+
+    XCTAssertEqual(
+      feed.articles.first?.contentHTML,
+      "<div class=\"body-shell\"><p>兼容正文</p></div>"
+    )
+  }
+
+  func testParsesRSS1WithDCAndContentModuleFields() throws {
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/rdf.xml"))
+    let xml = """
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+               xmlns="http://purl.org/rss/1.0/"
+               xmlns:dc="http://purl.org/dc/elements/1.1/"
+               xmlns:content="http://purl.org/rss/1.0/modules/content/">
+        <channel rdf:about="https://example.com/rdf.xml">
+          <title>RSS 1.0</title>
+          <link>https://example.com/</link>
+        </channel>
+        <item rdf:about="https://example.com/posts/rdf">
+          <title>RDF 文章</title>
+          <link>https://example.com/posts/rdf</link>
+          <dc:creator>RDF 作者</dc:creator>
+          <dc:date>2026-08-03T08:00:00Z</dc:date>
+          <content:encoded><![CDATA[<p>RDF 正文</p>]]></content:encoded>
+        </item>
+      </rdf:RDF>
+      """
+
+    let feed = try RSSFeedParser.parse(data: Data(xml.utf8), feedURL: feedURL)
+    let article = try XCTUnwrap(feed.articles.first)
+
+    XCTAssertEqual(feed.title, "RSS 1.0")
+    XCTAssertEqual(article.title, "RDF 文章")
+    XCTAssertEqual(article.author, "RDF 作者")
+    XCTAssertNotNil(article.publishedAt)
+    XCTAssertEqual(article.contentHTML, "<p>RDF 正文</p>")
   }
 
   func testReaderStorePersistsSubscriptionsReadStateAndStarredState() throws {
@@ -151,6 +395,63 @@ final class RSSReaderTests: XCTestCase {
       )
     )
     XCTAssertTrue(store.statusMessage?.contains("迁移") == true)
+  }
+
+  func testReusedGUIDGetsLinkSpecificStorageIDAndPreservesOldArticleState() throws {
+    let rootURL = temporaryDirectory(named: "rss-guid-collision")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let fileURL = rootURL.appendingPathComponent("reader.sqlite")
+    let firstURL = try XCTUnwrap(URL(string: "https://example.com/posts/first"))
+    let secondURL = try XCTUnwrap(URL(string: "https://example.com/posts/second"))
+    let store = RSSReaderStore(fileURL: fileURL)
+    let feedID = try store.addFeed(
+      url: try XCTUnwrap(URL(string: "https://example.com/collision.xml")),
+      title: "GUID 冲突"
+    )
+    let feed = try XCTUnwrap(store.feeds.first { $0.id == feedID })
+
+    store.merge([
+      RSSParsedArticle(
+        id: "reused-guid",
+        title: "旧文章",
+        link: firstURL,
+        contentHTML: "旧正文"
+      )
+    ], into: feed)
+    let originalID = "\(feedID.uuidString):reused-guid"
+    store.markRead(originalID)
+    store.toggleStarred(originalID)
+    store.setArticleTags(["旧标签"], for: originalID)
+
+    store.merge([
+      RSSParsedArticle(
+        id: "reused-guid",
+        title: "旧文章",
+        link: firstURL,
+        contentHTML: "旧正文"
+      ),
+      RSSParsedArticle(
+        id: "reused-guid",
+        title: "新文章",
+        link: secondURL,
+        contentHTML: "新正文"
+      )
+    ], into: feed)
+
+    XCTAssertEqual(store.articleHeaders.count, 2)
+    let original = try XCTUnwrap(store.articleHeaders.first { $0.link == firstURL })
+    let replacement = try XCTUnwrap(store.articleHeaders.first { $0.link == secondURL })
+    XCTAssertEqual(original.id, originalID)
+    XCTAssertTrue(original.isRead)
+    XCTAssertTrue(original.isStarred)
+    XCTAssertEqual(original.tags, ["旧标签"])
+    XCTAssertNotEqual(replacement.id, originalID)
+    XCTAssertFalse(replacement.isRead)
+    XCTAssertFalse(replacement.isStarred)
+    XCTAssertTrue(replacement.id.contains(":link-"))
+
+    let reopened = RSSReaderStore(fileURL: fileURL)
+    XCTAssertEqual(Set(reopened.articleHeaders.map(\.id)), Set([original.id, replacement.id]))
   }
 
   func testSQLiteHeaderQueryOmitsHTMLPayloadUntilArticleIsLoaded() throws {
@@ -747,6 +1048,156 @@ final class RSSReaderTests: XCTestCase {
     XCTAssertThrowsError(try RSSOPMLParser.parse(data: data)) { error in
       XCTAssertEqual(error as? RSSReaderError, .invalidOPML("文件超过 5 MB"))
     }
+  }
+
+  func testOfflineCachePoliciesHaveExplicitDefaultsAndPersistIndependently() throws {
+    let suiteName = "RSSReaderTests-" + UUID().uuidString
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let fileURL = temporaryDirectory(named: "rss-offline-cache-default")
+      .appendingPathComponent("reader.sqlite")
+
+    let store = RSSReaderStore(fileURL: fileURL, userDefaults: defaults)
+    XCTAssertTrue(store.feedBodyOfflineCacheEnabled)
+    XCTAssertFalse(store.webPageSnapshotEnabled)
+    XCTAssertFalse(store.automaticMediaCacheEnabled)
+
+    store.updateFeedBodyOfflineCacheSettings(enabled: false)
+    store.updateWebPageSnapshotSettings(enabled: true)
+    store.updateAutomaticMediaCacheSettings(enabled: true)
+    let reopened = RSSReaderStore(fileURL: fileURL, userDefaults: defaults)
+
+    XCTAssertFalse(reopened.feedBodyOfflineCacheEnabled)
+    XCTAssertTrue(reopened.webPageSnapshotEnabled)
+    XCTAssertTrue(reopened.automaticMediaCacheEnabled)
+  }
+
+  func testLegacyOfflineCachePreferenceMigratesOnlyToFeedBodyPolicy() throws {
+    let suiteName = "RSSReaderTests-" + UUID().uuidString
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(false, forKey: RSSReaderStore.automaticOfflineCacheDefaultsKey)
+    let fileURL = temporaryDirectory(named: "rss-offline-cache-migration")
+      .appendingPathComponent("reader.sqlite")
+
+    let store = RSSReaderStore(fileURL: fileURL, userDefaults: defaults)
+
+    XCTAssertFalse(store.feedBodyOfflineCacheEnabled)
+    XCTAssertFalse(store.webPageSnapshotEnabled)
+    XCTAssertFalse(store.automaticMediaCacheEnabled)
+  }
+
+  func testDisablingAutomaticOfflineCacheKeepsMetadataAndCanRefillBodyLater() async throws {
+    let suiteName = "RSSReaderTests-" + UUID().uuidString
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let rootURL = temporaryDirectory(named: "rss-offline-cache-refresh")
+    let fileURL = rootURL.appendingPathComponent("reader.sqlite")
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/offline.xml"))
+    let articleURL = try XCTUnwrap(URL(string: "https://example.com/posts/offline"))
+    let fetchResult = RSSFeedFetchResult(
+      parsedFeed: RSSParsedFeed(
+        title: "离线测试订阅",
+        articles: [
+          RSSParsedArticle(
+            id: "offline-article",
+            title: "离线测试文章",
+            link: articleURL,
+            summaryHTML: "<p>文章摘要</p>",
+            contentHTML: "<p>完整离线正文</p>"
+          )
+        ]
+      ),
+      responseURL: feedURL,
+      etag: "offline-etag",
+      lastModified: nil,
+      notModified: false
+    )
+    let store = RSSReaderStore(
+      fileURL: fileURL,
+      fetchOperation: { _, _, _ in fetchResult },
+      userDefaults: defaults
+    )
+    let feedID = try store.addFeed(url: feedURL)
+    store.updateFeedBodyOfflineCacheSettings(enabled: false)
+
+    await store.refresh(feedID: feedID)
+
+    let articleID = "\(feedID.uuidString):offline-article"
+    let uncachedResult = try await store.loadArticle(id: articleID)
+    let uncached = try XCTUnwrap(uncachedResult)
+    XCTAssertEqual(uncached.contentHTML, "")
+    XCTAssertTrue(uncached.readableSummary.contains("文章摘要"))
+
+    store.updateFeedBodyOfflineCacheSettings(enabled: true)
+    await store.refresh(feedID: feedID)
+
+    let cachedResult = try await store.loadArticle(id: articleID)
+    let cached = try XCTUnwrap(cachedResult)
+    XCTAssertEqual(cached.contentHTML, "<p>完整离线正文</p>")
+  }
+
+  func testWebPageSnapshotPolicyStoresLinkedHTMLWhenFeedBodyIsMissing() async throws {
+    let suiteName = "RSSReaderTests-" + UUID().uuidString
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let rootURL = temporaryDirectory(named: "rss-web-page-snapshot")
+    let fileURL = rootURL.appendingPathComponent("reader.sqlite")
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/offline.xml"))
+    let articleURL = try XCTUnwrap(URL(string: "https://example.com/posts/full"))
+    let fetchResult = RSSFeedFetchResult(
+      parsedFeed: RSSParsedFeed(
+        title: "网页快照测试",
+        articles: [
+          RSSParsedArticle(
+            id: "snapshot-article",
+            title: "只有原网页有正文",
+            link: articleURL,
+            summaryHTML: "",
+            contentHTML: ""
+          )
+        ]
+      ),
+      responseURL: feedURL,
+      etag: nil,
+      lastModified: nil,
+      notModified: false
+    )
+    let snapshotArchiver = RSSWebPageSnapshotArchiver(
+      downloadOperation: { request, _, _ in
+        let response = try XCTUnwrap(
+          HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "text/html"]
+          )
+        )
+        return (Data("<article>原网页完整正文</article>".utf8), response)
+      }
+    )
+    let store = RSSReaderStore(
+      fileURL: fileURL,
+      fetchOperation: { _, _, _ in fetchResult },
+      userDefaults: defaults,
+      webPageSnapshotArchiver: snapshotArchiver
+    )
+    let feedID = try store.addFeed(url: feedURL)
+    store.updateWebPageSnapshotSettings(enabled: true)
+
+    await store.refresh(feedID: feedID)
+
+    let articleID = "\(feedID.uuidString):snapshot-article"
+    var snapshotArticle: RSSArticle?
+    for _ in 0..<50 {
+      snapshotArticle = try await store.loadArticle(id: articleID)
+      if snapshotArticle?.webPageSnapshotHTML != nil { break }
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    XCTAssertEqual(
+      snapshotArticle?.webPageSnapshotHTML,
+      "<article>原网页完整正文</article>"
+    )
   }
 
   func testReaderStoreExportsCurrentSubscriptionsAsOPML() throws {

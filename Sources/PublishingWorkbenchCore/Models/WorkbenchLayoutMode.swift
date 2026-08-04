@@ -1,7 +1,10 @@
 import Foundation
 
 public enum WorkbenchLayoutMode {
-  public static let minimumWindowWidth: CGFloat = 980
+  /// The compact layout can hide the sidebar/inspector, so the window does
+  /// not need the old wide-workspace minimum to remain usable.
+  public static let minimumWindowWidth: CGFloat = 900
+  public static let minimumWindowHeight: CGFloat = 620
   public static let defaultWindowWidth: CGFloat = 1473
   public static let defaultWindowHeight: CGFloat = 768
   public static let defaultSidebarWidth: CGFloat = 300

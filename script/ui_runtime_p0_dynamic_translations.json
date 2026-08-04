@@ -1,206 +1,162 @@
 {
   "%d 分钟": {
-    "zh-Hans": "%d 分钟",
-    "en": "%d minutes"
+    "en": "%d minutes",
+    "zh-Hans": "%d 分钟"
   },
   "AI 助手已显示": {
-    "zh-Hans": "AI 助手已显示",
-    "en": "AI Assistant Shown"
+    "en": "AI Assistant Shown",
+    "zh-Hans": "AI 助手已显示"
   },
   "GitHub Pages 首次部署通常需要到仓库 Settings > Pages 确认来源。": {
-    "zh-Hans": "GitHub Pages 首次部署通常需要到仓库 Settings > Pages 确认来源。",
-    "en": "For the first GitHub Pages deployment, you usually need to confirm the source under Settings > Pages in the repository."
+    "en": "For the first GitHub Pages deployment, you usually need to confirm the source under Settings > Pages in the repository.",
+    "zh-Hans": "GitHub Pages 首次部署通常需要到仓库 Settings > Pages 确认来源。"
   },
   "GitHub 仓库创建以向导里的所有者、仓库名和分支为准；创建前会同步到当前站点配置。": {
-    "zh-Hans": "GitHub 仓库创建以向导里的所有者、仓库名和分支为准；创建前会同步到当前站点配置。",
-    "en": "The GitHub repository will use the owner, repository name, and branch specified in the assistant. These values will be synced to the current site configuration before creation."
+    "en": "The GitHub repository will use the owner, repository name, and branch specified in the assistant. These values will be synced to the current site configuration before creation.",
+    "zh-Hans": "GitHub 仓库创建以向导里的所有者、仓库名和分支为准；创建前会同步到当前站点配置。"
   },
   "origin remote 未配置，首次推送会失败。": {
-    "zh-Hans": "origin remote 未配置，首次推送会失败。",
-    "en": "The origin remote is not configured, so the initial push will fail."
-  },
-  "关闭 AI 对话（⌥⌘A）": {
-    "zh-Hans": "关闭 AI 对话（⌥⌘A）",
-    "en": "Close AI Conversation (⌥⌘A)"
-  },
-  "分屏空间较窄；点击仍打开 AI 对话": {
-    "zh-Hans": "分屏空间较窄；点击仍打开 AI 对话",
-    "en": "The split view is narrow; click to open the AI conversation anyway"
-  },
-  "删除当前连接档案": {
-    "zh-Hans": "删除当前连接档案",
-    "en": "Delete Current Connection Profile"
+    "en": "The origin remote is not configured, so the initial push will fail.",
+    "zh-Hans": "origin remote 未配置，首次推送会失败。"
   },
   "发布流程已打开，请选择保存到本地或发布上线。": {
-    "zh-Hans": "发布流程已打开，请选择保存到本地或发布上线。",
-    "en": "The publishing workflow is open. Choose whether to save locally or publish online."
-  },
-  "可以选择下一步": {
-    "zh-Hans": "可以选择下一步",
-    "en": "You Can Continue"
-  },
-  "处理后即可保存到本地或发布上线。": {
-    "zh-Hans": "处理后即可保存到本地或发布上线。",
-    "en": "Resolve these items to save locally or publish online."
+    "en": "The publishing workflow is open. Choose whether to save locally or publish online.",
+    "zh-Hans": "发布流程已打开，请选择保存到本地或发布上线。"
   },
   "导入已有仓库": {
-    "zh-Hans": "导入已有仓库",
-    "en": "Import Existing Repository"
+    "en": "Import Existing Repository",
+    "zh-Hans": "导入已有仓库"
   },
   "已关闭": {
-    "zh-Hans": "已关闭",
-    "en": "Closed"
+    "en": "Closed",
+    "zh-Hans": "已关闭"
   },
   "已初始化": {
-    "zh-Hans": "已初始化",
-    "en": "Initialized"
+    "en": "Initialized",
+    "zh-Hans": "已初始化"
   },
   "已导入": {
-    "zh-Hans": "已导入",
-    "en": "Imported"
-  },
-  "已打开": {
-    "zh-Hans": "已打开",
-    "en": "Open"
+    "en": "Imported",
+    "zh-Hans": "已导入"
   },
   "已推送": {
-    "zh-Hans": "已推送",
-    "en": "Pushed"
+    "en": "Pushed",
+    "zh-Hans": "已推送"
   },
   "已生成": {
-    "zh-Hans": "已生成",
-    "en": "Generated"
+    "en": "Generated",
+    "zh-Hans": "已生成"
   },
   "已配置": {
-    "zh-Hans": "已配置",
-    "en": "Configured"
+    "en": "Configured",
+    "zh-Hans": "已配置"
   },
   "待发布 %d 篇 · %d 个文件": {
-    "zh-Hans": "待发布 %d 篇 · %d 个文件",
-    "en": "%d articles · %d files pending publication"
+    "en": "%d articles · %d files pending publication",
+    "zh-Hans": "待发布 %d 篇 · %d 个文件"
   },
   "待推送": {
-    "zh-Hans": "待推送",
-    "en": "Pending Push"
-  },
-  "打开 AI 对话（⌥⌘A）": {
-    "zh-Hans": "打开 AI 对话（⌥⌘A）",
-    "en": "Open AI Conversation (⌥⌘A)"
-  },
-  "扩大窗口后可使用 AI 对话": {
-    "zh-Hans": "扩大窗口后可使用 AI 对话",
-    "en": "Enlarge the window to use AI conversations"
+    "en": "Pending Push",
+    "zh-Hans": "待推送"
   },
   "收起提交历史": {
-    "zh-Hans": "收起提交历史",
-    "en": "Collapse Commit History"
+    "en": "Collapse Commit History",
+    "zh-Hans": "收起提交历史"
   },
   "新建站点需要空文件夹；导入模式请选择现有仓库根目录。": {
-    "zh-Hans": "新建站点需要空文件夹；导入模式请选择现有仓库根目录。",
-    "en": "A new site requires an empty folder. In import mode, select the root folder of an existing repository."
+    "en": "A new site requires an empty folder. In import mode, select the root folder of an existing repository.",
+    "zh-Hans": "新建站点需要空文件夹；导入模式请选择现有仓库根目录。"
   },
   "显示更多": {
-    "zh-Hans": "显示更多",
-    "en": "Show More"
+    "en": "Show More",
+    "zh-Hans": "显示更多"
   },
   "显示更多提交历史": {
-    "zh-Hans": "显示更多提交历史",
-    "en": "Show More Commit History"
+    "en": "Show More Commit History",
+    "zh-Hans": "显示更多提交历史"
   },
   "暂不部署": {
-    "zh-Hans": "暂不部署",
-    "en": "Do Not Deploy Yet"
+    "en": "Do Not Deploy Yet",
+    "zh-Hans": "暂不部署"
   },
   "未初始化": {
-    "zh-Hans": "未初始化",
-    "en": "Not Initialized"
+    "en": "Not Initialized",
+    "zh-Hans": "未初始化"
   },
   "未初始化 Git，不能执行首次推送。": {
-    "zh-Hans": "未初始化 Git，不能执行首次推送。",
-    "en": "Git has not been initialized, so the initial push cannot be performed."
+    "en": "Git has not been initialized, so the initial push cannot be performed.",
+    "zh-Hans": "未初始化 Git，不能执行首次推送。"
   },
   "未推送": {
-    "zh-Hans": "未推送",
-    "en": "Not Pushed"
+    "en": "Not Pushed",
+    "zh-Hans": "未推送"
   },
   "未检测到 GitHub 访问令牌，创建仓库会失败。": {
-    "zh-Hans": "未检测到 GitHub 访问令牌，创建仓库会失败。",
-    "en": "No GitHub access token was found, so repository creation will fail."
+    "en": "No GitHub access token was found, so repository creation will fail.",
+    "zh-Hans": "未检测到 GitHub 访问令牌，创建仓库会失败。"
   },
   "未生成": {
-    "zh-Hans": "未生成",
-    "en": "Not Generated"
+    "en": "Not Generated",
+    "zh-Hans": "未生成"
   },
   "未知": {
-    "zh-Hans": "未知",
-    "en": "Unknown"
+    "en": "Unknown",
+    "zh-Hans": "未知"
   },
   "未设置 upstream": {
-    "zh-Hans": "未设置 upstream",
-    "en": "No Upstream Set"
+    "en": "No Upstream Set",
+    "zh-Hans": "未设置 upstream"
   },
   "未识别": {
-    "zh-Hans": "未识别",
-    "en": "Unrecognized"
+    "en": "Unrecognized",
+    "zh-Hans": "未识别"
   },
   "未选择仓库": {
-    "zh-Hans": "未选择仓库",
-    "en": "No Repository Selected"
+    "en": "No Repository Selected",
+    "zh-Hans": "未选择仓库"
   },
   "检查中": {
-    "zh-Hans": "检查中",
-    "en": "Checking"
-  },
-  "模板会决定站点框架、默认文章头信息（Front Matter）和首篇文章结构。": {
-    "zh-Hans": "模板会决定站点框架、默认文章头信息（Front Matter）和首篇文章结构。",
-    "en": "The template determines the site framework, default article front matter, and the structure of the first article."
+    "en": "Checking",
+    "zh-Hans": "检查中"
   },
   "正在执行线上发布...": {
-    "zh-Hans": "正在执行线上发布…",
-    "en": "Publishing online…"
+    "en": "Publishing online…",
+    "zh-Hans": "正在执行线上发布…"
   },
   "正在检查仓库权限...": {
-    "zh-Hans": "正在检查仓库权限…",
-    "en": "Checking repository permissions…"
+    "en": "Checking repository permissions…",
+    "zh-Hans": "正在检查仓库权限…"
   },
   "生成会创建模板文件、部署工作流、部署说明和初始文章草稿。": {
-    "zh-Hans": "生成会创建模板文件、部署工作流、部署说明和初始文章草稿。",
-    "en": "Generation creates template files, a deployment workflow, deployment instructions, and an initial article draft."
+    "en": "Generation creates template files, a deployment workflow, deployment instructions, and an initial article draft.",
+    "zh-Hans": "生成会创建模板文件、部署工作流、部署说明和初始文章草稿。"
   },
   "目标目录必须是空文件夹；生成后会成为本地站点仓库。": {
-    "zh-Hans": "目标目录必须是空文件夹；生成后会成为本地站点仓库。",
-    "en": "The destination must be an empty folder. After generation, it becomes the local site repository."
+    "en": "The destination must be an empty folder. After generation, it becomes the local site repository.",
+    "zh-Hans": "目标目录必须是空文件夹；生成后会成为本地站点仓库。"
   },
   "私有": {
-    "zh-Hans": "私有",
-    "en": "Private"
+    "en": "Private",
+    "zh-Hans": "私有"
   },
   "立即检查": {
-    "zh-Hans": "立即检查",
-    "en": "Check Now"
-  },
-  "继续前请确认模板、目录、站点名称和分支。": {
-    "zh-Hans": "继续前请确认模板、目录、站点名称和分支。",
-    "en": "Before continuing, confirm the template, folder, site name, and branch."
+    "en": "Check Now",
+    "zh-Hans": "立即检查"
   },
   "至少保留一个档案，且已被站点使用的档案不能删除": {
-    "zh-Hans": "至少保留一个档案，且已被站点使用的档案不能删除",
-    "en": "Keep at least one profile. A profile in use by a site cannot be deleted."
+    "en": "Keep at least one profile. A profile in use by a site cannot be deleted.",
+    "zh-Hans": "至少保留一个档案，且已被站点使用的档案不能删除"
   },
   "还没有首次推送，GitHub Pages 不会开始构建。": {
-    "zh-Hans": "还没有首次推送，GitHub Pages 不会开始构建。",
-    "en": "The initial push has not occurred, so GitHub Pages will not start building."
-  },
-  "还需处理 %d 个问题": {
-    "zh-Hans": "还需处理 %d 个问题",
-    "en": "%d issues remaining"
+    "en": "The initial push has not occurred, so GitHub Pages will not start building.",
+    "zh-Hans": "还没有首次推送，GitHub Pages 不会开始构建。"
   },
   "选择空文件夹": {
-    "zh-Hans": "选择空文件夹",
-    "en": "Choose Empty Folder"
+    "en": "Choose Empty Folder",
+    "zh-Hans": "选择空文件夹"
   },
   "首次推送会提交 Starter 文件，并把分支推送到 origin。": {
-    "zh-Hans": "首次推送会提交 Starter 文件，并把分支推送到 origin。",
-    "en": "The initial push commits the starter files and pushes the branch to origin."
+    "en": "The initial push commits the starter files and pushes the branch to origin.",
+    "zh-Hans": "首次推送会提交 Starter 文件，并把分支推送到 origin。"
   }
 }

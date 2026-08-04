@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
   @ObservedObject var store: WorkbenchStore
   let rssStore: RSSReaderStore?
+  @ObservedObject var launchCoordinator: WorkbenchLaunchCoordinator
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
   @AppStorage("settingsRequestedTabID") private var requestedSettingsTabID = ""
@@ -14,10 +15,12 @@ struct SettingsView: View {
 
   init(
     store: WorkbenchStore,
-    rssStore: RSSReaderStore? = nil
+    rssStore: RSSReaderStore? = nil,
+    launchCoordinator: WorkbenchLaunchCoordinator
   ) {
     self.store = store
     self.rssStore = rssStore
+    self.launchCoordinator = launchCoordinator
     _selectedSettingsTab = State(initialValue: Self.initialSettingsTab())
   }
 
@@ -32,14 +35,14 @@ struct SettingsView: View {
         Divider()
 
         selectedSettingsTab.makeContent(context: settingsContext)
-          .scrollIndicators(.hidden)
+          .scrollIndicators(.automatic)
           .frame(maxWidth: selectedSettingsTab.contentMaxWidth)
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
       }
-      .background(Color(nsColor: .underPageBackgroundColor))
+      .background(Color(nsColor: .windowBackgroundColor))
       .accessibilityIdentifier("settings-content")
     }
-    .frame(minWidth: 980, idealWidth: 1120, minHeight: 620, idealHeight: 760)
+    .workbenchSettingsWindowSize()
     .background(Color(nsColor: .windowBackgroundColor))
     .navigationTitle("设置")
     .onAppear {
@@ -84,9 +87,9 @@ struct SettingsView: View {
       }
       .listStyle(.sidebar)
       .scrollContentBackground(.hidden)
-      .padding(.top, 8)
+      .padding(.top, WorkbenchSpacing.control)
     }
-    .frame(width: 220)
+    .frame(width: WorkbenchSettingsMetrics.sidebarWidth)
     .workbenchGlassContainer(material: .thinMaterial, drawsBorder: false)
     .accessibilityIdentifier("settings-sidebar")
   }
@@ -99,11 +102,41 @@ struct SettingsView: View {
   }
 
   private var settingsPageHeader: some View {
-    HStack(alignment: .center, spacing: 14) {
+    Group {
+      if selectedSettingsTab.isSiteScoped {
+        ViewThatFits(in: .horizontal) {
+          HStack(alignment: .center, spacing: WorkbenchSpacing.section) {
+            settingsPageIdentity
+              .frame(minWidth: 250, alignment: .leading)
+
+            Spacer(minLength: WorkbenchSpacing.content)
+
+            profileBar
+          }
+
+          VStack(alignment: .leading, spacing: WorkbenchSpacing.card) {
+            settingsPageIdentity
+
+            profileBar
+              .frame(maxWidth: .infinity, alignment: .trailing)
+          }
+        }
+      } else {
+        settingsPageIdentity
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+    }
+    .padding(.horizontal, WorkbenchSpacing.page)
+    .padding(.vertical, WorkbenchSpacing.card)
+    .background(Color(nsColor: .windowBackgroundColor))
+  }
+
+  private var settingsPageIdentity: some View {
+    HStack(alignment: .center, spacing: WorkbenchSpacing.section) {
       Image(systemName: selectedSettingsTab.systemImage)
-        .font(.system(size: 18, weight: .semibold))
+        .font(.title3.weight(.semibold))
         .foregroundStyle(WorkbenchTheme.brand)
-        .frame(width: 38, height: 38)
+        .frame(width: 36, height: 36)
         .background(
           WorkbenchTheme.brand.opacity(WorkbenchOpacity.selectionBackground),
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
@@ -113,20 +146,14 @@ struct SettingsView: View {
       VStack(alignment: .leading, spacing: 3) {
         Text(selectedSettingsTab.title)
           .font(.workbenchPageTitle)
+          .accessibilityAddTraits(.isHeader)
         Text(selectedSettingsTab.subtitle)
           .font(.workbenchPageSubtitle)
           .foregroundStyle(.secondary)
           .lineLimit(2)
-      }
-
-      Spacer(minLength: 12)
-
-      if selectedSettingsTab.isSiteScoped {
-        profileBar
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
-    .padding(.horizontal, 22)
-    .padding(.vertical, 15)
   }
 
   private var profileBar: some View {
@@ -156,6 +183,7 @@ struct SettingsView: View {
     SettingsContext(
       store: store,
       rssStore: rssStore,
+      launchCoordinator: launchCoordinator,
       activeProfileBinding: activeProfileBinding,
       autoRunPreflightBinding: autoRunPreflightBinding,
       scanRepositoryOnLaunch: $scanRepositoryOnLaunch,

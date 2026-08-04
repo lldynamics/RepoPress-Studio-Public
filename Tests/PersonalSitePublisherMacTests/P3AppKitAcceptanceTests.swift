@@ -9,14 +9,15 @@ import XCTest
 @MainActor
 final class P3AppKitAcceptanceTests: XCTestCase {
   func testAppKitPasteOverrideRoutesTheGeneralPasteboardThroughSmartPaste() {
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString("https://example.com/article", forType: .string)
-    defer { NSPasteboard.general.clearContents() }
+    let pasteboard = TestMarkdownPasteboardSource(
+      strings: [.string: "https://example.com/article"]
+    )
     let textView = DroppableMarkdownTextView(
       frame: NSRect(x: 0, y: 0, width: 320, height: 180),
       textContainer: nil
     )
     textView.string = "Existing draft"
+    textView.pasteboardProvider = { pasteboard }
     var receivedText: String?
     textView.smartPasteHandler = { _, pasteboard in
       receivedText = pasteboard.string(forType: .string)

@@ -325,7 +325,12 @@ final class ReleaseLedgerServiceTests: XCTestCase {
     XCTAssertEqual(ledger.actionItems.first?.priority, .high)
     XCTAssertTrue(ledger.actionItems.contains { $0.kind == .failedRelease && $0.recordID == failedRecord.id })
     XCTAssertTrue(ledger.actionItems.contains { $0.kind == .completeReview && $0.remoteURL == "https://github.com/owner/site/pull/2" })
-    XCTAssertTrue(ledger.actionItems.contains { $0.kind == .publishLocalChanges && $0.commandLines == ["git checkout -- 'content/posts/local.md'"] })
+    XCTAssertTrue(ledger.actionItems.contains {
+      $0.kind == .publishLocalChanges
+        && $0.commandLines == [
+          "if git cat-file -e HEAD:'content/posts/local.md' >/dev/null 2>&1; then git restore --source=HEAD --staged --worktree -- 'content/posts/local.md'; else git restore --staged -- 'content/posts/local.md' >/dev/null 2>&1 || true; git clean -fd -- 'content/posts/local.md'; fi"
+        ]
+    })
     XCTAssertTrue(ledger.actionItems.contains { $0.kind == .keepRollbackReady && $0.priority == .low })
   }
 
@@ -1114,7 +1119,9 @@ final class ReleaseLedgerServiceTests: XCTestCase {
     )
 
     let localRollback = try XCTUnwrap(service.rollbackDraft(for: localRecord))
-    XCTAssertEqual(localRollback.commandLines, ["git checkout -- 'content/posts/local.md'"])
+    XCTAssertEqual(localRollback.commandLines, [
+      "if git cat-file -e HEAD:'content/posts/local.md' >/dev/null 2>&1; then git restore --source=HEAD --staged --worktree -- 'content/posts/local.md'; else git restore --staged -- 'content/posts/local.md' >/dev/null 2>&1 || true; git clean -fd -- 'content/posts/local.md'; fi"
+    ])
   }
 
   func testGitLabCommitRollbackDraftBuildsMergeRequestURL() throws {

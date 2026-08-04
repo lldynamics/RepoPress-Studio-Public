@@ -148,7 +148,7 @@ struct RSSLibraryInspectorPanel: View {
                 .foregroundStyle(.secondary)
               if entry.isStarred {
                 Image(systemName: "star.fill")
-                  .font(.caption2)
+                  .font(.workbenchMetadata)
                   .foregroundStyle(WorkbenchTheme.warning)
                   .accessibilityLabel("已加入稍后阅读")
               }

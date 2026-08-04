@@ -51,6 +51,34 @@ final class ManagedAttachmentFileStoreTests: XCTestCase {
     XCTAssertEqual(try Data(contentsOf: secondURL), originalData)
   }
 
+  func testConcurrentStoreForSameAttachmentReturnsCommittedCopy() async throws {
+    let temporaryRoot = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+    let sourceURL = temporaryRoot.appendingPathComponent("concurrent.mov")
+    let expectedData = Data("concurrent-attachment".utf8)
+    try expectedData.write(to: sourceURL)
+    let store = ManagedAttachmentFileStore(
+      rootDirectoryURL: temporaryRoot.appendingPathComponent("Managed")
+    )
+    let attachmentID = UUID()
+
+    var storedURLs = [URL]()
+    try await withThrowingTaskGroup(of: URL.self) { group in
+      for _ in 0 ..< 8 {
+        group.addTask {
+          try store.storeFile(at: sourceURL, attachmentID: attachmentID)
+        }
+      }
+      for try await storedURL in group {
+        storedURLs.append(storedURL)
+      }
+    }
+
+    XCTAssertEqual(Set(storedURLs).count, 1)
+    let storedURL = try XCTUnwrap(storedURLs.first)
+    XCTAssertEqual(try Data(contentsOf: storedURL), expectedData)
+  }
+
   func testMissingSourceIsRejectedWithoutCreatingManagedFile() throws {
     let temporaryRoot = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: temporaryRoot) }

@@ -5,7 +5,6 @@ struct PrivacySettingsView: View {
   let privacySettings: PrivacyProtectionSettings
   let status: PrivacyProtectionStatus
   let onQuickHide: () -> Void
-  let onReturnToWorkbench: () -> Void
   let updatePrivacySettings: (PrivacyProtectionSettings) -> Void
 
   var body: some View {
@@ -20,6 +19,7 @@ struct PrivacySettingsView: View {
               .font(.system(size: 16, weight: .semibold))
               .foregroundStyle(Color.accentColor)
           }
+          .accessibilityHidden(true)
 
           VStack(alignment: .leading, spacing: 2) {
             Text("快速隐藏 / 防偷窥保护")
@@ -40,9 +40,6 @@ struct PrivacySettingsView: View {
         status: status,
         onQuickHide: {
           onQuickHide()
-        },
-        onReturnToWorkbench: {
-          onReturnToWorkbench()
         }
       )
 
@@ -64,7 +61,8 @@ struct PrivacySettingsView: View {
 
     }
     .formStyle(.grouped)
-    .padding()
+    .padding(WorkbenchSpacing.content)
+    .accessibilityIdentifier("privacy-settings")
   }
 
   private static var privacyPolicyURL: URL? {

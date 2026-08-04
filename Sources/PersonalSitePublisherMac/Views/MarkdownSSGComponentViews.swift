@@ -96,7 +96,7 @@ struct MarkdownSSGComponentThumbnail: View {
           .font(.caption.weight(.medium))
           .foregroundStyle(.white)
         Text(previewText.nilIfEmpty ?? "VIDEO_ID")
-          .font(.caption2.monospaced())
+          .font(.workbenchMetadata.monospaced())
           .foregroundStyle(.white.opacity(0.82))
           .lineLimit(1)
       }
@@ -112,7 +112,7 @@ struct MarkdownSSGComponentThumbnail: View {
           .font(.caption.weight(.semibold))
         Spacer()
         Image(systemName: "arrow.up.right")
-          .font(.caption2)
+          .font(.workbenchMetadata)
           .foregroundStyle(.secondary)
       }
       Text(previewText.nilIfEmpty ?? "owner/repo")
@@ -146,7 +146,7 @@ struct MarkdownSSGComponentThumbnail: View {
         Text("图片")
           .font(.caption.weight(.semibold))
         Text(previewText.nilIfEmpty ?? "/images/example.jpg")
-          .font(.caption2.monospaced())
+          .font(.workbenchMetadata.monospaced())
           .foregroundStyle(.secondary)
           .lineLimit(2)
       }
@@ -206,7 +206,7 @@ struct MarkdownSSGComponentPreviewStrip: View {
                   previewText: occurrence.previewText
                 )
                 Text("第 \(occurrence.lineNumber) 行 · \(occurrence.title)")
-                  .font(.caption2)
+                  .font(.workbenchMetadata)
                   .foregroundStyle(.secondary)
                   .lineLimit(1)
                   .frame(width: 164, alignment: .leading)

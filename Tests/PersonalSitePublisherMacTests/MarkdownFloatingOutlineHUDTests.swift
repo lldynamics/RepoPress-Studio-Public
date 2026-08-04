@@ -5,9 +5,9 @@ import XCTest
 import PublishingWorkbenchCore
 
 final class MarkdownFloatingOutlineHUDTests: XCTestCase {
-  func testActiveItemFollowsVisibleViewportHeading() {
+  func testActiveItemFollowsVisibleViewportHeading() throws {
     let items = makeItems()
-    let secondHeading = try! XCTUnwrap(items.last)
+    let secondHeading = try XCTUnwrap(items.last)
 
     let activeID = MarkdownFloatingOutlineHUDPresentation.activeItemID(
       items: items,
@@ -21,9 +21,9 @@ final class MarkdownFloatingOutlineHUDTests: XCTestCase {
     XCTAssertEqual(activeID, secondHeading.id)
   }
 
-  func testFirstVisibleHeadingIsActiveWhenViewportStartsBeforeOutline() {
+  func testFirstVisibleHeadingIsActiveWhenViewportStartsBeforeOutline() throws {
     let items = makeItems()
-    let firstHeading = try! XCTUnwrap(items.first)
+    let firstHeading = try XCTUnwrap(items.first)
 
     let activeItem = MarkdownFloatingOutlineHUDPresentation.activeItem(
       items: items,
@@ -34,9 +34,9 @@ final class MarkdownFloatingOutlineHUDTests: XCTestCase {
     XCTAssertEqual(activeItem?.id, firstHeading.id)
   }
 
-  func testSelectedRangeIsUsedUntilEditorReportsViewport() {
+  func testSelectedRangeIsUsedUntilEditorReportsViewport() throws {
     let items = makeItems()
-    let selectedItem = try! XCTUnwrap(items.last)
+    let selectedItem = try XCTUnwrap(items.last)
 
     let activeID = MarkdownFloatingOutlineHUDPresentation.activeItemID(
       items: items,

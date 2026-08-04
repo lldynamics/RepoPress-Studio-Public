@@ -97,7 +97,8 @@ struct InlineSelectionFloatingPalette: View {
         .buttonStyle(.borderless)
         .font(.caption)
     }
-    .accessibilityElement(children: .combine)
+    // Keep the cancel button as an independent VoiceOver action.
+    .accessibilityElement(children: .contain)
     .accessibilityLabel("正在生成 AI 行内建议")
   }
 
@@ -114,7 +115,7 @@ struct InlineSelectionFloatingPalette: View {
         Text(
           "服务商：\(preview.providerName)\(preview.model.trimmedForPublishing.isEmpty ? "" : " · \(preview.model)")"
         )
-        .font(.caption2)
+        .font(.workbenchMetadata)
         .foregroundStyle(.secondary)
       }
       HStack(spacing: 8) {

@@ -47,6 +47,7 @@ struct AIKeychainSection: View {
             ? String(localized: "隐藏 API Key")
             : String(localized: "显示 API Key 明文")
         )
+        .accessibilityLabel(isKeyRevealed ? "隐藏 API Key" : "显示 API Key 明文")
       }
       .accessibilityLabel("AI API Key")
       .accessibilityHint("输入后可保存到钥匙串")

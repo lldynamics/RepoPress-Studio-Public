@@ -34,12 +34,17 @@ public enum LocalKaTeXPreviewService {
       return LocalKaTeXPreviewPreparation(markdown: markdown, replacements: [])
     }
     let protectedRanges = MarkdownCodeRangeScanner.scan(markdown).allRanges
-    let patterns: [(NSRegularExpression, Bool)] = [
-      (try! NSRegularExpression(pattern: #"(?s)(?<!\\)\$\$(.+?)(?<!\\)\$\$"#), true),
-      (try! NSRegularExpression(pattern: #"(?s)(?<!\\)\\\[(.+?)(?<!\\)\\\]"#), true),
-      (try! NSRegularExpression(pattern: #"(?<!\\)\$(?!\$)([^$\n]+?)(?<!\\)\$(?!\$)"#), false),
-      (try! NSRegularExpression(pattern: #"(?<!\\)\\\(([^\n]+?)(?<!\\)\\\)"#), false),
-    ]
+    let patterns: [(NSRegularExpression, Bool)]
+    do {
+      patterns = try [
+        (NSRegularExpression(pattern: #"(?s)(?<!\\)\$\$(.+?)(?<!\\)\$\$"#), true),
+        (NSRegularExpression(pattern: #"(?s)(?<!\\)\\\[(.+?)(?<!\\)\\\]"#), true),
+        (NSRegularExpression(pattern: #"(?<!\\)\$(?!\$)([^$\n]+?)(?<!\\)\$(?!\$)"#), false),
+        (NSRegularExpression(pattern: #"(?<!\\)\\\(([^\n]+?)(?<!\\)\\\)"#), false),
+      ]
+    } catch {
+      return LocalKaTeXPreviewPreparation(markdown: markdown, replacements: [])
+    }
     var candidates: [(range: NSRange, source: String, isBlock: Bool)] = []
     for (regex, isBlock) in patterns {
       for match in regex.matches(

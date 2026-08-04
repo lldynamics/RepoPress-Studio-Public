@@ -1,210 +1,790 @@
 {
-  "%@ %@/%@": {"zh-Hans": "%@ %@/%@", "en": "%@ %@/%@"},
-  "%lld / %lld 篇": {"zh-Hans": "%lld / %lld 篇", "en": "%lld / %lld articles"},
-  "%lld 个发布相关远端变更": {"zh-Hans": "%lld 个发布相关远端变更", "en": "%lld publishing-related remote changes"},
-  "%lld 处": {"zh-Hans": "%lld 处", "en": "%lld occurrences"},
-  "%lld 篇 · %lld 片段": {"zh-Hans": "%lld 篇 · %lld 片段", "en": "%lld articles · %lld passages"},
-  "%lld 警告": {"zh-Hans": "%lld 警告", "en": "%lld warnings"},
-  "%lld 项": {"zh-Hans": "%lld 项", "en": "%lld items"},
-  "AI 数据发送授权": {"zh-Hans": "AI 数据发送授权", "en": "AI Data Sharing Consent"},
-  "Caption": {"zh-Hans": "图注", "en": "Caption"},
-  "Cloudflare Account ID（可稍后补）": {"zh-Hans": "Cloudflare Account ID（可稍后补）", "en": "Cloudflare Account ID (can be added later)"},
-  "Fetch 已跳过": {"zh-Hans": "已跳过 Fetch", "en": "Fetch skipped"},
-  "Fetch：%@": {"zh-Hans": "Fetch：%@", "en": "Fetch: %@"},
-  "Finder": {"zh-Hans": "Finder", "en": "Finder"},
-  "HTML 源码操作失败": {"zh-Hans": "HTML 源码操作失败", "en": "HTML Source Action Failed"},
-  "Inspector": {"zh-Hans": "检查器", "en": "Inspector"},
-  "Markdown %lld · 图片 %lld": {"zh-Hans": "Markdown %lld · 图片 %lld", "en": "Markdown %lld · Images %lld"},
-  "Netlify Site ID（可稍后补）": {"zh-Hans": "Netlify Site ID（可稍后补）", "en": "Netlify Site ID (can be added later)"},
-  "PDF…": {"zh-Hans": "PDF…", "en": "PDF…"},
-  "Vercel Project ID（可稍后补）": {"zh-Hans": "Vercel Project ID（可稍后补）", "en": "Vercel Project ID (can be added later)"},
-  "Vercel Team ID（可选）": {"zh-Hans": "Vercel Team ID（可选）", "en": "Vercel Team ID (optional)"},
-  "https://example.com/article": {"zh-Hans": "https://example.com/article", "en": "https://example.com/article"},
-  "−%lld": {"zh-Hans": "−%lld", "en": "−%lld"},
-  "−%lld 行": {"zh-Hans": "−%lld 行", "en": "−%lld lines"},
-  "上次：%@": {"zh-Hans": "上次：%@", "en": "Last: %@"},
-  "上移": {"zh-Hans": "上移", "en": "Move Up"},
-  "下次：%@": {"zh-Hans": "下次：%@", "en": "Next: %@"},
-  "仓库凭据": {"zh-Hans": "仓库凭据", "en": "Repository Credentials"},
-  "仓库待清理": {"zh-Hans": "仓库待清理", "en": "Repository Cleanup Needed"},
-  "仓库权限": {"zh-Hans": "仓库权限", "en": "Repository Permissions"},
-  "代码围栏未闭合；点击定位到起始标记": {"zh-Hans": "代码围栏未闭合；点击定位到起始标记", "en": "The code fence is not closed; click to jump to its opening marker"},
-  "代码围栏第 %@–%@ 行；点击跳转到另一端": {"zh-Hans": "代码围栏第 %@–%@ 行；点击跳转到另一端", "en": "Code fence on lines %@–%@; click to jump to the other end"},
-  "保存 API Key": {"zh-Hans": "保存 API Key", "en": "Save API Key"},
-  "修复 %lld 条资料": {"zh-Hans": "修复 %lld 条资料", "en": "Repair %lld items"},
-  "修改时间": {"zh-Hans": "修改时间", "en": "Modified"},
-  "全词匹配": {"zh-Hans": "全词匹配", "en": "Match Whole Word"},
-  "全选": {"zh-Hans": "全选", "en": "Select All"},
-  "共 %lld 条资料。移入后可以从回收站恢复。": {"zh-Hans": "共 %lld 条资料。移入后可以从回收站恢复。", "en": "%lld items total. You can restore them from Trash after moving them."},
-  "关联文章": {"zh-Hans": "关联文章", "en": "Related Articles"},
-  "关联翻译草稿": {"zh-Hans": "关联翻译草稿", "en": "Link Translation Draft"},
-  "其中 %lld 项已列入更高优先级队列。": {"zh-Hans": "其中 %lld 项已列入更高优先级队列。", "en": "%lld of these items are already in a higher-priority queue."},
-  "其他变更：%lld": {"zh-Hans": "其他变更：%lld", "en": "Other changes: %lld"},
-  "内置 %lld 个模板，支持新建站点或导入已有仓库。": {"zh-Hans": "内置 %lld 个模板，支持新建站点或导入已有仓库。", "en": "%lld built-in templates let you create a new site or import an existing repository."},
-  "切换任务完成状态": {"zh-Hans": "切换任务完成状态", "en": "Toggle Task Completion"},
-  "切换到%@模式": {"zh-Hans": "切换到%@模式", "en": "Switch to %@ mode"},
-  "删除%@ API Key？": {"zh-Hans": "删除 %@ API Key？", "en": "Delete the %@ API key?"},
-  "删除%@仓库访问令牌": {"zh-Hans": "删除 %@ 仓库访问令牌", "en": "Delete the %@ repository access token"},
-  "删除站点配置和 %lld 篇草稿": {"zh-Hans": "删除站点配置和 %lld 篇草稿", "en": "Delete the site configuration and %lld drafts"},
-  "删除线": {"zh-Hans": "删除线", "en": "Strikethrough"},
-  "刷新": {"zh-Hans": "刷新", "en": "Refresh"},
-  "刷新报告": {"zh-Hans": "刷新报告", "en": "Refresh Report"},
-  "刷新状态": {"zh-Hans": "刷新状态", "en": "Refresh Status"},
-  "卡片预览": {"zh-Hans": "卡片预览", "en": "Card Preview"},
-  "历史": {"zh-Hans": "历史", "en": "History"},
-  "历史版本与当前版本比较": {"zh-Hans": "历史版本与当前版本比较", "en": "Compare Historical and Current Versions"},
-  "发布信息待刷新": {"zh-Hans": "发布信息待刷新", "en": "Publishing Information Needs Refreshing"},
-  "发布策略": {"zh-Hans": "发布策略", "en": "Publishing Strategy"},
-  "发布行动队列": {"zh-Hans": "发布行动队列", "en": "Publishing Action Queue"},
-  "发送地址": {"zh-Hans": "发送地址", "en": "Destination"},
-  "另有 %lld 条资料将在确认后处理。": {"zh-Hans": "另有 %lld 条资料将在确认后处理。", "en": "%lld additional items will be processed after confirmation."},
-  "另有 %lld 项": {"zh-Hans": "另有 %lld 项", "en": "%lld more items"},
-  "台账指标": {"zh-Hans": "台账指标", "en": "Ledger Metrics"},
-  "启动本地接收器": {"zh-Hans": "启动本地接收器", "en": "Start Local Receiver"},
-  "回滚上次替换": {"zh-Hans": "回滚上次替换", "en": "Undo Last Replacement"},
-  "图片过多，当前只显示前 5,000 张。可以通过 Finder 继续管理。": {"zh-Hans": "图片过多，当前只显示前 5,000 张。可以通过 Finder 继续管理。", "en": "There are too many images, so only the first 5,000 are shown. Use Finder to manage the rest."},
-  "在浏览器中打开": {"zh-Hans": "在浏览器中打开", "en": "Open in Browser"},
-  "填写 owner/repo": {"zh-Hans": "填写 owner/repo", "en": "Enter owner/repo"},
-  "处理发布阻断项": {"zh-Hans": "处理发布阻断项", "en": "Resolve Publishing Blockers"},
-  "备份并重建": {"zh-Hans": "备份并重建", "en": "Back Up and Rebuild"},
-  "备份并重建浏览器保存账本？": {"zh-Hans": "备份并重建浏览器保存账本？", "en": "Back up and rebuild the browser save ledger?"},
-  "复制": {"zh-Hans": "复制", "en": "Copy"},
-  "复制 SEO / Social 检查清单": {"zh-Hans": "复制 SEO / Social 检查清单", "en": "Copy SEO / Social Checklist"},
-  "复制 commit SHA": {"zh-Hans": "复制 commit SHA", "en": "Copy Commit SHA"},
-  "复制任务": {"zh-Hans": "复制任务", "en": "Copy Task"},
-  "复制命令": {"zh-Hans": "复制命令", "en": "Copy Command"},
-  "复制摘要": {"zh-Hans": "复制摘要", "en": "Copy Summary"},
-  "复制本段为引用": {"zh-Hans": "复制本段为引用", "en": "Copy This Passage as a Quote"},
-  "复制清单": {"zh-Hans": "复制清单", "en": "Copy Checklist"},
-  "复制结果": {"zh-Hans": "复制结果", "en": "Copy Result"},
-  "复制路径": {"zh-Hans": "复制路径", "en": "Copy Path"},
-  "外部调试": {"zh-Hans": "外部调试", "en": "External Debugging"},
-  "多篇文章映射到了同一仓库路径": {"zh-Hans": "多篇文章映射到了同一仓库路径", "en": "Multiple articles map to the same repository path"},
-  "好": {"zh-Hans": "好", "en": "OK"},
-  "安装浏览器扩展": {"zh-Hans": "安装浏览器扩展", "en": "Install Browser Extension"},
-  "将删除「%@」及其 %lld 篇草稿；可在本次会话中通过“撤销删除”恢复。": {"zh-Hans": "将删除「%@」及其 %lld 篇草稿；可在本次会话中通过“撤销删除”恢复。", "en": "This will delete \"%@\" and its %lld drafts. You can restore them with Undo Delete during this session."},
-  "将发布 %lld 个文件": {"zh-Hans": "将发布 %lld 个文件", "en": "%lld files will be published"},
-  "将当前资料正文插入正在编辑的文章": {"zh-Hans": "将当前资料正文插入正在编辑的文章", "en": "Insert this item's content into the article being edited"},
-  "已手动快速隐藏工作台内容。": {"zh-Hans": "已手动快速隐藏工作台内容。", "en": "Workspace content was manually hidden."},
-  "已显示全部 %lld 个变化，可展开逐文件审阅。": {"zh-Hans": "已显示全部 %lld 个变化，可展开逐文件审阅。", "en": "All %lld changes are shown. Expand them to review each file."},
-  "已选 %lld 条": {"zh-Hans": "已选 %lld 条", "en": "%lld selected"},
-  "已生成到 %@": {"zh-Hans": "已生成到 %@", "en": "Generated at %@"},
-  "平台就绪度": {"zh-Hans": "平台就绪度", "en": "Platform Readiness"},
-  "应用建议排期": {"zh-Hans": "应用建议排期", "en": "Apply Suggested Schedule"},
-  "应用所选替换": {"zh-Hans": "应用所选替换", "en": "Apply Selected Replacements"},
-  "应用站点类型": {"zh-Hans": "应用站点类型", "en": "Apply Site Type"},
-  "开启编辑与预览同步滚动": {"zh-Hans": "开启编辑与预览同步滚动", "en": "Enable Synchronized Editor and Preview Scrolling"},
-  "引用文章": {"zh-Hans": "引用文章", "en": "Reference Article"},
-  "当前光标位置；点击或按 ⌘L 跳转到指定行": {"zh-Hans": "当前光标位置；点击或按 ⌘L 跳转到指定行", "en": "Current cursor position; click or press ⌘L to jump to a line"},
-  "当前文章的线上发布预览未通过": {"zh-Hans": "当前文章的线上发布预览未通过", "en": "The online publishing preview for the current article did not pass"},
-  "当前步骤没有明显阻断。": {"zh-Hans": "当前步骤没有明显阻断。", "en": "No obvious blockers were found in the current step."},
-  "当前站点使用": {"zh-Hans": "当前站点使用", "en": "Use on Current Site"},
-  "当前：%@ · %lld 条": {"zh-Hans": "当前：%@ · %lld 条", "en": "Current: %@ · %lld items"},
-  "快速创建": {"zh-Hans": "快速创建", "en": "Quick Create"},
-  "忽略": {"zh-Hans": "忽略", "en": "Ignore"},
-  "恢复下一步": {"zh-Hans": "恢复下一步", "en": "Resume Next Step"},
-  "恢复左侧版本？": {"zh-Hans": "恢复左侧版本？", "en": "Restore the version on the left?"},
-  "打开仓库与发布": {"zh-Hans": "打开仓库与发布", "en": "Open Repository and Publishing"},
-  "打开信号": {"zh-Hans": "打开信号", "en": "Open Signal"},
-  "打开当前文章的最终发布确认页": {"zh-Hans": "打开当前文章的最终发布确认页", "en": "Open the final publishing confirmation page for the current article"},
-  "打开目标文章": {"zh-Hans": "打开目标文章", "en": "Open Target Article"},
-  "打开站点": {"zh-Hans": "打开站点", "en": "Open Site"},
-  "打开远端": {"zh-Hans": "打开远端", "en": "Open Remote"},
-  "报告可能已过期": {"zh-Hans": "报告可能已过期", "en": "Report May Be Outdated"},
-  "接受修改": {"zh-Hans": "接受修改", "en": "Accept Changes"},
-  "插入引用": {"zh-Hans": "插入引用", "en": "Insert Citation"},
-  "插入当前文章": {"zh-Hans": "插入当前文章", "en": "Insert Current Article"},
-  "搜索排序": {"zh-Hans": "搜索排序", "en": "Search Sort Order"},
-  "搜索文件名或仓库路径": {"zh-Hans": "搜索文件名或仓库路径", "en": "Search filenames or repository paths"},
-  "搜索文件名或路径": {"zh-Hans": "搜索文件名或路径", "en": "Search filenames or paths"},
-  "搜索结果排序：%@": {"zh-Hans": "搜索结果排序：%@", "en": "Search result order: %@"},
-  "搜索范围": {"zh-Hans": "搜索范围", "en": "Search Scope"},
-  "撤销 %@ 的 AI 数据发送授权？": {"zh-Hans": "撤销 %@ 的 AI 数据发送授权？", "en": "Revoke AI data sharing consent for %@?"},
-  "撤销删除": {"zh-Hans": "撤销删除", "en": "Undo Delete"},
-  "撤销授权": {"zh-Hans": "撤销授权", "en": "Revoke Consent"},
-  "文章链接": {"zh-Hans": "文章链接", "en": "Article Links"},
-  "更换连接令牌…": {"zh-Hans": "更换连接令牌…", "en": "Change Connection Token…"},
-  "更换连接令牌？": {"zh-Hans": "更换连接令牌？", "en": "Change the connection token?"},
-  "最终发布确认": {"zh-Hans": "最终发布确认", "en": "Final Publishing Confirmation"},
-  "最近检查：%@": {"zh-Hans": "最近检查：%@", "en": "Last checked: %@"},
-  "有 %lld 条旧版资料缺少可用网页归档，需要重新导入。": {"zh-Hans": "有 %lld 条旧版资料缺少可用网页归档，需要重新导入。", "en": "%lld legacy items do not have usable web archives and must be imported again."},
-  "有可用补全": {"zh-Hans": "有可用补全", "en": "Completions Available"},
-  "未启用部署": {"zh-Hans": "未启用部署", "en": "Deployment Not Enabled"},
-  "未填写": {"zh-Hans": "未填写", "en": "Not Entered"},
-  "未选择模板": {"zh-Hans": "未选择模板", "en": "No Template Selected"},
-  "未输入": {"zh-Hans": "未输入", "en": "Not Entered"},
-  "未进入禅意专注模式": {"zh-Hans": "未进入禅意专注模式", "en": "Zen Focus Mode Is Off"},
-  "本地语义索引": {"zh-Hans": "本地语义索引", "en": "Local Semantic Index"},
-  "本机正文净化预览": {"zh-Hans": "本机正文净化预览", "en": "Local Content Sanitization Preview"},
-  "权限检查": {"zh-Hans": "权限检查", "en": "Permission Check"},
-  "查找下一个（Return）": {"zh-Hans": "查找下一个（Return）", "en": "Find Next (Return)"},
-  "查找源码（⌘F）": {"zh-Hans": "查找源码（⌘F）", "en": "Find in Source (⌘F)"},
-  "查看发布检查": {"zh-Hans": "查看发布检查", "en": "View Publishing Check"},
-  "标注与反向链接": {"zh-Hans": "标注与反向链接", "en": "Annotations and Backlinks"},
-  "标签，用逗号分隔": {"zh-Hans": "标签，用逗号分隔", "en": "Tags, separated by commas"},
-  "格式": {"zh-Hans": "格式", "en": "Format"},
-  "检查来源更新": {"zh-Hans": "检查来源更新", "en": "Check Source for Updates"},
-  "正在保存": {"zh-Hans": "正在保存", "en": "Saving"},
-  "正在准备": {"zh-Hans": "正在准备", "en": "Preparing"},
-  "正在准备发布信息": {"zh-Hans": "正在准备发布信息", "en": "Preparing Publishing Information"},
-  "正文诊断：%lld 项": {"zh-Hans": "正文诊断：%lld 项", "en": "Content diagnostics: %lld issues"},
-  "正文诊断：未发现问题": {"zh-Hans": "正文诊断：未发现问题", "en": "Content diagnostics: no issues found"},
-  "永久删除 %lld 条资料": {"zh-Hans": "永久删除 %lld 条资料", "en": "Permanently Delete %lld Items"},
-  "没有发现标签结构问题": {"zh-Hans": "没有发现标签结构问题", "en": "No tag structure issues found"},
-  "没有发现需要优先复查的旧文。": {"zh-Hans": "没有发现需要优先复查的旧文。", "en": "No older articles need priority review."},
-  "没有可在本机重新净化的网页资料。": {"zh-Hans": "没有可在本机重新净化的网页资料。", "en": "There are no web items that can be sanitized again on this Mac."},
-  "没有待发布变更": {"zh-Hans": "没有待发布变更", "en": "No Changes to Publish"},
-  "没有活动补全": {"zh-Hans": "没有活动补全", "en": "No Active Completions"},
-  "没有需要保存的文件变化": {"zh-Hans": "没有需要保存的文件变化", "en": "No File Changes to Save"},
-  "测试连接": {"zh-Hans": "测试连接", "en": "Test Connection"},
-  "添加于 %@": {"zh-Hans": "添加于 %@", "en": "Added on %@"},
-  "添加笔记": {"zh-Hans": "添加笔记", "en": "Add Note"},
-  "清理本地文件": {"zh-Hans": "清理本地文件", "en": "Clean Up Local Files"},
-  "清除条件": {"zh-Hans": "清除条件", "en": "Clear Criteria"},
-  "源码编辑": {"zh-Hans": "源码编辑", "en": "Source Editing"},
-  "灰色为历史内容沉淀": {"zh-Hans": "灰色为历史内容沉淀", "en": "Historical content is shown in gray"},
-  "版本历史": {"zh-Hans": "版本历史", "en": "Version History"},
-  "用系统浏览器预览": {"zh-Hans": "用系统浏览器预览", "en": "Preview in Default Browser"},
-  "目标文章": {"zh-Hans": "目标文章", "en": "Target Article"},
-  "生成 Starter 会写入模板文件、示例文章、部署说明，并把新站点配置加入工作台。": {"zh-Hans": "生成 Starter 会写入模板文件、示例文章、部署说明，并把新站点配置加入工作台。", "en": "Creating the starter writes template files, a sample article, and deployment instructions, then adds the new site configuration to the workspace."},
-  "确认导入": {"zh-Hans": "确认导入", "en": "Confirm Import"},
-  "禅意专注写作（⇧⌘F）": {"zh-Hans": "禅意专注写作（⇧⌘F）", "en": "Zen Focus Writing (⇧⌘F)"},
-  "窗口过窄，已临时隐藏": {"zh-Hans": "窗口过窄，已临时隐藏", "en": "Temporarily hidden because the window is too narrow"},
-  "空文件夹路径": {"zh-Hans": "空文件夹路径", "en": "Empty Folder Path"},
-  "立即轮询": {"zh-Hans": "立即轮询", "en": "Poll Now"},
-  "编辑元数据": {"zh-Hans": "编辑元数据", "en": "Edit Metadata"},
-  "编辑元数据…": {"zh-Hans": "编辑元数据…", "en": "Edit Metadata…"},
-  "自动补全括号、引号与代码标记": {"zh-Hans": "自动补全括号、引号与代码标记", "en": "Automatically Close Brackets, Quotes, and Code Markers"},
-  "行 %@，列 %@": {"zh-Hans": "行 %@，列 %@", "en": "Line %@, column %@"},
-  "行下移": {"zh-Hans": "行下移", "en": "Move Line Down"},
-  "行级差异": {"zh-Hans": "行级差异", "en": "Line-Level Differences"},
-  "警告（%lld）": {"zh-Hans": "警告（%lld）", "en": "Warnings (%lld)"},
-  "记录处理": {"zh-Hans": "记录处理", "en": "Record Processing"},
-  "设置范围": {"zh-Hans": "设置范围", "en": "Set Scope"},
-  "请先完成前面的步骤": {"zh-Hans": "请先完成前面的步骤", "en": "Complete the previous steps first"},
-  "读取网页": {"zh-Hans": "读取网页", "en": "Read Web Page"},
-  "资料回收站": {"zh-Hans": "资料回收站", "en": "Library Trash"},
-  "资料库健康…": {"zh-Hans": "资料库健康…", "en": "Library Health…"},
-  "资料库设置、回收站、备份与恢复": {"zh-Hans": "资料库设置、回收站、备份与恢复", "en": "Library Settings, Trash, Backup, and Restore"},
-  "资料库（仅允许 AI 使用）": {"zh-Hans": "资料库（仅允许 AI 使用）", "en": "Knowledge Base (AI Access Only)"},
-  "跨文章搜索": {"zh-Hans": "跨文章搜索", "en": "Search Across Articles"},
-  "跳转": {"zh-Hans": "跳转", "en": "Jump"},
-  "轮询间隔": {"zh-Hans": "轮询间隔", "en": "Polling Interval"},
-  "输入文章标题": {"zh-Hans": "输入文章标题", "en": "Enter Article Title"},
-  "返回": {"zh-Hans": "返回", "en": "Back"},
-  "还没有发布或维护操作记录。": {"zh-Hans": "还没有发布或维护操作记录。", "en": "There are no publishing or maintenance activity records yet."},
-  "远端仓库已创建": {"zh-Hans": "远端仓库已创建", "en": "Remote Repository Created"},
-  "退出安全模式": {"zh-Hans": "退出安全模式", "en": "Exit Safe Mode"},
-  "选择 Starter 模板": {"zh-Hans": "选择 Starter 模板", "en": "Choose a Starter Template"},
-  "重建全部语义索引": {"zh-Hans": "重建全部语义索引", "en": "Rebuild All Semantic Indexes"},
-  "重新读取磁盘内容": {"zh-Hans": "重新读取磁盘内容", "en": "Reload Content from Disk"},
-  "重新载入磁盘版本": {"zh-Hans": "重新载入磁盘版本", "en": "Reload Version from Disk"},
-  "重试检查": {"zh-Hans": "重试检查", "en": "Retry Check"},
-  "集合名称": {"zh-Hans": "集合名称", "en": "Collection Name"},
-  "预览": {"zh-Hans": "预览", "en": "Preview"},
-  "预览已接受修改": {"zh-Hans": "预览已接受修改", "en": "Preview with Accepted Changes"},
-  "预览站点类型变化": {"zh-Hans": "预览站点类型变化", "en": "Preview Site Type Changes"},
-  "首次提交并推送": {"zh-Hans": "首次提交并推送", "en": "Initial Commit and Push"},
-  "高亮当前段落": {"zh-Hans": "高亮当前段落", "en": "Highlight Current Paragraph"},
-  "高级格式": {"zh-Hans": "高级格式", "en": "Advanced Formatting"}
+  "%@ %@/%@": {
+    "en": "%@ %@/%@",
+    "zh-Hans": "%@ %@/%@"
+  },
+  "%lld / %lld 篇": {
+    "en": "%lld / %lld articles",
+    "zh-Hans": "%lld / %lld 篇"
+  },
+  "%lld 个发布相关远端变更": {
+    "en": "%lld publishing-related remote changes",
+    "zh-Hans": "%lld 个发布相关远端变更"
+  },
+  "%lld 处": {
+    "en": "%lld occurrences",
+    "zh-Hans": "%lld 处"
+  },
+  "%lld 篇 · %lld 片段": {
+    "en": "%lld articles · %lld passages",
+    "zh-Hans": "%lld 篇 · %lld 片段"
+  },
+  "%lld 警告": {
+    "en": "%lld warnings",
+    "zh-Hans": "%lld 警告"
+  },
+  "%lld 项": {
+    "en": "%lld items",
+    "zh-Hans": "%lld 项"
+  },
+  "AI 数据发送授权": {
+    "en": "AI Data Sharing Consent",
+    "zh-Hans": "AI 数据发送授权"
+  },
+  "Caption": {
+    "en": "Caption",
+    "zh-Hans": "图注"
+  },
+  "Cloudflare Account ID（可稍后补）": {
+    "en": "Cloudflare Account ID (can be added later)",
+    "zh-Hans": "Cloudflare Account ID（可稍后补）"
+  },
+  "Fetch 已跳过": {
+    "en": "Fetch skipped",
+    "zh-Hans": "已跳过 Fetch"
+  },
+  "Fetch：%@": {
+    "en": "Fetch: %@",
+    "zh-Hans": "Fetch：%@"
+  },
+  "Finder": {
+    "en": "Finder",
+    "zh-Hans": "Finder"
+  },
+  "HTML 源码操作失败": {
+    "en": "HTML Source Action Failed",
+    "zh-Hans": "HTML 源码操作失败"
+  },
+  "Inspector": {
+    "en": "Inspector",
+    "zh-Hans": "检查器"
+  },
+  "Markdown %lld · 图片 %lld": {
+    "en": "Markdown %lld · Images %lld",
+    "zh-Hans": "Markdown %lld · 图片 %lld"
+  },
+  "Netlify Site ID（可稍后补）": {
+    "en": "Netlify Site ID (can be added later)",
+    "zh-Hans": "Netlify Site ID（可稍后补）"
+  },
+  "PDF…": {
+    "en": "PDF…",
+    "zh-Hans": "PDF…"
+  },
+  "Vercel Project ID（可稍后补）": {
+    "en": "Vercel Project ID (can be added later)",
+    "zh-Hans": "Vercel Project ID（可稍后补）"
+  },
+  "Vercel Team ID（可选）": {
+    "en": "Vercel Team ID (optional)",
+    "zh-Hans": "Vercel Team ID（可选）"
+  },
+  "https://example.com/article": {
+    "en": "https://example.com/article",
+    "zh-Hans": "https://example.com/article"
+  },
+  "−%lld": {
+    "en": "−%lld",
+    "zh-Hans": "−%lld"
+  },
+  "−%lld 行": {
+    "en": "−%lld lines",
+    "zh-Hans": "−%lld 行"
+  },
+  "上次：%@": {
+    "en": "Last: %@",
+    "zh-Hans": "上次：%@"
+  },
+  "上移": {
+    "en": "Move Up",
+    "zh-Hans": "上移"
+  },
+  "下次：%@": {
+    "en": "Next: %@",
+    "zh-Hans": "下次：%@"
+  },
+  "仓库凭据": {
+    "en": "Repository Credentials",
+    "zh-Hans": "仓库凭据"
+  },
+  "仓库待清理": {
+    "en": "Repository Cleanup Needed",
+    "zh-Hans": "仓库待清理"
+  },
+  "仓库权限": {
+    "en": "Repository Permissions",
+    "zh-Hans": "仓库权限"
+  },
+  "代码围栏未闭合；点击定位到起始标记": {
+    "en": "The code fence is not closed; click to jump to its opening marker",
+    "zh-Hans": "代码围栏未闭合；点击定位到起始标记"
+  },
+  "代码围栏第 %@–%@ 行；点击跳转到另一端": {
+    "en": "Code fence on lines %@–%@; click to jump to the other end",
+    "zh-Hans": "代码围栏第 %@–%@ 行；点击跳转到另一端"
+  },
+  "保存 API Key": {
+    "en": "Save API Key",
+    "zh-Hans": "保存 API Key"
+  },
+  "修复 %lld 条资料": {
+    "en": "Repair %lld items",
+    "zh-Hans": "修复 %lld 条资料"
+  },
+  "修改时间": {
+    "en": "Modified",
+    "zh-Hans": "修改时间"
+  },
+  "全词匹配": {
+    "en": "Match Whole Word",
+    "zh-Hans": "全词匹配"
+  },
+  "全选": {
+    "en": "Select All",
+    "zh-Hans": "全选"
+  },
+  "共 %lld 条资料。移入后可以从回收站恢复。": {
+    "en": "%lld items total. You can restore them from Trash after moving them.",
+    "zh-Hans": "共 %lld 条资料。移入后可以从回收站恢复。"
+  },
+  "关联文章": {
+    "en": "Related Articles",
+    "zh-Hans": "关联文章"
+  },
+  "关联翻译草稿": {
+    "en": "Link Translation Draft",
+    "zh-Hans": "关联翻译草稿"
+  },
+  "其中 %lld 项已列入更高优先级队列。": {
+    "en": "%lld of these items are already in a higher-priority queue.",
+    "zh-Hans": "其中 %lld 项已列入更高优先级队列。"
+  },
+  "其他变更：%lld": {
+    "en": "Other changes: %lld",
+    "zh-Hans": "其他变更：%lld"
+  },
+  "内置 %lld 个模板，支持新建站点或导入已有仓库。": {
+    "en": "%lld built-in templates let you create a new site or import an existing repository.",
+    "zh-Hans": "内置 %lld 个模板，支持新建站点或导入已有仓库。"
+  },
+  "切换任务完成状态": {
+    "en": "Toggle Task Completion",
+    "zh-Hans": "切换任务完成状态"
+  },
+  "切换到%@模式": {
+    "en": "Switch to %@ mode",
+    "zh-Hans": "切换到%@模式"
+  },
+  "删除%@ API Key？": {
+    "en": "Delete the %@ API key?",
+    "zh-Hans": "删除 %@ API Key？"
+  },
+  "删除%@仓库访问令牌": {
+    "en": "Delete the %@ repository access token",
+    "zh-Hans": "删除 %@ 仓库访问令牌"
+  },
+  "删除站点配置和 %lld 篇草稿": {
+    "en": "Delete the site configuration and %lld drafts",
+    "zh-Hans": "删除站点配置和 %lld 篇草稿"
+  },
+  "删除线": {
+    "en": "Strikethrough",
+    "zh-Hans": "删除线"
+  },
+  "刷新": {
+    "en": "Refresh",
+    "zh-Hans": "刷新"
+  },
+  "刷新报告": {
+    "en": "Refresh Report",
+    "zh-Hans": "刷新报告"
+  },
+  "刷新状态": {
+    "en": "Refresh Status",
+    "zh-Hans": "刷新状态"
+  },
+  "卡片预览": {
+    "en": "Card Preview",
+    "zh-Hans": "卡片预览"
+  },
+  "历史": {
+    "en": "History",
+    "zh-Hans": "历史"
+  },
+  "历史版本与当前版本比较": {
+    "en": "Compare Historical and Current Versions",
+    "zh-Hans": "历史版本与当前版本比较"
+  },
+  "发布策略": {
+    "en": "Publishing Strategy",
+    "zh-Hans": "发布策略"
+  },
+  "发布行动队列": {
+    "en": "Publishing Action Queue",
+    "zh-Hans": "发布行动队列"
+  },
+  "发送地址": {
+    "en": "Destination",
+    "zh-Hans": "发送地址"
+  },
+  "另有 %lld 条资料将在确认后处理。": {
+    "en": "%lld additional items will be processed after confirmation.",
+    "zh-Hans": "另有 %lld 条资料将在确认后处理。"
+  },
+  "另有 %lld 项": {
+    "en": "%lld more items",
+    "zh-Hans": "另有 %lld 项"
+  },
+  "台账指标": {
+    "en": "Ledger Metrics",
+    "zh-Hans": "台账指标"
+  },
+  "启动本地接收器": {
+    "en": "Start Local Receiver",
+    "zh-Hans": "启动本地接收器"
+  },
+  "回滚上次替换": {
+    "en": "Undo Last Replacement",
+    "zh-Hans": "回滚上次替换"
+  },
+  "图片过多，当前只显示前 5,000 张。可以通过 Finder 继续管理。": {
+    "en": "There are too many images, so only the first 5,000 are shown. Use Finder to manage the rest.",
+    "zh-Hans": "图片过多，当前只显示前 5,000 张。可以通过 Finder 继续管理。"
+  },
+  "填写 owner/repo": {
+    "en": "Enter owner/repo",
+    "zh-Hans": "填写 owner/repo"
+  },
+  "备份并重建": {
+    "en": "Back Up and Rebuild",
+    "zh-Hans": "备份并重建"
+  },
+  "备份并重建浏览器保存账本？": {
+    "en": "Back up and rebuild the browser save ledger?",
+    "zh-Hans": "备份并重建浏览器保存账本？"
+  },
+  "复制": {
+    "en": "Copy",
+    "zh-Hans": "复制"
+  },
+  "复制 SEO / Social 检查清单": {
+    "en": "Copy SEO / Social Checklist",
+    "zh-Hans": "复制 SEO / Social 检查清单"
+  },
+  "复制 commit SHA": {
+    "en": "Copy Commit SHA",
+    "zh-Hans": "复制 commit SHA"
+  },
+  "复制任务": {
+    "en": "Copy Task",
+    "zh-Hans": "复制任务"
+  },
+  "复制命令": {
+    "en": "Copy Command",
+    "zh-Hans": "复制命令"
+  },
+  "复制摘要": {
+    "en": "Copy Summary",
+    "zh-Hans": "复制摘要"
+  },
+  "复制本段为引用": {
+    "en": "Copy This Passage as a Quote",
+    "zh-Hans": "复制本段为引用"
+  },
+  "复制清单": {
+    "en": "Copy Checklist",
+    "zh-Hans": "复制清单"
+  },
+  "复制结果": {
+    "en": "Copy Result",
+    "zh-Hans": "复制结果"
+  },
+  "复制路径": {
+    "en": "Copy Path",
+    "zh-Hans": "复制路径"
+  },
+  "外部调试": {
+    "en": "External Debugging",
+    "zh-Hans": "外部调试"
+  },
+  "多篇文章映射到了同一仓库路径": {
+    "en": "Multiple articles map to the same repository path",
+    "zh-Hans": "多篇文章映射到了同一仓库路径"
+  },
+  "好": {
+    "en": "OK",
+    "zh-Hans": "好"
+  },
+  "安装浏览器扩展": {
+    "en": "Install Browser Extension",
+    "zh-Hans": "安装浏览器扩展"
+  },
+  "将删除「%@」及其 %lld 篇草稿；可在本次会话中通过“撤销删除”恢复。": {
+    "en": "This will delete \"%@\" and its %lld drafts. You can restore them with Undo Delete during this session.",
+    "zh-Hans": "将删除「%@」及其 %lld 篇草稿；可在本次会话中通过“撤销删除”恢复。"
+  },
+  "将发布 %lld 个文件": {
+    "en": "%lld files will be published",
+    "zh-Hans": "将发布 %lld 个文件"
+  },
+  "将当前资料正文插入正在编辑的文章": {
+    "en": "Insert this item's content into the article being edited",
+    "zh-Hans": "将当前资料正文插入正在编辑的文章"
+  },
+  "已手动快速隐藏工作台内容。": {
+    "en": "Workspace content was manually hidden.",
+    "zh-Hans": "已手动快速隐藏工作台内容。"
+  },
+  "已显示全部 %lld 个变化，可展开逐文件审阅。": {
+    "en": "All %lld changes are shown. Expand them to review each file.",
+    "zh-Hans": "已显示全部 %lld 个变化，可展开逐文件审阅。"
+  },
+  "已生成到 %@": {
+    "en": "Generated at %@",
+    "zh-Hans": "已生成到 %@"
+  },
+  "已选 %lld 条": {
+    "en": "%lld selected",
+    "zh-Hans": "已选 %lld 条"
+  },
+  "平台就绪度": {
+    "en": "Platform Readiness",
+    "zh-Hans": "平台就绪度"
+  },
+  "应用建议排期": {
+    "en": "Apply Suggested Schedule",
+    "zh-Hans": "应用建议排期"
+  },
+  "应用所选替换": {
+    "en": "Apply Selected Replacements",
+    "zh-Hans": "应用所选替换"
+  },
+  "应用站点类型": {
+    "en": "Apply Site Type",
+    "zh-Hans": "应用站点类型"
+  },
+  "开启编辑与预览同步滚动": {
+    "en": "Enable Synchronized Editor and Preview Scrolling",
+    "zh-Hans": "开启编辑与预览同步滚动"
+  },
+  "引用文章": {
+    "en": "Reference Article",
+    "zh-Hans": "引用文章"
+  },
+  "当前光标位置；点击或按 ⌘L 跳转到指定行": {
+    "en": "Current cursor position; click or press ⌘L to jump to a line",
+    "zh-Hans": "当前光标位置；点击或按 ⌘L 跳转到指定行"
+  },
+  "当前文章的线上发布预览未通过": {
+    "en": "The online publishing preview for the current article did not pass",
+    "zh-Hans": "当前文章的线上发布预览未通过"
+  },
+  "当前步骤没有明显阻断。": {
+    "en": "No obvious blockers were found in the current step.",
+    "zh-Hans": "当前步骤没有明显阻断。"
+  },
+  "当前站点使用": {
+    "en": "Use on Current Site",
+    "zh-Hans": "当前站点使用"
+  },
+  "当前：%@ · %lld 条": {
+    "en": "Current: %@ · %lld items",
+    "zh-Hans": "当前：%@ · %lld 条"
+  },
+  "快速创建": {
+    "en": "Quick Create",
+    "zh-Hans": "快速创建"
+  },
+  "忽略": {
+    "en": "Ignore",
+    "zh-Hans": "忽略"
+  },
+  "恢复下一步": {
+    "en": "Resume Next Step",
+    "zh-Hans": "恢复下一步"
+  },
+  "恢复左侧版本？": {
+    "en": "Restore the version on the left?",
+    "zh-Hans": "恢复左侧版本？"
+  },
+  "打开仓库与发布": {
+    "en": "Open Repository and Publishing",
+    "zh-Hans": "打开仓库与发布"
+  },
+  "打开信号": {
+    "en": "Open Signal",
+    "zh-Hans": "打开信号"
+  },
+  "打开当前文章的最终发布确认页": {
+    "en": "Open the final publishing confirmation page for the current article",
+    "zh-Hans": "打开当前文章的最终发布确认页"
+  },
+  "打开目标文章": {
+    "en": "Open Target Article",
+    "zh-Hans": "打开目标文章"
+  },
+  "打开站点": {
+    "en": "Open Site",
+    "zh-Hans": "打开站点"
+  },
+  "打开远端": {
+    "en": "Open Remote",
+    "zh-Hans": "打开远端"
+  },
+  "报告可能已过期": {
+    "en": "Report May Be Outdated",
+    "zh-Hans": "报告可能已过期"
+  },
+  "接受修改": {
+    "en": "Accept Changes",
+    "zh-Hans": "接受修改"
+  },
+  "插入引用": {
+    "en": "Insert Citation",
+    "zh-Hans": "插入引用"
+  },
+  "插入当前文章": {
+    "en": "Insert Current Article",
+    "zh-Hans": "插入当前文章"
+  },
+  "搜索排序": {
+    "en": "Search Sort Order",
+    "zh-Hans": "搜索排序"
+  },
+  "搜索文件名或仓库路径": {
+    "en": "Search filenames or repository paths",
+    "zh-Hans": "搜索文件名或仓库路径"
+  },
+  "搜索文件名或路径": {
+    "en": "Search filenames or paths",
+    "zh-Hans": "搜索文件名或路径"
+  },
+  "搜索结果排序：%@": {
+    "en": "Search result order: %@",
+    "zh-Hans": "搜索结果排序：%@"
+  },
+  "搜索范围": {
+    "en": "Search Scope",
+    "zh-Hans": "搜索范围"
+  },
+  "撤销 %@ 的 AI 数据发送授权？": {
+    "en": "Revoke AI data sharing consent for %@?",
+    "zh-Hans": "撤销 %@ 的 AI 数据发送授权？"
+  },
+  "撤销删除": {
+    "en": "Undo Delete",
+    "zh-Hans": "撤销删除"
+  },
+  "撤销授权": {
+    "en": "Revoke Consent",
+    "zh-Hans": "撤销授权"
+  },
+  "文章链接": {
+    "en": "Article Links",
+    "zh-Hans": "文章链接"
+  },
+  "更换连接令牌…": {
+    "en": "Change Connection Token…",
+    "zh-Hans": "更换连接令牌…"
+  },
+  "更换连接令牌？": {
+    "en": "Change the connection token?",
+    "zh-Hans": "更换连接令牌？"
+  },
+  "最终发布确认": {
+    "en": "Final Publishing Confirmation",
+    "zh-Hans": "最终发布确认"
+  },
+  "最近检查：%@": {
+    "en": "Last checked: %@",
+    "zh-Hans": "最近检查：%@"
+  },
+  "有 %lld 条旧版资料缺少可用网页归档，需要重新导入。": {
+    "en": "%lld legacy items do not have usable web archives and must be imported again.",
+    "zh-Hans": "有 %lld 条旧版资料缺少可用网页归档，需要重新导入。"
+  },
+  "有可用补全": {
+    "en": "Completions Available",
+    "zh-Hans": "有可用补全"
+  },
+  "未启用部署": {
+    "en": "Deployment Not Enabled",
+    "zh-Hans": "未启用部署"
+  },
+  "未填写": {
+    "en": "Not Entered",
+    "zh-Hans": "未填写"
+  },
+  "未输入": {
+    "en": "Not Entered",
+    "zh-Hans": "未输入"
+  },
+  "本地语义索引": {
+    "en": "Local Semantic Index",
+    "zh-Hans": "本地语义索引"
+  },
+  "本机正文净化预览": {
+    "en": "Local Content Sanitization Preview",
+    "zh-Hans": "本机正文净化预览"
+  },
+  "权限检查": {
+    "en": "Permission Check",
+    "zh-Hans": "权限检查"
+  },
+  "查找下一个（Return）": {
+    "en": "Find Next (Return)",
+    "zh-Hans": "查找下一个（Return）"
+  },
+  "查找源码（⌘F）": {
+    "en": "Find in Source (⌘F)",
+    "zh-Hans": "查找源码（⌘F）"
+  },
+  "查看发布检查": {
+    "en": "View Publishing Check",
+    "zh-Hans": "查看发布检查"
+  },
+  "标注与反向链接": {
+    "en": "Annotations and Backlinks",
+    "zh-Hans": "标注与反向链接"
+  },
+  "标签，用逗号分隔": {
+    "en": "Tags, separated by commas",
+    "zh-Hans": "标签，用逗号分隔"
+  },
+  "格式": {
+    "en": "Format",
+    "zh-Hans": "格式"
+  },
+  "检查来源更新": {
+    "en": "Check Source for Updates",
+    "zh-Hans": "检查来源更新"
+  },
+  "正在保存": {
+    "en": "Saving",
+    "zh-Hans": "正在保存"
+  },
+  "正在准备": {
+    "en": "Preparing",
+    "zh-Hans": "正在准备"
+  },
+  "正文诊断：%lld 项": {
+    "en": "Content diagnostics: %lld issues",
+    "zh-Hans": "正文诊断：%lld 项"
+  },
+  "正文诊断：未发现问题": {
+    "en": "Content diagnostics: no issues found",
+    "zh-Hans": "正文诊断：未发现问题"
+  },
+  "永久删除 %lld 条资料": {
+    "en": "Permanently Delete %lld Items",
+    "zh-Hans": "永久删除 %lld 条资料"
+  },
+  "没有发现标签结构问题": {
+    "en": "No tag structure issues found",
+    "zh-Hans": "没有发现标签结构问题"
+  },
+  "没有发现需要优先复查的旧文。": {
+    "en": "No older articles need priority review.",
+    "zh-Hans": "没有发现需要优先复查的旧文。"
+  },
+  "没有可在本机重新净化的网页资料。": {
+    "en": "There are no web items that can be sanitized again on this Mac.",
+    "zh-Hans": "没有可在本机重新净化的网页资料。"
+  },
+  "没有待发布变更": {
+    "en": "No Changes to Publish",
+    "zh-Hans": "没有待发布变更"
+  },
+  "没有活动补全": {
+    "en": "No Active Completions",
+    "zh-Hans": "没有活动补全"
+  },
+  "测试连接": {
+    "en": "Test Connection",
+    "zh-Hans": "测试连接"
+  },
+  "添加于 %@": {
+    "en": "Added on %@",
+    "zh-Hans": "添加于 %@"
+  },
+  "添加笔记": {
+    "en": "Add Note",
+    "zh-Hans": "添加笔记"
+  },
+  "清理本地文件": {
+    "en": "Clean Up Local Files",
+    "zh-Hans": "清理本地文件"
+  },
+  "清除条件": {
+    "en": "Clear Criteria",
+    "zh-Hans": "清除条件"
+  },
+  "源码编辑": {
+    "en": "Source Editing",
+    "zh-Hans": "源码编辑"
+  },
+  "灰色为历史内容沉淀": {
+    "en": "Historical content is shown in gray",
+    "zh-Hans": "灰色为历史内容沉淀"
+  },
+  "版本历史": {
+    "en": "Version History",
+    "zh-Hans": "版本历史"
+  },
+  "生成 Starter 会写入模板文件、示例文章、部署说明，并把新站点配置加入工作台。": {
+    "en": "Creating the starter writes template files, a sample article, and deployment instructions, then adds the new site configuration to the workspace.",
+    "zh-Hans": "生成 Starter 会写入模板文件、示例文章、部署说明，并把新站点配置加入工作台。"
+  },
+  "用系统浏览器预览": {
+    "en": "Preview in Default Browser",
+    "zh-Hans": "用系统浏览器预览"
+  },
+  "目标文章": {
+    "en": "Target Article",
+    "zh-Hans": "目标文章"
+  },
+  "确认导入": {
+    "en": "Confirm Import",
+    "zh-Hans": "确认导入"
+  },
+  "空文件夹路径": {
+    "en": "Empty Folder Path",
+    "zh-Hans": "空文件夹路径"
+  },
+  "窗口过窄，已临时隐藏": {
+    "en": "Temporarily hidden because the window is too narrow",
+    "zh-Hans": "窗口过窄，已临时隐藏"
+  },
+  "立即轮询": {
+    "en": "Poll Now",
+    "zh-Hans": "立即轮询"
+  },
+  "编辑元数据": {
+    "en": "Edit Metadata",
+    "zh-Hans": "编辑元数据"
+  },
+  "编辑元数据…": {
+    "en": "Edit Metadata…",
+    "zh-Hans": "编辑元数据…"
+  },
+  "自动补全括号、引号与代码标记": {
+    "en": "Automatically Close Brackets, Quotes, and Code Markers",
+    "zh-Hans": "自动补全括号、引号与代码标记"
+  },
+  "行 %@，列 %@": {
+    "en": "Line %@, column %@",
+    "zh-Hans": "行 %@，列 %@"
+  },
+  "行下移": {
+    "en": "Move Line Down",
+    "zh-Hans": "行下移"
+  },
+  "行级差异": {
+    "en": "Line-Level Differences",
+    "zh-Hans": "行级差异"
+  },
+  "警告（%lld）": {
+    "en": "Warnings (%lld)",
+    "zh-Hans": "警告（%lld）"
+  },
+  "记录处理": {
+    "en": "Record Processing",
+    "zh-Hans": "记录处理"
+  },
+  "请先完成前面的步骤": {
+    "en": "Complete the previous steps first",
+    "zh-Hans": "请先完成前面的步骤"
+  },
+  "读取网页": {
+    "en": "Read Web Page",
+    "zh-Hans": "读取网页"
+  },
+  "资料回收站": {
+    "en": "Library Trash",
+    "zh-Hans": "资料回收站"
+  },
+  "资料库健康…": {
+    "en": "Library Health…",
+    "zh-Hans": "资料库健康…"
+  },
+  "资料库设置、回收站、备份与恢复": {
+    "en": "Library Settings, Trash, Backup, and Restore",
+    "zh-Hans": "资料库设置、回收站、备份与恢复"
+  },
+  "跳转": {
+    "en": "Jump",
+    "zh-Hans": "跳转"
+  },
+  "轮询间隔": {
+    "en": "Polling Interval",
+    "zh-Hans": "轮询间隔"
+  },
+  "输入文章标题": {
+    "en": "Enter Article Title",
+    "zh-Hans": "输入文章标题"
+  },
+  "返回": {
+    "en": "Back",
+    "zh-Hans": "返回"
+  },
+  "还没有发布或维护操作记录。": {
+    "en": "There are no publishing or maintenance activity records yet.",
+    "zh-Hans": "还没有发布或维护操作记录。"
+  },
+  "远端仓库已创建": {
+    "en": "Remote Repository Created",
+    "zh-Hans": "远端仓库已创建"
+  },
+  "退出安全模式": {
+    "en": "Exit Safe Mode",
+    "zh-Hans": "退出安全模式"
+  },
+  "选择 Starter 模板": {
+    "en": "Choose a Starter Template",
+    "zh-Hans": "选择 Starter 模板"
+  },
+  "重建全部语义索引": {
+    "en": "Rebuild All Semantic Indexes",
+    "zh-Hans": "重建全部语义索引"
+  },
+  "重新读取磁盘内容": {
+    "en": "Reload Content from Disk",
+    "zh-Hans": "重新读取磁盘内容"
+  },
+  "重新载入磁盘版本": {
+    "en": "Reload Version from Disk",
+    "zh-Hans": "重新载入磁盘版本"
+  },
+  "重试检查": {
+    "en": "Retry Check",
+    "zh-Hans": "重试检查"
+  },
+  "集合名称": {
+    "en": "Collection Name",
+    "zh-Hans": "集合名称"
+  },
+  "预览": {
+    "en": "Preview",
+    "zh-Hans": "预览"
+  },
+  "预览已接受修改": {
+    "en": "Preview with Accepted Changes",
+    "zh-Hans": "预览已接受修改"
+  },
+  "预览站点类型变化": {
+    "en": "Preview Site Type Changes",
+    "zh-Hans": "预览站点类型变化"
+  },
+  "首次提交并推送": {
+    "en": "Initial Commit and Push",
+    "zh-Hans": "首次提交并推送"
+  },
+  "高亮当前段落": {
+    "en": "Highlight Current Paragraph",
+    "zh-Hans": "高亮当前段落"
+  },
+  "高级格式": {
+    "en": "Advanced Formatting",
+    "zh-Hans": "高级格式"
+  }
 }

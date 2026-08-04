@@ -80,6 +80,8 @@ enum RSSReadingComfortConfiguration {
 
 enum RSSReadingProgressStore {
   private static let key = "rssReadingProgressByArticle"
+  private static let orderKey = "rssReadingProgressArticleOrder"
+  static let maximumEntryCount = 512
 
   static func load() -> [String: Double] {
     guard let data = UserDefaults.standard.data(forKey: key),
@@ -87,14 +89,71 @@ enum RSSReadingProgressStore {
     else {
       return [:]
     }
-    return values.reduce(into: [:]) { result, entry in
-      guard entry.value.isFinite else { return }
-      result[entry.key] = min(max(entry.value, 0), 1)
+    return normalized(values, preferredOrder: loadOrder())
+  }
+
+  static func loadOrder() -> [String] {
+    guard let data = UserDefaults.standard.data(forKey: orderKey),
+          let values = try? JSONDecoder().decode([String].self, from: data)
+    else {
+      return []
     }
+    return uniqueIDs(values)
   }
 
   static func save(_ values: [String: Double]) {
-    guard let data = try? JSONEncoder().encode(values) else { return }
+    save(values, orderedArticleIDs: loadOrder())
+  }
+
+  static func save(_ values: [String: Double], orderedArticleIDs: [String]) {
+    let values = normalized(values, preferredOrder: orderedArticleIDs)
+    let order = Self.orderedArticleIDs(for: values, preferredOrder: orderedArticleIDs)
+    guard let data = try? JSONEncoder().encode(values),
+          let orderData = try? JSONEncoder().encode(order)
+    else { return }
     UserDefaults.standard.set(data, forKey: key)
+    UserDefaults.standard.set(orderData, forKey: orderKey)
+  }
+
+  private static func normalized(
+    _ values: [String: Double],
+    preferredOrder: [String]
+  ) -> [String: Double] {
+    let sanitized = values.reduce(into: [String: Double]()) { result, entry in
+      guard entry.value.isFinite else { return }
+      result[entry.key] = min(max(entry.value, 0), 1)
+    }
+
+    let ids = orderedArticleIDs(for: sanitized, preferredOrder: preferredOrder)
+    return ids.reduce(into: [String: Double]()) { result, id in
+      if let value = sanitized[id] {
+        result[id] = value
+      }
+    }
+  }
+
+  private static func orderedArticleIDs(
+    for values: [String: Double],
+    preferredOrder: [String]
+  ) -> [String] {
+    var result: [String] = []
+    var seen = Set<String>()
+    for id in uniqueIDs(preferredOrder) where values[id] != nil {
+      result.append(id)
+      seen.insert(id)
+    }
+    for id in values.keys.sorted() where seen.insert(id).inserted {
+      result.append(id)
+    }
+    return Array(result.prefix(maximumEntryCount))
+  }
+
+  private static func uniqueIDs(_ values: [String]) -> [String] {
+    var result: [String] = []
+    var seen = Set<String>()
+    for value in values where !value.isEmpty && seen.insert(value).inserted {
+      result.append(value)
+    }
+    return result
   }
 }

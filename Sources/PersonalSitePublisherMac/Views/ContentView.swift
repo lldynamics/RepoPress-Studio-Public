@@ -897,6 +897,7 @@ private struct WorkbenchAccessibilityStatusAnnouncer: View {
       .onChange(of: status) { _, updatedStatus in
         guard announcedStatus != updatedStatus else { return }
         announcedStatus = updatedStatus
+        guard updatedStatus.shouldAnnounce else { return }
         guard let application = NSApp else { return }
         NSAccessibility.post(
           element: application,
@@ -930,6 +931,15 @@ private enum WorkbenchAccessibilityStatus: Equatable {
   case deploymentChecking
   case saveFailed(String)
   case saveStatus(String)
+
+  var shouldAnnounce: Bool {
+    switch self {
+    case .saveStatus:
+      return false
+    default:
+      return true
+    }
+  }
 
   var message: String {
     switch self {

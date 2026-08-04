@@ -8,7 +8,7 @@ struct AISettingsView: View {
   let updateConnectionProfile: (AIConnectionProfile) -> Bool
   let createConnectionProfile: (String, AIProviderPreset) -> AIConnectionProfile
   let deleteConnectionProfile: (UUID) -> Void
-  let canDeleteSelectedConnectionProfile: Bool
+  let deletableConnectionProfiles: [AIConnectionProfile]
   let tokenAvailability: KeychainTokenAvailability
   let isActionRunning: Bool
   let actionMessage: String?
@@ -33,111 +33,104 @@ struct AISettingsView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      aiStatusHeaderBanner
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
+      aiSettingsHeader
 
       Divider()
 
-      HStack(spacing: 0) {
-        aiSettingsSidebar
-        Divider()
+      Form {
+        switch selectedSection {
+        case .connection:
+          AIConnectionProfilesSection(
+            profiles: connectionProfiles,
+            selectedProfileID: selectedConnectionProfileID,
+            updateProfile: { profile in
+              _ = updateConnectionProfile(profile)
+            },
+            createProfile: createConnectionProfile,
+            deleteProfile: deleteConnectionProfile,
+            deletableProfiles: deletableConnectionProfiles
+          )
 
-        Form {
-          switch selectedSection {
-          case .connection:
-            AIConnectionProfilesSection(
-              profiles: connectionProfiles,
-              selectedProfileID: selectedConnectionProfileID,
-              updateProfile: { profile in
-                _ = updateConnectionProfile(profile)
-              },
-              createProfile: createConnectionProfile,
-              deleteProfile: deleteConnectionProfile,
-              canDeleteProfile: canDeleteSelectedConnectionProfile
+          AIProviderSection(
+            presetBinding: aiPresetBinding,
+            presetDisplayName: activeConnection.config.preset.localizedDisplayName,
+            baseURL: aiProviderStringBinding(\.baseURL),
+            baseURLDisplayValue: activeConnection.config.baseURL,
+            model: aiProviderStringBinding(\.model),
+            modelDisplayValue: activeConnection.config.model,
+            requiresAPIKeyBinding: aiProviderBoolBinding(\.requiresAPIKey),
+            requiresAPIKeyDisplayValue: activeConnection.config.requiresAPIKey
+              ? String(localized: "开启")
+              : String(localized: "关闭")
+          )
+
+          AIProviderCapabilitiesSection(config: activeConnection.config)
+
+          AIAdvancedSettingsSection(
+            settings: aiAdvancedSettingsBinding,
+            reasoningSupport: activeConnection.config.capabilitySupport(
+              for: .reasoningControl
             )
+          )
 
-            AIProviderSection(
-              presetBinding: aiPresetBinding,
-              presetDisplayName: activeConnection.config.preset.localizedDisplayName,
-              baseURL: aiProviderStringBinding(\.baseURL),
-              baseURLDisplayValue: activeConnection.config.baseURL,
-              model: aiProviderStringBinding(\.model),
-              modelDisplayValue: activeConnection.config.model,
-              requiresAPIKeyBinding: aiProviderBoolBinding(\.requiresAPIKey),
-              requiresAPIKeyDisplayValue: activeConnection.config.requiresAPIKey
-                ? String(localized: "开启")
-                : String(localized: "关闭")
-            )
-
-            AIProviderCapabilitiesSection(config: activeConnection.config)
-
-            AIAdvancedSettingsSection(
-              settings: aiAdvancedSettingsBinding,
-              reasoningSupport: activeConnection.config.capabilitySupport(
-                for: .reasoningControl
-              )
-            )
-
-            LocalAIEngineDiscoverySection { baseURL, model in
-              applyLocalAIConfiguration(baseURL: baseURL, model: model)
-            }
-
-            LocalWhisperSection(
-              selectedDraftTitle: selectedDraftTitle,
-              appendTranscript: appendLocalWhisperTranscript
-            )
-
-          case .credentials:
-            AIKeychainSection(
-              aiAPIKeyInput: $aiAPIKeyInput,
-              shouldFocusInput: shouldFocusAPIKey,
-              navigationRequestID: navigationRequestID,
-              config: activeConnection.config,
-              tokenAvailability: tokenAvailability,
-              connectionReport: isConnectionReportStale ? nil : aiConnectionReport,
-              isConnectionReportStale: isConnectionReportStale,
-              isAIActionRunning: isActionRunning,
-              isConnectionTestRunning: connectionTestTask != nil,
-              actionMessage: actionMessage,
-              onSaveAPIKey: {
-                guard saveAPIKey(aiAPIKeyInput) else { return }
-                aiAPIKeyInput = ""
-                invalidateConnectionReport()
-              },
-              onDeleteAPIKey: {
-                deleteAPIKey()
-                aiAPIKeyInput = ""
-                invalidateConnectionReport()
-              },
-              onRefreshState: refreshKeyAvailability,
-              onTestConnection: {
-                startConnectionTest()
-              }
-            )
-
-            AIDataSharingConsentSection(
-              presentation: dataSharingConsent,
-              grantConsent: grantDataSharingConsent,
-              revokeConsent: revokeDataSharingConsent
-            )
-
-          case .writingStyle:
-            AIWritingStyleSection(
-              presetBinding: aiWritingStylePresetBinding,
-              presetDisplayName: activeProfile.resolvedAIWritingStyle.preset.localizedDisplayName,
-              toneText: aiWritingStyleTextBinding(\.tone),
-              audienceText: aiWritingStyleTextBinding(\.audience),
-              summaryGuidanceText: aiWritingStyleTextBinding(\.summaryGuidance),
-              tagGuidanceText: aiWritingStyleTextBinding(\.tagGuidance),
-              seoGuidanceText: aiWritingStyleTextBinding(\.seoGuidance)
-            )
+          LocalAIEngineDiscoverySection { baseURL, model in
+            applyLocalAIConfiguration(baseURL: baseURL, model: model)
           }
+
+          LocalWhisperSection(
+            selectedDraftTitle: selectedDraftTitle,
+            appendTranscript: appendLocalWhisperTranscript
+          )
+
+        case .credentials:
+          AIKeychainSection(
+            aiAPIKeyInput: $aiAPIKeyInput,
+            shouldFocusInput: shouldFocusAPIKey,
+            navigationRequestID: navigationRequestID,
+            config: activeConnection.config,
+            tokenAvailability: tokenAvailability,
+            connectionReport: isConnectionReportStale ? nil : aiConnectionReport,
+            isConnectionReportStale: isConnectionReportStale,
+            isAIActionRunning: isActionRunning,
+            isConnectionTestRunning: connectionTestTask != nil,
+            actionMessage: actionMessage,
+            onSaveAPIKey: {
+              guard saveAPIKey(aiAPIKeyInput) else { return }
+              aiAPIKeyInput = ""
+              invalidateConnectionReport()
+            },
+            onDeleteAPIKey: {
+              deleteAPIKey()
+              aiAPIKeyInput = ""
+              invalidateConnectionReport()
+            },
+            onRefreshState: refreshKeyAvailability,
+            onTestConnection: {
+              startConnectionTest()
+            }
+          )
+
+          AIDataSharingConsentSection(
+            presentation: dataSharingConsent,
+            grantConsent: grantDataSharingConsent,
+            revokeConsent: revokeDataSharingConsent
+          )
+
+        case .writingStyle:
+          AIWritingStyleSection(
+            presetBinding: aiWritingStylePresetBinding,
+            presetDisplayName: activeProfile.resolvedAIWritingStyle.preset.localizedDisplayName,
+            toneText: aiWritingStyleTextBinding(\.tone),
+            audienceText: aiWritingStyleTextBinding(\.audience),
+            summaryGuidanceText: aiWritingStyleTextBinding(\.summaryGuidance),
+            tagGuidanceText: aiWritingStyleTextBinding(\.tagGuidance),
+            seoGuidanceText: aiWritingStyleTextBinding(\.seoGuidance)
+          )
         }
-        .formStyle(.grouped)
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
+      .formStyle(.grouped)
+      .padding(WorkbenchSpacing.content)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     .task(id: navigationRequestID) {
       guard shouldFocusAPIKey else { return }
@@ -150,6 +143,7 @@ struct AISettingsView: View {
       invalidateConnectionReport()
     }
     .onChange(of: selectedConnectionProfileID.wrappedValue) { _, _ in
+      aiAPIKeyInput = ""
       invalidateConnectionReport()
     }
     .onChange(of: tokenAvailability.accessState) { _, _ in
@@ -159,22 +153,27 @@ struct AISettingsView: View {
       connectionTestTask?.cancel()
       connectionTestTask = nil
     }
+    .accessibilityIdentifier("ai-settings")
   }
 
-  private var aiSettingsSidebar: some View {
-    List(selection: $selectedSection) {
-      Section("AI 设置") {
-        ForEach(AISettingsSection.allCases) { section in
-          Label(section.title, systemImage: section.systemImage)
-            .tag(section)
-        }
+  private var aiSettingsHeader: some View {
+    SettingsScopeHeader(minimumLeadingWidth: 280, scopeControlWidth: 340) {
+      aiStatusHeaderBanner
+    } scopeControl: {
+      aiSettingsPicker
+    }
+  }
+
+  private var aiSettingsPicker: some View {
+    Picker("AI 设置分类", selection: $selectedSection) {
+      ForEach(AISettingsSection.allCases) { section in
+        Text(section.title).tag(section)
       }
     }
-    .listStyle(.sidebar)
-    .scrollContentBackground(.hidden)
-    .frame(width: 164)
-    .workbenchGlassContainer(material: .thinMaterial, drawsBorder: false)
+    .pickerStyle(.segmented)
+    .labelsHidden()
     .accessibilityLabel("AI 设置分类")
+    .accessibilityIdentifier("settings-ai-section-picker")
   }
 
   private var activeProfile: SiteProfile {
@@ -313,13 +312,13 @@ struct AISettingsView: View {
   }
 
   private var aiStatusHeaderBanner: some View {
-    HStack(spacing: 12) {
+    HStack(spacing: WorkbenchSpacing.card) {
       ZStack {
         Circle()
           .fill(Color.accentColor.opacity(0.15))
           .frame(width: 36, height: 36)
         Image(systemName: "sparkles")
-          .font(.system(size: 18, weight: .semibold))
+          .font(.title3.weight(.semibold))
           .foregroundStyle(Color.accentColor)
       }
 
@@ -350,7 +349,7 @@ struct AISettingsView: View {
         .foregroundStyle(.secondary)
       }
 
-      Spacer()
+      Spacer(minLength: WorkbenchSpacing.control)
 
       HStack(spacing: 5) {
         Circle()
@@ -367,15 +366,16 @@ struct AISettingsView: View {
         in: Capsule()
       )
     }
-    .padding(12)
+    .padding(WorkbenchSpacing.card)
     .background(
-      RoundedRectangle(cornerRadius: 12, style: .continuous)
-        .fill(.ultraThinMaterial)
+      WorkbenchBackgroundStyle.panel,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card, style: .continuous)
     )
     .overlay(
-      RoundedRectangle(cornerRadius: 12, style: .continuous)
-        .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card, style: .continuous)
+        .stroke(Color(nsColor: .separatorColor).opacity(0.55), lineWidth: 1)
     )
+    .accessibilityElement(children: .combine)
   }
 
   private var aiCredentialStatusTitle: LocalizedStringKey {

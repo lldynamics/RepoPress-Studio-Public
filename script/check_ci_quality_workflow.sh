@@ -48,8 +48,9 @@ grep -Fq -- '--check swift-coverage' "$WORKFLOW" \
   || fail "pull requests must enforce the measured Swift coverage baseline"
 grep -Fq 'bash script/check_swift6_migration.sh' "$WORKFLOW" \
   || fail "workflow must run a real Swift 6 language-mode migration diagnostic"
-grep -Fq 'continue-on-error: true' "$WORKFLOW" \
-  || fail "the incomplete Swift 6 migration diagnostic must remain explicitly non-blocking"
+if grep -Fq 'continue-on-error: true' "$WORKFLOW"; then
+  fail "the Swift 6 migration diagnostic must be blocking"
+fi
 grep -Fq -- '--summary-markdown .build/quality-gate-summary.md' "$WORKFLOW" \
   || fail "quality workflow must produce a readable quick-gate summary"
 grep -Fq -- '--summary-markdown .build/distribution-gate-summary.md' "$WORKFLOW" \
@@ -98,4 +99,4 @@ if grep -Eq '(github_pat_|ghp_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|Authori
   fail "workflow contains token-like content"
 fi
 
-echo "CI quality workflow gate: main push quick path, pull-request coverage/distribution/UI path, true non-blocking Swift 6 diagnostic, pinned actions, read-only permissions, summaries, and distribution evidence verified"
+echo "CI quality workflow gate: main push quick path, pull-request coverage/distribution/UI path, blocking Swift 6 diagnostic, pinned actions, read-only permissions, summaries, and distribution evidence verified"

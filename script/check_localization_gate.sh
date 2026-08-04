@@ -41,9 +41,6 @@ required_localizable_keys=(
   workspace.sync
   workspace.images
   workspace.contentHealth
-  workspace.ai
-  workspace.maintenance
-  workspace.releaseHistory
 )
 
 for language in zh-Hans en; do

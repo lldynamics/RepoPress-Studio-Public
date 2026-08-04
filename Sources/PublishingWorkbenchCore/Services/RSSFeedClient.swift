@@ -30,36 +30,44 @@ public struct RSSFeedClient: Sendable {
 
   public let maximumResponseByteCount: Int
   public let timeoutInterval: TimeInterval
+  public let allowsPrivateNetworkAccess: Bool
 
   public init(
     maximumResponseByteCount: Int = RSSFeedClient.defaultMaximumResponseByteCount,
-    timeoutInterval: TimeInterval = 30
+    timeoutInterval: TimeInterval = 30,
+    allowsPrivateNetworkAccess: Bool = false
   ) {
     self.maximumResponseByteCount = maximumResponseByteCount
     self.timeoutInterval = timeoutInterval
+    self.allowsPrivateNetworkAccess = allowsPrivateNetworkAccess
   }
 
   public func fetch(
     feedURL: URL,
     etag: String? = nil,
-    lastModified: String? = nil
+    lastModified: String? = nil,
+    allowsPrivateNetworkAccess overridePrivateNetworkAccess: Bool? = nil
   ) async throws -> RSSFeedFetchResult {
-    guard let scheme = feedURL.scheme?.lowercased(), !feedURL.absoluteString.isEmpty else {
+    guard !feedURL.absoluteString.isEmpty else {
       throw RSSReaderError.issue(RSSReaderError.invalidFeedURL.asFeedIssue())
     }
-    guard scheme == "http" || scheme == "https" else {
-      throw RSSReaderError.issue(RSSReaderError.unsupportedFeedURL.asFeedIssue())
-    }
-    guard let host = feedURL.host,
-          !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-          !RSSSubscriptionURLPrivacy.containsUserInfo(feedURL)
-    else {
-      // Keep validation failures deliberately generic so credentials embedded
-      // in a malformed URL can never be echoed into logs or UI diagnostics.
+    let allowsPrivateNetworkAccess = overridePrivateNetworkAccess ?? self.allowsPrivateNetworkAccess
+    let validatedURL: URL
+    do {
+      // Resolve exactly once, immediately before the pinned connection. The
+      // initial pass only rejects malformed, credential-bearing and explicit
+      // local/private addresses.
+      validatedURL = try RSSNetworkURLPolicy.syntacticallyValidatedURL(
+        feedURL,
+        allowsPrivateNetworkAccess: allowsPrivateNetworkAccess
+      )
+    } catch let error as RSSReaderError {
+      throw RSSReaderError.issue(error.asFeedIssue())
+    } catch {
       throw RSSReaderError.issue(RSSReaderError.invalidFeedURL.asFeedIssue())
     }
 
-    var request = URLRequest(url: feedURL)
+    var request = URLRequest(url: validatedURL)
     request.httpMethod = "GET"
     request.cachePolicy = .reloadIgnoringLocalCacheData
     request.timeoutInterval = timeoutInterval
@@ -72,21 +80,13 @@ public struct RSSFeedClient: Sendable {
       request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since")
     }
 
-    let session = CredentialSafeURLSession.make(
-      timeoutIntervalForRequest: timeoutInterval,
-      timeoutIntervalForResource: timeoutInterval + 15
-    )
-    defer { session.invalidateAndCancel() }
-
     do {
-      let (data, response) = try await BoundedHTTPResponseLoader.data(
+      let (data, response) = try await RSSNetworkHTTPClient.data(
         for: request,
-        using: session,
-        maximumByteCount: maximumResponseByteCount
+        maximumByteCount: maximumResponseByteCount,
+        allowsPrivateNetworkAccess: allowsPrivateNetworkAccess
       )
-      guard let httpResponse = response as? HTTPURLResponse else {
-        throw RSSReaderError.issue(RSSReaderError.invalidHTTPResponse.asFeedIssue())
-      }
+      let httpResponse = response
       let responseHeaders = httpResponse.allHeaderFields
       let responseETag = responseHeaders["Etag"] as? String
         ?? responseHeaders["ETag"] as? String

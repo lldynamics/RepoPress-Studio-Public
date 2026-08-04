@@ -234,7 +234,7 @@ enum KnowledgeArticleInsertionService {
     return provider
   }
 
-  static func citation(from pasteboard: NSPasteboard) -> KnowledgeCitation? {
+  static func citation(from pasteboard: any MarkdownPasteboardSource) -> KnowledgeCitation? {
     guard let data = pasteboard.data(forType: knowledgeCitationPasteboardType) else {
       return nil
     }

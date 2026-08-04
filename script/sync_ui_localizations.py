@@ -25,6 +25,8 @@ CORE_RESOURCE_ROOT = CORE_SOURCE_ROOT / "Resources"
 WORKSPACE_MODELS_PATH = ROOT / "Sources" / "PublishingWorkbenchCore" / "Models" / "WorkspaceModels.swift"
 CATALOG_PATH = SOURCE_ROOT / "Resources" / "Localizable.xcstrings"
 TRANSLATION_PATHS = tuple(sorted((ROOT / "script").glob("ui_*translations*.json")))
+DYNAMIC_KEYS_PATH = ROOT / "script" / "ui_localization_dynamic_keys.json"
+DYNAMIC_KEY_GROUPS = ("runtime", "sourceLiterals")
 FORMAT_PATTERN = re.compile(
     r"%(?:\d+\$)?(?:@|[-+0-9.#]*(?:hh|h|ll|l|z|t|j)?[a-zA-Z])"
 )
@@ -279,6 +281,27 @@ def extract_core_localization_keys() -> dict[str, str]:
     return extracted
 
 
+def extract_normalized_source_literals() -> set[str]:
+    """Collect ordinary Swift literals used to verify explicitly dynamic UI keys."""
+    extracted: set[str] = set()
+    source_paths = {
+        path
+        for source_root in (SOURCE_ROOT, CORE_SOURCE_ROOT)
+        for path in source_root.rglob("*.swift")
+    }
+    for source_path in sorted(source_paths):
+        source = source_path.read_text(encoding="utf-8")
+        for quote_match in re.finditer(r'"', source):
+            try:
+                raw_value = swift_string_literal_content(source, quote_match.start())
+                value = normalized_swiftui_literal(raw_value)
+            except ValueError:
+                continue
+            if value:
+                extracted.add(value)
+    return extracted
+
+
 def load_strings_file(path: Path) -> dict[str, str]:
     result = subprocess.run(
         ["plutil", "-convert", "json", "-o", "-", str(path)],
@@ -425,6 +448,86 @@ def load_reviewed_translation_file(path: Path) -> dict:
     return entries
 
 
+def load_dynamic_key_allowlist(path: Path = DYNAMIC_KEYS_PATH) -> dict[str, set[str]]:
+    """Load runtime and source-backed keys that static extraction cannot discover."""
+    entries = load_reviewed_translation_file(path)
+    unknown_groups = sorted(set(entries).difference(DYNAMIC_KEY_GROUPS))
+    if unknown_groups:
+        raise RuntimeError(
+            f"unknown dynamic localization key group in {path.name}: {unknown_groups[0]}"
+        )
+
+    groups: dict[str, set[str]] = {}
+    seen: set[str] = set()
+    for group in DYNAMIC_KEY_GROUPS:
+        values = entries.get(group, [])
+        if not isinstance(values, list) or not all(
+            isinstance(value, str) and value.strip()
+            for value in values
+        ):
+            raise RuntimeError(f"{path.name} {group} must be an array of non-empty strings")
+        duplicates = sorted(seen.intersection(values))
+        if len(set(values)) != len(values):
+            duplicates = sorted(
+                value for value in set(values) if values.count(value) > 1
+            )
+        if duplicates:
+            raise RuntimeError(
+                f"duplicate dynamic localization key in {path.name}: {duplicates[0]}"
+            )
+        groups[group] = set(values)
+        seen.update(values)
+    return groups
+
+
+def validate_dynamic_key_allowlist(
+    groups: dict[str, set[str]],
+    statically_extracted_keys: set[str],
+    source_literals: set[str],
+) -> list[str]:
+    failures: list[str] = []
+    dynamic_keys = set().union(*groups.values())
+    for key in sorted(dynamic_keys.intersection(statically_extracted_keys)):
+        failures.append(f"{key}: dynamic allowlist entry is now statically extracted")
+    for key in sorted(groups.get("sourceLiterals", set()).difference(source_literals)):
+        failures.append(f"{key}: dynamic source literal no longer exists in Swift sources")
+    return failures
+
+
+def stale_catalog_keys(catalog: dict, managed_keys: set[str]) -> list[str]:
+    return sorted(set(catalog.get("strings", {})).difference(managed_keys))
+
+
+def stale_reviewed_translation_keys(
+    translations: dict,
+    managed_keys: set[str],
+) -> list[str]:
+    return sorted(set(translations).difference(managed_keys))
+
+
+def prune_catalog(catalog: dict, managed_keys: set[str]) -> list[str]:
+    strings = catalog.setdefault("strings", {})
+    removed = sorted(set(strings).difference(managed_keys))
+    for key in removed:
+        del strings[key]
+    return removed
+
+
+def pruned_reviewed_translation_files(
+    managed_keys: set[str],
+) -> tuple[dict[Path, dict], dict[Path, list[str]]]:
+    pruned_files: dict[Path, dict] = {}
+    removed_by_path: dict[Path, list[str]] = {}
+    for path in TRANSLATION_PATHS:
+        entries = load_reviewed_translation_file(path)
+        removed = sorted(set(entries).difference(managed_keys))
+        pruned_files[path] = {
+            key: value for key, value in entries.items() if key in managed_keys
+        }
+        removed_by_path[path] = removed
+    return pruned_files, removed_by_path
+
+
 def synchronize(catalog: dict, extracted: dict[str, str]) -> dict:
     strings = catalog.setdefault("strings", {})
     translations = load_reviewed_translations()
@@ -474,10 +577,16 @@ def catalog_entry(chinese_value: str, english_value: str) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--check",
         action="store_true",
         help="Validate the declared app-UI catalog scope without file changes.",
+    )
+    mode.add_argument(
+        "--prune-stale",
+        action="store_true",
+        help="Synchronize managed keys and remove unreferenced catalog/translation entries.",
     )
     arguments = parser.parse_args()
     display_name_gaps = direct_display_name_localization_gaps()
@@ -489,19 +598,38 @@ def main() -> int:
         for gap in display_name_gaps[:20]:
             print(f"- {gap}")
         return 1
-    extracted = extract_swiftui_strings()
-    extracted.update(extract_literal_localization_calls())
-    extracted.update(extract_component_localization_keys())
+    statically_extracted = extract_swiftui_strings()
+    statically_extracted.update(extract_literal_localization_calls())
+    statically_extracted.update(extract_component_localization_keys())
     workspace_navigation_keys = extract_workspace_navigation_keys()
     display_name_semantic_keys = extract_display_name_semantic_keys()
-    extracted.update(workspace_navigation_keys)
-    extracted.update(display_name_semantic_keys)
+    statically_extracted.update(workspace_navigation_keys)
+    statically_extracted.update(display_name_semantic_keys)
+    dynamic_key_groups = load_dynamic_key_allowlist()
+    dynamic_failures = validate_dynamic_key_allowlist(
+        dynamic_key_groups,
+        set(statically_extracted),
+        extract_normalized_source_literals(),
+    )
+    if dynamic_failures:
+        print(
+            f"ui-scoped localization catalog: {len(dynamic_failures)} dynamic allowlist issue(s)"
+        )
+        for failure in dynamic_failures:
+            print(f"- {failure}")
+        return 1
+    dynamic_keys = set().union(*dynamic_key_groups.values())
+    extracted = dict(statically_extracted)
+    extracted.update({key: key for key in dynamic_keys})
     catalog = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
     model_keys = set(workspace_navigation_keys) | set(display_name_semantic_keys)
     core_extracted = extract_core_localization_keys()
     core_failures = validate_core_localizations(core_extracted)
 
     if arguments.check:
+        translations = load_reviewed_translations()
+        stale_catalog = stale_catalog_keys(catalog, set(extracted))
+        stale_translations = stale_reviewed_translation_keys(translations, set(extracted))
         unregistered_cjk_keys = unregistered_cjk_ui_keys(catalog, extracted)
         unregistered_cjk_key_set = set(unregistered_cjk_keys)
         registered_or_non_cjk = {
@@ -514,23 +642,36 @@ def main() -> int:
             for key in unregistered_cjk_keys
         ]
         failures += validate(catalog, registered_or_non_cjk, model_keys) + core_failures
+        failures += [f"{key}: stale catalog key" for key in stale_catalog]
+        failures += [f"{key}: stale reviewed translation key" for key in stale_translations]
         if failures:
             print(
                 "ui-scoped localization catalog: "
                 f"{len(unregistered_cjk_keys)} unregistered CJK UI key(s); "
                 f"{len(failures)} total coverage issue(s)"
             )
-            for failure in failures:
+            for failure in failures[:100]:
                 print(f"- {failure}")
+            if len(failures) > 100:
+                print(f"- ... {len(failures) - 100} more issue(s)")
             return 1
         print(
-            f"ui-scoped localization catalog: {len(extracted)} SwiftUI/selected-model keys "
+            f"ui-scoped localization catalog: {len(statically_extracted)} statically extracted keys, "
+            f"{len(dynamic_keys)} reviewed dynamic keys, "
             f"and {len(core_extracted)} migrated Core presentation keys have valid zh-Hans/en values; "
-            "no extracted CJK UI key is unregistered"
+            "no extracted CJK UI key or stale managed entry remains"
         )
         return 0
 
     synchronized = synchronize(catalog, extracted)
+    removed_catalog_keys: list[str] = []
+    pruned_translation_files: dict[Path, dict] = {}
+    removed_translation_keys: dict[Path, list[str]] = {}
+    if arguments.prune_stale:
+        removed_catalog_keys = prune_catalog(synchronized, set(extracted))
+        pruned_translation_files, removed_translation_keys = pruned_reviewed_translation_files(
+            set(extracted)
+        )
     failures = validate(synchronized, extracted, model_keys) + core_failures
     if failures:
         raise RuntimeError("; ".join(failures))
@@ -538,10 +679,24 @@ def main() -> int:
         json.dumps(synchronized, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    for path, entries in pruned_translation_files.items():
+        path.write_text(
+            json.dumps(entries, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     print(
-        f"localization catalog: synchronized {len(extracted)} SwiftUI/selected-model keys; "
+        f"localization catalog: synchronized {len(statically_extracted)} statically extracted keys "
+        f"and {len(dynamic_keys)} reviewed dynamic keys; "
         f"validated {len(core_extracted)} migrated Core presentation keys"
     )
+    if arguments.prune_stale:
+        removed_translation_count = sum(
+            len(keys) for keys in removed_translation_keys.values()
+        )
+        print(
+            f"localization catalog: pruned {len(removed_catalog_keys)} stale catalog keys "
+            f"and {removed_translation_count} stale reviewed translation entries"
+        )
     return 0
 
 

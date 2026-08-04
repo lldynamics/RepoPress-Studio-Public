@@ -1,17 +1,12 @@
 {
   "图片工作台页面": "Image Workbench Pages",
-  "在图片检查器中查看": "View in Image Inspector",
-  "概览与批量处理": "Overview and Batch Actions",
-  "问题文章": "Articles with Issues",
-  "站点问题": "Site Issues",
-  "查看站点图片状态，并在预览影响范围后执行批量处理。": "Review site image health and preview the affected files before running batch actions.",
-  "选择文章后可查看真实图片和问题，并直接跳到正文或图片检查器。": "Select an article to inspect its images and issues, then jump directly to the content or Image Inspector.",
-  "选择问题文章，查看图片详情并直接跳转到正文定位。": "Select an article with issues, inspect its images, and jump directly to the relevant content.",
-  "浏览仓库中的图片、查看引用关系，并把图片加入目标文章。": "Browse repository images, review their references, and add an image to the selected article.",
-  "集中核对发布后可能暴露的内容与配置": "Review content and configuration that may become public after publishing",
-  "预览并处理可由 AI 协助修复的元数据问题": "Preview and resolve metadata issues that AI can help fix",
-  "检查影响整个站点的路径、配置与发布问题": "Review path, configuration, and publishing issues that affect the whole site",
+  "图片资源功能": "Image Resources",
   "安排站点的持续维护工作": "Plan ongoing site maintenance",
+  "检查影响整个站点的路径、配置与发布问题": "Review path, configuration, and publishing issues that affect the whole site",
+  "概览与批量处理": "Overview and Batch Actions",
+  "浏览仓库中的图片、查看引用关系，并把图片加入目标文章。": "Browse repository images, review their references, and add an image to the selected article.",
   "站点指标": "Site Metrics",
-  "图片资源功能": "Image Resources"
+  "站点问题": "Site Issues",
+  "集中核对发布后可能暴露的内容与配置": "Review content and configuration that may become public after publishing",
+  "预览并处理可由 AI 协助修复的元数据问题": "Preview and resolve metadata issues that AI can help fix"
 }

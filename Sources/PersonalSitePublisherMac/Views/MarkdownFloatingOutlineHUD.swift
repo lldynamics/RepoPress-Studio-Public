@@ -96,7 +96,7 @@ struct MarkdownFloatingOutlineHUD: View {
           .foregroundStyle(.secondary)
 
         Text(String(localized: "\(items.count) 节"))
-          .font(.caption2)
+          .font(.workbenchMetadata)
           .foregroundStyle(.tertiary)
       } else {
         Text(activeItem?.title ?? "文章大纲")
@@ -161,7 +161,7 @@ struct MarkdownFloatingOutlineHUD: View {
         .frame(width: 3)
 
       Text("H(item.level)")
-        .font(.caption2.monospaced().weight(.semibold))
+        .font(.workbenchMetadata.monospaced().weight(.semibold))
         .foregroundStyle(isActive ? Color.accentColor : .secondary)
         .frame(width: 24, alignment: .leading)
 

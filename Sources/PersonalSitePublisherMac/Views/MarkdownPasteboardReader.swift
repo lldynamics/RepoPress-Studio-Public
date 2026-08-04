@@ -1,13 +1,27 @@
 import AppKit
 import PublishingWorkbenchCore
 
+protocol MarkdownPasteboardSource {
+  func readObjects(
+    forClasses classArray: [AnyClass],
+    options: [NSPasteboard.ReadingOptionKey: Any]?
+  ) -> [Any]?
+  func data(forType dataType: NSPasteboard.PasteboardType) -> Data?
+  func string(forType dataType: NSPasteboard.PasteboardType) -> String?
+  var appKitPasteboard: NSPasteboard? { get }
+}
+
+extension NSPasteboard: MarkdownPasteboardSource {
+  var appKitPasteboard: NSPasteboard? { self }
+}
+
 enum MarkdownPasteboardReader {
   struct RichTextContent {
     let html: String
     let baseURL: URL?
   }
 
-  static func imageFileURLs(from pasteboard: NSPasteboard) -> [URL] {
+  static func imageFileURLs(from pasteboard: any MarkdownPasteboardSource) -> [URL] {
     let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: nil)?
       .compactMap { ($0 as? URL)?.standardizedFileURL }
       .filter(\.isFileURL)
@@ -15,11 +29,12 @@ enum MarkdownPasteboardReader {
     return ImageFileSupport.supportedImageURLs(in: fileURLs)
   }
 
-  static func pngData(from pasteboard: NSPasteboard) -> Data? {
+  static func pngData(from pasteboard: any MarkdownPasteboardSource) -> Data? {
     if let pngData = pasteboard.data(forType: .png), !pngData.isEmpty {
       return pngData
     }
-    guard let image = NSImage(pasteboard: pasteboard),
+    guard let appKitPasteboard = pasteboard.appKitPasteboard,
+          let image = NSImage(pasteboard: appKitPasteboard),
           let tiffData = image.tiffRepresentation,
           let bitmap = NSBitmapImageRep(data: tiffData) else {
       return nil
@@ -27,7 +42,7 @@ enum MarkdownPasteboardReader {
     return bitmap.representation(using: .png, properties: [:])
   }
 
-  static func richTextContent(from pasteboard: NSPasteboard) -> RichTextContent? {
+  static func richTextContent(from pasteboard: any MarkdownPasteboardSource) -> RichTextContent? {
     let baseURL = pasteboard.string(forType: .URL).flatMap { value -> URL? in
       guard let url = URL(string: value),
             let scheme = url.scheme?.lowercased(),
@@ -68,7 +83,7 @@ enum MarkdownPasteboardReader {
   }
 
   private static func attributedString(
-    from pasteboard: NSPasteboard,
+    from pasteboard: any MarkdownPasteboardSource,
     type: NSPasteboard.PasteboardType,
     documentType: NSAttributedString.DocumentType
   ) -> NSAttributedString? {

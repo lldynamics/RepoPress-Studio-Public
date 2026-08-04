@@ -727,7 +727,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
     func handlePaste(
       in textView: NSTextView,
-      pasteboard: NSPasteboard
+      pasteboard: any MarkdownPasteboardSource
     ) -> Bool {
       guard textView.selectedRange().location >= bodyUTF16Offset else { return false }
       let imageURLs = MarkdownPasteboardReader.imageFileURLs(from: pasteboard)
@@ -1064,7 +1064,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
       updateGhostText(ghostText, in: textView)
       performTypewriterScrollIfNeeded(in: textView)
       updateCurrentParagraphHighlight(in: textView)
-      centerSelectionIfNeeded(in: textView)
     }
 
     func performTypewriterScrollIfNeeded(in textView: NSTextView) {

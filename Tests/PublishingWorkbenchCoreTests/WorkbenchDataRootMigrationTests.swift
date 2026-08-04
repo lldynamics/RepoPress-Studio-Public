@@ -5,6 +5,69 @@ import Testing
 
 struct WorkbenchDataRootMigrationTests {
   @Test
+  func relocatingManagedRootPreservesIdentityCopiesRSSMediaAndKeepsSource() throws {
+    let parentURL = try makeTemporaryDirectory(prefix: "data-root-relocation")
+    defer { try? FileManager.default.removeItem(at: parentURL) }
+    let legacyRootURL = parentURL.appendingPathComponent("legacy", isDirectory: true)
+    _ = try makePopulatedLegacyRoot(at: legacyRootURL)
+    let sourceRootURL = parentURL.appendingPathComponent("current", isDirectory: true)
+    let createdAt = Date(timeIntervalSince1970: 1_700_100_000)
+    let initialResult = try WorkbenchDataRootMigrator().copyLegacyRoot(
+      from: legacyRootURL,
+      to: sourceRootURL,
+      appVersion: "0.31.0",
+      dataID: UUID(),
+      createdAt: createdAt
+    )
+    let sourceLayout = WorkbenchDataRootLayout(rootURL: sourceRootURL)
+    let mediaURL = sourceLayout.rssReaderURL
+      .appendingPathComponent("RSSMedia", isDirectory: true)
+      .appendingPathComponent("article/image.png", isDirectory: false)
+    try FileManager.default.createDirectory(
+      at: mediaURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try Data([4, 5, 6, 7]).write(to: mediaURL)
+
+    let destinationRootURL = parentURL.appendingPathComponent("relocated", isDirectory: true)
+    let result = try WorkbenchDataRootMigrator().copyExistingRoot(
+      from: sourceRootURL,
+      to: destinationRootURL,
+      appVersion: "0.32.0"
+    )
+    let destinationLayout = WorkbenchDataRootLayout(rootURL: destinationRootURL)
+
+    #expect(result.manifest.dataID == initialResult.manifest.dataID)
+    #expect(result.manifest.createdAt == createdAt)
+    #expect(result.manifest.lastOpenedAppVersion == "0.32.0")
+    #expect(WorkbenchDataRootInspector().probe(at: sourceRootURL) == .existing(initialResult.manifest))
+    #expect(WorkbenchDataRootInspector().probe(at: destinationRootURL) == .existing(result.manifest))
+    #expect(try Data(contentsOf: mediaURL) == Data([4, 5, 6, 7]))
+    #expect(
+      try Data(
+        contentsOf: destinationLayout.rssReaderURL
+          .appendingPathComponent("RSSMedia/article/image.png")
+      ) == Data([4, 5, 6, 7])
+    )
+    let sourceSnapshot = try requiredSnapshot(at: sourceLayout.workbenchFileURL)
+    let destinationSnapshot = try requiredSnapshot(at: destinationLayout.workbenchFileURL)
+    let sourceManagedPath = sourceLayout.managedAttachmentsURL
+      .appendingPathComponent("article-id/managed.png").path
+    let destinationManagedPath = destinationLayout.managedAttachmentsURL
+      .appendingPathComponent("article-id/managed.png").path
+    #expect(
+      try requiredAttachment("managed-active.png", in: requiredDraft(from: sourceSnapshot))
+        .sourceFilePath == sourceManagedPath
+    )
+    #expect(
+      try requiredAttachment("managed-active.png", in: requiredDraft(from: destinationSnapshot))
+        .sourceFilePath == destinationManagedPath
+    )
+    #expect(FileManager.default.fileExists(atPath: sourceManagedPath))
+    #expect(FileManager.default.fileExists(atPath: destinationManagedPath))
+  }
+
+  @Test
   func migrationVerifiesCopyAndAtomicallyInstallsWithoutDeletingLegacyRoot() throws {
     let parentURL = try makeTemporaryDirectory(prefix: "data-root-migration")
     defer { try? FileManager.default.removeItem(at: parentURL) }

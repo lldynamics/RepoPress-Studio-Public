@@ -85,6 +85,46 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
     XCTAssertEqual(persisted.destinationPath, customURL.path)
   }
 
+  func testAutomaticBackupRefreshBoundsOwnedPackagesWithoutRemovingManualPackages() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    try FileManager.default.createDirectory(
+      at: harness.injectedBackupURL,
+      withIntermediateDirectories: true
+    )
+    for index in 0..<(WorkspaceBackupScheduler.automaticRetentionCount + 2) {
+      let url = harness.injectedBackupURL.appendingPathComponent(
+        "\(WorkspaceBackupService.automaticBackupFilePrefix)20260804-\(String(format: "%06d", index)).psworkspacebackup",
+        isDirectory: true
+      )
+      try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+      try Data("automatic-\(index)".utf8).write(to: url.appendingPathComponent("payload"))
+    }
+    let manualURL = harness.injectedBackupURL.appendingPathComponent(
+      "manual-backup.psworkspacebackup",
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: manualURL, withIntermediateDirectories: true)
+
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store,
+      defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+    await scheduler.refreshRecentBackups()
+
+    let remaining = try FileManager.default.contentsOfDirectory(
+      at: harness.injectedBackupURL,
+      includingPropertiesForKeys: nil,
+      options: []
+    )
+    let automatic = remaining.filter {
+      $0.lastPathComponent.hasPrefix(WorkspaceBackupService.automaticBackupFilePrefix)
+    }
+    XCTAssertEqual(automatic.count, WorkspaceBackupScheduler.automaticRetentionCount)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: manualURL.path))
+  }
+
   private func makeHarness() throws -> WorkspaceBackupSchedulerHarness {
     let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "workspace-backup-scheduler-\(UUID().uuidString)",

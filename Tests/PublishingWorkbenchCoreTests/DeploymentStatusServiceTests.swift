@@ -1154,9 +1154,15 @@ final class DeploymentStatusServiceTests: XCTestCase {
       deploymentResponse(statusCode: 200, json: #"{"status":"ok"}"#),
     ])
     let persistenceURL = try temporaryPersistenceURL()
+    let deploymentTokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.DeploymentStatusSnapshot",
+      accountPrefix: "deployment-status-snapshot",
+      inMemory: true
+    )
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
-      deploymentStatusService: DeploymentStatusService(transport: transport)
+      deploymentStatusService: DeploymentStatusService(transport: transport),
+      deploymentTokenStore: deploymentTokenStore
     )
     store.updateActiveProfile { profile in
       profile.deploymentProvider = .custom
@@ -1278,9 +1284,15 @@ final class DeploymentStatusServiceTests: XCTestCase {
         delayNanoseconds: 5_000_000
       ),
     ])
+    let deploymentTokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.DeploymentStatusConcurrency",
+      accountPrefix: "deployment-status-concurrency",
+      inMemory: true
+    )
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()),
-      deploymentStatusService: DeploymentStatusService(transport: transport)
+      deploymentStatusService: DeploymentStatusService(transport: transport),
+      deploymentTokenStore: deploymentTokenStore
     )
     store.updateActiveProfile { profile in
       profile.deploymentProvider = .custom

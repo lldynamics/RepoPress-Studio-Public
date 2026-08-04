@@ -159,6 +159,7 @@ private struct RSSArticleTranslationLanguageSheet: View {
         .fixedSize(horizontal: false, vertical: true)
       TextField("目标语言", text: $language)
         .textFieldStyle(.roundedBorder)
+        .accessibilityLabel("目标语言")
         .onSubmit(save)
       if let validationMessage {
         Text(validationMessage)
@@ -170,7 +171,7 @@ private struct RSSArticleTranslationLanguageSheet: View {
         Button("取消", action: { dismiss() })
           .keyboardShortcut(.cancelAction)
         Button("保存", action: save)
-          .buttonStyle(.borderedProminent)
+          .workbenchProminentActionStyle()
           .keyboardShortcut(.defaultAction)
           .disabled(RSSArticleTranslationTarget.custom(language: language) == nil)
       }

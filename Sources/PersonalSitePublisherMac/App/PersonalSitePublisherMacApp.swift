@@ -70,7 +70,7 @@ struct PersonalSitePublisherMacApp: App {
       )
         .frame(
           minWidth: WorkbenchLayoutMode.minimumWindowWidth,
-          minHeight: 720
+          minHeight: WorkbenchLayoutMode.minimumWindowHeight
         )
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
         .background(ScreenshotCaptureWindowBridge())
@@ -99,7 +99,8 @@ struct PersonalSitePublisherMacApp: App {
         if let store = launchCoordinator.store {
           ProtectedSettingsView(
             store: store,
-            rssStore: launchCoordinator.rssStore
+            rssStore: launchCoordinator.rssStore,
+            launchCoordinator: launchCoordinator
           )
         } else {
           VStack(spacing: 12) {
@@ -109,7 +110,7 @@ struct PersonalSitePublisherMacApp: App {
             Text("请先在主窗口完成数据文件夹设置。")
               .foregroundStyle(.secondary)
           }
-          .frame(width: 420, height: 300)
+          .workbenchSettingsWindowSize()
         }
       }
         .tint(WorkbenchTheme.navigationSelection)
@@ -325,14 +326,17 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
 private struct ProtectedSettingsView: View {
   @ObservedObject var store: WorkbenchStore
   let rssStore: RSSReaderStore?
+  @ObservedObject var launchCoordinator: WorkbenchLaunchCoordinator
 
   var body: some View {
     ZStack {
       SettingsView(
         store: store,
-        rssStore: rssStore
+        rssStore: rssStore,
+        launchCoordinator: launchCoordinator
       )
       .disabled(!store.canUseProtectedWorkbench)
+      .disabled(launchCoordinator.phase != .ready)
       .accessibilityHidden(store.isQuickHideActive)
 
       if store.isQuickHideActive {
