@@ -198,7 +198,7 @@ final class CoreLocalizationTests: XCTestCase {
     )
   }
 
-  func testImageAIWebhookAndCredentialFeedbackResolveInEnglish() {
+  func testImageAIAndCredentialFeedbackResolveInEnglish() {
     let english = Locale(identifier: "en")
 
     XCTAssertEqual(
@@ -220,10 +220,6 @@ final class CoreLocalizationTests: XCTestCase {
         arguments: ["cover.png"]
       ),
       "Attached images: cover.png"
-    )
-    XCTAssertEqual(
-      CoreL10n.text("Webhook payload 不是有效 JSON。", locale: english),
-      "The webhook payload is not valid JSON."
     )
     XCTAssertEqual(
       CoreL10n.format(

@@ -722,8 +722,8 @@ final class SEOSocialPreviewServiceTests: XCTestCase {
 
 	    XCTAssertEqual(store.seoSocialPreviewSnapshot(for: restored)?.cards.first?.title, originalTitle)
 	    XCTAssertFalse(store.isSEOSocialPreviewStale(for: restored))
-	  }
-	
+	}
+
   func testStoreCachesSocialPreviewSnapshotsPerDraftAndPersistsThem() async throws {
     let url = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))

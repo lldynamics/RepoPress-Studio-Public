@@ -264,7 +264,7 @@
 "重试部署检查" = "Retry deployment check";
 "；" = "; ";
 
-/* Deployment reports, webhooks, and polling summaries */
+/* Deployment reports and polling summaries */
 "# 发布后校验报告" = "# Post-publish Validation Report";
 "# 部署状态配置检查" = "# Deployment Status Configuration Check";
 "## 已配置" = "## Configured";
@@ -285,18 +285,9 @@
 "- 检查时间：%@" = "- Checked at: %@";
 "- 站点：%@" = "- Site: %@";
 "Provider：%@" = "Provider: %@";
-"Webhook 接收器仅用于 Debug 构建，不会包含在 Release/App Store 构建中。" = "The webhook receiver is available only in Debug builds and is not included in Release or App Store builds.";
-"Webhook 接收器启动失败：%@" = "Failed to start the webhook receiver: %@";
-"Webhook 接收器已停止。" = "Webhook receiver stopped.";
-"Webhook 接收器已启动。" = "Webhook receiver started.";
-"Webhook 接收器已启动：%@" = "Webhook receiver started: %@";
-"Webhook 接收器未启动。" = "Webhook receiver is not running.";
-"Webhook 接收失败：%@" = "Failed to receive webhook: %@";
-"Webhook 接收端口无效。" = "The webhook receiver port is invalid.";
 "下一步：%@ - %@" = "Next step: %@ - %@";
 "信号：" = "Signals:";
 "失败 %@" = "Failed %@";
-"已接收 %@ Webhook：%@" = "Received %@ webhook: %@";
 "当前没有需要轮询的部署记录。" = "There are no deployment records that need polling.";
 "未找到发布账本记录。" = "No release ledger record was found.";
 "未知 %@" = "Unknown %@";
@@ -756,12 +747,6 @@
 "需要选择正文或补充标题、摘要、正文" = "Select text or add a title, summary, or body";
 "需要先补充文章正文" = "Add article content first";
 "需要先补充标题、摘要或正文" = "Add a title, summary, or body first";
-"暂无 Token 用量" = "No token usage yet";
-"%d tokens · 输入 %d · 输出 %d" = "%d tokens · Input %d · Output %d";
-"估算费用 %@" = "Estimated cost %@";
-"等待模型返回 usage 后统计" = "Waiting for the model to return usage data";
-"本地模型按 0 美元估算" = "Local model estimated at USD 0";
-"费用需按当前服务商和模型价格确认" = "Confirm cost using the current provider and model pricing";
 "Keychain 返回了不可解析的 token 数据。" = "Keychain returned token data that could not be decoded.";
 "凭据端点必须是有效的 HTTPS 地址：%@" = "The credential endpoint must be a valid HTTPS address: %@";
 "Keychain 操作失败：%@（错误码 %@）" = "Keychain operation failed: %@ (error code %@)";
@@ -774,10 +759,6 @@
 "对应 Profile 的钥匙串条目不存在，请先点击“保存”写入 Token。" = "The Keychain entry for this profile does not exist. Click Save to store the token first.";
 "你已取消了系统授权提示，请重新触发操作并在授权弹窗中选择允许。" = "You canceled the system authorization prompt. Start the action again and choose Allow in the prompt.";
 "未知错误" = "Unknown error";
-"Webhook payload 为空。" = "The webhook payload is empty.";
-"Webhook payload 不是有效 JSON。" = "The webhook payload is not valid JSON.";
-"%@ Webhook" = "%@ Webhook";
-"收到 %@ 部署通知。" = "Received a %@ deployment notification.";
 "已附加图片：%@" = "Attached images: %@";
 "- 对话：%@" = "- Conversation: %@";
 "- 文章：%@" = "- Article: %@";
@@ -1341,8 +1322,6 @@
 "AI 连接未删除：关联的 API Key 删除失败。请检查 Keychain 权限后重试。%@" = "The AI connection was not deleted because its API key could not be removed. Check Keychain access and try again. %@";
 "AI 连接及其 API Key 已删除。" = "The AI connection and its API key were deleted.";
 "AI 连接未切换：旧版 API Key 清理失败。请检查 Keychain 权限后重试。%@" = "The AI connection was not switched because the legacy API key could not be removed. Check Keychain access and try again. %@";
-"请先选择一篇文章，再插入本地 Whisper 转写。" = "Select an article before inserting a local Whisper transcript.";
-"已将本地 Whisper 转写插入当前文章。" = "The local Whisper transcript was inserted into the current article.";
 "RSS 备份来源不可用：%@" = "RSS backup source is unavailable: %@";
 "RSS 备份目标不能覆盖正在读取的源数据库。" = "The RSS backup destination cannot overwrite the source database currently being read.";
 "RSS 数据库版本 %d 不受支持，当前版本仅支持 %d。" = "RSS database version %d is unsupported; this version supports %d.";
@@ -1361,6 +1340,10 @@
 "备份必须为单文件，但发现侧车文件 %@" = "The backup must be a single file, but sidecar file %@ was found";
 "替换 RSS 备份失败：%@；自动回滚失败：%@；旧备份保留在 %@" = "Replacing the RSS backup failed: %@; automatic rollback failed: %@; the previous backup remains at %@";
 "RSS 备份无效：%@" = "The RSS backup is invalid: %@";
+"已上传 %@" = "Uploaded %@";
+"已处理第 %@/%@ 个文件" = "Processed file %@ of %@";
+"推送图片资产" = "Pushing image assets";
+"推送视频资产" = "Pushing video assets";
 "这篇文章没有可翻译的本地正文。" = "This article has no local body available to translate.";
 "翻译服务返回的内容无法安全解析，请稍后重试。" = "The translation service returned content that could not be parsed safely. Try again later.";
 "快速隐藏已启用，请返回工作台后再继续翻译。" = "Quick Hide is enabled. Return to the workbench before translating.";

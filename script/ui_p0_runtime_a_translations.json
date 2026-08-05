@@ -15,14 +15,6 @@
     "en": "AI requests, knowledge imports, image processing, site scans, Git pushes, and deployment status are shown here.",
     "zh-Hans": "AI 请求、资料导入、图片处理、站点扫描、Git 推送和部署状态会集中显示在这里。"
   },
-  "上次运行未正常结束": {
-    "en": "The app did not exit normally last time",
-    "zh-Hans": "上次运行未正常结束"
-  },
-  "下次以安全模式启动": {
-    "en": "Start in Safe Mode Next Time",
-    "zh-Hans": "下次以安全模式启动"
-  },
   "下次启动仍可从这三个入口开始。": {
     "en": "You can still choose from these three options the next time you open the app.",
     "zh-Hans": "下次启动仍可从这三个入口开始。"
@@ -59,10 +51,6 @@
     "en": "Configure only what this path requires. You can change these settings at any time.",
     "zh-Hans": "只配置当前路径需要的信息，之后可以随时在设置中修改。"
   },
-  "安全模式启动": {
-    "en": "Start in Safe Mode",
-    "zh-Hans": "安全模式启动"
-  },
   "完成并检查仓库": {
     "en": "Finish and Check Repository",
     "zh-Hans": "完成并检查仓库"
@@ -90,10 +78,6 @@
   "已选择": {
     "en": "Selected",
     "zh-Hans": "已选择"
-  },
-  "应用检测到上次运行可能因崩溃或被强制结束。安全模式会暂停自动预检、预览、后台维护和浏览器连接，便于先恢复草稿并导出诊断信息。": {
-    "en": "The app detected that its previous run may have ended because of a crash or force quit. Safe Mode pauses automatic preflight checks, previews, background maintenance, and browser connections so you can recover drafts and export diagnostics first.",
-    "zh-Hans": "应用检测到上次运行可能因崩溃或被强制结束。安全模式会暂停自动预检、预览、后台维护和浏览器连接，便于先恢复草稿并导出诊断信息。"
   },
   "开始使用": {
     "en": "Get Started",
@@ -142,10 +126,6 @@
   "标注：%@": {
     "en": "Annotation: %@",
     "zh-Hans": "标注：%@"
-  },
-  "正常启动": {
-    "en": "Start Normally",
-    "zh-Hans": "正常启动"
   },
   "移除上下文 %@": {
     "en": "Remove context %@",

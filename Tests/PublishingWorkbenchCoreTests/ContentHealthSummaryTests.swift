@@ -185,7 +185,7 @@ final class ContentHealthSummaryTests: XCTestCase {
       bodyMarkdown: """
       This article is intentionally long enough for preflight.
       api_key = "\(secret)"
-      Local preview was http://127.0.0.1:4321 from /Users/jinfang/site/content/posts/risk.md.
+      Local preview was http://127.0.0.1:4321 from /Users/example/site/content/posts/risk.md.
       """
     )
 

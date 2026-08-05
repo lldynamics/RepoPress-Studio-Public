@@ -1,6 +1,150 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "主题强调色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Theme Accent Color"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主题强调色"
+          }
+        }
+      }
+    },
+    "外观": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appearance"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "外观"
+          }
+        }
+      }
+    },
+    "此颜色会立即应用到所有工作台窗口，并在下次启动时保留。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This color applies immediately to every workspace window and is preserved the next time the app starts."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此颜色会立即应用到所有工作台窗口，并在下次启动时保留。"
+          }
+        }
+      }
+    },
+    "玫瑰红 Rose": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rose"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "玫瑰红 Rose"
+          }
+        }
+      }
+    },
+    "琥珀黄 Amber": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Amber"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "琥珀黄 Amber"
+          }
+        }
+      }
+    },
+    "紫罗兰 Violet": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Violet"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "紫罗兰 Violet"
+          }
+        }
+      }
+    },
+    "自定义 RepoPress 的主题强调色，并决定选择态如何跟随 macOS。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Customize the RepoPress theme accent and how selection states follow macOS."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自定义 RepoPress 的主题强调色，并决定选择态如何跟随 macOS。"
+          }
+        }
+      }
+    },
+    "薄荷绿 Emerald": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Emerald"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "薄荷绿 Emerald"
+          }
+        }
+      }
+    },
+    "默认跟随 macOS，也可以选择一个专属颜色。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow macOS by default, or choose a personal accent color."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认跟随 macOS，也可以选择一个专属颜色。"
+          }
+        }
+      }
+    },
     "#%@": {
       "localizations": {
         "en": {
@@ -3697,22 +3841,6 @@
         }
       }
     },
-    "H(item.level)": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "H(item.level)"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "H(item.level)"
-          }
-        }
-      }
-    },
     "H1": {
       "localizations": {
         "en": {
@@ -5261,38 +5389,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vercel Team ID（可选）"
-          }
-        }
-      }
-    },
-    "Webhook JSON 载荷": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Webhook JSON Payload"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Webhook JSON 载荷"
-          }
-        }
-      }
-    },
-    "Webhook 平台": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Webhook Platform"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Webhook 平台"
           }
         }
       }
@@ -12081,22 +12177,6 @@
         }
       }
     },
-    "whisper-cli / whisper.cpp 路径": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Path to whisper-cli / whisper.cpp"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "whisper-cli / whisper.cpp 路径"
-          }
-        }
-      }
-    },
     "workspace.contentHealth": {
       "localizations": {
         "en": {
@@ -12913,22 +12993,6 @@
         }
       }
     },
-    "上一篇": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Previous"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上一篇"
-          }
-        }
-      }
-    },
     "上下文": {
       "localizations": {
         "en": {
@@ -12989,22 +13053,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "上次修改占位 · 0000 字/词 · 发布中"
-          }
-        }
-      }
-    },
-    "上次运行未正常结束": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The app did not exit normally last time"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上次运行未正常结束"
           }
         }
       }
@@ -13117,38 +13165,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "下一步"
-          }
-        }
-      }
-    },
-    "下一篇": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Next"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下一篇"
-          }
-        }
-      }
-    },
-    "下次以安全模式启动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Start in Safe Mode Next Time"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下次以安全模式启动"
           }
         }
       }
@@ -14161,22 +14177,6 @@
         }
       }
     },
-    "从备份恢复…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Restore from Backup…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "从备份恢复…"
-          }
-        }
-      }
-    },
     "从想法到初稿": {
       "localizations": {
         "en": {
@@ -15057,22 +15057,6 @@
         }
       }
     },
-    "使用本机 whisper.cpp-compatible CLI 和本地模型，不上传音频。当前支持从音频生成纯文本并追加到所选文章。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Uses a local whisper.cpp-compatible CLI and model without uploading audio. It currently supports transcribing audio to plain text and appending it to the selected article."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "使用本机与 whisper.cpp 兼容的 CLI 和本地模型，不会上传音频。目前支持将音频转写为纯文本并追加到所选文章。"
-          }
-        }
-      }
-    },
     "使用本机保存的原始网页归档预览新版清洗结果": {
       "localizations": {
         "en": {
@@ -15501,22 +15485,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "保存并重试"
-          }
-        }
-      }
-    },
-    "保存当前文章到资料库": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Save Current Article to Library"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "保存当前文章到资料库"
           }
         }
       }
@@ -16013,38 +15981,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "停止 AI 回复"
-          }
-        }
-      }
-    },
-    "停止 Webhook 接收器": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stop Webhook Receiver"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "停止 Webhook 接收器"
-          }
-        }
-      }
-    },
-    "停止接收器": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stop Receiver"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "停止接收器"
           }
         }
       }
@@ -16685,22 +16621,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "全部命中"
-          }
-        }
-      }
-    },
-    "全部媒体": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "All Media"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "全部媒体"
           }
         }
       }
@@ -18545,22 +18465,6 @@
         }
       }
     },
-    "列表密度": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "List Density"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "列表密度"
-          }
-        }
-      }
-    },
     "列表显示进度": {
       "localizations": {
         "en": {
@@ -19729,22 +19633,6 @@
         }
       }
     },
-    "刷新及 OPML 管理": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Refresh and OPML Management"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "刷新及 OPML 管理"
-          }
-        }
-      }
-    },
     "刷新发布检查和差异": {
       "localizations": {
         "en": {
@@ -20113,22 +20001,6 @@
         }
       }
     },
-    "包含草稿、历史版本、站点配置、资料库、附件和发布记录；默认不包含 API Key。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Includes drafts, version history, site settings, the library, attachments, and release records. API keys are excluded by default."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "包含草稿、历史版本、站点配置、资料库、附件和发布记录；默认不包含 API Key。"
-          }
-        }
-      }
-    },
     "匹配 %lld 篇 · 本机 %lld 篇": {
       "localizations": {
         "en": {
@@ -20189,22 +20061,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "卡片预览"
-          }
-        }
-      }
-    },
-    "历史": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "History"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "历史"
           }
         }
       }
@@ -21601,22 +21457,6 @@
         }
       }
     },
-    "只显示未读 RSS 文章": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Show unread RSS articles only"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "只显示未读 RSS 文章"
-          }
-        }
-      }
-    },
     "只更新站点文件，不提交到 Git，也不会上传到网站。": {
       "localizations": {
         "en": {
@@ -22413,38 +22253,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "启动时自动扫描仓库"
-          }
-        }
-      }
-    },
-    "启动本地 Webhook 接收器": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Start Local Webhook Receiver"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "启动本地 Webhook 接收器"
-          }
-        }
-      }
-    },
-    "启动本地接收器": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Start Local Receiver"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "启动本地接收器"
           }
         }
       }
@@ -23905,22 +23713,6 @@
         }
       }
     },
-    "备份包含正文、网页归档、版本、标注和检索索引；恢复前会先校验并显示预览。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Backups include source text, webpage archives, versions, annotations, and search indexes. A verified preview appears before restore."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "备份包含正文、网页归档、版本、标注和检索索引；恢复前会先校验并显示预览。"
-          }
-        }
-      }
-    },
     "备份大小": {
       "localizations": {
         "en": {
@@ -23949,22 +23741,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "备份完整工作区"
-          }
-        }
-      }
-    },
-    "备份完整工作区…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Back Up Complete Workspace…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "备份完整工作区…"
           }
         }
       }
@@ -24221,22 +23997,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "复制 SEO Social 检查清单"
-          }
-        }
-      }
-    },
-    "复制 Webhook 接收地址": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copy Webhook Receiver Address"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "复制 Webhook 接收地址"
           }
         }
       }
@@ -24509,22 +24269,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "复制回滚计划"
-          }
-        }
-      }
-    },
-    "复制地址": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copy Address"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "复制地址"
           }
         }
       }
@@ -25265,38 +25009,6 @@
         }
       }
     },
-    "存储管理": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Storage Management"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "存储管理"
-          }
-        }
-      }
-    },
-    "存储管理暂不可用": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Storage Management Unavailable"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "存储管理暂不可用"
-          }
-        }
-      }
-    },
     "孤立资源": {
       "localizations": {
         "en": {
@@ -25325,22 +25037,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "安全模式"
-          }
-        }
-      }
-    },
-    "安全模式启动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Start in Safe Mode"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "安全模式启动"
           }
         }
       }
@@ -25457,22 +25153,6 @@
         }
       }
     },
-    "完整备份…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Full Backup…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "完整备份…"
-          }
-        }
-      }
-    },
     "完整备份包含工作台、资料库、RSS、附件和发布记录；导入前会先校验并显示内容预览，API Key 不会写入备份。": {
       "localizations": {
         "en": {
@@ -25501,22 +25181,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "完整备份已创建：%@（%@）。"
-          }
-        }
-      }
-    },
-    "完整工作区备份": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Complete Workspace Backup"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "完整工作区备份"
           }
         }
       }
@@ -26737,22 +26401,6 @@
         }
       }
     },
-    "将当前文章用于写作": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Use Current Article for Writing"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "将当前文章用于写作"
-          }
-        }
-      }
-    },
     "将当前筛选结果中的 %lld 篇未读文章标为已读": {
       "localizations": {
         "en": {
@@ -27245,22 +26893,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "展开子章节"
-          }
-        }
-      }
-    },
-    "展开悬浮大纲": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Expand Floating Outline"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "展开悬浮大纲"
           }
         }
       }
@@ -29473,22 +29105,6 @@
         }
       }
     },
-    "应用检测到上次运行可能因崩溃或被强制结束。安全模式会暂停自动预检、预览、后台维护和浏览器连接，便于先恢复草稿并导出诊断信息。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The app detected that its previous run may have ended because of a crash or force quit. Safe Mode pauses automatic preflight checks, previews, background maintenance, and browser connections so you can recover drafts and export diagnostics first."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "应用检测到上次运行可能因崩溃或被强制结束。安全模式会暂停自动预检、预览、后台维护和浏览器连接，便于先恢复草稿并导出诊断信息。"
-          }
-        }
-      }
-    },
     "应用版本": {
       "localizations": {
         "en": {
@@ -29661,38 +29277,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "开启"
-          }
-        }
-      }
-    },
-    "开启后按文章链接抓取受大小限制的网页 HTML，并在 Feed 正文缺失时作为离线阅读回退；不会补齐原网页没有公开的内容。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "When enabled, fetches size-limited HTML from article links and uses it as an offline fallback when the Feed body is missing; it cannot add content the original page does not expose."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "开启后按文章链接抓取受大小限制的网页 HTML，并在 Feed 正文缺失时作为离线阅读回退；不会补齐原网页没有公开的内容。"
-          }
-        }
-      }
-    },
-    "开启后自动保存文章中可识别的图片、视频、音频和带下载标记的附件；每项受数量、大小和类型限制，默认关闭。收藏或添加高亮的文章仍会按原有规则归档媒体。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "When enabled, automatically saves recognized images, videos, audio, and download-marked attachments from articles; each item is limited by count, size, and type. Off by default. Starred or highlighted articles still archive media under the existing rule."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "开启后自动保存文章中可识别的图片、视频、音频和带下载标记的附件；每项受数量、大小和类型限制，默认关闭。收藏或添加高亮的文章仍会按原有规则归档媒体。"
           }
         }
       }
@@ -32081,22 +31665,6 @@
         }
       }
     },
-    "恢复完整工作区…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Restore Complete Workspace…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "恢复完整工作区…"
-          }
-        }
-      }
-    },
     "恢复左侧版本": {
       "localizations": {
         "en": {
@@ -33313,22 +32881,6 @@
         }
       }
     },
-    "打开版本历史与回收站": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Open Version History and Recycle Bin"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开版本历史与回收站"
-          }
-        }
-      }
-    },
     "打开目标": {
       "localizations": {
         "en": {
@@ -33421,22 +32973,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "打开草稿"
-          }
-        }
-      }
-    },
-    "打开菜单以标记已读、加入稍后阅读或打开原文": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Open the menu to mark as read, add to Read Later, or open the original"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开菜单以标记已读、加入稍后阅读或打开原文"
           }
         }
       }
@@ -33741,22 +33277,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "执行线上回滚"
-          }
-        }
-      }
-    },
-    "扩写": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Expand"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "扩写"
           }
         }
       }
@@ -34689,22 +34209,6 @@
         }
       }
     },
-    "按每日或每周计划创建完整工作区备份；应用启动时会补做逾期备份，系统允许时也会在后台执行。每次创建后都会重新校验归档。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Create complete workspace backups on a daily or weekly schedule. Overdue backups are caught up when the app launches and also run in the background when the system allows. Each archive is revalidated after creation."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "按每日或每周计划创建完整工作区备份；应用启动时会补做逾期备份，系统允许时也会在后台执行。每次创建后都会重新校验归档。"
-          }
-        }
-      }
-    },
     "按添加时间": {
       "localizations": {
         "en": {
@@ -34893,22 +34397,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "接受修改"
-          }
-        }
-      }
-    },
-    "接收 Webhook": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Receive Webhook"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "接收 Webhook"
           }
         }
       }
@@ -36257,22 +35745,6 @@
         }
       }
     },
-    "收起悬浮大纲": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Collapse Floating Outline"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "收起悬浮大纲"
-          }
-        }
-      }
-    },
     "收起提交历史": {
       "localizations": {
         "en": {
@@ -37101,22 +36573,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "文章大纲"
-          }
-        }
-      }
-    },
-    "文章大纲悬浮导航": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Floating Article Outline Navigation"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文章大纲悬浮导航"
           }
         }
       }
@@ -40929,102 +40385,6 @@
         }
       }
     },
-    "本地 Webhook HTTP Receiver 和手动 JSON 注入，仅用于排查部署回调；日常发布使用上方轮询和单条记录的检查部署。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The local Webhook HTTP Receiver and manual JSON injection are only for debugging deployment callbacks. For routine publishing, use polling above or Check Deployment on an individual record."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本地 Webhook HTTP Receiver 和手动 JSON 注入，仅用于排查部署回调；日常发布使用上方轮询和单条记录的检查部署。"
-          }
-        }
-      }
-    },
-    "本地 Webhook 调试": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local Webhook Debugging"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本地 Webhook 调试"
-          }
-        }
-      }
-    },
-    "本地 Whisper 可执行文件路径": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local Whisper Executable Path"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本地 Whisper 可执行文件路径"
-          }
-        }
-      }
-    },
-    "本地 Whisper 模型路径": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local Whisper Model Path"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本地 Whisper 模型路径"
-          }
-        }
-      }
-    },
-    "本地 Whisper 转写": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local Whisper Transcription"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本地 Whisper 转写"
-          }
-        }
-      }
-    },
-    "本地 Whisper 转写语言": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local Whisper Transcription Language"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本地 Whisper 转写语言"
-          }
-        }
-      }
-    },
     "本地 diff 预览": {
       "localizations": {
         "en": {
@@ -43681,6 +43041,22 @@
         }
       }
     },
+    "Git 推送进度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Git push progress"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Git 推送进度"
+          }
+        }
+      }
+    },
     "正在发现 RSS / Atom 订阅…": {
       "localizations": {
         "en": {
@@ -44609,22 +43985,6 @@
         }
       }
     },
-    "正常启动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Start Normally"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正常启动"
-          }
-        }
-      }
-    },
     "正式": {
       "localizations": {
         "en": {
@@ -45489,22 +44849,6 @@
         }
       }
     },
-    "没有可写入的发布记录。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No publishing records are available to write."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "没有可写入的发布记录。"
-          }
-        }
-      }
-    },
     "没有可发布文章": {
       "localizations": {
         "en": {
@@ -45533,22 +44877,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "没有可在本机重新净化的网页资料。"
-          }
-        }
-      }
-    },
-    "没有可导出的 RSS 订阅。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "There are no RSS subscriptions to export."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "没有可导出的 RSS 订阅。"
           }
         }
       }
@@ -46029,22 +45357,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "浏览图片目录中的实际文件，查看引用文章，或把现有图片加入目标文章。"
-          }
-        }
-      }
-    },
-    "润色": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Polish"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "润色"
           }
         }
       }
@@ -49761,22 +49073,6 @@
         }
       }
     },
-    "管理资料库与 RSS 的本地文件、备份、导入和存储位置。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Manage local library and RSS files, backups, imports, and storage location."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "管理资料库与 RSS 的本地文件、备份、导入和存储位置。"
-          }
-        }
-      }
-    },
     "类型": {
       "localizations": {
         "en": {
@@ -49857,22 +49153,6 @@
         }
       }
     },
-    "粘贴平台回调内容后接收": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Paste the platform callback payload, then receive it"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "粘贴平台回调内容后接收"
-          }
-        }
-      }
-    },
     "粘贴截图": {
       "localizations": {
         "en": {
@@ -49885,22 +49165,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "粘贴截图"
-          }
-        }
-      }
-    },
-    "精简": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Condense"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "精简"
           }
         }
       }
@@ -50909,22 +50173,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "网络安全"
-          }
-        }
-      }
-    },
-    "网页全文快照": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Web Page Snapshot"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "网页全文快照"
           }
         }
       }
@@ -52097,22 +51345,6 @@
         }
       }
     },
-    "订阅操作": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Subscription Actions"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "订阅操作"
-          }
-        }
-      }
-    },
     "订阅数量": {
       "localizations": {
         "en": {
@@ -52673,22 +51905,6 @@
         }
       }
     },
-    "语言（auto / zh / en）": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Language (auto / zh / en)"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "语言（auto / zh / en）"
-          }
-        }
-      }
-    },
     "说明（可选）": {
       "localizations": {
         "en": {
@@ -52765,22 +51981,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "请先在主窗口完成数据文件夹设置。"
-          }
-        }
-      }
-    },
-    "请先在写作区选择文章。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Select an article in the writing workspace first."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请先在写作区选择文章。"
           }
         }
       }
@@ -55985,22 +55185,6 @@
         }
       }
     },
-    "选择…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择…"
-          }
-        }
-      }
-    },
     "选择一个 HTML 文件": {
       "localizations": {
         "en": {
@@ -56577,22 +55761,6 @@
         }
       }
     },
-    "选择界面语言，并控制 RepoPress 如何跟随 macOS。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose the interface language and how RepoPress follows macOS."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择界面语言，并控制 RepoPress 如何跟随 macOS。"
-          }
-        }
-      }
-    },
     "选择目录…": {
       "localizations": {
         "en": {
@@ -56861,22 +56029,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "选择阅读资料"
-          }
-        }
-      }
-    },
-    "选择音频并插入转写": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose Audio and Insert Transcription"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择音频并插入转写"
           }
         }
       }
@@ -58189,38 +57341,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "阅读"
-          }
-        }
-      }
-    },
-    "阅读上一篇文章": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Read Previous Article"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "阅读上一篇文章"
-          }
-        }
-      }
-    },
-    "阅读下一篇文章": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Read Next Article"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "阅读下一篇文章"
           }
         }
       }
@@ -59581,38 +58701,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "高级设置"
-          }
-        }
-      }
-    },
-    "高级调试": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Advanced Debugging"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "高级调试"
-          }
-        }
-      }
-    },
-    "高级调试用：启动本地 HTTP 接收器或粘贴平台 Webhook JSON，写入最新发布记录的部署快照和历史。普通发布建议使用手动检查或部署轮询。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "For advanced debugging: start the local HTTP receiver or paste platform webhook JSON to add deployment snapshots and history to the latest publishing record. For normal publishing, use manual checks or deployment polling."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "高级调试用：启动本地 HTTP 接收器或粘贴平台 Webhook JSON，写入最新发布记录的部署快照和历史。普通发布建议使用手动检查或部署轮询。"
           }
         }
       }

@@ -147,14 +147,6 @@
     "en": "No Model Configured",
     "zh-Hans": "未配置模型"
   },
-  "本地 Whisper 模型路径": {
-    "en": "Local Whisper Model Path",
-    "zh-Hans": "本地 Whisper 模型路径"
-  },
-  "本地 Whisper 转写": {
-    "en": "Local Whisper Transcription",
-    "zh-Hans": "本地 Whisper 转写"
-  },
   "正在扫描资源和 Markdown 引用…": {
     "en": "Scanning Assets and Markdown References…",
     "zh-Hans": "正在扫描资源和 Markdown 引用…"
@@ -170,10 +162,6 @@
   "正在生成 AI 行内建议": {
     "en": "Generating Inline AI Suggestion",
     "zh-Hans": "正在生成 AI 行内建议"
-  },
-  "润色": {
-    "en": "Polish",
-    "zh-Hans": "润色"
   },
   "清空 AI Base URL": {
     "en": "Clear AI Base URL",
@@ -195,10 +183,6 @@
     "en": "Paste Model Name from Clipboard",
     "zh-Hans": "粘贴剪贴板中的模型名"
   },
-  "精简": {
-    "en": "Condense",
-    "zh-Hans": "精简"
-  },
   "脚手架参考": {
     "en": "Scaffold Reference",
     "zh-Hans": "脚手架参考"
@@ -218,10 +202,6 @@
   "语气": {
     "en": "Tone",
     "zh-Hans": "语气"
-  },
-  "语言（auto / zh / en）": {
-    "en": "Language (auto / zh / en)",
-    "zh-Hans": "语言（auto / zh / en）"
   },
   "资料库中的“允许发送给远程 AI”是独立的逐条权限，默认关闭；只有资料权限和本处授权同时满足时，资料片段才会发送。": {
     "en": "The “Allow Sending to Remote AI” permission in the knowledge library is set independently for each item and is off by default. Knowledge excerpts are sent only when both the item permission and this authorization are enabled.",
