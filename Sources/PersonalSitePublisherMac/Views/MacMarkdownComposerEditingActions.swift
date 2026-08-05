@@ -24,9 +24,7 @@ extension MacMarkdownComposerView {
     let requestedDraftID = draft.id
     let shouldIncludeOutline = includeOutline ?? true
     let diagnosticContext = MarkdownInlineDiagnosticContext(
-      knownArticleTitles: Set(
-        store.drafts.compactMap { $0.title.trimmedForPublishing.nilIfEmpty }
-      ),
+      knownArticleTitles: store.knownArticleTitlesForMarkdownDiagnostics,
       attachmentPaths: Set(
         draft.attachments.flatMap {
           [$0.relativePublishPath, $0.repositoryPath]

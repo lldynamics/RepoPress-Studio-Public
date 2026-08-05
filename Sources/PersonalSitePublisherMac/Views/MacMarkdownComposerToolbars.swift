@@ -222,10 +222,7 @@ struct MacMarkdownEditorToolbar: View {
   }
 
   private var expandedEditorActions: some View {
-    ViewThatFits(in: .horizontal) {
-      editorActionGroup(showsTitle: true)
-      editorActionGroup(showsTitle: false)
-    }
+    editorActionGroup(showsTitle: false)
     .accessibilityElement(children: .contain)
   }
 
@@ -487,10 +484,7 @@ struct MacMarkdownEditorToolbar: View {
   }
 
   private var editorDisplayModeControl: some View {
-    ViewThatFits(in: .horizontal) {
-      editorDisplayModeControl(showsTitle: true)
-      editorDisplayModeControl(showsTitle: false)
-    }
+    editorDisplayModeControl(showsTitle: false)
   }
 
   private func editorDisplayModeControl(showsTitle: Bool) -> some View {

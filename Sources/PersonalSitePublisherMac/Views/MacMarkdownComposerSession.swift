@@ -102,7 +102,24 @@ extension MacMarkdownComposerView {
   }
 
   func saveCurrentEditorSession() {
-    persistEditorSession(for: draft.id)
+    editorSessionSaveTask?.cancel()
+    let draftID = draft.id
+    editorSessionSaveTask = Task {
+      do {
+        try await Task.sleep(for: .milliseconds(220))
+      } catch {
+        return
+      }
+      guard !Task.isCancelled else { return }
+      persistEditorSession(for: draftID)
+      editorSessionSaveTask = nil
+    }
+  }
+
+  func flushEditorSessionSave(for draftID: UUID) {
+    editorSessionSaveTask?.cancel()
+    editorSessionSaveTask = nil
+    persistEditorSession(for: draftID)
   }
 
   func persistEditorSession(for draftID: UUID) {

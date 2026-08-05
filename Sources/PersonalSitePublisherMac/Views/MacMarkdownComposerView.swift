@@ -13,6 +13,9 @@ struct MacMarkdownComposerView: View {
   @State var selectionActionState = MarkdownComposerSelectionActionState()
   @State var presentationState = MarkdownComposerPresentationState()
   @State var analysisState = MarkdownComposerAnalysisState()
+  @State var editorDocumentBodyOffsetCache: Int
+  @State var markdownSSGDerivedData = MarkdownComposerSSGDerivedData.empty
+  @State var editorSessionSaveTask: Task<Void, Never>?
   @AppStorage("markdownEditorSynchronizedScrolling") var isSynchronizedScrollingEnabled = true
   @AppStorage("workspace.writingToolDensity") var writingToolDensityRawValue = MarkdownWritingToolDensity.basic.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
@@ -138,23 +141,22 @@ struct MacMarkdownComposerView: View {
   }
 
   var editorDocumentBodyOffset: Int {
-    if let editorDocumentParts {
-      return editorDocumentParts.bodyUTF16Offset
-    }
-    let canonicalDocument = frontMatterEditingService.renderDocument(
-      draft: draft,
-      profile: activeProfile,
-      bodyMarkdown: editorBody
-    )
-    return frontMatterEditingService
-      .splitDocument(canonicalDocument, profile: activeProfile)?
-      .bodyUTF16Offset ?? 0
+    editorDocumentBodyOffsetCache
   }
 
   init(draft: Binding<ArticleDraft>, store: WorkbenchStore) {
     _draft = draft
     let initialDraft = draft.wrappedValue
     let draftID = initialDraft.id
+    let initialBuffer = store.draftBodyEditorBuffer(for: draftID)
+    let initialDocument = MarkdownFrontMatterEditingService().renderDocument(
+      draft: initialDraft,
+      profile: store.profile(for: initialDraft),
+      bodyMarkdown: initialBuffer.bodyMarkdown
+    )
+    let initialBodyOffset = (initialDocument as NSString).length
+      - (initialBuffer.bodyMarkdown as NSString).length
+    _editorDocumentBodyOffsetCache = State(initialValue: initialBodyOffset)
     _editorSessionState = StateObject(
       wrappedValue: Self.makeInitialEditorSessionState(
         draft: initialDraft,
@@ -332,7 +334,7 @@ struct MacMarkdownComposerView: View {
     }
     .onChange(of: draft.id) { oldDraftID, _ in
       editorState.trackDraft(draft.id)
-      persistEditorSession(for: oldDraftID)
+      flushEditorSessionSave(for: oldDraftID)
       cancelAttachmentImport()
       dismissInsertedImageMetadata()
       cancelSelectionAIAction()
@@ -408,6 +410,9 @@ struct MacMarkdownComposerView: View {
 
   var body: some View {
     editorWorkspaceLifecycle
+    .task(id: markdownSSGDerivedDataKey) {
+      await refreshMarkdownSSGDerivedData(for: markdownSSGDerivedDataKey)
+    }
     .sheet(isPresented: $presentationState.isShortcutHelpPresented) {
       MarkdownShortcutHelpPanel()
     }
@@ -467,6 +472,8 @@ struct MacMarkdownComposerView: View {
   }
 
   private func handleComposerDisappear() {
+    editorSessionSaveTask?.cancel()
+    editorSessionSaveTask = nil
     markdownAnalysisTask?.cancel()
     markdownAnalysisTask = nil
     cancelAttachmentImport()

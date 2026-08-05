@@ -101,7 +101,18 @@ extension MacMarkdownComposerView {
   }
 
   func acceptInlineGhostText() {
+    let textToInsert = inlineGhostText
     cancelInlineGhostText()
+    guard !textToInsert.isEmpty else { return }
+    let edit = MarkdownSmartEdit(
+      replacedRange: selectedRange,
+      replacement: textToInsert,
+      selectedRange: NSRange(
+        location: selectedRange.location + (textToInsert as NSString).length,
+        length: 0
+      )
+    )
+    editorEditRequest = MarkdownTextEditRequest(expectedText: editorBody, edit: edit)
     EditorAccessibilityAnnouncementCenter.announce("已采纳 AI 续写。")
   }
 
