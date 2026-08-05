@@ -12,11 +12,14 @@
 3. 按浏览器选择安装方式：
    - Safari：运行 `./script/build_and_run.sh` 后，在 Safari 设置的“扩展”中启用
      “RepoPress Studio · 资料采集”；正式版扩展随 Mac App Store 应用安装。
-   - Chrome：打开扩展管理页，启用“开发者模式”，点击“加载已解压的扩展”。
-   - Firefox：打开 `about:debugging#/runtime/this-firefox`，选择“临时载入附加组件”，
-     再选中 `BrowserExtension/Firefox/manifest.json`。
-4. Chrome 选择 `BrowserExtension` 文件夹。
-5. Firefox 选择 `BrowserExtension/Firefox/manifest.json`，打开一个普通网页，点击扩展图标，
+   - Chrome：运行 `python3 script/build_browser_extension_source.py --browser chrome
+     --output-dir .build/browser-extension/chrome`，然后在扩展管理页启用“开发者模式”，
+     点击“加载已解压的扩展”。
+   - Firefox：运行 `python3 script/build_browser_extension_source.py --browser firefox
+     --output-dir .build/browser-extension/firefox`，打开 `about:debugging#/runtime/this-firefox`，
+     选择“临时载入附加组件”，再选中 `.build/browser-extension/firefox/manifest.json`。
+4. Chrome 选择 `.build/browser-extension/chrome` 文件夹。
+5. Firefox 选择 `.build/browser-extension/firefox/manifest.json`，打开一个普通网页，点击扩展图标，
    粘贴令牌并连接。
 
 连接成功后，可以选择现有资料库分类，也可以在保存时直接创建新分类。再次保存同一网址
@@ -128,12 +131,13 @@
 
 RepoPress 只维护一个 Mac App Store 应用版本。Safari Web Extension 以签名 `.appex` 内置于该应用，
 由用户在 Safari 设置中启用；Chrome 版本从 Chrome Web Store 安装，Firefox 版本从
-`BrowserExtension/Firefox/manifest.json` 临时加载。Mac 应用不把扩展文件写入
+`.build/browser-extension/firefox/manifest.json` 临时加载。Mac 应用不把扩展文件写入
 浏览器目录，也不安装额外宿主。Chrome 清单中的公开开发密钥只用于让开发者模式下的未打包扩展
 保持固定 ID；商店正式 ID 写入协议身份源，以便应用校验扩展 Origin。
 
-Safari、Chrome 与 Firefox 使用各自最小化的 Manifest V3 清单，并通过同步脚本共享同一套采集与弹窗代码。
-Safari 清单不申请不受支持的 `pageCapture`，完整网页使用自包含 HTML 回退。
+Safari、Chrome 与 Firefox 使用各自最小化的 Manifest V3 清单；采集与弹窗代码、图标和语言包只维护一份，
+位于 `BrowserExtension/shared/`，由构建脚本按平台生成临时完整扩展目录。Safari 清单不申请不受支持的
+`pageCapture`，完整网页使用自包含 HTML 回退。
 
 ## Safari Web Extension
 
@@ -167,7 +171,7 @@ python3 script/generate_browser_extension_protocol.py --write
 python3 script/generate_browser_extension_protocol.py --check
 ```
 
-生成器会同步 Swift 和 JavaScript 常量、Firefox 后台脚本顺序及发布配置，并校验
+生成器会同步 Swift 和 shared JavaScript 常量、Firefox 后台脚本顺序及发布配置，并校验
 Chromium 清单公钥实际派生的固定 ID。生成文件被手动修改、遗漏生成或清单 ID
 不一致时，浏览器发布门禁会直接失败。
 
@@ -231,11 +235,12 @@ ZIP 根目录直接包含 `manifest.json` 和运行文件，不包含 README、�
 
 ## Firefox 独立扩展
 
-Firefox 是独立于 Mac App Store 应用的浏览器扩展路径。开发和本机验收使用
-`BrowserExtension/Firefox/manifest.json` 的临时加载方式；应用设置页会打开
+Firefox 是独立于 Mac App Store 应用的浏览器扩展路径。开发和本机验收先用
+`python3 script/build_browser_extension_source.py --browser firefox --output-dir .build/browser-extension/firefox`
+生成完整目录，再临时加载其中的 `manifest.json`；应用设置页会打开
 `about:debugging#/runtime/this-firefox`，并说明加载清单和粘贴连接令牌的位置。
 
-协议生成、共享资源同步、兼容性回归和真实 Firefox BiDi E2E 会把 Firefox 作为启用渠道验证。
+协议生成、共享资源布局检查、兼容性回归和真实 Firefox BiDi E2E 会把 Firefox 作为启用渠道验证。
 这不宣称已经提交或通过 Mozilla Add-ons（AMO），也不生成可长期安装的签名 XPI。根 Node 工具链不安装
 `web-ext`，旧 Firefox 签名入口保持拒绝执行；以后要做 AMO 发布，必须在独立、无仓库 secrets 的受限流程中
 重新建立 lint、签名、审核和不可变产物记录。

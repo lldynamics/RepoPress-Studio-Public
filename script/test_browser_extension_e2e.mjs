@@ -1,19 +1,22 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
 import process from "node:process";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(SCRIPT_DIR, "..");
-const CHROMIUM_EXTENSION_DIR = path.join(ROOT_DIR, "BrowserExtension");
-const FIREFOX_EXTENSION_DIR = path.join(CHROMIUM_EXTENSION_DIR, "Firefox");
+const SOURCE_BUILDER = path.join(ROOT_DIR, "script", "build_browser_extension_source.py");
+const EXTENSION_STAGE_ROOT = path.join(ROOT_DIR, ".build", "browser-extension-e2e", "sources");
+const CHROMIUM_EXTENSION_DIR = path.join(EXTENSION_STAGE_ROOT, "chrome");
+const FIREFOX_EXTENSION_DIR = path.join(EXTENSION_STAGE_ROOT, "firefox");
 const ARTIFACT_DIR = path.join(ROOT_DIR, "output", "playwright", "browser-extension-e2e");
 const CHROMIUM_PROFILE_DIR = path.join(ROOT_DIR, ".build", "browser-extension-e2e", "chromium-profile");
 const CHROMIUM_ENGLISH_PROFILE_DIR = path.join(
@@ -22,6 +25,7 @@ const CHROMIUM_ENGLISH_PROFILE_DIR = path.join(
 const FIREFOX_PROFILE_DIR = path.join(ROOT_DIR, ".build", "browser-extension-e2e", "firefox-profile");
 const FIREFOX_EXTENSION_ID = "knowledge-capture@jinfang.local";
 const TEST_TIMEOUT_MS = 15_000;
+const execFileAsync = promisify(execFile);
 
 const requestedBrowser = process.argv.find((argument) => argument.startsWith("--browser="))
   ?.split("=", 2)[1] || "all";
@@ -31,6 +35,16 @@ assert.ok(
 );
 
 await fs.mkdir(ARTIFACT_DIR, { recursive: true });
+await fs.rm(EXTENSION_STAGE_ROOT, { recursive: true, force: true });
+await fs.mkdir(EXTENSION_STAGE_ROOT, { recursive: true });
+await Promise.all([
+  ["chrome", CHROMIUM_EXTENSION_DIR],
+  ["firefox", FIREFOX_EXTENSION_DIR],
+].map(([browser, outputDir]) => execFileAsync(
+  "python3",
+  [SOURCE_BUILDER, "--browser", browser, "--output-dir", outputDir],
+  { cwd: ROOT_DIR }
+)));
 
 const testResults = [];
 let chromiumPageForFailure = null;

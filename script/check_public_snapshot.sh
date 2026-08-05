@@ -171,7 +171,7 @@ unexpected_images=()
 while IFS= read -r -d '' file; do
   relative="$(relative_path "$file")"
   case "$relative" in
-    BrowserExtension/icons/*.png|BrowserExtension/Firefox/icons/*.png|BrowserExtension/Safari/icons/*.png|Sources/PersonalSitePublisherMac/Resources/AppIcon.icns)
+    BrowserExtension/shared/icons/*.png|Sources/PersonalSitePublisherMac/Resources/AppIcon.icns)
       ;;
     *)
       unexpected_images+=("$relative")

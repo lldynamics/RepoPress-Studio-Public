@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const extensionRoot = path.join(root, "BrowserExtension");
-const manifest = JSON.parse(await readFile(path.join(extensionRoot, "manifest.json"), "utf8"));
+const chromeRoot = path.join(extensionRoot, "Chrome");
+const sharedRoot = path.join(extensionRoot, "shared");
+const manifest = JSON.parse(await readFile(path.join(chromeRoot, "manifest.json"), "utf8"));
 const protocolDefinition = JSON.parse(await readFile(
   path.join(extensionRoot, "browser-extension-protocol.json"),
   "utf8"
@@ -19,7 +21,7 @@ assert.deepEqual(
 );
 const loopbackProtocol = protocolDefinition.loopback;
 const generatedProtocolSource = await readFile(
-  path.join(extensionRoot, "protocol.generated.js"),
+  path.join(sharedRoot, "protocol.generated.js"),
   "utf8"
 );
 const firefoxRoot = path.join(extensionRoot, "Firefox");
@@ -51,7 +53,7 @@ assert.deepEqual(manifest.content_security_policy, expectedExtensionCSP);
 const localeMessageKeys = new Map();
 for (const locale of ["zh_CN", "en"]) {
   const messages = JSON.parse(await readFile(
-    path.join(extensionRoot, "_locales", locale, "messages.json"),
+    path.join(sharedRoot, "_locales", locale, "messages.json"),
     "utf8"
   ));
   localeMessageKeys.set(locale, Object.keys(messages).sort());
@@ -168,24 +170,18 @@ for (const sharedFile of [
   "_locales/en/messages.json", "_locales/zh_CN/messages.json",
   "icons/icon16.png", "icons/icon32.png", "icons/icon48.png", "icons/icon128.png"
 ]) {
-  const sharedSource = await readFile(path.join(extensionRoot, sharedFile));
-  for (const [browserName, browserRoot] of [
-    ["Firefox", firefoxRoot],
-    ["Safari", safariRoot]
-  ]) {
-    assert.equal(
-      Buffer.compare(
-        await readFile(path.join(browserRoot, sharedFile)),
-        sharedSource
-      ),
-      0,
-      `${sharedFile} is not synchronized with the ${browserName} extension`
-    );
-  }
+  await readFile(path.join(sharedRoot, sharedFile));
 }
 
-const popupHTML = await readFile(path.join(firefoxRoot, "popup.html"), "utf8");
-const popupCSS = await readFile(path.join(firefoxRoot, "popup.css"), "utf8");
+assert.deepEqual(
+  await readdir(chromeRoot),
+  ["manifest.json"],
+  "Chrome source must contain only its manifest"
+);
+assert.deepEqual(await readdir(firefoxRoot), ["manifest.json"]);
+assert.deepEqual(await readdir(safariRoot), ["manifest.json"]);
+const popupHTML = await readFile(path.join(sharedRoot, "popup.html"), "utf8");
+const popupCSS = await readFile(path.join(sharedRoot, "popup.css"), "utf8");
 assert.match(popupHTML, /<form id="connection-form">/);
 assert.match(popupHTML, /id="connect"[^>]*type="submit"/);
 assert.match(popupHTML, /<label for="folder-search"[^>]*>/);
@@ -251,7 +247,7 @@ for (const primaryColor of [primaryFill, primaryHover, primaryActive]) {
 }
 assert.ok(contrastRatio(lightFocusRing, "#ffffff") >= 3);
 
-const popupSource = await readFile(path.join(firefoxRoot, "popup.js"), "utf8");
+const popupSource = await readFile(path.join(sharedRoot, "popup.js"), "utf8");
 const popupElements = new Map();
 const makePopupElement = () => ({
   hidden: false,
@@ -862,9 +858,9 @@ const backgroundModuleNames = [
   "background-capture.js"
 ];
 const backgroundModuleSources = await Promise.all(backgroundModuleNames.map((name) =>
-  readFile(path.join(firefoxRoot, name), "utf8")
+  readFile(path.join(sharedRoot, name), "utf8")
 ));
-const backgroundSource = await readFile(path.join(firefoxRoot, "background.js"), "utf8");
+const backgroundSource = await readFile(path.join(sharedRoot, "background.js"), "utf8");
 const completeBackgroundSource = [...backgroundModuleSources, backgroundSource].join("\n");
 assert.match(completeBackgroundSource, /redirect:\s*"manual"/);
 assert.match(completeBackgroundSource, /response\.body\?\.getReader\?\.\(\)/);

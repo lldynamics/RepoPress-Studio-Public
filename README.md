@@ -22,7 +22,9 @@
 
 当前主发行渠道是官网 Developer ID 版。用户可自行配置 AI 服务和 API Key；
 Safari Web Extension 随应用内置，Chrome 扩展从 Chrome 网上应用店安装，Firefox 扩展可从
-`BrowserExtension/Firefox/manifest.json` 以临时附加组件方式加载。三种浏览器都通过带随机令牌的
+运行 `python3 script/build_browser_extension_source.py --browser firefox --output-dir
+.build/browser-extension/firefox` 后，从 `.build/browser-extension/firefox/manifest.json` 以临时附加组件方式加载。
+三种浏览器都通过带随机令牌的
 本机回环接口连接同一个应用。
 
 日常修改后可先运行精简门禁；准备发布时分别检查应用和浏览器商店：
@@ -31,14 +33,11 @@ Safari Web Extension 随应用内置，Chrome 扩展从 Chrome 网上应用店�
 ./script/check_release_gate.sh --quick
 ./script/check_release_gate.sh
 ./script/check_release_gate.sh --profile direct
-./script/check_release_gate.sh --profile app-store
 ./script/check_release_gate.sh --profile chrome
 ```
 
-每个 profile 只检查该渠道与公共发布基线，不会被其他商店的凭据、
-上架 ID 或截图阻断。当前产品不包含应用内购买、权益系统或付费功能维护面。
-需要一次性验收全部渠道时运行
-`./script/check_release_gate.sh --profile all`；原有 `--strict` 仍作为该命令的兼容别名。
+每个 profile 只检查该渠道与公共发布基线，不会被其他渠道的凭据、
+上架 ID 或素材阻断。当前产品不包含应用内购买、权益系统或付费功能维护面。
 
 官网直发流水线有三个可独立验证的阶段：
 

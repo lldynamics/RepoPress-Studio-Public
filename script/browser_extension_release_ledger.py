@@ -78,6 +78,28 @@ RELEASE_SOURCE_FILES = (
     "BrowserExtension/popup.js",
     "BrowserExtension/protocol.generated.js",
 )
+# The labels above are kept stable so moving the source layout does not invalidate
+# immutable hashes for already-recorded extension releases.
+RELEASE_SOURCE_PATHS = {
+    "BrowserExtension/_locales/en/messages.json": "BrowserExtension/shared/_locales/en/messages.json",
+    "BrowserExtension/_locales/zh_CN/messages.json": "BrowserExtension/shared/_locales/zh_CN/messages.json",
+    "BrowserExtension/background-capture.js": "BrowserExtension/shared/background-capture.js",
+    "BrowserExtension/background-queue-operations.js": "BrowserExtension/shared/background-queue-operations.js",
+    "BrowserExtension/background-queue-storage.js": "BrowserExtension/shared/background-queue-storage.js",
+    "BrowserExtension/background-security.js": "BrowserExtension/shared/background-security.js",
+    "BrowserExtension/background.js": "BrowserExtension/shared/background.js",
+    "BrowserExtension/firefox-release.json": "BrowserExtension/firefox-release.json",
+    "BrowserExtension/Firefox/manifest.json": "BrowserExtension/Firefox/manifest.json",
+    "BrowserExtension/icons/icon16.png": "BrowserExtension/shared/icons/icon16.png",
+    "BrowserExtension/icons/icon32.png": "BrowserExtension/shared/icons/icon32.png",
+    "BrowserExtension/icons/icon48.png": "BrowserExtension/shared/icons/icon48.png",
+    "BrowserExtension/icons/icon128.png": "BrowserExtension/shared/icons/icon128.png",
+    "BrowserExtension/manifest.json": "BrowserExtension/Chrome/manifest.json",
+    "BrowserExtension/popup.css": "BrowserExtension/shared/popup.css",
+    "BrowserExtension/popup.html": "BrowserExtension/shared/popup.html",
+    "BrowserExtension/popup.js": "BrowserExtension/shared/popup.js",
+    "BrowserExtension/protocol.generated.js": "BrowserExtension/shared/protocol.generated.js",
+}
 
 
 class ReleaseLedgerError(RuntimeError):
@@ -160,7 +182,7 @@ def _sha256_file(path: Path) -> str:
 
 
 def current_version(root: Path) -> str:
-    chromium_manifest = _load_json(root / "BrowserExtension/manifest.json")
+    chromium_manifest = _load_json(root / "BrowserExtension/Chrome/manifest.json")
     firefox_manifest = _load_json(root / "BrowserExtension/Firefox/manifest.json")
     chromium_version = chromium_manifest.get("version")
     firefox_version = firefox_manifest.get("version")
@@ -174,22 +196,15 @@ def current_version(root: Path) -> str:
 def release_source_sha256(root: Path) -> str:
     root = root.resolve()
     current_version(root)
-    extension_root = root / "BrowserExtension"
-    firefox_root = extension_root / "Firefox"
     for name in SHARED_SOURCE_FILES:
-        shared_path = extension_root / name
-        firefox_path = firefox_root / name
+        shared_path = root / "BrowserExtension" / "shared" / name
         if not shared_path.is_file() or shared_path.is_symlink():
             raise ReleaseLedgerError(f"Release source must be a regular file: {shared_path}")
-        if not firefox_path.is_file() or firefox_path.is_symlink():
-            raise ReleaseLedgerError(f"Release source must be a regular file: {firefox_path}")
-        if shared_path.read_bytes() != firefox_path.read_bytes():
-            raise ReleaseLedgerError(f"Shared Firefox extension source is out of sync: {name}")
 
     digest = hashlib.sha256()
     digest.update(b"browser-extension-release-source-v1\0")
     for relative_name in RELEASE_SOURCE_FILES:
-        path = root / relative_name
+        path = root / RELEASE_SOURCE_PATHS[relative_name]
         if not path.is_file() or path.is_symlink():
             raise ReleaseLedgerError(f"Release source must be a regular file: {path}")
         encoded_name = relative_name.encode("utf-8")
