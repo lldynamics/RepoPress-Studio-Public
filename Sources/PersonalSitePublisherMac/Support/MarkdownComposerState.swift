@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import PublishingWorkbenchCore
 
@@ -51,31 +52,65 @@ struct MarkdownFindMatchSnapshot: Equatable {
   }
 }
 
-struct MarkdownComposerEditorSessionState {
-  var editorBody: String
-  var editorDocument: String
-  var isFrontMatterSelection = false
-  var frontMatterIssue: MarkdownFrontMatterEditingIssue?
-  var ignoredCanonicalFrontMatter: String?
-  var editorStatistics = MarkdownEditorStatistics.empty
-  var selectedRange: NSRange
-  var isFindReplacePresented: Bool
-  var findQuery: String
-  var replacementText: String
-  var isFindCaseSensitive: Bool
-  var isFindWholeWord: Bool
-  var isFindRegularExpression: Bool
-  var findReplaceMessage = ""
-  var findMatchSnapshot: MarkdownFindMatchSnapshot
-  var editorEditRequest: MarkdownTextEditRequest?
-  var markdownTextFocusRequest: MarkdownTextFocusRequest?
-  var scrollSyncUpdate: MarkdownScrollSyncUpdate?
-  var editorScrollRestorationUpdate: MarkdownScrollSyncUpdate?
-  var previewScrollRestorationUpdate: MarkdownScrollSyncUpdate?
-  var visibleBodyRange = NSRange(location: 0, length: 0)
-  var editorScrollProgress: Double
-  var previewScrollProgress: Double
-  var editorBodyRevision: UInt64
+@MainActor
+final class MarkdownComposerEditorSessionState: ObservableObject {
+  @Published var editorBody: String
+  @Published var editorDocument: String
+  @Published var isFrontMatterSelection = false
+  @Published var frontMatterIssue: MarkdownFrontMatterEditingIssue?
+  @Published var ignoredCanonicalFrontMatter: String?
+  @Published var editorStatistics = MarkdownEditorStatistics.empty
+  @Published var selectedRange: NSRange
+  @Published var isFindReplacePresented: Bool
+  @Published var findQuery: String
+  @Published var replacementText: String
+  @Published var isFindCaseSensitive: Bool
+  @Published var isFindWholeWord: Bool
+  @Published var isFindRegularExpression: Bool
+  @Published var findReplaceMessage = ""
+  @Published var findMatchSnapshot: MarkdownFindMatchSnapshot
+  @Published var editorEditRequest: MarkdownTextEditRequest?
+  @Published var markdownTextFocusRequest: MarkdownTextFocusRequest?
+  @Published var scrollSyncUpdate: MarkdownScrollSyncUpdate?
+  @Published var editorScrollRestorationUpdate: MarkdownScrollSyncUpdate?
+  @Published var previewScrollRestorationUpdate: MarkdownScrollSyncUpdate?
+  @Published var editorScrollProgress: Double
+  @Published var previewScrollProgress: Double
+  @Published var editorBodyRevision: UInt64
+
+  init(
+    editorBody: String,
+    editorDocument: String,
+    selectedRange: NSRange,
+    isFindReplacePresented: Bool,
+    findQuery: String,
+    replacementText: String,
+    isFindCaseSensitive: Bool,
+    isFindWholeWord: Bool,
+    isFindRegularExpression: Bool,
+    findMatchSnapshot: MarkdownFindMatchSnapshot,
+    editorScrollRestorationUpdate: MarkdownScrollSyncUpdate?,
+    previewScrollRestorationUpdate: MarkdownScrollSyncUpdate?,
+    editorScrollProgress: Double,
+    previewScrollProgress: Double,
+    editorBodyRevision: UInt64
+  ) {
+    self.editorBody = editorBody
+    self.editorDocument = editorDocument
+    self.selectedRange = selectedRange
+    self.isFindReplacePresented = isFindReplacePresented
+    self.findQuery = findQuery
+    self.replacementText = replacementText
+    self.isFindCaseSensitive = isFindCaseSensitive
+    self.isFindWholeWord = isFindWholeWord
+    self.isFindRegularExpression = isFindRegularExpression
+    self.findMatchSnapshot = findMatchSnapshot
+    self.editorScrollRestorationUpdate = editorScrollRestorationUpdate
+    self.previewScrollRestorationUpdate = previewScrollRestorationUpdate
+    self.editorScrollProgress = editorScrollProgress
+    self.previewScrollProgress = previewScrollProgress
+    self.editorBodyRevision = editorBodyRevision
+  }
 }
 
 struct MarkdownComposerAttachmentState {
@@ -276,11 +311,6 @@ extension MacMarkdownComposerView {
   var previewScrollRestorationUpdate: MarkdownScrollSyncUpdate? {
     get { editorSessionState.previewScrollRestorationUpdate }
     nonmutating set { editorSessionState.previewScrollRestorationUpdate = newValue }
-  }
-
-  var visibleBodyRange: NSRange {
-    get { editorSessionState.visibleBodyRange }
-    nonmutating set { editorSessionState.visibleBodyRange = newValue }
   }
 
   var editorScrollProgress: Double {
