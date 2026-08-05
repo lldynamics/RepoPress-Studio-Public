@@ -56,7 +56,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
   var onGhostTextDismissed: () -> Void
   var onSSGSnippetShortcut: (MarkdownCompletionCandidate) -> Void
   var onScrollProgressChanged: (Double) -> Void
-  var onVisibleBodyRangeChanged: (NSRange) -> Void = { _ in }
   var onDroppedFiles: ([URL]) -> Void
   var onDroppedMarkdown: (String, NSRange, KnowledgeCitation?) -> Void
 
@@ -77,7 +76,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
       onGhostTextDismissed: onGhostTextDismissed,
       onSSGSnippetShortcut: onSSGSnippetShortcut,
       onScrollProgressChanged: onScrollProgressChanged,
-      onVisibleBodyRangeChanged: onVisibleBodyRangeChanged,
       onDroppedFiles: onDroppedFiles,
       onDroppedMarkdown: onDroppedMarkdown
     )
@@ -188,7 +186,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
     context.coordinator.onGhostTextAccepted = onGhostTextAccepted
     context.coordinator.onGhostTextDismissed = onGhostTextDismissed
     context.coordinator.onSSGSnippetShortcut = onSSGSnippetShortcut
-    context.coordinator.onVisibleBodyRangeChanged = onVisibleBodyRangeChanged
     context.coordinator.applyComfortConfiguration(
       comfortConfiguration,
       in: textView
@@ -313,7 +310,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
     var onGhostTextDismissed: () -> Void
     var onSSGSnippetShortcut: (MarkdownCompletionCandidate) -> Void
     let onScrollProgressChanged: (Double) -> Void
-    var onVisibleBodyRangeChanged: (NSRange) -> Void
     let onDroppedFiles: ([URL]) -> Void
     let onDroppedMarkdown: (String, NSRange, KnowledgeCitation?) -> Void
     weak var textView: NSTextView?
@@ -377,7 +373,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
       onGhostTextDismissed: @escaping () -> Void,
       onSSGSnippetShortcut: @escaping (MarkdownCompletionCandidate) -> Void,
       onScrollProgressChanged: @escaping (Double) -> Void,
-      onVisibleBodyRangeChanged: @escaping (NSRange) -> Void = { _ in },
       onDroppedFiles: @escaping ([URL]) -> Void,
       onDroppedMarkdown: @escaping (String, NSRange, KnowledgeCitation?) -> Void
     ) {
@@ -398,7 +393,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
       self.onGhostTextDismissed = onGhostTextDismissed
       self.onSSGSnippetShortcut = onSSGSnippetShortcut
       self.onScrollProgressChanged = onScrollProgressChanged
-      self.onVisibleBodyRangeChanged = onVisibleBodyRangeChanged
       self.onDroppedFiles = onDroppedFiles
       self.onDroppedMarkdown = onDroppedMarkdown
       self.ghostText = ghostText
@@ -965,29 +959,7 @@ struct MacMarkdownTextView: NSViewRepresentable {
     }
 
     func observeScrolling(in scrollView: NSScrollView) {
-      scrollSyncBridge.onVisibleCharacterRangeChanged = { [weak self] range in
-        self?.updateVisibleBodyRange(from: range)
-      }
       scrollSyncBridge.observe(scrollView)
-    }
-
-    func updateVisibleBodyRange(from documentRange: NSRange) {
-      let documentLength = (representedText as NSString).length
-      let bodyStart = min(max(bodyUTF16Offset, 0), documentLength)
-      let visibleStart = min(
-        max(documentRange.location, bodyStart),
-        documentLength
-      )
-      let visibleEnd = min(
-        max(NSMaxRange(documentRange), visibleStart),
-        documentLength
-      )
-      onVisibleBodyRangeChanged(
-        NSRange(
-          location: visibleStart - bodyStart,
-          length: max(0, visibleEnd - visibleStart)
-        )
-      )
     }
 
     func applySynchronizedScroll(

@@ -11,7 +11,6 @@ struct KnowledgeCollectionNavigationView: View {
   @AppStorage("knowledgeFavoriteCollectionIDsV1") private var favoriteIDsJSON = "[]"
   @AppStorage("knowledgeFavoriteCollectionOrderV1") private var favoriteOrderJSON = "[]"
   @AppStorage("knowledgeCollectionNavigationExpandedV2") private var isNavigationExpanded = false
-  @AppStorage("knowledgeSidebarDensityV1") private var sidebarDensity: KnowledgeSidebarDensity = .comfortable
   @State private var isCollectionBuilderPresented = false
   @State private var expandedSmartKinds = Set<String>()
 
@@ -118,7 +117,7 @@ struct KnowledgeCollectionNavigationView: View {
                   }
                 } label: {
                   Label(kind.localizedDisplayName, systemImage: kind.systemImage)
-                    .font(sidebarDensity == .comfortable ? .body : .callout)
+                    .font(.body)
                     .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 10)
@@ -166,12 +165,12 @@ struct KnowledgeCollectionNavigationView: View {
     } label: {
       HStack(spacing: 7) {
         Image(systemName: item.systemImage)
-          .font(.system(size: sidebarDensity == .comfortable ? 14 : 13, weight: .medium))
+          .font(.system(size: 14, weight: .medium))
           .foregroundStyle(knowledge.folderScope == item.scope ? Color.accentColor : Color.secondary)
           .frame(width: 18)
           .accessibilityHidden(true)
         Text(item.title)
-          .font(sidebarDensity == .comfortable ? .body : .callout)
+          .font(.body)
           .lineLimit(1)
         Spacer(minLength: 2)
         Text(item.count.formatted())
@@ -186,8 +185,8 @@ struct KnowledgeCollectionNavigationView: View {
       }
       .padding(.leading, isIndented ? 14 : 0)
       .padding(.horizontal, 8)
-      .padding(.vertical, sidebarDensity.collectionRowVerticalPadding)
-      .frame(minHeight: sidebarDensity.collectionRowMinimumHeight)
+      .padding(.vertical, KnowledgeSidebarMetrics.collectionRowVerticalPadding)
+      .frame(minHeight: KnowledgeSidebarMetrics.collectionRowMinimumHeight)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background {
         if knowledge.folderScope == item.scope {

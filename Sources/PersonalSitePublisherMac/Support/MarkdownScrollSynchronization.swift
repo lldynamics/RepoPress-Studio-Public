@@ -28,9 +28,7 @@ final class MarkdownScrollViewSyncBridge: NSObject {
   private var lastAppliedSynchronizationUpdateID: UUID?
   private var lastAppliedRestorationUpdateID: UUID?
   private var lastReportedProgress: Double?
-  private var lastReportedVisibleCharacterRange: NSRange?
   private var isApplyingUpdate = false
-  var onVisibleCharacterRangeChanged: ((NSRange) -> Void)?
 
   private enum UpdatePurpose {
     case synchronization
@@ -54,7 +52,6 @@ final class MarkdownScrollViewSyncBridge: NSObject {
     NotificationCenter.default.removeObserver(self)
     self.scrollView = scrollView
     lastAppliedSynchronizationUpdateID = nil
-    lastReportedVisibleCharacterRange = nil
     scrollView.contentView.postsBoundsChangedNotifications = true
     NotificationCenter.default.addObserver(
       self,
@@ -62,9 +59,6 @@ final class MarkdownScrollViewSyncBridge: NSObject {
       name: NSView.boundsDidChangeNotification,
       object: scrollView.contentView
     )
-    DispatchQueue.main.async { [weak self] in
-      self?.reportVisibleCharacterRange()
-    }
   }
 
   func apply(
@@ -163,8 +157,6 @@ final class MarkdownScrollViewSyncBridge: NSObject {
       return
     }
 
-    reportVisibleCharacterRange()
-
     let progress = service.progress(
       contentOffset: Double(scrollView.contentView.bounds.origin.y),
       viewportLength: Double(scrollView.contentView.bounds.height),
@@ -178,30 +170,4 @@ final class MarkdownScrollViewSyncBridge: NSObject {
     onProgressChanged(progress)
   }
 
-  private func reportVisibleCharacterRange() {
-    guard let textView = scrollView?.documentView as? NSTextView,
-          let layoutManager = textView.layoutManager,
-          let textContainer = textView.textContainer,
-          let contentView = scrollView?.contentView else {
-      return
-    }
-
-    layoutManager.ensureLayout(for: textContainer)
-    let visibleRect = textView.convert(contentView.bounds, from: contentView)
-    let glyphRange = layoutManager.glyphRange(
-      forBoundingRect: visibleRect,
-      in: textContainer
-    )
-    let characterRange = layoutManager.characterRange(
-      forGlyphRange: glyphRange,
-      actualGlyphRange: nil
-    )
-    guard characterRange.location != NSNotFound else { return }
-    guard lastReportedVisibleCharacterRange.map({ !NSEqualRanges($0, characterRange) }) ?? true else {
-      return
-    }
-
-    lastReportedVisibleCharacterRange = characterRange
-    onVisibleCharacterRangeChanged?(characterRange)
-  }
 }
