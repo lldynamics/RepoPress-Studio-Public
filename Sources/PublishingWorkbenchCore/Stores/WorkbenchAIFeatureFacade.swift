@@ -645,6 +645,15 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     await store.performAIAction(kind, draft: draft, selectedText: selectedText)
   }
 
+  @discardableResult
+  public func performAction(
+    _ convergence: AIPublishingActionConvergence,
+    draft: ArticleDraft,
+    selectedText: String? = nil
+  ) async -> AIPublishingActionResult? {
+    await store.performAIAction(convergence, draft: draft, selectedText: selectedText)
+  }
+
   public func translateRSSArticle(
     _ article: RSSArticle,
     target: RSSArticleTranslationTarget

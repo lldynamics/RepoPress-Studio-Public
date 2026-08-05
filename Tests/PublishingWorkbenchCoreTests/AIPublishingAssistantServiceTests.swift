@@ -1746,4 +1746,83 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
       return url.hasPrefix("data:image/png;base64,")
     })
   }
+
+  func testConvergedAssetPackPromptUsesOnlySelectedAssets() {
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Converged publishing",
+      slug: "converged-publishing",
+      bodyMarkdown: "本文介绍发布流程。"
+    )
+    let convergence = AIPublishingActionConvergence.publishAssetPack(
+      AIPublishingAssetPackConfiguration(assets: [.socialShare, .newsletterSummary])
+    )
+    let prompt = AIPublishingAssistantService().prompt(
+      for: AIPublishingActionRequest(
+        kind: convergence.canonicalActionKind,
+        draft: draft,
+        profile: profile,
+        convergence: convergence
+      )
+    )
+
+    XCTAssertTrue(prompt.contains("社交分享"))
+    XCTAssertTrue(prompt.contains("Newsletter 摘要"))
+    XCTAssertFalse(prompt.contains("封面图提示词"))
+    XCTAssertFalse(prompt.contains("短视频口播稿"))
+  }
+
+  func testConvergedRewritePromptCarriesOperationAndFiveStyleParameter() {
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Converged rewrite",
+      slug: "converged-rewrite",
+      bodyMarkdown: "原始正文。"
+    )
+    let convergence = AIPublishingActionConvergence.rewriteSelection(
+      AIPublishingRewriteConfiguration(operation: .condense, style: .technical)
+    )
+    let prompt = AIPublishingAssistantService().prompt(
+      for: AIPublishingActionRequest(
+        kind: convergence.canonicalActionKind,
+        draft: draft,
+        profile: profile,
+        convergence: convergence,
+        selectedText: "需要压缩的选区。"
+      )
+    )
+
+    XCTAssertTrue(prompt.contains("压缩"))
+    XCTAssertTrue(prompt.contains("技术"))
+    XCTAssertTrue(prompt.contains("需要压缩的选区。"))
+    XCTAssertTrue(prompt.contains("保留代码、链接和 Markdown 结构"))
+  }
+
+  func testConvergedReviewPromptUsesSelectedChecks() {
+    let profile = SiteProfile.defaultProfile
+    let draft = ArticleDraft(
+      siteProfileID: profile.id,
+      title: "Converged review",
+      slug: "converged-review",
+      bodyMarkdown: "文章包含一个链接和技术说明。"
+    )
+    let convergence = AIPublishingActionConvergence.contentReview(
+      AIPublishingReviewConfiguration(checks: [.privacy, .technicalAccuracy])
+    )
+    let prompt = AIPublishingAssistantService().prompt(
+      for: AIPublishingActionRequest(
+        kind: convergence.canonicalActionKind,
+        draft: draft,
+        profile: profile,
+        convergence: convergence
+      )
+    )
+
+    XCTAssertTrue(prompt.contains("公开隐私"))
+    XCTAssertTrue(prompt.contains("技术准确性"))
+    XCTAssertFalse(prompt.contains("SEO 与可读性"))
+    XCTAssertFalse(prompt.contains("SSG 兼容"))
+  }
 }

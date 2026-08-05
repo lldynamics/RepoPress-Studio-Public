@@ -8,7 +8,7 @@ struct MacMarkdownComposerView: View {
   let aiActions: WorkbenchAIFeatureFacade
   @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
   @StateObject var editorState: WorkbenchMarkdownEditorFeatureFacade
-  @State var editorSessionState: MarkdownComposerEditorSessionState
+  @StateObject var editorSessionState: MarkdownComposerEditorSessionState
   @State var attachmentState = MarkdownComposerAttachmentState()
   @State var selectionActionState = MarkdownComposerSelectionActionState()
   @State var presentationState = MarkdownComposerPresentationState()
@@ -52,14 +52,6 @@ struct MacMarkdownComposerView: View {
   var outlineItems: [MarkdownOutlineItem] {
     guard appliedMarkdownAnalysisGeneration == markdownAnalysisGeneration else { return [] }
     return markdownAnalysis.outlineItems
-  }
-
-  var activeOutlineItemID: String? {
-    MarkdownFloatingOutlineHUDPresentation.activeItemID(
-      items: outlineItems,
-      visibleRange: visibleBodyRange,
-      selectedRange: selectedRange
-    )
   }
 
   var editorComfortConfiguration: MarkdownEditorComfortConfiguration {
@@ -107,6 +99,8 @@ struct MacMarkdownComposerView: View {
       },
       onPerformSelectionAIAction: performSelectionAIAction,
       onPerformArticleAIAction: performArticleAIAction,
+      onPerformConvergedSelectionAIAction: performConvergedSelectionAIAction,
+      onPerformConvergedArticleAIAction: performConvergedArticleAIAction,
       onPasteAIPromptToClipboard: pasteAIPromptToClipboard
     )
   }
@@ -159,48 +153,12 @@ struct MacMarkdownComposerView: View {
 
   init(draft: Binding<ArticleDraft>, store: WorkbenchStore) {
     _draft = draft
-    let draftID = draft.wrappedValue.id
-    let buffer = store.draftBodyEditorBuffer(for: draftID)
-    let bodyUTF16Count = (buffer.bodyMarkdown as NSString).length
-    let editorSession = store.markdownEditorSessionState(for: draftID)
-      .normalized(bodyUTF16Count: bodyUTF16Count)
-    let editorDocument = MarkdownFrontMatterEditingService().renderDocument(
-        draft: draft.wrappedValue,
-        profile: store.profile(for: draft.wrappedValue),
-        bodyMarkdown: buffer.bodyMarkdown
-    )
-    let findMatchSnapshot = Self.makeFindMatchSnapshot(
-        text: buffer.bodyMarkdown,
-        query: editorSession.findQuery,
-        options: MarkdownFindOptions(
-          caseSensitive: editorSession.isFindCaseSensitive,
-          wholeWord: editorSession.isFindWholeWord,
-          usesRegularExpression: editorSession.isFindRegularExpression
-        )
-    )
-    _editorSessionState = State(
-      initialValue: MarkdownComposerEditorSessionState(
-        editorBody: buffer.bodyMarkdown,
-        editorDocument: editorDocument,
-        selectedRange: editorSession.selectedRange(bodyUTF16Count: bodyUTF16Count),
-        isFindReplacePresented: editorSession.isFindReplacePresented,
-        findQuery: editorSession.findQuery,
-        replacementText: editorSession.replacementText,
-        isFindCaseSensitive: editorSession.isFindCaseSensitive,
-        isFindWholeWord: editorSession.isFindWholeWord,
-        isFindRegularExpression: editorSession.isFindRegularExpression,
-        findMatchSnapshot: findMatchSnapshot,
-        editorScrollRestorationUpdate: MarkdownScrollSyncUpdate(
-        source: .editor,
-        progress: editorSession.editorScrollProgress
-        ),
-        previewScrollRestorationUpdate: MarkdownScrollSyncUpdate(
-        source: .preview,
-        progress: editorSession.previewScrollProgress
-        ),
-        editorScrollProgress: editorSession.editorScrollProgress,
-        previewScrollProgress: editorSession.previewScrollProgress,
-        editorBodyRevision: buffer.revision
+    let initialDraft = draft.wrappedValue
+    let draftID = initialDraft.id
+    _editorSessionState = StateObject(
+      wrappedValue: Self.makeInitialEditorSessionState(
+        draft: initialDraft,
+        store: store
       )
     )
     self.store = store
@@ -208,6 +166,58 @@ struct MacMarkdownComposerView: View {
     _editorState = StateObject(
       wrappedValue: WorkbenchMarkdownEditorFeatureFacade(store: store, draftID: draftID)
     )
+  }
+
+  @MainActor
+  private static func makeInitialEditorSessionState(
+    draft: ArticleDraft,
+    store: WorkbenchStore
+  ) -> MarkdownComposerEditorSessionState {
+    let buffer = store.draftBodyEditorBuffer(for: draft.id)
+    let bodyUTF16Count = (buffer.bodyMarkdown as NSString).length
+    let editorSession = store.markdownEditorSessionState(for: draft.id)
+      .normalized(bodyUTF16Count: bodyUTF16Count)
+    let editorDocument = MarkdownFrontMatterEditingService().renderDocument(
+      draft: draft,
+      profile: store.profile(for: draft),
+      bodyMarkdown: buffer.bodyMarkdown
+    )
+    let findMatchSnapshot = makeFindMatchSnapshot(
+      text: buffer.bodyMarkdown,
+      query: editorSession.findQuery,
+      options: MarkdownFindOptions(
+        caseSensitive: editorSession.isFindCaseSensitive,
+        wholeWord: editorSession.isFindWholeWord,
+        usesRegularExpression: editorSession.isFindRegularExpression
+      )
+    )
+    let state = MarkdownComposerEditorSessionState(
+      editorBody: buffer.bodyMarkdown,
+      editorDocument: editorDocument,
+      selectedRange: editorSession.selectedRange(bodyUTF16Count: bodyUTF16Count),
+      isFindReplacePresented: editorSession.isFindReplacePresented,
+      findQuery: editorSession.findQuery,
+      replacementText: editorSession.replacementText,
+      isFindCaseSensitive: editorSession.isFindCaseSensitive,
+      isFindWholeWord: editorSession.isFindWholeWord,
+      isFindRegularExpression: editorSession.isFindRegularExpression,
+      findMatchSnapshot: findMatchSnapshot,
+      editorScrollRestorationUpdate: MarkdownScrollSyncUpdate(
+        source: .editor,
+        progress: editorSession.editorScrollProgress
+      ),
+      previewScrollRestorationUpdate: MarkdownScrollSyncUpdate(
+        source: .preview,
+        progress: editorSession.previewScrollProgress
+      ),
+      editorScrollProgress: editorSession.editorScrollProgress,
+      previewScrollProgress: editorSession.previewScrollProgress,
+      editorBodyRevision: buffer.revision
+    )
+    state.findReplaceMessage = editorSession.findQuery.isEmpty && editorSession.isFindReplacePresented
+      ? "输入查找内容。"
+      : ""
+    return state
   }
 
   private var editorWorkspaceLifecycle: some View {
@@ -250,7 +260,6 @@ struct MacMarkdownComposerView: View {
     .onAppear {
       restorePreferredEditorDisplayMode()
       syncEditorBodyFromStore()
-      restoreEditorSession(for: draft.id)
       syncActiveEditorSelection()
       applyEditorFocusRequest()
       scheduleMarkdownAnalysis(immediate: true)
@@ -465,7 +474,6 @@ struct MacMarkdownComposerView: View {
     cancelSelectionAIAction()
     cancelInlineGhostText()
     cancelAIPromptClipboardTask()
-    store.flushDraftBodyEditorBuffer(for: draft.id)
     store.clearActiveEditorSelection(for: draft.id)
   }
 
@@ -617,9 +625,6 @@ struct MacMarkdownComposerView: View {
           onScrollProgressChanged: { progress in
             updateSynchronizedScroll(source: .editor, progress: progress)
           },
-          onVisibleBodyRangeChanged: { range in
-            visibleBodyRange = range
-          },
           onDroppedFiles: { urls in
             insertImageReferences(urls)
           },
@@ -668,6 +673,7 @@ struct MacMarkdownComposerView: View {
             actionMessage: selectionActionMessage,
             availabilityForAction: inlineSelectionAIActionAvailability,
             onPerformAction: performInlineSelectionAIAction,
+            onPerformConvergedAction: performInlineConvergedSelectionAIAction,
             onApplyPreview: {
               guard let selectionEditPreview else { return }
               applySelectionEditPreview(selectionEditPreview)
@@ -684,16 +690,6 @@ struct MacMarkdownComposerView: View {
           .transition(.move(edge: .top).combined(with: .opacity))
           .zIndex(5)
         }
-
-        if !outlineItems.isEmpty {
-          MarkdownFloatingOutlineHUD(
-            items: outlineItems,
-            activeItemID: activeOutlineItemID,
-            onSelect: selectOutlineItem
-          )
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-          .zIndex(4)
-        }
       }
 
       .animation(WorkbenchMotion.standard, value: shouldShowInlineSelectionPalette)
@@ -707,6 +703,11 @@ struct MacMarkdownComposerView: View {
         )
         .frame(height: 118)
       }
+
+      MacMarkdownWritingGoalStatusBar(
+        currentCount: editorStatistics.writingUnitCount,
+        writingGoal: $editorWritingGoal
+      )
     }
     .background(WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled))
     .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))

@@ -294,6 +294,9 @@ extension AIPublishingActionKind {
 
 public struct AIPublishingActionRequest: Sendable {
   public var kind: AIPublishingActionKind
+  /// Optional converged configuration. `kind` remains the canonical legacy
+  /// action so existing result handling and saved workflows stay compatible.
+  public var convergence: AIPublishingActionConvergence?
   public var draft: ArticleDraft
   public var profile: SiteProfile
   public var selectedText: String?
@@ -307,6 +310,7 @@ public struct AIPublishingActionRequest: Sendable {
     kind: AIPublishingActionKind,
     draft: ArticleDraft,
     profile: SiteProfile,
+    convergence: AIPublishingActionConvergence? = nil,
     selectedText: String? = nil,
     preflightIssues: [PreflightIssue] = [],
     publishPackage: PublishPackage? = nil,
@@ -315,6 +319,7 @@ public struct AIPublishingActionRequest: Sendable {
     knowledgeContext: KnowledgeContextSnapshot? = nil
   ) {
     self.kind = kind
+    self.convergence = convergence
     self.draft = draft
     self.profile = profile
     self.selectedText = selectedText

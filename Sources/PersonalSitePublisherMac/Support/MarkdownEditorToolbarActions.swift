@@ -17,5 +17,7 @@ struct MarkdownEditorToolbarActions {
     (AIPublishingActionKind) -> AIPublishingActionAvailabilityPresentation
   let onPerformSelectionAIAction: (AIPublishingActionKind) -> Void
   let onPerformArticleAIAction: (AIPublishingActionKind) -> Void
+  let onPerformConvergedSelectionAIAction: (AIPublishingActionConvergence) -> Void
+  let onPerformConvergedArticleAIAction: (AIPublishingActionConvergence) -> Void
   let onPasteAIPromptToClipboard: () -> Void
 }

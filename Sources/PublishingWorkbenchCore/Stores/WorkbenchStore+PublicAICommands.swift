@@ -338,6 +338,15 @@ extension WorkbenchStore {
   }
 
   @discardableResult
+  public func performAIAction(
+    _ convergence: AIPublishingActionConvergence,
+    draft: ArticleDraft,
+    selectedText: String? = nil
+  ) async -> AIPublishingActionResult? {
+    await aiStore.performAIAction(convergence, draft: draft, selectedText: selectedText)
+  }
+
+  @discardableResult
   public func generateAIMetadataSuggestions(
     draft: ArticleDraft
   ) async -> AIPublishingMetadataSuggestion? {

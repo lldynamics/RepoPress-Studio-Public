@@ -11,6 +11,7 @@ struct MacMarkdownEditorToolbar: View {
   let writingToolDensity: MarkdownWritingToolDensity
   let availableWritingContextPanels: [MarkdownWritingContextPanel]
   let actions: MarkdownEditorToolbarActions
+  @State private var selectedPublishAssets = AIPublishingAssetKind.defaultSelection
 
   var body: some View {
     HStack(spacing: 8) {
@@ -353,8 +354,8 @@ struct MacMarkdownEditorToolbar: View {
   @ViewBuilder
   private var aiActions: some View {
     articleAIActionButton(.continueWriting, kind: .continueArticle)
-    selectionAIActionButton(.rewrite, kind: .rewriteSelection)
-    selectionAIActionButton(.condense, kind: .condenseSelection)
+    convergedRewriteAction
+    convergedPublishAssetPackAction
 
     Menu {
       selectionAIActionButton(.translate, kind: .translateSelectionToChinese)
@@ -366,8 +367,7 @@ struct MacMarkdownEditorToolbar: View {
       )
     }
 
-    articleAIActionButton(.generateMetadata, kind: .draftFrontMatterPack)
-    articleAIActionButton(.publishingCheck, kind: .publishingReadiness)
+    convergedReviewAction
     articleAIActionButton(.citeKnowledge, kind: .draftReferencesSection)
 
     Button {
@@ -392,6 +392,98 @@ struct MacMarkdownEditorToolbar: View {
     } label: {
       Label("复制上下文 Prompt", systemImage: "doc.on.doc")
     }
+  }
+
+  private var convergedRewriteAction: some View {
+    Menu {
+      Section("风格") {
+        ForEach(AIPublishingRewriteStyle.allCases) { style in
+          Button {
+            actions.onPerformConvergedSelectionAIAction(
+              .rewriteSelection(AIPublishingRewriteConfiguration(style: style))
+            )
+          } label: {
+            Label(style.displayName, systemImage: style == .balanced ? "wand.and.stars" : "textformat")
+          }
+          .disabled(!actions.selectionAIActionAvailability(.rewriteSelection).isEnabled)
+        }
+      }
+
+      Divider()
+
+      Section("处理") {
+        ForEach(AIPublishingRewriteOperation.allCases.filter { $0 != .rewrite }) { operation in
+          Button {
+            actions.onPerformConvergedSelectionAIAction(
+              .rewriteSelection(AIPublishingRewriteConfiguration(operation: operation))
+            )
+          } label: {
+            Label(operation.displayName, systemImage: "wand.and.stars")
+          }
+          .disabled(!actions.selectionAIActionAvailability(.rewriteSelection).isEnabled)
+        }
+      }
+    } label: {
+      Label("改写", systemImage: "wand.and.stars")
+    }
+    .help("对选中文本执行改写、润色、扩写、压缩或简化")
+    .accessibilityIdentifier("ai-converged-rewrite-menu")
+  }
+
+  private var convergedPublishAssetPackAction: some View {
+    Menu {
+      Section("选择发布资产") {
+        ForEach(AIPublishingAssetKind.allCases) { asset in
+          Toggle(isOn: publishAssetBinding(for: asset)) {
+            Label(asset.displayName, systemImage: "checkmark.square")
+          }
+        }
+      }
+
+      Divider()
+
+      Button {
+        actions.onPerformConvergedArticleAIAction(
+          .publishAssetPack(AIPublishingAssetPackConfiguration(assets: selectedPublishAssets))
+        )
+      } label: {
+        Label("生成已选择的 \(selectedPublishAssets.count) 项", systemImage: "play.fill")
+      }
+      .disabled(
+        selectedPublishAssets.isEmpty
+          || !actions.articleAIActionAvailability(.draftPublishAssetPack).isEnabled
+      )
+    } label: {
+      Label("发布资产包", systemImage: "shippingbox")
+    }
+    .help("勾选多个发布资产，一次生成完整发布包")
+    .accessibilityIdentifier("ai-converged-publish-asset-pack-menu")
+  }
+
+  private var convergedReviewAction: some View {
+    Button {
+      actions.onPerformConvergedArticleAIAction(
+        .contentReview(AIPublishingReviewConfiguration())
+      )
+    } label: {
+      Label("内容审查", systemImage: "checkmark.shield")
+    }
+    .disabled(!actions.articleAIActionAvailability(.publishingReadiness).isEnabled)
+    .help("一次检查内容缺口、事实边界、隐私、链接、SEO、可读性和技术准确性")
+    .accessibilityIdentifier("ai-converged-content-review")
+  }
+
+  private func publishAssetBinding(for asset: AIPublishingAssetKind) -> Binding<Bool> {
+    Binding(
+      get: { selectedPublishAssets.contains(asset) },
+      set: { isSelected in
+        if isSelected {
+          selectedPublishAssets.insert(asset)
+        } else {
+          selectedPublishAssets.remove(asset)
+        }
+      }
+    )
   }
 
   private var editorDisplayModeControl: some View {
@@ -839,13 +931,13 @@ struct MacMarkdownFormattingToolbar: View {
 
   private var statisticsSummary: String {
     String(
-      localized: "⏱️ 约 \(readingMinutes) 分钟 · \(writingUnitCount) 字/词 · 目标 \(writingGoalProgressPercent)%"
+      localized: "⏱️ 约 \(readingMinutes) 分钟 · \(writingUnitCount) 字/词"
     )
   }
 
   private var writingGoalProgressPercent: Int {
     guard writingGoal > 0 else { return 0 }
-    return min(100, Int((Double(writingUnitCount) / Double(writingGoal) * 100).rounded()))
+    return min(100, Int(Double(writingUnitCount) / Double(writingGoal) * 100))
   }
 
   private func headingButton(
