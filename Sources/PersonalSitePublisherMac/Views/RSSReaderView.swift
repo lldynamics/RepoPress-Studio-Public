@@ -13,7 +13,7 @@ struct RSSReaderView: View {
   @State private var highlightDraft: RSSHighlightDraft?
   @State private var tagEditorArticle: RSSArticle?
   @State private var selectedReaderText = ""
-  @State private var allowRemoteImages = false
+  @State private var allowRemoteImages = true
   @State private var workflowMessage: String?
   @State private var workflowIsBusy = false
   @State private var isReaderCompact = false
