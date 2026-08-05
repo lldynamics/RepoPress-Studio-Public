@@ -15,19 +15,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PACKAGER = ROOT / "script" / "chromium_extension_release.py"
 SOURCE_FILES = (
-    "background-capture.js",
-    "background-queue-operations.js",
-    "background-queue-storage.js",
-    "background-security.js",
-    "background.js",
     "browser-extension-protocol.json",
     "chromium-store-listing.json",
     "firefox-release.json",
-    "manifest.json",
-    "popup.css",
-    "popup.html",
-    "popup.js",
-    "protocol.generated.js",
 )
 
 
@@ -56,10 +46,20 @@ with tempfile.TemporaryDirectory(prefix="chromium-store-release-test-") as direc
     extension.mkdir(parents=True)
     for relative in SOURCE_FILES:
         shutil.copyfile(ROOT / "BrowserExtension" / relative, extension / relative)
-    shutil.copytree(ROOT / "BrowserExtension" / "icons", extension / "icons")
-    shutil.copytree(ROOT / "BrowserExtension" / "_locales", extension / "_locales")
-    shutil.copytree(ROOT / "BrowserExtension" / "Firefox", extension / "Firefox")
-    version = json.loads((extension / "manifest.json").read_text(encoding="utf-8"))["version"]
+    shutil.copytree(ROOT / "BrowserExtension" / "shared", extension / "shared")
+    (extension / "Chrome").mkdir()
+    (extension / "Firefox").mkdir()
+    shutil.copyfile(
+        ROOT / "BrowserExtension" / "Chrome" / "manifest.json",
+        extension / "Chrome" / "manifest.json",
+    )
+    shutil.copyfile(
+        ROOT / "BrowserExtension" / "Firefox" / "manifest.json",
+        extension / "Firefox" / "manifest.json",
+    )
+    version = json.loads(
+        (extension / "Chrome" / "manifest.json").read_text(encoding="utf-8")
+    )["version"]
 
     run(fixture, "check")
     output_dir = fixture / "packages"
@@ -103,15 +103,12 @@ with tempfile.TemporaryDirectory(prefix="chromium-store-release-test-") as direc
     run(fixture, "package", "--output-dir", str(output_dir))
     assert ledger_path.read_bytes() == ledger_bytes
 
-    popup_path = extension / "popup.js"
-    firefox_popup_path = extension / "Firefox" / "popup.js"
+    popup_path = extension / "shared" / "popup.js"
     original_popup = popup_path.read_bytes()
     popup_path.write_bytes(original_popup + b"\n// same-version drift\n")
-    firefox_popup_path.write_bytes(original_popup + b"\n// same-version drift\n")
     drift = run(fixture, "package", "--output-dir", str(output_dir), succeeds=False)
     assert "Same-version different-source" in drift.stdout
     popup_path.write_bytes(original_popup)
-    firefox_popup_path.write_bytes(original_popup)
 
     conflicting_output = fixture / "conflicting-packages"
     conflicting_output.mkdir()
@@ -126,7 +123,7 @@ with tempfile.TemporaryDirectory(prefix="chromium-store-release-test-") as direc
     )
     assert "Refusing to replace same-version release artifact" in replacement.stdout
 
-    chromium_manifest_path = extension / "manifest.json"
+    chromium_manifest_path = extension / "Chrome" / "manifest.json"
     firefox_manifest_path = extension / "Firefox" / "manifest.json"
     chromium_manifest = json.loads(chromium_manifest_path.read_text(encoding="utf-8"))
     firefox_manifest = json.loads(firefox_manifest_path.read_text(encoding="utf-8"))
@@ -136,7 +133,7 @@ with tempfile.TemporaryDirectory(prefix="chromium-store-release-test-") as direc
     firefox_manifest_path.write_text(json.dumps(firefox_manifest, indent=2) + "\n", encoding="utf-8")
     downgrade = run(fixture, "check", succeeds=False)
     assert "version downgrade rejected" in downgrade.stdout
-    shutil.copyfile(ROOT / "BrowserExtension" / "manifest.json", chromium_manifest_path)
+    shutil.copyfile(ROOT / "BrowserExtension" / "Chrome" / "manifest.json", chromium_manifest_path)
     shutil.copyfile(ROOT / "BrowserExtension" / "Firefox" / "manifest.json", firefox_manifest_path)
 
     definition_path = extension / "browser-extension-protocol.json"
@@ -201,7 +198,7 @@ with tempfile.TemporaryDirectory(prefix="chromium-store-release-test-") as direc
         ROOT / "BrowserExtension" / "chromium-store-listing.json",
         metadata_path,
     )
-    (extension / "icons" / "icon128.png").unlink()
+    (extension / "shared" / "icons" / "icon128.png").unlink()
     missing_icon = run(fixture, "check", succeeds=False)
     assert "Required regular Chromium source file is missing" in missing_icon.stdout
 

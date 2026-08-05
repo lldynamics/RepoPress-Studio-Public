@@ -17,6 +17,8 @@ cd "$ROOT_DIR"
 
 python3 script/check_node_toolchain_security.py
 python3 script/generate_browser_extension_protocol.py --check
+python3 script/build_browser_extension_source.py --browser chrome --check
+python3 script/test_browser_extension_source_layout.py
 bash script/sync_firefox_browser_extension.sh --check
 bash script/sync_safari_browser_extension.sh --check
 bash script/build_safari_web_extension.sh --check

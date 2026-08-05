@@ -79,9 +79,9 @@
     "en": "Firefox",
     "zh-Hans": "Firefox"
   },
-  "Firefox 在 about:debugging 中选择“临时载入附加组件”，再选中 BrowserExtension/Firefox/manifest.json。加载后把上面的令牌粘贴到插件中。": {
-    "en": "In about:debugging, choose Load Temporary Add-on and select BrowserExtension/Firefox/manifest.json. After loading it, paste the token above into the extension.",
-    "zh-Hans": "Firefox 在 about:debugging 中选择“临时载入附加组件”，再选中 BrowserExtension/Firefox/manifest.json。加载后把上面的令牌粘贴到插件中。"
+  "Firefox 先运行 python3 script/build_browser_extension_source.py --browser firefox --output-dir .build/browser-extension/firefox，再在 about:debugging 中选择“临时载入附加组件”，选中 .build/browser-extension/firefox/manifest.json。加载后把上面的令牌粘贴到插件中。": {
+    "en": "Run python3 script/build_browser_extension_source.py --browser firefox --output-dir .build/browser-extension/firefox, then choose Load Temporary Add-on in about:debugging and select .build/browser-extension/firefox/manifest.json. After loading it, paste the token above into the extension.",
+    "zh-Hans": "Firefox 先运行 python3 script/build_browser_extension_source.py --browser firefox --output-dir .build/browser-extension/firefox，再在 about:debugging 中选择“临时载入附加组件”，选中 .build/browser-extension/firefox/manifest.json。加载后把上面的令牌粘贴到插件中。"
   },
   "HTML…": {
     "en": "HTML…",

@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SAFARI_SOURCE="$ROOT_DIR/BrowserExtension/Safari"
 BUILD_ROOT="${SAFARI_WEB_EXTENSION_BUILD_ROOT:-$ROOT_DIR/.build/safari-web-extension}"
+SAFARI_SOURCE="$BUILD_ROOT/source"
 PROJECT_LOCATION="$BUILD_ROOT/generated"
 PROJECT_ROOT="$PROJECT_LOCATION/RepoPressSafari"
 PROJECT_PATH="$PROJECT_ROOT/RepoPressSafari.xcodeproj"
@@ -68,7 +68,7 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 
-[[ -f "$SAFARI_SOURCE/manifest.json" ]] || fail "manifest is missing"
+[[ -f "$ROOT_DIR/BrowserExtension/Safari/manifest.json" ]] || fail "manifest is missing"
 [[ -f "$ROOT_DIR/Packaging/SafariWebExtension.entitlements" ]] \
   || fail "SafariWebExtension.entitlements is missing"
 command -v xcrun >/dev/null 2>&1 || fail "xcrun is required"
@@ -78,6 +78,16 @@ xcrun -f safari-web-extension-packager >/dev/null \
 
 bash "$ROOT_DIR/script/sync_safari_browser_extension.sh" --check >/dev/null
 python3 "$ROOT_DIR/script/generate_browser_extension_protocol.py" --check >/dev/null
+
+case "$BUILD_ROOT" in
+  */safari-web-extension) ;;
+  *) fail "refusing unsafe build root: $BUILD_ROOT" ;;
+esac
+mkdir -p "$BUILD_ROOT"
+rm -rf "$SAFARI_SOURCE"
+python3 "$ROOT_DIR/script/build_browser_extension_source.py" \
+  --browser safari \
+  --output-dir "$SAFARI_SOURCE" >/dev/null
 
 version_values="$(bash "$ROOT_DIR/script/check_build_version.sh" --print-values)"
 IFS=$'\t' read -r MARKETING_VERSION BUILD_NUMBER <<<"$version_values"
@@ -136,10 +146,6 @@ fi
 # two directories below are disposable outputs owned by this script, so clear
 # them explicitly and run a clean build without relying on Xcode's ownership
 # metadata.
-case "$BUILD_ROOT" in
-  */safari-web-extension) ;;
-  *) fail "refusing unsafe build root: $BUILD_ROOT" ;;
-esac
 rm -rf "$SYMROOT" "$OBJROOT"
 mkdir -p "$SYMROOT" "$OBJROOT"
 

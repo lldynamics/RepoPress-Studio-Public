@@ -26,6 +26,9 @@ from browser_extension_release_ledger import (
 
 
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent
+EXTENSION_ROOT_NAME = Path("BrowserExtension")
+SHARED_ROOT_NAME = Path("shared")
+CHROME_ROOT_NAME = Path("Chrome")
 SAFARI_EXTENSION_BUNDLE_ID = "com.jinfang.PersonalSitePublisherMac.SafariExtension"
 CHANNELS = ("chrome",)
 CHANNEL_LABELS = {
@@ -69,6 +72,13 @@ FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
 class ReleaseError(RuntimeError):
     pass
+
+
+def source_path(root: Path, relative: str) -> Path:
+    extension_root = root / EXTENSION_ROOT_NAME
+    if relative == "manifest.json":
+        return extension_root / CHROME_ROOT_NAME / relative
+    return extension_root / SHARED_ROOT_NAME / relative
 
 
 def object_without_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
@@ -223,7 +233,7 @@ def validated_release(
     required_production_channels: set[str] | None = None,
 ) -> tuple[dict, dict, str]:
     extension_root = root / "BrowserExtension"
-    manifest = load_json(extension_root / "manifest.json")
+    manifest = load_json(source_path(root, "manifest.json"))
     definition = load_json(extension_root / "browser-extension-protocol.json")
     if definition.get("activeExtensions") != ["safari", "chrome", "firefox"]:
         raise ReleaseError("This release must enable exactly Safari, Chrome, and Firefox")
@@ -287,13 +297,13 @@ def validated_release(
     if action_icons != {"16": ICON_PATHS["16"], "32": ICON_PATHS["32"]}:
         raise ReleaseError("Chromium action must declare 16px and 32px toolbar icons")
     for name in REQUIRED_SOURCE_FILES:
-        path = extension_root / name
+        path = source_path(root, name)
         if not path.is_file() or path.is_symlink():
             raise ReleaseError(f"Required regular Chromium source file is missing: {path}")
     metadata = validated_metadata(extension_root, manifest)
     locale_message_keys: dict[str, set[str]] = {}
     for locale in ("zh_CN", "en"):
-        messages = load_json(extension_root / "_locales" / locale / "messages.json")
+        messages = load_json(source_path(root, f"_locales/{locale}/messages.json"))
         locale_message_keys[locale] = set(messages)
         expected_messages = {
             "extensionName": metadata["localizations"][locale]["name"],
@@ -331,9 +341,8 @@ def release_manifest(development_manifest: dict) -> dict:
 
 
 def expected_payloads(root: Path, manifest: dict) -> dict[str, bytes]:
-    extension_root = root / "BrowserExtension"
     payloads = {
-        name: (extension_root / name).read_bytes()
+        name: source_path(root, name).read_bytes()
         for name in REQUIRED_SOURCE_FILES
         if name != "manifest.json"
     }

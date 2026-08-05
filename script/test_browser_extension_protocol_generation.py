@@ -33,16 +33,23 @@ def run(root: Path, *arguments: str, succeeds: bool = True) -> subprocess.Comple
 with tempfile.TemporaryDirectory(prefix="browser-extension-protocol-") as directory:
     fixture = Path(directory)
     extension = fixture / "BrowserExtension"
+    chrome = extension / "Chrome"
     firefox = extension / "Firefox"
+    shared = extension / "shared"
     swift = fixture / "Sources" / "BrowserExtensionProtocolSupport"
+    chrome.mkdir(parents=True)
     firefox.mkdir(parents=True)
+    shared.mkdir(parents=True)
     swift.mkdir(parents=True)
     for relative in (
         "browser-extension-protocol.json",
-        "manifest.json",
         "firefox-release.json",
     ):
         shutil.copyfile(ROOT / "BrowserExtension" / relative, extension / relative)
+    shutil.copyfile(
+        ROOT / "BrowserExtension" / "Chrome" / "manifest.json",
+        chrome / "manifest.json",
+    )
     shutil.copyfile(
         ROOT / "BrowserExtension" / "Firefox" / "manifest.json",
         firefox / "manifest.json",
@@ -51,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix="browser-extension-protocol-") as direct
     run(fixture, "--write")
     run(fixture, "--check")
 
-    generated_javascript = extension / "protocol.generated.js"
+    generated_javascript = shared / "protocol.generated.js"
     generated_javascript.write_text(
         generated_javascript.read_text(encoding="utf-8") + "// stale\n",
         encoding="utf-8",

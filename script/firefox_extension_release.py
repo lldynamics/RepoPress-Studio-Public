@@ -57,7 +57,6 @@ REQUIRED_SOURCE_FILES = (
     "popup.js",
     "protocol.generated.js",
 )
-SHARED_SOURCE_FILES = tuple(name for name in REQUIRED_SOURCE_FILES if name != "manifest.json")
 VERSION_PATTERN = re.compile(r"^[0-9]+(?:\.[0-9]+){2,3}$")
 LEGACY_SIGNATURE_MANIFEST = "meta-inf/manifest.mf"
 COSE_SIGNATURE_MANIFEST = "meta-inf/cose.manifest"
@@ -79,6 +78,12 @@ XPI_CONTENT_TYPES = frozenset(
 
 class ReleaseError(RuntimeError):
     pass
+
+
+def source_path(relative: str) -> Path:
+    if relative == "manifest.json":
+        return FIREFOX_ROOT / relative
+    return EXTENSION_ROOT / "shared" / relative
 
 
 def load_json(path: Path) -> dict:
@@ -113,7 +118,7 @@ def require_https_url(value: object, label: str) -> str:
 
 
 def validated_release() -> tuple[dict, dict, dict]:
-    chromium_manifest = load_json(EXTENSION_ROOT / "manifest.json")
+    chromium_manifest = load_json(EXTENSION_ROOT / "Chrome" / "manifest.json")
     firefox_manifest = load_json(FIREFOX_ROOT / "manifest.json")
     config = load_json(CONFIG_PATH)
 
@@ -136,12 +141,9 @@ def validated_release() -> tuple[dict, dict, dict]:
     require_https_url(config.get("xpiBaseURL"), "xpiBaseURL")
 
     for name in REQUIRED_SOURCE_FILES:
-        path = FIREFOX_ROOT / name
+        path = source_path(name)
         if not path.is_file() or path.is_symlink():
             raise ReleaseError(f"Required regular Firefox source file is missing: {path}")
-    for name in SHARED_SOURCE_FILES:
-        if (FIREFOX_ROOT / name).read_bytes() != (EXTENSION_ROOT / name).read_bytes():
-            raise ReleaseError(f"Shared Firefox extension source is out of sync: {name}")
 
     ledger_version, _ = assert_source_version_allowed(ROOT)
     if ledger_version != version:
@@ -170,7 +172,7 @@ def amo_manifest(firefox_manifest: dict) -> dict:
 
 def expected_release_payloads(firefox_manifest: dict, config: dict) -> dict[str, bytes]:
     payloads = {
-        name.lower(): (FIREFOX_ROOT / name).read_bytes()
+        name.lower(): source_path(name).read_bytes()
         for name in REQUIRED_SOURCE_FILES
         if name != "manifest.json"
     }
@@ -241,7 +243,7 @@ def prepare_source(output_dir: Path, record_in_ledger: bool = True) -> tuple[str
             if name != "manifest.json":
                 destination = candidate_source / name
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(FIREFOX_ROOT / name, destination)
+                shutil.copyfile(source_path(name), destination)
         write_json(candidate_source / "manifest.json", prepared_manifest)
         candidate_xpi = candidate_root / unsigned_xpi.name
         write_deterministic_xpi(candidate_source, candidate_xpi)
@@ -283,7 +285,7 @@ def prepare_amo_package(output_dir: Path, record_in_ledger: bool = True) -> tupl
             if name == "manifest.json":
                 write_json(destination, prepared_manifest)
             else:
-                shutil.copyfile(FIREFOX_ROOT / name, destination)
+                shutil.copyfile(source_path(name), destination)
         candidate_xpi = candidate_root / amo_xpi.name
         write_deterministic_xpi(candidate_source, candidate_xpi)
         validate_unsigned_xpi(candidate_xpi, prepared_manifest)

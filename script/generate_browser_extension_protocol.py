@@ -286,9 +286,8 @@ def synchronize(root: Path, write: bool) -> None:
     definition = validated_definition(root)
     extension_root = root / "BrowserExtension"
     firefox_root = extension_root / "Firefox"
-    safari_root = extension_root / "Safari"
     mismatches: list[str] = []
-    chromium_manifest_path = extension_root / "manifest.json"
+    chromium_manifest_path = extension_root / "Chrome" / "manifest.json"
     firefox_manifest_path = firefox_root / "manifest.json"
     release_config_path = extension_root / "firefox-release.json"
     chromium_manifest = load_object(chromium_manifest_path)
@@ -307,9 +306,7 @@ def synchronize(root: Path, write: bool) -> None:
         / "Sources"
         / "BrowserExtensionProtocolSupport"
         / "BrowserExtensionProtocolGenerated.swift": render_swift(definition),
-        extension_root / "protocol.generated.js": render_javascript(definition),
-        firefox_root / "protocol.generated.js": render_javascript(definition),
-        safari_root / "protocol.generated.js": render_javascript(definition),
+        extension_root / "shared" / "protocol.generated.js": render_javascript(definition),
     }
     for path, expected in outputs.items():
         actual = path.read_text(encoding="utf-8") if path.is_file() else None
