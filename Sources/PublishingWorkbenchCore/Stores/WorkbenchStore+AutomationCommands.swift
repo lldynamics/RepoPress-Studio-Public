@@ -255,7 +255,7 @@ public enum WorkbenchAutomationExecutor {
       guard store.focusDraft(draft.id) else {
         throw WorkbenchAutomationValidationError.draftNotFound
       }
-      store.runPreflight()
+      await store.runPreflightAndWait()
       return success(step, CoreL10n.format("发布检查完成：%lld 个问题。", store.preflightIssues.count))
 
     case .refreshPublishPreview:

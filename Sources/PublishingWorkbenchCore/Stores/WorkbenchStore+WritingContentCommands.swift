@@ -36,9 +36,64 @@ extension WorkbenchStore {
   public func runPreflight() {
     flushDraftBodyEditorBuffers()
     preflightRefreshTask?.cancel()
-    preflightRefreshTask = nil
-    publishingStore.runPreflight(store: self)
+    preflightRefreshGeneration &+= 1
+    let generation = preflightRefreshGeneration
     invalidateDraftDerivedCaches()
+
+    guard let selectedDraft else {
+      preflightRefreshTask = nil
+      publishingStore.preflightIssues = []
+      return
+    }
+
+    let profile = profile(for: selectedDraft)
+    let draftsSnapshot = drafts
+    let repositoryReport = repositoryReport(for: selectedDraft)
+    let preflightService = publishingStore.preflightService
+    let generalDraftPublishingIssue = publishingStore.generalDraftPublishingIssue
+
+    preflightRefreshTask = Task { [weak self] in
+      let calculationTask: Task<[PreflightIssue]?, Never> = Task.detached(priority: .userInitiated) {
+        guard !Task.isCancelled else { return nil }
+        if selectedDraft.isGeneralDraft {
+          return [generalDraftPublishingIssue]
+        }
+        let allDrafts = draftsSnapshot.filter {
+          $0.belongs(toSiteProfileID: selectedDraft.siteProfileID)
+        }
+        let duplicateIndex = PreflightDuplicateIndex(drafts: allDrafts, profile: profile)
+        return preflightService.run(
+          draft: selectedDraft,
+          allDrafts: allDrafts,
+          profile: profile,
+          repositoryReport: repositoryReport,
+          includeRepositoryReadiness: true,
+          duplicateIndex: duplicateIndex
+        )
+      }
+      let issues: [PreflightIssue]? = await withTaskCancellationHandler(operation: {
+        await calculationTask.value
+      }, onCancel: {
+        calculationTask.cancel()
+      })
+
+      guard !Task.isCancelled,
+            let issues,
+            let self,
+            self.preflightRefreshGeneration == generation else {
+        return
+      }
+
+      self.publishingStore.preflightIssues = issues
+      self.preflightRefreshTask = nil
+    }
+  }
+
+  /// Starts a background preflight and waits until its result has been applied.
+  /// UI editing paths should use `runPreflight()` so the main actor stays free.
+  public func runPreflightAndWait() async {
+    runPreflight()
+    await preflightRefreshTask?.value
   }
 
   func schedulePreflightRefresh() {

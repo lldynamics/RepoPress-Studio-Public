@@ -107,6 +107,11 @@ public struct DraftLifecycleService: Sendable {
   public static let maximumVersionsPerDraft = 30
   public static let maximumTotalVersions = 500
   public static let automaticSnapshotInterval: TimeInterval = 5 * 60
+  /// A large body edit is worth keeping even when it happens inside the
+  /// normal automatic snapshot interval. Small metadata edits continue to be
+  /// coalesced so typing in the inspector does not repeatedly compare and
+  /// snapshot the whole article.
+  public static let automaticSnapshotMinimumBodySizeDelta = 500
   public static let maximumRecycledDrafts = 100
   public static let maximumRepositoryCleanupRequests = 200
 
@@ -122,12 +127,19 @@ public struct DraftLifecycleService: Sendable {
       .filter { $0.draftID == draft.id }
       .max { $0.capturedAt < $1.capturedAt }
 
-    if let newestForDraft, draftsHaveEquivalentContent(newestForDraft.draft, draft) {
-      return versions
+    if reason == .automatic, let newestForDraft {
+      let elapsed = capturedAt.timeIntervalSince(newestForDraft.capturedAt)
+      let bodySizeDelta = abs(
+        newestForDraft.draft.bodyMarkdown.utf8.count - draft.bodyMarkdown.utf8.count
+      )
+      guard elapsed >= Self.automaticSnapshotInterval
+        || bodySizeDelta >= Self.automaticSnapshotMinimumBodySizeDelta
+      else {
+        return versions
+      }
     }
-    if reason == .automatic,
-       let newestForDraft,
-       capturedAt.timeIntervalSince(newestForDraft.capturedAt) < Self.automaticSnapshotInterval {
+
+    if let newestForDraft, draftsHaveEquivalentContent(newestForDraft.draft, draft) {
       return versions
     }
 
