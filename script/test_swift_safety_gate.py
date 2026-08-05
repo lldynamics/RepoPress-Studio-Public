@@ -33,6 +33,8 @@ def main() -> int:
             "final class LockedBox:\n"
             "  @unchecked Sendable {}\n"
             "func decode(_ value: Any) { _ = value as! String }\n"
+            "func optional() { _ = try? loadOptional() }\n"
+            "func risky() { _ = try? publisher.commit() }\n"
             "// final class CommentOnly: @unchecked Sendable {}\n"
             "let text = \"try! should not be scanned\"\n"
             "let interpolated = \"\\(try! load())\"\n"
@@ -41,12 +43,19 @@ def main() -> int:
             "\"\"\"\n",
             encoding="utf-8",
         )
-        empty = {"schemaVersion": 1, "uncheckedSendable": [], "forcedOperations": []}
+        empty = {
+            "schemaVersion": 1,
+            "uncheckedSendable": [],
+            "forcedOperations": [],
+            "optionalOperations": [],
+            "optionalOperationRules": [],
+        }
         unreviewed = run_gate(root, empty)
         assert unreviewed.returncode != 0, unreviewed
         assert "unreviewed @unchecked Sendable" in unreviewed.stderr, unreviewed.stderr
         assert "unreviewed as!" in unreviewed.stderr, unreviewed.stderr
         assert "unreviewed try!" in unreviewed.stderr, unreviewed.stderr
+        assert "unreviewed try?" in unreviewed.stderr, unreviewed.stderr
         assert "CommentOnly" not in unreviewed.stderr, unreviewed.stderr
         assert "extension String" not in unreviewed.stderr, unreviewed.stderr
 
@@ -73,10 +82,26 @@ def main() -> int:
                     "rationale": "Fixture deliberately verifies interpolation scanning.",
                 }
             ],
+            "optionalOperations": [
+                {
+                    "file": "Sources/Fixture.swift",
+                    "category": "parsing",
+                    "contains": "try? loadOptional()",
+                    "rationale": "Fixture deliberately verifies try? classification.",
+                },
+                {
+                    "file": "Sources/Fixture.swift",
+                    "category": "mainOperation",
+                    "contains": "try? publisher.commit()",
+                    "rationale": "Fixture deliberately verifies exact registration for a risky operation.",
+                },
+            ],
+            "optionalOperationRules": [],
         }
         accepted = run_gate(root, reviewed)
         assert accepted.returncode == 0, accepted.stderr
         assert "1 production and 0 test audited @unchecked Sendable" in accepted.stdout, accepted.stdout
+        assert "2 classified try?" in accepted.stdout, accepted.stdout
 
         source.write_text("struct SafeValue: Sendable {}\n", encoding="utf-8")
         stale = run_gate(root, reviewed)

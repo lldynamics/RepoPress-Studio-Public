@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject unreviewed Swift force operations and @unchecked Sendable declarations."""
+"""Reject unreviewed Swift force operations, try? sites, and @unchecked Sendable declarations."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import json
 import re
 import sys
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 
@@ -20,6 +21,7 @@ DECLARATION_RE = re.compile(
     re.MULTILINE,
 )
 FORCED_OPERATION_RE = re.compile(r"\b(?:try!|as!)")
+OPTIONAL_OPERATION_RE = re.compile(r"\btry\?")
 
 
 @dataclass(frozen=True)
@@ -181,6 +183,12 @@ def scan(root: Path) -> list[Finding]:
             findings.append(
                 Finding(relative, finding_line, operation.group(0), line_source, line_source)
             )
+        for operation in OPTIONAL_OPERATION_RE.finditer(masked):
+            finding_line = line_number(source, operation.start())
+            line_source = source_lines[finding_line - 1].strip()
+            findings.append(
+                Finding(relative, finding_line, "try?", line_source, line_source)
+            )
     return findings
 
 
@@ -191,13 +199,56 @@ def load_exceptions(path: Path) -> dict[str, object]:
         fail(f"cannot load exception manifest {path}: {error}")
     if not isinstance(payload, dict) or payload.get("schemaVersion") != 1:
         fail("exception manifest must be a schemaVersion 1 object")
-    for key in ("uncheckedSendable", "forcedOperations"):
+    for key in ("uncheckedSendable", "forcedOperations", "optionalOperations", "optionalOperationRules"):
         if not isinstance(payload.get(key), list):
             fail(f"exception manifest field {key} must be a list")
     return payload
 
 
-def validated_exception_keys(payload: dict[str, object]) -> tuple[dict[tuple[str, str], str], dict[tuple[str, str, str], str]]:
+OPTIONAL_CATEGORIES = {
+    "mainOperation",
+    "silentFallback",
+    "externalRollbackCleanup",
+    "parsing",
+    "cancellation",
+    "temporaryCleanup",
+    "probeFallback",
+    "auxiliaryPersistence",
+    "debugSupport",
+    "cacheBestEffort",
+    "protocolFallback",
+    "legacyCleanup",
+    "serializationFallback",
+    "testSupport",
+    "ioBestEffort",
+    "networkDiscovery",
+    "userActionFallback",
+    "validationFallback",
+}
+RISKY_OPTIONAL_MARKERS = (
+    "commit",
+    "publish",
+    "restore",
+    "rollback",
+    "transaction",
+    "recovery",
+    "archive",
+    "displaced",
+    "delete",
+    "save(",
+    "write(",
+    "importBrowserCapture",
+)
+
+
+def validated_exception_keys(
+    payload: dict[str, object],
+) -> tuple[
+    dict[tuple[str, str], str],
+    dict[tuple[str, str, str], str],
+    dict[tuple[str, str, str], str],
+    list[dict[str, str]],
+]:
     unchecked: dict[tuple[str, str], str] = {}
     for item in payload["uncheckedSendable"]:
         if not isinstance(item, dict):
@@ -228,7 +279,49 @@ def validated_exception_keys(payload: dict[str, object]) -> tuple[dict[tuple[str
         if key in forced:
             fail(f"duplicate forced-operation exception: {file}:{kind}:{contains}")
         forced[key] = rationale
-    return unchecked, forced
+    optional: dict[tuple[str, str, str], str] = {}
+    for item in payload["optionalOperations"]:
+        if not isinstance(item, dict):
+            fail("optionalOperations entries must be objects")
+        file = item.get("file")
+        category = item.get("category")
+        contains = item.get("contains")
+        rationale = item.get("rationale")
+        if category not in OPTIONAL_CATEGORIES:
+            fail(f"invalid try? category: {category}")
+        if not all(isinstance(value, str) and value.strip() for value in (file, contains, rationale)):
+            fail("each optionalOperations exception requires file, category, contains, and rationale")
+        key = (file, category, contains)
+        if key in optional:
+            fail(f"duplicate try? exception: {file}:{category}:{contains}")
+        optional[key] = rationale
+
+    rules: list[dict[str, str]] = []
+    for item in payload["optionalOperationRules"]:
+        if not isinstance(item, dict):
+            fail("optionalOperationRules entries must be objects")
+        file = item.get("file")
+        category = item.get("category")
+        contains = item.get("contains")
+        rationale = item.get("rationale")
+        if category not in OPTIONAL_CATEGORIES:
+            fail(f"invalid try? rule category: {category}")
+        if not all(isinstance(value, str) and value.strip() for value in (file, contains, rationale)):
+            fail("each optionalOperationRules entry requires file, category, contains, and rationale")
+        rules.append({"file": file, "category": category, "contains": contains, "rationale": rationale})
+    return unchecked, forced, optional, rules
+
+
+def optional_rule_matches(rule: dict[str, str], finding: Finding) -> bool:
+    file = rule["file"]
+    return fnmatchcase(finding.file, file) and rule["contains"] in finding.source
+
+
+def is_risky_optional_finding(finding: Finding) -> bool:
+    if not finding.file.startswith("Sources/") or "/DebugSupport/" in finding.file:
+        return False
+    source = finding.source.lower()
+    return any(marker.lower() in source for marker in RISKY_OPTIONAL_MARKERS)
 
 
 def main() -> int:
@@ -238,10 +331,14 @@ def main() -> int:
     args = parser.parse_args()
     root = args.root.resolve()
     findings = scan(root)
-    unchecked_exceptions, forced_exceptions = validated_exception_keys(load_exceptions(args.exceptions))
+    unchecked_exceptions, forced_exceptions, optional_exceptions, optional_rules = validated_exception_keys(
+        load_exceptions(args.exceptions)
+    )
 
     used_unchecked: set[tuple[str, str]] = set()
     used_forced: set[tuple[str, str, str]] = set()
+    used_optional: set[tuple[str, str, str]] = set()
+    optional_categories: dict[str, int] = {}
     violations: list[Finding] = []
     for finding in findings:
         if finding.kind == "@unchecked Sendable":
@@ -251,6 +348,25 @@ def main() -> int:
             else:
                 violations.append(finding)
             continue
+        if finding.kind == "try?":
+            exact_matches = [
+                key
+                for key in optional_exceptions
+                if key[0] == finding.file and key[2] in finding.source
+            ]
+            if len(exact_matches) == 1:
+                key = exact_matches[0]
+                used_optional.add(key)
+                optional_categories[key[1]] = optional_categories.get(key[1], 0) + 1
+                continue
+            matching_rules = [rule for rule in optional_rules if optional_rule_matches(rule, finding)]
+            if len(matching_rules) == 1 and not is_risky_optional_finding(finding):
+                category = matching_rules[0]["category"]
+                optional_categories[category] = optional_categories.get(category, 0) + 1
+                continue
+            violations.append(finding)
+            continue
+
         matching = [
             key
             for key in forced_exceptions
@@ -263,6 +379,7 @@ def main() -> int:
 
     stale_unchecked = sorted(set(unchecked_exceptions) - used_unchecked)
     stale_forced = sorted(set(forced_exceptions) - used_forced)
+    stale_optional = sorted(set(optional_exceptions) - used_optional)
     if violations:
         for finding in violations:
             print(
@@ -278,6 +395,8 @@ def main() -> int:
             print(f"stale @unchecked Sendable exception: {file}:{declaration}", file=sys.stderr)
         for file, kind, contains in stale_forced:
             print(f"stale forced-operation exception: {file}:{kind}:{contains}", file=sys.stderr)
+        for file, category, contains in stale_optional:
+            print(f"stale try? exception: {file}:{category}:{contains}", file=sys.stderr)
         fail("remove or update stale exception entries")
 
     unchecked_count = sum(1 for finding in findings if finding.kind == "@unchecked Sendable")
@@ -288,12 +407,17 @@ def main() -> int:
     )
     try_count = sum(1 for finding in findings if finding.kind == "try!")
     cast_count = sum(1 for finding in findings if finding.kind == "as!")
+    optional_count = sum(1 for finding in findings if finding.kind == "try?")
+    optional_summary = ", ".join(
+        f"{category}={count}" for category, count in sorted(optional_categories.items())
+    )
     print(
         "swift safety gate: passed "
         f"({production_unchecked_count} production and "
         f"{unchecked_count - production_unchecked_count} test audited @unchecked Sendable, "
         f"{try_count} audited try!, "
-        f"{cast_count} audited as!; no unreviewed additions)"
+        f"{cast_count} audited as!, "
+        f"{optional_count} classified try? ({optional_summary}); no unreviewed additions)"
     )
     return 0
 
