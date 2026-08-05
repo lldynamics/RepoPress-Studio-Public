@@ -21,6 +21,13 @@ public struct AIChatCodeBlock: Hashable, Identifiable, Sendable {
     self.content = content
     self.fencedMarkdown = fencedMarkdown
   }
+
+  public var isMermaidDiagram: Bool {
+    guard let lang = language?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
+      return false
+    }
+    return lang == "mermaid" || lang == "diagram" || lang == "plantuml"
+  }
 }
 
 /// The renderable parts of an assistant message.
