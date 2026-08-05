@@ -64,7 +64,8 @@ extension WorkbenchStore {
     _ bodyMarkdown: String,
     for draftID: UUID,
     baseRevision: UInt64,
-    replacingBaseBody baseBodyMarkdown: String? = nil
+    replacingBaseBody baseBodyMarkdown: String? = nil,
+    notifyEditorObservers: Bool = true
   ) -> DraftBodyEditorBufferStageResult? {
     guard drafts.contains(where: { $0.id == draftID }) else { return nil }
 
@@ -90,7 +91,11 @@ extension WorkbenchStore {
     if let draft = drafts.first(where: { $0.id == draftID }) {
       recordDraftRecovery(for: draft, bodyMarkdown: bodyMarkdown)
     }
-    publishingStore.setDraftBodyEditorBuffer(staged, for: draftID)
+    publishingStore.setDraftBodyEditorBuffer(
+      staged,
+      for: draftID,
+      notifyObservers: notifyEditorObservers
+    )
     persistenceStore.markUnsavedChanges()
     scheduleDraftBodyCommit(for: draftID)
     return DraftBodyEditorBufferStageResult(buffer: staged, wasAccepted: true)
@@ -100,18 +105,21 @@ extension WorkbenchStore {
   public func replaceDraftBody(
     _ bodyMarkdown: String,
     for draftID: UUID,
-    expectedRevision: UInt64
+    expectedRevision: UInt64,
+    notifyEditorObservers: Bool = true
   ) -> DraftBodyEditorBufferStageResult? {
     stageDraftBody(
       bodyMarkdown,
       for: draftID,
-      baseRevision: expectedRevision
+      baseRevision: expectedRevision,
+      notifyEditorObservers: notifyEditorObservers
     )
   }
 
   public func flushDraftBodyEditorBuffer(for draftID: UUID) {
     draftBodyCommitTasks[draftID]?.cancel()
     draftBodyCommitTasks[draftID] = nil
+    draftBodyCommitFirstStagedAt[draftID] = nil
 
     guard var buffer = publishingStore.draftBodyEditorBuffers[draftID], buffer.isDirty else { return }
     guard var draft = drafts.first(where: { $0.id == draftID }) else {
@@ -141,14 +149,24 @@ extension WorkbenchStore {
   func discardDraftBodyEditorBuffer(for draftID: UUID) {
     draftBodyCommitTasks[draftID]?.cancel()
     draftBodyCommitTasks[draftID] = nil
+    draftBodyCommitFirstStagedAt[draftID] = nil
     publishingStore.removeDraftBodyEditorBuffer(for: draftID)
   }
 
   private func scheduleDraftBodyCommit(for draftID: UUID) {
     draftBodyCommitTasks[draftID]?.cancel()
+    let now = Date()
+    let firstStagedAt = draftBodyCommitFirstStagedAt[draftID] ?? now
+    draftBodyCommitFirstStagedAt[draftID] = firstStagedAt
+    let idleDelayNanoseconds: UInt64 = 1_500_000_000
+    let maximumDelayNanoseconds = UInt64(max(
+      0,
+      firstStagedAt.addingTimeInterval(5).timeIntervalSince(now) * 1_000_000_000
+    ))
+    let delayNanoseconds = min(idleDelayNanoseconds, maximumDelayNanoseconds)
     draftBodyCommitTasks[draftID] = Task { [weak self] in
       do {
-        try await Task.sleep(nanoseconds: 1_000_000_000) // 1.0 秒防抖落盘队列
+        try await Task.sleep(nanoseconds: delayNanoseconds)
       } catch {
         return
       }

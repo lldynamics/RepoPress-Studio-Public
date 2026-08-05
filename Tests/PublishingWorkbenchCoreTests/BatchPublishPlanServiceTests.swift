@@ -325,7 +325,7 @@ final class WorkbenchStoreBatchPublishTests: XCTestCase {
 
     store.setDrafts([readyDraft, needsReviewDraft, blockedDraft])
     store.setSelectedDraftID(readyDraft.id)
-    store.runPreflight()
+    await store.runPreflightAndWait()
 
     let result = await store.writeBatchReadyDraftsToLocalRepository()
 

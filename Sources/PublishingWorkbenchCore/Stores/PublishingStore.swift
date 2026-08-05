@@ -170,9 +170,15 @@ public final class PublishingStore: ObservableObject {
   @Published public internal(set) var recentlyDeletedProfile: RecentlyDeletedProfile?
   @Published var latestDraftOwnershipTransferUndoState: DraftOwnershipTransferUndoState? = nil
 
-  func setDraftBodyEditorBuffer(_ buffer: DraftBodyEditorBuffer, for draftID: UUID) {
+  func setDraftBodyEditorBuffer(
+    _ buffer: DraftBodyEditorBuffer,
+    for draftID: UUID,
+    notifyObservers: Bool = true
+  ) {
     guard draftBodyEditorBuffers[draftID] != buffer else { return }
-    draftBodyEditorBufferWillChange.send(draftID)
+    if notifyObservers {
+      draftBodyEditorBufferWillChange.send(draftID)
+    }
     draftBodyEditorBuffers[draftID] = buffer
   }
 

@@ -59,14 +59,25 @@ final class DraftLifecycleServiceTests: XCTestCase {
     )
     XCTAssertEqual(versions.count, 1)
 
+    var substantiallyChanged = changed
+    substantiallyChanged.bodyMarkdown = String(repeating: "x", count: 600)
     versions = service.recordingVersion(
-      of: changed,
+      of: substantiallyChanged,
+      reason: .automatic,
+      in: versions,
+      at: firstDate.addingTimeInterval(180)
+    )
+    XCTAssertEqual(versions.count, 2)
+    XCTAssertEqual(versions.first?.draft.bodyMarkdown.count, 600)
+
+    versions = service.recordingVersion(
+      of: substantiallyChanged,
       reason: .automatic,
       in: versions,
       at: firstDate.addingTimeInterval(DraftLifecycleService.automaticSnapshotInterval + 1)
     )
     XCTAssertEqual(versions.count, 2)
-    XCTAssertEqual(versions.first?.draft.bodyMarkdown, "Second body")
+    XCTAssertEqual(versions.first?.draft.bodyMarkdown.count, 600)
   }
 
   func testEditingAndRestoringVersionPersistsAcrossReload() async throws {
