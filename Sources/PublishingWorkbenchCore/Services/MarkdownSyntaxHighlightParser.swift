@@ -65,34 +65,34 @@ public actor MarkdownSyntaxHighlightParser {
       )
     }
 
-    let substring = source.substring(with: range)
-    let codeRanges = MarkdownCodeRangeScanner.scan(substring)
-    let localCodeBlockRanges = codeRanges.blockRanges
-    let localInlineCodeRanges = codeRanges.inlineRanges
+    let codeRanges = MarkdownCodeRangeScanner.scan(source, in: range)
+    let codeBlockRanges = codeRanges.blockRanges
+    let inlineCodeRanges = codeRanges.inlineRanges
     guard !Task.isCancelled else { return nil }
 
     let literalRanges = MarkdownCodeRangeScanResult(
-      blockRanges: localCodeBlockRanges,
-      inlineRanges: localInlineCodeRanges
+      blockRanges: codeBlockRanges,
+      inlineRanges: inlineCodeRanges
     ).allRanges
     guard let lexicalRuns = MarkdownSyntaxLightweightLexer.scan(
-      substring as NSString,
-      blockRanges: localCodeBlockRanges,
+      source,
+      in: range,
+      blockRanges: codeBlockRanges,
       literalRanges: literalRanges
     ) else {
       return nil
     }
 
     var runs: [MarkdownSyntaxHighlightRun] = []
-    append(lexicalRuns.headings, style: .heading, offset: range.location, to: &runs)
-    append(localCodeBlockRanges, style: .codeBlock, offset: range.location, to: &runs)
-    append(lexicalRuns.html, style: .html, offset: range.location, to: &runs)
-    append(lexicalRuns.links, style: .link, offset: range.location, to: &runs)
-    append(lexicalRuns.lists, style: .list, offset: range.location, to: &runs)
-    append(lexicalRuns.quotes, style: .quote, offset: range.location, to: &runs)
-    append(lexicalRuns.bold, style: .bold, offset: range.location, to: &runs)
-    append(lexicalRuns.italic, style: .italic, offset: range.location, to: &runs)
-    append(localInlineCodeRanges, style: .inlineCode, offset: range.location, to: &runs)
+    append(lexicalRuns.headings, style: .heading, offset: 0, to: &runs)
+    append(codeBlockRanges, style: .codeBlock, offset: 0, to: &runs)
+    append(lexicalRuns.html, style: .html, offset: 0, to: &runs)
+    append(lexicalRuns.links, style: .link, offset: 0, to: &runs)
+    append(lexicalRuns.lists, style: .list, offset: 0, to: &runs)
+    append(lexicalRuns.quotes, style: .quote, offset: 0, to: &runs)
+    append(lexicalRuns.bold, style: .bold, offset: 0, to: &runs)
+    append(lexicalRuns.italic, style: .italic, offset: 0, to: &runs)
+    append(inlineCodeRanges, style: .inlineCode, offset: 0, to: &runs)
     guard !Task.isCancelled else { return nil }
     completionState = 1
     emittedRunCount = runs.count
@@ -188,13 +188,29 @@ private enum MarkdownSyntaxLightweightLexer {
 
   static func scan(
     _ source: NSString,
+    in scanRange: NSRange,
     blockRanges: [NSRange],
     literalRanges: [NSRange]
   ) -> MarkdownSyntaxLexicalRuns? {
     var result = MarkdownSyntaxLexicalRuns()
-    guard scanLinePrefixes(source, excluding: blockRanges, into: &result),
-          scanInline(source, excluding: literalRanges, into: &result),
-          scanHTML(source, excluding: literalRanges, into: &result) else {
+    guard scanLinePrefixes(
+      source,
+      in: scanRange,
+      excluding: blockRanges,
+      into: &result
+    ),
+    scanInline(
+      source,
+      in: scanRange,
+      excluding: literalRanges,
+      into: &result
+    ),
+    scanHTML(
+      source,
+      in: scanRange,
+      excluding: literalRanges,
+      into: &result
+    ) else {
       return nil
     }
     return result
@@ -202,13 +218,15 @@ private enum MarkdownSyntaxLightweightLexer {
 
   private static func scanLinePrefixes(
     _ source: NSString,
+    in scanRange: NSRange,
     excluding excludedRanges: [NSRange],
     into result: inout MarkdownSyntaxLexicalRuns
   ) -> Bool {
-    var location = 0
+    let upperBound = NSMaxRange(scanRange)
+    var location = scanRange.location
     var excludedIndex = 0
     var nextCancellationCheck = 0
-    while location < source.length {
+    while location < upperBound {
       if location >= nextCancellationCheck {
         if Task.isCancelled { return false }
         nextCancellationCheck = location + 4_096
@@ -222,9 +240,14 @@ private enum MarkdownSyntaxLightweightLexer {
         contentsEnd: &contentsEnd,
         for: NSRange(location: location, length: 0)
       )
-      let lineRange = NSRange(location: lineStart, length: contentsEnd - lineStart)
+      let boundedLineStart = max(lineStart, scanRange.location)
+      let boundedContentsEnd = min(contentsEnd, upperBound)
+      let lineRange = NSRange(
+        location: boundedLineStart,
+        length: max(0, boundedContentsEnd - boundedLineStart)
+      )
       if containingRange(
-        at: lineStart,
+        at: boundedLineStart,
         in: excludedRanges,
         index: &excludedIndex
       ) == nil {
@@ -239,10 +262,13 @@ private enum MarkdownSyntaxLightweightLexer {
 
   private static func scanInline(
     _ source: NSString,
+    in scanRange: NSRange,
     excluding excludedRanges: [NSRange],
     into result: inout MarkdownSyntaxLexicalRuns
   ) -> Bool {
-    var cursor = 0
+    let lowerBound = scanRange.location
+    let upperBound = NSMaxRange(scanRange)
+    var cursor = lowerBound
     var excludedIndex = 0
     var labelStart: Int?
     var linkStart: Int?
@@ -251,7 +277,7 @@ private enum MarkdownSyntaxLightweightLexer {
     var italicStart: Int?
     var nextCancellationCheck = 0
 
-    while cursor < source.length {
+    while cursor < upperBound {
       if cursor >= nextCancellationCheck {
         if Task.isCancelled { return false }
         nextCancellationCheck = cursor + 4_096
@@ -290,7 +316,7 @@ private enum MarkdownSyntaxLightweightLexer {
       } else if character == 93, !isEscaped(source, at: cursor) {
         if let start = labelStart,
            cursor > start + 1,
-           cursor + 1 < source.length,
+           cursor + 1 < upperBound,
            source.character(at: cursor + 1) == 40 {
           linkStart = start
           destinationStart = cursor + 2
@@ -302,7 +328,7 @@ private enum MarkdownSyntaxLightweightLexer {
 
       if character == asterisk, !isEscaped(source, at: cursor) {
         var runEnd = cursor + 1
-        while runEnd < source.length, source.character(at: runEnd) == asterisk {
+        while runEnd < upperBound, source.character(at: runEnd) == asterisk {
           runEnd += 1
         }
         let runLength = runEnd - cursor
@@ -311,6 +337,7 @@ private enum MarkdownSyntaxLightweightLexer {
             source,
             start: cursor,
             end: runEnd,
+            upperBound: upperBound,
             opening: &italicStart,
             ranges: &result.italic
           )
@@ -319,6 +346,7 @@ private enum MarkdownSyntaxLightweightLexer {
             source,
             start: cursor,
             end: runEnd,
+            upperBound: upperBound,
             opening: &boldStart,
             ranges: &result.bold
           )
@@ -327,6 +355,7 @@ private enum MarkdownSyntaxLightweightLexer {
             source,
             start: cursor,
             end: runEnd,
+            upperBound: upperBound,
             opening: &boldStart,
             ranges: &result.bold
           )
@@ -334,6 +363,7 @@ private enum MarkdownSyntaxLightweightLexer {
             source,
             start: cursor,
             end: runEnd,
+            upperBound: upperBound,
             opening: &italicStart,
             ranges: &result.italic
           )
@@ -348,14 +378,16 @@ private enum MarkdownSyntaxLightweightLexer {
 
   private static func scanHTML(
     _ source: NSString,
+    in scanRange: NSRange,
     excluding excludedRanges: [NSRange],
     into result: inout MarkdownSyntaxLexicalRuns
   ) -> Bool {
-    var cursor = 0
+    let upperBound = NSMaxRange(scanRange)
+    var cursor = scanRange.location
     var excludedIndex = 0
     var commentStart: Int?
     var nextCancellationCheck = 0
-    while cursor < source.length {
+    while cursor < upperBound {
       if cursor >= nextCancellationCheck {
         if Task.isCancelled { return false }
         nextCancellationCheck = cursor + 4_096
@@ -390,7 +422,7 @@ private enum MarkdownSyntaxLightweightLexer {
         cursor += 4
         continue
       }
-      if let end = htmlTagEnd(in: source, startingAt: cursor) {
+      if let end = htmlTagEnd(in: source, startingAt: cursor, upperBound: upperBound) {
         let overlapsLiteral = excludedIndex < excludedRanges.count
           && excludedRanges[excludedIndex].location < end
         if !overlapsLiteral {
@@ -445,11 +477,12 @@ private enum MarkdownSyntaxLightweightLexer {
     _ source: NSString,
     start: Int,
     end: Int,
+    upperBound: Int,
     opening: inout Int?,
     ranges: inout [NSRange]
   ) {
     let canClose = start > 0 && !isWhitespace(source.character(at: start - 1))
-    let canOpen = end < source.length && !isWhitespace(source.character(at: end))
+    let canOpen = end < upperBound && !isWhitespace(source.character(at: end))
     if let openingLocation = opening,
        canClose,
        start > openingLocation + (end - start) {
@@ -460,15 +493,19 @@ private enum MarkdownSyntaxLightweightLexer {
     }
   }
 
-  private static func htmlTagEnd(in source: NSString, startingAt start: Int) -> Int? {
+  private static func htmlTagEnd(
+    in source: NSString,
+    startingAt start: Int,
+    upperBound: Int
+  ) -> Int? {
     var cursor = start + 1
-    guard cursor < source.length else { return nil }
+    guard cursor < upperBound else { return nil }
     if source.character(at: cursor) == 47 { cursor += 1 }
-    guard cursor < source.length, isASCIILetter(source.character(at: cursor)) else {
+    guard cursor < upperBound, isASCIILetter(source.character(at: cursor)) else {
       return nil
     }
     cursor += 1
-    while cursor < source.length {
+    while cursor < upperBound {
       let character = source.character(at: cursor)
       if character == 62 { return cursor + 1 }
       if character == 60 || character == lineFeed { return nil }

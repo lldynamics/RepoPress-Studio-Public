@@ -106,31 +106,89 @@ public actor ImageBatchProcessingActor {
     var optimizedCount = 0
     var skippedCount = 0
     var savedBytes: Int64 = 0
-    var firstMessage: String?
+    var firstMessageByDraftIndex: [Int: String] = [:]
 
-    for (offset, draft) in drafts.enumerated() {
-      try cancellationToken.throwIfCancelled()
-      let result = try process(
-        operation: operation,
-        draft: draft,
-        includedAttachmentIDs: includedAttachmentIDsByDraftID[draft.id],
-        destinationDirectory: outputDirectory,
-        cancellationToken: cancellationToken
-      )
-      try cancellationToken.throwIfCancelled()
-
-      if result.optimizedCount > 0 {
-        updatedDraftsByID[draft.id] = result.draft
+    // Image encoders are CPU and memory heavy. A bounded task group lets
+    // Apple Silicon use several cores without decoding every draft at once.
+    // Each attachment destination is UUID-based, so drafts can safely share
+    // the staging directory.
+    let service = self.service
+    let concurrencyLimit = min(
+      drafts.count,
+      max(1, ProcessInfo.processInfo.activeProcessorCount / 2)
+    )
+    var nextDraftIndex = 0
+    var completedDraftCount = 0
+    try await withThrowingTaskGroup(
+      of: (Int, ImageOptimizationResult).self
+    ) { group in
+      for _ in 0..<concurrencyLimit {
+        let draftIndex = nextDraftIndex
+        nextDraftIndex += 1
+        let draft = drafts[draftIndex]
+        let includedAttachmentIDs = includedAttachmentIDsByDraftID[draft.id]
+        group.addTask {
+          try Task.checkCancellation()
+          try cancellationToken.throwIfCancelled()
+          let result = try Self.process(
+            service: service,
+            operation: operation,
+            draft: draft,
+            includedAttachmentIDs: includedAttachmentIDs,
+            destinationDirectory: outputDirectory,
+            cancellationToken: cancellationToken
+          )
+          try Task.checkCancellation()
+          try cancellationToken.throwIfCancelled()
+          return (draftIndex, result)
+        }
       }
-      optimizedCount += result.optimizedCount
-      skippedCount += result.skippedCount
-      savedBytes += result.savedBytes
-      firstMessage = firstMessage ?? result.messages.first
-      await progress(ImageBatchProgress(operation: operation, completedDraftCount: offset + 1, totalDraftCount: drafts.count))
+
+      while let (draftIndex, result) = try await group.next() {
+        try cancellationToken.throwIfCancelled()
+        let draft = drafts[draftIndex]
+        if result.optimizedCount > 0 {
+          updatedDraftsByID[draft.id] = result.draft
+        }
+        optimizedCount += result.optimizedCount
+        skippedCount += result.skippedCount
+        savedBytes += result.savedBytes
+        if let message = result.messages.first {
+          firstMessageByDraftIndex[draftIndex] = message
+        }
+        completedDraftCount += 1
+        await progress(ImageBatchProgress(
+          operation: operation,
+          completedDraftCount: completedDraftCount,
+          totalDraftCount: drafts.count
+        ))
+
+        guard nextDraftIndex < drafts.count else { continue }
+        let nextIndex = nextDraftIndex
+        nextDraftIndex += 1
+        let nextDraft = drafts[nextIndex]
+        let nextIncludedAttachmentIDs = includedAttachmentIDsByDraftID[nextDraft.id]
+        group.addTask {
+          try Task.checkCancellation()
+          try cancellationToken.throwIfCancelled()
+          let result = try Self.process(
+            service: service,
+            operation: operation,
+            draft: nextDraft,
+            includedAttachmentIDs: nextIncludedAttachmentIDs,
+            destinationDirectory: outputDirectory,
+            cancellationToken: cancellationToken
+          )
+          try Task.checkCancellation()
+          try cancellationToken.throwIfCancelled()
+          return (nextIndex, result)
+        }
+      }
     }
 
     try cancellationToken.throwIfCancelled()
     keepOutputDirectory = true
+    let firstMessage = drafts.indices.lazy.compactMap { firstMessageByDraftIndex[$0] }.first
     return ImageBatchProcessingResult(
       updatedDraftsByID: updatedDraftsByID,
       optimizedCount: optimizedCount,
@@ -141,7 +199,8 @@ public actor ImageBatchProcessingActor {
     )
   }
 
-  private func process(
+  private nonisolated static func process(
+    service: SiteImageWorkbenchService,
     operation: ImageBatchOperation,
     draft: ArticleDraft,
     includedAttachmentIDs: Set<UUID>?,

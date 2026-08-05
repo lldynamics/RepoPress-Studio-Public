@@ -4,6 +4,7 @@ final class MarkdownGhostTextOverlayView: NSView {
   weak var textView: NSTextView?
   var ghostText = "" {
     didSet {
+      guard oldValue != ghostText else { return }
       isHidden = ghostText.isEmpty
       needsDisplay = true
     }

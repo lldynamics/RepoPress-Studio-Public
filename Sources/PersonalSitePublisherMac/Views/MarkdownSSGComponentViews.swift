@@ -193,7 +193,7 @@ struct MarkdownSSGComponentPreviewStrip: View {
           .foregroundStyle(.tertiary)
       }
 
-      ScrollView(.horizontal, showsIndicators: false) {
+      ScrollView(.horizontal, showsIndicators: true) {
         HStack(alignment: .top, spacing: 9) {
           ForEach(occurrences.prefix(12)) { occurrence in
             Button {

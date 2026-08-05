@@ -242,11 +242,13 @@ public enum MarkdownSyntaxHighlightRangeService {
           range.length <= text.length - range.location else {
       return true
     }
-    let changedLines = text.substring(with: text.lineRange(for: range))
-    return MarkdownCodeRangeScanner.containsFenceLine(in: changedLines)
+    return MarkdownCodeRangeScanner.containsFenceLine(
+      in: text,
+      range: text.lineRange(for: range)
+    )
   }
 
   private static func codeBlockRanges(in text: NSString) -> [NSRange] {
-    MarkdownCodeRangeScanner.scan(text as String).blockRanges
+    MarkdownCodeRangeScanner.scan(text).blockRanges
   }
 }

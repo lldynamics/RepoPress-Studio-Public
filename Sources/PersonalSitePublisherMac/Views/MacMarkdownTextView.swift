@@ -175,7 +175,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
   func updateNSView(_ nsView: NSScrollView, context: Context) {
     guard let textView = nsView.documentView as? NSTextView else { return }
-    Self.configureAccessibility(for: textView)
     textView.isEditable = true
     textView.isSelectable = true
     context.coordinator.updateDocumentContext(
@@ -206,6 +205,16 @@ struct MacMarkdownTextView: NSViewRepresentable {
       }
       droppableTextView.markdownTableEditingHandler = { textView, command in
         context.coordinator.handleTableEditing(command, in: textView)
+      }
+      droppableTextView.ghostTextAcceptHandler = {
+        guard !context.coordinator.ghostText.isEmpty else { return false }
+        context.coordinator.onGhostTextAccepted(context.coordinator.ghostText)
+        return true
+      }
+      droppableTextView.ghostTextDismissHandler = {
+        guard !context.coordinator.ghostText.isEmpty else { return false }
+        context.coordinator.onGhostTextDismissed()
+        return true
       }
     }
 
@@ -447,20 +456,25 @@ struct MacMarkdownTextView: NSViewRepresentable {
       overlay.autoresizingMask = [.width, .height]
       overlay.textView = textView
       overlay.isHidden = ghostText.isEmpty
+      overlay.setAccessibilityLabel("AI 预测续写")
+      overlay.setAccessibilityHelp("按 Tab 采纳预测内容，按 Escape 忽略预测内容")
+      overlay.setAccessibilityValue(ghostText)
       textView.addSubview(overlay)
       ghostTextOverlayView = overlay
     }
 
     func updateGhostText(_ text: String, in textView: NSTextView) {
+      let didChange = ghostText != text
       ghostText = text
       if ghostTextOverlayView == nil {
         installGhostTextOverlay(on: textView)
       }
-      ghostTextOverlayView?.textView = textView
-      ghostTextOverlayView?.ghostText = text
-      ghostTextOverlayView?.setAccessibilityLabel("AI 预测续写")
-      ghostTextOverlayView?.setAccessibilityHelp("按 Tab 采纳预测内容，按 Escape 忽略预测内容")
-      ghostTextOverlayView?.setAccessibilityValue(text)
+      guard let overlay = ghostTextOverlayView else { return }
+      overlay.textView = textView
+      if didChange {
+        overlay.ghostText = text
+        overlay.setAccessibilityValue(text)
+      }
     }
 
     func updateRepresentedText(_ text: String) -> Bool {
@@ -613,7 +627,11 @@ struct MacMarkdownTextView: NSViewRepresentable {
     }
 
     func refreshCachedTypingAttributes(in textView: NSTextView) {
-      textView.typingAttributes = syntaxHighlightPalette.defaultAttributes
+      let desiredAttributes = syntaxHighlightPalette.defaultAttributes
+      guard !(textView.typingAttributes as NSDictionary).isEqual(to: desiredAttributes) else {
+        return
+      }
+      textView.typingAttributes = desiredAttributes
     }
 
     func updateDiagnostics(
