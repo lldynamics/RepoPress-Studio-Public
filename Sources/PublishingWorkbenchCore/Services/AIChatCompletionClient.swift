@@ -380,8 +380,8 @@ public struct URLSessionAIChatTransport: AIChatTransport, AIChatStreamingTranspo
   }
 }
 
-private struct AIChatSendableError: @unchecked Sendable {
-  let value: Error
+private struct AIChatSendableError: Sendable {
+  let value: AIChatCompletionClientError
 }
 
 private enum AIChatLineEvent: Sendable {
@@ -511,7 +511,7 @@ public struct AIChatCompletionClient: Sendable {
     transport: AIChatStreamingTransport,
     sensitiveValues: [String]
   ) -> AsyncThrowingStream<AIChatStreamUpdate, Error> {
-    AsyncThrowingStream { continuation in
+    return AsyncThrowingStream { continuation in
       let task = Task(priority: .userInitiated) {
         var completedRetryCount = 0
 
@@ -565,7 +565,10 @@ public struct AIChatCompletionClient: Sendable {
             continuation.finish(throwing: CancellationError())
             return
           } catch {
-            let normalizedError = normalizedTransportError(error)
+            let normalizedError = Self.normalizedTransportError(
+              error,
+              policy: networkRecoveryPolicy
+            )
             if receivedContent {
               continuation.finish(
                 throwing: AIChatCompletionClientError.streamInterruptedAfterPartialContent(
@@ -611,7 +614,8 @@ public struct AIChatCompletionClient: Sendable {
     firstByteTimeout: TimeInterval,
     resourceTimeout: TimeInterval
   ) -> AsyncThrowingStream<String, Error> {
-    AsyncThrowingStream { continuation in
+    let recoveryPolicy = networkRecoveryPolicy
+    return AsyncThrowingStream { continuation in
       let (events, eventContinuation) = AsyncStream<AIChatLineEvent>.makeStream()
       let sourceTask = Task(priority: .userInitiated) {
         do {
@@ -630,7 +634,13 @@ public struct AIChatCompletionClient: Sendable {
           }
           eventContinuation.yield(.finished)
         } catch {
-          eventContinuation.yield(.failed(AIChatSendableError(value: error)))
+          eventContinuation.yield(
+            .failed(
+              AIChatSendableError(
+                value: Self.normalizedTransportError(error, policy: recoveryPolicy)
+              )
+            )
+          )
         }
       }
       let firstByteTimeoutTask = Task {
@@ -733,7 +743,10 @@ public struct AIChatCompletionClient: Sendable {
     max(0.001, timeout - Date().timeIntervalSince(startDate))
   }
 
-  private func normalizedTransportError(_ error: Error) -> AIChatCompletionClientError {
+  private static func normalizedTransportError(
+    _ error: Error,
+    policy: AIChatNetworkRecoveryPolicy
+  ) -> AIChatCompletionClientError {
     if let clientError = error as? AIChatCompletionClientError {
       return clientError
     }
@@ -745,7 +758,7 @@ public struct AIChatCompletionClient: Sendable {
     }
     if let urlError = error as? URLError {
       if urlError.code == .timedOut {
-        return .resourceTimedOut(networkRecoveryPolicy.resourceTimeout)
+        return .resourceTimedOut(policy.resourceTimeout)
       }
       return .networkFailure(urlError.localizedDescription)
     }
