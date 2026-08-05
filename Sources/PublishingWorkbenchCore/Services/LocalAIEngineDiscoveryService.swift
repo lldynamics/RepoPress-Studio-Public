@@ -333,10 +333,7 @@ private struct URLSessionLocalAIEngineDiscoveryTransport: LocalAIEngineDiscovery
   }
 }
 
-private final class LocalAIEngineDiscoveryURLSessionDelegate: NSObject,
-  URLSessionTaskDelegate,
-  @unchecked Sendable
-{
+private final class LocalAIEngineDiscoveryURLSessionDelegate: NSObject, URLSessionTaskDelegate {
   func urlSession(
     _ session: URLSession,
     task: URLSessionTask,

@@ -422,9 +422,16 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     return defaultDestinationFolderURL
   }
 
-  private func persistSettings() {
-    guard let data = try? JSONEncoder().encode(settings) else { return }
-    defaults.set(data, forKey: Self.settingsKey)
+  @discardableResult
+  private func persistSettings() -> Bool {
+    do {
+      let data = try JSONEncoder().encode(settings)
+      defaults.set(data, forKey: Self.settingsKey)
+      return true
+    } catch {
+      statusMessage = CoreL10n.format("自动备份设置保存失败：%@", error.localizedDescription)
+      return false
+    }
   }
 
   private static func loadSettings(from defaults: UserDefaults) -> WorkspaceBackupScheduleSettings {

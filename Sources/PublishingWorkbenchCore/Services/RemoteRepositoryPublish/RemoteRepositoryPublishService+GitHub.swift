@@ -650,7 +650,15 @@ extension RemoteRepositoryPublishService {
       }
     } catch {
       if didCreateReviewBranch && !didUpdateReference {
-        try? await githubDeleteBranch(repository: repository, branch: branchName, token: token)
+        do {
+          try await githubDeleteBranch(repository: repository, branch: branchName, token: token)
+        } catch let cleanupError {
+          throw RemoteRepositoryPublishError.reviewBranchCleanupFailed(
+            branchName: branchName,
+            publishMessage: error.localizedDescription,
+            cleanupMessage: cleanupError.localizedDescription
+          )
+        }
       }
       guard didUpdateReference else { throw error }
       throw RemoteRepositoryPublishError.partialPublish(

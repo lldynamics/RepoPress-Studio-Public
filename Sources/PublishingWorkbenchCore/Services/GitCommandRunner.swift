@@ -398,10 +398,18 @@ private final class GitCommandAsyncOperation: @unchecked Sendable {
       return
     }
 
-    timeoutTask = Task.detached { [weak self] in
+    let timeoutTask = Task.detached { [weak self] in
       let nanoseconds = UInt64(max(0, self?.timeout ?? 0) * 1_000_000_000)
       try? await Task.sleep(nanoseconds: nanoseconds)
       self?.timeOut()
+    }
+    lock.lock()
+    if didFinish {
+      lock.unlock()
+      timeoutTask.cancel()
+    } else {
+      self.timeoutTask = timeoutTask
+      lock.unlock()
     }
   }
 
