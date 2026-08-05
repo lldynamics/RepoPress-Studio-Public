@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 
 import PackageDescription
 
@@ -31,6 +31,7 @@ let package = Package(
         .process("Resources")
       ],
       swiftSettings: [
+        .swiftLanguageMode(.v6),
         .enableExperimentalFeature("IsolatedDeinit")
       ],
       linkerSettings: [
@@ -52,16 +53,25 @@ let package = Package(
       ],
       resources: [
         .process("Resources")
+      ],
+      swiftSettings: [
+        .swiftLanguageMode(.v5)
       ]
     ),
     .target(
-      name: "BrowserExtensionProtocolSupport"
+      name: "BrowserExtensionProtocolSupport",
+      swiftSettings: [
+        .swiftLanguageMode(.v5)
+      ]
     ),
     .testTarget(
       name: "PublishingWorkbenchCoreTests",
       dependencies: [
         "BrowserExtensionProtocolSupport",
         "PublishingWorkbenchCore",
+      ],
+      swiftSettings: [
+        .swiftLanguageMode(.v5)
       ]
     ),
     .testTarget(
@@ -69,6 +79,9 @@ let package = Package(
       dependencies: [
         "PersonalSitePublisherMac",
         "PublishingWorkbenchCore",
+      ],
+      swiftSettings: [
+        .swiftLanguageMode(.v5)
       ]
     ),
   ]

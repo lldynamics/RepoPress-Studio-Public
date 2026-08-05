@@ -12,16 +12,6 @@
       "rationale": "Value wrapper delegates access to the thread-safe UserDefaults implementation and stores no mutable reference state."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/AIChatCompletionClient.swift",
-      "declaration": "AIChatSendableError",
-      "rationale": "Error snapshot is immutable and only carries value descriptions across the task boundary."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Services/CredentialSafeURLSession.swift",
-      "declaration": "CredentialSafeURLSessionDelegate",
-      "rationale": "URLSession owns delegate callbacks and the implementation has no mutable instance state."
-    },
-    {
       "file": "Sources/PublishingWorkbenchCore/Services/DeploymentStatusService.swift",
       "declaration": "DeploymentStatusJSONDecoder",
       "rationale": "All JSONDecoder access is serialized by the wrapper lock."
@@ -67,11 +57,6 @@
       "rationale": "Mutable database access is delegated to its serialized database boundary."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgePDFOCRService.swift",
-      "declaration": "KnowledgePDFOCRService",
-      "rationale": "Service is stateless; request-local Vision and PDF objects never escape an operation."
-    },
-    {
       "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeSemanticEmbeddingService.swift",
       "declaration": "KnowledgeSemanticEmbeddingService",
       "rationale": "Service configuration is immutable and request work is operation-local."
@@ -82,9 +67,19 @@
       "rationale": "URLSession operation state is synchronized by its lock and single completion path."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/LocalAIEngineDiscoveryService.swift",
-      "declaration": "LocalAIEngineDiscoveryURLSessionDelegate",
-      "rationale": "URLSession owns delegate callbacks and the implementation is final, stateless, and only rejects redirects."
+      "file": "Sources/PersonalSitePublisherMac/Views/RSSArticleWebView.swift",
+      "declaration": "RSSArticleRenderCache",
+      "rationale": "The synchronous HTML LRU is shared by WebView renders; its cache and recency mutations are protected by one NSLock."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/KnowledgeSemanticVectorStorage.swift",
+      "declaration": "KnowledgeSemanticVectorLRUCache",
+      "rationale": "The decoded-vector cache is an independent synchronous hot-path boundary; values and recency are protected by one NSLock instead of actor suspension."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/RSSReaderDatabase.swift",
+      "declaration": "RSSReaderDatabase",
+      "rationale": "SQLite connection state remains synchronous for the reader store; every handle and statement operation is serialized by the database lock."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/Services/LocalRepositoryService.swift",
@@ -100,11 +95,6 @@
       "file": "Sources/PublishingWorkbenchCore/Services/LocalSitePreviewService.swift",
       "declaration": "LocalSitePreviewProcessService",
       "rationale": "Process lifecycle mutations are protected by the service lock."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Services/PublicRiskScanner.swift",
-      "declaration": "Rule",
-      "rationale": "Rule values are immutable; the regular expression is constructed once and only used for matching."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/Services/SiteDraftFileStore.swift",
@@ -218,36 +208,346 @@
       "kind": "try!",
       "contains": "JSONSerialization.data(withJSONObject: responsePayload)",
       "rationale": "The test fixture is a fixed JSON-compatible dictionary and setup failure should abort the test immediately."
+    }
+  ],
+  "optionalOperations": [
+    {
+      "file": "Sources/PersonalSitePublisherMac/Support/ScreenshotCaptureWindowBridge.swift",
+      "category": "debugSupport",
+      "contains": "try? String(window.windowNumber).write",
+      "rationale": "The screenshot harness writes diagnostic metadata only when explicitly enabled; capture failures are reported through the harness output path."
     },
     {
-      "file": "script/app_store_screenshot_renderer.swift",
-      "kind": "try!",
-      "contains": "RGBColor(hex: \"F8F5ED\")",
-      "rationale": "Compile-time literal was design-reviewed and invalid renderer constants are programmer errors."
+      "file": "Sources/PersonalSitePublisherMac/Support/ScreenshotCaptureWindowBridge.swift",
+      "category": "debugSupport",
+      "contains": "try? message.write",
+      "rationale": "The screenshot harness writes a secondary diagnostic file and does not affect product data."
     },
     {
-      "file": "script/app_store_screenshot_renderer.swift",
-      "kind": "try!",
-      "contains": "RGBColor(hex: \"E2EEE8\")",
-      "rationale": "Compile-time literal was design-reviewed and invalid renderer constants are programmer errors."
+      "file": "Sources/PersonalSitePublisherMac/Support/WorkbenchImageTwoTierCache.swift",
+      "category": "cacheBestEffort",
+      "contains": "try? fileManager.createDirectory",
+      "rationale": "Disk thumbnail cache creation is optional; a cache miss remains safe and the source image is still available."
     },
     {
-      "file": "script/app_store_screenshot_renderer.swift",
-      "kind": "try!",
-      "contains": "RGBColor(hex: \"183B2E\")",
-      "rationale": "Compile-time literal was design-reviewed and invalid renderer constants are programmer errors."
+      "file": "Sources/PersonalSitePublisherMac/Support/WorkbenchImageTwoTierCache.swift",
+      "category": "cacheBestEffort",
+      "contains": "try? fileManager.setAttributes",
+      "rationale": "Updating cache recency metadata is optional and cannot invalidate the source image."
     },
     {
-      "file": "script/app_store_screenshot_renderer.swift",
-      "kind": "try!",
-      "contains": "RGBColor(hex: \"4D675D\")",
-      "rationale": "Compile-time literal was design-reviewed and invalid renderer constants are programmer errors."
+      "file": "Sources/PersonalSitePublisherMac/Views/RSSReaderPresentationState.swift",
+      "category": "networkDiscovery",
+      "contains": "try? await RSSFeedDiscoveryService(",
+      "rationale": "Optional feed discovery is a non-mutating enhancement; the UI keeps the current feed state when discovery fails."
     },
     {
-      "file": "script/app_store_screenshot_renderer.swift",
-      "kind": "try!",
-      "contains": "RGBColor(hex: \"B8C9C0\")",
-      "rationale": "Compile-time literal was design-reviewed and invalid renderer constants are programmer errors."
+      "file": "Sources/PublishingWorkbenchCore/Models/RSSReaderModels.swift",
+      "category": "parsing",
+      "contains": "try? container.decodeIfPresent(Date.self",
+      "rationale": "Older RSS records may omit or contain an invalid optional date; decoding falls back to the record timestamp policy."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/HTMLSourceEditingService.swift",
+      "category": "ioBestEffort",
+      "contains": "try? synchronize(descriptor:",
+      "rationale": "Directory fsync is a durability hint after the primary file operation; the caller still reports the primary write result."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeLibraryBackupService.swift",
+      "category": "temporaryCleanup",
+      "contains": "try? output.close()",
+      "rationale": "The output handle is closed during temporary backup cleanup after the package operation has completed."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeLibraryService+Health.swift",
+      "category": "probeFallback",
+      "contains": "let size = try? fileURL",
+      "rationale": "Health reporting treats unavailable storage metadata as an unknown size and continues with the remaining references."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgePDFOCRService.swift",
+      "category": "probeFallback",
+      "contains": "try? request.supportedRecognitionLanguages()",
+      "rationale": "OCR language discovery is advisory; unsupported language metadata causes the caller to use its supported default path."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeSemanticEmbeddingService.swift",
+      "category": "cacheBestEffort",
+      "contains": "try? await model.requestAssets()",
+      "rationale": "On-device model asset preparation is optional background work and a missing model is reported through the embedding availability path."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/KnowledgeSemanticEmbeddingService.swift",
+      "category": "cacheBestEffort",
+      "contains": "try? model.embeddingResult(for:",
+      "rationale": "A single unavailable local embedding is treated as a cache/model miss; database state is not mutated by this probe."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalContentImportIndexStore.swift",
+      "category": "serializationFallback",
+      "contains": "try? JSONEncoder.localContentImportIndex.encode(snapshot)",
+      "rationale": "The import index is auxiliary metadata; a failed optional snapshot encoding does not alter imported content."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/LocalGitPublishService.swift",
+      "category": "probeFallback",
+      "contains": "try? localPublishFileState(at: currentURL",
+      "rationale": "External-modification detection is conservative: an unreadable state is treated as changed and blocks automatic cleanup."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/MarkdownFindReplaceService.swift",
+      "category": "userActionFallback",
+      "contains": "try? find(",
+      "rationale": "The non-throwing find command is a UI convenience wrapper; invalid query syntax produces no match rather than mutating content."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/MarkdownFindReplaceService.swift",
+      "category": "userActionFallback",
+      "contains": "try? replaceCurrentOrNext(",
+      "rationale": "The non-throwing replace wrapper returns an unchanged editor mutation when the query is invalid; it does not persist a partial edit."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/MarkdownFindReplaceService.swift",
+      "category": "userActionFallback",
+      "contains": "try? replaceAll(",
+      "rationale": "The non-throwing replace-all wrapper returns an unchanged editor mutation when validation fails."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/SEOSocialPreviewService.swift",
+      "category": "serializationFallback",
+      "contains": "try? JSONSerialization.data(",
+      "rationale": "SEO preview metadata is auxiliary output; invalid optional metadata is omitted rather than blocking the article."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/SiteStarterService.swift",
+      "category": "probeFallback",
+      "contains": "try? runGitOutput(",
+      "rationale": "Starter setup probes optional Git metadata and continues with an empty value when the repository is not yet initialized."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchAutomationService.swift",
+      "category": "validationFallback",
+      "contains": "try? WorkbenchAutomationPlanValidator.validateStructure(plan)",
+      "rationale": "The boolean validation helper intentionally maps an invalid automation plan to false before execution."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchDataRootMigrator+Payload.swift",
+      "category": "validationFallback",
+      "contains": "try? WorkbenchSnapshotSemanticValidator.validate(snapshot)",
+      "rationale": "Migration inventory validation treats an invalid candidate snapshot as unusable and continues searching for a valid source."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/DeploymentStore.swift",
+      "category": "silentFallback",
+      "contains": "try? RemoteRepositoryRollbackDraft.make(record: record)",
+      "rationale": "A release record without the required remote identity has no safe rollback action; returning nil hides only that unavailable action."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/DeploymentStore.swift",
+      "category": "silentFallback",
+      "contains": "try? RemoteRepositoryReviewWithdrawalDraft.make(record: record)",
+      "rationale": "A release record without a review identity has no safe withdrawal action; returning nil hides only that unavailable action."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/RSSReaderDatabase.swift",
+      "category": "parsing",
+      "contains": "try? decoder.decode(RSSFeedIssue.self",
+      "rationale": "Persisted feed issue JSON is optional diagnostic metadata; malformed metadata does not invalidate the feed row."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/RepositoryStore.swift",
+      "category": "probeFallback",
+      "contains": "try? remoteRepositoryPublishService.apiBaseURL(for: profile)",
+      "rationale": "Comparing a cached permission check is a conservative non-mutating probe; an invalid current profile cannot be treated as a verified match."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore.swift",
+      "category": "legacyCleanup",
+      "contains": "try? keychainTokenStore.deleteLegacyAIToken(for: store.activeProfile)",
+      "rationale": "The legacy per-site credential is intentionally cleaned up separately; failure must not make the primary shared-key save/delete appear unsuccessful."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchPersistence.swift",
+      "category": "serializationFallback",
+      "contains": "try? JSONSerialization.data(",
+      "rationale": "Retired feature archival is optional compatibility metadata; the primary workbench snapshot remains untouched when it cannot be encoded."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchStore.swift",
+      "category": "silentFallback",
+      "contains": "try? draftRecoveryJournal.quarantineUnreadableFile()",
+      "rationale": "Unreadable recovery journals expose both outcomes to the user: quarantine success names the file, while failure explicitly says the original was kept."
+    }
+  ],
+  "optionalOperationRules": [
+    {
+      "file": "Tests/*",
+      "category": "testSupport",
+      "contains": "try?",
+      "rationale": "Tests use optional cleanup, cancellation, and fixture parsing so one failing teardown does not hide the assertion under test."
+    },
+    {
+      "file": "Sources/*",
+      "category": "parsing",
+      "contains": "NSRegularExpression",
+      "rationale": "A malformed or unsupported pattern makes the parser unavailable; callers already use the empty/unsupported result path."
+    },
+    {
+      "file": "Sources/*",
+      "category": "parsing",
+      "contains": "JSONDecoder",
+      "rationale": "Optional decoding is used for compatibility, streamed payload variants, or persisted data migration."
+    },
+    {
+      "file": "Sources/*",
+      "category": "parsing",
+      "contains": "container.decode(",
+      "rationale": "Streaming response content is decoded by trying the supported variant shapes in order."
+    },
+    {
+      "file": "Sources/*",
+      "category": "parsing",
+      "contains": "singleValueContainer().decode(",
+      "rationale": "Streaming response content is decoded by trying the supported scalar shape before other variants."
+    },
+    {
+      "file": "Sources/*",
+      "category": "parsing",
+      "contains": "JSONSerialization.jsonObject",
+      "rationale": "The input is an untrusted response or persisted payload and invalid JSON follows the existing parse-failure branch."
+    },
+    {
+      "file": "Sources/*",
+      "category": "parsing",
+      "contains": "XMLDocument",
+      "rationale": "Paste/import XML is optional input; malformed markup is rejected by the surrounding parser."
+    },
+    {
+      "file": "Sources/*",
+      "category": "parsing",
+      "contains": "NSAttributedString",
+      "rationale": "Rich-text or markdown conversion is best-effort parsing with a plain-text fallback."
+    },
+    {
+      "file": "Sources/*",
+      "category": "parsing",
+      "contains": "AttributedString(markdown",
+      "rationale": "Markdown presentation parsing is optional and the caller preserves the original text when it fails."
+    },
+    {
+      "file": "Sources/*",
+      "category": "parsing",
+      "contains": "String(contentsOf:",
+      "rationale": "Import probing skips unreadable candidate files and continues scanning the remaining sources."
+    },
+    {
+      "file": "Sources/*",
+      "category": "parsing",
+      "contains": "Data(contentsOf:",
+      "rationale": "Recovery/cache payload reads are validated by the surrounding decoder or recovery path."
+    },
+    {
+      "file": "Sources/*",
+      "category": "parsing",
+      "contains": "BoundedFileReader",
+      "rationale": "Bounded import reads are optional candidate input and the enclosing parser skips unreadable data."
+    },
+    {
+      "file": "Sources/*",
+      "category": "parsing",
+      "contains": "try? URL(",
+      "rationale": "User-provided or imported URL text is validated by treating malformed values as absent."
+    },
+    {
+      "file": "Sources/*",
+      "category": "probeFallback",
+      "contains": "resourceValues",
+      "rationale": "Filesystem metadata probes are advisory; the caller falls back to the safe unavailable state."
+    },
+    {
+      "file": "Sources/*",
+      "category": "probeFallback",
+      "contains": "attributesOfItem",
+      "rationale": "A failed metadata probe cannot establish a usable candidate and is handled as unavailable."
+    },
+    {
+      "file": "Sources/*",
+      "category": "probeFallback",
+      "contains": "contentsOfDirectory",
+      "rationale": "Directory enumeration is an optional discovery/cache probe; failure yields no candidates."
+    },
+    {
+      "file": "Sources/*",
+      "category": "probeFallback",
+      "contains": "destinationOfSymbolicLink",
+      "rationale": "Symlink detection is a safety probe and a failed lookup is treated as not-a-link by the caller."
+    },
+    {
+      "file": "Sources/*",
+      "category": "probeFallback",
+      "contains": "safeRelativePath",
+      "rationale": "Optional asset-path probing skips paths that cannot be validated."
+    },
+    {
+      "file": "Sources/*",
+      "category": "probeFallback",
+      "contains": "syntacticallyValidatedURL",
+      "rationale": "Network URL validation is a non-mutating availability check; invalid URLs are rejected by the caller."
+    },
+    {
+      "file": "Sources/*",
+      "category": "cancellation",
+      "contains": "Task.sleep",
+      "rationale": "Debounce/retry sleeps are intentionally cancellable and cancellation ends the pending task."
+    },
+    {
+      "file": "Sources/*",
+      "category": "cancellation",
+      "contains": "Task.checkCancellation",
+      "rationale": "Cancellation probes intentionally stop optional background work without surfacing an operation error."
+    },
+    {
+      "file": "Sources/*",
+      "category": "temporaryCleanup",
+      "contains": "try? fileManager.removeItem",
+      "rationale": "The target is an operation-local staging, cache, or cancellation artifact; the primary operation already owns the user-visible result."
+    },
+    {
+      "file": "Sources/*",
+      "category": "temporaryCleanup",
+      "contains": "try? FileManager.default.removeItem",
+      "rationale": "The target is an operation-local staging, cache, or cancellation artifact; the primary operation already owns the user-visible result."
+    },
+    {
+      "file": "Sources/*",
+      "category": "temporaryCleanup",
+      "contains": "handle.close",
+      "rationale": "File-handle close is resource cleanup after the read/write result has already been determined."
+    },
+    {
+      "file": "Sources/*",
+      "category": "serializationFallback",
+      "contains": "JSONEncoder().encode",
+      "rationale": "The value is auxiliary metadata or a compatibility payload, not the primary save/publish transaction."
+    },
+    {
+      "file": "Sources/*",
+      "category": "serializationFallback",
+      "contains": "encoder.encode(",
+      "rationale": "The value is an auxiliary compatibility or protocol payload and the enclosing path has a bounded fallback."
+    },
+    {
+      "file": "Sources/*",
+      "category": "protocolFallback",
+      "contains": "JSONSerialization.data(withJSONObject:",
+      "rationale": "The browser/protocol response has a valid empty-object fallback when an optional value cannot be encoded."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/DebugSupport/*",
+      "category": "debugSupport",
+      "contains": "try?",
+      "rationale": "Screenshot/demo data is an explicitly enabled diagnostic fixture and is outside the production save/publish path."
     }
   ]
 }
