@@ -53,7 +53,7 @@ enum RSSArticleDateSectionKind: Int, CaseIterable, Identifiable {
   }
 }
 
-struct RSSArticleListSection: Identifiable {
+struct RSSArticleListSection: Identifiable, Equatable, Sendable {
   let kind: RSSArticleDateSectionKind?
   let articles: [RSSArticleHeader]
 

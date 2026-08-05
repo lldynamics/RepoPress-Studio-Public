@@ -38,6 +38,69 @@ final class RSSReaderTests: XCTestCase {
     XCTAssertFalse(RSSHTMLTextSanitizer.plainText(from: article.contentHTML).contains("不要执行"))
   }
 
+  func testParsesArticleCoverFromMediaThumbnailAndEnclosure() throws {
+    let feedURL = try XCTUnwrap(URL(string: "https://example.com/feeds/main.xml"))
+    let xml = """
+      <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel>
+          <title>封面订阅</title>
+          <item>
+            <guid>media-cover</guid>
+            <title>媒体封面</title>
+            <media:thumbnail url="/images/thumbnail.jpg"/>
+          </item>
+          <item>
+            <guid>enclosure-cover</guid>
+            <title>附件封面</title>
+            <enclosure url="https://cdn.example.com/cover.png" type="image/png"/>
+          </item>
+        </channel>
+      </rss>
+      """
+
+    let feed = try RSSFeedParser.parse(data: Data(xml.utf8), feedURL: feedURL)
+
+    XCTAssertEqual(
+      feed.articles.first(where: { $0.id == "media-cover" })?.coverURL?.absoluteString,
+      "https://example.com/images/thumbnail.jpg"
+    )
+    XCTAssertEqual(
+      feed.articles.first(where: { $0.id == "enclosure-cover" })?.coverURL?.absoluteString,
+      "https://cdn.example.com/cover.png"
+    )
+  }
+
+  func testCoverResolverPrefersSocialImageAndResolvesRelativeFeedImage() throws {
+    let pageURL = try XCTUnwrap(URL(string: "https://example.com/posts/one"))
+
+    let coverURL = RSSArticleCoverResolver.coverURL(
+      summaryHTML: #"<p><img src="/inline.jpg"></p>"#,
+      contentHTML: "",
+      webPageSnapshotHTML: #"<meta property="og:image" content="/social.jpg?size=large&amp;format=webp">"#,
+      relativeTo: pageURL
+    )
+
+    XCTAssertEqual(
+      coverURL?.absoluteString,
+      "https://example.com/social.jpg?size=large&format=webp"
+    )
+  }
+
+  func testCoverResolverFallsBackToFirstInlineImage() throws {
+    let pageURL = try XCTUnwrap(URL(string: "https://example.com/posts/one"))
+
+    let coverURL = RSSArticleCoverResolver.coverURL(
+      summaryHTML: "<p>摘要</p>",
+      contentHTML: #"<p><img data-src="/images/inline.webp" alt="封面"></p>"#,
+      relativeTo: pageURL
+    )
+
+    XCTAssertEqual(
+      coverURL?.absoluteString,
+      "https://example.com/images/inline.webp"
+    )
+  }
+
   func testParsesRSS2CoreElementsInFeedSpecificDefaultNamespace() throws {
     let feedURL = try XCTUnwrap(URL(string: "https://example.com/namespaced-rss.xml"))
     let xml = """
@@ -335,6 +398,7 @@ final class RSSReaderTests: XCTestCase {
       id: "article-1",
       feedID: feedID,
       title: "本地缓存文章",
+      coverURL: try XCTUnwrap(URL(string: "https://cdn.example.com/cover.jpg")),
       summaryHTML: "<p>摘要</p>",
       contentHTML: "<p>正文</p>"
     )
@@ -361,6 +425,10 @@ final class RSSReaderTests: XCTestCase {
     let reopenedArticle = try XCTUnwrap(reopened.articleHeaders.first)
     XCTAssertTrue(reopenedArticle.isRead)
     XCTAssertTrue(reopenedArticle.isStarred)
+    XCTAssertEqual(
+      reopenedArticle.coverURL?.absoluteString,
+      "https://cdn.example.com/cover.jpg"
+    )
     XCTAssertEqual(reopened.articleHeaders(for: .unread).count, 0)
     XCTAssertEqual(reopened.articleHeaders(for: .starred).count, 1)
   }

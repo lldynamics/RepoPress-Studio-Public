@@ -424,6 +424,9 @@ public struct RSSArticle: Codable, Hashable, Identifiable, Sendable {
   public let feedID: UUID
   public var title: String
   public var link: URL?
+  /// The best small image candidate for list presentation, if the feed or a
+  /// saved web-page snapshot exposes one.
+  public var coverURL: URL?
   public var author: String?
   public var publishedAt: Date?
   public var summaryHTML: String
@@ -440,6 +443,7 @@ public struct RSSArticle: Codable, Hashable, Identifiable, Sendable {
     feedID: UUID,
     title: String,
     link: URL? = nil,
+    coverURL: URL? = nil,
     author: String? = nil,
     publishedAt: Date? = nil,
     summaryHTML: String = "",
@@ -454,6 +458,7 @@ public struct RSSArticle: Codable, Hashable, Identifiable, Sendable {
     self.feedID = feedID
     self.title = title
     self.link = link
+    self.coverURL = coverURL
     self.author = author
     self.publishedAt = publishedAt
     self.summaryHTML = summaryHTML
@@ -515,6 +520,7 @@ public struct RSSArticle: Codable, Hashable, Identifiable, Sendable {
     case feedID
     case title
     case link
+    case coverURL
     case author
     case publishedAt
     case summaryHTML
@@ -533,6 +539,7 @@ public struct RSSArticle: Codable, Hashable, Identifiable, Sendable {
       feedID: try container.decode(UUID.self, forKey: .feedID),
       title: try container.decode(String.self, forKey: .title),
       link: try container.decodeIfPresent(URL.self, forKey: .link),
+      coverURL: try container.decodeIfPresent(URL.self, forKey: .coverURL),
       author: try container.decodeIfPresent(String.self, forKey: .author),
       publishedAt: try container.decodeIfPresent(Date.self, forKey: .publishedAt),
       summaryHTML: try container.decodeIfPresent(String.self, forKey: .summaryHTML) ?? "",
@@ -562,6 +569,7 @@ public struct RSSArticleHeader: Codable, Hashable, Identifiable, Sendable {
   public let feedID: UUID
   public var title: String
   public var link: URL?
+  public var coverURL: URL?
   public var author: String?
   public var publishedAt: Date?
   public var readableSummary: String
@@ -575,6 +583,7 @@ public struct RSSArticleHeader: Codable, Hashable, Identifiable, Sendable {
     feedID: UUID,
     title: String,
     link: URL? = nil,
+    coverURL: URL? = nil,
     author: String? = nil,
     publishedAt: Date? = nil,
     readableSummary: String = "",
@@ -587,6 +596,7 @@ public struct RSSArticleHeader: Codable, Hashable, Identifiable, Sendable {
     self.feedID = feedID
     self.title = title
     self.link = link
+    self.coverURL = coverURL
     self.author = author
     self.publishedAt = publishedAt
     self.readableSummary = Self.normalizedReadableSummary(readableSummary)
@@ -608,6 +618,7 @@ public struct RSSArticleHeader: Codable, Hashable, Identifiable, Sendable {
       feedID: article.feedID,
       title: article.title,
       link: article.link,
+      coverURL: article.coverURL,
       author: article.author,
       publishedAt: article.publishedAt,
       readableSummary: RSSHTMLTextSanitizer.plainText(
@@ -641,6 +652,7 @@ public extension RSSArticle {
       feedID: header.feedID,
       title: header.title,
       link: header.link,
+      coverURL: header.coverURL,
       author: header.author,
       publishedAt: header.publishedAt,
       summaryHTML: header.readableSummary,
@@ -656,6 +668,7 @@ public extension RSSArticle {
   mutating func apply(header: RSSArticleHeader) {
     title = header.title
     link = header.link
+    coverURL = header.coverURL
     author = header.author
     publishedAt = header.publishedAt
     fetchedAt = header.fetchedAt
@@ -772,6 +785,7 @@ public struct RSSParsedArticle: Equatable, Sendable {
   public let id: String
   public var title: String
   public var link: URL?
+  public var coverURL: URL?
   public var author: String?
   public var publishedAt: Date?
   public var summaryHTML: String
@@ -781,6 +795,7 @@ public struct RSSParsedArticle: Equatable, Sendable {
     id: String,
     title: String,
     link: URL? = nil,
+    coverURL: URL? = nil,
     author: String? = nil,
     publishedAt: Date? = nil,
     summaryHTML: String = "",
@@ -789,6 +804,7 @@ public struct RSSParsedArticle: Equatable, Sendable {
     self.id = id
     self.title = title
     self.link = link
+    self.coverURL = coverURL
     self.author = author
     self.publishedAt = publishedAt
     self.summaryHTML = summaryHTML

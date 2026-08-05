@@ -10,7 +10,7 @@ struct RSSReaderDatabaseStatistics: Equatable, Sendable {
 }
 
 final class RSSReaderDatabase {
-  static let currentSchemaVersion = 4
+  static let currentSchemaVersion = 5
 
   let fileURL: URL
   private var handle: OpaquePointer?
@@ -511,14 +511,14 @@ final class RSSReaderDatabase {
   }
 
   private let articleSelectSQL = """
-  SELECT id, feed_id, title, link, author, published_at, summary_html,
+  SELECT id, feed_id, title, link, cover_url, author, published_at, summary_html,
          content_html, web_page_snapshot_html, fetched_at, read_at,
          is_starred, tags_json
   FROM rss_articles
   """
 
   private let articleHeaderSelectSQL = """
-  SELECT id, feed_id, title, link, author, published_at,
+  SELECT id, feed_id, title, link, cover_url, author, published_at,
          CASE
            WHEN TRIM(summary_html) != '' THEN SUBSTR(summary_html, 1, 8192)
            WHEN TRIM(content_html) != '' THEN SUBSTR(content_html, 1, 8192)
@@ -555,6 +555,7 @@ final class RSSReaderDatabase {
           feed_id TEXT NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE,
           title TEXT NOT NULL,
           link TEXT,
+          cover_url TEXT,
           author TEXT,
           published_at REAL,
           summary_html TEXT NOT NULL DEFAULT '',
@@ -617,6 +618,12 @@ final class RSSReaderDatabase {
             "ALTER TABLE rss_articles ADD COLUMN web_page_snapshot_html TEXT;"
           )
         }
+        if version < 5,
+           try !columnExistsUnlocked(table: "rss_articles", column: "cover_url") {
+          try executeUnlocked(
+            "ALTER TABLE rss_articles ADD COLUMN cover_url TEXT;"
+          )
+        }
         if version == 0 {
           try executeUnlocked("""
           INSERT OR IGNORE INTO rss_articles_fts(article_id, title, summary, content)
@@ -677,13 +684,14 @@ final class RSSReaderDatabase {
   private func upsertArticleUnlocked(_ article: RSSArticle) throws {
     let statement = try prepareUnlocked("""
     INSERT INTO rss_articles (
-      id, feed_id, title, link, author, published_at, summary_html,
+      id, feed_id, title, link, cover_url, author, published_at, summary_html,
       content_html, web_page_snapshot_html, fetched_at, read_at, is_starred, tags_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       feed_id = excluded.feed_id,
       title = excluded.title,
       link = excluded.link,
+      cover_url = COALESCE(excluded.cover_url, rss_articles.cover_url),
       author = excluded.author,
       published_at = excluded.published_at,
       summary_html = excluded.summary_html,
@@ -702,15 +710,16 @@ final class RSSReaderDatabase {
     bind(article.feedID.uuidString, at: 2, to: statement)
     bind(article.title, at: 3, to: statement)
     bindOptional(article.link?.absoluteString, at: 4, to: statement)
-    bindOptional(article.author, at: 5, to: statement)
-    bindOptional(article.publishedAt?.timeIntervalSince1970, at: 6, to: statement)
-    bind(article.summaryHTML, at: 7, to: statement)
-    bind(article.contentHTML, at: 8, to: statement)
-    bindOptional(article.webPageSnapshotHTML, at: 9, to: statement)
-    sqlite3_bind_double(statement, 10, article.fetchedAt.timeIntervalSince1970)
-    bindOptional(article.readAt?.timeIntervalSince1970, at: 11, to: statement)
-    sqlite3_bind_int(statement, 12, article.isStarred ? 1 : 0)
-    bind(json(article.tags), at: 13, to: statement)
+    bindOptional(article.coverURL?.absoluteString, at: 5, to: statement)
+    bindOptional(article.author, at: 6, to: statement)
+    bindOptional(article.publishedAt?.timeIntervalSince1970, at: 7, to: statement)
+    bind(article.summaryHTML, at: 8, to: statement)
+    bind(article.contentHTML, at: 9, to: statement)
+    bindOptional(article.webPageSnapshotHTML, at: 10, to: statement)
+    sqlite3_bind_double(statement, 11, article.fetchedAt.timeIntervalSince1970)
+    bindOptional(article.readAt?.timeIntervalSince1970, at: 12, to: statement)
+    sqlite3_bind_int(statement, 13, article.isStarred ? 1 : 0)
+    bind(json(article.tags), at: 14, to: statement)
     guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseErrorUnlocked() }
 
     let deleteFTS = try prepareUnlocked("DELETE FROM rss_articles_fts WHERE article_id = ?;")
@@ -812,15 +821,16 @@ final class RSSReaderDatabase {
       feedID: try requiredUUID(statement, 1, field: "rss_articles.feed_id"),
       title: text(statement, 2) ?? "未命名文章",
       link: optionalURL(statement, 3),
-      author: text(statement, 4),
-      publishedAt: optionalDate(statement, 5),
-      summaryHTML: text(statement, 6) ?? "",
-      contentHTML: text(statement, 7) ?? "",
-      webPageSnapshotHTML: text(statement, 8),
-      fetchedAt: date(statement, 9),
-      readAt: optionalDate(statement, 10),
-      isStarred: sqlite3_column_int(statement, 11) != 0,
-      tags: decodeStringArray(text(statement, 12))
+      coverURL: optionalURL(statement, 4),
+      author: text(statement, 5),
+      publishedAt: optionalDate(statement, 6),
+      summaryHTML: text(statement, 7) ?? "",
+      contentHTML: text(statement, 8) ?? "",
+      webPageSnapshotHTML: text(statement, 9),
+      fetchedAt: date(statement, 10),
+      readAt: optionalDate(statement, 11),
+      isStarred: sqlite3_column_int(statement, 12) != 0,
+      tags: decodeStringArray(text(statement, 13))
     )
   }
 
@@ -830,13 +840,14 @@ final class RSSReaderDatabase {
       feedID: try requiredUUID(statement, 1, field: "rss_articles.feed_id"),
       title: text(statement, 2) ?? "未命名文章",
       link: optionalURL(statement, 3),
-      author: text(statement, 4),
-      publishedAt: optionalDate(statement, 5),
-      readableSummary: RSSHTMLTextSanitizer.previewText(from: text(statement, 6) ?? ""),
-      fetchedAt: date(statement, 7),
-      readAt: optionalDate(statement, 8),
-      isStarred: sqlite3_column_int(statement, 9) != 0,
-      tags: decodeStringArray(text(statement, 10))
+      coverURL: optionalURL(statement, 4),
+      author: text(statement, 5),
+      publishedAt: optionalDate(statement, 6),
+      readableSummary: RSSHTMLTextSanitizer.previewText(from: text(statement, 7) ?? ""),
+      fetchedAt: date(statement, 8),
+      readAt: optionalDate(statement, 9),
+      isStarred: sqlite3_column_int(statement, 10) != 0,
+      tags: decodeStringArray(text(statement, 11))
     )
   }
 

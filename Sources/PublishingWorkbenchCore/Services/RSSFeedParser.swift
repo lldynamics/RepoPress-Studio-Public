@@ -86,6 +86,7 @@ public enum RSSFeedParser {
       var id: String?
       var title = ""
       var link: URL?
+      var coverURL: URL?
       var author: String?
       var publishedAt: Date?
       var summaryHTML = ""
@@ -98,6 +99,7 @@ public enum RSSFeedParser {
     private static let rss1Namespace = "http://purl.org/rss/1.0/"
     private static let rdfNamespace = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
     private static let contentNamespace = "http://purl.org/rss/1.0/modules/content/"
+    private static let mediaNamespace = "http://search.yahoo.com/mrss/"
     private static let dcElementNamespace = "http://purl.org/dc/elements/1.1/"
     private static let dcTermsNamespace = "http://purl.org/dc/terms/"
     private static let xhtmlNamespace = "http://www.w3.org/1999/xhtml"
@@ -194,6 +196,14 @@ public enum RSSFeedParser {
         currentArticle = ArticleDraft()
         articleOwner = (key, depth)
         articleIndex += 1
+        return
+      }
+
+      if handleArticleMediaElement(
+        key: key,
+        attributes: attributeDict,
+        depth: depth
+      ) {
         return
       }
 
@@ -429,17 +439,62 @@ public enum RSSFeedParser {
         return true
       }
       let relation = attribute(named: "rel", in: attributes)?.lowercased()
-      guard relation == nil || relation == "alternate",
-            let href = attribute(named: "href", in: attributes),
+      guard let href = attribute(named: "href", in: attributes),
             let resolved = resolveURL(href) else {
         return true
       }
+      if currentArticle != nil,
+         relation == "enclosure",
+         isImageMediaType(
+           attribute(named: "type", in: attributes),
+           url: resolved
+         ) {
+        if currentArticle?.coverURL == nil { currentArticle?.coverURL = resolved }
+        return true
+      }
+      guard relation == nil || relation == "alternate" else { return true }
       if currentArticle != nil {
         if currentArticle?.link == nil { currentArticle?.link = resolved }
       } else if feedSiteURL == nil {
         feedSiteURL = resolved
       }
       return true
+    }
+
+    private func handleArticleMediaElement(
+      key: ElementKey,
+      attributes: [String: String],
+      depth: Int
+    ) -> Bool {
+      guard currentArticle != nil,
+            isDirectArticleChild(at: depth) else { return false }
+
+      let isMediaElement = key.namespaceURI == Self.mediaNamespace
+        && ["content", "thumbnail"].contains(key.localName)
+      let isEnclosure = isRSSCoreNamespace(key.namespaceURI)
+        && key.localName == "enclosure"
+      guard isMediaElement || isEnclosure,
+            let rawURL = attribute(named: "url", in: attributes),
+            let resolved = resolveURL(rawURL) else {
+        return isMediaElement || isEnclosure
+      }
+
+      let isThumbnail = key.localName == "thumbnail"
+      guard isThumbnail || isImageMediaType(
+        attribute(named: "type", in: attributes),
+        url: resolved
+      ) else { return true }
+      if currentArticle?.coverURL == nil { currentArticle?.coverURL = resolved }
+      return true
+    }
+
+    private func isImageMediaType(_ rawType: String?, url: URL) -> Bool {
+      let type = rawType?.lowercased().split(separator: ";", maxSplits: 1)
+        .first.map(String.init)
+      if type?.hasPrefix("image/") == true { return true }
+      guard type == nil || type?.isEmpty == true else { return false }
+      return ["avif", "bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"]
+        .contains(url.pathExtension.lowercased())
     }
 
     private func apply(target: TextTarget, value: String) {
@@ -531,6 +586,11 @@ public enum RSSFeedParser {
         id: draft.id ?? fallback,
         title: title.isEmpty ? "无标题文章" : title,
         link: draft.link,
+        coverURL: draft.coverURL ?? RSSArticleCoverResolver.coverURL(
+          summaryHTML: draft.summaryHTML,
+          contentHTML: draft.contentHTML,
+          relativeTo: draft.link ?? feedURL
+        ),
         author: draft.author,
         publishedAt: draft.publishedAt,
         summaryHTML: draft.summaryHTML,
