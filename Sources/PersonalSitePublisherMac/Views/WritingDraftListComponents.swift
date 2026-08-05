@@ -89,59 +89,8 @@ enum WritingDraftSortOrder: String, CaseIterable, Identifiable {
   }
 
   func sorted(_ drafts: [ArticleDraft]) -> [ArticleDraft] {
-    drafts.sorted { lhs, rhs in
-      switch self {
-      case .updatedNewest:
-        return ordered(lhs, rhs, date: \ArticleDraft.updatedAt, newestFirst: true)
-      case .updatedOldest:
-        return ordered(lhs, rhs, date: \ArticleDraft.updatedAt, newestFirst: false)
-      case .articleDateNewest:
-        return ordered(lhs, rhs, date: \ArticleDraft.date, newestFirst: true)
-      case .articleDateOldest:
-        return ordered(lhs, rhs, date: \ArticleDraft.date, newestFirst: false)
-      case .titleAscending:
-        return orderedByTitle(lhs, rhs, ascending: true)
-      case .titleDescending:
-        return orderedByTitle(lhs, rhs, ascending: false)
-      }
-    }
-  }
-
-  private func ordered(
-    _ lhs: ArticleDraft,
-    _ rhs: ArticleDraft,
-    date: KeyPath<ArticleDraft, Date>,
-    newestFirst: Bool
-  ) -> Bool {
-    let lhsDate = lhs[keyPath: date]
-    let rhsDate = rhs[keyPath: date]
-    guard lhsDate != rhsDate else {
-      return stableTitleOrder(lhs, rhs)
-    }
-    return newestFirst ? lhsDate > rhsDate : lhsDate < rhsDate
-  }
-
-  private func orderedByTitle(
-    _ lhs: ArticleDraft,
-    _ rhs: ArticleDraft,
-    ascending: Bool
-  ) -> Bool {
-    let comparison = lhs.title.localizedStandardCompare(rhs.title)
-    guard comparison != .orderedSame else {
-      if lhs.updatedAt != rhs.updatedAt {
-        return lhs.updatedAt > rhs.updatedAt
-      }
-      return lhs.id.uuidString < rhs.id.uuidString
-    }
-    return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
-  }
-
-  private func stableTitleOrder(_ lhs: ArticleDraft, _ rhs: ArticleDraft) -> Bool {
-    let comparison = lhs.title.localizedStandardCompare(rhs.title)
-    guard comparison == .orderedSame else {
-      return comparison == .orderedAscending
-    }
-    return lhs.id.uuidString < rhs.id.uuidString
+    let projectionOrder = DraftListSortOrder(rawValue: rawValue) ?? .updatedNewest
+    return DraftListProjection.sorted(drafts, by: projectionOrder)
   }
 }
 

@@ -13,6 +13,51 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertTrue(store.contentPresentation === store.contentPresentation)
     XCTAssertTrue(store.activityStatus === store.activityStatus)
     XCTAssertTrue(store.workspaceLayout === store.workspaceLayout)
+    XCTAssertTrue(store.settings === store.settings)
+    XCTAssertTrue(store.publishStatus === store.publishStatus)
+    XCTAssertTrue(store.siteMaintenance === store.siteMaintenance)
+  }
+
+  func testSettingsFacadeIgnoresDraftBodyAndChatStreaming() throws {
+    let store = WorkbenchStore()
+    let settings = store.settings
+    var settingsChanges = 0
+    let cancellable = settings.objectWillChange.sink { settingsChanges += 1 }
+    let draft = try XCTUnwrap(store.selectedDraft)
+
+    var bodyEdit = draft
+    bodyEdit.bodyMarkdown = "body only"
+    store.updateDraft(bodyEdit)
+    store.setAIChatMessages([
+      AIPublishingChatMessage(role: .assistant, content: "streamed")
+    ])
+    store.setAIChatMessage("stream status")
+
+    XCTAssertEqual(settingsChanges, 0)
+
+    store.setAIActionMessage("设置相关状态")
+    XCTAssertEqual(settingsChanges, 1)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testPublishStatusFacadeIgnoresBodyOnlyDraftChanges() throws {
+    let store = WorkbenchStore()
+    let status = store.publishStatus
+    var statusChanges = 0
+    let cancellable = status.objectWillChange.sink { statusChanges += 1 }
+    let draft = try XCTUnwrap(store.selectedDraft)
+
+    var bodyEdit = draft
+    bodyEdit.bodyMarkdown = "body only"
+    store.updateDraft(bodyEdit)
+
+    XCTAssertEqual(statusChanges, 0)
+
+    var titleEdit = bodyEdit
+    titleEdit.title = "标题发生变化-(UUID().uuidString)"
+    store.updateDraft(titleEdit)
+    XCTAssertGreaterThan(statusChanges, 0)
+    withExtendedLifetime(cancellable) {}
   }
 
   func testWorkspaceLayoutFacadeIgnoresUnrelatedChildStoreChanges() {
@@ -131,6 +176,23 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
 
     XCTAssertEqual(shell.selectedSection, section)
     XCTAssertEqual(shellChanges, 1)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testPublishingFacadeIgnoresUnrelatedPublishingStoreState() {
+    let store = WorkbenchStore()
+    let publishing = store.publishing
+    var publishingChanges = 0
+    let cancellable = publishing.objectWillChange.sink { publishingChanges += 1 }
+
+    store.setPublishActionMessage("发布进度变化", status: .inProgress)
+    XCTAssertEqual(publishingChanges, 0)
+
+    let nextSection: WorkspaceSection = publishing.selectedSection == .library ? .writing : .library
+    publishing.selectSection(nextSection)
+    XCTAssertEqual(publishing.selectedSection, nextSection)
+    XCTAssertEqual(publishingChanges, 1)
+
     withExtendedLifetime(cancellable) {}
   }
 

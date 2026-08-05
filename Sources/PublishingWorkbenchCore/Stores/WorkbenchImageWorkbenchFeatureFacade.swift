@@ -8,13 +8,20 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
 
   init(store: WorkbenchStore) {
     self.store = store
-    observe(store.imageStore.objectWillChange)
-    observe(store.publishingStore.objectWillChange)
+    // Keep image state local to the image fields this facade exposes.  A
+    // publishing-store-wide bridge made every unrelated draft, release and
+    // repository mutation redraw image controls.
+    observeValue(store.publishingStore.$imageWorkbenchReport)
+    observeValue(store.publishingStore.$imageActionMessage)
     observeValue(store.$imageWorkbenchInputRevision)
     observeValue(store.aiWorkspaceStore.$aiTokenAvailability)
     observeValue(store.aiWorkspaceStore.$aiImageTextSuggestionDraftID)
     observeValue(store.aiWorkspaceStore.$aiImageTextSuggestions)
     observeValue(store.aiWorkspaceStore.$isAIImageTextRunning)
+    observeValue(store.imageStore.$isImageBatchProcessing)
+    observeValue(store.imageStore.$imageBatchProgress)
+    observeValue(store.imageStore.$isSiteSummaryLoading)
+    observeValue(store.imageStore.$siteSummaryErrorMessage)
   }
 
   public var report: ImageWorkbenchReport? {
@@ -163,12 +170,6 @@ public final class WorkbenchImageWorkbenchFeatureFacade: ObservableObject {
 
   public func attachRepositoryImage(repositoryPath: String, toDraftID draftID: UUID) {
     store.attachRepositoryImage(repositoryPath: repositoryPath, toDraftID: draftID)
-  }
-
-  private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {
-    publisher
-      .sink { [weak self] _ in self?.objectWillChange.send() }
-      .store(in: &cancellables)
   }
 
   private func observeValue<P: Publisher>(_ publisher: P) where P.Failure == Never {

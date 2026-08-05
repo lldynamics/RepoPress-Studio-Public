@@ -13,26 +13,26 @@ extension PublishingStore {
   }
 
   public var selectedDraft: ArticleDraft? {
-    if let selectedDraftID,
-       let selected = writingDrafts.first(where: { $0.id == selectedDraftID }) {
-      return selected
-    }
-    return writingDrafts.first
+    DraftListProjection.selectedDraft(
+      drafts,
+      selectedDraftID: selectedDraftID,
+      activeProfileID: activeProfileID,
+      scope: draftListContentScope
+    )
   }
 
   /// Site-owned drafts for repository, publishing, maintenance and batch operations.
   public var visibleDrafts: [ArticleDraft] {
-    drafts.filter { $0.belongs(toSiteProfileID: activeProfileID) }
+    DraftListProjection.siteDrafts(drafts, for: activeProfileID)
   }
 
   /// Drafts shown by the Writing sidebar for its currently selected content scope.
   public var writingDrafts: [ArticleDraft] {
-    switch draftListContentScope {
-    case .currentSite:
-      return visibleDrafts
-    case .general:
-      return drafts.filter(\.isGeneralDraft)
-    }
+    DraftListProjection.writingDrafts(
+      drafts,
+      activeProfileID: activeProfileID,
+      scope: draftListContentScope
+    )
   }
 
   var generalDraftPublishingIssue: PreflightIssue {
@@ -136,22 +136,14 @@ extension PublishingStore {
     draftIssuesWithRepository: [PreflightIssue],
     store: WorkbenchStore
   ) -> LocalPublishReadiness {
-    let writeBlockingIssues = blockingLocalPublishIssues(
-      preview: preview,
-      draftIssues: draftIssuesWithoutRepository
-    )
-    var commitBlockingIssues = blockingLocalPublishIssues(
-      preview: preview,
-      draftIssues: draftIssuesWithRepository
-    )
+    var repositoryBlockingIssues: [PreflightIssue] = []
     if profile.purpose.requiresRepositoryReadiness {
       if let repositoryReport = store.repositoryReport(for: profile) {
-        if let missingGitIssue = repositoryReport.preflightIssues.first(where: { $0.title == CoreL10n.text("未发现 .git") }),
-           !commitBlockingIssues.contains(where: { $0.title == missingGitIssue.title }) {
-          commitBlockingIssues.append(missingGitIssue)
+        if let missingGitIssue = repositoryReport.preflightIssues.first(where: { $0.title == CoreL10n.text("未发现 .git") }) {
+          repositoryBlockingIssues.append(missingGitIssue)
         }
       } else {
-        commitBlockingIssues.append(
+        repositoryBlockingIssues.append(
           PreflightIssue(
             severity: .error,
             title: CoreL10n.text("仓库尚未扫描"),
@@ -165,29 +157,13 @@ extension PublishingStore {
       package: package,
       repositoryReport: store.repositoryReport(for: profile)
     )
-    let warningIssues = (preview.issues + draftIssuesWithRepository + remoteWarningIssues)
-      .filter { $0.severity == .warning }
-    let changedFileCount = preview.changedFileDiffs.count
-    let writeReadiness: LocalPublishActionReadiness = {
-      if !writeBlockingIssues.isEmpty { return .blocked }
-      if changedFileCount == 0 { return .unchanged }
-      if !warningIssues.isEmpty { return .needsReview }
-      return .ready
-    }()
-    let commitReadiness: LocalPublishActionReadiness = {
-      if !commitBlockingIssues.isEmpty { return .blocked }
-      if changedFileCount == 0 { return .unchanged }
-      if !warningIssues.isEmpty { return .needsReview }
-      return .ready
-    }()
-    return LocalPublishReadiness(
-      writeReadiness: writeReadiness,
-      commitReadiness: commitReadiness,
-      changedFileCount: changedFileCount,
-      fileCount: package.files.count,
-      writeBlockingIssues: writeBlockingIssues,
-      commitBlockingIssues: commitBlockingIssues,
-      warningIssues: warningIssues
+    return PublishingReadinessProjection.makeReadiness(
+      package: package,
+      preview: preview,
+      draftIssuesWithoutRepository: draftIssuesWithoutRepository,
+      draftIssuesWithRepository: draftIssuesWithRepository,
+      repositoryBlockingIssues: repositoryBlockingIssues,
+      remoteWarningIssues: remoteWarningIssues
     )
   }
 
@@ -205,7 +181,10 @@ extension PublishingStore {
     preview: LocalPublishPreview,
     draftIssues: [PreflightIssue]
   ) -> [PreflightIssue] {
-    (draftIssues + preview.issues).filter { $0.severity == .error }
+    PublishingReadinessProjection.blockingIssues(
+      preview: preview,
+      draftIssues: draftIssues
+    )
   }
 
   public func blockedLocalPublishMessage(action: String, issues: [PreflightIssue]) -> String {
@@ -494,21 +473,31 @@ extension PublishingStore {
     let profile = store.activeProfile
     let allDrafts = store.drafts.filter { $0.belongs(toSiteProfileID: profile.id) }
     let duplicateIndex = PreflightDuplicateIndex(drafts: allDrafts, profile: profile)
-    return PublicRiskSummary(
-      issues: drafts.flatMap {
-        preflightIssues(
+    let summaries = drafts.map {
+      DraftPreflightSummary(
+        draftID: $0.id,
+        draftTitle: $0.title,
+        markdownPath: store.profile(for: $0).markdownPath(for: $0),
+        issues: preflightIssues(
           for: $0,
           includeRepositoryReadiness: false,
           allDrafts: allDrafts,
           duplicateIndex: duplicateIndex,
           store: store
         )
-      }
-    )
+      )
+    }
+    return ContentHealthProjection.publicRiskSummary(from: summaries)
   }
 
   public func publicRiskSummary(for draft: ArticleDraft, store: WorkbenchStore) -> PublicRiskSummary {
-    PublicRiskSummary(issues: preflightIssues(for: draft, includeRepositoryReadiness: false, store: store))
+    let summary = DraftPreflightSummary(
+      draftID: draft.id,
+      draftTitle: draft.title,
+      markdownPath: store.profile(for: draft).markdownPath(for: draft),
+      issues: preflightIssues(for: draft, includeRepositoryReadiness: false, store: store)
+    )
+    return ContentHealthProjection.publicRiskSummary(from: [summary])
   }
 
   public func publicRiskDraftSummaries(store: WorkbenchStore) -> [DraftPreflightSummary] {

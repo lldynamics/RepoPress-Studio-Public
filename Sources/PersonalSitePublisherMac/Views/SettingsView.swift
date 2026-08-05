@@ -2,7 +2,8 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct SettingsView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var settingsState: WorkbenchSettingsFeatureFacade
   let rssStore: RSSReaderStore?
   @ObservedObject var launchCoordinator: WorkbenchLaunchCoordinator
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
@@ -19,12 +20,14 @@ struct SettingsView: View {
     launchCoordinator: WorkbenchLaunchCoordinator
   ) {
     self.store = store
+    _settingsState = ObservedObject(wrappedValue: store.settings)
     self.rssStore = rssStore
     self.launchCoordinator = launchCoordinator
     _selectedSettingsTab = State(initialValue: Self.initialSettingsTab())
   }
 
   var body: some View {
+    let _ = settingsState
     HStack(spacing: 0) {
       settingsSidebar
       Divider()
@@ -35,7 +38,7 @@ struct SettingsView: View {
         Divider()
 
         selectedSettingsTab.makeContent(context: settingsContext)
-          .scrollIndicators(.hidden)
+          .scrollIndicators(.automatic)
           .frame(maxWidth: selectedSettingsTab.contentMaxWidth)
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
       }

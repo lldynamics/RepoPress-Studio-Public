@@ -202,17 +202,24 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
 }
 
 struct WorkspaceToolbarLeadingContent: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var shell: WorkbenchShellFeatureFacade
   let isCompact: Bool
+
+  init(store: WorkbenchStore, isCompact: Bool) {
+    self.store = store
+    _shell = ObservedObject(wrappedValue: store.shell)
+    self.isCompact = isCompact
+  }
 
   var body: some View {
     WorkspaceToolbarControlCluster {
       Menu {
-        ForEach(store.publishingProfiles) { profile in
+        ForEach(shell.publishingProfiles) { profile in
           Button {
             store.selectProfile(profile.id)
           } label: {
-            if profile.id == store.activeProfileID {
+            if profile.id == shell.activeProfileID {
               Label(profile.name, systemImage: "checkmark")
             } else {
               Text(profile.name)
@@ -221,10 +228,10 @@ struct WorkspaceToolbarLeadingContent: View {
         }
       } label: {
         WorkspaceToolbarMenuLabel(
-          title: store.activeProfile.name,
+          title: shell.activeProfile.name,
           systemImage: "globe",
           showsTitle: !isCompact,
-          siteKindDisplayName: store.activeProfile.siteKind.localizedDisplayName
+          siteKindDisplayName: shell.activeProfile.siteKind.localizedDisplayName
         )
         .frame(maxWidth: isCompact ? nil : 200, alignment: .leading)
       }
@@ -232,11 +239,11 @@ struct WorkspaceToolbarLeadingContent: View {
       .menuIndicator(.hidden)
       .help(
         String(
-          localized: "个人网站：\(store.activeProfile.name) · \(store.activeProfile.siteKind.localizedDisplayName)"
+          localized: "个人网站：\(shell.activeProfile.name) · \(shell.activeProfile.siteKind.localizedDisplayName)"
         )
       )
       .accessibilityLabel("切换个人网站")
-      .accessibilityValue(store.activeProfile.name)
+      .accessibilityValue(shell.activeProfile.name)
       .accessibilityIdentifier("workspace-profile-menu")
 
     }
@@ -292,7 +299,8 @@ private enum PublishingStatusSeverity: Int {
 }
 
 struct PublishingStatusToolbarControl: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var statusState: WorkbenchPublishStatusFeatureFacade
   let canUseProtectedWorkbench: Bool
   let selectedDraftID: UUID?
   let openPublishFlow: () -> Void
@@ -301,6 +309,25 @@ struct PublishingStatusToolbarControl: View {
   let openReleaseHistory: () -> Void
   @State private var isPresented = false
   @State private var syncAnimationTrigger = 0
+
+  init(
+    store: WorkbenchStore,
+    canUseProtectedWorkbench: Bool,
+    selectedDraftID: UUID?,
+    openPublishFlow: @escaping () -> Void,
+    openRepositoryOverview: @escaping () -> Void,
+    openContentHealthOverview: @escaping () -> Void,
+    openReleaseHistory: @escaping () -> Void
+  ) {
+    self.store = store
+    _statusState = ObservedObject(wrappedValue: store.publishStatus)
+    self.canUseProtectedWorkbench = canUseProtectedWorkbench
+    self.selectedDraftID = selectedDraftID
+    self.openPublishFlow = openPublishFlow
+    self.openRepositoryOverview = openRepositoryOverview
+    self.openContentHealthOverview = openContentHealthOverview
+    self.openReleaseHistory = openReleaseHistory
+  }
 
   var body: some View {
     let items = statusItems
@@ -376,8 +403,8 @@ struct PublishingStatusToolbarControl: View {
 
   private var repositoryStatus: PublishingStatusPopoverItem {
     let area = PublishingStatusArea.repository
-    if store.activeProfile.purpose.requiresRepositoryReadiness,
-       store.activeProfile.localRepositoryRootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+    if statusState.activeProfile.purpose.requiresRepositoryReadiness,
+       statusState.activeProfile.localRepositoryRootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       return PublishingStatusPopoverItem(
         area: area,
         value: String(localized: "未配置"),
@@ -388,7 +415,7 @@ struct PublishingStatusToolbarControl: View {
       )
     }
 
-    guard let report = store.repositoryReport else {
+    guard let report = statusState.repositoryReport else {
       return PublishingStatusPopoverItem(
         area: area,
         value: String(localized: "待扫描"),
@@ -433,7 +460,7 @@ struct PublishingStatusToolbarControl: View {
 
   private var draftStatus: PublishingStatusPopoverItem {
     let area = PublishingStatusArea.draft
-    guard let draft = store.selectedDraft else {
+    guard let draft = statusState.selectedDraft else {
       return PublishingStatusPopoverItem(
         area: area,
         value: String(localized: "未选择文章"),
@@ -444,10 +471,10 @@ struct PublishingStatusToolbarControl: View {
       )
     }
 
-    let issues = store.preflightIssues
+    let issues = statusState.preflightIssues
     let blockingCount = max(
       issues.filter { $0.severity == .error }.count,
-      store.localPublishReadiness?.blockingIssueCount ?? 0
+      statusState.localPublishReadiness?.blockingIssueCount ?? 0
     )
     if blockingCount > 0 {
       return PublishingStatusPopoverItem(
@@ -462,7 +489,7 @@ struct PublishingStatusToolbarControl: View {
 
     let warningCount = max(
       issues.filter { $0.severity == .warning }.count,
-      store.localPublishReadiness?.warningIssues.count ?? 0
+      statusState.localPublishReadiness?.warningIssues.count ?? 0
     )
     if warningCount > 0 {
       return PublishingStatusPopoverItem(
@@ -475,7 +502,7 @@ struct PublishingStatusToolbarControl: View {
       )
     }
 
-    guard let readiness = store.localPublishReadiness,
+    guard let readiness = statusState.localPublishReadiness,
           readiness.writeReadiness != .blocked,
           readiness.commitReadiness != .blocked else {
       return PublishingStatusPopoverItem(
@@ -500,7 +527,7 @@ struct PublishingStatusToolbarControl: View {
 
   private var deploymentStatus: PublishingStatusPopoverItem {
     let area = PublishingStatusArea.deployment
-    let entries = store.activeProfileReleaseLedger.entries
+    let entries = statusState.activeProfileReleaseLedger.entries
     guard !entries.isEmpty else {
       return PublishingStatusPopoverItem(
         area: area,

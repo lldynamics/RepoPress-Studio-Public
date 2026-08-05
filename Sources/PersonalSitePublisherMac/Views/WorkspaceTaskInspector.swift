@@ -70,7 +70,11 @@ struct WorkspaceTaskInspector: View {
 }
 
 struct RepositoryContextInspectorView: View {
-  @ObservedObject var store: WorkbenchStore
+  @ObservedObject private var statusState: WorkbenchPublishStatusFeatureFacade
+
+  init(store: WorkbenchStore) {
+    _statusState = ObservedObject(wrappedValue: store.publishStatus)
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -106,7 +110,7 @@ struct RepositoryContextInspectorView: View {
 
   @ViewBuilder
   private var blockerSection: some View {
-    let issues = store.repositoryReport?.preflightIssues ?? []
+    let issues = statusState.repositoryReport?.preflightIssues ?? []
     if let issue = issues.first(where: { $0.severity == .error })
       ?? issues.first(where: { $0.severity == .warning }) {
       inspectorCard(title: "当前阻断", systemImage: "exclamationmark.triangle") {
@@ -117,7 +121,7 @@ struct RepositoryContextInspectorView: View {
           .font(.caption)
           .foregroundStyle(.secondary)
       }
-    } else if let readiness = store.localPublishReadiness,
+    } else if let readiness = statusState.localPublishReadiness,
               readiness.blockingIssueCount > 0 {
       inspectorCard(title: "当前阻断", systemImage: "checklist") {
         Text("当前文章有 \(readiness.blockingIssueCount) 个发布阻断项。")
@@ -134,7 +138,7 @@ struct RepositoryContextInspectorView: View {
 
   @ViewBuilder
   private var changedFilesSection: some View {
-    let files = store.repositoryReport?.changedFiles ?? []
+    let files = statusState.repositoryReport?.changedFiles ?? []
     inspectorCard(title: "文件变更", systemImage: "doc.text.magnifyingglass") {
       if files.isEmpty {
         Text("当前工作树没有变更。")

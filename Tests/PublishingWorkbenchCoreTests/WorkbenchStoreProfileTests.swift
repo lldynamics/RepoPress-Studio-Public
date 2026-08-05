@@ -346,7 +346,7 @@ final class WorkbenchStoreProfileTests: XCTestCase {
     XCTAssertEqual(store.publishActionMessage, "至少需要保留一个站点配置。")
   }
 
-  func testCanDeferPreflightRefreshWhileEditing() throws {
+  func testCanDeferPreflightRefreshWhileEditing() async throws {
     let store = try TestWorkbenchFactory.makeStore()
     var draft = try XCTUnwrap(store.selectedDraft)
     store.setAutomaticallyRefreshPreflightOnEdit(false)
@@ -358,10 +358,37 @@ final class WorkbenchStoreProfileTests: XCTestCase {
 
     XCTAssertEqual(store.preflightIssues, [])
 
-    store.runPreflight()
+    await store.runPreflightAndWait()
 
     XCTAssertTrue(store.preflightIssues.contains { $0.field == "title" })
     XCTAssertTrue(store.preflightIssues.contains { $0.field == "slug" })
+  }
+
+  func testKnownArticleTitlesCacheRevisionIgnoresStagedBodyAndTracksDraftMutation() throws {
+    let store = try TestWorkbenchFactory.makeStore()
+    var draft = try XCTUnwrap(store.selectedDraft)
+    draft.title = "初始文章"
+    store.updateDraft(draft)
+
+    let initialTitles = store.knownArticleTitlesForMarkdownDiagnostics
+    let initialRevision = store.draftMutationRevision
+    XCTAssertTrue(initialTitles.contains("初始文章"))
+
+    _ = store.stageDraftBody(
+      "正文暂存不会改变文章标题索引。",
+      for: draft.id,
+      baseRevision: store.draftBodyEditorBuffer(for: draft.id).revision
+    )
+    XCTAssertEqual(store.draftMutationRevision, initialRevision)
+    XCTAssertEqual(store.knownArticleTitlesForMarkdownDiagnostics, initialTitles)
+
+    var renamedDraft = try XCTUnwrap(store.drafts.first(where: { $0.id == draft.id }))
+    renamedDraft.title = "改名后的文章"
+    store.updateDraft(renamedDraft)
+
+    XCTAssertGreaterThan(store.draftMutationRevision, initialRevision)
+    XCTAssertTrue(store.knownArticleTitlesForMarkdownDiagnostics.contains("改名后的文章"))
+    XCTAssertFalse(store.knownArticleTitlesForMarkdownDiagnostics.contains("初始文章"))
   }
 
   func testApplyDetectedRepositoryRemoteUpdatesReviewConfiguration() throws {

@@ -3,8 +3,15 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct RepositoryHTMLSourceInspectorView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var statusState: WorkbenchPublishStatusFeatureFacade
   @ObservedObject var session: RepositoryHTMLSourceSession
+
+  init(store: WorkbenchStore, session: RepositoryHTMLSourceSession) {
+    self.store = store
+    _statusState = ObservedObject(wrappedValue: store.publishStatus)
+    _session = ObservedObject(wrappedValue: session)
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -139,7 +146,7 @@ struct RepositoryHTMLSourceInspectorView: View {
             .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
         }
       } else {
-        Text(store.repositoryReport == nil ? "扫描仓库后显示 Git 状态。" : "当前扫描中没有这个文件的 Git 变更。")
+      Text(statusState.repositoryReport == nil ? "扫描仓库后显示 Git 状态。" : "当前扫描中没有这个文件的 Git 变更。")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
@@ -158,7 +165,7 @@ struct RepositoryHTMLSourceInspectorView: View {
       .frame(maxWidth: .infinity, alignment: .leading)
 
       Button {
-        Task { await session.reload(profile: store.activeProfile) }
+        Task { await session.reload(profile: statusState.activeProfile) }
       } label: {
         Label("重新载入磁盘版本", systemImage: "arrow.clockwise")
       }
@@ -178,15 +185,15 @@ struct RepositoryHTMLSourceInspectorView: View {
   private var canSave: Bool {
     session.hasUnsavedChanges
       && !session.isSaving
-      && session.isDocumentFromCurrentRepository(store.activeProfile)
+      && session.isDocumentFromCurrentRepository(statusState.activeProfile)
   }
 
   private func save() {
     guard canSave else { return }
     Task {
-      if await session.save(profile: store.activeProfile) {
+      if await session.save(profile: statusState.activeProfile) {
         await store.repository.scanAsync()
-        await session.refreshFiles(profile: store.activeProfile)
+        await session.refreshFiles(profile: statusState.activeProfile)
       }
     }
   }
@@ -195,7 +202,7 @@ struct RepositoryHTMLSourceInspectorView: View {
     guard document.dialect == .html, !session.hasUnsavedChanges else { return }
     do {
       _ = try HTMLSourceEditingService().withResolvedFileURL(
-        profile: store.activeProfile,
+        profile: statusState.activeProfile,
         repositoryPath: document.repositoryPath
       ) { url in
         NSWorkspace.shared.open(url)
@@ -206,7 +213,7 @@ struct RepositoryHTMLSourceInspectorView: View {
   }
 
   private func changedFile(for document: RepositoryTextDocument) -> RepositoryChangedFile? {
-    store.repositoryReport?.changedFiles.first {
+    statusState.repositoryReport?.changedFiles.first {
       $0.displayPath == document.repositoryPath
     }
   }
