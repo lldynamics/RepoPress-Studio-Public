@@ -37,10 +37,8 @@ critical_paths=(
   Tests
   script
   .github
-  APP_STORE_CHECKLIST.md
-  docs/release-evidence
-  docs/app-store
-  docs/app-store-screenshots
+  docs/privacy-support-copy.md
+  docs/app-store/public-pages
 )
 
 untracked=()
