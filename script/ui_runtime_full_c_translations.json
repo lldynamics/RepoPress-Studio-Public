@@ -207,10 +207,6 @@
     "en": "Card Preview",
     "zh-Hans": "卡片预览"
   },
-  "历史": {
-    "en": "History",
-    "zh-Hans": "历史"
-  },
   "历史版本与当前版本比较": {
     "en": "Compare Historical and Current Versions",
     "zh-Hans": "历史版本与当前版本比较"
@@ -238,10 +234,6 @@
   "台账指标": {
     "en": "Ledger Metrics",
     "zh-Hans": "台账指标"
-  },
-  "启动本地接收器": {
-    "en": "Start Local Receiver",
-    "zh-Hans": "启动本地接收器"
   },
   "回滚上次替换": {
     "en": "Undo Last Replacement",

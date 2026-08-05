@@ -258,7 +258,7 @@ final class PreflightCheckServiceTests: XCTestCase {
       slug: "local-debug",
       bodyMarkdown: """
       This article documents a local preview workflow and includes enough text for the length rule.
-      Preview was tested at http://192.168.1.12:4321 from /Users/jinfang/site/content/posts/demo.md.
+      Preview was tested at http://192.168.1.12:4321 from /Users/example/site/content/posts/demo.md.
       """
     )
 

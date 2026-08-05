@@ -15,14 +15,41 @@ final class WorkbenchTaskCenterFacadeTests: XCTestCase {
         stage: .uploadingFiles,
         progress: 0.4,
         message: "正在上传",
-        detail: "article.md"
+        detail: "article.md",
+        completedByteCount: 12_300_000,
+        totalByteCount: 18_900_000
       )
     )
 
     let tasks = activityStatus.taskCenterItems
+    let gitTask = try XCTUnwrap(tasks.first(where: { $0.kind == .gitPush }))
     XCTAssertEqual(tasks.map(\.kind), [.aiRequest, .siteScan, .gitPush])
-    XCTAssertEqual(tasks.first(where: { $0.kind == .gitPush })?.progress, 0.4)
+    XCTAssertEqual(
+      try XCTUnwrap(gitTask.progress),
+      12_300_000.0 / 18_900_000.0,
+      accuracy: 0.000_001
+    )
+    XCTAssertTrue(gitTask.detail.contains("12.3 MB"))
     XCTAssertTrue(tasks.allSatisfy(\.isActive))
+  }
+
+  func testTaskCenterKeepsGitProgressIndeterminateWithoutByteTotals() throws {
+    let store = WorkbenchStore()
+    store.setRemoteRepositoryPublishing(true)
+    store.setRemoteRepositoryPublishProgress(
+      RemoteRepositoryPublishProgress(
+        stage: .uploadingFiles,
+        progress: 0.4,
+        message: "正在上传",
+        detail: "article.md"
+      )
+    )
+
+    let task = try XCTUnwrap(
+      store.activityStatus.taskCenterItems.first { $0.kind == .gitPush }
+    )
+    XCTAssertNil(task.progress)
+    XCTAssertEqual(task.detail, "正在上传 · article.md")
   }
 
   func testTaskCenterExposesAIFailureAndManualRetryAvailability() throws {

@@ -11,10 +11,6 @@
     "en": "Previous RSS Article",
     "zh-Hans": "上一条 RSS 文章"
   },
-  "上一篇": {
-    "en": "Previous",
-    "zh-Hans": "上一篇"
-  },
   "上下文知识建议": {
     "en": "Contextual Knowledge Suggestions",
     "zh-Hans": "上下文知识建议"
@@ -22,10 +18,6 @@
   "下一条 RSS 文章": {
     "en": "Next RSS Article",
     "zh-Hans": "下一条 RSS 文章"
-  },
-  "下一篇": {
-    "en": "Next",
-    "zh-Hans": "下一篇"
   },
   "为 RSS 高亮添加批注": {
     "en": "Add Note to RSS Highlight",
@@ -107,14 +99,6 @@
     "en": "Article tags saved.",
     "zh-Hans": "文章标签已保存。"
   },
-  "本地 Whisper 可执行文件路径": {
-    "en": "Local Whisper Executable Path",
-    "zh-Hans": "本地 Whisper 可执行文件路径"
-  },
-  "本地 Whisper 转写语言": {
-    "en": "Local Whisper Transcription Language",
-    "zh-Hans": "本地 Whisper 转写语言"
-  },
   "本文引用的资料": {
     "en": "Knowledge Cited by This Article",
     "zh-Hans": "本文引用的资料"
@@ -186,14 +170,6 @@
   "还没有标签": {
     "en": "No Tags Yet",
     "zh-Hans": "还没有标签"
-  },
-  "阅读上一篇文章": {
-    "en": "Read Previous Article",
-    "zh-Hans": "阅读上一篇文章"
-  },
-  "阅读下一篇文章": {
-    "en": "Read Next Article",
-    "zh-Hans": "阅读下一篇文章"
   },
   "高亮": {
     "en": "Highlight",

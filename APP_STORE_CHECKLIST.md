@@ -29,7 +29,7 @@
 
 - [x] Cover app-target SwiftUI literals, literal localization calls, workspace navigation keys, and semantic display names in the localization catalog.
   Evidence: UI-scope localization gate has complete Simplified Chinese and English values for the keys it extracts.
-- [x] Migrate App Store-critical `PublishingWorkbenchCore` presentation strings for preflight, image operations, deployment/webhooks, repository credentials, and visible error output into locale-aware resources.
+- [x] Migrate App Store-critical `PublishingWorkbenchCore` presentation strings for preflight, image operations, deployment status, repository credentials, and visible error output into locale-aware resources.
   Evidence: Core localization tests cover Simplified Chinese and English output for the migrated release-critical paths.
 - [ ] Complete remaining Simplified Chinese and English copy coverage across all Core-generated presentation output.
 - [x] Run the UI-scoped localization gate and review missing or stale strings within its declared extraction boundary.

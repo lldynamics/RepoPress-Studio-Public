@@ -125,31 +125,4 @@ final class AIPublishingChatTranscriptServiceTests: XCTestCase {
     XCTAssertTrue(transcript.contains("- 上下文摘要：通用聊天"))
   }
 
-  func testTokenUsageSummaryTotalsConversationUsage() {
-    let messages = [
-      AIPublishingChatMessage(
-        role: .assistant,
-        content: "第一条",
-        tokenUsage: AIChatTokenUsage(promptTokens: 8, completionTokens: 4, totalTokens: 12)
-      ),
-      AIPublishingChatMessage(
-        role: .assistant,
-        content: "第二条",
-        tokenUsage: AIChatTokenUsage(promptTokens: 5, completionTokens: 3, totalTokens: 8)
-      ),
-    ]
-
-    let summary = AIChatUsageSummaryService.summary(
-      messages: messages,
-      config: AIProviderConfig(preset: .local, baseURL: "http://127.0.0.1:11434/v1", model: "local", requiresAPIKey: false)
-    )
-
-    XCTAssertEqual(summary.promptTokens, 13)
-    XCTAssertEqual(summary.completionTokens, 7)
-    XCTAssertEqual(summary.totalTokens, 20)
-    XCTAssertEqual(summary.measuredMessageCount, 2)
-    XCTAssertEqual(summary.tokenDisplayText, "20 tokens · 输入 13 · 输出 7")
-    XCTAssertEqual(summary.estimatedCostUSD, 0)
-    XCTAssertTrue(summary.costDisplayText.contains("$0.0000"))
-  }
 }

@@ -143,10 +143,6 @@
     "en": "Keep File",
     "zh-Hans": "保留文件"
   },
-  "停止接收器": {
-    "en": "Stop Receiver",
-    "zh-Hans": "停止接收器"
-  },
   "先生成替换预览": {
     "en": "Generate Replacement Preview First",
     "zh-Hans": "先生成替换预览"
@@ -266,10 +262,6 @@
   "复制 CSV": {
     "en": "Copy CSV",
     "zh-Hans": "复制 CSV"
-  },
-  "复制地址": {
-    "en": "Copy Address",
-    "zh-Hans": "复制地址"
   },
   "复制当前行": {
     "en": "Copy Current Line",
@@ -650,10 +642,6 @@
   "重建语义索引": {
     "en": "Rebuild Semantic Index",
     "zh-Hans": "重建语义索引"
-  },
-  "高级调试": {
-    "en": "Advanced Debugging",
-    "zh-Hans": "高级调试"
   },
   "高频%@：%@": {
     "en": "Frequent %@: %@",

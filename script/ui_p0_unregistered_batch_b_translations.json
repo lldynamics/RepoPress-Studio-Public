@@ -19,14 +19,6 @@
     "en": "https://example.com",
     "zh-Hans": "https://example.com"
   },
-  "whisper-cli / whisper.cpp 路径": {
-    "en": "Path to whisper-cli / whisper.cpp",
-    "zh-Hans": "whisper-cli / whisper.cpp 路径"
-  },
-  "使用本机 whisper.cpp-compatible CLI 和本地模型，不上传音频。当前支持从音频生成纯文本并追加到所选文章。": {
-    "en": "Uses a local whisper.cpp-compatible CLI and model without uploading audio. It currently supports transcribing audio to plain text and appending it to the selected article.",
-    "zh-Hans": "使用本机与 whisper.cpp 兼容的 CLI 和本地模型，不会上传音频。目前支持将音频转写为纯文本并追加到所选文章。"
-  },
   "依赖与脚本": {
     "en": "Dependencies and Scripts",
     "zh-Hans": "依赖与脚本"

@@ -27,10 +27,6 @@
     "en": "Endpoint:",
     "zh-Hans": "Endpoint："
   },
-  "H(item.level)": {
-    "en": "H(item.level)",
-    "zh-Hans": "H(item.level)"
-  },
   "MARKDOWN": {
     "en": "MARKDOWN",
     "zh-Hans": "MARKDOWN"
@@ -155,10 +151,6 @@
     "en": "Open Resource Folder",
     "zh-Hans": "打开资源目录"
   },
-  "扩写": {
-    "en": "Expand",
-    "zh-Hans": "扩写"
-  },
   "扫描全仓库 Markdown 引用，清理孤立资源并安全压缩大图。": {
     "en": "Scan Markdown references across the repository, clean up orphaned resources, and safely compress large images.",
     "zh-Hans": "扫描全仓库 Markdown 引用，清理孤立资源并安全压缩大图。"
@@ -174,10 +166,6 @@
   "收起悬浮大纲": {
     "en": "Collapse Floating Outline",
     "zh-Hans": "收起悬浮大纲"
-  },
-  "文章大纲悬浮导航": {
-    "en": "Floating Article Outline Navigation",
-    "zh-Hans": "文章大纲悬浮导航"
   },
   "暂无内容": {
     "en": "No Content Yet",
@@ -231,10 +219,6 @@
     "en": "Choose a local repository for the current site, then scan it to detect the startup command.",
     "zh-Hans": "请先为当前站点选择本地仓库，然后扫描仓库以识别启动命令。"
   },
-  "请先在写作区选择文章。": {
-    "en": "Select an article in the writing workspace first.",
-    "zh-Hans": "请先在写作区选择文章。"
-  },
   "请先选择一篇文章，再切换 AI 连接和模型。": {
     "en": "Select an article before switching the AI connection and model.",
     "zh-Hans": "请先选择一篇文章，再切换 AI 连接和模型。"
@@ -262,14 +246,6 @@
   "连接配置档案": {
     "en": "Connection Profiles",
     "zh-Hans": "连接配置档案"
-  },
-  "选择…": {
-    "en": "Choose…",
-    "zh-Hans": "选择…"
-  },
-  "选择音频并插入转写": {
-    "en": "Choose Audio and Insert Transcription",
-    "zh-Hans": "选择音频并插入转写"
   },
   "重新扫描资源和 Markdown 引用": {
     "en": "Rescan Resources and Markdown References",

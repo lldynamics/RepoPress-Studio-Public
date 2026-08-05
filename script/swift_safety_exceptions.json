@@ -27,16 +27,6 @@
       "rationale": "All JSONDecoder access is serialized by the wrapper lock."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/DeploymentWebhookHTTPReceiver.swift",
-      "declaration": "DeploymentWebhookConnectionState",
-      "rationale": "Connection mutations are serialized on the receiver queue."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Services/DeploymentWebhookHTTPReceiver.swift",
-      "declaration": "DeploymentWebhookHTTPReceiver",
-      "rationale": "Listener and connection state are confined to the receiver queue."
-    },
-    {
       "file": "Sources/PublishingWorkbenchCore/Services/GitCommandRunner.swift",
       "declaration": "BoundedOutputCollector",
       "rationale": "Collected output is protected by an internal lock."
@@ -187,11 +177,6 @@
       "rationale": "Journal generation state and the synchronous write path are serialized by the coordinator lock."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/ExternalLinkHTTPCheckService.swift",
-      "declaration": "ExternalLinkNoRedirectDelegate",
-      "rationale": "The URLSession redirect delegate is stateless and only rejects redirects through its callback."
-    },
-    {
       "file": "Sources/PublishingWorkbenchCore/Services/LocalContentImportIndexStore.swift",
       "declaration": "LocalContentImportIndexStore",
       "rationale": "Index mutations are serialized by the static lock; instance dependencies are immutable and filesystem access uses the SendableFileManager boundary."
@@ -200,11 +185,6 @@
       "file": "Sources/PublishingWorkbenchCore/Services/LocalSitePreviewFileWatcher.swift",
       "declaration": "LocalSitePreviewFileWatcher",
       "rationale": "Mutable watcher sources are confined to its serial queue and lifecycle flags are protected by the state lock."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Services/LocalWhisperTranscriptionService.swift",
-      "declaration": "LocalWhisperTerminationController",
-      "rationale": "Process lifecycle and termination-request state are protected by the controller lock; signal delivery occurs after unlocking."
     },
     {
       "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchDataRootBookmark.swift",
