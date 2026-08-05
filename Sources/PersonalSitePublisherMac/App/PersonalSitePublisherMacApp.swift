@@ -11,7 +11,6 @@ struct PersonalSitePublisherMacApp: App {
   private var accentPaletteRawValue = WorkbenchAccentPalette.system.rawValue
 
   init() {
-    NSScrollView.enableGlobalThinRedScrollers()
     AppLanguagePreference.prepareForLaunch()
     // Earlier builds disabled AppKit restoration globally. Remove those sticky
     // overrides now that the main workspace is owned by a native SwiftUI scene.
@@ -75,6 +74,7 @@ struct PersonalSitePublisherMacApp: App {
           minWidth: WorkbenchLayoutMode.minimumWindowWidth,
           minHeight: WorkbenchLayoutMode.minimumWindowHeight
         )
+        .thinRedScrollbars()
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
         .background(ScreenshotCaptureWindowBridge())
 #endif
@@ -116,6 +116,7 @@ struct PersonalSitePublisherMacApp: App {
           .workbenchSettingsWindowSize()
         }
       }
+        .thinRedScrollbars()
         .tint(selectedAccentPalette.color)
     }
   }

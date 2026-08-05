@@ -122,7 +122,7 @@ struct AISettingsView: View {
         }
       }
       .formStyle(.grouped)
-      .scrollIndicators(.hidden)
+      .scrollIndicators(.automatic)
       .padding(WorkbenchSpacing.content)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

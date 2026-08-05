@@ -31,7 +31,7 @@ struct SettingsConfigurationStatusView: View {
       }
     }
     .formStyle(.grouped)
-    .scrollIndicators(.hidden)
+    .scrollIndicators(.automatic)
     .padding(WorkbenchSpacing.content)
     .accessibilityIdentifier("configuration-status-settings")
   }
