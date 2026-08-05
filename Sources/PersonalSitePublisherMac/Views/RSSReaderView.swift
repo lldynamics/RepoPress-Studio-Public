@@ -1,7 +1,6 @@
 import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
-import UniformTypeIdentifiers
 
 @MainActor
 private final class RSSArticleSearchDraft: ObservableObject {
@@ -25,6 +24,17 @@ final class RSSReaderPresentationState: ObservableObject {
     let tag: String?
     let dateRange: String
     let sortOrder: String
+  }
+
+  private struct VisibleArticlePageCacheKey: Equatable {
+    let query: ArticleQueryCacheKey
+    let displayLimit: Int
+  }
+
+  private struct ArticleSectionsCacheKey: Equatable {
+    let page: VisibleArticlePageCacheKey
+    let groupsByDate: Bool
+    let calendarDay: Date
   }
 
   private struct ArticleFacets {
@@ -66,6 +76,14 @@ final class RSSReaderPresentationState: ObservableObject {
     key: ArticleQueryCacheKey,
     articles: [RSSArticleHeader],
     unreadArticleIDs: Set<String>
+  )?
+  private var visibleArticlesCache: (
+    key: VisibleArticlePageCacheKey,
+    articles: [RSSArticleHeader]
+  )?
+  private var articleSectionsCache: (
+    key: ArticleSectionsCacheKey,
+    sections: [RSSArticleListSection]
   )?
   private var articleFacetsCache: (key: ArticleScopeCacheKey, facets: ArticleFacets)?
   private var readerMetricsCache: [String: ReaderMetricsCacheEntry] = [:]
@@ -119,7 +137,38 @@ final class RSSReaderPresentationState: ObservableObject {
   }
 
   func visibleArticles(in store: RSSReaderStore) -> [RSSArticleHeader] {
-    Array(matchingArticles(in: store).prefix(articleDisplayLimit))
+    let key = visibleArticlePageCacheKey(in: store)
+    if let visibleArticlesCache, visibleArticlesCache.key == key {
+      return visibleArticlesCache.articles
+    }
+    let articles = Array(matchingArticles(in: store).prefix(articleDisplayLimit))
+    visibleArticlesCache = (key, articles)
+    return articles
+  }
+
+  func visibleArticleSections(
+    in store: RSSReaderStore,
+    now: Date = Date(),
+    calendar: Calendar = .current
+  ) -> [RSSArticleListSection] {
+    let pageKey = visibleArticlePageCacheKey(in: store)
+    let key = ArticleSectionsCacheKey(
+      page: pageKey,
+      groupsByDate: groupsByDate,
+      calendarDay: calendar.startOfDay(for: now)
+    )
+    if let articleSectionsCache, articleSectionsCache.key == key {
+      return articleSectionsCache.sections
+    }
+    let sections = RSSArticlePresentationSupport.sections(
+      for: visibleArticles(in: store),
+      groupsByDate: groupsByDate,
+      sortOrder: sortOrder,
+      now: now,
+      calendar: calendar
+    )
+    articleSectionsCache = (key, sections)
+    return sections
   }
 
   func scopedSourceIDs(in store: RSSReaderStore) -> Set<UUID> {
@@ -205,6 +254,15 @@ final class RSSReaderPresentationState: ObservableObject {
       tag: selectedTag,
       dateRange: dateRange.rawValue,
       sortOrder: sortOrder.rawValue
+    )
+  }
+
+  private func visibleArticlePageCacheKey(
+    in store: RSSReaderStore
+  ) -> VisibleArticlePageCacheKey {
+    VisibleArticlePageCacheKey(
+      query: articleQueryCacheKey(in: store),
+      displayLimit: articleDisplayLimit
     )
   }
 
@@ -315,165 +373,6 @@ final class RSSReaderPresentationState: ObservableObject {
       await store.refresh(feedID: feedID)
     }
     synchronizeSelection(in: store)
-  }
-
-  func importOPML(from store: RSSReaderStore) {
-    let panel = NSOpenPanel()
-    panel.allowedContentTypes = [
-      .xml,
-      UTType(filenameExtension: "opml") ?? .data
-    ]
-    panel.allowsMultipleSelection = false
-    panel.canChooseDirectories = false
-    panel.canChooseFiles = true
-    guard panel.runModal() == .OK, let url = panel.url else { return }
-    do {
-      let values = try url.resourceValues(forKeys: [.fileSizeKey])
-      guard (values.fileSize ?? 0) <= 5 * 1024 * 1024 else {
-        throw RSSReaderError.invalidOPML("文件超过 5 MB")
-      }
-      let originalData = try Data(contentsOf: url)
-      let subscriptions = try RSSOPMLParser.parse(data: originalData)
-      let riskReport = RSSOPMLWriter.scanExportRisks(subscriptions: subscriptions)
-      let importData: Data
-      if riskReport.hasSuspectedCredentialQueryParameters {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = String(localized: "OPML 中的地址可能包含访问凭证")
-        alert.informativeText = credentialRiskDescription(
-          report: riskReport,
-          actionDescription: String(
-            localized: "可以将疑似凭证值替换为 REDACTED 后导入，或排除有风险的订阅。脱敏后需要有效凭证的订阅可能无法刷新。"
-          )
-        )
-        alert.addButton(withTitle: String(localized: "脱敏后导入"))
-        alert.addButton(withTitle: String(localized: "排除后导入"))
-        alert.addButton(withTitle: String(localized: "取消"))
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:
-          importData = try RSSOPMLWriter.prepareDocument(
-            subscriptions: subscriptions,
-            privacyAction: .redactCredentialQueryValues
-          ).data
-        case .alertSecondButtonReturn:
-          importData = try RSSOPMLWriter.prepareDocument(
-            subscriptions: subscriptions,
-            privacyAction: .excludeSubscriptionsWithCredentialQuery
-          ).data
-        default:
-          return
-        }
-      } else {
-        importData = originalData
-      }
-
-      let ids = try store.importOPML(data: importData)
-      isAddSubscriptionPresented = false
-      selectedScope = ids.first.map(RSSArticleScope.feed) ?? .all
-      selectedArticleID = nil
-      Task { @MainActor [weak self] in
-        for feedID in ids {
-          await store.refresh(feedID: feedID)
-        }
-        self?.synchronizeSelection(in: store)
-      }
-    } catch {
-      errorMessage = error.localizedDescription
-    }
-  }
-
-  func exportOPML(from store: RSSReaderStore) {
-    errorMessage = nil
-    guard !store.feeds.isEmpty else {
-      statusMessage = String(localized: "没有可导出的 RSS 订阅。")
-      return
-    }
-
-    do {
-      let subscriptions = store.feeds.map {
-        RSSOPMLSubscription(title: $0.displayTitle, url: $0.url, siteURL: $0.siteURL)
-      }
-      let riskReport = RSSOPMLWriter.scanExportRisks(subscriptions: subscriptions)
-      guard !riskReport.hasBlockingUserInfo else {
-        throw RSSReaderError.invalidOPML("订阅地址包含 URL 用户名或密码，请先修改地址。")
-      }
-
-      let privacyAction: RSSOPMLExportPrivacyAction
-      if riskReport.hasSuspectedCredentialQueryParameters {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = String(localized: "导出前处理可能的访问凭证")
-        alert.informativeText = credentialRiskDescription(
-          report: riskReport,
-          actionDescription: String(
-            localized: "可以保留订阅并将疑似凭证值替换为 REDACTED，或整个排除这些订阅。"
-          )
-        )
-        alert.addButton(withTitle: String(localized: "脱敏导出"))
-        alert.addButton(withTitle: String(localized: "排除风险订阅"))
-        alert.addButton(withTitle: String(localized: "取消"))
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:
-          privacyAction = .redactCredentialQueryValues
-        case .alertSecondButtonReturn:
-          privacyAction = .excludeSubscriptionsWithCredentialQuery
-        default:
-          return
-        }
-      } else {
-        privacyAction = .redactCredentialQueryValues
-      }
-
-      let prepared = try RSSOPMLWriter.prepareDocument(
-        subscriptions: subscriptions,
-        title: "RepoPress Studio RSS 订阅",
-        privacyAction: privacyAction
-      )
-
-      let panel = NSSavePanel()
-      panel.title = String(localized: "导出 OPML")
-      panel.message = String(
-        localized: "OPML 仅包含订阅名称与地址，不包含文章缓存或阅读状态。"
-      )
-      panel.prompt = String(localized: "导出")
-      panel.allowedContentTypes = [UTType(filenameExtension: "opml") ?? .xml]
-      panel.canCreateDirectories = true
-      panel.isExtensionHidden = false
-      panel.nameFieldStringValue = "rss-subscriptions.opml"
-      guard panel.runModal() == .OK, let selectedURL = panel.url else { return }
-
-      let destinationURL = selectedURL.pathExtension.isEmpty
-        ? selectedURL.appendingPathExtension("opml")
-        : selectedURL
-      try prepared.data.write(to: destinationURL, options: .atomic)
-      let excludedSuffix = prepared.excludedSubscriptionCount > 0
-        ? String(localized: "，已排除 \(prepared.excludedSubscriptionCount) 个风险订阅")
-        : ""
-      statusMessage = String(
-        localized: "已导出 \(prepared.exportedSubscriptionCount) 个订阅到 \(destinationURL.lastPathComponent)\(excludedSuffix)。"
-      )
-    } catch {
-      statusMessage = nil
-      errorMessage = String(
-        format: String(localized: "OPML 导出失败：%@"),
-        error.localizedDescription
-      )
-    }
-  }
-
-  private func credentialRiskDescription(
-    report: RSSSubscriptionURLPrivacyReport,
-    actionDescription: String
-  ) -> String {
-    let names = report.suspectedCredentialQueryParameterNames
-      .prefix(8)
-      .joined(separator: "、")
-    let parameterSummary = names.isEmpty
-      ? String(localized: "未识别具体参数名。")
-      : String(localized: "疑似参数：\(names)。")
-    return String(
-      localized: "检测到 \(report.affectedSubscriptionCount) 个订阅可能包含访问凭证。\(parameterSummary)\n\n\(actionDescription)"
-    )
   }
 
 }
@@ -593,7 +492,7 @@ struct RSSReaderView: View {
       presentation.synchronizeSelection(in: store)
     }
     .onDisappear {
-      persistReadingProgressImmediately()
+      persistReadingProgressAfterDisappear()
     }
     .onChange(of: presentation.selectedArticleID) { _, _ in
       selectedReaderText = ""
@@ -635,8 +534,7 @@ struct RSSReaderView: View {
     }
     .sheet(isPresented: $presentation.isAddSubscriptionPresented) {
       RSSAddSubscriptionView(
-        onAdd: { value in presentation.addSubscription(value, to: store) },
-        onImportOPML: { presentation.importOPML(from: store) }
+        onAdd: { value in presentation.addSubscription(value, to: store) }
       )
     }
     .sheet(
@@ -848,21 +746,33 @@ struct RSSReaderView: View {
     readingProgressSaveTask?.cancel()
     let values = readingProgressByArticle
     let order = readingProgressOrder
-    readingProgressSaveTask = Task { @MainActor in
+    let revision = RSSReadingProgressPersistenceRevision.next()
+    readingProgressSaveTask = Task {
       try? await Task.sleep(nanoseconds: 350_000_000)
       guard !Task.isCancelled else { return }
-      RSSReadingProgressStore.save(values, orderedArticleIDs: order)
-      readingProgressSaveTask = nil
+      await RSSReadingProgressPersistence.shared.save(
+        values,
+        orderedArticleIDs: order,
+        revision: revision
+      )
+      if !Task.isCancelled {
+        readingProgressSaveTask = nil
+      }
     }
   }
 
-  private func persistReadingProgressImmediately() {
+  private func persistReadingProgressAfterDisappear() {
     readingProgressSaveTask?.cancel()
-    readingProgressSaveTask = nil
-    RSSReadingProgressStore.save(
-      readingProgressByArticle,
-      orderedArticleIDs: readingProgressOrder
-    )
+    let values = readingProgressByArticle
+    let order = readingProgressOrder
+    let revision = RSSReadingProgressPersistenceRevision.next()
+    readingProgressSaveTask = Task {
+      await RSSReadingProgressPersistence.shared.save(
+        values,
+        orderedArticleIDs: order,
+        revision: revision
+      )
+    }
   }
 
   @ViewBuilder
@@ -904,7 +814,6 @@ struct RSSReaderView: View {
     if store.feeds.isEmpty {
       RSSReaderWelcomeView(
         onAdd: { presentation.isAddSubscriptionPresented = true },
-        onImportOPML: { presentation.importOPML(from: store) },
         onDiscover: { value in presentation.addSubscription(value, to: store) }
       )
     } else {
@@ -993,10 +902,6 @@ struct RSSReaderView: View {
         }
       } : nil,
       onRetryLoad: { selectedArticleReloadToken &+= 1 },
-      onPrevious: { selectRelativeArticle(-1) },
-      onNext: { selectRelativeArticle(1) },
-      canNavigatePrevious: relativeArticle(offset: -1) != nil,
-      canNavigateNext: relativeArticle(offset: 1) != nil,
       onOpenOriginal: openOriginal,
       onToggleStarred: toggleSelectedArticleStarred,
       onToggleRead: toggleSelectedArticleRead,
@@ -1072,6 +977,32 @@ struct RSSReaderView: View {
         return
       }
       guard !Task.isCancelled, request == selectedArticleLoadRequest else { return }
+
+      let feedTitle = selectedFeedTitle
+      let readingMinutes = RSSArticleHTMLRenderer.bodyMetrics(article: article).readingUnits
+      let allowRemote = allowRemoteImages
+      let fontSize = readingFontSize
+      let lineSpacing = readingLineSpacing
+      let theme = selectedReadingTheme
+      let progress = selectedReadingProgress
+      let media = store.mediaAssets
+      let cacheDir = store.mediaCacheDirectoryURL
+
+      Task.detached(priority: .userInitiated) {
+        _ = RSSArticleHTMLRenderer.render(
+          article: article,
+          feedTitle: feedTitle,
+          readingMinutes: readingMinutes,
+          allowRemoteImages: allowRemote,
+          mediaAssets: media,
+          mediaCacheDirectoryURL: cacheDir,
+          fontSize: fontSize,
+          lineSpacing: lineSpacing,
+          theme: theme,
+          initialReadingProgress: progress
+        )
+      }
+
       selectedArticlePayload = article
       selectedArticleIsLoading = false
       if automaticTranslationEnabled {
@@ -1507,9 +1438,7 @@ struct RSSReaderWorkspaceSidebar: View {
       selectedScope: $presentation.selectedScope,
       isAddSubscriptionPresented: $presentation.isAddSubscriptionPresented,
       removeFeed: { feedPendingDeletion = $0 },
-      editFeedAddress: { feedPendingAddressEdit = $0 },
-      importOPML: { presentation.importOPML(from: store) },
-      exportOPML: { presentation.exportOPML(from: store) }
+      editFeedAddress: { feedPendingAddressEdit = $0 }
     )
     .sheet(item: $feedPendingAddressEdit) { feed in
       RSSEditFeedURLSheet(feed: feed) { newURL in
@@ -1561,8 +1490,6 @@ struct RSSFeedSidebar: View {
   @State private var isAttentionSectionExpanded = false
   let removeFeed: (RSSFeed) -> Void
   let editFeedAddress: (RSSFeed) -> Void
-  let importOPML: () -> Void
-  let exportOPML: () -> Void
 
   var body: some View {
     let feedGroups = RSSFeedSidebarFeedGroups(feeds: store.feeds)
@@ -1616,16 +1543,12 @@ struct RSSFeedSidebar: View {
             Label("重试失败订阅（\(failedFeedCount)）", systemImage: "arrow.triangle.2.circlepath")
           }
           .disabled(store.isRefreshing || failedFeedCount == 0)
-          Divider()
-          Button("导入 OPML", action: importOPML)
-          Button("导出 OPML", action: exportOPML)
-            .disabled(store.feeds.isEmpty)
         } label: {
           WorkspaceSidebarHeaderIcon("ellipsis.circle")
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .help("刷新及 OPML 管理")
+        .help("刷新订阅")
         .accessibilityLabel("RSS 订阅管理")
         .accessibilityIdentifier("rss-subscription-management")
       }
@@ -1743,35 +1666,6 @@ struct RSSFeedSidebar: View {
       .accessibilityValue(
         RSSArticlePresentationSupport.feedAccessibilityValue(feed, unreadCount: unreadCount)
       )
-
-      Menu {
-        Button {
-          Task { await store.refresh(feedID: feed.id, force: true) }
-        } label: {
-          Label(showsRecoveryAction ? "重试订阅" : "刷新此订阅", systemImage: "arrow.clockwise")
-        }
-        .disabled(isRefreshing)
-        Button("修改订阅地址", systemImage: "pencil") {
-          editFeedAddress(feed)
-        }
-        Button("复制订阅地址", systemImage: "doc.on.doc") {
-          NSPasteboard.general.clearContents()
-          NSPasteboard.general.setString(feed.url.absoluteString, forType: .string)
-        }
-        Divider()
-        Button("删除订阅", systemImage: "trash", role: .destructive) {
-          removeFeed(feed)
-        }
-      } label: {
-        Image(systemName: "ellipsis.circle")
-          .frame(width: 20, height: 20)
-      }
-      .menuStyle(.borderlessButton)
-      .menuIndicator(.hidden)
-      .controlSize(.small)
-      .foregroundStyle(showsRecoveryAction ? WorkbenchTheme.risk : Color.secondary)
-      .help("订阅操作")
-      .accessibilityLabel("\(feed.displayTitle) 的订阅操作")
     }
     .tag(RSSArticleScope.feed(feed.id))
     .contextMenu {
@@ -1943,6 +1837,76 @@ private extension RSSFeedHealthStatus {
   }
 }
 
+/// 后台准备的 RSS 列表派生数据（过滤/排序/分页/分组）。
+private struct RSSPreparedArticleList: Equatable, Sendable {
+  let matchingArticles: [RSSArticleHeader]
+  let visibleArticles: [RSSArticleHeader]
+  let sections: [RSSArticleListSection]
+  let unreadMatchingArticleIDs: Set<String>
+}
+
+/// 决定何时需要重新准备列表的输入快照。
+private struct RSSPrepareInput: Equatable {
+  let revision: UInt64
+  let scope: RSSArticleScope
+  let searchText: String
+  let unreadOnly: Bool
+  let sourceID: UUID?
+  let author: String?
+  let tag: String?
+  let dateRange: String
+  let sortOrder: String
+  let groupsByDate: Bool
+  let displayLimit: Int
+}
+
+/// RSS 文章列表的骨架屏占位：模拟文章行，列表在后台准备时显示，
+/// 避免空白或转圈带来的跳动感。
+private struct RSSArticleListSkeleton: View {
+  @State private var isPulsing = false
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      ForEach(0..<8, id: \.self) { _ in
+        skeletonRow
+      }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .opacity(isPulsing ? 0.55 : 1)
+    .animation(WorkbenchMotion.ambientPulse, value: isPulsing)
+    .onAppear { isPulsing = true }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("正在准备文章列表")
+  }
+
+  private var skeletonRow: some View {
+    HStack(alignment: .top, spacing: 10) {
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+        .fill(Color.primary.opacity(0.06))
+        .frame(width: 36, height: 36)
+
+      VStack(alignment: .leading, spacing: 6) {
+        RoundedRectangle(cornerRadius: 3)
+          .fill(Color.primary.opacity(0.08))
+          .frame(height: 12)
+          .frame(maxWidth: 260)
+        RoundedRectangle(cornerRadius: 3)
+          .fill(Color.primary.opacity(0.05))
+          .frame(height: 10)
+          .frame(maxWidth: 190)
+        RoundedRectangle(cornerRadius: 3)
+          .fill(Color.primary.opacity(0.04))
+          .frame(height: 10)
+          .frame(maxWidth: 150)
+      }
+
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+  }
+}
+
 private struct RSSArticleList: View {
   @ObservedObject var store: RSSReaderStore
   @ObservedObject var presentation: RSSReaderPresentationState
@@ -1956,12 +1920,16 @@ private struct RSSArticleList: View {
   @State private var isBatchSelectionMode = false
   @State private var selectedBatchArticleIDs = Set<String>()
   @FocusState private var isArticleListFocused: Bool
+  /// 后台准备的列表数据（过滤/排序/分组）。nil 表示首次准备中。
+  @State private var preparedList: RSSPreparedArticleList?
 
   var body: some View {
-    let matchingArticles = presentation.matchingArticles(in: store)
-    let visibleArticles = presentation.visibleArticles(in: store)
+    let prepared = preparedList
+    let matchingArticles = prepared?.matchingArticles ?? []
+    let visibleArticles = prepared?.visibleArticles ?? []
+    let visibleArticleSections = prepared?.sections ?? []
     let scopedArticles = presentation.scopedArticles(in: store)
-    let unreadMatchingArticleIDs = presentation.unreadMatchingArticleIDs(in: store)
+    let unreadMatchingArticleIDs = prepared?.unreadMatchingArticleIDs ?? []
     let availableSources = availableSources(
       matchingSourceIDs: presentation.scopedSourceIDs(in: store)
     )
@@ -2023,69 +1991,73 @@ private struct RSSArticleList: View {
           .accessibilityIdentifier("rss-article-search")
 
         HStack(spacing: 10) {
-          Toggle("只看未读", isOn: $presentation.unreadOnly)
-            .toggleStyle(.checkbox)
-            .accessibilityLabel("只显示未读 RSS 文章")
-            .accessibilityIdentifier("rss-unread-only")
-
           Menu {
-            if !availableSources.isEmpty, !isSingleFeedScope {
-              Picker("来源", selection: $presentation.selectedSourceID) {
-                Text("全部来源").tag(UUID?.none)
-                ForEach(availableSources) { feed in
-                  Text(feed.displayTitle).tag(Optional(feed.id))
+            Section("筛选") {
+              Toggle("只看未读", isOn: $presentation.unreadOnly)
+
+              if !availableSources.isEmpty, !isSingleFeedScope {
+                Picker("来源", selection: $presentation.selectedSourceID) {
+                  Text("全部来源").tag(UUID?.none)
+                  ForEach(availableSources) { feed in
+                    Text(feed.displayTitle).tag(Optional(feed.id))
+                  }
+                }
+              }
+              if !availableAuthors.isEmpty {
+                Picker("作者", selection: $presentation.selectedAuthor) {
+                  Text("全部作者").tag(String?.none)
+                  ForEach(availableAuthors, id: \.self) { author in
+                    Text(author).tag(Optional(author))
+                  }
+                }
+              }
+              if !availableTags.isEmpty {
+                Picker("标签", selection: $presentation.selectedTag) {
+                  Text("全部标签").tag(String?.none)
+                  ForEach(availableTags, id: \.self) { tag in
+                    Text(tag).tag(Optional(tag))
+                  }
+                }
+              }
+              Picker("日期", selection: $presentation.dateRange) {
+                ForEach(RSSArticleDateRange.allCases) { range in
+                  Text(range.title).tag(range)
                 }
               }
             }
-            if !availableAuthors.isEmpty {
-              Picker("作者", selection: $presentation.selectedAuthor) {
-                Text("全部作者").tag(String?.none)
-                ForEach(availableAuthors, id: \.self) { author in
-                  Text(author).tag(Optional(author))
+
+            Section("排序") {
+              Picker("排序", selection: $presentation.sortOrder) {
+                ForEach(RSSArticleSortOrder.allCases) { order in
+                  Text(order.title).tag(order)
                 }
               }
+              Toggle("按日期分组", isOn: $presentation.groupsByDate)
             }
-            if !availableTags.isEmpty {
-              Picker("标签", selection: $presentation.selectedTag) {
-                Text("全部标签").tag(String?.none)
-                ForEach(availableTags, id: \.self) { tag in
-                  Text(tag).tag(Optional(tag))
-                }
-              }
-            }
-            Picker("日期", selection: $presentation.dateRange) {
-              ForEach(RSSArticleDateRange.allCases) { range in
-                Text(range.title).tag(range)
-              }
-            }
+
             Divider()
             Button("清除筛选", action: clearFilters)
               .disabled(!hasActiveFilters)
           } label: {
-            Label(
-              activeFilterCount == 0
-                ? String(localized: "筛选")
-                : String(localized: "筛选（\(activeFilterCount)）"),
-              systemImage: "line.3.horizontal.decrease.circle"
-            )
-          }
-          .menuStyle(.borderlessButton)
-          .accessibilityLabel("筛选 RSS 文章，当前启用 \(activeFilterCount) 项")
-          .accessibilityIdentifier("rss-article-filter")
-
-          Menu {
-            Picker("排序", selection: $presentation.sortOrder) {
-              ForEach(RSSArticleSortOrder.allCases) { order in
-                Text(order.title).tag(order)
+            ZStack(alignment: .topTrailing) {
+              Image(systemName: "slider.horizontal.3")
+                .frame(width: 22, height: 22)
+              if activeFilterCount > 0 {
+                Text("\(activeFilterCount)")
+                  .font(.system(size: 8, weight: .bold, design: .rounded))
+                  .foregroundStyle(.white)
+                  .padding(2)
+                  .background(Color.accentColor, in: Circle())
+                  .offset(x: 5, y: -5)
               }
             }
-            Toggle("按日期分组", isOn: $presentation.groupsByDate)
-          } label: {
-            Label(presentation.sortOrder.title, systemImage: "arrow.up.arrow.down")
+            .frame(width: 26, height: 24)
           }
           .menuStyle(.borderlessButton)
-          .accessibilityLabel("文章排序：\(presentation.sortOrder.title)")
-          .accessibilityIdentifier("rss-article-sort")
+          .help("筛选与排序")
+          .accessibilityLabel("文章筛选与排序")
+          .accessibilityValue(articleFilterSortAccessibilityValue)
+          .accessibilityIdentifier("rss-article-filter-sort")
 
           if searchDraft.text != presentation.debouncedSearchText {
             ProgressView()
@@ -2104,9 +2076,12 @@ private struct RSSArticleList: View {
 
       Divider()
 
-      if let contentPresentation = listContentPresentation(for: currentListState) {
+      if prepared == nil {
+        RSSArticleListSkeleton()
+      } else if let contentPresentation = listContentPresentation(for: currentListState) {
         articleList(
           visibleArticles,
+          sections: visibleArticleSections,
           matchingCount: matchingArticles.count,
           feedLookup: feedLookup,
           showsRefreshBanner: contentPresentation.showsRefreshBanner,
@@ -2133,6 +2108,7 @@ private struct RSSArticleList: View {
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("rss-article-list")
     .focusable()
+    .focusEffectDisabled()
     .focused($isArticleListFocused)
     .accessibilityHint("点击文章后，可使用上下箭头浏览，按 Return 打开文章")
     .onKeyPress(.upArrow) {
@@ -2159,6 +2135,9 @@ private struct RSSArticleList: View {
       }
       guard !Task.isCancelled else { return }
       presentation.debouncedSearchText = searchDraft.text
+    }
+    .task(id: prepareInput) {
+      await prepareList()
     }
     .sheet(item: $feedPendingAddressEdit) { feed in
       RSSEditFeedURLSheet(feed: feed) { newURL in
@@ -2207,6 +2186,18 @@ private struct RSSArticleList: View {
     if presentation.selectedTag != nil { count += 1 }
     if presentation.dateRange != .all { count += 1 }
     return count
+  }
+
+  private var articleFilterSortAccessibilityValue: String {
+    var components: [String] = []
+    if activeFilterCount == 0 {
+      components.append("未启用筛选")
+    } else {
+      components.append("启用 (activeFilterCount) 项筛选")
+    }
+    components.append("排序 (presentation.sortOrder.title)")
+    components.append(presentation.groupsByDate ? "按日期分组" : "不按日期分组")
+    return components.joined(separator: "，")
   }
 
   @ViewBuilder
@@ -2369,6 +2360,69 @@ private struct RSSArticleList: View {
     presentation.dateRange = .all
   }
 
+  private var prepareInput: RSSPrepareInput {
+    RSSPrepareInput(
+      revision: store.mutationRevision,
+      scope: presentation.selectedScope ?? .all,
+      searchText: presentation.debouncedSearchText,
+      unreadOnly: presentation.unreadOnly,
+      sourceID: presentation.selectedSourceID,
+      author: presentation.selectedAuthor,
+      tag: presentation.selectedTag,
+      dateRange: presentation.dateRange.rawValue,
+      sortOrder: presentation.sortOrder.rawValue,
+      groupsByDate: presentation.groupsByDate,
+      displayLimit: presentation.articleDisplayLimit
+    )
+  }
+
+  /// 在后台计算过滤/排序/分组结果并填充 preparedList，避免首次进入或
+  /// 数据刷新后在主页线程同步处理几千篇文章。
+  private func prepareList() async {
+    let scope = presentation.selectedScope ?? .all
+    let searchText = presentation.debouncedSearchText
+    let unreadOnly = presentation.unreadOnly
+    let sourceID = presentation.selectedSourceID
+    let author = presentation.selectedAuthor
+    let tag = presentation.selectedTag
+    let dateRange = presentation.dateRange
+    let sortOrder = presentation.sortOrder
+    let groupsByDate = presentation.groupsByDate
+    let displayLimit = presentation.articleDisplayLimit
+    let base = store.articleHeaders(
+      for: scope,
+      searchText: searchText,
+      unreadOnly: unreadOnly
+    )
+
+    let result = await Task.detached(priority: .userInitiated) {
+      let matching = RSSArticlePresentationSupport.applyFiltersAndSort(
+        to: base,
+        sourceID: sourceID,
+        author: author,
+        tag: tag,
+        dateRange: dateRange,
+        sortOrder: sortOrder
+      )
+      let visible = Array(matching.prefix(displayLimit))
+      let sections = RSSArticlePresentationSupport.sections(
+        for: visible,
+        groupsByDate: groupsByDate,
+        sortOrder: sortOrder
+      )
+      let unreadIDs = Set(matching.lazy.filter { !$0.isRead }.map(\.id))
+      return RSSPreparedArticleList(
+        matchingArticles: matching,
+        visibleArticles: visible,
+        sections: sections,
+        unreadMatchingArticleIDs: unreadIDs
+      )
+    }.value
+
+    guard !Task.isCancelled else { return }
+    preparedList = result
+  }
+
   private func openOriginal(_ article: RSSArticleHeader) {
     guard let link = article.link else { return }
     _ = ExternalURLOpener.open(link) { message in
@@ -2378,7 +2432,7 @@ private struct RSSArticleList: View {
 
   private func moveArticleSelection(by offset: Int) {
     guard offset != 0 else { return }
-    let articles = presentation.matchingArticles(in: store)
+    let articles = preparedList?.matchingArticles ?? []
     guard !articles.isEmpty else { return }
 
     let currentIndex = selectedArticleID.flatMap { selectedID in
@@ -2508,6 +2562,7 @@ private struct RSSArticleList: View {
 
   private func articleList(
     _ articles: [RSSArticleHeader],
+    sections: [RSSArticleListSection],
     matchingCount: Int,
     feedLookup: RSSFeedLookup,
     showsRefreshBanner: Bool,
@@ -2560,13 +2615,7 @@ private struct RSSArticleList: View {
         ScrollViewReader { proxy in
           ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-              ForEach(
-                RSSArticlePresentationSupport.sections(
-                  for: articles,
-                  groupsByDate: presentation.groupsByDate,
-                  sortOrder: presentation.sortOrder
-                )
-              ) { section in
+              ForEach(sections) { section in
                 if let title = section.title {
                   Text(title)
                     .font(.caption.weight(.semibold))
@@ -2684,6 +2733,9 @@ private struct RSSArticleRow: View {
   @State private var isHovering = false
 
   var body: some View {
+    let relativeDate = (article.publishedAt ?? article.fetchedAt).formatted(
+      .relative(presentation: .named, unitsStyle: .abbreviated)
+    )
     VStack(alignment: .leading, spacing: 0) {
       HStack(alignment: .top, spacing: 8) {
       if isBatchSelectionMode {
@@ -2723,7 +2775,7 @@ private struct RSSArticleRow: View {
           if let author = article.author?.trimmedForPublishing.nilIfEmpty {
             Text(author)
           }
-          Text((article.publishedAt ?? article.fetchedAt).formatted(.relative(presentation: .named, unitsStyle: .abbreviated)))
+          Text(relativeDate)
           if article.isStarred {
             Image(systemName: "star.fill")
               .foregroundStyle(.yellow)
@@ -2751,38 +2803,11 @@ private struct RSSArticleRow: View {
       .frame(maxWidth: .infinity, alignment: .leading)
       .accessibilityElement(children: .combine)
       .accessibilityLabel(article.title)
-      .accessibilityValue(accessibilityValue)
+      .accessibilityValue(accessibilityValue(relativeDate: relativeDate))
 
-      Menu {
-        Button(
-          article.isStarred ? "移出稍后阅读" : "加入稍后阅读",
-          systemImage: article.isStarred ? "star.slash" : "star",
-          action: onToggleStarred
-        )
-        Button(
-          article.isRead ? "标为未读" : "标为已读",
-          systemImage: article.isRead ? "circle" : "checkmark.circle",
-          action: onToggleRead
-        )
-        if article.link != nil {
-          Divider()
-          Button("打开原文", systemImage: "safari", action: onOpenOriginal)
-        }
-      } label: {
-        Image(systemName: "ellipsis.circle")
-          .frame(width: 22, height: 22)
+      if let coverURL = article.coverURL {
+        RSSArticleCoverThumbnail(articleID: article.id, url: coverURL)
       }
-      .menuStyle(.borderlessButton)
-      .menuIndicator(.hidden)
-      .controlSize(.small)
-      .foregroundStyle(.secondary)
-      .opacity(isHovering ? 1 : 0.72)
-      .help("文章操作")
-      .accessibilityLabel("文章操作：\(article.title)")
-      .accessibilityHint(
-        String(localized: "打开菜单以标记已读、加入稍后阅读或打开原文")
-      )
-      .accessibilityIdentifier("rss-article-actions-\(article.id)")
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 8)
@@ -2806,12 +2831,10 @@ private struct RSSArticleRow: View {
     .accessibilityElement(children: .contain)
   }
 
-  private var accessibilityValue: String {
+  private func accessibilityValue(relativeDate: String) -> String {
     var components = [
       feed?.displayTitle ?? "RSS",
-      (article.publishedAt ?? article.fetchedAt).formatted(
-        .relative(presentation: .named, unitsStyle: .abbreviated)
-      ),
+      relativeDate,
       article.isRead ? String(localized: "已读") : String(localized: "未读"),
     ]
     if let author = article.author?.trimmedForPublishing.nilIfEmpty {
@@ -2861,10 +2884,6 @@ private struct RSSArticleReader: View {
   let onReadingProgress: (Double) -> Void
   let onBack: (() -> Void)?
   let onRetryLoad: () -> Void
-  let onPrevious: () -> Void
-  let onNext: () -> Void
-  let canNavigatePrevious: Bool
-  let canNavigateNext: Bool
   let onOpenOriginal: () -> Void
   let onToggleStarred: () -> Void
   let onToggleRead: () -> Void
@@ -2890,6 +2909,7 @@ private struct RSSArticleReader: View {
   let workflowIsBusy: Bool
   @State private var showsTranslatedArticle = false
   @State private var showsAnnotationSummary = false
+  @StateObject private var speechController = RSSArticleSpeechController()
 
   var body: some View {
     Group {
@@ -2929,12 +2949,6 @@ private struct RSSArticleReader: View {
                   Button("打开原文", systemImage: "safari", action: onOpenOriginal)
                     .buttonStyle(.bordered)
                 }
-                Button("上一篇", systemImage: "chevron.left", action: onPrevious)
-                  .buttonStyle(.bordered)
-                  .disabled(!canNavigatePrevious)
-                Button("下一篇", systemImage: "chevron.right", action: onNext)
-                  .buttonStyle(.bordered)
-                  .disabled(!canNavigateNext)
               }
             }
           }
@@ -2961,53 +2975,23 @@ private struct RSSArticleReader: View {
       showsTranslatedArticle = false
       showsAnnotationSummary = false
       selectedText = ""
+      speechController.stop()
+    }
+    .onChange(of: showsTranslatedArticle) { _, _ in
+      speechController.stop()
     }
     .onChange(of: translation?.id) { _, newValue in
       showsTranslatedArticle = newValue != nil
+      speechController.stop()
+    }
+    .onDisappear {
+      speechController.stop()
     }
   }
 
   private func loadedArticleView(_ article: RSSArticle) -> some View {
     let displayedArticle = articleForDisplay(article)
-    return VStack(spacing: 0) {
-      VStack(alignment: .leading, spacing: 6) {
-        if let onBack {
-          Button("返回文章列表", systemImage: "chevron.left", action: onBack)
-            .buttonStyle(.borderless)
-            .accessibilityLabel("返回 RSS 文章列表")
-        }
-
-        Text(displayedArticle.title)
-          .font(.workbenchPageTitle)
-          .lineLimit(3)
-          .textSelection(.enabled)
-          .help(displayedArticle.title)
-
-        VStack(alignment: .leading, spacing: 4) {
-          articleMetadata(for: article)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-
-          readingProgressLabel
-        }
-        .padding(.top, 2)
-
-        readerToolbar(for: article)
-          .padding(.top, 10)
-        translationStatusView
-
-        HStack {
-          remoteImageStatus
-          Spacer(minLength: 0)
-        }
-      }
-      .padding(WorkbenchSpacing.spacious)
-      .frame(maxWidth: 900, alignment: .leading)
-      .frame(maxWidth: .infinity, alignment: .center)
-
-      Divider()
-
+    return ZStack(alignment: .top) {
       if !hasRenderableBody {
         VStack(alignment: .leading) {
           Text("这篇文章没有可显示的正文，建议打开原文阅读。")
@@ -3021,6 +3005,8 @@ private struct RSSArticleReader: View {
       } else {
         RSSArticleWebView(
           article: displayedArticle,
+          feedTitle: feedTitle,
+          readingMinutes: readingMinutes,
           allowRemoteImages: allowRemoteImages,
           highlights: highlights,
           mediaAssets: mediaAssets,
@@ -3039,7 +3025,6 @@ private struct RSSArticleReader: View {
             onNavigationError(message)
           }
         )
-        .frame(maxWidth: 900, maxHeight: .infinity, alignment: .topLeading)
         .frame(minHeight: 240, maxHeight: .infinity)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .layoutPriority(1)
@@ -3052,11 +3037,39 @@ private struct RSSArticleReader: View {
           }
         }
         .accessibilityLabel("保留标题、列表、引用、代码块和链接的文章正文")
+
+        VStack(spacing: 4) {
+          readingProgressBar
+          readerToolbar(for: article, speechArticle: displayedArticle)
+          translationStatusView
+        }
+        .frame(maxWidth: 900)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 8)
+        .padding(.top, 6)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("RSS 文章阅读区域")
+  }
+
+  private var readingProgressBar: some View {
+    GeometryReader { geometry in
+      ZStack(alignment: .leading) {
+        Rectangle()
+          .fill(Color.primary.opacity(0.10))
+        Rectangle()
+          .fill(Color.accentColor.opacity(0.85))
+          .frame(width: geometry.size.width * normalizedReadingProgress)
+      }
+    }
+    .frame(height: 2)
+    .allowsHitTesting(false)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("阅读进度")
+    .accessibilityValue("已读 (readingProgressPercentage)%")
+    .accessibilityIdentifier("rss-reading-progress-bar")
   }
 
   private func articleForDisplay(_ article: RSSArticle) -> RSSArticle {
@@ -3084,16 +3097,8 @@ private struct RSSArticleReader: View {
 
   @ViewBuilder
   private var translationStatusView: some View {
-    if translationIsRunning || translationError != nil || translation != nil || automaticTranslation {
+    if translationIsRunning || translationError != nil || translation != nil {
       VStack(alignment: .leading, spacing: 5) {
-        if automaticTranslation {
-          let message = "自动翻译已开启：打开文章时会发送当前文章标题和正文。"
-          Label(message, systemImage: "arrow.triangle.2.circlepath")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
-            .help(message)
-        }
         if translationIsRunning {
           HStack(spacing: 7) {
             ProgressView()
@@ -3127,16 +3132,6 @@ private struct RSSArticleReader: View {
             }
           }
           .lineLimit(2)
-        }
-        if dataSharingConsent.destinationState == .remote {
-          let message = dataSharingConsent.isGranted
-            ? "AI 服务：\(dataSharingConsent.providerName)（\(dataSharingConsent.destination)）；发送范围：当前文章标题和正文。"
-            : "远程 AI 发送尚未授权；翻译前请在 AI 设置中确认服务商和发送范围。"
-          Text(message)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(3)
-            .help(message)
         }
       }
       .accessibilityElement(children: .contain)
@@ -3220,46 +3215,99 @@ private struct RSSArticleReader: View {
   }
 
   @ViewBuilder
-  private func readerToolbar(for article: RSSArticle) -> some View {
-    HStack(alignment: .center, spacing: 8) {
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .center, spacing: 8) {
-          previousButton
-          nextButton
-          starredButton(for: article)
-          readButton(for: article)
-          originalArticleButton(for: article)
-          translationControls
-          readingComfortControls
-          annotationActionsMenu
-          remoteImageToggle
-          workflowToolbarActions(for: article)
-          if workflowIsBusy {
-            ProgressView()
-              .controlSize(.small)
-              .accessibilityLabel("正在处理阅读内容")
-          }
-        }
-        HStack(alignment: .center, spacing: 8) {
-          previousButton
-          nextButton
-          starredButton(for: article)
-            .labelStyle(.iconOnly)
-          readButton(for: article)
-            .labelStyle(.iconOnly)
-          translationControls
-          readerOverflowMenu(for: article)
-          if workflowIsBusy {
-            ProgressView()
-              .controlSize(.small)
-              .accessibilityLabel("正在处理阅读内容")
-          }
+  private func readerToolbar(
+    for article: RSSArticle,
+    speechArticle: RSSArticle
+  ) -> some View {
+    HStack(alignment: .center, spacing: 6) {
+      if let onBack {
+        Button("返回文章列表", systemImage: "chevron.left", action: onBack)
+          .labelStyle(.iconOnly)
+          .buttonStyle(.borderless)
+          .help("返回 RSS 文章列表")
+          .accessibilityLabel("返回 RSS 文章列表")
+      }
+      starredButton(for: article)
+        .labelStyle(.iconOnly)
+      readButton(for: article)
+        .labelStyle(.iconOnly)
+      speechToggleButton(for: speechArticle)
+        .labelStyle(.iconOnly)
+      speechRateMenu
+      translationControls
+      workflowIntegrationMenu(for: article)
+      readerOverflowMenu(for: article, speechArticle: speechArticle)
+      annotationSummaryButton(for: article)
+      if workflowIsBusy {
+        ProgressView()
+          .controlSize(.small)
+          .accessibilityLabel("正在处理阅读内容")
+      }
+    }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 4)
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
+    .overlay {
+      RoundedRectangle(cornerRadius: 9)
+        .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .controlSize(.small)
+  }
+
+  private func speechToggleButton(for article: RSSArticle) -> some View {
+    let isCurrentArticle = speechController.currentArticleID == article.id
+    let isActive = isCurrentArticle && speechController.isSpeaking
+    let title: String
+    let systemImage: String
+    if !isActive {
+      title = "听文章"
+      systemImage = "speaker.wave.2"
+    } else if speechController.isPaused {
+      title = "继续朗读"
+      systemImage = "play.fill"
+    } else {
+      title = "暂停朗读"
+      systemImage = "pause.fill"
+    }
+
+    return Button {
+      speechController.toggle(article: article)
+    } label: {
+      Label(title, systemImage: systemImage)
+    }
+    .buttonStyle(.bordered)
+    .keyboardShortcut("l", modifiers: [.command, .option])
+    .help(isActive ? (speechController.isPaused ? "继续朗读当前文章" : "暂停朗读当前文章") : "使用 macOS 语音朗读当前文章")
+    .accessibilityLabel(title)
+    .accessibilityIdentifier("rss-reader-speech-toggle")
+  }
+
+  private var speechRateMenu: some View {
+    Menu {
+      Picker("朗读速度", selection: Binding(
+        get: { speechController.rateMultiplier },
+        set: { speechController.setRateMultiplier($0) }
+      )) {
+        ForEach(RSSArticleSpeechController.supportedRateMultipliers, id: \.self) { rate in
+          Text("\(rate, specifier: "%.2f")x").tag(rate)
         }
       }
-      annotationSummaryButton(for: article)
+      if speechController.isSpeaking {
+        Divider()
+        Button("停止朗读", systemImage: "stop.fill", action: speechController.stop)
+      }
+    } label: {
+      Label(
+        "\(speechController.rateMultiplier, specifier: "%.2f")x",
+        systemImage: "gauge.with.dots.needle.67percent"
+      )
     }
-    .frame(maxWidth: .infinity, alignment: .trailing)
-    .controlSize(.small)
+    .menuStyle(.borderlessButton)
+    .help("调整朗读速度，支持 1.0x 到 2.0x")
+    .accessibilityLabel("朗读速度")
+    .accessibilityValue("\(speechController.rateMultiplier, specifier: "%.2f")倍速")
+    .accessibilityIdentifier("rss-reader-speech-rate")
   }
 
   private var translationControls: some View {
@@ -3276,24 +3324,6 @@ private struct RSSArticleReader: View {
       dataSharingConsent: dataSharingConsent,
       onOpenAISettings: onOpenAISettings
     )
-  }
-
-  private var previousButton: some View {
-    Button("上一篇", systemImage: "chevron.left", action: onPrevious)
-      .buttonStyle(.bordered)
-      .disabled(!canNavigatePrevious)
-      .keyboardShortcut(.leftArrow, modifiers: [.command, .control])
-      .accessibilityLabel("阅读上一篇文章")
-      .accessibilityIdentifier("rss-reader-previous")
-  }
-
-  private var nextButton: some View {
-    Button("下一篇", systemImage: "chevron.right", action: onNext)
-      .buttonStyle(.bordered)
-      .disabled(!canNavigateNext)
-      .keyboardShortcut(.rightArrow, modifiers: [.command, .control])
-      .accessibilityLabel("阅读下一篇文章")
-      .accessibilityIdentifier("rss-reader-next")
   }
 
   private func starredButton(for article: RSSArticle) -> some View {
@@ -3418,7 +3448,10 @@ private struct RSSArticleReader: View {
     !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
-  private func readerOverflowMenu(for article: RSSArticle) -> some View {
+  private func readerOverflowMenu(
+    for article: RSSArticle,
+    speechArticle: RSSArticle
+  ) -> some View {
     Menu {
       Button(
         article.isStarred ? "移出稍后阅读" : "加入稍后阅读",
@@ -3434,6 +3467,10 @@ private struct RSSArticleReader: View {
         Divider()
         Button("在系统浏览器中打开原文", systemImage: "safari", action: onOpenOriginal)
       }
+
+      Divider()
+      speechToggleButton(for: speechArticle)
+      speechRateMenu
 
       Divider()
       Menu {
@@ -3456,28 +3493,23 @@ private struct RSSArticleReader: View {
     .accessibilityIdentifier("rss-reader-more-actions")
   }
 
-  private func workflowToolbarActions(for article: RSSArticle) -> some View {
-    HStack(spacing: 8) {
-      Menu {
+  private func workflowIntegrationMenu(for article: RSSArticle) -> some View {
+    Menu {
+      Section("保存到资料库") {
         workflowSaveActionItems(for: article)
-      } label: {
-        Label("保存到资料库", systemImage: "books.vertical")
       }
-      .menuStyle(.button)
-      .disabled(workflowIsBusy)
-      .accessibilityLabel("保存当前文章到资料库")
-      .accessibilityIdentifier("rss-reader-save-to-library")
-
-      Menu {
+      Section("用于写作") {
         workflowWritingActionItems(for: article)
-      } label: {
-        Label("用于写作", systemImage: "square.and.pencil")
       }
-      .menuStyle(.button)
-      .disabled(workflowIsBusy)
-      .accessibilityLabel("将当前文章用于写作")
-      .accessibilityIdentifier("rss-reader-use-for-writing")
+    } label: {
+      Label("导出/联动", systemImage: "arrow.up.forward.square")
     }
+    .menuStyle(.button)
+    .disabled(workflowIsBusy)
+    .help("将当前文章保存到资料库，或联动到写作")
+    .accessibilityLabel("导出与联动")
+    .accessibilityHint("保存文章、摘录笔记、插入写作引用或新建灵感草稿")
+    .accessibilityIdentifier("rss-reader-workflow-menu")
   }
 
   @ViewBuilder
@@ -3552,10 +3584,7 @@ private struct RSSArticleReader: View {
   }
 
   private var remoteImageStatus: some View {
-    Text(allowRemoteImages ? "已允许当前文章加载远程图片" : "远程图片默认关闭")
-      .font(.caption)
-      .foregroundStyle(.secondary)
-      .fixedSize(horizontal: false, vertical: true)
+    EmptyView()
   }
 
   private var selectionPalette: some View {
@@ -3846,7 +3875,6 @@ private struct RSSReaderEmptyState: View {
 
 private struct RSSReaderWelcomeView: View {
   let onAdd: () -> Void
-  let onImportOPML: () -> Void
   let onDiscover: (String) -> Void
   @State private var homepageURL = ""
 
@@ -3869,8 +3897,6 @@ private struct RSSReaderWelcomeView: View {
         Button("添加第一个订阅", action: onAdd)
           .workbenchProminentActionStyle()
           .keyboardShortcut(.defaultAction)
-        Button("导入 OPML", action: onImportOPML)
-          .buttonStyle(.bordered)
       }
 
       VStack(alignment: .leading, spacing: 8) {
@@ -4033,7 +4059,6 @@ private struct RSSAddSubscriptionView: View {
   @Environment(\.dismiss) private var dismiss
   @State private var value = ""
   let onAdd: (String) -> Void
-  let onImportOPML: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -4053,11 +4078,6 @@ private struct RSSAddSubscriptionView: View {
         }
 
       HStack {
-        Button("导入 OPML") {
-          dismiss()
-          onImportOPML()
-        }
-        .buttonStyle(.bordered)
         Spacer()
         Button("取消") {
           dismiss()

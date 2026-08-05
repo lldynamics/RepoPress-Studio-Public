@@ -30,7 +30,8 @@ public struct RSSMediaArchiveResult: Sendable {
   }
 }
 
-/// Downloads media only for articles the reader has chosen to keep locally.
+/// Experimental offline enrichment: downloads media only for articles the
+/// reader has chosen to keep locally.
 ///
 /// Media requests never carry a `Referer`, cookie, credential, or article URL.
 /// This avoids leaking private feed paths and query values to a media host.

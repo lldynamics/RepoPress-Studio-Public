@@ -5,6 +5,53 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class RSSArticleHTMLRendererTests: XCTestCase {
+  func testRenderedArticleUsesCenteredGoldenReadingColumn() {
+    let article = RSSArticle(
+      id: "golden-reading-column",
+      feedID: UUID(),
+      title: "舒适阅读",
+      contentHTML: "<p>正文列应在大屏下保持稳定宽度，并使用舒适行高。</p>"
+    )
+
+    let rendered = RSSArticleHTMLRenderer.render(article: article, allowRemoteImages: false)
+
+    XCTAssertTrue(rendered.contains("max-width: 780px"))
+    XCTAssertTrue(rendered.contains("margin: 0 auto"))
+    XCTAssertTrue(rendered.contains("line-height: var(--rss-line-spacing)"))
+    XCTAssertTrue(rendered.contains("--rss-line-spacing: 1.65"))
+  }
+
+  func testRenderedArticleKeepsHeaderAndBodyInOneScrollableDocument() {
+    let publishedAt = Date(timeIntervalSince1970: 1_700_000_000)
+    let article = RSSArticle(
+      id: "unified-document",
+      feedID: UUID(),
+      title: "标题 <需要转义>",
+      author: "作者",
+      publishedAt: publishedAt,
+      contentHTML: "<p>正文第一段</p>"
+    )
+
+    let rendered = RSSArticleHTMLRenderer.render(
+      article: article,
+      feedTitle: "我的订阅",
+      readingMinutes: 3,
+      allowRemoteImages: false
+    )
+
+    XCTAssertTrue(rendered.contains("<article id=\"rss-article-container\">"))
+    XCTAssertTrue(rendered.contains("<header class=\"rss-article-header\">"))
+    XCTAssertTrue(rendered.contains("<main id=\"rss-article-body\">"))
+    XCTAssertTrue(rendered.contains("标题 &lt;需要转义&gt;"))
+    XCTAssertTrue(rendered.contains("我的订阅"))
+    XCTAssertTrue(rendered.contains("作者"))
+    XCTAssertTrue(rendered.contains("约 3 分钟读完"))
+    XCTAssertLessThan(
+      rendered.range(of: "<header class=\"rss-article-header\">")!.lowerBound,
+      rendered.range(of: "<main id=\"rss-article-body\">")!.lowerBound
+    )
+  }
+
   func testHasRenderableBodyRejectsOnlyNonRenderableMarkup() {
     let feedID = UUID()
     let articles = [

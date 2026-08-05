@@ -15,9 +15,10 @@ public struct RSSWebPageSnapshot: Sendable, Equatable {
   }
 }
 
-/// Fetches the linked page only when the user explicitly enables web-page
-/// snapshots. The default transport revalidates and pins every redirect, and
-/// forwards no cookies, credentials, or Referer header.
+/// Experimental offline enrichment: fetches the linked page only when the user
+/// explicitly enables web-page snapshots. The default transport revalidates
+/// and pins every redirect, and forwards no cookies, credentials, or Referer
+/// header.
 public struct RSSWebPageSnapshotArchiver: Sendable {
   public typealias DownloadOperation = @Sendable (
     _ request: URLRequest,

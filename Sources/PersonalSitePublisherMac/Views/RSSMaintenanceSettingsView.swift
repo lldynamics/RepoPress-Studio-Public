@@ -12,6 +12,8 @@ struct RSSMaintenanceSettingsView: View {
   @State private var isPruneConfirmationPresented = false
   @State private var pruneFeedback: String?
   @State private var pruneFeedbackIsError = false
+  @State private var opmlFeedback: String?
+  @State private var opmlFeedbackIsError = false
 
   var body: some View {
     Form {
@@ -23,6 +25,34 @@ struct RSSMaintenanceSettingsView: View {
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
+      }
+
+      Section(String(localized: "订阅迁移")) {
+        Text("低频的 OPML 导入和导出放在这里；文件只包含订阅名称与地址，不包含文章缓存或阅读状态。")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        HStack {
+          Button("导入 OPML", systemImage: "square.and.arrow.down") {
+            importOPML()
+          }
+
+          Button("导出 OPML", systemImage: "square.and.arrow.up") {
+            exportOPML()
+          }
+          .disabled(store.feeds.isEmpty)
+        }
+
+        if let opmlFeedback {
+          Label(
+            opmlFeedback,
+            systemImage: opmlFeedbackIsError ? "exclamationmark.triangle" : "checkmark.circle"
+          )
+          .font(.caption)
+          .foregroundStyle(opmlFeedbackIsError ? WorkbenchTheme.warning : Color.secondary)
+          .textSelection(.enabled)
+        }
       }
 
       Section(String(localized: "离线保存范围")) {
@@ -37,8 +67,8 @@ struct RSSMaintenanceSettingsView: View {
         )
 
         settingsToggle(
-          title: String(localized: "网页全文快照"),
-          detail: String(localized: "开启后按文章链接抓取受大小限制的网页 HTML，并在 Feed 正文缺失时作为离线阅读回退；不会补齐原网页没有公开的内容。"),
+          title: String(localized: "网页全文快照（实验）"),
+          detail: String(localized: "实验功能，默认关闭。开启后按文章链接抓取受大小限制的网页 HTML，并在 Feed 正文缺失时作为离线阅读回退；不会补齐原网页没有公开的内容。"),
           isOn: Binding(
             get: { store.webPageSnapshotEnabled },
             set: { store.updateWebPageSnapshotSettings(enabled: $0) }
@@ -47,8 +77,8 @@ struct RSSMaintenanceSettingsView: View {
         )
 
         settingsToggle(
-          title: String(localized: "全部媒体"),
-          detail: String(localized: "开启后自动保存文章中可识别的图片、视频、音频和带下载标记的附件；每项受数量、大小和类型限制，默认关闭。收藏或添加高亮的文章仍会按原有规则归档媒体。"),
+          title: String(localized: "自动媒体归档（实验）"),
+          detail: String(localized: "实验功能，默认关闭。开启后自动保存文章中可识别的图片、视频、音频和带下载标记的附件；每项受数量、大小和类型限制。收藏或添加高亮的文章仍会按原有规则归档媒体。"),
           isOn: Binding(
             get: { store.automaticMediaCacheEnabled },
             set: { store.updateAutomaticMediaCacheSettings(enabled: $0) }
@@ -110,6 +140,7 @@ struct RSSMaintenanceSettingsView: View {
       }
     }
     .formStyle(.grouped)
+    .scrollIndicators(.hidden)
     .padding(WorkbenchSpacing.content)
     .confirmationDialog(
       "清理 RSS 历史文章？",
@@ -159,6 +190,39 @@ struct RSSMaintenanceSettingsView: View {
           summary.removedMediaAssetCount.formatted()
         )
       pruneFeedbackIsError = false
+    }
+  }
+
+  private func importOPML() {
+    opmlFeedback = nil
+    opmlFeedbackIsError = false
+    do {
+      guard let result = try RSSOPMLFileTransferService.importOPML(into: store) else { return }
+      opmlFeedback = "已导入 " + result.feedIDs.count.formatted() + " 个订阅，正在读取最新文章。"
+      Task { @MainActor in
+        for feedID in result.feedIDs {
+          await store.refresh(feedID: feedID)
+        }
+      }
+    } catch {
+      opmlFeedback = error.localizedDescription
+      opmlFeedbackIsError = true
+    }
+  }
+
+  private func exportOPML() {
+    opmlFeedback = nil
+    opmlFeedbackIsError = false
+    do {
+      guard let result = try RSSOPMLFileTransferService.exportOPML(from: store) else { return }
+      let excludedSuffix = result.excludedSubscriptionCount > 0
+        ? "，已排除 " + result.excludedSubscriptionCount.formatted() + " 个风险订阅"
+        : ""
+      opmlFeedback = "已导出 " + result.exportedSubscriptionCount.formatted()
+        + " 个订阅到 " + result.destinationURL.lastPathComponent + excludedSuffix + "。"
+    } catch {
+      opmlFeedback = "OPML 导出失败：" + error.localizedDescription
+      opmlFeedbackIsError = true
     }
   }
 }

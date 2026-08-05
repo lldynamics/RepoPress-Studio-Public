@@ -5,6 +5,12 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class RSSReaderPresentationSupportTests: XCTestCase {
+  func testArticleCoverThumbnailPresentationUsesCompactRoundedSize() {
+    XCTAssertEqual(RSSArticleCoverThumbnailPresentation.dimension, 64)
+    XCTAssertEqual(RSSArticleCoverThumbnailPresentation.cornerRadius, 10)
+    XCTAssertEqual(RSSArticleCoverThumbnailPresentation.maximumPixelSize, 192)
+  }
+
   @MainActor
   func testReaderMetricsAllowsLargeImageOnlyArticleToRender() throws {
     let padding = String(repeating: "<!-- image-only padding -->", count: 200)
@@ -326,6 +332,12 @@ final class RSSReaderPresentationSupportTests: XCTestCase {
     let matching = presentation.matchingArticles(in: store)
     XCTAssertEqual(matching.count, 241)
     XCTAssertEqual(presentation.visibleArticles(in: store).count, 120)
+    presentation.groupsByDate = false
+    XCTAssertEqual(
+      presentation.visibleArticleSections(in: store).flatMap(\.articles).count,
+      120
+    )
+    XCTAssertNil(presentation.visibleArticleSections(in: store).first?.kind)
 
     let offPageID = matching[200].id
     XCTAssertFalse(presentation.visibleArticles(in: store).contains { $0.id == offPageID })
@@ -335,6 +347,16 @@ final class RSSReaderPresentationSupportTests: XCTestCase {
 
     presentation.revealArticle(offPageID, in: store)
     XCTAssertEqual(presentation.visibleArticles(in: store).count, 240)
+    XCTAssertEqual(
+      presentation.visibleArticleSections(in: store).flatMap(\.articles).count,
+      240
+    )
+    presentation.groupsByDate = true
+    XCTAssertEqual(
+      presentation.visibleArticleSections(in: store).flatMap(\.articles).count,
+      240
+    )
+    XCTAssertNotNil(presentation.visibleArticleSections(in: store).first?.kind)
     presentation.resetArticleDisplayLimit()
     presentation.loadMoreArticles(totalCount: matching.count)
     XCTAssertEqual(presentation.visibleArticles(in: store).count, 240)
@@ -405,6 +427,53 @@ final class RSSReaderPresentationSupportTests: XCTestCase {
     )
 
     XCTAssertEqual(sections.first?.articles.first?.readableSummary, "Plain list summary")
+  }
+
+  func testCombinedFilterSortOptionsComposeIntoTheExpectedSections() {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let matchingFeedID = UUID()
+    let otherFeedID = UUID()
+    let older = article(
+      id: "older-match",
+      feedID: matchingFeedID,
+      author: "Alice",
+      date: now.addingTimeInterval(-10 * 86_400),
+      tags: ["Swift"]
+    )
+    let newer = article(
+      id: "newer-match",
+      feedID: matchingFeedID,
+      author: "Alice",
+      date: now.addingTimeInterval(-2 * 86_400),
+      tags: ["swift"]
+    )
+    let excluded = article(
+      id: "excluded",
+      feedID: otherFeedID,
+      author: "Alice",
+      date: now.addingTimeInterval(-86_400),
+      tags: ["Swift"]
+    )
+
+    let filtered = RSSArticlePresentationSupport.applyFiltersAndSort(
+      to: [newer, excluded, older],
+      sourceID: matchingFeedID,
+      author: "alice",
+      tag: "swift",
+      dateRange: .lastThirtyDays,
+      sortOrder: .oldest,
+      now: now
+    )
+    let sections = RSSArticlePresentationSupport.sections(
+      for: filtered,
+      groupsByDate: true,
+      sortOrder: .oldest,
+      now: now
+    )
+
+    XCTAssertEqual(filtered.map(\.id), ["older-match", "newer-match"])
+    XCTAssertEqual(sections.flatMap(\.articles).map(\.id), ["older-match", "newer-match"])
+    XCTAssertTrue(sections.allSatisfy { $0.kind != nil })
   }
 
   private func article(

@@ -19,7 +19,7 @@ private actor RSSReaderNetworkAccessState {
 }
 
 public struct RSSReaderSnapshot: Codable, Sendable {
-  public static let currentSchemaVersion = 4
+  public static let currentSchemaVersion = 5
 
   public var schemaVersion: Int
   public var feeds: [RSSFeed]
@@ -1516,6 +1516,7 @@ public final class RSSReaderStore: ObservableObject {
         feedID: feed.id,
         title: parsed.title,
         link: parsed.link,
+        coverURL: parsed.coverURL ?? existingPayload?.coverURL,
         author: parsed.author,
         publishedAt: parsed.publishedAt,
         summaryHTML: summaryHTML,
@@ -1803,6 +1804,14 @@ public final class RSSReaderStore: ObservableObject {
         let snapshot = try await archiver.snapshot(for: pageURL)
         guard self.webPageSnapshotEnabled else { return }
         article.webPageSnapshotHTML = snapshot.html
+        if article.coverURL == nil {
+          article.coverURL = RSSArticleCoverResolver.coverURL(
+            summaryHTML: article.summaryHTML,
+            contentHTML: article.contentHTML,
+            webPageSnapshotHTML: snapshot.html,
+            relativeTo: article.link
+          )
+        }
         try self.database?.upsertArticles([article])
         self.legacyArticles = self.mergingLegacyArticles(
           self.legacyArticles,
@@ -2019,6 +2028,7 @@ private extension RSSArticle {
       && feedID == other.feedID
       && title == other.title
       && link == other.link
+      && coverURL == other.coverURL
       && author == other.author
       && publishedAt == other.publishedAt
       && summaryHTML == other.summaryHTML

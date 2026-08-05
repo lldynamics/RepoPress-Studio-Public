@@ -64,8 +64,48 @@ enum RSSArticleHTMLRenderer {
     options: [.caseInsensitive]
   )
 
+final class RSSArticleRenderCache: @unchecked Sendable {
+  static let shared = RSSArticleRenderCache()
+  private let lock = NSLock()
+  private var cache: [String: String] = [:]
+  private var keys: [String] = []
+  private let capacity = 100
+
+  private init() {}
+
+  func html(forKey key: String) -> String? {
+    lock.lock()
+    defer { lock.unlock() }
+    return cache[key]
+  }
+
+  func setHTML(_ html: String, forKey key: String) {
+    lock.lock()
+    defer { lock.unlock() }
+    if cache[key] != nil {
+      cache[key] = html
+      return
+    }
+    if keys.count >= capacity {
+      let oldest = keys.removeFirst()
+      cache.removeValue(forKey: oldest)
+    }
+    keys.append(key)
+    cache[key] = html
+  }
+
+  func clear() {
+    lock.lock()
+    defer { lock.unlock() }
+    cache.removeAll()
+    keys.removeAll()
+  }
+}
+
   static func render(
     article: RSSArticle,
+    feedTitle: String? = nil,
+    readingMinutes: Int? = nil,
     allowRemoteImages: Bool,
     mediaAssets: [RSSMediaAsset] = [],
     mediaCacheDirectoryURL: URL? = nil,
@@ -74,13 +114,24 @@ enum RSSArticleHTMLRenderer {
     theme: RSSReadingTheme = .system,
     initialReadingProgress: Double = 0
   ) -> String {
+    let mediaToken = mediaAssets.map(\.id).joined(separator: ",")
+    let cacheKey = "\(article.id)|\(feedTitle ?? "")|\(readingMinutes ?? 1)|\(allowRemoteImages)|\(fontSize)|\(lineSpacing)|\(theme.rawValue)|\(initialReadingProgress)|\(mediaToken)"
+    if let cached = RSSArticleRenderCache.shared.html(forKey: cacheKey) {
+      return cached
+    }
+
     let body = preferredSanitizedBody(
       for: article,
       allowRemoteImages: allowRemoteImages,
       mediaAssets: mediaAssets,
       mediaCacheDirectoryURL: mediaCacheDirectoryURL
     )
-    return renderDocument(
+    let rendered = renderDocument(
+      title: article.title,
+      feedTitle: feedTitle,
+      author: article.author,
+      publishedAt: article.publishedAt,
+      readingMinutes: readingMinutes,
       body: body.html,
       languageTag: RSSArticleLanguageResolver.languageTag(
         for: "\(article.title) \(body.readableSample)"
@@ -90,6 +141,8 @@ enum RSSArticleHTMLRenderer {
       theme: theme,
       initialReadingProgress: initialReadingProgress
     )
+    RSSArticleRenderCache.shared.setHTML(rendered, forKey: cacheKey)
+    return rendered
   }
 
   static func hasRenderableBody(article: RSSArticle) -> Bool {
@@ -144,6 +197,11 @@ enum RSSArticleHTMLRenderer {
   }
 
   private static func renderDocument(
+    title: String? = nil,
+    feedTitle: String? = nil,
+    author: String? = nil,
+    publishedAt: Date? = nil,
+    readingMinutes: Int? = nil,
     body: String,
     languageTag: String,
     fontSize: Double,
@@ -162,6 +220,41 @@ enum RSSArticleHTMLRenderer {
       RSSReadingComfortConfiguration.lineSpacingRange.upperBound
     )
     let normalizedProgress = min(max(initialReadingProgress.isFinite ? initialReadingProgress : 0, 0), 1)
+
+    var headerHTML = ""
+    if let title, !title.isEmpty {
+      var metaItems: [String] = []
+      if let feedTitle, !feedTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        metaItems.append("<span class=\"rss-meta-item\">\(escapeText(feedTitle.trimmingCharacters(in: .whitespacesAndNewlines)))</span>")
+      }
+      if let author, !author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        metaItems.append("<span class=\"rss-meta-item\">\(escapeText(author.trimmingCharacters(in: .whitespacesAndNewlines)))</span>")
+      }
+      if let publishedAt {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        metaItems.append("<span class=\"rss-meta-item\">\(escapeText(formatter.string(from: publishedAt)))</span>")
+      }
+      if let readingMinutes, readingMinutes > 0 {
+        metaItems.append("<span class=\"rss-meta-item\">约 \(readingMinutes) 分钟读完</span>")
+      }
+
+      let metaHTML = metaItems.isEmpty ? "" : """
+        <div class="rss-article-meta">
+          \(metaItems.joined(separator: " · "))
+        </div>
+      """
+
+      headerHTML = """
+      <header class="rss-article-header">
+        <h1 class="rss-article-title">\(escapeText(title))</h1>
+        \(metaHTML)
+      </header>
+      <hr class="rss-header-divider" />
+      """
+    }
+
     return """
     <!doctype html>
     <html lang="\(escapeAttribute(languageTag))">
@@ -172,7 +265,13 @@ enum RSSArticleHTMLRenderer {
         :root { color-scheme: \(theme.cssColorScheme); --rss-font-size: \(normalizedFontSize)px; --rss-line-spacing: \(normalizedLineSpacing); --rss-background: \(theme.cssBackground); --rss-foreground: \(theme.cssForeground); --rss-secondary-foreground: \(theme.cssSecondaryForeground); --rss-link: \(theme.cssLink); }
         html, body { width: 100%; min-height: 100%; }
         body { display: block; visibility: visible; opacity: 1; margin: 0; min-height: 100vh; padding: 4px 2px 28px; color: var(--rss-foreground) !important; background: var(--rss-background) !important; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; font-size: var(--rss-font-size); line-height: var(--rss-line-spacing); overflow-wrap: anywhere; -webkit-text-fill-color: var(--rss-foreground); }
-        #rss-article-body { display: block; visibility: visible; opacity: 1; color: var(--rss-foreground) !important; }
+        #rss-article-container { display: block; width: 100%; max-width: 780px; margin: 0 auto; padding: 72px 24px 48px; box-sizing: border-box; visibility: visible; opacity: 1; color: var(--rss-foreground) !important; }
+        #rss-article-body { display: block; width: 100%; visibility: visible; opacity: 1; color: var(--rss-foreground) !important; }
+        .rss-article-header { margin: 0 0 1.2em 0; }
+        .rss-article-title { font-size: 1.85em; font-weight: 700; line-height: 1.3; margin: 0 0 0.4em 0; color: var(--rss-foreground); overflow-wrap: break-word; -webkit-text-fill-color: var(--rss-foreground); }
+        .rss-article-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 0.88em; color: var(--rss-secondary-foreground); -webkit-text-fill-color: var(--rss-secondary-foreground); margin-bottom: 0.4em; }
+        .rss-meta-item { display: inline-flex; align-items: center; gap: 4px; }
+        .rss-header-divider { border: 0; border-top: 1px solid rgba(127, 127, 127, 0.28); margin: 1em 0 1.5em 0; }
         h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 1.1em 0 0.55em; }
         p, div, article, section, blockquote, pre, ul, ol, table, figure, details { margin: 0.75em 0; }
         ul, ol { padding-left: 1.6em; }
@@ -192,7 +291,7 @@ enum RSSArticleHTMLRenderer {
         mark.rss-highlight { background: color-mix(in srgb, #ffd60a 55%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
       </style>
     </head>
-    <body data-initial-reading-progress="\(normalizedProgress)"><main id="rss-article-body">\(body)</main></body>
+    <body data-initial-reading-progress="\(normalizedProgress)"><article id="rss-article-container">\(headerHTML)<main id="rss-article-body">\(body)</main></article></body>
     </html>
     """
   }
@@ -578,6 +677,8 @@ enum RSSArticleHTMLRenderer {
 
 struct RSSArticleWebView: NSViewRepresentable {
   let article: RSSArticle
+  let feedTitle: String?
+  let readingMinutes: Int
   let allowRemoteImages: Bool
   let highlights: [RSSArticleHighlight]
   let mediaAssets: [RSSMediaAsset]
@@ -593,6 +694,8 @@ struct RSSArticleWebView: NSViewRepresentable {
 
   init(
     article: RSSArticle,
+    feedTitle: String? = nil,
+    readingMinutes: Int = 1,
     allowRemoteImages: Bool,
     highlights: [RSSArticleHighlight],
     mediaAssets: [RSSMediaAsset] = [],
@@ -607,6 +710,8 @@ struct RSSArticleWebView: NSViewRepresentable {
     onNavigationError: @escaping (String) -> Void
   ) {
     self.article = article
+    self.feedTitle = feedTitle
+    self.readingMinutes = readingMinutes
     self.allowRemoteImages = allowRemoteImages
     self.highlights = highlights
     self.mediaAssets = mediaAssets
@@ -777,7 +882,7 @@ struct RSSArticleWebView: NSViewRepresentable {
         document.addEventListener('mouseup', report);
         window.rssApplyHighlight = (text, id) => {
           if (!text || !id) return;
-          const root = document.getElementById('rss-article-body') || document.body;
+          const root = document.getElementById('rss-article-container') || document.body;
           if ([...root.querySelectorAll('mark.rss-highlight')].some(mark => mark.dataset.highlightId === id)) {
             return;
           }
@@ -935,6 +1040,8 @@ struct RSSArticleWebView: NSViewRepresentable {
     nsView.loadHTMLString(
       RSSArticleHTMLRenderer.render(
         article: article,
+        feedTitle: feedTitle,
+        readingMinutes: readingMinutes,
         allowRemoteImages: allowRemoteImages,
         mediaAssets: mediaAssets,
         mediaCacheDirectoryURL: mediaCacheDirectoryURL,

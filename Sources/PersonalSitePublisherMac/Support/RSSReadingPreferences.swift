@@ -83,17 +83,17 @@ enum RSSReadingProgressStore {
   private static let orderKey = "rssReadingProgressArticleOrder"
   static let maximumEntryCount = 512
 
-  static func load() -> [String: Double] {
-    guard let data = UserDefaults.standard.data(forKey: key),
+  static func load(defaults: UserDefaults = .standard) -> [String: Double] {
+    guard let data = defaults.data(forKey: key),
           let values = try? JSONDecoder().decode([String: Double].self, from: data)
     else {
       return [:]
     }
-    return normalized(values, preferredOrder: loadOrder())
+    return normalized(values, preferredOrder: loadOrder(defaults: defaults))
   }
 
-  static func loadOrder() -> [String] {
-    guard let data = UserDefaults.standard.data(forKey: orderKey),
+  static func loadOrder(defaults: UserDefaults = .standard) -> [String] {
+    guard let data = defaults.data(forKey: orderKey),
           let values = try? JSONDecoder().decode([String].self, from: data)
     else {
       return []
@@ -101,18 +101,29 @@ enum RSSReadingProgressStore {
     return uniqueIDs(values)
   }
 
-  static func save(_ values: [String: Double]) {
-    save(values, orderedArticleIDs: loadOrder())
+  static func save(
+    _ values: [String: Double],
+    defaults: UserDefaults = .standard
+  ) {
+    save(
+      values,
+      orderedArticleIDs: loadOrder(defaults: defaults),
+      defaults: defaults
+    )
   }
 
-  static func save(_ values: [String: Double], orderedArticleIDs: [String]) {
+  static func save(
+    _ values: [String: Double],
+    orderedArticleIDs: [String],
+    defaults: UserDefaults = .standard
+  ) {
     let values = normalized(values, preferredOrder: orderedArticleIDs)
     let order = Self.orderedArticleIDs(for: values, preferredOrder: orderedArticleIDs)
     guard let data = try? JSONEncoder().encode(values),
           let orderData = try? JSONEncoder().encode(order)
     else { return }
-    UserDefaults.standard.set(data, forKey: key)
-    UserDefaults.standard.set(orderData, forKey: orderKey)
+    defaults.set(data, forKey: key)
+    defaults.set(orderData, forKey: orderKey)
   }
 
   private static func normalized(
@@ -155,5 +166,50 @@ enum RSSReadingProgressStore {
       result.append(value)
     }
     return result
+  }
+}
+
+actor RSSReadingProgressPersistence {
+  static let shared = RSSReadingProgressPersistence()
+
+  private let defaults: UserDefaults
+  private var latestSavedRevision: UInt64?
+
+  init(defaults: UserDefaults = .standard) {
+    self.defaults = defaults
+  }
+
+  func save(
+    _ values: [String: Double],
+    orderedArticleIDs: [String],
+    revision: UInt64
+  ) {
+    if let latestSavedRevision, revision <= latestSavedRevision {
+      return
+    }
+    latestSavedRevision = revision
+    RSSReadingProgressStore.save(
+      values,
+      orderedArticleIDs: orderedArticleIDs,
+      defaults: defaults
+    )
+  }
+}
+
+@MainActor
+enum RSSReadingProgressPersistenceRevision {
+  private static var current: UInt64 = 0
+
+  static func next() -> UInt64 {
+    current &+= 1
+    return current
+  }
+}
+
+enum RSSReadingCompletionPolicy {
+  static let completionThreshold = 0.995
+
+  static func shouldAutomaticallyMarkRead(progress: Double) -> Bool {
+    progress.isFinite && progress >= completionThreshold
   }
 }
