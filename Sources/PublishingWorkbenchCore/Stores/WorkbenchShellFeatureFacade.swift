@@ -23,8 +23,16 @@ public final class WorkbenchShellFeatureFacade: ObservableObject {
     store.activeProfile.name
   }
 
+  public var publishingProfiles: [SiteProfile] {
+    store.publishingProfiles
+  }
+
   public var activeProfile: SiteProfile {
     store.activeProfile
+  }
+
+  public var activeProfileID: UUID {
+    store.activeProfileID
   }
 
   public var selectedDraftID: UUID? {

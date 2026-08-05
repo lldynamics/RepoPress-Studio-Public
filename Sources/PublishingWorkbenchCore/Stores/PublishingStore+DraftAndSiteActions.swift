@@ -153,6 +153,9 @@ extension PublishingStore {
     updated.touch()
     if let index = existingIndex {
       if hasUnsavedDraftChange {
+        // DraftLifecycleService applies the time/size threshold before doing
+        // the full content comparison. This keeps metadata keystrokes cheap
+        // while still preserving a snapshot for a substantial body change.
         recordAutomaticVersionIfNeeded(for: drafts[index])
       }
       drafts[index] = updated
@@ -352,7 +355,7 @@ extension PublishingStore {
   }
 
   public func activeProfileDraftCount() -> Int {
-    drafts.filter { $0.belongs(toSiteProfileID: activeProfileID) }.count
+    DraftListProjection.statistics(drafts, activeProfileID: activeProfileID).siteDraftCount
   }
 
   @discardableResult

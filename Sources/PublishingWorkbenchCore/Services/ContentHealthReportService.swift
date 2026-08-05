@@ -67,7 +67,7 @@ public struct ContentHealthReportService: Sendable {
       ))
     }
     try cancellationCheck()
-    let publicRiskSummary = PublicRiskSummary(issues: draftSummaries.flatMap(\.issues))
+    let publicRiskSummary = ContentHealthProjection.publicRiskSummary(from: draftSummaries)
     let aiFixQueueItems = aiFixQueueService.items(drafts: drafts, profile: profile, summaries: draftSummaries)
     try cancellationCheck()
 
@@ -75,7 +75,7 @@ public struct ContentHealthReportService: Sendable {
       sitePreflightIssues: sitePreflightIssues,
       draftSummaries: draftSummaries,
       publicRiskSummary: publicRiskSummary,
-      publicRiskDraftSummaries: draftSummaries.filter { !$0.publicRiskIssues.isEmpty },
+      publicRiskDraftSummaries: ContentHealthProjection.publicRiskDraftSummaries(from: draftSummaries),
       aiFixQueueItems: aiFixQueueItems
     )
   }

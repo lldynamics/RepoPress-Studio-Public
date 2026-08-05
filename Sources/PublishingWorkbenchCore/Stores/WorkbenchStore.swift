@@ -47,6 +47,9 @@ public final class WorkbenchStore: ObservableObject {
   public lazy var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade = WorkbenchImageWorkbenchFeatureFacade(store: self)
   public lazy var persistenceStatus: WorkbenchPersistenceFeatureFacade = WorkbenchPersistenceFeatureFacade(store: self)
   public lazy var shell: WorkbenchShellFeatureFacade = WorkbenchShellFeatureFacade(store: self)
+  public lazy var settings: WorkbenchSettingsFeatureFacade = WorkbenchSettingsFeatureFacade(store: self)
+  public lazy var publishStatus: WorkbenchPublishStatusFeatureFacade = WorkbenchPublishStatusFeatureFacade(store: self)
+  public lazy var siteMaintenance: WorkbenchSiteMaintenanceFeatureFacade = WorkbenchSiteMaintenanceFeatureFacade(store: self)
   public lazy var contentPresentation: WorkbenchContentPresentationFeatureFacade =
     WorkbenchContentPresentationFeatureFacade(store: self)
   public lazy var activityStatus: WorkbenchActivityStatusFacade = WorkbenchActivityStatusFacade(store: self)
@@ -60,6 +63,7 @@ public final class WorkbenchStore: ObservableObject {
   @Published public private(set) var contentHealthSnapshotVersion = 0
   @Published public private(set) var draftTaskQueueStateVersion = 0
   @Published public private(set) var draftListPresentationRevision: UInt64 = 0
+  @Published public private(set) var draftMutationRevision: UInt64 = 0
   @Published public private(set) var imageWorkbenchInputRevision: UInt64 = 0
   @Published public internal(set) var aiConnectionProfiles: [AIConnectionProfile]
   @Published public internal(set) var siteDraftFileSaveStates: [UUID: SiteDraftFileSaveState] = [:]
@@ -71,9 +75,13 @@ public final class WorkbenchStore: ObservableObject {
   @Published public internal(set) var siteAnalyticsMessage: String?
   @Published public internal(set) var siteAnalyticsTokenAvailability = KeychainTokenAvailability(hasToken: false)
   private var draftTaskQueueStateCache: [UUID: DraftTaskQueueState] = [:]
+  private var knownArticleTitlesCacheRevision: UInt64?
+  private var knownArticleTitlesCache = Set<String>()
   private var childStoreCancellables = Set<AnyCancellable>()
   var preflightRefreshTask: Task<Void, Never>?
+  var preflightRefreshGeneration: UInt64 = 0
   var draftBodyCommitTasks: [UUID: Task<Void, Never>] = [:]
+  var draftBodyCommitFirstStagedAt: [UUID: Date] = [:]
   var siteDraftFileAutosaveTasks: [UUID: Task<Void, Never>] = [:]
   var siteDraftFileWritesInProgress: Set<UUID> = []
   var siteDraftFileSaveGenerations: [UUID: UInt64] = [:]
@@ -107,6 +115,20 @@ public final class WorkbenchStore: ObservableObject {
   }
   public var activeProfileID: UUID { publishingStore.activeProfileID }
   public var drafts: [ArticleDraft] { publishingStore.drafts }
+  /// Titles used by markdown diagnostics. The set is rebuilt only after the
+  /// draft collection mutates; body text staged in the editor does not touch it.
+  public var knownArticleTitlesForMarkdownDiagnostics: Set<String> {
+    if knownArticleTitlesCacheRevision == draftMutationRevision {
+      return knownArticleTitlesCache
+    }
+
+    let titles = Set(
+      drafts.compactMap { $0.title.trimmedForPublishing.nilIfEmpty }
+    )
+    knownArticleTitlesCache = titles
+    knownArticleTitlesCacheRevision = draftMutationRevision
+    return titles
+  }
   public var draftVersions: [DraftVersionSnapshot] { publishingStore.draftVersions }
   public var markdownEditorSessionStates: [UUID: MarkdownEditorSessionState] {
     publishingStore.markdownEditorSessionStates
@@ -413,6 +435,14 @@ public final class WorkbenchStore: ObservableObject {
     )
     publishingStore.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &childStoreCancellables)
+    publishingStore.$drafts
+      .dropFirst()
+      .sink { [weak self] _ in
+        guard let self else { return }
+        self.draftMutationRevision &+= 1
+        self.knownArticleTitlesCacheRevision = nil
+      }
       .store(in: &childStoreCancellables)
     publishingStore.$activeProfileID
       .removeDuplicates()

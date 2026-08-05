@@ -10,9 +10,22 @@ public final class WorkbenchPublishingFeatureFacade: ObservableObject {
   init(store: WorkbenchStore) {
     self.store = store
     editorDisplayModePublisher = store.publishingStore.$editorDisplayMode.eraseToAnyPublisher()
-    store.publishingStore.objectWillChange
-      .sink { [weak self] _ in self?.objectWillChange.send() }
-      .store(in: &cancellables)
+
+    // Observe only values read by this facade.  In particular, do not bridge
+    // PublishingStore.objectWillChange: that would make editor, settings and
+    // publish-progress mutations invalidate every publishing subscriber.
+    observe(store.publishingStore.$profiles)
+    observe(store.publishingStore.$activeProfileID)
+    observe(store.publishingStore.$drafts)
+    observe(store.publishingStore.$selectedSection)
+    observe(store.publishingStore.$selectedDraftID)
+    observe(store.publishingStore.$draftListContentScope)
+    observe(store.publishingStore.$editorDisplayMode)
+    observe(store.publishingStore.$editorFocusRequest)
+    observe(store.publishingStore.$isPublishPreviewRefreshing)
+    observe(store.publishingStore.$preflightIssues)
+    observe(store.publishingStore.$batchPublishPlan)
+
     store.publishingStore.draftBodyEditorBufferWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
       .store(in: &cancellables)
@@ -155,5 +168,12 @@ public final class WorkbenchPublishingFeatureFacade: ObservableObject {
 
   public var batchPublishPlan: BatchPublishPlan? {
     store.batchPublishPlan
+  }
+
+  private func observe<P: Publisher>(_ publisher: P) where P.Failure == Never {
+    publisher
+      .dropFirst()
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
   }
 }

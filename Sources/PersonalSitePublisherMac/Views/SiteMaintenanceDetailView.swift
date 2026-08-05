@@ -2,9 +2,16 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct SiteMaintenanceDetailView: View {
-  @ObservedObject var store: WorkbenchStore
+  let store: WorkbenchStore
+  @ObservedObject private var maintenanceState: WorkbenchSiteMaintenanceFeatureFacade
   var isEmbedded: Bool = false
   @State private var onlineInspectionMessage: String?
+
+  init(store: WorkbenchStore, isEmbedded: Bool = false) {
+    self.store = store
+    _maintenanceState = ObservedObject(wrappedValue: store.siteMaintenance)
+    self.isEmbedded = isEmbedded
+  }
 
   var body: some View {
     if isEmbedded {
@@ -19,16 +26,16 @@ struct SiteMaintenanceDetailView: View {
 
   @ViewBuilder
   private var bodyContent: some View {
-    if let snapshot = store.siteMaintenanceSnapshot {
+    if let snapshot = maintenanceState.snapshot {
       VStack(alignment: .leading, spacing: 12) {
-        if let errorMessage = store.siteMaintenanceSnapshotErrorMessage {
+        if let errorMessage = maintenanceState.errorMessage {
           maintenanceRefreshFailure(errorMessage)
         }
         SiteMaintenanceDetailContent(
           snapshot: snapshot,
-          isStale: store.isSiteMaintenanceSnapshotStale,
-          isRefreshing: store.isSiteMaintenanceSnapshotRefreshing,
-          isAIChatRunning: store.ai.isChatRunning,
+          isStale: maintenanceState.isStale,
+          isRefreshing: maintenanceState.isRefreshing,
+          isAIChatRunning: maintenanceState.isAIChatRunning,
           refresh: refreshMaintenanceSnapshot,
           copySprintPlan: copySprintPlan,
           copyChecklist: copyChecklist,
@@ -41,25 +48,25 @@ struct SiteMaintenanceDetailView: View {
               await store.applySuggestedMaintenanceSchedule()
             }
           },
-          latestRelease: store.activeProfileReleaseRecords.first,
-          deploymentSnapshot: store.activeProfileReleaseRecords.first.flatMap(store.deploymentStatusSnapshot),
-          canCheckDeployment: store.activeProfileReleaseRecords.first.map(store.canCheckDeploymentStatus) ?? false,
-          isDeploymentChecking: store.isDeploymentStatusChecking,
+          latestRelease: maintenanceState.latestRelease,
+          deploymentSnapshot: maintenanceState.latestRelease.flatMap(maintenanceState.deploymentStatusSnapshot),
+          canCheckDeployment: maintenanceState.latestRelease.map(maintenanceState.canCheckDeploymentStatus) ?? false,
+          isDeploymentChecking: maintenanceState.isDeploymentStatusChecking,
           onlineInspectionMessage: onlineInspectionMessage,
           runOnlineInspection: runOnlineInspection
         )
       }
     } else {
       SiteMaintenanceSnapshotPlaceholder(
-        isRefreshing: store.isSiteMaintenanceSnapshotRefreshing,
-        errorMessage: store.siteMaintenanceSnapshotErrorMessage,
+        isRefreshing: maintenanceState.isRefreshing,
+        errorMessage: maintenanceState.errorMessage,
         generate: refreshMaintenanceSnapshot
       )
     }
   }
 
   private func refreshMaintenanceSnapshot() {
-    guard !store.isSiteMaintenanceSnapshotRefreshing else { return }
+    guard !maintenanceState.isRefreshing else { return }
     Task {
       await store.refreshSiteMaintenanceSnapshot(force: true)
     }
@@ -79,7 +86,7 @@ struct SiteMaintenanceDetailView: View {
       }
       Spacer()
       Button("重试", action: refreshMaintenanceSnapshot)
-        .disabled(store.isSiteMaintenanceSnapshotRefreshing)
+        .disabled(maintenanceState.isRefreshing)
     }
     .padding(10)
     .background(WorkbenchTheme.risk.opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
@@ -113,12 +120,12 @@ struct SiteMaintenanceDetailView: View {
   }
 
   private func runOnlineInspection() {
-    guard let release = store.activeProfileReleaseRecords.first else {
+    guard let release = maintenanceState.latestRelease else {
       onlineInspectionMessage = "尚无发布记录。"
       return
     }
-    guard store.canCheckDeploymentStatus(for: release) else {
-      onlineInspectionMessage = store.deploymentStatusReadiness(for: release).nextStep
+    guard maintenanceState.canCheckDeploymentStatus(for: release) else {
+      onlineInspectionMessage = maintenanceState.deploymentStatusReadiness(for: release).nextStep
       return
     }
 
@@ -127,7 +134,7 @@ struct SiteMaintenanceDetailView: View {
       if let snapshot = await store.refreshDeploymentStatus(for: release) {
         onlineInspectionMessage = "巡检完成：\(snapshot.provider.localizedDisplayName) \(snapshot.level.localizedDisplayName)。"
       } else {
-        onlineInspectionMessage = store.deploymentStatusMessage ?? "线上巡检未获得结果。"
+        onlineInspectionMessage = maintenanceState.deploymentStatusMessage ?? "线上巡检未获得结果。"
       }
     }
   }

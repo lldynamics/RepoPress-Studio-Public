@@ -462,6 +462,7 @@ public enum WorkbenchPersistenceError: LocalizedError, Sendable {
   case retiredFeatureArchiveConflict(String)
   case recoveryFilesUnavailable
   case invalidRecoverySnapshot(String)
+  case recoveryArchiveCleanupFailed(path: String, reason: String)
 
   public var errorDescription: String? {
     switch self {
@@ -473,6 +474,8 @@ public enum WorkbenchPersistenceError: LocalizedError, Sendable {
       return "没有可归档或导出的工作台故障文件。"
     case .invalidRecoverySnapshot(let message):
       return "所选恢复文件不是有效的工作台快照：\(message)"
+    case .recoveryArchiveCleanupFailed(let path, let reason):
+      return "归档工作台故障文件失败：\(reason)。临时归档目录保留在 \(path)。"
     }
   }
 }
@@ -853,7 +856,14 @@ public struct WorkbenchPersistence: Sendable {
         )
       }
     } catch {
-      try? fileManager.removeItem(at: archiveURL)
+      do {
+        try fileManager.removeItem(at: archiveURL)
+      } catch let cleanupError {
+        throw WorkbenchPersistenceError.recoveryArchiveCleanupFailed(
+          path: archiveURL.path,
+          reason: "复制失败：\(error.localizedDescription)；清理失败：\(cleanupError.localizedDescription)"
+        )
+      }
       throw error
     }
     return archiveURL

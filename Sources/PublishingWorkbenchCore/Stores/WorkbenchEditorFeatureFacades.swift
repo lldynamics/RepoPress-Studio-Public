@@ -62,6 +62,7 @@ public final class WorkbenchMarkdownEditorFeatureFacade: ObservableObject {
     observeValue(store.publishingStore.$profiles)
     observeValue(store.publishingStore.$activeProfileID)
     observeValue(store.publishingStore.$drafts)
+    observeValue(store.publishingStore.$customMarkdownSnippets)
     observeValue(store.publishingStore.$editorDisplayMode)
     observeValue(store.publishingStore.$editorFocusRequest)
     observeValue(store.persistenceStore.$hasUnsavedChanges)
@@ -104,6 +105,10 @@ public final class WorkbenchMarkdownEditorFeatureFacade: ObservableObject {
 
   public var drafts: [ArticleDraft] {
     store.drafts
+  }
+
+  public var customMarkdownSnippets: [MarkdownSnippet] {
+    store.customMarkdownSnippets
   }
 
   public var lastSaveStatus: String {
