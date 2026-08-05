@@ -335,13 +335,33 @@ struct PublishDrawerView: View {
       .keyboardShortcut(.cancelAction)
 
       if store.isRemoteRepositoryPublishing {
-        ProgressView()
-          .controlSize(.small)
-          .accessibilityLabel("正在发布")
-        Text(store.remoteRepositoryPublishProgress?.message ?? String(localized: "正在发布"))
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
+        if let progress = store.remoteRepositoryPublishProgress {
+          VStack(alignment: .leading, spacing: 4) {
+            if let value = progress.byteProgress {
+              ProgressView(value: value)
+                .progressViewStyle(.linear)
+            } else {
+              ProgressView()
+                .controlSize(.small)
+            }
+            Text(progress.statusDescription)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .lineLimit(2)
+          }
+          .frame(minWidth: 190, maxWidth: 300, alignment: .leading)
+          .accessibilityElement(children: .ignore)
+          .accessibilityLabel("Git 推送进度")
+          .accessibilityValue(progress.byteProgressDescription ?? progress.statusDescription)
+        } else {
+          ProgressView()
+            .controlSize(.small)
+            .accessibilityLabel("正在发布")
+          Text(String(localized: "正在发布"))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+        }
       } else if let message = store.publishActionMessage {
         Text(message)
           .font(.caption)

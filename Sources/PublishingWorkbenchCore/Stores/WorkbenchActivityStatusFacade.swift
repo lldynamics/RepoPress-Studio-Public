@@ -248,14 +248,14 @@ public final class WorkbenchActivityStatusFacade: ObservableObject {
       || repository.isRemoteRepositoryChecking
       || publishing.isLocalRepositoryMutationRunning
     if isRunning {
-      let detail = progress.map { [$0.message, $0.detail].compactMap { $0?.nilIfEmpty }.joined(separator: " · ") }
+      let detail = progress?.statusDescription
         ?? publishing.publishActionMessage
         ?? (repository.isRemoteRepositoryChecking ? "正在检查远端仓库权限…" : "正在执行 Git 操作…")
       return WorkbenchTaskItem(
         id: "git-push",
         kind: .gitPush,
         detail: detail,
-        progress: progress?.progress,
+        progress: progress?.byteProgress,
         state: .running
       )
     }
