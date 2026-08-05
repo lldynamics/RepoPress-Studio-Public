@@ -116,7 +116,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       rootURL = resolvedURL
     case .multipleRoots:
       showDataRootSetup(
-        message: String(localized: "所选位置包含多个 RepoPress 数据文件夹，请打开其中一个并直接选择它。")
+        message: String(localized: "所选位置包含多个数据文件夹，请打开其中一个并直接选择它。")
       )
       return
     case .notFound(let probeResult):
@@ -199,7 +199,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   func createNewDataRoot(in parentURL: URL) async {
     guard let bookmarkStore else { return }
 
-    phase = .preparing(String(localized: "正在新建 RepoPress 数据文件夹…"))
+    phase = .preparing(String(localized: "正在新建 RepoPress Studio 数据文件夹…"))
     dataRootMessage = nil
     let didAccess = parentURL.startAccessingSecurityScopedResource()
     defer {
@@ -635,12 +635,12 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
         detail
       )
     case .missingManifestForNonEmptyRoot:
-      return String(localized: "该文件夹不是 RepoPress 数据文件夹：它包含文件，但缺少数据根标记。")
+      return String(localized: "该文件夹不是有效的数据文件夹：它包含文件，但缺少数据根标记。")
     case .manifestIsNotRegularFile:
-      return String(localized: "RepoPress 数据根标记的类型不正确。")
+      return String(localized: "数据根标记的类型不正确。")
     case .unsupportedFormatVersion(let found, let supported):
       return String(
-        format: String(localized: "数据文件夹版本为 %d，当前应用仅支持 %d。请先升级 RepoPress。"),
+        format: String(localized: "数据文件夹版本为 %d，当前应用仅支持 %d。请先升级 RepoPress Studio。"),
         found,
         supported
       )
@@ -674,7 +674,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     if let error = error as? WorkbenchDataRootMigrationError {
       switch error {
       case .sourceChangedDuringCopy:
-        return String(localized: "复制期间旧数据发生了变化，本次迁移已取消。请关闭其他 RepoPress 窗口后重试。")
+        return String(localized: "复制期间旧数据发生了变化，本次迁移已取消。请关闭其他 RepoPress Studio 窗口后重试。")
       case .sourceContainsNoSupportedComponents:
         return String(localized: "未在本机找到可迁移的旧版工作台、资料库或 RSS 数据。")
       case .destinationAlreadyExists:

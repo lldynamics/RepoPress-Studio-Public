@@ -3,7 +3,7 @@
   "RSS": "RSS",
   "RSS 清理": "RSS Cleanup",
   "RSS 清理完成：删除 %@ 篇文章和 %@ 个本地图片。": "RSS cleanup complete: removed %@ articles and %@ local images.",
-  "RepoPress 将在 %@ 中创建新的数据文件夹。复制并校验成功后应用会退出，原文件夹不会删除。": "RepoPress will create a new data folder in %@. After the copy is verified, the app will quit. The original folder will not be deleted.",
+  "RepoPress Studio 将在 %@ 中创建新的数据文件夹。复制并校验成功后应用会退出，原文件夹不会删除。": "RepoPress Studio will create a new data folder in %@. After the copy is verified, the app will quit. The original folder will not be deleted.",
   "仍有修改未能保存，未更改存储位置。请先解决保存错误。": "Some changes could not be saved, so the storage location was not changed. Resolve the save error first.",
   "从备份导入…": "Import from Backup…",
   "其他工作台数据": "Other Workspace Data",
@@ -45,6 +45,6 @@
   "资料库、RSS 刷新或备份仍在运行，请完成后再更改存储位置。": "A library task, RSS refresh, or backup is still running. Change the storage location after it finishes.",
   "资料库清理": "Library Cleanup",
   "资料库清理完成：永久删除 %@ 条资料。": "Library cleanup complete: permanently deleted %@ items.",
-  "选择本机或外置硬盘中的目标位置。RepoPress 会新建数据文件夹，复制并校验全部资料库、RSS 和附件后再切换；原文件夹会保留。": "Choose a location on this Mac or an external drive. RepoPress creates a new data folder and switches only after the entire library, RSS data, and attachments are copied and verified. The original folder is kept.",
+  "选择本机或外置硬盘中的目标位置。RepoPress Studio 会新建数据文件夹，复制并校验全部资料库、RSS 和附件后再切换；原文件夹会保留。": "Choose a location on this Mac or an external drive. RepoPress Studio creates a new data folder and switches only after the entire library, RSS data, and attachments are copied and verified. The original folder is kept.",
   "重新计算": "Recalculate"
 }

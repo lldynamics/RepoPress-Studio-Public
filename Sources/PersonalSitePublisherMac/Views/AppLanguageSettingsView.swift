@@ -58,7 +58,7 @@ struct AppLanguageSettingsView: View {
       }
 
       Label {
-        Text("语言更改会在下次启动 RepoPress 后统一生效。当前窗口、菜单栏和系统面板不会立即切换。")
+        Text("语言更改会在下次启动 RepoPress Studio 后统一生效。当前窗口、菜单栏和系统面板不会立即切换。")
       } icon: {
         Image(systemName: "arrow.clockwise.circle")
           .foregroundStyle(WorkbenchTheme.brand)
@@ -72,9 +72,9 @@ struct AppLanguageSettingsView: View {
     case .system:
       return "下次启动后跟随 macOS 的应用语言设置。"
     case .simplifiedChinese:
-      return "下次启动后 RepoPress 固定使用简体中文。"
+      return "下次启动后 RepoPress Studio 固定使用简体中文。"
     case .english:
-      return "下次启动后 RepoPress 固定使用英文。"
+      return "下次启动后 RepoPress Studio 固定使用英文。"
     }
   }
 

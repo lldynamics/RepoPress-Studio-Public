@@ -985,7 +985,7 @@ async function performBridgeRequest(path, method, token, body = null) {
       ok: false,
       status: 0,
       payload: {
-        error: "无法连接 RepoPress。请先打开应用，再确认连接令牌有效。",
+        error: "无法连接 RepoPress Studio。请先打开应用，再确认连接令牌有效。",
         code: "loopback-bridge-unavailable",
         detail: readableError(loopbackError)
       },
@@ -1010,7 +1010,7 @@ async function handleBridgeAuthenticationFailure(status, payload) {
 
 function readableError(error) {
   if (String(error?.message || error).includes("Failed to fetch")) {
-    return "无法连接应用。请打开“RepoPress”，并确认连接令牌有效。";
+    return "无法连接应用。请打开“RepoPress Studio”，并确认连接令牌有效。";
   }
   return error?.message || String(error);
 }

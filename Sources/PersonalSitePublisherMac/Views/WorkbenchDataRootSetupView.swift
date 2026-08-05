@@ -11,7 +11,7 @@ struct WorkbenchDataRootSetupView: View {
         .accessibilityHidden(true)
 
       VStack(spacing: 8) {
-        Text("设置 RepoPress 数据文件夹")
+        Text("设置数据文件夹")
           .font(.title2.weight(.semibold))
         Text("资料库、RSS、工作台和应用内附件会统一保存在这个文件夹。删除并重新安装应用后，再次选择它即可恢复。")
           .font(.body)

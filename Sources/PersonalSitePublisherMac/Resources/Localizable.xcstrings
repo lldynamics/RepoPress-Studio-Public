@@ -97,18 +97,18 @@
         }
       }
     },
-    "自定义 RepoPress 的主题强调色，并决定选择态如何跟随 macOS。": {
+    "自定义 RepoPress Studio 的主题强调色，并决定选择态如何跟随 macOS。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Customize the RepoPress theme accent and how selection states follow macOS."
+            "value": "Customize the RepoPress Studio theme accent and how selection states follow macOS."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "自定义 RepoPress 的主题强调色，并决定选择态如何跟随 macOS。"
+            "value": "自定义 RepoPress Studio 的主题强调色，并决定选择态如何跟随 macOS。"
           }
         }
       }
@@ -4977,50 +4977,50 @@
         }
       }
     },
-    "RepoPress 会在所选位置中新建一个“RepoPress Data”文件夹。": {
+    "RepoPress Studio 会在所选位置中新建一个“RepoPress Data”文件夹。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "RepoPress will create a \"RepoPress Data\" folder in the selected location."
+            "value": "RepoPress Studio will create a \"RepoPress Data\" folder in the selected location."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "RepoPress 会在所选位置中新建一个“RepoPress Data”文件夹。"
+            "value": "RepoPress Studio 会在所选位置中新建一个“RepoPress Data”文件夹。"
           }
         }
       }
     },
-    "RepoPress 将在 %@ 中创建新的数据文件夹。复制并校验成功后应用会退出，原文件夹不会删除。": {
+    "RepoPress Studio 将在 %@ 中创建新的数据文件夹。复制并校验成功后应用会退出，原文件夹不会删除。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "RepoPress will create a new data folder in %@. After the copy is verified, the app will quit. The original folder will not be deleted."
+            "value": "RepoPress Studio will create a new data folder in %@. After the copy is verified, the app will quit. The original folder will not be deleted."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "RepoPress 将在 %@ 中创建新的数据文件夹。复制并校验成功后应用会退出，原文件夹不会删除。"
+            "value": "RepoPress Studio 将在 %@ 中创建新的数据文件夹。复制并校验成功后应用会退出，原文件夹不会删除。"
           }
         }
       }
     },
-    "RepoPress 数据根标记的类型不正确。": {
+    "数据根标记的类型不正确。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The RepoPress data-root marker has an invalid type."
+            "value": "The data-root marker has an invalid type."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "RepoPress 数据根标记的类型不正确。"
+            "value": "数据根标记的类型不正确。"
           }
         }
       }
@@ -13201,34 +13201,34 @@
         }
       }
     },
-    "下次启动后 RepoPress 固定使用简体中文。": {
+    "下次启动后 RepoPress Studio 固定使用简体中文。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "RepoPress will use Simplified Chinese after the next launch."
+            "value": "RepoPress Studio will use Simplified Chinese after the next launch."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "下次启动后 RepoPress 固定使用简体中文。"
+            "value": "下次启动后 RepoPress Studio 固定使用简体中文。"
           }
         }
       }
     },
-    "下次启动后 RepoPress 固定使用英文。": {
+    "下次启动后 RepoPress Studio 固定使用英文。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "RepoPress will use English after the next launch."
+            "value": "RepoPress Studio will use English after the next launch."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "下次启动后 RepoPress 固定使用英文。"
+            "value": "下次启动后 RepoPress Studio 固定使用英文。"
           }
         }
       }
@@ -13238,7 +13238,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "RepoPress will use the app language selected in macOS after the next launch."
+            "value": "RepoPress Studio will use the app language selected in macOS after the next launch."
           }
         },
         "zh-Hans": {
@@ -24449,18 +24449,18 @@
         }
       }
     },
-    "复制期间旧数据发生了变化，本次迁移已取消。请关闭其他 RepoPress 窗口后重试。": {
+    "复制期间旧数据发生了变化，本次迁移已取消。请关闭其他 RepoPress Studio 窗口后重试。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The legacy data changed during copying, so migration was canceled. Close other RepoPress windows and try again."
+            "value": "The legacy data changed during copying, so migration was canceled. Close other RepoPress Studio windows and try again."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "复制期间旧数据发生了变化，本次迁移已取消。请关闭其他 RepoPress 窗口后重试。"
+            "value": "复制期间旧数据发生了变化，本次迁移已取消。请关闭其他 RepoPress Studio 窗口后重试。"
           }
         }
       }
@@ -31713,18 +31713,18 @@
         }
       }
     },
-    "恢复已有 RepoPress 数据": {
+    "恢复已有数据文件夹": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Restore Existing RepoPress Data"
+            "value": "Restore Existing Data Folder"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "恢复已有 RepoPress 数据"
+            "value": "恢复已有数据文件夹"
           }
         }
       }
@@ -32177,18 +32177,18 @@
         }
       }
     },
-    "所选位置包含多个 RepoPress 数据文件夹，请打开其中一个并直接选择它。": {
+    "所选位置包含多个数据文件夹，请打开其中一个并直接选择它。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The selected location contains multiple RepoPress data folders. Open one and select it directly."
+            "value": "The selected location contains multiple data folders. Open one and select it directly."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "所选位置包含多个 RepoPress 数据文件夹，请打开其中一个并直接选择它。"
+            "value": "所选位置包含多个数据文件夹，请打开其中一个并直接选择它。"
           }
         }
       }
@@ -36065,18 +36065,18 @@
         }
       }
     },
-    "数据文件夹版本为 %d，当前应用仅支持 %d。请先升级 RepoPress。": {
+    "数据文件夹版本为 %d，当前应用仅支持 %d。请先升级 RepoPress Studio。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The data folder is version %d, while this app supports version %d. Upgrade RepoPress first."
+            "value": "The data folder is version %d, while this app supports version %d. Upgrade RepoPress Studio first."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "数据文件夹版本为 %d，当前应用仅支持 %d。请先升级 RepoPress。"
+            "value": "数据文件夹版本为 %d，当前应用仅支持 %d。请先升级 RepoPress Studio。"
           }
         }
       }
@@ -43441,18 +43441,18 @@
         }
       }
     },
-    "正在新建 RepoPress 数据文件夹…": {
+    "正在新建 RepoPress Studio 数据文件夹…": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Creating the RepoPress data folder…"
+            "value": "Creating the RepoPress Studio data folder…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在新建 RepoPress 数据文件夹…"
+            "value": "正在新建 RepoPress Studio 数据文件夹…"
           }
         }
       }
@@ -51473,18 +51473,18 @@
         }
       }
     },
-    "设置 RepoPress 数据文件夹": {
+    "设置数据文件夹": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Set Up the RepoPress Data Folder"
+            "value": "Set Up Data Folder"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "设置 RepoPress 数据文件夹"
+            "value": "设置数据文件夹"
           }
         }
       }
@@ -51761,18 +51761,18 @@
         }
       }
     },
-    "该文件夹不是 RepoPress 数据文件夹：它包含文件，但缺少数据根标记。": {
+    "该文件夹不是有效的数据文件夹：它包含文件，但缺少数据根标记。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This is not a RepoPress data folder: it contains files but has no data-root marker."
+            "value": "This is not a valid data folder: it contains files but has no data-root marker."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "该文件夹不是 RepoPress 数据文件夹：它包含文件，但缺少数据根标记。"
+            "value": "该文件夹不是有效的数据文件夹：它包含文件，但缺少数据根标记。"
           }
         }
       }
@@ -51889,18 +51889,18 @@
         }
       }
     },
-    "语言更改会在下次启动 RepoPress 后统一生效。当前窗口、菜单栏和系统面板不会立即切换。": {
+    "语言更改会在下次启动 RepoPress Studio 后统一生效。当前窗口、菜单栏和系统面板不会立即切换。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Language changes take effect consistently the next time RepoPress starts. The current window, menus, and system panels do not switch immediately."
+            "value": "Language changes take effect consistently the next time RepoPress Studio starts. The current window, menus, and system panels do not switch immediately."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "语言更改会在下次启动 RepoPress 后统一生效。当前窗口、菜单栏和系统面板不会立即切换。"
+            "value": "语言更改会在下次启动 RepoPress Studio 后统一生效。当前窗口、菜单栏和系统面板不会立即切换。"
           }
         }
       }
@@ -55681,18 +55681,18 @@
         }
       }
     },
-    "选择本机或外置硬盘中的目标位置。RepoPress 会新建数据文件夹，复制并校验全部资料库、RSS 和附件后再切换；原文件夹会保留。": {
+    "选择本机或外置硬盘中的目标位置。RepoPress Studio 会新建数据文件夹，复制并校验全部资料库、RSS 和附件后再切换；原文件夹会保留。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choose a location on this Mac or an external drive. RepoPress creates a new data folder and switches only after the entire library, RSS data, and attachments are copied and verified. The original folder is kept."
+            "value": "Choose a location on this Mac or an external drive. RepoPress Studio creates a new data folder and switches only after the entire library, RSS data, and attachments are copied and verified. The original folder is kept."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "选择本机或外置硬盘中的目标位置。RepoPress 会新建数据文件夹，复制并校验全部资料库、RSS 和附件后再切换；原文件夹会保留。"
+            "value": "选择本机或外置硬盘中的目标位置。RepoPress Studio 会新建数据文件夹，复制并校验全部资料库、RSS 和附件后再切换；原文件夹会保留。"
           }
         }
       }
