@@ -1,0 +1,427 @@
+import Foundation
+import PublishingWorkbenchCore
+import SwiftUI
+
+extension AIChatContextInspectorView {
+
+  var messageComposer: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      if let status = ai.chatMessage?.nilIfEmpty {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          Text(status)
+            .font(.workbenchSupporting)
+            .foregroundStyle(.secondary)
+            .lineLimit(4)
+            .accessibilityLabel("AI 状态")
+
+          Spacer(minLength: 0)
+
+          if let retryState = activeManualRetryState {
+            if retryState.requiresDuplicateChargeConfirmation {
+              Button(String(localized: "重新生成")) {
+                isPartialRetryConfirmationPresented = true
+              }
+              .controlSize(.regular)
+              .disabled(isSending)
+              .help(String(localized: "部分回复已保留；确认后才会重新发起请求"))
+            } else {
+              Button(String(localized: "手动重试")) {
+                retryLastFailedReply(confirmingPossibleDuplicateCharge: false)
+              }
+              .controlSize(.regular)
+              .disabled(isSending)
+              .help(String(localized: "由你确认后重新发起上一次请求"))
+            }
+          }
+        }
+      }
+
+      if isSending {
+        HStack(spacing: 6) {
+          Image(systemName: "sparkles")
+            .font(.workbenchMetadata)
+            .foregroundStyle(Color.accentColor)
+            .workbenchAIThinkingSymbolEffect(isActive: isSending)
+          Text("AI 思考中...")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(Color.accentColor)
+          Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+      }
+
+      VStack(alignment: .leading, spacing: 10) {
+        if !selectedContextReferences.isEmpty {
+          VStack(alignment: .leading, spacing: 5) {
+            ScrollView(.horizontal, showsIndicators: true) {
+              HStack(spacing: 6) {
+                ForEach(selectedContextReferences) { reference in
+                  HStack(spacing: 4) {
+                    Image(systemName: "at")
+                    Text(contextReferenceLabel(reference))
+                      .lineLimit(1)
+                    Button {
+                      removeContextReference(reference)
+                    } label: {
+                      Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                      "移除上下文 \(contextReferenceLabel(reference))"
+                    )
+                  }
+                  .font(.caption)
+                  .padding(.horizontal, 7)
+                  .padding(.vertical, 4)
+                  .background(Color.primary.opacity(0.07), in: Capsule())
+                }
+              }
+            }
+            Text(
+              AIChatContextReferencePresentation.summary(
+                for: selectedContextReferences
+              )
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+          }
+          .accessibilityElement(children: .contain)
+          .accessibilityLabel("本次 AI 上下文")
+        }
+
+        if !selectedChatImageAttachments.isEmpty {
+          ScrollView(.horizontal, showsIndicators: true) {
+            HStack(spacing: 6) {
+              ForEach(selectedChatImageAttachments) { attachment in
+                HStack(spacing: 4) {
+                  Image(systemName: "photo")
+                  Text(attachment.originalFilename)
+                    .lineLimit(1)
+                  Button {
+                    selectedImageAttachmentIDs.remove(attachment.id)
+                  } label: {
+                    Image(systemName: "xmark.circle.fill")
+                  }
+                  .buttonStyle(.plain)
+                  .accessibilityLabel("移除图片 \(attachment.originalFilename)")
+                }
+                .font(.caption)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(Color.primary.opacity(0.07), in: Capsule())
+              }
+            }
+          }
+          .accessibilityLabel("待发送图片")
+        }
+
+        TextField(
+          String(localized: "询问当前文章…"),
+          text: $inputText,
+          axis: .vertical
+        )
+        .accessibilityLabel("AI 消息")
+        .accessibilityIdentifier("ai-assistant-input")
+        .textFieldStyle(.plain)
+        .font(.body)
+        .lineLimit(3...8)
+        .disabled(isComposerInputUnavailable)
+        .focused($isComposerFocused)
+
+        HStack(spacing: 8) {
+          Menu {
+            if availableChatImageAttachments.isEmpty {
+              Text(String(localized: "当前文章没有可发送的图片"))
+            } else {
+              ForEach(availableChatImageAttachments) { attachment in
+                Button {
+                  toggleChatImageAttachment(attachment.id)
+                } label: {
+                  Label(
+                    attachment.originalFilename,
+                    systemImage: selectedImageAttachmentIDs.contains(attachment.id)
+                      ? "checkmark.circle.fill"
+                      : "circle"
+                  )
+                }
+              }
+              Divider()
+              Button(String(localized: "清空图片选择")) {
+                selectedImageAttachmentIDs = []
+              }
+              .disabled(selectedImageAttachmentIDs.isEmpty)
+            }
+          } label: {
+            Label(
+              selectedImageAttachmentIDs.isEmpty
+                ? String(localized: "添加图片")
+                : String(localized: "图片 \(selectedImageAttachmentIDs.count)"),
+              systemImage: "paperclip"
+            )
+          }
+          .menuStyle(.borderlessButton)
+          .fixedSize()
+          .disabled(
+            ai.selectedChatDraft == nil
+              || !currentAIProviderConfig.supportsImageInput
+              || isSending
+          )
+          .help(
+            currentAIProviderConfig.supportsImageInput
+              ? String(localized: "选择当前文章图片并发送给视觉模型")
+              : String(localized: "当前 AI 服务不支持图片输入")
+          )
+
+          Spacer(minLength: 8)
+
+          Button(action: handleSendButton) {
+            Label(
+              isSending ? String(localized: "停止") : String(localized: "发送"),
+              systemImage: isSending ? "stop.fill" : "arrow.up"
+            )
+            .frame(minWidth: 58)
+          }
+          .controlSize(.regular)
+          .workbenchProminentActionStyle(
+            tint: isSending ? WorkbenchTheme.risk : WorkbenchTheme.primaryActionFill
+          )
+          .keyboardShortcut(.return, modifiers: [.command])
+          .disabled(!isSending && !canSubmitMessage)
+          .help(
+            isSending
+              ? String(localized: "停止生成")
+              : String(localized: "发送")
+          )
+          .accessibilityLabel(
+            isSending
+              ? String(localized: "停止 AI 回复")
+              : String(localized: "发送 AI 消息")
+          )
+          .accessibilityIdentifier("ai-assistant-send-button")
+        }
+      }
+      .padding(10)
+      .background(
+        Color(nsColor: .textBackgroundColor).opacity(0.72),
+        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+      )
+      .overlay {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+          .strokeBorder(
+            isComposerFocused
+              ? WorkbenchTheme.primary
+              : Color(nsColor: .separatorColor).opacity(0.65),
+            lineWidth: isComposerFocused ? 1.5 : 1
+          )
+          .allowsHitTesting(false)
+      }
+      .animation(WorkbenchMotion.quick, value: isComposerFocused)
+    }
+    .padding(12)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("ai-assistant-composer")
+  }
+
+  var trimmedInput: String {
+    inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  var availableChatContextReferences: [AIContextReference] {
+    guard let draft = ai.selectedChatDraft else { return [] }
+    return ai.availableChatContextReferences(for: draft)
+  }
+
+  var primaryChatContextReferences: [AIContextReference] {
+    availableChatContextReferences.filter {
+      $0.kind != .specifiedArticle && $0.kind != .knowledgeEntry
+    }
+  }
+
+  var articleChatContextReferences: [AIContextReference] {
+    availableChatContextReferences.filter { $0.kind == .specifiedArticle }
+  }
+
+  var knowledgeChatContextReferences: [AIContextReference] {
+    availableChatContextReferences.filter { $0.kind == .knowledgeEntry }
+  }
+
+  var contextReferenceMenu: some View {
+    Menu {
+      ForEach(primaryChatContextReferences) { reference in
+        contextReferenceButton(reference)
+      }
+
+      if !articleChatContextReferences.isEmpty {
+        Menu("其他文章") {
+          ForEach(articleChatContextReferences) { reference in
+            contextReferenceButton(reference)
+          }
+        }
+      }
+
+      if !knowledgeChatContextReferences.isEmpty {
+        Menu("资料库（仅允许发送给远程 AI）") {
+          ForEach(knowledgeChatContextReferences) { reference in
+            contextReferenceButton(reference)
+          }
+        }
+      }
+
+      if !selectedContextReferences.isEmpty {
+        Divider()
+        Button("清空 @ 上下文") {
+          selectedContextReferences = []
+        }
+      }
+    } label: {
+      Label(
+        selectedContextReferences.isEmpty
+          ? String(localized: "@ 上下文")
+          : "@ \(selectedContextReferences.count)",
+        systemImage: "at"
+      )
+    }
+    .menuStyle(.borderlessButton)
+    .fixedSize()
+    .disabled(ai.selectedChatDraft == nil || isSending)
+    .help("明确选择本次发送给 AI 的文章、选区、站点配置或资料")
+  }
+
+  func contextReferenceButton(
+    _ reference: AIContextReference
+  ) -> some View {
+    Button {
+      toggleContextReference(reference)
+    } label: {
+      Label(
+        contextReferenceLabel(reference),
+        systemImage: containsContextReference(reference)
+          ? "checkmark.circle.fill"
+          : "circle"
+      )
+    }
+  }
+
+  func toggleContextReference(_ reference: AIContextReference) {
+    if let index = selectedContextReferences.firstIndex(where: {
+      sameContextReferenceTarget($0, reference)
+    }) {
+      selectedContextReferences.remove(at: index)
+      return
+    }
+    guard selectedContextReferences.count < 8 else {
+      ai.setChatMessage("每次最多选择 8 项 @ 上下文。")
+      return
+    }
+    selectedContextReferences.append(reference)
+  }
+
+  func removeContextReference(_ reference: AIContextReference) {
+    selectedContextReferences.removeAll {
+      sameContextReferenceTarget($0, reference)
+    }
+  }
+
+  func containsContextReference(_ reference: AIContextReference) -> Bool {
+    selectedContextReferences.contains {
+      sameContextReferenceTarget($0, reference)
+    }
+  }
+
+  func sameContextReferenceTarget(
+    _ lhs: AIContextReference,
+    _ rhs: AIContextReference
+  ) -> Bool {
+    lhs.kind == rhs.kind
+      && lhs.resourceID == rhs.resourceID
+      && lhs.sourceRange == rhs.sourceRange
+  }
+
+  func contextReferenceLabel(_ reference: AIContextReference) -> String {
+    AIChatContextReferencePresentation.label(for: reference)
+  }
+
+  var availableChatImageAttachments: [DraftAttachment] {
+    guard let draft = ai.selectedChatDraft else { return [] }
+    return draft.attachments.filter { $0.mediaKind == .image }
+  }
+
+  var selectedChatImageAttachments: [DraftAttachment] {
+    availableChatImageAttachments.filter {
+      selectedImageAttachmentIDs.contains($0.id)
+    }
+  }
+
+  var isComposerInputUnavailable: Bool {
+    ai.selectedChatDraft == nil || isSending
+  }
+
+  var canSubmitMessage: Bool {
+    (!trimmedInput.isEmpty || !selectedImageAttachmentIDs.isEmpty)
+      && !isComposerInputUnavailable
+      && !isAIKeyMissing
+  }
+
+  func submitMessage() {
+    guard let draft = ai.selectedChatDraft else { return }
+    let message = trimmedInput
+    guard !message.isEmpty || !selectedImageAttachmentIDs.isEmpty,
+      !isSending
+    else { return }
+    startSending(message, draft: draft, clearsComposerOnAccept: true)
+  }
+
+  func toggleChatImageAttachment(_ attachmentID: UUID) {
+    if selectedImageAttachmentIDs.remove(attachmentID) != nil {
+      return
+    }
+    guard
+      selectedImageAttachmentIDs.count
+        < AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount
+    else {
+      ai.setChatMessage(
+        "每次最多发送 \(AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount) 张图片。"
+      )
+      return
+    }
+    selectedImageAttachmentIDs.insert(attachmentID)
+  }
+
+  func saveCurrentInputAsCustomPrompt() {
+    let prompt = trimmedInput
+    guard !prompt.isEmpty else { return }
+    let title =
+      prompt
+      .split(whereSeparator: \.isNewline)
+      .first
+      .map(String.init)?
+      .prefix(28) ?? Substring(String(localized: "自定义指令"))
+    _ = ai.saveChatCustomPrompt(title: String(title), prompt: prompt)
+  }
+
+  var isSending: Bool {
+    isSubmitting || ai.isChatRunning
+  }
+
+  var activeManualRetryState: AIChatManualRetryState? {
+    guard let draftID = ai.selectedChatDraft?.id,
+      let retryState = ai.chatManualRetryState,
+      retryState.draftID == draftID,
+      retryState.conversationID == ai.activeChatConversationID(for: draftID)
+    else {
+      return nil
+    }
+    return retryState
+  }
+
+  func handleSendButton() {
+    if isSending {
+      stopSending()
+    } else {
+      submitMessage()
+    }
+  }
+}
