@@ -21,8 +21,6 @@ struct AISettingsView: View {
   let testConnection: () async -> AIConnectionTestReport?
   let grantDataSharingConsent: () -> Void
   let revokeDataSharingConsent: () -> Void
-  let selectedDraftTitle: String?
-  let appendLocalWhisperTranscript: (String) -> Bool
 
   @State private var aiAPIKeyInput = ""
   @State private var aiConnectionReport: AIConnectionTestReport?
@@ -77,11 +75,6 @@ struct AISettingsView: View {
             applyLocalAIConfiguration(baseURL: baseURL, model: model)
           }
 
-          LocalWhisperSection(
-            selectedDraftTitle: selectedDraftTitle,
-            appendTranscript: appendLocalWhisperTranscript
-          )
-
         case .credentials:
           AIKeychainSection(
             aiAPIKeyInput: $aiAPIKeyInput,
@@ -129,6 +122,7 @@ struct AISettingsView: View {
         }
       }
       .formStyle(.grouped)
+      .scrollIndicators(.hidden)
       .padding(WorkbenchSpacing.content)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

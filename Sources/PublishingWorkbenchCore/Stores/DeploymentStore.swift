@@ -6,10 +6,8 @@ public final class DeploymentStore: ObservableObject {
   private static let deploymentStatusHistoryLimitPerRecord = 6
 
   private let deploymentStatusService: DeploymentStatusService
-  private let deploymentWebhookService: DeploymentWebhookService
   private let deploymentTokenStore: KeychainTokenStore
   private let releaseLedgerService: ReleaseLedgerService
-  private var deploymentWebhookHTTPReceiver: DeploymentWebhookHTTPReceiver?
   private var latestDeploymentStatusRequestIDByRecord: [UUID: UUID] = [:]
   private var activeDeploymentStatusRequestIDs: Set<UUID> = []
 
@@ -17,7 +15,6 @@ public final class DeploymentStore: ObservableObject {
   @Published public internal(set) var deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]]
   @Published public internal(set) var isDeploymentStatusChecking: Bool
   @Published public internal(set) var deploymentStatusMessage: String?
-  @Published public internal(set) var deploymentWebhookHTTPReceiverState: DeploymentWebhookHTTPReceiverState
   @Published public internal(set) var deploymentPollingSettings: DeploymentPollingSettings
   @Published public internal(set) var deploymentPollingState: DeploymentPollingState
   @Published public internal(set) var deploymentTokenAvailability: KeychainTokenAvailability
@@ -27,24 +24,20 @@ public final class DeploymentStore: ObservableObject {
     deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]] = [:],
     isDeploymentStatusChecking: Bool = false,
     deploymentStatusMessage: String? = nil,
-    deploymentWebhookHTTPReceiverState: DeploymentWebhookHTTPReceiverState = .idle,
     deploymentPollingSettings: DeploymentPollingSettings = .default,
     deploymentPollingState: DeploymentPollingState = .idle,
     deploymentTokenAvailability: KeychainTokenAvailability = KeychainTokenAvailability(hasToken: false),
     deploymentStatusService: DeploymentStatusService = DeploymentStatusService(),
-    deploymentWebhookService: DeploymentWebhookService = DeploymentWebhookService(),
     deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.deployment, accountPrefix: "deployment-provider"),
     releaseLedgerService: ReleaseLedgerService = ReleaseLedgerService()
   ) {
     self.deploymentStatusService = deploymentStatusService
-    self.deploymentWebhookService = deploymentWebhookService
     self.deploymentTokenStore = deploymentTokenStore
     self.releaseLedgerService = releaseLedgerService
     self.deploymentStatusSnapshots = deploymentStatusSnapshots
     self.deploymentStatusHistory = deploymentStatusHistory
     self.isDeploymentStatusChecking = isDeploymentStatusChecking
     self.deploymentStatusMessage = deploymentStatusMessage
-    self.deploymentWebhookHTTPReceiverState = deploymentWebhookHTTPReceiverState
     self.deploymentPollingSettings = deploymentPollingSettings
     self.deploymentPollingState = deploymentPollingState
     self.deploymentTokenAvailability = deploymentTokenAvailability
@@ -156,14 +149,22 @@ public final class DeploymentStore: ObservableObject {
 
   public func activeProfileDeploymentStatusSnapshots(store: WorkbenchStore) -> [UUID: DeploymentStatusSnapshot] {
     let activeRecords = activeProfileReleaseRecords(store: store)
-    return deploymentStatusSnapshots.filter { id, _ in activeRecords.contains { $0.id == id } }
+    return activeProfileDeploymentStatusSnapshots(for: activeRecords)
   }
 
   public func activeProfileReleaseLedger(store: WorkbenchStore) -> ReleaseLedger {
-    releaseLedgerService.ledger(
-      releaseRecords: activeProfileReleaseRecords(store: store),
-      deploymentStatusSnapshots: activeProfileDeploymentStatusSnapshots(store: store)
+    let activeRecords = activeProfileReleaseRecords(store: store)
+    return releaseLedgerService.ledger(
+      releaseRecords: activeRecords,
+      deploymentStatusSnapshots: activeProfileDeploymentStatusSnapshots(for: activeRecords)
     )
+  }
+
+  private func activeProfileDeploymentStatusSnapshots(
+    for activeRecords: [ReleaseRecord]
+  ) -> [UUID: DeploymentStatusSnapshot] {
+    let activeRecordIDs = Set(activeRecords.map(\.id))
+    return deploymentStatusSnapshots.filter { activeRecordIDs.contains($0.key) }
   }
 
   public func releaseLedgerEntry(for record: ReleaseRecord) -> ReleaseLedgerEntry {
@@ -302,85 +303,6 @@ public final class DeploymentStore: ObservableObject {
     store: WorkbenchStore
   ) -> Bool {
     deploymentStatusReadiness(for: record, store: store).canCheckAnyStatus
-  }
-
-  @discardableResult
-  public func receiveDeploymentWebhook(
-    provider: DeploymentProvider,
-    payloadText: String,
-    store: WorkbenchStore,
-    for record: ReleaseRecord? = nil,
-    receivedAt: Date = Date()
-  ) -> DeploymentWebhookReceiveResult? {
-    let targetRecord = record ?? store.activeProfileReleaseRecords.first
-    do {
-      let targetProfile = targetRecord.map { store.profile(for: $0) } ?? store.activeProfile
-      let result = try deploymentWebhookService.receive(
-        provider: provider,
-        payloadText: payloadText,
-        profile: targetProfile,
-        releaseRecord: targetRecord,
-        receivedAt: receivedAt
-      )
-      if let targetRecord {
-        recordDeploymentStatusSnapshot(result.snapshot, for: targetRecord)
-      }
-      deploymentStatusMessage = CoreL10n.format(
-        "已接收 %@ Webhook：%@",
-        provider.displayName,
-        result.snapshot.level.displayName
-      )
-      store.save()
-      return result
-    } catch {
-      deploymentStatusMessage = CoreL10n.format("Webhook 接收失败：%@", error.localizedDescription)
-      return nil
-    }
-  }
-
-  public func startDeploymentWebhookHTTPReceiver(
-    store: WorkbenchStore,
-    port: UInt16 = 8787
-  ) {
-    let receiver = DeploymentWebhookHTTPReceiver()
-    do {
-      let endpoint = try receiver.start(port: port) { [weak self, weak store] provider, payloadText in
-        guard let deploymentStore = self, let workbenchStore = store else {
-          return false
-        }
-        return await MainActor.run {
-          deploymentStore.receiveDeploymentWebhook(
-            provider: provider,
-            payloadText: payloadText,
-            store: workbenchStore
-          ) != nil
-        }
-      }
-      deploymentWebhookHTTPReceiver = receiver
-      deploymentWebhookHTTPReceiverState = DeploymentWebhookHTTPReceiverState(
-        isRunning: true,
-        port: port,
-        endpointURLText: endpoint,
-        message: CoreL10n.text("Webhook 接收器已启动。")
-      )
-      deploymentStatusMessage = CoreL10n.format("Webhook 接收器已启动：%@", endpoint)
-    } catch {
-      deploymentWebhookHTTPReceiver = nil
-      deploymentWebhookHTTPReceiverState = DeploymentWebhookHTTPReceiverState(
-        isRunning: false,
-        port: port,
-        endpointURLText: nil,
-        message: CoreL10n.format("Webhook 接收器启动失败：%@", error.localizedDescription)
-      )
-      deploymentStatusMessage = deploymentWebhookHTTPReceiverState.message
-    }
-  }
-
-  public func stopDeploymentWebhookHTTPReceiver() {
-    deploymentWebhookHTTPReceiver?.stop()
-    deploymentWebhookHTTPReceiver = nil
-    deploymentWebhookHTTPReceiverState = .idle
-    deploymentStatusMessage = CoreL10n.text("Webhook 接收器已停止。")
   }
 
   @discardableResult

@@ -78,7 +78,6 @@ extension WorkbenchStore {
   public var deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]] { deploymentStore.deploymentStatusHistory }
   public var isDeploymentStatusChecking: Bool { deploymentStore.isDeploymentStatusChecking }
   public var deploymentStatusMessage: String? { deploymentStore.deploymentStatusMessage }
-  public var deploymentWebhookHTTPReceiverState: DeploymentWebhookHTTPReceiverState { deploymentStore.deploymentWebhookHTTPReceiverState }
   public var deploymentPollingSettings: DeploymentPollingSettings { deploymentStore.deploymentPollingSettings }
   public var deploymentPollingState: DeploymentPollingState { deploymentStore.deploymentPollingState }
   public var deploymentTokenAvailability: KeychainTokenAvailability { deploymentStore.deploymentTokenAvailability }

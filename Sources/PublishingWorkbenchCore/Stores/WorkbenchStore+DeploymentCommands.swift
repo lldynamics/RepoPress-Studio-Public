@@ -67,30 +67,6 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func receiveDeploymentWebhook(
-    provider: DeploymentProvider,
-    payloadText: String,
-    for record: ReleaseRecord? = nil,
-    receivedAt: Date = Date()
-  ) -> DeploymentWebhookReceiveResult? {
-    deploymentStore.receiveDeploymentWebhook(
-      provider: provider,
-      payloadText: payloadText,
-      store: self,
-      for: record,
-      receivedAt: receivedAt
-    )
-  }
-
-  public func startDeploymentWebhookHTTPReceiver(port: UInt16 = 8787) {
-    deploymentStore.startDeploymentWebhookHTTPReceiver(store: self, port: port)
-  }
-
-  public func stopDeploymentWebhookHTTPReceiver() {
-    deploymentStore.stopDeploymentWebhookHTTPReceiver()
-  }
-
-  @discardableResult
   public func refreshDeploymentStatus(
     for record: ReleaseRecord,
     updatesMessage: Bool = true
