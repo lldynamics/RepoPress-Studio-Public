@@ -244,16 +244,12 @@ struct StorageManagementView: View {
         String(localized: "文章"),
         value: rssStore.articleHeaders.count.formatted()
       )
-      LabeledContent(
-        String(localized: "本地图片"),
-        value: rssStore.mediaAssets.count.formatted()
-      )
       Picker(String(localized: "清理范围"), selection: $retentionDays) {
         ForEach([30, 60, 90, 180, 365, 730], id: \.self) { days in
           Text("\(days) 天前").tag(days)
         }
       }
-      Text("只清理超过期限、已读、未加入稍后阅读且没有高亮的文章，并一并移除这些文章的本地图片。")
+      Text("只清理超过期限、已读、未加入稍后阅读且没有高亮的文章。")
         .font(.callout)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -441,7 +437,7 @@ struct StorageManagementView: View {
 
   private var relocationSection: some View {
     Section(String(localized: "更改存储位置")) {
-      Text("选择本机或外置硬盘中的目标位置。RepoPress 会新建数据文件夹，复制并校验全部资料库、RSS 和附件后再切换；原文件夹会保留。")
+      Text("选择本机或外置硬盘中的目标位置。RepoPress Studio 会新建数据文件夹，复制并校验全部资料库、RSS 和附件后再切换；原文件夹会保留。")
         .font(.callout)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -469,7 +465,7 @@ struct StorageManagementView: View {
       return String(localized: "请选择新的存储位置。")
     }
     return String(
-      format: String(localized: "RepoPress 将在 %@ 中创建新的数据文件夹。复制并校验成功后应用会退出，原文件夹不会删除。"),
+      format: String(localized: "RepoPress Studio 将在 %@ 中创建新的数据文件夹。复制并校验成功后应用会退出，原文件夹不会删除。"),
       parentURL.path
     )
   }
@@ -528,9 +524,8 @@ struct StorageManagementView: View {
       operationMessage = summary.removedArticleCount == 0
         ? String(localized: "没有符合条件的 RSS 历史文章。")
         : String(
-          format: String(localized: "RSS 清理完成：删除 %@ 篇文章和 %@ 个本地图片。"),
-          summary.removedArticleCount.formatted(),
-          summary.removedMediaAssetCount.formatted()
+          format: String(localized: "RSS 清理完成：删除 %@ 篇文章。"),
+          summary.removedArticleCount.formatted()
         )
     }
     Task { await refreshUsage() }

@@ -4785,22 +4785,22 @@
         }
       }
     },
-    "RSS 清理完成：删除 %@ 篇文章和 %@ 个本地图片。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "RSS cleanup complete: removed %@ articles and %@ local images."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "RSS 清理完成：删除 %@ 篇文章和 %@ 个本地图片。"
+    "RSS 清理完成：删除 %@ 篇文章。": {
+        "localizations": {
+          "en": {
+            "stringUnit": {
+              "state": "translated",
+            "value": "RSS cleanup complete: removed %@ articles."
+            }
+          },
+          "zh-Hans": {
+            "stringUnit": {
+              "state": "translated",
+            "value": "RSS 清理完成：删除 %@ 篇文章。"
+            }
           }
         }
-      }
-    },
+      },
     "RSS 稍后阅读与高亮": {
       "localizations": {
         "en": {
@@ -21521,18 +21521,18 @@
         }
       }
     },
-    "只清理超过期限、已读、未加入稍后阅读且没有高亮的文章，并一并移除这些文章的本地图片。": {
+    "只清理超过期限、已读、未加入稍后阅读且没有高亮的文章。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Removes only articles that are older than the limit, read, not saved for later, and have no highlights, together with their local images."
+            "value": "Removes only articles that are older than the limit, read, not saved for later, and have no highlights."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "只清理超过期限、已读、未加入稍后阅读且没有高亮的文章，并一并移除这些文章的本地图片。"
+            "value": "只清理超过期限、已读、未加入稍后阅读且没有高亮的文章。"
           }
         }
       }
@@ -40429,22 +40429,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "本地变化"
-          }
-        }
-      }
-    },
-    "本地图片": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local Images"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "本地图片"
           }
         }
       }
