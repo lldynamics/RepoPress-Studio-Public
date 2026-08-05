@@ -46,10 +46,6 @@ struct SettingsAITabFactory {
       },
       revokeDataSharingConsent: {
         context.store.ai.revokeDataSharingConsent()
-      },
-      selectedDraftTitle: context.store.selectedDraft?.title,
-      appendLocalWhisperTranscript: { transcript in
-        context.store.appendLocalWhisperTranscript(transcript)
       }
     )
   }

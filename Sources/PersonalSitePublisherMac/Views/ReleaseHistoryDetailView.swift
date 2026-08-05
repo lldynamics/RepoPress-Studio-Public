@@ -4,10 +4,6 @@ import SwiftUI
 
 struct ReleaseHistoryDetailView: View {
   @ObservedObject var store: WorkbenchStore
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-  @State var webhookProvider: DeploymentProvider = .netlify
-  @State var webhookPayloadText = ""
-#endif
   @State var pendingDangerousReleaseAction: DangerousReleaseAction?
 
   var body: some View {
@@ -135,9 +131,6 @@ struct ReleaseHistoryDetailView: View {
         deploymentPollingSummary
         deploymentStatusSummary
         releaseRecordsSection(ledger)
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-        deploymentAdvancedDebugSection
-#endif
       }
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("release-history-narrow-content")
@@ -159,9 +152,6 @@ struct ReleaseHistoryDetailView: View {
       deploymentOverviewSummary(ledger.deploymentOverview)
       deploymentPollingSummary
       deploymentStatusSummary
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-      deploymentAdvancedDebugSection
-#endif
     }
     .frame(maxWidth: .infinity, alignment: .topLeading)
     .accessibilityElement(children: .contain)

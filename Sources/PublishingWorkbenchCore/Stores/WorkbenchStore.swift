@@ -138,7 +138,6 @@ public final class WorkbenchStore: ObservableObject {
     localGitPublishService: LocalGitPublishService = LocalGitPublishService(),
     remoteRepositoryPublishService: RemoteRepositoryPublishService = RemoteRepositoryPublishService(),
     deploymentStatusService: DeploymentStatusService = DeploymentStatusService(),
-    deploymentWebhookService: DeploymentWebhookService = DeploymentWebhookService(),
     siteAnalyticsService: SiteAnalyticsService = SiteAnalyticsService(),
     siteStarterService: SiteStarterService = SiteStarterService(),
     imageWorkbenchService: SiteImageWorkbenchService = SiteImageWorkbenchService(),
@@ -361,7 +360,6 @@ public final class WorkbenchStore: ObservableObject {
       deploymentPollingSettings: snapshot?.deploymentPollingSettings ?? .default,
       deploymentPollingState: snapshot?.deploymentPollingState ?? .idle,
       deploymentStatusService: deploymentStatusService,
-      deploymentWebhookService: deploymentWebhookService,
       deploymentTokenStore: deploymentTokenStore,
       releaseLedgerService: releaseLedgerService
     )

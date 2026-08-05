@@ -1615,79 +1615,6 @@ final class DeploymentStatusServiceTests: XCTestCase {
     XCTAssertEqual(store.deploymentStatusSnapshot(for: successRecord)?.level, .success)
   }
 
-  func testDeploymentWebhookParsesNetlifyDeployPayload() throws {
-    let service = DeploymentWebhookService()
-    var profile = SiteProfile.defaultProfile
-    profile.deploymentProvider = .netlify
-    let record = ReleaseRecord(
-      kind: .remoteDirectCommit,
-      title: "线上发布：Netlify",
-      summary: "Netlify",
-      siteProfileID: profile.id,
-      branchName: "main",
-      commitSHA: "abc123"
-    )
-
-    let result = try service.receive(
-      provider: .netlify,
-      payloadText: #"{"state":"ready","name":"personal-site","branch":"main","commit_ref":"abc123","admin_url":"https://app.netlify.com/sites/personal-site/deploys/1"}"#,
-      profile: profile,
-      releaseRecord: record,
-      receivedAt: Date(timeIntervalSince1970: 1_900_000_000)
-    )
-
-    XCTAssertEqual(result.snapshot.provider, .netlify)
-    XCTAssertEqual(result.snapshot.releaseRecordID, record.id)
-    XCTAssertEqual(result.snapshot.level, .success)
-    XCTAssertEqual(result.snapshot.title, "personal-site")
-    XCTAssertEqual(result.snapshot.signals.first?.message, [
-      CoreL10n.format("状态：%@", "ready"),
-      CoreL10n.format("分支：%@", "main"),
-      CoreL10n.format("提交：%@", "abc123"),
-    ].joined(separator: " · "))
-    XCTAssertEqual(result.snapshot.siteURLText, "https://app.netlify.com/sites/personal-site/deploys/1")
-  }
-
-  func testStoreReceivesDeploymentWebhookAndUpdatesSnapshotHistory() throws {
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL()))
-    store.updateActiveProfile { profile in
-      profile.deploymentProvider = .vercel
-      profile.deploymentProjectID = "prj_123"
-    }
-    let record = ReleaseRecord(
-      kind: .remoteDirectCommit,
-      title: "线上发布：Vercel",
-      summary: "Vercel",
-      siteProfileID: store.activeProfileID,
-      branchName: "main",
-      commitSHA: "abc123"
-    )
-    store.setReleaseRecords([record])
-
-    let running = store.receiveDeploymentWebhook(
-      provider: .vercel,
-      payloadText: #"{"type":"deployment.created","deployment":{"name":"personal-site","readyState":"BUILDING","target":"production","inspectorUrl":"https://vercel.com/team/site/1","meta":{"githubCommitRef":"main","githubCommitSha":"abc123"}}}"#,
-      for: record,
-      receivedAt: Date(timeIntervalSince1970: 1_900_000_000)
-    )
-    let success = store.receiveDeploymentWebhook(
-      provider: .vercel,
-      payloadText: #"{"type":"deployment.succeeded","deployment":{"name":"personal-site","readyState":"READY","target":"production","inspectorUrl":"https://vercel.com/team/site/2","meta":{"githubCommitRef":"main","githubCommitSha":"abc123"}}}"#,
-      for: record,
-      receivedAt: Date(timeIntervalSince1970: 1_900_000_060)
-    )
-
-    XCTAssertEqual(running?.snapshot.level, .running)
-    XCTAssertEqual(success?.snapshot.level, .success)
-    XCTAssertEqual(store.deploymentStatusSnapshot(for: record)?.level, .success)
-    let history = store.deploymentStatusHistory(for: record)
-    XCTAssertEqual(history.map(\.level), [.success, .running])
-    XCTAssertEqual(
-      store.deploymentStatusMessage,
-      CoreL10n.format("已接收 %@ Webhook：%@", "Vercel", CoreL10n.text("正常"))
-    )
-  }
-
   func testDeploymentProviderIntegrationDepthDocumentsThirdPartyAPIs() {
     XCTAssertTrue(DeploymentProvider.netlify.integrationDepth.title.contains("Netlify Deploy API"))
     XCTAssertTrue(DeploymentProvider.vercel.integrationDepth.title.contains("Vercel Deployments API"))
@@ -1696,55 +1623,6 @@ final class DeploymentStatusServiceTests: XCTestCase {
       DeploymentProvider.custom.integrationDepth.detail,
       CoreL10n.text("读取自定义 JSON/HTTP 状态端点，或使用站点 URL 做可达性与发布后页面校验。")
     )
-  }
-
-  func testDeploymentWebhookHTTPRequestParsesProviderAndPayload() throws {
-    let body = #"{"state":"ready"}"#
-    let request = """
-    POST /deployment-webhook/cloudflare-pages HTTP/1.1\r
-    Host: 127.0.0.1:8787\r
-    Content-Type: application/json\r
-    Content-Length: \(body.utf8.count)\r
-    \r
-    \(body)
-    """
-
-    let parsed = try XCTUnwrap(DeploymentWebhookHTTPRequest.parse(Data(request.utf8)))
-
-    XCTAssertEqual(parsed.provider, .cloudflarePages)
-    XCTAssertEqual(parsed.payloadText, body)
-  }
-
-  func testDeploymentWebhookHTTPRequestRejectsDuplicateContentLengthWithoutTrapping() {
-    let body = #"{"state":"ready"}"#
-    let request = """
-    POST /deployment-webhook/vercel HTTP/1.1\r
-    Host: 127.0.0.1:8787\r
-    Content-Length: \(body.utf8.count)\r
-    Content-Length: \(body.utf8.count)\r
-    \r
-    \(body)
-    """
-
-    XCTAssertNil(DeploymentWebhookHTTPRequest.parse(Data(request.utf8)))
-  }
-
-  func testDeploymentWebhookHTTPRequestAllowsRepeatedExtensionHeaders() throws {
-    let body = #"{"state":"ready"}"#
-    let request = """
-    POST /deployment-webhook/vercel HTTP/1.1\r
-    Host: 127.0.0.1:8787\r
-    X-Debug-Trace: first\r
-    X-Debug-Trace: second\r
-    Content-Length: \(body.utf8.count)\r
-    \r
-    \(body)
-    """
-
-    let parsed = try XCTUnwrap(DeploymentWebhookHTTPRequest.parse(Data(request.utf8)))
-
-    XCTAssertEqual(parsed.provider, .vercel)
-    XCTAssertEqual(parsed.payloadText, body)
   }
 
   private func temporaryPersistenceURL() throws -> URL {
