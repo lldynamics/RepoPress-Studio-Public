@@ -12,7 +12,8 @@ extension MacMarkdownComposerView {
       editorBody,
       for: draft.id,
       baseRevision: editorBodyRevision,
-      replacingBaseBody: baseBodyMarkdown
+      replacingBaseBody: baseBodyMarkdown,
+      notifyEditorObservers: false
     ) else {
       return
     }
@@ -31,7 +32,7 @@ extension MacMarkdownComposerView {
     syncActiveEditorSelection()
     stageEditorBody(replacingBaseBody: previousBody)
     refreshFindMatchSnapshot()
-    synchronizeDocumentBodyFromBuffer()
+    synchronizeDocumentBodyFromBuffer(previousBody: previousBody)
     scheduleMarkdownAnalysis()
     saveCurrentEditorSession()
   }
@@ -52,7 +53,21 @@ extension MacMarkdownComposerView {
     refreshFindMatchSnapshot()
   }
 
-  func applyEditorDocument(_ document: String) {
+  func applyEditorDocument(from previousDocument: String, to document: String) {
+    // Keyboard edits normally change only the body. Reuse the previous
+    // front-matter boundary instead of normalizing and splitting the entire
+    // document once for the document binding and again for the body binding.
+    if let bodyOnlyEdit = bodyOnlyDocumentEdit(
+      from: previousDocument,
+      to: document
+    ) {
+      editorDocumentBodyOffsetCache = bodyOnlyEdit.bodyUTF16Offset
+      if bodyOnlyEdit.bodyMarkdown != editorBody {
+        editorBody = bodyOnlyEdit.bodyMarkdown
+      }
+      return
+    }
+
     guard let parts = frontMatterEditingService.splitDocument(
       document,
       profile: activeProfile
@@ -60,6 +75,7 @@ extension MacMarkdownComposerView {
       frontMatterIssue = .invalidDelimiter
       return
     }
+    editorDocumentBodyOffsetCache = parts.bodyUTF16Offset
 
     let metadataResult = frontMatterEditingService.applying(
       parts.frontMatter,
@@ -79,13 +95,70 @@ extension MacMarkdownComposerView {
     }
   }
 
-  func synchronizeDocumentBodyFromBuffer() {
-    let frontMatter = editorDocumentParts?.frontMatter ?? canonicalFrontMatter
-    guard editorDocumentParts?.bodyMarkdown != editorBody else { return }
-    editorDocument = frontMatterEditingService.composeDocument(
-      frontMatter: frontMatter,
+  private func bodyOnlyDocumentEdit(
+    from previousDocument: String,
+    to updatedDocument: String
+  ) -> (bodyMarkdown: String, bodyUTF16Offset: Int)? {
+    let previousSource = previousDocument as NSString
+    let currentBody = editorBody as NSString
+    guard currentBody.length <= previousSource.length else { return nil }
+
+    let bodyUTF16Offset = previousSource.length - currentBody.length
+    let previousBody = previousSource.substring(from: bodyUTF16Offset)
+    guard previousBody == editorBody else { return nil }
+
+    let updatedSource = updatedDocument as NSString
+    guard updatedSource.length >= bodyUTF16Offset else { return nil }
+    guard updatedSource.substring(to: bodyUTF16Offset)
+      == previousSource.substring(to: bodyUTF16Offset)
+    else {
+      return nil
+    }
+
+    return (
+      bodyMarkdown: updatedSource.substring(from: bodyUTF16Offset),
+      bodyUTF16Offset: bodyUTF16Offset
+    )
+  }
+
+  func synchronizeDocumentBodyFromBuffer(previousBody: String? = nil) {
+    // Keyboard edits arrive with the exact body that was previously rendered.
+    // Replacing that suffix preserves front matter without reparsing the whole
+    // document or rebuilding its front-matter model on every keystroke.
+    let documentSource = editorDocument as NSString
+    if editorDocumentBodyOffsetCache >= 0,
+       editorDocumentBodyOffsetCache <= documentSource.length,
+       documentSource.substring(from: editorDocumentBodyOffsetCache) == editorBody {
+      return
+    }
+
+    if let previousBody, editorDocument.hasSuffix(previousBody) {
+      let updatedDocument = String(editorDocument.dropLast(previousBody.count)) + editorBody
+      guard editorDocument != updatedDocument else { return }
+      editorDocument = updatedDocument
+      return
+    }
+
+    // Keep a defensive fallback for external edits, draft switches and an
+    // invalid document that no longer has the expected body suffix.
+    guard let parts = editorDocumentParts else {
+      let updatedDocument = frontMatterEditingService.composeDocument(
+        frontMatter: canonicalFrontMatter,
+        bodyMarkdown: editorBody
+      )
+      editorDocumentBodyOffsetCache = (updatedDocument as NSString).length
+        - (editorBody as NSString).length
+      editorDocument = updatedDocument
+      return
+    }
+    guard parts.bodyMarkdown != editorBody else { return }
+    let updatedDocument = frontMatterEditingService.composeDocument(
+      frontMatter: parts.frontMatter,
       bodyMarkdown: editorBody
     )
+    editorDocumentBodyOffsetCache = (updatedDocument as NSString).length
+      - (editorBody as NSString).length
+    editorDocument = updatedDocument
   }
 
   func synchronizeDocumentFrontMatter(_ frontMatter: String) {
@@ -98,6 +171,8 @@ extension MacMarkdownComposerView {
       frontMatterIssue = nil
       return
     }
+    editorDocumentBodyOffsetCache = (updatedDocument as NSString).length
+      - (body as NSString).length
     editorDocument = updatedDocument
     frontMatterIssue = nil
   }
@@ -111,6 +186,8 @@ extension MacMarkdownComposerView {
       profile: activeProfile,
       bodyMarkdown: editorBody
     )
+    editorDocumentBodyOffsetCache = (editorDocument as NSString).length
+      - (editorBody as NSString).length
   }
 
   @discardableResult
@@ -118,7 +195,8 @@ extension MacMarkdownComposerView {
     guard let result = store.replaceDraftBody(
       updated.bodyMarkdown,
       for: updated.id,
-      expectedRevision: editorBodyRevision
+      expectedRevision: editorBodyRevision,
+      notifyEditorObservers: false
     ) else { return false }
     editorBody = result.buffer.bodyMarkdown
     editorBodyRevision = result.buffer.revision
