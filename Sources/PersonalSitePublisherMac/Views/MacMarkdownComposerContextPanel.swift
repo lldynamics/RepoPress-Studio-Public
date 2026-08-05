@@ -50,6 +50,7 @@ extension MacMarkdownComposerView {
           hasLatestAssistantMessage: latestAssistantMessageForCurrentDraft != nil,
           selectionActionMessage: selectionActionMessage,
           onSelectSelectionAction: performSelectionAIAction,
+          onSelectConvergedSelectionAction: performConvergedSelectionAIAction,
           onApplyLatestAIReply: applyLatestAIReplyToSelection,
           onInsertImages: {
             insertImageReferences(ImageSelectionPanel.chooseImages())

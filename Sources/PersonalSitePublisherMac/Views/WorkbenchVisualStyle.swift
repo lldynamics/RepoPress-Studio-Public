@@ -96,8 +96,8 @@ enum WorkbenchTheme {
   )
   /// Foreground for semantic prominent fills. These fills are intentionally dark in every appearance.
   static var primaryActionForeground: Color { .white }
-  /// Navigation and selection follow the user's macOS accent; brand green remains reserved for actions and status.
-  static var navigationSelection: Color { Color(nsColor: .controlAccentColor) }
+  /// Navigation and selection follow the user's app accent preference; brand green remains reserved for actions and status.
+  static var navigationSelection: Color { WorkbenchAccentPalette.selected().color }
   static var document: Color { `default`.document }
   static var documentForeground: Color { `default`.documentForeground }
   static var finance: Color { `default`.finance }

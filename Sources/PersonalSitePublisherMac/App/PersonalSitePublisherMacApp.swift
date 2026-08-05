@@ -7,8 +7,11 @@ struct PersonalSitePublisherMacApp: App {
   @NSApplicationDelegateAdaptor(PersonalSitePublisherMacAppDelegate.self) private var appDelegate
   @StateObject private var launchCoordinator: WorkbenchLaunchCoordinator
   @StateObject private var appUpdateController = AppUpdateController()
+  @AppStorage(WorkbenchAccentPalette.storageKey)
+  private var accentPaletteRawValue = WorkbenchAccentPalette.system.rawValue
 
   init() {
+    NSScrollView.enableGlobalThinRedScrollers()
     AppLanguagePreference.prepareForLaunch()
     // Earlier builds disabled AppKit restoration globally. Remove those sticky
     // overrides now that the main workspace is owned by a native SwiftUI scene.
@@ -80,7 +83,7 @@ struct PersonalSitePublisherMacApp: App {
             appDelegate.openMainWindowAction = action
           }
         )
-        .tint(WorkbenchTheme.navigationSelection)
+        .tint(selectedAccentPalette.color)
     }
     .defaultSize(
       width: WorkbenchLayoutMode.defaultWindowWidth,
@@ -113,8 +116,12 @@ struct PersonalSitePublisherMacApp: App {
           .workbenchSettingsWindowSize()
         }
       }
-        .tint(WorkbenchTheme.navigationSelection)
+        .tint(selectedAccentPalette.color)
     }
+  }
+
+  private var selectedAccentPalette: WorkbenchAccentPalette {
+    WorkbenchAccentPalette.resolved(rawValue: accentPaletteRawValue)
   }
 }
 

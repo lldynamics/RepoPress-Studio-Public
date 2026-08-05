@@ -17,7 +17,6 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   @Published private(set) var dataRootMessage: String?
   @Published private(set) var canMigrateLegacyData = false
   @Published private(set) var dataRootPath: String?
-  @Published private(set) var launchRecoveryChoiceRequired = false
   @Published private(set) var isSafeMode = false
 
   private let bookmarkStore: WorkbenchDataRootBookmarkStore?
@@ -70,16 +69,13 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     self.sessionRecovery = resolvedSessionRecovery
     self.phase = .preparing(String(localized: "正在检查数据文件夹…"))
 
-    let launchState = resolvedSessionRecovery.beginLaunch(
-      safeModeRequestedByEnvironment: Self.safeModeRequestedByProcess
-    )
-    isSafeMode = launchState.safeModeWasRequested
-    launchRecoveryChoiceRequired = launchState.hadUncleanPreviousSession
-      && !launchState.safeModeWasRequested
+    // Safe mode remains available to the underlying store for diagnostics, but
+    // the production app always starts normally.
+    _ = resolvedSessionRecovery.beginLaunch()
   }
 
   func start() async {
-    guard !didStart, !launchRecoveryChoiceRequired else { return }
+    guard !didStart else { return }
     didStart = true
 
     if let explicitRuntimePaths {
@@ -364,18 +360,6 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       resumeReadyServicesAfterRelocationFailure(store: store, rssStore: rssStore)
       return nil
     }
-  }
-
-  func continueNormally() {
-    launchRecoveryChoiceRequired = false
-    isSafeMode = false
-    Task { await start() }
-  }
-
-  func continueInSafeMode() {
-    launchRecoveryChoiceRequired = false
-    isSafeMode = true
-    Task { await start() }
   }
 
   func beginReadyServicesIfNeeded() -> Bool {
@@ -707,11 +691,6 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     return error.localizedDescription
   }
 
-  private static var safeModeRequestedByProcess: Bool {
-    ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_SAFE_MODE"] == "1"
-      || ProcessInfo.processInfo.arguments.contains("--safe-mode")
-  }
-
   private static var currentApplicationVersion: String {
     Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
       ?? "development"
@@ -803,28 +782,6 @@ struct WorkbenchLaunchRootView: View {
             await coordinator.start()
           }
       }
-    }
-    .alert(
-      String(localized: "上次运行未正常结束"),
-      isPresented: Binding(
-        get: { coordinator.launchRecoveryChoiceRequired },
-        set: { isPresented in
-          if !isPresented && coordinator.launchRecoveryChoiceRequired {
-            coordinator.continueNormally()
-          }
-        }
-      )
-    ) {
-      Button(String(localized: "安全模式启动")) {
-        coordinator.continueInSafeMode()
-      }
-      Button(String(localized: "正常启动")) {
-        coordinator.continueNormally()
-      }
-    } message: {
-      Text(
-        String(localized: "应用检测到上次运行可能因崩溃或被强制结束。安全模式会暂停自动预检、预览、后台维护和浏览器连接，便于先恢复草稿并导出诊断信息。")
-      )
     }
   }
 

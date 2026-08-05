@@ -193,7 +193,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     )
   }
 
-  func testRememberedRootInjectsEveryDurableRuntimePath() async throws {
+  func testRememberedRootInjectsEveryDurableRuntimePathAndStartsNormally() async throws {
     let parentURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "launch-data-root-\(UUID().uuidString)",
       isDirectory: true
@@ -219,9 +219,7 @@ final class WorkbenchLaunchCoordinatorTests: XCTestCase {
     let layout = WorkbenchDataRootLayout(rootURL: rootURL)
     let store = try XCTUnwrap(coordinator.store)
     XCTAssertEqual(coordinator.phase, .ready)
-    XCTAssertTrue(store.isSafeMode)
-    XCTAssertEqual(store.drafts.count, 1)
-    XCTAssertNil(store.drafts.first?.softwareGuideID)
+    XCTAssertFalse(store.isSafeMode)
     XCTAssertEqual(coordinator.dataRootPath, rootURL.path)
     XCTAssertEqual(coordinator.rssStore?.fileURL, layout.rssReaderDatabaseURL)
     XCTAssertEqual(store.rssReaderFileURL, layout.rssReaderDatabaseURL)
