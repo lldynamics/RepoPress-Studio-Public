@@ -103,7 +103,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
     case .ai:
       return String(localized: "选择 AI 服务、模型和当前站点的写作风格。")
     case .appearance:
-      return String(localized: "自定义 RepoPress 的主题强调色，并决定选择态如何跟随 macOS。")
+      return String(localized: "自定义 RepoPress Studio 的主题强调色，并决定选择态如何跟随 macOS。")
     case .rss:
       return String(localized: "管理 RSS 离线缓存、图片缓存、刷新并发和历史文章清理。")
     case .privacy:

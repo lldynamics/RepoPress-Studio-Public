@@ -626,7 +626,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       bodyMarkdown: """
       # 开始使用：认识发布工作台
 
-      欢迎使用 RepoPress。你正在阅读的“使用指南”默认位于通用草稿（Drafts），不会自动发布，也没有仓库写入路径。可以直接阅读、复制，或移到回收站；如果准备改写成自己的操作手册，建议先复制一份。
+      欢迎使用 RepoPress Studio。你正在阅读的“使用指南”默认位于通用草稿（Drafts），不会自动发布，也没有仓库写入路径。可以直接阅读、复制，或移到回收站；如果准备改写成自己的操作手册，建议先复制一份。
 
       ## 顶部：先看站点、状态和入口
 
@@ -689,7 +689,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
       编辑过程中可查看行内诊断、文章大纲和写作统计。完成后打开“内容健康”，先修复阻断问题，再决定保留草稿或标记为“待发布”。
 
-      RepoPress 会自动保存工作台。重要改动可在版本历史中比较和恢复；误删文章先到回收站查找。
+      RepoPress Studio 会自动保存工作台。重要改动可在版本历史中比较和恢复；误删文章先到回收站查找。
 
       > 小练习：复制这一段，插入一个二级标题、一条链接和一个代码块，然后在分屏模式确认预览结果。
       """
@@ -705,7 +705,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       bodyMarkdown: """
       # AI 助手：配置模型与管理多个对话
 
-      AI 写作辅助和自定义 API 在独立免费版中直接开放。RepoPress 不提供共享测试密钥，也不按请求次数收费；API 用量和费用由你选择的服务商决定。
+      AI 写作辅助和自定义 API 在独立免费版中直接开放。RepoPress Studio 不提供共享测试密钥，也不按请求次数收费；API 用量和费用由你选择的服务商决定。
 
       ## 1. 配置服务商
 
@@ -758,7 +758,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
       打开“浏览器资料采集”查看本机连接和令牌。当前版本支持 Safari、Chrome 与 Firefox：
 
-      - **Safari 扩展**已内嵌在 RepoPress App 包内，只需到 Safari 设置中启用。
+      - **Safari 扩展**已内嵌在 RepoPress Studio App 包内，只需到 Safari 设置中启用。
       - **Chrome 扩展**不包含在 App 包内，需要从 Chrome 网上应用店单独安装和更新。
       - **Firefox 扩展**不包含在 App 包内，从 `about:debugging` 临时加载 `BrowserExtension/Firefox/manifest.json`。
 
@@ -868,7 +868,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       bodyMarkdown: """
       # Getting Started: Meet Your Publishing Workbench
 
-      Welcome to RepoPress. These Guide articles live in general Drafts by default. They are never published automatically and have no repository write path. Read, duplicate, or move them to the recycle bin. If you want to turn one into your own runbook, duplicate it first.
+      Welcome to RepoPress Studio. These Guide articles live in general Drafts by default. They are never published automatically and have no repository write path. Read, duplicate, or move them to the recycle bin. If you want to turn one into your own runbook, duplicate it first.
 
       ## Top bar: site, status, and entry points
 
@@ -931,7 +931,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
       Use inline diagnostics, the outline, and writing statistics. When ready, open Content Health, fix blocking issues, and then keep the article as a draft or mark it Ready.
 
-      RepoPress autosaves the workbench. Compare and restore important revisions in version history, and check the recycle bin before treating an accidental deletion as permanent.
+      RepoPress Studio autosaves the workbench. Compare and restore important revisions in version history, and check the recycle bin before treating an accidental deletion as permanent.
 
       > Exercise: duplicate this paragraph, add a level-two heading, a link, and a code block, then confirm the result in Split mode.
       """
@@ -947,7 +947,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
       bodyMarkdown: """
       # AI Assistant: Choose Models and Manage Conversations
 
-      AI writing tools and custom APIs are available directly in the free standalone edition. RepoPress does not provide a shared test key or charge per request; usage and billing come from the provider you configure.
+      AI writing tools and custom APIs are available directly in the free standalone edition. RepoPress Studio does not provide a shared test key or charge per request; usage and billing come from the provider you configure.
 
       ## 1. Configure a provider
 
@@ -1000,11 +1000,11 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
       Open Browser Capture to see the local connection and token. This release supports Safari, Chrome, and Firefox:
 
-      - The **Safari extension** is embedded in the RepoPress app bundle; enable it in Safari Settings.
+      - The **Safari extension** is embedded in the RepoPress Studio app bundle; enable it in Safari Settings.
       - The **Chrome extension is not included in the app bundle**. Install and update it separately through the Chrome Web Store.
       - The **Firefox extension is not included in the app bundle**. Load `BrowserExtension/Firefox/manifest.json` temporarily from `about:debugging`.
 
-      Extensions connect only to `127.0.0.1` and authenticate with a random token. Paste that token only into your installed extension—never into a webpage, article, or screenshot. Chrome prefers self-contained MHTML; Safari and Firefox save offline HTML within their size limit. If RepoPress is closed, the extension queues the item locally and retries later.
+      Extensions connect only to `127.0.0.1` and authenticate with a random token. Paste that token only into your installed extension—never into a webpage, article, or screenshot. Chrome prefers self-contained MHTML; Safari and Firefox save offline HTML within their size limit. If RepoPress Studio is closed, the extension queues the item locally and retries later.
 
       ## Search and cite
 

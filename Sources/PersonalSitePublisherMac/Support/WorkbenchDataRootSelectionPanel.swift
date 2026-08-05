@@ -4,7 +4,7 @@ import AppKit
 enum WorkbenchDataRootSelectionPanel {
   static func chooseExistingDataRoot() async -> URL? {
     await chooseDirectory(
-      title: String(localized: "恢复已有 RepoPress 数据"),
+      title: String(localized: "恢复已有数据文件夹"),
       message: String(localized: "请选择包含 repopress-data-root.json 的数据文件夹。"),
       prompt: String(localized: "恢复此文件夹"),
       canCreateDirectories: false
@@ -16,7 +16,7 @@ enum WorkbenchDataRootSelectionPanel {
       title: forMigration
         ? String(localized: "选择迁移目的地")
         : String(localized: "选择数据保存位置"),
-      message: String(localized: "RepoPress 会在所选位置中新建一个“RepoPress Data”文件夹。"),
+      message: String(localized: "RepoPress Studio 会在所选位置中新建一个“RepoPress Data”文件夹。"),
       prompt: String(localized: "选择此位置"),
       canCreateDirectories: true
     )
