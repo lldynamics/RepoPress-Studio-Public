@@ -2,7 +2,6 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SOURCE_MANIFEST_HELPER="$ROOT_DIR/script/release_evidence_source_manifest.py"
 
 fail() {
   echo "accessibility gate: $*" >&2
@@ -44,18 +43,6 @@ require_literal_any_file() {
     fi
   done
   fail "$message"
-}
-
-require_literal_source_manifest() {
-  local relative_path="$1"
-  local literal="$2"
-  local message="$3"
-  local expanded_paths=()
-  local expanded_path
-  while IFS= read -r expanded_path; do
-    expanded_paths+=("$expanded_path")
-  done < <(python3 "$SOURCE_MANIFEST_HELPER" "$relative_path" "$literal")
-  require_literal_any_file "$literal" "$message" "${expanded_paths[@]}"
 }
 
 require_regex() {
@@ -254,7 +241,7 @@ require_literal \
   "点击查看状态和发布操作。" \
   "publishing status control must explain the merged status and publishing entry"
 
-require_literal_source_manifest \
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
   ".keyboardShortcut(.return, modifiers: [.command])" \
   "AI assistant send action must keep a keyboard shortcut"
@@ -441,7 +428,7 @@ require_literal_any_file \
   ".accessibilityLabel(\"查找文本\")" \
   "markdown find field must expose an accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerComponents.swift"
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerFindReplace.swift"
 
 require_literal_any_file \
   ".accessibilityLabel(\"文章统计\")" \
@@ -450,17 +437,17 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerComponents.swift" \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerPreview.swift" \
   "title: draft.title.trimmedForPublishing.nilIfEmpty" \
   "writing preview must include the current article title in its render input"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerComponents.swift" \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerPreview.swift" \
   "<header class=\"article-header\"><h1 class=\"article-title\">" \
   "writing preview must render the article title as a semantic heading"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerComponents.swift" \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerPreview.swift" \
   "<title>\\(escapedTitle)</title>" \
   "writing preview HTML must expose the article title as its document title"
 
@@ -515,7 +502,7 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift" \
   "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryRecordCardSection.swift"
 
-require_literal_source_manifest \
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift" \
   ".accessibilityLabel(\"搜索草稿\")" \
   "draft search field must expose an accessibility label"
