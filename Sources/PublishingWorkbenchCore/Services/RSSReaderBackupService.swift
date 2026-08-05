@@ -407,7 +407,6 @@ public final class RSSReaderBackupService: Sendable {
     try fileManager.moveItem(at: destinationURL, to: displacedURL)
     do {
       try fileManager.moveItem(at: sourceURL, to: destinationURL)
-      try? fileManager.removeItem(at: displacedURL)
     } catch let replacementError {
       if !fileManager.fileExists(atPath: destinationURL.path) {
         do {
@@ -424,6 +423,17 @@ public final class RSSReaderBackupService: Sendable {
         }
       }
       throw RSSReaderBackupError.databaseIntegrity(replacementError.localizedDescription)
+    }
+    do {
+      try fileManager.removeItem(at: displacedURL)
+    } catch let cleanupError {
+      throw RSSReaderBackupError.databaseIntegrity(
+        CoreL10n.format(
+          "RSS 备份已替换，但旧副本清理失败：%@；旧副本保留在 %@",
+          cleanupError.localizedDescription,
+          displacedURL.lastPathComponent
+        )
+      )
     }
   }
 }

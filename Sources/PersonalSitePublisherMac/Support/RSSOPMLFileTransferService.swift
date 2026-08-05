@@ -65,7 +65,21 @@ enum RSSOPMLFileTransferService {
       importData = originalData
     }
 
-    return ImportResult(feedIDs: try store.importOPML(data: importData))
+    let importedSubscriptions = try RSSOPMLParser.parse(data: importData)
+    for subscription in importedSubscriptions {
+      if let siteURL = subscription.siteURL,
+         RSSSubscriptionURLPrivacy.containsUserInfo(siteURL) {
+        throw RSSReaderError.invalidOPML("站点地址不得包含 URL 用户名或密码。")
+      }
+    }
+    let feedIDs = try importedSubscriptions.map { subscription in
+      try store.addFeed(
+        url: subscription.url,
+        title: subscription.title,
+        siteURL: subscription.siteURL
+      )
+    }
+    return ImportResult(feedIDs: feedIDs)
   }
 
   static func exportOPML(from store: RSSReaderStore) throws -> ExportResult? {

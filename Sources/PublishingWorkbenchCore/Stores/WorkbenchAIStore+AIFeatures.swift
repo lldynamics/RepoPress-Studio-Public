@@ -286,6 +286,28 @@ extension WorkbenchAIStore {
     }
   }
 
+  /// RSS reuses the editor assistant's client, model routing, consent, and
+  /// credential path. It is a presentation-specific result, not a second AI
+  /// completion service.
+  public func translateRSSArticle(
+    _ article: RSSArticle,
+    target: RSSArticleTranslationTarget
+  ) async throws -> RSSArticleTranslationResult {
+    guard store.canUseProtectedWorkbench else {
+      throw RSSArticleTranslationError.protectedWorkbenchUnavailable
+    }
+
+    let profile = store.activeProfile
+    let config = store.aiProviderConfig(for: profile)
+    let apiKey = try aiChatAvailableAPIKey(for: profile)
+    return try await aiPublishingAssistantService.translateRSSArticle(
+      article: article,
+      target: target,
+      config: config,
+      apiKey: apiKey
+    )
+  }
+
   @discardableResult
   public func performAIAction(
     _ convergence: AIPublishingActionConvergence,

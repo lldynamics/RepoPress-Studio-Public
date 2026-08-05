@@ -1,4 +1,10 @@
 import Foundation
+import OSLog
+
+private let rssReadingProgressLogger = Logger(
+  subsystem: "PersonalSitePublisherMac",
+  category: "RSSReadingProgress"
+)
 
 enum RSSReadingTheme: String, CaseIterable, Identifiable {
   case system
@@ -101,10 +107,11 @@ enum RSSReadingProgressStore {
     return uniqueIDs(values)
   }
 
+  @discardableResult
   static func save(
     _ values: [String: Double],
     defaults: UserDefaults = .standard
-  ) {
+  ) -> Bool {
     save(
       values,
       orderedArticleIDs: loadOrder(defaults: defaults),
@@ -112,18 +119,23 @@ enum RSSReadingProgressStore {
     )
   }
 
+  @discardableResult
   static func save(
     _ values: [String: Double],
     orderedArticleIDs: [String],
     defaults: UserDefaults = .standard
-  ) {
+  ) -> Bool {
     let values = normalized(values, preferredOrder: orderedArticleIDs)
     let order = Self.orderedArticleIDs(for: values, preferredOrder: orderedArticleIDs)
-    guard let data = try? JSONEncoder().encode(values),
-          let orderData = try? JSONEncoder().encode(order)
-    else { return }
-    defaults.set(data, forKey: key)
-    defaults.set(orderData, forKey: orderKey)
+    do {
+      let data = try JSONEncoder().encode(values)
+      let orderData = try JSONEncoder().encode(order)
+      defaults.set(data, forKey: key)
+      defaults.set(orderData, forKey: orderKey)
+      return true
+    } catch {
+      return false
+    }
   }
 
   private static func normalized(
@@ -188,11 +200,14 @@ actor RSSReadingProgressPersistence {
       return
     }
     latestSavedRevision = revision
-    RSSReadingProgressStore.save(
+    let didSave = RSSReadingProgressStore.save(
       values,
       orderedArticleIDs: orderedArticleIDs,
       defaults: defaults
     )
+    if !didSave {
+      rssReadingProgressLogger.error("Failed to persist RSS reading progress")
+    }
   }
 }
 
