@@ -233,12 +233,15 @@ extension WorkbenchAIStore {
   public func performAIAction(
     _ kind: AIPublishingActionKind,
     draft: ArticleDraft,
-    selectedText: String? = nil
+    selectedText: String? = nil,
+    convergence: AIPublishingActionConvergence? = nil
   ) async -> AIPublishingActionResult? {
     guard store.canUseProtectedWorkbench else {
       aiActionMessage = store.quickHideOperationMessage
       return nil
     }
+    let effectiveKind = convergence?.canonicalActionKind ?? kind
+    let actionName = convergence?.displayName ?? effectiveKind.displayName
     let profile = store.profile(for: draft)
     do {
       let token = try aiChatAvailableAPIKey(for: profile)
@@ -249,14 +252,15 @@ extension WorkbenchAIStore {
         query: knowledgeQuery(
           draft: artifacts.draft,
           selectedText: selectedText,
-          instruction: kind.displayName
+          instruction: actionName
         ),
         policy: aiChatKnowledgePolicy
       )
       let request = AIPublishingActionRequest(
-        kind: kind,
+        kind: effectiveKind,
         draft: artifacts.draft,
         profile: artifacts.profile,
+        convergence: convergence,
         selectedText: selectedText,
         preflightIssues: artifacts.preflightIssues,
         publishPackage: artifacts.publishPackage,
@@ -274,12 +278,26 @@ extension WorkbenchAIStore {
         aiMetadataSuggestionDraftID = draft.id
         aiMetadataSuggestion = suggestion
       }
-      aiActionMessage = "\(kind.displayName)完成。"
+      aiActionMessage = "\(actionName)完成。"
       return result
     } catch {
-      aiActionMessage = "\(kind.displayName)失败：\(error.localizedDescription)"
+      aiActionMessage = "\(actionName)失败：\(error.localizedDescription)"
       return nil
     }
+  }
+
+  @discardableResult
+  public func performAIAction(
+    _ convergence: AIPublishingActionConvergence,
+    draft: ArticleDraft,
+    selectedText: String? = nil
+  ) async -> AIPublishingActionResult? {
+    await performAIAction(
+      convergence.canonicalActionKind,
+      draft: draft,
+      selectedText: selectedText,
+      convergence: convergence
+    )
   }
 
   @discardableResult

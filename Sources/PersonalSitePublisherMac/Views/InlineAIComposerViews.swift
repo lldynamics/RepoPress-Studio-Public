@@ -8,6 +8,7 @@ struct InlineSelectionFloatingPalette: View {
   let actionMessage: String
   let availabilityForAction: (AIPublishingActionKind) -> AIPublishingActionAvailabilityPresentation
   let onPerformAction: (AIPublishingActionKind) -> Void
+  let onPerformConvergedAction: (AIPublishingActionConvergence) -> Void
   let onApplyPreview: () -> Void
   let onDiscardPreview: () -> Void
   let onCancel: () -> Void
@@ -64,22 +65,16 @@ struct InlineSelectionFloatingPalette: View {
   }
 
   private var actionContent: some View {
-    ViewThatFits(in: .horizontal) {
+      ViewThatFits(in: .horizontal) {
       HStack(spacing: 6) {
-        actionButton("润色", systemImage: "wand.and.stars", kind: .polishSelection)
-        actionButton("精简", systemImage: "arrow.down.right.and.arrow.up.left", kind: .condenseSelection)
-        actionButton("扩写", systemImage: "arrow.up.left.and.arrow.down.right", kind: .expandSelection)
-        toneMenu
+        convergedRewriteMenu
         actionButton("纠错", systemImage: "checkmark.seal", kind: .fixSelectionGrammar)
       }
       VStack(alignment: .leading, spacing: 6) {
         HStack(spacing: 6) {
-          actionButton("润色", systemImage: "wand.and.stars", kind: .polishSelection)
-          actionButton("精简", systemImage: "arrow.down.right.and.arrow.up.left", kind: .condenseSelection)
-          actionButton("扩写", systemImage: "arrow.up.left.and.arrow.down.right", kind: .expandSelection)
+          convergedRewriteMenu
         }
         HStack(spacing: 6) {
-          toneMenu
           actionButton("纠错", systemImage: "checkmark.seal", kind: .fixSelectionGrammar)
         }
       }
@@ -127,6 +122,39 @@ struct InlineSelectionFloatingPalette: View {
           .keyboardShortcut(.escape, modifiers: [])
       }
     }
+  }
+
+  private var convergedRewriteMenu: some View {
+    Menu {
+      Section("风格") {
+        ForEach(AIPublishingRewriteStyle.allCases) { style in
+          Button {
+            onPerformConvergedAction(
+              .rewriteSelection(AIPublishingRewriteConfiguration(style: style))
+            )
+          } label: {
+            Label(style.displayName, systemImage: "wand.and.stars")
+          }
+          .disabled(!availabilityForAction(.rewriteSelection).isEnabled)
+        }
+      }
+      Section("处理") {
+        ForEach(AIPublishingRewriteOperation.allCases.filter { $0 != .rewrite }) { operation in
+          Button {
+            onPerformConvergedAction(
+              .rewriteSelection(AIPublishingRewriteConfiguration(operation: operation))
+            )
+          } label: {
+            Label(operation.displayName, systemImage: "wand.and.stars")
+          }
+          .disabled(!availabilityForAction(.rewriteSelection).isEnabled)
+        }
+      }
+    } label: {
+      Label("改写", systemImage: "wand.and.stars")
+    }
+    .menuStyle(.borderlessButton)
+    .help("使用五档风格或不同改写方式处理选区")
   }
 
   private var toneMenu: some View {

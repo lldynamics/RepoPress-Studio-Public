@@ -116,11 +116,20 @@ extension MacMarkdownComposerView {
   }
 
   func performSelectionAIAction(_ kind: AIPublishingActionKind) {
-    performSelectionAIAction(kind, presentsInlineResult: false)
+    performSelectionAIAction(kind, convergence: nil, presentsInlineResult: false)
+  }
+
+  func performConvergedSelectionAIAction(_ convergence: AIPublishingActionConvergence) {
+    performSelectionAIAction(
+      convergence.canonicalActionKind,
+      convergence: convergence,
+      presentsInlineResult: false
+    )
   }
 
   func performSelectionAIAction(
     _ kind: AIPublishingActionKind,
+    convergence: AIPublishingActionConvergence? = nil,
     presentsInlineResult: Bool = false
   ) {
     let rawSelectedText = selectedText(in: editorBody)
@@ -137,18 +146,28 @@ extension MacMarkdownComposerView {
     activeSelectionAIAction = kind
     selectionAIActionRequestID = requestID
     isInlineSelectionAIAction = presentsInlineResult
-    selectionActionMessage = "\(kind.localizedDisplayName)处理中..."
+    let actionName = convergence?.displayName ?? kind.localizedDisplayName
+    selectionActionMessage = "\(actionName)处理中..."
     if !presentsInlineResult {
       showWritingContextPanel(.selectionTools)
     }
     let previewRange = clamped(selectedRange, length: (editorBody as NSString).length)
     selectionEditPreview = nil
     selectionAIActionTask = Task { @MainActor in
-      let result = await aiActions.performAction(
-        kind,
-        draft: requestedDraft,
-        selectedText: promptSelectedText
-      )
+      let result: AIPublishingActionResult?
+      if let convergence {
+        result = await aiActions.performAction(
+          convergence,
+          draft: requestedDraft,
+          selectedText: promptSelectedText
+        )
+      } else {
+        result = await aiActions.performAction(
+          kind,
+          draft: requestedDraft,
+          selectedText: promptSelectedText
+        )
+      }
       guard selectionAIActionRequestID == requestID else { return }
       defer { finishSelectionAIAction(requestID: requestID) }
       guard !Task.isCancelled, draft.id == requestedDraft.id else { return }
@@ -170,13 +189,13 @@ extension MacMarkdownComposerView {
         if !presentsInlineResult {
           showWritingContextPanel(.aiReview)
         }
-        selectionActionMessage = result.kind.localizedDisplayName + "预览已生成。"
+        selectionActionMessage = actionName + "预览已生成。"
         EditorAccessibilityAnnouncementCenter.announceAIPreview(
           kind: result.kind.localizedDisplayName,
           characterCount: (preview.trimmedReplacementText as NSString).length
         )
       } else {
-        selectionActionMessage = kind.localizedDisplayName + "失败。"
+        selectionActionMessage = actionName + "失败。"
         EditorAccessibilityAnnouncementCenter.announce(
           selectionActionMessage,
           priority: .high
@@ -186,6 +205,17 @@ extension MacMarkdownComposerView {
   }
 
   func performArticleAIAction(_ kind: AIPublishingActionKind) {
+    performArticleAIAction(kind, convergence: nil)
+  }
+
+  func performConvergedArticleAIAction(_ convergence: AIPublishingActionConvergence) {
+    performArticleAIAction(convergence.canonicalActionKind, convergence: convergence)
+  }
+
+  func performArticleAIAction(
+    _ kind: AIPublishingActionKind,
+    convergence: AIPublishingActionConvergence?
+  ) {
     let availability = articleAIActionAvailability(kind, respectActiveAction: false)
     guard availability.isEnabled else {
       selectionActionMessage = "\(kind.localizedDisplayName)：\(availability.unavailableReason ?? "需要更多文章内容")"
@@ -197,18 +227,24 @@ extension MacMarkdownComposerView {
     let requestID = UUID()
     activeSelectionAIAction = kind
     selectionAIActionRequestID = requestID
-    selectionActionMessage = "\(kind.localizedDisplayName)处理中..."
+    let actionName = convergence?.displayName ?? kind.localizedDisplayName
+    selectionActionMessage = "\(actionName)处理中..."
     let previewRange = articleInsertionRange(for: kind)
     selectionEditPreview = nil
     selectionAIActionTask = Task { @MainActor in
-      let result = await aiActions.performAction(kind, draft: requestedDraft)
+      let result: AIPublishingActionResult?
+      if let convergence {
+        result = await aiActions.performAction(convergence, draft: requestedDraft)
+      } else {
+        result = await aiActions.performAction(kind, draft: requestedDraft)
+      }
       guard selectionAIActionRequestID == requestID else { return }
       defer { finishSelectionAIAction(requestID: requestID) }
       guard !Task.isCancelled, draft.id == requestedDraft.id else { return }
 
       if let result {
         if result.kind.producesMetadataSuggestion, editorState.aiMetadataSuggestion != nil {
-          selectionActionMessage = result.kind.localizedDisplayName + "已生成，可在元数据建议中应用。"
+          selectionActionMessage = actionName + "已生成，可在元数据建议中应用。"
           EditorAccessibilityAnnouncementCenter.announce(selectionActionMessage)
         } else {
           let preview = AIPublishingSelectionEditPreview(
@@ -225,14 +261,14 @@ extension MacMarkdownComposerView {
           )
           selectionEditPreview = preview
           showWritingContextPanel(.aiReview)
-          selectionActionMessage = result.kind.localizedDisplayName + "预览已生成。"
+          selectionActionMessage = actionName + "预览已生成。"
           EditorAccessibilityAnnouncementCenter.announceAIPreview(
             kind: result.kind.localizedDisplayName,
             characterCount: (preview.trimmedReplacementText as NSString).length
           )
         }
       } else {
-        selectionActionMessage = kind.localizedDisplayName + "失败。"
+        selectionActionMessage = actionName + "失败。"
         EditorAccessibilityAnnouncementCenter.announce(
           selectionActionMessage,
           priority: .high

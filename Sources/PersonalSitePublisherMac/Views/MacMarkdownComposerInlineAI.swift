@@ -23,6 +23,15 @@ extension MacMarkdownComposerView {
     performSelectionAIAction(kind, presentsInlineResult: true)
   }
 
+  func performInlineConvergedSelectionAIAction(_ convergence: AIPublishingActionConvergence) {
+    isInlineSelectionPaletteDismissed = false
+    performSelectionAIAction(
+      convergence.canonicalActionKind,
+      convergence: convergence,
+      presentsInlineResult: true
+    )
+  }
+
   func scheduleInlineGhostText() {
     cancelInlineGhostText()
     guard !isFrontMatterSelection,

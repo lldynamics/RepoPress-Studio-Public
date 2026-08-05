@@ -264,6 +264,7 @@ struct SelectionActionBar: View {
   let hasLatestAssistantMessage: Bool
   let selectionActionMessage: String
   let onSelectSelectionAction: (AIPublishingActionKind) -> Void
+  let onSelectConvergedSelectionAction: (AIPublishingActionConvergence) -> Void
   let onApplyLatestAIReply: () -> Void
   let onInsertImages: () -> Void
   let onCheckSelectedPublicRisk: () -> Void
@@ -281,8 +282,7 @@ struct SelectionActionBar: View {
       }
 
       Menu {
-        selectionActionButton(.rewrite, kind: .rewriteSelection)
-        selectionActionButton(.condense, kind: .condenseSelection)
+        convergedRewriteActions
 
         Menu {
           selectionActionButton(.translate, kind: .translateSelectionToChinese)
@@ -357,6 +357,34 @@ struct SelectionActionBar: View {
     }
     .disabled(!availability.isEnabled)
     .help(availability.unavailableReason ?? capability.localizedDisplayName)
+  }
+
+  @ViewBuilder
+  private var convergedRewriteActions: some View {
+    Section("风格") {
+      ForEach(AIPublishingRewriteStyle.allCases) { style in
+        Button {
+          onSelectConvergedSelectionAction(
+            .rewriteSelection(AIPublishingRewriteConfiguration(style: style))
+          )
+        } label: {
+          Label(style.displayName, systemImage: "wand.and.stars")
+        }
+        .disabled(!availabilityForSelectionAction(.rewriteSelection).isEnabled)
+      }
+    }
+    Section("处理") {
+      ForEach(AIPublishingRewriteOperation.allCases.filter { $0 != .rewrite }) { operation in
+        Button {
+          onSelectConvergedSelectionAction(
+            .rewriteSelection(AIPublishingRewriteConfiguration(operation: operation))
+          )
+        } label: {
+          Label(operation.displayName, systemImage: "wand.and.stars")
+        }
+        .disabled(!availabilityForSelectionAction(.rewriteSelection).isEnabled)
+      }
+    }
   }
 }
 

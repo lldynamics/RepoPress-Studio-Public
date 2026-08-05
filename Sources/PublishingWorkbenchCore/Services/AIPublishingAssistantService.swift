@@ -283,6 +283,10 @@ public struct AIPublishingAssistantService: Sendable {
     let draft = request.draft
     let context = publishingContext(for: request)
 
+    if let convergence = request.convergence {
+      return convergedPrompt(for: convergence, context: context, request: request)
+    }
+
     switch request.kind {
     case .publishingReadiness:
       return """
@@ -990,6 +994,55 @@ public struct AIPublishingAssistantService: Sendable {
     选中文本：
     \(request.selectedText?.nilIfEmpty ?? "")
     """
+  }
+
+  private func convergedPrompt(
+    for convergence: AIPublishingActionConvergence,
+    context: String,
+    request: AIPublishingActionRequest
+  ) -> String {
+    switch convergence {
+    case .publishAssetPack(let configuration):
+      let assets = configuration.normalizedAssets
+      let assetLines = assets.map {
+        "- \($0.displayName)：\($0.promptInstruction)"
+      }.joined(separator: "\n")
+      return articleDraftPrompt(
+        context: context,
+        request: request,
+        instruction: """
+          请一次生成用户选择的发布资产，使用 Markdown 二级标题分别输出，不要输出未选择的资产。
+
+          已选择的资产：
+          \(assetLines)
+
+          统一要求：所有内容必须基于当前文章；不要编造外部验证、读者反馈、发布数据、真实链接、产品画面或已经完成的检查；信息不足时明确标记“待补充”或“需要人工确认”。
+          """
+      )
+    case .rewriteSelection(let configuration):
+      return selectedTextPrompt(
+        context: context,
+        request: request,
+        instruction: "请对选中文本执行“\(configuration.operation.displayName)”操作，采用“\(configuration.style.displayName)”风格。\(configuration.operation.promptInstruction)\n风格要求：\(configuration.style.promptInstruction)\n保留代码、链接和 Markdown 结构，不新增正文没有的事实，不添加解释。"
+      )
+    case .contentReview(let configuration):
+      let checks = configuration.normalizedChecks
+      let checkLines = checks.map {
+        "- \($0.displayName)：\($0.promptInstruction)"
+      }.joined(separator: "\n")
+      return articleDraftPrompt(
+        context: context,
+        request: request,
+        instruction: """
+          请一次完成下列内容审查，并按对应二级标题输出。每项只报告当前文章能支持的观察；无法确认的地方写“待验证”或“需要人工确认”，不要把建议当成已经完成的验证。
+
+          审查范围：
+          \(checkLines)
+
+          统一要求：建议应具体、可执行；不要联网查证，不要声称访问过外部网页，不要假装运行过代码或看到了未发送的图片。
+          """
+      )
+    }
   }
 
   private func articleDraftPrompt(
