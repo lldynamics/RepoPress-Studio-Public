@@ -25,6 +25,9 @@ struct WritingDraftColumn: View {
   let store: WorkbenchStore
   let isCompact: Bool
   @StateObject private var draftListState: WorkbenchDraftListFeatureFacade
+  @Environment(\.openSettings) private var openSettings
+  @AppStorage("settingsRequestedTabID") private var requestedSettingsTabID = ""
+  @AppStorage("dataManagementRequestedSection") private var dataManagementRequestedSection = DataManagementSection.drafts.rawValue
   @State private var searchText = ""
   @State private var filter: DraftListFilter = .all
   @AppStorage("writingDraftSortOrderV1") private var sortOrderRawValue = WritingDraftSortOrder.updatedNewest.rawValue
@@ -44,7 +47,6 @@ struct WritingDraftColumn: View {
   private let draftLoadMorePrefetchThreshold = 15
   @FocusState private var isSearchFieldFocused: Bool
   @State private var draftPendingDeletion: ArticleDraft?
-  @State private var isDraftLifecycleCenterPresented = false
   @State private var selectedDraftIDs: Set<UUID> = []
   @State private var draftOwnershipTransferPlan: DraftOwnershipTransferPlan?
   @Environment(\.undoManager) private var undoManager
@@ -104,9 +106,6 @@ struct WritingDraftColumn: View {
     } message: { draft in
       Text("「\(draft.title.nilIfEmpty ?? "未命名文章")」将保留在回收站中，不会立即删除本地仓库文件。")
     }
-    .sheet(isPresented: $isDraftLifecycleCenterPresented) {
-      DraftLifecycleCenterView(store: store)
-    }
     .sheet(item: $draftOwnershipTransferPlan) { plan in
       DraftOwnershipTransferConfirmationView(plan: plan) { confirmedPlan in
         applyDraftOwnershipTransfer(confirmedPlan)
@@ -155,15 +154,15 @@ struct WritingDraftColumn: View {
 
       Button {
         store.flushDraftBodyEditorBuffers()
-        isDraftLifecycleCenterPresented = true
+        openDataManagement(.drafts)
       } label: {
-        Label("历史", systemImage: "clock.arrow.circlepath")
+        Label("数据管理", systemImage: "externaldrive")
       }
       .buttonStyle(.bordered)
       .controlSize(.regular)
       .fixedSize()
-      .help(String(localized: "打开版本历史与回收站"))
-      .accessibilityLabel("打开版本历史与回收站")
+      .help(String(localized: "集中管理版本、回收站、备份和迁移"))
+      .accessibilityLabel("打开数据管理")
 
       Menu {
         Button {
@@ -982,7 +981,7 @@ struct WritingDraftColumn: View {
       },
       openVersionHistory: {
         store.flushDraftBodyEditorBuffers()
-        isDraftLifecycleCenterPresented = true
+        openDataManagement(.drafts)
       },
       selectPreviousDraft: {
         selectDraft(byOffset: -1)
@@ -1120,6 +1119,12 @@ struct WritingDraftColumn: View {
       operation: operation,
       targetProfileID: targetProfileID
     )
+  }
+
+  private func openDataManagement(_ section: DataManagementSection) {
+    dataManagementRequestedSection = section.rawValue
+    requestedSettingsTabID = SettingsTab.dataManagement.id
+    openSettings()
   }
 
   private func applyDraftOwnershipTransfer(_ plan: DraftOwnershipTransferPlan) -> Bool {

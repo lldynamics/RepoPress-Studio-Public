@@ -8,6 +8,25 @@ struct SettingsConfigurationHealthCard: View {
   let aiTokenAvailability: KeychainTokenAvailability
   let privacySettings: PrivacyProtectionSettings
   let selectDestination: (SettingsConfigurationHealthDestination) -> Void
+  let isEmbedded: Bool
+
+  init(
+    profile: SiteProfile,
+    aiProviderConfig: AIProviderConfig,
+    repositoryTokenAvailability: KeychainTokenAvailability,
+    aiTokenAvailability: KeychainTokenAvailability,
+    privacySettings: PrivacyProtectionSettings,
+    selectDestination: @escaping (SettingsConfigurationHealthDestination) -> Void,
+    isEmbedded: Bool = false
+  ) {
+    self.profile = profile
+    self.aiProviderConfig = aiProviderConfig
+    self.repositoryTokenAvailability = repositoryTokenAvailability
+    self.aiTokenAvailability = aiTokenAvailability
+    self.privacySettings = privacySettings
+    self.selectDestination = selectDestination
+    self.isEmbedded = isEmbedded
+  }
 
   private var requiredItems: [SettingsConfigurationHealthItem] {
     [
@@ -33,21 +52,31 @@ struct SettingsConfigurationHealthCard: View {
   }
 
   var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 20) {
-        statusSummary
-        configurationSection(title: String(localized: "发布基础"), items: requiredItems)
-        configurationSection(title: String(localized: "功能与权限"), items: supportingItems)
+    Group {
+      if isEmbedded {
+        configurationContent
+      } else {
+        ScrollView {
+          configurationContent
+            .padding(WorkbenchSpacing.content)
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
       }
-      .padding(WorkbenchSpacing.content)
     }
-    .background(Color(nsColor: .windowBackgroundColor))
     .accessibilityElement(children: .contain)
     .accessibilityLabel("配置状态")
     .accessibilityValue(
       String(localized: "\(readyRequiredCount)/\(requiredItems.count) 项基础配置已就绪")
     )
     .accessibilityIdentifier("configuration-health-settings")
+  }
+
+  private var configurationContent: some View {
+    VStack(alignment: .leading, spacing: 20) {
+      statusSummary
+      configurationSection(title: String(localized: "发布基础"), items: requiredItems)
+      configurationSection(title: String(localized: "功能与权限"), items: supportingItems)
+    }
   }
 
   private var statusSummary: some View {

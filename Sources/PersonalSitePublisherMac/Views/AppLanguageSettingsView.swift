@@ -1,53 +1,70 @@
 import SwiftUI
 
 struct AppLanguageSettingsView: View {
+  let isEmbedded: Bool
+
   @AppStorage(AppLanguagePreference.storageKey)
   private var appLanguage = AppLanguagePreference.system
 
+  init(isEmbedded: Bool = false) {
+    self.isEmbedded = isEmbedded
+  }
+
   var body: some View {
-    Form {
-      Section("界面语言") {
-        VStack(alignment: .leading, spacing: 8) {
-          Text("语言")
-            .font(.body)
-
-          Picker("语言", selection: $appLanguage) {
-            Text("跟随 macOS")
-              .tag(AppLanguagePreference.system)
-            Text("简体中文")
-              .tag(AppLanguagePreference.simplifiedChinese)
-            Text("English")
-              .tag(AppLanguagePreference.english)
-          }
-          .pickerStyle(.radioGroup)
-          .labelsHidden()
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .accessibilityIdentifier("settings-app-language-picker")
+    Group {
+      if isEmbedded {
+        languageSections
+      } else {
+        Form {
+          languageSections
         }
+        .formStyle(.grouped)
+        .padding(WorkbenchSpacing.content)
+      }
+    }
+    .accessibilityIdentifier("app-language-settings")
+  }
 
-        Text(languageDescription)
-          .font(.callout)
+  @ViewBuilder
+  private var languageSections: some View {
+    Section("界面语言") {
+      VStack(alignment: .leading, spacing: 8) {
+        Text("语言")
+          .font(.body)
+
+        Picker("语言", selection: $appLanguage) {
+          Text("跟随 macOS")
+            .tag(AppLanguagePreference.system)
+          Text("简体中文")
+            .tag(AppLanguagePreference.simplifiedChinese)
+          Text("English")
+            .tag(AppLanguagePreference.english)
+        }
+        .pickerStyle(.radioGroup)
+        .labelsHidden()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("settings-app-language-picker")
+      }
+
+      Text(languageDescription)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+    }
+
+    Section("应用方式") {
+      LabeledContent("下次启动") {
+        selectedLanguageLabel
           .foregroundStyle(.secondary)
       }
 
-      Section("应用方式") {
-        LabeledContent("下次启动") {
-          selectedLanguageLabel
-            .foregroundStyle(.secondary)
-        }
-
-        Label {
-          Text("语言更改会在下次启动 RepoPress 后统一生效。当前窗口、菜单栏和系统面板不会立即切换。")
-        } icon: {
-          Image(systemName: "arrow.clockwise.circle")
-            .foregroundStyle(WorkbenchTheme.brand)
-        }
-        .font(.callout)
+      Label {
+        Text("语言更改会在下次启动 RepoPress 后统一生效。当前窗口、菜单栏和系统面板不会立即切换。")
+      } icon: {
+        Image(systemName: "arrow.clockwise.circle")
+          .foregroundStyle(WorkbenchTheme.brand)
       }
+      .font(.callout)
     }
-    .formStyle(.grouped)
-    .padding(WorkbenchSpacing.content)
-    .accessibilityIdentifier("app-language-settings")
   }
 
   private var languageDescription: LocalizedStringKey {

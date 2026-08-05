@@ -35,7 +35,7 @@ struct SettingsView: View {
         Divider()
 
         selectedSettingsTab.makeContent(context: settingsContext)
-          .scrollIndicators(.automatic)
+          .scrollIndicators(.hidden)
           .frame(maxWidth: selectedSettingsTab.contentMaxWidth)
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
       }
@@ -259,7 +259,7 @@ struct SettingsView: View {
     guard !requestedTabID.isEmpty else {
       return
     }
-    guard let tab = SettingsTab.allCases.first(where: { $0.id == requestedTabID }) else {
+    guard let tab = SettingsTab.tab(forRequestedID: requestedTabID) else {
       requestedSettingsTabID = ""
       return
     }

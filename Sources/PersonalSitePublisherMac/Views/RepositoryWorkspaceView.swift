@@ -10,7 +10,7 @@ struct RepositoryWorkspaceView: View {
   @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
   @Environment(\.localSitePreviewCommandAction) var localSitePreviewCommandAction
   @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
-  @State var isContentMigrationPresented = false
+  @AppStorage("dataManagementRequestedSection") var dataManagementRequestedSection = DataManagementSection.migration.rawValue
   @State var isRepositoryCreationConfirmationPresented = false
   @State var createsPrivateRepository = true
   @State var repositoryCreationFailureMessage: String?
@@ -31,9 +31,6 @@ struct RepositoryWorkspaceView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("repository-workspace")
       }
-    }
-    .sheet(isPresented: $isContentMigrationPresented) {
-      ContentMigrationAssistantView(store: store)
     }
     .sheet(isPresented: $isRepositoryCreationConfirmationPresented) {
       let profile = store.activeProfile
@@ -144,5 +141,11 @@ struct RepositoryWorkspaceView: View {
 
   func presentRemoteArticleImportPreview(_ files: [RepositoryChangedFile]) {
     pendingRemoteArticleImportFiles = files.filter { $0.kind != .deleted }
+  }
+
+  func openDataManagement(_ section: DataManagementSection = .migration) {
+    dataManagementRequestedSection = section.rawValue
+    requestedSettingsTabID = SettingsTab.dataManagement.id
+    openSettings()
   }
 }

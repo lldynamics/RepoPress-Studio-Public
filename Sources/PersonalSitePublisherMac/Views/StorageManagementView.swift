@@ -2,11 +2,18 @@ import AppKit
 import PublishingWorkbenchCore
 import SwiftUI
 
+enum StorageManagementPresentation {
+  case standalone
+  case embedded
+}
+
 @MainActor
 struct StorageManagementView: View {
   @ObservedObject var store: WorkbenchStore
   @ObservedObject var rssStore: RSSReaderStore
   @ObservedObject var coordinator: WorkbenchLaunchCoordinator
+  @ObservedObject var backupScheduler: WorkspaceBackupScheduler
+  let presentation: StorageManagementPresentation
 
   @AppStorage(RSSReaderStore.retentionDaysDefaultsKey)
   private var retentionDays = RSSReaderStore.defaultRetentionDays
@@ -20,24 +27,45 @@ struct StorageManagementView: View {
   @State private var isRelocationConfirmationPresented = false
   @State private var isRelocating = false
   @State private var workspaceBackupPreview: WorkspaceBackupPreview?
+  @State private var knowledgeBackupPreview: KnowledgeLibraryBackupPreview?
   @State private var operationMessage: String?
   @State private var operationError: String?
 
+  init(
+    store: WorkbenchStore,
+    rssStore: RSSReaderStore,
+    coordinator: WorkbenchLaunchCoordinator,
+    backupScheduler: WorkspaceBackupScheduler,
+    presentation: StorageManagementPresentation = .standalone
+  ) {
+    self.store = store
+    self.rssStore = rssStore
+    self.coordinator = coordinator
+    self.backupScheduler = backupScheduler
+    self.presentation = presentation
+  }
+
   var body: some View {
-    Form {
-      currentLocationSection
-      knowledgeSection
-      rssSection
-      backupSection
-      relocationSection
+    Group {
+      if presentation == .embedded {
+        storageSections
+      } else {
+        Form {
+          storageSections
+        }
+        .formStyle(.grouped)
+        .padding(WorkbenchSpacing.content)
+      }
     }
-    .formStyle(.grouped)
-    .padding(WorkbenchSpacing.content)
     .task(id: coordinator.dataRootPath) {
       await refreshUsage()
+      await backupScheduler.refreshRecentBackups()
     }
     .sheet(item: $workspaceBackupPreview) { preview in
       WorkspaceBackupRestorePreviewView(store: store, preview: preview)
+    }
+    .sheet(item: $knowledgeBackupPreview) { preview in
+      KnowledgeLibraryRestorePreviewView(knowledge: store.knowledge, preview: preview)
     }
     .alert(
       String(localized: "清空资料库回收站？"),
@@ -80,6 +108,15 @@ struct StorageManagementView: View {
       Text(relocationConfirmationMessage)
     }
     .accessibilityIdentifier("storage-management-settings")
+  }
+
+  @ViewBuilder
+  private var storageSections: some View {
+    currentLocationSection
+    knowledgeSection
+    rssSection
+    backupSection
+    relocationSection
   }
 
   private var currentLocationSection: some View {
@@ -242,7 +279,164 @@ struct StorageManagementView: View {
         }
       }
       .disabled(isRelocating)
+
+      Divider()
+
+      Text("资料库备份")
+        .font(.headline)
+      Text("单独保存资料库正文、网页归档、版本、标注和检索索引；恢复前会先校验并显示预览。")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      HStack {
+        Button(String(localized: "创建资料库备份…"), systemImage: "books.vertical.fill") {
+          createKnowledgeBackup()
+        }
+        Button(String(localized: "恢复资料库备份…"), systemImage: "arrow.counterclockwise") {
+          chooseKnowledgeBackupForRestore()
+        }
+      }
+      .disabled(store.knowledge.isBusy || isRelocating)
+
+      automaticBackupSection
     }
+  }
+
+  private var automaticBackupSection: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Divider()
+
+      Text("自动工作区备份")
+        .font(.headline)
+      Text("按每日或每周计划创建完整工作区备份；应用启动时会补做逾期备份，每次创建后都会重新校验归档。")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      Picker(
+        String(localized: "备份频率"),
+        selection: Binding(
+          get: { backupScheduler.settings.frequency },
+          set: { backupScheduler.setFrequency($0) }
+        )
+      ) {
+        ForEach(WorkspaceBackupFrequency.allCases, id: \.self) { frequency in
+          Text(frequency.localizedDisplayNameKey).tag(frequency)
+        }
+      }
+
+      LabeledContent(String(localized: "保存目录")) {
+        Text(backupScheduler.destinationFolderLabel)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      HStack {
+        Button(String(localized: "选择目录…"), systemImage: "folder") {
+          chooseAutomaticBackupDirectory()
+        }
+        Button(String(localized: "恢复默认目录")) {
+          backupScheduler.resetDestinationFolder()
+        }
+        .disabled(backupScheduler.settings.destinationPath == nil)
+      }
+
+      HStack {
+        Button(String(localized: "立即备份并校验"), systemImage: "checkmark.shield") {
+          Task { await backupScheduler.runBackupNow() }
+        }
+        Button(String(localized: "校验最近备份"), systemImage: "arrow.triangle.2.circlepath") {
+          Task { await backupScheduler.refreshRecentBackups() }
+        }
+      }
+      .disabled(backupScheduler.isRunning)
+
+      if backupScheduler.isRunning {
+        ProgressView(String(localized: "正在创建并校验自动备份…"))
+          .controlSize(.small)
+      }
+      if let statusMessage = backupScheduler.statusMessage, !statusMessage.isEmpty {
+        Text(statusMessage)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      if backupScheduler.invalidRecentBackupCount > 0 {
+        Label(
+          String(
+            format: String(
+              localized: "%@ 个自动备份校验失败，已从一键恢复列表中隐藏；请检查备份目录或重新创建备份。"
+            ),
+            backupScheduler.invalidRecentBackupCount.formatted()
+          ),
+          systemImage: "exclamationmark.triangle.fill"
+        )
+        .font(.caption)
+        .foregroundStyle(WorkbenchTheme.warning)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+      if let lastBackupAt = backupScheduler.settings.lastBackupAt {
+        LabeledContent(
+          String(localized: "最近成功备份"),
+          value: lastBackupAt.formatted(date: .abbreviated, time: .shortened)
+        )
+      }
+      if let lastValidationAt = backupScheduler.settings.lastValidationAt {
+        LabeledContent(
+          String(localized: "最近校验"),
+          value: lastValidationAt.formatted(date: .abbreviated, time: .shortened)
+        )
+      }
+      if let lastError = backupScheduler.settings.lastError, !lastError.isEmpty {
+        Label(lastError, systemImage: "exclamationmark.triangle.fill")
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.warning)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      if !backupScheduler.recentBackups.isEmpty {
+        VStack(alignment: .leading, spacing: 8) {
+          Text("最近自动备份")
+            .font(.subheadline.weight(.semibold))
+          ForEach(backupScheduler.recentBackups.prefix(5)) { preview in
+            HStack(alignment: .top, spacing: 10) {
+              VStack(alignment: .leading, spacing: 3) {
+                Text(preview.createdAt.formatted(date: .abbreviated, time: .shortened))
+                  .font(.callout.weight(.medium))
+                Text(preview.backupURL.lastPathComponent)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+                  .textSelection(.enabled)
+                  .fixedSize(horizontal: false, vertical: true)
+                Text(backupCompatibilitySummary(for: preview))
+                  .font(.workbenchMetadata)
+                  .foregroundStyle(
+                    preview.compatibility.requiresConfirmation
+                      ? WorkbenchTheme.warning
+                      : WorkbenchTheme.neutral
+                  )
+              }
+              Spacer(minLength: 8)
+              Button(String(localized: "一键恢复")) {
+                restoreAutomaticBackup(preview)
+              }
+              .accessibilityLabel(
+                String(
+                  format: String(localized: "恢复 %@ 创建的自动备份"),
+                  preview.createdAt.formatted(date: .abbreviated, time: .shortened)
+                )
+              )
+            }
+            .padding(9)
+            .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: 8))
+          }
+        }
+      }
+    }
+    .padding(.top, 2)
   }
 
   private var relocationSection: some View {
@@ -366,6 +560,61 @@ struct StorageManagementView: View {
       if workspaceBackupPreview == nil {
         operationMessage = store.lastSaveStatus
       }
+    }
+  }
+
+  private func createKnowledgeBackup() {
+    guard let destinationURL = KnowledgeLibraryBackupSelectionPanel.chooseBackupDestination() else {
+      return
+    }
+    Task {
+      _ = await store.knowledge.createBackup(at: destinationURL)
+      await refreshUsage()
+    }
+  }
+
+  private func chooseKnowledgeBackupForRestore() {
+    guard let backupURL = KnowledgeLibraryBackupSelectionPanel.chooseBackupForRestore() else {
+      return
+    }
+    Task {
+      knowledgeBackupPreview = await store.knowledge.backupPreview(from: backupURL)
+      if knowledgeBackupPreview == nil {
+        operationMessage = store.lastSaveStatus
+      }
+    }
+  }
+
+  private func chooseAutomaticBackupDirectory() {
+    guard let folderURL = WorkspaceBackupSelectionPanel.chooseBackupDirectory() else { return }
+    do {
+      try backupScheduler.setDestinationFolder(folderURL)
+      operationMessage = String(localized: "自动备份目录已更新。")
+      operationError = nil
+    } catch {
+      operationError = String(
+        format: String(localized: "自动备份目录不可用：%@"),
+        error.localizedDescription
+      )
+    }
+  }
+
+  private func restoreAutomaticBackup(_ preview: WorkspaceBackupPreview) {
+    Task {
+      workspaceBackupPreview = await store.workspaceBackupPreview(from: preview.backupURL)
+    }
+  }
+
+  private func backupCompatibilitySummary(for preview: WorkspaceBackupPreview) -> String {
+    switch preview.compatibility {
+    case .compatible:
+      return String(localized: "版本兼容，已校验")
+    case .createdByOlderApplication:
+      return String(localized: "来自较旧应用版本，恢复前会提示迁移")
+    case .createdByNewerApplication:
+      return String(localized: "来自较新应用版本，恢复前需确认")
+    case .unknownApplicationVersion:
+      return String(localized: "无法比较应用版本，恢复前需确认")
     }
   }
 

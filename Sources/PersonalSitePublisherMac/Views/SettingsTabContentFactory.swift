@@ -7,14 +7,7 @@ struct SettingsTabContentFactory {
   static func makeContent(for tab: SettingsTab, context: SettingsContext) -> some View {
     switch tab {
     case .configurationStatus:
-      SettingsConfigurationHealthCard(
-        profile: context.store.activeProfile,
-        aiProviderConfig: context.store.aiProviderConfig(for: context.store.activeProfile),
-        repositoryTokenAvailability: context.store.repositoryTokenAvailability,
-        aiTokenAvailability: context.store.ai.tokenAvailability,
-        privacySettings: context.store.privacySettings,
-        selectDestination: context.selectConfigurationHealthDestination
-      )
+      SettingsConfigurationStatusView(context: context)
     case .defaultRules:
       DefaultRuleSettingsView(
         autoRunPreflightBinding: context.autoRunPreflightBinding,
@@ -28,22 +21,8 @@ struct SettingsTabContentFactory {
       SettingsTokenTabFactory.make(context: context)
     case .ai:
       SettingsAITabFactory.make(context: context)
-    case .language:
-      AppLanguageSettingsView()
-    case .storage:
-      if let rssStore = context.rssStore {
-        StorageManagementView(
-          store: context.store,
-          rssStore: rssStore,
-          coordinator: context.launchCoordinator
-        )
-      } else {
-        EmptyStateView(
-          title: "存储管理暂不可用",
-          message: "请先在主窗口完成数据文件夹设置。",
-          systemImage: "externaldrive"
-        )
-      }
+    case .appearance:
+      AppearanceSettingsView()
     case .rss:
       if let rssStore = context.rssStore {
         RSSMaintenanceSettingsView(store: rssStore)
@@ -56,6 +35,12 @@ struct SettingsTabContentFactory {
       }
     case .privacy:
       SettingsPrivacyTabFactory.make(context: context)
+    case .dataManagement:
+      DataManagementView(
+        store: context.store,
+        rssStore: context.rssStore,
+        launchCoordinator: context.launchCoordinator
+      )
     }
   }
 }

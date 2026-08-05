@@ -24,10 +24,10 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
   case defaultRules
   case token
   case ai
-  case language
-  case storage
+  case appearance
   case rss
   case privacy
+  case dataManagement
 
   var id: String {
     switch self {
@@ -39,14 +39,14 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return "token"
     case .ai:
       return "ai"
-    case .language:
-      return "language"
-    case .storage:
-      return "storage"
+    case .appearance:
+      return "appearance"
     case .rss:
       return "rss"
     case .privacy:
       return "privacy"
+    case .dataManagement:
+      return "dataManagement"
     }
   }
 
@@ -60,14 +60,14 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return String(localized: "仓库与部署")
     case .ai:
       return String(localized: "AI 写作")
-    case .language:
-      return String(localized: "语言")
-    case .storage:
-      return String(localized: "存储管理")
+    case .appearance:
+      return String(localized: "外观")
     case .rss:
       return String(localized: "RSS 阅读")
     case .privacy:
       return String(localized: "隐私")
+    case .dataManagement:
+      return String(localized: "数据管理")
     }
   }
 
@@ -81,14 +81,14 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return "link"
     case .ai:
       return "sparkles"
-    case .language:
-      return "globe"
-    case .storage:
-      return "externaldrive"
+    case .appearance:
+      return "paintpalette"
     case .rss:
       return "dot.radiowaves.left.and.right"
     case .privacy:
       return "hand.raised"
+    case .dataManagement:
+      return "externaldrive"
     }
   }
 
@@ -102,14 +102,14 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return String(localized: "连接仓库与部署平台，并将凭据安全保存在钥匙串。")
     case .ai:
       return String(localized: "选择 AI 服务、模型和当前站点的写作风格。")
-    case .language:
-      return String(localized: "选择界面语言，并控制 RepoPress 如何跟随 macOS。")
-    case .storage:
-      return String(localized: "管理资料库与 RSS 的本地文件、备份、导入和存储位置。")
+    case .appearance:
+      return String(localized: "自定义 RepoPress 的主题强调色，并决定选择态如何跟随 macOS。")
     case .rss:
       return String(localized: "管理 RSS 离线缓存、图片缓存、刷新并发和历史文章清理。")
     case .privacy:
       return String(localized: "控制离席时的快速隐藏和私密文章遮挡。")
+    case .dataManagement:
+      return String(localized: "集中管理版本、回收站、备份、恢复和内容迁移。")
     }
   }
 
@@ -117,22 +117,37 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
     switch self {
     case .configurationStatus, .defaultRules, .token, .ai:
       return true
-    case .language, .storage, .rss, .privacy:
+    case .appearance, .rss, .privacy, .dataManagement:
       return false
     }
   }
 
   var contentMaxWidth: CGFloat {
     switch self {
-    case .language, .rss, .privacy:
+    case .appearance, .rss, .privacy:
       return WorkbenchSettingsMetrics.focusedContentWidth
-    case .configurationStatus, .defaultRules, .token, .ai, .storage:
+    case .configurationStatus, .defaultRules, .token, .ai, .dataManagement:
       return WorkbenchSettingsMetrics.detailedContentWidth
     }
   }
 
   static let siteSettings: [SettingsTab] = [.configurationStatus, .defaultRules, .token, .ai]
-  static let applicationSettings: [SettingsTab] = [.language, .storage, .rss, .privacy]
+  static let applicationSettings: [SettingsTab] = [.dataManagement, .appearance, .rss, .privacy]
+
+  static func tab(forRequestedID id: String) -> SettingsTab? {
+    if let tab = allCases.first(where: { $0.id == id }) {
+      return tab
+    }
+
+    switch id {
+    case "language":
+      return .appearance
+    case "storage", "data":
+      return .dataManagement
+    default:
+      return nil
+    }
+  }
 
   @ViewBuilder
   @MainActor
