@@ -51,49 +51,70 @@ public struct MarkdownOutlineService {
 
   public func outline(in markdown: String) -> [MarkdownOutlineItem] {
     let source = markdown as NSString
-    guard source.length > 0,
-          let regex = try? NSRegularExpression(pattern: #"(?m)^(#{2,3})[ \t]+(.+?)[ \t#]*$"#)
-    else {
-      return []
+    guard source.length > 0 else { return [] }
+
+    let mdRegex = try? NSRegularExpression(pattern: #"(?m)^(#{1,3})[ \t]+(.+?)[ \t#]*$"#)
+    let mdMatches = mdRegex?.matches(in: markdown, range: NSRange(location: 0, length: source.length)) ?? []
+
+    if !mdMatches.isEmpty {
+      let headingLevels = mdMatches.map { match in
+        source.substring(with: match.range(at: 1)).count
+      }
+
+      return mdMatches.enumerated().map { index, match in
+        let headingRange = match.range
+        let level = headingLevels[index]
+        let rawTitle = source.substring(with: match.range(at: 2)).trimmedForPublishing
+        let nextLocation = ((index + 1)..<mdMatches.count)
+          .first(where: { headingLevels[$0] <= level })
+          .map { mdMatches[$0].range.location }
+          ?? source.length
+        let sectionRange = NSRange(
+          location: headingRange.location,
+          length: max(0, nextLocation - headingRange.location)
+        )
+        let sectionMarkdown = source.substring(with: sectionRange)
+        let sectionDraft = ArticleDraft(
+          siteProfileID: UUID(),
+          title: rawTitle.isEmpty ? "未命名段落" : rawTitle,
+          bodyMarkdown: sectionMarkdown
+        )
+        let riskSummary = PublicRiskSummary(issues: publicRiskScanner.scan(draft: sectionDraft))
+
+        return MarkdownOutlineItem(
+          level: level,
+          title: rawTitle.isEmpty ? "未命名段落" : rawTitle,
+          headingLocation: headingRange.location,
+          headingLength: headingRange.length,
+          sectionLocation: sectionRange.location,
+          sectionLength: sectionRange.length,
+          publicRiskSummary: riskSummary
+        )
+      }
     }
 
-    let matches = regex.matches(in: markdown, range: NSRange(location: 0, length: source.length))
-    guard !matches.isEmpty else {
-      return []
-    }
+    // Fallback: Parse HTML <h1-h3> tags for RSS / HTML articles
+    let htmlRegex = try? NSRegularExpression(
+      pattern: #"(?i)<(h[1-3])\b[^>]*>(.*?)</\1>"#,
+      options: []
+    )
+    let htmlMatches = htmlRegex?.matches(in: markdown, range: NSRange(location: 0, length: source.length)) ?? []
+    guard !htmlMatches.isEmpty else { return [] }
 
-    let headingLevels = matches.map { match in
-      source.substring(with: match.range(at: 1)).count
-    }
-
-    return matches.enumerated().map { index, match in
-      let headingRange = match.range
-      let level = headingLevels[index]
-      let rawTitle = source.substring(with: match.range(at: 2)).trimmedForPublishing
-      let nextLocation = ((index + 1)..<matches.count)
-        .first(where: { headingLevels[$0] <= level })
-        .map { matches[$0].range.location }
-        ?? source.length
-      let sectionRange = NSRange(
-        location: headingRange.location,
-        length: max(0, nextLocation - headingRange.location)
-      )
-      let sectionMarkdown = source.substring(with: sectionRange)
-      let sectionDraft = ArticleDraft(
-        siteProfileID: UUID(),
-        title: rawTitle.isEmpty ? "未命名段落" : rawTitle,
-        bodyMarkdown: sectionMarkdown
-      )
-      let riskSummary = PublicRiskSummary(issues: publicRiskScanner.scan(draft: sectionDraft))
+    return htmlMatches.map { match in
+      let tagStr = source.substring(with: match.range(at: 1)).lowercased()
+      let level = Int(tagStr.dropFirst()) ?? 2
+      let rawTitleWithTags = source.substring(with: match.range(at: 2))
+      let cleanTitle = rawTitleWithTags.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression).trimmedForPublishing
 
       return MarkdownOutlineItem(
         level: level,
-        title: rawTitle.isEmpty ? "未命名段落" : rawTitle,
-        headingLocation: headingRange.location,
-        headingLength: headingRange.length,
-        sectionLocation: sectionRange.location,
-        sectionLength: sectionRange.length,
-        publicRiskSummary: riskSummary
+        title: cleanTitle.isEmpty ? "章节" : cleanTitle,
+        headingLocation: match.range.location,
+        headingLength: match.range.length,
+        sectionLocation: match.range.location,
+        sectionLength: match.range.length,
+        publicRiskSummary: PublicRiskSummary(issues: [])
       )
     }
   }

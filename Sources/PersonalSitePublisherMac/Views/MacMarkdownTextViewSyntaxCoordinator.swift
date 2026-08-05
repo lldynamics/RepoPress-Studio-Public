@@ -181,11 +181,12 @@ extension MacMarkdownTextView.Coordinator {
       )
     }
 
+    let expectedTextStorageLength = (text as NSString).length
     for (index, applicationSnapshot) in applicationSnapshots.enumerated() {
       guard syntaxAttributeApplicationGeneration == generation,
         !Task.isCancelled,
         textView.string == text,
-        textStorage.length == (text as NSString).length
+        textStorage.length == expectedTextStorageLength
       else {
         return
       }

@@ -45,9 +45,31 @@ public struct MarkdownCodeRangeScanResult: Hashable, Sendable {
 /// AppKit, diagnostics, and preview preparation without coordinate conversion.
 public enum MarkdownCodeRangeScanner {
   public static func scan(_ markdown: String) -> MarkdownCodeRangeScanResult {
-    let source = markdown as NSString
+    scan(markdown as NSString)
+  }
+
+  /// Scans an already bridged UTF-16 source without creating another
+  /// `String`/substring. The editor uses this overload to keep AppKit's
+  /// UTF-16 coordinates throughout an incremental scan.
+  static func scan(_ source: NSString) -> MarkdownCodeRangeScanResult {
     let blocks = blockRanges(in: source)
     let inline = inlineRanges(in: source, excluding: blocks)
+    return MarkdownCodeRangeScanResult(blockRanges: blocks, inlineRanges: inline)
+  }
+
+  /// Scans only the requested UTF-16 range and keeps returned coordinates
+  /// absolute. The editor passes line-padded ranges, so fenced-code state is
+  /// bounded to the same incremental region as the lexer.
+  static func scan(_ source: NSString, in range: NSRange) -> MarkdownCodeRangeScanResult {
+    guard range.location != NSNotFound,
+          range.location >= 0,
+          range.length >= 0,
+          range.location <= source.length,
+          range.length <= source.length - range.location else {
+      return MarkdownCodeRangeScanResult(blockRanges: [], inlineRanges: [])
+    }
+    let blocks = blockRanges(in: source, within: range)
+    let inline = inlineRanges(in: source, excluding: blocks, within: range)
     return MarkdownCodeRangeScanResult(blockRanges: blocks, inlineRanges: inline)
   }
 
@@ -55,9 +77,24 @@ public enum MarkdownCodeRangeScanner {
   /// fenced-code marker (up to three leading spaces, then 3+ backticks/tildes).
   public static func containsFenceLine(in markdown: String) -> Bool {
     let source = markdown as NSString
-    guard source.length > 0 else { return false }
-    var location = 0
-    while location < source.length {
+    return containsFenceLine(
+      in: source,
+      range: NSRange(location: 0, length: source.length)
+    )
+  }
+
+  static func containsFenceLine(in source: NSString, range: NSRange) -> Bool {
+    guard range.location != NSNotFound,
+          range.location >= 0,
+          range.length >= 0,
+          range.location <= source.length,
+          range.length <= source.length - range.location,
+          range.length > 0 else {
+      return false
+    }
+    let upperBound = NSMaxRange(range)
+    var location = range.location
+    while location < upperBound {
       var lineStart = 0
       var lineEnd = 0
       var contentsEnd = 0
@@ -67,9 +104,14 @@ public enum MarkdownCodeRangeScanner {
         contentsEnd: &contentsEnd,
         for: NSRange(location: location, length: 0)
       )
+      let boundedLineStart = max(lineStart, range.location)
+      let boundedContentsEnd = min(contentsEnd, upperBound)
       if openingFence(
         source: source,
-        lineRange: NSRange(location: lineStart, length: contentsEnd - lineStart)
+        lineRange: NSRange(
+          location: boundedLineStart,
+          length: max(0, boundedContentsEnd - boundedLineStart)
+        )
       ) != nil {
         return true
       }
@@ -90,12 +132,21 @@ public enum MarkdownCodeRangeScanner {
   }
 
   private static func blockRanges(in source: NSString) -> [NSRange] {
+    blockRanges(in: source, within: nil)
+  }
+
+  private static func blockRanges(
+    in source: NSString,
+    within requestedRange: NSRange?
+  ) -> [NSRange] {
     guard source.length > 0 else { return [] }
+    let lowerBound = requestedRange?.location ?? 0
+    let upperBound = requestedRange.map(NSMaxRange) ?? source.length
     var ranges: [NSRange] = []
     var fence: Fence?
-    var location = 0
+    var location = lowerBound
 
-    while location < source.length {
+    while location < upperBound {
       var lineStart = 0
       var lineEnd = 0
       var contentsEnd = 0
@@ -105,16 +156,18 @@ public enum MarkdownCodeRangeScanner {
         contentsEnd: &contentsEnd,
         for: NSRange(location: location, length: 0)
       )
+      let boundedLineStart = max(lineStart, lowerBound)
+      let boundedContentsEnd = min(contentsEnd, upperBound)
       let contentRange = NSRange(
-        location: lineStart,
-        length: max(0, contentsEnd - lineStart)
+        location: boundedLineStart,
+        length: max(0, boundedContentsEnd - boundedLineStart)
       )
 
       if let activeFence = fence {
         if isClosingFence(activeFence, source: source, lineRange: contentRange) {
           ranges.append(NSRange(
             location: activeFence.start,
-            length: contentsEnd - activeFence.start
+            length: max(0, boundedContentsEnd - activeFence.start)
           ))
           fence = nil
         }
@@ -122,10 +175,13 @@ public enum MarkdownCodeRangeScanner {
         fence = Fence(
           marker: opening.marker,
           length: opening.length,
-          start: lineStart
+          start: boundedLineStart
         )
       } else if isIndentedCodeLine(source: source, lineRange: contentRange) {
-        ranges.append(NSRange(location: lineStart, length: lineEnd - lineStart))
+        ranges.append(NSRange(
+          location: boundedLineStart,
+          length: max(0, min(lineEnd, upperBound) - boundedLineStart)
+        ))
       }
 
       location = max(lineEnd, location + 1)
@@ -134,7 +190,7 @@ public enum MarkdownCodeRangeScanner {
     if let fence {
       ranges.append(NSRange(
         location: fence.start,
-        length: source.length - fence.start
+        length: max(0, upperBound - fence.start)
       ))
     }
     return merged(ranges)
@@ -161,8 +217,10 @@ public enum MarkdownCodeRangeScanner {
     let length = cursor - markerStart
     guard length >= 3 else { return nil }
     if marker == 96 {
-      let info = source.substring(with: NSRange(location: cursor, length: end - cursor))
-      guard !info.contains("`") else { return nil }
+      while cursor < end {
+        guard source.character(at: cursor) != 96 else { return nil }
+        cursor += 1
+      }
     }
     return (marker, length)
   }
@@ -215,11 +273,20 @@ public enum MarkdownCodeRangeScanner {
     in source: NSString,
     excluding blockRanges: [NSRange]
   ) -> [NSRange] {
+    inlineRanges(in: source, excluding: blockRanges, within: nil)
+  }
+
+  private static func inlineRanges(
+    in source: NSString,
+    excluding blockRanges: [NSRange],
+    within requestedRange: NSRange?
+  ) -> [NSRange] {
     var runsByLength: [Int: [DelimiterRun]] = [:]
     var blockIndex = 0
-    var cursor = 0
+    let upperBound = requestedRange.map(NSMaxRange) ?? source.length
+    var cursor = requestedRange?.location ?? 0
 
-    while cursor < source.length {
+    while cursor < upperBound {
       while blockIndex < blockRanges.count,
             NSMaxRange(blockRanges[blockIndex]) <= cursor {
         blockIndex += 1
@@ -234,7 +301,7 @@ public enum MarkdownCodeRangeScanner {
         continue
       }
       let start = cursor
-      while cursor < source.length, source.character(at: cursor) == 96 {
+      while cursor < upperBound, source.character(at: cursor) == 96 {
         cursor += 1
       }
       let length = cursor - start

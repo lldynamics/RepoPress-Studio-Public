@@ -50,7 +50,10 @@ final class MarkdownEditorScrollView: NSScrollView {
       cachedTextHeight = nil
       cachedLayoutWidth = layoutWidth
     }
-    textView.textContainerInset = NSSize(width: horizontalInset, height: 16)
+    let textContainerInset = NSSize(width: horizontalInset, height: 16)
+    if textView.textContainerInset != textContainerInset {
+      textView.textContainerInset = textContainerInset
+    }
     let textHeight = textView.layoutManager.map { layoutManager in
       guard let textContainer = textView.textContainer else { return contentHeight }
       if let cachedTextHeight {
@@ -63,10 +66,13 @@ final class MarkdownEditorScrollView: NSScrollView {
       return measuredHeight
     } ?? contentHeight
 
-    textView.frame.size = NSSize(
+    let documentSize = NSSize(
       width: contentWidth,
       height: max(contentHeight, textHeight, 1)
     )
+    if textView.frame.size != documentSize {
+      textView.setFrameSize(documentSize)
+    }
   }
 }
 final class DroppableMarkdownTextView: NSTextView {
@@ -94,6 +100,8 @@ final class DroppableMarkdownTextView: NSTextView {
   var markdownFormattingHandler: ((NSTextView, MarkdownFormattingCommand) -> Bool)?
   var markdownTableContextProvider: ((NSTextView) -> MarkdownTableEditingContext?)?
   var markdownTableEditingHandler: ((NSTextView, MarkdownTableEditingCommand) -> Bool)?
+  var ghostTextAcceptHandler: (() -> Bool)?
+  var ghostTextDismissHandler: (() -> Bool)?
   private var isFileDropTargeted = false
 
   override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
@@ -131,13 +139,22 @@ final class DroppableMarkdownTextView: NSTextView {
 
   override func keyDown(with event: NSEvent) {
     let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-    if event.keyCode == 48, modifiers.contains(.control) {
-      if modifiers.contains(.shift) {
-        window?.selectPreviousKeyView(self)
-      } else {
-        window?.selectNextKeyView(self)
+    if event.keyCode == 48 { // Tab key
+      if modifiers.isEmpty, ghostTextAcceptHandler?() == true {
+        return
       }
-      return
+      if modifiers.contains(.control) {
+        if modifiers.contains(.shift) {
+          window?.selectPreviousKeyView(self)
+        } else {
+          window?.selectNextKeyView(self)
+        }
+        return
+      }
+    } else if event.keyCode == 53 { // Esc key
+      if modifiers.isEmpty, ghostTextDismissHandler?() == true {
+        return
+      }
     }
     super.keyDown(with: event)
   }
