@@ -578,7 +578,11 @@ final class RSSReaderReliabilityTests: XCTestCase {
     XCTAssertThrowsError(try store.updateFeedURL(feedID: firstID, newURL: secondURL))
     XCTAssertThrowsError(try store.updateFeedURL(feedID: firstID, newURL: unsafeURL))
 
-    let opml = try store.exportOPMLData()
+    let opml = try RSSOPMLWriter.makeDocument(
+      subscriptions: store.feeds.map {
+        RSSOPMLSubscription(title: $0.displayTitle, url: $0.url, siteURL: $0.siteURL)
+      }
+    )
     let exportedText = String(decoding: opml, as: UTF8.self)
     XCTAssertFalse(exportedText.contains("topsecret"))
     XCTAssertTrue(exportedText.contains("REDACTED"))

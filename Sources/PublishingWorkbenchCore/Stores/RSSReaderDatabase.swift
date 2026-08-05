@@ -9,7 +9,10 @@ struct RSSReaderDatabaseStatistics: Equatable, Sendable {
   var highlightCount: Int
 }
 
-final class RSSReaderDatabase {
+/// SQLite access is serialized by `lock`, so the connection can be shared by
+/// the main-actor store and a detached read-only search task without moving
+/// the store itself off the main actor.
+final class RSSReaderDatabase: @unchecked Sendable {
   static let currentSchemaVersion = 5
 
   let fileURL: URL
@@ -57,8 +60,10 @@ final class RSSReaderDatabase {
   }
 
   var isEmpty: Bool {
-    guard let statistics = try? statistics() else { return true }
-    return statistics.feedCount == 0 && statistics.articleCount == 0
+    get throws {
+      let statistics = try statistics()
+      return statistics.feedCount == 0 && statistics.articleCount == 0
+    }
   }
 
   func statistics() throws -> RSSReaderDatabaseStatistics {
@@ -501,6 +506,7 @@ final class RSSReaderDatabase {
       defer { sqlite3_finalize(ftsStatement) }
       bind(ftsQuery, at: 1, to: ftsStatement)
       while sqlite3_step(ftsStatement) == SQLITE_ROW {
+        try Task.checkCancellation()
         if let value = text(ftsStatement, 0) { ids.insert(value) }
       }
       try checkStatementCompletion(ftsStatement)
@@ -633,8 +639,7 @@ final class RSSReaderDatabase {
         try executeUnlocked("PRAGMA user_version = \(Self.currentSchemaVersion);")
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -974,9 +979,19 @@ final class RSSReaderDatabase {
       try body()
       try executeUnlocked("COMMIT;")
     } catch {
-      try? executeUnlocked("ROLLBACK;")
-      throw error
+      try rethrowAfterRollbackUnlocked(error)
     }
+  }
+
+  private func rethrowAfterRollbackUnlocked(_ primaryError: Error) throws -> Never {
+    do {
+      try executeUnlocked("ROLLBACK;")
+    } catch {
+      throw RSSReaderError.persistence(
+        "RSS 数据库操作失败：\(primaryError.localizedDescription)；回滚失败：\(error.localizedDescription)"
+      )
+    }
+    throw primaryError
   }
 
   private func execute(_ sql: String) throws {

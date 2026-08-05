@@ -20,8 +20,7 @@ struct RSSMaintenanceSettingsView: View {
       Section(String(localized: "本地 RSS 缓存")) {
         LabeledContent("订阅数量", value: store.feeds.count.formatted())
         LabeledContent("本机文章", value: store.articleHeaders.count.formatted())
-        LabeledContent("已归档媒体", value: store.mediaAssets.count.formatted())
-        Text("Feed 正文、网页全文快照和媒体归档是三项独立的本地保存范围；关闭某一项不会删除已经保存的本地副本。")
+        Text("RSS 只保存 Feed 实际返回的摘要和正文。旧版本已经保存的网页快照和媒体缓存仍可读取，但不会再自动抓取或归档新内容。")
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -66,25 +65,10 @@ struct RSSMaintenanceSettingsView: View {
           accessibilityIdentifier: "rss-feed-body-offline-cache"
         )
 
-        settingsToggle(
-          title: String(localized: "网页全文快照（实验）"),
-          detail: String(localized: "实验功能，默认关闭。开启后按文章链接抓取受大小限制的网页 HTML，并在 Feed 正文缺失时作为离线阅读回退；不会补齐原网页没有公开的内容。"),
-          isOn: Binding(
-            get: { store.webPageSnapshotEnabled },
-            set: { store.updateWebPageSnapshotSettings(enabled: $0) }
-          ),
-          accessibilityIdentifier: "rss-web-page-snapshot"
-        )
-
-        settingsToggle(
-          title: String(localized: "自动媒体归档（实验）"),
-          detail: String(localized: "实验功能，默认关闭。开启后自动保存文章中可识别的图片、视频、音频和带下载标记的附件；每项受数量、大小和类型限制。收藏或添加高亮的文章仍会按原有规则归档媒体。"),
-          isOn: Binding(
-            get: { store.automaticMediaCacheEnabled },
-            set: { store.updateAutomaticMediaCacheSettings(enabled: $0) }
-          ),
-          accessibilityIdentifier: "rss-automatic-media-cache"
-        )
+        Text("网页全文快照和媒体归档已停止新增；历史数据仅作兼容读取。")
+          .font(.workbenchSupporting)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
 
       Section(String(localized: "网络安全")) {
@@ -117,7 +101,7 @@ struct RSSMaintenanceSettingsView: View {
         .disabled(!automaticPruningEnabled)
         .accessibilityIdentifier("rss-retention-days")
 
-        Text("只会清理超过保留期限、已读、未加入稍后阅读且没有高亮的文章；稍后阅读文章、批注和已归档媒体不会被误删。")
+        Text("只会清理超过保留期限、已读、未加入稍后阅读且没有高亮的文章；稍后阅读文章和批注不会被误删。")
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -140,7 +124,7 @@ struct RSSMaintenanceSettingsView: View {
       }
     }
     .formStyle(.grouped)
-    .scrollIndicators(.hidden)
+    .scrollIndicators(.automatic)
     .padding(WorkbenchSpacing.content)
     .confirmationDialog(
       "清理 RSS 历史文章？",
@@ -184,11 +168,7 @@ struct RSSMaintenanceSettingsView: View {
     } else {
       pruneFeedback = summary.removedArticleCount == 0
         ? String(localized: "没有符合条件的历史文章。")
-        : String(
-          format: String(localized: "已清理 %@ 篇文章，释放 %@ 个媒体缓存。"),
-          summary.removedArticleCount.formatted(),
-          summary.removedMediaAssetCount.formatted()
-        )
+        : String(format: String(localized: "已清理 %@ 篇文章。"), summary.removedArticleCount.formatted())
       pruneFeedbackIsError = false
     }
   }

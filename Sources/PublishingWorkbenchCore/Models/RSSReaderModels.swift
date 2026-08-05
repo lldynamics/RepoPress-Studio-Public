@@ -431,7 +431,8 @@ public struct RSSArticle: Codable, Hashable, Identifiable, Sendable {
   public var publishedAt: Date?
   public var summaryHTML: String
   public var contentHTML: String
-  /// A separately fetched, bounded snapshot of the linked web page.
+  /// A legacy, separately fetched snapshot retained only for backward-
+  /// compatible reading. New RSS refreshes do not create snapshots.
   public var webPageSnapshotHTML: String?
   public var fetchedAt: Date
   public var readAt: Date?
@@ -706,6 +707,9 @@ public struct RSSArticleHighlight: Codable, Hashable, Identifiable, Sendable {
   }
 }
 
+/// Legacy metadata for media archived by older RSS releases. New refreshes do
+/// not create media assets, but keeping the model allows old local data and
+/// backups to be read without a destructive migration.
 public struct RSSMediaAsset: Codable, Hashable, Identifiable, Sendable {
   public let articleID: String
   public let remoteURL: URL

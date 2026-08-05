@@ -130,62 +130,6 @@ final class RSSReaderMaintenanceTests: XCTestCase {
     XCTAssertLessThanOrEqual(maximum, RSSReaderStore.maximumRefreshConcurrency)
   }
 
-  func testStarringArticleArchivesMediaAndPersistsIt() async throws {
-    let rootURL = temporaryRoot()
-    defer { try? FileManager.default.removeItem(at: rootURL) }
-    let fileURL = rootURL.appendingPathComponent("reader.sqlite")
-    let mediaRootURL = rootURL.appendingPathComponent("RSSMedia", isDirectory: true)
-    let imageURL = try XCTUnwrap(URL(string: "https://img.example.com/archived.png"))
-    let feed = RSSFeed(
-      title: "归档测试",
-      url: try XCTUnwrap(URL(string: "https://example.com/archive.xml"))
-    )
-    let article = RSSArticle(
-      id: "archive-article",
-      feedID: feed.id,
-      title: "收藏后归档",
-      link: try XCTUnwrap(URL(string: "https://example.com/posts/archive")),
-      contentHTML: "<p>正文</p><img src=\"\(imageURL.absoluteString)\">"
-    )
-    let database = try RSSReaderDatabase(fileURL: fileURL)
-    try database.upsertFeed(feed)
-    try database.upsertArticles([article])
-
-    let archiver = RSSMediaArchiver(
-      cacheDirectoryURL: mediaRootURL,
-      downloadOperation: { request in
-        let response = try XCTUnwrap(
-          HTTPURLResponse(
-            url: request.url ?? imageURL,
-            statusCode: 200,
-            httpVersion: nil,
-            headerFields: ["Content-Type": "image/png"]
-          )
-        )
-        return (Data([0x89, 0x50, 0x4E, 0x47]), response)
-      }
-    )
-    let store = RSSReaderStore(fileURL: fileURL, mediaArchiver: archiver)
-
-    store.toggleStarred(article.id)
-    for _ in 0..<100 {
-      if !store.mediaAssets.isEmpty { break }
-      try await Task.sleep(nanoseconds: 10_000_000)
-    }
-
-    let asset = try XCTUnwrap(store.mediaAssets.first)
-    XCTAssertEqual(asset.articleID, article.id)
-    XCTAssertTrue(FileManager.default.fileExists(atPath: asset.localURL(in: mediaRootURL).path))
-
-    let reopened = RSSReaderStore(fileURL: fileURL)
-    XCTAssertEqual(reopened.mediaAssets.map(\.id), [asset.id])
-    XCTAssertTrue(
-      FileManager.default.fileExists(
-        atPath: asset.localURL(in: reopened.mediaCacheDirectoryURL).path
-      )
-    )
-  }
-
   private func temporaryRoot() -> URL {
     FileManager.default.temporaryDirectory
       .appendingPathComponent("RSSReaderMaintenanceTests-\(UUID().uuidString)", isDirectory: true)

@@ -758,6 +758,34 @@ final class RSSReaderTests: XCTestCase {
     XCTAssertEqual(reopened.highlights(for: article.id).first?.note, "后续写作素材")
   }
 
+  func testAsyncSQLiteSearchReturnsFTSMatches() async throws {
+    let rootURL = temporaryDirectory(named: "rss-async-search")
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+    let fileURL = rootURL.appendingPathComponent("reader.sqlite")
+    let store = RSSReaderStore(fileURL: fileURL)
+    let feedID = try store.addFeed(
+      url: try XCTUnwrap(URL(string: "https://example.com/async-search.xml")),
+      title: "后台搜索测试"
+    )
+    let feed = try XCTUnwrap(store.feeds.first { $0.id == feedID })
+    store.merge([
+      RSSParsedArticle(
+        id: "async-fts-1",
+        title: "后台 FTS 标题",
+        summaryHTML: "摘要",
+        contentHTML: "后台查询命中的正文"
+      )
+    ], into: feed)
+    let articleID = try XCTUnwrap(store.articleHeaders.first?.id)
+
+    let result = await store.articleHeadersAsync(
+      for: .all,
+      searchText: "后台查询"
+    )
+
+    XCTAssertEqual(result.map(\.id), [articleID])
+  }
+
   func testRSSBackupCreatesValidatedSingleFileSnapshotFromLiveWALDatabase() throws {
     let rootURL = temporaryDirectory(named: "rss-backup")
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -1118,7 +1146,7 @@ final class RSSReaderTests: XCTestCase {
     }
   }
 
-  func testOfflineCachePoliciesHaveExplicitDefaultsAndPersistIndependently() throws {
+  func testFeedBodyOfflineCachePolicyDefaultsAndPersists() throws {
     let suiteName = "RSSReaderTests-" + UUID().uuidString
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
     defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -1127,17 +1155,11 @@ final class RSSReaderTests: XCTestCase {
 
     let store = RSSReaderStore(fileURL: fileURL, userDefaults: defaults)
     XCTAssertTrue(store.feedBodyOfflineCacheEnabled)
-    XCTAssertFalse(store.webPageSnapshotEnabled)
-    XCTAssertFalse(store.automaticMediaCacheEnabled)
 
     store.updateFeedBodyOfflineCacheSettings(enabled: false)
-    store.updateWebPageSnapshotSettings(enabled: true)
-    store.updateAutomaticMediaCacheSettings(enabled: true)
     let reopened = RSSReaderStore(fileURL: fileURL, userDefaults: defaults)
 
     XCTAssertFalse(reopened.feedBodyOfflineCacheEnabled)
-    XCTAssertTrue(reopened.webPageSnapshotEnabled)
-    XCTAssertTrue(reopened.automaticMediaCacheEnabled)
   }
 
   func testLegacyOfflineCachePreferenceMigratesOnlyToFeedBodyPolicy() throws {
@@ -1151,8 +1173,6 @@ final class RSSReaderTests: XCTestCase {
     let store = RSSReaderStore(fileURL: fileURL, userDefaults: defaults)
 
     XCTAssertFalse(store.feedBodyOfflineCacheEnabled)
-    XCTAssertFalse(store.webPageSnapshotEnabled)
-    XCTAssertFalse(store.automaticMediaCacheEnabled)
   }
 
   func testDisablingAutomaticOfflineCacheKeepsMetadataAndCanRefillBodyLater() async throws {
@@ -1205,70 +1225,7 @@ final class RSSReaderTests: XCTestCase {
     XCTAssertEqual(cached.contentHTML, "<p>完整离线正文</p>")
   }
 
-  func testWebPageSnapshotPolicyStoresLinkedHTMLWhenFeedBodyIsMissing() async throws {
-    let suiteName = "RSSReaderTests-" + UUID().uuidString
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    let rootURL = temporaryDirectory(named: "rss-web-page-snapshot")
-    let fileURL = rootURL.appendingPathComponent("reader.sqlite")
-    let feedURL = try XCTUnwrap(URL(string: "https://example.com/offline.xml"))
-    let articleURL = try XCTUnwrap(URL(string: "https://example.com/posts/full"))
-    let fetchResult = RSSFeedFetchResult(
-      parsedFeed: RSSParsedFeed(
-        title: "网页快照测试",
-        articles: [
-          RSSParsedArticle(
-            id: "snapshot-article",
-            title: "只有原网页有正文",
-            link: articleURL,
-            summaryHTML: "",
-            contentHTML: ""
-          )
-        ]
-      ),
-      responseURL: feedURL,
-      etag: nil,
-      lastModified: nil,
-      notModified: false
-    )
-    let snapshotArchiver = RSSWebPageSnapshotArchiver(
-      downloadOperation: { request, _, _ in
-        let response = try XCTUnwrap(
-          HTTPURLResponse(
-            url: request.url!,
-            statusCode: 200,
-            httpVersion: nil,
-            headerFields: ["Content-Type": "text/html"]
-          )
-        )
-        return (Data("<article>原网页完整正文</article>".utf8), response)
-      }
-    )
-    let store = RSSReaderStore(
-      fileURL: fileURL,
-      fetchOperation: { _, _, _ in fetchResult },
-      userDefaults: defaults,
-      webPageSnapshotArchiver: snapshotArchiver
-    )
-    let feedID = try store.addFeed(url: feedURL)
-    store.updateWebPageSnapshotSettings(enabled: true)
-
-    await store.refresh(feedID: feedID)
-
-    let articleID = "\(feedID.uuidString):snapshot-article"
-    var snapshotArticle: RSSArticle?
-    for _ in 0..<50 {
-      snapshotArticle = try await store.loadArticle(id: articleID)
-      if snapshotArticle?.webPageSnapshotHTML != nil { break }
-      try await Task.sleep(nanoseconds: 10_000_000)
-    }
-    XCTAssertEqual(
-      snapshotArticle?.webPageSnapshotHTML,
-      "<article>原网页完整正文</article>"
-    )
-  }
-
-  func testReaderStoreExportsCurrentSubscriptionsAsOPML() throws {
+  func testOPMLSettingsFlowExportsCurrentSubscriptions() throws {
     let rootURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("RSSReaderTests-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -1281,7 +1238,13 @@ final class RSSReaderTests: XCTestCase {
     try writeSnapshot(RSSReaderSnapshot(feeds: [feed], articles: []), to: fileURL)
 
     let store = RSSReaderStore(fileURL: fileURL)
-    let subscriptions = try RSSOPMLParser.parse(data: store.exportOPMLData())
+    let subscriptions = try RSSOPMLParser.parse(
+      data: RSSOPMLWriter.makeDocument(
+        subscriptions: store.feeds.map {
+          RSSOPMLSubscription(title: $0.displayTitle, url: $0.url, siteURL: $0.siteURL)
+        }
+      )
+    )
 
     XCTAssertEqual(
       subscriptions,
