@@ -68,31 +68,21 @@ struct WorkspaceShellSplitLayout: View {
         workspaceSidebarResizeHandle
       }
 
-      if isFocusMode {
-        EditorCenterColumn(
-          store: store,
-          contentHealthFilter: $contentHealthFilter,
-          imageWorkbenchContextStage: $imageWorkbenchContextStage,
-          repositoryContextStage: $repositoryContextStage,
-          contentHealthSidebarProjection: contentHealthSidebarProjection,
-          repositorySourceSession: repositorySourceSession,
-          rssStore: rssStore,
-          rssPresentation: rssPresentation
-        )
-        .frame(minWidth: 680, maxWidth: .infinity, maxHeight: .infinity)
-      } else {
-        EditorCenterColumn(
-          store: store,
-          contentHealthFilter: $contentHealthFilter,
-          imageWorkbenchContextStage: $imageWorkbenchContextStage,
-          repositoryContextStage: $repositoryContextStage,
-          contentHealthSidebarProjection: contentHealthSidebarProjection,
-          repositorySourceSession: repositorySourceSession,
-          rssStore: rssStore,
-          rssPresentation: rssPresentation
-        )
-        .frame(minWidth: centerMinimumWidth, maxWidth: .infinity, maxHeight: .infinity)
-      }
+      EditorCenterColumn(
+        store: store,
+        contentHealthFilter: $contentHealthFilter,
+        imageWorkbenchContextStage: $imageWorkbenchContextStage,
+        repositoryContextStage: $repositoryContextStage,
+        contentHealthSidebarProjection: contentHealthSidebarProjection,
+        repositorySourceSession: repositorySourceSession,
+        rssStore: rssStore,
+        rssPresentation: rssPresentation
+      )
+      .frame(
+        minWidth: isFocusMode ? 680 : centerMinimumWidth,
+        maxWidth: .infinity,
+        maxHeight: .infinity
+      )
     }
     .knowledgeFileDropImport(
       knowledge: store.knowledge,

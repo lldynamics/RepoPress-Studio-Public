@@ -7,12 +7,29 @@ private struct DraftRepositoryCleanupConfirmation {
 }
 
 struct DraftLifecycleCenterView: View {
-  let store: WorkbenchStore
+  enum Presentation: Equatable {
+    case standalone
+    case embedded
+  }
+
+  @ObservedObject var store: WorkbenchStore
+  let presentation: Presentation
   @Environment(\.dismiss) private var dismiss
   @State private var draftPendingPermanentDeletion: RecycledDraft?
   @State private var cleanupPendingExecution: DraftRepositoryCleanupConfirmation?
   @State private var versionPendingComparison: DraftVersionSnapshot?
   @State private var versionPendingRestore: DraftVersionSnapshot?
+  @State private var ownershipTransferPlan: DraftOwnershipTransferPlan?
+  @State private var ownershipOperation: DraftOwnershipTransferOperation = .moveToGeneral
+  @State private var ownershipTargetProfileID: UUID?
+
+  init(
+    store: WorkbenchStore,
+    presentation: Presentation = .standalone
+  ) {
+    self.store = store
+    self.presentation = presentation
+  }
 
   private var selectedDraftVersions: [DraftVersionSnapshot] {
     guard let draftID = store.selectedDraftID else { return [] }
@@ -23,14 +40,17 @@ struct DraftLifecycleCenterView: View {
     NavigationStack {
       List {
         versionHistorySection
+        ownershipTransferSection
         recycleBinSection
         repositoryCleanupSection
       }
       .navigationTitle("版本历史与回收站")
       .toolbar {
-        ToolbarItem(placement: .confirmationAction) {
-          Button("完成") {
-            dismiss()
+        if presentation == .standalone {
+          ToolbarItem(placement: .confirmationAction) {
+            Button("完成") {
+              dismiss()
+            }
           }
         }
       }
@@ -89,6 +109,11 @@ struct DraftLifecycleCenterView: View {
     }
     .sheet(item: $versionPendingComparison) { version in
       DraftVersionComparisonView(store: store, sourceVersion: version)
+    }
+    .sheet(item: $ownershipTransferPlan) { plan in
+      DraftOwnershipTransferConfirmationView(plan: plan) { confirmedPlan in
+        store.applyDraftOwnershipTransfer(confirmedPlan) != nil
+      }
     }
   }
 
@@ -152,6 +177,61 @@ struct DraftLifecycleCenterView: View {
       }
     } header: {
       Label("当前文章版本", systemImage: "clock.arrow.circlepath")
+    }
+  }
+
+  private var ownershipTransferSection: some View {
+    Section {
+      if let draft = store.selectedDraft {
+        VStack(alignment: .leading, spacing: 10) {
+          Text(draft.title.nilIfEmpty ?? "未命名文章")
+            .font(.headline)
+
+          Picker("变更方式", selection: $ownershipOperation) {
+            Text("移动到站点").tag(DraftOwnershipTransferOperation.moveToSite)
+            Text("复制到站点").tag(DraftOwnershipTransferOperation.copyToSite)
+            Text("转为通用草稿").tag(DraftOwnershipTransferOperation.moveToGeneral)
+          }
+
+          if ownershipOperation != .moveToGeneral {
+            Picker("目标站点", selection: ownershipTargetProfileBinding) {
+              Text("选择站点").tag(UUID?.none)
+              ForEach(ownershipTargetProfiles) { profile in
+                Text(profile.name).tag(Optional(profile.id))
+              }
+            }
+          }
+
+          HStack {
+            Text("只更新工作台中的草稿归属，不会改写原仓库文件。")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button("生成归属变更预览", systemImage: "arrow.right.doc.on.clipboard") {
+              ownershipTransferPlan = store.draftOwnershipTransferPlan(
+                draftIDs: [draft.id],
+                operation: ownershipOperation,
+                targetProfileID: ownershipOperation == .moveToGeneral
+                  ? nil
+                  : ownershipTargetProfileID
+              )
+            }
+            .disabled(!canPreviewOwnershipTransfer)
+          }
+        }
+        .padding(.vertical, 4)
+        .onAppear {
+          ownershipTargetProfileID = ownershipTargetProfileID ?? ownershipTargetProfiles.first?.id
+        }
+      } else {
+        Text("请先在文章列表中选择一篇文章，再管理它的归属。")
+          .foregroundStyle(.secondary)
+      }
+    } header: {
+      Label("草稿归属", systemImage: "person.2.arrow.trianglehead.counterclockwise")
+    } footer: {
+      Text("批量归属变更仍可在文章列表的批量操作中使用。")
     }
   }
 
@@ -281,5 +361,27 @@ struct DraftLifecycleCenterView: View {
       get: { versionPendingRestore != nil },
       set: { if !$0 { versionPendingRestore = nil } }
     )
+  }
+
+  private var ownershipTargetProfiles: [SiteProfile] {
+    guard let draft = store.selectedDraft else { return [] }
+    return store.publishingProfiles.filter { profile in
+      draft.isGeneralDraft || draft.siteProfileID != profile.id
+    }
+  }
+
+  private var ownershipTargetProfileBinding: Binding<UUID?> {
+    Binding(
+      get: { ownershipTargetProfileID },
+      set: { ownershipTargetProfileID = $0 }
+    )
+  }
+
+  private var canPreviewOwnershipTransfer: Bool {
+    guard store.selectedDraft != nil else { return false }
+    if ownershipOperation == .moveToGeneral {
+      return true
+    }
+    return ownershipTargetProfileID != nil && !ownershipTargetProfiles.isEmpty
   }
 }

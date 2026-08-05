@@ -266,16 +266,6 @@ struct PublishingConsoleCommands: Commands {
       }
       .disabled(!canUseProtectedWorkbench)
 
-      if store.isSafeMode {
-        Button(String(localized: "退出安全模式并关闭应用")) {
-          NSApp.terminate(nil)
-        }
-      } else {
-        Button(String(localized: "下次以安全模式启动")) {
-          WorkbenchSessionRecovery.shared.requestSafeModeOnNextLaunch()
-          NSApp.terminate(nil)
-        }
-      }
     }
   }
 

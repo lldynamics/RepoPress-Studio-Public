@@ -30,6 +30,9 @@ let package = Package(
       resources: [
         .process("Resources")
       ],
+      swiftSettings: [
+        .enableExperimentalFeature("IsolatedDeinit")
+      ],
       linkerSettings: [
         .linkedLibrary("sqlite3"),
         .linkedLibrary("z"),

@@ -47,6 +47,7 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
         }
       }
       .formStyle(.grouped)
+      .scrollIndicators(.hidden)
       .padding(WorkbenchSpacing.content)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
