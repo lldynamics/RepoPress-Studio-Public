@@ -113,13 +113,13 @@ extension RepositoryWorkspaceView {
         .accessibilityIdentifier("repository-action-import")
 
         Button {
-          isContentMigrationPresented = true
+          openDataManagement(.migration)
         } label: {
-          Label("内容迁移", systemImage: "arrow.triangle.2.circlepath.doc.on.clipboard")
+          Label("数据管理", systemImage: "externaldrive")
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.bordered)
-        .accessibilityIdentifier("repository-action-migrate")
+        .accessibilityIdentifier("repository-action-data-management")
 
         Button {
           store.selectSection(.images)

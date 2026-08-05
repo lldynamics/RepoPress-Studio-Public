@@ -58,6 +58,9 @@ struct KnowledgeSourceListColumn: View {
   let store: WorkbenchStore
   @ObservedObject var knowledge: KnowledgeStore
   @EnvironmentObject private var browserBridge: KnowledgeBrowserBridge
+  @Environment(\.openSettings) private var openSettings
+  @AppStorage("settingsRequestedTabID") private var requestedSettingsTabID = ""
+  @AppStorage("dataManagementRequestedSection") private var dataManagementRequestedSection = DataManagementSection.backup.rawValue
   @State private var searchText = ""
   @State private var isImportPresented = false
   @State private var isBrowserExtensionPresented = false
@@ -68,7 +71,6 @@ struct KnowledgeSourceListColumn: View {
   @State private var isFolderDeleteConfirmationPresented = false
   @State private var documentPendingDeletion: KnowledgeDocument?
   @State private var isDocumentDeleteConfirmationPresented = false
-  @State private var restorePreview: KnowledgeLibraryBackupPreview?
   @State private var selectedDocumentIDs = Set<UUID>()
   @State private var isRecycleBinPresented = false
   @State private var isHealthPresented = false
@@ -78,7 +80,6 @@ struct KnowledgeSourceListColumn: View {
   @State private var batchTags = ""
   @State private var hoveredDocumentID: UUID?
   @State private var listPresentation: KnowledgeSourceListPresentationSnapshot
-  @AppStorage("knowledgeSidebarDensityV1") private var sidebarDensity: KnowledgeSidebarDensity = .comfortable
   @FocusState private var isSearchFocused: Bool
 
   init(store: WorkbenchStore, knowledge: KnowledgeStore) {
@@ -123,9 +124,6 @@ struct KnowledgeSourceListColumn: View {
       BrowserExtensionConnectionView()
         .environmentObject(browserBridge)
     }
-    .sheet(item: $restorePreview) { preview in
-      KnowledgeLibraryRestorePreviewView(knowledge: knowledge, preview: preview)
-    }
     .sheet(isPresented: $isRecycleBinPresented) {
       KnowledgeRecycleBinView(knowledge: knowledge)
     }
@@ -135,7 +133,6 @@ struct KnowledgeSourceListColumn: View {
     .sheet(isPresented: $isSettingsPresented) {
       KnowledgeSettingsView(
         store: store,
-        backupScheduler: store.workspaceBackupScheduler,
         knowledge: knowledge,
         browserBridge: browserBridge,
         onOpenLibrary: {
@@ -280,20 +277,9 @@ struct KnowledgeSourceListColumn: View {
         }
         Divider()
         Button {
-          createKnowledgeBackup()
+          openDataManagement()
         } label: {
-          Label("完整备份…", systemImage: "externaldrive.badge.plus")
-        }
-        Button {
-          chooseKnowledgeBackupForRestore()
-        } label: {
-          Label("从备份恢复…", systemImage: "arrow.counterclockwise")
-        }
-        Divider()
-        Picker("列表密度", selection: $sidebarDensity) {
-          ForEach(KnowledgeSidebarDensity.allCases) { density in
-            Text(density.localizedTitle).tag(density)
-          }
+          Label("数据管理…", systemImage: "externaldrive")
         }
       } label: {
         Label("管理与设置", systemImage: "ellipsis.circle")
@@ -616,7 +602,7 @@ struct KnowledgeSourceListColumn: View {
         .foregroundStyle(.secondary)
         .frame(width: 16)
         .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: sidebarDensity.rowTextSpacing) {
+      VStack(alignment: .leading, spacing: KnowledgeSidebarMetrics.rowTextSpacing) {
         Text(document.title)
           .font(.workbenchItemTitle)
           .workbenchTruncatedIdentity(document.title)
@@ -659,7 +645,7 @@ struct KnowledgeSourceListColumn: View {
         hoveredDocumentID = nil
       }
     }
-    .listRowInsets(sidebarDensity.listRowInsets)
+    .listRowInsets(KnowledgeSidebarMetrics.listRowInsets)
     .listRowSeparator(.hidden)
     .listRowBackground(Color.clear)
     .tag(document.id)
@@ -765,7 +751,7 @@ struct KnowledgeSourceListColumn: View {
                 query: knowledge.searchText,
                 showsDocumentTitle: false
               )
-              .listRowInsets(sidebarDensity.listRowInsets)
+              .listRowInsets(KnowledgeSidebarMetrics.listRowInsets)
               .listRowSeparator(.hidden)
               .tag(result.id)
               .contextMenu {
@@ -1193,22 +1179,10 @@ struct KnowledgeSourceListColumn: View {
     }
   }
 
-  private func createKnowledgeBackup() {
-    guard let destinationURL = KnowledgeLibraryBackupSelectionPanel.chooseBackupDestination() else {
-      return
-    }
-    Task {
-      _ = await knowledge.createBackup(at: destinationURL)
-    }
-  }
-
-  private func chooseKnowledgeBackupForRestore() {
-    guard let backupURL = KnowledgeLibraryBackupSelectionPanel.chooseBackupForRestore() else {
-      return
-    }
-    Task {
-      restorePreview = await knowledge.backupPreview(from: backupURL)
-    }
+  private func openDataManagement() {
+    dataManagementRequestedSection = DataManagementSection.backup.rawValue
+    requestedSettingsTabID = SettingsTab.dataManagement.id
+    openSettings()
   }
 
   private var commandActions: KnowledgeLibraryCommandActions {
