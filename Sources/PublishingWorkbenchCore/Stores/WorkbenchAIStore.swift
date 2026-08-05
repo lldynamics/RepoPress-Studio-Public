@@ -37,9 +37,11 @@ public final class WorkbenchAIStore: ObservableObject {
   private let seoAuditService: SEOAuditService
   private let seoSocialPreviewService: SEOSocialPreviewService
   let aiChatOperationCoordinator = AIChatOperationCoordinator()
-  /// Caps observable chat updates at roughly one display refresh per 60 Hz frame.
-  /// Network chunks are still consumed immediately and accumulated off-view.
-  let aiChatStreamPublishInterval: Duration = .milliseconds(16)
+  /// Caps observable chat updates at about 20 FPS while network chunks are
+  /// still consumed immediately and accumulated off-view. This keeps the
+  /// typewriter effect smooth without scheduling a SwiftUI state publication
+  /// for every SSE token.
+  let aiChatStreamPublishInterval: Duration = .milliseconds(50)
   @Published public internal(set) var aiChatManualRetryState: AIChatManualRetryState? = nil
 
   init(
