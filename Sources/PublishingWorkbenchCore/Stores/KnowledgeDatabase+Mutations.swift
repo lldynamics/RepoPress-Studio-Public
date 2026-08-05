@@ -18,8 +18,7 @@ extension KnowledgeDatabase {
         try upsertSemanticEmbeddingsUnlocked(embeddings)
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -87,8 +86,7 @@ extension KnowledgeDatabase {
         try Task.checkCancellation()
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -135,8 +133,7 @@ extension KnowledgeDatabase {
         try executeUnlocked("COMMIT;")
         return document
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -176,8 +173,7 @@ extension KnowledgeDatabase {
         }
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -202,8 +198,7 @@ extension KnowledgeDatabase {
         }
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -234,8 +229,7 @@ extension KnowledgeDatabase {
         }
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -286,8 +280,7 @@ extension KnowledgeDatabase {
         }
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -323,8 +316,7 @@ extension KnowledgeDatabase {
         }
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -549,8 +541,7 @@ extension KnowledgeDatabase {
         }
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -579,8 +570,7 @@ extension KnowledgeDatabase {
           unreferencedStorageReferences: unreferencedStorageReferences
         )
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }

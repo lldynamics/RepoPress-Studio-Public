@@ -243,16 +243,23 @@ extension KnowledgeLibraryService {
     maximumCitations: Int = 8,
     tokenBudget: Int = 2_200
   ) async throws -> KnowledgeContextSnapshot? {
-    semanticEmbeddingService.prepareContextualModelIfNeeded(for: query)
     let service = self
-    return try await Task.detached(priority: .userInitiated) {
-      try service.context(
+    let task = Task.detached(priority: .userInitiated) {
+      try service.checkSearchCancellation()
+      service.semanticEmbeddingService.prepareContextualModelIfNeeded(for: query)
+      try service.checkSearchCancellation()
+      return try service.context(
         query: query,
         documentIDs: documentIDs,
         maximumCitations: maximumCitations,
         tokenBudget: tokenBudget
       )
-    }.value
+    }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
   }
 
   public func repairSemanticVectors() async throws -> KnowledgeSemanticRepairReport {

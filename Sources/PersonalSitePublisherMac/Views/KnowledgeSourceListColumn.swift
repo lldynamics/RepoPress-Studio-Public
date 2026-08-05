@@ -447,7 +447,7 @@ struct KnowledgeSourceListColumn: View {
       }
 
       if hasActiveSearchFilter {
-        ScrollView(.horizontal, showsIndicators: false) {
+        ScrollView(.horizontal, showsIndicators: true) {
           HStack(spacing: 5) {
             if knowledge.searchFilter.scope == .currentCollection,
                knowledge.folderScope != .all {
@@ -478,7 +478,7 @@ struct KnowledgeSourceListColumn: View {
   private var savedCollectionRuleBar: some View {
     if case .savedCollection(let collection) = knowledge.folderScope,
        !collection.rules.isEmpty {
-      ScrollView(.horizontal, showsIndicators: false) {
+      ScrollView(.horizontal, showsIndicators: true) {
         HStack(spacing: 5) {
           ForEach(collection.rules, id: \.id) { rule in
             Text(rule.localizedDisplayName)

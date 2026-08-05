@@ -72,7 +72,7 @@ struct KnowledgeCollectionNavigationView: View {
       .padding(.horizontal, 10)
 
       if isNavigationExpanded {
-        ScrollView(.vertical, showsIndicators: false) {
+        ScrollView(.vertical, showsIndicators: true) {
           LazyVStack(alignment: .leading, spacing: 2) {
           if !favoriteItems.isEmpty {
             collectionSectionTitle("收藏", systemImage: "star.fill")

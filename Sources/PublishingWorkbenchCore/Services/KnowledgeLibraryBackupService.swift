@@ -364,7 +364,7 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
          !fileManager.fileExists(atPath: pendingURL.path) {
         try fileManager.moveItem(at: applyingURL, to: pendingURL)
       }
-      try? fileManager.removeItem(at: stagingURL)
+      try removeRecoveryArtifact(at: stagingURL)
 
     case .pendingMoved, .currentMoved:
       if !fileManager.fileExists(atPath: rootURL.path),
@@ -376,15 +376,20 @@ final class KnowledgeLibraryBackupService: @unchecked Sendable {
          !fileManager.fileExists(atPath: pendingURL.path) {
         try fileManager.moveItem(at: applyingURL, to: pendingURL)
       }
-      try? fileManager.removeItem(at: stagingURL)
+      try removeRecoveryArtifact(at: stagingURL)
 
     case .installed:
       // The new library is already visible. Keep the previous-library copy as
       // an explicit recovery point, but remove only exact temporary artifacts.
-      try? fileManager.removeItem(at: applyingURL)
-      try? fileManager.removeItem(at: stagingURL)
+      try removeRecoveryArtifact(at: applyingURL)
+      try removeRecoveryArtifact(at: stagingURL)
     }
     try clearRestoreTransaction()
+  }
+
+  private func removeRecoveryArtifact(at url: URL) throws {
+    guard fileManager.fileExists(atPath: url.path) else { return }
+    try fileManager.removeItem(at: url)
   }
 
   private func validatedTransactionURL(_ path: String, parent: URL) throws -> URL {

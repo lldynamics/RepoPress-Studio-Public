@@ -164,8 +164,7 @@ extension KnowledgeDatabase {
         try upsertSemanticEmbeddingsUnlocked(embeddings)
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -185,8 +184,7 @@ extension KnowledgeDatabase {
         try Task.checkCancellation()
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -197,13 +195,13 @@ extension KnowledgeDatabase {
       try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
       do {
         try executeUnlocked("DELETE FROM knowledge_chunk_embeddings;")
+        semanticVectorCache.removeAll()
         try Task.checkCancellation()
         try upsertSemanticEmbeddingsUnlocked(embeddings)
         try Task.checkCancellation()
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -257,11 +255,38 @@ extension KnowledgeDatabase {
         var output: [KnowledgeSearchResult] = []
         while sqlite3_step(statement) == SQLITE_ROW {
           try Task.checkCancellation()
-          let storedVector = KnowledgeSemanticVectorStorage.decodeVector(statement, index: 26, dimension: queryVector.values.count)
-          guard KnowledgeSemanticVectorStorage.isValidStoredSemanticVector(
-            storedVector,
-            expectedDimension: queryVector.values.count
-          ) else { continue }
+          let chunkID = try requiredUUID(
+            statement,
+            17,
+            field: "knowledge_chunks.id"
+          )
+          let revisionID = try requiredUUID(
+            statement,
+            19,
+            field: "knowledge_chunks.revision_id"
+          )
+          let cacheKey = KnowledgeSemanticVectorCacheKey(
+            modelIdentifier: queryVector.modelIdentifier,
+            chunkID: chunkID,
+            revisionID: revisionID,
+            dimension: queryVector.values.count
+          )
+          let storedVector: [Float]
+          if let cachedVector = semanticVectorCache.value(for: cacheKey) {
+            storedVector = cachedVector
+          } else {
+            let decodedVector = KnowledgeSemanticVectorStorage.decodeVector(
+              statement,
+              index: 26,
+              dimension: queryVector.values.count
+            )
+            guard KnowledgeSemanticVectorStorage.isValidStoredSemanticVector(
+              decodedVector,
+              expectedDimension: queryVector.values.count
+            ) else { continue }
+            semanticVectorCache.insert(decodedVector, for: cacheKey)
+            storedVector = decodedVector
+          }
           let similarity = KnowledgeSemanticVectorStorage.cosineSimilarity(queryVector.values, storedVector)
           guard similarity >= queryVector.minimumSimilarity else { continue }
           output.append(KnowledgeSearchResult(
@@ -367,10 +392,12 @@ extension KnowledgeDatabase {
       bind(id.uuidString, at: Int32(offset + 1), to: statement)
     }
     guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+    semanticVectorCache.removeAll()
   }
 
   func upsertSemanticEmbeddingsUnlocked(_ embeddings: [KnowledgeChunkEmbedding]) throws {
     guard !embeddings.isEmpty else { return }
+    semanticVectorCache.removeAll()
     let statement = try prepare("""
     INSERT INTO knowledge_chunk_embeddings (
       chunk_id, revision_id, model_id, dimension, vector, created_at
