@@ -12,6 +12,8 @@ struct KnowledgeLibraryDetailView: View {
   @State private var isSourceHistoryPresented = false
   @State private var preparesLocalRepairOnHistoryOpen = false
   @State private var contentPresentation: KnowledgeContentPresentation = .cleaned
+  @State private var readerBlocks: [KnowledgeDocumentBlock] = []
+  @State private var isParsingReaderBlocks = false
   @AppStorage("knowledgeLibraryInspectorVisibleV1") private var isInspectorPresented = true
 
   var body: some View {
@@ -76,6 +78,9 @@ struct KnowledgeLibraryDetailView: View {
         contentPresentation = .cleaned
       }
     }
+    .task(id: readerBlockRequest) {
+      await rebuildReaderBlocks(for: readerBlockRequest)
+    }
   }
 
   private func documentDetail(_ document: KnowledgeDocument) -> some View {
@@ -116,7 +121,7 @@ struct KnowledgeLibraryDetailView: View {
               }
               KnowledgeDocumentReader(
                 blocks: readerBlocks,
-                isLoading: isDisplayedContentLoading,
+                isLoading: isDisplayedContentLoading || isParsingReaderBlocks,
                 errorMessage: displayedContentError,
                 highlightedBlockID: readerScrollTarget?.blockID,
                 highlightTerms: activeSearchHit?.highlightTerms ?? [],
@@ -499,14 +504,6 @@ struct KnowledgeLibraryDetailView: View {
     }
   }
 
-  private var readerText: String {
-    activeSearchResult == nil ? previewText : knowledge.selectedDocumentText
-  }
-
-  private var readerBlocks: [KnowledgeDocumentBlock] {
-    KnowledgeDocumentBlockParser().blocks(in: readerText)
-  }
-
   private var readerScrollTarget: KnowledgeReaderScrollTarget? {
     guard let result = activeSearchResult,
           let blockID = KnowledgeSearchPresentationService().targetBlockID(
@@ -517,10 +514,42 @@ struct KnowledgeLibraryDetailView: View {
     return KnowledgeReaderScrollTarget(resultID: result.id, blockID: blockID)
   }
 
-  private var previewText: String {
-    let text = displayedContentText
-    guard text.count > 100_000 else { return text }
-    return String(text.prefix(100_000))
+  private var readerBlockRequest: KnowledgeReaderBlockRequest {
+    KnowledgeReaderBlockRequest(
+      documentID: knowledge.selectedDocumentID,
+      revisionID: knowledge.selectedDocument?.currentRevisionID,
+      contentPresentation: contentPresentation,
+      searchResultID: activeSearchResult?.id,
+      isLoading: isDisplayedContentLoading
+    )
+  }
+
+  @MainActor
+  private func rebuildReaderBlocks(
+    for request: KnowledgeReaderBlockRequest
+  ) async {
+    let limitsPreview = activeSearchResult == nil
+    let source = limitsPreview ? displayedContentText : knowledge.selectedDocumentText
+    guard !source.isEmpty, !request.isLoading else {
+      readerBlocks = []
+      isParsingReaderBlocks = false
+      return
+    }
+
+    isParsingReaderBlocks = true
+    let blocks = await Task.detached(priority: .userInitiated) {
+      let readerText: String
+      if limitsPreview, source.count > 100_000 {
+        readerText = String(source.prefix(100_000))
+      } else {
+        readerText = source
+      }
+      return KnowledgeDocumentBlockParser().blocks(in: readerText)
+    }.value
+
+    guard !Task.isCancelled, readerBlockRequest == request else { return }
+    readerBlocks = blocks
+    isParsingReaderBlocks = false
   }
 
   private var showsContentPresentationControl: Bool {
@@ -636,6 +665,14 @@ struct KnowledgeLibraryDetailView: View {
 private enum KnowledgeContentPresentation: Hashable {
   case cleaned
   case original
+}
+
+private struct KnowledgeReaderBlockRequest: Hashable {
+  let documentID: UUID?
+  let revisionID: UUID?
+  let contentPresentation: KnowledgeContentPresentation
+  let searchResultID: UUID?
+  let isLoading: Bool
 }
 
 private struct KnowledgeReaderScrollTarget: Hashable {
