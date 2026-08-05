@@ -1,11 +1,12 @@
 import Foundation
 
 public struct PublicRiskScanner: Sendable {
-  private struct Rule: @unchecked Sendable {
-    var title: String
-    var message: String
-    var severity: PreflightSeverity
-    var regex: NSRegularExpression?
+  private struct Rule: Sendable {
+    let title: String
+    let message: String
+    let severity: PreflightSeverity
+    let pattern: String
+    let optionsRawValue: UInt
 
     init(
       title: String,
@@ -17,7 +18,12 @@ public struct PublicRiskScanner: Sendable {
       self.title = title
       self.message = message
       self.severity = severity
-      regex = try? NSRegularExpression(pattern: pattern, options: options)
+      self.pattern = pattern
+      optionsRawValue = options.rawValue
+    }
+
+    var options: NSRegularExpression.Options {
+      NSRegularExpression.Options(rawValue: optionsRawValue)
     }
   }
 
@@ -105,7 +111,10 @@ public struct PublicRiskScanner: Sendable {
   }
 
   private func matches(rule: Rule, in value: String) -> Bool {
-    guard let regex = rule.regex else {
+    guard let regex = try? NSRegularExpression(
+      pattern: rule.pattern,
+      options: rule.options
+    ) else {
       return false
     }
     let range = NSRange(value.startIndex..<value.endIndex, in: value)

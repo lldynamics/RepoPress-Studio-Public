@@ -231,6 +231,8 @@ public enum WorkspaceBackupError: LocalizedError, Hashable, Sendable {
   case knowledgeLibraryInvalid(String)
   case rssReaderInvalid(String)
   case stagingFailed(String)
+  case replacementCleanupFailed(path: String, reason: String)
+  case replacementRollbackFailed(path: String, reason: String)
   case restoreFailed(String)
 
   public var errorDescription: String? {
@@ -276,6 +278,18 @@ public enum WorkspaceBackupError: LocalizedError, Hashable, Sendable {
       return CoreL10n.format("RSS 备份无效：%@", detail)
     case .stagingFailed(let detail):
       return CoreL10n.format("工作区恢复暂存失败：%@", detail)
+    case .replacementCleanupFailed(let path, let reason):
+      return CoreL10n.format(
+        "工作区文件已替换，但旧副本清理失败：%@。旧副本保留在 %@。",
+        reason,
+        path
+      )
+    case .replacementRollbackFailed(let path, let reason):
+      return CoreL10n.format(
+        "工作区文件替换失败，且自动回滚失败：%@。旧副本仍保留在 %@。",
+        reason,
+        path
+      )
     case .restoreFailed(let detail):
       return CoreL10n.format("工作区恢复失败：%@", detail)
     }

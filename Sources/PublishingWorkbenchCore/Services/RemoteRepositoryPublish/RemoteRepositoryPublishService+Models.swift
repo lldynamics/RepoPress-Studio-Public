@@ -431,6 +431,11 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
   case invalidSourceFile(path: String, reason: String)
   case untrackedRemoteFile(path: String, actualSHA: String)
   case remoteVersionConflict(path: String, expectedSHA: String, actualSHA: String?)
+  case reviewBranchCleanupFailed(
+    branchName: String,
+    publishMessage: String,
+    cleanupMessage: String
+  )
   case partialPublish(
     provider: RepositoryProvider,
     mode: RemoteRepositoryPublishMode,
@@ -494,6 +499,13 @@ public enum RemoteRepositoryPublishError: LocalizedError, Equatable {
     case .remoteVersionConflict(let path, let expectedSHA, let actualSHA):
       let actual = actualSHA?.nilIfEmpty ?? CoreL10n.text("远端文件不存在")
       return CoreL10n.format("远端版本冲突：%@ 的当前版本是 %@，本地草稿基于 %@。请先同步远端变更或改用 PR/MR。", path, actual, expectedSHA)
+    case .reviewBranchCleanupFailed(let branchName, let publishMessage, let cleanupMessage):
+      return CoreL10n.format(
+        "GitHub 发布未完成：%@；自动删除临时分支 %@ 失败：%@。该分支可能仍保留，请在远端删除后重试。",
+        publishMessage,
+        branchName,
+        cleanupMessage
+      )
     case .partialPublish(let provider, let mode, let branchName, _, let changedPaths, let commitSHA, let underlyingMessage):
       let commitSummary = commitSHA.map {
         CoreL10n.format("，最后 commit：%@", String($0.prefix(8)))

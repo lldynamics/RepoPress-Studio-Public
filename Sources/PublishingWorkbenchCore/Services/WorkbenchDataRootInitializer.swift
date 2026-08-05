@@ -177,15 +177,6 @@ public struct WorkbenchDataRootInitializer: Sendable {
     fileManager: FileManager
   ) throws -> WorkbenchDataRootManifest {
     var installedURLs: [URL] = []
-    var installationCommitted = false
-    defer {
-      if !installationCommitted {
-        for url in installedURLs.reversed() {
-          try? fileManager.removeItem(at: url)
-        }
-      }
-    }
-
     do {
       for component in WorkbenchDataRootComponent.allCases {
         let destinationURL = destinationLayout.componentURL(for: component)
@@ -201,19 +192,28 @@ public struct WorkbenchDataRootInitializer: Sendable {
       )
       installedURLs.append(destinationLayout.manifestURL)
       try validateCompleteRoot(destinationLayout)
+      let result = WorkbenchDataRootInspector().probe(at: destinationLayout.rootURL)
+      guard case .existing(let installedManifest) = result else {
+        throw WorkbenchDataRootInitializationError.verificationFailed(result)
+      }
+      return installedManifest
     } catch {
       logFailure(stage: "install-components", error: error)
+      var cleanupFailures: [String] = []
+      for url in installedURLs.reversed() {
+        do {
+          try fileManager.removeItem(at: url)
+        } catch let cleanupError {
+          cleanupFailures.append("\(url.path)：\(cleanupError.localizedDescription)")
+        }
+      }
+      let detail = cleanupFailures.isEmpty
+        ? error.localizedDescription
+        : "\(error.localizedDescription)；安装回滚清理失败：\(cleanupFailures.joined(separator: "；"))"
       throw WorkbenchDataRootInitializationError.componentInstallFailed(
-        error.localizedDescription
+        detail
       )
     }
-
-    let result = WorkbenchDataRootInspector().probe(at: destinationLayout.rootURL)
-    guard case .existing(let installedManifest) = result else {
-      throw WorkbenchDataRootInitializationError.verificationFailed(result)
-    }
-    installationCommitted = true
-    return installedManifest
   }
 
   func validateCompleteRoot(_ layout: WorkbenchDataRootLayout) throws {

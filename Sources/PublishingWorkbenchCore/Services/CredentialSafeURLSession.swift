@@ -169,7 +169,12 @@ enum RSSNetworkURLPolicy {
         0,
         NI_NUMERICHOST
       ) == 0,
-      let address = KnowledgeResolvedAddress(presentation: String(cString: buffer)),
+      let address = KnowledgeResolvedAddress(
+        presentation: String(
+          decoding: buffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) },
+          as: UTF8.self
+        )
+      ),
       address.isProxySyntheticBenchmarkAddress else {
         continue
       }
@@ -404,7 +409,7 @@ enum RSSNetworkHTTPClient {
   }
 }
 
-final class CredentialSafeURLSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+final class CredentialSafeURLSessionDelegate: NSObject, URLSessionTaskDelegate {
   private static let credentialHeaders = ["Authorization", "PRIVATE-TOKEN", "X-API-Key"]
 
   static func redirectedRequest(

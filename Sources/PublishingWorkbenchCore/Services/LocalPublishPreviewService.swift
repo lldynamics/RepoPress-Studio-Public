@@ -496,17 +496,12 @@ public struct LocalPublishPreviewService: Sendable {
         isDirectory: true
       )
     try fileManager.createDirectory(at: rollbackDirectory, withIntermediateDirectories: true)
-    var shouldRemoveRollbackDirectory = true
-    defer {
-      if shouldRemoveRollbackDirectory {
-        try? fileManager.removeItem(at: rollbackDirectory)
-      }
-    }
 
     var writtenPaths: [String] = []
     var rollbackEntries: [LocalPublishRollbackEntry] = []
     var appliedStates: [LocalPublishFileState] = []
     let transactionURL = localPublishTransactionURL(for: rootURL)
+    var transactionCommitted = false
     do {
       // Prepare every backup before the first destination is changed, then
       // persist the journal. A process stop at any later point can restore all
@@ -603,8 +598,14 @@ public struct LocalPublishPreviewService: Sendable {
         ),
         at: transactionURL
       )
-      try? fileManager.removeItem(at: transactionURL)
+      transactionCommitted = true
+      try fileManager.removeItem(at: transactionURL)
     } catch {
+      if transactionCommitted {
+        throw LocalPublishPreviewError.recoveryFailed(
+          "本地文件已写入，但事务日志清理失败：\(error.localizedDescription)。日志保留在 \(transactionURL.path)"
+        )
+      }
       do {
         if fileManager.fileExists(atPath: transactionURL.path) {
           try recoverInterruptedTransaction(at: rootURL)
@@ -612,14 +613,41 @@ public struct LocalPublishPreviewService: Sendable {
           try rollbackLocalPublishWrites(rollbackEntries)
         }
       } catch let rollbackError {
-        shouldRemoveRollbackDirectory = false
         throw LocalPublishPreviewError.rollbackFailed(
           original: error.localizedDescription,
           rollback: rollbackError.localizedDescription
         )
       }
-      try? fileManager.removeItem(at: transactionURL)
+      do {
+        if fileManager.fileExists(atPath: transactionURL.path) {
+          try fileManager.removeItem(at: transactionURL)
+        }
+      } catch let cleanupError {
+        throw LocalPublishPreviewError.rollbackFailed(
+          original: error.localizedDescription,
+          rollback: "文件已回滚，但事务日志清理失败：\(cleanupError.localizedDescription)"
+        )
+      }
+      do {
+        if fileManager.fileExists(atPath: rollbackDirectory.path) {
+          try fileManager.removeItem(at: rollbackDirectory)
+        }
+      } catch let cleanupError {
+        throw LocalPublishPreviewError.rollbackFailed(
+          original: error.localizedDescription,
+          rollback: "文件已回滚，但回滚目录清理失败：\(cleanupError.localizedDescription)"
+        )
+      }
       throw error
+    }
+    do {
+      if fileManager.fileExists(atPath: rollbackDirectory.path) {
+        try fileManager.removeItem(at: rollbackDirectory)
+      }
+    } catch let cleanupError {
+      throw LocalPublishPreviewError.recoveryFailed(
+        "本地文件已写入，但回滚目录清理失败：\(cleanupError.localizedDescription)。目录保留在 \(rollbackDirectory.path)"
+      )
     }
     return LocalPublishWriteResult(
       writtenPaths: writtenPaths,
@@ -908,7 +936,9 @@ public struct LocalPublishPreviewService: Sendable {
       }
 
       if transaction.phase == .committed {
-        try? fileManager.removeItem(at: rollbackDirectory)
+        if fileManager.fileExists(atPath: rollbackDirectory.path) {
+          try fileManager.removeItem(at: rollbackDirectory)
+        }
         try fileManager.removeItem(at: transactionURL)
         return
       }
