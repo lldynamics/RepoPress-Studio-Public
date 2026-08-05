@@ -141,7 +141,7 @@ private struct WorkspaceTaskCenterRow: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("任务进度")
-        .accessibilityValue("\(Int(progress * 100))%")
+        .accessibilityValue("\(Int(progress * 100))% · \(task.detail)")
       } else if task.isActive {
         ProgressView()
           .controlSize(.small)

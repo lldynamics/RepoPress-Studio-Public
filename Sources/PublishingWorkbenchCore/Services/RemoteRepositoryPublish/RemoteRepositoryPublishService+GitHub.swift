@@ -218,15 +218,26 @@ extension RemoteRepositoryPublishService {
     var lastCommitSHA: String?
     var reviewURL: String?
     let totalFiles = max(1, package.files.count)
+    let fileByteSizes = uploadByteSizes(for: package)
+    let totalSourceByteCount = totalUploadByteCount(for: package)
+    var completedUploadByteCount: Int64 = 0
     do {
       for (index, file) in package.files.enumerated() {
         onProgress?(
           .init(
             stage: .uploadingFiles,
-            progress: 0.2 + 0.7 * (Double(index) / Double(totalFiles)),
-            message: CoreL10n.text("提交文件"),
+            progress: uploadProgressValue(
+              completedByteCount: completedUploadByteCount,
+              totalByteCount: totalSourceByteCount,
+              stageStart: 0.2,
+              stageEnd: 0.9,
+              fallback: 0.2 + 0.7 * (Double(index) / Double(totalFiles))
+            ),
+            message: uploadProgressMessage(for: file, fallback: CoreL10n.text("提交文件")),
             detail: CoreL10n.format("第 %@/%@ 个文件", String(index + 1), String(package.files.count)),
-            filePath: file.repositoryPath
+            filePath: file.repositoryPath,
+            completedByteCount: completedUploadByteCount,
+            totalByteCount: totalSourceByteCount
           )
         )
         let existingSHA = try await githubContentSHA(
@@ -244,18 +255,36 @@ extension RemoteRepositoryPublishService {
         }
 
         if file.operation == .delete {
-          guard let existingSHA else {
-            continue
+          if let existingSHA {
+            let response: GitHubContentMutationResponse = try await send(
+              githubRequest(
+                repository: repository,
+                method: "DELETE",
+                path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/contents/\(encodedRepositoryPath(file.repositoryPath))",
+                token: token,
+                queryItems: nil,
+                body: GitHubDeleteContentsBody(
+                  message: package.commitMessage,
+                  branch: branchName,
+                  sha: existingSHA
+                )
+              )
+            )
+            changedPaths.append(file.repositoryPath)
+            lastCommitSHA = response.commit.sha
           }
+        } else {
+          let data = try contentData(for: file)
           let response: GitHubContentMutationResponse = try await send(
             githubRequest(
               repository: repository,
-              method: "DELETE",
+              method: "PUT",
               path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/contents/\(encodedRepositoryPath(file.repositoryPath))",
               token: token,
               queryItems: nil,
-              body: GitHubDeleteContentsBody(
+              body: GitHubPutContentsBody(
                 message: package.commitMessage,
+                content: data.base64EncodedString(),
                 branch: branchName,
                 sha: existingSHA
               )
@@ -263,30 +292,29 @@ extension RemoteRepositoryPublishService {
           )
           changedPaths.append(file.repositoryPath)
           lastCommitSHA = response.commit.sha
-          continue
+          if let contentSHA = response.content?.sha?.trimmedForPublishing.nilIfEmpty {
+            remoteVersionsByPath[file.repositoryPath.normalizedRelativePath()] = contentSHA
+          }
         }
 
-        let data = try contentData(for: file)
-        let response: GitHubContentMutationResponse = try await send(
-          githubRequest(
-            repository: repository,
-            method: "PUT",
-            path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/contents/\(encodedRepositoryPath(file.repositoryPath))",
-            token: token,
-            queryItems: nil,
-            body: GitHubPutContentsBody(
-              message: package.commitMessage,
-              content: data.base64EncodedString(),
-              branch: branchName,
-              sha: existingSHA
-            )
+        completedUploadByteCount += fileByteSizes[index]
+        onProgress?(
+          .init(
+            stage: .uploadingFiles,
+            progress: uploadProgressValue(
+              completedByteCount: completedUploadByteCount,
+              totalByteCount: totalSourceByteCount,
+              stageStart: 0.2,
+              stageEnd: 0.9,
+              fallback: 0.2 + 0.7 * (Double(index + 1) / Double(totalFiles))
+            ),
+            message: uploadProgressMessage(for: file, fallback: CoreL10n.text("提交文件")),
+            detail: CoreL10n.format("已处理第 %@/%@ 个文件", String(index + 1), String(package.files.count)),
+            filePath: file.repositoryPath,
+            completedByteCount: completedUploadByteCount,
+            totalByteCount: totalSourceByteCount
           )
         )
-        changedPaths.append(file.repositoryPath)
-        lastCommitSHA = response.commit.sha
-        if let contentSHA = response.content?.sha?.trimmedForPublishing.nilIfEmpty {
-          remoteVersionsByPath[file.repositoryPath.normalizedRelativePath()] = contentSHA
-        }
       }
 
       if mode == .reviewRequest {
@@ -295,7 +323,9 @@ extension RemoteRepositoryPublishService {
             stage: .creatingReview,
             progress: 0.92,
             message: CoreL10n.text("创建/获取 PR"),
-            detail: branchName
+            detail: branchName,
+            completedByteCount: totalSourceByteCount,
+            totalByteCount: totalSourceByteCount
           )
         )
         if !didCreateReviewBranch,
@@ -357,7 +387,9 @@ extension RemoteRepositoryPublishService {
         stage: .completed,
         progress: 1,
         message: CoreL10n.text("发布完成"),
-        detail: CoreL10n.format("共提交 %@ 个文件", String(changedPaths.count))
+        detail: CoreL10n.format("共提交 %@ 个文件", String(changedPaths.count)),
+        completedByteCount: totalSourceByteCount,
+        totalByteCount: totalSourceByteCount
       )
     )
 
@@ -392,6 +424,7 @@ extension RemoteRepositoryPublishService {
     var remoteVersionsByPath: [String: String] = [:]
     var commitSHA: String?
     var reviewURL: String?
+    let totalSourceByteCount = totalUploadByteCount(for: package)
 
     onProgress?(
       .init(
@@ -434,15 +467,25 @@ extension RemoteRepositoryPublishService {
       let baseCommit = try await githubCommit(repository: repository, sha: baseCommitSHA, token: token)
       var treeEntries: [GitHubTreeEntry] = []
       let totalFiles = max(1, package.files.count)
+      let fileByteSizes = uploadByteSizes(for: package)
+      var completedUploadByteCount: Int64 = 0
 
       for (index, file) in package.files.enumerated() {
         onProgress?(
           .init(
             stage: .uploadingFiles,
-            progress: 0.2 + 0.55 * (Double(index) / Double(totalFiles)),
-            message: CoreL10n.text("构建原子提交"),
+            progress: uploadProgressValue(
+              completedByteCount: completedUploadByteCount,
+              totalByteCount: totalSourceByteCount,
+              stageStart: 0.2,
+              stageEnd: 0.75,
+              fallback: 0.2 + 0.55 * (Double(index) / Double(totalFiles))
+            ),
+            message: uploadProgressMessage(for: file, fallback: CoreL10n.text("构建原子提交")),
             detail: CoreL10n.format("第 %@/%@ 个文件", String(index + 1), String(package.files.count)),
-            filePath: file.repositoryPath
+            filePath: file.repositoryPath,
+            completedByteCount: completedUploadByteCount,
+            totalByteCount: totalSourceByteCount
           )
         )
         let existingSHA = try await githubContentSHA(
@@ -460,31 +503,49 @@ extension RemoteRepositoryPublishService {
         }
 
         if file.operation == .delete {
-          guard existingSHA != nil else { continue }
-          treeEntries.append(GitHubTreeEntry(path: file.repositoryPath, sha: nil))
-          changedPaths.append(file.repositoryPath)
-          continue
-        }
-
-        let content = try contentData(for: file)
-        let blob: GitHubBlobResponse = try await send(
-          githubRequest(
-            repository: repository,
-            method: "POST",
-            path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/git/blobs",
-            token: token,
-            body: GitHubCreateBlobBody(
-              content: content.base64EncodedString(),
-              encoding: "base64"
+          if existingSHA != nil {
+            treeEntries.append(GitHubTreeEntry(path: file.repositoryPath, sha: nil))
+            changedPaths.append(file.repositoryPath)
+          }
+        } else {
+          let content = try contentData(for: file)
+          let blob: GitHubBlobResponse = try await send(
+            githubRequest(
+              repository: repository,
+              method: "POST",
+              path: "/repos/\(encodedPathComponent(repository.owner))/\(encodedPathComponent(repository.name))/git/blobs",
+              token: token,
+              body: GitHubCreateBlobBody(
+                content: content.base64EncodedString(),
+                encoding: "base64"
+              )
             )
           )
-        )
-        if existingSHA == blob.sha {
-          continue
+          if existingSHA != blob.sha {
+            treeEntries.append(GitHubTreeEntry(path: file.repositoryPath, sha: blob.sha))
+            changedPaths.append(file.repositoryPath)
+            remoteVersionsByPath[file.repositoryPath.normalizedRelativePath()] = blob.sha
+          }
         }
-        treeEntries.append(GitHubTreeEntry(path: file.repositoryPath, sha: blob.sha))
-        changedPaths.append(file.repositoryPath)
-        remoteVersionsByPath[file.repositoryPath.normalizedRelativePath()] = blob.sha
+
+        completedUploadByteCount += fileByteSizes[index]
+        onProgress?(
+          .init(
+            stage: .uploadingFiles,
+            progress: uploadProgressValue(
+              completedByteCount: completedUploadByteCount,
+              totalByteCount: totalSourceByteCount,
+              stageStart: 0.2,
+              stageEnd: 0.75,
+              fallback: 0.2 + 0.55 * (Double(index + 1) / Double(totalFiles))
+            ),
+            message: uploadProgressMessage(for: file, fallback: CoreL10n.text("构建原子提交")),
+            detail: CoreL10n.format("已处理第 %@/%@ 个文件", String(index + 1), String(package.files.count)),
+            filePath: file.repositoryPath,
+            completedByteCount: completedUploadByteCount,
+            totalByteCount: totalSourceByteCount
+          )
+        )
       }
 
       guard !treeEntries.isEmpty else {
@@ -511,7 +572,9 @@ extension RemoteRepositoryPublishService {
           stage: .uploadingFiles,
           progress: 0.78,
           message: CoreL10n.text("提交原子变更"),
-          detail: CoreL10n.format("一次提交 %@ 个文件", String(treeEntries.count))
+          detail: CoreL10n.format("一次提交 %@ 个文件", String(treeEntries.count)),
+          completedByteCount: totalSourceByteCount,
+          totalByteCount: totalSourceByteCount
         )
       )
       let tree: GitHubTreeResponse = try await send(
@@ -554,7 +617,9 @@ extension RemoteRepositoryPublishService {
             stage: .creatingReview,
             progress: 0.92,
             message: CoreL10n.text("创建/获取 PR"),
-            detail: branchName
+            detail: branchName,
+            completedByteCount: totalSourceByteCount,
+            totalByteCount: totalSourceByteCount
           )
         )
         if !didCreateReviewBranch,
@@ -604,7 +669,9 @@ extension RemoteRepositoryPublishService {
         stage: .completed,
         progress: 1,
         message: CoreL10n.text("发布完成"),
-        detail: CoreL10n.format("一次提交 %@ 个文件", String(changedPaths.count))
+        detail: CoreL10n.format("一次提交 %@ 个文件", String(changedPaths.count)),
+        completedByteCount: totalSourceByteCount,
+        totalByteCount: totalSourceByteCount
       )
     )
     return RemoteRepositoryPublishResult(
@@ -658,14 +725,25 @@ extension RemoteRepositoryPublishService {
     var actions: [GitLabCommitAction] = []
     var changedPaths: [String] = []
     let totalFiles = max(1, package.files.count)
+    let fileByteSizes = uploadByteSizes(for: package)
+    let totalSourceByteCount = totalUploadByteCount(for: package)
+    var completedUploadByteCount: Int64 = 0
     for (index, file) in package.files.enumerated() {
       onProgress?(
         .init(
           stage: .uploadingFiles,
-          progress: 0.2 + 0.65 * (Double(index) / Double(totalFiles)),
-          message: CoreL10n.text("构建提交"),
+          progress: uploadProgressValue(
+            completedByteCount: completedUploadByteCount,
+            totalByteCount: totalSourceByteCount,
+            stageStart: 0.2,
+            stageEnd: 0.85,
+            fallback: 0.2 + 0.65 * (Double(index) / Double(totalFiles))
+          ),
+          message: uploadProgressMessage(for: file, fallback: CoreL10n.text("构建提交")),
           detail: CoreL10n.format("第 %@/%@ 个文件", String(index + 1), String(package.files.count)),
-          filePath: file.repositoryPath
+          filePath: file.repositoryPath,
+          completedByteCount: completedUploadByteCount,
+          totalByteCount: totalSourceByteCount
         )
       )
       let remoteState = try await gitLabFileState(
@@ -683,36 +761,52 @@ extension RemoteRepositoryPublishService {
       }
 
       if file.operation == .delete {
-        guard remoteState.exists else {
-          continue
-        }
-        actions.append(
-          GitLabCommitAction(
-            action: "delete",
-            filePath: file.repositoryPath,
-            content: nil,
-            encoding: nil,
-            lastCommitID: remoteState.lastCommitID
+        if remoteState.exists {
+          actions.append(
+            GitLabCommitAction(
+              action: "delete",
+              filePath: file.repositoryPath,
+              content: nil,
+              encoding: nil,
+              lastCommitID: remoteState.lastCommitID
+            )
           )
-        )
-        changedPaths.append(file.repositoryPath)
-        continue
+          changedPaths.append(file.repositoryPath)
+        }
+      } else {
+        let data = try contentData(for: file)
+        if remoteState.content != data {
+          actions.append(
+            GitLabCommitAction(
+              action: remoteState.exists ? "update" : "create",
+              filePath: file.repositoryPath,
+              content: file.kind == .markdown ? String(data: data, encoding: .utf8) ?? "" : data.base64EncodedString(),
+              encoding: file.kind == .markdown ? nil : "base64",
+              lastCommitID: remoteState.lastCommitID
+            )
+          )
+          changedPaths.append(file.repositoryPath)
+        }
       }
 
-      let data = try contentData(for: file)
-      if remoteState.content == data {
-        continue
-      }
-      actions.append(
-        GitLabCommitAction(
-          action: remoteState.exists ? "update" : "create",
+      completedUploadByteCount += fileByteSizes[index]
+      onProgress?(
+        .init(
+          stage: .uploadingFiles,
+          progress: uploadProgressValue(
+            completedByteCount: completedUploadByteCount,
+            totalByteCount: totalSourceByteCount,
+            stageStart: 0.2,
+            stageEnd: 0.85,
+            fallback: 0.2 + 0.65 * (Double(index + 1) / Double(totalFiles))
+          ),
+          message: uploadProgressMessage(for: file, fallback: CoreL10n.text("构建提交")),
+          detail: CoreL10n.format("已处理第 %@/%@ 个文件", String(index + 1), String(package.files.count)),
           filePath: file.repositoryPath,
-          content: file.kind == .markdown ? String(data: data, encoding: .utf8) ?? "" : data.base64EncodedString(),
-          encoding: file.kind == .markdown ? nil : "base64",
-          lastCommitID: remoteState.lastCommitID
+          completedByteCount: completedUploadByteCount,
+          totalByteCount: totalSourceByteCount
         )
       )
-      changedPaths.append(file.repositoryPath)
     }
 
     guard !actions.isEmpty else {
@@ -736,7 +830,9 @@ extension RemoteRepositoryPublishService {
         stage: .uploadingFiles,
         progress: 0.85,
         message: CoreL10n.text("提交 Commit"),
-        detail: CoreL10n.format("推送 %@ 个变更", String(actions.count))
+        detail: CoreL10n.format("推送 %@ 个变更", String(actions.count)),
+        completedByteCount: totalSourceByteCount,
+        totalByteCount: totalSourceByteCount
       )
     )
 
@@ -767,7 +863,9 @@ extension RemoteRepositoryPublishService {
           stage: .creatingReview,
           progress: 0.92,
           message: CoreL10n.text("创建/获取 MR"),
-          detail: branchName
+          detail: branchName,
+          completedByteCount: totalSourceByteCount,
+          totalByteCount: totalSourceByteCount
         )
       )
       do {
@@ -840,7 +938,9 @@ extension RemoteRepositoryPublishService {
         stage: .completed,
         progress: 1,
         message: CoreL10n.text("发布完成"),
-        detail: CoreL10n.format("共提交 %@ 个文件", String(changedPaths.count))
+        detail: CoreL10n.format("共提交 %@ 个文件", String(changedPaths.count)),
+        completedByteCount: totalSourceByteCount,
+        totalByteCount: totalSourceByteCount
       )
     )
 

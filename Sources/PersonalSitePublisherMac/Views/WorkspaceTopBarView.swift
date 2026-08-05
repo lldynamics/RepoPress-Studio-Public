@@ -303,14 +303,17 @@ struct PublishingStatusToolbarControl: View {
   @State private var syncAnimationTrigger = 0
 
   var body: some View {
+    let items = statusItems
+    let currentToolbarStatus = items.max { $0.severity.rawValue < $1.severity.rawValue } ?? draftStatus
+
     Button {
       isPresented.toggle()
     } label: {
       HStack(spacing: 6) {
         Circle()
-          .fill(toolbarStatus.color)
+          .fill(currentToolbarStatus.color)
           .frame(width: 7, height: 7)
-        Text(toolbarStatus.value)
+        Text(currentToolbarStatus.value)
           .foregroundStyle(.primary)
       }
       .font(.workbenchButtonLabel)
@@ -318,10 +321,10 @@ struct PublishingStatusToolbarControl: View {
       .accessibilityLabel("发布状态")
       .padding(.horizontal, 9)
       .frame(height: 26)
-      .background(toolbarStatus.color.opacity(0.12), in: Capsule())
+      .background(currentToolbarStatus.color.opacity(0.12), in: Capsule())
       .overlay {
         Capsule()
-          .stroke(toolbarStatus.color.opacity(0.2), lineWidth: 0.8)
+          .stroke(currentToolbarStatus.color.opacity(0.2), lineWidth: 0.8)
       }
       .contentShape(Capsule())
     }
@@ -329,11 +332,11 @@ struct PublishingStatusToolbarControl: View {
     .disabled(!canUseProtectedWorkbench)
     .help(
       String(
-        localized: "发布状态：\(toolbarStatus.area.title) · \(toolbarStatus.value)。点击查看状态和发布操作。"
+        localized: "发布状态：\(currentToolbarStatus.area.title) · \(currentToolbarStatus.value)。点击查看状态和发布操作。"
       )
     )
     .accessibilityLabel("发布状态")
-    .accessibilityValue("\(toolbarStatus.area.title)：\(toolbarStatus.value)")
+    .accessibilityValue("\(currentToolbarStatus.area.title)：\(currentToolbarStatus.value)")
     .popover(isPresented: $isPresented, arrowEdge: .bottom) {
       VStack(alignment: .leading, spacing: 0) {
         Label("发布状态", systemImage: "paperplane.circle")
@@ -343,14 +346,14 @@ struct PublishingStatusToolbarControl: View {
 
         Divider()
 
-        ForEach(statusItems) { item in
+        ForEach(items) { item in
           Button {
             openStatusArea(item.area)
           } label: {
             statusRow(item)
           }
           .buttonStyle(.plain)
-          if item.id != statusItems.last?.id {
+          if item.id != items.last?.id {
             Divider()
               .padding(.leading, WorkbenchSpacing.section)
           }
@@ -369,10 +372,6 @@ struct PublishingStatusToolbarControl: View {
 
   private var statusItems: [PublishingStatusPopoverItem] {
     [repositoryStatus, draftStatus, deploymentStatus]
-  }
-
-  private var toolbarStatus: PublishingStatusPopoverItem {
-    statusItems.max { $0.severity.rawValue < $1.severity.rawValue } ?? draftStatus
   }
 
   private var repositoryStatus: PublishingStatusPopoverItem {
