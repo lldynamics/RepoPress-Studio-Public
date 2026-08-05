@@ -456,6 +456,28 @@ extension KnowledgeDatabase {
     return .database(String(cString: sqlite3_errmsg(handle)))
   }
 
+  func rethrowAfterRollbackUnlocked(_ primaryError: Error) throws -> Never {
+    do {
+      try executeUnlocked("ROLLBACK;")
+    } catch {
+      throw KnowledgeLibraryError.database(
+        "数据库操作失败：\(primaryError.localizedDescription)；回滚失败：\(error.localizedDescription)"
+      )
+    }
+    throw primaryError
+  }
+
+  func rethrowAfterRollback(_ primaryError: Error) throws -> Never {
+    do {
+      try execute("ROLLBACK;")
+    } catch {
+      throw KnowledgeLibraryError.database(
+        "数据库操作失败：\(primaryError.localizedDescription)；回滚失败：\(error.localizedDescription)"
+      )
+    }
+    throw primaryError
+  }
+
   func withCancellationProgressHandler<T>(
     _ body: () throws -> T
   ) throws -> T {

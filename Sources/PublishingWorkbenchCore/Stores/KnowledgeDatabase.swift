@@ -45,6 +45,7 @@ final class KnowledgeDatabase: @unchecked Sendable {
   static let currentSchemaVersion = 8
 
   let lock = NSLock()
+  let semanticVectorCache = KnowledgeSemanticVectorLRUCache()
   var handle: OpaquePointer?
 
   init(fileURL: URL) throws {

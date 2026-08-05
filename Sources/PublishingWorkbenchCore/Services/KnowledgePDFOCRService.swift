@@ -3,7 +3,7 @@ import Foundation
 import PDFKit
 import Vision
 
-final class KnowledgePDFOCRService: @unchecked Sendable {
+struct KnowledgePDFOCRService: Sendable {
   func recognizeText(in page: PDFPage) throws -> String {
     guard let image = renderedImage(for: page) else { return "" }
     let request = VNRecognizeTextRequest()

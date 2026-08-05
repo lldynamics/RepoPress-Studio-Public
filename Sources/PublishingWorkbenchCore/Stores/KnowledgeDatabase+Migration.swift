@@ -184,8 +184,7 @@ extension KnowledgeDatabase {
       """)
       try execute("COMMIT;")
     } catch {
-      try? execute("ROLLBACK;")
-      throw error
+      try rethrowAfterRollback(error)
     }
   }
 }

@@ -163,8 +163,7 @@ extension KnowledgeDatabase {
         guard deletedCount == 1 else { throw KnowledgeLibraryError.missingFolder }
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -212,8 +211,7 @@ extension KnowledgeDatabase {
         }
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -261,8 +259,7 @@ extension KnowledgeDatabase {
         try deleteSemanticEmbeddingsUnlocked(documentIDs: Set([documentID]))
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
@@ -310,8 +307,7 @@ extension KnowledgeDatabase {
         try deleteSemanticEmbeddingsUnlocked(documentIDs: documentIDs)
         try executeUnlocked("COMMIT;")
       } catch {
-        try? executeUnlocked("ROLLBACK;")
-        throw error
+        try rethrowAfterRollbackUnlocked(error)
       }
     }
   }
