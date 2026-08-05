@@ -37,7 +37,7 @@ struct DefaultRuleSettingsView: View {
       }
     }
     .formStyle(.grouped)
-    .scrollIndicators(.hidden)
+    .scrollIndicators(.automatic)
     .padding(WorkbenchSpacing.content)
     .onAppear(perform: revealRequestedPathRules)
     .onChange(of: healthNavigationRequestID) { _, _ in

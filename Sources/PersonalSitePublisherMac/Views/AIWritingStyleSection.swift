@@ -26,7 +26,7 @@ struct AIWritingStyleSection: View {
           Text("常用语气预设：")
             .font(.workbenchMetadata)
             .foregroundStyle(.secondary)
-          ScrollView(.horizontal, showsIndicators: false) {
+          ScrollView(.horizontal, showsIndicators: true) {
             HStack(spacing: 6) {
               ForEach(["专业严谨", "极简干货", "幽默风趣", "亲切随笔"], id: \.self) { pill in
                 Button {
@@ -59,7 +59,7 @@ struct AIWritingStyleSection: View {
           Text("常用读者预设：")
             .font(.workbenchMetadata)
             .foregroundStyle(.secondary)
-          ScrollView(.horizontal, showsIndicators: false) {
+          ScrollView(.horizontal, showsIndicators: true) {
             HStack(spacing: 6) {
               ForEach(["开发者与程序员", "技术小白与初学者", "独立博主与创作者"], id: \.self) { pill in
                 Button {

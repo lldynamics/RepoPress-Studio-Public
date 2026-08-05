@@ -14,7 +14,7 @@ struct TaxonomySuggestionField: View {
         .accessibilityValue(values.isEmpty ? "未填写" : values.joined(separator: "，"))
 
       if !suggestions.isEmpty {
-        ScrollView(.horizontal, showsIndicators: false) {
+        ScrollView(.horizontal, showsIndicators: true) {
           HStack(spacing: 6) {
             ForEach(suggestions.prefix(12), id: \.self) { suggestion in
               let selected = isSelected(suggestion)

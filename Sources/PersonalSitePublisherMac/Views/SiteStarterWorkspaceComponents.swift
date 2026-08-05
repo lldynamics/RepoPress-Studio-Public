@@ -144,7 +144,7 @@ struct SiteStarterWizardStepNavigation: View {
   let isEnabled: (SiteStarterWizardStep) -> Bool
 
   var body: some View {
-    ScrollView(.horizontal, showsIndicators: false) {
+    ScrollView(.horizontal, showsIndicators: true) {
       HStack(spacing: 8) {
         ForEach(steps) { step in
           let stepStatus = status(step)

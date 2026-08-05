@@ -125,7 +125,7 @@ struct ContentView: View {
       )
       let isInspectorVisible = inspectorPresentation.wrappedValue
 
-      ZStack {
+      let workspace = ZStack {
         WorkspaceShellSplitLayout(
           store: store,
           isCompact: compactLayout,
@@ -169,14 +169,18 @@ struct ContentView: View {
             .zIndex(2)
         }
       }
-      .task(id: responsiveLayoutSnapshot) {
-        do {
-          try await Task.sleep(for: .milliseconds(50))
-        } catch {
-          return
+      // Geometry callbacks can run while AppKit is in the middle of a layout
+      // pass. Defer the state publication so responsive layout changes cannot
+      // feed back into the same pass.
+      workspace
+        .task(id: responsiveLayoutSnapshot) {
+          do {
+            try await Task.sleep(for: .milliseconds(50))
+          } catch {
+            return
+          }
+          applyResponsiveLayout(responsiveLayoutSnapshot)
         }
-        applyResponsiveLayout(responsiveLayoutSnapshot)
-      }
     }
     .background(WorkbenchAccessibilityStatusAnnouncer(store: store))
     .safeAreaInset(edge: .top, spacing: 0) {

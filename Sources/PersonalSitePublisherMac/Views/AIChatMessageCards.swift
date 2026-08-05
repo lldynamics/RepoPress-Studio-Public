@@ -133,7 +133,7 @@ struct AIChatCodeBlockActionCard: View {
         .accessibilityIdentifier("ai-code-block-copy")
       }
 
-      ScrollView(.horizontal, showsIndicators: false) {
+      ScrollView(.horizontal, showsIndicators: true) {
         Text(verbatim: block.content.isEmpty ? String(localized: "（空代码块）") : block.content)
           .font(.caption.monospaced())
           .lineSpacing(2)

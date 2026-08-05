@@ -12,12 +12,6 @@ struct EditorCenterColumn: View {
   let rssPresentation: RSSReaderPresentationState
   @StateObject private var editorState: WorkbenchEditorNavigationFeatureFacade
   @ObservedObject private var knowledge: KnowledgeStore
-  /// 最近访问的中央区 surface（LRU：首元素最近）。写作编辑器总是保留；
-  /// 其他页面按 LRU 保留上限，切换时避免整页销毁重建，同时控制常驻
-  /// WKWebView / NSTextView 数量以缓解 idle 时的资源占用。
-  @State private var retainedSurfaces: [WorkspaceCenterSurface] = []
-  private let maximumRetainedNonEditorSurfaces = 2
-  private let editorSurface = WorkspaceCenterSurface.editor
 
   init(
     store: WorkbenchStore,
@@ -44,22 +38,16 @@ struct EditorCenterColumn: View {
   }
 
   var body: some View {
-    ZStack {
-      ForEach(displaySurfaces, id: \.self) { surface in
-        centerSurfaceView(surface)
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .conditionalHidden(surface != activeSurface)
-      }
-    }
+    centerSurfaceView(activeSurface)
+      .id(activeSurface)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
     .onAppear {
-      retainSurface(activeSurface)
       ensureDraftIfNeeded()
     }
     .onChange(of: editorState.activeProfileID) { _, _ in
       ensureDraftIfNeeded()
     }
     .onChange(of: editorState.selectedSection) { _, _ in
-      retainSurface(activeSurface)
       ensureDraftIfNeeded()
     }
     .onChange(of: knowledge.statusMessage) { _, message in
@@ -76,28 +64,6 @@ struct EditorCenterColumn: View {
 
   private var activeSurface: WorkspaceCenterSurface {
     editorState.selectedSection.centerSurface
-  }
-
-  /// 始终包含当前激活 surface 的渲染列表；首次 body 求值时即使 retain
-  /// 尚未执行，也能立即显示当前页面，避免闪一帧空白。
-  private var displaySurfaces: [WorkspaceCenterSurface] {
-    if retainedSurfaces.contains(activeSurface) {
-      return retainedSurfaces
-    }
-    return [activeSurface] + retainedSurfaces.filter { $0 != activeSurface }
-  }
-
-  private func retainSurface(_ surface: WorkspaceCenterSurface) {
-    retainedSurfaces.removeAll { $0 == surface }
-    retainedSurfaces.insert(surface, at: 0)
-    // 写作编辑器总是保留（核心编辑面，重建代价最高）；其他页面按 LRU
-    // 仅保留最近访问的若干个，避免多个含 WKWebView 的页面同时常驻。
-    var nonEditorCount = 0
-    retainedSurfaces.removeAll { candidate in
-      guard candidate != editorSurface else { return false }
-      nonEditorCount += 1
-      return nonEditorCount > maximumRetainedNonEditorSurfaces
-    }
   }
 
   @ViewBuilder
@@ -179,23 +145,4 @@ struct EditorCenterColumn: View {
     }
   }
 
-}
-
-private struct ConditionalHiddenModifier: ViewModifier {
-  let isHidden: Bool
-
-  func body(content: Content) -> some View {
-    if isHidden {
-      content.hidden()
-    } else {
-      content
-    }
-  }
-}
-
-extension View {
-  /// 条件隐藏但保留 View 实例与内部状态；隐藏不会触发 onAppear/onDisappear。
-  func conditionalHidden(_ isHidden: Bool) -> some View {
-    modifier(ConditionalHiddenModifier(isHidden: isHidden))
-  }
 }
