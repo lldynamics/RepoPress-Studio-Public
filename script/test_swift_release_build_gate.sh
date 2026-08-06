@@ -91,19 +91,6 @@ grep -Fq 'SPARKLE_FRAMEWORK_BUNDLE="$APP_FRAMEWORKS/Sparkle.framework"' \
 grep -Fq 'SUEnableInstallerLauncherService' "$ROOT_DIR/script/build_and_run.sh" \
   || fail "Direct Release Info.plist omits Sparkle installer launcher support"
 
-for gate in check_app_store_metadata.sh check_app_store_archive_readiness.sh; do
-  grep -Fq 'build_and_run.sh" --package-only --app-store' "$ROOT_DIR/script/$gate" \
-    || fail "$gate does not force a fresh App Store Release package"
-done
-
-app_store_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --profile app-store --list)"
-grep -q $'^archive-readiness-strict\tstrict\t' <<<"$app_store_checks" \
-  || fail "App Store profile omitted strict archive readiness"
-if grep -Eq '^(chrome-extension-store-readiness|direct-release-notarization-readiness)\t' \
-  <<<"$app_store_checks"; then
-  fail "App Store profile included another distribution channel"
-fi
-
 chrome_checks="$(bash "$ROOT_DIR/script/check_release_gate.sh" --profile chrome --list)"
 grep -q $'^chrome-extension-store-readiness\tstrict\t' <<<"$chrome_checks" \
   || fail "Chrome profile omitted Chrome Web Store readiness"
@@ -113,9 +100,9 @@ grep -q $'^direct-release-package-path\talways\t' <<<"$direct_checks" \
   || fail "Direct profile omitted the Developer ID package workflow"
 grep -q $'^direct-release-notarization-readiness\tstrict\t' <<<"$direct_checks" \
   || fail "Direct profile omitted signed/notarized artifact validation"
-if grep -Eq '^(archive-readiness-strict|chrome-extension-store-readiness)\t' \
+if grep -Eq '^chrome-extension-store-readiness\t' \
   <<<"$direct_checks"; then
-  fail "Direct profile included an App Store or Chrome-only release check"
+  fail "Direct profile included a Chrome-only release check"
 fi
 
 for removed_profile in edge firefox; do

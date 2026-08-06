@@ -52,7 +52,6 @@ def main() -> int:
                     "defaultTimeoutSeconds": 1,
                     "profiles": {
                         "common": ["ui-runtime", "timeout"],
-                        "app-store": [],
                         "direct": [],
                         "chrome": [],
                     },

@@ -537,7 +537,7 @@ if [[ -z "$resolved_code_sign_identity" && "$BUILD_CONFIGURATION" == "debug" ]];
   # so every rebuild loses access to generic-password items saved by the
   # previous build. Prefer an installed Apple Development identity to keep the
   # requirement stable across local rebuilds. Release packaging is still
-  # re-signed by package_app_store.sh with the explicitly selected identity.
+  # re-signed by the selected distribution packaging workflow.
   resolved_code_sign_identity="$(
     "$SECURITY_TOOL" find-identity -v -p codesigning 2>/dev/null \
       | /usr/bin/awk '/"Apple Development:/{print $2; exit}' \

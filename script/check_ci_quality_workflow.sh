@@ -59,22 +59,18 @@ grep -Fq 'GITHUB_STEP_SUMMARY' "$WORKFLOW" \
   || fail "quality workflow must publish its readable summary"
 grep -Fq 'bash script/check_ui_runtime.sh --launch' "$WORKFLOW" \
   || fail "quality workflow must verify a real visible Release app launch"
-grep -Fq 'RELEASE_GATE_PROFILE: app-store' "$WORKFLOW" \
-  || fail "quality workflow must build an explicit AppStore Release artifact for UI smoke"
 grep -Fq 'WORKBENCH_XCUI_APP_PATH="$PWD/dist/PersonalSitePublisherMac.app"' "$WORKFLOW" \
   || fail "quality workflow must reuse the verified Release app for UI smoke"
 grep -Fq 'env -u RELEASE_GATE_PROFILE bash script/check_accessibility_runtime.sh' "$WORKFLOW" \
   || fail "quality workflow must preserve the complete isolated accessibility suite"
-grep -Fq 'bash script/check_accessibility_runtime.sh --require-app-store' "$WORKFLOW" \
-  || fail "quality workflow must require the AppStore Release artifact for accessibility UI smoke"
 grep -Fq 'name: ui-smoke-result' "$WORKFLOW" \
   || fail "quality workflow must retain UI smoke logs and test evidence"
-for release_check in app-store-metadata app-store-package-path ui-runtime swift-release-build; do
+for release_check in ui-runtime swift-release-build; do
   grep -Fq -- "--check $release_check" "$WORKFLOW" \
     || fail "workflow must exercise distribution check: $release_check"
 done
 for dependency_path in \
-  Sources/PublishingWorkbenchCore/Models/KnowledgeModels.swift \
+  "Sources/PublishingWorkbenchCore/Models/**" \
   Sources/PublishingWorkbenchCore/Services/KeychainTokenStore.swift; do
   grep -Fq "$dependency_path" "$TOOLING_WORKFLOW" \
     || fail "release-tooling workflow must watch browser dependency: $dependency_path"

@@ -153,7 +153,7 @@ grep -Fq "release-ledger-tests" "$LOG_PATH" \
 grep -Fq "chromium-store-release:check" "$LOG_PATH" \
   || fail "Chrome reproducible store package check was omitted"
 grep -Fq "swift:build --disable-sandbox --product PersonalSitePublisherMac" "$LOG_PATH" \
-  || fail "App Store application product was not built"
+  || fail "application product was not built"
 grep -Fq "swift:test --disable-sandbox --filter KnowledgeBrowserImportOperationLedgerTests" "$LOG_PATH" \
   || fail "browser import idempotency tests were omitted"
 grep -Fq "swift:test --disable-sandbox --filter KnowledgeLibraryServiceTests.testBrowserDuplicateResolutionSupportsVersionMoveCopyAndCancelWithoutSilentMutation" "$LOG_PATH" \
