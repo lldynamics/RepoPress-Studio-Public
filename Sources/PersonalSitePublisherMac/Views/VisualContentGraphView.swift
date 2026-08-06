@@ -95,7 +95,8 @@ struct VisualContentGraphView: View {
           context.fill(Path(ellipseIn: nodeRect), with: .color(nodeColor))
 
           // Node Label
-          let titleText = Text(node.title)
+          let title = node.title.isEmpty ? CoreL10n.text("untitled") : node.title
+          let titleText = Text(title)
             .font(.caption.weight(isSelected ? .bold : .regular))
             .foregroundColor(isSelected ? .primary : .secondary)
 

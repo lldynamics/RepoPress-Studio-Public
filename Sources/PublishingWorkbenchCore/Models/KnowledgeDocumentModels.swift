@@ -19,12 +19,6 @@ public struct KnowledgeDocument: Identifiable, Codable, Hashable, Sendable {
   public var updatedAt: Date
   public var currentRevisionID: UUID
 
-  @available(*, deprecated, message: "请使用 allowsLocalSemanticIndex 或 allowsRemoteAIUse")
-  public var allowsAIUse: Bool {
-    get { allowsRemoteAIUse }
-    set { allowsRemoteAIUse = newValue }
-  }
-
   public init(
     id: UUID = UUID(),
     kind: KnowledgeDocumentKind,
@@ -39,7 +33,6 @@ public struct KnowledgeDocument: Identifiable, Codable, Hashable, Sendable {
     sourceByteCount: Int64 = 0,
     allowsLocalSemanticIndex: Bool = true,
     allowsRemoteAIUse: Bool = false,
-    allowsAIUse: Bool? = nil,
     isArchived: Bool = false,
     importedAt: Date = Date(),
     updatedAt: Date = Date(),
@@ -57,7 +50,7 @@ public struct KnowledgeDocument: Identifiable, Codable, Hashable, Sendable {
     self.folderID = folderID
     self.sourceByteCount = max(0, sourceByteCount)
     self.allowsLocalSemanticIndex = allowsLocalSemanticIndex
-    self.allowsRemoteAIUse = allowsAIUse ?? allowsRemoteAIUse
+    self.allowsRemoteAIUse = allowsRemoteAIUse
     self.isArchived = isArchived
     self.importedAt = importedAt
     self.updatedAt = updatedAt
@@ -78,7 +71,7 @@ public struct KnowledgeDocument: Identifiable, Codable, Hashable, Sendable {
     case sourceByteCount
     case allowsLocalSemanticIndex
     case allowsRemoteAIUse
-    case allowsAIUse
+    case legacyAllowsAIUse = "allowsAIUse"
     case isArchived
     case importedAt
     case updatedAt
@@ -103,7 +96,7 @@ public struct KnowledgeDocument: Identifiable, Codable, Hashable, Sendable {
       forKey: .allowsLocalSemanticIndex
     ) ?? true
     allowsRemoteAIUse = try container.decodeIfPresent(Bool.self, forKey: .allowsRemoteAIUse)
-      ?? container.decodeIfPresent(Bool.self, forKey: .allowsAIUse)
+      ?? container.decodeIfPresent(Bool.self, forKey: .legacyAllowsAIUse)
       ?? false
     isArchived = try container.decode(Bool.self, forKey: .isArchived)
     importedAt = try container.decode(Date.self, forKey: .importedAt)
@@ -126,7 +119,6 @@ public struct KnowledgeDocument: Identifiable, Codable, Hashable, Sendable {
     try container.encode(sourceByteCount, forKey: .sourceByteCount)
     try container.encode(allowsLocalSemanticIndex, forKey: .allowsLocalSemanticIndex)
     try container.encode(allowsRemoteAIUse, forKey: .allowsRemoteAIUse)
-    try container.encode(allowsRemoteAIUse, forKey: .allowsAIUse)
     try container.encode(isArchived, forKey: .isArchived)
     try container.encode(importedAt, forKey: .importedAt)
     try container.encode(updatedAt, forKey: .updatedAt)
