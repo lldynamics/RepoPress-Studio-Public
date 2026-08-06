@@ -176,6 +176,28 @@ struct AIProviderSection: View {
         }
       }
 
+      HStack(spacing: 6) {
+        Text("常用候选:")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        ForEach(suggestedModels, id: \.self) { candidate in
+          Button {
+            model.wrappedValue = candidate
+          } label: {
+            Text(candidate)
+              .font(.caption)
+              .padding(.horizontal, 6)
+              .padding(.vertical, 2)
+              .background(
+                model.wrappedValue == candidate ? WorkbenchTheme.brand.opacity(0.15) : Color.primary.opacity(0.06),
+                in: Capsule()
+              )
+              .foregroundStyle(model.wrappedValue == candidate ? WorkbenchTheme.brand : Color.primary)
+          }
+          .buttonStyle(.plain)
+        }
+      }
+
       HStack(spacing: 10) {
         Button(String(localized: "粘贴剪贴板模型")) {
           pasteModelFromClipboard()
@@ -191,6 +213,21 @@ struct AIProviderSection: View {
         .buttonStyle(.borderless)
         .accessibilityIdentifier("ai-model-restore-default")
       }
+    }
+  }
+
+  private var suggestedModels: [String] {
+    switch presetBinding.wrappedValue {
+    case .openAICompatible:
+      return ["gpt-4o", "gpt-4o-mini", "o3-mini"]
+    case .deepSeek:
+      return ["deepseek-chat", "deepseek-reasoner"]
+    case .openRouter:
+      return ["anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001", "deepseek/deepseek-r1"]
+    case .local:
+      return ["llama3.2", "qwen2.5-coder", "deepseek-r1"]
+    case .custom:
+      return ["gpt-4o", "deepseek-chat", "claude-3-5-sonnet-20241022"]
     }
   }
 

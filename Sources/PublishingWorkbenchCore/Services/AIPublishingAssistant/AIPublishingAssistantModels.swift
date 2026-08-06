@@ -84,6 +84,23 @@ public enum AIPublishingActionKind: String, Codable, CaseIterable, Identifiable,
 
   public var id: String { rawValue }
 
+  /// Legacy micro-actions remain decodable for saved workflows, but should not
+  /// occupy the compact editor action menu alongside the converged actions.
+  public var isCompactMenuVariant: Bool {
+    switch self {
+    case .draftOpeningHooks,
+      .sharpenOpeningSelection,
+      .polishSelection,
+      .rewriteSelectionReaderFriendly,
+      .rewriteSelectionFormal,
+      .rewriteSelectionCasual,
+      .rewriteSelectionTechnical:
+      return true
+    default:
+      return false
+    }
+  }
+
   public var displayName: String {
     switch self {
     case .publishingReadiness:

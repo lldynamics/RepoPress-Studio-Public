@@ -60,7 +60,7 @@ extension MacMarkdownComposerView {
   }
 
   func isSelectionAIAction(_ kind: AIPublishingActionKind) -> Bool {
-    AIPublishingWritingActionCatalog.selectionActions.contains { $0.kind == kind }
+    kind.contextRequirement == .selectedText
   }
 
   func pasteAIPromptToClipboard() {

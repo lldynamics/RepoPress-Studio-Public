@@ -718,6 +718,9 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     )
     XCTAssertFalse(snapshot.editorActionSections.flatMap(\.actions).contains(.continueArticle))
     XCTAssertFalse(snapshot.workflowGuides.map(\.id).contains("idea-to-draft"))
+    let compactActionKinds = Set(snapshot.editorActionSections.flatMap(\.actions))
+    XCTAssertFalse(compactActionKinds.contains(.polishSelection))
+    XCTAssertFalse(compactActionKinds.contains(.draftOpeningHooks))
 
     let editingSnapshot = AIPublishingPromptLibraryService.snapshot(
       selectedScope: .editing,
@@ -743,6 +746,13 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertNil(searchSnapshot.recommendation)
     XCTAssertTrue(searchSnapshot.recommendedWorkflowGuides.isEmpty)
     XCTAssertEqual(searchSnapshot.editorActionSections.flatMap(\.actions), [.pullRequestDescription])
+
+    let legacySearchSnapshot = AIPublishingPromptLibraryService.snapshot(
+      selectedScope: .editing,
+      searchText: "polishSelection",
+      draft: draft
+    )
+    XCTAssertEqual(legacySearchSnapshot.editorActionSections.flatMap(\.actions), [.polishSelection])
   }
 
   func testWritingActionCatalogFeedsMacEditorEntryPoints() {
@@ -750,13 +760,25 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
       AIPublishingWritingActionCatalog.selectionActions.map(\.kind).contains(.rewriteSelection)
     )
     XCTAssertTrue(
+      AIPublishingWritingActionCatalog.selectionActions.map(\.kind).contains(.draftBilingualRewrite)
+    )
+    XCTAssertFalse(
+      AIPublishingWritingActionCatalog.selectionActions.map(\.kind).contains(.polishSelection)
+    )
+    XCTAssertFalse(
       AIPublishingWritingActionCatalog.selectionActions.map(\.kind).contains(.sharpenOpeningSelection)
     )
+    XCTAssertFalse(
+      AIPublishingWritingActionCatalog.selectionActions.map(\.kind).contains(.rewriteSelectionReaderFriendly)
+    )
     XCTAssertTrue(
-      AIPublishingWritingActionCatalog.selectionActions.map(\.kind).contains(.draftBilingualRewrite)
+      AIPublishingActionKind.promptLibraryActions.contains(.sharpenOpeningSelection)
     )
     XCTAssertTrue(
       AIPublishingWritingActionCatalog.writingActions.map(\.kind).contains(.draftFullArticle)
+    )
+    XCTAssertFalse(
+      AIPublishingWritingActionCatalog.writingActions.map(\.kind).contains(.draftOpeningHooks)
     )
     XCTAssertTrue(
       AIPublishingWritingActionCatalog.writingActions.map(\.kind).contains(.expandOutlineToDraft)
