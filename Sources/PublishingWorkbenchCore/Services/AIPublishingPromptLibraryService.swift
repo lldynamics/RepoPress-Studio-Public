@@ -258,6 +258,7 @@ public enum AIPublishingPromptLibraryService {
       }
       let actions = AIPublishingActionKind.promptLibraryActions.filter { action in
         action.promptLibraryGroup == group
+          && (!query.isEmpty || !action.isCompactMenuVariant)
           && matchesEditorAction(action, query: query)
           && !recommendedActionSet.contains(action)
           && !spotlightActionSet.contains(action)
@@ -479,7 +480,7 @@ public enum AIPublishingWritingActionCatalog {
       group: .writing,
       actions: [
         .continueArticle,
-        .draftOpeningHooks,
+        .draftOpening,
         .draftFullArticle,
         .compareWritingAngles,
         .expandOutlineToDraft,
@@ -491,15 +492,11 @@ public enum AIPublishingWritingActionCatalog {
     AIPublishingEditorActionSection(
       group: .editing,
       actions: [
-        .polishSelection,
+        .rewriteSelection,
         .fixSelectionGrammar,
-        .rewriteSelectionReaderFriendly,
         .translateSelectionToChinese,
         .translateSelectionToEnglish,
         .draftBilingualRewrite,
-        .rewriteSelectionFormal,
-        .rewriteSelectionCasual,
-        .rewriteSelectionTechnical,
         .summarizeSelection,
       ]
     ),
@@ -544,10 +541,8 @@ public enum AIPublishingWritingActionCatalog {
 
   public static let selectionActions: [AIPublishingActionMenuItem] = [
     AIPublishingActionMenuItem(kind: .rewriteSelection, systemImage: "wand.and.stars"),
-    AIPublishingActionMenuItem(kind: .polishSelection, systemImage: "sparkles"),
     AIPublishingActionMenuItem(kind: .expandSelection, systemImage: "arrow.up.left.and.arrow.down.right"),
     AIPublishingActionMenuItem(kind: .continueAfterSelection, systemImage: "text.append"),
-    AIPublishingActionMenuItem(kind: .sharpenOpeningSelection, systemImage: "text.line.first.and.arrowtriangle.forward"),
     AIPublishingActionMenuItem(kind: .condenseSelection, systemImage: "arrow.down.right.and.arrow.up.left"),
     AIPublishingActionMenuItem(kind: .removeRedundancySelection, systemImage: "eraser"),
     AIPublishingActionMenuItem(kind: .checklistSelection, systemImage: "checklist.checked"),
@@ -559,10 +554,6 @@ public enum AIPublishingWritingActionCatalog {
     AIPublishingActionMenuItem(kind: .translateSelectionToEnglish, systemImage: "character.book.closed"),
     AIPublishingActionMenuItem(kind: .draftBilingualRewrite, systemImage: "character.book.closed"),
     AIPublishingActionMenuItem(kind: .fixSelectionGrammar, systemImage: "checkmark.seal"),
-    AIPublishingActionMenuItem(kind: .rewriteSelectionReaderFriendly, systemImage: "person.text.rectangle"),
-    AIPublishingActionMenuItem(kind: .rewriteSelectionFormal, systemImage: "textformat"),
-    AIPublishingActionMenuItem(kind: .rewriteSelectionCasual, systemImage: "bubble.left.and.text.bubble.right"),
-    AIPublishingActionMenuItem(kind: .rewriteSelectionTechnical, systemImage: "chevron.left.forwardslash.chevron.right"),
   ]
 
   public static let selectedTextRecommendedEditorActions: [AIPublishingActionMenuItem] = [
@@ -575,7 +566,6 @@ public enum AIPublishingWritingActionCatalog {
   public static let writingActions: [AIPublishingActionMenuItem] = [
     AIPublishingActionMenuItem(kind: .continueArticle, systemImage: "text.append"),
     AIPublishingActionMenuItem(kind: .draftOpening, systemImage: "text.line.first.and.arrowtriangle.forward"),
-    AIPublishingActionMenuItem(kind: .draftOpeningHooks, systemImage: "text.line.first.and.arrowtriangle.forward"),
     AIPublishingActionMenuItem(kind: .draftFullArticle, systemImage: "doc.text"),
     AIPublishingActionMenuItem(kind: .suggestArticleOutline, systemImage: "list.bullet.rectangle"),
     AIPublishingActionMenuItem(kind: .compareWritingAngles, systemImage: "arrow.triangle.branch"),

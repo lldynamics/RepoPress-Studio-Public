@@ -569,7 +569,7 @@ final class AIPublishingChatPromptTemplateServiceTests: XCTestCase {
     )
 
     XCTAssertEqual(snapshot.editorActionSections.map(\.group), [.editing])
-    XCTAssertTrue(snapshot.editorActionSections.flatMap(\.actions).contains(.rewriteSelection))
+    XCTAssertTrue(snapshot.spotlightActionSections.flatMap(\.actions).contains(.rewriteSelection))
     XCTAssertTrue(snapshot.editorActionSections.flatMap(\.actions).contains(.comparisonTableSelection))
     XCTAssertFalse(snapshot.editorActionSections.flatMap(\.actions).contains(.publishingReadiness))
   }
