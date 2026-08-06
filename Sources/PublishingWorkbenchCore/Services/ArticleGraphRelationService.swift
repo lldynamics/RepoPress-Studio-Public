@@ -87,7 +87,7 @@ public struct ArticleGraphRelationService: Sendable {
     for draft in targetDrafts {
       nodeMap[draft.id] = ArticleGraphNode(
         id: draft.id,
-        title: draft.title.isEmpty ? "未命名文章" : draft.title,
+        title: draft.title.isEmpty ? CoreL10n.text("untitled") : draft.title,
         siteProfileID: draft.siteProfileID,
         tags: draft.tags,
         isPrivate: draft.isPrivate

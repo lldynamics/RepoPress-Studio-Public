@@ -52,8 +52,10 @@ struct MacMarkdownEditorToolbar: View {
       expandedSaveStatus
       editorDisplayModeControl
       writingToolDensityControl
-      preparePublishButton(showsTitle: true)
+      editorToolbarDivider
       expandedEditorActions
+      editorToolbarDivider
+      preparePublishButton(showsTitle: true)
     }
   }
 
@@ -61,9 +63,15 @@ struct MacMarkdownEditorToolbar: View {
     HStack(spacing: 4) {
       compactSaveStatus
       compactEditorDisplayModeControl
-      preparePublishButton(showsTitle: showsPrepareTitle)
       compactEditorActionsMenu
+      editorToolbarDivider
+      preparePublishButton(showsTitle: showsPrepareTitle)
     }
+  }
+
+  private var editorToolbarDivider: some View {
+    Divider()
+      .frame(height: 18)
   }
 
   private var expandedSaveStatus: some View {

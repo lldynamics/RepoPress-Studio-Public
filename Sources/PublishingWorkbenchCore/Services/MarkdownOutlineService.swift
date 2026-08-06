@@ -76,14 +76,14 @@ public struct MarkdownOutlineService {
         let sectionMarkdown = source.substring(with: sectionRange)
         let sectionDraft = ArticleDraft(
           siteProfileID: UUID(),
-          title: rawTitle.isEmpty ? "未命名段落" : rawTitle,
+          title: rawTitle.isEmpty ? CoreL10n.text("untitled") : rawTitle,
           bodyMarkdown: sectionMarkdown
         )
         let riskSummary = PublicRiskSummary(issues: publicRiskScanner.scan(draft: sectionDraft))
 
         return MarkdownOutlineItem(
           level: level,
-          title: rawTitle.isEmpty ? "未命名段落" : rawTitle,
+          title: rawTitle.isEmpty ? CoreL10n.text("untitled") : rawTitle,
           headingLocation: headingRange.location,
           headingLength: headingRange.length,
           sectionLocation: sectionRange.location,
