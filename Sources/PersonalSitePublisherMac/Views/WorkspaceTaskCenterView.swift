@@ -39,7 +39,7 @@ struct WorkspaceTaskCenterView: View {
         }
       }
     }
-    .frame(width: 620, height: 560)
+    .frame(width: 480, height: panelHeight)
     .onExitCommand { dismiss() }
     .accessibilityLabel("统一任务中心")
     .accessibilityIdentifier("workspace-task-center")
@@ -71,6 +71,12 @@ struct WorkspaceTaskCenterView: View {
       return String(localized: "所有后台任务均已完成")
     }
     return String(localized: "进行中 \(active) · 失败待处理 \(failed)")
+  }
+
+  private var panelHeight: CGFloat {
+    let taskCount = activityStatus.taskCenterItems.count
+    guard taskCount > 0 else { return 240 }
+    return min(480, max(300, CGFloat(taskCount) * 112 + 80))
   }
 
   private func retry(_ task: WorkbenchTaskItem) {

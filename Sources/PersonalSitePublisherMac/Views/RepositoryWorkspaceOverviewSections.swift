@@ -29,7 +29,7 @@ extension RepositoryWorkspaceView {
         Text("常用操作")
           .font(.workbenchSectionTitle)
           .accessibilityAddTraits(.isHeader)
-        Text("仓库管理与发布入口始终显示；实际写入和线上发布仍在统一发布流程中确认。")
+        Text("仓库管理入口集中在这里；实际写入和线上发布在下一步卡片或统一发布流程中确认。")
           .font(.callout)
           .foregroundStyle(.secondary)
       }
@@ -131,16 +131,6 @@ extension RepositoryWorkspaceView {
         .help("管理站点图片、问题引用与批量优化")
         .accessibilityIdentifier("repository-action-open-images")
 
-        Button {
-          openUnifiedPublishFlow()
-        } label: {
-          Label("打开发布流程", systemImage: "paperplane")
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .workbenchProminentActionStyle()
-        .disabled(store.selectedDraft == nil)
-        .help(store.selectedDraft == nil ? "请先选择一篇文章" : "检查并选择保存到本地或发布上线")
-        .accessibilityIdentifier("repository-action-open-publish")
       }
       .controlSize(.regular)
     }

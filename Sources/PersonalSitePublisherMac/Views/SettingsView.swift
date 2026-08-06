@@ -98,10 +98,39 @@ struct SettingsView: View {
   }
 
   private func settingsSidebarRow(_ tab: SettingsTab) -> some View {
-    Label(tab.title, systemImage: tab.systemImage)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .contentShape(Rectangle())
-      .tag(tab)
+    HStack(spacing: 6) {
+      Label(tab.title, systemImage: tab.systemImage)
+      Spacer(minLength: 2)
+      if tabNeedsAttention(tab) {
+        Circle()
+          .fill(WorkbenchTheme.warning)
+          .frame(width: 6, height: 6)
+          .accessibilityLabel("需要配置")
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .contentShape(Rectangle())
+    .tag(tab)
+  }
+
+  private func tabNeedsAttention(_ tab: SettingsTab) -> Bool {
+    switch tab {
+    case .configurationStatus:
+      let profile = store.activeProfile
+      let isRepoReady = profile.localRepositoryRootURL != nil
+      let isRulesReady = !profile.markdownPathPattern.trimmedForPublishing.isEmpty
+        && !profile.imagePathPattern.trimmedForPublishing.isEmpty
+        && !profile.publicImagePathPattern.trimmedForPublishing.isEmpty
+        && !profile.dateFormat.trimmedForPublishing.isEmpty
+      return !isRepoReady || !isRulesReady
+    case .token:
+      return store.repositoryTokenAvailability.accessState != .available
+    case .ai:
+      let config = store.aiProviderConfig(for: store.activeProfile)
+      return config.requiresAPIKey && store.ai.tokenAvailability.accessState != .available
+    default:
+      return false
+    }
   }
 
   private var settingsPageHeader: some View {

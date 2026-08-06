@@ -59,6 +59,37 @@ struct AppearanceSettingsView: View {
           .foregroundStyle(selectedPalette.color)
       }
       .font(.callout)
+
+      VStack(alignment: .leading, spacing: 8) {
+        Text("界面效果预览")
+          .font(.subheadline.weight(.semibold))
+
+        HStack(spacing: 12) {
+          Button("主要按钮") {}
+            .buttonStyle(.borderedProminent)
+            .tint(selectedPalette.color)
+
+          Button("次要操作") {}
+            .buttonStyle(.bordered)
+            .tint(selectedPalette.color)
+
+          Label("选中状态", systemImage: "checkmark.circle.fill")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(selectedPalette.color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(selectedPalette.color.opacity(0.12), in: Capsule())
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(8)
+        .overlay(
+          RoundedRectangle(cornerRadius: 8)
+            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
+      }
+      .padding(.top, 4)
     }
   }
 }

@@ -21,10 +21,18 @@ struct PrivacySettingsView: View {
           }
           .accessibilityHidden(true)
 
-          VStack(alignment: .leading, spacing: 2) {
-            Text("快速隐藏 / 防偷窥保护")
-              .font(.subheadline.weight(.semibold))
-            Text("在软件任何界面按 ⌃⌘L 即可快速隐藏工作台。此功能仅遮挡界面，不加密本地数据。")
+          VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+              Text("快速隐藏 / 防偷窥保护")
+                .font(.subheadline.weight(.semibold))
+              Spacer()
+              HStack(spacing: 2) {
+                Text("⌃").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4).padding(.vertical, 1).background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
+                Text("⌘").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4).padding(.vertical, 1).background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
+                Text("L").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4).padding(.vertical, 1).background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
+              }
+            }
+            Text("在软件任何界面按下全局快捷键即可快速遮挡或隐藏工作台。")
               .font(.caption)
               .foregroundStyle(.secondary)
           }
@@ -35,6 +43,39 @@ struct PrivacySettingsView: View {
       PrivacySettingsVisibilitySection(
         masksPrivateContent: privacySettingBinding(keyPath: \.masksPrivateContent)
       )
+
+      Section("遮挡效果预览") {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("私密文章或离席遮罩效果")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+          HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("公开文本示例")
+                .font(.caption.weight(.semibold))
+              Text("这是一段正常的文章正文。")
+                .font(.subheadline)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(8)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .cornerRadius(6)
+
+            VStack(alignment: .leading, spacing: 4) {
+              Text("私密掩码示例")
+                .font(.caption.weight(.semibold))
+              Text("这是一段敏感私密内容。")
+                .font(.subheadline)
+                .blur(radius: privacySettings.masksPrivateContent ? 4 : 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(8)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .cornerRadius(6)
+          }
+        }
+      }
 
       PrivacySettingsCurrentStatusSection(
         status: status,

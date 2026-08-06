@@ -23,15 +23,13 @@ struct DefaultRuleSettingsView: View {
       )
 
       Section {
-        DisclosureGroup(isExpanded: $showsPathRules) {
-          DefaultRulePathSection(
-            activeProfileBinding: activeProfileBinding,
-            shouldFocusPaths: healthDestination == .defaultRules,
-            navigationRequestID: healthNavigationRequestID
-          )
-        } label: {
-          Label("文件路径与模板", systemImage: "folder.badge.gearshape")
-        }
+        DefaultRulePathSection(
+          activeProfileBinding: activeProfileBinding,
+          shouldFocusPaths: healthDestination == .defaultRules,
+          navigationRequestID: healthNavigationRequestID
+        )
+      } header: {
+        Label("文件路径与模板", systemImage: "folder.badge.gearshape")
       } footer: {
         Text("仅在站点目录结构不同时调整；默认值适用于当前站点类型。")
       }

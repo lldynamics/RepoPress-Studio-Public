@@ -89,7 +89,7 @@ struct PersonalSitePublisherMacApp: App {
       width: WorkbenchLayoutMode.defaultWindowWidth,
       height: WorkbenchLayoutMode.defaultWindowHeight
     )
-    .windowToolbarStyle(.unified(showsTitle: false))
+    .windowToolbarStyle(.unifiedCompact(showsTitle: false))
     .commands {
       AppUpdateCommands(controller: appUpdateController)
       if let store = launchCoordinator.store {
