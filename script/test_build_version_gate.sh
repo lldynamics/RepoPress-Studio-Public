@@ -95,10 +95,7 @@ if grep -En '^(MARKETING_VERSION|BUILD_NUMBER)="[0-9]' "$ROOT_DIR/script/build_a
   fail "build_and_run.sh still hardcodes app version values"
 fi
 for consumer in \
-  build_and_run.sh \
-  check_app_store_metadata.sh \
-  check_app_store_archive_readiness.sh \
-  record_app_store_build_metadata_evidence.sh; do
+  build_and_run.sh; do
   grep -Eq 'check_build_version\.sh' "$ROOT_DIR/script/$consumer" \
     || fail "$consumer does not consume the shared version gate"
 done

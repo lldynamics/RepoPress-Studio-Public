@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "script" / "release_checks.json"
 DEFAULT_RESULT_JSON = ROOT / ".build" / "release-gate-result.json"
-RELEASE_PROFILES = ("app-store", "direct", "chrome")
+RELEASE_PROFILES = ("direct", "chrome")
 PROFILE_GROUPS = ("common", *RELEASE_PROFILES)
 RESULT_SCHEMA = ROOT / "script" / "release_gate_result.schema.json"
 
@@ -239,20 +239,6 @@ def packaged_artifact_metadata(
         if explicit_app:
             app_bundle = Path(explicit_app).expanduser().resolve()
             provenance = "explicit-developer-id-app"
-    elif strict_profile in {"app-store", "all"}:
-        explicit_app = os.environ.get("APP_STORE_APP_BUNDLE_PATH", "").strip()
-        explicit_archive = os.environ.get("APP_STORE_ARCHIVE_PATH", "").strip()
-        if explicit_app:
-            app_bundle = Path(explicit_app).expanduser().resolve()
-            provenance = "explicit-signed-app"
-        elif explicit_archive:
-            app_bundle = (
-                Path(explicit_archive).expanduser().resolve()
-                / "Products"
-                / "Applications"
-                / "PersonalSitePublisherMac.app"
-            )
-            provenance = "explicit-xcarchive"
     files = {
         "executable": app_bundle / "Contents" / "MacOS" / "PersonalSitePublisherMac",
         "infoPlist": app_bundle / "Contents" / "Info.plist",
@@ -329,7 +315,7 @@ def load_manifest() -> tuple[list[dict[str, object]], dict[str, list[str]], int]
     raw_profiles = data.get("profiles")
     if not isinstance(raw_profiles, dict) or set(raw_profiles) != set(PROFILE_GROUPS):
         raise SystemExit(
-            "release gate: profiles must define exactly common, app-store, direct, chrome"
+            "release gate: profiles must define exactly common, direct, chrome"
         )
     known_ids = set(ids)
     profile_check_ids: dict[str, list[str]] = {}
@@ -601,13 +587,6 @@ def write_result_markdown(path: Path, payload: dict[str, object]) -> None:
     )
 
 
-def unchecked_checklist_count() -> int:
-    checklist = ROOT / "APP_STORE_CHECKLIST.md"
-    if not checklist.exists():
-        return 0
-    return sum(1 for line in checklist.read_text(encoding="utf-8").splitlines() if line.startswith("- [ ]"))
-
-
 def configure_swift_environment() -> None:
     runtime_home = os.environ.get("PERSONAL_SITE_PUBLISHER_RUNTIME_HOME") or os.environ.get("HOME")
     if runtime_home:
@@ -796,10 +775,7 @@ def main() -> int:
             expected_check_count=len(checks),
         )
 
-    includes_app_store = strict_profile in {"app-store", "all"}
-    unchecked = unchecked_checklist_count() if not strict_profile or includes_app_store else 0
-    if includes_app_store and unchecked:
-        failures.append(f"APP_STORE_CHECKLIST.md ({unchecked} unchecked items)")
+    unchecked = 0
     payload = write_result_json(
         result_json,
         mode,
@@ -831,16 +807,11 @@ def main() -> int:
         print(f"release gate: {display_mode} has {len(failures)} {label}:", file=sys.stderr)
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
-        if includes_app_store:
-            print("\nrelease gate: remaining external verification targets:", file=sys.stderr)
-            subprocess.run(["bash", str(ROOT / "script" / "print_remaining_external_verification.sh")], cwd=ROOT)
-            rerun = "./script/check_release_gate.sh --strict" if args.strict else f"./script/check_release_gate.sh --profile {strict_profile}"
-            print(f"\nrelease gate: rerun after recording evidence:\n  {rerun}", file=sys.stderr)
         return 1
     if strict_profile:
         print(f"release gate: {strict_profile} profile passed ({len(results)} checks)")
         return 0
-    print(f"release gate: automated checks passed; unchecked checklist items: {unchecked}")
+    print("release gate: automated checks passed")
     return 0
 
 
