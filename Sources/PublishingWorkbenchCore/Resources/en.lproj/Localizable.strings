@@ -675,6 +675,7 @@
 "已保存手动版本快照。" = "Manual version snapshot saved.";
 "已恢复到 %@ 的版本。" = "Restored the version from %@.";
 "原站点 Profile 已不存在，无法恢复这篇文章。" = "The original site profile no longer exists, so this article cannot be restored.";
+"untitled" = "Untitled";
 "未命名文章" = "Untitled Article";
 "已从回收站恢复「%@」。" = "Restored “%@” from the Trash.";
 "已永久删除回收站中的文章；待处理的仓库清理记录仍保留。" = "The article was permanently deleted from the Trash; its pending repository cleanup record was kept.";

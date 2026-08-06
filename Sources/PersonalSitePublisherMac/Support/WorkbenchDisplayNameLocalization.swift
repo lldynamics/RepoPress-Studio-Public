@@ -2,22 +2,6 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
-/// Centralized user-facing terminology for technical publishing concepts.
-/// Use the explanatory form at the first prominent entry point, then the
-/// concise form inside repeated controls and workflow steps.
-enum WorkbenchUITerminology {
-  static let siteConfiguration = String(localized: "站点配置")
-  static let siteConfigurationIntroduction = String(localized: "站点配置（Profile）")
-  static let difference = String(localized: "差异")
-  static let differenceIntroduction = String(localized: "差异（Diff）")
-  static let accessToken = String(localized: "访问令牌")
-  static let accessTokenIntroduction = String(localized: "访问令牌（Token）")
-  static let repositoryAccessTokenIntroduction = String(localized: "仓库访问令牌（Token）")
-  static let deploymentAccessTokenIntroduction = String(localized: "部署访问令牌（Token）")
-  static let articleHeader = String(localized: "文章头信息")
-  static let articleHeaderIntroduction = String(localized: "文章头信息（Front Matter）")
-}
-
 protocol WorkbenchDisplayNameLocalizable {
   var workbenchDisplayNameSemanticKey: String { get }
   var fallbackDisplayName: String { get }

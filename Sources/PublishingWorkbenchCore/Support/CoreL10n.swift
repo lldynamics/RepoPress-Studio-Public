@@ -5,12 +5,12 @@ import Foundation
 /// Core owns a separate resource bundle from the app target, so dynamic status,
 /// validation, and error strings must be resolved here instead of relying on a
 /// SwiftUI `Text` call to localize them later.
-enum CoreL10n {
-  static func text(_ key: String) -> String {
+public enum CoreL10n {
+  public static func text(_ key: String) -> String {
     localizedBundle.localizedString(forKey: key, value: key, table: nil)
   }
 
-  static func format(_ key: String, _ arguments: CVarArg...) -> String {
+  public static func format(_ key: String, _ arguments: CVarArg...) -> String {
     String(
       format: text(key),
       locale: .autoupdatingCurrent,
@@ -18,11 +18,11 @@ enum CoreL10n {
     )
   }
 
-  static func text(_ key: String, locale: Locale) -> String {
+  public static func text(_ key: String, locale: Locale) -> String {
     bundle(for: locale).localizedString(forKey: key, value: key, table: nil)
   }
 
-  static func format(_ key: String, locale: Locale, arguments: [CVarArg]) -> String {
+  public static func format(_ key: String, locale: Locale, arguments: [CVarArg]) -> String {
     String(format: text(key, locale: locale), locale: locale, arguments: arguments)
   }
 
