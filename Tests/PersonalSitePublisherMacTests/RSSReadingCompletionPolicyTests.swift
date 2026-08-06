@@ -22,4 +22,25 @@ final class RSSReadingCompletionPolicyTests: XCTestCase {
       RSSReadingCompletionPolicy.shouldAutomaticallyMarkRead(progress: .infinity)
     )
   }
+
+  func testOnlyCrossingTheCompletionThresholdTriggersAutomaticMarking() {
+    XCTAssertTrue(
+      RSSReadingCompletionPolicy.didCrossCompletionThreshold(
+        previousProgress: 0.994,
+        progress: 0.995
+      )
+    )
+    XCTAssertFalse(
+      RSSReadingCompletionPolicy.didCrossCompletionThreshold(
+        previousProgress: 0.995,
+        progress: 1
+      )
+    )
+    XCTAssertTrue(
+      RSSReadingCompletionPolicy.didCrossCompletionThreshold(
+        previousProgress: nil,
+        progress: 1
+      )
+    )
+  }
 }

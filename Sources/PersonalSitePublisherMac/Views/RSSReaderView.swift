@@ -36,13 +36,16 @@ struct RSSReaderView: View {
   @AppStorage("rssReaderTranslationCustomLanguage") private var translationCustomLanguage = ""
   @AppStorage("rssReaderAutomaticTranslationEnabled") private var automaticTranslationEnabled = false
   @AppStorage("settingsRequestedTabID") private var requestedSettingsTabID = ""
-  @FocusState private var isSearchFocused: Bool
 
   var body: some View {
     let loadRequest = selectedArticleLoadRequest
-    VStack(spacing: 0) {
+    ZStack(alignment: .bottomLeading) {
       readerSplitView
-      statusBar
+      if store.canUndoLastDeletion || store.canUndoLastBatchRead {
+        floatingUndoToast
+          .padding(16)
+          .transition(.move(edge: .bottom).combined(with: .opacity))
+      }
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("rss-reader-workspace")
@@ -284,6 +287,7 @@ struct RSSReaderView: View {
   private func recordReadingProgress(_ value: Double, for articleID: String) {
     guard value.isFinite else { return }
     let normalized = min(max(value, 0), 1)
+    let previousProgress = readingProgressByArticle[articleID]
     let previous = readingProgressByArticle[articleID] ?? -1
     guard abs(normalized - previous) >= 0.01 || normalized == 0 || normalized == 1 else {
       return
@@ -299,6 +303,13 @@ struct RSSReaderView: View {
       readingProgressByArticle.removeValue(forKey: evictedID)
     }
     scheduleReadingProgressPersistence()
+
+    if RSSReadingCompletionPolicy.didCrossCompletionThreshold(
+      previousProgress: previousProgress,
+      progress: normalized
+    ) {
+      markArticleReadFromProgress(articleID)
+    }
   }
 
   private func scheduleReadingProgressPersistence() {
@@ -335,37 +346,32 @@ struct RSSReaderView: View {
   }
 
   @ViewBuilder
-  private var statusBar: some View {
-    if latestStatusEvent != nil || store.canUndoLastDeletion || store.canUndoLastBatchRead {
-      Divider()
-      HStack(alignment: .top, spacing: 12) {
-        if let latestStatusEvent {
-          statusEventView(latestStatusEvent)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-          Spacer(minLength: 0)
+  private var floatingUndoToast: some View {
+    HStack(alignment: .center, spacing: 12) {
+      if store.canUndoLastBatchRead {
+        Button("撤销全部已读") {
+          store.undoLastBatchRead()
         }
-        if store.canUndoLastBatchRead {
-          Button("撤销全部已读") {
-            store.undoLastBatchRead()
-          }
-          .buttonStyle(.bordered)
-          .accessibilityLabel("撤销上一次批量标记已读")
-        }
-        if store.canUndoLastDeletion {
-          Button("撤销删除") {
-            store.undoLastDeletion()
-          }
-          .buttonStyle(.bordered)
-          .accessibilityLabel("撤销删除订阅和本地缓存")
-        }
+        .buttonStyle(.bordered)
+        .accessibilityLabel("撤销上一次批量标记已读")
       }
-      .padding(.horizontal, WorkbenchSpacing.section)
-      .padding(.vertical, 8)
-      .background(WorkbenchBackgroundStyle.panel)
-      .accessibilityElement(children: .contain)
-      .accessibilityLabel(latestStatusEvent?.isError == true ? "RSS 错误" : "RSS 最新事件")
+      if store.canUndoLastDeletion {
+        Button("撤销删除") {
+          store.undoLastDeletion()
+        }
+        .buttonStyle(.bordered)
+        .accessibilityLabel("撤销删除订阅和本地缓存")
+      }
     }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 8)
+    .workbenchGlassSurface(
+      material: .regularMaterial,
+      in: Capsule()
+    )
+    .shadow(color: .black.opacity(0.16), radius: 8, x: 0, y: 3)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("RSS 撤销操作")
   }
 
   @ViewBuilder
@@ -379,30 +385,37 @@ struct RSSReaderView: View {
       GeometryReader { geometry in
         let isWide = !WorkbenchLayoutMode.isCompactRSSReader(width: geometry.size.width)
         let showsArticleList = isWide || selectedArticleHeader == nil
-        let articleWidth = isWide
-          ? min(max(geometry.size.width * 0.36, 340), 420)
-          : (showsArticleList ? geometry.size.width : 0)
-        let dividerWidth: CGFloat = isWide ? 1 : 0
-        let readerWidth = max(0, geometry.size.width - articleWidth - dividerWidth)
 
-        HStack(spacing: 0) {
-          articleColumn
-            .frame(width: articleWidth, height: geometry.size.height)
-            .clipped()
-            .allowsHitTesting(showsArticleList)
-            .accessibilityHidden(!showsArticleList)
+        Group {
+          if isWide {
+            HSplitView {
+              articleColumn
+                .frame(
+                  minWidth: 300,
+                  idealWidth: 380,
+                  maxWidth: 420,
+                  maxHeight: .infinity
+                )
+                .layoutPriority(1)
 
-          Divider()
-            .frame(width: dividerWidth)
-            .opacity(isWide ? 1 : 0)
-
-          readerColumn(showsBackButton: !isWide)
-            .frame(width: readerWidth, height: geometry.size.height)
-            .clipped()
-            .allowsHitTesting(isWide || !showsArticleList)
-            .accessibilityHidden(!isWide && showsArticleList)
+              readerColumn(showsBackButton: false)
+                .frame(
+                  minWidth: 560,
+                  idealWidth: 900,
+                  maxWidth: .infinity,
+                  maxHeight: .infinity
+                )
+                .layoutPriority(1)
+            }
+          } else if showsArticleList {
+            articleColumn
+              .frame(maxWidth: .infinity, maxHeight: .infinity)
+          } else {
+            readerColumn(showsBackButton: true)
+              .frame(maxWidth: .infinity, maxHeight: .infinity)
+          }
         }
-        .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
           updateReaderLayout(isCompact: !isWide, animated: false)
         }
@@ -422,7 +435,6 @@ struct RSSReaderView: View {
       presentation: presentation,
       searchDraft: presentation.searchDraft,
       selectedArticleID: $presentation.selectedArticleID,
-      isSearchFocused: $isSearchFocused,
       workflowIsBusy: workflowIsBusy,
       readingProgressByArticle: readingProgressByArticle,
       onBatchSaveToKnowledge: saveArticlesToKnowledge
@@ -661,10 +673,10 @@ struct RSSReaderView: View {
           }
           Task { @MainActor in
             await Task.yield()
-            isSearchFocused = true
+            presentation.requestSearchFocus()
           }
         } else {
-          isSearchFocused = true
+          presentation.requestSearchFocus()
         }
       },
       navigatePrevious: { selectRelativeArticle(-1) },
@@ -695,9 +707,18 @@ struct RSSReaderView: View {
     guard let article = selectedArticleHeader else { return }
     let nextValue = !article.isRead
     store.markRead(article.id, isRead: nextValue)
-    selectedArticlePayload?.readAt = nextValue
-      ? (selectedArticlePayload?.readAt ?? Date())
-      : nil
+    selectedArticlePayload?.readAt = store.articleHeader(id: article.id)?.readAt
+  }
+
+  private func markArticleReadFromProgress(_ articleID: String) {
+    guard let header = store.articleHeader(id: articleID),
+          !header.isRead,
+          selectedArticlePayload?.id == articleID
+    else {
+      return
+    }
+    store.markRead(articleID)
+    selectedArticlePayload?.readAt = store.articleHeader(id: articleID)?.readAt
   }
 
   private func relativeArticle(offset: Int) -> RSSArticleHeader? {

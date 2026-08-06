@@ -11,8 +11,10 @@ struct RSSReaderWorkspaceSidebar: View {
   var body: some View {
     RSSFeedSidebar(
       store: store,
+      presentation: presentation,
       counts: presentation.sidebarCounts(in: store),
       selectedScope: $presentation.selectedScope,
+      searchDraft: presentation.searchDraft,
       isAddSubscriptionPresented: $presentation.isAddSubscriptionPresented,
       removeFeed: { feedPendingDeletion = $0 },
       editFeedAddress: { feedPendingAddressEdit = $0 }
@@ -60,10 +62,13 @@ struct RSSReaderWorkspaceSidebar: View {
 }
 struct RSSFeedSidebar: View {
   @ObservedObject var store: RSSReaderStore
+  @ObservedObject var presentation: RSSReaderPresentationState
   let counts: RSSFeedSidebarCounts
   @Binding var selectedScope: RSSArticleScope?
+  @ObservedObject var searchDraft: RSSArticleSearchDraft
   @Binding var isAddSubscriptionPresented: Bool
   @State private var isAttentionSectionExpanded = false
+  @FocusState private var isSearchFocused: Bool
   let removeFeed: (RSSFeed) -> Void
   let editFeedAddress: (RSSFeed) -> Void
 
@@ -81,7 +86,7 @@ struct RSSFeedSidebar: View {
 
     VStack(spacing: 0) {
       WorkspaceContextListHeader(title: "订阅") {
-        Text("\(store.feeds.count) 个订阅 · \(counts.unreadCount) 篇未读\n已抓取文章默认保存在本机")
+        Text("\(store.feeds.count) 个订阅 · \(counts.unreadCount) 篇未读")
       } actions: {
         Button {
           isAddSubscriptionPresented = true
@@ -130,6 +135,12 @@ struct RSSFeedSidebar: View {
       }
       .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
       .padding(.vertical, WorkspaceSidebarMetrics.headerVerticalPadding)
+
+      Divider()
+
+      rssSearchToolbar
+        .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
+        .padding(.vertical, WorkspaceSidebarMetrics.toolbarVerticalPadding)
 
       Divider()
 
@@ -203,6 +214,48 @@ struct RSSFeedSidebar: View {
       .listStyle(.sidebar)
       .accessibilityLabel("RSS 订阅和阅读范围")
     }
+    .onChange(of: presentation.searchFocusRequestID) { _, _ in
+      isSearchFocused = true
+    }
+  }
+
+  private var rssSearchToolbar: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "magnifyingglass")
+        .foregroundStyle(.secondary)
+        .font(.footnote)
+
+      TextField(String(localized: "搜索文章标题或正文"), text: $searchDraft.text)
+        .textFieldStyle(.plain)
+        .focused($isSearchFocused)
+        .accessibilityLabel("搜索 RSS 文章标题或正文")
+        .accessibilityIdentifier("rss-article-search")
+
+      if !searchDraft.text.isEmpty {
+        Button {
+          searchDraft.text = ""
+        } label: {
+          Image(systemName: "xmark.circle.fill")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("清除搜索")
+        .accessibilityLabel("清除 RSS 文章搜索")
+      }
+
+      if searchDraft.text != presentation.debouncedSearchText {
+        ProgressView()
+          .controlSize(.small)
+          .help("正在搜索")
+          .accessibilityLabel("正在搜索 RSS 文章")
+      }
+    }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 6)
+    .background(
+      WorkbenchBackgroundStyle.control,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
   }
 
   private func feedRow(

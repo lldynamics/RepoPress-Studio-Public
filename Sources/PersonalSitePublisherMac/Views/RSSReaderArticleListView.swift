@@ -72,12 +72,45 @@ private struct RSSArticleListSkeleton: View {
   }
 }
 
+/// 刷新期间只保留轻量的顶部进度线，避免把正文列表推下去。
+private struct RSSArticleRefreshProgressLine: View {
+  @State private var isAnimating = false
+
+  var body: some View {
+    GeometryReader { geometry in
+      let segmentWidth = max(48, geometry.size.width * 0.24)
+      ZStack(alignment: .leading) {
+        Rectangle()
+          .fill(Color.accentColor.opacity(0.14))
+        Rectangle()
+          .fill(Color.accentColor.opacity(0.9))
+          .frame(width: segmentWidth)
+          .offset(x: isAnimating ? geometry.size.width : -segmentWidth)
+      }
+    }
+    .frame(height: 2)
+    .clipped()
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("正在刷新文章列表")
+    .accessibilityIdentifier("rss-article-refresh-progress")
+    .onAppear {
+      isAnimating = true
+    }
+    .onDisappear {
+      isAnimating = false
+    }
+    .animation(
+      .linear(duration: 1.15).repeatForever(autoreverses: false),
+      value: isAnimating
+    )
+  }
+}
+
 struct RSSArticleList: View {
   @ObservedObject var store: RSSReaderStore
   @ObservedObject var presentation: RSSReaderPresentationState
   @ObservedObject var searchDraft: RSSArticleSearchDraft
   @Binding var selectedArticleID: String?
-  @FocusState.Binding var isSearchFocused: Bool
   let workflowIsBusy: Bool
   let readingProgressByArticle: [String: Double]
   let onBatchSaveToKnowledge: ([String]) -> Void
@@ -124,114 +157,40 @@ struct RSSArticleList: View {
               .foregroundStyle(.secondary)
           }
           Spacer(minLength: 8)
-          Button {
-            store.markAllRead(articleIDs: unreadMatchingArticleIDs)
-          } label: {
-            Label(
-              unreadMatchingArticleIDs.isEmpty
-                ? String(localized: "已全部阅读")
-                : String(localized: "全部已读（\(unreadMatchingArticleIDs.count)）"),
-              systemImage: "checkmark.circle"
-            )
-          }
-          .buttonStyle(.borderless)
-          .disabled(unreadMatchingArticleIDs.isEmpty)
-          .help("将当前列表中的文章标为已读")
-          .accessibilityLabel("将当前筛选结果中的 \(unreadMatchingArticleIDs.count) 篇未读文章标为已读")
-          .accessibilityIdentifier("rss-mark-all-read")
           if !isBatchSelectionMode {
-            Button("批量选择", systemImage: "checklist") {
-              isBatchSelectionMode = true
+            Menu {
+              if !unreadMatchingArticleIDs.isEmpty {
+                Button {
+                  store.markAllRead(articleIDs: unreadMatchingArticleIDs)
+                } label: {
+                  Label(
+                    "全部已读（\(unreadMatchingArticleIDs.count)）",
+                    systemImage: "checkmark.circle"
+                  )
+                }
+                .help("将当前列表中的文章标为已读")
+                .accessibilityIdentifier("rss-mark-all-read")
+              }
+              Button("批量选择", systemImage: "checklist") {
+                isBatchSelectionMode = true
+              }
+              .accessibilityLabel("批量选择 RSS 文章")
+              .accessibilityIdentifier("rss-batch-select")
+            } label: {
+              Label("文章操作", systemImage: "ellipsis.circle")
             }
-            .buttonStyle(.borderless)
-            .accessibilityLabel("批量选择 RSS 文章")
-            .accessibilityIdentifier("rss-batch-select")
+            .menuStyle(.borderlessButton)
+            .controlSize(.small)
+            .accessibilityLabel("文章操作")
+            .accessibilityIdentifier("rss-article-actions")
           }
         }
 
-        TextField("搜索文章标题或正文", text: $searchDraft.text)
-          .textFieldStyle(.roundedBorder)
-          .focused($isSearchFocused)
-          .accessibilityLabel("搜索 RSS 文章标题或正文")
-          .accessibilityIdentifier("rss-article-search")
-
-        HStack(spacing: 10) {
-          Menu {
-            Section("筛选") {
-              Toggle("只看未读", isOn: $presentation.unreadOnly)
-
-              if !availableSources.isEmpty, !isSingleFeedScope {
-                Picker("来源", selection: $presentation.selectedSourceID) {
-                  Text("全部来源").tag(UUID?.none)
-                  ForEach(availableSources) { feed in
-                    Text(feed.displayTitle).tag(Optional(feed.id))
-                  }
-                }
-              }
-              if !availableAuthors.isEmpty {
-                Picker("作者", selection: $presentation.selectedAuthor) {
-                  Text("全部作者").tag(String?.none)
-                  ForEach(availableAuthors, id: \.self) { author in
-                    Text(author).tag(Optional(author))
-                  }
-                }
-              }
-              if !availableTags.isEmpty {
-                Picker("标签", selection: $presentation.selectedTag) {
-                  Text("全部标签").tag(String?.none)
-                  ForEach(availableTags, id: \.self) { tag in
-                    Text(tag).tag(Optional(tag))
-                  }
-                }
-              }
-              Picker("日期", selection: $presentation.dateRange) {
-                ForEach(RSSArticleDateRange.allCases) { range in
-                  Text(range.title).tag(range)
-                }
-              }
-            }
-
-            Section("排序") {
-              Picker("排序", selection: $presentation.sortOrder) {
-                ForEach(RSSArticleSortOrder.allCases) { order in
-                  Text(order.title).tag(order)
-                }
-              }
-              Toggle("按日期分组", isOn: $presentation.groupsByDate)
-            }
-
-            Divider()
-            Button("清除筛选", action: clearFilters)
-              .disabled(!hasActiveFilters)
-          } label: {
-            ZStack(alignment: .topTrailing) {
-              Image(systemName: "slider.horizontal.3")
-                .frame(width: 22, height: 22)
-              if activeFilterCount > 0 {
-                Text("\(activeFilterCount)")
-                  .font(.system(size: 8, weight: .bold, design: .rounded))
-                  .foregroundStyle(.white)
-                  .padding(2)
-                  .background(Color.accentColor, in: Circle())
-                  .offset(x: 5, y: -5)
-              }
-            }
-            .frame(width: 26, height: 24)
-          }
-          .menuStyle(.borderlessButton)
-          .help("筛选与排序")
-          .accessibilityLabel("文章筛选与排序")
-          .accessibilityValue(articleFilterSortAccessibilityValue)
-          .accessibilityIdentifier("rss-article-filter-sort")
-
-          if searchDraft.text != presentation.debouncedSearchText {
-            ProgressView()
-              .controlSize(.small)
-              .help("正在搜索")
-              .accessibilityLabel("正在搜索 RSS 文章")
-          }
-          Spacer(minLength: 0)
-        }
+        filterControls(
+          availableSources: availableSources,
+          availableAuthors: availableAuthors,
+          availableTags: availableTags
+        )
 
         if isBatchSelectionMode {
           batchSelectionControls(visibleArticles: visibleArticles)
@@ -243,14 +202,13 @@ struct RSSArticleList: View {
 
       if prepared == nil {
         RSSArticleListSkeleton()
-      } else if let contentPresentation = listContentPresentation(for: currentListState) {
+      } else if let showsRefreshBanner = listContentPresentation(for: currentListState) {
         articleList(
           visibleArticles,
           sections: visibleArticleSections,
           matchingCount: matchingArticles.count,
           feedLookup: feedLookup,
-          showsRefreshBanner: contentPresentation.showsRefreshBanner,
-          staleFailure: contentPresentation.staleFailure
+          showsRefreshBanner: showsRefreshBanner
         )
       } else {
         switch currentListState {
@@ -277,17 +235,14 @@ struct RSSArticleList: View {
     .focused($isArticleListFocused)
     .accessibilityHint("点击文章后，可使用上下箭头浏览，按 Return 打开文章")
     .onKeyPress(.upArrow) {
-      guard !isSearchFocused else { return .ignored }
       moveArticleSelection(by: -1)
       return .handled
     }
     .onKeyPress(.downArrow) {
-      guard !isSearchFocused else { return .ignored }
       moveArticleSelection(by: 1)
       return .handled
     }
     .onKeyPress(.return) {
-      guard !isSearchFocused else { return .ignored }
       openSelectedArticle()
       return .handled
     }
@@ -358,11 +313,212 @@ struct RSSArticleList: View {
     if activeFilterCount == 0 {
       components.append("未启用筛选")
     } else {
-      components.append("启用 (activeFilterCount) 项筛选")
+      components.append("启用 \(activeFilterCount) 项筛选")
     }
-    components.append("排序 (presentation.sortOrder.title)")
+    components.append("排序 \(presentation.sortOrder.title)")
     components.append(presentation.groupsByDate ? "按日期分组" : "不按日期分组")
     return components.joined(separator: "，")
+  }
+
+  private var advancedFilterCount: Int {
+    var count = 0
+    if presentation.selectedSourceID != nil { count += 1 }
+    if presentation.selectedAuthor != nil { count += 1 }
+    if presentation.selectedTag != nil { count += 1 }
+    return count
+  }
+
+  @ViewBuilder
+  private func filterControls(
+    availableSources: [RSSFeed],
+    availableAuthors: [String],
+    availableTags: [String]
+  ) -> some View {
+    ViewThatFits(in: .horizontal) {
+      wideFilterControls(
+        availableSources: availableSources,
+        availableAuthors: availableAuthors,
+        availableTags: availableTags
+      )
+      compactFilterControls(
+        availableSources: availableSources,
+        availableAuthors: availableAuthors,
+        availableTags: availableTags
+      )
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("文章筛选与排序")
+    .accessibilityValue(articleFilterSortAccessibilityValue)
+    .accessibilityIdentifier("rss-article-filter-sort")
+  }
+
+  private func wideFilterControls(
+    availableSources: [RSSFeed],
+    availableAuthors: [String],
+    availableTags: [String]
+  ) -> some View {
+    HStack(alignment: .center, spacing: 10) {
+      Toggle("只看未读", isOn: $presentation.unreadOnly)
+        .toggleStyle(.checkbox)
+        .controlSize(.small)
+        .fixedSize()
+        .accessibilityIdentifier("rss-unread-filter")
+
+      Picker("日期", selection: $presentation.dateRange) {
+        ForEach(RSSArticleDateRange.allCases) { range in
+          Text(range.title).tag(range)
+        }
+      }
+      .pickerStyle(.menu)
+      .controlSize(.small)
+      .accessibilityIdentifier("rss-date-filter")
+
+      Picker("排序", selection: $presentation.sortOrder) {
+        ForEach(RSSArticleSortOrder.allCases) { order in
+          Text(order.title).tag(order)
+        }
+      }
+      .pickerStyle(.menu)
+      .controlSize(.small)
+      .accessibilityIdentifier("rss-sort-picker")
+
+      moreFilterMenu(
+        label: advancedFilterCount > 0 ? "更多 \(advancedFilterCount)" : "更多",
+        systemImage: advancedFilterCount > 0
+          ? "line.3.horizontal.decrease.circle.fill"
+          : "line.3.horizontal.decrease.circle",
+        includesDate: false,
+        availableSources: availableSources,
+        availableAuthors: availableAuthors,
+        availableTags: availableTags
+      )
+
+      if activeFilterCount > 0 {
+        Text("已启用 \(activeFilterCount)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize()
+      }
+
+      clearFiltersButton(showTitle: true)
+      Spacer(minLength: 0)
+    }
+  }
+
+  private func compactFilterControls(
+    availableSources: [RSSFeed],
+    availableAuthors: [String],
+    availableTags: [String]
+  ) -> some View {
+    HStack(alignment: .center, spacing: 8) {
+      Toggle(isOn: $presentation.unreadOnly) {
+        Image(systemName: presentation.unreadOnly ? "envelope.badge" : "envelope")
+      }
+      .toggleStyle(.checkbox)
+      .controlSize(.small)
+      .help("只看未读")
+      .accessibilityLabel("只看未读")
+      .accessibilityValue(presentation.unreadOnly ? "已启用" : "未启用")
+      .accessibilityIdentifier("rss-unread-filter")
+
+      Picker("排序", selection: $presentation.sortOrder) {
+        ForEach(RSSArticleSortOrder.allCases) { order in
+          Text(order.title).tag(order)
+        }
+      }
+      .pickerStyle(.menu)
+      .controlSize(.small)
+      .accessibilityIdentifier("rss-sort-picker")
+
+      moreFilterMenu(
+        label: advancedFilterCount > 0 ? "筛选 \(advancedFilterCount)" : "筛选",
+        systemImage: "line.3.horizontal.decrease.circle",
+        includesDate: true,
+        availableSources: availableSources,
+        availableAuthors: availableAuthors,
+        availableTags: availableTags
+      )
+
+      clearFiltersButton(showTitle: false)
+      Spacer(minLength: 0)
+    }
+  }
+
+  private func moreFilterMenu(
+    label: String,
+    systemImage: String,
+    includesDate: Bool,
+    availableSources: [RSSFeed],
+    availableAuthors: [String],
+    availableTags: [String]
+  ) -> some View {
+    Menu {
+      Section("更多筛选") {
+        if includesDate {
+          Picker("日期", selection: $presentation.dateRange) {
+            ForEach(RSSArticleDateRange.allCases) { range in
+              Text(range.title).tag(range)
+            }
+          }
+        }
+
+        if !availableSources.isEmpty, !isSingleFeedScope {
+          Picker("来源", selection: $presentation.selectedSourceID) {
+            Text("全部来源").tag(UUID?.none)
+            ForEach(availableSources) { feed in
+              Text(feed.displayTitle).tag(Optional(feed.id))
+            }
+          }
+        }
+
+        if !availableAuthors.isEmpty {
+          Picker("作者", selection: $presentation.selectedAuthor) {
+            Text("全部作者").tag(String?.none)
+            ForEach(availableAuthors, id: \.self) { author in
+              Text(author).tag(Optional(author))
+            }
+          }
+        }
+
+        if !availableTags.isEmpty {
+          Picker("标签", selection: $presentation.selectedTag) {
+            Text("全部标签").tag(String?.none)
+            ForEach(availableTags, id: \.self) { tag in
+              Text(tag).tag(Optional(tag))
+            }
+          }
+        }
+      }
+
+      Divider()
+      Toggle("按日期分组", isOn: $presentation.groupsByDate)
+    } label: {
+      Label(label, systemImage: systemImage)
+    }
+    .menuStyle(.borderlessButton)
+    .controlSize(.small)
+    .accessibilityLabel("更多筛选")
+    .accessibilityValue(
+      advancedFilterCount > 0
+        ? "已启用 \(advancedFilterCount) 项来源、作者或标签筛选"
+        : "未启用来源、作者或标签筛选"
+    )
+    .accessibilityIdentifier("rss-more-filters")
+  }
+
+  private func clearFiltersButton(showTitle: Bool) -> some View {
+    Button(
+      showTitle ? "清除" : "",
+      systemImage: "xmark.circle",
+      action: clearFilters
+    )
+    .buttonStyle(.borderless)
+    .controlSize(.small)
+    .disabled(!hasActiveFilters)
+    .help("清除所有筛选条件")
+    .accessibilityLabel("清除筛选")
+    .accessibilityIdentifier("rss-clear-filters")
   }
 
   @ViewBuilder
@@ -433,17 +589,14 @@ struct RSSArticleList: View {
 
   private func listContentPresentation(
     for state: RSSArticleListPresentationState
-  ) -> (
-    showsRefreshBanner: Bool,
-    staleFailure: (title: String, message: String)?
-  )? {
+  ) -> Bool? {
     switch state {
     case .content:
-      return (false, nil)
+      return false
     case .refreshing:
-      return (true, nil)
-    case let .staleContent(_, feedTitle, message):
-      return (false, (feedTitle, message))
+      return true
+    case .staleContent:
+      return false
     case .loading, .failed, .empty, .filteredEmpty:
       return nil
     }
@@ -735,116 +888,87 @@ struct RSSArticleList: View {
     sections: [RSSArticleListSection],
     matchingCount: Int,
     feedLookup: RSSFeedLookup,
-    showsRefreshBanner: Bool,
-    staleFailure: (title: String, message: String)?
+    showsRefreshBanner: Bool
   ) -> some View {
     VStack(spacing: 0) {
       if showsRefreshBanner {
-        HStack(spacing: 8) {
-          ProgressView().controlSize(.small)
-          Text("正在刷新，先显示 \(articles.count) / \(matchingCount) 篇本机文章。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        Divider()
+        RSSArticleRefreshProgressLine()
       }
-      if let staleFailure {
-        HStack(alignment: .top, spacing: 9) {
-          Image(systemName: "exclamationmark.triangle.fill")
-            .foregroundStyle(WorkbenchTheme.risk)
-            .accessibilityHidden(true)
-          VStack(alignment: .leading, spacing: 2) {
-            Text("“\(staleFailure.title)”刷新失败，正在显示 \(articles.count) / \(matchingCount) 篇本机文章。")
-              .font(.callout.weight(.semibold))
-            Text(staleFailure.message)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .lineLimit(2)
-          }
-          .frame(maxWidth: .infinity, alignment: .leading)
-          Button("重试") { retrySelectedScope() }
-            .buttonStyle(.borderless)
-            .disabled(scopeIsRefreshing)
-          if let selectedFeed {
-            Button("修改地址") { feedPendingAddressEdit = selectedFeed }
-              .buttonStyle(.borderless)
-          }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .accessibilityElement(children: .contain)
-        Divider()
-      }
-
       if articles.isEmpty {
         filteredEmptyState
       } else {
-        ScrollViewReader { proxy in
-          ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-              ForEach(sections) { section in
-                if let title = section.title {
-                  Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 12)
-                    .padding(.bottom, 5)
+          ScrollViewReader { proxy in
+            ScrollView {
+              LazyVStack(
+                alignment: .leading,
+                spacing: 0,
+                pinnedViews: [.sectionHeaders]
+              ) {
+                ForEach(sections) { section in
+                  Section {
+                    ForEach(section.articles) { article in
+                      articleRow(article, feed: feedLookup[article.feedID])
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                          selectedArticleID == article.id
+                            ? Color.accentColor.opacity(0.12)
+                            : Color.clear
+                        )
+                        .overlay(alignment: .leading) {
+                          if selectedArticleID == article.id {
+                            Rectangle()
+                              .fill(Color.accentColor)
+                              .frame(width: 3)
+                              .frame(maxHeight: .infinity)
+                              .allowsHitTesting(false)
+                          }
+                        }
+                        .contentShape(Rectangle())
+                        .id(article.id)
+                        .onTapGesture {
+                          selectedArticleID = article.id
+                          isArticleListFocused = true
+                        }
+                    }
+                  } header: {
+                    if let title = section.title {
+                      Text(title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 12)
+                        .padding(.bottom, 5)
+                        .background(.regularMaterial)
+                    } else {
+                      EmptyView()
+                    }
+                  }
                 }
 
-                ForEach(section.articles) { article in
-                  articleRow(article, feed: feedLookup[article.feedID])
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                      selectedArticleID == article.id
-                        ? Color.accentColor.opacity(0.12)
-                        : Color.clear
-                    )
-                    .overlay(alignment: .leading) {
-                      if selectedArticleID == article.id {
-                        Rectangle()
-                          .fill(Color.accentColor)
-                          .frame(width: 3)
-                          .frame(maxHeight: .infinity)
-                          .allowsHitTesting(false)
-                      }
+                if articles.count < matchingCount {
+                  Button {
+                    presentation.loadMoreArticles(totalCount: matchingCount)
+                  } label: {
+                    HStack {
+                      Spacer()
+                      Label(
+                        "继续显示 \(min(RSSReaderPresentationState.articlePageSize, matchingCount - articles.count)) 篇",
+                        systemImage: "chevron.down.circle"
+                      )
+                      Spacer()
                     }
                     .contentShape(Rectangle())
-                    .id(article.id)
-                    .onTapGesture {
-                      selectedArticleID = article.id
-                      isArticleListFocused = true
-                    }
-                }
-              }
-
-              if articles.count < matchingCount {
-                Button {
-                  presentation.loadMoreArticles(totalCount: matchingCount)
-                } label: {
-                  HStack {
-                    Spacer()
-                    Label(
-                      "继续显示 \(min(RSSReaderPresentationState.articlePageSize, matchingCount - articles.count)) 篇",
-                      systemImage: "chevron.down.circle"
-                    )
-                    Spacer()
+                    .padding(.vertical, 12)
                   }
-                  .contentShape(Rectangle())
-                  .padding(.vertical, 12)
+                  .buttonStyle(.plain)
+                  .frame(maxWidth: .infinity)
+                  .accessibilityLabel(
+                    "继续显示本机文章，当前 \(articles.count) 篇，共 \(matchingCount) 篇"
+                  )
                 }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
-                .accessibilityLabel(
-                  "继续显示本机文章，当前 \(articles.count) 篇，共 \(matchingCount) 篇"
-                )
               }
-            }
-            .thinRedScroller()
+              .thinRedScroller()
           }
           .accessibilityLabel("RSS 文章列表")
           .onChange(of: selectedArticleID) { _, articleID in
@@ -955,6 +1079,7 @@ struct RSSArticleRow: View {
         }
         .font(.caption)
         .foregroundStyle(.secondary)
+        .lineLimit(1)
         .fixedSize(horizontal: false, vertical: true)
 
         if summary.isEmpty {
@@ -984,22 +1109,67 @@ struct RSSArticleRow: View {
       .padding(.vertical, 8)
       .accessibilityElement(children: .contain)
 
-      GeometryReader { geometry in
-        ZStack(alignment: .leading) {
-          Rectangle()
-            .fill(Color.accentColor.opacity(0.12))
-          Rectangle()
-            .fill(Color.accentColor)
-            .frame(width: geometry.size.width * normalizedReadingProgress)
+      if normalizedReadingProgress > 0 {
+        GeometryReader { geometry in
+          ZStack(alignment: .leading) {
+            Rectangle()
+              .fill(Color.accentColor.opacity(0.12))
+            Rectangle()
+              .fill(Color.accentColor)
+              .frame(width: geometry.size.width * normalizedReadingProgress)
+          }
         }
+        .frame(height: 2)
+        .accessibilityHidden(true)
       }
-      .frame(height: 2)
-      .accessibilityHidden(true)
+    }
+    .overlay(alignment: .topTrailing) {
+      if !isBatchSelectionMode {
+        articleActionButtons
+          .padding(.top, 6)
+          .padding(.trailing, 8)
+          .opacity(isHovering ? 1 : 0)
+          .allowsHitTesting(isHovering)
+      }
     }
     .background(isHovering ? Color.primary.opacity(0.04) : Color.clear)
     .onHover { isHovering = $0 }
     .accessibilityIdentifier("rss-article-row-content-\(article.id)")
     .accessibilityElement(children: .contain)
+  }
+
+  private var articleActionButtons: some View {
+    HStack(spacing: 3) {
+      Button(action: onToggleRead) {
+        Image(systemName: article.isRead ? "envelope.badge" : "checkmark.circle")
+      }
+      .buttonStyle(.borderless)
+      .controlSize(.small)
+      .help(article.isRead ? "标为未读" : "标为已读")
+      .accessibilityLabel(article.isRead ? "标为未读" : "标为已读")
+
+      Button(action: onToggleStarred) {
+        Image(systemName: article.isStarred ? "star.slash" : "star")
+      }
+      .buttonStyle(.borderless)
+      .controlSize(.small)
+      .help(article.isStarred ? "移出稍后阅读" : "加入稍后阅读")
+      .accessibilityLabel(article.isStarred ? "移出稍后阅读" : "加入稍后阅读")
+
+      if article.link != nil {
+        Button(action: onOpenOriginal) {
+          Image(systemName: "safari")
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .help("打开原文")
+        .accessibilityLabel("打开原文")
+      }
+    }
+    .padding(4)
+    .background(.regularMaterial, in: Capsule())
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("文章操作")
   }
 
   private func accessibilityValue(relativeDate: String) -> String {

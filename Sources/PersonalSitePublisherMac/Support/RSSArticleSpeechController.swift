@@ -3,6 +3,12 @@ import Combine
 import Foundation
 import PublishingWorkbenchCore
 
+struct RSSArticleSpeechHighlight: Equatable, Sendable {
+  let location: Int
+  let length: Int
+  let text: String
+}
+
 @MainActor
 final class RSSArticleSpeechController: NSObject, ObservableObject, @preconcurrency AVSpeechSynthesizerDelegate {
   static let supportedRateMultipliers: [Double] = [1.0, 1.25, 1.5, 1.75, 2.0]
@@ -14,6 +20,7 @@ final class RSSArticleSpeechController: NSObject, ObservableObject, @preconcurre
   @Published private(set) var isSpeaking = false
   @Published private(set) var isPaused = false
   @Published private(set) var currentArticleID: String?
+  @Published private(set) var currentSpeechHighlight: RSSArticleSpeechHighlight?
   @Published private(set) var rateMultiplier: Double
 
   private var sourceText = ""
@@ -21,6 +28,8 @@ final class RSSArticleSpeechController: NSObject, ObservableObject, @preconcurre
   private var spokenUTF16Offset = 0
   private var utteranceStartOffset = 0
   private var currentUtterance: AVSpeechUtterance?
+  private var sentenceRanges: [NSRange] = []
+  private var currentSentenceIndex = 0
 
   override init() {
     let storedRate = UserDefaults.standard.double(forKey: Self.rateDefaultsKey)
@@ -49,7 +58,10 @@ final class RSSArticleSpeechController: NSObject, ObservableObject, @preconcurre
 
     sourceText = text
     currentArticleID = article.id
+    currentSpeechHighlight = nil
     speechLanguageTag = RSSArticleLanguageResolver.languageTag(for: article)
+    sentenceRanges = Self.sentenceRanges(in: text)
+    currentSentenceIndex = 0
     spokenUTF16Offset = 0
     speakRemaining(from: 0, paused: false)
   }
@@ -87,6 +99,20 @@ final class RSSArticleSpeechController: NSObject, ObservableObject, @preconcurre
 
   static func normalizedRateMultiplier(_ value: Double) -> Double {
     min(max(value.isFinite ? value : 1.0, 1.0), 2.0)
+  }
+
+  static func speechHighlight(
+    in text: String,
+    around range: NSRange
+  ) -> RSSArticleSpeechHighlight? {
+    let ranges = sentenceRanges(in: text)
+    var sentenceIndex = 0
+    return makeSpeechHighlight(
+      in: text,
+      around: range,
+      sentenceRanges: ranges,
+      sentenceIndex: &sentenceIndex
+    )
   }
 
   private func speakRemaining(from offset: Int, paused: Bool) {
@@ -148,6 +174,9 @@ final class RSSArticleSpeechController: NSObject, ObservableObject, @preconcurre
     speechLanguageTag = nil
     spokenUTF16Offset = 0
     utteranceStartOffset = 0
+    currentSpeechHighlight = nil
+    sentenceRanges = []
+    currentSentenceIndex = 0
   }
 
   func speechSynthesizer(
@@ -204,6 +233,82 @@ final class RSSArticleSpeechController: NSObject, ObservableObject, @preconcurre
     spokenUTF16Offset = min(
       sourceText.utf16.count,
       utteranceStartOffset + characterRange.location
+    )
+    let absoluteRange = NSRange(
+      location: spokenUTF16Offset,
+      length: min(
+        characterRange.length,
+        max(0, sourceText.utf16.count - spokenUTF16Offset)
+      )
+    )
+    let nextHighlight = Self.makeSpeechHighlight(
+      in: sourceText,
+      around: absoluteRange,
+      sentenceRanges: sentenceRanges,
+      sentenceIndex: &currentSentenceIndex
+    )
+    if nextHighlight != currentSpeechHighlight {
+      currentSpeechHighlight = nextHighlight
+    }
+  }
+
+  private static func sentenceRanges(in text: String) -> [NSRange] {
+    guard !text.isEmpty else { return [] }
+
+    var ranges: [NSRange] = []
+    text.enumerateSubstrings(
+      in: text.startIndex..<text.endIndex,
+      options: [.bySentences, .substringNotRequired]
+    ) { _, substringRange, _, _ in
+      ranges.append(NSRange(substringRange, in: text))
+    }
+    return ranges
+  }
+
+  private static func makeSpeechHighlight(
+    in text: String,
+    around range: NSRange,
+    sentenceRanges: [NSRange],
+    sentenceIndex: inout Int
+  ) -> RSSArticleSpeechHighlight? {
+    let source = text as NSString
+    guard source.length > 0 else { return nil }
+
+    let location = min(max(range.location, 0), source.length - 1)
+    let length = min(max(range.length, 1), source.length - location)
+    let targetRange = NSRange(location: location, length: length)
+
+    var selectedRange = targetRange
+    if !sentenceRanges.isEmpty {
+      var selectedIndex = sentenceIndex
+      selectedIndex = min(max(selectedIndex, 0), sentenceRanges.count - 1)
+      if targetRange.location < sentenceRanges[selectedIndex].location {
+        selectedIndex = 0
+      }
+      while selectedIndex + 1 < sentenceRanges.count,
+            targetRange.location >= NSMaxRange(sentenceRanges[selectedIndex]) {
+        selectedIndex += 1
+      }
+
+      let candidate = sentenceRanges[selectedIndex]
+      if NSIntersectionRange(candidate, targetRange).length > 0 {
+        selectedRange = candidate
+      } else if let matchingRange = sentenceRanges.first(where: {
+        NSIntersectionRange($0, targetRange).length > 0
+      }) {
+        selectedRange = matchingRange
+        selectedIndex = sentenceRanges.firstIndex(of: matchingRange) ?? selectedIndex
+      }
+      sentenceIndex = selectedIndex
+    }
+
+    let highlightedText = source.substring(with: selectedRange)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !highlightedText.isEmpty else { return nil }
+    return RSSArticleSpeechHighlight(
+      location: selectedRange.location,
+      length: selectedRange.length,
+      text: highlightedText
     )
   }
 }

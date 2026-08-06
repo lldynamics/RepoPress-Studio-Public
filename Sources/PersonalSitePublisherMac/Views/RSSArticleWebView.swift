@@ -263,10 +263,10 @@ final class RSSArticleRenderCache: @unchecked Sendable {
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: http: file:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';">
       <style>
         :root { color-scheme: \(theme.cssColorScheme); --rss-font-size: \(normalizedFontSize)px; --rss-line-spacing: \(normalizedLineSpacing); --rss-background: \(theme.cssBackground); --rss-foreground: \(theme.cssForeground); --rss-secondary-foreground: \(theme.cssSecondaryForeground); --rss-link: \(theme.cssLink); }
-        html, body { width: 100%; min-height: 100%; }
-        body { display: block; visibility: visible; opacity: 1; margin: 0; min-height: 100vh; padding: 4px 2px 28px; color: var(--rss-foreground) !important; background: var(--rss-background) !important; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; font-size: var(--rss-font-size); line-height: var(--rss-line-spacing); overflow-wrap: anywhere; -webkit-text-fill-color: var(--rss-foreground); }
-        #rss-article-container { display: block; width: 100%; max-width: 780px; margin: 0 auto; padding: 72px 24px 48px; box-sizing: border-box; visibility: visible; opacity: 1; color: var(--rss-foreground) !important; }
-        #rss-article-body { display: block; width: 100%; visibility: visible; opacity: 1; color: var(--rss-foreground) !important; }
+        html, body { width: 100%; max-width: 100%; min-height: 100%; overflow-x: hidden; }
+        body { display: block; visibility: visible; opacity: 1; margin: 0; min-height: 100vh; padding: 4px 2px 28px; box-sizing: border-box; color: var(--rss-foreground) !important; background: var(--rss-background) !important; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; font-size: var(--rss-font-size); line-height: var(--rss-line-spacing); overflow-wrap: anywhere; -webkit-text-fill-color: var(--rss-foreground); }
+        #rss-article-container { display: block; width: 100%; max-width: 780px; min-width: 0; margin: 0 auto; padding: 72px 24px 48px; box-sizing: border-box; overflow-x: hidden; visibility: visible; opacity: 1; color: var(--rss-foreground) !important; }
+        #rss-article-body { display: block; width: 100%; min-width: 0; overflow-x: hidden; visibility: visible; opacity: 1; color: var(--rss-foreground) !important; }
         .rss-article-header { margin: 0 0 1.2em 0; }
         .rss-article-title { font-size: 1.85em; font-weight: 700; line-height: 1.3; margin: 0 0 0.4em 0; color: var(--rss-foreground); overflow-wrap: break-word; -webkit-text-fill-color: var(--rss-foreground); }
         .rss-article-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 0.88em; color: var(--rss-secondary-foreground); -webkit-text-fill-color: var(--rss-secondary-foreground); margin-bottom: 0.4em; }
@@ -281,14 +281,16 @@ final class RSSArticleRenderCache: @unchecked Sendable {
         figcaption { margin-top: 0.4em; font-size: 0.9em; }
         hr { border: 0; border-top: 1px solid rgba(127, 127, 127, 0.35); margin: 1.25em 0; }
         summary { cursor: pointer; font-weight: 600; }
-        pre { padding: 0.85em 1em; border-radius: 8px; background: rgba(127, 127, 127, 0.14); overflow-x: auto; white-space: pre-wrap; }
+        pre { max-width: 100%; padding: 0.85em 1em; border-radius: 8px; background: rgba(127, 127, 127, 0.14); overflow-x: auto; overflow-wrap: anywhere; white-space: pre-wrap; }
         code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid rgba(127, 127, 127, 0.35); padding: 0.35em 0.55em; text-align: left; vertical-align: top; }
+        table { border-collapse: collapse; width: 100%; max-width: 100%; table-layout: fixed; }
+        th, td { border: 1px solid rgba(127, 127, 127, 0.35); padding: 0.35em 0.55em; text-align: left; vertical-align: top; overflow-wrap: anywhere; word-break: break-word; }
         a { color: var(--rss-link); }
-        img { max-width: 100%; height: auto; border-radius: 8px; }
+        img, video, iframe, svg, canvas { max-width: 100%; height: auto; }
+        img { height: auto; border-radius: 8px; }
         .remote-image-disabled { display: inline-block; padding: 0.55em 0.8em; border: 1px dashed var(--rss-secondary-foreground); border-radius: 7px; color: var(--rss-secondary-foreground); }
         mark.rss-highlight { background: color-mix(in srgb, #ffd60a 55%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
+        mark.rss-speech-highlight { background: color-mix(in srgb, #0a84ff 32%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; box-shadow: inset 0 -1px 0 color-mix(in srgb, #0a84ff 72%, transparent); }
       </style>
     </head>
     <body data-initial-reading-progress="\(normalizedProgress)"><article id="rss-article-container">\(headerHTML)<main id="rss-article-body">\(body)</main></article></body>
@@ -688,6 +690,7 @@ struct RSSArticleWebView: NSViewRepresentable {
   let theme: RSSReadingTheme
   let initialReadingProgress: Double
   let renderRevision: String
+  let speechHighlight: RSSArticleSpeechHighlight?
   let onSelectionChanged: (String) -> Void
   let onReadingProgress: (Double) -> Void
   let onNavigationError: (String) -> Void
@@ -705,6 +708,7 @@ struct RSSArticleWebView: NSViewRepresentable {
     theme: RSSReadingTheme = .system,
     initialReadingProgress: Double = 0,
     renderRevision: String,
+    speechHighlight: RSSArticleSpeechHighlight? = nil,
     onSelectionChanged: @escaping (String) -> Void,
     onReadingProgress: @escaping (Double) -> Void = { _ in },
     onNavigationError: @escaping (String) -> Void
@@ -721,6 +725,7 @@ struct RSSArticleWebView: NSViewRepresentable {
     self.theme = theme
     self.initialReadingProgress = initialReadingProgress
     self.renderRevision = renderRevision
+    self.speechHighlight = speechHighlight
     self.onSelectionChanged = onSelectionChanged
     self.onReadingProgress = onReadingProgress
     self.onNavigationError = onNavigationError
@@ -729,7 +734,9 @@ struct RSSArticleWebView: NSViewRepresentable {
   @MainActor
   final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     var lastRenderToken: String?
+    var lastAppliedSpeechHighlight: RSSArticleSpeechHighlight?
     var pendingHighlights: [RSSArticleHighlight] = []
+    var pendingSpeechHighlight: RSSArticleSpeechHighlight?
     var pendingReadingProgress = 0.0
     var pendingFontSize = RSSReadingComfortConfiguration.defaultFontSize
     var pendingLineSpacing = RSSReadingComfortConfiguration.defaultLineSpacing
@@ -801,12 +808,41 @@ struct RSSArticleWebView: NSViewRepresentable {
       _ webView: WKWebView,
       didFinish navigation: WKNavigation!
     ) {
+      hideHorizontalScrollers(in: webView)
       applyReadingPreferences(to: webView)
       applyHighlights(to: webView)
       let progress = min(max(pendingReadingProgress, 0), 1)
       webView.evaluateJavaScript(
         "window.rssApplyReadingProgress && window.rssApplyReadingProgress(\(progress));"
       )
+      applySpeechHighlight(to: webView)
+    }
+
+    func hideHorizontalScrollers(in webView: WKWebView, allowDeferredRetry: Bool = true) {
+      let scrollViews = descendantScrollViews(in: webView)
+      for scrollView in scrollViews {
+        scrollView.hasHorizontalScroller = false
+        scrollView.horizontalScrollElasticity = .none
+      }
+
+      guard allowDeferredRetry else { return }
+      for delay in [0.0, 0.08, 0.25] {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak webView] in
+          guard let self, let webView else { return }
+          self.hideHorizontalScrollers(in: webView, allowDeferredRetry: false)
+        }
+      }
+    }
+
+    private func descendantScrollViews(in view: NSView) -> [NSScrollView] {
+      var scrollViews: [NSScrollView] = []
+      if let scrollView = view as? NSScrollView {
+        scrollViews.append(scrollView)
+      }
+      for subview in view.subviews {
+        scrollViews.append(contentsOf: descendantScrollViews(in: subview))
+      }
+      return scrollViews
     }
 
     func webView(
@@ -838,6 +874,14 @@ struct RSSArticleWebView: NSViewRepresentable {
         let id = json(highlight.id.uuidString)
         webView.evaluateJavaScript("window.rssApplyHighlight(\(text), \(id));")
       }
+    }
+
+    func applySpeechHighlight(to webView: WKWebView) {
+      let text = json(pendingSpeechHighlight?.text ?? "")
+      webView.evaluateJavaScript(
+        "window.rssApplySpeechHighlight && window.rssApplySpeechHighlight(\(text));"
+      )
+      lastAppliedSpeechHighlight = pendingSpeechHighlight
     }
 
     private static func highlightRestoreOrder(
@@ -955,6 +999,90 @@ struct RSSArticleWebView: NSViewRepresentable {
       injectionTime: .atDocumentEnd,
       forMainFrameOnly: true
     )
+    let speechHighlightScript = WKUserScript(
+      source: """
+      (() => {
+        const speechBlockSelector = 'address,article,aside,blockquote,div,dl,fieldset,figcaption,figure,footer,form,h1,h2,h3,h4,h5,h6,header,li,main,nav,ol,p,pre,section,table,td,th,ul';
+        const removeSpeechMarks = () => {
+          document.querySelectorAll('mark.rss-speech-highlight').forEach(mark => {
+            const parent = mark.parentNode;
+            if (!parent) return;
+            while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+            parent.removeChild(mark);
+            parent.normalize();
+          });
+        };
+        const normalizedWhitespace = value => String(value || '').replace(/\\s+/g, ' ');
+        window.rssApplySpeechHighlight = text => {
+          removeSpeechMarks();
+          const normalizedNeedle = normalizedWhitespace(text).trim();
+          if (!normalizedNeedle) return;
+
+          const root = document.getElementById('rss-article-body') || document.body;
+          const characters = [];
+          const positions = [];
+          let previousBlock = null;
+          const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+          while (walker.nextNode()) {
+            const node = walker.currentNode;
+            if (!node.nodeValue || node.parentElement?.closest('script,style,noscript')) {
+              continue;
+            }
+            const currentBlock = node.parentElement?.closest(speechBlockSelector) || null;
+            if (
+              previousBlock &&
+              currentBlock &&
+              previousBlock !== currentBlock &&
+              characters.length > 0 &&
+              characters[characters.length - 1] !== ' '
+            ) {
+              characters.push(' ');
+              positions.push({ node, offset: 0 });
+            }
+            for (let offset = 0; offset < node.nodeValue.length; offset += 1) {
+              const character = node.nodeValue[offset];
+              if (/\\s/.test(character)) {
+                if (characters.length > 0 && characters[characters.length - 1] !== ' ') {
+                  characters.push(' ');
+                  positions.push({ node, offset });
+                }
+              } else {
+                characters.push(character);
+                positions.push({ node, offset });
+              }
+            }
+            previousBlock = currentBlock;
+          }
+          while (characters[0] === ' ') {
+            characters.shift();
+            positions.shift();
+          }
+          while (characters[characters.length - 1] === ' ') {
+            characters.pop();
+            positions.pop();
+          }
+
+          const normalizedText = characters.join('');
+          const matchStart = normalizedText.indexOf(normalizedNeedle);
+          if (matchStart < 0) return;
+          const startPosition = positions[matchStart];
+          const endPosition = positions[matchStart + normalizedNeedle.length - 1];
+          if (!startPosition || !endPosition) return;
+
+          const range = document.createRange();
+          range.setStart(startPosition.node, startPosition.offset);
+          range.setEnd(endPosition.node, endPosition.offset + 1);
+          const mark = document.createElement('mark');
+          mark.className = 'rss-speech-highlight';
+          mark.appendChild(range.extractContents());
+          range.insertNode(mark);
+          mark.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        };
+      })();
+      """,
+      injectionTime: .atDocumentEnd,
+      forMainFrameOnly: true
+    )
     let readingPreferencesScript = WKUserScript(
       source: """
       (() => {
@@ -1007,6 +1135,7 @@ struct RSSArticleWebView: NSViewRepresentable {
       forMainFrameOnly: true
     )
     configuration.userContentController.addUserScript(selectionScript)
+    configuration.userContentController.addUserScript(speechHighlightScript)
     configuration.userContentController.addUserScript(readingPreferencesScript)
     configuration.userContentController.addUserScript(progressScript)
     configuration.userContentController.add(context.coordinator, name: "rssSelection")
@@ -1014,6 +1143,7 @@ struct RSSArticleWebView: NSViewRepresentable {
     let webView = WKWebView(frame: .zero, configuration: configuration)
     webView.navigationDelegate = context.coordinator
     webView.allowsMagnification = true
+    context.coordinator.hideHorizontalScrollers(in: webView)
     webView.setValue(true, forKey: "drawsBackground")
     return webView
   }
@@ -1027,6 +1157,8 @@ struct RSSArticleWebView: NSViewRepresentable {
       onNavigationError: onNavigationError
     )
     context.coordinator.pendingHighlights = highlights
+    let speechHighlightChanged = context.coordinator.lastAppliedSpeechHighlight != speechHighlight
+    context.coordinator.pendingSpeechHighlight = speechHighlight
     context.coordinator.pendingReadingProgress = initialReadingProgress
     context.coordinator.pendingFontSize = fontSize
     context.coordinator.pendingLineSpacing = lineSpacing
@@ -1034,9 +1166,13 @@ struct RSSArticleWebView: NSViewRepresentable {
     let token = "\(article.id)|\(renderRevision)|\(allowRemoteImages)|\(highlightsToken)|\(mediaToken)"
     guard context.coordinator.lastRenderToken != token else {
       context.coordinator.applyReadingPreferences(to: nsView)
+      if speechHighlightChanged {
+        context.coordinator.applySpeechHighlight(to: nsView)
+      }
       return
     }
     context.coordinator.lastRenderToken = token
+    context.coordinator.lastAppliedSpeechHighlight = nil
     nsView.loadHTMLString(
       RSSArticleHTMLRenderer.render(
         article: article,

@@ -35,18 +35,6 @@ public struct RSSOPMLExportResult: Equatable, Sendable {
 /// credential-like query values, so callers should scan and explicitly choose
 /// redaction or exclusion before user-facing export.
 public enum RSSOPMLWriter {
-  @available(*, deprecated, message: "Choose an explicit RSSOPMLExportPrivacyAction for export UI.")
-  public static func makeDocument(
-    subscriptions: [RSSOPMLSubscription],
-    title: String = "RSS Subscriptions"
-  ) throws -> Data {
-    try prepareDocument(
-      subscriptions: subscriptions,
-      title: title,
-      privacyAction: .redactCredentialQueryValues
-    ).data
-  }
-
   public static func makeDocument(
     subscriptions: [RSSOPMLSubscription],
     title: String = "RSS Subscriptions",

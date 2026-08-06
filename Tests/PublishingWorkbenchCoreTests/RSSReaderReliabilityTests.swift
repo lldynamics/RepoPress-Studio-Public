@@ -581,7 +581,8 @@ final class RSSReaderReliabilityTests: XCTestCase {
     let opml = try RSSOPMLWriter.makeDocument(
       subscriptions: store.feeds.map {
         RSSOPMLSubscription(title: $0.displayTitle, url: $0.url, siteURL: $0.siteURL)
-      }
+      },
+      privacyAction: .redactCredentialQueryValues
     )
     let exportedText = String(decoding: opml, as: UTF8.self)
     XCTAssertFalse(exportedText.contains("topsecret"))

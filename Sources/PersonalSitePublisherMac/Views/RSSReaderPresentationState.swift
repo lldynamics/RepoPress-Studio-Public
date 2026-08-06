@@ -67,6 +67,7 @@ final class RSSReaderPresentationState: ObservableObject {
   @Published var errorMessage: String?
   @Published var statusMessage: String?
   @Published private(set) var articleDisplayLimit = 120
+  @Published private(set) var searchFocusRequestID = UUID()
   let searchDraft = RSSArticleSearchDraft()
 
   private var subscriptionDiscoveryRequestID = UUID()
@@ -198,6 +199,10 @@ final class RSSReaderPresentationState: ObservableObject {
   func resetArticleDisplayLimit() {
     guard articleDisplayLimit != Self.articlePageSize else { return }
     articleDisplayLimit = Self.articlePageSize
+  }
+
+  func requestSearchFocus() {
+    searchFocusRequestID = UUID()
   }
 
   func loadMoreArticles(totalCount: Int) {
