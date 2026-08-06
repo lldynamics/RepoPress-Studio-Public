@@ -245,41 +245,29 @@ struct ContentView: View {
       )
     )
     .toolbar {
-      ToolbarItemGroup(placement: .navigation) {
-        WorkspaceToolbarLeadingContent(
+      ToolbarItem(placement: .navigation) {
+        WorkspaceToolbarNavigationContent(
           store: store,
-          isCompact: isCompactLayout
-        )
-        .disabled(!shellState.canUseProtectedWorkbench)
-        .accessibilityHidden(shellState.isQuickHideActive)
-
-        if shellState.selectedSection != .rss {
-          PublishingStatusToolbarControl(
-            store: store,
-            canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
-            selectedDraftID: shellState.selectedDraftID,
-            openPublishFlow: { openPublishDrawer(message: nil) },
-            openRepositoryOverview: {
-              repositoryContextStage = .overview
-              selectWorkspaceSection(.sync)
-            },
-            openContentHealthOverview: {
-              contentHealthFilter = .overview
-              selectWorkspaceSection(.contentHealth)
-            },
-            openReleaseHistory: {
-              repositoryContextStage = .history
-              selectWorkspaceSection(.sync)
-            }
-          )
-        }
-
-        WorkspaceTaskCenterToolbarButton(
-          store: store,
+          canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
+          selectedDraftID: shellState.selectedDraftID,
+          selectedSection: shellState.selectedSection,
           isCompact: isCompactLayout,
-          action: { modalPresentation.present(.taskCenter) }
+          isQuickHideActive: shellState.isQuickHideActive,
+          openPublishFlow: { openPublishDrawer(message: nil) },
+          openRepositoryOverview: {
+            repositoryContextStage = .overview
+            selectWorkspaceSection(.sync)
+          },
+          openContentHealthOverview: {
+            contentHealthFilter = .overview
+            selectWorkspaceSection(.contentHealth)
+          },
+          openReleaseHistory: {
+            repositoryContextStage = .history
+            selectWorkspaceSection(.sync)
+          }
         )
-        .disabled(!shellState.canUseProtectedWorkbench || shellState.isQuickHideActive)
+        .accessibilityHidden(shellState.isQuickHideActive)
       }
 
       ToolbarItem(placement: .principal) {
@@ -291,7 +279,7 @@ struct ContentView: View {
       }
 
       ToolbarItem(placement: .primaryAction) {
-        if supportsInspector {
+        if supportsInspector && (!isCompactLayout || canRequestInspectorInCurrentLayout) {
           inspectorToolbarButton
         }
       }
@@ -457,8 +445,6 @@ struct ContentView: View {
         isPresented: modalIsPresentedBinding(.publishDrawer)
       )
       .frame(minWidth: 680, idealWidth: 780, minHeight: 600, idealHeight: 720)
-    case .taskCenter:
-      WorkspaceTaskCenterView(store: store)
     case .localSitePreview:
       LocalSitePreviewPanelView(store: store)
     case .firstRunSetup:

@@ -1,22 +1,58 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
-struct WorkspaceToolbarControlCluster<Content: View>: View {
-  let content: Content
-
-  init(@ViewBuilder content: () -> Content) {
-    self.content = content()
+extension WorkspaceSection {
+  var showsPublishingStatusToolbar: Bool {
+    switch self {
+    case .writing, .sync, .contentHealth:
+      return true
+    case .library, .rss, .siteStarter, .images:
+      return false
+    }
   }
+}
+
+struct WorkspaceToolbarNavigationContent: View {
+  let store: WorkbenchStore
+  let canUseProtectedWorkbench: Bool
+  let selectedDraftID: UUID?
+  let selectedSection: WorkspaceSection
+  let isCompact: Bool
+  let isQuickHideActive: Bool
+  let openPublishFlow: () -> Void
+  let openRepositoryOverview: () -> Void
+  let openContentHealthOverview: () -> Void
+  let openReleaseHistory: () -> Void
 
   var body: some View {
-    HStack(spacing: 2) {
-      content
+    HStack(alignment: .center, spacing: 8) {
+      WorkspaceToolbarLeadingContent(
+        store: store,
+        isCompact: isCompact
+      )
+      .disabled(!canUseProtectedWorkbench)
+
+      if selectedSection.showsPublishingStatusToolbar {
+        PublishingStatusToolbarControl(
+          store: store,
+          canUseProtectedWorkbench: canUseProtectedWorkbench,
+          selectedDraftID: selectedDraftID,
+          selectedSection: selectedSection,
+          isCompact: isCompact,
+          openPublishFlow: openPublishFlow,
+          openRepositoryOverview: openRepositoryOverview,
+          openContentHealthOverview: openContentHealthOverview,
+          openReleaseHistory: openReleaseHistory
+        )
+      }
+
+      WorkspaceTaskCenterToolbarButton(
+        store: store,
+        isCompact: isCompact
+      )
+      .disabled(!canUseProtectedWorkbench || isQuickHideActive)
     }
-    .padding(2)
-    .workbenchGlassSurface(
-      material: .ultraThinMaterial,
-      in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-    )
+    .fixedSize(horizontal: true, vertical: false)
   }
 }
 
@@ -55,17 +91,20 @@ struct WorkspaceToolbarMenuLabel: View {
 
 struct WorkspaceTaskCenterToolbarButton: View {
   @ObservedObject private var activityStatus: WorkbenchActivityStatusFacade
+  let store: WorkbenchStore
   let isCompact: Bool
-  let action: () -> Void
+  @State private var isPresented = false
 
-  init(store: WorkbenchStore, isCompact: Bool, action: @escaping () -> Void) {
+  init(store: WorkbenchStore, isCompact: Bool) {
+    self.store = store
     _activityStatus = ObservedObject(wrappedValue: store.activityStatus)
     self.isCompact = isCompact
-    self.action = action
   }
 
   var body: some View {
-    Button(action: action) {
+    Button {
+      isPresented.toggle()
+    } label: {
       Label("任务", systemImage: activityStatus.activeTaskCount > 0
         ? "list.bullet.rectangle.fill"
         : "list.bullet.rectangle")
@@ -76,20 +115,25 @@ struct WorkspaceTaskCenterToolbarButton: View {
         showsTitle: !isCompact
       )
     )
+    .frame(width: isCompact ? 30 : 64, height: 28)
     .overlay(alignment: .topTrailing) {
       if activityStatus.failedTaskCount > 0 {
         Text("\(min(activityStatus.failedTaskCount, 9))")
           .font(.workbenchMetadata.weight(.bold).monospacedDigit())
           .foregroundStyle(.white)
-          .frame(minWidth: 14, minHeight: 14)
+          .frame(width: 14, height: 14)
           .background(WorkbenchTheme.risk, in: Circle())
-          .offset(x: 4, y: -4)
+          .offset(x: -1, y: 2)
+          .allowsHitTesting(false)
       }
     }
     .help(String(localized: "统一任务中心"))
     .accessibilityLabel("统一任务中心")
     .accessibilityValue(taskCenterAccessibilityValue)
     .accessibilityIdentifier("workspace-task-center-toggle")
+    .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+      WorkspaceTaskCenterView(store: store)
+    }
   }
 
   private var taskCenterAccessibilityValue: String {
@@ -134,17 +178,37 @@ struct OmniCommandSearchBar: View {
         .foregroundStyle(.tertiary)
       }
       .padding(.horizontal, 8)
-      .frame(height: 26)
-      .frame(minWidth: isCompact ? 70 : 180, maxWidth: 240)
-      .workbenchGlassSurface(
-        material: .ultraThinMaterial,
+      .frame(width: isCompact ? 70 : 220, height: 28)
+      .background(
+        Color.primary.opacity(0.06),
         in: RoundedRectangle(cornerRadius: 7, style: .continuous)
       )
       .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
-    .buttonStyle(.plain)
+    .buttonStyle(WorkspaceToolbarFocusRingButtonStyle(cornerRadius: 7))
+    .layoutPriority(1)
     .help(String(localized: "唤起命令面板与全局搜索 (⌘P)"))
     .accessibilityLabel("全局搜索")
+  }
+}
+
+struct WorkspaceToolbarFocusRingButtonStyle: ButtonStyle {
+  let cornerRadius: CGFloat
+
+  @Environment(\.isFocused) private var isFocused
+
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .overlay {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+          .strokeBorder(
+            isFocused ? Color.accentColor : Color.clear,
+            lineWidth: isFocused ? 1.5 : 0
+          )
+          .padding(1)
+      }
+      .opacity(configuration.isPressed ? 0.82 : 1)
+      .animation(WorkbenchMotion.quick, value: configuration.isPressed)
   }
 }
 
@@ -173,10 +237,11 @@ struct WorkspaceToolbarIconButtonStyle: ButtonStyle {
       }
       .overlay {
         RoundedRectangle(cornerRadius: 5, style: .continuous)
-          .stroke(
+          .strokeBorder(
             isFocused ? Color.accentColor : Color.clear,
-            lineWidth: isFocused ? 2 : 0
+            lineWidth: isFocused ? 1.5 : 0
           )
+          .padding(1)
       }
       .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
   }
@@ -213,40 +278,38 @@ struct WorkspaceToolbarLeadingContent: View {
   }
 
   var body: some View {
-    WorkspaceToolbarControlCluster {
-      Menu {
-        ForEach(shell.publishingProfiles) { profile in
-          Button {
-            store.selectProfile(profile.id)
-          } label: {
-            if profile.id == shell.activeProfileID {
-              Label(profile.name, systemImage: "checkmark")
-            } else {
-              Text(profile.name)
-            }
+    Menu {
+      ForEach(shell.publishingProfiles) { profile in
+        Button {
+          store.selectProfile(profile.id)
+        } label: {
+          if profile.id == shell.activeProfileID {
+            Label(profile.name, systemImage: "checkmark")
+          } else {
+            Text(profile.name)
           }
         }
-      } label: {
-        WorkspaceToolbarMenuLabel(
-          title: shell.activeProfile.name,
-          systemImage: "globe",
-          showsTitle: !isCompact,
-          siteKindDisplayName: shell.activeProfile.siteKind.localizedDisplayName
-        )
-        .frame(maxWidth: isCompact ? nil : 200, alignment: .leading)
       }
-      .menuStyle(.borderlessButton)
-      .menuIndicator(.hidden)
-      .help(
-        String(
-          localized: "个人网站：\(shell.activeProfile.name) · \(shell.activeProfile.siteKind.localizedDisplayName)"
-        )
+    } label: {
+      WorkspaceToolbarMenuLabel(
+        title: shell.activeProfile.name,
+        systemImage: "globe",
+        showsTitle: !isCompact,
+        siteKindDisplayName: shell.activeProfile.siteKind.localizedDisplayName
       )
-      .accessibilityLabel("切换个人网站")
-      .accessibilityValue(shell.activeProfile.name)
-      .accessibilityIdentifier("workspace-profile-menu")
-
+      .frame(width: isCompact ? 30 : 180, height: 28, alignment: .leading)
     }
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .buttonStyle(WorkspaceToolbarFocusRingButtonStyle(cornerRadius: 5))
+    .help(
+      String(
+        localized: "个人网站：\(shell.activeProfile.name) · \(shell.activeProfile.siteKind.localizedDisplayName)"
+      )
+    )
+    .accessibilityLabel("切换个人网站")
+    .accessibilityValue(shell.activeProfile.name)
+    .accessibilityIdentifier("workspace-profile-menu")
   }
 }
 
@@ -303,6 +366,8 @@ struct PublishingStatusToolbarControl: View {
   @ObservedObject private var statusState: WorkbenchPublishStatusFeatureFacade
   let canUseProtectedWorkbench: Bool
   let selectedDraftID: UUID?
+  let selectedSection: WorkspaceSection
+  let isCompact: Bool
   let openPublishFlow: () -> Void
   let openRepositoryOverview: () -> Void
   let openContentHealthOverview: () -> Void
@@ -314,6 +379,8 @@ struct PublishingStatusToolbarControl: View {
     store: WorkbenchStore,
     canUseProtectedWorkbench: Bool,
     selectedDraftID: UUID?,
+    selectedSection: WorkspaceSection,
+    isCompact: Bool,
     openPublishFlow: @escaping () -> Void,
     openRepositoryOverview: @escaping () -> Void,
     openContentHealthOverview: @escaping () -> Void,
@@ -323,6 +390,8 @@ struct PublishingStatusToolbarControl: View {
     _statusState = ObservedObject(wrappedValue: store.publishStatus)
     self.canUseProtectedWorkbench = canUseProtectedWorkbench
     self.selectedDraftID = selectedDraftID
+    self.selectedSection = selectedSection
+    self.isCompact = isCompact
     self.openPublishFlow = openPublishFlow
     self.openRepositoryOverview = openRepositoryOverview
     self.openContentHealthOverview = openContentHealthOverview
@@ -331,42 +400,30 @@ struct PublishingStatusToolbarControl: View {
 
   var body: some View {
     let items = statusItems
-    let currentToolbarStatus = items.max { $0.severity.rawValue < $1.severity.rawValue } ?? draftStatus
+    let currentToolbarStatus = contextualToolbarStatus
 
     Button {
       isPresented.toggle()
     } label: {
-      HStack(spacing: 6) {
-        Circle()
-          .fill(currentToolbarStatus.color)
-          .frame(width: 7, height: 7)
-        Text(currentToolbarStatus.value)
-          .foregroundStyle(.primary)
-      }
+      statusToolbarLabel(currentToolbarStatus)
       .font(.workbenchButtonLabel)
-      .fixedSize(horizontal: true, vertical: false)
-      .accessibilityLabel("发布状态")
-      .padding(.horizontal, 9)
-      .frame(height: 26)
+      .accessibilityLabel(contextualStatusTitle)
+      .frame(width: isCompact ? 112 : 128, height: 28)
       .background(currentToolbarStatus.color.opacity(0.12), in: Capsule())
-      .overlay {
-        Capsule()
-          .stroke(currentToolbarStatus.color.opacity(0.2), lineWidth: 0.8)
-      }
       .contentShape(Capsule())
     }
-    .buttonStyle(.plain)
+    .buttonStyle(WorkspaceToolbarFocusRingButtonStyle(cornerRadius: 13))
     .disabled(!canUseProtectedWorkbench)
     .help(
       String(
-        localized: "发布状态：\(currentToolbarStatus.area.title) · \(currentToolbarStatus.value)。点击查看状态和发布操作。"
+        localized: "\(contextualStatusTitle)：\(currentToolbarStatus.value)。点击查看状态和发布操作。"
       )
     )
-    .accessibilityLabel("发布状态")
+    .accessibilityLabel(contextualStatusTitle)
     .accessibilityValue("\(currentToolbarStatus.area.title)：\(currentToolbarStatus.value)")
     .popover(isPresented: $isPresented, arrowEdge: .bottom) {
       VStack(alignment: .leading, spacing: 0) {
-        Label("发布状态", systemImage: "paperplane.circle")
+        Label(contextualStatusTitle, systemImage: "paperplane.circle")
           .font(.headline)
           .padding(.horizontal, WorkbenchSpacing.section)
           .padding(.vertical, 12)
@@ -397,8 +454,49 @@ struct PublishingStatusToolbarControl: View {
     }
   }
 
+  @ViewBuilder
+  private func statusToolbarLabel(_ status: PublishingStatusPopoverItem) -> some View {
+    HStack(spacing: 6) {
+      Circle()
+        .fill(status.color)
+        .frame(width: 7, height: 7)
+      Text(status.value)
+        .foregroundStyle(.primary)
+        .lineLimit(1)
+        .truncationMode(.middle)
+    }
+    .frame(maxWidth: .infinity, alignment: .center)
+  }
+
   private var statusItems: [PublishingStatusPopoverItem] {
-    [repositoryStatus, draftStatus, deploymentStatus]
+    switch selectedSection {
+    case .sync:
+      return [repositoryStatus, draftStatus, deploymentStatus]
+    case .writing, .contentHealth:
+      return [draftStatus, repositoryStatus, deploymentStatus]
+    case .library, .rss, .siteStarter, .images:
+      return [draftStatus, repositoryStatus, deploymentStatus]
+    }
+  }
+
+  private var contextualToolbarStatus: PublishingStatusPopoverItem {
+    switch selectedSection {
+    case .sync:
+      return repositoryStatus
+    case .writing, .contentHealth, .library, .rss, .siteStarter, .images:
+      return draftStatus
+    }
+  }
+
+  private var contextualStatusTitle: String {
+    switch selectedSection {
+    case .sync:
+      return String(localized: "站点状态")
+    case .contentHealth:
+      return String(localized: "检查状态")
+    case .writing, .library, .rss, .siteStarter, .images:
+      return String(localized: "文章状态")
+    }
   }
 
   private var repositoryStatus: PublishingStatusPopoverItem {

@@ -80,23 +80,37 @@ struct SettingsConfigurationHealthCard: View {
   }
 
   private var statusSummary: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 12) {
-      VStack(alignment: .leading, spacing: 3) {
-        Text("当前站点")
-          .font(.workbenchSectionTitle)
-        summaryText
-          .font(.callout)
-          .foregroundStyle(.secondary)
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(alignment: .firstTextBaseline, spacing: 12) {
+        VStack(alignment: .leading, spacing: 3) {
+          Text("当前站点")
+            .font(.workbenchSectionTitle)
+          summaryText
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+
+        Spacer()
+
+        Label(LocalizedStringKey(overallStatusText), systemImage: overallStatusImage)
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(overallStatusColor)
+          .padding(.horizontal, 10)
+          .padding(.vertical, 5)
+          .background(overallStatusColor.opacity(0.12), in: Capsule())
       }
 
-      Spacer()
-
-      Label(LocalizedStringKey(overallStatusText), systemImage: overallStatusImage)
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(overallStatusColor)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(overallStatusColor.opacity(0.12), in: Capsule())
+      GeometryReader { geo in
+        ZStack(alignment: .leading) {
+          Capsule()
+            .fill(Color.primary.opacity(0.1))
+            .frame(height: 6)
+          Capsule()
+            .fill(overallStatusColor)
+            .frame(width: geo.size.width * CGFloat(readyRequiredCount) / CGFloat(max(1, requiredItems.count)), height: 6)
+        }
+      }
+      .frame(height: 6)
     }
     .padding(14)
     .background(WorkbenchBackgroundStyle.panel, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))

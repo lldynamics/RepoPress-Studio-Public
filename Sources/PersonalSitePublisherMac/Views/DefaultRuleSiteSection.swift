@@ -16,27 +16,45 @@ struct DefaultRuleSiteSection: View {
         .accessibilityLabel("站点类型")
         .accessibilityValue(activeProfile.siteKind.localizedDisplayName)
 
-        HStack {
+        HStack(spacing: 8) {
           Text("快捷套用框架规范：")
             .font(.caption)
             .foregroundStyle(.secondary)
 
-          Button("Hexo 规范") {
+          Button {
             activeProfileBinding.frontMatterStyle.wrappedValue = .yaml
             activeProfileBinding.dateFormat.wrappedValue = "yyyy-MM-dd HH:mm:ss"
             activeProfileBinding.slugValidationRule.wrappedValue = .lowercaseKebab
             activeProfileBinding.includeDraftFlagInFrontMatter.wrappedValue = false
+          } label: {
+            Text("Hexo 规范")
+              .font(.caption.weight(.medium))
+              .padding(.horizontal, 8)
+              .padding(.vertical, 3)
+              .background(
+                activeProfile.dateFormat == "yyyy-MM-dd HH:mm:ss" ? WorkbenchTheme.brand.opacity(0.15) : Color.primary.opacity(0.06),
+                in: Capsule()
+              )
+              .foregroundStyle(activeProfile.dateFormat == "yyyy-MM-dd HH:mm:ss" ? WorkbenchTheme.brand : Color.primary)
           }
-          .buttonStyle(.borderless)
-          .font(.caption.weight(.medium))
+          .buttonStyle(.plain)
 
-          Button("Hugo 规范") {
+          Button {
             activeProfileBinding.frontMatterStyle.wrappedValue = .yaml
             activeProfileBinding.dateFormat.wrappedValue = "yyyy-MM-dd'T'HH:mm:ssXXX"
             activeProfileBinding.includeDraftFlagInFrontMatter.wrappedValue = true
+          } label: {
+            Text("Hugo 规范")
+              .font(.caption.weight(.medium))
+              .padding(.horizontal, 8)
+              .padding(.vertical, 3)
+              .background(
+                activeProfile.dateFormat.contains("XXX") ? WorkbenchTheme.brand.opacity(0.15) : Color.primary.opacity(0.06),
+                in: Capsule()
+              )
+              .foregroundStyle(activeProfile.dateFormat.contains("XXX") ? WorkbenchTheme.brand : Color.primary)
           }
-          .buttonStyle(.borderless)
-          .font(.caption.weight(.medium))
+          .buttonStyle(.plain)
         }
         .padding(.vertical, 2)
 
@@ -84,7 +102,48 @@ struct DefaultRuleSiteSection: View {
       }
 
       DefaultRuleCustomFrontMatterSection()
+
+      Section("Front Matter 预览") {
+        VStack(alignment: .leading, spacing: 4) {
+          Text(generatedFrontMatterPreview)
+            .font(.caption.monospaced())
+            .foregroundStyle(.primary)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .textBackgroundColor))
+            .cornerRadius(6)
+            .overlay(
+              RoundedRectangle(cornerRadius: 6)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            )
+        }
+      }
     }
+  }
+
+  private var generatedFrontMatterPreview: String {
+    let style = activeProfile.frontMatterStyle
+    let delimiter = style == .yaml ? "---" : "+++"
+    var lines: [String] = [delimiter]
+    lines.append("title: 示例文章标题")
+    lines.append("date: 2026-08-06 10:00:00")
+    if !activeProfile.defaultAuthor.isEmpty {
+      lines.append("author: \(activeProfile.defaultAuthor)")
+    }
+    if !activeProfile.defaultTags.isEmpty {
+      lines.append("tags: [\(activeProfile.defaultTags.joined(separator: ", "))]")
+    }
+    if !activeProfile.defaultCategories.isEmpty {
+      lines.append("categories: [\(activeProfile.defaultCategories.joined(separator: ", "))]")
+    }
+    if activeProfile.includeDraftFlagInFrontMatter {
+      lines.append("draft: true")
+    }
+    if activeProfile.includeCoverInFrontMatter {
+      lines.append("cover: /images/example-cover.png")
+    }
+    lines.append(delimiter)
+    return lines.joined(separator: "\n")
   }
 
   private var activeProfile: SiteProfile {

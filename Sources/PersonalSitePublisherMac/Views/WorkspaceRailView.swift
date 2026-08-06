@@ -23,7 +23,7 @@ struct WorkspaceTaskNavigation: View {
   var body: some View {
     VStack(spacing: 8) {
       HStack(spacing: 8) {
-        sectionButton(.writing, prominence: .primary)
+        sectionButton(.rss, prominence: .primary)
         sectionButton(.library, prominence: .primary)
       }
 
@@ -32,7 +32,7 @@ struct WorkspaceTaskNavigation: View {
         sectionButton(.contentHealth, prominence: .compact)
       }
 
-      sectionButton(.rss, prominence: .compact)
+      sectionButton(.writing, prominence: .compact)
     }
     .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
     .padding(.vertical, WorkspaceSidebarMetrics.headerVerticalPadding)
