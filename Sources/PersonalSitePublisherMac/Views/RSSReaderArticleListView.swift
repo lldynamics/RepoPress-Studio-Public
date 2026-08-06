@@ -1014,6 +1014,14 @@ struct RSSArticleList: View {
   }
 }
 
+#if DEBUG
+  #Preview("RSS Article List Skeleton") {
+    RSSArticleListSkeleton()
+      .frame(width: 360, height: 560)
+      .background(.background)
+  }
+#endif
+
 struct RSSArticleRow: View {
   let article: RSSArticleHeader
   let feed: RSSFeed?

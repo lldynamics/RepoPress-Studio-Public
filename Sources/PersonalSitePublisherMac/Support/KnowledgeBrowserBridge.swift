@@ -739,13 +739,13 @@ final class KnowledgeBrowserBridge: ObservableObject {
 
 }
 
-private struct BrowserPreparedImport: @unchecked Sendable {
+private struct BrowserPreparedImport: Sendable {
   var envelope: BrowserImportEnvelope
   var operationID: UUID
   var requestFingerprint: String
 }
 
-private struct BrowserImportEnvelope: Codable {
+private struct BrowserImportEnvelope: Codable, Sendable {
   var operationID: UUID?
   var capture: KnowledgeBrowserCapture
   var folderID: UUID?

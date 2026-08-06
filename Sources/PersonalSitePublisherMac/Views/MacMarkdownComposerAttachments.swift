@@ -216,10 +216,20 @@ extension MacMarkdownComposerView {
     _ attachments: [DraftAttachment],
     fileStore: ManagedAttachmentFileStore
   ) {
+    var cleanupFailures: [String] = []
     for attachment in attachments {
       guard let sourceFilePath = attachment.sourceFilePath else { continue }
-      fileStore.discardStoredFile(at: URL(fileURLWithPath: sourceFilePath))
+      do {
+        try fileStore.discardStoredFile(at: URL(fileURLWithPath: sourceFilePath))
+      } catch {
+        cleanupFailures.append(error.localizedDescription)
+      }
     }
+    guard !cleanupFailures.isEmpty else { return }
+    let message = ([String(localized: "部分媒体文件未能清理。")] + cleanupFailures)
+      .joined(separator: "\n")
+    selectionActionMessage = message
+    EditorAccessibilityAnnouncementCenter.announce(message, priority: .high)
   }
 
   var activeInsertedImageMetadataIndex: Int? {

@@ -15,7 +15,7 @@ extension WorkbenchStore {
     do {
       try Task.checkCancellation()
     } catch {
-      resolvedFileStore.discardStoredFile(at: managedURL)
+      try resolvedFileStore.discardStoredFile(at: managedURL)
       throw error
     }
     let byteSize = (

@@ -13,6 +13,19 @@ and safe for a public repository.
    home path, release artifact, or real user screenshot is included.
 5. Describe the user impact and the checks you ran.
 
+## Test framework strategy
+
+New tests should use Swift Testing (`import Testing`, `@Test`, `#expect`, and
+`#require`) by default. Existing XCTest coverage remains valid and should not
+be mechanically rewritten; migrate an existing test file only when it is
+already being changed for a behavior update or when XCTest-specific APIs are
+not needed.
+
+Use XCTest when the test depends on XCTest-only integration or UI lifecycle
+behavior. Keep those cases isolated and avoid adding new XCTest suites for
+pure models, services, projections, or persistence rules. Every new test must
+still run through the package's normal `swift test` gate.
+
 Do not commit `.env` files, signing material, provisioning profiles, database
 files, diagnostic archives, or generated release packages. Use `example.com`,
 `example.invalid`, and `/Users/example/` in fixtures.

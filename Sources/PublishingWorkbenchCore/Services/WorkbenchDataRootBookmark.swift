@@ -109,7 +109,7 @@ public struct WorkbenchDataRootSecurityScope: Sendable {
 }
 
 /// Retains security-scoped access until the owning data-root session is released.
-public final class WorkbenchDataRootAccessLease: @unchecked Sendable {
+public final class WorkbenchDataRootAccessLease: Sendable {
   public let rootURL: URL
   public let didStartAccess: Bool
 
@@ -132,7 +132,7 @@ public final class WorkbenchDataRootAccessLease: @unchecked Sendable {
   }
 }
 
-public final class WorkbenchDataRootSession: @unchecked Sendable {
+public final class WorkbenchDataRootSession: Sendable {
   public let layout: WorkbenchDataRootLayout
   public let bookmarkRecord: WorkbenchDataRootBookmarkRecord
   public let probeResult: WorkbenchDataRootProbeResult

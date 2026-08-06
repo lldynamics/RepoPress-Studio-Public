@@ -161,7 +161,7 @@ public struct OpenGraphCoverGeneratorService: Sendable {
 
 private extension NSColor {
   convenience init?(hexString: String) {
-    var hexSanitized = hexString.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "#", with: "")
+    let hexSanitized = hexString.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "#", with: "")
     var rgb: UInt64 = 0
     guard Scanner(string: hexSanitized).scanHexInt64(&rgb) else { return nil }
 

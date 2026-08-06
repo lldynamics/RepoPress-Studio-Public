@@ -3,6 +3,7 @@ import Foundation
 public enum ManagedAttachmentFileStoreError: LocalizedError, Equatable, Sendable {
   case sourceUnavailable(String)
   case storageFailed(path: String, reason: String)
+  case discardFailed(path: String, reason: String)
 
   public var errorDescription: String? {
     switch self {
@@ -10,6 +11,8 @@ public enum ManagedAttachmentFileStoreError: LocalizedError, Equatable, Sendable
       return CoreL10n.format("媒体源文件缺失：%@", path)
     case .storageFailed(let path, let reason):
       return CoreL10n.format("媒体源文件无法安全读取：%@。%@", path, reason)
+    case .discardFailed(let path, let reason):
+      return CoreL10n.format("媒体临时文件清理失败：%@。%@", path, reason)
     }
   }
 }
@@ -106,7 +109,7 @@ public struct ManagedAttachmentFileStore: Sendable {
       if isRegularFile(at: destinationURL, fileManager: fileManager) {
         return destinationURL
       }
-      removeDirectoryIfEmpty(attachmentDirectoryURL, fileManager: fileManager)
+      try? removeDirectoryIfEmpty(attachmentDirectoryURL, fileManager: fileManager)
       throw ManagedAttachmentFileStoreError.storageFailed(
         path: standardizedSourceURL.path,
         reason: error.localizedDescription
@@ -117,7 +120,7 @@ public struct ManagedAttachmentFileStore: Sendable {
   /// Removes only a file previously generated below this store's exact root.
   /// Used when an asynchronous import is cancelled before the draft can adopt
   /// the managed copy.
-  public func discardStoredFile(at fileURL: URL) {
+  public func discardStoredFile(at fileURL: URL) throws {
     let standardizedRootURL = rootDirectoryURL.standardizedFileURL
     let standardizedFileURL = fileURL.standardizedFileURL
     guard
@@ -128,9 +131,18 @@ public struct ManagedAttachmentFileStore: Sendable {
     }
 
     let fileManager = FileManager.default
-    try? fileManager.removeItem(at: standardizedFileURL)
-    let attachmentDirectoryURL = standardizedFileURL.deletingLastPathComponent()
-    removeDirectoryIfEmpty(attachmentDirectoryURL, fileManager: fileManager)
+    do {
+      if fileManager.fileExists(atPath: standardizedFileURL.path) {
+        try fileManager.removeItem(at: standardizedFileURL)
+      }
+      let attachmentDirectoryURL = standardizedFileURL.deletingLastPathComponent()
+      try removeDirectoryIfEmpty(attachmentDirectoryURL, fileManager: fileManager)
+    } catch {
+      throw ManagedAttachmentFileStoreError.discardFailed(
+        path: standardizedFileURL.path,
+        reason: error.localizedDescription
+      )
+    }
   }
 
   private func safeFilename(for sourceURL: URL, attachmentID: UUID) -> String {
@@ -158,9 +170,10 @@ public struct ManagedAttachmentFileStore: Sendable {
   private func removeDirectoryIfEmpty(
     _ directoryURL: URL,
     fileManager: FileManager
-  ) {
-    if (try? fileManager.contentsOfDirectory(atPath: directoryURL.path).isEmpty) == true {
-      try? fileManager.removeItem(at: directoryURL)
-    }
+  ) throws {
+    guard fileManager.fileExists(atPath: directoryURL.path) else { return }
+    let contents = try fileManager.contentsOfDirectory(atPath: directoryURL.path)
+    guard contents.isEmpty else { return }
+    try fileManager.removeItem(at: directoryURL)
   }
 }
