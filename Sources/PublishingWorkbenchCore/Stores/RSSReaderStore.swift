@@ -208,8 +208,6 @@ public final class RSSReaderStore: ObservableObject {
   public static let lastPruneDateDefaultsKey = "rssLastAutomaticPruneDate"
   public static let defaultRetentionDays = 60
   public static let defaultFeedBodyOfflineCacheEnabled = true
-  @available(*, deprecated, message: "Use defaultFeedBodyOfflineCacheEnabled")
-  public static let defaultAutomaticOfflineCacheEnabled = true
   public static let defaultPrivateNetworkAccessEnabled = false
   public static let maximumRefreshConcurrency = 6
 
@@ -258,9 +256,6 @@ public final class RSSReaderStore: ObservableObject {
   @Published public internal(set) var feedBodyOfflineCacheEnabled: Bool
   @Published public internal(set) var privateNetworkAccessEnabled: Bool
   @Published public internal(set) var lastPruneSummary: RSSArticlePruneSummary?
-
-  @available(*, deprecated, message: "Use feedBodyOfflineCacheEnabled")
-  public var automaticOfflineCacheEnabled: Bool { feedBodyOfflineCacheEnabled }
 
   public let fileURL: URL
 
@@ -391,14 +386,6 @@ public final class RSSReaderStore: ObservableObject {
     load()
   }
 
-  /// Payload-free compatibility view for call sites that have not migrated to
-  /// `articleHeaders` yet. Reading this property never performs database I/O.
-  @available(*, deprecated, message: "Use articleHeaders and loadArticle(id:) instead")
-  public var articles: [RSSArticle] {
-    if database == nil { return legacyArticles }
-    return articleHeaders.map(RSSArticle.init(header:))
-  }
-
   public var unreadCount: Int {
     articleHeaders.reduce(into: 0) { count, header in
       if !header.isRead { count += 1 }
@@ -434,11 +421,6 @@ public final class RSSReaderStore: ObservableObject {
     feedBodyOfflineCacheEnabled = enabled
     userDefaults.set(enabled, forKey: Self.feedBodyOfflineCacheDefaultsKey)
     userDefaults.set(enabled, forKey: Self.automaticOfflineCacheDefaultsKey)
-  }
-
-  @available(*, deprecated, message: "Use updateFeedBodyOfflineCacheSettings(enabled:)")
-  public func updateAutomaticOfflineCacheSettings(enabled: Bool) {
-    updateFeedBodyOfflineCacheSettings(enabled: enabled)
   }
 
   public func updatePrivateNetworkAccessSettings(enabled: Bool) {
@@ -571,16 +553,6 @@ public final class RSSReaderStore: ObservableObject {
     } onCancel: {
       task.cancel()
     }
-  }
-
-  @available(*, deprecated, message: "Use articleHeaders(for:searchText:unreadOnly:) instead")
-  public func articles(
-    for scope: RSSArticleScope,
-    searchText: String = "",
-    unreadOnly: Bool = false
-  ) -> [RSSArticle] {
-    articleHeaders(for: scope, searchText: searchText, unreadOnly: unreadOnly)
-      .map(RSSArticle.init(header:))
   }
 
   public func articleHeader(id: String) -> RSSArticleHeader? {

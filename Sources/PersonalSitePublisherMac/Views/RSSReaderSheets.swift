@@ -59,9 +59,6 @@ struct RSSHighlightEditorSheet: View {
         .accessibilityLabel("高亮标签")
 
       HStack {
-        Text("内容保存在本机；有批注时会同步到资料库。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
         Spacer()
         Button("保存", action: save)
           .workbenchProminentActionStyle()

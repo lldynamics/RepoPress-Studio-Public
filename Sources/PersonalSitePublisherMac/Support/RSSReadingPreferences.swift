@@ -227,4 +227,13 @@ enum RSSReadingCompletionPolicy {
   static func shouldAutomaticallyMarkRead(progress: Double) -> Bool {
     progress.isFinite && progress >= completionThreshold
   }
+
+  static func didCrossCompletionThreshold(
+    previousProgress: Double?,
+    progress: Double
+  ) -> Bool {
+    guard shouldAutomaticallyMarkRead(progress: progress) else { return false }
+    guard let previousProgress, previousProgress.isFinite else { return true }
+    return previousProgress < completionThreshold
+  }
 }

@@ -18,7 +18,10 @@ final class RSSSubscriptionURLPrivacyTests: XCTestCase {
 
     for subscription in subscriptions {
       XCTAssertThrowsError(
-        try RSSOPMLWriter.makeDocument(subscriptions: [subscription])
+        try RSSOPMLWriter.makeDocument(
+          subscriptions: [subscription],
+          privacyAction: .redactCredentialQueryValues
+        )
       ) { error in
         guard case let RSSReaderError.invalidOPML(message) = error else {
           return XCTFail("Expected invalidOPML, got \(error)")
@@ -72,13 +75,14 @@ final class RSSSubscriptionURLPrivacyTests: XCTestCase {
     XCTAssertFalse(report.hasRisks)
   }
 
-  func testDefaultWriterRedactsCredentialQueryValues() throws {
+  func testRedactingWriterRedactsCredentialQueryValues() throws {
     let url = try XCTUnwrap(
       URL(string: "https://example.com/feed.xml?api_key=legacy-secret&topic=swift")
     )
 
     let data = try RSSOPMLWriter.makeDocument(
-      subscriptions: [RSSOPMLSubscription(title: "Legacy", url: url)]
+      subscriptions: [RSSOPMLSubscription(title: "Legacy", url: url)],
+      privacyAction: .redactCredentialQueryValues
     )
     let xml = try XCTUnwrap(String(data: data, encoding: .utf8))
 
@@ -119,7 +123,8 @@ final class RSSSubscriptionURLPrivacyTests: XCTestCase {
     let report = RSSOPMLWriter.scanExportRisks(subscriptions: [subscription])
     let data = try RSSOPMLWriter.makeDocument(
       subscriptions: [subscription],
-      title: "我的 RSS & 阅读列表"
+      title: "我的 RSS & 阅读列表",
+      privacyAction: .redactCredentialQueryValues
     )
 
     XCTAssertFalse(report.hasRisks)

@@ -153,6 +153,9 @@ struct RSSArticleReader: View {
           renderRevision: showsTranslatedArticle
             ? translation?.id ?? "translated"
             : "source-\(article.fetchedAt.timeIntervalSinceReferenceDate)",
+          speechHighlight: speechController.currentArticleID == displayedArticle.id
+            ? speechController.currentSpeechHighlight
+            : nil,
           onSelectionChanged: { selectedText = $0 },
           onReadingProgress: onReadingProgress,
           onNavigationError: { message in
@@ -163,16 +166,6 @@ struct RSSArticleReader: View {
         .frame(minHeight: 240, maxHeight: .infinity)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .layoutPriority(1)
-        .overlay(alignment: .topTrailing) {
-          ReaderFloatingOutlineRail(
-            markdownText: article.contentHTML
-          ) { item in
-            EditorAccessibilityAnnouncementCenter.announce("导航至 \(item.title)")
-          }
-          .padding(.top, 58)
-          .padding(.trailing, 16)
-          .zIndex(2)
-        }
         .overlay(alignment: .top) {
           if hasSelectedText {
             ReaderContextualSelectionBar(
@@ -209,7 +202,7 @@ struct RSSArticleReader: View {
           readerToolbar(for: article, speechArticle: displayedArticle)
           translationStatusView
         }
-        .background(.ultraThinMaterial)
+        .background(.thinMaterial)
         .zIndex(1)
         .frame(maxWidth: 900)
         .frame(maxWidth: .infinity)
@@ -387,30 +380,9 @@ struct RSSArticleReader: View {
     for article: RSSArticle,
     speechArticle: RSSArticle
   ) -> some View {
-    HStack(alignment: .center, spacing: 6) {
-      if let onBack {
-        Button("返回文章列表", systemImage: "chevron.left", action: onBack)
-          .labelStyle(.iconOnly)
-          .buttonStyle(.borderless)
-          .help("返回 RSS 文章列表")
-          .accessibilityLabel("返回 RSS 文章列表")
-      }
-      starredButton(for: article)
-        .labelStyle(.iconOnly)
-      readButton(for: article)
-        .labelStyle(.iconOnly)
-      speechToggleButton(for: speechArticle)
-        .labelStyle(.iconOnly)
-      speechRateMenu
-      translationControls
-      workflowIntegrationMenu(for: article)
-      readerOverflowMenu(for: article, speechArticle: speechArticle)
-      annotationSummaryButton(for: article)
-      if workflowIsBusy {
-        ProgressView()
-          .controlSize(.small)
-          .accessibilityLabel("正在处理阅读内容")
-      }
+    ViewThatFits(in: .horizontal) {
+      readerToolbarExpandedContent(for: article, speechArticle: speechArticle)
+      readerToolbarCompactContent(for: article, speechArticle: speechArticle)
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 4)
@@ -421,6 +393,66 @@ struct RSSArticleReader: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .controlSize(.small)
+    .popover(isPresented: $showsAnnotationSummary, arrowEdge: .bottom) {
+      annotationSummary(for: article)
+    }
+  }
+
+  @ViewBuilder
+  private func readerToolbarExpandedContent(
+    for article: RSSArticle,
+    speechArticle: RSSArticle
+  ) -> some View {
+    HStack(alignment: .center, spacing: 6) {
+      readerBackButton
+      starredButton(for: article)
+        .labelStyle(.iconOnly)
+      readButton(for: article)
+        .labelStyle(.iconOnly)
+      originalArticleButton(for: article)
+        .labelStyle(.iconOnly)
+      readerOverflowMenu(for: article, speechArticle: speechArticle)
+      readerToolbarBusyIndicator
+    }
+  }
+
+  @ViewBuilder
+  private func readerToolbarCompactContent(
+    for article: RSSArticle,
+    speechArticle: RSSArticle
+  ) -> some View {
+    HStack(alignment: .center, spacing: 6) {
+      readerBackButton
+      starredButton(for: article)
+        .labelStyle(.iconOnly)
+      readButton(for: article)
+        .labelStyle(.iconOnly)
+      originalArticleButton(for: article)
+        .labelStyle(.iconOnly)
+      readerOverflowMenu(for: article, speechArticle: speechArticle)
+        .labelStyle(.iconOnly)
+      readerToolbarBusyIndicator
+    }
+  }
+
+  @ViewBuilder
+  private var readerBackButton: some View {
+    if let onBack {
+      Button("返回文章列表", systemImage: "chevron.left", action: onBack)
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
+        .help("返回 RSS 文章列表")
+        .accessibilityLabel("返回 RSS 文章列表")
+    }
+  }
+
+  @ViewBuilder
+  private var readerToolbarBusyIndicator: some View {
+    if workflowIsBusy {
+      ProgressView()
+        .controlSize(.small)
+        .accessibilityLabel("正在处理阅读内容")
+    }
   }
 
   private func speechToggleButton(for article: RSSArticle) -> some View {
@@ -446,7 +478,7 @@ struct RSSArticleReader: View {
     }
     .buttonStyle(.bordered)
     .keyboardShortcut("l", modifiers: [.command, .option])
-    .help(isActive ? (speechController.isPaused ? "继续朗读当前文章" : "暂停朗读当前文章") : "使用 macOS 语音朗读当前文章")
+    .help(isActive ? (speechController.isPaused ? "继续朗读" : "暂停朗读") : "朗读正文")
     .accessibilityLabel(title)
     .accessibilityIdentifier("rss-reader-speech-toggle")
   }
@@ -596,9 +628,6 @@ struct RSSArticleReader: View {
     .help("查看当前文章的标签、高亮与批注")
     .accessibilityLabel("查看当前文章的标签、高亮与批注")
     .accessibilityIdentifier("rss-reader-annotation-summary")
-    .popover(isPresented: $showsAnnotationSummary, arrowEdge: .bottom) {
-      annotationSummary(for: article)
-    }
   }
 
   @ViewBuilder
@@ -639,6 +668,14 @@ struct RSSArticleReader: View {
       Divider()
       speechToggleButton(for: speechArticle)
       speechRateMenu
+
+      Divider()
+      translationControls
+      Button("查看标注", systemImage: "list.bullet.rectangle") {
+        showsAnnotationSummary = true
+      }
+      .accessibilityLabel("查看当前文章的标签、高亮与批注")
+      .accessibilityIdentifier("rss-reader-annotation-summary")
 
       Divider()
       Menu {

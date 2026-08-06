@@ -25,4 +25,28 @@ final class RSSArticleSpeechControllerTests: XCTestCase {
       2.0
     )
   }
+
+  func testSpeechHighlightExpandsToContainingSentence() {
+    let text = "第一句内容。第二句内容！第三句内容？"
+    let highlight = RSSArticleSpeechController.speechHighlight(
+      in: text,
+      around: NSRange(location: 2, length: 1)
+    )
+
+    XCTAssertEqual(highlight?.text, "第一句内容。")
+    XCTAssertEqual(highlight?.location, 0)
+    XCTAssertEqual(highlight?.length, ("第一句内容。" as NSString).length)
+  }
+
+  func testSpeechHighlightTreatsUnpunctuatedTextAsOneSentence() {
+    let text = "没有句号的正文"
+    let highlight = RSSArticleSpeechController.speechHighlight(
+      in: text,
+      around: NSRange(location: 2, length: 2)
+    )
+
+    XCTAssertEqual(highlight?.text, text)
+    XCTAssertEqual(highlight?.location, 0)
+    XCTAssertEqual(highlight?.length, (text as NSString).length)
+  }
 }

@@ -1098,7 +1098,8 @@ final class RSSReaderTests: XCTestCase {
 
     let data = try RSSOPMLWriter.makeDocument(
       subscriptions: subscriptions,
-      title: "我的 RSS & 阅读列表"
+      title: "我的 RSS & 阅读列表",
+      privacyAction: .redactCredentialQueryValues
     )
     let xml = try XCTUnwrap(String(data: data, encoding: .utf8))
 
@@ -1116,7 +1117,8 @@ final class RSSReaderTests: XCTestCase {
       subscriptions: [
         RSSOPMLSubscription(title: "第一个名称", url: url),
         RSSOPMLSubscription(title: "第二个名称", url: url)
-      ]
+      ],
+      privacyAction: .redactCredentialQueryValues
     )
     let duplicateXML = try XCTUnwrap(String(data: duplicateData, encoding: .utf8))
     XCTAssertEqual(duplicateXML.components(separatedBy: "<outline ").count - 1, 1)
@@ -1124,7 +1126,8 @@ final class RSSReaderTests: XCTestCase {
     let fileURL = try XCTUnwrap(URL(string: "file:///tmp/feed.xml"))
     XCTAssertThrowsError(
       try RSSOPMLWriter.makeDocument(
-        subscriptions: [RSSOPMLSubscription(title: "本地文件", url: fileURL)]
+        subscriptions: [RSSOPMLSubscription(title: "本地文件", url: fileURL)],
+        privacyAction: .redactCredentialQueryValues
       )
     ) { error in
       XCTAssertEqual(
@@ -1133,7 +1136,12 @@ final class RSSReaderTests: XCTestCase {
       )
     }
 
-    XCTAssertThrowsError(try RSSOPMLWriter.makeDocument(subscriptions: [])) { error in
+    XCTAssertThrowsError(
+      try RSSOPMLWriter.makeDocument(
+        subscriptions: [],
+        privacyAction: .redactCredentialQueryValues
+      )
+    ) { error in
       XCTAssertEqual(error as? RSSReaderError, .noOPMLFeeds)
     }
   }
@@ -1242,7 +1250,8 @@ final class RSSReaderTests: XCTestCase {
       data: RSSOPMLWriter.makeDocument(
         subscriptions: store.feeds.map {
           RSSOPMLSubscription(title: $0.displayTitle, url: $0.url, siteURL: $0.siteURL)
-        }
+        },
+        privacyAction: .redactCredentialQueryValues
       )
     )
 
