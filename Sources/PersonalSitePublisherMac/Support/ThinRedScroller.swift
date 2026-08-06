@@ -5,7 +5,19 @@ import SwiftUI
 @MainActor
 public final class ThinRedScroller: NSScroller {
   public static let thinWidth: CGFloat = 3.5
-  private static let knobColor = NSColor.systemRed.withAlphaComponent(0.85)
+
+  private static func knobColor(for appearance: NSAppearance) -> NSColor {
+    let appearanceName = appearance.name.rawValue.lowercased()
+    let isDark = appearanceName.contains("dark")
+    let isHighContrast = appearanceName.contains("highcontrast")
+
+    // A warmer orange-red stays readable on dark surfaces without the visual
+    // glare of a saturated red. High-contrast appearances use full opacity so
+    // the narrow 3.5 pt track remains discoverable for low-vision users.
+    let baseColor = isDark ? NSColor.systemOrange : NSColor.systemRed
+    let alpha: CGFloat = isHighContrast ? 1.0 : (isDark ? 0.92 : 0.78)
+    return baseColor.withAlphaComponent(alpha)
+  }
 
   override public class var isCompatibleWithOverlayScrollers: Bool {
     true
@@ -41,7 +53,7 @@ public final class ThinRedScroller: NSScroller {
       xRadius: Self.thinWidth / 2.0,
       yRadius: Self.thinWidth / 2.0
     )
-    Self.knobColor.setFill()
+    Self.knobColor(for: effectiveAppearance).setFill()
     path.fill()
   }
 }
@@ -217,8 +229,10 @@ private final class ThinRedScrollbarsConfiguratorView: NSView {
     ]
     windowObservers = names.map { name in
       center.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
-        guard let targetWindow = notification.object as? NSWindow else { return }
-        self?.scheduleConfiguration(for: targetWindow)
+        guard notification.object is NSWindow else { return }
+        Task { @MainActor [weak self] in
+          self?.scheduleConfiguration()
+        }
       }
     }
   }
@@ -231,7 +245,4 @@ private final class ThinRedScrollbarsConfiguratorView: NSView {
     windowObservers.removeAll()
   }
 
-  deinit {
-    removeWindowObservers()
-  }
 }

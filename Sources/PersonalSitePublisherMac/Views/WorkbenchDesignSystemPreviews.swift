@@ -136,10 +136,61 @@
     }
   }
 
+  private struct WorkbenchThemeAndCardPreview: View {
+    var body: some View {
+      VStack(alignment: .leading, spacing: WorkbenchSpacing.content) {
+        Text("主题色板与卡片")
+          .font(.workbenchPageTitle)
+
+        LazyVGrid(
+          columns: [GridItem(.adaptive(minimum: 120), spacing: WorkbenchSpacing.card)],
+          spacing: WorkbenchSpacing.card
+        ) {
+          previewSwatch("主色", color: WorkbenchTheme.primary)
+          previewSwatch("成功", color: WorkbenchTheme.success)
+          previewSwatch("警告", color: WorkbenchTheme.warning)
+          previewSwatch("风险", color: WorkbenchTheme.risk)
+        }
+
+        PublishDrawerCard(title: "发布目标", systemImage: "network") {
+          Label("GitHub · main", systemImage: "arrow.triangle.branch")
+            .font(.workbenchBody)
+          Text("检查卡片的材质、内边距和明暗对比。")
+            .font(.workbenchSupporting)
+            .foregroundStyle(.secondary)
+        }
+      }
+      .padding(WorkbenchSpacing.content)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func previewSwatch(_ title: String, color: Color) -> some View {
+      HStack(spacing: WorkbenchSpacing.control) {
+        Circle()
+          .fill(color)
+          .frame(width: 18, height: 18)
+        Text(title)
+          .font(.workbenchMetadata)
+      }
+      .padding(WorkbenchSpacing.control)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        WorkbenchBackgroundStyle.card,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+      )
+    }
+  }
+
   #Preview("Design System - Light") {
     WorkbenchDesignSystemPreview()
       .frame(width: 960, height: 760)
       .preferredColorScheme(.light)
+  }
+
+  #Preview("Theme Palette & Card") {
+    WorkbenchThemeAndCardPreview()
+      .frame(width: 520, height: 420)
+      .preferredColorScheme(.dark)
   }
 
   #Preview("Design System - Dark") {

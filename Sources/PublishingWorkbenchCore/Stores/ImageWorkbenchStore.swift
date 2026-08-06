@@ -682,7 +682,7 @@ public final class ImageWorkbenchStore: ObservableObject {
     do {
       try Task.checkCancellation()
     } catch {
-      fileStore.discardStoredFile(at: managedURL)
+      try fileStore.discardStoredFile(at: managedURL)
       throw error
     }
     let byteSize = (
