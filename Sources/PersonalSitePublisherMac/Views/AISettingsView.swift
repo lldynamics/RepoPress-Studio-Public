@@ -14,6 +14,8 @@ struct AISettingsView: View {
   let actionMessage: String?
   let dataSharingConsent: AIDataSharingConsentPresentation
   let shouldFocusAPIKey: Bool
+  let healthNavigationRequestID: UUID
+  let navigationDestination: SettingsDestination?
   let navigationRequestID: UUID
   let saveAPIKey: (String) -> Bool
   let deleteAPIKey: () -> Void
@@ -28,6 +30,8 @@ struct AISettingsView: View {
   @State private var connectionTestTask: Task<Void, Never>?
   @State private var connectionTestRequestID = UUID()
   @State private var selectedSection: AISettingsSection = .connection
+  @State private var expansionState = AISettingsExpansionState()
+  @State private var hasAttemptedConnectionTest = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -62,30 +66,40 @@ struct AISettingsView: View {
               : String(localized: "关闭")
           )
 
-          AIProviderCapabilitiesSection(config: activeConnection.config)
+          Section {
+            DisclosureGroup(
+              String(localized: "高级能力、对话参数与本地服务"),
+              isExpanded: $expansionState.advancedConnection
+            ) {
+              Text("查看当前连接能力，调整高级对话参数，或检测此 Mac 上的本地 AI 服务。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            .accessibilityIdentifier("settings-ai-advanced-disclosure")
+          }
 
-          AIAdvancedSettingsSection(
-            settings: aiAdvancedSettingsBinding,
-            reasoningSupport: activeConnection.config.capabilitySupport(
-              for: .reasoningControl
+          if expansionState.advancedConnection {
+            AIProviderCapabilitiesSection(config: activeConnection.config)
+
+            AIAdvancedSettingsSection(
+              settings: aiAdvancedSettingsBinding,
+              reasoningSupport: activeConnection.config.capabilitySupport(
+                for: .reasoningControl
+              )
             )
-          )
 
-          LocalAIEngineDiscoverySection { baseURL, model in
-            applyLocalAIConfiguration(baseURL: baseURL, model: model)
+            LocalAIEngineDiscoverySection { baseURL, model in
+              applyLocalAIConfiguration(baseURL: baseURL, model: model)
+            }
           }
 
         case .credentials:
           AIKeychainSection(
             aiAPIKeyInput: $aiAPIKeyInput,
             shouldFocusInput: shouldFocusAPIKey,
-            navigationRequestID: navigationRequestID,
+            navigationRequestID: healthNavigationRequestID,
             config: activeConnection.config,
             tokenAvailability: tokenAvailability,
-            connectionReport: isConnectionReportStale ? nil : aiConnectionReport,
-            isConnectionReportStale: isConnectionReportStale,
-            isAIActionRunning: isActionRunning,
-            isConnectionTestRunning: connectionTestTask != nil,
             actionMessage: actionMessage,
             onSaveAPIKey: {
               guard saveAPIKey(aiAPIKeyInput) else { return }
@@ -97,16 +111,32 @@ struct AISettingsView: View {
               aiAPIKeyInput = ""
               invalidateConnectionReport()
             },
-            onRefreshState: refreshKeyAvailability,
-            onTestConnection: {
-              startConnectionTest()
-            }
+            onRefreshState: refreshKeyAvailability
           )
 
           AIDataSharingConsentSection(
             presentation: dataSharingConsent,
-            grantConsent: grantDataSharingConsent,
-            revokeConsent: revokeDataSharingConsent
+            grantConsent: {
+              grantDataSharingConsent()
+              invalidateConnectionReport()
+            },
+            revokeConsent: {
+              revokeDataSharingConsent()
+              invalidateConnectionReport()
+            }
+          )
+
+          AIConnectionTestSection(
+            config: activeConnection.config,
+            tokenAvailability: tokenAvailability,
+            dataSharingConsent: dataSharingConsent,
+            report: isConnectionReportStale ? nil : aiConnectionReport,
+            isReportStale: isConnectionReportStale,
+            isAIActionRunning: isActionRunning,
+            isConnectionTestRunning: connectionTestTask != nil,
+            hasAttemptedConnectionTest: hasAttemptedConnectionTest,
+            actionMessage: actionMessage,
+            onTestConnection: startConnectionTest
           )
 
         case .writingStyle:
@@ -126,9 +156,12 @@ struct AISettingsView: View {
       .padding(WorkbenchSpacing.content)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    .task(id: navigationRequestID) {
+    .task(id: healthNavigationRequestID) {
       guard shouldFocusAPIKey else { return }
       selectedSection = .credentials
+    }
+    .task(id: navigationRequestID) {
+      applyNavigationDestination()
     }
     .onChange(of: aiAPIKeyInput) { _, _ in
       invalidateConnectionReport()
@@ -147,12 +180,13 @@ struct AISettingsView: View {
       connectionTestTask?.cancel()
       connectionTestTask = nil
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("ai-settings")
   }
 
   private var aiSettingsHeader: some View {
-    SettingsScopeHeader(minimumLeadingWidth: 280, scopeControlWidth: 340) {
-      aiStatusHeaderBanner
+    SettingsScopeHeader(minimumLeadingWidth: 220, scopeControlWidth: 400) {
+      aiCompactSummary
     } scopeControl: {
       aiSettingsPicker
     }
@@ -209,7 +243,9 @@ struct AISettingsView: View {
     )
   }
 
-  private func aiWritingStyleTextBinding(_ keyPath: WritableKeyPath<AIWritingStyleConfig, String>) -> Binding<String> {
+  private func aiWritingStyleTextBinding(_ keyPath: WritableKeyPath<AIWritingStyleConfig, String>)
+    -> Binding<String>
+  {
     Binding(
       get: { activeProfileBinding.wrappedValue.resolvedAIWritingStyle[keyPath: keyPath] },
       set: { value in
@@ -278,6 +314,7 @@ struct AISettingsView: View {
     connectionTestRequestID = UUID()
     connectionTestTask?.cancel()
     connectionTestTask = nil
+    hasAttemptedConnectionTest = false
     guard aiConnectionReport != nil else { return }
     isConnectionReportStale = true
   }
@@ -290,13 +327,15 @@ struct AISettingsView: View {
     connectionTestRequestID = requestID
     aiConnectionReport = nil
     isConnectionReportStale = false
+    hasAttemptedConnectionTest = true
 
     connectionTestTask = Task { @MainActor in
       let report = await testConnection()
       guard !Task.isCancelled,
-            connectionTestRequestID == requestID,
-            activeConnection.id == connectionID,
-            activeConnection.config == config else {
+        connectionTestRequestID == requestID,
+        activeConnection.id == connectionID,
+        activeConnection.config == config
+      else {
         return
       }
       aiConnectionReport = report
@@ -305,70 +344,30 @@ struct AISettingsView: View {
     }
   }
 
-  private var aiStatusHeaderBanner: some View {
-    HStack(spacing: WorkbenchSpacing.card) {
-      ZStack {
-        Circle()
-          .fill(Color.accentColor.opacity(0.15))
-          .frame(width: 36, height: 36)
-        Image(systemName: "sparkles")
-          .font(.title3.weight(.semibold))
-          .foregroundStyle(Color.accentColor)
-      }
+  private func applyNavigationDestination() {
+    guard case .ai(let destination) = navigationDestination else { return }
+    selectedSection = AISettingsSection(destination: destination)
+  }
 
-      VStack(alignment: .leading, spacing: 2) {
-        HStack(spacing: 6) {
-          Text(String(localized: "AI 创作引擎"))
-            .font(.subheadline.weight(.semibold))
-          Text(verbatim: activeConnection.config.preset.localizedDisplayName)
-            .font(.workbenchMetadata.weight(.medium))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Color.primary.opacity(0.08), in: Capsule())
-        }
+  private var aiCompactSummary: some View {
+    HStack(spacing: 6) {
+      Label(activeConnection.config.preset.localizedDisplayName, systemImage: "sparkles")
+        .font(.callout.weight(.semibold))
 
-        Group {
-          if activeConnection.config.normalizedModel.isEmpty {
-            Text(String(localized: "模型"))
-          } else {
-            Text(
-              String(
-                format: String(localized: "模型：%@"),
-                activeConnection.config.normalizedModel
-              )
-            )
-          }
-        }
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+      if !activeConnection.config.normalizedModel.isEmpty {
+        Text(verbatim: activeConnection.config.normalizedModel)
+          .font(.caption.monospaced())
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
       }
 
       Spacer(minLength: WorkbenchSpacing.control)
 
-      HStack(spacing: 5) {
-        Circle()
-          .fill(aiCredentialStatusColor)
-          .frame(width: 8, height: 8)
-        Text(aiCredentialStatusTitle)
-          .font(.workbenchMetadata.weight(.medium))
-          .foregroundStyle(aiCredentialStatusColor)
-      }
-      .padding(.horizontal, 8)
-      .padding(.vertical, 4)
-      .background(
-        aiCredentialStatusColor.opacity(0.12),
-        in: Capsule()
-      )
+      Label(aiCredentialStatusTitle, systemImage: aiCredentialStatusSystemImage)
+        .font(.caption.weight(.medium))
+        .foregroundStyle(aiCredentialStatusColor)
+        .lineLimit(1)
     }
-    .padding(WorkbenchSpacing.card)
-    .background(
-      WorkbenchBackgroundStyle.panel,
-      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card, style: .continuous)
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card, style: .continuous)
-        .stroke(Color(nsColor: .separatorColor).opacity(0.55), lineWidth: 1)
-    )
     .accessibilityElement(children: .combine)
   }
 
@@ -391,21 +390,50 @@ struct AISettingsView: View {
       ? WorkbenchTheme.success
       : WorkbenchTheme.warning
   }
+
+  private var aiCredentialStatusSystemImage: String {
+    guard activeConnection.config.requiresAPIKey else {
+      return "checkmark.circle"
+    }
+    switch tokenAvailability.accessState {
+    case .available:
+      return "checkmark.circle"
+    case .missing:
+      return "key"
+    case .accessFailed:
+      return "exclamationmark.triangle"
+    }
+  }
 }
 
-private enum AISettingsSection: String, CaseIterable, Identifiable {
+struct AISettingsExpansionState: Equatable {
+  var advancedConnection = false
+}
+
+enum AISettingsSection: String, CaseIterable, Identifiable {
   case connection
   case credentials
   case writingStyle
 
   var id: String { rawValue }
 
+  init(destination: SettingsAIDestination) {
+    switch destination {
+    case .connection:
+      self = .connection
+    case .credentials:
+      self = .credentials
+    case .writingStyle:
+      self = .writingStyle
+    }
+  }
+
   var title: String {
     switch self {
     case .connection:
-      return String(localized: "服务与连接")
+      return String(localized: "连接与服务")
     case .credentials:
-      return String(localized: "钥匙串凭据")
+      return String(localized: "凭据授权与测试")
     case .writingStyle:
       return String(localized: "写作风格")
     }

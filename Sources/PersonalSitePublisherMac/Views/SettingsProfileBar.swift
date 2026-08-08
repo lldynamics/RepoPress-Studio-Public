@@ -17,36 +17,71 @@ struct SettingsProfileBar: View {
   @State private var isDeleteConfirmationPresented = false
 
   var body: some View {
-    HStack(alignment: .center, spacing: WorkbenchSpacing.control) {
-      Text("当前站点")
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.secondary)
-        .fixedSize()
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .center, spacing: WorkbenchSpacing.control) {
+        profileLabel
+        profilePicker
+          .frame(minWidth: 120, idealWidth: 170)
+          .fixedSize(horizontal: true, vertical: false)
+        profileManagementButton
+      }
 
-      Picker("当前站点", selection: activeProfileIDBinding) {
-        ForEach(profiles) { profile in
-          Text(profile.name).tag(profile.id)
+      VStack(alignment: .leading, spacing: 4) {
+        profileLabel
+        ViewThatFits(in: .horizontal) {
+          HStack(alignment: .center, spacing: WorkbenchSpacing.control) {
+            profilePicker
+              .frame(minWidth: 120, maxWidth: .infinity)
+            profileManagementButton
+          }
+
+          VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+            profilePicker
+              .frame(maxWidth: .infinity)
+            profileManagementButton
+              .frame(maxWidth: .infinity, alignment: .trailing)
+          }
         }
       }
-      .labelsHidden()
-      .frame(minWidth: 120, idealWidth: 150, maxWidth: 170)
-      .accessibilityLabel("当前站点")
-      .accessibilityValue(activeProfile.name)
-
-      Button {
-        isProfileManagementPresented.toggle()
-      } label: {
-        Image(systemName: "ellipsis")
-          .frame(width: 16, height: 16)
-      }
-      .buttonStyle(.bordered)
-      .popover(isPresented: $isProfileManagementPresented, arrowEdge: .bottom) {
-        profileManagementPopover
-      }
-      .help("管理站点")
-      .accessibilityLabel("管理站点")
     }
     .controlSize(.small)
+    .popover(isPresented: $isProfileManagementPresented, arrowEdge: .bottom) {
+      profileManagementPopover
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("settings-profile-bar")
+  }
+
+  private var profileLabel: some View {
+    Text("当前站点")
+      .font(.caption.weight(.medium))
+      .foregroundStyle(.secondary)
+      .fixedSize()
+      .accessibilityHidden(true)
+  }
+
+  private var profilePicker: some View {
+    Picker("当前站点", selection: activeProfileIDBinding) {
+      ForEach(profiles) { profile in
+        Text(profile.name).tag(profile.id)
+      }
+    }
+    .labelsHidden()
+    .accessibilityLabel("当前站点")
+    .accessibilityValue(activeProfile.name)
+    .accessibilityIdentifier("settings-current-site-picker")
+  }
+
+  private var profileManagementButton: some View {
+    Button {
+      isProfileManagementPresented.toggle()
+    } label: {
+      Label("管理", systemImage: "ellipsis.circle")
+    }
+    .buttonStyle(.bordered)
+    .help("管理站点")
+    .accessibilityLabel("管理站点")
+    .accessibilityIdentifier("settings-manage-sites")
   }
 
   private var profileManagementPopover: some View {

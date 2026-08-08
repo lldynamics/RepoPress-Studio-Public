@@ -25,7 +25,7 @@ struct AIDataSharingConsentSection: View {
   @State private var isRevocationConfirmationPresented = false
 
   var body: some View {
-    Section("AI 数据发送授权") {
+    Section("2. AI 数据发送授权") {
       switch AIDataSharingConsentSectionMode(presentation: presentation) {
       case .remote(let isGranted):
         Text("资料库中的“允许发送给远程 AI”是独立的逐条权限，默认关闭；只有资料权限和本处授权同时满足时，资料片段才会发送。")

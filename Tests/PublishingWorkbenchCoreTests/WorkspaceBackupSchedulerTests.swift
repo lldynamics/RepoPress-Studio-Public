@@ -125,6 +125,41 @@ final class WorkspaceBackupSchedulerTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: manualURL.path))
   }
 
+  func testRefreshPublishesStructuredSuccessStatus() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    try FileManager.default.createDirectory(
+      at: harness.injectedBackupURL,
+      withIntermediateDirectories: true
+    )
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store,
+      defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+
+    await scheduler.refreshRecentBackups()
+
+    XCTAssertEqual(scheduler.statusLevel, .success)
+    XCTAssertNotNil(scheduler.statusMessage)
+  }
+
+  func testRefreshFailurePublishesStructuredErrorStatus() async throws {
+    let harness = try makeHarness()
+    defer { harness.cleanup() }
+    try Data("not-a-directory".utf8).write(to: harness.injectedBackupURL)
+    let scheduler = WorkspaceBackupScheduler(
+      store: harness.store,
+      defaults: harness.defaults,
+      defaultDestinationFolderURL: harness.injectedBackupURL
+    )
+
+    await scheduler.refreshRecentBackups()
+
+    XCTAssertEqual(scheduler.statusLevel, .error)
+    XCTAssertNotNil(scheduler.statusMessage)
+  }
+
   private func makeHarness() throws -> WorkspaceBackupSchedulerHarness {
     let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "workspace-backup-scheduler-\(UUID().uuidString)",

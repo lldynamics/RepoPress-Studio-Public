@@ -1,6 +1,13 @@
 import Combine
 import Foundation
 
+public enum WorkspaceBackupSchedulerStatusLevel: Equatable, Sendable {
+  case info
+  case success
+  case warning
+  case error
+}
+
 @MainActor
 public final class WorkspaceBackupScheduler: ObservableObject {
   public static let settingsKey = "workspaceBackupScheduleV1"
@@ -13,6 +20,7 @@ public final class WorkspaceBackupScheduler: ObservableObject {
   @Published public private(set) var invalidRecentBackupCount = 0
   @Published public private(set) var isRunning = false
   @Published public private(set) var statusMessage: String?
+  @Published public private(set) var statusLevel: WorkspaceBackupSchedulerStatusLevel?
 
   private weak var store: WorkbenchStore?
   private let defaults: UserDefaults
@@ -113,6 +121,8 @@ public final class WorkspaceBackupScheduler: ObservableObject {
       guard fileManager.fileExists(atPath: folderURL.path) else {
         recentBackups = []
         invalidRecentBackupCount = 0
+        statusMessage = nil
+        statusLevel = nil
         return
       }
       _ = pruneAutomaticBackups(in: folderURL, keeping: nil, now: Date())
@@ -145,20 +155,31 @@ public final class WorkspaceBackupScheduler: ObservableObject {
       recentBackups = scanResult.0.sorted { $0.createdAt > $1.createdAt }
       invalidRecentBackupCount = scanResult.1
       settings.lastValidationAt = Date()
-      persistSettings()
-      statusMessage = scanResult.1 == 0
-        ? CoreL10n.format("已校验 %d 个自动备份", recentBackups.count)
-        : CoreL10n.format(
-          "已校验 %d 个自动备份；%d 个校验失败",
-          recentBackups.count,
-          scanResult.1
+      guard persistSettings() else { return }
+      if scanResult.1 == 0 {
+        setStatus(
+          CoreL10n.format("已校验 %d 个自动备份", recentBackups.count),
+          level: .success
         )
+      } else {
+        setStatus(
+          CoreL10n.format(
+            "已校验 %d 个自动备份；%d 个校验失败",
+            recentBackups.count,
+            scanResult.1
+          ),
+          level: .warning
+        )
+      }
     } catch {
       recentBackups = []
       invalidRecentBackupCount = 0
-      statusMessage = CoreL10n.format(
-        "自动备份目录校验失败：%@",
-        error.localizedDescription
+      setStatus(
+        CoreL10n.format(
+          "自动备份目录校验失败：%@",
+          error.localizedDescription
+        ),
+        level: .error
       )
     }
   }
@@ -185,7 +206,10 @@ public final class WorkspaceBackupScheduler: ObservableObject {
   private func performBackup(isAutomatic: Bool) async {
     guard !isRunning else { return }
     guard let store else {
-      statusMessage = CoreL10n.text("自动备份暂不可用：工作区尚未准备完成")
+      setStatus(
+        CoreL10n.text("自动备份暂不可用：工作区尚未准备完成"),
+        level: .error
+      )
       return
     }
 
@@ -243,22 +267,28 @@ public final class WorkspaceBackupScheduler: ObservableObject {
       settings.lastValidationAt = Date()
       settings.lastBackupPath = verifiedPreview.backupURL.path
       settings.lastError = nil
-      persistSettings()
-      statusMessage = isAutomatic
-        ? CoreL10n.format(
-          "自动备份完成并校验：%@",
-          verifiedPreview.backupURL.lastPathComponent
-        )
-        : CoreL10n.format(
-          "备份完成并校验：%@",
-          verifiedPreview.backupURL.lastPathComponent
-        )
+      guard persistSettings() else { return }
+      setStatus(
+        isAutomatic
+          ? CoreL10n.format(
+            "自动备份完成并校验：%@",
+            verifiedPreview.backupURL.lastPathComponent
+          )
+          : CoreL10n.format(
+            "备份完成并校验：%@",
+            verifiedPreview.backupURL.lastPathComponent
+          ),
+        level: .success
+      )
     } catch {
       settings.lastError = error.localizedDescription
-      persistSettings()
-      statusMessage = isAutomatic
-        ? CoreL10n.format("自动备份失败：%@", error.localizedDescription)
-        : CoreL10n.format("备份失败：%@", error.localizedDescription)
+      guard persistSettings() else { return }
+      setStatus(
+        isAutomatic
+          ? CoreL10n.format("自动备份失败：%@", error.localizedDescription)
+          : CoreL10n.format("备份失败：%@", error.localizedDescription),
+        level: .error
+      )
     }
   }
 
@@ -429,9 +459,20 @@ public final class WorkspaceBackupScheduler: ObservableObject {
       defaults.set(data, forKey: Self.settingsKey)
       return true
     } catch {
-      statusMessage = CoreL10n.format("自动备份设置保存失败：%@", error.localizedDescription)
+      setStatus(
+        CoreL10n.format("自动备份设置保存失败：%@", error.localizedDescription),
+        level: .error
+      )
       return false
     }
+  }
+
+  private func setStatus(
+    _ message: String,
+    level: WorkspaceBackupSchedulerStatusLevel
+  ) {
+    statusMessage = message
+    statusLevel = level
   }
 
   private static func loadSettings(from defaults: UserDefaults) -> WorkspaceBackupScheduleSettings {

@@ -330,12 +330,7 @@ struct EmptyStateView: View {
   }
 }
 
-enum AccessibleStatusSeverity {
-  case info
-  case success
-  case warning
-  case error
-
+extension AccessibleStatusSeverity {
   fileprivate var systemImage: String {
     switch self {
     case .info:
@@ -361,16 +356,39 @@ enum AccessibleStatusSeverity {
       return WorkbenchTheme.risk
     }
   }
+}
 
-  fileprivate var isUrgent: Bool {
-    self == .warning || self == .error
+extension AccessibleStatusAnnouncementPriority {
+  fileprivate var appKitPriority: NSAccessibilityPriorityLevel {
+    switch self {
+    case .low:
+      return .low
+    case .medium:
+      return .medium
+    case .high:
+      return .high
+    }
   }
 }
 
 struct AccessibleStatusMessage: View {
   let message: String
   let severity: AccessibleStatusSeverity
+  let announcesNonUrgentStatus: Bool
+  let movesAccessibilityFocusForUrgentStatus: Bool
   @AccessibilityFocusState private var isAccessibilityFocused: Bool
+
+  init(
+    message: String,
+    severity: AccessibleStatusSeverity,
+    announcesNonUrgentStatus: Bool = false,
+    movesAccessibilityFocusForUrgentStatus: Bool = true
+  ) {
+    self.message = message
+    self.severity = severity
+    self.announcesNonUrgentStatus = announcesNonUrgentStatus
+    self.movesAccessibilityFocusForUrgentStatus = movesAccessibilityFocusForUrgentStatus
+  }
 
   var body: some View {
     Label(message, systemImage: severity.systemImage)
@@ -378,22 +396,30 @@ struct AccessibleStatusMessage: View {
       .foregroundStyle(severity.color)
       .accessibilityElement(children: .combine)
       .accessibilityFocused($isAccessibilityFocused)
-      .onAppear(perform: focusAndAnnounceIfNeeded)
+      .onAppear(perform: announceIfNeeded)
       .onChange(of: message) { _, _ in
-        focusAndAnnounceIfNeeded()
+        announceIfNeeded()
       }
   }
 
-  private func focusAndAnnounceIfNeeded() {
-    guard severity.isUrgent else { return }
+  private func announceIfNeeded() {
+    guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    let policy = AccessibleStatusAnnouncementPolicy(
+      severity: severity,
+      announcesNonUrgentStatus: announcesNonUrgentStatus,
+      movesAccessibilityFocusForUrgentStatus: movesAccessibilityFocusForUrgentStatus
+    )
+    guard policy.shouldAnnounce, let priority = policy.priority else { return }
     DispatchQueue.main.async {
-      isAccessibilityFocused = true
+      if policy.shouldMoveAccessibilityFocus {
+        isAccessibilityFocused = true
+      }
       NSAccessibility.post(
         element: NSApp as Any,
         notification: .announcementRequested,
         userInfo: [
           .announcement: message,
-          .priority: NSAccessibilityPriorityLevel.high.rawValue,
+          .priority: priority.appKitPriority.rawValue,
         ]
       )
     }

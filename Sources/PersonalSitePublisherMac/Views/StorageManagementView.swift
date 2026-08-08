@@ -7,6 +7,12 @@ enum StorageManagementPresentation {
   case embedded
 }
 
+enum StorageManagementScope {
+  case all
+  case storageAndCleanup
+  case backupAndRestore
+}
+
 @MainActor
 struct StorageManagementView: View {
   @ObservedObject var store: WorkbenchStore
@@ -14,6 +20,7 @@ struct StorageManagementView: View {
   @ObservedObject var coordinator: WorkbenchLaunchCoordinator
   @ObservedObject var backupScheduler: WorkspaceBackupScheduler
   let presentation: StorageManagementPresentation
+  let scope: StorageManagementScope
 
   @AppStorage(RSSReaderStore.retentionDaysDefaultsKey)
   private var retentionDays = RSSReaderStore.defaultRetentionDays
@@ -36,13 +43,15 @@ struct StorageManagementView: View {
     rssStore: RSSReaderStore,
     coordinator: WorkbenchLaunchCoordinator,
     backupScheduler: WorkspaceBackupScheduler,
-    presentation: StorageManagementPresentation = .standalone
+    presentation: StorageManagementPresentation = .standalone,
+    scope: StorageManagementScope = .all
   ) {
     self.store = store
     self.rssStore = rssStore
     self.coordinator = coordinator
     self.backupScheduler = backupScheduler
     self.presentation = presentation
+    self.scope = scope
   }
 
   var body: some View {
@@ -112,11 +121,20 @@ struct StorageManagementView: View {
 
   @ViewBuilder
   private var storageSections: some View {
-    currentLocationSection
-    knowledgeSection
-    rssSection
-    backupSection
-    relocationSection
+    switch scope {
+    case .all:
+      currentLocationSection
+      knowledgeSection
+      rssSection
+      backupSection
+      relocationSection
+    case .storageAndCleanup:
+      currentLocationSection
+      knowledgeSection
+      relocationSection
+    case .backupAndRestore:
+      backupSection
+    }
   }
 
   private var currentLocationSection: some View {
@@ -158,21 +176,19 @@ struct StorageManagementView: View {
       }
 
       if let usageError {
-        Label(usageError, systemImage: "exclamationmark.triangle")
-          .font(.caption)
-          .foregroundStyle(WorkbenchTheme.warning)
+        AccessibleStatusMessage(message: usageError, severity: .error)
           .textSelection(.enabled)
       }
       if let operationMessage {
-        Text(operationMessage)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
+        AccessibleStatusMessage(
+          message: operationMessage,
+          severity: .success,
+          announcesNonUrgentStatus: true
+        )
+        .textSelection(.enabled)
       }
       if let operationError {
-        Label(operationError, systemImage: "exclamationmark.triangle")
-          .font(.caption)
-          .foregroundStyle(WorkbenchTheme.warning)
+        AccessibleStatusMessage(message: operationError, severity: .error)
           .textSelection(.enabled)
       }
       if let dataRootMessage = coordinator.dataRootMessage {
@@ -354,24 +370,25 @@ struct StorageManagementView: View {
           .controlSize(.small)
       }
       if let statusMessage = backupScheduler.statusMessage, !statusMessage.isEmpty {
-        Text(statusMessage)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
-          .fixedSize(horizontal: false, vertical: true)
+        AccessibleStatusMessage(
+          message: statusMessage,
+          severity: backupSchedulerStatusSeverity,
+          announcesNonUrgentStatus: backupScheduler.statusLevel == .info
+            || backupScheduler.statusLevel == .success
+        )
+        .textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
       }
       if backupScheduler.invalidRecentBackupCount > 0 {
-        Label(
-          String(
+        AccessibleStatusMessage(
+          message: String(
             format: String(
               localized: "%@ 个自动备份校验失败，已从一键恢复列表中隐藏；请检查备份目录或重新创建备份。"
             ),
             backupScheduler.invalidRecentBackupCount.formatted()
           ),
-          systemImage: "exclamationmark.triangle.fill"
+          severity: .warning
         )
-        .font(.caption)
-        .foregroundStyle(WorkbenchTheme.warning)
         .fixedSize(horizontal: false, vertical: true)
       }
       if let lastBackupAt = backupScheduler.settings.lastBackupAt {
@@ -386,10 +403,11 @@ struct StorageManagementView: View {
           value: lastValidationAt.formatted(date: .abbreviated, time: .shortened)
         )
       }
-      if let lastError = backupScheduler.settings.lastError, !lastError.isEmpty {
-        Label(lastError, systemImage: "exclamationmark.triangle.fill")
-          .font(.caption)
-          .foregroundStyle(WorkbenchTheme.warning)
+      if backupScheduler.statusLevel != .error,
+        let lastError = backupScheduler.settings.lastError,
+        !lastError.isEmpty
+      {
+        AccessibleStatusMessage(message: lastError, severity: .error)
           .fixedSize(horizontal: false, vertical: true)
       }
 
@@ -521,7 +539,8 @@ struct StorageManagementView: View {
     if let lastError = rssStore.lastError, !lastError.isEmpty {
       operationError = lastError
     } else {
-      operationMessage = summary.removedArticleCount == 0
+      operationMessage =
+        summary.removedArticleCount == 0
         ? String(localized: "没有符合条件的 RSS 历史文章。")
         : String(
           format: String(localized: "RSS 清理完成：删除 %@ 篇文章。"),
@@ -532,7 +551,11 @@ struct StorageManagementView: View {
   }
 
   private func createWorkspaceBackup() {
-    guard let destinationURL = WorkspaceBackupSelectionPanel.chooseBackupDestination() else { return }
+    guard let destinationURL = WorkspaceBackupSelectionPanel.chooseBackupDestination() else {
+      return
+    }
+    operationMessage = nil
+    operationError = nil
     Task {
       let preview = await store.createWorkspaceBackup(at: destinationURL)
       if let preview {
@@ -542,7 +565,7 @@ struct StorageManagementView: View {
           formattedByteCount(preview.totalByteCount)
         )
       } else {
-        operationMessage = store.lastSaveStatus
+        operationError = store.lastSaveStatus
       }
       await refreshUsage()
     }
@@ -550,10 +573,12 @@ struct StorageManagementView: View {
 
   private func chooseWorkspaceBackupForRestore() {
     guard let backupURL = WorkspaceBackupSelectionPanel.chooseBackupForRestore() else { return }
+    operationMessage = nil
+    operationError = nil
     Task {
       workspaceBackupPreview = await store.workspaceBackupPreview(from: backupURL)
       if workspaceBackupPreview == nil {
-        operationMessage = store.lastSaveStatus
+        operationError = store.lastSaveStatus
       }
     }
   }
@@ -572,10 +597,12 @@ struct StorageManagementView: View {
     guard let backupURL = KnowledgeLibraryBackupSelectionPanel.chooseBackupForRestore() else {
       return
     }
+    operationMessage = nil
+    operationError = nil
     Task {
       knowledgeBackupPreview = await store.knowledge.backupPreview(from: backupURL)
       if knowledgeBackupPreview == nil {
-        operationMessage = store.lastSaveStatus
+        operationError = store.lastSaveStatus
       }
     }
   }
@@ -613,11 +640,26 @@ struct StorageManagementView: View {
     }
   }
 
+  private var backupSchedulerStatusSeverity: AccessibleStatusSeverity {
+    switch backupScheduler.statusLevel {
+    case .success:
+      return .success
+    case .warning:
+      return .warning
+    case .error:
+      return .error
+    case .info, .none:
+      return .info
+    }
+  }
+
   private func chooseRelocationDestination() {
     Task {
-      guard let parentURL = await WorkbenchDataRootSelectionPanel.chooseDestinationParent(
-        forMigration: true
-      ) else { return }
+      guard
+        let parentURL = await WorkbenchDataRootSelectionPanel.chooseDestinationParent(
+          forMigration: true
+        )
+      else { return }
       pendingRelocationParentURL = parentURL
       isRelocationConfirmationPresented = true
     }
