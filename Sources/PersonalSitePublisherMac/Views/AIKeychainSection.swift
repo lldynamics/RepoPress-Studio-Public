@@ -8,21 +8,16 @@ struct AIKeychainSection: View {
   let navigationRequestID: UUID
   let config: AIProviderConfig
   let tokenAvailability: KeychainTokenAvailability
-  let connectionReport: AIConnectionTestReport?
-  let isConnectionReportStale: Bool
-  let isAIActionRunning: Bool
-  let isConnectionTestRunning: Bool
   let actionMessage: String?
   let onSaveAPIKey: () -> Void
   let onDeleteAPIKey: () -> Void
   let onRefreshState: () -> Void
-  let onTestConnection: () -> Void
   @FocusState private var isAPIKeyFocused: Bool
   @State private var isDeleteConfirmationPresented = false
   @State private var isKeyRevealed = false
 
   var body: some View {
-    Section("API 凭据") {
+    Section("1. API Key") {
       HStack(spacing: 8) {
         if isKeyRevealed {
           TextField("API Key", text: aiAPIKeyInput)
@@ -47,44 +42,21 @@ struct AIKeychainSection: View {
             ? String(localized: "隐藏 API Key")
             : String(localized: "显示 API Key 明文")
         )
-        .accessibilityLabel(isKeyRevealed ? "隐藏 API Key" : "显示 API Key 明文")
+        .accessibilityLabel(
+          isKeyRevealed
+            ? String(localized: "隐藏 API Key")
+            : String(localized: "显示 API Key 明文")
+        )
       }
       .accessibilityLabel("AI API Key")
       .accessibilityHint("输入后可保存到钥匙串")
 
-      AIConnectionStatusCard(
-        config: config,
-        tokenAvailability: tokenAvailability,
-        report: connectionReport
-      )
-
-      if isConnectionReportStale {
-        Label("AI 配置或 Key 已变化，之前的连接测试结果已失效。", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
-          .font(.caption)
-          .foregroundStyle(WorkbenchTheme.warning)
+      Button("保存 API Key") {
+        onSaveAPIKey()
       }
-
-      HStack {
-        Button("保存 API Key") {
-          onSaveAPIKey()
-        }
-        .workbenchProminentActionStyle()
-        .disabled(aiAPIKeyInput.wrappedValue.trimmedForPublishing.isEmpty)
-        .accessibilityLabel("保存 AI API Key")
-
-        Button {
-          onTestConnection()
-        } label: {
-          HStack(spacing: 5) {
-            Image(systemName: "network")
-              .workbenchSyncSymbolEffect(trigger: isConnectionTestRunning ? 1 : 0)
-            Text("测试连接")
-          }
-        }
-        .buttonStyle(.bordered)
-        .disabled(isAIActionRunning || isConnectionTestRunning)
-        .accessibilityLabel("测试 AI 连接")
-      }
+      .workbenchProminentActionStyle()
+      .disabled(aiAPIKeyInput.wrappedValue.trimmedForPublishing.isEmpty)
+      .accessibilityLabel("保存 AI API Key")
 
       HStack {
         Label(
@@ -109,17 +81,19 @@ struct AIKeychainSection: View {
         .accessibilityLabel("删除 AI API Key")
       }
 
-      if let message = actionMessage {
-        Text(message)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-
       if let accessFailureMessage = tokenAvailability.accessFailureMessage {
-        Text("操作失败：\(accessFailureMessage)")
-          .font(.caption)
-          .foregroundStyle(WorkbenchTheme.warning)
-          .textSelection(.enabled)
+        AccessibleStatusMessage(
+          message: String(localized: "操作失败：\(accessFailureMessage)"),
+          severity: .error
+        )
+        .textSelection(.enabled)
+      } else if let feedback = AIKeychainActionFeedback(message: actionMessage) {
+        AccessibleStatusMessage(
+          message: feedback.message,
+          severity: feedback.isError ? .error : .success,
+          announcesNonUrgentStatus: true
+        )
+        .textSelection(.enabled)
       }
 
       HStack(spacing: 6) {
@@ -181,5 +155,31 @@ struct AIKeychainSection: View {
     case .accessFailed:
       return WorkbenchTheme.warning
     }
+  }
+}
+
+struct AIKeychainActionFeedback: Equatable {
+  let message: String
+  let isError: Bool
+
+  init?(message: String?) {
+    guard let message = message?.trimmedForPublishing.nilIfEmpty else { return nil }
+    let lowercasedMessage = message.lowercased()
+    guard
+      message.contains("API Key")
+        || message.contains("API Base URL")
+        || lowercasedMessage.contains("keychain")
+    else {
+      return nil
+    }
+
+    self.message = message
+    isError =
+      message.contains("失败")
+      || message.contains("尚未配置")
+      || lowercasedMessage.contains("failed")
+      || lowercasedMessage.contains("not configured")
+      || lowercasedMessage.contains("unavailable")
+      || lowercasedMessage.contains("error")
   }
 }

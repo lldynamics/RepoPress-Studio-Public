@@ -44,12 +44,11 @@ struct RSSMaintenanceSettingsView: View {
         }
 
         if let opmlFeedback {
-          Label(
-            opmlFeedback,
-            systemImage: opmlFeedbackIsError ? "exclamationmark.triangle" : "checkmark.circle"
+          AccessibleStatusMessage(
+            message: opmlFeedback,
+            severity: opmlFeedbackIsError ? .error : .success,
+            announcesNonUrgentStatus: true
           )
-          .font(.caption)
-          .foregroundStyle(opmlFeedbackIsError ? WorkbenchTheme.warning : Color.secondary)
           .textSelection(.enabled)
         }
       }
@@ -106,19 +105,15 @@ struct RSSMaintenanceSettingsView: View {
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
 
-        HStack {
-          Button("立即清理", systemImage: "trash", role: .destructive) {
-            isPruneConfirmationPresented = true
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: WorkbenchSpacing.control) {
+            pruneButton
+            pruneStatus
           }
-          .buttonStyle(.bordered)
 
-          if let pruneFeedback {
-            Label(
-              pruneFeedback,
-              systemImage: pruneFeedbackIsError ? "exclamationmark.triangle" : "checkmark.circle"
-            )
-            .font(.caption)
-            .foregroundStyle(pruneFeedbackIsError ? WorkbenchTheme.warning : Color.secondary)
+          VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+            pruneButton
+            pruneStatus
           }
         }
       }
@@ -138,7 +133,27 @@ struct RSSMaintenanceSettingsView: View {
     } message: {
       Text("只会删除已读、未加入稍后阅读且没有高亮的文章；此操作无法撤销。")
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("rss-maintenance-settings")
+  }
+
+  private var pruneButton: some View {
+    Button("立即清理", systemImage: "trash", role: .destructive) {
+      isPruneConfirmationPresented = true
+    }
+    .buttonStyle(.bordered)
+  }
+
+  @ViewBuilder
+  private var pruneStatus: some View {
+    if let pruneFeedback {
+      AccessibleStatusMessage(
+        message: pruneFeedback,
+        severity: pruneFeedbackIsError ? .error : .success,
+        announcesNonUrgentStatus: true
+      )
+      .fixedSize(horizontal: false, vertical: true)
+    }
   }
 
   private func settingsToggle(
@@ -166,7 +181,8 @@ struct RSSMaintenanceSettingsView: View {
       pruneFeedback = lastError
       pruneFeedbackIsError = true
     } else {
-      pruneFeedback = summary.removedArticleCount == 0
+      pruneFeedback =
+        summary.removedArticleCount == 0
         ? String(localized: "没有符合条件的历史文章。")
         : String(format: String(localized: "已清理 %@ 篇文章。"), summary.removedArticleCount.formatted())
       pruneFeedbackIsError = false
@@ -195,10 +211,12 @@ struct RSSMaintenanceSettingsView: View {
     opmlFeedbackIsError = false
     do {
       guard let result = try RSSOPMLFileTransferService.exportOPML(from: store) else { return }
-      let excludedSuffix = result.excludedSubscriptionCount > 0
+      let excludedSuffix =
+        result.excludedSubscriptionCount > 0
         ? "，已排除 " + result.excludedSubscriptionCount.formatted() + " 个风险订阅"
         : ""
-      opmlFeedback = "已导出 " + result.exportedSubscriptionCount.formatted()
+      opmlFeedback =
+        "已导出 " + result.exportedSubscriptionCount.formatted()
         + " 个订阅到 " + result.destinationURL.lastPathComponent + excludedSuffix + "。"
     } catch {
       opmlFeedback = "OPML 导出失败：" + error.localizedDescription

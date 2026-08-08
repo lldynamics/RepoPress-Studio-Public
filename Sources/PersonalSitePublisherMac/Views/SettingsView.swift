@@ -4,15 +4,26 @@ import SwiftUI
 struct SettingsView: View {
   let store: WorkbenchStore
   @ObservedObject private var settingsState: WorkbenchSettingsFeatureFacade
+  @ObservedObject private var persistenceStatus: WorkbenchPersistenceFeatureFacade
   let rssStore: RSSReaderStore?
   @ObservedObject var launchCoordinator: WorkbenchLaunchCoordinator
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
-  @AppStorage("settingsRequestedTabID") private var requestedSettingsTabID = ""
+  // Compatibility bridge for callers that must request a destination before
+  // the separate Settings scene exists. Every value is consumed and cleared.
+  @AppStorage(SettingsNavigation.requestedTabStorageKey)
+  private var requestedSettingsTabID = ""
+  @AppStorage(SettingsNavigation.lastViewedTabStorageKey)
+  private var lastViewedSettingsTabID = ""
   @State private var selectedSettingsTab: SettingsTab
+  @State private var navigationDestination: SettingsDestination?
+  @State private var navigationRequestID = UUID()
   @State private var healthDestination: SettingsConfigurationHealthDestination?
   @State private var healthNavigationRequestID = UUID()
   @State private var pendingSiteKind: SiteKind?
+  @State private var searchText = ""
+  @ScaledMetric(relativeTo: .body)
+  private var scaledSidebarWidth = WorkbenchSettingsMetrics.sidebarWidth
 
   init(
     store: WorkbenchStore,
@@ -21,9 +32,11 @@ struct SettingsView: View {
   ) {
     self.store = store
     _settingsState = ObservedObject(wrappedValue: store.settings)
+    _persistenceStatus = ObservedObject(wrappedValue: store.persistenceStatus)
     self.rssStore = rssStore
     self.launchCoordinator = launchCoordinator
     _selectedSettingsTab = State(initialValue: Self.initialSettingsTab())
+    _navigationDestination = State(initialValue: nil)
   }
 
   var body: some View {
@@ -37,12 +50,21 @@ struct SettingsView: View {
 
         Divider()
 
-        selectedSettingsTab.makeContent(context: settingsContext)
-          .scrollIndicators(.automatic)
-          .frame(maxWidth: selectedSettingsTab.contentMaxWidth)
+        settingsPageContent
           .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+        Divider()
+
+        SettingsSaveStatusBar(
+          hasUnsavedChanges: persistenceStatus.hasUnsavedChanges,
+          lastSaveError: persistenceStatus.lastSaveError,
+          isRecoveryWriteProtected: persistenceStatus.isRecoveryWriteProtected,
+          recoveryMessage: persistenceStatus.recoveryMessage,
+          retry: store.save
+        )
       }
       .background(Color(nsColor: .windowBackgroundColor))
+      .accessibilityElement(children: .contain)
       .accessibilityIdentifier("settings-content")
     }
     .workbenchSettingsWindowSize()
@@ -50,10 +72,14 @@ struct SettingsView: View {
     .navigationTitle("设置")
     .onAppear {
       applyRequestedSettingsTab(requestedSettingsTabID)
+      lastViewedSettingsTabID = selectedSettingsTab.id
       store.setAutomaticallyRefreshPreflightOnEdit(autoRunPreflight)
     }
     .onChange(of: requestedSettingsTabID) { _, requestedTabID in
       applyRequestedSettingsTab(requestedTabID)
+    }
+    .onChange(of: selectedSettingsTab) { _, selectedTab in
+      lastViewedSettingsTabID = selectedTab.id
     }
     .onChange(of: autoRunPreflight) { _, newValue in
       store.setAutomaticallyRefreshPreflightOnEdit(newValue)
@@ -74,43 +100,79 @@ struct SettingsView: View {
   }
 
   private var settingsSidebar: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      List(selection: $selectedSettingsTab) {
-        Section("站点") {
-          ForEach(SettingsTab.siteSettings) { tab in
-            settingsSidebarRow(tab)
-          }
-        }
+    let visibleSiteSettings = filteredSettingsTabs(SettingsTab.siteSettings)
+    let visibleApplicationSettings = filteredSettingsTabs(SettingsTab.applicationSettings)
 
-        Section("应用设置") {
-          ForEach(SettingsTab.applicationSettings) { tab in
-            settingsSidebarRow(tab)
+    return VStack(alignment: .leading, spacing: 0) {
+      List(selection: settingsSidebarSelection) {
+        if visibleSiteSettings.isEmpty && visibleApplicationSettings.isEmpty {
+          Text("没有匹配的设置")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("没有匹配的设置")
+        } else {
+          if !visibleSiteSettings.isEmpty {
+            Section("站点") {
+              ForEach(visibleSiteSettings) { tab in
+                settingsSidebarRow(tab)
+              }
+            }
+          }
+
+          if !visibleApplicationSettings.isEmpty {
+            Section("应用设置") {
+              ForEach(visibleApplicationSettings) { tab in
+                settingsSidebarRow(tab)
+              }
+            }
           }
         }
       }
       .listStyle(.sidebar)
       .scrollContentBackground(.hidden)
       .padding(.top, WorkbenchSpacing.control)
+      .searchable(text: $searchText, placement: .sidebar, prompt: Text("搜索设置"))
     }
-    .frame(width: WorkbenchSettingsMetrics.sidebarWidth)
+    .frame(width: SettingsSidebarPresentation.clampedWidth(scaledSidebarWidth))
     .workbenchGlassContainer(material: .thinMaterial, drawsBorder: false)
     .accessibilityIdentifier("settings-sidebar")
   }
 
   private func settingsSidebarRow(_ tab: SettingsTab) -> some View {
-    HStack(spacing: 6) {
-      Label(tab.title, systemImage: tab.systemImage)
+    let needsAttention = tabNeedsAttention(tab)
+    return HStack(alignment: .center, spacing: WorkbenchSpacing.control) {
+      Label {
+        Text(tab.title)
+          .lineLimit(2)
+          .fixedSize(horizontal: false, vertical: true)
+      } icon: {
+        Image(systemName: tab.systemImage)
+      }
       Spacer(minLength: 2)
-      if tabNeedsAttention(tab) {
-        Circle()
-          .fill(WorkbenchTheme.warning)
-          .frame(width: 6, height: 6)
-          .accessibilityLabel("需要配置")
+      if needsAttention {
+        Text(SettingsSidebarPresentation.attentionBadgeTitle)
+          .font(.caption2.weight(.semibold))
+          .foregroundStyle(WorkbenchTheme.warning)
+          .padding(.horizontal, 6)
+          .padding(.vertical, 2)
+          .background(
+            WorkbenchTheme.warning.opacity(WorkbenchOpacity.noticeBackground),
+            in: Capsule()
+          )
+          .fixedSize()
+          .accessibilityHidden(true)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .contentShape(Rectangle())
     .tag(tab)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(tab.title)
+    .accessibilityValue(
+      needsAttention ? SettingsSidebarPresentation.attentionAccessibilityValue : ""
+    )
+    .accessibilityAddTraits(selectedSettingsTab == tab ? .isSelected : [])
+    .accessibilityIdentifier("settings-sidebar-\(tab.id)")
   }
 
   private func tabNeedsAttention(_ tab: SettingsTab) -> Bool {
@@ -118,16 +180,20 @@ struct SettingsView: View {
     case .configurationStatus:
       let profile = store.activeProfile
       let isRepoReady = profile.localRepositoryRootURL != nil
-      let isRulesReady = !profile.markdownPathPattern.trimmedForPublishing.isEmpty
+      let isRulesReady =
+        !profile.markdownPathPattern.trimmedForPublishing.isEmpty
         && !profile.imagePathPattern.trimmedForPublishing.isEmpty
         && !profile.publicImagePathPattern.trimmedForPublishing.isEmpty
         && !profile.dateFormat.trimmedForPublishing.isEmpty
       return !isRepoReady || !isRulesReady
     case .token:
-      return store.repositoryTokenAvailability.accessState != .available
+      let accessState = store.repositoryTokenAvailability.accessState
+      let hasRemoteTarget =
+        !store.activeProfile.repoOwner.trimmedForPublishing.isEmpty
+        && !store.activeProfile.repoName.trimmedForPublishing.isEmpty
+      return accessState == .accessFailed || (hasRemoteTarget && accessState != .available)
     case .ai:
-      let config = store.aiProviderConfig(for: store.activeProfile)
-      return config.requiresAPIKey && store.ai.tokenAvailability.accessState != .available
+      return store.ai.tokenAvailability.accessState == .accessFailed
     default:
       return false
     }
@@ -222,12 +288,40 @@ struct SettingsView: View {
       siteKindBinding: siteKindBinding,
       healthDestination: healthDestination,
       healthNavigationRequestID: healthNavigationRequestID,
+      navigationDestination: navigationDestination,
+      navigationRequestID: navigationRequestID,
       selectConfigurationHealthDestination: openConfigurationHealthDestination
     )
   }
 
+  /// Each top-level page owns exactly one native vertical scroll container:
+  /// Form-backed pages use their Form, while data management owns a ScrollView.
+  @ViewBuilder
+  private var settingsPageContent: some View {
+    switch selectedSettingsTab.scrollOwnership {
+    case .nativeForm, .nativeScrollView:
+      selectedSettingsTab.makeContent(context: settingsContext)
+        .settingsThinRedScroller()
+    }
+  }
+
+  private var settingsSidebarSelection: Binding<SettingsTab> {
+    Binding(
+      get: { selectedSettingsTab },
+      set: { selectTopLevelSettingsTab($0) }
+    )
+  }
+
+  private func filteredSettingsTabs(_ tabs: [SettingsTab]) -> [SettingsTab] {
+    tabs.filter { $0.matchesSearch(searchText) }
+  }
+
   private static func initialSettingsTab() -> SettingsTab {
-    .defaultRules
+    SettingsNavigation.initialTab(
+      lastViewedTabID: UserDefaults.standard.string(
+        forKey: SettingsNavigation.lastViewedTabStorageKey
+      )
+    )
   }
 
   private var activeProfileBinding: Binding<SiteProfile> {
@@ -267,23 +361,20 @@ struct SettingsView: View {
     )
   }
 
-  private func openConfigurationHealthDestination(_ destination: SettingsConfigurationHealthDestination) {
+  private func openConfigurationHealthDestination(
+    _ destination: SettingsConfigurationHealthDestination
+  ) {
     healthDestination = destination
     healthNavigationRequestID = UUID()
     switch destination {
     case .repository:
-      guard let url = RepositorySelectionPanel.chooseDirectory() else { return }
-      Task {
-        await store.repository.rememberRootAsync(url)
-      }
+      selectSettingsDestination(.token(.repository), healthDestination: destination)
     case .defaultRules:
-      selectedSettingsTab = .defaultRules
+      selectSettingsDestination(.rules(.paths), healthDestination: destination)
     case .repositoryToken:
-      selectedSettingsTab = .token
+      selectSettingsDestination(.token(.repository), healthDestination: destination)
     case .aiKey:
-      selectedSettingsTab = .ai
-    case .privacy:
-      selectedSettingsTab = .privacy
+      selectSettingsDestination(.ai(.credentials), healthDestination: destination)
     }
   }
 
@@ -291,16 +382,52 @@ struct SettingsView: View {
     guard !requestedTabID.isEmpty else {
       return
     }
-    guard let tab = SettingsTab.tab(forRequestedID: requestedTabID) else {
+    guard let destination = SettingsDestination(requestedID: requestedTabID) else {
       requestedSettingsTabID = ""
       return
     }
 
-    selectedSettingsTab = tab
-    if tab == .ai {
-      healthDestination = .aiKey
-      healthNavigationRequestID = UUID()
+    let compatibilityHealthDestination: SettingsConfigurationHealthDestination?
+    switch destination {
+    case .rules(.paths):
+      compatibilityHealthDestination = .defaultRules
+    case .token(.repository):
+      compatibilityHealthDestination = .repositoryToken
+    case .ai(.credentials):
+      compatibilityHealthDestination = .aiKey
+    default:
+      compatibilityHealthDestination = nil
     }
-    self.requestedSettingsTabID = ""
+    selectSettingsDestination(
+      destination,
+      healthDestination: compatibilityHealthDestination
+    )
+    requestedSettingsTabID = ""
+  }
+
+  private func selectTopLevelSettingsTab(_ tab: SettingsTab) {
+    selectSettingsDestination(.tab(tab), healthDestination: nil)
+  }
+
+  private func selectSettingsDestination(
+    _ destination: SettingsDestination,
+    healthDestination: SettingsConfigurationHealthDestination?
+  ) {
+    self.healthDestination = healthDestination
+    healthNavigationRequestID = UUID()
+    navigationDestination = destination
+    navigationRequestID = UUID()
+    selectedSettingsTab = destination.tab
+  }
+}
+
+enum SettingsSidebarPresentation {
+  static let minimumWidth = WorkbenchSettingsMetrics.sidebarWidth
+  static let maximumWidth: CGFloat = 244
+  static var attentionBadgeTitle: String { String(localized: "需配置") }
+  static var attentionAccessibilityValue: String { String(localized: "需要配置") }
+
+  static func clampedWidth(_ scaledWidth: CGFloat) -> CGFloat {
+    min(max(scaledWidth, minimumWidth), maximumWidth)
   }
 }

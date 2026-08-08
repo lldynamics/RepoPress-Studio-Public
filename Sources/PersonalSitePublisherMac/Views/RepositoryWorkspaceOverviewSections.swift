@@ -691,7 +691,7 @@ extension RepositoryWorkspaceView {
   }
 
   func openPublishingRulesSettings() {
-    requestedSettingsTabID = SettingsTab.defaultRules.id
+    requestedSettingsTabID = SettingsDestination.rules(.paths).id
     openSettings()
   }
 

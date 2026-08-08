@@ -28,6 +28,11 @@ private enum ContentMigrationNotice {
   }
 }
 
+enum ContentMigrationLayout {
+  static let metricMinimumWidth: CGFloat = 132
+  static let emptyStateMinimumHeight: CGFloat = 220
+}
+
 struct ContentMigrationAssistantView: View {
   @ObservedObject var store: WorkbenchStore
   @Environment(\.dismiss) private var dismiss
@@ -41,7 +46,7 @@ struct ContentMigrationAssistantView: View {
     VStack(alignment: .leading, spacing: 0) {
       header
       Divider()
-      ScrollView {
+      ScrollView(.vertical) {
         VStack(alignment: .leading, spacing: 18) {
           sourceSection
           if let plan {
@@ -56,61 +61,50 @@ struct ContentMigrationAssistantView: View {
               systemImage: "arrow.triangle.2.circlepath.doc.on.clipboard",
               description: Text("先分析内容，再确认导入。原始文件、图片与仓库都不会在预览阶段被改写。")
             )
-            .frame(maxWidth: .infinity, minHeight: 260)
+            .frame(maxWidth: .infinity, minHeight: ContentMigrationLayout.emptyStateMinimumHeight)
           }
         }
         .padding(WorkbenchSpacing.page)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
       }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
       Divider()
       footer
     }
     .workbenchSheetSize(.wide)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("data-management-migration-task")
   }
 
   private var header: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 12) {
-      VStack(alignment: .leading, spacing: 3) {
-        Text("内容迁移助手")
-          .font(.title2.weight(.semibold))
-        Text("导入 WordPress、RSS、Markdown 和通用博客导出包，先生成可审阅的转换计划。")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-      }
-      Spacer()
+    VStack(alignment: .leading, spacing: 3) {
+      Text("内容迁移助手")
+        .font(.title2.weight(.semibold))
+      Text("导入 WordPress、RSS、Markdown 和通用博客导出包，先生成可审阅的转换计划。")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
     .padding(WorkbenchSpacing.page)
   }
 
   private var sourceSection: some View {
     GroupBox("1. 选择来源") {
-      HStack(spacing: 12) {
-        VStack(alignment: .leading, spacing: 4) {
-          Text("支持 WXR、RSS/Atom、JSON 导出、单篇 Markdown 与 Markdown 文件夹。")
-            .font(.callout)
-          Text("预览会转换文章头信息（Front Matter）、Slug、图片目标路径和重定向候选，但不会复制文件或访问网络。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .top, spacing: 12) {
+          sourceDescription
+          Spacer(minLength: 0)
+          sourceButton
         }
-        Spacer()
-        Button {
-          selectSource()
-        } label: {
-          if isAnalyzing {
-            Label {
-              Text("正在分析")
-            } icon: {
-              Image(systemName: "hourglass")
-            }
-          } else {
-            Label {
-              Text("选择导出来源")
-            } icon: {
-              Image(systemName: "folder.badge.plus")
-            }
-          }
+
+        VStack(alignment: .leading, spacing: 8) {
+          sourceDescription
+          sourceButton
         }
-        .disabled(isAnalyzing || isApplying)
       }
+      .frame(maxWidth: .infinity, alignment: .leading)
       if let notice {
         AccessibleStatusMessage(
           message: migrationNoticeMessage(notice),
@@ -122,6 +116,39 @@ struct ContentMigrationAssistantView: View {
     }
   }
 
+  private var sourceDescription: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text("支持 WXR、RSS/Atom、JSON 导出、单篇 Markdown 与 Markdown 文件夹。")
+        .font(.callout)
+        .fixedSize(horizontal: false, vertical: true)
+      Text("预览会转换文章头信息（Front Matter）、Slug、图片目标路径和重定向候选，但不会复制文件或访问网络。")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  private var sourceButton: some View {
+    Button {
+      selectSource()
+    } label: {
+      if isAnalyzing {
+        Label {
+          Text("正在分析")
+        } icon: {
+          Image(systemName: "hourglass")
+        }
+      } else {
+        Label {
+          Text("选择导出来源")
+        } icon: {
+          Image(systemName: "folder.badge.plus")
+        }
+      }
+    }
+    .disabled(isAnalyzing || isApplying)
+  }
+
   private func planSummary(_ plan: ContentMigrationPlan) -> some View {
     let insertCount = plan.reviewItems.count { $0.disposition == .insert }
     let updateCount = plan.reviewItems.count { $0.disposition == .update }
@@ -130,15 +157,36 @@ struct ContentMigrationAssistantView: View {
     return VStack(alignment: .leading, spacing: 10) {
       Text("2. 转换概览")
         .font(.headline)
-      HStack(spacing: 12) {
-        migrationMetric("新增", value: "\(insertCount)", image: "doc.badge.plus")
-        migrationMetric("更新", value: "\(updateCount)", image: "arrow.triangle.2.circlepath.doc.on.clipboard")
-        migrationMetric("无需变更", value: "\(unchangedCount)", image: "equal.circle")
-        migrationMetric("冲突", value: "\(conflictCount)", image: "exclamationmark.triangle")
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 12) {
+          migrationMetric("新增", value: "\(insertCount)", image: "doc.badge.plus")
+          migrationMetric("更新", value: "\(updateCount)", image: "arrow.triangle.2.circlepath.doc.on.clipboard")
+          migrationMetric("无需变更", value: "\(unchangedCount)", image: "equal.circle")
+          migrationMetric("冲突", value: "\(conflictCount)", image: "exclamationmark.triangle")
+        }
+
+        LazyVGrid(
+          columns: [
+            GridItem(
+              .adaptive(minimum: ContentMigrationLayout.metricMinimumWidth),
+              spacing: WorkbenchSpacing.card,
+              alignment: .topLeading
+            )
+          ],
+          alignment: .leading,
+          spacing: WorkbenchSpacing.card
+        ) {
+          migrationMetric("新增", value: "\(insertCount)", image: "doc.badge.plus")
+          migrationMetric("更新", value: "\(updateCount)", image: "arrow.triangle.2.circlepath.doc.on.clipboard")
+          migrationMetric("无需变更", value: "\(unchangedCount)", image: "equal.circle")
+          migrationMetric("冲突", value: "\(conflictCount)", image: "exclamationmark.triangle")
+        }
       }
+      .frame(maxWidth: .infinity, alignment: .leading)
       Text("来源：\(plan.sourceName)（\(plan.sourceKind.localizedDisplayName)） · 将导入到「\(store.activeProfile.name)」 · \(plan.imageMappings.count) 条图片路径 · \(plan.redirects.count) 条重定向")
         .font(.caption)
         .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
   }
 
@@ -153,6 +201,7 @@ struct ContentMigrationAssistantView: View {
         Text(title)
           .font(.caption)
           .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
       Spacer(minLength: 0)
     }
@@ -163,25 +212,25 @@ struct ContentMigrationAssistantView: View {
 
   private func draftPreview(_ plan: ContentMigrationPlan) -> some View {
     VStack(alignment: .leading, spacing: 8) {
-      HStack {
-        Text("3. 逐篇审阅")
-          .font(.headline)
-        Spacer()
-        Button("清空选择") {
-          selectedDraftIDs.removeAll()
+      ViewThatFits(in: .horizontal) {
+        HStack {
+          Text("3. 逐篇审阅")
+            .font(.headline)
+          Spacer(minLength: 0)
+          draftPreviewActions(for: plan)
         }
-        .controlSize(.small)
-        .disabled(selectedDraftIDs.isEmpty)
-        Button("全选可导入") {
-          selectedDraftIDs = selectableDraftIDs(in: plan)
+
+        VStack(alignment: .leading, spacing: 8) {
+          Text("3. 逐篇审阅")
+            .font(.headline)
+          draftPreviewActions(for: plan)
         }
-        .controlSize(.small)
-        .disabled(selectableDraftIDs(in: plan).isEmpty)
       }
 
       Text("只有勾选的「新增」和「更新」项会被应用；相同文章和冲突项不会改写本地草稿。")
         .font(.caption)
         .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
 
       LazyVStack(alignment: .leading, spacing: 8) {
         ForEach(plan.reviewItems) { item in
@@ -191,55 +240,51 @@ struct ContentMigrationAssistantView: View {
     }
   }
 
+  private func draftPreviewActions(for plan: ContentMigrationPlan) -> some View {
+    HStack(spacing: 8) {
+      Button("清空选择") {
+        selectedDraftIDs.removeAll()
+      }
+      .controlSize(.small)
+      .disabled(selectedDraftIDs.isEmpty)
+      Button("全选可导入") {
+        selectedDraftIDs = selectableDraftIDs(in: plan)
+      }
+      .controlSize(.small)
+      .disabled(selectableDraftIDs(in: plan).isEmpty)
+    }
+  }
+
   private func migrationDraftRow(_ item: ContentMigrationDraftReviewItem) -> some View {
     VStack(alignment: .leading, spacing: 8) {
-      HStack(alignment: .top, spacing: 10) {
-        if item.disposition.isSelectable {
-          Toggle(
-            "选择\(item.importedDraft.title)",
-            isOn: Binding(
-              get: { selectedDraftIDs.contains(item.id) },
-              set: { isSelected in
-                if isSelected {
-                  selectedDraftIDs.insert(item.id)
-                } else {
-                  selectedDraftIDs.remove(item.id)
-                }
-              }
-            )
-          )
-          .labelsHidden()
-          .toggleStyle(.checkbox)
-        } else {
-          Image(systemName: item.disposition == .conflict ? "exclamationmark.triangle.fill" : "equal.circle.fill")
-            .foregroundStyle(migrationDispositionColor(item.disposition))
-            .frame(width: 16, height: 18)
-            .accessibilityHidden(true)
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .top, spacing: 10) {
+          migrationSelectionControl(for: item)
+          migrationDraftIdentity(for: item)
+          Spacer(minLength: 0)
+          migrationDraftState(for: item)
         }
 
-        VStack(alignment: .leading, spacing: 4) {
-          HStack(spacing: 8) {
-            Text(item.importedDraft.title)
-              .font(.callout.weight(.medium))
-              .workbenchTruncatedIdentity(item.importedDraft.title)
-            migrationDispositionBadge(item.disposition)
-            Spacer()
-            Text(item.importedDraft.draft ? "草稿" : "已发布")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 6) {
+          HStack(alignment: .top, spacing: 10) {
+            migrationSelectionControl(for: item)
+            migrationDraftIdentity(for: item)
           }
-          let destination = "/\(item.importedDraft.slug)  →  \(item.repositoryPath)"
-          Text(destination)
-            .font(.caption.monospaced())
-            .foregroundStyle(.secondary)
-            .workbenchTruncatedIdentity(destination)
-          if !item.importedDraft.summary.isEmpty {
-            Text(item.importedDraft.summary)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .lineLimit(2)
-          }
+          migrationDraftState(for: item)
         }
+      }
+
+      let destination = "/\(item.importedDraft.slug)  →  \(item.repositoryPath)"
+      Text(destination)
+        .font(.caption.monospaced())
+        .foregroundStyle(.secondary)
+        .workbenchTruncatedIdentity(destination)
+      if !item.importedDraft.summary.isEmpty {
+        Text(item.importedDraft.summary)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+          .fixedSize(horizontal: false, vertical: true)
       }
 
       if item.disposition == .conflict {
@@ -263,6 +308,49 @@ struct ContentMigrationAssistantView: View {
     .accessibilityElement(children: .contain)
   }
 
+  @ViewBuilder
+  private func migrationSelectionControl(for item: ContentMigrationDraftReviewItem) -> some View {
+    if item.disposition.isSelectable {
+      Toggle(
+        "选择\(item.importedDraft.title)",
+        isOn: Binding(
+          get: { selectedDraftIDs.contains(item.id) },
+          set: { isSelected in
+            if isSelected {
+              selectedDraftIDs.insert(item.id)
+            } else {
+              selectedDraftIDs.remove(item.id)
+            }
+          }
+        )
+      )
+      .labelsHidden()
+      .toggleStyle(.checkbox)
+    } else {
+      Image(systemName: item.disposition == .conflict ? "exclamationmark.triangle.fill" : "equal.circle.fill")
+        .foregroundStyle(migrationDispositionColor(item.disposition))
+        .frame(width: 16, height: 18)
+        .accessibilityHidden(true)
+    }
+  }
+
+  private func migrationDraftIdentity(for item: ContentMigrationDraftReviewItem) -> some View {
+    HStack(alignment: .top, spacing: 8) {
+      Text(item.importedDraft.title)
+        .font(.callout.weight(.medium))
+        .workbenchTruncatedIdentity(item.importedDraft.title, lineLimit: 2)
+      migrationDispositionBadge(item.disposition)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func migrationDraftState(for item: ContentMigrationDraftReviewItem) -> some View {
+    Text(item.importedDraft.draft ? "草稿" : "已发布")
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
   private func migrationDispositionBadge(_ disposition: ContentMigrationDraftDisposition) -> some View {
     Text(migrationDispositionTitle(disposition))
       .font(.caption.weight(.semibold))
@@ -284,19 +372,27 @@ struct ContentMigrationAssistantView: View {
       .font(.caption.monospacedDigit())
 
       ForEach(comparison.fieldChanges, id: \.field) { change in
-        HStack(alignment: .top, spacing: 8) {
-          Text(migrationFieldTitle(change.field))
-            .fontWeight(.semibold)
-            .frame(width: 72, alignment: .leading)
-          Text(change.previousValue)
-            .foregroundStyle(WorkbenchTheme.risk)
-            .frame(maxWidth: .infinity, alignment: .leading)
-          Image(systemName: "arrow.right")
-            .foregroundStyle(.secondary)
-            .accessibilityHidden(true)
-          Text(change.currentValue)
-            .foregroundStyle(WorkbenchTheme.success)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        ViewThatFits(in: .horizontal) {
+          HStack(alignment: .top, spacing: 8) {
+            Text(migrationFieldTitle(change.field))
+              .fontWeight(.semibold)
+              .frame(width: 72, alignment: .leading)
+            migrationComparisonValue(change.previousValue, color: WorkbenchTheme.risk)
+            Image(systemName: "arrow.right")
+              .foregroundStyle(.secondary)
+              .accessibilityHidden(true)
+            migrationComparisonValue(change.currentValue, color: WorkbenchTheme.success)
+          }
+
+          VStack(alignment: .leading, spacing: 4) {
+            Text(migrationFieldTitle(change.field))
+              .fontWeight(.semibold)
+            comparisonValueLabel("原值", value: change.previousValue, color: WorkbenchTheme.risk)
+            Image(systemName: "arrow.down")
+              .foregroundStyle(.secondary)
+              .accessibilityHidden(true)
+            comparisonValueLabel("新值", value: change.currentValue, color: WorkbenchTheme.success)
+          }
         }
       }
 
@@ -318,6 +414,23 @@ struct ContentMigrationAssistantView: View {
             .foregroundStyle(.secondary)
         }
       }
+    }
+  }
+
+  private func migrationComparisonValue(_ value: String, color: Color) -> some View {
+    Text(value)
+      .foregroundStyle(color)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .fixedSize(horizontal: false, vertical: true)
+      .workbenchTruncatedIdentity(value, lineLimit: 3)
+  }
+
+  private func comparisonValueLabel(_ label: String, value: String, color: Color) -> some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(label)
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+      migrationComparisonValue(value, color: color)
     }
   }
 
@@ -349,23 +462,19 @@ struct ContentMigrationAssistantView: View {
   private func redirects(_ plan: ContentMigrationPlan) -> some View {
     if !plan.redirects.isEmpty {
       VStack(alignment: .leading, spacing: 8) {
-        HStack {
-          Text("重定向候选")
-            .font(.headline)
-          Spacer()
-          Button("复制 CSV") {
-            let didCopy = ClipboardWriter.copy(
-              plan.redirectTableCSV,
-              successMessage: "已复制重定向 CSV。",
-              setMessage: { _ in }
-            )
-            notice = didCopy ? .copiedRedirectCSV : .copyFailed
+        ViewThatFits(in: .horizontal) {
+          HStack {
+            Text("重定向候选")
+              .font(.headline)
+            Spacer(minLength: 0)
+            redirectActions(for: plan)
           }
-          .controlSize(.small)
-          Button("导出 CSV") {
-            exportRedirects(plan)
+
+          VStack(alignment: .leading, spacing: 8) {
+            Text("重定向候选")
+              .font(.headline)
+            redirectActions(for: plan)
           }
-          .controlSize(.small)
         }
         ForEach(Array(plan.redirects.prefix(5))) { redirect in
           let redirectMapping = "\(redirect.sourcePath)  →  \(redirect.targetPath)"
@@ -382,6 +491,24 @@ struct ContentMigrationAssistantView: View {
     }
   }
 
+  private func redirectActions(for plan: ContentMigrationPlan) -> some View {
+    HStack(spacing: 8) {
+      Button("复制 CSV") {
+        let didCopy = ClipboardWriter.copy(
+          plan.redirectTableCSV,
+          successMessage: "已复制重定向 CSV。",
+          setMessage: { _ in }
+        )
+        notice = didCopy ? .copiedRedirectCSV : .copyFailed
+      }
+      .controlSize(.small)
+      Button("导出 CSV") {
+        exportRedirects(plan)
+      }
+      .controlSize(.small)
+    }
+  }
+
   @ViewBuilder
   private func warnings(_ plan: ContentMigrationPlan) -> some View {
     if !plan.warnings.isEmpty {
@@ -392,47 +519,89 @@ struct ContentMigrationAssistantView: View {
           Label(warning, systemImage: "exclamationmark.triangle")
             .font(.caption)
             .foregroundStyle(WorkbenchTheme.warning)
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
     }
   }
 
   private var footer: some View {
-    HStack {
-      Button("取消") { dismiss() }
-        .keyboardShortcut(.cancelAction)
-
-      if let plan {
-        let selectedCount = selectedImportCount(in: plan)
-        Spacer()
-        Text("应用前会再次校验本地草稿；如已变化将停止改写，也不会自动写入仓库。")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        Button {
-          apply(plan)
-        } label: {
-          if isApplying {
-            Label {
-              Text("正在导入")
-            } icon: {
-              Image(systemName: "hourglass")
-            }
-          } else {
-            Label {
-              Text("确认导入 \(selectedCount) 篇")
-            } icon: {
-              Image(systemName: "tray.and.arrow.down.fill")
-            }
-          }
-        }
-        .workbenchProminentActionStyle()
-        .disabled(isApplying || selectedCount == 0)
-        .keyboardShortcut(.defaultAction)
-      } else {
-        Spacer()
-      }
+    ViewThatFits(in: .horizontal) {
+      horizontalFooter
+      verticalFooter
     }
     .padding(WorkbenchSpacing.content)
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private var horizontalFooter: some View {
+    HStack(alignment: .center, spacing: 12) {
+      cancelButton
+
+      if let plan {
+        Spacer(minLength: 0)
+        footerMessage
+        migrationImportButton(for: plan)
+      } else {
+        Spacer(minLength: 0)
+      }
+    }
+  }
+
+  private var verticalFooter: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      if let plan {
+        footerMessage
+        HStack {
+          cancelButton
+          Spacer(minLength: 0)
+          migrationImportButton(for: plan)
+        }
+      } else {
+        HStack {
+          cancelButton
+          Spacer(minLength: 0)
+        }
+      }
+    }
+  }
+
+  private var cancelButton: some View {
+    Button("取消") { dismiss() }
+      .keyboardShortcut(.cancelAction)
+      .accessibilityIdentifier("data-management-migration-task-cancel")
+  }
+
+  private var footerMessage: some View {
+    Text("应用前会再次校验本地草稿；如已变化将停止改写，也不会自动写入仓库。")
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func migrationImportButton(for plan: ContentMigrationPlan) -> some View {
+    let selectedCount = selectedImportCount(in: plan)
+    return Button {
+      apply(plan)
+    } label: {
+      if isApplying {
+        Label {
+          Text("正在导入")
+        } icon: {
+          Image(systemName: "hourglass")
+        }
+      } else {
+        Label {
+          Text("确认导入 \(selectedCount) 篇")
+        } icon: {
+          Image(systemName: "tray.and.arrow.down.fill")
+        }
+      }
+    }
+    .workbenchProminentActionStyle()
+    .disabled(isApplying || selectedCount == 0)
+    .keyboardShortcut(.defaultAction)
   }
 
   private func selectSource() {

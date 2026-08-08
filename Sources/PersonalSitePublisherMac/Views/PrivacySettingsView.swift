@@ -27,10 +27,18 @@ struct PrivacySettingsView: View {
                 .font(.subheadline.weight(.semibold))
               Spacer()
               HStack(spacing: 2) {
-                Text("⌃").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4).padding(.vertical, 1).background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
-                Text("⌘").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4).padding(.vertical, 1).background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
-                Text("L").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4).padding(.vertical, 1).background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
+                Text("⌃").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4)
+                  .padding(.vertical, 1).background(
+                    Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
+                Text("⌘").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4)
+                  .padding(.vertical, 1).background(
+                    Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
+                Text("L").font(.caption.monospaced().weight(.semibold)).padding(.horizontal, 4)
+                  .padding(.vertical, 1).background(
+                    Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 3))
               }
+              .accessibilityElement(children: .ignore)
+              .accessibilityLabel("快捷键 Control Command L")
             }
             Text("在软件任何界面按下全局快捷键即可快速遮挡或隐藏工作台。")
               .font(.caption)
@@ -50,29 +58,32 @@ struct PrivacySettingsView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-          HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-              Text("公开文本示例")
-                .font(.caption.weight(.semibold))
-              Text("这是一段正常的文章正文。")
-                .font(.subheadline)
+          ViewThatFits(in: .horizontal) {
+            HStack(spacing: WorkbenchSpacing.card) {
+              privacyPreviewCard(
+                title: String(localized: "公开文本示例"),
+                content: String(localized: "这是一段正常的文章正文。"),
+                isMasked: false
+              )
+              privacyPreviewCard(
+                title: String(localized: "私密掩码示例"),
+                content: String(localized: "这是一段敏感私密内容。"),
+                isMasked: true
+              )
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(8)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(6)
 
-            VStack(alignment: .leading, spacing: 4) {
-              Text("私密掩码示例")
-                .font(.caption.weight(.semibold))
-              Text("这是一段敏感私密内容。")
-                .font(.subheadline)
-                .blur(radius: privacySettings.masksPrivateContent ? 4 : 0)
+            VStack(alignment: .leading, spacing: WorkbenchSpacing.control) {
+              privacyPreviewCard(
+                title: String(localized: "公开文本示例"),
+                content: String(localized: "这是一段正常的文章正文。"),
+                isMasked: false
+              )
+              privacyPreviewCard(
+                title: String(localized: "私密掩码示例"),
+                content: String(localized: "这是一段敏感私密内容。"),
+                isMasked: true
+              )
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(8)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(6)
           }
         }
       }
@@ -103,18 +114,48 @@ struct PrivacySettingsView: View {
     }
     .formStyle(.grouped)
     .padding(WorkbenchSpacing.content)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("privacy-settings")
   }
 
+  private func privacyPreviewCard(
+    title: String,
+    content: String,
+    isMasked: Bool
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(title)
+        .font(.caption.weight(.semibold))
+      Text(content)
+        .font(.subheadline)
+        .blur(radius: isMasked && privacySettings.masksPrivateContent ? 4 : 0)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(WorkbenchSpacing.control)
+    .background(
+      Color(nsColor: .controlBackgroundColor),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(title)
+    .accessibilityValue(
+      isMasked && privacySettings.masksPrivateContent
+        ? String(localized: "内容已遮挡")
+        : content
+    )
+  }
+
   private static var privacyPolicyURL: URL? {
-    let path = usesChineseSupportPages
+    let path =
+      usesChineseSupportPages
       ? "https://apps.chengjinfang.com/personal-site-publisher/privacy/"
       : "https://apps.chengjinfang.com/personal-site-publisher/privacy/en/"
     return URL(string: path)
   }
 
   private static var supportURL: URL? {
-    let path = usesChineseSupportPages
+    let path =
+      usesChineseSupportPages
       ? "https://apps.chengjinfang.com/personal-site-publisher/"
       : "https://apps.chengjinfang.com/personal-site-publisher/en/"
     return URL(string: path)

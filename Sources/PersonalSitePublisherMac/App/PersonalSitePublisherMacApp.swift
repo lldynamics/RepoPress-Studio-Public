@@ -116,7 +116,6 @@ struct PersonalSitePublisherMacApp: App {
           .workbenchSettingsWindowSize()
         }
       }
-        .thinRedScrollbars()
         .tint(selectedAccentPalette.color)
     }
   }
@@ -351,6 +350,7 @@ private struct ProtectedSettingsView: View {
         QuickHideOverlay(store: store)
       }
     }
+    .settingsThinRedScrollbars()
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
     .background(ScreenshotCaptureWindowBridge(role: .settings))
 #endif
