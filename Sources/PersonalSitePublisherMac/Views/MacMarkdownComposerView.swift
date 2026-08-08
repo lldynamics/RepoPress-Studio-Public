@@ -7,6 +7,7 @@ struct MacMarkdownComposerView: View {
   let store: WorkbenchStore
   let aiActions: WorkbenchAIFeatureFacade
   @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
+  @Environment(\.aiChatWorkspaceCommandAction) var aiChatWorkspaceCommandAction
   @EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter
   @StateObject var editorState: WorkbenchMarkdownEditorFeatureFacade
   @StateObject var editorSessionState: MarkdownComposerEditorSessionState
@@ -234,6 +235,8 @@ struct MacMarkdownComposerView: View {
         hasUnsavedChanges: editorState.hasUnsavedChanges,
         editorDisplayMode: editorState.editorDisplayMode,
         isSelectionAIActionRunning: isSelectionAIActionRunning,
+        canOpenAIChat: aiChatWorkspaceCommandAction?.isAvailable ?? true,
+        aiChatUnavailableReason: aiChatWorkspaceCommandAction?.unavailableReason,
         writingToolDensity: writingToolDensity,
         availableWritingContextPanels: availableWritingContextPanels,
         actions: markdownEditorToolbarActions

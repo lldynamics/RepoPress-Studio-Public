@@ -375,7 +375,11 @@ extension MacMarkdownComposerView {
   }
 
   func showAIContextInspector() {
-    aiActions.openChatWorkspace(for: draft.id)
+    if let aiChatWorkspaceCommandAction {
+      aiChatWorkspaceCommandAction.open(draft.id, nil)
+    } else {
+      aiActions.openChatWorkspace(for: draft.id)
+    }
   }
 
   func performTemplateLibraryAction(_ kind: AIPublishingActionKind) {
@@ -387,7 +391,11 @@ extension MacMarkdownComposerView {
   }
 
   func openTemplateLibraryPrompt(_ prompt: AIPublishingQuickPrompt) {
-    aiActions.openChatWorkspace(for: draft.id, quickPrompt: prompt)
+    if let aiChatWorkspaceCommandAction {
+      aiChatWorkspaceCommandAction.open(draft.id, prompt)
+    } else {
+      aiActions.openChatWorkspace(for: draft.id, quickPrompt: prompt)
+    }
   }
 
   func applySelectionEditPreview(_ preview: AIPublishingSelectionEditPreview) {

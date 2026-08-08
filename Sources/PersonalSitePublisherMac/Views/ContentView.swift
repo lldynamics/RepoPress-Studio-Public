@@ -209,6 +209,19 @@ struct ContentView: View {
         openLocalSitePreview()
       }
     )
+    .environment(
+      \.aiChatWorkspaceCommandAction,
+      AIChatWorkspaceCommandAction(
+        isAvailable: shellState.canUseProtectedWorkbench
+          && canRequestInspectorInCurrentLayout,
+        unavailableReason: canRequestInspectorInCurrentLayout
+          ? nil
+          : String(localized: "扩大窗口后可使用 Inspector"),
+        open: { draftID, quickPrompt in
+          openAIAssistantWorkspace(for: draftID, quickPrompt: quickPrompt)
+        }
+      )
+    )
     .environmentObject(sceneCommandRouter)
     .focusedSceneObject(sceneCommandRouter)
     .toolbar {
@@ -659,12 +672,22 @@ struct ContentView: View {
       return
     }
 
-    guard prepareInspectorForUserRequest() else { return }
+    _ = openAIAssistantWorkspace(for: shellState.selectedDraftID)
+  }
+
+  @discardableResult
+  private func openAIAssistantWorkspace(
+    for draftID: UUID?,
+    quickPrompt: AIPublishingQuickPrompt? = nil
+  ) -> Bool {
+    guard shellState.canUseProtectedWorkbench,
+          prepareInspectorForUserRequest()
+    else { return false }
     if effectiveFocusMode {
       isFocusMode = false
       revealsSidebarInNarrowSplit = true
     }
-    _ = store.ai.openChatWorkspace(for: shellState.selectedDraftID)
+    return store.ai.openChatWorkspace(for: draftID, quickPrompt: quickPrompt)
   }
 
   private var inspectorToolbarHelp: String {

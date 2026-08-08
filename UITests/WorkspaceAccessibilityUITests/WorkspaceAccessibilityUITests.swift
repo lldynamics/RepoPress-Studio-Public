@@ -632,9 +632,33 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     launchApplication(surface: "writing")
 
     let initialWindowCount = application.windows.count
+    let mainWindow = application.windows.firstMatch
+    guard let writingAIEntry = waitForHittableElement(timeout: 10, query: {
+      mainWindow.descendants(matching: .any)
+        .matching(identifier: "markdown-ai-assistant-entry")
+    }) else {
+      XCTFail("The writing page must expose a directly clickable AI collaboration entry.")
+      return
+    }
+    let mainWindowAIInspector = mainWindow.descendants(matching: .any)
+      .matching(identifier: "ai-assistant-inspector")
+      .firstMatch
+    XCTAssertFalse(
+      mainWindowAIInspector.exists,
+      "The AI Inspector must be absent before the writing-page entry is clicked."
+    )
     let toolbarButton = element(identifier: "ai-assistant-toolbar-button")
     XCTAssertTrue(toolbarButton.waitForExistence(timeout: 10))
-    toggleAIInspectorForUITest(toolbarButton, shouldBePresented: true)
+    writingAIEntry.click()
+    XCTAssertTrue(
+      mainWindowAIInspector.waitForExistence(timeout: 10),
+      "Clicking the writing-page AI entry must open the Inspector in the main window."
+    )
+    XCTAssertGreaterThan(
+      mainWindowAIInspector.frame.midX,
+      mainWindow.frame.midX,
+      "The AI collaboration Inspector must occupy the right side of the writing window."
+    )
 
     assertUniqueIdentifier("ai-assistant-inspector")
     for identifier in [
@@ -675,7 +699,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertFalse(unsentDraft.isEmpty, "Typing must leave a composer draft to preserve.")
 
     application.typeKey("l", modifierFlags: [.control, .command])
-    let mainWindow = application.windows.firstMatch
     let quickHideOverlays = mainWindow.descendants(matching: .any)
       .matching(identifier: "quick-hide-overlay")
     XCTAssertTrue(
