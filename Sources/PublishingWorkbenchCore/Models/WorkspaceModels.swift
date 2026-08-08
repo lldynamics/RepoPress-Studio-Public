@@ -143,6 +143,38 @@ public enum WorkspaceInspectorPresentation {
   }
 }
 
+public struct WorkspaceInspectorColumnWidths: Equatable, Sendable {
+  public let minimum: CGFloat
+  public let ideal: CGFloat
+  public let maximum: CGFloat
+
+  public init(minimum: CGFloat, ideal: CGFloat, maximum: CGFloat) {
+    self.minimum = minimum
+    self.ideal = ideal
+    self.maximum = maximum
+  }
+}
+
+public enum WorkspaceInspectorColumnWidthPolicy {
+  public static let article = WorkspaceInspectorColumnWidths(
+    minimum: 320,
+    ideal: 360,
+    maximum: 460
+  )
+
+  public static let aiCollaboration = WorkspaceInspectorColumnWidths(
+    minimum: 420,
+    ideal: 500,
+    maximum: 620
+  )
+
+  public static func widths(
+    isAIAssistantPresented: Bool
+  ) -> WorkspaceInspectorColumnWidths {
+    isAIAssistantPresented ? aiCollaboration : article
+  }
+}
+
 public extension WorkspaceSection {
   var centerSurface: WorkspaceCenterSurface {
     switch self {

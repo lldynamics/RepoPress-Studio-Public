@@ -33,6 +33,11 @@ extension AIChatContextInspectorView {
   }
 
   var isAIKeyMissing: Bool {
+    if ai.chatContextMode == .general {
+      guard let connection = selectedGeneralConnectionProfile else { return true }
+      return connection.config.requiresAPIKey
+        && generalKeyAvailabilityByConnectionID[connection.id]?.hasToken != true
+    }
     guard let draft = ai.selectedChatDraft else { return false }
     return ai.chatProviderConfig(for: draft).requiresAPIKey
       && !ai.tokenAvailability.hasToken
@@ -40,140 +45,27 @@ extension AIChatContextInspectorView {
 
   var inspectorHeader: some View {
     VStack(spacing: 8) {
+      contextModePicker
       conversationNavigationRow
-      contextSummaryRow
-      quickStartRow
       configurationRow
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 10)
-  }
-
-  var contextSummaryRow: some View {
-    let summary = AIChatInspectorHeaderPresentation.contextSummary(
-      mode: ai.chatContextMode,
-      draftTitle: ai.selectedChatDraft?.title,
-      selectedReferences: selectedContextReferences
-    )
-
-    return HStack(alignment: .top, spacing: 8) {
-      Image(systemName: ai.chatContextMode.systemImage)
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(WorkbenchTheme.primary)
-        .frame(width: 18, height: 18)
-
-      VStack(alignment: .leading, spacing: 2) {
-        Text(summary.title)
-          .font(.caption.weight(.semibold))
-          .lineLimit(1)
-
-        Text(summary.detail)
-          .font(.workbenchMetadata)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-
-      contextReferenceMenu
-
-      Button {
-        isAdvancedSettingsExpanded.toggle()
-      } label: {
-        Image(systemName: isAdvancedSettingsExpanded ? "chevron.up" : "slider.horizontal.3")
-          .font(.caption.weight(.semibold))
-          .frame(width: 24, height: 24)
-      }
-      .buttonStyle(.borderless)
-      .help(String(localized: "展开或收起 AI 高级设置"))
-      .accessibilityLabel(
-        isAdvancedSettingsExpanded
-          ? String(localized: "收起 AI 高级设置")
-          : String(localized: "展开 AI 高级设置")
-      )
-      .accessibilityIdentifier("ai-assistant-advanced-settings-toggle")
-    }
-    .padding(.horizontal, 9)
-    .padding(.vertical, 7)
-    .background(
-      WorkbenchTheme.primary.opacity(0.055),
-      in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-    )
-    .overlay {
-      RoundedRectangle(cornerRadius: 9, style: .continuous)
-        .stroke(WorkbenchTheme.primary.opacity(0.12), lineWidth: 1)
-    }
     .accessibilityElement(children: .contain)
-    .accessibilityLabel(String(localized: "AI 上下文摘要"))
-    .accessibilityValue(summary.detail)
-    .accessibilityIdentifier("ai-assistant-context-summary")
-  }
-
-  @ViewBuilder
-  var quickStartRow: some View {
-    if ai.selectedChatDraft != nil && ai.chatMessages.isEmpty {
-      VStack(alignment: .leading, spacing: 6) {
-        HStack(spacing: 6) {
-          Label(String(localized: "常用任务"), systemImage: "wand.and.stars")
-            .font(.workbenchMetadata.weight(.semibold))
-            .foregroundStyle(.secondary)
-
-          Spacer(minLength: 0)
-
-          Button(String(localized: "更多")) {
-            isAdvancedSettingsExpanded = true
-          }
-          .buttonStyle(.plain)
-          .font(.workbenchMetadata)
-          .foregroundStyle(WorkbenchTheme.primary)
-          .accessibilityLabel(String(localized: "查看全部 AI 常用任务"))
-        }
-
-        HStack(spacing: 6) {
-          ForEach(featuredQuickActions) { action in
-            quickStartButton(for: action)
-          }
-        }
-      }
-      .padding(.horizontal, 2)
-      .accessibilityElement(children: .contain)
-      .accessibilityIdentifier("ai-assistant-quick-start")
-    }
-  }
-
-  var featuredQuickActions: [AIPublishingChatQuickAction] {
-    [.polishSuggestions, .summary, .proofread]
-  }
-
-  func quickStartButton(for action: AIPublishingChatQuickAction) -> some View {
-    Button {
-      inputText = action.localizedPrompt
-      focusComposerIfAvailable()
-    } label: {
-      Label {
-        Text(action.localizedCompactDisplayNameKey)
-      } icon: {
-        Image(systemName: action.systemImage)
-      }
-      .font(.workbenchMetadata.weight(.medium))
-      .lineLimit(1)
-      .minimumScaleFactor(0.72)
-      .frame(maxWidth: .infinity)
-      .padding(.horizontal, 6)
-      .padding(.vertical, 5)
-      .background(Color.primary.opacity(0.06), in: Capsule())
-      .overlay(Capsule().stroke(Color.primary.opacity(0.12), lineWidth: 1))
-    }
-    .buttonStyle(.plain)
-    .help(action.localizedDisplayName)
-    .accessibilityLabel(action.displayName)
+    .accessibilityLabel("AI 助手")
+    .accessibilityIdentifier("ai-assistant-inspector")
   }
 
 
   var conversationNavigationRow: some View {
-    let conversationCount =
-      ai.selectedChatDraft != nil
-      ? ai.chatConversations(for: ai.selectedChatDraft!.id, includingArchived: false).count : 0
+    let conversationCount: Int
+    if ai.chatContextMode == .general {
+      conversationCount = ai.generalChatConversationsIncludingArchived.filter { !$0.isArchived }.count
+    } else if let draft = ai.selectedChatDraft {
+      conversationCount = ai.chatConversations(for: draft.id, includingArchived: false).count
+    } else {
+      conversationCount = 0
+    }
 
     return HStack(spacing: 8) {
       Button {
@@ -217,7 +109,7 @@ extension AIChatContextInspectorView {
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .disabled(ai.selectedChatDraft == nil)
+      .disabled(ai.chatContextMode != .general && ai.selectedChatDraft == nil)
       .help(
         String(
           format: String(localized: "点击切换对话历史（当前草稿共 %lld 条对话）"),
@@ -231,22 +123,29 @@ extension AIChatContextInspectorView {
         conversationPickerContent
       }
 
-      AIChatConnectionStatusCapsule(
-        ai: ai,
-        draft: ai.selectedChatDraft
-      ) {
-        isModelQuickSwitchPresented = true
+      if ai.chatContextMode == .general {
+        generalConnectionAndModelMenu
+      } else {
+        AIChatConnectionStatusCapsule(
+          ai: ai,
+          draft: ai.selectedChatDraft
+        ) {
+          isModelQuickSwitchPresented = true
+        }
       }
 
       Button {
-        ai.startNewChatConversation(draft: ai.selectedChatDraft)
+        startNewInspectorConversation(draft: ai.selectedChatDraft)
       } label: {
         Image(systemName: "square.and.pencil")
           .font(.caption.weight(.semibold))
       }
       .buttonStyle(.bordered)
       .controlSize(.small)
-      .disabled(isSending || ai.selectedChatDraft == nil)
+      .disabled(
+        isChatBusy
+          || (ai.chatContextMode != .general && ai.selectedChatDraft == nil)
+      )
       .help(String(localized: "新对话"))
       .accessibilityLabel(String(localized: "新建 AI 对话"))
       .accessibilityHint(String(localized: "开始一段新的 AI 对话"))
@@ -261,6 +160,7 @@ extension AIChatContextInspectorView {
           .frame(width: 20, height: 20)
       }
       .buttonStyle(.plain)
+      .disabled(isChatBusy)
       .help(String(localized: "关闭 AI 助手"))
       .accessibilityLabel(String(localized: "关闭 AI 助手"))
       .accessibilityIdentifier("ai-assistant-close")
@@ -269,22 +169,23 @@ extension AIChatContextInspectorView {
 
   @ViewBuilder
   var conversationPickerContent: some View {
-    if let draft = ai.selectedChatDraft {
+    if ai.chatContextMode == .general {
       AIChatConversationPicker(
-        draft: draft,
-        conversations: ai.chatConversations(
-          for: draft.id,
-          includingArchived: true
-        ),
-        activeConversationID: ai.activeChatConversationID(for: draft.id),
-        isBusy: isSending,
+        draft: nil,
+        conversations: ai.generalChatConversationsIncludingArchived,
+        activeConversationID: ai.activeGeneralChatConversationID,
+        isBusy: isChatBusy,
         selectConversation: { conversationID in
-          if ai.selectChatConversation(conversationID) {
+          if ai.selectGeneralChatConversation(conversationID) {
+            setInspectorSurfaceConversationID(conversationID)
             isConversationPopoverPresented = false
           }
         },
         createConversation: {
-          if ai.startNewChatConversation(draft: draft) != nil {
+          if let conversation = ai.startNewGeneralChatConversation(
+            connectionProfileID: ai.activeGeneralChatConnectionProfile.id
+          ) {
+            setInspectorSurfaceConversationID(conversation.id)
             isConversationPopoverPresented = false
           }
         },
@@ -292,134 +193,259 @@ extension AIChatContextInspectorView {
           _ = ai.renameChatConversation(conversationID, title: title)
         },
         archiveConversation: { conversationID in
-          _ = ai.archiveChatConversation(conversationID)
+          if ai.archiveChatConversation(conversationID) {
+            synchronizeInspectorSurfaceWithActiveConversation(
+              discarding: conversationID
+            )
+          }
         },
         restoreConversation: { conversationID in
-          _ = ai.restoreChatConversation(conversationID)
+          if ai.restoreChatConversation(conversationID) {
+            synchronizeInspectorSurfaceWithActiveConversation()
+          }
         },
         deleteConversation: { conversationID in
-          _ = ai.deleteChatConversation(conversationID)
-        }
-      )
-    }
-  }
-
-  var configurationRow: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Button {
-        isAdvancedSettingsExpanded.toggle()
-      } label: {
-        HStack(spacing: 6) {
-          Label(String(localized: "高级设置"), systemImage: "slider.horizontal.3")
-            .font(.caption.weight(.semibold))
-
-          Spacer(minLength: 0)
-
-          Image(systemName: isAdvancedSettingsExpanded ? "chevron.up" : "chevron.down")
-            .font(.workbenchMetadata.weight(.semibold))
-            .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-      }
-      .buttonStyle(.plain)
-      .help(String(localized: "展开或收起 AI 高级设置"))
-      .accessibilityLabel(
-        isAdvancedSettingsExpanded
-          ? String(localized: "收起 AI 高级设置")
-          : String(localized: "展开 AI 高级设置")
-      )
-      .accessibilityValue(isAdvancedSettingsExpanded ? "已展开" : "已收起")
-      .accessibilityIdentifier("ai-assistant-advanced-settings-section-toggle")
-
-      if isAdvancedSettingsExpanded {
-        VStack(alignment: .leading, spacing: 6) {
-          HStack(spacing: 6) {
-            contextSelectionMenu
-            modelQuickSwitchButton
-            Spacer(minLength: 0)
-            assistantOptionsMenu
+          if ai.deleteChatConversation(conversationID) {
+            synchronizeInspectorSurfaceWithActiveConversation(
+              discarding: conversationID
+            )
           }
-
-          Divider()
-
-          quickActionChips
         }
-        .padding(.top, 4)
-      }
+      )
+    } else if let draft = ai.selectedChatDraft {
+      AIChatConversationPicker(
+        draft: draft,
+        conversations: ai.chatConversations(
+          for: draft.id,
+          includingArchived: true
+        ),
+        activeConversationID: ai.activeChatConversationID(for: draft.id),
+        isBusy: isChatBusy,
+        selectConversation: { conversationID in
+          if ai.selectChatConversation(conversationID) {
+            setInspectorSurfaceConversationID(conversationID)
+            isConversationPopoverPresented = false
+          }
+        },
+        createConversation: {
+          if startNewInspectorConversation(draft: draft) != nil {
+            isConversationPopoverPresented = false
+          }
+        },
+        renameConversation: { conversationID, title in
+          _ = ai.renameChatConversation(conversationID, title: title)
+        },
+        archiveConversation: { conversationID in
+          if ai.archiveChatConversation(conversationID) {
+            synchronizeInspectorSurfaceWithActiveConversation(
+              discarding: conversationID
+            )
+          }
+        },
+        restoreConversation: { conversationID in
+          if ai.restoreChatConversation(conversationID) {
+            synchronizeInspectorSurfaceWithActiveConversation()
+          }
+        },
+        deleteConversation: { conversationID in
+          if ai.deleteChatConversation(conversationID) {
+            synchronizeInspectorSurfaceWithActiveConversation(
+              discarding: conversationID
+            )
+          }
+        }
+      )
     }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 4)
-    .background(
-      Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
   }
 
-  var contextSelectionMenu: some View {
+  var contextModePicker: some View {
+    Picker(String(localized: "上下文"), selection: contextModeBinding) {
+      ForEach(AIPublishingChatContextMode.allCases) { mode in
+        Text(AIChatInspectorHeaderPresentation.contextTitle(for: mode)).tag(mode)
+      }
+    }
+    .pickerStyle(.segmented)
+    .labelsHidden()
+    .frame(width: 184, alignment: .leading)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .disabled(isChatBusy)
+    .help(ai.chatContextMode.detail)
+    .accessibilityLabel(String(localized: "上下文"))
+    .accessibilityValue(AIChatInspectorHeaderPresentation.contextTitle(for: ai.chatContextMode))
+    .accessibilityIdentifier("ai-assistant-context-mode")
+  }
+
+  @ViewBuilder
+  var generalConnectionAndModelMenu: some View {
+    let conversation = displayedGeneralConversation
     Menu {
-      Picker("上下文", selection: contextModeBinding) {
-        ForEach(AIPublishingChatContextMode.allCases) { mode in
-          Text(mode.localizedDisplayNameKey).tag(mode)
+      Section(String(localized: "连接配置档案")) {
+        if ai.chatConnectionProfiles.isEmpty {
+          Text(String(localized: "还没有可复用的连接档案。"))
+        } else {
+          ForEach(ai.chatConnectionProfiles) { profile in
+            Button {
+              guard let conversation else { return }
+              _ = ai.setGeneralChatConnectionProfile(
+                profile.id,
+                conversationID: conversation.id
+              )
+            } label: {
+              Label(
+                profile.name,
+                systemImage: conversation?.connectionProfileID == profile.id
+                  ? "checkmark.circle.fill"
+                  : "circle"
+              )
+            }
+          }
+        }
+      }
+
+      Section(String(localized: "模型档位")) {
+        ForEach(AIChatModelGrade.allCases) { grade in
+          Button {
+            guard let conversation else { return }
+            _ = ai.setGeneralChatModelGrade(
+              grade,
+              conversationID: conversation.id
+            )
+          } label: {
+            Label(
+              grade.title,
+              systemImage: conversation?.modelGrade == grade
+                ? "checkmark.circle.fill"
+                : "circle"
+            )
+          }
         }
       }
     } label: {
       HStack(spacing: 5) {
-        Label(
-          AIChatInspectorHeaderPresentation.contextTitle(for: ai.chatContextMode),
-          systemImage: ai.chatContextMode.systemImage
-        )
+        Image(systemName: "cpu")
+          .foregroundStyle(WorkbenchTheme.primary)
+        VStack(alignment: .leading, spacing: 1) {
+          Text(selectedGeneralConnectionProfile?.name ?? String(localized: "连接档案已失效"))
+            .font(.caption.weight(.semibold))
+          Text(conversation?.modelGrade.title ?? String(localized: "未选择"))
+            .font(.workbenchMetadata)
+            .foregroundStyle(.secondary)
+        }
         .lineLimit(1)
-
         Image(systemName: "chevron.down")
           .font(.workbenchMetadata.weight(.semibold))
           .foregroundStyle(.secondary)
       }
-      .padding(.horizontal, 6)
-      .frame(minHeight: 24)
-      .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+      .frame(maxWidth: 138, alignment: .leading)
     }
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
     .controlSize(.small)
-    .help(ai.chatContextMode.detail)
-    .accessibilityLabel(String(localized: "上下文"))
-    .accessibilityValue(ai.chatContextMode.localizedDisplayName)
+    .disabled(isChatBusy || conversation == nil)
+    .help(generalConnectionAndModelSummary)
+    .accessibilityLabel(String(localized: "AI 连接与模型"))
+    .accessibilityValue(generalConnectionAndModelSummary)
+    .accessibilityIdentifier("ai-assistant-general-model-menu")
   }
 
-  var modelQuickSwitchButton: some View {
-    Button {
-      isModelQuickSwitchPresented = true
-    } label: {
-      HStack(spacing: 7) {
-        Image(systemName: "cpu")
-          .foregroundStyle(WorkbenchTheme.primary)
-
-        VStack(alignment: .leading, spacing: 1) {
-          Text(providerMenuTitle)
-            .font(.caption.weight(.semibold))
-            .lineLimit(1)
-          Text(activeModelTitle)
-            .font(.workbenchMetadata)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .truncationMode(.middle)
+  var configurationRow: some View {
+    VStack(alignment: .leading, spacing: 7) {
+      Button {
+        withAnimation(WorkbenchMotion.standard) {
+          isAdvancedSettingsExpanded.toggle()
         }
-
-        Image(systemName: "chevron.down")
+      } label: {
+        HStack(spacing: 6) {
+          Label(String(localized: "上下文与来源"), systemImage: "scope")
+            .font(.caption.weight(.semibold))
+          Spacer(minLength: 8)
+          Image(
+            systemName: isAdvancedSettingsExpanded
+              ? "chevron.down"
+              : "chevron.right"
+          )
           .font(.workbenchMetadata.weight(.semibold))
           .foregroundStyle(.secondary)
+        }
+        .contentShape(Rectangle())
       }
-      .padding(.horizontal, 6)
-      .frame(minHeight: 24)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+      .buttonStyle(.plain)
+      .accessibilityValue(isAdvancedSettingsExpanded ? "已展开" : "已折叠")
+
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: 6) {
+          ForEach(Array(inspectorContextSourceItems.enumerated()), id: \.offset) { _, item in
+            contextSourceChip(title: item.title, systemImage: item.systemImage)
+          }
+        }
+      }
+
+      if isAdvancedSettingsExpanded {
+        Divider()
+
+        HStack(spacing: 6) {
+          Text(String(localized: "选择本次发送给 AI 的额外上下文"))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          Spacer(minLength: 8)
+          assistantOptionsMenu
+        }
+
+        quickActionChips
+      }
     }
-    .buttonStyle(.borderless)
-    .controlSize(.small)
-    .disabled(modelSelection == nil)
-    .help(modelMenuSummary)
-    .accessibilityLabel(String(localized: "AI 模型"))
-    .accessibilityValue(modelMenuSummary)
-    .accessibilityIdentifier("ai-assistant-model-quick-switch")
+    .padding(.horizontal, 8)
+    .padding(.vertical, 7)
+    .background(
+      Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+  }
+
+  var inspectorContextSourceItems: [(title: String, systemImage: String)] {
+    var items: [(title: String, systemImage: String)] = []
+
+    if ai.chatContextMode == .site {
+      items.append((
+        AIChatInspectorHeaderPresentation.contextTitle(for: .site),
+        "doc.text"
+      ))
+      if let title = ai.selectedChatDraft?.title.trimmedForPublishing.nilIfEmpty {
+        items.append((title, "doc"))
+      }
+      items.append((String(localized: "站点上下文"), "globe"))
+    } else if selectedContextReferences.isEmpty {
+      items.append((
+        String(localized: "不自动附加当前文章上下文"),
+        "text.bubble"
+      ))
+    }
+
+    items.append(contentsOf: selectedContextReferences.map { reference in
+      (contextReferenceLabel(reference), "at")
+    })
+
+    let knowledgeTitle = localizedKnowledgePolicyTitle(knowledgePolicyBinding.wrappedValue)
+    items.append(("\(String(localized: "资料库")) · \(knowledgeTitle)", "books.vertical"))
+    return items
+  }
+
+  func contextSourceChip(
+    title: String,
+    systemImage: String
+  ) -> some View {
+    Label {
+      Text(verbatim: title)
+        .lineLimit(1)
+    } icon: {
+      Image(systemName: systemImage)
+    }
+    .font(.workbenchMetadata.weight(.medium))
+    .foregroundStyle(.secondary)
+    .padding(.horizontal, 7)
+    .padding(.vertical, 4)
+    .background(WorkbenchBackgroundStyle.control, in: Capsule())
+    .overlay(Capsule().stroke(Color.primary.opacity(0.10), lineWidth: 1))
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel(title)
   }
 
   var assistantOptionsMenu: some View {
@@ -449,7 +475,7 @@ extension AIChatContextInspectorView {
           ForEach(ai.chatCustomPrompts) { prompt in
             Menu(prompt.title) {
               Button {
-                inputText = prompt.prompt
+                setInputText(prompt.prompt)
                 focusComposerIfAvailable()
               } label: {
                 Label(String(localized: "使用"), systemImage: "text.cursor")
@@ -478,11 +504,11 @@ extension AIChatContextInspectorView {
 
       Menu("翻译为关联新草稿") {
         Button("创建英文翻译草稿") {
-          inputText = "请帮我将当前文章全文翻译为英文，并创建关联新草稿；不要覆盖原稿。"
+          setInputText("请帮我将当前文章全文翻译为英文，并创建关联新草稿；不要覆盖原稿。")
           focusComposerIfAvailable()
         }
         Button("创建简体中文翻译草稿") {
-          inputText = "请帮我将当前文章全文翻译为简体中文，并创建关联新草稿；不要覆盖原稿。"
+          setInputText("请帮我将当前文章全文翻译为简体中文，并创建关联新草稿；不要覆盖原稿。")
           focusComposerIfAvailable()
         }
       }
@@ -510,7 +536,7 @@ extension AIChatContextInspectorView {
     HStack(spacing: 6) {
       ForEach(AIPublishingChatQuickAction.allCases) { action in
         Button {
-          inputText = action.localizedPrompt
+          setInputText(action.localizedPrompt)
           isComposerFocused = true
         } label: {
           Label {
@@ -538,17 +564,21 @@ extension AIChatContextInspectorView {
 
   var reasoningLevelBinding: Binding<AIChatReasoningLevel> {
     Binding(
-      get: { ai.chatReasoningLevel },
-      set: { ai.setChatReasoningLevel($0) }
-    )
-  }
-
-  var modelSelection: AIChatModelSelectionPresentation? {
-    guard let draft = ai.selectedChatDraft else { return nil }
-    return AIChatModelSelectionPresentationService.presentation(
-      grade: ai.chatModelGrade,
-      selectedModel: ai.chatSelectedModel,
-      config: ai.chatProviderConfig(for: draft)
+      get: {
+        ai.chatContextMode == .general
+          ? (displayedGeneralConversation?.reasoningLevel ?? .deep)
+          : ai.chatReasoningLevel
+      },
+      set: {
+        if ai.chatContextMode == .general {
+          _ = ai.setGeneralChatReasoningLevel(
+            $0,
+            conversationID: displayedGeneralConversation?.id
+          )
+        } else {
+          ai.setChatReasoningLevel($0)
+        }
+      }
     )
   }
 
@@ -556,30 +586,62 @@ extension AIChatContextInspectorView {
     AIChatInspectorHeaderPresentation.conversationTitle(state.draft?.conversationTitle)
   }
 
+  var displayedGeneralConversation: AIConversation? {
+    ai.generalChatConversation(withID: inspectorSurfaceConversationID)
+      ?? ai.activeGeneralChatConversation
+  }
+
+  var selectedGeneralConnectionProfile: AIConnectionProfile? {
+    guard let connectionProfileID = displayedGeneralConversation?.connectionProfileID else {
+      return nil
+    }
+    return ai.chatConnectionProfiles.first { $0.id == connectionProfileID }
+  }
+
+  func refreshDisplayedGeneralKeyAvailability() {
+    guard ai.chatContextMode == .general,
+      let connection = selectedGeneralConnectionProfile
+    else { return }
+    generalKeyAvailabilityByConnectionID[connection.id] = ai.keyAvailability(
+      forConnectionProfileID: connection.id
+    )
+  }
+
+  var generalKeyAvailabilityRefreshKey: AIChatGeneralKeyAvailabilityRefreshKey {
+    AIChatGeneralKeyAvailabilityRefreshKey(
+      connectionProfileID: displayedGeneralConversation?.connectionProfileID,
+      providerConfig: selectedGeneralConnectionProfile?.config,
+      activeTokenAvailability: ai.tokenAvailability
+    )
+  }
+
+  var generalConnectionAndModelSummary: String {
+    let profile = selectedGeneralConnectionProfile?.name
+      ?? String(localized: "连接档案已失效")
+    let model = displayedGeneralConversation?.modelGrade.title
+      ?? String(localized: "未选择")
+    return "\(profile) · \(model)"
+  }
+
   var currentAIProviderConfig: AIProviderConfig {
+    if ai.chatContextMode == .general {
+      return selectedGeneralConnectionProfile?.config ?? AIProviderConfig()
+    }
     guard let draft = ai.selectedChatDraft else { return AIProviderConfig() }
     return ai.chatProviderConfig(for: draft)
   }
 
-  var providerMenuTitle: String {
-    guard ai.selectedChatDraft != nil else { return String(localized: "选择模型") }
-    return AIChatInspectorHeaderPresentation.providerTitle(for: currentAIProviderConfig)
-  }
-
-  var activeModelTitle: String {
-    modelSelection?.activeModel.nilIfEmpty ?? String(localized: "未选择")
-  }
-
-  var modelMenuSummary: String {
-    guard ai.selectedChatDraft != nil else { return String(localized: "未选择") }
-    return AIChatInspectorHeaderPresentation.modelSummary(
-      for: currentAIProviderConfig,
-      activeModel: modelSelection?.activeModel
-    )
-  }
-
   var supportsSelectableReasoningLevel: Bool {
-    AIChatInspectorHeaderPresentation.supportsSelectableReasoningLevel(
+    if ai.chatContextMode == .general {
+      guard let config = selectedGeneralConnectionProfile?.config,
+        displayedGeneralConversation != nil
+      else { return false }
+      return AIChatInspectorHeaderPresentation.supportsSelectableReasoningLevel(
+        config: config,
+        hasDraft: true
+      )
+    }
+    return AIChatInspectorHeaderPresentation.supportsSelectableReasoningLevel(
       config: currentAIProviderConfig,
       hasDraft: ai.selectedChatDraft != nil
     )
@@ -615,14 +677,31 @@ extension AIChatContextInspectorView {
   var contextModeBinding: Binding<AIPublishingChatContextMode> {
     Binding(
       get: { ai.chatContextMode },
-      set: { ai.setChatContextMode($0) }
+      set: { mode in
+        guard mode != ai.chatContextMode, !isChatBusy else { return }
+        ai.setChatContextMode(mode)
+        synchronizeInspectorConversationForContextMode(mode)
+      }
     )
   }
 
   var knowledgePolicyBinding: Binding<KnowledgeRetrievalPolicy> {
     Binding(
-      get: { ai.chatKnowledgePolicy },
-      set: { ai.setChatKnowledgePolicy($0) }
+      get: {
+        ai.chatContextMode == .general
+          ? (displayedGeneralConversation?.knowledgePolicy ?? .automatic)
+          : ai.chatKnowledgePolicy
+      },
+      set: {
+        if ai.chatContextMode == .general {
+          _ = ai.setGeneralChatKnowledgePolicy(
+            $0,
+            conversationID: displayedGeneralConversation?.id
+          )
+        } else {
+          ai.setChatKnowledgePolicy($0)
+        }
+      }
     )
   }
 }

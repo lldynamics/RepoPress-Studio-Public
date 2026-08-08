@@ -123,7 +123,7 @@ final class PrivacyProtectionTests: XCTestCase {
     store.activateQuickHide(reason: "Manual")
     XCTAssertTrue(store.isQuickHideActive)
     XCTAssertFalse(store.canUseProtectedWorkbench)
-    XCTAssertFalse(store.isAIPublishingAssistantPresented)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
     XCTAssertEqual(store.privacyProtectionStatus.title, "快速隐藏已启用")
     XCTAssertEqual(
       store.privacyProtectionStatus.detail,
@@ -133,6 +133,7 @@ final class PrivacyProtectionTests: XCTestCase {
     store.deactivateQuickHide()
     XCTAssertFalse(store.isQuickHideActive)
     XCTAssertTrue(store.canUseProtectedWorkbench)
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
     XCTAssertEqual(store.privacyProtectionStatus.title, "快速隐藏未启用")
   }
 

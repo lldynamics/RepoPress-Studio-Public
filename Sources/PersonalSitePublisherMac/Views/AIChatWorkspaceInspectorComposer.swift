@@ -6,30 +6,31 @@ extension AIChatContextInspectorView {
 
   var messageComposer: some View {
     VStack(alignment: .leading, spacing: 8) {
-      if let status = ai.chatMessage?.nilIfEmpty {
+      if let status = inspectorStatusText {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Text(status)
             .font(.workbenchSupporting)
             .foregroundStyle(.secondary)
             .lineLimit(4)
             .accessibilityLabel("AI 状态")
+            .accessibilityValue(status)
 
           Spacer(minLength: 0)
 
-          if let retryState = activeManualRetryState {
-            if retryState.requiresDuplicateChargeConfirmation {
+          if let requiresDuplicateChargeConfirmation = activeRetryRequiresDuplicateChargeConfirmation {
+            if requiresDuplicateChargeConfirmation {
               Button(String(localized: "重新生成")) {
                 isPartialRetryConfirmationPresented = true
               }
               .controlSize(.regular)
-              .disabled(isSending)
+              .disabled(isChatBusy)
               .help(String(localized: "部分回复已保留；确认后才会重新发起请求"))
             } else {
               Button(String(localized: "手动重试")) {
                 retryLastFailedReply(confirmingPossibleDuplicateCharge: false)
               }
               .controlSize(.regular)
-              .disabled(isSending)
+              .disabled(isChatBusy)
               .help(String(localized: "由你确认后重新发起上一次请求"))
             }
           }
@@ -52,7 +53,7 @@ extension AIChatContextInspectorView {
         .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
       }
 
-      VStack(alignment: .leading, spacing: 10) {
+      VStack(alignment: .leading, spacing: 8) {
         if !selectedContextReferences.isEmpty {
           VStack(alignment: .leading, spacing: 5) {
             ScrollView(.horizontal, showsIndicators: true) {
@@ -101,7 +102,9 @@ extension AIChatContextInspectorView {
                   Text(attachment.originalFilename)
                     .lineLimit(1)
                   Button {
-                    selectedImageAttachmentIDs.remove(attachment.id)
+                    var attachmentIDs = selectedImageAttachmentIDs
+                    attachmentIDs.remove(attachment.id)
+                    setSelectedImageAttachmentIDs(attachmentIDs)
                   } label: {
                     Image(systemName: "xmark.circle.fill")
                   }
@@ -119,19 +122,23 @@ extension AIChatContextInspectorView {
         }
 
         TextField(
-          String(localized: "询问当前文章…"),
-          text: $inputText,
+          ai.chatContextMode == .general
+            ? String(localized: "开始通用聊天…")
+            : String(localized: "询问当前文章…"),
+          text: inspectorComposerTextBinding,
           axis: .vertical
         )
         .accessibilityLabel("AI 消息")
         .accessibilityIdentifier("ai-assistant-input")
         .textFieldStyle(.plain)
         .font(.body)
-        .lineLimit(3...8)
+        .lineLimit(2...6)
         .disabled(isComposerInputUnavailable)
         .focused($isComposerFocused)
 
         HStack(spacing: 8) {
+          contextReferenceMenu
+
           Menu {
             if availableChatImageAttachments.isEmpty {
               Text(String(localized: "当前文章没有可发送的图片"))
@@ -150,7 +157,7 @@ extension AIChatContextInspectorView {
               }
               Divider()
               Button(String(localized: "清空图片选择")) {
-                selectedImageAttachmentIDs = []
+                setSelectedImageAttachmentIDs([])
               }
               .disabled(selectedImageAttachmentIDs.isEmpty)
             }
@@ -167,7 +174,7 @@ extension AIChatContextInspectorView {
           .disabled(
             ai.selectedChatDraft == nil
               || !currentAIProviderConfig.supportsImageInput
-              || isSending
+              || isChatBusy
           )
           .help(
             currentAIProviderConfig.supportsImageInput
@@ -189,7 +196,7 @@ extension AIChatContextInspectorView {
             tint: isSending ? WorkbenchTheme.risk : WorkbenchTheme.primaryActionFill
           )
           .keyboardShortcut(.return, modifiers: [.command])
-          .disabled(!isSending && !canSubmitMessage)
+          .disabled(!isSending && (!canSubmitMessage || isChatBusyElsewhere))
           .help(
             isSending
               ? String(localized: "停止生成")
@@ -203,7 +210,7 @@ extension AIChatContextInspectorView {
           .accessibilityIdentifier("ai-assistant-send-button")
         }
       }
-      .padding(10)
+      .padding(9)
       .background(
         Color(nsColor: .textBackgroundColor).opacity(0.72),
         in: RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -220,7 +227,7 @@ extension AIChatContextInspectorView {
       }
       .animation(WorkbenchMotion.quick, value: isComposerFocused)
     }
-    .padding(12)
+    .padding(10)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("ai-assistant-composer")
   }
@@ -230,6 +237,9 @@ extension AIChatContextInspectorView {
   }
 
   var availableChatContextReferences: [AIContextReference] {
+    if ai.chatContextMode == .general {
+      return ai.availableGeneralChatContextReferences()
+    }
     guard let draft = ai.selectedChatDraft else { return [] }
     return ai.availableChatContextReferences(for: draft)
   }
@@ -273,21 +283,23 @@ extension AIChatContextInspectorView {
       if !selectedContextReferences.isEmpty {
         Divider()
         Button("清空 @ 上下文") {
-          selectedContextReferences = []
+          setSelectedContextReferences([])
         }
       }
     } label: {
       Label(
         selectedContextReferences.isEmpty
-          ? String(localized: "@ 上下文")
+          ? String(localized: "引用上下文")
           : "@ \(selectedContextReferences.count)",
         systemImage: "at"
       )
     }
     .menuStyle(.borderlessButton)
     .fixedSize()
-    .disabled(ai.selectedChatDraft == nil || isSending)
+    .disabled(availableChatContextReferences.isEmpty || isChatBusy)
     .help("明确选择本次发送给 AI 的文章、选区、站点配置或资料")
+    .accessibilityLabel(String(localized: "引用上下文"))
+    .accessibilityIdentifier("ai-assistant-context-menu")
   }
 
   func contextReferenceButton(
@@ -306,23 +318,28 @@ extension AIChatContextInspectorView {
   }
 
   func toggleContextReference(_ reference: AIContextReference) {
-    if let index = selectedContextReferences.firstIndex(where: {
+    var references = selectedContextReferences
+    if let index = references.firstIndex(where: {
       sameContextReferenceTarget($0, reference)
     }) {
-      selectedContextReferences.remove(at: index)
+      references.remove(at: index)
+      setSelectedContextReferences(references)
       return
     }
-    guard selectedContextReferences.count < 8 else {
+    guard references.count < 8 else {
       ai.setChatMessage("每次最多选择 8 项 @ 上下文。")
       return
     }
-    selectedContextReferences.append(reference)
+    references.append(reference)
+    setSelectedContextReferences(references)
   }
 
   func removeContextReference(_ reference: AIContextReference) {
-    selectedContextReferences.removeAll {
+    var references = selectedContextReferences
+    references.removeAll {
       sameContextReferenceTarget($0, reference)
     }
+    setSelectedContextReferences(references)
   }
 
   func containsContextReference(_ reference: AIContextReference) -> Bool {
@@ -356,7 +373,11 @@ extension AIChatContextInspectorView {
   }
 
   var isComposerInputUnavailable: Bool {
-    ai.selectedChatDraft == nil || isSending
+    if ai.chatContextMode == .general {
+      return ai.generalChatConversation(withID: inspectorSurfaceConversationID)?.isArchived == true
+        || isChatBusy
+    }
+    return ai.selectedChatDraft == nil || isChatBusy
   }
 
   var canSubmitMessage: Bool {
@@ -369,17 +390,19 @@ extension AIChatContextInspectorView {
     guard let draft = ai.selectedChatDraft else { return }
     let message = trimmedInput
     guard !message.isEmpty || !selectedImageAttachmentIDs.isEmpty,
-      !isSending
+      !isChatBusy
     else { return }
     startSending(message, draft: draft, clearsComposerOnAccept: true)
   }
 
   func toggleChatImageAttachment(_ attachmentID: UUID) {
-    if selectedImageAttachmentIDs.remove(attachmentID) != nil {
+    var attachmentIDs = selectedImageAttachmentIDs
+    if attachmentIDs.remove(attachmentID) != nil {
+      setSelectedImageAttachmentIDs(attachmentIDs)
       return
     }
     guard
-      selectedImageAttachmentIDs.count
+      attachmentIDs.count
         < AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount
     else {
       ai.setChatMessage(
@@ -387,7 +410,8 @@ extension AIChatContextInspectorView {
       )
       return
     }
-    selectedImageAttachmentIDs.insert(attachmentID)
+    attachmentIDs.insert(attachmentID)
+    setSelectedImageAttachmentIDs(attachmentIDs)
   }
 
   func saveCurrentInputAsCustomPrompt() {
@@ -402,11 +426,34 @@ extension AIChatContextInspectorView {
     _ = ai.saveChatCustomPrompt(title: String(title), prompt: prompt)
   }
 
+  var ownsInspectorOperation: Bool {
+    AIChatSurfaceOperationOwnershipPolicy.ownsLocalTask(
+      localTaskExists: sendTask != nil,
+      ownerToken: activeSendOwnerToken
+    )
+  }
+
   var isSending: Bool {
-    isSubmitting || ai.isChatRunning
+    ownsInspectorOperation
+  }
+
+  var isChatBusy: Bool {
+    ai.isChatRunning
+  }
+
+  var isChatBusyElsewhere: Bool {
+    isChatBusy && !ownsInspectorOperation
+  }
+
+  var inspectorStatusText: String? {
+    if isChatBusyElsewhere {
+      return String(localized: "AI 正在其他界面处理，本界面暂时不能发送。")
+    }
+    return ai.chatMessage?.nilIfEmpty
   }
 
   var activeManualRetryState: AIChatManualRetryState? {
+    guard ai.chatContextMode != .general else { return nil }
     guard let draftID = ai.selectedChatDraft?.id,
       let retryState = ai.chatManualRetryState,
       retryState.draftID == draftID,
@@ -417,11 +464,177 @@ extension AIChatContextInspectorView {
     return retryState
   }
 
+  var activeGeneralManualRetryState: AIGeneralChatManualRetryState? {
+    guard ai.chatContextMode == .general,
+      let retryState = ai.generalChatManualRetryState,
+      retryState.conversationID == inspectorSurfaceConversationID
+    else {
+      return nil
+    }
+    return retryState
+  }
+
+  var activeRetryRequiresDuplicateChargeConfirmation: Bool? {
+    activeManualRetryState?.requiresDuplicateChargeConfirmation
+      ?? activeGeneralManualRetryState?.requiresDuplicateChargeConfirmation
+  }
+
   func handleSendButton() {
     if isSending {
       stopSending()
-    } else {
+    } else if !isChatBusyElsewhere {
       submitMessage()
     }
+  }
+}
+
+extension AIChatContextInspectorView {
+  var inspectorSurfaceConversationID: UUID {
+    if let selectedConversationID = surfaceState.selectedConversationID {
+      return selectedConversationID
+    }
+    if ai.chatContextMode == .general,
+      let activeConversationID = ai.activeGeneralChatConversationID
+    {
+      return activeConversationID
+    }
+    if let draftID = ai.selectedChatDraft?.id,
+      let activeConversationID = ai.activeChatConversationID(for: draftID)
+    {
+      return activeConversationID
+    }
+    return ai.selectedChatDraft?.id ?? inspectorTransientConversationID
+  }
+
+  var inputText: String {
+    surfaceState.composerText(for: inspectorSurfaceConversationID)
+  }
+
+  var inspectorComposerTextBinding: Binding<String> {
+    Binding(
+      get: { inputText },
+      set: { setInputText($0) }
+    )
+  }
+
+  var selectedContextReferences: [AIContextReference] {
+    surfaceState.contextReferences(for: inspectorSurfaceConversationID)
+  }
+
+  var selectedImageAttachmentIDs: Set<UUID> {
+    surfaceState.imageAttachmentIDs(for: inspectorSurfaceConversationID)
+  }
+
+  func updateInspectorSurfaceState(
+    _ update: (inout AIChatSurfaceState) -> Void
+  ) {
+    var updatedState = $surfaceState.wrappedValue
+    update(&updatedState)
+    $surfaceState.wrappedValue = updatedState
+  }
+
+  func setInputText(_ text: String) {
+    let conversationID = inspectorSurfaceConversationID
+    updateInspectorSurfaceState { state in
+      state.setComposerText(text, for: conversationID)
+    }
+  }
+
+  func setSelectedContextReferences(_ references: [AIContextReference]) {
+    let conversationID = inspectorSurfaceConversationID
+    updateInspectorSurfaceState { state in
+      state.setContextReferences(references, for: conversationID)
+    }
+  }
+
+  func setSelectedImageAttachmentIDs(_ attachmentIDs: Set<UUID>) {
+    let conversationID = inspectorSurfaceConversationID
+    updateInspectorSurfaceState { state in
+      state.setImageAttachmentIDs(attachmentIDs, for: conversationID)
+    }
+  }
+
+  func setInspectorSurfaceConversationID(_ conversationID: UUID?) {
+    var updatedState = $surfaceState.wrappedValue
+    updatedState.selectedConversationID = conversationID
+    $surfaceState.wrappedValue = updatedState
+  }
+
+  func ensureInspectorSurfaceConversationSelection() {
+    if ai.chatContextMode == .general {
+      if let selectedConversationID = surfaceState.selectedConversationID,
+        ai.generalChatConversation(
+          withID: selectedConversationID,
+          includingArchived: false
+        ) != nil
+      {
+        return
+      }
+    } else if let draftID = ai.selectedChatDraft?.id {
+      if let selectedConversationID = surfaceState.selectedConversationID,
+        ai.chatConversations(for: draftID).contains(where: {
+          $0.id == selectedConversationID
+        })
+      {
+        return
+      }
+    }
+    synchronizeInspectorSurfaceWithActiveConversation()
+  }
+
+  func synchronizeInspectorSurfaceWithActiveConversation(
+    discarding discardedConversationID: UUID? = nil
+  ) {
+    var updatedState = $surfaceState.wrappedValue
+    if let discardedConversationID {
+      updatedState.discardState(for: discardedConversationID)
+    }
+    if ai.chatContextMode == .general {
+      updatedState.selectedConversationID =
+        ai.activeGeneralChatConversationID ?? inspectorTransientConversationID
+    } else if let draftID = ai.selectedChatDraft?.id {
+      updatedState.selectedConversationID =
+        ai.activeChatConversationID(for: draftID) ?? draftID
+    } else {
+      updatedState.selectedConversationID = inspectorTransientConversationID
+    }
+    $surfaceState.wrappedValue = updatedState
+  }
+
+  func synchronizeInspectorConversationForContextMode(
+    _ mode: AIPublishingChatContextMode
+  ) {
+    switch mode {
+    case .general:
+      let conversation = ai.activeGeneralChatConversation
+        ?? ai.startNewGeneralChatConversation(
+          connectionProfileID: ai.activeChatConnectionProfile.id
+        )
+      setInspectorSurfaceConversationID(
+        conversation?.id ?? inspectorTransientConversationID
+      )
+    case .site:
+      setInspectorSurfaceConversationID(nil)
+      ensureInspectorSurfaceConversationSelection()
+      synchronizeChatDraftWithSelection()
+    }
+    focusComposerIfAvailable()
+  }
+
+  @discardableResult
+  func startNewInspectorConversation(draft: ArticleDraft?) -> AIConversation? {
+    let conversation: AIConversation?
+    if ai.chatContextMode == .general {
+      conversation = ai.startNewGeneralChatConversation(
+        connectionProfileID: ai.activeGeneralChatConnectionProfile.id
+      )
+    } else {
+      conversation = ai.startNewChatConversation(draft: draft)
+    }
+    guard let conversation else {
+      return nil
+    }
+    setInspectorSurfaceConversationID(conversation.id)
+    return conversation
   }
 }

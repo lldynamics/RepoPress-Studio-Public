@@ -104,4 +104,35 @@ final class AIConversationRetentionPolicyTests: XCTestCase {
     )
     XCTAssertNotNil(store.activeAIChatConversationID(for: draft.id))
   }
+
+  func testGeneralConversationsUseExplicitScopeAndAreNotFilteredByDraftIDs() {
+    let general = (0..<45).map { index in
+      AIConversation(
+        scope: .general,
+        title: "通用 \(index)",
+        createdAt: Date(timeIntervalSince1970: TimeInterval(index))
+      )
+    }
+    let orphanDraft = AIConversation(draftID: UUID(), title: "不存在的文章")
+
+    let limited = AIConversationRetentionPolicy.limited(
+      general + [orphanDraft],
+      validDraftIDs: [],
+      preserving: [general.last!.id]
+    )
+
+    XCTAssertEqual(limited.filter { $0.scope == .general }.count, 40)
+    XCTAssertFalse(limited.contains { $0.id == orphanDraft.id })
+    XCTAssertTrue(limited.contains { $0.id == general.last!.id })
+  }
+
+  func testActiveConversationMigrationUsesScopeKey() {
+    let conversation = AIConversation(scope: .general, title: "通用")
+    let result = AIConversationRetentionPolicy.validActiveConversationIDsByScope(
+      ["general": conversation.id],
+      conversations: [conversation]
+    )
+
+    XCTAssertEqual(result, ["general": conversation.id])
+  }
 }
