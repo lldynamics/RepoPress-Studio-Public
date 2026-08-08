@@ -93,6 +93,7 @@ struct ContentView: View {
   @State private var modalPresentation = WorkspaceModalPresentationState()
   @State private var commandPaletteEditorCommands: MarkdownEditorCommandActions?
   @State private var responsiveLayout = WorkspaceResponsiveLayoutSnapshot.initial
+  @State private var aiChatInspectorSurfaceState = AIChatSurfaceState(surface: .inspector)
   @State private var contentHealthFilter: ContentHealthContextFilter = .overview
   @State private var imageWorkbenchContextStage: ImageWorkbenchContextStage = .overview
   @State private var repositoryContextStage: RepositoryContextStage = .overview
@@ -124,6 +125,9 @@ struct ContentView: View {
         editorDisplayMode: presentationState.editorDisplayMode
       )
       let isInspectorVisible = inspectorPresentation.wrappedValue
+      let inspectorColumnWidths = WorkspaceInspectorColumnWidthPolicy.widths(
+        isAIAssistantPresented: presentationState.isAssistantPresented
+      )
 
       let workspace = ZStack {
         WorkspaceShellSplitLayout(
@@ -147,9 +151,14 @@ struct ContentView: View {
             rssStore: rssStore,
             repositoryContextStage: repositoryContextStage,
             repositorySourceSession: repositorySourceSession,
+            aiChatSurfaceState: $aiChatInspectorSurfaceState,
             prioritizesChecks: compactLayout
           )
-            .inspectorColumnWidth(min: 320, ideal: 360, max: 460)
+            .inspectorColumnWidth(
+              min: inspectorColumnWidths.minimum,
+              ideal: inspectorColumnWidths.ideal,
+              max: inspectorColumnWidths.maximum
+            )
         }
         .disabled(shellState.isQuickHideActive)
         .accessibilityHidden(shellState.isQuickHideActive)
@@ -158,7 +167,7 @@ struct ContentView: View {
         if usesInlineAIScreenshotInspector {
           ScreenshotInlineAIInspector(
             store: store,
-            width: min(max(geometry.size.width * 0.40, 420), 480)
+            width: min(max(geometry.size.width * 0.38, 460), 520)
           )
           .zIndex(1)
         }
@@ -279,6 +288,29 @@ struct ContentView: View {
       }
 
       ToolbarItem(placement: .primaryAction) {
+        Button(action: toggleAIAssistantWorkspace) {
+          Label(String(localized: "AI 助手"), systemImage: "sparkles")
+        }
+        .buttonStyle(
+          WorkspaceToolbarIconButtonStyle(isActive: isAIAssistantWorkspaceVisible)
+        )
+        .help(
+          isAIAssistantWorkspaceVisible
+            ? String(localized: "关闭 AI 对话")
+            : String(localized: "在右侧继续当前文章的 AI 对话")
+        )
+        .accessibilityLabel(String(localized: "AI 助手"))
+        .accessibilityValue(
+          isAIAssistantWorkspaceVisible
+            ? String(localized: "AI 助手已显示")
+            : String(localized: "已隐藏")
+        )
+        .accessibilityIdentifier("ai-assistant-toolbar-button")
+        .disabled(
+          !shellState.canUseProtectedWorkbench
+            || (!isAIAssistantWorkspaceVisible && !canRequestInspectorInCurrentLayout)
+        )
+
         if supportsInspector && (!isCompactLayout || canRequestInspectorInCurrentLayout) {
           inspectorToolbarButton
         }
@@ -606,6 +638,28 @@ struct ContentView: View {
     .accessibilityIdentifier("workspace-inspector-toggle")
   }
 
+  private var isAIAssistantWorkspaceVisible: Bool {
+    presentationState.isAssistantPresented && inspectorPresentation.wrappedValue
+  }
+
+  private func toggleAIAssistantWorkspace() {
+    if isAIAssistantWorkspaceVisible {
+      guard !store.ai.isChatRunning else {
+        store.ai.setChatMessage(String(localized: "请先停止当前 AI 回复，再关闭 AI 助手。"))
+        return
+      }
+      store.ai.closeAssistantPanel()
+      return
+    }
+
+    guard prepareInspectorForUserRequest() else { return }
+    if effectiveFocusMode {
+      isFocusMode = false
+      revealsSidebarInNarrowSplit = true
+    }
+    _ = store.ai.openChatWorkspace(for: shellState.selectedDraftID)
+  }
+
   private var inspectorToolbarHelp: String {
     if canOverrideSplitInspector && !allowsInspectorInCurrentLayout {
       return String(localized: "分屏空间较窄；点击仍显示 Inspector")
@@ -855,12 +909,16 @@ struct ContentView: View {
 private struct ScreenshotInlineAIInspector: View {
   let store: WorkbenchStore
   let width: CGFloat
+  @State private var surfaceState = AIChatSurfaceState(surface: .inspector)
 
   var body: some View {
     HStack(spacing: 0) {
       Spacer(minLength: 0)
       Divider()
-      AIChatContextInspectorView(store: store)
+      AIChatContextInspectorView(
+        store: store,
+        surfaceState: $surfaceState
+      )
         .frame(width: width)
         .frame(maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))

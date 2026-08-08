@@ -228,10 +228,10 @@ struct PublishingConsoleCommands: Commands {
           ? String(localized: "关闭 AI 对话")
           : String(localized: "打开 AI 对话")
       ) {
-        toggleAIChatWorkspaceForCommandDraft()
+        toggleAIChatWorkspaceForCommandContext()
       }
       .keyboardShortcut("a", modifiers: [.command, .option])
-      .disabled(!canUseProtectedWorkbench || commandDraftID == nil)
+      .disabled(!canUseProtectedWorkbench)
 
       Divider()
 
@@ -667,22 +667,19 @@ struct PublishingConsoleCommands: Commands {
     store.selectSection(.contentHealth)
   }
 
-  private func openAIChatWorkspaceForCommandDraft() {
-    guard let draftID = commandDraftID else {
-      return
-    }
-    store.ai.openChatWorkspace(for: draftID)
+  private func openAIChatWorkspaceForCommandContext() {
+    store.ai.openChatWorkspace(for: commandDraftID)
   }
 
   private var isAIChatPanelVisible: Bool {
     store.isAIPublishingAssistantPresented && store.isInspectorPresented
   }
 
-  private func toggleAIChatWorkspaceForCommandDraft() {
+  private func toggleAIChatWorkspaceForCommandContext() {
     if isAIChatPanelVisible {
       store.ai.closeAssistantPanel()
     } else {
-      openAIChatWorkspaceForCommandDraft()
+      openAIChatWorkspaceForCommandContext()
     }
   }
 

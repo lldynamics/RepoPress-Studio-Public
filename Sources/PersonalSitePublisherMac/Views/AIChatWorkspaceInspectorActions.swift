@@ -9,21 +9,43 @@ extension AIChatContextInspectorView {
       return AIChatContextInspectorState(draft: nil)
     }
 
-    let profile = ai.chatProfile(for: draft)
-    let relationSuggestions = ai.relatedChatArticleSuggestions(for: draft, limit: 5)
+    let profile = ai.chatContextMode == .general ? nil : ai.chatProfile(for: draft)
+    let relationSuggestions = ai.chatContextMode == .general
+      ? []
+      : ai.relatedChatArticleSuggestions(for: draft, limit: 5)
+    let displayedGeneralConversation = ai.chatContextMode == .general
+      ? ai.generalChatConversation(withID: inspectorSurfaceConversationID)
+      : nil
+    let displayedMessages = ai.chatContextMode == .general
+      ? (displayedGeneralConversation?.messages ?? [])
+      : ai.chatMessages
+    let displayedConversationTitle: String
+    if ai.chatContextMode == .general {
+      if let title = displayedGeneralConversation?.title?.trimmedForPublishing.nilIfEmpty {
+        displayedConversationTitle = title
+      } else if let firstUserMessage = displayedMessages.first(where: { $0.role == .user }) {
+        displayedConversationTitle = AIPublishingChatConversationPresentation.title(
+          fromUserText: AIPublishingChatMessageCompositionService.displayContent(for: firstUserMessage),
+          fallbackTitle: String(localized: "通用 AI 对话")
+        )
+      } else {
+        displayedConversationTitle = String(localized: "通用 AI 对话")
+      }
+    } else {
+      displayedConversationTitle = AIPublishingChatConversationPresentation.displayTitle(
+        conversationTitle: ai.chatConversationTitle,
+        messages: displayedMessages,
+        draft: draft,
+        emptyTitle: String(localized: "AI 对话")
+      )
+    }
 
     return AIChatContextInspectorState(
       draft: AIChatInspectorDraftContext(
         draft: draft,
-        conversationTitle: AIPublishingChatConversationPresentation.displayTitle(
-          conversationTitle: ai.chatConversationTitle,
-          messages: ai.chatMessages,
-          draft: draft,
-          emptyTitle: String(localized: "AI 对话")
-        ),
-        messages: ai.chatDraftID == draft.id
-          ? Array(ai.chatMessages.suffix(visibleMessageLimit)) : [],
-        totalMessageCount: ai.chatDraftID == draft.id ? ai.chatMessages.count : 0,
+        conversationTitle: displayedConversationTitle,
+        messages: Array(displayedMessages.suffix(visibleMessageLimit)),
+        totalMessageCount: displayedMessages.count,
         relatedSuggestions: relationSuggestions.prefix(4).map { suggestion in
           AIChatRelatedSuggestionPresentation(
             id: suggestion.id,
@@ -31,11 +53,13 @@ extension AIChatContextInspectorView {
             reason: suggestion.reason,
             targetPath: suggestion.targetPath,
             targetDraftID: suggestion.targetDraftID,
-            prompt: AIPublishingChatPromptTemplateService.relatedArticleSuggestionPrompt(
-              for: suggestion,
-              draft: draft,
-              profile: profile
-            )
+            prompt: profile.map {
+              AIPublishingChatPromptTemplateService.relatedArticleSuggestionPrompt(
+                for: suggestion,
+                draft: draft,
+                profile: $0
+              )
+            } ?? ""
           )
         },
         isChatRunning: ai.isChatRunning,
@@ -75,6 +99,13 @@ extension AIChatContextInspectorView {
           block.fencedMarkdown,
           successMessage: String(localized: "已复制完整 Markdown 代码块。"),
           setMessage: { message in ai.setChatMessage(message) }
+        )
+      },
+      copyReply: { message in
+        _ = ClipboardWriter.copy(
+          AIPublishingChatMessageCompositionService.displayContent(for: message),
+          successMessage: String(localized: "已复制到剪贴板。"),
+          setMessage: { status in ai.setChatMessage(status) }
         )
       },
       branchConversation: { messageID, draft in
@@ -163,68 +194,148 @@ extension AIChatContextInspectorView {
     draft: ArticleDraft,
     clearsComposerOnAccept: Bool
   ) {
-    guard !isSending else { return }
+    guard AIChatSurfaceOperationOwnershipPolicy.canStartLocalOperation(
+      localTaskExists: sendTask != nil,
+      globalOperationRunning: ai.isChatRunning
+    ) else { return }
     isFollowingLatestMessage = true
-    let existingMessageIDs = Set(ai.chatMessages.map(\.id))
+    let ownerToken = UUID()
+    let submittedSurfaceConversationID = inspectorSurfaceConversationID
+    let existingMessageIDs = Set(
+      (ai.chatContextMode == .general
+        ? ai.generalChatConversation(withID: submittedSurfaceConversationID)?.messages ?? []
+        : ai.chatMessages
+      ).map(\.id)
+    )
     let requestedImageAttachmentIDs = selectedImageAttachmentIDs
     let requestedContextReferences = selectedContextReferences
     isSubmitting = true
+    activeSendOwnerToken = ownerToken
     sendTask = Task {
+      defer {
+        if activeSendOwnerToken == ownerToken {
+          isSubmitting = false
+          sendTask = nil
+          activeSendOwnerToken = nil
+        }
+      }
       let imageAttachments = await ai.chatImageAttachments(
         for: draft,
         attachmentIDs: requestedImageAttachmentIDs
       )
       guard !Task.isCancelled else {
-        isSubmitting = false
-        sendTask = nil
         return
       }
-      let reply = await ai.sendChatMessage(
-        message,
-        draft: draft,
-        imageAttachments: imageAttachments,
-        contextReferences: requestedContextReferences
-      )
-      let didAcceptUserMessage = ai.chatMessages.contains {
+      let reply: AIPublishingChatMessage?
+      if ai.chatContextMode == .general {
+        let generalConversationID = ai.generalChatConversation(
+          withID: submittedSurfaceConversationID
+        )?.id
+        reply = await ai.sendGeneralChatMessage(
+          message,
+          conversationID: generalConversationID,
+          connectionProfileID: ai.generalChatConversation(
+            withID: submittedSurfaceConversationID
+          )?.connectionProfileID,
+          imageAttachments: imageAttachments,
+          contextReferences: requestedContextReferences,
+          ownerToken: ownerToken
+        )
+      } else {
+        reply = await ai.sendChatMessage(
+          message,
+          draft: draft,
+          imageAttachments: imageAttachments,
+          contextReferences: requestedContextReferences,
+          ownerToken: ownerToken
+        )
+      }
+      let currentMessages: [AIPublishingChatMessage]
+      if ai.chatContextMode == .general {
+        currentMessages = ai.generalChatConversation(
+          withID: submittedSurfaceConversationID
+        )?.messages
+          ?? ai.activeGeneralChatConversation?.messages
+          ?? []
+      } else {
+        currentMessages = ai.chatMessages
+      }
+      let didAcceptUserMessage = currentMessages.contains {
         !existingMessageIDs.contains($0.id) && $0.role == .user
       }
       if clearsComposerOnAccept,
         reply != nil || didAcceptUserMessage,
-        trimmedInput == message
+        surfaceState.composerText(for: submittedSurfaceConversationID)
+          .trimmingCharacters(in: .whitespacesAndNewlines) == message
       {
-        inputText = ""
-        if selectedImageAttachmentIDs == requestedImageAttachmentIDs {
-          selectedImageAttachmentIDs = []
+        updateInspectorSurfaceState { state in
+          state.setComposerText("", for: submittedSurfaceConversationID)
         }
-        if selectedContextReferences == requestedContextReferences {
-          selectedContextReferences = []
+        if surfaceState.imageAttachmentIDs(for: submittedSurfaceConversationID)
+          == requestedImageAttachmentIDs
+        {
+          updateInspectorSurfaceState { state in
+            state.setImageAttachmentIDs([], for: submittedSurfaceConversationID)
+          }
+        }
+        if surfaceState.contextReferences(for: submittedSurfaceConversationID)
+          == requestedContextReferences
+        {
+          updateInspectorSurfaceState { state in
+            state.setContextReferences([], for: submittedSurfaceConversationID)
+          }
         }
       }
-      isSubmitting = false
-      sendTask = nil
+      if ai.chatContextMode == .general,
+        let activeConversationID = ai.activeGeneralChatConversationID
+      {
+        setInspectorSurfaceConversationID(activeConversationID)
+      }
     }
   }
 
   func stopSending() {
-    sendTask?.cancel()
-    sendTask = nil
-    if ai.isChatRunning {
-      ai.cancelChatReply()
+    guard AIChatSurfaceOperationOwnershipPolicy.canCancelLocalOperation(
+      localTaskExists: sendTask != nil,
+      ownerToken: activeSendOwnerToken
+    ) else {
+      return
     }
-    isSubmitting = false
+    guard let ownerToken = activeSendOwnerToken else { return }
+    sendTask?.cancel()
+    ai.cancelChatReply(expectedOwnerToken: ownerToken)
   }
 
   func retryLastFailedReply(confirmingPossibleDuplicateCharge: Bool) {
-    guard let draft = ai.selectedChatDraft, !isSending else { return }
+    guard AIChatSurfaceOperationOwnershipPolicy.canStartLocalOperation(
+      localTaskExists: sendTask != nil,
+      globalOperationRunning: ai.isChatRunning
+    ) else { return }
     isFollowingLatestMessage = true
     isSubmitting = true
+    let ownerToken = UUID()
+    activeSendOwnerToken = ownerToken
     sendTask = Task {
-      _ = await ai.retryLastFailedChatReply(
-        confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
-        draft: draft
-      )
-      isSubmitting = false
-      sendTask = nil
+      defer {
+        if activeSendOwnerToken == ownerToken {
+          isSubmitting = false
+          sendTask = nil
+          activeSendOwnerToken = nil
+        }
+      }
+      if ai.chatContextMode == .general {
+        _ = await ai.retryLastFailedGeneralChatReply(
+          confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
+          conversationID: inspectorSurfaceConversationID,
+          ownerToken: ownerToken
+        )
+      } else if let draft = ai.selectedChatDraft {
+        _ = await ai.retryLastFailedChatReply(
+          confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
+          draft: draft,
+          ownerToken: ownerToken
+        )
+      }
     }
   }
 
@@ -239,15 +350,17 @@ extension AIChatContextInspectorView {
   func applyPendingQuickPrompt() {
     guard let prompt = ai.consumePendingQuickPrompt() else { return }
     if trimmedInput.isEmpty {
-      inputText = prompt.prompt
+      setInputText(prompt.prompt)
     } else if trimmedInput != prompt.prompt {
-      inputText += "\n\n\(prompt.prompt)"
+      setInputText("\(inputText)\n\n\(prompt.prompt)")
     }
     focusComposerIfAvailable()
   }
 
   func focusComposerIfAvailable() {
-    guard ai.selectedChatDraft != nil, !isSending else { return }
+    guard (ai.chatContextMode == .general || ai.selectedChatDraft != nil), !isChatBusy else {
+      return
+    }
     DispatchQueue.main.async {
       isComposerFocused = true
     }

@@ -2,6 +2,26 @@ import Foundation
 
 extension AIPublishingAssistantService {
 
+  func chatMessages(for request: AIChatRequest) -> [AIChatMessage] {
+    var messages = [
+      AIChatMessage(role: "system", content: generalChatSystemPrompt)
+    ]
+    if let explicitContextMessage = explicitContextMessage(
+      prompt: request.context.explicitContextPrompt
+    ) {
+      messages.append(explicitContextMessage)
+    }
+    if let knowledgeMessage = knowledgeContextMessage(request.context.knowledgeContext) {
+      messages.append(knowledgeMessage)
+    }
+    messages.append(
+      contentsOf: request.messages.suffix(12).map {
+        AIChatMessage(role: $0.role.rawValue, content: chatContent(for: $0))
+      }
+    )
+    return messages
+  }
+
   private var chatSystemPrompt: String {
     """
     你是 RepoPress Studio 的文章讨论助手。可以连续对话，但所有回答都必须服务于当前文章、站点结构、front matter、SEO、公开风险、图片和发布流程；不要编造没有给出的仓库状态或线上验证。
@@ -154,7 +174,13 @@ extension AIPublishingAssistantService {
   private func explicitContextMessage(
     _ request: AIPublishingChatRequest
   ) -> AIChatMessage? {
-    guard let prompt = request.explicitContextPrompt?.nilIfEmpty else { return nil }
+    explicitContextMessage(prompt: request.explicitContextPrompt)
+  }
+
+  private func explicitContextMessage(
+    prompt: String?
+  ) -> AIChatMessage? {
+    guard let prompt = prompt?.nilIfEmpty else { return nil }
     return AIChatMessage(
       role: "system",
       content: """

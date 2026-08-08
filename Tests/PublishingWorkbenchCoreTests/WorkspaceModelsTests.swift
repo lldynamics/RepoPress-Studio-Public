@@ -134,6 +134,17 @@ final class WorkspaceModelsTests: XCTestCase {
     )
   }
 
+  func testAICollaborationInspectorUsesAReadableResizableWidthRange() {
+    XCTAssertEqual(
+      WorkspaceInspectorColumnWidthPolicy.widths(isAIAssistantPresented: false),
+      WorkspaceInspectorColumnWidths(minimum: 320, ideal: 360, maximum: 460)
+    )
+    XCTAssertEqual(
+      WorkspaceInspectorColumnWidthPolicy.widths(isAIAssistantPresented: true),
+      WorkspaceInspectorColumnWidths(minimum: 420, ideal: 500, maximum: 620)
+    )
+  }
+
   func testSiteProfileDecodesMissingAIWritingStyleWithDefault() throws {
     let encoded = try JSONEncoder.workbench.encode(SiteProfile.defaultProfile)
     var object = try XCTUnwrap(

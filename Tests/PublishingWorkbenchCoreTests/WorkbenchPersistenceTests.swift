@@ -122,7 +122,7 @@ final class WorkbenchPersistenceTests: XCTestCase {
       activeAIConversationIDsByDraftID: [
         liveDraft.id: liveConversation.id,
         recycledDraft.id: recycledConversation.id,
-        orphanConversation.draftID: orphanConversation.id,
+        try XCTUnwrap(orphanConversation.draftID): orphanConversation.id,
       ]
     )
 
@@ -152,7 +152,7 @@ final class WorkbenchPersistenceTests: XCTestCase {
       with: JSONEncoder.workbench.encode([
         liveDraft.id: liveConversation.id,
         recycledDraft.id: recycledConversation.id,
-        orphanConversation.draftID: orphanConversation.id,
+        try XCTUnwrap(orphanConversation.draftID): orphanConversation.id,
       ])
     )
 

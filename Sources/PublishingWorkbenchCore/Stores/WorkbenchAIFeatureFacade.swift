@@ -29,6 +29,22 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiTokenAvailability
   }
 
+  public func keyAvailability(
+    forConnectionProfileID connectionProfileID: UUID
+  ) -> KeychainTokenAvailability {
+    store.aiStore.aiKeyAvailability(
+      forConnectionProfileID: connectionProfileID
+    )
+  }
+
+  public var canUseProtectedWorkbench: Bool {
+    store.canUseProtectedWorkbench
+  }
+
+  public var isQuickHideActive: Bool {
+    store.isQuickHideActive
+  }
+
   public var isActionRunning: Bool {
     store.isAIActionRunning
   }
@@ -54,11 +70,17 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
   }
 
   public var chatConversationTitle: String? {
-    store.aiChatConversationTitle
+    if store.aiChatContextMode == .general {
+      return store.aiStore.activeGeneralAIChatConversation?.title
+    }
+    return store.aiChatConversationTitle
   }
 
   public var chatMessages: [AIPublishingChatMessage] {
-    store.aiChatMessages
+    if store.aiChatContextMode == .general {
+      return store.aiStore.activeGeneralAIChatConversation?.messages ?? []
+    }
+    return store.aiChatMessages
   }
 
   public var chatContextMode: AIPublishingChatContextMode {
@@ -69,12 +91,20 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiChatKnowledgePolicy
   }
 
+  public var generalChatKnowledgePolicy: KnowledgeRetrievalPolicy {
+    store.aiStore.activeGeneralAIChatKnowledgePolicy
+  }
+
   public var chatModelGrade: AIChatModelGrade {
     store.aiChatModelGrade
   }
 
   public var chatReasoningLevel: AIChatReasoningLevel {
     store.aiChatReasoningLevel
+  }
+
+  public var generalChatReasoningLevel: AIChatReasoningLevel {
+    store.aiStore.activeGeneralAIChatReasoningLevel
   }
 
   public var chatSelectedModel: String {
@@ -96,6 +126,134 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public var activeChatConversation: AIConversation? {
     store.aiStore.activeAIChatConversation()
+  }
+
+  public var generalChatConversations: [AIConversation] {
+    store.aiStore.generalAIChatConversations(includingArchived: false)
+  }
+
+  public var generalChatConversationsIncludingArchived: [AIConversation] {
+    store.aiStore.generalAIChatConversations(includingArchived: true)
+  }
+
+  public var activeGeneralChatConversationID: UUID? {
+    store.aiStore.activeGeneralAIChatConversationID
+  }
+
+  public var activeGeneralChatConversation: AIConversation? {
+    store.aiStore.activeGeneralAIChatConversation
+  }
+
+  public func generalChatConversation(
+    withID conversationID: UUID,
+    includingArchived: Bool = true
+  ) -> AIConversation? {
+    store.aiStore.generalAIChatConversation(
+      withID: conversationID,
+      includingArchived: includingArchived
+    )
+  }
+
+  public var activeGeneralChatConnectionProfile: AIConnectionProfile {
+    store.aiStore.activeGeneralAIChatConversation?.connectionProfileID
+      .flatMap(store.aiConnectionProfile(for:))
+      ?? store.activeAIConnectionProfile
+  }
+
+  public var activeGeneralChatConnectionProfileID: UUID? {
+    store.aiStore.activeGeneralAIChatConversation?.connectionProfileID
+  }
+
+  public var activeGeneralChatProviderConfig: AIProviderConfig? {
+    activeGeneralChatConnectionProfileID
+      .flatMap(store.aiConnectionProfile(for:))?
+      .config
+  }
+
+  public var generalChatManualRetryState: AIGeneralChatManualRetryState? {
+    store.aiStore.aiGeneralChatManualRetryState
+  }
+
+  public func startNewGeneralChatConversation(
+    connectionProfileID: UUID? = nil
+  ) -> AIConversation? {
+    store.aiStore.startNewGeneralAIChatConversation(
+      connectionProfileID: connectionProfileID
+    )
+  }
+
+  @discardableResult
+  public func selectGeneralChatConversation(_ conversationID: UUID) -> Bool {
+    store.aiStore.selectGeneralAIChatConversation(conversationID)
+  }
+
+  @discardableResult
+  public func setGeneralChatConnectionProfile(
+    _ connectionProfileID: UUID,
+    conversationID: UUID? = nil
+  ) -> Bool {
+    store.aiStore.setGeneralAIChatConnectionProfile(
+      connectionProfileID,
+      conversationID: conversationID
+    )
+  }
+
+  @discardableResult
+  public func setGeneralChatModelGrade(
+    _ modelGrade: AIChatModelGrade,
+    conversationID: UUID? = nil
+  ) -> Bool {
+    store.aiStore.setGeneralAIChatModelGrade(
+      modelGrade,
+      conversationID: conversationID
+    )
+  }
+
+  @discardableResult
+  public func setGeneralChatKnowledgePolicy(
+    _ policy: KnowledgeRetrievalPolicy,
+    conversationID: UUID? = nil
+  ) -> Bool {
+    store.aiStore.setGeneralAIChatKnowledgePolicy(
+      policy,
+      conversationID: conversationID
+    )
+  }
+
+  public func availableGeneralChatContextReferences() -> [AIContextReference] {
+    store.aiStore.availableGeneralAIChatContextReferences()
+  }
+
+  @discardableResult
+  public func sendGeneralChatMessage(
+    _ text: String,
+    conversationID: UUID? = nil,
+    connectionProfileID: UUID? = nil,
+    imageAttachments: [AIChatImageAttachment] = [],
+    contextReferences: [AIContextReference] = [],
+    ownerToken: UUID? = nil
+  ) async -> AIPublishingChatMessage? {
+    await store.aiStore.sendGeneralAIChatMessage(
+      text,
+      conversationID: conversationID,
+      connectionProfileID: connectionProfileID,
+      imageAttachments: imageAttachments,
+      contextReferences: contextReferences,
+      ownerToken: ownerToken
+    )
+  }
+
+  @discardableResult
+  public func retryLastFailedGeneralChatReply(
+    confirmingPossibleDuplicateCharge: Bool = false,
+    conversationID: UUID? = nil,
+    ownerToken: UUID? = nil
+  ) async -> AIPublishingChatMessage? {
+    await store.aiStore.retryLastFailedGeneralAIChatReply(
+      confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
+      conversationID: conversationID,
+      ownerToken: ownerToken
+    )
   }
 
   public func activeChatConversationID(for draftID: UUID) -> UUID? {
@@ -219,6 +377,17 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func setChatReasoningLevel(_ level: AIChatReasoningLevel) {
     store.setAIChatReasoningLevel(level)
+  }
+
+  @discardableResult
+  public func setGeneralChatReasoningLevel(
+    _ level: AIChatReasoningLevel,
+    conversationID: UUID? = nil
+  ) -> Bool {
+    store.aiStore.setGeneralAIChatReasoningLevel(
+      level,
+      conversationID: conversationID
+    )
   }
 
   public func setChatCustomModel(_ model: String) {
@@ -442,6 +611,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.cancelAIChatReply()
   }
 
+  public func cancelChatReply(expectedOwnerToken: UUID) {
+    store.aiStore.cancelAIChatReply(expectedOwnerToken: expectedOwnerToken)
+  }
+
   @discardableResult
   public func executeAutomationPlan(
     messageID: AIPublishingChatMessage.ID,
@@ -474,11 +647,13 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
   @discardableResult
   public func retryLastFailedChatReply(
     confirmingPossibleDuplicateCharge: Bool,
-    draft: ArticleDraft? = nil
+    draft: ArticleDraft? = nil,
+    ownerToken: UUID? = nil
   ) async -> AIPublishingChatMessage? {
     await store.retryLastFailedAIChatReply(
       confirmingPossibleDuplicateCharge: confirmingPossibleDuplicateCharge,
-      draft: draft
+      draft: draft,
+      ownerToken: ownerToken
     )
   }
 
@@ -487,13 +662,15 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     _ text: String,
     draft: ArticleDraft? = nil,
     imageAttachments: [AIChatImageAttachment] = [],
-    contextReferences: [AIContextReference] = []
+    contextReferences: [AIContextReference] = [],
+    ownerToken: UUID? = nil
   ) async -> AIPublishingChatMessage? {
     await store.sendAIChatMessage(
       text,
       draft: draft,
       imageAttachments: imageAttachments,
-      contextReferences: contextReferences
+      contextReferences: contextReferences,
+      ownerToken: ownerToken
     )
   }
 

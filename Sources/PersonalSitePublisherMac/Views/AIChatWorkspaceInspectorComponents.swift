@@ -2,13 +2,21 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
+struct AIChatGeneralKeyAvailabilityRefreshKey: Equatable {
+  let connectionProfileID: UUID?
+  let providerConfig: AIProviderConfig?
+  let activeTokenAvailability: KeychainTokenAvailability
+}
+
 struct AIChatContextInspectorView: View {
   @Environment(\.openSettings) var openSettings
   @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
   @ObservedObject var ai: WorkbenchAIFeatureFacade
-  @State var inputText = ""
+  @Binding var surfaceState: AIChatSurfaceState
+  @State var inspectorTransientConversationID = UUID()
   @State var isSubmitting = false
   @State var sendTask: Task<Void, Never>?
+  @State var activeSendOwnerToken: UUID?
   @State var latestMessageScrollTask: Task<Void, Never>?
   @State var draftDiffPreview: AIChatDraftDiffPreview?
   @State var visibleMessageLimit = 8
@@ -17,14 +25,17 @@ struct AIChatContextInspectorView: View {
   @State var isPartialRetryConfirmationPresented = false
   @State var isConversationPopoverPresented = false
   @State var isModelQuickSwitchPresented = false
-  @State var selectedImageAttachmentIDs: Set<UUID> = []
-  @State var selectedContextReferences: [AIContextReference] = []
   @State var isAdvancedSettingsExpanded = false
+  @State var generalKeyAvailabilityByConnectionID: [UUID: KeychainTokenAvailability] = [:]
   @FocusState var isComposerFocused: Bool
   @State var isHeaderTitleHovered = false
 
-  init(store: WorkbenchStore) {
+  init(
+    store: WorkbenchStore,
+    surfaceState: Binding<AIChatSurfaceState>
+  ) {
     _ai = ObservedObject(wrappedValue: store.ai)
+    _surfaceState = surfaceState
   }
 
   var body: some View {
@@ -110,18 +121,24 @@ struct AIChatContextInspectorView: View {
     .workbenchGlassContainer(material: .thinMaterial, drawsBorder: false)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("AI 助手")
-    .accessibilityIdentifier("ai-assistant-inspector")
     .onAppear {
+      ensureInspectorSurfaceConversationSelection()
+      refreshDisplayedGeneralKeyAvailability()
       synchronizeChatDraftWithSelection()
       applyPendingQuickPrompt()
       focusComposerIfAvailable()
     }
     .onDisappear {
       latestMessageScrollTask?.cancel()
+      if ownsInspectorOperation {
+        stopSending()
+      }
     }
     .onChange(of: ai.selectedChatDraft?.id) { _, _ in
-      selectedImageAttachmentIDs = []
-      selectedContextReferences = []
+      if ai.chatContextMode != .general {
+        surfaceState.selectedConversationID = nil
+      }
+      ensureInspectorSurfaceConversationSelection()
       synchronizeChatDraftWithSelection()
     }
     .onChange(of: ai.pendingQuickPrompt?.id) { _, _ in
@@ -136,7 +153,24 @@ struct AIChatContextInspectorView: View {
       visibleMessageLimit = 8
       isFollowingLatestMessage = true
     }
+    .onChange(of: ai.chatContextMode) { _, mode in
+      synchronizeInspectorConversationForContextMode(mode)
+      refreshDisplayedGeneralKeyAvailability()
+    }
+    .onChange(of: generalKeyAvailabilityRefreshKey) { _, _ in
+      refreshDisplayedGeneralKeyAvailability()
+    }
     .onChange(of: ai.activeChatConversationID) { _, _ in
+      if ai.chatContextMode != .general {
+        synchronizeInspectorSurfaceWithActiveConversation()
+      }
+      visibleMessageLimit = 8
+      isFollowingLatestMessage = true
+    }
+    .onChange(of: ai.activeGeneralChatConversationID) { _, _ in
+      if ai.chatContextMode == .general {
+        synchronizeInspectorSurfaceWithActiveConversation()
+      }
       visibleMessageLimit = 8
       isFollowingLatestMessage = true
     }

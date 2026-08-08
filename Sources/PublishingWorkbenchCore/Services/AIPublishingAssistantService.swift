@@ -104,6 +104,71 @@ public struct AIPublishingAssistantService: Sendable {
     )
   }
 
+  /// Sends a draft-independent request. This path intentionally has no
+  /// `ArticleDraft` or `SiteProfile` parameter, so a general conversation can
+  /// only transmit the context envelope assembled by the caller.
+  public func reply(
+    to request: AIChatRequest,
+    config: AIProviderConfig,
+    apiKey: String?
+  ) async throws -> AIPublishingChatMessage {
+    let taskConfig = try chatTaskConfig(for: request, config: config, apiKey: apiKey)
+    let reasoningOptions = request.reasoningLevel.requestOptions(for: taskConfig)
+    let completion = AIChatCompletionRequest(
+      model: taskConfig.normalizedModel,
+      messages: chatMessages(for: request),
+      temperature: 0.4,
+      thinking: reasoningOptions?.thinking,
+      reasoningEffort: reasoningOptions?.reasoningEffort
+    )
+    let result = try await client.complete(
+      request: completion,
+      config: taskConfig,
+      apiKey: apiKey,
+      purpose: .interactiveChat
+    )
+    return AIPublishingChatMessage(
+      role: .assistant,
+      content: result.content,
+      model: result.rawModel?.nilIfEmpty ?? taskConfig.normalizedModel,
+      tokenUsage: result.tokenUsage,
+      contextMode: request.context.mode,
+      knowledgeCitations: request.context.knowledgeContext?.citations ?? []
+    )
+  }
+
+  public func streamReply(
+    to request: AIChatRequest,
+    config: AIProviderConfig,
+    apiKey: String?
+  ) async throws -> AIPublishingChatReplyStream {
+    let taskConfig = try chatTaskConfig(for: request, config: config, apiKey: apiKey)
+    let reasoningOptions = request.reasoningLevel.requestOptions(for: taskConfig)
+    let completion = AIChatCompletionRequest(
+      model: taskConfig.normalizedModel,
+      messages: chatMessages(for: request),
+      temperature: 0.4,
+      thinking: reasoningOptions?.thinking,
+      reasoningEffort: reasoningOptions?.reasoningEffort
+    )
+    let updates = try await client.stream(
+      request: completion,
+      config: taskConfig,
+      apiKey: apiKey,
+      purpose: .interactiveChat
+    )
+    return AIPublishingChatReplyStream(
+      initialMessage: AIPublishingChatMessage(
+        role: .assistant,
+        content: "",
+        model: taskConfig.normalizedModel,
+        contextMode: request.context.mode,
+        knowledgeCitations: request.context.knowledgeContext?.citations ?? []
+      ),
+      updates: updates
+    )
+  }
+
   public func preparingAutomationPlan(
     in message: AIPublishingChatMessage,
     request: AIPublishingChatRequest
@@ -147,6 +212,35 @@ public struct AIPublishingAssistantService: Sendable {
 
   private func chatTaskConfig(
     for request: AIPublishingChatRequest,
+    config: AIProviderConfig,
+    apiKey: String?
+  ) throws -> AIProviderConfig {
+    if config.requiresAPIKey && apiKey?.nilIfEmpty == nil {
+      throw AIPublishingAssistantError.missingAPIKey
+    }
+    guard let latestUserMessage = request.messages.last(where: { $0.role == .user }),
+      latestUserMessage.content.nilIfEmpty != nil || !latestUserMessage.imageAttachments.isEmpty
+    else {
+      throw AIPublishingAssistantError.emptyChatMessage
+    }
+    if request.messages.contains(where: { !$0.imageAttachments.isEmpty }),
+      !config.supportsImageInput
+    {
+      throw AIPublishingAssistantError.unsupportedImageAttachments(config.normalizedDisplayName)
+    }
+
+    var taskConfig = config
+    let currentModel = request.selectedModel?.nilIfEmpty ?? config.normalizedModel
+    taskConfig.model = AIChatModelCatalog.model(
+      for: request.modelGrade,
+      config: config,
+      currentModel: currentModel
+    )
+    return taskConfig
+  }
+
+  private func chatTaskConfig(
+    for request: AIChatRequest,
     config: AIProviderConfig,
     apiKey: String?
   ) throws -> AIProviderConfig {
