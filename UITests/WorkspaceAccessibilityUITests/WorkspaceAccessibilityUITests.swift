@@ -172,7 +172,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "repository-action-migrate",
       "repository-action-open-images",
       "repository-action-open-publish",
-      "repository-next-action",
       "repository-section-summary",
       "repository-section-information",
       "repository-section-git-management",
@@ -442,6 +441,105 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       application.windows.firstMatch.isHittable,
       "Window > Show RepoPress Studio did not reopen the main workbench window."
     )
+  }
+
+  func testMenuMutationsAndMainWindowRecoveryRemainStable() throws {
+    launchApplication(
+      surface: "writing",
+      additionalLaunchArguments: [
+        "-AppleLanguages", "(en)",
+        "-AppleLocale", "en_US",
+      ]
+    )
+    application.activate()
+
+    for iteration in 0..<12 {
+      application.typeKey(.escape, modifierFlags: [])
+      guard let fileMenuItem = waitForHittableElement(timeout: 15, query: {
+        application.menuBars.menuBarItems.matching(identifier: "File")
+      }) else {
+        XCTFail("File was unavailable during menu stress iteration \(iteration).")
+        return
+      }
+      fileMenuItem.click()
+      let fileMenu = fileMenuItem.menus.firstMatch
+      guard fileMenu.waitForExistence(timeout: 5) else {
+        XCTFail("File did not open during menu stress iteration \(iteration).")
+        return
+      }
+      guard let siteRepositoryItem = waitForHittableElement(timeout: 5, query: {
+        application.menuItems.matching(identifier: "Site Repository")
+      }) else {
+        XCTFail("Site Repository was unavailable during menu stress iteration \(iteration).")
+        return
+      }
+      siteRepositoryItem.click()
+
+      let siteRepositoryMenu = siteRepositoryItem.menus.firstMatch
+      guard siteRepositoryMenu.waitForExistence(timeout: 5) else {
+        XCTFail("Site Repository did not open during iteration \(iteration).")
+        return
+      }
+      guard let copyCommand = waitForHittableElement(timeout: 5, query: {
+        application.menuItems.matching(identifier: "Copy Suggested Sync Commands")
+      }) else {
+        XCTFail("Copy Suggested Sync Commands was unavailable during iteration \(iteration).")
+        return
+      }
+      copyCommand.click()
+      XCTAssertNotEqual(
+        application.state,
+        .notRunning,
+        "The app terminated during menu mutation iteration \(iteration)."
+      )
+    }
+
+    for iteration in 0..<3 {
+      let mainWindow = application.windows.firstMatch
+      XCTAssertTrue(
+        mainWindow.waitForExistence(timeout: 10),
+        "The main window was unavailable before recovery iteration \(iteration)."
+      )
+      let closeButton = mainWindow.buttons[XCUIIdentifierCloseWindow]
+      XCTAssertTrue(closeButton.waitForExistence(timeout: 5))
+      closeButton.click()
+
+      application.typeKey(.escape, modifierFlags: [])
+      guard let windowMenuItem = waitForHittableElement(timeout: 5, query: {
+        application.menuBars.menuBarItems.matching(identifier: "Window")
+      }) else {
+        XCTFail("Window was unavailable during recovery iteration \(iteration).")
+        return
+      }
+      windowMenuItem.click()
+      let windowMenu = windowMenuItem.menus.firstMatch
+      guard windowMenu.waitForExistence(timeout: 5) else {
+        XCTFail("Window did not open during recovery iteration \(iteration).")
+        return
+      }
+      guard let reopenItem = waitForHittableElement(timeout: 5, query: {
+        application.menuItems.matching(identifier: "Show RepoPress Studio")
+      }) else {
+        XCTFail("Show RepoPress Studio was unavailable during recovery iteration \(iteration).")
+        return
+      }
+      XCTAssertEqual(
+        windowMenu.menuItems.matching(identifier: "Show RepoPress Studio").count,
+        1,
+        "The recovery command must remain unique."
+      )
+      reopenItem.click()
+
+      let reopenDeadline = Date().addingTimeInterval(10)
+      while !application.windows.firstMatch.isHittable, Date() < reopenDeadline {
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+      }
+      XCTAssertTrue(
+        application.windows.firstMatch.isHittable,
+        "The main window did not recover during iteration \(iteration)."
+      )
+      XCTAssertNotEqual(application.state, .notRunning)
+    }
   }
 
   func testImageWorkbenchIdentifiersRemainUniqueAndDoNotOverrideChildControls() throws {
@@ -1154,6 +1252,24 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
   private func element(identifier: String) -> XCUIElement {
     application.descendants(matching: .any).matching(identifier: identifier).firstMatch
+  }
+
+  private func waitForHittableElement(
+    timeout: TimeInterval,
+    query: () -> XCUIElementQuery
+  ) -> XCUIElement? {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+      if let element = query().allElementsBoundByIndex.first(where: {
+        $0.exists && $0.isHittable
+      }) {
+        return element
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    }
+    return query().allElementsBoundByIndex.first(where: {
+      $0.exists && $0.isHittable
+    })
   }
 
   private func runtimeAppURL() throws -> URL {

@@ -7,6 +7,7 @@ struct MacMarkdownComposerView: View {
   let store: WorkbenchStore
   let aiActions: WorkbenchAIFeatureFacade
   @Environment(\.publishDrawerCommandAction) var publishDrawerCommandAction
+  @EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter
   @StateObject var editorState: WorkbenchMarkdownEditorFeatureFacade
   @StateObject var editorSessionState: MarkdownComposerEditorSessionState
   @State var attachmentState = MarkdownComposerAttachmentState()
@@ -16,6 +17,7 @@ struct MacMarkdownComposerView: View {
   @State var editorDocumentBodyOffsetCache: Int
   @State var markdownSSGDerivedData = MarkdownComposerSSGDerivedData.empty
   @State var editorSessionSaveTask: Task<Void, Never>?
+  @State var sceneCommandOwnerID = UUID()
   @AppStorage("markdownEditorSynchronizedScrolling") var isSynchronizedScrollingEnabled = true
   @AppStorage("workspace.writingToolDensity") var writingToolDensityRawValue = MarkdownWritingToolDensity.basic.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
@@ -259,8 +261,18 @@ struct MacMarkdownComposerView: View {
       }
       editorOverlaySurface
     }
-    .focusedSceneValue(\.markdownEditorCommandActions, commandActions)
-    .onAppear {
+    .onChange(of: commandActions.sceneCommandPresentation, initial: true) { _, _ in
+      sceneCommandRouter.registerMarkdownEditor(
+        commandActions,
+        owner: sceneCommandOwnerID
+      )
+    }
+    .task {
+      // Editor restoration updates shared selection and presentation state.
+      // Do it after the mounting transaction so ObservableObject publishers
+      // never fire while SwiftUI is still installing focused values.
+      await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
+      guard !Task.isCancelled else { return }
       restorePreferredEditorDisplayMode()
       syncEditorBodyFromStore()
       syncActiveEditorSelection()
@@ -473,6 +485,7 @@ struct MacMarkdownComposerView: View {
   }
 
   private func handleComposerDisappear() {
+    sceneCommandRouter.unregisterMarkdownEditor(owner: sceneCommandOwnerID)
     editorSessionSaveTask?.cancel()
     editorSessionSaveTask = nil
     markdownAnalysisTask?.cancel()

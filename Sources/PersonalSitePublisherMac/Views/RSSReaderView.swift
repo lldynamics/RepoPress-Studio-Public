@@ -9,6 +9,8 @@ struct RSSReaderView: View {
   let workbenchStore: WorkbenchStore
   @ObservedObject var presentation: RSSReaderPresentationState
   @Environment(\.openSettings) private var openSettings
+  @EnvironmentObject private var sceneCommandRouter: WorkspaceSceneCommandRouter
+  @State private var sceneCommandOwnerID = UUID()
   @State private var excerptNoteArticle: RSSArticle?
   @State private var highlightDraft: RSSHighlightDraft?
   @State private var tagEditorArticle: RSSArticle?
@@ -49,11 +51,17 @@ struct RSSReaderView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("rss-reader-workspace")
-    .focusedSceneValue(\.rssReaderCommandActions, readerCommandActions)
+    .onChange(of: readerCommandActions?.sceneCommandPresentation, initial: true) { _, _ in
+      sceneCommandRouter.registerRSSReader(
+        readerCommandActions,
+        owner: sceneCommandOwnerID
+      )
+    }
     .onAppear {
       presentation.synchronizeSelection(in: store)
     }
     .onDisappear {
+      sceneCommandRouter.unregisterRSSReader(owner: sceneCommandOwnerID)
       persistReadingProgressAfterDisappear()
     }
     .onChange(of: presentation.selectedArticleID) { _, _ in

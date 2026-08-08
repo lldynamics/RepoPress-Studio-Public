@@ -111,7 +111,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
     let textView = DroppableMarkdownTextView(frame: .zero, textContainer: textContainer)
     precondition(textView.layoutManager != nil, "Markdown editor requires a complete TextKit stack")
     Self.configureAccessibility(for: textView)
-    textView.delegate = context.coordinator
     textView.fileDropTargetChangedHandler = onFileDropTargetChanged
     textView.fileDropHandler = { urls, dropRange in
       context.coordinator.handleDroppedFiles(urls, at: dropRange)
@@ -132,6 +131,19 @@ struct MacMarkdownTextView: NSViewRepresentable {
       context.coordinator.handleTableEditing(command, in: textView)
     }
     textView.string = text
+    let initialSelection = isFrontMatterSelection
+      ? Self.clamped(selectedRange, length: (text as NSString).length)
+      : documentRange(
+        forBodyRange: selectedRange,
+        bodyUTF16Offset: bodyUTF16Offset,
+        documentLength: (text as NSString).length
+      )
+    textView.setSelectedRange(initialSelection)
+    // Install the delegate only after the represented text and selection are
+    // synchronized. AppKit emits selection callbacks while assigning the
+    // initial string; writing those values back into @Published bindings from
+    // makeNSView would publish during SwiftUI's current update transaction.
+    textView.delegate = context.coordinator
     textView.isEditable = true
     textView.isSelectable = true
     textView.isRichText = true
@@ -521,11 +533,21 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
     private func updateSelectionBinding(from documentRange: NSRange) {
       if documentRange.location < bodyUTF16Offset {
-        isFrontMatterSelection = true
-        selectedRange = NSRange(location: 0, length: 0)
+        if !isFrontMatterSelection {
+          isFrontMatterSelection = true
+        }
+        let nextRange = NSRange(location: 0, length: 0)
+        if !NSEqualRanges(selectedRange, nextRange) {
+          selectedRange = nextRange
+        }
       } else {
-        isFrontMatterSelection = false
-        selectedRange = bodyRange(from: documentRange)
+        if isFrontMatterSelection {
+          isFrontMatterSelection = false
+        }
+        let nextRange = bodyRange(from: documentRange)
+        if !NSEqualRanges(selectedRange, nextRange) {
+          selectedRange = nextRange
+        }
       }
     }
 

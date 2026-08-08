@@ -76,7 +76,6 @@ struct ContentView: View {
   let rssStore: RSSReaderStore
   @ObservedObject private var shellState: WorkbenchShellFeatureFacade
   @ObservedObject private var presentationState: WorkbenchContentPresentationFeatureFacade
-  @FocusedValue(\.markdownEditorCommandActions) private var focusedMarkdownEditorCommands
   @Environment(\.scenePhase) private var scenePhase
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
@@ -99,6 +98,7 @@ struct ContentView: View {
   @State private var repositoryContextStage: RepositoryContextStage = .overview
   @StateObject private var repositorySourceSession: RepositoryHTMLSourceSession
   @StateObject private var rssPresentation: RSSReaderPresentationState
+  @StateObject private var sceneCommandRouter = WorkspaceSceneCommandRouter()
   private let repositoryAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
   init(store: WorkbenchStore, rssStore: RSSReaderStore) {
@@ -209,50 +209,8 @@ struct ContentView: View {
         openLocalSitePreview()
       }
     )
-    .focusedSceneValue(
-      \.publishDrawerCommandAction,
-      PublishDrawerCommandAction { message in
-        openPublishDrawer(message: message)
-      }
-    )
-    .focusedSceneValue(
-      \.localSitePreviewCommandAction,
-      LocalSitePreviewCommandAction {
-        openLocalSitePreview()
-      }
-    )
-    .focusedSceneValue(
-      \.workspaceCommandPaletteAction,
-      WorkspaceCommandPaletteAction(
-        open: {
-          guard shellState.canUseProtectedWorkbench else { return }
-          commandPaletteEditorCommands = focusedMarkdownEditorCommands
-          modalPresentation.present(.commandPalette)
-        },
-        openMaintenance: openMaintenanceSubpage,
-        openReleaseHistory: openReleaseHistorySubpage
-      )
-    )
-    .focusedSceneValue(
-      \.workspaceFirstRunSetupCommandAction,
-      WorkspaceFirstRunSetupCommandAction {
-        guard shellState.canUseProtectedWorkbench else { return }
-        modalPresentation.present(.firstRunSetup)
-      }
-    )
-    .focusedSceneValue(
-      \.draftFullTextSearchAction,
-      DraftFullTextSearchAction(open: openDraftFullTextSearch)
-    )
-    .focusedSceneValue(
-      \.workspaceFocusModeCommandAction,
-      WorkspaceFocusModeCommandAction(
-        isActive: effectiveFocusMode,
-        canToggle: shellState.canUseProtectedWorkbench
-          && shellState.selectedSection == .writing,
-        toggle: toggleFocusMode
-      )
-    )
+    .environmentObject(sceneCommandRouter)
+    .focusedSceneObject(sceneCommandRouter)
     .toolbar {
       ToolbarItem(placement: .navigation) {
         WorkspaceToolbarNavigationContent(
@@ -282,7 +240,7 @@ struct ContentView: View {
       ToolbarItem(placement: .principal) {
         OmniCommandSearchBar(isCompact: isCompactLayout) {
           guard shellState.canUseProtectedWorkbench else { return }
-          commandPaletteEditorCommands = focusedMarkdownEditorCommands
+          commandPaletteEditorCommands = sceneCommandRouter.markdownEditorCommandActions
           modalPresentation.present(.commandPalette)
         }
       }
@@ -322,17 +280,17 @@ struct ContentView: View {
         profileProvider: { store.activeProfile }
       )
     )
-    .focusedSceneValue(
-      \.repositorySourceSessionCommandActions,
-      RepositorySourceSessionCommandActions(
-        hasUnsavedChanges: repositorySourceSession.hasUnsavedChanges,
-        save: {
-          repositorySourceSession.saveSynchronously(profile: store.activeProfile)
-        },
-        lastErrorMessage: { repositorySourceSession.errorMessage }
-      )
-    )
-    .onAppear(perform: handleContentViewAppear)
+    .onChange(of: sceneCommandRouterRootUpdateKey, initial: true) { _, _ in
+      updateSceneCommandRouterRootActions()
+    }
+    .onDisappear {
+      sceneCommandRouter.clearAll()
+    }
+    .task {
+      await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
+      guard !Task.isCancelled else { return }
+      handleContentViewAppear()
+    }
     .onChange(of: autoRunPreflight) { _, newValue in
       store.setAutomaticallyRefreshPreflightOnEdit(
         store.isSafeMode ? false : newValue
@@ -384,6 +342,55 @@ struct ContentView: View {
     }
     registerRepositorySourceSession()
     refreshStaleRSSIfNeeded()
+  }
+
+  private var sceneCommandRouterRootUpdateKey: WorkspaceSceneCommandRouter.RootUpdateKey {
+    WorkspaceSceneCommandRouter.RootUpdateKey(
+      selectedSection: shellState.selectedSection,
+      isFocusModeActive: effectiveFocusMode,
+      canToggleFocusMode: shellState.canUseProtectedWorkbench
+        && shellState.selectedSection == .writing,
+      repositorySourceHasUnsavedChanges: repositorySourceSession.hasUnsavedChanges
+    )
+  }
+
+  private func updateSceneCommandRouterRootActions() {
+    let commandRouter = sceneCommandRouter
+    sceneCommandRouter.updateRoot(
+      publishDrawerCommandAction: PublishDrawerCommandAction { message in
+        openPublishDrawer(message: message)
+      },
+      localSitePreviewCommandAction: LocalSitePreviewCommandAction {
+        openLocalSitePreview()
+      },
+      workspaceCommandPaletteAction: WorkspaceCommandPaletteAction(
+        open: { [weak commandRouter] in
+          guard shellState.canUseProtectedWorkbench else { return }
+          commandPaletteEditorCommands = commandRouter?.markdownEditorCommandActions
+          modalPresentation.present(.commandPalette)
+        },
+        openMaintenance: openMaintenanceSubpage,
+        openReleaseHistory: openReleaseHistorySubpage
+      ),
+      workspaceFirstRunSetupCommandAction: WorkspaceFirstRunSetupCommandAction {
+        guard shellState.canUseProtectedWorkbench else { return }
+        modalPresentation.present(.firstRunSetup)
+      },
+      draftFullTextSearchAction: DraftFullTextSearchAction(open: openDraftFullTextSearch),
+      workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction(
+        isActive: effectiveFocusMode,
+        canToggle: shellState.canUseProtectedWorkbench
+          && shellState.selectedSection == .writing,
+        toggle: toggleFocusMode
+      ),
+      repositorySourceSessionCommandActions: RepositorySourceSessionCommandActions(
+        hasUnsavedChanges: repositorySourceSession.hasUnsavedChanges,
+        save: {
+          repositorySourceSession.saveSynchronously(profile: store.activeProfile)
+        },
+        lastErrorMessage: { repositorySourceSession.errorMessage }
+      )
+    )
   }
 
   private func refreshStaleRSSIfNeeded() {

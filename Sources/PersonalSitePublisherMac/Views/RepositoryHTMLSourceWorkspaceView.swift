@@ -14,6 +14,8 @@ struct RepositoryHTMLSourceWorkspaceView: View {
   @State private var findRequest: HTMLSourceFindRequest?
   @State private var pendingAction: PendingAction?
   @FocusState private var isFileListFocused: Bool
+  @EnvironmentObject private var sceneCommandRouter: WorkspaceSceneCommandRouter
+  @State private var sceneCommandOwnerID = UUID()
 
   init(store: WorkbenchStore, session: RepositoryHTMLSourceSession) {
     self.store = store
@@ -31,7 +33,12 @@ struct RepositoryHTMLSourceWorkspaceView: View {
     }
     .background(Color(nsColor: .windowBackgroundColor))
     .accessibilityIdentifier("html-source-workspace")
-    .focusedSceneValue(\.repositorySourceEditorCommandActions, commandActions)
+    .onChange(of: commandActions.sceneCommandPresentation, initial: true) { _, _ in
+      sceneCommandRouter.registerRepositorySource(
+        commandActions,
+        owner: sceneCommandOwnerID
+      )
+    }
     .task(id: repositoryIdentity) {
       if session.activeDocument == nil || !session.hasUnsavedChanges {
         if !session.isDocumentFromCurrentRepository(shell.activeProfile) {
@@ -62,6 +69,7 @@ struct RepositoryHTMLSourceWorkspaceView: View {
       }
     }
     .onDisappear {
+      sceneCommandRouter.unregisterRepositorySource(owner: sceneCommandOwnerID)
       fileFilterTask?.cancel()
     }
     .alert(

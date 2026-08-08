@@ -1,6 +1,11 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
+private struct EditableDraftSelectionTaskInput: Equatable {
+  let activeProfileID: UUID
+  let selectedSection: WorkspaceSection
+}
+
 struct EditorCenterColumn: View {
   let store: WorkbenchStore
   @Binding var contentHealthFilter: ContentHealthContextFilter
@@ -41,13 +46,16 @@ struct EditorCenterColumn: View {
     centerSurfaceView(activeSurface)
       .id(activeSurface)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .onAppear {
-      ensureDraftIfNeeded()
-    }
-    .onChange(of: editorState.activeProfileID) { _, _ in
-      ensureDraftIfNeeded()
-    }
-    .onChange(of: editorState.selectedSection) { _, _ in
+    .task(
+      id: EditableDraftSelectionTaskInput(
+        activeProfileID: editorState.activeProfileID,
+        selectedSection: editorState.selectedSection
+      )
+    ) {
+      // Selecting a fallback draft publishes preflight and selection state.
+      // Let the current SwiftUI update finish before starting that work.
+      await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
+      guard !Task.isCancelled else { return }
       ensureDraftIfNeeded()
     }
     .onChange(of: knowledge.statusMessage) { _, message in

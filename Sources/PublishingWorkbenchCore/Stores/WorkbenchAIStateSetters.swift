@@ -55,6 +55,7 @@ extension WorkbenchStore {
   }
 
   func setAIPublishingAssistantPresented(_ isPresented: Bool) {
+    guard aiWorkspaceStore.isAIPublishingAssistantPresented != isPresented else { return }
     aiWorkspaceStore.isAIPublishingAssistantPresented = isPresented
   }
 }
