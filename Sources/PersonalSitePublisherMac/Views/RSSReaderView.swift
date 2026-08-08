@@ -643,7 +643,11 @@ struct RSSReaderView: View {
   }
 
   private func openAISettings() {
-    requestedSettingsTabID = SettingsTab.ai.id
+    let destination: SettingsDestination =
+      workbenchStore.ai.dataSharingConsent.destinationState == .unconfigured
+      ? .ai(.connection)
+      : .ai(.credentials)
+    requestedSettingsTabID = destination.id
     openSettings()
   }
 

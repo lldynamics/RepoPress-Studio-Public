@@ -2,7 +2,6 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct TokenDeploymentDefaultsSection: View {
-  let readiness: DeploymentStatusProviderReadiness
   let deploymentProviderBinding: Binding<DeploymentProvider>
   let deploymentProviderDisplayName: String
   let deploymentSiteURL: Binding<String>
@@ -16,7 +15,7 @@ struct TokenDeploymentDefaultsSection: View {
   let deploymentAccountIDDisplayValue: String
 
   var body: some View {
-    Section("部署校验") {
+    Section("连接必填") {
       Picker("平台", selection: deploymentProviderBinding) {
         ForEach(DeploymentProvider.allCases) { provider in
           Text(provider.localizedDisplayName).tag(provider)
@@ -53,26 +52,6 @@ struct TokenDeploymentDefaultsSection: View {
         .accessibilityValue(deploymentAccountIDDisplayValue)
 
       Text("GitHub/GitLab 会优先读取 Pages 与构建状态；Netlify 填写站点 ID 和访问令牌后会读取最近部署记录；Vercel、Cloudflare Pages 和自定义平台使用这里的状态端点或站点 URL 做发布后校验。只有自定义平台的 HTTPS 状态端点可使用 Bearer Token。")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-
-      Label(
-        readiness.statusTitle,
-        systemImage: readiness.isAPIReady ? "checkmark.seal" : readiness.canCheckAnyStatus ? "exclamationmark.triangle" : "xmark.octagon"
-      )
-      .foregroundStyle(readiness.isAPIReady ? WorkbenchTheme.success : readiness.canCheckAnyStatus ? WorkbenchTheme.warning : WorkbenchTheme.risk)
-
-      Text(readiness.nextStep)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-
-      if !readiness.missingRequirements.isEmpty {
-        Text("待补齐：\(readiness.missingRequirements.joined(separator: "、"))")
-          .font(.caption)
-          .foregroundStyle(WorkbenchTheme.warning)
-      }
-
-      Text(readiness.fallbackMessage)
         .font(.caption)
         .foregroundStyle(.secondary)
     }

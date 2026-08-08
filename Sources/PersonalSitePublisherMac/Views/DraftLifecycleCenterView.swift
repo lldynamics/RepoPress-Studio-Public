@@ -44,6 +44,7 @@ struct DraftLifecycleCenterView: View {
         recycleBinSection
         repositoryCleanupSection
       }
+      .accessibilityIdentifier("data-management-drafts-task")
       .navigationTitle("版本历史与回收站")
       .toolbar {
         if presentation == .standalone {
@@ -51,6 +52,7 @@ struct DraftLifecycleCenterView: View {
             Button("完成") {
               dismiss()
             }
+            .accessibilityIdentifier("data-management-drafts-task-close")
           }
         }
       }

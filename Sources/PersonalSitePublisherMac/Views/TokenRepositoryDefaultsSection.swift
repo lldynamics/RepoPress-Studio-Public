@@ -2,6 +2,8 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct TokenRepositoryDefaultsSection: View {
+  let localRepositoryPath: String
+  let chooseLocalRepository: () -> Void
   let repositoryProviderBinding: Binding<RepositoryProvider>
   let repositoryProviderDisplayName: String
   let repositoryBaseURL: Binding<String>
@@ -17,7 +19,36 @@ struct TokenRepositoryDefaultsSection: View {
   @State private var showsAdvancedConnectionSettings = false
 
   var body: some View {
-    Section("仓库连接") {
+    Section("连接必填") {
+      LabeledContent("本地仓库") {
+        HStack(spacing: 8) {
+          Text(localRepositoryDisplayValue)
+            .foregroundStyle(
+              localRepositoryPath.trimmedForPublishing.isEmpty
+                ? Color.secondary
+                : Color.primary
+            )
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .help(localRepositoryDisplayValue)
+
+          Button(
+            localRepositoryPath.trimmedForPublishing.isEmpty
+              ? String(localized: "选择…")
+              : String(localized: "更改…")
+          ) {
+            chooseLocalRepository()
+          }
+          .controlSize(.small)
+          .accessibilityLabel(
+            localRepositoryPath.trimmedForPublishing.isEmpty
+              ? String(localized: "选择本地仓库")
+              : String(localized: "更改本地仓库")
+          )
+        }
+      }
+      .accessibilityValue(localRepositoryDisplayValue)
+
       Picker("平台", selection: repositoryProviderBinding) {
         ForEach(RepositoryProvider.allCases) { provider in
           Text(provider.localizedDisplayName).tag(provider)
@@ -60,5 +91,9 @@ struct TokenRepositoryDefaultsSection: View {
         .font(.caption)
         .foregroundStyle(.secondary)
     }
+  }
+
+  private var localRepositoryDisplayValue: String {
+    localRepositoryPath.trimmedForPublishing.nilIfEmpty ?? String(localized: "未选择")
   }
 }

@@ -6,7 +6,6 @@ struct SettingsConfigurationHealthCard: View {
   let aiProviderConfig: AIProviderConfig
   let repositoryTokenAvailability: KeychainTokenAvailability
   let aiTokenAvailability: KeychainTokenAvailability
-  let privacySettings: PrivacyProtectionSettings
   let selectDestination: (SettingsConfigurationHealthDestination) -> Void
   let isEmbedded: Bool
 
@@ -15,7 +14,6 @@ struct SettingsConfigurationHealthCard: View {
     aiProviderConfig: AIProviderConfig,
     repositoryTokenAvailability: KeychainTokenAvailability,
     aiTokenAvailability: KeychainTokenAvailability,
-    privacySettings: PrivacyProtectionSettings,
     selectDestination: @escaping (SettingsConfigurationHealthDestination) -> Void,
     isEmbedded: Bool = false
   ) {
@@ -23,7 +21,6 @@ struct SettingsConfigurationHealthCard: View {
     self.aiProviderConfig = aiProviderConfig
     self.repositoryTokenAvailability = repositoryTokenAvailability
     self.aiTokenAvailability = aiTokenAvailability
-    self.privacySettings = privacySettings
     self.selectDestination = selectDestination
     self.isEmbedded = isEmbedded
   }
@@ -33,14 +30,6 @@ struct SettingsConfigurationHealthCard: View {
       repositoryItem,
       defaultRulesItem
     ]
-  }
-
-  private var allItems: [SettingsConfigurationHealthItem] {
-    requiredItems + [repositoryTokenItem, aiKeyItem, privacyItem]
-  }
-
-  private var supportingItems: [SettingsConfigurationHealthItem] {
-    Array(allItems.dropFirst(requiredItems.count))
   }
 
   private var unresolvedItems: [SettingsConfigurationHealthItem] {
@@ -74,8 +63,18 @@ struct SettingsConfigurationHealthCard: View {
   private var configurationContent: some View {
     VStack(alignment: .leading, spacing: 20) {
       statusSummary
-      configurationSection(title: String(localized: "发布基础"), items: requiredItems)
-      configurationSection(title: String(localized: "功能与权限"), items: supportingItems)
+      configurationSection(
+        title: String(localized: "本地发布（必需）"),
+        items: requiredItems
+      )
+      configurationSection(
+        title: String(localized: "线上发布（按需）"),
+        items: [repositoryTokenItem]
+      )
+      configurationSection(
+        title: String(localized: "AI 助手（按需）"),
+        items: [aiKeyItem]
+      )
     }
   }
 
@@ -111,6 +110,29 @@ struct SettingsConfigurationHealthCard: View {
         }
       }
       .frame(height: 6)
+
+      if let nextItem = unresolvedItems.first {
+        HStack(alignment: .center, spacing: 10) {
+          Text("下一步")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+
+          Text(LocalizedStringKey(nextItem.title))
+            .font(.callout.weight(.medium))
+
+          Spacer(minLength: 8)
+
+          Button(nextItem.actionTitle) {
+            selectDestination(nextItem.destination)
+          }
+          .buttonStyle(.borderedProminent)
+          .accessibilityHint(nextItem.detail)
+        }
+      } else {
+        Label("本地发布基础已经就绪，可按需继续配置线上发布与 AI。", systemImage: "checkmark.circle.fill")
+          .font(.callout)
+          .foregroundStyle(WorkbenchTheme.success)
+      }
     }
     .padding(14)
     .background(WorkbenchBackgroundStyle.panel, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
@@ -148,7 +170,7 @@ struct SettingsConfigurationHealthCard: View {
     let path = profile.localRepositoryRootPath.trimmedForPublishing
     let isReady = profile.localRepositoryRootURL != nil
     return SettingsConfigurationHealthItem(
-      title: "仓库路径",
+      title: "本地仓库",
       detail: isReady ? Text(verbatim: path) : Text("未选择本地仓库"),
       systemImage: "folder",
       state: isReady ? .ready : .warning,
@@ -175,7 +197,7 @@ struct SettingsConfigurationHealthCard: View {
       state = .warning
     }
     return SettingsConfigurationHealthItem(
-      title: "仓库访问令牌",
+      title: "线上仓库凭据",
       detail: detail,
       systemImage: "key",
       state: state,
@@ -189,7 +211,7 @@ struct SettingsConfigurationHealthCard: View {
     let isReady = !requiresKey || aiTokenAvailability.hasToken
     let hasAccessFailure = requiresKey && aiTokenAvailability.accessState == .accessFailed
     return SettingsConfigurationHealthItem(
-      title: "AI Key",
+      title: "AI 连接凭据",
       detail: hasAccessFailure
         ? Text(
           "操作失败：\(credentialAccessFailureMessage(aiTokenAvailability))"
@@ -218,7 +240,7 @@ struct SettingsConfigurationHealthCard: View {
       && !profile.publicImagePathPattern.trimmedForPublishing.isEmpty
       && !profile.dateFormat.trimmedForPublishing.isEmpty
     return SettingsConfigurationHealthItem(
-      title: "发布规则",
+      title: "内容与路径",
       detail: hasPublishingPaths
         ? Text("\(profile.siteKind.localizedDisplayName) · 路径规则已配置")
         : Text("路径或日期规则缺失"),
@@ -229,21 +251,10 @@ struct SettingsConfigurationHealthCard: View {
     )
   }
 
-  private var privacyItem: SettingsConfigurationHealthItem {
-    return SettingsConfigurationHealthItem(
-      title: "内容遮挡",
-      detail: privacySettings.masksPrivateContent ? Text("私密内容遮挡已开启") : Text("私密内容遮挡未开启"),
-      systemImage: "hand.raised",
-      state: privacySettings.masksPrivateContent ? .ready : .info,
-      destination: .privacy,
-      actionTitle: String(localized: "打开隐私设置")
-    )
-  }
-
   private var overallStatusText: String {
     readyRequiredCount == requiredItems.count
-      ? String(localized: "基础就绪")
-      : String(localized: "需补配置")
+      ? String(localized: "可本地发布")
+      : String(localized: "继续设置")
   }
 
   private var overallStatusImage: String {
@@ -358,7 +369,6 @@ enum SettingsConfigurationHealthDestination: Hashable {
   case repositoryToken
   case aiKey
   case defaultRules
-  case privacy
 }
 
 private enum SettingsConfigurationHealthState {

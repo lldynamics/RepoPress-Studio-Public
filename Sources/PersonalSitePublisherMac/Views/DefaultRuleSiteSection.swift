@@ -4,82 +4,83 @@ import SwiftUI
 struct DefaultRuleSiteSection: View {
   let activeProfileBinding: Binding<SiteProfile>
   let siteKindBinding: Binding<SiteKind>
+  @Binding var expansionState: DefaultRuleExpansionState
 
   var body: some View {
-    Group {
-      Section("站点与文章默认") {
-        Picker("站点类型", selection: siteKindBinding) {
-          ForEach(SiteKind.allCases) { kind in
-            Text(kind.localizedDisplayName).tag(kind)
-          }
+    Section("常用默认") {
+      Picker("站点类型", selection: siteKindBinding) {
+        ForEach(SiteKind.allCases) { kind in
+          Text(kind.localizedDisplayName).tag(kind)
         }
-        .accessibilityLabel("站点类型")
-        .accessibilityValue(activeProfile.siteKind.localizedDisplayName)
-
-        HStack(spacing: 8) {
-          Text("快捷套用框架规范：")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-          Button {
-            activeProfileBinding.frontMatterStyle.wrappedValue = .yaml
-            activeProfileBinding.dateFormat.wrappedValue = "yyyy-MM-dd HH:mm:ss"
-            activeProfileBinding.slugValidationRule.wrappedValue = .lowercaseKebab
-            activeProfileBinding.includeDraftFlagInFrontMatter.wrappedValue = false
-          } label: {
-            Text("Hexo 规范")
-              .font(.caption.weight(.medium))
-              .padding(.horizontal, 8)
-              .padding(.vertical, 3)
-              .background(
-                activeProfile.dateFormat == "yyyy-MM-dd HH:mm:ss" ? WorkbenchTheme.brand.opacity(0.15) : Color.primary.opacity(0.06),
-                in: Capsule()
-              )
-              .foregroundStyle(activeProfile.dateFormat == "yyyy-MM-dd HH:mm:ss" ? WorkbenchTheme.brand : Color.primary)
-          }
-          .buttonStyle(.plain)
-
-          Button {
-            activeProfileBinding.frontMatterStyle.wrappedValue = .yaml
-            activeProfileBinding.dateFormat.wrappedValue = "yyyy-MM-dd'T'HH:mm:ssXXX"
-            activeProfileBinding.includeDraftFlagInFrontMatter.wrappedValue = true
-          } label: {
-            Text("Hugo 规范")
-              .font(.caption.weight(.medium))
-              .padding(.horizontal, 8)
-              .padding(.vertical, 3)
-              .background(
-                activeProfile.dateFormat.contains("XXX") ? WorkbenchTheme.brand.opacity(0.15) : Color.primary.opacity(0.06),
-                in: Capsule()
-              )
-              .foregroundStyle(activeProfile.dateFormat.contains("XXX") ? WorkbenchTheme.brand : Color.primary)
-          }
-          .buttonStyle(.plain)
-        }
-        .padding(.vertical, 2)
-
-        Picker("文章头信息格式", selection: activeProfileBinding.frontMatterStyle) {
-          ForEach(FrontMatterStyle.allCases) { style in
-            Text(style.localizedDisplayName).tag(style)
-          }
-        }
-        .accessibilityLabel("文章头信息格式")
-        .accessibilityValue(activeProfile.frontMatterStyle.localizedDisplayName)
-
-        TextField("默认作者", text: activeProfileBinding.defaultAuthor)
-          .accessibilityLabel("默认作者")
-          .accessibilityValue(activeProfile.defaultAuthor.isEmpty ? "未填写" : activeProfile.defaultAuthor)
-
-        TextField("默认标签", text: stringListBinding(\.defaultTags))
-          .accessibilityLabel("默认标签")
-          .accessibilityValue(activeProfile.defaultTags.isEmpty ? "未填写" : activeProfile.defaultTags.joined(separator: "，"))
-
-        TextField("默认分类", text: stringListBinding(\.defaultCategories))
-          .accessibilityLabel("默认分类")
-          .accessibilityValue(activeProfile.defaultCategories.isEmpty ? "未填写" : activeProfile.defaultCategories.joined(separator: "，"))
       }
+      .accessibilityLabel("站点类型")
+      .accessibilityValue(activeProfile.siteKind.localizedDisplayName)
 
-      Section("文件名与头信息字段") {
+      HStack(spacing: 8) {
+        Text("快捷套用框架规范：")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+
+        Button {
+          activeProfileBinding.frontMatterStyle.wrappedValue = .yaml
+          activeProfileBinding.dateFormat.wrappedValue = "yyyy-MM-dd HH:mm:ss"
+          activeProfileBinding.slugValidationRule.wrappedValue = .lowercaseKebab
+          activeProfileBinding.includeDraftFlagInFrontMatter.wrappedValue = false
+        } label: {
+          Text("Hexo 规范")
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+              activeProfile.dateFormat == "yyyy-MM-dd HH:mm:ss" ? WorkbenchTheme.brand.opacity(0.15) : Color.primary.opacity(0.06),
+              in: Capsule()
+            )
+            .foregroundStyle(activeProfile.dateFormat == "yyyy-MM-dd HH:mm:ss" ? WorkbenchTheme.brand : Color.primary)
+        }
+        .buttonStyle(.plain)
+
+        Button {
+          activeProfileBinding.frontMatterStyle.wrappedValue = .yaml
+          activeProfileBinding.dateFormat.wrappedValue = "yyyy-MM-dd'T'HH:mm:ssXXX"
+          activeProfileBinding.includeDraftFlagInFrontMatter.wrappedValue = true
+        } label: {
+          Text("Hugo 规范")
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+              activeProfile.dateFormat.contains("XXX") ? WorkbenchTheme.brand.opacity(0.15) : Color.primary.opacity(0.06),
+              in: Capsule()
+            )
+            .foregroundStyle(activeProfile.dateFormat.contains("XXX") ? WorkbenchTheme.brand : Color.primary)
+        }
+        .buttonStyle(.plain)
+      }
+      .padding(.vertical, 2)
+
+      Picker("文章头信息格式", selection: activeProfileBinding.frontMatterStyle) {
+        ForEach(FrontMatterStyle.allCases) { style in
+          Text(style.localizedDisplayName).tag(style)
+        }
+      }
+      .accessibilityLabel("文章头信息格式")
+      .accessibilityValue(activeProfile.frontMatterStyle.localizedDisplayName)
+
+      TextField("默认作者", text: activeProfileBinding.defaultAuthor)
+        .accessibilityLabel("默认作者")
+        .accessibilityValue(activeProfile.defaultAuthor.isEmpty ? "未填写" : activeProfile.defaultAuthor)
+
+      TextField("默认标签", text: stringListBinding(\.defaultTags))
+        .accessibilityLabel("默认标签")
+        .accessibilityValue(activeProfile.defaultTags.isEmpty ? "未填写" : activeProfile.defaultTags.joined(separator: "，"))
+
+      TextField("默认分类", text: stringListBinding(\.defaultCategories))
+        .accessibilityLabel("默认分类")
+        .accessibilityValue(activeProfile.defaultCategories.isEmpty ? "未填写" : activeProfile.defaultCategories.joined(separator: "，"))
+    }
+
+    Section("进阶配置") {
+      DisclosureGroup(isExpanded: $expansionState.advancedFrontMatter) {
         TextField("日期格式", text: activeProfileBinding.dateFormat)
           .accessibilityLabel("日期格式")
           .accessibilityValue(activeProfile.dateFormat.isEmpty ? "未填写" : activeProfile.dateFormat)
@@ -99,11 +100,16 @@ struct DefaultRuleSiteSection: View {
         Toggle("包含封面图字段", isOn: activeProfileBinding.includeCoverInFrontMatter)
           .accessibilityLabel("文章头信息包含封面图字段")
           .accessibilityValue(activeProfile.includeCoverInFrontMatter ? "开启" : "关闭")
+      } label: {
+        disclosureLabel(
+          title: String(localized: "文件名与头信息字段"),
+          detail: String(localized: "日期格式、Slug 规则与可选字段"),
+          systemImage: "doc.badge.gearshape"
+        )
       }
+      .accessibilityIdentifier("default-rule-advanced-front-matter")
 
-      DefaultRuleCustomFrontMatterSection()
-
-      Section("Front Matter 预览") {
+      DisclosureGroup(isExpanded: $expansionState.frontMatterPreview) {
         VStack(alignment: .leading, spacing: 4) {
           Text(generatedFrontMatterPreview)
             .font(.caption.monospaced())
@@ -117,7 +123,15 @@ struct DefaultRuleSiteSection: View {
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
             )
         }
+        .padding(.top, 6)
+      } label: {
+        disclosureLabel(
+          title: String(localized: "Front Matter 预览"),
+          detail: String(localized: "检查当前默认值生成的文章头信息"),
+          systemImage: "doc.text.magnifyingglass"
+        )
       }
+      .accessibilityIdentifier("default-rule-front-matter-preview")
     }
   }
 
@@ -148,6 +162,28 @@ struct DefaultRuleSiteSection: View {
 
   private var activeProfile: SiteProfile {
     activeProfileBinding.wrappedValue
+  }
+
+  private func disclosureLabel(
+    title: String,
+    detail: String,
+    systemImage: String
+  ) -> some View {
+    HStack(spacing: 10) {
+      Image(systemName: systemImage)
+        .foregroundStyle(WorkbenchTheme.navigationSelection)
+        .frame(width: 20)
+        .accessibilityHidden(true)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+          .font(.body.weight(.medium))
+        Text(detail)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .padding(.vertical, 3)
   }
 
   private func stringListBinding(_ keyPath: WritableKeyPath<SiteProfile, [String]>) -> Binding<String> {
