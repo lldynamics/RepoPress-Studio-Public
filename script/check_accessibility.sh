@@ -322,6 +322,26 @@ require_literal \
   "main toolbar must expose the AI collaboration entry point"
 
 require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  ".accessibilityIdentifier(\"markdown-ai-assistant-entry\")" \
+  "the writing page must expose a direct AI collaboration entry point"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "compactToolbarControls(showsAIChatTitle: false, showsPrepareTitle: false)" \
+  "the compact writing toolbar must keep a dedicated AI collaboration entry"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "matching(identifier: \"markdown-ai-assistant-entry\")" \
+  "runtime accessibility coverage must locate the writing-page AI entry"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "writingAIEntry.click()" \
+  "runtime accessibility coverage must click the writing-page AI entry directly"
+
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
   "WorkspaceToolbarIconButtonStyle(isActive: isAIAssistantWorkspaceVisible)" \
   "the AI toolbar entry must expose its active state visually"
@@ -1128,12 +1148,12 @@ require_literal \
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
   ".accessibilityLabel(\"AI 常用操作\")" \
-  "the single editor AI entry must expose a descriptive accessibility label"
+  "the editor AI quick actions menu must expose a descriptive accessibility label"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
   ".accessibilityValue(isSelectionAIActionRunning ? \"AI 处理中\" : \"\")" \
-  "the single editor AI entry must expose its running state"
+  "the editor AI quick actions menu must expose its running state"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
@@ -1152,8 +1172,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  "editorActionGroup(showsTitle: true)" \
+  "ViewThatFits(in: .horizontal)" \
   "editor actions must prefer readable text labels before the compact icon fallback"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "expandedToolbarControls" \
+  "editor actions must keep the readable expanded toolbar variant"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "compactToolbarControls(showsAIChatTitle: true, showsPrepareTitle: true)" \
+  "the first compact toolbar fallback must retain AI and publish text labels"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
