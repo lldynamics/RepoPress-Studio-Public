@@ -6,7 +6,8 @@ extension WorkbenchAIStore {
     _ text: String,
     draft: ArticleDraft? = nil,
     imageAttachments: [AIChatImageAttachment] = [],
-    contextReferences: [AIContextReference] = []
+    contextReferences: [AIContextReference] = [],
+    ownerToken: UUID? = nil
   ) async -> AIPublishingChatMessage? {
     guard store.canUseProtectedWorkbench else {
       store.setAIChatMessage(aiChatQuickHideOperationMessage())
@@ -17,6 +18,14 @@ extension WorkbenchAIStore {
     guard !trimmed.isEmpty || !imageAttachments.isEmpty else {
       store.setAIChatMessage(CoreL10n.text("请先输入要发送给 AI 的内容。"))
       return nil
+    }
+    if aiChatContextMode == .general {
+      return await sendGeneralAIChatMessage(
+        trimmed,
+        imageAttachments: imageAttachments,
+        contextReferences: contextReferences,
+        ownerToken: ownerToken
+      )
     }
     let selectedImageAttachments = Array(
       imageAttachments.prefix(AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount)
@@ -62,7 +71,8 @@ extension WorkbenchAIStore {
     }
     guard
       let operationID = beginAIChatOperation(
-        statusMessage: CoreL10n.text("AI 正在结合当前文章回复...")
+        statusMessage: CoreL10n.text("AI 正在结合当前文章回复..."),
+        ownerToken: ownerToken
       )
     else {
       return nil

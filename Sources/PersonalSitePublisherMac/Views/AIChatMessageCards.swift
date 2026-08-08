@@ -1,54 +1,74 @@
+import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
 struct AIChatMessageSurface<Content: View>: View {
   let role: AIPublishingChatRole
+  let timestamp: Date?
   @ViewBuilder let content: () -> Content
 
   init(
     role: AIPublishingChatRole,
+    timestamp: Date? = nil,
     @ViewBuilder content: @escaping () -> Content
   ) {
     self.role = role
+    self.timestamp = timestamp
     self.content = content
   }
 
   var body: some View {
-    VStack(alignment: isUser ? .trailing : .leading, spacing: 8) {
+    VStack(alignment: isUser ? .trailing : .leading, spacing: 5) {
       HStack(spacing: 6) {
+        if isUser {
+          Spacer(minLength: 0)
+        }
         Image(systemName: isUser ? "person.crop.circle" : "sparkles")
           .font(.caption.weight(.semibold))
         Text(verbatim: role.localizedDisplayName)
           .font(.workbenchSupporting.weight(.semibold))
+        if let timestamp {
+          Text(timestamp.formatted(date: .omitted, time: .shortened))
+            .font(.workbenchMetadata.monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
+        if !isUser {
+          Spacer(minLength: 0)
+        }
       }
       .foregroundStyle(isUser ? Color.accentColor : WorkbenchTheme.primary)
+      .padding(.horizontal, 4)
 
       content()
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .frame(
+          maxWidth: isUser ? 390 : .infinity,
+          alignment: isUser ? .trailing : .leading
+        )
+        .background {
+          RoundedRectangle(
+            cornerRadius: isUser ? 14 : WorkbenchCornerRadius.control,
+            style: .continuous
+          )
+          .fill(isUser ? AnyShapeStyle(.thinMaterial) : WorkbenchBackgroundStyle.card)
+          if isUser {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+              .fill(Color.accentColor.opacity(0.08))
+          }
+        }
+        .overlay {
+          RoundedRectangle(
+            cornerRadius: isUser ? 14 : WorkbenchCornerRadius.control,
+            style: .continuous
+          )
+          .stroke(
+            isUser ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.08),
+            lineWidth: 1
+          )
+        }
     }
-    .padding(12)
-    .frame(
-      maxWidth: isUser ? 430 : .infinity,
-      alignment: isUser ? .trailing : .leading
-    )
     .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
-    .background {
-      RoundedRectangle(cornerRadius: isUser ? 16 : WorkbenchCornerRadius.control, style: .continuous)
-        .fill(isUser ? AnyShapeStyle(.thinMaterial) : WorkbenchBackgroundStyle.card)
-      if isUser {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-          .fill(Color.accentColor.opacity(0.08))
-      }
-    }
-    .overlay {
-      RoundedRectangle(
-        cornerRadius: isUser ? 16 : WorkbenchCornerRadius.control,
-        style: .continuous
-      )
-      .stroke(
-        isUser ? Color.accentColor.opacity(0.20) : Color.primary.opacity(0.10),
-        lineWidth: 1
-      )
-    }
   }
 
   private var isUser: Bool {

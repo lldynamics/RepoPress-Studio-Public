@@ -20,6 +20,22 @@ public struct AIChatManualRetryState: Equatable, Sendable {
   }
 }
 
+public struct AIGeneralChatManualRetryState: Equatable, Sendable {
+  public let conversationID: UUID
+  public let requiresDuplicateChargeConfirmation: Bool
+  public let retryAfter: Date?
+
+  public init(
+    conversationID: UUID,
+    requiresDuplicateChargeConfirmation: Bool,
+    retryAfter: Date? = nil
+  ) {
+    self.conversationID = conversationID
+    self.requiresDuplicateChargeConfirmation = requiresDuplicateChargeConfirmation
+    self.retryAfter = retryAfter
+  }
+}
+
 struct AIChatConversationIdentity: Equatable, Sendable {
   let draftID: UUID
   let conversationID: UUID
@@ -43,6 +59,7 @@ public final class WorkbenchAIStore: ObservableObject {
   /// for every SSE token.
   let aiChatStreamPublishInterval: Duration = .milliseconds(50)
   @Published public internal(set) var aiChatManualRetryState: AIChatManualRetryState? = nil
+  @Published public internal(set) var aiGeneralChatManualRetryState: AIGeneralChatManualRetryState? = nil
 
   init(
     store: WorkbenchStore,
@@ -162,11 +179,17 @@ public final class WorkbenchAIStore: ObservableObject {
       let limitedConversations = AIConversationRetentionPolicy.limited(
         newValue,
         preserving: Set(workspace.activeAIConversationIDsByDraftID.values)
+          .union(workspace.activeAIConversationIDsByScope.values)
       )
       workspace.aiConversations = limitedConversations
       workspace.activeAIConversationIDsByDraftID =
         AIConversationRetentionPolicy.validActiveConversationIDs(
           workspace.activeAIConversationIDsByDraftID,
+          conversations: limitedConversations
+        )
+      workspace.activeAIConversationIDsByScope =
+        AIConversationRetentionPolicy.validActiveConversationIDsByScope(
+          workspace.activeAIConversationIDsByScope,
           conversations: limitedConversations
         )
     }
@@ -175,6 +198,11 @@ public final class WorkbenchAIStore: ObservableObject {
   public var activeAIConversationIDsByDraftID: [UUID: UUID] {
     get { workspace.activeAIConversationIDsByDraftID }
     set { workspace.activeAIConversationIDsByDraftID = newValue }
+  }
+
+  public var activeAIConversationIDsByScope: [String: UUID] {
+    get { workspace.activeAIConversationIDsByScope }
+    set { workspace.activeAIConversationIDsByScope = newValue }
   }
 
   public var pendingAIQuickPrompt: AIPublishingQuickPrompt? {
@@ -298,6 +326,24 @@ public final class WorkbenchAIStore: ObservableObject {
 
   public func refreshAIKeyAvailability() {
     refreshAIKeyAvailability(for: store.activeProfile)
+  }
+
+  public func aiKeyAvailability(
+    forConnectionProfileID connectionProfileID: UUID
+  ) -> KeychainTokenAvailability {
+    guard let connection = store.aiConnectionProfile(for: connectionProfileID),
+      connection.config.requiresAPIKey,
+      !connection.config.normalizedBaseURL.isEmpty
+    else {
+      return KeychainTokenAvailability(hasToken: false)
+    }
+    do {
+      return try keychainTokenStore.aiTokenAvailability(
+        forConnectionProfileID: connectionProfileID
+      )
+    } catch {
+      return KeychainTokenAvailability(accessFailure: error)
+    }
   }
 
   func refreshAIKeyAvailability(for profile: SiteProfile) {

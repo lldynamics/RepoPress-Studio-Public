@@ -21,6 +21,7 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     XCTAssertEqual(store.selectedSection, .writing)
     XCTAssertEqual(store.selectedDraftID, draft.id)
     XCTAssertEqual(store.aiChatDraftID, draft.id)
+    XCTAssertEqual(store.aiChatContextMode, .site)
 
     store.selectSection(.contentHealth)
 
@@ -33,6 +34,23 @@ final class WorkbenchStoreAIPromptTests: XCTestCase {
     store.selectDraft(nil)
 
     XCTAssertFalse(store.isAIPublishingAssistantPresented)
+  }
+
+  func testAIEntryWithoutSelectedDraftSelectsEditableDraftAndOpensInspector() throws {
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: try temporaryPersistenceURL())
+    )
+    let expectedDraftID = try XCTUnwrap(store.drafts.first?.id)
+    store.selectDraft(nil)
+
+    XCTAssertNil(store.selectedDraftID)
+
+    XCTAssertTrue(store.openAIChatWorkspace(for: nil))
+    XCTAssertTrue(store.isAIPublishingAssistantPresented)
+    XCTAssertTrue(store.isInspectorPresented)
+    XCTAssertEqual(store.selectedSection, .writing)
+    XCTAssertEqual(store.selectedDraftID, expectedDraftID)
+    XCTAssertEqual(store.aiChatDraftID, expectedDraftID)
   }
 
   func testAIEntryCanCarryQuickPromptIntoInspectorAssistant() throws {

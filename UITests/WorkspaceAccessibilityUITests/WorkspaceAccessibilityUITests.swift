@@ -522,6 +522,105 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     }
   }
 
+  func testAICollaborationInspectorStaysInMainWindowAndPreservesDraft() throws {
+    launchApplication(surface: "writing")
+
+    let initialWindowCount = application.windows.count
+    let toolbarButton = element(identifier: "ai-assistant-toolbar-button")
+    XCTAssertTrue(toolbarButton.waitForExistence(timeout: 10))
+    toggleAIInspectorForUITest(toolbarButton, shouldBePresented: true)
+
+    assertUniqueIdentifier("ai-assistant-inspector")
+    for identifier in [
+      "ai-assistant-context-mode",
+      "ai-assistant-conversation-picker",
+      "ai-assistant-input",
+      "ai-assistant-send-button",
+      "ai-assistant-close",
+    ] {
+      assertUniqueIdentifier(identifier)
+    }
+    XCTAssertEqual(
+      application.windows.count,
+      initialWindowCount,
+      "Opening AI collaboration must not create another window."
+    )
+
+    let contextMode = element(identifier: "ai-assistant-context-mode")
+    let contextValue = try XCTUnwrap(contextMode.value as? String)
+    XCTAssertTrue(
+      ["当前文章", "Current Article"].contains(contextValue),
+      "The collaboration workspace should open in the current-article context."
+    )
+
+    let sendButton = element(identifier: "ai-assistant-send-button")
+    XCTAssertFalse(sendButton.isEnabled, "An empty composer must not be sendable.")
+
+    let input = element(identifier: "ai-assistant-input")
+    XCTAssertTrue(input.waitForExistence(timeout: 10))
+    input.click()
+    input.typeText("offline accessibility check")
+    XCTAssertFalse(
+      sendButton.isEnabled,
+      "The screenshot fixture has no API Key; drafting text must not make Send actionable."
+    )
+    application.typeKey(XCUIKeyboardKey.tab.rawValue, modifierFlags: [])
+    let unsentDraft = try XCTUnwrap(input.value as? String)
+    XCTAssertFalse(unsentDraft.isEmpty, "Typing must leave a composer draft to preserve.")
+
+    application.typeKey("l", modifierFlags: [.control, .command])
+    let mainWindow = application.windows.firstMatch
+    let quickHideOverlays = mainWindow.descendants(matching: .any)
+      .matching(identifier: "quick-hide-overlay")
+    XCTAssertTrue(
+      quickHideOverlays.firstMatch.waitForExistence(timeout: 10),
+      "Quick Hide must cover the AI collaboration workspace."
+    )
+    XCTAssertFalse(
+      mainWindow.descendants(matching: .any)
+        .matching(identifier: "ai-assistant-input")
+        .firstMatch.exists,
+      "Quick Hide must remove the AI composer from the accessibility tree."
+    )
+
+    application.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+    let restoredInput = mainWindow.descendants(matching: .any)
+      .matching(identifier: "ai-assistant-input")
+      .firstMatch
+    XCTAssertTrue(
+      restoredInput.waitForExistence(timeout: 10),
+      "Returning to the workbench must restore the AI composer."
+    )
+    XCTAssertEqual(
+      restoredInput.value as? String,
+      unsentDraft,
+      "Quick Hide must preserve an unsent AI composer draft."
+    )
+
+    toggleAIInspectorForUITest(toolbarButton, shouldBePresented: false)
+    XCTAssertFalse(
+      element(identifier: "ai-assistant-inspector").waitForExistence(timeout: 2),
+      "The AI collaboration workspace did not close in place."
+    )
+
+    toggleAIInspectorForUITest(toolbarButton, shouldBePresented: true)
+    let reopenedInput = element(identifier: "ai-assistant-input")
+    XCTAssertTrue(
+      reopenedInput.waitForExistence(timeout: 10),
+      "The AI collaboration workspace could not be reopened."
+    )
+    XCTAssertEqual(
+      reopenedInput.value as? String,
+      unsentDraft,
+      "Closing and reopening the Inspector must preserve its unsent draft."
+    )
+    XCTAssertEqual(
+      application.windows.count,
+      initialWindowCount,
+      "The AI collaboration flow must remain in the main window."
+    )
+  }
+
   private func launchApplication(
     surface: String,
     additionalLaunchArguments: [String] = []
@@ -544,6 +643,20 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       application.windows.firstMatch.waitForExistence(timeout: 15),
       "The main workbench window did not appear for the \(surface) surface."
     )
+  }
+
+  private func toggleAIInspectorForUITest(
+    _ toolbarButton: XCUIElement,
+    shouldBePresented: Bool
+  ) {
+    application.activate()
+    application.typeKey("a", modifierFlags: [.option, .command])
+
+    let inspector = element(identifier: "ai-assistant-inspector")
+    let shortcutReachedExpectedState = inspector.waitForExistence(timeout: 2) == shouldBePresented
+    if !shortcutReachedExpectedState {
+      toolbarButton.click()
+    }
   }
 
   private func containsCJK(_ value: String) -> Bool {

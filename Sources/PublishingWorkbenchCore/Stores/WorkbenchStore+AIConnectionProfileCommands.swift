@@ -1,6 +1,10 @@
 import Foundation
 
 extension WorkbenchStore {
+  public func aiConnectionProfile(for id: UUID) -> AIConnectionProfile? {
+    aiConnectionProfiles.first { $0.id == id }
+  }
+
   /// Resolves the reusable connection selected by a site, falling back to the
   /// legacy inline config while an older snapshot is being migrated.
   public func aiConnectionProfile(for siteProfile: SiteProfile) -> AIConnectionProfile {
@@ -95,6 +99,13 @@ extension WorkbenchStore {
   @discardableResult
   public func deleteAIConnectionProfile(_ connectionID: UUID) -> Bool {
     guard canDeleteAIConnectionProfile(connectionID) else {
+      if aiConversations.contains(where: {
+        $0.scope == .general && $0.connectionProfileID == connectionID
+      }) {
+        setAIActionMessage(
+          CoreL10n.text("AI 连接仍被通用对话绑定，请先为这些对话重新绑定后再删除。")
+        )
+      }
       return false
     }
 
@@ -122,6 +133,9 @@ extension WorkbenchStore {
   public func canDeleteAIConnectionProfile(_ connectionID: UUID) -> Bool {
     aiConnectionProfiles.count > 1
       && !profiles.contains(where: { $0.aiConnectionProfileID == connectionID })
+      && !aiConversations.contains {
+        $0.scope == .general && $0.connectionProfileID == connectionID
+      }
   }
 
   /// API credentials are bound to a provider and destination. Model-only

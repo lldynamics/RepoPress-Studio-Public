@@ -192,6 +192,7 @@ struct AIChatContextInspectorActions {
   let applyCodeBlock: (AIChatCodeBlock, ArticleDraft) -> Void
   let insertCodeBlockAtCursor: (AIChatCodeBlock, ArticleDraft) -> Void
   let copyCodeBlock: (AIChatCodeBlock) -> Void
+  let copyReply: (AIPublishingChatMessage) -> Void
   let branchConversation: (AIPublishingChatMessage.ID, ArticleDraft) -> Void
   let loadEarlierMessages: () -> Void
   let openCitation: (KnowledgeCitation) -> Void

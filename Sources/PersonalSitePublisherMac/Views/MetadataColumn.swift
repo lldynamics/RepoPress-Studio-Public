@@ -8,6 +8,7 @@ struct MetadataColumn: View {
   let rssStore: RSSReaderStore
   let repositoryContextStage: RepositoryContextStage
   @ObservedObject var repositorySourceSession: RepositoryHTMLSourceSession
+  @Binding private var aiChatSurfaceState: AIChatSurfaceState
   let prioritizesChecks: Bool
 
   init(
@@ -15,6 +16,7 @@ struct MetadataColumn: View {
     rssStore: RSSReaderStore,
     repositoryContextStage: RepositoryContextStage,
     repositorySourceSession: RepositoryHTMLSourceSession,
+    aiChatSurfaceState: Binding<AIChatSurfaceState>,
     prioritizesChecks: Bool = false
   ) {
     self.store = store
@@ -25,17 +27,21 @@ struct MetadataColumn: View {
     self.rssStore = rssStore
     self.repositoryContextStage = repositoryContextStage
     _repositorySourceSession = ObservedObject(wrappedValue: repositorySourceSession)
+    _aiChatSurfaceState = aiChatSurfaceState
     self.prioritizesChecks = prioritizesChecks
   }
 
   var body: some View {
-    Group {
+    ZStack(alignment: .topLeading) {
       switch WorkspaceInspectorPresentation.route(
         for: navigation.selectedSection,
         isAIAssistantPresented: ai.isAssistantPresented
       ) {
       case .aiAssistant:
-        AIChatContextInspectorView(store: store)
+        AIChatContextInspectorView(
+          store: store,
+          surfaceState: $aiChatSurfaceState
+        )
       case .siteStarter:
         SiteStarterInspectorView(state: SiteStarterInspectorState(store: store))
       case .repository:
@@ -60,8 +66,23 @@ struct MetadataColumn: View {
         .background(.bar)
       }
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("workspace-inspector")
     .accessibilityLabel("工作区 Inspector")
+    .overlay(alignment: .leading) {
+      if ai.isAssistantPresented {
+        Image(systemName: "arrow.left.and.right")
+          .font(.workbenchMetadata.weight(.semibold))
+          .foregroundStyle(.secondary)
+          .padding(.horizontal, 5)
+          .padding(.vertical, 4)
+          .background(.regularMaterial, in: Capsule())
+          .overlay(Capsule().stroke(Color.primary.opacity(0.10), lineWidth: 1))
+          .offset(x: -11)
+          .allowsHitTesting(false)
+          .accessibilityHidden(true)
+      }
+    }
   }
 
   @ViewBuilder

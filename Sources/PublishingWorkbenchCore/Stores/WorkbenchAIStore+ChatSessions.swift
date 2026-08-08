@@ -284,12 +284,30 @@ extension WorkbenchAIStore {
     return true
   }
 
-  func beginAIChatOperation(statusMessage: String) -> UUID? {
-    guard let operationID = aiChatOperationCoordinator.begin() else {
+  @discardableResult func requestAIChatCancellation(expectedOwnerToken: UUID) -> Bool {
+    guard
+      aiChatOperationCoordinator.requestCancellation(
+        whileRunning: isAIChatRunning,
+        expectedOwnerToken: expectedOwnerToken
+      )
+    else { return false }
+    aiChatMessage = "正在停止 AI 回复..."
+    return true
+  }
+
+  func beginAIChatOperation(
+    statusMessage: String,
+    clearsManualRetryState: Bool = true,
+    ownerToken: UUID? = nil
+  ) -> UUID? {
+    guard let operationID = aiChatOperationCoordinator.begin(ownerToken: ownerToken) else {
       store.setAIChatMessage("AI 正在回复，请先停止当前回复后再试。")
       return nil
     }
-    aiChatManualRetryState = nil
+    if clearsManualRetryState {
+      aiChatManualRetryState = nil
+      aiGeneralChatManualRetryState = nil
+    }
     store.setAIChatRunning(true)
     store.setAIChatMessage(statusMessage)
     return operationID
@@ -449,7 +467,15 @@ extension WorkbenchAIStore {
     }
 
     let resolvedTitle = title?.trimmedForPublishing.nilIfEmpty
-    let draftID = aiConversations[index].draftID
+    guard let draftID = aiConversations[index].draftID else {
+      var updatedConversations = aiConversations
+      updatedConversations[index].title = resolvedTitle
+      updatedConversations[index].updatedAt = Date()
+      aiConversations = updatedConversations
+      aiChatMessage = resolvedTitle == nil ? "已恢复自动对话标题。" : "已更新 AI 对话标题。"
+      store.save()
+      return true
+    }
     if activeAIChatConversationID(for: draftID) == conversationID,
       aiChatDraftID == draftID
     {
@@ -480,26 +506,32 @@ extension WorkbenchAIStore {
       aiChatMessage = "找不到可切换的 AI 对话。"
       return false
     }
-    guard store.drafts.contains(where: { $0.id == conversation.draftID }) else {
+    guard let draftID = conversation.draftID else {
+      activeAIConversationIDsByScope[conversation.scope.storageKey] = conversation.id
+      aiChatMessage = "已切换 AI 对话。"
+      store.save()
+      return true
+    }
+    guard store.drafts.contains(where: { $0.id == draftID }) else {
       aiChatMessage = "这条 AI 对话对应的文章已不存在。"
       return false
     }
 
-    if aiChatDraftID == conversation.draftID,
-      activeAIChatConversationID(for: conversation.draftID) == conversationID
+    if aiChatDraftID == draftID,
+      activeAIChatConversationID(for: draftID) == conversationID
     {
       return true
     }
 
     cacheCurrentAIChatSessionForAIStore()
-    if store.selectedDraftID != conversation.draftID {
-      guard store.focusDraft(conversation.draftID, section: .writing) else {
+    if store.selectedDraftID != draftID {
+      guard store.focusDraft(draftID, section: .writing) else {
         aiChatMessage = "无法打开这条 AI 对话对应的文章。"
         return false
       }
     }
-    aiChatDraftID = conversation.draftID
-    activeAIConversationIDsByDraftID[conversation.draftID] = conversation.id
+    aiChatDraftID = draftID
+    activeAIConversationIDsByDraftID[draftID] = conversation.id
     applyCurrentAIChatSession(conversation.sessionState)
     aiChatManualRetryState = nil
     aiChatMessage = "已切换 AI 对话。"
@@ -513,8 +545,9 @@ extension WorkbenchAIStore {
       aiChatMessage = "找不到要归档的 AI 对话。"
       return false
     }
+    let scope = aiConversations[index].scope
     let draftID = aiConversations[index].draftID
-    let isActive = activeAIChatConversationID(for: draftID) == conversationID
+    let isActive = activeConversationID(for: scope) == conversationID
     guard !isActive || !isAIChatRunning else {
       aiChatMessage = "请先停止当前 AI 回复，再归档这条对话。"
       return false
@@ -529,7 +562,11 @@ extension WorkbenchAIStore {
     updatedConversations[index].updatedAt = now
     aiConversations = updatedConversations
     if isActive {
-      activateMostRecentAIChatConversation(for: draftID)
+      if let draftID {
+        activateMostRecentAIChatConversation(for: draftID)
+      } else {
+        activateMostRecentGeneralAIChatConversation()
+      }
     }
     aiChatMessage = "已归档 AI 对话。"
     store.save()
@@ -552,12 +589,17 @@ extension WorkbenchAIStore {
     }
 
     let now = Date()
+    let scope = aiConversations[index].scope
     let draftID = aiConversations[index].draftID
     var updatedConversations = aiConversations
     updatedConversations[index].archivedAt = nil
     updatedConversations[index].updatedAt = now
     aiConversations = updatedConversations
-    activeAIConversationIDsByDraftID[draftID] = conversationID
+    if let draftID {
+      activeAIConversationIDsByDraftID[draftID] = conversationID
+    } else {
+      activeAIConversationIDsByScope[scope.storageKey] = conversationID
+    }
     if aiChatDraftID == draftID,
       let restored = aiConversations.first(where: { $0.id == conversationID })
     {
@@ -575,7 +617,7 @@ extension WorkbenchAIStore {
       aiChatMessage = "找不到要删除的 AI 对话。"
       return false
     }
-    let isActive = activeAIChatConversationID(for: conversation.draftID) == conversationID
+    let isActive = activeConversationID(for: conversation.scope) == conversationID
     guard !isActive || !isAIChatRunning else {
       aiChatMessage = "请先停止当前 AI 回复，再删除这条对话。"
       return false
@@ -583,7 +625,11 @@ extension WorkbenchAIStore {
 
     aiConversations.removeAll { $0.id == conversationID }
     if isActive {
-      activateMostRecentAIChatConversation(for: conversation.draftID)
+      if let draftID = conversation.draftID {
+        activateMostRecentAIChatConversation(for: draftID)
+      } else {
+        activateMostRecentGeneralAIChatConversation()
+      }
     }
     aiChatMessage = "已删除 AI 对话。"
     store.save()
@@ -785,10 +831,15 @@ extension WorkbenchAIStore {
     _ = requestAIChatCancellation()
   }
 
+  public func cancelAIChatReply(expectedOwnerToken: UUID) {
+    _ = requestAIChatCancellation(expectedOwnerToken: expectedOwnerToken)
+  }
+
   @discardableResult
   public func retryLastFailedAIChatReply(
     confirmingPossibleDuplicateCharge: Bool = false,
-    draft: ArticleDraft? = nil
+    draft: ArticleDraft? = nil,
+    ownerToken: UUID? = nil
   ) async -> AIPublishingChatMessage? {
     guard let retryState = aiChatManualRetryState else {
       store.setAIChatMessage("当前没有可重试的 AI 请求。")
@@ -817,12 +868,16 @@ extension WorkbenchAIStore {
     }
 
     aiChatManualRetryState = nil
-    return await regenerateLastAIChatReply(draft: chatDraft)
+    return await regenerateLastAIChatReply(
+      draft: chatDraft,
+      ownerToken: ownerToken
+    )
   }
 
   @discardableResult
   public func regenerateLastAIChatReply(
-    draft: ArticleDraft? = nil
+    draft: ArticleDraft? = nil,
+    ownerToken: UUID? = nil
   ) async -> AIPublishingChatMessage? {
     guard store.canUseProtectedWorkbench else {
       store.setAIChatMessage(aiChatQuickHideOperationMessage())
@@ -849,7 +904,8 @@ extension WorkbenchAIStore {
     }
     guard
       let operationID = beginAIChatOperation(
-        statusMessage: "AI 正在重新生成回复..."
+        statusMessage: "AI 正在重新生成回复...",
+        ownerToken: ownerToken
       )
     else {
       return nil

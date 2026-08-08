@@ -222,9 +222,6 @@ struct AIChatAssistantFeedbackControls: View {
 
   var body: some View {
     HStack(spacing: 5) {
-      Text("这条回复有帮助吗？")
-        .font(.caption)
-        .foregroundStyle(.secondary)
       feedbackButton(.accepted, icon: "hand.thumbsup")
       feedbackButton(.rejected, icon: "hand.thumbsdown")
     }

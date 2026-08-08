@@ -8,7 +8,6 @@ extension WorkbenchStore {
 
   public func activateQuickHide(reason: String? = nil) {
     privacyProtectionStore.activateQuickHide(reason: reason)
-    setAIPublishingAssistantPresented(false)
     save()
   }
 
