@@ -107,6 +107,9 @@ extension WorkbenchStore {
   public var activeAIConversationIDsByDraftID: [UUID: UUID] {
     aiWorkspaceStore.activeAIConversationIDsByDraftID
   }
+  public var activeAIConversationIDsByScope: [String: UUID] {
+    aiWorkspaceStore.activeAIConversationIDsByScope
+  }
   public var pendingAIQuickPrompt: AIPublishingQuickPrompt? { aiWorkspaceStore.pendingAIQuickPrompt }
   public var aiChatMessage: String? { aiWorkspaceStore.aiChatMessage }
   public var isAIChatRunning: Bool { aiWorkspaceStore.isAIChatRunning }

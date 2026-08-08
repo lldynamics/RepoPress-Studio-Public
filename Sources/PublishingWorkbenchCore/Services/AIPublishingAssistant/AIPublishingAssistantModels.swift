@@ -601,12 +601,7 @@ public struct AIPublishingChatSessionState: Hashable, Sendable {
   }
 
   public var imageAttachmentByteCount: Int64 {
-    messages.reduce(Int64(0)) { messageTotal, message in
-      messageTotal
-        + message.imageAttachments.reduce(Int64(0)) { attachmentTotal, attachment in
-          attachmentTotal + max(attachment.byteCount, Int64(attachment.data.count))
-        }
-    }
+    AIChatImageAttachmentBudget.byteCount(messages)
   }
 
   public func prepared(
@@ -665,15 +660,88 @@ public struct AIPublishingChatSessionState: Hashable, Sendable {
     var remainingBytes = maxTotalImageBytes
     // Keep the newest images while preserving message text.
     for index in messages.indices.reversed() {
-      let byteCount = messages[index].imageAttachments.reduce(Int64(0)) { partial, attachment in
-        partial + max(attachment.byteCount, Int64(attachment.data.count))
-      }
+      let byteCount = AIChatImageAttachmentBudget.byteCount(messages[index].imageAttachments)
       if byteCount <= remainingBytes {
         remainingBytes -= byteCount
       } else {
         messages[index].imageAttachments = []
       }
     }
+  }
+}
+
+/// The complete, inspectable context that is sent with one AI request.
+///
+/// The preview shown by the UI and the transport builder both consume this
+/// value. `includesImplicitArticleContext` is deliberately explicit so a
+/// general request cannot silently acquire the current draft later in the
+/// pipeline.
+public struct AIContextEnvelope: Hashable, Sendable {
+  public var mode: AIPublishingChatContextMode
+  public var knowledgePolicy: KnowledgeRetrievalPolicy
+  public var explicitContextReferences: [AIContextReference]
+  public var explicitContextPrompt: String?
+  public var knowledgeContext: KnowledgeContextSnapshot?
+  public var transmissionSummary: AIContextTransmissionSummary
+  public var includesImplicitArticleContext: Bool
+
+  public init(
+    mode: AIPublishingChatContextMode,
+    knowledgePolicy: KnowledgeRetrievalPolicy = .automatic,
+    explicitContextReferences: [AIContextReference] = [],
+    explicitContextPrompt: String? = nil,
+    knowledgeContext: KnowledgeContextSnapshot? = nil,
+    includesImplicitArticleContext: Bool,
+    transmissionSummary: AIContextTransmissionSummary? = nil
+  ) {
+    self.mode = mode
+    self.knowledgePolicy = knowledgePolicy
+    self.explicitContextReferences = explicitContextReferences
+    self.explicitContextPrompt = explicitContextPrompt?.trimmedForPublishing.nilIfEmpty
+    self.knowledgeContext = knowledgeContext
+    self.includesImplicitArticleContext = includesImplicitArticleContext
+    self.transmissionSummary = transmissionSummary
+      ?? AIContextTransmissionSummaryService.make(references: explicitContextReferences)
+  }
+
+  public static func general(
+    knowledgePolicy: KnowledgeRetrievalPolicy = .automatic,
+    explicitContextReferences: [AIContextReference] = [],
+    explicitContextPrompt: String? = nil,
+    knowledgeContext: KnowledgeContextSnapshot? = nil
+  ) -> Self {
+    Self(
+      mode: .general,
+      knowledgePolicy: knowledgePolicy,
+      explicitContextReferences: explicitContextReferences,
+      explicitContextPrompt: explicitContextPrompt,
+      knowledgeContext: knowledgeContext,
+      includesImplicitArticleContext: false
+    )
+  }
+}
+
+/// A draft-independent chat request. Article publishing requests retain their
+/// existing `AIPublishingChatRequest` type and remain site/draft-specific.
+public struct AIChatRequest: Sendable {
+  public var messages: [AIPublishingChatMessage]
+  public var context: AIContextEnvelope
+  public var modelGrade: AIChatModelGrade
+  public var reasoningLevel: AIChatReasoningLevel
+  public var selectedModel: String?
+
+  public init(
+    messages: [AIPublishingChatMessage],
+    context: AIContextEnvelope,
+    modelGrade: AIChatModelGrade = .standard,
+    reasoningLevel: AIChatReasoningLevel = .deep,
+    selectedModel: String? = nil
+  ) {
+    self.messages = messages
+    self.context = context
+    self.modelGrade = modelGrade
+    self.reasoningLevel = reasoningLevel
+    self.selectedModel = selectedModel
   }
 }
 

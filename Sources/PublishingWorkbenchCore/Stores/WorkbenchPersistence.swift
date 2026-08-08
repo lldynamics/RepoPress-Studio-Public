@@ -3,7 +3,7 @@ import Foundation
 
 public struct WorkbenchSnapshot: Codable, Sendable {
   /// Bump this only together with a backwards-compatible decode migration.
-  public static let currentFormatVersion = 11
+  public static let currentFormatVersion = 12
   public static let maximumAIConversationsPerDraft =
     AIConversationRetentionPolicy.maximumConversationsPerDraft
   public static let maximumAIConversationCount =
@@ -27,6 +27,7 @@ public struct WorkbenchSnapshot: Codable, Sendable {
   public var aiChatCustomPrompts: [AIPublishingCustomPrompt]
   public var aiConversations: [AIConversation]
   public var activeAIConversationIDsByDraftID: [UUID: UUID]
+  public var activeAIConversationIDsByScope: [String: UUID]
   public var seoSocialPreviewSnapshots: [SEOSocialPreviewSnapshot]
   public var privacySettings: PrivacyProtectionSettings
   public var privacyProtectionEvents: [PrivacyProtectionEvent]
@@ -56,6 +57,7 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     aiChatCustomPrompts: [AIPublishingCustomPrompt] = [],
     aiConversations: [AIConversation] = [],
     activeAIConversationIDsByDraftID: [UUID: UUID] = [:],
+    activeAIConversationIDsByScope: [String: UUID] = [:],
     seoSocialPreviewSnapshots: [SEOSocialPreviewSnapshot] = [],
     privacySettings: PrivacyProtectionSettings = .default,
     privacyProtectionEvents: [PrivacyProtectionEvent] = [],
@@ -101,10 +103,16 @@ public struct WorkbenchSnapshot: Codable, Sendable {
       drafts: drafts,
       recycledDrafts: limitedRecycledDrafts,
       preferredConversationIDs: Set(activeAIConversationIDsByDraftID.values)
+        .union(activeAIConversationIDsByScope.values)
     )
     self.aiConversations = limitedAIConversations
     self.activeAIConversationIDsByDraftID = Self.validActiveAIConversationIDs(
       activeAIConversationIDsByDraftID,
+      conversations: limitedAIConversations
+    )
+    self.activeAIConversationIDsByScope = Self.validActiveAIConversationIDsByScope(
+      activeAIConversationIDsByScope,
+      legacyDraftIDs: activeAIConversationIDsByDraftID,
       conversations: limitedAIConversations
     )
     self.seoSocialPreviewSnapshots = Self.latestSEOSocialPreviewSnapshots(seoSocialPreviewSnapshots)
@@ -138,6 +146,7 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     case aiChatCustomPrompts
     case aiConversations
     case activeAIConversationIDsByDraftID
+    case activeAIConversationIDsByScope
     case seoSocialPreviewSnapshots
     case privacySettings
     case privacyProtectionEvents
@@ -234,6 +243,10 @@ public struct WorkbenchSnapshot: Codable, Sendable {
       [UUID: UUID].self,
       forKey: .activeAIConversationIDsByDraftID
     ) ?? [:]
+    let decodedActiveAIConversationIDsByScope = try container.decodeIfPresent(
+      [String: UUID].self,
+      forKey: .activeAIConversationIDsByScope
+    ) ?? [:]
     let decodedAIConversations = Self.limitedAIConversations(
       try container.decodeIfPresent(
         [AIConversation].self,
@@ -242,10 +255,16 @@ public struct WorkbenchSnapshot: Codable, Sendable {
       drafts: drafts,
       recycledDrafts: recycledDrafts,
       preferredConversationIDs: Set(decodedActiveAIConversationIDs.values)
+        .union(decodedActiveAIConversationIDsByScope.values)
     )
     aiConversations = decodedAIConversations
     activeAIConversationIDsByDraftID = Self.validActiveAIConversationIDs(
       decodedActiveAIConversationIDs,
+      conversations: decodedAIConversations
+    )
+    activeAIConversationIDsByScope = Self.validActiveAIConversationIDsByScope(
+      decodedActiveAIConversationIDsByScope,
+      legacyDraftIDs: decodedActiveAIConversationIDs,
       conversations: decodedAIConversations
     )
     seoSocialPreviewSnapshots = Self.latestSEOSocialPreviewSnapshots(
@@ -372,6 +391,22 @@ public struct WorkbenchSnapshot: Codable, Sendable {
   ) -> [UUID: UUID] {
     AIConversationRetentionPolicy.validActiveConversationIDs(
       activeIDs,
+      conversations: conversations
+    )
+  }
+
+  private static func validActiveAIConversationIDsByScope(
+    _ activeIDs: [String: UUID],
+    legacyDraftIDs: [UUID: UUID],
+    conversations: [AIConversation]
+  ) -> [String: UUID] {
+    var migrated = activeIDs
+    for (draftID, conversationID) in legacyDraftIDs {
+      let key = AIConversationScope.draft(draftID).storageKey
+      migrated[key] = migrated[key] ?? conversationID
+    }
+    return AIConversationRetentionPolicy.validActiveConversationIDsByScope(
+      migrated,
       conversations: conversations
     )
   }
@@ -986,6 +1021,7 @@ extension WorkbenchPersistence {
       aiChatCustomPrompts: store.aiChatCustomPrompts,
       aiConversations: store.aiConversations,
       activeAIConversationIDsByDraftID: store.activeAIConversationIDsByDraftID,
+      activeAIConversationIDsByScope: store.activeAIConversationIDsByScope,
       seoSocialPreviewSnapshots: Array(store.seoSocialPreviewSnapshots.values),
       privacySettings: store.privacySettings,
       privacyProtectionEvents: [],

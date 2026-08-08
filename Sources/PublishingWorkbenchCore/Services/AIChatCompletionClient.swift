@@ -387,6 +387,7 @@ private struct AIChatSendableError: Sendable {
 private enum AIChatLineEvent: Sendable {
   case line(String)
   case finished
+  case cancelled
   case failed(AIChatSendableError)
   case firstByteTimedOut
   case resourceTimedOut
@@ -633,6 +634,8 @@ public struct AIChatCompletionClient: Sendable {
             eventContinuation.yield(.line(line))
           }
           eventContinuation.yield(.finished)
+        } catch is CancellationError {
+          eventContinuation.yield(.cancelled)
         } catch {
           eventContinuation.yield(
             .failed(
@@ -679,6 +682,9 @@ public struct AIChatCompletionClient: Sendable {
             continuation.yield(line)
           case .finished:
             continuation.finish()
+            return
+          case .cancelled:
+            continuation.finish(throwing: CancellationError())
             return
           case .failed(let error):
             continuation.finish(throwing: error.value)

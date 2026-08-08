@@ -34,7 +34,7 @@ struct AIChatConversationInspectorSection: View {
         }
 
         ForEach(context.messages) { message in
-          AIChatMessageSurface(role: message.role) {
+          AIChatMessageSurface(role: message.role, timestamp: message.createdAt) {
             if message.role == .assistant {
               AIChatAssistantMessageContent(
                 content: AIPublishingChatMessageCompositionService.displayContent(for: message),
@@ -47,7 +47,7 @@ struct AIChatConversationInspectorSection: View {
                 .lineSpacing(3)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .multilineTextAlignment(.leading)
             }
 
             if !message.contextReferences.isEmpty {
@@ -118,10 +118,22 @@ struct AIChatConversationInspectorSection: View {
             }
 
             if message.role == .assistant {
-              AIChatAssistantFeedbackControls(
-                initialDecision: actions.localFeedbackDecision(message)
-              ) { decision in
-                actions.recordLocalFeedback(decision, message)
+              HStack(spacing: 7) {
+                Button {
+                  actions.copyReply(message)
+                } label: {
+                  Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(String(localized: "复制"))
+                .accessibilityLabel(String(localized: "复制"))
+
+                AIChatAssistantFeedbackControls(
+                  initialDecision: actions.localFeedbackDecision(message)
+                ) { decision in
+                  actions.recordLocalFeedback(decision, message)
+                }
               }
             }
           }

@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 final class AIChatOperationCoordinator {
   private var activeOperationID: UUID?
+  private var activeOwnerToken: UUID?
   private var cancellationRequested = false
 
   var isCancellationRequested: Bool {
@@ -13,16 +14,23 @@ final class AIChatOperationCoordinator {
     cancellationRequested = value
   }
 
-  func requestCancellation(whileRunning isRunning: Bool) -> Bool {
+  func requestCancellation(
+    whileRunning isRunning: Bool,
+    expectedOwnerToken: UUID? = nil
+  ) -> Bool {
     guard isRunning, activeOperationID != nil else { return false }
+    if let expectedOwnerToken, activeOwnerToken != expectedOwnerToken {
+      return false
+    }
     cancellationRequested = true
     return true
   }
 
-  func begin() -> UUID? {
+  func begin(ownerToken: UUID? = nil) -> UUID? {
     guard activeOperationID == nil else { return nil }
     let operationID = UUID()
     activeOperationID = operationID
+    activeOwnerToken = ownerToken
     cancellationRequested = false
     return operationID
   }
@@ -30,6 +38,7 @@ final class AIChatOperationCoordinator {
   func finish(_ operationID: UUID) -> Bool {
     guard activeOperationID == operationID else { return false }
     activeOperationID = nil
+    activeOwnerToken = nil
     cancellationRequested = false
     return true
   }

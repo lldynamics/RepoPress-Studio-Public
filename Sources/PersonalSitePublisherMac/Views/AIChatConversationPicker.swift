@@ -2,7 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct AIChatConversationPicker: View {
-  let draft: ArticleDraft
+  let draft: ArticleDraft?
   let conversations: [AIConversation]
   let activeConversationID: AIConversation.ID?
   let isBusy: Bool
@@ -21,7 +21,7 @@ struct AIChatConversationPicker: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(spacing: 8) {
-        Text("当前文章对话")
+        Text(draft == nil ? "通用 AI 对话" : "当前文章对话")
           .font(.headline)
 
         Spacer(minLength: 8)
@@ -296,12 +296,21 @@ struct AIChatConversationPicker: View {
        !conversation.messages.contains(where: { $0.role == .user }) {
       return String(localized: "新对话")
     }
-    return AIPublishingChatConversationPresentation.displayTitle(
-      conversationTitle: conversation.title,
-      messages: conversation.messages,
-      draft: draft,
-      emptyTitle: String(localized: "AI 对话")
-    )
+    if let draft {
+      return AIPublishingChatConversationPresentation.displayTitle(
+        conversationTitle: conversation.title,
+        messages: conversation.messages,
+        draft: draft,
+        emptyTitle: String(localized: "AI 对话")
+      )
+    }
+    if let firstUserMessage = conversation.messages.first(where: { $0.role == .user }) {
+      return AIPublishingChatConversationPresentation.title(
+        fromUserText: AIPublishingChatMessageCompositionService.displayContent(for: firstUserMessage),
+        fallbackTitle: String(localized: "通用 AI 对话")
+      )
+    }
+    return String(localized: "通用 AI 对话")
   }
 
   private func preview(for conversation: AIConversation) -> String {

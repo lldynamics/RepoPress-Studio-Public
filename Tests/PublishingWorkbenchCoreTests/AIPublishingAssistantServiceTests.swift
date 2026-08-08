@@ -1303,6 +1303,62 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     XCTAssertFalse(sentText.contains("posts/private-related.md"))
   }
 
+  func testGenericChatStreamUsesContextEnvelopeAndPublishesDeltas() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200,
+      streamLines: [
+        #"data: {"choices":[{"delta":{"content":"通用"}}]}"#,
+        "",
+        #"data: {"choices":[{"delta":{"content":"回复"},"finish_reason":"stop"}]}"#,
+        "",
+      ]
+    )
+    let service = AIPublishingAssistantService(
+      client: AIChatCompletionClient(transport: transport)
+    )
+    let explicitReference = AIContextReference(
+      kind: .knowledgeEntry,
+      resourceID: UUID().uuidString,
+      displayName: "用户选择的资料",
+      characterCount: 8
+    )
+    let replyStream = try await service.streamReply(
+      to: AIChatRequest(
+        messages: [
+          AIPublishingChatMessage(role: .user, content: "回答一个开放问题")
+        ],
+        context: AIContextAssembler.generalEnvelope(
+          explicitContextReferences: [explicitReference],
+          explicitContextPrompt: "<explicit_knowledge_entry>明确资料</explicit_knowledge_entry>"
+        )
+      ),
+      config: AIProviderConfig(
+        preset: .local,
+        baseURL: "http://127.0.0.1:11434/v1",
+        model: "local-test",
+        requiresAPIKey: false
+      ),
+      apiKey: nil
+    )
+
+    var content = ""
+    for try await update in replyStream.updates {
+      content += update.contentDelta
+      if update.isFinished { break }
+    }
+
+    XCTAssertEqual(content, "通用回复")
+    let requestFromTransport = await transport.capturedRequest()
+    let capturedRequest = try XCTUnwrap(requestFromTransport)
+    let body = try XCTUnwrap(capturedRequest.httpBody)
+    let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    let messages = try XCTUnwrap(payload["messages"] as? [[String: Any]])
+    let sentText = messages.compactMap { $0["content"] as? String }.joined(separator: "\n")
+    XCTAssertTrue(sentText.contains("明确资料"))
+    XCTAssertFalse(sentText.contains("当前 Mac 工作台上下文"))
+  }
+
   func testChatReplySendsUserImageAttachmentsAsContentParts() async throws {
     let transport = RecordingAIChatTransport(
       data: Data("""

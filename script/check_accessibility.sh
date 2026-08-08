@@ -242,7 +242,7 @@ require_literal \
   "publishing status control must explain the merged status and publishing entry"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComposer.swift" \
   ".keyboardShortcut(.return, modifiers: [.command])" \
   "AI assistant send action must keep a keyboard shortcut"
 
@@ -257,29 +257,89 @@ require_literal \
   "AI assistant inspector must expose an accessibility label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComposer.swift" \
   ".accessibilityLabel(\"AI 消息\")" \
   "AI assistant composer must expose an accessibility label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComposer.swift" \
   ".accessibilityIdentifier(\"ai-assistant-composer\")" \
   "AI assistant composer must expose a stable accessibility identifier"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComposer.swift" \
   ".allowsHitTesting(false)" \
   "AI assistant composer decoration must not intercept text input"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComposer.swift" \
   ".disabled(isComposerInputUnavailable)" \
   "AI assistant input must use its own availability state"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComposer.swift" \
   "&& !isAIKeyMissing" \
   "a missing AI key may block sending but must not block composing text"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  ".keyboardShortcut(\"a\", modifiers: [.command, .option])" \
+  "AI collaboration Inspector must keep the Option-Command-A shortcut"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  ".keyboardShortcut(\"a\", modifiers: [.command, .option, .shift])" \
+  "AI must not keep a competing independent-window shortcut"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
+  "Window(\"AI 对话\", id: \"ai-chat\")" \
+  "AI collaboration must stay in the main workbench window"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
+  "openWindow(id: \"ai-chat\")" \
+  "the main AI entry must not open an independent window"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
+  ".accessibilityIdentifier(\"ai-assistant-toolbar-button\")" \
+  "main toolbar must expose the AI collaboration entry point"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
+  "WorkspaceToolbarIconButtonStyle(isActive: isAIAssistantWorkspaceVisible)" \
+  "the AI toolbar entry must expose its active state visually"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
+  "@State private var aiChatInspectorSurfaceState" \
+  "the main scene must preserve AI composer state while the Inspector is closed"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorHeader.swift" \
+  ".accessibilityIdentifier(\"ai-assistant-context-mode\")" \
+  "AI collaboration must expose the current-article/general-chat context switch"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorHeader.swift" \
+  ".accessibilityIdentifier(\"ai-assistant-general-model-menu\")" \
+  "general chat must expose connection and model controls inside the Inspector"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorHeader.swift" \
+  ".accessibilityValue(generalConnectionAndModelSummary)" \
+  "general chat connection and model controls must expose their current value"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  'application.typeKey("a", modifierFlags: [.option, .command])' \
+  "AI collaboration UI test must exercise the Option-Command-A shortcut"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  'input.typeText("offline accessibility check")' \
+  "AI collaboration UI test must type without clicking to verify composer focus"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \

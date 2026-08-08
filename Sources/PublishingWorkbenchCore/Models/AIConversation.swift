@@ -1,15 +1,47 @@
 import Foundation
 
+/// The owner of a conversation is explicit.  In particular, `.general` is not
+/// represented by a missing draft, a sentinel draft, or a site profile.
+public enum AIConversationScope: Codable, Hashable, Sendable {
+  case general
+  case draft(UUID)
+
+  public var draftID: UUID? {
+    guard case let .draft(id) = self else { return nil }
+    return id
+  }
+
+  public var storageKey: String {
+    switch self {
+    case .general:
+      return "general"
+    case let .draft(id):
+      return "draft:\(id.uuidString.lowercased())"
+    }
+  }
+
+  public init(storageKey: String) {
+    let prefix = "draft:"
+    if storageKey.lowercased().hasPrefix(prefix),
+       let id = UUID(uuidString: String(storageKey.dropFirst(prefix.count))) {
+      self = .draft(id)
+    } else {
+      self = .general
+    }
+  }
+}
+
 /// A locally persisted AI conversation. Credentials are intentionally excluded;
-/// API keys remain in the system Keychain and are resolved from the draft's site
-/// profile when a request is sent.
+/// API keys remain in the system Keychain and are resolved from the explicitly
+/// stored connection profile when a request is sent.
 public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
   public static let maximumMessages = 80
   public static let maximumImageBytes: Int64 = 8_000_000
   public static let maximumTextCharacters = 250_000
 
   public var id: UUID
-  public var draftID: UUID
+  public var scope: AIConversationScope
+  public var connectionProfileID: UUID?
   public var title: String?
   public var messages: [AIPublishingChatMessage]
   public var contextMode: AIPublishingChatContextMode
@@ -22,9 +54,66 @@ public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
   public var updatedAt: Date
   public var archivedAt: Date?
 
+  /// Compatibility projection for draft-specific callers. New code should use
+  /// `scope` so that general conversations cannot accidentally inherit draft
+  /// context.
+  public var draftID: UUID? { scope.draftID }
+
+  private enum CodingKeys: String, CodingKey {
+    case id
+    case scope
+    case draftID
+    case connectionProfileID
+    case title
+    case messages
+    case contextMode
+    case knowledgePolicy
+    case modelGrade
+    case reasoningLevel
+    case selectedModel
+    case focusedParagraphID
+    case createdAt
+    case updatedAt
+    case archivedAt
+  }
+
+  public init(
+    id: UUID = UUID(),
+    scope: AIConversationScope,
+    connectionProfileID: UUID? = nil,
+    title: String? = nil,
+    messages: [AIPublishingChatMessage] = [],
+    contextMode: AIPublishingChatContextMode = .general,
+    knowledgePolicy: KnowledgeRetrievalPolicy = .automatic,
+    modelGrade: AIChatModelGrade = .standard,
+    reasoningLevel: AIChatReasoningLevel = .deep,
+    selectedModel: String = "",
+    focusedParagraphID: String? = nil,
+    createdAt: Date = Date(),
+    updatedAt: Date? = nil,
+    archivedAt: Date? = nil
+  ) {
+    self.id = id
+    self.scope = scope
+    self.connectionProfileID = connectionProfileID
+    self.title = title?.trimmedForPublishing.nilIfEmpty
+    self.messages = messages
+    self.contextMode = contextMode
+    self.knowledgePolicy = knowledgePolicy
+    self.modelGrade = modelGrade
+    self.reasoningLevel = reasoningLevel
+    self.selectedModel = selectedModel.trimmedForPublishing
+    self.focusedParagraphID = focusedParagraphID?.nilIfEmpty
+    self.createdAt = createdAt
+    self.updatedAt = max(updatedAt ?? createdAt, createdAt)
+    self.archivedAt = archivedAt
+  }
+
+  /// Source compatibility for the pre-scope persistence model.
   public init(
     id: UUID = UUID(),
     draftID: UUID,
+    connectionProfileID: UUID? = nil,
     title: String? = nil,
     messages: [AIPublishingChatMessage] = [],
     contextMode: AIPublishingChatContextMode = .site,
@@ -37,19 +126,86 @@ public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
     updatedAt: Date? = nil,
     archivedAt: Date? = nil
   ) {
-    self.id = id
-    self.draftID = draftID
-    self.title = title?.trimmedForPublishing.nilIfEmpty
-    self.messages = messages
-    self.contextMode = contextMode
-    self.knowledgePolicy = knowledgePolicy
-    self.modelGrade = modelGrade
-    self.reasoningLevel = reasoningLevel
-    self.selectedModel = selectedModel.trimmedForPublishing
-    self.focusedParagraphID = focusedParagraphID?.nilIfEmpty
-    self.createdAt = createdAt
-    self.updatedAt = max(updatedAt ?? createdAt, createdAt)
-    self.archivedAt = archivedAt
+    self.init(
+      id: id,
+      scope: .draft(draftID),
+      connectionProfileID: connectionProfileID,
+      title: title,
+      messages: messages,
+      contextMode: contextMode,
+      knowledgePolicy: knowledgePolicy,
+      modelGrade: modelGrade,
+      reasoningLevel: reasoningLevel,
+      selectedModel: selectedModel,
+      focusedParagraphID: focusedParagraphID,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      archivedAt: archivedAt
+    )
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    let legacyDraftID = try container.decodeIfPresent(UUID.self, forKey: .draftID)
+    let storedScope = try container.decodeIfPresent(AIConversationScope.self, forKey: .scope)
+    guard storedScope != nil || legacyDraftID != nil else {
+      throw DecodingError.dataCorruptedError(
+        forKey: .scope,
+        in: container,
+        debugDescription: "AI conversation is missing both scope and legacy draftID"
+      )
+    }
+    self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+    self.scope = storedScope
+      ?? legacyDraftID.map(AIConversationScope.draft)
+      ?? .general
+    self.connectionProfileID = try container.decodeIfPresent(UUID.self, forKey: .connectionProfileID)
+    self.title = try container.decodeIfPresent(String.self, forKey: .title)?.trimmedForPublishing.nilIfEmpty
+    self.messages = try container.decodeIfPresent([AIPublishingChatMessage].self, forKey: .messages) ?? []
+    if self.scope == .general {
+      // A general owner is authoritative even if an intermediate snapshot
+      // carried the old draft-oriented `.site` mode.
+      self.contextMode = .general
+    } else {
+      self.contextMode = try container.decodeIfPresent(
+        AIPublishingChatContextMode.self,
+        forKey: .contextMode
+      ) ?? .site
+    }
+    self.knowledgePolicy = try container.decodeIfPresent(KnowledgeRetrievalPolicy.self, forKey: .knowledgePolicy) ?? .automatic
+    self.modelGrade = try container.decodeIfPresent(AIChatModelGrade.self, forKey: .modelGrade) ?? .standard
+    self.reasoningLevel = try container.decodeIfPresent(AIChatReasoningLevel.self, forKey: .reasoningLevel) ?? .deep
+    self.selectedModel = (try container.decodeIfPresent(String.self, forKey: .selectedModel) ?? "").trimmedForPublishing
+    self.focusedParagraphID = try container.decodeIfPresent(String.self, forKey: .focusedParagraphID)?.nilIfEmpty
+    self.createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+    self.updatedAt = max(
+      try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? self.createdAt,
+      self.createdAt
+    )
+    self.archivedAt = try container.decodeIfPresent(Date.self, forKey: .archivedAt)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(id, forKey: .id)
+    try container.encode(scope, forKey: .scope)
+    // Keep the legacy key for draft conversations so older workspaces can
+    // still inspect/restore them. General conversations deliberately omit it.
+    if let draftID {
+      try container.encode(draftID, forKey: .draftID)
+    }
+    try container.encodeIfPresent(connectionProfileID, forKey: .connectionProfileID)
+    try container.encodeIfPresent(title, forKey: .title)
+    try container.encode(messages, forKey: .messages)
+    try container.encode(contextMode, forKey: .contextMode)
+    try container.encode(knowledgePolicy, forKey: .knowledgePolicy)
+    try container.encode(modelGrade, forKey: .modelGrade)
+    try container.encode(reasoningLevel, forKey: .reasoningLevel)
+    try container.encode(selectedModel, forKey: .selectedModel)
+    try container.encodeIfPresent(focusedParagraphID, forKey: .focusedParagraphID)
+    try container.encode(createdAt, forKey: .createdAt)
+    try container.encode(updatedAt, forKey: .updatedAt)
+    try container.encodeIfPresent(archivedAt, forKey: .archivedAt)
   }
 
   public var isArchived: Bool {
@@ -117,7 +273,11 @@ public enum AIConversationRetentionPolicy {
   ) -> [AIConversation] {
     var seenConversationIDs: Set<UUID> = []
     let prepared = conversations
-      .filter { validDraftIDs?.contains($0.draftID) ?? true }
+      .filter { conversation in
+        guard let validDraftIDs else { return true }
+        guard let draftID = conversation.draftID else { return true }
+        return validDraftIDs.contains(draftID)
+      }
       .sorted {
         retentionOrder(
           $0,
@@ -127,7 +287,7 @@ public enum AIConversationRetentionPolicy {
       }
       .filter { seenConversationIDs.insert($0.id).inserted }
 
-    let limitedByDraft = Dictionary(grouping: prepared, by: \.draftID)
+    let limitedByScope = Dictionary(grouping: prepared, by: { $0.scope.storageKey })
       .values
       .flatMap {
         $0.sorted {
@@ -149,7 +309,7 @@ public enum AIConversationRetentionPolicy {
       .prefix(maximumConversationCount)
 
     var remainingImageBytes = maximumTotalImageBytes
-    return limitedByDraft.map { conversation in
+    return limitedByScope.map { conversation in
       let retained = conversation.prepared(
         maxImageBytes: min(
           AIConversation.maximumImageBytes,
@@ -172,8 +332,9 @@ public enum AIConversationRetentionPolicy {
 
     for (draftID, draftConversations) in Dictionary(
       grouping: conversations,
-      by: \.draftID
+      by: { $0.draftID }
     ) {
+      guard let draftID else { continue }
       if let candidateID = activeIDs[draftID],
          let candidate = conversationsByID[candidateID],
          candidate.draftID == draftID,
@@ -183,6 +344,35 @@ public enum AIConversationRetentionPolicy {
       }
 
       result[draftID] = draftConversations
+        .filter { !$0.isArchived }
+        .max { $0.updatedAt < $1.updatedAt }?
+        .id
+    }
+    return result
+  }
+
+  public static func validActiveConversationIDsByScope(
+    _ activeIDs: [String: UUID],
+    conversations: [AIConversation]
+  ) -> [String: UUID] {
+    let conversationsByID = Dictionary(
+      uniqueKeysWithValues: conversations.map { ($0.id, $0) }
+    )
+    var result: [String: UUID] = [:]
+
+    for (scopeKey, scopedConversations) in Dictionary(
+      grouping: conversations,
+      by: { $0.scope.storageKey }
+    ) {
+      if let candidateID = activeIDs[scopeKey],
+         let candidate = conversationsByID[candidateID],
+         candidate.scope.storageKey == scopeKey,
+         !candidate.isArchived {
+        result[scopeKey] = candidateID
+        continue
+      }
+
+      result[scopeKey] = scopedConversations
         .filter { !$0.isArchived }
         .max { $0.updatedAt < $1.updatedAt }?
         .id

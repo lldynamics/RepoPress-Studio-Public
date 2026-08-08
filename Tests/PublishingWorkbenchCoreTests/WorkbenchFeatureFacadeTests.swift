@@ -4,8 +4,14 @@ import XCTest
 
 @MainActor
 final class WorkbenchFeatureFacadeTests: XCTestCase {
+  private func makeIsolatedStore() -> WorkbenchStore {
+    let fileURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("workbench-facade-\(UUID().uuidString).json")
+    return WorkbenchStore(persistence: WorkbenchPersistence(fileURL: fileURL))
+  }
+
   func testFeatureFacadesExposeStableEntrypoints() {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
 
     XCTAssertTrue(store.ai === store.ai)
     XCTAssertTrue(store.repository === store.repository)
@@ -19,7 +25,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testSettingsFacadeIgnoresDraftBodyAndChatStreaming() throws {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let settings = store.settings
     var settingsChanges = 0
     let cancellable = settings.objectWillChange.sink { settingsChanges += 1 }
@@ -41,7 +47,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testPublishStatusFacadeIgnoresBodyOnlyDraftChanges() throws {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let status = store.publishStatus
     var statusChanges = 0
     let cancellable = status.objectWillChange.sink { statusChanges += 1 }
@@ -54,14 +60,14 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertEqual(statusChanges, 0)
 
     var titleEdit = bodyEdit
-    titleEdit.title = "标题发生变化-(UUID().uuidString)"
+    titleEdit.title = "标题发生变化-\(UUID().uuidString)"
     store.updateDraft(titleEdit)
     XCTAssertGreaterThan(statusChanges, 0)
     withExtendedLifetime(cancellable) {}
   }
 
   func testWorkspaceLayoutFacadeIgnoresUnrelatedChildStoreChanges() {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let layout = store.workspaceLayout
     var layoutChanges = 0
     let cancellable = layout.objectWillChange.sink { layoutChanges += 1 }
@@ -81,7 +87,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testContentPresentationFacadeIgnoresTypingAndAIStreaming() throws {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let draft = try XCTUnwrap(store.selectedDraft)
     let presentation = store.contentPresentation
     var presentationChanges = 0
@@ -122,7 +128,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testDraftListAndContentHealthFacadesIgnoreAIStreaming() {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let draftList = WorkbenchDraftListFeatureFacade(store: store)
     let contentHealth = WorkbenchContentHealthFeatureFacade(store: store)
     var draftListChanges = 0
@@ -145,7 +151,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testShellFacadeIgnoresEquivalentRootStateAssignments() {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let shell = store.shell
     var shellChanges = 0
     let cancellable = shell.objectWillChange.sink { shellChanges += 1 }
@@ -163,7 +169,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testShellFacadeRoutesNavigationWithoutObservingUnrelatedPublishingProgress() {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let shell = store.shell
     var shellChanges = 0
     let cancellable = shell.objectWillChange.sink { shellChanges += 1 }
@@ -180,7 +186,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testPublishingFacadeIgnoresUnrelatedPublishingStoreState() {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let publishing = store.publishing
     var publishingChanges = 0
     let cancellable = publishing.objectWillChange.sink { publishingChanges += 1 }
@@ -197,7 +203,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testAIFacadeUsesNarrowActionsAndReadsAIWorkspaceState() {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let draft = ArticleDraft.empty(profile: store.activeProfile)
 
     store.ai.prepareChat(for: draft)
@@ -216,7 +222,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testAIFacadeExposesWorkspaceActions() {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let draft = ArticleDraft.empty(profile: store.publishing.activeProfile)
 
     store.setDrafts([draft])
@@ -234,7 +240,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testPublishingAndRepositoryFacadesUseExistingFeatureStores() {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let draft = ArticleDraft.empty(profile: store.activeProfile)
     let updatedAt = Date(timeIntervalSince1970: 1_234)
 
@@ -249,7 +255,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testShellFacadeIgnoresDraftBodyEditsButPublishingFacadeObservesThem() {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let draft = ArticleDraft.empty(profile: store.activeProfile)
     store.setDrafts([draft])
     store.setSelectedDraftID(draft.id)
@@ -270,7 +276,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testAIWorkspaceChangesStayOnAIFacadeInsteadOfRebroadcastingRootStore() {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let ai = store.ai
     let activityStatus = store.activityStatus
     var rootChanges = 0
@@ -291,7 +297,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testActivityStatusFacadeObservesAIWithoutRebroadcastingRootStore() {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let activityStatus = store.activityStatus
     var rootChanges = 0
     var activityChanges = 0
@@ -307,7 +313,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testImageWorkbenchFacadeObservesOnlyItsAIImageState() {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let imageWorkbench = store.imageWorkbench
     let draftID = UUID()
     let attachmentID = UUID()
@@ -401,7 +407,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testEditorNavigationFacadeIgnoresPublishingProgressChanges() {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let editorNavigation = WorkbenchEditorNavigationFeatureFacade(store: store)
     var editorChanges = 0
     let cancellable = editorNavigation.objectWillChange.sink { editorChanges += 1 }
@@ -415,7 +421,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testMarkdownEditorFacadeIgnoresStreamingUpdatesForExistingAssistantMessage() throws {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let draft = try XCTUnwrap(store.selectedDraft)
     let editor = WorkbenchMarkdownEditorFeatureFacade(store: store, draftID: draft.id)
     var editorChanges = 0
@@ -444,7 +450,7 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
   }
 
   func testMarkdownEditorFacadeObservesOnlyTrackedDraftBodyBuffer() throws {
-    let store = WorkbenchStore()
+    let store = makeIsolatedStore()
     let trackedDraft = try XCTUnwrap(store.selectedDraft)
     let otherDraft = ArticleDraft.empty(profile: store.activeProfile)
     store.setDrafts([trackedDraft, otherDraft])
