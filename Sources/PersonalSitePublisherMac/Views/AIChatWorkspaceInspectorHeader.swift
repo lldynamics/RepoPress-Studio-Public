@@ -20,7 +20,7 @@ extension AIChatContextInspectorView {
       Spacer(minLength: 8)
 
       Button(String(localized: "ai-assistant.configure")) {
-        openAISettings()
+        openAICredentialsSettings()
       }
       .controlSize(.small)
     }
@@ -670,7 +670,12 @@ extension AIChatContextInspectorView {
   }
 
   func openAISettings() {
-    requestedSettingsTabID = SettingsTab.ai.id
+    requestedSettingsTabID = SettingsDestination.ai(.connection).id
+    openSettings()
+  }
+
+  func openAICredentialsSettings() {
+    requestedSettingsTabID = SettingsDestination.ai(.credentials).id
     openSettings()
   }
 

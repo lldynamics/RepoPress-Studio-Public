@@ -28,7 +28,9 @@ struct SettingsAITabFactory {
       actionMessage: context.store.ai.actionMessage,
       dataSharingConsent: context.store.ai.dataSharingConsent,
       shouldFocusAPIKey: context.healthDestination == .aiKey,
-      navigationRequestID: context.healthNavigationRequestID,
+      healthNavigationRequestID: context.healthNavigationRequestID,
+      navigationDestination: context.navigationDestination,
+      navigationRequestID: context.navigationRequestID,
       saveAPIKey: { token in
         context.store.ai.saveAPIKey(token)
       },

@@ -13,8 +13,17 @@ struct SettingsTokenTabFactory {
       publishActionMessage: context.store.publishActionMessage,
       deploymentStatusMessage: context.store.deploymentStatusMessage,
       siteAnalyticsMessage: context.store.siteAnalyticsMessage,
+      navigationDestination: context.navigationDestination,
+      navigationRequestID: context.navigationRequestID,
       shouldFocusRepositoryToken: context.healthDestination == .repositoryToken,
-      navigationRequestID: context.healthNavigationRequestID,
+      repositoryTokenFocusRequestID: context.healthNavigationRequestID,
+      localRepositoryPath: context.store.activeProfile.localRepositoryRootPath,
+      chooseLocalRepository: {
+        guard let url = RepositorySelectionPanel.chooseDirectory() else { return }
+        Task {
+          await context.store.repository.rememberRootAsync(url)
+        }
+      },
       setRepositoryProvider: { provider in
         context.store.setRepositoryProvider(provider)
       },

@@ -6,6 +6,7 @@ import XCUIAutomation
 final class WorkspaceAccessibilityUITests: XCTestCase {
   private var application: XCUIApplication!
   private var knowledgeLibraryRootURL: URL!
+  private var screenshotRuntimeRootURL: URL!
 
   override func setUpWithError() throws {
     continueAfterFailure = false
@@ -19,6 +20,12 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     if !testDataRoot.isTargetAppContainer {
       try FileManager.default.createDirectory(at: knowledgeLibraryRootURL, withIntermediateDirectories: true)
     }
+    screenshotRuntimeRootURL = knowledgeLibraryRootURL
+      .appendingPathComponent("runtime", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: screenshotRuntimeRootURL.appendingPathComponent("tmp", isDirectory: true),
+      withIntermediateDirectories: true
+    )
   }
 
   override func tearDownWithError() throws {
@@ -28,6 +35,7 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       try? FileManager.default.removeItem(at: knowledgeLibraryRootURL)
     }
     knowledgeLibraryRootURL = nil
+    screenshotRuntimeRootURL = nil
   }
 
   func testSidebarIdentifiersRemainUniqueAcrossWritingAndLibrary() throws {
@@ -621,6 +629,349 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
   }
 
+  func testSettingsSidebarVisitsEveryPageWithOneContentRoot() throws {
+    openSettings()
+    let settingsWindow = currentSettingsWindow()
+
+    let pages = [
+      (tab: "configurationStatus", content: "configuration-status-settings"),
+      (tab: "defaultRules", content: "default-rule-settings"),
+      (tab: "token", content: "token-settings"),
+      (tab: "ai", content: "ai-settings"),
+      (tab: "dataManagement", content: "data-management-settings"),
+      (tab: "appearance", content: "appearance-settings"),
+      (tab: "rss", content: "rss-maintenance-settings"),
+      (tab: "privacy", content: "privacy-settings"),
+    ]
+    let contentIdentifiers = pages.map { $0.content }
+
+    for page in pages {
+      assertUniqueIdentifier("settings-sidebar-\(page.tab)")
+    }
+    assertSettingsWindowBaseline()
+
+    for page in pages {
+      select(
+        "settings-sidebar-\(page.tab)",
+        revealing: page.content
+      )
+      assertUniqueIdentifier("settings-content")
+      assertUniqueIdentifier(page.content)
+
+      let visibleContentRoots = contentIdentifiers.filter {
+        identifierExists($0, in: settingsWindow)
+      }
+      XCTAssertEqual(
+        visibleContentRoots,
+        [page.content],
+        "Selecting \(page.tab) must expose exactly one settings page root."
+      )
+    }
+  }
+
+  func testDataManagementSheetsOpenAndCloseWithoutRunningTheirActions() throws {
+    openSettings()
+    select(
+      "settings-sidebar-dataManagement",
+      revealing: "data-management-settings"
+    )
+
+    let settingsWindow = currentSettingsWindow()
+    forceAccessibilityTraversal(in: settingsWindow)
+
+    let tasks = [
+      (
+        button: "data-management-task-drafts",
+        root: "data-management-drafts-task",
+        close: "data-management-drafts-task-close"
+      ),
+      (
+        button: "data-management-task-storage",
+        root: "data-management-storage-task",
+        close: "data-management-storage-task-close"
+      ),
+      (
+        button: "data-management-task-backup",
+        root: "data-management-backup-task",
+        close: "data-management-backup-task-close"
+      ),
+      (
+        button: "data-management-task-migration",
+        root: "data-management-migration-task",
+        close: "data-management-migration-task-cancel"
+      ),
+    ]
+
+    for task in tasks {
+      revealSettingsElement(
+        task.button,
+        scrollContainerIdentifier: "data-management-settings"
+      )
+      assertUniqueIdentifier(task.button)
+
+      // Deliberately open only the task container and use its dedicated close
+      // control. Never touch backup, restore, cleanup, or migration actions.
+      element(identifier: task.button)
+        .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        .tap()
+
+      XCTAssertTrue(
+        application.sheets.firstMatch.waitForExistence(timeout: 10),
+        "Opening \(task.button) did not present a Settings sheet."
+      )
+      assertUniqueIdentifier(task.root)
+      assertUniqueIdentifier(task.close)
+
+      element(identifier: task.close)
+        .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        .tap()
+      assertIdentifierDisappears(task.root)
+      assertIdentifierExists("data-management-settings", in: settingsWindow)
+      forceAccessibilityTraversal(in: settingsWindow)
+    }
+  }
+
+  func testSettingsRestoresLastTopLevelPageAfterWindowReopens() throws {
+    openSettings()
+    select(
+      "settings-sidebar-configurationStatus",
+      revealing: "configuration-status-settings"
+    )
+    select(
+      "settings-sidebar-privacy",
+      revealing: "privacy-settings"
+    )
+
+    let settingsWindow = currentSettingsWindow()
+    let closeButton = settingsWindow.buttons[XCUIIdentifierCloseWindow]
+    XCTAssertTrue(
+      closeButton.waitForExistence(timeout: 5),
+      "The Settings window close button was unavailable."
+    )
+    closeButton.click()
+    assertIdentifierDisappears("settings-content")
+
+    application.terminate()
+    application.launch()
+    XCTAssertTrue(
+      application.windows.firstMatch.waitForExistence(timeout: 15),
+      "The main workbench window did not return after relaunch."
+    )
+    showSettingsWindow()
+    let reopenedSettingsWindow = currentSettingsWindow()
+    assertIdentifierExists("settings-content", in: reopenedSettingsWindow)
+    assertUniqueIdentifier("settings-sidebar-privacy")
+    assertIdentifierExists("privacy-settings", in: reopenedSettingsWindow)
+    XCTAssertFalse(
+      identifierExists("configuration-status-settings", in: reopenedSettingsWindow),
+      "Reopening Settings must not replace the restored top-level page."
+    )
+    assertSettingsWindowBaseline()
+  }
+
+  private func openSettings() {
+    launchApplication(surface: "writing")
+    showSettingsWindow()
+
+    let settingsWindow = currentSettingsWindow()
+    assertIdentifierExists("settings-sidebar", in: settingsWindow)
+    assertIdentifierExists("settings-content", in: settingsWindow)
+  }
+
+  private func showSettingsWindow(
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    application.activate()
+    let applicationMenu = application.menuBars.menuBarItems["RepoPress Studio"]
+    guard applicationMenu.waitForExistence(timeout: 5) else {
+      XCTFail(
+        "The RepoPress Studio application menu was unavailable.",
+        file: file,
+        line: line
+      )
+      return
+    }
+    applicationMenu.click()
+
+    let menu = applicationMenu.menus.firstMatch
+    guard menu.waitForExistence(timeout: 5) else {
+      XCTFail(
+        "The RepoPress Studio application menu did not open.",
+        file: file,
+        line: line
+      )
+      return
+    }
+    let settingsMenuItems = menu.menuItems.matching(
+      NSPredicate(
+        format: "title IN %@",
+        ["设置…", "Settings…", "设置...", "Settings..."]
+      )
+    )
+    let settingsMenuItem = settingsMenuItems.firstMatch
+    guard settingsMenuItem.waitForExistence(timeout: 5) else {
+      XCTFail(
+        "The application menu did not expose its Settings action.",
+        file: file,
+        line: line
+      )
+      application.typeKey(.escape, modifierFlags: [])
+      return
+    }
+    XCTAssertEqual(
+      settingsMenuItems.count,
+      1,
+      "The application menu must expose exactly one Settings action.",
+      file: file,
+      line: line
+    )
+    settingsMenuItem.click()
+  }
+
+  private func currentSettingsWindow(
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) -> XCUIElement {
+    let settingsWindow = application.windows
+      .containing(.any, identifier: "settings-content")
+      .firstMatch
+    XCTAssertTrue(
+      settingsWindow.waitForExistence(timeout: 10),
+      "The Settings window containing settings-content was unavailable.",
+      file: file,
+      line: line
+    )
+    return settingsWindow
+  }
+
+  private func assertSettingsWindowBaseline(
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    let settingsWindow = currentSettingsWindow(file: file, line: line)
+    XCTAssertGreaterThanOrEqual(
+      settingsWindow.frame.width,
+      820,
+      "The Settings window is narrower than its supported minimum.",
+      file: file,
+      line: line
+    )
+    XCTAssertGreaterThanOrEqual(
+      settingsWindow.frame.height,
+      560,
+      "The Settings window is shorter than its supported minimum.",
+      file: file,
+      line: line
+    )
+    assertUniqueIdentifier("settings-content", file: file, line: line)
+    assertUniqueIdentifier("settings-save-status", file: file, line: line)
+  }
+
+  private func assertIdentifierExists(
+    _ identifier: String,
+    in root: XCUIElement? = nil,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    let matches: XCUIElementQuery
+    if let root {
+      matches = root.descendants(matching: .any).matching(identifier: identifier)
+    } else {
+      matches = application.descendants(matching: .any).matching(identifier: identifier)
+    }
+    XCTAssertTrue(
+      matches.firstMatch.waitForExistence(timeout: 10),
+      "No runtime accessibility element was found for \(identifier).",
+      file: file,
+      line: line
+    )
+  }
+
+  private func identifierExists(
+    _ identifier: String,
+    in root: XCUIElement
+  ) -> Bool {
+    root.descendants(matching: .any)
+      .matching(identifier: identifier)
+      .firstMatch
+      .exists
+  }
+
+  private func forceAccessibilityTraversal(
+    in root: XCUIElement,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    let descendants = root.descendants(matching: .any).allElementsBoundByIndex
+    XCTAssertFalse(
+      descendants.isEmpty,
+      "The Settings accessibility tree was empty.",
+      file: file,
+      line: line
+    )
+    for descendant in descendants {
+      _ = descendant.identifier
+      _ = descendant.label
+    }
+  }
+
+  private func revealSettingsElement(
+    _ identifier: String,
+    scrollContainerIdentifier: String,
+    maxSwipes: Int = 8,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    let destination = element(identifier: identifier)
+    if destination.exists && destination.isHittable {
+      return
+    }
+
+    let scrollContainer = element(identifier: scrollContainerIdentifier)
+    guard scrollContainer.waitForExistence(timeout: 5) else {
+      XCTFail(
+        "The Settings scroll container was unavailable while revealing \(identifier).",
+        file: file,
+        line: line
+      )
+      return
+    }
+
+    for _ in 0..<maxSwipes {
+      application.activate()
+      forceAccessibilityTraversal(in: currentSettingsWindow())
+      scrollContainer.swipeUp()
+      if destination.exists && destination.isHittable {
+        return
+      }
+    }
+    XCTFail(
+      "Scrolling Settings did not reveal \(identifier).",
+      file: file,
+      line: line
+    )
+  }
+
+  private func assertIdentifierDisappears(
+    _ identifier: String,
+    timeout: TimeInterval = 10,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    let destination = element(identifier: identifier)
+    let deadline = Date().addingTimeInterval(timeout)
+    while destination.exists && Date() < deadline {
+      RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+    }
+    XCTAssertFalse(
+      destination.exists,
+      "The accessibility element \(identifier) did not disappear.",
+      file: file,
+      line: line
+    )
+  }
+
   private func launchApplication(
     surface: String,
     additionalLaunchArguments: [String] = []
@@ -636,6 +987,14 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST"] = "1"
     application.launchEnvironment["PERSONAL_SITE_PUBLISHER_SCREENSHOT_UI_TEST_REPOSITORY_ROOT"] = knowledgeLibraryRootURL
       .appendingPathComponent("repository-fixture", isDirectory: true)
+      .path
+    // Settings task sheets may refresh or prune automatic backup fixtures on
+    // appearance. Keep all Foundation preferences and temporary demo data in
+    // this test-owned directory so opening a sheet cannot touch user data.
+    application.launchEnvironment["CFFIXED_USER_HOME"] = screenshotRuntimeRootURL.path
+    application.launchEnvironment["HOME"] = screenshotRuntimeRootURL.path
+    application.launchEnvironment["TMPDIR"] = screenshotRuntimeRootURL
+      .appendingPathComponent("tmp", isDirectory: true)
       .path
     application.launch()
 

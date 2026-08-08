@@ -16,7 +16,15 @@ public final class WorkbenchPersistenceFeatureFacade: ObservableObject {
     store.hasUnsavedChanges
   }
 
-  public var lastSaveStatus: String {
-    store.lastSaveStatus
+  public var lastSaveError: String? {
+    store.persistenceStore.lastSaveError
+  }
+
+  public var isRecoveryWriteProtected: Bool {
+    store.persistenceStore.isRecoveryWriteProtected
+  }
+
+  public var recoveryMessage: String? {
+    store.persistenceStore.recoveryMessage
   }
 }

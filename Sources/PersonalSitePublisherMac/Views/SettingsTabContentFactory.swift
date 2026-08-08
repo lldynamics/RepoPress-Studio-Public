@@ -10,19 +10,22 @@ struct SettingsTabContentFactory {
       SettingsConfigurationStatusView(context: context)
     case .defaultRules:
       DefaultRuleSettingsView(
-        autoRunPreflightBinding: context.autoRunPreflightBinding,
-        scanRepositoryOnLaunch: context.scanRepositoryOnLaunch,
         activeProfileBinding: context.activeProfileBinding,
         siteKindBinding: context.siteKindBinding,
         healthDestination: context.healthDestination,
-        healthNavigationRequestID: context.healthNavigationRequestID
+        healthNavigationRequestID: context.healthNavigationRequestID,
+        navigationDestination: context.navigationDestination,
+        navigationRequestID: context.navigationRequestID
       )
     case .token:
       SettingsTokenTabFactory.make(context: context)
     case .ai:
       SettingsAITabFactory.make(context: context)
     case .appearance:
-      AppearanceSettingsView()
+      AppearanceSettingsView(
+        autoRunPreflightBinding: context.autoRunPreflightBinding,
+        scanRepositoryOnLaunch: context.scanRepositoryOnLaunch
+      )
     case .rss:
       if let rssStore = context.rssStore {
         RSSMaintenanceSettingsView(store: rssStore)
@@ -39,7 +42,9 @@ struct SettingsTabContentFactory {
       DataManagementView(
         store: context.store,
         rssStore: context.rssStore,
-        launchCoordinator: context.launchCoordinator
+        launchCoordinator: context.launchCoordinator,
+        navigationDestination: context.navigationDestination,
+        navigationRequestID: context.navigationRequestID
       )
     }
   }

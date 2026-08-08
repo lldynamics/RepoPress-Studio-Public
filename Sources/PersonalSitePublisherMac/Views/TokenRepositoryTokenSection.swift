@@ -10,7 +10,6 @@ struct TokenRepositoryTokenSection: View {
   let onSaveToken: () -> Void
   let onDeleteToken: () -> Void
   let onRefreshTokenState: () -> Void
-  let onOpenRepositoryPermission: () -> Void
   @FocusState private var isRepositoryTokenFocused: Bool
   @State private var isDeleteConfirmationPresented = false
   @State private var isTokenRevealed = false
@@ -66,21 +65,12 @@ struct TokenRepositoryTokenSection: View {
       .accessibilityLabel("仓库访问令牌")
       .accessibilityHint("仅用于仓库创建、权限检查、提交、PR/MR 和回滚")
 
-      HStack {
-        Button(String(localized: "保存令牌")) {
-          onSaveToken()
-        }
-        .workbenchProminentActionStyle()
-        .disabled(repositoryTokenInput.wrappedValue.trimmedForPublishing.isEmpty)
-        .accessibilityLabel("保存仓库访问令牌")
-
-        Button {
-          onOpenRepositoryPermission()
-        } label: {
-          Label("检查仓库权限", systemImage: "lock.shield")
-        }
-        .accessibilityLabel("打开仓库权限设置")
+      Button(String(localized: "保存令牌")) {
+        onSaveToken()
       }
+      .workbenchProminentActionStyle()
+      .disabled(repositoryTokenInput.wrappedValue.trimmedForPublishing.isEmpty)
+      .accessibilityLabel("保存仓库访问令牌")
 
       HStack {
         Label(repositoryTokenStatusText, systemImage: tokenStatusSystemImage)
