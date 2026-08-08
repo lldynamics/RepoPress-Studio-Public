@@ -17,11 +17,57 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertTrue(store.repository === store.repository)
     XCTAssertTrue(store.publishing === store.publishing)
     XCTAssertTrue(store.contentPresentation === store.contentPresentation)
+    XCTAssertTrue(store.commandPresentation === store.commandPresentation)
     XCTAssertTrue(store.activityStatus === store.activityStatus)
     XCTAssertTrue(store.workspaceLayout === store.workspaceLayout)
     XCTAssertTrue(store.settings === store.settings)
     XCTAssertTrue(store.publishStatus === store.publishStatus)
     XCTAssertTrue(store.siteMaintenance === store.siteMaintenance)
+  }
+
+  func testCommandPresentationFacadeIgnoresPublishMessagesAndAIStreaming() async {
+    let store = makeIsolatedStore()
+    let presentation = store.commandPresentation
+    var presentationChanges = 0
+    let presentationChanged = expectation(description: "command presentation changed")
+    let cancellable = presentation.objectWillChange.sink {
+      presentationChanges += 1
+      presentationChanged.fulfill()
+    }
+
+    store.setPublishActionMessage("菜单动作完成", status: .information)
+    store.setAIChatMessages([
+      AIPublishingChatMessage(role: .assistant, content: "流式回复")
+    ])
+    store.setAIChatMessage("AI 状态变化")
+
+    try? await Task.sleep(nanoseconds: 50_000_000)
+    XCTAssertEqual(presentationChanges, 0)
+
+    store.setInspectorPresented(!presentation.isInspectorPresented)
+    XCTAssertEqual(presentationChanges, 0)
+    await fulfillment(of: [presentationChanged], timeout: 1)
+    XCTAssertEqual(presentationChanges, 1)
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testCommandPresentationFacadeCoalescesMenuRelevantChanges() async {
+    let store = makeIsolatedStore()
+    let presentation = store.commandPresentation
+    var presentationChanges = 0
+    let presentationChanged = expectation(description: "coalesced command presentation change")
+    let cancellable = presentation.objectWillChange.sink {
+      presentationChanges += 1
+      presentationChanged.fulfill()
+    }
+
+    store.selectSection(presentation.selectedSection == .sync ? .writing : .sync)
+    store.setInspectorPresented(!presentation.isInspectorPresented)
+
+    XCTAssertEqual(presentationChanges, 0)
+    await fulfillment(of: [presentationChanged], timeout: 1)
+    XCTAssertEqual(presentationChanges, 1)
+    withExtendedLifetime(cancellable) {}
   }
 
   func testSettingsFacadeIgnoresDraftBodyAndChatStreaming() throws {

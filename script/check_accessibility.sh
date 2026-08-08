@@ -99,9 +99,9 @@ require_literal \
   "global navigation controls must follow the user's macOS accent"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AdvancedWorkspaceMenu.swift" \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
   "ForEach(WorkspaceNavigationPresentation.secondaryEntryItems)" \
-  "flattened workspace menu must expose every advanced destination as a labeled button"
+  "the workspace switcher menu must expose every advanced destination as a labeled button"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
@@ -110,8 +110,13 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
-  ".focusedSceneValue(" \
-  "content view must expose focused command actions"
+  ".focusedSceneObject(sceneCommandRouter)" \
+  "content view must expose the scene command router to menu commands"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  "@FocusedObject private var commandRouter: WorkspaceSceneCommandRouter?" \
+  "menu commands must consume the focused scene command router"
 
 unexpected_publish_execution_references="$(
   grep -R -nE \
@@ -163,8 +168,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
-  ".focusedSceneValue(\\.markdownEditorCommandActions" \
-  "markdown composer must expose focused editor commands"
+  "@EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter" \
+  "markdown composer must receive the shared scene command router"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
+  "sceneCommandRouter.registerMarkdownEditor(" \
+  "markdown composer must register its editor commands with the scene router"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
+  "sceneCommandRouter.unregisterMarkdownEditor(owner: sceneCommandOwnerID)" \
+  "markdown composer must remove editor commands when its view disappears"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MarkdownEditorEnhancementPanels.swift" \
@@ -1202,8 +1217,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift" \
-  ".focusedSceneValue(\.knowledgeLibraryCommandActions" \
-  "knowledge library must expose focused keyboard command actions"
+  "@EnvironmentObject private var sceneCommandRouter: WorkspaceSceneCommandRouter" \
+  "knowledge library must receive the shared scene command router"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift" \
+  "sceneCommandRouter.registerKnowledgeLibrary(" \
+  "knowledge library must register its keyboard command actions with the scene router"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift" \
+  "sceneCommandRouter.unregisterKnowledgeLibrary(owner: sceneCommandOwnerID)" \
+  "knowledge library must remove keyboard command actions when its view disappears"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/EditorCenterColumn.swift" \

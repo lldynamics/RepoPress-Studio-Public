@@ -7,6 +7,52 @@ import XCTest
 
 @MainActor
 final class MarkdownEditorAppKitInteractionTests: XCTestCase {
+  func testEquivalentAppKitSelectionDoesNotRepublishSwiftUIBindings() {
+    var text = "正文"
+    var selectedRange = NSRange(location: 0, length: 0)
+    var isFrontMatterSelection = false
+    var selectionWriteCount = 0
+    var frontMatterWriteCount = 0
+    let coordinator = MacMarkdownTextView.Coordinator(
+      text: Binding(
+        get: { text },
+        set: { text = $0 }
+      ),
+      bodyMarkdown: text,
+      bodyUTF16Offset: 0,
+      selectedRange: Binding(
+        get: { selectedRange },
+        set: {
+          selectionWriteCount += 1
+          selectedRange = $0
+        }
+      ),
+      isFrontMatterSelection: Binding(
+        get: { isFrontMatterSelection },
+        set: {
+          frontMatterWriteCount += 1
+          isFrontMatterSelection = $0
+        }
+      ),
+      comfortConfiguration: MarkdownEditorComfortConfiguration(),
+      diagnostics: [],
+      onStatisticsChanged: { _ in },
+      onPasteMessage: { _ in },
+      onScrollProgressChanged: { _ in },
+      onDroppedFiles: { _ in }
+    )
+    let textView = NSTextView()
+    textView.string = text
+    textView.setSelectedRange(selectedRange)
+
+    coordinator.textViewDidChangeSelection(
+      Notification(name: NSTextView.didChangeSelectionNotification, object: textView)
+    )
+
+    XCTAssertEqual(selectionWriteCount, 0)
+    XCTAssertEqual(frontMatterWriteCount, 0)
+  }
+
   func testAutomaticPairingUsesLiveTextViewUndoableInsertionPath() {
     var text = "正文"
     var selectedRange = NSRange(location: 0, length: 0)

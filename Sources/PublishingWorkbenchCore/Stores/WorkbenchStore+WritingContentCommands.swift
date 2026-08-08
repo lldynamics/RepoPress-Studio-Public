@@ -317,6 +317,7 @@ extension WorkbenchStore {
   }
 
   public func setEditorDisplayMode(_ mode: EditorDisplayMode) {
+    guard publishingStore.editorDisplayMode != mode else { return }
     publishingStore.editorDisplayMode = mode
   }
 
@@ -326,6 +327,7 @@ extension WorkbenchStore {
   }
 
   public func setAutomaticallyRefreshPreflightOnEdit(_ isEnabled: Bool) {
+    guard publishingStore.automaticallyRefreshPreflightOnEdit != isEnabled else { return }
     publishingStore.automaticallyRefreshPreflightOnEdit = isEnabled
   }
 

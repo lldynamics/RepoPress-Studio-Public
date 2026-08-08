@@ -55,6 +55,8 @@ private struct KnowledgeSourceListPresentationSnapshot {
 }
 
 struct KnowledgeSourceListColumn: View {
+  @EnvironmentObject private var sceneCommandRouter: WorkspaceSceneCommandRouter
+  @State private var sceneCommandOwnerID = UUID()
   let store: WorkbenchStore
   @ObservedObject var knowledge: KnowledgeStore
   @EnvironmentObject private var browserBridge: KnowledgeBrowserBridge
@@ -239,7 +241,15 @@ struct KnowledgeSourceListColumn: View {
     .onExitCommand(perform: exitBatchSelection)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("knowledge-source-list")
-    .focusedSceneValue(\.knowledgeLibraryCommandActions, commandActions)
+    .onAppear {
+      sceneCommandRouter.registerKnowledgeLibrary(
+        commandActions,
+        owner: sceneCommandOwnerID
+      )
+    }
+    .onDisappear {
+      sceneCommandRouter.unregisterKnowledgeLibrary(owner: sceneCommandOwnerID)
+    }
   }
 
   private var knowledgeHeader: some View {
