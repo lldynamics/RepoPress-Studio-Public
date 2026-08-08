@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MacMarkdownEditorToolbar: View {
   @Binding var title: String
+  let store: WorkbenchStore
   let markdownPath: String
   let lastSaveStatus: String
   let hasUnsavedChanges: Bool
@@ -11,7 +12,36 @@ struct MacMarkdownEditorToolbar: View {
   let writingToolDensity: MarkdownWritingToolDensity
   let availableWritingContextPanels: [MarkdownWritingContextPanel]
   let actions: MarkdownEditorToolbarActions
+  @StateObject private var localPreviewState: WorkbenchLocalSitePreviewFeatureFacade
+  @State private var isLocalPreviewPopoverPresented = false
   @State private var selectedPublishAssets = AIPublishingAssetKind.defaultSelection
+
+  init(
+    title: Binding<String>,
+    store: WorkbenchStore,
+    markdownPath: String,
+    lastSaveStatus: String,
+    hasUnsavedChanges: Bool,
+    editorDisplayMode: EditorDisplayMode,
+    isSelectionAIActionRunning: Bool,
+    writingToolDensity: MarkdownWritingToolDensity,
+    availableWritingContextPanels: [MarkdownWritingContextPanel],
+    actions: MarkdownEditorToolbarActions
+  ) {
+    _title = title
+    self.store = store
+    self.markdownPath = markdownPath
+    self.lastSaveStatus = lastSaveStatus
+    self.hasUnsavedChanges = hasUnsavedChanges
+    self.editorDisplayMode = editorDisplayMode
+    self.isSelectionAIActionRunning = isSelectionAIActionRunning
+    self.writingToolDensity = writingToolDensity
+    self.availableWritingContextPanels = availableWritingContextPanels
+    self.actions = actions
+    _localPreviewState = StateObject(
+      wrappedValue: WorkbenchLocalSitePreviewFeatureFacade(store: store)
+    )
+  }
 
   var body: some View {
     HStack(spacing: 8) {
@@ -55,6 +85,7 @@ struct MacMarkdownEditorToolbar: View {
       editorToolbarDivider
       expandedEditorActions
       editorToolbarDivider
+      localSitePreviewButton(showsTitle: true)
       preparePublishButton(showsTitle: true)
     }
   }
@@ -65,6 +96,7 @@ struct MacMarkdownEditorToolbar: View {
       compactEditorDisplayModeControl
       compactEditorActionsMenu
       editorToolbarDivider
+      localSitePreviewButton(showsTitle: false)
       preparePublishButton(showsTitle: showsPrepareTitle)
     }
   }
@@ -107,6 +139,42 @@ struct MacMarkdownEditorToolbar: View {
       .help(lastSaveStatus)
       .accessibilityLabel("保存状态")
       .accessibilityValue(lastSaveStatus)
+  }
+
+  private func localSitePreviewButton(showsTitle: Bool) -> some View {
+    let isRunning = localPreviewState.runtimeStatus.isRunning
+    let isReady = localPreviewState.plan?.diagnostics.isReadyToStart == true
+    let title = isRunning ? "打开预览" : "本地预览"
+
+    return Button {
+      isLocalPreviewPopoverPresented.toggle()
+    } label: {
+      if showsTitle {
+        Label(title, systemImage: isRunning ? "safari" : "play.rectangle")
+      } else {
+        Image(systemName: isRunning ? "safari" : "play.rectangle")
+          .accessibilityHidden(true)
+      }
+    }
+    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
+    .help(
+      isRunning
+        ? String(localized: "管理本地站点预览")
+        : String(localized: "在写作界面启动本地站点预览")
+    )
+    .accessibilityLabel(isRunning ? "打开本地站点预览" : "本地站点预览")
+    .accessibilityValue(
+      isRunning
+        ? String(localized: "预览正在运行")
+        : (isReady ? String(localized: "可以启动") : String(localized: "需要先配置站点仓库"))
+    )
+    .accessibilityIdentifier("markdown-local-site-preview")
+    .popover(isPresented: $isLocalPreviewPopoverPresented, arrowEdge: .top) {
+      MacMarkdownLocalPreviewPopover(
+        state: localPreviewState,
+        currentArticleURL: store.selectedDraft.flatMap { store.localSitePreviewURL(for: $0) }
+      )
+    }
   }
 
   @ViewBuilder

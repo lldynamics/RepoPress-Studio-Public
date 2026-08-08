@@ -13,6 +13,11 @@ struct AIChatInspectorModelGradeCandidate: Equatable, Identifiable {
   var id: String { grade.rawValue }
 }
 
+struct AIChatContextSummaryPresentation: Equatable {
+  let title: String
+  let detail: String
+}
+
 enum AIChatConnectionReadiness: Equatable {
   case ready
   case missingEndpoint
@@ -109,6 +114,48 @@ enum AIChatInspectorHeaderPresentation {
       return String(localized: "当前文章")
     case .general:
       return String(localized: "通用聊天")
+    }
+  }
+
+  static func contextSummary(
+    mode: AIPublishingChatContextMode,
+    draftTitle: String?,
+    selectedReferences: [AIContextReference]
+  ) -> AIChatContextSummaryPresentation {
+    let referencesSummary = AIChatContextReferencePresentation.summary(
+      for: selectedReferences
+    )
+
+    switch mode {
+    case .site:
+      let articleTitle = draftTitle?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        ?? String(localized: "未选择文章")
+      let detail = selectedReferences.isEmpty
+        ? String(
+          format: String(localized: "正在使用：%@；默认包含站点和发布工作台上下文。"),
+          articleTitle
+        )
+        : String(
+          format: String(localized: "正在使用：%@；%@"),
+          articleTitle,
+          referencesSummary
+        )
+      return AIChatContextSummaryPresentation(
+        title: String(localized: "当前文章"),
+        detail: detail
+      )
+
+    case .general:
+      let detail = selectedReferences.isEmpty
+        ? String(localized: "不读取当前文章正文、仓库状态或发布检查。")
+        : String(
+          format: String(localized: "不读取当前文章正文；%@"),
+          referencesSummary
+        )
+      return AIChatContextSummaryPresentation(
+        title: String(localized: "通用聊天"),
+        detail: detail
+      )
     }
   }
 

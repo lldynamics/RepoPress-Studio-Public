@@ -345,16 +345,23 @@ extension WorkbenchAIStore {
     }
 
     store.selectSection(.writing)
-    store.setInspectorPresented(true)
-    isAIPublishingAssistantPresented = true
 
-    if let draft = store.selectedDraft {
-      pendingAIQuickPrompt = quickPrompt
-      prepareAIChat(for: draft)
-      return true
+    guard let draft = store.selectedDraft else {
+      pendingAIQuickPrompt = nil
+      isAIPublishingAssistantPresented = false
+      store.setInspectorPresented(false)
+      return false
     }
-    pendingAIQuickPrompt = nil
-    return false
+
+    pendingAIQuickPrompt = quickPrompt
+    prepareAIChat(for: draft)
+
+    // Prepare the route before asking SwiftUI to present the Inspector. This
+    // avoids briefly mounting the article Inspector and replacing it with the
+    // AI Inspector in the same presentation transaction.
+    isAIPublishingAssistantPresented = true
+    store.setInspectorPresented(true)
+    return true
   }
 
   public func consumePendingAIQuickPrompt() -> AIPublishingQuickPrompt? {

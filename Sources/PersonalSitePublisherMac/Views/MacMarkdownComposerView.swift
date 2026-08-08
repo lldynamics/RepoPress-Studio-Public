@@ -226,6 +226,7 @@ struct MacMarkdownComposerView: View {
     VStack(spacing: 0) {
       MacMarkdownEditorToolbar(
         title: $draft.title,
+        store: store,
         markdownPath: editorState.profile(for: draft).markdownPath(for: draft),
         lastSaveStatus: editorState.lastSaveStatus,
         hasUnsavedChanges: editorState.hasUnsavedChanges,
