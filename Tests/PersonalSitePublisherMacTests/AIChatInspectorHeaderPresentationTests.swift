@@ -29,6 +29,46 @@ final class AIChatInspectorHeaderPresentationTests: XCTestCase {
     )
   }
 
+  func testSiteContextSummaryNamesTheCurrentArticleAndDefaultWorkbenchContext() {
+    let summary = AIChatInspectorHeaderPresentation.contextSummary(
+      mode: .site,
+      draftTitle: "  发布方案  ",
+      selectedReferences: []
+    )
+
+    XCTAssertEqual(summary.title, "当前文章")
+    XCTAssertEqual(summary.detail, "正在使用：发布方案；默认包含站点和发布工作台上下文。")
+  }
+
+  func testContextSummaryShowsExplicitReferencesWhenSelected() {
+    let reference = AIContextReference.currentSelection(
+      draftID: UUID(),
+      range: NSRange(location: 0, length: 12),
+      characterCount: 12
+    )
+
+    let summary = AIChatInspectorHeaderPresentation.contextSummary(
+      mode: .site,
+      draftTitle: "发布方案",
+      selectedReferences: [reference]
+    )
+
+    XCTAssertEqual(summary.title, "当前文章")
+    XCTAssertTrue(summary.detail.contains("当前选区"))
+    XCTAssertTrue(summary.detail.contains("12"))
+  }
+
+  func testGeneralContextSummaryMakesArticleBoundaryExplicit() {
+    let summary = AIChatInspectorHeaderPresentation.contextSummary(
+      mode: .general,
+      draftTitle: "发布方案",
+      selectedReferences: []
+    )
+
+    XCTAssertEqual(summary.title, "通用聊天")
+    XCTAssertEqual(summary.detail, "不读取当前文章正文、仓库状态或发布检查。")
+  }
+
   func testCustomProviderUsesFriendlyCustomAPITitle() {
     let custom = AIProviderConfig(preset: .custom)
 

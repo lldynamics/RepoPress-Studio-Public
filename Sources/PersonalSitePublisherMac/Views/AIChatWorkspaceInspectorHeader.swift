@@ -41,10 +41,132 @@ extension AIChatContextInspectorView {
   var inspectorHeader: some View {
     VStack(spacing: 8) {
       conversationNavigationRow
+      contextSummaryRow
+      quickStartRow
       configurationRow
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 10)
+  }
+
+  var contextSummaryRow: some View {
+    let summary = AIChatInspectorHeaderPresentation.contextSummary(
+      mode: ai.chatContextMode,
+      draftTitle: ai.selectedChatDraft?.title,
+      selectedReferences: selectedContextReferences
+    )
+
+    return HStack(alignment: .top, spacing: 8) {
+      Image(systemName: ai.chatContextMode.systemImage)
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(WorkbenchTheme.primary)
+        .frame(width: 18, height: 18)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(summary.title)
+          .font(.caption.weight(.semibold))
+          .lineLimit(1)
+
+        Text(summary.detail)
+          .font(.workbenchMetadata)
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+
+      contextReferenceMenu
+
+      Button {
+        isAdvancedSettingsExpanded.toggle()
+      } label: {
+        Image(systemName: isAdvancedSettingsExpanded ? "chevron.up" : "slider.horizontal.3")
+          .font(.caption.weight(.semibold))
+          .frame(width: 24, height: 24)
+      }
+      .buttonStyle(.borderless)
+      .help(String(localized: "展开或收起 AI 高级设置"))
+      .accessibilityLabel(
+        isAdvancedSettingsExpanded
+          ? String(localized: "收起 AI 高级设置")
+          : String(localized: "展开 AI 高级设置")
+      )
+      .accessibilityIdentifier("ai-assistant-advanced-settings-toggle")
+    }
+    .padding(.horizontal, 9)
+    .padding(.vertical, 7)
+    .background(
+      WorkbenchTheme.primary.opacity(0.055),
+      in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+    )
+    .overlay {
+      RoundedRectangle(cornerRadius: 9, style: .continuous)
+        .stroke(WorkbenchTheme.primary.opacity(0.12), lineWidth: 1)
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(String(localized: "AI 上下文摘要"))
+    .accessibilityValue(summary.detail)
+    .accessibilityIdentifier("ai-assistant-context-summary")
+  }
+
+  @ViewBuilder
+  var quickStartRow: some View {
+    if ai.selectedChatDraft != nil && ai.chatMessages.isEmpty {
+      VStack(alignment: .leading, spacing: 6) {
+        HStack(spacing: 6) {
+          Label(String(localized: "常用任务"), systemImage: "wand.and.stars")
+            .font(.workbenchMetadata.weight(.semibold))
+            .foregroundStyle(.secondary)
+
+          Spacer(minLength: 0)
+
+          Button(String(localized: "更多")) {
+            isAdvancedSettingsExpanded = true
+          }
+          .buttonStyle(.plain)
+          .font(.workbenchMetadata)
+          .foregroundStyle(WorkbenchTheme.primary)
+          .accessibilityLabel(String(localized: "查看全部 AI 常用任务"))
+        }
+
+        HStack(spacing: 6) {
+          ForEach(featuredQuickActions) { action in
+            quickStartButton(for: action)
+          }
+        }
+      }
+      .padding(.horizontal, 2)
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("ai-assistant-quick-start")
+    }
+  }
+
+  var featuredQuickActions: [AIPublishingChatQuickAction] {
+    [.polishSuggestions, .summary, .proofread]
+  }
+
+  func quickStartButton(for action: AIPublishingChatQuickAction) -> some View {
+    Button {
+      inputText = action.localizedPrompt
+      focusComposerIfAvailable()
+    } label: {
+      Label {
+        Text(action.localizedCompactDisplayNameKey)
+      } icon: {
+        Image(systemName: action.systemImage)
+      }
+      .font(.workbenchMetadata.weight(.medium))
+      .lineLimit(1)
+      .minimumScaleFactor(0.72)
+      .frame(maxWidth: .infinity)
+      .padding(.horizontal, 6)
+      .padding(.vertical, 5)
+      .background(Color.primary.opacity(0.06), in: Capsule())
+      .overlay(Capsule().stroke(Color.primary.opacity(0.12), lineWidth: 1))
+    }
+    .buttonStyle(.plain)
+    .help(action.localizedDisplayName)
+    .accessibilityLabel(action.displayName)
   }
 
 
@@ -183,31 +305,48 @@ extension AIChatContextInspectorView {
   }
 
   var configurationRow: some View {
-    DisclosureGroup(isExpanded: $isAdvancedSettingsExpanded) {
-      VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: 6) {
+      Button {
+        isAdvancedSettingsExpanded.toggle()
+      } label: {
         HStack(spacing: 6) {
-          contextSelectionMenu
-          modelQuickSwitchButton
-          Spacer(minLength: 0)
-          assistantOptionsMenu
-        }
+          Label(String(localized: "高级设置"), systemImage: "slider.horizontal.3")
+            .font(.caption.weight(.semibold))
 
-        HStack(spacing: 6) {
-          contextReferenceMenu
-          Text(String(localized: "选择本次发送给 AI 的额外上下文"))
-            .font(.caption)
+          Spacer(minLength: 0)
+
+          Image(systemName: isAdvancedSettingsExpanded ? "chevron.up" : "chevron.down")
+            .font(.workbenchMetadata.weight(.semibold))
             .foregroundStyle(.secondary)
-          Spacer(minLength: 0)
         }
-
-        Divider()
-
-        quickActionChips
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
       }
-      .padding(.top, 4)
-    } label: {
-      Label(String(localized: "高级设置"), systemImage: "slider.horizontal.3")
-        .font(.caption.weight(.semibold))
+      .buttonStyle(.plain)
+      .help(String(localized: "展开或收起 AI 高级设置"))
+      .accessibilityLabel(
+        isAdvancedSettingsExpanded
+          ? String(localized: "收起 AI 高级设置")
+          : String(localized: "展开 AI 高级设置")
+      )
+      .accessibilityValue(isAdvancedSettingsExpanded ? "已展开" : "已收起")
+      .accessibilityIdentifier("ai-assistant-advanced-settings-section-toggle")
+
+      if isAdvancedSettingsExpanded {
+        VStack(alignment: .leading, spacing: 6) {
+          HStack(spacing: 6) {
+            contextSelectionMenu
+            modelQuickSwitchButton
+            Spacer(minLength: 0)
+            assistantOptionsMenu
+          }
+
+          Divider()
+
+          quickActionChips
+        }
+        .padding(.top, 4)
+      }
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 4)
