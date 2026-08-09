@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - ".github/workflows/shared-dotnet-core.yml"
+      - "Shared/RepoPressCoreContracts/.gitattributes"
       - "Shared/RepoPressCoreContracts/contracts/**"
       - "Shared/RepoPressCoreContracts/dotnet/**"
       - "Shared/RepoPressCoreContracts/scripts/check_dotnet_core_boundaries.py"
@@ -13,6 +14,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/shared-dotnet-core.yml"
+      - "Shared/RepoPressCoreContracts/.gitattributes"
       - "Shared/RepoPressCoreContracts/contracts/**"
       - "Shared/RepoPressCoreContracts/dotnet/**"
       - "Shared/RepoPressCoreContracts/scripts/check_dotnet_core_boundaries.py"

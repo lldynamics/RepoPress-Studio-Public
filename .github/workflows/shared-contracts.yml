@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - ".github/workflows/shared-contracts.yml"
+      - "Shared/RepoPressCoreContracts/.gitattributes"
       - "Shared/RepoPressCoreContracts/contracts/**"
       - "Shared/RepoPressCoreContracts/requirements-contracts.txt"
       - "Shared/RepoPressCoreContracts/scripts/check_fixture_hygiene.py"
@@ -14,6 +15,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/shared-contracts.yml"
+      - "Shared/RepoPressCoreContracts/.gitattributes"
       - "Shared/RepoPressCoreContracts/contracts/**"
       - "Shared/RepoPressCoreContracts/requirements-contracts.txt"
       - "Shared/RepoPressCoreContracts/scripts/check_fixture_hygiene.py"

@@ -1,0 +1,3 @@
+# Contract sources and fixtures are byte-canonical.  Keep every text file LF-only
+# even when a consumer checkout enables core.autocrlf on Windows.
+* text=auto eol=lf
