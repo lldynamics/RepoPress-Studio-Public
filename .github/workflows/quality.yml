@@ -24,6 +24,10 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Configure deterministic test language
+        run: |
+          defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"
+          defaults write NSGlobalDomain AppleLocale "zh_CN"
       - name: Show toolchain
         run: |
           swift --version

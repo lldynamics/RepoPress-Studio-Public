@@ -242,6 +242,87 @@ final class RepositoryAutoSyncTests: XCTestCase {
     XCTAssertEqual(draft.repositorySHA, "private-sha")
   }
 
+  func testAutomaticRemoteArticleImportProtectsPendingOrFailedSiteDraftSave() throws {
+    let path = "content/posts/2027/save-state-protected.md"
+    let remoteDocument = """
+      ---
+      title: Save State Protected
+      date: 2027-01-15T08:00:00Z
+      ---
+
+      Local body.
+      """
+
+    for saveState in [
+      SiteDraftFileSaveState.pending(repositoryPath: path),
+      .failed(repositoryPath: path, message: "disk unavailable"),
+    ] {
+      let persistenceURL = try temporaryPersistenceURL()
+      defer {
+        try? FileManager.default.removeItem(at: persistenceURL.deletingLastPathComponent())
+      }
+      let store = WorkbenchStore(
+        persistence: WorkbenchPersistence(fileURL: persistenceURL)
+      )
+      store.updateActiveProfile { profile in
+        profile.localRepositoryRootPath = persistenceURL.deletingLastPathComponent().path
+        profile.localRepositoryBookmarkData = nil
+      }
+      let draft = ArticleDraft(
+        siteProfileID: store.activeProfileID,
+        title: "Save State Protected",
+        date: Date(timeIntervalSince1970: 1_800_000_000),
+        slug: "save-state-protected",
+        bodyMarkdown: "Local body.",
+        repositoryPath: path,
+        repositorySHA: "old-sha"
+      )
+      var importedBaseline = draft
+      importedBaseline.repositoryImportFingerprint = importedBaseline.repositoryContentFingerprint
+      store.setDrafts([importedBaseline])
+      if case .pending = saveState {
+        var locallyEdited = importedBaseline
+        // The SHA is repository metadata, so this still exercises the
+        // autosave race without making the fingerprint guard the reason for
+        // the conflict.
+        locallyEdited.repositorySHA = "edited-before-write"
+        store.updateDraft(locallyEdited)
+        XCTAssertEqual(
+          store.siteDraftFileSaveStates[locallyEdited.id],
+          .pending(repositoryPath: path)
+        )
+        // Keep the synthetic race window open without sleeping or letting
+        // the delayed fixture write complete during this synchronous check.
+        store.cancelSiteDraftFileAutosave(for: locallyEdited.id)
+        store.siteDraftFileSaveStates[locallyEdited.id] = saveState
+      } else {
+        store.siteDraftFileSaveStates[draft.id] = saveState
+      }
+
+      let summary = store.autoImportRemoteArticleDrafts(
+        remoteFiles: [
+          RepositoryChangedFile(status: "M", path: path, kind: .modified)
+        ],
+        snapshots: [
+          RepositoryFileSnapshot(
+            refName: "origin/main",
+            repositoryPath: path,
+            content: remoteDocument,
+            repositorySHA: "new-sha"
+          )
+        ],
+        locallyChangedPaths: []
+      )
+
+      XCTAssertEqual(summary.importedCount, 0)
+      XCTAssertEqual(summary.updatedCount, 0)
+      XCTAssertEqual(summary.unchangedCount, 0)
+      XCTAssertEqual(summary.conflictPaths, [path])
+      XCTAssertEqual(store.drafts.first?.bodyMarkdown, "Local body.")
+      XCTAssertEqual(store.siteDraftFileSaveStates[draft.id], saveState)
+    }
+  }
+
   func testRepositoryContentFingerprintTracksEditableContentButIgnoresRuntimeIDs() {
     let profileID = UUID()
     let firstAttachment = DraftAttachment(

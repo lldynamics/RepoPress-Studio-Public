@@ -34,6 +34,11 @@ struct WorkbenchThumbnailCachePolicy: Sendable {
 
 @MainActor
 final class WorkbenchImageTwoTierCache {
+  private struct ThumbnailData: Sendable {
+    let imageData: Data
+    let diskData: Data?
+  }
+
   static let shared = WorkbenchImageTwoTierCache()
 
   private let memoryCache = NSCache<NSString, NSImage>()
@@ -41,6 +46,7 @@ final class WorkbenchImageTwoTierCache {
   private let diskCacheDirectory: URL
   private let policy: WorkbenchThumbnailCachePolicy
   private let cacheQueue = DispatchQueue(label: "com.jinfang.workbench.imagecache", qos: .userInitiated)
+  private var memoryCacheGeneration = 0
 
   init(
     diskCacheDirectory: URL? = nil,
@@ -94,6 +100,7 @@ final class WorkbenchImageTwoTierCache {
       maxPixelSize: normalizedMaxPixelSize,
       formatVersion: policy.formatVersion
     )
+    let memoryCacheGeneration = self.memoryCacheGeneration
 
     // 1. 第一级：查 L1 内存缓存
     if let cachedImage = memoryCache.object(forKey: cacheKey as NSString) {
@@ -112,20 +119,26 @@ final class WorkbenchImageTwoTierCache {
         }
 
         // 尝试从磁盘 Cache 目录读取已下采样的图像
-        if let diskImage = Self.loadDiskThumbnail(
+        if let diskImageData = Self.loadDiskThumbnailData(
           at: diskFileURL,
           maximumByteCount: policy.maximumDiskEntryByteCount
         ) {
-          let cost = Self.memoryCost(of: diskImage)
           Task { @MainActor in
-            self.memoryCache.setObject(diskImage, forKey: cacheKey as NSString, cost: cost)
+            guard let diskImage = NSImage(data: diskImageData) else {
+              continuation.resume(returning: nil)
+              return
+            }
+            if self.memoryCacheGeneration == memoryCacheGeneration {
+              let cost = Self.memoryCost(of: diskImage)
+              self.memoryCache.setObject(diskImage, forKey: cacheKey as NSString, cost: cost)
+            }
+            continuation.resume(returning: diskImage)
           }
-          continuation.resume(returning: diskImage)
           return
         }
 
         // 磁盘未命中，使用 CGImageSource 进行硬解码下采样生成轻量缩略图
-        guard let downsampledImage = self.generateDownsampledThumbnail(
+        guard let generatedThumbnail = Self.generateDownsampledThumbnailData(
           from: fileURL,
           maxPixelSize: normalizedMaxPixelSize
         ) else {
@@ -134,9 +147,7 @@ final class WorkbenchImageTwoTierCache {
         }
 
         // 保存到磁盘缓存
-        if let tiffData = downsampledImage.tiffRepresentation,
-           let bitmap = NSBitmapImageRep(data: tiffData),
-           let pngData = bitmap.representation(using: .png, properties: [:]),
+        if let pngData = generatedThumbnail.diskData,
            pngData.count <= policy.maximumDiskEntryByteCount {
           do {
             try pngData.write(to: diskFileURL, options: .atomic)
@@ -152,20 +163,25 @@ final class WorkbenchImageTwoTierCache {
           )
         }
 
-        let cost = Self.memoryCost(of: downsampledImage)
         Task { @MainActor in
-          self.memoryCache.setObject(downsampledImage, forKey: cacheKey as NSString, cost: cost)
+          guard let downsampledImage = NSImage(data: generatedThumbnail.imageData) else {
+            continuation.resume(returning: nil)
+            return
+          }
+          if self.memoryCacheGeneration == memoryCacheGeneration {
+            let cost = Self.memoryCost(of: downsampledImage)
+            self.memoryCache.setObject(downsampledImage, forKey: cacheKey as NSString, cost: cost)
+          }
+          continuation.resume(returning: downsampledImage)
         }
-
-        continuation.resume(returning: downsampledImage)
       }
     }
   }
 
-  private nonisolated func generateDownsampledThumbnail(
+  private nonisolated static func generateDownsampledThumbnailData(
     from fileURL: URL,
     maxPixelSize: Int
-  ) -> NSImage? {
+  ) -> ThumbnailData? {
     let imageSourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
     guard let imageSource = CGImageSourceCreateWithURL(fileURL as CFURL, imageSourceOptions) else {
       return nil
@@ -186,10 +202,18 @@ final class WorkbenchImageTwoTierCache {
       return nil
     }
 
-    return NSImage(
+    let image = NSImage(
       cgImage: downsampledCGImage,
       size: NSSize(width: downsampledCGImage.width, height: downsampledCGImage.height)
     )
+    guard let imageData = image.tiffRepresentation else {
+      return nil
+    }
+    let diskData = NSBitmapImageRep(data: imageData)?.representation(
+      using: .png,
+      properties: [:]
+    )
+    return ThumbnailData(imageData: imageData, diskData: diskData)
   }
 
   private nonisolated static func cacheKey(
@@ -220,6 +244,7 @@ final class WorkbenchImageTwoTierCache {
 
   func clearCache() async {
     memoryCache.removeAllObjects()
+    memoryCacheGeneration &+= 1
     let directoryURL = diskCacheDirectory
     await withCheckedContinuation { continuation in
       cacheQueue.async {
@@ -239,10 +264,10 @@ final class WorkbenchImageTwoTierCache {
     }
   }
 
-  private nonisolated static func loadDiskThumbnail(
+  private nonisolated static func loadDiskThumbnailData(
     at fileURL: URL,
     maximumByteCount: Int
-  ) -> NSImage? {
+  ) -> Data? {
     let fileManager = FileManager.default
     let resourceValues = try? fileURL.resourceValues(
       forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey]
@@ -253,7 +278,7 @@ final class WorkbenchImageTwoTierCache {
           fileSize > 0,
           fileSize <= maximumByteCount,
           let data = try? Data(contentsOf: fileURL, options: .mappedIfSafe),
-          let image = NSImage(data: data) else {
+          NSImage(data: data) != nil else {
       try? fileManager.removeItem(at: fileURL)
       return nil
     }
@@ -262,7 +287,7 @@ final class WorkbenchImageTwoTierCache {
       [.modificationDate: Date()],
       ofItemAtPath: fileURL.path
     )
-    return image
+    return data
   }
 
   private nonisolated static func memoryCost(of image: NSImage) -> Int {

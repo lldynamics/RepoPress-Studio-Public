@@ -660,6 +660,21 @@ extension PublishingStore {
         continue
       }
 
+      // A site-draft autosave is the first durable signal that the app owns
+      // this path locally. Until that write succeeds (or if it failed), the
+      // repository scan cannot safely use Git's working-tree status or the
+      // content fingerprint to prove that replacing the draft is harmless.
+      // Fail closed and leave the path queued for manual review.
+      if let saveState = store.siteDraftFileSaveStates[existing.id] {
+        switch saveState {
+        case .pending, .failed:
+          summary.conflictPaths.append(path)
+          continue
+        case .saved:
+          break
+        }
+      }
+
       let existingFingerprint = existing.repositoryContentFingerprint
       let normalizedRemoteSHA = snapshot.repositorySHA?.trimmedForPublishing.nilIfEmpty
       if let normalizedRemoteSHA,

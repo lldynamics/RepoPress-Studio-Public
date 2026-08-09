@@ -42,6 +42,14 @@ grep -Fq "if: github.event_name == 'push'" "$WORKFLOW" \
   || fail "main pushes must use a dedicated quick-only job"
 grep -Fq "if: github.event_name != 'push'" "$WORKFLOW" \
   || fail "distribution and UI jobs must not run on main pushes"
+for deterministic_language_setting in \
+  'name: Configure deterministic test language' \
+  'defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"' \
+  'defaults write NSGlobalDomain AppleLocale "zh_CN"'; do
+  setting_count="$(grep -Fc "$deterministic_language_setting" "$WORKFLOW" || true)"
+  [[ "$setting_count" -eq 2 ]] \
+    || fail "main-push and pull-request quality jobs must both configure deterministic Simplified Chinese tests"
+done
 grep -Fq -- '--quick' "$WORKFLOW" \
   || fail "workflow must run the shared quick gate"
 grep -Fq -- '--check swift-coverage' "$WORKFLOW" \
