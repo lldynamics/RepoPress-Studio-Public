@@ -1,5 +1,6 @@
-import AppKit
+import CoreGraphics
 import Foundation
+import ImageIO
 import XCTest
 @testable import PersonalSitePublisherMac
 
@@ -10,7 +11,7 @@ final class WorkbenchImageTwoTierCacheTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: fixture) }
     let sourceURL = fixture.appendingPathComponent("source.png")
     let cacheURL = fixture.appendingPathComponent("cache", isDirectory: true)
-    try writeTestPNG(to: sourceURL, color: .systemRed, width: 12, height: 8)
+    try writeTestPNG(to: sourceURL, color: .red, width: 12, height: 8)
 
     let firstCache = WorkbenchImageTwoTierCache(diskCacheDirectory: cacheURL)
     let firstThumbnail = await firstCache.thumbnail(for: sourceURL, maxPixelSize: 64)
@@ -34,12 +35,12 @@ final class WorkbenchImageTwoTierCacheTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: fixture) }
     let sourceURL = fixture.appendingPathComponent("source.png")
     let cacheURL = fixture.appendingPathComponent("cache", isDirectory: true)
-    try writeTestPNG(to: sourceURL, color: .systemBlue, width: 10, height: 10)
+    try writeTestPNG(to: sourceURL, color: .blue, width: 10, height: 10)
     let cache = WorkbenchImageTwoTierCache(diskCacheDirectory: cacheURL)
     let firstThumbnail = await cache.thumbnail(for: sourceURL, maxPixelSize: 64)
     XCTAssertNotNil(firstThumbnail)
 
-    try writeTestPNG(to: sourceURL, color: .systemGreen, width: 17, height: 9)
+    try writeTestPNG(to: sourceURL, color: .green, width: 17, height: 9)
     try FileManager.default.setAttributes(
       [.modificationDate: Date().addingTimeInterval(60)],
       ofItemAtPath: sourceURL.path
@@ -55,7 +56,7 @@ final class WorkbenchImageTwoTierCacheTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: fixture) }
     let sourceURL = fixture.appendingPathComponent("source.png")
     let cacheURL = fixture.appendingPathComponent("cache", isDirectory: true)
-    try writeTestPNG(to: sourceURL, color: .systemOrange, width: 12, height: 12)
+    try writeTestPNG(to: sourceURL, color: .orange, width: 12, height: 12)
     let firstCache = WorkbenchImageTwoTierCache(diskCacheDirectory: cacheURL)
     let firstThumbnail = await firstCache.thumbnail(for: sourceURL, maxPixelSize: 64)
     XCTAssertNotNil(firstThumbnail)
@@ -67,28 +68,25 @@ final class WorkbenchImageTwoTierCacheTests: XCTestCase {
     XCTAssertNotNil(repairedThumbnail)
 
     let repairedData = try Data(contentsOf: cacheEntry)
-    XCTAssertNotNil(NSImage(data: repairedData))
+    XCTAssertTrue(isValidPNGData(repairedData))
   }
 
   func testInitialMaintenanceRemovesExpiredCacheEntry() async throws {
     let fixture = try makeFixture()
     defer { try? FileManager.default.removeItem(at: fixture) }
-    let sourceURL = fixture.appendingPathComponent("source.png")
     let cacheURL = fixture.appendingPathComponent("cache", isDirectory: true)
     try FileManager.default.createDirectory(at: cacheURL, withIntermediateDirectories: true)
-    try writeTestPNG(to: sourceURL, color: .systemPurple, width: 8, height: 8)
     let expiredURL = cacheURL.appendingPathComponent(
       "\(String(repeating: "a", count: 64)).png"
     )
-    try writeTestPNG(to: expiredURL, color: .black, width: 4, height: 4)
+    try Data("expired cache entry".utf8).write(to: expiredURL, options: .atomic)
     try FileManager.default.setAttributes(
       [.modificationDate: Date().addingTimeInterval(-31 * 24 * 60 * 60)],
       ofItemAtPath: expiredURL.path
     )
 
     let cache = WorkbenchImageTwoTierCache(diskCacheDirectory: cacheURL)
-    let thumbnail = await cache.thumbnail(for: sourceURL, maxPixelSize: 64)
-    XCTAssertNotNil(thumbnail)
+    await cache.waitForPendingDiskOperations()
 
     XCTAssertFalse(FileManager.default.fileExists(atPath: expiredURL.path))
   }
@@ -98,7 +96,7 @@ final class WorkbenchImageTwoTierCacheTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: fixture) }
     let sourceURL = fixture.appendingPathComponent("source.png")
     let cacheURL = fixture.appendingPathComponent("cache", isDirectory: true)
-    try writeTestPNG(to: sourceURL, color: .systemTeal, width: 32, height: 24)
+    try writeTestPNG(to: sourceURL, color: .teal, width: 32, height: 24)
     let cache = WorkbenchImageTwoTierCache(diskCacheDirectory: cacheURL)
 
     let smallThumbnail = await cache.thumbnail(for: sourceURL, maxPixelSize: 32)
@@ -184,10 +182,10 @@ final class WorkbenchImageTwoTierCacheTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: fixture) }
     let sourceURL = fixture.appendingPathComponent("source.png")
     let cacheURL = fixture.appendingPathComponent("cache", isDirectory: true)
-    try writeTestPNG(to: sourceURL, color: .systemYellow, width: 32, height: 32)
+    try writeTestPNG(to: sourceURL, color: .yellow, width: 32, height: 32)
     let cache = WorkbenchImageTwoTierCache(diskCacheDirectory: cacheURL)
-    let generationTask = Task {
-      await cache.thumbnail(for: sourceURL, maxPixelSize: 64)
+    let generationTask = Task<Void, Never> {
+      _ = await cache.thumbnail(for: sourceURL, maxPixelSize: 64)
     }
     await Task.yield()
 
@@ -202,7 +200,7 @@ final class WorkbenchImageTwoTierCacheTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: fixture) }
     let sourceURL = fixture.appendingPathComponent("source.png")
     let cacheURL = fixture.appendingPathComponent("not-a-directory")
-    try writeTestPNG(to: sourceURL, color: .systemPink, width: 16, height: 16)
+    try writeTestPNG(to: sourceURL, color: .pink, width: 16, height: 16)
     try Data("occupied".utf8).write(to: cacheURL)
     let cache = WorkbenchImageTwoTierCache(diskCacheDirectory: cacheURL)
 
@@ -223,32 +221,50 @@ final class WorkbenchImageTwoTierCacheTests: XCTestCase {
 
   private func writeTestPNG(
     to url: URL,
-    color: NSColor,
+    color: TestPNGColor,
     width: Int,
     height: Int
   ) throws {
-    let bitmap = try XCTUnwrap(
-      NSBitmapImageRep(
-        bitmapDataPlanes: nil,
-        pixelsWide: width,
-        pixelsHigh: height,
-        bitsPerSample: 8,
-        samplesPerPixel: 4,
-        hasAlpha: true,
-        isPlanar: false,
-        colorSpaceName: .deviceRGB,
-        bytesPerRow: 0,
-        bitsPerPixel: 0
+    let context = try XCTUnwrap(
+      CGContext(
+        data: nil,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: width * 4,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
       )
     )
-    let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: bitmap))
-    NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = context
-    color.setFill()
-    NSRect(x: 0, y: 0, width: width, height: height).fill()
-    NSGraphicsContext.restoreGraphicsState()
-    let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
-    try data.write(to: url, options: .atomic)
+    context.setFillColor(red: color.red, green: color.green, blue: color.blue, alpha: 1)
+    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+
+    let image = try XCTUnwrap(context.makeImage())
+    let outputData = NSMutableData()
+    let destination = try XCTUnwrap(
+      CGImageDestinationCreateWithData(
+        outputData as CFMutableData,
+        "public.png" as CFString,
+        1,
+        nil
+      )
+    )
+    CGImageDestinationAddImage(destination, image, nil)
+    XCTAssertTrue(CGImageDestinationFinalize(destination))
+    try (outputData as Data).write(to: url, options: .atomic)
+  }
+
+  private func isValidPNGData(_ data: Data) -> Bool {
+    guard
+      let source = CGImageSourceCreateWithData(
+        data as CFData,
+        [kCGImageSourceShouldCache: false] as CFDictionary
+      )
+    else {
+      return false
+    }
+    return CGImageSourceGetCount(source) > 0
+      && CGImageSourceCreateImageAtIndex(source, 0, nil) != nil
   }
 
   private func makeDatedCacheEntries(in cacheURL: URL) throws -> [URL] {
@@ -260,7 +276,7 @@ final class WorkbenchImageTwoTierCacheTests: XCTestCase {
     for (index, entry) in entries.enumerated() {
       try writeTestPNG(
         to: entry,
-        color: [.systemRed, .systemGreen, .systemBlue][index],
+        color: [.red, .green, .blue][index],
         width: 8 + index,
         height: 8 + index
       )
@@ -297,4 +313,19 @@ final class WorkbenchImageTwoTierCacheTests: XCTestCase {
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
   }
+}
+
+private struct TestPNGColor {
+  let red: CGFloat
+  let green: CGFloat
+  let blue: CGFloat
+
+  static let black = Self(red: 0, green: 0, blue: 0)
+  static let blue = Self(red: 0, green: 0, blue: 1)
+  static let green = Self(red: 0, green: 1, blue: 0)
+  static let orange = Self(red: 1, green: 0.5, blue: 0)
+  static let pink = Self(red: 1, green: 0, blue: 0.5)
+  static let red = Self(red: 1, green: 0, blue: 0)
+  static let teal = Self(red: 0, green: 0.5, blue: 0.5)
+  static let yellow = Self(red: 1, green: 1, blue: 0)
 }
