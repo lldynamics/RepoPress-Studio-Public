@@ -1,8 +1,4 @@
 {
-  "%lld 节": {
-    "en": "%lld sections",
-    "zh-Hans": "%lld 节"
-  },
   "/%@": {
     "en": "/%@",
     "zh-Hans": "/%@"
@@ -74,10 +70,6 @@
   "尚未识别可启动的本地站点": {
     "en": "No Launchable Local Site Detected",
     "zh-Hans": "尚未识别可启动的本地站点"
-  },
-  "展开悬浮大纲": {
-    "en": "Expand Floating Outline",
-    "zh-Hans": "展开悬浮大纲"
   },
   "已完成发布前检查，发布准备已打开。": {
     "en": "Pre-publish checks are complete, and Publishing Readiness is now open.",

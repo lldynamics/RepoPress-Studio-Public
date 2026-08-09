@@ -64,7 +64,7 @@ struct MermaidDiagramRenderWebView: NSViewRepresentable {
           white-space: pre-wrap;
           word-break: break-word;
         }
-        \(ThinRedScrollbarWebStyle.css)
+          \(ThinRedScrollbarWebStyle.css)
       </style>
     </head>
     <body>

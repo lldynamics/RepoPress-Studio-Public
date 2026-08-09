@@ -46,22 +46,22 @@ struct EditorCenterColumn: View {
     centerSurfaceView(activeSurface)
       .id(activeSurface)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .task(
-      id: EditableDraftSelectionTaskInput(
-        activeProfileID: editorState.activeProfileID,
-        selectedSection: editorState.selectedSection
-      )
-    ) {
-      // Selecting a fallback draft publishes preflight and selection state.
-      // Let the current SwiftUI update finish before starting that work.
-      await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
-      guard !Task.isCancelled else { return }
-      ensureDraftIfNeeded()
-    }
-    .onChange(of: knowledge.statusMessage) { _, message in
-      guard activeSurface == .knowledgeLibrary, let message else { return }
-      EditorAccessibilityAnnouncementCenter.announce(message)
-    }
+      .task(
+        id: EditableDraftSelectionTaskInput(
+          activeProfileID: editorState.activeProfileID,
+          selectedSection: editorState.selectedSection
+        )
+      ) {
+        // Selecting a fallback draft publishes preflight and selection state.
+        // Let the current SwiftUI update finish before starting that work.
+        await MainRunLoopUpdateDeferral.waitForNextDefaultModeCycle()
+        guard !Task.isCancelled else { return }
+        ensureDraftIfNeeded()
+      }
+      .onChange(of: knowledge.statusMessage) { _, message in
+        guard activeSurface == .knowledgeLibrary, let message else { return }
+        EditorAccessibilityAnnouncementCenter.announce(message)
+      }
   }
 
   private func ensureDraftIfNeeded() {

@@ -66,7 +66,7 @@ struct PersistentWindowCommandRequestState: Equatable {
 
   private mutating func scheduleIfNeeded() -> Bool {
     guard isPending,
-          !isScheduled
+      !isScheduled
     else {
       return false
     }
@@ -136,8 +136,8 @@ struct MainWindowRestoreRequestState: Equatable {
 
   mutating func retryTimerFired(token: Int) -> Bool {
     guard activeRetryToken == token,
-          isPending,
-          !isActionInFlight
+      isPending,
+      !isActionInFlight
     else {
       return false
     }
@@ -147,8 +147,8 @@ struct MainWindowRestoreRequestState: Equatable {
 
   private mutating func scheduleIfNeeded() -> Bool {
     guard isPending,
-          !isScheduled,
-          !isActionInFlight
+      !isScheduled,
+      !isActionInFlight
     else {
       return false
     }

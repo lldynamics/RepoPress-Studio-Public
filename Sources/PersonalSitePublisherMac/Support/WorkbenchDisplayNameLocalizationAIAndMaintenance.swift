@@ -2,6 +2,67 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
+extension AIPublishingActionConvergence {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .publishAssetPack: "display.ai-publishing-action-convergence.publish-asset-pack"
+    case .rewriteSelection: "display.ai-publishing-action-convergence.rewrite-selection"
+    case .contentReview: "display.ai-publishing-action-convergence.content-review"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
+extension AIPublishingAssetKind {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .frontMatter: "display.ai-publishing-asset-kind.front-matter"
+    case .socialShare: "display.ai-publishing-asset-kind.social-share"
+    case .pullQuotes: "display.ai-publishing-asset-kind.pull-quotes"
+    case .publishNote: "display.ai-publishing-asset-kind.publish-note"
+    case .newsletterSummary: "display.ai-publishing-asset-kind.newsletter-summary"
+    case .coverImagePrompt: "display.ai-publishing-asset-kind.cover-image-prompt"
+    case .crossPlatformAnnouncement:
+      "display.ai-publishing-asset-kind.cross-platform-announcement"
+    case .shortVideoScript: "display.ai-publishing-asset-kind.short-video-script"
+    case .imageAltCaptions: "display.ai-publishing-asset-kind.image-alt-captions"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
+extension AIPublishingRewriteOperation {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .rewrite: "display.ai-publishing-rewrite-operation.rewrite"
+    case .polish: "display.ai-publishing-rewrite-operation.polish"
+    case .expand: "display.ai-publishing-rewrite-operation.expand"
+    case .condense: "display.ai-publishing-rewrite-operation.condense"
+    case .simplify: "display.ai-publishing-rewrite-operation.simplify"
+    case .summarize: "display.ai-publishing-rewrite-operation.summarize"
+    case .removeRedundancy: "display.ai-publishing-rewrite-operation.remove-redundancy"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
+extension AIPublishingRewriteStyle {
+  var workbenchDisplayNameSemanticKey: String {
+    switch self {
+    case .balanced: "display.ai-publishing-rewrite-style.balanced"
+    case .readerFriendly: "display.ai-publishing-rewrite-style.reader-friendly"
+    case .formal: "display.ai-publishing-rewrite-style.formal"
+    case .casual: "display.ai-publishing-rewrite-style.casual"
+    case .technical: "display.ai-publishing-rewrite-style.technical"
+    }
+  }
+
+  var fallbackDisplayName: String { displayName }
+}
+
 extension AIPublishingDefaultCapability {
   var workbenchDisplayNameSemanticKey: String {
     switch self {

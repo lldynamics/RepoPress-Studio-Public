@@ -115,10 +115,6 @@
     "en": "Broken Local Resource References",
     "zh-Hans": "失效本地资源引用"
   },
-  "定位到标题：%@": {
-    "en": "Jump to Heading: %@",
-    "zh-Hans": "定位到标题：%@"
-  },
   "将尝试压缩 %@ 张图片。只有生成结果更小、且原文件自扫描后未变化时才会原位替换。": {
     "en": "This will try to compress %@ images. An original is replaced only if the result is smaller and the file has not changed since the scan.",
     "zh-Hans": "将尝试压缩 %@ 张图片。只有生成结果更小、且原文件自扫描后未变化时才会原位替换。"
@@ -163,10 +159,6 @@
     "en": "Drag into the Article to Insert a Quote Block",
     "zh-Hans": "拖入正文插入引用块"
   },
-  "收起悬浮大纲": {
-    "en": "Collapse Floating Outline",
-    "zh-Hans": "收起悬浮大纲"
-  },
   "暂无内容": {
     "en": "No Content Yet",
     "zh-Hans": "暂无内容"
@@ -198,10 +190,6 @@
   "清除筛选": {
     "en": "Clear Filters",
     "zh-Hans": "清除筛选"
-  },
-  "目标文章：%@": {
-    "en": "Target Article: %@",
-    "zh-Hans": "目标文章：%@"
   },
   "移入废纸篓": {
     "en": "Move to Trash",
@@ -250,9 +238,5 @@
   "重新扫描资源和 Markdown 引用": {
     "en": "Rescan Resources and Markdown References",
     "zh-Hans": "重新扫描资源和 Markdown 引用"
-  },
-  "钥匙串凭据": {
-    "en": "Keychain Credentials",
-    "zh-Hans": "钥匙串凭据"
   }
 }

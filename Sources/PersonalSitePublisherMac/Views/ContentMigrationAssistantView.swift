@@ -428,7 +428,7 @@ struct ContentMigrationAssistantView: View {
   private func comparisonValueLabel(_ label: String, value: String, color: Color) -> some View {
     VStack(alignment: .leading, spacing: 2) {
       Text(label)
-        .font(.caption2)
+        .font(.workbenchMetadata)
         .foregroundStyle(.secondary)
       migrationComparisonValue(value, color: color)
     }

@@ -512,7 +512,10 @@ struct MacMarkdownEditorToolbar: View {
               .rewriteSelection(AIPublishingRewriteConfiguration(style: style))
             )
           } label: {
-            Label(style.displayName, systemImage: style == .balanced ? "wand.and.stars" : "textformat")
+            Label(
+              style.localizedDisplayName,
+              systemImage: style == .balanced ? "wand.and.stars" : "textformat"
+            )
           }
           .disabled(!actions.selectionAIActionAvailability(.rewriteSelection).isEnabled)
         }
@@ -527,7 +530,7 @@ struct MacMarkdownEditorToolbar: View {
               .rewriteSelection(AIPublishingRewriteConfiguration(operation: operation))
             )
           } label: {
-            Label(operation.displayName, systemImage: "wand.and.stars")
+            Label(operation.localizedDisplayName, systemImage: "wand.and.stars")
           }
           .disabled(!actions.selectionAIActionAvailability(.rewriteSelection).isEnabled)
         }
@@ -544,7 +547,7 @@ struct MacMarkdownEditorToolbar: View {
       Section("选择发布资产") {
         ForEach(AIPublishingAssetKind.allCases) { asset in
           Toggle(isOn: publishAssetBinding(for: asset)) {
-            Label(asset.displayName, systemImage: "checkmark.square")
+            Label(asset.localizedDisplayName, systemImage: "checkmark.square")
           }
         }
       }

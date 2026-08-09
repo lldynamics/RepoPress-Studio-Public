@@ -229,7 +229,7 @@ struct RSSArticleReader: View {
     .allowsHitTesting(false)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("阅读进度")
-    .accessibilityValue("已读 (readingProgressPercentage)%")
+    .accessibilityValue("已读 \(readingProgressPercentage)%")
     .accessibilityIdentifier("rss-reading-progress-bar")
   }
 

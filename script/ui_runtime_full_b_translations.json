@@ -9,7 +9,6 @@
   "%lld 错误": "%lld errors",
   "AI 修复": "AI Fix",
   "AI 修改预览": "AI Change Preview",
-  "AI 配置或 Key 已变化，之前的连接测试结果已失效。": "The AI configuration or key has changed. The previous connection test result is no longer valid.",
   "Branch": "Branch",
   "Chrome": "Chrome",
   "EPUB": "EPUB",
@@ -18,10 +17,8 @@
   "Repo": "Repo",
   "· 引用 %lld 个片段": "· %lld referenced snippets",
   "−%lld 行 · +%lld 行": "−%lld lines · +%lld lines",
-  "⏱️ 约 %@ 分钟 · %lld 字/词 · 目标 %@%": "⏱️ About %@ min · %lld words · %@% of target",
   "中文按汉字计数，其他语言按词计数。": "Chinese is counted by character; other languages are counted by word.",
   "仓库信息": "Repository Information",
-  "仓库连接": "Repository Connection",
   "代码语言": "Code Language",
   "保存为新版本": "Save as New Version",
   "保存源文件": "Save Source File",
@@ -154,7 +151,6 @@
   "远端平台": "Remote Platform",
   "退出批量选择（Esc）": "Exit Batch Selection (Esc)",
   "部署凭据": "Deployment Credentials",
-  "部署校验": "Deployment Validation",
   "部署账号 / Team / Account ID": "Deployment Account / Team / Account ID",
   "部署项目 / Site ID": "Deployment Project / Site ID",
   "重新检查 Safari 扩展状态": "Check Safari Extension Status Again",
@@ -165,6 +161,5 @@
   "预览并安全替换多篇文章的正文": "Preview and Safely Replace Content in Multiple Articles",
   "预览远端文章导入": "Preview Remote Article Import",
   "预计新增 %lld 行、移除 %lld 行。": "About %lld lines will be added and %lld lines removed.",
-  "预设": "Preset",
-  "高级设置": "Advanced Settings"
+  "预设": "Preset"
 }
