@@ -65,6 +65,9 @@ grep -Fq -- '--summary-markdown .build/distribution-gate-summary.md' "$WORKFLOW"
   || fail "quality workflow must produce a readable distribution summary"
 grep -Fq 'GITHUB_STEP_SUMMARY' "$WORKFLOW" \
   || fail "quality workflow must publish its readable summary"
+swift_test_artifact_count="$(grep -Fc '.build/swift-test-shards/' "$WORKFLOW" || true)"
+[[ "$swift_test_artifact_count" -eq 2 ]] \
+  || fail "main-push and pull-request quality artifacts must both retain Swift test shard diagnostics"
 grep -Fq 'bash script/check_ui_runtime.sh --launch' "$WORKFLOW" \
   || fail "quality workflow must verify a real visible Release app launch"
 grep -Fq 'WORKBENCH_XCUI_APP_PATH="$PWD/dist/PersonalSitePublisherMac.app"' "$WORKFLOW" \

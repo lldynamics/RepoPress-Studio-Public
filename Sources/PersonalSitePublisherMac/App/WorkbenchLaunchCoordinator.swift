@@ -21,6 +21,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
 
   private let bookmarkStore: WorkbenchDataRootBookmarkStore?
   private let explicitRuntimePaths: WorkbenchRuntimePaths?
+  private let browserBridgeConnectionKeychainStore: KeychainTokenStore?
   private let sessionRecovery: WorkbenchSessionRecovery
   private var dataRootSession: WorkbenchDataRootSession?
   private var didStart = false
@@ -28,12 +29,14 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
 
   convenience init(
     bookmarkStore: WorkbenchDataRootBookmarkStore = WorkbenchDataRootBookmarkStore(),
-    sessionRecovery: WorkbenchSessionRecovery? = nil
+    sessionRecovery: WorkbenchSessionRecovery? = nil,
+    browserBridgeConnectionKeychainStore: KeychainTokenStore? = nil
   ) {
     self.init(
       bookmarkStore: bookmarkStore,
       explicitRuntimePaths: nil,
-      sessionRecovery: sessionRecovery
+      sessionRecovery: sessionRecovery,
+      browserBridgeConnectionKeychainStore: browserBridgeConnectionKeychainStore
     )
   }
 
@@ -43,7 +46,8 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     rssReaderFileURL: URL,
     managedAttachmentFileStore: ManagedAttachmentFileStore,
     workspaceBackupDirectoryURL: URL,
-    sessionRecovery: WorkbenchSessionRecovery? = nil
+    sessionRecovery: WorkbenchSessionRecovery? = nil,
+    browserBridgeConnectionKeychainStore: KeychainTokenStore? = nil
   ) {
     self.init(
       bookmarkStore: nil,
@@ -54,17 +58,20 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
         managedAttachmentFileStore: managedAttachmentFileStore,
         workspaceBackupDirectoryURL: workspaceBackupDirectoryURL
       ),
-      sessionRecovery: sessionRecovery
+      sessionRecovery: sessionRecovery,
+      browserBridgeConnectionKeychainStore: browserBridgeConnectionKeychainStore
     )
   }
 
   private init(
     bookmarkStore: WorkbenchDataRootBookmarkStore?,
     explicitRuntimePaths: WorkbenchRuntimePaths?,
-    sessionRecovery: WorkbenchSessionRecovery?
+    sessionRecovery: WorkbenchSessionRecovery?,
+    browserBridgeConnectionKeychainStore: KeychainTokenStore?
   ) {
     self.bookmarkStore = bookmarkStore
     self.explicitRuntimePaths = explicitRuntimePaths
+    self.browserBridgeConnectionKeychainStore = browserBridgeConnectionKeychainStore
     let resolvedSessionRecovery = sessionRecovery ?? .shared
     self.sessionRecovery = resolvedSessionRecovery
     self.phase = .preparing(String(localized: "正在检查数据文件夹…"))
@@ -517,6 +524,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     self.rssStore = rssStore
     let browserBridge = KnowledgeBrowserBridge(
       knowledge: workbenchStore.knowledge,
+      connectionTokenKeychainStore: browserBridgeConnectionKeychainStore,
       onOpenDocument: { [weak workbenchStore] _ in
         workbenchStore?.selectSection(.library)
         NSApp.activate(ignoringOtherApps: true)
