@@ -392,6 +392,7 @@ extension WorkbenchAIStore {
   }
 
   public func hideAIPublishingAssistant() {
+    guard isAIPublishingAssistantPresented else { return }
     isAIPublishingAssistantPresented = false
   }
 

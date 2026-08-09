@@ -144,74 +144,125 @@ private struct MainWindowOpenActionRegistration: View {
 final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate {
   var workbenchStore: WorkbenchStore?
   var browserBridge: KnowledgeBrowserBridge?
-  var openMainWindowAction: (() -> Void)?
+  var openMainWindowAction: (() -> Void)? {
+    didSet {
+      guard openMainWindowAction != nil,
+            mainWindowRestoreRequestState.actionBecameAvailable()
+      else {
+        return
+      }
+      enqueueMainWindowRestoreAfterMenuTracking()
+    }
+  }
 
   private let reopenMenuItemIdentifier = NSUserInterfaceItemIdentifier(
     "com.jinfang.repopress-studio.show-main-window"
   )
+  private var closingMainWindowIdentifiers = Set<ObjectIdentifier>()
+  private var persistentWindowCommandRequestState = PersistentWindowCommandRequestState()
+  private var mainWindowRestoreRequestState = MainWindowRestoreRequestState()
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
     NotificationCenter.default.addObserver(
       self,
-      selector: #selector(mainWindowWillClose(_:)),
+      selector: #selector(windowWillClose(_:)),
       name: NSWindow.willCloseNotification,
       object: nil
     )
-    installPersistentWindowCommands()
-    normalizeVisibleApplicationName()
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(windowDidBecomeKey(_:)),
+      name: NSWindow.didBecomeKeyNotification,
+      object: nil
+    )
+    requestPersistentWindowCommandReconciliation()
     scheduleMainWindowRecoveryIfNeeded()
   }
 
   func applicationDidBecomeActive(_ notification: Notification) {
-    installPersistentWindowCommands()
-    normalizeVisibleApplicationName()
+    requestPersistentWindowCommandReconciliation()
     scheduleMainWindowRecoveryIfNeeded()
   }
 
   func applicationDidUpdate(_ notification: Notification) {
-    installPersistentWindowCommands()
+    // SwiftUI may replace scene-owned menu trees while opening or closing a
+    // WindowGroup. Reconcile only through the coalesced default-mode scheduler
+    // so updates never mutate AppKit menus during an active tracking session.
+    requestPersistentWindowCommandReconciliation()
   }
 
   func applicationShouldHandleReopen(
     _ sender: NSApplication,
     hasVisibleWindows flag: Bool
   ) -> Bool {
-    guard !flag else { return true }
-    if restoreMainWindow(in: sender) {
-      return false
+    if sender.windows.contains(where: { window in
+      isLiveMainWorkbenchWindow(window) && window.isVisible
+    }) {
+      return true
     }
-    return true
+    let hasRestorableMainWindow = sender.windows.contains(where: isLiveMainWorkbenchWindow)
+    guard hasRestorableMainWindow || openMainWindowAction != nil else {
+      return true
+    }
+    requestMainWindowRestore()
+    return false
   }
 
   @objc
   private func showMainWindow(_ sender: Any?) {
-    NSApp.activate(ignoringOtherApps: true)
-    _ = restoreMainWindow(in: NSApp)
+    requestMainWindowRestore()
   }
 
   @objc
-  private func mainWindowWillClose(_ notification: Notification) {
+  private func windowWillClose(_ notification: Notification) {
+    guard let window = notification.object as? NSWindow,
+          isMainWorkbenchWindow(window)
+    else {
+      return
+    }
+    closingMainWindowIdentifiers.insert(ObjectIdentifier(window))
     // SwiftUI removes scene-scoped command contributions after the last
-    // WindowGroup window closes. Reinstall this AppKit-owned command after
-    // that scene teardown so the Window menu remains actionable.
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-      self?.installPersistentWindowCommands()
-      self?.normalizeVisibleApplicationName()
+    // WindowGroup window closes. Recheck across that teardown window while the
+    // request state preserves the reconciliation intent until a menu resolves.
+    for delay in [0.2, 0.6, 1.0] {
+      DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+        self?.requestPersistentWindowCommandReconciliation()
+      }
     }
   }
 
-  private func restoreMainWindow(in application: NSApplication) -> Bool {
-    if let mainWindow = application.windows.first(where: isMainWorkbenchWindow) {
+  @objc
+  private func windowDidBecomeKey(_ notification: Notification) {
+    guard let window = notification.object as? NSWindow,
+          isMainWorkbenchWindow(window)
+    else {
+      return
+    }
+    closingMainWindowIdentifiers.remove(ObjectIdentifier(window))
+    mainWindowRestoreRequestState.markCompleted()
+    requestPersistentWindowCommandReconciliation()
+  }
+
+  private enum MainWindowRestoreAttempt {
+    case restoredExistingWindow
+    case dispatchedOpenAction
+    case unavailable
+  }
+
+  private func restoreMainWindow(in application: NSApplication) -> MainWindowRestoreAttempt {
+    if let mainWindow = application.windows.first(where: { window in
+      isLiveMainWorkbenchWindow(window)
+    }) {
       if mainWindow.isMiniaturized {
         mainWindow.deminiaturize(nil)
       }
       mainWindow.makeKeyAndOrderFront(nil)
-      return true
+      return .restoredExistingWindow
     }
-    guard let openMainWindowAction else { return false }
+    guard let openMainWindowAction else { return .unavailable }
     openMainWindowAction()
-    return true
+    return .dispatchedOpenAction
   }
 
   private func scheduleMainWindowRecoveryIfNeeded() {
@@ -221,12 +272,49 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     // for that restoration pass, then surface the existing workbench window
     // (or ask the WindowGroup to create one once its open action is ready).
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-      guard let self,
-            !NSApp.windows.contains(where: \.isVisible)
-      else {
-        return
+      guard let self else { return }
+      if !NSApp.windows.contains(where: \.isVisible) {
+        self.requestMainWindowRestore()
       }
-      _ = self.restoreMainWindow(in: NSApp)
+      self.requestPersistentWindowCommandReconciliation()
+    }
+  }
+
+  private func requestMainWindowRestore() {
+    guard mainWindowRestoreRequestState.request() else { return }
+    enqueueMainWindowRestoreAfterMenuTracking()
+  }
+
+  private func enqueueMainWindowRestoreAfterMenuTracking() {
+    RunLoop.main.perform(inModes: [.default]) { [weak self] in
+      MainActor.assumeIsolated {
+        guard let self,
+              self.mainWindowRestoreRequestState.beginScheduledAttempt()
+        else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        switch self.restoreMainWindow(in: NSApp) {
+        case .restoredExistingWindow:
+          self.mainWindowRestoreRequestState.markCompleted()
+        case .dispatchedOpenAction:
+          self.mainWindowRestoreRequestState.markActionDispatched()
+        case .unavailable:
+          self.scheduleMainWindowRestoreRetry(
+            self.mainWindowRestoreRequestState.markActionUnavailable()
+          )
+        }
+      }
+    }
+  }
+
+  private func scheduleMainWindowRestoreRetry(
+    _ retry: WindowLifecycleRetrySchedule?
+  ) {
+    guard let retry else { return }
+    DispatchQueue.main.asyncAfter(deadline: .now() + retry.delay) { [weak self] in
+      guard let self,
+            self.mainWindowRestoreRequestState.retryTimerFired(token: retry.token)
+      else { return }
+      self.enqueueMainWindowRestoreAfterMenuTracking()
     }
   }
 
@@ -238,10 +326,56 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     return window.title == "RepoPress Studio" || window.title == "RepoPress"
   }
 
-  private func installPersistentWindowCommands() {
-    guard let windowMenu = resolveWindowMenu() else { return }
-    if windowMenu.items.contains(where: { $0.identifier == reopenMenuItemIdentifier }) {
+  private func requestPersistentWindowCommandReconciliation() {
+    guard persistentWindowCommandRequestState.request() else { return }
+    enqueuePersistentWindowCommandReconciliation()
+  }
+
+  private func enqueuePersistentWindowCommandReconciliation() {
+    // AppKit tracks menus in NSEventTrackingRunLoopMode. Scheduling all menu
+    // mutations in the default mode guarantees that this block cannot run
+    // while any menu bar or submenu is still being tracked.
+    RunLoop.main.perform(inModes: [.default]) { [weak self] in
+      MainActor.assumeIsolated {
+        guard let self,
+              self.persistentWindowCommandRequestState.beginScheduledAttempt()
+        else { return }
+        self.reconcilePersistentWindowCommand()
+      }
+    }
+  }
+
+  private func reconcilePersistentWindowCommand() {
+    pruneClosedMainWindowIdentifiers()
+    guard let windowMenu = resolveWindowMenu() else {
+      schedulePersistentWindowCommandReconciliationRetry(
+        persistentWindowCommandRequestState.markAttemptUnavailable()
+      )
       return
+    }
+    persistentWindowCommandRequestState.markCompleted()
+    normalizeVisibleApplicationName()
+    let existingItem = windowMenu.items.first {
+      $0.identifier == reopenMenuItemIdentifier
+    }
+    let decision = PersistentWindowCommandMenuPolicy.decision(
+      hasMainWindow: hasOpenMainWorkbenchWindow,
+      commandExists: existingItem != nil,
+      isMenuTracking: false
+    )
+
+    switch decision {
+    case .noChange:
+      return
+    case .deferUntilTrackingEnds:
+      return
+    case .remove:
+      if let existingItem {
+        windowMenu.removeItem(existingItem)
+      }
+      return
+    case .install:
+      break
     }
 
     let reopenItem = NSMenuItem(
@@ -253,7 +387,34 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     reopenItem.keyEquivalentModifierMask = [.command]
     reopenItem.target = self
     windowMenu.insertItem(reopenItem, at: 0)
-    windowMenu.insertItem(.separator(), at: 1)
+  }
+
+  private func schedulePersistentWindowCommandReconciliationRetry(
+    _ retry: WindowLifecycleRetrySchedule?
+  ) {
+    guard let retry else { return }
+    DispatchQueue.main.asyncAfter(deadline: .now() + retry.delay) { [weak self] in
+      guard let self,
+            self.persistentWindowCommandRequestState.retryTimerFired(token: retry.token)
+      else { return }
+      self.enqueuePersistentWindowCommandReconciliation()
+    }
+  }
+
+  private var hasOpenMainWorkbenchWindow: Bool {
+    NSApp.windows.contains { window in
+      isLiveMainWorkbenchWindow(window) && (window.isVisible || window.isMiniaturized)
+    }
+  }
+
+  private func isLiveMainWorkbenchWindow(_ window: NSWindow) -> Bool {
+    isMainWorkbenchWindow(window)
+      && !closingMainWindowIdentifiers.contains(ObjectIdentifier(window))
+  }
+
+  private func pruneClosedMainWindowIdentifiers() {
+    let knownWindowIdentifiers = Set(NSApp.windows.map(ObjectIdentifier.init))
+    closingMainWindowIdentifiers.formIntersection(knownWindowIdentifiers)
   }
 
   private func resolveWindowMenu() -> NSMenu? {
@@ -271,8 +432,12 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
 
   private func normalizeVisibleApplicationName() {
     guard let applicationMenuItem = NSApp.mainMenu?.items.first else { return }
-    applicationMenuItem.title = "RepoPress Studio"
-    applicationMenuItem.submenu?.title = "RepoPress Studio"
+    if applicationMenuItem.title != "RepoPress Studio" {
+      applicationMenuItem.title = "RepoPress Studio"
+    }
+    if applicationMenuItem.submenu?.title != "RepoPress Studio" {
+      applicationMenuItem.submenu?.title = "RepoPress Studio"
+    }
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

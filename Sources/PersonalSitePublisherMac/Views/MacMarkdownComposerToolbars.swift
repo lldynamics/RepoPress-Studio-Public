@@ -9,6 +9,8 @@ struct MacMarkdownEditorToolbar: View {
   let hasUnsavedChanges: Bool
   let editorDisplayMode: EditorDisplayMode
   let isSelectionAIActionRunning: Bool
+  let canOpenAIChat: Bool
+  let aiChatUnavailableReason: String?
   let writingToolDensity: MarkdownWritingToolDensity
   let availableWritingContextPanels: [MarkdownWritingContextPanel]
   let actions: MarkdownEditorToolbarActions
@@ -24,6 +26,8 @@ struct MacMarkdownEditorToolbar: View {
     hasUnsavedChanges: Bool,
     editorDisplayMode: EditorDisplayMode,
     isSelectionAIActionRunning: Bool,
+    canOpenAIChat: Bool,
+    aiChatUnavailableReason: String?,
     writingToolDensity: MarkdownWritingToolDensity,
     availableWritingContextPanels: [MarkdownWritingContextPanel],
     actions: MarkdownEditorToolbarActions
@@ -35,6 +39,8 @@ struct MacMarkdownEditorToolbar: View {
     self.hasUnsavedChanges = hasUnsavedChanges
     self.editorDisplayMode = editorDisplayMode
     self.isSelectionAIActionRunning = isSelectionAIActionRunning
+    self.canOpenAIChat = canOpenAIChat
+    self.aiChatUnavailableReason = aiChatUnavailableReason
     self.writingToolDensity = writingToolDensity
     self.availableWritingContextPanels = availableWritingContextPanels
     self.actions = actions
@@ -51,8 +57,9 @@ struct MacMarkdownEditorToolbar: View {
 
       ViewThatFits(in: .horizontal) {
         expandedToolbarControls
-        compactToolbarControls(showsPrepareTitle: true)
-        compactToolbarControls(showsPrepareTitle: false)
+        compactToolbarControls(showsAIChatTitle: true, showsPrepareTitle: true)
+        compactToolbarControls(showsAIChatTitle: true, showsPrepareTitle: false)
+        compactToolbarControls(showsAIChatTitle: false, showsPrepareTitle: false)
       }
     }
     .padding(.horizontal, WorkbenchSpacing.section)
@@ -85,17 +92,22 @@ struct MacMarkdownEditorToolbar: View {
       editorToolbarDivider
       expandedEditorActions
       editorToolbarDivider
+      aiChatButton(showsTitle: true)
       localSitePreviewButton(showsTitle: true)
       preparePublishButton(showsTitle: true)
     }
   }
 
-  private func compactToolbarControls(showsPrepareTitle: Bool) -> some View {
+  private func compactToolbarControls(
+    showsAIChatTitle: Bool,
+    showsPrepareTitle: Bool
+  ) -> some View {
     HStack(spacing: 4) {
       compactSaveStatus
       compactEditorDisplayModeControl
       compactEditorActionsMenu
       editorToolbarDivider
+      aiChatButton(showsTitle: showsAIChatTitle)
       localSitePreviewButton(showsTitle: false)
       preparePublishButton(showsTitle: showsPrepareTitle)
     }
@@ -139,6 +151,30 @@ struct MacMarkdownEditorToolbar: View {
       .help(lastSaveStatus)
       .accessibilityLabel("保存状态")
       .accessibilityValue(lastSaveStatus)
+  }
+
+  private func aiChatButton(showsTitle: Bool) -> some View {
+    Button {
+      actions.onOpenAIContextInspector()
+    } label: {
+      if showsTitle {
+        Label("AI 对话", systemImage: "sparkles")
+      } else {
+        Image(systemName: "sparkles")
+          .accessibilityHidden(true)
+      }
+    }
+    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
+    .disabled(!canOpenAIChat)
+    .help(
+      aiChatUnavailableReason
+        ?? String(localized: "在右侧继续当前文章的 AI 对话")
+    )
+    .accessibilityLabel(String(localized: "AI 对话"))
+    .accessibilityValue(
+      isSelectionAIActionRunning ? String(localized: "AI 正在生成回复") : ""
+    )
+    .accessibilityIdentifier("markdown-ai-assistant-entry")
   }
 
   private func localSitePreviewButton(showsTitle: Bool) -> some View {
