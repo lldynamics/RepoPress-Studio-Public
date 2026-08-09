@@ -1,9 +1,10 @@
 import AppKit
+import CoreGraphics
 import CryptoKit
 import ImageIO
-import os
 import PublishingWorkbenchCore
 import SwiftUI
+import os
 
 private let imageCacheLogger = Logger(
   subsystem: "com.jinfang.PersonalSitePublisherMac",
@@ -45,7 +46,8 @@ final class WorkbenchImageTwoTierCache {
   private let fileManager = FileManager.default
   private let diskCacheDirectory: URL
   private let policy: WorkbenchThumbnailCachePolicy
-  private let cacheQueue = DispatchQueue(label: "com.jinfang.workbench.imagecache", qos: .userInitiated)
+  private let cacheQueue = DispatchQueue(
+    label: "com.jinfang.workbench.imagecache", qos: .userInitiated)
   private var memoryCacheGeneration = 0
 
   init(
@@ -54,12 +56,13 @@ final class WorkbenchImageTwoTierCache {
   ) {
     self.policy = policy
     memoryCache.countLimit = 300
-    memoryCache.totalCostLimit = 64 * 1024 * 1024 // 64 MB 内存缓存上限
+    memoryCache.totalCostLimit = 64 * 1024 * 1024  // 64 MB 内存缓存上限
 
     if let diskCacheDirectory {
       self.diskCacheDirectory = diskCacheDirectory
     } else {
-      let cachesURL = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
+      let cachesURL =
+        fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
         ?? fileManager.temporaryDirectory
       self.diskCacheDirectory = cachesURL.appendingPathComponent(
         "WorkbenchImageThumbnails",
@@ -126,17 +129,20 @@ final class WorkbenchImageTwoTierCache {
         }
 
         // 磁盘未命中，使用 CGImageSource 进行硬解码下采样生成轻量缩略图
-        guard let generatedThumbnail = Self.generateDownsampledThumbnailData(
-          from: fileURL,
-          maxPixelSize: normalizedMaxPixelSize
-        ) else {
+        guard
+          let generatedThumbnail = Self.generateDownsampledThumbnailData(
+            from: fileURL,
+            maxPixelSize: normalizedMaxPixelSize
+          )
+        else {
           continuation.resume(returning: nil)
           return
         }
 
         // 保存到磁盘缓存
         if let pngData = generatedThumbnail.diskData,
-           pngData.count <= policy.maximumDiskEntryByteCount {
+          pngData.count <= policy.maximumDiskEntryByteCount
+        {
           do {
             try pngData.write(to: diskFileURL, options: .atomic)
           } catch {
@@ -158,7 +164,8 @@ final class WorkbenchImageTwoTierCache {
     // NSImage stays on MainActor: decode, update L1, and return only after the
     // background queue has transported Sendable thumbnail bytes.
     guard let thumbnailData,
-          let image = NSImage(data: thumbnailData.imageData) else {
+      let image = NSImage(data: thumbnailData.imageData)
+    else {
       return nil
     }
     if self.memoryCacheGeneration == memoryCacheGeneration {
@@ -181,29 +188,39 @@ final class WorkbenchImageTwoTierCache {
       kCGImageSourceCreateThumbnailFromImageAlways: true,
       kCGImageSourceShouldCacheImmediately: true,
       kCGImageSourceCreateThumbnailWithTransform: true,
-      kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+      kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
     ]
 
-    guard let downsampledCGImage = CGImageSourceCreateThumbnailAtIndex(
-      imageSource,
-      0,
-      downsampleOptions as CFDictionary
-    ) else {
+    guard
+      let downsampledCGImage = CGImageSourceCreateThumbnailAtIndex(
+        imageSource,
+        0,
+        downsampleOptions as CFDictionary
+      )
+    else {
       return nil
     }
 
-    let image = NSImage(
-      cgImage: downsampledCGImage,
-      size: NSSize(width: downsampledCGImage.width, height: downsampledCGImage.height)
-    )
-    guard let imageData = image.tiffRepresentation else {
+    // Keep the cache queue AppKit-free. NSImage and its TIFF/bitmap conversion
+    // are MainActor work; ImageIO can encode the downsampled CGImage directly
+    // into the PNG bytes transported back to the actor.
+    let outputData = NSMutableData()
+    guard
+      let destination = CGImageDestinationCreateWithData(
+        outputData as CFMutableData,
+        "public.png" as CFString,
+        1,
+        nil
+      )
+    else {
       return nil
     }
-    let diskData = NSBitmapImageRep(data: imageData)?.representation(
-      using: .png,
-      properties: [:]
-    )
-    return ThumbnailData(imageData: imageData, diskData: diskData)
+    CGImageDestinationAddImage(destination, downsampledCGImage, nil)
+    guard CGImageDestinationFinalize(destination) else {
+      return nil
+    }
+    let pngData = outputData as Data
+    return ThumbnailData(imageData: pngData, diskData: pngData)
   }
 
   private nonisolated static func cacheKey(
@@ -215,7 +232,8 @@ final class WorkbenchImageTwoTierCache {
     let resourceValues = try? normalizedURL.resourceValues(
       forKeys: [.contentModificationDateKey, .fileSizeKey]
     )
-    let modificationDateBits = resourceValues?
+    let modificationDateBits =
+      resourceValues?
       .contentModificationDate?
       .timeIntervalSince1970
       .bitPattern ?? 0
@@ -225,7 +243,7 @@ final class WorkbenchImageTwoTierCache {
       normalizedURL.path,
       String(modificationDateBits),
       String(fileSize),
-      String(maxPixelSize)
+      String(maxPixelSize),
     ].joined(separator: "\u{0}")
     return SHA256.hash(data: Data(rawKey.utf8))
       .map { String(format: "%02x", $0) }
@@ -263,12 +281,22 @@ final class WorkbenchImageTwoTierCache {
       forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey]
     )
     guard resourceValues?.isRegularFile == true,
-          resourceValues?.isSymbolicLink != true,
-          let fileSize = resourceValues?.fileSize,
-          fileSize > 0,
-          fileSize <= maximumByteCount,
-          let data = try? Data(contentsOf: fileURL, options: .mappedIfSafe),
-          NSImage(data: data) != nil else {
+      resourceValues?.isSymbolicLink != true,
+      let fileSize = resourceValues?.fileSize,
+      fileSize > 0,
+      fileSize <= maximumByteCount,
+      let data = try? Data(contentsOf: fileURL, options: .mappedIfSafe),
+      let imageSource = CGImageSourceCreateWithData(
+        data as CFData,
+        [kCGImageSourceShouldCache: false] as CFDictionary
+      ),
+      CGImageSourceGetCount(imageSource) > 0,
+      CGImageSourceCreateImageAtIndex(
+        imageSource,
+        0,
+        [kCGImageSourceShouldCache: false] as CFDictionary
+      ) != nil
+    else {
       try? fileManager.removeItem(at: fileURL)
       return nil
     }
@@ -299,10 +327,11 @@ final class WorkbenchImageTwoTierCache {
       policy.maintenanceMarkerName
     )
     if !force,
-       let attributes = try? fileManager.attributesOfItem(atPath: markerURL.path),
-       let lastMaintenanceDate = attributes[.modificationDate] as? Date,
-       now.timeIntervalSince(lastMaintenanceDate)
-         < policy.maintenanceInterval {
+      let attributes = try? fileManager.attributesOfItem(atPath: markerURL.path),
+      let lastMaintenanceDate = attributes[.modificationDate] as? Date,
+      now.timeIntervalSince(lastMaintenanceDate)
+        < policy.maintenanceInterval
+    {
       return
     }
 
@@ -310,29 +339,33 @@ final class WorkbenchImageTwoTierCache {
       .contentModificationDateKey,
       .fileSizeKey,
       .isRegularFileKey,
-      .isSymbolicLinkKey
+      .isSymbolicLinkKey,
     ]
-    guard let fileURLs = try? fileManager.contentsOfDirectory(
-      at: directoryURL,
-      includingPropertiesForKeys: Array(resourceKeys),
-      options: [.skipsHiddenFiles]
-    ) else {
+    guard
+      let fileURLs = try? fileManager.contentsOfDirectory(
+        at: directoryURL,
+        includingPropertiesForKeys: Array(resourceKeys),
+        options: [.skipsHiddenFiles]
+      )
+    else {
       return
     }
 
     var validEntries: [(url: URL, byteCount: Int, lastAccessedAt: Date)] = []
     for fileURL in fileURLs {
       let values = try? fileURL.resourceValues(forKeys: resourceKeys)
-      let isValidCacheFile = isCurrentCacheFile(fileURL)
+      let isValidCacheFile =
+        isCurrentCacheFile(fileURL)
         && values?.isRegularFile == true
         && values?.isSymbolicLink != true
       guard isValidCacheFile,
-            let byteCount = values?.fileSize,
-            byteCount > 0,
-            byteCount <= policy.maximumDiskEntryByteCount,
-            let lastAccessedAt = values?.contentModificationDate,
-            now.timeIntervalSince(lastAccessedAt)
-              <= policy.maximumDiskEntryAge else {
+        let byteCount = values?.fileSize,
+        byteCount > 0,
+        byteCount <= policy.maximumDiskEntryByteCount,
+        let lastAccessedAt = values?.contentModificationDate,
+        now.timeIntervalSince(lastAccessedAt)
+          <= policy.maximumDiskEntryAge
+      else {
         try? fileManager.removeItem(at: fileURL)
         continue
       }
@@ -342,10 +375,13 @@ final class WorkbenchImageTwoTierCache {
     var totalByteCount = validEntries.reduce(0) { $0 + $1.byteCount }
     var entryCount = validEntries.count
     if totalByteCount > policy.maximumDiskCacheByteCount
-      || entryCount > policy.maximumDiskEntryCount {
+      || entryCount > policy.maximumDiskEntryCount
+    {
       for entry in validEntries.sorted(by: { $0.lastAccessedAt < $1.lastAccessedAt }) {
-        guard totalByteCount > policy.maximumDiskCacheByteCount
-          || entryCount > policy.maximumDiskEntryCount else {
+        guard
+          totalByteCount > policy.maximumDiskCacheByteCount
+            || entryCount > policy.maximumDiskEntryCount
+        else {
           break
         }
         do {
