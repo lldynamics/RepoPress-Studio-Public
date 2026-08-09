@@ -200,7 +200,7 @@ public struct KnowledgeSearchPresentationService: Sendable {
       ?? compact.endIndex
     let prefix = start > compact.startIndex ? "…" : ""
     let suffix = end < compact.endIndex ? "…" : ""
-    return prefix + compact[start..<end] + suffix
+    return prefix + String(compact[start..<end]) + suffix
   }
 
   private func normalizedForComparison(_ value: String) -> String {
