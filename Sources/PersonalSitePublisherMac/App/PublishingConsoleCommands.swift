@@ -3,26 +3,21 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct PublishingConsoleCommands: Commands {
-  @ObservedObject var store: WorkbenchStore
-  @FocusedValue(\.markdownEditorCommandActions) private var markdownEditorCommands
-  @FocusedValue(\.publishDrawerCommandAction) private var publishDrawerCommandAction
-  @FocusedValue(\.localSitePreviewCommandAction) private var localSitePreviewCommandAction
-  @FocusedValue(\.writingDraftCommandActions) private var writingDraftCommands
-  @FocusedValue(\.workspaceCommandPaletteAction) private var workspaceCommandPaletteAction
-  @FocusedValue(\.draftFullTextSearchAction) private var draftFullTextSearchAction
-  @FocusedValue(\.knowledgeLibraryCommandActions) private var knowledgeLibraryCommands
-  @FocusedValue(\.repositorySourceEditorCommandActions) private var repositorySourceEditorCommands
-  @FocusedValue(\.repositorySourceSessionCommandActions) private var repositorySourceSessionCommands
-  @FocusedValue(\.workspaceFocusModeCommandAction) private var workspaceFocusModeCommandAction
-  @FocusedValue(\.workspaceFirstRunSetupCommandAction) private var workspaceFirstRunSetupCommandAction
-  @FocusedValue(\.rssReaderCommandActions) private var rssReaderCommands
+  let store: WorkbenchStore
+  @ObservedObject private var presentation: WorkbenchCommandPresentationFeatureFacade
+  @FocusedObject private var commandRouter: WorkspaceSceneCommandRouter?
   @Environment(\.openSettings) private var openSettings
+
+  init(store: WorkbenchStore) {
+    self.store = store
+    _presentation = ObservedObject(wrappedValue: store.commandPresentation)
+  }
 
   var body: some Commands {
     CommandGroup(replacing: .newItem) {
       Button(String(localized: "新建文章")) {
-        if let writingDraftCommands {
-          writingDraftCommands.createDraft()
+        if writingDraftCommands != nil {
+          commandRouter?.writingDraftCommandActions?.createDraft()
         } else {
           store.createDraft()
         }
@@ -38,20 +33,23 @@ struct PublishingConsoleCommands: Commands {
       .keyboardShortcut("s")
       .disabled(!canSaveCurrentContent)
 
-      if let repositorySourceEditorCommands {
+      if repositorySourceEditorCommands != nil {
         Button(String(localized: "重新载入 HTML 源文件")) {
-          repositorySourceEditorCommands.reload()
+          commandRouter?.repositorySourceEditorCommandActions?.reload()
         }
-        .disabled(!canUseProtectedWorkbench || !repositorySourceEditorCommands.hasDocument)
+        .disabled(
+          !canUseProtectedWorkbench
+            || commandRouter?.repositorySourceEditorCommandActions?.hasDocument != true
+        )
       }
     }
 
     CommandGroup(replacing: .printItem) {}
 
     CommandGroup(after: .importExport) {
-      if let knowledgeLibraryCommands {
+      if knowledgeLibraryCommands != nil {
         Button(String(localized: "导入资料…")) {
-          knowledgeLibraryCommands.importSources()
+          commandRouter?.knowledgeLibraryCommandActions?.importSources()
         }
         .keyboardShortcut("i", modifiers: [.command, .shift])
         .disabled(!canUseProtectedWorkbench)
@@ -70,7 +68,6 @@ struct PublishingConsoleCommands: Commands {
         .disabled(!canUseProtectedWorkbench)
 
         Button(String(localized: "复制同步建议命令")) {
-          focusCommandDraft(section: .sync)
           copyRepositorySyncCommands()
         }
         .disabled(!canUseProtectedWorkbench)
@@ -104,11 +101,11 @@ struct PublishingConsoleCommands: Commands {
 
       if supportsInspector {
         Button(
-          store.isInspectorPresented
+          presentation.isInspectorPresented
             ? String(localized: "隐藏 Inspector")
             : String(localized: "显示 Inspector")
         ) {
-          store.setInspectorPresented(!store.isInspectorPresented)
+          store.setInspectorPresented(!presentation.isInspectorPresented)
         }
         .keyboardShortcut("i", modifiers: [.command, .option])
         .disabled(!canUseProtectedWorkbench)
@@ -117,11 +114,11 @@ struct PublishingConsoleCommands: Commands {
       Divider()
 
       Button(
-        store.isQuickHideActive
+        presentation.isQuickHideActive
           ? String(localized: "返回工作台")
           : String(localized: "快速隐藏")
       ) {
-        if store.isQuickHideActive {
+        if presentation.isQuickHideActive {
           store.deactivateQuickHide()
         } else {
           store.activateQuickHide(reason: "已手动快速隐藏工作台内容。")
@@ -212,7 +209,7 @@ struct PublishingConsoleCommands: Commands {
         Button(String(localized: "停止本地预览")) {
           store.stopLocalSitePreview()
         }
-        .disabled(!canUseProtectedWorkbench || !store.localSitePreviewRuntimeStatus.isRunning)
+        .disabled(!canUseProtectedWorkbench || !presentation.isLocalSitePreviewRunning)
       }
 
       Button(workspaceNavigationLocalizedKey("workspace.releaseHistory")) {
@@ -270,7 +267,55 @@ struct PublishingConsoleCommands: Commands {
   }
 
   private var canUseProtectedWorkbench: Bool {
-    store.canUseProtectedWorkbench
+    presentation.canUseProtectedWorkbench
+  }
+
+  private var markdownEditorCommands: MarkdownEditorCommandActions? {
+    commandRouter?.markdownEditorCommandActions
+  }
+
+  private var publishDrawerCommandAction: PublishDrawerCommandAction? {
+    commandRouter?.publishDrawerCommandAction
+  }
+
+  private var localSitePreviewCommandAction: LocalSitePreviewCommandAction? {
+    commandRouter?.localSitePreviewCommandAction
+  }
+
+  private var writingDraftCommands: WritingDraftCommandActions? {
+    commandRouter?.writingDraftCommandActions
+  }
+
+  private var workspaceCommandPaletteAction: WorkspaceCommandPaletteAction? {
+    commandRouter?.workspaceCommandPaletteAction
+  }
+
+  private var draftFullTextSearchAction: DraftFullTextSearchAction? {
+    commandRouter?.draftFullTextSearchAction
+  }
+
+  private var knowledgeLibraryCommands: KnowledgeLibraryCommandActions? {
+    commandRouter?.knowledgeLibraryCommandActions
+  }
+
+  private var repositorySourceEditorCommands: RepositorySourceEditorCommandActions? {
+    commandRouter?.repositorySourceEditorCommandActions
+  }
+
+  private var repositorySourceSessionCommands: RepositorySourceSessionCommandActions? {
+    commandRouter?.repositorySourceSessionCommandActions
+  }
+
+  private var workspaceFocusModeCommandAction: WorkspaceFocusModeCommandAction? {
+    commandRouter?.workspaceFocusModeCommandAction
+  }
+
+  private var workspaceFirstRunSetupCommandAction: WorkspaceFirstRunSetupCommandAction? {
+    commandRouter?.workspaceFirstRunSetupCommandAction
+  }
+
+  private var rssReaderCommands: RSSReaderCommandActions? {
+    commandRouter?.rssReaderCommandActions
   }
 
   private var saveCommandTitle: String {
@@ -421,13 +466,13 @@ struct PublishingConsoleCommands: Commands {
   private var articleNavigationCommands: some View {
     if let rssReaderCommands {
       Button(String(localized: "上一条 RSS 文章")) {
-        rssReaderCommands.navigatePrevious()
+        commandRouter?.rssReaderCommandActions?.navigatePrevious()
       }
       .keyboardShortcut(.leftArrow, modifiers: [.command, .control])
       .disabled(!rssReaderCommands.canNavigatePrevious)
 
       Button(String(localized: "下一条 RSS 文章")) {
-        rssReaderCommands.navigateNext()
+        commandRouter?.rssReaderCommandActions?.navigateNext()
       }
       .keyboardShortcut(.rightArrow, modifiers: [.command, .control])
       .disabled(!rssReaderCommands.canNavigateNext)
@@ -435,37 +480,37 @@ struct PublishingConsoleCommands: Commands {
       Divider()
 
       Button(String(localized: "收藏/取消收藏 RSS 文章")) {
-        rssReaderCommands.toggleStarred()
+        commandRouter?.rssReaderCommandActions?.toggleStarred()
       }
       .keyboardShortcut("s", modifiers: [.command, .control])
       .disabled(!rssReaderCommands.canActOnArticle)
 
       Button(String(localized: "标记 RSS 文章已读/未读")) {
-        rssReaderCommands.toggleRead()
+        commandRouter?.rssReaderCommandActions?.toggleRead()
       }
       .keyboardShortcut("u", modifiers: [.command, .control])
       .disabled(!rssReaderCommands.canActOnArticle)
 
       Button(String(localized: "打开 RSS 原文")) {
-        rssReaderCommands.openOriginal()
+        commandRouter?.rssReaderCommandActions?.openOriginal()
       }
       .keyboardShortcut("o", modifiers: [.command, .control])
       .disabled(!rssReaderCommands.canActOnArticle)
 
       Button(String(localized: "高亮所选 RSS 文本")) {
-        rssReaderCommands.createHighlight()
+        commandRouter?.rssReaderCommandActions?.createHighlight()
       }
       .keyboardShortcut("h", modifiers: [.command, .control])
       .disabled(!rssReaderCommands.canActOnArticle)
 
       Button(String(localized: "为 RSS 高亮添加批注")) {
-        rssReaderCommands.addNote()
+        commandRouter?.rssReaderCommandActions?.addNote()
       }
       .keyboardShortcut("n", modifiers: [.command, .control])
       .disabled(!rssReaderCommands.canActOnArticle)
 
       Button(String(localized: "编辑 RSS 文章标签")) {
-        rssReaderCommands.editTags()
+        commandRouter?.rssReaderCommandActions?.editTags()
       }
       .keyboardShortcut("t", modifiers: [.command, .control])
       .disabled(!rssReaderCommands.canActOnArticle)
@@ -484,13 +529,13 @@ struct PublishingConsoleCommands: Commands {
       navigateDraftHistoryBackward()
     }
     .keyboardShortcut("[", modifiers: [.command])
-    .disabled(!canUseProtectedWorkbench || !store.canNavigateBackwardInDraftHistory)
+    .disabled(!canUseProtectedWorkbench || !presentation.canNavigateBackwardInDraftHistory)
 
     Button(String(localized: "文章前进")) {
       navigateDraftHistoryForward()
     }
     .keyboardShortcut("]", modifiers: [.command])
-    .disabled(!canUseProtectedWorkbench || !store.canNavigateForwardInDraftHistory)
+    .disabled(!canUseProtectedWorkbench || !presentation.canNavigateForwardInDraftHistory)
 
     if knowledgeLibraryCommands != nil || writingDraftCommands != nil {
       Divider()
@@ -536,11 +581,11 @@ struct PublishingConsoleCommands: Commands {
 
   private var commandDraftID: UUID? {
     guard repositorySourceEditorCommands == nil else { return nil }
-    return markdownEditorCommands?.draftID ?? store.selectedDraftID
+    return markdownEditorCommands?.draftID ?? presentation.selectedDraftID
   }
 
   private var supportsInspector: Bool {
-    WorkspaceInspectorPresentation.supportsInspector(for: store.selectedSection)
+    WorkspaceInspectorPresentation.supportsInspector(for: presentation.selectedSection)
   }
 
   private func focusCommandDraft(section: WorkspaceSection? = nil) {
@@ -672,7 +717,7 @@ struct PublishingConsoleCommands: Commands {
   }
 
   private var isAIChatPanelVisible: Bool {
-    store.isAIPublishingAssistantPresented && store.isInspectorPresented
+    presentation.isAIAssistantPresented && presentation.isInspectorPresented
   }
 
   private func toggleAIChatWorkspaceForCommandContext() {

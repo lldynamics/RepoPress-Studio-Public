@@ -50,6 +50,8 @@ struct WritingDraftColumn: View {
   @State private var selectedDraftIDs: Set<UUID> = []
   @State private var draftOwnershipTransferPlan: DraftOwnershipTransferPlan?
   @Environment(\.undoManager) private var undoManager
+  @EnvironmentObject private var sceneCommandRouter: WorkspaceSceneCommandRouter
+  @State private var sceneCommandOwnerID = UUID()
 
   init(store: WorkbenchStore, isCompact: Bool) {
     self.store = store
@@ -89,7 +91,15 @@ struct WritingDraftColumn: View {
 
       draftList
     }
-    .focusedSceneValue(\.writingDraftCommandActions, writingDraftCommandActions)
+    .onAppear {
+      sceneCommandRouter.registerWritingDrafts(
+        writingDraftCommandActions,
+        owner: sceneCommandOwnerID
+      )
+    }
+    .onDisappear {
+      sceneCommandRouter.unregisterWritingDrafts(owner: sceneCommandOwnerID)
+    }
     .confirmationDialog(
       "移到回收站？",
       isPresented: deleteConfirmationPresented,
