@@ -1,0 +1,30 @@
+{
+  "capability": "publish-conflict-diff",
+  "description": "Reports identical lines as same.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "lines": [
+        {
+          "id": 0,
+          "kind": "same",
+          "marker": " ",
+          "text": "a"
+        },
+        {
+          "id": 1,
+          "kind": "same",
+          "marker": " ",
+          "text": "b"
+        }
+      ],
+      "strategy": "lcs"
+    }
+  },
+  "id": "diff-same",
+  "input": {
+    "local": "a\nb",
+    "remote": "a\nb"
+  },
+  "validity": "valid"
+}

@@ -1,0 +1,211 @@
+{
+  "$defs": {
+    "base-input": {
+      "additionalProperties": false,
+      "properties": {
+        "document": {
+          "$ref": "#/$defs/document"
+        },
+        "operation": {
+          "enum": [
+            "render",
+            "markdown-document"
+          ]
+        }
+      },
+      "required": [
+        "operation",
+        "document"
+      ],
+      "type": "object"
+    },
+    "document": {
+      "additionalProperties": false,
+      "properties": {
+        "authors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "bodyMarkdown": {
+          "type": "string"
+        },
+        "categories": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "coverField": {
+          "type": "string"
+        },
+        "coverPath": {
+          "type": "string"
+        },
+        "draftFlag": {
+          "type": "boolean"
+        },
+        "formattedDate": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "summaryField": {
+          "type": "string"
+        },
+        "syntax": {
+          "enum": [
+            "yaml",
+            "toml"
+          ]
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "taxonomyLayout": {
+          "enum": [
+            "inlineTable",
+            "table"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "writesCoverInExtraTable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "syntax",
+        "title",
+        "formattedDate",
+        "authors",
+        "tags",
+        "categories",
+        "taxonomyLayout",
+        "writesCoverInExtraTable",
+        "bodyMarkdown"
+      ],
+      "type": "object"
+    },
+    "markdown-document-input": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base-input"
+        },
+        {
+          "properties": {
+            "operation": {
+              "const": "markdown-document"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "markdown-document-result": {
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "value": {
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "ok",
+        "value"
+      ],
+      "type": "object"
+    },
+    "render-input": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base-input"
+        },
+        {
+          "properties": {
+            "operation": {
+              "const": "render"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "render-result": {
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "value": {
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "ok",
+        "value"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:repopress:contracts:v1:front-matter-document",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Language-neutral YAML/TOML front-matter rendering input.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/render-input"
+    },
+    {
+      "$ref": "#/$defs/markdown-document-input"
+    }
+  ],
+  "properties": {
+    "document": {
+      "$ref": "#/$defs/document"
+    },
+    "operation": {
+      "enum": [
+        "render",
+        "markdown-document"
+      ]
+    }
+  },
+  "title": "RepoPress M1 front-matter document input",
+  "type": "object"
+}

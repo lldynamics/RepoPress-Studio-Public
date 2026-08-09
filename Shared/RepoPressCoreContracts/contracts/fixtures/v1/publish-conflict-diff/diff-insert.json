@@ -1,0 +1,36 @@
+{
+  "capability": "publish-conflict-diff",
+  "description": "Reports a local insertion.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "lines": [
+        {
+          "id": 0,
+          "kind": "same",
+          "marker": " ",
+          "text": "a"
+        },
+        {
+          "id": 1,
+          "kind": "local",
+          "marker": "+",
+          "text": "b"
+        },
+        {
+          "id": 2,
+          "kind": "same",
+          "marker": " ",
+          "text": "c"
+        }
+      ],
+      "strategy": "lcs"
+    }
+  },
+  "id": "diff-insert",
+  "input": {
+    "local": "a\nb\nc",
+    "remote": "a\nc"
+  },
+  "validity": "valid"
+}

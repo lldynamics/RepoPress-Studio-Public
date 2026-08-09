@@ -1,0 +1,1 @@
+"""Contract gate tests."""

@@ -1,0 +1,26 @@
+{
+  "capability": "front-matter-document",
+  "description": "Trims Markdown body whitespace and appends exactly one trailing LF.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "text": "---\ntitle: \"Body trim\"\ndate: \"2026-04-01\"\n---\n\nBody\n"
+    }
+  },
+  "id": "front-yaml-markdown-trim",
+  "input": {
+    "document": {
+      "authors": [],
+      "bodyMarkdown": "\n  Body  \n",
+      "categories": [],
+      "formattedDate": "2026-04-01",
+      "syntax": "yaml",
+      "tags": [],
+      "taxonomyLayout": "inlineTable",
+      "title": "Body trim",
+      "writesCoverInExtraTable": false
+    },
+    "operation": "markdown-document"
+  },
+  "validity": "valid"
+}

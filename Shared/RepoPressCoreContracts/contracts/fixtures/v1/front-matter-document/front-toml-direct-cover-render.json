@@ -1,0 +1,29 @@
+{
+  "capability": "front-matter-document",
+  "description": "Renders a direct TOML cover without taxonomy tables.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "text": "+++\ntitle = \"Cover\"\ndate = 2026-03-06\ndraft = false\ncover = \"images/cover.webp\"\n+++"
+    }
+  },
+  "id": "front-toml-direct-cover-render",
+  "input": {
+    "document": {
+      "authors": [],
+      "bodyMarkdown": "Body",
+      "categories": [],
+      "coverField": "cover",
+      "coverPath": "images/cover.webp",
+      "draftFlag": false,
+      "formattedDate": "2026-03-06",
+      "syntax": "toml",
+      "tags": [],
+      "taxonomyLayout": "inlineTable",
+      "title": "Cover",
+      "writesCoverInExtraTable": false
+    },
+    "operation": "render"
+  },
+  "validity": "valid"
+}

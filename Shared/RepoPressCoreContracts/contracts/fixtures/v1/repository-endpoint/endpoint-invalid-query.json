@@ -1,0 +1,14 @@
+{
+  "capability": "repository-endpoint",
+  "description": "Rejects query components on a base URL.",
+  "expected": {
+    "errorCode": "repository_endpoint.invalid_url",
+    "ok": false
+  },
+  "id": "endpoint-invalid-query",
+  "input": {
+    "baseURL": "https://api.example.test/api?x=1",
+    "operation": "validate"
+  },
+  "validity": "invalid"
+}
