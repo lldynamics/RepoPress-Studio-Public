@@ -125,7 +125,7 @@ struct SettingsConfigurationHealthCard: View {
           Button(nextItem.actionTitle) {
             selectDestination(nextItem.destination)
           }
-          .buttonStyle(.borderedProminent)
+          .workbenchProminentActionStyle()
           .accessibilityHint(nextItem.detail)
         }
       } else {

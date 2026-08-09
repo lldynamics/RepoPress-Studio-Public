@@ -371,7 +371,10 @@ private enum MarkdownPreviewHTMLRenderer {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: publisher-asset:; font-src 'none'; media-src publisher-asset:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
         <title>\(escapedTitle)</title>
-        <style>\(previewStyles)</style>
+        <style>
+        \(previewStyles)
+        \(ThinRedScrollbarWebStyle.css)
+        </style>
       </head>
       <body>
         <article class="markdown-content">

@@ -20,7 +20,7 @@ final class MarkdownEditorAnalysisServiceTests: XCTestCase {
     XCTAssertTrue(snapshot.diagnostics.contains { $0.id.hasPrefix("heading-jump") })
     XCTAssertTrue(snapshot.diagnostics.contains { $0.id.hasPrefix("image-alt") })
     XCTAssertTrue(snapshot.diagnostics.contains { $0.id.hasPrefix("missing-footnote") })
-    XCTAssertEqual(snapshot.outlineItems.map(\.title), ["跳级章节", "风险章节"])
+    XCTAssertEqual(snapshot.outlineItems.map(\.title), ["标题", "跳级章节", "风险章节"])
     XCTAssertEqual(snapshot.outlineItems.last?.publicRiskSummary.errorCount, 1)
   }
 

@@ -291,6 +291,7 @@ final class RSSArticleRenderCache: @unchecked Sendable {
         .remote-image-disabled { display: inline-block; padding: 0.55em 0.8em; border: 1px dashed var(--rss-secondary-foreground); border-radius: 7px; color: var(--rss-secondary-foreground); }
         mark.rss-highlight { background: color-mix(in srgb, #ffd60a 55%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
         mark.rss-speech-highlight { background: color-mix(in srgb, #0a84ff 32%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; box-shadow: inset 0 -1px 0 color-mix(in srgb, #0a84ff 72%, transparent); }
+        \(ThinRedScrollbarWebStyle.css)
       </style>
     </head>
     <body data-initial-reading-progress="\(normalizedProgress)"><article id="rss-article-container">\(headerHTML)<main id="rss-article-body">\(body)</main></article></body>

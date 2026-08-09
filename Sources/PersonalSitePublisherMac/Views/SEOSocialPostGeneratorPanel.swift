@@ -130,6 +130,7 @@ struct SEOSocialPostGeneratorPanel: View {
             .padding(8)
             .scrollContentBackground(.hidden)
             .background(Color.clear)
+            .accessibilityLabel("平台推广文案")
         }
       }
     }
@@ -159,7 +160,7 @@ struct SEOSocialPostGeneratorPanel: View {
           Label("用 AI 提炼社交平台文案", systemImage: "sparkles")
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .workbenchProminentActionStyle()
         .disabled(isGeneratingText)
 
         Button {
@@ -216,7 +217,7 @@ struct SEOSocialPostGeneratorPanel: View {
       Button("应用封面图至草稿") {
         applyCoverImageToDraft()
       }
-      .buttonStyle(.borderedProminent)
+      .workbenchProminentActionStyle()
       .disabled(coverPNGData == nil)
     }
     .padding(WorkbenchSpacing.page)

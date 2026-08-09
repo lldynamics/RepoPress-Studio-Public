@@ -84,9 +84,13 @@ fi
 grep -Fq ".frame(minHeight: 120, idealHeight: 132, maxHeight: 140)" \
   "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/SharedViews.swift" \
   || fail "compact empty states must keep the shared 120-140 point height"
-grep -Fq "density: .compactPane" \
-  "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
-  || fail "the image workbench empty state must use compact density"
+for image_empty_state_file in \
+  RepositoryImageBrowserView.swift \
+  AssetResourceManagerView.swift; do
+  grep -Fq "density: .compactPane" \
+    "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/$image_empty_state_file" \
+    || fail "image workbench empty states must use compact density: $image_empty_state_file"
+done
 grep -Fq "ForEach(ImageWorkbenchBatchAction.allActions)" \
   "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/ImageWorkbenchView.swift" \
   || fail "the image workbench must keep every primary operation visible"
@@ -117,12 +121,13 @@ grep -Fq "onlinePublishCenterSection" \
   "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift" \
   || fail "repository overview must render the online publish center"
 
+# Release History is now split between its container, record cards, and shared deployment components.
 for unfolded_repository_file in \
   RepositoryWorkspaceOverviewSections.swift \
   RepositoryWorkspacePublishingSections.swift \
   RepositoryWorkspaceLocalPreviewSection.swift \
   ReleaseHistoryDetailView.swift \
-  ReleaseHistoryDeploymentDebugSection.swift \
+  ReleaseHistoryComponents.swift \
   ReleaseHistoryRecordCardSection.swift; do
   if grep -Fq "DisclosureGroup" \
     "$ROOT_DIR/Sources/PersonalSitePublisherMac/Views/$unfolded_repository_file"; then
@@ -145,9 +150,9 @@ repository_identifier_sources=(
   "RepositoryWorkspaceOverviewSections.swift:repository-action-select-folder"
   "RepositoryWorkspaceOverviewSections.swift:repository-action-scan"
   "RepositoryWorkspaceOverviewSections.swift:repository-action-import"
-  "RepositoryWorkspaceOverviewSections.swift:repository-action-migrate"
+  "RepositoryWorkspaceOverviewSections.swift:repository-action-data-management"
   "RepositoryWorkspaceOverviewSections.swift:repository-action-open-images"
-  "RepositoryWorkspaceOverviewSections.swift:repository-action-open-publish"
+  "RepositoryWorkspaceOverviewSections.swift:repository-next-action"
   "RepositoryWorkspaceOverviewSections.swift:repository-section-summary"
   "RepositoryWorkspaceOverviewSections.swift:repository-section-information"
   "RepositoryWorkspacePublishingSections.swift:repository-section-online-publish"

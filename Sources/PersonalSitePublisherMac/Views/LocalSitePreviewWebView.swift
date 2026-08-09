@@ -91,6 +91,12 @@ struct LocalSitePreviewWebView: NSViewRepresentable {
     configuration.websiteDataStore = .nonPersistent()
     configuration.defaultWebpagePreferences.allowsContentJavaScript = true
     configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+    let scrollbarScript = WKUserScript(
+      source: ThinRedScrollbarWebStyle.injectionSource,
+      injectionTime: .atDocumentEnd,
+      forMainFrameOnly: true
+    )
+    configuration.userContentController.addUserScript(scrollbarScript)
     let webView = WKWebView(frame: .zero, configuration: configuration)
     webView.navigationDelegate = context.coordinator
     webView.allowsMagnification = true

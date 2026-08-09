@@ -169,9 +169,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "repository-action-select-folder",
       "repository-action-scan",
       "repository-action-import",
-      "repository-action-migrate",
+      "repository-action-data-management",
       "repository-action-open-images",
-      "repository-action-open-publish",
       "repository-next-action",
       "repository-section-summary",
       "repository-section-information",
@@ -273,8 +272,8 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
       "The repository workspace did not appear for the publishing demo surface."
     )
 
-    revealByScrolling("repository-action-open-publish")
-    element(identifier: "repository-action-open-publish")
+    revealByScrolling("repository-next-action")
+    element(identifier: "repository-next-action")
       .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
       .tap()
 
@@ -444,6 +443,105 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     )
   }
 
+  func testMenuMutationsAndMainWindowRecoveryRemainStable() throws {
+    launchApplication(
+      surface: "writing",
+      additionalLaunchArguments: [
+        "-AppleLanguages", "(en)",
+        "-AppleLocale", "en_US",
+      ]
+    )
+    application.activate()
+
+    for iteration in 0..<12 {
+      application.typeKey(.escape, modifierFlags: [])
+      guard let fileMenuItem = waitForHittableElement(timeout: 15, query: {
+        application.menuBars.menuBarItems.matching(identifier: "File")
+      }) else {
+        XCTFail("File was unavailable during menu stress iteration \(iteration).")
+        return
+      }
+      fileMenuItem.click()
+      let fileMenu = fileMenuItem.menus.firstMatch
+      guard fileMenu.waitForExistence(timeout: 5) else {
+        XCTFail("File did not open during menu stress iteration \(iteration).")
+        return
+      }
+      guard let siteRepositoryItem = waitForHittableElement(timeout: 5, query: {
+        application.menuItems.matching(identifier: "Site Repository")
+      }) else {
+        XCTFail("Site Repository was unavailable during menu stress iteration \(iteration).")
+        return
+      }
+      siteRepositoryItem.click()
+
+      let siteRepositoryMenu = siteRepositoryItem.menus.firstMatch
+      guard siteRepositoryMenu.waitForExistence(timeout: 5) else {
+        XCTFail("Site Repository did not open during iteration \(iteration).")
+        return
+      }
+      guard let copyCommand = waitForHittableElement(timeout: 5, query: {
+        application.menuItems.matching(identifier: "Copy Suggested Sync Commands")
+      }) else {
+        XCTFail("Copy Suggested Sync Commands was unavailable during iteration \(iteration).")
+        return
+      }
+      copyCommand.click()
+      XCTAssertNotEqual(
+        application.state,
+        .notRunning,
+        "The app terminated during menu mutation iteration \(iteration)."
+      )
+    }
+
+    for iteration in 0..<3 {
+      let mainWindow = application.windows.firstMatch
+      XCTAssertTrue(
+        mainWindow.waitForExistence(timeout: 10),
+        "The main window was unavailable before recovery iteration \(iteration)."
+      )
+      let closeButton = mainWindow.buttons[XCUIIdentifierCloseWindow]
+      XCTAssertTrue(closeButton.waitForExistence(timeout: 5))
+      closeButton.click()
+
+      application.typeKey(.escape, modifierFlags: [])
+      guard let windowMenuItem = waitForHittableElement(timeout: 5, query: {
+        application.menuBars.menuBarItems.matching(identifier: "Window")
+      }) else {
+        XCTFail("Window was unavailable during recovery iteration \(iteration).")
+        return
+      }
+      windowMenuItem.click()
+      let windowMenu = windowMenuItem.menus.firstMatch
+      guard windowMenu.waitForExistence(timeout: 5) else {
+        XCTFail("Window did not open during recovery iteration \(iteration).")
+        return
+      }
+      guard let reopenItem = waitForHittableElement(timeout: 5, query: {
+        application.menuItems.matching(identifier: "Show RepoPress Studio")
+      }) else {
+        XCTFail("Show RepoPress Studio was unavailable during recovery iteration \(iteration).")
+        return
+      }
+      XCTAssertEqual(
+        windowMenu.menuItems.matching(identifier: "Show RepoPress Studio").count,
+        1,
+        "The recovery command must remain unique."
+      )
+      reopenItem.click()
+
+      let reopenDeadline = Date().addingTimeInterval(10)
+      while !application.windows.firstMatch.isHittable, Date() < reopenDeadline {
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+      }
+      XCTAssertTrue(
+        application.windows.firstMatch.isHittable,
+        "The main window did not recover during iteration \(iteration)."
+      )
+      XCTAssertNotEqual(application.state, .notRunning)
+    }
+  }
+
   func testImageWorkbenchIdentifiersRemainUniqueAndDoNotOverrideChildControls() throws {
     launchApplication(surface: "writing")
     select(
@@ -534,9 +632,54 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     launchApplication(surface: "writing")
 
     let initialWindowCount = application.windows.count
-    let toolbarButton = element(identifier: "ai-assistant-toolbar-button")
-    XCTAssertTrue(toolbarButton.waitForExistence(timeout: 10))
-    toggleAIInspectorForUITest(toolbarButton, shouldBePresented: true)
+    let mainWindow = application.windows.firstMatch
+    guard let writingAIEntry = waitForHittableElement(timeout: 10, query: {
+      mainWindow.descendants(matching: .any)
+        .matching(identifier: "markdown-ai-assistant-entry")
+    }) else {
+      XCTFail("The writing page must expose a directly clickable AI collaboration entry.")
+      return
+    }
+    let mainWindowAIInspector = mainWindow.descendants(matching: .any)
+      .matching(identifier: "ai-assistant-inspector")
+      .firstMatch
+    XCTAssertFalse(
+      mainWindowAIInspector.exists,
+      "The AI Inspector must be absent before the writing-page entry is clicked."
+    )
+    guard let toolbarButton = waitForHittableElement(timeout: 10, query: {
+      mainWindow.descendants(matching: .any)
+        .matching(identifier: "ai-assistant-toolbar-button")
+    }) else {
+      XCTFail("The main toolbar must keep its AI collaboration entry visible and clickable.")
+      return
+    }
+    guard let inspectorToolbarButton = waitForHittableElement(timeout: 10, query: {
+      mainWindow.descendants(matching: .any)
+        .matching(identifier: "workspace-inspector-toggle")
+    }) else {
+      XCTFail("The main toolbar must keep the original workspace Inspector entry visible and clickable.")
+      return
+    }
+    XCTAssertFalse(
+      toolbarButton.frame.intersects(inspectorToolbarButton.frame),
+      "The AI and workspace Inspector toolbar entries must remain separate controls."
+    )
+    XCTAssertGreaterThan(
+      inspectorToolbarButton.frame.midX,
+      toolbarButton.frame.midX,
+      "The original workspace Inspector entry must remain at the right edge of the toolbar."
+    )
+    writingAIEntry.click()
+    XCTAssertTrue(
+      mainWindowAIInspector.waitForExistence(timeout: 10),
+      "Clicking the writing-page AI entry must open the Inspector in the main window."
+    )
+    XCTAssertGreaterThan(
+      mainWindowAIInspector.frame.midX,
+      mainWindow.frame.midX,
+      "The AI collaboration Inspector must occupy the right side of the writing window."
+    )
 
     assertUniqueIdentifier("ai-assistant-inspector")
     for identifier in [
@@ -577,7 +720,6 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     XCTAssertFalse(unsentDraft.isEmpty, "Typing must leave a composer draft to preserve.")
 
     application.typeKey("l", modifierFlags: [.control, .command])
-    let mainWindow = application.windows.firstMatch
     let quickHideOverlays = mainWindow.descendants(matching: .any)
       .matching(identifier: "quick-hide-overlay")
     XCTAssertTrue(
@@ -1154,6 +1296,24 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
 
   private func element(identifier: String) -> XCUIElement {
     application.descendants(matching: .any).matching(identifier: identifier).firstMatch
+  }
+
+  private func waitForHittableElement(
+    timeout: TimeInterval,
+    query: () -> XCUIElementQuery
+  ) -> XCUIElement? {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+      if let element = query().allElementsBoundByIndex.first(where: {
+        $0.exists && $0.isHittable
+      }) {
+        return element
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    }
+    return query().allElementsBoundByIndex.first(where: {
+      $0.exists && $0.isHittable
+    })
   }
 
   private func runtimeAppURL() throws -> URL {

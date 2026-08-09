@@ -414,7 +414,7 @@ struct AIChatComposer: View {
           Button(action: onSend) {
             Label("发送", systemImage: "arrow.up.circle.fill")
           }
-          .buttonStyle(.borderedProminent)
+          .workbenchProminentActionStyle()
           .controlSize(.small)
           .keyboardShortcut(.return, modifiers: [.command])
           .disabled(

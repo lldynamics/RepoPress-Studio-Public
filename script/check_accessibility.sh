@@ -95,13 +95,23 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
-  ".tint(WorkbenchTheme.navigationSelection)" \
-  "global navigation controls must follow the user's macOS accent"
+  "@AppStorage(WorkbenchAccentPalette.storageKey)" \
+  "the app accent preference must remain persisted for global navigation controls"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AdvancedWorkspaceMenu.swift" \
+  "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
+  "WorkbenchAccentPalette.resolved(rawValue: accentPaletteRawValue)" \
+  "global navigation controls must resolve the persisted app accent palette"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PersonalSitePublisherMacApp.swift" \
+  ".tint(selectedAccentPalette.color)" \
+  "global navigation controls must use the selected app accent palette"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
   "ForEach(WorkspaceNavigationPresentation.secondaryEntryItems)" \
-  "flattened workspace menu must expose every advanced destination as a labeled button"
+  "the workspace switcher menu must expose every advanced destination as a labeled button"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
@@ -110,8 +120,13 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
-  ".focusedSceneValue(" \
-  "content view must expose focused command actions"
+  ".focusedSceneObject(sceneCommandRouter)" \
+  "content view must expose the scene command router to menu commands"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/App/PublishingConsoleCommands.swift" \
+  "@FocusedObject private var commandRouter: WorkspaceSceneCommandRouter?" \
+  "menu commands must consume the focused scene command router"
 
 unexpected_publish_execution_references="$(
   grep -R -nE \
@@ -163,8 +178,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
-  ".focusedSceneValue(\\.markdownEditorCommandActions" \
-  "markdown composer must expose focused editor commands"
+  "@EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter" \
+  "markdown composer must receive the shared scene command router"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
+  "sceneCommandRouter.registerMarkdownEditor(" \
+  "markdown composer must register its editor commands with the scene router"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
+  "sceneCommandRouter.unregisterMarkdownEditor(owner: sceneCommandOwnerID)" \
+  "markdown composer must remove editor commands when its view disappears"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MarkdownEditorEnhancementPanels.swift" \
@@ -228,12 +253,12 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
-  ".accessibilityLabel(\"发布状态\")" \
-  "publishing status control must expose an accessibility label"
+  ".accessibilityLabel(contextualStatusTitle)" \
+  "publishing status control must expose its contextual accessibility label"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
-  ".accessibilityValue(\"\(toolbarStatus.area.title)：\(toolbarStatus.value)\")" \
+  ".accessibilityValue(\"\(currentToolbarStatus.area.title)：\(currentToolbarStatus.value)\")" \
   "publishing status control must expose its current priority status"
 
 require_literal \
@@ -247,12 +272,12 @@ require_literal \
   "AI assistant send action must keep a keyboard shortcut"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorHeader.swift" \
   ".accessibilityIdentifier(\"ai-assistant-inspector\")" \
   "AI assistant inspector must expose a stable accessibility identifier"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorComponents.swift" \
+  "Sources/PersonalSitePublisherMac/Views/AIChatWorkspaceInspectorHeader.swift" \
   ".accessibilityLabel(\"AI 助手\")" \
   "AI assistant inspector must expose an accessibility label"
 
@@ -305,6 +330,31 @@ require_literal \
   "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
   ".accessibilityIdentifier(\"ai-assistant-toolbar-button\")" \
   "main toolbar must expose the AI collaboration entry point"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
+  "ToolbarItemGroup(placement: .primaryAction)" \
+  "AI and workspace Inspector entries must remain separate toolbar controls"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  ".accessibilityIdentifier(\"markdown-ai-assistant-entry\")" \
+  "the writing page must expose a direct AI collaboration entry point"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "compactToolbarControls(showsAIChatTitle: false, showsPrepareTitle: false)" \
+  "the compact writing toolbar must keep a dedicated AI collaboration entry"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "matching(identifier: \"markdown-ai-assistant-entry\")" \
+  "runtime accessibility coverage must locate the writing-page AI entry"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "writingAIEntry.click()" \
+  "runtime accessibility coverage must click the writing-page AI entry directly"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ContentView.swift" \
@@ -563,7 +613,7 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryRecordCardSection.swift"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/WorkspaceLayoutViews.swift" \
+  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift" \
   ".accessibilityLabel(\"搜索草稿\")" \
   "draft search field must expose an accessibility label"
 
@@ -681,14 +731,19 @@ require_literal \
   "personal website menu must expose an accessibility label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/LocalSitePreviewToolbarControl.swift" \
-  ".accessibilityLabel(\"本地预览\")" \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  ".accessibilityLabel(isRunning ? \"打开本地站点预览\" : \"本地站点预览\")" \
   "local preview toolbar control must expose an accessibility label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/LocalSitePreviewToolbarControl.swift" \
-  ".accessibilityValue(statusTitle)" \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  ".accessibilityValue(" \
   "local preview toolbar control must expose its current runtime status"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "String(localized: \"预览正在运行\")" \
+  "local preview toolbar control must announce when the preview is running"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift" \
@@ -759,7 +814,7 @@ for workspace_section in writing library rss sync contentHealth; do
 done
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/RSSReaderView.swift" \
+  "Sources/PersonalSitePublisherMac/Views/RSSReaderSidebarViews.swift" \
   '.accessibilityIdentifier("rss-reader-sidebar")' \
   "RSS subscriptions must remain inside the main workspace sidebar"
 
@@ -905,12 +960,13 @@ require_literal \
   "onlinePublishCenterSection" \
   "repository overview must render the online publish center instead of leaving it as dead UI"
 
+# Release History is now split between its container, record cards, and shared deployment components.
 for unfolded_repository_file in \
   Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift \
   Sources/PersonalSitePublisherMac/Views/RepositoryWorkspacePublishingSections.swift \
   Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceLocalPreviewSection.swift \
   Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDetailView.swift \
-  Sources/PersonalSitePublisherMac/Views/ReleaseHistoryDeploymentDebugSection.swift \
+  Sources/PersonalSitePublisherMac/Views/ReleaseHistoryComponents.swift \
   Sources/PersonalSitePublisherMac/Views/ReleaseHistoryRecordCardSection.swift; do
   require_absent_literal \
     "$unfolded_repository_file" \
@@ -938,9 +994,9 @@ for repository_primary_identifier in \
   repository-action-select-folder \
   repository-action-scan \
   repository-action-import \
-  repository-action-migrate \
+  repository-action-data-management \
   repository-action-open-images \
-  repository-action-open-publish \
+  repository-next-action \
   repository-section-summary \
   repository-section-information; do
   require_literal \
@@ -948,6 +1004,16 @@ for repository_primary_identifier in \
     ".accessibilityIdentifier(\"$repository_primary_identifier\")" \
     "repository overview must expose $repository_primary_identifier"
 done
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift" \
+  "openDataManagement(.migration)" \
+  "repository data-management action must open the migration destination"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspaceOverviewSections.swift" \
+  "action: openUnifiedPublishFlow" \
+  "repository next action must keep the unified publish route available when ready"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/RepositoryWorkspacePublishingSections.swift" \
@@ -1113,12 +1179,12 @@ require_literal \
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
   ".accessibilityLabel(\"AI 常用操作\")" \
-  "the single editor AI entry must expose a descriptive accessibility label"
+  "the editor AI quick actions menu must expose a descriptive accessibility label"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
   ".accessibilityValue(isSelectionAIActionRunning ? \"AI 处理中\" : \"\")" \
-  "the single editor AI entry must expose its running state"
+  "the editor AI quick actions menu must expose its running state"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkspaceTopBarView.swift" \
@@ -1137,8 +1203,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  "editorActionGroup(showsTitle: true)" \
+  "ViewThatFits(in: .horizontal)" \
   "editor actions must prefer readable text labels before the compact icon fallback"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "expandedToolbarControls" \
+  "editor actions must keep the readable expanded toolbar variant"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "compactToolbarControls(showsAIChatTitle: true, showsPrepareTitle: true)" \
+  "the first compact toolbar fallback must retain AI and publish text labels"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
@@ -1202,8 +1278,18 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift" \
-  ".focusedSceneValue(\.knowledgeLibraryCommandActions" \
-  "knowledge library must expose focused keyboard command actions"
+  "@EnvironmentObject private var sceneCommandRouter: WorkspaceSceneCommandRouter" \
+  "knowledge library must receive the shared scene command router"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift" \
+  "sceneCommandRouter.registerKnowledgeLibrary(" \
+  "knowledge library must register its keyboard command actions with the scene router"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift" \
+  "sceneCommandRouter.unregisterKnowledgeLibrary(owner: sceneCommandOwnerID)" \
+  "knowledge library must remove keyboard command actions when its view disappears"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/EditorCenterColumn.swift" \
