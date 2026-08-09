@@ -47,6 +47,7 @@ jobs:
           path: |
             .build/main-push-quick-result.json
             .build/main-push-quick-summary.md
+            .build/swift-test-shards/
 
   quality:
     if: github.event_name != 'push'
@@ -135,6 +136,7 @@ jobs:
             .build/quality-gate-summary.md
             .build/coverage-gate-summary.md
             .build/distribution-gate-summary.md
+            .build/swift-test-shards/
 
   swift6-migration:
     if: github.event_name != 'push'
