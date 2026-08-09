@@ -31,8 +31,7 @@ let package = Package(
         .process("Resources")
       ],
       swiftSettings: [
-        .swiftLanguageMode(.v6),
-        .enableExperimentalFeature("IsolatedDeinit")
+        .swiftLanguageMode(.v6)
       ],
       linkerSettings: [
         .linkedLibrary("sqlite3"),

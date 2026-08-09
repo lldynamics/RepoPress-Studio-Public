@@ -8,6 +8,31 @@ public enum WorkspaceBackupSchedulerStatusLevel: Equatable, Sendable {
   case error
 }
 
+/// Owns a background scheduler independently of the main-actor scheduler.
+///
+/// Explicit invalidation and replacement are serialized by the owning
+/// `@MainActor` scheduler. The lease's deinitializer is a final fallback for
+/// the case where the owner is released without an explicit stop.
+private final class WorkspaceBackupActivityLease {
+  // Explicit invalidation/replacement is serialized on the main actor. During
+  // deinit the lease has no concurrent owner references, so this final cleanup
+  // cannot race an owner operation.
+  private var scheduler: NSBackgroundActivityScheduler?
+
+  init(_ scheduler: NSBackgroundActivityScheduler) {
+    self.scheduler = scheduler
+  }
+
+  func invalidate() {
+    scheduler?.invalidate()
+    scheduler = nil
+  }
+
+  deinit {
+    invalidate()
+  }
+}
+
 @MainActor
 public final class WorkspaceBackupScheduler: ObservableObject {
   public static let settingsKey = "workspaceBackupScheduleV1"
@@ -28,7 +53,7 @@ public final class WorkspaceBackupScheduler: ObservableObject {
   private let defaultDestinationFolderURL: URL?
   private let bookmarkCodec: WorkbenchDataRootBookmarkCodec
   private var hasStarted = false
-  private var backgroundActivity: NSBackgroundActivityScheduler?
+  private var backgroundActivity: WorkspaceBackupActivityLease?
 
   public init(
     store: WorkbenchStore,
@@ -43,10 +68,6 @@ public final class WorkspaceBackupScheduler: ObservableObject {
     self.defaultDestinationFolderURL = defaultDestinationFolderURL?.standardizedFileURL
     self.bookmarkCodec = bookmarkCodec
     self.settings = Self.loadSettings(from: defaults)
-  }
-
-  isolated deinit {
-    backgroundActivity?.invalidate()
   }
 
   public var destinationFolderURL: URL {
@@ -317,7 +338,7 @@ public final class WorkspaceBackupScheduler: ObservableObject {
         completionHandler(.finished)
       }
     }
-    backgroundActivity = activity
+    backgroundActivity = WorkspaceBackupActivityLease(activity)
   }
 
   private func automaticBackupFilename() -> String {
