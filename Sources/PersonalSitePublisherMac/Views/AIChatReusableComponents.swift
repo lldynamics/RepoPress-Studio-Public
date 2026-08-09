@@ -261,7 +261,9 @@ struct AIChatHeader: View {
       "AI 模型",
       selection: Binding(
         get: { modelGrade },
-        set: onSelectModelGrade
+        set: { grade in
+          onSelectModelGrade(grade)
+        }
       )
     ) {
       ForEach(AIChatModelGrade.allCases) { grade in

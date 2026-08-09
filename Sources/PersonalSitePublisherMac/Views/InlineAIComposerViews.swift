@@ -133,7 +133,7 @@ struct InlineSelectionFloatingPalette: View {
               .rewriteSelection(AIPublishingRewriteConfiguration(style: style))
             )
           } label: {
-            Label(style.displayName, systemImage: "wand.and.stars")
+            Label(style.localizedDisplayName, systemImage: "wand.and.stars")
           }
           .disabled(!availabilityForAction(.rewriteSelection).isEnabled)
         }
@@ -145,7 +145,7 @@ struct InlineSelectionFloatingPalette: View {
               .rewriteSelection(AIPublishingRewriteConfiguration(operation: operation))
             )
           } label: {
-            Label(operation.displayName, systemImage: "wand.and.stars")
+            Label(operation.localizedDisplayName, systemImage: "wand.and.stars")
           }
           .disabled(!availabilityForAction(.rewriteSelection).isEnabled)
         }

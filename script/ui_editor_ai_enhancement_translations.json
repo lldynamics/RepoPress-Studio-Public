@@ -7,10 +7,6 @@
     "en": "%@ (about %lld characters)",
     "zh-Hans": "%@（约 %lld 字）"
   },
-  "@ 上下文": {
-    "en": "@ Context",
-    "zh-Hans": "@ 上下文"
-  },
   "AI 功能": {
     "en": "AI Features",
     "zh-Hans": "AI 功能"
@@ -174,10 +170,6 @@
   "运行当前文章发布检查": {
     "en": "Run publishing checks for the current article",
     "zh-Hans": "运行当前文章发布检查"
-  },
-  "这条回复有帮助吗？": {
-    "en": "Was this response helpful?",
-    "zh-Hans": "这条回复有帮助吗？"
   },
   "选择导出文件的保存位置。": {
     "en": "Choose where to save the exported file.",

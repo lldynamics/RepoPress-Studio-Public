@@ -103,6 +103,10 @@ extension AIPublishingChatRole: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingChatContextMode: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingChatDraftApplicationMode: WorkbenchDisplayNameLocalizable {}
 extension AIPublishingSelectionEditApplication: WorkbenchDisplayNameLocalizable {}
+extension AIPublishingActionConvergence: WorkbenchDisplayNameLocalizable {}
+extension AIPublishingAssetKind: WorkbenchDisplayNameLocalizable {}
+extension AIPublishingRewriteOperation: WorkbenchDisplayNameLocalizable {}
+extension AIPublishingRewriteStyle: WorkbenchDisplayNameLocalizable {}
 extension SiteMaintenanceHealthLevel: WorkbenchDisplayNameLocalizable {}
 extension MaintenanceActionPriority: WorkbenchDisplayNameLocalizable {}
 extension MaintenanceActionKind: WorkbenchDisplayNameLocalizable {}

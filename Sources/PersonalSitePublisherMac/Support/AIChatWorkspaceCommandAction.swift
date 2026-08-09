@@ -5,10 +5,11 @@ import SwiftUI
 struct AIChatWorkspaceCommandAction: Sendable {
   let isAvailable: Bool
   let unavailableReason: String?
-  let open: @MainActor @Sendable (
-    _ draftID: UUID,
-    _ quickPrompt: AIPublishingQuickPrompt?
-  ) -> Void
+  let open:
+    @MainActor @Sendable (
+      _ draftID: UUID,
+      _ quickPrompt: AIPublishingQuickPrompt?
+    ) -> Void
 }
 
 private struct AIChatWorkspaceCommandActionEnvironmentKey: EnvironmentKey {

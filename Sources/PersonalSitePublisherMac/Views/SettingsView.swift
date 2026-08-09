@@ -151,7 +151,7 @@ struct SettingsView: View {
       Spacer(minLength: 2)
       if needsAttention {
         Text(SettingsSidebarPresentation.attentionBadgeTitle)
-          .font(.caption2.weight(.semibold))
+          .font(.workbenchMetadata.weight(.semibold))
           .foregroundStyle(WorkbenchTheme.warning)
           .padding(.horizontal, 6)
           .padding(.vertical, 2)

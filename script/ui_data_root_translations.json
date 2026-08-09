@@ -1,6 +1,5 @@
 {
   "RepoPress Studio 会在所选位置中新建一个“RepoPress Data”文件夹。": "RepoPress Studio will create a \"RepoPress Data\" folder in the selected location.",
-  "数据根标记的类型不正确。": "The data-root marker has an invalid type.",
   "display.workspace-backup-component.rss-reader": {
     "en": "RSS Reader",
     "zh-Hans": "RSS 阅读器"
@@ -32,6 +31,7 @@
   "数据文件夹版本为 %d，当前应用仅支持 %d。请先升级 RepoPress Studio。": "The data folder is version %d, while this app supports version %d. Upgrade RepoPress Studio first.",
   "数据文件夹的内容结构与标记不一致，未对原文件进行修改。": "The data-folder contents do not match its marker. The original files were not modified.",
   "数据文件夹缺少已声明的内容。": "The data folder is missing a declared component.",
+  "数据根标记的类型不正确。": "The data-root marker has an invalid type.",
   "新建数据文件夹…": "Create New Data Folder…",
   "新数据文件夹未能完成初始化，未安装不完整的数据。": "The new data folder could not be initialized. Incomplete data was not installed.",
   "无法新建数据文件夹：%@": "Could not create the data folder: %@",

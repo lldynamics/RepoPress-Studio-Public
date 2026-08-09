@@ -1354,3 +1354,10 @@
 "资料库回收站已清理：删除 %d 条，%d 条未能删除，%d 个本地文件未能移除。" = "Library recycle bin cleanup finished: %d items deleted, %d items could not be deleted, and %d local files could not be removed.";
 "上一次本地发布未完成，自动恢复失败：%@" = "The previous local publish did not finish, and automatic recovery failed: %@";
 "跟踪文件恢复到 HEAD 并同步取消暂存；本次新增且未跟踪的文件会按记录路径删除。执行前先确认没有其他手动编辑混在这些路径里。" = "Tracked files will be restored to HEAD and unstaged; newly added and untracked files will be deleted at their recorded paths. Confirm that no manual edits are mixed into these paths before continuing.";
+"工作区文件已替换，但旧副本清理失败：%@。旧副本保留在 %@。" = "The workspace file was replaced, but the previous copy could not be removed: %@. The previous copy remains at %@.";
+"工作区文件替换失败，且自动回滚失败：%@。旧副本仍保留在 %@。" = "Replacing the workspace file failed, and automatic rollback also failed: %@. The previous copy remains at %@.";
+"媒体临时文件清理失败：%@。%@" = "Media temporary file cleanup failed at %@. %@";
+"RSS 备份已替换，但旧副本清理失败：%@；旧副本保留在 %@" = "The RSS backup was replaced, but the previous copy could not be removed: %@; the previous copy remains at %@";
+"GitHub 发布未完成：%@；自动删除临时分支 %@ 失败：%@。该分支可能仍保留，请在远端删除后重试。" = "GitHub publishing did not complete: %@; automatic deletion of temporary branch %@ failed: %@. The branch may remain. Delete it from the remote and try again.";
+"AI 连接仍被通用对话绑定，请先为这些对话重新绑定后再删除。" = "This AI connection is still used by general conversations. Rebind those conversations before deleting it.";
+"自动备份设置保存失败：%@" = "Failed to save automatic backup settings: %@";

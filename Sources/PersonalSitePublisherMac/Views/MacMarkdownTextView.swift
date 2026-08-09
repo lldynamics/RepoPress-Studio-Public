@@ -131,7 +131,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
       context.coordinator.handleTableEditing(command, in: textView)
     }
     textView.string = text
-    let initialSelection = isFrontMatterSelection
+    let initialSelection =
+      isFrontMatterSelection
       ? Self.clamped(selectedRange, length: (text as NSString).length)
       : documentRange(
         forBodyRange: selectedRange,

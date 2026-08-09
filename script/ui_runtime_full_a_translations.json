@@ -63,10 +63,6 @@
     "en": "API Key",
     "zh-Hans": "API 密钥"
   },
-  "API 凭据": {
-    "en": "API Credentials",
-    "zh-Hans": "API 凭据"
-  },
   "Alt": {
     "en": "Alt",
     "zh-Hans": "Alt"
@@ -78,10 +74,6 @@
   "Firefox": {
     "en": "Firefox",
     "zh-Hans": "Firefox"
-  },
-  "Firefox 先运行 python3 script/build_browser_extension_source.py --browser firefox --output-dir .build/browser-extension/firefox，再在 about:debugging 中选择“临时载入附加组件”，选中 .build/browser-extension/firefox/manifest.json。加载后把上面的令牌粘贴到插件中。": {
-    "en": "Run python3 script/build_browser_extension_source.py --browser firefox --output-dir .build/browser-extension/firefox, then choose Load Temporary Add-on in about:debugging and select .build/browser-extension/firefox/manifest.json. After loading it, paste the token above into the extension.",
-    "zh-Hans": "Firefox 先运行 python3 script/build_browser_extension_source.py --browser firefox --output-dir .build/browser-extension/firefox，再在 about:debugging 中选择“临时载入附加组件”，选中 .build/browser-extension/firefox/manifest.json。加载后把上面的令牌粘贴到插件中。"
   },
   "HTML…": {
     "en": "HTML…",
@@ -483,10 +475,6 @@
     "en": "Check Repository Permissions",
     "zh-Hans": "检查仓库权限"
   },
-  "模型：%@": {
-    "en": "Model: %@",
-    "zh-Hans": "模型：%@"
-  },
   "正在刷新": {
     "en": "Refreshing",
     "zh-Hans": "正在刷新"
@@ -562,10 +550,6 @@
   "移到回收站…": {
     "en": "Move to Trash…",
     "zh-Hans": "移到回收站…"
-  },
-  "站点与文章默认": {
-    "en": "Site and Article Defaults",
-    "zh-Hans": "站点与文章默认"
   },
   "管理与设置": {
     "en": "Management and Settings",

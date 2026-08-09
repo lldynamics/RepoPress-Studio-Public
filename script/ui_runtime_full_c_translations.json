@@ -27,10 +27,6 @@
     "en": "%lld items",
     "zh-Hans": "%lld 项"
   },
-  "AI 数据发送授权": {
-    "en": "AI Data Sharing Consent",
-    "zh-Hans": "AI 数据发送授权"
-  },
   "Caption": {
     "en": "Caption",
     "zh-Hans": "图注"

@@ -147,7 +147,7 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   var openMainWindowAction: (() -> Void)? {
     didSet {
       guard openMainWindowAction != nil,
-            mainWindowRestoreRequestState.actionBecameAvailable()
+        mainWindowRestoreRequestState.actionBecameAvailable()
       else {
         return
       }
@@ -217,7 +217,7 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   @objc
   private func windowWillClose(_ notification: Notification) {
     guard let window = notification.object as? NSWindow,
-          isMainWorkbenchWindow(window)
+      isMainWorkbenchWindow(window)
     else {
       return
     }
@@ -235,7 +235,7 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
   @objc
   private func windowDidBecomeKey(_ notification: Notification) {
     guard let window = notification.object as? NSWindow,
-          isMainWorkbenchWindow(window)
+      isMainWorkbenchWindow(window)
     else {
       return
     }
@@ -289,7 +289,7 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     RunLoop.main.perform(inModes: [.default]) { [weak self] in
       MainActor.assumeIsolated {
         guard let self,
-              self.mainWindowRestoreRequestState.beginScheduledAttempt()
+          self.mainWindowRestoreRequestState.beginScheduledAttempt()
         else { return }
         NSApp.activate(ignoringOtherApps: true)
         switch self.restoreMainWindow(in: NSApp) {
@@ -312,7 +312,7 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     guard let retry else { return }
     DispatchQueue.main.asyncAfter(deadline: .now() + retry.delay) { [weak self] in
       guard let self,
-            self.mainWindowRestoreRequestState.retryTimerFired(token: retry.token)
+        self.mainWindowRestoreRequestState.retryTimerFired(token: retry.token)
       else { return }
       self.enqueueMainWindowRestoreAfterMenuTracking()
     }
@@ -338,7 +338,7 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     RunLoop.main.perform(inModes: [.default]) { [weak self] in
       MainActor.assumeIsolated {
         guard let self,
-              self.persistentWindowCommandRequestState.beginScheduledAttempt()
+          self.persistentWindowCommandRequestState.beginScheduledAttempt()
         else { return }
         self.reconcilePersistentWindowCommand()
       }
@@ -395,7 +395,7 @@ final class PersonalSitePublisherMacAppDelegate: NSObject, NSApplicationDelegate
     guard let retry else { return }
     DispatchQueue.main.asyncAfter(deadline: .now() + retry.delay) { [weak self] in
       guard let self,
-            self.persistentWindowCommandRequestState.retryTimerFired(token: retry.token)
+        self.persistentWindowCommandRequestState.retryTimerFired(token: retry.token)
       else { return }
       self.enqueuePersistentWindowCommandReconciliation()
     }

@@ -121,10 +121,6 @@
     "en": "Source location: %@",
     "zh-Hans": "原文位置：%@"
   },
-  "发布状态：%@ · %@。点击查看状态和发布操作。": {
-    "en": "Publishing status: %1$@ · %2$@. Click to view status and publishing actions.",
-    "zh-Hans": "发布状态：%1$@ · %2$@。点击查看状态和发布操作。"
-  },
   "图片元数据 %@": {
     "en": "Image metadata %@",
     "zh-Hans": "图片元数据 %@"

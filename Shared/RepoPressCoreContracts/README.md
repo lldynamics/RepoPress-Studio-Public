@@ -44,8 +44,8 @@ declare an explicit `additionalProperties` policy for every object.
 
 ## Validation
 
-The contract gate and fixture-hygiene checks are runnable from the repository
-root:
+The contract gate and fixture-hygiene checks are runnable from the
+`Shared/RepoPressCoreContracts` directory:
 
 ```sh
 # Syntax-check every schema.
@@ -70,7 +70,8 @@ UI, persistence, credentials, or platform models. iOS and macOS integrations
 must use app-owned adapters; keep `ArticleDraft`, `SiteProfile`, Keychain, and
 database responsibilities in their existing application layers.
 
-Run the boundary and Swift package checks from the repository root:
+Run the boundary and Swift package checks from the
+`Shared/RepoPressCoreContracts` directory:
 
 ```sh
 python3 scripts/check_swift_core_boundaries.py
@@ -95,7 +96,8 @@ an explicit PackageReference or third-party NuGet dependency. Windows UI,
 Git/process integration, Credential Manager, DPAPI, filesystem, and network
 transport remain consumer-adapter responsibilities.
 
-Run the C# boundary and harness checks from the repository root:
+Run the C# boundary and harness checks from the
+`Shared/RepoPressCoreContracts` directory:
 
 ```sh
 python3 scripts/check_dotnet_core_boundaries.py

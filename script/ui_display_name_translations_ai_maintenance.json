@@ -23,6 +23,54 @@
     "en": "Selected Article",
     "zh-Hans": "指定文章"
   },
+  "display.ai-publishing-action-convergence.content-review": {
+    "en": "Content Review",
+    "zh-Hans": "内容审查"
+  },
+  "display.ai-publishing-action-convergence.publish-asset-pack": {
+    "en": "Generate Publishing Asset Pack",
+    "zh-Hans": "生成发布资产包"
+  },
+  "display.ai-publishing-action-convergence.rewrite-selection": {
+    "en": "Rewrite Selection",
+    "zh-Hans": "改写选区"
+  },
+  "display.ai-publishing-asset-kind.cover-image-prompt": {
+    "en": "Cover Image Prompt",
+    "zh-Hans": "封面图提示词"
+  },
+  "display.ai-publishing-asset-kind.cross-platform-announcement": {
+    "en": "Cross-platform Announcement",
+    "zh-Hans": "跨平台发布摘要"
+  },
+  "display.ai-publishing-asset-kind.front-matter": {
+    "en": "Front Matter",
+    "zh-Hans": "Front Matter"
+  },
+  "display.ai-publishing-asset-kind.image-alt-captions": {
+    "en": "Image Alt Text and Captions",
+    "zh-Hans": "图片 Alt/Caption"
+  },
+  "display.ai-publishing-asset-kind.newsletter-summary": {
+    "en": "Newsletter Summary",
+    "zh-Hans": "Newsletter 摘要"
+  },
+  "display.ai-publishing-asset-kind.publish-note": {
+    "en": "Publish Note",
+    "zh-Hans": "发布说明"
+  },
+  "display.ai-publishing-asset-kind.pull-quotes": {
+    "en": "Pull Quotes",
+    "zh-Hans": "可引用摘录"
+  },
+  "display.ai-publishing-asset-kind.short-video-script": {
+    "en": "Short Video Script",
+    "zh-Hans": "短视频口播稿"
+  },
+  "display.ai-publishing-asset-kind.social-share": {
+    "en": "Social Share",
+    "zh-Hans": "社交分享"
+  },
   "display.ai-publishing-capability-center-mode.all": {
     "en": "All Capabilities",
     "zh-Hans": "全部能力"
@@ -410,6 +458,54 @@
   "display.ai-publishing-quick-prompt.update-note": {
     "en": "Update Note",
     "zh-Hans": "更新说明"
+  },
+  "display.ai-publishing-rewrite-operation.condense": {
+    "en": "Condense",
+    "zh-Hans": "压缩"
+  },
+  "display.ai-publishing-rewrite-operation.expand": {
+    "en": "Expand",
+    "zh-Hans": "扩写"
+  },
+  "display.ai-publishing-rewrite-operation.polish": {
+    "en": "Polish",
+    "zh-Hans": "润色"
+  },
+  "display.ai-publishing-rewrite-operation.remove-redundancy": {
+    "en": "Remove Redundancy",
+    "zh-Hans": "删减冗余"
+  },
+  "display.ai-publishing-rewrite-operation.rewrite": {
+    "en": "Rewrite",
+    "zh-Hans": "改写"
+  },
+  "display.ai-publishing-rewrite-operation.simplify": {
+    "en": "Simplify",
+    "zh-Hans": "简化"
+  },
+  "display.ai-publishing-rewrite-operation.summarize": {
+    "en": "Summarize",
+    "zh-Hans": "摘要"
+  },
+  "display.ai-publishing-rewrite-style.balanced": {
+    "en": "Natural",
+    "zh-Hans": "自然"
+  },
+  "display.ai-publishing-rewrite-style.casual": {
+    "en": "Casual",
+    "zh-Hans": "轻松"
+  },
+  "display.ai-publishing-rewrite-style.formal": {
+    "en": "Formal",
+    "zh-Hans": "正式"
+  },
+  "display.ai-publishing-rewrite-style.reader-friendly": {
+    "en": "Reader-friendly",
+    "zh-Hans": "读者友好"
+  },
+  "display.ai-publishing-rewrite-style.technical": {
+    "en": "Technical",
+    "zh-Hans": "技术"
   },
   "display.ai-publishing-selection-edit-application.insert-after-range": {
     "en": "Insert After Selection",

@@ -2,11 +2,6 @@
   "schemaVersion": 1,
   "uncheckedSendable": [
     {
-      "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserBridge.swift",
-      "declaration": "BrowserPreparedImport",
-      "rationale": "Immutable transfer object whose Foundation payload is created before crossing the task boundary."
-    },
-    {
       "file": "Sources/PersonalSitePublisherMac/Support/KnowledgeBrowserImportLedgerStore.swift",
       "declaration": "KnowledgeBrowserImportLedgerDefaults",
       "rationale": "Value wrapper delegates access to the thread-safe UserDefaults implementation and stores no mutable reference state."
@@ -177,16 +172,6 @@
       "rationale": "Mutable watcher sources are confined to its serial queue and lifecycle flags are protected by the state lock."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchDataRootBookmark.swift",
-      "declaration": "WorkbenchDataRootAccessLease",
-      "rationale": "The lease carries immutable Sendable values and releases the security scope exactly once from deinit through the Sendable callback."
-    },
-    {
-      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchDataRootBookmark.swift",
-      "declaration": "WorkbenchDataRootSession",
-      "rationale": "The session contains immutable Sendable snapshots and one Sendable access lease whose lifecycle remains tied to the session."
-    },
-    {
       "file": "Tests/PublishingWorkbenchCoreTests/LocalContentImportServiceTests.swift",
       "declaration": "LocalContentImportInvocationCounter",
       "rationale": "Test invocation state is protected by its NSLock while callbacks may cross task boundaries."
@@ -211,6 +196,12 @@
     }
   ],
   "optionalOperations": [
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/ManagedAttachmentFileStore.swift",
+      "category": "temporaryCleanup",
+      "contains": "try? removeDirectoryIfEmpty",
+      "rationale": "A failed attachment import already preserves its primary error; removing the newly created empty staging directory is best-effort cleanup only."
+    },
     {
       "file": "Sources/PersonalSitePublisherMac/Support/ScreenshotCaptureWindowBridge.swift",
       "category": "debugSupport",

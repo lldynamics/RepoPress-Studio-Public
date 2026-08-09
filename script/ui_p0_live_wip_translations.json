@@ -35,10 +35,6 @@
     "en": "Allow Loading Remote Images in the Current Article",
     "zh-Hans": "允许加载当前文章的远程图片"
   },
-  "内容保存在本机；有批注时会同步到资料库。": {
-    "en": "Highlights are stored locally; highlights with notes are synced to the knowledge library.",
-    "zh-Hans": "内容保存在本机；有批注时会同步到资料库。"
-  },
   "删除高亮": {
     "en": "Delete Highlight",
     "zh-Hans": "删除高亮"
