@@ -401,6 +401,9 @@ final class RepositoryAutoSyncTests: XCTestCase {
 
     let persistenceURL = try temporaryPersistenceURL()
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: persistenceURL))
+    store.updateActiveProfile { profile in
+      profile.markdownPathPattern = "content/posts/{slug}.md"
+    }
     await store.rememberRepositoryRootAsync(localURL)
     store.updateRepositoryAutoSyncSettings(
       RepositoryAutoSyncSettings(
@@ -459,6 +462,7 @@ final class RepositoryAutoSyncTests: XCTestCase {
     var locallyEdited = automaticallyUpdated
     locallyEdited.bodyMarkdown = "Local work must remain."
     store.updateDraft(locallyEdited)
+    await store.waitForPendingSiteDraftFileWrites()
 
     try """
     ---
@@ -478,6 +482,7 @@ final class RepositoryAutoSyncTests: XCTestCase {
     let thirdRunAt = secondRunAt.addingTimeInterval(300)
     let didRunThirdCheck = await store.runRepositoryAutoSync(now: thirdRunAt)
     XCTAssertTrue(didRunThirdCheck)
+    await store.waitForPendingSave()
     let retained = try XCTUnwrap(
       store.drafts.first { $0.repositoryPath == "content/posts/remote.md" }
     )

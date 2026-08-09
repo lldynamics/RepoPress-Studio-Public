@@ -1148,8 +1148,13 @@ struct WritingDraftColumn: View {
 
   private func registerDraftOwnershipUndo(_ result: DraftOwnershipTransferResult) {
     let undoID = result.undoID
-    undoManager?.registerUndo(withTarget: store) { @MainActor target in
-      _ = target.undoLatestDraftOwnershipTransfer(expectedUndoID: undoID)
+    undoManager?.registerUndo(withTarget: store) { target in
+      // NSUndoManager invokes handlers synchronously on AppKit's main run loop.
+      // This handler is registered from the MainActor UI path, so preserve that
+      // synchronous contract while adapting the old SDK's nonisolated callback.
+      MainActor.assumeIsolated {
+        _ = target.undoLatestDraftOwnershipTransfer(expectedUndoID: undoID)
+      }
     }
     undoManager?.setActionName(draftOwnershipUndoActionName(for: result.operation))
   }
