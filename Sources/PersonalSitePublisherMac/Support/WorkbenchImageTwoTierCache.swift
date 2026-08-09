@@ -111,29 +111,17 @@ final class WorkbenchImageTwoTierCache {
     let diskFileURL = diskCacheDirectory.appendingPathComponent("\(cacheKey).png")
     let diskCacheDirectory = self.diskCacheDirectory
 
-    return await withCheckedContinuation { continuation in
-      cacheQueue.async { [weak self] in
-        guard let self else {
-          continuation.resume(returning: nil)
-          return
-        }
-
-        // 尝试从磁盘 Cache 目录读取已下采样的图像
+    let thumbnailData: ThumbnailData? = await withCheckedContinuation { continuation in
+      cacheQueue.async {
+        // 尝试从磁盘 Cache 目录读取已下采样的图像。只把 Sendable 数据交回
+        // MainActor，避免在并发边界上传递主线程隔离的 NSImage。
         if let diskImageData = Self.loadDiskThumbnailData(
           at: diskFileURL,
           maximumByteCount: policy.maximumDiskEntryByteCount
         ) {
-          Task { @MainActor in
-            guard let diskImage = NSImage(data: diskImageData) else {
-              continuation.resume(returning: nil)
-              return
-            }
-            if self.memoryCacheGeneration == memoryCacheGeneration {
-              let cost = Self.memoryCost(of: diskImage)
-              self.memoryCache.setObject(diskImage, forKey: cacheKey as NSString, cost: cost)
-            }
-            continuation.resume(returning: diskImage)
-          }
+          continuation.resume(
+            returning: ThumbnailData(imageData: diskImageData, diskData: nil)
+          )
           return
         }
 
@@ -163,19 +151,21 @@ final class WorkbenchImageTwoTierCache {
           )
         }
 
-        Task { @MainActor in
-          guard let downsampledImage = NSImage(data: generatedThumbnail.imageData) else {
-            continuation.resume(returning: nil)
-            return
-          }
-          if self.memoryCacheGeneration == memoryCacheGeneration {
-            let cost = Self.memoryCost(of: downsampledImage)
-            self.memoryCache.setObject(downsampledImage, forKey: cacheKey as NSString, cost: cost)
-          }
-          continuation.resume(returning: downsampledImage)
-        }
+        continuation.resume(returning: generatedThumbnail)
       }
     }
+
+    // NSImage stays on MainActor: decode, update L1, and return only after the
+    // background queue has transported Sendable thumbnail bytes.
+    guard let thumbnailData,
+          let image = NSImage(data: thumbnailData.imageData) else {
+      return nil
+    }
+    if self.memoryCacheGeneration == memoryCacheGeneration {
+      let cost = Self.memoryCost(of: image)
+      self.memoryCache.setObject(image, forKey: cacheKey as NSString, cost: cost)
+    }
+    return image
   }
 
   private nonisolated static func generateDownsampledThumbnailData(
