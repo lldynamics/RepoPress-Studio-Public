@@ -1,0 +1,42 @@
+{
+  "capability": "publish-conflict-diff",
+  "description": "Uses the stable remote-first tie break for repeated lines.",
+  "expected": {
+    "ok": true,
+    "value": {
+      "lines": [
+        {
+          "id": 0,
+          "kind": "same",
+          "marker": " ",
+          "text": "x"
+        },
+        {
+          "id": 1,
+          "kind": "remote",
+          "marker": "-",
+          "text": "a"
+        },
+        {
+          "id": 2,
+          "kind": "same",
+          "marker": " ",
+          "text": "x"
+        },
+        {
+          "id": 3,
+          "kind": "local",
+          "marker": "+",
+          "text": "a"
+        }
+      ],
+      "strategy": "lcs"
+    }
+  },
+  "id": "diff-duplicate-tie-break",
+  "input": {
+    "local": "x\nx\na",
+    "remote": "x\na\nx"
+  },
+  "validity": "valid"
+}

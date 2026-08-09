@@ -1,0 +1,369 @@
+{
+  "$defs": {
+    "expected": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/success"
+        },
+        {
+          "$ref": "#/$defs/failure"
+        }
+      ]
+    },
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "errorCode": {
+          "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$",
+          "type": "string"
+        },
+        "ok": {
+          "const": false
+        }
+      },
+      "required": [
+        "ok",
+        "errorCode"
+      ],
+      "type": "object"
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "value": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "ok",
+        "value"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:repopress:contracts:v1:fixture-case",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "capability": {
+            "const": "repository-endpoint"
+          },
+          "validity": {
+            "const": "valid"
+          }
+        },
+        "required": [
+          "validity",
+          "capability",
+          "input"
+        ]
+      },
+      "then": {
+        "properties": {
+          "input": {
+            "$ref": "urn:repopress:contracts:v1:repository-endpoint"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capability": {
+            "const": "front-matter-document"
+          },
+          "validity": {
+            "const": "valid"
+          }
+        },
+        "required": [
+          "validity",
+          "capability",
+          "input"
+        ]
+      },
+      "then": {
+        "properties": {
+          "input": {
+            "$ref": "urn:repopress:contracts:v1:front-matter-document"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capability": {
+            "const": "publish-conflict-diff"
+          },
+          "validity": {
+            "const": "valid"
+          }
+        },
+        "required": [
+          "validity",
+          "capability",
+          "input"
+        ]
+      },
+      "then": {
+        "properties": {
+          "input": {
+            "$ref": "urn:repopress:contracts:v1:publish-conflict-diff"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "validity": {
+            "const": "valid"
+          }
+        },
+        "required": [
+          "validity"
+        ]
+      },
+      "then": {
+        "properties": {
+          "expected": {
+            "$ref": "#/$defs/success"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "validity": {
+            "const": "invalid"
+          }
+        },
+        "required": [
+          "validity"
+        ]
+      },
+      "then": {
+        "properties": {
+          "expected": {
+            "$ref": "#/$defs/failure"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capability": {
+            "const": "repository-endpoint"
+          },
+          "input": {
+            "properties": {
+              "operation": {
+                "const": "validate"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "validity": {
+            "const": "valid"
+          }
+        },
+        "required": [
+          "validity",
+          "capability",
+          "input"
+        ]
+      },
+      "then": {
+        "properties": {
+          "expected": {
+            "$ref": "urn:repopress:contracts:v1:repository-endpoint#/$defs/validate-result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capability": {
+            "const": "repository-endpoint"
+          },
+          "input": {
+            "properties": {
+              "operation": {
+                "const": "build-url"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "validity": {
+            "const": "valid"
+          }
+        },
+        "required": [
+          "validity",
+          "capability",
+          "input"
+        ]
+      },
+      "then": {
+        "properties": {
+          "expected": {
+            "$ref": "urn:repopress:contracts:v1:repository-endpoint#/$defs/build-url-result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capability": {
+            "const": "front-matter-document"
+          },
+          "input": {
+            "properties": {
+              "operation": {
+                "const": "render"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "validity": {
+            "const": "valid"
+          }
+        },
+        "required": [
+          "validity",
+          "capability",
+          "input"
+        ]
+      },
+      "then": {
+        "properties": {
+          "expected": {
+            "$ref": "urn:repopress:contracts:v1:front-matter-document#/$defs/render-result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capability": {
+            "const": "front-matter-document"
+          },
+          "input": {
+            "properties": {
+              "operation": {
+                "const": "markdown-document"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "validity": {
+            "const": "valid"
+          }
+        },
+        "required": [
+          "validity",
+          "capability",
+          "input"
+        ]
+      },
+      "then": {
+        "properties": {
+          "expected": {
+            "$ref": "urn:repopress:contracts:v1:front-matter-document#/$defs/markdown-document-result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capability": {
+            "const": "publish-conflict-diff"
+          },
+          "validity": {
+            "const": "valid"
+          }
+        },
+        "required": [
+          "validity",
+          "capability"
+        ]
+      },
+      "then": {
+        "properties": {
+          "expected": {
+            "oneOf": [
+              {
+                "$ref": "urn:repopress:contracts:v1:publish-conflict-diff#/$defs/lcs-result"
+              },
+              {
+                "$ref": "urn:repopress:contracts:v1:publish-conflict-diff#/$defs/coarse-result"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "description": "Stable case envelope with capability-conditional input and result schemas.",
+  "properties": {
+    "capability": {
+      "enum": [
+        "repository-endpoint",
+        "front-matter-document",
+        "publish-conflict-diff"
+      ]
+    },
+    "description": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "expected": {
+      "$ref": "#/$defs/expected"
+    },
+    "id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "type": "string"
+    },
+    "input": {
+      "type": "object"
+    },
+    "validity": {
+      "enum": [
+        "valid",
+        "invalid"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "capability",
+    "validity",
+    "description",
+    "input",
+    "expected"
+  ],
+  "title": "RepoPress M1 golden fixture case",
+  "type": "object"
+}

@@ -60,6 +60,7 @@ swift test
 - `Sources/PublishingWorkbenchCore/`：模型、服务、Store 与本地数据能力。
 - `Sources/PersonalSitePublisherMac/`：macOS App、SwiftUI 界面和 AppKit 适配层。
 - `Sources/BrowserExtensionProtocolSupport/`：应用与浏览器扩展共享的协议常量。
+- `Shared/RepoPressCoreContracts/`：跨 Swift / .NET 的版本化契约、固定样例和 Foundation-only 共享 Core。
 - `BrowserExtension/`：Safari、Chrome 和 Firefox 扩展源码与渠道配置。
 - `Tests/`、`UITests/`：单元、集成、运行态 UI 和无障碍测试。
 - `Packaging/`：版本、entitlements、第三方声明与发行配置。
@@ -97,7 +98,7 @@ bash script/check_accessibility_runtime.sh
 
 启动性能基线由 `script/check_launch_performance.sh` 检查，默认要求从打开应用包到主窗口可见不超过 5 秒；本机基线可通过 `LAUNCH_BASELINE_MAX_SECONDS` 调整。
 
-GitHub Actions 在 `main` push 运行快速门禁；pull request 和手动触发会增加覆盖率、分发构建、真实 UI / 无障碍检查，以及独立且阻塞的 Swift 6 语言模式迁移门禁。
+GitHub Actions 在 `main` push 运行快速门禁；pull request 和手动触发会增加覆盖率、分发构建、真实 UI / 无障碍检查，以及独立且阻塞的 Swift 6 语言模式迁移门禁。共享契约子树另有跨平台契约、Swift Core 与 .NET Core 门禁，使用说明见 [`Shared/RepoPressCoreContracts/README.md`](Shared/RepoPressCoreContracts/README.md)。
 
 ## 浏览器扩展
 

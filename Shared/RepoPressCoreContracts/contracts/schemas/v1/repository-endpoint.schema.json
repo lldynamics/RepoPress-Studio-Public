@@ -1,0 +1,174 @@
+{
+  "$defs": {
+    "base-input": {
+      "additionalProperties": false,
+      "properties": {
+        "baseURL": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "operation": {
+          "enum": [
+            "validate",
+            "build-url"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "queryItems": {
+          "items": {
+            "$ref": "#/$defs/query-item"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "operation",
+        "baseURL"
+      ],
+      "type": "object"
+    },
+    "build-url-input": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base-input"
+        },
+        {
+          "properties": {
+            "operation": {
+              "const": "build-url"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "build-url-result": {
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "value": {
+          "additionalProperties": false,
+          "properties": {
+            "absoluteURL": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "absoluteURL"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "ok",
+        "value"
+      ],
+      "type": "object"
+    },
+    "query-item": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "validate-input": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base-input"
+        },
+        {
+          "properties": {
+            "operation": {
+              "const": "validate"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "validate-result": {
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "value": {
+          "additionalProperties": false,
+          "properties": {
+            "baseURL": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "baseURL"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "ok",
+        "value"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:repopress:contracts:v1:repository-endpoint",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Provider-neutral endpoint validation and URL construction input.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/validate-input"
+    },
+    {
+      "$ref": "#/$defs/build-url-input"
+    }
+  ],
+  "properties": {
+    "baseURL": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "operation": {
+      "enum": [
+        "validate",
+        "build-url"
+      ]
+    },
+    "path": {
+      "type": "string"
+    },
+    "queryItems": {
+      "items": {
+        "$ref": "#/$defs/query-item"
+      },
+      "type": "array"
+    }
+  },
+  "title": "RepoPress M1 repository endpoint input",
+  "type": "object"
+}

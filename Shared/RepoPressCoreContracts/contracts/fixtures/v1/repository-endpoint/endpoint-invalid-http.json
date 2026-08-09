@@ -1,0 +1,14 @@
+{
+  "capability": "repository-endpoint",
+  "description": "Rejects insecure HTTP transport.",
+  "expected": {
+    "errorCode": "repository_endpoint.invalid_url",
+    "ok": false
+  },
+  "id": "endpoint-invalid-http",
+  "input": {
+    "baseURL": "http://api.example.test/api",
+    "operation": "validate"
+  },
+  "validity": "invalid"
+}

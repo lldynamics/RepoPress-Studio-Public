@@ -1,0 +1,13 @@
+{
+  "capability": "repository-endpoint",
+  "description": "Rejects a structurally incomplete endpoint request before dispatch.",
+  "expected": {
+    "errorCode": "contract.invalid_input",
+    "ok": false
+  },
+  "id": "endpoint-invalid-input-missing-operation",
+  "input": {
+    "baseURL": "https://api.example.test"
+  },
+  "validity": "invalid"
+}
