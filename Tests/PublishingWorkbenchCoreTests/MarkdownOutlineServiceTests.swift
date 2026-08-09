@@ -2,7 +2,7 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class MarkdownOutlineServiceTests: XCTestCase {
-  func testParsesH2AndH3HeadingsOnly() {
+  func testParsesH1ThroughH3Headings() {
     let outline = MarkdownOutlineService().outline(
       in: """
       # Title
@@ -17,8 +17,8 @@ final class MarkdownOutlineServiceTests: XCTestCase {
       """
     )
 
-    XCTAssertEqual(outline.map(\.level), [2, 3])
-    XCTAssertEqual(outline.map(\.title), ["Plan", "Detail"])
+    XCTAssertEqual(outline.map(\.level), [1, 2, 3])
+    XCTAssertEqual(outline.map(\.title), ["Title", "Plan", "Detail"])
   }
 
   func testSectionRangesJumpToHeadingStarts() throws {

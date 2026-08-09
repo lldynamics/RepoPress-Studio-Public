@@ -138,7 +138,7 @@ struct VisualContentGraphView: View {
         Button("进入文章编辑") {
           openDraft(id: node.id)
         }
-        .buttonStyle(.borderedProminent)
+        .workbenchProminentActionStyle()
       } else {
         Text("共有 \(topology.nodes.count) 篇文章，\(topology.edges.count) 条双向引用关联")
           .font(.caption)
