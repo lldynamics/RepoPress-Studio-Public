@@ -10,7 +10,7 @@ struct RSSArticleSpeechHighlight: Equatable, Sendable {
 }
 
 @MainActor
-final class RSSArticleSpeechController: NSObject, ObservableObject, @preconcurrency AVSpeechSynthesizerDelegate {
+final class RSSArticleSpeechController: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
   static let supportedRateMultipliers: [Double] = [1.0, 1.25, 1.5, 1.75, 2.0]
 
   private static let rateDefaultsKey = "rssReaderSpeechRateMultiplier"
@@ -179,76 +179,103 @@ final class RSSArticleSpeechController: NSObject, ObservableObject, @preconcurre
     currentSentenceIndex = 0
   }
 
-  func speechSynthesizer(
+  private nonisolated func performOnMainActor(
+    _ operation: @escaping @MainActor @Sendable (RSSArticleSpeechController) -> Void
+  ) {
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      operation(self)
+    }
+  }
+
+  nonisolated func speechSynthesizer(
     _ synthesizer: AVSpeechSynthesizer,
     didStart utterance: AVSpeechUtterance
   ) {
-    guard utterance === currentUtterance else { return }
-    isSpeaking = true
+    let utteranceID = ObjectIdentifier(utterance)
+    performOnMainActor { controller in
+      guard controller.currentUtterance.map(ObjectIdentifier.init) == utteranceID else { return }
+      controller.isSpeaking = true
+    }
   }
 
-  func speechSynthesizer(
+  nonisolated func speechSynthesizer(
     _ synthesizer: AVSpeechSynthesizer,
     didPause utterance: AVSpeechUtterance
   ) {
-    guard utterance === currentUtterance else { return }
-    isPaused = true
+    let utteranceID = ObjectIdentifier(utterance)
+    performOnMainActor { controller in
+      guard controller.currentUtterance.map(ObjectIdentifier.init) == utteranceID else { return }
+      controller.isPaused = true
+    }
   }
 
-  func speechSynthesizer(
+  nonisolated func speechSynthesizer(
     _ synthesizer: AVSpeechSynthesizer,
     didContinue utterance: AVSpeechUtterance
   ) {
-    guard utterance === currentUtterance else { return }
-    isPaused = false
+    let utteranceID = ObjectIdentifier(utterance)
+    performOnMainActor { controller in
+      guard controller.currentUtterance.map(ObjectIdentifier.init) == utteranceID else { return }
+      controller.isPaused = false
+    }
   }
 
-  func speechSynthesizer(
+  nonisolated func speechSynthesizer(
     _ synthesizer: AVSpeechSynthesizer,
     didFinish utterance: AVSpeechUtterance
   ) {
-    guard utterance === currentUtterance else { return }
-    spokenUTF16Offset = sourceText.utf16.count
-    finishCurrentUtterance()
+    let utteranceID = ObjectIdentifier(utterance)
+    performOnMainActor { controller in
+      guard controller.currentUtterance.map(ObjectIdentifier.init) == utteranceID else { return }
+      controller.spokenUTF16Offset = controller.sourceText.utf16.count
+      controller.finishCurrentUtterance()
+    }
   }
 
-  func speechSynthesizer(
+  nonisolated func speechSynthesizer(
     _ synthesizer: AVSpeechSynthesizer,
     didCancel utterance: AVSpeechUtterance
   ) {
-    guard utterance === currentUtterance else { return }
-    finishCurrentUtterance()
+    let utteranceID = ObjectIdentifier(utterance)
+    performOnMainActor { controller in
+      guard controller.currentUtterance.map(ObjectIdentifier.init) == utteranceID else { return }
+      controller.finishCurrentUtterance()
+    }
   }
 
-  func speechSynthesizer(
+  nonisolated func speechSynthesizer(
     _ synthesizer: AVSpeechSynthesizer,
     willSpeakRangeOfSpeechString characterRange: NSRange,
     utterance: AVSpeechUtterance
   ) {
-    guard utterance === currentUtterance,
-          characterRange.location != NSNotFound
-    else {
-      return
-    }
-    spokenUTF16Offset = min(
-      sourceText.utf16.count,
-      utteranceStartOffset + characterRange.location
-    )
-    let absoluteRange = NSRange(
-      location: spokenUTF16Offset,
-      length: min(
-        characterRange.length,
-        max(0, sourceText.utf16.count - spokenUTF16Offset)
+    let utteranceID = ObjectIdentifier(utterance)
+    performOnMainActor { controller in
+      guard controller.currentUtterance.map(ObjectIdentifier.init) == utteranceID,
+            characterRange.location != NSNotFound
+      else {
+        return
+      }
+      controller.spokenUTF16Offset = min(
+        controller.sourceText.utf16.count,
+        controller.utteranceStartOffset + characterRange.location
       )
-    )
-    let nextHighlight = Self.makeSpeechHighlight(
-      in: sourceText,
-      around: absoluteRange,
-      sentenceRanges: sentenceRanges,
-      sentenceIndex: &currentSentenceIndex
-    )
-    if nextHighlight != currentSpeechHighlight {
-      currentSpeechHighlight = nextHighlight
+      let absoluteRange = NSRange(
+        location: controller.spokenUTF16Offset,
+        length: min(
+          characterRange.length,
+          max(0, controller.sourceText.utf16.count - controller.spokenUTF16Offset)
+        )
+      )
+      let nextHighlight = Self.makeSpeechHighlight(
+        in: controller.sourceText,
+        around: absoluteRange,
+        sentenceRanges: controller.sentenceRanges,
+        sentenceIndex: &controller.currentSentenceIndex
+      )
+      if nextHighlight != controller.currentSpeechHighlight {
+        controller.currentSpeechHighlight = nextHighlight
+      }
     }
   }
 
