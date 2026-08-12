@@ -130,7 +130,7 @@ public enum AIPublishingChatConversationPresentation {
     if config.requiresAPIKey,
        let accessFailureMessage = aiTokenAvailability.accessFailureMessage {
       return CoreL10n.format(
-        "AI Keychain 读取失败：%@",
+        "AI 凭据读取失败：%@",
         accessFailureMessage
       )
     }

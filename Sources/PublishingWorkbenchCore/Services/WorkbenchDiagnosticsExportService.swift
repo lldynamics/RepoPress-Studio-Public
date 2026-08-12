@@ -67,8 +67,8 @@ public struct WorkbenchDiagnosticsExportService: Sendable {
   public init() {}
 
   /// Creates a ZIP package only after the user chooses the destination.
-  /// Workspace JSON, draft bodies, attachments, Keychain values, and raw OS
-  /// logs are deliberately not included.
+  /// Workspace JSON, draft bodies, attachments, credential files, Keychain
+  /// values, and raw OS logs are deliberately not included.
   @discardableResult
   public func export(
     context: WorkbenchDiagnosticsContext,

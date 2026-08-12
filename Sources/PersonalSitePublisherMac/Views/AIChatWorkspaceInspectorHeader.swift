@@ -12,7 +12,7 @@ extension AIChatContextInspectorView {
       Text("未配置 API Key")
         .font(.caption.weight(.semibold))
 
-      Text("仅存钥匙串")
+      Text("凭据独立保存")
         .font(.caption)
         .foregroundStyle(.secondary)
         .lineLimit(1)
@@ -29,7 +29,7 @@ extension AIChatContextInspectorView {
     .background(WorkbenchTheme.warning.opacity(WorkbenchOpacity.noticeBackground))
     .accessibilityElement(children: .contain)
     .accessibilityLabel("未配置 API Key")
-    .accessibilityHint("密钥仅保存在系统钥匙串中。")
+    .accessibilityHint("密钥按设置独立保存在受限本地配置、系统钥匙串或本次会话。")
   }
 
   var isAIKeyMissing: Bool {

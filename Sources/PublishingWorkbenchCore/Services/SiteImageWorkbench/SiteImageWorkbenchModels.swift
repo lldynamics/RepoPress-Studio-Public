@@ -53,7 +53,7 @@ public enum AIImageTextGenerationAvailabilityService {
       return AIImageTextGenerationAvailabilityPresentation(
         isEnabled: false,
         unavailableReason: CoreL10n.format(
-          "AI Keychain 读取失败：%@",
+          "AI 凭据读取失败：%@",
           accessFailureMessage
         )
       )

@@ -66,7 +66,7 @@ struct AIProviderSection: View {
       Text(String(localized: "AI 服务配置"))
     } footer: {
       if presetBinding.wrappedValue == .custom {
-        Text(String(localized: "自定义模式下，基础地址与模型默认为空。基础地址会在点击“应用地址”后生效，避免编辑过程中提前替换钥匙串凭据。"))
+        Text(String(localized: "自定义模式下，基础地址与模型默认为空。基础地址会在点击“应用地址”后生效，避免编辑过程中提前替换当前 AI 凭据。"))
       }
     }
     .onChange(of: baseURL.wrappedValue) { _, newValue in

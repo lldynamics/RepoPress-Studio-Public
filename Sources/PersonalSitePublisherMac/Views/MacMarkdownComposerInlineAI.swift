@@ -34,7 +34,8 @@ extension MacMarkdownComposerView {
 
   func scheduleInlineGhostText() {
     cancelInlineGhostText()
-    guard !isFrontMatterSelection,
+    guard isAutomaticInlineAICompletionEnabled,
+          !isFrontMatterSelection,
           selectedRange.length == 0,
           !isSelectionAIActionRunning,
           isAIEnabledForDraft else {

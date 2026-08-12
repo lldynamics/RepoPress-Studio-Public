@@ -29,6 +29,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiTokenAvailability
   }
 
+  public var credentialStorageMode: AICredentialStorageMode {
+    store.aiStore.aiCredentialStorageMode
+  }
+
   public func keyAvailability(
     forConnectionProfileID connectionProfileID: UUID
   ) -> KeychainTokenAvailability {
@@ -327,6 +331,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func refreshKeyAvailability() {
     store.refreshAIKeyAvailability()
+  }
+
+  public func setCredentialStorageMode(_ mode: AICredentialStorageMode) {
+    store.setAICredentialStorageMode(mode)
   }
 
   @discardableResult

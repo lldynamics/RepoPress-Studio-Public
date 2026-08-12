@@ -75,13 +75,15 @@ extension WorkbenchStore {
     guard previousProfile.aiConnectionProfileID != connectionID else { return true }
     if previousProfile.aiProviderConfig.chatCompletionsURL != nil {
       do {
-        try keychainTokenStore.deleteLegacyAIToken(for: previousProfile)
+        try aiCredentialStore.deleteLegacyTokenIfKeychainIsSelected(
+          for: previousProfile
+        )
       } catch KeychainTokenStoreError.invalidCredentialOrigin(_) {
         // No origin-bound legacy credential can exist for an address that the
         // Keychain store would never have accepted.
       } catch {
         setAIActionMessage(CoreL10n.format(
-          "AI 连接未切换：旧版 API Key 清理失败。请检查 Keychain 权限后重试。%@",
+          "AI 连接未切换：旧版 API Key 清理失败。%@",
           error.localizedDescription
         ))
         return false
@@ -110,10 +112,10 @@ extension WorkbenchStore {
     }
 
     do {
-      try keychainTokenStore.deleteAIToken(forConnectionProfileID: connectionID)
+      try aiCredentialStore.deleteToken(forConnectionProfileID: connectionID)
     } catch {
       var message = CoreL10n.format(
-        "AI 连接未删除：关联的 API Key 删除失败。请检查 Keychain 权限后重试。%@",
+        "AI 连接未删除：当前保存位置中的 API Key 删除失败。%@",
         error.localizedDescription
       )
       if let keychainError = error as? KeychainTokenStoreError,
@@ -155,20 +157,13 @@ extension WorkbenchStore {
 
     let isActiveConnection = activeAIConnectionProfile.id == connectionProfileID
     do {
-      for profile in profiles
-      where profile.aiConnectionProfileID == connectionProfileID
-        && profile.aiProviderConfig.chatCompletionsURL != nil {
-        // A blank or invalid legacy endpoint could never have produced an
-        // origin-bound credential. Skip it so a newly empty configuration can
-        // be configured for the first time without turning cleanup into an
-        // access failure.
-        try keychainTokenStore.deleteLegacyAIToken(for: profile)
+      let legacyProfiles = profiles.filter {
+        $0.aiConnectionProfileID == connectionProfileID
+          && $0.aiProviderConfig.chatCompletionsURL != nil
       }
-      // Keep the authoritative shared credential until every best-effort
-      // legacy fallback has been removed. If legacy cleanup fails, cancelling
-      // the config edit must not also destroy the still-valid shared key.
-      try keychainTokenStore.deleteAIToken(
-        forConnectionProfileID: connectionProfileID
+      try aiCredentialStore.invalidateTokenAcrossStorageModes(
+        forConnectionProfileID: connectionProfileID,
+        legacyProfiles: legacyProfiles
       )
       if isActiveConnection {
         refreshAIKeyAvailability()
@@ -181,7 +176,7 @@ extension WorkbenchStore {
         setAITokenAvailability(KeychainTokenAvailability(accessFailure: error))
       }
       setAIActionMessage(CoreL10n.format(
-        "API 地址未更改：旧 API Key 删除失败，请检查 Keychain 权限后重试。%@",
+        "API 地址未更改：当前保存位置中的旧 API Key 删除失败。%@",
         error.localizedDescription
       ))
       setAIChatMessage(CoreL10n.text("为防止旧 API Key 发送到新地址，本次 AI 连接修改已取消。"))

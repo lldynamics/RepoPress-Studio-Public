@@ -23,6 +23,7 @@ struct SettingsAITabFactory {
       deletableConnectionProfiles: context.store.aiConnectionProfiles.filter {
         context.store.canDeleteAIConnectionProfile($0.id)
       },
+      credentialStorageMode: context.store.ai.credentialStorageMode,
       tokenAvailability: context.store.ai.tokenAvailability,
       isActionRunning: context.store.ai.isActionRunning,
       actionMessage: context.store.ai.actionMessage,
@@ -39,6 +40,9 @@ struct SettingsAITabFactory {
       },
       refreshKeyAvailability: {
         context.store.ai.refreshKeyAvailability()
+      },
+      setCredentialStorageMode: { mode in
+        context.store.ai.setCredentialStorageMode(mode)
       },
       testConnection: {
         await context.store.ai.testConnection()

@@ -119,10 +119,6 @@
     "en": "Code fence on lines %@–%@; click to jump to the other end",
     "zh-Hans": "代码围栏第 %@–%@ 行；点击跳转到另一端"
   },
-  "保存 API Key": {
-    "en": "Save API Key",
-    "zh-Hans": "保存 API Key"
-  },
   "修复 %lld 条资料": {
     "en": "Repair %lld items",
     "zh-Hans": "修复 %lld 条资料"

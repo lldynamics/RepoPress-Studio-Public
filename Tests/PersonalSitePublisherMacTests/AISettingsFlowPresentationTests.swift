@@ -112,9 +112,13 @@ final class AISettingsFlowPresentationTests: XCTestCase {
     XCTAssertEqual(failure?.message, "AI API Key 保存失败：访问被拒绝")
     XCTAssertEqual(failure?.isError, true)
     XCTAssertEqual(
-      AIKeychainActionFeedback(message: "AI API Key 已保存到 Keychain。")?.isError,
+      AIKeychainActionFeedback(message: "AI API Key 已保存到本地配置文件。")?.isError,
       false
     )
     XCTAssertNil(AIKeychainActionFeedback(message: "AI 连接测试失败：网络不可用"))
+  }
+
+  func testAutomaticInlineAICompletionDefaultsOff() {
+    XCTAssertFalse(AIWritingPreferences.defaultAutomaticInlineCompletionEnabled)
   }
 }
