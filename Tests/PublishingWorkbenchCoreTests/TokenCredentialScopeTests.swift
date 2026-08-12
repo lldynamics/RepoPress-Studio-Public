@@ -64,6 +64,22 @@ final class TokenCredentialScopeTests: XCTestCase {
     XCTAssertNil(decoded.accessFailureMessage)
   }
 
+  func testPassiveAvailabilityQueryNeverRequestsSecretData() {
+    let tokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.PassiveAvailability",
+      accountPrefix: "passive-availability"
+    )
+
+    let query = tokenStore.availabilityQuery(account: "passive-availability-test")
+
+    XCTAssertEqual(query[kSecReturnAttributes as String] as? Bool, true)
+    XCTAssertNil(query[kSecReturnData as String])
+    XCTAssertEqual(
+      query[kSecMatchLimit as String] as? String,
+      kSecMatchLimitOne as String
+    )
+  }
+
   func testEmptyCredentialOriginUsesExplicitUnconfiguredMessage() {
     let error = KeychainTokenStoreError.invalidCredentialOrigin("")
 
