@@ -18193,6 +18193,22 @@
         }
       }
     },
+    "关闭时不会访问浏览器连接钥匙串，也不会监听本机端口。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When off, RepoPress Studio does not access the browser-connection Keychain item or listen on a local port."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭时不会访问浏览器连接钥匙串，也不会监听本机端口。"
+          }
+        }
+      }
+    },
     "关闭本地语义索引": {
       "localizations": {
         "en": {
@@ -23693,6 +23709,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "启用只读阅读数据回流"
+          }
+        }
+      }
+    },
+    "启用浏览器连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable Browser Connection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用浏览器连接"
           }
         }
       }

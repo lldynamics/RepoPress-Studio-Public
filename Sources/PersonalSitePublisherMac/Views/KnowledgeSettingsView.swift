@@ -210,7 +210,7 @@ struct KnowledgeSettingsView: View {
       if let browserBridge {
         LabeledContent("连接状态") {
           Label(
-            browserBridge.state.localizedDisplayName,
+            browserBridge.localizedStatusDisplayName,
             systemImage: browserBridge.state == .ready ? "checkmark.circle.fill" : "circle.dotted"
           )
           .foregroundStyle(browserBridge.state == .ready ? WorkbenchTheme.success : Color.secondary)
