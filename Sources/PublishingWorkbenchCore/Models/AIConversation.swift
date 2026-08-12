@@ -31,9 +31,9 @@ public enum AIConversationScope: Codable, Hashable, Sendable {
   }
 }
 
-/// A locally persisted AI conversation. Credentials are intentionally excluded;
-/// API keys remain in the system Keychain and are resolved from the explicitly
-/// stored connection profile when a request is sent.
+/// A locally persisted AI conversation. Credentials are intentionally excluded
+/// and are resolved from the explicitly stored connection profile through the
+/// user-selected credential storage mode when a request is sent.
 public struct AIConversation: Codable, Hashable, Identifiable, Sendable {
   public static let maximumMessages = 80
   public static let maximumImageBytes: Int64 = 8_000_000

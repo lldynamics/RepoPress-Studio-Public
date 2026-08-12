@@ -2401,6 +2401,22 @@
         }
       }
     },
+    "AI API Key 保存位置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI API Key Storage Location"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI API Key 保存位置"
+          }
+        }
+      }
+    },
     "AI Base URL": {
       "localizations": {
         "en": {
@@ -3345,38 +3361,6 @@
         }
       }
     },
-    "API Key 使用 macOS 系统 Keychain (AES-256) 本地安全加密保存，请求直接直连目标 API，绝无云端中转。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "API Key is securely encrypted locally using macOS system Keychain (AES-256). Requests connect directly to target API with zero cloud relay."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "API Key 使用 macOS 系统 Keychain (AES-256) 本地安全加密保存，请求直接直连目标 API，绝无云端中转。"
-          }
-        }
-      }
-    },
-    "API 地址未更改：旧 API Key 删除失败，请检查 Keychain 权限后重试。%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The API address was not changed because the old API key could not be removed. Check Keychain access and try again. %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "API 地址未更改：旧 API Key 删除失败，请检查 Keychain 权限后重试。%@"
-          }
-        }
-      }
-    },
     "API 基础地址": {
       "localizations": {
         "en": {
@@ -4269,22 +4253,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Keychain 读取失败"
-          }
-        }
-      }
-    },
-    "Keychain 读取失败：%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Failed to read Keychain: %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keychain 读取失败：%@"
           }
         }
       }
@@ -14625,22 +14593,6 @@
         }
       }
     },
-    "仅存钥匙串": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keychain Only"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "仅存钥匙串"
-          }
-        }
-      }
-    },
     "仅对没有文字层的页面使用本机 Vision OCR；一次最多处理 200 页。": {
       "localizations": {
         "en": {
@@ -14717,6 +14669,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "仅本地"
+          }
+        }
+      }
+    },
+    "仅本次会话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Session Only"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅本次会话"
           }
         }
       }
@@ -16033,22 +16001,6 @@
         }
       }
     },
-    "保存 API Key": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Save API Key"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "保存 API Key"
-          }
-        }
-      }
-    },
     "保存 HTML 源文件": {
       "localizations": {
         "en": {
@@ -16129,6 +16081,22 @@
         }
       }
     },
+    "保存位置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Storage Location"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存位置"
+          }
+        }
+      }
+    },
     "保存内容": {
       "localizations": {
         "en": {
@@ -16141,6 +16109,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "保存内容"
+          }
+        }
+      }
+    },
+    "保存到 macOS 系统钥匙串。只有选择此项后，应用才会读取或修改 AI API Key 的钥匙串项目。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save the key to macOS Keychain. The app reads or modifies the AI API key Keychain item only when this option is selected."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存到 macOS 系统钥匙串。只有选择此项后，应用才会读取或修改 AI API Key 的钥匙串项目。"
+          }
+        }
+      }
+    },
+    "保存到%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save to %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存到%@"
           }
         }
       }
@@ -16893,6 +16893,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "停止生成"
+          }
+        }
+      }
+    },
+    "停顿时自动生成行内续写": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Generate Inline Continuations While Paused"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停顿时自动生成行内续写"
           }
         }
       }
@@ -18209,6 +18225,22 @@
         }
       }
     },
+    "关闭时，点击文章、移动光标和输入文字都不会自动读取 API Key 或发送 AI 请求": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When off, opening an article, moving the cursor, and typing do not automatically read the API key or send AI requests."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭时，点击文章、移动光标和输入文字都不会自动读取 API Key 或发送 AI 请求"
+          }
+        }
+      }
+    },
     "关闭本地语义索引": {
       "localizations": {
         "en": {
@@ -19101,6 +19133,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "凭据授权与测试"
+          }
+        }
+      }
+    },
+    "凭据独立保存": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credentials Stored Separately"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "凭据独立保存"
+          }
+        }
+      }
+    },
+    "凭据读取失败": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credential Read Failed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "凭据读取失败"
+          }
+        }
+      }
+    },
+    "凭据读取失败：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to read credentials: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "凭据读取失败：%@"
           }
         }
       }
@@ -22737,6 +22817,22 @@
         }
       }
     },
+    "只保存在应用内存中，退出 RepoPress Studio 后自动清除，不写配置文件或钥匙串。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep the key only in app memory. It is cleared when RepoPress Studio quits and is not written to a configuration file or Keychain."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只保存在应用内存中，退出 RepoPress Studio 后自动清除，不写配置文件或钥匙串。"
+          }
+        }
+      }
+    },
     "只显示 .html / .htm": {
       "localizations": {
         "en": {
@@ -22813,6 +22909,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "只有勾选的「新增」和「更新」项会被应用；相同文章和冲突项不会改写本地草稿。"
+          }
+        }
+      }
+    },
+    "只有选择系统钥匙串后，AI 功能才会访问钥匙串中的 API Key": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI features access the API key in Keychain only after System Keychain is selected."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有选择系统钥匙串后，AI 功能才会访问钥匙串中的 API Key"
           }
         }
       }
@@ -26849,18 +26961,18 @@
         }
       }
     },
-    "密钥仅保存在系统钥匙串中。": {
+    "密钥按设置独立保存在受限本地配置、系统钥匙串或本次会话。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The key is stored only in the system Keychain."
+            "value": "The key is stored separately in a restricted local configuration file, System Keychain, or this session, as selected in Settings."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "密钥仅保存在系统钥匙串中。"
+            "value": "密钥按设置独立保存在受限本地配置、系统钥匙串或本次会话。"
           }
         }
       }
@@ -26897,18 +27009,18 @@
         }
       }
     },
-    "对话内容保存在本机；API Key 仍只存于钥匙串。": {
+    "对话内容保存在本机；API Key 使用你在设置中选择的独立保存位置。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conversations are stored on this Mac; the API key remains only in Keychain."
+            "value": "Conversations are stored on this Mac; the API key uses the separate storage location selected in Settings."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "对话内容保存在本机；API Key 仍只存于钥匙串。"
+            "value": "对话内容保存在本机；API Key 使用你在设置中选择的独立保存位置。"
           }
         }
       }
@@ -27681,18 +27793,18 @@
         }
       }
     },
-    "将一并删除该连接档案保存在钥匙串中的 API Key；正在被站点使用的档案不会出现在此列表中。": {
+    "将一并删除该连接档案在当前保存位置中的 API Key；其他保存位置不会被后台访问。正在被站点使用的档案不会出现在此列表中。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The API key stored in Keychain for this connection profile will also be deleted. Profiles in use by a site are not listed here."
+            "value": "The API key in the current storage location for this connection profile will also be deleted. Other storage locations are not accessed in the background. Profiles in use by a site are not listed here."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "将一并删除该连接档案保存在钥匙串中的 API Key；正在被站点使用的档案不会出现在此列表中。"
+            "value": "将一并删除该连接档案在当前保存位置中的 API Key；其他保存位置不会被后台访问。正在被站点使用的档案不会出现在此列表中。"
           }
         }
       }
@@ -28557,6 +28669,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "工作区备份完整性校验通过"
+          }
+        }
+      }
+    },
+    "工作区数据和备份不包含 API Key。AI Key 按设置独立保存在受限本地配置、系统钥匙串或本次会话。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Workspace data and backups do not contain API keys. AI keys are stored separately in a restricted local configuration file, System Keychain, or this session, as selected in Settings."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作区数据和备份不包含 API Key。AI Key 按设置独立保存在受限本地配置、系统钥匙串或本次会话。"
           }
         }
       }
@@ -38001,22 +38129,6 @@
         }
       }
     },
-    "数据文件夹不包含 API Key。凭据仍由 macOS 钥匙串单独保护。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The data folder does not contain API keys. Credentials remain separately protected by macOS Keychain."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "数据文件夹不包含 API Key。凭据仍由 macOS 钥匙串单独保护。"
-          }
-        }
-      }
-    },
     "数据文件夹可用": {
       "localizations": {
         "en": {
@@ -43021,6 +43133,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "本地语义索引"
+          }
+        }
+      }
+    },
+    "本地配置文件（默认）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local Configuration File (Default)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本地配置文件（默认）"
           }
         }
       }
@@ -52257,6 +52385,22 @@
         }
       }
     },
+    "系统钥匙串": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System Keychain"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统钥匙串"
+          }
+        }
+      }
+    },
     "系统预览": {
       "localizations": {
         "en": {
@@ -53505,6 +53649,22 @@
         }
       }
     },
+    "自动 AI 续写": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic AI Continuation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动 AI 续写"
+          }
+        }
+      }
+    },
     "自动同步": {
       "localizations": {
         "en": {
@@ -53873,18 +54033,18 @@
         }
       }
     },
-    "自定义模式下，基础地址与模型默认为空。基础地址会在点击“应用地址”后生效，避免编辑过程中提前替换钥匙串凭据。": {
+    "自定义模式下，基础地址与模型默认为空。基础地址会在点击“应用地址”后生效，避免编辑过程中提前替换当前 AI 凭据。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "In Custom mode, the base address and model are blank by default. The base address takes effect after you click “Apply Address,” preventing Keychain credentials from being replaced while you edit."
+            "value": "In Custom mode, the base address and model are blank by default. The base address takes effect after you click “Apply Address,” preventing the current AI credential from being replaced while you edit."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "自定义模式下，基础地址与模型默认为空。基础地址会在点击“应用地址”后生效，避免编辑过程中提前替换钥匙串凭据。"
+            "value": "自定义模式下，基础地址与模型默认为空。基础地址会在点击“应用地址”后生效，避免编辑过程中提前替换当前 AI 凭据。"
           }
         }
       }
@@ -57057,18 +57217,18 @@
         }
       }
     },
-    "输入后可保存到钥匙串": {
+    "输入后保存到%@": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enter a value to save it to Keychain"
+            "value": "Enter a value to save it to %@"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "输入后可保存到钥匙串"
+            "value": "输入后保存到%@"
           }
         }
       }
@@ -62753,18 +62913,18 @@
         }
       }
     },
-    "默认不包含 API Key；API Key 始终留在本机钥匙串中，跨机器恢复后需在设置中重新配置。": {
+    "默认不包含 API Key；受限本地配置、系统钥匙串和本次会话中的 Key 都不会进入备份，跨机器恢复后需重新配置。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "API keys are excluded by default and remain in this Mac's Keychain. Configure them again after restoring on another Mac."
+            "value": "API keys in the restricted local configuration file, System Keychain, or this session are excluded from backups. Configure them again after restoring on another Mac."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "默认不包含 API Key；API Key 始终留在本机钥匙串中，跨机器恢复后需在设置中重新配置。"
+            "value": "默认不包含 API Key；受限本地配置、系统钥匙串和本次会话中的 Key 都不会进入备份，跨机器恢复后需重新配置。"
           }
         }
       }
@@ -62785,6 +62945,22 @@
         }
       }
     },
+    "默认保存在此 Mac 的应用支持目录，文件权限限制为仅当前用户可读写（0600）。内容是明文，请勿共享该配置文件。应用不会访问 AI 钥匙串项目。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By default, the key is stored in this Mac's Application Support directory with owner-only read/write permissions (0600). It is plain text, so do not share this configuration file. The app does not access the AI Keychain item."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认保存在此 Mac 的应用支持目录，文件权限限制为仅当前用户可读写（0600）。内容是明文，请勿共享该配置文件。应用不会访问 AI 钥匙串项目。"
+          }
+        }
+      }
+    },
     "默认入口只保留 8 个高频能力；其他动作、快捷提示和工作流可在这里搜索。": {
       "localizations": {
         "en": {
@@ -62797,6 +62973,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "默认入口只保留 8 个高频能力；其他动作、快捷提示和工作流可在这里搜索。"
+          }
+        }
+      }
+    },
+    "默认关闭。开启后，光标停顿约 0.85 秒会自动发送当前写作上下文；手动 AI 写作、对话和选区操作不受此开关影响。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off by default. When enabled, pausing the cursor for about 0.85 seconds automatically sends the current writing context. Manual AI writing, chat, and selection actions are unaffected."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认关闭。开启后，光标停顿约 0.85 秒会自动发送当前写作上下文；手动 AI 写作、对话和选区操作不受此开关影响。"
           }
         }
       }

@@ -39,6 +39,9 @@ struct MacMarkdownComposerView: View {
   var isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
   @AppStorage(MarkdownEditorComfortPreferences.writingGoalKey)
   var editorWritingGoal = MarkdownEditorComfortConfiguration.defaultWritingGoal
+  @AppStorage(AIWritingPreferences.automaticInlineCompletionEnabledKey)
+  var isAutomaticInlineAICompletionEnabled =
+    AIWritingPreferences.defaultAutomaticInlineCompletionEnabled
   @AppStorage(MarkdownEditorDisplayModePreferences.siteArticleKey)
   var siteArticleDisplayModeRawValue = EditorDisplayMode.edit.rawValue
   @AppStorage(MarkdownEditorDisplayModePreferences.generalDraftKey)
@@ -301,6 +304,13 @@ struct MacMarkdownComposerView: View {
     }
     .onChange(of: editorBody) { _, _ in
       scheduleInlineGhostText()
+    }
+    .onChange(of: isAutomaticInlineAICompletionEnabled) { _, isEnabled in
+      if isEnabled {
+        scheduleInlineGhostText()
+      } else {
+        cancelInlineGhostText()
+      }
     }
     .onChange(of: isFrontMatterSelection) { _, isSelected in
       if isSelected {

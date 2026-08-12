@@ -9,6 +9,10 @@ extension WorkbenchStore {
     aiStore.refreshAIKeyAvailability()
   }
 
+  public func setAICredentialStorageMode(_ mode: AICredentialStorageMode) {
+    aiStore.setAICredentialStorageMode(mode)
+  }
+
   public func prepareSEOSocialPreview(for draft: ArticleDraft) {
     aiStore.prepareSEOSocialPreview(for: draft)
   }

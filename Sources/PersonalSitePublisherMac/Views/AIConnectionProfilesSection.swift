@@ -99,7 +99,7 @@ struct AIConnectionProfilesSection: View {
         profilePendingDeletion = nil
       }
     } message: {
-      Text("将一并删除该连接档案保存在钥匙串中的 API Key；正在被站点使用的档案不会出现在此列表中。")
+      Text("将一并删除该连接档案在当前保存位置中的 API Key；其他保存位置不会被后台访问。正在被站点使用的档案不会出现在此列表中。")
     }
   }
 

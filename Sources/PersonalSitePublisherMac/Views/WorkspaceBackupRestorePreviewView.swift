@@ -158,7 +158,7 @@ struct WorkspaceBackupRestorePreviewView: View {
   private var apiKeyNotice: String {
     preview.includesAPIKeys
       ? String(localized: "此备份声明包含 API Key，应用不会导入。")
-      : String(localized: "默认不包含 API Key；API Key 始终留在本机钥匙串中，跨机器恢复后需在设置中重新配置。")
+      : String(localized: "默认不包含 API Key；受限本地配置、系统钥匙串和本次会话中的 Key 都不会进入备份，跨机器恢复后需重新配置。")
   }
 
   private var restoreImpactMessage: String {

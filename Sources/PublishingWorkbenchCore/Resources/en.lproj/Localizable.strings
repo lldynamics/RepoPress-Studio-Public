@@ -1361,3 +1361,16 @@
 "GitHub 发布未完成：%@；自动删除临时分支 %@ 失败：%@。该分支可能仍保留，请在远端删除后重试。" = "GitHub publishing did not complete: %@; automatic deletion of temporary branch %@ failed: %@. The branch may remain. Delete it from the remote and try again.";
 "AI 连接仍被通用对话绑定，请先为这些对话重新绑定后再删除。" = "This AI connection is still used by general conversations. Rebind those conversations before deleting it.";
 "自动备份设置保存失败：%@" = "Failed to save automatic backup settings: %@";
+"AI 凭据读取失败" = "Failed to Read AI Credentials";
+"AI 凭据读取失败：%@" = "Failed to read AI credentials: %@";
+"API Key 不能为空。" = "The API key cannot be empty.";
+"本地 AI 凭据配置无法读取：%@" = "Could not read the local AI credential configuration: %@";
+"本地 AI 凭据配置无法写入：%@" = "Could not write the local AI credential configuration: %@";
+"本地 AI 凭据配置版本不受支持：%@" = "The local AI credential configuration version is unsupported: %@";
+"API Key 保存位置已切换为 %@。不同保存位置之间不会自动复制或删除 Key。" = "The API key storage location was changed to %@. Keys are not automatically copied or deleted between locations.";
+"AI API Key 已保存到 %@。" = "The AI API key was saved to %@.";
+"本地配置文件" = "the local configuration file";
+"本次会话" = "this session";
+"AI 连接未切换：旧版 API Key 清理失败。%@" = "The AI connection was not changed because the legacy API key could not be removed. %@";
+"AI 连接未删除：当前保存位置中的 API Key 删除失败。%@" = "The AI connection was not deleted because its API key could not be removed from the current storage location. %@";
+"API 地址未更改：当前保存位置中的旧 API Key 删除失败。%@" = "The API address was not changed because the old API key could not be removed from the current storage location. %@";

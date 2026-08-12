@@ -9,6 +9,7 @@ struct AISettingsView: View {
   let createConnectionProfile: (String, AIProviderPreset) -> AIConnectionProfile
   let deleteConnectionProfile: (UUID) -> Void
   let deletableConnectionProfiles: [AIConnectionProfile]
+  let credentialStorageMode: AICredentialStorageMode
   let tokenAvailability: KeychainTokenAvailability
   let isActionRunning: Bool
   let actionMessage: String?
@@ -20,6 +21,7 @@ struct AISettingsView: View {
   let saveAPIKey: (String) -> Bool
   let deleteAPIKey: () -> Void
   let refreshKeyAvailability: () -> Void
+  let setCredentialStorageMode: (AICredentialStorageMode) -> Void
   let testConnection: () async -> AIConnectionTestReport?
   let grantDataSharingConsent: () -> Void
   let revokeDataSharingConsent: () -> Void
@@ -99,6 +101,7 @@ struct AISettingsView: View {
             shouldFocusInput: shouldFocusAPIKey,
             navigationRequestID: healthNavigationRequestID,
             config: activeConnection.config,
+            storageMode: credentialStorageMode,
             tokenAvailability: tokenAvailability,
             actionMessage: actionMessage,
             onSaveAPIKey: {
@@ -111,7 +114,12 @@ struct AISettingsView: View {
               aiAPIKeyInput = ""
               invalidateConnectionReport()
             },
-            onRefreshState: refreshKeyAvailability
+            onRefreshState: refreshKeyAvailability,
+            onChangeStorageMode: { mode in
+              setCredentialStorageMode(mode)
+              aiAPIKeyInput = ""
+              invalidateConnectionReport()
+            }
           )
 
           AIDataSharingConsentSection(
@@ -381,7 +389,7 @@ struct AISettingsView: View {
     case .missing:
       return "待配置 Key"
     case .accessFailed:
-      return "Keychain 读取失败"
+      return "凭据读取失败"
     }
   }
 

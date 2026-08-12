@@ -52,7 +52,7 @@
 
     <section>
       <h2>AI And Data Consent</h2>
-      <p>AI features support BYOK (Bring Your Own Key), a custom HTTPS endpoint, or a local model. API keys stay in macOS Keychain. Users select and fund any remote provider themselves; RepoPress Studio does not sell provider keys, access, or usage bundles.</p>
+      <p>AI features support BYOK (Bring Your Own Key), a custom HTTPS endpoint, or a local model. By default, API keys are stored in a plain-text Application Support configuration file restricted to the current macOS user (directory mode 0700 and file mode 0600). Users can instead explicitly select macOS Keychain or session-only memory. Users select and fund any remote provider themselves; RepoPress Studio does not sell provider keys, access, or usage bundles.</p>
       <p>Before the first request to each custom remote API destination, the app shows the full destination and possible data categories and requires explicit consent. Requests go directly from this Mac to the selected provider; the developer does not proxy or receive keys, prompts, requests, or responses.</p>
       <p><code>localhost</code>, <code>127.0.0.1</code>, and <code>::1</code> are local loopback destinations and do not transfer AI content to a remote provider.</p>
     </section>

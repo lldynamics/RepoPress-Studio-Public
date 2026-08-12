@@ -709,7 +709,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
       ## 1. 配置服务商
 
-      打开“设置 → AI”，在“连接”中选择自定义 API 或本地服务，填写 Base URL 和模型名称。API Key 保存到系统钥匙串，不会写入文章或仓库。
+      打开“设置 → AI”，在“连接”中选择自定义 API 或本地服务，填写 Base URL 和模型名称。API Key 按你的选择保存到受限本地配置、系统钥匙串或本次会话，不会写入文章或仓库。
 
       保存后先执行“测试连接”。只有理解将发送的文章上下文后，再确认 AI 数据共享授权。不要把密码、私钥、未公开客户资料或完整敏感文档发送给第三方模型。
 
@@ -951,7 +951,7 @@ public struct ArticleDraft: Identifiable, Codable, Hashable, Sendable {
 
       ## 1. Configure a provider
 
-      Open Settings → AI → Connection. Choose Custom API or a local service, then enter the Base URL and model. API keys are stored in the system Keychain and are never written into an article or repository.
+      Open Settings → AI → Connection. Choose Custom API or a local service, then enter the Base URL and model. API keys use your selected storage mode: a restricted local configuration file, macOS Keychain, or this session only. They are never written into an article or repository.
 
       Save the key and run Test Connection. Grant AI data-sharing consent only after you understand which article context will be sent. Never send passwords, private keys, unreleased client material, or complete sensitive documents to a third-party model.
 

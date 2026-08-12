@@ -84,7 +84,7 @@ public enum AISettingsConnectionPresentationService {
     if config.requiresAPIKey,
        let accessFailureMessage = tokenAvailability.accessFailureMessage {
       return AISettingsConnectionPresentation(
-        title: CoreL10n.text("AI Keychain 读取失败"),
+        title: CoreL10n.text("AI 凭据读取失败"),
         message: accessFailureMessage,
         footnote: providerHelpText(config),
         systemImage: "exclamationmark.triangle",

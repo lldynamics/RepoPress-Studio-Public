@@ -9,7 +9,7 @@ public enum FreshWorkspaceSeedPolicy: Sendable {
 @MainActor
 public final class WorkbenchStore: ObservableObject {
   private let imageWorkbenchService: SiteImageWorkbenchService
-  let keychainTokenStore: KeychainTokenStore
+  let aiCredentialStore: AICredentialStore
   let siteAnalyticsService: SiteAnalyticsService
   let siteAnalyticsTokenStore: KeychainTokenStore
   private let aiPublishingAssistantService: AIPublishingAssistantService
@@ -98,7 +98,7 @@ public final class WorkbenchStore: ObservableObject {
     store: self,
     workspace: aiWorkspaceStore,
     aiPublishingAssistantService: aiPublishingAssistantService,
-    keychainTokenStore: keychainTokenStore,
+    aiCredentialStore: aiCredentialStore,
     aiConnectionTestService: aiConnectionTestService,
     aiDataSharingConsentStore: aiDataSharingConsentStore,
     imageWorkbenchService: imageWorkbenchService,
@@ -175,6 +175,7 @@ public final class WorkbenchStore: ObservableObject {
     releaseLedgerService: ReleaseLedgerService = ReleaseLedgerService(),
     generalDraftLibraryService: GeneralDraftLibraryService = GeneralDraftLibraryService(),
     keychainTokenStore: KeychainTokenStore = KeychainTokenStore(),
+    aiCredentialStore: AICredentialStore? = nil,
     repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.repository, accountPrefix: "repository-provider"),
     deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.deployment, accountPrefix: "deployment-provider"),
     siteAnalyticsTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.analytics, accountPrefix: "analytics-provider"),
@@ -208,7 +209,8 @@ public final class WorkbenchStore: ObservableObject {
     }
     self.persistenceStore = WorkbenchPersistenceStore(persistence: persistence)
     self.imageWorkbenchService = imageWorkbenchService
-    self.keychainTokenStore = keychainTokenStore
+    self.aiCredentialStore = aiCredentialStore
+      ?? AICredentialStore(keychainTokenStore: keychainTokenStore)
     self.siteAnalyticsService = siteAnalyticsService
     self.siteAnalyticsTokenStore = siteAnalyticsTokenStore
     self.aiPublishingAssistantService = aiPublishingAssistantService

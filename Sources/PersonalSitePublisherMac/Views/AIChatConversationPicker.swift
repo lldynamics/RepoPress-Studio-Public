@@ -86,7 +86,7 @@ struct AIChatConversationPicker: View {
       }
 
       Label(
-        String(localized: "对话内容保存在本机；API Key 仍只存于钥匙串。"),
+        String(localized: "对话内容保存在本机；API Key 使用你在设置中选择的独立保存位置。"),
         systemImage: "lock"
       )
         .font(.caption)

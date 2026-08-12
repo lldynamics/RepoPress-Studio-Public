@@ -12,8 +12,9 @@ struct WorkspaceRestoreProcessInterruption: Error, Sendable {}
 /// Creates and restores a portable, integrity-checked workspace package.
 ///
 /// The package intentionally contains the Codable workbench snapshot and the
-/// app-owned knowledge/RSS/attachment files only. Credentials are Keychain data,
-/// so this service never receives a Keychain store and never reads API keys.
+/// app-owned knowledge/RSS/attachment files only. Credentials are managed
+/// separately in a restricted local file, Keychain, or memory, so this service
+/// never receives a credential store and never reads API keys.
 public final class WorkspaceBackupService: Sendable {
   public struct Limits: Sendable {
     public var maximumManifestByteCount: Int

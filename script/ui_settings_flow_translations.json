@@ -10,7 +10,6 @@
   "AI 连接凭据": "AI Connection Credentials",
   "AI 连接测试失败，请检查地址、授权、凭据和网络后重试。": "The AI connection test failed. Check the endpoint, authorization, credentials, and network, then try again.",
   "AI 配置、授权或 Key 已变化，之前的连接测试结果已失效。": "The AI configuration, consent, or key changed, so the previous connection test result is no longer valid.",
-  "Keychain 读取失败：%@": "Failed to read Keychain: %@",
   "主要操作、次要操作和选中状态的颜色示例": "Color examples for primary actions, secondary actions, and selection states",
   "主题强调色预览": "Theme accent color preview",
   "仓库令牌已保存": "Repository token saved",

@@ -222,8 +222,8 @@ extension WorkbenchAIStore {
       )
     }
     guard config.requiresAPIKey else { return nil }
-    guard let token = try keychainTokenStore
-      .aiToken(forConnectionProfileID: connection.id)?.nilIfEmpty
+    guard let token = try aiCredentialStore
+      .token(forConnectionProfileID: connection.id)?.nilIfEmpty
     else {
       throw AIPublishingAssistantError.missingAPIKey
     }

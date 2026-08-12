@@ -6,7 +6,7 @@ enum AIConnectionTestAvailability: Equatable {
   case missingBaseURL
   case missingModel
   case missingAPIKey
-  case keychainAccessFailed(String)
+  case credentialAccessFailed(String)
   case consentRequired
 
   init(
@@ -21,7 +21,7 @@ enum AIConnectionTestAvailability: Equatable {
     } else if config.requiresAPIKey,
       let accessFailureMessage = tokenAvailability.accessFailureMessage
     {
-      self = .keychainAccessFailed(accessFailureMessage)
+      self = .credentialAccessFailed(accessFailureMessage)
     } else if config.requiresAPIKey && !tokenAvailability.hasToken {
       self = .missingAPIKey
     } else if !dataSharingConsent.isGranted {
@@ -45,8 +45,8 @@ enum AIConnectionTestAvailability: Equatable {
       return String(localized: "请先在“连接与服务”中选择或填写模型。")
     case .missingAPIKey:
       return String(localized: "请先在上方保存当前连接所需的 API Key。")
-    case .keychainAccessFailed(let detail):
-      return String(localized: "Keychain 读取失败：\(detail)")
+    case .credentialAccessFailed(let detail):
+      return String(localized: "凭据读取失败：\(detail)")
     case .consentRequired:
       return String(localized: "请先在上方明确同意 AI 数据发送授权。")
     }
@@ -60,7 +60,7 @@ enum AIConnectionTestAvailability: Equatable {
       return "gearshape"
     case .missingAPIKey:
       return "key"
-    case .keychainAccessFailed:
+    case .credentialAccessFailed:
       return "exclamationmark.triangle"
     case .consentRequired:
       return "hand.raised"

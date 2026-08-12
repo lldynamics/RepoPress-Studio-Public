@@ -12,7 +12,7 @@ Public screenshots, support copy, release evidence, and shared diagnostics must 
 
 ### User-configured AI
 
-AI assistance uses BYOK (Bring Your Own Key), a custom HTTPS endpoint, or a local loopback model. Users obtain and fund any remote provider account themselves. API keys are stored in macOS Keychain and are not included in workspace backups.
+AI assistance uses BYOK (Bring Your Own Key), a custom HTTPS endpoint, or a local loopback model. Users obtain and fund any remote provider account themselves. By default, API keys are stored in a plain-text Application Support configuration file restricted to the current macOS user (directory mode 0700 and file mode 0600). Users can instead explicitly select macOS Keychain or session-only memory. API keys are not included in workspace backups or diagnostics exports.
 
 Before the first request to each custom remote API destination, RepoPress Studio shows the destination URL and the possible data categories, then requires explicit consent. The consent can be revoked. Depending on the action, a request can contain the user's prompt, current article or site context, selected research excerpts, conversation context, and images the user adds. Requests go directly from this Mac to the selected provider; the developer does not proxy or receive API keys, prompts, requests, or responses. The provider processes the data under its own terms and privacy policy.
 

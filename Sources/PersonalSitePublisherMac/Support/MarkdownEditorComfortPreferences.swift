@@ -12,6 +12,11 @@ enum MarkdownEditorComfortPreferences {
   static let writingGoalKey = "markdownEditorWritingGoal"
 }
 
+enum AIWritingPreferences {
+  static let automaticInlineCompletionEnabledKey = "ai.automaticInlineCompletionEnabled"
+  static let defaultAutomaticInlineCompletionEnabled = false
+}
+
 struct MarkdownEditorComfortConfiguration: Equatable {
   static let fontSizeRange = 12.0 ... 24.0
   static let lineSpacingRange = 0.0 ... 12.0

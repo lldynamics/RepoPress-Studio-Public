@@ -180,6 +180,10 @@ public final class KeychainTokenStore: @unchecked Sendable {
   private let inMemoryBackend: InMemoryTokenBackend?
   private let deletionStatusOverrideForTesting: (@Sendable (String) -> OSStatus?)?
 
+  var usesInMemoryBackend: Bool {
+    inMemoryBackend != nil
+  }
+
   public convenience init(
     service: String = KeychainCredentialServices.ai,
     accountPrefix: String = "ai-provider"

@@ -62,7 +62,7 @@ struct WorkbenchDataRootSetupView: View {
       }
       .frame(width: 360)
 
-      Text("数据文件夹不包含 API Key。凭据仍由 macOS 钥匙串单独保护。")
+      Text("工作区数据和备份不包含 API Key。AI Key 按设置独立保存在受限本地配置、系统钥匙串或本次会话。")
         .font(.caption)
         .foregroundStyle(.tertiary)
     }

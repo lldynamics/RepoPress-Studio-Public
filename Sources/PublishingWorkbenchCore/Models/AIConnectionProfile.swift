@@ -2,9 +2,9 @@ import Foundation
 
 /// A reusable AI endpoint configuration shared by one or more site profiles.
 ///
-/// Secrets are intentionally not part of this value. API keys are stored in
-/// Keychain under the connection profile ID, while the site keeps only the
-/// selected connection profile ID.
+/// Secrets are intentionally not part of this value. API keys are resolved by
+/// `AICredentialStore` from the user-selected storage mode, while the site keeps
+/// only the selected connection profile ID.
 public struct AIConnectionProfile: Codable, Hashable, Identifiable, Sendable {
   public var id: UUID
   public var name: String

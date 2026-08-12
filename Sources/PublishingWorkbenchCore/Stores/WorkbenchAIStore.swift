@@ -46,7 +46,7 @@ public final class WorkbenchAIStore: ObservableObject {
   unowned let store: WorkbenchStore
   private let workspace: AIWorkspaceStore
   let aiPublishingAssistantService: AIPublishingAssistantService
-  let keychainTokenStore: KeychainTokenStore
+  let aiCredentialStore: AICredentialStore
   private let aiConnectionTestService: AIConnectionTestService
   let aiDataSharingConsentStore: AIDataSharingConsentStore
   let imageWorkbenchService: SiteImageWorkbenchService
@@ -65,7 +65,7 @@ public final class WorkbenchAIStore: ObservableObject {
     store: WorkbenchStore,
     workspace: AIWorkspaceStore,
     aiPublishingAssistantService: AIPublishingAssistantService = AIPublishingAssistantService(),
-    keychainTokenStore: KeychainTokenStore = KeychainTokenStore(),
+    aiCredentialStore: AICredentialStore,
     aiConnectionTestService: AIConnectionTestService = AIConnectionTestService(),
     aiDataSharingConsentStore: AIDataSharingConsentStore = AIDataSharingConsentStore(),
     imageWorkbenchService: SiteImageWorkbenchService = SiteImageWorkbenchService(),
@@ -75,7 +75,7 @@ public final class WorkbenchAIStore: ObservableObject {
     self.store = store
     self.workspace = workspace
     self.aiPublishingAssistantService = aiPublishingAssistantService
-    self.keychainTokenStore = keychainTokenStore
+    self.aiCredentialStore = aiCredentialStore
     self.aiConnectionTestService = aiConnectionTestService
     self.aiDataSharingConsentStore = aiDataSharingConsentStore
     self.imageWorkbenchService = imageWorkbenchService
@@ -328,6 +328,20 @@ public final class WorkbenchAIStore: ObservableObject {
     refreshAIKeyAvailability(for: store.activeProfile)
   }
 
+  public var aiCredentialStorageMode: AICredentialStorageMode {
+    aiCredentialStore.storageMode
+  }
+
+  public func setAICredentialStorageMode(_ mode: AICredentialStorageMode) {
+    guard mode != aiCredentialStore.storageMode else { return }
+    aiCredentialStore.setStorageMode(mode)
+    refreshAIKeyAvailability()
+    aiActionMessage = CoreL10n.format(
+      "API Key 保存位置已切换为 %@。不同保存位置之间不会自动复制或删除 Key。",
+      credentialStorageModeName(mode)
+    )
+  }
+
   public func aiKeyAvailability(
     forConnectionProfileID connectionProfileID: UUID
   ) -> KeychainTokenAvailability {
@@ -338,7 +352,7 @@ public final class WorkbenchAIStore: ObservableObject {
       return KeychainTokenAvailability(hasToken: false)
     }
     do {
-      return try keychainTokenStore.aiTokenAvailability(
+      return try aiCredentialStore.availability(
         forConnectionProfileID: connectionProfileID
       )
     } catch {
@@ -357,16 +371,10 @@ public final class WorkbenchAIStore: ObservableObject {
       return
     }
     do {
-      let sharedAvailability = try keychainTokenStore.aiTokenAvailability(
-        forConnectionProfileID: connection.id
+      aiTokenAvailability = try aiCredentialStore.availability(
+        forConnectionProfileID: connection.id,
+        legacyProfile: profile
       )
-      if sharedAvailability.hasToken || sharedAvailability.accessFailureMessage != nil {
-        aiTokenAvailability = sharedAvailability
-      } else {
-        // Read credentials created by older releases once the site has been
-        // migrated to a reusable connection profile.
-        aiTokenAvailability = try keychainTokenStore.aiTokenAvailability(for: profile)
-      }
     } catch {
       aiTokenAvailability = KeychainTokenAvailability(accessFailure: error)
     }
@@ -380,17 +388,20 @@ public final class WorkbenchAIStore: ObservableObject {
       return false
     }
     do {
-      try keychainTokenStore.saveAIToken(
+      try aiCredentialStore.saveToken(
         token.trimmedForPublishing,
-        forConnectionProfileID: connection.id
+        forConnectionProfileID: connection.id,
+        legacyProfile: store.activeProfile
       )
-      _ = try? keychainTokenStore.deleteLegacyAIToken(for: store.activeProfile)
       refreshAIKeyAvailability()
-      aiActionMessage = "AI API Key 已保存到 Keychain。"
+      aiActionMessage = CoreL10n.format(
+        "AI API Key 已保存到 %@。",
+        credentialStorageModeName(aiCredentialStore.storageMode)
+      )
       aiChatMessage = "AI API Key 已就绪，可以发送消息。"
       return true
     } catch {
-      aiActionMessage = aiKeychainFailureMessage(action: "保存", error: error)
+      aiActionMessage = aiCredentialFailureMessage(action: "保存", error: error)
       return false
     }
   }
@@ -398,25 +409,36 @@ public final class WorkbenchAIStore: ObservableObject {
   public func deleteAIAPIKey() {
     do {
       let connection = store.activeAIConnectionProfile
-      try keychainTokenStore.deleteAIToken(forConnectionProfileID: connection.id)
-      // Best-effort cleanup of the old per-site item is kept separate from the
-      // shared credential so a legacy ACL cannot make deletion look failed.
-      _ = try? keychainTokenStore.deleteLegacyAIToken(for: store.activeProfile)
+      try aiCredentialStore.deleteToken(
+        forConnectionProfileID: connection.id,
+        legacyProfiles: [store.activeProfile]
+      )
       refreshAIKeyAvailability()
       aiActionMessage = "AI API Key 已删除。"
       aiChatMessage = "AI API Key 已删除，请重新配置后再发送消息。"
     } catch {
-      aiActionMessage = aiKeychainFailureMessage(action: "删除", error: error)
+      aiActionMessage = aiCredentialFailureMessage(action: "删除", error: error)
     }
   }
 
-  private func aiKeychainFailureMessage(action: String, error: Error) -> String {
+  private func aiCredentialFailureMessage(action: String, error: Error) -> String {
     var message = "AI API Key \(action)失败：\(error.localizedDescription)"
     if let keychainError = error as? KeychainTokenStoreError,
        let recoveryHint = keychainError.recoveryHint {
       message += " \(recoveryHint)"
     }
     return message
+  }
+
+  private func credentialStorageModeName(_ mode: AICredentialStorageMode) -> String {
+    switch mode {
+    case .localFile:
+      return CoreL10n.text("本地配置文件")
+    case .keychain:
+      return "Keychain"
+    case .session:
+      return CoreL10n.text("本次会话")
+    }
   }
 
   public func testAIConnection() async -> AIConnectionTestReport? {
