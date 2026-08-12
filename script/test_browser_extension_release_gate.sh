@@ -41,6 +41,27 @@ if os.environ.get("FAIL_STAGE") == "protocol-generation":
     raise SystemExit(1)
 PY
 
+cat >"$FIXTURE_ROOT/script/build_browser_extension_source.py" <<'PY'
+#!/usr/bin/env python3
+import os
+import sys
+
+with open(os.environ["COMMAND_LOG"], "a", encoding="utf-8") as handle:
+    handle.write("source-build:" + " ".join(sys.argv[1:]) + "\n")
+if os.environ.get("FAIL_STAGE") == "source-build":
+    raise SystemExit(1)
+PY
+
+cat >"$FIXTURE_ROOT/script/test_browser_extension_source_layout.py" <<'PY'
+#!/usr/bin/env python3
+import os
+
+with open(os.environ["COMMAND_LOG"], "a", encoding="utf-8") as handle:
+    handle.write("source-layout-tests\n")
+if os.environ.get("FAIL_STAGE") == "source-layout-tests":
+    raise SystemExit(1)
+PY
+
 cat >"$FIXTURE_ROOT/script/browser_extension_release_ledger.py" <<'PY'
 #!/usr/bin/env python3
 import os
@@ -140,6 +161,10 @@ grep -Fq "node:test_browser_extension_e2e.mjs:--browser=firefox" "$LOG_PATH" \
   || fail "Firefox real-browser extension E2E test was omitted"
 grep -Fq "protocol-generation:--check" "$LOG_PATH" \
   || fail "cross-language protocol generation check was omitted"
+grep -Fq "source-build:--browser chrome --check" "$LOG_PATH" \
+  || fail "Chrome shared-source layout check was omitted"
+grep -Fq "source-layout-tests" "$LOG_PATH" \
+  || fail "shared-source layout behavior tests were omitted"
 grep -Fq "firefox-sync:--check" "$LOG_PATH" \
   || fail "Firefox shared-resource synchronization check was omitted"
 grep -Fq "safari-sync:--check" "$LOG_PATH" \
