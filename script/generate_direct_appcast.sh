@@ -117,22 +117,22 @@ mkdir -p "$(dirname "$OUTPUT")"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/repopress-appcast.XXXXXX")"
 archive_name="$(basename "$ARCHIVE")"
 appcast_name="$CHANNEL-appcast.xml"
+generated="$TMP_DIR/$appcast_name"
 /usr/bin/ditto "$ARCHIVE" "$TMP_DIR/$archive_name"
 if [[ -f "$OUTPUT" ]]; then
-  /usr/bin/ditto "$OUTPUT" "$TMP_DIR/$appcast_name"
+  /usr/bin/ditto "$OUTPUT" "$generated"
 fi
 
 generate_arguments=(
   --account "$KEY_ACCOUNT"
   --download-url-prefix "${DOWNLOAD_URL_PREFIX%/}/"
   --maximum-deltas 0
-  -o "$appcast_name"
+  -o "$generated"
 )
 if [[ "$CHANNEL" == "beta" ]]; then
   generate_arguments+=(--channel beta)
 fi
 "$GENERATE_APPCAST_TOOL" "${generate_arguments[@]}" "$TMP_DIR" >/dev/null
-generated="$TMP_DIR/$appcast_name"
 [[ -f "$generated" ]] || fail "Sparkle did not create $appcast_name"
 python3 - "$generated" "$archive_name" "$DOWNLOAD_URL_PREFIX" "$CHANNEL" <<'PY'
 from pathlib import Path
