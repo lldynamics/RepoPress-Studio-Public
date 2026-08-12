@@ -217,12 +217,16 @@ while [[ "$#" -gt 0 ]]; do
 done
 zip_path="$(find "$archive_dir" -maxdepth 1 -name '*.zip' -print -quit)"
 zip_name="$(basename "$zip_path")"
+[[ "$output" == /* ]] || {
+  echo "generate_appcast output must be absolute" >&2
+  exit 3
+}
 if [[ "$channel" == "beta" ]]; then
   channel_xml='<sparkle:channel>beta</sparkle:channel>'
 else
   channel_xml=''
 fi
-cat >"$archive_dir/$output" <<XML
+cat >"$output" <<XML
 <?xml version="1.0" encoding="utf-8"?>
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
 <channel><item>${channel_xml}<enclosure url="${prefix}${zip_name}" sparkle:version="3" sparkle:edSignature="fixture-signature" /></item></channel>
