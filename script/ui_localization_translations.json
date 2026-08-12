@@ -1386,5 +1386,7 @@
   "默认分类": "Default Categories",
   "默认分类：%@": "Default categories: %@",
   "默认标签": "Default Tags",
-  "默认标签：%@": "Default tags: %@"
+  "默认标签：%@": "Default tags: %@",
+  "启用浏览器连接": "Enable Browser Connection",
+  "关闭时不会访问浏览器连接钥匙串，也不会监听本机端口。": "When off, RepoPress Studio does not access the browser-connection Keychain item or listen on a local port."
 }

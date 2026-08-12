@@ -31,77 +31,92 @@ struct BrowserExtensionConnectionView: View {
 
       Form {
         Section("本机连接") {
-          LabeledContent("状态") {
-            Label(
-              bridge.state.localizedDisplayName,
-              systemImage: bridge.state == .ready
-                ? "checkmark.circle.fill"
-                : "circle.dotted"
+          Toggle(
+            "启用浏览器连接",
+            isOn: Binding(
+              get: { bridge.isEnabled },
+              set: { bridge.setEnabled($0) }
             )
-            .foregroundStyle(
-              bridge.state == .ready ? WorkbenchTheme.success : Color.secondary
-            )
-          }
-          LabeledContent("地址") {
-            Text(KnowledgeBrowserBridge.endpointURL)
-              .font(.system(.caption, design: .monospaced))
-              .textSelection(.enabled)
-          }
-          Text("连接只监听 127.0.0.1，不接受局域网或互联网访问；每次请求还必须携带下面的随机令牌。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          if let lastMessage = bridge.lastMessage {
-            Text(lastMessage)
+          )
+          if bridge.isEnabled {
+            LabeledContent("状态") {
+              Label(
+                bridge.localizedStatusDisplayName,
+                systemImage: bridge.state == .ready
+                  ? "checkmark.circle.fill"
+                  : "circle.dotted"
+              )
+              .foregroundStyle(
+                bridge.state == .ready ? WorkbenchTheme.success : Color.secondary
+              )
+            }
+            LabeledContent("地址") {
+              Text(KnowledgeBrowserBridge.endpointURL)
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+            }
+            Text("连接只监听 127.0.0.1，不接受局域网或互联网访问；每次请求还必须携带下面的随机令牌。")
               .font(.caption)
               .foregroundStyle(.secondary)
-              .textSelection(.enabled)
-          }
-          if bridge.importOperationLedgerPersistenceIssue != nil {
-            HStack {
-              if bridge.requiresImportOperationLedgerRebuild {
-                Button("备份并重建账本…", role: .destructive) {
-                  isLedgerRebuildConfirmationPresented = true
-                }
-              } else {
-                Button("重试账本写入") {
-                  Task {
-                    await bridge.retryImportOperationLedgerPersistence()
+            if let lastMessage = bridge.lastMessage {
+              Text(lastMessage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            }
+            if bridge.importOperationLedgerPersistenceIssue != nil {
+              HStack {
+                if bridge.requiresImportOperationLedgerRebuild {
+                  Button("备份并重建账本…", role: .destructive) {
+                    isLedgerRebuildConfirmationPresented = true
+                  }
+                } else {
+                  Button("重试账本写入") {
+                    Task {
+                      await bridge.retryImportOperationLedgerPersistence()
+                    }
                   }
                 }
               }
             }
+          } else {
+            Text("关闭时不会访问浏览器连接钥匙串，也不会监听本机端口。")
+              .font(.caption)
+              .foregroundStyle(.secondary)
           }
         }
 
-        Section("扩展连接令牌") {
-          HStack(spacing: 10) {
-            Text(isTokenVisible ? bridge.connectionToken : maskedToken)
-              .font(.system(.body, design: .monospaced))
-              .lineLimit(1)
-              .textSelection(.enabled)
-            Spacer()
-            Button(isTokenVisible ? "隐藏" : "显示") {
-              isTokenVisible.toggle()
+        if bridge.isEnabled {
+          Section("扩展连接令牌") {
+            HStack(spacing: 10) {
+              Text(isTokenVisible ? bridge.connectionToken : maskedToken)
+                .font(.system(.body, design: .monospaced))
+                .lineLimit(1)
+                .textSelection(.enabled)
+              Spacer()
+              Button(isTokenVisible ? "隐藏" : "显示") {
+                isTokenVisible.toggle()
+              }
+              Button("复制") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(bridge.connectionToken, forType: .string)
+              }
             }
-            Button("复制") {
-              NSPasteboard.general.clearContents()
-              NSPasteboard.general.setString(bridge.connectionToken, forType: .string)
-            }
-          }
-          Text("令牌只用于你安装的浏览器扩展。不要粘贴到网页或发送给其他人。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          LabeledContent("有效期") {
-            Text(
-              bridge.connectionTokenExpiresAt.formatted(
-                date: .abbreviated,
-                time: .shortened
+            Text("令牌只用于你安装的浏览器扩展。不要粘贴到网页或发送给其他人。")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            LabeledContent("有效期") {
+              Text(
+                bridge.connectionTokenExpiresAt.formatted(
+                  date: .abbreviated,
+                  time: .shortened
+                )
               )
-            )
-            .monospacedDigit()
-          }
-          Button("更换连接令牌…", role: .destructive) {
-            isRotationConfirmationPresented = true
+              .monospacedDigit()
+            }
+            Button("更换连接令牌…", role: .destructive) {
+              isRotationConfirmationPresented = true
+            }
           }
         }
 
