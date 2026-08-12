@@ -520,6 +520,20 @@
         }
       ],
       "publications": []
+    },
+    {
+      "version": "0.30.3",
+      "sourceSHA256": "f71a7db16cd03086aa273b91ba6749afc288ec8a7e6057fe253f3626900d6d4f",
+      "createdAt": "2026-08-11T18:26:45Z",
+      "artifacts": [
+        {
+          "kind": "chrome-zip",
+          "file": "knowledge-capture-chrome-0.30.3.zip",
+          "sha256": "e1eb3bef19292f9fdb8a47544ae496d40a9fac041d5368ff61e93adb7b67890f",
+          "recordedAt": "2026-08-11T18:26:45Z"
+        }
+      ],
+      "publications": []
     }
   ]
 }
