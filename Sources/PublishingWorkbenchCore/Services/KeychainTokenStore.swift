@@ -571,10 +571,7 @@ public final class KeychainTokenStore: @unchecked Sendable {
       return KeychainTokenAvailability(hasToken: inMemoryBackend.containsToken(for: account))
     }
 
-    var query = readQuery(account: account)
-    query[kSecReturnAttributes as String] = true
-    query[kSecReturnData as String] = true
-    query[kSecMatchLimit as String] = kSecMatchLimitOne
+    let query = availabilityQuery(account: account)
 
     var result: AnyObject?
     let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -585,14 +582,23 @@ public final class KeychainTokenStore: @unchecked Sendable {
       throw KeychainTokenStoreError.unhandledStatus(status)
     }
 
-    guard let attributes = result as? [String: Any],
-          let data = attributes[kSecValueData as String] as? Data else {
+    guard let attributes = result as? [String: Any] else {
       throw KeychainTokenStoreError.invalidData
     }
     return KeychainTokenAvailability(
-      hasToken: !data.isEmpty,
+      hasToken: true,
       updatedAt: attributes[kSecAttrModificationDate as String] as? Date
     )
+  }
+
+  /// Builds a metadata-only query for passive credential status checks.
+  /// Requesting `kSecReturnData` here would read the secret itself and can
+  /// trigger a Keychain authorization prompt during application startup.
+  func availabilityQuery(account: String) -> [String: Any] {
+    var query = readQuery(account: account)
+    query[kSecReturnAttributes as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
+    return query
   }
 
   private func saveToken(_ token: String, forAccount account: String) throws {
