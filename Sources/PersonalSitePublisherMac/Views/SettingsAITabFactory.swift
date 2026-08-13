@@ -44,8 +44,8 @@ struct SettingsAITabFactory {
       setCredentialStorageMode: { mode in
         context.store.ai.setCredentialStorageMode(mode)
       },
-      testConnection: {
-        await context.store.ai.testConnection()
+      testConnection: { probeCapabilities in
+        await context.store.ai.testConnection(probeCapabilities: probeCapabilities)
       },
       grantDataSharingConsent: {
         context.store.ai.grantDataSharingConsent()

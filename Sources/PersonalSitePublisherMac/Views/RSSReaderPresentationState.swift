@@ -73,19 +73,22 @@ final class RSSReaderPresentationState: ObservableObject {
   private var subscriptionDiscoveryRequestID = UUID()
 
   private var scopedArticlesCache: (key: ArticleScopeCacheKey, articles: [RSSArticleHeader])?
-  private var matchingArticlesCache: (
-    key: ArticleQueryCacheKey,
-    articles: [RSSArticleHeader],
-    unreadArticleIDs: Set<String>
-  )?
-  private var visibleArticlesCache: (
-    key: VisibleArticlePageCacheKey,
-    articles: [RSSArticleHeader]
-  )?
-  private var articleSectionsCache: (
-    key: ArticleSectionsCacheKey,
-    sections: [RSSArticleListSection]
-  )?
+  private var matchingArticlesCache:
+    (
+      key: ArticleQueryCacheKey,
+      articles: [RSSArticleHeader],
+      unreadArticleIDs: Set<String>
+    )?
+  private var visibleArticlesCache:
+    (
+      key: VisibleArticlePageCacheKey,
+      articles: [RSSArticleHeader]
+    )?
+  private var articleSectionsCache:
+    (
+      key: ArticleSectionsCacheKey,
+      sections: [RSSArticleListSection]
+    )?
   private var articleFacetsCache: (key: ArticleScopeCacheKey, facets: ArticleFacets)?
   private var readerMetricsCache: [String: ReaderMetricsCacheEntry] = [:]
   private var readerMetricsLRU: [String] = []
@@ -236,7 +239,8 @@ final class RSSReaderPresentationState: ObservableObject {
 
   func readerMetrics(for article: RSSArticle) -> (hasRenderableBody: Bool, readingMinutes: Int) {
     if let cached = readerMetricsCache[article.id],
-       cached.fetchedAt == article.fetchedAt {
+      cached.fetchedAt == article.fetchedAt
+    {
       touchReaderMetrics(article.id)
       return (cached.hasRenderableBody, cached.readingMinutes)
     }
@@ -253,6 +257,27 @@ final class RSSReaderPresentationState: ObservableObject {
       readerMetricsCache.removeValue(forKey: evictedID)
     }
     return (metrics.hasRenderableBody, metrics.readingMinutes)
+  }
+
+  /// Stores metrics computed off the main actor before the reader view is
+  /// published. The reader can then use `readerMetrics(for:)` as a cheap cache
+  /// lookup instead of sanitizing the article body during view construction.
+  func cacheReaderMetrics(
+    for article: RSSArticle,
+    hasRenderableBody: Bool,
+    readingUnits: Int
+  ) {
+    let metrics = ReaderMetricsCacheEntry(
+      fetchedAt: article.fetchedAt,
+      hasRenderableBody: hasRenderableBody,
+      readingMinutes: max(1, Int(ceil(Double(max(0, readingUnits)) / 220.0)))
+    )
+    readerMetricsCache[article.id] = metrics
+    touchReaderMetrics(article.id)
+    if readerMetricsLRU.count > 100 {
+      let evictedID = readerMetricsLRU.removeFirst()
+      readerMetricsCache.removeValue(forKey: evictedID)
+    }
   }
 
   private func touchReaderMetrics(_ articleID: String) {
@@ -307,7 +332,8 @@ final class RSSReaderPresentationState: ObservableObject {
   ) {
     guard let selectedArticleID else { return }
     if preservingExistingArticle,
-       store.articleHeader(id: selectedArticleID) != nil {
+      store.articleHeader(id: selectedArticleID) != nil
+    {
       return
     }
     if !matchingArticles(in: store).contains(where: { $0.id == selectedArticleID }) {
@@ -329,9 +355,10 @@ final class RSSReaderPresentationState: ObservableObject {
     subscriptionDiscoveryRequestID = requestID
     Task { @MainActor [weak self] in
       guard let self else { return }
-      let discovered = (try? await RSSFeedDiscoveryService(
-        allowsPrivateNetworkAccess: store.privateNetworkAccessEnabled
-      ).discover(from: url)) ?? []
+      let discovered =
+        (try? await RSSFeedDiscoveryService(
+          allowsPrivateNetworkAccess: store.privateNetworkAccessEnabled
+        ).discover(from: url)) ?? []
       guard self.subscriptionDiscoveryRequestID == requestID else { return }
       self.isDiscoveringSubscription = false
       if discovered.count > 1 {
@@ -392,4 +419,31 @@ final class RSSReaderPresentationState: ObservableObject {
     synchronizeSelection(in: store)
   }
 
+}
+
+/// Keeps the high-frequency WebKit scroll callback from publishing duplicate
+/// state updates while preserving the initial value, the completion value, and
+/// the 1% progress granularity used by the list presentation.
+enum RSSReadingProgressPolicy {
+  static let minimumPersistDelta = 0.01
+
+  static func shouldRecord(
+    previousProgress: Double?,
+    progress: Double
+  ) -> Bool {
+    guard progress.isFinite else { return false }
+    let normalized = min(max(progress, 0), 1)
+    guard let previousProgress else { return true }
+    let previous = min(max(previousProgress, 0), 1)
+    guard normalized != previous else { return false }
+    if RSSReadingCompletionPolicy.didCrossCompletionThreshold(
+      previousProgress: previous,
+      progress: normalized
+    ) {
+      return true
+    }
+    return normalized == 0
+      || normalized == 1
+      || abs(normalized - previous) >= minimumPersistDelta
+  }
 }

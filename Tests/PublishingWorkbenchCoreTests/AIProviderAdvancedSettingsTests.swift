@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class AIProviderAdvancedSettingsTests: XCTestCase {
@@ -34,7 +35,7 @@ final class AIProviderAdvancedSettingsTests: XCTestCase {
     XCTAssertFalse(settings.isDefault)
   }
 
-  func testInteractiveChatAppliesAdvancedOverrides() async throws {
+  func testInteractiveChatAppliesAdvancedOverridesAndStripsUnknownReasoning() async throws {
     let transport = RecordingAIChatTransport(
       data: successfulResponseData,
       statusCode: 200
@@ -73,10 +74,52 @@ final class AIProviderAdvancedSettingsTests: XCTestCase {
     let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
     XCTAssertEqual(payload["temperature"] as? Double, 0.7)
     XCTAssertEqual(payload["max_tokens"] as? Int, 1_234)
-    XCTAssertEqual(payload["reasoning_effort"] as? String, "medium")
+    // A custom endpoint has no static reasoning contract. Advanced reasoning
+    // preferences must therefore be stripped until a concrete probe proves
+    // support, even though temperature and max_tokens remain valid overrides.
+    XCTAssertNil(payload["reasoning_effort"])
     XCTAssertNil(payload["thinking"])
     let messages = try XCTUnwrap(payload["messages"] as? [[String: Any]])
     XCTAssertEqual(messages.first?["content"] as? String, "Base prompt.\n\nUse concise answers.")
+  }
+
+  func testTrustedDeepSeekPresetSendsAdvancedReasoningOverride() async throws {
+    let transport = RecordingAIChatTransport(
+      data: successfulResponseData,
+      statusCode: 200
+    )
+    let client = AIChatCompletionClient(transport: transport)
+    let config = AIProviderConfig(
+      preset: .deepSeek,
+      baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
+      model: AIProviderPreset.deepSeek.defaultModel,
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(
+        maximumOutputTokens: 1_234,
+        reasoningPreference: .medium
+      )
+    )
+
+    _ = try await client.complete(
+      request: AIChatCompletionRequest(
+        model: config.model,
+        messages: [AIChatMessage(role: "user", content: "Hello")]
+      ),
+      config: config,
+      apiKey: nil,
+      purpose: .interactiveChat
+    )
+
+    let capturedRequest = await transport.capturedRequest()
+    let request = try XCTUnwrap(capturedRequest)
+    let body = try XCTUnwrap(request.httpBody)
+    let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    XCTAssertEqual(payload["model"] as? String, AIProviderPreset.deepSeek.defaultModel)
+    XCTAssertNil(payload["temperature"])
+    XCTAssertEqual(payload["max_tokens"] as? Int, 1_234)
+    let thinking = try XCTUnwrap(payload["thinking"] as? [String: Any])
+    XCTAssertEqual(thinking["type"] as? String, "enabled")
+    XCTAssertEqual(payload["reasoning_effort"] as? String, "medium")
   }
 
   func testUtilityTaskKeepsInternalRequestOptions() async throws {
@@ -120,7 +163,8 @@ final class AIProviderAdvancedSettingsTests: XCTestCase {
     XCTAssertEqual(messages.first?["content"] as? String, "Return JSON.")
   }
 
-  func testDeepSeekRemovesUnsupportedAdvancedTemperatureAndKeepsConversationReasoning() async throws {
+  func testDeepSeekRemovesUnsupportedAdvancedTemperatureAndKeepsConversationReasoning() async throws
+  {
     let transport = RecordingAIChatTransport(
       data: successfulResponseData,
       statusCode: 200

@@ -29,8 +29,10 @@ final class RSSReaderDatabase: @unchecked Sendable {
     var database: OpaquePointer?
     let flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
     guard sqlite3_open_v2(fileURL.path, &database, flags, nil) == SQLITE_OK,
-          let database else {
-      let message = database.flatMap { sqlite3_errmsg($0) }.map(String.init(cString:))
+      let database
+    else {
+      let message =
+        database.flatMap { sqlite3_errmsg($0) }.map(String.init(cString:))
         ?? "无法打开 RSS SQLite 数据库"
       if let database { sqlite3_close(database) }
       throw RSSReaderError.persistence(message)
@@ -78,14 +80,15 @@ final class RSSReaderDatabase: @unchecked Sendable {
 
   func feeds() throws -> [RSSFeed] {
     try withLock {
-      let statement = try prepareUnlocked("""
-      SELECT id, title, url, site_url, icon_url, added_at, last_updated_at,
-             etag, last_modified, last_error, last_refresh_attempt_at,
-             refresh_failure_count, next_retry_at, last_refresh_duration,
-             last_issue_json
-      FROM rss_feeds
-      ORDER BY added_at ASC, title COLLATE NOCASE ASC;
-      """)
+      let statement = try prepareUnlocked(
+        """
+        SELECT id, title, url, site_url, icon_url, added_at, last_updated_at,
+               etag, last_modified, last_error, last_refresh_attempt_at,
+               refresh_failure_count, next_retry_at, last_refresh_duration,
+               last_issue_json
+        FROM rss_feeds
+        ORDER BY added_at ASC, title COLLATE NOCASE ASC;
+        """)
       defer { sqlite3_finalize(statement) }
       var output: [RSSFeed] = []
       while sqlite3_step(statement) == SQLITE_ROW {
@@ -98,7 +101,8 @@ final class RSSReaderDatabase: @unchecked Sendable {
 
   func articles() throws -> [RSSArticle] {
     try withLock {
-      let statement = try prepareUnlocked(articleSelectSQL + " ORDER BY COALESCE(published_at, fetched_at) DESC, id ASC;")
+      let statement = try prepareUnlocked(
+        articleSelectSQL + " ORDER BY COALESCE(published_at, fetched_at) DESC, id ASC;")
       defer { sqlite3_finalize(statement) }
       var output: [RSSArticle] = []
       while sqlite3_step(statement) == SQLITE_ROW {
@@ -110,18 +114,73 @@ final class RSSReaderDatabase: @unchecked Sendable {
   }
 
   func articleHeaders() throws -> [RSSArticleHeader] {
+    try articleHeaders(limit: nil, offset: 0)
+  }
+
+  /// Reads only the lightweight article projection required by list surfaces.
+  /// Keeping the limit/offset at the SQL boundary avoids materialising every
+  /// row while the first RSS window is being shown.
+  func articleHeaders(limit: Int?, offset: Int = 0) throws -> [RSSArticleHeader] {
     try withLock {
+      let normalizedOffset = max(0, offset)
+      let pagination =
+        if let limit {
+          " LIMIT \(max(0, limit)) OFFSET \(normalizedOffset);"
+        } else {
+          " LIMIT -1 OFFSET \(normalizedOffset);"
+        }
       let statement = try prepareUnlocked(
         articleHeaderSelectSQL
-          + " ORDER BY COALESCE(published_at, fetched_at) DESC, id ASC;"
+          + " ORDER BY COALESCE(published_at, fetched_at) DESC, id ASC"
+          + pagination
       )
       defer { sqlite3_finalize(statement) }
       var output: [RSSArticleHeader] = []
       while sqlite3_step(statement) == SQLITE_ROW {
+        try Task.checkCancellation()
         output.append(try decodeArticleHeader(statement))
       }
       try checkStatementCompletion(statement)
       return output
+    }
+  }
+
+  func articleHeader(id: String) throws -> RSSArticleHeader? {
+    try withLock {
+      let statement = try prepareUnlocked(articleHeaderSelectSQL + " WHERE id = ? LIMIT 1;")
+      defer { sqlite3_finalize(statement) }
+      bind(id, at: 1, to: statement)
+      switch sqlite3_step(statement) {
+      case SQLITE_ROW:
+        return try decodeArticleHeader(statement)
+      case SQLITE_DONE:
+        return nil
+      default:
+        throw databaseErrorUnlocked()
+      }
+    }
+  }
+
+  func articleHeaderCount() throws -> Int {
+    try withLock {
+      try scalarIntUnlocked("SELECT COUNT(*) FROM rss_articles;")
+    }
+  }
+
+  func unreadArticleCount(feedID: UUID? = nil) throws -> Int {
+    try withLock {
+      if let feedID {
+        let statement = try prepareUnlocked(
+          "SELECT COUNT(*) FROM rss_articles WHERE feed_id = ? AND read_at IS NULL;"
+        )
+        defer { sqlite3_finalize(statement) }
+        bind(feedID.uuidString, at: 1, to: statement)
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+          throw databaseErrorUnlocked()
+        }
+        return Int(sqlite3_column_int64(statement, 0))
+      }
+      return try scalarIntUnlocked("SELECT COUNT(*) FROM rss_articles WHERE read_at IS NULL;")
     }
   }
 
@@ -203,17 +262,17 @@ final class RSSReaderDatabase: @unchecked Sendable {
       let sql: String
       if articleID == nil {
         sql = """
-        SELECT id, article_id, text, note, tags_json, created_at, updated_at
-        FROM rss_article_highlights
-        ORDER BY updated_at DESC, created_at DESC;
-        """
+          SELECT id, article_id, text, note, tags_json, created_at, updated_at
+          FROM rss_article_highlights
+          ORDER BY updated_at DESC, created_at DESC;
+          """
       } else {
         sql = """
-        SELECT id, article_id, text, note, tags_json, created_at, updated_at
-        FROM rss_article_highlights
-        WHERE article_id = ?
-        ORDER BY updated_at DESC, created_at DESC;
-        """
+          SELECT id, article_id, text, note, tags_json, created_at, updated_at
+          FROM rss_article_highlights
+          WHERE article_id = ?
+          ORDER BY updated_at DESC, created_at DESC;
+          """
       }
       let statement = try prepareUnlocked(sql)
       defer { sqlite3_finalize(statement) }
@@ -232,17 +291,17 @@ final class RSSReaderDatabase: @unchecked Sendable {
       let sql: String
       if articleID == nil {
         sql = """
-        SELECT article_id, remote_url, relative_path, content_type, byte_count, archived_at
-        FROM rss_media_assets
-        ORDER BY archived_at DESC, article_id ASC, remote_url ASC;
-        """
+          SELECT article_id, remote_url, relative_path, content_type, byte_count, archived_at
+          FROM rss_media_assets
+          ORDER BY archived_at DESC, article_id ASC, remote_url ASC;
+          """
       } else {
         sql = """
-        SELECT article_id, remote_url, relative_path, content_type, byte_count, archived_at
-        FROM rss_media_assets
-        WHERE article_id = ?
-        ORDER BY remote_url ASC;
-        """
+          SELECT article_id, remote_url, relative_path, content_type, byte_count, archived_at
+          FROM rss_media_assets
+          WHERE article_id = ?
+          ORDER BY remote_url ASC;
+          """
       }
       let statement = try prepareUnlocked(sql)
       defer { sqlite3_finalize(statement) }
@@ -308,16 +367,17 @@ final class RSSReaderDatabase: @unchecked Sendable {
 
   func eligibleArticleIDsForPruning(before cutoff: Date) throws -> Set<String> {
     try withLock {
-      let statement = try prepareUnlocked("""
-      SELECT a.id
-      FROM rss_articles AS a
-      WHERE COALESCE(a.published_at, a.fetched_at) < ?
-        AND a.read_at IS NOT NULL
-        AND a.is_starred = 0
-        AND NOT EXISTS (
-          SELECT 1 FROM rss_article_highlights AS h WHERE h.article_id = a.id
-        );
-      """)
+      let statement = try prepareUnlocked(
+        """
+        SELECT a.id
+        FROM rss_articles AS a
+        WHERE COALESCE(a.published_at, a.fetched_at) < ?
+          AND a.read_at IS NOT NULL
+          AND a.is_starred = 0
+          AND NOT EXISTS (
+            SELECT 1 FROM rss_article_highlights AS h WHERE h.article_id = a.id
+          );
+        """)
       defer { sqlite3_finalize(statement) }
       sqlite3_bind_double(statement, 1, cutoff.timeIntervalSince1970)
       var output = Set<String>()
@@ -341,7 +401,8 @@ final class RSSReaderDatabase: @unchecked Sendable {
           bind(id, at: 1, to: statement)
           guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseErrorUnlocked() }
         }
-        try executeUnlocked("DELETE FROM rss_articles_fts WHERE article_id NOT IN (SELECT id FROM rss_articles);")
+        try executeUnlocked(
+          "DELETE FROM rss_articles_fts WHERE article_id NOT IN (SELECT id FROM rss_articles);")
       }
     }
   }
@@ -381,7 +442,8 @@ final class RSSReaderDatabase: @unchecked Sendable {
         defer { sqlite3_finalize(statement) }
         bind(id.uuidString, at: 1, to: statement)
         guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseErrorUnlocked() }
-        try executeUnlocked("DELETE FROM rss_articles_fts WHERE article_id NOT IN (SELECT id FROM rss_articles);")
+        try executeUnlocked(
+          "DELETE FROM rss_articles_fts WHERE article_id NOT IN (SELECT id FROM rss_articles);")
       }
     }
   }
@@ -451,12 +513,13 @@ final class RSSReaderDatabase: @unchecked Sendable {
 
   func updateFeedHealth(_ feed: RSSFeed) throws {
     try withLock {
-      let statement = try prepareUnlocked("""
-      UPDATE rss_feeds SET last_updated_at = ?, last_error = ?,
-        last_refresh_attempt_at = ?, refresh_failure_count = ?, next_retry_at = ?,
-        last_refresh_duration = ?, etag = ?, last_modified = ?, title = ?,
-        site_url = ?, icon_url = ?, last_issue_json = ? WHERE id = ?;
-      """)
+      let statement = try prepareUnlocked(
+        """
+        UPDATE rss_feeds SET last_updated_at = ?, last_error = ?,
+          last_refresh_attempt_at = ?, refresh_failure_count = ?, next_retry_at = ?,
+          last_refresh_duration = ?, etag = ?, last_modified = ?, title = ?,
+          site_url = ?, icon_url = ?, last_issue_json = ? WHERE id = ?;
+        """)
       defer { sqlite3_finalize(statement) }
       bindOptional(feed.lastUpdatedAt?.timeIntervalSince1970, at: 1, to: statement)
       bindOptional(feed.lastError, at: 2, to: statement)
@@ -495,14 +558,16 @@ final class RSSReaderDatabase: @unchecked Sendable {
     guard !normalized.isEmpty else { return [] }
     return try withLock {
       var ids = Set<String>()
-      let ftsQuery = normalized
+      let ftsQuery =
+        normalized
         .split(whereSeparator: { $0.isWhitespace })
         .map {
           let term = String($0).replacingOccurrences(of: "\"", with: "")
           return "\"\(term)\"*"
         }
         .joined(separator: " OR ")
-      let ftsStatement = try prepareUnlocked("SELECT article_id FROM rss_articles_fts WHERE rss_articles_fts MATCH ?;")
+      let ftsStatement = try prepareUnlocked(
+        "SELECT article_id FROM rss_articles_fts WHERE rss_articles_fts MATCH ?;")
       defer { sqlite3_finalize(ftsStatement) }
       bind(ftsQuery, at: 1, to: ftsStatement)
       while sqlite3_step(ftsStatement) == SQLITE_ROW {
@@ -517,124 +582,129 @@ final class RSSReaderDatabase: @unchecked Sendable {
   }
 
   private let articleSelectSQL = """
-  SELECT id, feed_id, title, link, cover_url, author, published_at, summary_html,
-         content_html, web_page_snapshot_html, fetched_at, read_at,
-         is_starred, tags_json
-  FROM rss_articles
-  """
+    SELECT id, feed_id, title, link, cover_url, author, published_at, summary_html,
+           content_html, web_page_snapshot_html, fetched_at, read_at,
+           is_starred, tags_json
+    FROM rss_articles
+    """
 
   private let articleHeaderSelectSQL = """
-  SELECT id, feed_id, title, link, cover_url, author, published_at,
-         CASE
-           WHEN TRIM(summary_html) != '' THEN SUBSTR(summary_html, 1, 8192)
-           WHEN TRIM(content_html) != '' THEN SUBSTR(content_html, 1, 8192)
-           ELSE SUBSTR(web_page_snapshot_html, 1, 8192)
-         END AS preview_html,
-         fetched_at, read_at, is_starred, tags_json
-  FROM rss_articles
-  """
+    SELECT id, feed_id, title, link, cover_url, author, published_at,
+           CASE
+             WHEN TRIM(summary_html) != '' THEN SUBSTR(summary_html, 1, 8192)
+             WHEN TRIM(content_html) != '' THEN SUBSTR(content_html, 1, 8192)
+             ELSE SUBSTR(web_page_snapshot_html, 1, 8192)
+           END AS preview_html,
+           fetched_at, read_at, is_starred, tags_json
+    FROM rss_articles
+    """
 
   private func migrate(from version: Int) throws {
     try withLock {
       try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
       do {
-        try executeUnlocked("""
-        CREATE TABLE IF NOT EXISTS rss_feeds (
-          id TEXT PRIMARY KEY NOT NULL,
-          title TEXT NOT NULL,
-          url TEXT NOT NULL UNIQUE,
-          site_url TEXT,
-          icon_url TEXT,
-          added_at REAL NOT NULL,
-          last_updated_at REAL,
-          etag TEXT,
-          last_modified TEXT,
-          last_error TEXT,
-          last_refresh_attempt_at REAL,
-          refresh_failure_count INTEGER NOT NULL DEFAULT 0,
-          next_retry_at REAL,
-          last_refresh_duration REAL,
-          last_issue_json TEXT
-        );
-        CREATE TABLE IF NOT EXISTS rss_articles (
-          id TEXT PRIMARY KEY NOT NULL,
-          feed_id TEXT NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE,
-          title TEXT NOT NULL,
-          link TEXT,
-          cover_url TEXT,
-          author TEXT,
-          published_at REAL,
-          summary_html TEXT NOT NULL DEFAULT '',
-          content_html TEXT NOT NULL DEFAULT '',
-          web_page_snapshot_html TEXT,
-          fetched_at REAL NOT NULL,
-          read_at REAL,
-          is_starred INTEGER NOT NULL DEFAULT 0,
-          tags_json TEXT NOT NULL DEFAULT '[]'
-        );
-        CREATE INDEX IF NOT EXISTS rss_articles_feed_idx
-          ON rss_articles(feed_id, published_at DESC, fetched_at DESC);
-        DROP INDEX IF EXISTS rss_articles_read_idx;
-        CREATE INDEX IF NOT EXISTS rss_articles_scope_idx
-          ON rss_articles(
-            feed_id, read_at, is_starred, published_at DESC, fetched_at DESC
+        try executeUnlocked(
+          """
+          CREATE TABLE IF NOT EXISTS rss_feeds (
+            id TEXT PRIMARY KEY NOT NULL,
+            title TEXT NOT NULL,
+            url TEXT NOT NULL UNIQUE,
+            site_url TEXT,
+            icon_url TEXT,
+            added_at REAL NOT NULL,
+            last_updated_at REAL,
+            etag TEXT,
+            last_modified TEXT,
+            last_error TEXT,
+            last_refresh_attempt_at REAL,
+            refresh_failure_count INTEGER NOT NULL DEFAULT 0,
+            next_retry_at REAL,
+            last_refresh_duration REAL,
+            last_issue_json TEXT
           );
-        CREATE INDEX IF NOT EXISTS rss_articles_order_idx
-          ON rss_articles(COALESCE(published_at, fetched_at) DESC, id ASC);
-        CREATE TABLE IF NOT EXISTS rss_article_highlights (
-          id TEXT PRIMARY KEY NOT NULL,
-          article_id TEXT NOT NULL REFERENCES rss_articles(id) ON DELETE CASCADE,
-          text TEXT NOT NULL,
-          note TEXT NOT NULL DEFAULT '',
-          tags_json TEXT NOT NULL DEFAULT '[]',
-          created_at REAL NOT NULL,
-          updated_at REAL NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS rss_article_highlights_article_idx
-          ON rss_article_highlights(article_id, updated_at DESC);
-        CREATE TABLE IF NOT EXISTS rss_media_assets (
-          article_id TEXT NOT NULL REFERENCES rss_articles(id) ON DELETE CASCADE,
-          remote_url TEXT NOT NULL,
-          relative_path TEXT NOT NULL,
-          content_type TEXT,
-          byte_count INTEGER NOT NULL DEFAULT 0,
-          archived_at REAL NOT NULL,
-          PRIMARY KEY(article_id, remote_url)
-        );
-        CREATE INDEX IF NOT EXISTS rss_media_assets_article_idx
-          ON rss_media_assets(article_id, archived_at DESC);
-        CREATE VIRTUAL TABLE IF NOT EXISTS rss_articles_fts USING fts5(
-          article_id UNINDEXED,
-          title,
-          summary,
-          content,
-          tokenize = 'unicode61 remove_diacritics 2'
-        );
-        """)
+          CREATE TABLE IF NOT EXISTS rss_articles (
+            id TEXT PRIMARY KEY NOT NULL,
+            feed_id TEXT NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            link TEXT,
+            cover_url TEXT,
+            author TEXT,
+            published_at REAL,
+            summary_html TEXT NOT NULL DEFAULT '',
+            content_html TEXT NOT NULL DEFAULT '',
+            web_page_snapshot_html TEXT,
+            fetched_at REAL NOT NULL,
+            read_at REAL,
+            is_starred INTEGER NOT NULL DEFAULT 0,
+            tags_json TEXT NOT NULL DEFAULT '[]'
+          );
+          CREATE INDEX IF NOT EXISTS rss_articles_feed_idx
+            ON rss_articles(feed_id, published_at DESC, fetched_at DESC);
+          DROP INDEX IF EXISTS rss_articles_read_idx;
+          CREATE INDEX IF NOT EXISTS rss_articles_scope_idx
+            ON rss_articles(
+              feed_id, read_at, is_starred, published_at DESC, fetched_at DESC
+            );
+          CREATE INDEX IF NOT EXISTS rss_articles_order_idx
+            ON rss_articles(COALESCE(published_at, fetched_at) DESC, id ASC);
+          CREATE TABLE IF NOT EXISTS rss_article_highlights (
+            id TEXT PRIMARY KEY NOT NULL,
+            article_id TEXT NOT NULL REFERENCES rss_articles(id) ON DELETE CASCADE,
+            text TEXT NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS rss_article_highlights_article_idx
+            ON rss_article_highlights(article_id, updated_at DESC);
+          CREATE TABLE IF NOT EXISTS rss_media_assets (
+            article_id TEXT NOT NULL REFERENCES rss_articles(id) ON DELETE CASCADE,
+            remote_url TEXT NOT NULL,
+            relative_path TEXT NOT NULL,
+            content_type TEXT,
+            byte_count INTEGER NOT NULL DEFAULT 0,
+            archived_at REAL NOT NULL,
+            PRIMARY KEY(article_id, remote_url)
+          );
+          CREATE INDEX IF NOT EXISTS rss_media_assets_article_idx
+            ON rss_media_assets(article_id, archived_at DESC);
+          CREATE VIRTUAL TABLE IF NOT EXISTS rss_articles_fts USING fts5(
+            article_id UNINDEXED,
+            title,
+            summary,
+            content,
+            tokenize = 'unicode61 remove_diacritics 2'
+          );
+          """)
         if version < 2,
-           try !columnExistsUnlocked(table: "rss_feeds", column: "last_issue_json") {
+          try !columnExistsUnlocked(table: "rss_feeds", column: "last_issue_json")
+        {
           try executeUnlocked("ALTER TABLE rss_feeds ADD COLUMN last_issue_json TEXT;")
         }
         if version < 2 {
           try migrateLegacyFeedIssuesUnlocked()
         }
         if version < 4,
-           try !columnExistsUnlocked(table: "rss_articles", column: "web_page_snapshot_html") {
+          try !columnExistsUnlocked(table: "rss_articles", column: "web_page_snapshot_html")
+        {
           try executeUnlocked(
             "ALTER TABLE rss_articles ADD COLUMN web_page_snapshot_html TEXT;"
           )
         }
         if version < 5,
-           try !columnExistsUnlocked(table: "rss_articles", column: "cover_url") {
+          try !columnExistsUnlocked(table: "rss_articles", column: "cover_url")
+        {
           try executeUnlocked(
             "ALTER TABLE rss_articles ADD COLUMN cover_url TEXT;"
           )
         }
         if version == 0 {
-          try executeUnlocked("""
-          INSERT OR IGNORE INTO rss_articles_fts(article_id, title, summary, content)
-          SELECT id, title, summary_html, content_html FROM rss_articles;
-          """)
+          try executeUnlocked(
+            """
+            INSERT OR IGNORE INTO rss_articles_fts(article_id, title, summary, content)
+            SELECT id, title, summary_html, content_html FROM rss_articles;
+            """)
         }
         try executeUnlocked("PRAGMA user_version = \(Self.currentSchemaVersion);")
         try executeUnlocked("COMMIT;")
@@ -645,28 +715,29 @@ final class RSSReaderDatabase: @unchecked Sendable {
   }
 
   private func upsertFeedUnlocked(_ feed: RSSFeed) throws {
-    let statement = try prepareUnlocked("""
-    INSERT INTO rss_feeds (
-      id, title, url, site_url, icon_url, added_at, last_updated_at,
-      etag, last_modified, last_error, last_refresh_attempt_at,
-      refresh_failure_count, next_retry_at, last_refresh_duration, last_issue_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      title = excluded.title,
-      url = excluded.url,
-      site_url = excluded.site_url,
-      icon_url = excluded.icon_url,
-      added_at = excluded.added_at,
-      last_updated_at = excluded.last_updated_at,
-      etag = excluded.etag,
-      last_modified = excluded.last_modified,
-      last_error = excluded.last_error,
-      last_refresh_attempt_at = excluded.last_refresh_attempt_at,
-      refresh_failure_count = excluded.refresh_failure_count,
-      next_retry_at = excluded.next_retry_at,
-      last_refresh_duration = excluded.last_refresh_duration,
-      last_issue_json = excluded.last_issue_json;
-    """)
+    let statement = try prepareUnlocked(
+      """
+      INSERT INTO rss_feeds (
+        id, title, url, site_url, icon_url, added_at, last_updated_at,
+        etag, last_modified, last_error, last_refresh_attempt_at,
+        refresh_failure_count, next_retry_at, last_refresh_duration, last_issue_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        url = excluded.url,
+        site_url = excluded.site_url,
+        icon_url = excluded.icon_url,
+        added_at = excluded.added_at,
+        last_updated_at = excluded.last_updated_at,
+        etag = excluded.etag,
+        last_modified = excluded.last_modified,
+        last_error = excluded.last_error,
+        last_refresh_attempt_at = excluded.last_refresh_attempt_at,
+        refresh_failure_count = excluded.refresh_failure_count,
+        next_retry_at = excluded.next_retry_at,
+        last_refresh_duration = excluded.last_refresh_duration,
+        last_issue_json = excluded.last_issue_json;
+      """)
     defer { sqlite3_finalize(statement) }
     bind(feed.id.uuidString, at: 1, to: statement)
     bind(feed.title, at: 2, to: statement)
@@ -687,29 +758,30 @@ final class RSSReaderDatabase: @unchecked Sendable {
   }
 
   private func upsertArticleUnlocked(_ article: RSSArticle) throws {
-    let statement = try prepareUnlocked("""
-    INSERT INTO rss_articles (
-      id, feed_id, title, link, cover_url, author, published_at, summary_html,
-      content_html, web_page_snapshot_html, fetched_at, read_at, is_starred, tags_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      feed_id = excluded.feed_id,
-      title = excluded.title,
-      link = excluded.link,
-      cover_url = COALESCE(excluded.cover_url, rss_articles.cover_url),
-      author = excluded.author,
-      published_at = excluded.published_at,
-      summary_html = excluded.summary_html,
-      content_html = excluded.content_html,
-      web_page_snapshot_html = COALESCE(
-        excluded.web_page_snapshot_html,
-        rss_articles.web_page_snapshot_html
-      ),
-      fetched_at = excluded.fetched_at,
-      read_at = excluded.read_at,
-      is_starred = excluded.is_starred,
-      tags_json = excluded.tags_json;
-    """)
+    let statement = try prepareUnlocked(
+      """
+      INSERT INTO rss_articles (
+        id, feed_id, title, link, cover_url, author, published_at, summary_html,
+        content_html, web_page_snapshot_html, fetched_at, read_at, is_starred, tags_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        feed_id = excluded.feed_id,
+        title = excluded.title,
+        link = excluded.link,
+        cover_url = COALESCE(excluded.cover_url, rss_articles.cover_url),
+        author = excluded.author,
+        published_at = excluded.published_at,
+        summary_html = excluded.summary_html,
+        content_html = excluded.content_html,
+        web_page_snapshot_html = COALESCE(
+          excluded.web_page_snapshot_html,
+          rss_articles.web_page_snapshot_html
+        ),
+        fetched_at = excluded.fetched_at,
+        read_at = excluded.read_at,
+        is_starred = excluded.is_starred,
+        tags_json = excluded.tags_json;
+      """)
     defer { sqlite3_finalize(statement) }
     bind(article.id, at: 1, to: statement)
     bind(article.feedID.uuidString, at: 2, to: statement)
@@ -734,7 +806,8 @@ final class RSSReaderDatabase: @unchecked Sendable {
       throw databaseErrorUnlocked()
     }
     sqlite3_finalize(deleteFTS)
-    let insertFTS = try prepareUnlocked("INSERT INTO rss_articles_fts(article_id, title, summary, content) VALUES (?, ?, ?, ?);")
+    let insertFTS = try prepareUnlocked(
+      "INSERT INTO rss_articles_fts(article_id, title, summary, content) VALUES (?, ?, ?, ?);")
     defer { sqlite3_finalize(insertFTS) }
     bind(article.id, at: 1, to: insertFTS)
     bind(article.title, at: 2, to: insertFTS)
@@ -744,16 +817,17 @@ final class RSSReaderDatabase: @unchecked Sendable {
   }
 
   private func upsertMediaAssetUnlocked(_ asset: RSSMediaAsset) throws {
-    let statement = try prepareUnlocked("""
-    INSERT INTO rss_media_assets (
-      article_id, remote_url, relative_path, content_type, byte_count, archived_at
-    ) VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(article_id, remote_url) DO UPDATE SET
-      relative_path = excluded.relative_path,
-      content_type = excluded.content_type,
-      byte_count = excluded.byte_count,
-      archived_at = excluded.archived_at;
-    """)
+    let statement = try prepareUnlocked(
+      """
+      INSERT INTO rss_media_assets (
+        article_id, remote_url, relative_path, content_type, byte_count, archived_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(article_id, remote_url) DO UPDATE SET
+        relative_path = excluded.relative_path,
+        content_type = excluded.content_type,
+        byte_count = excluded.byte_count,
+        archived_at = excluded.archived_at;
+      """)
     defer { sqlite3_finalize(statement) }
     bind(asset.articleID, at: 1, to: statement)
     bind(asset.remoteURL.absoluteString, at: 2, to: statement)
@@ -765,17 +839,18 @@ final class RSSReaderDatabase: @unchecked Sendable {
   }
 
   private func saveHighlightUnlocked(_ highlight: RSSArticleHighlight) throws {
-    let statement = try prepareUnlocked("""
-    INSERT INTO rss_article_highlights (
-      id, article_id, text, note, tags_json, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      article_id = excluded.article_id,
-      text = excluded.text,
-      note = excluded.note,
-      tags_json = excluded.tags_json,
-      updated_at = excluded.updated_at;
-    """)
+    let statement = try prepareUnlocked(
+      """
+      INSERT INTO rss_article_highlights (
+        id, article_id, text, note, tags_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        article_id = excluded.article_id,
+        text = excluded.text,
+        note = excluded.note,
+        tags_json = excluded.tags_json,
+        updated_at = excluded.updated_at;
+      """)
     defer { sqlite3_finalize(statement) }
     bind(highlight.id.uuidString, at: 1, to: statement)
     bind(highlight.articleID, at: 2, to: statement)
@@ -791,16 +866,18 @@ final class RSSReaderDatabase: @unchecked Sendable {
     let legacyError = text(statement, 9)
     let lastRefreshAttemptAt = optionalDate(statement, 10)
     let decodedIssue = decodeIssue(text(statement, 14))
-    let migratedIssue = decodedIssue ?? legacyError.map { message in
-      RSSFeedIssue(
-        stage: .transport,
-        category: .unknown,
-        retryStrategy: .automatic,
-        userMessage: message,
-        technicalDetail: "由旧版 SQLite last_error 迁移",
-        occurredAt: lastRefreshAttemptAt ?? Date()
-      )
-    }
+    let migratedIssue =
+      decodedIssue
+      ?? legacyError.map { message in
+        RSSFeedIssue(
+          stage: .transport,
+          category: .unknown,
+          retryStrategy: .automatic,
+          userMessage: message,
+          technicalDetail: "由旧版 SQLite last_error 迁移",
+          occurredAt: lastRefreshAttemptAt ?? Date()
+        )
+      }
     return RSSFeed(
       id: try requiredUUID(statement, 0, field: "rss_feeds.id"),
       title: text(statement, 1) ?? "未命名订阅",
@@ -884,13 +961,14 @@ final class RSSReaderDatabase: @unchecked Sendable {
 
   private func decodeStringArray(_ value: String?) -> [String] {
     guard let value, let data = value.data(using: .utf8),
-          let decoded = try? JSONDecoder().decode([String].self, from: data)
+      let decoded = try? JSONDecoder().decode([String].self, from: data)
     else { return [] }
     return RSSArticle.normalizedTags(decoded)
   }
 
   private func json(_ values: [String]) -> String {
-    guard let data = try? JSONEncoder().encode(values), let value = String(data: data, encoding: .utf8)
+    guard let data = try? JSONEncoder().encode(values),
+      let value = String(data: data, encoding: .utf8)
     else { return "[]" }
     return value
   }
@@ -926,15 +1004,16 @@ final class RSSReaderDatabase: @unchecked Sendable {
   }
 
   private func migrateLegacyFeedIssuesUnlocked() throws {
-    let selectStatement = try prepareUnlocked("""
-    SELECT id, last_error, last_refresh_attempt_at
-    FROM rss_feeds
-    WHERE last_issue_json IS NULL AND last_error IS NOT NULL AND last_error != '';
-    """)
+    let selectStatement = try prepareUnlocked(
+      """
+      SELECT id, last_error, last_refresh_attempt_at
+      FROM rss_feeds
+      WHERE last_issue_json IS NULL AND last_error IS NOT NULL AND last_error != '';
+      """)
     var migratedValues: [(id: String, issueJSON: String)] = []
     while sqlite3_step(selectStatement) == SQLITE_ROW {
       guard let id = text(selectStatement, 0),
-            let message = text(selectStatement, 1)
+        let message = text(selectStatement, 1)
       else { continue }
       let issue = RSSFeedIssue(
         stage: .transport,
@@ -1052,12 +1131,18 @@ final class RSSReaderDatabase: @unchecked Sendable {
   }
 
   private func bindOptional(_ value: String?, at index: Int32, to statement: OpaquePointer?) {
-    guard let value else { sqlite3_bind_null(statement, index); return }
+    guard let value else {
+      sqlite3_bind_null(statement, index)
+      return
+    }
     bind(value, at: index, to: statement)
   }
 
   private func bindOptional(_ value: Double?, at index: Int32, to statement: OpaquePointer?) {
-    guard let value else { sqlite3_bind_null(statement, index); return }
+    guard let value else {
+      sqlite3_bind_null(statement, index)
+      return
+    }
     sqlite3_bind_double(statement, index, value)
   }
 
@@ -1075,21 +1160,25 @@ final class RSSReaderDatabase: @unchecked Sendable {
   }
 
   private func optionalDouble(_ statement: OpaquePointer?, _ index: Int32) -> Double? {
-    sqlite3_column_type(statement, index) == SQLITE_NULL ? nil : sqlite3_column_double(statement, index)
+    sqlite3_column_type(statement, index) == SQLITE_NULL
+      ? nil : sqlite3_column_double(statement, index)
   }
 
   private func optionalURL(_ statement: OpaquePointer?, _ index: Int32) -> URL? {
     text(statement, index).flatMap(URL.init(string:))
   }
 
-  private func requiredURL(_ statement: OpaquePointer?, _ index: Int32, field: String) throws -> URL {
+  private func requiredURL(_ statement: OpaquePointer?, _ index: Int32, field: String) throws -> URL
+  {
     guard let value = optionalURL(statement, index) else {
       throw RSSReaderError.persistence("\(field) 缺少有效 URL")
     }
     return value
   }
 
-  private func requiredUUID(_ statement: OpaquePointer?, _ index: Int32, field: String) throws -> UUID {
+  private func requiredUUID(_ statement: OpaquePointer?, _ index: Int32, field: String) throws
+    -> UUID
+  {
     guard let value = text(statement, index), let uuid = UUID(uuidString: value) else {
       throw RSSReaderError.persistence("\(field) 缺少有效 UUID")
     }

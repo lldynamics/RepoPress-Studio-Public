@@ -4,7 +4,7 @@ import SwiftUI
 struct MetadataColumn: View {
   private let store: WorkbenchStore
   @ObservedObject private var navigation: WorkbenchEditorNavigationFeatureFacade
-  @ObservedObject private var ai: WorkbenchAIFeatureFacade
+  @ObservedObject private var contentPresentation: WorkbenchContentPresentationFeatureFacade
   let rssStore: RSSReaderStore
   let repositoryContextStage: RepositoryContextStage
   @ObservedObject var repositorySourceSession: RepositoryHTMLSourceSession
@@ -23,7 +23,7 @@ struct MetadataColumn: View {
     _navigation = ObservedObject(
       wrappedValue: WorkbenchEditorNavigationFeatureFacade(store: store)
     )
-    _ai = ObservedObject(wrappedValue: store.ai)
+    _contentPresentation = ObservedObject(wrappedValue: store.contentPresentation)
     self.rssStore = rssStore
     self.repositoryContextStage = repositoryContextStage
     _repositorySourceSession = ObservedObject(wrappedValue: repositorySourceSession)
@@ -35,7 +35,7 @@ struct MetadataColumn: View {
     ZStack(alignment: .topLeading) {
       switch WorkspaceInspectorPresentation.route(
         for: navigation.selectedSection,
-        isAIAssistantPresented: ai.isAssistantPresented
+        isAIAssistantPresented: contentPresentation.isAssistantPresented
       ) {
       case .aiAssistant:
         AIChatContextInspectorView(
@@ -46,7 +46,8 @@ struct MetadataColumn: View {
         SiteStarterInspectorView(state: SiteStarterInspectorState(store: store))
       case .repository:
         if repositoryContextStage == .source,
-           repositorySourceSession.activeDocument != nil {
+          repositorySourceSession.activeDocument != nil
+        {
           RepositoryHTMLSourceInspectorView(
             store: store,
             session: repositorySourceSession
@@ -70,7 +71,7 @@ struct MetadataColumn: View {
     .accessibilityIdentifier("workspace-inspector")
     .accessibilityLabel("工作区 Inspector")
     .overlay(alignment: .leading) {
-      if ai.isAssistantPresented {
+      if contentPresentation.isAssistantPresented {
         Image(systemName: "arrow.left.and.right")
           .font(.workbenchMetadata.weight(.semibold))
           .foregroundStyle(.secondary)

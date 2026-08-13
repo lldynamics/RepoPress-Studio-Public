@@ -3,7 +3,6 @@ import Foundation
 extension WorkbenchStore {
   public func refreshImageWorkbenchReport() {
     imageStore.refreshImageWorkbenchReport()
-    invalidateDraftTaskQueueStateCache()
   }
 
   public func imageWorkbenchReport(for draft: ArticleDraft) -> ImageWorkbenchReport {
@@ -23,7 +22,6 @@ extension WorkbenchStore {
     force: Bool = false
   ) async {
     await imageStore.refreshImageWorkbenchReportInBackground(for: draft, force: force)
-    invalidateDraftTaskQueueStateCache()
   }
 
   /// Starts an observation refresh without making selection/navigation wait on
@@ -207,8 +205,9 @@ extension WorkbenchStore {
     section: WorkspaceSection = .images
   ) -> Bool {
     guard let targetDraft = drafts.first(where: { $0.id == draftID }),
-          targetDraft.attachments.contains(where: { $0.id == attachmentID }),
-          focusDraft(draftID, section: section) else {
+      targetDraft.attachments.contains(where: { $0.id == attachmentID }),
+      focusDraft(draftID, section: section)
+    else {
       return false
     }
 

@@ -58,3 +58,74 @@ public final class WorkbenchContentHealthFeatureFacade: ObservableObject {
       .store(in: &cancellables)
   }
 }
+
+/// Observation boundary for the metadata summary action. The summary button
+/// only depends on token availability, utility-action status/message, and the
+/// selected site's AI configuration. Chat streaming, image workbench state,
+/// and site-maintenance refreshes stay outside this boundary.
+@MainActor
+public final class WorkbenchMetadataSummaryFeatureFacade: ObservableObject {
+  private struct AIConfigurationProjection: Equatable {
+    let id: UUID
+    let connectionProfileID: UUID?
+    let config: AIProviderConfig
+  }
+
+  private unowned let store: WorkbenchStore
+  private var cancellables = Set<AnyCancellable>()
+
+  public init(store: WorkbenchStore) {
+    self.store = store
+    observe(store.aiWorkspaceStore.$aiTokenAvailability)
+    observe(store.aiWorkspaceStore.$isAIActionRunning)
+    observe(store.aiWorkspaceStore.$aiActionMessage)
+    observe(
+      store.$aiConnectionProfiles.map { profiles in
+        profiles.map {
+          AIConfigurationProjection(
+            id: $0.id,
+            connectionProfileID: nil,
+            config: $0.config
+          )
+        }
+      }
+    )
+    observe(
+      store.publishingStore.$profiles.map { profiles in
+        profiles.map {
+          AIConfigurationProjection(
+            id: $0.id,
+            connectionProfileID: $0.aiConnectionProfileID,
+            config: $0.aiProviderConfig
+          )
+        }
+      }
+    )
+    observe(store.publishingStore.$activeProfileID)
+  }
+
+  public var tokenAvailability: KeychainTokenAvailability {
+    store.aiTokenAvailability
+  }
+
+  public var isActionRunning: Bool {
+    store.isAIActionRunning
+  }
+
+  public var actionMessage: String? {
+    store.aiActionMessage
+  }
+
+  public func providerConfig(for profile: SiteProfile) -> AIProviderConfig {
+    store.aiProviderConfig(for: profile)
+  }
+
+  private func observe<P: Publisher>(_ publisher: P)
+  where P.Failure == Never, P.Output: Equatable {
+    publisher
+      .removeDuplicates()
+      .dropFirst()
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+  }
+}

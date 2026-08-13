@@ -1,6 +1,7 @@
 import Foundation
 
-public enum AICredentialStorageMode: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
+public enum AICredentialStorageMode: String, CaseIterable, Codable, Hashable, Identifiable, Sendable
+{
   case localFile
   case keychain
   case session
@@ -10,8 +11,10 @@ public enum AICredentialStorageMode: String, CaseIterable, Codable, Hashable, Id
 
 /// Stores AI credentials independently from repository and deployment tokens.
 ///
-/// Production builds default to a restricted local configuration file. Keychain
-/// access only occurs after the user explicitly selects the Keychain mode.
+/// Production builds default to macOS Keychain. A previously persisted
+/// `.localFile` choice remains honored, but an existing legacy file is never
+/// imported automatically. Keychain, local-file, and session sources stay
+/// isolated unless the user explicitly selects a source.
 public final class AICredentialStore: @unchecked Sendable {
   public static let storageModePreferenceKey = "ai.credentialStorageMode"
 
@@ -33,6 +36,7 @@ public final class AICredentialStore: @unchecked Sendable {
   private let preferenceKey: String
   private let defaultMode: AICredentialStorageMode
   private let fileManager: FileManager
+  private let backupExclusionHandler: (URL) throws -> Void
   private let lock = NSRecursiveLock()
   private var transientMode: AICredentialStorageMode?
   private var sessionCredentials: [UUID: StoredCredential] = [:]
@@ -51,18 +55,38 @@ public final class AICredentialStore: @unchecked Sendable {
         keychainTokenStore: keychainTokenStore,
         localFileURL: Self.defaultLocalFileURL(),
         userDefaults: .standard,
-        defaultMode: .localFile
+        defaultMode: .keychain
       )
     }
   }
 
-  public init(
+  public convenience init(
     keychainTokenStore: KeychainTokenStore,
     localFileURL: URL,
     userDefaults: UserDefaults? = nil,
     preferenceKey: String = AICredentialStore.storageModePreferenceKey,
-    defaultMode: AICredentialStorageMode = .localFile,
+    defaultMode: AICredentialStorageMode = .keychain,
     fileManager: FileManager = .default
+  ) {
+    self.init(
+      keychainTokenStore: keychainTokenStore,
+      localFileURL: localFileURL,
+      userDefaults: userDefaults,
+      preferenceKey: preferenceKey,
+      defaultMode: defaultMode,
+      fileManager: fileManager,
+      backupExclusionHandler: Self.applyBackupExclusion
+    )
+  }
+
+  init(
+    keychainTokenStore: KeychainTokenStore,
+    localFileURL: URL,
+    userDefaults: UserDefaults?,
+    preferenceKey: String = AICredentialStore.storageModePreferenceKey,
+    defaultMode: AICredentialStorageMode,
+    fileManager: FileManager,
+    backupExclusionHandler: @escaping (URL) throws -> Void
   ) {
     self.keychainTokenStore = keychainTokenStore
     self.localFileURL = localFileURL
@@ -70,6 +94,7 @@ public final class AICredentialStore: @unchecked Sendable {
     self.preferenceKey = preferenceKey
     self.defaultMode = defaultMode
     self.fileManager = fileManager
+    self.backupExclusionHandler = backupExclusionHandler
   }
 
   public var storageMode: AICredentialStorageMode {
@@ -101,15 +126,18 @@ public final class AICredentialStore: @unchecked Sendable {
         guard selectedModeHasCurrentGeneration(for: id) else { return nil }
         return try localDocument().credentials[id.uuidString]?.token.nilIfEmpty
       case .keychain:
-        if selectedModeHasCurrentGeneration(for: id) {
-          if let shared = try keychainTokenStore
-            .aiToken(forConnectionProfileID: id)?.nilIfEmpty {
-            return shared
-          }
+        // A generation mismatch is a fail-closed boundary. In particular, do
+        // not fall back to an origin-bound legacy item after an endpoint or
+        // identity change, even if that item is still present in Keychain.
+        guard selectedModeHasCurrentGeneration(for: id) else { return nil }
+        if let shared = try keychainTokenStore
+          .aiToken(forConnectionProfileID: id)?.nilIfEmpty
+        {
+          return shared
         }
-        // Legacy Keychain items are origin-bound. Even after a connection ID
-        // is invalidated, looking up the current origin cannot send an old key
-        // to a newly selected endpoint and preserves external restores.
+        // Legacy Keychain items are origin-bound and are only consulted while
+        // the connection identity is still current. This preserves compatible
+        // restores without allowing an invalidated credential to reactivate.
         guard let legacyProfile else { return nil }
         return try keychainTokenStore.aiToken(for: legacyProfile)?.nilIfEmpty
       case .session:
@@ -130,18 +158,21 @@ public final class AICredentialStore: @unchecked Sendable {
           return KeychainTokenAvailability(hasToken: false)
         }
         guard let credential = try localDocument().credentials[id.uuidString],
-              credential.token.nilIfEmpty != nil else {
+          credential.token.nilIfEmpty != nil
+        else {
           return KeychainTokenAvailability(hasToken: false)
         }
         return KeychainTokenAvailability(hasToken: true, updatedAt: credential.updatedAt)
       case .keychain:
-        if selectedModeHasCurrentGeneration(for: id) {
-          let shared = try keychainTokenStore.aiTokenAvailability(
-            forConnectionProfileID: id
-          )
-          if shared.hasToken || shared.accessFailureMessage != nil {
-            return shared
-          }
+        // Match token() and fail closed before consulting any legacy source.
+        guard selectedModeHasCurrentGeneration(for: id) else {
+          return KeychainTokenAvailability(hasToken: false)
+        }
+        let shared = try keychainTokenStore.aiTokenAvailability(
+          forConnectionProfileID: id
+        )
+        if shared.hasToken || shared.accessFailureMessage != nil {
+          return shared
         }
         guard let legacyProfile else {
           return KeychainTokenAvailability(hasToken: false)
@@ -152,7 +183,8 @@ public final class AICredentialStore: @unchecked Sendable {
           return KeychainTokenAvailability(hasToken: false)
         }
         guard let credential = sessionCredentials[id],
-              credential.token.nilIfEmpty != nil else {
+          credential.token.nilIfEmpty != nil
+        else {
           return KeychainTokenAvailability(hasToken: false)
         }
         return KeychainTokenAvailability(hasToken: true, updatedAt: credential.updatedAt)
@@ -198,14 +230,18 @@ public final class AICredentialStore: @unchecked Sendable {
     try synchronized {
       switch resolvedStorageMode() {
       case .localFile:
+        guard fileManager.fileExists(atPath: localFileURL.path) else { return }
         var document = try localDocument()
         document.credentials.removeValue(forKey: id.uuidString)
         try writeLocalDocument(document)
       case .keychain:
-        try keychainTokenStore.deleteAIToken(forConnectionProfileID: id)
+        // Clear origin-bound legacy items first. If Keychain rejects that
+        // cleanup, leave the shared credential untouched so callers can abort
+        // an endpoint edit without losing the key for the existing endpoint.
         for profile in legacyProfiles {
-          _ = try? keychainTokenStore.deleteLegacyAIToken(for: profile)
+          try keychainTokenStore.deleteLegacyAIToken(for: profile)
         }
+        try keychainTokenStore.deleteAIToken(forConnectionProfileID: id)
       case .session:
         sessionCredentials.removeValue(forKey: id)
       }
@@ -244,8 +280,9 @@ public final class AICredentialStore: @unchecked Sendable {
 
   private func resolvedStorageMode() -> AICredentialStorageMode {
     if let userDefaults,
-       let rawValue = userDefaults.string(forKey: preferenceKey),
-       let mode = AICredentialStorageMode(rawValue: rawValue) {
+      let rawValue = userDefaults.string(forKey: preferenceKey),
+      let mode = AICredentialStorageMode(rawValue: rawValue)
+    {
       return mode
     }
     return transientMode ?? defaultMode
@@ -321,17 +358,22 @@ public final class AICredentialStore: @unchecked Sendable {
       return LocalCredentialDocument()
     }
     do {
+      // Tighten permissions and backup metadata when an explicitly selected
+      // legacy file is read. This is a compatibility repair only; it never
+      // migrates, copies, or removes the user's existing credential file.
+      try applyRestrictedPermissionsToExistingFile()
       let data = try Data(contentsOf: localFileURL)
       let document = try JSONDecoder().decode(LocalCredentialDocument.self, from: data)
       guard document.version == LocalCredentialDocument.currentVersion else {
         throw AICredentialStoreError.unsupportedLocalFileVersion(document.version)
       }
-      try applyRestrictedPermissionsToExistingFile()
       return document
     } catch let error as AICredentialStoreError {
       throw error
     } catch {
-      throw AICredentialStoreError.unreadableLocalFile(error.localizedDescription)
+      // Do not retain Foundation's underlying description: malformed input or
+      // a file-system error must never echo credential-bearing data.
+      throw AICredentialStoreError.unreadableLocalFile("读取失败")
     }
   }
 
@@ -347,10 +389,7 @@ public final class AICredentialStore: @unchecked Sendable {
         [.posixPermissions: NSNumber(value: 0o700)],
         ofItemAtPath: directoryURL.path
       )
-      var resourceValues = URLResourceValues()
-      resourceValues.isExcludedFromBackup = true
-      var mutableDirectoryURL = directoryURL
-      try? mutableDirectoryURL.setResourceValues(resourceValues)
+      try excludeFromBackup(directoryURL)
 
       let encoder = JSONEncoder()
       encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -360,24 +399,47 @@ public final class AICredentialStore: @unchecked Sendable {
     } catch let error as AICredentialStoreError {
       throw error
     } catch {
-      throw AICredentialStoreError.unwritableLocalFile(error.localizedDescription)
+      // Keep the public error useful without exposing paths or secret values
+      // that an underlying Foundation error might contain.
+      throw AICredentialStoreError.unwritableLocalFile("写入失败")
     }
   }
 
   private func applyRestrictedPermissionsToExistingFile() throws {
+    let directoryURL = localFileURL.deletingLastPathComponent()
+    try fileManager.setAttributes(
+      [.posixPermissions: NSNumber(value: 0o700)],
+      ofItemAtPath: directoryURL.path
+    )
+    try excludeFromBackup(directoryURL)
     try fileManager.setAttributes(
       [.posixPermissions: NSNumber(value: 0o600)],
       ofItemAtPath: localFileURL.path
     )
+    try excludeFromBackup(localFileURL)
+  }
+
+  private func excludeFromBackup(_ url: URL) throws {
+    try backupExclusionHandler(url)
+  }
+
+  private static func applyBackupExclusion(_ url: URL) throws {
+    var resourceValues = URLResourceValues()
+    resourceValues.isExcludedFromBackup = true
+    var mutableURL = url
+    try mutableURL.setResourceValues(resourceValues)
   }
 
   private static func defaultLocalFileURL() -> URL {
-    let supportURL = FileManager.default.urls(
-      for: .applicationSupportDirectory,
-      in: .userDomainMask
-    ).first ?? FileManager.default.homeDirectoryForCurrentUser
+    let supportURL =
+      FileManager.default.urls(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask
+      ).first
+      ?? FileManager.default.homeDirectoryForCurrentUser
       .appendingPathComponent("Library/Application Support", isDirectory: true)
-    return supportURL
+    return
+      supportURL
       .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true)
       .appendingPathComponent("AI", isDirectory: true)
       .appendingPathComponent("credentials.json", isDirectory: false)
@@ -394,10 +456,10 @@ public enum AICredentialStoreError: LocalizedError, Equatable {
     switch self {
     case .emptyToken:
       return CoreL10n.text("API Key 不能为空。")
-    case .unreadableLocalFile(let detail):
-      return CoreL10n.format("本地 AI 凭据配置无法读取：%@", detail)
-    case .unwritableLocalFile(let detail):
-      return CoreL10n.format("本地 AI 凭据配置无法写入：%@", detail)
+    case .unreadableLocalFile:
+      return CoreL10n.text("本地 AI 凭据配置无法读取，请检查权限或选择其他保存位置。")
+    case .unwritableLocalFile:
+      return CoreL10n.text("本地 AI 凭据配置无法写入，请检查权限或选择其他保存位置。")
     case .unsupportedLocalFileVersion(let version):
       return CoreL10n.format("本地 AI 凭据配置版本不受支持：%@", String(version))
     }

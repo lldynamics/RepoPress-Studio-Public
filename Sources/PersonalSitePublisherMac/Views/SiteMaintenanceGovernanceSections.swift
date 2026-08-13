@@ -49,7 +49,7 @@ struct SiteMaintenanceTaxonomySection: View {
       }
     }
     .padding(14)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 }
 
@@ -157,7 +157,7 @@ struct SiteMaintenanceStaleArticleSection: View {
       }
     }
     .padding(14)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 }
 
@@ -217,7 +217,7 @@ struct SiteMaintenanceRelationSuggestionSection: View {
       }
     }
     .padding(14)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 }
 
@@ -272,7 +272,7 @@ struct SiteMaintenanceLinkAuditSection: View {
       }
     }
     .padding(14)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 }
 
@@ -317,7 +317,7 @@ struct SiteMaintenanceOperationLogSection: View {
       }
     }
     .padding(14)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 }
 

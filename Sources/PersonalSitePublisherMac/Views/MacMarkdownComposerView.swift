@@ -11,6 +11,7 @@ struct MacMarkdownComposerView: View {
   @EnvironmentObject var sceneCommandRouter: WorkspaceSceneCommandRouter
   @StateObject var editorState: WorkbenchMarkdownEditorFeatureFacade
   @StateObject var editorSessionState: MarkdownComposerEditorSessionState
+  @StateObject var zenModeController = ZenModeController()
   @State var attachmentState = MarkdownComposerAttachmentState()
   @State var selectionActionState = MarkdownComposerSelectionActionState()
   @State var presentationState = MarkdownComposerPresentationState()
@@ -18,9 +19,11 @@ struct MacMarkdownComposerView: View {
   @State var editorDocumentBodyOffsetCache: Int
   @State var markdownSSGDerivedData = MarkdownComposerSSGDerivedData.empty
   @State var editorSessionSaveTask: Task<Void, Never>?
+  @State var editorSessionSaveGeneration: UInt64 = 0
   @State var sceneCommandOwnerID = UUID()
   @AppStorage("markdownEditorSynchronizedScrolling") var isSynchronizedScrollingEnabled = true
-  @AppStorage("workspace.writingToolDensity") var writingToolDensityRawValue = MarkdownWritingToolDensity.basic.rawValue
+  @AppStorage("workspace.writingToolDensity") var writingToolDensityRawValue =
+    MarkdownWritingToolDensity.basic.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.fontSizeKey)
   var editorFontSize = MarkdownEditorComfortConfiguration.defaultFontSize
   @AppStorage(MarkdownEditorComfortPreferences.lineSpacingKey)
@@ -32,13 +35,19 @@ struct MacMarkdownComposerView: View {
   @AppStorage(MarkdownEditorComfortPreferences.typewriterModeEnabledKey)
   var isTypewriterModeEnabled = MarkdownEditorComfortConfiguration.defaultTypewriterModeEnabled
   @AppStorage(MarkdownEditorComfortPreferences.currentParagraphHighlightEnabledKey)
-  var isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration.defaultCurrentParagraphHighlightEnabled
+  var isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration
+    .defaultCurrentParagraphHighlightEnabled
   @AppStorage(MarkdownEditorComfortPreferences.warmPaperBackgroundEnabledKey)
-  var isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
+  var isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration
+    .defaultWarmPaperBackgroundEnabled
   @AppStorage(MarkdownEditorComfortPreferences.automaticPairingEnabledKey)
   var isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
-  @AppStorage(MarkdownEditorComfortPreferences.writingGoalKey)
-  var editorWritingGoal = MarkdownEditorComfortConfiguration.defaultWritingGoal
+  @AppStorage(MarkdownEditorComfortPreferences.typewriterSoundPresetKey)
+  var typewriterSoundPresetRawValue = TypewriterSoundPreset.typewriter.rawValue
+  @AppStorage(MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
+  var isParagraphSpotlightEnabled = false
+  @State private var slashCommandQuery: String? = nil
+  @State private var isSlashMenuPresented: Bool = false
   @AppStorage(AIWritingPreferences.automaticInlineCompletionEnabledKey)
   var isAutomaticInlineAICompletionEnabled =
     AIWritingPreferences.defaultAutomaticInlineCompletionEnabled
@@ -150,7 +159,10 @@ struct MacMarkdownComposerView: View {
     editorDocumentBodyOffsetCache
   }
 
-  init(draft: Binding<ArticleDraft>, store: WorkbenchStore) {
+  init(
+    draft: Binding<ArticleDraft>,
+    store: WorkbenchStore
+  ) {
     _draft = draft
     let initialDraft = draft.wrappedValue
     let draftID = initialDraft.id
@@ -160,7 +172,8 @@ struct MacMarkdownComposerView: View {
       profile: store.profile(for: initialDraft),
       bodyMarkdown: initialBuffer.bodyMarkdown
     )
-    let initialBodyOffset = (initialDocument as NSString).length
+    let initialBodyOffset =
+      (initialDocument as NSString).length
       - (initialBuffer.bodyMarkdown as NSString).length
     _editorDocumentBodyOffsetCache = State(initialValue: initialBodyOffset)
     _editorSessionState = StateObject(
@@ -222,7 +235,8 @@ struct MacMarkdownComposerView: View {
       previewScrollProgress: editorSession.previewScrollProgress,
       editorBodyRevision: buffer.revision
     )
-    state.findReplaceMessage = editorSession.findQuery.isEmpty && editorSession.isFindReplacePresented
+    state.findReplaceMessage =
+      editorSession.findQuery.isEmpty && editorSession.isFindReplacePresented
       ? "输入查找内容。"
       : ""
     return state
@@ -240,10 +254,16 @@ struct MacMarkdownComposerView: View {
         isSelectionAIActionRunning: isSelectionAIActionRunning,
         canOpenAIChat: aiChatWorkspaceCommandAction?.isAvailable ?? true,
         aiChatUnavailableReason: aiChatWorkspaceCommandAction?.unavailableReason,
+        isAutomaticInlineAICompletionEnabled: $isAutomaticInlineAICompletionEnabled,
         writingToolDensity: writingToolDensity,
         availableWritingContextPanels: availableWritingContextPanels,
         actions: markdownEditorToolbarActions
       )
+      .opacity(zenModeController.toolbarOpacity)
+      .onHover { isHovered in
+        zenModeController.isHovered = isHovered
+      }
+      .environmentObject(zenModeController)
       Divider()
       if isFindReplacePresented {
         FindReplaceBar(
@@ -282,6 +302,7 @@ struct MacMarkdownComposerView: View {
       restorePreferredEditorDisplayMode()
       syncEditorBodyFromStore()
       syncActiveEditorSelection()
+      refreshMarkdownCursorContextSnapshot()
       applyEditorFocusRequest()
       scheduleMarkdownAnalysis(immediate: true)
       scheduleInlineGhostText()
@@ -293,17 +314,24 @@ struct MacMarkdownComposerView: View {
       if !NSEqualRanges(oldRange, newRange) {
         isInlineSelectionPaletteDismissed = false
         if let selectionEditPreview,
-           !NSEqualRanges(selectionEditPreview.range, newRange) {
+          !NSEqualRanges(selectionEditPreview.range, newRange)
+        {
           self.selectionEditPreview = nil
           isInlineSelectionAIAction = false
         }
       }
       syncActiveEditorSelection()
+      refreshMarkdownCursorContextSnapshot()
       saveCurrentEditorSession()
       scheduleInlineGhostText()
     }
     .onChange(of: editorBody) { _, _ in
       scheduleInlineGhostText()
+      zenModeController.handleTypingActivity()
+      if let preset = TypewriterSoundPreset(rawValue: typewriterSoundPresetRawValue) {
+        TypewriterAudioService.shared.playKeyClick(preset: preset)
+      }
+      checkSlashCommandTrigger()
     }
     .onChange(of: isAutomaticInlineAICompletionEnabled) { _, isEnabled in
       if isEnabled {
@@ -394,7 +422,8 @@ struct MacMarkdownComposerView: View {
   @ViewBuilder
   private var insertedImageMetadataOverlay: some View {
     if let metadata = activeInsertedImageMetadataBinding,
-       let activeIndex = activeInsertedImageMetadataIndex {
+      let activeIndex = activeInsertedImageMetadataIndex
+    {
       InsertedImageMetadataPanel(
         metadata: metadata,
         position: activeIndex + 1,
@@ -436,65 +465,65 @@ struct MacMarkdownComposerView: View {
 
   var body: some View {
     editorWorkspaceLifecycle
-    .task(id: markdownSSGDerivedDataKey) {
-      await refreshMarkdownSSGDerivedData(for: markdownSSGDerivedDataKey)
-    }
-    .sheet(isPresented: $presentationState.isShortcutHelpPresented) {
-      MarkdownShortcutHelpPanel()
-    }
-    .sheet(isPresented: $presentationState.isInternalLinkPickerPresented) {
-      MarkdownInternalLinkPicker(
-        draft: previewDraft,
-        drafts: editorState.drafts,
-        profile: editorState.profile(for: previewDraft),
-        selectedText: selectedText(in: editorBody),
-        onInsert: insertInternalLink,
-        onOpenBacklink: { draftID in
-          _ = store.focusDraft(draftID, section: .writing)
-        },
-        onInsertExternalLink: {
-          applyMarkdownFormatting(.link)
-        }
-      )
-    }
-    .sheet(isPresented: $presentationState.isDiagnosticsPresented) {
-      MarkdownDiagnosticsPanel(
-        diagnostics: inlineDiagnostics,
-        onSelect: selectDiagnostic,
-        onQuickFix: applyDiagnosticQuickFix
-      )
-    }
-    .sheet(isPresented: $presentationState.isSnippetLibraryPresented) {
-      MarkdownSnippetLibraryPanel(
-        draft: previewDraft,
-        siteName: editorState.profile(for: previewDraft).name,
-        storedCustomSnippets: store.customMarkdownSnippets,
-        onInsert: insertSnippet,
-        onSaveCustomSnippet: store.saveCustomMarkdownSnippet,
-        onDeleteCustomSnippet: { snippet in
-          store.deleteCustomMarkdownSnippet(
-            id: snippet.id,
-            siteProfileID: previewDraft.siteProfileID
-          )
-        }
-      )
-    }
-    .sheet(isPresented: $presentationState.isAITemplateLibraryPresented) {
-      AIPublishingTemplateLibraryView(
-        draft: previewDraft,
-        selectedText: selectedText(in: editorBody),
-        availabilityForAction: { kind in
-          if isSelectionAIAction(kind) {
-            selectionAIActionAvailability(kind, respectActiveAction: false)
-          } else {
-            articleAIActionAvailability(kind, respectActiveAction: false)
+      .task(id: markdownSSGDerivedDataKey) {
+        await refreshMarkdownSSGDerivedData(for: markdownSSGDerivedDataKey)
+      }
+      .sheet(isPresented: $presentationState.isShortcutHelpPresented) {
+        MarkdownShortcutHelpPanel()
+      }
+      .sheet(isPresented: $presentationState.isInternalLinkPickerPresented) {
+        MarkdownInternalLinkPicker(
+          draft: previewDraft,
+          drafts: editorState.drafts,
+          profile: editorState.profile(for: previewDraft),
+          selectedText: selectedText(in: editorBody),
+          onInsert: insertInternalLink,
+          onOpenBacklink: { draftID in
+            _ = store.focusDraft(draftID, section: .writing)
+          },
+          onInsertExternalLink: {
+            applyMarkdownFormatting(.link)
           }
-        },
-        onPerformAction: performTemplateLibraryAction,
-        onUsePrompt: openTemplateLibraryPrompt
-      )
-    }
-    .onDisappear(perform: handleComposerDisappear)
+        )
+      }
+      .sheet(isPresented: $presentationState.isDiagnosticsPresented) {
+        MarkdownDiagnosticsPanel(
+          diagnostics: inlineDiagnostics,
+          onSelect: selectDiagnostic,
+          onQuickFix: applyDiagnosticQuickFix
+        )
+      }
+      .sheet(isPresented: $presentationState.isSnippetLibraryPresented) {
+        MarkdownSnippetLibraryPanel(
+          draft: previewDraft,
+          siteName: editorState.profile(for: previewDraft).name,
+          storedCustomSnippets: store.customMarkdownSnippets,
+          onInsert: insertSnippet,
+          onSaveCustomSnippet: store.saveCustomMarkdownSnippet,
+          onDeleteCustomSnippet: { snippet in
+            store.deleteCustomMarkdownSnippet(
+              id: snippet.id,
+              siteProfileID: previewDraft.siteProfileID
+            )
+          }
+        )
+      }
+      .sheet(isPresented: $presentationState.isAITemplateLibraryPresented) {
+        AIPublishingTemplateLibraryView(
+          draft: previewDraft,
+          selectedText: selectedText(in: editorBody),
+          availabilityForAction: { kind in
+            if isSelectionAIAction(kind) {
+              selectionAIActionAvailability(kind, respectActiveAction: false)
+            } else {
+              articleAIActionAvailability(kind, respectActiveAction: false)
+            }
+          },
+          onPerformAction: performTemplateLibraryAction,
+          onUsePrompt: openTemplateLibraryPrompt
+        )
+      }
+      .onDisappear(perform: handleComposerDisappear)
   }
 
   private func handleComposerDisappear() {
@@ -571,54 +600,60 @@ struct MacMarkdownComposerView: View {
 
   var markdownEditor: some View {
     VStack(spacing: 0) {
-      MacMarkdownFormattingToolbar(
-        characterCount: editorStatistics.characterCount,
-        hanCharacterCount: editorStatistics.hanCharacterCount,
-        wordCount: editorStatistics.wordCount,
-        writingUnitCount: editorStatistics.writingUnitCount,
-        lineCount: editorStatistics.lineCount,
-        readingMinutes: editorStatistics.readingMinutes,
-        writingGoal: editorWritingGoal,
-        cursorPosition: markdownCursorPosition,
-        fenceMatch: activeMarkdownFenceMatch,
-        completion: markdownCursorCompletion,
-        writingToolDensity: writingToolDensity,
-        onApplyMarkdownFormatting: applyMarkdownFormatting,
-        onApplyAdvancedFormatting: applyAdvancedMarkdownFormatting,
-        onEditLines: applyMarkdownLineEditing,
-        onWrapSelection: { prefix, suffix, placeholder in
-          wrapSelection(prefix: prefix, suffix: suffix, placeholder: placeholder)
-        },
-        onPrefixCurrentLine: prefixCurrentLine,
-        onInsertCodeBlock: insertCodeBlock,
-        onInsertTable: insertTable,
-        onInsertHorizontalRule: insertHorizontalRule,
-        onInsertInternalLink: {
-          guard requireBodyEditingContext() else { return }
-          isInternalLinkPickerPresented = true
-        },
-        onShowSnippets: {
-          guard requireBodyEditingContext() else { return }
-          isSnippetLibraryPresented = true
-        },
-        onShowDiagnostics: {
-          showDiagnostics()
-        },
-        diagnosticCount: inlineDiagnostics.count,
-        onInsertImage: {
-          guard requireBodyEditingContext() else { return }
-          insertImageReferences(ImageSelectionPanel.chooseImages())
-        },
-        onInsertVideo: {
-          guard requireBodyEditingContext() else { return }
-          insertVideoReferences(VideoSelectionPanel.chooseVideos())
-        },
-        onJumpToLine: jumpToMarkdownLine,
-        onJumpToCounterpartFence: jumpToCounterpartFence,
-        onApplyCompletion: applyMarkdownCompletion,
-        onInsertCompletionTrigger: insertMarkdownCompletionTrigger
-      )
-      Divider()
+      if zenModeController.isFormattingBarVisible {
+        MacMarkdownFormattingToolbar(
+          characterCount: editorStatistics.characterCount,
+          hanCharacterCount: editorStatistics.hanCharacterCount,
+          wordCount: editorStatistics.wordCount,
+          writingUnitCount: editorStatistics.writingUnitCount,
+          lineCount: editorStatistics.lineCount,
+          readingMinutes: editorStatistics.readingMinutes,
+          cursorPosition: markdownCursorPosition,
+          fenceMatch: activeMarkdownFenceMatch,
+          completion: markdownCursorCompletion,
+          writingToolDensity: writingToolDensity,
+          onApplyMarkdownFormatting: applyMarkdownFormatting,
+          onApplyAdvancedFormatting: applyAdvancedMarkdownFormatting,
+          onEditLines: applyMarkdownLineEditing,
+          onWrapSelection: { prefix, suffix, placeholder in
+            wrapSelection(prefix: prefix, suffix: suffix, placeholder: placeholder)
+          },
+          onPrefixCurrentLine: prefixCurrentLine,
+          onInsertCodeBlock: insertCodeBlock,
+          onInsertTable: insertTable,
+          onInsertHorizontalRule: insertHorizontalRule,
+          onInsertInternalLink: {
+            guard requireBodyEditingContext() else { return }
+            isInternalLinkPickerPresented = true
+          },
+          onShowSnippets: {
+            guard requireBodyEditingContext() else { return }
+            isSnippetLibraryPresented = true
+          },
+          onShowDiagnostics: {
+            showDiagnostics()
+          },
+          diagnosticCount: inlineDiagnostics.count,
+          onInsertImage: {
+            guard requireBodyEditingContext() else { return }
+            insertImageReferences(ImageSelectionPanel.chooseImages())
+          },
+          onInsertVideo: {
+            guard requireBodyEditingContext() else { return }
+            insertVideoReferences(VideoSelectionPanel.chooseVideos())
+          },
+          onJumpToLine: jumpToMarkdownLine,
+          onJumpToCounterpartFence: jumpToCounterpartFence,
+          onApplyCompletion: applyMarkdownCompletion,
+          onInsertCompletionTrigger: insertMarkdownCompletionTrigger
+        )
+        .opacity(zenModeController.toolbarOpacity)
+        .onHover { isHovered in
+          zenModeController.isHovered = isHovered
+        }
+        .environmentObject(zenModeController)
+        Divider()
+      }
 
       ZStack {
         WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled)
@@ -679,6 +714,21 @@ struct MacMarkdownComposerView: View {
             .allowsHitTesting(false)
         }
 
+        if editorSessionState.selectedRange.length > 0 {
+          VStack {
+            MarkdownFloatingBubbleToolbar(
+              isSelectionAIActionRunning: isSelectionAIActionRunning,
+              onApplyFormatting: applyMarkdownFormatting,
+              onApplyAdvancedFormatting: applyAdvancedMarkdownFormatting,
+              onPerformSelectionAIAction: performSelectionAIAction,
+              onPerformConvergedSelectionAIAction: performConvergedSelectionAIAction
+            )
+            .transition(.scale(scale: 0.9).combined(with: .opacity))
+            Spacer()
+          }
+          .padding(.top, 16)
+        }
+
         if isImageDropTargeted {
           ZStack {
             Color.accentColor.opacity(0.10)
@@ -699,34 +749,27 @@ struct MacMarkdownComposerView: View {
           .transition(.opacity)
         }
 
-        if shouldShowInlineSelectionPalette {
-          InlineSelectionFloatingPalette(
-            isProcessing: isInlineSelectionAIAction && activeSelectionAIAction != nil,
-            activeActionName: activeSelectionAIAction?.localizedDisplayName,
-            preview: isInlineSelectionAIAction ? selectionEditPreview : nil,
-            actionMessage: selectionActionMessage,
-            availabilityForAction: inlineSelectionAIActionAvailability,
-            onPerformAction: performInlineSelectionAIAction,
-            onPerformConvergedAction: performInlineConvergedSelectionAIAction,
-            onApplyPreview: {
-              guard let selectionEditPreview else { return }
-              applySelectionEditPreview(selectionEditPreview)
-            },
-            onDiscardPreview: discardSelectionEditPreview,
-            onCancel: cancelSelectionAIAction,
-            onDismiss: {
-              isInlineSelectionPaletteDismissed = true
+        if isSlashMenuPresented {
+          VStack {
+            Spacer()
+            HStack {
+              MarkdownSlashCommandMenu(
+                filterText: slashCommandQuery ?? "",
+                items: defaultSlashCommands,
+                onSelect: { item in
+                  item.action()
+                },
+                onDismiss: {
+                  isSlashMenuPresented = false
+                }
+              )
+              .transition(.move(edge: .bottom).combined(with: .opacity))
+              Spacer()
             }
-          )
-          .padding(.horizontal, 12)
-          .padding(.top, 12)
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-          .transition(.move(edge: .top).combined(with: .opacity))
-          .zIndex(5)
+          }
+          .padding(20)
         }
       }
-
-      .animation(WorkbenchMotion.standard, value: shouldShowInlineSelectionPalette)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
 
       if !markdownSSGComponentOccurrences.isEmpty {
@@ -737,11 +780,6 @@ struct MacMarkdownComposerView: View {
         )
         .frame(height: 118)
       }
-
-      MacMarkdownWritingGoalStatusBar(
-        currentCount: editorStatistics.writingUnitCount,
-        writingGoal: $editorWritingGoal
-      )
     }
     .background(WorkbenchWritingSurface.color(usesWarmPaper: isWarmPaperBackgroundEnabled))
     .clipShape(RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
@@ -749,6 +787,94 @@ struct MacMarkdownComposerView: View {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
     )
+  }
+
+  var defaultSlashCommands: [SlashCommandItem] {
+    [
+      SlashCommandItem(
+        id: "h1", title: "一级标题", subtitle: "# 大标题", systemImage: "textformat.size"
+      ) {
+        applySlashCommand("# ")
+      },
+      SlashCommandItem(
+        id: "h2", title: "二级标题", subtitle: "## 中标题", systemImage: "textformat.size"
+      ) {
+        applySlashCommand("## ")
+      },
+      SlashCommandItem(
+        id: "h3", title: "三级标题", subtitle: "### 小标题", systemImage: "textformat.size"
+      ) {
+        applySlashCommand("### ")
+      },
+      SlashCommandItem(
+        id: "code", title: "代码块", subtitle: "``` 代码语法高亮", systemImage: "curlybraces.square"
+      ) {
+        applySlashCommand("```swift\n\n```")
+      },
+      SlashCommandItem(
+        id: "table", title: "表格", subtitle: "| 表头 |", systemImage: "tablecells"
+      ) {
+        applySlashCommand("| 列 1 | 列 2 |\n| --- | --- |\n| 内容 | 内容 |")
+      },
+      SlashCommandItem(
+        id: "quote", title: "引用块", subtitle: "> 引用文本", systemImage: "text.quote"
+      ) {
+        applySlashCommand("> ")
+      },
+      SlashCommandItem(
+        id: "task", title: "任务列表", subtitle: "- [ ] 待办事项", systemImage: "checklist"
+      ) {
+        applySlashCommand("- [ ] ")
+      },
+      SlashCommandItem(
+        id: "hr", title: "分隔线", subtitle: "--- 分隔线", systemImage: "minus"
+      ) {
+        applySlashCommand("\n---\n")
+      },
+      SlashCommandItem(
+        id: "ai", title: "AI 续写", subtitle: "使用 AI 自动生成段落", systemImage: "wand.and.stars"
+      ) {
+        applySlashCommand("")
+        performArticleAIAction(.continueArticle)
+      }
+    ]
+  }
+
+  private func checkSlashCommandTrigger() {
+    let location = editorSessionState.selectedRange.location
+    guard location > 0, editorBody.count >= location else {
+      isSlashMenuPresented = false
+      return
+    }
+
+    let textUpToLocation = (editorBody as NSString).substring(to: location)
+    guard let lastLine = textUpToLocation.components(separatedBy: .newlines).last,
+      lastLine.hasPrefix("/")
+    else {
+      isSlashMenuPresented = false
+      return
+    }
+
+    let query = String(lastLine.dropFirst())
+    slashCommandQuery = query
+    isSlashMenuPresented = true
+  }
+
+  private func applySlashCommand(_ snippet: String) {
+    let location = editorSessionState.selectedRange.location
+    let textUpToLocation = (editorBody as NSString).substring(to: location)
+    guard let lastLine = textUpToLocation.components(separatedBy: .newlines).last,
+      lastLine.hasPrefix("/")
+    else { return }
+
+    let lineLength = (lastLine as NSString).length
+    let replaceRange = NSRange(location: location - lineLength, length: lineLength)
+
+    if let currentRange = Range(replaceRange, in: editorBody) {
+      editorBody.replaceSubrange(currentRange, with: snippet)
+      isSlashMenuPresented = false
+      slashCommandQuery = nil
+    }
   }
 
 }

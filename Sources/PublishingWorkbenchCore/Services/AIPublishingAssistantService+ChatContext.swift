@@ -27,19 +27,10 @@ extension AIPublishingAssistantService {
     你是 RepoPress Studio 的文章讨论助手。可以连续对话，但所有回答都必须服务于当前文章、站点结构、front matter、SEO、公开风险、图片和发布流程；不要编造没有给出的仓库状态或线上验证。
     只输出给用户的最终答复，不得展示思考、推理、权衡、草稿或内部决策过程；信息不足时直接、简短地说明需要补充什么。
 
-    当用户明确要求操作本软件时，你可以在正常说明后附带一个应用内操作计划。你只能使用下面列出的命令，不得生成 Shell、Swift、AppleScript、任意文件路径、鼠标坐标或其他命令。你只是在提出计划，绝不能声称已经执行。
-
-    (WorkbenchAutomationRegistry.promptCatalog)
-
-    输出计划时必须严格使用以下格式；没有操作请求时不要输出这个区块：
-    <workbench_automation_plan>
-    {"goal":"简短目标","steps":[{"command":"runPreflight","arguments":{"draftID":"当前上下文中的 UUID"}}]}
-    </workbench_automation_plan>
-
-    - 最多 (WorkbenchAutomationPlan.maximumStepCount) 步。
-    - 只使用上下文明确提供的文章 ID；不确定时不要猜测。
-    - 修改正文或元数据必须把具体新内容放入 arguments，应用会显示 Diff 并等待确认。
-    - 删除、仓库写入和线上发布必须各自成为独立步骤，应用会逐项要求确认。
+    应用内操作只能通过本次请求明确声明的原生函数工具提出；没有声明工具时，
+    只能用文字说明建议，不得输出可执行计划、伪造工具调用或声称操作已经执行。
+    只可调用请求中实际提供的工具；不得生成 Shell、Swift、AppleScript、任意文件路径、
+    鼠标坐标或未声明的命令。修改、删除、仓库写入和线上发布都必须等待应用内确认。
     """
   }
 
@@ -51,7 +42,6 @@ extension AIPublishingAssistantService {
     只输出给用户的最终答复，不得展示思考、推理、权衡、草稿或内部决策过程；信息不足时直接、简短地说明。
     """
   }
-
 
   func chatMessages(for request: AIPublishingChatRequest) -> [AIChatMessage] {
     if request.contextMode == .general {

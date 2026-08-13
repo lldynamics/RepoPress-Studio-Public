@@ -8,8 +8,9 @@ extension WorkbenchAIStore {
     var references: [AIContextReference] = []
     if let draft = store.selectedDraft {
       if let selection = store.activeEditorSelection,
-         selection.draftID == draft.id,
-         selection.validatedRange(in: draft) != nil {
+        selection.draftID == draft.id,
+        selection.validatedRange(in: draft) != nil
+      {
         references.append(
           .currentSelection(
             draftID: draft.id,
@@ -127,7 +128,8 @@ extension WorkbenchAIStore {
     var sections: [String] = []
     func appendSection(_ value: String) {
       guard remaining > 0 else { return }
-      let bounded = String(value.prefix(remaining))
+      let minimized = AIOutboundPayloadPrivacyService().sanitize(value).text
+      let bounded = String(minimized.prefix(remaining))
       guard !bounded.isEmpty else { return }
       sections.append(bounded)
       remaining -= bounded.count
@@ -146,7 +148,8 @@ extension WorkbenchAIStore {
           range.location <= body.length,
           range.length <= body.length - range.location
         else { continue }
-        appendSection("""
+        appendSection(
+          """
           <explicit_current_selection>
           \(body.substring(with: range))
           </explicit_current_selection>
@@ -156,18 +159,20 @@ extension WorkbenchAIStore {
           let draftID = reference.resourceID.flatMap(UUID.init(uuidString:)),
           let draft = store.visibleDrafts.first(where: { $0.id == draftID })
         else { continue }
-        appendSection(articleContext(
-          draft,
-          tag: reference.kind == .currentArticle
-            ? "explicit_current_article"
-            : "explicit_specified_article"
-        ))
+        appendSection(
+          articleContext(
+            draft,
+            tag: reference.kind == .currentArticle
+              ? "explicit_current_article"
+              : "explicit_specified_article"
+          ))
       case .siteProfile:
         guard
           let profileID = reference.resourceID.flatMap(UUID.init(uuidString:)),
           let profile = store.profiles.first(where: { $0.id == profileID })
         else { continue }
-        appendSection("""
+        appendSection(
+          """
           <explicit_site_profile>
           \(siteProfileContext(profile))
           </explicit_site_profile>
@@ -178,7 +183,8 @@ extension WorkbenchAIStore {
           let document = store.knowledge.documents.first(where: { $0.id == documentID }),
           let text = await store.knowledge.explicitAIContextText(documentID: documentID)
         else { continue }
-        appendSection("""
+        appendSection(
+          """
           <explicit_knowledge_entry title="\(document.title)">
           来源：\(document.sourceURL?.absoluteString.nilIfEmpty ?? document.sourceName.nilIfEmpty ?? "本地资料库")
           \(String(text.prefix(8_000)))
@@ -189,7 +195,8 @@ extension WorkbenchAIStore {
           let draftID = reference.resourceID.flatMap(UUID.init(uuidString:)),
           let draft = store.visibleDrafts.first(where: { $0.id == draftID })
         else { continue }
-        appendSection("""
+        appendSection(
+          """
           <explicit_publish_check>
           \(publishCheckContext(store.preflightIssues(for: draft)))
           </explicit_publish_check>
@@ -331,7 +338,8 @@ extension WorkbenchAIStore {
 
     func appendSection(_ value: String) {
       guard remaining > 0 else { return }
-      let bounded = String(value.prefix(remaining))
+      let minimized = AIOutboundPayloadPrivacyService().sanitize(value).text
+      let bounded = String(minimized.prefix(remaining))
       guard !bounded.isEmpty else { return }
       sections.append(bounded)
       remaining -= bounded.count

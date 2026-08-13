@@ -30,7 +30,8 @@ extension PublishingStore {
       includeRepositoryReadiness: false,
       store: store
     )
-    localPublishReadiness = makeLocalPublishReadiness(package: package, profile: profile, preview: preview, store: store)
+    localPublishReadiness = makeLocalPublishReadiness(
+      package: package, profile: profile, preview: preview, store: store)
     guard blockingIssues.isEmpty else {
       setPublishActionMessage(
         blockedLocalPublishMessage(action: "写入", issues: blockingIssues),
@@ -57,7 +58,8 @@ extension PublishingStore {
       prependReleaseRecord(
         .localWrite(package: package, profile: profile, writtenPaths: writtenPaths)
       )
-      let stillCurrent = localRepositoryMutationContext == operation
+      let stillCurrent =
+        localRepositoryMutationContext == operation
         && store.profiles.first(where: { $0.id == profile.id }).map(operation.stillMatches) == true
         && store.activeProfileID == profile.id
       if stillCurrent {
@@ -97,7 +99,9 @@ extension PublishingStore {
   }
 
   @discardableResult
-  public func writeBatchReadyDraftsToLocalRepository(store: WorkbenchStore) async -> BatchLocalWriteResult {
+  public func writeBatchReadyDraftsToLocalRepository(store: WorkbenchStore) async
+    -> BatchLocalWriteResult
+  {
     await store.refreshBatchPublishPlanAsync()
 
     guard let batchPublishPlan else {
@@ -156,7 +160,8 @@ extension PublishingStore {
       )
       store.save()
     }
-    let stillCurrent = localRepositoryMutationContext == operation
+    let stillCurrent =
+      localRepositoryMutationContext == operation
       && store.profiles.first(where: { $0.id == profile.id }).map(operation.stillMatches) == true
       && store.activeProfileID == profile.id
     if stillCurrent {
@@ -193,11 +198,24 @@ extension PublishingStore {
   @discardableResult
   public func publishBatchReadyDraftsOnlineUsingPreferredStrategy(
     store: WorkbenchStore,
-    expectedChangedPaths: Set<String>? = nil
+    expectedChangedPaths: Set<String>? = nil,
+    authorization: AIPublishAuthorizationSnapshot? = nil
   ) async -> RemoteRepositoryPublishResult? {
     guard store.canUseProtectedWorkbench else {
       setPublishActionMessage(store.quickHideOperationMessage, status: .warning)
       return nil
+    }
+
+    if let authorization {
+      do {
+        try AIPublishAuthorizationService.validateTarget(
+          authorization,
+          profile: store.activeProfile
+        )
+      } catch {
+        setPublishActionMessage(error.localizedDescription, status: .warning)
+        return nil
+      }
     }
 
     await store.refreshBatchPublishPlanAsync()
@@ -230,8 +248,23 @@ extension PublishingStore {
       extraWarningIssues: batchRemoteRepositoryPublishWarningIssues(for: batchPublishPlan),
       store: store
     )
+    if let authorization {
+      do {
+        try AIPublishAuthorizationService.validate(
+          authorization,
+          package: package,
+          preview: preview,
+          profile: profile,
+          repositoryReport: store.repositoryReport(for: profile)
+        )
+      } catch {
+        setPublishActionMessage(error.localizedDescription, status: .warning)
+        return nil
+      }
+    }
     if let expectedChangedPaths,
-       Set(preview.changedPaths) != expectedChangedPaths {
+      Set(preview.changedPaths) != expectedChangedPaths
+    {
       setPublishActionMessage(
         CoreL10n.text("待发布文件已变化，请重新打开确认页审阅完整清单。"),
         status: .warning
@@ -295,18 +328,22 @@ extension PublishingStore {
     store.setRemoteRepositoryPublishProgress(nil)
     setPublishActionMessage(
       mode == .directCommit
-        ? CoreL10n.format("正在通过 %@ 批量核对远端版本并执行%@...", profile.repositoryProvider.displayName, mode.displayName)
-        : CoreL10n.format("正在通过 %@ 批量执行%@...", profile.repositoryProvider.displayName, mode.displayName),
+        ? CoreL10n.format(
+          "正在通过 %@ 批量核对远端版本并执行%@...", profile.repositoryProvider.displayName, mode.displayName)
+        : CoreL10n.format(
+          "正在通过 %@ 批量执行%@...", profile.repositoryProvider.displayName, mode.displayName),
       status: .inProgress
     )
     defer { finishRemoteRepositoryMutation(operation, store: store) }
 
     do {
       let token = try repositoryAccessToken(for: profile)
-      let progressHandler: @Sendable (RemoteRepositoryPublishProgress) -> Void = { [weak self, weak store] progress in
+      let progressHandler: @Sendable (RemoteRepositoryPublishProgress) -> Void = {
+        [weak self, weak store] progress in
         Task { @MainActor in
           guard let self, let store,
-                self.remoteRepositoryMutationIsCurrent(operation, store: store) else { return }
+            self.remoteRepositoryMutationIsCurrent(operation, store: store)
+          else { return }
           store.setRemoteRepositoryPublishProgress(progress)
         }
       }
@@ -345,24 +382,26 @@ extension PublishingStore {
       }
       store.save()
       if store.remoteRepositoryPublishProgress?.stage != .completed {
-        store.setRemoteRepositoryPublishProgress(.init(
-          stage: .completed,
-          progress: 1,
-          message: "批量发布完成",
-          detail: "发布流程已结束"
-        ))
+        store.setRemoteRepositoryPublishProgress(
+          .init(
+            stage: .completed,
+            progress: 1,
+            message: "批量发布完成",
+            detail: "发布流程已结束"
+          ))
       }
       return result
     } catch {
       guard remoteRepositoryMutationIsCurrent(operation, store: store) else { return nil }
       let message = "批量\(mode.displayName)失败：\(error.localizedDescription)"
       let partialFailure = partialRemoteRepositoryPublishFailure(from: error)
-      store.setRemoteRepositoryPublishProgress(.init(
-        stage: .failed,
-        progress: nil,
-        message: "批量发布失败",
-        detail: error.localizedDescription
-      ))
+      store.setRemoteRepositoryPublishProgress(
+        .init(
+          stage: .failed,
+          progress: nil,
+          message: "批量发布失败",
+          detail: error.localizedDescription
+        ))
       let releaseRecord = ReleaseRecord.batchRemotePublishFailure(
         package: package,
         profile: profile,

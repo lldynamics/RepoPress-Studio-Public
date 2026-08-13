@@ -163,7 +163,7 @@ struct AIChatCodeBlockActionCard: View {
           .padding(9)
       }
       .frame(maxHeight: 260)
-      .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: 7))
+      .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 7))
     }
     .padding(9)
     .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 9))

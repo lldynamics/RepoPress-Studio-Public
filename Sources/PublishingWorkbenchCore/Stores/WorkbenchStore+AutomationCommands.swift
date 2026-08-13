@@ -35,7 +35,8 @@ public enum WorkbenchAutomationExecutor {
         continue
       }
       if updatedPlan.steps[index].status == .succeeded
-        || updatedPlan.steps[index].status == .cancelled {
+        || updatedPlan.steps[index].status == .cancelled
+      {
         continue
       }
       if shouldCancel() || Task.isCancelled {
@@ -53,9 +54,10 @@ public enum WorkbenchAutomationExecutor {
       }
 
       let step = updatedPlan.steps[index]
-      guard let descriptor = WorkbenchAutomationRegistry.descriptor(for: step.command) else {
+      guard WorkbenchAutomationRegistry.descriptor(for: step.command) != nil else {
         updatedPlan.steps[index].status = .failed
-        updatedPlan.steps[index].resultMessage = WorkbenchAutomationValidationError.unsupportedCommand.localizedDescription
+        updatedPlan.steps[index].resultMessage =
+          WorkbenchAutomationValidationError.unsupportedCommand.localizedDescription
         records.append(
           WorkbenchAutomationStepRecord(
             command: step.command,
@@ -67,8 +69,14 @@ public enum WorkbenchAutomationExecutor {
         break
       }
 
-      if descriptor.risk.requiresExplicitConfirmation,
-         !confirmedStepIDs.contains(step.id) {
+      let requiresConfirmation = plan.requiresConfirmation(for: step)
+      let needsPublishAuthorization =
+        step.command == .publishOnline
+        && step.publishAuthorization == nil
+      if requiresConfirmation,
+        !confirmedStepIDs.contains(step.id),
+        !(plan.source == .legacy && needsPublishAuthorization)
+      {
         updatedPlan.steps[index].status = .awaitingConfirmation
         updatedPlan.steps[index].resultMessage = CoreL10n.text("等待你确认后执行。")
         records.append(
@@ -79,6 +87,36 @@ public enum WorkbenchAutomationExecutor {
             targetDraftID: step.arguments.draftID
           )
         )
+        if plan.source == .agentLoop, onlyStepID == nil {
+          continue
+        }
+        break
+      }
+
+      if needsPublishAuthorization {
+        do {
+          let authorization = try await AIPublishAuthorizationService.prepare(in: store)
+          updatedPlan.steps[index].publishAuthorization = authorization
+          updatedPlan.steps[index].status = .awaitingConfirmation
+          updatedPlan.steps[index].resultMessage = CoreL10n.text("发布目标和完整文件范围已锁定，等待你确认。")
+          records.append(
+            WorkbenchAutomationStepRecord(
+              command: step.command,
+              status: .awaitingConfirmation,
+              message: CoreL10n.text("已生成不可变的线上发布授权快照。")
+            )
+          )
+        } catch {
+          updatedPlan.steps[index].status = .awaitingConfirmation
+          updatedPlan.steps[index].resultMessage = error.localizedDescription
+          records.append(
+            WorkbenchAutomationStepRecord(
+              command: step.command,
+              status: .awaitingConfirmation,
+              message: error.localizedDescription
+            )
+          )
+        }
         break
       }
 
@@ -88,6 +126,19 @@ public enum WorkbenchAutomationExecutor {
         updatedPlan.steps[index].status = .succeeded
         updatedPlan.steps[index].resultMessage = stepRecord.message
         records.append(stepRecord)
+      } catch let error as AIPublishAuthorizationError where error.requiresReconfirmation {
+        updatedPlan.steps[index].publishAuthorization = nil
+        updatedPlan.steps[index].status = .awaitingConfirmation
+        updatedPlan.steps[index].resultMessage = error.localizedDescription
+        records.append(
+          WorkbenchAutomationStepRecord(
+            command: step.command,
+            status: .awaitingConfirmation,
+            message: error.localizedDescription,
+            targetDraftID: step.arguments.draftID
+          )
+        )
+        break
       } catch {
         updatedPlan.steps[index].status = .failed
         updatedPlan.steps[index].resultMessage = error.localizedDescription
@@ -187,7 +238,8 @@ public enum WorkbenchAutomationExecutor {
     switch step.command {
     case .openSection:
       guard let section = step.arguments.section,
-            WorkspaceVisibilityPolicy.commandPaletteSections.contains(section) else {
+        WorkspaceVisibilityPolicy.commandPaletteSections.contains(section)
+      else {
         throw WorkbenchAutomationValidationError.missingArgument("section")
       }
       store.selectSection(section)
@@ -198,7 +250,8 @@ public enum WorkbenchAutomationExecutor {
       guard store.focusDraft(draft.id, section: .writing) else {
         throw WorkbenchAutomationValidationError.draftNotFound
       }
-      return success(step, CoreL10n.format("已打开文章“%@”。", draft.title.nilIfEmpty ?? CoreL10n.text("未命名文章")))
+      return success(
+        step, CoreL10n.format("已打开文章“%@”。", draft.title.nilIfEmpty ?? CoreL10n.text("未命名文章")))
 
     case .createDraft:
       store.createDraft()
@@ -237,7 +290,8 @@ public enum WorkbenchAutomationExecutor {
       let draft = try targetDraft(for: step, in: store, checksVersion: false)
       let allowedFields = Set(["body", "title", "summary", "slug"])
       guard let field = step.arguments.editorField?.trimmedForPublishing,
-            allowedFields.contains(field) else {
+        allowedFields.contains(field)
+      else {
         throw WorkbenchAutomationValidationError.missingArgument("editorField")
       }
       guard store.focusDraft(draft.id, section: .writing) else {
@@ -272,8 +326,9 @@ public enum WorkbenchAutomationExecutor {
       let preview = try WorkbenchAutomationDraftMutationService.preview(step: step, draft: draft)
       let existingVersionIDs = Set(store.versions(for: draft.id).map(\.id))
       guard store.createManualVersion(for: draft.id),
-            let rollbackVersionID = store.versions(for: draft.id)
-              .first(where: { !existingVersionIDs.contains($0.id) })?.id else {
+        let rollbackVersionID = store.versions(for: draft.id)
+          .first(where: { !existingVersionIDs.contains($0.id) })?.id
+      else {
         throw WorkbenchAutomationExecutionError.operationDidNotComplete(
           CoreL10n.text("无法创建修改前版本，未执行文章变更。")
         )
@@ -318,7 +373,8 @@ public enum WorkbenchAutomationExecutor {
         _ = store.flushPendingChanges()
         throw saveError
       }
-      return success(step, CoreL10n.format("已将“%@”移到回收站。", draft.title.nilIfEmpty ?? CoreL10n.text("未命名文章")))
+      return success(
+        step, CoreL10n.format("已将“%@”移到回收站。", draft.title.nilIfEmpty ?? CoreL10n.text("未命名文章")))
 
     case .writeLocalRepository:
       let draft = try targetDraft(for: step, in: store, checksVersion: true)
@@ -342,8 +398,23 @@ public enum WorkbenchAutomationExecutor {
       }
 
     case .publishOnline:
+      guard let authorization = step.publishAuthorization else {
+        throw AIPublishAuthorizationError.changed(
+          CoreL10n.text("缺少本次确认对应的不可变发布快照")
+        )
+      }
       store.selectSection(.sync)
-      guard let result = await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy() else {
+      guard
+        let result = await store.publishBatchReadyDraftsOnlineUsingPreferredStrategy(
+          expectedChangedPaths: Set(authorization.scope.changedPaths),
+          authorization: authorization
+        )
+      else {
+        if AIPublishAuthorizationError.isReconfirmationMessage(store.publishActionMessage) {
+          throw AIPublishAuthorizationError.changed(
+            CoreL10n.text("执行前复核发现授权范围已变化")
+          )
+        }
         throw WorkbenchAutomationExecutionError.operationDidNotComplete(
           store.publishActionMessage?.nilIfEmpty ?? CoreL10n.text("全部变更的线上发布未完成。")
         )
@@ -369,7 +440,8 @@ public enum WorkbenchAutomationExecutor {
     }
     if checksVersion {
       guard let expected = step.arguments.expectedDraftUpdatedAt,
-            expected == draft.updatedAt else {
+        expected == draft.updatedAt
+      else {
         throw WorkbenchAutomationValidationError.staleDraft
       }
     }

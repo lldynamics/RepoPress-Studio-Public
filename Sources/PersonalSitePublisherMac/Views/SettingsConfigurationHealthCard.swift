@@ -135,7 +135,7 @@ struct SettingsConfigurationHealthCard: View {
       }
     }
     .padding(14)
-    .background(WorkbenchBackgroundStyle.panel, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .overlay {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         .strokeBorder(Color(nsColor: .separatorColor).opacity(0.55))

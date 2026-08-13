@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import PublishingWorkbenchCore
 
-enum MarkdownScrollSyncSource: Equatable {
+enum MarkdownScrollSyncSource: Equatable, Hashable {
   case editor
   case preview
 }
@@ -19,6 +19,59 @@ struct MarkdownScrollSyncUpdate: Equatable, Identifiable {
   }
 }
 
+/// Coalesces scroll callbacks until the bridge's idle debounce fires. Keeping
+/// this state separate makes event semantics deterministic and prevents equal
+/// progress values from publishing or persisting again.
+struct MarkdownScrollProgressCoalescer: Equatable, Sendable {
+  let equalityTolerance: Double
+  private(set) var pendingProgress: Double?
+  private(set) var deliveredProgress: Double?
+
+  init(equalityTolerance: Double = 0.001) {
+    self.equalityTolerance = max(0, equalityTolerance)
+  }
+
+  mutating func receive(_ progress: Double) -> Bool {
+    let normalized = min(max(progress.isFinite ? progress : 0, 0), 1)
+    if let pendingProgress,
+      abs(pendingProgress - normalized) < equalityTolerance
+    {
+      return false
+    }
+    if pendingProgress == nil,
+      let deliveredProgress,
+      abs(deliveredProgress - normalized) < equalityTolerance
+    {
+      return false
+    }
+    pendingProgress = normalized
+    return true
+  }
+
+  mutating func deliverLatest() -> Double? {
+    guard let pendingProgress else { return nil }
+    self.pendingProgress = nil
+    guard
+      deliveredProgress == nil
+        || abs((deliveredProgress ?? pendingProgress) - pendingProgress) >= equalityTolerance
+    else {
+      return nil
+    }
+    deliveredProgress = pendingProgress
+    return pendingProgress
+  }
+
+  mutating func reset() {
+    pendingProgress = nil
+    deliveredProgress = nil
+  }
+
+  mutating func markDelivered(_ progress: Double) {
+    pendingProgress = nil
+    deliveredProgress = min(max(progress.isFinite ? progress : 0, 0), 1)
+  }
+}
+
 @MainActor
 final class MarkdownScrollViewSyncBridge: NSObject {
   private let source: MarkdownScrollSyncSource
@@ -27,8 +80,10 @@ final class MarkdownScrollViewSyncBridge: NSObject {
   private weak var scrollView: NSScrollView?
   private var lastAppliedSynchronizationUpdateID: UUID?
   private var lastAppliedRestorationUpdateID: UUID?
-  private var lastReportedProgress: Double?
+  private var progressCoalescer = MarkdownScrollProgressCoalescer()
+  private var progressDeliveryTask: Task<Void, Never>?
   private var isApplyingUpdate = false
+  private let progressDeliveryDelay: Duration = .milliseconds(32)
 
   private enum UpdatePurpose {
     case synchronization
@@ -52,6 +107,10 @@ final class MarkdownScrollViewSyncBridge: NSObject {
     NotificationCenter.default.removeObserver(self)
     self.scrollView = scrollView
     lastAppliedSynchronizationUpdateID = nil
+    lastAppliedRestorationUpdateID = nil
+    progressCoalescer.reset()
+    progressDeliveryTask?.cancel()
+    progressDeliveryTask = nil
     scrollView.contentView.postsBoundsChangedNotifications = true
     NotificationCenter.default.addObserver(
       self,
@@ -90,9 +149,10 @@ final class MarkdownScrollViewSyncBridge: NSObject {
     purpose: UpdatePurpose
   ) {
     guard let update,
-          let scrollView,
-          (includingOwnSource || update.source != source),
-          update.id != lastAppliedUpdateID(for: purpose) else {
+      let scrollView,
+      includingOwnSource || update.source != source,
+      update.id != lastAppliedUpdateID(for: purpose)
+    else {
       return
     }
 
@@ -124,7 +184,7 @@ final class MarkdownScrollViewSyncBridge: NSObject {
       to: NSPoint(x: scrollView.contentView.bounds.origin.x, y: y)
     )
     scrollView.reflectScrolledClipView(scrollView.contentView)
-    lastReportedProgress = update.progress
+    progressCoalescer.markDelivered(update.progress)
     DispatchQueue.main.async { [weak self] in
       self?.isApplyingUpdate = false
     }
@@ -151,9 +211,10 @@ final class MarkdownScrollViewSyncBridge: NSObject {
   @objc
   private func scrollBoundsDidChange(_ notification: Notification) {
     guard !isApplyingUpdate,
-          let scrollView,
-          let changedClipView = notification.object as? NSClipView,
-          changedClipView === scrollView.contentView else {
+      let scrollView,
+      let changedClipView = notification.object as? NSClipView,
+      changedClipView === scrollView.contentView
+    else {
       return
     }
 
@@ -162,12 +223,23 @@ final class MarkdownScrollViewSyncBridge: NSObject {
       viewportLength: Double(scrollView.contentView.bounds.height),
       contentLength: Double(scrollView.documentView?.frame.height ?? 0)
     )
-    if let lastReportedProgress,
-       abs(lastReportedProgress - progress) < 0.001 {
+    guard progressCoalescer.receive(progress) else {
       return
     }
-    lastReportedProgress = progress
-    onProgressChanged(progress)
+    guard progressDeliveryTask == nil else { return }
+    progressDeliveryTask = Task { @MainActor [weak self] in
+      guard let self else { return }
+      do {
+        try await Task.sleep(for: self.progressDeliveryDelay)
+      } catch {
+        return
+      }
+      guard !Task.isCancelled else { return }
+      let progress = self.progressCoalescer.deliverLatest()
+      self.progressDeliveryTask = nil
+      guard let progress else { return }
+      self.onProgressChanged(progress)
+    }
   }
 
 }

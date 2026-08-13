@@ -65,7 +65,7 @@ struct SiteMaintenanceMetricGrid: View {
       }
     }
     .padding(12)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 }
 
@@ -106,7 +106,7 @@ struct SiteMaintenanceHealthSection: View {
       }
     }
     .padding(14)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 }
 
@@ -152,7 +152,7 @@ struct SiteMaintenanceActionQueueSection: View {
       }
     }
     .padding(14)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   @ViewBuilder
@@ -213,7 +213,7 @@ struct SiteMaintenanceActionQueueSection: View {
             .foregroundStyle(.secondary)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(WorkbenchBackgroundStyle.badge, in: Capsule())
+            .background(WorkbenchBackgroundStyle.control, in: Capsule())
           Spacer()
           Text(item.priority.localizedDisplayName)
             .font(.caption.weight(.semibold))

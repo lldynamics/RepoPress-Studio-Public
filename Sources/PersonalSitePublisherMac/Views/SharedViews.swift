@@ -455,7 +455,7 @@ struct QuickHideOverlay: View {
               .font(.caption)
               .padding(.horizontal, 8)
               .padding(.vertical, 5)
-              .background(WorkbenchBackgroundStyle.badge, in: Capsule())
+              .background(WorkbenchBackgroundStyle.control, in: Capsule())
           }
         }
       }

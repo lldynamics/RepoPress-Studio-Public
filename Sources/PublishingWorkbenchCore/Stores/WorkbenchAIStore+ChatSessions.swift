@@ -1,5 +1,10 @@
 import Foundation
 
+struct AIAuthorizedPublishingChatAttempt {
+  let transport: AIPreparedPublishingChatTransport
+  let authorization: AIOutboundPayloadTransportAuthorization
+}
+
 extension WorkbenchAIStore {
   public func prepareAIChat(for draft: ArticleDraft) {
     if aiChatDraftID == draft.id {
@@ -258,10 +263,12 @@ extension WorkbenchAIStore {
       )
     }
     guard config.requiresAPIKey else { return nil }
-    guard let token = try aiCredentialStore.token(
-      forConnectionProfileID: connection.id,
-      legacyProfile: profile
-    )?.nilIfEmpty else {
+    guard
+      let token = try aiCredentialStore.token(
+        forConnectionProfileID: connection.id,
+        legacyProfile: profile
+      )?.nilIfEmpty
+    else {
       throw AIPublishingAssistantError.missingAPIKey
     }
     return token
@@ -326,7 +333,74 @@ extension WorkbenchAIStore {
 
   func aiChatRequest(
     for draft: ArticleDraft,
-    conversationIdentity: AIChatConversationIdentity
+    conversationIdentity: AIChatConversationIdentity,
+    transportConfig: AIProviderConfig,
+    transportVariant: AIOutboundPayloadTransportVariant? = nil
+  ) async throws -> AIAuthorizedPublishingChatAttempt {
+    let privacyService = AIOutboundPayloadPrivacyService()
+    let initialRequest = await assembledAIChatRequest(
+      for: draft,
+      conversationIdentity: conversationIdentity,
+      privacyService: privacyService
+    )
+    let initialTransport = try aiPublishingAssistantService.prepareTransport(
+      for: initialRequest,
+      config: transportConfig,
+      privacyService: privacyService,
+      transportVariant: transportVariant
+    )
+
+    let outcome = await AIOutboundPayloadApprovalBroker.shared.requestApproval(
+      for: initialTransport.payload.preview,
+      scopeID: conversationIdentity.conversationID
+    )
+    guard case .confirmed(let confirmation) = outcome else {
+      throw AIOutboundPayloadConfirmationError.cancelled
+    }
+    guard !Task.isCancelled else {
+      throw CancellationError()
+    }
+
+    let refreshedRequest = await assembledAIChatRequest(
+      for: draft,
+      conversationIdentity: conversationIdentity,
+      privacyService: privacyService
+    )
+    let refreshedConfig = privacyService.sanitizedProviderConfig(
+      store.aiProviderConfig(for: refreshedRequest.profile)
+    )
+    guard refreshedConfig == transportConfig else {
+      throw AIOutboundPayloadConfirmationError.drifted
+    }
+    let refreshedTransport = try aiPublishingAssistantService.prepareTransport(
+      for: refreshedRequest,
+      config: refreshedConfig,
+      privacyService: privacyService,
+      transportVariant: transportVariant,
+      now: initialTransport.payload.preview.createdAt,
+      nonce: initialTransport.payload.preview.nonce
+    )
+    try privacyService.validate(
+      confirmation: confirmation,
+      prepared: refreshedTransport.payload
+    )
+    let authorizedTransport = refreshedTransport.bindingAuthorizationDeadline(
+      refreshedTransport.payload.preview.expiresAt
+    )
+    return AIAuthorizedPublishingChatAttempt(
+      transport: authorizedTransport,
+      authorization: AIOutboundPayloadTransportAuthorization(
+        confirmation: confirmation,
+        prepared: authorizedTransport.payload,
+        privacyService: privacyService
+      )
+    )
+  }
+
+  func assembledAIChatRequest(
+    for draft: ArticleDraft,
+    conversationIdentity: AIChatConversationIdentity,
+    privacyService: AIOutboundPayloadPrivacyService
   ) async -> AIPublishingChatRequest {
     let session =
       aiChatSessionState(for: conversationIdentity)
@@ -355,13 +429,29 @@ extension WorkbenchAIStore {
       ),
       policy: session.knowledgePolicy
     )
+    let sanitizedFocusedParagraph = focusedParagraph.map { paragraph in
+      var updated = paragraph
+      updated.title = privacyService.sanitize(paragraph.title).text
+      updated.text = privacyService.sanitize(paragraph.text).text
+      return updated
+    }
+    let sanitizedSuggestions = store.relatedArticleSuggestions(for: artifacts.draft).map {
+      suggestion in
+      var updated = suggestion
+      updated.sourceTitle = privacyService.sanitize(suggestion.sourceTitle).text
+      updated.targetTitle = privacyService.sanitize(suggestion.targetTitle).text
+      updated.targetPath = privacyService.sanitize(suggestion.targetPath).text
+      updated.reason = privacyService.sanitize(suggestion.reason).text
+      updated.sharedLabels = suggestion.sharedLabels.map { privacyService.sanitize($0).text }
+      return updated
+    }
     return AIPublishingChatRequest(
-      draft: artifacts.draft,
+      draft: privacyService.sanitizedDraft(artifacts.draft),
       profile: artifacts.profile,
-      messages: session.messages,
+      messages: privacyService.sanitizedChatMessages(session.messages),
       contextMode: session.contextMode,
       knowledgePolicy: session.knowledgePolicy,
-      knowledgeContext: knowledgeContext,
+      knowledgeContext: privacyService.sanitizedKnowledgeContext(knowledgeContext),
       modelGrade: session.modelGrade,
       reasoningLevel: session.reasoningLevel,
       selectedModel: session.selectedModel.nilIfEmpty,
@@ -369,11 +459,11 @@ extension WorkbenchAIStore {
       publishPackage: artifacts.publishPackage,
       remoteReviewDraft: artifacts.remoteReviewDraft,
       workflowContext: artifacts.workflowContext,
-      focusedParagraph: focusedParagraph,
-      editorSelection: editorSelection,
+      focusedParagraph: sanitizedFocusedParagraph,
+      editorSelection: privacyService.sanitizedEditorSelection(editorSelection),
       explicitContextReferences: explicitContextReferences,
-      explicitContextPrompt: explicitContextPrompt,
-      relatedSuggestions: store.relatedArticleSuggestions(for: artifacts.draft),
+      explicitContextPrompt: explicitContextPrompt.map { privacyService.sanitize($0).text },
+      relatedSuggestions: sanitizedSuggestions,
       automationDraftVersions: Dictionary(
         uniqueKeysWithValues: store.drafts.map { ($0.id, $0.updatedAt) }
       )
@@ -408,7 +498,8 @@ extension WorkbenchAIStore {
     aiChatModelGrade = grade
     // Preset grades resolve their provider-specific model at request time.
     // Persist only a model explicitly entered through the custom grade.
-    aiChatSelectedModel = grade == .custom
+    aiChatSelectedModel =
+      grade == .custom
       ? AIChatModelCatalog.model(
         for: grade,
         config: config,

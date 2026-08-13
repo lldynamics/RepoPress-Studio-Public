@@ -11,14 +11,15 @@ extension PublishingStore {
       editorDisplayMode = .edit
     }
     store.restoreSEOSocialPreviewSnapshotForCurrentSelection()
-    store.runPreflight()
+    store.refreshPreflightForSelection()
     store.scheduleImageWorkbenchReportRefresh()
   }
 
   @discardableResult
   public func ensureEditableDraftSelected(store: WorkbenchStore) -> ArticleDraft? {
     if let selectedDraftID,
-       let draft = writingDrafts.first(where: { $0.id == selectedDraftID }) {
+      let draft = writingDrafts.first(where: { $0.id == selectedDraftID })
+    {
       return draft
     }
 
@@ -31,7 +32,8 @@ extension PublishingStore {
     }
 
     let previousSection = selectedSection
-    let draft = draftListContentScope == .general
+    let draft =
+      draftListContentScope == .general
       ? ArticleDraft.emptyGeneralDraft(editingProfile: store.activeProfile)
       : ArticleDraft.empty(profile: store.activeProfile)
     drafts.insert(draft, at: 0)
@@ -145,9 +147,10 @@ extension PublishingStore {
     let hasUnsavedDraftChange = existingIndex.map { drafts[$0] != draft } ?? true
     var updated = draft
     if hasUnsavedDraftChange,
-       let existingIndex,
-       drafts[existingIndex].softwareGuideID != nil,
-       updated.softwareGuideID == drafts[existingIndex].softwareGuideID {
+      let existingIndex,
+      drafts[existingIndex].softwareGuideID != nil,
+      updated.softwareGuideID == drafts[existingIndex].softwareGuideID
+    {
       updated.softwareGuideTemplateVersion = 0
     }
     updated.touch()
@@ -204,7 +207,9 @@ extension PublishingStore {
   }
 
   @discardableResult
-  public func focusDraft(_ id: UUID, section: WorkspaceSection? = nil, store: WorkbenchStore) -> Bool {
+  public func focusDraft(_ id: UUID, section: WorkspaceSection? = nil, store: WorkbenchStore)
+    -> Bool
+  {
     guard let draft = drafts.first(where: { $0.id == id }) else { return false }
     draftNavigationHistory.recordVisit(id)
     if draft.isGeneralDraft {
@@ -233,9 +238,11 @@ extension PublishingStore {
   @discardableResult
   public func navigateBackwardInDraftHistory(store: WorkbenchStore) -> Bool {
     let availableDraftIDs = Set(drafts.map(\.id))
-    guard let draftID = draftNavigationHistory.navigateBackward(
-      availableDraftIDs: availableDraftIDs
-    ) else {
+    guard
+      let draftID = draftNavigationHistory.navigateBackward(
+        availableDraftIDs: availableDraftIDs
+      )
+    else {
       return false
     }
     return activateDraftFromHistory(draftID, store: store)
@@ -244,9 +251,11 @@ extension PublishingStore {
   @discardableResult
   public func navigateForwardInDraftHistory(store: WorkbenchStore) -> Bool {
     let availableDraftIDs = Set(drafts.map(\.id))
-    guard let draftID = draftNavigationHistory.navigateForward(
-      availableDraftIDs: availableDraftIDs
-    ) else {
+    guard
+      let draftID = draftNavigationHistory.navigateForward(
+        availableDraftIDs: availableDraftIDs
+      )
+    else {
       return false
     }
     return activateDraftFromHistory(draftID, store: store)
@@ -336,7 +345,8 @@ extension PublishingStore {
     profile.id = UUID()
     profile.name += " 副本"
     profiles.append(profile)
-    let duplicatedSnippets = customMarkdownSnippets
+    let duplicatedSnippets =
+      customMarkdownSnippets
       .filter { $0.siteProfileID == sourceProfileID }
       .map { snippet in
         var duplicate = snippet
@@ -423,7 +433,8 @@ extension PublishingStore {
       store.discardDraftBodyEditorBuffer(for: draftID)
     }
     if let activeEditorSelection,
-       removedDraftIDs.contains(activeEditorSelection.draftID) {
+      removedDraftIDs.contains(activeEditorSelection.draftID)
+    {
       self.activeEditorSelection = nil
     }
     activeProfileID = profiles[0].id
@@ -433,7 +444,8 @@ extension PublishingStore {
     }
     for index in recycledDrafts.indices
     where recycledDrafts[index].draft.isGeneralDraft
-      && recycledDrafts[index].draft.siteProfileID == removed {
+      && recycledDrafts[index].draft.siteProfileID == removed
+    {
       recycledDrafts[index].draft.assignToGeneralDraft(editingProfileID: activeProfileID)
     }
     let reboundDraftsByID = Dictionary(
@@ -465,7 +477,8 @@ extension PublishingStore {
   @discardableResult
   public func restoreRecentlyDeletedProfile(store: WorkbenchStore) -> Bool {
     guard let recentlyDeletedProfile,
-          !profiles.contains(where: { $0.id == recentlyDeletedProfile.profile.id }) else {
+      !profiles.contains(where: { $0.id == recentlyDeletedProfile.profile.id })
+    else {
       return false
     }
     profiles.append(recentlyDeletedProfile.profile)

@@ -34,6 +34,28 @@ public struct MarkdownCursorPosition: Equatable, Sendable {
   }
 }
 
+/// A revision-bound snapshot of the cursor context used by the Markdown
+/// composer.  Position and fence lookups share the line/fence scan that built
+/// this value, so a view render can read both without rescanning the document.
+public struct MarkdownCursorContextSnapshot: Equatable, Sendable {
+  public let revision: UInt64
+  public let selectedRange: NSRange
+  public let position: MarkdownCursorPosition?
+  public let fenceMatch: MarkdownFenceMatch?
+
+  public init(
+    revision: UInt64,
+    selectedRange: NSRange,
+    position: MarkdownCursorPosition?,
+    fenceMatch: MarkdownFenceMatch?
+  ) {
+    self.revision = revision
+    self.selectedRange = selectedRange
+    self.position = position
+    self.fenceMatch = fenceMatch
+  }
+}
+
 public struct MarkdownFenceMatch: Equatable, Sendable {
   public var marker: String
   public var markerLength: Int
@@ -130,6 +152,60 @@ public struct MarkdownCursorContextService: Sendable {
     guard selectedRange.location != NSNotFound else { return nil }
     let cursor = min(max(0, selectedRange.location), source.length)
     let lines = lineLocations(in: markdown)
+    return position(in: source, cursor: cursor, lines: lines)
+  }
+
+  /// Builds one reusable snapshot for a body revision and selection.  The
+  /// line locations are shared by the position and fence scans.
+  public func snapshot(
+    in markdown: String,
+    selectedRange: NSRange,
+    revision: UInt64
+  ) -> MarkdownCursorContextSnapshot {
+    let source = markdown as NSString
+    guard selectedRange.location != NSNotFound else {
+      return MarkdownCursorContextSnapshot(
+        revision: revision,
+        selectedRange: selectedRange,
+        position: nil,
+        fenceMatch: nil
+      )
+    }
+    let cursor = min(max(0, selectedRange.location), source.length)
+    let normalizedSelection = NSRange(
+      location: cursor,
+      length: min(
+        max(0, selectedRange.length),
+        max(0, source.length - cursor)
+      )
+    )
+    let lines = lineLocations(in: markdown)
+    let position =
+      selectedRange.location == NSNotFound
+      ? nil
+      : self.position(in: source, cursor: cursor, lines: lines)
+    let fenceMatch = fenceMatches(in: source, lines: lines).first { match in
+      if normalizedSelection.length > 0 {
+        return NSIntersectionRange(normalizedSelection, match.fullRange).length > 0
+      }
+      let end = NSMaxRange(match.fullRange)
+      return normalizedSelection.location >= match.fullRange.location
+        && (normalizedSelection.location < end
+          || normalizedSelection.location == source.length && end == source.length)
+    }
+    return MarkdownCursorContextSnapshot(
+      revision: revision,
+      selectedRange: normalizedSelection,
+      position: position,
+      fenceMatch: fenceMatch
+    )
+  }
+
+  private func position(
+    in source: NSString,
+    cursor: Int,
+    lines: [MarkdownLineLocation]
+  ) -> MarkdownCursorPosition? {
     let line =
       lines.first { line in
         if line.fullRange.length == 0 {
@@ -175,6 +251,13 @@ public struct MarkdownCursorContextService: Sendable {
   public func fenceMatches(in markdown: String) -> [MarkdownFenceMatch] {
     let source = markdown as NSString
     let lines = lineLocations(in: markdown)
+    return fenceMatches(in: source, lines: lines)
+  }
+
+  private func fenceMatches(
+    in source: NSString,
+    lines: [MarkdownLineLocation]
+  ) -> [MarkdownFenceMatch] {
     var matches: [MarkdownFenceMatch] = []
     var active: OpeningFence?
 

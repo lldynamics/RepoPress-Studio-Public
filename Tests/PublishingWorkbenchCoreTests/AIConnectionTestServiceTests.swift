@@ -1,20 +1,22 @@
 import Foundation
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class AIConnectionTestServiceTests: XCTestCase {
   func testConnectionUsesOpenAICompatiblePingRequest() async throws {
     let transport = RecordingAIChatTransport(
-      data: Data("""
-      {
-        "model": "deepseek-test",
-        "choices": [
-          {
-            "message": {"role":"assistant","content":"OK"}
-          }
-        ]
-      }
-      """.utf8),
+      data: Data(
+        """
+        {
+          "model": "deepseek-test",
+          "choices": [
+            {
+              "message": {"role":"assistant","content":"OK"}
+            }
+          ]
+        }
+        """.utf8),
       statusCode: 200
     )
     let service = AIConnectionTestService(
@@ -36,7 +38,8 @@ final class AIConnectionTestServiceTests: XCTestCase {
 
     let requestFromTransport = await transport.capturedRequest()
     let capturedRequest = try XCTUnwrap(requestFromTransport)
-    XCTAssertEqual(capturedRequest.url?.absoluteString, "https://api.openai.com/v1/chat/completions")
+    XCTAssertEqual(
+      capturedRequest.url?.absoluteString, "https://api.openai.com/v1/chat/completions")
     XCTAssertEqual(capturedRequest.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
     let body = try XCTUnwrap(capturedRequest.httpBody)
     let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -45,6 +48,49 @@ final class AIConnectionTestServiceTests: XCTestCase {
     XCTAssertNil(payload["reasoning_effort"])
     let messages = try XCTUnwrap(payload["messages"] as? [[String: Any]])
     XCTAssertTrue(messages.contains { $0["content"] as? String == "ping" })
+  }
+
+  func testConnectionCanSelectCapabilityProbesAndKeepsReportEvidenceSeparate() async throws {
+    let transport = RecordingAIChatTransport(
+      data: Data(
+        """
+        {
+          "model": "fixture-model",
+          "choices": [
+            { "message": {"role":"assistant","content":"OK"} }
+          ]
+        }
+        """.utf8),
+      statusCode: 200
+    )
+    let cache = AIProviderCapabilityProbeCache()
+    let service = AIConnectionTestService(
+      client: AIChatCompletionClient(transport: transport),
+      capabilityProbeService: AIProviderCapabilityProbeService(
+        client: AIChatCompletionClient(transport: transport),
+        cache: cache,
+        ttl: 60,
+        now: { Date(timeIntervalSince1970: 100) }
+      )
+    )
+    let config = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://example.com/v1",
+      model: "fixture-model",
+      requiresAPIKey: false
+    )
+
+    let report = try await service.testConnection(
+      config: config,
+      apiKey: nil,
+      probeCapabilities: [.chat],
+      forceRefresh: true
+    )
+
+    XCTAssertTrue(report.hasCapabilityEvidence)
+    XCTAssertEqual(report.capabilityProbeReport?.results[.chat]?.outcome, .supported)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
   }
 
   func testConnectionRequiresAPIKeyWhenConfigured() async {

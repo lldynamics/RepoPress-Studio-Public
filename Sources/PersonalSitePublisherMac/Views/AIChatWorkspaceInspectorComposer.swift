@@ -17,7 +17,9 @@ extension AIChatContextInspectorView {
 
           Spacer(minLength: 0)
 
-          if let requiresDuplicateChargeConfirmation = activeRetryRequiresDuplicateChargeConfirmation {
+          if let requiresDuplicateChargeConfirmation =
+            activeRetryRequiresDuplicateChargeConfirmation
+          {
             if requiresDuplicateChargeConfirmation {
               Button(String(localized: "重新生成")) {
                 isPartialRetryConfirmationPresented = true
@@ -53,30 +55,15 @@ extension AIChatContextInspectorView {
         .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
       }
 
+      AIOutboundPayloadSummaryView(scopeID: inspectorSurfaceConversationID)
+
       VStack(alignment: .leading, spacing: 8) {
         if !selectedContextReferences.isEmpty {
           VStack(alignment: .leading, spacing: 5) {
             ScrollView(.horizontal, showsIndicators: true) {
               HStack(spacing: 6) {
                 ForEach(selectedContextReferences) { reference in
-                  HStack(spacing: 4) {
-                    Image(systemName: "at")
-                    Text(contextReferenceLabel(reference))
-                      .lineLimit(1)
-                    Button {
-                      removeContextReference(reference)
-                    } label: {
-                      Image(systemName: "xmark.circle.fill")
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(
-                      "移除上下文 \(contextReferenceLabel(reference))"
-                    )
-                  }
-                  .font(.caption)
-                  .padding(.horizontal, 7)
-                  .padding(.vertical, 4)
-                  .background(Color.primary.opacity(0.07), in: Capsule())
+                  selectedContextReferenceChip(reference)
                 }
               }
             }
@@ -97,24 +84,7 @@ extension AIChatContextInspectorView {
           ScrollView(.horizontal, showsIndicators: true) {
             HStack(spacing: 6) {
               ForEach(selectedChatImageAttachments) { attachment in
-                HStack(spacing: 4) {
-                  Image(systemName: "photo")
-                  Text(attachment.originalFilename)
-                    .lineLimit(1)
-                  Button {
-                    var attachmentIDs = selectedImageAttachmentIDs
-                    attachmentIDs.remove(attachment.id)
-                    setSelectedImageAttachmentIDs(attachmentIDs)
-                  } label: {
-                    Image(systemName: "xmark.circle.fill")
-                  }
-                  .buttonStyle(.plain)
-                  .accessibilityLabel("移除图片 \(attachment.originalFilename)")
-                }
-                .font(.caption)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 4)
-                .background(Color.primary.opacity(0.07), in: Capsule())
+                selectedImageAttachmentChip(attachment)
               }
             }
           }
@@ -135,6 +105,7 @@ extension AIChatContextInspectorView {
         .lineLimit(2...6)
         .disabled(isComposerInputUnavailable)
         .focused($isComposerFocused)
+        .onKeyPress(.return, phases: .down, action: handleComposerReturn)
 
         HStack(spacing: 8) {
           contextReferenceMenu
@@ -361,6 +332,27 @@ extension AIChatContextInspectorView {
     AIChatContextReferencePresentation.label(for: reference)
   }
 
+  @ViewBuilder
+  func selectedContextReferenceChip(_ reference: AIContextReference) -> some View {
+    let label = contextReferenceLabel(reference)
+    HStack(spacing: 4) {
+      Image(systemName: "at")
+      Text(label)
+        .lineLimit(1)
+      Button {
+        removeContextReference(reference)
+      } label: {
+        Image(systemName: "xmark.circle.fill")
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("移除上下文 \(label)")
+    }
+    .font(.caption)
+    .padding(.horizontal, 7)
+    .padding(.vertical, 4)
+    .background(Color.primary.opacity(0.07), in: Capsule())
+  }
+
   var availableChatImageAttachments: [DraftAttachment] {
     guard let draft = ai.selectedChatDraft else { return [] }
     return draft.attachments.filter { $0.mediaKind == .image }
@@ -370,6 +362,32 @@ extension AIChatContextInspectorView {
     availableChatImageAttachments.filter {
       selectedImageAttachmentIDs.contains($0.id)
     }
+  }
+
+  @ViewBuilder
+  func selectedImageAttachmentChip(_ attachment: DraftAttachment) -> some View {
+    HStack(spacing: 4) {
+      Image(systemName: "photo")
+      Text(attachment.originalFilename)
+        .lineLimit(1)
+      Button {
+        removeSelectedImageAttachment(attachment.id)
+      } label: {
+        Image(systemName: "xmark.circle.fill")
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("移除图片 \(attachment.originalFilename)")
+    }
+    .font(.caption)
+    .padding(.horizontal, 7)
+    .padding(.vertical, 4)
+    .background(Color.primary.opacity(0.07), in: Capsule())
+  }
+
+  func removeSelectedImageAttachment(_ attachmentID: UUID) {
+    var attachmentIDs = selectedImageAttachmentIDs
+    attachmentIDs.remove(attachmentID)
+    setSelectedImageAttachmentIDs(attachmentIDs)
   }
 
   var isComposerInputUnavailable: Bool {
@@ -485,6 +503,17 @@ extension AIChatContextInspectorView {
     } else if !isChatBusyElsewhere {
       submitMessage()
     }
+  }
+
+  func handleComposerReturn(_ keyPress: KeyPress) -> KeyPress.Result {
+    guard !keyPress.modifiers.contains(.shift) else {
+      return .ignored
+    }
+    guard canSubmitMessage else {
+      return .handled
+    }
+    submitMessage()
+    return .handled
   }
 }
 
@@ -606,7 +635,8 @@ extension AIChatContextInspectorView {
   ) {
     switch mode {
     case .general:
-      let conversation = ai.activeGeneralChatConversation
+      let conversation =
+        ai.activeGeneralChatConversation
         ?? ai.startNewGeneralChatConversation(
           connectionProfileID: ai.activeChatConnectionProfile.id
         )

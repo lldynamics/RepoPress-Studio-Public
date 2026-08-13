@@ -9,7 +9,8 @@ enum MarkdownEditorComfortPreferences {
   static let currentParagraphHighlightEnabledKey = "markdownEditorCurrentParagraphHighlightEnabled"
   static let warmPaperBackgroundEnabledKey = "markdownEditorWarmPaperBackgroundEnabled"
   static let automaticPairingEnabledKey = "markdownEditorAutomaticPairingEnabled"
-  static let writingGoalKey = "markdownEditorWritingGoal"
+  static let typewriterSoundPresetKey = "markdownEditorTypewriterSoundPreset"
+  static let paragraphSpotlightEnabledKey = "markdownEditorParagraphSpotlightEnabled"
 }
 
 enum AIWritingPreferences {
@@ -30,7 +31,6 @@ struct MarkdownEditorComfortConfiguration: Equatable {
   static let defaultCurrentParagraphHighlightEnabled = true
   static let defaultWarmPaperBackgroundEnabled = false
   static let defaultAutomaticPairingEnabled = true
-  static let defaultWritingGoal = 1_500
 
   let fontSize: Double
   let lineSpacing: Double

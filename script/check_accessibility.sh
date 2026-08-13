@@ -343,8 +343,8 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  "compactToolbarControls(showsAIChatTitle: false, showsPrepareTitle: false)" \
-  "the compact writing toolbar must keep a dedicated AI collaboration entry"
+  "fixedIconToolbarControls" \
+  "the writing toolbar must keep a dedicated AI collaboration entry"
 
 require_literal \
   "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
@@ -1203,18 +1203,48 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "private var fixedIconToolbarControls: some View" \
+  "writing-page tools must remain visible in a fixed icon toolbar"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "ScrollView(.horizontal, showsIndicators: false)" \
+  "fixed icon toolbar must remain usable in narrow writing windows"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "basicRow(showsTitle: false)" \
+  "basic writing tools must remain icon-only"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "expandedRow(showsTitle: false)" \
+  "professional writing tools must remain icon-only"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
   "ViewThatFits(in: .horizontal)" \
-  "editor actions must prefer readable text labels before the compact icon fallback"
+  "writing-page toolbars must not switch between label and compact layouts"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "compactToolbarControls(" \
+  "writing-page tools must not collapse into a compact toolbar"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "compactEditorActionsMenu" \
+  "writing-page actions must not be hidden behind a more-actions menu"
+
+require_absent_literal \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
+  "compactRows(" \
+  "professional writing tools must not collapse into a secondary row layout"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  "expandedToolbarControls" \
-  "editor actions must keep the readable expanded toolbar variant"
-
-require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  "compactToolbarControls(showsAIChatTitle: true, showsPrepareTitle: true)" \
-  "the first compact toolbar fallback must retain AI and publish text labels"
+  ".help(String(localized: \"自动 AI 续写\"))" \
+  "icon toolbar actions must expose their names on pointer hover"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
@@ -1230,6 +1260,21 @@ require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
   ".accessibilityAddTraits(editorDisplayMode == mode ? .isSelected : [])" \
   "editor display modes must expose selected accessibility traits"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/WorkbenchVisualStyle.swift" \
+  "Text(String(localized:" \
+  "list disclosure progress text must use the localization catalog"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift" \
+  "hoveredDocumentID" \
+  "knowledge document rows must retain a pointer hover state"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeCollectionNavigationView.swift" \
+  "hoveredCollectionItemID" \
+  "knowledge collection rows must retain a pointer hover state"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/ContentHealthDetailView.swift" \

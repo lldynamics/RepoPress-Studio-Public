@@ -37,7 +37,7 @@ extension ContentHealthDetailView {
           isSelected
             ? AnyShapeStyle(
               WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.selectionBackground))
-            : WorkbenchBackgroundStyle.subtle
+            : WorkbenchBackgroundStyle.card
         )
     }
   }

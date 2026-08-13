@@ -78,6 +78,7 @@ struct AIConnectionTestSection: View {
   let isConnectionTestRunning: Bool
   let hasAttemptedConnectionTest: Bool
   let actionMessage: String?
+  @Binding var selectedProbeCapabilities: Set<AIProviderCapabilityProbeKind>
   let onTestConnection: () -> Void
 
   var body: some View {
@@ -120,7 +121,45 @@ struct AIConnectionTestSection: View {
       Text("测试会向当前服务发送一次最小请求，不会发送站点文章或资料库内容。")
         .font(.caption)
         .foregroundStyle(.secondary)
+
+      capabilityProbeSelection
     }
+  }
+
+  private var capabilityProbeSelection: some View {
+    VStack(alignment: .leading, spacing: 5) {
+      Text("可选能力探测")
+        .font(.caption.weight(.semibold))
+      Text("默认不额外探测。勾选后会增加对应请求；选择普通对话会复用本次最小 ping。")
+        .font(.workbenchMetadata)
+        .foregroundStyle(.secondary)
+      ForEach(AIProviderCapabilityProbeKind.allCases) { capability in
+        Toggle(
+          localizedProbeCapabilityName(capability),
+          isOn: probeBinding(for: capability)
+        )
+        .toggleStyle(.checkbox)
+        .disabled(!availability.isEnabled || isAIActionRunning || isConnectionTestRunning)
+        .accessibilityIdentifier("settings-ai-capability-probe-\(capability.rawValue)")
+      }
+    }
+    .padding(.top, 4)
+    .accessibilityElement(children: .contain)
+  }
+
+  private func probeBinding(
+    for capability: AIProviderCapabilityProbeKind
+  ) -> Binding<Bool> {
+    Binding(
+      get: { selectedProbeCapabilities.contains(capability) },
+      set: { isSelected in
+        if isSelected {
+          selectedProbeCapabilities.insert(capability)
+        } else {
+          selectedProbeCapabilities.remove(capability)
+        }
+      }
+    )
   }
 
   private var availability: AIConnectionTestAvailability {
@@ -155,6 +194,34 @@ struct AIConnectionTestSection: View {
         .font(.caption)
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
+      if let capabilityProbeReport = report.capabilityProbeReport {
+        VStack(alignment: .leading, spacing: 4) {
+          Text("能力探测结果")
+            .font(.caption.weight(.semibold))
+          ForEach(
+            capabilityProbeReport.results.values.sorted {
+              $0.capability.rawValue < $1.capability.rawValue
+            },
+            id: \.capability
+          ) { result in
+            let observationLabel =
+              result.fromCache
+              ? CoreL10n.text("缓存")
+              : CoreL10n.text("本次探测")
+            Text(
+              "\(localizedProbeCapabilityName(result.capability))：\(localizedProbeOutcomeName(result.outcome))"
+                + " · \(observationLabel)"
+            )
+            .font(.workbenchMetadata)
+            .foregroundStyle(.secondary)
+          }
+          Text("状态：\(localizedProbeCacheStateName(capabilityProbeReport.cacheState))")
+            .font(.workbenchMetadata)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.top, 2)
+        .accessibilityElement(children: .combine)
+      }
     } else if hasAttemptedConnectionTest {
       AccessibleStatusMessage(
         message: actionMessage
@@ -185,6 +252,53 @@ struct AIConnectionTestSection: View {
       return WorkbenchTheme.warning
     case .info:
       return .secondary
+    }
+  }
+
+  private func localizedProbeCapabilityName(
+    _ capability: AIProviderCapabilityProbeKind
+  ) -> String {
+    switch capability {
+    case .chat:
+      return CoreL10n.text("普通对话")
+    case .streamingResponse:
+      return CoreL10n.text("流式响应")
+    case .toolCalling:
+      return CoreL10n.text("工具调用")
+    case .structuredOutput:
+      return CoreL10n.text("结构化输出")
+    case .visionInput:
+      return CoreL10n.text("视觉输入")
+    }
+  }
+
+  private func localizedProbeOutcomeName(
+    _ outcome: AIProviderCapabilityProbeOutcome
+  ) -> String {
+    switch outcome {
+    case .supported:
+      return CoreL10n.text("支持")
+    case .unsupported:
+      return CoreL10n.text("不支持")
+    case .inconclusive:
+      return CoreL10n.text("未知（结果不确定）")
+    }
+  }
+
+  private func localizedProbeCacheStateName(
+    _ state: AIProviderCapabilityProbeCacheState
+  ) -> String {
+    switch state {
+    case .hit:
+      return CoreL10n.text("缓存命中")
+    case .partialHit:
+      return CoreL10n.text("部分缓存命中")
+    case .miss:
+      return CoreL10n.text("首次探测")
+    case .expired:
+      return CoreL10n.text("已过期，重新探测")
+    case .forcedRefresh:
+      return CoreL10n.text("强制刷新")
     }
   }
 }

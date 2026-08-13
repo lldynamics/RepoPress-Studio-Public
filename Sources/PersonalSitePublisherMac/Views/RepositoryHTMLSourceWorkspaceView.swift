@@ -292,7 +292,7 @@ struct RepositoryHTMLSourceWorkspaceView: View {
           .foregroundStyle(firstDiagnostic.severity == .error ? WorkbenchTheme.risk : WorkbenchTheme.warning)
           .padding(.horizontal, 12)
           .padding(.vertical, 8)
-          .background(WorkbenchBackgroundStyle.subtle)
+          .background(WorkbenchBackgroundStyle.card)
         }
 
         MacHTMLSourceTextView(

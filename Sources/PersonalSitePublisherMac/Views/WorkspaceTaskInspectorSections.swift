@@ -14,7 +14,7 @@ struct WorkspaceTaskMetadataState {
 
 struct WorkspaceTaskMetadataSection: View {
   @Binding var draft: ArticleDraft
-  @ObservedObject private var ai: WorkbenchAIFeatureFacade
+  @ObservedObject private var summaryAI: WorkbenchMetadataSummaryFeatureFacade
   private let store: WorkbenchStore
   let state: WorkspaceTaskMetadataState
   let tagSuggestions: [String]
@@ -34,7 +34,9 @@ struct WorkspaceTaskMetadataSection: View {
   ) {
     _draft = draft
     self.store = store
-    _ai = ObservedObject(wrappedValue: store.ai)
+    _summaryAI = ObservedObject(
+      wrappedValue: WorkbenchMetadataSummaryFeatureFacade(store: store)
+    )
     self.state = state
     self.tagSuggestions = tagSuggestions
     self.categorySuggestions = categorySuggestions
@@ -75,10 +77,12 @@ struct WorkspaceTaskMetadataSection: View {
         VStack(alignment: .leading, spacing: 14) {
           InspectorSection("发布时间与可见性") {
             metadataField("发布时间") {
-              DatePicker("发布时间", selection: $draft.date, displayedComponents: [.date, .hourAndMinute])
-                .labelsHidden()
-                .accessibilityLabel("文章发布时间")
-                .accessibilityValue(draft.date.formatted(date: .abbreviated, time: .shortened))
+              DatePicker(
+                "发布时间", selection: $draft.date, displayedComponents: [.date, .hourAndMinute]
+              )
+              .labelsHidden()
+              .accessibilityLabel("文章发布时间")
+              .accessibilityValue(draft.date.formatted(date: .abbreviated, time: .shortened))
             }
             metadataField("可见性") {
               Picker("可见性", selection: $draft.visibility) {
@@ -101,13 +105,16 @@ struct WorkspaceTaskMetadataSection: View {
               TextField("多位作者用逗号分隔", text: authorsBinding)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityLabel("文章作者")
-                .accessibilityValue(draft.authors.isEmpty ? "未填写" : draft.authors.joined(separator: "，"))
+                .accessibilityValue(
+                  draft.authors.isEmpty ? "未填写" : draft.authors.joined(separator: "，"))
             }
           }
 
           InspectorSection("发布路径") {
             InspectorStatRow(title: "站点", value: state.siteName, systemImage: "globe")
-            InspectorStatRow(title: "状态", value: draft.status.localizedDisplayName, systemImage: draft.status.systemImage)
+            InspectorStatRow(
+              title: "状态", value: draft.status.localizedDisplayName,
+              systemImage: draft.status.systemImage)
             Text(state.markdownPath)
               .font(.caption.monospaced())
               .foregroundStyle(.secondary)
@@ -164,10 +171,14 @@ struct WorkspaceTaskMetadataSection: View {
         Label {
           Text(verbatim: summaryGenerationMessage)
         } icon: {
-          Image(systemName: summaryGenerationSucceeded ? "checkmark.circle" : "exclamationmark.triangle")
+          Image(
+            systemName: summaryGenerationSucceeded ? "checkmark.circle" : "exclamationmark.triangle"
+          )
         }
         .font(.caption)
-        .foregroundStyle(summaryGenerationSucceeded ? WorkbenchTheme.success : WorkbenchTheme.warning)
+        .foregroundStyle(
+          summaryGenerationSucceeded ? WorkbenchTheme.success : WorkbenchTheme.warning
+        )
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .combine)
       }
@@ -189,13 +200,13 @@ struct WorkspaceTaskMetadataSection: View {
 
   private var summaryAIAvailability: AIPublishingActionAvailabilityPresentation {
     let profile = store.profile(for: draft)
-    let config = store.aiProviderConfig(for: profile)
-    let isAIEnabled = !config.requiresAPIKey || ai.tokenAvailability.hasToken
+    let config = summaryAI.providerConfig(for: profile)
+    let isAIEnabled = !config.requiresAPIKey || summaryAI.tokenAvailability.hasToken
     return AIPublishingActionAvailabilityService.presentation(
       for: .suggestSummary,
       draft: draft,
       isAIEnabled: isAIEnabled,
-      activeAction: isGeneratingSummary || ai.isActionRunning ? .suggestSummary : nil
+      activeAction: isGeneratingSummary || summaryAI.isActionRunning ? .suggestSummary : nil
     )
   }
 
@@ -222,15 +233,19 @@ struct WorkspaceTaskMetadataSection: View {
 
       let result = await store.performAIAction(.suggestSummary, draft: requestedDraft)
       guard !Task.isCancelled,
-            summaryGenerationRequestID == requestID,
-            draft.id == requestedDraft.id else {
+        summaryGenerationRequestID == requestID,
+        draft.id == requestedDraft.id
+      else {
         return
       }
       guard let result,
-            let generatedSummary = AIPublishingMetadataActionSuggestionFactory
-              .suggestion(from: result)?
-              .summary else {
-        summaryGenerationMessage = ai.actionMessage
+        let generatedSummary =
+          AIPublishingMetadataActionSuggestionFactory
+          .suggestion(from: result)?
+          .summary
+      else {
+        summaryGenerationMessage =
+          summaryAI.actionMessage
           ?? String(localized: "AI 没有返回可用的摘要。")
         return
       }
@@ -242,12 +257,15 @@ struct WorkspaceTaskMetadataSection: View {
         summaryGenerationMessage = String(localized: "摘要在生成期间已被修改，未自动覆盖。")
         return
       }
-      guard store.applyAIMetadataSuggestion(
-        field: .summary,
-        value: generatedSummary,
-        draft: latestDraft
-      ) != nil else {
-        summaryGenerationMessage = ai.actionMessage
+      guard
+        store.applyAIMetadataSuggestion(
+          field: .summary,
+          value: generatedSummary,
+          draft: latestDraft
+        ) != nil
+      else {
+        summaryGenerationMessage =
+          summaryAI.actionMessage
           ?? String(localized: "AI 没有返回新的摘要。")
         return
       }
@@ -307,13 +325,14 @@ struct WorkspaceTaskSEOSection: View {
   init(draft: ArticleDraft, store: WorkbenchStore) {
     self.draft = draft
     self.store = store
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    let expandsScreenshotPreview = ScreenshotDemoDataService.isEnabledFromEnvironment
-      && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .seoSocialPreview
-    _showsSocialPreview = State(initialValue: expandsScreenshotPreview)
-    _showsSocialCards = State(initialValue: expandsScreenshotPreview)
-    _showsPlatformReadiness = State(initialValue: false)
-#endif
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      let expandsScreenshotPreview =
+        ScreenshotDemoDataService.isEnabledFromEnvironment
+        && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .seoSocialPreview
+      _showsSocialPreview = State(initialValue: expandsScreenshotPreview)
+      _showsSocialCards = State(initialValue: expandsScreenshotPreview)
+      _showsPlatformReadiness = State(initialValue: false)
+    #endif
   }
 
   var body: some View {
@@ -323,9 +342,12 @@ struct WorkspaceTaskSEOSection: View {
 
     return VStack(alignment: .leading, spacing: 14) {
       InspectorSection("SEO 摘要") {
-        InspectorStatRow(title: "状态", value: report.statusTitle, systemImage: "chart.bar.doc.horizontal")
-        InspectorStatRow(title: "标题", value: "\(report.titleCharacterCount) 字", systemImage: "textformat.size")
-        InspectorStatRow(title: "摘要", value: "\(report.summaryCharacterCount) 字", systemImage: "text.alignleft")
+        InspectorStatRow(
+          title: "状态", value: report.statusTitle, systemImage: "chart.bar.doc.horizontal")
+        InspectorStatRow(
+          title: "标题", value: "\(report.titleCharacterCount) 字", systemImage: "textformat.size")
+        InspectorStatRow(
+          title: "摘要", value: "\(report.summaryCharacterCount) 字", systemImage: "text.alignleft")
         InspectorStatRow(title: "H1", value: "\(report.h1Count)", systemImage: "number")
 
         HStack {
@@ -339,7 +361,8 @@ struct WorkspaceTaskSEOSection: View {
 
         Label(cachePresentation.message, systemImage: cachePresentation.state.systemImage)
           .font(.caption)
-          .foregroundStyle(cachePresentation.needsManualRefresh ? WorkbenchTheme.warning : Color.secondary)
+          .foregroundStyle(
+            cachePresentation.needsManualRefresh ? WorkbenchTheme.warning : Color.secondary)
       }
 
       if !prioritizesSocialPreviewForScreenshot {
@@ -380,9 +403,15 @@ struct WorkspaceTaskSEOSection: View {
         isExpanded: $showsSocialPreview
       ) {
         if let snapshot {
-          InspectorStatRow(title: "标题", value: "\(snapshot.titleCharacterCount) 字", systemImage: "textformat.size")
-          InspectorStatRow(title: "描述", value: "\(snapshot.descriptionCharacterCount) 字", systemImage: "text.alignleft")
-          InspectorStatRow(title: "图片", value: snapshot.imageDimensions?.workbenchDimensionText ?? (snapshot.imagePath == nil ? "未设置" : "已设置"), systemImage: "photo")
+          InspectorStatRow(
+            title: "标题", value: "\(snapshot.titleCharacterCount) 字", systemImage: "textformat.size")
+          InspectorStatRow(
+            title: "描述", value: "\(snapshot.descriptionCharacterCount) 字",
+            systemImage: "text.alignleft")
+          InspectorStatRow(
+            title: "图片",
+            value: snapshot.imageDimensions?.workbenchDimensionText
+              ?? (snapshot.imagePath == nil ? "未设置" : "已设置"), systemImage: "photo")
           Text(snapshot.canonicalURLText)
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
@@ -441,7 +470,9 @@ struct WorkspaceTaskSEOSection: View {
           .lineLimit(16)
           .padding(8)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+          .background(
+            WorkbenchBackgroundStyle.card,
+            in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
       }
 
       if let message = store.seoSocialPreviewMessage {
@@ -451,12 +482,12 @@ struct WorkspaceTaskSEOSection: View {
   }
 
   private var prioritizesSocialPreviewForScreenshot: Bool {
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    ScreenshotDemoDataService.isEnabledFromEnvironment
-      && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .seoSocialPreview
-#else
-    false
-#endif
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      ScreenshotDemoDataService.isEnabledFromEnvironment
+        && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .seoSocialPreview
+    #else
+      false
+    #endif
   }
 
   @ViewBuilder
@@ -509,7 +540,9 @@ struct WorkspaceTaskSEOSection: View {
               .controlSize(.small)
             }
             .padding(8)
-            .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+            .background(
+              WorkbenchBackgroundStyle.card,
+              in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
           }
         }
       }
@@ -527,10 +560,17 @@ struct WorkspaceTaskSEOSection: View {
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
       HStack(spacing: 8) {
-        Label(card.titleBudgetText, systemImage: card.isTitleWithinBudget ? "checkmark.circle" : "exclamationmark.triangle")
-          .foregroundStyle(card.isTitleWithinBudget ? Color.secondary : WorkbenchTheme.warning)
-        Label(card.descriptionBudgetText, systemImage: card.isDescriptionWithinBudget ? "checkmark.circle" : "exclamationmark.triangle")
-          .foregroundStyle(card.isDescriptionWithinBudget ? Color.secondary : WorkbenchTheme.warning)
+        Label(
+          card.titleBudgetText,
+          systemImage: card.isTitleWithinBudget ? "checkmark.circle" : "exclamationmark.triangle"
+        )
+        .foregroundStyle(card.isTitleWithinBudget ? Color.secondary : WorkbenchTheme.warning)
+        Label(
+          card.descriptionBudgetText,
+          systemImage: card.isDescriptionWithinBudget
+            ? "checkmark.circle" : "exclamationmark.triangle"
+        )
+        .foregroundStyle(card.isDescriptionWithinBudget ? Color.secondary : WorkbenchTheme.warning)
         if let imageAspectRatio = card.imageAspectRatio {
           Label(imageAspectRatio, systemImage: "aspectratio")
             .foregroundStyle(.secondary)
@@ -550,7 +590,10 @@ struct WorkspaceTaskSEOSection: View {
         .lineLimit(3)
     }
     .padding(8)
-    .background(WorkbenchBackgroundStyle.panel, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
     .accessibilityElement(children: .combine)
     .accessibilityLabel("社交卡片：\(card.kind.localizedDisplayName)")
     .accessibilityValue("\(card.title)。\(card.description)")
@@ -608,7 +651,9 @@ struct WorkspaceTaskSEOSection: View {
       }
     }
     .padding(8)
-    .background(WorkbenchBackgroundStyle.panel, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   private func socialShareCopySection(_ items: [SEOSocialShareCopyItem]) -> some View {
@@ -649,11 +694,15 @@ struct WorkspaceTaskSEOSection: View {
           }
         }
         .padding(8)
-        .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+        .background(
+          WorkbenchBackgroundStyle.card,
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
       }
     }
     .padding(8)
-    .background(WorkbenchBackgroundStyle.panel, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   private func socialDebugLinkSection(_ links: [SEOSocialPreviewDebugLink]) -> some View {
@@ -711,14 +760,19 @@ struct WorkspaceTaskSEOSection: View {
             .workbenchTruncatedIdentity(link.urlText)
         }
         .padding(8)
-        .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+        .background(
+          WorkbenchBackgroundStyle.card,
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
       }
     }
     .padding(8)
-    .background(WorkbenchBackgroundStyle.panel, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
-  private func socialPreviewReadinessForeground(_ status: SEOSocialPreviewReadinessStatus) -> Color {
+  private func socialPreviewReadinessForeground(_ status: SEOSocialPreviewReadinessStatus) -> Color
+  {
     switch status {
     case .ready:
       return WorkbenchTheme.success
@@ -780,8 +834,11 @@ struct WorkspaceTaskChecksSection: View {
     VStack(alignment: .leading, spacing: 14) {
       InspectorSection("摘要") {
         InspectorStatRow(title: "错误", value: "\(state.errorCount)", systemImage: "xmark.octagon")
-        InspectorStatRow(title: "警告", value: "\(state.warningCount)", systemImage: "exclamationmark.triangle")
-        InspectorStatRow(title: "公开风险", value: state.publicRisk.statusTitle, systemImage: state.publicRisk.isClear ? "lock.open" : "lock.shield")
+        InspectorStatRow(
+          title: "警告", value: "\(state.warningCount)", systemImage: "exclamationmark.triangle")
+        InspectorStatRow(
+          title: "公开风险", value: state.publicRisk.statusTitle,
+          systemImage: state.publicRisk.isClear ? "lock.open" : "lock.shield")
 
         Button {
           actions.rerunPreflight()
@@ -818,7 +875,11 @@ struct WorkspaceTaskChecksSection: View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 8) {
         Image(systemName: summary.isClear ? "lock.open" : "lock.shield")
-          .foregroundStyle(summary.isClear ? Color.secondary : (summary.errorCount > 0 ? WorkbenchTheme.risk : WorkbenchTheme.warning))
+          .foregroundStyle(
+            summary.isClear
+              ? Color.secondary
+              : (summary.errorCount > 0 ? WorkbenchTheme.risk : WorkbenchTheme.warning)
+          )
           .frame(width: 16)
         VStack(alignment: .leading, spacing: 2) {
           Text(summary.statusTitle)
@@ -850,7 +911,9 @@ struct WorkspaceTaskChecksSection: View {
     }
     .padding(8)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(
+      WorkbenchBackgroundStyle.card,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 }
 
@@ -903,18 +966,25 @@ struct WorkspaceTaskImageSection: View {
       InspectorSection("当前文章") {
         if let report {
           InspectorStatRow(title: "图片", value: "\(report.items.count)", systemImage: "photo")
-          InspectorStatRow(title: "缺 alt", value: "\(report.missingAltTextCount)", systemImage: "text.quote")
-          InspectorStatRow(title: "缺源图", value: "\(report.missingSourceCount)", systemImage: "xmark.octagon")
-          InspectorStatRow(title: "可压缩 JPEG", value: "\(report.optimizableJPEGCount)", systemImage: "arrow.down.forward")
-          Label(report.coverStatus.state.localizedDisplayName, systemImage: report.coverStatus.state.systemImage)
-            .font(.caption)
-            .foregroundStyle(report.coverStatus.state.color)
-            .lineLimit(2)
+          InspectorStatRow(
+            title: "缺 alt", value: "\(report.missingAltTextCount)", systemImage: "text.quote")
+          InspectorStatRow(
+            title: "缺源图", value: "\(report.missingSourceCount)", systemImage: "xmark.octagon")
+          InspectorStatRow(
+            title: "可压缩 JPEG", value: "\(report.optimizableJPEGCount)",
+            systemImage: "arrow.down.forward")
+          Label(
+            report.coverStatus.state.localizedDisplayName,
+            systemImage: report.coverStatus.state.systemImage
+          )
+          .font(.caption)
+          .foregroundStyle(report.coverStatus.state.color)
+          .lineLimit(2)
         } else {
           ProgressView {
             Text("正在读取当前文章图片…")
           }
-            .controlSize(.small)
+          .controlSize(.small)
         }
       }
 
@@ -940,14 +1010,19 @@ struct WorkspaceTaskImageSection: View {
 
       InspectorSection("批处理") {
         if let siteSummary {
-          InspectorStatRow(title: "站点图片", value: "\(siteSummary.imageCount)", systemImage: "photo.stack")
-          InspectorStatRow(title: "站点缺 alt", value: "\(siteSummary.missingAltTextCount)", systemImage: "text.quote")
-          InspectorStatRow(title: "可压缩 JPEG", value: "\(siteSummary.optimizableJPEGCount)", systemImage: "arrow.down.forward")
+          InspectorStatRow(
+            title: "站点图片", value: "\(siteSummary.imageCount)", systemImage: "photo.stack")
+          InspectorStatRow(
+            title: "站点缺 alt", value: "\(siteSummary.missingAltTextCount)", systemImage: "text.quote"
+          )
+          InspectorStatRow(
+            title: "可压缩 JPEG", value: "\(siteSummary.optimizableJPEGCount)",
+            systemImage: "arrow.down.forward")
         } else {
           ProgressView {
             Text("正在统计站点图片…")
           }
-            .controlSize(.small)
+          .controlSize(.small)
         }
 
         Button {

@@ -2,12 +2,8 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct LocalSitePreviewPanelView: View {
-  @StateObject private var state: WorkbenchLocalSitePreviewFeatureFacade
+  @EnvironmentObject private var state: WorkbenchLocalSitePreviewFeatureFacade
   @State private var navigationError: String?
-
-  init(store: WorkbenchStore) {
-    _state = StateObject(wrappedValue: WorkbenchLocalSitePreviewFeatureFacade(store: store))
-  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -18,7 +14,8 @@ struct LocalSitePreviewPanelView: View {
     .workbenchSheetSize(.full)
     .task(id: state.activeProfileID) {
       guard let plan = state.plan, plan.diagnostics.isReadyToStart,
-            !state.runtimeStatus.isRunning else { return }
+        !state.runtimeStatus.isRunning
+      else { return }
       state.start()
     }
   }
@@ -113,7 +110,8 @@ struct LocalSitePreviewPanelView: View {
   private var statusBar: some View {
     HStack(spacing: 8) {
       Image(systemName: state.runtimeStatus.isReachable ? "checkmark.circle.fill" : "play.circle")
-        .foregroundStyle(state.runtimeStatus.isReachable ? WorkbenchTheme.success : WorkbenchTheme.progress)
+        .foregroundStyle(
+          state.runtimeStatus.isReachable ? WorkbenchTheme.success : WorkbenchTheme.progress)
       Text(state.runtimeStatus.message)
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -138,9 +136,14 @@ struct LocalSitePreviewPanelView: View {
   private func diagnosticsView(plan: LocalSitePreviewPlan) -> some View {
     VStack(alignment: .leading, spacing: 16) {
       VStack(alignment: .leading, spacing: 5) {
-        Label(plan.diagnostics.statusTitle, systemImage: plan.diagnostics.isReadyToStart ? "checkmark.seal" : "exclamationmark.triangle")
-          .font(.headline)
-          .foregroundStyle(plan.diagnostics.isReadyToStart ? WorkbenchTheme.success : WorkbenchTheme.warning)
+        Label(
+          plan.diagnostics.statusTitle,
+          systemImage: plan.diagnostics.isReadyToStart
+            ? "checkmark.seal" : "exclamationmark.triangle"
+        )
+        .font(.headline)
+        .foregroundStyle(
+          plan.diagnostics.isReadyToStart ? WorkbenchTheme.success : WorkbenchTheme.warning)
         Text(state.runtimeStatus.message)
           .font(.callout)
           .foregroundStyle(.secondary)
@@ -154,7 +157,7 @@ struct LocalSitePreviewPanelView: View {
           .textSelection(.enabled)
           .padding(10)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: 8))
+          .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
       }
 
       if !plan.diagnostics.dependencies.isEmpty {
@@ -187,9 +190,12 @@ struct LocalSitePreviewPanelView: View {
           Text("仓库提示")
             .font(.callout.weight(.semibold))
           ForEach(plan.diagnostics.issues) { issue in
-            Label(issue.message, systemImage: issue.severity.isBlocking ? "xmark.octagon" : "info.circle")
-              .font(.caption)
-              .foregroundStyle(issue.severity.isBlocking ? WorkbenchTheme.risk : .secondary)
+            Label(
+              issue.message,
+              systemImage: issue.severity.isBlocking ? "xmark.octagon" : "info.circle"
+            )
+            .font(.caption)
+            .foregroundStyle(issue.severity.isBlocking ? WorkbenchTheme.risk : .secondary)
           }
         }
       }

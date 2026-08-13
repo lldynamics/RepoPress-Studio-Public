@@ -13,7 +13,7 @@ struct AIKeychainSection: View {
   let onSaveAPIKey: () -> Void
   let onDeleteAPIKey: () -> Void
   let onRefreshState: () -> Void
-  let onChangeStorageMode: (AICredentialStorageMode) -> Void
+  let onChangeStorageMode: @MainActor @Sendable (AICredentialStorageMode) -> Void
   @FocusState private var isAPIKeyFocused: Bool
   @State private var isDeleteConfirmationPresented = false
   @State private var isKeyRevealed = false
@@ -137,7 +137,9 @@ struct AIKeychainSection: View {
   private var storageModeBinding: Binding<AICredentialStorageMode> {
     Binding(
       get: { storageMode },
-      set: onChangeStorageMode
+      set: { mode in
+        onChangeStorageMode(mode)
+      }
     )
   }
 
@@ -170,7 +172,8 @@ struct AIKeychainSection: View {
   private var storageModeExplanation: String {
     switch storageMode {
     case .localFile:
-      return String(localized: "默认保存在此 Mac 的应用支持目录，文件权限限制为仅当前用户可读写（0600）。内容是明文，请勿共享该配置文件。应用不会访问 AI 钥匙串项目。")
+      return String(
+        localized: "默认保存在此 Mac 的应用支持目录，文件权限限制为仅当前用户可读写（0600）。内容是明文，请勿共享该配置文件。应用不会访问 AI 钥匙串项目。")
     case .keychain:
       return String(localized: "保存到 macOS 系统钥匙串。只有选择此项后，应用才会读取或修改 AI API Key 的钥匙串项目。")
     case .session:

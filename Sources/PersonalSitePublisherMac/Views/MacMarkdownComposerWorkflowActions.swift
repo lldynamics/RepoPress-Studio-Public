@@ -3,23 +3,47 @@ import PublishingWorkbenchCore
 
 extension MacMarkdownComposerView {
   var markdownCursorPosition: MarkdownCursorPosition? {
-    guard !isFrontMatterSelection else { return nil }
-    return MarkdownCursorContextService().position(
-      in: editorBody,
-      selectedRange: selectedRange
-    )
+    markdownCursorContextSnapshot?.position
   }
 
   var activeMarkdownFenceMatch: MarkdownFenceMatch? {
-    guard !isFrontMatterSelection else { return nil }
-    return MarkdownCursorContextService().fenceMatch(
-      in: editorBody,
-      selectedRange: selectedRange
-    )
+    markdownCursorContextSnapshot?.fenceMatch
   }
 
   var markdownCursorCompletion: MarkdownCompletionContext? {
-    guard !isFrontMatterSelection else { return nil }
+    markdownCursorCompletionSnapshot
+  }
+
+  /// Refreshes the cursor snapshot only when the body revision or selection
+  /// changes.  Completion is intentionally trigger-gated so ordinary cursor
+  /// movement never builds the article/snippet candidate list.
+  func refreshMarkdownCursorContextSnapshot() {
+    guard !isFrontMatterSelection else {
+      markdownCursorContextSnapshot = nil
+      markdownCursorCompletionSnapshot = nil
+      return
+    }
+
+    let contextService = MarkdownCursorContextService()
+    let snapshot = contextService.snapshot(
+      in: editorBody,
+      selectedRange: selectedRange,
+      revision: editorBodyRevision
+    )
+    guard markdownCursorContextSnapshot != snapshot else { return }
+    markdownCursorContextSnapshot = snapshot
+    markdownCursorCompletionSnapshot = nil
+
+    let completionService = MarkdownCursorCompletionService()
+    guard
+      completionService.shouldBuildCompletion(
+        in: editorBody,
+        selectedRange: selectedRange
+      )
+    else {
+      return
+    }
+
     let profile = activeProfile
     let articles = editorState.drafts.compactMap { candidate -> MarkdownCompletionArticle? in
       guard candidate.id != draft.id,
@@ -41,9 +65,10 @@ extension MacMarkdownComposerView {
         )
       )
     }
-    return MarkdownCursorCompletionService().completion(
+    markdownCursorCompletionSnapshot = completionService.completion(
       in: editorBody,
       selectedRange: selectedRange,
+      context: snapshot,
       articles: articles,
       snippets: markdownSSGSnippets
     )

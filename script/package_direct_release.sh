@@ -260,6 +260,9 @@ validate_signed_app() {
     || fail "signed app entitlements are invalid"
   "$PLUTIL_TOOL" -lint "$actual_safari_entitlements" >/dev/null \
     || fail "signed Safari Web Extension entitlements are invalid"
+  if [[ "$(plist_value "$actual_entitlements" com.apple.security.app-sandbox)" == "true" ]]; then
+    fail "signed app unexpectedly enables App Sandbox"
+  fi
   "$PYTHON_TOOL" - \
     "$DIRECT_ENTITLEMENTS" "$actual_entitlements" \
     "$SAFARI_ENTITLEMENTS" "$actual_safari_entitlements" <<'PY'
@@ -280,6 +283,8 @@ for expected_path, actual_path, label in (
     for key, value in expected.items():
         if actual.get(key) != value:
             raise SystemExit(f"direct release: signed {label} entitlement mismatch: {key}")
+    if label == "app" and actual.get("com.apple.security.app-sandbox") is True:
+        raise SystemExit("direct release: signed app unexpectedly enables App Sandbox")
     if actual.get("com.apple.security.get-task-allow") is True:
         raise SystemExit(f"direct release: signed {label} unexpectedly allows debugging")
 PY

@@ -3,7 +3,6 @@
     "en": "Temperature",
     "zh-Hans": "Temperature"
   },
-  "“未知”表示应用可以尝试请求，但实际能力取决于接口或所选模型。": "\"Unknown\" means the app can attempt the request, but actual support depends on the endpoint or selected model.",
   "仅影响 AI 助手对话；会话内推理级别优先，服务商不接受的参数会自动移除。": "These settings affect AI assistant conversations only. Conversation reasoning takes priority, and unsupported provider parameters are removed automatically.",
   "使用所选模型更新当前 AI 连接档案": "Update the current AI connection profile with the selected model",
   "停止检测": "Stop Detection",

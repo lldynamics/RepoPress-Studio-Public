@@ -410,7 +410,7 @@ struct FirstRunSetupView: View {
     }
     .padding(WorkbenchSpacing.section)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   private var hasRepository: Bool {

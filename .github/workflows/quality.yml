@@ -138,6 +138,47 @@ jobs:
             .build/distribution-gate-summary.md
             .build/swift-test-shards/
 
+  release-performance:
+    if: github.event_name != 'push'
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-performance-swift-home
+      PERFORMANCE_BENCHMARK_REQUIRED: "1"
+      PERFORMANCE_BENCHMARK_CONFIGURATION: release
+      PERFORMANCE_BENCHMARK_ENFORCE_WALL_TIME: "0"
+      PERFORMANCE_BENCHMARK_ITERATIONS: "7"
+      SITE_MAINTENANCE_RELATION_BENCHMARK_SIZES: "512,2048,4096"
+      SITE_MAINTENANCE_RELATION_BENCHMARK_LABEL_GROUP_SIZE: "8"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Show Release performance configuration
+        run: |
+          swift --version
+          uname -a
+          printf 'configuration=%s iterations=%s wall_time_policy=trend-only\n' \
+            "$PERFORMANCE_BENCHMARK_CONFIGURATION" \
+            "$PERFORMANCE_BENCHMARK_ITERATIONS"
+      - name: Run independent Release performance lane
+        run: |
+          mkdir -p .build
+          ./script/check_release_gate.sh \
+            --check release-performance \
+            --result-json .build/release-performance-gate-result.json \
+            --summary-markdown .build/release-performance-gate-summary.md
+          cat .build/release-performance-gate-summary.md >>"$GITHUB_STEP_SUMMARY"
+      - name: Upload Release performance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-performance
+          path: |
+            .build/release-performance/
+            .build/release-performance-gate-result.json
+            .build/release-performance-gate-summary.md
+          if-no-files-found: warn
+
   swift6-migration:
     if: github.event_name != 'push'
     runs-on: macos-15

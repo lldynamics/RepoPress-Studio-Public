@@ -21,11 +21,13 @@ extension WorkbenchStore {
       return profile
     }
 
-    guard invalidateAIConnectionProfileCredentialsIfNeeded(
-      from: aiConnectionProfiles[connectionIndex].config,
-      to: profile.aiProviderConfig,
-      connectionProfileID: connectionID
-    ) else {
+    guard
+      invalidateAIConnectionProfileCredentialsIfNeeded(
+        from: aiConnectionProfiles[connectionIndex].config,
+        to: profile.aiProviderConfig,
+        connectionProfileID: connectionID
+      )
+    else {
       var rejectedProfile = profile
       rejectedProfile.aiProviderConfig = existingProfile.aiProviderConfig
       return rejectedProfile
@@ -55,7 +57,9 @@ extension WorkbenchStore {
 
   func setImageWorkbenchReport(_ report: ImageWorkbenchReport?) {
     publishingStore.imageWorkbenchReport = report
-    invalidateDraftTaskQueueStateCache()
+    // Per-draft reports drive the selected image inspector directly. Draft
+    // queue image counts come from the site-wide summary, whose refresh path
+    // owns the corresponding cache invalidation.
   }
 
   func setSelectedDraftID(_ draftID: UUID?) {

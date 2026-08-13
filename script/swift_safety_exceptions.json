@@ -62,7 +62,7 @@
       "rationale": "URLSession operation state is synchronized by its lock and single completion path."
     },
     {
-      "file": "Sources/PersonalSitePublisherMac/Views/RSSArticleWebView.swift",
+      "file": "Sources/PersonalSitePublisherMac/Views/RSSArticleHTMLRenderer.swift",
       "declaration": "RSSArticleRenderCache",
       "rationale": "The synchronous HTML LRU is shared by WebView renders; its cache and recency mutations are protected by one NSLock."
     },
@@ -185,6 +185,26 @@
       "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchDataRootTests.swift",
       "declaration": "SecurityScopeRecorder",
       "rationale": "Test security-scope callback observations are stored behind one NSLock and exposed through atomic helpers."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/AIChatCompletionPreparedRequest.swift",
+      "declaration": "AIPreparedRequestConsumption",
+      "rationale": "The one-shot consumption flag is protected by its NSLock, so prepared-request use remains atomic when the Sendable value crosses task boundaries."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/AICredentialStore.swift",
+      "declaration": "AICredentialStore",
+      "rationale": "The recursive lock serializes storage-mode, session, generation, Keychain, and local-file mutations before the class crosses Sendable task boundaries."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/AICredentialStoreTests.swift",
+      "declaration": "BackupExclusionRecorder",
+      "rationale": "The test callback's observed backup-exclusion paths are protected by one NSLock while callbacks and assertions may run across task boundaries."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchPersistenceTests.swift",
+      "declaration": "PersistencePreparationProbe",
+      "rationale": "The probe's invocation and main-thread flags are protected by one NSLock while background-save callbacks report to the test assertions."
     }
   ],
   "forcedOperations": [
@@ -193,6 +213,18 @@
       "kind": "try!",
       "contains": "JSONSerialization.data(withJSONObject: responsePayload)",
       "rationale": "The test fixture is a fixed JSON-compatible dictionary and setup failure should abort the test immediately."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchAIStoreAgentLoopIntegrationTests.swift",
+      "kind": "try!",
+      "contains": "let argumentsData = try! JSONSerialization.data(",
+      "rationale": "The integration-test tool-call arguments are deliberately constructed as a JSON-compatible fixture; serialization failure indicates invalid test setup and should abort immediately."
+    },
+    {
+      "file": "Tests/PublishingWorkbenchCoreTests/WorkbenchAIStoreAgentLoopIntegrationTests.swift",
+      "kind": "try!",
+      "contains": "try! JSONSerialization.data(withJSONObject: [",
+      "rationale": "The integration-test response envelopes are fixed JSON-compatible fixtures; serialization failure indicates invalid test setup and should abort immediately."
     }
   ],
   "optionalOperations": [
@@ -369,6 +401,48 @@
       "category": "silentFallback",
       "contains": "try? draftRecoveryJournal.quarantineUnreadableFile()",
       "rationale": "Unreadable recovery journals expose both outcomes to the user: quarantine success names the file, while failure explicitly says the original was kept."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Models/AIToolCallingModels.swift",
+      "category": "parsing",
+      "contains": "try? singleValueContainer.decode(String.self)",
+      "rationale": "Tool-choice decoding first probes the scalar mode form; a failed string decode intentionally falls through to the keyed function form."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/AICredentialStore.swift",
+      "category": "legacyCleanup",
+      "contains": "try? keychainTokenStore.deleteLegacyAIToken(for: legacyProfile)",
+      "rationale": "After the shared credential is saved, removing the old origin-bound Keychain item is compatibility cleanup; failure must not make the primary save fail."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Services/WorkbenchAutomationService.swift",
+      "category": "validationFallback",
+      "contains": "try? specification.arguments(",
+      "rationale": "Invalid step arguments make the candidate automation plan unusable, so the parser returns no plan before any command can execute."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/RSSReaderStore.swift",
+      "category": "probeFallback",
+      "contains": "try? database.unreadArticleCount()",
+      "rationale": "While the article index is incomplete, the read-only total-count query is advisory; a database failure keeps the UI on the safe zero-count fallback."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/RSSReaderStore.swift",
+      "category": "probeFallback",
+      "contains": "try? database.unreadArticleCount(feedID: feedID)",
+      "rationale": "While the article index is incomplete, the read-only feed-count query is advisory; a database failure keeps the UI on the safe zero-count fallback."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/RSSReaderStore.swift",
+      "category": "probeFallback",
+      "contains": "try? database.articleHeader(id: id)",
+      "rationale": "A header lookup during incomplete database bootstrap is a non-mutating probe; failure returns nil so the article is treated as unavailable until a later refresh."
+    },
+    {
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchAIStore+ChatReplies.swift",
+      "category": "protocolFallback",
+      "contains": "try? aiPublishingAssistantService.resolvedChatTaskConfig(",
+      "rationale": "If agent-task capability resolution fails, the caller deliberately continues on the ordinary text-chat protocol without declaring tools or executing a plan."
     }
   ],
   "optionalOperationRules": [

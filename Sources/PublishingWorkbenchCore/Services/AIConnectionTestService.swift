@@ -5,17 +5,20 @@ public struct AIConnectionTestReport: Equatable, Sendable {
   public var model: String
   public var endpoint: URL
   public var responsePreview: String
+  public var capabilityProbeReport: AIProviderCapabilityProbeReport?
 
   public init(
     providerName: String,
     model: String,
     endpoint: URL,
-    responsePreview: String
+    responsePreview: String,
+    capabilityProbeReport: AIProviderCapabilityProbeReport? = nil
   ) {
     self.providerName = providerName
     self.model = model
     self.endpoint = endpoint
     self.responsePreview = responsePreview
+    self.capabilityProbeReport = capabilityProbeReport
   }
 
   public var headline: String {
@@ -24,6 +27,10 @@ public struct AIConnectionTestReport: Equatable, Sendable {
 
   public var detailText: String {
     CoreL10n.format("模型：%@\n接口地址：%@\n响应：%@", model, endpoint.absoluteString, responsePreview)
+  }
+
+  public var hasCapabilityEvidence: Bool {
+    capabilityProbeReport?.results.isEmpty == false
   }
 }
 
@@ -82,7 +89,8 @@ public enum AISettingsConnectionPresentationService {
     }
 
     if config.requiresAPIKey,
-       let accessFailureMessage = tokenAvailability.accessFailureMessage {
+      let accessFailureMessage = tokenAvailability.accessFailureMessage
+    {
       return AISettingsConnectionPresentation(
         title: CoreL10n.text("AI 凭据读取失败"),
         message: accessFailureMessage,
@@ -114,7 +122,9 @@ public enum AISettingsConnectionPresentationService {
   private static func providerHelpText(_ config: AIProviderConfig) -> String {
     switch config.preset {
     case .deepSeek:
-      return CoreL10n.text("DeepSeek 默认接口地址：https://api.deepseek.com；快速/标准档使用 deepseek-v4-flash，高质量档使用 deepseek-v4-pro。")
+      return CoreL10n.text(
+        "DeepSeek 默认接口地址：https://api.deepseek.com；快速/标准档使用 deepseek-v4-flash，高质量档使用 deepseek-v4-pro。"
+      )
     case .local:
       return CoreL10n.text("本地模型默认不需要 API Key，测试连接会请求本机开放AI兼容接口的 /chat/completions。")
     default:
@@ -145,14 +155,35 @@ public enum AIConnectionTestError: LocalizedError, Equatable {
 
 public struct AIConnectionTestService: Sendable {
   private let client: AIChatCompletionClient
+  private let capabilityProbeService: AIProviderCapabilityProbeService
 
-  public init(client: AIChatCompletionClient = AIChatCompletionClient()) {
+  public init(
+    client: AIChatCompletionClient = AIChatCompletionClient(),
+    capabilityProbeService: AIProviderCapabilityProbeService? = nil
+  ) {
     self.client = client
+    self.capabilityProbeService =
+      capabilityProbeService
+      ?? AIProviderCapabilityProbeService(client: client)
   }
 
   public func testConnection(
     config: AIProviderConfig,
     apiKey: String?
+  ) async throws -> AIConnectionTestReport {
+    try await testConnection(
+      config: config,
+      apiKey: apiKey,
+      probeCapabilities: [],
+      forceRefresh: false
+    )
+  }
+
+  public func testConnection(
+    config: AIProviderConfig,
+    apiKey: String?,
+    probeCapabilities: Set<AIProviderCapabilityProbeKind>,
+    forceRefresh: Bool = false
   ) async throws -> AIConnectionTestReport {
     guard !config.normalizedBaseURL.isEmpty else {
       throw AIConnectionTestError.missingBaseURL
@@ -179,18 +210,38 @@ public struct AIConnectionTestService: Sendable {
           AIChatMessage(role: "system", content: "Return only OK."),
           AIChatMessage(role: "user", content: "ping"),
         ],
-        temperature: 0
+        temperature: 0,
+        maximumOutputTokens: 8
       ),
       config: config,
       apiKey: normalizedAPIKey,
       purpose: .connectionTest
     )
 
+    let capabilityProbeReport: AIProviderCapabilityProbeReport?
+    if probeCapabilities.isEmpty {
+      capabilityProbeReport = nil
+    } else {
+      capabilityProbeReport = try await capabilityProbeService.probe(
+        config: config,
+        apiKey: normalizedAPIKey,
+        capabilities: probeCapabilities,
+        forceRefresh: forceRefresh,
+        existingChatProof: probeCapabilities.contains(.chat)
+          ? AIProviderCapabilityChatProbeProof(
+            key: AIProviderCapabilityCacheKey(config: config),
+            result: result
+          )
+          : nil
+      )
+    }
+
     return AIConnectionTestReport(
       providerName: config.preset.displayName,
       model: result.rawModel?.nilIfEmpty ?? model,
       endpoint: endpoint,
-      responsePreview: String(result.content.trimmedForPublishing.prefix(80))
+      responsePreview: String(result.content.trimmedForPublishing.prefix(80)),
+      capabilityProbeReport: capabilityProbeReport
     )
   }
 }

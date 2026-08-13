@@ -35,7 +35,9 @@ struct AIChatAutomationPlanCard: View {
           }
         }
       }
-      .background(.background.opacity(0.52), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+      .background(
+        .background.opacity(0.52), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+      )
       .overlay {
         RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
           .stroke(.separator.opacity(0.7), lineWidth: 1)
@@ -79,7 +81,10 @@ struct AIChatAutomationPlanCard: View {
       }
     }
     .padding(11)
-    .background(WorkbenchTheme.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(
+      WorkbenchTheme.primary.opacity(0.06),
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+    )
     .overlay {
       RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         .stroke(WorkbenchTheme.primary.opacity(0.22), lineWidth: 1)
@@ -104,7 +109,8 @@ struct AIChatAutomationPlanCard: View {
       titleVisibility: .visible
     ) {
       if let step = externalConfirmationStep,
-         let descriptor = WorkbenchAutomationRegistry.descriptor(for: step.command) {
+        let descriptor = WorkbenchAutomationRegistry.descriptor(for: step.command)
+      {
         Button(descriptor.title, role: .destructive) {
           externalConfirmationStep = nil
           actions.executeAutomationStep(message.id, step.id)
@@ -115,7 +121,8 @@ struct AIChatAutomationPlanCard: View {
       }
     } message: {
       if let step = externalConfirmationStep,
-         let descriptor = WorkbenchAutomationRegistry.descriptor(for: step.command) {
+        let descriptor = WorkbenchAutomationRegistry.descriptor(for: step.command)
+      {
         Text(externalConfirmationMessage(for: step, descriptor: descriptor))
       }
     }
@@ -160,6 +167,10 @@ struct AIChatAutomationPlanCard: View {
           .font(.caption)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
+
+        if let authorization = step.publishAuthorization {
+          publishAuthorizationScope(authorization)
+        }
       }
 
       Spacer(minLength: 8)
@@ -168,7 +179,7 @@ struct AIChatAutomationPlanCard: View {
         Button {
           handleConfirmation(for: step, risk: descriptor.risk)
         } label: {
-          Text(confirmationButtonTitle(for: descriptor.risk))
+          Text(confirmationButtonTitle(for: step, risk: descriptor.risk))
         }
         .controlSize(.small)
         .disabled(isAutomationRunning)
@@ -182,7 +193,11 @@ struct AIChatAutomationPlanCard: View {
     for step: WorkbenchAutomationStep,
     risk: WorkbenchAutomationRisk
   ) {
-    if risk == .contentChange {
+    if step.command == .publishOnline,
+      step.publishAuthorization == nil
+    {
+      actions.executeAutomationStep(message.id, step.id)
+    } else if risk == .contentChange {
       guard let preview = actions.previewAutomationStep(message.id, step.id) else { return }
       draftPreview = AutomationDraftPreviewItem(stepID: step.id, preview: preview)
     } else {
@@ -192,14 +207,15 @@ struct AIChatAutomationPlanCard: View {
 
   private func shouldOfferConfirmation(for step: WorkbenchAutomationStep) -> Bool {
     guard step.status == .proposed || step.status == .awaitingConfirmation else { return false }
-    return WorkbenchAutomationRegistry.descriptor(for: step.command)?.risk.requiresExplicitConfirmation == true
+    return plan.requiresConfirmation(for: step)
   }
 
   private var hasExecutableSafeSteps: Bool {
     plan.steps.contains { step in
       guard step.status == .proposed,
-            let descriptor = WorkbenchAutomationRegistry.descriptor(for: step.command) else { return false }
-      return !descriptor.risk.requiresExplicitConfirmation
+        WorkbenchAutomationRegistry.descriptor(for: step.command) != nil
+      else { return false }
+      return !plan.requiresConfirmation(for: step)
     }
   }
 
@@ -273,7 +289,8 @@ struct AIChatAutomationPlanCard: View {
 
   private var externalConfirmationTitle: String {
     guard let step = externalConfirmationStep,
-          let descriptor = WorkbenchAutomationRegistry.descriptor(for: step.command) else {
+      let descriptor = WorkbenchAutomationRegistry.descriptor(for: step.command)
+    else {
       return String(localized: "确认外部操作")
     }
     return String(
@@ -294,12 +311,21 @@ struct AIChatAutomationPlanCard: View {
     for step: WorkbenchAutomationStep,
     descriptor: WorkbenchAutomationCommandDescriptor
   ) -> String {
-    if step.command == .publishOnline {
-      return String(
-        format: String(localized: "“%@”将发布当前站点中所有通过检查的待发布变更。软件只执行这一项，不会自动确认后续步骤。"),
-        locale: .autoupdatingCurrent,
-        descriptor.title
-      )
+    if step.command == .publishOnline,
+      let authorization = step.publishAuthorization
+    {
+      let scope = authorization.scope
+      let files = scope.files.map { "- \($0.path)" }.joined(separator: "\n")
+      return """
+        站点：\(scope.siteName)
+        仓库：\(scope.repositoryProviderDisplayName) · \(scope.repositoryDisplayName)
+        目标分支：\(scope.targetBranch)
+        发布模式：\(scope.publishModeDisplayName)
+        完整文件范围（\(scope.files.count)）：
+        \(files)
+
+        执行前将重新计算并比对目标、路径、内容摘要和 Git 基线。任何变化都会拒绝发布并要求重新确认。
+        """
     }
     return String(
       format: String(localized: "“%@”将作用于文章“%@”。软件只执行这一项，不会自动确认后续步骤。"),
@@ -310,9 +336,42 @@ struct AIChatAutomationPlanCard: View {
   }
 
   private func confirmationButtonTitle(
-    for risk: WorkbenchAutomationRisk
+    for step: WorkbenchAutomationStep,
+    risk: WorkbenchAutomationRisk
   ) -> LocalizedStringKey {
-    risk == .contentChange ? "预览修改" : "确认执行"
+    if step.command == .publishOnline,
+      step.publishAuthorization == nil
+    {
+      return "审阅发布"
+    }
+    return risk == .contentChange ? "预览修改" : "确认执行"
+  }
+
+  @ViewBuilder
+  private func publishAuthorizationScope(
+    _ authorization: AIPublishAuthorizationSnapshot
+  ) -> some View {
+    let scope = authorization.scope
+    VStack(alignment: .leading, spacing: 3) {
+      Text(verbatim: "站点：\(scope.siteName)")
+      Text(
+        verbatim:
+          "目标：\(scope.repositoryProviderDisplayName) · \(scope.repositoryDisplayName) · \(scope.targetBranch)"
+      )
+      Text(verbatim: "模式：\(scope.publishModeDisplayName)")
+      Text(verbatim: "完整文件范围（\(scope.files.count)）")
+        .fontWeight(.semibold)
+      ForEach(scope.files, id: \.path) { file in
+        Text(verbatim: "• \(file.path)")
+          .textSelection(.enabled)
+      }
+      Text(
+        verbatim: "授权有效至：\(authorization.expiresAt.formatted(date: .abbreviated, time: .standard))")
+    }
+    .font(.workbenchMetadata)
+    .foregroundStyle(.secondary)
+    .fixedSize(horizontal: false, vertical: true)
+    .padding(.top, 3)
   }
 }
 

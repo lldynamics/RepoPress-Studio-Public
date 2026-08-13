@@ -156,9 +156,13 @@ struct RSSArticleReader: View {
           speechHighlight: speechController.currentArticleID == displayedArticle.id
             ? speechController.currentSpeechHighlight
             : nil,
-          onSelectionChanged: { selectedText = $0 },
+          onSelectionChanged: { value in
+            guard articleHeader?.id == article.id else { return }
+            selectedText = value
+          },
           onReadingProgress: onReadingProgress,
           onNavigationError: { message in
+            guard articleHeader?.id == article.id else { return }
             selectedText = ""
             onNavigationError(message)
           }
@@ -187,10 +191,12 @@ struct RSSArticleReader: View {
               }
             )
             .padding(.top, 60)
-            .transition(.asymmetric(
-              insertion: .move(edge: .top).combined(with: .opacity),
-              removal: .opacity
-            ))
+            .transition(
+              .asymmetric(
+                insertion: .move(edge: .top).combined(with: .opacity),
+                removal: .opacity
+              )
+            )
             .animation(.easeInOut(duration: 0.15), value: hasSelectedText)
             .zIndex(3)
           }
@@ -209,10 +215,59 @@ struct RSSArticleReader: View {
         .padding(.horizontal, 8)
         .padding(.top, 6)
       }
+      if isStaleOrLoading(article) {
+        readerLoadingOverlay(for: article)
+          .zIndex(10)
+      }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("RSS 文章阅读区域")
+  }
+
+  private func isStaleOrLoading(_ article: RSSArticle) -> Bool {
+    isLoading || loadError != nil || articleHeader?.id != article.id
+  }
+
+  @ViewBuilder
+  private func readerLoadingOverlay(for article: RSSArticle) -> some View {
+    let showsLoading = loadError == nil && (isLoading || articleHeader?.id != article.id)
+    ZStack {
+      Color(nsColor: .windowBackgroundColor)
+        .ignoresSafeArea()
+      VStack(alignment: .leading, spacing: 12) {
+        if showsLoading {
+          ProgressView()
+            .controlSize(.small)
+          Text("正在读取本机正文…")
+            .font(.headline)
+        } else {
+          Label("无法读取这篇文章的本机正文。", systemImage: "exclamationmark.triangle")
+            .font(.headline)
+            .foregroundStyle(WorkbenchTheme.risk)
+          if let loadError, !loadError.isEmpty {
+            Text(loadError)
+              .font(.callout)
+              .foregroundStyle(.secondary)
+              .textSelection(.enabled)
+          }
+          HStack(spacing: 8) {
+            Button("重试读取", systemImage: "arrow.clockwise", action: onRetryLoad)
+              .workbenchProminentActionStyle()
+            if articleHeader?.link != nil {
+              Button("打开原文", systemImage: "safari", action: onOpenOriginal)
+                .buttonStyle(.bordered)
+            }
+          }
+        }
+      }
+      .padding(WorkbenchSpacing.spacious)
+      .frame(maxWidth: 560, alignment: .leading)
+    }
+    .contentShape(Rectangle())
+    .allowsHitTesting(true)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(showsLoading ? "正在读取当前 RSS 文章正文" : "RSS 文章正文读取失败")
   }
 
   private var readingProgressBar: some View {
@@ -485,10 +540,13 @@ struct RSSArticleReader: View {
 
   private var speechRateMenu: some View {
     Menu {
-      Picker("朗读速度", selection: Binding(
-        get: { speechController.rateMultiplier },
-        set: { speechController.setRateMultiplier($0) }
-      )) {
+      Picker(
+        "朗读速度",
+        selection: Binding(
+          get: { speechController.rateMultiplier },
+          set: { speechController.setRateMultiplier($0) }
+        )
+      ) {
         ForEach(RSSArticleSpeechController.supportedRateMultipliers, id: \.self) { rate in
           Text("\(rate, specifier: "%.2f")x").tag(rate)
         }
@@ -820,7 +878,7 @@ struct RSSArticleReader: View {
     }
     .padding(WorkbenchSpacing.card)
     .background(
-      WorkbenchBackgroundStyle.subtle,
+      WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
     )
     .accessibilityElement(children: .contain)
@@ -922,7 +980,7 @@ struct RSSArticleReader: View {
         }
         .padding(WorkbenchSpacing.control)
         .background(
-          WorkbenchBackgroundStyle.subtle,
+          WorkbenchBackgroundStyle.card,
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
         )
       }
@@ -931,76 +989,76 @@ struct RSSArticleReader: View {
 }
 
 #if DEBUG
-extension RSSArticleReader {
-  struct ToolbarPreviewHost: View {
-    private let article = RSSArticle(
-      id: "preview-rss-article",
-      feedID: UUID(),
-      title: "预览：阅读器工具栏",
-      link: URL(string: "https://example.com/articles/preview"),
-      author: "RepoPress",
-      publishedAt: Date(),
-      summaryHTML: "<p>检查宽窗口与窄窗口下的工具栏降级。</p>",
-      contentHTML: "<p>阅读器工具栏的核心动作应保持可发现，其余动作收纳到更多菜单。</p>"
-    )
-
-    var body: some View {
-      RSSArticleReader(
-        articleHeader: nil,
-        article: article,
-        isLoading: false,
-        loadError: nil,
-        feedTitle: "RepoPress RSS",
-        feedIconURL: nil,
-        highlights: [],
-        hasRenderableBody: true,
-        readingMinutes: 1,
-        allowRemoteImages: .constant(true),
-        selectedText: .constant(""),
-        readingFontSize: .constant(RSSReadingComfortConfiguration.defaultFontSize),
-        readingLineSpacing: .constant(RSSReadingComfortConfiguration.defaultLineSpacing),
-        readingTheme: .constant(.system),
-        readingProgress: 0.42,
-        onReadingProgress: { _ in },
-        onBack: {},
-        onRetryLoad: {},
-        onOpenOriginal: {},
-        onToggleStarred: {},
-        onToggleRead: {},
-        onNavigationError: { _ in },
-        onBeginHighlight: {},
-        onBeginNote: {},
-        onEditTags: {},
-        onDeleteHighlight: { _ in },
-        onSaveToKnowledge: { _ in },
-        onAddExcerptNote: { _ in },
-        onInsertReference: { _ in },
-        onCreateInspirationDraft: { _ in },
-        translation: nil,
-        translationTargetCode: .constant("zh-Hans"),
-        translationCustomLanguage: .constant(""),
-        automaticTranslation: .constant(false),
-        translationIsRunning: false,
-        translationError: nil,
-        dataSharingConsent: AIDataSharingConsentPresentation(
-          providerName: "预览",
-          destination: "本机",
-          destinationState: .local,
-          isGranted: true
-        ),
-        onTranslate: {},
-        onClearTranslation: {},
-        onOpenAISettings: {},
-        workflowIsBusy: false
+  extension RSSArticleReader {
+    struct ToolbarPreviewHost: View {
+      private let article = RSSArticle(
+        id: "preview-rss-article",
+        feedID: UUID(),
+        title: "预览：阅读器工具栏",
+        link: URL(string: "https://example.com/articles/preview"),
+        author: "RepoPress",
+        publishedAt: Date(),
+        summaryHTML: "<p>检查宽窗口与窄窗口下的工具栏降级。</p>",
+        contentHTML: "<p>阅读器工具栏的核心动作应保持可发现，其余动作收纳到更多菜单。</p>"
       )
-      .readerToolbar(for: article, speechArticle: article)
+
+      var body: some View {
+        RSSArticleReader(
+          articleHeader: nil,
+          article: article,
+          isLoading: false,
+          loadError: nil,
+          feedTitle: "RepoPress RSS",
+          feedIconURL: nil,
+          highlights: [],
+          hasRenderableBody: true,
+          readingMinutes: 1,
+          allowRemoteImages: .constant(true),
+          selectedText: .constant(""),
+          readingFontSize: .constant(RSSReadingComfortConfiguration.defaultFontSize),
+          readingLineSpacing: .constant(RSSReadingComfortConfiguration.defaultLineSpacing),
+          readingTheme: .constant(.system),
+          readingProgress: 0.42,
+          onReadingProgress: { _ in },
+          onBack: {},
+          onRetryLoad: {},
+          onOpenOriginal: {},
+          onToggleStarred: {},
+          onToggleRead: {},
+          onNavigationError: { _ in },
+          onBeginHighlight: {},
+          onBeginNote: {},
+          onEditTags: {},
+          onDeleteHighlight: { _ in },
+          onSaveToKnowledge: { _ in },
+          onAddExcerptNote: { _ in },
+          onInsertReference: { _ in },
+          onCreateInspirationDraft: { _ in },
+          translation: nil,
+          translationTargetCode: .constant("zh-Hans"),
+          translationCustomLanguage: .constant(""),
+          automaticTranslation: .constant(false),
+          translationIsRunning: false,
+          translationError: nil,
+          dataSharingConsent: AIDataSharingConsentPresentation(
+            providerName: "预览",
+            destination: "本机",
+            destinationState: .local,
+            isGranted: true
+          ),
+          onTranslate: {},
+          onClearTranslation: {},
+          onOpenAISettings: {},
+          workflowIsBusy: false
+        )
+        .readerToolbar(for: article, speechArticle: article)
+      }
     }
   }
-}
 
-#Preview("RSS Reader Toolbar") {
-  RSSArticleReader.ToolbarPreviewHost()
-    .frame(width: 560, height: 72)
-    .padding()
-}
+  #Preview("RSS Reader Toolbar") {
+    RSSArticleReader.ToolbarPreviewHost()
+      .frame(width: 560, height: 72)
+      .padding()
+  }
 #endif

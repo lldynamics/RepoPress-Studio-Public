@@ -114,7 +114,10 @@ struct EditorCenterColumn: View {
         set: { store.updateDraftFromEditor($0) }
       )
 
-      MacMarkdownComposerView(draft: draft, store: store)
+      MacMarkdownComposerView(
+        draft: draft,
+        store: store
+      )
     } else {
       GuidedEmptyStateView(
         title: "创作你的首篇文章",
@@ -147,7 +150,7 @@ struct EditorCenterColumn: View {
             action: {
               store.selectSection(.siteStarter)
             }
-          )
+          ),
         ]
       )
     }

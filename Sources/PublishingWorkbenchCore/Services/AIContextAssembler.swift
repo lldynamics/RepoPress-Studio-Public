@@ -10,11 +10,12 @@ public enum AIContextAssembler {
     explicitContextPrompt: String? = nil,
     knowledgeContext: KnowledgeContextSnapshot? = nil
   ) -> AIContextEnvelope {
-    AIContextEnvelope.general(
+    let privacyService = AIOutboundPayloadPrivacyService()
+    return AIContextEnvelope.general(
       knowledgePolicy: knowledgePolicy,
       explicitContextReferences: explicitContextReferences,
-      explicitContextPrompt: explicitContextPrompt,
-      knowledgeContext: knowledgeContext
+      explicitContextPrompt: explicitContextPrompt.map { privacyService.sanitize($0).text },
+      knowledgeContext: privacyService.sanitizedKnowledgeContext(knowledgeContext)
     )
   }
 }

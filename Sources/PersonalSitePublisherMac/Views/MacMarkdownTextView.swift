@@ -165,14 +165,17 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.textContainerInset = NSSize(width: 16, height: 16)
     textView.frame = NSRect(
       origin: .zero,
-      size: NSSize(width: max(scrollView.contentSize.width, 1), height: max(scrollView.contentSize.height, 1))
+      size: NSSize(
+        width: max(scrollView.contentSize.width, 1), height: max(scrollView.contentSize.height, 1))
     )
     textView.minSize = NSSize(width: 0, height: 0)
-    textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+    textView.maxSize = NSSize(
+      width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
     textView.isVerticallyResizable = true
     textView.isHorizontallyResizable = false
     textView.autoresizingMask = [NSView.AutoresizingMask.width]
-    textView.textContainer?.containerSize = NSSize(width: scrollView.contentSize.width, height: CGFloat.greatestFiniteMagnitude)
+    textView.textContainer?.containerSize = NSSize(
+      width: scrollView.contentSize.width, height: CGFloat.greatestFiniteMagnitude)
     textView.textContainer?.widthTracksTextView = false
 
     context.coordinator.installGhostTextOverlay(on: textView)
@@ -237,7 +240,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
       let currentDocumentRange = textView.selectedRange()
       textView.string = text
       (nsView as? MarkdownEditorScrollView)?.invalidateDocumentHeight(immediately: true)
-      let replacementRange = isFrontMatterSelection
+      let replacementRange =
+        isFrontMatterSelection
         ? clamped(currentDocumentRange, length: (text as NSString).length)
         : documentRange(
           forBodyRange: selectedRange,
@@ -256,7 +260,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
         bodyUTF16Offset: bodyUTF16Offset,
         documentLength: (textView.string as NSString).length
       )
-      let shouldAnimateFocus = focusRequest?.isAnimated == true
+      let shouldAnimateFocus =
+        focusRequest?.isAnimated == true
         && focusRequest?.selectedRange == selectedRange
       if textView.selectedRange() != range {
         textView.setSelectedRange(range)
@@ -285,37 +290,6 @@ struct MacMarkdownTextView: NSViewRepresentable {
     context.coordinator.requestKeyboardFocus(focusRequest, in: textView)
     context.coordinator.applySynchronizedScroll(scrollSyncUpdate, in: nsView)
     context.coordinator.applyRestoredScroll(scrollRestorationUpdate, in: nsView)
-  }
-
-  private func clamped(_ range: NSRange, length: Int) -> NSRange {
-    Self.clamped(range, length: length)
-  }
-
-  private func documentRange(
-    forBodyRange range: NSRange,
-    bodyUTF16Offset: Int,
-    documentLength: Int
-  ) -> NSRange {
-    let bodyLength = max(0, documentLength - bodyUTF16Offset)
-    let clampedBodyRange = Self.clamped(range, length: bodyLength)
-    return NSRange(
-      location: bodyUTF16Offset + clampedBodyRange.location,
-      length: clampedBodyRange.length
-    )
-  }
-
-  private static func clamped(_ range: NSRange, length: Int) -> NSRange {
-    let location = min(max(range.location, 0), length)
-    let maxLength = max(0, length - location)
-    return NSRange(location: location, length: min(range.length, maxLength))
-  }
-
-  private static func configureAccessibility(for textView: NSTextView) {
-    textView.setAccessibilityLabel(String(localized: "Markdown 文档编辑器"))
-    textView.setAccessibilityHelp(
-      String(localized: "编辑当前文章的 Front Matter 与 Markdown 正文；Control-Tab 移到下一个控件")
-    )
-    textView.setAccessibilityIdentifier("markdown-document-editor")
   }
 
   @MainActor
@@ -678,16 +652,17 @@ struct MacMarkdownTextView: NSViewRepresentable {
       replacementString: String?
     ) -> Bool {
       if !isApplyingAutomaticPairing,
-         comfortConfiguration.automaticPairingEnabled,
-         !textView.hasMarkedText(),
-         let replacementString,
-         !replacementString.isEmpty,
-         affectedCharRange.location >= bodyUTF16Offset,
-         let pairingEdit = automaticPairingEdit(
-           in: textView,
-           affectedDocumentRange: affectedCharRange,
-           typedText: replacementString
-         ) {
+        comfortConfiguration.automaticPairingEnabled,
+        !textView.hasMarkedText(),
+        let replacementString,
+        !replacementString.isEmpty,
+        affectedCharRange.location >= bodyUTF16Offset,
+        let pairingEdit = automaticPairingEdit(
+          in: textView,
+          affectedDocumentRange: affectedCharRange,
+          typedText: replacementString
+        )
+      {
         isApplyingAutomaticPairing = true
         defer { isApplyingAutomaticPairing = false }
         apply(pairingEdit, in: textView)
@@ -724,9 +699,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
         length: affectedDocumentRange.length
       )
 
-      if (typedText == "\"" || typedText == "'"),
-         bodyRange.length == 0,
-         bodyRange.location > 0 {
+      if typedText == "\"" || typedText == "'",
+        bodyRange.length == 0,
+        bodyRange.location > 0
+      {
         let bodySource = body as NSString
         let previous = bodySource.substring(
           with: NSRange(location: bodyRange.location - 1, length: 1)
@@ -785,29 +761,31 @@ struct MacMarkdownTextView: NSViewRepresentable {
       }
 
       if let pastedText = pasteboard.string(forType: .string),
-         let edit = smartPasteService.linkEdit(
-           in: textView.string,
-           selectedRange: textView.selectedRange(),
-           pastedText: pastedText
-         ) {
+        let edit = smartPasteService.linkEdit(
+          in: textView.string,
+          selectedRange: textView.selectedRange(),
+          pastedText: pastedText
+        )
+      {
         apply(edit, in: textView)
         return true
       }
 
       guard let richContent = MarkdownPasteboardReader.richTextContent(from: pasteboard),
-            let conversion = richTextPasteService.conversion(
-              fromHTML: richContent.html,
-              baseURL: richContent.baseURL
-            ),
-            MarkdownPasteboardReader.shouldPreferRichConversion(
-              conversion.markdown,
-              over: pasteboard.string(forType: .string)
-            ),
-            let edit = richTextPasteService.edit(
-              in: textView.string,
-              selectedRange: textView.selectedRange(),
-              conversion: conversion
-            ) else {
+        let conversion = richTextPasteService.conversion(
+          fromHTML: richContent.html,
+          baseURL: richContent.baseURL
+        ),
+        MarkdownPasteboardReader.shouldPreferRichConversion(
+          conversion.markdown,
+          over: pasteboard.string(forType: .string)
+        ),
+        let edit = richTextPasteService.edit(
+          in: textView.string,
+          selectedRange: textView.selectedRange(),
+          conversion: conversion
+        )
+      else {
         return false
       }
 
@@ -830,11 +808,13 @@ struct MacMarkdownTextView: NSViewRepresentable {
         NSSound.beep()
         return true
       }
-      guard let edit = formattingService.edit(
-        in: textView.string,
-        selectedRange: textView.selectedRange(),
-        command: command
-      ) else {
+      guard
+        let edit = formattingService.edit(
+          in: textView.string,
+          selectedRange: textView.selectedRange(),
+          command: command
+        )
+      else {
         return false
       }
       apply(edit, in: textView)
@@ -854,11 +834,13 @@ struct MacMarkdownTextView: NSViewRepresentable {
       in textView: NSTextView
     ) -> Bool {
       guard textView.selectedRange().location >= bodyUTF16Offset else { return false }
-      guard let edit = tableEditingService.edit(
-        in: textView.string,
-        selectedRange: textView.selectedRange(),
-        command: command
-      ) else {
+      guard
+        let edit = tableEditingService.edit(
+          in: textView.string,
+          selectedRange: textView.selectedRange(),
+          command: command
+        )
+      else {
         return false
       }
       apply(edit, in: textView)
@@ -876,7 +858,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
     @discardableResult
     func handle(_ request: MarkdownTextEditRequest?, in textView: NSTextView) -> UUID? {
       guard let request,
-            request.id != lastAppliedEditRequestID else {
+        request.id != lastAppliedEditRequestID
+      else {
         return nil
       }
 
@@ -887,7 +870,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
       let textLength = (bodyMarkdown as NSString).length
       guard request.edit.replacedRange.location >= 0,
-            NSMaxRange(request.edit.replacedRange) <= textLength else {
+        NSMaxRange(request.edit.replacedRange) <= textLength
+      else {
         return request.id
       }
 
@@ -922,13 +906,15 @@ struct MacMarkdownTextView: NSViewRepresentable {
             try? await Task.sleep(for: .milliseconds(delay))
           }
           guard !Task.isCancelled,
-                let self,
-                let textView,
-                self.pendingFocusRequest?.id == request.id else {
+            let self,
+            let textView,
+            self.pendingFocusRequest?.id == request.id
+          else {
             return
           }
           guard let window = textView.window,
-                window.attachedSheet == nil else {
+            window.attachedSheet == nil
+          else {
             continue
           }
 
@@ -943,7 +929,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
             in: textView,
             animated: request.isAnimated
           )
-          let didFocus = window.firstResponder === textView
+          let didFocus =
+            window.firstResponder === textView
             || window.makeFirstResponder(textView)
           guard didFocus else { continue }
 
@@ -970,9 +957,10 @@ struct MacMarkdownTextView: NSViewRepresentable {
       animated: Bool
     ) {
       guard animated,
-            let layoutManager = textView.layoutManager,
-            let textContainer = textView.textContainer,
-            let clipView = textView.enclosingScrollView?.contentView else {
+        let layoutManager = textView.layoutManager,
+        let textContainer = textView.textContainer,
+        let clipView = textView.enclosingScrollView?.contentView
+      else {
         textView.scrollRangeToVisible(range)
         return
       }
@@ -1038,8 +1026,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
       syntaxCodeBlockRanges = syntaxHighlightPlan.codeBlockRanges
       let updatedSource = updatedText as NSString
       if let pendingTextEdit,
-         pendingTextEdit.replacedRange.location >= bodyUTF16Offset,
-         bodyUTF16Offset <= updatedSource.length {
+        pendingTextEdit.replacedRange.location >= bodyUTF16Offset,
+        bodyUTF16Offset <= updatedSource.length
+      {
         bodyMarkdown = updatedSource.substring(from: bodyUTF16Offset)
       } else if let parts = Self.documentParts(in: updatedText) {
         bodyMarkdown = parts.bodyMarkdown
@@ -1053,16 +1042,17 @@ struct MacMarkdownTextView: NSViewRepresentable {
       let documentSelection = textView.selectedRange()
       updateSelectionBinding(from: documentSelection)
       if documentSelection.location >= bodyUTF16Offset,
-         documentSelection.length == 0,
-         let shortcutCandidate = MarkdownCursorCompletionService().automaticShortcutCandidate(
-           in: bodyMarkdown,
-           selectedRange: bodyRange(from: documentSelection),
-           snippets: ssgSnippets
-         ) {
+        documentSelection.length == 0,
+        let shortcutCandidate = MarkdownCursorCompletionService().automaticShortcutCandidate(
+          in: bodyMarkdown,
+          selectedRange: bodyRange(from: documentSelection),
+          snippets: ssgSnippets
+        )
+      {
         onSSGSnippetShortcut(shortcutCandidate)
       }
       updateGhostText(ghostText, in: textView)
-      scheduleFullStatistics(for: bodyMarkdown)
+      updateStatistics(afterEditing: bodyMarkdown)
       scheduleMarkdownSyntaxHighlighting(
         for: textView,
         text: updatedText,
@@ -1081,12 +1071,14 @@ struct MacMarkdownTextView: NSViewRepresentable {
 
     func performTypewriterScrollIfNeeded(in textView: NSTextView) {
       guard comfortConfiguration.typewriterModeEnabled,
-            let layoutManager = textView.layoutManager,
-            let textContainer = textView.textContainer,
-            let clipView = textView.enclosingScrollView?.contentView else { return }
+        let layoutManager = textView.layoutManager,
+        let textContainer = textView.textContainer,
+        let clipView = textView.enclosingScrollView?.contentView
+      else { return }
 
       let selectedRange = textView.selectedRange()
-      let glyphRange = layoutManager.glyphRange(forCharacterRange: selectedRange, actualCharacterRange: nil)
+      let glyphRange = layoutManager.glyphRange(
+        forCharacterRange: selectedRange, actualCharacterRange: nil)
       let lineRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
 
       let targetY = lineRect.midY - (clipView.bounds.height / 2.2)
@@ -1107,8 +1099,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
         return false
       }
       if commandSelector == #selector(NSResponder.insertTab(_:)),
-         !ghostText.isEmpty,
-         textView.selectedRange().length == 0 {
+        !ghostText.isEmpty,
+        textView.selectedRange().length == 0
+      {
         let acceptedText = ghostText
         textView.insertText(acceptedText, replacementRange: textView.selectedRange())
         ghostText = ""
@@ -1117,7 +1110,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
         return true
       }
       if commandSelector == #selector(NSResponder.cancelOperation(_:)),
-         !ghostText.isEmpty {
+        !ghostText.isEmpty
+      {
         ghostText = ""
         ghostTextOverlayView?.ghostText = ""
         onGhostTextDismissed()

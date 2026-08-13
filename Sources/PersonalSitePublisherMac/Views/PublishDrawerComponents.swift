@@ -104,7 +104,7 @@ struct PublishDrawerFileDiffRow: View {
         }
         .frame(maxWidth: .infinity, maxHeight: 240, alignment: .leading)
         .background(
-          WorkbenchBackgroundStyle.codeBlock,
+          WorkbenchBackgroundStyle.control,
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
         )
         .accessibilityLabel("\(diff.path) 的逐行差异")
@@ -127,7 +127,7 @@ struct PublishDrawerFileDiffRow: View {
       }
     }
     .padding(9)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     .accessibilityElement(children: .contain)
   }
 

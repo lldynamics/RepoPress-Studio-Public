@@ -7,13 +7,33 @@
     "en": "%@:%@ · %@",
     "zh-Hans": "%@:%@ · %@"
   },
+  "%lld 个汉字，%lld 个西文词，合计 %lld 字词，%lld 行，预计阅读 %@ 分钟": {
+    "en": "%lld Han characters, %lld Latin words, %lld writing units total, %lld lines, ~%@ min read",
+    "zh-Hans": "%lld 个汉字，%lld 个西文词，合计 %lld 字词，%lld 行，预计阅读 %@ 分钟"
+  },
+  "%lld 汉字 · %lld 西文词 · %lld 字符 · %lld 行 · 约 %@ 分钟": {
+    "en": "%lld Han · %lld Latin · %lld chars · %lld lines · ~%@ min",
+    "zh-Hans": "%lld 汉字 · %lld 西文词 · %lld 字符 · %lld 行 · 约 %@ 分钟"
+  },
+  "(常驻)": {
+    "en": "(Mandatory)",
+    "zh-Hans": "(常驻)"
+  },
   "/images/example.jpg": {
     "en": "/images/example.jpg",
     "zh-Hans": "/images/example.jpg"
   },
+  "AI 常用功能": {
+    "en": "Common AI Features",
+    "zh-Hans": "AI 常用功能"
+  },
   "AI 快捷切换": {
     "en": "AI Quick Switch",
     "zh-Hans": "AI 快捷切换"
+  },
+  "AI 润色": {
+    "en": "AI Polish",
+    "zh-Hans": "AI 润色"
   },
   "AI 行内工具": {
     "en": "Inline AI Tools",
@@ -26,6 +46,14 @@
   "Endpoint：": {
     "en": "Endpoint:",
     "zh-Hans": "Endpoint："
+  },
+  "H2": {
+    "en": "H2",
+    "zh-Hans": "H2"
+  },
+  "H3": {
+    "en": "H3",
+    "zh-Hans": "H3"
   },
   "MARKDOWN": {
     "en": "MARKDOWN",
@@ -43,6 +71,10 @@
     "en": "SSG Components, Templates, and Content Snippets",
     "zh-Hans": "SSG 组件、模板与正文片段"
   },
+  "Translate to English": {
+    "en": "Translate to English",
+    "zh-Hans": "翻译为英文"
+  },
   "VIDEO_ID": {
     "en": "VIDEO_ID",
     "zh-Hans": "VIDEO_ID"
@@ -51,9 +83,21 @@
     "en": "WorkbenchBackgroundStyle.card",
     "zh-Hans": "WorkbenchBackgroundStyle.card"
   },
+  "bold": {
+    "en": "Bold",
+    "zh-Hans": "粗体"
+  },
+  "chevron.left.forwardslash.chevron.right": {
+    "en": "Inline Code",
+    "zh-Hans": "行内代码"
+  },
   "https://example.com/feed.xml": {
     "en": "https://example.com/feed.xml",
     "zh-Hans": "https://example.com/feed.xml"
+  },
+  "italic": {
+    "en": "Italic",
+    "zh-Hans": "斜体"
   },
   "owner/repo": {
     "en": "owner/repo",
@@ -70,6 +114,10 @@
   "仓库与部署设置分类": {
     "en": "Repository and Deployment Settings Category",
     "zh-Hans": "仓库与部署设置分类"
+  },
+  "保存设置": {
+    "en": "Save Settings",
+    "zh-Hans": "保存设置"
   },
   "允许发送给远程 AI": {
     "en": "Allow Sending to Remote AI",
@@ -107,6 +155,18 @@
     "en": "Copy Full Markdown Code Block",
     "zh-Hans": "复制完整 Markdown 代码块"
   },
+  "复制文件名": {
+    "en": "Copy Filename",
+    "zh-Hans": "复制文件名"
+  },
+  "复制相对路径": {
+    "en": "Copy Relative Path",
+    "zh-Hans": "复制相对路径"
+  },
+  "复制绝对路径": {
+    "en": "Copy Absolute Path",
+    "zh-Hans": "复制绝对路径"
+  },
   "失效引用": {
     "en": "Broken References",
     "zh-Hans": "失效引用"
@@ -122,6 +182,10 @@
   "将把 %lld 个未被 Markdown 引用的资源移入废纸篓。文件不会被永久删除；失效引用和扫描期间发生变化的文件会保留并标记为需复核。": {
     "en": "This will move %lld resources not referenced by Markdown to the Trash. Files will not be permanently deleted; broken references and files changed during the scan will be kept and marked for review.",
     "zh-Hans": "将把 %lld 个未被 Markdown 引用的资源移入废纸篓。文件不会被永久删除；失效引用和扫描期间发生变化的文件会保留并标记为需复核。"
+  },
+  "工具密度": {
+    "en": "Tool Density",
+    "zh-Hans": "工具密度"
   },
   "工具栏与卡片": {
     "en": "Toolbars and Cards",
@@ -143,6 +207,10 @@
     "en": "The current connection profile has no Base URL. Select a profile below to switch quickly to a configured service.",
     "zh-Hans": "当前连接档案没有 Base URL，点击下方档案即可快速切换到已配置服务。"
   },
+  "打字音效与微触觉": {
+    "en": "Typewriter Sound & Haptics",
+    "zh-Hans": "打字音效与微触觉"
+  },
   "打开资源目录": {
     "en": "Open Resource Folder",
     "zh-Hans": "打开资源目录"
@@ -159,13 +227,37 @@
     "en": "Drag into the Article to Insert a Quote Block",
     "zh-Hans": "拖入正文插入引用块"
   },
+  "拖拽调整图标顺序或勾选控制显示与隐藏": {
+    "en": "Drag to reorder icons or toggle checkboxes to control visibility",
+    "zh-Hans": "拖拽调整图标顺序或勾选控制显示与隐藏"
+  },
+  "排版格式栏按钮": {
+    "en": "Formatting Bar Buttons",
+    "zh-Hans": "排版格式栏按钮"
+  },
+  "文本处理": {
+    "en": "Text Operations",
+    "zh-Hans": "文本处理"
+  },
+  "文档快捷操作": {
+    "en": "Document Quick Actions",
+    "zh-Hans": "文档快捷操作"
+  },
   "暂无内容": {
     "en": "No Content Yet",
     "zh-Hans": "暂无内容"
   },
+  "更多工具栏操作": {
+    "en": "More Toolbar Actions",
+    "zh-Hans": "更多工具栏操作"
+  },
   "服务商：%@%@": {
     "en": "Provider: %@%@",
     "zh-Hans": "服务商：%@%@"
+  },
+  "未找到匹配命令": {
+    "en": "No matching commands found",
+    "zh-Hans": "未找到匹配命令"
   },
   "未配置 Endpoint": {
     "en": "Endpoint Not Configured",
@@ -187,6 +279,14 @@
     "en": "Model Tier",
     "zh-Hans": "模型档位"
   },
+  "段落焦点聚光灯（非焦点段落柔和淡出）": {
+    "en": "Paragraph Spotlight Mode (fade non-active paragraphs)",
+    "zh-Hans": "段落焦点聚光灯（非焦点段落柔和淡出）"
+  },
+  "沉浸模式": {
+    "en": "Zen Mode",
+    "zh-Hans": "沉浸模式"
+  },
   "清除筛选": {
     "en": "Clear Filters",
     "zh-Hans": "清除筛选"
@@ -198,6 +298,18 @@
   "组件缩略预览": {
     "en": "Component Thumbnail Preview",
     "zh-Hans": "组件缩略预览"
+  },
+  "翻译为中文": {
+    "en": "Translate to Chinese",
+    "zh-Hans": "翻译为中文"
+  },
+  "自定义写作工具栏": {
+    "en": "Customize Writing Toolbar",
+    "zh-Hans": "自定义写作工具栏"
+  },
+  "自定义工具栏…": {
+    "en": "Customize Toolbar…",
+    "zh-Hans": "自定义工具栏…"
   },
   "设置…": {
     "en": "Settings…",
@@ -238,5 +350,13 @@
   "重新扫描资源和 Markdown 引用": {
     "en": "Rescan Resources and Markdown References",
     "zh-Hans": "重新扫描资源和 Markdown 引用"
+  },
+  "顶部主工具栏按钮": {
+    "en": "Header Toolbar Buttons",
+    "zh-Hans": "顶部主工具栏按钮"
+  },
+  "风格改写": {
+    "en": "Style Rewrite",
+    "zh-Hans": "风格改写"
   }
 }

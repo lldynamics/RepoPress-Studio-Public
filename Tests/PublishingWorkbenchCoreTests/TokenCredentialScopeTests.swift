@@ -1,18 +1,26 @@
 import Security
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor
 final class TokenCredentialScopeTests: XCTestCase {
   func testDebugCredentialServicesAreIsolatedFromReleaseKeychainItems() {
     #if DEBUG
-    XCTAssertEqual(KeychainCredentialServices.ai, "PersonalSitePublisherMac.LocalDevelopment.AIProvider")
-    XCTAssertEqual(KeychainCredentialServices.repository, "PersonalSitePublisherMac.LocalDevelopment.RepositoryProvider")
-    XCTAssertEqual(KeychainCredentialServices.deployment, "PersonalSitePublisherMac.LocalDevelopment.DeploymentProvider")
+      XCTAssertEqual(
+        KeychainCredentialServices.ai, "PersonalSitePublisherMac.LocalDevelopment.AIProvider")
+      XCTAssertEqual(
+        KeychainCredentialServices.repository,
+        "PersonalSitePublisherMac.LocalDevelopment.RepositoryProvider")
+      XCTAssertEqual(
+        KeychainCredentialServices.deployment,
+        "PersonalSitePublisherMac.LocalDevelopment.DeploymentProvider")
     #else
-    XCTAssertEqual(KeychainCredentialServices.ai, "PersonalSitePublisherMac.AIProvider")
-    XCTAssertEqual(KeychainCredentialServices.repository, "PersonalSitePublisherMac.RepositoryProvider")
-    XCTAssertEqual(KeychainCredentialServices.deployment, "PersonalSitePublisherMac.DeploymentProvider")
+      XCTAssertEqual(KeychainCredentialServices.ai, "PersonalSitePublisherMac.AIProvider")
+      XCTAssertEqual(
+        KeychainCredentialServices.repository, "PersonalSitePublisherMac.RepositoryProvider")
+      XCTAssertEqual(
+        KeychainCredentialServices.deployment, "PersonalSitePublisherMac.DeploymentProvider")
     #endif
   }
 
@@ -89,30 +97,41 @@ final class TokenCredentialScopeTests: XCTestCase {
 
   func testStoresPreserveCredentialReadFailureInsteadOfReportingMissingToken() throws {
     let persistenceURL = try temporaryPersistenceURL(prefix: "KeychainAccessFailure")
+    let aiTokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.AIAccessFailure",
+      accountPrefix: "ai-access-failure",
+      inMemory: true
+    )
+    let repositoryTokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.RepositoryAccessFailure",
+      accountPrefix: "repository-access-failure",
+      inMemory: true
+    )
+    let deploymentTokenStore = KeychainTokenStore(
+      service: "PersonalSitePublisherMac.Tests.DeploymentAccessFailure",
+      accountPrefix: "deployment-access-failure",
+      inMemory: true
+    )
+    var profile = SiteProfile.defaultProfile
+    profile.repositoryBaseURL = "http://insecure.example.test"
+    profile.aiProviderConfig.baseURL = "http://insecure.example.test"
+    profile.aiProviderConfig.requiresAPIKey = true
+    profile.deploymentProvider = .githubPages
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
-      keychainTokenStore: KeychainTokenStore(
-        service: "PersonalSitePublisherMac.Tests.AIAccessFailure",
-        accountPrefix: "ai-access-failure",
-        inMemory: true
-      ),
-      repositoryTokenStore: KeychainTokenStore(
-        service: "PersonalSitePublisherMac.Tests.RepositoryAccessFailure",
-        accountPrefix: "repository-access-failure",
-        inMemory: true
-      ),
-      deploymentTokenStore: KeychainTokenStore(
-        service: "PersonalSitePublisherMac.Tests.DeploymentAccessFailure",
-        accountPrefix: "deployment-access-failure",
-        inMemory: true
-      )
+      initialSnapshotSource: .preloaded(
+        WorkbenchSnapshotLoadResult(
+          snapshot: WorkbenchSnapshot(
+            profiles: [profile],
+            activeProfileID: profile.id,
+            drafts: [ArticleDraft.empty(profile: profile)],
+            releaseRecords: []
+          )
+        )),
+      keychainTokenStore: aiTokenStore,
+      repositoryTokenStore: repositoryTokenStore,
+      deploymentTokenStore: deploymentTokenStore
     )
-    store.updateActiveProfile { profile in
-      profile.repositoryBaseURL = "http://insecure.example.test"
-      profile.aiProviderConfig.baseURL = "http://insecure.example.test"
-      profile.aiProviderConfig.requiresAPIKey = true
-      profile.deploymentProvider = .githubPages
-    }
 
     store.refreshRepositoryTokenAvailability(updatesMessage: true)
     store.refreshDeploymentTokenAvailability()
@@ -268,16 +287,18 @@ final class TokenCredentialScopeTests: XCTestCase {
     XCTAssertEqual(try tokenStore.repositoryToken(for: profile), "github-token")
     profile.repositoryBaseURL = "https://github-enterprise.example/api/v3"
     XCTAssertNil(try tokenStore.repositoryToken(for: profile))
-    XCTAssertNil(try tokenStore.token(
-      for: profile,
-      scope: .deployment(.vercel),
-      originURLText: "https://proxy.example"
-    ))
-    XCTAssertEqual(try tokenStore.token(
-      for: profile,
-      scope: .deployment(.vercel),
-      originURLText: "https://api.vercel.com/v2"
-    ), "vercel-token")
+    XCTAssertNil(
+      try tokenStore.token(
+        for: profile,
+        scope: .deployment(.vercel),
+        originURLText: "https://proxy.example"
+      ))
+    XCTAssertEqual(
+      try tokenStore.token(
+        for: profile,
+        scope: .deployment(.vercel),
+        originURLText: "https://api.vercel.com/v2"
+      ), "vercel-token")
   }
 
   func testInMemoryBackendSupportsConcurrentMultiScopeReadWriteAndDelete() throws {
@@ -299,7 +320,8 @@ final class TokenCredentialScopeTests: XCTestCase {
     let failures = ConcurrentTokenFailureRecorder()
 
     let mixedRoundCount = 160
-    DispatchQueue.concurrentPerform(iterations: mixedRoundCount * credentials.count) { operationIndex in
+    DispatchQueue.concurrentPerform(iterations: mixedRoundCount * credentials.count) {
+      operationIndex in
       let credentialIndex = operationIndex % credentials.count
       let round = operationIndex / credentials.count
       let credential = credentials[credentialIndex]
@@ -318,7 +340,8 @@ final class TokenCredentialScopeTests: XCTestCase {
         }
 
         if let observed = try credential.read(from: tokenStore, for: profile),
-           !observed.hasPrefix("\(credential.name)-round-") {
+          !observed.hasPrefix("\(credential.name)-round-")
+        {
           failures.record("\(credential.name) read unexpected token: \(observed)")
         }
       } catch {
@@ -328,7 +351,8 @@ final class TokenCredentialScopeTests: XCTestCase {
     XCTAssertTrue(failures.messages.isEmpty, failures.messages.joined(separator: "\n"))
 
     let finalWriteRoundCount = 96
-    DispatchQueue.concurrentPerform(iterations: finalWriteRoundCount * credentials.count) { operationIndex in
+    DispatchQueue.concurrentPerform(iterations: finalWriteRoundCount * credentials.count) {
+      operationIndex in
       let credentialIndex = operationIndex % credentials.count
       let round = operationIndex / credentials.count
       let credential = credentials[credentialIndex]
@@ -342,13 +366,16 @@ final class TokenCredentialScopeTests: XCTestCase {
     for credential in credentials {
       let writtenTokens = Set((0..<finalWriteRoundCount).map(credential.token(round:)))
       let observed = try XCTUnwrap(credential.read(from: tokenStore, for: profile))
-      XCTAssertTrue(writtenTokens.contains(observed), "\(credential.name) ended with a value that was never written")
+      XCTAssertTrue(
+        writtenTokens.contains(observed),
+        "\(credential.name) ended with a value that was never written")
       XCTAssertTrue(try credential.availability(in: tokenStore, for: profile).hasToken)
     }
     XCTAssertTrue(failures.messages.isEmpty, failures.messages.joined(separator: "\n"))
 
     let deleteRoundCount = 64
-    DispatchQueue.concurrentPerform(iterations: deleteRoundCount * credentials.count) { operationIndex in
+    DispatchQueue.concurrentPerform(iterations: deleteRoundCount * credentials.count) {
+      operationIndex in
       let credential = credentials[operationIndex % credentials.count]
       do {
         try credential.delete(from: tokenStore, for: profile)

@@ -818,7 +818,7 @@ private struct KnowledgeDocumentReader: View {
       }
       .padding(12)
       .background(
-        WorkbenchBackgroundStyle.subtle,
+        WorkbenchBackgroundStyle.card,
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
       )
       .accessibilityElement(children: .combine)

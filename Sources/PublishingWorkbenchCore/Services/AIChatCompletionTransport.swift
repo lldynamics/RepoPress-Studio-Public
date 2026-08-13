@@ -1,0 +1,93 @@
+import Foundation
+
+public protocol AIChatTransport: Sendable {
+  func data(for request: URLRequest) async throws -> (Data, URLResponse)
+}
+
+public protocol AIChatStreamingTransport: AIChatTransport {
+  func lines(for request: URLRequest) async throws -> (
+    AsyncThrowingStream<String, Error>, URLResponse
+  )
+}
+
+public struct URLSessionAIChatTransport: AIChatTransport, AIChatStreamingTransport {
+  static let maximumResponseByteCount = 16 * 1_024 * 1_024
+  static let maximumStreamingResponseByteCount = 32 * 1_024 * 1_024
+  static let maximumStreamingLineByteCount = 1 * 1_024 * 1_024
+
+  private let session: URLSession
+
+  public init(
+    session: URLSession? = nil,
+    firstByteTimeout: TimeInterval = AIChatNetworkRecoveryPolicy.default.firstByteTimeout,
+    resourceTimeout: TimeInterval = AIChatNetworkRecoveryPolicy.default.resourceTimeout
+  ) {
+    self.session =
+      session
+      ?? CredentialSafeURLSession.make(
+        timeoutIntervalForRequest: firstByteTimeout,
+        timeoutIntervalForResource: resourceTimeout
+      )
+  }
+
+  public func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+    try await BoundedHTTPResponseLoader.data(
+      for: request,
+      using: session,
+      maximumByteCount: Self.maximumResponseByteCount
+    )
+  }
+
+  public func lines(for request: URLRequest) async throws -> (
+    AsyncThrowingStream<String, Error>, URLResponse
+  ) {
+    let (bytes, response) = try await session.bytes(for: request)
+    try BoundedHTTPResponseLoader.validateExpectedLength(
+      response,
+      maximumByteCount: Self.maximumStreamingResponseByteCount
+    )
+    let stream = AsyncThrowingStream<String, Error> { continuation in
+      let task = Task {
+        do {
+          var lineBytes: [UInt8] = []
+          lineBytes.reserveCapacity(4 * 1_024)
+          var totalByteCount = 0
+          for try await byte in bytes {
+            try Task.checkCancellation()
+            totalByteCount += 1
+            guard totalByteCount <= Self.maximumStreamingResponseByteCount else {
+              throw AIChatCompletionClientError.responseTooLarge(
+                maximumBytes: Self.maximumStreamingResponseByteCount
+              )
+            }
+            if byte == 0x0A {
+              if lineBytes.last == 0x0D {
+                lineBytes.removeLast()
+              }
+              continuation.yield(String(decoding: lineBytes, as: UTF8.self))
+              lineBytes.removeAll(keepingCapacity: true)
+              continue
+            }
+            guard lineBytes.count < Self.maximumStreamingLineByteCount else {
+              throw AIChatCompletionClientError.responseTooLarge(
+                maximumBytes: Self.maximumStreamingLineByteCount
+              )
+            }
+            lineBytes.append(byte)
+          }
+          if !lineBytes.isEmpty {
+            continuation.yield(String(decoding: lineBytes, as: UTF8.self))
+          }
+          continuation.finish()
+        } catch {
+          continuation.finish(throwing: error)
+        }
+      }
+
+      continuation.onTermination = { _ in
+        task.cancel()
+      }
+    }
+    return (stream, response)
+  }
+}

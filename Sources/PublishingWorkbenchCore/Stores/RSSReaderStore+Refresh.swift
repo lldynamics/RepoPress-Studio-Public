@@ -88,6 +88,7 @@ extension RSSReaderStore {
   }
 
   func merge(_ parsedArticles: [RSSParsedArticle], into feed: RSSFeed) {
+    guard requireCompleteArticleIndex() else { return }
     do {
       let existingPayloads = try existingPayloads(for: parsedArticles, in: feed)
       let result = mergedContent(
@@ -120,12 +121,21 @@ extension RSSReaderStore {
   }
 
   func refreshFeeds(_ targetFeeds: [RSSFeed], force: Bool, now: Date) async {
+    // Merge and collision resolution need the complete current ID/link index.
+    // Finish a bounded bootstrap before touching the article hot path; the
+    // initial window remains available to the UI while this utility read runs.
+    await loadRemainingArticleHeadersIfNeeded()
+    guard requireCompleteArticleIndex() else {
+      lastRefreshSummary = RSSRefreshSummary(failureCount: targetFeeds.count)
+      return
+    }
     lastRefreshSummary = nil
     statusMessage = nil
     lastError = nil
     let requests = targetFeeds.compactMap { feed -> RefreshRequest? in
       guard !refreshingFeedIDs.contains(feed.id),
-            isEligibleForRefresh(feed, force: force, now: now) else { return nil }
+        isEligibleForRefresh(feed, force: force, now: now)
+      else { return nil }
       return RefreshRequest(
         feedID: feed.id,
         url: feed.url,
@@ -215,12 +225,13 @@ extension RSSReaderStore {
       return failRefresh(
         feedID: fetchOutcome.request.feedID,
         startedAt: fetchOutcome.request.startedAt,
-        issue: fetchOutcome.issue ?? RSSFeedIssue(
-          stage: .transport,
-          category: .unknown,
-          retryStrategy: .automatic,
-          userMessage: "订阅读取暂时失败，请稍后重试。"
-        )
+        issue: fetchOutcome.issue
+          ?? RSSFeedIssue(
+            stage: .transport,
+            category: .unknown,
+            retryStrategy: .automatic,
+            userMessage: "订阅读取暂时失败，请稍后重试。"
+          )
       )
     }
     guard let feedIndex = feeds.firstIndex(where: { $0.id == fetchOutcome.request.feedID }) else {
@@ -376,8 +387,25 @@ extension RSSReaderStore {
     existingPayloads: [String: RSSArticle],
     baseHighlights: [RSSArticleHighlight],
     now: Date
-    ) -> MergeResult {
+  ) -> MergeResult {
     let existingHeaders = baseHeaders.filter { $0.feedID == feed.id }
+    var existingCollisionIDsByLink: [String: String] = [:]
+    var existingBaseLinkByBaseID: [String: String] = [:]
+    existingCollisionIDsByLink.reserveCapacity(existingHeaders.count)
+    existingBaseLinkByBaseID.reserveCapacity(existingHeaders.count)
+    for header in existingHeaders {
+      if header.id.hasPrefix("\(feed.id.uuidString):"),
+        let link = header.link
+      {
+        let normalizedLink = normalizedArticleLink(link)
+        if let marker = header.id.range(of: ":link-", options: .backwards) {
+          let baseID = String(header.id[..<marker.lowerBound])
+          existingCollisionIDsByLink["\(baseID)|\(normalizedLink)"] = header.id
+        } else {
+          existingBaseLinkByBaseID[header.id] = normalizedLink
+        }
+      }
+    }
     var headersByID = Dictionary(
       existingHeaders.map { ($0.id, $0) },
       uniquingKeysWith: { newer, _ in newer }
@@ -406,14 +434,18 @@ extension RSSReaderStore {
         link: parsed.link,
         existingHeaders: existingHeaders,
         incomingLinksByParsedID: incomingLinksByParsedID,
-        firstIncomingLinkByParsedID: firstIncomingLinkByParsedID
+        firstIncomingLinkByParsedID: firstIncomingLinkByParsedID,
+        existingCollisionIDsByLink: existingCollisionIDsByLink,
+        existingBaseLinkByBaseID: existingBaseLinkByBaseID
       )
       let existingHeader = headersByID[articleID]
       let existingPayload = existingPayloads[articleID]
-      let summaryHTML = feedBodyOfflineCacheEnabled
+      let summaryHTML =
+        feedBodyOfflineCacheEnabled
         ? parsed.summaryHTML
         : existingPayload?.summaryHTML ?? offlineSummaryHTML(for: parsed)
-      let contentHTML = feedBodyOfflineCacheEnabled
+      let contentHTML =
+        feedBodyOfflineCacheEnabled
         ? parsed.contentHTML
         : existingPayload?.contentHTML ?? ""
       let incoming = RSSArticle(

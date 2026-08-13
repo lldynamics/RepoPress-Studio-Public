@@ -148,7 +148,7 @@ extension RepositoryWorkspaceView {
           .lineLimit(8)
           .padding(10)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+          .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
 
         ForEach(plan.notes, id: \.self) { note in
           Label(note, systemImage: "info.circle")
@@ -272,7 +272,7 @@ extension RepositoryWorkspaceView {
       }
     }
     .padding(10)
-    .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   func remoteRepositoryCreationResultCard(_ result: RemoteRepositoryCreationResult) -> some View {
@@ -322,7 +322,7 @@ extension RepositoryWorkspaceView {
       .font(.caption)
     }
     .padding(10)
-    .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   func remoteConflictPreview(paths: [String], isDirectCommit: Bool) -> some View {

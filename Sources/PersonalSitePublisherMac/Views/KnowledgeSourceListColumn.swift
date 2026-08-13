@@ -99,8 +99,7 @@ struct KnowledgeSourceListColumn: View {
         .padding(.vertical, WorkspaceSidebarMetrics.headerVerticalPadding)
 
       knowledgeInsertionActions
-
-      Divider()
+        .padding(.bottom, 4)
 
       KnowledgeCollectionNavigationView(
         knowledge: knowledge,
@@ -108,14 +107,14 @@ struct KnowledgeSourceListColumn: View {
         onRenameFolder: beginRenamingFolder,
         onDeleteFolder: requestFolderDeletion
       )
-
-      Divider()
+      .padding(.top, 4)
+      .padding(.bottom, 6)
+      .background(WorkbenchBackgroundStyle.card)
 
       knowledgeListToolbar
         .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
-        .padding(.vertical, WorkspaceSidebarMetrics.toolbarVerticalPadding)
-
-      Divider()
+        .padding(.top, 8)
+        .padding(.bottom, 8)
 
       documentList
     }
@@ -352,7 +351,7 @@ struct KnowledgeSourceListColumn: View {
       }
       .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
       .padding(.vertical, 8)
-      .background(WorkbenchBackgroundStyle.subtle)
+      .background(WorkbenchBackgroundStyle.card)
       .accessibilityElement(children: .contain)
       .accessibilityLabel("插入当前资料")
     }
@@ -496,7 +495,7 @@ struct KnowledgeSourceListColumn: View {
               .foregroundStyle(.secondary)
               .padding(.horizontal, 7)
               .padding(.vertical, 3)
-              .background(WorkbenchBackgroundStyle.subtle, in: Capsule())
+              .background(WorkbenchBackgroundStyle.card, in: Capsule())
           }
         }
       }
@@ -607,6 +606,7 @@ struct KnowledgeSourceListColumn: View {
 
   private func documentRow(_ row: KnowledgeDocumentListRowSnapshot) -> some View {
     let document = row.document
+    let isHovered = hoveredDocumentID == document.id
     return HStack(spacing: 9) {
       Image(systemName: document.kind.systemImage)
         .foregroundStyle(.secondary)
@@ -644,10 +644,17 @@ struct KnowledgeSourceListColumn: View {
           .accessibilityLabel("禁止发送给远程 AI")
       }
 
-      if hoveredDocumentID == document.id || selectedDocumentIDs.contains(document.id) {
+      if isHovered || selectedDocumentIDs.contains(document.id) {
         documentActionsMenu(document)
       }
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      isHovered ? Color.primary.opacity(0.05) : Color.clear,
+      in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+    )
+    .contentShape(Rectangle())
+    .animation(WorkbenchMotion.hoverSpring, value: isHovered)
     .onHover { isHovered in
       if isHovered {
         hoveredDocumentID = document.id

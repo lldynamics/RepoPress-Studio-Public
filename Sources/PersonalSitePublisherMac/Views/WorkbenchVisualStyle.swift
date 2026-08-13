@@ -1,6 +1,89 @@
 import AppKit
 import SwiftUI
 
+private struct WorkbenchAdaptiveColor {
+  typealias Components = (red: CGFloat, green: CGFloat, blue: CGFloat)
+
+  let light: Components
+  let dark: Components
+  let lightHighContrast: Components?
+  let darkHighContrast: Components?
+
+  init(
+    light: Components,
+    dark: Components,
+    lightHighContrast: Components? = nil,
+    darkHighContrast: Components? = nil
+  ) {
+    self.light = light
+    self.dark = dark
+    self.lightHighContrast = lightHighContrast
+    self.darkHighContrast = darkHighContrast
+  }
+
+  var color: Color {
+    Color(nsColor: nsColor)
+  }
+
+  var nsColor: NSColor {
+    NSColor(name: nil) { appearance in
+      let components = self.components(for: appearance)
+      return NSColor(
+        red: components.red,
+        green: components.green,
+        blue: components.blue,
+        alpha: 1
+      )
+    }
+  }
+
+  private func components(for appearance: NSAppearance) -> Components {
+    let match = appearance.bestMatch(from: [
+      .accessibilityHighContrastAqua,
+      .accessibilityHighContrastDarkAqua,
+      .aqua,
+      .darkAqua,
+    ])
+    switch match {
+    case .accessibilityHighContrastDarkAqua:
+      return darkHighContrast ?? dark
+    case .accessibilityHighContrastAqua:
+      return lightHighContrast ?? light
+    case .darkAqua:
+      return dark
+    default:
+      return light
+    }
+  }
+}
+
+private enum WorkbenchSemanticPalette {
+  static let primary = WorkbenchAdaptiveColor(
+    light: (0.16, 0.39, 0.30),
+    dark: (0.48, 0.78, 0.66),
+    lightHighContrast: (0.08, 0.30, 0.21),
+    darkHighContrast: (0.60, 0.90, 0.78)
+  )
+  static let success = WorkbenchAdaptiveColor(
+    light: (0.22, 0.48, 0.22),
+    dark: (0.50, 0.75, 0.48),
+    lightHighContrast: (0.12, 0.37, 0.12),
+    darkHighContrast: (0.62, 0.88, 0.60)
+  )
+  static let warning = WorkbenchAdaptiveColor(
+    light: (0.68, 0.27, 0.03),
+    dark: (0.90, 0.40, 0.10),
+    lightHighContrast: (0.53, 0.18, 0.00),
+    darkHighContrast: (1.00, 0.54, 0.20)
+  )
+  static let risk = WorkbenchAdaptiveColor(
+    light: (0.64, 0.25, 0.33),
+    dark: (0.91, 0.57, 0.64),
+    lightHighContrast: (0.52, 0.12, 0.22),
+    darkHighContrast: (1.00, 0.68, 0.74)
+  )
+}
+
 struct WorkbenchThemePalette {
   let primary: Color
   let success: Color
@@ -19,32 +102,12 @@ struct WorkbenchThemePalette {
 }
 
 enum WorkbenchTheme {
-  /// Mirrors the default “江南春” palette used by 工程工具箱.
+  /// 对齐工程工具箱使用的默认“江南春”色板。
   static let jiangnanSpring = WorkbenchThemePalette(
-    primary: adaptive(
-      light: (0.16, 0.39, 0.30),
-      dark: (0.48, 0.78, 0.66),
-      lightHighContrast: (0.08, 0.30, 0.21),
-      darkHighContrast: (0.60, 0.90, 0.78)
-    ),
-    success: adaptive(
-      light: (0.22, 0.48, 0.22),
-      dark: (0.50, 0.75, 0.48),
-      lightHighContrast: (0.12, 0.37, 0.12),
-      darkHighContrast: (0.62, 0.88, 0.60)
-    ),
-    warning: adaptive(
-      light: (0.68, 0.27, 0.03),
-      dark: (0.90, 0.40, 0.10),
-      lightHighContrast: (0.53, 0.18, 0.00),
-      darkHighContrast: (1.00, 0.54, 0.20)
-    ),
-    risk: adaptive(
-      light: (0.64, 0.25, 0.33),
-      dark: (0.91, 0.57, 0.64),
-      lightHighContrast: (0.52, 0.12, 0.22),
-      darkHighContrast: (1.00, 0.68, 0.74)
-    ),
+    primary: WorkbenchSemanticPalette.primary.color,
+    success: WorkbenchSemanticPalette.success.color,
+    warning: WorkbenchSemanticPalette.warning.color,
+    risk: WorkbenchSemanticPalette.risk.color,
     document: adaptive(light: (0.55, 0.66, 0.73), dark: (0.65, 0.75, 0.80)),
     documentForeground: adaptive(light: (0.22, 0.39, 0.48), dark: (0.65, 0.75, 0.80)),
     finance: adaptive(light: (0.83, 0.66, 0.33), dark: (0.88, 0.72, 0.44)),
@@ -59,29 +122,29 @@ enum WorkbenchTheme {
 
   static let `default` = jiangnanSpring
 
-  /// Product identity and primary actions. Navigation selection remains the user's system accent.
+  /// 产品识别色与主要操作色；导航选中态继续使用用户的系统强调色。
   static var brand: Color { `default`.primary }
   static var primary: Color { brand }
   static var success: Color { `default`.success }
   static var warning: Color { `default`.warning }
   static var risk: Color { `default`.risk }
-  /// Informational status that is neither an in-progress operation nor a navigation accent.
+  /// 信息状态色，既不表示进行中的操作，也不表示导航强调色。
   static let info = adaptive(
     light: (0.14, 0.42, 0.68),
     dark: (0.42, 0.68, 0.92),
     lightHighContrast: (0.05, 0.31, 0.56),
     darkHighContrast: (0.56, 0.79, 1.00)
   )
-  /// Neutral status copy follows the system label hierarchy in every appearance.
+  /// 中性状态文本在所有外观下都遵循系统标签层级。
   static var neutral: Color { Color(nsColor: .secondaryLabelColor) }
-  /// Active work uses a cooler hue so it remains distinct from completed/success states.
+  /// 进行中的工作使用偏冷色调，以区别于完成或成功状态。
   static let progress = adaptive(
     light: (0.16, 0.48, 0.44),
     dark: (0.38, 0.76, 0.69),
     lightHighContrast: (0.08, 0.36, 0.33),
     darkHighContrast: (0.48, 0.86, 0.78)
   )
-  /// Prominent controls need a darker dark-mode fill because macOS renders their labels in white.
+  /// 主要控件在深色模式下需要更深的填充色，因为 macOS 会将标签渲染为白色。
   static let primaryActionFill = adaptive(
     light: (0.16, 0.39, 0.30),
     dark: (0.14, 0.34, 0.25),
@@ -94,9 +157,9 @@ enum WorkbenchTheme {
     lightHighContrast: (0.53, 0.18, 0.00),
     darkHighContrast: (0.48, 0.16, 0.00)
   )
-  /// Foreground for semantic prominent fills. These fills are intentionally dark in every appearance.
+  /// 语义主要填充色上的前景色；这些填充色在所有外观下都刻意保持较深。
   static var primaryActionForeground: Color { .white }
-  /// Navigation and selection follow the user's app accent preference; brand green remains reserved for actions and status.
+  /// 导航与选中态遵循用户的应用强调色偏好；品牌绿仅用于操作和状态。
   static var navigationSelection: Color { WorkbenchAccentPalette.selected().color }
   static var document: Color { `default`.document }
   static var documentForeground: Color { `default`.documentForeground }
@@ -116,94 +179,20 @@ enum WorkbenchTheme {
     lightHighContrast: (red: CGFloat, green: CGFloat, blue: CGFloat)? = nil,
     darkHighContrast: (red: CGFloat, green: CGFloat, blue: CGFloat)? = nil
   ) -> Color {
-    Color(
-      nsColor: NSColor(name: nil) { appearance in
-        let match = appearance.bestMatch(from: [
-          .accessibilityHighContrastAqua,
-          .accessibilityHighContrastDarkAqua,
-          .aqua,
-          .darkAqua,
-        ])
-        let components: (red: CGFloat, green: CGFloat, blue: CGFloat)
-        switch match {
-        case .accessibilityHighContrastDarkAqua:
-          components = darkHighContrast ?? dark
-        case .accessibilityHighContrastAqua:
-          components = lightHighContrast ?? light
-        case .darkAqua:
-          components = dark
-        default:
-          components = light
-        }
-        return NSColor(
-          red: components.red,
-          green: components.green,
-          blue: components.blue,
-          alpha: 1
-        )
-      }
-    )
+    WorkbenchAdaptiveColor(
+      light: light,
+      dark: dark,
+      lightHighContrast: lightHighContrast,
+      darkHighContrast: darkHighContrast
+    ).color
   }
 }
 
 enum WorkbenchThemeNSColor {
-  static let primary = adaptive(
-    light: (0.16, 0.39, 0.30),
-    dark: (0.48, 0.78, 0.66),
-    lightHighContrast: (0.08, 0.30, 0.21),
-    darkHighContrast: (0.60, 0.90, 0.78)
-  )
-  static let success = adaptive(
-    light: (0.22, 0.48, 0.22),
-    dark: (0.50, 0.75, 0.48),
-    lightHighContrast: (0.12, 0.37, 0.12),
-    darkHighContrast: (0.62, 0.88, 0.60)
-  )
-  static let warning = adaptive(
-    light: (0.68, 0.27, 0.03),
-    dark: (0.90, 0.40, 0.10),
-    lightHighContrast: (0.53, 0.18, 0.00),
-    darkHighContrast: (1.00, 0.54, 0.20)
-  )
-  static let risk = adaptive(
-    light: (0.64, 0.25, 0.33),
-    dark: (0.91, 0.57, 0.64),
-    lightHighContrast: (0.52, 0.12, 0.22),
-    darkHighContrast: (1.00, 0.68, 0.74)
-  )
-
-  private static func adaptive(
-    light: (red: CGFloat, green: CGFloat, blue: CGFloat),
-    dark: (red: CGFloat, green: CGFloat, blue: CGFloat),
-    lightHighContrast: (red: CGFloat, green: CGFloat, blue: CGFloat)? = nil,
-    darkHighContrast: (red: CGFloat, green: CGFloat, blue: CGFloat)? = nil
-  ) -> NSColor {
-    NSColor(name: nil) { appearance in
-      let match = appearance.bestMatch(from: [
-        .accessibilityHighContrastAqua,
-        .accessibilityHighContrastDarkAqua,
-        .aqua,
-        .darkAqua,
-      ])
-      let components: (red: CGFloat, green: CGFloat, blue: CGFloat)
-      switch match {
-      case .accessibilityHighContrastDarkAqua:
-        components = darkHighContrast ?? dark
-      case .accessibilityHighContrastAqua:
-        components = lightHighContrast ?? light
-      case .darkAqua:
-        components = dark
-      default:
-        components = light
-      }
-      return NSColor(
-        red: components.red,
-        green: components.green,
-        blue: components.blue,
-        alpha: 1
-      )
-    }
-  }
+  static let primary = WorkbenchSemanticPalette.primary.nsColor
+  static let success = WorkbenchSemanticPalette.success.nsColor
+  static let warning = WorkbenchSemanticPalette.warning.nsColor
+  static let risk = WorkbenchSemanticPalette.risk.nsColor
 }
 
 enum WorkbenchWritingSurface {
@@ -250,19 +239,19 @@ enum WorkbenchPageMetrics {
   }
 }
 
-/// Shared spatial rhythm. Names describe layout roles instead of individual call sites.
+/// 共享空间节奏；名称描述布局角色，而不是单个调用点。
 enum WorkbenchSpacing {
-  /// Dense control contents, compact rows, and small gaps.
+  /// 密集控件内容、紧凑行和小间距。
   static let control: CGFloat = 8
-  /// Card contents and grouped form controls.
+  /// 卡片内容和成组表单控件。
   static let card: CGFloat = 12
-  /// Section rhythm and editor chrome that need a little more breathing room.
+  /// 分区节奏和需要更多留白的编辑器边框。
   static let section: CGFloat = 14
-  /// Standard content insets and split-layout gaps.
+  /// 标准内容内边距和分栏布局间距。
   static let content: CGFloat = 16
-  /// Page-level insets.
+  /// 页面级内边距。
   static let page: CGFloat = 20
-  /// Prominent empty states and modal headers.
+  /// 主要空状态和模态窗口标题。
   static let spacious: CGFloat = 24
 }
 
@@ -304,7 +293,7 @@ enum WorkbenchSheetMetrics {
     }
   }
 
-  /// Upper bound for hosts that calculate a sheet height from the visible screen.
+  /// 根据可见屏幕计算弹窗高度的宿主所使用的上限。
   static let maxHeightRatio: CGFloat = 0.90
 }
 
@@ -336,36 +325,38 @@ enum WorkbenchOpacity {
 }
 
 enum WorkbenchBackgroundStyle {
-  /// Page-level grouping stays transparent; hierarchy starts with actual content cards.
+  /// 页面级分组保持透明；层级从实际内容卡片开始。
   static var page: AnyShapeStyle {
     AnyShapeStyle(Color.clear)
   }
 
-  /// The single elevated content surface used for primary cards.
+  /// 主要卡片使用的唯一抬升内容表面。
   static var card: AnyShapeStyle {
     surface(opacity: 0.05)
   }
 
-  /// Interactive controls and compact badges use the strongest neutral surface.
+  /// 交互控件和紧凑徽标使用最强的中性表面。
   static var control: AnyShapeStyle {
     surface(opacity: 0.10)
   }
 
-  // Compatibility aliases intentionally map the previous five surface names to
-  // the three levels above. This prevents older views from reintroducing extra
-  // grey layers while they are migrated incrementally.
+  // 兼容别名暂时映射到上面的三级表面，避免旧视图在渐进迁移期间重新引入额外灰阶。
+  @available(*, deprecated, message: "请使用 WorkbenchBackgroundStyle.card")
   static var subtle: AnyShapeStyle {
     card
   }
 
+  @available(*, deprecated, message: "请使用 WorkbenchBackgroundStyle.card")
   static var panel: AnyShapeStyle {
     card
   }
 
+  @available(*, deprecated, message: "请使用 WorkbenchBackgroundStyle.control")
   static var badge: AnyShapeStyle {
     control
   }
 
+  @available(*, deprecated, message: "请使用 WorkbenchBackgroundStyle.control")
   static var codeBlock: AnyShapeStyle {
     control
   }
@@ -481,7 +472,7 @@ struct WorkbenchListDisclosureFooter: View {
   var body: some View {
     if totalCount > visibleCount || showsAll {
       HStack(spacing: WorkbenchSpacing.control) {
-        Text("已显示 \(visibleCount)/\(totalCount)")
+        Text(String(localized: "已显示 \(visibleCount)/\(totalCount)"))
           .font(.caption.monospacedDigit())
           .foregroundStyle(.secondary)
         Spacer(minLength: WorkbenchSpacing.control)
@@ -502,9 +493,8 @@ struct WorkbenchListDisclosureFooter: View {
   }
 }
 
-/// Keeps custom/plain buttons visible in the macOS full-keyboard navigation path.
-/// Native focus rings are easy to lose when a view supplies its own background,
-/// so the ring is rendered by the shared button style instead.
+/// 让自定义或普通按钮在 macOS 全键盘导航路径中保持可见。
+/// 视图提供自定义背景时很容易丢失原生焦点环，因此由共享按钮样式绘制焦点环。
 struct WorkbenchFocusRingButtonStyle: ButtonStyle {
   var cornerRadius: CGFloat = WorkbenchCornerRadius.control
 
@@ -557,20 +547,8 @@ struct WorkbenchOperationalSplitLayout<Primary: View, Context: View>: View {
   }
 }
 
-enum WorkbenchPadding {
-  /// 8px: 用于小控件、微标签、紧凑按钮内边距
-  static let compact = WorkbenchSpacing.control
-  /// 12px: 用于容器卡片、表单 Section、弹窗组标准内边距
-  static let card = WorkbenchSpacing.card
-  /// 16px: 用于普通内容容器内边距
-  static let content = WorkbenchSpacing.content
-  /// 20px: 用于页面顶层边距
-  static let page = WorkbenchSpacing.page
-}
-
 extension Font {
-  /// Stable semantic roles keep page hierarchy consistent while preserving the
-  /// user's macOS text-size and accessibility settings.
+  /// 稳定的语义角色保持页面层级一致，同时保留用户的 macOS 字体大小和辅助功能设置。
   static let workbenchPageTitle: Font = .title2.weight(.semibold)
   static let workbenchPageSubtitle: Font = .callout
   static let workbenchSectionTitle: Font = .headline

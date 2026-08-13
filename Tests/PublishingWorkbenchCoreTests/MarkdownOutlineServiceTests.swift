@@ -1,20 +1,21 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class MarkdownOutlineServiceTests: XCTestCase {
   func testParsesH1ThroughH3Headings() {
     let outline = MarkdownOutlineService().outline(
       in: """
-      # Title
+        # Title
 
-      ## Plan
-      Body
+        ## Plan
+        Body
 
-      ### Detail
-      More
+        ### Detail
+        More
 
-      #### Ignored
-      """
+        #### Ignored
+        """
     )
 
     XCTAssertEqual(outline.map(\.level), [1, 2, 3])
@@ -23,14 +24,14 @@ final class MarkdownOutlineServiceTests: XCTestCase {
 
   func testSectionRangesJumpToHeadingStarts() throws {
     let markdown = """
-    Intro
+      Intro
 
-    ## First
-    Alpha
+      ## First
+      Alpha
 
-    ## Second
-    Beta
-    """
+      ## Second
+      Beta
+      """
 
     let outline = MarkdownOutlineService().outline(in: markdown)
     let first = try XCTUnwrap(outline.first)
@@ -45,12 +46,12 @@ final class MarkdownOutlineServiceTests: XCTestCase {
   func testMarksSectionsWithPublicRiskIssues() throws {
     let outline = MarkdownOutlineService().outline(
       in: """
-      ## Safe
-      Public content.
+        ## Safe
+        Public content.
 
-      ## Risky
-      api_key = "abcdefghijklmnopqrstuvwxyz"
-      """
+        ## Risky
+        api_key = "abcdefghijklmnopqrstuvwxyz"
+        """
     )
 
     let safe = try XCTUnwrap(outline.first)
@@ -60,17 +61,40 @@ final class MarkdownOutlineServiceTests: XCTestCase {
     XCTAssertEqual(risky.publicRiskSummary.errorCount, 1)
   }
 
+  func testParsesHTMLHeadingsWhenMarkdownHeadingsAreAbsent() {
+    let outline = MarkdownOutlineService().outline(
+      in: """
+        <article><h1 class="hero">HTML Title</h1><p>Intro</p><H2>Plan <em>now</em></H2><h3 data-level="3">Detail</h3></article>
+        """
+    )
+
+    XCTAssertEqual(outline.map(\.level), [1, 2, 3])
+    XCTAssertEqual(outline.map(\.title), ["HTML Title", "Plan now", "Detail"])
+    XCTAssertEqual(outline.map(\.headingLength), [32, 26, 30])
+  }
+
+  func testHTMLFallbackUsesChapterTitleForEmptyHeading() throws {
+    let markdown = "<div><h2><span></span></h2></div>"
+    let item = try XCTUnwrap(MarkdownOutlineService().outline(in: markdown).first)
+
+    XCTAssertEqual(item.level, 2)
+    XCTAssertEqual(item.title, "章节")
+    XCTAssertEqual(item.headingLocation, 5)
+    XCTAssertEqual(item.sectionRange, item.headingRange)
+    XCTAssertTrue(item.publicRiskSummary.isClear)
+  }
+
   func testParentSectionRangeIncludesChildHeadingsButStopsAtNextParent() throws {
     let markdown = """
-    ## Parent
-    Intro
+      ## Parent
+      Intro
 
-    ### Child
-    Details
+      ### Child
+      Details
 
-    ## Next
-    Ending
-    """
+      ## Next
+      Ending
+      """
 
     let outline = MarkdownOutlineService().outline(in: markdown)
     let parent = try XCTUnwrap(outline.first)
@@ -83,17 +107,17 @@ final class MarkdownOutlineServiceTests: XCTestCase {
 
   func testMovesParentSectionWithItsChildrenAndKeepsIntroInPlace() throws {
     let markdown = """
-    Intro
+      Intro
 
-    ## Alpha
-    A
+      ## Alpha
+      A
 
-    ### Alpha Child
-    A1
+      ### Alpha Child
+      A1
 
-    ## Beta
-    B
-    """
+      ## Beta
+      B
+      """
     let service = MarkdownOutlineService()
     let alpha = try XCTUnwrap(service.outline(in: markdown).first)
     let edit = try XCTUnwrap(
@@ -112,19 +136,19 @@ final class MarkdownOutlineServiceTests: XCTestCase {
 
   func testMovesChildOnlyWithinItsParentSection() throws {
     let markdown = """
-    ## Parent
+      ## Parent
 
-    ### First
-    One
+      ### First
+      One
 
-    ### Second
-    Two
+      ### Second
+      Two
 
-    ## Other Parent
+      ## Other Parent
 
-    ### Other Child
-    Three
-    """
+      ### Other Child
+      Three
+      """
     let service = MarkdownOutlineService()
     let outline = service.outline(in: markdown)
     let first = try XCTUnwrap(outline.first { $0.title == "First" })
@@ -150,15 +174,15 @@ final class MarkdownOutlineServiceTests: XCTestCase {
 
   func testDuplicatesAndDeletesWholeParentSection() throws {
     let markdown = """
-    ## Parent
-    Body
+      ## Parent
+      Body
 
-    ### Child
-    Details
+      ### Child
+      Details
 
-    ## Next
-    Ending
-    """
+      ## Next
+      Ending
+      """
     let service = MarkdownOutlineService()
     let parent = try XCTUnwrap(service.outline(in: markdown).first)
 
@@ -180,24 +204,24 @@ final class MarkdownOutlineServiceTests: XCTestCase {
 
   func testBuildsDeterministicAnchorLinksIncludingDuplicateHeadings() throws {
     let markdown = """
-    ## Hello, *World*!
-    First
+      ## Hello, *World*!
+      First
 
-    ## Hello, *World*!
-    Second
+      ## Hello, *World*!
+      Second
 
-    ## Hello World-1
-    Reserved suffix
+      ## Hello World-1
+      Reserved suffix
 
-    ## Hello, *World*!
-    Third duplicate
+      ## Hello, *World*!
+      Third duplicate
 
-    ## 中文 标题
-    Third
+      ## 中文 标题
+      Third
 
-    ## [Docs](https://example.com)
-    Fourth
-    """
+      ## [Docs](https://example.com)
+      Fourth
+      """
     let service = MarkdownOutlineService()
     let outline = service.outline(in: markdown)
 

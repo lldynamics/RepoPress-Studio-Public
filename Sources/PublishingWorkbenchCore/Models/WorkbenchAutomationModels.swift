@@ -22,6 +22,12 @@ public enum WorkbenchAutomationRisk: String, Codable, CaseIterable, Sendable {
   public var requiresExplicitConfirmation: Bool {
     self == .contentChange || self == .externalEffect
   }
+
+  /// Agent-proposed commands use a stricter boundary than legacy/manual
+  /// automation: only genuinely read-only work may run without a user action.
+  public var requiresAgentConfirmation: Bool {
+    self != .readOnly
+  }
 }
 
 public enum WorkbenchAutomationCommandID: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -91,6 +97,7 @@ public struct WorkbenchAutomationStep: Identifiable, Codable, Hashable, Sendable
   public var id: UUID
   public var command: WorkbenchAutomationCommandID
   public var arguments: WorkbenchAutomationArguments
+  public var publishAuthorization: AIPublishAuthorizationSnapshot?
   public var status: WorkbenchAutomationStepStatus
   public var resultMessage: String?
 
@@ -98,14 +105,43 @@ public struct WorkbenchAutomationStep: Identifiable, Codable, Hashable, Sendable
     id: UUID = UUID(),
     command: WorkbenchAutomationCommandID,
     arguments: WorkbenchAutomationArguments = WorkbenchAutomationArguments(),
+    publishAuthorization: AIPublishAuthorizationSnapshot? = nil,
     status: WorkbenchAutomationStepStatus = .proposed,
     resultMessage: String? = nil
   ) {
     self.id = id
     self.command = command
     self.arguments = arguments
+    self.publishAuthorization = publishAuthorization
     self.status = status
     self.resultMessage = resultMessage
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id
+    case command
+    case arguments
+    case status
+    case resultMessage
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decode(UUID.self, forKey: .id)
+    command = try container.decode(WorkbenchAutomationCommandID.self, forKey: .command)
+    arguments = try container.decode(WorkbenchAutomationArguments.self, forKey: .arguments)
+    publishAuthorization = nil
+    status = try container.decode(WorkbenchAutomationStepStatus.self, forKey: .status)
+    resultMessage = try container.decodeIfPresent(String.self, forKey: .resultMessage)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(id, forKey: .id)
+    try container.encode(command, forKey: .command)
+    try container.encode(arguments, forKey: .arguments)
+    try container.encode(status, forKey: .status)
+    try container.encodeIfPresent(resultMessage, forKey: .resultMessage)
   }
 }
 
@@ -119,6 +155,11 @@ public enum WorkbenchAutomationPlanStatus: String, Codable, Hashable, Sendable {
   case cancelled
 }
 
+public enum WorkbenchAutomationPlanSource: String, Codable, Hashable, Sendable {
+  case legacy
+  case agentLoop
+}
+
 public struct WorkbenchAutomationPlan: Identifiable, Codable, Hashable, Sendable {
   public static let maximumStepCount = 12
 
@@ -126,17 +167,50 @@ public struct WorkbenchAutomationPlan: Identifiable, Codable, Hashable, Sendable
   public var goal: String
   public var steps: [WorkbenchAutomationStep]
   public var createdAt: Date
+  public var source: WorkbenchAutomationPlanSource
 
   public init(
     id: UUID = UUID(),
     goal: String,
     steps: [WorkbenchAutomationStep],
-    createdAt: Date = Date()
+    createdAt: Date = Date(),
+    source: WorkbenchAutomationPlanSource = .legacy
   ) {
     self.id = id
     self.goal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
     self.steps = steps
     self.createdAt = createdAt
+    self.source = source
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id
+    case goal
+    case steps
+    case createdAt
+    case source
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decode(UUID.self, forKey: .id)
+    goal = try container.decode(String.self, forKey: .goal)
+    steps = try container.decode([WorkbenchAutomationStep].self, forKey: .steps)
+    createdAt = try container.decode(Date.self, forKey: .createdAt)
+    source =
+      try container.decodeIfPresent(
+        WorkbenchAutomationPlanSource.self,
+        forKey: .source
+      ) ?? .legacy
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(id, forKey: .id)
+    try container.encode(goal, forKey: .goal)
+    try container.encode(steps, forKey: .steps)
+    try container.encode(createdAt, forKey: .createdAt)
+    try container.encode(source, forKey: .source)
   }
 
   public var status: WorkbenchAutomationPlanStatus {
@@ -245,9 +319,10 @@ public struct WorkbenchAutomationRunRecord: Identifiable, Codable, Hashable, Sen
   }
 
   public var hasRollback: Bool {
-    rolledBackAt == nil && steps.contains {
-      $0.rollbackVersionID != nil || $0.command == .createDraft || $0.command == .deleteDraft
-    }
+    rolledBackAt == nil
+      && steps.contains {
+        $0.rollbackVersionID != nil || $0.command == .createDraft || $0.command == .deleteDraft
+      }
   }
 }
 

@@ -613,7 +613,13 @@ public struct HTMLSourceEditingService: Sendable {
   }
 
   private func schedulePreviewCleanup(_ directoryURL: URL) {
-    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 6 * 60 * 60) {
+    Task(priority: .utility) { [directoryURL] in
+      do {
+        try await Task.sleep(for: .seconds(6 * 60 * 60))
+      } catch {
+        return
+      }
+      guard !Task.isCancelled else { return }
       try? FileManager.default.removeItem(at: directoryURL)
     }
   }

@@ -14,11 +14,13 @@ extension WorkbenchStore {
 
   @discardableResult
   public func publishBatchReadyDraftsOnlineUsingPreferredStrategy(
-    expectedChangedPaths: Set<String>? = nil
+    expectedChangedPaths: Set<String>? = nil,
+    authorization: AIPublishAuthorizationSnapshot? = nil
   ) async -> RemoteRepositoryPublishResult? {
     return await publishingStore.publishBatchReadyDraftsOnlineUsingPreferredStrategy(
       store: self,
-      expectedChangedPaths: expectedChangedPaths
+      expectedChangedPaths: expectedChangedPaths,
+      authorization: authorization
     )
   }
 
@@ -38,7 +40,9 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func publishSelectedDraftOnlineUsingPreferredStrategy() async -> RemoteRepositoryPublishResult? {
+  public func publishSelectedDraftOnlineUsingPreferredStrategy() async
+    -> RemoteRepositoryPublishResult?
+  {
     refreshSelectedDraftPublishingState()
     return await publishingStore.publishSelectedDraftOnlineUsingPreferredStrategy(store: self)
   }
@@ -49,12 +53,16 @@ extension WorkbenchStore {
   }
 
   @discardableResult
-  public func rollbackRemoteRelease(_ record: ReleaseRecord) async -> RemoteRepositoryRollbackResult? {
+  public func rollbackRemoteRelease(_ record: ReleaseRecord) async
+    -> RemoteRepositoryRollbackResult?
+  {
     await publishingStore.rollbackRemoteRelease(record, store: self)
   }
 
   @discardableResult
-  public func withdrawRemoteReview(_ record: ReleaseRecord) async -> RemoteRepositoryReviewWithdrawalResult? {
+  public func withdrawRemoteReview(_ record: ReleaseRecord) async
+    -> RemoteRepositoryReviewWithdrawalResult?
+  {
     await publishingStore.withdrawRemoteReview(record, store: self)
   }
 
@@ -82,16 +90,22 @@ extension WorkbenchStore {
     publishingStore.preferredLocalGitPublishMode(for: profile)
   }
 
-  public func preferredRemoteRepositoryPublishMode(for profile: SiteProfile) -> RemoteRepositoryPublishMode {
+  public func preferredRemoteRepositoryPublishMode(for profile: SiteProfile)
+    -> RemoteRepositoryPublishMode
+  {
     publishingStore.preferredRemoteRepositoryPublishMode(for: profile)
   }
 
-  public func remoteRepositoryPublishPreview(for draft: ArticleDraft) -> RemoteRepositoryPublishPreview {
+  public func remoteRepositoryPublishPreview(for draft: ArticleDraft)
+    -> RemoteRepositoryPublishPreview
+  {
     flushDraftBodyEditorBuffer(for: draft.id)
     return publishingStore.remoteRepositoryPublishPreview(for: draft, store: self)
   }
 
-  public func remoteRepositoryPublishPreview(for plan: BatchPublishPlan) -> RemoteRepositoryPublishPreview? {
+  public func remoteRepositoryPublishPreview(for plan: BatchPublishPlan)
+    -> RemoteRepositoryPublishPreview?
+  {
     flushDraftBodyEditorBuffers()
     return publishingStore.remoteRepositoryPublishPreview(for: plan, store: self)
   }
@@ -152,7 +166,9 @@ extension WorkbenchStore {
     )
   }
 
-  public func batchRemoteRepositoryPublishWarningIssues(for plan: BatchPublishPlan) -> [PreflightIssue] {
+  public func batchRemoteRepositoryPublishWarningIssues(for plan: BatchPublishPlan)
+    -> [PreflightIssue]
+  {
     publishingStore.batchRemoteRepositoryPublishWarningIssues(for: plan)
   }
 
@@ -171,7 +187,9 @@ extension WorkbenchStore {
     repositoryDeploymentCoordinator.shouldRefreshDeployment(after: record, store: self)
   }
 
-  public func partialRemoteRepositoryPublishFailure(from error: Error) -> RemoteRepositoryPublishResult? {
+  public func partialRemoteRepositoryPublishFailure(from error: Error)
+    -> RemoteRepositoryPublishResult?
+  {
     publishingStore.partialRemoteRepositoryPublishFailure(from: error)
   }
 }

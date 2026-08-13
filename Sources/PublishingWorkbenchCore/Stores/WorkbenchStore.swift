@@ -42,19 +42,27 @@ public final class WorkbenchStore: ObservableObject {
   let repositoryDeploymentCoordinator: RepositoryDeploymentCoordinator
 
   public lazy var ai: WorkbenchAIFeatureFacade = WorkbenchAIFeatureFacade(store: self)
-  public lazy var repository: WorkbenchRepositoryFeatureFacade = WorkbenchRepositoryFeatureFacade(store: self)
-  public lazy var publishing: WorkbenchPublishingFeatureFacade = WorkbenchPublishingFeatureFacade(store: self)
-  public lazy var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade = WorkbenchImageWorkbenchFeatureFacade(store: self)
-  public lazy var persistenceStatus: WorkbenchPersistenceFeatureFacade = WorkbenchPersistenceFeatureFacade(store: self)
+  public lazy var repository: WorkbenchRepositoryFeatureFacade = WorkbenchRepositoryFeatureFacade(
+    store: self)
+  public lazy var publishing: WorkbenchPublishingFeatureFacade = WorkbenchPublishingFeatureFacade(
+    store: self)
+  public lazy var imageWorkbench: WorkbenchImageWorkbenchFeatureFacade =
+    WorkbenchImageWorkbenchFeatureFacade(store: self)
+  public lazy var persistenceStatus: WorkbenchPersistenceFeatureFacade =
+    WorkbenchPersistenceFeatureFacade(store: self)
   public lazy var shell: WorkbenchShellFeatureFacade = WorkbenchShellFeatureFacade(store: self)
-  public lazy var settings: WorkbenchSettingsFeatureFacade = WorkbenchSettingsFeatureFacade(store: self)
-  public lazy var publishStatus: WorkbenchPublishStatusFeatureFacade = WorkbenchPublishStatusFeatureFacade(store: self)
-  public lazy var siteMaintenance: WorkbenchSiteMaintenanceFeatureFacade = WorkbenchSiteMaintenanceFeatureFacade(store: self)
+  public lazy var settings: WorkbenchSettingsFeatureFacade = WorkbenchSettingsFeatureFacade(
+    store: self)
+  public lazy var publishStatus: WorkbenchPublishStatusFeatureFacade =
+    WorkbenchPublishStatusFeatureFacade(store: self)
+  public lazy var siteMaintenance: WorkbenchSiteMaintenanceFeatureFacade =
+    WorkbenchSiteMaintenanceFeatureFacade(store: self)
   public lazy var contentPresentation: WorkbenchContentPresentationFeatureFacade =
     WorkbenchContentPresentationFeatureFacade(store: self)
   public lazy var commandPresentation: WorkbenchCommandPresentationFeatureFacade =
     WorkbenchCommandPresentationFeatureFacade(store: self)
-  public lazy var activityStatus: WorkbenchActivityStatusFacade = WorkbenchActivityStatusFacade(store: self)
+  public lazy var activityStatus: WorkbenchActivityStatusFacade = WorkbenchActivityStatusFacade(
+    store: self)
   public lazy var workspaceLayout: WorkbenchWorkspaceLayoutFeatureFacade =
     WorkbenchWorkspaceLayoutFeatureFacade(store: self)
   public lazy var workspaceBackupScheduler: WorkspaceBackupScheduler =
@@ -75,7 +83,8 @@ public final class WorkbenchStore: ObservableObject {
   @Published public internal(set) var isSiteAnalyticsLoading = false
   @Published public internal(set) var siteAnalyticsLoadingDraftID: UUID?
   @Published public internal(set) var siteAnalyticsMessage: String?
-  @Published public internal(set) var siteAnalyticsTokenAvailability = KeychainTokenAvailability(hasToken: false)
+  @Published public internal(set) var siteAnalyticsTokenAvailability = KeychainTokenAvailability(
+    hasToken: false)
   private var draftTaskQueueStateCache: [UUID: DraftTaskQueueState] = [:]
   private var knownArticleTitlesCacheRevision: UInt64?
   private var knownArticleTitlesCache = Set<String>()
@@ -157,10 +166,12 @@ public final class WorkbenchStore: ObservableObject {
     batchPublishCommandBuilder: BatchPublishCommandBuilder = BatchPublishCommandBuilder(),
     repositorySyncCommandBuilder: RepositorySyncCommandBuilder = RepositorySyncCommandBuilder(),
     localSitePreviewService: LocalSitePreviewService = LocalSitePreviewService(),
-    localSitePreviewProcessService: LocalSitePreviewProcessService = LocalSitePreviewProcessService(),
+    localSitePreviewProcessService: LocalSitePreviewProcessService =
+      LocalSitePreviewProcessService(),
     remoteReviewDraftBuilder: RemoteReviewDraftBuilder = RemoteReviewDraftBuilder(),
     localGitPublishService: LocalGitPublishService = LocalGitPublishService(),
-    remoteRepositoryPublishService: RemoteRepositoryPublishService = RemoteRepositoryPublishService(),
+    remoteRepositoryPublishService: RemoteRepositoryPublishService =
+      RemoteRepositoryPublishService(),
     deploymentStatusService: DeploymentStatusService = DeploymentStatusService(),
     siteAnalyticsService: SiteAnalyticsService = SiteAnalyticsService(),
     siteStarterService: SiteStarterService = SiteStarterService(),
@@ -176,9 +187,12 @@ public final class WorkbenchStore: ObservableObject {
     generalDraftLibraryService: GeneralDraftLibraryService = GeneralDraftLibraryService(),
     keychainTokenStore: KeychainTokenStore = KeychainTokenStore(),
     aiCredentialStore: AICredentialStore? = nil,
-    repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.repository, accountPrefix: "repository-provider"),
-    deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.deployment, accountPrefix: "deployment-provider"),
-    siteAnalyticsTokenStore: KeychainTokenStore = KeychainTokenStore(service: KeychainCredentialServices.analytics, accountPrefix: "analytics-provider"),
+    repositoryTokenStore: KeychainTokenStore = KeychainTokenStore(
+      service: KeychainCredentialServices.repository, accountPrefix: "repository-provider"),
+    deploymentTokenStore: KeychainTokenStore = KeychainTokenStore(
+      service: KeychainCredentialServices.deployment, accountPrefix: "deployment-provider"),
+    siteAnalyticsTokenStore: KeychainTokenStore = KeychainTokenStore(
+      service: KeychainCredentialServices.analytics, accountPrefix: "analytics-provider"),
     aiPublishingAssistantService: AIPublishingAssistantService = AIPublishingAssistantService(),
     aiConnectionTestService: AIConnectionTestService = AIConnectionTestService(),
     aiDataSharingConsentStore: AIDataSharingConsentStore = AIDataSharingConsentStore()
@@ -209,7 +223,8 @@ public final class WorkbenchStore: ObservableObject {
     }
     self.persistenceStore = WorkbenchPersistenceStore(persistence: persistence)
     self.imageWorkbenchService = imageWorkbenchService
-    self.aiCredentialStore = aiCredentialStore
+    self.aiCredentialStore =
+      aiCredentialStore
       ?? AICredentialStore(keychainTokenStore: keychainTokenStore)
     self.siteAnalyticsService = siteAnalyticsService
     self.siteAnalyticsTokenStore = siteAnalyticsTokenStore
@@ -261,8 +276,10 @@ public final class WorkbenchStore: ObservableObject {
     }
     let snapshot = snapshotLoad.snapshot
     let snapshotProfiles = snapshot?.profiles ?? []
-    let restoredProfiles = snapshotProfiles.isEmpty ? [SiteProfile.defaultProfile] : snapshotProfiles
-    var initialProfiles = restoredProfiles.contains(where: { $0.purpose == .publishing })
+    let restoredProfiles =
+      snapshotProfiles.isEmpty ? [SiteProfile.defaultProfile] : snapshotProfiles
+    var initialProfiles =
+      restoredProfiles.contains(where: { $0.purpose == .publishing })
       ? restoredProfiles
       : restoredProfiles + [SiteProfile.defaultProfile]
     var initialAIConnectionProfiles = snapshot?.aiConnectionProfiles ?? []
@@ -270,7 +287,8 @@ public final class WorkbenchStore: ObservableObject {
     for index in initialProfiles.indices {
       let siteProfile = initialProfiles[index]
       if let selectedID = siteProfile.aiConnectionProfileID,
-         initialAIConnectionProfiles.contains(where: { $0.id == selectedID }) {
+        initialAIConnectionProfiles.contains(where: { $0.id == selectedID })
+      {
         continue
       }
 
@@ -295,7 +313,8 @@ public final class WorkbenchStore: ObservableObject {
       initialPublishingProfiles.contains(where: { $0.id == candidate }) ? candidate : nil
     }
     let initialActiveProfileID = restoredActiveProfileID ?? initialPublishingProfiles[0].id
-    let activeProfile = initialProfiles.first { $0.id == initialActiveProfileID } ?? initialProfiles[0]
+    let activeProfile =
+      initialProfiles.first { $0.id == initialActiveProfileID } ?? initialProfiles[0]
     let snapshotDrafts = snapshot?.drafts ?? []
     let shouldInstallDefaultSoftwareGuides: Bool
     switch freshWorkspaceSeedPolicy {
@@ -350,8 +369,8 @@ public final class WorkbenchStore: ObservableObject {
     self.softwareGuideSeedVersion = initialSoftwareGuideSeedVersion
     let initialDraftListContentScope: DraftListContentScope =
       initialDrafts.contains { $0.belongs(toSiteProfileID: initialActiveProfileID) }
-        ? .currentSite
-        : .general
+      ? .currentSite
+      : .general
     let initialSelectedDraftID = initialDrafts.first { draft in
       switch initialDraftListContentScope {
       case .currentSite:
@@ -454,7 +473,8 @@ public final class WorkbenchStore: ObservableObject {
       .dropFirst()
       .sink { [weak self] profileID in
         guard let self,
-              let profile = self.publishingStore.profiles.first(where: { $0.id == profileID }) else {
+          let profile = self.publishingStore.profiles.first(where: { $0.id == profileID })
+        else {
           return
         }
         self.aiStore.refreshAIKeyAvailability(for: profile)
@@ -527,15 +547,20 @@ public final class WorkbenchStore: ObservableObject {
 
   public var writingDrafts: [ArticleDraft] { publishingStore.writingDrafts }
 
-  public func profile(for draft: ArticleDraft) -> SiteProfile { publishingStore.profile(for: draft) }
+  public func profile(for draft: ArticleDraft) -> SiteProfile {
+    publishingStore.profile(for: draft)
+  }
 
-  public func profile(for record: ReleaseRecord) -> SiteProfile { publishingStore.profile(for: record) }
+  public func profile(for record: ReleaseRecord) -> SiteProfile {
+    publishingStore.profile(for: record)
+  }
 
   func profile(for package: PublishPackage) -> SiteProfile { publishingStore.profile(for: package) }
 
   public func save() {
     flushDraftBodyEditorBuffers()
-    persistenceStore.saveImmediately(snapshot: persistenceStore.persistence.snapshot(from: self))
+    let input = persistenceStore.persistence.snapshotInput(from: self)
+    persistenceStore.saveImmediately(input: input)
   }
 
   func waitForPendingSave() async {
@@ -547,10 +572,12 @@ public final class WorkbenchStore: ObservableObject {
   public func flushPendingChanges() -> Bool {
     flushDraftBodyEditorBuffers()
     let siteDraftFilesSucceeded = flushPendingSiteDraftFileWrites()
+    let input = persistenceStore.persistence.snapshotInput(from: self)
     let persistenceSucceeded = persistenceStore.flush(
-      snapshot: persistenceStore.persistence.snapshot(from: self)
+      input: input
     )
-    let primarySaveSucceeded = siteDraftFilesSucceeded
+    let primarySaveSucceeded =
+      siteDraftFilesSucceeded
       && persistenceSucceeded
       && !persistenceStore.isRecoveryWriteProtected
     let draftRecoverySucceeded = flushDraftRecoveryJournal(
@@ -560,10 +587,10 @@ public final class WorkbenchStore: ObservableObject {
   }
 
   func scheduleAutosave() {
-    persistenceStore.scheduleAutosave { [weak self] in
+    persistenceStore.scheduleAutosave(input: { [weak self] in
       guard let self else { return nil }
-      return self.persistenceStore.persistence.snapshot(from: self)
-    }
+      return self.persistenceStore.persistence.snapshotInput(from: self)
+    })
   }
 
   func scheduleDraftRecoveryJournalWrite() {
@@ -611,7 +638,8 @@ public final class WorkbenchStore: ObservableObject {
     if pruningResolvedRecords {
       let resolvedDraftIDs = draftRecoveryRecords.compactMap { draftID, record -> UUID? in
         guard let draft = drafts.first(where: { $0.id == draftID }),
-              draft.bodyMarkdown == record.recoveredBodyMarkdown else {
+          draft.bodyMarkdown == record.recoveredBodyMarkdown
+        else {
           return nil
         }
         return draftID
@@ -708,7 +736,7 @@ public final class WorkbenchStore: ObservableObject {
       repositoryReport?.statusTitle ?? "",
       repositoryReport?.syncStatusTitle ?? "",
       "\(repositoryReport?.changedFiles.count ?? 0)",
-      "\(repositoryReport?.remoteChangedFiles.count ?? 0)"
+      "\(repositoryReport?.remoteChangedFiles.count ?? 0)",
     ].joined(separator: "|")
     let draftIDs = Set(drafts.map(\.id))
     let preflightDrafts = self.drafts.filter { $0.belongs(toSiteProfileID: activeProfileID) }

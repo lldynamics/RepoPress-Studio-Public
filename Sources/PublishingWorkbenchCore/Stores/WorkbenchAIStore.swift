@@ -59,7 +59,8 @@ public final class WorkbenchAIStore: ObservableObject {
   /// for every SSE token.
   let aiChatStreamPublishInterval: Duration = .milliseconds(50)
   @Published public internal(set) var aiChatManualRetryState: AIChatManualRetryState? = nil
-  @Published public internal(set) var aiGeneralChatManualRetryState: AIGeneralChatManualRetryState? = nil
+  @Published public internal(set) var aiGeneralChatManualRetryState:
+    AIGeneralChatManualRetryState? = nil
 
   init(
     store: WorkbenchStore,
@@ -271,8 +272,10 @@ public final class WorkbenchAIStore: ObservableObject {
     }
   }
 
-  public func refreshSEOSocialPreview(for draft: ArticleDraft, message: String? = "SEO / 社交预览已刷新。") {
-    let snapshot = seoSocialPreviewService.snapshot(draft: draft, profile: store.profile(for: draft))
+  public func refreshSEOSocialPreview(for draft: ArticleDraft, message: String? = "SEO / 社交预览已刷新。")
+  {
+    let snapshot = seoSocialPreviewService.snapshot(
+      draft: draft, profile: store.profile(for: draft))
     seoSocialPreviewSnapshots[draft.id] = snapshot
     seoSocialPreviewSnapshot = snapshot
     seoSocialPreviewMessage = message
@@ -289,7 +292,9 @@ public final class WorkbenchAIStore: ObservableObject {
     seoSocialPreviewSnapshots[draft.id]
   }
 
-  public func seoSocialPreviewCachePresentation(for draft: ArticleDraft) -> SEOSocialPreviewCachePresentation {
+  public func seoSocialPreviewCachePresentation(for draft: ArticleDraft)
+    -> SEOSocialPreviewCachePresentation
+  {
     SEOSocialPreviewCachePresentation(
       snapshot: seoSocialPreviewSnapshot(for: draft),
       isStale: isSEOSocialPreviewStale(for: draft)
@@ -311,14 +316,16 @@ public final class WorkbenchAIStore: ObservableObject {
   public func seoSocialPublishPackageMarkdown(for draft: ArticleDraft) -> String? {
     if store.privateContentDisplay(for: draft).isMasked {
       return """
-      # SEO / Social 发布包已遮挡
+        # SEO / Social 发布包已遮挡
 
-      - 文章：私密文章
-      - 状态：私密内容遮挡已开启
-      - 提示：打开文章或关闭私密遮挡后再生成发布包。
-      """
+        - 文章：私密文章
+        - 状态：私密内容遮挡已开启
+        - 提示：打开文章或关闭私密遮挡后再生成发布包。
+        """
     }
-    let snapshot = seoSocialPreviewSnapshots[draft.id] ?? seoSocialPreviewService.snapshot(draft: draft, profile: store.profile(for: draft))
+    let snapshot =
+      seoSocialPreviewSnapshots[draft.id]
+      ?? seoSocialPreviewService.snapshot(draft: draft, profile: store.profile(for: draft))
     return snapshot.publishPackageMarkdown(
       relatedSuggestions: store.relatedArticleSuggestions(for: draft)
     )
@@ -424,7 +431,8 @@ public final class WorkbenchAIStore: ObservableObject {
   private func aiCredentialFailureMessage(action: String, error: Error) -> String {
     var message = "AI API Key \(action)失败：\(error.localizedDescription)"
     if let keychainError = error as? KeychainTokenStoreError,
-       let recoveryHint = keychainError.recoveryHint {
+      let recoveryHint = keychainError.recoveryHint
+    {
       message += " \(recoveryHint)"
     }
     return message
@@ -441,15 +449,50 @@ public final class WorkbenchAIStore: ObservableObject {
     }
   }
 
-  public func testAIConnection() async -> AIConnectionTestReport? {
+  public func testAIConnection(
+    probeCapabilities: Set<AIProviderCapabilityProbeKind> = []
+  ) async -> AIConnectionTestReport? {
     isAIActionRunning = true
     defer { isAIActionRunning = false }
+    let connection = store.activeAIConnectionProfile
+    let config = connection.config
+    let configKey = AIProviderCapabilityCacheKey(config: config)
+    let consent = aiDataSharingConsentStore.presentation(for: config)
+    guard consent.isGranted else {
+      aiActionMessage = "请先明确同意向 \(consent.destination) 发送 AI 连接测试数据。"
+      return nil
+    }
     do {
       let token = try aiChatAvailableAPIKey(for: store.activeProfile)
       let report = try await aiConnectionTestService.testConnection(
-        config: store.aiProviderConfig(for: store.activeProfile),
-        apiKey: token
+        config: config,
+        apiKey: token,
+        probeCapabilities: probeCapabilities
       )
+      try Task.checkCancellation()
+
+      if let capabilityProbeReport = report.capabilityProbeReport {
+        let currentConnection = store.activeAIConnectionProfile
+        let hasNotDrifted =
+          currentConnection.id == connection.id
+          && currentConnection.config == config
+          && AIProviderCapabilityCacheKey(config: currentConnection.config) == configKey
+          && capabilityProbeReport.key == configKey
+        if hasNotDrifted {
+          let updatedConfig = capabilityProbeReport.applying(
+            to: currentConnection.config,
+            at: Date()
+          )
+          if updatedConfig != currentConnection.config {
+            var updatedConnection = currentConnection
+            updatedConnection.config = updatedConfig
+            // Keep persistence and the legacy site-owned mirror on the
+            // existing connection-profile update path. If identity drifted,
+            // this branch is never reached and no evidence is written.
+            _ = store.updateAIConnectionProfile(updatedConnection)
+          }
+        }
+      }
       refreshAIKeyAvailability()
       aiActionMessage = report.headline
       aiChatMessage = "AI 连接正常，可以发送消息。"
@@ -474,7 +517,8 @@ public final class WorkbenchAIStore: ObservableObject {
     } else if config.dataSharingDestination.isEmpty {
       aiActionMessage = "尚未配置 API 基础地址，授权暂不生效。"
     } else {
-      aiActionMessage = "已允许向 \(config.normalizedDisplayName)（\(config.dataSharingDestination)）发送内容。"
+      aiActionMessage =
+        "已允许向 \(config.normalizedDisplayName)（\(config.dataSharingDestination)）发送内容。"
     }
   }
 

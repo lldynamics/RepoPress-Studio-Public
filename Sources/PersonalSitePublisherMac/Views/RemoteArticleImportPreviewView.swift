@@ -57,7 +57,7 @@ struct RemoteArticleImportPreviewView: View {
               .padding(8)
               .frame(maxWidth: .infinity, alignment: .leading)
               .background(
-                WorkbenchBackgroundStyle.codeBlock,
+                WorkbenchBackgroundStyle.control,
                 in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
               )
           }

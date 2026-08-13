@@ -13,6 +13,7 @@ struct KnowledgeCollectionNavigationView: View {
   @AppStorage("knowledgeCollectionNavigationExpandedV2") private var isNavigationExpanded = false
   @State private var isCollectionBuilderPresented = false
   @State private var expandedSmartKinds = Set<String>()
+  @State private var hoveredCollectionItemID: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
@@ -155,11 +156,13 @@ struct KnowledgeCollectionNavigationView: View {
       .accessibilityAddTraits(.isHeader)
   }
 
+  @ViewBuilder
   private func collectionRow(
     _ item: CollectionNavigationItem,
     favoriteIndex: Int? = nil,
     isIndented: Bool = false
   ) -> some View {
+    let isHovered = hoveredCollectionItemID == item.id
     Button {
       knowledge.setFolderScope(item.scope)
     } label: {
@@ -189,14 +192,21 @@ struct KnowledgeCollectionNavigationView: View {
       .frame(minHeight: KnowledgeSidebarMetrics.collectionRowMinimumHeight)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background {
-        if knowledge.folderScope == item.scope {
-          RoundedRectangle(cornerRadius: 6)
-            .fill(Color.accentColor.opacity(0.12))
-        }
+        RoundedRectangle(cornerRadius: 6)
+          .fill(
+            knowledge.folderScope == item.scope
+              ? Color.accentColor.opacity(0.12)
+              : (isHovered ? Color.primary.opacity(0.05) : Color.clear)
+          )
       }
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .onHover { hovering in
+      withAnimation(WorkbenchMotion.hoverSpring) {
+        hoveredCollectionItemID = hovering ? item.id : nil
+      }
+    }
     .contextMenu {
       Button(isFavorite(item.id) ? "取消收藏" : "加入收藏") {
         toggleFavorite(item.id)
@@ -220,7 +230,7 @@ struct KnowledgeCollectionNavigationView: View {
       }
     }
     .accessibilityLabel("\(item.title)，\(item.count) 条资料")
-    .accessibilityAddTraits(knowledge.folderScope == item.scope ? .isSelected : [])
+    .accessibilityAddTraits(knowledge.folderScope == item.scope ? [.isSelected] : [])
   }
 
   private var allItem: CollectionNavigationItem {

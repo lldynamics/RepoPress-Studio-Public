@@ -1,11 +1,13 @@
 import PublishingWorkbenchCore
 import SwiftUI
 
-private struct WritingDraftListCache {
+struct WritingDraftListCache {
   var presentationRevision: UInt64?
   var sourceDrafts: [ArticleDraft] = []
   var filteredDrafts: [ArticleDraft] = []
   var rowPresentations: [UUID: WritingDraftRowPresentation] = [:]
+  var rowPresentationKeys: [UUID: WritingDraftRowPresentationCacheKey] = [:]
+  private(set) var rowPresentationBuildCount = 0
   var searchText = ""
   var filter: DraftListFilter = .all
   var sortOrder: WritingDraftSortOrder = .updatedNewest
@@ -14,6 +16,43 @@ private struct WritingDraftListCache {
 
   mutating func resetPaginationTrigger() {
     lastLoadMoreTriggerCount = -1
+  }
+
+  /// Reconciles only rows that can be rendered in the current page. The key is
+  /// intentionally cheap (and excludes body text), so body-only edits can keep
+  /// an existing presentation without rescanning the markdown for every row.
+  mutating func updateRowPresentations(
+    sourceDrafts: [ArticleDraft],
+    visibleDrafts: ArraySlice<ArticleDraft>,
+    profileFor: (ArticleDraft) -> SiteProfile,
+    displayFor: (ArticleDraft) -> PrivateContentDisplay
+  ) {
+    let sourceIDs = Set(sourceDrafts.map(\.id))
+    rowPresentations = rowPresentations.filter { sourceIDs.contains($0.key) }
+    rowPresentationKeys = rowPresentationKeys.filter { sourceIDs.contains($0.key) }
+
+    for draft in visibleDrafts {
+      let profile = profileFor(draft)
+      let display = displayFor(draft)
+      let key = WritingDraftRowPresentationCacheKey(
+        draft: draft,
+        profile: profile,
+        display: display
+      )
+      if rowPresentationKeys[draft.id] == key,
+        rowPresentations[draft.id] != nil
+      {
+        continue
+      }
+
+      rowPresentationKeys[draft.id] = key
+      rowPresentations[draft.id] = WritingDraftRowPresentation(
+        draft: draft,
+        profile: profile,
+        display: display
+      )
+      rowPresentationBuildCount += 1
+    }
   }
 }
 
@@ -27,10 +66,12 @@ struct WritingDraftColumn: View {
   @StateObject private var draftListState: WorkbenchDraftListFeatureFacade
   @Environment(\.openSettings) private var openSettings
   @AppStorage("settingsRequestedTabID") private var requestedSettingsTabID = ""
-  @AppStorage("dataManagementRequestedSection") private var dataManagementRequestedSection = DataManagementSection.drafts.rawValue
+  @AppStorage("dataManagementRequestedSection") private var dataManagementRequestedSection =
+    DataManagementSection.drafts.rawValue
   @State private var searchText = ""
   @State private var filter: DraftListFilter = .all
-  @AppStorage("writingDraftSortOrderV1") private var sortOrderRawValue = WritingDraftSortOrder.updatedNewest.rawValue
+  @AppStorage("writingDraftSortOrderV1") private var sortOrderRawValue = WritingDraftSortOrder
+    .updatedNewest.rawValue
   @State private var isDraftListLoading = false
   @State private var draftListLoadingNonce = 0
   @State private var visibleDraftCount = 0
@@ -40,7 +81,7 @@ struct WritingDraftColumn: View {
   @State private var draftListLoadingTask: Task<Void, Never>?
   @State private var draftCountBadgeTask: Task<Void, Never>?
   @State private var draftFilterDebounceTask: Task<Void, Never>?
-  @State private var draftListLimit: Int = 60
+  @State private var draftListLimit: Int = 36
   @State private var debouncedSearchText = ""
   @State private var debouncedFilter: DraftListFilter = .all
   @State private var draftListCache = WritingDraftListCache()
@@ -245,7 +286,9 @@ struct WritingDraftColumn: View {
       }
       .padding(.horizontal, 8)
       .padding(.vertical, 6)
-      .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+      .background(
+        WorkbenchBackgroundStyle.control,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
 
       HStack(spacing: 6) {
         if isCompact {
@@ -396,79 +439,79 @@ struct WritingDraftColumn: View {
 
   private var draftList: some View {
     draftListBase
-    .onDeleteCommand {
-      requestDeleteSelectedDraft()
-    }
-    .onAppear {
-      synchronizeDraftSelectionFromStore()
-      applyDraftFilterDebounce()
-      refreshDraftListLoadingState()
-      refreshDraftCounts()
-    }
-    .task(
-      id: DraftListImageSummaryRefreshInput(
-        revision: draftListState.imageInputRevision
-      )
-    ) {
-      await store.refreshImageWorkbenchSiteSummaryInBackground()
-    }
-    .onChange(of: searchText) { _, _ in
-      scheduleDraftFilterDebounce()
-    }
-    .onChange(of: filter) { _, _ in
-      scheduleDraftFilterDebounce()
-    }
-    .onChange(of: sortOrderRawValue) { _, _ in
-      resetDraftPagination()
-      refreshDraftCounts()
-    }
-    .onChange(of: debouncedSearchText) { _, _ in
-      resetDraftPagination()
-      refreshFilteredDraftsCache()
-      refreshDraftCounts()
-    }
-    .onChange(of: debouncedFilter) { _, _ in
-      resetDraftPagination()
-      refreshFilteredDraftsCache()
-      refreshDraftCounts()
-    }
-    .onChange(of: draftListState.taskQueueStateVersion) { _, _ in
-      refreshFilteredDraftsCache()
-      refreshDraftCounts()
-    }
-    .onChange(of: draftListState.repositoryReport) { _, _ in
-      refreshFilteredDraftsCache()
-      refreshDraftCounts()
-    }
-    .onChange(of: draftListState.presentationRevision) { _, _ in
-      refreshFilteredDraftsCache()
-      revealSelectedDraftIfNeeded()
-      let newDrafts = visibleDraftSnapshot
-      synchronizeDraftSelection(with: newDrafts)
-      if isDraftListLoading && !newDrafts.isEmpty {
-        isDraftListLoading = false
-        draftListLoadingTask?.cancel()
+      .onDeleteCommand {
+        requestDeleteSelectedDraft()
       }
-      refreshFilteredDraftsCache()
-      refreshDraftCounts()
-      refreshDraftListLoadingState()
-      resetDraftPagination()
-    }
-    .onChange(of: draftListState.selectedDraftID) { _, _ in
-      revealSelectedDraftIfNeeded()
-      synchronizeDraftSelectionFromStore()
-    }
-    .onChange(of: filteredDrafts.count) { _, newCount in
-      if newCount == 0 {
-        draftListLimit = 0
-      } else if newCount < draftListLimit {
-        draftListLimit = newCount
+      .onAppear {
+        synchronizeDraftSelectionFromStore()
+        applyDraftFilterDebounce()
+        refreshDraftListLoadingState()
+        refreshDraftCounts()
       }
-      refreshDraftCounts()
-    }
-    .accessibilityLabel("文章列表")
-    .accessibilityValue(draftListAccessibilityValue)
-    .accessibilityIdentifier("writing-draft-list")
+      .task(
+        id: DraftListImageSummaryRefreshInput(
+          revision: draftListState.imageInputRevision
+        )
+      ) {
+        await store.refreshImageWorkbenchSiteSummaryInBackground()
+      }
+      .onChange(of: searchText) { _, _ in
+        scheduleDraftFilterDebounce()
+      }
+      .onChange(of: filter) { _, _ in
+        scheduleDraftFilterDebounce()
+      }
+      .onChange(of: sortOrderRawValue) { _, _ in
+        resetDraftPagination()
+        refreshDraftCounts()
+      }
+      .onChange(of: debouncedSearchText) { _, _ in
+        resetDraftPagination()
+        refreshFilteredDraftsCache()
+        refreshDraftCounts()
+      }
+      .onChange(of: debouncedFilter) { _, _ in
+        resetDraftPagination()
+        refreshFilteredDraftsCache()
+        refreshDraftCounts()
+      }
+      .onChange(of: draftListState.taskQueueStateVersion) { _, _ in
+        refreshFilteredDraftsCache()
+        refreshDraftCounts()
+      }
+      .onChange(of: draftListState.repositoryReport) { _, _ in
+        refreshFilteredDraftsCache()
+        refreshDraftCounts()
+      }
+      .onChange(of: draftListState.presentationRevision) { _, _ in
+        refreshFilteredDraftsCache()
+        revealSelectedDraftIfNeeded()
+        let newDrafts = visibleDraftSnapshot
+        synchronizeDraftSelection(with: newDrafts)
+        if isDraftListLoading && !newDrafts.isEmpty {
+          isDraftListLoading = false
+          draftListLoadingTask?.cancel()
+        }
+        refreshFilteredDraftsCache()
+        refreshDraftCounts()
+        refreshDraftListLoadingState()
+        resetDraftPagination()
+      }
+      .onChange(of: draftListState.selectedDraftID) { _, _ in
+        revealSelectedDraftIfNeeded()
+        synchronizeDraftSelectionFromStore()
+      }
+      .onChange(of: filteredDrafts.count) { _, newCount in
+        if newCount == 0 {
+          draftListLimit = 0
+        } else if newCount < draftListLimit {
+          draftListLimit = newCount
+        }
+        refreshDraftCounts()
+      }
+      .accessibilityLabel("文章列表")
+      .accessibilityValue(draftListAccessibilityValue)
+      .accessibilityIdentifier("writing-draft-list")
   }
 
   private var loadMoreDraftsButton: some View {
@@ -519,20 +562,21 @@ struct WritingDraftColumn: View {
   }
 
   private func draftRow(_ draft: ArticleDraft) -> some View {
-    let presentation = draftListCache.rowPresentations[draft.id]
+    let presentation =
+      draftListCache.rowPresentations[draft.id]
       ?? WritingDraftRowPresentation(
         draft: draft,
         profile: store.profile(for: draft),
         display: store.privateContentDisplay(for: draft)
       )
     return WritingDraftRow(presentation: presentation)
-    .tag(draft.id)
-    .listRowInsets(listRowInsets)
-    .listRowSeparator(.hidden)
-    .listRowBackground(Color.clear)
-    .contextMenu {
-      draftContextMenu(for: draft)
-    }
+      .tag(draft.id)
+      .listRowInsets(listRowInsets)
+      .listRowSeparator(.hidden)
+      .listRowBackground(Color.clear)
+      .contextMenu {
+        draftContextMenu(for: draft)
+      }
   }
 
   @ViewBuilder
@@ -608,7 +652,9 @@ struct WritingDraftColumn: View {
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 6)
-    .background(Color.accentColor.opacity(WorkbenchOpacity.accentBackground), in: RoundedRectangle(cornerRadius: 8))
+    .background(
+      Color.accentColor.opacity(WorkbenchOpacity.accentBackground),
+      in: RoundedRectangle(cornerRadius: 8))
   }
 
   @MainActor
@@ -719,7 +765,8 @@ struct WritingDraftColumn: View {
     }
 
     Menu(String(localized: "批量移动到站点")) {
-      ForEach(availableTransferProfiles(for: selectedDrafts.first, includeCurrentSite: false)) { profile in
+      ForEach(availableTransferProfiles(for: selectedDrafts.first, includeCurrentSite: false)) {
+        profile in
         Button(profile.name) {
           presentDraftOwnershipTransfer(
             draftIDs: Array(selectedDraftIDs),
@@ -731,7 +778,8 @@ struct WritingDraftColumn: View {
     }
 
     Menu(String(localized: "批量复制到站点")) {
-      ForEach(availableTransferProfiles(for: selectedDrafts.first, includeCurrentSite: false)) { profile in
+      ForEach(availableTransferProfiles(for: selectedDrafts.first, includeCurrentSite: false)) {
+        profile in
         Button(profile.name) {
           presentDraftOwnershipTransfer(
             draftIDs: Array(selectedDraftIDs),
@@ -755,11 +803,13 @@ struct WritingDraftColumn: View {
     let totalCount = filteredDrafts.count
     guard nextLimit <= totalCount else {
       draftListLimit = totalCount
+      refreshVisibleRowPresentations()
       return
     }
     withAnimation(WorkbenchMotion.standard) {
       draftListLimit = nextLimit
     }
+    refreshVisibleRowPresentations()
   }
 
   private func scheduleDraftFilterDebounce() {
@@ -801,7 +851,8 @@ struct WritingDraftColumn: View {
 
   private func revealSelectedDraftIfNeeded() {
     guard let selectedDraftID = draftListState.selectedDraftID,
-          store.writingDrafts.contains(where: { $0.id == selectedDraftID }) else {
+      store.writingDrafts.contains(where: { $0.id == selectedDraftID })
+    else {
       return
     }
     refreshFilteredDraftsCache()
@@ -862,6 +913,7 @@ struct WritingDraftColumn: View {
       return
     }
     draftListLimit = min(filteredDrafts.count, draftPageStep)
+    refreshVisibleRowPresentations()
     draftListCache.resetPaginationTrigger()
   }
 
@@ -912,31 +964,21 @@ struct WritingDraftColumn: View {
       let sourceDrafts = store.writingDrafts
       draftListCache.presentationRevision = presentationRevision
       draftListCache.sourceDrafts = sourceDrafts
-      draftListCache.rowPresentations = Dictionary(
-        uniqueKeysWithValues: sourceDrafts.map { draft in
-          (
-            draft.id,
-            WritingDraftRowPresentation(
-              draft: draft,
-              profile: store.profile(for: draft),
-              display: store.privateContentDisplay(for: draft)
-            )
-          )
-        }
-      )
     }
     let visibleDrafts = draftListCache.sourceDrafts
     let query = debouncedSearchText
     let draftTaskQueueStateVersion = draftListState.taskQueueStateVersion
 
-    guard didRefreshPresentation ||
-      query != draftListCache.searchText || draftListCache.filter != debouncedFilter ||
-      draftListCache.sortOrder != sortOrder ||
-      draftListCache.draftTaskQueueStateVersion != draftTaskQueueStateVersion else {
+    guard
+      didRefreshPresentation || query != draftListCache.searchText
+        || draftListCache.filter != debouncedFilter || draftListCache.sortOrder != sortOrder
+        || draftListCache.draftTaskQueueStateVersion != draftTaskQueueStateVersion
+    else {
       return
     }
 
-    let taskQueueStates: [UUID: DraftTaskQueueState] = debouncedFilter.requiresTaskQueueState
+    let taskQueueStates: [UUID: DraftTaskQueueState] =
+      debouncedFilter.requiresTaskQueueState
       ? store.draftTaskQueueStates(for: visibleDrafts)
       : [:]
     draftListCache.searchText = query
@@ -944,19 +986,32 @@ struct WritingDraftColumn: View {
     draftListCache.sortOrder = sortOrder
     draftListCache.draftTaskQueueStateVersion = draftTaskQueueStateVersion
     let searchableDrafts = visibleDrafts.filter { draft in
-      debouncedFilter.matches(draft, taskState: debouncedFilter.requiresTaskQueueState ? taskQueueStates[draft.id] : nil)
+      debouncedFilter.matches(
+        draft, taskState: debouncedFilter.requiresTaskQueueState ? taskQueueStates[draft.id] : nil)
     }
-    let matchedDrafts = query.isEmpty
+    let matchedDrafts =
+      query.isEmpty
       ? searchableDrafts
       : searchableDrafts.filter { draft in
-          draft.title.localizedCaseInsensitiveContains(query)
-            || store.matchesPrivacyProtectedDraftSearch(
-              draft,
-              query: query,
-              profile: store.activeProfile
-            )
-        }
+        draft.title.localizedCaseInsensitiveContains(query)
+          || store.matchesPrivacyProtectedDraftSearch(
+            draft,
+            query: query,
+            profile: store.activeProfile
+          )
+      }
     draftListCache.filteredDrafts = sortOrder.sorted(matchedDrafts)
+    refreshVisibleRowPresentations()
+  }
+
+  private func refreshVisibleRowPresentations() {
+    let visibleLimit = min(draftListLimit, draftListCache.filteredDrafts.count)
+    draftListCache.updateRowPresentations(
+      sourceDrafts: draftListCache.sourceDrafts,
+      visibleDrafts: draftListCache.filteredDrafts.prefix(visibleLimit),
+      profileFor: { store.profile(for: $0) },
+      displayFor: { store.privateContentDisplay(for: $0) }
+    )
   }
 
   private var deleteConfirmationPresented: Binding<Bool> {
@@ -1004,9 +1059,11 @@ struct WritingDraftColumn: View {
 
   private var draftListEmptyState: some View {
     VStack(spacing: 10) {
-      Image(systemName: visibleDraftSnapshot.isEmpty ? "doc.badge.plus" : "doc.text.magnifyingglass")
-        .font(.system(size: 28))
-        .foregroundStyle(.secondary)
+      Image(
+        systemName: visibleDraftSnapshot.isEmpty ? "doc.badge.plus" : "doc.text.magnifyingglass"
+      )
+      .font(.system(size: 28))
+      .foregroundStyle(.secondary)
 
       Text(draftListEmptyTitle)
         .font(.headline)
@@ -1074,7 +1131,8 @@ struct WritingDraftColumn: View {
     selectedDraftIDs = newSelection
 
     let newlySelectedID = newSelection.subtracting(previousSelection).first
-    let primaryID = newlySelectedID
+    let primaryID =
+      newlySelectedID
       ?? store.selectedDraftID.flatMap { newSelection.contains($0) ? $0 : nil }
       ?? newSelection.first
     if store.selectedDraftID != primaryID {
@@ -1178,7 +1236,8 @@ struct WritingDraftColumn: View {
     }
 
     guard let selectedDraftID = store.selectedDraftID,
-          let currentIndex = filteredDrafts.firstIndex(where: { $0.id == selectedDraftID }) else {
+      let currentIndex = filteredDrafts.firstIndex(where: { $0.id == selectedDraftID })
+    else {
       let targetIndex = offset >= 0 ? 0 : (filteredDrafts.count - 1)
       store.selectDraft(filteredDrafts[targetIndex].id)
       return

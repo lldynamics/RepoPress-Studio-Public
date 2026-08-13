@@ -43,10 +43,6 @@
     "en": "%lld Site Styles",
     "zh-Hans": "%lld 个站点样式"
   },
-  "%lld 汉字 · %lld 西文词 · %lld 字符 · %lld 行 · 约 %@ 分钟 · 目标 %@ 字/词": {
-    "en": "%lld Chinese Characters · %lld Words · %lld Characters · %lld Lines · About %@ Min · Target %@ Characters/Words",
-    "zh-Hans": "%lld 汉字 · %lld 西文词 · %lld 字符 · %lld 行 · 约 %@ 分钟 · 目标 %@ 字/词"
-  },
   "%lld 篇私密文章仅搜索标题": {
     "en": "%lld Private Articles Search Titles Only",
     "zh-Hans": "%lld 篇私密文章仅搜索标题"

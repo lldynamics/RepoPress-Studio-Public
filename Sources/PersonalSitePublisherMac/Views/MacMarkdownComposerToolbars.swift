@@ -11,12 +11,27 @@ struct MacMarkdownEditorToolbar: View {
   let isSelectionAIActionRunning: Bool
   let canOpenAIChat: Bool
   let aiChatUnavailableReason: String?
+  @Binding var isAutomaticInlineAICompletionEnabled: Bool
   let writingToolDensity: MarkdownWritingToolDensity
   let availableWritingContextPanels: [MarkdownWritingContextPanel]
   let actions: MarkdownEditorToolbarActions
-  @StateObject private var localPreviewState: WorkbenchLocalSitePreviewFeatureFacade
+  @EnvironmentObject private var localPreviewState: WorkbenchLocalSitePreviewFeatureFacade
   @State private var isLocalPreviewPopoverPresented = false
   @State private var selectedPublishAssets = AIPublishingAssetKind.defaultSelection
+  @AppStorage("workspace.customToolbarConfig") private var customToolbarConfigRawValue = ""
+  @State private var isCustomizationSheetPresented = false
+  @Namespace private var editorModeNamespace
+
+  private var toolbarConfiguration: Binding<MarkdownToolbarConfiguration> {
+    Binding(
+      get: {
+        MarkdownToolbarConfiguration.decodeFromJSON(customToolbarConfigRawValue)
+      },
+      set: { newConfig in
+        customToolbarConfigRawValue = newConfig.encodeToJSON()
+      }
+    )
+  }
 
   init(
     title: Binding<String>,
@@ -28,6 +43,7 @@ struct MacMarkdownEditorToolbar: View {
     isSelectionAIActionRunning: Bool,
     canOpenAIChat: Bool,
     aiChatUnavailableReason: String?,
+    isAutomaticInlineAICompletionEnabled: Binding<Bool>,
     writingToolDensity: MarkdownWritingToolDensity,
     availableWritingContextPanels: [MarkdownWritingContextPanel],
     actions: MarkdownEditorToolbarActions
@@ -41,12 +57,10 @@ struct MacMarkdownEditorToolbar: View {
     self.isSelectionAIActionRunning = isSelectionAIActionRunning
     self.canOpenAIChat = canOpenAIChat
     self.aiChatUnavailableReason = aiChatUnavailableReason
+    _isAutomaticInlineAICompletionEnabled = isAutomaticInlineAICompletionEnabled
     self.writingToolDensity = writingToolDensity
     self.availableWritingContextPanels = availableWritingContextPanels
     self.actions = actions
-    _localPreviewState = StateObject(
-      wrappedValue: WorkbenchLocalSitePreviewFeatureFacade(store: store)
-    )
   }
 
   var body: some View {
@@ -55,15 +69,23 @@ struct MacMarkdownEditorToolbar: View {
 
       Spacer(minLength: 8)
 
-      ViewThatFits(in: .horizontal) {
-        expandedToolbarControls
-        compactToolbarControls(showsAIChatTitle: true, showsPrepareTitle: true)
-        compactToolbarControls(showsAIChatTitle: true, showsPrepareTitle: false)
-        compactToolbarControls(showsAIChatTitle: false, showsPrepareTitle: false)
-      }
+      fixedIconToolbarControls
     }
     .padding(.horizontal, WorkbenchSpacing.section)
     .padding(.vertical, 9)
+    .contextMenu {
+      Button {
+        isCustomizationSheetPresented = true
+      } label: {
+        Label("自定义工具栏…", systemImage: "slider.horizontal.3")
+      }
+    }
+    .sheet(isPresented: $isCustomizationSheetPresented) {
+      MacMarkdownToolbarCustomizationView(
+        configuration: toolbarConfiguration,
+        onDismiss: { isCustomizationSheetPresented = false }
+      )
+    }
   }
 
   private var titleArea: some View {
@@ -76,81 +98,183 @@ struct MacMarkdownEditorToolbar: View {
         .accessibilityLabel("文章标题")
         .accessibilityValue(title.nilIfEmpty ?? String(localized: "未命名文章"))
 
-      Text(markdownPath)
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
-        .workbenchTruncatedIdentity(markdownPath)
+      InteractiveBreadcrumbView(
+        markdownPath: markdownPath,
+        fileURL: nil
+      )
     }
     .frame(minWidth: 220, idealWidth: 320, maxWidth: 460, alignment: .leading)
   }
 
-  private var expandedToolbarControls: some View {
-    HStack(spacing: 5) {
-      expandedSaveStatus
-      editorDisplayModeControl
-      writingToolDensityControl
-      editorToolbarDivider
-      expandedEditorActions
-      editorToolbarDivider
-      aiChatButton(showsTitle: true)
-      localSitePreviewButton(showsTitle: true)
-      preparePublishButton(showsTitle: true)
+  private var fixedIconToolbarControls: some View {
+    ViewThatFits(in: .horizontal) {
+      // 1. 完整展开模式
+      HStack(spacing: 5) {
+        iconSaveStatus
+        editorDisplayModeControl
+        writingToolDensityControl
+        editorToolbarDivider
+        editorActions
+        editorToolbarDivider
+        automaticInlineAICompletionButton(showsTitle: false)
+        aiChatButton(showsTitle: false)
+        localSitePreviewButton(showsTitle: false)
+        preparePublishButton(showsTitle: false)
+      }
+
+      // 2. 中度折叠模式
+      HStack(spacing: 5) {
+        iconSaveStatus
+        editorDisplayModeControl
+        editorToolbarDivider
+        editorActions
+        editorToolbarDivider
+        automaticInlineAICompletionButton(showsTitle: false)
+        aiChatButton(showsTitle: false)
+        preparePublishButton(showsTitle: false)
+        overflowMenu
+      }
+
+      // 3. 紧凑折叠模式
+      HStack(spacing: 5) {
+        iconSaveStatus
+        editorDisplayModeControl
+        editorToolbarDivider
+        automaticInlineAICompletionButton(showsTitle: false)
+        aiChatButton(showsTitle: false)
+        preparePublishButton(showsTitle: false)
+        overflowMenu
+      }
     }
+    .frame(maxWidth: .infinity, alignment: .trailing)
+    .frame(minHeight: 34)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("写作工具栏")
   }
 
-  private func compactToolbarControls(
-    showsAIChatTitle: Bool,
-    showsPrepareTitle: Bool
-  ) -> some View {
-    HStack(spacing: 4) {
-      compactSaveStatus
-      compactEditorDisplayModeControl
-      compactEditorActionsMenu
-      editorToolbarDivider
-      aiChatButton(showsTitle: showsAIChatTitle)
-      localSitePreviewButton(showsTitle: false)
-      preparePublishButton(showsTitle: showsPrepareTitle)
+  private var overflowMenu: some View {
+    Menu {
+      Section("工具密度") {
+        writingToolDensityActions
+      }
+      Section("文档快捷操作") {
+        Button {
+          actions.onShowFindReplace()
+        } label: {
+          Label("查找与替换", systemImage: "magnifyingglass")
+        }
+        Button {
+          actions.onShowOutline()
+        } label: {
+          Label("文章大纲", systemImage: "list.bullet.indent")
+        }
+        Button {
+          actions.onShowShortcutHelp()
+        } label: {
+          Label("快捷键说明", systemImage: "keyboard")
+        }
+      }
+      Section("上下文面板") {
+        contextPanelActions
+      }
+      Section("导出文章") {
+        exportActions
+      }
+      Section("AI 常用功能") {
+        aiActions
+      }
+      Divider()
+      Button {
+        isCustomizationSheetPresented = true
+      } label: {
+        Label("自定义工具栏…", systemImage: "slider.horizontal.3")
+      }
+    } label: {
+      Image(systemName: "ellipsis.circle")
+        .accessibilityHidden(true)
     }
+    .menuIndicator(.hidden)
+    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: false))
+    .help("更多工具栏操作")
+    .accessibilityLabel("更多工具栏操作")
+    .accessibilityIdentifier("markdown-toolbar-overflow-menu")
   }
+
 
   private var editorToolbarDivider: some View {
     Divider()
       .frame(height: 18)
   }
 
-  private var expandedSaveStatus: some View {
-    HStack(spacing: 5) {
+  private var iconSaveStatus: some View {
+    Group {
       if hasUnsavedChanges {
-        Image(systemName: "circle.fill")
-          .font(.system(size: 6))
-          .foregroundStyle(WorkbenchTheme.warning)
-          .accessibilityHidden(true)
+        Circle()
+          .fill(WorkbenchTheme.warning)
+          .frame(width: 7, height: 7)
+          .shadow(color: WorkbenchTheme.warning.opacity(0.6), radius: 3)
+      } else {
+        Image(systemName: "checkmark.circle.fill")
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.success)
       }
-      Text(lastSaveStatus)
-        .font(.caption)
-        .foregroundStyle(
-          hasUnsavedChanges
-            ? AnyShapeStyle(WorkbenchTheme.warning)
-            : AnyShapeStyle(.tertiary)
-        )
-        .fixedSize(horizontal: true, vertical: false)
     }
+    .frame(minWidth: 18, minHeight: 30)
+    .animation(.spring(response: 0.35, dampingFraction: 0.7), value: hasUnsavedChanges)
+    .help(lastSaveStatus)
     .accessibilityLabel("保存状态")
     .accessibilityValue(lastSaveStatus)
   }
 
-  private var compactSaveStatus: some View {
-    Image(systemName: hasUnsavedChanges ? "circle.fill" : "checkmark.circle")
-      .font(hasUnsavedChanges ? .system(size: 7) : .caption)
-      .foregroundStyle(
-        hasUnsavedChanges
-          ? AnyShapeStyle(WorkbenchTheme.warning)
-          : AnyShapeStyle(.tertiary)
+  private var editorActions: some View {
+    editorActionGroup(showsTitle: false)
+      .accessibilityElement(children: .contain)
+  }
+
+  private func automaticInlineAICompletionButton(showsTitle: Bool) -> some View {
+    Button {
+      isAutomaticInlineAICompletionEnabled.toggle()
+    } label: {
+      if showsTitle {
+        Label("自动 AI 续写", systemImage: "wand.and.stars")
+      } else {
+        Image(systemName: "wand.and.stars")
+          .accessibilityHidden(true)
+      }
+    }
+    .buttonStyle(
+      MarkdownEditorToolbarButtonStyle(
+        showsTitle: showsTitle,
+        isSelected: isAutomaticInlineAICompletionEnabled
       )
-      .frame(minWidth: 18, minHeight: 30)
-      .help(lastSaveStatus)
-      .accessibilityLabel("保存状态")
-      .accessibilityValue(lastSaveStatus)
+    )
+    .foregroundStyle(
+      isAutomaticInlineAICompletionEnabled
+        ? Color.purple
+        : Color.secondary
+    )
+    .background(
+      RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+        .fill(
+          isAutomaticInlineAICompletionEnabled
+            ? AnyShapeStyle(LinearGradient(
+                colors: [Color.purple.opacity(0.18), Color.indigo.opacity(0.18)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+              ))
+            : AnyShapeStyle(Color.clear)
+        )
+    )
+    .help(String(localized: "自动 AI 续写"))
+    .accessibilityLabel(String(localized: "自动 AI 续写"))
+    .accessibilityValue(
+      isAutomaticInlineAICompletionEnabled
+        ? String(localized: "开启")
+        : String(localized: "关闭")
+    )
+    .accessibilityAddTraits(
+      isAutomaticInlineAICompletionEnabled ? .isSelected : []
+    )
+    .accessibilityIdentifier("markdown-automatic-inline-ai-completion")
   }
 
   private func aiChatButton(showsTitle: Bool) -> some View {
@@ -165,7 +289,15 @@ struct MacMarkdownEditorToolbar: View {
       }
     }
     .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
+    .foregroundStyle(Color.purple)
     .disabled(!canOpenAIChat)
+    .opacity(isSelectionAIActionRunning ? 0.45 : 1.0)
+    .animation(
+      isSelectionAIActionRunning
+        ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
+        : .default,
+      value: isSelectionAIActionRunning
+    )
     .help(
       aiChatUnavailableReason
         ?? String(localized: "在右侧继续当前文章的 AI 对话")
@@ -207,7 +339,6 @@ struct MacMarkdownEditorToolbar: View {
     .accessibilityIdentifier("markdown-local-site-preview")
     .popover(isPresented: $isLocalPreviewPopoverPresented, arrowEdge: .top) {
       MacMarkdownLocalPreviewPopover(
-        state: localPreviewState,
         currentArticleURL: store.selectedDraft.flatMap { store.localSitePreviewURL(for: $0) }
       )
     }
@@ -231,119 +362,13 @@ struct MacMarkdownEditorToolbar: View {
     .accessibilityIdentifier("markdown-prepare-publish")
   }
 
-  private var compactEditorDisplayModeControl: some View {
-    Menu {
-      ForEach(EditorDisplayMode.allCases) { mode in
-        Button {
-          actions.onSetEditorDisplayMode(mode)
-        } label: {
-          if editorDisplayMode == mode {
-            Label(mode.localizedDisplayName, systemImage: "checkmark")
-          } else {
-            Label(mode.localizedDisplayName, systemImage: mode.systemImage)
-          }
-        }
-        .accessibilityValue(
-          editorDisplayMode == mode ? String(localized: "已选择") : String(localized: "未选择")
-        )
-        .accessibilityAddTraits(editorDisplayMode == mode ? .isSelected : [])
-      }
-    } label: {
-      Image(systemName: editorDisplayMode.systemImage)
-        .accessibilityHidden(true)
-    }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: false))
-    .help(String(localized: "编辑器模式：\(editorDisplayMode.localizedDisplayName)"))
-    .accessibilityLabel(
-      String(localized: "编辑器模式：\(editorDisplayMode.localizedDisplayName)")
-    )
-    .accessibilityValue(editorDisplayMode.localizedDisplayName)
-    .accessibilityIdentifier("markdown-editor-display-mode-menu")
-  }
-
-  private var compactEditorActionsMenu: some View {
-    Menu {
-      Button {
-        actions.onShowFindReplace()
-      } label: {
-        Label("查找与替换", systemImage: "magnifyingglass")
-      }
-
-      Button {
-        actions.onShowOutline()
-      } label: {
-        Label("文章大纲", systemImage: "list.bullet.indent")
-      }
-      .keyboardShortcut("o", modifiers: [.command, .option])
-      .accessibilityIdentifier("markdown-outline-button")
-
-      Menu {
-        contextPanelActions
-      } label: {
-        Label("上下文面板", systemImage: "sidebar.right")
-      }
-      .accessibilityLabel("写作上下文面板")
-      .accessibilityValue(availableWritingContextPanels.map(\.title).joined(separator: "、"))
-      .accessibilityIdentifier("markdown-writing-context-panel-menu")
-
-      Button {
-        actions.onShowShortcutHelp()
-      } label: {
-        Label("快捷键说明", systemImage: "keyboard")
-      }
-
-      Menu {
-        exportActions
-      } label: {
-        Label("导出文章", systemImage: "square.and.arrow.up")
-      }
-      .accessibilityLabel("导出文章")
-      .accessibilityIdentifier("markdown-document-export-menu")
-
-      Divider()
-
-      Menu {
-        writingToolDensityActions
-      } label: {
-        Label("写作工具密度", systemImage: "slider.horizontal.3")
-      }
-      .accessibilityLabel("写作工具密度")
-      .accessibilityValue(writingToolDensity.title)
-      .accessibilityIdentifier("markdown-writing-tool-density")
-
-      Menu {
-        aiActions
-      } label: {
-        Label("AI 常用操作", systemImage: "sparkles")
-      }
-      .accessibilityLabel("AI 常用操作")
-      .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
-    } label: {
-      Image(systemName: "ellipsis.circle")
-        .accessibilityHidden(true)
-    }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: false))
-    .help(String(localized: "更多编辑器操作"))
-    .accessibilityLabel("更多编辑器操作")
-    .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
-    .accessibilityIdentifier("markdown-editor-more-actions-menu")
-  }
-
-  private var expandedEditorActions: some View {
-    editorActionGroup(showsTitle: false)
-    .accessibilityElement(children: .contain)
-  }
-
   private func editorActionGroup(showsTitle: Bool) -> some View {
     HStack(spacing: 4) {
       Button {
         actions.onShowFindReplace()
       } label: {
-        editorActionLabel(String(localized: "查找与替换"), systemName: "magnifyingglass", showsTitle: showsTitle)
+        editorActionLabel(
+          String(localized: "查找与替换"), systemName: "magnifyingglass", showsTitle: showsTitle)
       }
       .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
       .help(String(localized: "查找与替换（⌘F）"))
@@ -352,7 +377,8 @@ struct MacMarkdownEditorToolbar: View {
       Button {
         actions.onShowOutline()
       } label: {
-        editorActionLabel(String(localized: "文章大纲"), systemName: "list.bullet.indent", showsTitle: showsTitle)
+        editorActionLabel(
+          String(localized: "文章大纲"), systemName: "list.bullet.indent", showsTitle: showsTitle)
       }
       .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
       .keyboardShortcut("o", modifiers: [.command, .option])
@@ -365,7 +391,8 @@ struct MacMarkdownEditorToolbar: View {
       Button {
         actions.onShowShortcutHelp()
       } label: {
-        editorActionLabel(String(localized: "快捷键说明"), systemName: "keyboard", showsTitle: showsTitle)
+        editorActionLabel(
+          String(localized: "快捷键说明"), systemName: "keyboard", showsTitle: showsTitle)
       }
       .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
       .help(String(localized: "快捷键说明（⌥⌘/）"))
@@ -374,7 +401,8 @@ struct MacMarkdownEditorToolbar: View {
       Menu {
         exportActions
       } label: {
-        editorActionLabel(String(localized: "导出文章"), systemName: "square.and.arrow.up", showsTitle: showsTitle)
+        editorActionLabel(
+          String(localized: "导出文章"), systemName: "square.and.arrow.up", showsTitle: showsTitle)
       }
       .menuIndicator(.hidden)
       .help(String(localized: "导出、打印或分享当前文章"))
@@ -400,10 +428,12 @@ struct MacMarkdownEditorToolbar: View {
     Menu {
       writingToolDensityActions
     } label: {
-      Label(writingToolDensity.title, systemImage: "slider.horizontal.3")
+      Image(systemName: "slider.horizontal.3")
+        .accessibilityHidden(true)
     }
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
+    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: false))
     .help(String(localized: "切换基础写作或专业 Markdown 工具密度"))
     .accessibilityLabel("写作工具密度")
     .accessibilityValue(writingToolDensity.title)
@@ -606,7 +636,9 @@ struct MacMarkdownEditorToolbar: View {
     HStack(spacing: 2) {
       ForEach(EditorDisplayMode.allCases) { mode in
         Button {
-          actions.onSetEditorDisplayMode(mode)
+          withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+            actions.onSetEditorDisplayMode(mode)
+          }
         } label: {
           editorActionLabel(
             mode.localizedDisplayName,
@@ -614,16 +646,20 @@ struct MacMarkdownEditorToolbar: View {
             showsTitle: showsTitle
           )
         }
-        .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
-        .foregroundStyle(editorDisplayMode == mode ? WorkbenchTheme.navigationSelection : Color.secondary)
-        .background(
-          RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
-            .fill(
-              editorDisplayMode == mode
-                ? WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.selectionBackground)
-                : Color.clear
-            )
+        .buttonStyle(.plain)
+        .padding(.horizontal, showsTitle ? 8 : 6)
+        .frame(minWidth: showsTitle ? nil : 30, minHeight: 28)
+        .foregroundStyle(
+          editorDisplayMode == mode ? Color.primary : Color.secondary
         )
+        .background {
+          if editorDisplayMode == mode {
+            RoundedRectangle(cornerRadius: 6)
+              .fill(Color(nsColor: .controlBackgroundColor))
+              .shadow(color: Color.black.opacity(0.12), radius: 2, x: 0, y: 1)
+              .matchedGeometryEffect(id: "activeModeSegment", in: editorModeNamespace)
+          }
+        }
         .accessibilityLabel(String(localized: "编辑器模式：\(mode.localizedDisplayName)"))
         .accessibilityValue(
           editorDisplayMode == mode ? String(localized: "已选择") : String(localized: "未选择")
@@ -633,7 +669,10 @@ struct MacMarkdownEditorToolbar: View {
       }
     }
     .padding(2)
-    .background(WorkbenchBackgroundStyle.badge, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(
+      Color.primary.opacity(0.06),
+      in: RoundedRectangle(cornerRadius: 8)
+    )
     .accessibilityElement(children: .contain)
   }
 
@@ -695,9 +734,9 @@ struct MacMarkdownEditorToolbar: View {
     }
   }
 }
-
 private struct MarkdownEditorToolbarButtonStyle: ButtonStyle {
   let showsTitle: Bool
+  var isSelected = false
 
   @Environment(\.isFocused) private var isFocused
 
@@ -708,14 +747,20 @@ private struct MarkdownEditorToolbarButtonStyle: ButtonStyle {
       .frame(minWidth: showsTitle ? nil : 30, minHeight: 30)
       .fixedSize(horizontal: showsTitle, vertical: false)
       .background(
-        Color.primary.opacity(configuration.isPressed ? 0.10 : 0.04),
+        isSelected
+          ? WorkbenchTheme.navigationSelection.opacity(configuration.isPressed ? 0.18 : 0.10)
+          : Color.primary.opacity(configuration.isPressed ? 0.10 : 0.04),
         in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
       )
       .overlay {
         RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
           .stroke(
-            isFocused ? Color.accentColor : Color.clear,
-            lineWidth: isFocused ? 2 : 0
+            isFocused
+              ? Color.accentColor
+              : (isSelected
+                ? WorkbenchTheme.navigationSelection.opacity(0.70)
+                : Color.clear),
+            lineWidth: isFocused ? 2 : (isSelected ? 1 : 0)
           )
       }
   }
@@ -728,7 +773,6 @@ struct MacMarkdownFormattingToolbar: View {
   let writingUnitCount: Int
   let lineCount: Int
   let readingMinutes: Int
-  let writingGoal: Int
   let cursorPosition: MarkdownCursorPosition?
   let fenceMatch: MarkdownFenceMatch?
   let completion: MarkdownCompletionContext?
@@ -753,21 +797,18 @@ struct MacMarkdownFormattingToolbar: View {
   let onInsertCompletionTrigger: (MarkdownCompletionTrigger) -> Void
 
   var body: some View {
-    Group {
-      if writingToolDensity == .basic {
-        ViewThatFits(in: .horizontal) {
-          basicRow(showsTitle: true)
+    ScrollView(.horizontal, showsIndicators: false) {
+      Group {
+        if writingToolDensity == .basic {
           basicRow(showsTitle: false)
-        }
-      } else {
-        ViewThatFits(in: .horizontal) {
-          expandedRow(showsTitle: true)
-          compactRows(showsTitle: true)
+        } else {
           expandedRow(showsTitle: false)
-          compactRows(showsTitle: false)
         }
       }
+      .fixedSize(horizontal: true, vertical: false)
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .frame(minHeight: 34)
     .buttonStyle(WorkbenchFocusRingButtonStyle())
     .padding(.horizontal, 10)
     .padding(.vertical, 6)
@@ -808,29 +849,6 @@ struct MacMarkdownFormattingToolbar: View {
       insertionButtons(showsTitle: showsTitle)
       Spacer(minLength: 8)
       trailingControls(showsTitle: showsTitle)
-    }
-  }
-
-  private func compactRows(showsTitle: Bool) -> some View {
-    VStack(spacing: 5) {
-      HStack(spacing: 5) {
-        headingButtons(showsTitle: showsTitle)
-        toolbarDivider
-        inlineStyleButtons(showsTitle: showsTitle)
-        toolbarDivider
-        quoteAndCodeBlockButtons(showsTitle: showsTitle)
-        Spacer(minLength: 0)
-      }
-
-      Divider()
-
-      HStack(spacing: 5) {
-        listButtons(showsTitle: showsTitle)
-        toolbarDivider
-        insertionButtons(showsTitle: showsTitle)
-        Spacer(minLength: 8)
-        trailingControls(showsTitle: showsTitle)
-      }
     }
   }
 
@@ -997,6 +1015,7 @@ struct MacMarkdownFormattingToolbar: View {
         ? String(localized: "没有问题")
         : String(localized: "\(diagnosticCount) 项")
     )
+    ZenModeToggleButton(showsTitle: showsTitle)
     MarkdownEditorComfortControl(showsTitle: showsTitle)
     toolbarDivider
     MarkdownCursorWorkflowControls(
@@ -1027,13 +1046,15 @@ struct MacMarkdownFormattingToolbar: View {
       .fixedSize(horizontal: true, vertical: false)
       .help(
         String(
-          localized: "\(hanCharacterCount) 汉字 · \(wordCount) 西文词 · \(characterCount) 字符 · \(lineCount) 行 · 约 \(readingMinutes) 分钟 · 目标 \(writingGoal) 字/词"
+          localized:
+            "\(hanCharacterCount) 汉字 · \(wordCount) 西文词 · \(characterCount) 字符 · \(lineCount) 行 · 约 \(readingMinutes) 分钟"
         )
       )
       .accessibilityLabel("文章统计")
       .accessibilityValue(
         String(
-          localized: "\(hanCharacterCount) 个汉字，\(wordCount) 个西文词，合计 \(writingUnitCount) 字词，\(lineCount) 行，预计阅读 \(readingMinutes) 分钟，写作目标 \(writingGoal) 字词，已完成 \(writingGoalProgressPercent)%"
+          localized:
+            "\(hanCharacterCount) 个汉字，\(wordCount) 个西文词，合计 \(writingUnitCount) 字词，\(lineCount) 行，预计阅读 \(readingMinutes) 分钟"
         )
       )
   }
@@ -1042,11 +1063,6 @@ struct MacMarkdownFormattingToolbar: View {
     String(
       localized: "⏱️ 约 \(readingMinutes) 分钟 · \(writingUnitCount) 字/词"
     )
-  }
-
-  private var writingGoalProgressPercent: Int {
-    guard writingGoal > 0 else { return 0 }
-    return min(100, Int(Double(writingUnitCount) / Double(writingGoal) * 100))
   }
 
   private func headingButton(
@@ -1110,4 +1126,30 @@ struct MacMarkdownFormattingToolbar: View {
     }
   }
 
+}
+
+private struct ZenModeToggleButton: View {
+  @EnvironmentObject private var zenModeController: ZenModeController
+  let showsTitle: Bool
+
+  var body: some View {
+    Button {
+      zenModeController.toggleZenMode()
+    } label: {
+      if showsTitle {
+        Label(
+          zenModeController.isZenModeActive ? "退出沉浸" : "沉浸模式",
+          systemImage: zenModeController.isZenModeActive ? "leaf.fill" : "leaf"
+        )
+      } else {
+        Image(systemName: zenModeController.isZenModeActive ? "leaf.fill" : "leaf")
+          .frame(width: 28, height: 28)
+      }
+    }
+    .foregroundStyle(
+      zenModeController.isZenModeActive ? WorkbenchTheme.navigationSelection : Color.secondary
+    )
+    .help(zenModeController.isZenModeActive ? "退出沉浸模式" : "开启沉浸模式（打字时自动淡出工具栏）")
+    .accessibilityLabel("沉浸模式")
+  }
 }

@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor
@@ -239,12 +240,14 @@ final class WorkbenchPersistenceTests: XCTestCase {
     XCTAssertEqual(chinese.first?.title, "开始使用：认识发布工作台")
     XCTAssertEqual(english.first?.title, "Getting Started: Meet Your Publishing Workbench")
     XCTAssertTrue(chinese[2].bodyMarkdown.contains("独立免费版中直接开放"))
-    XCTAssertTrue(english[2].bodyMarkdown.contains("available directly in the free standalone edition"))
+    XCTAssertTrue(
+      english[2].bodyMarkdown.contains("available directly in the free standalone edition"))
     XCTAssertTrue(chinese[3].bodyMarkdown.contains("不包含在 App 包内"))
     XCTAssertTrue(english[3].bodyMarkdown.contains("Chrome extension is not included"))
     XCTAssertTrue(chinese[4].bodyMarkdown.contains("保存到本地"))
     XCTAssertTrue(english[4].bodyMarkdown.contains("Save Locally"))
-    XCTAssertTrue((chinese + english).allSatisfy { !$0.summary.isEmpty && !$0.bodyMarkdown.isEmpty })
+    XCTAssertTrue(
+      (chinese + english).allSatisfy { !$0.summary.isEmpty && !$0.bodyMarkdown.isEmpty })
     XCTAssertTrue((chinese + english).allSatisfy { $0.authors == [profile.defaultAuthor] })
     XCTAssertTrue((chinese + english).allSatisfy(\.isGeneralDraft))
   }
@@ -444,7 +447,8 @@ final class WorkbenchPersistenceTests: XCTestCase {
     XCTAssertEqual(Set(reloaded.drafts.compactMap(\.softwareGuideID)).count, 6)
   }
 
-  func testInstallingSoftwareGuidesResolvesUserSlugCollisionWithoutMisidentification() async throws {
+  func testInstallingSoftwareGuidesResolvesUserSlugCollisionWithoutMisidentification() async throws
+  {
     let url = temporaryPersistenceURL()
     defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
     let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: url))
@@ -487,7 +491,8 @@ final class WorkbenchPersistenceTests: XCTestCase {
     await store.waitForPendingSave()
 
     XCTAssertEqual(Set(store.drafts.compactMap(\.softwareGuideID)).count, 6)
-    XCTAssertEqual(store.drafts.filter { $0.softwareGuideID == existingGuide.softwareGuideID }.count, 1)
+    XCTAssertEqual(
+      store.drafts.filter { $0.softwareGuideID == existingGuide.softwareGuideID }.count, 1)
     XCTAssertEqual(store.selectedDraft?.softwareGuideID, "getting-started")
   }
 
@@ -525,7 +530,8 @@ final class WorkbenchPersistenceTests: XCTestCase {
     XCTAssertEqual(migrated.releaseRecords.count, ReleaseRecord.maximumRetainedRecords)
     XCTAssertEqual(migrated.releaseRecords.first?.title, "Release 0")
 
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: temporaryPersistenceURL()))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: temporaryPersistenceURL()))
     store.setReleaseRecords(records)
     XCTAssertEqual(store.releaseRecords.count, ReleaseRecord.maximumRetainedRecords)
   }
@@ -542,13 +548,15 @@ final class WorkbenchPersistenceTests: XCTestCase {
       )
     }
 
-    XCTAssertEqual(ReleaseRecord.limitedHistory(records).map(\.title), ["Running", "Failed", "Success"])
+    XCTAssertEqual(
+      ReleaseRecord.limitedHistory(records).map(\.title), ["Running", "Failed", "Success"])
   }
 
   func testImageOptimizationCachePrunesOnlyUnreferencedBatchFolders() throws {
     let persistence = WorkbenchPersistence(fileURL: temporaryPersistenceURL())
     let rootURL = persistence.imageOptimizationDirectoryURL
-    let referencedBatch = rootURL.appendingPathComponent(".image-batch-referenced", isDirectory: true)
+    let referencedBatch = rootURL.appendingPathComponent(
+      ".image-batch-referenced", isDirectory: true)
     let abandonedBatch = rootURL.appendingPathComponent(".image-batch-abandoned", isDirectory: true)
     let userFolder = rootURL.appendingPathComponent("manual-assets", isDirectory: true)
     try FileManager.default.createDirectory(at: referencedBatch, withIntermediateDirectories: true)
@@ -615,7 +623,8 @@ final class WorkbenchPersistenceTests: XCTestCase {
     try invalidData.write(to: persistence.lastKnownGoodURL, options: .atomic)
 
     XCTAssertThrowsError(try persistence.loadWithRecovery()) { error in
-      guard case let WorkbenchPersistenceError.unrecoverableSnapshot(primary, backup) = error else {
+      guard case WorkbenchPersistenceError.unrecoverableSnapshot(let primary, let backup) = error
+      else {
         return XCTFail("Expected unrecoverable snapshot, got \(error)")
       }
       XCTAssertTrue(primary.contains("重复"))
@@ -670,7 +679,8 @@ final class WorkbenchPersistenceTests: XCTestCase {
     let persistence = WorkbenchPersistence(fileURL: url)
     let primaryData = Data("{ corrupt primary".utf8)
     let backupData = Data("{ corrupt backup".utf8)
-    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     try primaryData.write(to: url, options: .atomic)
     try backupData.write(to: persistence.lastKnownGoodURL, options: .atomic)
 
@@ -685,7 +695,9 @@ final class WorkbenchPersistenceTests: XCTestCase {
     await store.waitForPendingSave()
     try await Task.sleep(nanoseconds: 900_000_000)
 
-    XCTAssertTrue(store.flushPendingChanges(), "Recovery protection should allow quitting without overwriting data")
+    XCTAssertTrue(
+      store.flushPendingChanges(),
+      "Recovery protection should allow quitting without overwriting data")
     XCTAssertEqual(try Data(contentsOf: url), primaryData)
     XCTAssertEqual(try Data(contentsOf: persistence.lastKnownGoodURL), backupData)
     XCTAssertTrue(store.hasUnsavedChanges)
@@ -698,7 +710,8 @@ final class WorkbenchPersistenceTests: XCTestCase {
     let persistence = WorkbenchPersistence(fileURL: url)
     let primaryData = Data("{ corrupt primary".utf8)
     let backupData = Data("{ corrupt backup".utf8)
-    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     try primaryData.write(to: url, options: .atomic)
     try backupData.write(to: persistence.lastKnownGoodURL, options: .atomic)
 
@@ -713,7 +726,9 @@ final class WorkbenchPersistenceTests: XCTestCase {
       primaryData
     )
     XCTAssertEqual(
-      try Data(contentsOf: archiveURL.appendingPathComponent(persistence.lastKnownGoodURL.lastPathComponent)),
+      try Data(
+        contentsOf: archiveURL.appendingPathComponent(
+          persistence.lastKnownGoodURL.lastPathComponent)),
       backupData
     )
     XCTAssertNotNil(try persistence.load())
@@ -725,7 +740,8 @@ final class WorkbenchPersistenceTests: XCTestCase {
     let persistence = WorkbenchPersistence(fileURL: url)
     let primaryData = Data("{ corrupt primary".utf8)
     let backupData = Data("{ corrupt backup".utf8)
-    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     try primaryData.write(to: url, options: .atomic)
     try backupData.write(to: persistence.lastKnownGoodURL, options: .atomic)
     var recoverySnapshot = makeSnapshot()
@@ -742,7 +758,9 @@ final class WorkbenchPersistenceTests: XCTestCase {
       primaryData
     )
     XCTAssertEqual(
-      try Data(contentsOf: archiveURL.appendingPathComponent(persistence.lastKnownGoodURL.lastPathComponent)),
+      try Data(
+        contentsOf: archiveURL.appendingPathComponent(
+          persistence.lastKnownGoodURL.lastPathComponent)),
       backupData
     )
   }
@@ -753,16 +771,21 @@ final class WorkbenchPersistenceTests: XCTestCase {
     let persistence = WorkbenchPersistence(fileURL: url)
     let primaryData = Data("{ corrupt primary".utf8)
     let backupData = Data("{ corrupt backup".utf8)
-    let exportRoot = url.deletingLastPathComponent().appendingPathComponent("Export", isDirectory: true)
-    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let exportRoot = url.deletingLastPathComponent().appendingPathComponent(
+      "Export", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     try primaryData.write(to: url, options: .atomic)
     try backupData.write(to: persistence.lastKnownGoodURL, options: .atomic)
 
     let exportURL = try persistence.exportRecoveryFiles(to: exportRoot)
 
-    XCTAssertEqual(try Data(contentsOf: exportURL.appendingPathComponent(url.lastPathComponent)), primaryData)
     XCTAssertEqual(
-      try Data(contentsOf: exportURL.appendingPathComponent(persistence.lastKnownGoodURL.lastPathComponent)),
+      try Data(contentsOf: exportURL.appendingPathComponent(url.lastPathComponent)), primaryData)
+    XCTAssertEqual(
+      try Data(
+        contentsOf: exportURL.appendingPathComponent(persistence.lastKnownGoodURL.lastPathComponent)
+      ),
       backupData
     )
     XCTAssertEqual(try Data(contentsOf: url), primaryData)
@@ -777,7 +800,8 @@ final class WorkbenchPersistenceTests: XCTestCase {
     var object = try XCTUnwrap(try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
     object.removeValue(forKey: "formatVersion")
     object.removeValue(forKey: "softwareGuideSeedVersion")
-    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     try JSONSerialization.data(withJSONObject: object).write(to: url, options: .atomic)
 
     let loaded = try XCTUnwrap(persistence.load())
@@ -790,7 +814,8 @@ final class WorkbenchPersistenceTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
     let persistence = WorkbenchPersistence(fileURL: url)
     let legacyData = try makeV2SnapshotDataWithRetiredFields()
-    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     try legacyData.write(to: url, options: .atomic)
 
     let loadedSnapshot = try XCTUnwrap(persistence.load())
@@ -812,12 +837,15 @@ final class WorkbenchPersistenceTests: XCTestCase {
     )
     XCTAssertEqual(archiveURLs.count, 1)
     let archiveObject = try XCTUnwrap(
-      try JSONSerialization.jsonObject(with: Data(contentsOf: try XCTUnwrap(archiveURLs.first))) as? [String: Any]
+      try JSONSerialization.jsonObject(with: Data(contentsOf: try XCTUnwrap(archiveURLs.first)))
+        as? [String: Any]
     )
     XCTAssertEqual(archiveObject["sourceFormatVersion"] as? Int, 2)
     let retiredFields = try XCTUnwrap(archiveObject["retiredFields"] as? [String: Any])
-    let performanceRecords = try XCTUnwrap(retiredFields["contentPerformanceSnapshots"] as? [[String: Any]])
-    let evidenceRecords = try XCTUnwrap(retiredFields["externalVerificationEvidenceRecords"] as? [[String: Any]])
+    let performanceRecords = try XCTUnwrap(
+      retiredFields["contentPerformanceSnapshots"] as? [[String: Any]])
+    let evidenceRecords = try XCTUnwrap(
+      retiredFields["externalVerificationEvidenceRecords"] as? [[String: Any]])
     XCTAssertEqual(performanceRecords.first?["pageViews"] as? Int, 321)
     XCTAssertEqual(evidenceRecords.first?["summary"] as? String, "Redacted release evidence")
     XCTAssertEqual(evidenceRecords.first?["url"] as? String, "https://example.com/review/42")
@@ -837,7 +865,8 @@ final class WorkbenchPersistenceTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
     let persistence = WorkbenchPersistence(fileURL: url)
     let legacyData = try makeV2SnapshotDataWithRetiredFields()
-    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
     try legacyData.write(to: url, options: .atomic)
     let loadedSnapshot = try XCTUnwrap(persistence.load())
     try "blocks archive directory".write(
@@ -861,12 +890,15 @@ final class WorkbenchPersistenceTests: XCTestCase {
 
   func testStoreKeepsDirtyStateAndShowsFailureWhenPrimaryWriteFails() async throws {
     let directoryURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacPersistenceFailure-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacPersistenceFailure-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directoryURL) }
     try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     let blockingURL = directoryURL.appendingPathComponent("not-a-directory")
     try "blocking file".write(to: blockingURL, atomically: true, encoding: .utf8)
-    let store = WorkbenchStore(persistence: WorkbenchPersistence(fileURL: blockingURL.appendingPathComponent("workbench.json")))
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(
+        fileURL: blockingURL.appendingPathComponent("workbench.json")))
 
     store.save()
     await store.waitForPendingSave()
@@ -1026,6 +1058,33 @@ final class WorkbenchPersistenceTests: XCTestCase {
     XCTAssertEqual(try persistence.load()?.drafts.first?.title, "Latest snapshot wins")
   }
 
+  func testAutosaveNormalizesFrozenInputOffMainActor() async throws {
+    let url = temporaryPersistenceURL()
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let persistence = WorkbenchPersistence(fileURL: url)
+    let sourceStore = WorkbenchStore(
+      persistence: persistence,
+      safeMode: true
+    )
+    let frozenInput = persistence.snapshotInput(from: sourceStore)
+    let preparationProbe = PersistencePreparationProbe()
+    let persistenceStore = WorkbenchPersistenceStore(
+      persistence: persistence,
+      prepareBackgroundSave: { persistence, snapshot in
+        preparationProbe.record()
+        return try persistence.prepareSave(snapshot, reclaimUnreferencedAttachments: false)
+      }
+    )
+
+    persistenceStore.scheduleAutosave(input: { frozenInput })
+    try await Task.sleep(nanoseconds: 900_000_000)
+    await persistenceStore.waitForCurrentBackgroundSave()
+
+    XCTAssertTrue(preparationProbe.didRun)
+    XCTAssertFalse(preparationProbe.ranOnMainThread)
+    XCTAssertFalse(persistenceStore.hasUnsavedChanges)
+  }
+
   func testFlushPendingChangesWritesImmediatelyBeforeExit() throws {
     let url = temporaryPersistenceURL()
     defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -1053,7 +1112,9 @@ final class WorkbenchPersistenceTests: XCTestCase {
 
   private func temporaryPersistenceURL() -> URL {
     FileManager.default.temporaryDirectory
-      .appendingPathComponent("PersonalSitePublisherMacPersistenceTests-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent(
+        "PersonalSitePublisherMacPersistenceTests-\(UUID().uuidString)", isDirectory: true
+      )
       .appendingPathComponent("workbench.json")
   }
 
@@ -1061,15 +1122,19 @@ final class WorkbenchPersistenceTests: XCTestCase {
     let encoded = try JSONEncoder.workbench.encode(makeSnapshot())
     var object = try XCTUnwrap(try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
     object["formatVersion"] = 2
-    object["contentPerformanceSnapshots"] = [[
-      "draftID": "11111111-1111-1111-1111-111111111111",
-      "pageViews": 321,
-      "visitors": 123,
-    ]]
-    object["externalVerificationEvidenceRecords"] = [[
-      "summary": "Redacted release evidence",
-      "url": "https://example.com/review/42",
-    ]]
+    object["contentPerformanceSnapshots"] = [
+      [
+        "draftID": "11111111-1111-1111-1111-111111111111",
+        "pageViews": 321,
+        "visitors": 123,
+      ]
+    ]
+    object["externalVerificationEvidenceRecords"] = [
+      [
+        "summary": "Redacted release evidence",
+        "url": "https://example.com/review/42",
+      ]
+    ]
     return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
   }
 
@@ -1117,5 +1182,30 @@ private final class ControlledPersistenceCommit: @unchecked Sendable {
     }
     _ = allowCommit.wait(timeout: .now() + 3)
     return try persistence.commit(preparedSave)
+  }
+}
+
+private final class PersistencePreparationProbe: @unchecked Sendable {
+  private let lock = NSLock()
+  private var didRunValue = false
+  private var ranOnMainThreadValue = false
+
+  var didRun: Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return didRunValue
+  }
+
+  var ranOnMainThread: Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return ranOnMainThreadValue
+  }
+
+  func record() {
+    lock.lock()
+    didRunValue = true
+    ranOnMainThreadValue = Thread.isMainThread
+    lock.unlock()
   }
 }

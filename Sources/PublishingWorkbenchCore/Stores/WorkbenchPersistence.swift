@@ -79,7 +79,8 @@ public struct WorkbenchSnapshot: Codable, Sendable {
       customMarkdownSnippets.prefix(MarkdownSnippetLibraryService.maximumCustomSnippetCount)
     )
     let limitedRecycledDrafts = Array(
-      recycledDrafts.sorted { $0.deletedAt > $1.deletedAt }.prefix(DraftLifecycleService.maximumRecycledDrafts)
+      recycledDrafts.sorted { $0.deletedAt > $1.deletedAt }.prefix(
+        DraftLifecycleService.maximumRecycledDrafts)
     )
     self.markdownEditorSessionStates = Self.validEditorSessionStates(
       markdownEditorSessionStates,
@@ -94,8 +95,10 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         .prefix(DraftLifecycleService.maximumRepositoryCleanupRequests)
     )
     self.releaseRecords = ReleaseRecord.limitedHistory(releaseRecords)
-    self.maintenanceOperationRecords = Self.limitedMaintenanceOperationRecords(maintenanceOperationRecords)
-    self.aiMetadataApplicationRecords = Self.limitedMetadataApplicationRecords(aiMetadataApplicationRecords)
+    self.maintenanceOperationRecords = Self.limitedMaintenanceOperationRecords(
+      maintenanceOperationRecords)
+    self.aiMetadataApplicationRecords = Self.limitedMetadataApplicationRecords(
+      aiMetadataApplicationRecords)
     self.automationRunRecords = Self.limitedAutomationRunRecords(automationRunRecords)
     self.aiChatCustomPrompts = Self.limitedCustomPrompts(aiChatCustomPrompts)
     let limitedAIConversations = Self.limitedAIConversations(
@@ -123,7 +126,8 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     self.remoteRepositoryAccessCheck = remoteRepositoryAccessCheck
     self.deploymentPollingSettings = deploymentPollingSettings
     self.deploymentPollingState = deploymentPollingState
-    self.deploymentStatusSnapshots = Self.limitedDeploymentStatusSnapshots(deploymentStatusSnapshots)
+    self.deploymentStatusSnapshots = Self.limitedDeploymentStatusSnapshots(
+      deploymentStatusSnapshots)
     self.deploymentStatusHistory = Self.limitedDeploymentStatusHistory(deploymentStatusHistory)
   }
 
@@ -175,7 +179,8 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     formatVersion = Self.currentFormatVersion
     profiles = try container.decode([SiteProfile].self, forKey: .profiles)
     aiConnectionProfiles = Array(
-      (try container.decodeIfPresent([AIConnectionProfile].self, forKey: .aiConnectionProfiles) ?? [])
+      (try container.decodeIfPresent([AIConnectionProfile].self, forKey: .aiConnectionProfiles)
+        ?? [])
         .prefix(64)
     )
     activeProfileID = try container.decode(UUID.self, forKey: .activeProfileID)
@@ -209,8 +214,8 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         [DraftRepositoryCleanupRequest].self,
         forKey: .draftRepositoryCleanupRequests
       ) ?? [])
-        .sorted { $0.requestedAt > $1.requestedAt }
-        .prefix(DraftLifecycleService.maximumRepositoryCleanupRequests)
+      .sorted { $0.requestedAt > $1.requestedAt }
+      .prefix(DraftLifecycleService.maximumRepositoryCleanupRequests)
     )
     releaseRecords = ReleaseRecord.limitedHistory(
       try container.decode([ReleaseRecord].self, forKey: .releaseRecords)
@@ -239,14 +244,16 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         forKey: .aiChatCustomPrompts
       ) ?? []
     )
-    let decodedActiveAIConversationIDs = try container.decodeIfPresent(
-      [UUID: UUID].self,
-      forKey: .activeAIConversationIDsByDraftID
-    ) ?? [:]
-    let decodedActiveAIConversationIDsByScope = try container.decodeIfPresent(
-      [String: UUID].self,
-      forKey: .activeAIConversationIDsByScope
-    ) ?? [:]
+    let decodedActiveAIConversationIDs =
+      try container.decodeIfPresent(
+        [UUID: UUID].self,
+        forKey: .activeAIConversationIDsByDraftID
+      ) ?? [:]
+    let decodedActiveAIConversationIDsByScope =
+      try container.decodeIfPresent(
+        [String: UUID].self,
+        forKey: .activeAIConversationIDsByScope
+      ) ?? [:]
     let decodedAIConversations = Self.limitedAIConversations(
       try container.decodeIfPresent(
         [AIConversation].self,
@@ -273,33 +280,39 @@ public struct WorkbenchSnapshot: Codable, Sendable {
         forKey: .seoSocialPreviewSnapshots
       ) ?? []
     )
-    privacySettings = try container.decodeIfPresent(PrivacyProtectionSettings.self, forKey: .privacySettings) ?? .default
+    privacySettings =
+      try container.decodeIfPresent(PrivacyProtectionSettings.self, forKey: .privacySettings)
+      ?? .default
     privacyProtectionEvents = Self.limitedPrivacyProtectionEvents(
       try container.decodeIfPresent(
         [PrivacyProtectionEvent].self,
         forKey: .privacyProtectionEvents
       ) ?? []
     )
-    repositoryAutoSyncSettings = try container.decodeIfPresent(
-      RepositoryAutoSyncSettings.self,
-      forKey: .repositoryAutoSyncSettings
-    ) ?? .default
-    repositoryAutoSyncState = try container.decodeIfPresent(
-      RepositoryAutoSyncState.self,
-      forKey: .repositoryAutoSyncState
-    ) ?? .idle
+    repositoryAutoSyncSettings =
+      try container.decodeIfPresent(
+        RepositoryAutoSyncSettings.self,
+        forKey: .repositoryAutoSyncSettings
+      ) ?? .default
+    repositoryAutoSyncState =
+      try container.decodeIfPresent(
+        RepositoryAutoSyncState.self,
+        forKey: .repositoryAutoSyncState
+      ) ?? .idle
     remoteRepositoryAccessCheck = try container.decodeIfPresent(
       RemoteRepositoryAccessCheck.self,
       forKey: .remoteRepositoryAccessCheck
     )
-    deploymentPollingSettings = try container.decodeIfPresent(
-      DeploymentPollingSettings.self,
-      forKey: .deploymentPollingSettings
-    ) ?? .default
-    deploymentPollingState = try container.decodeIfPresent(
-      DeploymentPollingState.self,
-      forKey: .deploymentPollingState
-    ) ?? .idle
+    deploymentPollingSettings =
+      try container.decodeIfPresent(
+        DeploymentPollingSettings.self,
+        forKey: .deploymentPollingSettings
+      ) ?? .default
+    deploymentPollingState =
+      try container.decodeIfPresent(
+        DeploymentPollingState.self,
+        forKey: .deploymentPollingState
+      ) ?? .idle
     deploymentStatusSnapshots = Self.limitedDeploymentStatusSnapshots(
       try container.decodeIfPresent(
         [DeploymentStatusSnapshot].self,
@@ -434,7 +447,8 @@ public struct WorkbenchSnapshot: Codable, Sendable {
     _ snapshots: [DeploymentStatusSnapshot]
   ) -> [DeploymentStatusSnapshot] {
     var seenReleaseRecordIDs: Set<UUID> = []
-    let uniqueSnapshots = snapshots
+    let uniqueSnapshots =
+      snapshots
       .sorted { $0.checkedAt > $1.checkedAt }
       .filter { snapshot in
         guard let releaseRecordID = snapshot.releaseRecordID else { return true }
@@ -446,9 +460,10 @@ public struct WorkbenchSnapshot: Codable, Sendable {
   private static func limitedDeploymentStatusHistory(
     _ history: [UUID: [DeploymentStatusSnapshot]]
   ) -> [UUID: [DeploymentStatusSnapshot]] {
-    Dictionary(uniqueKeysWithValues: history.map { recordID, snapshots in
-      (recordID, Array(snapshots.sorted { $0.checkedAt > $1.checkedAt }.prefix(6)))
-    })
+    Dictionary(
+      uniqueKeysWithValues: history.map { recordID, snapshots in
+        (recordID, Array(snapshots.sorted { $0.checkedAt > $1.checkedAt }.prefix(6)))
+      })
   }
 }
 
@@ -522,9 +537,11 @@ public struct WorkbenchPersistence: Sendable {
     if let fileURL {
       self.fileURL = fileURL
     } else {
-      let supportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+      let supportURL =
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
         ?? FileManager.default.temporaryDirectory
-      self.fileURL = supportURL
+      self.fileURL =
+        supportURL
         .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true)
         .appendingPathComponent("workbench.json")
     }
@@ -587,7 +604,9 @@ public struct WorkbenchPersistence: Sendable {
     )
   }
 
-  public func commit(_ preparedSave: WorkbenchPreparedPersistenceSave) throws -> WorkbenchPersistenceSaveResult {
+  public func commit(_ preparedSave: WorkbenchPreparedPersistenceSave) throws
+    -> WorkbenchPersistenceSaveResult
+  {
     let fileManager = FileManager.default
     try fileManager.createDirectory(
       at: fileURL.deletingLastPathComponent(),
@@ -621,7 +640,8 @@ public struct WorkbenchPersistence: Sendable {
       if let previousPrimaryData {
         try previousPrimaryData.write(to: lastKnownGoodURL, options: [.atomic])
       } else if !previousPrimaryExisted
-        || !fileManager.fileExists(atPath: lastKnownGoodURL.path) {
+        || !fileManager.fileExists(atPath: lastKnownGoodURL.path)
+      {
         try data.write(to: lastKnownGoodURL, options: [.atomic])
       }
       if let previousPrimaryWarning {
@@ -835,29 +855,33 @@ public struct WorkbenchPersistence: Sendable {
   ) -> Int {
     let fileManager = FileManager.default
     let rootURL = imageOptimizationDirectoryURL.standardizedFileURL
-    guard let children = try? fileManager.contentsOfDirectory(
-      at: rootURL,
-      includingPropertiesForKeys: [.isDirectoryKey],
-      options: []
-    ) else {
+    guard
+      let children = try? fileManager.contentsOfDirectory(
+        at: rootURL,
+        includingPropertiesForKeys: [.isDirectoryKey],
+        options: []
+      )
+    else {
       return 0
     }
 
     let rootPrefix = rootURL.path.hasSuffix("/") ? rootURL.path : rootURL.path + "/"
-    let referencedBatchNames = Set(referencedSourceFilePaths.compactMap { path -> String? in
-      let sourcePath = URL(fileURLWithPath: path).standardizedFileURL.path
-      guard sourcePath.hasPrefix(rootPrefix) else { return nil }
-      let relativePath = String(sourcePath.dropFirst(rootPrefix.count))
-      guard let firstComponent = relativePath.split(separator: "/").first else { return nil }
-      let name = String(firstComponent)
-      return name.hasPrefix(".image-batch-") ? name : nil
-    })
+    let referencedBatchNames = Set(
+      referencedSourceFilePaths.compactMap { path -> String? in
+        let sourcePath = URL(fileURLWithPath: path).standardizedFileURL.path
+        guard sourcePath.hasPrefix(rootPrefix) else { return nil }
+        let relativePath = String(sourcePath.dropFirst(rootPrefix.count))
+        guard let firstComponent = relativePath.split(separator: "/").first else { return nil }
+        let name = String(firstComponent)
+        return name.hasPrefix(".image-batch-") ? name : nil
+      })
 
     var removedCount = 0
     for child in children where child.lastPathComponent.hasPrefix(".image-batch-") {
       let standardizedChild = child.standardizedFileURL
       guard standardizedChild.deletingLastPathComponent() == rootURL,
-            !referencedBatchNames.contains(standardizedChild.lastPathComponent) else {
+        !referencedBatchNames.contains(standardizedChild.lastPathComponent)
+      else {
         continue
       }
       do {
@@ -870,7 +894,8 @@ public struct WorkbenchPersistence: Sendable {
     return removedCount
   }
 
-  private func archiveRecoveryFiles(in parentDirectoryURL: URL, folderPrefix: String) throws -> URL {
+  private func archiveRecoveryFiles(in parentDirectoryURL: URL, folderPrefix: String) throws -> URL
+  {
     let fileManager = FileManager.default
     let sourceURLs = [fileURL, lastKnownGoodURL].filter { fileManager.fileExists(atPath: $0.path) }
     guard !sourceURLs.isEmpty else {
@@ -904,7 +929,9 @@ public struct WorkbenchPersistence: Sendable {
     return archiveURL
   }
 
-  private func retiredFeatureArchivesFromPersistedSnapshots() throws -> [WorkbenchRetiredFeatureArchive] {
+  private func retiredFeatureArchivesFromPersistedSnapshots() throws
+    -> [WorkbenchRetiredFeatureArchive]
+  {
     let sourceURLs = [fileURL, lastKnownGoodURL]
     var archivesByFileName: [String: WorkbenchRetiredFeatureArchive] = [:]
 
@@ -927,10 +954,13 @@ public struct WorkbenchPersistence: Sendable {
       "externalVerificationEvidenceRecords",
       "scheduledPublishJobs",
     ]
-    let retiredFields = Dictionary(uniqueKeysWithValues: retiredKeys.compactMap { key -> (String, Any)? in
-      guard let value = source.removeValue(forKey: key), retiredFieldContainsData(value) else { return nil }
-      return (key, value)
-    })
+    let retiredFields = Dictionary(
+      uniqueKeysWithValues: retiredKeys.compactMap { key -> (String, Any)? in
+        guard let value = source.removeValue(forKey: key), retiredFieldContainsData(value) else {
+          return nil
+        }
+        return (key, value)
+      })
     guard !retiredFields.isEmpty else { return nil }
 
     let sourceFormatVersion = source["formatVersion"] as? Int ?? 1
@@ -939,10 +969,12 @@ public struct WorkbenchPersistence: Sendable {
       "sourceFormatVersion": sourceFormatVersion,
       "retiredFields": retiredFields,
     ]
-    guard let archiveData = try? JSONSerialization.data(
-      withJSONObject: archiveObject,
-      options: [.prettyPrinted, .sortedKeys]
-    ) else {
+    guard
+      let archiveData = try? JSONSerialization.data(
+        withJSONObject: archiveObject,
+        options: [.prettyPrinted, .sortedKeys]
+      )
+    else {
       return nil
     }
     let digest = SHA256.hash(data: archiveData).map { String(format: "%02x", $0) }.joined()
@@ -986,7 +1018,8 @@ public struct WorkbenchPersistence: Sendable {
           try FileManager.default.moveItem(at: temporaryURL, to: archiveURL)
         } catch {
           if FileManager.default.fileExists(atPath: archiveURL.path),
-             try Data(contentsOf: archiveURL) == archive.data {
+            try Data(contentsOf: archiveURL) == archive.data
+          {
             try? FileManager.default.removeItem(at: temporaryURL)
             continue
           }
@@ -1000,10 +1033,140 @@ public struct WorkbenchPersistence: Sendable {
   }
 }
 
+/// A frozen, value-semantic copy of the store state used by persistence.
+///
+/// Capturing this on MainActor is intentionally limited to COW array/dictionary
+/// reads. `WorkbenchSnapshot` construction (including retention, sorting and
+/// validation) happens after the value crosses to the persistence worker.
+struct WorkbenchPersistenceSnapshotInput: Sendable {
+  let profiles: [SiteProfile]
+  let aiConnectionProfiles: [AIConnectionProfile]
+  let activeProfileID: UUID
+  let drafts: [ArticleDraft]
+  let softwareGuideSeedVersion: Int
+  let customMarkdownSnippets: [MarkdownSnippet]
+  let markdownEditorSessionStates: [UUID: MarkdownEditorSessionState]
+  let draftVersions: [DraftVersionSnapshot]
+  let recycledDrafts: [RecycledDraft]
+  let draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest]
+  let releaseRecords: [ReleaseRecord]
+  let maintenanceOperationRecords: [MaintenanceOperationRecord]
+  let aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord]
+  let automationRunRecords: [WorkbenchAutomationRunRecord]
+  let aiChatCustomPrompts: [AIPublishingCustomPrompt]
+  let aiConversations: [AIConversation]
+  let activeAIConversationIDsByDraftID: [UUID: UUID]
+  let activeAIConversationIDsByScope: [String: UUID]
+  let seoSocialPreviewSnapshots: [UUID: SEOSocialPreviewSnapshot]
+  let privacySettings: PrivacyProtectionSettings
+  let repositoryAutoSyncSettings: RepositoryAutoSyncSettings
+  let repositoryAutoSyncState: RepositoryAutoSyncState
+  let remoteRepositoryAccessCheck: RemoteRepositoryAccessCheck?
+  let deploymentPollingSettings: DeploymentPollingSettings
+  let deploymentPollingState: DeploymentPollingState
+  let deploymentStatusSnapshots: [UUID: DeploymentStatusSnapshot]
+  let deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]]
+
+  init(
+    profiles: [SiteProfile],
+    aiConnectionProfiles: [AIConnectionProfile],
+    activeProfileID: UUID,
+    drafts: [ArticleDraft],
+    softwareGuideSeedVersion: Int,
+    customMarkdownSnippets: [MarkdownSnippet],
+    markdownEditorSessionStates: [UUID: MarkdownEditorSessionState],
+    draftVersions: [DraftVersionSnapshot],
+    recycledDrafts: [RecycledDraft],
+    draftRepositoryCleanupRequests: [DraftRepositoryCleanupRequest],
+    releaseRecords: [ReleaseRecord],
+    maintenanceOperationRecords: [MaintenanceOperationRecord],
+    aiMetadataApplicationRecords: [AIPublishingMetadataApplicationRecord],
+    automationRunRecords: [WorkbenchAutomationRunRecord],
+    aiChatCustomPrompts: [AIPublishingCustomPrompt],
+    aiConversations: [AIConversation],
+    activeAIConversationIDsByDraftID: [UUID: UUID],
+    activeAIConversationIDsByScope: [String: UUID],
+    seoSocialPreviewSnapshots: [UUID: SEOSocialPreviewSnapshot],
+    privacySettings: PrivacyProtectionSettings,
+    repositoryAutoSyncSettings: RepositoryAutoSyncSettings,
+    repositoryAutoSyncState: RepositoryAutoSyncState,
+    remoteRepositoryAccessCheck: RemoteRepositoryAccessCheck?,
+    deploymentPollingSettings: DeploymentPollingSettings,
+    deploymentPollingState: DeploymentPollingState,
+    deploymentStatusSnapshots: [UUID: DeploymentStatusSnapshot],
+    deploymentStatusHistory: [UUID: [DeploymentStatusSnapshot]]
+  ) {
+    self.profiles = profiles
+    self.aiConnectionProfiles = aiConnectionProfiles
+    self.activeProfileID = activeProfileID
+    self.drafts = drafts
+    self.softwareGuideSeedVersion = softwareGuideSeedVersion
+    self.customMarkdownSnippets = customMarkdownSnippets
+    self.markdownEditorSessionStates = markdownEditorSessionStates
+    self.draftVersions = draftVersions
+    self.recycledDrafts = recycledDrafts
+    self.draftRepositoryCleanupRequests = draftRepositoryCleanupRequests
+    self.releaseRecords = releaseRecords
+    self.maintenanceOperationRecords = maintenanceOperationRecords
+    self.aiMetadataApplicationRecords = aiMetadataApplicationRecords
+    self.automationRunRecords = automationRunRecords
+    self.aiChatCustomPrompts = aiChatCustomPrompts
+    self.aiConversations = aiConversations
+    self.activeAIConversationIDsByDraftID = activeAIConversationIDsByDraftID
+    self.activeAIConversationIDsByScope = activeAIConversationIDsByScope
+    self.seoSocialPreviewSnapshots = seoSocialPreviewSnapshots
+    self.privacySettings = privacySettings
+    self.repositoryAutoSyncSettings = repositoryAutoSyncSettings
+    self.repositoryAutoSyncState = repositoryAutoSyncState
+    self.remoteRepositoryAccessCheck = remoteRepositoryAccessCheck
+    self.deploymentPollingSettings = deploymentPollingSettings
+    self.deploymentPollingState = deploymentPollingState
+    self.deploymentStatusSnapshots = deploymentStatusSnapshots
+    self.deploymentStatusHistory = deploymentStatusHistory
+  }
+}
+
+extension WorkbenchPersistence {
+  /// Performs all existing snapshot normalization away from MainActor.
+  func snapshot(from input: WorkbenchPersistenceSnapshotInput) -> WorkbenchSnapshot {
+    WorkbenchSnapshot(
+      profiles: input.profiles,
+      aiConnectionProfiles: input.aiConnectionProfiles,
+      activeProfileID: input.activeProfileID,
+      drafts: input.drafts,
+      softwareGuideSeedVersion: input.softwareGuideSeedVersion,
+      customMarkdownSnippets: input.customMarkdownSnippets,
+      markdownEditorSessionStates: input.markdownEditorSessionStates,
+      draftVersions: input.draftVersions,
+      recycledDrafts: input.recycledDrafts,
+      draftRepositoryCleanupRequests: input.draftRepositoryCleanupRequests,
+      releaseRecords: input.releaseRecords,
+      maintenanceOperationRecords: input.maintenanceOperationRecords,
+      aiMetadataApplicationRecords: input.aiMetadataApplicationRecords,
+      automationRunRecords: input.automationRunRecords,
+      aiChatCustomPrompts: input.aiChatCustomPrompts,
+      aiConversations: input.aiConversations,
+      activeAIConversationIDsByDraftID: input.activeAIConversationIDsByDraftID,
+      activeAIConversationIDsByScope: input.activeAIConversationIDsByScope,
+      seoSocialPreviewSnapshots: Array(input.seoSocialPreviewSnapshots.values),
+      privacySettings: input.privacySettings,
+      privacyProtectionEvents: [],
+      repositoryAutoSyncSettings: input.repositoryAutoSyncSettings,
+      repositoryAutoSyncState: input.repositoryAutoSyncState,
+      remoteRepositoryAccessCheck: input.remoteRepositoryAccessCheck,
+      deploymentPollingSettings: input.deploymentPollingSettings,
+      deploymentPollingState: input.deploymentPollingState,
+      deploymentStatusSnapshots: Array(input.deploymentStatusSnapshots.values),
+      deploymentStatusHistory: input.deploymentStatusHistory
+    )
+  }
+}
+
 @MainActor
 extension WorkbenchPersistence {
-  func snapshot(from store: WorkbenchStore) -> WorkbenchSnapshot {
-    WorkbenchSnapshot(
+  /// Freezes store state on MainActor without constructing a normalized snapshot.
+  func snapshotInput(from store: WorkbenchStore) -> WorkbenchPersistenceSnapshotInput {
+    WorkbenchPersistenceSnapshotInput(
       profiles: store.profiles,
       aiConnectionProfiles: store.aiConnectionProfiles,
       activeProfileID: store.activeProfileID,
@@ -1022,17 +1185,22 @@ extension WorkbenchPersistence {
       aiConversations: store.aiConversations,
       activeAIConversationIDsByDraftID: store.activeAIConversationIDsByDraftID,
       activeAIConversationIDsByScope: store.activeAIConversationIDsByScope,
-      seoSocialPreviewSnapshots: Array(store.seoSocialPreviewSnapshots.values),
+      seoSocialPreviewSnapshots: store.seoSocialPreviewSnapshots,
       privacySettings: store.privacySettings,
-      privacyProtectionEvents: [],
       repositoryAutoSyncSettings: store.repositoryAutoSyncSettings,
       repositoryAutoSyncState: store.repositoryAutoSyncState,
       remoteRepositoryAccessCheck: store.remoteRepositoryAccessCheck,
       deploymentPollingSettings: store.deploymentPollingSettings,
       deploymentPollingState: store.deploymentPollingState,
-      deploymentStatusSnapshots: Array(store.deploymentStatusSnapshots.values),
+      deploymentStatusSnapshots: store.deploymentStatusSnapshots,
       deploymentStatusHistory: store.deploymentStatusHistory
     )
+  }
+
+  /// Compatibility for synchronous library callers that already hold a store.
+  /// Autosave and exit-flush paths use `snapshotInput(from:)` instead.
+  func snapshot(from store: WorkbenchStore) -> WorkbenchSnapshot {
+    snapshot(from: snapshotInput(from: store))
   }
 
   public func save(store: WorkbenchStore) {

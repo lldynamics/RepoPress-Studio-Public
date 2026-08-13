@@ -1,5 +1,10 @@
 import Foundation
 
+struct AIAuthorizedGeneralChatAttempt {
+  let transport: AIPreparedPublishingChatTransport
+  let authorization: AIOutboundPayloadTransportAuthorization
+}
+
 extension WorkbenchAIStore {
   private var generalConversationScopeKey: String {
     AIConversationScope.general.storageKey
@@ -7,7 +12,7 @@ extension WorkbenchAIStore {
 
   func activeConversationID(for scope: AIConversationScope) -> UUID? {
     switch scope {
-    case let .draft(draftID):
+    case .draft(let draftID):
       return activeAIConversationIDsByDraftID[draftID]
     case .general:
       return activeAIConversationIDsByScope[generalConversationScopeKey]
@@ -105,9 +110,11 @@ extension WorkbenchAIStore {
       aiChatMessage = "请先停止当前 AI 回复，再切换对话。"
       return false
     }
-    guard let conversation = aiConversations.first(where: {
-      $0.id == conversationID && $0.scope == .general && !$0.isArchived
-    }) else {
+    guard
+      let conversation = aiConversations.first(where: {
+        $0.id == conversationID && $0.scope == .general && !$0.isArchived
+      })
+    else {
       aiChatMessage = "找不到可切换的通用 AI 对话。"
       return false
     }
@@ -156,12 +163,14 @@ extension WorkbenchAIStore {
     }
     let resolvedID = conversationID ?? activeGeneralAIChatConversationID
     guard let resolvedID,
-      updateGeneralConversation(resolvedID, update: { conversation in
-        conversation.modelGrade = modelGrade
-        if modelGrade != .custom {
-          conversation.selectedModel = ""
-        }
-      }) != nil
+      updateGeneralConversation(
+        resolvedID,
+        update: { conversation in
+          conversation.modelGrade = modelGrade
+          if modelGrade != .custom {
+            conversation.selectedModel = ""
+          }
+        }) != nil
     else { return false }
     aiChatMessage = "已切换通用 AI 模型。"
     store.save()
@@ -179,9 +188,11 @@ extension WorkbenchAIStore {
     }
     let resolvedID = conversationID ?? activeGeneralAIChatConversationID
     guard let resolvedID,
-      updateGeneralConversation(resolvedID, update: { conversation in
-        conversation.knowledgePolicy = policy
-      }) != nil
+      updateGeneralConversation(
+        resolvedID,
+        update: { conversation in
+          conversation.knowledgePolicy = policy
+        }) != nil
     else { return false }
     aiChatMessage = "已切换通用 AI 资料库策略。"
     store.save()
@@ -203,9 +214,11 @@ extension WorkbenchAIStore {
     }
     let resolvedID = conversationID ?? activeGeneralAIChatConversationID
     guard let resolvedID,
-      updateGeneralConversation(resolvedID, update: { conversation in
-        conversation.reasoningLevel = level
-      }) != nil
+      updateGeneralConversation(
+        resolvedID,
+        update: { conversation in
+          conversation.reasoningLevel = level
+        }) != nil
     else { return false }
     aiChatMessage = "已切换通用 AI 思考级别。"
     store.save()
@@ -222,8 +235,9 @@ extension WorkbenchAIStore {
       )
     }
     guard config.requiresAPIKey else { return nil }
-    guard let token = try aiCredentialStore
-      .token(forConnectionProfileID: connection.id)?.nilIfEmpty
+    guard
+      let token = try aiCredentialStore
+        .token(forConnectionProfileID: connection.id)?.nilIfEmpty
     else {
       throw AIPublishingAssistantError.missingAPIKey
     }
@@ -232,6 +246,85 @@ extension WorkbenchAIStore {
 
   func generalAIChatRequest(
     for conversation: AIConversation
+  ) async throws -> AIChatRequest {
+    let privacyService = AIOutboundPayloadPrivacyService()
+    return await assembledGeneralAIChatRequest(
+      for: conversation,
+      privacyService: privacyService
+    )
+  }
+
+  private func authorizedGeneralAIChatAttempt(
+    for conversation: AIConversation,
+    transportConfig: AIProviderConfig,
+    transportVariant: AIOutboundPayloadTransportVariant? = nil
+  ) async throws -> AIAuthorizedGeneralChatAttempt {
+    let privacyService = AIOutboundPayloadPrivacyService()
+    let initialRequest = await assembledGeneralAIChatRequest(
+      for: conversation,
+      privacyService: privacyService
+    )
+    let initialTransport = try aiPublishingAssistantService.prepareTransport(
+      for: initialRequest,
+      config: transportConfig,
+      privacyService: privacyService,
+      transportVariant: transportVariant
+    )
+    let outcome = await AIOutboundPayloadApprovalBroker.shared.requestApproval(
+      for: initialTransport.payload.preview,
+      scopeID: conversation.id
+    )
+    guard case .confirmed(let confirmation) = outcome else {
+      throw AIOutboundPayloadConfirmationError.cancelled
+    }
+    guard !Task.isCancelled else {
+      throw CancellationError()
+    }
+    guard
+      let refreshedConversation = aiConversations.first(where: {
+        $0.id == conversation.id && $0.scope == .general && !$0.isArchived
+      }),
+      let connectionProfileID = refreshedConversation.connectionProfileID,
+      let refreshedConnection = store.aiConnectionProfile(for: connectionProfileID)
+    else {
+      throw AIOutboundPayloadConfirmationError.drifted
+    }
+    let refreshedRequest = await assembledGeneralAIChatRequest(
+      for: refreshedConversation,
+      privacyService: privacyService
+    )
+    let refreshedConfig = privacyService.sanitizedProviderConfig(refreshedConnection.config)
+    guard refreshedConfig == transportConfig else {
+      throw AIOutboundPayloadConfirmationError.drifted
+    }
+    let refreshedTransport = try aiPublishingAssistantService.prepareTransport(
+      for: refreshedRequest,
+      config: refreshedConfig,
+      privacyService: privacyService,
+      transportVariant: transportVariant,
+      now: initialTransport.payload.preview.createdAt,
+      nonce: initialTransport.payload.preview.nonce
+    )
+    try privacyService.validate(
+      confirmation: confirmation,
+      prepared: refreshedTransport.payload
+    )
+    let authorizedTransport = refreshedTransport.bindingAuthorizationDeadline(
+      refreshedTransport.payload.preview.expiresAt
+    )
+    return AIAuthorizedGeneralChatAttempt(
+      transport: authorizedTransport,
+      authorization: AIOutboundPayloadTransportAuthorization(
+        confirmation: confirmation,
+        prepared: authorizedTransport.payload,
+        privacyService: privacyService
+      )
+    )
+  }
+
+  private func assembledGeneralAIChatRequest(
+    for conversation: AIConversation,
+    privacyService: AIOutboundPayloadPrivacyService
   ) async -> AIChatRequest {
     let latestUserMessage = conversation.messages.last(where: { $0.role == .user })
     let explicitReferences = latestUserMessage?.contextReferences ?? []
@@ -254,11 +347,11 @@ extension WorkbenchAIStore {
     let envelope = AIContextAssembler.generalEnvelope(
       knowledgePolicy: conversation.knowledgePolicy,
       explicitContextReferences: explicitReferences,
-      explicitContextPrompt: explicitPrompt,
-      knowledgeContext: knowledgeContext
+      explicitContextPrompt: explicitPrompt.map { privacyService.sanitize($0).text },
+      knowledgeContext: privacyService.sanitizedKnowledgeContext(knowledgeContext)
     )
     return AIChatRequest(
-      messages: conversation.messages,
+      messages: privacyService.sanitizedChatMessages(conversation.messages),
       context: envelope,
       modelGrade: conversation.modelGrade,
       reasoningLevel: conversation.reasoningLevel,
@@ -288,12 +381,14 @@ extension WorkbenchAIStore {
     let selectedImageAttachments = Array(
       imageAttachments.prefix(AIPublishingChatImageAttachmentPresentation.maxSelectedImageCount)
     )
-    guard selectedImageAttachments.allSatisfy({ attachment in
-      AIPublishingChatImageAttachmentPresentation.isSupportedAttachment(
-        mimeType: attachment.mimeType,
-        byteSize: Int64(attachment.data.count)
-      )
-    }) else {
+    guard
+      selectedImageAttachments.allSatisfy({ attachment in
+        AIPublishingChatImageAttachmentPresentation.isSupportedAttachment(
+          mimeType: attachment.mimeType,
+          byteSize: Int64(attachment.data.count)
+        )
+      })
+    else {
       store.setAIChatMessage("图片附件仅支持 PNG、JPEG、GIF 或 WebP，且每张不能超过 10 MB。")
       return nil
     }
@@ -303,7 +398,8 @@ extension WorkbenchAIStore {
     if let resolvedConversationID,
       let found = aiConversations.first(where: {
         $0.id == resolvedConversationID && $0.scope == .general && !$0.isArchived
-      }) {
+      })
+    {
       conversation = found
     } else if let created = startNewGeneralAIChatConversation(
       connectionProfileID: connectionProfileID
@@ -331,31 +427,37 @@ extension WorkbenchAIStore {
       )
       return nil
     }
-    guard AIChatImageAttachmentBudget.canAppend(
-      selectedImageAttachments,
-      to: conversation.messages
-    ) else {
+    guard
+      AIChatImageAttachmentBudget.canAppend(
+        selectedImageAttachments,
+        to: conversation.messages
+      )
+    else {
       store.setAIChatMessage("本次图片会超过当前对话的 8 MB 总预算，请减少或移除图片后重试。")
       return nil
     }
-    let token: String?
     do {
-      token = try aiChatAvailableAPIKey(for: connection)
+      // Availability check only. The token is deliberately not retained while
+      // the outbound payload sheet is awaiting a decision.
+      _ = try aiChatAvailableAPIKey(for: connection)
     } catch {
       store.setAIChatMessage("AI 通用对话失败：\(error.localizedDescription)")
       return nil
     }
     guard !Task.isCancelled else { return nil }
-    guard let operationID = beginAIChatOperation(
-      statusMessage: "AI 正在回复...",
-      ownerToken: ownerToken
-    ) else {
+    guard
+      let operationID = beginAIChatOperation(
+        statusMessage: "AI 正在回复...",
+        ownerToken: ownerToken
+      )
+    else {
       return nil
     }
 
     activeAIConversationIDsByScope[generalConversationScopeKey] = conversation.id
     if let connectionProfileID,
-      connectionProfileID != conversation.connectionProfileID {
+      connectionProfileID != conversation.connectionProfileID
+    {
       _ = setGeneralAIChatConnectionProfile(
         connectionProfileID,
         conversationID: conversation.id
@@ -387,8 +489,7 @@ extension WorkbenchAIStore {
     return await generateGeneralAIChatReply(
       conversationID: conversation.id,
       operationID: operationID,
-      config: connection.config,
-      apiKey: token
+      config: connection.config
     )
   }
 
@@ -397,9 +498,11 @@ extension WorkbenchAIStore {
     update: (inout AIConversation) -> Void
   ) -> AIConversation? {
     var updated = aiConversations
-    guard let index = updated.firstIndex(where: {
-      $0.id == conversationID && $0.scope == .general
-    }) else { return nil }
+    guard
+      let index = updated.firstIndex(where: {
+        $0.id == conversationID && $0.scope == .general
+      })
+    else { return nil }
     update(&updated[index])
     updated[index].updatedAt = max(updated[index].updatedAt, Date())
     aiConversations = updated
@@ -418,34 +521,49 @@ extension WorkbenchAIStore {
   private func generateGeneralAIChatReply(
     conversationID: UUID,
     operationID: UUID,
-    config: AIProviderConfig,
-    apiKey: String?
+    config: AIProviderConfig
   ) async -> AIPublishingChatMessage? {
     defer { finishAIChatOperation(operationID) }
-    guard let conversation = aiConversations.first(where: {
-      $0.id == conversationID && $0.scope == .general
-    }) else {
+    let minimizedConfig = AIOutboundPayloadPrivacyService().sanitizedProviderConfig(config)
+    guard
+      let conversation = aiConversations.first(where: {
+        $0.id == conversationID && $0.scope == .general
+      })
+    else {
       store.setAIChatMessage("找不到当前通用 AI 对话。")
       return nil
     }
-    let request = await generalAIChatRequest(for: conversation)
+    let attempt: AIAuthorizedGeneralChatAttempt
+    do {
+      attempt = try await authorizedGeneralAIChatAttempt(
+        for: conversation,
+        transportConfig: minimizedConfig
+      )
+    } catch is CancellationError {
+      store.setAIChatMessage("AI 回复已停止。")
+      return nil
+    } catch {
+      store.setAIChatMessage(error.localizedDescription)
+      return nil
+    }
     do {
       try checkAIChatOperation(operationID)
-      do {
+      let token = try currentGeneralAIChatAPIKey(conversationID: conversationID)
+      try attempt.authorization.consume()
+      switch attempt.transport.preparedRequest.mode {
+      case .streaming:
         return try await generateStreamingGeneralAIChatReply(
-          request: request,
+          transport: attempt.transport,
           conversationID: conversationID,
           operationID: operationID,
-          config: config,
-          apiKey: apiKey
+          apiKey: token
         )
-      } catch AIChatCompletionClientError.streamingUnsupported {
+      case .nonStreaming:
         return try await generateCompleteGeneralAIChatReply(
-          request: request,
+          transport: attempt.transport,
           conversationID: conversationID,
           operationID: operationID,
-          config: config,
-          apiKey: apiKey
+          apiKey: token
         )
       }
     } catch is CancellationError {
@@ -468,16 +586,27 @@ extension WorkbenchAIStore {
     }
   }
 
+  private func currentGeneralAIChatAPIKey(conversationID: UUID) throws -> String? {
+    guard
+      let conversation = aiConversations.first(where: {
+        $0.id == conversationID && $0.scope == .general && !$0.isArchived
+      }),
+      let connectionProfileID = conversation.connectionProfileID,
+      let connection = store.aiConnectionProfile(for: connectionProfileID)
+    else {
+      throw AIOutboundPayloadConfirmationError.drifted
+    }
+    return try aiChatAvailableAPIKey(for: connection)
+  }
+
   private func generateStreamingGeneralAIChatReply(
-    request: AIChatRequest,
+    transport: AIPreparedPublishingChatTransport,
     conversationID: UUID,
     operationID: UUID,
-    config: AIProviderConfig,
     apiKey: String?
   ) async throws -> AIPublishingChatMessage {
-    let replyStream = try await aiPublishingAssistantService.streamReply(
-      to: request,
-      config: config,
+    let replyStream = try await aiPublishingAssistantService.streamPrepared(
+      transport,
       apiKey: apiKey
     )
     try checkAIChatOperation(operationID)
@@ -567,15 +696,13 @@ extension WorkbenchAIStore {
   }
 
   private func generateCompleteGeneralAIChatReply(
-    request: AIChatRequest,
+    transport: AIPreparedPublishingChatTransport,
     conversationID: UUID,
     operationID: UUID,
-    config: AIProviderConfig,
     apiKey: String?
   ) async throws -> AIPublishingChatMessage {
-    let assistantMessage = try await aiPublishingAssistantService.reply(
-      to: request,
-      config: config,
+    let assistantMessage = try await aiPublishingAssistantService.completePrepared(
+      transport,
       apiKey: apiKey
     )
     try checkAIChatOperation(operationID)
@@ -613,9 +740,11 @@ extension WorkbenchAIStore {
       store.setAIChatMessage("当前对话没有可重试的通用 AI 请求。")
       return nil
     }
-    guard let conversation = aiConversations.first(where: {
-      $0.id == retryState.conversationID && $0.scope == .general && !$0.isArchived
-    }) else {
+    guard
+      let conversation = aiConversations.first(where: {
+        $0.id == retryState.conversationID && $0.scope == .general && !$0.isArchived
+      })
+    else {
       store.setAIChatMessage("请先切回发生错误的通用 AI 对话，再重试回复。")
       return nil
     }
@@ -631,22 +760,24 @@ extension WorkbenchAIStore {
       return nil
     }
     guard let boundConnectionProfileID = conversation.connectionProfileID,
-          let connection = store.aiConnectionProfile(for: boundConnectionProfileID) else {
+      let connection = store.aiConnectionProfile(for: boundConnectionProfileID)
+    else {
       store.setAIChatMessage("当前通用对话绑定的 AI 连接档案已不存在，请先重新绑定。")
       return nil
     }
-    let token: String?
     do {
-      token = try aiChatAvailableAPIKey(for: connection)
+      _ = try aiChatAvailableAPIKey(for: connection)
     } catch {
       store.setAIChatMessage("AI 通用对话失败：\(error.localizedDescription)")
       return nil
     }
-    guard let operationID = beginAIChatOperation(
-      statusMessage: "AI 正在重新生成回复...",
-      clearsManualRetryState: false,
-      ownerToken: ownerToken
-    ) else {
+    guard
+      let operationID = beginAIChatOperation(
+        statusMessage: "AI 正在重新生成回复...",
+        clearsManualRetryState: false,
+        ownerToken: ownerToken
+      )
+    else {
       return nil
     }
 
@@ -662,10 +793,10 @@ extension WorkbenchAIStore {
     let result = await generateGeneralAIChatReply(
       conversationID: conversation.id,
       operationID: operationID,
-      config: connection.config,
-      apiKey: token
+      config: connection.config
     )
-    let didCompleteRetry = result != nil
+    let didCompleteRetry =
+      result != nil
       && aiGeneralChatManualRetryState == nil
       && aiChatMessage == "AI 已回复。"
     if !didCompleteRetry {

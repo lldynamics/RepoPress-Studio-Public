@@ -84,7 +84,7 @@ struct OnlineSiteInspectionSection: View {
       }
     }
     .padding(14)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   private func statusColor(_ level: DeploymentStatusLevel) -> Color {

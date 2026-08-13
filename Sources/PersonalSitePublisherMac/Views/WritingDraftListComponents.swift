@@ -94,6 +94,46 @@ enum WritingDraftSortOrder: String, CaseIterable, Identifiable {
   }
 }
 
+/// Lightweight identity for the fields rendered by a draft-list row.
+///
+/// The body is intentionally absent. Draft body edits already advance
+/// `updatedAt` through the normal update path, which lets the list notice a
+/// changed writing-unit count without hashing or scanning the body for every
+/// row when an unrelated draft changes.
+struct WritingDraftRowPresentationCacheKey: Hashable {
+  let updatedAt: Date
+  let title: String
+  let status: DraftStatus
+  let isGeneralDraft: Bool
+  let isPrivate: Bool
+  let visibility: ArticleVisibility
+  let isMasked: Bool
+  let help: String
+
+  init(draft: ArticleDraft, profile: SiteProfile, display: PrivateContentDisplay) {
+    updatedAt = draft.updatedAt
+    title = display.title
+    status = draft.status
+    isGeneralDraft = draft.isGeneralDraft
+    isPrivate = draft.isPrivate
+    visibility = draft.visibility
+    isMasked = display.isMasked
+    help = writingDraftRowHelp(draft: draft, profile: profile, display: display)
+  }
+}
+
+private func writingDraftRowHelp(
+  draft: ArticleDraft,
+  profile: SiteProfile,
+  display: PrivateContentDisplay
+) -> String {
+  display.isMasked
+    ? display.summary
+    : draft.isGeneralDraft
+      ? String(localized: "通用草稿，不绑定站点")
+      : profile.markdownPath(for: draft)
+}
+
 struct WritingDraftRowPresentation {
   let draft: ArticleDraft
   let title: String
@@ -104,7 +144,8 @@ struct WritingDraftRowPresentation {
   init(draft: ArticleDraft, profile: SiteProfile, display: PrivateContentDisplay) {
     self.draft = draft
     title = display.title.nilIfEmpty ?? String(localized: "未命名文章")
-    let writingUnitCount = MarkdownWritingStatisticsService
+    let writingUnitCount =
+      MarkdownWritingStatisticsService
       .statistics(in: draft.bodyMarkdown)
       .writingUnitCount
     var metadataParts = [
@@ -124,11 +165,7 @@ struct WritingDraftRowPresentation {
     } else {
       leadingSystemImage = draft.status.systemImage
     }
-    help = display.isMasked
-      ? display.summary
-      : draft.isGeneralDraft
-        ? String(localized: "通用草稿，不绑定站点")
-        : profile.markdownPath(for: draft)
+    help = writingDraftRowHelp(draft: draft, profile: profile, display: display)
   }
 }
 

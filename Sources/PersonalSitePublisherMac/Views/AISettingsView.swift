@@ -22,7 +22,7 @@ struct AISettingsView: View {
   let deleteAPIKey: () -> Void
   let refreshKeyAvailability: () -> Void
   let setCredentialStorageMode: (AICredentialStorageMode) -> Void
-  let testConnection: () async -> AIConnectionTestReport?
+  let testConnection: (Set<AIProviderCapabilityProbeKind>) async -> AIConnectionTestReport?
   let grantDataSharingConsent: () -> Void
   let revokeDataSharingConsent: () -> Void
 
@@ -34,6 +34,7 @@ struct AISettingsView: View {
   @State private var selectedSection: AISettingsSection = .connection
   @State private var expansionState = AISettingsExpansionState()
   @State private var hasAttemptedConnectionTest = false
+  @State private var selectedCapabilityProbes: Set<AIProviderCapabilityProbeKind> = []
 
   var body: some View {
     VStack(spacing: 0) {
@@ -144,6 +145,7 @@ struct AISettingsView: View {
             isConnectionTestRunning: connectionTestTask != nil,
             hasAttemptedConnectionTest: hasAttemptedConnectionTest,
             actionMessage: actionMessage,
+            selectedProbeCapabilities: $selectedCapabilityProbes,
             onTestConnection: startConnectionTest
           )
 
@@ -174,11 +176,16 @@ struct AISettingsView: View {
     .onChange(of: aiAPIKeyInput) { _, _ in
       invalidateConnectionReport()
     }
-    .onChange(of: activeConnection.config) { _, _ in
+    .onChange(of: activeConnection.config) { oldConfig, newConfig in
+      guard
+        configurationWithoutProbeEvidence(oldConfig)
+          != configurationWithoutProbeEvidence(newConfig)
+      else { return }
       invalidateConnectionReport()
     }
     .onChange(of: selectedConnectionProfileID.wrappedValue) { _, _ in
       aiAPIKeyInput = ""
+      selectedCapabilityProbes = []
       invalidateConnectionReport()
     }
     .onChange(of: tokenAvailability.accessState) { _, _ in
@@ -338,18 +345,33 @@ struct AISettingsView: View {
     hasAttemptedConnectionTest = true
 
     connectionTestTask = Task { @MainActor in
-      let report = await testConnection()
+      defer {
+        // A newer request owns the marker after a superseding edit or test;
+        // otherwise every exit path, including cancellation, clears it.
+        if connectionTestRequestID == requestID {
+          connectionTestTask = nil
+        }
+      }
+      let report = await testConnection(selectedCapabilityProbes)
       guard !Task.isCancelled,
         connectionTestRequestID == requestID,
         activeConnection.id == connectionID,
-        activeConnection.config == config
+        configurationWithoutProbeEvidence(activeConnection.config)
+          == configurationWithoutProbeEvidence(config)
       else {
         return
       }
       aiConnectionReport = report
       isConnectionReportStale = false
-      connectionTestTask = nil
     }
+  }
+
+  private func configurationWithoutProbeEvidence(
+    _ config: AIProviderConfig
+  ) -> AIProviderConfig {
+    var sanitized = config
+    sanitized.capabilityProbeEvidence = nil
+    return sanitized
   }
 
   private func applyNavigationDestination() {
