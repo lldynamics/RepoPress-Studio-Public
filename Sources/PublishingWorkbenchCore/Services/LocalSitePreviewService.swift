@@ -125,6 +125,7 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
   private var startedAt: Date?
   private let processLock = NSLock()
   private let logCollector = LocalSitePreviewLogCollector(maximumLineCount: 80)
+  private let stopExecutor = LocalSitePreviewStopExecutor()
 
   public init() {}
 
@@ -251,12 +252,7 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
   }
 
   public func stopAsync() async {
-    await withCheckedContinuation { continuation in
-      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-        self?.stop()
-        continuation.resume()
-      }
-    }
+    await stopExecutor.stop(service: self)
   }
 
   private func stopLocked() {
@@ -310,6 +306,15 @@ public final class LocalSitePreviewProcessService: @unchecked Sendable {
 
   private func capturedLogLines() -> [String] {
     logCollector.lines()
+  }
+}
+
+/// Runs the blocking process termination path away from the caller's actor.
+/// The service remains lock-protected because synchronous start/status/stop
+/// calls and the application termination hook still share the same instance.
+private actor LocalSitePreviewStopExecutor {
+  func stop(service: LocalSitePreviewProcessService) {
+    service.stop()
   }
 }
 

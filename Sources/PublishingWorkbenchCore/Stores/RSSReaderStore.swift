@@ -55,7 +55,8 @@ public struct RSSReaderSnapshot: Codable, Sendable {
       schemaVersion: try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1,
       feeds: try container.decodeIfPresent([RSSFeed].self, forKey: .feeds) ?? [],
       articles: try container.decodeIfPresent([RSSArticle].self, forKey: .articles) ?? [],
-      highlights: try container.decodeIfPresent([RSSArticleHighlight].self, forKey: .highlights) ?? [],
+      highlights: try container.decodeIfPresent([RSSArticleHighlight].self, forKey: .highlights)
+        ?? [],
       mediaAssets: try container.decodeIfPresent([RSSMediaAsset].self, forKey: .mediaAssets) ?? []
     )
   }
@@ -150,7 +151,8 @@ enum RSSArticleSearchSupport {
       searchIDs = nil
     }
 
-    return headers
+    return
+      headers
       .filter { header in
         switch scope {
         case .all:
@@ -159,7 +161,7 @@ enum RSSArticleSearchSupport {
           !header.isRead
         case .starred:
           header.isStarred
-        case let .feed(feedID):
+        case .feed(let feedID):
           header.feedID == feedID
         }
       }
@@ -190,10 +192,11 @@ enum RSSArticleSearchSupport {
     if let database {
       return try database.matchingArticleIDs(query: query)
     }
-    return Set(legacyArticles.lazy.filter { article in
-      article.title.localizedCaseInsensitiveContains(query)
-        || article.readableText.localizedCaseInsensitiveContains(query)
-    }.map(\.id))
+    return Set(
+      legacyArticles.lazy.filter { article in
+        article.title.localizedCaseInsensitiveContains(query)
+          || article.readableText.localizedCaseInsensitiveContains(query)
+      }.map(\.id))
   }
 }
 
@@ -212,9 +215,11 @@ public final class RSSReaderStore: ObservableObject {
   public static let maximumRefreshConcurrency = 6
 
   nonisolated public static func defaultFileURL(fileManager: FileManager = .default) -> URL {
-    let supportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+    let supportURL =
+      fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
       ?? fileManager.temporaryDirectory
-    return supportURL
+    return
+      supportURL
       .appendingPathComponent("PersonalSitePublisherMac", isDirectory: true)
       .appendingPathComponent("RSSReader", isDirectory: true)
       .appendingPathComponent("reader.sqlite", isDirectory: false)
@@ -240,6 +245,11 @@ public final class RSSReaderStore: ObservableObject {
 
   @Published public internal(set) var feeds: [RSSFeed] = []
   @Published public internal(set) var articleHeaders: [RSSArticleHeader] = []
+  /// Total persisted article count. During an async bootstrap this can be
+  /// larger than `articleHeaders.count`, which intentionally contains only
+  /// the first list page until `loadRemainingArticleHeadersIfNeeded()` runs.
+  @Published public internal(set) var articleHeaderCount = 0
+  @Published public internal(set) var articleHeadersAreComplete = true
   @Published public internal(set) var highlights: [RSSArticleHighlight] = []
   /// Legacy media metadata loaded for backward-compatible rendering only.
   @Published internal var mediaAssets: [RSSMediaAsset] = []
@@ -259,11 +269,12 @@ public final class RSSReaderStore: ObservableObject {
 
   public let fileURL: URL
 
-  public typealias FeedFetchOperation = @Sendable (
-    _ feedURL: URL,
-    _ etag: String?,
-    _ lastModified: String?
-  ) async throws -> RSSFeedFetchResult
+  public typealias FeedFetchOperation =
+    @Sendable (
+      _ feedURL: URL,
+      _ etag: String?,
+      _ lastModified: String?
+    ) async throws -> RSSFeedFetchResult
 
   let fetchOperation: FeedFetchOperation
   let fileManager: FileManager
@@ -275,6 +286,7 @@ public final class RSSReaderStore: ObservableObject {
   var payloadLoader: RSSArticlePayloadLoader?
   var payloadCache = RSSArticlePayloadLRU(capacity: 16)
   var articleLoadTasks: [String: Task<RSSArticle?, Error>] = [:]
+  var bootstrapHeaderLoadTask: Task<Void, Never>? = nil
   var legacyArticles: [RSSArticle] = []
   var deletedFeedSnapshots: [DeletedFeedSnapshot] = []
   var lastBatchReadSnapshot: BatchReadSnapshot?
@@ -339,61 +351,164 @@ public final class RSSReaderStore: ObservableObject {
     client: RSSFeedClient = RSSFeedClient(),
     fileManager: FileManager = .default,
     fetchOperation: FeedFetchOperation? = nil,
-    userDefaults: UserDefaults = .standard
+    userDefaults: UserDefaults = .standard,
+    bootstrap: RSSReaderBootstrap? = nil
   ) {
     let requestedFileURL = fileURL ?? Self.defaultFileURL(fileManager: fileManager)
     self.fileURL = requestedFileURL
-    let resolvedPrivateNetworkAccessEnabled = userDefaults.object(
-      forKey: Self.privateNetworkAccessDefaultsKey
-    ) as? Bool ?? client.allowsPrivateNetworkAccess
+    let resolvedPrivateNetworkAccessEnabled =
+      userDefaults.object(
+        forKey: Self.privateNetworkAccessDefaultsKey
+      ) as? Bool ?? client.allowsPrivateNetworkAccess
     let networkAccessState = RSSReaderNetworkAccessState(resolvedPrivateNetworkAccessEnabled)
     self.networkAccessState = networkAccessState
-    self.fetchOperation = fetchOperation ?? { feedURL, etag, lastModified in
-      return try await client.fetch(
-        feedURL: feedURL,
-        etag: etag,
-        lastModified: lastModified,
-        allowsPrivateNetworkAccess: await networkAccessState.get()
-      )
-    }
+    self.fetchOperation =
+      fetchOperation ?? { feedURL, etag, lastModified in
+        return try await client.fetch(
+          feedURL: feedURL,
+          etag: etag,
+          lastModified: lastModified,
+          allowsPrivateNetworkAccess: await networkAccessState.get()
+        )
+      }
     self.fileManager = fileManager
     self.userDefaults = userDefaults
     self.databaseURL = Self.databaseFileURL(for: requestedFileURL)
     self.legacyURL = Self.legacyFileURL(for: requestedFileURL)
-    let storedRetentionDays = userDefaults.object(
-      forKey: Self.retentionDaysDefaultsKey
-    ) as? Int ?? Self.defaultRetentionDays
+    let storedRetentionDays =
+      userDefaults.object(
+        forKey: Self.retentionDaysDefaultsKey
+      ) as? Int ?? Self.defaultRetentionDays
     self.retentionDays = Self.normalizedRetentionDays(storedRetentionDays)
-    self.automaticPruningEnabled = userDefaults.object(
-      forKey: Self.automaticPruningDefaultsKey
-    ) as? Bool ?? false
-    self.feedBodyOfflineCacheEnabled = userDefaults.object(
-      forKey: Self.feedBodyOfflineCacheDefaultsKey
-    ) as? Bool
+    self.automaticPruningEnabled =
+      userDefaults.object(
+        forKey: Self.automaticPruningDefaultsKey
+      ) as? Bool ?? false
+    self.feedBodyOfflineCacheEnabled =
+      userDefaults.object(
+        forKey: Self.feedBodyOfflineCacheDefaultsKey
+      ) as? Bool
       ?? userDefaults.object(forKey: Self.automaticOfflineCacheDefaultsKey) as? Bool
       ?? Self.defaultFeedBodyOfflineCacheEnabled
     self.privateNetworkAccessEnabled = resolvedPrivateNetworkAccessEnabled
 
-    do {
-      self.database = try RSSReaderDatabase(fileURL: Self.databaseFileURL(for: requestedFileURL), fileManager: fileManager)
-      self.payloadLoader = RSSArticlePayloadLoader(databaseURL: Self.databaseFileURL(for: requestedFileURL))
-    } catch {
-      self.database = nil
-      self.payloadLoader = nil
-      self.lastError = "RSS 将使用兼容缓存：SQLite 数据库不可用。\n\(error.localizedDescription)"
-    }
+    if let bootstrap {
+      // The launch coordinator prepares SQLite and the first header page on a
+      // utility task. Reusing that handle here keeps the @MainActor init free
+      // of open/migrate/full-table work while preserving the old recovery
+      // state and JSON fallback semantics.
+      self.database = bootstrap.database
+      self.payloadLoader =
+        bootstrap.database == nil
+        ? nil
+        : RSSArticlePayloadLoader(databaseURL: bootstrap.databaseURL)
+      self.feeds = bootstrap.feeds
+      self.articleHeaders = bootstrap.articleHeaders
+      self.articleHeaderCount = bootstrap.articleCount
+      self.articleHeadersAreComplete = bootstrap.loadedAllArticleHeaders
+      self.legacyArticles = bootstrap.legacyArticles
+      self.highlights = bootstrap.highlights
+      self.mediaAssets = bootstrap.mediaAssets
+      self.statusMessage = bootstrap.statusMessage
+      self.lastError = bootstrap.errorMessage
+    } else {
+      do {
+        self.database = try RSSReaderDatabase(
+          fileURL: Self.databaseFileURL(for: requestedFileURL),
+          fileManager: fileManager
+        )
+        self.payloadLoader = RSSArticlePayloadLoader(
+          databaseURL: Self.databaseFileURL(for: requestedFileURL))
+      } catch {
+        self.database = nil
+        self.payloadLoader = nil
+        self.lastError = "RSS 将使用兼容缓存：SQLite 数据库不可用。\n\(error.localizedDescription)"
+      }
 
-    load()
+      load()
+    }
+  }
+
+  /// Asynchronously prepares persistent state before constructing the
+  /// main-actor store. Callers that own a launch/loading phase should await
+  /// this method, then pass its result to `init(..., bootstrap:)`.
+  public static func prepareBootstrap(
+    fileURL: URL,
+    fileManager: FileManager = .default,
+    pageSize: Int = RSSReaderBootstrap.defaultPageSize
+  ) async -> RSSReaderBootstrap {
+    await RSSReaderBootstrap.prepare(
+      fileURL: fileURL,
+      fileManager: fileManager,
+      pageSize: pageSize
+    )
+  }
+
+  /// Completes a bounded bootstrap after the initial window has rendered.
+  /// A cancelled or superseded load never replaces newer in-memory state.
+  public func loadRemainingArticleHeadersIfNeeded() async {
+    if let existingTask = bootstrapHeaderLoadTask {
+      await existingTask.value
+      return
+    }
+    guard !articleHeadersAreComplete else { return }
+    if database == nil {
+      // Legacy JSON fallback already carries the complete payload array. Its
+      // remaining header pages can be projected locally without reopening the
+      // failed SQLite path or touching the main actor with I/O.
+      articleHeaders = legacyArticles.map(RSSArticleHeader.init(article:))
+      articleHeaderCount = articleHeaders.count
+      articleHeadersAreComplete = true
+      bumpMutationRevision()
+      return
+    }
+    guard let database else { return }
+
+    let offset = articleHeaders.count
+    let expectedCount = articleHeaderCount
+    let task = Task.detached(priority: .utility) {
+      try database.articleHeaders(limit: nil, offset: offset)
+    }
+    bootstrapHeaderLoadTask = Task { @MainActor [weak self] in
+      defer { self?.bootstrapHeaderLoadTask = nil }
+      guard let self else { return }
+      do {
+        let remaining = try await task.value
+        guard !Task.isCancelled,
+          self.articleHeaders.count == offset,
+          self.articleHeaderCount == expectedCount
+        else { return }
+        guard offset + remaining.count >= expectedCount else {
+          self.lastError = "RSS 文章索引加载不完整，请稍后重试。"
+          return
+        }
+        self.articleHeaders.append(contentsOf: remaining)
+        self.articleHeadersAreComplete = true
+        self.articleHeaderCount = self.articleHeaders.count
+        self.bumpMutationRevision()
+      } catch is CancellationError {
+        return
+      } catch {
+        self.lastError = "RSS 文章索引加载失败：\(error.localizedDescription)"
+      }
+    }
+    await bootstrapHeaderLoadTask?.value
   }
 
   public var unreadCount: Int {
-    articleHeaders.reduce(into: 0) { count, header in
+    if !articleHeadersAreComplete, let database {
+      return (try? database.unreadArticleCount()) ?? 0
+    }
+    return articleHeaders.reduce(into: 0) { count, header in
       if !header.isRead { count += 1 }
     }
   }
 
   public func unreadCount(for feedID: UUID) -> Int {
-    articleHeaders.reduce(into: 0) { count, header in
+    if !articleHeadersAreComplete, let database {
+      return (try? database.unreadArticleCount(feedID: feedID)) ?? 0
+    }
+    return articleHeaders.reduce(into: 0) { count, header in
       if header.feedID == feedID && !header.isRead { count += 1 }
     }
   }
@@ -434,6 +549,13 @@ public final class RSSReaderStore: ObservableObject {
     olderThanDays days: Int? = nil,
     now: Date = Date()
   ) -> RSSArticlePruneSummary {
+    guard requireCompleteArticleIndex() else {
+      let normalizedDays = Self.normalizedRetentionDays(days ?? retentionDays)
+      let cutoff = now.addingTimeInterval(-TimeInterval(normalizedDays) * 86_400)
+      let summary = RSSArticlePruneSummary(cutoffDate: cutoff)
+      lastPruneSummary = summary
+      return summary
+    }
     let normalizedDays = Self.normalizedRetentionDays(days ?? retentionDays)
     let cutoff = now.addingTimeInterval(-TimeInterval(normalizedDays) * 86_400)
     lastError = nil
@@ -442,14 +564,15 @@ public final class RSSReaderStore: ObservableObject {
       if let database {
         candidateIDs = try database.eligibleArticleIDsForPruning(before: cutoff)
       } else {
-        candidateIDs = Set(legacyArticles.compactMap { article in
-          guard article.isRead,
-                !article.isStarred,
-                (article.publishedAt ?? article.fetchedAt) < cutoff,
-                !highlights.contains(where: { $0.articleID == article.id })
-          else { return nil }
-          return article.id
-        })
+        candidateIDs = Set(
+          legacyArticles.compactMap { article in
+            guard article.isRead,
+              !article.isStarred,
+              (article.publishedAt ?? article.fetchedAt) < cutoff,
+              !highlights.contains(where: { $0.articleID == article.id })
+            else { return nil }
+            return article.id
+          })
       }
     } catch {
       lastError = "RSS 历史清理失败：\(error.localizedDescription)"
@@ -556,7 +679,11 @@ public final class RSSReaderStore: ObservableObject {
   }
 
   public func articleHeader(id: String) -> RSSArticleHeader? {
-    articleHeaders.first { $0.id == id }
+    if let header = articleHeaders.first(where: { $0.id == id }) {
+      return header
+    }
+    guard !articleHeadersAreComplete, let database else { return nil }
+    return try? database.articleHeader(id: id)
   }
 
   public func loadArticle(id: String) async throws -> RSSArticle? {

@@ -40,21 +40,42 @@ extension MacMarkdownComposerView {
     progress: Double
   ) {
     let normalizedProgress = min(max(progress.isFinite ? progress : 0, 0), 1)
+    let equalityTolerance = 0.001
+    var didChange = false
     switch source {
     case .editor:
-      editorScrollProgress = normalizedProgress
+      if abs(editorScrollProgress - normalizedProgress) >= equalityTolerance {
+        editorScrollProgress = normalizedProgress
+        didChange = true
+      }
       if isSynchronizedScrollingEnabled {
-        previewScrollProgress = normalizedProgress
+        if abs(previewScrollProgress - normalizedProgress) >= equalityTolerance {
+          previewScrollProgress = normalizedProgress
+          didChange = true
+        }
       }
     case .preview:
-      previewScrollProgress = normalizedProgress
+      if abs(previewScrollProgress - normalizedProgress) >= equalityTolerance {
+        previewScrollProgress = normalizedProgress
+        didChange = true
+      }
       if isSynchronizedScrollingEnabled {
-        editorScrollProgress = normalizedProgress
+        if abs(editorScrollProgress - normalizedProgress) >= equalityTolerance {
+          editorScrollProgress = normalizedProgress
+          didChange = true
+        }
       }
     }
+    guard didChange else { return }
     saveCurrentEditorSession()
 
     guard isSynchronizedScrollingEnabled else { return }
+    if let scrollSyncUpdate,
+      scrollSyncUpdate.source == source,
+      abs(scrollSyncUpdate.progress - normalizedProgress) < equalityTolerance
+    {
+      return
+    }
     scrollSyncUpdate = MarkdownScrollSyncUpdate(source: source, progress: normalizedProgress)
   }
 
@@ -81,10 +102,12 @@ extension MacMarkdownComposerView {
       source: .preview,
       progress: editorSession.previewScrollProgress
     )
-    findReplaceMessage = findQuery.isEmpty && isFindReplacePresented
+    findReplaceMessage =
+      findQuery.isEmpty && isFindReplacePresented
       ? "输入查找内容。"
       : ""
     refreshFindMatchSnapshot()
+    refreshMarkdownCursorContextSnapshot()
   }
 
   func currentEditorSessionState() -> MarkdownEditorSessionState {
@@ -102,21 +125,32 @@ extension MacMarkdownComposerView {
   }
 
   func saveCurrentEditorSession() {
-    editorSessionSaveTask?.cancel()
+    editorSessionSaveGeneration &+= 1
+    let generation = editorSessionSaveGeneration
+    guard editorSessionSaveTask == nil else { return }
     let draftID = draft.id
-    editorSessionSaveTask = Task {
-      do {
-        try await Task.sleep(for: .milliseconds(220))
-      } catch {
+    editorSessionSaveTask = Task { @MainActor in
+      var observedGeneration = generation
+      while !Task.isCancelled {
+        do {
+          try await Task.sleep(for: .milliseconds(220))
+        } catch {
+          return
+        }
+        let currentGeneration = self.editorSessionSaveGeneration
+        if currentGeneration != observedGeneration {
+          observedGeneration = currentGeneration
+          continue
+        }
+        self.persistEditorSession(for: draftID)
+        self.editorSessionSaveTask = nil
         return
       }
-      guard !Task.isCancelled else { return }
-      persistEditorSession(for: draftID)
-      editorSessionSaveTask = nil
     }
   }
 
   func flushEditorSessionSave(for draftID: UUID) {
+    editorSessionSaveGeneration &+= 1
     editorSessionSaveTask?.cancel()
     editorSessionSaveTask = nil
     persistEditorSession(for: draftID)

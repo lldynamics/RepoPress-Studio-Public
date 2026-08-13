@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class AIProviderCapabilityTests: XCTestCase {
@@ -14,6 +15,10 @@ final class AIProviderCapabilityTests: XCTestCase {
         "local_service",
         "model_discovery",
       ]
+    )
+    XCTAssertEqual(
+      AIProviderProtocolCapability.allCases.map(\.rawValue),
+      ["tool_calling", "structured_output"]
     )
   }
 
@@ -44,6 +49,8 @@ final class AIProviderCapabilityTests: XCTestCase {
       AIProviderPreset.custom.capabilitySupport(for: .visionInput),
       .unknown
     )
+    XCTAssertEqual(AIProviderPreset.custom.capabilitySupport(for: .toolCalling), .unknown)
+    XCTAssertEqual(AIProviderPreset.custom.capabilitySupport(for: .structuredOutput), .unknown)
     XCTAssertEqual(
       AIProviderPreset.custom.capabilitySupport(for: .reasoningControl),
       .unknown
@@ -76,6 +83,14 @@ final class AIProviderCapabilityTests: XCTestCase {
       AIProviderPreset.local.capabilitySupport(for: .modelDiscovery),
       .supported
     )
+    XCTAssertEqual(
+      AIProviderPreset.deepSeek.capabilitySupport(for: .toolCalling),
+      .supported
+    )
+    XCTAssertEqual(
+      AIProviderPreset.deepSeek.capabilitySupport(for: .structuredOutput),
+      .unknown
+    )
   }
 
   func testCustomDeepSeekEndpointUsesKnownCapabilityBoundary() {
@@ -88,6 +103,8 @@ final class AIProviderCapabilityTests: XCTestCase {
 
     XCTAssertEqual(config.capabilitySupport(for: .visionInput), .unsupported)
     XCTAssertEqual(config.capabilitySupport(for: .reasoningControl), .supported)
+    XCTAssertEqual(config.capabilitySupport(for: .toolCalling), .unknown)
+    XCTAssertEqual(config.capabilitySupport(for: .structuredOutput), .unknown)
   }
 
   func testCustomLocalEndpointDoesNotOverstateModelDependentCapabilities() {
@@ -102,6 +119,8 @@ final class AIProviderCapabilityTests: XCTestCase {
     XCTAssertEqual(config.capabilitySupport(for: .visionInput), .unknown)
     XCTAssertEqual(config.capabilitySupport(for: .reasoningControl), .unknown)
     XCTAssertEqual(config.capabilitySupport(for: .modelDiscovery), .unknown)
+    XCTAssertEqual(config.capabilitySupport(for: .toolCalling), .unknown)
+    XCTAssertEqual(config.capabilitySupport(for: .structuredOutput), .unknown)
   }
 
   func testExplicitRemoteCustomEndpointIsNotDescribedAsLocal() {
@@ -115,6 +134,8 @@ final class AIProviderCapabilityTests: XCTestCase {
     XCTAssertEqual(config.capabilitySupport(for: .localService), .unsupported)
     XCTAssertEqual(config.capabilitySupport(for: .visionInput), .unknown)
     XCTAssertEqual(config.capabilitySupport(for: .reasoningControl), .unknown)
+    XCTAssertEqual(config.capabilitySupport(for: .toolCalling), .unknown)
+    XCTAssertEqual(config.capabilitySupport(for: .structuredOutput), .unknown)
   }
 
   func testUnresolvedCustomEndpointKeepsLocalServiceSupportUnknown() {
@@ -150,6 +171,96 @@ final class AIProviderCapabilityTests: XCTestCase {
 
     XCTAssertEqual(config.capabilitySupport(for: .chat), .unknown)
     XCTAssertEqual(config.capabilitySupport(for: .streamingResponse), .unknown)
+    XCTAssertEqual(config.capabilitySupport(for: .toolCalling), .unknown)
+    XCTAssertEqual(config.capabilitySupport(for: .structuredOutput), .unknown)
+  }
+
+  func testConfiguredDeepSeekPresetCanClaimKnownToolCallingSupport() {
+    let config = AIProviderConfig(
+      preset: .deepSeek,
+      baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
+      model: AIProviderPreset.deepSeek.defaultModel,
+      requiresAPIKey: true
+    )
+
+    XCTAssertEqual(config.capabilitySupport(for: .toolCalling), .supported)
+    XCTAssertEqual(config.capabilitySupport(for: .structuredOutput), .unknown)
+  }
+
+  func testCapabilityEndpointIdentityOmitsSecretsQueryAndFragment() {
+    let config = AIProviderConfig(
+      preset: .custom,
+      baseURL: "HTTPS://User:secret@Example.COM:443/v1/?api_key=do-not-cache#fragment",
+      model: " model ",
+      requiresAPIKey: true
+    )
+
+    XCTAssertEqual(config.capabilityEndpointIdentity, "https://example.com:443/v1")
+    XCTAssertEqual(
+      AIProviderCapabilityCacheKey(config: config).model,
+      "model"
+    )
+    XCTAssertFalse(
+      AIProviderCapabilityCacheKey(config: config).endpointIdentity.contains("secret")
+    )
+    XCTAssertFalse(
+      AIProviderCapabilityCacheKey(config: config).endpointIdentity.contains("api_key")
+    )
+  }
+
+  func testCurrentProbeEvidenceOverridesUnknownAndExpiredEvidenceFailsClosed() {
+    let configWithoutEvidence = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://example.com/v1",
+      model: "model",
+      requiresAPIKey: false
+    )
+    let key = AIProviderCapabilityCacheKey(config: configWithoutEvidence)
+    let now = Date(timeIntervalSince1970: 100)
+    let currentEvidence = AIProviderCapabilityProbeEvidence(
+      key: key,
+      capability: .toolCalling,
+      outcome: .supported,
+      observedAt: now,
+      expiresAt: now.addingTimeInterval(60)
+    )
+    var configured = configWithoutEvidence
+    configured.capabilityProbeEvidence = [.toolCalling: currentEvidence]
+
+    XCTAssertEqual(configured.capabilitySupport(for: .toolCalling, at: now), .supported)
+    XCTAssertEqual(
+      configured.capabilityEvidenceState(for: .toolCalling, at: now),
+      .probed
+    )
+    XCTAssertEqual(
+      configured.protocolCapabilityDescriptor(for: .toolCalling, at: now).probeOutcome,
+      .supported
+    )
+
+    let expiredEvidence = AIProviderCapabilityProbeEvidence(
+      key: key,
+      capability: .toolCalling,
+      outcome: .supported,
+      observedAt: now.addingTimeInterval(-120),
+      expiresAt: now.addingTimeInterval(-60)
+    )
+    configured.capabilityProbeEvidence = [.toolCalling: expiredEvidence]
+    XCTAssertEqual(configured.capabilitySupport(for: .toolCalling, at: now), .unknown)
+    XCTAssertEqual(
+      configured.capabilityEvidenceState(for: .toolCalling, at: now),
+      .expired
+    )
+  }
+
+  func testDeepSeekPresetDoesNotClaimToolCallingForUnknownModel() {
+    let config = AIProviderConfig(
+      preset: .deepSeek,
+      baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
+      model: "third-party-model-name",
+      requiresAPIKey: true
+    )
+
+    XCTAssertEqual(config.capabilitySupport(for: .toolCalling), .unknown)
   }
 
   func testCapabilityExtensionsDoNotChangeExistingConfigCodablePayload() throws {

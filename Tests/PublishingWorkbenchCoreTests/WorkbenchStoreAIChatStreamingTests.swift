@@ -1,16 +1,23 @@
 import Combine
 import Foundation
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor
 final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
   override func setUp() {
     super.setUp()
+    // Production defaults to automatic remote authorization. Tests that need
+    // fail-closed fault injection install an explicit provider below.
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
     AIDataSharingConsentStore().grant(for: remoteAIConfig)
   }
 
   override func tearDown() {
+    AIOutboundPayloadApprovalBroker.shared.cancelPendingRequest()
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
+    AIOutboundPayloadApprovalBroker.shared.testingConfirmationDateProvider = nil
     AIDataSharingConsentStore().revoke(for: remoteAIConfig)
     super.tearDown()
   }
@@ -24,7 +31,9 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
   }
 
-  func testStoreStreamsAIChatReplyIntoCurrentConversation() async throws {
+  func testStoreStreamsAIChatReplyIntoCurrentConversationWithoutPerRequestPayloadPrompt()
+    async throws
+  {
     let transport = RecordingAIChatTransport(
       data: Data(),
       statusCode: 200,
@@ -56,6 +65,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       model: "gpt-4.1",
       requiresAPIKey: false
     )
+    profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
     store.updateActiveProfile(profile)
     let draft = try XCTUnwrap(store.selectedDraft)
 
@@ -68,6 +78,9 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(store.aiChatMessages[1].role, .assistant)
     XCTAssertEqual(store.aiChatMessages[1].content, "你好。")
     XCTAssertEqual(store.aiChatMessage, "AI 已回复。")
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
+    XCTAssertEqual(AIOutboundPayloadApprovalBroker.shared.pendingRequestCountForTesting, 0)
     let requestFromTransport = await transport.capturedRequest()
     let capturedRequest = try XCTUnwrap(requestFromTransport)
     let body = try XCTUnwrap(capturedRequest.httpBody)
@@ -75,14 +88,344 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(payload["stream"] as? Bool, true)
   }
 
+  func testRemoteArticleRequestSerializationUsesMinimizedSanitizedPayload() async throws {
+    let approvalBroker = AIOutboundPayloadApprovalBroker.shared
+    var capturedPreview: AIOutboundPayloadPreview?
+    approvalBroker.testingDecisionProvider = { preview in
+      capturedPreview = preview
+      return .confirm
+    }
+    defer { approvalBroker.testingDecisionProvider = nil }
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200,
+      streamLines: [
+        #"data: {"choices":[{"delta":{"content":"完成"},"finish_reason":"stop"}]}"#,
+        "",
+      ]
+    )
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("AIOutboundSanitized-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    var profile = store.activeProfile
+    var outboundConfig = remoteAIConfig
+    outboundConfig.advancedSettings = AIProviderAdvancedSettings(
+      systemPrompt: """
+        只保留必要说明。
+        /Users/advanced-user/Private/instructions.md
+        OPENAI_API_KEY=advanced-secret
+        预览命令：zola serve --root /Users/advanced-user/Private
+        """
+    )
+    profile.aiProviderConfig = outboundConfig
+    store.updateActiveProfile(profile)
+    var draft = try XCTUnwrap(store.selectedDraft)
+    draft.bodyMarkdown = """
+      保留仓库相对路径 content/posts/example.md
+      本机路径 /Users/bob/Projects/RepoPress/content/posts/example.md
+      预览命令：zola serve --root /Users/bob/Projects/RepoPress
+      """
+    store.updateDraft(draft)
+    let currentDraft = try XCTUnwrap(store.selectedDraft)
+
+    _ = await store.sendAIChatMessage(
+      "swift build --package-path /Users/bob/Projects/RepoPress API_KEY=private-value",
+      draft: currentDraft
+    )
+
+    let recordedRequest = await transport.capturedRequest()
+    let capturedRequest = try XCTUnwrap(recordedRequest)
+    let body = try XCTUnwrap(capturedRequest.httpBody)
+    let requestText = try XCTUnwrap(String(data: body, encoding: .utf8))
+      .replacingOccurrences(of: "\\/", with: "/")
+    XCTAssertFalse(requestText.contains("/Users/"))
+    XCTAssertFalse(requestText.contains("bob"))
+    XCTAssertFalse(requestText.contains("zola serve"))
+    XCTAssertFalse(requestText.contains("swift build"))
+    XCTAssertFalse(requestText.contains("private-value"))
+    XCTAssertFalse(requestText.contains("advanced-user"))
+    XCTAssertFalse(requestText.contains("advanced-secret"))
+    XCTAssertTrue(requestText.contains("content/posts/example.md"))
+    let preview = try XCTUnwrap(capturedPreview)
+    XCTAssertTrue(preview.sensitiveCategories.contains(.absoluteLocalPath))
+    XCTAssertTrue(preview.sensitiveCategories.contains(.homeUsername))
+    XCTAssertTrue(preview.sensitiveCategories.contains(.previewCommand))
+    XCTAssertTrue(preview.sensitiveCategories.contains(.buildCommand))
+    XCTAssertTrue(preview.sensitiveCategories.contains(.credentialLikeSecret))
+  }
+
+  func testCancelledRemoteArticleAuthorizationGatePerformsZeroTransport() async throws {
+    let approvalBroker = AIOutboundPayloadApprovalBroker.shared
+    approvalBroker.testingDecisionProvider = { _ in .cancel }
+    defer { approvalBroker.testingDecisionProvider = nil }
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("AIOutboundCancelled-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    var profile = store.activeProfile
+    profile.aiProviderConfig = remoteAIConfig
+    store.updateActiveProfile(profile)
+    let draft = try XCTUnwrap(store.selectedDraft)
+
+    let reply = await store.sendAIChatMessage("不发送", draft: draft)
+
+    XCTAssertNil(reply)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  func testExpiredRemoteArticleAuthorizationPerformsZeroTransport() async throws {
+    let approvalBroker = AIOutboundPayloadApprovalBroker.shared
+    approvalBroker.testingDecisionProvider = { _ in .confirm }
+    approvalBroker.testingConfirmationDateProvider = { $0.expiresAt.addingTimeInterval(1) }
+    defer { approvalBroker.testingConfirmationDateProvider = nil }
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("AIOutboundExpired-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    var profile = store.activeProfile
+    profile.aiProviderConfig = remoteAIConfig
+    store.updateActiveProfile(profile)
+    let draft = try XCTUnwrap(store.selectedDraft)
+
+    let reply = await store.sendAIChatMessage("过期不发送", draft: draft)
+
+    XCTAssertNil(reply)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  func testDriftedRemoteArticleAuthorizationPerformsZeroTransport() async throws {
+    let approvalBroker = AIOutboundPayloadApprovalBroker.shared
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("AIOutboundDrifted-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    var profile = store.activeProfile
+    profile.aiProviderConfig = remoteAIConfig
+    store.updateActiveProfile(profile)
+    let draft = try XCTUnwrap(store.selectedDraft)
+    approvalBroker.testingDecisionProvider = { _ in
+      guard var changedDraft = store.selectedDraft else { return .cancel }
+      changedDraft.bodyMarkdown += "\n确认后发生了变化"
+      store.updateDraft(changedDraft)
+      return .confirm
+    }
+    defer { approvalBroker.testingDecisionProvider = nil }
+
+    let reply = await store.sendAIChatMessage("漂移不发送", draft: draft)
+
+    XCTAssertNil(reply)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  func testAdvancedPromptOrModelDriftPerformsZeroTransport() async throws {
+    let approvalBroker = AIOutboundPayloadApprovalBroker.shared
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("AIOutboundAdvancedDrift-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    var profile = store.activeProfile
+    profile.aiProviderConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "model-before-authorization",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(systemPrompt: "prompt-before")
+    )
+    store.updateActiveProfile(profile)
+    let draft = try XCTUnwrap(store.selectedDraft)
+    approvalBroker.testingDecisionProvider = { _ in
+      var changedProfile = store.activeProfile
+      changedProfile.aiProviderConfig.model = "model-after-authorization"
+      changedProfile.aiProviderConfig.advancedSettings?.systemPrompt = "prompt-after"
+      store.updateActiveProfile(changedProfile)
+      return .confirm
+    }
+    defer { approvalBroker.testingDecisionProvider = nil }
+
+    let reply = await store.sendAIChatMessage("高级设置漂移", draft: draft)
+
+    XCTAssertNil(reply)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  func testAdvancedSystemPromptOnlyDriftPerformsZeroTransport() async throws {
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("AIOutboundPromptOnlyDrift-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    var profile = store.activeProfile
+    profile.aiProviderConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "unchanged-model",
+      requiresAPIKey: false,
+      advancedSettings: AIProviderAdvancedSettings(systemPrompt: "prompt-before")
+    )
+    store.updateActiveProfile(profile)
+    let draft = try XCTUnwrap(store.selectedDraft)
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { _ in
+      var changedProfile = store.activeProfile
+      changedProfile.aiProviderConfig.advancedSettings?.systemPrompt = "prompt-after"
+      store.updateActiveProfile(changedProfile)
+      return .confirm
+    }
+
+    let reply = await store.sendAIChatMessage("prompt-only drift", draft: draft)
+
+    XCTAssertNil(reply)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  func testRevokingConsentWhileAuthorizationGateIsOpenPerformsZeroTransport() async throws {
+    let (store, transport, config, consentStore, persistenceURL) =
+      makeCredentialTOCTOUArticleStore(suffix: "ConsentRevoked")
+    defer {
+      consentStore.revoke(for: config)
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
+    var profile = store.activeProfile
+    profile.aiProviderConfig = config
+    store.updateActiveProfile(profile)
+    XCTAssertTrue(consentStore.grant(for: config))
+    XCTAssertTrue(store.saveAIAPIKey("initial-test-credential"))
+    let draft = try XCTUnwrap(store.selectedDraft)
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { _ in
+      consentStore.revoke(for: config)
+      return .confirm
+    }
+
+    let reply = await store.sendAIChatMessage("consent revoked", draft: draft)
+
+    XCTAssertNil(reply)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  func testDeletingCredentialWhileAuthorizationGateIsOpenPerformsZeroTransport() async throws {
+    let (store, transport, config, consentStore, persistenceURL) =
+      makeCredentialTOCTOUArticleStore(suffix: "CredentialDeleted")
+    defer {
+      consentStore.revoke(for: config)
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
+    var profile = store.activeProfile
+    profile.aiProviderConfig = config
+    store.updateActiveProfile(profile)
+    XCTAssertTrue(consentStore.grant(for: config))
+    XCTAssertTrue(store.saveAIAPIKey("initial-test-credential"))
+    let draft = try XCTUnwrap(store.selectedDraft)
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { _ in
+      store.deleteAIAPIKey()
+      return .confirm
+    }
+
+    let reply = await store.sendAIChatMessage("credential deleted", draft: draft)
+
+    XCTAssertNil(reply)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  func testCredentialRotationDuringApprovalUsesOnlyCurrentCredential() async throws {
+    let (store, transport, config, consentStore, persistenceURL) =
+      makeCredentialTOCTOUArticleStore(suffix: "CredentialRotated")
+    defer {
+      consentStore.revoke(for: config)
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
+    var profile = store.activeProfile
+    profile.aiProviderConfig = config
+    store.updateActiveProfile(profile)
+    XCTAssertTrue(consentStore.grant(for: config))
+    let initialCredential = "initial-test-credential"
+    let rotatedCredential = "rotated-test-credential"
+    XCTAssertTrue(store.saveAIAPIKey(initialCredential))
+    let draft = try XCTUnwrap(store.selectedDraft)
+    var capturedPreview: AIOutboundPayloadPreview?
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { preview in
+      capturedPreview = preview
+      XCTAssertTrue(store.saveAIAPIKey(rotatedCredential))
+      return .confirm
+    }
+
+    let reply = await store.sendAIChatMessage("credential rotated", draft: draft)
+
+    XCTAssertEqual(reply?.content, "ok")
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
+    let recordedRequest = await transport.capturedRequest()
+    let capturedRequest = try XCTUnwrap(recordedRequest)
+    XCTAssertEqual(
+      capturedRequest.value(forHTTPHeaderField: "Authorization"),
+      "Bearer \(rotatedCredential)"
+    )
+    XCTAssertFalse(
+      capturedRequest.value(forHTTPHeaderField: "Authorization")?.contains(initialCredential)
+        == true
+    )
+    let previewData = try JSONEncoder().encode(try XCTUnwrap(capturedPreview))
+    let previewJSON = try XCTUnwrap(String(data: previewData, encoding: .utf8))
+    XCTAssertFalse(previewJSON.contains(initialCredential))
+    XCTAssertFalse(previewJSON.contains(rotatedCredential))
+  }
+
   func testStoreBatchesRapidStreamingMessagePublications() async throws {
-    let streamLines = (0..<80).flatMap { _ in
-      [#"data: {"choices":[{"delta":{"content":"a"}}]}"#, ""]
-    } + [
-      #"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-      "",
-    ]
-    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200, streamLines: streamLines)
+    let streamLines =
+      (0..<80).flatMap { _ in
+        [#"data: {"choices":[{"delta":{"content":"a"}}]}"#, ""]
+      } + [
+        #"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+        "",
+      ]
+    let transport = RecordingAIChatTransport(
+      data: Data(), statusCode: 200, streamLines: streamLines)
     let persistenceURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
       .appendingPathExtension("json")
@@ -103,6 +446,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       model: "gpt-4.1",
       requiresAPIKey: false
     )
+    profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
     store.updateActiveProfile(profile)
     let draft = try XCTUnwrap(store.selectedDraft)
     var messagePublications = 0
@@ -148,6 +492,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       model: "gpt-4.1",
       requiresAPIKey: false
     )
+    profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
     store.updateActiveProfile(profile)
     let draft = try XCTUnwrap(store.selectedDraft)
 
@@ -192,7 +537,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
 
   func testCanceledNonStreamingReplyCannotWriteBackAndNextRequestCanRun() async throws {
     let responseData = Data(
-      #"{"model":"fallback-model","choices":[{"message":{"role":"assistant","content":"迟到回复"}}]}"#.utf8
+      #"{"model":"fallback-model","choices":[{"message":{"role":"assistant","content":"迟到回复"}}]}"#
+        .utf8
     )
     let transport = DelayedAIChatTransport(
       data: responseData,
@@ -248,6 +594,84 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(finalRequestCount, 2)
   }
 
+  func testUnknownStreamingCapabilityCancellationPerformsZeroTransport() async throws {
+    var decisionCount = 0
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { _ in
+      decisionCount += 1
+      return .cancel
+    }
+    let responseData = Data(
+      #"{"model":"fallback-model","choices":[{"message":{"role":"assistant","content":"unused"}}]}"#
+        .utf8
+    )
+    let transport = DelayedAIChatTransport(
+      data: responseData,
+      statusCode: 200,
+      delayNanoseconds: 0
+    )
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("AIOutboundFallbackCancel-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    var profile = store.activeProfile
+    profile.aiProviderConfig = remoteAIConfig
+    store.updateActiveProfile(profile)
+    let draft = try XCTUnwrap(store.selectedDraft)
+
+    let reply = await store.sendAIChatMessage("cancel fallback", draft: draft)
+
+    XCTAssertNil(reply)
+    XCTAssertEqual(decisionCount, 1)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  func testUnknownStreamingCapabilityUsesOneInjectedAuthorizationDecisionAndOneCompleteTransport()
+    async throws
+  {
+    var reviewedFingerprints: [String] = []
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { preview in
+      reviewedFingerprints.append(preview.fingerprint)
+      return .confirm
+    }
+    let responseData = Data(
+      #"{"model":"fallback-model","choices":[{"message":{"role":"assistant","content":"fallback ok"}}]}"#
+        .utf8
+    )
+    let transport = DelayedAIChatTransport(
+      data: responseData,
+      statusCode: 200,
+      delayNanoseconds: 0
+    )
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("AIOutboundFallbackConfirm-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      )
+    )
+    var profile = store.activeProfile
+    profile.aiProviderConfig = remoteAIConfig
+    store.updateActiveProfile(profile)
+    let draft = try XCTUnwrap(store.selectedDraft)
+
+    let reply = await store.sendAIChatMessage("confirm fallback", draft: draft)
+
+    XCTAssertEqual(reply?.content, "fallback ok")
+    XCTAssertEqual(reviewedFingerprints.count, 1)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
+  }
+
   func testStoreSendsMaintenanceActionIntoAIChatWorkspace() async throws {
     let transport = RecordingAIChatTransport(
       data: Data(),
@@ -279,6 +703,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       model: "gpt-4.1",
       requiresAPIKey: false
     )
+    profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
     store.updateActiveProfile(profile)
     let draft = try XCTUnwrap(store.selectedDraft)
     let item = MaintenanceActionItem(
@@ -341,6 +766,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       model: "gpt-4.1",
       requiresAPIKey: false
     )
+    profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
     store.updateActiveProfile(profile)
     let draft = try XCTUnwrap(store.selectedDraft)
     let record = ReleaseRecord(
@@ -411,6 +837,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       model: "gpt-4.1",
       requiresAPIKey: false
     )
+    profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
     store.updateActiveProfile(profile)
     var draft = try XCTUnwrap(store.selectedDraft)
     draft.title = "SEO 社交预览"
@@ -446,8 +873,8 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
           "message": [
             "role": "assistant",
             "content": "#Mac，AI, Publishing; AI",
-          ],
-        ],
+          ]
+        ]
       ],
     ]
     let transport = RecordingAIChatTransport(
@@ -516,6 +943,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       model: "gpt-4.1",
       requiresAPIKey: false
     )
+    profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
     store.updateActiveProfile(profile)
     let draft = try XCTUnwrap(store.selectedDraft)
 
@@ -528,6 +956,11 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
   }
 
   func testStoreRequiresExplicitManualConfirmationBeforeRetryingPartialReply() async throws {
+    var authorizationDecisionCount = 0
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { _ in
+      authorizationDecisionCount += 1
+      return .confirm
+    }
     let transport = ScriptedAIChatStreamingTransport(
       attempts: [
         ScriptedAIChatStreamAttempt(
@@ -567,6 +1000,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       model: "gpt-4.1",
       requiresAPIKey: false
     )
+    profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
     store.updateActiveProfile(profile)
     let draft = try XCTUnwrap(store.selectedDraft)
 
@@ -576,6 +1010,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(store.aiChatMessages.map(\.content), ["请生成。", "部分回复"])
     var requestCount = await transport.capturedRequestCount()
     XCTAssertEqual(requestCount, 1)
+    XCTAssertEqual(authorizationDecisionCount, 1)
     XCTAssertEqual(
       store.aiChatManualRetryState?.requiresDuplicateChargeConfirmation,
       true
@@ -586,6 +1021,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertNil(unconfirmedReply)
     requestCount = await transport.capturedRequestCount()
     XCTAssertEqual(requestCount, 1)
+    XCTAssertEqual(authorizationDecisionCount, 1)
     XCTAssertEqual(store.aiChatMessages.map(\.content), ["请生成。", "部分回复"])
 
     let regeneratedReply = await store.retryLastFailedAIChatReply(
@@ -596,6 +1032,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(store.aiChatMessages.map(\.content), ["请生成。", "重新生成完成"])
     requestCount = await transport.capturedRequestCount()
     XCTAssertEqual(requestCount, 2)
+    XCTAssertEqual(authorizationDecisionCount, 2)
     XCTAssertNil(store.aiChatManualRetryState)
   }
 
@@ -628,6 +1065,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       model: "gpt-4.1",
       requiresAPIKey: false
     )
+    profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
     store.updateActiveProfile(profile)
     let draft = try XCTUnwrap(store.selectedDraft)
     store.prepareAIChat(for: draft)
@@ -733,7 +1171,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       aiPublishingAssistantService: AIPublishingAssistantService(client: client)
     )
     var profile = store.activeProfile
-    profile.aiProviderConfig = remoteAIConfig
+    profile.aiProviderConfig = streamingSupportedConfig(remoteAIConfig)
     store.updateActiveProfile(profile)
     let firstDraft = try XCTUnwrap(store.selectedDraft)
     let secondDraft = ArticleDraft(
@@ -765,7 +1203,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       if await transport.capturedRequestCount() > 0 {
         break
       }
-      await Task.yield()
+      try await Task.sleep(for: .milliseconds(1))
     }
 
     XCTAssertTrue(store.isAIChatRunning)
@@ -777,7 +1215,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(store.selectedDraftID, secondDraft.id)
     XCTAssertEqual(store.aiChatDraftID, secondDraft.id)
     let currentMessages = [
-      AIPublishingChatMessage(role: .user, content: "当前文章不能被旧请求污染"),
+      AIPublishingChatMessage(role: .user, content: "当前文章不能被旧请求污染")
     ]
     store.setAIChatMessages(currentMessages)
     store.aiStore.cacheCurrentAIChatSessionForAIStore()
@@ -869,7 +1307,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       aiPublishingAssistantService: AIPublishingAssistantService(client: client)
     )
     var profile = store.activeProfile
-    profile.aiProviderConfig = remoteAIConfig
+    profile.aiProviderConfig = streamingSupportedConfig(remoteAIConfig)
     store.updateActiveProfile(profile)
     let firstDraft = try XCTUnwrap(store.selectedDraft)
     let secondDraft = ArticleDraft(
@@ -897,13 +1335,13 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       if await transport.capturedRequestCount() > 0 {
         break
       }
-      await Task.yield()
+      try await Task.sleep(for: .milliseconds(1))
     }
 
     XCTAssertTrue(store.isAIChatRunning)
     store.ai.selectChatDraft(secondDraft.id)
     let currentMessages = [
-      AIPublishingChatMessage(role: .user, content: "切换后的对话仍保持原样"),
+      AIPublishingChatMessage(role: .user, content: "切换后的对话仍保持原样")
     ]
     store.setAIChatMessages(currentMessages)
     store.aiStore.cacheCurrentAIChatSessionForAIStore()
@@ -1071,21 +1509,21 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     )
     var firstDraft = try XCTUnwrap(store.selectedDraft)
     firstDraft.bodyMarkdown = """
-    # 第一篇
+      # 第一篇
 
-    第一篇的普通段落。
+      第一篇的普通段落。
 
-    第一篇需要持续聚焦的段落，AI 应该围绕这里回答。
-    """
+      第一篇需要持续聚焦的段落，AI 应该围绕这里回答。
+      """
     let secondDraft = ArticleDraft(
       siteProfileID: store.activeProfile.id,
       title: "第二篇",
       slug: "second",
       bodyMarkdown: """
-      # 第二篇
+        # 第二篇
 
-      第二篇的上下文不应该继承第一篇的聚焦段落。
-      """
+        第二篇的上下文不应该继承第一篇的聚焦段落。
+        """
     )
     let firstParagraph = try XCTUnwrap(
       AIPublishingChatDraftParagraphParser.extract(from: firstDraft.bodyMarkdown)
@@ -1150,9 +1588,10 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
 
   func testPersistedAIChatStorageSupportsMoreThanLegacyTransientLimit() throws {
     let store = WorkbenchStore(
-      persistence: WorkbenchPersistence(fileURL: FileManager.default.temporaryDirectory
-        .appendingPathComponent(UUID().uuidString)
-        .appendingPathExtension("json"))
+      persistence: WorkbenchPersistence(
+        fileURL: FileManager.default.temporaryDirectory
+          .appendingPathComponent(UUID().uuidString)
+          .appendingPathExtension("json"))
     )
     var drafts = [try XCTUnwrap(store.selectedDraft)]
     for _ in 0..<13 {
@@ -1191,12 +1630,12 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     let store = WorkbenchStore(persistence: persistence)
     var draft = try XCTUnwrap(store.selectedDraft)
     draft.bodyMarkdown = """
-    # 持久化 AI 对话
+      # 持久化 AI 对话
 
-    普通正文段落。
+      普通正文段落。
 
-    这个段落需要在重启后继续作为 AI 聚焦上下文。
-    """
+      这个段落需要在重启后继续作为 AI 聚焦上下文。
+      """
     store.updateDraft(draft)
     let focusedParagraph = try XCTUnwrap(
       AIPublishingChatDraftParagraphParser.extract(from: draft.bodyMarkdown)
@@ -1321,6 +1760,7 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       model: "gpt-4.1",
       requiresAPIKey: false
     )
+    profile.aiProviderConfig = streamingSupportedConfig(profile.aiProviderConfig)
     store.updateActiveProfile(profile)
     let firstDraft = try XCTUnwrap(store.selectedDraft)
     let secondDraft = ArticleDraft(
@@ -1362,5 +1802,62 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
       accountPrefix: "ai-test",
       inMemory: true
     )
+  }
+
+  private func makeCredentialTOCTOUArticleStore(
+    suffix: String
+  ) -> (
+    store: WorkbenchStore,
+    transport: RecordingAIChatTransport,
+    config: AIProviderConfig,
+    consentStore: AIDataSharingConsentStore,
+    persistenceURL: URL
+  ) {
+    let transport = RecordingAIChatTransport(
+      data: Data(),
+      statusCode: 200,
+      streamLines: [
+        #"data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}"#,
+        "",
+      ]
+    )
+    let config = streamingSupportedConfig(
+      AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.example/v1",
+        model: "credential-toctou-model",
+        requiresAPIKey: true
+      )
+    )
+    let consentStore = AIDataSharingConsentStore(
+      storageKey: "AIDataSharingConsent.CredentialTOCTOU.\(suffix).\(UUID().uuidString)"
+    )
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("AIOutboundCredentialTOCTOU-\(suffix)-\(UUID().uuidString).json")
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: aiTokenStoreForTest(),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      ),
+      aiDataSharingConsentStore: consentStore
+    )
+    return (store, transport, config, consentStore, persistenceURL)
+  }
+
+  private func streamingSupportedConfig(_ base: AIProviderConfig) -> AIProviderConfig {
+    var config = base
+    let now = Date()
+    let key = AIProviderCapabilityCacheKey(config: config)
+    var evidence = config.capabilityProbeEvidence ?? [:]
+    evidence[.streamingResponse] = AIProviderCapabilityProbeEvidence(
+      key: key,
+      capability: .streamingResponse,
+      outcome: .supported,
+      observedAt: now,
+      expiresAt: now.addingTimeInterval(60)
+    )
+    config.capabilityProbeEvidence = evidence
+    return config
   }
 }

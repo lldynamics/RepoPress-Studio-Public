@@ -20,8 +20,8 @@ extension RepositoryWorkspaceView {
             plan.usesDynamicPort ? "已自动切换动态端口" : "使用默认端口",
             systemImage: plan.usesDynamicPort ? "arrow.triangle.2.circlepath" : "network"
           )
-            .font(.caption)
-            .foregroundStyle(plan.usesDynamicPort ? WorkbenchTheme.warning : .secondary)
+          .font(.caption)
+          .foregroundStyle(plan.usesDynamicPort ? WorkbenchTheme.warning : .secondary)
         }
 
         let currentArticleURL = store.selectedDraft.flatMap { store.localSitePreviewURL(for: $0) }
@@ -47,7 +47,9 @@ extension RepositoryWorkspaceView {
               .frame(maxWidth: .infinity, alignment: .leading)
           }
           .buttonStyle(.bordered)
-          .disabled(store.localSitePreviewRuntimeStatus.isRunning)
+          .disabled(
+            store.localSitePreviewRuntimeStatus.isRunning || !plan.diagnostics.isReadyToStart
+          )
           .accessibilityIdentifier("repository-preview-start")
 
           Button {
@@ -101,13 +103,20 @@ extension RepositoryWorkspaceView {
             ? "checkmark.circle"
             : (store.localSitePreviewRuntimeStatus.isRunning ? "play.circle" : "stop.circle")
         )
-          .font(.caption)
-          .foregroundStyle(store.localSitePreviewRuntimeStatus.isReachable ? WorkbenchTheme.success : Color.secondary)
-          .accessibilityIdentifier("repository-preview-runtime-status")
+        .font(.caption)
+        .foregroundStyle(
+          store.localSitePreviewRuntimeStatus.isReachable ? WorkbenchTheme.success : Color.secondary
+        )
+        .accessibilityIdentifier("repository-preview-runtime-status")
 
-        Label(plan.diagnostics.statusTitle, systemImage: plan.diagnostics.isReadyToStart ? "checkmark.seal" : "exclamationmark.triangle")
-          .font(.caption)
-          .foregroundStyle(plan.diagnostics.isReadyToStart ? WorkbenchTheme.success : WorkbenchTheme.warning)
+        Label(
+          plan.diagnostics.statusTitle,
+          systemImage: plan.diagnostics.isReadyToStart
+            ? "checkmark.seal" : "exclamationmark.triangle"
+        )
+        .font(.caption)
+        .foregroundStyle(
+          plan.diagnostics.isReadyToStart ? WorkbenchTheme.success : WorkbenchTheme.warning)
 
         ForEach(plan.notes, id: \.self) { note in
           Label(note, systemImage: "info.circle")
@@ -142,21 +151,29 @@ extension RepositoryWorkspaceView {
             Text("最近日志")
               .font(.callout.weight(.semibold))
               .foregroundStyle(.secondary)
-            Text(store.localSitePreviewRuntimeStatus.recentLogLines.suffix(8).joined(separator: "\n"))
-              .font(.caption.monospaced())
-              .foregroundStyle(.secondary)
-              .textSelection(.enabled)
-              .lineLimit(8)
+            Text(
+              store.localSitePreviewRuntimeStatus.recentLogLines.suffix(8).joined(separator: "\n")
+            )
+            .font(.caption.monospaced())
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+            .lineLimit(8)
           }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+        .background(
+          WorkbenchBackgroundStyle.control,
+          in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
+        )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("repository-preview-diagnostics")
       }
       .padding(14)
-      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .background(
+        WorkbenchBackgroundStyle.card,
+        in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
+      )
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("repository-section-local-preview")
     }

@@ -67,10 +67,6 @@
     "en": "%lld items awaiting confirmation",
     "zh-Hans": "%lld 个待确认项"
   },
-  "%lld 个汉字，%lld 个西文词，合计 %lld 字词，%lld 行，预计阅读 %@ 分钟，写作目标 %@ 字词，已完成 %@%": {
-    "en": "%lld Chinese characters, %lld non-Chinese words, %lld words total, %lld lines, about %@ minutes to read, %@-word target, %@% complete",
-    "zh-Hans": "%lld 个汉字，%lld 个西文词，合计 %lld 字词，%lld 行，预计阅读 %@ 分钟，写作目标 %@ 字词，已完成 %@%"
-  },
   "%lld 个阻断项": {
     "en": "%lld blockers",
     "zh-Hans": "%lld 个阻断项"

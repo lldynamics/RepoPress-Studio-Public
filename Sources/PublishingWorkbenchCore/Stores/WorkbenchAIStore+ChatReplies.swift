@@ -52,7 +52,10 @@ extension WorkbenchAIStore {
     }
 
     let profile = store.profile(for: chatDraft)
-    let config = store.aiProviderConfig(for: profile)
+    let privacyService = AIOutboundPayloadPrivacyService()
+    let config = privacyService.sanitizedProviderConfig(
+      store.aiProviderConfig(for: profile)
+    )
     guard imageAttachments.isEmpty || config.supportsImageInput else {
       store.setAIChatMessage(
         CoreL10n.format(
@@ -115,19 +118,57 @@ extension WorkbenchAIStore {
   ) async -> AIPublishingChatMessage? {
     defer { finishAIChatOperation(operationID) }
     let profile = store.profile(for: chatDraft)
-    let config = store.aiProviderConfig(for: profile)
-    let token: String?
+    let config = AIOutboundPayloadPrivacyService().sanitizedProviderConfig(
+      store.aiProviderConfig(for: profile)
+    )
     do {
-      token = try aiChatAvailableAPIKey(for: profile)
+      // Preflight availability without retaining a credential across authorization.
+      _ = try aiChatAvailableAPIKey(for: profile)
     } catch {
       store.setAIChatMessage("AI 讨论失败：\(error.localizedDescription)")
       return nil
     }
-    let request = await aiChatRequest(
-      for: chatDraft,
-      conversationIdentity: conversationIdentity
-    )
+    // Refresh locally derived request context before preview. There must be no
+    // await that can change request state after authorization is prepared.
     await store.refreshSiteMaintenanceSnapshot()
+
+    // Native tool-calling is selected from the same resolved task config that
+    // the exact privacy transport will bind. Unknown and unsupported pairs
+    // intentionally stay on the ordinary text path, which never declares
+    // tools and never parses marker/JSON automation syntax.
+    let agentCandidate = await assembledAIChatRequest(
+      for: chatDraft,
+      conversationIdentity: conversationIdentity,
+      privacyService: AIOutboundPayloadPrivacyService()
+    )
+    if let agentTaskConfig = try? aiPublishingAssistantService.resolvedChatTaskConfig(
+      for: agentCandidate,
+      config: config
+    ), agentTaskConfig.capabilitySupport(for: .toolCalling) == .supported {
+      return await generateAgentAIChatReply(
+        for: chatDraft,
+        conversationIdentity: conversationIdentity,
+        operationID: operationID,
+        initialRequest: agentCandidate,
+        initialProviderConfig: config,
+        initialTaskConfig: agentTaskConfig
+      )
+    }
+
+    let attempt: AIAuthorizedPublishingChatAttempt
+    do {
+      attempt = try await aiChatRequest(
+        for: chatDraft,
+        conversationIdentity: conversationIdentity,
+        transportConfig: config
+      )
+    } catch is CancellationError {
+      store.setAIChatMessage("AI 回复已停止。")
+      return nil
+    } catch {
+      store.setAIChatMessage(error.localizedDescription)
+      return nil
+    }
     do {
       try checkAIChatOperation(operationID)
     } catch {
@@ -135,20 +176,24 @@ extension WorkbenchAIStore {
       return nil
     }
     do {
-      do {
+      // Re-check consent and read the current credential only after authorization.
+      // The next call sends the exact automatically sanitized body; no fallback
+      // or normalization is allowed to reuse this one-shot authorization.
+      let token = try aiChatAvailableAPIKey(for: profile)
+      try attempt.authorization.consume()
+      switch attempt.transport.preparedRequest.mode {
+      case .streaming:
         return try await generateStreamingAIChatReply(
-          request: request,
+          transport: attempt.transport,
           conversationIdentity: conversationIdentity,
           operationID: operationID,
-          config: config,
           apiKey: token
         )
-      } catch AIChatCompletionClientError.streamingUnsupported {
+      case .nonStreaming:
         return try await generateCompleteAIChatReply(
-          request: request,
+          transport: attempt.transport,
           conversationIdentity: conversationIdentity,
           operationID: operationID,
-          config: config,
           apiKey: token
         )
       }
@@ -171,15 +216,16 @@ extension WorkbenchAIStore {
   }
 
   private func generateStreamingAIChatReply(
-    request: AIPublishingChatRequest,
+    transport: AIPreparedPublishingChatTransport,
     conversationIdentity: AIChatConversationIdentity,
     operationID: UUID,
-    config: AIProviderConfig,
     apiKey: String?
   ) async throws -> AIPublishingChatMessage {
-    let replyStream = try await aiPublishingAssistantService.streamReply(
-      to: request,
-      config: config,
+    guard let request = transport.publishingRequest else {
+      throw AIOutboundPayloadConfirmationError.drifted
+    }
+    let replyStream = try await aiPublishingAssistantService.streamPrepared(
+      transport,
       apiKey: apiKey
     )
     try checkAIChatOperation(operationID)
@@ -233,7 +279,7 @@ extension WorkbenchAIStore {
         throw AIChatCompletionClientError.emptyContent
       }
       assistantMessage.content = finalContent
-      assistantMessage = aiPublishingAssistantService.preparingAutomationPlan(
+      assistantMessage = aiPublishingAssistantService.preparingProtectedEdit(
         in: assistantMessage,
         request: request
       )
@@ -289,18 +335,23 @@ extension WorkbenchAIStore {
   }
 
   private func generateCompleteAIChatReply(
-    request: AIPublishingChatRequest,
+    transport: AIPreparedPublishingChatTransport,
     conversationIdentity: AIChatConversationIdentity,
     operationID: UUID,
-    config: AIProviderConfig,
     apiKey: String?
   ) async throws -> AIPublishingChatMessage {
-    let assistantMessage = try await aiPublishingAssistantService.reply(
-      to: request,
-      config: config,
+    guard let request = transport.publishingRequest else {
+      throw AIOutboundPayloadConfirmationError.drifted
+    }
+    var assistantMessage = try await aiPublishingAssistantService.completePrepared(
+      transport,
       apiKey: apiKey
     )
     try checkAIChatOperation(operationID)
+    assistantMessage = aiPublishingAssistantService.preparingProtectedEdit(
+      in: assistantMessage,
+      request: request
+    )
     updateAIChatSession(for: conversationIdentity) { messages in
       messages.append(assistantMessage)
     }
@@ -309,7 +360,7 @@ extension WorkbenchAIStore {
     return assistantMessage
   }
 
-  private func recordAIResponseBacklinks(
+  func recordAIResponseBacklinks(
     message: AIPublishingChatMessage,
     request: AIPublishingChatRequest
   ) {

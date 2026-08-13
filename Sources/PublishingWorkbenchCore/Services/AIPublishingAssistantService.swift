@@ -1,7 +1,54 @@
 import Foundation
 
+/// A task-resolved, privacy-bound transport. The request and its prepared
+/// client seal are intentionally exposed to Core callers so an authorization gate
+/// and a later agent round can reuse the exact normalized body without a
+/// second normalization pass.
+public struct AIPreparedPublishingChatTransport: Sendable {
+  public let taskConfig: AIProviderConfig
+  public let preparedRequest: AIPreparedAIChatCompletionRequest
+  public let payload: AIPreparedOutboundPayload
+  public let publishingRequest: AIPublishingChatRequest?
+  public let generalRequest: AIChatRequest?
+
+  init(
+    taskConfig: AIProviderConfig,
+    preparedRequest: AIPreparedAIChatCompletionRequest,
+    payload: AIPreparedOutboundPayload,
+    publishingRequest: AIPublishingChatRequest? = nil,
+    generalRequest: AIChatRequest? = nil
+  ) {
+    self.taskConfig = taskConfig
+    self.preparedRequest = preparedRequest
+    self.payload = payload
+    self.publishingRequest = publishingRequest
+    self.generalRequest = generalRequest
+  }
+
+  func bindingAuthorizationDeadline(
+    _ deadline: Date
+  ) -> AIPreparedPublishingChatTransport {
+    let boundRequest = preparedRequest.bindingAuthorizationDeadline(deadline)
+    return AIPreparedPublishingChatTransport(
+      taskConfig: taskConfig,
+      preparedRequest: boundRequest,
+      payload: payload.withPreparedRequest(boundRequest),
+      publishingRequest: publishingRequest,
+      generalRequest: generalRequest
+    )
+  }
+}
+
 public struct AIPublishingAssistantService: Sendable {
   let client: AIChatCompletionClient
+
+  /// The transport message scan is stateless. Keep this adapter capture-free so
+  /// the provider's `@Sendable` transform does not carry a privacy-service
+  /// instance across the concurrency boundary.
+  private static let transportMessageSanitizer:
+    @Sendable ([AIChatMessage]) throws -> [AIChatMessage] = { messages in
+      AIOutboundPayloadPrivacyService().sanitizedMessagesForTransport(messages)
+    }
 
   public init(client: AIChatCompletionClient = AIChatCompletionClient()) {
     self.client = client
@@ -55,12 +102,13 @@ public struct AIPublishingAssistantService: Sendable {
       thinking: reasoningOptions?.thinking,
       reasoningEffort: reasoningOptions?.reasoningEffort
     )
-    let result = try await client.complete(
-      request: completion,
+    let prepared = try client.prepareRequest(
+      completion,
       config: taskConfig,
-      apiKey: apiKey,
-      purpose: .interactiveChat
+      purpose: .interactiveChat,
+      mode: .nonStreaming
     )
+    let result = try await client.completePrepared(prepared, config: taskConfig, apiKey: apiKey)
     let message = AIPublishingChatMessage(
       role: .assistant,
       content: result.content,
@@ -69,7 +117,7 @@ public struct AIPublishingAssistantService: Sendable {
       contextMode: request.contextMode,
       knowledgeCitations: request.knowledgeContext?.citations ?? []
     )
-    return preparingAutomationPlan(in: message, request: request)
+    return preparingProtectedEdit(in: message, request: request)
   }
 
   public func streamReply(
@@ -86,12 +134,13 @@ public struct AIPublishingAssistantService: Sendable {
       thinking: reasoningOptions?.thinking,
       reasoningEffort: reasoningOptions?.reasoningEffort
     )
-    let updates = try await client.stream(
-      request: completion,
+    let prepared = try client.prepareRequest(
+      completion,
       config: taskConfig,
-      apiKey: apiKey,
-      purpose: .interactiveChat
+      purpose: .interactiveChat,
+      mode: .streaming
     )
+    let updates = try await client.streamPrepared(prepared, config: taskConfig, apiKey: apiKey)
     return AIPublishingChatReplyStream(
       initialMessage: AIPublishingChatMessage(
         role: .assistant,
@@ -121,12 +170,13 @@ public struct AIPublishingAssistantService: Sendable {
       thinking: reasoningOptions?.thinking,
       reasoningEffort: reasoningOptions?.reasoningEffort
     )
-    let result = try await client.complete(
-      request: completion,
+    let prepared = try client.prepareRequest(
+      completion,
       config: taskConfig,
-      apiKey: apiKey,
-      purpose: .interactiveChat
+      purpose: .interactiveChat,
+      mode: .nonStreaming
     )
+    let result = try await client.completePrepared(prepared, config: taskConfig, apiKey: apiKey)
     return AIPublishingChatMessage(
       role: .assistant,
       content: result.content,
@@ -151,12 +201,13 @@ public struct AIPublishingAssistantService: Sendable {
       thinking: reasoningOptions?.thinking,
       reasoningEffort: reasoningOptions?.reasoningEffort
     )
-    let updates = try await client.stream(
-      request: completion,
+    let prepared = try client.prepareRequest(
+      completion,
       config: taskConfig,
-      apiKey: apiKey,
-      purpose: .interactiveChat
+      purpose: .interactiveChat,
+      mode: .streaming
     )
+    let updates = try await client.streamPrepared(prepared, config: taskConfig, apiKey: apiKey)
     return AIPublishingChatReplyStream(
       initialMessage: AIPublishingChatMessage(
         role: .assistant,
@@ -164,6 +215,216 @@ public struct AIPublishingAssistantService: Sendable {
         model: taskConfig.normalizedModel,
         contextMode: request.context.mode,
         knowledgeCitations: request.context.knowledgeContext?.citations ?? []
+      ),
+      updates: updates
+    )
+  }
+
+  /// Builds and privacy-binds the final article chat transport. The client
+  /// performs provider normalization first, then the privacy transform
+  /// redacts normalized messages before canonical encoding.
+  func prepareTransport(
+    for request: AIPublishingChatRequest,
+    config: AIProviderConfig,
+    privacyService: AIOutboundPayloadPrivacyService,
+    transportVariant: AIOutboundPayloadTransportVariant? = nil,
+    contextCounts: [AIOutboundPayloadContextCount] = [],
+    contextBindingValues: [String] = [],
+    now: Date = Date(),
+    nonce: UUID = UUID()
+  ) throws -> AIPreparedPublishingChatTransport {
+    let taskConfig = try resolvedChatTaskConfig(
+      for: request, config: privacyService.sanitizedProviderConfig(config))
+    let variant = transportVariant ?? preferredTransportVariant(for: taskConfig)
+    let completion = chatCompletionRequest(for: request, taskConfig: taskConfig)
+    let preparedRequest = try client.prepareRequest(
+      completion,
+      config: taskConfig,
+      purpose: .interactiveChat,
+      mode: variant == .stream ? .streaming : .nonStreaming,
+      transformMessages: Self.transportMessageSanitizer
+    )
+    let payload = privacyService.prepare(
+      preparedRequest: preparedRequest,
+      taskConfig: taskConfig,
+      contextCounts: contextCounts.isEmpty
+        ? outboundContextCounts(
+          references: request.explicitContextReferences,
+          hasAutomaticKnowledge: request.knowledgeContext?.citations.isEmpty == false,
+          includesImplicitArticleContext: request.contextMode == .site,
+          conversationMessageCount: request.messages.suffix(12).count
+        )
+        : contextCounts,
+      contextBindingValues: contextBindingValues.isEmpty
+        ? outboundContextBindingValues(
+          references: request.explicitContextReferences,
+          contextMode: request.contextMode,
+          knowledgePolicy: request.knowledgePolicy,
+          reasoningLevel: request.reasoningLevel,
+          modelGrade: request.modelGrade,
+          includesImplicitArticleContext: request.contextMode == .site,
+          transportVariant: variant,
+          config: taskConfig
+        )
+        : contextBindingValues,
+      now: now,
+      nonce: nonce
+    )
+    return AIPreparedPublishingChatTransport(
+      taskConfig: taskConfig,
+      preparedRequest: preparedRequest,
+      payload: payload,
+      publishingRequest: request
+    )
+  }
+
+  /// Builds a general-chat transport using the same exact preparation path.
+  func prepareTransport(
+    for request: AIChatRequest,
+    config: AIProviderConfig,
+    privacyService: AIOutboundPayloadPrivacyService,
+    transportVariant: AIOutboundPayloadTransportVariant? = nil,
+    contextCounts: [AIOutboundPayloadContextCount] = [],
+    contextBindingValues: [String] = [],
+    now: Date = Date(),
+    nonce: UUID = UUID()
+  ) throws -> AIPreparedPublishingChatTransport {
+    let taskConfig = try resolvedChatTaskConfig(
+      for: request, config: privacyService.sanitizedProviderConfig(config))
+    let variant = transportVariant ?? preferredTransportVariant(for: taskConfig)
+    let completion = chatCompletionRequest(for: request, taskConfig: taskConfig)
+    let preparedRequest = try client.prepareRequest(
+      completion,
+      config: taskConfig,
+      purpose: .interactiveChat,
+      mode: variant == .stream ? .streaming : .nonStreaming,
+      transformMessages: Self.transportMessageSanitizer
+    )
+    let payload = privacyService.prepare(
+      preparedRequest: preparedRequest,
+      taskConfig: taskConfig,
+      contextCounts: contextCounts.isEmpty
+        ? outboundContextCounts(
+          references: request.context.explicitContextReferences,
+          hasAutomaticKnowledge: request.context.knowledgeContext?.citations.isEmpty == false,
+          includesImplicitArticleContext: false,
+          conversationMessageCount: request.messages.suffix(12).count
+        )
+        : contextCounts,
+      contextBindingValues: contextBindingValues.isEmpty
+        ? outboundContextBindingValues(
+          references: request.context.explicitContextReferences,
+          contextMode: request.context.mode,
+          knowledgePolicy: request.context.knowledgePolicy,
+          reasoningLevel: request.reasoningLevel,
+          modelGrade: request.modelGrade,
+          includesImplicitArticleContext: false,
+          transportVariant: variant,
+          config: taskConfig
+        )
+        : contextBindingValues,
+      now: now,
+      nonce: nonce
+    )
+    return AIPreparedPublishingChatTransport(
+      taskConfig: taskConfig,
+      preparedRequest: preparedRequest,
+      payload: payload,
+      generalRequest: request
+    )
+  }
+
+  /// Prepares an already-assembled native agent round. This exact-body path
+  /// never rebuilds high-level article context or normalizes messages twice.
+  func prepareTransport(
+    completion: AIChatCompletionRequest,
+    taskConfig: AIProviderConfig,
+    privacyService: AIOutboundPayloadPrivacyService,
+    contextCounts: [AIOutboundPayloadContextCount] = [],
+    contextBindingValues: [String] = [],
+    now: Date = Date(),
+    nonce: UUID = UUID()
+  ) throws -> AIPreparedPublishingChatTransport {
+    let sanitizedTaskConfig = privacyService.sanitizedProviderConfig(taskConfig)
+    let preparedRequest = try client.prepareRequest(
+      completion,
+      config: sanitizedTaskConfig,
+      purpose: .interactiveChat,
+      mode: .nonStreaming,
+      transformMessages: Self.transportMessageSanitizer
+    )
+    let payload = privacyService.prepare(
+      preparedRequest: preparedRequest,
+      taskConfig: sanitizedTaskConfig,
+      contextCounts: contextCounts,
+      contextBindingValues: contextBindingValues,
+      now: now,
+      nonce: nonce
+    )
+    return AIPreparedPublishingChatTransport(
+      taskConfig: sanitizedTaskConfig,
+      preparedRequest: preparedRequest,
+      payload: payload
+    )
+  }
+
+  func completePrepared(
+    _ transport: AIPreparedPublishingChatTransport,
+    apiKey: String?
+  ) async throws -> AIPublishingChatMessage {
+    let result = try await completePreparedResult(transport, apiKey: apiKey)
+    let contextMode =
+      transport.publishingRequest?.contextMode
+      ?? transport.generalRequest?.context.mode
+      ?? .general
+    return AIPublishingChatMessage(
+      role: .assistant,
+      content: result.content,
+      model: result.rawModel?.nilIfEmpty ?? transport.taskConfig.normalizedModel,
+      tokenUsage: result.tokenUsage,
+      contextMode: contextMode,
+      knowledgeCitations: transport.publishingRequest?.knowledgeContext?.citations
+        ?? transport.generalRequest?.context.knowledgeContext?.citations
+        ?? []
+    )
+  }
+
+  /// Low-level result wrapper used by the agent loop when tool calls and the
+  /// provider's raw model need to be inspected before a user-facing message
+  /// is created.
+  func completePreparedResult(
+    _ transport: AIPreparedPublishingChatTransport,
+    apiKey: String?
+  ) async throws -> AIChatCompletionResult {
+    try await client.completePrepared(
+      transport.preparedRequest,
+      config: transport.taskConfig,
+      apiKey: apiKey
+    )
+  }
+
+  func streamPrepared(
+    _ transport: AIPreparedPublishingChatTransport,
+    apiKey: String?
+  ) async throws -> AIPublishingChatReplyStream {
+    let updates = try await client.streamPrepared(
+      transport.preparedRequest,
+      config: transport.taskConfig,
+      apiKey: apiKey
+    )
+    let contextMode =
+      transport.publishingRequest?.contextMode
+      ?? transport.generalRequest?.context.mode
+      ?? .general
+    return AIPublishingChatReplyStream(
+      initialMessage: AIPublishingChatMessage(
+        role: .assistant,
+        content: "",
+        model: transport.taskConfig.normalizedModel,
+        contextMode: contextMode,
+        knowledgeCitations: transport.publishingRequest?.knowledgeContext?.citations
+          ?? transport.generalRequest?.context.knowledgeContext?.citations
+          ?? []
       ),
       updates: updates
     )
@@ -210,6 +471,41 @@ public struct AIPublishingAssistantService: Sendable {
     return prepared
   }
 
+  /// Applies only the protected edit post-processors used by the article
+  /// editor. Marker-based automation plans are intentionally left to the
+  /// native tool-calling agent path and are never parsed on ordinary replies.
+  func preparingProtectedEdit(
+    in message: AIPublishingChatMessage,
+    request: AIPublishingChatRequest
+  ) -> AIPublishingChatMessage {
+    guard request.contextMode == .site else { return message }
+    if let reformatReply = AIPublishingChatReformatService.prepareReply(
+      message,
+      request: request
+    ) {
+      return reformatReply
+    }
+    if let structuredEditReply = AIPublishingChatStructuredEditService.prepareReply(
+      message,
+      request: request
+    ) {
+      return structuredEditReply
+    }
+    if let translationDraftReply = AIPublishingChatTranslationDraftService.prepareReply(
+      message,
+      request: request
+    ) {
+      return translationDraftReply
+    }
+    if let directEditReply = AIPublishingChatDirectEditService.prepareReply(
+      message,
+      request: request
+    ) {
+      return directEditReply
+    }
+    return message
+  }
+
   private func chatTaskConfig(
     for request: AIPublishingChatRequest,
     config: AIProviderConfig,
@@ -237,6 +533,91 @@ public struct AIPublishingAssistantService: Sendable {
       currentModel: currentModel
     )
     return taskConfig
+  }
+
+  /// Resolves the final task model without reading credentials. Preview and
+  /// agent callers use this before authorization so capability selection and model
+  /// binding are identical to the eventual interactive request.
+  func resolvedChatTaskConfig(
+    for request: AIPublishingChatRequest,
+    config: AIProviderConfig
+  ) throws -> AIProviderConfig {
+    guard let latestUserMessage = request.messages.last(where: { $0.role == .user }),
+      latestUserMessage.content.nilIfEmpty != nil || !latestUserMessage.imageAttachments.isEmpty
+    else {
+      throw AIPublishingAssistantError.emptyChatMessage
+    }
+    if request.messages.contains(where: { !$0.imageAttachments.isEmpty }),
+      !config.supportsImageInput
+    {
+      throw AIPublishingAssistantError.unsupportedImageAttachments(config.normalizedDisplayName)
+    }
+    var taskConfig = config
+    let currentModel = request.selectedModel?.nilIfEmpty ?? config.normalizedModel
+    taskConfig.model = AIChatModelCatalog.model(
+      for: request.modelGrade,
+      config: config,
+      currentModel: currentModel
+    )
+    return taskConfig
+  }
+
+  func resolvedChatTaskConfig(
+    for request: AIChatRequest,
+    config: AIProviderConfig
+  ) throws -> AIProviderConfig {
+    guard let latestUserMessage = request.messages.last(where: { $0.role == .user }),
+      latestUserMessage.content.nilIfEmpty != nil || !latestUserMessage.imageAttachments.isEmpty
+    else {
+      throw AIPublishingAssistantError.emptyChatMessage
+    }
+    if request.messages.contains(where: { !$0.imageAttachments.isEmpty }),
+      !config.supportsImageInput
+    {
+      throw AIPublishingAssistantError.unsupportedImageAttachments(config.normalizedDisplayName)
+    }
+    var taskConfig = config
+    let currentModel = request.selectedModel?.nilIfEmpty ?? config.normalizedModel
+    taskConfig.model = AIChatModelCatalog.model(
+      for: request.modelGrade,
+      config: config,
+      currentModel: currentModel
+    )
+    return taskConfig
+  }
+
+  func preferredTransportVariant(
+    for config: AIProviderConfig
+  ) -> AIOutboundPayloadTransportVariant {
+    config.capabilitySupport(for: .streamingResponse) == .supported ? .stream : .complete
+  }
+
+  func chatCompletionRequest(
+    for request: AIPublishingChatRequest,
+    taskConfig: AIProviderConfig
+  ) -> AIChatCompletionRequest {
+    let reasoningOptions = request.reasoningLevel.requestOptions(for: taskConfig)
+    return AIChatCompletionRequest(
+      model: taskConfig.normalizedModel,
+      messages: chatMessages(for: request),
+      temperature: 0.4,
+      thinking: reasoningOptions?.thinking,
+      reasoningEffort: reasoningOptions?.reasoningEffort
+    )
+  }
+
+  func chatCompletionRequest(
+    for request: AIChatRequest,
+    taskConfig: AIProviderConfig
+  ) -> AIChatCompletionRequest {
+    let reasoningOptions = request.reasoningLevel.requestOptions(for: taskConfig)
+    return AIChatCompletionRequest(
+      model: taskConfig.normalizedModel,
+      messages: chatMessages(for: request),
+      temperature: 0.4,
+      thinking: reasoningOptions?.thinking,
+      reasoningEffort: reasoningOptions?.reasoningEffort
+    )
   }
 
   private func chatTaskConfig(
@@ -273,7 +654,6 @@ public struct AIPublishingAssistantService: Sendable {
   }
 
 }
-
 
 public enum AIPublishingAssistantError: LocalizedError, Equatable {
   case dataSharingConsentRequired(providerName: String, destination: String)

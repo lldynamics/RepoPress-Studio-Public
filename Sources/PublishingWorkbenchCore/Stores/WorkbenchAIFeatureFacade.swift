@@ -346,8 +346,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.deleteAIAPIKey()
   }
 
-  public func testConnection() async -> AIConnectionTestReport? {
-    await store.testAIConnection()
+  public func testConnection(
+    probeCapabilities: Set<AIProviderCapabilityProbeKind> = []
+  ) async -> AIConnectionTestReport? {
+    await store.testAIConnection(probeCapabilities: probeCapabilities)
   }
 
   public func grantDataSharingConsent() {
@@ -476,11 +478,13 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     }
 
     let buffer = store.draftBodyEditorBuffer(for: currentDraft.id)
-    guard let staged = store.replaceDraftBody(
-      insertion.updatedBodyMarkdown,
-      for: currentDraft.id,
-      expectedRevision: buffer.revision
-    ), staged.wasAccepted else {
+    guard
+      let staged = store.replaceDraftBody(
+        insertion.updatedBodyMarkdown,
+        for: currentDraft.id,
+        expectedRevision: buffer.revision
+      ), staged.wasAccepted
+    else {
       store.setPublishActionMessage(
         CoreL10n.text("当前文章在应用前已被其他窗口修改，请重新尝试。"),
         status: .warning

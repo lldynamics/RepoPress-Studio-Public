@@ -1,9 +1,24 @@
 import Foundation
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor
 final class WorkbenchGeneralAIChatTests: XCTestCase {
+  override func setUp() {
+    super.setUp()
+    // Production defaults to automatic remote authorization. Tests that need
+    // fail-closed fault injection install an explicit provider below.
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
+  }
+
+  override func tearDown() {
+    AIOutboundPayloadApprovalBroker.shared.cancelPendingRequest()
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = nil
+    AIOutboundPayloadApprovalBroker.shared.testingConfirmationDateProvider = nil
+    super.tearDown()
+  }
+
   func testConnectionProfileKeyAvailabilityIsScopedToDisplayedGeneralConnection() throws {
     let persistenceURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("WorkbenchGeneralKeyAvailability-\(UUID().uuidString).json")
@@ -61,7 +76,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     store.aiStore.aiConversations = [conversation]
     store.aiStore.activeAIConversationIDsByScope = ["general": conversation.id]
 
-    let request = await store.aiStore.generalAIChatRequest(for: conversation)
+    let request = try await store.aiStore.generalAIChatRequest(for: conversation)
 
     XCTAssertFalse(request.context.includesImplicitArticleContext)
     XCTAssertTrue(request.context.explicitContextReferences.isEmpty)
@@ -101,7 +116,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     var requestConversation = updatedConversation
     requestConversation.messages = [userMessage]
 
-    let request = await store.aiStore.generalAIChatRequest(for: requestConversation)
+    let request = try await store.aiStore.generalAIChatRequest(for: requestConversation)
 
     XCTAssertEqual(updatedConversation.knowledgePolicy, .off)
     XCTAssertNil(request.context.knowledgeContext)
@@ -136,7 +151,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       ]
     )
 
-    let request = await store.aiStore.generalAIChatRequest(for: conversation)
+    let request = try await store.aiStore.generalAIChatRequest(for: conversation)
 
     XCTAssertEqual(request.context.explicitContextReferences, [reference])
     XCTAssertTrue(request.context.explicitContextPrompt?.contains("明确附加的文章正文") == true)
@@ -208,7 +223,8 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     )
   }
 
-  func testMissingGeneralConnectionBindingFailsClosedForSendAndPreservesMessageState() async throws {
+  func testMissingGeneralConnectionBindingFailsClosedForSendAndPreservesMessageState() async throws
+  {
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(
         fileURL: FileManager.default.temporaryDirectory
@@ -277,11 +293,14 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
 
   func testImageBudgetRejectsTwoAttachmentsBeforeTransportWithoutDroppingThem() async throws {
     let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
-    let config = AIProviderConfig(
-      preset: .custom,
-      baseURL: "https://api.openai.example/v1",
-      model: "image-budget-model",
-      requiresAPIKey: false
+    let config = capabilitySupportedConfig(
+      AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.example/v1",
+        model: "image-budget-model",
+        requiresAPIKey: false
+      ),
+      capabilities: [.visionInput]
     )
     let consentStore = AIDataSharingConsentStore()
     consentStore.grant(for: config)
@@ -296,9 +315,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       ),
       aiDataSharingConsentStore: consentStore
     )
-    var profile = store.activeProfile
-    profile.aiProviderConfig = config
-    store.updateActiveProfile(profile)
+    configureActiveAIConnection(in: store, config: config)
     let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
     let attachments = [
       AIChatImageAttachment(
@@ -329,7 +346,107 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     XCTAssertTrue(store.aiChatMessage?.contains("8 MB") == true)
   }
 
-  func testGeneralConversationSendsWithoutDraftAndStreamsIntoScopedHistory() async throws {
+  func testCancelledRemoteGeneralAuthorizationGatePerformsZeroTransport() async throws {
+    let approvalBroker = AIOutboundPayloadApprovalBroker.shared
+    approvalBroker.testingDecisionProvider = { _ in .cancel }
+    defer { approvalBroker.testingDecisionProvider = nil }
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let config = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "general-cancel-model",
+      requiresAPIKey: false
+    )
+    let consentStore = AIDataSharingConsentStore()
+    consentStore.grant(for: config)
+    defer { consentStore.revoke(for: config) }
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("WorkbenchGeneralPayloadCancel-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: persistenceURL) }
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: KeychainTokenStore(
+        service: "PSPMGeneralPayloadCancelTests.\(UUID().uuidString.prefix(8))",
+        accountPrefix: "ai-test",
+        inMemory: true
+      ),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      ),
+      aiDataSharingConsentStore: consentStore
+    )
+    configureActiveAIConnection(in: store, config: config)
+    let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "这一轮不发送",
+      conversationID: conversation.id
+    )
+
+    XCTAssertNil(reply)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  func testExpiredRemoteGeneralAuthorizationPerformsZeroTransport() async throws {
+    let approvalBroker = AIOutboundPayloadApprovalBroker.shared
+    approvalBroker.testingDecisionProvider = { _ in .confirm }
+    approvalBroker.testingConfirmationDateProvider = { $0.expiresAt.addingTimeInterval(1) }
+    defer { approvalBroker.testingConfirmationDateProvider = nil }
+    let (store, transport, config, consentStore, persistenceURL) = makeRemoteGeneralPayloadStore(
+      suffix: "Expired"
+    )
+    defer {
+      consentStore.revoke(for: config)
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
+    let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "过期不发送",
+      conversationID: conversation.id
+    )
+
+    XCTAssertNil(reply)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  func testDriftedRemoteGeneralAuthorizationPerformsZeroTransport() async throws {
+    let approvalBroker = AIOutboundPayloadApprovalBroker.shared
+    let (store, transport, config, consentStore, persistenceURL) = makeRemoteGeneralPayloadStore(
+      suffix: "Drifted"
+    )
+    defer {
+      consentStore.revoke(for: config)
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
+    let conversation = try XCTUnwrap(store.aiStore.startNewGeneralAIChatConversation())
+    approvalBroker.testingDecisionProvider = { _ in
+      store.aiStore.aiConversations = store.aiStore.aiConversations.map { candidate in
+        guard candidate.id == conversation.id else { return candidate }
+        var changed = candidate
+        changed.reasoningLevel = candidate.reasoningLevel == .quick ? .deep : .quick
+        return changed
+      }
+      return .confirm
+    }
+    defer { approvalBroker.testingDecisionProvider = nil }
+
+    let reply = await store.aiStore.sendGeneralAIChatMessage(
+      "漂移不发送",
+      conversationID: conversation.id
+    )
+
+    XCTAssertNil(reply)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
+  func
+    testGeneralConversationSendsWithoutDraftAndStreamsIntoScopedHistoryWithoutPerRequestPayloadPrompt()
+    async throws
+  {
     let transport = RecordingAIChatTransport(
       data: Data(),
       statusCode: 200,
@@ -340,11 +457,14 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
         "",
       ]
     )
-    let config = AIProviderConfig(
-      preset: .custom,
-      baseURL: "https://api.openai.example/v1",
-      model: "general-test-model",
-      requiresAPIKey: false
+    let config = capabilitySupportedConfig(
+      AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.example/v1",
+        model: "general-test-model",
+        requiresAPIKey: false
+      ),
+      capabilities: [.streamingResponse]
     )
     let consentStore = AIDataSharingConsentStore()
     consentStore.grant(for: config)
@@ -367,9 +487,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       ),
       aiDataSharingConsentStore: consentStore
     )
-    var profile = store.activeProfile
-    profile.aiProviderConfig = config
-    store.updateActiveProfile(profile)
+    configureActiveAIConnection(in: store, config: config)
     let initialDraftCount = store.drafts.count
 
     let reply = await store.aiStore.sendGeneralAIChatMessage(
@@ -384,20 +502,25 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     XCTAssertEqual(conversation.scope, .general)
     XCTAssertEqual(conversation.connectionProfileID, store.activeAIConnectionProfile.id)
     XCTAssertEqual(conversation.messages.map(\.content), ["不依赖文章回答我。", "通用回复"])
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 1)
+    XCTAssertEqual(AIOutboundPayloadApprovalBroker.shared.pendingRequestCountForTesting, 0)
 
     let requestValue = await transport.capturedRequest()
     let request = try XCTUnwrap(requestValue)
     let body = try XCTUnwrap(request.httpBody)
     let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
     let messages = try XCTUnwrap(payload["messages"] as? [[String: Any]])
-    let serializedMessages = messages.compactMap { $0["content"] as? String }.joined(separator: "\n")
+    let serializedMessages = messages.compactMap { $0["content"] as? String }.joined(
+      separator: "\n")
     XCTAssertTrue(serializedMessages.contains("不依赖文章回答我。"))
     XCTAssertFalse(serializedMessages.contains("当前 Mac 工作台上下文"))
   }
 
   func testGeneralConversationCancellationKeepsUserMessageAndAllowsRetry() async throws {
     let responseData = Data(
-      #"{"model":"general-test-model","choices":[{"message":{"role":"assistant","content":"迟到的通用回复"}}]}"#.utf8
+      #"{"model":"general-test-model","choices":[{"message":{"role":"assistant","content":"迟到的通用回复"}}]}"#
+        .utf8
     )
     let transport = DelayedAIChatTransport(
       data: responseData,
@@ -430,9 +553,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       ),
       aiDataSharingConsentStore: consentStore
     )
-    var profile = store.activeProfile
-    profile.aiProviderConfig = config
-    store.updateActiveProfile(profile)
+    configureActiveAIConnection(in: store, config: config)
 
     let canceledSubmission = Task {
       await store.aiStore.sendGeneralAIChatMessage("请取消这次通用请求")
@@ -460,6 +581,11 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
   }
 
   func testGeneralConversationManualRetryReusesConversationAfterTransientFailure() async throws {
+    var authorizationDecisionCount = 0
+    AIOutboundPayloadApprovalBroker.shared.testingDecisionProvider = { _ in
+      authorizationDecisionCount += 1
+      return .confirm
+    }
     let transport = ScriptedAIChatStreamingTransport(
       attempts: [
         ScriptedAIChatStreamAttempt(statusCode: 503),
@@ -471,11 +597,14 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
         ),
       ]
     )
-    let config = AIProviderConfig(
-      preset: .custom,
-      baseURL: "https://api.openai.example/v1",
-      model: "general-test-model",
-      requiresAPIKey: false
+    let config = capabilitySupportedConfig(
+      AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.example/v1",
+        model: "general-test-model",
+        requiresAPIKey: false
+      ),
+      capabilities: [.streamingResponse]
     )
     let consentStore = AIDataSharingConsentStore()
     consentStore.grant(for: config)
@@ -502,20 +631,21 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       ),
       aiDataSharingConsentStore: consentStore
     )
-    var profile = store.activeProfile
-    profile.aiProviderConfig = config
-    store.updateActiveProfile(profile)
+    configureActiveAIConnection(in: store, config: config)
 
     let firstReply = await store.aiStore.sendGeneralAIChatMessage("第一次请求")
 
     XCTAssertNil(firstReply)
-    XCTAssertEqual(store.aiStore.activeGeneralAIChatConversation?.messages.map(\.content), ["第一次请求"])
+    XCTAssertEqual(
+      store.aiStore.activeGeneralAIChatConversation?.messages.map(\.content), ["第一次请求"])
     XCTAssertNotNil(store.aiStore.aiGeneralChatManualRetryState)
+    XCTAssertEqual(authorizationDecisionCount, 1)
 
     let retriedReply = await store.aiStore.retryLastFailedGeneralAIChatReply()
 
     XCTAssertEqual(retriedReply?.content, "重试成功")
     XCTAssertNil(store.aiStore.aiGeneralChatManualRetryState)
+    XCTAssertEqual(authorizationDecisionCount, 2)
     let requestCount = await transport.capturedRequestCount()
     XCTAssertEqual(requestCount, 2)
   }
@@ -683,11 +813,14 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
         maximumAutomaticRetryCount: 0
       )
     )
-    let config = AIProviderConfig(
-      preset: .custom,
-      baseURL: "https://api.openai.example/v1",
-      model: "general-partial-retry-model",
-      requiresAPIKey: false
+    let config = capabilitySupportedConfig(
+      AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.example/v1",
+        model: "general-partial-retry-model",
+        requiresAPIKey: false
+      ),
+      capabilities: [.streamingResponse]
     )
     let consentStore = AIDataSharingConsentStore()
     consentStore.grant(for: config)
@@ -706,9 +839,7 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
       aiPublishingAssistantService: AIPublishingAssistantService(client: client),
       aiDataSharingConsentStore: consentStore
     )
-    var profile = store.activeProfile
-    profile.aiProviderConfig = config
-    store.updateActiveProfile(profile)
+    configureActiveAIConnection(in: store, config: config)
 
     let firstReply = await store.aiStore.sendGeneralAIChatMessage("请保留部分回复")
 
@@ -731,5 +862,76 @@ final class WorkbenchGeneralAIChatTests: XCTestCase {
     )
     XCTAssertEqual(store.aiStore.aiGeneralChatManualRetryState, originalRetryState)
     XCTAssertTrue(store.aiChatMessage?.contains("失败") == true)
+  }
+
+  private func makeRemoteGeneralPayloadStore(
+    suffix: String
+  ) -> (
+    store: WorkbenchStore,
+    transport: RecordingAIChatTransport,
+    config: AIProviderConfig,
+    consentStore: AIDataSharingConsentStore,
+    persistenceURL: URL
+  ) {
+    let transport = RecordingAIChatTransport(data: Data(), statusCode: 200)
+    let config = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "general-payload-\(suffix.lowercased())",
+      requiresAPIKey: false
+    )
+    let consentStore = AIDataSharingConsentStore()
+    consentStore.grant(for: config)
+    let persistenceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("WorkbenchGeneralPayload\(suffix)-\(UUID().uuidString).json")
+    let store = WorkbenchStore(
+      persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      keychainTokenStore: KeychainTokenStore(
+        service: "PSPMGeneralPayload\(suffix)Tests.\(UUID().uuidString.prefix(8))",
+        accountPrefix: "ai-test",
+        inMemory: true
+      ),
+      aiPublishingAssistantService: AIPublishingAssistantService(
+        client: AIChatCompletionClient(transport: transport)
+      ),
+      aiDataSharingConsentStore: consentStore
+    )
+    configureActiveAIConnection(in: store, config: config)
+    return (store, transport, config, consentStore, persistenceURL)
+  }
+
+  private func configureActiveAIConnection(
+    in store: WorkbenchStore,
+    config: AIProviderConfig
+  ) {
+    var identityConfig = config
+    identityConfig.capabilityProbeEvidence = nil
+    var connection = store.activeAIConnectionProfile
+    connection.config = identityConfig
+    XCTAssertTrue(store.updateAIConnectionProfile(connection))
+    connection = store.activeAIConnectionProfile
+    connection.config = config
+    XCTAssertTrue(store.updateAIConnectionProfile(connection))
+  }
+
+  private func capabilitySupportedConfig(
+    _ base: AIProviderConfig,
+    capabilities: Set<AIProviderCapabilityProbeKind>
+  ) -> AIProviderConfig {
+    var config = base
+    let now = Date()
+    let key = AIProviderCapabilityCacheKey(config: config)
+    var evidence = config.capabilityProbeEvidence ?? [:]
+    for capability in capabilities {
+      evidence[capability] = AIProviderCapabilityProbeEvidence(
+        key: key,
+        capability: capability,
+        outcome: .supported,
+        observedAt: now,
+        expiresAt: now.addingTimeInterval(60)
+      )
+    }
+    config.capabilityProbeEvidence = evidence
+    return config
   }
 }

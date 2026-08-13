@@ -1,14 +1,22 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class WorkspaceModelsTests: XCTestCase {
   func testWorkspaceSectionsExposeStableCommandNumberShortcuts() {
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.displayNameLocalizationKey),
-      ["workspace.writing", "workspace.library", "workspace.rss", "workspace.siteStarter", "workspace.sync", "workspace.images", "workspace.contentHealth"]
+      [
+        "workspace.writing", "workspace.library", "workspace.rss", "workspace.siteStarter",
+        "workspace.sync", "workspace.images", "workspace.contentHealth",
+      ]
     )
-    XCTAssertEqual(WorkspaceSection.allCases.map { String($0.keyboardShortcutKey) }, ["1", "2", "9", "5", "3", "6", "4"])
-    XCTAssertEqual(WorkspaceSection.allCases.map(\.keyboardShortcutLabel), ["⌘1", "⌘2", "⌘9", "⌘5", "⌘3", "⌘6", "⌘4"])
+    XCTAssertEqual(
+      WorkspaceSection.allCases.map { String($0.keyboardShortcutKey) },
+      ["1", "2", "9", "5", "3", "6", "4"])
+    XCTAssertEqual(
+      WorkspaceSection.allCases.map(\.keyboardShortcutLabel),
+      ["⌘1", "⌘2", "⌘9", "⌘5", "⌘3", "⌘6", "⌘4"])
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.localizationKey),
       [
@@ -21,10 +29,16 @@ final class WorkspaceModelsTests: XCTestCase {
         "workspace.contentHealth",
       ]
     )
-    XCTAssertEqual(Set(WorkspaceSection.allCases.map(\.keyboardShortcutKey)).count, WorkspaceSection.allCases.count)
+    XCTAssertEqual(
+      Set(WorkspaceSection.allCases.map(\.keyboardShortcutKey)).count,
+      WorkspaceSection.allCases.count)
     XCTAssertEqual(
       WorkspaceSection.allCases.map(\.detailLocalizationKey),
-      ["workspace.writing.detail", "workspace.library.detail", "workspace.rss.detail", "workspace.siteStarter.detail", "workspace.sync.detail", "workspace.images.detail", "workspace.contentHealth.detail"]
+      [
+        "workspace.writing.detail", "workspace.library.detail", "workspace.rss.detail",
+        "workspace.siteStarter.detail", "workspace.sync.detail", "workspace.images.detail",
+        "workspace.contentHealth.detail",
+      ]
     )
   }
 
@@ -71,7 +85,8 @@ final class WorkspaceModelsTests: XCTestCase {
       WorkspaceSection.allCases.filter(\.requiresEditableDraftForCenterSurface),
       [.writing]
     )
-    XCTAssertEqual(Set(WorkspaceSection.allCases.map(\.centerSurface)), Set(WorkspaceCenterSurface.allCases))
+    XCTAssertEqual(
+      Set(WorkspaceSection.allCases.map(\.centerSurface)), Set(WorkspaceCenterSurface.allCases))
   }
 
   func testEveryWorkspaceSectionHasAnExplicitInspectorRoute() {
@@ -95,10 +110,12 @@ final class WorkspaceModelsTests: XCTestCase {
       .aiAssistant
     )
     XCTAssertFalse(
-      WorkspaceInspectorPresentation.supportsInspector(for: .sync, isRepositoryHistoryPresented: true)
+      WorkspaceInspectorPresentation.supportsInspector(
+        for: .sync, isRepositoryHistoryPresented: true)
     )
     XCTAssertFalse(
-      WorkspaceInspectorPresentation.supportsInspector(for: .contentHealth, isMaintenancePresented: true)
+      WorkspaceInspectorPresentation.supportsInspector(
+        for: .contentHealth, isMaintenancePresented: true)
     )
     XCTAssertTrue(WorkspaceInspectorPresentation.supportsInspector(for: .siteStarter))
   }
@@ -183,7 +200,8 @@ final class WorkspaceModelsTests: XCTestCase {
       "gpt-4.1-mini"
     )
     XCTAssertEqual(
-      AIChatModelCatalog.config(for: .batchMetadataRepair, baseConfig: config).normalizedRequestModel,
+      AIChatModelCatalog.config(for: .batchMetadataRepair, baseConfig: config)
+        .normalizedRequestModel,
       "gpt-4.1-mini"
     )
     XCTAssertEqual(
@@ -239,31 +257,56 @@ final class WorkspaceModelsTests: XCTestCase {
     XCTAssertTrue(custom.canEditCustomModel)
   }
 
-  func testAIProviderConfigMatchesMobileImageInputSupportPolicy() {
-    XCTAssertTrue(
-      AIProviderConfig(
-        preset: .custom,
-        baseURL: "https://api.openai.com/v1",
-        model: "gpt-4.1-mini",
-        requiresAPIKey: true
-      ).supportsImageInput
+  func testAIProviderConfigRequiresCurrentVisionProbeForImageInput() {
+    let customConfig = AIProviderConfig(
+      preset: .custom,
+      baseURL: "https://api.openai.example/v1",
+      model: "vision-model",
+      requiresAPIKey: true
     )
-    XCTAssertTrue(
-      AIProviderConfig(
-        preset: .custom,
-        baseURL: "https://api.openai.com/v1",
-        model: "gpt-4.1-mini",
-        requiresAPIKey: true
-      ).supportsImageInput
+    XCTAssertEqual(customConfig.capabilitySupport(for: .visionInput), .unknown)
+    XCTAssertFalse(customConfig.supportsImageInput)
+
+    let openAICompatibleConfig = AIProviderConfig(
+      preset: .openAICompatible,
+      baseURL: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
+      requiresAPIKey: true
     )
-    XCTAssertTrue(
-      AIProviderConfig(
-        preset: .custom,
-        baseURL: "https://api.openai.example/v1",
-        model: "gpt-4.1",
-        requiresAPIKey: true
-      ).supportsImageInput
+    XCTAssertEqual(openAICompatibleConfig.capabilitySupport(for: .visionInput), .unknown)
+    XCTAssertFalse(openAICompatibleConfig.supportsImageInput)
+
+    let localConfig = AIProviderConfig(
+      preset: .local,
+      baseURL: "http://127.0.0.1:11434/v1",
+      model: "llava",
+      requiresAPIKey: false
     )
+    XCTAssertEqual(localConfig.capabilitySupport(for: .visionInput), .unknown)
+    XCTAssertFalse(localConfig.supportsImageInput)
+
+    let deepSeekConfig = AIProviderConfig(
+      preset: .deepSeek,
+      baseURL: AIProviderPreset.deepSeek.defaultBaseURL,
+      model: AIProviderPreset.deepSeek.defaultModel,
+      requiresAPIKey: true
+    )
+    XCTAssertEqual(deepSeekConfig.capabilitySupport(for: .visionInput), .unsupported)
+    XCTAssertFalse(deepSeekConfig.supportsImageInput)
+
+    var probedConfig = customConfig
+    let now = Date()
+    probedConfig.capabilityProbeEvidence = [
+      .visionInput: AIProviderCapabilityProbeEvidence(
+        key: AIProviderCapabilityCacheKey(config: probedConfig),
+        capability: .visionInput,
+        outcome: .supported,
+        observedAt: now,
+        expiresAt: now.addingTimeInterval(60)
+      )
+    ]
+    XCTAssertEqual(probedConfig.capabilitySupport(for: .visionInput, at: now), .supported)
+    XCTAssertTrue(probedConfig.supportsImageInput)
     XCTAssertEqual(
       AIProviderConfig(preset: .custom).normalizedDisplayName,
       AIProviderPreset.custom.displayName

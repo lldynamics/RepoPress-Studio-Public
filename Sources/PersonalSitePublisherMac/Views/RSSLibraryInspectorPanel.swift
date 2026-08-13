@@ -209,7 +209,7 @@ struct RSSLibraryInspectorPanel: View {
     }
     .padding(9)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: 9))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 9))
   }
 
   private func loadAndInsert(

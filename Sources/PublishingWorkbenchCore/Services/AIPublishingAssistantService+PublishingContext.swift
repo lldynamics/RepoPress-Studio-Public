@@ -22,7 +22,7 @@ extension AIPublishingAssistantService {
         """
       } ?? "本地资料库参考：本轮未检索到相关内容。"
 
-    return """
+    let context = """
       站点：\(profile.name)（\(profile.siteKind.displayName)）
       仓库：\(profile.repositoryDisplayName)
       AI 写作风格：
@@ -43,6 +43,7 @@ extension AIPublishingAssistantService {
       \(workflowContext)
       \(knowledgeContext)
       """
+    return AIOutboundPayloadPrivacyService().sanitize(context).text
   }
 
   private func workflowContextSummary(_ context: AIPublishingWorkflowContext?) -> String {
@@ -85,8 +86,7 @@ extension AIPublishingAssistantService {
     }
 
     var lines = [
-      "本地预览：\(plan.siteKind.displayName) \(plan.previewURL.absoluteString)",
-      "- 命令：\(plan.command)",
+      "本地预览：\(plan.siteKind.displayName)（仅本地状态，不发送地址或命令）"
     ]
     lines.append(contentsOf: plan.notes.prefix(3).map { "- \($0)" })
     return lines.joined(separator: "\n")

@@ -4,19 +4,19 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
-private enum ContentViewBodyPerformanceProbe {
-  private static let isEnabled =
-    ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_CONTENT_VIEW_BODY_PROBE"] == "1"
-  private static let signposter = OSSignposter(
-    subsystem: "com.jinfang.PersonalSitePublisherMac",
-    category: "SwiftUIBody"
-  )
+  private enum ContentViewBodyPerformanceProbe {
+    private static let isEnabled =
+      ProcessInfo.processInfo.environment["PERSONAL_SITE_PUBLISHER_CONTENT_VIEW_BODY_PROBE"] == "1"
+    private static let signposter = OSSignposter(
+      subsystem: "com.jinfang.PersonalSitePublisherMac",
+      category: "SwiftUIBody"
+    )
 
-  static func record() {
-    guard isEnabled else { return }
-    signposter.emitEvent("ContentView.body")
+    static func record() {
+      guard isEnabled else { return }
+      signposter.emitEvent("ContentView.body")
+    }
   }
-}
 #endif
 
 struct WorkspaceResponsiveLayoutSnapshot: Equatable {
@@ -48,11 +48,11 @@ struct WorkspaceResponsiveLayoutSnapshot: Equatable {
         width >= WorkbenchLayoutMode.minimumHTMLSourceInspectorWorkspaceWidth,
       canOverrideSplitInspector:
         editorDisplayMode == .split
-          && width >= WorkbenchLayoutMode.minimumInspectorWorkspaceWidth
-          && !WorkbenchLayoutMode.allowsInspector(
-            width: width,
-            editorDisplayMode: editorDisplayMode
-          ),
+        && width >= WorkbenchLayoutMode.minimumInspectorWorkspaceWidth
+        && !WorkbenchLayoutMode.allowsInspector(
+          width: width,
+          editorDisplayMode: editorDisplayMode
+        ),
       prefersFocusedWriting: WorkbenchLayoutMode.prefersFocusedWriting(
         width: width,
         editorDisplayMode: editorDisplayMode
@@ -81,12 +81,14 @@ struct ContentView: View {
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
   @AppStorage("didCompleteFirstRunSetup") private var didCompleteFirstRunSetup = false
   @SceneStorage("workspace.focusMode") private var isFocusMode = false
-  @SceneStorage("workspace.revealSidebarInNarrowSplit") private var revealsSidebarInNarrowSplit = false
-  @SceneStorage("workspace.revealInspectorInNarrowSplit") private var revealsInspectorInNarrowSplit = false
+  @SceneStorage("workspace.revealSidebarInNarrowSplit") private var revealsSidebarInNarrowSplit =
+    false
+  @SceneStorage("workspace.revealInspectorInNarrowSplit") private
+    var revealsInspectorInNarrowSplit = false
   @State private var didApplyInitialWorkbenchPreferences = false
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-  @State private var didApplyScreenshotDemoSurface = false
-#endif
+  #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    @State private var didApplyScreenshotDemoSurface = false
+  #endif
   @State private var isRefreshingExternallyCreatedDrafts = false
   @State private var isDraftRecoveryPresented = false
   @State private var modalPresentation = WorkspaceModalPresentationState()
@@ -98,8 +100,20 @@ struct ContentView: View {
   @State private var repositoryContextStage: RepositoryContextStage = .overview
   @StateObject private var repositorySourceSession: RepositoryHTMLSourceSession
   @StateObject private var rssPresentation: RSSReaderPresentationState
+  @StateObject private var localSitePreviewState: WorkbenchLocalSitePreviewFeatureFacade
   @StateObject private var sceneCommandRouter = WorkspaceSceneCommandRouter()
-  private let repositoryAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+
+  private var repositoryAutoSyncTaskID: RepositoryAutoSyncTaskID {
+    RepositoryAutoSyncTaskID(
+      scenePhase: scenePhase,
+      isSafeMode: store.isSafeMode
+    )
+  }
+
+  private struct RepositoryAutoSyncTaskID: Equatable {
+    let scenePhase: ScenePhase
+    let isSafeMode: Bool
+  }
 
   init(store: WorkbenchStore, rssStore: RSSReaderStore) {
     self.store = store
@@ -108,6 +122,9 @@ struct ContentView: View {
     _presentationState = ObservedObject(wrappedValue: store.contentPresentation)
     _repositorySourceSession = StateObject(wrappedValue: RepositoryHTMLSourceSession())
     _rssPresentation = StateObject(wrappedValue: RSSReaderPresentationState())
+    _localSitePreviewState = StateObject(
+      wrappedValue: WorkbenchLocalSitePreviewFeatureFacade(store: store)
+    )
   }
 
   var body: some View {
@@ -115,9 +132,9 @@ struct ContentView: View {
   }
 
   private var contentView: some View {
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    let _ = ContentViewBodyPerformanceProbe.record()
-#endif
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      let _ = ContentViewBodyPerformanceProbe.record()
+    #endif
     return GeometryReader { geometry in
       let compactLayout = WorkbenchLayoutMode.isCompact(width: geometry.size.width)
       let responsiveLayoutSnapshot = WorkspaceResponsiveLayoutSnapshot(
@@ -154,24 +171,24 @@ struct ContentView: View {
             aiChatSurfaceState: $aiChatInspectorSurfaceState,
             prioritizesChecks: compactLayout
           )
-            .inspectorColumnWidth(
-              min: inspectorColumnWidths.minimum,
-              ideal: inspectorColumnWidths.ideal,
-              max: inspectorColumnWidths.maximum
-            )
+          .inspectorColumnWidth(
+            min: inspectorColumnWidths.minimum,
+            ideal: inspectorColumnWidths.ideal,
+            max: inspectorColumnWidths.maximum
+          )
         }
         .disabled(shellState.isQuickHideActive)
         .accessibilityHidden(shellState.isQuickHideActive)
 
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-        if usesInlineAIScreenshotInspector {
-          ScreenshotInlineAIInspector(
-            store: store,
-            width: min(max(geometry.size.width * 0.38, 460), 520)
-          )
-          .zIndex(1)
-        }
-#endif
+        #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+          if usesInlineAIScreenshotInspector {
+            ScreenshotInlineAIInspector(
+              store: store,
+              width: min(max(geometry.size.width * 0.38, 460), 520)
+            )
+            .zIndex(1)
+          }
+        #endif
 
         if shellState.isQuickHideActive {
           QuickHideOverlay(store: store)
@@ -222,6 +239,7 @@ struct ContentView: View {
         }
       )
     )
+    .environmentObject(localSitePreviewState)
     .environmentObject(sceneCommandRouter)
     .focusedSceneObject(sceneCommandRouter)
     .toolbar {
@@ -337,7 +355,9 @@ struct ContentView: View {
         hideInspectorIfNeeded()
       }
     }
-    .onReceive(repositoryAutoSyncTimer, perform: handleRepositoryAutoSyncTick)
+    .task(id: repositoryAutoSyncTaskID) {
+      await runRepositoryAutoSyncLoop()
+    }
     .alert(
       String(localized: "工作台数据恢复"),
       isPresented: persistenceRecoveryAlertPresented,
@@ -408,8 +428,8 @@ struct ContentView: View {
 
   private func refreshStaleRSSIfNeeded() {
     guard scenePhase == .active,
-          !store.isSafeMode,
-          shellState.selectedSection == .rss
+      !store.isSafeMode,
+      shellState.selectedSection == .rss
     else { return }
     Task { @MainActor in
       await rssStore.refreshStaleFeeds()
@@ -448,7 +468,9 @@ struct ContentView: View {
         }
       }
       Button(String(localized: "导出故障文件…")) {
-        guard let directoryURL = WorkbenchRecoverySelectionPanel.chooseExportDirectory() else { return }
+        guard let directoryURL = WorkbenchRecoverySelectionPanel.chooseExportDirectory() else {
+          return
+        }
         _ = store.exportPersistenceRecoveryFiles(to: directoryURL)
       }
       Button(String(localized: "重置为空白工作台"), role: .destructive) {
@@ -498,7 +520,7 @@ struct ContentView: View {
       )
       .frame(minWidth: 680, idealWidth: 780, minHeight: 600, idealHeight: 720)
     case .localSitePreview:
-      LocalSitePreviewPanelView(store: store)
+      LocalSitePreviewPanelView()
     case .firstRunSetup:
       FirstRunSetupView(
         store: store,
@@ -516,17 +538,27 @@ struct ContentView: View {
     }
   }
 
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-  private var usesInlineAIScreenshotInspector: Bool {
-    ScreenshotDemoDataService.isEnabledFromEnvironment
-      && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .aiChat
-  }
-#endif
+  #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    private var usesInlineAIScreenshotInspector: Bool {
+      ScreenshotDemoDataService.isEnabledFromEnvironment
+        && ScreenshotDemoDataService.requestedSurfaceFromEnvironment == .aiChat
+    }
+  #endif
 
-  private func handleRepositoryAutoSyncTick(_ date: Date) {
+  private func runRepositoryAutoSyncLoop() async {
     guard scenePhase == .active, !store.isSafeMode else { return }
-    Task {
-      await store.tickRepositoryAndDeploymentPolling(now: date)
+
+    while !Task.isCancelled {
+      do {
+        try await Task.sleep(for: .seconds(60))
+      } catch {
+        return
+      }
+
+      guard !Task.isCancelled, scenePhase == .active, !store.isSafeMode else {
+        return
+      }
+      await store.tickRepositoryAndDeploymentPolling(now: Date())
     }
   }
 
@@ -559,9 +591,9 @@ struct ContentView: View {
       }
       didApplyInitialWorkbenchPreferences = true
     }
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    applyScreenshotRequestedSubpageIfNeeded()
-#endif
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      applyScreenshotRequestedSubpageIfNeeded()
+    #endif
     store.setAutomaticallyRefreshPreflightOnEdit(
       store.isSafeMode ? false : autoRunPreflight
     )
@@ -573,8 +605,9 @@ struct ContentView: View {
 
   private func refreshExternallyCreatedDrafts() {
     guard !store.isSafeMode,
-          shellState.canUseProtectedWorkbench,
-          !isRefreshingExternallyCreatedDrafts else { return }
+      shellState.canUseProtectedWorkbench,
+      !isRefreshingExternallyCreatedDrafts
+    else { return }
     isRefreshingExternallyCreatedDrafts = true
     Task { @MainActor in
       defer { isRefreshingExternallyCreatedDrafts = false }
@@ -591,19 +624,21 @@ struct ContentView: View {
 
   private func presentFirstRunSetupIfNeeded() {
     guard !store.isSafeMode else { return }
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    let isScreenshotDemo = ScreenshotDemoDataService.isEnabledFromEnvironment
-#else
-    let isScreenshotDemo = false
-#endif
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      let isScreenshotDemo = ScreenshotDemoDataService.isEnabledFromEnvironment
+    #else
+      let isScreenshotDemo = false
+    #endif
     if !store.activeProfile.localRepositoryRootPath.trimmedForPublishing.isEmpty {
       didCompleteFirstRunSetup = true
     }
-    guard WorkbenchFirstRunSetupPolicy.shouldPresent(
-      didCompleteSetup: didCompleteFirstRunSetup,
-      profile: store.activeProfile,
-      isScreenshotDemo: isScreenshotDemo
-    ) else { return }
+    guard
+      WorkbenchFirstRunSetupPolicy.shouldPresent(
+        didCompleteSetup: didCompleteFirstRunSetup,
+        profile: store.activeProfile,
+        isScreenshotDemo: isScreenshotDemo
+      )
+    else { return }
     modalPresentation.present(.firstRunSetup)
   }
 
@@ -681,7 +716,7 @@ struct ContentView: View {
     quickPrompt: AIPublishingQuickPrompt? = nil
   ) -> Bool {
     guard shellState.canUseProtectedWorkbench,
-          prepareInspectorForUserRequest()
+      prepareInspectorForUserRequest()
     else { return false }
     if effectiveFocusMode {
       isFocusMode = false
@@ -770,20 +805,20 @@ struct ContentView: View {
     selectWorkspaceSection(.sync)
   }
 
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-  private func applyScreenshotRequestedSubpageIfNeeded() {
-    guard !didApplyScreenshotDemoSurface else { return }
-    didApplyScreenshotDemoSurface = true
-    switch ScreenshotDemoDataService.requestedSurfaceFromEnvironment {
-    case .some(.deploymentStatus):
-      repositoryContextStage = .history
-    case .some(.maintenance):
-      contentHealthFilter = .maintenance
-    default:
-      break
+  #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+    private func applyScreenshotRequestedSubpageIfNeeded() {
+      guard !didApplyScreenshotDemoSurface else { return }
+      didApplyScreenshotDemoSurface = true
+      switch ScreenshotDemoDataService.requestedSurfaceFromEnvironment {
+      case .some(.deploymentStatus):
+        repositoryContextStage = .history
+      case .some(.maintenance):
+        contentHealthFilter = .maintenance
+      default:
+        break
+      }
     }
-  }
-#endif
+  #endif
 
   private func selectWorkspaceSection(_ section: WorkspaceSection) {
     guard shellState.selectedSection != section else { return }
@@ -899,7 +934,9 @@ struct ContentView: View {
     automaticallyHidesSidebarForSplit(responsiveLayout)
   }
 
-  private func automaticallyHidesSidebarForSplit(_ snapshot: WorkspaceResponsiveLayoutSnapshot) -> Bool {
+  private func automaticallyHidesSidebarForSplit(_ snapshot: WorkspaceResponsiveLayoutSnapshot)
+    -> Bool
+  {
     shellState.selectedSection == .writing
       && WorkbenchLayoutMode.prefersFocusedWriting(
         width: snapshot.width,
@@ -936,25 +973,25 @@ struct ContentView: View {
 }
 
 #if DEBUG || SCREENSHOT_CAPTURE_BUILD
-private struct ScreenshotInlineAIInspector: View {
-  let store: WorkbenchStore
-  let width: CGFloat
-  @State private var surfaceState = AIChatSurfaceState(surface: .inspector)
+  private struct ScreenshotInlineAIInspector: View {
+    let store: WorkbenchStore
+    let width: CGFloat
+    @State private var surfaceState = AIChatSurfaceState(surface: .inspector)
 
-  var body: some View {
-    HStack(spacing: 0) {
-      Spacer(minLength: 0)
-      Divider()
-      AIChatContextInspectorView(
-        store: store,
-        surfaceState: $surfaceState
-      )
+    var body: some View {
+      HStack(spacing: 0) {
+        Spacer(minLength: 0)
+        Divider()
+        AIChatContextInspectorView(
+          store: store,
+          surfaceState: $surfaceState
+        )
         .frame(width: width)
         .frame(maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+      }
     }
   }
-}
 #endif
 
 private struct WorkbenchAccessibilityStatusAnnouncer: View {
@@ -1022,14 +1059,14 @@ private enum WorkbenchAccessibilityStatus: Equatable {
   var message: String {
     switch self {
     case .quickHideActive: return String(localized: "快速隐藏已启用（仅界面遮挡）。")
-    case let .repositoryScanning(message):
+    case .repositoryScanning(let message):
       return String(format: String(localized: "仓库状态更新：%@"), message)
     case .remotePublishing: return String(localized: "正在执行线上发布。")
     case .aiReplying: return String(localized: "AI 正在回复。")
     case .deploymentChecking: return String(localized: "正在检查部署状态。")
-    case let .saveFailed(error):
+    case .saveFailed(let error):
       return String(format: String(localized: "保存失败：%@"), error)
-    case let .saveStatus(status):
+    case .saveStatus(let status):
       return String(format: String(localized: "保存状态：%@"), status)
     }
   }

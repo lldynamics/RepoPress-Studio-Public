@@ -104,7 +104,7 @@ struct KnowledgeImportAssistantView: View {
         .background(
           isFileDropTargeted
             ? AnyShapeStyle(Color.accentColor.opacity(0.12))
-            : WorkbenchBackgroundStyle.subtle,
+            : WorkbenchBackgroundStyle.card,
           in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
         )
         .overlay {
@@ -215,7 +215,7 @@ struct KnowledgeImportAssistantView: View {
     }
     .padding(10)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   private func candidateList(_ preview: KnowledgeImportPreview) -> some View {
@@ -242,7 +242,7 @@ struct KnowledgeImportAssistantView: View {
             .foregroundStyle(candidate.disposition == .duplicate ? Color.secondary : Color.accentColor)
         }
         .padding(10)
-        .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+        .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
       if preview.candidates.count > 50 {
         Text("另有 \(preview.candidates.count - 50) 条资料将在确认后处理。")

@@ -192,9 +192,11 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   }
 
   func createNewDataRoot() async {
-    guard let parentURL = await WorkbenchDataRootSelectionPanel.chooseDestinationParent(
-      forMigration: false
-    ) else {
+    guard
+      let parentURL = await WorkbenchDataRootSelectionPanel.chooseDestinationParent(
+        forMigration: false
+      )
+    else {
       return
     }
     await createNewDataRoot(in: parentURL)
@@ -233,7 +235,8 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       try await openStoredRootAndPrepare(using: bookmarkStore)
     } catch {
       if error is WorkbenchDataRootBookmarkError,
-         case .existing = WorkbenchDataRootInspector().probe(at: rootURL) {
+        case .existing = WorkbenchDataRootInspector().probe(at: rootURL)
+      {
         showDataRootSetup(
           message: String(
             localized: "数据文件夹已创建，但无法保存持续访问权限。请点击“恢复已有数据文件夹…”并选择刚创建的“RepoPress Data”文件夹。"
@@ -252,10 +255,10 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
 
   func migrateLegacyData() async {
     guard let bookmarkStore,
-          Self.legacyDataIsAvailable,
-          let parentURL = await WorkbenchDataRootSelectionPanel.chooseDestinationParent(
-            forMigration: true
-          )
+      Self.legacyDataIsAvailable,
+      let parentURL = await WorkbenchDataRootSelectionPanel.chooseDestinationParent(
+        forMigration: true
+      )
     else {
       return
     }
@@ -302,15 +305,17 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   /// The old root is deliberately retained as a user-controlled fallback.
   func relocateCurrentDataRoot(in parentURL: URL) async -> WorkbenchDataRootMigrationResult? {
     guard let bookmarkStore,
-          let sourceSession = dataRootSession,
-          let store,
-          let rssStore else {
+      let sourceSession = dataRootSession,
+      let store,
+      let rssStore
+    else {
       dataRootMessage = String(localized: "当前数据文件夹尚未准备完成，无法更改位置。")
       return nil
     }
     guard !store.knowledge.isBusy,
-          !rssStore.isRefreshing,
-          !store.workspaceBackupScheduler.isRunning else {
+      !rssStore.isRefreshing,
+      !store.workspaceBackupScheduler.isRunning
+    else {
       dataRootMessage = String(localized: "资料库、RSS 刷新或备份仍在运行，请完成后再更改存储位置。")
       return nil
     }
@@ -454,6 +459,10 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
   private func prepareRuntime(using paths: WorkbenchRuntimePaths) async {
     phase = .preparing(String(localized: "正在准备工作台…"))
     let safeMode = isSafeMode
+    async let preparedRSSBootstrap = RSSReaderStore.prepareBootstrap(
+      fileURL: paths.rssReaderFileURL,
+      pageSize: RSSReaderBootstrap.defaultPageSize
+    )
     let preparation = await Task.detached(priority: .utility) {
       let workspaceRestoreOutcome: WorkspaceBackupRestoreStartupOutcome
       let restoreOutcome: KnowledgeLibraryRestoreStartupOutcome
@@ -499,7 +508,11 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       didStart = false
       return
     }
-    let rssStore = RSSReaderStore(fileURL: paths.rssReaderFileURL)
+    let rssBootstrap = await preparedRSSBootstrap
+    let rssStore = RSSReaderStore(
+      fileURL: paths.rssReaderFileURL,
+      bootstrap: rssBootstrap
+    )
     let workbenchStore = WorkbenchStore(
       persistence: paths.persistence,
       initialSnapshotSource: preparation.snapshotSource,
@@ -513,11 +526,11 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     workbenchStore.reportStartupWorkspaceBackupRestoreOutcome(
       preparation.workspaceRestoreOutcome
     )
-#if DEBUG || SCREENSHOT_CAPTURE_BUILD
-    if ScreenshotDemoDataService.isEnabledFromEnvironment {
-      ScreenshotDemoDataService.applyRequestedSurfaceIfEnabled(to: workbenchStore)
-    }
-#endif
+    #if DEBUG || SCREENSHOT_CAPTURE_BUILD
+      if ScreenshotDemoDataService.isEnabledFromEnvironment {
+        ScreenshotDemoDataService.applyRequestedSurfaceIfEnabled(to: workbenchStore)
+      }
+    #endif
     workbenchStore.knowledge.reportStartupRestoreOutcome(preparation.restoreOutcome)
 
     self.store = workbenchStore
@@ -534,6 +547,12 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     self.browserBridge = browserBridge
     dataRootMessage = nil
     phase = .ready
+    // Publish the bounded first page immediately. Mutations fail closed until
+    // this utility read completes, so a large RSS archive no longer delays the
+    // first usable workspace window.
+    Task { @MainActor [weak rssStore] in
+      await rssStore?.loadRemainingArticleHeadersIfNeeded()
+    }
   }
 
   private func showDataRootSetup(message: String?) {
@@ -603,11 +622,14 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
       return .notFound(selectedProbe)
     }
 
-    let existingRoots = childURLs
+    let existingRoots =
+      childURLs
       .filter { url in
-        guard let values = try? url.resourceValues(
-          forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
-        ) else {
+        guard
+          let values = try? url.resourceValues(
+            forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+          )
+        else {
           return false
         }
         return values.isDirectory == true && values.isSymbolicLink != true
@@ -710,8 +732,9 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
 
   private static var legacyDataIsAvailable: Bool {
     let layout = WorkbenchDataRootLayout(rootURL: legacyDataRootURL)
-    guard case .incompatible(.missingManifestForNonEmptyRoot) =
-      WorkbenchDataRootInspector().probe(at: layout.rootURL)
+    guard
+      case .incompatible(.missingManifestForNonEmptyRoot) =
+        WorkbenchDataRootInspector().probe(at: layout.rootURL)
     else {
       return false
     }
@@ -773,7 +796,8 @@ struct WorkbenchLaunchRootView: View {
       switch coordinator.phase {
       case .ready:
         if let store = coordinator.store,
-           let rssStore = coordinator.rssStore {
+          let rssStore = coordinator.rssStore
+        {
           readyContent(
             store: store,
             rssStore: rssStore,

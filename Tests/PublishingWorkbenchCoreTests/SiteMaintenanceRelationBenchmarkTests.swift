@@ -1,6 +1,7 @@
 import Foundation
-@testable import PublishingWorkbenchCore
 import XCTest
+
+@testable import PublishingWorkbenchCore
 
 @MainActor
 final class SiteMaintenanceRelationBenchmarkTests: XCTestCase {
@@ -37,6 +38,11 @@ final class SiteMaintenanceRelationBenchmarkTests: XCTestCase {
   func testGeneratedRelationScanScaleBaseline() throws {
     let environment = ProcessInfo.processInfo.environment
     guard environment["RUN_SITE_MAINTENANCE_RELATION_BENCHMARK"] == "1" else {
+      if environment["PERFORMANCE_BENCHMARK_REQUIRED"] == "1" {
+        throw SiteMaintenanceRelationBenchmarkError.requiredEnvironmentMissing(
+          "RUN_SITE_MAINTENANCE_RELATION_BENCHMARK=1"
+        )
+      }
       throw XCTSkip(
         "Set RUN_SITE_MAINTENANCE_RELATION_BENCHMARK=1 to collect the relation scan baseline."
       )
@@ -55,7 +61,8 @@ final class SiteMaintenanceRelationBenchmarkTests: XCTestCase {
       2,
       Int(environment["SITE_MAINTENANCE_RELATION_BENCHMARK_LABEL_GROUP_SIZE"] ?? "") ?? 8
     )
-    let outputPath = environment["SITE_MAINTENANCE_RELATION_BENCHMARK_OUTPUT"]
+    let outputPath =
+      environment["SITE_MAINTENANCE_RELATION_BENCHMARK_OUTPUT"]
       ?? ".build/benchmarks/site-maintenance-relations.json"
 
     let scenarios = try sizes.map {
@@ -67,7 +74,19 @@ final class SiteMaintenanceRelationBenchmarkTests: XCTestCase {
     }
     let report = SiteMaintenanceRelationBenchmarkReport(
       generatedAt: ISO8601DateFormatter().string(from: Date()),
-      operatingSystem: ProcessInfo.processInfo.operatingSystemVersionString,
+      configuration: environment["SITE_MAINTENANCE_RELATION_BENCHMARK_CONFIGURATION"] ?? "debug",
+      commit: Self.environmentValue("PERFORMANCE_BENCHMARK_COMMIT", fallback: "unknown"),
+      toolchain: Self.environmentValue("PERFORMANCE_BENCHMARK_TOOLCHAIN", fallback: "unknown"),
+      architecture: Self.environmentValue(
+        "PERFORMANCE_BENCHMARK_ARCHITECTURE",
+        fallback: "unknown"
+      ),
+      operatingSystem: Self.environmentValue(
+        "PERFORMANCE_BENCHMARK_OPERATING_SYSTEM",
+        fallback: ProcessInfo.processInfo.operatingSystemVersionString
+      ),
+      machine: Self.environmentValue("PERFORMANCE_BENCHMARK_MACHINE", fallback: "unknown"),
+      sampleCount: iterations,
       activeProcessorCount: ProcessInfo.processInfo.activeProcessorCount,
       iterations: iterations,
       labelGroupSize: labelGroupSize,
@@ -96,6 +115,13 @@ final class SiteMaintenanceRelationBenchmarkTests: XCTestCase {
       )
     }
     print("SITE_MAINTENANCE_RELATION_BENCHMARK output=\(outputURL.path)")
+  }
+
+  private static func environmentValue(_ key: String, fallback: String) -> String {
+    let value = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(
+      in: .whitespacesAndNewlines
+    )
+    return value?.isEmpty == false ? value! : fallback
   }
 
   private func scan(
@@ -152,6 +178,8 @@ final class SiteMaintenanceRelationBenchmarkTests: XCTestCase {
       candidateEvaluationCount: finalMetrics.candidateEvaluationCount,
       fullPairCount: articleCount * max(0, articleCount - 1),
       suggestionCount: finalMetrics.suggestionCount,
+      sampleCount: samples.count,
+      rawSamplesMilliseconds: samples,
       minimumMilliseconds: sortedSamples.first ?? 0,
       medianMilliseconds: sortedSamples[sortedSamples.count / 2],
       p95Milliseconds: sortedSamples[p95Index],
@@ -193,9 +221,15 @@ final class SiteMaintenanceRelationBenchmarkTests: XCTestCase {
 }
 
 private struct SiteMaintenanceRelationBenchmarkReport: Encodable {
-  let schemaVersion = 1
+  let schemaVersion = 2
   let generatedAt: String
+  let configuration: String
+  let commit: String
+  let toolchain: String
+  let architecture: String
   let operatingSystem: String
+  let machine: String
+  let sampleCount: Int
   let activeProcessorCount: Int
   let iterations: Int
   let labelGroupSize: Int
@@ -209,8 +243,21 @@ private struct SiteMaintenanceRelationBenchmarkScenario: Encodable {
   let candidateEvaluationCount: Int
   let fullPairCount: Int
   let suggestionCount: Int
+  let sampleCount: Int
+  let rawSamplesMilliseconds: [Double]
   let minimumMilliseconds: Double
   let medianMilliseconds: Double
   let p95Milliseconds: Double
   let maximumMilliseconds: Double
+}
+
+private enum SiteMaintenanceRelationBenchmarkError: LocalizedError {
+  case requiredEnvironmentMissing(String)
+
+  var errorDescription: String? {
+    switch self {
+    case .requiredEnvironmentMissing(let variable):
+      return "Required release performance environment variable is missing: \(variable)."
+    }
+  }
 }

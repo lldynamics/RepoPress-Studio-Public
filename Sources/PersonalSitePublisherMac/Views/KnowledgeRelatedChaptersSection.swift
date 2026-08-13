@@ -123,7 +123,7 @@ struct KnowledgeRelatedChaptersSection: View {
     }
     .padding(10)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: 9))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 9))
     .contentShape(Rectangle())
     .accessibilityElement(children: .combine)
     .accessibilityLabel(

@@ -19,8 +19,10 @@ struct MarkdownEditorComfortControl: View {
   private var isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
   @AppStorage(MarkdownEditorComfortPreferences.automaticPairingEnabledKey)
   private var isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
-  @AppStorage(MarkdownEditorComfortPreferences.writingGoalKey)
-  private var writingGoal = MarkdownEditorComfortConfiguration.defaultWritingGoal
+  @AppStorage(MarkdownEditorComfortPreferences.typewriterSoundPresetKey)
+  private var typewriterSoundPresetRawValue = TypewriterSoundPreset.typewriter.rawValue
+  @AppStorage(MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
+  private var isParagraphSpotlightEnabled = false
   @State private var isPresented = false
 
   init(showsTitle: Bool = false) {
@@ -98,16 +100,15 @@ struct MarkdownEditorComfortControl: View {
         .toggleStyle(.switch)
         .help("输入左侧符号时自动补全右侧符号；可随时撤销。")
 
-      Stepper(value: $writingGoal, in: 100...20_000, step: 100) {
-        HStack {
-          Text("写作目标")
-          Spacer()
-          Text(String(localized: "\(writingGoal) 字/词"))
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
+      Toggle("段落焦点聚光灯（非焦点段落柔和淡出）", isOn: $isParagraphSpotlightEnabled)
+        .toggleStyle(.switch)
+
+      Picker("打字音效与微触觉", selection: $typewriterSoundPresetRawValue) {
+        ForEach(TypewriterSoundPreset.allCases) { preset in
+          Text(preset.title).tag(preset.rawValue)
         }
       }
-      .help("中文按汉字计数，其他语言按词计数。")
+      .pickerStyle(.menu)
 
       Divider()
 
@@ -168,6 +169,5 @@ struct MarkdownEditorComfortControl: View {
     isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration.defaultCurrentParagraphHighlightEnabled
     isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
     isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
-    writingGoal = MarkdownEditorComfortConfiguration.defaultWritingGoal
   }
 }

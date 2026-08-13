@@ -18,10 +18,9 @@ extension WorkbenchStore {
       try resolvedFileStore.discardStoredFile(at: managedURL)
       throw error
     }
-    let byteSize = (
-      (try? managedURL.resourceValues(forKeys: [.fileSizeKey]).fileSize)
-        .map(Int64.init)
-    ) ?? 0
+    let byteSize =
+      ((try? managedURL.resourceValues(forKeys: [.fileSizeKey]).fileSize)
+        .map(Int64.init)) ?? 0
     let profile = profile(for: draft)
     return DraftAttachment(
       id: attachmentID,
@@ -34,11 +33,36 @@ extension WorkbenchStore {
   }
 
   public func runPreflight() {
-    flushDraftBodyEditorBuffers()
+    schedulePreflightCalculation(
+      flushEditorBuffers: true,
+      invalidateDerivedCaches: true
+    )
+  }
+
+  /// Refreshes preflight for a selection change without treating navigation as
+  /// a content mutation. Selection is a frequent UI operation, so it must not
+  /// flush editor buffers belonging to other windows or invalidate the list,
+  /// task-queue, and image-workbench caches for every draft.
+  func refreshPreflightForSelection() {
+    schedulePreflightCalculation(
+      flushEditorBuffers: false,
+      invalidateDerivedCaches: false
+    )
+  }
+
+  private func schedulePreflightCalculation(
+    flushEditorBuffers: Bool,
+    invalidateDerivedCaches: Bool
+  ) {
+    if flushEditorBuffers {
+      flushDraftBodyEditorBuffers()
+    }
     preflightRefreshTask?.cancel()
     preflightRefreshGeneration &+= 1
     let generation = preflightRefreshGeneration
-    invalidateDraftDerivedCaches()
+    if invalidateDerivedCaches {
+      invalidateDraftDerivedCaches()
+    }
 
     guard let selectedDraft else {
       preflightRefreshTask = nil
@@ -53,7 +77,8 @@ extension WorkbenchStore {
     let generalDraftPublishingIssue = publishingStore.generalDraftPublishingIssue
 
     preflightRefreshTask = Task { [weak self] in
-      let calculationTask: Task<[PreflightIssue]?, Never> = Task.detached(priority: .userInitiated) {
+      let calculationTask: Task<[PreflightIssue]?, Never> = Task.detached(priority: .userInitiated)
+      {
         guard !Task.isCancelled else { return nil }
         if selectedDraft.isGeneralDraft {
           return [generalDraftPublishingIssue]
@@ -71,16 +96,19 @@ extension WorkbenchStore {
           duplicateIndex: duplicateIndex
         )
       }
-      let issues: [PreflightIssue]? = await withTaskCancellationHandler(operation: {
-        await calculationTask.value
-      }, onCancel: {
-        calculationTask.cancel()
-      })
+      let issues: [PreflightIssue]? = await withTaskCancellationHandler(
+        operation: {
+          await calculationTask.value
+        },
+        onCancel: {
+          calculationTask.cancel()
+        })
 
       guard !Task.isCancelled,
-            let issues,
-            let self,
-            self.preflightRefreshGeneration == generation else {
+        let issues,
+        let self,
+        self.preflightRefreshGeneration == generation
+      else {
         return
       }
 
@@ -154,7 +182,8 @@ extension WorkbenchStore {
     return localPublishPreview
   }
 
-  public func cachedRemotePublishPreview(for draft: ArticleDraft) -> RemoteRepositoryPublishPreview? {
+  public func cachedRemotePublishPreview(for draft: ArticleDraft) -> RemoteRepositoryPublishPreview?
+  {
     guard publishPackage?.draftID == draft.id else { return nil }
     return remotePublishPreviewSnapshot
   }
@@ -202,7 +231,12 @@ extension WorkbenchStore {
   }
 
   public func selectDraft(_ id: UUID?) {
-    flushDraftBodyEditorBuffers()
+    // Navigation only needs to commit the draft that is leaving the active
+    // editor. Buffers staged by another window remain isolated until that
+    // window explicitly commits them.
+    if let selectedDraftID {
+      flushDraftBodyEditorBuffer(for: selectedDraftID)
+    }
     publishingStore.selectDraft(id, store: self)
   }
 
@@ -235,15 +269,17 @@ extension WorkbenchStore {
 
     setDraftListContentScope(.general)
     if let firstGuideID = guides.first?.softwareGuideID,
-       let firstGuide = writingDrafts.first(where: { $0.softwareGuideID == firstGuideID }) {
+      let firstGuide = writingDrafts.first(where: { $0.softwareGuideID == firstGuideID })
+    {
       setAIPublishingAssistantPresented(false)
       _ = publishingStore.focusDraft(firstGuide.id, section: .writing, store: self)
     }
 
     softwareGuideSeedVersion = ArticleDraft.currentSoftwareGuideSeedVersion
     if synchronization.addedGuideCount > 0
-        || synchronization.refreshedGuideCount > 0
-        || shouldPersistSeedVersion {
+      || synchronization.refreshedGuideCount > 0
+      || shouldPersistSeedVersion
+    {
       save()
     }
     return synchronization.addedGuideCount
@@ -288,7 +324,8 @@ extension WorkbenchStore {
 
   public func saveCustomMarkdownSnippet(_ snippet: MarkdownSnippet) {
     guard let siteProfileID = snippet.siteProfileID,
-          profiles.contains(where: { $0.id == siteProfileID }) else {
+      profiles.contains(where: { $0.id == siteProfileID })
+    else {
       return
     }
     publishingStore.customMarkdownSnippets = MarkdownSnippetLibraryService.savingCustomSnippet(
@@ -304,9 +341,11 @@ extension WorkbenchStore {
   }
 
   public func deleteCustomMarkdownSnippet(id: String, siteProfileID: UUID) {
-    guard publishingStore.customMarkdownSnippets.contains(where: {
-      $0.id == id && $0.siteProfileID == siteProfileID
-    }) else {
+    guard
+      publishingStore.customMarkdownSnippets.contains(where: {
+        $0.id == id && $0.siteProfileID == siteProfileID
+      })
+    else {
       return
     }
     publishingStore.customMarkdownSnippets = MarkdownSnippetLibraryService.removingCustomSnippet(
@@ -381,10 +420,11 @@ extension WorkbenchStore {
       synchronizeDraftBodyEditorBuffer(with: bufferedDraft)
     }
     if isBodyOnlyEdit {
-      let imageInputsDidChange = previousDraft.map {
-        ImageWorkbenchMarkdownReferenceSignature(markdown: $0.bodyMarkdown)
-          != ImageWorkbenchMarkdownReferenceSignature(markdown: bufferedDraft.bodyMarkdown)
-      } ?? true
+      let imageInputsDidChange =
+        previousDraft.map {
+          ImageWorkbenchMarkdownReferenceSignature(markdown: $0.bodyMarkdown)
+            != ImageWorkbenchMarkdownReferenceSignature(markdown: bufferedDraft.bodyMarkdown)
+        } ?? true
       invalidateBodyEditingDerivedCaches(
         for: bufferedDraft.id,
         imageInputsDidChange: imageInputsDidChange

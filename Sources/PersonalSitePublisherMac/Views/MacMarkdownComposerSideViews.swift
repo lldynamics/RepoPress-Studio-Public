@@ -18,7 +18,7 @@ struct SelectionEditPreviewPanel: View {
           .foregroundStyle(.secondary)
           .padding(.horizontal, 6)
           .padding(.vertical, 2)
-          .background(WorkbenchBackgroundStyle.badge, in: Capsule())
+          .background(WorkbenchBackgroundStyle.control, in: Capsule())
         if let modelSummary = preview.modelSummary {
           Text(modelSummary)
             .font(.caption.weight(.medium))
@@ -27,7 +27,7 @@ struct SelectionEditPreviewPanel: View {
             .truncationMode(.middle)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(WorkbenchBackgroundStyle.badge, in: Capsule())
+            .background(WorkbenchBackgroundStyle.control, in: Capsule())
         }
         Spacer()
         Button {

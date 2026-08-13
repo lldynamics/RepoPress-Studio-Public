@@ -445,7 +445,7 @@ struct StorageManagementView: View {
               )
             }
             .padding(9)
-            .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: 8))
+            .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 8))
           }
         }
       }

@@ -132,7 +132,21 @@ if [[ "$arguments" == *" -d "* && "$arguments" == *" --entitlements "* ]]; then
   elif [[ "$target" == *.appex ]]; then
     cat "${DIRECT_TEST_ROOT:?}/Packaging/SafariWebExtension.entitlements"
   else
-    cat "${DIRECT_TEST_ROOT:?}/Packaging/DirectDistribution.entitlements"
+    if [[ "${FIXTURE_MAIN_APP_SANDBOX:-}" == "true" ]]; then
+      python3 - "${DIRECT_TEST_ROOT:?}/Packaging/DirectDistribution.entitlements" <<'PY'
+import plistlib
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+with path.open("rb") as handle:
+    entitlements = plistlib.load(handle)
+entitlements["com.apple.security.app-sandbox"] = True
+plistlib.dump(entitlements, sys.stdout.buffer, fmt=plistlib.FMT_XML, sort_keys=False)
+PY
+    else
+      cat "${DIRECT_TEST_ROOT:?}/Packaging/DirectDistribution.entitlements"
+    fi
   fi
   exit 0
 fi
@@ -268,6 +282,17 @@ common_environment=(
 )
 identity="Developer ID Application: Fixture (TEAM123456)"
 
+python3 - "$FIXTURE_ROOT/Packaging/DirectDistribution.entitlements" <<'PY'
+import plistlib
+from pathlib import Path
+import sys
+
+with Path(sys.argv[1]).open("rb") as handle:
+    entitlements = plistlib.load(handle)
+if entitlements.get("com.apple.security.app-sandbox") is True:
+    raise SystemExit("fixture direct entitlements unexpectedly enable App Sandbox")
+PY
+
 dry_output="$(env "${common_environment[@]}" \
   bash "$ROOT_DIR/script/package_direct_release.sh" \
   --dry-run --output-dir "$FIXTURE_ROOT/artifacts/dry")"
@@ -329,6 +354,21 @@ for artifact in "$signed_app" "$zip_path" "$dmg_path" "$manifest_path" "$checksu
 done
 sparkle_notice="$signed_app/Contents/Resources/ThirdPartyNotices/Sparkle-LICENSE.txt"
 [[ -s "$sparkle_notice" ]] || fail "release mode omitted the Sparkle third-party notice"
+
+sandbox_rejected_output="$FIXTURE_ROOT/artifacts/rejected-sandbox"
+if sandbox_output="$(env "${common_environment[@]}" \
+  FIXTURE_MAIN_APP_SANDBOX="true" \
+  DIRECT_DISTRIBUTION_APPLICATION_IDENTITY="$identity" \
+  DIRECT_DISTRIBUTION_NOTARY_PROFILE="Fixture-Notary" \
+  REPOPRESS_UPDATE_FEED_URL="https://updates.example.invalid/stable-appcast.xml" \
+  REPOPRESS_UPDATE_PUBLIC_ED_KEY="fixture-public-ed-key" \
+  REPOPRESS_UPDATE_DOWNLOAD_URL_PREFIX="https://updates.example.invalid/downloads" \
+  bash "$ROOT_DIR/script/package_direct_release.sh" \
+    --release --output-dir "$sandbox_rejected_output" 2>&1)"; then
+  fail "release mode accepted a main app with App Sandbox enabled"
+fi
+grep -Fq "signed app unexpectedly enables App Sandbox" <<<"$sandbox_output" \
+  || fail "sandbox-enabled main app failed without an explicit diagnostic"
 
 python3 - "$TMP_DIR/codesign.log" <<'PY'
 from pathlib import Path

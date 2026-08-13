@@ -9,7 +9,8 @@ extension WorkbenchStore {
   /// legacy inline config while an older snapshot is being migrated.
   public func aiConnectionProfile(for siteProfile: SiteProfile) -> AIConnectionProfile {
     if let connectionID = siteProfile.aiConnectionProfileID,
-       let connection = aiConnectionProfiles.first(where: { $0.id == connectionID }) {
+      let connection = aiConnectionProfiles.first(where: { $0.id == connectionID })
+    {
       return connection
     }
     return AIConnectionProfile(
@@ -44,13 +45,24 @@ extension WorkbenchStore {
       return false
     }
     var normalized = connection
-    normalized.name = normalized.name.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    normalized.name =
+      normalized.name.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
       ?? normalized.config.normalizedDisplayName
-    guard invalidateAIConnectionProfileCredentialsIfNeeded(
-      from: aiConnectionProfiles[index].config,
-      to: normalized.config,
-      connectionProfileID: normalized.id
-    ) else { return false }
+    if AIProviderCapabilityCacheKey(config: aiConnectionProfiles[index].config)
+      != AIProviderCapabilityCacheKey(config: normalized.config)
+    {
+      // The cache key is intentionally endpoint/model/preset bound. Remove
+      // old persisted evidence as well, so the UI cannot display an old probe
+      // while the new connection is waiting for fresh evidence.
+      normalized.config.capabilityProbeEvidence = nil
+    }
+    guard
+      invalidateAIConnectionProfileCredentialsIfNeeded(
+        from: aiConnectionProfiles[index].config,
+        to: normalized.config,
+        connectionProfileID: normalized.id
+      )
+    else { return false }
     aiConnectionProfiles[index] = normalized
 
     var updatedSites = profiles
@@ -82,10 +94,11 @@ extension WorkbenchStore {
         // No origin-bound legacy credential can exist for an address that the
         // Keychain store would never have accepted.
       } catch {
-        setAIActionMessage(CoreL10n.format(
-          "AI 连接未切换：旧版 API Key 清理失败。%@",
-          error.localizedDescription
-        ))
+        setAIActionMessage(
+          CoreL10n.format(
+            "AI 连接未切换：旧版 API Key 清理失败。%@",
+            error.localizedDescription
+          ))
         return false
       }
     }
@@ -119,7 +132,8 @@ extension WorkbenchStore {
         error.localizedDescription
       )
       if let keychainError = error as? KeychainTokenStoreError,
-         let recoveryHint = keychainError.recoveryHint {
+        let recoveryHint = keychainError.recoveryHint
+      {
         message += " " + recoveryHint
       }
       setAIActionMessage(message)
@@ -149,8 +163,9 @@ extension WorkbenchStore {
     to updatedConfig: AIProviderConfig,
     connectionProfileID: UUID
   ) -> Bool {
-    guard previousConfig.dataSharingConsentIdentifier
-      != updatedConfig.dataSharingConsentIdentifier
+    guard
+      previousConfig.dataSharingConsentIdentifier
+        != updatedConfig.dataSharingConsentIdentifier
     else {
       return true
     }
@@ -175,10 +190,11 @@ extension WorkbenchStore {
       if isActiveConnection {
         setAITokenAvailability(KeychainTokenAvailability(accessFailure: error))
       }
-      setAIActionMessage(CoreL10n.format(
-        "API 地址未更改：当前保存位置中的旧 API Key 删除失败。%@",
-        error.localizedDescription
-      ))
+      setAIActionMessage(
+        CoreL10n.format(
+          "API 地址未更改：当前保存位置中的旧 API Key 删除失败。%@",
+          error.localizedDescription
+        ))
       setAIChatMessage(CoreL10n.text("为防止旧 API Key 发送到新地址，本次 AI 连接修改已取消。"))
       return false
     }

@@ -76,10 +76,13 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
   }
 }
 
-public enum AIProviderRequestPurpose: Sendable {
-  case interactiveChat
-  case utilityTask
-  case connectionTest
+public enum AIProviderRequestPurpose: String, Codable, Equatable, Hashable, Sendable {
+  case interactiveChat = "interactive_chat"
+  case utilityTask = "utility_task"
+  case connectionTest = "connection_test"
+  /// Used only by the capability probe service to intentionally test optional
+  /// protocol fields before normal runtime requests are allowed to use them.
+  case capabilityProbe = "capability_probe"
 }
 
 public struct AIProviderThinkingOption: Codable, Hashable, Sendable {
@@ -372,19 +375,27 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
   public var model: String
   public var requiresAPIKey: Bool
   public var advancedSettings: AIProviderAdvancedSettings?
+  /// Endpoint/model-bound probe evidence. This contains no credential or
+  /// response body and is ignored whenever its cache key no longer matches
+  /// this config.
+  public var capabilityProbeEvidence:
+    [AIProviderCapabilityProbeKind: AIProviderCapabilityProbeEvidence]?
 
   public init(
     preset: AIProviderPreset = .custom,
     baseURL: String = "",
     model: String = "",
     requiresAPIKey: Bool = true,
-    advancedSettings: AIProviderAdvancedSettings? = nil
+    advancedSettings: AIProviderAdvancedSettings? = nil,
+    capabilityProbeEvidence: [AIProviderCapabilityProbeKind: AIProviderCapabilityProbeEvidence]? =
+      nil
   ) {
     self.preset = preset
     self.baseURL = baseURL
     self.model = model
     self.requiresAPIKey = requiresAPIKey
     self.advancedSettings = advancedSettings
+    self.capabilityProbeEvidence = capabilityProbeEvidence
   }
 
   public var resolvedAdvancedSettings: AIProviderAdvancedSettings {
@@ -397,6 +408,37 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
 
   public var normalizedModel: String {
     model.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// Stable identity for capability evidence. Only scheme, host, port and
+  /// path participate; user info, query, fragment and any secret-like URL
+  /// material are intentionally discarded.
+  public var capabilityEndpointIdentity: String {
+    guard let components = URLComponents(string: normalizedBaseURL),
+      let scheme = components.scheme?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+      let rawHost = components.host?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !scheme.isEmpty,
+      !rawHost.isEmpty
+    else {
+      return normalizedBaseURL.lowercased()
+    }
+
+    let host = rawHost.lowercased()
+    let renderedHost =
+      host.contains(":") && !host.hasPrefix("[")
+      ? "[\(host)]"
+      : host
+    let port =
+      components.port
+      ?? ((scheme == "https" || scheme == "wss")
+        ? 443 : (scheme == "http" || scheme == "ws" ? 80 : nil))
+    let portPart = port.map { ":\($0)" } ?? ""
+    let path = normalizedCapabilityPath(components.path)
+    return "\(scheme)://\(renderedHost)\(portPart)\(path)"
+  }
+
+  public var capabilityCacheKey: AIProviderCapabilityCacheKey {
+    AIProviderCapabilityCacheKey(config: self)
   }
 
   public var normalizedDisplayName: String {
@@ -413,7 +455,8 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
       return ""
     }
     guard let url = URL(string: resolvedBaseURL),
-          let host = url.host?.lowercased() else {
+      let host = url.host?.lowercased()
+    else {
       return resolvedBaseURL
     }
     if let port = url.port {
@@ -434,8 +477,9 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
 
   public var dataSharingConsentIdentifier: String {
     guard let components = URLComponents(string: normalizedBaseURL),
-          let scheme = components.scheme?.lowercased(),
-          let host = components.host?.lowercased() else {
+      let scheme = components.scheme?.lowercased(),
+      let host = components.host?.lowercased()
+    else {
       return "\(preset.rawValue)|\(normalizedBaseURL.lowercased())"
     }
     let port = components.port.map(String.init) ?? ""
@@ -457,7 +501,7 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
   }
 
   public var supportsImageInput: Bool {
-    !usesDeepSeekAPI
+    capabilitySupport(for: .visionInput) == .supported
   }
 
   public mutating func applyPresetDefaults() {
@@ -513,13 +557,215 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
         thinking: AIProviderThinkingOption(type: "enabled"),
         reasoningEffort: "high"
       )
-    case .utilityTask, .connectionTest:
+    case .utilityTask, .connectionTest, .capabilityProbe:
       return AIProviderChatRequestOptions(
         temperature: nil,
         thinking: AIProviderThinkingOption(type: "disabled"),
         reasoningEffort: nil
       )
     }
+  }
+
+  public func capabilityEvidence(
+    for capability: AIProviderCapability,
+    at date: Date = Date()
+  ) -> AIProviderCapabilityProbeEvidence? {
+    guard let kind = AIProviderCapabilityProbeKind(capability: capability) else {
+      return nil
+    }
+    return currentCapabilityEvidence(for: kind, at: date)
+  }
+
+  public func capabilitySupport(
+    for capability: AIProviderCapability,
+    at date: Date = Date()
+  ) -> AIProviderCapabilitySupport {
+    guard let kind = AIProviderCapabilityProbeKind(capability: capability) else {
+      return staticCapabilitySupport(for: capability)
+    }
+    return capabilitySupport(
+      for: kind,
+      staticSupport: staticCapabilitySupport(for: capability),
+      at: date
+    )
+  }
+
+  public func capabilitySupport(
+    for capability: AIProviderProtocolCapability,
+    at date: Date = Date()
+  ) -> AIProviderCapabilitySupport {
+    let kind: AIProviderCapabilityProbeKind =
+      capability == .toolCalling
+      ? .toolCalling
+      : .structuredOutput
+    return capabilitySupport(
+      for: kind,
+      staticSupport: staticCapabilitySupport(for: capability),
+      at: date
+    )
+  }
+
+  public func capabilityEvidence(
+    for capability: AIProviderProtocolCapability,
+    at date: Date = Date()
+  ) -> AIProviderCapabilityProbeEvidence? {
+    let kind: AIProviderCapabilityProbeKind =
+      capability == .toolCalling
+      ? .toolCalling
+      : .structuredOutput
+    return currentCapabilityEvidence(for: kind, at: date)
+  }
+
+  public func capabilityEvidenceState(
+    for capability: AIProviderCapability,
+    at date: Date = Date()
+  ) -> AIProviderCapabilityEvidenceState {
+    guard let kind = AIProviderCapabilityProbeKind(capability: capability) else {
+      return staticCapabilitySupport(for: capability) == .unknown ? .unknown : .staticInference
+    }
+    return capabilityEvidenceState(
+      for: kind, staticSupport: staticCapabilitySupport(for: capability), at: date)
+  }
+
+  public func capabilityEvidenceState(
+    for capability: AIProviderProtocolCapability,
+    at date: Date = Date()
+  ) -> AIProviderCapabilityEvidenceState {
+    let kind: AIProviderCapabilityProbeKind =
+      capability == .toolCalling
+      ? .toolCalling
+      : .structuredOutput
+    return capabilityEvidenceState(
+      for: kind,
+      staticSupport: staticCapabilitySupport(for: capability),
+      at: date
+    )
+  }
+
+  private func normalizedCapabilityPath(_ value: String) -> String {
+    let trimmed = value.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    return trimmed.isEmpty ? "/" : "/\(trimmed)"
+  }
+
+  private func currentCapabilityEvidence(
+    for kind: AIProviderCapabilityProbeKind,
+    at date: Date
+  ) -> AIProviderCapabilityProbeEvidence? {
+    guard let evidence = capabilityProbeEvidence?[kind],
+      evidence.key == AIProviderCapabilityCacheKey(config: self),
+      evidence.key.probeSchemaVersion == AIProviderCapabilityCacheKey.currentProbeSchemaVersion,
+      date >= evidence.observedAt,
+      date < evidence.expiresAt
+    else {
+      return nil
+    }
+    return evidence
+  }
+
+  private func capabilityEvidenceState(
+    for kind: AIProviderCapabilityProbeKind,
+    staticSupport: AIProviderCapabilitySupport,
+    at date: Date
+  ) -> AIProviderCapabilityEvidenceState {
+    guard let evidence = capabilityProbeEvidence?[kind],
+      evidence.key == AIProviderCapabilityCacheKey(config: self)
+    else {
+      return staticSupport == .unknown ? .unknown : .staticInference
+    }
+    return evidence.isCurrent(at: date) ? .probed : .expired
+  }
+
+  private func capabilitySupport(
+    for kind: AIProviderCapabilityProbeKind,
+    staticSupport: AIProviderCapabilitySupport,
+    at date: Date
+  ) -> AIProviderCapabilitySupport {
+    guard let evidence = capabilityProbeEvidence?[kind] else {
+      return staticSupport
+    }
+    guard evidence.key == AIProviderCapabilityCacheKey(config: self) else {
+      // Evidence from a different endpoint/model/schema is not reusable. A
+      // trusted preset may still use its static contract; custom endpoints
+      // remain unknown through their static support value.
+      return staticSupport
+    }
+    return evidence.isCurrent(at: date) ? evidence.support : .unknown
+  }
+
+  private func staticCapabilitySupport(
+    for capability: AIProviderCapability
+  ) -> AIProviderCapabilitySupport {
+    switch capability {
+    case .chat, .streamingResponse:
+      guard chatCompletionsURL != nil, !normalizedModel.isEmpty else {
+        return .unknown
+      }
+      return preset.capabilitySupport(for: capability)
+
+    case .visionInput:
+      if usesDeepSeekAPI {
+        return .unsupported
+      }
+      return preset.capabilitySupport(for: capability)
+
+    case .reasoningControl:
+      if usesDeepSeekAPI {
+        return .supported
+      }
+      return preset.capabilitySupport(for: capability)
+
+    case .localService:
+      if isLocalEndpoint {
+        return .supported
+      }
+      if hasResolvedRemoteEndpoint {
+        return .unsupported
+      }
+      return preset.capabilitySupport(for: capability)
+
+    case .modelDiscovery:
+      if preset == .local {
+        if isLocalEndpoint {
+          return .supported
+        }
+        return hasResolvedRemoteEndpoint ? .unsupported : .unknown
+      }
+      return preset.capabilitySupport(for: capability)
+    }
+  }
+
+  private func staticCapabilitySupport(
+    for capability: AIProviderProtocolCapability
+  ) -> AIProviderCapabilitySupport {
+    guard chatCompletionsURL != nil, !normalizedModel.isEmpty else {
+      return .unknown
+    }
+    guard preset != .custom, preset != .local else {
+      return .unknown
+    }
+    if capability == .toolCalling,
+      preset == .deepSeek,
+      !hasStaticallyKnownDeepSeekToolCallingModel
+    {
+      return .unknown
+    }
+    return preset.capabilitySupport(for: capability)
+  }
+
+  private var hasResolvedRemoteEndpoint: Bool {
+    guard let host = URL(string: normalizedBaseURL)?.host, !host.isEmpty else {
+      return false
+    }
+    return !isLocalEndpoint
+  }
+
+  private var hasStaticallyKnownDeepSeekToolCallingModel: Bool {
+    [
+      AIProviderPreset.deepSeek.defaultModel,
+      AIProviderPreset.deepSeekHighQualityModel,
+      "deepseek-chat",
+      "deepseek-reasoner",
+    ].contains(normalizedModel)
   }
 }
 

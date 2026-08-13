@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 final class AIPublishingAssistantServiceTests: XCTestCase {
@@ -317,7 +318,8 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
       slug: "granular-metadata",
       tags: ["AI", "publishing"],
       summary: "A draft that needs precise metadata.",
-      bodyMarkdown: "The article explains how mobile-style AI metadata helpers prepare a personal site post."
+      bodyMarkdown:
+        "The article explains how mobile-style AI metadata helpers prepare a personal site post."
     )
     let service = AIPublishingAssistantService()
     let expectations: [(AIPublishingActionKind, String)] = [
@@ -538,8 +540,9 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     XCTAssertTrue(prompt.contains("Mac 发布上下文："))
     XCTAssertTrue(prompt.contains("本地 diff：2 个待写入变化。"))
     XCTAssertTrue(prompt.contains("Markdown 修改：content/posts/ai-context.md"))
-    XCTAssertTrue(prompt.contains("本地预览：Zola http://127.0.0.1:1111"))
-    XCTAssertTrue(prompt.contains("命令：cd \"/tmp/site\" && zola serve --drafts"))
+    XCTAssertTrue(prompt.contains("本地预览：Zola（仅本地状态，不发送地址或命令）"))
+    XCTAssertFalse(prompt.contains("http://127.0.0.1:1111"))
+    XCTAssertFalse(prompt.contains("cd \"/tmp/site\" && zola serve --drafts"))
     XCTAssertTrue(prompt.contains("图片检查：1 张图片，缺 alt 0，源图缺失 0，可压缩 JPEG 1。"))
     XCTAssertTrue(prompt.contains("封面：封面可发布"))
     XCTAssertTrue(prompt.contains("Front Matter：extra.og_preview_img"))
@@ -638,16 +641,17 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
 
   func testPublishingReadinessUsesHighQualityTaskModel() async throws {
     let transport = RecordingAIChatTransport(
-      data: Data("""
-      {
-        "model": "gpt-4.1",
-        "choices": [
-          {
-            "message": {"role":"assistant","content":"发布前审稿完成。"}
-          }
-        ]
-      }
-      """.utf8),
+      data: Data(
+        """
+        {
+          "model": "gpt-4.1",
+          "choices": [
+            {
+              "message": {"role":"assistant","content":"发布前审稿完成。"}
+            }
+          ]
+        }
+        """.utf8),
       statusCode: 200
     )
     let service = AIPublishingAssistantService(
@@ -705,16 +709,17 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
 
   func testChatReplyIncludesCurrentArticleContextAndConversationHistory() async throws {
     let transport = RecordingAIChatTransport(
-      data: Data("""
-      {
-        "model": "local-test",
-        "choices": [
-          {
-            "message": {"role":"assistant","content":"可以，把摘要先压缩到 80 字以内。"}
-          }
-        ]
-      }
-      """.utf8),
+      data: Data(
+        """
+        {
+          "model": "local-test",
+          "choices": [
+            {
+              "message": {"role":"assistant","content":"可以，把摘要先压缩到 80 字以内。"}
+            }
+          ]
+        }
+        """.utf8),
       statusCode: 200
     )
     let service = AIPublishingAssistantService(
@@ -792,16 +797,17 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
 
   func testChatReplyIncludesKnowledgeContextAndCarriesStructuredCitations() async throws {
     let transport = RecordingAIChatTransport(
-      data: Data("""
-      {
-        "model": "local-test",
-        "choices": [
-          {
-            "message": {"role":"assistant","content":"间隔复习应逐步拉长复习时间 [K1]。"}
-          }
-        ]
-      }
-      """.utf8),
+      data: Data(
+        """
+        {
+          "model": "local-test",
+          "choices": [
+            {
+              "message": {"role":"assistant","content":"间隔复习应逐步拉长复习时间 [K1]。"}
+            }
+          ]
+        }
+        """.utf8),
       statusCode: 200
     )
     let service = AIPublishingAssistantService(
@@ -891,15 +897,16 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
 
   func testChatReplyIncludesFocusedParagraphContext() async throws {
     let transport = RecordingAIChatTransport(
-      data: Data("""
-      {
-        "choices": [
-          {
-            "message": {"role":"assistant","content":"这一段需要补一个更明确的发布结论。"}
-          }
-        ]
-      }
-      """.utf8),
+      data: Data(
+        """
+        {
+          "choices": [
+            {
+              "message": {"role":"assistant","content":"这一段需要补一个更明确的发布结论。"}
+            }
+          ]
+        }
+        """.utf8),
       statusCode: 200
     )
     let service = AIPublishingAssistantService(
@@ -911,12 +918,12 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
       title: "Focused Paragraph",
       slug: "focused-paragraph",
       bodyMarkdown: """
-      # Focused Paragraph
+        # Focused Paragraph
 
-      第一段说明文章背景，不应该作为本次主要讨论对象。
+        第一段说明文章背景，不应该作为本次主要讨论对象。
 
-      这个段落是用户在编辑器里选中的重点段落，需要 AI 持续围绕它给出修改建议。
-      """
+        这个段落是用户在编辑器里选中的重点段落，需要 AI 持续围绕它给出修改建议。
+        """
     )
     let focusedParagraph = try XCTUnwrap(
       AIPublishingChatDraftParagraphParser.extract(from: draft.bodyMarkdown)
@@ -956,21 +963,22 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
 
   func testChatReplyCarriesReturnedModelAndTokenUsage() async throws {
     let transport = RecordingAIChatTransport(
-      data: Data("""
-      {
-        "model": "gpt-4.1-mini",
-        "choices": [
-          {
-            "message": {"role":"assistant","content":"建议先补充发布风险。"}
+      data: Data(
+        """
+        {
+          "model": "gpt-4.1-mini",
+          "choices": [
+            {
+              "message": {"role":"assistant","content":"建议先补充发布风险。"}
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 140,
+            "completion_tokens": 18,
+            "total_tokens": 158
           }
-        ],
-        "usage": {
-          "prompt_tokens": 140,
-          "completion_tokens": 18,
-          "total_tokens": 158
         }
-      }
-      """.utf8),
+        """.utf8),
       statusCode: 200
     )
     let service = AIPublishingAssistantService(
@@ -1010,16 +1018,17 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
 
   func testChatReplyUsesRequestedModelGrade() async throws {
     let transport = RecordingAIChatTransport(
-      data: Data("""
-      {
-        "model": "gpt-4.1",
-        "choices": [
-          {
-            "message": {"role":"assistant","content":"高质量模型已用于文章讨论。"}
-          }
-        ]
-      }
-      """.utf8),
+      data: Data(
+        """
+        {
+          "model": "gpt-4.1",
+          "choices": [
+            {
+              "message": {"role":"assistant","content":"高质量模型已用于文章讨论。"}
+            }
+          ]
+        }
+        """.utf8),
       statusCode: 200
     )
     let service = AIPublishingAssistantService(
@@ -1060,15 +1069,16 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
 
   func testChatReplyUsesSelectedReasoningLevel() async throws {
     let transport = RecordingAIChatTransport(
-      data: Data("""
-      {
-        "choices": [
-          {
-            "message": {"role":"assistant","content":"已使用标准思考。"}
-          }
-        ]
-      }
-      """.utf8),
+      data: Data(
+        """
+        {
+          "choices": [
+            {
+              "message": {"role":"assistant","content":"已使用标准思考。"}
+            }
+          ]
+        }
+        """.utf8),
       statusCode: 200
     )
     let service = AIPublishingAssistantService(
@@ -1107,15 +1117,16 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
 
   func testChatReplyUsesSelectedCustomModel() async throws {
     let transport = RecordingAIChatTransport(
-      data: Data("""
-      {
-        "choices": [
-          {
-            "message": {"role":"assistant","content":"自定义模型已用于文章讨论。"}
-          }
-        ]
-      }
-      """.utf8),
+      data: Data(
+        """
+        {
+          "choices": [
+            {
+              "message": {"role":"assistant","content":"自定义模型已用于文章讨论。"}
+            }
+          ]
+        }
+        """.utf8),
       statusCode: 200
     )
     let service = AIPublishingAssistantService(
@@ -1189,11 +1200,14 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
         modelGrade: .custom,
         selectedModel: "stream-chat-model"
       ),
-      config: AIProviderConfig(
-        preset: .custom,
-        baseURL: "https://api.openai.com/v1",
-        model: "gpt-4.1-mini",
-        requiresAPIKey: false
+      config: capabilitySupportedConfig(
+        AIProviderConfig(
+          preset: .custom,
+          baseURL: "https://api.openai.com/v1",
+          model: "stream-chat-model",
+          requiresAPIKey: false
+        ),
+        capabilities: [.streamingResponse]
       ),
       apiKey: nil
     )
@@ -1224,16 +1238,17 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
 
   func testGeneralChatReplyOmitsCurrentArticleAndPublishingContext() async throws {
     let transport = RecordingAIChatTransport(
-      data: Data("""
-      {
-        "model": "local-test",
-        "choices": [
-          {
-            "message": {"role":"assistant","content":"可以，下面是一个通用回答。"}
-          }
-        ]
-      }
-      """.utf8),
+      data: Data(
+        """
+        {
+          "model": "local-test",
+          "choices": [
+            {
+              "message": {"role":"assistant","content":"可以，下面是一个通用回答。"}
+            }
+          ]
+        }
+        """.utf8),
       statusCode: 200
     )
     let service = AIPublishingAssistantService(
@@ -1361,16 +1376,17 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
 
   func testChatReplySendsUserImageAttachmentsAsContentParts() async throws {
     let transport = RecordingAIChatTransport(
-      data: Data("""
-      {
-        "model": "vision-test",
-        "choices": [
-          {
-            "message": {"role":"assistant","content":"这张图可以作为封面，但需要补 alt。"}
-          }
-        ]
-      }
-      """.utf8),
+      data: Data(
+        """
+        {
+          "model": "vision-test",
+          "choices": [
+            {
+              "message": {"role":"assistant","content":"这张图可以作为封面，但需要补 alt。"}
+            }
+          ]
+        }
+        """.utf8),
       statusCode: 200
     )
     let service = AIPublishingAssistantService(
@@ -1383,11 +1399,14 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
       slug: "ai-image-context",
       bodyMarkdown: "正文。"
     )
-    let config = AIProviderConfig(
-      preset: .custom,
-      baseURL: "https://api.openai.example/v1",
-      model: "vision-test",
-      requiresAPIKey: false
+    let config = capabilitySupportedConfig(
+      AIProviderConfig(
+        preset: .custom,
+        baseURL: "https://api.openai.example/v1",
+        model: "vision-test",
+        requiresAPIKey: false
+      ),
+      capabilities: [.visionInput]
     )
     let attachment = AIChatImageAttachment(
       filename: "cover.png",
@@ -1430,16 +1449,17 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
 
   func testChatReplyAllowsImageOnlyUserMessage() async throws {
     let transport = RecordingAIChatTransport(
-      data: Data("""
-      {
-        "model": "vision-test",
-        "choices": [
-          {
-            "message": {"role":"assistant","content":"我看到了这张图片。"}
-          }
-        ]
-      }
-      """.utf8),
+      data: Data(
+        """
+        {
+          "model": "vision-test",
+          "choices": [
+            {
+              "message": {"role":"assistant","content":"我看到了这张图片。"}
+            }
+          ]
+        }
+        """.utf8),
       statusCode: 200
     )
     let service = AIPublishingAssistantService(
@@ -1461,11 +1481,14 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
           AIPublishingChatMessage(role: .user, content: "", imageAttachments: [attachment])
         ]
       ),
-      config: AIProviderConfig(
-        preset: .custom,
-        baseURL: "https://api.openai.example/v1",
-        model: "vision-test",
-        requiresAPIKey: false
+      config: capabilitySupportedConfig(
+        AIProviderConfig(
+          preset: .custom,
+          baseURL: "https://api.openai.example/v1",
+          model: "vision-test",
+          requiresAPIKey: false
+        ),
+        capabilities: [.visionInput]
       ),
       apiKey: nil
     )
@@ -1483,8 +1506,6 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     let imageURL = try XCTUnwrap(parts[0]["image_url"] as? [String: Any])
     XCTAssertEqual(imageURL["url"] as? String, "data:image/png;base64,aW1hZ2Utb25seQ==")
   }
-
-
 
   func testChatMessageDecodesLegacyRecordsWithoutImageAttachments() throws {
     let message = AIPublishingChatMessage(
@@ -1523,7 +1544,9 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
             AIPublishingChatMessage(role: .user, content: "   ")
           ]
         ),
-        config: AIProviderConfig(preset: .local, baseURL: "http://127.0.0.1:11434/v1", model: "local", requiresAPIKey: false),
+        config: AIProviderConfig(
+          preset: .local, baseURL: "http://127.0.0.1:11434/v1", model: "local",
+          requiresAPIKey: false),
         apiKey: nil
       )
     ) { error in
@@ -1533,22 +1556,22 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
 
   func testMetadataSuggestionParsesStructuredResponseAndIncludesContext() async throws {
     let responseContent = """
-    TITLE:
-    - Mac AI 发布助手
-    - 用 AI 检查个人网站文章
+      TITLE:
+      - Mac AI 发布助手
+      - 用 AI 检查个人网站文章
 
-    SLUG:
-    - mac-ai-publishing-assistant
-    - personal-site-ai-review
+      SLUG:
+      - mac-ai-publishing-assistant
+      - personal-site-ai-review
 
-    SUMMARY:
-    用 Mac 版发布控制台生成可落地的标题、路径、摘要和标签建议，发布前仍由作者确认。
+      SUMMARY:
+      用 Mac 版发布控制台生成可落地的标题、路径、摘要和标签建议，发布前仍由作者确认。
 
-    TAGS:
-    - Mac
-    - AI
-    - Publishing
-    """
+      TAGS:
+      - Mac
+      - AI
+      - Publishing
+      """
     let responsePayload: [String: Any] = [
       "model": "local-test",
       "choices": [
@@ -1556,8 +1579,8 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
           "message": [
             "role": "assistant",
             "content": responseContent,
-          ],
-        ],
+          ]
+        ]
       ],
     ]
     let transport = RecordingAIChatTransport(
@@ -1625,8 +1648,8 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
           "message": [
             "role": "assistant",
             "content": "没有足够信息。",
-          ],
-        ],
+          ]
+        ]
       ],
     ]
     let responseData = try! JSONSerialization.data(withJSONObject: responsePayload)
@@ -1641,7 +1664,9 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     await XCTAssertThrowsErrorAsync(
       try await service.suggestMetadata(
         for: AIPublishingActionRequest(kind: .titleSummaryTags, draft: draft, profile: profile),
-        config: AIProviderConfig(preset: .local, baseURL: "http://127.0.0.1:11434/v1", model: "local", requiresAPIKey: false),
+        config: AIProviderConfig(
+          preset: .local, baseURL: "http://127.0.0.1:11434/v1", model: "local",
+          requiresAPIKey: false),
         apiKey: nil
       )
     ) { error in
@@ -1676,8 +1701,8 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
             "content": """
             {"items":[{"id":"\(attachmentID.uuidString)","alt_text":"用于说明图片发布工作流的截图","caption":"图片工作台检查发布前图片字段。","reason":"结合文章摘要和文件路径生成。"}]}
             """,
-          ],
-        ],
+          ]
+        ]
       ],
     ]
     let transport = RecordingAIChatTransport(
@@ -1739,14 +1764,16 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     )
     let responsePayload: [String: Any] = [
       "model": "local-test",
-      "choices": [[
-        "message": [
-          "role": "assistant",
-          "content": """
-          {"items":[{"id":"\(attachmentID.uuidString)","alt":"施工现场安全检查记录","caption":"","reason":"根据实际画面生成。"}]}
-          """,
+      "choices": [
+        [
+          "message": [
+            "role": "assistant",
+            "content": """
+            {"items":[{"id":"\(attachmentID.uuidString)","alt":"施工现场安全检查记录","caption":"","reason":"根据实际画面生成。"}]}
+            """,
+          ]
         ]
-      ]],
+      ],
     ]
     let transport = RecordingAIChatTransport(
       data: try JSONSerialization.data(withJSONObject: responsePayload),
@@ -1770,11 +1797,14 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
         )
       ],
       profile: .defaultProfile,
-      config: AIProviderConfig(
-        preset: .local,
-        baseURL: "http://127.0.0.1:11434/v1",
-        model: "local-test",
-        requiresAPIKey: false
+      config: capabilitySupportedConfig(
+        AIProviderConfig(
+          preset: .local,
+          baseURL: "http://127.0.0.1:11434/v1",
+          model: "local-test",
+          requiresAPIKey: false
+        ),
+        capabilities: [.visionInput]
       ),
       apiKey: nil
     )
@@ -1789,18 +1819,21 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     let userMessage = try XCTUnwrap(messages.last)
     let content = try XCTUnwrap(userMessage["content"] as? [[String: Any]])
 
-    XCTAssertTrue(content.contains {
-      ($0["type"] as? String) == "text"
-        && ($0["text"] as? String)?.contains(target.id) == true
-    })
-    XCTAssertTrue(content.contains {
-      guard ($0["type"] as? String) == "image_url",
-            let imageURL = $0["image_url"] as? [String: Any],
-            let url = imageURL["url"] as? String else {
-        return false
-      }
-      return url.hasPrefix("data:image/png;base64,")
-    })
+    XCTAssertTrue(
+      content.contains {
+        ($0["type"] as? String) == "text"
+          && ($0["text"] as? String)?.contains(target.id) == true
+      })
+    XCTAssertTrue(
+      content.contains {
+        guard ($0["type"] as? String) == "image_url",
+          let imageURL = $0["image_url"] as? [String: Any],
+          let url = imageURL["url"] as? String
+        else {
+          return false
+        }
+        return url.hasPrefix("data:image/png;base64,")
+      })
   }
 
   func testConvergedAssetPackPromptUsesOnlySelectedAssets() {
@@ -1880,5 +1913,26 @@ final class AIPublishingAssistantServiceTests: XCTestCase {
     XCTAssertTrue(prompt.contains("技术准确性"))
     XCTAssertFalse(prompt.contains("SEO 与可读性"))
     XCTAssertFalse(prompt.contains("SSG 兼容"))
+  }
+
+  private func capabilitySupportedConfig(
+    _ base: AIProviderConfig,
+    capabilities: Set<AIProviderCapabilityProbeKind>
+  ) -> AIProviderConfig {
+    var config = base
+    let now = Date()
+    let key = AIProviderCapabilityCacheKey(config: config)
+    var evidence = config.capabilityProbeEvidence ?? [:]
+    for capability in capabilities {
+      evidence[capability] = AIProviderCapabilityProbeEvidence(
+        key: key,
+        capability: capability,
+        outcome: .supported,
+        observedAt: now,
+        expiresAt: now.addingTimeInterval(60)
+      )
+    }
+    config.capabilityProbeEvidence = evidence
+    return config
   }
 }

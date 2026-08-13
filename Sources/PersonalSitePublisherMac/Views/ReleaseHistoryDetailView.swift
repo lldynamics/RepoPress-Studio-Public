@@ -243,7 +243,7 @@ struct ReleaseHistoryDetailView: View {
       }
     }
     .padding(12)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-history-secondary-metrics")
   }
@@ -270,7 +270,7 @@ struct ReleaseHistoryDetailView: View {
       }
     }
     .padding(12)
-    .background(WorkbenchBackgroundStyle.panel, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("release-history-action-queue")
   }
@@ -292,7 +292,7 @@ struct ReleaseHistoryDetailView: View {
               .foregroundStyle(.secondary)
               .padding(.horizontal, 6)
               .padding(.vertical, 2)
-              .background(WorkbenchBackgroundStyle.badge, in: Capsule())
+              .background(WorkbenchBackgroundStyle.control, in: Capsule())
             Spacer()
             Text(item.priority.localizedDisplayName)
               .font(.caption.weight(.semibold))
@@ -432,7 +432,7 @@ struct ReleaseHistoryDetailView: View {
       }
     }
     .padding(8)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   func deploymentPostPublishChecklist(_ deploymentStatus: DeploymentStatusSnapshot) -> some View {
@@ -465,7 +465,7 @@ struct ReleaseHistoryDetailView: View {
       }
     }
     .padding(8)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   private func deploymentOverviewSummary(_ overview: ReleaseDeploymentOverview) -> some View {
@@ -671,7 +671,7 @@ struct ReleaseHistoryDetailView: View {
           }
         }
         .padding(10)
-        .background(WorkbenchBackgroundStyle.panel, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+        .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
       }
     }
     .padding(14)
@@ -757,7 +757,7 @@ struct ReleaseHistoryDetailView: View {
           .foregroundStyle(.secondary)
       }
       .padding(8)
-      .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
 
       if !readiness.missingRequirements.isEmpty {
         Text("待补齐：\(readiness.missingRequirements.joined(separator: "、"))")

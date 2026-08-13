@@ -3,7 +3,21 @@
   "swiftFormatWarningMaximum": 14570,
   "sourceLineCoveragePercentMinimum": 38.0,
   "swiftTestMinimumCountsByTarget": {
-    "PersonalSitePublisherMacTests": 243,
-    "PublishingWorkbenchCoreTests": 1599
+    "PersonalSitePublisherMacTests": 252,
+    "PublishingWorkbenchCoreTests": 1612
+  },
+  "releasePerformance": {
+    "schemaVersion": 1,
+    "configuration": "release",
+    "minimumSampleCount": 7,
+    "siteMaintenanceRelation": {
+      "sizes": [512, 2048, 4096],
+      "labelGroupSize": 8,
+      "complexity": "fixed-label-density-linear"
+    },
+    "wallTime": {
+      "policy": "trend-only",
+      "blocking": false
+    }
   }
 }

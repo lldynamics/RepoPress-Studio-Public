@@ -28,7 +28,9 @@ struct MarkdownFindMatchSnapshot: Equatable {
       if let currentIndex {
         let nextIndex = (currentIndex + 1) % ranges.count
         target = (nextIndex, nextIndex <= currentIndex)
-      } else if let nextIndex = ranges.firstIndex(where: { $0.location >= NSMaxRange(selectedRange) }) {
+      } else if let nextIndex = ranges.firstIndex(where: {
+        $0.location >= NSMaxRange(selectedRange)
+      }) {
         target = (nextIndex, false)
       } else {
         target = (0, true)
@@ -37,7 +39,9 @@ struct MarkdownFindMatchSnapshot: Equatable {
       if let currentIndex {
         let previousIndex = currentIndex == 0 ? ranges.count - 1 : currentIndex - 1
         target = (previousIndex, previousIndex >= currentIndex)
-      } else if let previousIndex = ranges.lastIndex(where: { NSMaxRange($0) <= selectedRange.location }) {
+      } else if let previousIndex = ranges.lastIndex(where: {
+        NSMaxRange($0) <= selectedRange.location
+      }) {
         target = (previousIndex, false)
       } else {
         target = (ranges.count - 1, true)
@@ -77,6 +81,8 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
   @Published var editorScrollProgress: Double
   @Published var previewScrollProgress: Double
   @Published var editorBodyRevision: UInt64
+  @Published var markdownCursorContextSnapshot: MarkdownCursorContextSnapshot?
+  @Published var markdownCursorCompletionSnapshot: MarkdownCompletionContext?
 
   init(
     editorBody: String,
@@ -93,7 +99,9 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
     previewScrollRestorationUpdate: MarkdownScrollSyncUpdate?,
     editorScrollProgress: Double,
     previewScrollProgress: Double,
-    editorBodyRevision: UInt64
+    editorBodyRevision: UInt64,
+    markdownCursorContextSnapshot: MarkdownCursorContextSnapshot? = nil,
+    markdownCursorCompletionSnapshot: MarkdownCompletionContext? = nil
   ) {
     self.editorBody = editorBody
     self.editorDocument = editorDocument
@@ -110,6 +118,8 @@ final class MarkdownComposerEditorSessionState: ObservableObject {
     self.editorScrollProgress = editorScrollProgress
     self.previewScrollProgress = previewScrollProgress
     self.editorBodyRevision = editorBodyRevision
+    self.markdownCursorContextSnapshot = markdownCursorContextSnapshot
+    self.markdownCursorCompletionSnapshot = markdownCursorCompletionSnapshot
   }
 }
 
@@ -326,6 +336,16 @@ extension MacMarkdownComposerView {
   var editorBodyRevision: UInt64 {
     get { editorSessionState.editorBodyRevision }
     nonmutating set { editorSessionState.editorBodyRevision = newValue }
+  }
+
+  var markdownCursorContextSnapshot: MarkdownCursorContextSnapshot? {
+    get { editorSessionState.markdownCursorContextSnapshot }
+    nonmutating set { editorSessionState.markdownCursorContextSnapshot = newValue }
+  }
+
+  var markdownCursorCompletionSnapshot: MarkdownCompletionContext? {
+    get { editorSessionState.markdownCursorCompletionSnapshot }
+    nonmutating set { editorSessionState.markdownCursorCompletionSnapshot = newValue }
   }
 
   var isImageDropTargeted: Bool {

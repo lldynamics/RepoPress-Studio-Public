@@ -171,7 +171,7 @@ struct KnowledgeLibraryHealthView: View {
       }
     }
     .padding(11)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: 9))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 9))
     .accessibilityElement(children: .combine)
   }
 

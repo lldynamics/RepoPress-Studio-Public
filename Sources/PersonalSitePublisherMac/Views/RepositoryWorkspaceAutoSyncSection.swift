@@ -172,7 +172,7 @@ extension RepositoryWorkspaceView {
           }
         }
         .padding(10)
-        .background(WorkbenchBackgroundStyle.panel, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+        .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("repository-auto-sync-recent-paths")
       }

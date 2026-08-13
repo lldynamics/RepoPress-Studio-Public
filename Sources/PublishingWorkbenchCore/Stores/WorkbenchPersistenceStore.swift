@@ -44,10 +44,11 @@ private enum WorkbenchBackgroundCommitOutcome: Sendable {
 /// cancelled task cannot interrupt an atomic write, so ordering is enforced by
 /// this queue and revision checks instead of task-cancellation assumptions.
 private final class WorkbenchPersistenceCommitCoordinator: @unchecked Sendable {
-  typealias CommitBackgroundSave = @Sendable (
-    WorkbenchPersistence,
-    WorkbenchPreparedPersistenceSave
-  ) throws -> WorkbenchPersistenceSaveResult
+  typealias CommitBackgroundSave =
+    @Sendable (
+      WorkbenchPersistence,
+      WorkbenchPreparedPersistenceSave
+    ) throws -> WorkbenchPersistenceSaveResult
 
   private let queue = DispatchQueue(
     label: "PersonalSitePublisherMac.WorkbenchPersistenceCommit",
@@ -91,20 +92,31 @@ private final class WorkbenchPersistenceCommitCoordinator: @unchecked Sendable {
       try persistence.save(snapshot)
     }
   }
+
+  func saveSynchronously(
+    _ input: WorkbenchPersistenceSnapshotInput,
+    persistence: WorkbenchPersistence
+  ) throws -> WorkbenchPersistenceSaveResult {
+    try queue.sync {
+      try persistence.save(persistence.snapshot(from: input))
+    }
+  }
 }
 
 /// Owns persistence lifecycle state and I/O. The root store supplies a frozen
 /// cross-domain snapshot, keeping persistence from reaching into feature state.
 @MainActor
 final class WorkbenchPersistenceStore: ObservableObject {
-  typealias PrepareBackgroundSave = @Sendable (
-    WorkbenchPersistence,
-    WorkbenchSnapshot
-  ) throws -> WorkbenchPreparedPersistenceSave
-  typealias CommitBackgroundSave = @Sendable (
-    WorkbenchPersistence,
-    WorkbenchPreparedPersistenceSave
-  ) throws -> WorkbenchPersistenceSaveResult
+  typealias PrepareBackgroundSave =
+    @Sendable (
+      WorkbenchPersistence,
+      WorkbenchSnapshot
+    ) throws -> WorkbenchPreparedPersistenceSave
+  typealias CommitBackgroundSave =
+    @Sendable (
+      WorkbenchPersistence,
+      WorkbenchPreparedPersistenceSave
+    ) throws -> WorkbenchPersistenceSaveResult
 
   let persistence: WorkbenchPersistence
   @Published private(set) var hasUnsavedChanges = false
@@ -211,6 +223,14 @@ final class WorkbenchPersistenceStore: ObservableObject {
     saveInBackground(snapshot: snapshot)
   }
 
+  func saveImmediately(input: WorkbenchPersistenceSnapshotInput) {
+    autosaveTask?.cancel()
+    autosaveTask = nil
+    markUnsavedChanges()
+    guard !isRecoveryWriteProtected else { return }
+    saveInBackground(input: input)
+  }
+
   func flush(snapshot: WorkbenchSnapshot) -> Bool {
     autosaveTask?.cancel()
     autosaveTask = nil
@@ -222,6 +242,20 @@ final class WorkbenchPersistenceStore: ObservableObject {
     guard hasUnsavedChanges else { return true }
     status = "正在保存…"
     persist(snapshot)
+    return !hasUnsavedChanges
+  }
+
+  func flush(input: WorkbenchPersistenceSnapshotInput) -> Bool {
+    autosaveTask?.cancel()
+    autosaveTask = nil
+    revisionState.advance()
+    if isRecoveryWriteProtected {
+      status = "恢复保护中：原始数据尚未被覆盖"
+      return true
+    }
+    guard hasUnsavedChanges else { return true }
+    status = "正在保存…"
+    persist(input)
     return !hasUnsavedChanges
   }
 
@@ -239,6 +273,23 @@ final class WorkbenchPersistenceStore: ObservableObject {
       self.autosaveTask = nil
       guard let snapshot = snapshot() else { return }
       self.saveInBackground(snapshot: snapshot)
+    }
+  }
+
+  func scheduleAutosave(input: @escaping @MainActor () -> WorkbenchPersistenceSnapshotInput?) {
+    autosaveTask?.cancel()
+    markUnsavedChanges()
+    guard !isRecoveryWriteProtected else { return }
+    autosaveTask = Task { [weak self] in
+      do {
+        try await Task.sleep(nanoseconds: 750_000_000)
+      } catch {
+        return
+      }
+      guard !Task.isCancelled, let self else { return }
+      self.autosaveTask = nil
+      guard let input = input() else { return }
+      self.saveInBackground(input: input)
     }
   }
 
@@ -302,13 +353,53 @@ final class WorkbenchPersistenceStore: ObservableObject {
     }
   }
 
+  private func saveInBackground(input: WorkbenchPersistenceSnapshotInput) {
+    guard hasUnsavedChanges, !isRecoveryWriteProtected else { return }
+    let expectedRevision = revisionState.current()
+    let persistence = persistence
+    let prepareBackgroundSave = prepareBackgroundSave
+    let commitCoordinator = commitCoordinator
+    let revisionState = revisionState
+    status = "正在后台保存…"
+    backgroundSaveTask = Task.detached {
+      [
+        weak self,
+        persistence,
+        input,
+        expectedRevision,
+        prepareBackgroundSave,
+        commitCoordinator,
+        revisionState,
+      ] in
+      let outcome: WorkbenchBackgroundCommitOutcome
+      do {
+        // The frozen input contains no store reference. Normalization and
+        // encoding therefore stay on this detached persistence worker.
+        let snapshot = persistence.snapshot(from: input)
+        let prepared = try prepareBackgroundSave(persistence, snapshot)
+        outcome = commitCoordinator.commit(
+          prepared,
+          persistence: persistence,
+          expectedRevision: expectedRevision,
+          revisionState: revisionState
+        )
+      } catch {
+        outcome = .attempted(
+          .failure(WorkbenchBackgroundSaveError(message: error.localizedDescription)),
+          revisionWasCurrentAfterAttempt: revisionState.isCurrent(expectedRevision)
+        )
+      }
+      await self?.finishBackgroundSave(outcome, expectedRevision: expectedRevision)
+    }
+  }
+
   private func finishBackgroundSave(
     _ outcome: WorkbenchBackgroundCommitOutcome,
     expectedRevision: UInt64
   ) {
     guard revisionState.isCurrent(expectedRevision) else { return }
     guard case .attempted(let result, let revisionWasCurrentAfterAttempt) = outcome,
-          revisionWasCurrentAfterAttempt
+      revisionWasCurrentAfterAttempt
     else {
       return
     }
@@ -325,6 +416,19 @@ final class WorkbenchPersistenceStore: ObservableObject {
       finish(
         try commitCoordinator.saveSynchronously(
           snapshot,
+          persistence: persistence
+        )
+      )
+    } catch {
+      recordFailure(error)
+    }
+  }
+
+  private func persist(_ input: WorkbenchPersistenceSnapshotInput) {
+    do {
+      finish(
+        try commitCoordinator.saveSynchronously(
+          input,
           persistence: persistence
         )
       )

@@ -143,7 +143,7 @@ struct RepositoryHTMLSourceInspectorView: View {
             .textSelection(.enabled)
             .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+            .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
         }
       } else {
       Text(statusState.repositoryReport == nil ? "扫描仓库后显示 Git 状态。" : "当前扫描中没有这个文件的 Git 变更。")

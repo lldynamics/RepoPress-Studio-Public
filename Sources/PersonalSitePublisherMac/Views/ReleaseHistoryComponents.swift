@@ -39,7 +39,7 @@ struct DeploymentStatusTrendChart: View {
       }
     }
     .padding(8)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
   }
 
   private func height(for level: DeploymentStatusLevel) -> CGFloat {

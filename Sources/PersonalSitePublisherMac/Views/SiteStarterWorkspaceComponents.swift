@@ -166,7 +166,7 @@ struct SiteStarterWizardStepNavigation: View {
                 ? AnyShapeStyle(
                   WorkbenchTheme.navigationSelection.opacity(WorkbenchOpacity.accentBackground)
                 )
-                : WorkbenchBackgroundStyle.subtle,
+                : WorkbenchBackgroundStyle.card,
               in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control)
             )
             .overlay {
@@ -298,7 +298,7 @@ struct SiteStarterThemeCloneGuide: View {
     }
     .padding(12)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .combine)
     .accessibilityLabel("现成主题导入指引")
   }
@@ -708,7 +708,7 @@ struct SiteStarterTemplatePreviewCard: View {
           .font(.caption.weight(.semibold))
           .padding(.horizontal, 7)
           .padding(.vertical, 4)
-          .background(WorkbenchBackgroundStyle.badge, in: Capsule())
+          .background(WorkbenchBackgroundStyle.control, in: Capsule())
       }
 
       VStack(alignment: .leading, spacing: 7) {

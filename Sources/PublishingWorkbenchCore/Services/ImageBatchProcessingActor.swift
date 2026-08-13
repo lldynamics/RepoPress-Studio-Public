@@ -68,14 +68,19 @@ public final class ImageProcessingCancellationToken: @unchecked Sendable {
   }
 }
 
-/// Serializes image work away from the main actor. Keeping the limit at one
-/// avoids memory spikes while decoding large images and makes cancellation
-/// deterministic between drafts.
+/// Serializes image work away from the main actor. Admission is bounded by
+/// both CPU slots and an estimated decoded-memory budget, while cancellation
+/// remains deterministic between drafts.
 public actor ImageBatchProcessingActor {
   private let service: SiteImageWorkbenchService
+  private let memoryBudget: ImageBatchMemoryBudget
 
-  public init(service: SiteImageWorkbenchService = SiteImageWorkbenchService()) {
+  public init(
+    service: SiteImageWorkbenchService = SiteImageWorkbenchService(),
+    memoryBudget: ImageBatchMemoryBudget = .automatic()
+  ) {
     self.service = service
+    self.memoryBudget = memoryBudget
   }
 
   public func process(
@@ -86,7 +91,8 @@ public actor ImageBatchProcessingActor {
     cancellationToken: ImageProcessingCancellationToken,
     progress: @MainActor @Sendable @escaping (ImageBatchProgress) -> Void
   ) async throws -> ImageBatchProcessingResult {
-    let outputDirectory = destinationRoot
+    let outputDirectory =
+      destinationRoot
       .appendingPathComponent(".image-batch-\(UUID().uuidString)", isDirectory: true)
     var keepOutputDirectory = false
     defer {
@@ -94,13 +100,17 @@ public actor ImageBatchProcessingActor {
         do {
           try FileManager.default.removeItem(at: outputDirectory)
         } catch {
-          logger.warning("无法删除输出目录 \(outputDirectory.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+          logger.warning(
+            "无法删除输出目录 \(outputDirectory.path, privacy: .public): \(error.localizedDescription, privacy: .public)"
+          )
         }
       }
     }
 
     try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
-    await progress(ImageBatchProgress(operation: operation, completedDraftCount: 0, totalDraftCount: drafts.count))
+    await progress(
+      ImageBatchProgress(
+        operation: operation, completedDraftCount: 0, totalDraftCount: drafts.count))
 
     var updatedDraftsByID: [UUID: ArticleDraft] = [:]
     var optimizedCount = 0
@@ -108,43 +118,59 @@ public actor ImageBatchProcessingActor {
     var savedBytes: Int64 = 0
     var firstMessageByDraftIndex: [Int: String] = [:]
 
-    // Image encoders are CPU and memory heavy. A bounded task group lets
-    // Apple Silicon use several cores without decoding every draft at once.
+    // Image encoders are CPU and memory heavy. Admission is bounded by both
+    // CPU slots and estimated decoded bytes; an oversized draft runs alone.
     // Each attachment destination is UUID-based, so drafts can safely share
     // the staging directory.
     let service = self.service
-    let concurrencyLimit = min(
-      drafts.count,
-      max(1, ProcessInfo.processInfo.activeProcessorCount / 2)
-    )
-    var nextDraftIndex = 0
+    let workItems = drafts.enumerated().map { index, draft in
+      ImageBatchMemoryScheduler.WorkItem(
+        index: index,
+        estimatedBytes: memoryBudget.estimatedBytes(
+          for: draft,
+          includedAttachmentIDs: includedAttachmentIDsByDraftID[draft.id],
+          operation: operation
+        )
+      )
+    }
     var completedDraftCount = 0
     try await withThrowingTaskGroup(
       of: (Int, ImageOptimizationResult).self
     ) { group in
-      for _ in 0..<concurrencyLimit {
-        let draftIndex = nextDraftIndex
-        nextDraftIndex += 1
-        let draft = drafts[draftIndex]
-        let includedAttachmentIDs = includedAttachmentIDsByDraftID[draft.id]
-        group.addTask {
-          try Task.checkCancellation()
-          try cancellationToken.throwIfCancelled()
-          let result = try Self.process(
-            service: service,
-            operation: operation,
-            draft: draft,
-            includedAttachmentIDs: includedAttachmentIDs,
-            destinationDirectory: outputDirectory,
-            cancellationToken: cancellationToken
-          )
-          try Task.checkCancellation()
-          try cancellationToken.throwIfCancelled()
-          return (draftIndex, result)
+      var scheduler = ImageBatchMemoryScheduler(
+        cpuLimit: min(drafts.count, memoryBudget.cpuLimit),
+        byteBudget: memoryBudget.byteBudget
+      )
+
+      func addRunnableTasks() throws {
+        try cancellationToken.throwIfCancelled()
+        while let workItem = scheduler.nextRunnable(in: workItems) {
+          guard scheduler.acquire(workItem) else { break }
+          let draftIndex = workItem.index
+          let draft = drafts[draftIndex]
+          let includedAttachmentIDs = includedAttachmentIDsByDraftID[draft.id]
+          group.addTask {
+            try Task.checkCancellation()
+            try cancellationToken.throwIfCancelled()
+            let result = try Self.process(
+              service: service,
+              operation: operation,
+              draft: draft,
+              includedAttachmentIDs: includedAttachmentIDs,
+              destinationDirectory: outputDirectory,
+              cancellationToken: cancellationToken
+            )
+            try Task.checkCancellation()
+            try cancellationToken.throwIfCancelled()
+            return (draftIndex, result)
+          }
         }
       }
 
+      try addRunnableTasks()
+
       while let (draftIndex, result) = try await group.next() {
+        _ = scheduler.complete(index: draftIndex)
         try cancellationToken.throwIfCancelled()
         let draft = drafts[draftIndex]
         if result.optimizedCount > 0 {
@@ -157,32 +183,13 @@ public actor ImageBatchProcessingActor {
           firstMessageByDraftIndex[draftIndex] = message
         }
         completedDraftCount += 1
-        await progress(ImageBatchProgress(
-          operation: operation,
-          completedDraftCount: completedDraftCount,
-          totalDraftCount: drafts.count
-        ))
-
-        guard nextDraftIndex < drafts.count else { continue }
-        let nextIndex = nextDraftIndex
-        nextDraftIndex += 1
-        let nextDraft = drafts[nextIndex]
-        let nextIncludedAttachmentIDs = includedAttachmentIDsByDraftID[nextDraft.id]
-        group.addTask {
-          try Task.checkCancellation()
-          try cancellationToken.throwIfCancelled()
-          let result = try Self.process(
-            service: service,
+        await progress(
+          ImageBatchProgress(
             operation: operation,
-            draft: nextDraft,
-            includedAttachmentIDs: nextIncludedAttachmentIDs,
-            destinationDirectory: outputDirectory,
-            cancellationToken: cancellationToken
-          )
-          try Task.checkCancellation()
-          try cancellationToken.throwIfCancelled()
-          return (nextIndex, result)
-        }
+            completedDraftCount: completedDraftCount,
+            totalDraftCount: drafts.count
+          ))
+        try addRunnableTasks()
       }
     }
 

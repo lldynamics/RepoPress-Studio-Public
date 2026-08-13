@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import PublishingWorkbenchCore
 
 @MainActor
@@ -16,14 +17,166 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     XCTAssertFalse(preflight.risk.requiresExplicitConfirmation)
   }
 
+  func testRegistryGeneratesClosedNativeToolSchemasFromTheCommandCatalog() throws {
+    let definitions = WorkbenchAutomationRegistry.agentToolDefinitions
+
+    XCTAssertEqual(
+      definitions.map(\.function.name),
+      WorkbenchAutomationRegistry.descriptors.map { $0.id.rawValue }
+    )
+    XCTAssertTrue(definitions.allSatisfy { $0.type == "function" })
+    for definition in definitions {
+      guard case .object(let schema) = definition.function.parameters else {
+        return XCTFail("Expected object schema for \(definition.function.name)")
+      }
+      XCTAssertEqual(schema["type"], .string("object"))
+      XCTAssertEqual(schema["additionalProperties"], .bool(false))
+      XCTAssertNotNil(schema["properties"])
+      XCTAssertNotNil(schema["required"])
+    }
+
+    let openSection = try XCTUnwrap(
+      definitions.first { $0.function.name == WorkbenchAutomationCommandID.openSection.rawValue }
+    )
+    guard case .object(let openSchema) = openSection.function.parameters,
+      case .object(let properties)? = openSchema["properties"],
+      case .object(let section)? = properties["section"],
+      case .array(let sectionEnum)? = section["enum"]
+    else {
+      return XCTFail("Expected openSection section enum")
+    }
+    let advertisedSections = sectionEnum.compactMap { value -> String? in
+      guard case .string(let raw) = value else { return nil }
+      return raw
+    }
+    XCTAssertEqual(
+      advertisedSections,
+      WorkspaceVisibilityPolicy.commandPaletteSections.map(\.rawValue)
+    )
+    XCTAssertFalse(advertisedSections.contains(WorkspaceSection.images.rawValue))
+    XCTAssertFalse(WorkbenchAutomationRegistry.promptCatalog.contains("section: images"))
+  }
+
+  func testEveryRegistryCommandSchemaParsesAndPassesTheSharedValidator() throws {
+    let draftID = UUID()
+    let now = Date()
+    let draftVersions = [draftID: now]
+    let argumentsByCommand: [WorkbenchAutomationCommandID: String] = [
+      .openSection: #"{"section":"writing"}"#,
+      .selectDraft: #"{"draftID":"\#(draftID.uuidString)"}"#,
+      .createDraft: #"{"value":"New draft"}"#,
+      .focusEditor: #"{"draftID":"\#(draftID.uuidString)","editorField":"body"}"#,
+      .showInspector: "{}",
+      .runPreflight: #"{"draftID":"\#(draftID.uuidString)"}"#,
+      .refreshPublishPreview: #"{"draftID":"\#(draftID.uuidString)"}"#,
+      .saveWorkbench: "{}",
+      .updateMetadata:
+        #"{"draftID":"\#(draftID.uuidString)","metadataField":"title","value":"Title"}"#,
+      .appendToBody: #"{"draftID":"\#(draftID.uuidString)","content":"Append"}"#,
+      .replaceBody: #"{"draftID":"\#(draftID.uuidString)","content":"Replace"}"#,
+      .deleteDraft: #"{"draftID":"\#(draftID.uuidString)"}"#,
+      .writeLocalRepository: #"{"draftID":"\#(draftID.uuidString)"}"#,
+      .publishOnline: "{}",
+    ]
+
+    XCTAssertEqual(Set(argumentsByCommand.keys), Set(WorkbenchAutomationCommandID.allCases))
+    for definition in WorkbenchAutomationRegistry.agentToolDefinitions {
+      let command = try XCTUnwrap(
+        WorkbenchAutomationCommandID(rawValue: definition.function.name)
+      )
+      let arguments = try XCTUnwrap(argumentsByCommand[command])
+      let invocation = try WorkbenchAutomationRegistry.agentInvocation(
+        for: AIToolCall(
+          id: "roundtrip-\(command.rawValue)",
+          function: AIToolFunctionCall(name: command.rawValue, arguments: arguments)
+        ),
+        draftVersions: draftVersions
+      )
+
+      XCTAssertEqual(invocation.step.command, command)
+      XCTAssertNoThrow(try WorkbenchAutomationPlanValidator.validateArguments(invocation.step))
+    }
+  }
+
+  func testMetadataConditionsUseTheSameParserAndValidatorRules() throws {
+    let draftID = UUID()
+    let draftVersions = [draftID: Date()]
+    let validArguments = [
+      #"{"draftID":"\#(draftID.uuidString)","metadataField":"tags","value":"swift"}"#,
+      #"{"draftID":"\#(draftID.uuidString)","metadataField":"tags","values":["swift","macOS"]}"#,
+    ]
+
+    for (index, arguments) in validArguments.enumerated() {
+      let invocation = try WorkbenchAutomationRegistry.agentInvocation(
+        for: AIToolCall(
+          id: "tags-\(index)",
+          function: AIToolFunctionCall(name: "updateMetadata", arguments: arguments)
+        ),
+        draftVersions: draftVersions
+      )
+      XCTAssertNoThrow(try WorkbenchAutomationPlanValidator.validateArguments(invocation.step))
+    }
+
+    assertAgentArgumentsRejected(
+      command: .updateMetadata,
+      arguments: #"{"draftID":"\#(draftID.uuidString)","metadataField":"tags"}"#,
+      draftVersions: draftVersions
+    )
+    assertAgentArgumentsRejected(
+      command: .updateMetadata,
+      arguments:
+        #"{"draftID":"\#(draftID.uuidString)","metadataField":"title","values":["wrong"]}"#,
+      draftVersions: draftVersions
+    )
+  }
+
+  func testAgentArgumentsRejectExtraNullAndInvalidEnumValues() {
+    let draftID = UUID()
+    let draftVersions = [draftID: Date()]
+
+    assertAgentArgumentsRejected(
+      command: .showInspector,
+      arguments: #"{"extra":true}"#,
+      draftVersions: draftVersions
+    )
+    assertAgentArgumentsRejected(
+      command: .createDraft,
+      arguments: #"{"value":null}"#,
+      draftVersions: draftVersions
+    )
+    assertAgentArgumentsRejected(
+      command: .openSection,
+      arguments: #"{"section":"images"}"#,
+      draftVersions: draftVersions
+    )
+    assertAgentArgumentsRejected(
+      command: .focusEditor,
+      arguments: #"{"draftID":"\#(draftID.uuidString)","editorField":"terminal"}"#,
+      draftVersions: draftVersions
+    )
+    assertAgentArgumentsRejected(
+      command: .updateMetadata,
+      arguments: #"{"draftID":"\#(draftID.uuidString)","metadataField":"author","value":"x"}"#,
+      draftVersions: draftVersions
+    )
+
+    let manuallyExtraneous = WorkbenchAutomationStep(
+      command: .showInspector,
+      arguments: WorkbenchAutomationArguments(value: "not allowed")
+    )
+    XCTAssertThrowsError(
+      try WorkbenchAutomationPlanValidator.validateArguments(manuallyExtraneous)
+    )
+  }
+
   func testPublishPlanTargetsAllPendingSiteChangesInsteadOfCurrentDraft() throws {
     let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationPublishPlan")
     let draft = try XCTUnwrap(store.selectedDraft)
     let response = """
-    <workbench_automation_plan>
-    {"goal":"发布全部变更","steps":[{"command":"publishOnline","arguments":{}}]}
-    </workbench_automation_plan>
-    """
+      <workbench_automation_plan>
+      {"goal":"发布全部变更","steps":[{"command":"publishOnline","arguments":{}}]}
+      </workbench_automation_plan>
+      """
 
     let parsed = WorkbenchAutomationPlanParser.parse(response, currentDraft: draft)
     let step = try XCTUnwrap(parsed.plan?.steps.first)
@@ -37,17 +190,17 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationPlanParser")
     let draft = try XCTUnwrap(store.selectedDraft)
     let response = """
-    我可以先检查文章，再等待你确认是否修改摘要。
-    <workbench_automation_plan>
-    {
-      "goal": "检查并补全摘要",
-      "steps": [
-        {"command": "runPreflight", "arguments": {"draftID": "\(draft.id.uuidString)"}},
-        {"command": "updateMetadata", "arguments": {"draftID": "\(draft.id.uuidString)", "metadataField": "summary", "value": "新的文章摘要"}}
-      ]
-    }
-    </workbench_automation_plan>
-    """
+      我可以先检查文章，再等待你确认是否修改摘要。
+      <workbench_automation_plan>
+      {
+        "goal": "检查并补全摘要",
+        "steps": [
+          {"command": "runPreflight", "arguments": {"draftID": "\(draft.id.uuidString)"}},
+          {"command": "updateMetadata", "arguments": {"draftID": "\(draft.id.uuidString)", "metadataField": "summary", "value": "新的文章摘要"}}
+        ]
+      }
+      </workbench_automation_plan>
+      """
 
     let parsed = WorkbenchAutomationPlanParser.parse(response, currentDraft: draft)
     let plan = try XCTUnwrap(parsed.plan)
@@ -63,10 +216,10 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     let store = try TestWorkbenchFactory.makeStore(prefix: "AutomationUnknownCommand")
     let draft = try XCTUnwrap(store.selectedDraft)
     let response = """
-    <workbench_automation_plan>
-    {"goal":"运行任意代码","steps":[{"command":"runShell","arguments":{"value":"rm -rf /"}}]}
-    </workbench_automation_plan>
-    """
+      <workbench_automation_plan>
+      {"goal":"运行任意代码","steps":[{"command":"runShell","arguments":{"value":"rm -rf /"}}]}
+      </workbench_automation_plan>
+      """
 
     let parsed = WorkbenchAutomationPlanParser.parse(response, currentDraft: draft)
 
@@ -182,5 +335,32 @@ final class WorkbenchAutomationServiceTests: XCTestCase {
     XCTAssertEqual(decoded.automationRunRecords.first?.goal, record.goal)
     XCTAssertEqual(decoded.automationRunRecords.first?.steps.map(\.command), [.saveWorkbench])
     XCTAssertEqual(decoded.formatVersion, WorkbenchSnapshot.currentFormatVersion)
+  }
+
+  private func assertAgentArgumentsRejected(
+    command: WorkbenchAutomationCommandID,
+    arguments: String,
+    draftVersions: [UUID: Date],
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    XCTAssertThrowsError(
+      try WorkbenchAutomationRegistry.agentInvocation(
+        for: AIToolCall(
+          id: "rejected-\(command.rawValue)",
+          function: AIToolFunctionCall(name: command.rawValue, arguments: arguments)
+        ),
+        draftVersions: draftVersions
+      ),
+      file: file,
+      line: line
+    ) { error in
+      XCTAssertEqual(
+        error as? WorkbenchAutomationAgentToolError,
+        .argumentMismatch,
+        file: file,
+        line: line
+      )
+    }
   }
 }

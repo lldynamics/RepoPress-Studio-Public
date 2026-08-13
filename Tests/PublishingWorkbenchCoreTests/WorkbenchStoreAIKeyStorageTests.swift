@@ -37,23 +37,33 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
       accountPrefix: "ai-key-restore-tests",
       inMemory: true
     )
-    var profile = SiteProfile.defaultProfile
-    profile.aiProviderConfig = AIProviderConfig(
+    var legacyProfile = SiteProfile.defaultProfile
+    legacyProfile.aiConnectionProfileID = nil
+    legacyProfile.aiProviderConfig = AIProviderConfig(
       preset: .custom,
       baseURL: "https://api.openai.com/v1",
       model: "gpt-4.1-mini",
       requiresAPIKey: true
     )
-    try tokenStore.saveAIToken("persisted-token", for: profile)
+    try tokenStore.saveAIToken("persisted-token", for: legacyProfile)
 
-    let store = WorkbenchStore(
+    let restoredStore = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
+      initialSnapshotSource: .preloaded(
+        WorkbenchSnapshotLoadResult(
+          snapshot: WorkbenchSnapshot(
+            profiles: [legacyProfile],
+            activeProfileID: legacyProfile.id,
+            drafts: [ArticleDraft.empty(profile: legacyProfile)],
+            releaseRecords: []
+          )
+        )),
       keychainTokenStore: tokenStore
     )
-    store.updateActiveProfile { $0.aiProviderConfig = profile.aiProviderConfig }
-    store.refreshAIKeyAvailability()
+    restoredStore.refreshAIKeyAvailability()
 
-    XCTAssertTrue(store.aiTokenAvailability.hasToken)
+    XCTAssertNotNil(restoredStore.activeProfile.aiConnectionProfileID)
+    XCTAssertTrue(restoredStore.aiTokenAvailability.hasToken)
   }
 
   func testSaveAIAPIKeyStoresTokenAndUpdatesAvailability() throws {
@@ -183,18 +193,21 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
       accountPrefix: "ai-key-connection-sync-tests",
       inMemory: true
     )
+    let credentialStore = AICredentialStore(keychainTokenStore: tokenStore)
     let transport = RecordingAIChatTransport(
-      data: Data("""
-      {
-        "model": "deepseek-test",
-        "choices": [{"message":{"role":"assistant","content":"OK"}}]
-      }
-      """.utf8),
+      data: Data(
+        """
+        {
+          "model": "deepseek-test",
+          "choices": [{"message":{"role":"assistant","content":"OK"}}]
+        }
+        """.utf8),
       statusCode: 200
     )
     let store = WorkbenchStore(
       persistence: WorkbenchPersistence(fileURL: persistenceURL),
       keychainTokenStore: tokenStore,
+      aiCredentialStore: credentialStore,
       aiConnectionTestService: AIConnectionTestService(
         client: AIChatCompletionClient(transport: transport)
       )
@@ -207,7 +220,11 @@ final class WorkbenchStoreAIKeyStorageTests: XCTestCase {
         requiresAPIKey: true
       )
     }
-    try tokenStore.saveAIToken("externally-restored-token", for: store.activeProfile)
+    try credentialStore.saveToken(
+      "explicitly-resaved-token",
+      forConnectionProfileID: store.activeAIConnectionProfile.id,
+      legacyProfile: store.activeProfile
+    )
     store.aiStore.grantAIDataSharingConsent()
     store.setAIChatMessage("AI 讨论失败：请先在 Settings 的 AI 页保存 API Key。")
     XCTAssertFalse(store.aiTokenAvailability.hasToken)

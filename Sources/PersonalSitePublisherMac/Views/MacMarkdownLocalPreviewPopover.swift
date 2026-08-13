@@ -2,7 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct MacMarkdownLocalPreviewPopover: View {
-  @ObservedObject var state: WorkbenchLocalSitePreviewFeatureFacade
+  @EnvironmentObject private var state: WorkbenchLocalSitePreviewFeatureFacade
   let currentArticleURL: URL?
 
   @State private var isCheckingReachability = false
@@ -216,7 +216,7 @@ struct MacMarkdownLocalPreviewPopover: View {
     .foregroundStyle(.secondary)
     .padding(9)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: 8))
+    .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: 8))
     .accessibilityIdentifier("markdown-local-preview-diagnostics")
   }
 }

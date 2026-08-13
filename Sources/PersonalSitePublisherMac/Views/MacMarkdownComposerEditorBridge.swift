@@ -8,13 +8,15 @@ extension MacMarkdownComposerView {
   }
 
   func stageEditorBody(replacingBaseBody baseBodyMarkdown: String) {
-    guard let result = store.stageDraftBody(
-      editorBody,
-      for: draft.id,
-      baseRevision: editorBodyRevision,
-      replacingBaseBody: baseBodyMarkdown,
-      notifyEditorObservers: false
-    ) else {
+    guard
+      let result = store.stageDraftBody(
+        editorBody,
+        for: draft.id,
+        baseRevision: editorBodyRevision,
+        replacingBaseBody: baseBodyMarkdown,
+        notifyEditorObservers: false
+      )
+    else {
       return
     }
 
@@ -34,6 +36,7 @@ extension MacMarkdownComposerView {
     refreshFindMatchSnapshot()
     synchronizeDocumentBodyFromBuffer(previousBody: previousBody)
     scheduleMarkdownAnalysis()
+    refreshMarkdownCursorContextSnapshot()
     saveCurrentEditorSession()
   }
 
@@ -51,6 +54,7 @@ extension MacMarkdownComposerView {
     editorBody = buffer.bodyMarkdown
     editorBodyRevision = buffer.revision
     refreshFindMatchSnapshot()
+    refreshMarkdownCursorContextSnapshot()
   }
 
   func applyEditorDocument(from previousDocument: String, to document: String) {
@@ -68,10 +72,12 @@ extension MacMarkdownComposerView {
       return
     }
 
-    guard let parts = frontMatterEditingService.splitDocument(
-      document,
-      profile: activeProfile
-    ) else {
+    guard
+      let parts = frontMatterEditingService.splitDocument(
+        document,
+        profile: activeProfile
+      )
+    else {
       frontMatterIssue = .invalidDelimiter
       return
     }
@@ -109,8 +115,9 @@ extension MacMarkdownComposerView {
 
     let updatedSource = updatedDocument as NSString
     guard updatedSource.length >= bodyUTF16Offset else { return nil }
-    guard updatedSource.substring(to: bodyUTF16Offset)
-      == previousSource.substring(to: bodyUTF16Offset)
+    guard
+      updatedSource.substring(to: bodyUTF16Offset)
+        == previousSource.substring(to: bodyUTF16Offset)
     else {
       return nil
     }
@@ -127,8 +134,9 @@ extension MacMarkdownComposerView {
     // document or rebuilding its front-matter model on every keystroke.
     let documentSource = editorDocument as NSString
     if editorDocumentBodyOffsetCache >= 0,
-       editorDocumentBodyOffsetCache <= documentSource.length,
-       documentSource.substring(from: editorDocumentBodyOffsetCache) == editorBody {
+      editorDocumentBodyOffsetCache <= documentSource.length,
+      documentSource.substring(from: editorDocumentBodyOffsetCache) == editorBody
+    {
       return
     }
 
@@ -146,7 +154,8 @@ extension MacMarkdownComposerView {
         frontMatter: canonicalFrontMatter,
         bodyMarkdown: editorBody
       )
-      editorDocumentBodyOffsetCache = (updatedDocument as NSString).length
+      editorDocumentBodyOffsetCache =
+        (updatedDocument as NSString).length
         - (editorBody as NSString).length
       editorDocument = updatedDocument
       return
@@ -156,7 +165,8 @@ extension MacMarkdownComposerView {
       frontMatter: parts.frontMatter,
       bodyMarkdown: editorBody
     )
-    editorDocumentBodyOffsetCache = (updatedDocument as NSString).length
+    editorDocumentBodyOffsetCache =
+      (updatedDocument as NSString).length
       - (editorBody as NSString).length
     editorDocument = updatedDocument
   }
@@ -171,7 +181,8 @@ extension MacMarkdownComposerView {
       frontMatterIssue = nil
       return
     }
-    editorDocumentBodyOffsetCache = (updatedDocument as NSString).length
+    editorDocumentBodyOffsetCache =
+      (updatedDocument as NSString).length
       - (body as NSString).length
     editorDocument = updatedDocument
     frontMatterIssue = nil
@@ -186,20 +197,24 @@ extension MacMarkdownComposerView {
       profile: activeProfile,
       bodyMarkdown: editorBody
     )
-    editorDocumentBodyOffsetCache = (editorDocument as NSString).length
+    editorDocumentBodyOffsetCache =
+      (editorDocument as NSString).length
       - (editorBody as NSString).length
   }
 
   @discardableResult
   func applyDraftUpdate(_ updated: ArticleDraft) -> Bool {
-    guard let result = store.replaceDraftBody(
-      updated.bodyMarkdown,
-      for: updated.id,
-      expectedRevision: editorBodyRevision,
-      notifyEditorObservers: false
-    ) else { return false }
+    guard
+      let result = store.replaceDraftBody(
+        updated.bodyMarkdown,
+        for: updated.id,
+        expectedRevision: editorBodyRevision,
+        notifyEditorObservers: false
+      )
+    else { return false }
     editorBody = result.buffer.bodyMarkdown
     editorBodyRevision = result.buffer.revision
+    refreshMarkdownCursorContextSnapshot()
     guard result.wasAccepted else {
       selectionActionMessage = "另一窗口已更新正文，刚才的编辑命令未应用；已同步到最新版本。"
       return false
@@ -216,11 +231,13 @@ extension MacMarkdownComposerView {
     selectionOverride: NSRange? = nil
   ) -> Bool {
     guard updated.id == draft.id else { return false }
-    guard let edit = MarkdownTextMutationService.edit(
-      from: editorBody,
-      to: updated.bodyMarkdown,
-      selectedRange: selectionOverride ?? selectedRange
-    ) else {
+    guard
+      let edit = MarkdownTextMutationService.edit(
+        from: editorBody,
+        to: updated.bodyMarkdown,
+        selectedRange: selectionOverride ?? selectedRange
+      )
+    else {
       return updated.bodyMarkdown == editorBody
     }
     if editorState.editorDisplayMode == .preview {
@@ -243,10 +260,11 @@ extension MacMarkdownComposerView {
     let normalized = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
     let source = editorBody as NSString
     guard !normalized.isEmpty,
-          range.location >= 0,
-          range.length >= 0,
-          range.location <= source.length,
-          NSMaxRange(range) <= source.length else {
+      range.location >= 0,
+      range.length >= 0,
+      range.location <= source.length,
+      NSMaxRange(range) <= source.length
+    else {
       return false
     }
 
@@ -295,15 +313,17 @@ extension MacMarkdownComposerView {
 
     let text = editorBody as NSString
     if let requestedRange = request.selectedRange,
-       requestedRange.location >= 0,
-       NSMaxRange(requestedRange) <= text.length {
+      requestedRange.location >= 0,
+      NSMaxRange(requestedRange) <= text.length
+    {
       let expectedQuery = request.query?.trimmedForPublishing
       let selectedText = text.substring(with: requestedRange)
       if expectedQuery?.isEmpty != false
         || selectedText.compare(
           expectedQuery ?? "",
           options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
-        ) == .orderedSame {
+        ) == .orderedSame
+      {
         focusMarkdownText(
           for: request.id,
           selectedRange: requestedRange,

@@ -21,6 +21,8 @@
       "swift-strict-build",
       "swift-strict-build-tests",
       "swift6-migration-tests",
+      "release-performance-tests",
+      "release-performance",
       "swift-release-build",
       "swift-release-build-tests",
       "swift-tests-sharding-tests",
@@ -85,6 +87,8 @@
     {"id":"swift-release-build-tests","title":"Swift Release build gate behavior","source":["script/check_swift_release_build.sh","script/build_and_run.sh"],"evidence":["Release flags and failure propagation","single application product boundary","App Store, Developer ID, and Chrome release-profile separation"],"strictness":"always","command":["bash","script/test_swift_release_build_gate.sh"]},
     {"id":"swift-tests-sharding-tests","title":"Swift test sharding runner behavior","groups":["quick"],"source":["Package.swift","script/quality_baselines.json","script/run_swift_tests.sh","script/run_swift_test_process.py","script/test_run_swift_tests.py"],"evidence":["closed test-target allowlist and progressive inventory minimums","deterministic exact filters with no missing or duplicate tests","timeout sampling, process-group cleanup, count matching, and fail-fast result preservation"],"strictness":"always","command":["python3","script/test_run_swift_tests.py"]},
     {"id":"swift-tests","title":"Swift behavior test suite","groups":["quick"],"source":["Package.swift","Tests","script/quality_baselines.json","script/run_swift_tests.sh","script/run_swift_test_process.py"],"evidence":["one complete SwiftPM inventory and build artifact","short isolated test processes covering every listed test exactly once","per-shard logs, executed-count checks, timeout samples, and incremental JSON result"],"strictness":"always","timeoutSeconds":900,"command":["bash","script/run_swift_tests.sh"]},
+    {"id":"release-performance-tests","title":"Release performance lane contract behavior","groups":["quick"],"source":["script/run_release_performance_benchmarks.py","script/test_release_performance_benchmarks.py","script/quality_baselines.json"],"evidence":["missing metadata, sample, skip, complexity, and wall-time policy regressions"],"strictness":"always","command":["python3","script/test_release_performance_benchmarks.py"]},
+    {"id":"release-performance","title":"Independent Swift Release performance lane","source":["Package.swift","Sources/PublishingWorkbenchCore","Tests/PublishingWorkbenchCoreTests/MarkdownSyntaxHighlightBenchmarkTests.swift","Tests/PublishingWorkbenchCoreTests/SiteMaintenanceRelationBenchmarkTests.swift","script/benchmark_markdown_syntax_highlighting.sh","script/run_release_performance_benchmarks.py","script/quality_baselines.json"],"evidence":["Release configuration benchmark execution without silent skips","raw samples and median/p95 statistics with commit/toolchain/host provenance","fixed-label-density linear candidate-work budget","hosted-runner wall-time trend evidence"],"strictness":"standard","timeoutSeconds":1500,"environment":{"PERFORMANCE_BENCHMARK_REQUIRED":"1","PERFORMANCE_BENCHMARK_CONFIGURATION":"release","PERFORMANCE_BENCHMARK_ENFORCE_WALL_TIME":"0"},"command":["python3","script/run_release_performance_benchmarks.py","--configuration","release"]},
     {"id":"repository-release-clean","title":"Clean committed release checkout","source":["Git worktree"],"evidence":["clean commit-bound release input"],"strictness":"strict","command":["bash","script/check_repository_source_boundary.sh","--release"]}
   ]
 }

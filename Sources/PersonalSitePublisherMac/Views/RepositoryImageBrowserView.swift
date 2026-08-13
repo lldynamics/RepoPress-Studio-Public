@@ -54,7 +54,7 @@ struct RepositoryImageBrowserView: View {
         loadingState
       }
     }
-    .padding(WorkbenchPadding.card)
+    .padding(WorkbenchSpacing.card)
     .background(
       WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)

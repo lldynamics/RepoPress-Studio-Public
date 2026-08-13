@@ -200,12 +200,13 @@ if [[ "$MODE" == "launch" ]]; then
   codesign -d --entitlements :- "$APP_BUNDLE" >"$actual_entitlements" 2>/dev/null \
     || fail "could not read Release bundle entitlements"
   actual_sandbox="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$actual_entitlements" 2>/dev/null || true)"
-  [[ "$actual_sandbox" == "true" ]] || fail "Release launch bundle is missing App Sandbox"
+  [[ "$actual_sandbox" != "true" ]] \
+    || fail "Release launch bundle unexpectedly enables App Sandbox"
   bash "$ROOT_DIR/script/check_launch_performance.sh" --release
 fi
 
 if [[ "$MODE" == "launch" ]]; then
-  echo "ui runtime gate: sandboxed Release artifact passed and a real visible main-window launch was verified"
+  echo "ui runtime gate: non-sandboxed Release artifact passed and a real visible main-window launch was verified"
 else
   echo "ui runtime gate: packaged artifact passed; real app launch was not run"
 fi

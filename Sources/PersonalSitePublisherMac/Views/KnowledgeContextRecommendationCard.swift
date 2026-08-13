@@ -241,7 +241,7 @@ struct KnowledgeContextRecommendationCard: View {
     }
     .padding(9)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: 9))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 9))
     .accessibilityElement(children: .combine)
     .accessibilityLabel(
       "\(result.document.title)，\(sourceKindTitle(for: result))。\(hit.snippet)"

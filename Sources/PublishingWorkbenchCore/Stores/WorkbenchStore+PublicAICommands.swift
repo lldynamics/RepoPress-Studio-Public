@@ -51,8 +51,10 @@ extension WorkbenchStore {
     aiStore.deleteAIAPIKey()
   }
 
-  public func testAIConnection() async -> AIConnectionTestReport? {
-    await aiStore.testAIConnection()
+  public func testAIConnection(
+    probeCapabilities: Set<AIProviderCapabilityProbeKind> = []
+  ) async -> AIConnectionTestReport? {
+    await aiStore.testAIConnection(probeCapabilities: probeCapabilities)
   }
 
   public func clearAIChat() {

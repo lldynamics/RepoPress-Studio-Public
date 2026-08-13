@@ -399,7 +399,7 @@ extension RepositoryWorkspaceView {
     .padding(16)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
-      WorkbenchBackgroundStyle.subtle,
+      WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
     )
   }
@@ -523,7 +523,7 @@ extension RepositoryWorkspaceView {
         .controlSize(.small)
       }
       .padding(12)
-      .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+      .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     } else if store.repository.scanState.finishedAt != nil {
       Label(store.repository.scanState.message, systemImage: "checkmark.circle")
         .font(.caption)

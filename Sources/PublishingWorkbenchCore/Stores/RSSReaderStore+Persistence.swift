@@ -12,6 +12,8 @@ extension RSSReaderStore {
           try database.replaceSnapshot(snapshot)
           feeds = snapshot.feeds
           articleHeaders = snapshot.articles.map(RSSArticleHeader.init(article:))
+          articleHeaderCount = articleHeaders.count
+          articleHeadersAreComplete = true
           legacyArticles = []
           highlights = snapshot.highlights
           mediaAssets = snapshot.mediaAssets
@@ -19,6 +21,8 @@ extension RSSReaderStore {
         } else {
           feeds = try database.feeds()
           articleHeaders = try database.articleHeaders()
+          articleHeaderCount = articleHeaders.count
+          articleHeadersAreComplete = true
           legacyArticles = []
           highlights = try database.highlights()
           mediaAssets = try database.mediaAssets()
@@ -44,6 +48,8 @@ extension RSSReaderStore {
       feeds = snapshot.feeds
       legacyArticles = snapshot.articles
       articleHeaders = snapshot.articles.map(RSSArticleHeader.init(article:))
+      articleHeaderCount = articleHeaders.count
+      articleHeadersAreComplete = true
       highlights = snapshot.highlights
       mediaAssets = snapshot.mediaAssets
       return true
@@ -87,18 +93,17 @@ extension RSSReaderStore {
     feedID: UUID,
     parsedID: String,
     link: URL?,
-    existingHeaders: [RSSArticleHeader],
+    existingHeaders _: [RSSArticleHeader],
     incomingLinksByParsedID: [String: Set<String>],
-    firstIncomingLinkByParsedID: [String: String]
+    firstIncomingLinkByParsedID: [String: String],
+    existingCollisionIDsByLink: [String: String] = [:],
+    existingBaseLinkByBaseID: [String: String] = [:]
   ) -> String {
     let baseID = "\(feedID.uuidString):\(parsedID)"
     guard let link else { return baseID }
     let normalizedLink = normalizedArticleLink(link)
-    if let existingCollision = existingHeaders.first(where: {
-      $0.id.hasPrefix(baseID + ":link-")
-        && $0.link.map(normalizedArticleLink) == normalizedLink
-    }) {
-      return existingCollision.id
+    if let existingCollision = existingCollisionIDsByLink["\(baseID)|\(normalizedLink)"] {
+      return existingCollision
     }
 
     let incomingLinks = incomingLinksByParsedID[parsedID] ?? []
@@ -109,12 +114,10 @@ extension RSSReaderStore {
       return baseID
     }
 
-    let existingBaseLink = existingHeaders
-      .first(where: { $0.id == baseID })?
-      .link
-      .map(normalizedArticleLink)
+    let existingBaseLink = existingBaseLinkByBaseID[baseID]
     if existingBaseLink == normalizedLink
-      || (existingBaseLink == nil && firstIncomingLinkByParsedID[parsedID] == normalizedLink) {
+      || (existingBaseLink == nil && firstIncomingLinkByParsedID[parsedID] == normalizedLink)
+    {
       return baseID
     }
     return collisionArticleID(baseID: baseID, normalizedLink: normalizedLink)
@@ -211,7 +214,8 @@ extension RSSReaderStore {
   func runAutomaticMaintenanceIfNeeded(now: Date = Date()) {
     guard automaticPruningEnabled else { return }
     if let lastRun = userDefaults.object(forKey: Self.lastPruneDateDefaultsKey) as? Date,
-       now.timeIntervalSince(lastRun) < 24 * 60 * 60 {
+      now.timeIntervalSince(lastRun) < 24 * 60 * 60
+    {
       return
     }
     _ = pruneReadArticles(olderThanDays: retentionDays, now: now)
@@ -238,12 +242,12 @@ extension RSSReaderStore {
     retryTimer?.invalidate()
     retryTimer = nil
     guard backgroundRefreshInterval != nil,
-          let scheduledAt = feeds.compactMap({ feed -> Date? in
-            guard !refreshingFeedIDs.contains(feed.id),
-                  feed.lastIssue?.shouldRetryAutomatically == true
-            else { return nil }
-            return feed.nextRetryAt ?? feed.lastIssue?.retryAt
-          }).min()
+      let scheduledAt = feeds.compactMap({ feed -> Date? in
+        guard !refreshingFeedIDs.contains(feed.id),
+          feed.lastIssue?.shouldRetryAutomatically == true
+        else { return nil }
+        return feed.nextRetryAt ?? feed.lastIssue?.retryAt
+      }).min()
     else { return }
 
     let timer = Timer(
@@ -256,8 +260,8 @@ extension RSSReaderStore {
         let now = Date()
         let dueFeeds = self.feeds.filter { feed in
           guard !self.refreshingFeedIDs.contains(feed.id),
-                feed.lastIssue?.shouldRetryAutomatically == true,
-                let retryAt = feed.nextRetryAt ?? feed.lastIssue?.retryAt
+            feed.lastIssue?.shouldRetryAutomatically == true,
+            let retryAt = feed.nextRetryAt ?? feed.lastIssue?.retryAt
           else { return false }
           return retryAt <= now
         }
@@ -318,7 +322,23 @@ extension RSSReaderStore {
     canUndoLastBatchRead = false
   }
 
+  /// Mutations that derive their target set from the in-memory headers must
+  /// not run against a bounded bootstrap page. The launch coordinator waits
+  /// for completion before exposing the UI; this guard also keeps direct
+  /// callers fail-closed during the short bootstrap window.
+  @discardableResult
+  func requireCompleteArticleIndex() -> Bool {
+    guard articleHeadersAreComplete else {
+      statusMessage = "RSS 文章索引仍在加载，请稍后重试。"
+      return false
+    }
+    return true
+  }
+
   func bumpMutationRevision() {
+    if articleHeadersAreComplete {
+      articleHeaderCount = articleHeaders.count
+    }
     mutationRevision &+= 1
   }
 }

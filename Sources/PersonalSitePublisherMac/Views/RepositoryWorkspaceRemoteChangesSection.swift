@@ -82,7 +82,7 @@ extension RepositoryWorkspaceView {
                         .lineLimit(16)
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(WorkbenchBackgroundStyle.codeBlock, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
+                        .background(WorkbenchBackgroundStyle.control, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.control))
                         .accessibilityLabel("远端 diff 预览")
                         .accessibilityValue(file.displayPath)
                         .accessibilityIdentifier("repository-remote-file-\(file.accessibilityIdentifierToken)-diff")

@@ -47,14 +47,16 @@ extension MacMarkdownTextView.Coordinator {
       for: requestedPlan,
       documentUTF16Length: (text as NSString).length
     )
-    let priorityRange = visibleSyntaxHighlightRange(
-      in: textView,
-      snapshotRange: requestedPlan.range
-    ) ?? selectionSyntaxHighlightRange(
-      in: text,
-      selectedRange: textView.selectedRange(),
-      snapshotRange: requestedPlan.range
-    )
+    let priorityRange =
+      visibleSyntaxHighlightRange(
+        in: textView,
+        snapshotRange: requestedPlan.range
+      )
+      ?? selectionSyntaxHighlightRange(
+        in: text,
+        selectedRange: textView.selectedRange(),
+        snapshotRange: requestedPlan.range
+      )
     syntaxHighlightDebouncer.schedule(
       delay: delay,
       operation: { [text] () async -> MarkdownSyntaxHighlightComputation? in
@@ -357,25 +359,58 @@ extension MacMarkdownTextView.Coordinator {
     appliedDiagnosticOverlays = overlays
   }
 
-  private func updateStatistics(afterEditing updatedText: String) {
+  func updateStatistics(afterEditing updatedText: String) {
     defer { pendingTextEdit = nil }
     guard let pendingTextEdit,
-      let previousStatisticsText = statisticsText,
-      previousStatisticsText == pendingTextEdit.previousText
+      pendingTextEdit.replacedRange.location >= bodyUTF16Offset,
+      let previousStatisticsText = statisticsText
     else {
       scheduleFullStatistics(for: updatedText)
       return
     }
 
+    let previousDocument = pendingTextEdit.previousText as NSString
+    guard bodyUTF16Offset <= previousDocument.length else {
+      scheduleFullStatistics(for: updatedText)
+      return
+    }
+    let previousBody = previousDocument.substring(from: bodyUTF16Offset)
+    guard previousStatisticsText == previousBody else {
+      scheduleFullStatistics(for: updatedText)
+      return
+    }
+
+    let bodyReplacedRange = NSRange(
+      location: pendingTextEdit.replacedRange.location - bodyUTF16Offset,
+      length: pendingTextEdit.replacedRange.length
+    )
+    let previousBodyLength = (previousBody as NSString).length
+    let updatedBodyLength = (updatedText as NSString).length
     let insertedLength = max(
       0,
-      (updatedText as NSString).length - (previousStatisticsText as NSString).length
-        + pendingTextEdit.replacedRange.length
+      updatedBodyLength - previousBodyLength + bodyReplacedRange.length
     )
+    let isSmallRelativeEdit =
+      previousBodyLength <= Self.incrementalStatisticsMaximumEditLength
+      || (bodyReplacedRange.length * 4 <= previousBodyLength
+        && insertedLength * 4 <= max(updatedBodyLength, 1))
+    // Local word statistics are safe and cheap for ordinary typing.  Large
+    // replacements (paste, replace-all, or a stale range) deliberately use
+    // the full scanner so a broad edit cannot accumulate drift.
+    guard bodyReplacedRange.location >= 0,
+      NSMaxRange(bodyReplacedRange) <= previousBodyLength,
+      insertedLength <= Self.incrementalStatisticsMaximumEditLength,
+      bodyReplacedRange.length <= Self.incrementalStatisticsMaximumEditLength,
+      isSmallRelativeEdit
+    else {
+      scheduleFullStatistics(for: updatedText)
+      return
+    }
+
     let insertedRange = NSRange(
-      location: pendingTextEdit.replacedRange.location, length: insertedLength)
+      location: bodyReplacedRange.location, length: insertedLength)
     statistics = statistics.applying(
-      replacing: pendingTextEdit.replacedRange,
+      replacing: bodyReplacedRange,
       in: previousStatisticsText,
       with: insertedRange,
       in: updatedText
@@ -383,6 +418,8 @@ extension MacMarkdownTextView.Coordinator {
     statisticsText = updatedText
     scheduleStatisticsDelivery()
   }
+
+  private static let incrementalStatisticsMaximumEditLength = 4_096
 
   private func scheduleStatisticsDelivery() {
     statisticsTask?.cancel()

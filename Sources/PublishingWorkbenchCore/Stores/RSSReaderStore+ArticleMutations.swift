@@ -43,7 +43,8 @@ extension RSSReaderStore {
     guard let index = feeds.firstIndex(where: { $0.id == feedID }) else {
       throw RSSReaderError.persistence("找不到要修改的订阅。")
     }
-    if feeds.contains(where: { $0.id != feedID && $0.url.absoluteString == newURL.absoluteString }) {
+    if feeds.contains(where: { $0.id != feedID && $0.url.absoluteString == newURL.absoluteString })
+    {
       throw RSSReaderError.issue(
         RSSFeedIssue(
           stage: .validation,
@@ -95,14 +96,16 @@ extension RSSReaderStore {
   }
 
   public func removeFeed(id: UUID) {
+    guard requireCompleteArticleIndex() else { return }
     guard let feed = feeds.first(where: { $0.id == id }) else { return }
     let deletedArticles: [RSSArticle]
     do {
-      deletedArticles = if let database {
-        try database.articles(feedID: id)
-      } else {
-        legacyArticles.filter { $0.feedID == id }
-      }
+      deletedArticles =
+        if let database {
+          try database.articles(feedID: id)
+        } else {
+          legacyArticles.filter { $0.feedID == id }
+        }
     } catch {
       lastError = error.localizedDescription
       return
@@ -156,6 +159,7 @@ extension RSSReaderStore {
   }
 
   public func undoLastDeletion() {
+    guard requireCompleteArticleIndex() else { return }
     guard let snapshot = deletedFeedSnapshots.popLast() else { return }
     guard !feeds.contains(where: { $0.id == snapshot.feed.id }) else {
       canUndoLastDeletion = !deletedFeedSnapshots.isEmpty
@@ -193,6 +197,7 @@ extension RSSReaderStore {
   }
 
   public func markRead(_ articleID: String, isRead: Bool = true) {
+    guard requireCompleteArticleIndex() else { return }
     guard let index = articleHeaders.firstIndex(where: { $0.id == articleID }) else { return }
     let nextReadAt = isRead ? (articleHeaders[index].readAt ?? Date()) : nil
     guard articleHeaders[index].readAt != nextReadAt else { return }
@@ -212,6 +217,7 @@ extension RSSReaderStore {
   }
 
   public func toggleStarred(_ articleID: String) {
+    guard requireCompleteArticleIndex() else { return }
     guard let index = articleHeaders.firstIndex(where: { $0.id == articleID }) else { return }
     let nextValue = !articleHeaders[index].isStarred
     articleHeaders[index].isStarred = nextValue
@@ -229,6 +235,7 @@ extension RSSReaderStore {
   }
 
   public func setArticleTags(_ tags: [String], for articleID: String) {
+    guard requireCompleteArticleIndex() else { return }
     guard let index = articleHeaders.firstIndex(where: { $0.id == articleID }) else { return }
     let normalized = RSSArticle.normalizedTags(tags)
     let previous = articleHeaders[index].tags
@@ -255,6 +262,9 @@ extension RSSReaderStore {
     tags: [String] = [],
     existingID: UUID? = nil
   ) throws -> RSSArticleHighlight {
+    guard requireCompleteArticleIndex() else {
+      throw RSSReaderError.persistence("RSS 文章索引仍在加载，请稍后重试。")
+    }
     guard articleHeaders.contains(where: { $0.id == articleID }) else {
       throw RSSReaderError.persistence("找不到要标注的文章。")
     }
@@ -277,8 +287,10 @@ extension RSSReaderStore {
     }
     do {
       if let database, try !database.containsArticle(id: articleID) {
-        guard let article = payloadCache.article(id: articleID)
-          ?? legacyArticles.first(where: { $0.id == articleID }) else {
+        guard
+          let article = payloadCache.article(id: articleID)
+            ?? legacyArticles.first(where: { $0.id == articleID })
+        else {
           throw RSSReaderError.persistence("文章正文尚未写入本地数据库。")
         }
         try database.upsertArticles([article])
@@ -313,12 +325,14 @@ extension RSSReaderStore {
   }
 
   public func markAllRead(for scope: RSSArticleScope) {
+    guard requireCompleteArticleIndex() else { return }
     let ids = Set(articleHeaders(for: scope).map(\.id))
     markAllRead(articleIDs: ids)
   }
 
   @discardableResult
   public func markAllRead(articleIDs: Set<String>) -> Int {
+    guard requireCompleteArticleIndex() else { return 0 }
     guard !articleIDs.isEmpty else { return 0 }
     let now = Date()
     let previousStates = articleHeaders.compactMap { header -> BatchReadState? in
@@ -335,7 +349,8 @@ extension RSSReaderStore {
       updatedHeaders[index].readAt = now
     }
     var updatedLegacyArticles = legacyArticles
-    for index in updatedLegacyArticles.indices where changedIDs.contains(updatedLegacyArticles[index].id) {
+    for index in updatedLegacyArticles.indices
+    where changedIDs.contains(updatedLegacyArticles[index].id) {
       updatedLegacyArticles[index].readAt = now
     }
     do {
@@ -366,6 +381,7 @@ extension RSSReaderStore {
 
   @discardableResult
   public func undoLastBatchRead() -> Int {
+    guard requireCompleteArticleIndex() else { return 0 }
     guard let snapshot = lastBatchReadSnapshot, !snapshot.states.isEmpty else { return 0 }
     let statesByID = Dictionary(
       snapshot.states.map { ($0.articleID, $0.readAt) },

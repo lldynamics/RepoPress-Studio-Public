@@ -17,7 +17,6 @@
   "Repo": "Repo",
   "· 引用 %lld 个片段": "· %lld referenced snippets",
   "−%lld 行 · +%lld 行": "−%lld lines · +%lld lines",
-  "中文按汉字计数，其他语言按词计数。": "Chinese is counted by character; other languages are counted by word.",
   "仓库信息": "Repository Information",
   "代码语言": "Code Language",
   "保存为新版本": "Save as New Version",

@@ -74,7 +74,7 @@ struct KnowledgeArticleBacklinksSection: View {
       }
     }
     .padding(12)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: 10))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: 10))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("knowledge-article-backlinks-section")
     .accessibilityLabel("本文引用的资料")

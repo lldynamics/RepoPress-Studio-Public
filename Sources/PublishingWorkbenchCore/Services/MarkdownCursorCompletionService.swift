@@ -121,6 +121,45 @@ public struct MarkdownCursorCompletionService: Sendable {
 
   public init() {}
 
+  /// Returns whether the current line can contain a completion trigger.  The
+  /// check intentionally stays line-local; the expensive code-range scan is
+  /// deferred until `completion` is actually requested.
+  public func shouldBuildCompletion(
+    in markdown: String,
+    selectedRange: NSRange
+  ) -> Bool {
+    let source = markdown as NSString
+    guard selectedRange.length == 0,
+      selectedRange.location > 0,
+      selectedRange.location <= source.length
+    else {
+      return false
+    }
+
+    let lineRange = source.lineRange(
+      for: NSRange(location: selectedRange.location, length: 0)
+    )
+    let prefixRange = NSRange(
+      location: lineRange.location,
+      length: selectedRange.location - lineRange.location
+    )
+    let prefix = source.substring(with: prefixRange)
+    let indentation = prefix.prefix { $0 == " " || $0 == "\t" }
+    let content = String(prefix.dropFirst(indentation.count))
+    if content.hasPrefix("/") || content.contains("[[") {
+      return !content.contains(where: \.isWhitespace)
+        || content.contains("[[")
+    }
+    guard content.count >= 3 else { return false }
+    guard let marker = content.first,
+      marker == "`" || marker == "~",
+      content.prefix(while: { $0 == marker }).count >= 3
+    else {
+      return false
+    }
+    return true
+  }
+
   public func completion(
     in markdown: String,
     selectedRange: NSRange,
@@ -128,6 +167,30 @@ public struct MarkdownCursorCompletionService: Sendable {
     codeLanguages: [MarkdownCodeLanguageCompletion] = Self.defaultCodeLanguages,
     snippets: [MarkdownSnippet] = []
   ) -> MarkdownCompletionContext? {
+    completion(
+      in: markdown,
+      selectedRange: selectedRange,
+      context: nil,
+      articles: articles,
+      codeLanguages: codeLanguages,
+      snippets: snippets
+    )
+  }
+
+  /// Computes completion only when the caller's cached cursor snapshot still
+  /// describes this selection. Expensive code-range scanning remains behind
+  /// the caller's trigger gate rather than running for ordinary cursor moves.
+  public func completion(
+    in markdown: String,
+    selectedRange: NSRange,
+    context: MarkdownCursorContextSnapshot?,
+    articles: [MarkdownCompletionArticle] = [],
+    codeLanguages: [MarkdownCodeLanguageCompletion] = Self.defaultCodeLanguages,
+    snippets: [MarkdownSnippet] = []
+  ) -> MarkdownCompletionContext? {
+    if let context, context.selectedRange != selectedRange {
+      return nil
+    }
     let source = markdown as NSString
     guard selectedRange.length == 0,
       selectedRange.location >= 0,
@@ -136,15 +199,22 @@ public struct MarkdownCursorCompletionService: Sendable {
       return nil
     }
 
+    let codeRanges = MarkdownCodeRangeScanner.scan(markdown)
     if let language = codeLanguageCompletion(
       in: markdown,
       cursor: selectedRange.location,
-      languages: codeLanguages
+      languages: codeLanguages,
+      blockRanges: codeRanges.blockRanges
     ) {
       return language
     }
 
-    guard !isInsideCode(in: markdown, cursor: selectedRange.location) else {
+    guard
+      !codeRanges.allRanges.contains(where: { range in
+        selectedRange.location >= range.location
+          && selectedRange.location < NSMaxRange(range)
+      })
+    else {
       return nil
     }
     if let link = internalLinkCompletion(
@@ -183,22 +253,25 @@ public struct MarkdownCursorCompletionService: Sendable {
     guard !snippets.isEmpty else { return nil }
     let source = markdown as NSString
     guard selectedRange.length == 0,
-          selectedRange.location >= 0,
-          selectedRange.location <= source.length,
-          hasSlashCommandPrefix(source: source, cursor: selectedRange.location),
-          !isInsideCode(in: markdown, cursor: selectedRange.location),
-          let context = slashCommandCompletion(
-      in: markdown,
-      cursor: selectedRange.location,
-      snippets: snippets
-    ) else {
+      selectedRange.location >= 0,
+      selectedRange.location <= source.length,
+      hasSlashCommandPrefix(source: source, cursor: selectedRange.location),
+      !isInsideCode(in: markdown, cursor: selectedRange.location),
+      let context = slashCommandCompletion(
+        in: markdown,
+        cursor: selectedRange.location,
+        snippets: snippets
+      )
+    else {
       return nil
     }
-    guard let snippet = snippets.first(where: {
-      MarkdownSnippetLibraryService.normalizedShortcut($0.shortcut)
-        == MarkdownSnippetLibraryService.normalizedShortcut(context.query)
-    }),
-    MarkdownSnippetLibraryService.normalizedShortcut(snippet.shortcut) != nil else {
+    guard
+      let snippet = snippets.first(where: {
+        MarkdownSnippetLibraryService.normalizedShortcut($0.shortcut)
+          == MarkdownSnippetLibraryService.normalizedShortcut(context.query)
+      }),
+      MarkdownSnippetLibraryService.normalizedShortcut(snippet.shortcut) != nil
+    else {
       return nil
     }
     return context.candidates.first(where: { $0.id == "snippet-\(snippet.id)" })
@@ -366,12 +439,13 @@ public struct MarkdownCursorCompletionService: Sendable {
   private func codeLanguageCompletion(
     in markdown: String,
     cursor: Int,
-    languages: [MarkdownCodeLanguageCompletion]
+    languages: [MarkdownCodeLanguageCompletion],
+    blockRanges: [NSRange]? = nil
   ) -> MarkdownCompletionContext? {
     let source = markdown as NSString
     let lineRange = source.lineRange(for: NSRange(location: cursor, length: 0))
     guard
-      MarkdownCodeRangeScanner.scan(markdown).blockRanges.contains(where: {
+      (blockRanges ?? MarkdownCodeRangeScanner.scan(markdown).blockRanges).contains(where: {
         $0.location == lineRange.location
       })
     else {

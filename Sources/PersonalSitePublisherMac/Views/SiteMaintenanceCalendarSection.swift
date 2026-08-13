@@ -141,7 +141,7 @@ struct SiteMaintenanceCalendarSection: View {
       }
     }
     .padding(14)
-    .background(WorkbenchBackgroundStyle.subtle, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
+    .background(WorkbenchBackgroundStyle.card, in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
   }
 
   private var maintenanceCalendarGrid: some View {
@@ -244,9 +244,9 @@ struct SiteMaintenanceCalendarSection: View {
       return AnyShapeStyle(WorkbenchTheme.document.opacity(WorkbenchOpacity.selectionBackground))
     }
     if cell.isInDisplayedMonth {
-      return WorkbenchBackgroundStyle.codeBlock
+      return WorkbenchBackgroundStyle.control
     }
-    return WorkbenchBackgroundStyle.subtle
+    return WorkbenchBackgroundStyle.card
   }
 
   private func maintenanceCalendarCells(month: Date, calendar: Calendar) -> [MaintenanceCalendarCell] {

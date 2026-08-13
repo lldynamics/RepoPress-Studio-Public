@@ -52,7 +52,7 @@ struct PublishDrawerActionChoice: View {
     .padding(14)
     .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
     .background(
-      WorkbenchBackgroundStyle.subtle,
+      WorkbenchBackgroundStyle.card,
       in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card)
     )
     .overlay {

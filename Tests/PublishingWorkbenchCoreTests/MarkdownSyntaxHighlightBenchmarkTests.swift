@@ -1,21 +1,29 @@
 import AppKit
 import Foundation
-@testable import PublishingWorkbenchCore
 import XCTest
+
+@testable import PublishingWorkbenchCore
 
 @MainActor
 final class MarkdownSyntaxHighlightBenchmarkTests: XCTestCase {
   func testGeneratedDocumentBaseline() async throws {
     let environment = ProcessInfo.processInfo.environment
     guard environment["RUN_MARKDOWN_SYNTAX_BENCHMARK"] == "1" else {
-      throw XCTSkip("Run script/benchmark_markdown_syntax_highlighting.sh to collect this baseline.")
+      if environment["PERFORMANCE_BENCHMARK_REQUIRED"] == "1" {
+        throw MarkdownSyntaxBenchmarkError.requiredEnvironmentMissing(
+          "RUN_MARKDOWN_SYNTAX_BENCHMARK=1"
+        )
+      }
+      throw XCTSkip(
+        "Run script/benchmark_markdown_syntax_highlighting.sh to collect this baseline.")
     }
 
     let iterations = max(
       1,
       Int(environment["MARKDOWN_SYNTAX_BENCHMARK_ITERATIONS"] ?? "") ?? 20
     )
-    let outputPath = environment["MARKDOWN_SYNTAX_BENCHMARK_OUTPUT"]
+    let outputPath =
+      environment["MARKDOWN_SYNTAX_BENCHMARK_OUTPUT"]
       ?? ".build/benchmarks/markdown-syntax-baseline.json"
     let report = try await MarkdownSyntaxHighlightBenchmarkRunner.run(iterations: iterations)
     let outputURL = URL(fileURLWithPath: outputPath)
@@ -92,6 +100,7 @@ final class MarkdownSyntaxHighlightBenchmarkTests: XCTestCase {
 @MainActor
 private enum MarkdownSyntaxHighlightBenchmarkRunner {
   static func run(iterations: Int) async throws -> MarkdownSyntaxBenchmarkReport {
+    let environment = ProcessInfo.processInfo.environment
     let parser = MarkdownSyntaxHighlightParser()
     let palette = makePalette()
     var results: [MarkdownSyntaxBenchmarkScenarioResult] = []
@@ -200,10 +209,19 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
 
     return MarkdownSyntaxBenchmarkReport(
       generatedAt: ISO8601DateFormatter().string(from: Date()),
-      configuration: ProcessInfo.processInfo.environment[
-        "MARKDOWN_SYNTAX_BENCHMARK_CONFIGURATION"
-      ] ?? "debug",
-      operatingSystem: ProcessInfo.processInfo.operatingSystemVersionString,
+      configuration: environment["MARKDOWN_SYNTAX_BENCHMARK_CONFIGURATION"] ?? "debug",
+      commit: Self.environmentValue("PERFORMANCE_BENCHMARK_COMMIT", fallback: "unknown"),
+      toolchain: Self.environmentValue("PERFORMANCE_BENCHMARK_TOOLCHAIN", fallback: "unknown"),
+      architecture: Self.environmentValue(
+        "PERFORMANCE_BENCHMARK_ARCHITECTURE",
+        fallback: "unknown"
+      ),
+      operatingSystem: Self.environmentValue(
+        "PERFORMANCE_BENCHMARK_OPERATING_SYSTEM",
+        fallback: ProcessInfo.processInfo.operatingSystemVersionString
+      ),
+      machine: Self.environmentValue("PERFORMANCE_BENCHMARK_MACHINE", fallback: "unknown"),
+      sampleCount: iterations,
       activeProcessorCount: ProcessInfo.processInfo.activeProcessorCount,
       iterations: iterations,
       scenarios: results,
@@ -211,6 +229,13 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
       rapidTypingBurst: rapidTypingBurst,
       chunkedDenseApplication: chunkedDenseApplication
     )
+  }
+
+  private static func environmentValue(_ key: String, fallback: String) -> String {
+    let value = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(
+      in: .whitespacesAndNewlines
+    )
+    return value?.isEmpty == false ? value! : fallback
   }
 
   private static func runIncrementalScenario(
@@ -290,10 +315,11 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
       replacedRange: scenario.replacedRange,
       knownCodeBlockRanges: knownCodeBlockRanges
     )
-    let scheduledDebounceMilliseconds = MarkdownSyntaxHighlightSchedulingPolicy.delay(
-      for: requestedPlan,
-      documentUTF16Length: (scenario.currentText as NSString).length
-    ) * 1_000
+    let scheduledDebounceMilliseconds =
+      MarkdownSyntaxHighlightSchedulingPolicy.delay(
+        for: requestedPlan,
+        documentUTF16Length: (scenario.currentText as NSString).length
+      ) * 1_000
     let resolvedPlan = MarkdownSyntaxHighlightRangeService.resolvingCodeBlockRanges(
       in: scenario.currentText,
       plan: requestedPlan
@@ -301,10 +327,12 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
     let planResolutionMilliseconds = milliseconds(since: planningStart)
 
     let parseStart = ContinuousClock.now
-    guard let snapshot = await parser.snapshot(
-      in: scenario.currentText,
-      range: resolvedPlan.range
-    ) else {
+    guard
+      let snapshot = await parser.snapshot(
+        in: scenario.currentText,
+        range: resolvedPlan.range
+      )
+    else {
       throw MarkdownSyntaxBenchmarkError.parserReturnedNoSnapshot(scenario.id)
     }
     let parseMilliseconds = milliseconds(since: parseStart)
@@ -334,7 +362,8 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
     let fullDocumentHighlight = resolvedPlan.range == fullRange
     let reusedCodeBlockCache = requestedPlan.codeBlockRanges != nil
     guard fullDocumentHighlight == scenario.expectedFullDocumentHighlight,
-          reusedCodeBlockCache == scenario.expectedCodeBlockCacheReuse else {
+      reusedCodeBlockCache == scenario.expectedCodeBlockCacheReuse
+    else {
       throw MarkdownSyntaxBenchmarkError.unexpectedIncrementalPlan(
         scenario: scenario.id,
         fullDocument: fullDocumentHighlight,
@@ -401,10 +430,12 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
         debouncer.schedule(
           delay: delay,
           operation: { () async -> MarkdownSyntaxRapidTypingBurstOutput? in
-            guard let snapshot = await parser.snapshot(
-              in: currentText,
-              range: requestedPlan.range
-            ) else {
+            guard
+              let snapshot = await parser.snapshot(
+                in: currentText,
+                range: requestedPlan.range
+              )
+            else {
               return nil
             }
             return MarkdownSyntaxRapidTypingBurstOutput(
@@ -427,9 +458,10 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
       lastStyleRunCount = recorder.outputs.last?.styleRunCount ?? 0
       let deliveredRequestIDs = recorder.outputs.map(\.requestID)
       guard lastMetrics.scheduledRequestCount == requestCount,
-            lastMetrics.startedComputationCount == 1,
-            lastMetrics.deliveredResultCount == 1,
-            deliveredRequestIDs == [requestCount - 1] else {
+        lastMetrics.startedComputationCount == 1,
+        lastMetrics.deliveredResultCount == 1,
+        deliveredRequestIDs == [requestCount - 1]
+      else {
         throw MarkdownSyntaxBenchmarkError.unexpectedRapidTypingBurst(
           scheduled: lastMetrics.scheduledRequestCount,
           started: lastMetrics.startedComputationCount,
@@ -470,13 +502,15 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
       location: snapshot.range.location + max(0, (snapshot.range.length - priorityLength) / 2),
       length: priorityLength
     )
-    let baselineApplicationSnapshots = MarkdownSyntaxHighlightApplicationPlanner
+    let baselineApplicationSnapshots =
+      MarkdownSyntaxHighlightApplicationPlanner
       .applicationSnapshots(
         for: snapshot,
         prioritizing: priorityRange
       )
     guard baselineApplicationSnapshots.first?.range == priorityRange,
-          !baselineApplicationSnapshots.isEmpty else {
+      !baselineApplicationSnapshots.isEmpty
+    else {
       throw MarkdownSyntaxBenchmarkError.invalidChunkedApplicationPlan
     }
 
@@ -486,7 +520,8 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
     var appliedStyleSegmentCount = 0
     for _ in 0..<iterations {
       let preparationStart = ContinuousClock.now
-      let applicationSnapshots = MarkdownSyntaxHighlightApplicationPlanner
+      let applicationSnapshots =
+        MarkdownSyntaxHighlightApplicationPlanner
         .applicationSnapshots(
           for: snapshot,
           prioritizing: priorityRange
@@ -513,7 +548,10 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
 
     let frameBudgetMilliseconds = 1_000.0 / 60.0
     let perChunk = MarkdownSyntaxBenchmarkStatistics(samples: perChunkSamples)
-    guard perChunk.p95Milliseconds < frameBudgetMilliseconds else {
+    let perChunkP95WithinFrameBudget = perChunk.p95Milliseconds < frameBudgetMilliseconds
+    if ProcessInfo.processInfo.environment["PERFORMANCE_BENCHMARK_ENFORCE_WALL_TIME"] == "1",
+      !perChunkP95WithinFrameBudget
+    {
       throw MarkdownSyntaxBenchmarkError.chunkedApplicationExceededFrameBudget(
         p95Milliseconds: perChunk.p95Milliseconds,
         frameBudgetMilliseconds: frameBudgetMilliseconds
@@ -529,7 +567,7 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
       prioritizedUTF16Length: priorityRange.length,
       firstChunkUTF16Length: baselineApplicationSnapshots[0].range.length,
       frameBudgetMilliseconds: frameBudgetMilliseconds,
-      perChunkP95WithinFrameBudget: true,
+      perChunkP95WithinFrameBudget: perChunkP95WithinFrameBudget,
       preparation: MarkdownSyntaxBenchmarkStatistics(samples: preparationSamples),
       perChunk: perChunk,
       total: MarkdownSyntaxBenchmarkStatistics(samples: totalSamples)
@@ -540,7 +578,7 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
     MarkdownSyntaxBenchmarkScenario(id: "short-mixed", targetUTF16Length: 2_000, density: .mixed),
     MarkdownSyntaxBenchmarkScenario(id: "medium-mixed", targetUTF16Length: 20_000, density: .mixed),
     MarkdownSyntaxBenchmarkScenario(id: "large-mixed", targetUTF16Length: 100_000, density: .mixed),
-    MarkdownSyntaxBenchmarkScenario(id: "large-dense", targetUTF16Length: 100_000, density: .dense)
+    MarkdownSyntaxBenchmarkScenario(id: "large-dense", targetUTF16Length: 100_000, density: .dense),
   ]
 
   private static func milliseconds(since start: ContinuousClock.Instant) -> Double {
@@ -558,7 +596,7 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
       defaultAttributes: [
         .font: baseFont,
         .foregroundColor: NSColor.labelColor,
-        .paragraphStyle: paragraphStyle
+        .paragraphStyle: paragraphStyle,
       ],
       styleAttributes: [
         .heading: [.font: emphasizedFont, .foregroundColor: NSColor.systemBlue],
@@ -569,17 +607,22 @@ private enum MarkdownSyntaxHighlightBenchmarkRunner {
         .bold: [.font: emphasizedFont],
         .italic: [.obliqueness: 0.15],
         .inlineCode: [.font: baseFont, .foregroundColor: NSColor.systemOrange],
-        .html: [.font: baseFont, .foregroundColor: NSColor.systemPurple]
+        .html: [.font: baseFont, .foregroundColor: NSColor.systemPurple],
       ]
     )
   }
 }
 
 private struct MarkdownSyntaxBenchmarkReport: Encodable {
-  let schemaVersion = 5
+  let schemaVersion = 6
   let generatedAt: String
   let configuration: String
+  let commit: String
+  let toolchain: String
+  let architecture: String
   let operatingSystem: String
+  let machine: String
+  let sampleCount: Int
   let activeProcessorCount: Int
   let iterations: Int
   let localEditDebounceMilliseconds =
@@ -588,7 +631,8 @@ private struct MarkdownSyntaxBenchmarkReport: Encodable {
     MarkdownSyntaxHighlightSchedulingPolicy.expensiveEditDelay * 1_000
   let maximumLocalEditUTF16Length =
     MarkdownSyntaxHighlightSchedulingPolicy.maximumLocalEditUTF16Length
-  let incrementalMeasurementBoundary = "post-edit highlighting compute excludes debounce; each scenario reports its scheduled adaptive debounce separately"
+  let incrementalMeasurementBoundary =
+    "post-edit highlighting compute excludes debounce; each scenario reports its scheduled adaptive debounce separately"
   let scenarios: [MarkdownSyntaxBenchmarkScenarioResult]
   let incrementalScenarios: [MarkdownSyntaxIncrementalBenchmarkScenarioResult]
   let rapidTypingBurst: MarkdownSyntaxRapidTypingBurstBenchmarkResult
@@ -671,6 +715,8 @@ private final class MarkdownSyntaxRapidTypingBurstRecorder {
 }
 
 private struct MarkdownSyntaxBenchmarkStatistics: Encodable {
+  let sampleCount: Int
+  let rawSamplesMilliseconds: [Double]
   let minimumMilliseconds: Double
   let medianMilliseconds: Double
   let p95Milliseconds: Double
@@ -678,6 +724,8 @@ private struct MarkdownSyntaxBenchmarkStatistics: Encodable {
 
   init(samples: [Double]) {
     let sorted = samples.sorted()
+    sampleCount = samples.count
+    rawSamplesMilliseconds = samples
     minimumMilliseconds = sorted.first ?? 0
     maximumMilliseconds = sorted.last ?? 0
     if sorted.isEmpty {
@@ -795,7 +843,8 @@ private enum MarkdownSyntaxBenchmarkDocumentFactory {
         previousText: markdown,
         currentText: source.replacingCharacters(
           in: pasteRange,
-          with: "Pasted paragraph with **bold**, *italic*, `code`, and a [link](https://example.com/paste).\n\n"
+          with:
+            "Pasted paragraph with **bold**, *italic*, `code`, and a [link](https://example.com/paste).\n\n"
         ),
         replacedRange: pasteRange,
         expectedFullDocumentHighlight: false,
@@ -815,7 +864,7 @@ private enum MarkdownSyntaxBenchmarkDocumentFactory {
         expectedCodeBlockCacheReuse: false,
         expectedDebounceMilliseconds:
           MarkdownSyntaxHighlightSchedulingPolicy.expensiveEditDelay * 1_000
-      )
+      ),
     ]
   }
 
@@ -837,31 +886,32 @@ private enum MarkdownSyntaxBenchmarkDocumentFactory {
   }
 
   private static let mixedBlock = """
-  ## Generated section
+    ## Generated section
 
-  This paragraph contains **bold text**, *italic text*, `inline code`, and a [link](https://example.com/docs).
+    This paragraph contains **bold text**, *italic text*, `inline code`, and a [link](https://example.com/docs).
 
-  - First generated item
-  - Second generated item
-  > A generated quotation used only for repeatable performance measurement.
+    - First generated item
+    - Second generated item
+    > A generated quotation used only for repeatable performance measurement.
 
-  ```swift
-  let value = "synthetic"
-  print(value)
-  ```
+    ```swift
+    let value = "synthetic"
+    print(value)
+    ```
 
-  """
+    """
 
   private static let denseBlock = """
-  ### **Dense heading** with [reference](https://example.com/dense)
-  - **bold** *italic* `code` [one](https://example.com/1) [two](https://example.com/2)
-  > **quoted** *content* with `token` and [link](https://example.com/3)
-  **alpha** *beta* `gamma` [delta](https://example.com/4) **epsilon** *zeta*
+    ### **Dense heading** with [reference](https://example.com/dense)
+    - **bold** *italic* `code` [one](https://example.com/1) [two](https://example.com/2)
+    > **quoted** *content* with `token` and [link](https://example.com/3)
+    **alpha** *beta* `gamma` [delta](https://example.com/4) **epsilon** *zeta*
 
-  """
+    """
 }
 
 private enum MarkdownSyntaxBenchmarkError: LocalizedError {
+  case requiredEnvironmentMissing(String)
   case parserReturnedNoSnapshot(String)
   case appliedRunCountMismatch(scenario: String, expected: Int, actual: Int)
   case missingEditMarker(String)
@@ -886,24 +936,31 @@ private enum MarkdownSyntaxBenchmarkError: LocalizedError {
 
   var errorDescription: String? {
     switch self {
-    case let .parserReturnedNoSnapshot(scenario):
+    case .requiredEnvironmentMissing(let variable):
+      return "Required release performance environment variable is missing: \(variable)."
+    case .parserReturnedNoSnapshot(let scenario):
       return "Parser returned no snapshot for benchmark scenario \(scenario)."
-    case let .appliedRunCountMismatch(scenario, expected, actual):
+    case .appliedRunCountMismatch(let scenario, let expected, let actual):
       return "Attribute application mismatch for \(scenario): expected \(expected), got \(actual)."
-    case let .missingEditMarker(marker):
+    case .missingEditMarker(let marker):
       return "Incremental benchmark marker was not found: \(marker)."
-    case let .noIncrementalMeasurements(scenario):
+    case .noIncrementalMeasurements(let scenario):
       return "No incremental measurements were collected for \(scenario)."
-    case let .unexpectedIncrementalPlan(scenario, fullDocument, cacheReused):
-      return "Unexpected incremental plan for \(scenario): fullDocument=\(fullDocument), cacheReused=\(cacheReused)."
-    case let .unexpectedScheduledDebounce(scenario, expected, actual):
-      return "Unexpected scheduled debounce for \(scenario): expected \(expected) ms, got \(actual) ms."
-    case let .unexpectedRapidTypingBurst(scheduled, started, delivered, deliveredRequestIDs):
-      return "Unexpected rapid typing burst: scheduled=\(scheduled), started=\(started), delivered=\(delivered), requestIDs=\(deliveredRequestIDs)."
+    case .unexpectedIncrementalPlan(let scenario, let fullDocument, let cacheReused):
+      return
+        "Unexpected incremental plan for \(scenario): fullDocument=\(fullDocument), cacheReused=\(cacheReused)."
+    case .unexpectedScheduledDebounce(let scenario, let expected, let actual):
+      return
+        "Unexpected scheduled debounce for \(scenario): expected \(expected) ms, got \(actual) ms."
+    case .unexpectedRapidTypingBurst(
+      let scheduled, let started, let delivered, let deliveredRequestIDs):
+      return
+        "Unexpected rapid typing burst: scheduled=\(scheduled), started=\(started), delivered=\(delivered), requestIDs=\(deliveredRequestIDs)."
     case .invalidChunkedApplicationPlan:
       return "Chunked application plan did not prioritize the requested visible range."
-    case let .chunkedApplicationExceededFrameBudget(p95, frameBudget):
-      return "Chunked attribute application exceeded the frame budget: p95=\(p95) ms, budget=\(frameBudget) ms."
+    case .chunkedApplicationExceededFrameBudget(let p95, let frameBudget):
+      return
+        "Chunked attribute application exceeded the frame budget: p95=\(p95) ms, budget=\(frameBudget) ms."
     }
   }
 }
