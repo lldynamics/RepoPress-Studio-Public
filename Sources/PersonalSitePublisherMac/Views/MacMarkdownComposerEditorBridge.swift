@@ -35,7 +35,7 @@ extension MacMarkdownComposerView {
     stageEditorBody(replacingBaseBody: previousBody)
     refreshFindMatchSnapshot()
     synchronizeDocumentBodyFromBuffer(previousBody: previousBody)
-    scheduleMarkdownAnalysis()
+    scheduleMarkdownAnalysis(isAutomatic: true)
     refreshMarkdownCursorContextSnapshot()
     saveCurrentEditorSession()
   }

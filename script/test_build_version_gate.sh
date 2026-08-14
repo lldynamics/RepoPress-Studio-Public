@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GATE="$ROOT_DIR/script/check_build_version.sh"
-TMP_DIR="$(mktemp -d /private/tmp/mac-editor-build-version.XXXXXX)"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mac-editor-build-version.XXXXXX" 2>/dev/null || mktemp -d "$ROOT_DIR/.build/tmp/mac-editor-build-version.XXXXXX")"
 CONFIG="$TMP_DIR/BuildVersion.xcconfig"
 INFO_PLIST="$TMP_DIR/Info.plist"
 

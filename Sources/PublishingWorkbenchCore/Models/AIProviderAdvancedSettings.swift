@@ -12,17 +12,28 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
   public var temperature: Double?
   public var maximumOutputTokens: Int?
   public var reasoningPreference: AIProviderReasoningPreference
+  /// Optional for backwards-compatible connection profiles. A missing value
+  /// keeps the historical behaviour (the native Agent path is enabled).
+  public var allowsApplicationTools: Bool?
 
   public init(
     systemPrompt: String = "",
     temperature: Double? = nil,
     maximumOutputTokens: Int? = nil,
-    reasoningPreference: AIProviderReasoningPreference = .automatic
+    reasoningPreference: AIProviderReasoningPreference = .automatic,
+    allowsApplicationTools: Bool? = nil
   ) {
     self.systemPrompt = systemPrompt
     self.temperature = temperature
     self.maximumOutputTokens = maximumOutputTokens
     self.reasoningPreference = reasoningPreference
+    self.allowsApplicationTools = allowsApplicationTools
+  }
+
+  /// Resolves the optional persisted value. Existing profiles that do not
+  /// contain the field keep Agent behaviour enabled.
+  public var resolvedAllowsApplicationTools: Bool {
+    allowsApplicationTools ?? true
   }
 
   public var normalizedSystemPrompt: String {
@@ -46,6 +57,40 @@ public struct AIProviderAdvancedSettings: Codable, Hashable, Sendable {
       && normalizedTemperature == nil
       && normalizedMaximumOutputTokens == nil
       && reasoningPreference == .automatic
+      && allowsApplicationTools == nil
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case systemPrompt
+    case temperature
+    case maximumOutputTokens
+    case reasoningPreference
+    case allowsApplicationTools
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt) ?? ""
+    temperature = try container.decodeIfPresent(Double.self, forKey: .temperature)
+    maximumOutputTokens = try container.decodeIfPresent(Int.self, forKey: .maximumOutputTokens)
+    reasoningPreference =
+      try container.decodeIfPresent(
+        AIProviderReasoningPreference.self,
+        forKey: .reasoningPreference
+      ) ?? .automatic
+    allowsApplicationTools = try container.decodeIfPresent(
+      Bool.self,
+      forKey: .allowsApplicationTools
+    )
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(systemPrompt, forKey: .systemPrompt)
+    try container.encodeIfPresent(temperature, forKey: .temperature)
+    try container.encodeIfPresent(maximumOutputTokens, forKey: .maximumOutputTokens)
+    try container.encode(reasoningPreference, forKey: .reasoningPreference)
+    try container.encodeIfPresent(allowsApplicationTools, forKey: .allowsApplicationTools)
   }
 }
 

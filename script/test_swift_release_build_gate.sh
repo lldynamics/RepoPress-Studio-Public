@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TMP_DIR="$(mktemp -d /private/tmp/mac-editor-swift-release.XXXXXX)"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mac-editor-swift-release.XXXXXX" 2>/dev/null || mktemp -d "$ROOT_DIR/.build/tmp/mac-editor-swift-release.XXXXXX")"
 BIN_DIR="$TMP_DIR/bin"
 ARGS_FILE="$TMP_DIR/args"
 ENV_FILE="$TMP_DIR/env"

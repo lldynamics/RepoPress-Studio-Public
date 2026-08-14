@@ -37,6 +37,12 @@ public struct AIConnectionProfile: Codable, Hashable, Identifiable, Sendable {
   ) -> Self {
     var config = AIProviderConfig(preset: preset)
     config.applyPresetDefaults()
+    // New connections opt out of application tools until the user enables
+    // Agent explicitly. Legacy snapshots with a missing field still resolve
+    // to the historical enabled behaviour.
+    config.advancedSettings = AIProviderAdvancedSettings(
+      allowsApplicationTools: false
+    )
     return Self(name: name, config: config)
   }
 

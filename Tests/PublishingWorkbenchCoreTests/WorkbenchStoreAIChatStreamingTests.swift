@@ -348,6 +348,29 @@ final class WorkbenchStoreAIChatStreamingTests: XCTestCase {
     XCTAssertEqual(requestCount, 0)
   }
 
+  func testRemoteAIMasterSwitchOffPerformsZeroTransportWithGrantAndCredential() async throws {
+    let (store, transport, config, consentStore, persistenceURL) =
+      makeCredentialTOCTOUArticleStore(suffix: "RemoteMasterOff")
+    defer {
+      consentStore.revoke(for: config)
+      try? FileManager.default.removeItem(at: persistenceURL)
+    }
+    var profile = store.activeProfile
+    profile.aiProviderConfig = config
+    store.updateActiveProfile(profile)
+    XCTAssertTrue(consentStore.grant(for: config))
+    XCTAssertTrue(store.saveAIAPIKey("saved-but-blocked-credential"))
+    consentStore.setRemoteAIEnabled(false)
+    let draft = try XCTUnwrap(store.selectedDraft)
+
+    let reply = await store.sendAIChatMessage("remote master off", draft: draft)
+
+    XCTAssertNil(reply)
+    XCTAssertFalse(consentStore.presentation(for: config).isGranted)
+    let requestCount = await transport.capturedRequestCount()
+    XCTAssertEqual(requestCount, 0)
+  }
+
   func testDeletingCredentialWhileAuthorizationGateIsOpenPerformsZeroTransport() async throws {
     let (store, transport, config, consentStore, persistenceURL) =
       makeCredentialTOCTOUArticleStore(suffix: "CredentialDeleted")

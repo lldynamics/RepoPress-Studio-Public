@@ -2,7 +2,18 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SWIFT_BUILD_HOME="${SWIFT_BUILD_HOME:-/private/tmp/personal-site-publisher-swift6-home}"
+if [[ -z "${SWIFT_BUILD_HOME:-}" ]]; then
+  if [[ -n "${TMPDIR:-}" ]] && ( mkdir -p "$TMPDIR/test-write.$$" 2>/dev/null ); then
+    rm -rf "$TMPDIR/test-write.$$" 2>/dev/null || true
+    SWIFT_BUILD_HOME="$TMPDIR/personal-site-publisher-swift6-home"
+  elif ( mkdir -p "/private/tmp/test-write.$$" 2>/dev/null ); then
+    rm -rf "/private/tmp/test-write.$$" 2>/dev/null || true
+    SWIFT_BUILD_HOME="/private/tmp/personal-site-publisher-swift6-home"
+  else
+    SWIFT_BUILD_HOME="$ROOT_DIR/.build/tmp/swift6-home"
+  fi
+fi
+export HOME="$SWIFT_BUILD_HOME"
 LOCAL_SWIFTPM_CACHE_PATH="$ROOT_DIR/.build"
 if [[ -d "$LOCAL_SWIFTPM_CACHE_PATH/checkouts/Sparkle" && -d "$LOCAL_SWIFTPM_CACHE_PATH/artifacts/sparkle" ]]; then
   DEFAULT_SWIFT_PACKAGE_CACHE_PATH="$LOCAL_SWIFTPM_CACHE_PATH"

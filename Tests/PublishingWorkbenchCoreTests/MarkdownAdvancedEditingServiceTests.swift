@@ -205,6 +205,49 @@ final class MarkdownAdvancedEditingServiceTests: XCTestCase {
     )
   }
 
+  func testDeleteLineRemovesCurrentLineAndAdjustsCursor() throws {
+    let markdown = "First line\nSecond line\nThird line"
+    let cursor = (markdown as NSString).range(of: "Second").location
+    let edit = try lineEdit(
+      markdown,
+      range: NSRange(location: cursor, length: 0),
+      command: .deleteLine
+    )
+    let result = applying(edit, to: markdown)
+    XCTAssertEqual(result, "First line\nThird line")
+  }
+
+  func testDeleteLastLineWithoutTrailingNewline() throws {
+    let markdown = "First line\nSecond line"
+    let cursor = (markdown as NSString).range(of: "Second").location
+    let edit = try lineEdit(
+      markdown,
+      range: NSRange(location: cursor, length: 0),
+      command: .deleteLine
+    )
+    let result = applying(edit, to: markdown)
+    XCTAssertEqual(result, "First line")
+  }
+
+  func testToggleCommentCommentsAndUncommentsLines() throws {
+    let markdown = "First line\nSecond line"
+    let edit = try lineEdit(
+      markdown,
+      range: NSRange(location: 0, length: markdown.utf16.count),
+      command: .toggleComment
+    )
+    let commented = applying(edit, to: markdown)
+    XCTAssertEqual(commented, "<!-- First line -->\n<!-- Second line -->")
+
+    let uncommentEdit = try lineEdit(
+      commented,
+      range: NSRange(location: 0, length: commented.utf16.count),
+      command: .toggleComment
+    )
+    let uncommented = applying(uncommentEdit, to: commented)
+    XCTAssertEqual(uncommented, "First line\nSecond line")
+  }
+
   func testBracketPairingWrapsSelectionAndSupportsChineseSymbols() throws {
     let markdown = "选择文字"
     let selection = (markdown as NSString).range(of: "文字")

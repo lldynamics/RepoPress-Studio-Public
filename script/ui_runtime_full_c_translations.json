@@ -159,10 +159,6 @@
     "en": "%lld built-in templates let you create a new site or import an existing repository.",
     "zh-Hans": "内置 %lld 个模板，支持新建站点或导入已有仓库。"
   },
-  "切换任务完成状态": {
-    "en": "Toggle Task Completion",
-    "zh-Hans": "切换任务完成状态"
-  },
   "切换到%@模式": {
     "en": "Switch to %@ mode",
     "zh-Hans": "切换到%@模式"
@@ -659,10 +655,6 @@
     "en": "Line %@, column %@",
     "zh-Hans": "行 %@，列 %@"
   },
-  "行下移": {
-    "en": "Move Line Down",
-    "zh-Hans": "行下移"
-  },
   "行级差异": {
     "en": "Line-Level Differences",
     "zh-Hans": "行级差异"
@@ -766,9 +758,5 @@
   "高亮当前段落": {
     "en": "Highlight Current Paragraph",
     "zh-Hans": "高亮当前段落"
-  },
-  "高级格式": {
-    "en": "Advanced Formatting",
-    "zh-Hans": "高级格式"
   }
 }

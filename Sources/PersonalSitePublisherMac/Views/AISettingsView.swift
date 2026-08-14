@@ -23,6 +23,7 @@ struct AISettingsView: View {
   let refreshKeyAvailability: () -> Void
   let setCredentialStorageMode: (AICredentialStorageMode) -> Void
   let testConnection: (Set<AIProviderCapabilityProbeKind>) async -> AIConnectionTestReport?
+  let setRemoteAIEnabled: (Bool) -> Void
   let grantDataSharingConsent: () -> Void
   let revokeDataSharingConsent: () -> Void
 
@@ -125,6 +126,10 @@ struct AISettingsView: View {
 
           AIDataSharingConsentSection(
             presentation: dataSharingConsent,
+            setRemoteAIEnabled: { enabled in
+              setRemoteAIEnabled(enabled)
+              invalidateConnectionReport()
+            },
             grantConsent: {
               grantDataSharingConsent()
               invalidateConnectionReport()

@@ -18,6 +18,8 @@ public enum MarkdownLineEditingCommand: Equatable, Sendable {
   case duplicateAbove
   case duplicateBelow
   case toggleTaskCompletion
+  case deleteLine
+  case toggleComment
 }
 
 /// Plans advanced Markdown edits without owning editor or undo state.
@@ -93,6 +95,18 @@ public struct MarkdownAdvancedEditingService: Sendable {
       )
     case .toggleTaskCompletion:
       return toggleTaskCompletionEdit(
+        in: source,
+        selection: selection,
+        affectedRange: affectedRange
+      )
+    case .deleteLine:
+      return deleteLineEdit(
+        in: source,
+        selection: selection,
+        affectedRange: affectedRange
+      )
+    case .toggleComment:
+      return toggleCommentEdit(
         in: source,
         selection: selection,
         affectedRange: affectedRange
@@ -550,6 +564,86 @@ public struct MarkdownAdvancedEditingService: Sendable {
       replacement: replacement,
       selectedRange: selection.length == 0
         ? selection
+        : NSRange(location: affectedRange.location, length: replacement.utf16.count)
+    )
+  }
+
+  private func deleteLineEdit(
+    in source: NSString,
+    selection: NSRange,
+    affectedRange: NSRange
+  ) -> MarkdownSmartEdit? {
+    var rangeToDelete = affectedRange
+    // If deleting the last line which has no trailing newline, consume preceding newline if available
+    if NSMaxRange(rangeToDelete) == source.length, rangeToDelete.location > 0 {
+      let prevCharRange = NSRange(location: rangeToDelete.location - 1, length: 1)
+      let prevChar = source.substring(with: prevCharRange)
+      if prevChar == "\n" || prevChar == "\r" {
+        rangeToDelete = NSRange(location: rangeToDelete.location - 1, length: rangeToDelete.length + 1)
+      }
+    }
+    let remainingLength = max(0, source.length - rangeToDelete.length)
+    let newCursorLocation = min(rangeToDelete.location, remainingLength)
+    return MarkdownSmartEdit(
+      replacedRange: rangeToDelete,
+      replacement: "",
+      selectedRange: NSRange(location: newCursorLocation, length: 0)
+    )
+  }
+
+  private func toggleCommentEdit(
+    in source: NSString,
+    selection: NSRange,
+    affectedRange: NSRange
+  ) -> MarkdownSmartEdit? {
+    let block = source.substring(with: affectedRange) as NSString
+    let segments = lineSegments(in: block)
+    guard !segments.isEmpty else { return nil }
+
+    let commentPrefix = "<!-- "
+    let commentSuffix = " -->"
+    let compactPrefix = "<!--"
+    let compactSuffix = "-->"
+
+    let isCommented: (String) -> Bool = { content in
+      let trimmed = content.trimmingCharacters(in: .whitespaces)
+      guard !trimmed.isEmpty else { return true }
+      return trimmed.hasPrefix(compactPrefix) && trimmed.hasSuffix(compactSuffix)
+    }
+
+    let nonWhitespaceSegments = segments.filter { !$0.content.trimmingCharacters(in: .whitespaces).isEmpty }
+    let allCommented = !nonWhitespaceSegments.isEmpty && nonWhitespaceSegments.allSatisfy { isCommented($0.content) }
+
+    let replacement = segments.map { segment -> String in
+      let content = segment.content
+      let trimmed = content.trimmingCharacters(in: .whitespaces)
+      guard !trimmed.isEmpty else { return segment.fullText }
+
+      if allCommented {
+        var unwrapped = trimmed
+        if unwrapped.hasPrefix(commentPrefix) {
+          unwrapped = String(unwrapped.dropFirst(commentPrefix.count))
+        } else if unwrapped.hasPrefix(compactPrefix) {
+          unwrapped = String(unwrapped.dropFirst(compactPrefix.count))
+        }
+        if unwrapped.hasSuffix(commentSuffix) {
+          unwrapped = String(unwrapped.dropLast(commentSuffix.count))
+        } else if unwrapped.hasSuffix(compactSuffix) {
+          unwrapped = String(unwrapped.dropLast(compactSuffix.count))
+        }
+        let parsed = parsedBlockLine(content)
+        return parsed.indentation + unwrapped + segment.ending
+      } else {
+        let parsed = parsedBlockLine(content)
+        return parsed.indentation + commentPrefix + parsed.content + commentSuffix + segment.ending
+      }
+    }.joined()
+
+    return MarkdownSmartEdit(
+      replacedRange: affectedRange,
+      replacement: replacement,
+      selectedRange: selection.length == 0
+        ? NSRange(location: min(selection.location, affectedRange.location + replacement.utf16.count), length: 0)
         : NSRange(location: affectedRange.location, length: replacement.utf16.count)
     )
   }

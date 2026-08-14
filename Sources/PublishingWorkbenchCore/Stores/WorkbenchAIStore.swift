@@ -509,13 +509,32 @@ public final class WorkbenchAIStore: ObservableObject {
     )
   }
 
+  public var isRemoteAIEnabled: Bool {
+    aiDataSharingConsentStore.isRemoteAIEnabled
+  }
+
+  public func setRemoteAIEnabled(_ enabled: Bool) {
+    let changed = aiDataSharingConsentStore.isRemoteAIEnabled != enabled
+    aiDataSharingConsentStore.setRemoteAIEnabled(enabled)
+    guard changed else { return }
+    objectWillChange.send()
+    let message = enabled
+      ? "已开启远程 AI；原有逐服务授权会恢复生效。"
+      : "已关闭远程 AI。逐服务授权会保留，重新开启后恢复；本地 AI 仍可用。"
+    aiActionMessage = message
+    aiChatMessage = message
+  }
+
   public func grantAIDataSharingConsent() {
     let config = store.aiProviderConfig(for: store.activeProfile)
     aiDataSharingConsentStore.grant(for: config)
+    let presentation = aiDataSharingConsentStore.presentation(for: config)
     if config.isLocalEndpoint {
       aiActionMessage = "当前为本地 AI 服务，内容不会发送给第三方服务商。"
     } else if config.dataSharingDestination.isEmpty {
       aiActionMessage = "尚未配置 API 基础地址，授权暂不生效。"
+    } else if !presentation.isRemoteAIEnabled {
+      aiActionMessage = "已保留此服务的逐项授权，但远程 AI 总闸已关闭；当前不会发送远程请求。"
     } else {
       aiActionMessage =
         "已允许向 \(config.normalizedDisplayName)（\(config.dataSharingDestination)）发送内容。"

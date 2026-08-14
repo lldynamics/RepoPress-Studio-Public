@@ -98,6 +98,7 @@ final class DroppableMarkdownTextView: NSTextView {
     KnowledgeArticleInsertionService.citation(from: $0)
   }
   var markdownFormattingHandler: ((NSTextView, MarkdownFormattingCommand) -> Bool)?
+  var markdownLineEditingHandler: ((NSTextView, MarkdownLineEditingCommand) -> Bool)?
   var markdownTableContextProvider: ((NSTextView) -> MarkdownTableEditingContext?)?
   var markdownTableEditingHandler: ((NSTextView, MarkdownTableEditingCommand) -> Bool)?
   var slashCommandKeyHandler: ((MarkdownSlashCommandKey) -> Bool)?
@@ -146,6 +147,29 @@ final class DroppableMarkdownTextView: NSTextView {
       modifiers: event.modifierFlags
     ), slashCommandKeyHandler?(slashCommandKey) == true {
       return
+    }
+
+    // Keyboard line operations: Move, Duplicate, Delete, Comment
+    if event.keyCode == 126 { // Up arrow
+      if modifiers == .option {
+        if markdownLineEditingHandler?(self, .moveUp) == true { return }
+      } else if modifiers == [.shift, .option] {
+        if markdownLineEditingHandler?(self, .duplicateAbove) == true { return }
+      }
+    } else if event.keyCode == 125 { // Down arrow
+      if modifiers == .option {
+        if markdownLineEditingHandler?(self, .moveDown) == true { return }
+      } else if modifiers == [.shift, .option] {
+        if markdownLineEditingHandler?(self, .duplicateBelow) == true { return }
+      }
+    } else if event.keyCode == 40 { // 'K' key
+      if modifiers == [.command, .shift] {
+        if markdownLineEditingHandler?(self, .deleteLine) == true { return }
+      }
+    } else if event.keyCode == 44 || event.characters == "/" { // '/' key
+      if modifiers == .command {
+        if markdownLineEditingHandler?(self, .toggleComment) == true { return }
+      }
     }
 
     if event.keyCode == 48 { // Tab key

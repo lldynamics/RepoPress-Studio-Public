@@ -44,6 +44,12 @@ struct RSSArticleReader: View {
   let onClearTranslation: () -> Void
   let onOpenAISettings: () -> Void
   let workflowIsBusy: Bool
+  let isTruncatedCandidate: Bool
+  let isShowingFullText: Bool
+  let isFetchingFullText: Bool
+  let fullTextError: String?
+  let automaticFullTextExtraction: Binding<Bool>?
+  let onToggleFullText: () -> Void
   @State private var showsTranslatedArticle = false
   @State private var showsAnnotationSummary = false
   @StateObject private var speechController = RSSArticleSpeechController()
@@ -206,6 +212,7 @@ struct RSSArticleReader: View {
         VStack(spacing: 4) {
           readingProgressBar
           readerToolbar(for: article, speechArticle: displayedArticle)
+          fullTextStatusBanner(for: article)
           translationStatusView
         }
         .background(.thinMaterial)
@@ -309,6 +316,72 @@ struct RSSArticleReader: View {
 
   private var readingProgressPercentage: Int {
     Int((normalizedReadingProgress * 100).rounded())
+  }
+
+  @ViewBuilder
+  private func fullTextStatusBanner(for article: RSSArticle) -> some View {
+    if isFetchingFullText {
+      HStack(spacing: 6) {
+        ProgressView().controlSize(.small)
+        Text(String(localized: "正在从原站提取全文…"))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      .padding(.horizontal, 8)
+      .padding(.vertical, 4)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    } else if let error = fullTextError {
+      HStack(spacing: 6) {
+        Image(systemName: "exclamationmark.circle")
+          .foregroundStyle(WorkbenchTheme.risk)
+        Text(String(localized: "提取全文失败：\(error)"))
+          .font(.caption)
+          .foregroundStyle(WorkbenchTheme.risk)
+          .lineLimit(1)
+        Spacer()
+        Button(String(localized: "重试"), action: onToggleFullText)
+          .buttonStyle(.borderless)
+          .font(.caption.weight(.medium))
+      }
+      .padding(.horizontal, 8)
+      .padding(.vertical, 4)
+      .background(WorkbenchTheme.risk.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+      .frame(maxWidth: .infinity, alignment: .leading)
+    } else if isTruncatedCandidate && !isShowingFullText {
+      HStack(spacing: 8) {
+        Label(String(localized: "当前为截断摘要，可提取原站全文阅读"), systemImage: "doc.text.magnifyingglass")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Spacer()
+        Button {
+          onToggleFullText()
+        } label: {
+          Label(String(localized: "提取全文"), systemImage: "sparkles")
+            .font(.caption.weight(.medium))
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
+      }
+      .padding(.horizontal, 8)
+      .padding(.vertical, 4)
+      .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+      .frame(maxWidth: .infinity, alignment: .leading)
+    } else if isShowingFullText {
+      HStack(spacing: 6) {
+        Image(systemName: "checkmark.seal.fill")
+          .foregroundStyle(WorkbenchTheme.progress)
+        Text(String(localized: "已加载原站全文"))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Spacer()
+        Button(String(localized: "恢复原始摘要"), action: onToggleFullText)
+          .buttonStyle(.borderless)
+          .font(.caption)
+      }
+      .padding(.horizontal, 8)
+      .padding(.vertical, 3)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
   }
 
   @ViewBuilder
@@ -437,6 +510,7 @@ struct RSSArticleReader: View {
   ) -> some View {
     ViewThatFits(in: .horizontal) {
       readerToolbarExpandedContent(for: article, speechArticle: speechArticle)
+      readerToolbarMediumContent(for: article, speechArticle: speechArticle)
       readerToolbarCompactContent(for: article, speechArticle: speechArticle)
     }
     .padding(.horizontal, 8)
@@ -461,12 +535,62 @@ struct RSSArticleReader: View {
     HStack(alignment: .center, spacing: 6) {
       readerBackButton
       starredButton(for: article)
+      readButton(for: article)
+      if article.link != nil {
+        fullTextButton(for: article)
+      }
+      Divider().frame(height: 14)
+      speechToggleButton(for: speechArticle)
+      if speechController.currentArticleID == speechArticle.id && speechController.isSpeaking {
+        speechRateMenu
+      }
+      translationControls
+      readingComfortControls
+      annotationSummaryButton(for: article)
+      workflowIntegrationMenu(for: article)
+      if article.link != nil {
+        originalArticleButton(for: article)
+      }
+      readerOverflowMenu(for: article, speechArticle: speechArticle)
+      readerToolbarBusyIndicator
+    }
+  }
+
+  @ViewBuilder
+  private func readerToolbarMediumContent(
+    for article: RSSArticle,
+    speechArticle: RSSArticle
+  ) -> some View {
+    HStack(alignment: .center, spacing: 6) {
+      readerBackButton
+      starredButton(for: article)
         .labelStyle(.iconOnly)
       readButton(for: article)
         .labelStyle(.iconOnly)
-      originalArticleButton(for: article)
+      if article.link != nil {
+        fullTextButton(for: article)
+          .labelStyle(.iconOnly)
+      }
+      Divider().frame(height: 14)
+      speechToggleButton(for: speechArticle)
         .labelStyle(.iconOnly)
+      if speechController.currentArticleID == speechArticle.id && speechController.isSpeaking {
+        speechRateMenu
+      }
+      translationControls
+        .labelStyle(.iconOnly)
+      readingComfortControls
+        .labelStyle(.iconOnly)
+      annotationSummaryButton(for: article)
+        .labelStyle(.iconOnly)
+      workflowIntegrationMenu(for: article)
+        .labelStyle(.iconOnly)
+      if article.link != nil {
+        originalArticleButton(for: article)
+          .labelStyle(.iconOnly)
+      }
       readerOverflowMenu(for: article, speechArticle: speechArticle)
+        .labelStyle(.iconOnly)
       readerToolbarBusyIndicator
     }
   }
@@ -482,11 +606,50 @@ struct RSSArticleReader: View {
         .labelStyle(.iconOnly)
       readButton(for: article)
         .labelStyle(.iconOnly)
-      originalArticleButton(for: article)
-        .labelStyle(.iconOnly)
+      if article.link != nil {
+        fullTextButton(for: article)
+          .labelStyle(.iconOnly)
+      }
+      if article.link != nil {
+        originalArticleButton(for: article)
+          .labelStyle(.iconOnly)
+      }
       readerOverflowMenu(for: article, speechArticle: speechArticle)
         .labelStyle(.iconOnly)
       readerToolbarBusyIndicator
+    }
+  }
+
+  @ViewBuilder
+  private func fullTextButton(for article: RSSArticle) -> some View {
+    if isShowingFullText {
+      Button {
+        onToggleFullText()
+      } label: {
+        Label(
+          String(localized: "恢复摘要"),
+          systemImage: "doc.plaintext"
+        )
+      }
+      .buttonStyle(.borderedProminent)
+      .disabled(isFetchingFullText)
+      .help(String(localized: "恢复 RSS 原始摘要"))
+      .accessibilityLabel("恢复 RSS 原始摘要")
+      .accessibilityIdentifier("rss-reader-full-text-toggle")
+    } else {
+      Button {
+        onToggleFullText()
+      } label: {
+        Label(
+          String(localized: "提取全文"),
+          systemImage: "sparkles"
+        )
+      }
+      .buttonStyle(.bordered)
+      .disabled(isFetchingFullText)
+      .help(String(localized: "从原网站提取完整正文"))
+      .accessibilityLabel("从原网站提取完整正文")
+      .accessibilityIdentifier("rss-reader-full-text-toggle")
     }
   }
 
@@ -720,6 +883,15 @@ struct RSSArticleReader: View {
       )
       if article.link != nil {
         Divider()
+        Button(
+          isShowingFullText ? String(localized: "恢复原始摘要") : String(localized: "提取原站全文"),
+          systemImage: isShowingFullText ? "doc.plaintext" : "sparkles",
+          action: onToggleFullText
+        )
+        .disabled(isFetchingFullText)
+        if let automaticFullTextExtraction {
+          Toggle(String(localized: "打开截断文章时自动提取全文"), isOn: automaticFullTextExtraction)
+        }
         Button("在系统浏览器中打开原文", systemImage: "safari", action: onOpenOriginal)
       }
 
@@ -1049,7 +1221,13 @@ struct RSSArticleReader: View {
           onTranslate: {},
           onClearTranslation: {},
           onOpenAISettings: {},
-          workflowIsBusy: false
+          workflowIsBusy: false,
+          isTruncatedCandidate: false,
+          isShowingFullText: false,
+          isFetchingFullText: false,
+          fullTextError: nil,
+          automaticFullTextExtraction: nil,
+          onToggleFullText: {}
         )
         .readerToolbar(for: article, speechArticle: article)
       }

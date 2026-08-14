@@ -126,7 +126,9 @@ struct MacMarkdownComposerView: View {
       onPerformArticleAIAction: performArticleAIAction,
       onPerformConvergedSelectionAIAction: performConvergedSelectionAIAction,
       onPerformConvergedArticleAIAction: performConvergedArticleAIAction,
-      onPasteAIPromptToClipboard: pasteAIPromptToClipboard
+      onPasteAIPromptToClipboard: pasteAIPromptToClipboard,
+      onFormatChineseTypography: formatChineseTypography,
+      onCopyForWeChatAndZhihu: copyForWeChatAndZhihu
     )
   }
 
@@ -656,7 +658,9 @@ struct MacMarkdownComposerView: View {
           onJumpToLine: jumpToMarkdownLine,
           onJumpToCounterpartFence: jumpToCounterpartFence,
           onApplyCompletion: applyMarkdownCompletion,
-          onInsertCompletionTrigger: insertMarkdownCompletionTrigger
+          onInsertCompletionTrigger: insertMarkdownCompletionTrigger,
+          onFormatChineseTypography: formatChineseTypography,
+          onCopyForWeChatAndZhihu: copyForWeChatAndZhihu
         )
         .opacity(zenModeController.toolbarOpacity)
         .onHover { isHovered in

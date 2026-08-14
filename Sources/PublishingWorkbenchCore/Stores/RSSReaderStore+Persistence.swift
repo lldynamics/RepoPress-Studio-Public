@@ -341,6 +341,18 @@ extension RSSReaderStore {
     }
     mutationRevision &+= 1
   }
+
+  public func maintainDatabase() async {
+    guard let database else { return }
+    await Task.detached(priority: .utility) {
+      do {
+        try database.checkpointWAL(mode: .passive)
+        try database.optimizeDatabase()
+      } catch {
+        // Passive database maintenance is best-effort.
+      }
+    }.value
+  }
 }
 
 extension RSSArticle {

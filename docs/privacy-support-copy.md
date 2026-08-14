@@ -2,6 +2,8 @@
 
 This is the redacted privacy and support baseline for the free RepoPress Studio website edition. The app is downloaded from the official website as a Developer ID signed and notarized macOS app. It requires no RepoPress Studio account or paid feature tier. RepoPress Studio does not sell AI service access, provider keys, or usage bundles.
 
+The main app in the Developer ID website edition does not enable App Sandbox. Hardened Runtime and Apple notarization protect code integrity and distribution trust but do not provide App Sandbox isolation. The app workflow accesses repositories, research sources, images, and output locations that the user selects through system panels or explicitly configures, and uses security-scoped bookmarks to remember those choices. The embedded Safari Web Extension is a separate extension process and enables App Sandbox.
+
 ## Privacy Policy Copy
 
 RepoPress Studio works with repositories, drafts, images, publishing metadata, research material, browser captures, and deployment status that the user chooses to open or configure. The workspace is local-first and does not include advertising, behavioral tracking, or a third-party analytics SDK. Repository files and drafts stay on this Mac unless the user deliberately starts an external operation.

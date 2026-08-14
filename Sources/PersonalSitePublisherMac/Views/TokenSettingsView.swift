@@ -2,6 +2,7 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct TokenSettingsView<RepositoryPermissionContent: View>: View {
+  @ObservedObject var store: WorkbenchStore
   let activeProfileBinding: Binding<SiteProfile>
   let readiness: DeploymentStatusProviderReadiness
   let repositoryTokenAvailability: KeychainTokenAvailability
@@ -135,6 +136,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
       publishStrategyDetail: activeProfile.repositoryPublishStrategy.detail
     )
 
+    TokenRepositoryAutomationSection(store: store)
+
     TokenRepositoryTokenSection(
       repositoryProvider: activeProfile.repositoryProvider,
       repositoryTokenInput: $credentialDrafts.repository,
@@ -198,6 +201,8 @@ struct TokenSettingsView<RepositoryPermissionContent: View>: View {
       deploymentAccountID: optionalProfileStringBinding(\.deploymentAccountID),
       deploymentAccountIDDisplayValue: activeProfile.deploymentAccountID?.nilIfEmpty ?? "未填写"
     )
+
+    TokenDeploymentAutomationSection(store: store)
 
     TokenDeploymentTokenSection(
       deploymentProvider: activeDeploymentProvider,

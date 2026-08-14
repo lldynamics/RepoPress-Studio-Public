@@ -4,16 +4,37 @@ import SwiftUI
 @MainActor
 struct RSSMaintenanceSettingsView: View {
   @ObservedObject var store: RSSReaderStore
+  let allowsBackgroundRefresh: Bool
 
   @AppStorage(RSSReaderStore.automaticPruningDefaultsKey)
   private var automaticPruningEnabled = false
   @AppStorage(RSSReaderStore.retentionDaysDefaultsKey)
   private var retentionDays = RSSReaderStore.defaultRetentionDays
+  @AppStorage(RSSReaderUserPreferences.backgroundRefreshEnabledKey)
+  private var backgroundRefreshEnabled = RSSReaderUserPreferences.defaultBackgroundRefreshEnabled
+  @AppStorage(RSSReaderUserPreferences.backgroundRefreshIntervalMinutesKey)
+  private var backgroundRefreshIntervalMinutes =
+    RSSReaderUserPreferences.defaultBackgroundRefreshIntervalMinutes
+  @AppStorage(RSSReaderUserPreferences.automaticMarkReadAtEndEnabledKey)
+  private var automaticMarkReadAtEndEnabled =
+    RSSReaderUserPreferences.defaultAutomaticMarkReadAtEndEnabled
+  @AppStorage(RSSReaderUserPreferences.remoteImagesEnabledKey)
+  private var defaultRemoteImagesEnabled = RSSReaderUserPreferences.defaultRemoteImagesEnabled
+  @AppStorage(RSSReaderUserPreferences.automaticTranslationEnabledKey)
+  private var automaticTranslationEnabled = RSSReaderUserPreferences.defaultAutomaticTranslationEnabled
+  @AppStorage(RSSReaderUserPreferences.offlineCacheFullTextOnRefreshEnabledKey)
+  private var offlineCacheFullTextOnRefreshEnabled =
+    RSSReaderUserPreferences.defaultOfflineCacheFullTextOnRefreshEnabled
+  @AppStorage(RSSReaderUserPreferences.automaticFullTextExtractionEnabledKey)
+  private var automaticFullTextExtractionEnabled =
+    RSSReaderUserPreferences.defaultAutomaticFullTextExtractionEnabled
   @State private var isPruneConfirmationPresented = false
   @State private var pruneFeedback: String?
   @State private var pruneFeedbackIsError = false
   @State private var opmlFeedback: String?
   @State private var opmlFeedbackIsError = false
+  @State private var isOfflineCachingAll = false
+  @State private var offlineCacheFeedback: String?
 
   var body: some View {
     Form {
@@ -24,6 +45,131 @@ struct RSSMaintenanceSettingsView: View {
           .font(.callout)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
+
+        VStack(alignment: .leading, spacing: 8) {
+          Button {
+            startOfflineCachingAllArticles()
+          } label: {
+            Label(
+              isOfflineCachingAll
+                ? String(localized: "正在离线缓存全文…")
+                : String(localized: "立即离线缓存所有文章全文"),
+              systemImage: isOfflineCachingAll ? "arrow.triangle.2.circlepath" : "arrow.down.doc.fill"
+            )
+          }
+          .buttonStyle(.bordered)
+          .disabled(isOfflineCachingAll || store.articleHeaders.isEmpty)
+
+          if let offlineCacheFeedback {
+            Text(offlineCacheFeedback)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+        }
+      }
+
+      Section(String(localized: "自动刷新与阅读")) {
+        Toggle(
+          String(localized: "后台自动刷新 RSS"),
+          isOn: backgroundRefreshEnabledBinding
+        )
+        .toggleStyle(.switch)
+        .accessibilityLabel(String(localized: "后台自动刷新 RSS"))
+        .accessibilityValue(
+          !allowsBackgroundRefresh
+            ? String(localized: "安全模式下暂停")
+            : backgroundRefreshEnabled
+            ? String(localized: "开启")
+            : String(localized: "关闭")
+        )
+        .accessibilityHint(
+          String(localized: "关闭后会停止自动刷新计时器和失败订阅重试计时器；手动刷新仍可使用。")
+        )
+        .accessibilityIdentifier("rss-background-refresh-enabled")
+        .disabled(!allowsBackgroundRefresh)
+
+        if !allowsBackgroundRefresh {
+          Text("安全模式下后台刷新保持暂停；退出安全模式后会按此设置恢复。")
+            .font(.workbenchSupporting)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        Picker(
+          String(localized: "自动刷新间隔"),
+          selection: backgroundRefreshIntervalBinding
+        ) {
+          ForEach(RSSReaderUserPreferences.backgroundRefreshIntervalOptions, id: \.self) { minutes in
+            Text("\(minutes) 分钟").tag(minutes)
+          }
+        }
+        .pickerStyle(.menu)
+        .disabled(!allowsBackgroundRefresh || !backgroundRefreshEnabled)
+        .accessibilityLabel(String(localized: "RSS 自动刷新间隔"))
+        .accessibilityValue(
+          "\(RSSReaderUserPreferences.normalizedBackgroundRefreshIntervalMinutes(backgroundRefreshIntervalMinutes)) 分钟"
+        )
+        .accessibilityHint(String(localized: "修改后会立即替换正在运行的自动刷新计时器。"))
+        .accessibilityIdentifier("rss-background-refresh-interval")
+
+        Text("自动刷新只检查已到刷新时间的订阅；关闭后台自动刷新不会影响手动刷新。")
+          .font(.workbenchSupporting)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        Toggle(
+          String(localized: "读到文章末尾时自动标记为已读"),
+          isOn: $automaticMarkReadAtEndEnabled
+        )
+        .toggleStyle(.checkbox)
+        .accessibilityLabel(String(localized: "读到文章末尾时自动标记为已读"))
+        .accessibilityValue(
+          automaticMarkReadAtEndEnabled
+            ? String(localized: "开启")
+            : String(localized: "关闭")
+        )
+        .accessibilityHint(
+          String(localized: "关闭后仍会保存阅读进度，但读到正文末尾不会改变已读状态。")
+        )
+        .accessibilityIdentifier("rss-automatic-mark-read-at-end")
+
+        settingsToggle(
+          title: String(localized: "刷新时自动离线缓存全文"),
+          detail: String(localized: "刷新订阅源时，自动在后台从原网站抓取截断文章的完整正文并持久化存储，无需网络即可离线阅读。"),
+          isOn: Binding(
+            get: { offlineCacheFullTextOnRefreshEnabled },
+            set: { newValue in
+              offlineCacheFullTextOnRefreshEnabled = newValue
+              store.isOfflineCacheFullTextEnabled = newValue
+            }
+          ),
+          accessibilityIdentifier: "rss-offline-cache-on-refresh"
+        )
+      }
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("rss-automation-settings")
+
+      Section(String(localized: "阅读默认值")) {
+        settingsToggle(
+          title: String(localized: "默认加载远程图片"),
+          detail: String(localized: "打开或切换文章时使用此默认值；会连接文章中的第三方图片地址。文章内的“加载远程图片”开关仍可临时覆盖。"),
+          isOn: $defaultRemoteImagesEnabled,
+          accessibilityIdentifier: "rss-default-remote-images"
+        )
+
+        settingsToggle(
+          title: String(localized: "打开文章时自动翻译"),
+          detail: String(localized: "会把当前文章标题和正文发送给当前 AI 服务，并受 AI 远程总闸与目的地授权约束；文章内仍可手动关闭或重新翻译。"),
+          isOn: $automaticTranslationEnabled,
+          accessibilityIdentifier: "rss-automatic-translation"
+        )
+
+        settingsToggle(
+          title: String(localized: "打开截断文章时自动提取全文"),
+          detail: String(localized: "遇到仅含摘要的订阅源时，自动从原网站安全下载并净化展开完整正文；文章内仍可手动恢复原始摘要。"),
+          isOn: $automaticFullTextExtractionEnabled,
+          accessibilityIdentifier: "rss-automatic-full-text-extraction"
+        )
       }
 
       Section(String(localized: "订阅迁移")) {
@@ -121,6 +267,17 @@ struct RSSMaintenanceSettingsView: View {
     .formStyle(.grouped)
     .scrollIndicators(.automatic)
     .padding(WorkbenchSpacing.content)
+    .onAppear {
+      normalizeBackgroundRefreshInterval()
+      synchronizeBackgroundRefresh()
+      store.isOfflineCacheFullTextEnabled = offlineCacheFullTextOnRefreshEnabled
+    }
+    .onChange(of: backgroundRefreshEnabled) { _, _ in
+      synchronizeBackgroundRefresh()
+    }
+    .onChange(of: backgroundRefreshIntervalMinutes) { _, _ in
+      synchronizeBackgroundRefresh()
+    }
     .confirmationDialog(
       "清理 RSS 历史文章？",
       isPresented: $isPruneConfirmationPresented,
@@ -175,6 +332,49 @@ struct RSSMaintenanceSettingsView: View {
     }
   }
 
+  private var backgroundRefreshEnabledBinding: Binding<Bool> {
+    Binding(
+      get: { backgroundRefreshEnabled },
+      set: { isEnabled in
+        backgroundRefreshEnabled = isEnabled
+        synchronizeBackgroundRefresh()
+      }
+    )
+  }
+
+  private var backgroundRefreshIntervalBinding: Binding<Int> {
+    Binding(
+      get: {
+        RSSReaderUserPreferences.normalizedBackgroundRefreshIntervalMinutes(
+          backgroundRefreshIntervalMinutes
+        )
+      },
+      set: { minutes in
+        backgroundRefreshIntervalMinutes =
+          RSSReaderUserPreferences.normalizedBackgroundRefreshIntervalMinutes(minutes)
+        synchronizeBackgroundRefresh()
+      }
+    )
+  }
+
+  private func normalizeBackgroundRefreshInterval() {
+    let normalized = RSSReaderUserPreferences.normalizedBackgroundRefreshIntervalMinutes(
+      backgroundRefreshIntervalMinutes
+    )
+    guard normalized != backgroundRefreshIntervalMinutes else { return }
+    backgroundRefreshIntervalMinutes = normalized
+  }
+
+  private func synchronizeBackgroundRefresh() {
+    normalizeBackgroundRefreshInterval()
+    store.configureBackgroundRefresh(
+      enabled: allowsBackgroundRefresh && backgroundRefreshEnabled,
+      interval: RSSReaderUserPreferences.backgroundRefreshIntervalSeconds(
+        backgroundRefreshIntervalMinutes
+      )
+    )
+  }
+
   private func pruneHistory() {
     let summary = store.pruneReadArticles(olderThanDays: retentionDays)
     if let lastError = store.lastError, !lastError.isEmpty {
@@ -221,6 +421,23 @@ struct RSSMaintenanceSettingsView: View {
     } catch {
       opmlFeedback = "OPML 导出失败：" + error.localizedDescription
       opmlFeedbackIsError = true
+    }
+  }
+
+  private func startOfflineCachingAllArticles() {
+    guard !isOfflineCachingAll else { return }
+    isOfflineCachingAll = true
+    offlineCacheFeedback = String(localized: "正在后台分析并离线缓存文章全文…")
+    let articleIDs = store.articleHeaders.map(\.id)
+    Task {
+      let count = await store.prefetchFullTextForOfflineCache(articleIDs: articleIDs)
+      await MainActor.run {
+        isOfflineCachingAll = false
+        offlineCacheFeedback = String(
+          format: String(localized: "已完成离线缓存，共提取并持久化 %@ 篇截断文章全文。"),
+          count.formatted()
+        )
+      }
     }
   }
 }

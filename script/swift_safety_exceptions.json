@@ -77,6 +77,11 @@
       "rationale": "SQLite connection state remains synchronous for the reader store; every handle and statement operation is serialized by the database lock."
     },
     {
+      "file": "Sources/PublishingWorkbenchCore/Stores/SQLitePreparedStatementCache.swift",
+      "declaration": "SQLitePreparedStatementCache",
+      "rationale": "The SQLite prepared statement cache is used within the serial database lock boundary; all cache insertions, lookups, resets, and finalizations are coordinated by the parent database lock."
+    },
+    {
       "file": "Sources/PublishingWorkbenchCore/Services/LocalRepositoryService.swift",
       "declaration": "LocalRepositoryService",
       "rationale": "Value service stores immutable sendable command dependencies; filesystem objects remain operation-local."
@@ -373,7 +378,7 @@
       "rationale": "A release record without a review identity has no safe withdrawal action; returning nil hides only that unavailable action."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Stores/RSSReaderDatabase.swift",
+      "file": "Sources/PublishingWorkbenchCore/Stores/RSSReaderDatabase+Persistence.swift",
       "category": "parsing",
       "contains": "try? decoder.decode(RSSFeedIssue.self",
       "rationale": "Persisted feed issue JSON is optional diagnostic metadata; malformed metadata does not invalidate the feed row."
@@ -391,7 +396,7 @@
       "rationale": "The legacy per-site credential is intentionally cleaned up separately; failure must not make the primary shared-key save/delete appear unsuccessful."
     },
     {
-      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchPersistence.swift",
+      "file": "Sources/PublishingWorkbenchCore/Stores/WorkbenchPersistenceArchives.swift",
       "category": "serializationFallback",
       "contains": "try? JSONSerialization.data(",
       "rationale": "Retired feature archival is optional compatibility metadata; the primary workbench snapshot remains untouched when it cannot be encoded."

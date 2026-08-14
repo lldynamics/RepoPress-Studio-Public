@@ -141,10 +141,11 @@ extension WorkbenchAIStore {
       conversationIdentity: conversationIdentity,
       privacyService: AIOutboundPayloadPrivacyService()
     )
-    if let agentTaskConfig = try? aiPublishingAssistantService.resolvedChatTaskConfig(
-      for: agentCandidate,
-      config: config
-    ), agentTaskConfig.capabilitySupport(for: .toolCalling) == .supported {
+    if config.resolvedAdvancedSettings.resolvedAllowsApplicationTools,
+      let agentTaskConfig = try? aiPublishingAssistantService.resolvedChatTaskConfig(
+        for: agentCandidate,
+        config: config
+      ), agentTaskConfig.capabilitySupport(for: .toolCalling) == .supported {
       return await generateAgentAIChatReply(
         for: chatDraft,
         conversationIdentity: conversationIdentity,

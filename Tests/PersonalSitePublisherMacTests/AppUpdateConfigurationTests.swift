@@ -2,6 +2,21 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class AppUpdateConfigurationTests: XCTestCase {
+  func testAboutPanelShowsOnlyMarketingVersion() {
+    let presentation = AppAboutPresentation(
+      infoDictionary: [
+        "CFBundleShortVersionString": "1.0.1",
+        "CFBundleVersion": "14",
+      ]
+    )
+
+    XCTAssertEqual(
+      presentation.panelOptions[.applicationVersion] as? String,
+      "1.0.1"
+    )
+    XCTAssertEqual(presentation.panelOptions[.version] as? String, "")
+  }
+
   func testRequiresHTTPSFeedAndPublicKey() {
     XCTAssertFalse(AppUpdateConfiguration(infoDictionary: [:]).isReady)
     XCTAssertFalse(

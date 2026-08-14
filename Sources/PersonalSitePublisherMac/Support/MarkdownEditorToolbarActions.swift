@@ -20,4 +20,6 @@ struct MarkdownEditorToolbarActions {
   let onPerformConvergedSelectionAIAction: (AIPublishingActionConvergence) -> Void
   let onPerformConvergedArticleAIAction: (AIPublishingActionConvergence) -> Void
   let onPasteAIPromptToClipboard: () -> Void
+  var onFormatChineseTypography: (() -> Void)? = nil
+  var onCopyForWeChatAndZhihu: (() -> Void)? = nil
 }

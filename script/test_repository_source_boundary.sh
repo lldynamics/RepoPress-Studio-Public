@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHECK="$ROOT_DIR/script/check_repository_source_boundary.sh"
-TMP_DIR="$(mktemp -d /private/tmp/mac-editor-source-boundary.XXXXXX)"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mac-editor-source-boundary.XXXXXX" 2>/dev/null || mktemp -d "$ROOT_DIR/.build/tmp/mac-editor-source-boundary.XXXXXX")"
 LINKED_DIR="$TMP_DIR-linked"
 
 cleanup() {

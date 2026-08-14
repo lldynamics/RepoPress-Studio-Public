@@ -32,6 +32,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
   case token
   case ai
   case appearance
+  case editor
   case rss
   case privacy
   case dataManagement
@@ -48,6 +49,8 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return "ai"
     case .appearance:
       return "appearance"
+    case .editor:
+      return "editor"
     case .rss:
       return "rss"
     case .privacy:
@@ -69,6 +72,8 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return String(localized: "AI 助手")
     case .appearance:
       return String(localized: "通用与外观")
+    case .editor:
+      return String(localized: "编辑器")
     case .rss:
       return String(localized: "RSS 阅读")
     case .privacy:
@@ -90,6 +95,8 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return "sparkles"
     case .appearance:
       return "paintpalette"
+    case .editor:
+      return "textformat"
     case .rss:
       return "dot.radiowaves.left.and.right"
     case .privacy:
@@ -111,6 +118,8 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return String(localized: "管理 AI 连接、凭据和当前站点的写作偏好。")
     case .appearance:
       return String(localized: "设置应用语言、启动行为、主题和强调色。")
+    case .editor:
+      return String(localized: "集中管理文章编辑、预览和打字反馈偏好。")
     case .rss:
       return String(localized: "管理 RSS 正文离线保存、OPML、内网访问和历史文章清理。")
     case .privacy:
@@ -124,14 +133,14 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
     switch self {
     case .configurationStatus, .defaultRules, .token, .ai:
       return true
-    case .appearance, .rss, .privacy, .dataManagement:
+    case .appearance, .editor, .rss, .privacy, .dataManagement:
       return false
     }
   }
 
   var contentMaxWidth: CGFloat {
     switch self {
-    case .appearance, .rss, .privacy:
+    case .appearance, .editor, .rss, .privacy:
       return WorkbenchSettingsMetrics.focusedContentWidth
     case .configurationStatus, .defaultRules, .token, .ai, .dataManagement:
       return WorkbenchSettingsMetrics.detailedContentWidth
@@ -142,13 +151,13 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
     switch self {
     case .dataManagement:
       return .nativeScrollView
-    case .configurationStatus, .defaultRules, .token, .ai, .appearance, .rss, .privacy:
+    case .configurationStatus, .defaultRules, .token, .ai, .appearance, .editor, .rss, .privacy:
       return .nativeForm
     }
   }
 
   static let siteSettings: [SettingsTab] = [.configurationStatus, .defaultRules, .token, .ai]
-  static let applicationSettings: [SettingsTab] = [.dataManagement, .appearance, .rss, .privacy]
+  static let applicationSettings: [SettingsTab] = [.dataManagement, .appearance, .editor, .rss, .privacy]
 
   var searchKeywords: [String] {
     switch self {
@@ -162,8 +171,17 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
       return ["模型", "服务", "API Key", "授权", "连接测试", "写作风格", "本地 AI"]
     case .appearance:
       return ["通用", "启动", "自动检查", "扫描", "主题", "强调色", "语言", "外观"]
+    case .editor:
+      return [
+        "编辑器", "字号", "行距", "正文宽度", "拼写检查", "打字机模式", "当前段落",
+        "纸张背景", "自动配对", "段落聚光灯", "打字反馈", "同步滚动", "预览主题", "editor",
+        "preview"
+      ]
     case .rss:
-      return ["订阅", "OPML", "离线", "内网", "保留", "历史文章", "清理"]
+      return [
+        "订阅", "OPML", "离线", "内网", "保留", "历史文章", "清理", "远程图片", "自动翻译",
+        "remote image", "translation"
+      ]
     case .privacy:
       return ["隐私", "安全", "快速隐藏", "防偷窥", "遮挡", "快捷键"]
     case .dataManagement:

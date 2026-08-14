@@ -49,8 +49,8 @@ struct FindReplaceBar: View {
 
   private var wideLayout: some View {
     HStack(spacing: 8) {
-      findField(maxWidth: 170)
-      replacementField(maxWidth: 170)
+      findField(maxWidth: 240)
+      replacementField(maxWidth: 240)
       findControls
       replaceControls
 

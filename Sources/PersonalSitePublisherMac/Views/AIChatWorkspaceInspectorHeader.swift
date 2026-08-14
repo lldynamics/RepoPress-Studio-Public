@@ -128,6 +128,7 @@ extension AIChatContextInspectorView {
       } else {
         AIChatConnectionStatusCapsule(
           ai: ai,
+          chatState: chatState,
           draft: ai.selectedChatDraft
         ) {
           isModelQuickSwitchPresented = true

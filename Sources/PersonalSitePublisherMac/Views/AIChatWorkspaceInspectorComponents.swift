@@ -11,7 +11,8 @@ struct AIChatGeneralKeyAvailabilityRefreshKey: Equatable {
 struct AIChatContextInspectorView: View {
   @Environment(\.openSettings) var openSettings
   @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
-  @ObservedObject var ai: WorkbenchAIFeatureFacade
+  let ai: WorkbenchAIFeatureFacade
+  @StateObject var chatState: WorkbenchAIChatFeatureFacade
   @Binding var surfaceState: AIChatSurfaceState
   @State var inspectorTransientConversationID = UUID()
   @State var isSubmitting = false
@@ -34,7 +35,10 @@ struct AIChatContextInspectorView: View {
     store: WorkbenchStore,
     surfaceState: Binding<AIChatSurfaceState>
   ) {
-    _ai = ObservedObject(wrappedValue: store.ai)
+    ai = store.ai
+    _chatState = StateObject(
+      wrappedValue: WorkbenchAIChatFeatureFacade(store: store)
+    )
     _surfaceState = surfaceState
   }
 
@@ -188,6 +192,7 @@ struct AIChatContextInspectorView: View {
     .sheet(isPresented: $isModelQuickSwitchPresented) {
       AIChatModelQuickSwitchSheet(
         ai: ai,
+        chatState: chatState,
         draft: ai.selectedChatDraft
       )
     }

@@ -79,6 +79,12 @@ struct ContentView: View {
   @Environment(\.scenePhase) private var scenePhase
   @AppStorage("autoRunPreflight") private var autoRunPreflight = true
   @AppStorage("scanRepositoryOnLaunch") private var scanRepositoryOnLaunch = false
+  @AppStorage(RSSReaderUserPreferences.backgroundRefreshEnabledKey)
+  private var isRSSBackgroundRefreshEnabled =
+    RSSReaderUserPreferences.defaultBackgroundRefreshEnabled
+  @AppStorage(RSSReaderUserPreferences.backgroundRefreshIntervalMinutesKey)
+  private var rssBackgroundRefreshIntervalMinutes =
+    RSSReaderUserPreferences.defaultBackgroundRefreshIntervalMinutes
   @AppStorage("didCompleteFirstRunSetup") private var didCompleteFirstRunSetup = false
   @SceneStorage("workspace.focusMode") private var isFocusMode = false
   @SceneStorage("workspace.revealSidebarInNarrowSplit") private var revealsSidebarInNarrowSplit =
@@ -427,12 +433,17 @@ struct ContentView: View {
   }
 
   private func refreshStaleRSSIfNeeded() {
-    guard scenePhase == .active,
-      !store.isSafeMode,
-      shellState.selectedSection == .rss
-    else { return }
+    guard RSSReaderBackgroundRefreshPolicy.shouldRefreshStaleFeedsOnEntry(
+      isSceneActive: scenePhase == .active,
+      isSafeMode: store.isSafeMode,
+      isEnabled: isRSSBackgroundRefreshEnabled,
+      isRSSSectionSelected: shellState.selectedSection == .rss
+    ) else { return }
+    let staleInterval = RSSReaderUserPreferences.backgroundRefreshIntervalSeconds(
+      rssBackgroundRefreshIntervalMinutes
+    )
     Task { @MainActor in
-      await rssStore.refreshStaleFeeds()
+      await rssStore.refreshStaleFeeds(staleAfter: staleInterval)
     }
   }
 
@@ -604,10 +615,12 @@ struct ContentView: View {
   }
 
   private func refreshExternallyCreatedDrafts() {
-    guard !store.isSafeMode,
-      shellState.canUseProtectedWorkbench,
-      !isRefreshingExternallyCreatedDrafts
-    else { return }
+    guard RepositoryDraftDiscoveryPolicy.shouldRunAutomatically(
+      isSafeMode: store.isSafeMode,
+      canUseProtectedWorkbench: shellState.canUseProtectedWorkbench,
+      isEnabled: store.activeProfile.resolvedAutomaticallyImportsNewRepositoryArticles,
+      isRefreshRunning: isRefreshingExternallyCreatedDrafts
+    ) else { return }
     isRefreshingExternallyCreatedDrafts = true
     Task { @MainActor in
       defer { isRefreshingExternallyCreatedDrafts = false }

@@ -18,10 +18,14 @@ struct MarkdownPreviewPane: View {
   let onSourceLocationSelected: (Int) -> Void
   @Environment(\.colorScheme) private var colorScheme
   @AppStorage("markdownEditorPreviewTheme") private var previewThemeRaw = MarkdownPreviewTheme.system.rawValue
+  @AppStorage(MarkdownEditorComfortPreferences.automaticPreviewRefreshEnabledKey)
+  private var isAutomaticPreviewRefreshEnabled = MarkdownEditorComfortConfiguration
+    .defaultAutomaticPreviewRefreshEnabled
   @State private var htmlDocument = ""
   @State private var assetResources: [MarkdownPreviewAssetResource] = []
   @State private var renderID: UUID?
   @State private var renderTask: Task<Void, Never>?
+  @State private var renderTaskIsAutomatic = false
   @State private var renderGeneration: UInt64 = 0
   @State private var isRendering = false
   @State private var renderErrorMessage: String?
@@ -40,6 +44,16 @@ struct MarkdownPreviewPane: View {
         }
 
         Spacer()
+
+        Button {
+          scheduleHTMLRender(immediate: true)
+        } label: {
+          Image(systemName: "arrow.clockwise")
+        }
+        .help(String(localized: "手动刷新文章预览"))
+        .accessibilityLabel("手动刷新文章预览")
+        .accessibilityIdentifier("markdown-preview-refresh")
+        .disabled(isRendering)
 
         if showsSynchronizedScrollingControl {
           ViewThatFits(in: .horizontal) {
@@ -90,7 +104,14 @@ struct MarkdownPreviewPane: View {
       scheduleHTMLRender(immediate: true)
     }
     .onChange(of: previewRenderInput) { _, _ in
-      scheduleHTMLRender()
+      scheduleHTMLRender(isAutomatic: true)
+    }
+    .onChange(of: isAutomaticPreviewRefreshEnabled) { _, isEnabled in
+      if isEnabled {
+        scheduleHTMLRender(immediate: true, isAutomatic: true)
+      } else {
+        cancelAutomaticHTMLRender()
+      }
     }
     .onDisappear {
       renderTask?.cancel()
@@ -120,6 +141,13 @@ struct MarkdownPreviewPane: View {
 
   private var previewTheme: MarkdownPreviewTheme {
     MarkdownPreviewTheme(rawValue: previewThemeRaw) ?? .system
+  }
+
+  private var previewEmptyStateMessage: LocalizedStringKey {
+    if isAutomaticPreviewRefreshEnabled {
+      return "正文发生变化后会自动重新生成，也可以手动重试。"
+    }
+    return "自动刷新已关闭，可以手动生成或刷新预览。"
   }
 
   private var previewThemeBinding: Binding<MarkdownPreviewTheme> {
@@ -157,7 +185,7 @@ struct MarkdownPreviewPane: View {
       } else {
         EmptyStateView(
           title: "预览尚未生成",
-          message: "正文发生变化后会自动重新生成，也可以手动重试。",
+          message: previewEmptyStateMessage,
           systemImage: "doc.richtext",
           density: .inline,
           actionTitle: "生成预览",
@@ -213,11 +241,18 @@ struct MarkdownPreviewPane: View {
     .background(WorkbenchTheme.risk.opacity(WorkbenchOpacity.warningBackground))
   }
 
-  private func scheduleHTMLRender(immediate: Bool = false) {
+  private func scheduleHTMLRender(immediate: Bool = false, isAutomatic: Bool = false) {
+    guard MarkdownEditorAutomationPolicy.allows(
+      isAutomatic: isAutomatic,
+      isEnabled: isAutomaticPreviewRefreshEnabled
+    ) else {
+      return
+    }
     renderTask?.cancel()
     renderGeneration &+= 1
     let generation = renderGeneration
     let input = previewRenderInput
+    renderTaskIsAutomatic = isAutomatic
     isRendering = true
     renderErrorMessage = nil
 
@@ -225,6 +260,7 @@ struct MarkdownPreviewPane: View {
       defer {
         if renderGeneration == generation {
           renderTask = nil
+          renderTaskIsAutomatic = false
           isRendering = false
         }
       }
@@ -238,7 +274,10 @@ struct MarkdownPreviewPane: View {
       guard !Task.isCancelled else { return }
       do {
         let snapshot = try await MarkdownPreviewRenderEngine.shared.render(input)
-        guard !Task.isCancelled, renderGeneration == generation else { return }
+        guard !Task.isCancelled,
+          renderGeneration == generation,
+          previewRenderInput == input
+        else { return }
         renderID = snapshot.id
         assetResources = snapshot.assetResources
         htmlDocument = snapshot.html
@@ -247,10 +286,19 @@ struct MarkdownPreviewPane: View {
       } catch is CancellationError {
         return
       } catch {
-        guard renderGeneration == generation else { return }
+        guard renderGeneration == generation, previewRenderInput == input else { return }
         renderErrorMessage = error.localizedDescription
       }
     }
+  }
+
+  private func cancelAutomaticHTMLRender() {
+    guard renderTaskIsAutomatic else { return }
+    renderGeneration &+= 1
+    renderTask?.cancel()
+    renderTask = nil
+    renderTaskIsAutomatic = false
+    isRendering = false
   }
 }
 private struct MarkdownPreviewRenderInput: Hashable, Sendable {

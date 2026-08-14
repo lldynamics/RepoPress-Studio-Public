@@ -10,15 +10,30 @@ struct MarkdownFloatingBubbleToolbar: View {
 
   var body: some View {
     HStack(spacing: 4) {
-      groupButton("H1", title: "一级标题") {
-        onApplyFormatting(.heading(level: 1))
+      Menu {
+        ForEach(1...6, id: \.self) { level in
+          Button {
+            onApplyFormatting(.heading(level: level))
+          } label: {
+            Label("\(level) 级标题 (H\(level))", systemImage: "textformat.size")
+          }
+        }
+      } label: {
+        HStack(spacing: 2) {
+          Text("H")
+            .font(.workbenchMetadata.weight(.semibold))
+            .monospaced()
+          Image(systemName: "chevron.down")
+            .font(.system(size: 7, weight: .bold))
+            .foregroundStyle(.secondary)
+        }
+        .frame(height: 24)
+        .padding(.horizontal, 4)
       }
-      groupButton("H2", title: "二级标题") {
-        onApplyFormatting(.heading(level: 2))
-      }
-      groupButton("H3", title: "三级标题") {
-        onApplyFormatting(.heading(level: 3))
-      }
+      .menuIndicator(.hidden)
+      .buttonStyle(.plain)
+      .foregroundStyle(.primary)
+      .help("插入或切换标题 (H1-H6)")
 
       divider
 
@@ -31,6 +46,40 @@ struct MarkdownFloatingBubbleToolbar: View {
       iconButton("chevron.left.forwardslash.chevron.right", title: "行内代码") {
         onApplyAdvancedFormatting(.inlineCode)
       }
+
+      divider
+
+      Menu {
+        Button {
+          onApplyAdvancedFormatting(.unorderedList)
+        } label: {
+          Label("无序列表", systemImage: "list.bullet")
+        }
+        Button {
+          onApplyAdvancedFormatting(.orderedList)
+        } label: {
+          Label("有序列表", systemImage: "list.number")
+        }
+        Button {
+          onApplyAdvancedFormatting(.taskList)
+        } label: {
+          Label("任务列表", systemImage: "checklist")
+        }
+      } label: {
+        HStack(spacing: 2) {
+          Image(systemName: "list.bullet")
+            .font(.system(size: 11, weight: .medium))
+          Image(systemName: "chevron.down")
+            .font(.system(size: 7, weight: .bold))
+            .foregroundStyle(.secondary)
+        }
+        .frame(height: 24)
+        .padding(.horizontal, 3)
+      }
+      .menuIndicator(.hidden)
+      .buttonStyle(.plain)
+      .foregroundStyle(.primary)
+      .help("转换为列表（无序、有序、任务列表）")
 
       divider
 
@@ -62,7 +111,7 @@ struct MarkdownFloatingBubbleToolbar: View {
           .font(.workbenchButtonLabel)
       }
       .menuIndicator(.hidden)
-      .foregroundStyle(Color.purple)
+      .foregroundStyle(WorkbenchTheme.progress)
 
       Menu {
         Button {
@@ -73,14 +122,14 @@ struct MarkdownFloatingBubbleToolbar: View {
         Button {
           onPerformSelectionAIAction(.translateSelectionToEnglish)
         } label: {
-          Label("Translate to English", systemImage: "character.book.closed")
+          Label(String(localized: "翻译为英文"), systemImage: "character.book.closed")
         }
       } label: {
         Label("翻译", systemImage: "arrow.triangle.2.circlepath")
           .font(.workbenchButtonLabel)
       }
       .menuIndicator(.hidden)
-      .foregroundStyle(Color.indigo)
+      .foregroundStyle(WorkbenchTheme.brand)
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 4)
@@ -98,18 +147,6 @@ struct MarkdownFloatingBubbleToolbar: View {
   private var divider: some View {
     Divider()
       .frame(height: 14)
-  }
-
-  private func groupButton(_ label: String, title: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-      Text(label)
-        .font(.workbenchMetadata.weight(.semibold))
-        .monospaced()
-        .frame(width: 24, height: 24)
-    }
-    .buttonStyle(.plain)
-    .foregroundStyle(.primary)
-    .help(title)
   }
 
   private func iconButton(_ systemName: String, title: String, action: @escaping () -> Void) -> some View {

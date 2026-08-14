@@ -14,24 +14,29 @@ final class LocalAIEngineDiscoveryServiceTests: XCTestCase {
       "http://127.0.0.1:8000/v1/models": StubLocalAIResponse(
         body: #"{"data":[{"id":"Qwen/Qwen3"}]}"#
       ),
+      "http://127.0.0.1:8080/v1/models": StubLocalAIResponse(
+        body: #"{"data":[{"id":"mlx-community/Llama-3.2-3B-Instruct-4bit"}]}"#
+      ),
     ])
     let service = LocalAIEngineDiscoveryService(transport: transport)
 
     let results = await service.discoverAll()
 
-    XCTAssertEqual(results.map(\.kind), [.ollama, .lmStudio, .vLLM])
+    XCTAssertEqual(results.map(\.kind), [.ollama, .lmStudio, .vLLM, .mlx])
     XCTAssertEqual(
       results.map(\.baseURL),
       [
         "http://127.0.0.1:11434/v1",
         "http://127.0.0.1:1234/v1",
         "http://127.0.0.1:8000/v1",
+        "http://127.0.0.1:8080/v1",
       ]
     )
     XCTAssertTrue(results.allSatisfy(\.isAvailable))
     XCTAssertEqual(results[0].models, ["alpha", "beta", "zeta:latest"])
     XCTAssertEqual(results[1].models, ["model-a", "model-b"])
     XCTAssertEqual(results[2].models, ["Qwen/Qwen3"])
+    XCTAssertEqual(results[3].models, ["mlx-community/Llama-3.2-3B-Instruct-4bit"])
 
     let requests = await transport.capturedRequests()
     XCTAssertEqual(
@@ -40,6 +45,7 @@ final class LocalAIEngineDiscoveryServiceTests: XCTestCase {
         "http://127.0.0.1:11434/api/tags",
         "http://127.0.0.1:1234/v1/models",
         "http://127.0.0.1:8000/v1/models",
+        "http://127.0.0.1:8080/v1/models",
       ])
     )
     XCTAssertTrue(requests.allSatisfy { $0.httpMethod == "GET" })
@@ -56,6 +62,7 @@ final class LocalAIEngineDiscoveryServiceTests: XCTestCase {
       "http://127.0.0.1:11434/api/tags": StubLocalAIResponse(body: #"{"models":[]}"#),
       "http://127.0.0.1:1234/v1/models": StubLocalAIResponse(body: #"{"data":[]}"#),
       "http://127.0.0.1:8000/v1/models": StubLocalAIResponse(body: #"{"data":[]}"#),
+      "http://127.0.0.1:8080/v1/models": StubLocalAIResponse(body: #"{"data":[]}"#),
     ])
 
     let results = await LocalAIEngineDiscoveryService(transport: transport).discoverAll()

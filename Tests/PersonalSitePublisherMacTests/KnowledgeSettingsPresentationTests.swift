@@ -16,9 +16,9 @@ final class KnowledgeSettingsPresentationTests: XCTestCase {
   func testApplicationSettingsExcludeTheLibraryManagedSettingsSheet() {
     XCTAssertEqual(
       SettingsTab.applicationSettings,
-      [.dataManagement, .appearance, .rss, .privacy]
+      [.dataManagement, .appearance, .editor, .rss, .privacy]
     )
-    XCTAssertEqual(SettingsTab.allCases.count, 8)
+    XCTAssertEqual(SettingsTab.allCases.count, 9)
     XCTAssertEqual(SettingsTab.configurationStatus.title, "站点概览")
     XCTAssertEqual(SettingsTab.defaultRules.title, "内容与路径")
     XCTAssertEqual(SettingsTab.token.title, "发布连接")
@@ -26,6 +26,9 @@ final class KnowledgeSettingsPresentationTests: XCTestCase {
     XCTAssertEqual(SettingsTab.appearance.title, "通用与外观")
     XCTAssertEqual(SettingsTab.appearance.systemImage, "paintpalette")
     XCTAssertFalse(SettingsTab.appearance.isSiteScoped)
+    XCTAssertEqual(SettingsTab.editor.title, "编辑器")
+    XCTAssertEqual(SettingsTab.editor.systemImage, "textformat")
+    XCTAssertFalse(SettingsTab.editor.isSiteScoped)
     XCTAssertEqual(SettingsTab.rss.title, "RSS 阅读")
     XCTAssertEqual(SettingsTab.privacy.title, "隐私与安全")
     XCTAssertEqual(SettingsTab.dataManagement.title, "数据与备份")

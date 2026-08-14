@@ -41,11 +41,28 @@ struct KnowledgeDatabaseFolderAssignment: Sendable {
   var folderID: UUID?
 }
 
+public enum KnowledgeDatabaseWALCheckpointMode: Sendable {
+  case passive
+  case full
+  case restart
+  case truncate
+
+  var sqliteMode: Int32 {
+    switch self {
+    case .passive: return SQLITE_CHECKPOINT_PASSIVE
+    case .full: return SQLITE_CHECKPOINT_FULL
+    case .restart: return SQLITE_CHECKPOINT_RESTART
+    case .truncate: return SQLITE_CHECKPOINT_TRUNCATE
+    }
+  }
+}
+
 final class KnowledgeDatabase: @unchecked Sendable {
   static let currentSchemaVersion = 8
 
   let lock = NSLock()
   let semanticVectorCache = KnowledgeSemanticVectorLRUCache()
+  let statementCache = SQLitePreparedStatementCache()
   var handle: OpaquePointer?
 
   init(fileURL: URL) throws {
@@ -79,6 +96,7 @@ final class KnowledgeDatabase: @unchecked Sendable {
       try execute("PRAGMA synchronous = NORMAL;")
       try migrate(from: existingUserVersion)
     } catch {
+      statementCache.finalizeAll()
       sqlite3_close(database)
       handle = nil
       throw error
@@ -86,6 +104,7 @@ final class KnowledgeDatabase: @unchecked Sendable {
   }
 
   deinit {
+    statementCache.finalizeAll()
     if let handle {
       sqlite3_close(handle)
     }

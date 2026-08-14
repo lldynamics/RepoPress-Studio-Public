@@ -119,7 +119,6 @@ struct MacMarkdownEditorToolbar: View {
       .editorDisplayMode,
       .writingToolDensity,
       .findReplace,
-      .outline,
       .autoInlineAI,
       .aiChat,
       .preparePublish,
@@ -198,6 +197,8 @@ struct MacMarkdownEditorToolbar: View {
       localSitePreviewButton(showsTitle: showsTitle)
     case .preparePublish:
       preparePublishButton(showsTitle: showsTitle)
+    case .copyRichText:
+      copyRichTextButton(showsTitle: showsTitle)
     default:
       EmptyView()
     }
@@ -451,6 +452,22 @@ struct MacMarkdownEditorToolbar: View {
     .accessibilityIdentifier("markdown-prepare-publish")
   }
 
+  private func copyRichTextButton(showsTitle: Bool) -> some View {
+    Button {
+      actions.onCopyForWeChatAndZhihu?()
+    } label: {
+      if showsTitle {
+        Label("复制到公众号/知乎", systemImage: "doc.on.doc.fill")
+      } else {
+        Image(systemName: "doc.on.doc.fill")
+          .accessibilityHidden(true)
+      }
+    }
+    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
+    .help("将当前文章以精美内联样式复制为富文本（适配微信公众号、知乎后台）")
+    .accessibilityLabel("复制到公众号/知乎富文本")
+  }
+
   private func editorActionGroup(showsTitle: Bool) -> some View {
     HStack(spacing: 4) {
       Button {
@@ -462,18 +479,6 @@ struct MacMarkdownEditorToolbar: View {
       .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
       .help(String(localized: "查找与替换（⌘F）"))
       .accessibilityLabel("查找与替换")
-
-      Button {
-        actions.onShowOutline()
-      } label: {
-        editorActionLabel(
-          String(localized: "文章大纲"), systemName: "list.bullet.indent", showsTitle: showsTitle)
-      }
-      .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
-      .keyboardShortcut("o", modifiers: [.command, .option])
-      .help(String(localized: "文章大纲（⌥⌘O）"))
-      .accessibilityLabel("文章大纲")
-      .accessibilityIdentifier("markdown-outline-button")
 
       contextPanelMenu(showsTitle: showsTitle)
 
@@ -574,6 +579,14 @@ struct MacMarkdownEditorToolbar: View {
 
   @ViewBuilder
   private var exportActions: some View {
+    Button {
+      actions.onCopyForWeChatAndZhihu?()
+    } label: {
+      Label("复制到公众号/知乎富文本", systemImage: "doc.on.doc.fill")
+    }
+
+    Divider()
+
     exportButton("Markdown…", systemImage: "doc.plaintext", format: .markdown)
     exportButton("HTML…", systemImage: "chevron.left.forwardslash.chevron.right", format: .html)
     exportButton("PDF…", systemImage: "doc.richtext", format: .pdf)
@@ -887,7 +900,11 @@ struct MacMarkdownFormattingToolbar: View {
   let onJumpToCounterpartFence: () -> Void
   let onApplyCompletion: (MarkdownCompletionCandidate) -> Void
   let onInsertCompletionTrigger: (MarkdownCompletionTrigger) -> Void
+  var onFormatChineseTypography: (() -> Void)? = nil
+  var onCopyForWeChatAndZhihu: (() -> Void)? = nil
   @AppStorage("workspace.customToolbarConfig") private var customToolbarConfigRawValue = ""
+  @AppStorage("workspace.editorTargetWordCount") private var targetWordCount: Int = 0
+  @State private var isStatsPopoverPresented = false
 
   private var toolbarConfiguration: MarkdownToolbarConfiguration {
     MarkdownToolbarConfiguration.decodeFromJSON(customToolbarConfigRawValue)
@@ -899,12 +916,16 @@ struct MacMarkdownFormattingToolbar: View {
 
   private var basicFormattingItemIDs: [MarkdownToolbarItemID] {
     let basicItems: Set<MarkdownToolbarItemID> = [
+      .headingMenu,
       .heading1,
       .heading2,
       .bold,
       .italic,
+      .listMenu,
+      .unorderedList,
       .link,
       .image,
+      .formatChineseTypography,
     ]
     return configuredFormattingItemIDs.filter(basicItems.contains)
   }
@@ -947,6 +968,10 @@ struct MacMarkdownFormattingToolbar: View {
     showsTitle: Bool
   ) -> some View {
     switch item {
+    case .headingMenu:
+      headingMenuButton(showsTitle: showsTitle)
+    case .listMenu:
+      listMenuButton(showsTitle: showsTitle)
     case .heading1:
       headingButton(level: 1, title: "一级标题", showsTitle: showsTitle)
     case .heading2:
@@ -1001,6 +1026,10 @@ struct MacMarkdownFormattingToolbar: View {
       moreInsertionsMenu(showsTitle: showsTitle)
     case .diagnostics:
       diagnosticButton(showsTitle: showsTitle)
+    case .formatChineseTypography:
+      toolbarButton(title: "中英文排版", systemName: "textformat", showsTitle: showsTitle) {
+        onFormatChineseTypography?()
+      }
     default:
       EmptyView()
     }
@@ -1009,40 +1038,10 @@ struct MacMarkdownFormattingToolbar: View {
   @ViewBuilder
   private func moreInsertionsMenu(showsTitle: Bool) -> some View {
     Menu {
-      Section("高级格式") {
-        Button {
-          onApplyAdvancedFormatting(.strikethrough)
-        } label: {
-          Label("删除线", systemImage: "strikethrough")
-        }
-        Button {
-          onApplyAdvancedFormatting(.removeFormatting)
-        } label: {
-          Label("清除 Markdown 格式", systemImage: "textformat")
-        }
-      }
-
-      Section("行与任务") {
-        Button {
-          onEditLines(.moveUp)
-        } label: {
-          Label("行上移", systemImage: "arrow.up")
-        }
-        Button {
-          onEditLines(.moveDown)
-        } label: {
-          Label("行下移", systemImage: "arrow.down")
-        }
-        Button {
-          onEditLines(.duplicateBelow)
-        } label: {
-          Label("复制当前行", systemImage: "plus.square.on.square")
-        }
-        Button {
-          onEditLines(.toggleTaskCompletion)
-        } label: {
-          Label("切换任务完成状态", systemImage: "checkmark.square")
-        }
+      Button {
+        onApplyAdvancedFormatting(.strikethrough)
+      } label: {
+        Label("删除线", systemImage: "strikethrough")
       }
 
       Divider()
@@ -1137,30 +1136,237 @@ struct MacMarkdownFormattingToolbar: View {
   }
 
   private var statisticsLabel: some View {
-    Text(statisticsSummary)
-      .font(.caption)
-      .foregroundStyle(.secondary)
-      .monospacedDigit()
-      .fixedSize(horizontal: true, vertical: false)
-      .help(
-        String(
-          localized:
-            "\(hanCharacterCount) 汉字 · \(wordCount) 西文词 · \(characterCount) 字符 · \(lineCount) 行 · 约 \(readingMinutes) 分钟"
-        )
+    Button {
+      isStatsPopoverPresented.toggle()
+    } label: {
+      HStack(spacing: 5) {
+        if targetWordCount > 0 {
+          let ratio = min(1.0, Double(writingUnitCount) / Double(targetWordCount))
+          let percent = Int((Double(writingUnitCount) / Double(targetWordCount)) * 100)
+          ProgressView(value: ratio)
+            .progressViewStyle(.linear)
+            .frame(width: 36)
+            .tint(ratio >= 1.0 ? WorkbenchTheme.success : WorkbenchTheme.primary)
+          Text("\(writingUnitCount)/\(targetWordCount) (\(percent)%)")
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(ratio >= 1.0 ? WorkbenchTheme.success : .primary)
+        } else {
+          Text(statisticsSummary)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .monospacedDigit()
+        }
+      }
+      .padding(.horizontal, 4)
+      .padding(.vertical, 2)
+      .background(
+        RoundedRectangle(cornerRadius: 4)
+          .fill(isStatsPopoverPresented ? Color.secondary.opacity(0.12) : Color.clear)
       )
-      .accessibilityLabel("文章统计")
-      .accessibilityValue(
-        String(
-          localized:
-            "\(hanCharacterCount) 个汉字，\(wordCount) 个西文词，合计 \(writingUnitCount) 字词，\(lineCount) 行，预计阅读 \(readingMinutes) 分钟"
-        )
-      )
+    }
+    .buttonStyle(.plain)
+    .help("点击查看详细统计与设定目标字数")
+    .accessibilityLabel("文章统计与目标")
+    .popover(isPresented: $isStatsPopoverPresented, arrowEdge: .bottom) {
+      statisticsDetailPopover
+    }
+  }
+
+  private var statisticsDetailPopover: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        Label("文章统计与目标", systemImage: "chart.bar.doc.horizontal")
+          .font(.headline)
+        Spacer()
+        Text("⏱️ 约 \(readingMinutes) 分钟")
+          .font(.caption.weight(.medium))
+          .foregroundStyle(.secondary)
+      }
+
+      Divider()
+
+      Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+        GridRow {
+          statCard(title: "中文字数", value: "\(hanCharacterCount)")
+          statCard(title: "西文单词", value: "\(wordCount)")
+        }
+        GridRow {
+          statCard(title: "合计字词", value: "\(writingUnitCount)")
+          statCard(title: "全部字符", value: "\(characterCount)")
+        }
+        GridRow {
+          statCard(title: "正文行数", value: "\(lineCount)")
+          statCard(title: "预估阅读", value: "\(readingMinutes) 分钟")
+        }
+      }
+
+      Divider()
+
+      VStack(alignment: .leading, spacing: 6) {
+        HStack {
+          Label("目标字数", systemImage: "target")
+            .font(.subheadline.weight(.medium))
+          Spacer()
+          if targetWordCount > 0 {
+            let ratio = Double(writingUnitCount) / Double(targetWordCount)
+            let percent = Int(ratio * 100)
+            Text("\(percent)%")
+              .font(.caption.monospacedDigit().weight(.semibold))
+              .foregroundStyle(ratio >= 1.0 ? WorkbenchTheme.success : WorkbenchTheme.primary)
+          }
+        }
+
+        if targetWordCount > 0 {
+          let ratio = min(1.0, Double(writingUnitCount) / Double(targetWordCount))
+          ProgressView(value: ratio)
+            .progressViewStyle(.linear)
+            .tint(ratio >= 1.0 ? WorkbenchTheme.success : WorkbenchTheme.primary)
+
+          if writingUnitCount >= targetWordCount {
+            Text("🎉 已达成目标字数！（超出 \(writingUnitCount - targetWordCount) 字）")
+              .font(.caption)
+              .foregroundStyle(WorkbenchTheme.success)
+          } else {
+            Text("还需 \(targetWordCount - writingUnitCount) 字达成目标")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+        }
+
+        HStack(spacing: 5) {
+          ForEach([0, 500, 1000, 2000, 3000, 5000], id: \.self) { goal in
+            Button {
+              targetWordCount = goal
+            } label: {
+              Text(goal == 0 ? "无" : "\(goal)")
+                .font(.workbenchMetadata)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(
+                  RoundedRectangle(cornerRadius: 4)
+                    .fill(targetWordCount == goal ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08))
+                )
+                .foregroundStyle(targetWordCount == goal ? Color.accentColor : Color.primary)
+            }
+            .buttonStyle(.plain)
+          }
+        }
+      }
+
+      if onFormatChineseTypography != nil || onCopyForWeChatAndZhihu != nil {
+        Divider()
+
+        HStack(spacing: 8) {
+          if let onFormatChineseTypography {
+            Button {
+              isStatsPopoverPresented = false
+              onFormatChineseTypography()
+            } label: {
+              Label("排版优化", systemImage: "textformat")
+                .font(.caption)
+            }
+          }
+
+          if let onCopyForWeChatAndZhihu {
+            Button {
+              isStatsPopoverPresented = false
+              onCopyForWeChatAndZhihu()
+            } label: {
+              Label("复制公众号", systemImage: "doc.on.doc")
+                .font(.caption)
+            }
+          }
+        }
+      }
+    }
+    .padding(14)
+    .frame(width: 270)
+  }
+
+  private func statCard(title: String, value: String) -> some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(title)
+        .font(.workbenchMetadata)
+        .foregroundStyle(.secondary)
+      Text(value)
+        .font(.callout.monospacedDigit().weight(.semibold))
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   private var statisticsSummary: String {
     String(
       localized: "⏱️ 约 \(readingMinutes) 分钟 · \(writingUnitCount) 字/词"
     )
+  }
+
+  @ViewBuilder
+  private func headingMenuButton(showsTitle: Bool) -> some View {
+    Menu {
+      ForEach(1...6, id: \.self) { level in
+        Button {
+          onApplyMarkdownFormatting(.heading(level: level))
+        } label: {
+          Label("\(level) 级标题 (H\(level))", systemImage: "textformat.size")
+        }
+      }
+    } label: {
+      if showsTitle {
+        Label("标题", systemImage: "textformat.size")
+      } else {
+        HStack(spacing: 2) {
+          Text("H")
+            .font(.workbenchMetadata.weight(.semibold))
+            .monospaced()
+          Image(systemName: "chevron.down")
+            .font(.system(size: 7, weight: .bold))
+            .foregroundStyle(.secondary)
+        }
+        .frame(minWidth: 28, minHeight: 28)
+      }
+    }
+    .menuIndicator(.hidden)
+    .foregroundStyle(.secondary)
+    .help("插入或切换标题 (H1-H6)")
+    .accessibilityLabel("标题层级")
+  }
+
+  @ViewBuilder
+  private func listMenuButton(showsTitle: Bool) -> some View {
+    Menu {
+      Button {
+        onApplyAdvancedFormatting(.unorderedList)
+      } label: {
+        Label("无序列表", systemImage: "list.bullet")
+      }
+      Button {
+        onApplyAdvancedFormatting(.orderedList)
+      } label: {
+        Label("有序列表", systemImage: "list.number")
+      }
+      Button {
+        onApplyAdvancedFormatting(.taskList)
+      } label: {
+        Label("任务列表", systemImage: "checklist")
+      }
+    } label: {
+      if showsTitle {
+        Label("列表", systemImage: "list.bullet")
+      } else {
+        HStack(spacing: 2) {
+          Image(systemName: "list.bullet")
+            .font(.system(size: 13, weight: .regular))
+          Image(systemName: "chevron.down")
+            .font(.system(size: 7, weight: .bold))
+            .foregroundStyle(.secondary)
+        }
+        .frame(minWidth: 28, minHeight: 28)
+      }
+    }
+    .menuIndicator(.hidden)
+    .foregroundStyle(.secondary)
+    .help("插入或切换列表（无序、有序、任务列表）")
+    .accessibilityLabel("列表")
   }
 
   private func headingButton(

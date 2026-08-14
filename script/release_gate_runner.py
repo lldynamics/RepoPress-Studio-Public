@@ -591,8 +591,31 @@ def configure_swift_environment() -> None:
     runtime_home = os.environ.get("PERSONAL_SITE_PUBLISHER_RUNTIME_HOME") or os.environ.get("HOME")
     if runtime_home:
         os.environ.setdefault("PERSONAL_SITE_PUBLISHER_RUNTIME_HOME", runtime_home)
-    home = Path(os.environ.get("SWIFT_BUILD_HOME", "/private/tmp/personal-site-publisher-swift-home"))
+    swift_build_home_env = os.environ.get("SWIFT_BUILD_HOME")
+    if swift_build_home_env:
+        home = Path(swift_build_home_env)
+    else:
+        tmpdir = os.environ.get("TMPDIR")
+        candidates = []
+        if tmpdir:
+            candidates.append(Path(tmpdir) / "personal-site-publisher-swift-home")
+        candidates.append(Path("/private/tmp/personal-site-publisher-swift-home"))
+        candidates.append(ROOT / ".build/tmp/swift-home")
+
+        home = ROOT / ".build/tmp/swift-home"
+        for cand in candidates:
+            try:
+                cand.mkdir(parents=True, exist_ok=True)
+                test_file = cand / f".write_test_{os.getpid()}"
+                test_file.write_text("ok", encoding="utf-8")
+                test_file.unlink(missing_ok=True)
+                home = cand
+                break
+            except OSError:
+                continue
+
     os.environ["HOME"] = str(home)
+    os.environ["SWIFT_BUILD_HOME"] = str(home)
     os.environ.setdefault("XDG_CACHE_HOME", str(home / ".cache"))
     os.environ.setdefault("CLANG_MODULE_CACHE_PATH", str(home / ".swift-clang-cache"))
     os.environ.setdefault("SWIFT_MODULE_CACHE_PATH", str(home / ".swift-module-cache"))
@@ -605,7 +628,10 @@ def configure_swift_environment() -> None:
         home / "Library/org.swift.swiftpm/security",
         home / "Library/Caches/org.swift.swiftpm",
     ):
-        directory.mkdir(parents=True, exist_ok=True)
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
 
 
 def main() -> int:

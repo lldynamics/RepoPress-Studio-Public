@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TMP_DIR="$(mktemp -d /private/tmp/repopress-direct-release-test.XXXXXX)"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/repopress-direct-release-test.XXXXXX" 2>/dev/null || mktemp -d "$ROOT_DIR/.build/tmp/repopress-direct-release-test.XXXXXX")"
 FIXTURE_ROOT="$TMP_DIR/project"
 BIN_DIR="$TMP_DIR/bin"
 
@@ -310,7 +310,7 @@ fi
 env "${common_environment[@]}" \
   bash "$ROOT_DIR/script/package_direct_release.sh" \
   --prepare --output-dir "$FIXTURE_ROOT/artifacts/prepare" >/dev/null
-prepared_app="$FIXTURE_ROOT/artifacts/prepare/prepared-RepoPress-Studio-1.2-3/RepoPress Studio.app"
+prepared_app="$FIXTURE_ROOT/artifacts/prepare/prepared-RepoPress-Studio-1.2/RepoPress Studio.app"
 [[ -x "$prepared_app/Contents/MacOS/PersonalSitePublisherMac" ]] \
   || fail "prepare mode did not create the inspection app"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :PersonalSitePublisherDistributionChannel' \
@@ -342,7 +342,7 @@ env "${common_environment[@]}" \
   bash "$ROOT_DIR/script/package_direct_release.sh" \
     --release --output-dir "$release_output" >/dev/null
 
-artifact_base="RepoPress-Studio-1.2-3"
+artifact_base="RepoPress-Studio-1.2"
 signed_app="$release_output/$artifact_base/RepoPress Studio.app"
 zip_path="$release_output/$artifact_base-macOS.zip"
 dmg_path="$release_output/$artifact_base-macOS.dmg"

@@ -27,42 +27,43 @@ extension KnowledgeDatabase {
       updated_at = excluded.updated_at,
       current_revision_id = excluded.current_revision_id;
     """
-    let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
-    bind(document.id.uuidString, at: 1, to: statement)
-    bind(document.kind.rawValue, at: 2, to: statement)
-    bind(document.title, at: 3, to: statement)
-    bind(json(document.authors), at: 4, to: statement)
-    bindOptional(document.language, at: 5, to: statement)
-    bind(document.summary, at: 6, to: statement)
-    bind(json(document.tags), at: 7, to: statement)
-    bindOptional(document.sourceURL?.absoluteString, at: 8, to: statement)
-    bind(document.sourceName, at: 9, to: statement)
-    bindOptional(document.folderID?.uuidString, at: 10, to: statement)
-    sqlite3_bind_int64(statement, 11, sqlite3_int64(document.sourceByteCount))
-    sqlite3_bind_int(statement, 12, document.allowsRemoteAIUse ? 1 : 0)
-    sqlite3_bind_int(statement, 13, document.allowsLocalSemanticIndex ? 1 : 0)
-    sqlite3_bind_int(statement, 14, document.isArchived ? 1 : 0)
-    sqlite3_bind_double(statement, 15, document.importedAt.timeIntervalSince1970)
-    sqlite3_bind_double(statement, 16, document.updatedAt.timeIntervalSince1970)
-    bind(document.currentRevisionID.uuidString, at: 17, to: statement)
-    guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+    try withCachedStatementUnlocked(sql) { statement in
+      bind(document.id.uuidString, at: 1, to: statement)
+      bind(document.kind.rawValue, at: 2, to: statement)
+      bind(document.title, at: 3, to: statement)
+      bind(json(document.authors), at: 4, to: statement)
+      bindOptional(document.language, at: 5, to: statement)
+      bind(document.summary, at: 6, to: statement)
+      bind(json(document.tags), at: 7, to: statement)
+      bindOptional(document.sourceURL?.absoluteString, at: 8, to: statement)
+      bind(document.sourceName, at: 9, to: statement)
+      bindOptional(document.folderID?.uuidString, at: 10, to: statement)
+      sqlite3_bind_int64(statement, 11, sqlite3_int64(document.sourceByteCount))
+      sqlite3_bind_int(statement, 12, document.allowsRemoteAIUse ? 1 : 0)
+      sqlite3_bind_int(statement, 13, document.allowsLocalSemanticIndex ? 1 : 0)
+      sqlite3_bind_int(statement, 14, document.isArchived ? 1 : 0)
+      sqlite3_bind_double(statement, 15, document.importedAt.timeIntervalSince1970)
+      sqlite3_bind_double(statement, 16, document.updatedAt.timeIntervalSince1970)
+      bind(document.currentRevisionID.uuidString, at: 17, to: statement)
+      guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+    }
   }
 
   func documentUnlocked(id: UUID) throws -> KnowledgeDocument? {
-    let statement = try prepare("""
+    let sql = """
     SELECT id, kind, title, authors_json, language, summary, tags_json,
            source_url, source_name, folder_id, source_byte_count,
            allows_ai_use, allows_local_semantic_index, is_archived,
            imported_at, updated_at, current_revision_id
     FROM knowledge_documents WHERE id = ? LIMIT 1;
-    """)
-    defer { sqlite3_finalize(statement) }
-    bind(id.uuidString, at: 1, to: statement)
-    let result = sqlite3_step(statement)
-    if result == SQLITE_ROW { return try decodeDocument(statement, offset: 0) }
-    guard result == SQLITE_DONE else { throw databaseError() }
-    return nil
+    """
+    return try withCachedStatementUnlocked(sql) { statement in
+      bind(id.uuidString, at: 1, to: statement)
+      let result = sqlite3_step(statement)
+      if result == SQLITE_ROW { return try decodeDocument(statement, offset: 0) }
+      guard result == SQLITE_DONE else { throw databaseError() }
+      return nil
+    }
   }
 
   func insertRevision(_ revision: KnowledgeDocumentRevision) throws {
@@ -73,19 +74,19 @@ extension KnowledgeDatabase {
       captured_text_storage_ref, normalized_storage_ref
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     """
-    let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
-    bind(revision.id.uuidString, at: 1, to: statement)
-    bind(revision.documentID.uuidString, at: 2, to: statement)
-    bind(revision.originalContentHash, at: 3, to: statement)
-    bind(revision.normalizedContentHash, at: 4, to: statement)
-    sqlite3_bind_int(statement, 5, Int32(revision.parserVersion))
-    sqlite3_bind_double(statement, 6, revision.importedAt.timeIntervalSince1970)
-    bindOptional(revision.sourceModifiedAt?.timeIntervalSince1970, at: 7, to: statement)
-    bindOptional(revision.originalStorageReference, at: 8, to: statement)
-    bindOptional(revision.capturedTextStorageReference, at: 9, to: statement)
-    bind(revision.normalizedStorageReference, at: 10, to: statement)
-    guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+    try withCachedStatementUnlocked(sql) { statement in
+      bind(revision.id.uuidString, at: 1, to: statement)
+      bind(revision.documentID.uuidString, at: 2, to: statement)
+      bind(revision.originalContentHash, at: 3, to: statement)
+      bind(revision.normalizedContentHash, at: 4, to: statement)
+      sqlite3_bind_int(statement, 5, Int32(revision.parserVersion))
+      sqlite3_bind_double(statement, 6, revision.importedAt.timeIntervalSince1970)
+      bindOptional(revision.sourceModifiedAt?.timeIntervalSince1970, at: 7, to: statement)
+      bindOptional(revision.originalStorageReference, at: 8, to: statement)
+      bindOptional(revision.capturedTextStorageReference, at: 9, to: statement)
+      bind(revision.normalizedStorageReference, at: 10, to: statement)
+      guard sqlite3_step(statement) == SQLITE_DONE else { throw databaseError() }
+    }
   }
 
   func decodeDocument(
@@ -174,35 +175,36 @@ extension KnowledgeDatabase {
     } else {
       sql = "SELECT 1 FROM knowledge_folders WHERE name = ? COLLATE NOCASE AND id != ? LIMIT 1;"
     }
-    let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
-    bind(name, at: 1, to: statement)
-    if let folderID {
-      bind(folderID.uuidString, at: 2, to: statement)
+    return try withCachedStatement(sql) { statement in
+      bind(name, at: 1, to: statement)
+      if let folderID {
+        bind(folderID.uuidString, at: 2, to: statement)
+      }
+      let result = sqlite3_step(statement)
+      guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
+      return result == SQLITE_ROW
     }
-    let result = sqlite3_step(statement)
-    guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
-    return result == SQLITE_ROW
   }
 
   func folderExists(_ folderID: UUID) throws -> Bool {
-    let statement = try prepare("SELECT 1 FROM knowledge_folders WHERE id = ? LIMIT 1;")
-    defer { sqlite3_finalize(statement) }
-    bind(folderID.uuidString, at: 1, to: statement)
-    let result = sqlite3_step(statement)
-    guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
-    return result == SQLITE_ROW
+    let sql = "SELECT 1 FROM knowledge_folders WHERE id = ? LIMIT 1;"
+    return try withCachedStatement(sql) { statement in
+      bind(folderID.uuidString, at: 1, to: statement)
+      let result = sqlite3_step(statement)
+      guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
+      return result == SQLITE_ROW
+    }
   }
 
   func rowExistsUnlocked(_ sql: String, values: [String]) throws -> Bool {
-    let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
-    for (offset, value) in values.enumerated() {
-      bind(value, at: Int32(offset + 1), to: statement)
+    try withCachedStatementUnlocked(sql) { statement in
+      for (offset, value) in values.enumerated() {
+        bind(value, at: Int32(offset + 1), to: statement)
+      }
+      let result = sqlite3_step(statement)
+      guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
+      return result == SQLITE_ROW
     }
-    let result = sqlite3_step(statement)
-    guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
-    return result == SQLITE_ROW
   }
 
   func decodeRevision(
@@ -402,6 +404,26 @@ extension KnowledgeDatabase {
     }
   }
 
+  func cachedStatementUnlocked(_ sql: String) throws -> OpaquePointer {
+    try statementCache.statement(for: sql, database: handle)
+  }
+
+  func resetCachedStatementUnlocked(_ statement: OpaquePointer?) {
+    statementCache.reset(statement)
+  }
+
+  func withCachedStatementUnlocked<T>(_ sql: String, _ body: (OpaquePointer) throws -> T) throws -> T {
+    let stmt = try cachedStatementUnlocked(sql)
+    defer { resetCachedStatementUnlocked(stmt) }
+    return try body(stmt)
+  }
+
+  func withCachedStatement<T>(_ sql: String, _ body: (OpaquePointer) throws -> T) throws -> T {
+    try withLock {
+      try withCachedStatementUnlocked(sql, body)
+    }
+  }
+
   func prepare(_ sql: String) throws -> OpaquePointer? {
     guard let handle else { throw KnowledgeLibraryError.database("数据库尚未打开") }
     var statement: OpaquePointer?
@@ -519,5 +541,21 @@ extension KnowledgeDatabase {
     lock.lock()
     defer { lock.unlock() }
     return try body()
+  }
+
+  public func checkpointWAL(mode: KnowledgeDatabaseWALCheckpointMode = .passive) throws {
+    try withLock {
+      guard let handle else { throw KnowledgeLibraryError.database("数据库未打开") }
+      var logSize: Int32 = 0
+      var checkpointedCount: Int32 = 0
+      let rc = sqlite3_wal_checkpoint_v2(handle, nil, mode.sqliteMode, &logSize, &checkpointedCount)
+      guard rc == SQLITE_OK else { throw databaseError() }
+    }
+  }
+
+  public func optimizeDatabase() throws {
+    try withLock {
+      try executeUnlocked("PRAGMA optimize;")
+    }
   }
 }

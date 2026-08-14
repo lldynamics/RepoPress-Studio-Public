@@ -70,7 +70,7 @@ final class SettingsScrollPresentationTests: XCTestCase {
     )
     XCTAssertEqual(
       SettingsTab.applicationSettings.map(\.scrollOwnership),
-      [.nativeScrollView, .nativeForm, .nativeForm, .nativeForm]
+      [.nativeScrollView, .nativeForm, .nativeForm, .nativeForm, .nativeForm]
     )
     XCTAssertTrue(
       SettingsTab.allCases.allSatisfy {
