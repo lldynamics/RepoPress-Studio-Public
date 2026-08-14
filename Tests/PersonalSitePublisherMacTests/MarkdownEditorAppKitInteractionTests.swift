@@ -7,6 +7,240 @@ import XCTest
 
 @MainActor
 final class MarkdownEditorAppKitInteractionTests: XCTestCase {
+  func testSlashCommandTextUsesUTF16OffsetsForEmojiAndComposedCharacters() {
+    let emojiBody = "😀\n/ti"
+    let emojiCaret = (emojiBody as NSString).length
+    XCTAssertEqual(
+      MarkdownSlashCommandText.query(in: emojiBody, caretUTF16Location: emojiCaret),
+      "ti"
+    )
+    XCTAssertEqual(
+      MarkdownSlashCommandText.replacementRange(
+        in: emojiBody,
+        caretUTF16Location: emojiCaret
+      ),
+      NSRange(location: 3, length: 3)
+    )
+
+    let composedBody = "e\u{301}\n/h"
+    let composedCaret = (composedBody as NSString).length
+    XCTAssertEqual(
+      MarkdownSlashCommandText.query(in: composedBody, caretUTF16Location: composedCaret),
+      "h"
+    )
+    XCTAssertEqual(
+      MarkdownSlashCommandText.replacementRange(
+        in: composedBody,
+        caretUTF16Location: composedCaret
+      ),
+      NSRange(location: 3, length: 2)
+    )
+  }
+
+  func testSlashCommandTextRejectsOutOfBoundsCaret() {
+    let body = "正文/"
+    let length = (body as NSString).length
+    XCTAssertNil(MarkdownSlashCommandText.query(in: body, caretUTF16Location: length + 1))
+    XCTAssertNil(MarkdownSlashCommandText.replacementRange(in: body, caretUTF16Location: 0))
+  }
+
+  func testSlashCommandKeyRoutingDoesNotFallThroughToTextEditing() throws {
+    let textView = makeTextView()
+    textView.string = "原文"
+    var receivedKeys: [MarkdownSlashCommandKey] = []
+    textView.slashCommandKeyHandler = { key in
+      receivedKeys.append(key)
+      return true
+    }
+
+    let downEvent = try XCTUnwrap(makeKeyEvent(keyCode: 125))
+    let returnEvent = try XCTUnwrap(makeKeyEvent(keyCode: 36))
+    textView.keyDown(with: downEvent)
+    textView.keyDown(with: returnEvent)
+
+    XCTAssertEqual(receivedKeys, [.moveDown, .select])
+    XCTAssertEqual(textView.string, "原文")
+  }
+
+  func testSlashCommandKeyRoutingConsumesUpAndEscapeWithoutEditing() throws {
+    let textView = makeTextView()
+    textView.string = "原文"
+    var receivedKeys: [MarkdownSlashCommandKey] = []
+    textView.slashCommandKeyHandler = { key in
+      receivedKeys.append(key)
+      return true
+    }
+
+    let upEvent = try XCTUnwrap(makeKeyEvent(keyCode: 126))
+    let escapeEvent = try XCTUnwrap(makeKeyEvent(keyCode: 53))
+    textView.keyDown(with: upEvent)
+    textView.keyDown(with: escapeEvent)
+
+    XCTAssertEqual(receivedKeys, [.moveUp, .dismiss])
+    XCTAssertEqual(textView.string, "原文")
+  }
+
+  func testSlashCommandSelectionWrapsAtBoundariesAndHandlesEmptyLists() {
+    XCTAssertEqual(
+      MarkdownSlashCommandSelection.move(
+        currentIndex: 0,
+        itemCount: 3,
+        direction: .moveUp
+      ),
+      2
+    )
+    XCTAssertEqual(
+      MarkdownSlashCommandSelection.move(
+        currentIndex: 2,
+        itemCount: 3,
+        direction: .moveDown
+      ),
+      0
+    )
+    XCTAssertEqual(
+      MarkdownSlashCommandSelection.move(
+        currentIndex: 99,
+        itemCount: 3,
+        direction: .moveDown
+      ),
+      0
+    )
+    XCTAssertEqual(
+      MarkdownSlashCommandSelection.move(
+        currentIndex: -1,
+        itemCount: 3,
+        direction: .moveUp
+      ),
+      2
+    )
+    XCTAssertEqual(
+      MarkdownSlashCommandSelection.move(
+        currentIndex: 0,
+        itemCount: 0,
+        direction: .moveDown
+      ),
+      0
+    )
+  }
+
+  func testSlashCommandFilteringKeepsSelectedIndexWithinBounds() {
+    let items = [
+      SlashCommandItem(id: "h1", title: "一级标题", subtitle: "#", systemImage: "textformat") {},
+      SlashCommandItem(id: "quote", title: "引用块", subtitle: ">", systemImage: "text.quote") {},
+    ]
+    XCTAssertEqual(
+      MarkdownSlashCommandMenu.filteredItems(from: items, matching: "quote").map(\.id),
+      ["quote"]
+    )
+    XCTAssertTrue(
+      MarkdownSlashCommandMenu.filteredItems(from: items, matching: "missing").isEmpty
+    )
+  }
+
+  func testSlashCommandKeyRoutingLeavesModifiedKeysToTextView() throws {
+    let textView = DroppableMarkdownTextView(
+      frame: NSRect(x: 0, y: 0, width: 320, height: 180),
+      textContainer: nil
+    )
+    var receivedKeys: [MarkdownSlashCommandKey] = []
+    textView.slashCommandKeyHandler = { key in
+      receivedKeys.append(key)
+      return true
+    }
+
+    let commandDown = try XCTUnwrap(
+      makeKeyEvent(keyCode: 125, modifiers: [.command])
+    )
+    textView.keyDown(with: commandDown)
+
+    XCTAssertTrue(receivedKeys.isEmpty)
+    XCTAssertEqual(
+      MarkdownSlashCommandKey.from(keyCode: 125, modifiers: [.function]),
+      .moveDown
+    )
+    XCTAssertEqual(
+      MarkdownSlashCommandKey.from(keyCode: 76, modifiers: [.numericPad]),
+      .select
+    )
+  }
+
+  func testTypingFeedbackOnlyPlaysForPrintableUnmodifiedInput() {
+    XCTAssertEqual(
+      MarkdownTypingFeedbackPolicy.defaultPreset,
+      .off
+    )
+    XCTAssertTrue(
+      MarkdownTypingFeedbackPolicy.shouldPlay(
+        for: .insertedText,
+        preset: .typewriter
+      )
+    )
+    XCTAssertFalse(
+      MarkdownTypingFeedbackPolicy.shouldPlay(
+        for: .insertedText,
+        preset: .off
+      )
+    )
+    XCTAssertFalse(
+      MarkdownTypingFeedbackPolicy.shouldPlay(
+        for: .command,
+        preset: .typewriter
+      )
+    )
+    XCTAssertFalse(
+      MarkdownTypingFeedbackPolicy.shouldPlay(
+        for: .navigation,
+        preset: .typewriter
+      )
+    )
+    XCTAssertFalse(
+      MarkdownTypingFeedbackPolicy.shouldPlay(
+        for: .insertedText,
+        preset: .typewriter,
+        elapsedSincePreviousPlayback: MarkdownTypingFeedbackPolicy.minimumPlaybackInterval / 2
+      )
+    )
+    XCTAssertTrue(
+      MarkdownTypingFeedbackPolicy.shouldPlay(
+        for: .insertedText,
+        preset: .typewriter,
+        elapsedSincePreviousPlayback: MarkdownTypingFeedbackPolicy.minimumPlaybackInterval
+      )
+    )
+    XCTAssertEqual(
+      MarkdownTypingFeedbackPolicy.event(
+        keyCode: 0,
+        characters: "😀",
+        modifiers: []
+      ),
+      .insertedText
+    )
+    XCTAssertEqual(
+      MarkdownTypingFeedbackPolicy.event(
+        keyCode: 0,
+        characters: "c",
+        modifiers: [.command]
+      ),
+      .command
+    )
+    XCTAssertEqual(
+      MarkdownTypingFeedbackPolicy.event(
+        keyCode: 125,
+        characters: nil,
+        modifiers: []
+      ),
+      .navigation
+    )
+  }
+
+  func testComfortDefaultsIncludeSilentTypingAndParagraphSpotlightReset() {
+    XCTAssertEqual(
+      MarkdownEditorComfortConfiguration.defaultTypewriterSoundPreset,
+      .off
+    )
+    XCTAssertFalse(MarkdownEditorComfortConfiguration.defaultParagraphSpotlightEnabled)
+  }
+
   func testEquivalentAppKitSelectionDoesNotRepublishSwiftUIBindings() {
     var text = "正文"
     var selectedRange = NSRange(location: 0, length: 0)
@@ -348,6 +582,38 @@ final class MarkdownEditorAppKitInteractionTests: XCTestCase {
     try Data([0x89, 0x50, 0x4E, 0x47]).write(to: imageURL)
     try Data("notes".utf8).write(to: textURL)
     return (root, imageURL, textURL)
+  }
+
+  private func makeKeyEvent(
+    keyCode: UInt16,
+    modifiers: NSEvent.ModifierFlags = []
+  ) -> NSEvent? {
+    NSEvent.keyEvent(
+      with: .keyDown,
+      location: .zero,
+      modifierFlags: modifiers,
+      timestamp: 0,
+      windowNumber: 0,
+      context: nil,
+      characters: "",
+      charactersIgnoringModifiers: "",
+      isARepeat: false,
+      keyCode: keyCode
+    )
+  }
+
+  private func makeTextView() -> DroppableMarkdownTextView {
+    let textStorage = NSTextStorage()
+    let layoutManager = NSLayoutManager()
+    let textContainer = NSTextContainer(
+      containerSize: NSSize(width: 320, height: CGFloat.greatestFiniteMagnitude)
+    )
+    textStorage.addLayoutManager(layoutManager)
+    layoutManager.addTextContainer(textContainer)
+    return DroppableMarkdownTextView(
+      frame: NSRect(x: 0, y: 0, width: 320, height: 180),
+      textContainer: textContainer
+    )
   }
 }
 

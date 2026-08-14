@@ -20,6 +20,7 @@ struct MacMarkdownComposerView: View {
   @State var markdownSSGDerivedData = MarkdownComposerSSGDerivedData.empty
   @State var editorSessionSaveTask: Task<Void, Never>?
   @State var editorSessionSaveGeneration: UInt64 = 0
+  @State var markdownAnalysisTaskIsAutomatic = false
   @State var sceneCommandOwnerID = UUID()
   @AppStorage("markdownEditorSynchronizedScrolling") var isSynchronizedScrollingEnabled = true
   @AppStorage("workspace.writingToolDensity") var writingToolDensityRawValue =
@@ -43,11 +44,17 @@ struct MacMarkdownComposerView: View {
   @AppStorage(MarkdownEditorComfortPreferences.automaticPairingEnabledKey)
   var isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
   @AppStorage(MarkdownEditorComfortPreferences.typewriterSoundPresetKey)
-  var typewriterSoundPresetRawValue = TypewriterSoundPreset.typewriter.rawValue
+  var typewriterSoundPresetRawValue = MarkdownEditorComfortConfiguration
+    .defaultTypewriterSoundPreset.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
-  var isParagraphSpotlightEnabled = false
+  var isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration
+    .defaultParagraphSpotlightEnabled
+  @AppStorage(MarkdownEditorComfortPreferences.realtimeAnalysisEnabledKey)
+  var isRealtimeAnalysisEnabled = MarkdownEditorComfortConfiguration
+    .defaultRealtimeAnalysisEnabled
   @State private var slashCommandQuery: String? = nil
   @State private var isSlashMenuPresented: Bool = false
+  @State private var slashCommandSelectedIndex = 0
   @AppStorage(AIWritingPreferences.automaticInlineCompletionEnabledKey)
   var isAutomaticInlineAICompletionEnabled =
     AIWritingPreferences.defaultAutomaticInlineCompletionEnabled
@@ -237,7 +244,7 @@ struct MacMarkdownComposerView: View {
     )
     state.findReplaceMessage =
       editorSession.findQuery.isEmpty && editorSession.isFindReplacePresented
-      ? "输入查找内容。"
+      ? String(localized: "输入查找内容。")
       : ""
     return state
   }
@@ -261,7 +268,7 @@ struct MacMarkdownComposerView: View {
       )
       .opacity(zenModeController.toolbarOpacity)
       .onHover { isHovered in
-        zenModeController.isHovered = isHovered
+        zenModeController.updateHovered(isHovered)
       }
       .environmentObject(zenModeController)
       Divider()
@@ -304,7 +311,7 @@ struct MacMarkdownComposerView: View {
       syncActiveEditorSelection()
       refreshMarkdownCursorContextSnapshot()
       applyEditorFocusRequest()
-      scheduleMarkdownAnalysis(immediate: true)
+      scheduleMarkdownAnalysis(immediate: true, isAutomatic: true)
       scheduleInlineGhostText()
     }
     .onChange(of: editorState.editorFocusRequest?.id) { _, _ in
@@ -328,9 +335,6 @@ struct MacMarkdownComposerView: View {
     .onChange(of: editorBody) { _, _ in
       scheduleInlineGhostText()
       zenModeController.handleTypingActivity()
-      if let preset = TypewriterSoundPreset(rawValue: typewriterSoundPresetRawValue) {
-        TypewriterAudioService.shared.playKeyClick(preset: preset)
-      }
       checkSlashCommandTrigger()
     }
     .onChange(of: isAutomaticInlineAICompletionEnabled) { _, isEnabled in
@@ -338,6 +342,13 @@ struct MacMarkdownComposerView: View {
         scheduleInlineGhostText()
       } else {
         cancelInlineGhostText()
+      }
+    }
+    .onChange(of: isRealtimeAnalysisEnabled) { _, isEnabled in
+      if isEnabled {
+        scheduleMarkdownAnalysis(immediate: true, isAutomatic: true)
+      } else {
+        invalidateMarkdownAnalysis()
       }
     }
     .onChange(of: isFrontMatterSelection) { _, isSelected in
@@ -404,7 +415,7 @@ struct MacMarkdownComposerView: View {
       restoreEditorSession(for: draft.id)
       restorePreferredEditorDisplayMode()
       syncActiveEditorSelection()
-      scheduleMarkdownAnalysis(immediate: true)
+      scheduleMarkdownAnalysis(immediate: true, isAutomatic: true)
     }
     .onChange(of: draft.isGeneralDraft) { _, _ in
       restorePreferredEditorDisplayMode()
@@ -691,6 +702,15 @@ struct MacMarkdownComposerView: View {
           onSSGSnippetShortcut: { candidate in
             handleAutomaticSSGSnippetShortcut(candidate)
           },
+          onSlashCommandKey: { key in
+            handleSlashCommandKey(key)
+          },
+          onTypingFeedback: {
+            guard let preset = TypewriterSoundPreset(rawValue: typewriterSoundPresetRawValue) else {
+              return
+            }
+            TypewriterAudioService.shared.playKeyClick(preset: preset)
+          },
           onScrollProgressChanged: { progress in
             updateSynchronizedScroll(source: .editor, progress: progress)
           },
@@ -756,11 +776,12 @@ struct MacMarkdownComposerView: View {
               MarkdownSlashCommandMenu(
                 filterText: slashCommandQuery ?? "",
                 items: defaultSlashCommands,
+                selectedIndex: $slashCommandSelectedIndex,
                 onSelect: { item in
-                  item.action()
+                  selectSlashCommand(item)
                 },
                 onDismiss: {
-                  isSlashMenuPresented = false
+                  dismissSlashCommandMenu()
                 }
               )
               .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -792,89 +813,141 @@ struct MacMarkdownComposerView: View {
   var defaultSlashCommands: [SlashCommandItem] {
     [
       SlashCommandItem(
-        id: "h1", title: "一级标题", subtitle: "# 大标题", systemImage: "textformat.size"
+        id: "h1",
+        title: String(localized: "一级标题"),
+        subtitle: String(localized: "# 大标题"),
+        systemImage: "textformat.size"
       ) {
         applySlashCommand("# ")
       },
       SlashCommandItem(
-        id: "h2", title: "二级标题", subtitle: "## 中标题", systemImage: "textformat.size"
+        id: "h2",
+        title: String(localized: "二级标题"),
+        subtitle: String(localized: "## 中标题"),
+        systemImage: "textformat.size"
       ) {
         applySlashCommand("## ")
       },
       SlashCommandItem(
-        id: "h3", title: "三级标题", subtitle: "### 小标题", systemImage: "textformat.size"
+        id: "h3",
+        title: String(localized: "三级标题"),
+        subtitle: String(localized: "### 小标题"),
+        systemImage: "textformat.size"
       ) {
         applySlashCommand("### ")
       },
       SlashCommandItem(
-        id: "code", title: "代码块", subtitle: "``` 代码语法高亮", systemImage: "curlybraces.square"
+        id: "code",
+        title: String(localized: "代码块"),
+        subtitle: String(localized: "``` 代码语法高亮"),
+        systemImage: "curlybraces.square"
       ) {
         applySlashCommand("```swift\n\n```")
       },
       SlashCommandItem(
-        id: "table", title: "表格", subtitle: "| 表头 |", systemImage: "tablecells"
+        id: "table",
+        title: String(localized: "表格"),
+        subtitle: String(localized: "| 表头 |"),
+        systemImage: "tablecells"
       ) {
         applySlashCommand("| 列 1 | 列 2 |\n| --- | --- |\n| 内容 | 内容 |")
       },
       SlashCommandItem(
-        id: "quote", title: "引用块", subtitle: "> 引用文本", systemImage: "text.quote"
+        id: "quote",
+        title: String(localized: "引用块"),
+        subtitle: String(localized: "> 引用文本"),
+        systemImage: "text.quote"
       ) {
         applySlashCommand("> ")
       },
       SlashCommandItem(
-        id: "task", title: "任务列表", subtitle: "- [ ] 待办事项", systemImage: "checklist"
+        id: "task",
+        title: String(localized: "任务列表"),
+        subtitle: String(localized: "- [ ] 待办事项"),
+        systemImage: "checklist"
       ) {
         applySlashCommand("- [ ] ")
       },
       SlashCommandItem(
-        id: "hr", title: "分隔线", subtitle: "--- 分隔线", systemImage: "minus"
+        id: "hr",
+        title: String(localized: "分隔线"),
+        subtitle: String(localized: "--- 分隔线"),
+        systemImage: "minus"
       ) {
         applySlashCommand("\n---\n")
       },
       SlashCommandItem(
-        id: "ai", title: "AI 续写", subtitle: "使用 AI 自动生成段落", systemImage: "wand.and.stars"
+        id: "ai",
+        title: String(localized: "AI 续写"),
+        subtitle: String(localized: "使用 AI 自动生成段落"),
+        systemImage: "wand.and.stars"
       ) {
         applySlashCommand("")
         performArticleAIAction(.continueArticle)
-      }
+      },
     ]
   }
 
   private func checkSlashCommandTrigger() {
     let location = editorSessionState.selectedRange.location
-    guard location > 0, editorBody.count >= location else {
+    guard let query = MarkdownSlashCommandText.query(
+      in: editorBody,
+      caretUTF16Location: location
+    ) else {
       isSlashMenuPresented = false
       return
     }
 
-    let textUpToLocation = (editorBody as NSString).substring(to: location)
-    guard let lastLine = textUpToLocation.components(separatedBy: .newlines).last,
-      lastLine.hasPrefix("/")
-    else {
-      isSlashMenuPresented = false
-      return
-    }
-
-    let query = String(lastLine.dropFirst())
     slashCommandQuery = query
     isSlashMenuPresented = true
   }
 
   private func applySlashCommand(_ snippet: String) {
     let location = editorSessionState.selectedRange.location
-    let textUpToLocation = (editorBody as NSString).substring(to: location)
-    guard let lastLine = textUpToLocation.components(separatedBy: .newlines).last,
-      lastLine.hasPrefix("/")
-    else { return }
-
-    let lineLength = (lastLine as NSString).length
-    let replaceRange = NSRange(location: location - lineLength, length: lineLength)
+    guard let replaceRange = MarkdownSlashCommandText.replacementRange(
+      in: editorBody,
+      caretUTF16Location: location
+    ) else { return }
 
     if let currentRange = Range(replaceRange, in: editorBody) {
       editorBody.replaceSubrange(currentRange, with: snippet)
-      isSlashMenuPresented = false
-      slashCommandQuery = nil
+      dismissSlashCommandMenu()
     }
+  }
+
+  private func handleSlashCommandKey(_ key: MarkdownSlashCommandKey) -> Bool {
+    guard isSlashMenuPresented else { return false }
+
+    let filteredItems = MarkdownSlashCommandMenu.filteredItems(
+      from: defaultSlashCommands,
+      matching: slashCommandQuery ?? ""
+    )
+    switch key {
+    case .moveUp, .moveDown:
+      slashCommandSelectedIndex = MarkdownSlashCommandSelection.move(
+        currentIndex: slashCommandSelectedIndex,
+        itemCount: filteredItems.count,
+        direction: key
+      )
+    case .select:
+      guard !filteredItems.isEmpty else { return true }
+      let index = min(max(slashCommandSelectedIndex, 0), filteredItems.count - 1)
+      selectSlashCommand(filteredItems[index])
+    case .dismiss:
+      dismissSlashCommandMenu()
+    }
+    return true
+  }
+
+  private func selectSlashCommand(_ item: SlashCommandItem) {
+    item.action()
+    dismissSlashCommandMenu()
+  }
+
+  private func dismissSlashCommandMenu() {
+    isSlashMenuPresented = false
+    slashCommandQuery = nil
+    slashCommandSelectedIndex = 0
   }
 
 }

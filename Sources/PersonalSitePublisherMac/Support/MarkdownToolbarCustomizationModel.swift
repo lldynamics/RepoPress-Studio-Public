@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-enum MarkdownToolbarItemID: String, CaseIterable, Codable, Identifiable {
+enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiable {
   // Header Items
   case saveStatus
   case editorDisplayMode
@@ -131,11 +131,20 @@ enum MarkdownToolbarCategory: String, Codable {
 }
 
 struct MarkdownToolbarConfiguration: Codable, Equatable {
+  static let currentSchemaVersion = 1
+
+  /// A versioned, normalized representation of the user's toolbar choices.
+  ///
+  /// The property is intentionally encoded alongside the two item lists so a
+  /// future migration can distinguish the legacy (unversioned) payload from a
+  /// payload written by the current app.
+  var schemaVersion: Int
   var headerItemIDs: [MarkdownToolbarItemID]
   var formattingItemIDs: [MarkdownToolbarItemID]
 
   static var defaultConfiguration: MarkdownToolbarConfiguration {
     MarkdownToolbarConfiguration(
+      schemaVersion: currentSchemaVersion,
       headerItemIDs: [
         .saveStatus,
         .editorDisplayMode,
@@ -171,9 +180,107 @@ struct MarkdownToolbarConfiguration: Codable, Equatable {
     )
   }
 
+  init(
+    schemaVersion: Int = currentSchemaVersion,
+    headerItemIDs: [MarkdownToolbarItemID],
+    formattingItemIDs: [MarkdownToolbarItemID]
+  ) {
+    self.schemaVersion = schemaVersion
+    self.headerItemIDs = headerItemIDs
+    self.formattingItemIDs = formattingItemIDs
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case headerItemIDs
+    case formattingItemIDs
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    let version = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 0
+
+    // Decode item IDs as strings instead of [MarkdownToolbarItemID]. This
+    // lets a newer app safely ignore an item added by a future version while
+    // preserving all known optional items the user intentionally hid.
+    let defaultConfiguration = Self.defaultConfiguration
+    let headerRawValues =
+      try container.decodeIfPresent([String].self, forKey: .headerItemIDs)
+      ?? defaultConfiguration.headerItemIDs.map(\.rawValue)
+    let formattingRawValues =
+      try container.decodeIfPresent([String].self, forKey: .formattingItemIDs)
+      ?? defaultConfiguration.formattingItemIDs.map(\.rawValue)
+
+    let headerItems = headerRawValues.compactMap(MarkdownToolbarItemID.init(rawValue:))
+    let formattingItems = formattingRawValues.compactMap(MarkdownToolbarItemID.init(rawValue:))
+
+    self =
+      MarkdownToolbarConfiguration(
+        schemaVersion: version,
+        headerItemIDs: headerItems,
+        formattingItemIDs: formattingItems
+      ).normalized
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    let configuration = normalized
+    try container.encode(Self.currentSchemaVersion, forKey: .schemaVersion)
+    try container.encode(configuration.headerItemIDs.map(\.rawValue), forKey: .headerItemIDs)
+    try container.encode(
+      configuration.formattingItemIDs.map(\.rawValue), forKey: .formattingItemIDs)
+  }
+
+  /// Returns a canonical configuration while preserving the user's order.
+  ///
+  /// IDs belonging to the other category, duplicate IDs, and IDs that cannot
+  /// be represented by this version are removed. Mandatory header controls are
+  /// restored in their canonical category if a damaged or old payload omitted
+  /// them.
+  var normalized: MarkdownToolbarConfiguration {
+    func normalize(
+      _ items: [MarkdownToolbarItemID],
+      category: MarkdownToolbarCategory
+    ) -> [MarkdownToolbarItemID] {
+      var seen = Set<MarkdownToolbarItemID>()
+      var result: [MarkdownToolbarItemID] = []
+      for item in items where item.defaultCategory == category {
+        if item.isMandatory {
+          continue
+        }
+        guard seen.insert(item).inserted else { continue }
+        result.append(item)
+      }
+
+      let mandatoryItems = MarkdownToolbarItemID.allCases.filter {
+        $0.isMandatory && $0.defaultCategory == category
+      }
+      guard !mandatoryItems.isEmpty else { return result }
+
+      // Mandatory controls are stable anchors: save status stays first and
+      // prepare-publish stays last, while optional controls retain their
+      // persisted relative order between those anchors.
+      return mandatoryItems.reduce(into: result) { normalized, mandatoryItem in
+        if mandatoryItem == .saveStatus {
+          normalized.insert(mandatoryItem, at: 0)
+        } else if mandatoryItem == .preparePublish {
+          normalized.append(mandatoryItem)
+        } else if !normalized.contains(mandatoryItem) {
+          normalized.append(mandatoryItem)
+        }
+      }
+    }
+
+    return MarkdownToolbarConfiguration(
+      schemaVersion: Self.currentSchemaVersion,
+      headerItemIDs: normalize(headerItemIDs, category: .header),
+      formattingItemIDs: normalize(formattingItemIDs, category: .formatting)
+    )
+  }
+
   func encodeToJSON() -> String {
     let encoder = JSONEncoder()
-    guard let data = try? encoder.encode(self),
+    guard let data = try? encoder.encode(normalized),
       let string = String(data: data, encoding: .utf8)
     else {
       return ""
@@ -188,6 +295,6 @@ struct MarkdownToolbarConfiguration: Codable, Equatable {
     else {
       return .defaultConfiguration
     }
-    return config
+    return config.normalized
   }
 }

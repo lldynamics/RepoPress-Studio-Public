@@ -12,10 +12,10 @@ enum TypewriterSoundPreset: String, CaseIterable, Identifiable {
 
   var title: String {
     switch self {
-    case .off: return "关闭"
-    case .typewriter: return "经典打字机"
-    case .mechanical: return "机械键盘"
-    case .softClick: return "柔和点击"
+    case .off: return String(localized: "关闭")
+    case .typewriter: return String(localized: "经典打字机")
+    case .mechanical: return String(localized: "机械键盘")
+    case .softClick: return String(localized: "柔和点击")
     }
   }
 }
@@ -24,10 +24,21 @@ enum TypewriterSoundPreset: String, CaseIterable, Identifiable {
 final class TypewriterAudioService {
   static let shared = TypewriterAudioService()
 
+  private let typewriterSound = NSSound(named: NSSound.Name("Tink"))
+  private let softClickSound = NSSound(named: NSSound.Name("Pop"))
+  private var lastPlaybackUptime: TimeInterval?
+
   private init() {}
 
   func playKeyClick(preset: TypewriterSoundPreset) {
-    guard preset != .off else { return }
+    let now = ProcessInfo.processInfo.systemUptime
+    let elapsed = lastPlaybackUptime.map { now - $0 }
+    guard MarkdownTypingFeedbackPolicy.shouldPlay(
+      for: .insertedText,
+      preset: preset,
+      elapsedSincePreviousPlayback: elapsed
+    ) else { return }
+    lastPlaybackUptime = now
 
     // 触发 macOS 触控板 Alignment 级微触觉反馈
     NSHapticFeedbackManager.defaultPerformer.perform(
@@ -38,11 +49,11 @@ final class TypewriterAudioService {
     // 根据预设播放音效
     switch preset {
     case .typewriter:
-      NSSound(named: NSSound.Name("Tink"))?.play()
+      typewriterSound?.play()
     case .mechanical:
       AudioServicesPlaySystemSound(1104)
     case .softClick:
-      NSSound(named: NSSound.Name("Pop"))?.play()
+      softClickSound?.play()
     case .off:
       break
     }

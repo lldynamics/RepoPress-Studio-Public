@@ -100,6 +100,8 @@ final class DroppableMarkdownTextView: NSTextView {
   var markdownFormattingHandler: ((NSTextView, MarkdownFormattingCommand) -> Bool)?
   var markdownTableContextProvider: ((NSTextView) -> MarkdownTableEditingContext?)?
   var markdownTableEditingHandler: ((NSTextView, MarkdownTableEditingCommand) -> Bool)?
+  var slashCommandKeyHandler: ((MarkdownSlashCommandKey) -> Bool)?
+  var typingFeedbackHandler: (() -> Void)?
   var ghostTextAcceptHandler: (() -> Bool)?
   var ghostTextDismissHandler: (() -> Bool)?
   private var isFileDropTargeted = false
@@ -139,6 +141,13 @@ final class DroppableMarkdownTextView: NSTextView {
 
   override func keyDown(with event: NSEvent) {
     let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+    if let slashCommandKey = MarkdownSlashCommandKey.from(
+      keyCode: event.keyCode,
+      modifiers: event.modifierFlags
+    ), slashCommandKeyHandler?(slashCommandKey) == true {
+      return
+    }
+
     if event.keyCode == 48 { // Tab key
       if modifiers.isEmpty, ghostTextAcceptHandler?() == true {
         return
@@ -155,6 +164,15 @@ final class DroppableMarkdownTextView: NSTextView {
       if modifiers.isEmpty, ghostTextDismissHandler?() == true {
         return
       }
+    }
+
+    let typingEvent = MarkdownTypingFeedbackPolicy.event(
+      keyCode: event.keyCode,
+      characters: event.characters,
+      modifiers: event.modifierFlags
+    )
+    if typingEvent == .insertedText {
+      typingFeedbackHandler?()
     }
     super.keyDown(with: event)
   }

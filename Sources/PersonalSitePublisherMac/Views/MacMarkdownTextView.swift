@@ -55,6 +55,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
   var onGhostTextAccepted: (String) -> Void
   var onGhostTextDismissed: () -> Void
   var onSSGSnippetShortcut: (MarkdownCompletionCandidate) -> Void
+  var onSlashCommandKey: (MarkdownSlashCommandKey) -> Bool = { _ in false }
+  var onTypingFeedback: () -> Void = {}
   var onScrollProgressChanged: (Double) -> Void
   var onDroppedFiles: ([URL]) -> Void
   var onDroppedMarkdown: (String, NSRange, KnowledgeCitation?) -> Void
@@ -130,6 +132,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.markdownTableEditingHandler = { textView, command in
       context.coordinator.handleTableEditing(command, in: textView)
     }
+    textView.slashCommandKeyHandler = onSlashCommandKey
+    textView.typingFeedbackHandler = onTypingFeedback
     textView.string = text
     let initialSelection =
       isFrontMatterSelection
@@ -222,6 +226,8 @@ struct MacMarkdownTextView: NSViewRepresentable {
       droppableTextView.markdownTableEditingHandler = { textView, command in
         context.coordinator.handleTableEditing(command, in: textView)
       }
+      droppableTextView.slashCommandKeyHandler = onSlashCommandKey
+      droppableTextView.typingFeedbackHandler = onTypingFeedback
       droppableTextView.ghostTextAcceptHandler = {
         guard !context.coordinator.ghostText.isEmpty else { return false }
         context.coordinator.onGhostTextAccepted(context.coordinator.ghostText)

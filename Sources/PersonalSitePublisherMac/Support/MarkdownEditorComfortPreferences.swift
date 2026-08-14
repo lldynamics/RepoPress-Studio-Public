@@ -11,11 +11,26 @@ enum MarkdownEditorComfortPreferences {
   static let automaticPairingEnabledKey = "markdownEditorAutomaticPairingEnabled"
   static let typewriterSoundPresetKey = "markdownEditorTypewriterSoundPreset"
   static let paragraphSpotlightEnabledKey = "markdownEditorParagraphSpotlightEnabled"
+  static let automaticPreviewRefreshEnabledKey = "markdownEditorAutomaticPreviewRefreshEnabled"
+  static let realtimeAnalysisEnabledKey = "markdownEditorRealtimeAnalysisEnabled"
+
+  static let defaultAutomaticPreviewRefreshEnabled = true
+  static let defaultRealtimeAnalysisEnabled = true
 }
 
 enum AIWritingPreferences {
   static let automaticInlineCompletionEnabledKey = "ai.automaticInlineCompletionEnabled"
   static let defaultAutomaticInlineCompletionEnabled = false
+}
+
+/// Shared gate for work that may be triggered by editor input.
+///
+/// Manual commands are always allowed; persisted switches only control work
+/// requested as a consequence of an input change or preference update.
+enum MarkdownEditorAutomationPolicy {
+  static func allows(isAutomatic: Bool, isEnabled: Bool) -> Bool {
+    !isAutomatic || isEnabled
+  }
 }
 
 struct MarkdownEditorComfortConfiguration: Equatable {
@@ -31,6 +46,12 @@ struct MarkdownEditorComfortConfiguration: Equatable {
   static let defaultCurrentParagraphHighlightEnabled = true
   static let defaultWarmPaperBackgroundEnabled = false
   static let defaultAutomaticPairingEnabled = true
+  static let defaultTypewriterSoundPreset = MarkdownTypingFeedbackPolicy.defaultPreset
+  static let defaultParagraphSpotlightEnabled = false
+  static let defaultAutomaticPreviewRefreshEnabled = MarkdownEditorComfortPreferences
+    .defaultAutomaticPreviewRefreshEnabled
+  static let defaultRealtimeAnalysisEnabled = MarkdownEditorComfortPreferences
+    .defaultRealtimeAnalysisEnabled
 
   let fontSize: Double
   let lineSpacing: Double

@@ -73,6 +73,47 @@ final class WorkspaceAccessibilityUITests: XCTestCase {
     }
   }
 
+  func testMarkdownSlashCommandMenuSupportsKeyboardAndAccessibleCommands() throws {
+    launchApplication(surface: "writing")
+
+    let editor = element(identifier: "markdown-document-editor")
+    XCTAssertTrue(
+      editor.waitForExistence(timeout: 10),
+      "The writing demo must expose the Markdown editor to accessibility."
+    )
+    editor.click()
+    application.typeKey(.downArrow, modifierFlags: [.command])
+    application.typeKey(.return, modifierFlags: [])
+    editor.typeText("/")
+
+    let menu = element(identifier: "markdown-slash-command-menu")
+    let heading1 = element(identifier: "markdown-slash-command-h1")
+    XCTAssertTrue(menu.waitForExistence(timeout: 3))
+    XCTAssertTrue(heading1.waitForExistence(timeout: 3))
+    XCTAssertEqual(heading1.label, "一级标题")
+    XCTAssertEqual(heading1.value as? String, "# 大标题")
+
+    application.typeKey(.downArrow, modifierFlags: [])
+    application.typeKey(.return, modifierFlags: [])
+    XCTAssertFalse(
+      menu.waitForExistence(timeout: 2),
+      "Return must choose the keyboard-selected slash command and close the menu."
+    )
+    XCTAssertTrue(
+      (editor.value as? String)?.contains("## ") == true,
+      "Down then Return must apply the second slash command without inserting a newline."
+    )
+
+    application.typeKey(.return, modifierFlags: [])
+    editor.typeText("/")
+    XCTAssertTrue(menu.waitForExistence(timeout: 3))
+    application.typeKey(.escape, modifierFlags: [])
+    XCTAssertFalse(
+      menu.waitForExistence(timeout: 2),
+      "Escape must dismiss the slash command menu."
+    )
+  }
+
   func testRSSReaderUsesTheMainWorkspaceFramework() throws {
     launchApplication(surface: "writing")
     let windowCountBeforeSelection = application.windows.count
