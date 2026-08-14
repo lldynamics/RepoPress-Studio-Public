@@ -343,8 +343,8 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  "fixedIconToolbarControls" \
-  "the writing toolbar must keep a dedicated AI collaboration entry"
+  "case .aiChat:" \
+  "the configurable writing toolbar must keep a dedicated AI collaboration item"
 
 require_literal \
   "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
@@ -1203,8 +1203,8 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  "private var fixedIconToolbarControls: some View" \
-  "writing-page tools must remain visible in a fixed icon toolbar"
+  "private var configuredIconToolbarControls: some View" \
+  "writing-page tools must render the persisted toolbar configuration"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
@@ -1213,28 +1213,28 @@ require_literal \
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  "basicRow(showsTitle: false)" \
-  "basic writing tools must remain icon-only"
+  "formattingRow(itemIDs: basicFormattingItemIDs, showsTitle: false)" \
+  "basic writing tools must honor configured visibility and order"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  "expandedRow(showsTitle: false)" \
-  "professional writing tools must remain icon-only"
+  "formattingRow(itemIDs: configuredFormattingItemIDs, showsTitle: false)" \
+  "professional writing tools must honor configured visibility and order"
 
-require_absent_literal \
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
   "ViewThatFits(in: .horizontal)" \
-  "writing-page toolbars must not switch between label and compact layouts"
+  "writing-page toolbar must preserve enabled actions in responsive layouts"
 
 require_absent_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
   "compactToolbarControls(" \
   "writing-page tools must not collapse into a compact toolbar"
 
-require_absent_literal \
+require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
-  "compactEditorActionsMenu" \
-  "writing-page actions must not be hidden behind a more-actions menu"
+  "overflowMenu(reservedIDs:" \
+  "responsive overflow must contain only enabled actions omitted from the main row"
 
 require_absent_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
@@ -1260,6 +1260,21 @@ require_literal \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift" \
   ".accessibilityAddTraits(editorDisplayMode == mode ? .isSelected : [])" \
   "editor display modes must expose selected accessibility traits"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MarkdownSlashCommandMenu.swift" \
+  ".accessibilityIdentifier(\"markdown-slash-command-menu\")" \
+  "slash command menu must expose a stable accessibility identifier"
+
+require_literal \
+  "Sources/PersonalSitePublisherMac/Views/MarkdownSlashCommandMenu.swift" \
+  ".accessibilityIdentifier(\"markdown-slash-command-\\(item.id)\")" \
+  "slash command items must expose stable accessibility identifiers"
+
+require_literal \
+  "UITests/WorkspaceAccessibilityUITests/WorkspaceAccessibilityUITests.swift" \
+  "testMarkdownSlashCommandMenuSupportsKeyboardAndAccessibleCommands" \
+  "slash command keyboard and accessibility behavior must remain covered by XCUI"
 
 require_literal \
   "Sources/PersonalSitePublisherMac/Views/WorkbenchVisualStyle.swift" \

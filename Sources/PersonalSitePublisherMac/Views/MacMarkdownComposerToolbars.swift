@@ -28,7 +28,7 @@ struct MacMarkdownEditorToolbar: View {
         MarkdownToolbarConfiguration.decodeFromJSON(customToolbarConfigRawValue)
       },
       set: { newConfig in
-        customToolbarConfigRawValue = newConfig.encodeToJSON()
+        customToolbarConfigRawValue = newConfig.normalized.encodeToJSON()
       }
     )
   }
@@ -69,7 +69,7 @@ struct MacMarkdownEditorToolbar: View {
 
       Spacer(minLength: 8)
 
-      fixedIconToolbarControls
+      configuredIconToolbarControls
     }
     .padding(.horizontal, WorkbenchSpacing.section)
     .padding(.vertical, 9)
@@ -106,44 +106,61 @@ struct MacMarkdownEditorToolbar: View {
     .frame(minWidth: 220, idealWidth: 320, maxWidth: 460, alignment: .leading)
   }
 
-  private var fixedIconToolbarControls: some View {
+  private var enabledHeaderItemIDs: [MarkdownToolbarItemID] {
+    MarkdownToolbarConfiguration.decodeFromJSON(customToolbarConfigRawValue).headerItemIDs
+  }
+
+  /// The medium and compact layouts keep the controls that are most useful
+  /// while editing in the main row. All other enabled controls remain
+  /// reachable from the overflow menu; hidden controls never leak into it.
+  private var mediumHeaderItemIDs: [MarkdownToolbarItemID] {
+    let mediumPriority: Set<MarkdownToolbarItemID> = [
+      .saveStatus,
+      .editorDisplayMode,
+      .writingToolDensity,
+      .findReplace,
+      .outline,
+      .autoInlineAI,
+      .aiChat,
+      .preparePublish,
+    ]
+    return enabledHeaderItemIDs.filter(mediumPriority.contains)
+  }
+
+  private var compactHeaderItemIDs: [MarkdownToolbarItemID] {
+    let compactPriority: Set<MarkdownToolbarItemID> = [
+      .saveStatus,
+      .editorDisplayMode,
+      .autoInlineAI,
+      .aiChat,
+      .preparePublish,
+    ]
+    return enabledHeaderItemIDs.filter(compactPriority.contains)
+  }
+
+  private var configuredIconToolbarControls: some View {
     ViewThatFits(in: .horizontal) {
       // 1. 完整展开模式
       HStack(spacing: 5) {
-        iconSaveStatus
-        editorDisplayModeControl
-        writingToolDensityControl
-        editorToolbarDivider
-        editorActions
-        editorToolbarDivider
-        automaticInlineAICompletionButton(showsTitle: false)
-        aiChatButton(showsTitle: false)
-        localSitePreviewButton(showsTitle: false)
-        preparePublishButton(showsTitle: false)
+        ForEach(enabledHeaderItemIDs) { item in
+          headerItem(item, showsTitle: false)
+        }
       }
 
       // 2. 中度折叠模式
       HStack(spacing: 5) {
-        iconSaveStatus
-        editorDisplayModeControl
-        editorToolbarDivider
-        editorActions
-        editorToolbarDivider
-        automaticInlineAICompletionButton(showsTitle: false)
-        aiChatButton(showsTitle: false)
-        preparePublishButton(showsTitle: false)
-        overflowMenu
+        ForEach(mediumHeaderItemIDs) { item in
+          headerItem(item, showsTitle: false)
+        }
+        overflowMenu(reservedIDs: mediumHeaderItemIDs)
       }
 
       // 3. 紧凑折叠模式
       HStack(spacing: 5) {
-        iconSaveStatus
-        editorDisplayModeControl
-        editorToolbarDivider
-        automaticInlineAICompletionButton(showsTitle: false)
-        aiChatButton(showsTitle: false)
-        preparePublishButton(showsTitle: false)
-        overflowMenu
+        ForEach(compactHeaderItemIDs) { item in
+          headerItem(item, showsTitle: false)
+        }
+        overflowMenu(reservedIDs: compactHeaderItemIDs)
       }
     }
     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -152,36 +169,45 @@ struct MacMarkdownEditorToolbar: View {
     .accessibilityLabel("写作工具栏")
   }
 
-  private var overflowMenu: some View {
+  @ViewBuilder
+  private func headerItem(_ item: MarkdownToolbarItemID, showsTitle: Bool) -> some View {
+    switch item {
+    case .saveStatus:
+      iconSaveStatus
+    case .editorDisplayMode:
+      editorDisplayModeControl(showsTitle: showsTitle)
+    case .writingToolDensity:
+      writingToolDensityControl(showsTitle: showsTitle)
+    case .findReplace:
+      findReplaceButton(showsTitle: showsTitle)
+    case .outline:
+      outlineButton(showsTitle: showsTitle)
+    case .contextPanelMenu:
+      contextPanelMenu(showsTitle: showsTitle)
+    case .shortcutHelp:
+      shortcutHelpButton(showsTitle: showsTitle)
+    case .exportMenu:
+      exportMenuButton(showsTitle: showsTitle)
+    case .aiActions:
+      aiActionsMenuButton(showsTitle: showsTitle)
+    case .autoInlineAI:
+      automaticInlineAICompletionButton(showsTitle: showsTitle)
+    case .aiChat:
+      aiChatButton(showsTitle: showsTitle)
+    case .localPreview:
+      localSitePreviewButton(showsTitle: showsTitle)
+    case .preparePublish:
+      preparePublishButton(showsTitle: showsTitle)
+    default:
+      EmptyView()
+    }
+  }
+
+  private func overflowMenu(reservedIDs: [MarkdownToolbarItemID]) -> some View {
     Menu {
-      Section("工具密度") {
-        writingToolDensityActions
-      }
-      Section("文档快捷操作") {
-        Button {
-          actions.onShowFindReplace()
-        } label: {
-          Label("查找与替换", systemImage: "magnifyingglass")
-        }
-        Button {
-          actions.onShowOutline()
-        } label: {
-          Label("文章大纲", systemImage: "list.bullet.indent")
-        }
-        Button {
-          actions.onShowShortcutHelp()
-        } label: {
-          Label("快捷键说明", systemImage: "keyboard")
-        }
-      }
-      Section("上下文面板") {
-        contextPanelActions
-      }
-      Section("导出文章") {
-        exportActions
-      }
-      Section("AI 常用功能") {
-        aiActions
+      let reserved = Set(reservedIDs)
+      ForEach(enabledHeaderItemIDs.filter { !reserved.contains($0) }) { item in
+        headerItem(item, showsTitle: true)
       }
       Divider()
       Button {
@@ -198,6 +224,69 @@ struct MacMarkdownEditorToolbar: View {
     .help("更多工具栏操作")
     .accessibilityLabel("更多工具栏操作")
     .accessibilityIdentifier("markdown-toolbar-overflow-menu")
+  }
+
+  private func findReplaceButton(showsTitle: Bool) -> some View {
+    Button {
+      actions.onShowFindReplace()
+    } label: {
+      editorActionLabel(
+        String(localized: "查找与替换"), systemName: "magnifyingglass", showsTitle: showsTitle)
+    }
+    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
+    .help(String(localized: "查找与替换（⌘F）"))
+    .accessibilityLabel("查找与替换")
+  }
+
+  private func outlineButton(showsTitle: Bool) -> some View {
+    Button {
+      actions.onShowOutline()
+    } label: {
+      editorActionLabel(
+        String(localized: "文章大纲"), systemName: "list.bullet.indent", showsTitle: showsTitle)
+    }
+    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
+    .keyboardShortcut("o", modifiers: [.command, .option])
+    .help(String(localized: "文章大纲（⌥⌘O）"))
+    .accessibilityLabel("文章大纲")
+    .accessibilityIdentifier("markdown-outline-button")
+  }
+
+  private func shortcutHelpButton(showsTitle: Bool) -> some View {
+    Button {
+      actions.onShowShortcutHelp()
+    } label: {
+      editorActionLabel(
+        String(localized: "快捷键说明"), systemName: "keyboard", showsTitle: showsTitle)
+    }
+    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
+    .help(String(localized: "快捷键说明（⌥⌘/）"))
+    .accessibilityLabel("快捷键说明")
+  }
+
+  private func exportMenuButton(showsTitle: Bool) -> some View {
+    Menu {
+      exportActions
+    } label: {
+      editorActionLabel(
+        String(localized: "导出文章"), systemName: "square.and.arrow.up", showsTitle: showsTitle)
+    }
+    .menuIndicator(.hidden)
+    .help(String(localized: "导出、打印或分享当前文章"))
+    .accessibilityLabel("导出文章")
+    .accessibilityIdentifier("markdown-document-export-menu")
+  }
+
+  private func aiActionsMenuButton(showsTitle: Bool) -> some View {
+    Menu {
+      aiActions
+    } label: {
+      editorActionLabel("AI 常用操作", systemName: "sparkles", showsTitle: showsTitle)
+    }
+    .menuIndicator(.hidden)
+    .help("AI 常用操作")
+    .accessibilityLabel("AI 常用操作")
+    .accessibilityValue(isSelectionAIActionRunning ? "AI 处理中" : "")
   }
 
 
@@ -424,16 +513,19 @@ struct MacMarkdownEditorToolbar: View {
     }
   }
 
-  private var writingToolDensityControl: some View {
+  private func writingToolDensityControl(showsTitle: Bool) -> some View {
     Menu {
       writingToolDensityActions
     } label: {
-      Image(systemName: "slider.horizontal.3")
-        .accessibilityHidden(true)
+      editorActionLabel(
+        "写作工具密度",
+        systemName: "slider.horizontal.3",
+        showsTitle: showsTitle
+      )
     }
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
-    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: false))
+    .buttonStyle(MarkdownEditorToolbarButtonStyle(showsTitle: showsTitle))
     .help(String(localized: "切换基础写作或专业 Markdown 工具密度"))
     .accessibilityLabel("写作工具密度")
     .accessibilityValue(writingToolDensity.title)
@@ -795,14 +887,35 @@ struct MacMarkdownFormattingToolbar: View {
   let onJumpToCounterpartFence: () -> Void
   let onApplyCompletion: (MarkdownCompletionCandidate) -> Void
   let onInsertCompletionTrigger: (MarkdownCompletionTrigger) -> Void
+  @AppStorage("workspace.customToolbarConfig") private var customToolbarConfigRawValue = ""
+
+  private var toolbarConfiguration: MarkdownToolbarConfiguration {
+    MarkdownToolbarConfiguration.decodeFromJSON(customToolbarConfigRawValue)
+  }
+
+  private var configuredFormattingItemIDs: [MarkdownToolbarItemID] {
+    toolbarConfiguration.formattingItemIDs
+  }
+
+  private var basicFormattingItemIDs: [MarkdownToolbarItemID] {
+    let basicItems: Set<MarkdownToolbarItemID> = [
+      .heading1,
+      .heading2,
+      .bold,
+      .italic,
+      .link,
+      .image,
+    ]
+    return configuredFormattingItemIDs.filter(basicItems.contains)
+  }
 
   var body: some View {
     ScrollView(.horizontal, showsIndicators: false) {
       Group {
         if writingToolDensity == .basic {
-          basicRow(showsTitle: false)
+          formattingRow(itemIDs: basicFormattingItemIDs, showsTitle: false)
         } else {
-          expandedRow(showsTitle: false)
+          formattingRow(itemIDs: configuredFormattingItemIDs, showsTitle: false)
         }
       }
       .fixedSize(horizontal: true, vertical: false)
@@ -815,105 +928,86 @@ struct MacMarkdownFormattingToolbar: View {
     .background(.bar)
   }
 
-  private func basicRow(showsTitle: Bool) -> some View {
+  private func formattingRow(
+    itemIDs: [MarkdownToolbarItemID],
+    showsTitle: Bool
+  ) -> some View {
     HStack(spacing: 5) {
+      ForEach(itemIDs) { item in
+        formattingItem(item, showsTitle: showsTitle)
+      }
+      Spacer(minLength: 8)
+      fixedTrailingControls(showsTitle: showsTitle)
+    }
+  }
+
+  @ViewBuilder
+  private func formattingItem(
+    _ item: MarkdownToolbarItemID,
+    showsTitle: Bool
+  ) -> some View {
+    switch item {
+    case .heading1:
       headingButton(level: 1, title: "一级标题", showsTitle: showsTitle)
+    case .heading2:
       headingButton(level: 2, title: "二级标题", showsTitle: showsTitle)
-      toolbarDivider
+    case .heading3:
+      headingButton(level: 3, title: "三级标题", showsTitle: showsTitle)
+    case .bold:
       toolbarButton(title: "粗体", systemName: "bold", showsTitle: showsTitle) {
         onApplyMarkdownFormatting(.bold)
       }
+    case .italic:
       toolbarButton(title: "斜体", systemName: "italic", showsTitle: showsTitle) {
         onApplyMarkdownFormatting(.italic)
       }
-      toolbarDivider
+    case .inlineCode:
+      toolbarButton(
+        title: "行内代码",
+        systemName: "chevron.left.forwardslash.chevron.right",
+        showsTitle: showsTitle
+      ) {
+        onApplyAdvancedFormatting(.inlineCode)
+      }
+    case .blockquote:
+      toolbarButton(title: "引用", systemName: "text.quote", showsTitle: showsTitle) {
+        onApplyAdvancedFormatting(.blockquote)
+      }
+    case .codeBlock:
+      toolbarButton(title: "代码块", systemName: "curlybraces.square", showsTitle: showsTitle) {
+        onInsertCodeBlock()
+      }
+    case .unorderedList:
+      toolbarButton(title: "无序列表", systemName: "list.bullet", showsTitle: showsTitle) {
+        onApplyAdvancedFormatting(.unorderedList)
+      }
+    case .orderedList:
+      toolbarButton(title: "有序列表", systemName: "list.number", showsTitle: showsTitle) {
+        onApplyAdvancedFormatting(.orderedList)
+      }
+    case .taskList:
+      toolbarButton(title: "任务列表", systemName: "checklist", showsTitle: showsTitle) {
+        onApplyAdvancedFormatting(.taskList)
+      }
+    case .link:
       toolbarButton(title: "链接", systemName: "link", showsTitle: showsTitle) {
         onInsertInternalLink()
       }
+    case .image:
       toolbarButton(title: "插图", systemName: "photo", showsTitle: showsTitle) {
         onInsertImage()
       }
-      Spacer(minLength: 8)
-      trailingControls(showsTitle: showsTitle)
-    }
-  }
-
-  private func expandedRow(showsTitle: Bool) -> some View {
-    HStack(spacing: 5) {
-      headingButtons(showsTitle: showsTitle)
-      toolbarDivider
-      inlineStyleButtons(showsTitle: showsTitle)
-      toolbarDivider
-      blockButtons(showsTitle: showsTitle)
-      toolbarDivider
-      insertionButtons(showsTitle: showsTitle)
-      Spacer(minLength: 8)
-      trailingControls(showsTitle: showsTitle)
+    case .moreInsertions:
+      moreInsertionsMenu(showsTitle: showsTitle)
+    case .diagnostics:
+      diagnosticButton(showsTitle: showsTitle)
+    default:
+      EmptyView()
     }
   }
 
   @ViewBuilder
-  private func headingButtons(showsTitle: Bool) -> some View {
-    headingButton(level: 1, title: "一级标题", showsTitle: showsTitle)
-    headingButton(level: 2, title: "二级标题", showsTitle: showsTitle)
-    headingButton(level: 3, title: "三级标题", showsTitle: showsTitle)
-  }
-
-  @ViewBuilder
-  private func inlineStyleButtons(showsTitle: Bool) -> some View {
-    toolbarButton(title: "粗体", systemName: "bold", showsTitle: showsTitle) {
-      onApplyMarkdownFormatting(.bold)
-    }
-    toolbarButton(title: "斜体", systemName: "italic", showsTitle: showsTitle) {
-      onApplyMarkdownFormatting(.italic)
-    }
-    toolbarButton(
-      title: "行内代码",
-      systemName: "chevron.left.forwardslash.chevron.right",
-      showsTitle: showsTitle
-    ) {
-      onApplyAdvancedFormatting(.inlineCode)
-    }
-  }
-
-  @ViewBuilder
-  private func blockButtons(showsTitle: Bool) -> some View {
-    quoteAndCodeBlockButtons(showsTitle: showsTitle)
-    listButtons(showsTitle: showsTitle)
-  }
-
-  @ViewBuilder
-  private func quoteAndCodeBlockButtons(showsTitle: Bool) -> some View {
-    toolbarButton(title: "引用", systemName: "text.quote", showsTitle: showsTitle) {
-      onApplyAdvancedFormatting(.blockquote)
-    }
-    toolbarButton(title: "代码块", systemName: "curlybraces.square", showsTitle: showsTitle) {
-      onInsertCodeBlock()
-    }
-  }
-
-  @ViewBuilder
-  private func listButtons(showsTitle: Bool) -> some View {
-    toolbarButton(title: "无序列表", systemName: "list.bullet", showsTitle: showsTitle) {
-      onApplyAdvancedFormatting(.unorderedList)
-    }
-    toolbarButton(title: "有序列表", systemName: "list.number", showsTitle: showsTitle) {
-      onApplyAdvancedFormatting(.orderedList)
-    }
-    toolbarButton(title: "任务列表", systemName: "checklist", showsTitle: showsTitle) {
-      onApplyAdvancedFormatting(.taskList)
-    }
-  }
-
-  @ViewBuilder
-  private func insertionButtons(showsTitle: Bool) -> some View {
-    toolbarButton(title: "链接", systemName: "link", showsTitle: showsTitle) {
-      onInsertInternalLink()
-    }
-    toolbarButton(title: "插图", systemName: "photo", showsTitle: showsTitle) {
-      onInsertImage()
-    }
-
+  private func moreInsertionsMenu(showsTitle: Bool) -> some View {
     Menu {
       Section("高级格式") {
         Button {
@@ -983,7 +1077,7 @@ struct MacMarkdownFormattingToolbar: View {
   }
 
   @ViewBuilder
-  private func trailingControls(showsTitle: Bool) -> some View {
+  private func diagnosticButton(showsTitle: Bool) -> some View {
     Button {
       onShowDiagnostics()
     } label: {
@@ -1015,6 +1109,10 @@ struct MacMarkdownFormattingToolbar: View {
         ? String(localized: "没有问题")
         : String(localized: "\(diagnosticCount) 项")
     )
+  }
+
+  @ViewBuilder
+  private func fixedTrailingControls(showsTitle: Bool) -> some View {
     ZenModeToggleButton(showsTitle: showsTitle)
     MarkdownEditorComfortControl(showsTitle: showsTitle)
     toolbarDivider

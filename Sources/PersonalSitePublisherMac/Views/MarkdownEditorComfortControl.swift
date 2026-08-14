@@ -20,9 +20,11 @@ struct MarkdownEditorComfortControl: View {
   @AppStorage(MarkdownEditorComfortPreferences.automaticPairingEnabledKey)
   private var isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
   @AppStorage(MarkdownEditorComfortPreferences.typewriterSoundPresetKey)
-  private var typewriterSoundPresetRawValue = TypewriterSoundPreset.typewriter.rawValue
+  private var typewriterSoundPresetRawValue = MarkdownEditorComfortConfiguration
+    .defaultTypewriterSoundPreset.rawValue
   @AppStorage(MarkdownEditorComfortPreferences.paragraphSpotlightEnabledKey)
-  private var isParagraphSpotlightEnabled = false
+  private var isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration
+    .defaultParagraphSpotlightEnabled
   @State private var isPresented = false
 
   init(showsTitle: Bool = false) {
@@ -169,5 +171,7 @@ struct MarkdownEditorComfortControl: View {
     isCurrentParagraphHighlightEnabled = MarkdownEditorComfortConfiguration.defaultCurrentParagraphHighlightEnabled
     isWarmPaperBackgroundEnabled = MarkdownEditorComfortConfiguration.defaultWarmPaperBackgroundEnabled
     isAutomaticPairingEnabled = MarkdownEditorComfortConfiguration.defaultAutomaticPairingEnabled
+    typewriterSoundPresetRawValue = MarkdownEditorComfortConfiguration.defaultTypewriterSoundPreset.rawValue
+    isParagraphSpotlightEnabled = MarkdownEditorComfortConfiguration.defaultParagraphSpotlightEnabled
   }
 }

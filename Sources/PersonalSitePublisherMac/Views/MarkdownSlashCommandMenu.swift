@@ -15,15 +15,19 @@ struct SlashCommandItem: Identifiable, Equatable {
 struct MarkdownSlashCommandMenu: View {
   let filterText: String
   let items: [SlashCommandItem]
+  @Binding var selectedIndex: Int
   let onSelect: (SlashCommandItem) -> Void
   let onDismiss: () -> Void
 
-  @State private var selectedIndex = 0
-
   var filteredItems: [SlashCommandItem] {
-    if filterText.isEmpty {
-      return items
-    }
+    Self.filteredItems(from: items, matching: filterText)
+  }
+
+  static func filteredItems(
+    from items: [SlashCommandItem],
+    matching filterText: String
+  ) -> [SlashCommandItem] {
+    guard !filterText.isEmpty else { return items }
     return items.filter {
       $0.title.localizedCaseInsensitiveContains(filterText)
         || $0.id.localizedCaseInsensitiveContains(filterText)
@@ -42,7 +46,7 @@ struct MarkdownSlashCommandMenu: View {
           ScrollView {
             VStack(spacing: 2) {
               ForEach(Array(filteredItems.enumerated()), id: \.element.id) { index, item in
-                let isSelected = index == min(selectedIndex, filteredItems.count - 1)
+                let isSelected = index == selectedIndex
                 Button {
                   onSelect(item)
                 } label: {
@@ -72,16 +76,26 @@ struct MarkdownSlashCommandMenu: View {
                   )
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(item.title)
+                .accessibilityValue(item.subtitle)
+                .accessibilityIdentifier("markdown-slash-command-\(item.id)")
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
                 .id(index)
               }
             }
             .padding(4)
           }
           .frame(maxHeight: 240)
+          .onChange(of: selectedIndex) { _, index in
+            guard filteredItems.indices.contains(index) else { return }
+            withAnimation(.easeOut(duration: 0.12)) {
+              proxy.scrollTo(index, anchor: .center)
+            }
+          }
         }
       }
     }
-    .frame(width: 220)
+    .frame(minWidth: 220, idealWidth: 250, maxWidth: 280)
     .background(
       .thinMaterial,
       in: RoundedRectangle(cornerRadius: 10)
@@ -91,5 +105,14 @@ struct MarkdownSlashCommandMenu: View {
         .stroke(Color.primary.opacity(0.12), lineWidth: 1)
     )
     .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("斜杠命令菜单")
+    .accessibilityIdentifier("markdown-slash-command-menu")
+    .accessibilityAction(named: Text("关闭菜单")) {
+      onDismiss()
+    }
+    .onChange(of: filterText) { _, _ in
+      selectedIndex = 0
+    }
   }
 }

@@ -12,7 +12,7 @@ struct MacMarkdownToolbarCustomizationView: View {
   ) {
     _configuration = configuration
     self.onDismiss = onDismiss
-    _workingConfig = State(initialValue: configuration.wrappedValue)
+    _workingConfig = State(initialValue: configuration.wrappedValue.normalized)
   }
 
   var body: some View {
@@ -43,7 +43,7 @@ struct MacMarkdownToolbarCustomizationView: View {
       VStack(alignment: .leading, spacing: 2) {
         Text("自定义写作工具栏")
           .font(.headline)
-        Text("拖拽调整图标顺序或勾选控制显示与隐藏")
+        Text("使用上下按钮调整图标顺序，勾选控制显示与隐藏")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
@@ -152,11 +152,11 @@ struct MacMarkdownToolbarCustomizationView: View {
       .keyboardShortcut(.cancelAction)
 
       Button("保存设置") {
-        configuration = workingConfig
+        configuration = workingConfig.normalized
         onDismiss()
       }
       .keyboardShortcut(.defaultAction)
-      .buttonStyle(.borderedProminent)
+      .workbenchProminentActionStyle()
     }
     .padding(.horizontal)
   }
