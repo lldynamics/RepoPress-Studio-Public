@@ -1,7 +1,32 @@
+import AppKit
 import Combine
 import Foundation
 import Sparkle
 import SwiftUI
+
+struct AppAboutPresentation {
+  let marketingVersion: String
+
+  init(infoDictionary: [String: Any]) {
+    let value = (infoDictionary["CFBundleShortVersionString"] as? String)?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    marketingVersion = value.isEmpty ? "development" : value
+  }
+
+  init(bundle: Bundle = .main) {
+    self.init(infoDictionary: bundle.infoDictionary ?? [:])
+  }
+
+  var panelOptions: [NSApplication.AboutPanelOptionKey: Any] {
+    [
+      // AppKit calls CFBundleVersion the `version` and the public marketing
+      // version the `applicationVersion`. Blank the former so the About panel
+      // shows only the user-facing version while the bundle keeps its build ID.
+      .version: "",
+      .applicationVersion: marketingVersion,
+    ]
+  }
+}
 
 struct AppUpdateConfiguration: Equatable {
   let feedURL: URL?
@@ -79,7 +104,15 @@ struct AppUpdateCommands: Commands {
   @ObservedObject var controller: AppUpdateController
 
   var body: some Commands {
-    CommandGroup(after: .appInfo) {
+    CommandGroup(replacing: .appInfo) {
+      Button("关于 RepoPress Studio") {
+        NSApp.orderFrontStandardAboutPanel(
+          options: AppAboutPresentation().panelOptions
+        )
+      }
+
+      Divider()
+
       Button("检查更新…") {
         controller.checkForUpdates()
       }

@@ -5,6 +5,7 @@ import SwiftUI
 struct SettingsTokenTabFactory {
   static func make(context: SettingsContext) -> some View {
     TokenSettingsView(
+      store: context.store,
       activeProfileBinding: context.activeProfileBinding,
       readiness: context.store.activeDeploymentStatusReadiness,
       repositoryTokenAvailability: context.store.repositoryTokenAvailability,

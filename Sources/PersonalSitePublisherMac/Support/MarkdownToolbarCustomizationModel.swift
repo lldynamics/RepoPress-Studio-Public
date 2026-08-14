@@ -18,6 +18,8 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
   case preparePublish
 
   // Formatting Items
+  case headingMenu
+  case listMenu
   case heading1
   case heading2
   case heading3
@@ -33,6 +35,8 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
   case image
   case moreInsertions
   case diagnostics
+  case formatChineseTypography
+  case copyRichText
 
   var id: String { rawValue }
 
@@ -51,7 +55,10 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
     case .aiChat: return "AI 对话"
     case .localPreview: return "本地站点预览"
     case .preparePublish: return "准备发布"
+    case .copyRichText: return "公众号/知乎复制"
 
+    case .headingMenu: return "标题"
+    case .listMenu: return "列表"
     case .heading1: return "一级标题"
     case .heading2: return "二级标题"
     case .heading3: return "三级标题"
@@ -67,6 +74,7 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
     case .image: return "插图"
     case .moreInsertions: return "更多插入选项"
     case .diagnostics: return "正文诊断"
+    case .formatChineseTypography: return "中英文排版"
     }
   }
 
@@ -85,7 +93,10 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
     case .aiChat: return "sparkles"
     case .localPreview: return "play.rectangle"
     case .preparePublish: return "paperplane"
+    case .copyRichText: return "doc.on.doc.fill"
 
+    case .headingMenu: return "textformat.size"
+    case .listMenu: return "list.bullet"
     case .heading1: return "textformat.size"
     case .heading2: return "textformat.size"
     case .heading3: return "textformat.size"
@@ -101,6 +112,7 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
     case .image: return "photo"
     case .moreInsertions: return "ellipsis.circle"
     case .diagnostics: return "waveform.badge.exclamationmark"
+    case .formatChineseTypography: return "textformat"
     }
   }
 
@@ -117,7 +129,7 @@ enum MarkdownToolbarItemID: String, CaseIterable, Codable, Hashable, Identifiabl
     switch self {
     case .saveStatus, .editorDisplayMode, .writingToolDensity, .findReplace, .outline,
       .contextPanelMenu, .shortcutHelp, .exportMenu, .aiActions, .autoInlineAI,
-      .aiChat, .localPreview, .preparePublish:
+      .aiChat, .localPreview, .preparePublish, .copyRichText:
       return .header
     default:
       return .formatting
@@ -150,7 +162,6 @@ struct MarkdownToolbarConfiguration: Codable, Equatable {
         .editorDisplayMode,
         .writingToolDensity,
         .findReplace,
-        .outline,
         .contextPanelMenu,
         .shortcutHelp,
         .exportMenu,
@@ -161,19 +172,16 @@ struct MarkdownToolbarConfiguration: Codable, Equatable {
         .preparePublish,
       ],
       formattingItemIDs: [
-        .heading1,
-        .heading2,
-        .heading3,
+        .headingMenu,
         .bold,
         .italic,
         .inlineCode,
         .blockquote,
         .codeBlock,
-        .unorderedList,
-        .orderedList,
-        .taskList,
+        .listMenu,
         .link,
         .image,
+        .formatChineseTypography,
         .moreInsertions,
         .diagnostics,
       ]

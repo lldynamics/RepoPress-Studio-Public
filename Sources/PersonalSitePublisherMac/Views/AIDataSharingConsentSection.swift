@@ -20,12 +20,19 @@ enum AIDataSharingConsentSectionMode: Equatable {
 
 struct AIDataSharingConsentSection: View {
   let presentation: AIDataSharingConsentPresentation
+  let setRemoteAIEnabled: (Bool) -> Void
   let grantConsent: () -> Void
   let revokeConsent: () -> Void
   @State private var isRevocationConfirmationPresented = false
 
   var body: some View {
     Section("2. AI 数据发送授权") {
+      Toggle("允许远程 AI", isOn: remoteAIEnabledBinding)
+        .accessibilityIdentifier("settings-ai-remote-master-switch")
+      Text(remoteAIEnabledDescription)
+        .font(.callout)
+        .foregroundStyle(presentation.isRemoteAIEnabled ? .secondary : WorkbenchTheme.warning)
+
       switch AIDataSharingConsentSectionMode(presentation: presentation) {
       case .remote(let isGranted):
         Text("资料库中的“允许发送给远程 AI”是独立的逐条权限，默认关闭；只有资料权限和本处授权同时满足时，资料片段才会发送。")
@@ -41,7 +48,10 @@ struct AIDataSharingConsentSection: View {
         Text("发送内容：当你主动使用 AI 功能时，应用可能发送你的提示词、当前文章与站点上下文、已允许发送的资料库片段，以及你主动添加的图片。服务商会按其隐私政策处理这些内容。")
           .font(.callout)
 
-        if isGranted {
+        if !presentation.isRemoteAIEnabled {
+          Label("远程 AI 总闸已关闭；当前不会向此服务发送内容。", systemImage: "hand.raised.fill")
+            .foregroundStyle(WorkbenchTheme.warning)
+        } else if isGranted {
           HStack {
             Label("已允许发送", systemImage: "checkmark.shield.fill")
               .foregroundStyle(WorkbenchTheme.success)
@@ -87,5 +97,18 @@ struct AIDataSharingConsentSection: View {
     } message: {
       Text("撤销后，测试连接、AI 对话、写作建议和图片文案等功能都会停止发送请求，直到你再次明确同意。")
     }
+  }
+
+  private var remoteAIEnabledBinding: Binding<Bool> {
+    Binding(
+      get: { presentation.isRemoteAIEnabled },
+      set: { setRemoteAIEnabled($0) }
+    )
+  }
+
+  private var remoteAIEnabledDescription: String {
+    presentation.isRemoteAIEnabled
+      ? String(localized: "远程 AI 总闸已开启；逐服务授权仍单独生效。关闭后不会发送远程请求，原有逐服务授权会保留。")
+      : String(localized: "远程 AI 总闸已关闭；不会发送任何远程请求。逐服务授权会保留，重新开启后恢复；本地回环 AI 不受影响。")
   }
 }

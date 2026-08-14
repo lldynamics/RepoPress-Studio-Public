@@ -94,6 +94,31 @@ final class WorkbenchAIStoreAgentLoopIntegrationTests: XCTestCase {
     XCTAssertNil(body["tools"])
   }
 
+  func testDisabledApplicationToolsUsesOrdinaryTextPathWithoutToolDeclaration() async throws {
+    let fixture = makeStore(
+      responses: [textResponse("已关闭应用内工具，普通文本回复。")],
+      toolCallingSupported: true
+    )
+    defer { fixture.cleanup() }
+    var disabledConfig = fixture.config
+    disabledConfig.advancedSettings = AIProviderAdvancedSettings(
+      allowsApplicationTools: false
+    )
+    configureActiveAIConnection(in: fixture.store, config: disabledConfig)
+    let draft = try XCTUnwrap(fixture.store.selectedDraft)
+
+    let reply = await fixture.store.sendAIChatMessage("不要使用应用内工具。", draft: draft)
+
+    XCTAssertEqual(reply?.content, "已关闭应用内工具，普通文本回复。")
+    XCTAssertNil(reply?.automationPlan)
+    let capturedRequestCount = await fixture.transport.capturedRequestCount()
+    XCTAssertEqual(capturedRequestCount, 1)
+    XCTAssertEqual(AIOutboundPayloadApprovalBroker.shared.pendingRequestCountForTesting, 0)
+    let bodies = await fixture.transport.capturedBodies()
+    let body = try jsonBody(try XCTUnwrap(bodies.first))
+    XCTAssertNil(body["tools"])
+  }
+
   func testSecondAgentRoundCancellationDoesNotReuseFirstInjectedDecisionOrSendAgain() async throws {
     let fixture = makeStore(
       responses: [

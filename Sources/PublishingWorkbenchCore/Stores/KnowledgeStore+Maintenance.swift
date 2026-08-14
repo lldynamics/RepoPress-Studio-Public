@@ -83,6 +83,11 @@ extension KnowledgeStore {
       let snapshot = try await service.libraryHealth()
       healthSnapshot = snapshot
       lastError = nil
+      do {
+        try await service.maintainDatabase()
+      } catch {
+        // Passive background database maintenance is best-effort.
+      }
       return snapshot
     } catch {
       lastError = error.localizedDescription

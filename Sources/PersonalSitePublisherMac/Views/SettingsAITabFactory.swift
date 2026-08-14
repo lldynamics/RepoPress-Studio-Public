@@ -47,6 +47,9 @@ struct SettingsAITabFactory {
       testConnection: { probeCapabilities in
         await context.store.ai.testConnection(probeCapabilities: probeCapabilities)
       },
+      setRemoteAIEnabled: { enabled in
+        context.store.ai.setRemoteAIEnabled(enabled)
+      },
       grantDataSharingConsent: {
         context.store.ai.grantDataSharingConsent()
       },

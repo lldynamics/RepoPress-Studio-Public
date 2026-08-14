@@ -204,4 +204,13 @@ extension KnowledgeLibraryService {
       }
       .first
   }
+
+  public func maintainDatabase() async throws {
+    let service = self
+    try await Task.detached(priority: .utility) {
+      let database = try service.database()
+      try database.checkpointWAL(mode: .passive)
+      try database.optimizeDatabase()
+    }.value
+  }
 }

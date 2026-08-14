@@ -91,6 +91,11 @@ extension RSSReaderView {
 
       selectedArticlePayload = article
       selectedArticleIsLoading = false
+      if automaticFullTextExtractionEnabled && presentation.isTruncatedCandidate(article) {
+        Task {
+          await presentation.fetchFullText(for: article, store: store)
+        }
+      }
       if automaticTranslationEnabled {
         requestTranslation(for: article, force: false)
       }

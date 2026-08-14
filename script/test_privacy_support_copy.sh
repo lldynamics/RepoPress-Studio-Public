@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TMP_DIR="$(mktemp -d /private/tmp/mac-editor-privacy-copy.XXXXXX)"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mac-editor-privacy-copy.XXXXXX" 2>/dev/null || mktemp -d "$ROOT_DIR/.build/tmp/mac-editor-privacy-copy.XXXXXX")"
 FIXTURE_ROOT="$TMP_DIR/project"
 
 cleanup() {

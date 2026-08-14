@@ -7,6 +7,12 @@ struct AIAdvancedSettingsSection: View {
 
   var body: some View {
     Section {
+      Toggle("允许 AI 使用应用内工具（Agent）", isOn: allowsApplicationToolsBinding)
+        .accessibilityIdentifier("settings-ai-agent-tools-toggle")
+      Text(applicationToolsDescription)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+
       VStack(alignment: .leading, spacing: 6) {
         HStack {
           Text("聊天自定义系统指令")
@@ -68,11 +74,13 @@ struct AIAdvancedSettingsSection: View {
       .disabled(reasoningSupport == .unsupported)
       .accessibilityHint(reasoningAccessibilityHint)
 
-      if !settings.isDefault {
+      if hasConversationParameterOverrides {
         HStack {
           Spacer()
           Button("恢复自动参数") {
-            settings = AIProviderAdvancedSettings()
+            settings = AIProviderAdvancedSettings(
+              allowsApplicationTools: settings.allowsApplicationTools
+            )
           }
           .buttonStyle(.borderless)
         }
@@ -82,6 +90,26 @@ struct AIAdvancedSettingsSection: View {
     } footer: {
       Text("仅影响 AI 助手对话；会话内推理级别优先，服务商不接受的参数会自动移除。")
     }
+  }
+
+  private var allowsApplicationToolsBinding: Binding<Bool> {
+    Binding(
+      get: { settings.resolvedAllowsApplicationTools },
+      set: { settings.allowsApplicationTools = $0 }
+    )
+  }
+
+  private var applicationToolsDescription: String {
+    settings.resolvedAllowsApplicationTools
+      ? String(localized: "开启后，支持的连接可以调用只读应用内工具；内容修改、发布等高风险操作仍需单独确认。")
+      : String(localized: "关闭后仅使用普通文本对话，不会声明或执行应用内工具。")
+  }
+
+  private var hasConversationParameterOverrides: Bool {
+    !settings.normalizedSystemPrompt.isEmpty
+      || settings.normalizedTemperature != nil
+      || settings.normalizedMaximumOutputTokens != nil
+      || settings.reasoningPreference != .automatic
   }
 
   private var systemPromptBinding: Binding<String> {

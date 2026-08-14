@@ -75,7 +75,7 @@
       <p>The Safari extension is embedded in the Mac app, the Chrome extension is installed separately, and the Firefox extension is loaded temporarily from the repository manifest. Each captures only after a user action and writes to the local library through the authenticated <code>127.0.0.1:17843</code> loopback connection on the same Mac. Captures do not pass through the developer's servers. The app-side connection token stays only in macOS Keychain.</p>
 
       <h3>Why does the app request folder access?</h3>
-      <p>The app uses the macOS sandbox. It accesses only repositories, research sources, and output locations selected through system panels and restores previously granted access with security-scoped bookmarks.</p>
+      <p>The main app in the Developer ID website edition does not enable App Sandbox. Hardened Runtime and Apple notarization protect code integrity and distribution trust but do not provide App Sandbox isolation. The app workflow accesses repositories, research sources, and output locations that the user selects through system panels or explicitly configures, and uses security-scoped bookmarks to remember those choices. The embedded Safari Web Extension is a separate extension process and enables App Sandbox.</p>
 
       <h3>How do software updates work?</h3>
       <p>The website edition uses Sparkle. You can check manually or decide whether to allow automatic checks when Sparkle asks. The app reads an HTTPS update feed and downloads a signed update archive. Update requests do not contain drafts, research, browser captures, credentials, or AI content.</p>
@@ -95,7 +95,7 @@
     </section>
 
     <footer>
-      <p>Last updated: August 1, 2026</p>
+      <p>Last updated: August 13, 2026</p>
     </footer>
   </main>
 </body>

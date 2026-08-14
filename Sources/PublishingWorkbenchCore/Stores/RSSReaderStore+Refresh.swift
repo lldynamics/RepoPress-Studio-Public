@@ -63,8 +63,16 @@ extension RSSReaderStore {
   }
 
   public func startBackgroundRefresh(interval: TimeInterval = 30 * 60) {
-    guard backgroundRefreshTimer == nil else { return }
     let normalizedInterval = max(60, interval)
+
+    // Re-starting with a different interval is an explicit reconfiguration,
+    // not a no-op. This is used by the app-wide RSS settings and also keeps
+    // retry scheduling aligned with the currently selected cadence.
+    if backgroundRefreshTimer != nil {
+      guard backgroundRefreshInterval != normalizedInterval else { return }
+      stopBackgroundRefresh()
+    }
+
     backgroundRefreshInterval = normalizedInterval
     runAutomaticMaintenanceIfNeeded()
     let timer = Timer(timeInterval: normalizedInterval, repeats: true) { [weak self] _ in
@@ -77,6 +85,27 @@ extension RSSReaderStore {
     backgroundRefreshTimer = timer
     RunLoop.main.add(timer, forMode: .common)
     rescheduleRetryTimer()
+  }
+
+  /// Applies the persisted app-wide RSS automation policy to this store.
+  /// Manual refresh APIs do not call this method and remain available while
+  /// automatic refresh is disabled.
+  public func configureBackgroundRefresh(enabled: Bool, interval: TimeInterval) {
+    if enabled {
+      startBackgroundRefresh(interval: interval)
+    } else {
+      stopBackgroundRefresh()
+    }
+  }
+
+  /// Read-only diagnostics for settings/tests without exposing the timer
+  /// implementation itself.
+  public var configuredBackgroundRefreshInterval: TimeInterval? {
+    backgroundRefreshInterval
+  }
+
+  public var isBackgroundRefreshRunning: Bool {
+    backgroundRefreshTimer != nil
   }
 
   public func stopBackgroundRefresh() {
@@ -307,6 +336,12 @@ extension RSSReaderStore {
       invalidatePayloads(for: articlesToUpsert.map(\.id))
       lastError = nil
       bumpMutationRevision()
+      if isOfflineCacheFullTextEnabled && !articlesToUpsert.isEmpty {
+        let candidateIDs = articlesToUpsert.map(\.id)
+        Task(priority: .utility) { [weak self] in
+          await self?.prefetchFullTextForOfflineCache(articleIDs: candidateIDs)
+        }
+      }
       return RefreshOutcome(succeeded: true, skipped: false, message: nil, issue: nil)
     } catch {
       return failRefresh(

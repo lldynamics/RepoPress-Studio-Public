@@ -4,6 +4,7 @@ public enum LocalAIEngineKind: String, CaseIterable, Codable, Hashable, Sendable
   case ollama
   case lmStudio
   case vLLM
+  case mlx
 
   public var displayName: String {
     switch self {
@@ -13,6 +14,8 @@ public enum LocalAIEngineKind: String, CaseIterable, Codable, Hashable, Sendable
       return "LM Studio"
     case .vLLM:
       return "vLLM"
+    case .mlx:
+      return "MLX"
     }
   }
 
@@ -251,6 +254,12 @@ private struct LocalAIEngineDiscoveryEndpoint: Sendable {
       kind: .vLLM,
       baseURL: "http://127.0.0.1:8000/v1",
       modelsURL: "http://127.0.0.1:8000/v1/models",
+      parser: .openAICompatible
+    ),
+    LocalAIEngineDiscoveryEndpoint(
+      kind: .mlx,
+      baseURL: "http://127.0.0.1:8080/v1",
+      modelsURL: "http://127.0.0.1:8080/v1/models",
       parser: .openAICompatible
     ),
   ]

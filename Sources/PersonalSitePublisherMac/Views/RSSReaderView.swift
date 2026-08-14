@@ -13,7 +13,7 @@ struct RSSReaderView: View {
   @State var highlightDraft: RSSHighlightDraft?
   @State var tagEditorArticle: RSSArticle?
   @State var selectedReaderText = ""
-  @State var allowRemoteImages = true
+  @State var allowRemoteImages = RSSReaderUserPreferences.defaultRemoteImagesEnabled
   @State var workflowMessage: String?
   @State var workflowIsBusy = false
   @State var isReaderCompact = false
@@ -38,8 +38,19 @@ struct RSSReaderView: View {
   @AppStorage("rssReaderTranslationTargetCode") var translationTargetCode =
     RSSArticleTranslationTarget.simplifiedChinese.languageCode
   @AppStorage("rssReaderTranslationCustomLanguage") var translationCustomLanguage = ""
-  @AppStorage("rssReaderAutomaticTranslationEnabled") var automaticTranslationEnabled =
-    false
+  @AppStorage(RSSReaderUserPreferences.automaticTranslationEnabledKey)
+  var automaticTranslationEnabled = RSSReaderUserPreferences.defaultAutomaticTranslationEnabled
+  @AppStorage(RSSReaderUserPreferences.automaticMarkReadAtEndEnabledKey)
+  private var automaticMarkReadAtEndEnabled =
+    RSSReaderUserPreferences.defaultAutomaticMarkReadAtEndEnabled
+  @AppStorage(RSSReaderUserPreferences.remoteImagesEnabledKey)
+  private var defaultRemoteImagesEnabled = RSSReaderUserPreferences.defaultRemoteImagesEnabled
+  @AppStorage(RSSReaderUserPreferences.offlineCacheFullTextOnRefreshEnabledKey)
+  private var offlineCacheFullTextOnRefreshEnabled =
+    RSSReaderUserPreferences.defaultOfflineCacheFullTextOnRefreshEnabled
+  @AppStorage(RSSReaderUserPreferences.automaticFullTextExtractionEnabledKey)
+  var automaticFullTextExtractionEnabled =
+    RSSReaderUserPreferences.defaultAutomaticFullTextExtractionEnabled
   @AppStorage("settingsRequestedTabID") var requestedSettingsTabID = ""
 
   var body: some View {
@@ -62,14 +73,28 @@ struct RSSReaderView: View {
     }
     .onAppear {
       presentation.synchronizeSelection(in: store)
+      allowRemoteImages = defaultRemoteImagesEnabled
+      store.isOfflineCacheFullTextEnabled = offlineCacheFullTextOnRefreshEnabled
     }
     .onDisappear {
       sceneCommandRouter.unregisterRSSReader(owner: sceneCommandOwnerID)
       persistReadingProgressAfterDisappear()
     }
+    .onChange(of: offlineCacheFullTextOnRefreshEnabled) { _, isEnabled in
+      store.isOfflineCacheFullTextEnabled = isEnabled
+    }
+    .onChange(of: automaticFullTextExtractionEnabled) { _, isEnabled in
+      guard isEnabled, let article = selectedArticle, presentation.isTruncatedCandidate(article) else { return }
+      Task {
+        await presentation.fetchFullText(for: article, store: store)
+      }
+    }
     .onChange(of: presentation.selectedArticleID) { _, newArticleID in
       selectedReaderText = ""
-      allowRemoteImages = false
+      // The article-level switch is intentionally transient. A new article
+      // starts from the application default, while changes made in the
+      // reader never write back to that default.
+      allowRemoteImages = defaultRemoteImagesEnabled
       // A nil selection is an explicit return to the list. For an article to
       // article switch retain the old payload so its existing WebView can be
       // covered by the reader's loading overlay while the new payload loads.
@@ -266,7 +291,7 @@ struct RSSReaderView: View {
     }
     if resetsTransientState {
       selectedReaderText = ""
-      allowRemoteImages = false
+      allowRemoteImages = defaultRemoteImagesEnabled
     }
     presentation.synchronizeSelection(
       in: store,
@@ -325,7 +350,8 @@ struct RSSReaderView: View {
     }
     scheduleReadingProgressPersistence()
 
-    if RSSReadingCompletionPolicy.didCrossCompletionThreshold(
+    if RSSReaderUserPreferences.shouldAutomaticallyMarkReadAtEnd(
+      enabled: automaticMarkReadAtEndEnabled,
       previousProgress: previousProgress,
       progress: normalized
     ) {
@@ -467,9 +493,14 @@ struct RSSReaderView: View {
     // article is fetched. `selectedArticle` is action-safe and only returns a
     // payload whose identity matches the current selection; the retained
     // payload below is only used as a visually covered loading surface.
-    let displayedArticle = selectedArticlePayload
+    let rawArticle = selectedArticlePayload
+    let displayedArticle = rawArticle.map { presentation.effectiveArticle(for: $0) }
     let actionArticle = selectedArticle
     let metrics = displayedArticle.map { presentation.readerMetrics(for: $0) }
+    let isTruncated = actionArticle.map { presentation.isTruncatedCandidate($0) } ?? false
+    let isShowingFullText = actionArticle.map { presentation.isShowingFullText(for: $0.id) } ?? false
+    let isFetchingFullText = actionArticle.map { presentation.isFetchingFullText(for: $0.id) } ?? false
+    let fullTextError = actionArticle.flatMap { presentation.fullTextError(for: $0.id) }
     return RSSArticleReader(
       articleHeader: selectedArticleHeader,
       article: displayedArticle,
@@ -523,7 +554,16 @@ struct RSSReaderView: View {
       },
       onClearTranslation: clearSelectedTranslation,
       onOpenAISettings: openAISettings,
-      workflowIsBusy: workflowIsBusy
+      workflowIsBusy: workflowIsBusy,
+      isTruncatedCandidate: isTruncated,
+      isShowingFullText: isShowingFullText,
+      isFetchingFullText: isFetchingFullText,
+      fullTextError: fullTextError,
+      automaticFullTextExtraction: $automaticFullTextExtractionEnabled,
+      onToggleFullText: {
+        guard let actionArticle else { return }
+        presentation.toggleFullText(for: actionArticle, store: store)
+      }
     )
   }
 

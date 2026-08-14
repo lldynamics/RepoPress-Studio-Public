@@ -2,7 +2,8 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct AIChatConnectionStatusCapsule: View {
-  @ObservedObject var ai: WorkbenchAIFeatureFacade
+  let ai: WorkbenchAIFeatureFacade
+  @ObservedObject var chatState: WorkbenchAIChatFeatureFacade
   let draft: ArticleDraft?
   let open: () -> Void
 
@@ -92,7 +93,8 @@ struct AIChatConnectionStatusCapsule: View {
 }
 
 struct AIChatModelQuickSwitchSheet: View {
-  @ObservedObject var ai: WorkbenchAIFeatureFacade
+  let ai: WorkbenchAIFeatureFacade
+  @ObservedObject var chatState: WorkbenchAIChatFeatureFacade
   let draft: ArticleDraft?
 
   @Environment(\.dismiss) private var dismiss

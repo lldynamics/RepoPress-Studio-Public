@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TMP_DIR="$(mktemp -d /private/tmp/mac-editor-swift-format.XXXXXX)"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mac-editor-swift-format.XXXXXX" 2>/dev/null || mktemp -d "$ROOT_DIR/.build/tmp/mac-editor-swift-format.XXXXXX")"
 
 cleanup() {
   rm -rf "$TMP_DIR"

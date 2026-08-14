@@ -528,4 +528,26 @@ final class KnowledgeWebContentSanitizerTests: XCTestCase {
     XCTAssertTrue(text.contains("本地归档可以重新净化"))
     XCTAssertFalse(text.contains("Saved by Blink"))
   }
+
+  func testSanitizerExtractsRichMarkdownWithCodeLanguageAndInlineFormatting() {
+    let html = """
+    <html><body><article>
+      <h1>代码与排版测试</h1>
+      <p>这里有 <strong>加粗重点</strong> 和 <em>斜体强调</em> 以及 <del>已废弃的废话</del>。</p>
+      <p>请使用 <code>swift build</code> 构建项目。</p>
+      <pre class="language-swift"><code>func greet() -> String { "Hello" }</code></pre>
+      <img src="https://example.com/cover.png" alt="封面配图">
+    </article></body></html>
+    """
+
+    let result = KnowledgeWebContentSanitizer().sanitize(html: html)
+    let text = result.sections.map(\.text).joined(separator: "\n")
+
+    XCTAssertTrue(text.contains("**加粗重点**"))
+    XCTAssertTrue(text.contains("`swift build`"))
+    XCTAssertTrue(text.contains("~~已废弃的废话~~"))
+    XCTAssertTrue(text.contains("```swift"))
+    XCTAssertTrue(text.contains("func greet() -> String"))
+    XCTAssertTrue(text.contains("![封面配图](https://example.com/cover.png)"))
+  }
 }

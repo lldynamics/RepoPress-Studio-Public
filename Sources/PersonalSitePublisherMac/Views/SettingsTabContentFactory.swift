@@ -10,6 +10,7 @@ struct SettingsTabContentFactory {
       SettingsConfigurationStatusView(context: context)
     case .defaultRules:
       DefaultRuleSettingsView(
+        store: context.store,
         activeProfileBinding: context.activeProfileBinding,
         siteKindBinding: context.siteKindBinding,
         healthDestination: context.healthDestination,
@@ -26,9 +27,14 @@ struct SettingsTabContentFactory {
         autoRunPreflightBinding: context.autoRunPreflightBinding,
         scanRepositoryOnLaunch: context.scanRepositoryOnLaunch
       )
+    case .editor:
+      EditorSettingsView()
     case .rss:
       if let rssStore = context.rssStore {
-        RSSMaintenanceSettingsView(store: rssStore)
+        RSSMaintenanceSettingsView(
+          store: rssStore,
+          allowsBackgroundRefresh: !context.store.isSafeMode
+        )
       } else {
         EmptyStateView(
           title: "RSS 暂不可用",

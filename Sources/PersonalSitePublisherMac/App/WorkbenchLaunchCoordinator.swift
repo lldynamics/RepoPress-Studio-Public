@@ -380,6 +380,22 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     return true
   }
 
+  func startBackgroundRefreshIfNeeded(for rssStore: RSSReaderStore) {
+    guard !isSafeMode else {
+      // Safe mode must not start background work, even when the persisted
+      // preference is enabled. Explicit manual refresh remains available.
+      rssStore.stopBackgroundRefresh()
+      return
+    }
+    let defaults = UserDefaults.standard
+    rssStore.configureBackgroundRefresh(
+      enabled: RSSReaderUserPreferences.backgroundRefreshEnabled(defaults: defaults),
+      interval: RSSReaderUserPreferences.backgroundRefreshIntervalSeconds(
+        RSSReaderUserPreferences.backgroundRefreshIntervalMinutes(defaults: defaults)
+      )
+    )
+  }
+
   private func openRememberedDataRoot() async {
     guard let bookmarkStore else { return }
     phase = .preparing(String(localized: "正在检查数据文件夹…"))
@@ -569,7 +585,7 @@ final class WorkbenchLaunchCoordinator: ObservableObject {
     phase = .ready
     guard !isSafeMode else { return }
     store.workspaceBackupScheduler.start()
-    rssStore.startBackgroundRefresh()
+    startBackgroundRefreshIfNeeded(for: rssStore)
     browserBridge?.start()
   }
 
@@ -831,7 +847,7 @@ struct WorkbenchLaunchRootView: View {
           onReady(store, browserBridge)
           if !coordinator.isSafeMode {
             store.workspaceBackupScheduler.start()
-            rssStore.startBackgroundRefresh()
+            coordinator.startBackgroundRefreshIfNeeded(for: rssStore)
             browserBridge.start()
           }
         }

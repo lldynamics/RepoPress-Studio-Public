@@ -15,9 +15,21 @@ extension MacMarkdownComposerView {
 
   func scheduleMarkdownAnalysis(
     immediate: Bool = false,
-    includeOutline: Bool? = nil
+    includeOutline: Bool? = nil,
+    isAutomatic: Bool = false
   ) {
+    if isAutomatic,
+      !MarkdownEditorAutomationPolicy.allows(
+        isAutomatic: true,
+        isEnabled: isRealtimeAnalysisEnabled
+      )
+    {
+      invalidateMarkdownAnalysis()
+      return
+    }
     markdownAnalysisTask?.cancel()
+    markdownAnalysisTask = nil
+    markdownAnalysisTaskIsAutomatic = false
     markdownAnalysisGeneration &+= 1
     let generation = markdownAnalysisGeneration
     let requestedMarkdown = editorBody
@@ -33,7 +45,14 @@ extension MacMarkdownComposerView {
       )
     )
 
+    markdownAnalysisTaskIsAutomatic = isAutomatic
     markdownAnalysisTask = Task { @MainActor in
+      defer {
+        if markdownAnalysisGeneration == generation {
+          markdownAnalysisTask = nil
+          markdownAnalysisTaskIsAutomatic = false
+        }
+      }
       if !immediate {
         do {
           try await Task.sleep(for: .milliseconds(250))
@@ -49,11 +68,19 @@ extension MacMarkdownComposerView {
       )
       guard !Task.isCancelled,
             markdownAnalysisGeneration == generation,
-            draft.id == requestedDraftID else { return }
+            draft.id == requestedDraftID,
+            editorBody == requestedMarkdown else { return }
       markdownAnalysis = snapshot
       appliedMarkdownAnalysisGeneration = generation
-      markdownAnalysisTask = nil
     }
+  }
+
+  func invalidateMarkdownAnalysis() {
+    guard markdownAnalysisTask == nil || markdownAnalysisTaskIsAutomatic else { return }
+    markdownAnalysisTask?.cancel()
+    markdownAnalysisTask = nil
+    markdownAnalysisTaskIsAutomatic = false
+    markdownAnalysisGeneration &+= 1
   }
 
   func selectOutlineItem(_ item: MarkdownOutlineItem) {
@@ -497,5 +524,31 @@ extension MacMarkdownComposerView {
 
   func clamped(_ range: NSRange, length: Int) -> NSRange {
     selectionEditingService.clamped(range, length: length)
+  }
+
+  func formatChineseTypography() {
+    guard requireBodyEditingContext() else { return }
+    let service = ChineseTypographyFormattingService()
+    let edit = service.formattingEdit(in: editorBody, selectedRange: selectedRange)
+    guard let edit else {
+      selectionActionMessage = "当前正文排版已符合规范。"
+      return
+    }
+    applyAdvancedMarkdownEdit(edit)
+    selectionActionMessage = "已完成中英文排版规范化（盘古间距）。"
+    EditorAccessibilityAnnouncementCenter.announce("已完成中英文排版规范化。")
+  }
+
+  func copyForWeChatAndZhihu() {
+    let success = WeChatRichTextCopyService.copyToPasteboard(
+      markdown: editorBody,
+      title: draft.title
+    )
+    if success {
+      selectionActionMessage = "已复制微信公众号/知乎排版富文本，可直接粘贴！"
+      EditorAccessibilityAnnouncementCenter.announce("已复制微信公众号与知乎排版格式到剪贴板。")
+    } else {
+      selectionActionMessage = "富文本复制失败，请重试。"
+    }
   }
 }

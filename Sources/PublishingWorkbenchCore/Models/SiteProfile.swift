@@ -35,6 +35,11 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
   public var includeDraftFlagInFrontMatter: Bool
   public var includeCoverInFrontMatter: Bool
   public var slugValidationRule: SiteSlugValidationRule
+  /// Whether this site should automatically add repository articles that are
+  /// not yet represented in the writing library. Optional storage keeps older
+  /// snapshots backward compatible; `nil` preserves the historical enabled
+  /// behavior.
+  public var automaticallyImportsNewRepositoryArticles: Bool?
   /// The reusable AI connection selected by this site. The legacy config is
   /// retained for decoding older workbench files and non-store clients.
   public var aiConnectionProfileID: UUID?
@@ -76,8 +81,13 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     includeDraftFlagInFrontMatter: Bool = true,
     includeCoverInFrontMatter: Bool = true,
     slugValidationRule: SiteSlugValidationRule = .lowercaseKebab,
+    automaticallyImportsNewRepositoryArticles: Bool? = true,
     aiConnectionProfileID: UUID? = nil,
-    aiProviderConfig: AIProviderConfig = AIProviderConfig(),
+    aiProviderConfig: AIProviderConfig = AIProviderConfig(
+      advancedSettings: AIProviderAdvancedSettings(
+        allowsApplicationTools: false
+      )
+    ),
     aiWritingStyle: AIWritingStyleConfig? = .default,
     deploymentProvider: DeploymentProvider? = nil,
     deploymentSiteURL: String? = nil,
@@ -112,6 +122,7 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     self.includeDraftFlagInFrontMatter = includeDraftFlagInFrontMatter
     self.includeCoverInFrontMatter = includeCoverInFrontMatter
     self.slugValidationRule = slugValidationRule
+    self.automaticallyImportsNewRepositoryArticles = automaticallyImportsNewRepositoryArticles
     self.aiConnectionProfileID = aiConnectionProfileID
     self.aiProviderConfig = aiProviderConfig
     self.aiWritingStyle = aiWritingStyle
@@ -122,6 +133,11 @@ public struct SiteProfile: Codable, Hashable, Identifiable, Sendable {
     self.deploymentProjectID = deploymentProjectID
     self.deploymentAccountID = deploymentAccountID
     self.siteAnalytics = siteAnalytics
+  }
+
+  public var resolvedAutomaticallyImportsNewRepositoryArticles: Bool {
+    get { automaticallyImportsNewRepositoryArticles ?? true }
+    set { automaticallyImportsNewRepositoryArticles = newValue }
   }
 
   public var resolvedAIWritingStyle: AIWritingStyleConfig {

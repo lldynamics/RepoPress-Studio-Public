@@ -28,6 +28,7 @@ struct DefaultRuleExpansionState: Equatable {
 }
 
 struct DefaultRuleSettingsView: View {
+  let store: WorkbenchStore
   let activeProfileBinding: Binding<SiteProfile>
   let siteKindBinding: Binding<SiteKind>
   let healthDestination: SettingsConfigurationHealthDestination?
@@ -42,6 +43,11 @@ struct DefaultRuleSettingsView: View {
         activeProfileBinding: activeProfileBinding,
         siteKindBinding: siteKindBinding,
         expansionState: $expansionState
+      )
+
+      RepositoryDraftDiscoverySettingsSection(
+        store: store,
+        activeProfileBinding: activeProfileBinding
       )
 
       Section {

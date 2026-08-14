@@ -204,6 +204,8 @@ struct LocalAIEngineDiscoverySection: View {
       return "desktopcomputer"
     case .vLLM:
       return "server.rack"
+    case .mlx:
+      return "cpu"
     }
   }
 

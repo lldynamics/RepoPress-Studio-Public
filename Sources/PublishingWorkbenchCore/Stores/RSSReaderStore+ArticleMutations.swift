@@ -425,4 +425,39 @@ extension RSSReaderStore {
       return 0
     }
   }
+
+  public func updateArticlePayload(_ updatedArticle: RSSArticle) throws {
+    if let feed = feeds.first(where: { $0.id == updatedArticle.feedID }) {
+      try database?.upsertFeedAndArticles(feed, articles: [updatedArticle])
+    }
+    mutateCachedArticle(id: updatedArticle.id) { cached in
+      cached.contentHTML = updatedArticle.contentHTML
+      cached.webPageSnapshotHTML = updatedArticle.webPageSnapshotHTML
+      if !updatedArticle.summaryHTML.isEmpty {
+        cached.summaryHTML = updatedArticle.summaryHTML
+      }
+      if !updatedArticle.title.isEmpty {
+        cached.title = updatedArticle.title
+      }
+    }
+    bumpMutationRevision()
+  }
+
+  @discardableResult
+  public func prefetchFullTextForOfflineCache(articleIDs: [String]) async -> Int {
+    let service = RSSArticleFullTextService()
+    var successfulCount = 0
+    for articleID in articleIDs {
+      do {
+        guard let article = try await loadArticle(id: articleID) else { continue }
+        guard service.isTruncatedCandidate(article) else { continue }
+        let fullTextArticle = try await service.fetchFullText(for: article)
+        try updateArticlePayload(fullTextArticle)
+        successfulCount += 1
+      } catch {
+        continue
+      }
+    }
+    return successfulCount
+  }
 }

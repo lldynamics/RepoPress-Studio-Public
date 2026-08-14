@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXPORTER="$ROOT_DIR/script/export_public_snapshot.sh"
 CHECKER="$ROOT_DIR/script/check_public_snapshot.sh"
-TMP_DIR="$(mktemp -d /private/tmp/repopress-public-snapshot.XXXXXX)"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/repopress-public-snapshot.XXXXXX" 2>/dev/null || mktemp -d "$ROOT_DIR/.build/tmp/repopress-public-snapshot.XXXXXX")"
 
 cleanup() {
   rm -rf "$TMP_DIR"

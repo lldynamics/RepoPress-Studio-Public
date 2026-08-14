@@ -249,10 +249,29 @@ struct KnowledgeWebContentSanitizer: Sendable {
 
   private func htmlToReadingMarkdown(_ source: String) -> String {
     var text = source
-    text = transformMatches("<pre\\b[^>]*>([\\s\\S]*?)</pre>", in: text) { captures in
-      let code = decodeHTMLEntities(stripTags(captures[0]))
+    text = transformMatches("<pre\\b([^>]*)>([\\s\\S]*?)</pre>", in: text) { captures in
+      let preAttrs = captures[0]
+      let inner = captures[1]
+      let code = decodeHTMLEntities(stripTags(inner))
         .trimmingCharacters(in: .whitespacesAndNewlines)
-      return code.isEmpty ? "" : "\n\n```\n\(code)\n```\n\n"
+      let lang = firstCapture(
+        in: "\(preAttrs) \(inner)",
+        pattern: "(?:class|data-language|lang)\\s*=\\s*[\\\"'][^\\\"']*(?:lang(?:uage)?-|highlight-)(\\w+)[^\\\"']*[\\\"']"
+      )?.lowercased() ?? ""
+      return code.isEmpty ? "" : "\n\n```\(lang)\n\(code)\n```\n\n"
+    }
+    text = transformMatches("<code\\b[^>]*>([\\s\\S]*?)</code>", in: text) { captures in
+      let inlineCode = decodeHTMLEntities(stripTags(captures[0])).trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !inlineCode.isEmpty else { return "" }
+      return inlineCode.contains("`") ? "``\(inlineCode)``" : "`\(inlineCode)`"
+    }
+    text = transformMatches("<(?:strong|b)\\b[^>]*>([\\s\\S]*?)</(?:strong|b)>", in: text) { captures in
+      let bold = decodeHTMLEntities(normalizedInline(stripTags(captures[0])))
+      return bold.isEmpty ? "" : "**\(bold)**"
+    }
+    text = transformMatches("<(?:del|s|strike)\\b[^>]*>([\\s\\S]*?)</(?:del|s|strike)>", in: text) { captures in
+      let struck = decodeHTMLEntities(normalizedInline(stripTags(captures[0])))
+      return struck.isEmpty ? "" : "~~\(struck)~~"
     }
     text = transformMatches("<h([1-6])\\b[^>]*>([\\s\\S]*?)</h\\1\\s*>", in: text) { captures in
       let level = Int(captures[0]) ?? 2
@@ -265,6 +284,13 @@ struct KnowledgeWebContentSanitizer: Sendable {
             isSafeLinkDestination(destination),
             !label.isEmpty else { return label }
       return "[\(label)](\(destination))"
+    }
+    text = transformMatches("<img\\b([^>]*)>", in: text) { captures in
+      let attributes = parsedAttributes(captures[0])
+      let alt = decodeHTMLEntities(normalizedInline(attributes["alt"] ?? ""))
+      guard let destination = (attributes["src"] ?? attributes["data-src"])?.nilIfEmpty,
+            isSafeLinkDestination(destination) else { return "" }
+      return "\n\n![\(alt)](\(destination))\n\n"
     }
     text = transformMatches("<blockquote\\b[^>]*>([\\s\\S]*?)</blockquote>", in: text) { captures in
       let quote = normalizeExtractedText(stripTags(captures[0]))

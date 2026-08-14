@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHECK="$ROOT_DIR/script/check_browser_extension_release.sh"
-TMP_DIR="$(mktemp -d /private/tmp/browser-extension-release-gate.XXXXXX)"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/browser-extension-release-gate.XXXXXX" 2>/dev/null || mktemp -d "$ROOT_DIR/.build/tmp/browser-extension-release-gate.XXXXXX")"
 FIXTURE_ROOT="$TMP_DIR/project"
 LOG_PATH="$TMP_DIR/commands.log"
 

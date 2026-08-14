@@ -126,6 +126,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
     textView.markdownFormattingHandler = { textView, command in
       context.coordinator.handleFormatting(command, in: textView)
     }
+    textView.markdownLineEditingHandler = { textView, command in
+      context.coordinator.handleLineEditing(command, in: textView)
+    }
     textView.markdownTableContextProvider = { textView in
       context.coordinator.tableContext(in: textView)
     }
@@ -219,6 +222,9 @@ struct MacMarkdownTextView: NSViewRepresentable {
       }
       droppableTextView.markdownFormattingHandler = { textView, command in
         context.coordinator.handleFormatting(command, in: textView)
+      }
+      droppableTextView.markdownLineEditingHandler = { textView, command in
+        context.coordinator.handleLineEditing(command, in: textView)
       }
       droppableTextView.markdownTableContextProvider = { textView in
         context.coordinator.tableContext(in: textView)
@@ -816,6 +822,27 @@ struct MacMarkdownTextView: NSViewRepresentable {
       }
       guard
         let edit = formattingService.edit(
+          in: textView.string,
+          selectedRange: textView.selectedRange(),
+          command: command
+        )
+      else {
+        return false
+      }
+      apply(edit, in: textView)
+      return true
+    }
+
+    func handleLineEditing(
+      _ command: MarkdownLineEditingCommand,
+      in textView: NSTextView
+    ) -> Bool {
+      guard textView.selectedRange().location >= bodyUTF16Offset else {
+        NSSound.beep()
+        return true
+      }
+      guard
+        let edit = advancedEditingService.lineEdit(
           in: textView.string,
           selectedRange: textView.selectedRange(),
           command: command

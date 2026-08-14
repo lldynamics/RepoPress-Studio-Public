@@ -68,7 +68,12 @@ final class RSSReaderPresentationState: ObservableObject {
   @Published var statusMessage: String?
   @Published private(set) var articleDisplayLimit = 120
   @Published private(set) var searchFocusRequestID = UUID()
+  @Published var fullTextArticles: [String: RSSArticle] = [:]
+  @Published var showingFullTextIDs: Set<String> = []
+  @Published var fetchingFullTextIDs: Set<String> = []
+  @Published var fullTextErrorByArticleID: [String: String] = [:]
   let searchDraft = RSSArticleSearchDraft()
+  let fullTextService = RSSArticleFullTextService()
 
   private var subscriptionDiscoveryRequestID = UUID()
 
@@ -419,6 +424,66 @@ final class RSSReaderPresentationState: ObservableObject {
     synchronizeSelection(in: store)
   }
 
+  public func isTruncatedCandidate(_ article: RSSArticle) -> Bool {
+    fullTextService.isTruncatedCandidate(article)
+  }
+
+  public func isShowingFullText(for articleID: String) -> Bool {
+    showingFullTextIDs.contains(articleID)
+  }
+
+  public func isFetchingFullText(for articleID: String) -> Bool {
+    fetchingFullTextIDs.contains(articleID)
+  }
+
+  public func fullTextError(for articleID: String) -> String? {
+    fullTextErrorByArticleID[articleID]
+  }
+
+  public func effectiveArticle(for article: RSSArticle) -> RSSArticle {
+    if showingFullTextIDs.contains(article.id), let fullText = fullTextArticles[article.id] {
+      return fullText
+    }
+    return article
+  }
+
+  public func fetchFullText(for article: RSSArticle, store: RSSReaderStore? = nil) async {
+    let articleID = article.id
+    guard !fetchingFullTextIDs.contains(articleID) else { return }
+    fetchingFullTextIDs.insert(articleID)
+    fullTextErrorByArticleID.removeValue(forKey: articleID)
+    defer { fetchingFullTextIDs.remove(articleID) }
+
+    do {
+      let fullTextArticle = try await fullTextService.fetchFullText(for: article)
+      fullTextArticles[articleID] = fullTextArticle
+      showingFullTextIDs.insert(articleID)
+      if let store {
+        do {
+          try store.updateArticlePayload(fullTextArticle)
+        } catch {
+          // In-memory reading proceeds even if local cache persistence encounters an error
+        }
+      }
+    } catch {
+      fullTextErrorByArticleID[articleID] = error.localizedDescription
+    }
+  }
+
+  public func toggleFullText(for article: RSSArticle, store: RSSReaderStore? = nil) {
+    let articleID = article.id
+    if showingFullTextIDs.contains(articleID) {
+      showingFullTextIDs.remove(articleID)
+    } else {
+      if fullTextArticles[articleID] != nil {
+        showingFullTextIDs.insert(articleID)
+      } else {
+        Task {
+          await fetchFullText(for: article, store: store)
+        }
+      }
+    }
+  }
 }
 
 /// Keeps the high-frequency WebKit scroll callback from publishing duplicate

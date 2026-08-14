@@ -263,6 +263,7 @@ public final class RSSReaderStore: ObservableObject {
   @Published public internal(set) var canUndoLastBatchRead = false
   @Published public internal(set) var retentionDays: Int
   @Published public internal(set) var automaticPruningEnabled: Bool
+  @Published public var isOfflineCacheFullTextEnabled = false
   @Published public internal(set) var feedBodyOfflineCacheEnabled: Bool
   @Published public internal(set) var privateNetworkAccessEnabled: Bool
   @Published public internal(set) var lastPruneSummary: RSSArticlePruneSummary?

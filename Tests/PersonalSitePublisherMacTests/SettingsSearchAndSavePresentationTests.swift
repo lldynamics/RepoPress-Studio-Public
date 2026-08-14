@@ -6,7 +6,11 @@ final class SettingsSearchAndSavePresentationTests: XCTestCase {
     XCTAssertTrue(SettingsTab.defaultRules.matchesSearch("Front Matter"))
     XCTAssertTrue(SettingsTab.token.matchesSearch("GitHub"))
     XCTAssertTrue(SettingsTab.ai.matchesSearch("授权"))
+    XCTAssertTrue(SettingsTab.editor.matchesSearch("拼写"))
+    XCTAssertTrue(SettingsTab.editor.matchesSearch("同步滚动"))
     XCTAssertTrue(SettingsTab.rss.matchesSearch("OPML"))
+    XCTAssertTrue(SettingsTab.rss.matchesSearch("远程图片"))
+    XCTAssertTrue(SettingsTab.rss.matchesSearch("自动翻译"))
     XCTAssertTrue(SettingsTab.dataManagement.matchesSearch("迁移"))
     XCTAssertFalse(SettingsTab.appearance.matchesSearch("仓库权限"))
   }

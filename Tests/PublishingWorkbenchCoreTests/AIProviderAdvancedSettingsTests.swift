@@ -13,6 +13,37 @@ final class AIProviderAdvancedSettingsTests: XCTestCase {
 
     XCTAssertNil(config.advancedSettings)
     XCTAssertTrue(config.resolvedAdvancedSettings.isDefault)
+    XCTAssertTrue(config.resolvedAdvancedSettings.resolvedAllowsApplicationTools)
+  }
+
+  func testMissingAgentToolsFieldKeepsLegacyEnabledBehaviour() throws {
+    let data = Data(
+      #"{"systemPrompt":"legacy","reasoningPreference":"automatic"}"#.utf8
+    )
+
+    let settings = try JSONDecoder().decode(AIProviderAdvancedSettings.self, from: data)
+
+    XCTAssertNil(settings.allowsApplicationTools)
+    XCTAssertTrue(settings.resolvedAllowsApplicationTools)
+  }
+
+  func testExplicitAgentToolsSettingRoundTripsAndIsNotDefault() throws {
+    let disabled = AIProviderAdvancedSettings(allowsApplicationTools: false)
+    let data = try JSONEncoder().encode(disabled)
+    let decoded = try JSONDecoder().decode(AIProviderAdvancedSettings.self, from: data)
+
+    XCTAssertFalse(decoded.resolvedAllowsApplicationTools)
+    XCTAssertFalse(decoded.isDefault)
+  }
+
+  func testNewConnectionTemplatesDisableAgentToolsExplicitly() {
+    let template = AIConnectionProfile.template(named: "New", preset: .custom)
+
+    XCTAssertFalse(template.config.resolvedAdvancedSettings.resolvedAllowsApplicationTools)
+    XCTAssertFalse(
+      SiteProfile(name: "New Site")
+        .aiProviderConfig.resolvedAdvancedSettings.resolvedAllowsApplicationTools
+    )
   }
 
   func testAdvancedSettingsNormalizeUserControlledBounds() {

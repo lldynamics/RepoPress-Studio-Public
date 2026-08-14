@@ -65,6 +65,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
     store.aiStore.aiDataSharingConsentPresentation
   }
 
+  public var isRemoteAIEnabled: Bool {
+    store.aiStore.isRemoteAIEnabled
+  }
+
   public var metadataSuggestion: AIPublishingMetadataSuggestion? {
     store.aiMetadataSuggestion
   }
@@ -358,6 +362,10 @@ public final class WorkbenchAIFeatureFacade: ObservableObject {
 
   public func revokeDataSharingConsent() {
     store.aiStore.revokeAIDataSharingConsent()
+  }
+
+  public func setRemoteAIEnabled(_ enabled: Bool) {
+    store.aiStore.setRemoteAIEnabled(enabled)
   }
 
   @discardableResult

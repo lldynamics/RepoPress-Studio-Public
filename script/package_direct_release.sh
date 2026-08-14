@@ -805,7 +805,9 @@ version_values="$(bash "$ROOT_DIR/script/check_build_version.sh" --print-values)
 IFS=$'\t' read -r MARKETING_VERSION BUILD_NUMBER <<<"$version_values"
 [[ -n "$MARKETING_VERSION" && -n "$BUILD_NUMBER" ]] \
   || fail "build version values are unavailable"
-artifact_base="RepoPress-Studio-$MARKETING_VERSION-$BUILD_NUMBER"
+# Public release names use the user-facing version only. The signed bundle and
+# release manifest still retain BUILD_NUMBER for update and diagnostic identity.
+artifact_base="RepoPress-Studio-$MARKETING_VERSION"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/repopress-direct-release.XXXXXX")"
 
 if [[ "$MODE" == "dry-run" ]]; then

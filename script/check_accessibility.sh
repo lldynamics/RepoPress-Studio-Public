@@ -562,7 +562,7 @@ require_literal \
   "writing preview HTML must expose the article title as its document title"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/MacMarkdownTextView.swift" \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownTextView+DocumentSupport.swift" \
   "textView.setAccessibilityLabel(String(localized: \"Markdown 文档编辑器\"))" \
   "native markdown text editor must expose a descriptive accessibility name"
 
@@ -613,7 +613,7 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/ReleaseHistoryRecordCardSection.swift"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift" \
+  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn+Toolbar.swift" \
   ".accessibilityLabel(\"搜索草稿\")" \
   "draft search field must expose an accessibility label"
 
@@ -1101,37 +1101,37 @@ require_literal \
   "repository-image rows must not expose raw repository paths in accessibility identifiers"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift" \
+  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn+Toolbar.swift" \
   'Label("新建", systemImage: "plus")' \
   "writing create menu must keep its visible title and icon"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift" \
+  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn+Toolbar.swift" \
   ".labelStyle(.titleAndIcon)" \
   "writing create menu must not collapse to an icon-only label"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift" \
+  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn+Toolbar.swift" \
   ".accessibilityIdentifier(\"writing-create-menu\")" \
   "writing create menu must expose a stable accessibility identifier"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift" \
+  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn+Toolbar.swift" \
   ".accessibilityIdentifier(\"writing-draft-search\")" \
   "writing search field must expose a stable accessibility identifier"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/WritingDraftColumn.swift" \
+  "Sources/PersonalSitePublisherMac/Views/WritingDraftList.swift" \
   ".accessibilityIdentifier(\"writing-draft-list\")" \
   "writing list must expose a stable accessibility identifier"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift" \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn+Toolbar.swift" \
   ".accessibilityIdentifier(\"knowledge-source-search\")" \
   "knowledge search field must expose a stable accessibility identifier"
 
 require_literal \
-  "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn.swift" \
+  "Sources/PersonalSitePublisherMac/Views/KnowledgeSourceListColumn+Rows.swift" \
   ".accessibilityIdentifier(\"knowledge-document-list\")" \
   "knowledge document list must expose a stable accessibility identifier"
 
