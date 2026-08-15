@@ -65,7 +65,7 @@ extension KnowledgeDatabase {
         let folderUpdateTime = Date().timeIntervalSince1970
         for assignment in folderAssignments {
           try Task.checkCancellation()
-          if let folderID = assignment.folderID, try !folderExists(folderID) {
+          if let folderID = assignment.folderID, try !folderExistsUnlocked(folderID) {
             throw KnowledgeLibraryError.missingFolder
           }
           let statement = try prepare("""

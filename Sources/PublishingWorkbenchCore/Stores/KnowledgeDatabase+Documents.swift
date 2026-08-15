@@ -93,7 +93,7 @@ extension KnowledgeDatabase {
   func createFolder(name: String) throws -> KnowledgeFolder {
     try withLock {
       let normalizedName = try validatedFolderName(name)
-      guard try !folderNameExists(normalizedName, excluding: nil) else {
+      guard try !folderNameExistsUnlocked(normalizedName, excluding: nil) else {
         throw KnowledgeLibraryError.duplicateFolderName(normalizedName)
       }
       let now = Date()
@@ -123,7 +123,7 @@ extension KnowledgeDatabase {
       }
       let createdAt = Date(timeIntervalSince1970: sqlite3_column_double(lookupStatement, 0))
       sqlite3_finalize(lookupStatement)
-      guard try !folderNameExists(normalizedName, excluding: id) else {
+      guard try !folderNameExistsUnlocked(normalizedName, excluding: id) else {
         throw KnowledgeLibraryError.duplicateFolderName(normalizedName)
       }
       let now = Date()
@@ -170,7 +170,7 @@ extension KnowledgeDatabase {
 
   func setFolder(_ folderID: UUID?, documentID: UUID) throws {
     try withLock {
-      if let folderID, try !folderExists(folderID) {
+      if let folderID, try !folderExistsUnlocked(folderID) {
         throw KnowledgeLibraryError.missingFolder
       }
       let statement = try prepare("""
@@ -188,7 +188,7 @@ extension KnowledgeDatabase {
   func setFolder(_ folderID: UUID?, documentIDs: Set<UUID>) throws {
     guard !documentIDs.isEmpty else { return }
     try withLock {
-      if let folderID, try !folderExists(folderID) {
+      if let folderID, try !folderExistsUnlocked(folderID) {
         throw KnowledgeLibraryError.missingFolder
       }
       try executeUnlocked("BEGIN IMMEDIATE TRANSACTION;")
