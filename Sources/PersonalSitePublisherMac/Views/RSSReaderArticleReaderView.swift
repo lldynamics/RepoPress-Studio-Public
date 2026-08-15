@@ -359,7 +359,7 @@ struct RSSArticleReader: View {
           Label(String(localized: "提取全文"), systemImage: "sparkles")
             .font(.caption.weight(.medium))
         }
-        .buttonStyle(.borderedProminent)
+        .workbenchProminentActionStyle()
         .controlSize(.small)
       }
       .padding(.horizontal, 8)
@@ -631,7 +631,7 @@ struct RSSArticleReader: View {
           systemImage: "doc.plaintext"
         )
       }
-      .buttonStyle(.borderedProminent)
+      .workbenchProminentActionStyle()
       .disabled(isFetchingFullText)
       .help(String(localized: "恢复 RSS 原始摘要"))
       .accessibilityLabel("恢复 RSS 原始摘要")
