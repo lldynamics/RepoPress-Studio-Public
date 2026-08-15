@@ -386,10 +386,15 @@ public struct ScreenshotDemoDataService {
       if surface == .syncAPIPublish {
         seedSyncAPIPublishPreview(in: store)
       }
-      Task { @MainActor in
-        await store.repository.scanAsync()
-        if surface == .syncAPIPublish {
-          seedSyncAPIPublishPreview(in: store)
+      // The publish-drawer UI test must always expose its intended "Open
+      // Publish" action. A concurrent scan temporarily replaces that action
+      // with "Cancel Scan", making the fixture depend on runner speed.
+      if !(isUITest && surface == .syncAPIPublish) {
+        Task { @MainActor in
+          await store.repository.scanAsync()
+          if surface == .syncAPIPublish {
+            seedSyncAPIPublishPreview(in: store)
+          }
         }
       }
     }
@@ -449,6 +454,22 @@ public struct ScreenshotDemoDataService {
     guard let draft = store.selectedDraft else { return }
 
     let profile = store.profile(for: draft)
+    store.setRepositoryReport(
+      RepositoryScanReport(
+        rootPath: profile.localRepositoryRootPath,
+        detectedKind: profile.siteKind,
+        expectedKind: profile.siteKind,
+        hasGitDirectory: true,
+        contentRootExists: true,
+        assetRootExists: true,
+        markdownFileCount: 1,
+        imageFileCount: 1,
+        changedFiles: [],
+        remoteChangedFiles: [],
+        preflightIssues: [],
+        scannedAt: Date(timeIntervalSince1970: 1_900_000_000)
+      )
+    )
     let accessCheck = RemoteRepositoryAccessCheck(
       provider: profile.repositoryProvider,
       repositoryName: profile.repositoryDisplayName,
@@ -472,6 +493,15 @@ public struct ScreenshotDemoDataService {
     )
     store.setRemoteRepositoryAccessCheck(accessCheck)
     store.refreshPublishPreview(for: draft)
+    store.publishingStore.localPublishReadiness = LocalPublishReadiness(
+      writeReadiness: .ready,
+      commitReadiness: .ready,
+      changedFileCount: 1,
+      fileCount: 1,
+      writeBlockingIssues: [],
+      commitBlockingIssues: [],
+      warningIssues: [conflictWarning]
+    )
 
     var preview = store.remotePublishPreviewSnapshot ?? RemoteRepositoryPublishPreview(
       provider: profile.repositoryProvider,

@@ -44,9 +44,13 @@ public final class WorkbenchEditorNavigationFeatureFacade: ObservableObject {
     guard !isChangeNotificationScheduled else { return }
     isChangeNotificationScheduled = true
 
-    // The upstream @Published notification arrives from willSet. Defer the
-    // facade invalidation until its getters can read the committed selection.
-    RunLoop.main.perform(inModes: [.default]) { [weak self] in
+    // The upstream @Published notification arrives from willSet. Register the
+    // deferred invalidation in normal and AppKit event-tracking modes so its
+    // getters can expose the committed selection in either path.
+    RunLoop.main.perform(inModes: [
+      .default,
+      RunLoop.Mode("NSEventTrackingRunLoopMode"),
+    ]) { [weak self] in
       MainActor.assumeIsolated {
         guard let self else { return }
         self.isChangeNotificationScheduled = false

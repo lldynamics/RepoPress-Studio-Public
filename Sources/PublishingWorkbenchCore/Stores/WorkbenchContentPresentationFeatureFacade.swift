@@ -77,8 +77,12 @@ public final class WorkbenchContentPresentationFeatureFacade: ObservableObject {
     isChangeNotificationScheduled = true
 
     // Deliver after the source @Published properties leave willSet so layout
-    // decisions use the committed editor and assistant presentation values.
-    RunLoop.main.perform(inModes: [.default]) { [weak self] in
+    // decisions use committed values, including while AppKit is tracking an
+    // accessibility or mouse event.
+    RunLoop.main.perform(inModes: [
+      .default,
+      RunLoop.Mode("NSEventTrackingRunLoopMode"),
+    ]) { [weak self] in
       MainActor.assumeIsolated {
         guard let self else { return }
         self.isChangeNotificationScheduled = false
