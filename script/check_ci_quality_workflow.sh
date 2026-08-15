@@ -26,10 +26,14 @@ grep -Fq 'contents: read' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow token permissions must be read-only"
 grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must select the Xcode 26.3 Safari extension toolchain"
+grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' "$WORKFLOW" \
+  || fail "pull-request quality workflow must select the Xcode 26.3 Safari extension toolchain"
 grep -Fq 'echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/ms-playwright" >> "$GITHUB_ENV"' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must share one Playwright browser path across install and gates"
 grep -Fq 'xcrun -f safari-web-extension-packager' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must verify the Safari extension packager before running gates"
+grep -Fq 'xcrun -f safari-web-extension-packager' "$WORKFLOW" \
+  || fail "pull-request quality workflow must verify the Safari extension packager before running distribution gates"
 for workflow_path in "$WORKFLOW" "$TOOLING_WORKFLOW"; do
   grep -Fq "uses: $CHECKOUT_ACTION" "$workflow_path" \
     || fail "$(basename "$workflow_path") must pin actions/checkout to the approved commit"
