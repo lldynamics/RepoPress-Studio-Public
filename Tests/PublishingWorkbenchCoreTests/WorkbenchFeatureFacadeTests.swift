@@ -132,12 +132,20 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     withExtendedLifetime(cancellable) {}
   }
 
-  func testContentPresentationFacadeIgnoresTypingAndAIStreaming() throws {
+  func testContentPresentationFacadeIgnoresTypingAndAIStreaming() async throws {
     let store = makeIsolatedStore()
     let draft = try XCTUnwrap(store.selectedDraft)
     let presentation = store.contentPresentation
     var presentationChanges = 0
-    let cancellable = presentation.objectWillChange.sink { presentationChanges += 1 }
+    var observedEditorDisplayMode = presentation.editorDisplayMode
+    var observedAssistantPresentation = presentation.isAssistantPresented
+    var pendingExpectation: XCTestExpectation?
+    let cancellable = presentation.objectWillChange.sink {
+      presentationChanges += 1
+      observedEditorDisplayMode = presentation.editorDisplayMode
+      observedAssistantPresentation = presentation.isAssistantPresented
+      pendingExpectation?.fulfill()
+    }
 
     store.publishingStore.setDraftBodyEditorBuffer(
       DraftBodyEditorBuffer(
@@ -159,14 +167,22 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     XCTAssertEqual(presentation.editorDisplayMode, .edit)
     XCTAssertFalse(presentation.isAssistantPresented)
 
+    let splitChange = expectation(description: "split presentation forwarded")
+    pendingExpectation = splitChange
     store.setEditorDisplayMode(.split)
+    XCTAssertEqual(presentationChanges, 0)
+    await fulfillment(of: [splitChange], timeout: 1)
     XCTAssertEqual(presentationChanges, 1)
-    XCTAssertEqual(presentation.editorDisplayMode, .split)
+    XCTAssertEqual(observedEditorDisplayMode, .split)
 
+    let assistantChange = expectation(description: "assistant presentation forwarded")
+    pendingExpectation = assistantChange
     store.setAIPublishingAssistantPresented(true)
+    await fulfillment(of: [assistantChange], timeout: 1)
     XCTAssertEqual(presentationChanges, 2)
-    XCTAssertTrue(presentation.isAssistantPresented)
+    XCTAssertTrue(observedAssistantPresentation)
 
+    pendingExpectation = nil
     store.setEditorDisplayMode(.split)
     store.setAIPublishingAssistantPresented(true)
     XCTAssertEqual(presentationChanges, 2)
@@ -196,29 +212,44 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     withExtendedLifetime([draftListCancellable, contentHealthCancellable]) {}
   }
 
-  func testShellFacadeIgnoresEquivalentRootStateAssignments() {
+  func testShellFacadeIgnoresEquivalentRootStateAssignments() async {
     let store = makeIsolatedStore()
     let shell = store.shell
     var shellChanges = 0
-    let cancellable = shell.objectWillChange.sink { shellChanges += 1 }
+    var observedSection = shell.selectedSection
+    let changed = expectation(description: "shell selection forwarded")
+    let cancellable = shell.objectWillChange.sink {
+      shellChanges += 1
+      observedSection = shell.selectedSection
+      changed.fulfill()
+    }
 
     store.selectSection(shell.selectedSection)
     XCTAssertEqual(shellChanges, 0)
 
     let differentSection: WorkspaceSection = shell.selectedSection == .sync ? .writing : .sync
     store.selectSection(differentSection)
+    XCTAssertEqual(shellChanges, 0)
+    await fulfillment(of: [changed], timeout: 1)
     XCTAssertEqual(shellChanges, 1)
+    XCTAssertEqual(observedSection, differentSection)
 
     store.selectSection(differentSection)
     XCTAssertEqual(shellChanges, 1)
     withExtendedLifetime(cancellable) {}
   }
 
-  func testShellFacadeRoutesNavigationWithoutObservingUnrelatedPublishingProgress() {
+  func testShellFacadeRoutesNavigationWithoutObservingUnrelatedPublishingProgress() async {
     let store = makeIsolatedStore()
     let shell = store.shell
     var shellChanges = 0
-    let cancellable = shell.objectWillChange.sink { shellChanges += 1 }
+    var observedSection = shell.selectedSection
+    let changed = expectation(description: "shell navigation forwarded")
+    let cancellable = shell.objectWillChange.sink {
+      shellChanges += 1
+      observedSection = shell.selectedSection
+      changed.fulfill()
+    }
 
     store.setPublishActionMessage("正在生成发布预览…")
     XCTAssertEqual(shellChanges, 0)
@@ -227,7 +258,10 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     shell.selectSection(section)
 
     XCTAssertEqual(shell.selectedSection, section)
+    XCTAssertEqual(shellChanges, 0)
+    await fulfillment(of: [changed], timeout: 1)
     XCTAssertEqual(shellChanges, 1)
+    XCTAssertEqual(observedSection, section)
     withExtendedLifetime(cancellable) {}
   }
 
@@ -452,17 +486,26 @@ final class WorkbenchFeatureFacadeTests: XCTestCase {
     withExtendedLifetime([rootCancellable, publishingCancellable]) {}
   }
 
-  func testEditorNavigationFacadeIgnoresPublishingProgressChanges() {
+  func testEditorNavigationFacadeIgnoresPublishingProgressChanges() async {
     let store = makeIsolatedStore()
     let editorNavigation = WorkbenchEditorNavigationFeatureFacade(store: store)
     var editorChanges = 0
-    let cancellable = editorNavigation.objectWillChange.sink { editorChanges += 1 }
+    var observedSection = editorNavigation.selectedSection
+    let changed = expectation(description: "editor navigation forwarded")
+    let cancellable = editorNavigation.objectWillChange.sink {
+      editorChanges += 1
+      observedSection = editorNavigation.selectedSection
+      changed.fulfill()
+    }
 
     store.setPublishActionMessage("正在生成发布预览…")
     XCTAssertEqual(editorChanges, 0)
 
     store.setSelectedSection(.images)
+    XCTAssertEqual(editorChanges, 0)
+    await fulfillment(of: [changed], timeout: 1)
     XCTAssertEqual(editorChanges, 1)
+    XCTAssertEqual(observedSection, .images)
     withExtendedLifetime(cancellable) {}
   }
 

@@ -13,14 +13,15 @@ struct PersistentWindowCommandMenuPolicy {
     commandExists: Bool,
     isMenuTracking: Bool
   ) -> PersistentWindowCommandMenuDecision {
-    let commandShouldExist = !hasMainWindow
-    guard commandShouldExist != commandExists else {
-      return .noChange
-    }
+    // Keep one stable command in the Window menu. Removing and reinstalling it
+    // across SwiftUI WindowGroup teardown races can leave users without a way
+    // to restore the workbench after a second close.
+    _ = hasMainWindow
+    guard !commandExists else { return .noChange }
     guard !isMenuTracking else {
       return .deferUntilTrackingEnds
     }
-    return commandShouldExist ? .install : .remove
+    return .install
   }
 }
 

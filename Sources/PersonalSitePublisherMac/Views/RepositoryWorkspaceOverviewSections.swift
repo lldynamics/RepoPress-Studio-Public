@@ -444,6 +444,7 @@ extension RepositoryWorkspaceView {
             Text(actionTitle)
           }
           .workbenchProminentActionStyle()
+          .accessibilityIdentifier("repository-next-action")
         }
 
         VStack(alignment: .leading, spacing: 12) {
@@ -458,6 +459,7 @@ extension RepositoryWorkspaceView {
               .frame(maxWidth: .infinity)
           }
           .workbenchProminentActionStyle()
+          .accessibilityIdentifier("repository-next-action")
         }
       }
     }
@@ -465,7 +467,6 @@ extension RepositoryWorkspaceView {
     .background(tint.opacity(WorkbenchOpacity.warningBackground), in: RoundedRectangle(cornerRadius: WorkbenchCornerRadius.card))
     .accessibilityElement(children: .contain)
     .accessibilityLabel("当前状态和下一步")
-    .accessibilityIdentifier("repository-next-action")
   }
 
   private func workflowBannerMessage(

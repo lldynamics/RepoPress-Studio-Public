@@ -8,6 +8,7 @@ import Foundation
 public final class WorkbenchEditorNavigationFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
   private var cancellables = Set<AnyCancellable>()
+  private var isChangeNotificationScheduled = false
 
   public init(store: WorkbenchStore) {
     self.store = store
@@ -35,8 +36,23 @@ public final class WorkbenchEditorNavigationFeatureFacade: ObservableObject {
     publisher
       .removeDuplicates()
       .dropFirst()
-      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .sink { [weak self] _ in self?.scheduleChangeNotification() }
       .store(in: &cancellables)
+  }
+
+  private func scheduleChangeNotification() {
+    guard !isChangeNotificationScheduled else { return }
+    isChangeNotificationScheduled = true
+
+    // The upstream @Published notification arrives from willSet. Defer the
+    // facade invalidation until its getters can read the committed selection.
+    RunLoop.main.perform(inModes: [.default]) { [weak self] in
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.isChangeNotificationScheduled = false
+        self.objectWillChange.send()
+      }
+    }
   }
 }
 

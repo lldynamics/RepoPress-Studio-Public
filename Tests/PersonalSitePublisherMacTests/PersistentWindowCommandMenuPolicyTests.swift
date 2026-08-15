@@ -2,7 +2,7 @@ import XCTest
 @testable import PersonalSitePublisherMac
 
 final class PersistentWindowCommandMenuPolicyTests: XCTestCase {
-  func testInstallsOnlyAfterLastMainWindowCloses() {
+  func testKeepsStableCommandAvailableWithOrWithoutMainWindow() {
     XCTAssertEqual(
       PersistentWindowCommandMenuPolicy.decision(
         hasMainWindow: false,
@@ -17,18 +17,18 @@ final class PersistentWindowCommandMenuPolicyTests: XCTestCase {
         commandExists: false,
         isMenuTracking: false
       ),
-      .noChange
+      .install
     )
   }
 
-  func testRemovesPersistentCommandAfterMainWindowReturns() {
+  func testExistingPersistentCommandRemainsInstalled() {
     XCTAssertEqual(
       PersistentWindowCommandMenuPolicy.decision(
         hasMainWindow: true,
         commandExists: true,
         isMenuTracking: false
       ),
-      .remove
+      .noChange
     )
   }
 
@@ -47,7 +47,7 @@ final class PersistentWindowCommandMenuPolicyTests: XCTestCase {
         commandExists: true,
         isMenuTracking: true
       ),
-      .deferUntilTrackingEnds
+      .noChange
     )
   }
 

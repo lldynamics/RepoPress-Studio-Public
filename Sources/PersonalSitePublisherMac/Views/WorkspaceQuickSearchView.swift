@@ -109,11 +109,9 @@ struct WorkspaceQuickSearchView: View {
     let snapshot = searchSnapshot
 
     VStack(spacing: 0) {
-      if scope != .imageResources {
-        searchField
-          .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
-          .padding(.vertical, WorkspaceSidebarMetrics.toolbarVerticalPadding)
-      }
+      searchField
+        .padding(.horizontal, WorkspaceSidebarMetrics.horizontalPadding)
+        .padding(.vertical, WorkspaceSidebarMetrics.toolbarVerticalPadding)
 
       if let repositoryContextStage {
         repositoryStageNavigation(repositoryContextStage)
