@@ -54,6 +54,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 45
     env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       SWIFT_BUILD_HOME: /private/tmp/personal-site-publisher-ci-swift-home
     steps:
       - name: Check out repository
@@ -63,7 +64,10 @@ jobs:
           defaults write NSGlobalDomain AppleLanguages -array "zh-Hans"
           defaults write NSGlobalDomain AppleLocale "zh_CN"
       - name: Show toolchain
-        run: swift --version
+        run: |
+          xcodebuild -version
+          swift --version
+          xcrun -f safari-web-extension-packager
       - name: Run quick quality gate
         run: |
           ./script/check_release_gate.sh \
