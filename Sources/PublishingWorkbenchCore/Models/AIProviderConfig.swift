@@ -1,6 +1,7 @@
 import Foundation
 
 public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Sendable {
+  case codexAppServer
   case openAICompatible
   case deepSeek
   case openRouter
@@ -8,6 +9,7 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
   case custom
 
   public static let deepSeekHighQualityModel = "deepseek-v4-pro"
+  public static let codexDefaultModel = "codex-default"
 
   private static let legacyDeepSeekProRawValue = "deepSeekPro"
 
@@ -15,6 +17,8 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
 
   public var displayName: String {
     switch self {
+    case .codexAppServer:
+      return CoreL10n.text("Codex 套餐")
     case .openAICompatible:
       return CoreL10n.text("OpenAI 兼容")
     case .deepSeek:
@@ -30,6 +34,11 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
 
   public var defaultBaseURL: String {
     switch self {
+    case .codexAppServer:
+      // This loopback-looking value is an internal transport identity only.
+      // Requests for this preset are routed through `codex app-server` stdio
+      // and never posted to this URL.
+      return "http://127.0.0.1/__repopress_codex_app_server__"
     case .openAICompatible:
       return "https://api.openai.com/v1"
     case .deepSeek:
@@ -45,6 +54,10 @@ public enum AIProviderPreset: String, Codable, CaseIterable, Identifiable, Senda
 
   public var defaultModel: String {
     switch self {
+    case .codexAppServer:
+      // The App Server omits the model override for this sentinel so Codex can
+      // choose the account's current default model.
+      return Self.codexDefaultModel
     case .openAICompatible:
       return "gpt-4.1-mini"
     case .deepSeek:
@@ -285,6 +298,8 @@ public enum AIChatModelCatalog {
 
   private static func fastModel(for config: AIProviderConfig, fallback: String) -> String {
     switch config.preset {
+    case .codexAppServer:
+      return fallback
     case .deepSeek:
       return AIProviderPreset.deepSeek.defaultModel
     case .openAICompatible:
@@ -298,6 +313,8 @@ public enum AIChatModelCatalog {
 
   private static func highQualityModel(for config: AIProviderConfig, fallback: String) -> String {
     switch config.preset {
+    case .codexAppServer:
+      return fallback
     case .deepSeek:
       return AIProviderPreset.deepSeekHighQualityModel
     case .openAICompatible:
@@ -449,7 +466,14 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
     requestModel(resolving: normalizedModel)
   }
 
+  public var usesCodexAppServer: Bool {
+    preset == .codexAppServer
+  }
+
   public var dataSharingDestination: String {
+    if usesCodexAppServer {
+      return CoreL10n.text("Codex / ChatGPT")
+    }
     let resolvedBaseURL = normalizedBaseURL
     if resolvedBaseURL.isEmpty {
       return ""
@@ -466,6 +490,9 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
   }
 
   public var isLocalEndpoint: Bool {
+    // App Server runs locally but sends the approved prompt to the user's
+    // managed ChatGPT/Codex account, so it must retain the remote-data gate.
+    guard !usesCodexAppServer else { return false }
     guard let host = URL(string: normalizedBaseURL)?.host?.lowercased() else {
       return false
     }
@@ -476,6 +503,9 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
   }
 
   public var dataSharingConsentIdentifier: String {
+    if usesCodexAppServer {
+      return "codexAppServer|chatgpt"
+    }
     guard let components = URLComponents(string: normalizedBaseURL),
       let scheme = components.scheme?.lowercased(),
       let host = components.host?.lowercased()
@@ -491,7 +521,7 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
     switch preset {
     case .deepSeek:
       return true
-    case .openAICompatible, .openRouter, .local, .custom:
+    case .codexAppServer, .openAICompatible, .openRouter, .local, .custom:
       let rawBaseURL = normalizedBaseURL.lowercased()
       if let host = URL(string: rawBaseURL)?.host?.lowercased() {
         return host == "api.deepseek.com"
@@ -507,7 +537,7 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
   public mutating func applyPresetDefaults() {
     baseURL = preset.defaultBaseURL
     model = preset.defaultModel
-    requiresAPIKey = preset != .local
+    requiresAPIKey = preset != .local && preset != .codexAppServer
   }
 
   public var chatCompletionsURL: URL? {
@@ -724,6 +754,9 @@ public struct AIProviderConfig: Codable, Hashable, Sendable {
       return preset.capabilitySupport(for: capability)
 
     case .modelDiscovery:
+      if preset == .codexAppServer {
+        return .unsupported
+      }
       if preset == .local {
         if isLocalEndpoint {
           return .supported

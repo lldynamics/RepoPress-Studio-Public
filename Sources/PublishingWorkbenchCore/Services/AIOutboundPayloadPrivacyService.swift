@@ -185,6 +185,9 @@ public struct AIOutboundPayloadPrivacyService: Sendable {
   ) -> AIPreparedOutboundPayload {
     let scanned = sanitizedMessageScan(preparedRequest.normalizedRequest.messages)
     let messages = preparedRequest.normalizedRequest.messages
+    let destination = taskConfig.usesCodexAppServer
+      ? "codex-app-server://chatgpt"
+      : sanitizedDestination(preparedRequest.endpointURL)
     let payloadMetrics = metrics(for: messages)
     let counts = normalizedContextCounts(
       contextCounts,
@@ -192,7 +195,7 @@ public struct AIOutboundPayloadPrivacyService: Sendable {
       imageCount: payloadMetrics.imageCount
     )
     let fingerprint = fingerprint(
-      endpointBinding: sanitizedDestination(preparedRequest.endpointURL),
+      endpointBinding: destination,
       model: preparedRequest.normalizedRequest.model,
       messages: messages,
       contextCounts: counts,
@@ -200,8 +203,10 @@ public struct AIOutboundPayloadPrivacyService: Sendable {
       exactEncodedBody: preparedRequest.encodedBody
     )
     let preview = AIOutboundPayloadPreview(
-      destination: sanitizedDestination(preparedRequest.endpointURL),
-      model: preparedRequest.normalizedRequest.model,
+      destination: destination,
+      model: taskConfig.usesCodexAppServer
+        ? CoreL10n.text("账户默认模型")
+        : preparedRequest.normalizedRequest.model,
       contextCounts: counts,
       textCharacterCount: payloadMetrics.textCharacterCount,
       imageCount: payloadMetrics.imageCount,
@@ -216,7 +221,9 @@ public struct AIOutboundPayloadPrivacyService: Sendable {
       fingerprint: fingerprint,
       createdAt: now,
       expiresAt: now.addingTimeInterval(confirmationLifetime),
-      isLoopback: isLoopback(preparedRequest.endpointURL)
+      isLoopback: taskConfig.usesCodexAppServer
+        ? false
+        : isLoopback(preparedRequest.endpointURL)
     )
     return AIPreparedOutboundPayload(
       messages: messages,

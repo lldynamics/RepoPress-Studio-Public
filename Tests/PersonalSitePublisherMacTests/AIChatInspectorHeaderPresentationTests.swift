@@ -94,6 +94,30 @@ final class AIChatInspectorHeaderPresentationTests: XCTestCase {
     )
   }
 
+  func testCodexProviderHidesInternalTransportSentinels() {
+    var config = AIProviderConfig(preset: .codexAppServer)
+    config.applyPresetDefaults()
+
+    XCTAssertEqual(
+      AIChatInspectorHeaderPresentation.modelSummary(
+        for: config,
+        activeModel: AIProviderPreset.codexDefaultModel
+      ),
+      config.preset.localizedDisplayName + " · " + String(localized: "账户默认模型")
+    )
+    XCTAssertEqual(
+      AIChatConnectionStatusPresentation.shortProviderName(for: config),
+      "Codex"
+    )
+    XCTAssertTrue(
+      AIChatConnectionStatusPresentation.readiness(
+        for: config,
+        hasToken: false,
+        hasDraft: true
+      ).isReady
+    )
+  }
+
   func testQuickSwitchSheetBuildsFastStandardAndHighQualityCandidates() {
     let config = AIProviderConfig(
       preset: .custom,

@@ -166,7 +166,7 @@ extension AIProviderPreset {
         // selected streaming probe can prove streaming, but the preset alone
         // must not make the runtime send stream=true.
         return .unknown
-      case .openAICompatible, .deepSeek, .openRouter, .local:
+      case .codexAppServer, .openAICompatible, .deepSeek, .openRouter, .local:
         // These presets retain the existing product contract that their
         // standard OpenAI-compatible chat transport is statically trusted.
         return .supported
@@ -174,6 +174,9 @@ extension AIProviderPreset {
 
     case .visionInput:
       switch self {
+      case .codexAppServer:
+        // The first App Server bridge deliberately transports text only.
+        return .unsupported
       case .openAICompatible:
         return .unknown
       case .deepSeek:
@@ -184,6 +187,8 @@ extension AIProviderPreset {
 
     case .reasoningControl:
       switch self {
+      case .codexAppServer:
+        return .unsupported
       case .deepSeek:
         return .supported
       case .openAICompatible:
@@ -198,7 +203,7 @@ extension AIProviderPreset {
         return .supported
       case .custom:
         return .unknown
-      case .openAICompatible, .deepSeek, .openRouter:
+      case .codexAppServer, .openAICompatible, .deepSeek, .openRouter:
         return .unsupported
       }
 
@@ -208,7 +213,7 @@ extension AIProviderPreset {
         return .supported
       case .custom:
         return .unknown
-      case .openAICompatible, .deepSeek, .openRouter:
+      case .codexAppServer, .openAICompatible, .deepSeek, .openRouter:
         return .unsupported
       }
 
@@ -262,6 +267,9 @@ extension AIProviderPreset {
       switch self {
       case .deepSeek:
         return .supported
+      case .codexAppServer:
+        // App-level tool calls are not exposed to the local Codex process.
+        return .unsupported
       case .openAICompatible, .openRouter, .local, .custom:
         // OpenAI-compatible/local endpoints and routing providers can expose
         // models with different tool support. A preset name is not a probe.

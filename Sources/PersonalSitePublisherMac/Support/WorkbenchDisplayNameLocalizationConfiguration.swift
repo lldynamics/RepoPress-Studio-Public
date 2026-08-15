@@ -134,6 +134,7 @@ extension SiteProfilePurpose {
 extension AIProviderPreset {
   var workbenchDisplayNameSemanticKey: String {
     switch self {
+    case .codexAppServer: "display.ai-provider-preset.codex-app-server"
     case .openAICompatible: "display.ai-provider-preset.openai-compatible"
     case .deepSeek: "display.ai-provider-preset.deepseek"
     case .openRouter: "display.ai-provider-preset.openrouter"
@@ -144,6 +145,7 @@ extension AIProviderPreset {
 
   var fallbackDisplayName: String {
     switch self {
+    case .codexAppServer: "Codex Subscription"
     case .openAICompatible: displayName
     case .deepSeek: "DeepSeek"
     case .openRouter: "OpenRouter"

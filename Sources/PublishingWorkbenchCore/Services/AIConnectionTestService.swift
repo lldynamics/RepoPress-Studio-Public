@@ -121,6 +121,10 @@ public enum AISettingsConnectionPresentationService {
 
   private static func providerHelpText(_ config: AIProviderConfig) -> String {
     switch config.preset {
+    case .codexAppServer:
+      return CoreL10n.text(
+        "Codex 套餐通过此 Mac 上的 codex app-server 使用 ChatGPT 登录；RepoPress 不读取或保存账户令牌。"
+      )
     case .deepSeek:
       return CoreL10n.text(
         "DeepSeek 默认接口地址：https://api.deepseek.com；快速/标准档使用 deepseek-v4-flash，高质量档使用 deepseek-v4-pro。"
@@ -238,8 +242,11 @@ public struct AIConnectionTestService: Sendable {
 
     return AIConnectionTestReport(
       providerName: config.preset.displayName,
-      model: result.rawModel?.nilIfEmpty ?? model,
-      endpoint: endpoint,
+      model: result.rawModel?.nilIfEmpty
+        ?? (config.usesCodexAppServer ? CoreL10n.text("账户默认模型") : model),
+      endpoint: config.usesCodexAppServer
+        ? URL(string: "codex-app-server://stdio")!
+        : endpoint,
       responsePreview: String(result.content.trimmedForPublishing.prefix(80)),
       capabilityProbeReport: capabilityProbeReport
     )

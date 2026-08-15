@@ -78,6 +78,8 @@ enum AIChatConnectionStatusPresentation {
 
   static func shortProviderName(for config: AIProviderConfig) -> String {
     switch config.preset {
+    case .codexAppServer:
+      return "Codex"
     case .local:
       return "Local"
     case .custom:
@@ -161,7 +163,7 @@ enum AIChatInspectorHeaderPresentation {
 
   static func providerTitle(for config: AIProviderConfig) -> String {
     switch config.preset {
-    case .openAICompatible, .deepSeek, .openRouter, .local:
+    case .codexAppServer, .openAICompatible, .deepSeek, .openRouter, .local:
       return config.preset.localizedDisplayName
     case .custom:
       return String(localized: "自定义 API")
@@ -173,6 +175,9 @@ enum AIChatInspectorHeaderPresentation {
     activeModel: String?
   ) -> String {
     let provider = providerTitle(for: config)
+    if config.usesCodexAppServer {
+      return provider + " · " + String(localized: "账户默认模型")
+    }
     guard let activeModel = activeModel?.nilIfEmpty else { return provider }
     return "\(provider) · \(activeModel)"
   }

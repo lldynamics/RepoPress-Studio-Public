@@ -5969,6 +5969,22 @@
         }
       }
     },
+    "display.ai-provider-preset.codex-app-server": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex Subscription"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex 套餐"
+          }
+        }
+      }
+    },
     "display.ai-provider-preset.custom": {
       "localizations": {
         "en": {
@@ -65277,6 +65293,534 @@
           "stringUnit": {
             "state": "translated",
             "value": "（源文过长，已按安全上限截取）"
+          }
+        }
+      }
+    },
+    "1. Codex 账户": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Codex Account"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Codex 账户"
+          }
+        }
+      }
+    },
+    "正在检查 Codex 账户": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking Codex account"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查 Codex 账户"
+          }
+        }
+      }
+    },
+    "登录方式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign-in Method"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录方式"
+          }
+        }
+      }
+    },
+    "连接方式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection Method"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接方式"
+          }
+        }
+      }
+    },
+    "账户": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账户"
+          }
+        }
+      }
+    },
+    "套餐": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plan"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "套餐"
+          }
+        }
+      }
+    },
+    "当前用量": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current Usage"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前用量"
+          }
+        }
+      }
+    },
+    "改用 ChatGPT 套餐登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switch to ChatGPT Subscription"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改用 ChatGPT 套餐登录"
+          }
+        }
+      }
+    },
+    "使用 ChatGPT 登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in with ChatGPT"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 ChatGPT 登录"
+          }
+        }
+      }
+    },
+    "退出 Codex 登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign Out of Codex"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出 Codex 登录"
+          }
+        }
+      }
+    },
+    "登录由本机 codex app-server 完成，可使用 ChatGPT 套餐，不需要在 RepoPress 中填写 API Key。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign-in is handled by codex app-server on this Mac, so you can use your ChatGPT subscription without entering an API key in RepoPress."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录由本机 codex app-server 完成，可使用 ChatGPT 套餐，不需要在 RepoPress 中填写 API Key。"
+          }
+        }
+      }
+    },
+    "RepoPress 不读取或保存 OAuth 令牌；令牌保存与刷新由 Codex CLI 管理。AI 内容仍会发送到 Codex / ChatGPT。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RepoPress does not read or store OAuth tokens. Codex CLI manages token storage and refresh. AI content is still sent to Codex / ChatGPT."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RepoPress 不读取或保存 OAuth 令牌；令牌保存与刷新由 Codex CLI 管理。AI 内容仍会发送到 Codex / ChatGPT。"
+          }
+        }
+      }
+    },
+    "退出 Codex 登录？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign Out of Codex?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出 Codex 登录？"
+          }
+        }
+      }
+    },
+    "退出登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign Out"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出登录"
+          }
+        }
+      }
+    },
+    "这会退出 Codex CLI 当前账户；其他使用同一 Codex 登录的应用也可能需要重新登录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This signs the current account out of Codex CLI. Other apps using the same Codex sign-in may also need to sign in again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这会退出 Codex CLI 当前账户；其他使用同一 Codex 登录的应用也可能需要重新登录。"
+          }
+        }
+      }
+    },
+    "正在检查 Codex 账户…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking Codex account…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查 Codex 账户…"
+          }
+        }
+      }
+    },
+    "Codex 状态不可用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex Status Unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex 状态不可用"
+          }
+        }
+      }
+    },
+    "已通过 ChatGPT 登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed In with ChatGPT"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已通过 ChatGPT 登录"
+          }
+        }
+      }
+    },
+    "Codex 已登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex Signed In"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex 已登录"
+          }
+        }
+      }
+    },
+    "尚未登录 Codex": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not Signed In to Codex"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未登录 Codex"
+          }
+        }
+      }
+    },
+    "正在打开 ChatGPT 登录页面…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opening the ChatGPT sign-in page…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在打开 ChatGPT 登录页面…"
+          }
+        }
+      }
+    },
+    "无法打开 ChatGPT 登录页面，请检查默认浏览器设置。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not open the ChatGPT sign-in page. Check your default browser settings."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法打开 ChatGPT 登录页面，请检查默认浏览器设置。"
+          }
+        }
+      }
+    },
+    "请在浏览器完成登录；RepoPress 会自动刷新状态。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Complete sign-in in your browser. RepoPress will refresh the status automatically."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在浏览器完成登录；RepoPress 会自动刷新状态。"
+          }
+        }
+      }
+    },
+    "ChatGPT 登录成功。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed in to ChatGPT."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT 登录成功。"
+          }
+        }
+      }
+    },
+    "浏览器授权完成后，请点“刷新状态”。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "After completing browser authorization, click Refresh Status."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浏览器授权完成后，请点“刷新状态”。"
+          }
+        }
+      }
+    },
+    "已退出 Codex 登录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed out of Codex."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已退出 Codex 登录。"
+          }
+        }
+      }
+    },
+    "Codex 登录状态已刷新。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex sign-in status refreshed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex 登录状态已刷新。"
+          }
+        }
+      }
+    },
+    "Codex 尚未登录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex is not signed in."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex 尚未登录。"
+          }
+        }
+      }
+    },
+    "Codex App Server（本机 stdio）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex App Server (local stdio)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex App Server（本机 stdio）"
+          }
+        }
+      }
+    },
+    "使用 Codex 账户默认模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use the Codex account default model"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 Codex 账户默认模型"
+          }
+        }
+      }
+    },
+    "由本机 codex app-server 管理 ChatGPT 登录、令牌刷新和请求传输；RepoPress 不读取或保存账户令牌。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "codex app-server on this Mac manages ChatGPT sign-in, token refresh, and requests. RepoPress does not read or store account tokens."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "由本机 codex app-server 管理 ChatGPT 登录、令牌刷新和请求传输；RepoPress 不读取或保存账户令牌。"
+          }
+        }
+      }
+    },
+    "账户默认模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account default model"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账户默认模型"
+          }
+        }
+      }
+    },
+    "Codex 账户": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex Account"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex 账户"
           }
         }
       }

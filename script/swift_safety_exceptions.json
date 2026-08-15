@@ -12,6 +12,11 @@
       "rationale": "All JSONDecoder access is serialized by the wrapper lock."
     },
     {
+      "file": "Sources/PublishingWorkbenchCore/Services/CodexAppServerClient.swift",
+      "declaration": "CodexAppServerProcessTransport",
+      "rationale": "Process and pipe lifecycle state is protected by one NSLock; each async operation snapshots its dedicated file handle under that lock before use."
+    },
+    {
       "file": "Sources/PublishingWorkbenchCore/Services/GitCommandRunner.swift",
       "declaration": "BoundedOutputCollector",
       "rationale": "Collected output is protected by an internal lock."

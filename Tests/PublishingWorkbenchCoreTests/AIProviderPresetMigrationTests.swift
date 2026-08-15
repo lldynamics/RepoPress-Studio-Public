@@ -108,9 +108,28 @@ final class AIProviderPresetMigrationTests: XCTestCase {
     XCTAssertEqual(config.normalizedRequestModel, AIProviderPreset.local.defaultModel)
   }
 
+  func testCodexPresetUsesManagedAccountWithoutTreatingLocalProcessAsLocalAI() {
+    var config = AIProviderConfig(preset: .codexAppServer)
+
+    config.applyPresetDefaults()
+
+    XCTAssertTrue(config.usesCodexAppServer)
+    XCTAssertFalse(config.requiresAPIKey)
+    XCTAssertEqual(config.model, AIProviderPreset.codexDefaultModel)
+    XCTAssertEqual(config.dataSharingDestination, "Codex / ChatGPT")
+    XCTAssertFalse(config.isLocalEndpoint)
+    XCTAssertEqual(config.dataSharingConsentIdentifier, "codexAppServer|chatgpt")
+    XCTAssertNotNil(config.chatCompletionsURL)
+  }
+
   func testConnectionTemplatesContainOneUnbrandedCustomCloudEndpoint() throws {
-    XCTAssertEqual(AIConnectionProfile.templates.count, 3)
+    XCTAssertEqual(AIConnectionProfile.templates.count, 4)
     XCTAssertFalse(AIConnectionProfile.templates.contains { $0.name.contains("RepoPress") })
+
+    let codex = try XCTUnwrap(
+      AIConnectionProfile.templates.first { $0.config.preset == .codexAppServer }
+    )
+    XCTAssertFalse(codex.config.requiresAPIKey)
 
     let custom = try XCTUnwrap(
       AIConnectionProfile.templates.first { $0.config.preset == .custom }

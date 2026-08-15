@@ -58,6 +58,19 @@ final class AIProviderCapabilityTests: XCTestCase {
   }
 
   func testKnownPresetCapabilityBoundaries() {
+    XCTAssertEqual(AIProviderPreset.codexAppServer.capabilitySupport(for: .chat), .supported)
+    XCTAssertEqual(
+      AIProviderPreset.codexAppServer.capabilitySupport(for: .streamingResponse),
+      .supported
+    )
+    XCTAssertEqual(
+      AIProviderPreset.codexAppServer.capabilitySupport(for: .visionInput),
+      .unsupported
+    )
+    XCTAssertEqual(
+      AIProviderPreset.codexAppServer.capabilitySupport(for: .toolCalling),
+      .unsupported
+    )
     XCTAssertEqual(AIProviderPreset.deepSeek.capabilitySupport(for: .chat), .supported)
     XCTAssertEqual(
       AIProviderPreset.deepSeek.capabilitySupport(for: .streamingResponse),

@@ -976,6 +976,9 @@
 "只有通用草稿可以从软件资料库导出。" = "只有通用草稿可以从软件资料库导出。";
 "AI 没有返回可安全应用的完整结果。软件已阻止修改，请重试或缩小处理范围。" = "AI 没有返回可安全应用的完整结果。软件已阻止修改，请重试或缩小处理范围。";
 "OpenAI 兼容" = "开放AI兼容接口";
+"Codex 套餐" = "Codex 套餐";
+"Codex / ChatGPT" = "Codex / ChatGPT";
+"账户默认模型" = "账户默认模型";
 "本地模型" = "本地模型";
 "自定义" = "自定义";
 "本地 Ollama" = "本地 Ollama";
@@ -1006,6 +1009,7 @@
 "AI 连接尚未测试" = "AI 连接尚未测试";
 "建议保存配置后测试一次连接，确认接口地址、模型和 API Key 都可用。" = "建议保存配置后测试一次连接，确认接口地址、模型和 API Key 都可用。";
 "本地模型默认不需要 API Key，测试连接会请求本机开放AI兼容接口的 /chat/completions。" = "本地模型默认不需要 API Key，测试连接会请求本机开放AI兼容接口的 /chat/completions。";
+"Codex 套餐通过此 Mac 上的 codex app-server 使用 ChatGPT 登录；RepoPress 不读取或保存账户令牌。" = "Codex 套餐通过此 Mac 上的 codex app-server 使用 ChatGPT 登录；RepoPress 不读取或保存账户令牌。";
 "测试连接会向开放AI兼容接口的 /chat/completions 发送一次最小请求。" = "测试连接会向开放AI兼容接口的 /chat/completions 发送一次最小请求。";
 "AI 接口地址无效：%@" = "AI 接口地址无效：%@";
 "请先填写 AI 模型名称。" = "请先填写 AI 模型名称。";
