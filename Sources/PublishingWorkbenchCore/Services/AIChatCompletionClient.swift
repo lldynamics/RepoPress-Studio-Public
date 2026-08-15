@@ -7,12 +7,14 @@ public struct AIChatCompletionClient: Sendable {
   let encoder: SerializedJSONEncoder
   let decoder: SerializedJSONDecoder
   let networkRecoveryPolicy: AIChatNetworkRecoveryPolicy
+  let codexAppServerChatService: any CodexAppServerChatServing
 
   public init(
     transport: AIChatTransport? = nil,
     encoder: JSONEncoder = JSONEncoder(),
     decoder: JSONDecoder = JSONDecoder(),
-    networkRecoveryPolicy: AIChatNetworkRecoveryPolicy = .default
+    networkRecoveryPolicy: AIChatNetworkRecoveryPolicy = .default,
+    codexAppServerChatService: (any CodexAppServerChatServing)? = nil
   ) {
     self.transport =
       transport
@@ -24,5 +26,6 @@ public struct AIChatCompletionClient: Sendable {
     self.encoder = SerializedJSONEncoder(encoder)
     self.decoder = SerializedJSONDecoder(decoder)
     self.networkRecoveryPolicy = networkRecoveryPolicy
+    self.codexAppServerChatService = codexAppServerChatService ?? CodexAppServerClient.shared
   }
 }

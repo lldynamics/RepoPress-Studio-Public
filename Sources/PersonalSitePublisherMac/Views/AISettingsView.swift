@@ -98,31 +98,35 @@ struct AISettingsView: View {
           }
 
         case .credentials:
-          AIKeychainSection(
-            aiAPIKeyInput: $aiAPIKeyInput,
-            shouldFocusInput: shouldFocusAPIKey,
-            navigationRequestID: healthNavigationRequestID,
-            config: activeConnection.config,
-            storageMode: credentialStorageMode,
-            tokenAvailability: tokenAvailability,
-            actionMessage: actionMessage,
-            onSaveAPIKey: {
-              guard saveAPIKey(aiAPIKeyInput) else { return }
-              aiAPIKeyInput = ""
-              invalidateConnectionReport()
-            },
-            onDeleteAPIKey: {
-              deleteAPIKey()
-              aiAPIKeyInput = ""
-              invalidateConnectionReport()
-            },
-            onRefreshState: refreshKeyAvailability,
-            onChangeStorageMode: { mode in
-              setCredentialStorageMode(mode)
-              aiAPIKeyInput = ""
-              invalidateConnectionReport()
-            }
-          )
+          if activeConnection.config.usesCodexAppServer {
+            CodexAppServerAccountSection()
+          } else {
+            AIKeychainSection(
+              aiAPIKeyInput: $aiAPIKeyInput,
+              shouldFocusInput: shouldFocusAPIKey,
+              navigationRequestID: healthNavigationRequestID,
+              config: activeConnection.config,
+              storageMode: credentialStorageMode,
+              tokenAvailability: tokenAvailability,
+              actionMessage: actionMessage,
+              onSaveAPIKey: {
+                guard saveAPIKey(aiAPIKeyInput) else { return }
+                aiAPIKeyInput = ""
+                invalidateConnectionReport()
+              },
+              onDeleteAPIKey: {
+                deleteAPIKey()
+                aiAPIKeyInput = ""
+                invalidateConnectionReport()
+              },
+              onRefreshState: refreshKeyAvailability,
+              onChangeStorageMode: { mode in
+                setCredentialStorageMode(mode)
+                aiAPIKeyInput = ""
+                invalidateConnectionReport()
+              }
+            )
+          }
 
           AIDataSharingConsentSection(
             presentation: dataSharingConsent,
@@ -389,7 +393,12 @@ struct AISettingsView: View {
       Label(activeConnection.config.preset.localizedDisplayName, systemImage: "sparkles")
         .font(.callout.weight(.semibold))
 
-      if !activeConnection.config.normalizedModel.isEmpty {
+      if activeConnection.config.usesCodexAppServer {
+        Text("账户默认模型")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+      } else if !activeConnection.config.normalizedModel.isEmpty {
         Text(verbatim: activeConnection.config.normalizedModel)
           .font(.caption.monospaced())
           .foregroundStyle(.secondary)
@@ -407,6 +416,9 @@ struct AISettingsView: View {
   }
 
   private var aiCredentialStatusTitle: LocalizedStringKey {
+    if activeConnection.config.usesCodexAppServer {
+      return "Codex 账户"
+    }
     guard activeConnection.config.requiresAPIKey else {
       return "无需 API Key"
     }
@@ -421,12 +433,18 @@ struct AISettingsView: View {
   }
 
   private var aiCredentialStatusColor: Color {
-    !activeConnection.config.requiresAPIKey || tokenAvailability.accessState == .available
+    if activeConnection.config.usesCodexAppServer {
+      return .secondary
+    }
+    return !activeConnection.config.requiresAPIKey || tokenAvailability.accessState == .available
       ? WorkbenchTheme.success
       : WorkbenchTheme.warning
   }
 
   private var aiCredentialStatusSystemImage: String {
+    if activeConnection.config.usesCodexAppServer {
+      return "person.crop.circle"
+    }
     guard activeConnection.config.requiresAPIKey else {
       return "checkmark.circle"
     }

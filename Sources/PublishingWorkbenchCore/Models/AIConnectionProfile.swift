@@ -48,6 +48,7 @@ public struct AIConnectionProfile: Codable, Hashable, Identifiable, Sendable {
 
   public static var templates: [Self] {
     [
+      template(named: CoreL10n.text("Codex 套餐"), preset: .codexAppServer),
       template(named: CoreL10n.text("本地 Ollama"), preset: .local),
       template(named: "DeepSeek", preset: .deepSeek),
       template(named: CoreL10n.text("自定义云端接口"), preset: .custom),

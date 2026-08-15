@@ -101,6 +101,13 @@ extension AIChatCompletionClient {
       throw AIChatCompletionClientError.preparedRequestConfigurationMismatch
     }
 
+    if config.usesCodexAppServer {
+      return try await completeWithCodexAppServer(
+        prepared: prepared,
+        config: config
+      )
+    }
+
     var request = URLRequest(url: url)
     request.timeoutInterval = networkRecoveryPolicy.firstByteTimeout
     request.httpMethod = "POST"

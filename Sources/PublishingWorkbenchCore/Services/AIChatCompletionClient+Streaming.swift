@@ -58,6 +58,11 @@ extension AIChatCompletionClient {
     }
     try validatePrepared(prepared, against: config, apiKey: apiKey)
     try prepared.consume()
+
+    if config.usesCodexAppServer {
+      return codexAppServerStream(prepared: prepared, config: config)
+    }
+
     guard let streamingTransport = transport as? AIChatStreamingTransport else {
       throw AIChatCompletionClientError.streamingUnsupported
     }
@@ -72,6 +77,38 @@ extension AIChatCompletionClient {
       transport: streamingTransport,
       sensitiveValues: [apiKey].compactMap { $0 }
     )
+  }
+
+  private func codexAppServerStream(
+    prepared: AIPreparedAIChatCompletionRequest,
+    config: AIProviderConfig
+  ) -> AsyncThrowingStream<AIChatStreamUpdate, Error> {
+    AsyncThrowingStream { continuation in
+      let task = Task(priority: .userInitiated) {
+        do {
+          let result = try await completeWithCodexAppServer(
+            prepared: prepared,
+            config: config
+          )
+          try Task.checkCancellation()
+          continuation.yield(
+            AIChatStreamUpdate(
+              contentDelta: result.content,
+              tokenUsage: result.tokenUsage,
+              isFinished: true
+            )
+          )
+          continuation.finish()
+        } catch is CancellationError {
+          continuation.finish(throwing: CodexAppServerError.cancelled)
+        } catch {
+          continuation.finish(throwing: error)
+        }
+      }
+      continuation.onTermination = { @Sendable _ in
+        task.cancel()
+      }
+    }
   }
 
   private func recoveredStreamUpdates(

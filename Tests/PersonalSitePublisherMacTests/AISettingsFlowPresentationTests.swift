@@ -107,6 +107,41 @@ final class AISettingsFlowPresentationTests: XCTestCase {
     )
   }
 
+  func testCodexConnectionNeedsRemoteConsentButNoAPIKey() {
+    var config = AIProviderConfig(preset: .codexAppServer)
+    config.applyPresetDefaults()
+    let consentRequired = AIDataSharingConsentPresentation(
+      providerName: "Codex",
+      destination: "Codex / ChatGPT",
+      destinationState: .remote,
+      isGranted: false
+    )
+
+    XCTAssertEqual(
+      AIConnectionTestAvailability(
+        config: config,
+        tokenAvailability: KeychainTokenAvailability(hasToken: false),
+        dataSharingConsent: consentRequired
+      ),
+      .consentRequired
+    )
+
+    let granted = AIDataSharingConsentPresentation(
+      providerName: "Codex",
+      destination: "Codex / ChatGPT",
+      destinationState: .remote,
+      isGranted: true
+    )
+    XCTAssertEqual(
+      AIConnectionTestAvailability(
+        config: config,
+        tokenAvailability: KeychainTokenAvailability(hasToken: false),
+        dataSharingConsent: granted
+      ),
+      .ready
+    )
+  }
+
   func testKeychainFeedbackKeepsCredentialFailuresVisibleWithoutEchoingConnectionTests() {
     let failure = AIKeychainActionFeedback(message: "AI API Key 保存失败：访问被拒绝")
     XCTAssertEqual(failure?.message, "AI API Key 保存失败：访问被拒绝")

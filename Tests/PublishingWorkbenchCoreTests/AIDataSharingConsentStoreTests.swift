@@ -162,6 +162,19 @@ final class AIDataSharingConsentStoreTests: XCTestCase {
     XCTAssertTrue(presentation.isGranted)
   }
 
+  func testCodexAppServerStillRequiresRemoteDataConsent() {
+    let store = AIDataSharingConsentStore(defaults: defaults)
+    var config = AIProviderConfig(preset: .codexAppServer)
+    config.applyPresetDefaults()
+
+    let presentation = store.presentation(for: config)
+
+    XCTAssertEqual(presentation.destination, "Codex / ChatGPT")
+    XCTAssertEqual(presentation.destinationState, .remote)
+    XCTAssertTrue(presentation.requiresConsent)
+    XCTAssertFalse(presentation.isGranted)
+  }
+
   func testEmptyDestinationIsUnconfiguredInsteadOfLocalOrGranted() {
     let store = AIDataSharingConsentStore(defaults: defaults)
     let config = AIProviderConfig(

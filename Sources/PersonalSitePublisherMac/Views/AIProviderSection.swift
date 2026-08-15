@@ -44,13 +44,23 @@ struct AIProviderSection: View {
       .accessibilityLabel(String(localized: "AI 服务预设"))
       .accessibilityValue(presetDisplayName)
 
-      baseURLField
+      if presetBinding.wrappedValue == .codexAppServer {
+        LabeledContent(
+          "连接方式",
+          value: String(localized: "Codex App Server（本机 stdio）")
+        )
+        LabeledContent("模型", value: String(localized: "使用 Codex 账户默认模型"))
+        Label("无需 API Key", systemImage: "person.crop.circle.badge.checkmark")
+          .foregroundStyle(WorkbenchTheme.success)
+      } else {
+        baseURLField
 
-      modelField
+        modelField
 
-      Toggle(String(localized: "需要 API 密钥"), isOn: requiresAPIKeyBinding)
-        .accessibilityLabel(String(localized: "AI 需要 API Key"))
-        .accessibilityValue(requiresAPIKeyDisplayValue)
+        Toggle(String(localized: "需要 API 密钥"), isOn: requiresAPIKeyBinding)
+          .accessibilityLabel(String(localized: "AI 需要 API Key"))
+          .accessibilityValue(requiresAPIKeyDisplayValue)
+      }
 
       if isPresetModifiedFromDefault {
         HStack {
@@ -65,7 +75,9 @@ struct AIProviderSection: View {
     } header: {
       Text(String(localized: "AI 服务配置"))
     } footer: {
-      if presetBinding.wrappedValue == .custom {
+      if presetBinding.wrappedValue == .codexAppServer {
+        Text("由本机 codex app-server 管理 ChatGPT 登录、令牌刷新和请求传输；RepoPress 不读取或保存账户令牌。")
+      } else if presetBinding.wrappedValue == .custom {
         Text(String(localized: "自定义模式下，基础地址与模型默认为空。基础地址会在点击“应用地址”后生效，避免编辑过程中提前替换当前 AI 凭据。"))
       }
     }
@@ -76,7 +88,7 @@ struct AIProviderSection: View {
 
   private var isPresetModifiedFromDefault: Bool {
     let preset = presetBinding.wrappedValue
-    guard preset != .custom else { return false }
+    guard preset != .custom, preset != .codexAppServer else { return false }
     return baseURLDraft != preset.defaultBaseURL
       || model.wrappedValue != preset.defaultModel
   }
@@ -218,6 +230,8 @@ struct AIProviderSection: View {
 
   private var suggestedModels: [String] {
     switch presetBinding.wrappedValue {
+    case .codexAppServer:
+      return []
     case .openAICompatible:
       return ["gpt-4o", "gpt-4o-mini", "o3-mini"]
     case .deepSeek:
@@ -261,7 +275,7 @@ struct AIProviderSection: View {
     baseURLDraft = preset.defaultBaseURL
     baseURL.wrappedValue = preset.defaultBaseURL
     model.wrappedValue = preset.defaultModel
-    requiresAPIKeyBinding.wrappedValue = (preset != .local)
+    requiresAPIKeyBinding.wrappedValue = (preset != .local && preset != .codexAppServer)
   }
 
   private func applyBaseURLDraft() {
