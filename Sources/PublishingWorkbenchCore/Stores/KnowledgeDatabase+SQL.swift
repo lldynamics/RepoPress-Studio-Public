@@ -168,14 +168,16 @@ extension KnowledgeDatabase {
     return normalized
   }
 
-  func folderNameExists(_ name: String, excluding folderID: UUID?) throws -> Bool {
+  /// The caller must hold `lock`. Folder mutations already run inside
+  /// `withLock`, so taking the lock again here would deadlock `NSLock`.
+  func folderNameExistsUnlocked(_ name: String, excluding folderID: UUID?) throws -> Bool {
     let sql: String
     if folderID == nil {
       sql = "SELECT 1 FROM knowledge_folders WHERE name = ? COLLATE NOCASE LIMIT 1;"
     } else {
       sql = "SELECT 1 FROM knowledge_folders WHERE name = ? COLLATE NOCASE AND id != ? LIMIT 1;"
     }
-    return try withCachedStatement(sql) { statement in
+    return try withCachedStatementUnlocked(sql) { statement in
       bind(name, at: 1, to: statement)
       if let folderID {
         bind(folderID.uuidString, at: 2, to: statement)
@@ -186,9 +188,10 @@ extension KnowledgeDatabase {
     }
   }
 
-  func folderExists(_ folderID: UUID) throws -> Bool {
+  /// The caller must hold `lock`.
+  func folderExistsUnlocked(_ folderID: UUID) throws -> Bool {
     let sql = "SELECT 1 FROM knowledge_folders WHERE id = ? LIMIT 1;"
-    return try withCachedStatement(sql) { statement in
+    return try withCachedStatementUnlocked(sql) { statement in
       bind(folderID.uuidString, at: 1, to: statement)
       let result = sqlite3_step(statement)
       guard result == SQLITE_ROW || result == SQLITE_DONE else { throw databaseError() }
