@@ -542,7 +542,13 @@ require_literal_any_file \
 
 require_literal_any_file \
   ".accessibilityLabel(\"文章统计\")" \
-  "markdown editor statistics must expose accessibility value" \
+  "markdown editor statistics must expose an accessibility label" \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
+  "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift"
+
+require_literal_any_file \
+  ".accessibilityValue(statisticsAccessibilityValue)" \
+  "markdown editor statistics must expose an accessibility value" \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift"
 

@@ -1166,7 +1166,8 @@ struct MacMarkdownFormattingToolbar: View {
     }
     .buttonStyle(.plain)
     .help("点击查看详细统计与设定目标字数")
-    .accessibilityLabel("文章统计与目标")
+    .accessibilityLabel("文章统计")
+    .accessibilityValue(statisticsAccessibilityValue)
     .popover(isPresented: $isStatsPopoverPresented, arrowEdge: .bottom) {
       statisticsDetailPopover
     }
@@ -1298,6 +1299,12 @@ struct MacMarkdownFormattingToolbar: View {
     String(
       localized: "⏱️ 约 \(readingMinutes) 分钟 · \(writingUnitCount) 字/词"
     )
+  }
+
+  private var statisticsAccessibilityValue: String {
+    guard targetWordCount > 0 else { return statisticsSummary }
+    let percent = Int((Double(writingUnitCount) / Double(targetWordCount)) * 100)
+    return "\(statisticsSummary) · \(writingUnitCount)/\(targetWordCount) (\(percent)%)"
   }
 
   @ViewBuilder
