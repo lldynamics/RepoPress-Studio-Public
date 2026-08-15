@@ -26,6 +26,8 @@ grep -Fq 'contents: read' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow token permissions must be read-only"
 grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must select the Xcode 26.3 Safari extension toolchain"
+grep -Fq 'PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/ms-playwright' "$TOOLING_WORKFLOW" \
+  || fail "release-tooling workflow must share one Playwright browser path across install and gates"
 grep -Fq 'xcrun -f safari-web-extension-packager' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must verify the Safari extension packager before running gates"
 for workflow_path in "$WORKFLOW" "$TOOLING_WORKFLOW"; do
