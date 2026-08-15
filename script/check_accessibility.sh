@@ -541,7 +541,7 @@ require_literal_any_file \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerFindReplace.swift"
 
 require_literal_any_file \
-  ".accessibilityLabel(\"文章统计\")" \
+  ".accessibilityLabel(\"文章统计与目标\")" \
   "markdown editor statistics must expose an accessibility label" \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerView.swift" \
   "Sources/PersonalSitePublisherMac/Views/MacMarkdownComposerToolbars.swift"

@@ -1166,7 +1166,7 @@ struct MacMarkdownFormattingToolbar: View {
     }
     .buttonStyle(.plain)
     .help("点击查看详细统计与设定目标字数")
-    .accessibilityLabel("文章统计")
+    .accessibilityLabel("文章统计与目标")
     .accessibilityValue(statisticsAccessibilityValue)
     .popover(isPresented: $isStatsPopoverPresented, arrowEdge: .bottom) {
       statisticsDetailPopover
