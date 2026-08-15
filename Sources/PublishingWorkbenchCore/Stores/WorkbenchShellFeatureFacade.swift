@@ -5,6 +5,7 @@ import Foundation
 public final class WorkbenchShellFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
   private var cancellables = Set<AnyCancellable>()
+  private var isChangeNotificationScheduled = false
 
   init(store: WorkbenchStore) {
     self.store = store
@@ -76,7 +77,23 @@ public final class WorkbenchShellFeatureFacade: ObservableObject {
     publisher
       .removeDuplicates()
       .dropFirst()
-      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .sink { [weak self] _ in self?.scheduleChangeNotification() }
       .store(in: &cancellables)
+  }
+
+  private func scheduleChangeNotification() {
+    guard !isChangeNotificationScheduled else { return }
+    isChangeNotificationScheduled = true
+
+    // @Published emits before the source property is committed. Forward the
+    // invalidation in the next default-mode cycle so facade getters expose the
+    // new value when SwiftUI recomputes the workspace shell.
+    RunLoop.main.perform(inModes: [.default]) { [weak self] in
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.isChangeNotificationScheduled = false
+        self.objectWillChange.send()
+      }
+    }
   }
 }

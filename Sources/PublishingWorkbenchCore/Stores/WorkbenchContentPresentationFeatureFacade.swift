@@ -8,6 +8,7 @@ import Foundation
 public final class WorkbenchContentPresentationFeatureFacade: ObservableObject {
   private unowned let store: WorkbenchStore
   private var cancellables = Set<AnyCancellable>()
+  private var isChangeNotificationScheduled = false
 
   init(store: WorkbenchStore) {
     self.store = store
@@ -67,7 +68,22 @@ public final class WorkbenchContentPresentationFeatureFacade: ObservableObject {
     publisher
       .removeDuplicates()
       .dropFirst()
-      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .sink { [weak self] _ in self?.scheduleChangeNotification() }
       .store(in: &cancellables)
+  }
+
+  private func scheduleChangeNotification() {
+    guard !isChangeNotificationScheduled else { return }
+    isChangeNotificationScheduled = true
+
+    // Deliver after the source @Published properties leave willSet so layout
+    // decisions use the committed editor and assistant presentation values.
+    RunLoop.main.perform(inModes: [.default]) { [weak self] in
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.isChangeNotificationScheduled = false
+        self.objectWillChange.send()
+      }
+    }
   }
 }

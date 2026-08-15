@@ -1379,11 +1379,19 @@ texteditor_gaps="$(
 )"
 [[ -z "$texteditor_gaps" ]] || fail "text editors missing accessibility labels: $texteditor_gaps"
 
-prominent_style_gaps="$(
-  rg -n 'buttonStyle\(\.borderedProminent\)' \
-    "$ROOT_DIR"/Sources/PersonalSitePublisherMac/Views \
-    --glob '!WorkbenchVisualStyle.swift' || true
-)"
+if command -v rg >/dev/null 2>&1; then
+  prominent_style_gaps="$(
+    rg -n 'buttonStyle\(\.borderedProminent\)' \
+      "$ROOT_DIR"/Sources/PersonalSitePublisherMac/Views \
+      --glob '!WorkbenchVisualStyle.swift' || true
+  )"
+else
+  prominent_style_gaps="$(
+    grep -R -n -F 'buttonStyle(.borderedProminent)' \
+      "$ROOT_DIR"/Sources/PersonalSitePublisherMac/Views \
+      | grep -v '/WorkbenchVisualStyle.swift:' || true
+  )"
+fi
 [[ -z "$prominent_style_gaps" ]] || fail "prominent buttons bypassing the shared high-contrast style: $prominent_style_gaps"
 
 echo "accessibility gate: labels, values, hints, text editors, semantic knowledge headings, VoiceOver status announcements, selection traits, keyboard shortcuts, command routing, visible focus states, responsive text labels, prominent-action contrast, first-run setup, status light, settings, editor, site starter, diff review, and publish recovery verified"
