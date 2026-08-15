@@ -27,12 +27,13 @@ exit "${STRICT_BUILD_STUB_EXIT:-0}"
 STUB
 chmod +x "$BIN_DIR/swift"
 
-STRICT_BUILD_ARGS_FILE="$ARGS_FILE" \
-STRICT_BUILD_ENV_FILE="$ENV_FILE" \
-PATH="$BIN_DIR:$PATH" \
-SWIFT_BUILD_HOME="$TMP_DIR/swift-home" \
-SWIFT_PACKAGE_CACHE_PATH="$TMP_DIR/swift-cache" \
-STRICT_BUILD_SCRATCH_PATH="$TMP_DIR/strict-concurrency" \
+env -u XDG_CACHE_HOME -u CLANG_MODULE_CACHE_PATH -u SWIFT_MODULE_CACHE_PATH \
+  STRICT_BUILD_ARGS_FILE="$ARGS_FILE" \
+  STRICT_BUILD_ENV_FILE="$ENV_FILE" \
+  PATH="$BIN_DIR:$PATH" \
+  SWIFT_BUILD_HOME="$TMP_DIR/swift-home" \
+  SWIFT_PACKAGE_CACHE_PATH="$TMP_DIR/swift-cache" \
+  STRICT_BUILD_SCRATCH_PATH="$TMP_DIR/strict-concurrency" \
   bash "$ROOT_DIR/script/check_swift_strict_build.sh" >/dev/null
 
 grep -Fxq "build" "$ARGS_FILE" || fail "gate did not run swift build"
@@ -48,7 +49,8 @@ grep -Fxq -- "-strict-concurrency=complete" "$ARGS_FILE" || fail "gate omitted c
 grep -Fxq -- "-warnings-as-errors" "$ARGS_FILE" || fail "gate omitted warnings-as-errors"
 grep -Fq "$TMP_DIR/swift-home" "$ENV_FILE" || fail "gate did not isolate Swift build caches"
 
-if STRICT_BUILD_ARGS_FILE="$ARGS_FILE" \
+if env -u XDG_CACHE_HOME -u CLANG_MODULE_CACHE_PATH -u SWIFT_MODULE_CACHE_PATH \
+  STRICT_BUILD_ARGS_FILE="$ARGS_FILE" \
   STRICT_BUILD_ENV_FILE="$ENV_FILE" \
   STRICT_BUILD_STUB_EXIT=17 \
   PATH="$BIN_DIR:$PATH" \
