@@ -70,6 +70,16 @@ struct AISettingsView: View {
               : String(localized: "关闭")
           )
 
+          if activeConnection.config.usesCodexAppServer {
+            codexAccountSection
+          }
+
+          if activeConnection.config.preset == .local {
+            LocalAIEngineDiscoverySection { baseURL, model in
+              applyLocalAIConfiguration(baseURL: baseURL, model: model)
+            }
+          }
+
           Section {
             DisclosureGroup(
               String(localized: "高级能力、对话参数与本地服务"),
@@ -92,15 +102,15 @@ struct AISettingsView: View {
               )
             )
 
-            LocalAIEngineDiscoverySection { baseURL, model in
-              applyLocalAIConfiguration(baseURL: baseURL, model: model)
+            if activeConnection.config.preset != .local {
+              LocalAIEngineDiscoverySection { baseURL, model in
+                applyLocalAIConfiguration(baseURL: baseURL, model: model)
+              }
             }
           }
 
         case .credentials:
-          if activeConnection.config.usesCodexAppServer {
-            CodexAppServerAccountSection()
-          } else {
+          if !activeConnection.config.usesCodexAppServer {
             AIKeychainSection(
               aiAPIKeyInput: $aiAPIKeyInput,
               shouldFocusInput: shouldFocusAPIKey,
@@ -214,6 +224,26 @@ struct AISettingsView: View {
     } scopeControl: {
       aiSettingsPicker
     }
+  }
+
+  private var codexAccountSection: some View {
+    CodexAppServerAccountSection(
+      dataSharingConsent: dataSharingConsent,
+      grantConsentForConnection: {
+        setRemoteAIEnabled(true)
+        grantDataSharingConsent()
+        invalidateConnectionReport()
+      },
+      testConnection: {
+        let report = await testConnection([])
+        await MainActor.run {
+          hasAttemptedConnectionTest = true
+          aiConnectionReport = report
+          isConnectionReportStale = false
+        }
+        return report
+      }
+    )
   }
 
   private var aiSettingsPicker: some View {

@@ -4,6 +4,15 @@ import XCTest
 @testable import PublishingWorkbenchCore
 
 final class AISettingsFlowPresentationTests: XCTestCase {
+  func testProviderPresetsCollapseIntoThreeUserFacingConnectionKinds() {
+    XCTAssertEqual(AIConnectionKind(preset: .codexAppServer), .chatGPT)
+    XCTAssertEqual(AIConnectionKind(preset: .local), .local)
+    XCTAssertEqual(AIConnectionKind(preset: .openAICompatible), .apiKey)
+    XCTAssertEqual(AIConnectionKind(preset: .deepSeek), .apiKey)
+    XCTAssertEqual(AIConnectionKind(preset: .openRouter), .apiKey)
+    XCTAssertEqual(AIConnectionKind(preset: .custom), .apiKey)
+  }
+
   func testStructuredDestinationsSelectTheExpectedAISection() {
     XCTAssertEqual(AISettingsSection(destination: .connection), .connection)
     XCTAssertEqual(AISettingsSection(destination: .credentials), .credentials)
@@ -139,6 +148,39 @@ final class AISettingsFlowPresentationTests: XCTestCase {
         dataSharingConsent: granted
       ),
       .ready
+    )
+  }
+
+  func testFirstSendConfirmationOnlyAppearsForUngrantedRemoteDestination() {
+    XCTAssertTrue(
+      AIChatDataSharingConsentPolicy.requiresConfirmation(
+        AIDataSharingConsentPresentation(
+          providerName: "ChatGPT",
+          destination: "Codex / ChatGPT",
+          destinationState: .remote,
+          isGranted: false
+        )
+      )
+    )
+    XCTAssertFalse(
+      AIChatDataSharingConsentPolicy.requiresConfirmation(
+        AIDataSharingConsentPresentation(
+          providerName: "ChatGPT",
+          destination: "Codex / ChatGPT",
+          destinationState: .remote,
+          isGranted: true
+        )
+      )
+    )
+    XCTAssertFalse(
+      AIChatDataSharingConsentPolicy.requiresConfirmation(
+        AIDataSharingConsentPresentation(
+          providerName: "Local",
+          destination: "127.0.0.1:11434",
+          destinationState: .local,
+          isGranted: true
+        )
+      )
     )
   }
 

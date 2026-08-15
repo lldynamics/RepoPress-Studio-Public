@@ -2305,6 +2305,22 @@
         }
       }
     },
+    "1. ChatGPT 账户": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. ChatGPT Account"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. ChatGPT 账户"
+          }
+        }
+      }
+    },
     "1. 选择来源": {
       "localizations": {
         "en": {
@@ -2929,38 +2945,6 @@
         }
       }
     },
-    "AI 服务配置": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "AI Service Configuration"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "AI 服务配置"
-          }
-        }
-      }
-    },
-    "AI 服务预设": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "AI Service Preset"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "AI 服务预设"
-          }
-        }
-      }
-    },
     "AI 模型": {
       "localizations": {
         "en": {
@@ -3329,6 +3313,22 @@
         }
       }
     },
+    "AI 连接方式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI connection method"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 连接方式"
+          }
+        }
+      }
+    },
     "AI 连接档案": {
       "localizations": {
         "en": {
@@ -3521,6 +3521,38 @@
         }
       }
     },
+    "API 服务": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API service"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 服务"
+          }
+        }
+      }
+    },
+    "API 服务预设": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API service preset"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 服务预设"
+          }
+        }
+      }
+    },
     "Alt": {
       "localizations": {
         "en": {
@@ -3665,6 +3697,118 @@
         }
       }
     },
+    "ChatGPT 套餐": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT plan"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT 套餐"
+          }
+        }
+      }
+    },
+    "ChatGPT 尚未登录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT is not signed in."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT 尚未登录。"
+          }
+        }
+      }
+    },
+    "ChatGPT 状态不可用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT status unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT 状态不可用"
+          }
+        }
+      }
+    },
+    "ChatGPT 登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT Sign-In"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT 登录"
+          }
+        }
+      }
+    },
+    "ChatGPT 登录成功，套餐与用量已刷新。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT sign-in succeeded. Plan and usage have been refreshed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT 登录成功，套餐与用量已刷新。"
+          }
+        }
+      }
+    },
+    "ChatGPT 登录状态已刷新。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT sign-in status refreshed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT 登录状态已刷新。"
+          }
+        }
+      }
+    },
+    "ChatGPT 登录需要本机 Codex 运行组件。安装后点“重新检测”；RepoPress 不会静默安装或修改系统。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT sign-in requires the Codex runtime on this Mac. After installing it, click Check Again. RepoPress never installs it silently or modifies the system."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT 登录需要本机 Codex 运行组件。安装后点“重新检测”；RepoPress 不会静默安装或修改系统。"
+          }
+        }
+      }
+    },
     "Chrome": {
       "localizations": {
         "en": {
@@ -3757,6 +3901,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cloudflare Pages 项目"
+          }
+        }
+      }
+    },
+    "Codex 账户": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex Account"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex 账户"
           }
         }
       }
@@ -4365,6 +4525,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "Hexo 规范"
+          }
+        }
+      }
+    },
+    "Homebrew 安装命令已复制。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Homebrew install command was copied."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Homebrew 安装命令已复制。"
+          }
+        }
+      }
+    },
+    "Homebrew 运行组件可用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Homebrew runtime available"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Homebrew 运行组件可用"
           }
         }
       }
@@ -5389,6 +5581,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "RepoPress Studio 将在 %@ 中创建新的数据文件夹。复制并校验成功后应用会退出，原文件夹不会删除。"
+          }
+        }
+      }
+    },
+    "RepoPress 不读取或保存登录令牌。AI 内容仍会发送到 OpenAI，并在首次发送前征求你的确认。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RepoPress does not read or store sign-in tokens. AI content is still sent to OpenAI, and RepoPress asks for confirmation before the first send."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RepoPress 不读取或保存登录令牌。AI 内容仍会发送到 OpenAI，并在首次发送前征求你的确认。"
           }
         }
       }
@@ -16081,6 +16289,38 @@
         }
       }
     },
+    "使用 ChatGPT 套餐登录，不需要在 RepoPress 中填写 API Key。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in with your ChatGPT plan without entering an API key in RepoPress."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 ChatGPT 套餐登录，不需要在 RepoPress 中填写 API Key。"
+          }
+        }
+      }
+    },
+    "使用 ChatGPT 登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in with ChatGPT"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 ChatGPT 登录"
+          }
+        }
+      }
+    },
     "使用上下按钮调整图标顺序，勾选控制显示与隐藏": {
       "localizations": {
         "en": {
@@ -16221,6 +16461,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "使用系统默认浏览器打开这个 HTML 文件。"
+          }
+        }
+      }
+    },
+    "使用自己的 ChatGPT 套餐，不需要 API Key；RepoPress 不读取或保存账户令牌。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use your own ChatGPT plan without an API key. RepoPress does not read or store account tokens."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用自己的 ChatGPT 套餐，不需要 API Key；RepoPress 不读取或保存账户令牌。"
           }
         }
       }
@@ -17293,6 +17549,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "允许加载当前文章的远程图片"
+          }
+        }
+      }
+    },
+    "允许发送到远程 AI？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow sending to remote AI?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许发送到远程 AI？"
           }
         }
       }
@@ -19089,6 +19361,22 @@
         }
       }
     },
+    "内容只发送到这台 Mac 上配置的本地模型服务。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Content is sent only to the local model service configured on this Mac."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内容只发送到这台 Mac 上配置的本地模型服务。"
+          }
+        }
+      }
+    },
     "内容完全相同": {
       "localizations": {
         "en": {
@@ -19309,6 +19597,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "内置 %lld 个模板，支持新建站点或导入已有仓库。"
+          }
+        }
+      }
+    },
+    "内置运行组件可用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bundled runtime available"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内置运行组件可用"
           }
         }
       }
@@ -23041,6 +23345,22 @@
         }
       }
     },
+    "取消登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel Sign-In"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消登录"
+          }
+        }
+      }
+    },
     "取消计划": {
       "localizations": {
         "en": {
@@ -24097,6 +24417,22 @@
         }
       }
     },
+    "同意并发送": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow and Send"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同意并发送"
+          }
+        }
+      }
+    },
     "同意并启用此 AI 服务": {
       "localizations": {
         "en": {
@@ -24109,6 +24445,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "同意并启用此 AI 服务"
+          }
+        }
+      }
+    },
+    "同意并测试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow and Test"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同意并测试"
           }
         }
       }
@@ -25489,6 +25841,22 @@
         }
       }
     },
+    "在浏览器输入设备码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the device code in your browser"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在浏览器输入设备码"
+          }
+        }
+      }
+    },
     "在站点新建文章并添加双向链接 [[文章标题]] 或标签，系统将自动绘制拓扑图谱。": {
       "localizations": {
         "en": {
@@ -26529,6 +26897,22 @@
         }
       }
     },
+    "复制安装命令": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Install Command"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制安装命令"
+          }
+        }
+      }
+    },
     "复制完整 Markdown 代码块": {
       "localizations": {
         "en": {
@@ -26865,6 +27249,22 @@
         }
       }
     },
+    "复制设备码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Device Code"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制设备码"
+          }
+        }
+      }
+    },
     "复制诊断": {
       "localizations": {
         "en": {
@@ -27181,6 +27581,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "失败：请拖入本机文件或文件夹。"
+          }
+        }
+      }
+    },
+    "套餐": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plan"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "套餐"
           }
         }
       }
@@ -28913,6 +29329,22 @@
         }
       }
     },
+    "将把本次消息及所选上下文发送到 %@（%@）。同意后，该目的地后续可直接使用；你可随时在设置中撤销。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This message and the selected context will be sent to %@ (%@). After you allow it, this destination can be used directly. You can revoke access in Settings at any time."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将把本次消息及所选上下文发送到 %@（%@）。同意后，该目的地后续可直接使用；你可随时在设置中撤销。"
+          }
+        }
+      }
+    },
     "将更新 %@ 项发布规则": {
       "localizations": {
         "en": {
@@ -29149,6 +29581,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "尚未生成同步建议。请先扫描仓库，并确认当前分支已经设置 upstream。"
+          }
+        }
+      }
+    },
+    "尚未登录 ChatGPT": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not signed in to ChatGPT"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未登录 ChatGPT"
           }
         }
       }
@@ -30769,6 +31217,22 @@
         }
       }
     },
+    "已登录其他账户": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed in with another account"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已登录其他账户"
+          }
+        }
+      }
+    },
     "已登记": {
       "localizations": {
         "en": {
@@ -30957,6 +31421,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "已追加 AI 回复并插入资料库脚注。"
+          }
+        }
+      }
+    },
+    "已退出 ChatGPT 登录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed out of ChatGPT."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已退出 ChatGPT 登录。"
           }
         }
       }
@@ -31197,6 +31677,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "已选文本"
+          }
+        }
+      }
+    },
+    "已通过 ChatGPT 登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed In with ChatGPT"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已通过 ChatGPT 登录"
           }
         }
       }
@@ -33341,6 +33837,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "当前状态和下一步"
+          }
+        }
+      }
+    },
+    "当前用量": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current Usage"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前用量"
           }
         }
       }
@@ -35809,6 +36321,22 @@
         }
       }
     },
+    "打开安装说明": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Installation Guide"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开安装说明"
+          }
+        }
+      }
+    },
     "打开并跳转到这个相关章节": {
       "localizations": {
         "en": {
@@ -36365,6 +36893,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "打开预览"
+          }
+        }
+      }
+    },
+    "打开验证页面": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Verification Page"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开验证页面"
           }
         }
       }
@@ -39185,6 +39729,38 @@
         }
       }
     },
+    "改用 ChatGPT 套餐登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switch to ChatGPT Subscription"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改用 ChatGPT 套餐登录"
+          }
+        }
+      }
+    },
+    "改用设备码登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use Device Code Instead"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改用设备码登录"
+          }
+        }
+      }
+    },
     "放大资料阅读区域后可显示检查器": {
       "localizations": {
         "en": {
@@ -41233,6 +41809,22 @@
         }
       }
     },
+    "无法打开 ChatGPT 登录页面，请检查默认浏览器设置。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not open the ChatGPT sign-in page. Check your default browser settings."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法打开 ChatGPT 登录页面，请检查默认浏览器设置。"
+          }
+        }
+      }
+    },
     "无法新建数据文件夹：%@": {
       "localizations": {
         "en": {
@@ -43137,22 +43729,6 @@
         }
       }
     },
-    "服务预设": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Service Preset"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "服务预设"
-          }
-        }
-      }
-    },
     "朗读": {
       "localizations": {
         "en": {
@@ -43501,6 +44077,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "未开启"
+          }
+        }
+      }
+    },
+    "未找到 Codex 运行组件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex runtime not found"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未找到 Codex 运行组件"
+          }
+        }
+      }
+    },
+    "未找到 Codex 运行组件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex runtime not found."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未找到 Codex 运行组件。"
           }
         }
       }
@@ -44429,6 +45037,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "本地有 %lld 项变化"
+          }
+        }
+      }
+    },
+    "本地模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local Model"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本地模型"
           }
         }
       }
@@ -47089,6 +47713,22 @@
         }
       }
     },
+    "正在创建设备码…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Creating a device code…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在创建设备码…"
+          }
+        }
+      }
+    },
     "正在刷新": {
       "localizations": {
         "en": {
@@ -47425,6 +48065,22 @@
         }
       }
     },
+    "正在打开 ChatGPT 登录页面…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opening the ChatGPT sign-in page…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在打开 ChatGPT 登录页面…"
+          }
+        }
+      }
+    },
     "正在执行全文与本地语义检索…": {
       "localizations": {
         "en": {
@@ -47713,6 +48369,38 @@
         }
       }
     },
+    "正在检查 ChatGPT 账户": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking ChatGPT account"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查 ChatGPT 账户"
+          }
+        }
+      }
+    },
+    "正在检查 ChatGPT 账户…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking ChatGPT account…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查 ChatGPT 账户…"
+          }
+        }
+      }
+    },
     "正在检查仓库权限...": {
       "localizations": {
         "en": {
@@ -47805,6 +48493,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在检测本地 AI"
+          }
+        }
+      }
+    },
+    "正在检测运行组件…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking runtime…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检测运行组件…"
           }
         }
       }
@@ -49601,6 +50305,22 @@
         }
       }
     },
+    "测试会向 OpenAI 发送一条不含文章或资料库内容的最小请求，并保存此目的地的发送授权。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The test sends OpenAI a minimal request that contains no article or knowledge-library content, and saves permission for this destination."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试会向 OpenAI 发送一条不含文章或资料库内容的最小请求，并保存此目的地的发送授权。"
+          }
+        }
+      }
+    },
     "测试会向当前服务发送一次最小请求，不会发送站点文章或资料库内容。": {
       "localizations": {
         "en": {
@@ -49645,6 +50365,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "浏览仓库中的图片、查看引用关系，并把图片加入目标文章。"
+          }
+        }
+      }
+    },
+    "浏览器回跳不可用时使用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use this when the browser callback is unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浏览器回跳不可用时使用"
           }
         }
       }
@@ -51549,6 +52285,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "疑似参数：%@。"
+          }
+        }
+      }
+    },
+    "登录已取消。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign-in cancelled."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录已取消。"
+          }
+        }
+      }
+    },
+    "登录成功，但自动连接测试失败；你可以稍后重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign-in succeeded, but the automatic connection test failed. You can try again later."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录成功，但自动连接测试失败；你可以稍后重试。"
+          }
+        }
+      }
+    },
+    "登录成功，正在自动测试连接…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed in. Testing the connection automatically…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录成功，正在自动测试连接…"
+          }
+        }
+      }
+    },
+    "登录成功，测试连接？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed in. Test the connection?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录成功，测试连接？"
+          }
+        }
+      }
+    },
+    "登录方式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign-in Method"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录方式"
           }
         }
       }
@@ -53985,6 +54801,22 @@
         }
       }
     },
+    "系统运行组件可用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System runtime available"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统运行组件可用"
+          }
+        }
+      }
+    },
     "系统钥匙串": {
       "localizations": {
         "en": {
@@ -55649,6 +56481,22 @@
         }
       }
     },
+    "自动选择账户可用模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatically select a model available to the account"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动选择账户可用模型"
+          }
+        }
+      }
+    },
     "自动重试：%@": {
       "localizations": {
         "en": {
@@ -56605,6 +57453,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "设为文章封面"
+          }
+        }
+      }
+    },
+    "设备码 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device code %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设备码 %@"
+          }
+        }
+      }
+    },
+    "设备码已复制。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device code copied."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设备码已复制。"
+          }
+        }
+      }
+    },
+    "设备码已复制。请在浏览器完成登录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device code copied. Complete sign-in in your browser."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设备码已复制。请在浏览器完成登录。"
           }
         }
       }
@@ -57585,6 +58481,22 @@
         }
       }
     },
+    "请在浏览器完成登录；完成后此处会自动更新。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Complete sign-in in your browser. This view updates automatically when you finish."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在浏览器完成登录；完成后此处会自动更新。"
+          }
+        }
+      }
+    },
     "请在站点设置中选择仓库并完成扫描。": {
       "localizations": {
         "en": {
@@ -57981,6 +58893,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "调整朗读速度，支持 1.0x 到 2.0x"
+          }
+        }
+      }
+    },
+    "账户": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账户"
+          }
+        }
+      }
+    },
+    "账户默认模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account default model"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "账户默认模型"
           }
         }
       }
@@ -59361,6 +60305,22 @@
         }
       }
     },
+    "运行组件可用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Runtime available"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行组件可用"
+          }
+        }
+      }
+    },
     "近 %@ 个月": {
       "localizations": {
         "en": {
@@ -60049,6 +61009,22 @@
         }
       }
     },
+    "这会退出本机当前 ChatGPT 账户；其他共用此登录的应用也可能需要重新登录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This signs out the current ChatGPT account on this Mac. Other apps that share this sign-in may need to sign in again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这会退出本机当前 ChatGPT 账户；其他共用此登录的应用也可能需要重新登录。"
+          }
+        }
+      }
+    },
     "这台 Mac 上有 %lld 个文件变化": {
       "localizations": {
         "en": {
@@ -60689,6 +61665,22 @@
         }
       }
     },
+    "连接方式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection Method"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接方式"
+          }
+        }
+      }
+    },
     "连接未更新，请检查 Keychain 权限后重试。": {
       "localizations": {
         "en": {
@@ -60833,6 +61825,38 @@
         }
       }
     },
+    "退出 ChatGPT 登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign Out of ChatGPT"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出 ChatGPT 登录"
+          }
+        }
+      }
+    },
+    "退出 ChatGPT 登录？": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign out of ChatGPT?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出 ChatGPT 登录？"
+          }
+        }
+      }
+    },
     "退出安全模式": {
       "localizations": {
         "en": {
@@ -60877,6 +61901,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "退出批量选择（Esc）"
+          }
+        }
+      }
+    },
+    "退出登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign Out"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出登录"
           }
         }
       }
@@ -61021,6 +62061,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "选择 %@ 查看问题详情"
+          }
+        }
+      }
+    },
+    "选择 AI 连接方式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose an AI connection method"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 AI 连接方式"
           }
         }
       }
@@ -62945,6 +64001,22 @@
         }
       }
     },
+    "重新检测": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新检测"
+          }
+        }
+      }
+    },
     "重新检测本地 AI": {
       "localizations": {
         "en": {
@@ -64061,6 +65133,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "需要处理"
+          }
+        }
+      }
+    },
+    "需要安装运行组件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Runtime installation required"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要安装运行组件"
           }
         }
       }
@@ -65293,534 +66381,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "（源文过长，已按安全上限截取）"
-          }
-        }
-      }
-    },
-    "1. Codex 账户": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1. Codex Account"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1. Codex 账户"
-          }
-        }
-      }
-    },
-    "正在检查 Codex 账户": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Checking Codex account"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在检查 Codex 账户"
-          }
-        }
-      }
-    },
-    "登录方式": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sign-in Method"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "登录方式"
-          }
-        }
-      }
-    },
-    "连接方式": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Connection Method"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "连接方式"
-          }
-        }
-      }
-    },
-    "账户": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Account"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "账户"
-          }
-        }
-      }
-    },
-    "套餐": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Plan"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "套餐"
-          }
-        }
-      }
-    },
-    "当前用量": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Current Usage"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "当前用量"
-          }
-        }
-      }
-    },
-    "改用 ChatGPT 套餐登录": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Switch to ChatGPT Subscription"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "改用 ChatGPT 套餐登录"
-          }
-        }
-      }
-    },
-    "使用 ChatGPT 登录": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sign in with ChatGPT"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "使用 ChatGPT 登录"
-          }
-        }
-      }
-    },
-    "退出 Codex 登录": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sign Out of Codex"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "退出 Codex 登录"
-          }
-        }
-      }
-    },
-    "登录由本机 codex app-server 完成，可使用 ChatGPT 套餐，不需要在 RepoPress 中填写 API Key。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sign-in is handled by codex app-server on this Mac, so you can use your ChatGPT subscription without entering an API key in RepoPress."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "登录由本机 codex app-server 完成，可使用 ChatGPT 套餐，不需要在 RepoPress 中填写 API Key。"
-          }
-        }
-      }
-    },
-    "RepoPress 不读取或保存 OAuth 令牌；令牌保存与刷新由 Codex CLI 管理。AI 内容仍会发送到 Codex / ChatGPT。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "RepoPress does not read or store OAuth tokens. Codex CLI manages token storage and refresh. AI content is still sent to Codex / ChatGPT."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "RepoPress 不读取或保存 OAuth 令牌；令牌保存与刷新由 Codex CLI 管理。AI 内容仍会发送到 Codex / ChatGPT。"
-          }
-        }
-      }
-    },
-    "退出 Codex 登录？": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sign Out of Codex?"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "退出 Codex 登录？"
-          }
-        }
-      }
-    },
-    "退出登录": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sign Out"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "退出登录"
-          }
-        }
-      }
-    },
-    "这会退出 Codex CLI 当前账户；其他使用同一 Codex 登录的应用也可能需要重新登录。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This signs the current account out of Codex CLI. Other apps using the same Codex sign-in may also need to sign in again."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这会退出 Codex CLI 当前账户；其他使用同一 Codex 登录的应用也可能需要重新登录。"
-          }
-        }
-      }
-    },
-    "正在检查 Codex 账户…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Checking Codex account…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在检查 Codex 账户…"
-          }
-        }
-      }
-    },
-    "Codex 状态不可用": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex Status Unavailable"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex 状态不可用"
-          }
-        }
-      }
-    },
-    "已通过 ChatGPT 登录": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Signed In with ChatGPT"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已通过 ChatGPT 登录"
-          }
-        }
-      }
-    },
-    "Codex 已登录": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex Signed In"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex 已登录"
-          }
-        }
-      }
-    },
-    "尚未登录 Codex": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Not Signed In to Codex"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "尚未登录 Codex"
-          }
-        }
-      }
-    },
-    "正在打开 ChatGPT 登录页面…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Opening the ChatGPT sign-in page…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在打开 ChatGPT 登录页面…"
-          }
-        }
-      }
-    },
-    "无法打开 ChatGPT 登录页面，请检查默认浏览器设置。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Could not open the ChatGPT sign-in page. Check your default browser settings."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法打开 ChatGPT 登录页面，请检查默认浏览器设置。"
-          }
-        }
-      }
-    },
-    "请在浏览器完成登录；RepoPress 会自动刷新状态。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Complete sign-in in your browser. RepoPress will refresh the status automatically."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请在浏览器完成登录；RepoPress 会自动刷新状态。"
-          }
-        }
-      }
-    },
-    "ChatGPT 登录成功。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Signed in to ChatGPT."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ChatGPT 登录成功。"
-          }
-        }
-      }
-    },
-    "浏览器授权完成后，请点“刷新状态”。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "After completing browser authorization, click Refresh Status."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "浏览器授权完成后，请点“刷新状态”。"
-          }
-        }
-      }
-    },
-    "已退出 Codex 登录。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Signed out of Codex."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已退出 Codex 登录。"
-          }
-        }
-      }
-    },
-    "Codex 登录状态已刷新。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex sign-in status refreshed."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex 登录状态已刷新。"
-          }
-        }
-      }
-    },
-    "Codex 尚未登录。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex is not signed in."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex 尚未登录。"
-          }
-        }
-      }
-    },
-    "Codex App Server（本机 stdio）": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex App Server (local stdio)"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex App Server（本机 stdio）"
-          }
-        }
-      }
-    },
-    "使用 Codex 账户默认模型": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Use the Codex account default model"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "使用 Codex 账户默认模型"
-          }
-        }
-      }
-    },
-    "由本机 codex app-server 管理 ChatGPT 登录、令牌刷新和请求传输；RepoPress 不读取或保存账户令牌。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "codex app-server on this Mac manages ChatGPT sign-in, token refresh, and requests. RepoPress does not read or store account tokens."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "由本机 codex app-server 管理 ChatGPT 登录、令牌刷新和请求传输；RepoPress 不读取或保存账户令牌。"
-          }
-        }
-      }
-    },
-    "账户默认模型": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Account default model"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "账户默认模型"
-          }
-        }
-      }
-    },
-    "Codex 账户": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex Account"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex 账户"
           }
         }
       }

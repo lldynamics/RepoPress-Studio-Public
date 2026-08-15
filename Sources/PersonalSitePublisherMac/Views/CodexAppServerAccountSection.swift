@@ -3,16 +3,26 @@ import PublishingWorkbenchCore
 import SwiftUI
 
 struct CodexAppServerAccountSection: View {
+  let dataSharingConsent: AIDataSharingConsentPresentation
+  let grantConsentForConnection: () -> Void
+  let testConnection: () async -> AIConnectionTestReport?
+
+  @State private var runtimeStatus: CodexAppServerRuntimeStatus?
   @State private var accountStatus: CodexAppServerAccountStatus?
   @State private var rateLimits: CodexAppServerRateLimits?
+  @State private var deviceCodeLogin: CodexAppServerDeviceCodeLoginResult?
   @State private var isWorking = false
+  @State private var isLoginFlowActive = false
   @State private var actionMessage: String?
   @State private var isError = false
   @State private var operationTask: Task<Void, Never>?
   @State private var isLogoutConfirmationPresented = false
+  @State private var isPostLoginTestConfirmationPresented = false
 
   var body: some View {
-    Section("1. Codex 账户") {
+    Section("1. ChatGPT 账户") {
+      runtimeStatusContent
+
       HStack(spacing: 8) {
         Label(statusTitle, systemImage: statusSystemImage)
           .foregroundStyle(statusColor)
@@ -23,11 +33,11 @@ struct CodexAppServerAccountSection: View {
         if isWorking {
           ProgressView()
             .controlSize(.small)
-            .accessibilityLabel("正在检查 Codex 账户")
+            .accessibilityLabel("正在检查 ChatGPT 账户")
         }
 
-        Button("刷新状态") {
-          startRefresh()
+        Button("重新检测") {
+          startRefreshAll()
         }
         .buttonStyle(.borderless)
         .disabled(isWorking)
@@ -48,9 +58,9 @@ struct CodexAppServerAccountSection: View {
       }
 
       HStack(spacing: 10) {
-        if accountStatus?.accountType != "chatgpt" {
+        if runtimeStatus?.isAvailable == true, accountStatus?.accountType != "chatgpt" {
           Button(loginButtonTitle) {
-            startLogin()
+            startBrowserLogin()
           }
           .workbenchProminentActionStyle()
           .disabled(isWorking)
@@ -58,13 +68,35 @@ struct CodexAppServerAccountSection: View {
         }
 
         if accountStatus?.isAuthenticated == true {
-          Button("退出 Codex 登录", role: .destructive) {
+          Button("退出 ChatGPT 登录", role: .destructive) {
             isLogoutConfirmationPresented = true
           }
           .buttonStyle(.borderless)
           .disabled(isWorking)
           .accessibilityIdentifier("settings-ai-codex-account-logout")
         }
+
+        if isLoginFlowActive, accountStatus?.isAuthenticated != true {
+          Button("取消登录", role: .cancel) {
+            operationTask?.cancel()
+          }
+          .buttonStyle(.borderless)
+          .accessibilityIdentifier("settings-ai-codex-account-cancel-login")
+        }
+      }
+
+      if runtimeStatus?.isAvailable == true, accountStatus?.accountType != "chatgpt" {
+        Button("改用设备码登录") {
+          startDeviceCodeLogin()
+        }
+        .buttonStyle(.link)
+        .disabled(isWorking)
+        .accessibilityHint("浏览器回跳不可用时使用")
+        .accessibilityIdentifier("settings-ai-codex-device-login")
+      }
+
+      if let deviceCodeLogin {
+        deviceCodeContent(deviceCodeLogin)
       }
 
       if let actionMessage {
@@ -77,8 +109,8 @@ struct CodexAppServerAccountSection: View {
       }
 
       VStack(alignment: .leading, spacing: 4) {
-        Text("登录由本机 codex app-server 完成，可使用 ChatGPT 套餐，不需要在 RepoPress 中填写 API Key。")
-        Text("RepoPress 不读取或保存 OAuth 令牌；令牌保存与刷新由 Codex CLI 管理。AI 内容仍会发送到 Codex / ChatGPT。")
+        Text("使用 ChatGPT 套餐登录，不需要在 RepoPress 中填写 API Key。")
+        Text("RepoPress 不读取或保存登录令牌。AI 内容仍会发送到 OpenAI，并在首次发送前征求你的确认。")
       }
       .font(.workbenchMetadata)
       .foregroundStyle(.secondary)
@@ -86,14 +118,14 @@ struct CodexAppServerAccountSection: View {
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("settings-ai-codex-account")
     .task {
-      await refresh(showSuccess: false)
+      await refreshAll(showSuccess: false)
     }
     .onDisappear {
       operationTask?.cancel()
       operationTask = nil
     }
     .confirmationDialog(
-      "退出 Codex 登录？",
+      "退出 ChatGPT 登录？",
       isPresented: $isLogoutConfirmationPresented,
       titleVisibility: .visible
     ) {
@@ -102,23 +134,117 @@ struct CodexAppServerAccountSection: View {
       }
       Button("取消", role: .cancel) {}
     } message: {
-      Text("这会退出 Codex CLI 当前账户；其他使用同一 Codex 登录的应用也可能需要重新登录。")
+      Text("这会退出本机当前 ChatGPT 账户；其他共用此登录的应用也可能需要重新登录。")
     }
+    .confirmationDialog(
+      "登录成功，测试连接？",
+      isPresented: $isPostLoginTestConfirmationPresented,
+      titleVisibility: .visible
+    ) {
+      Button("同意并测试") {
+        grantConsentForConnection()
+        startPostLoginConnectionTest()
+      }
+      Button("稍后", role: .cancel) {}
+    } message: {
+      Text("测试会向 OpenAI 发送一条不含文章或资料库内容的最小请求，并保存此目的地的发送授权。")
+    }
+  }
+
+  @ViewBuilder
+  private var runtimeStatusContent: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Label(
+        runtimeTitle,
+        systemImage: runtimeStatus?.isAvailable == true ? "cpu.fill" : "shippingbox"
+      )
+      .foregroundStyle(
+        runtimeStatus?.isAvailable == true ? WorkbenchTheme.success : WorkbenchTheme.warning
+      )
+      Spacer()
+      if runtimeStatus?.isAvailable == false {
+        Button("打开安装说明") {
+          openRuntimeInstallationGuide()
+        }
+        .buttonStyle(.borderless)
+        Button("复制安装命令") {
+          copyRuntimeInstallationCommand()
+        }
+        .buttonStyle(.borderless)
+      }
+    }
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("settings-ai-codex-runtime-status")
+
+    if let path = runtimeStatus?.executableURL?.path {
+      Text(path)
+        .font(.workbenchMetadata.monospaced())
+        .foregroundStyle(.secondary)
+        .textSelection(.enabled)
+    } else if runtimeStatus != nil {
+      Text("ChatGPT 登录需要本机 Codex 运行组件。安装后点“重新检测”；RepoPress 不会静默安装或修改系统。")
+        .font(.workbenchMetadata)
+        .foregroundStyle(.secondary)
+    }
+  }
+
+  @ViewBuilder
+  private func deviceCodeContent(_ login: CodexAppServerDeviceCodeLoginResult) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("在浏览器输入设备码")
+        .font(.headline)
+      Text(login.userCode)
+        .font(.title3.monospaced().weight(.semibold))
+        .textSelection(.enabled)
+        .accessibilityLabel("设备码 \(login.userCode)")
+      HStack(spacing: 10) {
+        Button("复制设备码") {
+          NSPasteboard.general.clearContents()
+          NSPasteboard.general.setString(login.userCode, forType: .string)
+          actionMessage = String(localized: "设备码已复制。")
+        }
+        Button("打开验证页面") {
+          _ = NSWorkspace.shared.open(login.verificationURL)
+        }
+      }
+    }
+    .padding(10)
+    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("settings-ai-codex-device-code")
   }
 
   private var statusTitle: String {
     if isWorking, accountStatus == nil {
-      return String(localized: "正在检查 Codex 账户…")
+      return String(localized: "正在检查 ChatGPT 账户…")
     }
     guard let accountStatus else {
-      return String(localized: "Codex 状态不可用")
+      return runtimeStatus?.isAvailable == false
+        ? String(localized: "需要安装运行组件")
+        : String(localized: "ChatGPT 状态不可用")
     }
     if accountStatus.isAuthenticated {
       return accountStatus.accountType == "chatgpt"
         ? String(localized: "已通过 ChatGPT 登录")
-        : String(localized: "Codex 已登录")
+        : String(localized: "已登录其他账户")
     }
-    return String(localized: "尚未登录 Codex")
+    return String(localized: "尚未登录 ChatGPT")
+  }
+
+  private var runtimeTitle: String {
+    guard let runtimeStatus else { return String(localized: "正在检测运行组件…") }
+    guard runtimeStatus.isAvailable else { return String(localized: "未找到 Codex 运行组件") }
+    let version = runtimeStatus.version?.nilIfEmpty.map { " · \($0)" } ?? ""
+    switch runtimeStatus.source {
+    case .bundled:
+      return String(localized: "内置运行组件可用") + version
+    case .homebrew:
+      return String(localized: "Homebrew 运行组件可用") + version
+    case .path:
+      return String(localized: "系统运行组件可用") + version
+    case nil:
+      return String(localized: "运行组件可用") + version
+    }
   }
 
   private var loginButtonTitle: String {
@@ -129,7 +255,8 @@ struct CodexAppServerAccountSection: View {
 
   private var statusSystemImage: String {
     guard let accountStatus else { return "exclamationmark.triangle" }
-    return accountStatus.isAuthenticated ? "checkmark.seal.fill" : "person.crop.circle.badge.questionmark"
+    return accountStatus.isAuthenticated
+      ? "checkmark.seal.fill" : "person.crop.circle.badge.questionmark"
   }
 
   private var statusColor: Color {
@@ -139,14 +266,10 @@ struct CodexAppServerAccountSection: View {
 
   private func loginMethodTitle(_ status: CodexAppServerAccountStatus) -> String {
     switch status.accountType {
-    case "chatgpt":
-      return "ChatGPT OAuth"
-    case "apiKey":
-      return "Codex CLI API Key"
-    case let value?:
-      return value
-    case nil:
-      return "Codex CLI"
+    case "chatgpt": return "ChatGPT"
+    case "apiKey": return "API Key"
+    case let value?: return value
+    case nil: return "ChatGPT"
     }
   }
 
@@ -165,12 +288,27 @@ struct CodexAppServerAccountSection: View {
     }
   }
 
-  private func startRefresh() {
+  private func startRefreshAll() {
     operationTask?.cancel()
     operationTask = Task { @MainActor in
-      await refresh(showSuccess: true)
+      await refreshAll(showSuccess: true)
       operationTask = nil
     }
+  }
+
+  @MainActor
+  private func refreshAll(showSuccess: Bool) async {
+    isWorking = true
+    runtimeStatus = await CodexAppServerProcessTransport.inspectRuntime()
+    guard runtimeStatus?.isAvailable == true else {
+      accountStatus = nil
+      rateLimits = nil
+      isError = true
+      actionMessage = showSuccess ? String(localized: "未找到 Codex 运行组件。") : nil
+      isWorking = false
+      return
+    }
+    await refresh(showSuccess: showSuccess)
   }
 
   @MainActor
@@ -184,7 +322,7 @@ struct CodexAppServerAccountSection: View {
         do {
           rateLimits = try await CodexAppServerClient.shared.rateLimits()
         } catch {
-          // Account state remains useful when optional quota metadata is unavailable.
+          // Optional quota metadata must not hide a valid authenticated account.
           rateLimits = nil
         }
       } else {
@@ -192,9 +330,10 @@ struct CodexAppServerAccountSection: View {
       }
       isError = false
       if showSuccess {
-        actionMessage = status.isAuthenticated
-          ? String(localized: "Codex 登录状态已刷新。")
-          : String(localized: "Codex 尚未登录。")
+        actionMessage =
+          status.isAuthenticated
+          ? String(localized: "ChatGPT 登录状态已刷新。")
+          : String(localized: "ChatGPT 尚未登录。")
       } else {
         actionMessage = nil
       }
@@ -206,8 +345,9 @@ struct CodexAppServerAccountSection: View {
     }
   }
 
-  private func startLogin() {
+  private func startBrowserLogin() {
     operationTask?.cancel()
+    isLoginFlowActive = true
     operationTask = Task { @MainActor in
       isWorking = true
       isError = false
@@ -216,40 +356,119 @@ struct CodexAppServerAccountSection: View {
         let login = try await CodexAppServerClient.shared.startChatGPTLogin()
         guard NSWorkspace.shared.open(login.authURL) else {
           isWorking = false
+          isLoginFlowActive = false
           isError = true
           actionMessage = String(localized: "无法打开 ChatGPT 登录页面，请检查默认浏览器设置。")
           operationTask = nil
           return
         }
-        actionMessage = String(localized: "请在浏览器完成登录；RepoPress 会自动刷新状态。")
-        for _ in 0..<60 {
-          try Task.checkCancellation()
-          try await Task.sleep(for: .seconds(2))
-          let status = try await CodexAppServerClient.shared.accountStatus()
-          if status.isAuthenticated, status.accountType == "chatgpt" {
-            accountStatus = status
-            do {
-              rateLimits = try await CodexAppServerClient.shared.rateLimits()
-            } catch {
-              // Successful login does not depend on optional quota metadata.
-              rateLimits = nil
-            }
-            isWorking = false
-            actionMessage = String(localized: "ChatGPT 登录成功。")
-            operationTask = nil
-            return
-          }
-        }
-        isWorking = false
-        actionMessage = String(localized: "浏览器授权完成后，请点“刷新状态”。")
+        actionMessage = String(localized: "请在浏览器完成登录；完成后此处会自动更新。")
+        try await CodexAppServerClient.shared.waitForLoginCompletion(loginID: login.loginID)
+        await finishSuccessfulLogin()
       } catch is CancellationError {
-        isWorking = false
+        finishCancelledLogin()
+      } catch CodexAppServerError.cancelled {
+        finishCancelledLogin()
       } catch {
         isWorking = false
+        isLoginFlowActive = false
         isError = true
         actionMessage = error.localizedDescription
       }
       operationTask = nil
+    }
+  }
+
+  private func startDeviceCodeLogin() {
+    operationTask?.cancel()
+    isLoginFlowActive = true
+    operationTask = Task { @MainActor in
+      isWorking = true
+      isError = false
+      actionMessage = String(localized: "正在创建设备码…")
+      do {
+        let login = try await CodexAppServerClient.shared.startChatGPTDeviceCodeLogin()
+        deviceCodeLogin = login
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(login.userCode, forType: .string)
+        _ = NSWorkspace.shared.open(login.verificationURL)
+        actionMessage = String(localized: "设备码已复制。请在浏览器完成登录。")
+        try await CodexAppServerClient.shared.waitForLoginCompletion(loginID: login.loginID)
+        await finishSuccessfulLogin()
+      } catch is CancellationError {
+        finishCancelledLogin()
+      } catch CodexAppServerError.cancelled {
+        finishCancelledLogin()
+      } catch {
+        isWorking = false
+        isLoginFlowActive = false
+        isError = true
+        actionMessage = error.localizedDescription
+      }
+      operationTask = nil
+    }
+  }
+
+  @MainActor
+  private func finishSuccessfulLogin() async {
+    isLoginFlowActive = false
+    deviceCodeLogin = nil
+    await refresh(showSuccess: false)
+    guard accountStatus?.isAuthenticated == true else {
+      isWorking = false
+      return
+    }
+    isError = false
+    if dataSharingConsent.isGranted {
+      await runPostLoginConnectionTest()
+    } else {
+      isWorking = false
+      actionMessage = String(localized: "ChatGPT 登录成功，套餐与用量已刷新。")
+      isPostLoginTestConfirmationPresented = true
+    }
+  }
+
+  @MainActor
+  private func finishCancelledLogin() {
+    isWorking = false
+    isLoginFlowActive = false
+    isError = false
+    deviceCodeLogin = nil
+    actionMessage = String(localized: "登录已取消。")
+  }
+
+  private func openRuntimeInstallationGuide() {
+    guard let url = URL(string: "https://github.com/openai/codex#readme") else { return }
+    _ = NSWorkspace.shared.open(url)
+  }
+
+  private func copyRuntimeInstallationCommand() {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString("brew install --cask codex", forType: .string)
+    isError = false
+    actionMessage = String(localized: "Homebrew 安装命令已复制。")
+  }
+
+  private func startPostLoginConnectionTest() {
+    operationTask?.cancel()
+    operationTask = Task { @MainActor in
+      await runPostLoginConnectionTest()
+      operationTask = nil
+    }
+  }
+
+  @MainActor
+  private func runPostLoginConnectionTest() async {
+    isWorking = true
+    isError = false
+    actionMessage = String(localized: "登录成功，正在自动测试连接…")
+    let report = await testConnection()
+    isWorking = false
+    if let report {
+      actionMessage = report.headline
+    } else {
+      isError = true
+      actionMessage = String(localized: "登录成功，但自动连接测试失败；你可以稍后重试。")
     }
   }
 
@@ -266,7 +485,7 @@ struct CodexAppServerAccountSection: View {
         accountStatus = CodexAppServerAccountStatus(isAuthenticated: false)
         rateLimits = nil
         isError = false
-        actionMessage = String(localized: "已退出 Codex 登录。")
+        actionMessage = String(localized: "已退出 ChatGPT 登录。")
       } catch {
         isError = true
         actionMessage = error.localizedDescription

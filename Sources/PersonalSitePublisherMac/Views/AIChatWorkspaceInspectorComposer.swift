@@ -2,6 +2,14 @@ import Foundation
 import PublishingWorkbenchCore
 import SwiftUI
 
+enum AIChatDataSharingConsentPolicy {
+  static func requiresConfirmation(
+    _ presentation: AIDataSharingConsentPresentation
+  ) -> Bool {
+    presentation.requiresConsent && !presentation.isGranted
+  }
+}
+
 extension AIChatContextInspectorView {
 
   var messageComposer: some View {
@@ -410,7 +418,28 @@ extension AIChatContextInspectorView {
     guard !message.isEmpty || !selectedImageAttachmentIDs.isEmpty,
       !isChatBusy
     else { return }
+    let config = currentAIProviderConfig
+    let consent = ai.dataSharingConsent(for: config)
+    if AIChatDataSharingConsentPolicy.requiresConfirmation(consent) {
+      pendingDataSharingConsentConfig = config
+      pendingDataSharingConsentPresentation = consent
+      isDataSharingConsentConfirmationPresented = true
+      return
+    }
     startSending(message, draft: draft, clearsComposerOnAccept: true)
+  }
+
+  func grantPendingDataSharingConsentAndSubmit() {
+    guard let config = pendingDataSharingConsentConfig else { return }
+    ai.grantDataSharingConsent(for: config, enablingRemoteAI: true)
+    clearPendingDataSharingConsent()
+    submitMessage()
+  }
+
+  func clearPendingDataSharingConsent() {
+    pendingDataSharingConsentConfig = nil
+    pendingDataSharingConsentPresentation = nil
+    isDataSharingConsentConfirmationPresented = false
   }
 
   func toggleChatImageAttachment(_ attachmentID: UUID) {

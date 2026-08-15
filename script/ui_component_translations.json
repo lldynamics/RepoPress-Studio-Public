@@ -3,7 +3,6 @@
   "%@ · 路径与规则可用于本地发布": "%@ · Paths and rules are ready for local publishing",
   "%@ · 路径规则已配置": "%@ · Path rules are configured",
   "%@ 当前接口不支持图片输入，请切换到支持视觉输入的模型。": "%@ does not support image input. Please switch to a model with vision support.",
-  "AI 服务配置": "AI Service Configuration",
   "Git": "Git",
   "H1": "H1",
   "Markdown": "Markdown",

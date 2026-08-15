@@ -121,6 +121,44 @@ public struct CodexAppServerLoginResult: Codable, Equatable, Sendable {
   }
 }
 
+public struct CodexAppServerDeviceCodeLoginResult: Codable, Equatable, Sendable {
+  public let loginID: String
+  public let verificationURL: URL
+  public let userCode: String
+
+  public init(loginID: String, verificationURL: URL, userCode: String) {
+    self.loginID = loginID
+    self.verificationURL = verificationURL
+    self.userCode = userCode
+  }
+}
+
+public enum CodexAppServerRuntimeSource: String, Codable, Equatable, Sendable {
+  case bundled
+  case homebrew
+  case path
+}
+
+public struct CodexAppServerRuntimeStatus: Codable, Equatable, Sendable {
+  public let executableURL: URL?
+  public let source: CodexAppServerRuntimeSource?
+  public let version: String?
+
+  public init(
+    executableURL: URL? = nil,
+    source: CodexAppServerRuntimeSource? = nil,
+    version: String? = nil
+  ) {
+    self.executableURL = executableURL
+    self.source = source
+    self.version = version
+  }
+
+  public var isAvailable: Bool {
+    executableURL != nil
+  }
+}
+
 public struct CodexAppServerRateLimitWindow: Codable, Equatable, Sendable {
   public let usedPercent: Double?
   public let windowMinutes: Int?

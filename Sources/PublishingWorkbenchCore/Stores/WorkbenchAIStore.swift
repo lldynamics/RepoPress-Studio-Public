@@ -504,9 +504,13 @@ public final class WorkbenchAIStore: ObservableObject {
   }
 
   public var aiDataSharingConsentPresentation: AIDataSharingConsentPresentation {
-    aiDataSharingConsentStore.presentation(
-      for: store.aiProviderConfig(for: store.activeProfile)
-    )
+    aiDataSharingConsentPresentation(for: store.aiProviderConfig(for: store.activeProfile))
+  }
+
+  public func aiDataSharingConsentPresentation(
+    for config: AIProviderConfig
+  ) -> AIDataSharingConsentPresentation {
+    aiDataSharingConsentStore.presentation(for: config)
   }
 
   public var isRemoteAIEnabled: Bool {
@@ -518,7 +522,8 @@ public final class WorkbenchAIStore: ObservableObject {
     aiDataSharingConsentStore.setRemoteAIEnabled(enabled)
     guard changed else { return }
     objectWillChange.send()
-    let message = enabled
+    let message =
+      enabled
       ? "已开启远程 AI；原有逐服务授权会恢复生效。"
       : "已关闭远程 AI。逐服务授权会保留，重新开启后恢复；本地 AI 仍可用。"
     aiActionMessage = message
@@ -527,6 +532,16 @@ public final class WorkbenchAIStore: ObservableObject {
 
   public func grantAIDataSharingConsent() {
     let config = store.aiProviderConfig(for: store.activeProfile)
+    grantAIDataSharingConsent(for: config)
+  }
+
+  public func grantAIDataSharingConsent(
+    for config: AIProviderConfig,
+    enablingRemoteAI: Bool = false
+  ) {
+    if enablingRemoteAI, !config.isLocalEndpoint, !config.dataSharingDestination.isEmpty {
+      aiDataSharingConsentStore.setRemoteAIEnabled(true)
+    }
     aiDataSharingConsentStore.grant(for: config)
     let presentation = aiDataSharingConsentStore.presentation(for: config)
     if config.isLocalEndpoint {
