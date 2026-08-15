@@ -951,7 +951,7 @@ final class WorkbenchPersistenceTests: XCTestCase {
     store.updateDraft(finalEdit)
 
     XCTAssertTrue(store.hasUnsavedChanges)
-    try await Task.sleep(nanoseconds: 900_000_000)
+    await store.waitForPendingSave()
 
     XCTAssertFalse(store.hasUnsavedChanges)
     XCTAssertEqual(store.lastSaveStatus, "已保存")
