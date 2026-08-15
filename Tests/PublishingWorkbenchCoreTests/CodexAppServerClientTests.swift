@@ -250,6 +250,7 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
   private let mode: Mode
   private var queuedChunks: [Data] = []
   private var waitingReceivers: [CheckedContinuation<Data?, Error>] = []
+  private var messageWaiters: [String: [CheckedContinuation<Void, Never>]] = [:]
   private var messages: [CodexAppServerJSONValue] = []
   private var bytes = Data()
   private var isClosed = false
@@ -268,6 +269,10 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
       let method = object["method"]?.stringValue
     else { return }
     messages.append(object)
+    let waiters = messageWaiters.removeValue(forKey: method) ?? []
+    for waiter in waiters {
+      waiter.resume()
+    }
 
     switch method {
     case "initialize":
@@ -393,8 +398,11 @@ private actor ScriptedCodexTransport: CodexAppServerTransport {
   }
 
   func waitUntilSent(method: String) async {
-    while !messages.contains(where: { $0["method"]?.stringValue == method }) {
-      await Task.yield()
+    guard !messages.contains(where: { $0["method"]?.stringValue == method }) else {
+      return
+    }
+    await withCheckedContinuation { continuation in
+      messageWaiters[method, default: []].append(continuation)
     }
   }
 
