@@ -100,6 +100,7 @@ jobs:
           done
       - name: Run real launch and UI smoke
         env:
+          DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
           PERSONAL_SITE_PUBLISHER_RUNTIME_HOME: ${{ runner.temp }}/repopress-ui-smoke-home
           WORKBENCH_XCUI_DERIVED_DATA_PATH: ${{ github.workspace }}/.build/ui-smoke-derived-data
         run: |

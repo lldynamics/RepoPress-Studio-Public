@@ -29,6 +29,9 @@ grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' "$TOOL
 grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' \
   < <(sed -n '/name: Exercise distribution build and package path/,/name: Publish quality summary/p' "$WORKFLOW") \
   || fail "pull-request distribution gate must select the Xcode 26.3 Safari extension toolchain"
+grep -Fq 'DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer' \
+  < <(sed -n '/name: Run real launch and UI smoke/,/name: Upload UI smoke evidence/p' "$WORKFLOW") \
+  || fail "pull-request UI smoke must keep the Xcode 26.3 Safari extension toolchain"
 grep -Fq 'echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/ms-playwright" >> "$GITHUB_ENV"' "$TOOLING_WORKFLOW" \
   || fail "release-tooling workflow must share one Playwright browser path across install and gates"
 grep -Fq 'xcrun -f safari-web-extension-packager' "$TOOLING_WORKFLOW" \
